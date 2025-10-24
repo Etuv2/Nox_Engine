@@ -1,0 +1,136 @@
+#pragma once
+#include <memory>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <GL/glew.h>
+
+
+class FrameBuffer; class ScreenQuad; class LightManager;
+/*
+* @struct RenderContext
+* @brief Centralized rendering context holding shared resources and settings.
+* This struct encapsulates common framebuffers, screen quad, light manager,
+* and various rendering settings used across multiple render passes.
+* It provides a convenient way to manage and access these resources
+* throughout the rendering pipeline.
+
+
+*/
+
+struct RenderContext {
+	// Dimensions
+	int width = 1920;
+	int height = 1080;
+
+
+	// Shared FBOs
+	std::unique_ptr<FrameBuffer> gbufferFBO; // Extended G-Buffer
+	std::unique_ptr<FrameBuffer> hdrFBO; // HDR target
+
+
+	// Screen quad
+	std::unique_ptr<ScreenQuad> screenQuad;
+
+
+	// Light system
+	std::shared_ptr<LightManager> lightManager;
+
+
+	// Matrices/state filled each frame
+	glm::mat4 view{ 1.0f };
+	glm::mat4 proj{ 1.0f };
+	
+	// Previous frame matrices for TAA
+	glm::mat4 prevView{ 1.0f };
+	glm::mat4 prevProj{ 1.0f };
+
+
+	// SSAO settings
+	bool enableSSAO = true;
+	float ssaoRadius = 0.5f;
+	float ssaoBias = 0.025f;
+	float ssaoIntensity = 1.0f;
+	float ssaoBlurDepthThreshold = 0.01f;
+
+
+	// SSGI settings
+	bool enableSSGI = true;
+	float ssgiStrength = 1.0f;
+	float ssgiRadius = 1.0f;
+	int ssgiSampleCount = 1024;
+	bool ssgiHalfRes = true;           // run SSGI at half-res for speed
+	float ssgiTemporalAlpha = 0.12f;   // exponential average factor
+	float ssgiNormalReject = 0.25f;    // bilateral normal threshold
+	float ssgiDepthReject = 0.5f;      // bilateral depth sigma (view-space)
+	float ssgiThickness = 0.2f;        // thickness for ray-scene intersection in view space
+
+
+	// Bloom settings
+	bool enableBloom = true;
+	float bloomThreshold = 1.0f;
+	float bloomKnee = 0.5f;
+	float bloomStrength = 0.8f;
+	float bloomRadius = 0.5f;
+
+
+	// TAA settings
+	bool enableTAA = true;
+	float taaBlendFactor = 0.15f;
+	float taaVarianceThreshold = 0.8f;
+	float taaLumaWeight = 0.2f;
+	bool taaUseYCoCg = true;
+	int taaJitterPattern = 0;
+	float taaDepthThreshold = 0.002f;
+	float taaNormalThreshold = 0.15f;
+	float taaEdgeThreshold = 0.08f;
+	float taaReactiveMaskStrength = 0.6f;
+	float taaBloomPreservationStrength = 0.7f;
+
+	//velocity texture for TAA
+	GLuint velocityTex = 0;
+
+
+	// Shadow settings
+	bool enableShadows = true;
+	float shadowBias = 0.0008f;        // Increased to compensate for no normal offset
+	float shadowNear = 0.001f;
+	float shadowFar = 1000.0f;
+	bool enablePCSS = true;
+	float lightSize = 0.02f;
+
+	// Screen-space shadow settings (contact shadows)
+	bool enableScreenSpaceShadows = true;
+	float sssMaxRayLength = 10.0f;       // View-space units (changed from pixels)
+	int sssSampleCount = 16;             // Reduced from 60 for better performance
+	float sssThickness = 0.5f;           // Increased from 0.0015 for more visible shadows
+	float sssEdgeThreshold = 0.01f;      // Increased from 0.0025 for better edge detection
+	float sssBlendStrength = 0.6f;       // How much contact shadows blend with shadow maps (0.0-1.0)
+	float sssLitAreaReduction = 0.7f;    // Reduce contact shadows in bright areas (0.0-1.0)
+
+
+	// Post-processing settings
+	float exposure = 1.0f;
+	float gamma = 2.2f;
+	bool enableHDR = true;
+
+
+	// Environment settings
+	glm::vec3 envColor{ 0.3f, 0.3f, 0.3f };
+
+	// LPV Global Illumination settings
+	bool enableLPV = true;
+	float lpvGIStrength = 1.0f;
+	int lpvGridResolution = 128;
+	float lpvVoxelSize = 0.5f;
+	glm::vec3 lpvGridCenter = glm::vec3(0.0f); // World-space center (updated per frame)
+	glm::quat lpvGridOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); // World-space orientation
+	int lpvRSMResolution = 512;
+	int lpvVPLSampleCount = 32000;
+	int lpvPropagationIterations = 5;
+	float lpvPropagationAttenuation = 0.9f;
+	float lpvPropagationBias = 0.1f;
+	bool lpvEnableOcclusion = true;
+	int lpvUpdateFrequency = 1;
+	bool lpvDebugVisualization = true; // NEW: Debug visualization toggle
+	float lpvDebugBoost = 1.0f;         // NEW: Temporary boost for debugging (default 1.0x, set to 5.0x for testing)
+};

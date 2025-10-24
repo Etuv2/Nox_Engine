@@ -1,0 +1,89 @@
+{
+  "Camera": {
+    "position": [
+      10.0,
+      200.0
+    ],
+    "size": [
+      300.0,
+      180.0
+    ],
+    "visible": true
+  },
+  "Help": {
+    "position": [
+      580.0,
+      10.0
+    ],
+    "size": [
+      350.0,
+      400.0
+    ],
+    "visible": false
+  },
+  "Hierarchy": {
+    "position": [
+      10.0,
+      580.0
+    ],
+    "size": [
+      300.0,
+      280.0
+    ],
+    "visible": true
+  },
+  "Lighting": {
+    "position": [
+      10.0,
+      350.0
+    ],
+    "size": [
+      300.0,
+      250.0
+    ],
+    "visible": true
+  },
+  "Performance": {
+    "position": [
+      680.0,
+      370.0
+    ],
+    "size": [
+      320.0,
+      200.0
+    ],
+    "visible": false
+  },
+  "Rendering": {
+    "position": [
+      940.0,
+      10.0
+    ],
+    "size": [
+      320.0,
+      400.0
+    ],
+    "visible": true
+  },
+  "Status": {
+    "position": [
+      10.0,
+      10.0
+    ],
+    "size": [
+      300.0,
+      180.0
+    ],
+    "visible": true
+  },
+  "gizmo": {
+    "mode": 0,
+    "operation": 7,
+    "panel_visible": false,
+    "rotate_snap": 15.0,
+    "scale_snap": 0.10000000149011612,
+    "snap_enabled": false,
+    "translate_snap": 0.5,
+    "visible": true
+  }
+}

@@ -1,0 +1,374 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="include\IMGUI\imgui.cpp" />
+    <ClCompile Include="include\IMGUI\ImGuizmo.cpp" />
+    <ClCompile Include="include\IMGUI\imgui_demo.cpp" />
+    <ClCompile Include="include\IMGUI\imgui_draw.cpp" />
+    <ClCompile Include="include\IMGUI\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="include\IMGUI\imgui_impl_sdl2.cpp" />
+    <ClCompile Include="include\IMGUI\imgui_impl_sdlrenderer2.cpp" />
+    <ClCompile Include="include\IMGUI\imgui_tables.cpp" />
+    <ClCompile Include="include\IMGUI\imgui_widgets.cpp" />
+    <ClCompile Include="src\Animation.cpp" />
+    <ClCompile Include="src\AnimationController.cpp" />
+    <ClCompile Include="src\AudioNode.cpp" />
+    <ClCompile Include="src\BaseLight.cpp" />
+    <ClCompile Include="src\BVH.cpp" />
+    <ClCompile Include="src\Camera.cpp" />
+    <ClCompile Include="src\ComputeShader.cpp" />
+    <ClCompile Include="src\DefaultTextures.cpp" />
+    <ClCompile Include="src\DirectionalLight.cpp" />
+    <ClCompile Include="src\FrameBuffer.cpp" />
+    <ClCompile Include="src\FrustumCulling.cpp" />
+    <ClCompile Include="src\GizmoRayCast.cpp" />
+    <ClCompile Include="src\GLState.cpp" />
+    <ClCompile Include="src\GuiNode.cpp" />
+    <ClCompile Include="src\ImGuiInterface.cpp" />
+    <ClCompile Include="src\ImGui\BaseWindow.cpp" />
+    <ClCompile Include="src\ImGui\CameraWindow.cpp" />
+    <ClCompile Include="src\ImGui\HelpWindow.cpp" />
+    <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp" />
+    <ClCompile Include="src\ImGui\LightingWindow.cpp" />
+    <ClCompile Include="src\ImGui\PerformanceWindow.cpp" />
+    <ClCompile Include="src\ImGui\RenderingSettingsWindow.cpp" />
+    <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp" />
+    <ClCompile Include="src\ImGui\StatusWindow.cpp" />
+    <ClCompile Include="src\impl.cpp" />
+    <ClCompile Include="src\Input\InputIntegration.cpp" />
+    <ClCompile Include="src\Input\InputSystem.cpp" />
+    <ClCompile Include="src\LightManager.cpp" />
+    <ClCompile Include="src\LightNode.cpp" />
+    <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\MainWindow.cpp" />
+    <ClCompile Include="src\ModelManager.cpp" />
+    <ClCompile Include="src\ModularRenderer.cpp" />
+    <ClCompile Include="src\passes\BloomPass.cpp" />
+    <ClCompile Include="src\passes\GBufferPass.cpp" />
+    <ClCompile Include="src\passes\LightingPass.cpp" />
+    <ClCompile Include="src\passes\LPVPass.cpp" />
+    <ClCompile Include="src\passes\PostProcessPass.cpp" />
+    <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp" />
+    <ClCompile Include="src\passes\ShadowPass.cpp" />
+    <ClCompile Include="src\passes\SSAOPass.cpp" />
+    <ClCompile Include="src\passes\SSGIPass.cpp" />
+    <ClCompile Include="src\passes\TAAPass.cpp" />
+    <ClCompile Include="src\passes\TransparentForwardPass.cpp" />
+    <ClCompile Include="src\PhysicsEngine.cpp" />
+    <ClCompile Include="src\PointLight.cpp" />
+    <ClCompile Include="src\RayCast.cpp" />
+    <ClCompile Include="src\RigidBody.cpp" />
+    <ClCompile Include="src\Scene.cpp" />
+    <ClCompile Include="src\SceneGraph.cpp" />
+    <ClCompile Include="src\SceneLoader.cpp" />
+    <ClCompile Include="src\SceneNode.cpp" />
+    <ClCompile Include="src\ShadowMapper.cpp" />
+    <ClCompile Include="src\SimulationConfig.cpp" />
+    <ClCompile Include="src\Skybox.cpp" />
+    <ClCompile Include="src\SpotLight.cpp" />
+    <ClCompile Include="src\StudioLighting.cpp" />
+    <ClCompile Include="src\Texture.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".gitattributes" />
+    <None Include=".gitignore" />
+    <None Include="C:\Users\desti\Downloads\Dynamic, Noise Free, Screen Space Diffuse Global Illumination _ Shubham Sachdeva Blog.pdf" />
+    <None Include="C:\Users\desti\Downloads\LearnOpenGL - Diffuse irradiance.pdf" />
+    <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
+    <None Include="config.json" />
+    <None Include="config\input_config.json" />
+    <None Include="scenes\animation_test.json" />
+    <None Include="scenes\car.json" />
+    <None Include="scenes\copied_city.json" />
+    <None Include="scenes\cornell_box.json" />
+    <None Include="scenes\graphics_test.json" />
+    <None Include="scenes\gui_demo.json" />
+    <None Include="scenes\gundam.json" />
+    <None Include="scenes\halo.json" />
+    <None Include="scenes\lighting_demo.json" />
+    <None Include="scenes\light_test.json" />
+    <None Include="scenes\light_test_2.json" />
+    <None Include="scenes\mat_test.json" />
+    <None Include="scenes\miku.json" />
+    <None Include="scenes\multi_light_demo.json" />
+    <None Include="scenes\otters.json" />
+    <None Include="scenes\rainbow_road.json" />
+    <None Include="scenes\scene.json" />
+    <None Include="scenes\scene2.json" />
+    <None Include="scenes\shibuya.json" />
+    <None Include="scenes\studio_lighting.json" />
+    <None Include="shaders\bloom_extract.glsl" />
+    <None Include="shaders\bloom_upsample.glsl" />
+    <None Include="shaders\brdf_frag.glsl" />
+    <None Include="shaders\brdf_vert.glsl" />
+    <None Include="shaders\char_fragment_shader.glsl" />
+    <None Include="shaders\char_vertex_shader.glsl" />
+    <None Include="shaders\deferred_lighting_frag.glsl" />
+    <None Include="shaders\deferred_lighting_vert.glsl" />
+    <None Include="shaders\equirect2cube_frag.glsl" />
+    <None Include="shaders\equirect2cube_vert.glsl" />
+    <None Include="shaders\forward_transparent_frag.glsl" />
+    <None Include="shaders\forward_transparent_vert.glsl" />
+    <None Include="shaders\gui_frag.glsl" />
+    <None Include="shaders\gui_unified_frag.glsl" />
+    <None Include="shaders\gui_unified_vert.glsl" />
+    <None Include="shaders\gui_vert.glsl" />
+    <None Include="shaders\irradiance_convolution.glsl" />
+    <None Include="shaders\irradiance_convolution_frag.glsl" />
+    <None Include="shaders\irradiance_convolution_vert.glsl" />
+    <None Include="shaders\kawase_blur.glsl" />
+    <None Include="shaders\lpv_convert_comp.glsl" />
+    <None Include="shaders\lpv_debug_frag.glsl" />
+    <None Include="shaders\lpv_debug_vert.glsl" />
+    <None Include="shaders\lpv_injection_comp.glsl" />
+    <None Include="shaders\lpv_propagation_comp.glsl" />
+    <None Include="shaders\lpv_rsm_frag.glsl" />
+    <None Include="shaders\lpv_rsm_vert.glsl" />
+    <None Include="shaders\lpv_voxelize_frag.glsl" />
+    <None Include="shaders\lpv_voxelize_geom.glsl" />
+    <None Include="shaders\lpv_voxelize_vert.glsl" />
+    <None Include="shaders\postprocess_frag.glsl" />
+    <None Include="shaders\fullscreen_vert.glsl" />
+    <None Include="shaders\prefilter_frag.glsl" />
+    <None Include="shaders\prefilter_vert.glsl" />
+    <None Include="shaders\screen_space_shadows_comp.glsl" />
+    <None Include="shaders\shadow_frag.glsl" />
+    <None Include="shaders\shadow_vert.glsl" />
+    <None Include="shaders\skybox_frag.glsl" />
+    <None Include="shaders\skybox_vert.glsl" />
+    <None Include="shaders\ssao_blur.glsl" />
+    <None Include="shaders\ssao.glsl" />
+    <None Include="shaders\ssgi_bilateral_blur_comp.glsl" />
+    <None Include="shaders\ssgi_directions_comp.glsl" />
+    <None Include="shaders\ssgi_downsample2x_comp.glsl" />
+    <None Include="shaders\ssgi_raymarch_comp.glsl" />
+    <None Include="shaders\ssgi_temporal_resolve_comp.glsl" />
+    <None Include="shaders\ssgi_upsample2x_comp.glsl" />
+    <None Include="shaders\taa_resolve.glsl" />
+    <None Include="shaders\velocity_frag.glsl" />
+    <None Include="shaders\velocity_vert.glsl" />
+    <None Include="x64\Release\shaders\gbuffer_frag.glsl" />
+    <None Include="x64\Release\shaders\gbuffer_vert.glsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Animation.h" />
+    <ClInclude Include="src\AudioNode.h" />
+    <ClInclude Include="src\AudioPlayer.h" />
+    <ClInclude Include="src\BaseLight.h" />
+    <ClInclude Include="src\bend_sss_cpu.h" />
+    <ClInclude Include="src\BVH.h" />
+    <ClInclude Include="src\Camera.h" />
+    <ClInclude Include="src\Collider.h" />
+    <ClInclude Include="src\ComputeShader.h" />
+    <ClInclude Include="src\Contact.h" />
+    <ClInclude Include="src\DefaultTextures.h" />
+    <ClInclude Include="src\DirectionalLight.h" />
+    <ClInclude Include="src\FrameBuffer.h" />
+    <ClInclude Include="src\FrustumCulling.h" />
+    <ClInclude Include="src\GizmoRayCast.h" />
+    <ClInclude Include="src\GLState.h" />
+    <ClInclude Include="src\GuiNode.h" />
+    <ClInclude Include="src\ImGuiInterface.h" />
+    <ClInclude Include="src\ImguiStyle.h" />
+    <ClInclude Include="src\ImGui\BaseWindow.h" />
+    <ClInclude Include="src\ImGui\CameraWindow.h" />
+    <ClInclude Include="src\ImGui\HelpWindow.h" />
+    <ClInclude Include="src\ImGui\ImGuiWindowManager.h" />
+    <ClInclude Include="src\ImGui\LightingWindow.h" />
+    <ClInclude Include="src\ImGui\PerformanceWindow.h" />
+    <ClInclude Include="src\ImGui\RenderingSettingsWindow.h" />
+    <ClInclude Include="src\ImGui\SceneHierarchyWindow.h" />
+    <ClInclude Include="src\ImGui\StatusWindow.h" />
+    <ClInclude Include="src\Input\InputActions.h" />
+    <ClInclude Include="src\Input\InputIntegration.h" />
+    <ClInclude Include="src\Input\InputSystem.h" />
+    <ClInclude Include="src\json.hpp" />
+    <ClInclude Include="src\LightManager.h" />
+    <ClInclude Include="src\LightNode.h" />
+    <ClInclude Include="src\MainWindow.h" />
+    <ClInclude Include="src\MDIBatch.h" />
+    <ClInclude Include="src\MeshComponent.h" />
+    <ClInclude Include="src\ModelManager.h" />
+    <ClInclude Include="src\ModularRenderer.h" />
+    <ClInclude Include="src\passes\BloomPass.h" />
+    <ClInclude Include="src\passes\GBufferPass.h" />
+    <ClInclude Include="src\passes\LightingPass.h" />
+    <ClInclude Include="src\passes\LPVPass.h" />
+    <ClInclude Include="src\passes\PostProcessPass.h" />
+    <ClInclude Include="src\passes\ScreenSpaceShadowPass.h" />
+    <ClInclude Include="src\passes\ShadowPass.h" />
+    <ClInclude Include="src\passes\SSAOPass.h" />
+    <ClInclude Include="src\passes\SSGIPass.h" />
+    <ClInclude Include="src\passes\TAAPass.h" />
+    <ClInclude Include="src\passes\TransparentForwardPass.h" />
+    <ClInclude Include="src\PhysicsEngine.h" />
+    <ClInclude Include="src\PointLight.h" />
+    <ClInclude Include="src\RayCast.h" />
+    <ClInclude Include="src\RenderContext.h" />
+    <ClInclude Include="src\RenderPass.h" />
+    <ClInclude Include="src\RigidBody.h" />
+    <ClInclude Include="src\Scene.h" />
+    <ClInclude Include="src\SceneGraph.h" />
+    <ClInclude Include="src\SceneLoader.h" />
+    <ClInclude Include="src\SceneNode.h" />
+    <ClInclude Include="src\ScreenQuad.h" />
+    <ClInclude Include="src\ShaderLoader.h" />
+    <ClInclude Include="src\ShadowMapper.h" />
+    <ClInclude Include="src\SimulationConfig.h" />
+    <ClInclude Include="src\Skybox.h" />
+    <ClInclude Include="src\SpotLight.h" />
+    <ClInclude Include="src\stb_image.h" />
+    <ClInclude Include="src\stb_image_write.h" />
+    <ClInclude Include="src\StudioLighting.h" />
+    <ClInclude Include="src\Texture.h" />
+    <ClInclude Include="src\TextureUnits.h" />
+    <ClInclude Include="src\tiny_gltf.h" />
+    <ClInclude Include="src\Vertex.h" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{82964d48-b543-48d2-ad16-cfd976cca9cc}</ProjectGuid>
+    <RootNamespace>My3DGP</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>Nox_Engine</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>W:\Files\C++\3DGP\3DGP\SDL\include;W:\Files\C++\3DGP\3DGP\glew\include\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>W:\Files\C++\3DGP\3DGP\SDL\lib\x64;W:\Files\C++\3DGP\3DGP\glew\lib\Release\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>W:\Files\C++\3DGP\3DGP\SDL\include;W:\Files\C++\3DGP\3DGP\glew\include\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>W:\Files\C++\3DGP\3DGP\SDL\lib\x64;W:\Files\C++\3DGP\3DGP\glew\lib\Release\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\3DGP\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>glew32.lib;glew32s.lib;opengl32.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;SDL2_image.lib;SDL2_mixer.lib;assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\3DGP\lib\SDL\x64;..\3DGP\lib\GLEW\x64;..\3DGP\lib\ASSIMP;..\3DGP\include\IMGUI;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>..\Nox_Engine\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>..\Nox_Engine\lib\SDL\x64;..\Nox_Engine\lib\GLEW\x64;..\3DGP\include\IMGUI;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;glew32s.lib;opengl32.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;SDL2_image.lib;SDL2_mixer.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

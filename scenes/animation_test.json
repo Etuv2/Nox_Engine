@@ -1,0 +1,41 @@
+{
+  "scene_name": "Animation Test Scene",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\overcast_sky.hdr",
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\dinosaur_1.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ]
+    },
+    {
+      "type": "light",
+      "name": "TestPointLight",
+      "position": [ 0.0,20.0, 0.0 ],
+      "light": {
+        "type": "point",
+        "color": [0.0, 10.0, 0.0],
+        "intensity":10.0,
+        "enabled": true,
+        "range": 10.0,
+        "castsShadows": true
+      }
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "Animation Test Scene(Dinosaur Model)",
+          "x": 960,
+          "y": 1000
+        }
+
+      ]
+    }
+  ]
+}

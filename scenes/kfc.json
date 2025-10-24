@@ -1,0 +1,47 @@
+{
+  "scene_name": "kfc",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\suksuk.glb",
+      "position": [ -1.0, 1.0, -1.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ]
+    },
+    {
+      "type": "model",
+      "path": "models\\full_gameready_city_buildings.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ 90, 0.0, 0.0 ],
+      "scale": [ 2, 2, 2 ]
+    },
+    {
+      "type": "model",
+      "path": "models\\model_1.glb",
+      "position": [ -10.0, 0.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 0.1, 0.1, 0.1 ],
+      "children": [
+        {
+          "type": "audio",
+          "sound": "sounds\\steveee.wav",
+          "position": [ 0.0, 0.0, 0.0 ],
+          "volume": 1.0,
+          "hearing_distance": 10.0,
+          "loop": true,
+          "is3d": true
+        }
+      ]
+    }
+  ]
+}

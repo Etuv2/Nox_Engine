@@ -1,0 +1,101 @@
+{
+  "windowWidth": 1920,
+  "windowHeight": 1080,
+  "windowTitle": "Nox Engine",
+  "iconPath": "images\\logo.png",
+  "environmentColor": [ 0.1, 0.1, 0.1 ],
+  "environmentIntensity": 0.5,
+  "environmentPath": "hdrs\\skybox.hdr",
+  "first_scene": "scenes\\gundam.json",
+  "scene_folder": "scenes",
+  "physics": {
+    "gravity": [ 0.0, -9.81, 0.0 ],
+    "integration_method": "euler",
+    "integration_step": 0.016667,
+    "maxIterations": 7,
+    "restitution": 0.7
+  },
+  "scenes": [
+    {
+      "path": "scenes\\otters.json"
+    },
+
+    {
+      "path": "scenes\\scene.json"
+    },
+    {
+      "path": "scenes\\scene2.json"
+    },
+    {
+      "path": "scenes\\gundam.json"
+    },
+    {
+      "path": "scenes\\shibuya.json"
+    },
+    {
+      "path": "scenes\\car.json"
+    },
+    {
+      "path": "scenes\\halo.json"
+    },
+    {
+      "path": "scenes\\mat_test.json"
+    },
+    { "path": "scenes\\lighting_demo.json" },
+    { "path": "scenes\\miku.json" },
+    { "path": "scenes\\graphics_test.json" },
+    { "path": "scenes\\copied_city.json" },
+    { "path": "scenes\\multi_light_demo.json" },
+    { "path": "scenes\\studio_lighting.json" },
+    { "path": "scenes\\light_test.json" },
+    { "path": "scenes\\light_test_2.json" },
+    { "path": "scenes\\gui_demo.json" },
+    { "path": "scenes\\animation_test.json" },
+    { "path": "scenes\\cornell_box.json"  }
+
+  ],
+  "text_font": "arial.ttf",
+  "vsync": false,
+  "camera": {
+    "position": [ -1.0, 1.0, -1.0 ],
+    "up": [ 0.0, 1.0, 0.0 ],
+    "yaw": -90.0,
+    "pitch": 0.0,
+    "pitch_constraint": 89.0,
+    "fov": 120,
+    "near": 0.1,
+    "far": 600.0,
+    "movement_speed": 30.0,
+    "mouse_sensitivity": 0.1
+  },
+  "light": {
+    "position": [ 0.0, 0.0, 0.0 ],
+    "direction": [ -0.5, -1.0, -0.5 ],
+    "shadows_enabled": true,
+    "shadow_bias": 0.002,
+    "shadow_near": 0.1,
+    "shadow_far": 300.0,
+    "shadow_size": 2048,
+    "split_lambda": 0.6,
+    "max_shadow_bias": 0.02,
+    "normal_offset_scale": 0.1,
+    "cascade_bias_scale": 1.0,
+    "pcf_samples": 25,
+    "shadow_softness": 1.0
+  },
+  "shadows": {
+    "enabled": true,
+    "base_resolution": 512,
+    "max_directional_lights": 2,
+    "max_spot_lights": 4,
+    "max_point_lights": 4,
+    "enable_pcss": true,
+    "dynamic_resolution": true,
+    "cascade_count": 3,
+    "cascade_lambda": 0.6,
+    "bias_scale": 1.0,
+    "normal_offset": 0.1,
+    "polygon_offset_factor": 2.0,
+    "polygon_offset_units": 4.0
+  }
+}

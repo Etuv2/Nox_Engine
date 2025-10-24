@@ -1,0 +1,609 @@
+﻿#include "SceneLoader.h"
+#include "SceneNode.h"
+#include "AudioNode.h"
+#include "GuiNode.h"
+#include "LightNode.h"
+#include "DirectionalLight.h"
+#include "PointLight.h"
+#include "SpotLight.h"
+#include "ModelManager.h"
+#include "ShaderLoader.h"
+#include "Scene.h" 
+#include <fstream>
+#include <iostream>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+using json = nlohmann::json;
+
+SceneLoader::SceneLoader(std::shared_ptr<ModelManager> modelManager, std::shared_ptr<PhysicsEngine> physicsEngine, int screenW, int screenH):
+    m_modelManager(modelManager),
+    m_physicsEngine(physicsEngine),
+    m_screenH(screenH),
+    m_screenW(screenW)
+{
+}
+
+SceneLoader::~SceneLoader() {
+}
+
+std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFilePath) {
+    auto sceneGraph = std::make_shared<SceneGraph>();
+
+    std::ifstream sceneFile(sceneFilePath);
+    if (!sceneFile.is_open()) {
+        std::cerr << "Failed to open scene file: " << sceneFilePath << std::endl;
+        return sceneGraph;
+    }
+
+    json sceneJson;
+    sceneFile >> sceneJson;
+
+    // Set the scene name if provided.
+    std::string sceneName = sceneJson.value("scene_name", "Unnamed Scene");
+    sceneGraph->SetSceneName(sceneName);
+
+    // Set the scenes exposure and gamma values if provided.
+    sceneGraph->m_exposure = sceneJson.value("exposure", 1.0f);
+    sceneGraph->m_gamma = sceneJson.value("gamma", 2.2f);
+
+    // Look for a hierarchical "nodes" array.
+    if (sceneJson.contains("nodes") && sceneJson["nodes"].is_array()) {
+        for (auto& nodeEntry : sceneJson["nodes"]) {
+            auto node = ProcessNodeRecursive(nodeEntry);
+            if (node)
+                sceneGraph->GetRoot()->AddChild(node);
+        }
+    }
+    else {
+        std::cerr << "Invalid scene file format. 'nodes' array is missing." << std::endl;
+    }
+    // Initialize the skybox if provided.
+    if (sceneJson.contains("skybox")) {
+        std::string hdrPath = sceneJson.value("skybox", "hdrs//skybox.hdr");
+
+        auto sb = std::make_shared<Skybox>();
+        if (!sb->Init(hdrPath,
+            "shaders/equirect2cube_vert.glsl",
+            "shaders/equirect2cube_frag.glsl",
+            "shaders/skybox_vert.glsl",
+            "shaders/skybox_frag.glsl",
+            m_screenW,
+            m_screenH)) {
+            std::cerr << "[SceneLoader] Failed to load skybox: " << hdrPath << "\n";
+        }
+        else {
+            std::cout << "[SceneLoader] Loading skybox: " << hdrPath << std::endl;
+            sceneGraph->SetSkybox(sb);
+        }
+    }
+
+    // Per-scene physics flag (default true)
+    bool physicsEnabled = sceneJson.value("physics_enabled", true);
+    sceneGraph->SetPhysicsEnabled(physicsEnabled);
+
+    // return the skybox
+    return sceneGraph;
+}
+void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::shared_ptr<SceneNode> node) {
+    if (!colliderJson.is_object() || !node) return;
+
+    std::string type = colliderJson.value("type", "sphere");
+    if (type == "sphere") {
+        float mass = colliderJson.value("mass", 1.0f);
+        float radius = colliderJson.value("radius", 1.0f);
+        bool  useGravity = colliderJson.value("gravity", true);
+        float linearDamping = colliderJson.value("linear_damping", 0.1f);
+        float angularDamping = colliderJson.value("angular_damping", 0.1f);
+        float friction = colliderJson.value("friction", 0.5f);
+
+        auto rb = std::make_shared<RigidBody>();
+        rb->setShape(RigidBody::ShapeType::SPHERE);
+        rb->AttachNode(node);
+        rb->setPosition(node->GetPosition());
+        rb->setMass(mass);
+        rb->setLinearDamping(linearDamping);
+        rb->setAngularDamping(angularDamping);
+        rb->setFriction(friction);
+        rb->setBoundingRadius(radius);
+
+        glm::vec3 initVel{
+            colliderJson.value("velocity_x", 0.0f),
+            colliderJson.value("velocity_y", 0.0f),
+            colliderJson.value("velocity_z", 0.0f)
+        };
+        rb->setVelocity(initVel);
+
+        // Use gravity from SimulationConfig if enabled
+        if (useGravity) {
+            rb->setAcceleration(m_physicsEngine->GetConfig().gravity);
+        }
+        else {
+            rb->setAcceleration(glm::vec3(0.0f));
+        }
+
+        rb->computeInertiaTensor();
+        node->AttachRigidBody(rb);
+        m_physicsEngine->AddBody(rb);
+    }
+    else if (type == "plane") {
+        // Plane is static, infinite, and only needs a normal + height
+        glm::vec3 normal = {
+            colliderJson.value("normal_x", 0.0f),
+            colliderJson.value("normal_y", 1.0f),
+            colliderJson.value("normal_z", 0.0f)
+        };
+        float height = colliderJson.value("height", 0.0f);
+
+        auto rb = std::make_shared<RigidBody>();
+        rb->setShape(RigidBody::ShapeType::PLANE);
+        rb->AttachNode(node);
+
+        // Treat plane as static: zero velocity, zero mass
+        rb->setMass(0.0f);
+        rb->setVelocity(glm::vec3(0.0f));
+        rb->setAcceleration(glm::vec3(0.0f));
+        rb->setPosition(node->GetPosition()); // Set position above the plane
+        rb->setPlane(normal, height);
+
+
+   
+        rb->setBoundingRadius(0.0f); // not used for collision
+        node->AttachRigidBody(rb);
+        m_physicsEngine->AddBody(rb);
+    }
+    else if (type == "box") {
+        glm::vec3 size = glm::vec3(1.0f);
+        if (colliderJson.contains("size") && colliderJson["size"].is_array() && colliderJson["size"].size() == 3) {
+            size = glm::vec3(colliderJson["size"][0], colliderJson["size"][1], colliderJson["size"][2]);
+        }
+
+        float mass = colliderJson.value("mass", 1.0f);
+        bool useGravity = colliderJson.value("gravity", true);
+        float linearDamping = colliderJson.value("linear_damping", 0.0f);
+        float angularDamping = colliderJson.value("angular_damping", 0.0f);
+        float friction = colliderJson.value("friction", 0.5f);
+
+        auto rb = std::make_shared<RigidBody>();
+        rb->setShape(RigidBody::ShapeType::BOX);
+        rb->AttachNode(node);
+        rb->setPosition(node->GetPosition());
+        rb->setOrientation(node->GetOrientation());
+        rb->setMass(mass);
+        rb->setLinearDamping(linearDamping);
+        rb->setAngularDamping(angularDamping);
+        rb->setFriction(friction);
+        rb->setBox(size);
+
+        glm::vec3 initVel{
+            colliderJson.value("velocity_x", 0.0f),
+            colliderJson.value("velocity_y", 0.0f),
+            colliderJson.value("velocity_z", 0.0f)
+        };
+        rb->setVelocity(initVel);
+
+        if (useGravity) {
+            rb->setAcceleration(m_physicsEngine->GetConfig().gravity);
+        }
+        else {
+            rb->setAcceleration(glm::vec3(0.0f));
+        }
+
+        rb->computeInertiaTensor();
+        node->AttachRigidBody(rb);
+        m_physicsEngine->AddBody(rb);
+    }
+
+}
+
+
+
+void SceneLoader::ProcessGuiElementProperties(std::shared_ptr<GuiNode> guiNode, int elementId, const nlohmann::json& elementJson) {
+    if (!guiNode || elementId < 0) return;
+    
+    // Handle resizable properties
+    if (elementJson.contains("resizable")) {
+        bool resizable = elementJson["resizable"];
+        float minWidth = elementJson.value("min_width", 10.0f);
+        float minHeight = elementJson.value("min_height", 10.0f);
+        float maxWidth = elementJson.value("max_width", -1.0f);
+        float maxHeight = elementJson.value("max_height", -1.0f);
+        
+        guiNode->SetElementResizable(elementId, resizable, minWidth, minHeight, maxWidth, maxHeight);
+    }
+    
+    // Handle anchoring
+    if (elementJson.contains("anchor")) {
+        std::string anchorStr = elementJson["anchor"];
+        GuiNode::GuiElement::Anchor anchor = GuiNode::GuiElement::Anchor::TOP_LEFT;
+        
+        if (anchorStr == "top_left") {
+            anchor = GuiNode::GuiElement::Anchor::TOP_LEFT;
+        } else if (anchorStr == "top_right") {
+            anchor = GuiNode::GuiElement::Anchor::TOP_RIGHT;
+        } else if (anchorStr == "bottom_left") {
+            anchor = GuiNode::GuiElement::Anchor::BOTTOM_LEFT;
+        } else if (anchorStr == "bottom_right") {
+            anchor = GuiNode::GuiElement::Anchor::BOTTOM_RIGHT;
+        } else if (anchorStr == "center") {
+            anchor = GuiNode::GuiElement::Anchor::CENTER;
+        }
+        
+        guiNode->SetElementAnchor(elementId, anchor);
+    }
+    
+    // Handle relative positioning
+    if (elementJson.contains("relative_position") && elementJson["relative_position"].is_array() && 
+        elementJson["relative_position"].size() >= 2) {
+        float relX = elementJson["relative_position"][0];
+        float relY = elementJson["relative_position"][1];
+        guiNode->SetElementRelativePosition(elementId, relX, relY);
+    }
+    
+    // Handle relative sizing
+    if (elementJson.contains("relative_size") && elementJson["relative_size"].is_array() && 
+        elementJson["relative_size"].size() >= 2) {
+        float relWidth = elementJson["relative_size"][0];
+        float relHeight = elementJson["relative_size"][1];
+        guiNode->SetElementRelativeSize(elementId, relWidth, relHeight);
+    }
+}
+
+std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJson) {
+    auto node = ProcessNode(nodeJson);
+    // If the node has children, process them recursively.
+    if (nodeJson.contains("children") && nodeJson["children"].is_array()) {
+        for (auto& childJson : nodeJson["children"]) {
+            auto childNode = ProcessNodeRecursive(childJson);
+            if (childNode)
+                node->AddChild(childNode);
+        }
+    }
+    return node;
+}
+
+std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
+    // Determine node type.
+    std::string typeStr = nodeJson.value("type", "model");
+    NodeType type = GetNodeType(typeStr);
+
+    // Create the appropriate node type.
+    std::shared_ptr<SceneNode> node;
+    // set node its type
+    if (node == nullptr)
+        switch (type) {
+        case NodeType::AUDIO:
+            node = std::make_shared<AudioNode>();
+            node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
+            break;
+        case NodeType::LIGHT:
+            node = std::make_shared<LightNode>(nullptr); // Will be set based on light properties
+            node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
+            break;
+        case NodeType::LPV_VOLUME:  // NEW: Handle LPV volume nodes
+            node = std::make_shared<SceneNode>();
+            node->SetNodeType(SceneNode::LPV_VOLUME);
+            std::cout << "[SceneLoader] Creating LPV Volume node" << std::endl;
+            break;
+        case NodeType::MODEL:
+            node = std::make_shared<SceneNode>();
+            node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
+            break;
+        default:
+            node = std::make_shared<SceneNode>();
+            break;
+        }
+
+    // Process common transform data.
+    glm::vec3 pos(0.0f), rot(0.0f), scl(1.0f);
+    if (nodeJson.contains("position") && nodeJson["position"].is_array() && nodeJson["position"].size() == 3)
+        pos = glm::vec3(nodeJson["position"][0], nodeJson["position"][1], nodeJson["position"][2]);
+    if (nodeJson.contains("rotation") && nodeJson["rotation"].is_array() && nodeJson["rotation"].size() == 3)
+        rot = glm::vec3(nodeJson["rotation"][0], nodeJson["rotation"][1], nodeJson["rotation"][2]);
+    if (nodeJson.contains("scale") && nodeJson["scale"].is_array() && nodeJson["scale"].size() == 3)
+        scl = glm::vec3(nodeJson["scale"][0], nodeJson["scale"][1], nodeJson["scale"][2]);
+    node->SetRotation(glm::vec3(1, 0, 0), glm::radians(rot.x));
+    node->SetRotation(glm::vec3(0, 1, 0), glm::radians(rot.y));
+    node->SetRotation(glm::vec3(0, 0, 1), glm::radians(rot.z));
+    node->SetScale(scl);
+    node->SetPosition(pos);
+
+    // Set node name if provided
+    if (nodeJson.contains("name")) {
+        // Note: SceneNode doesn't have a SetName method, but we can store it for LightManager
+        // The name will be used when registering with LightManager
+    }
+
+    // Process type-specific properties.
+    switch (type) {
+    case NodeType::MODEL: { // ModelNode
+        std::string modelPath = nodeJson.value("path", "");
+        if (!modelPath.empty()) {
+            auto model = m_modelManager->LoadModel(modelPath); // Load the model using the ModelManager
+            if (model) {
+                node->SetModel(model); // Set the model to the node
+                if (model->hasSkin)
+                    node->BuildSkeleton(*model); 
+            }
+        }
+        // Check for custom shader properties
+        if (nodeJson.contains("vertex_shader") && nodeJson.contains("fragment_shader")) { 
+            std::string vsPath = nodeJson.value("vertex_shader", "");
+            std::string fsPath = nodeJson.value("fragment_shader", "");
+            if (!vsPath.empty() && !fsPath.empty()) {
+                GLuint customShader = CreateShaderProgram(vsPath.c_str(), fsPath.c_str());
+                if (customShader != 0)
+                    node->SetShader(customShader);
+                else
+                    std::cerr << "[ERROR] Custom shader compilation failed for node ("
+                    << node->GetName() << "). Falling back to default shader." << std::endl;
+            }
+        }
+        if (nodeJson.contains("collider")) {
+            ProcessCollider(nodeJson["collider"], node); // Process the collider for physics
+        }
+        break;
+    }
+    case NodeType::AUDIO: { // AudioNode
+        AudioNode* audioNode = dynamic_cast<AudioNode*>(node.get()); // Ensure the node is of type AudioNode
+        if (audioNode) { 
+            std::string soundFile = nodeJson.value("sound", ""); 
+            float pitch = nodeJson.value("pitch", 1.0f);
+            float volume = nodeJson.value("volume", 1.0f);
+            float hearingDistance = nodeJson.value("hearing_distance", 10.0f);
+            bool loop = nodeJson.value("loop", false);
+            bool is3d = nodeJson.value("is3d", true);
+            audioNode->setPitch(pitch);
+            audioNode->setVolume(volume);
+            audioNode->setHearingDistance(hearingDistance);
+            if (!soundFile.empty()) {
+                if (!audioNode->initAudio(soundFile))
+                    std::cerr << "[ERROR] Failed to load sound file: " << soundFile << std::endl;
+            }
+            audioNode->play(loop, is3d);
+        }
+        break;
+    }
+    case NodeType::LIGHT: {
+        LightNode* lightNode = dynamic_cast<LightNode*>(node.get());
+        if (lightNode && nodeJson.contains("light")) {
+            const auto& lightJson = nodeJson["light"];
+            
+            // Create appropriate light type
+            std::string lightType = lightJson.value("type", "point");
+            std::shared_ptr<BaseLight> light;
+            
+            if (lightType == "directional") {
+                auto dirLight = std::make_shared<DirectionalLight>();
+                if (lightJson.contains("shadowSize")) {
+                    dirLight->InitializeCascades(lightJson["shadowSize"], lightJson.value("splitLambda", 0.8f));
+                }
+                light = dirLight;
+            }
+            else if (lightType == "point") {
+                auto pointLight = std::make_shared<PointLight>();
+                if (lightJson.contains("shadowResolution")) {
+                    pointLight->InitializeShadowMap(lightJson["shadowResolution"]);
+                }
+                light = pointLight;
+            }
+            else if (lightType == "spot") {
+                auto spotLight = std::make_shared<SpotLight>();
+                if (lightJson.contains("shadowResolution")) {
+                    spotLight->InitializeShadowMap(lightJson["shadowResolution"]);
+                }
+                if (lightJson.contains("cutOff")) {
+                    spotLight->SetCutOff(lightJson["cutOff"]);
+                }
+                if (lightJson.contains("outerCutOff")) {
+                    spotLight->SetOuterCutOff(lightJson["outerCutOff"]);
+                }
+                light = spotLight;
+            }
+            
+            if (light) {
+                // Set common light properties
+                if (lightJson.contains("color") && lightJson["color"].is_array() && lightJson["color"].size() == 3) {
+                    light->SetColor(glm::vec3(lightJson["color"][0], lightJson["color"][1], lightJson["color"][2]));
+                }
+                if (lightJson.contains("intensity")) {
+                    light->SetIntensity(lightJson["intensity"]);
+                }
+                if (lightJson.contains("enabled")) {
+                    light->SetEnabled(lightJson["enabled"]);
+                } else {
+                    // Enable lights by default when loaded from scene files
+                    light->SetEnabled(true);
+                }
+                if (lightJson.contains("castsShadows")) {
+                    light->SetCastsShadows(lightJson["castsShadows"]);
+                }
+                if (lightJson.contains("range")) {
+                    light->SetRange(lightJson["range"]);
+                }
+                if (lightJson.contains("attenuation") && lightJson["attenuation"].is_array() && lightJson["attenuation"].size() == 3) {
+                    light->SetAttenuation(lightJson["attenuation"][0], lightJson["attenuation"][1], lightJson["attenuation"][2]);
+                }
+                
+                // Set the light and force transform update
+                lightNode->SetLight(light);
+                
+                // Update light properties from node transform
+                lightNode->UpdateLightFromTransform();
+                
+                // Enable debug visualization if specified
+                if (lightJson.contains("showDebugVisualization")) {
+                    lightNode->SetDebugVisualization(lightJson["showDebugVisualization"]);
+                }
+                
+                // Store node name for light registration (don't call SetName if it doesn't exist)
+                std::string lightName = nodeJson.value("name", "Light_" + lightType);
+                // node->SetName(lightName); // Comment out if SetName doesn't exist
+                
+                std::cout << "[SceneLoader] Successfully loaded " << lightType << " light node '" 
+                          << lightName << "' at (" << pos.x << "," << pos.y << "," << pos.z 
+                          << ") with intensity " << light->GetIntensity() 
+                          << ", enabled: " << light->IsEnabled() << std::endl;
+            } else {
+                std::cerr << "[SceneLoader] Failed to create light of type: " << lightType << std::endl;
+            }
+        } else {
+            std::cerr << "[SceneLoader] Light node missing light properties" << std::endl;
+        }
+        break;
+    }
+    case NodeType::GUI: {
+        auto guiNode = std::make_shared<GuiNode>(m_screenW, m_screenH); // Create a GUI node,this acts as a container for GUI elements in the scene
+        
+        // Load font if specified
+        std::string fontPath = nodeJson.value("font_path", "arial.ttf");
+        int fontSize = nodeJson.value("font_size", 24);
+        guiNode->LoadFont(fontPath, fontSize);
+        
+        if (nodeJson.contains("elements")) { // Check for GUI elements
+            for (const auto& el : nodeJson["elements"]) { // Loop through each element
+                std::string kind = el.value("kind", "text");
+                
+                if (kind == "text") {
+                    SDL_Color textColor = {255, 255, 255, 255}; // Default white
+                    if (el.contains("color") && el["color"].is_array() && el["color"].size() >= 3) {
+                        textColor.r = static_cast<Uint8>(el["color"][0]);
+                        textColor.g = static_cast<Uint8>(el["color"][1]);
+                        textColor.b = static_cast<Uint8>(el["color"][2]);
+                        textColor.a = el["color"].size() > 3 ? static_cast<Uint8>(el["color"][3]) : 255;
+                    }
+                    guiNode->AddText(el.value("text", ""), el.value("x", 0.0f), el.value("y", 0.0f), textColor);
+                }
+                else if (kind == "image") {
+                    guiNode->AddImage(el.value("path", ""), el.value("x", 0.0f), el.value("y", 0.0f),
+                        el.value("w", 128.0f), el.value("h", 64.0f));
+                }
+                else if (kind == "solid_rect") {
+                    SDL_Color rectColor = {128, 128, 128, 255}; // Default gray
+                    if (el.contains("color") && el["color"].is_array() && el["color"].size() >= 3) {
+                        rectColor.r = static_cast<Uint8>(el["color"][0]);
+                        rectColor.g = static_cast<Uint8>(el["color"][1]);
+                        rectColor.b = static_cast<Uint8>(el["color"][2]);
+                        rectColor.a = el["color"].size() > 3 ? static_cast<Uint8>(el["color"][3]) : 255;
+                    }
+                    
+                    int elementId = guiNode->AddSolidRect(
+                        el.value("x", 0.0f), 
+                        el.value("y", 0.0f), 
+                        el.value("w", 100.0f), 
+                        el.value("h", 100.0f), 
+                        rectColor
+                    );
+                    
+                    // Apply dynamic properties if specified
+                    ProcessGuiElementProperties(guiNode, elementId, el);
+                }
+                else if (kind == "gradient_rect") {
+                    GuiNode::GradientStyle gradient;
+                    
+                    // Set gradient type
+                    std::string gradientType = el.value("gradient_type", "vertical");
+                    if (gradientType == "horizontal") {
+                        gradient.type = GuiNode::GradientType::LINEAR_HORIZONTAL;
+                    } else if (gradientType == "vertical") {
+                        gradient.type = GuiNode::GradientType::LINEAR_VERTICAL;
+                    } else if (gradientType == "radial") {
+                        gradient.type = GuiNode::GradientType::RADIAL;
+                    }
+                    
+                    // Set start color
+                    gradient.startColor = {255, 255, 255, 255}; // Default white
+                    if (el.contains("start_color") && el["start_color"].is_array() && el["start_color"].size() >= 3) {
+                        gradient.startColor.r = static_cast<Uint8>(el["start_color"][0]);
+                        gradient.startColor.g = static_cast<Uint8>(el["start_color"][1]);
+                        gradient.startColor.b = static_cast<Uint8>(el["start_color"][2]);
+                        gradient.startColor.a = el["start_color"].size() > 3 ? static_cast<Uint8>(el["start_color"][3]) : 255;
+                    }
+                    
+                    // Set end color
+                    gradient.endColor = {0, 0, 0, 255}; // Default black
+                    if (el.contains("end_color") && el["end_color"].is_array() && el["end_color"].size() >= 3) {
+                        gradient.endColor.r = static_cast<Uint8>(el["end_color"][0]);
+                        gradient.endColor.g = static_cast<Uint8>(el["end_color"][1]);
+                        gradient.endColor.b = static_cast<Uint8>(el["end_color"][2]);
+                        gradient.endColor.a = el["end_color"].size() > 3 ? static_cast<Uint8>(el["end_color"][3]) : 255;
+                    }
+                    
+                    // Set radial gradient properties
+                    if (gradient.type == GuiNode::GradientType::RADIAL) {
+                        if (el.contains("center") && el["center"].is_array() && el["center"].size() >= 2) {
+                            gradient.center = glm::vec2(el["center"][0], el["center"][1]);
+                        }
+                        gradient.radius = el.value("radius", 1.0f);
+                    }
+                    
+                    int elementId = guiNode->AddGradientRect(
+                        el.value("x", 0.0f), 
+                        el.value("y", 0.0f), 
+                        el.value("w", 100.0f), 
+                        el.value("h", 100.0f), 
+                        gradient
+                    );
+                    
+                    // Apply dynamic properties if specified
+                    ProcessGuiElementProperties(guiNode, elementId, el);
+                }
+                else if (kind == "bevel_rect") {
+                    SDL_Color baseColor = {128, 128, 128, 255}; // Default gray
+                    if (el.contains("color") && el["color"].is_array() && el["color"].size() >= 3) {
+                        baseColor.r = static_cast<Uint8>(el["color"][0]);
+                        baseColor.g = static_cast<Uint8>(el["color"][1]);
+                        baseColor.b = static_cast<Uint8>(el["color"][2]);
+                        baseColor.a = el["color"].size() > 3 ? static_cast<Uint8>(el["color"][3]) : 255;
+                    }
+                    
+                    GuiNode::BevelStyle bevel;
+                    bevel.radius = el.value("corner_radius", 0.0f);
+                    bevel.bevelSize = el.value("bevel_size", 2.0f);
+                    
+                    // Set highlight color
+                    if (el.contains("highlight_color") && el["highlight_color"].is_array() && el["highlight_color"].size() >= 3) {
+                        bevel.highlightColor.r = static_cast<Uint8>(el["highlight_color"][0]);
+                        bevel.highlightColor.g = static_cast<Uint8>(el["highlight_color"][1]);
+                        bevel.highlightColor.b = static_cast<Uint8>(el["highlight_color"][2]);
+                        bevel.highlightColor.a = el["highlight_color"].size() > 3 ? static_cast<Uint8>(el["highlight_color"][3]) : 128;
+                    }
+                    
+                    // Set shadow color
+                    if (el.contains("shadow_color") && el["shadow_color"].is_array() && el["shadow_color"].size() >= 3) {
+                        bevel.shadowColor.r = static_cast<Uint8>(el["shadow_color"][0]);
+                        bevel.shadowColor.g = static_cast<Uint8>(el["shadow_color"][1]);
+                        bevel.shadowColor.b = static_cast<Uint8>(el["shadow_color"][2]);
+                        bevel.shadowColor.a = el["shadow_color"].size() > 3 ? static_cast<Uint8>(el["shadow_color"][3]) : 128;
+                    }
+                    
+                    int elementId = guiNode->AddBevelRect(
+                        el.value("x", 0.0f), 
+                        el.value("y", 0.0f), 
+                        el.value("w", 100.0f), 
+                        el.value("h", 100.0f), 
+                        baseColor, 
+                        bevel
+                    );
+                    
+                    // Apply dynamic properties if specified
+                    ProcessGuiElementProperties(guiNode, elementId, el);
+                }
+                else {
+                    std::cerr << "[SceneLoader] Unknown GUI element kind: " << kind << std::endl;
+                }
+            }
+        }
+        node = guiNode;
+        node->SetNodeType(SceneNode::GUI); // Set the node type to GUI
+        break;
+    }
+
+    default:
+        std::cerr << "Unknown node type: " << typeStr << std::endl;
+        break;
+    }
+
+
+    return node;
+}

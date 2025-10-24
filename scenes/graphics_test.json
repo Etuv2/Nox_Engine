@@ -1,0 +1,38 @@
+{
+  "scene_name": "Graphics_Test",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\skybox_2.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\rifle.glb",
+      "position": [ 0, 0.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 0.1, 0.1, 0.1 ]
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "Graphics Test Scene",
+          "x": 960,
+          "y": 1000
+        }
+
+      ]
+    }
+  ]
+}

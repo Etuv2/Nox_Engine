@@ -1,0 +1,76 @@
+{
+  "scene_name": "gundam",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\skybox_night.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\gundam_unicorn.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ -90.0, 0.0, 0.0 ],
+      "scale": [ 0.1, 0.1, 0.1 ],
+      "children": [
+        {
+          "type": "audio",
+          "sound": "sounds\\gundam.wav",
+          "position": [ 0.0, 0.0, 0.0 ],
+          "volume": 0.1,
+          "hearing_distance": 50.0,
+          "loop": true,
+          "is3d": true
+        }
+      ]
+    },
+    {
+      "type": "light",
+      "name": "TestPointLight",
+      "position": [ 2.0, 2.0, 2.0 ],
+      "light": {
+        "type": "point",
+        "color": [ 0.8, 0.2, 0.2 ],
+        "intensity": 5.0,
+        "enabled": true,
+        "range": 10.0,
+        "castsShadows": true
+      }
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "Scene of a robot from the anime Gundam Unicorn.",
+          "x": 960,
+          "y": 1000
+        },
+        {
+          "kind": "text",
+          "text": "Turn up bloom strength to see the red glow of the armor better.",
+          "x": 870,
+          "y": 950
+        },
+        {
+          "kind": "image",
+          "path": "images\\logo_nobg.png",
+          "x": 1500,
+          "y": 800,
+          "w": 400,
+          "h": 400
+        }
+
+      ]
+    }
+  ]
+}

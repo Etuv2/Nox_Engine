@@ -1,0 +1,93 @@
+{
+  "scene_name": "shibuya",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\skybox_2.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\suksuk.glb",
+      "position": [ -1.0, 1.0, -1.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ]
+    },
+    {
+      "type": "model",
+      "path": "models\\full_gameready_city_buildings.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ 90, 0.0, 0.0 ],
+      "scale": [ 2, 2, 2 ]
+    },
+    {
+      "type": "model",
+      "path": "models\\makoto.glb",
+      "position": [ -5.0, 0.0, -1.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 0.1, 0.1, 0.1 ]
+    },
+    {
+      "type": "model",
+      "path": "models\\model_1.glb",
+      "position": [ -10.0, 0.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 0.1, 0.1, 0.1 ],
+      "children": [
+        {
+          "type": "audio",
+          "sound": "sounds\\steveee.wav",
+          "position": [ 0.0, 0.0, 0.0 ],
+          "volume": 0.1,
+          "hearing_distance": 10.0,
+          "loop": true,
+          "is3d": true
+        }
+      ]
+    },
+    {
+      "type": "light",
+      "name": "MainSun",
+      "position": [ 10.0, 20.0, 10.0 ],
+      "rotation": [ -45.0, 45.0, 0.0 ],
+      "light": {
+        "type": "directional",
+        "color": [ 1.0, 0.95, 0.8 ],
+        "intensity": 3.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.8
+      }
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "This scene is meant to show the capabilities of the engine.",
+          "x": 930,
+          "y": 1000
+        },
+        {
+          "kind": "image",
+          "path": "images\\logo_nobg.png",
+          "x": 1500,
+          "y": 800,
+          "w": 400,
+          "h": 400
+        }
+
+      ]
+    }
+  ]
+}

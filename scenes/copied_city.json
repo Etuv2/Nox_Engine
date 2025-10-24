@@ -1,0 +1,47 @@
+{
+  "scene_name": "Copied City",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\skybox_2.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\copied_city.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ 90.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ]
+    },
+    {
+      "type": "audio",
+      "sound": "sounds\\nier.wav",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "volume": 0.5,
+      "hearing_distance": 2000.0,
+      "loop": true,
+      "is3d": false
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "The Copied City from Nier Automata",
+          "x": 960,
+          "y": 1000
+        }
+
+      ]
+    }
+  ]
+}

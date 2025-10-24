@@ -1,0 +1,112 @@
+#pragma once
+
+#include "BaseWindow.h"
+#include <glm/glm.hpp>
+
+// Forward declare ModularRenderer to avoid circular dependency
+class ModularRenderer;
+
+/**
+ * @brief Rendering settings and pipeline controls window
+ * Now integrated with ModularRenderer for real-time rendering control
+ */
+class RenderingSettingsWindow : public BaseWindow {
+public:
+    RenderingSettingsWindow();
+    
+    void Render() override;
+    
+    // NEW: Set the modular renderer to control
+    void SetModularRenderer(const std::shared_ptr<ModularRenderer>& renderer);
+    
+    // NEW: Sync settings FROM renderer context (read current values)
+    void SyncFromRenderer();
+    
+    // NEW: Sync settings TO renderer context (apply changes)
+    void SyncToRenderer();
+    
+    // Getters for MainWindow to read settings
+    float GetExposure() const { return m_exposure; }
+    float GetGamma() const { return m_gamma; }
+    bool GetEnableShadows() const { return m_enableShadows; }
+    float GetShadowBias() const { return m_shadowBias; }
+    float GetShadowNear() const { return m_shadowNear; }
+    float GetShadowFar() const { return m_shadowFar; }
+    bool GetEnableBloom() const { return m_enableBloom; }
+    bool GetEnableTAA() const { return m_enableTAA; }
+    bool GetEnableSSAO() const { return m_enableSSAO; }
+    glm::vec3 GetEnvColor() const { return m_envColor; }
+
+private:
+    // Post-processing settings
+    float m_exposure = 1.0f;
+    float m_gamma = 2.2f;
+    bool m_enableHDR = true;
+    bool m_enableBloom = true;
+    float m_bloomStrength = 0.8f;
+	float m_bloomKnee = 0.5f;
+	float m_bloomThreshold = 1.0f;
+    glm::vec3 m_envColor = glm::vec3(0.1f, 0.15f, 0.2f);
+    
+    // Shadow settings
+    bool m_enableShadows = true;
+    float m_shadowBias = 0.005f;
+    float m_shadowNear = 1.0f;
+    float m_shadowFar = 100.0f;
+    bool m_enablePCSS = false;
+    float m_lightSize = 0.02f;
+    
+    // Anti-aliasing settings
+    bool m_enableTAA = true;
+    float m_taaBlendFactor = 0.15f;
+    float m_taaVarianceThreshold = 0.8f;
+    float m_taaLumaWeight = 0.2f;
+    bool m_taaUseYCoCg = true;
+    bool m_enableSSAO = false;
+    float m_ssaoRadius = 1.0f;
+    float m_ssaoIntensity = 1.0f;
+
+    // NEW: SSGI settings
+    bool m_enableSSGI = true;
+    float m_ssgiStrength = 1.0f;
+    float m_ssgiRadius = 1.0f;
+    int   m_ssgiSampleCount = 128;
+    bool  m_ssgiHalfRes = true;
+    float m_ssgiTemporalAlpha = 0.12f;
+    float m_ssgiNormalReject = 0.25f;
+    float m_ssgiDepthReject = 0.5f;
+    float m_ssgiThickness = 0.2f;
+    
+    // NEW: LPV Global Illumination settings
+    bool m_enableLPV = true;
+    float m_lpvGIStrength = 1.0f;
+    int m_lpvGridResolution = 128;
+    float m_lpvVoxelSize = 0.5f;
+    int m_lpvRSMResolution = 512;
+    int m_lpvVPLSampleCount = 32000;
+    int m_lpvPropagationIterations = 5;
+    float m_lpvPropagationAttenuation = 0.9f;
+    float m_lpvPropagationBias = 0.1f;
+    bool m_lpvEnableOcclusion = true;
+    int m_lpvUpdateFrequency = 1;
+    bool m_lpvDebugVisualization = false;  // NEW: Debug visualization toggle
+    float m_lpvDebugBoost = 5.0f;          // NEW: Debug energy amplification
+    
+    // Debug settings
+    int m_debugMode = 0;
+    bool m_wireframeMode = false;
+    bool m_showBoundingBoxes = false;
+    bool m_showLightGizmos = false;
+    
+    // Quality settings
+    int m_textureFiltering = 4;
+    float m_lodBias = 0.0f;
+    float m_maxDrawDistance = 1000.0f;
+    
+    // ModularRenderer reference for real-time control
+    std::shared_ptr<ModularRenderer> m_modularRenderer;
+    
+    // Helper methods
+    void ApplyQualityPreset(int quality);
+    void ResetToDefaults();
+};

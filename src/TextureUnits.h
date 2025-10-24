@@ -1,0 +1,84 @@
+#pragma once
+
+/**
+ * @file TextureUnits.h
+ * @brief Global texture unit assignment system to prevent conflicts across the rendering pipeline
+ * 
+ * This file defines a standardized texture unit allocation scheme that must be followed
+ * across all shaders and rendering passes to prevent texture binding conflicts.
+ */
+
+namespace TextureUnits {
+    // ======================================
+    // GEOMETRY PASS (G-Buffer Generation)
+    // ======================================
+    // Material textures for mesh rendering
+    constexpr int MATERIAL_BASE_COLOR = 0;      // texture_diffuse
+    constexpr int MATERIAL_NORMAL = 1;          // texture_normal  
+    constexpr int MATERIAL_METALLIC_ROUGHNESS = 2; // texture_metallic_roughness
+    constexpr int MATERIAL_EMISSIVE = 3;        // texture_emissive
+    constexpr int MATERIAL_OCCLUSION = 4;       // texture_occlusion
+    constexpr int MATERIAL_SPECULAR = 5;        // texture_specular (KHR_materials_specular F0 color/factor)
+    
+    // ======================================
+    // DEFERRED LIGHTING PASS (SEPARATE FROM GEOMETRY)
+    // ======================================
+    constexpr int GBUFFER_NORMAL = 8;           // gNormal (oct-encoded in RG)
+    constexpr int GBUFFER_ROUGH_METAL = 9;      // gRoughMetal (R=roughness, G=metallic)
+    constexpr int GBUFFER_ALBEDO = 10;          // gAlbedo (RGB)
+    constexpr int GBUFFER_EMISSIVE = 11;        // gEmissive (RGB)
+    constexpr int GBUFFER_DEPTH = 12;           // gDepth
+    constexpr int SHADOW_MAP_ARRAY = 13;        // shadowMapArray
+    constexpr int ENVIRONMENT_MAP = 14;         // environmentMap
+    constexpr int SSAO_MAP = 15;                // ssaoMap
+    constexpr int IRRADIANCE_MAP = 16;          // irradianceMap  
+    constexpr int PREFILTERED_ENV_MAP = 17;     // prefilteredEnvMap
+    constexpr int BRDF_LUT = 18;                // brdfLUT
+    constexpr int KEY_LIGHT_SHADOW = 19;        // keyLightShadowMap
+    constexpr int RIM_LIGHT_SHADOW = 20;        // rimLightShadowMap
+    constexpr int SCREEN_SPACE_SHADOW_MAP = 23; // screenSpaceShadowMap (contact shadows)
+    // Extended G-buffer (bound after creation in renderer)
+    constexpr int GBUFFER_SPECULAR = 21;        // gSpecularF0 (RGB16F)
+    constexpr int GBUFFER_OCCLUSION = 22;       // gOcclusion (R)
+    
+    // ======================================
+    // LIGHT PROPAGATION VOLUMES (LPV) - GLOBAL ILLUMINATION
+    // ======================================
+    constexpr int LPV_TEXTURE_R = 24;           // lpvTextureR (3D texture - Red SH coefficient)
+    constexpr int LPV_TEXTURE_G = 25;           // lpvTextureG (3D texture - Green SH coefficient)
+    constexpr int LPV_TEXTURE_B = 26;           // lpvTextureB (3D texture - Blue SH coefficient)
+    
+    // ======================================
+    // SCREEN SPACE GLOBAL ILLUMINATION (SSGI)
+    // ======================================
+    constexpr int SSGI_MAP = 27;                // ssgiMap (RGB16F - screen space indirect diffuse lighting)
+    
+    // ======================================
+    // POST-PROCESSING PASSES
+    // ======================================
+    constexpr int HDR_COLOR_BUFFER = 0;         // Post-process input
+    constexpr int BLOOM_TEXTURE = 1;            // Bloom contribution
+    constexpr int SSAO_BLUR = 2;                // Blurred SSAO
+    
+    // SKYBOX
+    constexpr int SKYBOX_CUBEMAP = 0;           // Skybox texture
+
+    // ======================================
+    // FORWARD TRANSPARENT PASS (IBL + MATERIALS)
+    // ======================================
+    // Forward transparent uses same material units as geometry pass (0-5)
+    // Plus specialized IBL units to avoid conflicts with deferred pass
+    constexpr int FORWARD_IRRADIANCE_MAP = 16;      // Reuse from deferred
+    constexpr int FORWARD_PREFILTERED_ENV_MAP = 17; // Reuse from deferred  
+    constexpr int FORWARD_BRDF_LUT = 18;            // Reuse from deferred
+    
+    // VALIDATION
+    static_assert(MATERIAL_OCCLUSION < GBUFFER_NORMAL, "Material texture units must not overlap with lighting pass units");
+    static_assert(GBUFFER_DEPTH < SHADOW_MAP_ARRAY, "G-buffer texture units must not overlap with shadow units");
+    static_assert(BRDF_LUT < KEY_LIGHT_SHADOW, "IBL texture units must not overlap with studio lighting units");
+}
+
+#define BIND_TEXTURE_2D(unit, texture) do { glActiveTexture(GL_TEXTURE0 + (unit)); glBindTexture(GL_TEXTURE_2D, (texture)); } while(0)
+#define BIND_TEXTURE_CUBE(unit, texture) do { glActiveTexture(GL_TEXTURE0 + (unit)); glBindTexture(GL_TEXTURE_CUBE_MAP, (texture)); } while(0)
+#define BIND_TEXTURE_ARRAY(unit, texture) do { glActiveTexture(GL_TEXTURE0 + (unit)); glBindTexture(GL_TEXTURE_2D_ARRAY, (texture)); } while(0)
+#define SET_UNIFORM_TEXTURE_UNIT(shader, uniform_name, unit) do { GLint loc = glGetUniformLocation((shader), (uniform_name)); if (loc >= 0) glUniform1i(loc, (unit)); } while(0)

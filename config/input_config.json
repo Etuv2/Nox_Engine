@@ -1,0 +1,183 @@
+{
+  "input_configuration": {
+    "mouse_sensitivity": 0.1,
+    "contexts": {
+      "global": {
+        "enabled": true,
+        "bindings": {
+          "app_exit": {
+            "key": "Escape",
+            "type": "press"
+          },
+          "app_fullscreen": {
+            "key": "F11",
+            "type": "press"
+          },
+          "app_toggle_wireframe": {
+            "key": "Space",
+            "type": "press"
+          },
+          "app_toggle_mouse_lock": {
+            "key": "Left Shift",
+            "type": "press"
+          },
+          "scene_toggle_physics": {
+            "key": "F10",
+            "type": "press"
+          },
+          "shadows_toggle": {
+            "key": "Left Ctrl",
+            "type": "press"
+          },
+          "debug_light_info": {
+            "key": "I",
+            "type": "press"
+          },
+          "debug_light_validation": {
+            "key": "F9",
+            "type": "press"
+          }
+        }
+      },
+      "camera": {
+        "enabled": true,
+        "bindings": {
+          "camera_move_forward": {
+            "key": "W",
+            "type": "hold"
+          },
+          "camera_move_backward": {
+            "key": "S",
+            "type": "hold"
+          },
+          "camera_move_left": {
+            "key": "A",
+            "type": "hold"
+          },
+          "camera_move_right": {
+            "key": "D",
+            "type": "hold"
+          },
+          "camera_move_up": {
+            "key": "E",
+            "type": "hold"
+          },
+          "camera_move_down": {
+            "key": "Q",
+            "type": "hold"
+          },
+          "camera_look": {
+            "type": "mouse_axis"
+          }
+        }
+      },
+      "editor": {
+        "enabled": true,
+        "bindings": {
+          "object_select": {
+            "mouse_button": "Left",
+            "type": "press"
+          },
+          "gizmo_toggle": {
+            "key": "G",
+            "type": "press"
+          },
+          "gizmo_translate": {
+            "key": "Q",
+            "type": "press"
+          },
+          "gizmo_rotate": {
+            "key": "E",
+            "type": "press"
+          },
+          "gizmo_scale": {
+            "key": "R",
+            "type": "press"
+          }
+        }
+      },
+      "lighting": {
+        "enabled": true,
+        "bindings": {
+          "light_toggle_all": {
+            "key": "T",
+            "type": "press"
+          },
+          "light_increase_intensity": {
+            "key": "Keypad +",
+            "type": "press"
+          },
+          "light_decrease_intensity": {
+            "key": "Keypad -",
+            "type": "press"
+          },
+          "light_preset_1": {
+            "key": "1",
+            "type": "press"
+          },
+          "light_preset_2": {
+            "key": "2",
+            "type": "press"
+          },
+          "light_preset_3": {
+            "key": "3",
+            "type": "press"
+          },
+          "light_preset_4": {
+            "key": "4",
+            "type": "press"
+          },
+          "light_preset_5": {
+            "key": "5",
+            "type": "press"
+          }
+        }
+      },
+      "animation": {
+        "enabled": true,
+        "bindings": {
+          "animation_play": {
+            "key": "P",
+            "type": "press"
+          },
+          "animation_pause": {
+            "key": "O",
+            "type": "press"
+          },
+          "animation_stop": {
+            "key": "H",
+            "type": "press",
+            "modifier": "none"
+          }
+        }
+      },
+      "gamepad": {
+        "enabled": true,
+        "bindings": {
+          "camera_move_forward": {
+            "gamepad_axis": "LEFT_Y",
+            "type": "axis",
+            "threshold": -0.2
+          },
+          "camera_move_right": {
+            "gamepad_axis": "LEFT_X",
+            "type": "axis",
+            "threshold": 0.2
+          },
+          "camera_look": {
+            "gamepad_axis": "RIGHT_X_Y",
+            "type": "axis"
+          },
+          "object_select": {
+            "gamepad_button": "A",
+            "type": "press"
+          },
+          "app_exit": {
+            "gamepad_button": "START",
+            "type": "press"
+          }
+        }
+      }
+    }
+  }
+}

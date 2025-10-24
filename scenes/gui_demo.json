@@ -1,0 +1,139 @@
+{
+  "scene_name": "GUI Demo Scene",
+  "exposure": 1.0,
+  "gamma": 2.2,
+  "physics_enabled": false,
+  "skybox": "hdrs/skybox.hdr",
+  "nodes": [
+    {
+      "type": "gui",
+      "name": "Main GUI",
+      "position": [0, 0, 0],
+      "font_path": "fonts/arial.ttf",
+      "font_size": 24,
+      "elements": [
+        {
+          "kind": "solid_rect",
+          "x": 100,
+          "y": 100,
+          "w": 200,
+          "h": 100,
+          "color": [255, 100, 100, 255],
+          "resizable": true,
+          "min_width": 50,
+          "min_height": 25,
+          "max_width": 400,
+          "max_height": 200,
+          "anchor": "top_left"
+        },
+        {
+          "kind": "gradient_rect",
+          "x": 350,
+          "y": 100,
+          "w": 200,
+          "h": 100,
+          "gradient_type": "vertical",
+          "start_color": [0, 100, 255, 255],
+          "end_color": [0, 255, 100, 255],
+          "relative_position": [0.3, 0.2],
+          "anchor": "center"
+        },
+        {
+          "kind": "bevel_rect",
+          "x": 600,
+          "y": 100,
+          "w": 200,
+          "h": 100,
+          "color": [150, 150, 150, 255],
+          "corner_radius": 10.0,
+          "bevel_size": 5.0,
+          "highlight_color": [255, 255, 255, 128],
+          "shadow_color": [0, 0, 0, 128],
+          "relative_size": [0.15, 0.08]
+        },
+        {
+          "kind": "gradient_rect",
+          "x": 850,
+          "y": 100,
+          "w": 200,
+          "h": 200,
+          "gradient_type": "radial",
+          "start_color": [255, 255, 0, 255],
+          "end_color": [255, 0, 255, 255],
+          "center": [0.5, 0.5],
+          "radius": 0.7,
+          "anchor": "top_right",
+          "relative_position": [0.05, 0.1]
+        },
+        {
+          "kind": "text",
+          "text": "Solid Rectangle",
+          "x": 100,
+          "y": 220,
+          "color": [255, 255, 255, 255]
+        },
+        {
+          "kind": "text",
+          "text": "Gradient Rectangle",
+          "x": 350,
+          "y": 220,
+          "color": [255, 255, 255, 255]
+        },
+        {
+          "kind": "text",
+          "text": "Beveled Rectangle",
+          "x": 600,
+          "y": 220,
+          "color": [255, 255, 255, 255]
+        },
+        {
+          "kind": "text",
+          "text": "Radial Gradient",
+          "x": 850,
+          "y": 320,
+          "color": [255, 255, 255, 255]
+        },
+        {
+          "kind": "bevel_rect",
+          "x": 0,
+          "y": 0,
+          "w": 100,
+          "h": 100,
+          "color": [80, 80, 80, 240],
+          "corner_radius": 15.0,
+          "bevel_size": 3.0,
+          "highlight_color": [255, 255, 255, 64],
+          "shadow_color": [0, 0, 0, 128],
+          "relative_size": [0.6, 0.4],
+          "relative_position": [0.0, 0.0],
+          "anchor": "center",
+          "resizable": true,
+          "min_width": 300,
+          "min_height": 200
+        },
+        {
+          "kind": "gradient_rect",
+          "x": 0,
+          "y": 0,
+          "w": 100,
+          "h": 40,
+          "gradient_type": "vertical",
+          "start_color": [100, 149, 237, 255],
+          "end_color": [65, 105, 225, 255],
+          "relative_size": [0.6, 0.04],
+          "relative_position": [0.0, -0.18],
+          "anchor": "center"
+        },
+        {
+          "kind": "text",
+          "text": "Responsive Panel with Title Bar",
+          "x": 0,
+          "y": 0,
+          "color": [255, 255, 255, 255],
+          "relative_position": [0.0, -0.16],
+          "anchor": "center"
+        }
+      ]
+    }
+  ]
+}

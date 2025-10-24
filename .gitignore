@@ -1,0 +1,191 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger / Symbol Files
+*.pdb
+*.dwo
+*.idb
+*.ipdb
+*.iobj
+
+# Fortran module files
+*.mod
+*.smod
+
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Build system directories (Visual Studio / MSBuild)
+[Bb]uild/
+[Bb]in/
+[Bb]inaries/
+[Ll]og/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+[Rr]etail/
+[Xx]64/
+[Xx]86/
+[Ww]in32/
+ARM*/
+[Bb]uilds/
+*.build.log
+*.tlog/
+
+# Visual Studio cache / generated
+.vs/
+*.VC.db
+*.VC.opendb
+*.vc.db
+*.ipch/
+*.opensdf
+*.sdf
+*.cache
+*.opendb
+
+# User-specific / local settings
+*.user
+*.userprefs
+*.suo
+*.rsuser
+*.vcxproj.user
+
+# Generated project/solution backups
+*.sln.docstates
+
+# (Optional) Project definitions � comment out to track if needed
+# *.sln
+# *.vcxproj
+# *.vcxproj.filters
+# *.vcproj
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+_compile_commands.json
+# (Leave compile_commands.json if you want tooling � comment next line out if so)
+compile_commands.json
+
+# Ninja
+.ninja_deps
+.ninja_log
+build.ninja
+
+# Conan / Vcpkg / Package managers
+.conan/
+conanbuildinfo.*
+conan.lock
+vcpkg_installed/
+
+# Qt / MOC / Autogen
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+CMakeFiles/*_autogen/
+
+# Cache / Crash / Logs
+*.log
+logs/
+*.stackdump
+crashdumps/
+
+# Generated assets (intermediate)
+*.generated.*
+*.tmp
+*.temp
+*.bak
+~$*
+
+# Shader intermediate / cache
+*.spv
+*.cache
+*.shadercache
+
+# IDE specific
+.idea/
+*.iml
+*.ipr
+*.iws
+*.code-workspace
+*.swp
+*.swo
+
+# CLion
+cmake-build-debug*/
+cmake-build-release*/
+
+# VSCode
+.vscode/
+
+# Python virtual env (if tools/scripts)
+venv/
+.env/
+
+# Node (if any tooling)
+node_modules/
+
+# Asset pipeline caches
+.cache/
+.intermediate/
+
+# Profiling / instrumentation outputs
+*.nvvp
+*.json.trace
+
+# Coverage
+coverage/
+*.gcno
+*.gcda
+*.lcov
+
+# Unity style (in case of shared assets repos)
+Library/
+Temp/
+Obj/
+models/
+sounds/
+x64/
+
+# Ignore exported binaries / packaged builds
+Dist/
+[Dd]istribution/
+Releases/
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# Ignore local test data (adjust if you want to keep samples)
+local_test_data/
+
+# Keep config & scripts (negation examples)
+!config/**
+!scripts/**
+
+# Existing exclusions below (retained)
+# Visual Studio files that are not needed
+*.vsidx*
+*.opendb

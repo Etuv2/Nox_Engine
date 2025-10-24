@@ -1,0 +1,78 @@
+{
+  "scene_name": "Studio Lighting Setup",
+  "exposure": 1.0,
+  "gamma": 2.2,
+  "skybox": "hdrs/skybox_2.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\rainbow_road.glb",
+      "position": [ -1.0, 1.0, -1.0 ],
+      "rotation": [ -90, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ]
+    },
+    {
+      "type": "light",
+      "name": "KeyLight",
+      "position": [ 5.0, 8.0, 5.0 ],
+      "rotation": [ -45.0, -30.0, 0.0 ],
+      "light": {
+        "type": "directional",
+        "color": [ 1.0, 0.95, 0.85 ],
+        "intensity": 4.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048
+      }
+    },
+    {
+      "type": "light",
+      "name": "RimLight",
+      "position": [ -8.0, 6.0, -3.0 ],
+      "rotation": [ -20.0, 150.0, 0.0 ],
+      "light": {
+        "type": "directional",
+        "color": [ 0.8, 0.9, 1.0 ],
+        "intensity": 2.0,
+        "enabled": true,
+        "castsShadows": false
+      }
+    },
+    {
+      "type": "light",
+      "name": "FillLight",
+      "position": [ 2.0, 4.0, 8.0 ],
+      "light": {
+        "type": "point",
+        "color": [ 0.9, 0.85, 0.8 ],
+        "intensity": 6.0,
+        "enabled": true,
+        "castsShadows": false,
+        "range": 25.0,
+        "attenuation": [ 1.0, 0.05, 0.008 ]
+      }
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "3-Point Studio Lighting Setup",
+          "x": 960,
+          "y": 50
+        }
+      ]
+    }
+  ]
+}

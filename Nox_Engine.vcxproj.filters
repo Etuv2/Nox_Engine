@@ -1,0 +1,806 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\misc">
+      <UniqueIdentifier>{6530c34b-934e-4793-b0c2-a54448117930}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts">
+      <UniqueIdentifier>{4a3b3159-c96a-4eae-bd56-85eef8f78290}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders">
+      <UniqueIdentifier>{d4851c1f-fe8d-4680-ba28-382a2d37dbee}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\imgui">
+      <UniqueIdentifier>{f4630520-f509-4fed-a58b-f936a77fc20c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\shadow">
+      <UniqueIdentifier>{35e08240-7704-49de-a494-c43695802315}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\char">
+      <UniqueIdentifier>{332093a8-935b-4899-89fa-b2795a1c4a13}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\scenes">
+      <UniqueIdentifier>{b59db149-40a1-4479-9d16-dc6e0032fa43}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Lighting">
+      <UniqueIdentifier>{8cb78cb9-602c-4453-9a98-668e026cf5c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Physics">
+      <UniqueIdentifier>{9d729307-f8c4-4b52-aa0c-ba329ea4ec9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Mesh">
+      <UniqueIdentifier>{de1f2adf-0f09-4779-9257-90d0823e5ba9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Node">
+      <UniqueIdentifier>{3cb5cdec-9790-48db-9b40-e88c6ed33ddc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Engine">
+      <UniqueIdentifier>{412f94f3-987b-4212-bf3c-242e66273096}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Lighting">
+      <UniqueIdentifier>{94c8f900-14fe-4468-83a2-50c231ff778e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Nodes">
+      <UniqueIdentifier>{9c00d385-163d-4504-872c-bc3b60669718}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Physics">
+      <UniqueIdentifier>{afc04c1e-f961-452d-9547-39cf0cb2361a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Engine">
+      <UniqueIdentifier>{20507206-7db4-42e3-ac2f-cb3b88820769}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\skybox">
+      <UniqueIdentifier>{f59872ec-440f-4d33-8dd0-f80b4eb9b541}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\main">
+      <UniqueIdentifier>{08661393-1b00-47c0-bec9-0513805ef334}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\gbuffer">
+      <UniqueIdentifier>{bf582560-2cd7-45b7-bd89-74a90604771b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\ssao">
+      <UniqueIdentifier>{f43e0448-b8ba-4fa3-883e-c213c2e6a3d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\blur">
+      <UniqueIdentifier>{87a23106-66b3-4d3b-acb1-8937c565927b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Physics\Colliders">
+      <UniqueIdentifier>{2ded909c-90b0-4ad5-a794-1c21ee85eeaf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\bloom">
+      <UniqueIdentifier>{bfcae456-8edf-44cb-841a-3b94e8906864}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\ssgi">
+      <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\gui">
+      <UniqueIdentifier>{ae766c97-f0e7-4046-a4c5-bfb86c972935}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\docs">
+      <UniqueIdentifier>{580a46a5-8c06-4144-975b-c3a25f2253e4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Utils">
+      <UniqueIdentifier>{c6cd3fbf-0f40-4bbc-82f9-fb0f406f88b6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Utils">
+      <UniqueIdentifier>{25aa8bc2-8d42-4b40-9385-5173ffd4e209}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\taa">
+      <UniqueIdentifier>{18bed7ce-bcbf-43bf-b5c3-3a4184b4e6fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Utils\ImGui">
+      <UniqueIdentifier>{85671cee-55a4-49ea-be78-49a9a1885f47}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Utils\ImGui">
+      <UniqueIdentifier>{908d80d8-086c-476a-b2be-32731cfba2f6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\configs">
+      <UniqueIdentifier>{cb6af456-ea63-481a-9faf-2f09299a0697}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Input">
+      <UniqueIdentifier>{a6031376-fe62-4146-b78b-b5b7c7840f7e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Misc">
+      <UniqueIdentifier>{7d208a52-03cd-4d15-90f0-2193797187d9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Input">
+      <UniqueIdentifier>{bd65bc9e-dbb1-4dc2-a526-2c89e63ad755}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Engine\Renderer">
+      <UniqueIdentifier>{1282a606-3682-4112-816c-b2710b887b4b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Engine\Renderer">
+      <UniqueIdentifier>{10ec5e2b-7598-4305-8a0f-6548ddc843da}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Engine\Renderer\Passes">
+      <UniqueIdentifier>{22217e50-c068-46d3-a561-ab6497c57cf4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Engine\Renderer\Passes">
+      <UniqueIdentifier>{d878070f-5e0a-490e-88f9-6ae2330e70fb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\ibl">
+      <UniqueIdentifier>{ed885bd9-4c0d-4f9c-953f-3b0387facf24}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\global_illumination">
+      <UniqueIdentifier>{226f7028-9e02-48be-bec5-75a8459cf490}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\global_illumination\lpv">
+      <UniqueIdentifier>{80aa6f56-ad84-4364-9a26-68e23d29cbde}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="include\IMGUI\imgui.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\imgui_demo.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\imgui_draw.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\imgui_impl_opengl3.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\imgui_impl_sdl2.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\imgui_impl_sdlrenderer2.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\imgui_tables.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\imgui_widgets.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PointLight.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SpotLight.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ShadowMapper.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DirectionalLight.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneGraph.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneNode.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RigidBody.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Animation.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FrustumCulling.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGuiInterface.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\impl.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MainWindow.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ModelManager.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp">
+      <Filter>Source Files\scripts</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Scene.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AudioNode.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="include\IMGUI\ImGuizmo.cpp">
+      <Filter>Source Files\misc\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Skybox.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FrameBuffer.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Camera.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneLoader.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SimulationConfig.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Texture.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GuiNode.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsEngine.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BaseLight.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\LightNode.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\StudioLighting.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BVH.cpp">
+      <Filter>Source Files\scripts\Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RayCast.cpp">
+      <Filter>Source Files\scripts\Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GizmoRayCast.cpp">
+      <Filter>Source Files\scripts\Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DefaultTextures.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\LightManager.cpp">
+      <Filter>Source Files\scripts\Lighting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GLState.cpp">
+      <Filter>Source Files\scripts\Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\BaseWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\CameraWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\HelpWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\LightingWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\PerformanceWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\RenderingSettingsWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\StatusWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AnimationController.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Input\InputIntegration.cpp">
+      <Filter>Source Files\scripts\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Input\InputSystem.cpp">
+      <Filter>Source Files\scripts\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ComputeShader.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ModularRenderer.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\BloomPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\GBufferPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\LightingPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\PostProcessPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ShadowPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\SSAOPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\TAAPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\TransparentForwardPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\LPVPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\SSGIPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\shadow_frag.glsl">
+      <Filter>Source Files\misc\shaders\shadow</Filter>
+    </None>
+    <None Include="shaders\shadow_vert.glsl">
+      <Filter>Source Files\misc\shaders\shadow</Filter>
+    </None>
+    <None Include="shaders\char_fragment_shader.glsl">
+      <Filter>Source Files\misc\shaders\char</Filter>
+    </None>
+    <None Include="scenes\scene.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\char_vertex_shader.glsl">
+      <Filter>Source Files\misc\shaders\char</Filter>
+    </None>
+    <None Include="scenes\gundam.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\rainbow_road.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\shibuya.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\skybox_frag.glsl">
+      <Filter>Source Files\misc\shaders\skybox</Filter>
+    </None>
+    <None Include="shaders\skybox_vert.glsl">
+      <Filter>Source Files\misc\shaders\skybox</Filter>
+    </None>
+    <None Include="shaders\equirect2cube_frag.glsl">
+      <Filter>Source Files\misc\shaders\skybox</Filter>
+    </None>
+    <None Include="shaders\equirect2cube_vert.glsl">
+      <Filter>Source Files\misc\shaders\skybox</Filter>
+    </None>
+    <None Include="x64\Release\shaders\gbuffer_vert.glsl">
+      <Filter>Source Files\misc\shaders\gbuffer</Filter>
+    </None>
+    <None Include="x64\Release\shaders\gbuffer_frag.glsl">
+      <Filter>Source Files\misc\shaders\gbuffer</Filter>
+    </None>
+    <None Include="shaders\deferred_lighting_vert.glsl">
+      <Filter>Source Files\misc\shaders\main</Filter>
+    </None>
+    <None Include="scenes\mat_test.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\ssao_blur.glsl">
+      <Filter>Source Files\misc\shaders\ssao</Filter>
+    </None>
+    <None Include="shaders\ssao.glsl">
+      <Filter>Source Files\misc\shaders\ssao</Filter>
+    </None>
+    <None Include="shaders\kawase_blur.glsl">
+      <Filter>Source Files\misc\shaders\blur</Filter>
+    </None>
+    <None Include="shaders\bloom_upsample.glsl">
+      <Filter>Source Files\misc\shaders\bloom</Filter>
+    </None>
+    <None Include="shaders\bloom_extract.glsl">
+      <Filter>Source Files\misc\shaders\bloom</Filter>
+    </None>
+    <None Include="scenes\scene2.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\gui_vert.glsl">
+      <Filter>Source Files\misc\shaders\gui</Filter>
+    </None>
+    <None Include="shaders\gui_frag.glsl">
+      <Filter>Source Files\misc\shaders\gui</Filter>
+    </None>
+    <None Include="scenes\otters.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\fullscreen_vert.glsl">
+      <Filter>Source Files\misc\shaders\main</Filter>
+    </None>
+    <None Include="shaders\postprocess_frag.glsl">
+      <Filter>Source Files\misc\shaders\main</Filter>
+    </None>
+    <None Include="scenes\car.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\halo.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\lighting_demo.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\miku.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\graphics_test.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\irradiance_convolution.glsl">
+      <Filter>Source Files\misc\shaders\skybox</Filter>
+    </None>
+    <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf">
+      <Filter>Source Files\misc\docs</Filter>
+    </None>
+    <None Include="C:\Users\desti\Downloads\LearnOpenGL - Diffuse irradiance.pdf">
+      <Filter>Source Files\misc\docs</Filter>
+    </None>
+    <None Include="shaders\taa_resolve.glsl">
+      <Filter>Source Files\misc\shaders\taa</Filter>
+    </None>
+    <None Include="shaders\velocity_frag.glsl">
+      <Filter>Source Files\misc\shaders\taa</Filter>
+    </None>
+    <None Include="shaders\velocity_vert.glsl">
+      <Filter>Source Files\misc\shaders\taa</Filter>
+    </None>
+    <None Include="scenes\copied_city.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\light_test.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\multi_light_demo.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\studio_lighting.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\light_test_2.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="scenes\gui_demo.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\gui_unified_vert.glsl">
+      <Filter>Source Files\misc\shaders\gui</Filter>
+    </None>
+    <None Include="shaders\gui_unified_frag.glsl">
+      <Filter>Source Files\misc\shaders\gui</Filter>
+    </None>
+    <None Include="shaders\forward_transparent_frag.glsl">
+      <Filter>Source Files\misc\shaders\main</Filter>
+    </None>
+    <None Include="shaders\forward_transparent_vert.glsl">
+      <Filter>Source Files\misc\shaders\main</Filter>
+    </None>
+    <None Include="scenes\animation_test.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="config.json">
+      <Filter>Source Files\misc\configs</Filter>
+    </None>
+    <None Include="config\input_config.json">
+      <Filter>Source Files\misc\configs</Filter>
+    </None>
+    <None Include=".gitattributes">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include=".gitignore">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="shaders\deferred_lighting_frag.glsl">
+      <Filter>Source Files\misc\shaders\main</Filter>
+    </None>
+    <None Include="shaders\irradiance_convolution_frag.glsl">
+      <Filter>Source Files\misc\shaders\ibl</Filter>
+    </None>
+    <None Include="shaders\irradiance_convolution_vert.glsl">
+      <Filter>Source Files\misc\shaders\ibl</Filter>
+    </None>
+    <None Include="shaders\prefilter_frag.glsl">
+      <Filter>Source Files\misc\shaders\ibl</Filter>
+    </None>
+    <None Include="shaders\prefilter_vert.glsl">
+      <Filter>Source Files\misc\shaders\ibl</Filter>
+    </None>
+    <None Include="shaders\brdf_vert.glsl">
+      <Filter>Source Files\misc\shaders\ibl</Filter>
+    </None>
+    <None Include="shaders\brdf_frag.glsl">
+      <Filter>Source Files\misc\shaders\ibl</Filter>
+    </None>
+    <None Include="shaders\screen_space_shadows_comp.glsl">
+      <Filter>Source Files\misc\shaders\shadow</Filter>
+    </None>
+    <None Include="shaders\lpv_convert_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_debug_frag.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_debug_vert.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_injection_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_propagation_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_rsm_frag.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_rsm_vert.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_voxelize_frag.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_voxelize_geom.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="shaders\lpv_voxelize_vert.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\lpv</Filter>
+    </None>
+    <None Include="C:\Users\desti\Downloads\Dynamic, Noise Free, Screen Space Diffuse Global Illumination _ Shubham Sachdeva Blog.pdf">
+      <Filter>Source Files\misc\docs</Filter>
+    </None>
+    <None Include="scenes\cornell_box.json">
+      <Filter>Source Files\misc\scenes</Filter>
+    </None>
+    <None Include="shaders\ssgi_bilateral_blur_comp.glsl">
+      <Filter>Source Files\misc\shaders\ssgi</Filter>
+    </None>
+    <None Include="shaders\ssgi_directions_comp.glsl">
+      <Filter>Source Files\misc\shaders\ssgi</Filter>
+    </None>
+    <None Include="shaders\ssgi_downsample2x_comp.glsl">
+      <Filter>Source Files\misc\shaders\ssgi</Filter>
+    </None>
+    <None Include="shaders\ssgi_raymarch_comp.glsl">
+      <Filter>Source Files\misc\shaders\ssgi</Filter>
+    </None>
+    <None Include="shaders\ssgi_temporal_resolve_comp.glsl">
+      <Filter>Source Files\misc\shaders\ssgi</Filter>
+    </None>
+    <None Include="shaders\ssgi_upsample2x_comp.glsl">
+      <Filter>Source Files\misc\shaders\ssgi</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\PointLight.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SpotLight.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ShadowMapper.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DirectionalLight.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RigidBody.h">
+      <Filter>Header Files\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MeshComponent.h">
+      <Filter>Header Files\Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ModelManager.h">
+      <Filter>Header Files\Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Scene.h">
+      <Filter>Header Files\Node</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneGraph.h">
+      <Filter>Header Files\Node</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneNode.h">
+      <Filter>Header Files\Node</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Animation.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Camera.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\FrustumCulling.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGuiInterface.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MainWindow.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ShaderLoader.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vertex.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\stb_image.h">
+      <Filter>Header Files\Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="src\stb_image_write.h">
+      <Filter>Header Files\Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="src\json.hpp">
+      <Filter>Header Files\Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="src\tiny_gltf.h">
+      <Filter>Header Files\Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AudioPlayer.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneLoader.h">
+      <Filter>Header Files\Node</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AudioNode.h">
+      <Filter>Header Files\Node</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImguiStyle.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Skybox.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\FrameBuffer.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ScreenQuad.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PhysicsEngine.h">
+      <Filter>Header Files\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SimulationConfig.h">
+      <Filter>Header Files\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Collider.h">
+      <Filter>Header Files\Physics\Colliders</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Contact.h">
+      <Filter>Header Files\Physics\Colliders</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Texture.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GuiNode.h">
+      <Filter>Header Files\Node</Filter>
+    </ClInclude>
+    <ClInclude Include="src\BVH.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RayCast.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GizmoRayCast.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\BaseLight.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\LightManager.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\LightNode.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\StudioLighting.h">
+      <Filter>Header Files\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MDIBatch.h">
+      <Filter>Header Files\Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DefaultTextures.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TextureUnits.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\HelpWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\ImGuiWindowManager.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\LightingWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\PerformanceWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\RenderingSettingsWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\SceneHierarchyWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\StatusWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\CameraWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\BaseWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GLState.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Input\InputActions.h">
+      <Filter>Header Files\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Input\InputIntegration.h">
+      <Filter>Header Files\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Input\InputSystem.h">
+      <Filter>Header Files\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComputeShader.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ModularRenderer.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\PostProcessPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ShadowPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SSAOPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\TAAPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\TransparentForwardPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\BloomPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\GBufferPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LightingPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RenderContext.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RenderPass.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\bend_sss_cpu.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ScreenSpaceShadowPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LPVPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SSGIPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

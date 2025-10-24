@@ -1,0 +1,35 @@
+{
+  "scene_name": "Rainbow Road(MK8)",
+  "exposure": 1.0,
+  "gamma": 2.2,
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\rainbow_road.glb",
+      "position": [ -1.0, 1.0, -1.0 ],
+      "rotation": [ -90, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "children": [
+        {
+          "type": "audio",
+          "sound": "sounds\\rainbow.wav",
+          "position": [ 0.0, 0.0, 0.0 ],
+          "volume": 0.01,
+          "hearing_distance": 1000.0,
+          "loop": true,
+          "is3d": false
+        }
+      ]
+    }
+  ]
+}

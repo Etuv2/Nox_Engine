@@ -1,0 +1,47 @@
+{
+  "scene_name": "halo rifle",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\overcast_sky.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\halo_reach_rifle.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ]
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "Assault Rifle from the game Halo Reach",
+          "x": 960,
+          "y": 1000
+        },
+        {
+          "kind": "rect_solid",
+          "x": 960,
+          "y": 1000,
+          "width": 300,
+          "height": 100,
+          "color": [ 0.0, 0.0, 0.0, 0.5 ]
+
+        }
+
+      ]
+    }
+  ]
+}

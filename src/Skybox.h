@@ -1,0 +1,108 @@
+﻿#pragma once
+#include <string>
+#include <memory>
+#include <GL/glew.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include "Framebuffer.h"
+#include "TextureUnits.h"  // Include standardized texture units
+
+//Skybox class for loading HDR images, converting to cubemap, and rendering as background.
+
+class Skybox
+{
+public:
+	Skybox() = default;
+	~Skybox() = default; 
+
+	// Initialize from HDR and build full IBL pipeline (strict). Returns false on failure.
+	bool Init(const std::string& hdrPath,
+		const std::string& equirectVertShader,
+		const std::string& equirectFragShader,
+		const std::string& skyboxVertShader,
+		const std::string& skyboxFragShader,
+		int windowWidth,
+		int windowHeight);
+
+	void Draw(const glm::mat4& view, const glm::mat4& projection);
+
+	// Cleanup all OpenGL resources.
+	void Cleanup();
+
+	// Retrieve the environment cubemap texture ID so other code (e.g., PBR shaders)
+	GLuint GetEnvironmentMap() const { return m_envCubemap; }
+	
+	// IBL Resources for physically based lighting
+	GLuint GetIrradianceMap() const { return m_irradianceMap; }
+	GLuint GetPrefilteredMap() const { return m_prefilteredMap; }
+	GLuint GetBRDFLUT() const { return m_brdfLUT; }
+	float GetPrefilteredMaxLOD() const { return m_prefilteredMaxLOD; }
+
+	// Validation methods for IBL resources (heavy validation)
+	bool ValidateIBLTextures() const; // legacy detailed validation
+	void LogTextureInfo() const;
+	
+	// Comprehensive pipeline verification (lightweight)
+	bool VerifyIBLPipelineComplete() const;
+	void ForceRegenerateIBL();
+
+	// Fast readiness query used by renderer
+	bool IsReady() const { return m_pipelineReady; }
+	// Ensure ready (attempt regeneration once if not). Returns true if ready after call.
+	bool EnsureReady();
+
+protected:
+	// Loads the HDR file into a floating-point 2D texture.
+	GLuint loadHDRTexture(const std::string& hdrPath);
+
+	// Builds the cube geometry (VAO/VBO) for rendering the skybox.
+	void buildSkyboxCube();
+
+	// Helper to render the cube (binds VAO and issues draw call).
+	void renderCube();
+	
+	// IBL precomputation methods
+	bool GenerateIBLResources();
+	bool GenerateIrradianceMap();
+	bool GeneratePrefilteredMap();
+	bool GenerateBRDFLUT();
+
+	// Internal capture helpers
+	void CreateCaptureFBO(int width, int height);
+	void ResizeCaptureRBO(int width, int height);
+
+private:
+	// Cubemap holding the environment map.
+	GLuint m_envCubemap = 0;
+
+	// VAO/VBO for drawing a unit cube.
+	GLuint m_skyboxVAO = 0;
+	GLuint m_skyboxVBO = 0;
+
+	// Shader programs.
+	GLuint m_equiRectToCubeShader = 0;  // equirectangular-to-cubemap converter
+	GLuint m_skyboxShader = 0;          // shader for final skybox rendering
+
+	// Framebuffer for rendering the skybox (legacy, still kept but not used for IBL capture now).
+	std::unique_ptr<FrameBuffer> m_captureBuffer;
+	
+	// Dedicated FBO/RBO for IBL capture to avoid abstraction side-effects
+	GLuint m_captureFBO = 0;
+	GLuint m_captureRBO = 0;
+
+	// IBL Resources
+	GLuint m_irradianceMap = 0;         // Diffuse irradiance cubemap (32x32)
+	GLuint m_prefilteredMap = 0;        // Prefiltered environment map with mipmaps (128x128)
+	GLuint m_brdfLUT = 0;               // BRDF integration lookup table (512x512)
+	float m_prefilteredMaxLOD = 4.0f;   // Maximum mip level for prefiltered map
+	
+	// IBL shader programs
+	GLuint m_irradianceShader = 0;      // Convolution shader for irradiance
+	GLuint m_prefilterShader = 0;       // Prefilter shader for specular
+	GLuint m_brdfShader = 0;            // BRDF integration shader
+
+	// Pipeline readiness flag (set true only after successful full verification)
+	bool m_pipelineReady = false;
+	// Guard to prevent infinite regeneration attempts within a frame
+	mutable bool m_regenAttempted = false;
+};

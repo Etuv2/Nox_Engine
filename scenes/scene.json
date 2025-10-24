@@ -1,0 +1,352 @@
+{
+  "scene_name": "physics_test_scene",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\skybox_2.hdr",
+  "physics_enabled": true,
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 104, 1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 1,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -2.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -3.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -4.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 2.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 3.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 4.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 104, 1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -2.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -3.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -4.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 2.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 3.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 4.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 104, 1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -2.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -3.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, -4.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 1.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 2.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 3.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ 0.0, 102, 4.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/plane.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "plane"
+      }
+    }
+  ]
+}
