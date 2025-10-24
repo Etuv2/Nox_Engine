@@ -95,6 +95,7 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="config.json" />
     <None Include="config\input_config.json" />
+    <None Include="README.md" />
     <None Include="scenes\animation_test.json" />
     <None Include="scenes\car.json" />
     <None Include="scenes\copied_city.json" />
@@ -337,14 +338,14 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>..\3DGP\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Nox_Engine\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>glew32.lib;glew32s.lib;opengl32.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;SDL2_image.lib;SDL2_mixer.lib;assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\3DGP\lib\SDL\x64;..\3DGP\lib\GLEW\x64;..\3DGP\lib\ASSIMP;..\3DGP\include\IMGUI;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;glew32s.lib;opengl32.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;SDL2_image.lib;SDL2_mixer.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\Nox_Engine\lib\SDL\x64;..\Nox_Engine\lib\GLEW\x64;..\3DGP\include\IMGUI;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

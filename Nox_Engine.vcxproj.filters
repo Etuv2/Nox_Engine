@@ -581,6 +581,7 @@
     <None Include="shaders\ssgi_upsample2x_comp.glsl">
       <Filter>Source Files\misc\shaders\ssgi</Filter>
     </None>
+    <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">
