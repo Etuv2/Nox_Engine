@@ -118,7 +118,7 @@ struct RenderContext {
 	glm::vec3 envColor{ 0.3f, 0.3f, 0.3f };
 
 	// LPV Global Illumination settings
-	bool enableLPV = true;
+	bool enableLPV = false;
 	float lpvGIStrength = 1.0f;
 	int lpvGridResolution = 128;
 	float lpvVoxelSize = 0.5f;
@@ -129,8 +129,8 @@ struct RenderContext {
 	int lpvPropagationIterations = 5;
 	float lpvPropagationAttenuation = 0.9f;
 	float lpvPropagationBias = 0.1f;
-	bool lpvEnableOcclusion = true;
+	bool lpvEnableOcclusion = false;
 	int lpvUpdateFrequency = 1;
-	bool lpvDebugVisualization = true; // NEW: Debug visualization toggle
+	bool lpvDebugVisualization = false; // NEW: Debug visualization toggle
 	float lpvDebugBoost = 1.0f;         // NEW: Temporary boost for debugging (default 1.0x, set to 5.0x for testing)
 };

@@ -216,6 +216,7 @@ private:
         bool buttonHeld[static_cast<int>(GamepadButton::DPAD_RIGHT) + 1] = {false};
         bool buttonReleased[static_cast<int>(GamepadButton::DPAD_RIGHT) + 1] = {false};
         float axisValues[static_cast<int>(GamepadAxis::TRIGGER_RIGHT) + 1] = {0.0f};
+        SDL_JoystickID instanceId = -1; // SDL joystick instance id for event mapping
     };
     
     // State management
@@ -237,6 +238,9 @@ private:
     void CleanupGamepads();
     SDL_GameControllerButton MapGamepadButton(GamepadButton button) const;
     SDL_GameControllerAxis MapGamepadAxis(GamepadAxis axis) const;
+
+    // Utility
+    int GetGamepadIndexByInstanceId(SDL_JoystickID id) const;
     
     // Member variables
     bool m_initialized;
@@ -246,6 +250,7 @@ private:
     std::unordered_map<SDL_Keycode, KeyState> m_keyStates;
     MouseState m_mouseState;
     std::vector<GamepadState> m_gamepadStates;
+    std::unordered_map<SDL_JoystickID, int> m_gamepadIdToIndex;
     
     // Context management
     std::unordered_map<std::string, std::shared_ptr<InputContext>> m_contexts;

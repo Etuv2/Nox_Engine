@@ -53,7 +53,7 @@ private:
 
     // Compute shader stages
     void runDirections(RenderContext& ctx);
-    void runRaymarch(RenderContext& ctx);
+    void runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& camera); // pass camera for near/far
     void runDownsample(RenderContext& ctx);   // half -> quarter
     void runBilateral(RenderContext& ctx);    // Edge-aware denoising at quarter
     void runUpsample(RenderContext& ctx);     // quarter -> half with bilateral upsample

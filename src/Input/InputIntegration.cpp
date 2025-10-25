@@ -15,7 +15,8 @@ InputIntegration::InputIntegration()
     , m_initialized(false)
     , m_mouseLocked(true)
     , m_cameraSpeed(2.5f)
-    , m_mouseSensitivity(0.1f) {
+    , m_mouseSensitivity(0.1f)
+    , m_gamepadLookSensitivity(100) { // NEW: Default gamepad look sensitivity
 }
 
 InputIntegration::~InputIntegration() {
@@ -138,12 +139,17 @@ void InputIntegration::SetupInputContexts() {
     SetupAnimationContext();
     SetupGamepadContext();
     
+    std::cout << "[InputIntegration] Activating default contexts..." << std::endl;
+    
     // Activate default contexts
     m_inputManager->PushContext(Input::Contexts::GLOBAL);
     m_inputManager->PushContext(Input::Contexts::CAMERA);
     m_inputManager->PushContext("editor");
     m_inputManager->PushContext("lighting");
     m_inputManager->PushContext("animation");
+    m_inputManager->PushContext("gamepad"); // CRITICAL: Add gamepad context to active stack!
+    
+    std::cout << "[InputIntegration] All contexts activated" << std::endl;
 }
 
 void InputIntegration::SetupGlobalContext() {
@@ -221,27 +227,46 @@ void InputIntegration::SetupCameraContext() {
 void InputIntegration::SetupEditorContext() {
     auto context = m_inputManager->CreateContext("editor");
     
+    std::cout << "[InputIntegration] Setting up editor context..." << std::endl;
+    
     // Object selection
     context->BindMouseAction(Input::Actions::OBJECT_SELECT, Input::MouseButton::LEFT);
     context->RegisterActionCallback(Input::Actions::OBJECT_SELECT, 
-        [this](float) { OnObjectSelect(); });
+        [this](float) { 
+            std::cout << "[InputIntegration] Mouse click for object selection" << std::endl;
+            OnObjectSelect(); 
+        });
     
-    // Gizmo controls
-    context->BindKeyAction(Input::Actions::GIZMO_TOGGLE, SDLK_g);
+    // CRITICAL FIX: Gizmo controls - ensure they use PRESS type for immediate response
+    context->BindKeyAction(Input::Actions::GIZMO_TOGGLE, SDLK_g, Input::ActionType::PRESS);
     context->RegisterActionCallback(Input::Actions::GIZMO_TOGGLE, 
-        [this](float) { OnGizmoAction("toggle"); });
+        [this](float) { 
+            std::cout << "[InputIntegration] G key pressed - Toggle gizmo" << std::endl;
+            OnGizmoAction("toggle"); 
+        });
     
-    context->BindKeyAction(Input::Actions::GIZMO_TRANSLATE, SDLK_q);
+    context->BindKeyAction(Input::Actions::GIZMO_TRANSLATE, SDLK_q, Input::ActionType::PRESS);
     context->RegisterActionCallback(Input::Actions::GIZMO_TRANSLATE, 
-        [this](float) { OnGizmoAction("translate"); });
+        [this](float) { 
+            std::cout << "[InputIntegration] Q key pressed - Translate mode" << std::endl;
+            OnGizmoAction("translate"); 
+        });
     
-    context->BindKeyAction(Input::Actions::GIZMO_ROTATE, SDLK_e);
+    context->BindKeyAction(Input::Actions::GIZMO_ROTATE, SDLK_e, Input::ActionType::PRESS);
     context->RegisterActionCallback(Input::Actions::GIZMO_ROTATE, 
-        [this](float) { OnGizmoAction("rotate"); });
+        [this](float) { 
+            std::cout << "[InputIntegration] E key pressed - Rotate mode" << std::endl;
+            OnGizmoAction("rotate"); 
+        });
     
-    context->BindKeyAction(Input::Actions::GIZMO_SCALE, SDLK_r);
+    context->BindKeyAction(Input::Actions::GIZMO_SCALE, SDLK_r, Input::ActionType::PRESS);
     context->RegisterActionCallback(Input::Actions::GIZMO_SCALE, 
-        [this](float) { OnGizmoAction("scale"); });
+        [this](float) { 
+            std::cout << "[InputIntegration] R key pressed - Scale mode" << std::endl;
+            OnGizmoAction("scale"); 
+        });
+    
+    std::cout << "[InputIntegration] Editor context setup complete with gizmo bindings" << std::endl;
 }
 
 void InputIntegration::SetupLightingContext() {
@@ -323,6 +348,8 @@ void InputIntegration::SetupAnimationContext() {
 void InputIntegration::SetupGamepadContext() {
     auto context = m_inputManager->CreateContext("gamepad");
     
+    std::cout << "[InputIntegration] Setting up gamepad context..." << std::endl;
+    
     // Gamepad camera movement
     context->BindAxisAction("gamepad_move_x", Input::GamepadAxis::LEFT_X);
     context->RegisterAxisCallback("gamepad_move_x", 
@@ -340,12 +367,13 @@ void InputIntegration::SetupGamepadContext() {
             }
         });
     
-    // Gamepad camera look
+    // Gamepad camera look - Uses configurable sensitivity
     context->BindAxisAction("gamepad_look_x", Input::GamepadAxis::RIGHT_X);
     context->RegisterAxisCallback("gamepad_look_x", 
         [this](float value, float) { 
             if (std::abs(value) > 0.1f) {
-                OnCameraLook(value * 2.0f, 0.0f); // Scale for appropriate sensitivity
+                // Use configurable sensitivity for horizontal look
+                OnCameraLook(value * m_gamepadLookSensitivity, 0.0f); 
             }
         });
     
@@ -353,18 +381,28 @@ void InputIntegration::SetupGamepadContext() {
     context->RegisterAxisCallback("gamepad_look_y", 
         [this](float value, float) { 
             if (std::abs(value) > 0.1f) {
-                OnCameraLook(0.0f, -value * 2.0f); // Inverted Y-axis
+                // Use configurable sensitivity for vertical look (inverted Y)
+                OnCameraLook(0.0f, -value * m_gamepadLookSensitivity);
             }
         });
     
     // Gamepad buttons
     context->BindGamepadAction("gamepad_select", Input::GamepadButton::A);
     context->RegisterActionCallback("gamepad_select", 
-        [this](float) { OnObjectSelect(); });
+        [this](float) { 
+            std::cout << "[InputIntegration] Gamepad A button pressed" << std::endl;
+            OnObjectSelect(); 
+        });
     
     context->BindGamepadAction("gamepad_exit", Input::GamepadButton::START);
     context->RegisterActionCallback("gamepad_exit", 
-        [this](float) { OnApplicationAction("exit"); });
+        [this](float) { 
+            std::cout << "[InputIntegration] Gamepad START button pressed" << std::endl;
+            OnApplicationAction("exit"); 
+        });
+    
+    std::cout << "[InputIntegration] Gamepad context setup complete (look sensitivity: " 
+              << m_gamepadLookSensitivity << ")" << std::endl;
 }
 
 void InputIntegration::OnCameraMovement(const std::string& direction, float value) {
@@ -453,22 +491,32 @@ void InputIntegration::OnApplicationAction(const std::string& action) {
 }
 
 void InputIntegration::OnGizmoAction(const std::string& action) {
-    if (!m_imguiInterface || m_mouseLocked) {
-        return; // Only process gizmo actions when mouse is unlocked
+    // CRITICAL FIX: Gizmo actions should work regardless of mouse lock state
+    // The user needs to be able to toggle gizmo visibility and change modes
+    if (!m_imguiInterface) {
+        std::cout << "[InputIntegration] No ImGui interface available for gizmo action" << std::endl;
+        return;
     }
     
     if (action == "toggle") {
-        m_imguiInterface->SetGizmoVisible(!m_imguiInterface->IsGizmoVisible());
-        std::cout << "[InputIntegration] Gizmo " << (m_imguiInterface->IsGizmoVisible() ? "enabled" : "disabled") << std::endl;
-    } else if (action == "translate" && m_imguiInterface->GetSelectedNode()) {
-        // m_imguiInterface->SetGizmoOperation(ImGuizmo::TRANSLATE);
-        std::cout << "[InputIntegration] Switched to translate mode" << std::endl;
-    } else if (action == "rotate" && m_imguiInterface->GetSelectedNode()) {
-        // m_imguiInterface->SetGizmoOperation(ImGuizmo::ROTATE);
-        std::cout << "[InputIntegration] Switched to rotate mode" << std::endl;
-    } else if (action == "scale" && m_imguiInterface->GetSelectedNode()) {
-        // m_imguiInterface->SetGizmoOperation(ImGuizmo::SCALE);
-        std::cout << "[InputIntegration] Switched to scale mode" << std::endl;
+        bool newState = !m_imguiInterface->IsGizmoVisible();
+        m_imguiInterface->SetGizmoVisible(newState);
+        std::cout << "[InputIntegration] Gizmo " << (newState ? "enabled" : "disabled") << std::endl;
+    } 
+    else if (action == "translate") {
+        // ImGuizmo::TRANSLATE = 7 (binary 0111)
+        m_imguiInterface->SetGizmoOperation(7);
+        std::cout << "[InputIntegration] Switched to TRANSLATE mode (operation=7)" << std::endl;
+    } 
+    else if (action == "rotate") {
+        // ImGuizmo::ROTATE = 120 (binary 01111000)  
+        m_imguiInterface->SetGizmoOperation(120);
+        std::cout << "[InputIntegration] Switched to ROTATE mode (operation=120)" << std::endl;
+    } 
+    else if (action == "scale") {
+        // ImGuizmo::SCALE = 896 (binary 1110000000)
+        m_imguiInterface->SetGizmoOperation(896);
+        std::cout << "[InputIntegration] Switched to SCALE mode (operation=896)" << std::endl;
     }
 }
 

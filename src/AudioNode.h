@@ -37,6 +37,10 @@ public:
     float getHearingDistance() const { return m_hearingDistance; }
     bool isPlaying() const { return m_isPlaying; }
     bool is3D() const { return m_is3d; }
+    
+    // NEW: Get the sound file path for serialization
+    std::string getSoundFilePath() const { return m_soundFilePath; }
+    bool isLooping() const { return m_isLooping; }
 
     //update audio nodes
     virtual void UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle) override;
@@ -52,6 +56,7 @@ private:
     int m_channel;
     bool m_is3d;
     bool m_isPlaying;
+    bool m_isLooping = false; // NEW: Track loop state
 
     // Additional audio properties.
     float m_pitch;           // Pitch factor (1.0 = normal)
@@ -59,4 +64,7 @@ private:
     float m_hearingDistance; // Maximum hearing distance for attenuation
 
     float m_selectionRadius = 0.6f; // gizmo/picking sphere radius
+    
+    // NEW: Store the sound file path for serialization
+    std::string m_soundFilePath;
 };

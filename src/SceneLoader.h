@@ -15,6 +15,9 @@ public:
 
     // Loads the scene from a JSON file and returns a shared pointer to a SceneGraph.
     std::shared_ptr<SceneGraph> LoadScene(const std::string& sceneFilePath);
+    
+    // NEW: Saves the current scene state back to a JSON file
+    bool SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sceneFilePath);
 
 
     //supporting functions & variables
@@ -43,13 +46,17 @@ private:
     std::shared_ptr<ModelManager> m_modelManager;
     std::shared_ptr<PhysicsEngine> m_physicsEngine;
     int m_screenW, m_screenH;
-    // Recursively process a node and its children.
+    
+    // Loading methods
     std::shared_ptr<class SceneNode> ProcessNodeRecursive(const nlohmann::json& nodeJson);
-
-    // Processes a single node (without processing children).
     std::shared_ptr<class SceneNode> ProcessNode(const nlohmann::json& nodeJson);
-    // Processes a collider and attaches it to the node.
     void ProcessCollider(const nlohmann::json& colliderJson, std::shared_ptr<SceneNode> node);
-    // Processes GUI element properties like resizing, anchoring, and relative positioning
     void ProcessGuiElementProperties(std::shared_ptr<GuiNode> guiNode, int elementId, const nlohmann::json& elementJson);
+    
+    // NEW: Saving methods
+    nlohmann::json SerializeNodeRecursive(const std::shared_ptr<SceneNode>& node);
+    nlohmann::json SerializeNode(const std::shared_ptr<SceneNode>& node);
+    nlohmann::json SerializeCollider(const std::shared_ptr<SceneNode>& node);
+    nlohmann::json SerializeGuiElements(const std::shared_ptr<GuiNode>& guiNode);
+    nlohmann::json SerializeLightProperties(const std::shared_ptr<class LightNode>& lightNode);
 };

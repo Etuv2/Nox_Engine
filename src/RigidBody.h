@@ -76,6 +76,7 @@ public:
     // Shape type setter/getter
     void setShape(ShapeType type);
     ShapeType getShape() const;
+    ShapeType getShapeType() const { return m_shapeType; } // Alias for getShape
 
     // For PLANE shape: define plane with normal and height (plane: dot(x, normal) = height)
     void setPlane(const glm::vec3& normal, float height);

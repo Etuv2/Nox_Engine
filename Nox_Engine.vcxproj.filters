@@ -582,6 +582,7 @@
       <Filter>Source Files\misc\shaders\ssgi</Filter>
     </None>
     <None Include="README.md" />
+    <None Include="docs\SCENE_SAVING_SYSTEM.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

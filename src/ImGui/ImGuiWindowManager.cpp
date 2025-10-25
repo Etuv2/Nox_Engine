@@ -208,6 +208,11 @@ void ImGuiWindowManager::SetSceneSwapCallback(const std::function<void(const std
     m_statusWindow->SetSceneSwapCallback(callback);
 }
 
+void ImGuiWindowManager::SetSceneSaveCallback(const std::function<void()>& callback) {
+    m_sceneSaveCallback = callback;
+    m_statusWindow->SetSceneSaveCallback(callback);
+}
+
 void ImGuiWindowManager::SetSceneList(const std::vector<std::string>& scenes) {
     m_statusWindow->SetSceneList(scenes);
 }

@@ -268,6 +268,22 @@ std::shared_ptr<SceneNode> SceneGraph::FindLPVVolumeNode()
     return nullptr;
 }
 
+// NEW: Save scene to file
+bool SceneGraph::SaveToFile(const std::string& filePath)
+{
+    std::cout << "[SceneGraph] Saving scene '" << m_sceneName << "' to: " << filePath << std::endl;
+    
+    // We need a SceneLoader instance to do the actual serialization
+    // This is a bit of a circular dependency, but it's the cleanest approach
+    // We'll pass nullptr for ModelManager and PhysicsEngine as they're not needed for saving
+    
+    // Note: This requires including SceneLoader.h in SceneGraph.cpp
+    // For now, we'll just log and return false - implementation will be in MainWindow
+    
+    std::cerr << "[SceneGraph] SaveToFile not fully implemented - use SceneLoader::SaveScene instead" << std::endl;
+    return false;
+}
+
 //set the skybox
 void SceneGraph::SetSkybox(const std::shared_ptr<Skybox>& skybox) {
     m_skybox = skybox;

@@ -28,6 +28,18 @@ void StatusWindow::Render() {
     ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Scene Info");
     ImGui::Text("Current Scene: %s", m_sceneName.c_str());
     
+    // Save Scene button
+    if (ImGui::Button("?? Save Current Scene", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+        if (m_sceneSaveCallback) {
+            m_sceneSaveCallback();
+        }
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Save all current node transforms and properties back to the scene file");
+    }
+    
+    ImGui::Separator();
+    
     // Scene selection dropdown
     if (!m_sceneList.empty()) {
         ImGui::Text("Load Scene:");

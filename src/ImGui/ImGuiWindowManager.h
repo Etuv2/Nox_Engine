@@ -60,6 +60,9 @@ public:
     void SetSceneSwapCallback(const std::function<void(const std::string&)>& callback);
     void SetSceneList(const std::vector<std::string>& scenes);
 
+    // NEW: Scene saving
+    void SetSceneSaveCallback(const std::function<void()>& callback);
+
     // Window visibility controls
     void ToggleWindow(const std::string& windowName);
     void SetWindowVisible(const std::string& windowName, bool visible);
@@ -127,6 +130,7 @@ private:
 
     // Scene management
     std::function<void(const std::string&)> m_sceneSwapCallback;
+    std::function<void()> m_sceneSaveCallback; // NEW: Scene save callback
 
     // Cached dimensions
     int m_windowWidth = 1920;

@@ -69,6 +69,7 @@ private:
     std::shared_ptr<ModelManager> m_modelManager;
     std::string m_scene_to_load;
     std::string m_scene_name;
+    std::string m_currentSceneFilePath; // NEW: Track current scene file path for saving
 
     // Lighting
     std::shared_ptr<DirectionalLight> m_lighting;

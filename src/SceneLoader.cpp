@@ -85,6 +85,385 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
     // return the skybox
     return sceneGraph;
 }
+
+// NEW: Save scene state back to JSON file
+bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sceneFilePath) {
+    if (!sceneGraph || !sceneGraph->GetRoot()) {
+        std::cerr << "[SceneLoader] Cannot save: invalid scene graph" << std::endl;
+        return false;
+    }
+    
+    std::cout << "[SceneLoader] Saving scene to: " << sceneFilePath << std::endl;
+    
+    try {
+        nlohmann::json sceneJson;
+        
+        // Serialize scene metadata
+        sceneJson["scene_name"] = sceneGraph->GetSceneName();
+        sceneJson["exposure"] = sceneGraph->m_exposure;
+        sceneJson["gamma"] = sceneGraph->m_gamma;
+        sceneJson["physics_enabled"] = sceneGraph->IsPhysicsEnabled();
+        
+        // Serialize skybox if present
+        if (sceneGraph->GetSkybox()) {
+            // Note: We'll need to store the HDR path somewhere or use a default
+            // For now, use a placeholder
+            sceneJson["skybox"] = "hdrs/skybox.hdr"; // TODO: Store actual path in Skybox class
+        }
+        
+        // Serialize all root-level nodes and their children
+        nlohmann::json nodesArray = nlohmann::json::array();
+        auto root = sceneGraph->GetRoot();
+        
+        for (const auto& child : root->children) {
+            if (child) {
+                nlohmann::json nodeJson = SerializeNodeRecursive(child);
+                if (!nodeJson.is_null()) {
+                    nodesArray.push_back(nodeJson);
+                }
+            }
+        }
+        
+        sceneJson["nodes"] = nodesArray;
+        
+        // Write to file with pretty formatting
+        std::ofstream outFile(sceneFilePath);
+        if (!outFile.is_open()) {
+            std::cerr << "[SceneLoader] Failed to open file for writing: " << sceneFilePath << std::endl;
+            return false;
+        }
+        
+        outFile << sceneJson.dump(2); // Indent with 2 spaces for readability
+        outFile.close();
+        
+        std::cout << "[SceneLoader] Successfully saved scene with " << nodesArray.size() << " nodes" << std::endl;
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[SceneLoader] Error saving scene: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+nlohmann::json SceneLoader::SerializeNodeRecursive(const std::shared_ptr<SceneNode>& node) {
+    if (!node) {
+        return nlohmann::json();
+    }
+    
+    // Serialize this node
+    nlohmann::json nodeJson = SerializeNode(node);
+    
+    // Serialize children recursively
+    if (!node->children.empty()) {
+        nlohmann::json childrenArray = nlohmann::json::array();
+        
+        for (const auto& child : node->children) {
+            if (child) {
+                nlohmann::json childJson = SerializeNodeRecursive(child);
+                if (!childJson.is_null()) {
+                    childrenArray.push_back(childJson);
+                }
+            }
+        }
+        
+        if (!childrenArray.empty()) {
+            nodeJson["children"] = childrenArray;
+        }
+    }
+    
+    return nodeJson;
+}
+
+nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node) {
+    if (!node) {
+        return nlohmann::json();
+    }
+    
+    nlohmann::json nodeJson;
+    
+    // Determine and set node type
+    SceneNode::NODE_TYPE nodeType = node->GetNodeType();
+    switch (nodeType) {
+        case SceneNode::MODEL:
+            nodeJson["type"] = "model";
+            break;
+        case SceneNode::LIGHT:
+            nodeJson["type"] = "light";
+            break;
+        case SceneNode::AUDIO:
+            nodeJson["type"] = "audio";
+            break;
+        case SceneNode::CAMERA:
+            nodeJson["type"] = "camera";
+            break;
+        case SceneNode::GUI:
+            nodeJson["type"] = "gui";
+            break;
+        case SceneNode::LPV_VOLUME:
+            nodeJson["type"] = "lpv_volume";
+            break;
+        default:
+            nodeJson["type"] = "node";
+            break;
+    }
+    
+    // Serialize transform
+    glm::vec3 position = node->GetPosition();
+    glm::vec3 rotation = node->GetRotation();
+    glm::vec3 scale = node->GetScale();
+    
+    nodeJson["position"] = { position.x, position.y, position.z };
+    
+    // FIXED: Convert rotation from radians to degrees for saving
+    nodeJson["rotation"] = { glm::degrees(rotation.x), glm::degrees(rotation.y), glm::degrees(rotation.z) };
+    
+    nodeJson["scale"] = { scale.x, scale.y, scale.z };
+    
+    // Serialize node name
+    std::string nodeName = node->GetName();
+    if (!nodeName.empty()) {
+        nodeJson["name"] = nodeName;
+    }
+    
+    // Serialize type-specific properties
+    switch (nodeType) {
+        case SceneNode::MODEL: {
+            // FIXED: Serialize model path using ModelManager
+            auto model = node->GetModel();
+            if (model && m_modelManager) {
+                std::string modelPath = m_modelManager->GetModelPath(model.get());
+                if (!modelPath.empty()) {
+                    nodeJson["path"] = modelPath;
+                } else {
+                    std::cout << "[SceneLoader] Warning: Could not find model path for node '" 
+                              << nodeName << "'" << std::endl;
+                }
+            }
+            
+            // Serialize collider if present
+            if (node->GetRigidBody()) {
+                nodeJson["collider"] = SerializeCollider(node);
+            }
+            break;
+        }
+        
+        case SceneNode::LIGHT: {
+            auto lightNode = std::dynamic_pointer_cast<LightNode>(node);
+            if (lightNode && lightNode->GetLight()) {
+                nodeJson["light"] = SerializeLightProperties(lightNode);
+            }
+            break;
+        }
+        
+        case SceneNode::AUDIO: {
+            auto audioNode = std::dynamic_pointer_cast<AudioNode>(node);
+            if (audioNode) {
+                // FIXED: Serialize audio properties
+                nodeJson["pitch"] = audioNode->getPitch();
+                nodeJson["volume"] = audioNode->getVolume();
+                nodeJson["hearing_distance"] = audioNode->getHearingDistance();
+                nodeJson["loop"] = audioNode->isPlaying(); // Note: This is approximate, would need actual loop state
+                nodeJson["is3d"] = audioNode->is3D();
+                
+                // TODO: Still need sound file path - AudioNode needs to expose this
+                std::cout << "[SceneLoader] Warning: Audio sound file path not saved (AudioNode doesn't expose it)" << std::endl;
+            }
+            break;
+        }
+        
+        case SceneNode::GUI: {
+            auto guiNode = std::dynamic_pointer_cast<GuiNode>(node);
+            if (guiNode) {
+                nodeJson["elements"] = SerializeGuiElements(guiNode);
+                // TODO: Add font path and size serialization if exposed in GuiNode
+            }
+            break;
+        }
+        
+        case SceneNode::LPV_VOLUME: {
+            // Serialize LPV volume data
+            const auto& lpvData = node->GetLPVVolumeData();
+            
+            nlohmann::json lpvJson;
+            lpvJson["center"] = { lpvData.center.x, lpvData.center.y, lpvData.center.z };
+            lpvJson["extent"] = { lpvData.extent.x, lpvData.extent.y, lpvData.extent.z };
+            lpvJson["voxel_size"] = lpvData.voxelSize;
+            lpvJson["grid_resolution"] = lpvData.gridResolution;
+            
+            // Serialize quaternion orientation
+            lpvJson["orientation"] = { 
+                lpvData.orientation.w, 
+                lpvData.orientation.x, 
+                lpvData.orientation.y, 
+                lpvData.orientation.z 
+            };
+            
+            nodeJson["lpv_data"] = lpvJson;
+            break;
+        }
+        
+        default:
+            break;
+    }
+    
+    return nodeJson;
+}
+
+nlohmann::json SceneLoader::SerializeCollider(const std::shared_ptr<SceneNode>& node) {
+    nlohmann::json colliderJson;
+    
+    auto rb = node->GetRigidBody();
+    if (!rb) {
+        return colliderJson;
+    }
+    
+    // Determine collider type
+    RigidBody::ShapeType shapeType = rb->getShapeType();
+    
+    switch (shapeType) {
+        case RigidBody::ShapeType::SPHERE: {
+            colliderJson["type"] = "sphere";
+            colliderJson["mass"] = rb->getMass();
+            colliderJson["radius"] = rb->getBoundingRadius();
+            colliderJson["linear_damping"] = rb->getLinearDamping();
+            colliderJson["angular_damping"] = rb->getAngularDamping();
+            colliderJson["friction"] = rb->getFriction();
+            
+            glm::vec3 velocity = rb->getVelocity();
+            colliderJson["velocity_x"] = velocity.x;
+            colliderJson["velocity_y"] = velocity.y;
+            colliderJson["velocity_z"] = velocity.z;
+            
+            glm::vec3 acceleration = rb->getAcceleration();
+            bool hasGravity = (glm::length(acceleration) > 0.001f);
+            colliderJson["gravity"] = hasGravity;
+            break;
+        }
+        
+        case RigidBody::ShapeType::BOX: {
+            colliderJson["type"] = "box";
+            colliderJson["mass"] = rb->getMass();
+            
+            glm::vec3 halfExtents = rb->getHalfExtents();
+            colliderJson["size"] = { halfExtents.x, halfExtents.y, halfExtents.z };
+            
+            colliderJson["linear_damping"] = rb->getLinearDamping();
+            colliderJson["angular_damping"] = rb->getAngularDamping();
+            colliderJson["friction"] = rb->getFriction();
+            
+            glm::vec3 velocity = rb->getVelocity();
+            colliderJson["velocity_x"] = velocity.x;
+            colliderJson["velocity_y"] = velocity.y;
+            colliderJson["velocity_z"] = velocity.z;
+            
+            glm::vec3 acceleration = rb->getAcceleration();
+            bool hasGravity = (glm::length(acceleration) > 0.001f);
+            colliderJson["gravity"] = hasGravity;
+            break;
+        }
+        
+        case RigidBody::ShapeType::PLANE: {
+            colliderJson["type"] = "plane";
+            
+            glm::vec3 normal = rb->getPlaneNormal();
+            colliderJson["normal_x"] = normal.x;
+            colliderJson["normal_y"] = normal.y;
+            colliderJson["normal_z"] = normal.z;
+            
+            colliderJson["height"] = rb->getPlaneHeight();
+            break;
+        }
+        
+        default:
+            std::cerr << "[SceneLoader] Unknown collider shape type" << std::endl;
+            break;
+    }
+    
+    return colliderJson;
+}
+
+nlohmann::json SceneLoader::SerializeGuiElements(const std::shared_ptr<GuiNode>& guiNode) {
+    nlohmann::json elementsArray = nlohmann::json::array();
+    
+    if (!guiNode) {
+        return elementsArray;
+    }
+    
+    // TODO: GuiNode needs to expose its elements for serialization
+    // This would require adding a GetElements() method or similar
+    // For now, return empty array
+    
+    std::cout << "[SceneLoader] Warning: GUI element serialization requires GuiNode::GetElements() implementation" << std::endl;
+    
+    return elementsArray;
+}
+
+nlohmann::json SceneLoader::SerializeLightProperties(const std::shared_ptr<LightNode>& lightNode) {
+    nlohmann::json lightJson;
+    
+    if (!lightNode || !lightNode->GetLight()) {
+        return lightJson;
+    }
+    
+    auto light = lightNode->GetLight();
+    
+    // Determine light type
+    BaseLight::LightType lightType = light->GetLightType();
+    switch (lightType) {
+        case BaseLight::LightType::DIRECTIONAL:
+            lightJson["type"] = "directional";
+            break;
+        case BaseLight::LightType::POINT:
+            lightJson["type"] = "point";
+            break;
+        case BaseLight::LightType::SPOT:
+            lightJson["type"] = "spot";
+            break;
+        default:
+            lightJson["type"] = "unknown";
+            break;
+    }
+    
+    // Serialize common light properties
+    glm::vec3 color = light->GetColor();
+    lightJson["color"] = { color.r, color.g, color.b };
+    
+    lightJson["intensity"] = light->GetIntensity();
+    lightJson["enabled"] = light->IsEnabled();
+    lightJson["castsShadows"] = light->CastsShadows();
+    
+    // Serialize type-specific properties
+    if (lightType == BaseLight::LightType::DIRECTIONAL) {
+        auto dirLight = std::dynamic_pointer_cast<DirectionalLight>(light);
+        if (dirLight) {
+            // TODO: Add directional light specific properties
+            // shadowSize, splitLambda, etc.
+            lightJson["shadowSize"] = 2048; // Default, would need getter
+            lightJson["splitLambda"] = 0.85f; // Default, would need getter
+        }
+    }
+    else if (lightType == BaseLight::LightType::POINT || lightType == BaseLight::LightType::SPOT) {
+        lightJson["range"] = light->GetRange();
+        
+        glm::vec3 attenuation = light->GetAttenuation();
+        lightJson["attenuation"] = { attenuation.x, attenuation.y, attenuation.z };
+        
+        if (lightType == BaseLight::LightType::SPOT) {
+            auto spotLight = std::dynamic_pointer_cast<SpotLight>(light);
+            if (spotLight) {
+                lightJson["cutOff"] = spotLight->GetCutOff();
+                lightJson["outerCutOff"] = spotLight->GetOuterCutOff();
+                lightJson["shadowResolution"] = 1024; // Default, would need getter
+            }
+        }
+        else {
+            lightJson["shadowResolution"] = 1024; // Default for point lights
+        }
+    }
+    
+    return lightJson;
+}
+
 void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::shared_ptr<SceneNode> node) {
     if (!colliderJson.is_object() || !node) return;
 

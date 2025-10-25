@@ -70,6 +70,9 @@ public:
     // Set the list of available scene file paths.
     void SetSceneList(const std::vector<std::string>& scenes);
 
+    // Set the scene save callback
+    void SetSceneSaveCallback(const std::function<void()>& callback);
+
     // Window visibility controls (for backward compatibility)
     void ToggleWindow(const std::string& windowName);
     void SetWindowVisible(const std::string& windowName, bool visible);

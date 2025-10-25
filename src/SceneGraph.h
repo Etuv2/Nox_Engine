@@ -46,6 +46,9 @@ public:
     
     // NEW: Find first LPV volume node in scene
     std::shared_ptr<SceneNode> FindLPVVolumeNode();
+    
+    // NEW: Save scene to file
+    bool SaveToFile(const std::string& filePath);
 
     void SetSkybox(const std::shared_ptr<Skybox>& skybox);
 

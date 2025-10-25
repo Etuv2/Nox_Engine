@@ -47,6 +47,10 @@ public:
     void SetDirectionalLight(std::shared_ptr<DirectionalLight> light) { m_directionalLight = light; }
     void SetLightManager(LightManager* lightManager) { m_lightManager = lightManager; }
     
+    // Sensitivity configuration
+    void SetGamepadLookSensitivity(float sensitivity) { m_gamepadLookSensitivity = sensitivity; }
+    float GetGamepadLookSensitivity() const { return m_gamepadLookSensitivity; }
+    
     // Configuration
     bool LoadConfiguration(const std::string& configPath = "config/input_config.json");
     bool SaveConfiguration(const std::string& configPath = "config/input_config.json");
@@ -96,4 +100,5 @@ private:
     // Settings
     float m_cameraSpeed;
     float m_mouseSensitivity;
+    float m_gamepadLookSensitivity; // NEW: Separate sensitivity for gamepad looking
 };

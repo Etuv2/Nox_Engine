@@ -317,6 +317,7 @@ bool MainWindow::Initialize() {
 	// Load the Scene using SceneLoader.
 	m_sceneLoader = std::make_shared<SceneLoader>(m_modelManager, m_physicsEngine,m_windowWidth, m_windowHeight);
 	m_sceneGraph = m_sceneLoader->LoadScene(m_scene_to_load);
+	m_currentSceneFilePath = m_scene_to_load; // Store initial scene file path
 	m_exposure = m_sceneGraph->m_exposure;
 	m_gamma = m_sceneGraph->m_gamma;
 	m_scene_name = m_sceneGraph->GetSceneName();
@@ -396,6 +397,9 @@ bool MainWindow::Initialize() {
 			ComputeSceneBoundingBox();
 			m_imguiInterface->SetSceneGraph(m_sceneGraph);
 
+			// Store current scene file path for saving
+			m_currentSceneFilePath = newSceneFile;
+
 			std::cout << "Scene swapped successfully to: " << newSceneFile << std::endl;
 			SDL_RestoreWindow(m_window);
 			SDL_ShowWindow(m_window);
@@ -405,6 +409,27 @@ bool MainWindow::Initialize() {
 			std::cerr << "Failed to load scene: " << newSceneFile << ". Retaining the current scene." << std::endl;
 		}
 		});
+	
+	// NEW: Set ImGui callback for scene saving
+	m_imguiInterface->SetSceneSaveCallback([this]() {
+		if (!m_sceneGraph || !m_sceneLoader) {
+			std::cerr << "[MainWindow] Cannot save: scene graph or loader is null" << std::endl;
+			return;
+		}
+		
+		std::string saveFilePath = m_currentSceneFilePath.empty() ? m_scene_to_load : m_currentSceneFilePath;
+		
+		std::cout << "[MainWindow] Saving scene to: " << saveFilePath << std::endl;
+		
+		if (m_sceneLoader->SaveScene(m_sceneGraph, saveFilePath)) {
+			std::cout << "[MainWindow] ? Scene saved successfully!" << std::endl;
+			
+			// Optional: Show a success notification in ImGui
+			// You could add a toast notification system here
+		} else {
+			std::cerr << "[MainWindow] ? Failed to save scene" << std::endl;
+		}
+	});
 
 	ComputeSceneBoundingBox();
 
@@ -441,17 +466,24 @@ bool MainWindow::Initialize() {
 void MainWindow::ProcessEvents() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
-		ImGui_ImplSDL2_ProcessEvent(&event);
+		// CRITICAL FIX: Process input system FIRST, before ImGui can capture events
+		bool handledByInput = false;
+		if (m_inputIntegration) {
+			handledByInput = m_inputIntegration->ProcessEvent(event);
+		}
+		
+		// Only let ImGui process events if input system didn't handle them
+		// OR if it's a mouse event and mouse is unlocked (for UI interaction)
+		bool allowImGui = !handledByInput || 
+		                  (m_inputIntegration && !m_inputIntegration->IsMouseLocked());
+		
+		if (allowImGui) {
+			ImGui_ImplSDL2_ProcessEvent(&event);
+		}
 		
 		// Process ImGui keyboard input for window toggles
 		if (m_imguiInterface) {
 			m_imguiInterface->ProcessKeyboardInput();
-		}
-		
-		// Let the unified input system handle the event
-		bool handledByInput = false;
-		if (m_inputIntegration) {
-			handledByInput = m_inputIntegration->ProcessEvent(event);
 		}
 		
 		// Handle system-level events that the input system doesn't manage
