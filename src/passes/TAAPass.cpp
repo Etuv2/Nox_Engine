@@ -68,7 +68,7 @@ void TAAPass::Resize(RenderContext& context, int newWidth, int newHeight) {
 
 glm::vec2 TAAPass::GetJitter(int frameIndex, int pattern) {
     if (pattern == 0) {
-        // Halton sequence
+        // Halton sequence - properly normalized to pixel space
         auto halton = [](int index, int base) -> float {
             float f = 1.0f;
             float r = 0.0f;
@@ -80,8 +80,12 @@ glm::vec2 TAAPass::GetJitter(int frameIndex, int pattern) {
             return r;
         };
 
-        float x = halton((frameIndex % 16) + 1, 2) - 0.5f;
-        float y = halton((frameIndex % 16) + 1, 3) - 0.5f;
+        // Generate in [-0.5, 0.5] range, then normalize to pixel space
+        float x = (halton((frameIndex % 16) + 1, 2) - 0.5f);
+        float y = (halton((frameIndex % 16) + 1, 3) - 0.5f);
+        
+        // Return in normalized screen space (not pixel space)
+        // The shader will apply this as an offset in projection space
         return glm::vec2(x, y);
     } else {
         // Hammersley 8-sample pattern
@@ -116,6 +120,9 @@ void TAAPass::Execute(RenderContext& ctx,
         
         ctx.screenQuad->Render();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      
+        // Still expose the FBO for SSGI
+   ctx.taaFBO = m_currentFBO.get();
         return;
     }
 
@@ -131,8 +138,11 @@ void TAAPass::Execute(RenderContext& ctx,
     ResolveTemporalAntiAliasing(ctx);
 
     // Swap current and history
-    m_currentFBO.swap(m_historyFBO);
+  m_currentFBO.swap(m_historyFBO);
     m_historyValid = true;
+    
+    // Expose current FBO to context for SSGI to use
+  ctx.taaFBO = m_currentFBO.get();
 }
 
 void TAAPass::RenderVelocity(RenderContext& ctx, 

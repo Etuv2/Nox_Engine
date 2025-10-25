@@ -26,6 +26,7 @@ struct RenderContext {
 	// Shared FBOs
 	std::unique_ptr<FrameBuffer> gbufferFBO; // Extended G-Buffer
 	std::unique_ptr<FrameBuffer> hdrFBO; // HDR target
+	FrameBuffer* taaFBO = nullptr; // TAA output (for SSGI history) - raw pointer to avoid ownership
 
 
 	// Screen quad
@@ -55,14 +56,14 @@ struct RenderContext {
 
 	// SSGI settings
 	bool enableSSGI = true;
-	float ssgiStrength = 1.0f;
+	float ssgiStrength = 1.2f;
 	float ssgiRadius = 1.0f;
-	int ssgiSampleCount = 1024;
+	int ssgiSampleCount = 16;
 	bool ssgiHalfRes = true;           // run SSGI at half-res for speed
-	float ssgiTemporalAlpha = 0.12f;   // exponential average factor
+	float ssgiTemporalAlpha = 0.5f;   // exponential average factor
 	float ssgiNormalReject = 0.25f;    // bilateral normal threshold
 	float ssgiDepthReject = 0.5f;      // bilateral depth sigma (view-space)
-	float ssgiThickness = 0.2f;        // thickness for ray-scene intersection in view space
+	float ssgiThickness = 0.01f;        // thickness for ray-scene intersection in view space
 
 
 	// Bloom settings

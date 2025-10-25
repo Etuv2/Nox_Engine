@@ -582,7 +582,8 @@
       <Filter>Source Files\misc\shaders\ssgi</Filter>
     </None>
     <None Include="README.md" />
-    <None Include="docs\SCENE_SAVING_SYSTEM.md" />
+    <None Include="shaders\vsm_blur_kawase_comp.glsl" />
+    <None Include="docs\VSM_Implementation.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

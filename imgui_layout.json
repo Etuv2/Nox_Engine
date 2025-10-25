@@ -78,7 +78,7 @@
   },
   "gizmo": {
     "mode": 0,
-    "operation": 7,
+    "operation": 120,
     "panel_visible": false,
     "rotate_snap": 15.0,
     "scale_snap": 0.10000000149011612,

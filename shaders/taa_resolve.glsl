@@ -303,6 +303,13 @@ void main()
     float velocityLength = length(velocity * screenSize);
     float motionConfidence = exp(-velocityLength * 0.02); // Reduced sensitivity for stability
     
+    // Strong rejection for invalid reprojections
+    if (velocityLength > 2.0 || depthConfidence < 0.3 || normalConfidence < 0.7) {
+        // Reject history completely for major discontinuities
+        taaResult = currentColor;
+        return;
+    }
+    
     // Calculate reactive mask
     float reactiveMask = CalculateReactiveMask(uv, velocity, edgeMask);
     

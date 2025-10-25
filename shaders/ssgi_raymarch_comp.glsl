@@ -115,7 +115,9 @@ void main() {
  vec3 orgVS = vposH.xyz / vposH.w;
 
  // Ray march in view space
- float stepLen = maxRayLenVS / float(max(numSteps,1));
+ float stepLenBase = maxRayLenVS / float(max(numSteps,1));
+ // Jitter step length a bit using noise to reduce banding and temporal correlation
+ float stepLen = stepLenBase * (1.0 +0.5 * (rands.x + rands.y -1.0));
  vec3 marchVS = orgVS;
  vec3 hitVS = vec3(0.0);
  bool hit = false;
@@ -164,6 +166,7 @@ void main() {
 
  // Sample indirect lighting if we hit something
  vec3 indirect = vec3(0.0);
+ float mask =0.0;
  if (hit) {
  vec2 hitUV = projectToUV(hitVS);
  // Sample previous frame color at hit location (HDR pre-tonemap)
@@ -182,7 +185,8 @@ void main() {
  irradiance *= cosW;
 
  indirect = irradiance;
+ mask =1.0;
  }
 
- imageStore(outSSGI, id, vec4(indirect,1.0));
+ imageStore(outSSGI, id, vec4(indirect, mask));
 }

@@ -28,6 +28,9 @@ public:
     void ResetHistory() { m_historyValid = false; m_frameIndex = 0; }
     int GetFrameIndex() const { return m_frameIndex; }
     glm::vec2 GetCurrentJitter() const { return m_jitter; }
+    
+    // Expose current FBO for SSGI to use as history source
+    FrameBuffer* GetCurrentFBO() const { return m_currentFBO.get(); }
 
 private:
     void RenderVelocity(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph,

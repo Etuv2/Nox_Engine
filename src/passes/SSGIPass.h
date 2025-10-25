@@ -59,6 +59,9 @@ private:
     void runUpsample(RenderContext& ctx);     // quarter -> half with bilateral upsample
     void runTemporal(RenderContext& ctx);
 
+    // Optional smoothing: Kawase blur (fullscreen passes)
+    void runKawase(RenderContext& ctx); // post-temporal smoothing
+
     // Compute shaders for each stage
     std::unique_ptr<ComputeShader> m_csDirections;  // Generate stochastic directions
     std::unique_ptr<ComputeShader> m_csRaymarch;    // Screen-space ray marching
@@ -78,6 +81,13 @@ private:
     // History textures for temporal stability
     GLuint m_historyColor = 0;  // RGBA16F previous frame scene color
     GLuint m_historySSGI = 0;   // RGBA16F previous frame SSGI
+
+    // Kawase blur resources
+    GLuint m_kawasePing = 0;    // RGBA16F ping target
+    GLuint m_kawasePong = 0;    // RGBA16F pong target
+    GLuint m_kawaseFBO = 0;     // FBO for fullscreen blits
+    GLuint m_kawaseShader = 0;  // Fullscreen Kawase blur shader program
+    int m_kawasePasses = 3;     // Number of Kawase passes (increased for smoother result)
 
     // Resolution tracking
     int m_w = 0, m_h = 0;       // full-res dimensions
