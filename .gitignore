@@ -32,20 +32,13 @@
 *.app
 
 # Build system directories (Visual Studio / MSBuild)
-[Bb]uild/
 [Bb]in/
-[Bb]inaries/
 [Ll]og/
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
 [Rr]etail/
-[Xx]64/
-[Xx]86/
-[Ww]in32/
-ARM*/
-[Bb]uilds/
 *.build.log
 *.tlog/
 
@@ -168,6 +161,7 @@ Obj/
 models/
 sounds/
 x64/
+hdrs/
 
 # Ignore exported binaries / packaged builds
 Dist/

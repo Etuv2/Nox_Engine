@@ -114,6 +114,11 @@ struct RenderContext {
 	float gamma = 2.2f;
 	bool enableHDR = true;
 
+	// Tonemapping settings (GT / Uchimura)
+	enum class TonemapType { None = 0, Reinhard = 1, GT = 2 };
+	TonemapType tonemapType = TonemapType::GT;
+	float tm_P = 1.0f, tm_a = 1.0f, tm_m = 0.22f, tm_l = 0.4f, tm_c = 1.33f, tm_b = 0.0f;
+	bool outputSRGB = true;
 
 	// Environment settings
 	glm::vec3 envColor{ 0.3f, 0.3f, 0.3f };

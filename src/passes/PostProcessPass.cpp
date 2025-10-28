@@ -34,11 +34,16 @@ void PostProcessPass::Execute(RenderContext& ctx,
                               const std::shared_ptr<Skybox>& skybox) {
     std::cout << "[PostProcessPass] Starting execution..." << std::endl;
     
-    // CRITICAL: Unbind to backbuffer (FBO 0)
+    // Output to backbuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, ctx.width, ctx.height);
+
+    // We handle output gamma in the shader, disable fixed-function SRGB conversion
+#ifdef GL_FRAMEBUFFER_SRGB
+    glDisable(GL_FRAMEBUFFER_SRGB);
+#endif
     
-    // CRITICAL: Match legacy renderer - disable depth test and blending for fullscreen quad
+    // Disable depth/blend for fullscreen quad
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     
@@ -49,9 +54,22 @@ void PostProcessPass::Execute(RenderContext& ctx,
     std::cout << "[PostProcessPass] Using shader: " << m_shader << std::endl;
     glUseProgram(m_shader);
 
-    // Set exposure and gamma
-    glUniform1f(glGetUniformLocation(m_shader, "exposure"), ctx.exposure);
-    glUniform1f(glGetUniformLocation(m_shader, "gamma"), ctx.gamma);
+    // Helper to set uniform only if present
+    auto set1f = [&](const char* name, float v){ GLint loc = glGetUniformLocation(m_shader, name); if (loc >= 0) glUniform1f(loc, v); };
+    auto set1i = [&](const char* name, int v){ GLint loc = glGetUniformLocation(m_shader, name); if (loc >= 0) glUniform1i(loc, v); };
+
+    set1f("exposure", ctx.exposure);
+    set1f("gamma", ctx.gamma);
+
+    // Tonemapper uniforms
+    set1i("uTonemap", static_cast<int>(ctx.tonemapType));
+    set1f("uP", ctx.tm_P);
+    set1f("ua", ctx.tm_a);
+    set1f("um", ctx.tm_m);
+    set1f("ul", ctx.tm_l);
+    set1f("uc", ctx.tm_c);
+    set1f("ub", ctx.tm_b);
+    set1i("uOutputSRGB", ctx.outputSRGB ? 1 : 0);
 
     std::cout << "[PostProcessPass] HDR FBO: " << (ctx.hdrFBO ? ctx.hdrFBO->GetFBO() : 0) << std::endl;
     std::cout << "[PostProcessPass] HDR texture: " << (ctx.hdrFBO ? ctx.hdrFBO->GetColorAttachment(0) : 0) << std::endl;
@@ -69,7 +87,7 @@ void PostProcessPass::Execute(RenderContext& ctx,
     } else {
         std::cerr << "[PostProcessPass] ERROR: HDR FBO is null!" << std::endl;
     }
-    glUniform1i(glGetUniformLocation(m_shader, "hdrBuffer"), 0);
+    set1i("hdrBuffer", 0);
 
     std::cout << "[PostProcessPass] Bloom texture: " << m_bloomTexture << std::endl;
     // Bind bloom result
@@ -79,9 +97,10 @@ void PostProcessPass::Execute(RenderContext& ctx,
         std::cout << "[PostProcessPass] Bound bloom texture successfully" << std::endl;
     } else {
         std::cout << "[PostProcessPass] WARNING: No valid bloom texture, using black" << std::endl;
-        // Bind a dummy black texture or just leave unbound
+        // Optionally bind 0
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
-    glUniform1i(glGetUniformLocation(m_shader, "bloomBlur"), 1);
+    set1i("bloomBlur", 1);
 
     std::cout << "[PostProcessPass] Rendering fullscreen quad..." << std::endl;
     // Render fullscreen quad

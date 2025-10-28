@@ -89,6 +89,11 @@ void RenderingSettingsWindow::SyncFromRenderer() {
     m_gamma = ctx.gamma;
     m_enableHDR = ctx.enableHDR;
     m_envColor = ctx.envColor;
+
+    // Tonemapper
+    m_tonemapType = static_cast<int>(ctx.tonemapType);
+    m_tm_P = ctx.tm_P; m_tm_a = ctx.tm_a; m_tm_m = ctx.tm_m; m_tm_l = ctx.tm_l; m_tm_c = ctx.tm_c; m_tm_b = ctx.tm_b;
+    m_outputSRGB = ctx.outputSRGB;
     
     // Shadow settings
     m_enableShadows = ctx.enableShadows;
@@ -139,12 +144,6 @@ void RenderingSettingsWindow::SyncFromRenderer() {
     m_lpvUpdateFrequency = ctx.lpvUpdateFrequency;
     m_lpvDebugVisualization = ctx.lpvDebugVisualization;
     m_lpvDebugBoost = ctx.lpvDebugBoost;
-    
-    //std::cout << "[RenderingSettings] Synced from renderer - Exposure: " << m_exposure 
-    //          << ", Gamma: " << m_gamma << ", TAA: " << (m_enableTAA ? "ON" : "OFF")
-    //          << ", Bloom: " << (m_enableBloom ? "ON" : "OFF") 
-    //          << ", SSAO: " << (m_enableSSAO ? "ON" : "OFF")
-    //          << ", LPV: " << (m_enableLPV ? "ON" : "OFF") << std::endl;
 }
 
 void RenderingSettingsWindow::SyncToRenderer() {
@@ -157,6 +156,11 @@ void RenderingSettingsWindow::SyncToRenderer() {
     ctx.gamma = m_gamma;
     ctx.enableHDR = m_enableHDR;
     ctx.envColor = m_envColor;
+
+    // Tonemapper
+    ctx.tonemapType = static_cast<RenderContext::TonemapType>(m_tonemapType);
+    ctx.tm_P = m_tm_P; ctx.tm_a = m_tm_a; ctx.tm_m = m_tm_m; ctx.tm_l = m_tm_l; ctx.tm_c = m_tm_c; ctx.tm_b = m_tm_b;
+    ctx.outputSRGB = m_outputSRGB;
     
     // Shadow settings
     ctx.enableShadows = m_enableShadows;
@@ -212,8 +216,8 @@ void RenderingSettingsWindow::SyncToRenderer() {
     ctx.lpvDebugBoost = m_lpvDebugBoost;
     
     std::cout << "[RenderingSettings] Synced to renderer - Exposure: " << m_exposure 
-              << ", Gamma: " << m_gamma << ", TAA: " << (m_enableTAA ? "ON" : "OFF")
-              << ", Bloom: " << (m_enableBloom ? "ON" : "OFF")
+              << ", Gamma: " << m_gamma << ", TM: " << m_tonemapType
+              << ", Bloom: " << (m_enableBloom ? "ON" : "OFF") 
               << ", SSAO: " << (m_enableSSAO ? "ON" : "OFF") << std::endl;
 }
 
@@ -245,6 +249,21 @@ void RenderingSettingsWindow::Render() {
             if (ImGui::SliderFloat("Gamma", &m_gamma, 1.0f, 3.0f, "%.2f")) {
                 SyncToRenderer(); 
             }
+
+            // Tonemapper selection and parameters
+            const char* tmItems[] = { "None", "Reinhard", "Filmic (GT)" };
+            if (ImGui::Combo("Tonemapper", &m_tonemapType, tmItems, IM_ARRAYSIZE(tmItems))) {
+                SyncToRenderer();
+            }
+            if (m_tonemapType == 2) {
+                if (ImGui::SliderFloat("P", &m_tm_P, 0.5f, 2.0f)) { SyncToRenderer(); }
+                if (ImGui::SliderFloat("a", &m_tm_a, 0.5f, 2.0f)) { SyncToRenderer(); }
+                if (ImGui::SliderFloat("m", &m_tm_m, 0.0f, 0.5f)) { SyncToRenderer(); }
+                if (ImGui::SliderFloat("l", &m_tm_l, 0.0f, 1.0f)) { SyncToRenderer(); }
+                if (ImGui::SliderFloat("c", &m_tm_c, 0.5f, 3.0f)) { SyncToRenderer(); }
+                if (ImGui::SliderFloat("b", &m_tm_b, 0.0f, 0.1f)) { SyncToRenderer(); }
+            }
+            if (ImGui::Checkbox("Output sRGB", &m_outputSRGB)) { SyncToRenderer(); }
             
             ImGui::Separator();
             ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Environment:");
@@ -390,14 +409,14 @@ void RenderingSettingsWindow::Render() {
             if (m_enableSSGI) {
                 if (ImGui::SliderFloat("SSGI Strength", &m_ssgiStrength, 0.0f, 3.0f, "%.2f")) { SyncToRenderer(); }
                 if (ImGui::SliderFloat("SSGI Radius (VS)", &m_ssgiRadius, 0.1f, 5.0f, "%.2f")) { SyncToRenderer(); }
-                if (ImGui::SliderInt("SSGI Samples", &m_ssgiSampleCount, 16, 512)) { SyncToRenderer(); }
+                if (ImGui::SliderInt("SSGI Samples", &m_ssgiSampleCount, 8, 256)) { SyncToRenderer(); }
                 if (ImGui::Checkbox("Half Resolution", &m_ssgiHalfRes)) { SyncToRenderer(); }
                 if (ImGui::SliderFloat("Temporal Alpha", &m_ssgiTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
                 if (ImGui::SliderFloat("Normal Reject", &m_ssgiNormalReject, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
-                if (ImGui::SliderFloat("Depth Sigma", &m_ssgiDepthReject, 0.01f, 2.0f, "%.2f")) { SyncToRenderer(); }
-                if (ImGui::SliderFloat("Thickness (VS)", &m_ssgiThickness, 0.01f, 2.0f, "%.2f")) { SyncToRenderer(); }
+                if (ImGui::SliderFloat("Depth Reject", &m_ssgiDepthReject, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
+                if (ImGui::SliderFloat("Thickness", &m_ssgiThickness, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
             }
-
+            
             ImGui::Separator();
             ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.5f, 1.0f), "Light Propagation Volumes (LPV):");
             ImGui::Text("Real-time dynamic global illumination");
@@ -625,6 +644,45 @@ void RenderingSettingsWindow::Render() {
                 ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "No renderer connected");
                 ImGui::Text("Connect ModularRenderer via");
                 ImGui::Text("SetModularRenderer()");
+
+                // Debug: Show all settings values
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.8f, 1.0f), "Current Settings:");
+                ImGui::Text("Exposure: %.2f", m_exposure);
+                ImGui::Text("Gamma: %.2f", m_gamma);
+                ImGui::Text("HDR: %s", m_enableHDR ? "Enabled" : "Disabled");
+                ImGui::ColorEdit3("Sky Color", &m_envColor.x);
+                ImGui::Text("Shadows: %s", m_enableShadows ? "Enabled" : "Disabled");
+                ImGui::Text("Bloom: %s", m_enableBloom ? "Enabled" : "Disabled");
+                ImGui::Text("TAA: %s", m_enableTAA ? "Enabled" : "Disabled");
+                ImGui::Text("SSAO: %s", m_enableSSAO ? "Enabled" : "Disabled");
+                
+                // Show Tonemapper settings
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.5f, 1.0f), "Tonemapper Settings:");
+                ImGui::Text("Type: %s", (m_tonemapType == 0) ? "None" : (m_tonemapType == 1) ? "Reinhard" : "Filmic (GT)");
+                ImGui::Text("P: %.2f", m_tm_P);
+                ImGui::Text("a: %.2f", m_tm_a);
+                ImGui::Text("m: %.2f", m_tm_m);
+                ImGui::Text("l: %.2f", m_tm_l);
+                ImGui::Text("c: %.2f", m_tm_c);
+                ImGui::Text("b: %.2f", m_tm_b);
+                ImGui::Text("Output sRGB: %s", m_outputSRGB ? "Enabled" : "Disabled");
+                
+                // Show LPV settings
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(0.6f, 0.9f, 0.6f, 1.0f), "LPV Global Illumination Settings:");
+                ImGui::Text("Enable LPV: %s", m_enableLPV ? "Yes" : "No");
+                if (m_enableLPV) {
+                    ImGui::Text("GI Strength: %.2f", m_lpvGIStrength);
+                    ImGui::Text("Grid Resolution: %d^3", m_lpvGridResolution);
+                    ImGui::Text("Voxel Size: %.2f m", m_lpvVoxelSize);
+                    ImGui::Text("RSM Resolution: %d", m_lpvRSMResolution);
+                    ImGui::Text("VPL Samples: %d", m_lpvVPLSampleCount);
+                    ImGui::Text("Propagation Iterations: %d", m_lpvPropagationIterations);
+                    ImGui::Text("Update Frequency: %d", m_lpvUpdateFrequency);
+                    ImGui::Text("Debug Visualization: %s", m_lpvDebugVisualization ? "On" : "Off");
+                }
             }
             
             ImGui::EndTabItem();
