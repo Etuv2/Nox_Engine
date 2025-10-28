@@ -49,7 +49,7 @@ private:
     glm::vec3 m_envColor = glm::vec3(0.1f, 0.15f, 0.2f);
 
     // Tonemapping UI state
-    int   m_tonemapType = 2; // 0=None,1=Reinhard,2=GT
+	int   m_tonemapType = 2; // 0=None,1=ACES,2=GT
     float m_tm_P = 1.0f, m_tm_a = 1.0f, m_tm_m = 0.22f, m_tm_l = 0.4f, m_tm_c = 1.33f, m_tm_b = 0.0f;
     bool  m_outputSRGB = true;
     

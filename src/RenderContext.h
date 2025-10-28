@@ -79,7 +79,7 @@ struct RenderContext {
 	float taaBlendFactor = 0.15f;
 	float taaVarianceThreshold = 0.8f;
 	float taaLumaWeight = 0.2f;
-	bool taaUseYCoCg = true;
+	bool taaUseYCoCg = false;
 	int taaJitterPattern = 0;
 	float taaDepthThreshold = 0.002f;
 	float taaNormalThreshold = 0.15f;
@@ -115,7 +115,7 @@ struct RenderContext {
 	bool enableHDR = true;
 
 	// Tonemapping settings (GT / Uchimura)
-	enum class TonemapType { None = 0, Reinhard = 1, GT = 2 };
+	enum class TonemapType { None = 0, ACES = 1, GT = 2 };
 	TonemapType tonemapType = TonemapType::GT;
 	float tm_P = 1.0f, tm_a = 1.0f, tm_m = 0.22f, tm_l = 0.4f, tm_c = 1.33f, tm_b = 0.0f;
 	bool outputSRGB = true;
