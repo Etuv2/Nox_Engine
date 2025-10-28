@@ -115,9 +115,15 @@ struct RenderContext {
 	bool enableHDR = true;
 
 	// Tonemapping settings (GT / Uchimura)
-	enum class TonemapType { None = 0, ACES = 1, GT = 2 };
+	enum class TonemapType { None = 0, ACES = 1, GT = 2, GT7 = 3 };
 	TonemapType tonemapType = TonemapType::GT;
 	float tm_P = 1.0f, tm_a = 1.0f, tm_m = 0.22f, tm_l = 0.4f, tm_c = 1.33f, tm_b = 0.0f;
+	// GT7 parameters
+	float tm7_peakNits = 1000.0f;   // display peak luminance
+	float tm7_blend = 0.6f;
+	float tm7_fadeStart = 0.98f;
+	float tm7_fadeEnd   = 1.16f;
+	bool  tm7_useJzazbz = false;    // switch UCS
 	bool outputSRGB = true;
 
 	// Environment settings

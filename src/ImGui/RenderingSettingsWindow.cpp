@@ -251,7 +251,7 @@ void RenderingSettingsWindow::Render() {
             }
 
             // Tonemapper selection and parameters
-            const char* tmItems[] = { "None", "ACES", "Filmic (GT)" };
+			const char* tmItems[] = { "None", "ACES", "Filmic (GT)" , "GT7" };
             if (ImGui::Combo("Tonemapper", &m_tonemapType, tmItems, IM_ARRAYSIZE(tmItems))) {
                 SyncToRenderer();
             }
@@ -262,6 +262,13 @@ void RenderingSettingsWindow::Render() {
                 if (ImGui::SliderFloat("l", &m_tm_l, 0.0f, 1.0f)) { SyncToRenderer(); }
                 if (ImGui::SliderFloat("c", &m_tm_c, 0.5f, 3.0f)) { SyncToRenderer(); }
                 if (ImGui::SliderFloat("b", &m_tm_b, 0.0f, 0.1f)) { SyncToRenderer(); }
+            }
+            else if (m_tonemapType == 3) {
+					if (ImGui::SliderFloat("Peak Nits", &m_tm7_peakNits, 250.0f, 10000.0f, "%.0f")) { SyncToRenderer(); }
+					if (ImGui::SliderFloat("Blend", &m_tm7_blend, 0.0f, 1.0f)) { SyncToRenderer(); }
+					if (ImGui::SliderFloat("Fade Start", &m_tm7_fadeStart, 0.8f, 1.2f)) { SyncToRenderer(); }
+					if (ImGui::SliderFloat("Fade End", &m_tm7_fadeEnd, 0.9f, 1.3f)) { SyncToRenderer(); }
+					if (ImGui::Checkbox("Use Jzazbz UCS", &m_tm7_useJzazbz)) { SyncToRenderer(); }
             }
             if (ImGui::Checkbox("Output sRGB", &m_outputSRGB)) { SyncToRenderer(); }
             
@@ -660,7 +667,11 @@ void RenderingSettingsWindow::Render() {
                 // Show Tonemapper settings
                 ImGui::Separator();
                 ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.5f, 1.0f), "Tonemapper Settings:");
-                ImGui::Text("Type: %s", (m_tonemapType == 0) ? "None" : (m_tonemapType == 1) ? "ACES" : "Filmic (GT)");
+                ImGui::Text("Type: %s", 
+                    (m_tonemapType == 0) ? "None" : 
+                    (m_tonemapType == 1) ? "ACES" : 
+                    (m_tonemapType == 2) ? "Filmic (GT)" : 
+                    "GT7");
                 ImGui::Text("P: %.2f", m_tm_P);
                 ImGui::Text("a: %.2f", m_tm_a);
                 ImGui::Text("m: %.2f", m_tm_m);

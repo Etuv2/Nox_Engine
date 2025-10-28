@@ -5,8 +5,12 @@
 */
 #include "MainWindow.h"
 #include <cstdio>
+//extern "C" {
+//	_declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+//}
 inline int main(int argc, char* argv[]) 
 {
+
 	MainWindow mainWindow;
 	if (!mainWindow.Initialize())
 		return EXIT_FAILURE;

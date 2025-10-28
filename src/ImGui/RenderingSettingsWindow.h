@@ -49,8 +49,14 @@ private:
     glm::vec3 m_envColor = glm::vec3(0.1f, 0.15f, 0.2f);
 
     // Tonemapping UI state
-	int   m_tonemapType = 2; // 0=None,1=ACES,2=GT
+	int   m_tonemapType = 2; // 0=None,1=ACES,2=GT,3=GT7
     float m_tm_P = 1.0f, m_tm_a = 1.0f, m_tm_m = 0.22f, m_tm_l = 0.4f, m_tm_c = 1.33f, m_tm_b = 0.0f;
+    // GT7 params
+    float m_tm7_peakNits = 1000.0f;
+    float m_tm7_blend = 0.6f;
+    float m_tm7_fadeStart = 0.98f;
+    float m_tm7_fadeEnd   = 1.16f;
+    bool  m_tm7_useJzazbz = false;
     bool  m_outputSRGB = true;
     
     // Shadow settings

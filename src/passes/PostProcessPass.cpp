@@ -71,6 +71,13 @@ void PostProcessPass::Execute(RenderContext& ctx,
     set1f("ub", ctx.tm_b);
     set1i("uOutputSRGB", ctx.outputSRGB ? 1 : 0);
 
+    // GT7 params
+    set1f("uTm7PeakNits", ctx.tm7_peakNits);
+    set1f("uTm7Blend", ctx.tm7_blend);
+    set1f("uTm7FadeStart", ctx.tm7_fadeStart);
+    set1f("uTm7FadeEnd", ctx.tm7_fadeEnd);
+    set1i("uTm7UseJzazbz", ctx.tm7_useJzazbz ? 1 : 0);
+
     std::cout << "[PostProcessPass] HDR FBO: " << (ctx.hdrFBO ? ctx.hdrFBO->GetFBO() : 0) << std::endl;
     std::cout << "[PostProcessPass] HDR texture: " << (ctx.hdrFBO ? ctx.hdrFBO->GetColorAttachment(0) : 0) << std::endl;
     
