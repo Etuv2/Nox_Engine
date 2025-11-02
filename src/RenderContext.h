@@ -129,6 +129,12 @@ struct RenderContext {
 	// Environment settings
 	glm::vec3 envColor{ 0.3f, 0.3f, 0.3f };
 
+	// IBL (Image-Based Lighting) intensity controls
+	float iblIntensity = 0.4f;          // Overall IBL contribution (0.0 - 2.0, default 0.4)
+	float skyboxExposure = 1.0f;        // Skybox background exposure (0.1 - 5.0, default 1.0)
+	float diffuseIBLScale = 0.5f;   // Diffuse IBL scale (0.0 - 2.0, default 0.5)
+	float specularIBLScale = 0.6f;      // Specular IBL scale (0.0 - 2.0, default 0.6)
+
 	// LPV Global Illumination settings
 	bool enableLPV = false;
 	float lpvGIStrength = 1.0f;

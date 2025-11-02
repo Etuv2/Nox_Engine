@@ -10,10 +10,10 @@
 // Include all pass headers
 #include "passes/GBufferPass.h"
 #include "passes/ShadowPass.h"
-#include "passes/LPVPass.h" // NEW: LPV GI pass
+#include "passes/LPVPass.h" //LPV GI pass
 #include "passes/SSAOPass.h"
 #include "passes/ScreenSpaceShadowPass.h"
-#include "passes/SSGIPass.h" // NEW: Screen Space GI pass
+#include "passes/SSGIPass.h" //Screen Space GI pass
 #include "passes/LightingPass.h"
 #include "passes/BloomPass.h"
 #include "passes/TAAPass.h"
@@ -43,11 +43,11 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 
     // Create and initialize all passes
     m_shadowPass = std::make_unique<ShadowPass>();
-    m_lpvPass = std::make_unique<LPVPass>(); // NEW: Create LPV pass
+    m_lpvPass = std::make_unique<LPVPass>(); //Create LPV pass
     m_gbufferPass = std::make_unique<GBufferPass>();
     m_ssaoPass = std::make_unique<SSAOPass>();
     m_screenSpaceShadowPass = std::make_unique<ScreenSpaceShadowPass>();
-    m_ssgiPass = std::make_unique<SSGIPass>(); // NEW: Create SSGI pass
+    m_ssgiPass = std::make_unique<SSGIPass>(); //Create SSGI pass
     m_lightingPass = std::make_unique<LightingPass>();
     m_bloomPass = std::make_unique<BloomPass>();
     m_taaPass = std::make_unique<TAAPass>();
@@ -56,11 +56,11 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 
     bool success = true;
     success &= m_shadowPass->Initialize(m_context);
-    success &= m_lpvPass->Initialize(m_context); // NEW: Initialize LPV pass
+    success &= m_lpvPass->Initialize(m_context); //Initialize LPV pass
     success &= m_gbufferPass->Initialize(m_context);
     success &= m_ssaoPass->Initialize(m_context);
     success &= m_screenSpaceShadowPass->Initialize(m_context);
-    success &= m_ssgiPass->Initialize(m_context); // NEW: Initialize SSGI pass
+    success &= m_ssgiPass->Initialize(m_context); //Initialize SSGI pass
     success &= m_lightingPass->Initialize(m_context);
     success &= m_bloomPass->Initialize(m_context);
     success &= m_taaPass->Initialize(m_context);
@@ -137,11 +137,11 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 
     // Notify all passes about resize
     if (m_shadowPass) m_shadowPass->Resize(m_context, newWidth, newHeight);
-    if (m_lpvPass) m_lpvPass->Resize(m_context, newWidth, newHeight); // NEW: Resize LPV pass
+    if (m_lpvPass) m_lpvPass->Resize(m_context, newWidth, newHeight); //Resize LPV pass
     if (m_gbufferPass) m_gbufferPass->Resize(m_context, newWidth, newHeight);
     if (m_ssaoPass) m_ssaoPass->Resize(m_context, newWidth, newHeight);
     if (m_screenSpaceShadowPass) m_screenSpaceShadowPass->Resize(m_context, newWidth, newHeight);
-    if (m_ssgiPass) m_ssgiPass->Resize(m_context, newWidth, newHeight); // NEW: Resize SSGI pass
+    if (m_ssgiPass) m_ssgiPass->Resize(m_context, newWidth, newHeight); //Resize SSGI pass
     if (m_lightingPass) m_lightingPass->Resize(m_context, newWidth, newHeight);
     if (m_bloomPass) m_bloomPass->Resize(m_context, newWidth, newHeight);
     if (m_taaPass) m_taaPass->Resize(m_context, newWidth, newHeight);
@@ -270,6 +270,17 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
     auto skybox = sceneGraph->GetSkybox();
     std::cout << "[ModularRenderer] Skybox: " << (skybox ? (skybox->IsReady() ? "Ready" : "Not Ready") : "None") << std::endl;
 
+    // Sync IBL intensity settings from context to skybox
+    if (skybox && skybox->IsReady()) {
+    skybox->SetIBLIntensity(m_context.iblIntensity);
+        skybox->SetSkyboxExposure(m_context.skyboxExposure);
+ skybox->SetDiffuseIBLScale(m_context.diffuseIBLScale);
+  skybox->SetSpecularIBLScale(m_context.specularIBLScale);
+     
+        std::cout << "[ModularRenderer] Applied IBL settings - Intensity: " << m_context.iblIntensity
+     << ", Exposure: " << m_context.skyboxExposure << std::endl;
+    }
+
     // Execute rendering pipeline in correct order
     std::cout << "[ModularRenderer] --- PASS 1: Shadow Pass ---" << std::endl;
     m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
@@ -279,7 +290,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
     m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
     CheckGLError("GBufferPass");
 
-    // NEW: LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
+    //LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
     // This generates dynamic indirect lighting from the first light bounce
     if (m_context.enableLPV) {
         std::cout << "[ModularRenderer] --- PASS 2.5: LPV GI Pass ---" << std::endl;
@@ -298,7 +309,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
             m_lpvPass->config.giStrength = m_context.lpvGIStrength;
             m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;
             
-            // NOTE: gridCenter is intentionally NOT set here - it will be set by the LPV pass
+            //gridCenter is intentionally NOT set here - it will be set by the LPV pass
             // based on either the LPV volume node position or camera position
             
             m_lpvPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
@@ -351,7 +362,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
         std::cout << "[ModularRenderer] TAA Pass SKIPPED (disabled)" << std::endl;
     }
 
-    // NEW: SSGI Pass - Screen Space Global Illumination (before lighting)
+    //SSGI Pass - Screen Space Global Illumination (before lighting)
     if (m_context.enableSSGI && m_ssgiPass) {
         std::cout << "[ModularRenderer] --- PASS 4.5: SSGI Pass ---" << std::endl;
         m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
@@ -361,71 +372,74 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
     }
 
     std::cout << "[ModularRenderer] --- PASS 5: Lighting Pass ---" << std::endl;
-    // CRITICAL: Provide SSAO texture to lighting pass (or 0 if disabled)
-    m_lightingPass->SetSSAOTexture(ssaoTex);
-    // CRITICAL: Provide screen-space shadow texture to lighting pass (or 0 if disabled)
+    //Provide SSAO texture to lighting pass (or 0 if disabled)
+  m_lightingPass->SetSSAOTexture(ssaoTex);
+//Provide screen-space shadow texture to lighting pass (or 0 if disabled)
     m_lightingPass->SetScreenSpaceShadowTexture(sssTex);
     
-    // NEW: Provide SSGI texture to lighting pass (or 0 if disabled)
+    //Provide SSGI texture to lighting pass (or 0 if disabled)
     if (m_context.enableSSGI && m_ssgiPass) {
         m_lightingPass->SetSSGITexture(m_ssgiPass->GetSSGITexture());
-    } else {
+ } else {
         m_lightingPass->SetSSGITexture(0);
     }
     
-    // NEW: Provide LPV textures to lighting pass (or 0 if disabled)
+    //Provide LPV textures to lighting pass (or 0 if disabled)
     if (m_context.enableLPV && m_lpvPass) {
         GLuint lpvR = m_lpvPass->GetLPVTextureR();
         GLuint lpvG = m_lpvPass->GetLPVTextureG();
         GLuint lpvB = m_lpvPass->GetLPVTextureB();
         
         std::cout << "[ModularRenderer] Setting LPV textures to LightingPass - R:" << lpvR 
-                  << " G:" << lpvG << " B:" << lpvB << std::endl;
+             << " G:" << lpvG << " B:" << lpvB << std::endl;
         
         m_lightingPass->SetLPVTextures(lpvR, lpvG, lpvB);
     } else {
         std::cout << "[ModularRenderer] LPV disabled - clearing LPV textures" << std::endl;
-        m_lightingPass->SetLPVTextures(0, 0, 0);
+    m_lightingPass->SetLPVTextures(0, 0, 0);
     }
     
     m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
     CheckGLError("LightingPass");
 
-	//std::cout << "[ModularRenderer] --- PASS 8: Transparent Forward Pass ---" << std::endl;
-
-	//m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-	//CheckGLError("TransparentForwardPass");
-
-// Skybox rendering (background into HDR)
+    // Skybox rendering (background into HDR)
     if (skybox && skybox->IsReady()) {
         std::cout << "[ModularRenderer] --- PASS 6: Skybox Background ---" << std::endl;
         m_context.hdrFBO->Bind();
-        
+        //Skybox uses GL_LEQUAL depth test and writes depth at far plane (z=w)
         skybox->Draw(m_context.view, m_context.proj);
         CheckGLError("Skybox");
-        
-		FrameBuffer::Unbind();
     }
+
+    //// Transparent forward rendering
+    //std::cout << "[ModularRenderer] --- PASS 7: Transparent Forward Pass ---" << std::endl;
+    //m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+    //CheckGLError("TransparentForwardPass");
+    
+    // NOW unbind HDR FBO after both skybox and transparent rendering
+    FrameBuffer::Unbind();
 
     // Only execute Bloom if enabled
     GLuint bloomTex = 0;
-    if (m_context.enableBloom) {
-        std::cout << "[ModularRenderer] --- PASS 7: Bloom Pass ---" << std::endl;
+    if (m_context.enableBloom) 
+    {
+        std::cout << "[ModularRenderer] --- PASS 8: Bloom Pass ---" << std::endl;
         m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
         CheckGLError("BloomPass");
         bloomTex = m_bloomPass->GetBloomResult();
         std::cout << "[ModularRenderer] Bloom Texture ID: " << bloomTex << std::endl;
-    } else {
+    } 
+    else {
         std::cout << "[ModularRenderer] Bloom Pass SKIPPED (disabled)" << std::endl;
     }
 
     std::cout << "[ModularRenderer] --- PASS 9: Post Process Pass ---" << std::endl;
-    // CRITICAL: Provide bloom texture to post-process (or 0 if disabled)
+    //Provide bloom texture to post-process (or 0 if disabled)
     m_postProcessPass->SetBloomTexture(bloomTex);
     m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
     CheckGLError("PostProcessPass");
 
-    // NEW: Capture color history for SSGI (after post-processing)
+    //Capture color history for SSGI (after post-processing)
     if (m_ssgiPass) {
         m_ssgiPass->CaptureHistory(m_context);
     }

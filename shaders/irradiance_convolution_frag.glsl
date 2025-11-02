@@ -22,12 +22,11 @@ void main()
     vec3 right = normalize(cross(up, N));
     up         = normalize(cross(N, right));
        
-    // CRITICAL FIX: Increase sampling density for better convolution
-    // Use smaller delta for more samples, but optimize with early termination
-    float sampleDelta = 0.015; // Reduced from 0.025 for better quality
+    // Sampling parameters - balanced quality vs performance
+    float sampleDelta = 0.025; // Reasonable sample count
     float nrSamples = 0.0;
     
-    // CRITICAL FIX: Add more samples and better distribution
+    // Hemisphere convolution for diffuse irradiance
     for(float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta)
     {
         for(float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta)
@@ -37,20 +36,35 @@ void main()
             // tangent space to world
             vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * N; 
 
-            // CRITICAL FIX: Ensure we're sampling the environment map correctly
+            // Sample the environment map
             vec3 envSample = texture(environmentMap, sampleVec).rgb;
+        
+            // CRITICAL FIX: Ensure samples are positive (clamp to prevent negative artifacts)
+            envSample = max(envSample, vec3(0.0));
             
-            // Apply Lambert's cosine law weighting
-            float cosTheta = cos(theta);
-            float sinTheta = sin(theta);
-            
+            // Apply cosine-weighted hemisphere integration
+            // irradiance = integral( L * cos(theta) * sin(theta) )
+            float cosTheta = max(cos(theta), 0.0);
+            float sinTheta = max(sin(theta), 0.0);
+       
             irradiance += envSample * cosTheta * sinTheta;
             nrSamples++;
         }
     }
     
-    // CRITICAL FIX: Proper normalization with PI factor
-    irradiance = PI * irradiance * (1.0 / float(nrSamples));
+    // CRITICAL FIX: Proper normalization for hemisphere integration
+    // The PI factor is part of the Lambert BRDF (albedo / PI)
+    // We integrate: integral(L * cos(theta) * sin(theta) * d_theta * d_phi)
+    // Normalization: PI / total_samples
+    irradiance = (PI * irradiance) / max(nrSamples, 1.0);
+    
+    // CRITICAL FIX: Final clamp to ensure strictly positive output
+    irradiance = max(irradiance, vec3(0.0));
+    
+    // Additional safety check for NaN/Inf
+    if (any(isnan(irradiance)) || any(isinf(irradiance))) {
+        irradiance = vec3(0.0);
+    }
     
     FragColor = vec4(irradiance, 1.0);
 }

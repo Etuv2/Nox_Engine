@@ -224,6 +224,9 @@ void Skybox::Draw(const glm::mat4& view, const glm::mat4& projection)
     glUniformMatrix4fv(glGetUniformLocation(m_skyboxShader, "view"), 1, GL_FALSE, glm::value_ptr(viewNoTrans));
     glUniformMatrix4fv(glGetUniformLocation(m_skyboxShader, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
+    // CRITICAL: Pass skybox exposure to control background brightness independently from IBL
+    glUniform1f(glGetUniformLocation(m_skyboxShader, "skyboxExposure"), m_skyboxExposure);
+
     // Bind environment cubemap using state manager
     GLStateManager::Instance().BindTextureCube(GL_TEXTURE0 + TextureUnits::SKYBOX_CUBEMAP, m_envCubemap);
     SET_UNIFORM_TEXTURE_UNIT(m_skyboxShader, "environmentMap", TextureUnits::SKYBOX_CUBEMAP);
@@ -380,14 +383,25 @@ bool Skybox::GenerateIrradianceMap()
         renderCube();
     }
 
-    // Simple debug readback (sample face 0 center pixel)
+    // Enhanced debug readback with validation
     float pixel[3] = {0,0,0};
     GLuint debugFBO; glGenFramebuffers(1, &debugFBO); glBindFramebuffer(GL_FRAMEBUFFER, debugFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X, m_irradianceMap, 0);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
-        glReadPixels(16,16,1,1,GL_RGB,GL_FLOAT,pixel);
+      glReadPixels(16,16,1,1,GL_RGB,GL_FLOAT,pixel);
         std::cout << "[Skybox] Irradiance debug sample = (" << pixel[0] << ", " << pixel[1] << ", " << pixel[2] << ")" << std::endl;
-    }
+        
+        // CRITICAL: Validate irradiance values are positive
+   if (pixel[0] < 0.0f || pixel[1] < 0.0f || pixel[2] < 0.0f) {
+     std::cerr << "[Skybox] WARNING: Irradiance contains negative values! This indicates a shader error." << std::endl;
+        }
+        if (std::isnan(pixel[0]) || std::isnan(pixel[1]) || std::isnan(pixel[2])) {
+    std::cerr << "[Skybox] ERROR: Irradiance contains NaN values! IBL will be corrupted." << std::endl;
+            glBindFramebuffer(GL_FRAMEBUFFER, m_captureFBO);
+   glDeleteFramebuffers(1, &debugFBO);
+            return false;
+        }
+  }
     glBindFramebuffer(GL_FRAMEBUFFER, m_captureFBO); // restore capture FBO for later use
     glDeleteFramebuffers(1, &debugFBO);
 
@@ -476,6 +490,18 @@ bool Skybox::GeneratePrefilteredMap()
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE) {
         glReadPixels(64,64,1,1,GL_RGB,GL_FLOAT,pix);
         std::cout << "[Skybox] Prefilter debug sample = (" << pix[0] << ", " << pix[1] << ", " << pix[2] << ")" << std::endl;
+        
+    // CRITICAL: Validate prefiltered values are positive
+   if (pix[0] < 0.0f || pix[1] < 0.0f || pix[2] < 0.0f) {
+       std::cerr << "[Skybox] WARNING: Prefiltered map contains negative values! This indicates a shader error." << std::endl;
+ }
+  if (std::isnan(pix[0]) || std::isnan(pix[1]) || std::isnan(pix[2])) {
+          std::cerr << "[Skybox] ERROR: Prefiltered map contains NaN values! IBL will be corrupted." << std::endl;
+   glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+      glDeleteFramebuffers(1,&dbgFBO);
+       glDeleteFramebuffers(1, &fbo);
+            return false;
+  }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, fbo); // restore before delete
     glDeleteFramebuffers(1,&dbgFBO);

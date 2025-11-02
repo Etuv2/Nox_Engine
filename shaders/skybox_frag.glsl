@@ -3,11 +3,16 @@ out vec4 FragColor;
 in vec3 TexCoords;
 
 uniform samplerCube environmentMap;
+uniform float skyboxExposure = 1.0; // Exposure control for skybox background
 
 void main()
 {
     // Sample the environment map
     vec3 envColor = texture(environmentMap, normalize(TexCoords)).rgb;
+    
+    // Apply exposure control to skybox background
+    // This allows independent control of skybox brightness vs IBL lighting
+    envColor *= skyboxExposure;
     
     // Since we're rendering into the HDR buffer, keep values linear
     // Remove tone mapping and gamma correction - these happen in post-processing

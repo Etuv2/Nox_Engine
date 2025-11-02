@@ -38,6 +38,20 @@ public:
 	GLuint GetBRDFLUT() const { return m_brdfLUT; }
 	float GetPrefilteredMaxLOD() const { return m_prefilteredMaxLOD; }
 
+	// IBL intensity controls to prevent over-bright lighting
+	void SetIBLIntensity(float intensity) { m_iblIntensity = intensity; }
+	float GetIBLIntensity() const { return m_iblIntensity; }
+	
+	void SetSkyboxExposure(float exposure) { m_skyboxExposure = exposure; }
+	float GetSkyboxExposure() const { return m_skyboxExposure; }
+	
+	// Separate control for diffuse vs specular IBL contribution
+	void SetDiffuseIBLScale(float scale) { m_diffuseIBLScale = scale; }
+	float GetDiffuseIBLScale() const { return m_diffuseIBLScale; }
+	
+	void SetSpecularIBLScale(float scale) { m_specularIBLScale = scale; }
+	float GetSpecularIBLScale() const { return m_specularIBLScale; }
+
 	// Validation methods for IBL resources (heavy validation)
 	bool ValidateIBLTextures() const; // legacy detailed validation
 	void LogTextureInfo() const;
@@ -100,6 +114,12 @@ private:
 	GLuint m_irradianceShader = 0;      // Convolution shader for irradiance
 	GLuint m_prefilterShader = 0;       // Prefilter shader for specular
 	GLuint m_brdfShader = 0;            // BRDF integration shader
+
+	// IBL intensity controls to prevent over-bright results
+	float m_iblIntensity = 0.4f;        // Overall IBL multiplier (reduced from 1.0 to 0.4)
+	float m_skyboxExposure = 1.0f;      // Exposure for skybox rendering only
+	float m_diffuseIBLScale = 0.5f;     // Scale for diffuse irradiance contribution
+	float m_specularIBLScale = 0.6f;    // Scale for specular prefiltered contribution
 
 	// Pipeline readiness flag (set true only after successful full verification)
 	bool m_pipelineReady = false;

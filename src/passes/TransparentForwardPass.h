@@ -3,7 +3,7 @@
 #include <GL/glew.h>
 
 /**
- * TransparentForwardPass renders transparent objects with physically correct glass-like materials.
+ * @brief TransparentForwardPass renders transparent objects with physically correct glass-like materials.
  * 
  * Key Features:
  * - Automatic detection of transparent nodes based on mesh alpha properties
@@ -22,15 +22,23 @@
  *   - hasAlpha == true
  *   - baseColorFactor.a < 1.0
  * 
- * Rendering Pipeline:
- * 1. Binds to HDR FBO (after skybox rendering)
- * 2. Enables depth testing (GL_LESS) to respect opaque geometry
+ * Rendering Pipeline Position:
+ * This pass MUST execute AFTER the skybox pass to ensure correct depth ordering:
+ * 1. Deferred lighting renders opaque geometry to HDR FBO
+ * 2. Skybox renders at maximum depth (z=w, GL_LEQUAL)
+ * 3. **Transparent pass renders here** - tests against skybox depth
+ * 4. Post-processing (bloom, TAA, tonemapping)
+ * 
+ * Rendering State:
+ * 1. Assumes HDR FBO is already bound (from skybox rendering)
+ * 2. Enables depth testing (GL_LESS) to respect opaque geometry + skybox
  * 3. Disables depth writes (glDepthMask(GL_FALSE)) for transparent layering
  * 4. Uses standard alpha blending (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
- * 5. Collects transparent nodes from scene graph (not just GUI nodes)
+ * 5. Collects transparent nodes from scene graph
  * 6. Sorts transparent objects back-to-front based on distance to camera
  * 7. Renders with full PBR lighting and IBL reflections
- * 8. Keeps HDR FBO bound for subsequent passes
+ * 8. Restores depth writes and disables blending
+ * 9. Keeps HDR FBO bound for subsequent passes
  * 
  * Material Properties:
  * - transmissionFactor: Controls transparency (0.9 = 90% transparent glass)
@@ -42,6 +50,9 @@
  * - ALPHA_BLEND: Full alpha blending for smooth transparency
  * - Materials with hasAlpha flag set
  * - Materials with alpha in baseColorFactor
+ * 
+ * Critical: This pass does NOT clear or rebind framebuffers. It operates on the
+ * existing HDR FBO content with depth buffer from previous passes.
  * 
  * Note: Requires valid IBL textures from skybox for realistic reflections.
  */

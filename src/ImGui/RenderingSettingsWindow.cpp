@@ -17,6 +17,12 @@ RenderingSettingsWindow::RenderingSettingsWindow()
     m_enableHDR = true;
     m_envColor = glm::vec3(0.3f, 0.3f, 0.3f);
     
+    // IBL intensity controls
+    m_iblIntensity = 0.4f;
+    m_skyboxExposure = 1.0f;
+    m_diffuseIBLScale = 0.5f;
+    m_specularIBLScale = 0.6f;
+    
     // Shadow settings - match RenderContext defaults
     m_enableShadows = true;
     m_shadowBias = 0.0008f; // Increased to compensate for no normal offset
@@ -90,6 +96,12 @@ void RenderingSettingsWindow::SyncFromRenderer() {
     m_enableHDR = ctx.enableHDR;
     m_envColor = ctx.envColor;
 
+    // IBL intensity controls
+    m_iblIntensity = ctx.iblIntensity;
+    m_skyboxExposure = ctx.skyboxExposure;
+    m_diffuseIBLScale = ctx.diffuseIBLScale;
+    m_specularIBLScale = ctx.specularIBLScale;
+    
     // Tonemapper
     m_tonemapType = static_cast<int>(ctx.tonemapType);
     m_tm_P = ctx.tm_P; m_tm_a = ctx.tm_a; m_tm_m = ctx.tm_m; m_tm_l = ctx.tm_l; m_tm_c = ctx.tm_c; m_tm_b = ctx.tm_b;
@@ -157,6 +169,12 @@ void RenderingSettingsWindow::SyncToRenderer() {
     ctx.enableHDR = m_enableHDR;
     ctx.envColor = m_envColor;
 
+    // IBL intensity controls
+    ctx.iblIntensity = m_iblIntensity;
+    ctx.skyboxExposure = m_skyboxExposure;
+    ctx.diffuseIBLScale = m_diffuseIBLScale;
+    ctx.specularIBLScale = m_specularIBLScale;
+    
     // Tonemapper
     ctx.tonemapType = static_cast<RenderContext::TonemapType>(m_tonemapType);
     ctx.tm_P = m_tm_P; ctx.tm_a = m_tm_a; ctx.tm_m = m_tm_m; ctx.tm_l = m_tm_l; ctx.tm_c = m_tm_c; ctx.tm_b = m_tm_b;
@@ -265,9 +283,9 @@ void RenderingSettingsWindow::Render() {
             }
             else if (m_tonemapType == 3) {
 					if (ImGui::SliderFloat("Peak Nits", &m_tm7_peakNits, 250.0f, 10000.0f, "%.0f")) { SyncToRenderer(); }
-					if (ImGui::SliderFloat("Blend", &m_tm7_blend, 0.0f, 1.0f)) { SyncToRenderer(); }
-					if (ImGui::SliderFloat("Fade Start", &m_tm7_fadeStart, 0.8f, 1.2f)) { SyncToRenderer(); }
-					if (ImGui::SliderFloat("Fade End", &m_tm7_fadeEnd, 0.9f, 1.3f)) { SyncToRenderer(); }
+					if (ImGui::SliderFloat("Blend", &m_tm7_blend, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
+					if (ImGui::SliderFloat("Fade Start", &m_tm7_fadeStart, 0.8f, 1.2f, "%.2f")) { SyncToRenderer(); }
+					if (ImGui::SliderFloat("Fade End", &m_tm7_fadeEnd, 0.9f, 1.3f, "%.2f")) { SyncToRenderer(); }
 					if (ImGui::Checkbox("Use Jzazbz UCS", &m_tm7_useJzazbz)) { SyncToRenderer(); }
             }
             if (ImGui::Checkbox("Output sRGB", &m_outputSRGB)) { SyncToRenderer(); }
@@ -280,7 +298,55 @@ void RenderingSettingsWindow::Render() {
             }
             
             ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Bloom Effect:");
+            ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "IBL (Image-Based Lighting):");
+       ImGui::Text("Control skybox and environment lighting intensity");
+      
+            if (ImGui::SliderFloat("IBL Overall Intensity", &m_iblIntensity, 0.0f, 2.0f, "%.2f")) {
+        SyncToRenderer();
+  }
+      ImGui::SameLine();
+       if (ImGui::Button("?##ibl_intensity")) {}
+    if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Overall multiplier for IBL contribution\nReduces over-bright HDR environment lighting");
+        }
+      
+            if (ImGui::SliderFloat("Skybox Background Exposure", &m_skyboxExposure, 0.1f, 5.0f, "%.2f")) {
+    SyncToRenderer();
+            }
+  ImGui::SameLine();
+   if (ImGui::Button("?##skybox_exposure")) {}
+       if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Exposure for skybox background only\nDoes not affect lighting, only visual brightness");
+     }
+       
+if (ImGui::SliderFloat("Diffuse IBL Scale", &m_diffuseIBLScale, 0.0f, 2.0f, "%.2f")) {
+         SyncToRenderer();
+      }
+    ImGui::SameLine();
+        if (ImGui::Button("?##diffuse_ibl")) {}
+   if (ImGui::IsItemHovered()) {
+     ImGui::SetTooltip("Scale for diffuse irradiance contribution\nControls ambient/indirect diffuse lighting");
+   }
+            
+    if (ImGui::SliderFloat("Specular IBL Scale", &m_specularIBLScale, 0.0f, 2.0f, "%.2f")) {
+    SyncToRenderer();
+            }
+     ImGui::SameLine();
+       if (ImGui::Button("?##specular_ibl")) {}
+            if (ImGui::IsItemHovered()) {
+     ImGui::SetTooltip("Scale for specular prefiltered contribution\nControls environment reflections");
+            }
+          
+      if (ImGui::Button("Reset IBL to Defaults")) {
+      m_iblIntensity = 0.4f;
+    m_skyboxExposure = 1.0f;
+                m_diffuseIBLScale = 0.5f;
+       m_specularIBLScale = 0.6f;
+     SyncToRenderer();
+      }
+            
+            ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Bloom Effect:");
             
             if (ImGui::Checkbox("Enable Bloom", &m_enableBloom)) {
                 SyncToRenderer(); 
@@ -773,6 +839,12 @@ void RenderingSettingsWindow::ResetToDefaults() {
     m_gamma = 2.2f;
     m_enableHDR = true;
     m_envColor = glm::vec3(0.3f, 0.3f, 0.3f);
+    
+    // IBL intensity controls
+    m_iblIntensity = 0.4f;
+    m_skyboxExposure = 1.0f;
+    m_diffuseIBLScale = 0.5f;
+    m_specularIBLScale = 0.6f;
     
     // Shadows - match RenderContext defaults
     m_enableShadows = true;

@@ -219,24 +219,38 @@ void LightingPass::Execute(RenderContext& ctx,
         
         glActiveTexture(GL_TEXTURE0 + TextureUnits::PREFILTERED_ENV_MAP);
         glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->GetPrefilteredMap());
-        
+    
         glActiveTexture(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
-        glBindTexture(GL_TEXTURE_2D, skybox->GetBRDFLUT());
+     glBindTexture(GL_TEXTURE_2D, skybox->GetBRDFLUT());
         
         glUniform1f(glGetUniformLocation(m_shader, "prefilteredMaxLOD"), 
-                    skybox->GetPrefilteredMaxLOD());
+        skybox->GetPrefilteredMaxLOD());
+  
+        // CRITICAL: Set IBL intensity controls to prevent over-bright results
+ glUniform1f(glGetUniformLocation(m_shader, "iblIntensity"), ctx.iblIntensity);
+ glUniform1f(glGetUniformLocation(m_shader, "diffuseIBLScale"), ctx.diffuseIBLScale);
+        glUniform1f(glGetUniformLocation(m_shader, "specularIBLScale"), ctx.specularIBLScale);
+        
+ std::cout << "[LightingPass] IBL intensity controls - Overall: " << ctx.iblIntensity 
+         << ", Diffuse: " << ctx.diffuseIBLScale 
+     << ", Specular: " << ctx.specularIBLScale << std::endl;
     } else {
         // Use fallback IBL
         glActiveTexture(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
         glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallbackCubemap);
         
-        glActiveTexture(GL_TEXTURE0 + TextureUnits::PREFILTERED_ENV_MAP);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallbackCubemap);
+ glActiveTexture(GL_TEXTURE0 + TextureUnits::PREFILTERED_ENV_MAP);
+   glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallbackCubemap);
         
         glActiveTexture(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
         glBindTexture(GL_TEXTURE_2D, m_fallbackBRDF);
         
         glUniform1f(glGetUniformLocation(m_shader, "prefilteredMaxLOD"), 0.0f);
+        
+  // Set conservative fallback IBL values
+        glUniform1f(glGetUniformLocation(m_shader, "iblIntensity"), 0.3f);
+   glUniform1f(glGetUniformLocation(m_shader, "diffuseIBLScale"), 0.4f);
+        glUniform1f(glGetUniformLocation(m_shader, "specularIBLScale"), 0.5f);
     }
 
     glUniform1i(glGetUniformLocation(m_shader, "irradianceMap"), TextureUnits::IRRADIANCE_MAP);

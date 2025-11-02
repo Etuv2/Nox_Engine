@@ -27,6 +27,11 @@ uniform samplerCube prefilteredMap;
 uniform sampler2D brdfLUT;
 uniform float prefilteredMaxLOD;
 
+// IBL intensity controls to prevent over-bright results
+uniform float iblIntensity = 0.4;       // Overall IBL multiplier
+uniform float diffuseIBLScale = 0.5;    // Diffuse irradiance scale
+uniform float specularIBLScale = 0.6; // Specular prefiltered scale
+
 // LPV Global Illumination
 uniform sampler3D lpvTextureR;
 uniform sampler3D lpvTextureG;
@@ -415,29 +420,28 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 diffuseAlbe
     float G   = GeometrySmith(N, V, L, roughness);
     vec3  F   = fresnelSchlick(max(dot(H, V), 0.0), F0);
     
-    // Standard BRDF calculation without kD/kS confusion
-    vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL;
-    vec3 specular = numerator / max(denominator, 0.001);
-    
-    // Energy conservation
+    // Standard BRDF calculation
     vec3 kS = F;
     vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+    vec3 specular = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * NdotL, 0.001);
     
-    // Traditional shadow map shadow
-    float shadowMapShadow = 1.0;
-    if (enableShadows == 1 && Ld.shadowData.z > 0.5) {
-        int startSlice = int(Ld.shadowData.x + 0.5);
-        int sliceCount = int(Ld.shadowData.y + 0.5);
-        vec3 shadowLightDir = (type == 0) ? lightDir : normalize(lightPos - worldPos);
-        shadowMapShadow = ComputeShadowForLight(type, startSlice, sliceCount, worldPos, N, shadowLightDir, lightPos);
-        shadowMapShadow = mix(0.3, 1.0, shadowMapShadow); // keep shadows from going full black
-    }
+    // Traditional shadow map shadow - optimized without branching
+    int startSlice = int(Ld.shadowData.x + 0.5);
+    int sliceCount = int(Ld.shadowData.y + 0.5);
+    vec3 shadowLightDir = mix(normalize(lightPos - worldPos), lightDir, float(type == 0));
+    
+    // Compute shadow unconditionally, then blend based on enable flags
+    float shadowMapShadow = ComputeShadowForLight(type, startSlice, sliceCount, worldPos, N, shadowLightDir, lightPos);
+    shadowMapShadow = mix(0.3, 1.0, shadowMapShadow); // keep shadows from going full black
+    
+    // Apply shadow only when both enableShadows and shadow data are valid
+    // Uses multiplication instead of branching: if disabled, multiply by 1.0 (no change)
+    float shadowEnableMask = float(enableShadows == 1) * float(Ld.shadowData.z > 0.5);
+    shadowMapShadow = mix(1.0, shadowMapShadow, shadowEnableMask);
 
     // Screen-space shadow (contact shadow) - sampled from precomputed texture
     // Contact shadows complement shadow maps by adding fine detail at surface contact points
     float contactShadowVisibility = texture(screenSpaceShadowMap, vTexCoord).r;
-    // ENHANCED: Better distance-based shadow blending for realistic results
     float viewDepth = length(worldPos - viewPos);
    
     float contactStrength = smoothstep(15.0, 1.0, viewDepth); // Strong at close range, fade at distance
@@ -464,32 +468,57 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 diffuseAlbe
 vec3 ComputeIBL(vec3 N, vec3 V, vec3 diffuseAlbedo, float metallic, float roughness, vec3 F0, float diffuseAO, float specularAO) {
     vec3 R = reflect(-V, N);
     roughness = max(roughness, 0.04);
-    
+  
     // Sample IBL textures
     vec3 irradiance = texture(irradianceMap, N).rgb;
     float lod = roughness * prefilteredMaxLOD;
     vec3 prefiltered = textureLod(prefilteredMap, R, lod).rgb;
     
+    // CRITICAL FIX: Ensure IBL samples are strictly positive
+    irradiance = max(irradiance, vec3(0.0));
+    prefiltered = max(prefiltered, vec3(0.0));
+    
     float NdotV = max(dot(N, V), 0.0);
     vec2 brdf = texture(brdfLUT, vec2(NdotV, roughness)).rg;
     
+    // CRITICAL FIX: Ensure BRDF LUT values are valid
+    brdf = max(brdf, vec2(0.0));
+
     // Calculate Fresnel for IBL
     vec3 F = fresnelSchlick(NdotV, F0);
     
     // Conservative energy compensation to prevent blow-out
     vec3 energyCompensation = BoundedEnergyCompensation(F, brdf);
     
-    // Diffuse IBL with AO
+    // Diffuse IBL with AO and intensity scaling
     vec3 kS = F;
     vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
     vec3 diffuse = kD * diffuseAlbedo * irradiance * diffuseAO;
+    
+    // Apply diffuse IBL scale to prevent over-brightness
+    diffuse *= diffuseIBLScale;
     
     // Specular IBL with conservative energy compensation and specular occlusion
     vec3 specular = prefiltered * (F * brdf.x + brdf.y) * specularAO;
     // Apply energy compensation more conservatively
     specular *= mix(vec3(1.0), energyCompensation, 0.5);
     
-    return diffuse + specular;
+    // Apply specular IBL scale to prevent over-brightness
+    specular *= specularIBLScale;
+    
+    // CRITICAL FIX: Final clamp to ensure strictly positive IBL output
+    diffuse = max(diffuse, vec3(0.0));
+    specular = max(specular, vec3(0.0));
+    
+    // Apply overall IBL intensity multiplier
+    vec3 iblResult = (diffuse + specular) * iblIntensity;
+    
+    // CRITICAL FIX: Safety check for NaN/Inf
+    if (any(isnan(iblResult)) || any(isinf(iblResult))) {
+        return vec3(0.0);
+    }
+    
+    return max(iblResult, vec3(0.0));
 }
 
 // LPV Helper functions
@@ -565,16 +594,12 @@ vec3 SampleLPV(vec3 worldPos, vec3 normal, vec3 diffuseAlbedo, float metallic, f
     vec4 shG = texture(lpvTextureG, uvw);
     vec4 shB = texture(lpvTextureB, uvw);
     
-    // CRITICAL: Transform normal to grid-local space for proper SH evaluation
+    //Transform normal to grid-local space for proper SH evaluation
     vec3 localNormal = rotateVectorInverse(normal, lpvGridOrientation);
     
     // Evaluate incoming irradiance using surface normal (in grid-local space)
     // This reconstructs the directional distribution of incoming light
     vec3 irradiance = EvaluateSH(shR, shG, shB, localNormal);
-    
-    // CRITICAL: Apply energy-conserving diffuse BRDF
-    // The irradiance already represents light integrated over the hemisphere,
-    // so we only need to apply the diffuse albedo and metallic factor
     
     // Metals have no diffuse component (all energy goes to specular)
     vec3 kD = vec3(1.0 - metallic);

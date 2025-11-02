@@ -66,7 +66,7 @@ vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
 void main()
 {		
     vec3 N = normalize(WorldPos);
-    
+  
     // make the simplifying assumption that V equals R equals the normal 
     vec3 R = N;
     vec3 V = R;
@@ -103,8 +103,12 @@ void main()
                 // Clamp to prevent negative mip levels
                 mipLevel = max(mipLevel, 0.0);
             }
+    
+            // Sample environment and ensure positive
+            vec3 envSample = textureLod(environmentMap, L, mipLevel).rgb;
+            envSample = max(envSample, vec3(0.0)); // Prevent negative samples
             
-            prefilteredColor += textureLod(environmentMap, L, mipLevel).rgb * NdotL;
+            prefilteredColor += envSample * NdotL;
             totalWeight      += NdotL;
         }
     }
@@ -115,6 +119,9 @@ void main()
         // CRITICAL FIX: Fallback for edge cases
         prefilteredColor = texture(environmentMap, R).rgb;
     }
+ 
+    // CRITICAL FIX: Ensure strictly positive output
+    prefilteredColor = max(prefilteredColor, vec3(0.0));
 
     // CRITICAL FIX: Ensure rough surfaces are properly blurred
     // For very rough surfaces (roughness > 0.8), add extra blur
@@ -122,18 +129,25 @@ void main()
         vec3 extraBlur = vec3(0.0);
         int blurSamples = 16;
         float blurRadius = (roughness - 0.8) * 0.5; // 0 to 0.1 radius
-        
+    
         for(int i = 0; i < blurSamples; ++i) {
             float angle = float(i) * 2.0 * PI / float(blurSamples);
             vec3 offset = vec3(cos(angle) * blurRadius, sin(angle) * blurRadius, 0.0);
             vec3 sampleDir = normalize(R + offset);
-            extraBlur += texture(environmentMap, sampleDir).rgb;
-        }
-        extraBlur /= float(blurSamples);
+            vec3 blurSample = texture(environmentMap, sampleDir).rgb;
+            blurSample = max(blurSample, vec3(0.0)); // Prevent negative samples
+            extraBlur += blurSample;
+     }
+      extraBlur /= float(blurSamples);
         
-        // Blend with original result based on roughness
+     // Blend with original result based on roughness
         float blendFactor = (roughness - 0.8) * 5.0; // 0 to 1
         prefilteredColor = mix(prefilteredColor, extraBlur, blendFactor * 0.3);
+ }
+    
+    // Final safety check for NaN/Inf
+    if (any(isnan(prefilteredColor)) || any(isinf(prefilteredColor))) {
+     prefilteredColor = vec3(0.0);
     }
 
     FragColor = vec4(prefilteredColor, 1.0);

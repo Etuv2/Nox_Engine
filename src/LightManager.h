@@ -64,10 +64,10 @@ public:
         float proxyRadius;
         bool isSelected = false;
         
-        // Calculate proxy bounds for selection (implemented in .cpp)
+        // Calculate proxy bounds for selection 
         void UpdateProxy();
         
-        // Check if a ray intersects this light proxy (implemented in .cpp)
+        // Check if a ray intersects this light proxy
         bool RayIntersects(const glm::vec3& rayOrigin, const glm::vec3& rayDir, float& distance) const;
     };
     
@@ -79,15 +79,13 @@ public:
 
     // Shadow system integration
     void InitializeShadowSystem(int maxShadowCastingLights = 8, int baseResolution = 1024);
-    void UpdateShadowMaps(const glm::mat4& view, const glm::mat4& projection, 
-                         float nearPlane, float farPlane, float aspect, float fov);
     GLuint GetShadowArrayTexture() const;
     
     // Shadow shader management
     void SetShadowShader(GLuint shadowShader) { m_shadowShader = shadowShader; }
     GLuint GetShadowShader() const { return m_shadowShader; }
     
-    // CRITICAL: Shadow rendering methods
+    // Shadow rendering method
     void RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGraph,
                          const std::shared_ptr<Camera>& camera,
                          const glm::mat4& view, const glm::mat4& projection,
@@ -106,7 +104,7 @@ public:
     std::vector<glm::mat4> RenderPointLightShadows(const std::shared_ptr<SceneGraph>& sceneGraph,
                                   std::shared_ptr<BaseLight> light, int startSlice);
 
-    // CRITICAL: Shadow array validation to detect corruption from IBL
+    //Shadow array validation to detect corruption from IBL
     void ValidateShadowArrayTexture() const;
 
     // Multi-light shadow configuration
