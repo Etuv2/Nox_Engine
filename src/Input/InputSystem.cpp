@@ -369,7 +369,7 @@ void InputManager::Update(float deltaTime) {
                 }
             }
             
-            // CRITICAL FIX: Process gamepad axes continuously during Update, not just on events
+            // Process gamepad axes continuously during Update, not just on events
             // This ensures smooth movement even with SDL's axis event throttling
             for (int axisIdx = 0; axisIdx <= static_cast<int>(GamepadAxis::TRIGGER_RIGHT); ++axisIdx) {
                 float value = gamepad.axisValues[axisIdx];
@@ -381,7 +381,7 @@ void InputManager::Update(float deltaTime) {
         }
     }
     
-    // CRITICAL FIX: Clear frame states at the VERY END after all processing
+    // Clear frame states at the VERY END after all processing
     ClearFrameStates();
 }
 

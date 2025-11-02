@@ -21,7 +21,7 @@ SpotLight::~SpotLight() {
 }
 
 bool SpotLight::InitializeShadowMap(GLuint shadowResolution) {
-    // CRITICAL FIX: Disable legacy shadow system to prevent conflicts with LightManager
+    // Disable legacy shadow system to prevent conflicts with LightManager
     std::cout << "[SpotLight] Legacy shadow system disabled - using unified LightManager shadows" << std::endl;
     
     // Store shadow resolution for reference but don't create FBO

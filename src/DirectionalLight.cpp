@@ -34,7 +34,7 @@ DirectionalLight::~DirectionalLight() {
 bool DirectionalLight::InitializeCascades(GLuint shadowSize, float splitLambda) {
     SetSplitLambda(splitLambda);
     
-    // CRITICAL FIX: Disable legacy shadow system to prevent conflicts with LightManager
+    // Disable legacy shadow system to prevent conflicts with LightManager
     std::cout << "[DirectionalLight] Legacy cascade system disabled - using unified LightManager shadows" << std::endl;
     
     // Store shadow size for reference but don't create FBO
@@ -99,7 +99,7 @@ void DirectionalLight::UpdateCascades(const glm::mat4& view,
         cascadeStart = glm::max(cascadeStart, nearPlane);
         cascadeEnd = glm::min(cascadeEnd, farPlane);
 
-        // CRITICAL FIX: First cascade needs to be MUCH larger
+        // First cascade needs to be MUCH larger
         if (i == 0) {
             cascadeStart = nearPlane;
             // First cascade covers at least 10% of total range (was 3%)

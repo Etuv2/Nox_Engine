@@ -4,7 +4,7 @@ in vec3 WorldPos;
 
 uniform samplerCube environmentMap;
 uniform float roughness;
-uniform float resolution; // CRITICAL FIX: Add resolution parameter
+uniform float resolution;
 
 const float PI = 3.14159265359;
 
@@ -116,14 +116,14 @@ void main()
     if(totalWeight > 0.0) {
         prefilteredColor = prefilteredColor / totalWeight;
     } else {
-        // CRITICAL FIX: Fallback for edge cases
+        // Fallback for edge cases
         prefilteredColor = texture(environmentMap, R).rgb;
     }
  
-    // CRITICAL FIX: Ensure strictly positive output
+    // Ensure strictly positive output
     prefilteredColor = max(prefilteredColor, vec3(0.0));
 
-    // CRITICAL FIX: Ensure rough surfaces are properly blurred
+    // Ensure rough surfaces are properly blurred
     // For very rough surfaces (roughness > 0.8), add extra blur
     if(roughness > 0.8) {
         vec3 extraBlur = vec3(0.0);

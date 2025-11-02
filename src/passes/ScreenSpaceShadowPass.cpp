@@ -71,7 +71,7 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
 {
     if (!m_cs || !m_cs->IsValid() || !ctx.gbufferFBO || !dirLight) return;
 
-    // CRITICAL FIX: Light direction convention
+    // Light direction convention
     // GetDirection() returns the direction light POINTS (from source to surface)
     // But screen-space shadows need to march FROM surface TOWARD light source
     // So we NEGATE to get the direction TO the light

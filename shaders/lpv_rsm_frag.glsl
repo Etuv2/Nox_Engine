@@ -36,7 +36,7 @@ void main() {
         albedo *= texSample.rgb;
     }
     
-    // CRITICAL FIX: Calculate N·L using actual light direction passed from CPU
+    // Calculate N·L using actual light direction passed from CPU
     // Light direction points FROM light source, so we negate it
     vec3 lightDir = normalize(u_lightDirection);
     float NdotL = max(dot(outNormal, -lightDir), 0.0);

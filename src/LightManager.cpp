@@ -495,7 +495,7 @@ void LightManager::ValidateShadowArrayTexture() const
 	if (compareMode != GL_COMPARE_REF_TO_TEXTURE || compareFunc != GL_LEQUAL) {
 		std::cerr << "[LightManager] WARNING: Shadow comparison parameters incorrect!" << std::endl;
 
-		// CRITICAL FIX: Restore shadow comparison parameters
+		// Restore shadow comparison parameters
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 

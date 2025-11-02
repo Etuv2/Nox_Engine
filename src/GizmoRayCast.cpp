@@ -61,7 +61,7 @@ GizmoRayCast::GizmoHitResult GizmoRayCast::QueryForGizmoSelection(
         return GizmoHitResult();
     }
     
-    // CRITICAL FIX: Separate light nodes and mesh nodes for priority processing
+    // Separate light nodes and mesh nodes for priority processing
     std::vector<std::shared_ptr<SceneNode>> lightNodes;
     std::vector<std::shared_ptr<SceneNode>> audioNodes; // NEW
     std::vector<std::shared_ptr<SceneNode>> meshNodes;
@@ -89,7 +89,7 @@ GizmoRayCast::GizmoHitResult GizmoRayCast::QueryForGizmoSelection(
     
     std::vector<CandidateResult> validCandidates;
     
-    // CRITICAL FIX: Process light nodes first with special intersection testing
+    // Process light nodes first with intersection testing
     for (auto& node : lightNodes) {
         if (!IsNodeGizmoCompatible(node)) continue;
         
@@ -455,7 +455,7 @@ float GizmoRayCast::CalculateSelectionPriority(
     
     float priority = 1.0f;
     
-    // CRITICAL FIX: MASSIVE PRIORITY BOOST FOR LIGHT NODES
+    // ASSIVE PRIORITY BOOST FOR LIGHT NODES
     // Light nodes should almost always take precedence over mesh nodes for editor workflow
     if (node->GetNodeType() == SceneNode::LIGHT) {
         priority += 10.0f; // Major priority boost for lights

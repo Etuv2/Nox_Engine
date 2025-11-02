@@ -15,14 +15,14 @@ namespace ShadowMapper {
         for (int i = 0; i < cascadeCount; ++i) {
             float p = (i + 1) / float(cascadeCount);
             
-            // CRITICAL FIX: Use standard logarithmic/linear blend
+            // Use standard logarithmic/linear blend
             float log = nearPlane * std::pow(logBase, p);
             float uni = nearPlane + range * p;
             
             splits[i] = lambda * log + (1.0f - lambda) * uni;
         }
         
-        // CRITICAL FIX: Override first cascade to be MUCH larger (10% of total range minimum)
+        // Override first cascade to be MUCH larger (10% of total range minimum)
         // This ensures shadows are visible at close range
         splits[0] = glm::max(splits[0], nearPlane + range * 0.10f);
         

@@ -237,7 +237,6 @@ void InputIntegration::SetupEditorContext() {
             OnObjectSelect(); 
         });
     
-    // CRITICAL FIX: Gizmo controls - ensure they use PRESS type for immediate response
     context->BindKeyAction(Input::Actions::GIZMO_TOGGLE, SDLK_g, Input::ActionType::PRESS);
     context->RegisterActionCallback(Input::Actions::GIZMO_TOGGLE, 
         [this](float) { 
@@ -491,7 +490,7 @@ void InputIntegration::OnApplicationAction(const std::string& action) {
 }
 
 void InputIntegration::OnGizmoAction(const std::string& action) {
-    // CRITICAL FIX: Gizmo actions should work regardless of mouse lock state
+    // Gizmo actions should work regardless of mouse lock state
     // The user needs to be able to toggle gizmo visibility and change modes
     if (!m_imguiInterface) {
         std::cout << "[InputIntegration] No ImGui interface available for gizmo action" << std::endl;

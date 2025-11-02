@@ -14,7 +14,7 @@ namespace {
     GLuint g_mrDefault = 0;
 
     GLuint Create1x1(const std::array<unsigned char,4>& rgba, GLenum internalFormat = GL_RGBA8, GLenum format = GL_RGBA) {
-        // CRITICAL: Save current OpenGL state to prevent conflicts
+        //Save current OpenGL state to prevent conflicts
         GLint lastTexture = 0;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastTexture);
         
@@ -27,7 +27,7 @@ namespace {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         
-        // CRITICAL: Restore previous texture binding
+        //Restore previous texture binding
         glBindTexture(GL_TEXTURE_2D, lastTexture);
         
         // Check for errors
@@ -44,12 +44,12 @@ namespace {
 
 namespace DefaultTextures {
     void EnsureCreated() {
-        // CRITICAL FIX: Only create textures once
+        // Only create textures once
         if (g_texturesCreated) {
             return;
         }
         
-        // CRITICAL: Save current OpenGL state
+        //Save current OpenGL state
         GLint lastTexture = 0;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastTexture);
         
@@ -61,13 +61,13 @@ namespace DefaultTextures {
         g_aowhite = Create1x1({255,255,255,255});
         g_mrDefault = Create1x1({255,204,0,255}); // R unused, G roughness ~0.8, B metallic 0
         
-        // CRITICAL: Restore previous texture binding
+        //Restore previous texture binding
         glBindTexture(GL_TEXTURE_2D, lastTexture);
         
         // Validate all textures were created successfully
         if (!glIsTexture(g_white) || !glIsTexture(g_black) || !glIsTexture(g_normal) || 
             !glIsTexture(g_aowhite) || !glIsTexture(g_mrDefault)) {
-            std::cerr << "[DefaultTextures] CRITICAL: Some default textures failed to create!" << std::endl;
+            std::cerr << "[DefaultTextures]Some default textures failed to create!" << std::endl;
             return;
         }
         

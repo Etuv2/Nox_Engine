@@ -108,7 +108,7 @@ public:
         Mix_Volume(channel, vol);
 
         // Compute the angle (in degrees) from listener to source.
-        float angle = std::atan2f(diff.y, diff.x) * 180.0f / M_PI;
+        float angle = std::atan2f(diff.y, diff.x) * 180.0f / static_cast<float>(M_PI);
         float relativeAngle = angle - listenerAngle;
         while (relativeAngle < 0) {
             relativeAngle += 360.0f;

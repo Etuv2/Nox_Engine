@@ -39,7 +39,7 @@ void main()
             // Sample the environment map
             vec3 envSample = texture(environmentMap, sampleVec).rgb;
         
-            // CRITICAL FIX: Ensure samples are positive (clamp to prevent negative artifacts)
+            // Ensure samples are positive (clamp to prevent negative artifacts)
             envSample = max(envSample, vec3(0.0));
             
             // Apply cosine-weighted hemisphere integration
@@ -52,13 +52,13 @@ void main()
         }
     }
     
-    // CRITICAL FIX: Proper normalization for hemisphere integration
+    // Proper normalization for hemisphere integration
     // The PI factor is part of the Lambert BRDF (albedo / PI)
     // We integrate: integral(L * cos(theta) * sin(theta) * d_theta * d_phi)
     // Normalization: PI / total_samples
     irradiance = (PI * irradiance) / max(nrSamples, 1.0);
     
-    // CRITICAL FIX: Final clamp to ensure strictly positive output
+    // Final clamp to ensure strictly positive output
     irradiance = max(irradiance, vec3(0.0));
     
     // Additional safety check for NaN/Inf

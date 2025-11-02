@@ -21,7 +21,7 @@ PointLight::~PointLight() {
 }
 
 bool PointLight::InitializeShadowMap(GLuint shadowResolution) {
-    // CRITICAL FIX: Disable legacy shadow system to prevent conflicts with LightManager
+    // Disable legacy shadow system to prevent conflicts with LightManager
     std::cout << "[PointLight] Legacy shadow system disabled - using unified LightManager shadows" << std::endl;
     
     // Store shadow resolution for reference but don't create FBO

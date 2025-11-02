@@ -33,7 +33,7 @@ uniform samplerCube prefilteredMap;
 uniform sampler2D brdfLUT;
 uniform float prefilteredMaxLOD = 4.0;
 
-// Camera - CRITICAL FIX: Match legacy renderer uniform name
+// Camera - Match legacy renderer uniform name
 uniform vec3 viewPos;
 
 // Enhanced lighting uniforms
@@ -163,7 +163,7 @@ void main() {
     vec3 emissive = emissiveFactor * texture(texture_emissive, fs_in.UV).rgb;
     float ao = mix(1.0, texture(texture_occlusion, fs_in.UV).r, occlusionStrength);
     
-    // Calculate vectors - CRITICAL FIX: Use viewPos instead of cameraPos
+    // Calculate vectors - Use viewPos instead of cameraPos
     vec3 N = getNormalFromMap();
     vec3 V = normalize(viewPos - fs_in.WorldPos);
     vec3 R = reflect(-V, N);

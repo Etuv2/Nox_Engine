@@ -186,7 +186,7 @@ void LightNode::UpdateTransformFromLight()
 
 BoundingBox LightNode::GetBoundingBox() const 
 {
-    // CRITICAL FIX: Always return a valid bounding box for light selection
+    // Always return a valid bounding box for light selection
     if (!m_light) {
         // Return a minimal default bounding box if no light is attached
         return BoundingBox(glm::vec3(-0.5f), glm::vec3(0.5f));
@@ -405,7 +405,7 @@ void LightNode::Deserialize(const nlohmann::json& json)
 
 void LightNode::SetTransform(const glm::mat4& newTransform) 
 {
-    // CRITICAL FIX: Override SetTransform to ensure light-node synchronization
+    // Override SetTransform to ensure light-node synchronization
     
     // Store the old transform for comparison
     glm::mat4 oldTransform = transform;

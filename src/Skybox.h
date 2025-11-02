@@ -5,7 +5,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "Framebuffer.h"
-#include "TextureUnits.h"  // Include standardized texture units
+#include "TextureUnits.h"
+#include "Texture.h"  // Use new refactored Texture class
 
 //Skybox class for loading HDR images, converting to cubemap, and rendering as background.
 
@@ -30,12 +31,12 @@ public:
 	void Cleanup();
 
 	// Retrieve the environment cubemap texture ID so other code (e.g., PBR shaders)
-	GLuint GetEnvironmentMap() const { return m_envCubemap; }
+	GLuint GetEnvironmentMap() const { return m_envCubemap ? m_envCubemap->ID() : 0; }
 	
 	// IBL Resources for physically based lighting
-	GLuint GetIrradianceMap() const { return m_irradianceMap; }
-	GLuint GetPrefilteredMap() const { return m_prefilteredMap; }
-	GLuint GetBRDFLUT() const { return m_brdfLUT; }
+	GLuint GetIrradianceMap() const { return m_irradianceMap ? m_irradianceMap->ID() : 0; }
+	GLuint GetPrefilteredMap() const { return m_prefilteredMap ? m_prefilteredMap->ID() : 0; }
+	GLuint GetBRDFLUT() const { return m_brdfLUT ? m_brdfLUT->ID() : 0; }
 	float GetPrefilteredMaxLOD() const { return m_prefilteredMaxLOD; }
 
 	// IBL intensity controls to prevent over-bright lighting
@@ -67,7 +68,7 @@ public:
 
 protected:
 	// Loads the HDR file into a floating-point 2D texture.
-	GLuint loadHDRTexture(const std::string& hdrPath);
+	TexturePtr loadHDRTexture(const std::string& hdrPath);
 
 	// Builds the cube geometry (VAO/VBO) for rendering the skybox.
 	void buildSkyboxCube();
@@ -86,8 +87,8 @@ protected:
 	void ResizeCaptureRBO(int width, int height);
 
 private:
-	// Cubemap holding the environment map.
-	GLuint m_envCubemap = 0;
+	// Cubemap holding the environment map (using new Texture class)
+	TexturePtr m_envCubemap;
 
 	// VAO/VBO for drawing a unit cube.
 	GLuint m_skyboxVAO = 0;
@@ -95,7 +96,7 @@ private:
 
 	// Shader programs.
 	GLuint m_equiRectToCubeShader = 0;  // equirectangular-to-cubemap converter
-	GLuint m_skyboxShader = 0;          // shader for final skybox rendering
+	GLuint m_skyboxShader = 0;      // shader for final skybox rendering
 
 	// Framebuffer for rendering the skybox (legacy, still kept but not used for IBL capture now).
 	std::unique_ptr<FrameBuffer> m_captureBuffer;
@@ -104,19 +105,19 @@ private:
 	GLuint m_captureFBO = 0;
 	GLuint m_captureRBO = 0;
 
-	// IBL Resources
-	GLuint m_irradianceMap = 0;         // Diffuse irradiance cubemap (32x32)
-	GLuint m_prefilteredMap = 0;        // Prefiltered environment map with mipmaps (128x128)
-	GLuint m_brdfLUT = 0;               // BRDF integration lookup table (512x512)
+	// IBL Resources (using new Texture class)
+	TexturePtr m_irradianceMap;         // Diffuse irradiance cubemap (32x32)
+	TexturePtr m_prefilteredMap;// Prefiltered environment map with mipmaps (128x128)
+	TexturePtr m_brdfLUT;               // BRDF integration lookup table (512x512)
 	float m_prefilteredMaxLOD = 4.0f;   // Maximum mip level for prefiltered map
 	
 	// IBL shader programs
 	GLuint m_irradianceShader = 0;      // Convolution shader for irradiance
-	GLuint m_prefilterShader = 0;       // Prefilter shader for specular
-	GLuint m_brdfShader = 0;            // BRDF integration shader
+	GLuint m_prefilterShader = 0;  // Prefilter shader for specular
+	GLuint m_brdfShader = 0;  // BRDF integration shader
 
 	// IBL intensity controls to prevent over-bright results
-	float m_iblIntensity = 0.4f;        // Overall IBL multiplier (reduced from 1.0 to 0.4)
+	float m_iblIntensity = 0.4f;  // Overall IBL multiplier (reduced from 1.0 to 0.4)
 	float m_skyboxExposure = 1.0f;      // Exposure for skybox rendering only
 	float m_diffuseIBLScale = 0.5f;     // Scale for diffuse irradiance contribution
 	float m_specularIBLScale = 0.6f;    // Scale for specular prefiltered contribution

@@ -169,11 +169,11 @@ bool inUnitCube(vec3 p) {
     return all(greaterThanEqual(p, vec3(0.0))) && all(lessThanEqual(p, vec3(1.0)));
 }
 
-// CRITICAL FIX: Depth-aware bias instead of normal offset
+// Depth-aware bias
 float CalculateAdaptiveShadowBias(vec3 N, vec3 Ld, int cascadeIndex, float depthComp, float distance) {
     float NdotL = max(dot(N, -Ld), 0.0);
     
-    // CRITICAL: Slope-based bias for grazing angles
+    // Slope-based bias for grazing angles
     float slopeFactor = sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.01);
     
     // Base bias
@@ -235,12 +235,12 @@ float SampleShadowArray(int layer, vec3 projCoords, float bias) {
     return sum / float(count);
 }
 
-// ENHANCED: Cascaded directional shadows with smooth blending
+// Cascaded directional shadows with smooth blending
 float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 N, vec3 lightDir) {
     vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
     float viewDepth = -viewSpacePos.z; // Negate because view space looks down -Z
     
-    // CRITICAL FIX: Use world position directly - NO normal offset
+    // Use world position directly - NO normal offset
     vec3 shadowPos = worldPos;
     
     // Track best cascade and prepare for blending
@@ -305,7 +305,7 @@ float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightP
     float distance = length(toLight);
     vec3 lightDir = toLight / distance;
     
-    // CRITICAL FIX: Use world position directly - NO normal offset
+    // Use world position directly - NO normal offset
     vec3 shadowPos = worldPos;
     vec3 offsetToLight = shadowPos - lightPos;
     
@@ -361,7 +361,7 @@ float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 
         float distance = length(toLight);
         vec3 spotDir = toLight / distance;
         
-        // CRITICAL FIX: Use world position directly - NO normal offset
+        // Use world position directly - NO normal offset
         vec3 shadowPos = worldPos;
         
         int layer = startSlice;
@@ -474,14 +474,14 @@ vec3 ComputeIBL(vec3 N, vec3 V, vec3 diffuseAlbedo, float metallic, float roughn
     float lod = roughness * prefilteredMaxLOD;
     vec3 prefiltered = textureLod(prefilteredMap, R, lod).rgb;
     
-    // CRITICAL FIX: Ensure IBL samples are strictly positive
+    // Ensure IBL samples are strictly positive
     irradiance = max(irradiance, vec3(0.0));
     prefiltered = max(prefiltered, vec3(0.0));
     
     float NdotV = max(dot(N, V), 0.0);
     vec2 brdf = texture(brdfLUT, vec2(NdotV, roughness)).rg;
     
-    // CRITICAL FIX: Ensure BRDF LUT values are valid
+    // Ensure BRDF LUT values are valid
     brdf = max(brdf, vec2(0.0));
 
     // Calculate Fresnel for IBL
@@ -506,14 +506,14 @@ vec3 ComputeIBL(vec3 N, vec3 V, vec3 diffuseAlbedo, float metallic, float roughn
     // Apply specular IBL scale to prevent over-brightness
     specular *= specularIBLScale;
     
-    // CRITICAL FIX: Final clamp to ensure strictly positive IBL output
+    // Final clamp to ensure strictly positive IBL output
     diffuse = max(diffuse, vec3(0.0));
     specular = max(specular, vec3(0.0));
     
     // Apply overall IBL intensity multiplier
     vec3 iblResult = (diffuse + specular) * iblIntensity;
     
-    // CRITICAL FIX: Safety check for NaN/Inf
+    // Safety check for NaN/Inf
     if (any(isnan(iblResult)) || any(isinf(iblResult))) {
         return vec3(0.0);
     }
