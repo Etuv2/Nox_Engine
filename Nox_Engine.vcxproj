@@ -150,6 +150,7 @@
     <None Include="shaders\fullscreen_vert.glsl" />
     <None Include="shaders\prefilter_frag.glsl" />
     <None Include="shaders\prefilter_vert.glsl" />
+    <None Include="shaders\raytrace_comp.glsl" />
     <None Include="shaders\screen_space_shadows_comp.glsl" />
     <None Include="shaders\shadow_frag.glsl" />
     <None Include="shaders\shadow_vert.glsl" />

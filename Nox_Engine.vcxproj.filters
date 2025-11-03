@@ -139,6 +139,9 @@
     <Filter Include="Source Files\misc\shaders\global_illumination\lpv">
       <UniqueIdentifier>{80aa6f56-ad84-4364-9a26-68e23d29cbde}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\misc\shaders\raytrace">
+      <UniqueIdentifier>{ae9325ff-bf98-4fc3-9515-e0567a5dc20e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\IMGUI\imgui.cpp">
@@ -582,6 +585,9 @@
       <Filter>Source Files\misc\shaders\ssgi</Filter>
     </None>
     <None Include="README.md" />
+    <None Include="shaders\raytrace_comp.glsl">
+      <Filter>Source Files\misc\shaders\raytrace</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">
