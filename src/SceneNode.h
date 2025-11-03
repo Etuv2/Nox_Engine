@@ -24,7 +24,7 @@ public:
         LIGHT,
         CAMERA,
         GUI,
-        LPV_VOLUME  // NEW: Light Propagation Volume for global illumination
+        LPV_VOLUME  // Light Propagation Volume for global illumination
     };
 
     // Culling mode enumeration for per-node control
@@ -35,7 +35,7 @@ public:
         CULLING_FORCE_FRONT     // Force front-face culling
     };
     
-    // NEW: LPV Volume configuration data
+    // LPV Volume configuration data
     struct LPVVolumeData {
         glm::vec3 center = glm::vec3(0.0f);      // World-space center position
         glm::vec3 extent = glm::vec3(64.0f);     // World-space extent (total size in each direction)
@@ -183,7 +183,7 @@ public:
     void SetNodeType(NODE_TYPE type) { m_nodeType = type; }
     NODE_TYPE GetNodeType() const { return m_nodeType; }
     
-    // NEW: LPV Volume data access
+    // LPV Volume data access
     void SetLPVVolumeData(const LPVVolumeData& data) { m_lpvData = data; }
     LPVVolumeData& GetLPVVolumeData() { return m_lpvData; }
     const LPVVolumeData& GetLPVVolumeData() const { return m_lpvData; }
@@ -226,6 +226,6 @@ private:
     // Culling override for this node
     CullingOverride m_cullingOverride = CULLING_INHERIT;
     
-    // NEW: LPV volume data (only used if m_nodeType == LPV_VOLUME)
+    // LPV volume data (only used if m_nodeType == LPV_VOLUME)
     LPVVolumeData m_lpvData;
 };

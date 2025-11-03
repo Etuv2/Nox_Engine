@@ -8,7 +8,7 @@
 //extern "C" {
 //	_declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
 //}
-inline int main(int argc, char* argv[]) 
+int main(int argc, char* argv[]) 
 {
 
 	MainWindow mainWindow;

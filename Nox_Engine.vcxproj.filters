@@ -582,8 +582,6 @@
       <Filter>Source Files\misc\shaders\ssgi</Filter>
     </None>
     <None Include="README.md" />
-    <None Include="docs\TEXTURE_REFACTOR_GUIDE.md" />
-    <None Include="docs\SKYBOX_TEXTURE_REFACTOR.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">
