@@ -39,9 +39,15 @@ namespace {
 }
 
 ScreenSpaceShadowPass::ScreenSpaceShadowPass() {}
+
 ScreenSpaceShadowPass::~ScreenSpaceShadowPass() {
-    if (m_shadowTex) glDeleteTextures(1, &m_shadowTex);
-    if (m_paramsUBO) glDeleteBuffers(1, &m_paramsUBO);
+    // Texture now managed by smart pointer (automatic cleanup)
+  m_shadowTex.reset();
+    
+    if (m_paramsUBO) {
+        glDeleteBuffers(1, &m_paramsUBO);
+        m_paramsUBO = 0;
+    }
 }
 
 bool ScreenSpaceShadowPass::Initialize(RenderContext& ctx)
@@ -69,7 +75,7 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
     const std::shared_ptr<DirectionalLight>& dirLight,
     const std::shared_ptr<Skybox>&)
 {
-    if (!m_cs || !m_cs->IsValid() || !ctx.gbufferFBO || !dirLight) return;
+  if (!m_cs || !m_cs->IsValid() || !ctx.gbufferFBO || !dirLight || !m_shadowTex) return;
 
     // Light direction convention
     // GetDirection() returns the direction light POINTS (from source to surface)
@@ -79,24 +85,24 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
     glm::vec3 LightToSurfaceVS = glm::normalize(glm::mat3(ctx.view) * Lw);
     glm::vec3 SurfaceToLightVS = -LightToSurfaceVS;  // NEGATE for correct ray direction
 
-    // Update UBO with direction FROM surface TO light
+    // Update UBO
     updateUBO(SurfaceToLightVS, ctx.proj);
 
     // Bind & dispatch
     glUseProgram(m_cs->GetProgramID());
 
-    // Depth (binding=0)
-    GLuint depthTex = ctx.gbufferFBO->GetDepthTexture();
+ // Depth (binding=0)
+  GLuint depthTex = ctx.gbufferFBO->GetDepthTexture();
     glBindTextureUnit(0, depthTex);
     glBindTexture(GL_TEXTURE_2D, depthTex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // Output (binding=1)
-    glBindImageTexture(1, m_shadowTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+    // Output (binding=1) - use new Texture class
+    glBindImageTexture(1, m_shadowTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
 
     // UBO (binding=2)
     glBindBufferBase(GL_UNIFORM_BUFFER, 2, m_paramsUBO);
@@ -110,32 +116,40 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
 
     // Unbind
     glBindBufferBase(GL_UNIFORM_BUFFER, 2, 0);
-    glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
     glBindTextureUnit(0, 0);
-    glUseProgram(0);
+glUseProgram(0);
 
-    // Advance frame index (for optional temporal jitter)
+ // Advance frame index
     ++m_frameIndex;
 }
 
 void ScreenSpaceShadowPass::createOutput(int w, int h)
 {
-    if (m_shadowTex) glDeleteTextures(1, &m_shadowTex);
-    m_width = w; m_height = h;
+  m_width = w; 
+    m_height = h;
 
-    glGenTextures(1, &m_shadowTex);
-    glBindTexture(GL_TEXTURE_2D, m_shadowTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Create R8 texture using new Texture builder
+    std::cout << "[ScreenSpaceShadowPass] Creating shadow output texture (" << w << "x" << h << ")" << std::endl;
+    
+    m_shadowTex = Texture::Builder::Texture2D(w, h, GL_R8)
+        .Format(GL_RED)
+.DataType(GL_UNSIGNED_BYTE)
+        .FilterMode(GL_NEAREST, GL_NEAREST)
+        .WrapMode(GL_CLAMP_TO_EDGE)
+ .TextureType(TextureType::Custom)
+        .Build();
 
-    // Initialize to fully lit (optional)
+    if (!m_shadowTex || !m_shadowTex->IsValid()) {
+   std::cerr << "[ScreenSpaceShadowPass] Failed to create shadow texture!" << std::endl;
+     return;
+    }
+
+    // Initialize to fully lit (255)
     std::vector<uint8_t> ones(w * h, 255);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_UNSIGNED_BYTE, ones.data());
+    m_shadowTex->Upload2D(0, 0, 0, w, h, GL_RED, GL_UNSIGNED_BYTE, ones.data());
 
-    glBindTexture(GL_TEXTURE_2D, 0);
+    std::cout << "[ScreenSpaceShadowPass] Shadow texture created: ID=" << m_shadowTex->ID() << std::endl;
 
     if (!m_paramsUBO) createUBO();
 }

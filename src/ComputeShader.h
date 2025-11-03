@@ -7,6 +7,10 @@
 #include <memory>
 #include <unordered_map>
 
+// Forward declarations
+class Texture;
+using TexturePtr = std::shared_ptr<Texture>;
+
 /**
  * @brief Comprehensive Compute Shader system for the NOX Engine
  * 
@@ -206,14 +210,15 @@ public:
                                     GLenum usage = GL_DYNAMIC_DRAW);
 
     /**
-     * @brief Create a texture suitable for compute shader usage
+     * @brief Create a texture suitable for compute shader usage (REFACTORED)
      * @param width Texture width
      * @param height Texture height  
      * @param format Internal format (e.g., GL_RGBA32F, GL_R32F)
      * @param data Optional initial data
+     * @return Shared pointer to Texture object (use tex->ID() for GLuint)
      */
-    static GLuint CreateComputeTexture2D(GLuint width, GLuint height, 
-                                       GLenum format = GL_RGBA32F, const void* data = nullptr);
+    static TexturePtr CreateComputeTexture2D(GLuint width, GLuint height, 
+      GLenum format = GL_RGBA32F, const void* data = nullptr);
 
 private:
     GLuint m_programID;

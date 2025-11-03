@@ -350,16 +350,16 @@ void LightingPass::Execute(RenderContext& ctx,
         glUniform1i(glGetUniformLocation(m_shader, "enableShadows"), ctx.enableShadows ? 1 : 0);
 
         // Bind shadow array
-        GLuint shadowArray = ctx.lightManager->GetShadowArrayTexture();
-        std::cout << "[LightingPass] Shadow array texture: " << shadowArray << std::endl;
-        if (shadowArray > 0 && glIsTexture(shadowArray)) {
-            glActiveTexture(GL_TEXTURE0 + TextureUnits::SHADOW_MAP_ARRAY);
-            glBindTexture(GL_TEXTURE_2D_ARRAY, shadowArray);
-            glUniform1i(glGetUniformLocation(m_shader, "multiLightShadowArray"), 
-                       TextureUnits::SHADOW_MAP_ARRAY);
-        } else {
-            std::cerr << "[LightingPass] WARNING: Invalid shadow array texture!" << std::endl;
-        }
+   GLuint shadowArray = ctx.lightManager->GetShadowArrayTexture();
+      std::cout << "[LightingPass] Shadow array texture: " << shadowArray << std::endl;
+   if (shadowArray > 0 && glIsTexture(shadowArray)) {
+glActiveTexture(GL_TEXTURE0 + TextureUnits::SHADOW_MAP_ARRAY);
+  glBindTexture(GL_TEXTURE_2D_ARRAY, shadowArray);
+   glUniform1i(glGetUniformLocation(m_shader, "multiLightShadowArray"), 
+      TextureUnits::SHADOW_MAP_ARRAY);
+ } else {
+std::cerr << "[LightingPass] WARNING: Invalid shadow array texture!" << std::endl;
+  }
 
         // Shadow bias configuration
         glUniform1f(glGetUniformLocation(m_shader, "shadowBias"), ctx.shadowBias);

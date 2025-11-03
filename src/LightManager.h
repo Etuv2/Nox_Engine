@@ -8,12 +8,13 @@
 #include <glm/glm.hpp>
 #include "BaseLight.h"
 #include "ShadowMapper.h"
+#include "Texture.h"  // Use new Texture class
 
 // Forward declarations
 class SceneGraph;
 class Camera;
 class SpotLight;
-class LightNode; // forward declare to avoid circular include
+class LightNode;
 
 /**
  * Enhanced LightManager for multi-light deferred rendering with shadow system integration.
@@ -52,25 +53,22 @@ public:
         glm::vec4 position;        // w = light type (0=dir,1=point,2=spot)
         glm::vec4 direction;       // xyz = direction, w = unused
         glm::vec4 color;           // w = intensity
-        glm::vec4 attenuation;     // xyz = constant,linear,quadratic, w = range
-        glm::vec4 shadowData;      // x = startSlice, y = sliceCount, z = enabled, w = pcss enabled
-        glm::vec4 spotData;        // x = inner cone (cos), y = outer cone (cos), z,w = reserved
+    glm::vec4 attenuation;     // xyz = constant,linear,quadratic, w = range
+      glm::vec4 shadowData;      // x = startSlice, y = sliceCount, z = enabled, w = pcss enabled
+      glm::vec4 spotData;        // x = inner cone (cos), y = outer cone (cos), z,w = reserved
     };
 
     // Light proxy visualization for editor integration
     struct LightProxy {
         std::shared_ptr<LightNode> lightNode;
         glm::vec3 proxyCenter;
-        float proxyRadius;
-        bool isSelected = false;
-        
-        // Calculate proxy bounds for selection 
+  float proxyRadius;
+     bool isSelected = false;
+      
         void UpdateProxy();
-        
-        // Check if a ray intersects this light proxy
         bool RayIntersects(const glm::vec3& rayOrigin, const glm::vec3& rayDir, float& distance) const;
     };
-    
+
     // GPU buffer management for deferred rendering
     void UpdateGPUBuffers();
     GLuint GetLightDataSSBO() const { return m_lightDataSSBO; }
@@ -83,54 +81,54 @@ public:
     
     // Shadow shader management
     void SetShadowShader(GLuint shadowShader) { m_shadowShader = shadowShader; }
-    GLuint GetShadowShader() const { return m_shadowShader; }
+  GLuint GetShadowShader() const { return m_shadowShader; }
     
     // Shadow rendering method
-    void RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGraph,
-                         const std::shared_ptr<Camera>& camera,
-                         const glm::mat4& view, const glm::mat4& projection,
-                         float nearPlane, float farPlane, float aspect, float fov);
+ void RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGraph,
+ const std::shared_ptr<Camera>& camera,
+ const glm::mat4& view, const glm::mat4& projection,
+            float nearPlane, float farPlane, float aspect, float fov);
 
     // Shadow rendering helpers with correct return types
     std::vector<glm::mat4> RenderDirectionalLightShadows(const std::shared_ptr<SceneGraph>& sceneGraph,
-                                        std::shared_ptr<BaseLight> light,
-                                        const glm::mat4& view, const glm::mat4& projection,
-                                        float nearPlane, float farPlane, float aspect, float fov,
-                                        int startSlice);
+     std::shared_ptr<BaseLight> light,
+         const glm::mat4& view, const glm::mat4& projection,
+         float nearPlane, float farPlane, float aspect, float fov,
+    int startSlice);
     
     glm::mat4 RenderSpotLightShadow(const std::shared_ptr<SceneGraph>& sceneGraph,
-                                   std::shared_ptr<BaseLight> light, int slice);
-                                  
-    std::vector<glm::mat4> RenderPointLightShadows(const std::shared_ptr<SceneGraph>& sceneGraph,
-                                  std::shared_ptr<BaseLight> light, int startSlice);
+             std::shared_ptr<BaseLight> light, int slice);
+         
+  std::vector<glm::mat4> RenderPointLightShadows(const std::shared_ptr<SceneGraph>& sceneGraph,
+ std::shared_ptr<BaseLight> light, int startSlice);
 
-    //Shadow array validation to detect corruption from IBL
+    // Shadow array validation to detect corruption from IBL
     void ValidateShadowArrayTexture() const;
 
     // Multi-light shadow configuration
     struct ShadowConfig {
-        int maxDirectionalLights = 2;     // Max directional lights with cascaded shadows
-        int maxSpotLights = 4;            // Max spot lights with shadows
-        int maxPointLights = 4;           // Max point lights with shadows
-        int baseResolution = 1024;        // Base shadow map resolution
-        bool enablePCSS = true;           // Enable PCSS for all lights
-        bool dynamicResolution = true;    // Adjust resolution based on importance
+        int maxDirectionalLights = 2;
+        int maxSpotLights = 4;
+        int maxPointLights = 4;
+int baseResolution = 1024;
+        bool enablePCSS = true;
+        bool dynamicResolution = true;
     } shadowConfig;
 
     // Light culling for tiled/clustered deferred rendering
     struct CullingTile {
-        int lightCount;
-        int lightIndices[64]; // Maximum lights per tile
+   int lightCount;
+        int lightIndices[64];
     };
     
     void PerformLightCulling(const glm::mat4& view, const glm::mat4& projection,
-                           int screenWidth, int screenHeight, int tileSize = 16);
+   int screenWidth, int screenHeight, int tileSize = 16);
     GLuint GetTileDataSSBO() const { return m_tileDataSSBO; }
     glm::ivec2 GetTileCount() const { return m_tileCount; }
 
     // Light management
     void EnableAllLights();
-    void DisableAllLights();
+  void DisableAllLights();
     void EnableLightsByType(BaseLight::LightType type);
     void DisableLightsByType(BaseLight::LightType type);
 
@@ -154,8 +152,8 @@ public:
         float shadowUpdateTime = 0.0f;
         float lightCullingTime = 0.0f;
         float bufferUpdateTime = 0.0f;
-        int visibleLights = 0;
-        int shadowCascades = 0;
+      int visibleLights = 0;
+     int shadowCascades = 0;
     } stats;
 
     // Debug
@@ -165,15 +163,15 @@ public:
     // Per-slice debug info for ImGui
     struct SliceDebugInfo {
         int arrayIndex = -1;
-        BaseLight::LightType type = BaseLight::LightType::DIRECTIONAL;
-        int lightIndex = -1;     // index into m_activeLights
-        int subIndex = 0;        // cascade idx or cube face
-        unsigned age = 0;        // frames since last render
-        unsigned int dirtyReason = 0; // bitmask of why it was last updated
-        float lastUpdateMs = 0.0f;    // render CPU time (ms)
-        bool inUse = false;      // slice currently mapped to some light sub-resource
+      BaseLight::LightType type = BaseLight::LightType::DIRECTIONAL;
+    int lightIndex = -1;
+     int subIndex = 0;
+        unsigned age = 0;
+    unsigned int dirtyReason = 0;
+      float lastUpdateMs = 0.0f;
+        bool inUse = false;
     };
-    std::vector<SliceDebugInfo> GetShadowSliceDebug() const; // implemented in .cpp
+    std::vector<SliceDebugInfo> GetShadowSliceDebug() const;
 
     // Light proxy management for editor integration
     void UpdateLightProxies();
@@ -182,54 +180,54 @@ public:
 
 private:
     // Light storage
-    std::map<std::string, std::shared_ptr<BaseLight>> m_lights;
+  std::map<std::string, std::shared_ptr<BaseLight>> m_lights;
     std::vector<std::shared_ptr<LightNode>> m_lightNodes;
-    std::vector<std::shared_ptr<BaseLight>> m_activeLights; // Cached enabled lights
+    std::vector<std::shared_ptr<BaseLight>> m_activeLights;
     
     // GPU buffer objects for deferred rendering
-    GLuint m_lightDataSSBO = 0;         // Light data structured buffer
-    GLuint m_shadowMatricesSSBO = 0;    // Shadow matrices buffer
-    GLuint m_tileDataSSBO = 0;          // Light culling tile data
+    GLuint m_lightDataSSBO = 0;
+    GLuint m_shadowMatricesSSBO = 0;
+ GLuint m_tileDataSSBO = 0;
     
-    // Shadow system
-    std::unique_ptr<class FrameBuffer> m_shadowFBO; // Forward-declare FrameBuffer
-    GLuint m_shadowArrayTexture = 0;    // 2D texture array for all shadow maps
-    GLuint m_shadowShader = 0;          // Shadow shader for rendering depth
-    int m_shadowArrayLayers = 0;        // Number of shadow map layers
+// Shadow system using new Texture class
+    std::unique_ptr<class FrameBuffer> m_shadowFBO;
+    TexturePtr m_shadowArrayTexture;  // Using new Texture class for shadow array
+    GLuint m_shadowShader = 0;
+    int m_shadowArrayLayers = 0;
     
-    // Per-light shadow slice mapping (start slice, count)
-    struct LightShadowInfo { 
+    // Per-light shadow slice mapping
+  struct LightShadowInfo { 
         int startSlice = -1; 
         int count = 0; 
     };
     std::unordered_map<BaseLight*, LightShadowInfo> m_lightShadowInfo;
 
-    // Dirty bit flags (publicly visible through debug info only)
+  // Dirty bit flags
     enum DirtyBits : unsigned int {
-        DIRTY_NONE             = 0,
+        DIRTY_NONE         = 0,
         DIRTY_LIGHT_TRANSFORM  = 1u << 0,
         DIRTY_CASTERS_CHANGED  = 1u << 1,
-        DIRTY_CAMERA_CASCADE   = 1u << 2
+  DIRTY_CAMERA_CASCADE   = 1u << 2
     };
 
     // Cached slice metadata for shadow reuse
     struct CachedSlice {
         glm::mat4 lastMatrix = glm::mat4(1.0f);
-        glm::vec3 lastLightPos = glm::vec3(0.0f);
-        glm::vec3 lastLightDir = glm::vec3(0.0f, -1.0f, 0.0f);
-        BaseLight::LightType type = BaseLight::LightType::DIRECTIONAL;
-        int lightIndex = -1; // index into active lights
-        int subIndex = 0;    // cascade index or cube face
+ glm::vec3 lastLightPos = glm::vec3(0.0f);
+     glm::vec3 lastLightDir = glm::vec3(0.0f, -1.0f, 0.0f);
+  BaseLight::LightType type = BaseLight::LightType::DIRECTIONAL;
+        int lightIndex = -1;
+ int subIndex = 0;
         int resolution = 1024;
         bool inUse = false;
-        unsigned age = 0; // frames since last render
+        unsigned age = 0;
         unsigned int dirtyBits = DIRTY_NONE;
         int lastUpdateFrame = 0;
-        float lastUpdateMs = 0.0f; // CPU ms for last render
-        glm::vec3 casterCentroidSum = glm::vec3(0.0f); // signature for geometry change detection
+ float lastUpdateMs = 0.0f;
+        glm::vec3 casterCentroidSum = glm::vec3(0.0f);
         int casterCount = 0;
     };
-    std::vector<CachedSlice> m_cachedSlices; // size == m_shadowArrayLayers
+    std::vector<CachedSlice> m_cachedSlices;
 
     // Frame / scheduling state
     int m_frameCounter = 0;
@@ -246,24 +244,24 @@ private:
     
     // Shadow map management
     struct ShadowMapSlice {
-        int lightIndex = -1;
+  int lightIndex = -1;
         int arrayIndex = -1;
         int resolution = 1024;
-        bool inUse = false;
+     bool inUse = false;
         BaseLight::LightType lightType;
     };
     std::vector<ShadowMapSlice> m_shadowSlices;
     
-    // Light type counters for naming
+  // Light type counters for naming
     mutable int m_directionalCount = 0;
-    mutable int m_pointCount = 0;
+ mutable int m_pointCount = 0;
     mutable int m_spotCount = 0;
     mutable int m_areaCount = 0;
     
     // Light proxy system for editor integration
     std::vector<LightProxy> m_lightProxies;
     
-    // Initialization flags
+// Initialization flags
     bool m_shadowSystemInitialized = false;
     bool m_buffersInitialized = false;
 };

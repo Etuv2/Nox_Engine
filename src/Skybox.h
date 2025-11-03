@@ -97,11 +97,8 @@ private:
 	// Shader programs.
 	GLuint m_equiRectToCubeShader = 0;  // equirectangular-to-cubemap converter
 	GLuint m_skyboxShader = 0;      // shader for final skybox rendering
-
-	// Framebuffer for rendering the skybox (legacy, still kept but not used for IBL capture now).
-	std::unique_ptr<FrameBuffer> m_captureBuffer;
 	
-	// Dedicated FBO/RBO for IBL capture to avoid abstraction side-effects
+	// Dedicated FBO/RBO for IBL capture to avoid abstraction
 	GLuint m_captureFBO = 0;
 	GLuint m_captureRBO = 0;
 

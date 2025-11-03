@@ -18,6 +18,7 @@
 #include "MeshComponent.h"
 #include "Vertex.h"
 #include "Animation.h"
+#include "Texture.h"
 
 /**
  * The Scene class holds:

@@ -16,7 +16,7 @@ InputIntegration::InputIntegration()
     , m_mouseLocked(true)
     , m_cameraSpeed(2.5f)
     , m_mouseSensitivity(0.1f)
-    , m_gamepadLookSensitivity(100) { // NEW: Default gamepad look sensitivity
+    , m_gamepadLookSensitivity(100) {
 }
 
 InputIntegration::~InputIntegration() {

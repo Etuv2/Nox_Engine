@@ -1,6 +1,7 @@
 #pragma once
 #include "../RenderPass.h"
 #include "../ComputeShader.h"
+#include "../Texture.h"// Use new Texture class
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <memory>
@@ -23,7 +24,7 @@ public:
         const std::shared_ptr<DirectionalLight>& dirLight,
         const std::shared_ptr<Skybox>& skybox) override;
 
-    GLuint GetShadowTexture() const { return m_shadowTex; }
+    GLuint GetShadowTexture() const { return m_shadowTex ? m_shadowTex->ID() : 0; }
 
     struct Config {
         int   steps = 64;
@@ -43,7 +44,7 @@ public:
 
 private:
     std::unique_ptr<ComputeShader> m_cs;
-    GLuint m_shadowTex = 0;    // R8
+    TexturePtr m_shadowTex;  // Using new Texture class for R8 shadow output
     GLuint m_paramsUBO = 0;
 
     int m_width = 0, m_height = 0;

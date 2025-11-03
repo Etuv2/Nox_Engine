@@ -1,86 +1,68 @@
 #include "DefaultTextures.h"
-#include <array>
 #include <iostream>
-#include <GL/glew.h>
 
 namespace {
     // Static flag to prevent recreation every frame
     static bool g_texturesCreated = false;
     
-    GLuint g_white = 0;
-    GLuint g_black = 0;
-    GLuint g_normal = 0;
-    GLuint g_aowhite = 0;
-    GLuint g_mrDefault = 0;
-
-    GLuint Create1x1(const std::array<unsigned char,4>& rgba, GLenum internalFormat = GL_RGBA8, GLenum format = GL_RGBA) {
-        //Save current OpenGL state to prevent conflicts
-        GLint lastTexture = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastTexture);
-        
-        GLuint tex = 0; 
-        glGenTextures(1, &tex);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, 1, 1, 0, format, GL_UNSIGNED_BYTE, rgba.data());
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        
-        //Restore previous texture binding
-        glBindTexture(GL_TEXTURE_2D, lastTexture);
-        
-        // Check for errors
-        GLenum error = glGetError();
-        if (error != GL_NO_ERROR) {
-            std::cerr << "[DefaultTextures] OpenGL error creating texture: " << error << std::endl;
-            glDeleteTextures(1, &tex);
-            return 0;
-        }
-        
-        return tex;
-    }
+    // REFACTORED: Use TexturePtr for automatic resource management
+    static TexturePtr g_white;
+    static TexturePtr g_black;
+    static TexturePtr g_normal;
+    static TexturePtr g_aowhite;
+    static TexturePtr g_mrDefault;
 }
 
 namespace DefaultTextures {
     void EnsureCreated() {
         // Only create textures once
         if (g_texturesCreated) {
-            return;
-        }
-        
-        //Save current OpenGL state
-        GLint lastTexture = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastTexture);
-        
+     return;
+    }
+   
         std::cout << "[DefaultTextures] Creating default textures (one-time initialization)..." << std::endl;
         
-        g_white = Create1x1({255,255,255,255});
-        g_black = Create1x1({0,0,0,255});
-        g_normal = Create1x1({128,128,255,255}); // Standard normal map (0,0,1) encoded as (128,128,255)
-        g_aowhite = Create1x1({255,255,255,255});
-        g_mrDefault = Create1x1({255,204,0,255}); // R unused, G roughness ~0.8, B metallic 0
+  // REFACTORED: Use TextureFactory for clean, declarative 1x1 texture creation
+      g_white = TextureFactory::CreateSolidColor(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), GL_RGBA8);
+        g_black = TextureFactory::CreateSolidColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), GL_RGBA8);
         
-        //Restore previous texture binding
-        glBindTexture(GL_TEXTURE_2D, lastTexture);
-        
+ // Standard normal map (0,0,1) encoded as (128,128,255)
+        g_normal = TextureFactory::CreateSolidColor(glm::vec4(128.0f/255.0f, 128.0f/255.0f, 1.0f, 1.0f), GL_RGB8);
+   
+        // White AO (no occlusion)
+        g_aowhite = TextureFactory::CreateSolidColor(glm::vec4(1.0f), GL_RGBA8);
+ 
+  // Default metallic-roughness: R unused (white), G roughness ~0.8, B metallic 0
+    g_mrDefault = TextureFactory::CreateSolidColor(glm::vec4(1.0f, 204.0f/255.0f, 0.0f, 1.0f), GL_RGBA8);
+  
         // Validate all textures were created successfully
-        if (!glIsTexture(g_white) || !glIsTexture(g_black) || !glIsTexture(g_normal) || 
-            !glIsTexture(g_aowhite) || !glIsTexture(g_mrDefault)) {
-            std::cerr << "[DefaultTextures]Some default textures failed to create!" << std::endl;
-            return;
+   if (!g_white || !g_white->IsValid() ||
+        !g_black || !g_black->IsValid() ||
+      !g_normal || !g_normal->IsValid() ||
+       !g_aowhite || !g_aowhite->IsValid() ||
+       !g_mrDefault || !g_mrDefault->IsValid()) {
+       std::cerr << "[DefaultTextures] Some default textures failed to create!" << std::endl;
+          return;
         }
-        
-        g_texturesCreated = true;
+   
+ g_texturesCreated = true;
         std::cout << "[DefaultTextures] All default textures created successfully!" << std::endl;
-        std::cout << "[DefaultTextures] White: " << g_white << ", Black: " << g_black 
-                  << ", Normal: " << g_normal << ", AOWhite: " << g_aowhite 
-                  << ", MR: " << g_mrDefault << std::endl;
+        std::cout << "[DefaultTextures] White: " << g_white->ID() << ", Black: " << g_black->ID()
+         << ", Normal: " << g_normal->ID() << ", AOWhite: " << g_aowhite->ID()
+         << ", MR: " << g_mrDefault->ID() << std::endl;
     }
     
-    GLuint White(){ EnsureCreated(); return g_white; }
-    GLuint Black(){ EnsureCreated(); return g_black; }
-    GLuint Normal(){ EnsureCreated(); return g_normal; }
-    GLuint AOWhite(){ EnsureCreated(); return g_aowhite; }
-    GLuint MetallicRoughnessDefault(){ EnsureCreated(); return g_mrDefault; }
+    // Backward-compatible GLuint accessors
+    GLuint White() { EnsureCreated(); return g_white ? g_white->ID() : 0; }
+    GLuint Black() { EnsureCreated(); return g_black ? g_black->ID() : 0; }
+  GLuint Normal() { EnsureCreated(); return g_normal ? g_normal->ID() : 0; }
+    GLuint AOWhite() { EnsureCreated(); return g_aowhite ? g_aowhite->ID() : 0; }
+    GLuint MetallicRoughnessDefault() { EnsureCreated(); return g_mrDefault ? g_mrDefault->ID() : 0; }
+
+    // NEW: Modern TexturePtr accessors for new code
+    TexturePtr GetWhiteTexture() { EnsureCreated(); return g_white; }
+    TexturePtr GetBlackTexture() { EnsureCreated(); return g_black; }
+    TexturePtr GetNormalTexture() { EnsureCreated(); return g_normal; }
+    TexturePtr GetAOWhiteTexture() { EnsureCreated(); return g_aowhite; }
+    TexturePtr GetMRDefaultTexture() { EnsureCreated(); return g_mrDefault; }
 }

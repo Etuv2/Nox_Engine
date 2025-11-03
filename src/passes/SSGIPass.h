@@ -1,100 +1,80 @@
 #pragma once
-#include "../RenderPass.h"
-#include <memory>
-#include <GL/glew.h>
 
-class SceneGraph; 
-class Camera; 
-class DirectionalLight; 
-class Skybox;
+#include "../RenderPass.h"
+#include "../Texture.h"  // Include new Texture system
+#include <memory>
+
 class ComputeShader;
+class RenderContext;
+class SceneGraph;
+class Camera;
+class DirectionalLight;
+class Skybox;
 
 /**
- * @brief Screen Space Global Illumination Pass
- * 
- * Implements dynamic, real-time diffuse global illumination using screen-space ray tracing.
- * Based on the approach by Shubham Sachdeva - provides noise-free GI through:
- * - Stochastic cosine-weighted hemisphere sampling per pixel
- * - Screen-space ray marching to find indirect lighting contributions
- * - Bilateral filtering for edge-aware denoising
- * - Temporal accumulation for stability
- * 
- * The pass runs at configurable resolution (default half-res) and uses compute shaders
- * for efficient parallel processing. Results are composited in the lighting pass.
+ * @brief Screen Space Global Illumination Pass using compute shaders
+ * Refactored to use the new Texture class for improved resource management
  */
 class SSGIPass : public RenderPass {
 public:
     SSGIPass() = default;
     ~SSGIPass() override;
 
-    bool Initialize(RenderContext& ctx) override;
-    void Resize(RenderContext& ctx, int w, int h) override;
-
+    bool Initialize(RenderContext& context) override;
+    void Resize(RenderContext& context, int newWidth, int newHeight) override;
     void Execute(RenderContext& ctx,
-                 const std::shared_ptr<SceneGraph>& sceneGraph,
-                 const std::shared_ptr<Camera>& camera,
-                 const std::shared_ptr<DirectionalLight>& dirLight,
-                 const std::shared_ptr<Skybox>& skybox) override;
+   const std::shared_ptr<SceneGraph>& sceneGraph,
+       const std::shared_ptr<Camera>& camera,
+         const std::shared_ptr<DirectionalLight>& dirLight,
+     const std::shared_ptr<Skybox>& skybox) override;
 
-    /**
-     * @brief Capture current frame color as history for next frame's ray marching
-     * Call once per frame AFTER PostProcess to capture final color
-     */
+ // Capture current HDR frame for ray marching history
     void CaptureHistory(RenderContext& ctx);
 
-    /**
-     * @brief Get the final SSGI texture for compositing in lighting pass
-     */
-    GLuint GetSSGITexture() const { return m_ssgiTex; }
+    // Get final SSGI texture
+    GLuint GetSSGITexture() const { return m_ssgiTex ? m_ssgiTex->ID() : 0; }
 
 private:
-    void allocTargets(int w, int h, bool halfRes);
-    void freeTargets();
+    // Compute shaders for SSGI pipeline
+    std::unique_ptr<ComputeShader> m_csDirections;   // Stochastic direction generation
+  std::unique_ptr<ComputeShader> m_csRaymarch;   // Screen-space ray marching
+    std::unique_ptr<ComputeShader> m_csDownsample;   // Downsample for blur
+    std::unique_ptr<ComputeShader> m_csBilateral;    // Edge-aware bilateral blur
+    std::unique_ptr<ComputeShader> m_csUpsample;     // Bilateral upsample
+    std::unique_ptr<ComputeShader> m_csTemporal;     // Temporal accumulation
 
-    // Compute shader stages
-    void runDirections(RenderContext& ctx);
-    void runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& camera); // pass camera for near/far
-    void runDownsample(RenderContext& ctx);   // half -> quarter
-    void runBilateral(RenderContext& ctx);    // Edge-aware denoising at quarter
-    void runUpsample(RenderContext& ctx);     // quarter -> half with bilateral upsample
-    void runTemporal(RenderContext& ctx);
-
-    // Optional smoothing: Kawase blur (fullscreen passes)
-    void runKawase(RenderContext& ctx); // post-temporal smoothing
-
-    // Compute shaders for each stage
-    std::unique_ptr<ComputeShader> m_csDirections;  // Generate stochastic directions
-    std::unique_ptr<ComputeShader> m_csRaymarch;    // Screen-space ray marching
-    std::unique_ptr<ComputeShader> m_csDownsample;  // 2x downsample
-    std::unique_ptr<ComputeShader> m_csBilateral;   // Edge-aware denoising (quarter)
-    std::unique_ptr<ComputeShader> m_csUpsample;    // 2x upsample + bilateral
-    std::unique_ptr<ComputeShader> m_csTemporal;    // Temporal accumulation
-
-    // Working textures
-    GLuint m_dirTex = 0;        // RG16F stochastic directions (view space)
-    GLuint m_ssgiRaw = 0;       // RGBA16F raw raymarch output (half/full)
-    GLuint m_ssgiQuarter = 0;   // RGBA16F quarter-res downsample
-    GLuint m_ssgiQuarterBlur = 0; // RGBA16F quarter-res blurred
-    GLuint m_ssgiBlur = 0;      // RGBA16F upsampled + blurred (half/full)
-    GLuint m_ssgiTex = 0;       // RGBA16F final resolved (what lighting pass samples)
-
-    // History textures for temporal stability
-    GLuint m_historyColor = 0;  // RGBA16F previous frame scene color
-    GLuint m_historySSGI = 0;   // RGBA16F previous frame SSGI
+    // REFACTORED: Use TexturePtr instead of raw GLuint
+    TexturePtr m_dirTex;            // Stochastic directions (RG16F)
+    TexturePtr m_ssgiRaw;        // Raw ray march output (RGBA16F)
+    TexturePtr m_ssgiQuarter;  // Quarter-res downsampled (RGBA16F)
+    TexturePtr m_ssgiQuarterBlur;   // Quarter-res blurred (RGBA16F)
+    TexturePtr m_ssgiBlur;          // Denoised/upsampled (RGBA16F)
+    TexturePtr m_ssgiTex;// Final temporal result (RGBA16F)
+    
+ // Temporal history textures
+    TexturePtr m_historyColor;      // Previous frame HDR color
+    TexturePtr m_historySSGI;     // Previous frame SSGI
 
     // Kawase blur resources
-    GLuint m_kawasePing = 0;    // RGBA16F ping target
-    GLuint m_kawasePong = 0;    // RGBA16F pong target
-    GLuint m_kawaseFBO = 0;     // FBO for fullscreen blits
-    GLuint m_kawaseShader = 0;  // Fullscreen Kawase blur shader program
-    int m_kawasePasses = 3;     // Number of Kawase passes (increased for smoother result)
+    GLuint m_kawaseShader = 0;
+    GLuint m_kawaseFBO = 0;
+    TexturePtr m_kawasePing;    // Kawase ping buffer
+    TexturePtr m_kawasePong;   // Kawase pong buffer
+    int m_kawasePasses = 3;         // Number of Kawase blur iterations
 
     // Resolution tracking
-    int m_w = 0, m_h = 0;       // full-res dimensions
-    int m_hw = 0, m_hh = 0;     // half-res working dimensions
-    int m_qw = 0, m_qh = 0;     // quarter-res dimensions
-    bool m_halfRes = true;      // current half-res state
+    int m_w = 0, m_h = 0;        // Full resolution
+    int m_hw = 0, m_hh = 0;    // Half/working resolution
+    int m_qw = 0, m_qh = 0;      // Quarter resolution
+    bool m_halfRes = true; // Use half resolution for performance
+    int m_frameIndex = 0;           // Frame counter for stochastic sampling
 
-    // Temporal
-    int m_frameIndex = 0;       // for stochastic directions animation
+    // Pipeline stages
+    void runDirections(RenderContext& ctx);
+    void runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& camera);
+    void runDownsample(RenderContext& ctx);
+  void runBilateral(RenderContext& ctx);
+    void runUpsample(RenderContext& ctx);
+    void runTemporal(RenderContext& ctx);
+    void runKawase(RenderContext& ctx);
 };

@@ -123,7 +123,7 @@ LightManager::~LightManager()
 {
 	std::cout << "[LightManager] Cleaning up GPU resources..." << std::endl;
 
-	// Cleanup GPU resources
+	// Cleanup GPU buffers
 	if (m_lightDataSSBO) {
 		glDeleteBuffers(1, &m_lightDataSSBO);
 		m_lightDataSSBO = 0;
@@ -139,12 +139,10 @@ LightManager::~LightManager()
 		m_tileDataSSBO = 0;
 	}
 
-	if (m_shadowArrayTexture) {
-		glDeleteTextures(1, &m_shadowArrayTexture);
-		m_shadowArrayTexture = 0;
-	}
+	// Shadow array texture now managed by smart pointer (automatic cleanup)
+	m_shadowArrayTexture.reset();
 
-	// m_shadowFBO is now a unique_ptr and will be cleaned up automatically
+	// m_shadowFBO is a unique_ptr and will be cleaned up automatically
 
 	std::cout << "[LightManager] Cleanup completed" << std::endl;
 }
@@ -333,10 +331,10 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 	std::cout << "[LightManager] Initializing unified shadow system:" << std::endl;
 	std::cout << "  - Base resolution: " << baseResolution << "x" << baseResolution << std::endl;
 
-	// Calculate total shadow map layers needed with proper allocation
+	// Calculate total shadow map layers needed
 	const int totalLayers = shadowConfig.maxDirectionalLights * 4 +  // 4 cascades each
-		shadowConfig.maxSpotLights * 1 +          // 1 shadow map each
-		shadowConfig.maxPointLights * 6;     // 6 faces each (cubemap)
+		shadowConfig.maxSpotLights * 1 +    // 1 shadow map each
+		shadowConfig.maxPointLights * 6;  // 6 faces each (cubemap)
 
 	m_shadowArrayLayers = totalLayers;
 
@@ -345,15 +343,15 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 	std::cout << "  - Spot lights: " << shadowConfig.maxSpotLights << std::endl;
 	std::cout << "  - Point lights: " << shadowConfig.maxPointLights << " x 6 faces" << std::endl;
 
-	// Create framebuffer for shadow rendering using the FrameBuffer class (reduced bandwidth: D24)
+	// Create framebuffer for shadow rendering
 	m_shadowFBO = std::make_unique<FrameBuffer>(
 		baseResolution, baseResolution,
 		std::vector<GLenum>{},  // No color attachments
-		true,// Use depth as texture
-		true,// Use depth as texture array
-		totalLayers,// Number of layers
-		false,// No stencil
-		GL_DEPTH_COMPONENT24// Switch to D24 for lower bandwidth
+		true,             // Use depth as texture
+		true,            // Use depth as texture array
+		totalLayers,            // Number of layers
+		false,       // No stencil
+		GL_DEPTH_COMPONENT24    // D24 for lower bandwidth
 	);
 
 	if (!m_shadowFBO->IsComplete()) {
@@ -362,29 +360,24 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 		return;
 	}
 
-	// Use the depth array from the framebuffer as our shadow texture array
-	m_shadowArrayTexture = m_shadowFBO->GetDepthArray();
+	// Create shadow array texture using new Texture builder
+	std::cout << "[LightManager] Creating shadow array texture with new Texture class..." << std::endl;
+	m_shadowArrayTexture = Texture::Builder::TextureArray2D(baseResolution, baseResolution, totalLayers, GL_DEPTH_COMPONENT24)
+		.Format(GL_DEPTH_COMPONENT)
+		.DataType(GL_FLOAT)
+		.FilterMode(GL_LINEAR, GL_LINEAR)
+		.WrapMode(GL_CLAMP_TO_BORDER)
+		.BorderColor(glm::vec4(1.0f))
+		.CompareMode(GL_COMPARE_REF_TO_TEXTURE, GL_LEQUAL)
+		.TextureType(TextureType::Shadow)
+		.Build();
 
-	// Configure depth array texture parameters (compare mode, filtering, wrap) ONE-TIME
-	GLint prevActiveTexture;
-	glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
-	glActiveTexture(GL_TEXTURE0 + TextureUnits::SHADOW_MAP_ARRAY);
-	glBindTexture(GL_TEXTURE_2D_ARRAY, m_shadowArrayTexture);
+	if (!m_shadowArrayTexture || !m_shadowArrayTexture->IsValid()) {
+		std::cerr << "[LightManager] Failed to create shadow array texture!" << std::endl;
+		return;
+	}
 
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-
-	// Hardware depth comparison for PCF
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-
-	float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
-
-	// Restore active texture
-	glActiveTexture(prevActiveTexture);
+	std::cout << "[LightManager] Shadow array texture created: ID=" << m_shadowArrayTexture->ID() << std::endl;
 
 	// Initialize shadow slice management
 	m_shadowSlices.resize(totalLayers);
@@ -431,8 +424,8 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 	ValidateShadowArrayTexture();
 
 	std::cout << "[LightManager] Shadow system initialized successfully:" << std::endl;
-	std::cout << "  - Shadow array texture ID: " << m_shadowArrayTexture << std::endl;
-	std::cout << "  - Shadow FBO ID: " << m_shadowFBO->GetFBO() << std::endl;
+	std::cout << "  - Shadow array texture ID: " << m_shadowArrayTexture->ID() << std::endl;
+	std::cout << "- Shadow FBO ID: " << m_shadowFBO->GetFBO() << std::endl;
 	std::cout << "  - PCSS enabled: " << (shadowConfig.enablePCSS ? "Yes" : "No") << std::endl;
 }
 
@@ -443,7 +436,7 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
  */
 GLuint LightManager::GetShadowArrayTexture() const
 {
-	return m_shadowArrayTexture;
+	return m_shadowArrayTexture ? m_shadowArrayTexture->ID() : 0;
 }
 
 /**
@@ -455,76 +448,62 @@ GLuint LightManager::GetShadowArrayTexture() const
  */
 void LightManager::ValidateShadowArrayTexture() const
 {
-	if (!m_shadowSystemInitialized || m_shadowArrayTexture == 0) {
+	if (!m_shadowSystemInitialized || !m_shadowArrayTexture || !m_shadowArrayTexture->IsValid()) {
 		std::cerr << "[LightManager] WARNING: Shadow array texture not initialized!" << std::endl;
 		return;
 	}
 
-	// Save current state
-	GLint prevActiveTexture;
-	GLint prevArrayBinding;
-	glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
-	glActiveTexture(GL_TEXTURE0 + TextureUnits::SHADOW_MAP_ARRAY);
-	glGetIntegerv(GL_TEXTURE_BINDING_2D_ARRAY, &prevArrayBinding);
+	// Use Texture class methods to validate
+	GLuint shadowTexID = m_shadowArrayTexture->ID();
+  
+	std::cout << "[LightManager] Validating shadow array texture..." << std::endl;
+	std::cout << "  Texture ID: " << shadowTexID << std::endl;
+	std::cout << "  Dimensions: " << m_shadowArrayTexture->Width() << "x" 
+        << m_shadowArrayTexture->Height() << "x" << m_shadowArrayTexture->Depth() << std::endl;
+std::cout << "  Internal Format: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
+    std::cout << "  Target: 0x" << std::hex << static_cast<GLenum>(m_shadowArrayTexture->Target()) << std::dec << std::endl;
 
-	// Validate our shadow array is still bound correctly
-	glBindTexture(GL_TEXTURE_2D_ARRAY, m_shadowArrayTexture);
+    // Validate dimensions and format
+    bool hasErrors = false;
 
-	GLint width = 0, height = 0, layers = 0, format = 0;
-	GLint compareMode = 0, compareFunc = 0;
+    if (m_shadowArrayTexture->Width() != shadowConfig.baseResolution || 
+        m_shadowArrayTexture->Height() != shadowConfig.baseResolution ||
+        m_shadowArrayTexture->Depth() != m_shadowArrayLayers) {
+   std::cerr << "[LightManager] CRITICAL: Shadow array texture corrupted!" << std::endl;
+        std::cerr << "  Expected: " << shadowConfig.baseResolution << "x" << shadowConfig.baseResolution
+               << "x" << m_shadowArrayLayers << std::endl;
+        std::cerr << "  Actual: " << m_shadowArrayTexture->Width() << "x" 
+    << m_shadowArrayTexture->Height() << "x" << m_shadowArrayTexture->Depth() << std::endl;
+      hasErrors = true;
+    }
 
-	glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_WIDTH, &width);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_HEIGHT, &height);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_DEPTH, &layers);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_INTERNAL_FORMAT, &format);
+    if (m_shadowArrayTexture->InternalFormat() != GL_DEPTH_COMPONENT24) {
+    std::cerr << "[LightManager] WARNING: Shadow array format incorrect!" << std::endl;
+  std::cerr << "  Expected: GL_DEPTH_COMPONENT24 (0x" << std::hex << GL_DEPTH_COMPONENT24 << ")" << std::dec << std::endl;
+  std::cerr << "  Actual: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
+   hasErrors = true;
+    }
 
-	glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, &compareMode);
-	glGetTexParameteriv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, &compareFunc);
+    // Verify target is correct
+    if (m_shadowArrayTexture->Target() != TextureTarget::Texture2DArray) {
+      std::cerr << "[LightManager] WARNING: Shadow array target incorrect!" << std::endl;
+     hasErrors = true;
+    }
 
-	bool hasErrors = false;
+    if (!hasErrors) {
+        static int validationCount = 0;
+        if (validationCount++ % 60 == 0) {
+            std::cout << "[LightManager] Shadow array validated OK (validation #" << validationCount << ")" << std::endl;
+        }
+ }
 
-	if (width != shadowConfig.baseResolution || height != shadowConfig.baseResolution ||
-		layers != m_shadowArrayLayers || format != GL_DEPTH_COMPONENT24) {
-		std::cerr << "[LightManager] CRITICAL: Shadow array texture corrupted!" << std::endl;
-		std::cerr << "  Expected: " << shadowConfig.baseResolution << "x" << shadowConfig.baseResolution
-			<< "x" << m_shadowArrayLayers << " format=" << GL_DEPTH_COMPONENT24 << std::endl;
-		std::cerr << "  Actual: " << width << "x" << height << "x" << layers << " format=" << format << std::endl;
-		hasErrors = true;
-	}
-
-	if (compareMode != GL_COMPARE_REF_TO_TEXTURE || compareFunc != GL_LEQUAL) {
-		std::cerr << "[LightManager] WARNING: Shadow comparison parameters incorrect!" << std::endl;
-
-		// Restore shadow comparison parameters
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-
-		std::cout << "[LightManager] Fixed shadow comparison parameters" << std::endl;
-	}
-
-	if (!hasErrors) {
-		static int validationCount = 0;
-		if (validationCount++ % 60 == 0) { // Log every 60 validations to avoid spam
-			std::cout << "[LightManager] Shadow array validated OK: ID=" << m_shadowArrayTexture
-				<< " " << width << "x" << height << "x" << layers
-				<< " (validation #" << validationCount << ")" << std::endl;
-		}
-	}
-
-	// Check OpenGL errors
-	GLenum error = glGetError();
-	if (error != GL_NO_ERROR) {
-		std::cerr << "[LightManager] OpenGL error during shadow validation: " << std::hex << error << std::dec << std::endl;
-	}
-
-	// Restore state
-	glBindTexture(GL_TEXTURE_2D_ARRAY, prevArrayBinding);
-	glActiveTexture(prevActiveTexture);
+    // Check OpenGL errors
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cerr << "[LightManager] OpenGL error during shadow validation: 0x" 
+  << std::hex << error << std::dec << std::endl;
+  }
 }
-
-// ============================================================================
-// Shadow Rendering Utilities
-// ============================================================================
 
 /**
  * @brief Conservative sphere vs frustum clip space test
@@ -765,48 +744,48 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		int subIndex) {
 		auto sliceStart = std::chrono::high_resolution_clock::now();
 
-		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-			m_shadowArrayTexture, 0, sliceIndex);
-		glViewport(0, 0, shadowConfig.baseResolution, shadowConfig.baseResolution);
-		glClear(GL_DEPTH_BUFFER_BIT);
+		// Attach shadow array layer to framebuffer
+        glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+    m_shadowArrayTexture->ID(), 0, sliceIndex);
+  glViewport(0, 0, shadowConfig.baseResolution, shadowConfig.baseResolution);
+        glClear(GL_DEPTH_BUFFER_BIT);
 
-		if (locLS >= 0) {
-			glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
-		}
+  if (locLS >= 0) {
+      glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
+     }
 
-		bool useOffset = (type == BaseLight::LightType::DIRECTIONAL && subIndex == 0);
-		if (useOffset) {
-			glEnable(GL_POLYGON_OFFSET_FILL);
-			glPolygonOffset(2.0f, 4.0f);
-		}
+        bool useOffset = (type == BaseLight::LightType::DIRECTIONAL && subIndex == 0);
+   if (useOffset) {
+     glEnable(GL_POLYGON_OFFSET_FILL);
+ glPolygonOffset(2.0f, 4.0f);
+   }
 
-		if (locObjectIndex < 0) {
-			filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
-		}
-		else {
-			filtered.RenderBatchedByVAOWithUniform(GL_TRIANGLES, GL_UNSIGNED_INT, locObjectIndex);
-		}
+        if (locObjectIndex < 0) {
+  filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
+     } else {
+    filtered.RenderBatchedByVAOWithUniform(GL_TRIANGLES, GL_UNSIGNED_INT, locObjectIndex);
+     }
 
-		if (useOffset) {
-			glDisable(GL_POLYGON_OFFSET_FILL);
-		}
+        if (useOffset) {
+    glDisable(GL_POLYGON_OFFSET_FILL);
+   }
 
-		auto sliceEnd = std::chrono::high_resolution_clock::now();
-		float ms = std::chrono::duration<float, std::milli>(sliceEnd - sliceStart).count();
+        auto sliceEnd = std::chrono::high_resolution_clock::now();
+  float ms = std::chrono::duration<float, std::milli>(sliceEnd - sliceStart).count();
 
-		// Update cached slice metadata
-		auto& c = m_cachedSlices[sliceIndex];
-		c.lastMatrix = lightSpace;
-		c.lastLightPos = m_activeLights[lightIdx]->GetPosition();
-		c.lastLightDir = m_activeLights[lightIdx]->GetDirection();
-		c.type = type;
-		c.lightIndex = lightIdx;
-		c.subIndex = subIndex;
-		c.inUse = true;
-		c.age = 0;
-		c.lastUpdateFrame = m_frameCounter;
-		c.lastUpdateMs = ms;
-	};
+      // Update cached slice metadata
+    auto& c = m_cachedSlices[sliceIndex];
+      c.lastMatrix = lightSpace;
+   c.lastLightPos = m_activeLights[lightIdx]->GetPosition();
+  c.lastLightDir = m_activeLights[lightIdx]->GetDirection();
+   c.type = type;
+  c.lightIndex = lightIdx;
+     c.subIndex = subIndex;
+        c.inUse = true;
+     c.age = 0;
+        c.lastUpdateFrame = m_frameCounter;
+    c.lastUpdateMs = ms;
+    };
 
 	int currentSlice = 0;
 

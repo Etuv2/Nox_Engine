@@ -1,7 +1,9 @@
 #pragma once
 #include <GL/glew.h>
 #include "Vertex.h"
+#include "Texture.h"
 #include <vector>
+#include <memory>
 
 class MeshComponent {
 public:
@@ -9,14 +11,14 @@ public:
     GLuint VBO;
     GLuint EBO;
     size_t indexCount;
-    
-    // glTF 2.0 standard texture assignments
-    GLuint diffuseTexture;        // Base color (albedo) texture
-    GLuint normalTexture;         // Normal map
-    GLuint roughnessTexture;      // Metallic-Roughness texture (G=roughness, B=metallic)
-    GLuint emissiveTexture;       // Emissive texture
-    GLuint occlusionTexture;      // Ambient occlusion texture (R channel)
-    GLuint specularTexture;       // Specular texture (for KHR_materials_specular extension)
+ 
+    // glTF 2.0 standard texture assignments (using new Texture system)
+    std::shared_ptr<Texture> diffuseTexture;        // Base color (albedo) texture
+    std::shared_ptr<Texture> normalTexture;         // Normal map
+    std::shared_ptr<Texture> roughnessTexture;      // Metallic-Roughness texture (G=roughness, B=metallic)
+    std::shared_ptr<Texture> emissiveTexture;       // Emissive texture
+    std::shared_ptr<Texture> occlusionTexture;      // Ambient occlusion texture (R channel)
+    std::shared_ptr<Texture> specularTexture;       // Specular texture (for KHR_materials_specular extension)
 
     // Material properties
     bool hasAlpha;                // Requires alpha blending
@@ -63,9 +65,9 @@ public:
     MeshComponent()
         : VAO(0), VBO(0), EBO(0),
         indexCount(0),
-        diffuseTexture(0), normalTexture(0),
-        roughnessTexture(0), emissiveTexture(0),
-        occlusionTexture(0), specularTexture(0),
+        diffuseTexture(nullptr), normalTexture(nullptr),
+        roughnessTexture(nullptr), emissiveTexture(nullptr),
+        occlusionTexture(nullptr), specularTexture(nullptr),
         hasAlpha(false), doubleSided(false) {}
 
     // Determine if this mesh needs special rendering treatment
@@ -94,20 +96,21 @@ public:
         if (VAO) glDeleteVertexArrays(1, &VAO);
         if (VBO) glDeleteBuffers(1, &VBO);
         if (EBO) glDeleteBuffers(1, &EBO);
-        if (diffuseTexture) glDeleteTextures(1, &diffuseTexture);
-        if (normalTexture) glDeleteTextures(1, &normalTexture);
-        if (roughnessTexture) glDeleteTextures(1, &roughnessTexture);
-        if (emissiveTexture) glDeleteTextures(1, &emissiveTexture);
-        if (occlusionTexture) glDeleteTextures(1, &occlusionTexture);
-        if (specularTexture) glDeleteTextures(1, &specularTexture);
-        for (GLuint vbo : morphVBOs) {
-            if (vbo) glDeleteBuffers(1, &vbo);
+        
+    // Textures will be automatically cleaned up by shared_ptr destructors
+        diffuseTexture.reset();
+        normalTexture.reset();
+    roughnessTexture.reset();
+        emissiveTexture.reset();
+     occlusionTexture.reset();
+        specularTexture.reset();
+    
+ for (GLuint vbo : morphVBOs) {
+          if (vbo) glDeleteBuffers(1, &vbo);
         }
         
-        // Reset all handles
-        VAO = VBO = EBO = 0;
-        diffuseTexture = normalTexture = roughnessTexture = 0;
-        emissiveTexture = occlusionTexture = specularTexture = 0;
+    // Reset all handles
+    VAO = VBO = EBO = 0;
         morphVBOs.clear();
     }
 };

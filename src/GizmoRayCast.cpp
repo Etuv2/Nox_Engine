@@ -21,7 +21,6 @@ GizmoRayCast::GizmoHitResult GizmoRayCast::QueryForGizmoSelection(
     std::vector<std::shared_ptr<SceneNode>> candidates;
     
     if (config.enableBVHAcceleration && sceneBVH && !sceneBVH->Empty()) {
-        // ENHANCED: Use multiple BVH queries with different tolerances for precision
         candidates = sceneBVH->QueryRay(ray, GizmoNodeFilter);
         std::cout << "[GizmoRayCast] BVH returned " << candidates.size() << " gizmo-compatible candidates" << std::endl;
         
