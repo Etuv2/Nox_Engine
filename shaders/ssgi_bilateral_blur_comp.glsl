@@ -1,14 +1,14 @@
 #version 460 core
 
-// Edge-aware bilateral blur for SSGI denoising
-// Preserves edges using depth and normal information
+// Edge-aware bilateral blur for SSGI denoising - ALIGNED WITH SSAO IMPLEMENTATION
+// Preserves edges using depth and normal information while maximizing noise reduction
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
 // Input textures
-layout (binding = 0) uniform sampler2D inTex;       // Raw SSGI to denoise (rgba: rgb=indirect, a=mask)
-layout (binding = 1) uniform sampler2D depthTex;    // Depth for edge detection
-layout (binding = 2) uniform sampler2D normalTex;   // Normals for edge detection (oct-encoded)
+layout (binding = 0) uniform sampler2D inTex;       // Raw SSGI to denoise (rgba: rgb=indirect, a=mask) - QUARTER RES
+layout (binding = 1) uniform sampler2D depthTex;  // Depth for edge detection - FULL RES
+layout (binding = 2) uniform sampler2D normalTex;   // Normals for edge detection (oct-encoded) - FULL RES
 
 // Output texture - rgba16f
 layout (binding = 3, rgba16f) writeonly uniform image2D outTex;
@@ -16,64 +16,82 @@ layout (binding = 3, rgba16f) writeonly uniform image2D outTex;
 // Uniforms
 uniform float depthSigma;    // Depth difference threshold (view-space)
 uniform float normalThresh;  // Normal difference threshold
-uniform vec2 invWork;        // 1.0 / working resolution
+uniform vec2 invWork; // 1.0 / quarter resolution (working res for THIS pass)
 
-// Proper octahedral normal decoding with fold
+// CRITICAL FIX: Use exact same octahedral decoding as SSAO
 vec3 octDecode(vec2 e) {
-    vec2 f = e * 2.0 - 1.0;
-    vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-    float t = clamp(-n.z, 0.0, 1.0);
-    n.x += (n.x >= 0.0 ? -t : t);
-    n.y += (n.y >= 0.0 ? -t : t);
+    e = e * 2.0 - 1.0;
+    vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+  if (n.z < 0.0) {
+        vec2 s = vec2(sign(e.x), sign(e.y));
+        n.xy = (1.0 - abs(n.yx)) * s;
+    }
     return normalize(n);
 }
 
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
-    vec2 uv = (vec2(id) + 0.5) * invWork;
+    
+    // Compute UVs for both quarter-res and full-res sampling
+    vec2 uvQuarter = (vec2(id) + 0.5) * invWork;
+    
+    // Map to screen-space for full-res depth/normal sampling
+vec2 uvScreen = uvQuarter;
 
-    // Sample center pixel properties
-    float d0 = textureLod(depthTex, uv, 0).r;
-    vec3 n0 = octDecode(textureLod(normalTex, uv, 0).rg);
+    // CRITICAL FIX: Sample depth/normal from FULL RESOLUTION (matches SSAO exactly)
+  float centerDepth = textureLod(depthTex, uvScreen, 0).r;
+    vec3 centerNormal = octDecode(textureLod(normalTex, uvScreen, 0).rg);
+    
+    // Sample SSGI from QUARTER RESOLUTION
+    vec4 centerColor = textureLod(inTex, uvQuarter, 0);
 
-    // Bilateral filter: 5x5 kernel
-    vec3 acc = vec3(0.0);
-    float am = 0.0; // alpha accumulation with same weights
-    float wsum = 0.0;
+    // Early exit for invalid pixels
+    if (centerColor.a < 0.01) {
+        imageStore(outTex, id, centerColor);
+        return;
+    }
 
-    for (int dy = -2; dy <= 2; ++dy) {
-        for (int dx = -2; dx <= 2; ++dx) {
-            vec2 uvN = uv + vec2(dx, dy) * invWork;
+    // CRITICAL FIX: Use exact same bilateral weighting as SSAO (5x5 kernel)
+    vec3 result = vec3(0.0);
+    float weightSum = 0.0;
+
+    // 5x5 kernel matching SSAO blur
+    for (int y = -2; y <= 2; ++y) {
+        for (int x = -2; x <= 2; ++x) {
+     // Neighbor UVs in both spaces
+       vec2 uvNQuarter = uvQuarter + vec2(x, y) * invWork;
+            vec2 uvNScreen = uvNQuarter;
             
-            // Sample neighbor
-            vec4 c = textureLod(inTex, uvN, 0);
-            float d = textureLod(depthTex, uvN, 0).r;
-            vec3 n = octDecode(textureLod(normalTex, uvN, 0).rg);
+    // Sample neighbor SSGI from QUARTER RESOLUTION
+            vec4 neighborColor = textureLod(inTex, uvNQuarter, 0);
+          
+          // Sample neighbor depth/normal from FULL RESOLUTION
+            float neighborDepth = textureLod(depthTex, uvNScreen, 0).r;
+      vec3 neighborNormal = octDecode(textureLod(normalTex, uvNScreen, 0).rg);
 
-            // Depth weight: exponential falloff based on depth difference
-            float wd = exp(-abs(d - d0) / max(depthSigma, 1e-4));
+    // CRITICAL FIX: Use exact same weight calculation as SSAO
+          // Depth weight: exponential falloff based on raw depth difference
+   float depthDiff = abs(centerDepth - neighborDepth);
+       float depthWeight = exp(-depthDiff / depthSigma);
 
-            // Normal weight: sharp cutoff for different orientations
-            float nd = max(dot(n, n0), 0.0);
-            float wn = pow(nd, 32.0);
-            if (nd < 1.0 - normalThresh) {
-                wn = 0.0; // Reject samples with very different normals
-            }
+            // Normal weight: exponential falloff based on normal difference
+            float normalDiff = max(0.0, 1.0 - dot(centerNormal, neighborNormal));
+        float normalWeight = exp(-normalDiff / normalThresh);
 
-            // Spatial weight (optional small Gaussian)
-            float ws = exp(-float(dx * dx + dy * dy) / 8.0);
-
-            // Combined weight
-            float w = wd * wn * ws;
-            acc += c.rgb * w;
-            am += c.a * w;
-            wsum += w;
+  // Combined weight (multiplicative)
+        float weight = depthWeight * normalWeight;
+            
+   // Accumulate weighted samples
+          result += neighborColor.rgb * weight;
+      weightSum += weight;
         }
     }
 
-    // Output filtered result (fallback to center if no valid samples)
-    vec4 center = textureLod(inTex, uv, 0);
-    vec3 outRGB = (wsum > 0.0) ? (acc / wsum) : center.rgb;
-    float outA = (wsum > 0.0) ? (am / wsum) : center.a;
+    // Normalize result (matches SSAO exactly)
+    vec3 outRGB = result / max(weightSum, 1e-5);
+
+    // Preserve alpha channel
+    float outA = centerColor.a;
+  
     imageStore(outTex, id, vec4(outRGB, outA));
 }

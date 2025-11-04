@@ -1,41 +1,54 @@
 #version 460 core
 
-// Generate stochastic cosine-weighted hemisphere directions for SSGI
-// This creates per-pixel random directions that will be used for ray marching
+// CRITICAL FIX: Stable direction generation aligned with SSAO's noise approach
+// Generates stochastic hemisphere directions with temporal stability
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
-// Output: RG texture storing random values for direction generation
-layout (rg16f, binding = 0) writeonly uniform image2D outDirs;
+// Store two randoms in RG of an RGBA16F image
+layout (rgba16f, binding = 0) writeonly uniform image2D outDirs;
 
-// Uniforms
-uniform vec2 invScreen; // 1.0 / screen dimensions
-uniform int frameIndex; // NEW: animate noise over time
+uniform vec2 invScreen;
+uniform int frameIndex;
 
-// Interleaved Gradient Noise - temporally stable noise function
-float ign(ivec2 p, int t) {
-    // Hash by pixel and frame to get good temporal variation
-    uint x = uint(p.x);
-    uint y = uint(p.y);
-    uint f = uint(t);
-    uint h = x * 0x27d4eb2dU ^ y * 0x165667b1U ^ f * 0x9e3779b9U;
-    h ^= (h >> 15);
-    h *= 0x85ebca6bU;
-    h ^= (h >> 13);
-    h *= 0xc2b2ae35U;
-    h ^= (h >> 16);
-    return float(h & 0x00ffffffu) / float(0x01000000u);
+// CRITICAL FIX: Use robust hash similar to screen-space shadows for consistency
+// This ensures stable, blue-noise-like distribution across frames
+float Hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 345.45));
+    p += dot(p, p + 34.345);
+    return fract(p.x * p.y);
+}
+
+// R2 low-discrepancy sequence for blue-noise-like distribution (Sachdeva's approach)
+vec2 R2Sequence(int n) {
+ const float g = 1.32471795724474602596; // Plastic constant
+    const float a1 = 1.0 / g;
+    const float a2 = 1.0 / (g * g);
+    return fract(vec2(a1, a2) * float(n));
 }
 
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
-    vec2 uv = (vec2(id) + 0.5) * invScreen;
 
-    // Generate two random values that will be used to create
-    // cosine-weighted hemisphere samples in the raymarch stage
-    float r1 = ign(id, frameIndex);
-    float r2 = ign(id.yx + ivec2(17, 59), frameIndex + 13);
+ // CRITICAL FIX: Use frame index for temporal stability (not pure random)
+    // Combine pixel position with frame index for decorrelated sampling
+    int seed = id.x + id.y * 8192 + frameIndex * 65536;
     
-    // Store random values in RG channels
-    imageStore(outDirs, id, vec4(r1, r2, 0.0, 0.0));
+    // Use R2 sequence for excellent blue-noise distribution
+    vec2 baseRandom = R2Sequence(seed);
+    
+    // Add spatial decorrelation using hash (prevents patterns)
+    vec2 spatialNoise = vec2(
+    Hash21(vec2(id) + vec2(frameIndex * 0.1)),
+   Hash21(vec2(id.y, id.x) + vec2(frameIndex * 0.1 + 0.5))
+    );
+    
+    // Blend R2 sequence with spatial hash for optimal distribution
+    // R2 provides temporal stability, hash provides spatial decorrelation
+    vec2 r = fract(baseRandom + spatialNoise * 0.25);
+    
+    // Ensure values are in [0,1) range
+    r = clamp(r, 0.0, 0.999999);
+
+    imageStore(outDirs, id, vec4(r.x, r.y, 0.0, 0.0));
 }

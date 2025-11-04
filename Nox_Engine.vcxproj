@@ -95,6 +95,7 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="config.json" />
     <None Include="config\input_config.json" />
+    <None Include="docs\SSGI_FIXES.md" />
     <None Include="README.md" />
     <None Include="scenes\animation_test.json" />
     <None Include="scenes\car.json" />
@@ -128,6 +129,8 @@
     <None Include="shaders\equirect2cube_vert.glsl" />
     <None Include="shaders\forward_transparent_frag.glsl" />
     <None Include="shaders\forward_transparent_vert.glsl" />
+    <None Include="shaders\gbuffer_frag.glsl" />
+    <None Include="shaders\gbuffer_vert.glsl" />
     <None Include="shaders\gui_frag.glsl" />
     <None Include="shaders\gui_unified_frag.glsl" />
     <None Include="shaders\gui_unified_vert.glsl" />
@@ -167,8 +170,6 @@
     <None Include="shaders\taa_resolve.glsl" />
     <None Include="shaders\velocity_frag.glsl" />
     <None Include="shaders\velocity_vert.glsl" />
-    <None Include="x64\Release\shaders\gbuffer_frag.glsl" />
-    <None Include="x64\Release\shaders\gbuffer_vert.glsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Animation.h" />

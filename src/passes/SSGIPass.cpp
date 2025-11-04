@@ -6,14 +6,15 @@
 #include "../SceneGraph.h"
 #include "../Camera.h"
 #include "../ComputeShader.h"
+#include "../Skybox.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
 SSGIPass::~SSGIPass() {
 	// TexturePtr handles cleanup automatically - no need for manual deletion
 	// Only cleanup Kawase shader and FBO
-	if (m_kawaseFBO) { glDeleteFramebuffers(1, &m_kawaseFBO); m_kawaseFBO = 0; }
-	if (m_kawaseShader) { glDeleteProgram(m_kawaseShader); m_kawaseShader = 0; }
+	if (m_kawaseFBO) { glDeleteFramebuffers(1, &m_kawaseFBO); m_kawaseFBO =0; }
+	if (m_kawaseShader) { glDeleteProgram(m_kawaseShader); m_kawaseShader =0; }
 }
 
 bool SSGIPass::Initialize(RenderContext& ctx) {
@@ -83,23 +84,23 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	m_w = w;
 	m_h = h;
 	m_halfRes = ctx.ssgiHalfRes;
-	m_hw = m_halfRes ? std::max(1, w / 2) : w;
-	m_hh = m_halfRes ? std::max(1, h / 2) : h;
-	m_qw = std::max(1, m_hw / 2);
-	m_qh = std::max(1, m_hh / 2);
+	m_hw = m_halfRes ? std::max(1, w /2) : w;
+	m_hh = m_halfRes ? std::max(1, h /2) : h;
+	m_qw = std::max(1, m_hw /2);
+	m_qh = std::max(1, m_hh /2);
 
 	std::cout << "[SSGIPass] Resizing to " << w << "x" << h
 		<< " (working resolution: " << m_hw << "x" << m_hh << ", quarter: " << m_qw << "x" << m_qh << ")" << std::endl;
 
 	// REFACTORED: Use Texture::Builder for clean, declarative texture creation
 	// All textures use RGBA16F for compute shader image2D compatibility (except directions which use RG16F)
-	m_dirTex = Texture::Builder::Texture2D(m_hw, m_hh, GL_RG16F)
-		.Format(GL_RG).DataType(GL_HALF_FLOAT)
+	m_dirTex = Texture::Builder::Texture2D(m_hw, m_hh, GL_RGBA16F)
+		.Format(GL_RGBA).DataType(GL_HALF_FLOAT)
 		.FilterMode(GL_NEAREST, GL_NEAREST)
 		.WrapMode(GL_CLAMP_TO_EDGE)
 		.Build();
 
-	m_ssgiRaw = TextureFactory::CreateHDR(m_hw, m_hh);  // Uses builder internally
+	m_ssgiRaw = TextureFactory::CreateHDR(m_hw, m_hh); // Uses builder internally
 	m_ssgiQuarter = TextureFactory::CreateHDR(m_qw, m_qh);
 	m_ssgiQuarterBlur = TextureFactory::CreateHDR(m_qw, m_qh);
 	m_ssgiBlur = TextureFactory::CreateHDR(m_hw, m_hh);
@@ -111,9 +112,9 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	
 	// CRITICAL: Initialize history buffers to zero on first frame/resize
 	// This prevents artifacts from uninitialized memory
-	std::vector<float> blackPixels(m_hw * m_hh * 4, 0.0f);
-	m_historyColor->Upload2D(0, 0, 0, m_hw, m_hh, GL_RGBA, GL_FLOAT, blackPixels.data());
-	m_historySSGI->Upload2D(0, 0, 0, m_hw, m_hh, GL_RGBA, GL_FLOAT, blackPixels.data());
+	std::vector<float> blackPixels(m_hw * m_hh *4,0.0f);
+	m_historyColor->Upload2D(0,0,0, m_hw, m_hh, GL_RGBA, GL_FLOAT, blackPixels.data());
+	m_historySSGI->Upload2D(0,0,0, m_hw, m_hh, GL_RGBA, GL_FLOAT, blackPixels.data());
 
 	// Kawase ping/pong targets at working resolution
 	m_kawasePing = TextureFactory::CreateHDR(m_hw, m_hh);
@@ -127,26 +128,56 @@ void SSGIPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<SceneGraph>&,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<DirectionalLight>&,
-	const std::shared_ptr<Skybox>&) {
+	const std::shared_ptr<Skybox>& skybox) {
 	if (!ctx.enableSSGI) return;
 	if (!ctx.gbufferFBO || !camera) return;
 
-	// DIAGNOSTIC: Log temporal accumulation parameters once per second
+	// DIAGNOSTIC: Comprehensive parameter logging for debugging (once per second)
 	static int frameCounter = 0;
 	if (frameCounter++ % 60 == 0) {
-		std::cout << "[SSGIPass] Temporal params - alpha: " << ctx.ssgiTemporalAlpha 
-			<< ", depth threshold: " << ctx.taaDepthThreshold 
-			<< ", normal threshold: " << ctx.taaNormalThreshold << std::endl;
+		std::cout << "\n=== SSGI Pipeline Diagnostics ===" << std::endl;
+		std::cout << "[Resolution] Full=" << m_w << "x" << m_h 
+			<< ", Work=" << m_hw << "x" << m_hh
+			<< ", Quarter=" << m_qw << "x" << m_qh << std::endl;
+		std::cout << "[Camera] Near=" << camera->GetCameraNearPlane() 
+			<< ", Far=" << camera->GetCameraFarPlane() << std::endl;
+		std::cout << "[Raymarch] Radius=" << ctx.ssgiRadius 
+			<< ", Samples=" << ctx.ssgiSampleCount
+			<< ", Thickness=" << ctx.ssgiThickness << std::endl;
+		std::cout << "[Temporal] Alpha=" << ctx.ssgiTemporalAlpha 
+			<< ", DepthThresh=" << ctx.taaDepthThreshold 
+			<< ", NormalThresh=" << ctx.taaNormalThreshold << std::endl;
+		std::cout << "[Bilateral] DepthReject=" << ctx.ssgiDepthReject 
+			<< ", NormalReject=" << ctx.ssgiNormalReject << std::endl;
+		std::cout << "[Quality] HalfRes=" << (ctx.ssgiHalfRes ? "Yes" : "No")
+			<< ", Strength=" << ctx.ssgiStrength << std::endl;
+		
+		// NEW: Texture validation
+		std::cout << "[Textures] Raw=" << (m_ssgiRaw ? m_ssgiRaw->ID() : 0)
+			<< ", Quarter=" << (m_ssgiQuarter ? m_ssgiQuarter->ID() : 0)
+			<< ", Blur=" << (m_ssgiBlur ? m_ssgiBlur->ID() : 0)
+			<< ", Final=" << (m_ssgiTex ? m_ssgiTex->ID() : 0) << std::endl;
+		std::cout << "[History] Color=" << (m_historyColor ? m_historyColor->ID() : 0)
+			<< " (" << m_hw << "x" << m_hh << ")"
+			<< ", SSGI=" << (m_historySSGI ? m_historySSGI->ID() : 0)
+			<< " (" << m_hw << "x" << m_hh << ")" << std::endl;
+		
+		// Validate G-buffer attachments
+		std::cout << "[G-Buffer] Depth=" << ctx.gbufferFBO->GetDepthTexture()
+			<< ", Normal=" << ctx.gbufferFBO->GetColorAttachment(0)
+			<< ", Albedo=" << ctx.gbufferFBO->GetColorAttachment(2) << std::endl;
+		
+		std::cout << "==================================\n" << std::endl;
 	}
 
 	// Run all SSGI stages
 	runDirections(ctx);
-	runRaymarch(ctx, camera);
+	runRaymarch(ctx, camera, skybox);
 	runDownsample(ctx);
 	runBilateral(ctx); // quarter-res blur
 	runUpsample(ctx); // upsample to half with edge-aware combine
-	runTemporal(ctx);  // temporal accumulation (history updated here)
-	runKawase(ctx);    // final smoothing (no history update)
+	runTemporal(ctx); // temporal accumulation (history updated here)
+	runKawase(ctx); // final smoothing (no history update)
 }
 
 void SSGIPass::runDirections(RenderContext& ctx) {
@@ -154,23 +185,23 @@ void SSGIPass::runDirections(RenderContext& ctx) {
 	glUseProgram(m_csDirections->GetProgramID());
 
 	// Bind output texture using new system
-	glBindImageTexture(0, m_dirTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+	glBindImageTexture(0, m_dirTex->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	// Set uniforms
 	glUniform2f(glGetUniformLocation(m_csDirections->GetProgramID(), "invScreen"),
-		1.0f / float(m_hw), 1.0f / float(m_hh));
+		1.0f / float(m_hw),1.0f / float(m_hh));
 	glUniform1i(glGetUniformLocation(m_csDirections->GetProgramID(), "frameIndex"), m_frameIndex++);
 
 	// Dispatch compute shader (8x8 local work groups)
-	GLuint gx = (m_hw + 7) / 8;
-	GLuint gy = (m_hh + 7) / 8;
-	glDispatchCompute(gx, gy, 1);
+	GLuint gx = (m_hw +7) /8;
+	GLuint gy = (m_hh +7) /8;
+	glDispatchCompute(gx, gy,1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 	glUseProgram(0);
 }
 
-void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& camera) {
+void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& camera, const std::shared_ptr<Skybox>& skybox) {
 	// Stage2: Screen-space ray marching to find indirect lighting
 	glUseProgram(m_csRaymarch->GetProgramID());
 
@@ -181,21 +212,30 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
 	glBindTextureUnit(3, m_dirTex->ID()); // Stochastic directions
 	glBindTextureUnit(4, m_historyColor->ID()); // Previous frame color
 
+	// Optional IBL irradiance cubemap fallback
+	GLuint ibl =0;
+	if (skybox) {
+		// Prefer diffuse irradiance map for indirect diffuse
+		ibl = skybox->GetIrradianceMap();
+		if (ibl ==0) ibl = skybox->GetEnvironmentMap();
+	}
+	glBindTextureUnit(6, ibl);
+	
 	// Bind output texture
-	glBindImageTexture(5, m_ssgiRaw->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+	glBindImageTexture(5, m_ssgiRaw->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	// Set uniforms for ray marching
 	glm::mat4 invProj = glm::inverse(ctx.proj);
 	glm::mat4 invView = glm::inverse(ctx.view);
 
 	GLint loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "invProj");
-	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(invProj));
+	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(invProj));
 	loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "invView");
-	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(invView));
+	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(invView));
 	loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "view");
-	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(ctx.view));
+	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(ctx.view));
 	loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "proj");
-	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(ctx.proj));
+	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(ctx.proj));
 
 	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "maxRayLenVS"), ctx.ssgiRadius);
 	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "numSteps"), std::max(8, ctx.ssgiSampleCount));
@@ -204,11 +244,13 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
 	glUniform2f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "workSize"), float(m_hw), float(m_hh));
 	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "cameraNear"), camera->GetCameraNearPlane());
 	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "cameraFar"), camera->GetCameraFarPlane());
+	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "iblFallbackStrength"),1.0f);
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "hasIBL"), ibl !=0 ?1 :0);
 
 	// Dispatch
-	GLuint gx = (m_hw + 7) / 8;
-	GLuint gy = (m_hh + 7) / 8;
-	glDispatchCompute(gx, gy, 1);
+	GLuint gx = (m_hw +7) /8;
+	GLuint gy = (m_hh +7) /8;
+	glDispatchCompute(gx, gy,1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 	glUseProgram(0);
@@ -219,13 +261,13 @@ void SSGIPass::runDownsample(RenderContext& ctx) {
 	glUseProgram(m_csDownsample->GetProgramID());
 
 	glBindTextureUnit(0, m_ssgiRaw->ID());
-	glBindImageTexture(1, m_ssgiQuarter->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+	glBindImageTexture(1, m_ssgiQuarter->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
 
-	glUniform2f(glGetUniformLocation(m_csDownsample->GetProgramID(), "invSrc"), 1.0f / float(m_hw), 1.0f / float(m_hh));
+	glUniform2f(glGetUniformLocation(m_csDownsample->GetProgramID(), "invSrc"),1.0f / float(m_hw),1.0f / float(m_hh));
 
-	GLuint gx = (m_qw + 7) / 8;
-	GLuint gy = (m_qh + 7) / 8;
-	glDispatchCompute(gx, gy, 1);
+	GLuint gx = (m_qw +7) /8;
+	GLuint gy = (m_qh +7) /8;
+	glDispatchCompute(gx, gy,1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 	glUseProgram(0);
@@ -241,17 +283,31 @@ void SSGIPass::runBilateral(RenderContext& ctx) {
 	glBindTextureUnit(2, ctx.gbufferFBO->GetColorAttachment(0));
 
 	// Bind output texture
-	glBindImageTexture(3, m_ssgiQuarterBlur->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+	glBindImageTexture(3, m_ssgiQuarterBlur->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
 
-	// Set bilateral filter parameters
-	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "depthSigma"), ctx.ssgiDepthReject);
-	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "normalThresh"), ctx.ssgiNormalReject);
-	glUniform2f(glGetUniformLocation(m_csBilateral->GetProgramID(), "invWork"), 1.0f / float(m_qw), 1.0f / float(m_qh));
+	// CRITICAL FIX: Use simple exponential thresholds matching SSAO exactly
+	// SSAO uses depthThreshold=0.02 and normalThreshold=0.2 successfully
+	// These are RAW depth/normal differences, not view-space scaled values
+	
+	float depthSigma = 0.02f; // Match SSAO's proven depth threshold
+	float normalThresh = 0.2f; // Match SSAO's proven normal threshold
+	
+	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "depthSigma"), depthSigma);
+	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "normalThresh"), normalThresh);
+	glUniform2f(glGetUniformLocation(m_csBilateral->GetProgramID(), "invWork"),1.0f / float(m_qw),1.0f / float(m_qh));
+
+	// DIAGNOSTIC: Log filter parameters for verification
+	static int bilateralLogCounter =0;
+	if (bilateralLogCounter++ %60 ==0) {
+		std::cout << "[SSGIPass::Bilateral] depthSigma=" << depthSigma 
+				 << ", normalThresh=" << normalThresh
+				<< ", resolution=" << m_qw << "x" << m_qh << std::endl;
+	}
 
 	// Dispatch
-	GLuint gx = (m_qw + 7) / 8;
-	GLuint gy = (m_qh + 7) / 8;
-	glDispatchCompute(gx, gy, 1);
+	GLuint gx = (m_qw +7) /8;
+	GLuint gy = (m_qh +7) /8;
+	glDispatchCompute(gx, gy,1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 	glUseProgram(0);
@@ -266,16 +322,21 @@ void SSGIPass::runUpsample(RenderContext& ctx) {
 	glBindTextureUnit(2, ctx.gbufferFBO->GetDepthTexture());
 	glBindTextureUnit(3, ctx.gbufferFBO->GetColorAttachment(0));
 
-	glBindImageTexture(4, m_ssgiBlur->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+	glBindImageTexture(4, m_ssgiBlur->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
 
-	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invDst"), 1.0f / float(m_hw), 1.0f / float(m_hh));
-	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invFull"), 1.0f / float(m_w), 1.0f / float(m_h));
-	glUniform1f(glGetUniformLocation(m_csUpsample->GetProgramID(), "depthSigma"), ctx.ssgiDepthReject);
-	glUniform1f(glGetUniformLocation(m_csUpsample->GetProgramID(), "normalThresh"), ctx.ssgiNormalReject);
+	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invDst"),1.0f / float(m_hw),1.0f / float(m_hh));
+	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invFull"),1.0f / float(m_w),1.0f / float(m_h));
+	
+	// CRITICAL FIX: Use same thresholds as bilateral for consistency
+	float depthSigma = 0.02f; // Match SSAO and bilateral
+	float normalThresh = 0.2f; // Match SSAO and bilateral
+	
+	glUniform1f(glGetUniformLocation(m_csUpsample->GetProgramID(), "depthSigma"), depthSigma);
+	glUniform1f(glGetUniformLocation(m_csUpsample->GetProgramID(), "normalThresh"), normalThresh);
 
-	GLuint gx = (m_hw + 7) / 8;
-	GLuint gy = (m_hh + 7) / 8;
-	glDispatchCompute(gx, gy, 1);
+	GLuint gx = (m_hw +7) /8;
+	GLuint gy = (m_hh +7) /8;
+	glDispatchCompute(gx, gy,1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 	glUseProgram(0);
@@ -293,24 +354,39 @@ void SSGIPass::runTemporal(RenderContext& ctx) {
 	glBindTextureUnit(4, ctx.gbufferFBO->GetColorAttachment(0));
 
 	// Bind output texture
-	glBindImageTexture(5, m_ssgiTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+	glBindImageTexture(5, m_ssgiTex->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
 
-	// Set temporal parameters
-	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "alpha"), ctx.ssgiTemporalAlpha);
-	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "depthThreshold"), ctx.taaDepthThreshold);
-	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "normalThreshold"), ctx.taaNormalThreshold);
+	// CRITICAL FIX: Use proven temporal parameters
+	// Alpha should be SMALL (0.1-0.15) for stable convergence
+	// Thresholds should match SSAO for consistent rejection
+	
+	float alpha = std::max(0.05f, std::min(ctx.ssgiTemporalAlpha, 0.3f)); // Clamp to safe range
+	float depthThreshold = 0.02f; // Match SSAO's depth threshold
+	float normalThreshold = 0.2f; // Match SSAO's normal threshold
+	
+	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "alpha"), alpha);
+	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "depthThreshold"), depthThreshold);
+	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "normalThreshold"), normalThreshold);
+
+	// DIAGNOSTIC: Log temporal parameters for tuning verification
+	static int temporalLogCounter =0;
+	if (temporalLogCounter++ %60 ==0) {
+		std::cout << "[SSGIPass::Temporal] alpha=" << alpha 
+				 << ", depthThreshold=" << depthThreshold 
+				 << ", normalThreshold=" << normalThreshold << std::endl;
+	}
 
 	// Dispatch
-	GLuint gx = (m_hw + 7) / 8;
-	GLuint gy = (m_hh + 7) / 8;
-	glDispatchCompute(gx, gy, 1);
+	GLuint gx = (m_hw +7) /8;
+	GLuint gy = (m_hh +7) /8;
+	glDispatchCompute(gx, gy,1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 	// CRITICAL FIX: Copy AFTER temporal resolve completes, not before
 	// This ensures history contains the converged result for next frame
-	glCopyImageSubData(m_ssgiTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-		m_historySSGI->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-		m_hw, m_hh, 1);
+	glCopyImageSubData(m_ssgiTex->ID(), GL_TEXTURE_2D,0,0,0,0,
+		m_historySSGI->ID(), GL_TEXTURE_2D,0,0,0,0,
+		m_hw, m_hh,1);
 
 	glUseProgram(0);
 }
@@ -321,21 +397,21 @@ void SSGIPass::runKawase(RenderContext& ctx) {
 
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
-	glViewport(0, 0, m_hw, m_hh);
+	glViewport(0,0, m_hw, m_hh);
 
 	GLuint src = m_ssgiTex->ID();
-	for (int i = 0; i < m_kawasePasses; ++i) {
-		TexturePtr& dst = (i % 2 == 0) ? m_kawasePing : m_kawasePong;
+	for (int i =0; i < m_kawasePasses; ++i) {
+		TexturePtr& dst = (i %2 ==0) ? m_kawasePing : m_kawasePong;
 		glBindFramebuffer(GL_FRAMEBUFFER, m_kawaseFBO);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->ID(), 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->ID(),0);
 		GLenum drawBuf = GL_COLOR_ATTACHMENT0;
 		glDrawBuffers(1, &drawBuf);
 
 		glUseProgram(m_kawaseShader);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, src);
-		glUniform1i(glGetUniformLocation(m_kawaseShader, "image"), 0);
-		glUniform2f(glGetUniformLocation(m_kawaseShader, "texelSize"), 1.0f / float(m_hw), 1.0f / float(m_hh));
+		glUniform1i(glGetUniformLocation(m_kawaseShader, "image"),0);
+		glUniform2f(glGetUniformLocation(m_kawaseShader, "texelSize"),1.0f / float(m_hw),1.0f / float(m_hh));
 		glUniform1i(glGetUniformLocation(m_kawaseShader, "pass"), i);
 
 		ctx.screenQuad->Render();
@@ -345,19 +421,29 @@ void SSGIPass::runKawase(RenderContext& ctx) {
 	}
 
 	// Copy last output back into m_ssgiTex
-	TexturePtr& last = ((m_kawasePasses - 1) % 2 == 0) ? m_kawasePing : m_kawasePong;
-	glCopyImageSubData(last->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-		m_ssgiTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-		m_hw, m_hh, 1);
+	TexturePtr& last = ((m_kawasePasses -1) %2 ==0) ? m_kawasePing : m_kawasePong;
+	glCopyImageSubData(last->ID(), GL_TEXTURE_2D,0,0,0,0,
+		m_ssgiTex->ID(), GL_TEXTURE_2D,0,0,0,0,
+		m_hw, m_hh,1);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER,0);
 	glUseProgram(0);
 }
 
 void SSGIPass::CaptureHistory(RenderContext& ctx) {
-	// Capture current frame's HDR color for next frame's ray marching
+	// CRITICAL FIX: Capture current frame's HDR color for next frame's ray marching
+	// This must match the WORKING RESOLUTION (half-res by default) for correct sampling
+	
 	FrameBuffer* sourceFBO = (ctx.taaFBO && ctx.enableTAA) ? ctx.taaFBO : ctx.hdrFBO.get();
 	if (!sourceFBO) return;
+
+	// DIAGNOSTIC: Log capture details
+	static int captureLogCounter = 0;
+	if (captureLogCounter++ % 60 == 0) {
+		std::cout << "[SSGIPass::CaptureHistory] Source: " << (ctx.enableTAA ? "TAA" : "HDR") 
+			<< " (" << ctx.width << "x" << ctx.height << ")"
+			<< " -> History (" << m_hw << "x" << m_hh << ")" << std::endl;
+	}
 
 	// Create temporary FBO for blit target
 	GLuint tmpFBO = 0;
@@ -367,6 +453,8 @@ void SSGIPass::CaptureHistory(RenderContext& ctx) {
 	glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 		GL_TEXTURE_2D, m_historyColor->ID(), 0);
 
+	// CRITICAL: Blit from FULL resolution to WORKING resolution with LINEAR filtering
+	// This ensures the history buffer matches the raymarch output resolution
 	glBlitFramebuffer(0, 0, ctx.width, ctx.height,
 		0, 0, m_hw, m_hh,
 		GL_COLOR_BUFFER_BIT, GL_LINEAR);

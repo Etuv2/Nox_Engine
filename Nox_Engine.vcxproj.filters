@@ -383,12 +383,6 @@
     <None Include="shaders\equirect2cube_vert.glsl">
       <Filter>Source Files\misc\shaders\skybox</Filter>
     </None>
-    <None Include="x64\Release\shaders\gbuffer_vert.glsl">
-      <Filter>Source Files\misc\shaders\gbuffer</Filter>
-    </None>
-    <None Include="x64\Release\shaders\gbuffer_frag.glsl">
-      <Filter>Source Files\misc\shaders\gbuffer</Filter>
-    </None>
     <None Include="shaders\deferred_lighting_vert.glsl">
       <Filter>Source Files\misc\shaders\main</Filter>
     </None>
@@ -588,6 +582,13 @@
     <None Include="shaders\raytrace_comp.glsl">
       <Filter>Source Files\misc\shaders\raytrace</Filter>
     </None>
+    <None Include="shaders\gbuffer_frag.glsl">
+      <Filter>Source Files\misc\shaders\gbuffer</Filter>
+    </None>
+    <None Include="shaders\gbuffer_vert.glsl">
+      <Filter>Source Files\misc\shaders\gbuffer</Filter>
+    </None>
+    <None Include="docs\SSGI_FIXES.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

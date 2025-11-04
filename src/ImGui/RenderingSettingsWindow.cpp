@@ -52,14 +52,14 @@ RenderingSettingsWindow::RenderingSettingsWindow()
     // SSGI settings
     m_enableSSGI = false;
     m_ssgiStrength = 1.0f;
-    m_ssgiRadius = 1.0f;
-    m_ssgiSampleCount = 64;
-    m_ssgiHalfRes = false;
-    m_ssgiTemporalAlpha = 0.8f;
-    m_ssgiNormalReject = 0.5f;
-    m_ssgiDepthReject = 0.5f;
-    m_ssgiThickness = 0.1f;
-    
+    m_ssgiRadius = 5.0f;     // FIXED: Was 1.0, now matches RenderContext production default
+    m_ssgiSampleCount = 16;       // FIXED: Was 64, now optimal for temporal accumulation
+    m_ssgiHalfRes = true;         // FIXED: Was false, now matches performance recommendation
+    m_ssgiTemporalAlpha = 0.15f;  // CRITICAL FIX: Was 0.8, now proper for convergence
+    m_ssgiNormalReject = 0.15f;   // FIXED: Was 0.5, now tightened for better edges
+    m_ssgiDepthReject = 0.2f;     // FIXED: Was 0.5, now tightened for better edges
+    m_ssgiThickness = 0.02f;      // FIXED: Was 0.1, now proper view-space scale
+
     // NEW: LPV GI settings - match RenderContext defaults
     m_enableLPV = true;
     m_lpvGIStrength = 1.0f;

@@ -54,16 +54,16 @@ struct RenderContext {
 	float ssaoBlurDepthThreshold = 0.01f;
 
 
-	// SSGI settings
+	// SSGI settings - PRODUCTION READY defaults for noise-free convergence
 	bool enableSSGI = true;
-	float ssgiStrength = 1.2f;
-	float ssgiRadius = 1.0f;
-	int ssgiSampleCount = 16;
-	bool ssgiHalfRes = true;           // run SSGI at half-res for speed
-	float ssgiTemporalAlpha = 0.5f;   // exponential average factor
-	float ssgiNormalReject = 0.25f;    // bilateral normal threshold
-	float ssgiDepthReject = 0.5f;      // bilateral depth sigma (view-space)
-	float ssgiThickness = 0.01f;        // thickness for ray-scene intersection in view space
+	float ssgiStrength = 1.0f;         // Overall GI contribution multiplier
+	float ssgiRadius = 5.0f;  // CRITICAL: Ray length in view-space units (was 1.0, way too small!)
+	int ssgiSampleCount = 16;        // Samples per pixel per frame (16 is optimal with temporal accumulation)
+	bool ssgiHalfRes = true;  // Run SSGI at half-res for performance (recommended)
+	float ssgiTemporalAlpha = 0.15f;      // CRITICAL: Small alpha for stable convergence (was 0.5, way too high!)
+	float ssgiNormalReject = 0.15f;  // Bilateral normal threshold in radians (tightened for better edges)
+	float ssgiDepthReject = 0.2f;         // Bilateral depth sigma in view-space units (tightened from 0.5)
+	float ssgiThickness = 0.02f;   // CRITICAL: Ray-surface intersection thickness (was 0.01, too thin!)
 
 
 	// Bloom settings
