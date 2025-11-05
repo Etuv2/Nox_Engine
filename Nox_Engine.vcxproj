@@ -95,7 +95,7 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="config.json" />
     <None Include="config\input_config.json" />
-    <None Include="docs\SSGI_FIXES.md" />
+    <None Include="docs\SSAO_FIX.md" />
     <None Include="README.md" />
     <None Include="scenes\animation_test.json" />
     <None Include="scenes\car.json" />

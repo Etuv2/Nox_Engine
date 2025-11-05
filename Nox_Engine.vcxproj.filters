@@ -588,7 +588,7 @@
     <None Include="shaders\gbuffer_vert.glsl">
       <Filter>Source Files\misc\shaders\gbuffer</Filter>
     </None>
-    <None Include="docs\SSGI_FIXES.md" />
+    <None Include="docs\SSAO_FIX.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

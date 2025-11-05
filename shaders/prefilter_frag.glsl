@@ -23,15 +23,13 @@ float DistributionGGX(vec3 N, vec3 H, float roughness)
     return num / denom;
 }
 // ----------------------------------------------------------------------------
-// http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
-// efficient VanDerCorpus calculation.
 float RadicalInverse_VdC(uint bits) 
 {
      bits = (bits << 16u) | (bits >> 16u);
      bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
      bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
      bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-     bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+ bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
      return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
 // ----------------------------------------------------------------------------
@@ -67,87 +65,69 @@ void main()
 {		
     vec3 N = normalize(WorldPos);
   
-    // make the simplifying assumption that V equals R equals the normal 
+ // make the simplifying assumption that V equals R equals the normal 
     vec3 R = N;
     vec3 V = R;
 
-    // CRITICAL FIX: Adaptive sample count based on roughness
-    // Use more samples for rough surfaces to ensure proper blur
-    uint SAMPLE_COUNT = uint(1024.0 + roughness * 2048.0); // 1024 to 3072 samples
+    // CRITICAL FIX: Roughness-adaptive sample count
+    // Smooth surfaces (low roughness) need fewer samples
+    // Rough surfaces (high roughness) need MORE samples for proper blur
+    uint baseSamples = 512u;
+    uint roughSamples = uint(roughness * 3072.0); // 0 to 3072 based on roughness
+    uint SAMPLE_COUNT = baseSamples + roughSamples;
+    
     vec3 prefilteredColor = vec3(0.0);
     float totalWeight = 0.0;
     
     for(uint i = 0u; i < SAMPLE_COUNT; ++i)
     {
         // generates a sample vector that's biased towards the preferred alignment direction (importance sampling).
-        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+   vec2 Xi = Hammersley(i, SAMPLE_COUNT);
         vec3 H = ImportanceSampleGGX(Xi, N, roughness);
-        vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+     vec3 L  = normalize(2.0 * dot(V, H) * H - V);
 
         float NdotL = max(dot(N, L), 0.0);
         if(NdotL > 0.0)
-        {
-            // CRITICAL FIX: Use actual resolution parameter instead of hardcoded 512
-            float D   = DistributionGGX(N, H, roughness);
-            float NdotH = max(dot(N, H), 0.0);
-            float HdotV = max(dot(H, V), 0.0);
-            float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 
+  {
+   // CRITICAL FIX: Proper mip level calculation
+   float D   = DistributionGGX(N, H, roughness);
+          float NdotH = max(dot(N, H), 0.0);
+    float HdotV = max(dot(H, V), 0.0);
+     float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 
 
-            float saTexel  = 4.0 * PI / (6.0 * resolution * resolution);
+   float saTexel  = 4.0 * PI / (6.0 * resolution * resolution);
             float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
 
-            // CRITICAL FIX: Better mip level calculation with minimum roughness handling
-            float mipLevel = 0.0;
-            if(roughness > 0.0) {
-                mipLevel = 0.5 * log2(saSample / saTexel);
-                // Clamp to prevent negative mip levels
-                mipLevel = max(mipLevel, 0.0);
-            }
+    // CRITICAL FIX: Better mip level selection
+         float mipLevel = 0.0;
+   if(roughness > 0.0) {
+mipLevel = 0.5 * log2(saSample / saTexel);
+     mipLevel = clamp(mipLevel, 0.0, 8.0); // Prevent excessive mip levels
+   }
     
-            // Sample environment and ensure positive
-            vec3 envSample = textureLod(environmentMap, L, mipLevel).rgb;
-            envSample = max(envSample, vec3(0.0)); // Prevent negative samples
-            
-            prefilteredColor += envSample * NdotL;
-            totalWeight      += NdotL;
-        }
+  // Sample environment and ensure positive
+     vec3 envSample = textureLod(environmentMap, L, mipLevel).rgb;
+         envSample = max(envSample, vec3(0.0));
+ 
+       prefilteredColor += envSample * NdotL;
+ totalWeight      += NdotL;
+     }
     }
 
-    if(totalWeight > 0.0) {
+    // CRITICAL FIX: Proper normalization
+    if(totalWeight > 0.0001) {
         prefilteredColor = prefilteredColor / totalWeight;
     } else {
-        // Fallback for edge cases
+   // Fallback: sample environment directly
         prefilteredColor = texture(environmentMap, R).rgb;
     }
  
     // Ensure strictly positive output
     prefilteredColor = max(prefilteredColor, vec3(0.0));
 
-    // Ensure rough surfaces are properly blurred
-    // For very rough surfaces (roughness > 0.8), add extra blur
-    if(roughness > 0.8) {
-        vec3 extraBlur = vec3(0.0);
-        int blurSamples = 16;
-        float blurRadius = (roughness - 0.8) * 0.5; // 0 to 0.1 radius
-    
-        for(int i = 0; i < blurSamples; ++i) {
-            float angle = float(i) * 2.0 * PI / float(blurSamples);
-            vec3 offset = vec3(cos(angle) * blurRadius, sin(angle) * blurRadius, 0.0);
-            vec3 sampleDir = normalize(R + offset);
-            vec3 blurSample = texture(environmentMap, sampleDir).rgb;
-            blurSample = max(blurSample, vec3(0.0)); // Prevent negative samples
-            extraBlur += blurSample;
-     }
-      extraBlur /= float(blurSamples);
-        
-     // Blend with original result based on roughness
-        float blendFactor = (roughness - 0.8) * 5.0; // 0 to 1
-        prefilteredColor = mix(prefilteredColor, extraBlur, blendFactor * 0.3);
- }
-    
-    // Final safety check for NaN/Inf
+    // Safety check for NaN/Inf
     if (any(isnan(prefilteredColor)) || any(isinf(prefilteredColor))) {
-     prefilteredColor = vec3(0.0);
+        prefilteredColor = vec3(0.0);
     }
 
     FragColor = vec4(prefilteredColor, 1.0);

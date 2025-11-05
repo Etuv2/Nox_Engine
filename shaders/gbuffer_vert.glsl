@@ -3,7 +3,7 @@
 layout(location = 0) in vec3 aPos;       
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
-layout(location = 3) in vec4 aTangent;
+layout(location = 3) in vec4 aTangent; // XYZ = tangent direction, W = handedness
 
 // Outputs to the fragment shader (geometry pass)
 out vec3 WorldPos;
@@ -23,17 +23,29 @@ void main()
     WorldPos = worldPos.xyz;
     TexCoords = aTexCoords;
 
-    // Normal Matrix
-    mat3 normalMatrix = transpose(inverse(mat3(model)));
-    // Convert normal & tangent to world space
+    // Normal Matrix (transpose of inverse for non-uniform scaling)
+  mat3 normalMatrix = transpose(inverse(mat3(model)));
+    
+    // CRITICAL FIX: Gram-Schmidt orthogonalization for seamless tangent space
+    // Transform normal and tangent to world space
     vec3 N = normalize(normalMatrix * aNormal);
     vec3 T = normalize(normalMatrix * aTangent.xyz);
-    // Rebuild B from (N x T), applying the handedness in aTangent.w
-    vec3 B = normalize(cross(N, T) * aTangent.w);
+    
+    // Re-orthogonalize tangent with respect to normal (Gram-Schmidt process)
+    // This ensures T is perpendicular to N, preventing seams at UV boundaries
+    T = normalize(T - dot(T, N) * N);
+    
+    // Compute bitangent using cross product and handedness from tangent.w
+// The handedness (aTangent.w) determines if we need to flip the bitangent
+    vec3 B = cross(N, T) * aTangent.w;
+    
+    // Ensure bitangent is normalized (cross product of two unit vectors should be unit, but be safe)
+    B = normalize(B);
 
+    // Store outputs
     WorldNormal = N;
     TBN = mat3(T, B, N);
-    RawTangent = aTangent;
+ RawTangent = aTangent;
 
     gl_Position = projection * view * worldPos;
 }

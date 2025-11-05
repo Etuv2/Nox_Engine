@@ -469,8 +469,11 @@ vec3 ComputeIBL(vec3 N, vec3 V, vec3 diffuseAlbedo, float metallic, float roughn
     vec3 R = reflect(-V, N);
     roughness = max(roughness, 0.04);
   
-    // Sample IBL textures
+    // Sample IBL textures - these are IRRADIANCE (not radiance)
+// Irradiance map already has cosine-weighted hemisphere integral baked in
     vec3 irradiance = texture(irradianceMap, N).rgb;
+    
+    // Prefiltered map is sampled based on roughness
     float lod = roughness * prefilteredMaxLOD;
     vec3 prefiltered = textureLod(prefilteredMap, R, lod).rgb;
     
@@ -484,37 +487,42 @@ vec3 ComputeIBL(vec3 N, vec3 V, vec3 diffuseAlbedo, float metallic, float roughn
     // Ensure BRDF LUT values are valid
     brdf = max(brdf, vec2(0.0));
 
-    // Calculate Fresnel for IBL
+  // Calculate Fresnel for IBL
     vec3 F = fresnelSchlick(NdotV, F0);
     
-    // Conservative energy compensation to prevent blow-out
-    vec3 energyCompensation = BoundedEnergyCompensation(F, brdf);
+    // CRITICAL FIX: Remove energy compensation entirely - it's causing over-brightness
+    // The BRDF LUT already handles energy conservation correctly
     
-    // Diffuse IBL with AO and intensity scaling
+    // Diffuse IBL contribution
+    // Irradiance is already integrated over hemisphere with Lambert BRDF baked in
+    // We just need to apply the Fresnel split (kD) and albedo
     vec3 kS = F;
     vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+    
+    // CRITICAL FIX: Irradiance already has 1/PI from Lambert BRDF integration
+    // DO NOT divide by PI again - that would darken it incorrectly
     vec3 diffuse = kD * diffuseAlbedo * irradiance * diffuseAO;
     
-    // Apply diffuse IBL scale to prevent over-brightness
+    // Apply diffuse IBL scale
     diffuse *= diffuseIBLScale;
     
-    // Specular IBL with conservative energy compensation and specular occlusion
+    // Specular IBL contribution
+    // CRITICAL FIX: The BRDF LUT gives us the split-sum approximation
+    // F * brdf.x + brdf.y is the correct energy-conserving formulation
     vec3 specular = prefiltered * (F * brdf.x + brdf.y) * specularAO;
-    // Apply energy compensation more conservatively
-    specular *= mix(vec3(1.0), energyCompensation, 0.5);
     
-    // Apply specular IBL scale to prevent over-brightness
+    // Apply specular IBL scale
     specular *= specularIBLScale;
     
-    // Final clamp to ensure strictly positive IBL output
+  // Final clamp to ensure strictly positive IBL output
     diffuse = max(diffuse, vec3(0.0));
     specular = max(specular, vec3(0.0));
     
     // Apply overall IBL intensity multiplier
-    vec3 iblResult = (diffuse + specular) * iblIntensity;
+vec3 iblResult = (diffuse + specular) * iblIntensity;
     
     // Safety check for NaN/Inf
-    if (any(isnan(iblResult)) || any(isinf(iblResult))) {
+  if (any(isnan(iblResult)) || any(isinf(iblResult))) {
         return vec3(0.0);
     }
     

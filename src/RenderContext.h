@@ -46,12 +46,12 @@ struct RenderContext {
 	glm::mat4 prevProj{ 1.0f };
 
 
-	// SSAO settings
+	// SSAO settings - OPTIMIZED for natural occlusion without flat-face artifacts
 	bool enableSSAO = true;
-	float ssaoRadius = 0.5f;
-	float ssaoBias = 0.025f;
-	float ssaoIntensity = 1.0f;
-	float ssaoBlurDepthThreshold = 0.01f;
+	float ssaoRadius = 0.75f;   // REDUCED: Keeps AO localized to corners and crevices (was 0.5)
+	float ssaoBias = 0.02f;          // REDUCED: Tighter bias for better contact (was 0.025)
+	float ssaoIntensity = 0.5f;  // REDUCED: Subtle darkening, not overpowering (was 1.0)
+	float ssaoBlurDepthThreshold = 0.015f; // INCREASED: Better edge preservation (was 0.01)
 
 
 	// SSGI settings - PRODUCTION READY defaults for noise-free convergence

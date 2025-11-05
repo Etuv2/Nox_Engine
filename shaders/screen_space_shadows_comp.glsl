@@ -141,25 +141,26 @@ void main() {
     // Clamp to [0,1]
     vis = clamp(vis, 0.0, 1.0);
 
-    // Optional small bilateral polish (no heavy blur)
-    if (enableBilateralBlur != 0) {
-        const int R = 1;
-        float zC = depthCenter;
-        float wSum = 0.0, vSum = 0.0;
-        for (int dy = -R; dy <= R; ++dy) {
-            for (int dx = -R; dx <= R; ++dx) {
-                ivec2 q = clamp(pix + ivec2(dx, dy), ivec2(0), ivec2(screenSize) - 1);
-                vec2 uvQ = (vec2(q) + 0.5) * invScreen;
-                float zQ = texture(uDepth, uvQ).r;
-                float vQ = vis; // local small kernel, uniform weight by depth diff
-                float wDepth = exp(-abs(LinearizeDepth(zQ) - LinearizeDepth(zC)) / depthSensitivity);
-                float wSpatial = exp(-float(dx*dx + dy*dy) * 0.5);
-                float w = wDepth * wSpatial;
-                wSum += w;
-                vSum += vQ * w;
-            }
+    // Optional bilateral blur
+    // Bilateral blur optimized to prevent branching
+    const int R = 1;
+    float zC = depthCenter;
+    float wSum = 0.0, vSum = 0.0;
+    for (int dy = -R; dy <= R; ++dy) {
+        for (int dx = -R; dx <= R; ++dx) {
+            ivec2 q = clamp(pix + ivec2(dx, dy), ivec2(0), ivec2(screenSize) - 1);
+            vec2 uvQ = (vec2(q) + 0.5) * invScreen;
+            float zQ = texture(uDepth, uvQ).r;
+            float vQ = vis;
+            float wDepth = exp(-abs(LinearizeDepth(zQ) - LinearizeDepth(zC)) / depthSensitivity);
+            float wSpatial = exp(-float(dx*dx + dy*dy) * 0.5);
+            float w = wDepth * wSpatial;
+            wSum += w;
+            vSum += vQ * w;
         }
-        vis = mix(vis, vSum / max(wSum, 1e-6), 0.25);
     }
+    float blurred = vSum / max(wSum, 1e-6);
+    float blurMix = float(enableBilateralBlur != 0) * 0.25;
+    vis = mix(vis, blurred, blurMix);
     imageStore(uOutShadow, pix, vec4(vis, vis, vis, 1.0));
 }

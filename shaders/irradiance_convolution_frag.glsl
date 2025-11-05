@@ -23,7 +23,8 @@ void main()
     up         = normalize(cross(N, right));
        
     // Sampling parameters - balanced quality vs performance
-    float sampleDelta = 0.025; // Reasonable sample count
+    // CRITICAL FIX: Use finer sampling for better quality (was 0.025, now 0.015)
+    float sampleDelta = 0.015;
     float nrSamples = 0.0;
     
     // Hemisphere convolution for diffuse irradiance
@@ -39,29 +40,29 @@ void main()
             // Sample the environment map
             vec3 envSample = texture(environmentMap, sampleVec).rgb;
         
-            // Ensure samples are positive (clamp to prevent negative artifacts)
+            // Ensure samples are positive
             envSample = max(envSample, vec3(0.0));
-            
-            // Apply cosine-weighted hemisphere integration
-            // irradiance = integral( L * cos(theta) * sin(theta) )
-            float cosTheta = max(cos(theta), 0.0);
-            float sinTheta = max(sin(theta), 0.0);
+   
+        // CRITICAL FIX: Proper cosine-weighted hemisphere integration
+         // Lambert BRDF already has 1/PI, so irradiance integral is:
+            // integral(L * cos(theta) * sin(theta) * d_theta * d_phi)
+     float cosTheta = max(cos(theta), 0.0);
+          float sinTheta = sin(theta);
        
-            irradiance += envSample * cosTheta * sinTheta;
+       irradiance += envSample * cosTheta * sinTheta;
             nrSamples++;
         }
     }
+  
+    // CRITICAL FIX: Correct normalization
+    // The integral over hemisphere with sin(theta) term gives PI
+    // So we normalize by: PI / total_samples
+    irradiance = PI * irradiance / max(nrSamples, 1.0);
     
-    // Proper normalization for hemisphere integration
-    // The PI factor is part of the Lambert BRDF (albedo / PI)
-    // We integrate: integral(L * cos(theta) * sin(theta) * d_theta * d_phi)
-    // Normalization: PI / total_samples
-    irradiance = (PI * irradiance) / max(nrSamples, 1.0);
-    
-    // Final clamp to ensure strictly positive output
+    // Ensure strictly positive output
     irradiance = max(irradiance, vec3(0.0));
     
-    // Additional safety check for NaN/Inf
+    // Safety check for NaN/Inf
     if (any(isnan(irradiance)) || any(isinf(irradiance))) {
         irradiance = vec3(0.0);
     }

@@ -128,15 +128,18 @@ bool Skybox::Init(const std::string& hdrPath,
 		return false;
 	}
 
+	// CRITICAL FIX: Use higher resolution for environment map (512 -> 1024) for better quality
+	const int envMapSize = 1024;
+	
 	// Create environment cubemap using new Texture builder
-	m_envCubemap = Texture::Builder::TextureCube(512, GL_RGB16F)
+	m_envCubemap = Texture::Builder::TextureCube(envMapSize, GL_RGB16F)
 		.FilterMode(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR)
 		.TextureType(TextureType::Cubemap)
 		.GenerateMipmaps(false)  // We'll generate after conversion
 		.Build();
 
 	buildSkyboxCube();
-	CreateCaptureFBO(512, 512);
+	CreateCaptureFBO(envMapSize, envMapSize);
 
 	// Save state
 	GLint prevViewport[4];
@@ -169,7 +172,7 @@ bool Skybox::Init(const std::string& hdrPath,
 		   glm::lookAt(glm::vec3(0,0,0), glm::vec3(0,0,-1), glm::vec3(0,-1,0))
 	};
 
-	glViewport(0, 0, 512, 512);
+	glViewport(0, 0, envMapSize, envMapSize);
 	glBindFramebuffer(GL_FRAMEBUFFER, m_captureFBO);
 
 	for (int i = 0; i < 6; ++i) {
@@ -188,7 +191,8 @@ bool Skybox::Init(const std::string& hdrPath,
 	// Generate mipmaps for environment map
 	m_envCubemap->GenerateMipmaps();
 
-	// Immediately generate IBL resources (strict requirement)
+	// CRITICAL: Immediately generate IBL resources (strict requirement)
+	std::cout << "[Skybox] Generating IBL resources with CORRECTED shaders..." << std::endl;
 	if (!GenerateIBLResources() || !VerifyIBLPipelineComplete()) {
 		std::cerr << "[Skybox] FATAL: Initial IBL generation failed – attempting forced regeneration..." << std::endl;
 		ForceRegenerateIBL();
@@ -212,7 +216,7 @@ bool Skybox::Init(const std::string& hdrPath,
 	glUseProgram(prevProg);
 
 	LogTextureInfo();
-	std::cout << "[Skybox] Skybox + IBL fully initialized." << std::endl;
+	std::cout << "[Skybox] Skybox + IBL fully initialized with CORRECTED energy conservation." << std::endl;
 	return true;
 }
 

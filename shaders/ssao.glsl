@@ -4,9 +4,9 @@ in  vec2 TexCoord;
 out float FragColor;
 
 // Inputs
-uniform sampler2D gDepth;    // depth
-uniform sampler2D gNormal;   // oct-encoded normal
-uniform sampler2D noiseTex;  // 4×4 rotation vectors
+uniform sampler2D gDepth;     // hardware depth [0..1]
+uniform sampler2D gNormal;    // oct-encoded normal (RG)
+uniform sampler2D noiseTex;   // 4x4 random rotations
 uniform vec2      screenSize;
 
 // Matrices
@@ -15,13 +15,15 @@ uniform mat4 invProj;
 
 // SSAO kernel
 uniform vec3 samples[192];
+const int kernelSize = 64;
 
-// Parameters
-const int   kernelSize = 64;
-uniform float radius = 0.5; // radius of occlusion
-uniform float bias = 0.025; // depth bias
+// Tunables (view-space units)
+uniform float radius = 0.5;   // keep local
+uniform float bias   = 0.025; // push off the surface
+uniform float intensity = 1.0;
+uniform float aoMin = 0.25;   // prevent full black
 
-// Decode oct-encoded normal
+// --- Oct normal decode
 vec3 DecodeNormalOct8(vec2 e) {
     e = e * 2.0 - 1.0;
     vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
@@ -32,65 +34,69 @@ vec3 DecodeNormalOct8(vec2 e) {
     return normalize(n);
 }
 
-// Reconstruct view-space position
-vec3 reconstructViewPos(vec2 uv, float d) {
-    vec4 clip = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+// --- Reconstruct view-space position from depth
+vec3 ReconstructViewPos(vec2 uv, float depth01) {
+    vec4 clip = vec4(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0, 1.0);
     vec4 view = invProj * clip;
-    return view.xyz / view.w;
+    return view.xyz / max(view.w, 1e-6);
 }
 
 void main() {
     float d = texture(gDepth, TexCoord).r;
-    if (d >= 1.0) {
-        FragColor = 1.0;
-        return;
-    }
+    if (d >= 1.0) { FragColor = 1.0; return; }
 
-    // View-space pos & normal
-    vec3 fragPos = reconstructViewPos(TexCoord, d);
+    // Use G-buffer normal (avoids depth-recon artifacts on flats)
     vec3 N = DecodeNormalOct8(texture(gNormal, TexCoord).rg);
+    vec3 P = ReconstructViewPos(TexCoord, d);     // view-space pos
 
-    // Rotate samples in tangent space
+    // Build per-pixel TBN using a small rotation (blue/IGN noise)
     vec3 rand = texture(noiseTex, TexCoord * (screenSize / 4.0)).xyz;
-    vec3 tangent = normalize(rand - N * dot(rand, N));
-    vec3 bitangent = cross(N, tangent);
-    mat3 TBN = mat3(tangent, bitangent, N);
+    vec3 T = normalize(rand - N * dot(rand, N));
+    vec3 B = cross(N, T);
+    mat3 TBN = mat3(T, B, N);
 
-    // Occlusion accumulation
-    float occlusion = 0.0;
-    float weightSum = 0.0;
+    float occl = 0.0;
+    float wsum = 0.0;
+
     for (int i = 0; i < kernelSize; ++i) {
-        // Sample in view-space
-        vec3 sampleVS = TBN * samples[i];
-        sampleVS = fragPos + sampleVS * radius;
+        // Sample point in view space (local hemisphere)
+        vec3 Svs = P + (TBN * samples[i]) * radius;
 
-        // Project to screen
-        vec4 offset = proj * vec4(sampleVS, 1.0);
-        offset.xyz /= offset.w;
-        vec2 uv = offset.xy * 0.5 + 0.5;
-        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) continue;
+        // Project to UV to fetch scene depth there
+        vec4 clip = proj * vec4(Svs, 1.0);
+        vec2 uv  = clip.xy / clip.w * 0.5 + 0.5;
 
-        // Fetch sample depth and pos
-        float sampleDepth = texture(gDepth, uv).r;
-        vec3 samplePos = reconstructViewPos(uv, sampleDepth);
+        // Off-screen → ignore
+        if (any(bvec2(uv.x <= 0.0 || uv.x >= 1.0 ||
+                      uv.y <= 0.0 || uv.y >= 1.0))) continue;
 
-        // Range check
-        float range = length(samplePos - fragPos);
-        if (range > radius) continue;
+        float sd   = texture(gDepth, uv).r;
+        if (sd >= 1.0) continue; // sky
 
-        // Weight by angle and distance
-        float NdotS = max(dot(N, normalize(samplePos - fragPos)), 0.0);
-        float rangeWeight = smoothstep(radius, 0.0, range);
-        float weight = NdotS * rangeWeight;
+        vec3  Q    = ReconstructViewPos(uv, sd);   // view-space at sample UV
+        vec3  dir  = normalize(Q - P);
 
-        // Depth test
-        if (samplePos.z >= sampleVS.z + bias) {
-            occlusion += weight;
-        }
-        weightSum += weight;
+        // Normal weighting (stops uniform darkening on large flats)
+        float nDot = max(dot(N, dir), 0.0);
+
+        // Distance falloff (attenuate far samples)
+        float dist = length(Q - P);
+        float fall = smoothstep(radius, 0.0, dist);
+
+        float w = nDot * fall;
+        if (w < 1e-4) continue;
+
+        // View-space Z test (GL convention: forward is -Z)
+        // If scene depth is closer than our sample point (plus bias) → occluded
+        if (Q.z >= Svs.z + bias) occl += w;
+
+        wsum += w;
     }
 
-    // Normalize and invert
-    occlusion = 1.0 - (occlusion / max(weightSum, 0.0001));
-    FragColor = occlusion;
+    // Normalize, invert to AO factor, clamp to avoid muddy planes
+    float ao = 1.0 - (occl / max(wsum, 1e-6));
+    ao = mix(1.0, ao, intensity);
+    ao = clamp(ao, aoMin, 1.0);
+
+    FragColor = ao;
 }

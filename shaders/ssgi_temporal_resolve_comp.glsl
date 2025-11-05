@@ -61,9 +61,9 @@ void main() {
     // Sample previous SSGI at reprojected location - WORKING RESOLUTION
     vec4 history = historyValid ? texture(prevSSGI, prevUV) : vec4(0.0);
 
-    // ========================================================================
+
     // CRITICAL FIX: Proper rejection tests using depth and normal
-    // ========================================================================
+
     
     float confidence = 1.0;
     
@@ -100,9 +100,9 @@ void main() {
         confidence = 0.0; // No valid history
     }
 
-    // ========================================================================
+
     // CRITICAL FIX: Neighborhood clamping to prevent ghosting
-    // ========================================================================
+
     
     vec3 minColor = vec3(1e9);
     vec3 maxColor = vec3(-1e9);
@@ -122,9 +122,9 @@ for (int j = -1; j <= 1; ++j) {
     // Clamp history to neighborhood bounds (prevents ghosting)
     vec3 historyClamped = clamp(history.rgb, minColor, maxColor);
     
-    // ========================================================================
+
     // CRITICAL FIX: Adaptive alpha based on confidence
-    // ========================================================================
+
     
     float adaptiveAlpha = alpha;
     
@@ -142,9 +142,9 @@ for (int j = -1; j <= 1; ++j) {
  // Clamp final alpha to safe range
     adaptiveAlpha = clamp(adaptiveAlpha, 0.05, 0.95);
     
-    // ========================================================================
+
     // CRITICAL FIX: Exponential moving average (like TAA)
-    // ========================================================================
+
     
     // result = mix(history, current, alpha)
     // Small alpha = more history (stable, slower convergence)
