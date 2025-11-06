@@ -46,15 +46,15 @@ struct RenderContext {
 	glm::mat4 prevProj{ 1.0f };
 
 
-	// SSAO settings - OPTIMIZED for natural occlusion without flat-face artifacts
+	// SSAO settings
 	bool enableSSAO = true;
-	float ssaoRadius = 0.75f;   // REDUCED: Keeps AO localized to corners and crevices (was 0.5)
-	float ssaoBias = 0.02f;          // REDUCED: Tighter bias for better contact (was 0.025)
-	float ssaoIntensity = 0.5f;  // REDUCED: Subtle darkening, not overpowering (was 1.0)
+	float ssaoRadius = 0.75f;   //Keeps AO localized to corners and crevices (was 0.5)
+	float ssaoBias = 0.02f;          //Tighter bias for better contact (was 0.025)
+	float ssaoIntensity = 0.5f;  //Subtle darkening, not overpowering (was 1.0)
 	float ssaoBlurDepthThreshold = 0.015f; // INCREASED: Better edge preservation (was 0.01)
 
 
-	// SSGI settings - PRODUCTION READY defaults for noise-free convergence
+	// SSGI settings
 	bool enableSSGI = true;
 	float ssgiStrength = 1.2f;         // Overall GI contribution multiplier
 	float ssgiRadius = 3.0f;  //Ray length in view-space units
