@@ -7,7 +7,7 @@ out float FragColor;
 uniform sampler2D gPackedNormalRM;
 uniform sampler2D gDepth;
 uniform sampler2D noiseTex;   // 4x4 random rotations
-uniform vec2      screenSize;
+uniform vec2 screenSize;
 
 // Matrices
 uniform mat4 proj;

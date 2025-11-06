@@ -28,9 +28,6 @@
     <Filter Include="Source Files\misc\shaders\shadow">
       <UniqueIdentifier>{35e08240-7704-49de-a494-c43695802315}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\char">
-      <UniqueIdentifier>{332093a8-935b-4899-89fa-b2795a1c4a13}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\misc\scenes">
       <UniqueIdentifier>{b59db149-40a1-4479-9d16-dc6e0032fa43}</UniqueIdentifier>
     </Filter>
@@ -81,9 +78,6 @@
     </Filter>
     <Filter Include="Source Files\misc\shaders\bloom">
       <UniqueIdentifier>{bfcae456-8edf-44cb-841a-3b94e8906864}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\ssgi">
-      <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\misc\shaders\gui">
       <UniqueIdentifier>{ae766c97-f0e7-4046-a4c5-bfb86c972935}</UniqueIdentifier>
@@ -141,6 +135,9 @@
     </Filter>
     <Filter Include="Source Files\misc\shaders\raytrace">
       <UniqueIdentifier>{ae9325ff-bf98-4fc3-9515-e0567a5dc20e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\global_illumination\ssgi">
+      <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -353,14 +350,8 @@
     <None Include="shaders\shadow_vert.glsl">
       <Filter>Source Files\misc\shaders\shadow</Filter>
     </None>
-    <None Include="shaders\char_fragment_shader.glsl">
-      <Filter>Source Files\misc\shaders\char</Filter>
-    </None>
     <None Include="scenes\scene.json">
       <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="shaders\char_vertex_shader.glsl">
-      <Filter>Source Files\misc\shaders\char</Filter>
     </None>
     <None Include="scenes\gundam.json">
       <Filter>Source Files\misc\scenes</Filter>
@@ -561,22 +552,22 @@
       <Filter>Source Files\misc\scenes</Filter>
     </None>
     <None Include="shaders\ssgi_bilateral_blur_comp.glsl">
-      <Filter>Source Files\misc\shaders\ssgi</Filter>
+      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
     <None Include="shaders\ssgi_directions_comp.glsl">
-      <Filter>Source Files\misc\shaders\ssgi</Filter>
+      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
     <None Include="shaders\ssgi_downsample2x_comp.glsl">
-      <Filter>Source Files\misc\shaders\ssgi</Filter>
+      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
     <None Include="shaders\ssgi_raymarch_comp.glsl">
-      <Filter>Source Files\misc\shaders\ssgi</Filter>
+      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
     <None Include="shaders\ssgi_temporal_resolve_comp.glsl">
-      <Filter>Source Files\misc\shaders\ssgi</Filter>
+      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
     <None Include="shaders\ssgi_upsample2x_comp.glsl">
-      <Filter>Source Files\misc\shaders\ssgi</Filter>
+      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
     <None Include="README.md" />
     <None Include="shaders\raytrace_comp.glsl">
@@ -589,7 +580,7 @@
       <Filter>Source Files\misc\shaders\gbuffer</Filter>
     </None>
     <None Include="shaders\ssgi_final_upsample_comp.glsl">
-      <Filter>Source Files\misc\shaders\ssgi</Filter>
+      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

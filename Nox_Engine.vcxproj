@@ -120,8 +120,6 @@
     <None Include="shaders\bloom_upsample.glsl" />
     <None Include="shaders\brdf_frag.glsl" />
     <None Include="shaders\brdf_vert.glsl" />
-    <None Include="shaders\char_fragment_shader.glsl" />
-    <None Include="shaders\char_vertex_shader.glsl" />
     <None Include="shaders\deferred_lighting_frag.glsl" />
     <None Include="shaders\deferred_lighting_vert.glsl" />
     <None Include="shaders\equirect2cube_frag.glsl" />
