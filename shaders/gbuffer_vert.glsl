@@ -1,4 +1,4 @@
-#version 450 core
+#version 460 core
 
 layout(location = 0) in vec3 aPos;       
 layout(location = 1) in vec3 aNormal;
@@ -24,7 +24,7 @@ void main()
     TexCoords = aTexCoords;
 
     // Normal Matrix (transpose of inverse for non-uniform scaling)
-  mat3 normalMatrix = transpose(inverse(mat3(model)));
+     mat3 normalMatrix = transpose(inverse(mat3(model)));
     
     // CRITICAL FIX: Gram-Schmidt orthogonalization for seamless tangent space
     // Transform normal and tangent to world space
@@ -36,7 +36,7 @@ void main()
     T = normalize(T - dot(T, N) * N);
     
     // Compute bitangent using cross product and handedness from tangent.w
-// The handedness (aTangent.w) determines if we need to flip the bitangent
+    // The handedness (aTangent.w) determines if we need to flip the bitangent
     vec3 B = cross(N, T) * aTangent.w;
     
     // Ensure bitangent is normalized (cross product of two unit vectors should be unit, but be safe)
@@ -45,7 +45,7 @@ void main()
     // Store outputs
     WorldNormal = N;
     TBN = mat3(T, B, N);
- RawTangent = aTangent;
+    RawTangent = aTangent;
 
     gl_Position = projection * view * worldPos;
 }

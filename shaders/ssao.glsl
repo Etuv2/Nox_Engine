@@ -1,11 +1,11 @@
-﻿#version 450 core
+﻿#version 460 core
 
-in  vec2 TexCoord;
+in vec2 TexCoord;
 out float FragColor;
 
-// Inputs
-uniform sampler2D gDepth;     // hardware depth [0..1]
-uniform sampler2D gNormal;    // oct-encoded normal (RG)
+// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
+uniform sampler2D gPackedNormalRM;
+uniform sampler2D gDepth;
 uniform sampler2D noiseTex;   // 4x4 random rotations
 uniform vec2      screenSize;
 
@@ -25,12 +25,9 @@ uniform float aoMin = 0.25;   // prevent full black
 
 // --- Oct normal decode
 vec3 DecodeNormalOct8(vec2 e) {
-    e = e * 2.0 - 1.0;
-    vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
-    if (n.z < 0.0) {
-        vec2 s = vec2(sign(e.x), sign(e.y));
-        n.xy = (1.0 - abs(n.yx)) * s;
-    }
+    vec3 n;
+    n.z = 1.0 - abs(e.x) - abs(e.y);
+    n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
     return normalize(n);
 }
 
@@ -42,12 +39,14 @@ vec3 ReconstructViewPos(vec2 uv, float depth01) {
 }
 
 void main() {
-    float d = texture(gDepth, TexCoord).r;
+    vec2 uv = TexCoord;
+    float d = texture(gDepth, uv).r;
     if (d >= 1.0) { FragColor = 1.0; return; }
 
-    // Use G-buffer normal (avoids depth-recon artifacts on flats)
-    vec3 N = DecodeNormalOct8(texture(gNormal, TexCoord).rg);
-    vec3 P = ReconstructViewPos(TexCoord, d);     // view-space pos
+    // UNPACK NORMAL FROM NEW G-BUFFER LAYOUT
+    vec2 encNormal = texture(gPackedNormalRM, uv).rg;  // Extract RG channels for oct-encoded normal
+    vec3 N = DecodeNormalOct8(encNormal);
+    vec3 P = ReconstructViewPos(uv, d);     // view-space pos
 
     // Build per-pixel TBN using a small rotation (blue/IGN noise)
     vec3 rand = texture(noiseTex, TexCoord * (screenSize / 4.0)).xyz;

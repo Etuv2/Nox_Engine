@@ -56,14 +56,14 @@ struct RenderContext {
 
 	// SSGI settings - PRODUCTION READY defaults for noise-free convergence
 	bool enableSSGI = true;
-	float ssgiStrength = 1.0f;         // Overall GI contribution multiplier
-	float ssgiRadius = 5.0f;  // CRITICAL: Ray length in view-space units (was 1.0, way too small!)
-	int ssgiSampleCount = 16;        // Samples per pixel per frame (16 is optimal with temporal accumulation)
+	float ssgiStrength = 1.2f;         // Overall GI contribution multiplier
+	float ssgiRadius = 3.0f;  //Ray length in view-space units
+	int ssgiSampleCount = 256;
 	bool ssgiHalfRes = true;  // Run SSGI at half-res for performance (recommended)
-	float ssgiTemporalAlpha = 0.15f;      // CRITICAL: Small alpha for stable convergence (was 0.5, way too high!)
-	float ssgiNormalReject = 0.15f;  // Bilateral normal threshold in radians (tightened for better edges)
-	float ssgiDepthReject = 0.2f;         // Bilateral depth sigma in view-space units (tightened from 0.5)
-	float ssgiThickness = 0.02f;   // CRITICAL: Ray-surface intersection thickness (was 0.01, too thin!)
+	float ssgiTemporalAlpha = 0.15f;      //Small alpha for stable convergence
+	float ssgiNormalReject = 0.15f;  // Bilateral normal threshold in radians
+	float ssgiDepthReject = 0.2f;         // Bilateral depth sigma in view-space units
+	float ssgiThickness = 0.01f;   //Ray-surface intersection thickness 
 
 
 	// Bloom settings
@@ -93,7 +93,7 @@ struct RenderContext {
 
 	// Shadow settings
 	bool enableShadows = true;
-	float shadowBias = 0.0008f;        // Increased to compensate for no normal offset
+	float shadowBias = 0.005f;
 	float shadowNear = 0.001f;
 	float shadowFar = 1000.0f;
 	bool enablePCSS = true;
@@ -130,10 +130,10 @@ struct RenderContext {
 	glm::vec3 envColor{ 0.3f, 0.3f, 0.3f };
 
 	// IBL (Image-Based Lighting) intensity controls
-	float iblIntensity = 0.4f;          // Overall IBL contribution (0.0 - 2.0, default 0.4)
-	float skyboxExposure = 1.0f;        // Skybox background exposure (0.1 - 5.0, default 1.0)
-	float diffuseIBLScale = 0.5f;   // Diffuse IBL scale (0.0 - 2.0, default 0.5)
-	float specularIBLScale = 0.6f;      // Specular IBL scale (0.0 - 2.0, default 0.6)
+	float iblIntensity = 1.0f;          // Overall IBL contribution 
+	float skyboxExposure = 1.0f;        // Skybox background exposure
+	float diffuseIBLScale = 0.5f;   // Diffuse IBL scale
+	float specularIBLScale = 0.6f;      // Specular IBL scale
 
 	// LPV Global Illumination settings
 	bool enableLPV = false;

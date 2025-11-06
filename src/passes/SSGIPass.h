@@ -111,13 +111,19 @@ private:
 	// Stage 4: Temporal accumulation with variance clamping (YCoCg color space)
 	std::unique_ptr<ComputeShader> m_csTemporal;
 
+	// Stage 5: CRITICAL FIX - Final upsample to FULL resolution for lighting pass
+	std::unique_ptr<ComputeShader> m_csFinalUpsample;
+
 	// === TEXTURE RESOURCES (using new Texture system) ===
 
 	// Working resolution (m_hw x m_hh)
 	TexturePtr m_dirTex;    // Stochastic random values for direction generation (RG16F)
 	TexturePtr m_ssgiRaw;   // Raw ray march output before denoising (RGBA16F)
 	TexturePtr m_ssgiBlur;          // Denoised/upsampled result (RGBA16F)
-	TexturePtr m_ssgiTex;// Final temporal result after convergence (RGBA16F)
+	TexturePtr m_ssgiWork;  // Working-res temporal result (RGBA16F)
+	
+	// CRITICAL FIX: Full resolution final output (m_w x m_h)
+	TexturePtr m_ssgiTex;   // FULL-RES final result for lighting pass (RGBA16F)
 
 	// Quarter resolution (m_qw x m_qh) - for efficient spatial denoising
 	TexturePtr m_ssgiQuarter;  // Downsampled raw output (RGBA16F)
@@ -125,7 +131,7 @@ private:
 
 	// Temporal history textures (working resolution)
 	TexturePtr m_historyColor;      // Previous frame HDR color (for sampling ray hits)
-	TexturePtr m_historySSGI;     // Previous frame SSGI (for temporal accumulation)
+	TexturePtr m_historySSGI;// Previous frame SSGI (for temporal accumulation)
 
 	// === KAWASE BLUR RESOURCES (optional final smoothing) ===
 	GLuint m_kawaseShader = 0;
@@ -221,4 +227,15 @@ private:
    * Consider disabling if temporal accumulation quality is sufficient.
 	 */
 	void runKawase(RenderContext& ctx);
+
+	/**
+	 * @brief CRITICAL FIX: Final upsample from working resolution to full resolution
+	 *
+	 * This is the final stage that produces the full-resolution SSGI texture
+	 * that the lighting pass expects. Uses bilateral upsampling with depth/normal guidance.
+	 *
+	 * Input: m_ssgiWork (working-res, e.g. 960x540)
+	 * Output: m_ssgiTex (full-res, e.g. 1920x1080)
+	 */
+	void runFinalUpsample(RenderContext& ctx);
 };

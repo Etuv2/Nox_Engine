@@ -75,7 +75,7 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
     const std::shared_ptr<DirectionalLight>& dirLight,
     const std::shared_ptr<Skybox>&)
 {
-  if (!m_cs || !m_cs->IsValid() || !ctx.gbufferFBO || !dirLight || !m_shadowTex) return;
+    if (!m_cs || !m_cs->IsValid() || !ctx.gbufferFBO || !dirLight || !m_shadowTex) return;
 
     // Light direction convention
     // GetDirection() returns the direction light POINTS (from source to surface)
@@ -91,21 +91,21 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
     // Bind & dispatch
     glUseProgram(m_cs->GetProgramID());
 
- // Depth (binding=0)
-  GLuint depthTex = ctx.gbufferFBO->GetDepthTexture();
-    glBindTextureUnit(0, depthTex);
+    // CRITICAL FIX: Bind depth texture with proper sampler uniform (binding=0)
+    GLuint depthTex = ctx.gbufferFBO->GetDepthTexture();
+  glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, depthTex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindTexture(GL_TEXTURE_2D, 0);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glUniform1i(glGetUniformLocation(m_cs->GetProgramID(), "gDepth"), 0);
 
-    // Output (binding=1) - use new Texture class
+  // Output (binding=1) - use new Texture class
     glBindImageTexture(1, m_shadowTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
 
     // UBO (binding=2)
-    glBindBufferBase(GL_UNIFORM_BUFFER, 2, m_paramsUBO);
+ glBindBufferBase(GL_UNIFORM_BUFFER, 2, m_paramsUBO);
 
     // Dispatch
     GLuint gx = (m_width + 7) / 8;
@@ -116,11 +116,12 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
 
     // Unbind
     glBindBufferBase(GL_UNIFORM_BUFFER, 2, 0);
-glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
-    glBindTextureUnit(0, 0);
-glUseProgram(0);
+    glBindImageTexture(1, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
 
- // Advance frame index
+    // Advance frame index
     ++m_frameIndex;
 }
 

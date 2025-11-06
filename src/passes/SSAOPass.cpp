@@ -151,16 +151,16 @@ void SSAOPass::RenderSSAO(RenderContext& ctx) {
                      1, glm::value_ptr(m_kernel[i]));
     }
 
-    // Bind G-buffer depth
+    // CRITICAL FIX: Bind G-buffer depth texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
     glUniform1i(glGetUniformLocation(m_ssaoShader, "gDepth"), 0);
 
-    // Bind G-buffer normal
+    // CRITICAL FIX: Bind G-buffer packed normals (RT0: oct normal + roughness + metallic)
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "gNormal"), 1);
+    glUniform1i(glGetUniformLocation(m_ssaoShader, "gPackedNormalRM"), 1);
 
     // Bind noise texture
     glActiveTexture(GL_TEXTURE2);
@@ -172,7 +172,7 @@ void SSAOPass::RenderSSAO(RenderContext& ctx) {
     glUniform1f(glGetUniformLocation(m_ssaoShader, "bias"), ctx.ssaoBias);
 
     ctx.screenQuad->Render();
-    
+  
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
@@ -190,18 +190,23 @@ void SSAOPass::BilateralBlur(RenderContext& ctx) {
         glUniform2fv(glGetUniformLocation(m_blurShader, "texelSize"), 
                      1, glm::value_ptr(texelSize));
 
-        glUniform1f(glGetUniformLocation(m_blurShader, "ssaoBlurDepthThreshold"), 
+        glUniform1f(glGetUniformLocation(m_blurShader, "depthThreshold"), 
                     ctx.ssaoBlurDepthThreshold);
 
-        // Bind SSAO input
+        // CRITICAL FIX: Bind SSAO input texture
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, srcTex);
         glUniform1i(glGetUniformLocation(m_blurShader, "ssaoInput"), 0);
 
-        // Bind depth for bilateral filtering
+        // CRITICAL FIX: Bind depth for bilateral filtering
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-        glUniform1i(glGetUniformLocation(m_blurShader, "depthInput"), 1);
+        glUniform1i(glGetUniformLocation(m_blurShader, "gDepth"), 1);
+
+        // CRITICAL FIX: Bind packed normals from RT0
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+        glUniform1i(glGetUniformLocation(m_blurShader, "gPackedNormalRM"), 2);
 
         ctx.screenQuad->Render();
 

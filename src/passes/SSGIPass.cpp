@@ -27,6 +27,7 @@ bool SSGIPass::Initialize(RenderContext& ctx) {
 	m_csBilateral = std::make_unique<ComputeShader>();
 	m_csUpsample = std::make_unique<ComputeShader>();
 	m_csTemporal = std::make_unique<ComputeShader>();
+	m_csFinalUpsample = std::make_unique<ComputeShader>(); // CRITICAL FIX: Add final upsample
 
 	// Load shaders from files
 	if (!m_csDirections->CreateFromFile("shaders/ssgi_directions_comp.glsl")) {
@@ -56,6 +57,12 @@ bool SSGIPass::Initialize(RenderContext& ctx) {
 
 	if (!m_csTemporal->CreateFromFile("shaders/ssgi_temporal_resolve_comp.glsl")) {
 		std::cerr << "[SSGIPass] Failed to compile ssgi_temporal_resolve_comp.glsl" << std::endl;
+		return false;
+	}
+
+	// CRITICAL FIX: Load final upsample shader
+	if (!m_csFinalUpsample->CreateFromFile("shaders/ssgi_final_upsample_comp.glsl")) {
+		std::cerr << "[SSGIPass] Failed to compile ssgi_final_upsample_comp.glsl" << std::endl;
 		return false;
 	}
 
@@ -104,7 +111,10 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	m_ssgiQuarter = TextureFactory::CreateHDR(m_qw, m_qh);
 	m_ssgiQuarterBlur = TextureFactory::CreateHDR(m_qw, m_qh);
 	m_ssgiBlur = TextureFactory::CreateHDR(m_hw, m_hh);
-	m_ssgiTex = TextureFactory::CreateHDR(m_hw, m_hh);
+	
+	// CRITICAL FIX: Create working-res and FULL-RES textures separately
+	m_ssgiWork = TextureFactory::CreateHDR(m_hw, m_hh);  // Working-res (for temporal)
+	m_ssgiTex = TextureFactory::CreateHDR(m_w, m_h);      // FULL-RES (for lighting pass)
 
 	// History textures for temporal accumulation - initialize to black for first frame
 	m_historyColor = TextureFactory::CreateHDR(m_hw, m_hh);
@@ -121,6 +131,8 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	m_kawasePong = TextureFactory::CreateHDR(m_hw, m_hh);
 
 	std::cout << "[SSGIPass] All textures allocated successfully using new Texture system" << std::endl;
+	std::cout << "[SSGIPass] CRITICAL FIX: Final output is FULL-RES " << m_w << "x" << m_h 
+			  << " (was working-res " << m_hw << "x" << m_hh << ")" << std::endl;
 	std::cout << "[SSGIPass] History buffers initialized to zero for first frame convergence" << std::endl;
 }
 
@@ -175,9 +187,10 @@ void SSGIPass::Execute(RenderContext& ctx,
 	runRaymarch(ctx, camera, skybox);
 	runDownsample(ctx);
 	runBilateral(ctx); // quarter-res blur
-	runUpsample(ctx); // upsample to half with edge-aware combine
-	runTemporal(ctx); // temporal accumulation (history updated here)
-	runKawase(ctx); // final smoothing (no history update)
+	runUpsample(ctx); // upsample to working-res with edge-aware combine
+	runTemporal(ctx); // temporal accumulation (history updated here, output to m_ssgiWork)
+	runKawase(ctx); // optional final smoothing at working-res
+	runFinalUpsample(ctx); // CRITICAL FIX: Upsample from working-res to FULL-RES for lighting pass
 }
 
 void SSGIPass::runDirections(RenderContext& ctx) {
@@ -205,37 +218,58 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
 	// Stage2: Screen-space ray marching to find indirect lighting
 	glUseProgram(m_csRaymarch->GetProgramID());
 
-	// Bind input textures
-	glBindTextureUnit(0, ctx.gbufferFBO->GetDepthTexture()); // Depth buffer
-	glBindTextureUnit(1, ctx.gbufferFBO->GetColorAttachment(0)); // Normal buffer
-	glBindTextureUnit(2, ctx.gbufferFBO->GetColorAttachment(2)); // Albedo buffer
-	glBindTextureUnit(3, m_dirTex->ID()); // Stochastic directions
-	glBindTextureUnit(4, m_historyColor->ID()); // Previous frame color
+	// CRITICAL FIX: Bind ALL required textures for raymarch shader
+	// Bind input textures - OPTIMIZED G-buffer layout (3 RTs)
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "gDepth"), 0);
 
-	// Optional IBL irradiance cubemap fallback
-	GLuint ibl =0;
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0)); // RT0: Packed normal+rough+metal
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "gPackedNormalRM"), 1);
+
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1)); // RT1: Albedo+AO
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "gAlbedoAO"), 2);
+
+	// CRITICAL FIX: Bind stochastic direction texture (was missing!)
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, m_dirTex->ID());
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "randTex"), 3);
+
+	// CRITICAL FIX: Bind previous frame HDR color for ray hit sampling (was missing!)
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, m_historyColor->ID());
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "prevColor"), 4);
+
+	// CRITICAL FIX: Bind IBL irradiance cubemap for fallback (was missing!)
+	GLuint ibl = 0;
 	if (skybox) {
 		// Prefer diffuse irradiance map for indirect diffuse
 		ibl = skybox->GetIrradianceMap();
-		if (ibl ==0) ibl = skybox->GetEnvironmentMap();
+		if (ibl == 0) ibl = skybox->GetEnvironmentMap();
 	}
-	glBindTextureUnit(6, ibl);
-	
+	glActiveTexture(GL_TEXTURE5);
+	if (ibl != 0) {
+		glBindTexture(GL_TEXTURE_CUBE_MAP, ibl);
+	}
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "iblIrradiance"), 5);
+
 	// Bind output texture
-	glBindImageTexture(5, m_ssgiRaw->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
+	glBindImageTexture(0, m_ssgiRaw->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	// Set uniforms for ray marching
 	glm::mat4 invProj = glm::inverse(ctx.proj);
 	glm::mat4 invView = glm::inverse(ctx.view);
 
 	GLint loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "invProj");
-	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(invProj));
+	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(invProj));
 	loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "invView");
-	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(invView));
+	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(invView));
 	loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "view");
-	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(ctx.view));
+	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(ctx.view));
 	loc = glGetUniformLocation(m_csRaymarch->GetProgramID(), "proj");
-	glUniformMatrix4fv(loc,1, GL_FALSE, glm::value_ptr(ctx.proj));
+	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(ctx.proj));
 
 	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "maxRayLenVS"), ctx.ssgiRadius);
 	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "numSteps"), std::max(8, ctx.ssgiSampleCount));
@@ -244,13 +278,13 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
 	glUniform2f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "workSize"), float(m_hw), float(m_hh));
 	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "cameraNear"), camera->GetCameraNearPlane());
 	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "cameraFar"), camera->GetCameraFarPlane());
-	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "iblFallbackStrength"),1.0f);
-	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "hasIBL"), ibl !=0 ?1 :0);
+	glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "iblFallbackStrength"), 1.0f);
+	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "hasIBL"), ibl != 0 ? 1 : 0);
 
 	// Dispatch
-	GLuint gx = (m_hw +7) /8;
-	GLuint gy = (m_hh +7) /8;
-	glDispatchCompute(gx, gy,1);
+	GLuint gx = (m_hw + 7) / 8;
+	GLuint gy = (m_hh + 7) / 8;
+	glDispatchCompute(gx, gy, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 	glUseProgram(0);
@@ -277,13 +311,21 @@ void SSGIPass::runBilateral(RenderContext& ctx) {
 	// Stage3: Edge-aware bilateral blur for denoising (quarter-res)
 	glUseProgram(m_csBilateral->GetProgramID());
 
-	// Bind input textures
-	glBindTextureUnit(0, m_ssgiQuarter->ID());
-	glBindTextureUnit(1, ctx.gbufferFBO->GetDepthTexture());
-	glBindTextureUnit(2, ctx.gbufferFBO->GetColorAttachment(0));
+	// CRITICAL FIX: Bind textures with correct samplers
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_ssgiQuarter->ID());
+	glUniform1i(glGetUniformLocation(m_csBilateral->GetProgramID(), "inTex"), 0);
+
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+	glUniform1i(glGetUniformLocation(m_csBilateral->GetProgramID(), "gDepth"), 1);
+
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0)); // RT0: Packed normal+rough+metal
+	glUniform1i(glGetUniformLocation(m_csBilateral->GetProgramID(), "gPackedNormalRM"), 2);
 
 	// Bind output texture
-	glBindImageTexture(3, m_ssgiQuarterBlur->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
+	glBindImageTexture(3, m_ssgiQuarterBlur->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	// CRITICAL FIX: Use simple exponential thresholds matching SSAO exactly
 	// SSAO uses depthThreshold=0.02 and normalThreshold=0.2 successfully
@@ -294,20 +336,20 @@ void SSGIPass::runBilateral(RenderContext& ctx) {
 	
 	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "depthSigma"), depthSigma);
 	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "normalThresh"), normalThresh);
-	glUniform2f(glGetUniformLocation(m_csBilateral->GetProgramID(), "invWork"),1.0f / float(m_qw),1.0f / float(m_qh));
+	glUniform2f(glGetUniformLocation(m_csBilateral->GetProgramID(), "invWork"), 1.0f / float(m_qw), 1.0f / float(m_qh));
 
 	// DIAGNOSTIC: Log filter parameters for verification
-	static int bilateralLogCounter =0;
-	if (bilateralLogCounter++ %60 ==0) {
+	static int bilateralLogCounter = 0;
+	if (bilateralLogCounter++ % 60 == 0) {
 		std::cout << "[SSGIPass::Bilateral] depthSigma=" << depthSigma 
 				 << ", normalThresh=" << normalThresh
 				<< ", resolution=" << m_qw << "x" << m_qh << std::endl;
 	}
 
 	// Dispatch
-	GLuint gx = (m_qw +7) /8;
-	GLuint gy = (m_qh +7) /8;
-	glDispatchCompute(gx, gy,1);
+	GLuint gx = (m_qw + 7) / 8;
+	GLuint gy = (m_qh + 7) / 8;
+	glDispatchCompute(gx, gy, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 	glUseProgram(0);
@@ -317,15 +359,27 @@ void SSGIPass::runUpsample(RenderContext& ctx) {
 	// Stage3.5: Bilateral upsample quarter->half and combine with raw half
 	glUseProgram(m_csUpsample->GetProgramID());
 
-	glBindTextureUnit(0, m_ssgiQuarterBlur->ID());
-	glBindTextureUnit(1, m_ssgiRaw->ID());
-	glBindTextureUnit(2, ctx.gbufferFBO->GetDepthTexture());
-	glBindTextureUnit(3, ctx.gbufferFBO->GetColorAttachment(0));
+	// CRITICAL FIX: Bind textures with correct samplers
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_ssgiQuarterBlur->ID());
+	glUniform1i(glGetUniformLocation(m_csUpsample->GetProgramID(), "inLow"), 0);
 
-	glBindImageTexture(4, m_ssgiBlur->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_ssgiRaw->ID());
+	glUniform1i(glGetUniformLocation(m_csUpsample->GetProgramID(), "inHigh"), 1);
 
-	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invDst"),1.0f / float(m_hw),1.0f / float(m_hh));
-	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invFull"),1.0f / float(m_w),1.0f / float(m_h));
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+	glUniform1i(glGetUniformLocation(m_csUpsample->GetProgramID(), "depthTex"), 2);
+
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0)); // RT0: Packed normal+rough+metal
+	glUniform1i(glGetUniformLocation(m_csUpsample->GetProgramID(), "normalTex"), 3);
+
+	glBindImageTexture(4, m_ssgiBlur->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invDst"), 1.0f / float(m_hw), 1.0f / float(m_hh));
+	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invFull"), 1.0f / float(m_w), 1.0f / float(m_h));
 	
 	// CRITICAL FIX: Use same thresholds as bilateral for consistency
 	float depthSigma = 0.02f; // Match SSAO and bilateral
@@ -334,9 +388,9 @@ void SSGIPass::runUpsample(RenderContext& ctx) {
 	glUniform1f(glGetUniformLocation(m_csUpsample->GetProgramID(), "depthSigma"), depthSigma);
 	glUniform1f(glGetUniformLocation(m_csUpsample->GetProgramID(), "normalThresh"), normalThresh);
 
-	GLuint gx = (m_hw +7) /8;
-	GLuint gy = (m_hh +7) /8;
-	glDispatchCompute(gx, gy,1);
+	GLuint gx = (m_hw + 7) / 8;
+	GLuint gy = (m_hh + 7) / 8;
+	glDispatchCompute(gx, gy, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 	glUseProgram(0);
@@ -351,10 +405,10 @@ void SSGIPass::runTemporal(RenderContext& ctx) {
 	glBindTextureUnit(1, m_historySSGI->ID());
 	glBindTextureUnit(2, ctx.velocityTex);
 	glBindTextureUnit(3, ctx.gbufferFBO->GetDepthTexture());
-	glBindTextureUnit(4, ctx.gbufferFBO->GetColorAttachment(0));
+	glBindTextureUnit(4, ctx.gbufferFBO->GetColorAttachment(0)); // RT0: Packed normal+rough+metal
 
-	// Bind output texture
-	glBindImageTexture(5, m_ssgiTex->ID(),0, GL_FALSE,0, GL_WRITE_ONLY, GL_RGBA16F);
+	// CRITICAL FIX: Bind output texture - now writes to WORKING-RES (not final)
+	glBindImageTexture(5, m_ssgiWork->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	// CRITICAL FIX: Use proven temporal parameters
 	// Alpha should be SMALL (0.1-0.15) for stable convergence
@@ -369,24 +423,24 @@ void SSGIPass::runTemporal(RenderContext& ctx) {
 	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "normalThreshold"), normalThreshold);
 
 	// DIAGNOSTIC: Log temporal parameters for tuning verification
-	static int temporalLogCounter =0;
-	if (temporalLogCounter++ %60 ==0) {
+	static int temporalLogCounter = 0;
+	if (temporalLogCounter++ % 60 == 0) {
 		std::cout << "[SSGIPass::Temporal] alpha=" << alpha 
 				 << ", depthThreshold=" << depthThreshold 
 				 << ", normalThreshold=" << normalThreshold << std::endl;
 	}
 
 	// Dispatch
-	GLuint gx = (m_hw +7) /8;
-	GLuint gy = (m_hh +7) /8;
-	glDispatchCompute(gx, gy,1);
+	GLuint gx = (m_hw + 7) / 8;
+	GLuint gy = (m_hh + 7) / 8;
+	glDispatchCompute(gx, gy, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 	// CRITICAL FIX: Copy AFTER temporal resolve completes, not before
 	// This ensures history contains the converged result for next frame
-	glCopyImageSubData(m_ssgiTex->ID(), GL_TEXTURE_2D,0,0,0,0,
-		m_historySSGI->ID(), GL_TEXTURE_2D,0,0,0,0,
-		m_hw, m_hh,1);
+	glCopyImageSubData(m_ssgiWork->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_historySSGI->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_hw, m_hh, 1);
 
 	glUseProgram(0);
 }
@@ -397,21 +451,22 @@ void SSGIPass::runKawase(RenderContext& ctx) {
 
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
-	glViewport(0,0, m_hw, m_hh);
+	glViewport(0, 0, m_hw, m_hh);
 
-	GLuint src = m_ssgiTex->ID();
-	for (int i =0; i < m_kawasePasses; ++i) {
-		TexturePtr& dst = (i %2 ==0) ? m_kawasePing : m_kawasePong;
+	// CRITICAL FIX: Start from working-res texture (not final)
+	GLuint src = m_ssgiWork->ID();
+	for (int i = 0; i < m_kawasePasses; ++i) {
+		TexturePtr& dst = (i % 2 == 0) ? m_kawasePing : m_kawasePong;
 		glBindFramebuffer(GL_FRAMEBUFFER, m_kawaseFBO);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->ID(),0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->ID(), 0);
 		GLenum drawBuf = GL_COLOR_ATTACHMENT0;
 		glDrawBuffers(1, &drawBuf);
 
 		glUseProgram(m_kawaseShader);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, src);
-		glUniform1i(glGetUniformLocation(m_kawaseShader, "image"),0);
-		glUniform2f(glGetUniformLocation(m_kawaseShader, "texelSize"),1.0f / float(m_hw),1.0f / float(m_hh));
+		glUniform1i(glGetUniformLocation(m_kawaseShader, "image"), 0);
+		glUniform2f(glGetUniformLocation(m_kawaseShader, "texelSize"), 1.0f / float(m_hw), 1.0f / float(m_hh));
 		glUniform1i(glGetUniformLocation(m_kawaseShader, "pass"), i);
 
 		ctx.screenQuad->Render();
@@ -420,13 +475,61 @@ void SSGIPass::runKawase(RenderContext& ctx) {
 		src = dst->ID();
 	}
 
-	// Copy last output back into m_ssgiTex
-	TexturePtr& last = ((m_kawasePasses -1) %2 ==0) ? m_kawasePing : m_kawasePong;
-	glCopyImageSubData(last->ID(), GL_TEXTURE_2D,0,0,0,0,
-		m_ssgiTex->ID(), GL_TEXTURE_2D,0,0,0,0,
-		m_hw, m_hh,1);
+	// CRITICAL FIX: Copy last output back into m_ssgiWork (not m_ssgiTex)
+	TexturePtr& last = ((m_kawasePasses - 1) % 2 == 0) ? m_kawasePing : m_kawasePong;
+	glCopyImageSubData(last->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_ssgiWork->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_hw, m_hh, 1);
 
-	glBindFramebuffer(GL_FRAMEBUFFER,0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glUseProgram(0);
+}
+
+void SSGIPass::runFinalUpsample(RenderContext& ctx) {
+	// CRITICAL FIX: Final stage - upsample from working-res to FULL-RES
+	// This is what the lighting pass expects!
+	glUseProgram(m_csFinalUpsample->GetProgramID());
+
+	// Bind input textures
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_ssgiWork->ID()); // Working-res SSGI
+	glUniform1i(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "inSSGI"), 0);
+
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture()); // Full-res depth
+	glUniform1i(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "depthTex"), 1);
+
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0)); // Full-res normals
+	glUniform1i(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "normalTex"), 2);
+
+	// Bind output texture - FULL RESOLUTION
+	glBindImageTexture(3, m_ssgiTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+	// Set uniforms
+	glUniform2f(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "invDst"), 
+				1.0f / float(m_w), 1.0f / float(m_h));
+	
+	// Use same thresholds as other passes for consistency
+	float depthSigma = 0.02f;
+	float normalThresh = 0.2f;
+	
+	glUniform1f(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "depthSigma"), depthSigma);
+	glUniform1f(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "normalThresh"), normalThresh);
+
+	// DIAGNOSTIC: Log once per second
+	static int upsampleLogCounter = 0;
+	if (upsampleLogCounter++ % 60 == 0) {
+		std::cout << "[SSGIPass::FinalUpsample] " << m_hw << "x" << m_hh 
+				  << " -> " << m_w << "x" << m_h << " (FULL-RES)" << std::endl;
+	}
+
+	// Dispatch for FULL resolution
+	GLuint gx = (m_w + 7) / 8;
+	GLuint gy = (m_h + 7) / 8;
+	glDispatchCompute(gx, gy, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
 	glUseProgram(0);
 }
 

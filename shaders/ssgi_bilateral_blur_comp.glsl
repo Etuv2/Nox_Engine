@@ -1,14 +1,12 @@
 #version 460 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// Edge-aware bilateral blur for SSGI denoising - ALIGNED WITH SSAO IMPLEMENTATION
-// Preserves edges using depth and normal information while maximizing noise reduction
-
-layout (local_size_x = 8, local_size_y = 8) in;
+// OPTIMIZED G-BUFFER LAYOUT
+uniform sampler2D gDepth;
+uniform sampler2D gPackedNormalRM;  // RT0: oct normal (RG) + roughness (B) + metallic (A)
 
 // Input textures
 layout (binding = 0) uniform sampler2D inTex;       // Raw SSGI to denoise (rgba: rgb=indirect, a=mask) - QUARTER RES
-layout (binding = 1) uniform sampler2D depthTex;  // Depth for edge detection - FULL RES
-layout (binding = 2) uniform sampler2D normalTex;   // Normals for edge detection (oct-encoded) - FULL RES
 
 // Output texture - rgba16f
 layout (binding = 3, rgba16f) writeonly uniform image2D outTex;
@@ -29,6 +27,13 @@ vec3 octDecode(vec2 e) {
     return normalize(n);
 }
 
+vec3 DecodeNormalOct8(vec2 e) {
+    vec3 n;
+    n.z = 1.0 - abs(e.x) - abs(e.y);
+    n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
+    return normalize(n);
+}
+
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
     
@@ -39,8 +44,9 @@ void main() {
 vec2 uvScreen = uvQuarter;
 
     // CRITICAL FIX: Sample depth/normal from FULL RESOLUTION (matches SSAO exactly)
-  float centerDepth = textureLod(depthTex, uvScreen, 0).r;
-    vec3 centerNormal = octDecode(textureLod(normalTex, uvScreen, 0).rg);
+  float centerDepth = textureLod(gDepth, uvScreen, 0).r;
+    vec2 encNormal = textureLod(gPackedNormalRM, uvScreen, 0.0).rg;
+    vec3 centerNormal = DecodeNormalOct8(encNormal);
     
     // Sample SSGI from QUARTER RESOLUTION
     vec4 centerColor = textureLod(inTex, uvQuarter, 0);
@@ -66,8 +72,9 @@ vec2 uvScreen = uvQuarter;
             vec4 neighborColor = textureLod(inTex, uvNQuarter, 0);
           
           // Sample neighbor depth/normal from FULL RESOLUTION
-            float neighborDepth = textureLod(depthTex, uvNScreen, 0).r;
-      vec3 neighborNormal = octDecode(textureLod(normalTex, uvNScreen, 0).rg);
+            float neighborDepth = textureLod(gDepth, uvNScreen, 0).r;
+      vec2 encNeighborNormal = textureLod(gPackedNormalRM, uvNScreen, 0.0).rg;
+      vec3 neighborNormal = DecodeNormalOct8(encNeighborNormal);
 
     // CRITICAL FIX: Use exact same weight calculation as SSAO
           // Depth weight: exponential falloff based on raw depth difference

@@ -15,8 +15,8 @@ layout (binding = 3) uniform sampler2D normalTex;   // Full-res normals (oct-enc
 layout (binding = 4, rgba16f) writeonly uniform image2D outTex; // Working-res output
 
 // Parameters
-uniform vec2 invDst;        // 1.0 / working-res (destination)
-uniform vec2 invFull;       // 1.0 / full-res (for depth/normal sampling)
+uniform vec2 invDst;    // 1.0 / working-res (destination)
+uniform vec2 invFull;     // 1.0 / full-res (for depth/normal sampling)
 uniform float depthSigma;   // Depth threshold for edge detection
 uniform float normalThresh; // Normal threshold for edge detection
 
@@ -29,6 +29,13 @@ vec3 octDecode(vec2 e) {
 		n.xy = (1.0 - abs(n.yx)) * s;
 	}
 	return normalize(n);
+}
+
+vec3 DecodeNormalOct8(vec2 e) {
+    vec3 n;
+    n.z = 1.0 - abs(e.x) - abs(e.y);
+    n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
+    return normalize(n);
 }
 
 void main() {

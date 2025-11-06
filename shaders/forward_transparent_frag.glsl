@@ -1,4 +1,4 @@
-#version 450 core
+#version 460 core
 out vec4 FragColor;
 
 in VS_OUT {
@@ -7,6 +7,12 @@ in VS_OUT {
     vec2 UV;
     vec4 TangentWS; // Tangent in world space (w = handedness)
 } fs_in;
+
+// OPTIMIZED G-BUFFER LAYOUT (for depth reads only - transparent pass reads scene depth)
+uniform sampler2D gDepth;
+
+// CRITICAL: Screen-space uniforms for depth comparison
+uniform vec2 screenSize;  // Screen resolution for screen UV calculation
 
 // Material properties
 uniform vec4 baseColorFactor = vec4(1.0);
@@ -148,6 +154,9 @@ vec3 sampleEnvironmentWithRefraction(vec3 viewDir, vec3 normal, float roughness,
 }
 
 void main() {
+    // CRITICAL: Calculate screen UV from fragment position for depth reads
+    vec2 screenUV = gl_FragCoord.xy / screenSize;
+    
     // Sample base color and alpha
     vec4 baseColor = texture(texture_diffuse, fs_in.UV) * baseColorFactor;
     float alpha = baseColor.a;
@@ -237,6 +246,9 @@ void main() {
     
     // Ensure alpha stays in valid range
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
+    
+    // Read scene depth for transparency ordering (from packed G-buffer depth)
+    float sceneDepth = texture(gDepth, screenUV).r;
     
     // === OUTPUT ===
     // Output in linear color space - gamma correction happens in post-processing

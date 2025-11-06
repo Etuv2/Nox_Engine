@@ -79,17 +79,17 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 
 bool ModularRenderer::InitializeSharedResources()
 {
-	// Create G-buffer FBO with extended attachments
+	// Create G-buffer FBO with optimized 3-RT layout for better bandwidth efficiency
+	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
+	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
+	// RT2: RGBA16F - Emissive (RGB) + Specular F0 luminance (A)
 	m_context.gbufferFBO = std::make_unique<FrameBuffer>(
 		m_context.width, m_context.height,
 		std::vector<GLenum>{
-		GL_RG8,      // Normal
-			GL_RG8,      // Roughness/Metallic
-			GL_RGB16F,   // Albedo
-			GL_RGB16F,   // Emissive
-			GL_RGB16F,   // Specular
-			GL_R8        // Occlusion
-	},
+			GL_RGBA8,    // RT0: Oct normal + roughness/metallic
+			GL_RGBA16F,  // RT1: Albedo + occlusion
+			GL_RGBA16F   // RT2: Emissive + specular
+		},
 		true,  // useDepthAsTexture
 		false  // useDepthAsTextureArray
 	);
