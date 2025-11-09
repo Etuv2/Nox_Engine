@@ -85,6 +85,10 @@ private:
         const std::shared_ptr<SceneNode>& node,
         const std::string& modelName
     );
+    
+    // OPTIMIZATION: Estimate number of renderable objects for batch reservation
+    size_t EstimateRenderableObjectCount() const;
+    
     std::shared_ptr<Skybox> m_skybox;
     std::shared_ptr<LightManager> m_lightManager; // Multi-light system
 

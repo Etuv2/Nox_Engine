@@ -515,6 +515,9 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			// Create the GPU mesh (VAO, VBO, EBO) without textures yet
 			bool hasAlpha = false;
 			MeshComponent mesh = CreateMesh(vertices, indices, hasAlpha);
+			
+			// OPTIMIZATION: Compute and cache bounding volume once at load time
+			mesh.ComputeBoundingVolume();
 
 			// Load material textures and properties for this primitive
 			mesh.hasAlpha = false;

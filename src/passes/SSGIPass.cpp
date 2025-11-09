@@ -421,13 +421,17 @@ void SSGIPass::runTemporal(RenderContext& ctx) {
 	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "alpha"), alpha);
 	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "depthThreshold"), depthThreshold);
 	glUniform1f(glGetUniformLocation(m_csTemporal->GetProgramID(), "normalThreshold"), normalThreshold);
+	
+	// NEW: Pass YCoCg flag to match TAA settings
+	glUniform1i(glGetUniformLocation(m_csTemporal->GetProgramID(), "useYCoCg"), ctx.taaUseYCoCg ? 1 : 0);
 
 	// DIAGNOSTIC: Log temporal parameters for tuning verification
 	static int temporalLogCounter = 0;
 	if (temporalLogCounter++ % 60 == 0) {
 		std::cout << "[SSGIPass::Temporal] alpha=" << alpha 
 				 << ", depthThreshold=" << depthThreshold 
-				 << ", normalThreshold=" << normalThreshold << std::endl;
+				 << ", normalThreshold=" << normalThreshold 
+				 << ", useYCoCg=" << (ctx.taaUseYCoCg ? "true" : "false") << std::endl;
 	}
 
 	// Dispatch

@@ -11,7 +11,11 @@ class Skybox;
 
 
 struct RenderContext;
-
+/*
+* Abstract base class for all render passes.
+* Each pass must implement Initialize, Resize, and Execute methods.
+* This allows for a modular rendering pipeline.
+*/
 
 class RenderPass {
 public:

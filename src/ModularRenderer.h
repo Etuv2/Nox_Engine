@@ -23,8 +23,8 @@ class BloomPass;
 class TAAPass;
 class TransparentForwardPass;
 class PostProcessPass;
-class LPVPass; // NEW: Light Propagation Volume GI pass
-class SSGIPass; // NEW: Screen Space Global Illumination pass
+class LPVPass;
+class SSGIPass;
 
 /**
  * ModularRenderer coordinates all rendering passes using a shared RenderContext.
@@ -33,60 +33,60 @@ class SSGIPass; // NEW: Screen Space Global Illumination pass
 class ModularRenderer
 {
 public:
-    ModularRenderer();
-    ~ModularRenderer();
+	ModularRenderer();
+	~ModularRenderer();
 
-    // Initialize all passes and shared resources
-    bool Initialize(int windowWidth, int windowHeight);
+	// Initialize all passes and shared resources
+	bool Initialize(int windowWidth, int windowHeight);
 
-    // Resize all framebuffers and passes
-    void Resize(int newWidth, int newHeight);
+	// Resize all framebuffers and passes
+	void Resize(int newWidth, int newHeight);
 
-    // Main render function
-    void Render(const std::shared_ptr<SceneGraph>& sceneGraph,
-                const std::shared_ptr<Camera>& camera,
-                const std::shared_ptr<DirectionalLight>& lighting,
-                float exposure,
-                float gamma,
-                bool enableShadows,
-                float shadowBias,
-                float shadow_near,
-                float shadow_far,
-                glm::vec3 envColor,
-                int windowWidth,
-                int windowHeight);
+	// Main render function
+	void Render(const std::shared_ptr<SceneGraph>& sceneGraph,
+		const std::shared_ptr<Camera>& camera,
+		const std::shared_ptr<DirectionalLight>& lighting,
+		float exposure,
+		float gamma,
+		bool enableShadows,
+		float shadowBias,
+		float shadow_near,
+		float shadow_far,
+		glm::vec3 envColor,
+		int windowWidth,
+		int windowHeight);
 
-    // Access to context for UI tuning
-    RenderContext& GetContext() { return m_context; }
+	// Access to context for UI tuning
+	RenderContext& GetContext() { return m_context; }
 
-    // TAA controls
-    void ResetTAA();
-    int GetTAAFrameIndex() const;
+	// TAA controls
+	void ResetTAA();
+	int GetTAAFrameIndex() const;
 
 private:
-    bool InitializeSharedResources();
-    void UpdateContext(const std::shared_ptr<Camera>& camera, 
-                      float exposure, float gamma, 
-                      bool enableShadows, float shadowBias,
-                      glm::vec3 envColor);
-
-	
-
-    void CheckGLError(const std::string& passName);
+	bool InitializeSharedResources();
+	void UpdateContext(const std::shared_ptr<Camera>& camera,
+		float exposure, float gamma,
+		bool enableShadows, float shadowBias,
+		glm::vec3 envColor);
 
 
-    RenderContext m_context;
 
-    // Rendering passes
-    std::unique_ptr<ShadowPass> m_shadowPass;
-    std::unique_ptr<LPVPass> m_lpvPass; // NEW: LPV GI pass
-    std::unique_ptr<GBufferPass> m_gbufferPass;
-    std::unique_ptr<SSAOPass> m_ssaoPass;
-    std::unique_ptr<ScreenSpaceShadowPass> m_screenSpaceShadowPass;
-    std::unique_ptr<SSGIPass> m_ssgiPass; // NEW: Screen Space GI pass
-    std::unique_ptr<TAAPass> m_taaPass;
-    std::unique_ptr<LightingPass> m_lightingPass;
-    std::unique_ptr<BloomPass> m_bloomPass;
-    std::unique_ptr<TransparentForwardPass> m_transparentPass;
-    std::unique_ptr<PostProcessPass> m_postProcessPass;
+	void CheckGLError(const std::string& passName);
+
+
+	RenderContext m_context;
+
+	// Rendering passes
+	std::unique_ptr<ShadowPass> m_shadowPass;
+	std::unique_ptr<LPVPass> m_lpvPass; 
+	std::unique_ptr<GBufferPass> m_gbufferPass;
+	std::unique_ptr<SSAOPass> m_ssaoPass;
+	std::unique_ptr<ScreenSpaceShadowPass> m_screenSpaceShadowPass;
+	std::unique_ptr<SSGIPass> m_ssgiPass;
+	std::unique_ptr<TAAPass> m_taaPass;
+	std::unique_ptr<LightingPass> m_lightingPass;
+	std::unique_ptr<BloomPass> m_bloomPass;
+	std::unique_ptr<TransparentForwardPass> m_transparentPass;
+	std::unique_ptr<PostProcessPass> m_postProcessPass;
 };

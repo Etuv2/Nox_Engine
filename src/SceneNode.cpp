@@ -81,7 +81,7 @@ std::string SceneNode::GetName() {
 	return m_model->GetName();
 }
 
-// ENHANCED: Add unified world position calculation method
+//Add unified world position calculation method
 glm::vec3 SceneNode::GetWorldPosition() const
 {
 	// Get parent's world transform if we have a parent
@@ -96,7 +96,7 @@ glm::vec3 SceneNode::GetWorldPosition() const
 	return glm::vec3(worldTransform[3]);
 }
 
-// ENHANCED: Add method to get parent's world transform as matrix
+//Add method to get parent's world transform as matrix
 glm::mat4 SceneNode::GetWorldPosition4x4() const
 {
 	// Get parent's world transform if we have a parent  
@@ -160,7 +160,7 @@ void SceneNode::Draw(
 	const glm::mat4& projection,
 	unsigned int defaultShaderProgram)
 {
-	// ENHANCED: Calculate the global transform properly using the helper method
+	//Calculate the global transform properly using the helper method
 	glm::mat4 global = GetGlobalTransform(parentTransform);
 
 	auto bindTextureWithFallback = [](GLint uniformLoc, GLuint unit, const std::shared_ptr<Texture>& tex, GLuint fallback) {
@@ -530,31 +530,31 @@ void SceneNode::CollectRenderableObjects(
 	const glm::mat4& parentTransform,
 	MDIBatch& batch)
 {
+	//Use cached global transform if not dirty
 	glm::mat4 global = GetGlobalTransform(parentTransform);
 
 	if (m_model) {
 		for (const auto& mesh : m_model->meshes) {
+			//Use precomputed bounding volume instead of scanning rawVertices
+			glm::vec3 center = mesh.boundingCenter;
+			float radius = mesh.boundingRadius;
+
+			// If bounding volume hasn't been computed, use default or skip
+			if (!mesh.boundingVolumeValid) {
+				// Fallback to boundingRadius field if available
+				center = glm::vec3(0.0f);
+				radius = boundingRadius; // Use node's bounding radius
+			}
+
 			MDI_RenderableObject obj{};
 			obj.count = static_cast<GLuint>(mesh.indexCount);
-			// Without a combined index buffer, each mesh uses its own EBO, so firstIndex/baseVertex are 0
+			// Without a combined index buffer, each mesh uses its own EBO
 			obj.firstIndex = 0;
 			obj.baseVertex = 0;
 			obj.modelMatrix = global;
 			obj.vao = mesh.VAO;
 
-			// Compute a simple bounding sphere from raw vertices if available
-			glm::vec3 center(0.0f);
-			float radius = boundingRadius; // fallback
-			if (!mesh.rawVertices.empty()) {
-				glm::vec3 minB(std::numeric_limits<float>::max());
-				glm::vec3 maxB(std::numeric_limits<float>::lowest());
-				for (const auto& v : mesh.rawVertices) {
-					minB = glm::min(minB, v.position);
-					maxB = glm::max(maxB, v.position);
-				}
-				center = (minB + maxB) * 0.5f;
-				radius = glm::length(maxB - center);
-			}
+			// Use cached bounding sphere for fast culling
 			obj.boundingSphere = glm::vec4(center, radius);
 
 			batch.AddObject(obj);
@@ -958,7 +958,7 @@ glm::mat4 SceneNode::GetGlobalTransform(const glm::mat4& parentTransform) const 
 		glm::any(glm::notEqual(animatedTransform[1], glm::vec4(0, 1, 0, 0))) ||
 		glm::any(glm::notEqual(animatedTransform[2], glm::vec4(0, 0, 1, 0))) ||
 		glm::any(glm::notEqual(animatedTransform[3], glm::vec4(0, 0, 0, 1)))) {
-		// FIXED: Apply animation transform first, then base transform
+		//Apply animation transform first, then base transform
 		// This ensures proper hierarchical transformation order
 		localTransform = transform * animatedTransform;
 	}
@@ -1059,7 +1059,7 @@ std::vector<glm::mat4> SceneNode::GetBoneTransforms() const {
 
 		// Get the bone node's global transform if available
 		if (i < boneNodes.size() && boneNodes[i]) {
-			// FIXED: Use the unified hierarchy system for bone transforms
+			//Use the unified hierarchy system for bone transforms
 			boneTransform = boneNodes[i]->GetWorldPosition4x4();
 		}
 

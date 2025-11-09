@@ -13,8 +13,6 @@ class FrameBuffer; class ScreenQuad; class LightManager;
 * and various rendering settings used across multiple render passes.
 * It provides a convenient way to manage and access these resources
 * throughout the rendering pipeline.
-
-
 */
 
 struct RenderContext {

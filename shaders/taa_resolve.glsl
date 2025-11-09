@@ -125,7 +125,7 @@ vec3 SampleBicubic(sampler2D tex, vec2 uv) {
 
 // Enhanced neighborhood analysis with proper statistics
 void AnalyzeNeighborhood(vec2 uv, out vec3 minColor, out vec3 maxColor, out vec3 avgColor, 
-                        out vec3 variance, out float edgeMask) {
+                     out vec3 variance, out float edgeMask) {
     vec3 samples[9];
     int index = 0;
     
@@ -133,13 +133,13 @@ void AnalyzeNeighborhood(vec2 uv, out vec3 minColor, out vec3 maxColor, out vec3
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             vec2 sampleUV = uv + vec2(float(x), float(y)) / screenSize;
-            sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0)); // Ensure valid coordinates
-            samples[index] = texture(currentFrame, sampleUV).rgb;
-            if (useYCoCg) {
-                samples[index] = RGBToYCoCg(samples[index]);
+       sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0)); // Ensure valid coordinates
+   samples[index] = texture(currentFrame, sampleUV).rgb;
+         if (useYCoCg) {
+      samples[index] = RGBToYCoCg(samples[index]);
             }
             index++;
-        }
+      }
     }
     
     // Calculate basic statistics
@@ -149,35 +149,47 @@ void AnalyzeNeighborhood(vec2 uv, out vec3 minColor, out vec3 maxColor, out vec3
     
     for (int i = 1; i < 9; i++) {
         minColor = min(minColor, samples[i]);
-        maxColor = max(maxColor, samples[i]);
-        avgColor += samples[i];
-    }
+    maxColor = max(maxColor, samples[i]);
+    avgColor += samples[i];
+  }
     avgColor /= 9.0;
     
     // Calculate variance for proper statistical bounds
     variance = vec3(0.0);
     for (int i = 0; i < 9; i++) {
-        vec3 diff = samples[i] - avgColor;
+   vec3 diff = samples[i] - avgColor;
         variance += diff * diff;
     }
     variance /= 9.0;
     
     // Edge detection based on luminance variance
-    float luminanceVariance = dot(variance, vec3(0.299, 0.587, 0.114));
+    float luminanceVariance = useYCoCg ? variance.x : dot(variance, vec3(0.299, 0.587, 0.114));
     edgeMask = clamp(sqrt(luminanceVariance) / edgeThreshold, 0.0, 1.0);
 }
 
-// Standard neighborhood clamping without bloom considerations
+// Improved neighborhood clamping with high-luminance handling
 vec3 ClampToNeighborhood(vec3 historyColor, vec3 minColor, vec3 maxColor, vec3 avgColor, 
-                        vec3 variance) {
+          vec3 variance) {
     // Use statistical bounds instead of hard min/max
     vec3 sigma = sqrt(max(variance, vec3(0.0001))); // Avoid zero variance
+    
+    // Detect high-luminance regions (bright colors that may flicker)
+    float avgLuma = useYCoCg ? avgColor.x : dot(avgColor, vec3(0.299, 0.587, 0.114));
+    float histLuma = useYCoCg ? historyColor.x : dot(historyColor, vec3(0.299, 0.587, 0.114));
+    
+    // For bright regions, use tighter clamping to prevent flickering
+    // For normal regions, use standard gamma
     float gamma = 1.25; // Standard gamma for temporal stability
     
+    // If average luminance is high (>0.8) or history is bright, reduce gamma
+    if (avgLuma > 0.8 || histLuma > 0.8) {
+        gamma = 1.0; // Tighter bounds for bright regions
+    }
+  
     vec3 boundMin = avgColor - gamma * sigma;
     vec3 boundMax = avgColor + gamma * sigma;
     
-    // Standard statistical clamping for all areas
+    // Standard statistical clamping
     return clamp(historyColor, boundMin, boundMax);
 }
 
@@ -214,44 +226,52 @@ float CalculateReactiveMask(vec2 uv, vec2 velocity, float edgeMask) {
     return combinedMask * reactiveMaskStrength;
 }
 
-// Standard color-aware temporal blending (no bloom considerations)
+// Enhanced color-aware temporal blending with high-luminance handling
 vec3 ColorAwareBlend(vec3 currentColor, vec3 historyColor, float blendWeight) {
     if (useYCoCg) {
         // YCoCg space naturally separates luminance from chrominance
         vec3 currentYCoCg = currentColor;
         vec3 historyYCoCg = historyColor;
-        
-        // Separate treatment for luminance and chrominance
+     
+   // Separate treatment for luminance and chrominance
         float currentLuma = currentYCoCg.x;
-        float historyLuma = historyYCoCg.x;
-        vec2 currentChroma = currentYCoCg.yz;
-        vec2 historyChroma = historyYCoCg.yz;
+    float historyLuma = historyYCoCg.x;
+     vec2 currentChroma = currentYCoCg.yz;
+     vec2 historyChroma = historyYCoCg.yz;
+      
+        // Detect high-luminance regions (bright colors like SSGI/bloom)
+      bool isBright = currentLuma > 0.8 || historyLuma > 0.8;
         
-        // Standard temporal blending for all pixels
-        float lumaBlendWeight = blendWeight;
-        float blendedLuma = mix(historyLuma, currentLuma, lumaBlendWeight);
+   // For bright regions, use more aggressive blending to prevent flickering
+     float lumaBlendWeight = isBright ? min(blendWeight * 1.5, 0.85) : blendWeight;
+     float blendedLuma = mix(historyLuma, currentLuma, lumaBlendWeight);
         
         // Blend chrominance conservatively to preserve color accuracy
-        float chromaBlendWeight = min(blendWeight * 1.5, 0.8); // Cap to prevent overshooting
+        // For bright regions, blend chrominance more aggressively to prevent color shifts
+        float chromaBlendWeight = isBright ? min(blendWeight * 2.0, 0.9) : min(blendWeight * 1.5, 0.8);
         vec2 blendedChroma = mix(historyChroma, currentChroma, chromaBlendWeight);
         
-        return vec3(blendedLuma, blendedChroma);
+      return vec3(blendedLuma, blendedChroma);
     } else {
         // RGB space - convert to HSV for hue preservation
         vec3 currentHSV = rgbToHsv(currentColor);
-        vec3 historyHSV = rgbToHsv(historyColor);
+  vec3 historyHSV = rgbToHsv(historyColor);
+   
+        // Detect high-luminance (value in HSV)
+        bool isBright = currentHSV.z > 0.8 || historyHSV.z > 0.8;
         
         // Blend HSV components separately for better color preservation
-        float hueBlendWeight = blendWeight * 0.7; // More conservative hue blending
-        float satBlendWeight = blendWeight;
-        float valBlendWeight = blendWeight;
+        // For bright regions, use more aggressive blending
+        float hueBlendWeight = isBright ? min(blendWeight * 1.2, 0.8) : blendWeight * 0.7;
+        float satBlendWeight = isBright ? min(blendWeight * 1.3, 0.85) : blendWeight;
+        float valBlendWeight = isBright ? min(blendWeight * 1.5, 0.9) : blendWeight;
         
         vec3 blendedHSV = vec3(
-            mix(historyHSV.x, currentHSV.x, hueBlendWeight),
-            mix(historyHSV.y, currentHSV.y, satBlendWeight),
-            mix(historyHSV.z, currentHSV.z, valBlendWeight)
+   mix(historyHSV.x, currentHSV.x, hueBlendWeight),
+    mix(historyHSV.y, currentHSV.y, satBlendWeight),
+  mix(historyHSV.z, currentHSV.z, valBlendWeight)
         );
-        
+ 
         return hsvToRgb(blendedHSV);
     }
 }
@@ -323,14 +343,20 @@ void main()
     // Final blend factor clamping
     baseBlendFactor = clamp(baseBlendFactor, 0.05, 0.95);
     
-    // Perform standard color-aware temporal blending
+    // Perform enhanced color-aware temporal blending
     vec3 result = ColorAwareBlend(currentColor, clampedHistory, baseBlendFactor);
     
-    // Anti-flickering for high-frequency details
-    if (velocityLength < 0.5 && edgeMask > 0.3) {
-        // For static high-frequency content, use more conservative blending
-        float stabilityFactor = 1.0 - (edgeMask * 0.3);
-        result = mix(result, mix(clampedHistory, currentColor, 0.2), stabilityFactor);
+ // Enhanced anti-flickering for high-frequency details
+    float currentLuma = useYCoCg ? currentColor.x : dot(currentColor, vec3(0.299, 0.587, 0.114));
+    bool isBrightRegion = currentLuma > 0.8;
+    
+    if (velocityLength < 0.5 && (edgeMask > 0.3 || isBrightRegion)) {
+        // For static high-frequency OR bright content, use more conservative blending
+    float stabilityFactor = isBrightRegion ? (1.0 - edgeMask * 0.5) : (1.0 - edgeMask * 0.3);
+        
+      // For bright regions, favor current frame more to prevent lag
+        float brightBias = isBrightRegion ? 0.3 : 0.2;
+    result = mix(result, mix(clampedHistory, currentColor, brightBias), stabilityFactor);
     }
     
     // Convert back to RGB if needed

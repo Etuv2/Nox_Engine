@@ -24,11 +24,11 @@
     {
       "type": "light",
       "name": "TestPointLight",
-      "position": [ 2.0, 2.0, 2.0 ],
+      "position": [0.0, 19.0, 0.0],
       "light": {
         "type": "point",
-        "color": [ 0.8, 0.2, 0.2 ],
-        "intensity": 1.5,
+        "color": [ 1.0, 1.0, 1.0 ],
+        "intensity": 6.0,
         "enabled": true,
         "range": 40.0,
         "castsShadows": true

@@ -72,7 +72,7 @@ inline GLuint CreateShaderProgram(const char* vertexShaderPath,
     return prog;
 }
 
-// NEW OVERLOAD: inject defines *after* the #version line in the fragment shader
+//inject defines *after* the #version line in the fragment shader
 inline GLuint CreateShaderProgram(const char* vertexShaderPath,
     const char* fragmentShaderPath,
     const std::vector<std::string>& definesAfterVersion)
@@ -123,7 +123,7 @@ inline GLuint CreateShaderProgram(const char* vertexShaderPath,
     return prog;
 }
 
-// NEW: Create compute shader program
+//Create compute shader program
 inline GLuint CreateComputeShader(const char* computeShaderPath)
 {
     GLuint cs = LoadShader(computeShaderPath, GL_COMPUTE_SHADER);
@@ -151,7 +151,7 @@ inline GLuint CreateComputeShader(const char* computeShaderPath)
     return prog;
 }
 
-// NEW: Create shader program with geometry shader
+//Create shader program with geometry shader
 inline GLuint CreateShaderProgramWithGeometry(const char* vertexShaderPath,
                                               const char* geometryShaderPath,
                                               const char* fragmentShaderPath)

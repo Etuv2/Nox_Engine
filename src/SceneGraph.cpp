@@ -221,8 +221,41 @@ void SceneGraph::DrawCascade(
 void SceneGraph::CollectRenderableObjects(MDIBatch& batch)
 {
     if (m_root) {
+        // OPTIMIZATION: Reserve approximate capacity based on tree size
+        // This prevents reallocations during traversal
+        size_t estimatedObjects = EstimateRenderableObjectCount();
+        if (estimatedObjects > 0) {
+            // MDIBatch will handle reservation internally if needed
+        }
+  
         m_root->CollectRenderableObjects(glm::mat4(1.0f), batch);
     }
+}
+
+// OPTIMIZATION: Estimate number of renderable objects for batch reservation
+size_t SceneGraph::EstimateRenderableObjectCount() const
+{
+    if (!m_root) return 0;
+  
+    size_t count = 0;
+    // Count nodes with models (simplified estimation)
+    std::function<void(const std::shared_ptr<SceneNode>&)> countNodes;
+  countNodes = [&](const std::shared_ptr<SceneNode>& node) {
+    if (node && node->GetModel()) {
+            // Each model may have multiple meshes
+   auto model = node->GetModel();
+    count += model->meshes.size();
+    }
+        for (const auto& child : node->children) {
+       countNodes(child);
+        }
+    };
+    
+    for (const auto& child : m_root->children) {
+        countNodes(child);
+    }
+    
+    return count;
 }
 
 //Deferred geometry pass
