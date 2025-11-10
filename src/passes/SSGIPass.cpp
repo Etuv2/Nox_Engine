@@ -11,7 +11,6 @@
 #include <iostream>
 
 SSGIPass::~SSGIPass() {
-	// TexturePtr handles cleanup automatically - no need for manual deletion
 	// Only cleanup Kawase shader and FBO
 	if (m_kawaseFBO) { glDeleteFramebuffers(1, &m_kawaseFBO); m_kawaseFBO =0; }
 	if (m_kawaseShader) { glDeleteProgram(m_kawaseShader); m_kawaseShader =0; }
@@ -27,7 +26,7 @@ bool SSGIPass::Initialize(RenderContext& ctx) {
 	m_csBilateral = std::make_unique<ComputeShader>();
 	m_csUpsample = std::make_unique<ComputeShader>();
 	m_csTemporal = std::make_unique<ComputeShader>();
-	m_csFinalUpsample = std::make_unique<ComputeShader>(); // CRITICAL FIX: Add final upsample
+	m_csFinalUpsample = std::make_unique<ComputeShader>();
 
 	// Load shaders from files
 	if (!m_csDirections->CreateFromFile("shaders/ssgi_directions_comp.glsl")) {
@@ -60,7 +59,7 @@ bool SSGIPass::Initialize(RenderContext& ctx) {
 		return false;
 	}
 
-	// CRITICAL FIX: Load final upsample shader
+	//Load final upsample shader
 	if (!m_csFinalUpsample->CreateFromFile("shaders/ssgi_final_upsample_comp.glsl")) {
 		std::cerr << "[SSGIPass] Failed to compile ssgi_final_upsample_comp.glsl" << std::endl;
 		return false;
@@ -99,7 +98,7 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	std::cout << "[SSGIPass] Resizing to " << w << "x" << h
 		<< " (working resolution: " << m_hw << "x" << m_hh << ", quarter: " << m_qw << "x" << m_qh << ")" << std::endl;
 
-	// REFACTORED: Use Texture::Builder for clean, declarative texture creation
+	//Using the Texture::Builder for clean, declarative texture creation,lets me set all params in one place
 	// All textures use RGBA16F for compute shader image2D compatibility (except directions which use RG16F)
 	m_dirTex = Texture::Builder::Texture2D(m_hw, m_hh, GL_RGBA16F)
 		.Format(GL_RGBA).DataType(GL_HALF_FLOAT)
@@ -112,7 +111,7 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	m_ssgiQuarterBlur = TextureFactory::CreateHDR(m_qw, m_qh);
 	m_ssgiBlur = TextureFactory::CreateHDR(m_hw, m_hh);
 	
-	// CRITICAL FIX: Create working-res and FULL-RES textures separately
+	//Create working-res and FULL-RES textures separately
 	m_ssgiWork = TextureFactory::CreateHDR(m_hw, m_hh);  // Working-res (for temporal)
 	m_ssgiTex = TextureFactory::CreateHDR(m_w, m_h);      // FULL-RES (for lighting pass)
 
@@ -120,7 +119,7 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	m_historyColor = TextureFactory::CreateHDR(m_hw, m_hh);
 	m_historySSGI = TextureFactory::CreateHDR(m_hw, m_hh);
 	
-	// CRITICAL: Initialize history buffers to zero on first frame/resize
+	//Initialize history buffers to zero on first frame/resize
 	// This prevents artifacts from uninitialized memory
 	std::vector<float> blackPixels(m_hw * m_hh *4,0.0f);
 	m_historyColor->Upload2D(0,0,0, m_hw, m_hh, GL_RGBA, GL_FLOAT, blackPixels.data());
@@ -129,11 +128,6 @@ void SSGIPass::Resize(RenderContext& ctx, int w, int h) {
 	// Kawase ping/pong targets at working resolution
 	m_kawasePing = TextureFactory::CreateHDR(m_hw, m_hh);
 	m_kawasePong = TextureFactory::CreateHDR(m_hw, m_hh);
-
-	std::cout << "[SSGIPass] All textures allocated successfully using new Texture system" << std::endl;
-	std::cout << "[SSGIPass] CRITICAL FIX: Final output is FULL-RES " << m_w << "x" << m_h 
-			  << " (was working-res " << m_hw << "x" << m_hh << ")" << std::endl;
-	std::cout << "[SSGIPass] History buffers initialized to zero for first frame convergence" << std::endl;
 }
 
 void SSGIPass::Execute(RenderContext& ctx,
@@ -143,45 +137,6 @@ void SSGIPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Skybox>& skybox) {
 	if (!ctx.enableSSGI) return;
 	if (!ctx.gbufferFBO || !camera) return;
-
-	// DIAGNOSTIC: Comprehensive parameter logging for debugging (once per second)
-	static int frameCounter = 0;
-	if (frameCounter++ % 60 == 0) {
-		std::cout << "\n=== SSGI Pipeline Diagnostics ===" << std::endl;
-		std::cout << "[Resolution] Full=" << m_w << "x" << m_h 
-			<< ", Work=" << m_hw << "x" << m_hh
-			<< ", Quarter=" << m_qw << "x" << m_qh << std::endl;
-		std::cout << "[Camera] Near=" << camera->GetCameraNearPlane() 
-			<< ", Far=" << camera->GetCameraFarPlane() << std::endl;
-		std::cout << "[Raymarch] Radius=" << ctx.ssgiRadius 
-			<< ", Samples=" << ctx.ssgiSampleCount
-			<< ", Thickness=" << ctx.ssgiThickness << std::endl;
-		std::cout << "[Temporal] Alpha=" << ctx.ssgiTemporalAlpha 
-			<< ", DepthThresh=" << ctx.taaDepthThreshold 
-			<< ", NormalThresh=" << ctx.taaNormalThreshold << std::endl;
-		std::cout << "[Bilateral] DepthReject=" << ctx.ssgiDepthReject 
-			<< ", NormalReject=" << ctx.ssgiNormalReject << std::endl;
-		std::cout << "[Quality] HalfRes=" << (ctx.ssgiHalfRes ? "Yes" : "No")
-			<< ", Strength=" << ctx.ssgiStrength << std::endl;
-		
-		// NEW: Texture validation
-		std::cout << "[Textures] Raw=" << (m_ssgiRaw ? m_ssgiRaw->ID() : 0)
-			<< ", Quarter=" << (m_ssgiQuarter ? m_ssgiQuarter->ID() : 0)
-			<< ", Blur=" << (m_ssgiBlur ? m_ssgiBlur->ID() : 0)
-			<< ", Final=" << (m_ssgiTex ? m_ssgiTex->ID() : 0) << std::endl;
-		std::cout << "[History] Color=" << (m_historyColor ? m_historyColor->ID() : 0)
-			<< " (" << m_hw << "x" << m_hh << ")"
-			<< ", SSGI=" << (m_historySSGI ? m_historySSGI->ID() : 0)
-			<< " (" << m_hw << "x" << m_hh << ")" << std::endl;
-		
-		// Validate G-buffer attachments
-		std::cout << "[G-Buffer] Depth=" << ctx.gbufferFBO->GetDepthTexture()
-			<< ", Normal=" << ctx.gbufferFBO->GetColorAttachment(0)
-			<< ", Albedo=" << ctx.gbufferFBO->GetColorAttachment(2) << std::endl;
-		
-		std::cout << "==================================\n" << std::endl;
-	}
-
 	// Run all SSGI stages
 	runDirections(ctx);
 	runRaymarch(ctx, camera, skybox);
@@ -190,7 +145,7 @@ void SSGIPass::Execute(RenderContext& ctx,
 	runUpsample(ctx); // upsample to working-res with edge-aware combine
 	runTemporal(ctx); // temporal accumulation (history updated here, output to m_ssgiWork)
 	runKawase(ctx); // optional final smoothing at working-res
-	runFinalUpsample(ctx); // CRITICAL FIX: Upsample from working-res to FULL-RES for lighting pass
+	runFinalUpsample(ctx); //Upsample from working-res to FULL-RES for lighting pass
 }
 
 void SSGIPass::runDirections(RenderContext& ctx) {
@@ -218,7 +173,7 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
 	// Stage2: Screen-space ray marching to find indirect lighting
 	glUseProgram(m_csRaymarch->GetProgramID());
 
-	// CRITICAL FIX: Bind ALL required textures for raymarch shader
+	//Bind ALL required textures for raymarch shader
 	// Bind input textures - OPTIMIZED G-buffer layout (3 RTs)
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
@@ -232,17 +187,17 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1)); // RT1: Albedo+AO
 	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "gAlbedoAO"), 2);
 
-	// CRITICAL FIX: Bind stochastic direction texture (was missing!)
+	//Bind stochastic direction texture (was missing!)
 	glActiveTexture(GL_TEXTURE3);
 	glBindTexture(GL_TEXTURE_2D, m_dirTex->ID());
 	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "randTex"), 3);
 
-	// CRITICAL FIX: Bind previous frame HDR color for ray hit sampling (was missing!)
+	//Bind previous frame HDR color for ray hit sampling (was missing!)
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_historyColor->ID());
 	glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "prevColor"), 4);
 
-	// CRITICAL FIX: Bind IBL irradiance cubemap for fallback (was missing!)
+	//Bind IBL irradiance cubemap for fallback (was missing!)
 	GLuint ibl = 0;
 	if (skybox) {
 		// Prefer diffuse irradiance map for indirect diffuse
@@ -311,7 +266,7 @@ void SSGIPass::runBilateral(RenderContext& ctx) {
 	// Stage3: Edge-aware bilateral blur for denoising (quarter-res)
 	glUseProgram(m_csBilateral->GetProgramID());
 
-	// CRITICAL FIX: Bind textures with correct samplers
+	//Bind textures with correct samplers
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_ssgiQuarter->ID());
 	glUniform1i(glGetUniformLocation(m_csBilateral->GetProgramID(), "inTex"), 0);
@@ -327,7 +282,7 @@ void SSGIPass::runBilateral(RenderContext& ctx) {
 	// Bind output texture
 	glBindImageTexture(3, m_ssgiQuarterBlur->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-	// CRITICAL FIX: Use simple exponential thresholds matching SSAO exactly
+	//Use simple exponential thresholds matching SSAO exactly
 	// SSAO uses depthThreshold=0.02 and normalThreshold=0.2 successfully
 	// These are RAW depth/normal differences, not view-space scaled values
 	
@@ -337,14 +292,6 @@ void SSGIPass::runBilateral(RenderContext& ctx) {
 	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "depthSigma"), depthSigma);
 	glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "normalThresh"), normalThresh);
 	glUniform2f(glGetUniformLocation(m_csBilateral->GetProgramID(), "invWork"), 1.0f / float(m_qw), 1.0f / float(m_qh));
-
-	// DIAGNOSTIC: Log filter parameters for verification
-	static int bilateralLogCounter = 0;
-	if (bilateralLogCounter++ % 60 == 0) {
-		std::cout << "[SSGIPass::Bilateral] depthSigma=" << depthSigma 
-				 << ", normalThresh=" << normalThresh
-				<< ", resolution=" << m_qw << "x" << m_qh << std::endl;
-	}
 
 	// Dispatch
 	GLuint gx = (m_qw + 7) / 8;
@@ -359,7 +306,7 @@ void SSGIPass::runUpsample(RenderContext& ctx) {
 	// Stage3.5: Bilateral upsample quarter->half and combine with raw half
 	glUseProgram(m_csUpsample->GetProgramID());
 
-	// CRITICAL FIX: Bind textures with correct samplers
+	//Bind textures with correct samplers
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_ssgiQuarterBlur->ID());
 	glUniform1i(glGetUniformLocation(m_csUpsample->GetProgramID(), "inLow"), 0);
@@ -381,7 +328,7 @@ void SSGIPass::runUpsample(RenderContext& ctx) {
 	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invDst"), 1.0f / float(m_hw), 1.0f / float(m_hh));
 	glUniform2f(glGetUniformLocation(m_csUpsample->GetProgramID(), "invFull"), 1.0f / float(m_w), 1.0f / float(m_h));
 	
-	// CRITICAL FIX: Use same thresholds as bilateral for consistency
+	//Use same thresholds as bilateral for consistency
 	float depthSigma = 0.02f; // Match SSAO and bilateral
 	float normalThresh = 0.2f; // Match SSAO and bilateral
 	
@@ -407,10 +354,10 @@ void SSGIPass::runTemporal(RenderContext& ctx) {
 	glBindTextureUnit(3, ctx.gbufferFBO->GetDepthTexture());
 	glBindTextureUnit(4, ctx.gbufferFBO->GetColorAttachment(0)); // RT0: Packed normal+rough+metal
 
-	// CRITICAL FIX: Bind output texture - now writes to WORKING-RES (not final)
+	//Bind output texture - now writes to WORKING-RES (not final)
 	glBindImageTexture(5, m_ssgiWork->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-	// CRITICAL FIX: Use proven temporal parameters
+	//Use proven temporal parameters
 	// Alpha should be SMALL (0.1-0.15) for stable convergence
 	// Thresholds should match SSAO for consistent rejection
 	
@@ -440,7 +387,7 @@ void SSGIPass::runTemporal(RenderContext& ctx) {
 	glDispatchCompute(gx, gy, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-	// CRITICAL FIX: Copy AFTER temporal resolve completes, not before
+	//Copy AFTER temporal resolve completes, not before
 	// This ensures history contains the converged result for next frame
 	glCopyImageSubData(m_ssgiWork->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
 		m_historySSGI->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
@@ -457,7 +404,7 @@ void SSGIPass::runKawase(RenderContext& ctx) {
 	glDisable(GL_BLEND);
 	glViewport(0, 0, m_hw, m_hh);
 
-	// CRITICAL FIX: Start from working-res texture (not final)
+	//Start from working-res texture (not final)
 	GLuint src = m_ssgiWork->ID();
 	for (int i = 0; i < m_kawasePasses; ++i) {
 		TexturePtr& dst = (i % 2 == 0) ? m_kawasePing : m_kawasePong;
@@ -479,7 +426,7 @@ void SSGIPass::runKawase(RenderContext& ctx) {
 		src = dst->ID();
 	}
 
-	// CRITICAL FIX: Copy last output back into m_ssgiWork (not m_ssgiTex)
+	//Copy last output back into m_ssgiWork (not m_ssgiTex)
 	TexturePtr& last = ((m_kawasePasses - 1) % 2 == 0) ? m_kawasePing : m_kawasePong;
 	glCopyImageSubData(last->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
 		m_ssgiWork->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
@@ -490,7 +437,7 @@ void SSGIPass::runKawase(RenderContext& ctx) {
 }
 
 void SSGIPass::runFinalUpsample(RenderContext& ctx) {
-	// CRITICAL FIX: Final stage - upsample from working-res to FULL-RES
+	//Final stage - upsample from working-res to FULL-RES
 	// This is what the lighting pass expects!
 	glUseProgram(m_csFinalUpsample->GetProgramID());
 
@@ -538,7 +485,7 @@ void SSGIPass::runFinalUpsample(RenderContext& ctx) {
 }
 
 void SSGIPass::CaptureHistory(RenderContext& ctx) {
-	// CRITICAL FIX: Capture current frame's HDR color for next frame's ray marching
+	//Capture current frame's HDR color for next frame's ray marching
 	// This must match the WORKING RESOLUTION (half-res by default) for correct sampling
 	
 	FrameBuffer* sourceFBO = (ctx.taaFBO && ctx.enableTAA) ? ctx.taaFBO : ctx.hdrFBO.get();
@@ -560,7 +507,7 @@ void SSGIPass::CaptureHistory(RenderContext& ctx) {
 	glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 		GL_TEXTURE_2D, m_historyColor->ID(), 0);
 
-	// CRITICAL: Blit from FULL resolution to WORKING resolution with LINEAR filtering
+	//Blit from FULL resolution to WORKING resolution with LINEAR filtering
 	// This ensures the history buffer matches the raymarch output resolution
 	glBlitFramebuffer(0, 0, ctx.width, ctx.height,
 		0, 0, m_hw, m_hh,

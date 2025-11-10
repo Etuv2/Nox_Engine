@@ -63,6 +63,7 @@ public:
 	void ResetTAA();
 	int GetTAAFrameIndex() const;
 
+	const bool ErrorPrintingEnabled = true;
 private:
 	bool InitializeSharedResources();
 	void UpdateContext(const std::shared_ptr<Camera>& camera,
