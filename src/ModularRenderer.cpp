@@ -18,6 +18,7 @@
 #include "passes/TAAPass.h"
 #include "passes/TransparentForwardPass.h"
 #include "passes/PostProcessPass.h"
+#include "passes/GUIPass.h"  // NEW: Internal GUI rendering
 #include <iostream>
 
 ModularRenderer::ModularRenderer()
@@ -53,19 +54,21 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_taaPass = std::make_unique<TAAPass>();
 	m_transparentPass = std::make_unique<TransparentForwardPass>();
 	m_postProcessPass = std::make_unique<PostProcessPass>();
+	m_guiPass = std::make_unique<GUIPass>();
 
 	bool success = true;
 	success &= m_shadowPass->Initialize(m_context);
-	success &= m_lpvPass->Initialize(m_context); //Initialize LPV pass
+	success &= m_lpvPass->Initialize(m_context);
 	success &= m_gbufferPass->Initialize(m_context);
 	success &= m_ssaoPass->Initialize(m_context);
 	success &= m_screenSpaceShadowPass->Initialize(m_context);
-	success &= m_ssgiPass->Initialize(m_context); //Initialize SSGI pass
+	success &= m_ssgiPass->Initialize(m_context);
 	success &= m_lightingPass->Initialize(m_context);
 	success &= m_bloomPass->Initialize(m_context);
 	success &= m_taaPass->Initialize(m_context);
 	success &= m_transparentPass->Initialize(m_context);
 	success &= m_postProcessPass->Initialize(m_context);
+	success &= m_guiPass->Initialize(m_context);
 
 	if (!success) {
 		std::cerr << "[ModularRenderer] Failed to initialize one or more passes.\n";
@@ -147,6 +150,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_taaPass) m_taaPass->Resize(m_context, newWidth, newHeight);
 	if (m_transparentPass) m_transparentPass->Resize(m_context, newWidth, newHeight);
 	if (m_postProcessPass) m_postProcessPass->Resize(m_context, newWidth, newHeight);
+	if (m_guiPass) m_guiPass->Resize(m_context, newWidth, newHeight);
 
 	std::cout << "[ModularRenderer] Resized to " << newWidth << "x" << newHeight << "\n";
 }
@@ -272,9 +276,6 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		skybox->SetSkyboxExposure(m_context.skyboxExposure);
 		skybox->SetDiffuseIBLScale(m_context.diffuseIBLScale);
 		skybox->SetSpecularIBLScale(m_context.specularIBLScale);
-
-		std::cout << "[ModularRenderer] Applied IBL settings - Intensity: " << m_context.iblIntensity
-			<< ", Exposure: " << m_context.skyboxExposure << std::endl;
 	}
 
 	// Execute rendering pipeline in correct order
@@ -285,7 +286,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	CheckGLError("GBufferPass");
 
 	//LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
-	// This generates dynamic indirect lighting from the first light bounce
+	//This generates dynamic indirect lighting from the first light bounce
 	if (m_context.enableLPV) {
 
 		// Update LPV config from context (these will be overridden if an LPV node exists)
@@ -390,13 +391,13 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		CheckGLError("Skybox");
 	}
 
-	//// Transparent forward rendering
-	//std::cout << "[ModularRenderer] --- PASS 7: Transparent Forward Pass ---" << std::endl;
+	//// Transparent forward rendering(broken out for debugging)
 	//m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 	//CheckGLError("TransparentForwardPass");
 
-	// NOW unbind HDR FBO after both skybox and transparent rendering
+	//Unbinding HDR FBO after both skybox and transparent rendering
 	FrameBuffer::Unbind();
+
 
 	// Only execute Bloom if enabled
 	GLuint bloomTex = 0;
@@ -415,11 +416,17 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 	CheckGLError("PostProcessPass");
 
-	//Capture color history for SSGI (after post-processing)
+
+	//Render internal GUI elements to backbuffer (after post-processing, before ImGui editor UI)
+	//This executes AFTER PostProcessPass which already unbinds to default framebuffer,the backbuffer
+	m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	CheckGLError("GUIPass");
+
+
+	//Capture color history for SSGI
 	if (m_ssgiPass) {
 		m_ssgiPass->CaptureHistory(m_context);
 	}
-
 }
 
 
