@@ -7,10 +7,16 @@
 #include <GL/glew.h>
 #include <iostream>
 
-SceneGraph::SceneGraph() {
+SceneGraph::SceneGraph() 
+    : m_transformSystem(&m_componentManager)
+{
     m_root = std::make_shared<SceneNode>();
     m_root->SetTransform(glm::mat4(1.0f));
     m_active = true;
+  
+    // Initialize SceneNode static references to use this graph's component system
+    SceneNode::SetGlobalComponentManager(&m_componentManager);
+  SceneNode::SetGlobalTransformSystem(&m_transformSystem);
 }
 
 SceneGraph::~SceneGraph()
@@ -26,10 +32,15 @@ std::map<std::string, std::shared_ptr<SceneNode>> SceneGraph::GetSceneHierarchy(
 {
     std::map<std::string, std::shared_ptr<SceneNode>> sceneHierarchy;
     sceneHierarchy[m_root->GetName()] = m_root;
-    for (auto& child : m_root->children) {
+ for (auto& child : m_root->children) {
         sceneHierarchy[child->GetName()] = child;
-    }
+  }
     return sceneHierarchy;
+}
+
+// NEW: Update all transforms in one batch using component system
+void SceneGraph::UpdateAllTransforms() {
+    m_transformSystem.UpdateTransforms();
 }
 
 // Multi-light system integration
@@ -365,10 +376,179 @@ void SceneGraph::PrintMembers() {
 void SceneGraph::Shutdown() {
     if (m_root) {
         m_root->Shutdown();
-        for (auto& child : m_root->children) {
-            child->Shutdown();
+  for (auto& child : m_root->children) {
+     child->Shutdown();
         }
-        m_root.reset();
-        m_active = false;
+  m_root.reset();
+   m_active = false;
     }
+ 
+    // Clear component system
+    m_componentManager.Clear();
+}
+
+// NEW: Flat iteration rendering methods for cache-friendly performance
+void SceneGraph::DrawFlat(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram) {
+    // Update transforms first
+    m_transformSystem.UpdateTransforms();
+    
+    glUseProgram(shaderProgram);
+    
+    // Upload view and projection matrices once
+    GLint locView = glGetUniformLocation(shaderProgram, "view");
+    GLint locProj = glGetUniformLocation(shaderProgram, "projection");
+    if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
+    if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(projection));
+    
+    // Iterate through all renderable components directly (cache-friendly)
+auto& renderablePool = m_componentManager.GetRenderablePool();
+    for (auto& entry : renderablePool) {
+        EntityID entityID = entry.entity;
+        auto& renderable = entry.component;
+        
+ // Skip if no model
+ if (!renderable.model) continue;
+        
+        // Get world transform from transform system
+const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entityID);
+        
+     // Upload model matrix
+        GLint locModel = glGetUniformLocation(shaderProgram, "model");
+        if (locModel != -1) {
+    glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+        }
+        
+   // Use custom shader if specified
+ GLuint useShader = (renderable.shaderID != 0) ? renderable.shaderID : shaderProgram;
+        if (useShader != shaderProgram) {
+glUseProgram(useShader);
+          // Re-upload matrices for custom shader
+          if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
+          if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(projection));
+          if (locModel != -1) glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+        }
+        
+        // Draw the model (Scene::Draw handles mesh iteration)
+        renderable.model->Draw();
+        
+        // Restore default shader if we switched
+        if (useShader != shaderProgram) {
+ glUseProgram(shaderProgram);
+        }
+    }
+}
+
+void SceneGraph::DrawCascadeFlat(const glm::mat4& lightSpace, GLuint shadowShader) {
+    // Update transforms first
+    m_transformSystem.UpdateTransforms();
+    
+    glUseProgram(shadowShader);
+    
+    // Upload light space matrix once
+    GLint locLS = glGetUniformLocation(shadowShader, "lightSpaceMatrix");
+    if (locLS != -1) {
+        glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
+    }
+    
+    // Iterate through all renderable components
+    auto& renderablePool = m_componentManager.GetRenderablePool();
+    for (auto& entry : renderablePool) {
+        auto& renderable = entry.component;
+        if (!renderable.model) continue;
+   
+        // Get world transform
+  const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entry.entity);
+      
+  // Upload model matrix
+        GLint locModel = glGetUniformLocation(shadowShader, "model");
+        if (locModel != -1) {
+ glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+   }
+        
+   // Draw model (positions only for shadow pass)
+        renderable.model->Draw();
+    }
+}
+
+void SceneGraph::DrawGeometryFlat(GLuint geometryShader) {
+    // Update transforms first
+    m_transformSystem.UpdateTransforms();
+    
+    glUseProgram(geometryShader);
+    
+    // Iterate through all renderable components
+auto& renderablePool = m_componentManager.GetRenderablePool();
+    for (auto& entry : renderablePool) {
+        auto& renderable = entry.component;
+        if (!renderable.model) continue;
+        
+        // Get world transform
+        const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entry.entity);
+        
+        // Upload model matrix
+ GLint locModel = glGetUniformLocation(geometryShader, "model");
+    if (locModel != -1) {
+   glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+        }
+        
+     // Handle skinning if needed
+        if (renderable.isSkinned) {
+// TODO: Upload bone matrices from animation component
+       GLint locUseSkin = glGetUniformLocation(geometryShader, "u_enableSkinning");
+            if (locUseSkin != -1) {
+      glUniform1i(locUseSkin, 1);
+    }
+        } else {
+    GLint locUseSkin = glGetUniformLocation(geometryShader, "u_enableSkinning");
+        if (locUseSkin != -1) {
+glUniform1i(locUseSkin, 0);
+          }
+        }
+   
+        // Draw model
+      renderable.model->Draw();
+    }
+}
+
+void SceneGraph::CollectRenderableObjectsFlat(MDIBatch& batch) {
+    // Update transforms first
+    m_transformSystem.UpdateTransforms();
+    
+    // Iterate through all renderable components
+    auto& renderablePool = m_componentManager.GetRenderablePool();
+    for (auto& entry : renderablePool) {
+        auto& renderable = entry.component;
+        if (!renderable.model) continue;
+        
+        // Get world transform
+        const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entry.entity);
+   
+        // Collect each mesh in the model
+        for (const auto& mesh : renderable.model->meshes) {
+    MDI_RenderableObject obj{};
+         obj.count = static_cast<GLuint>(mesh.indexCount);
+            obj.firstIndex = 0;
+    obj.baseVertex = 0;
+  obj.modelMatrix = worldTransform;
+            obj.vao = mesh.VAO;
+        
+            // Use precomputed bounding volume if available
+            if (mesh.boundingVolumeValid) {
+        obj.boundingSphere = glm::vec4(mesh.boundingCenter, mesh.boundingRadius);
+      } else {
+       obj.boundingSphere = glm::vec4(0.0f, 0.0f, 0.0f, renderable.boundingRadius);
+    }
+   
+            batch.AddObject(obj);
+        }
+    }
+}
+
+void SceneGraph::SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, EntityID parentID) {
+    // Helper to sync existing SceneNode hierarchy into component system
+    // This is called when loading scenes to populate the component pools
+    if (!node) return;
+    
+    // TODO: Implement when SceneNode facade is complete
+    // This will copy data from SceneNode into component pools
 }

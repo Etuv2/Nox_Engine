@@ -10,9 +10,15 @@
 #include "MDIBatch.h"
 
 class Scene;
+class ComponentManager;
+class TransformSystem;
+using EntityID = uint32_t;
 
 /**
  * SceneNode is the fundamental node in the scene graph, holding transformations, a model, and child nodes.
+ * 
+ * NOTE: This class is being gradually migrated to use a component-based architecture internally.
+ * The public API remains unchanged for backward compatibility.
  */
 class SceneNode : public std::enable_shared_from_this<SceneNode> {
 public:
@@ -20,48 +26,49 @@ public:
     enum NODE_TYPE {
         NODE,
         AUDIO,
-        MODEL,
+      MODEL,
         LIGHT,
-        CAMERA,
-        GUI,
+    CAMERA,
+    GUI,
         LPV_VOLUME  // Light Propagation Volume for global illumination
     };
 
     // Culling mode enumeration for per-node control
-    enum CullingOverride {
+  enum CullingOverride {
         CULLING_INHERIT = 0,    // Use mesh/material default
-        CULLING_FORCE_ENABLE,   // Force enable backface culling
-        CULLING_FORCE_DISABLE,  // Force disable backface culling (double-sided)
+    CULLING_FORCE_ENABLE,   // Force enable backface culling
+ CULLING_FORCE_DISABLE,  // Force disable backface culling (double-sided)
         CULLING_FORCE_FRONT     // Force front-face culling
     };
     
     // LPV Volume configuration data
     struct LPVVolumeData {
-        glm::vec3 center = glm::vec3(0.0f);      // World-space center position
+        glm::vec3 center = glm::vec3(0.0f);// World-space center position
         glm::vec3 extent = glm::vec3(64.0f);     // World-space extent (total size in each direction)
-        float voxelSize = 0.5f;                  // World-space size per voxel
-        int gridResolution = 128;                // Grid resolution (128^3 voxels)
+        float voxelSize = 0.5f;      // World-space size per voxel
+        int gridResolution = 128;  // Grid resolution (128^3 voxels)
         glm::quat orientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); // World-space orientation (identity quaternion)
         
-        // Derived properties
+   // Derived properties
         glm::vec3 GetMinBounds() const { return center - extent * 0.5f; }
-        glm::vec3 GetMaxBounds() const { return center + extent * 0.5f; }
-        float GetCoverage() const { return gridResolution * voxelSize; } // Total coverage distance
+  glm::vec3 GetMaxBounds() const { return center + extent * 0.5f; }
+    float GetCoverage() const { return gridResolution * voxelSize; } // Total coverage distance
         glm::mat4 GetTransformMatrix() const {
-            glm::mat4 translation = glm::translate(glm::mat4(1.0f), center);
-            glm::mat4 rotation = glm::mat4_cast(orientation);
-            glm::mat4 scale = glm::scale(glm::mat4(1.0f), extent);
+   glm::mat4 translation = glm::translate(glm::mat4(1.0f), center);
+    glm::mat4 rotation = glm::mat4_cast(orientation);
+      glm::mat4 scale = glm::scale(glm::mat4(1.0f), extent);
             return translation * rotation * scale;
-        }
+   }
         glm::mat4 GetInverseTransformMatrix() const {
-            return glm::inverse(GetTransformMatrix());
+     return glm::inverse(GetTransformMatrix());
         }
     };
 
     SceneNode();
+    SceneNode(ComponentManager* manager, TransformSystem* transformSystem, EntityID entityID);
     virtual ~SceneNode() {}
 
-    // Child references
+  // Child references
     std::vector<std::shared_ptr<SceneNode>> children;
     std::weak_ptr<SceneNode> parentNode;
 
@@ -93,7 +100,7 @@ public:
 
     // Rendering: Forward-style (for direct PBR shading)
     void Draw(
-        const glm::mat4& parentTransform,
+      const glm::mat4& parentTransform,
         const glm::mat4& view,
         const glm::mat4& projection,
         unsigned int defaultShaderProgram
@@ -102,7 +109,7 @@ public:
     // Rendering: Shadow pass (cascaded)
     void DrawCascade(
         const glm::mat4& parentTransform,
-        const glm::mat4& lightSpace,
+      const glm::mat4& lightSpace,
         unsigned int shadowShader
     );
 
@@ -188,16 +195,23 @@ public:
     LPVVolumeData& GetLPVVolumeData() { return m_lpvData; }
     const LPVVolumeData& GetLPVVolumeData() const { return m_lpvData; }
 
-    // Shutdown the node
+// Shutdown the node
     virtual void Shutdown();
 
     // Animation transform access for AnimationController
     void SetAnimatedTransform(const glm::mat4& transform) { animatedTransform = transform; }
     glm::mat4 GetAnimatedTransform() const { return animatedTransform; }
+    
+    // NEW: Static global component system hooks (for future migration)
+    static void SetGlobalComponentManager(ComponentManager* manager);
+    static void SetGlobalTransformSystem(TransformSystem* transformSystem);
+    
+    // NEW: Entity ID access (for component system integration)
+    EntityID GetEntityID() const { return m_entityID; }
 
 protected:
     // Transforms
-    glm::mat4 transform;         // User-set local transform
+    glm::mat4 transform;   // User-set local transform
     glm::mat4 animatedTransform; // Animation-driven local transform
 
 private:
@@ -228,4 +242,11 @@ private:
     
     // LPV volume data (only used if m_nodeType == LPV_VOLUME)
     LPVVolumeData m_lpvData;
+    
+    // NEW: Component system integration (for gradual migration)
+    EntityID m_entityID;
+    ComponentManager* m_componentManager;
+    TransformSystem* m_transformSystem;
+    static ComponentManager* s_globalComponentManager;
+    static TransformSystem* s_globalTransformSystem;
 };

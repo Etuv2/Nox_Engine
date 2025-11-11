@@ -18,9 +18,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-// ============================================================================
+
 // LightProxy Implementation
-// ============================================================================
+
 
 /**
  * @brief Update the proxy sphere bounds for this light
@@ -86,9 +86,9 @@ bool LightManager::LightProxy::RayIntersects(const glm::vec3& rayOrigin,
 	return false;
 }
 
-// ============================================================================
+
 // LightManager Constructor & Destructor
-// ============================================================================
+
 
 /**
  * @brief Construct a new LightManager with default shadow configuration
@@ -147,9 +147,9 @@ LightManager::~LightManager()
 	std::cout << "[LightManager] Cleanup completed" << std::endl;
 }
 
-// ============================================================================
+
 // Light Registration & Management
-// ============================================================================
+
 
 /**
  * @brief Register a light with the manager
@@ -302,9 +302,9 @@ std::vector<std::shared_ptr<BaseLight>> LightManager::GetShadowCastingLights() c
 	return shadowLights;
 }
 
-// ============================================================================
+
 // Shadow System Initialization
-// ============================================================================
+
 
 /**
  * @brief Initialize the unified shadow system with array textures
@@ -455,54 +455,54 @@ void LightManager::ValidateShadowArrayTexture() const
 
 	// Use Texture class methods to validate
 	GLuint shadowTexID = m_shadowArrayTexture->ID();
-  
+
 	std::cout << "[LightManager] Validating shadow array texture..." << std::endl;
 	std::cout << "  Texture ID: " << shadowTexID << std::endl;
-	std::cout << "  Dimensions: " << m_shadowArrayTexture->Width() << "x" 
-        << m_shadowArrayTexture->Height() << "x" << m_shadowArrayTexture->Depth() << std::endl;
-std::cout << "  Internal Format: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
-    std::cout << "  Target: 0x" << std::hex << static_cast<GLenum>(m_shadowArrayTexture->Target()) << std::dec << std::endl;
+	std::cout << "  Dimensions: " << m_shadowArrayTexture->Width() << "x"
+		<< m_shadowArrayTexture->Height() << "x" << m_shadowArrayTexture->Depth() << std::endl;
+	std::cout << "  Internal Format: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
+	std::cout << "  Target: 0x" << std::hex << static_cast<GLenum>(m_shadowArrayTexture->Target()) << std::dec << std::endl;
 
-    // Validate dimensions and format
-    bool hasErrors = false;
+	// Validate dimensions and format
+	bool hasErrors = false;
 
-    if (m_shadowArrayTexture->Width() != shadowConfig.baseResolution || 
-        m_shadowArrayTexture->Height() != shadowConfig.baseResolution ||
-        m_shadowArrayTexture->Depth() != m_shadowArrayLayers) {
-   std::cerr << "[LightManager] CRITICAL: Shadow array texture corrupted!" << std::endl;
-        std::cerr << "  Expected: " << shadowConfig.baseResolution << "x" << shadowConfig.baseResolution
-               << "x" << m_shadowArrayLayers << std::endl;
-        std::cerr << "  Actual: " << m_shadowArrayTexture->Width() << "x" 
-    << m_shadowArrayTexture->Height() << "x" << m_shadowArrayTexture->Depth() << std::endl;
-      hasErrors = true;
-    }
+	if (m_shadowArrayTexture->Width() != shadowConfig.baseResolution ||
+		m_shadowArrayTexture->Height() != shadowConfig.baseResolution ||
+		m_shadowArrayTexture->Depth() != m_shadowArrayLayers) {
+		std::cerr << "[LightManager] CRITICAL: Shadow array texture corrupted!" << std::endl;
+		std::cerr << "  Expected: " << shadowConfig.baseResolution << "x" << shadowConfig.baseResolution
+			<< "x" << m_shadowArrayLayers << std::endl;
+		std::cerr << "  Actual: " << m_shadowArrayTexture->Width() << "x"
+			<< m_shadowArrayTexture->Height() << "x" << m_shadowArrayTexture->Depth() << std::endl;
+		hasErrors = true;
+	}
 
-    if (m_shadowArrayTexture->InternalFormat() != GL_DEPTH_COMPONENT24) {
-    std::cerr << "[LightManager] WARNING: Shadow array format incorrect!" << std::endl;
-  std::cerr << "  Expected: GL_DEPTH_COMPONENT24 (0x" << std::hex << GL_DEPTH_COMPONENT24 << ")" << std::dec << std::endl;
-  std::cerr << "  Actual: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
-   hasErrors = true;
-    }
+	if (m_shadowArrayTexture->InternalFormat() != GL_DEPTH_COMPONENT24) {
+		std::cerr << "[LightManager] WARNING: Shadow array format incorrect!" << std::endl;
+		std::cerr << "  Expected: GL_DEPTH_COMPONENT24 (0x" << std::hex << GL_DEPTH_COMPONENT24 << ")" << std::dec << std::endl;
+		std::cerr << "  Actual: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
+		hasErrors = true;
+	}
 
-    // Verify target is correct
-    if (m_shadowArrayTexture->Target() != TextureTarget::Texture2DArray) {
-      std::cerr << "[LightManager] WARNING: Shadow array target incorrect!" << std::endl;
-     hasErrors = true;
-    }
+	// Verify target is correct
+	if (m_shadowArrayTexture->Target() != TextureTarget::Texture2DArray) {
+		std::cerr << "[LightManager] WARNING: Shadow array target incorrect!" << std::endl;
+		hasErrors = true;
+	}
 
-    if (!hasErrors) {
-        static int validationCount = 0;
-        if (validationCount++ % 60 == 0) {
-            std::cout << "[LightManager] Shadow array validated OK (validation #" << validationCount << ")" << std::endl;
-        }
- }
+	if (!hasErrors) {
+		static int validationCount = 0;
+		if (validationCount++ % 60 == 0) {
+			std::cout << "[LightManager] Shadow array validated OK (validation #" << validationCount << ")" << std::endl;
+		}
+	}
 
-    // Check OpenGL errors
-    GLenum error = glGetError();
-    if (error != GL_NO_ERROR) {
-        std::cerr << "[LightManager] OpenGL error during shadow validation: 0x" 
-  << std::hex << error << std::dec << std::endl;
-  }
+	// Check OpenGL errors
+	GLenum error = glGetError();
+	if (error != GL_NO_ERROR) {
+		std::cerr << "[LightManager] OpenGL error during shadow validation: 0x"
+			<< std::hex << error << std::dec << std::endl;
+	}
 }
 
 /**
@@ -588,20 +588,20 @@ static void BuildCasterSignature(const MDIBatch& batch, glm::vec3& centroidSum, 
 	}
 }
 
-// ============================================================================
+
 // Shadow Map Rendering
-// ============================================================================
+
 
 /**
  * @brief Render shadow maps for all shadow-casting lights
- * 
+ *
  * This is the main shadow rendering function that:
  * - Builds a single MDI batch of all scene objects
  * - Iterates through all shadow-casting lights
  * - Renders directional cascades, spot shadows, and point cube faces
  * - Uses intelligent caching to skip unchanged shadow maps
  * - Updates the shadow matrix buffer for shader use
- * 
+ *
  * @param sceneGraph The scene graph containing renderable objects
  * @param camera The active camera
  * @param view The view matrix
@@ -660,10 +660,16 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 	// Lambda: Filter objects and build signature
 	auto filterAndSign = [&](const glm::mat4& ls) {
-		MDIBatch filtered;
+		// Use index-based filtering to avoid copying full MDI_RenderableObject instances
+		std::vector<size_t> filteredIndices;
 		const auto& objs = fullBatch.GetObjects();
+		filteredIndices.reserve(objs.size());
 
-		for (const auto& obj : objs) {
+		glm::vec3 sigC(0.0f);
+		int sigN = 0;
+
+		for (size_t i = 0; i < objs.size(); ++i) {
+			const auto& obj = objs[i];
 			glm::vec3 localCenter = glm::vec3(obj.boundingSphere);
 			float localRadius = obj.boundingSphere.w;
 			glm::vec3 worldCenter = glm::vec3(obj.modelMatrix * glm::vec4(localCenter, 1.0f));
@@ -675,15 +681,22 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			float worldRadius = localRadius * scaleMax;
 
 			if (SphereIntersectsLightClip(worldCenter, worldRadius, ls)) {
-				filtered.AddObject(obj);
+				filteredIndices.push_back(i);
+				// Build signature inline
+				glm::vec3 c = glm::vec3(obj.modelMatrix[3]);
+				sigC += c;
+				++sigN;
 			}
 		}
 
-		glm::vec3 sigC;
-		int sigN;
-		BuildCasterSignature(filtered, sigC, sigN);
+		// Build filtered batch only from passing indices
+		MDIBatch filtered;
+		for (size_t idx : filteredIndices) {
+			filtered.AddObject(objs[idx]);
+		}
+
 		return std::tuple<MDIBatch, glm::vec3, int>(std::move(filtered), sigC, sigN);
-	};
+		};
 
 	// Lambda: Decide if shadow map needs update
 	auto decideUpdate = [&](int slice,
@@ -696,44 +709,44 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		const glm::vec3& casterCentroid,
 		int casterCount,
 		unsigned cadence) -> unsigned int {
-		auto& c = m_cachedSlices[slice];
-		unsigned int reason = DIRTY_NONE;
-		bool cadenceHit = (m_frameCounter % cadence) == 0;
+			auto& c = m_cachedSlices[slice];
+			unsigned int reason = DIRTY_NONE;
+			bool cadenceHit = (m_frameCounter % cadence) == 0;
 
-		const float posThresh = 0.01f;
-		const float dirThresh = 0.0025f;
+			const float posThresh = 0.01f;
+			const float dirThresh = 0.0025f;
 
-		// Check light transform changes
-		if (glm::length(curPos - c.lastLightPos) > posThresh) {
-			reason |= DIRTY_LIGHT_TRANSFORM;
-		}
-
-		float d = glm::dot(glm::normalize(curDir), glm::normalize(c.lastLightDir));
-		if (d < 1.0f - dirThresh) {
-			reason |= DIRTY_LIGHT_TRANSFORM;
-		}
-
-		// Detect camera cascade shift by matrix translation difference
-		if (type == BaseLight::LightType::DIRECTIONAL) {
-			if (!glm::all(glm::epsilonEqual(glm::vec4(newMatrix[3]),
-				glm::vec4(c.lastMatrix[3]),
-				1e-4f))) {
-				reason |= DIRTY_CAMERA_CASCADE;
+			// Check light transform changes
+			if (glm::length(curPos - c.lastLightPos) > posThresh) {
+				reason |= DIRTY_LIGHT_TRANSFORM;
 			}
-		}
 
-		// Check geometry changes
-		if (casterCount != c.casterCount ||
-			glm::length(casterCentroid - c.casterCentroidSum) > 1e-4f) {
-			reason |= DIRTY_CASTERS_CHANGED;
-		}
+			float d = glm::dot(glm::normalize(curDir), glm::normalize(c.lastLightDir));
+			if (d < 1.0f - dirThresh) {
+				reason |= DIRTY_LIGHT_TRANSFORM;
+			}
 
-		if (reason == DIRTY_NONE && !cadenceHit) {
-			return DIRTY_NONE; // Reuse
-		}
+			// Detect camera cascade shift by matrix translation difference
+			if (type == BaseLight::LightType::DIRECTIONAL) {
+				if (!glm::all(glm::epsilonEqual(glm::vec4(newMatrix[3]),
+					glm::vec4(c.lastMatrix[3]),
+					1e-4f))) {
+					reason |= DIRTY_CAMERA_CASCADE;
+				}
+			}
 
-		return reason; // Update
-	};
+			// Check geometry changes
+			if (casterCount != c.casterCount ||
+				glm::length(casterCentroid - c.casterCentroidSum) > 1e-4f) {
+				reason |= DIRTY_CASTERS_CHANGED;
+			}
+
+			if (reason == DIRTY_NONE && !cadenceHit) {
+				return DIRTY_NONE; // Reuse
+			}
+
+			return reason; // Update
+		};
 
 	// Lambda: Render a single shadow slice
 	auto renderSlice = [&](int sliceIndex,
@@ -742,50 +755,56 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		BaseLight::LightType type,
 		int lightIdx,
 		int subIndex) {
-		auto sliceStart = std::chrono::high_resolution_clock::now();
+			// Skip rendering if batch is empty
+			if (filtered.GetObjects().empty()) {
+				return;
+			}
 
-		// Attach shadow array layer to framebuffer
-        glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-    m_shadowArrayTexture->ID(), 0, sliceIndex);
-  glViewport(0, 0, shadowConfig.baseResolution, shadowConfig.baseResolution);
-        glClear(GL_DEPTH_BUFFER_BIT);
+			auto sliceStart = std::chrono::high_resolution_clock::now();
 
-  if (locLS >= 0) {
-      glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
-     }
+			// Attach shadow array layer to framebuffer
+			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+				m_shadowArrayTexture->ID(), 0, sliceIndex);
+			glViewport(0, 0, shadowConfig.baseResolution, shadowConfig.baseResolution);
+			glClear(GL_DEPTH_BUFFER_BIT);
 
-        bool useOffset = (type == BaseLight::LightType::DIRECTIONAL && subIndex == 0);
-   if (useOffset) {
-     glEnable(GL_POLYGON_OFFSET_FILL);
- glPolygonOffset(2.0f, 4.0f);
-   }
+			if (locLS >= 0) {
+				glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
+			}
 
-        if (locObjectIndex < 0) {
-  filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
-     } else {
-    filtered.RenderBatchedByVAOWithUniform(GL_TRIANGLES, GL_UNSIGNED_INT, locObjectIndex);
-     }
+			bool useOffset = (type == BaseLight::LightType::DIRECTIONAL && subIndex == 0);
+			if (useOffset) {
+				glEnable(GL_POLYGON_OFFSET_FILL);
+				glPolygonOffset(2.0f, 4.0f);
+			}
 
-        if (useOffset) {
-    glDisable(GL_POLYGON_OFFSET_FILL);
-   }
+			if (locObjectIndex < 0) {
+				filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
+			}
+			else {
+				filtered.RenderBatchedByVAOWithUniform(GL_TRIANGLES, GL_UNSIGNED_INT, locObjectIndex);
+			}
 
-        auto sliceEnd = std::chrono::high_resolution_clock::now();
-  float ms = std::chrono::duration<float, std::milli>(sliceEnd - sliceStart).count();
+			if (useOffset) {
+				glDisable(GL_POLYGON_OFFSET_FILL);
+			}
 
-      // Update cached slice metadata
-    auto& c = m_cachedSlices[sliceIndex];
-      c.lastMatrix = lightSpace;
-   c.lastLightPos = m_activeLights[lightIdx]->GetPosition();
-  c.lastLightDir = m_activeLights[lightIdx]->GetDirection();
-   c.type = type;
-  c.lightIndex = lightIdx;
-     c.subIndex = subIndex;
-        c.inUse = true;
-     c.age = 0;
-        c.lastUpdateFrame = m_frameCounter;
-    c.lastUpdateMs = ms;
-    };
+			auto sliceEnd = std::chrono::high_resolution_clock::now();
+			float ms = std::chrono::duration<float, std::milli>(sliceEnd - sliceStart).count();
+
+			// Update cached slice metadata
+			auto& c = m_cachedSlices[sliceIndex];
+			c.lastMatrix = lightSpace;
+			c.lastLightPos = m_activeLights[lightIdx]->GetPosition();
+			c.lastLightDir = m_activeLights[lightIdx]->GetDirection();
+			c.type = type;
+			c.lightIndex = lightIdx;
+			c.subIndex = subIndex;
+			c.inUse = true;
+			c.age = 0;
+			c.lastUpdateFrame = m_frameCounter;
+			c.lastUpdateMs = ms;
+		};
 
 	int currentSlice = 0;
 
@@ -798,9 +817,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 		int startSliceForLight = currentSlice;
 
-		// ====================================================================
+
 		// Directional Light Cascades
-		// ====================================================================
+
 		if (light->GetLightType() == BaseLight::LightType::DIRECTIONAL) {
 			std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(nearPlane, farPlane, 4, 0.6f);
 			glm::vec3 lightDir = glm::normalize(light->GetDirection());
@@ -817,12 +836,38 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 					cIdx, shadowConfig.baseResolution);
 				ls = SnapCascadeToTexels(ls, shadowConfig.baseResolution);
 
+				unsigned cadence = (cIdx == 0) ? 1u : (cIdx == 1) ? 2u : (cIdx == 2) ? 3u : 7u;
+
+				// Quick check if we can skip filtering entirely
+				auto& c = m_cachedSlices[currentSlice];
+				bool cadenceHit = (m_frameCounter % cadence) == 0;
+				bool needsUpdate = !c.inUse || cadenceHit;
+
+				// Early transform check before filtering
+				if (c.inUse && !cadenceHit) {
+					const float posThresh = 0.01f;
+					const float dirThresh = 0.0025f;
+
+					if (glm::length(lightPos - c.lastLightPos) <= posThresh &&
+						glm::dot(glm::normalize(lightDir), glm::normalize(c.lastLightDir)) >= (1.0f - dirThresh) &&
+						glm::all(glm::epsilonEqual(glm::vec4(ls[3]), glm::vec4(c.lastMatrix[3]), 1e-4f))) {
+						// Can skip filtering - no significant changes
+						c.inUse = true;
+						c.type = BaseLight::LightType::DIRECTIONAL;
+						c.lightIndex = (int)li;
+						c.subIndex = cIdx;
+						matrices[currentSlice] = c.lastMatrix;
+						++currentSlice;
+						continue;
+					}
+				}
+
+				// Need to filter and check geometry
 				auto tuple = filterAndSign(ls);
 				MDIBatch filtered = std::move(std::get<0>(tuple));
 				glm::vec3 sigC = std::get<1>(tuple);
 				int sigN = std::get<2>(tuple);
 
-				unsigned cadence = (cIdx == 0) ? 1u : (cIdx == 1) ? 2u : (cIdx == 2) ? 3u : 7u;
 				unsigned int reason = decideUpdate(currentSlice, BaseLight::LightType::DIRECTIONAL,
 					(int)li, cIdx, ls, lightPos, lightDir,
 					sigC, sigN, cadence);
@@ -848,9 +893,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 			m_lightShadowInfo[light.get()] = { startSliceForLight, 4 };
 		}
-		// ====================================================================
+
 		// Spot Light Shadow
-		// ====================================================================
+
 		else if (light->GetLightType() == BaseLight::LightType::SPOT) {
 			bool rrSelected = ((m_roundRobinSpot++) % 2) == 0;
 			glm::vec3 lightPos = light->GetPosition();
@@ -860,15 +905,38 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			glm::mat4 projL = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, light->GetRange() * 1.1f);
 			glm::mat4 ls = projL * viewL;
 
+			unsigned cadence = rrSelected ? 1u : 4u;
+
+			// Quick check before filtering
+			auto& c = m_cachedSlices[currentSlice];
+			bool cadenceHit = (m_frameCounter % cadence) == 0;
+
+			if (c.inUse && !cadenceHit) {
+				const float posThresh = 0.01f;
+				const float dirThresh = 0.0025f;
+
+				if (glm::length(lightPos - c.lastLightPos) <= posThresh &&
+					glm::dot(glm::normalize(lightDir), glm::normalize(c.lastLightDir)) >= (1.0f - dirThresh)) {
+					// Can skip filtering
+					c.inUse = true;
+					c.type = BaseLight::LightType::SPOT;
+					c.lightIndex = (int)li;
+					c.subIndex = 0;
+					matrices[currentSlice] = c.lastMatrix;
+					++currentSlice;
+					m_lightShadowInfo[light.get()] = { startSliceForLight, 1 };
+					continue;
+				}
+			}
+
 			auto tuple = filterAndSign(ls);
 			MDIBatch filtered = std::move(std::get<0>(tuple));
 			glm::vec3 sigC = std::get<1>(tuple);
 			int sigN = std::get<2>(tuple);
 
-			unsigned cadence = rrSelected ? 1u : 4u;
 			unsigned reason = decideUpdate(currentSlice, BaseLight::LightType::SPOT,
 				(int)li, 0, ls, lightPos, lightDir,
-			 sigC, sigN, cadence);
+				sigC, sigN, cadence);
 
 			if (reason != DIRTY_NONE) {
 				renderSlice(currentSlice, ls, filtered, BaseLight::LightType::SPOT, (int)li, 0);
@@ -887,9 +955,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			++currentSlice;
 			m_lightShadowInfo[light.get()] = { startSliceForLight, 1 };
 		}
-		// ====================================================================
+
 		// Point Light Cubemap Shadow
-		// ====================================================================
+
 		else if (light->GetLightType() == BaseLight::LightType::POINT) {
 			unsigned faceUpdate = (m_roundRobinPoint++) % 6;
 			float range = light->GetRange();
@@ -897,17 +965,39 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 			const glm::vec3 dirs[6] = { {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1} };
 			const glm::vec3 ups[6] = { {0,-1,0},{0,-1,0},{0,0,1},{0,0,-1},{0,-1,0},{0,-1,0} };
+
+			glm::vec3 lightPos = light->GetPosition();
+
 			for (int face = 0; face < 6 && currentSlice < m_shadowArrayLayers; ++face) {
-				glm::vec3 lightPos = light->GetPosition();
 				glm::mat4 viewFace = glm::lookAt(lightPos, lightPos + dirs[face], ups[face]);
 				glm::mat4 ls = proj90 * viewFace;
+
+				unsigned cadence = (face == (int)faceUpdate) ? 1u : 8u;
+
+				// Quick check before filtering
+				auto& c = m_cachedSlices[currentSlice];
+				bool cadenceHit = (m_frameCounter % cadence) == 0;
+
+				if (c.inUse && !cadenceHit) {
+					const float posThresh = 0.01f;
+
+					if (glm::length(lightPos - c.lastLightPos) <= posThresh) {
+						// Can skip filtering for this face
+						c.inUse = true;
+						c.type = BaseLight::LightType::POINT;
+						c.lightIndex = (int)li;
+						c.subIndex = face;
+						matrices[currentSlice] = c.lastMatrix;
+						++currentSlice;
+						continue;
+					}
+				}
 
 				auto tuple = filterAndSign(ls);
 				MDIBatch filtered = std::move(std::get<0>(tuple));
 				glm::vec3 sigC = std::get<1>(tuple);
 				int sigN = std::get<2>(tuple);
 
-				unsigned cadence = (face == (int)faceUpdate) ? 1u : 8u;
 				unsigned reason = decideUpdate(currentSlice, BaseLight::LightType::POINT,
 					(int)li, face, ls, lightPos, dirs[face],
 					sigC, sigN, cadence);
@@ -979,9 +1069,9 @@ std::vector<glm::mat4> LightManager::RenderPointLightShadows(
 	return {};
 }
 
-// ============================================================================
+
 // GPU Buffer Updates
-// ============================================================================
+
 
 /**
  * @brief Update GPU buffers with current light data
@@ -1090,9 +1180,9 @@ std::string LightManager::GenerateLightName(BaseLight::LightType type)
 	}
 }
 
-// ============================================================================
+
 // Scene Integration
-// ============================================================================
+
 
 /**
  * @brief Collect all light nodes from the scene graph
@@ -1190,9 +1280,9 @@ std::shared_ptr<LightNode> LightManager::FindLightAtRay(const glm::vec3& rayOrig
 	return best;
 }
 
-// ============================================================================
+
 // Light Control Methods
-// ============================================================================
+
 
 void LightManager::EnableAllLights()
 {
@@ -1230,9 +1320,9 @@ void LightManager::DisableLightsByType(BaseLight::LightType t)
 	UpdateActiveLights();
 }
 
-// ============================================================================
+
 // Statistics & Queries
-// ============================================================================
+
 
 size_t LightManager::GetEnabledLightCount() const
 {
@@ -1273,9 +1363,9 @@ void LightManager::PrintPerformanceStats() const
 		<< " Culling ms=" << stats.lightCullingTime << std::endl;
 }
 
-// ============================================================================
+
 // Light Culling (Tiled/Clustered)
-// ============================================================================
+
 
 /**
  * @brief Perform tiled light culling for deferred rendering
@@ -1319,9 +1409,9 @@ void LightManager::PerformLightCulling(const glm::mat4&,
 	stats.visibleLights = (int)m_activeLights.size();
 }
 
-// ============================================================================
+
 // Debug & Diagnostics
-// ============================================================================
+
 
 /**
  * @brief Get debug information for all shadow slices

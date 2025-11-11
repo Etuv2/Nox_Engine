@@ -6,7 +6,7 @@
 
 // Forward declarations
 class FrameBuffer;
-class RenderContext;
+struct RenderContext;
 class ComputeShader;
 
 /**

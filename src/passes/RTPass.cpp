@@ -31,7 +31,8 @@ bool RTPass::Initialize(RenderContext& context)
 
 
 	// Create framebuffer to hold ray traced output
-	m_rtFBO = std::make_unique<FrameBuffer>(context.width, context.height);
+	m_rtFBO = std::make_unique<FrameBuffer>(context.width, context.height,
+		std::vector<GLenum>{ GL_RGBA16F }, false, false, 1, false);
 }
 
 void RTPass::Resize(RenderContext& context, int newWidth, int newHeight)
@@ -47,4 +48,9 @@ void RTPass::Resize(RenderContext& context, int newWidth, int newHeight)
 	m_rtTexture->Resize(newWidth, newHeight);
 	// Resize framebuffer
 	m_rtFBO->Resize(newWidth, newHeight);
+}
+
+void RTPass::Execute(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph, const std::shared_ptr<Camera>& camera, const std::shared_ptr<DirectionalLight>& dirLight, const std::shared_ptr<Skybox>& skybox)
+{
+	return;
 }
