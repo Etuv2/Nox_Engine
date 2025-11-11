@@ -1,0 +1,69 @@
+#pragma once
+#include "ComponentManager.h"
+#include <glm/glm.hpp>
+#include <vector>
+
+/**
+ * Transform System - Efficient transform propagation using dependency graph
+ * 
+ * This system handles hierarchical transform updates in a cache-friendly way:
+ * - Batched updates instead of recursive calls
+ * - Dirty flag propagation for minimal work
+ * - Breadth-first traversal for better cache locality
+ */
+class TransformSystem {
+public:
+    TransformSystem(ComponentManager* componentManager);
+    
+    // Update all dirty transforms in the scene
+ void UpdateTransforms();
+    
+    // Mark an entity's transform as dirty (requires recalculation)
+    void MarkDirty(EntityID entity);
+    
+    // Mark an entire subtree as dirty
+    void MarkSubtreeDirty(EntityID root);
+    
+    // Get world transform for an entity (calculates if dirty)
+    const glm::mat4& GetWorldTransform(EntityID entity);
+    
+    // Set local transform and mark dirty
+ void SetLocalTransform(EntityID entity, const glm::mat4& localTransform);
+    
+    // Set world transform (decomposes to local relative to parent)
+    void SetWorldTransform(EntityID entity, const glm::mat4& worldTransform);
+    
+    // TRS convenience methods
+    void SetPosition(EntityID entity, const glm::vec3& position);
+  void SetRotation(EntityID entity, const glm::quat& rotation);
+    void SetScale(EntityID entity, const glm::vec3& scale);
+    void SetTRS(EntityID entity, const glm::vec3& translation, 
+   const glm::quat& rotation, const glm::vec3& scale);
+    
+    // Get decomposed transform components
+    glm::vec3 GetWorldPosition(EntityID entity);
+    glm::quat GetWorldRotation(EntityID entity);
+    glm::vec3 GetWorldScale(EntityID entity);
+    
+  // Apply animation transform
+    void SetAnimatedTransform(EntityID entity, const glm::mat4& animTransform);
+  void ClearAnimatedTransform(EntityID entity);
+    
+    // Debug
+ void PrintHierarchy(EntityID root = INVALID_ENTITY, int depth = 0) const;
+    
+private:
+    ComponentManager* m_componentManager;
+    
+    // Cached list of entities with dirty transforms for batch processing
+    std::vector<EntityID> m_dirtyEntities;
+    
+    // Helper to compute world transform from local + parent
+    void ComputeWorldTransform(EntityID entity);
+  
+    // Recursive helper for marking subtrees dirty
+    void MarkSubtreeDirtyRecursive(EntityID entity);
+    
+    // Helper to get parent world transform
+glm::mat4 GetParentWorldTransform(EntityID entity) const;
+};
