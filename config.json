@@ -54,8 +54,8 @@
     { "path": "scenes\\cornell_box.json"  }
 
   ],
-  "text_font": "arial.ttf",
-  "vsync": false,
+  "text_font": "fonts\\arial.ttf",
+  "vsync": true,
   "camera": {
     "position": [ -1.0, 1.0, -1.0 ],
     "up": [ 0.0, 1.0, 0.0 ],

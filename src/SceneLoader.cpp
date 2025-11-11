@@ -835,7 +835,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
         auto guiNode = std::make_shared<GuiNode>(m_screenW, m_screenH); // Create a GUI node,this acts as a container for GUI elements in the scene
         
         // Load font if specified
-        std::string fontPath = nodeJson.value("font_path", "arial.ttf");
+        std::string fontPath = nodeJson.value("font_path", "fonts\\arial.ttf");
         int fontSize = nodeJson.value("font_size", 24);
         guiNode->LoadFont(fontPath, fontSize);
         

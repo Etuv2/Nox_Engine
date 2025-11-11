@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../RenderPass.h"
-#include "../Texture.h"  // Include new Texture system
+#include "../Texture.h" 
 #include <memory>
 
 class ComputeShader;

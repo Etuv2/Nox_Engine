@@ -147,6 +147,10 @@ struct RenderContext {
 	float lpvPropagationBias = 0.1f;
 	bool lpvEnableOcclusion = false;
 	int lpvUpdateFrequency = 1;
-	bool lpvDebugVisualization = false; // NEW: Debug visualization toggle
-	float lpvDebugBoost = 1.0f;         // NEW: Temporary boost for debugging (default 1.0x, set to 5.0x for testing)
+	bool lpvDebugVisualization = false; //Debug visualization toggle
+	float lpvDebugBoost = 1.0f;         //Temporary boost for debugging (default 1.0x, set to 5.0x for testing)
+
+	// RTX settings
+	bool enableRTX = false;
+	float rtResolutionScale = 1.0f; // Scale factor for ray tracing resolution
 };

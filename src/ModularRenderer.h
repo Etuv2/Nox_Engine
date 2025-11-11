@@ -25,6 +25,7 @@ class TransparentForwardPass;
 class PostProcessPass;
 class LPVPass;
 class SSGIPass;
+class GUIPass;  // NEW: Internal GUI rendering pass
 
 /**
  * ModularRenderer coordinates all rendering passes using a shared RenderContext.
@@ -71,14 +72,11 @@ private:
 		bool enableShadows, float shadowBias,
 		glm::vec3 envColor);
 
-
-
 	void CheckGLError(const std::string& passName);
-
 
 	RenderContext m_context;
 
-	// Rendering passes
+	// Rendering passes (in execution order)
 	std::unique_ptr<ShadowPass> m_shadowPass;
 	std::unique_ptr<LPVPass> m_lpvPass; 
 	std::unique_ptr<GBufferPass> m_gbufferPass;
@@ -90,4 +88,5 @@ private:
 	std::unique_ptr<BloomPass> m_bloomPass;
 	std::unique_ptr<TransparentForwardPass> m_transparentPass;
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
+	std::unique_ptr<GUIPass> m_guiPass;  // NEW: Internal GUI rendering
 };

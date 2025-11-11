@@ -63,9 +63,11 @@
     <ClCompile Include="src\ModularRenderer.cpp" />
     <ClCompile Include="src\passes\BloomPass.cpp" />
     <ClCompile Include="src\passes\GBufferPass.cpp" />
+    <ClCompile Include="src\passes\GUIPass.cpp" />
     <ClCompile Include="src\passes\LightingPass.cpp" />
     <ClCompile Include="src\passes\LPVPass.cpp" />
     <ClCompile Include="src\passes\PostProcessPass.cpp" />
+    <ClCompile Include="src\passes\RTPass.cpp" />
     <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp" />
     <ClCompile Include="src\passes\ShadowPass.cpp" />
     <ClCompile Include="src\passes\SSAOPass.cpp" />
@@ -150,7 +152,7 @@
     <None Include="shaders\fullscreen_vert.glsl" />
     <None Include="shaders\prefilter_frag.glsl" />
     <None Include="shaders\prefilter_vert.glsl" />
-    <None Include="shaders\raytrace_comp.glsl" />
+    <None Include="shaders\rt_bidirectional_comp.glsl" />
     <None Include="shaders\screen_space_shadows_comp.glsl" />
     <None Include="shaders\shadow_frag.glsl" />
     <None Include="shaders\shadow_vert.glsl" />
@@ -211,9 +213,11 @@
     <ClInclude Include="src\ModularRenderer.h" />
     <ClInclude Include="src\passes\BloomPass.h" />
     <ClInclude Include="src\passes\GBufferPass.h" />
+    <ClInclude Include="src\passes\GUIPass.h" />
     <ClInclude Include="src\passes\LightingPass.h" />
     <ClInclude Include="src\passes\LPVPass.h" />
     <ClInclude Include="src\passes\PostProcessPass.h" />
+    <ClInclude Include="src\passes\RTPass.h" />
     <ClInclude Include="src\passes\ScreenSpaceShadowPass.h" />
     <ClInclude Include="src\passes\ShadowPass.h" />
     <ClInclude Include="src\passes\SSAOPass.h" />

@@ -10,7 +10,7 @@ class RenderContext;
 class ComputeShader;
 
 /**
- * @brief Ray Tracing Pass using compute shaders
+ * @brief RTX Pass using compute shaders
  * IMPLEMENTATION: Bidirectional Path Tracing with importance sampling
  * Makes use of Bounding Volume Hierarchy (BVH) for ray-scene intersection acceleration
  * REFERENCES:
@@ -32,8 +32,41 @@ public:
 
 
 private:
+
+	// Compute shader program for ray tracing
 	std::unique_ptr<ComputeShader> m_rtShader;
+
+	// Framebuffer for ray traced output
 	std::unique_ptr<FrameBuffer> m_rtFBO;
+
+	// Ray traced output texture
 	TexturePtr m_rtTexture;
+
+	// Resolution
+	int m_w = 0, m_h = 0;        // Full resolution (G-buffer resolution)
+	int m_hw = 0, m_hh = 0;    // Working resolution (half or full based on ssgiHalfRes)
+	int m_qw = 0, m_qh = 0;      // Quarter resolution (for efficient denoising)
+	float m_renderResolutionScale = 1.0f; // Scale factor for render resolution
+
+	//flag to indicate if BVH needs to be rebuilt
+	bool m_bvhDirty = true;
+
+	/*
+	* Warmup stage where BVH is built and shaders are prepped
+	*/
+	void runWarmup(const std::shared_ptr<SceneGraph>& sceneGraph);
+
+	/*
+	* Ray tracing execution stage
+	*/
+	void runRayTracing(RenderContext& ctx,
+		const std::shared_ptr<SceneGraph>& sceneGraph,
+		const std::shared_ptr<Camera>& camera);
+
+	/*
+	* Accumulate frame results for progressive refinement
+	*/
+	void accumulateFrame(RenderContext& ctx);
+
 
 };
