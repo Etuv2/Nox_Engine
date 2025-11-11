@@ -33,6 +33,7 @@
     <ClCompile Include="src\AudioNode.cpp" />
     <ClCompile Include="src\BaseLight.cpp" />
     <ClCompile Include="src\BVH.cpp" />
+    <ClCompile Include="src\BVHBuilder.cpp" />
     <ClCompile Include="src\Camera.cpp" />
     <ClCompile Include="src\ComponentManager.cpp" />
     <ClCompile Include="src\ComputeShader.cpp" />
@@ -180,6 +181,7 @@
     <ClInclude Include="src\BaseLight.h" />
     <ClInclude Include="src\bend_sss_cpu.h" />
     <ClInclude Include="src\BVH.h" />
+    <ClInclude Include="src\BVHBuilder.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Collider.h" />
     <ClInclude Include="src\ComponentManager.h" />
@@ -234,6 +236,7 @@
     <ClInclude Include="src\RenderContext.h" />
     <ClInclude Include="src\RenderPass.h" />
     <ClInclude Include="src\RigidBody.h" />
+    <ClInclude Include="src\RTStructures.h" />
     <ClInclude Include="src\Scene.h" />
     <ClInclude Include="src\SceneGraph.h" />
     <ClInclude Include="src\SceneLoader.h" />

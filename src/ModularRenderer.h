@@ -26,6 +26,7 @@ class PostProcessPass;
 class LPVPass;
 class SSGIPass;
 class GUIPass;  // NEW: Internal GUI rendering pass
+class RTPass;   // NEW: Path tracing pass
 
 /**
  * ModularRenderer coordinates all rendering passes using a shared RenderContext.
@@ -80,6 +81,7 @@ private:
 	std::unique_ptr<ShadowPass> m_shadowPass;
 	std::unique_ptr<LPVPass> m_lpvPass; 
 	std::unique_ptr<GBufferPass> m_gbufferPass;
+	std::unique_ptr<RTPass> m_rtPass;  // Path tracing pass
 	std::unique_ptr<SSAOPass> m_ssaoPass;
 	std::unique_ptr<ScreenSpaceShadowPass> m_screenSpaceShadowPass;
 	std::unique_ptr<SSGIPass> m_ssgiPass;

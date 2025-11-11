@@ -42,6 +42,21 @@ struct RenderContext {
 	// Previous frame matrices for TAA
 	glm::mat4 prevView{ 1.0f };
 	glm::mat4 prevProj{ 1.0f };
+	
+	// Renderer mode toggle
+	enum class RendererMode {
+		DEFERRED_REALTIME = 0,     // Standard deferred rendering with real-time effects
+		PATH_TRACED = 1          // Path-traced mode using BVH for high-quality offline rendering
+	};
+	RendererMode rendererMode = RendererMode::DEFERRED_REALTIME;
+	
+	// Path tracing settings
+	bool enablePathTracing = false;
+	int rtSamplesPerPixel = 4;      // Samples per pixel per frame
+	int rtMaxBounces = 4;  // Maximum ray bounces
+	float rtResolutionScale = 1.0f;  // Resolution scale for path tracing (0.5 = half res)
+	bool rtAccumulate = true;        // Enable temporal accumulation
+	bool rtDenoise = false;     // Enable denoising (future)
 
 
 	// SSAO settings
@@ -150,7 +165,6 @@ struct RenderContext {
 	bool lpvDebugVisualization = false; //Debug visualization toggle
 	float lpvDebugBoost = 1.0f;         //Temporary boost for debugging (default 1.0x, set to 5.0x for testing)
 
-	// RTX settings
-	bool enableRTX = false;
-	float rtResolutionScale = 1.0f; // Scale factor for ray tracing resolution
+	// RTX / Path Tracing settings (consolidated)
+	bool enableRTX = false;  // Legacy - kept for backwards compatibility
 };

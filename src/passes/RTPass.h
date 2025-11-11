@@ -41,6 +41,11 @@ private:
 
 	// Ray traced output texture
 	TexturePtr m_rtTexture;
+	
+	// Accumulation textures for temporal convergence
+	TexturePtr m_accumulationTexture;  // Accumulated radiance
+	TexturePtr m_varianceTexture;       // Variance for adaptive sampling
+	int m_frameIndex = 0;   // Current accumulation frame
 
 	// Resolution
 	int m_w = 0, m_h = 0;        // Full resolution (G-buffer resolution)
@@ -50,11 +55,24 @@ private:
 
 	//flag to indicate if BVH needs to be rebuilt
 	bool m_bvhDirty = true;
+	
+	// BVH acceleration structure
+	struct BVHBuffers {
+		GLuint triangleSSBO = 0;  // Triangle data SSBO
+		GLuint bvhSSBO = 0;       // BVH node data SSBO
+		size_t triangleCount = 0;
+		size_t nodeCount = 0;
+	} m_bvhBuffers;
 
 	/*
 	* Warmup stage where BVH is built and shaders are prepped
 	*/
 	void runWarmup(const std::shared_ptr<SceneGraph>& sceneGraph);
+	
+	/*
+	* Build and upload BVH to GPU
+	*/
+	void buildAndUploadBVH(const std::shared_ptr<SceneGraph>& sceneGraph);
 
 	/*
 	* Ray tracing execution stage
@@ -67,6 +85,11 @@ private:
 	* Accumulate frame results for progressive refinement
 	*/
 	void accumulateFrame(RenderContext& ctx);
+	
+	/*
+	* Reset accumulation (when camera moves)
+	*/
+	void resetAccumulation();
 
 
 };

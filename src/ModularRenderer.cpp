@@ -10,6 +10,7 @@
 #include "passes/GBufferPass.h"
 #include "passes/ShadowPass.h"
 #include "passes/LPVPass.h"
+#include "passes/RTPass.h"  // NEW: Path tracing pass
 #include "passes/SSAOPass.h"
 #include "passes/ScreenSpaceShadowPass.h"
 #include "passes/SSGIPass.h"
@@ -46,6 +47,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_shadowPass = std::make_unique<ShadowPass>();
 	m_lpvPass = std::make_unique<LPVPass>(); //Create LPV pass
 	m_gbufferPass = std::make_unique<GBufferPass>();
+	m_rtPass = std::make_unique<RTPass>();  // Create path tracing pass
 	m_ssaoPass = std::make_unique<SSAOPass>();
 	m_screenSpaceShadowPass = std::make_unique<ScreenSpaceShadowPass>();
 	m_ssgiPass = std::make_unique<SSGIPass>(); //Create SSGI pass
@@ -60,6 +62,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_shadowPass->Initialize(m_context);
 	success &= m_lpvPass->Initialize(m_context);
 	success &= m_gbufferPass->Initialize(m_context);
+	success &= m_rtPass->Initialize(m_context);  // Initialize path tracing pass
 	success &= m_ssaoPass->Initialize(m_context);
 	success &= m_screenSpaceShadowPass->Initialize(m_context);
 	success &= m_ssgiPass->Initialize(m_context);
@@ -123,7 +126,8 @@ bool ModularRenderer::InitializeSharedResources()
 
 void ModularRenderer::Resize(int newWidth, int newHeight)
 {
-	if (newWidth == m_context.width && newHeight == m_context.height) {
+	if (newWidth <= 0 || newHeight <= 0) {
+		std::cerr << "[ModularRenderer] ERROR: Invalid dimensions " << newWidth << "x" << newHeight << "\n";
 		return;
 	}
 
@@ -131,17 +135,14 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	m_context.height = newHeight;
 
 	// Resize shared FBOs
-	if (m_context.gbufferFBO) {
-		m_context.gbufferFBO->Resize(newWidth, newHeight);
-	}
-	if (m_context.hdrFBO) {
-		m_context.hdrFBO->Resize(newWidth, newHeight);
-	}
+	m_context.gbufferFBO->Resize(newWidth, newHeight);
+	m_context.hdrFBO->Resize(newWidth, newHeight);
 
-	// Notify all passes about resize
+	// Resize all passes
 	if (m_shadowPass) m_shadowPass->Resize(m_context, newWidth, newHeight);
 	if (m_lpvPass) m_lpvPass->Resize(m_context, newWidth, newHeight);
 	if (m_gbufferPass) m_gbufferPass->Resize(m_context, newWidth, newHeight);
+	if (m_rtPass) m_rtPass->Resize(m_context, newWidth, newHeight);  // Resize path tracing pass
 	if (m_ssaoPass) m_ssaoPass->Resize(m_context, newWidth, newHeight);
 	if (m_screenSpaceShadowPass) m_screenSpaceShadowPass->Resize(m_context, newWidth, newHeight);
 	if (m_ssgiPass) m_ssgiPass->Resize(m_context, newWidth, newHeight);
@@ -284,6 +285,35 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 
 	m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 	CheckGLError("GBufferPass");
+	
+	// PATH TRACING MODE: Skip deferred passes and run path tracer instead
+	if (m_context.rendererMode == RenderContext::RendererMode::PATH_TRACED) {
+		std::cout << "[ModularRenderer] PATH TRACING MODE - Executing RTPass" << std::endl;
+		
+		// Execute ray tracing pass
+		m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		CheckGLError("RTPass");
+		
+		// Copy path traced result to HDR buffer for post-processing
+		// The rest of the pipeline (bloom, TAA, post-process) can still run on the PT output
+		// For now, skip directly to post-processing
+		
+		// Optional: Apply bloom to path-traced output
+		if (m_context.enableBloom) {
+			m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			CheckGLError("BloomPass");
+		}
+		
+		// Apply post-processing (tonemapping, etc.)
+		m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		CheckGLError("PostProcessPass");
+		
+		// Render GUI overlay
+		m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		CheckGLError("GUIPass");
+		
+		return; // Early exit - skip deferred lighting pipeline
+	}
 
 	//LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
 	//This generates dynamic indirect lighting from the first light bounce
