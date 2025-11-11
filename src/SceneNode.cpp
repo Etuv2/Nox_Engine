@@ -14,20 +14,6 @@
 #include "MeshComponent.h"
 #include "DefaultTextures.h"
 #include "TextureUnits.h"
-#include "ComponentManager.h"
-#include "TransformSystem.h"
-
-// Static global component system references
-ComponentManager* SceneNode::s_globalComponentManager = nullptr;
-TransformSystem* SceneNode::s_globalTransformSystem = nullptr;
-
-void SceneNode::SetGlobalComponentManager(ComponentManager* manager) {
-    s_globalComponentManager = manager;
-}
-
-void SceneNode::SetGlobalTransformSystem(TransformSystem* transformSystem) {
-    s_globalTransformSystem = transformSystem;
-}
 
 SceneNode::SceneNode()
 	: transform(1.0f),
@@ -43,31 +29,7 @@ SceneNode::SceneNode()
 	m_nodeType(NODE),
 	m_cullingOverride(CULLING_INHERIT),
 	m_updatingFromPhysics(false),
-	m_transformCacheDirty(false),
-	m_entityID(0),
-	m_componentManager(s_globalComponentManager),
-	m_transformSystem(s_globalTransformSystem)
-{
-}
-
-SceneNode::SceneNode(ComponentManager* manager, TransformSystem* transformSystem, EntityID entityID)
-	: transform(1.0f),
-	animatedTransform(1.0f),
-	m_shader(0),
-	boundingRadius(1.0f),
-	m_isAnimationPlaying(false),
-	m_isAnimationPaused(false),
-	m_animationTime(0.0f),
-	m_currentAnimationIndex(-1),
-	isSkinned(false),
-	nodeIndex(-1),
-	m_nodeType(NODE),
-	m_cullingOverride(CULLING_INHERIT),
-	m_updatingFromPhysics(false),
-	m_transformCacheDirty(false),
-	m_entityID(entityID),
-	m_componentManager(manager),
-	m_transformSystem(transformSystem)
+	m_transformCacheDirty(false)
 {
 }
 
@@ -113,7 +75,7 @@ std::string SceneNode::GetName() {
 		case AUDIO: return "AudioPlayer";
 		case LIGHT: return "LightSource";
 		case CAMERA:return "Camera";
-		default:  return "Unknown";
+		default:    return "Unknown";
 		}
 	}
 	return m_model->GetName();
