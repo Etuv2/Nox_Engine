@@ -342,6 +342,12 @@
     <ClCompile Include="src\passes\SSGIPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
+    <ClCompile Include="src\passes\GUIPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\RTPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\shadow_frag.glsl">
@@ -570,7 +576,7 @@
       <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
     <None Include="README.md" />
-    <None Include="shaders\raytrace_comp.glsl">
+    <None Include="shaders\rt_bidirectional_comp.glsl">
       <Filter>Source Files\misc\shaders\raytrace</Filter>
     </None>
     <None Include="shaders\gbuffer_frag.glsl">
@@ -801,6 +807,12 @@
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\SSGIPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\RTPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\GUIPass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
   </ItemGroup>

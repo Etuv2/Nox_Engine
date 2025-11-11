@@ -12,7 +12,6 @@
 
 SSGIPass::~SSGIPass() {
 	// Only cleanup Kawase shader and FBO
-	if (m_kawaseFBO) { glDeleteFramebuffers(1, &m_kawaseFBO); m_kawaseFBO = 0; }
 	if (m_kawaseShader) { glDeleteProgram(m_kawaseShader); m_kawaseShader = 0; }
 }
 

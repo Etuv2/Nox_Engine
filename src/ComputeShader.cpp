@@ -374,7 +374,7 @@ GLuint ComputeShader::CreateComputeBuffer(GLsizeiptr size, const void* data, GLe
 
 TexturePtr ComputeShader::CreateComputeTexture2D(GLuint width, GLuint height,
 	GLenum format, const void* data) {
-	// REFACTORED: Use Texture::Builder for cleaner, more maintainable code
+	//Using Texture::Builder for cleaner, more maintainable code
 	auto texture = Texture::Builder::Texture2D(width, height, format)
 		.Data(data)
 		.FilterMode(GL_LINEAR, GL_LINEAR)
