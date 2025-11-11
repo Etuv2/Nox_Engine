@@ -139,6 +139,12 @@
     <Filter Include="Source Files\misc\shaders\global_illumination\ssgi">
       <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Engine\DO-ECS">
+      <UniqueIdentifier>{80133325-4a27-4039-a769-09194ab8bf8c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\Engine\DO-ECS">
+      <UniqueIdentifier>{0229209c-73e6-4cdd-8737-f89200940db3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\IMGUI\imgui.cpp">
@@ -343,10 +349,10 @@
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
     <ClCompile Include="src\ComponentManager.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\scripts\Engine\DO-ECS</Filter>
     </ClCompile>
     <ClCompile Include="src\TransformSystem.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\scripts\Engine\DO-ECS</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -809,14 +815,14 @@
     <ClInclude Include="src\passes\SSGIPass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
-    <ClInclude Include="src\ComponentTypes.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\ComponentManager.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Engine\DO-ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComponentTypes.h">
+      <Filter>Header Files\Engine\DO-ECS</Filter>
     </ClInclude>
     <ClInclude Include="src\TransformSystem.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Engine\DO-ECS</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
