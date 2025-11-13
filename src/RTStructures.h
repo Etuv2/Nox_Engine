@@ -21,21 +21,20 @@ namespace RT {
 	 * @brief Ray tracing material properties (std140 layout)
 	 */
 	struct Material {
-		glm::vec3 albedo;         // offset 0   // alignment 16 // size 12 // total 12 bytes
-		float metallic;       // offset 12  // alignment 4  // size 4  // total 16 bytes
-
-		glm::vec3 emissive;    // offset 16  // alignment 16 // size 12 // total 28 bytes
-		float roughness;      // offset 28  // alignment 4  // size 4  // total 32 bytes
-
-		glm::vec3 specular;     // offset 32  // alignment 16 // size 12 // total 44 bytes
-		float emissiveStrength;    // offset 44  // alignment 4  // size 4  // total 48 bytes
-
-		Material()
-			: albedo(1.0f), metallic(0.0f)
-			, emissive(0.0f), roughness(1.0f)
-			, specular(0.0f), emissiveStrength(0.0f)
-		{
-		}
+		// offset 0   // alignment 16 // size 12 // total 12 bytes
+		glm::vec3 albedo;     
+		float metallic;          // offset 12  // alignment 4  // size 4  // total 16 bytes
+		
+		glm::vec3 emissive;      // offset 16  // alignment 16 // size 12 // total 28 bytes
+		float roughness;   // offset 28  // alignment 4  // size 4  // total 32 bytes
+		
+		glm::vec3 specular;   // offset 32  // alignment 16 // size 12 // total 44 bytes
+		float emissiveStrength;  // offset 44  // alignment 4  // size 4  // total 48 bytes
+		
+		Material() 
+		 : albedo(1.0f), metallic(0.0f)
+		, emissive(0.0f), roughness(1.0f)
+			, specular(0.0f), emissiveStrength(0.0f) {}
 	};
 
 	/**
@@ -76,6 +75,8 @@ namespace RT {
 	/**
 	 * @struct BVHNode
 	 * @brief GPU-friendly BVH node (std140 layout)
+	 * this structure uses indices to child nodes and triangle indices for leaf nodes.
+	 * 
 	 */
 	struct BVHNode {
 		// AABB bounds
@@ -148,6 +149,70 @@ namespace RT {
 		size_t GetTriangleCount() const { return triangles.size(); }
 		size_t GetNodeBufferSize() const { return nodes.size() * sizeof(BVHNode); }
 		size_t GetTriangleBufferSize() const { return triangles.size() * sizeof(Triangle); }
+	};
+
+	/**
+	 * @struct RTLightData
+	 * @brief GPU-compatible light structure for ray tracing (matches LightManager::LightData)
+	 * 
+	 * This structure is designed to be compatible with the LightManager's SSBO format
+	 * and supports all light types: directional, point, spot, and area lights.
+	 */
+	struct RTLightData {
+		glm::vec4 position;   // xyz = position, w = light type (0=dir, 1=point, 2=spot, 3=area)
+		glm::vec4 direction;  // xyz = direction (normalized), w = unused
+		glm::vec4 color;          // xyz = color, w = intensity
+		glm::vec4 attenuation;    // xyz = constant/linear/quadratic, w = range
+		glm::vec4 shadowData;     // x = startSlice, y = sliceCount, z = castsShadows, w = pcss
+		glm::vec4 spotData;     // x = inner cone cos, y = outer cone cos, z,w = reserved
+		
+		// Additional data for ray tracing
+		glm::vec4 areaData;       // xyz = size (for area lights), w = reserved
+		glm::vec4 sampling;       // x = PDF weight, y = solid angle, z,w = reserved
+		
+		RTLightData()
+		 : position(0.0f), direction(0.0f, -1.0f, 0.0f, 0.0f)
+			, color(1.0f), attenuation(1.0f, 0.0f, 0.0f, 100.0f)
+			, shadowData(0.0f), spotData(0.0f)
+			, areaData(0.0f), sampling(0.0f) {}
+	};
+
+	/**
+	 * @struct ReSTIRReservoir
+	 * @brief Per-pixel reservoir for ReSTIR light sampling
+	 * 
+	 * Stores weighted light samples that can be reused temporally and spatially
+	 * to reduce noise and improve convergence.
+	 */
+	struct ReSTIRReservoir {
+		int lightIndex;           // Selected light index (-1 = invalid)
+		float weightSum;          // Sum of weights (W)
+		float targetPDF;          // Target distribution PDF
+		int M;       // Number of samples in reservoir
+		
+		// Sample data
+		glm::vec3 position;    // Light sample position
+		float padding0;
+		glm::vec3 radiance;       // Incoming radiance
+		float padding1;
+		
+		ReSTIRReservoir()
+			: lightIndex(-1), weightSum(0.0f), targetPDF(0.0f), M(0)
+			, position(0.0f), padding0(0.0f)
+			, radiance(0.0f), padding1(0.0f) {}
+	};
+
+	/**
+	 * @struct EnvironmentSample
+	 * @brief Precomputed importance sampling data for environment map
+	 */
+	struct EnvironmentSample {
+		glm::vec2 uv;  // Environment map UV coordinates
+		float pdf;         // Probability density
+		float luminance;          // Precomputed luminance
+		
+		EnvironmentSample()
+			: uv(0.0f), pdf(0.0f), luminance(0.0f) {}
 	};
 
 } // namespace RT

@@ -85,7 +85,6 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 
 bool ModularRenderer::InitializeSharedResources()
 {
-	// Create G-buffer FBO with optimized 3-RT layout for better bandwidth efficiency
 	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 	// RT2: RGBA16F - Emissive (RGB) + Specular F0 luminance (A)
@@ -286,6 +285,19 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 	CheckGLError("GBufferPass");
 	
+	// DEBUG MODE: Show G-buffer visualizations
+	if (m_context.debugMode != RenderContext::DebugMode::NONE && 
+	    m_context.rendererMode == RenderContext::RendererMode::DEFERRED_REALTIME) {
+		std::cout << "[ModularRenderer] DEBUG MODE - Visualizing G-buffer" << std::endl;
+		visualizeDebugMode(m_context);
+		
+		// Render GUI overlay
+		m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		CheckGLError("GUIPass");
+		
+		return; // Early exit - skip rest of pipeline for debug view
+	}
+	
 	// PATH TRACING MODE: Skip deferred passes and run path tracer instead
 	if (m_context.rendererMode == RenderContext::RendererMode::PATH_TRACED) {
 		std::cout << "[ModularRenderer] PATH TRACING MODE - Executing RTPass" << std::endl;
@@ -457,6 +469,72 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	if (m_ssgiPass) {
 		m_ssgiPass->CaptureHistory(m_context);
 	}
+}
+
+void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
+{
+	// Output debug visualization to backbuffer
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, ctx.width, ctx.height);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	
+	if (!ctx.gbufferFBO || !ctx.screenQuad) {
+		std::cerr << "[ModularRenderer] Missing G-buffer or screen quad for debug viz" << std::endl;
+		return;
+	}
+	
+	// Simple fullscreen quad shader for visualization
+	// For now, use glBlitFramebuffer as a quick solution
+	GLuint sourceAttachment = 0;
+	
+	switch (ctx.debugMode) {
+		case RenderContext::DebugMode::ALBEDO:
+			sourceAttachment = 1; // Albedo is in RT1
+			break;
+		case RenderContext::DebugMode::NORMAL:
+			sourceAttachment = 0; // Normal is in RT0
+			break;
+		case RenderContext::DebugMode::DEPTH:
+		// Use depth buffer
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx.gbufferFBO->GetFBO());
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+			glBlitFramebuffer(
+				0, 0, ctx.width, ctx.height,
+				0, 0, ctx.width, ctx.height,
+				GL_DEPTH_BUFFER_BIT,
+				GL_NEAREST
+			);
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+			std::cout << "[ModularRenderer] Visualized depth buffer" << std::endl;
+			return;
+		case RenderContext::DebugMode::SHADOW_MAPS:
+		case RenderContext::DebugMode::MOTION_VECTORS:
+			// TODO: Implement these visualizations
+			std::cout << "[ModularRenderer] Debug mode not yet implemented" << std::endl;
+			return;
+		default:
+			return;
+	}
+	
+	// Blit color attachment to backbuffer
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx.gbufferFBO->GetFBO());
+	glReadBuffer(GL_COLOR_ATTACHMENT0 + sourceAttachment);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	
+	glBlitFramebuffer(
+		0, 0, ctx.width, ctx.height,
+		0, 0, ctx.width, ctx.height,
+		GL_COLOR_BUFFER_BIT,
+		GL_NEAREST
+	);
+	
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	
+	std::cout << "[ModularRenderer] Visualized debug mode: " << static_cast<int>(ctx.debugMode) << std::endl;
 }
 
 

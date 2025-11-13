@@ -52,10 +52,10 @@ public:
     // Find all nodes by type
   std::vector<std::shared_ptr<SceneNode>> FindNodesByType(SceneNode::NODE_TYPE type);
     
-    // NEW: Find first LPV volume node in scene
+    //Find first LPV volume node in scene
     std::shared_ptr<SceneNode> FindLPVVolumeNode();
     
-    // NEW: Save scene to file
+    //Save scene to file
     bool SaveToFile(const std::string& filePath);
 
     void SetSkybox(const std::shared_ptr<Skybox>& skybox);
@@ -88,21 +88,27 @@ public:
     void SetPhysicsEnabled(bool enabled) { m_physicsEnabled = enabled; }
     bool IsPhysicsEnabled() const { return m_physicsEnabled; }
     
- // NEW: Component system access
+ //Component system access
     ComponentManager* GetComponentManager() { return &m_componentManager; }
     TransformSystem* GetTransformSystem() { return &m_transformSystem; }
     const ComponentManager* GetComponentManager() const { return &m_componentManager; }
  const TransformSystem* GetTransformSystem() const { return &m_transformSystem; }
     
-    // NEW: Flat iteration methods for cache-friendly rendering
+    //Flat iteration methods for cache-friendly rendering
     // These use component pools directly instead of recursive traversal
     void DrawFlat(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram);
     void DrawCascadeFlat(const glm::mat4& lightSpace, GLuint shadowShader);
     void DrawGeometryFlat(GLuint geometryShader);
     void CollectRenderableObjectsFlat(MDIBatch& batch);
     
-    // NEW: Update all transforms in one batch
+    //Update all transforms in one batch
     void UpdateAllTransforms();
+ 
+    // BVH dirty tracking for ray tracing optimization
+    void MarkBVHDirty() { m_bvhDirty = true; }
+    bool IsBVHDirty() const { return m_bvhDirty; }
+    void ClearBVHDirty() { m_bvhDirty = false; }
+    void ForceRebuildBVH() { m_bvhDirty = true; } // Explicit rebuild trigger
 
 private:
     std::shared_ptr<SceneNode> FindNodeByModelNameRecursive(
@@ -121,9 +127,12 @@ private:
     bool m_swapping_scenes = false;
     bool m_physicsEnabled = true;
     
-    // NEW: Component-based architecture
+    //Component-based architecture
     ComponentManager m_componentManager;
     TransformSystem m_transformSystem;
+    
+    // BVH dirty flag - set to true when any geometry transforms change
+    bool m_bvhDirty = true; // Start dirty to force initial build
     
     // Helper to sync SceneNode hierarchy with component system
     void SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, EntityID parentID = INVALID_ENTITY);

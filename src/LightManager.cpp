@@ -1124,6 +1124,10 @@ void LightManager::UpdateGPUBuffers()
 			d.spotData = glm::vec4(0);
 		}
 
+		// Initialize ray tracing fields (for RT compatibility)
+		d.areaData = glm::vec4(0.0f);  // Reserved for area lights
+		d.sampling = glm::vec4(0.0f);  // Reserved for importance sampling
+
 		arr.push_back(d);
 	}
 

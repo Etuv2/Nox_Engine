@@ -74,6 +74,9 @@ private:
 		glm::vec3 envColor);
 
 	void CheckGLError(const std::string& passName);
+	
+	// Debug visualization
+	void visualizeDebugMode(RenderContext& ctx);
 
 	RenderContext m_context;
 

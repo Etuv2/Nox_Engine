@@ -1,32 +1,33 @@
 ﻿#include "SceneNode.h"
 #include "Scene.h"
-#include "AudioNode.h" 
-#include "Animation.h"  // Add for AnimationController
-#include <GL/glew.h>
-#include <iostream>
-#include <queue>
-#include <cmath>  // Add for std::isfinite
-#define GLM_ENABLE_EXPERIMENTAL
+#include "RigidBody.h"
+#include "SceneGraph.h" // Include for BVH dirty tracking
+#include "DefaultTextures.h"
+#include "AudioNode.h"
+#include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include "MeshComponent.h"
-#include "DefaultTextures.h"
-#include "TextureUnits.h"
-#include "ComponentManager.h"
-#include "TransformSystem.h"
+#include <GL/glew.h>
+#include <iostream>
+#include <algorithm>
 
-// Static global component system references
+// Static member initialization
 ComponentManager* SceneNode::s_globalComponentManager = nullptr;
 TransformSystem* SceneNode::s_globalTransformSystem = nullptr;
+SceneGraph* SceneNode::s_globalSceneGraph = nullptr;
 
+// Static method implementations
 void SceneNode::SetGlobalComponentManager(ComponentManager* manager) {
-    s_globalComponentManager = manager;
+	s_globalComponentManager = manager;
 }
 
 void SceneNode::SetGlobalTransformSystem(TransformSystem* transformSystem) {
-    s_globalTransformSystem = transformSystem;
+	s_globalTransformSystem = transformSystem;
+}
+
+void SceneNode::SetGlobalSceneGraph(SceneGraph* sceneGraph) {
+	s_globalSceneGraph = sceneGraph;
 }
 
 SceneNode::SceneNode()
@@ -212,10 +213,10 @@ void SceneNode::Draw(
 		if (uniformLoc >= 0) {
 			glUniform1i(uniformLoc, unit);
 		}
-		// CRITICAL: Check for OpenGL errors after texture binding
+		//Check for OpenGL errors after texture binding
 		GLenum error = glGetError();
 		if (error != GL_NO_ERROR) {
-			std::cerr << "[SceneNode] CRITICAL: OpenGL error " << error << " binding texture to unit " << unit << std::endl;
+			std::cerr << "[SceneNode]OpenGL error " << error << " binding texture to unit " << unit << std::endl;
 		}
 		};
 
@@ -657,15 +658,31 @@ void SceneNode::ApplyCullingState(const MeshComponent& mesh, SceneNode::CullingO
 
 void SceneNode::SetPosition(glm::vec3 pos) {
 	transform[3] = glm::vec4(pos, 1.0f);
+
+	// Mark scene BVH as dirty when geometry moves
+	if (s_globalTransformSystem) {
+		// Signal that geometry has moved - BVH needs rebuild
+		InvalidateTransformCache();
+	}
 }
 
 void SceneNode::SetRotation(glm::vec3 axis, float angle) {
 	glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), angle, axis);
 	transform = rotation * transform;
+
+	// Mark scene BVH as dirty when geometry rotates
+	if (s_globalTransformSystem) {
+		InvalidateTransformCache();
+	}
 }
 
 void SceneNode::SetScale(glm::vec3 scale) {
 	transform = glm::scale(glm::mat4(1.0f), scale) * transform;
+
+	// Mark scene BVH as dirty when geometry scales
+	if (s_globalTransformSystem) {
+		InvalidateTransformCache();
+	}
 }
 
 void SceneNode::SetTransform(const glm::mat4& transform)
@@ -678,7 +695,7 @@ void SceneNode::SetTransform(const glm::mat4& transform)
 		SyncPhysicsFromTransform();
 	}
 
-	// Mark that we need to update child transforms
+	// Mark that we need to update child transforms and BVH
 	InvalidateTransformCache();
 }
 
@@ -794,6 +811,11 @@ void SceneNode::InvalidateTransformCache() {
 	// Mark that cached transforms need to be recalculated
 	// This will be used in GetGlobalTransform to recalculate when needed
 	m_transformCacheDirty = true;
+
+	// Mark BVH as dirty when any transform changes (for ray tracing)
+	if (s_globalSceneGraph) {
+		s_globalSceneGraph->MarkBVHDirty();
+	}
 
 	// Recursively invalidate children
 	for (auto& child : children) {

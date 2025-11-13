@@ -37,7 +37,7 @@ private:
 	std::unique_ptr<ComputeShader> m_rtShader;
 
 	// Framebuffer for ray traced output
-	std::unique_ptr<FrameBuffer> m_rtFBO;
+	GLuint m_rtFBO_ID = 0;  // Manual FBO for blitting
 
 	// Ray traced output texture
 	TexturePtr m_rtTexture;
@@ -64,6 +64,18 @@ private:
 		size_t nodeCount = 0;
 	} m_bvhBuffers;
 
+	// NEW: Light data for ray tracing
+	struct LightBuffers {
+		GLuint lightSSBO = 0;       // Light data SSBO (from LightManager)
+		size_t lightCount = 0;
+	} m_lightBuffers;
+	
+	// NEW: ReSTIR reservoir buffers
+	struct ReSTIRBuffers {
+		GLuint reservoirSSBO = 0;   // Per-pixel reservoir data
+		size_t reservoirCount = 0;
+	} m_restirBuffers;
+
 	/*
 	* Warmup stage where BVH is built and shaders are prepped
 	*/
@@ -79,7 +91,8 @@ private:
 	*/
 	void runRayTracing(RenderContext& ctx,
 		const std::shared_ptr<SceneGraph>& sceneGraph,
-		const std::shared_ptr<Camera>& camera);
+		const std::shared_ptr<Camera>& camera,
+		const std::shared_ptr<Skybox>& skybox);
 
 	/*
 	* Accumulate frame results for progressive refinement
@@ -90,6 +103,16 @@ private:
 	* Reset accumulation (when camera moves)
 	*/
 	void resetAccumulation();
+	
+	/*
+	* Copy ray traced output to HDR buffer for post-processing
+	*/
+	void copyToHDRBuffer(RenderContext& ctx);
+	
+	/*
+	* Get the output texture for display
+	*/
+	GLuint GetOutputTexture() const;
 
 
 };

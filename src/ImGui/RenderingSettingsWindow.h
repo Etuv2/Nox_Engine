@@ -109,7 +109,7 @@ private:
 	bool m_lpvDebugVisualization = false;  //Debug visualization toggle
 	float m_lpvDebugBoost = 5.0f;          //Debug energy amplification
 
-	//Path Tracing settings
+	// Path Tracing settings
 	int m_rendererMode = 0;  // 0 = Deferred Real-time, 1 = Path Traced
 	bool m_enablePathTracing = false;
 	int m_rtSamplesPerPixel = 4;
@@ -117,6 +117,24 @@ private:
 	float m_rtResolutionScale = 1.0f;
 	bool m_rtAccumulate = true;
 	bool m_rtDenoise = false;
+
+	// Advanced path tracing - lighting
+	bool m_rtEnableNEE = true;
+	bool m_rtEnableMIS = true;
+	bool m_rtEnableReSTIR = false;
+	int m_rtReSTIR_M = 8;
+	int m_rtReSTIR_TemporalM = 20;
+	int m_rtReSTIR_SpatialRadius = 4;
+	
+	// BVH Debug Visualization
+	bool m_rtDisplayBVH = false;
+	bool m_rtDisplayMultipleBVHLayers = false;
+	int m_rtBVHLayerToDisplay = 0;
+	int m_rtHeatmapColorLimit = 50;
+	
+	// IBL Environment
+	bool m_rtEnableIBL = true;
+	float m_rtIBLIntensity = 1.0f;
 
 	// Debug settings
 	int m_debugMode = 0;

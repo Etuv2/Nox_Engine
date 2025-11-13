@@ -202,11 +202,13 @@ public:
     void SetAnimatedTransform(const glm::mat4& transform) { animatedTransform = transform; }
     glm::mat4 GetAnimatedTransform() const { return animatedTransform; }
     
-    // NEW: Static global component system hooks (for future migration)
+    //Static global component system hooks (for future migration)
     static void SetGlobalComponentManager(ComponentManager* manager);
     static void SetGlobalTransformSystem(TransformSystem* transformSystem);
+    static void SetGlobalSceneGraph(class SceneGraph* sceneGraph);
+    static class SceneGraph* GetGlobalSceneGraph() { return s_globalSceneGraph; }
     
-    // NEW: Entity ID access (for component system integration)
+    //Entity ID access (for component system integration)
     EntityID GetEntityID() const { return m_entityID; }
 
 protected:
@@ -243,10 +245,11 @@ private:
     // LPV volume data (only used if m_nodeType == LPV_VOLUME)
     LPVVolumeData m_lpvData;
     
-    // NEW: Component system integration (for gradual migration)
+    //Component system integration (for gradual migration)
     EntityID m_entityID;
     ComponentManager* m_componentManager;
     TransformSystem* m_transformSystem;
     static ComponentManager* s_globalComponentManager;
     static TransformSystem* s_globalTransformSystem;
+    static class SceneGraph* s_globalSceneGraph; // For BVH dirty tracking
 };

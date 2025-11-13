@@ -54,34 +54,35 @@ RT::BVHData BVHBuilder::BuildFromScene(
 		return bvhData;
 	}
 
-	// Traverse scene graph and collect all mesh triangles
-	std::function<void(const std::shared_ptr<SceneNode>&)> collectTriangles;
-	collectTriangles = [&](const std::shared_ptr<SceneNode>& node) {
+	// Traverse scene graph and collect all mesh triangles with proper world transforms
+	std::function<void(const std::shared_ptr<SceneNode>&, const glm::mat4&)> collectTriangles;
+	collectTriangles = [&](const std::shared_ptr<SceneNode>& node, const glm::mat4& parentTransform) {
 		if (!node) return;
 
-		// Get world transform for this node
-		// SceneNode uses TransformSystem for transforms
-		glm::mat4 worldTransform = glm::mat4(1.0f); // Default identity
-		// TODO: Extract actual world transform from TransformSystem if needed
+		// Compute this node's world transform by combining with parent
+		// Use GetGlobalTransform which handles both base transform and animated transform
+		glm::mat4 worldTransform = node->GetGlobalTransform(parentTransform);
 
 		// Extract meshes if present
 		if (node->GetModel()) {
 			auto model = node->GetModel();
 			// Scene contains meshes
 			for (const auto& mesh : model->meshes) {
+				// Extract triangles with world-space transforms applied
 				auto meshTriangles = ExtractTriangles(mesh, worldTransform);
 				bvhData.triangles.insert(bvhData.triangles.end(),
 					meshTriangles.begin(), meshTriangles.end());
 			}
 		}
 
-		// Recurse to children
+		// Recurse to children with accumulated world transform
 		for (const auto& child : node->children) {
-			collectTriangles(child);
+			collectTriangles(child, worldTransform);
 		}
 		};
 
-	collectTriangles(sceneGraph->GetRoot());
+	// Start traversal from root with identity matrix
+	collectTriangles(sceneGraph->GetRoot(), glm::mat4(1.0f));
 
 	if (bvhData.triangles.empty()) {
 		std::cerr << "[BVHBuilder] No triangles found in scene" << std::endl;
@@ -89,7 +90,17 @@ RT::BVHData BVHBuilder::BuildFromScene(
 	}
 
 	std::cout << "[BVHBuilder] Building scene BVH for " << bvhData.triangles.size()
-		<< " triangles..." << std::endl;
+		<< " triangles (world-space transformed)..." << std::endl;
+
+	// Debug: Print bounds of first triangle to verify world-space coordinates
+	if (!bvhData.triangles.empty()) {
+		const auto& firstTri = bvhData.triangles[0];
+		std::cout << "[BVHBuilder] First triangle vertices (world-space):" << std::endl;
+		std::cout << "  v0: (" << firstTri.v0.x << ", " << firstTri.v0.y << ", " << firstTri.v0.z << ")" << std::endl;
+		std::cout << "  v1: (" << firstTri.v1.x << ", " << firstTri.v1.y << ", " << firstTri.v1.z << ")" << std::endl;
+		std::cout << "  v2: (" << firstTri.v2.x << ", " << firstTri.v2.y << ", " << firstTri.v2.z << ")" << std::endl;
+		std::cout << "  center: (" << firstTri.center.x << ", " << firstTri.center.y << ", " << firstTri.center.z << ")" << std::endl;
+	}
 
 	// Create initial index list
 	std::vector<int> triangleIndices(bvhData.triangles.size());

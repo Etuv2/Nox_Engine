@@ -25,7 +25,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 
 	// Shadow settings - match RenderContext defaults
 	m_enableShadows = true;
-	m_shadowBias = 0.0008f; // Increased to compensate for no normal offset
+	m_shadowBias = 0.005f;
 	m_shadowNear = 0.1f;
 	m_shadowFar = 1000.0f;
 	m_enablePCSS = false;
@@ -52,13 +52,13 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	// SSGI settings
 	m_enableSSGI = false;
 	m_ssgiStrength = 1.0f;
-	m_ssgiRadius = 5.0f;     // FIXED: Was 1.0, now matches RenderContext production default
-	m_ssgiSampleCount = 16;       // FIXED: Was 64, now optimal for temporal accumulation
-	m_ssgiHalfRes = true;         // FIXED: Was false, now matches performance recommendation
-	m_ssgiTemporalAlpha = 0.15f;  // CRITICAL FIX: Was 0.8, now proper for convergence
-	m_ssgiNormalReject = 0.15f;   // FIXED: Was 0.5, now tightened for better edges
-	m_ssgiDepthReject = 0.2f;     // FIXED: Was 0.5, now tightened for better edges
-	m_ssgiThickness = 0.02f;      // FIXED: Was 0.1, now proper view-space scale
+	m_ssgiRadius = 5.0f;
+	m_ssgiSampleCount = 16;
+	m_ssgiHalfRes = true;
+	m_ssgiTemporalAlpha = 0.15f;
+	m_ssgiNormalReject = 0.15f;
+	m_ssgiDepthReject = 0.2f;
+	m_ssgiThickness = 0.02f;
 
 	//LPV GI settings - match RenderContext defaults
 	m_enableLPV = true;
@@ -83,6 +83,22 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_rtResolutionScale = 1.0f;
 	m_rtAccumulate = true;
 	m_rtDenoise = false;
+	m_rtEnableNEE = true;
+	m_rtEnableMIS = true;
+	m_rtEnableReSTIR = false;
+	m_rtReSTIR_M = 8;
+	m_rtReSTIR_TemporalM = 20;
+	m_rtReSTIR_SpatialRadius = 4;
+	
+	// BVH Debug Visualization
+	m_rtDisplayBVH = false;
+	m_rtDisplayMultipleBVHLayers = false;
+	m_rtBVHLayerToDisplay = 0;
+	m_rtHeatmapColorLimit = 50;
+	
+	// IBL Environment
+	m_rtEnableIBL = true;
+	m_rtIBLIntensity = 1.0f;
 }
 
 void RenderingSettingsWindow::SetModularRenderer(const std::shared_ptr<ModularRenderer>& renderer) {
@@ -174,6 +190,28 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_rtResolutionScale = ctx.rtResolutionScale;
 	m_rtAccumulate = ctx.rtAccumulate;
 	m_rtDenoise = ctx.rtDenoise;
+	m_rtEnableNEE = ctx.rtEnableNEE;
+	m_rtEnableMIS = ctx.rtEnableMIS;
+	m_rtEnableReSTIR = ctx.rtEnableReSTIR;
+	m_rtReSTIR_M = ctx.rtReSTIR_M;
+	m_rtReSTIR_TemporalM = ctx.rtReSTIR_TemporalM;
+	m_rtReSTIR_SpatialRadius = ctx.rtReSTIR_SpatialRadius;
+	
+	// BVH Debug Visualization
+	m_rtDisplayBVH = ctx.rtDisplayBVH;
+	m_rtDisplayMultipleBVHLayers = ctx.rtDisplayMultipleBVHLayers;
+	m_rtBVHLayerToDisplay = ctx.rtBVHLayerToDisplay;
+	m_rtHeatmapColorLimit = ctx.rtHeatmapColorLimit;
+	
+	// IBL Environment
+	m_rtEnableIBL = ctx.rtEnableIBL;
+	m_rtIBLIntensity = ctx.rtIBLIntensity;
+
+	// Debug visualization settings
+	m_debugMode = static_cast<int>(ctx.debugMode);
+	m_wireframeMode = ctx.wireframeMode;
+	m_showBoundingBoxes = ctx.showBoundingBoxes;
+	m_showLightGizmos = ctx.showLightGizmos;
 }
 
 void RenderingSettingsWindow::SyncToRenderer() {
@@ -259,6 +297,28 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.rtResolutionScale = m_rtResolutionScale;
 	ctx.rtAccumulate = m_rtAccumulate;
 	ctx.rtDenoise = m_rtDenoise;
+	ctx.rtEnableNEE = m_rtEnableNEE;
+	ctx.rtEnableMIS = m_rtEnableMIS;
+	ctx.rtEnableReSTIR = m_rtEnableReSTIR;
+	ctx.rtReSTIR_M = m_rtReSTIR_M;
+	ctx.rtReSTIR_TemporalM = m_rtReSTIR_TemporalM;
+	ctx.rtReSTIR_SpatialRadius = m_rtReSTIR_SpatialRadius;
+	
+	// BVH Debug Visualization
+	ctx.rtDisplayBVH = m_rtDisplayBVH;
+	ctx.rtDisplayMultipleBVHLayers = m_rtDisplayMultipleBVHLayers;
+	ctx.rtBVHLayerToDisplay = m_rtBVHLayerToDisplay;
+	ctx.rtHeatmapColorLimit = m_rtHeatmapColorLimit;
+	
+	// IBL Environment
+	ctx.rtEnableIBL = m_rtEnableIBL;
+	ctx.rtIBLIntensity = m_rtIBLIntensity;
+
+	// Debug visualization settings
+	ctx.debugMode = static_cast<RenderContext::DebugMode>(m_debugMode);
+	ctx.wireframeMode = m_wireframeMode;
+	ctx.showBoundingBoxes = m_showBoundingBoxes;
+	ctx.showLightGizmos = m_showLightGizmos;
 
 	std::cout << "[RenderingSettings] Synced to renderer - Exposure: " << m_exposure
 		<< ", Gamma: " << m_gamma << ", TM: " << m_tonemapType
@@ -806,6 +866,164 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			ImGui::Separator();
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Advanced Lighting:");
+
+			if (ImGui::Checkbox("Next Event Estimation (NEE)", &m_rtEnableNEE)) {
+				SyncToRenderer();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("?##rt_nee")) {}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Explicitly sample lights for direct lighting\n"
+					"Dramatically reduces noise and improves convergence\n"
+					"Should always be enabled for best results"
+				);
+			}
+
+			if (ImGui::Checkbox("Multiple Importance Sampling (MIS)", &m_rtEnableMIS)) {
+				SyncToRenderer();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("?##rt_mis")) {}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Balance between BSDF and light sampling\n"
+					"Improves quality with complex lighting\n"
+					"Minimal performance cost, recommended"
+				);
+			}
+
+			ImGui::Separator();
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "ReSTIR Denoising (Experimental):");
+
+			if (ImGui::Checkbox("Enable ReSTIR", &m_rtEnableReSTIR)) {
+				SyncToRenderer();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("?##rt_restir")) {}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Spatiotemporal reservoir resampling\n"
+					"Experimental denoising technique\n"
+					"May introduce bias but reduces noise significantly"
+				);
+			}
+
+			if (m_rtEnableReSTIR) {
+				if (ImGui::SliderInt("Initial Candidates (M)", &m_rtReSTIR_M, 1, 32)) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##restir_m")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip("Number of initial light samples per pixel\nMore = better quality but slower");
+				}
+
+				if (ImGui::SliderInt("Temporal Samples", &m_rtReSTIR_TemporalM, 0, 50)) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##restir_temporal")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip("Number of samples reused from previous frame\nMore = smoother but may introduce ghosting");
+				}
+
+				if (ImGui::SliderInt("Spatial Radius", &m_rtReSTIR_SpatialRadius, 0, 16)) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##restir_spatial")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip("Spatial reuse radius (not yet implemented)\nWill blur noise across nearby pixels");
+				}
+			}
+
+			ImGui::Separator();
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "BVH Debug Visualization:");
+
+			if (ImGui::Checkbox("Show BVH Heatmap", &m_rtDisplayBVH)) {
+				SyncToRenderer();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("?##rt_bvh_viz")) {}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Visualize BVH traversal complexity\n"
+					"Replaces normal rendering with a heatmap:\n"
+					"  Blue/Black = Few tests (efficient)\n"
+					"  Green/Yellow = Moderate tests\n"
+					"  Red/White = Many tests (slow)\n"
+					"Helps identify BVH performance bottlenecks"
+				);
+			}
+
+			if (m_rtDisplayBVH) {
+				if (ImGui::SliderInt("Heatmap Color Limit", &m_rtHeatmapColorLimit, 10, 200)) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##rt_heatmap_limit")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip(
+						"Maximum complexity value for color mapping\n"
+						"Lower = more sensitive (shows detail)\n"
+						"Higher = less sensitive (shows only hotspots)\n"
+						"Adjust based on scene complexity"
+					);
+				}
+
+				if (ImGui::Checkbox("Show Multiple Layers", &m_rtDisplayMultipleBVHLayers)) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##rt_bvh_layers")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip("Cycle through BVH tree depth layers (not yet implemented)");
+				}
+
+				if (m_rtDisplayMultipleBVHLayers) {
+					if (ImGui::SliderInt("Layer to Display", &m_rtBVHLayerToDisplay, 0, 10)) {
+						SyncToRenderer();
+					}
+				}
+			}
+
+			ImGui::Separator();
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Environment Lighting (IBL):");
+
+			if (ImGui::Checkbox("Enable IBL Sampling", &m_rtEnableIBL)) {
+				SyncToRenderer();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("?##rt_ibl")) {}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Sample HDR environment map for lighting\n"
+					"  - Sky background on ray miss\n"
+					"  - Environment as light source (NEE)\n"
+					"  - Physically accurate IBL integration\n"
+					"Requires valid skybox to be loaded"
+				);
+			}
+
+			if (m_rtEnableIBL) {
+				if (ImGui::SliderFloat("IBL Intensity", &m_rtIBLIntensity, 0.0f, 5.0f, "%.2f")) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##rt_ibl_intensity")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip(
+						"Multiplier for environment lighting contribution\n"
+						"1.0 = Physical accuracy\n"
+						">1.0 = Brighter environment\n"
+						"<1.0 = Dimmer environment"
+					);
+				}
+			}
+
+			ImGui::Separator();
 			ImGui::TextColored(ImVec4(0.7f, 0.9f, 1.0f, 1.0f), "Quality Presets:");
 
 			if (ImGui::Button("Preview (Fast)")) {
@@ -833,7 +1051,7 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			ImGui::Separator();
-			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Performance Info:");
+			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.5f, 1.0f), "Performance Info:");
 
 			if (m_modularRenderer) {
 				auto& ctx = m_modularRenderer->GetContext();
@@ -869,21 +1087,21 @@ void RenderingSettingsWindow::Render() {
 
 			const char* debugModes[] = { "None", "Albedo", "Normal", "Depth", "Shadow Maps", "Motion Vectors" };
 			if (ImGui::Combo("Debug Mode", &m_debugMode, debugModes, 6)) {
-				// Debug mode change
+				SyncToRenderer(); // Apply debug mode to renderer
 			}
 
 			ImGui::Separator();
 
 			if (ImGui::Checkbox("Wireframe Mode", &m_wireframeMode)) {
-				// Wireframe toggle
+				SyncToRenderer(); // Apply wireframe toggle
 			}
 
 			if (ImGui::Checkbox("Show Bounding Boxes", &m_showBoundingBoxes)) {
-				// Bounding box visualization
+				SyncToRenderer(); // Apply bounding box toggle
 			}
 
 			if (ImGui::Checkbox("Show Light Gizmos", &m_showLightGizmos)) {
-				// Light gizmo visualization
+				SyncToRenderer(); // Apply light gizmo toggle
 			}
 
 			ImGui::Separator();
@@ -1084,6 +1302,22 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_rtResolutionScale = 1.0f;
 	m_rtAccumulate = true;
 	m_rtDenoise = false;
+	m_rtEnableNEE = true;
+	m_rtEnableMIS = true;
+	m_rtEnableReSTIR = false;
+	m_rtReSTIR_M = 8;
+	m_rtReSTIR_TemporalM = 20;
+	m_rtReSTIR_SpatialRadius = 4;
+	
+	// BVH Debug Visualization
+	m_rtDisplayBVH = false;
+	m_rtDisplayMultipleBVHLayers = false;
+	m_rtBVHLayerToDisplay = 0;
+	m_rtHeatmapColorLimit = 50;
+	
+	// IBL Environment
+	m_rtEnableIBL = true;
+	m_rtIBLIntensity = 1.0f;
 
 	// Debug
 	m_debugMode = 0;

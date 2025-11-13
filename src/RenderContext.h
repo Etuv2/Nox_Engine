@@ -32,6 +32,7 @@ struct RenderContext {
 
 
 	// Light system
+	//std::shared_ptr<LightManager> lightManager;
 	std::shared_ptr<LightManager> lightManager;
 
 
@@ -57,6 +58,25 @@ struct RenderContext {
 	float rtResolutionScale = 1.0f;  // Resolution scale for path tracing (0.5 = half res)
 	bool rtAccumulate = true;        // Enable temporal accumulation
 	bool rtDenoise = false;     // Enable denoising (future)
+
+
+	// NEW: Advanced path tracing settings
+	bool rtEnableNEE = true;        // Next Event Estimation (direct lighting)
+	bool rtEnableMIS = true;        // Multiple Importance Sampling
+	bool rtEnableReSTIR = false;      // ReSTIR denoising (experimental)
+	int rtReSTIR_M = 8;   // Initial candidates per pixel
+	int rtReSTIR_TemporalM = 20;      // Temporal reuse samples
+	int rtReSTIR_SpatialRadius = 4;   // Spatial reuse radius (not implemented yet)
+	
+	// NEW: BVH Debug Visualization
+	bool rtDisplayBVH = false;       // Enable BVH visualization mode
+	bool rtDisplayMultipleBVHLayers = false;  // Show multiple BVH layers
+	int rtBVHLayerToDisplay = 0;     // Which BVH layer to show
+	int rtHeatmapColorLimit = 50;   // Max value for heatmap color scale
+	
+	// NEW: IBL Environment settings
+	bool rtEnableIBL = true;         // Enable IBL environment sampling
+	float rtIBLIntensity = 1.0f;  // IBL intensity multiplier
 
 
 	// SSAO settings
@@ -167,4 +187,18 @@ struct RenderContext {
 
 	// RTX / Path Tracing settings (consolidated)
 	bool enableRTX = false;  // Legacy - kept for backwards compatibility
+	
+	// Debug visualization settings
+	enum class DebugMode {
+		NONE = 0,
+		ALBEDO = 1,
+		NORMAL = 2,
+		DEPTH = 3,
+		SHADOW_MAPS = 4,
+		MOTION_VECTORS = 5
+	};
+	DebugMode debugMode = DebugMode::NONE;
+	bool wireframeMode = false;
+	bool showBoundingBoxes = false;
+	bool showLightGizmos = false;
 };
