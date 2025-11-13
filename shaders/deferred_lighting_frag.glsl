@@ -74,6 +74,8 @@ struct LightData {
 	vec4 attenuation; // xyz=const,linear,quadratic, w=range
 	vec4 shadowData;  // x=startSlice, y=sliceCount, z=enabled, w=pcss flag
 	vec4 spotData;    // x=inner cos, y=outer cos
+	vec4 areaData;    // xyz=area light size (unused for point/spot/dir), w=reserved
+	vec4 sampling;    // x=PDF weight, y=solid angle, z,w=reserved
 };
 layout(std430, binding = 0) buffer LightDataBuffer { LightData lights[]; };
 layout(std430, binding = 1) buffer ShadowMatricesBuffer { mat4 shadowMatrices[]; };

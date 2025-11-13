@@ -21,9 +21,7 @@ RTPass::~RTPass()
 	if (m_rtFBO_ID) {
 		glDeleteFramebuffers(1, &m_rtFBO_ID);
 	}
-	if (m_lightBuffers.lightSSBO) {
-		glDeleteBuffers(1, &m_lightBuffers.lightSSBO);
-	}
+	// Removed deletion of m_lightBuffers.lightSSBO (managed by LightManager)
 	if (m_restirBuffers.reservoirSSBO) {
 		glDeleteBuffers(1, &m_restirBuffers.reservoirSSBO);
 	}
@@ -79,8 +77,7 @@ bool RTPass::Initialize(RenderContext& context)
 	glGenBuffers(1, &m_bvhBuffers.triangleSSBO);
 	glGenBuffers(1, &m_bvhBuffers.bvhSSBO);
 
-	// Initialize light buffers
-	glGenBuffers(1, &m_lightBuffers.lightSSBO);
+	// Removed generation of separate light SSBO; will use LightManager's SSBO directly
 
 	// Initialize ReSTIR reservoir buffers
 	glGenBuffers(1, &m_restirBuffers.reservoirSSBO);
@@ -145,7 +142,7 @@ void RTPass::Execute(RenderContext& ctx,
 		return;
 	}
 
-	// OPTIMIZED: Only rebuild BVH when transforms actually change
+	//  Only rebuild BVH when transforms actually change
 	// Check if scene geometry has been modified
 	if (sceneGraph->IsBVHDirty()) {
 		std::cout << "[RTPass] BVH dirty - rebuilding with updated transforms..." << std::endl;
@@ -196,9 +193,9 @@ void RTPass::buildAndUploadBVH(const std::shared_ptr<SceneGraph>& sceneGraph)
 {
 	// Build BVH from scene
 	BVHBuilder::BuildParams params;
-	params.maxLeafPrimitives = 4;
-	params.maxDepth = 30;
-	params.sahBuckets = 16;
+	params.maxLeafPrimitives = 2;
+	params.maxDepth = 24;
+	params.sahBuckets = 32;
 
 	RT::BVHData bvhData = BVHBuilder::BuildFromScene(sceneGraph, params);
 
@@ -239,48 +236,17 @@ void RTPass::runRayTracing(RenderContext& ctx,
 {
 	if (!m_rtShader) return;
 
-	// Upload light data from LightManager (CRITICAL: Update buffers BEFORE accessing SSBO)
+	// Upload light data from LightManager
 	if (ctx.lightManager) {
-		// Update GPU buffers with current frame light data
 		ctx.lightManager->UpdateGPUBuffers();
-
 		auto lights = ctx.lightManager->GetEnabledLights();
 		m_lightBuffers.lightCount = lights.size();
-
-		if (!lights.empty()) {
-			// Use LightManager's existing SSBO directly
-			m_lightBuffers.lightSSBO = ctx.lightManager->GetLightDataSSBO();
-
-			std::cout << "[RTPass] ===== LIGHT DATA DEBUG =====" << std::endl;
-			std::cout << "[RTPass] Active lights: " << lights.size() << std::endl;
-			std::cout << "[RTPass] Light SSBO ID: " << m_lightBuffers.lightSSBO << std::endl;
-
-			// Debug: Print first light's data
-			if (lights.size() > 0) {
-				auto firstLight = lights[0];
-				std::cout << "[RTPass] First light type: " << static_cast<int>(firstLight->GetLightType()) << std::endl;
-				std::cout << "[RTPass] First light position: ("
-					<< firstLight->GetPosition().x << ", "
-					<< firstLight->GetPosition().y << ", "
-					<< firstLight->GetPosition().z << ")" << std::endl;
-				std::cout << "[RTPass] First light color: ("
-					<< firstLight->GetEffectiveColor().r << ", "
-					<< firstLight->GetEffectiveColor().g << ", "
-					<< firstLight->GetEffectiveColor().b << ")" << std::endl;
-				std::cout << "[RTPass] First light intensity: " << firstLight->GetIntensity() << std::endl;
-				std::cout << "[RTPass] First light enabled: " << (firstLight->IsEnabled() ? "YES" : "NO") << std::endl;
-			}
-			std::cout << "[RTPass] =============================" << std::endl;
-		}
-		else {
-			std::cout << "[RTPass] WARNING: No enabled lights found!" << std::endl;
-		}
+		// Use LightManager SSBO directly; no assignment altering ownership
+		m_lightBuffers.lightSSBO = ctx.lightManager->GetLightDataSSBO();
 	}
 	else {
-		m_lightBuffers.lightCount = 0;
-		std::cout << "[RTPass] ERROR: No LightManager available!" << std::endl;
+		m_lightBuffers.lightCount =0;
 	}
-
 	// Activate compute shader
 	glUseProgram(m_rtShader->GetProgramID());
 

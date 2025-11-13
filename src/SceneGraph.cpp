@@ -294,13 +294,29 @@ void SceneGraph::DrawVelocity(GLuint velocityShader)
 std::vector<std::shared_ptr<SceneNode>> SceneGraph::FindNodesByType(SceneNode::NODE_TYPE type)
 {
 	std::vector<std::shared_ptr<SceneNode>> nodes;
-	if (m_root) {
-		for (auto& child : m_root->children) {
-			if (child->GetNodeType() == type) {
-				nodes.push_back(child);
-			}
+	if (!m_root) return nodes;
+
+	// Recursive lambda to traverse entire scene graph
+	std::function<void(const std::shared_ptr<SceneNode>&)> traverse;
+	traverse = [&](const std::shared_ptr<SceneNode>& node) {
+		if (!node) return;
+
+		// Check if this node matches the type
+		if (node->GetNodeType() == type) {
+			nodes.push_back(node);
 		}
+
+		// Recursively search all children
+		for (auto& child : node->children) {
+			traverse(child);
+		}
+	};
+
+	// Start traversal from root's children
+	for (auto& child : m_root->children) {
+		traverse(child);
 	}
+
 	return nodes;
 }
 

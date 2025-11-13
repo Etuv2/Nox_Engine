@@ -168,7 +168,7 @@ struct ReSTIRReservoir {
 
 layout(std140, binding = 0) buffer TriangleBuffer  { Triangle  triangles[]; };
 layout(std140, binding = 1) buffer BVHBuffer       { BVHNode   bvhNodes[];   };
-layout(std140, binding = 2) buffer LightBuffer     { RTLightData lights[];   };
+layout(std430, binding =2) buffer LightBuffer     { RTLightData lights[];   };
 layout(std430, binding = 3) buffer ReservoirBuffer { ReSTIRReservoir reservoirs[]; };
 
 
