@@ -210,7 +210,7 @@ float CalculateAdaptiveShadowBias(vec3 N, vec3 Ld, int cascadeIndex, float depth
 float SampleShadowArray(int layer, vec3 projCoords, float bias) {
 	if (!inUnitCube(projCoords)) return 1.0;
 	
-	// ENHANCED: 5x5 PCF with Poisson disk sampling for better quality
+	//5x5 PCF with Poisson disk sampling for better quality
 	ivec3 dims = textureSize(multiLightShadowArray, 0);
 	vec2 texel = 1.0 / vec2(dims.xy);
 	

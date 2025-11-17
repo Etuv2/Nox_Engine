@@ -15,8 +15,7 @@ LightingPass::LightingPass() {}
 
 LightingPass::~LightingPass() {
 	if (m_shader) glDeleteProgram(m_shader);
-	if (m_fallbackCubemap) glDeleteTextures(1, &m_fallbackCubemap);
-	if (m_fallbackBRDF) glDeleteTextures(1, &m_fallbackBRDF);
+	// TexturePtr handles its own cleanup via shared_ptr
 }
 
 bool LightingPass::Initialize(RenderContext& context) {
@@ -39,30 +38,44 @@ bool LightingPass::Initialize(RenderContext& context) {
 }
 
 void LightingPass::SetupFallbackIBL() {
-	// Create white cubemap fallback
-	glGenTextures(1, &m_fallbackCubemap);
-	glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallbackCubemap);
+	// Create white cubemap fallback using Texture builder
+	// 1x1 white cube for basic IBL fallback
+	m_fallbackCubemap = Texture::Builder::TextureCube(1, GL_RGB16F)
+		.FilterMode(GL_LINEAR, GL_LINEAR)
+		.Build();
 
+	if (!m_fallbackCubemap || !m_fallbackCubemap->IsValid()) {
+		std::cerr << "[LightingPass] Failed to create fallback cubemap" << std::endl;
+		return;
+	}
+
+	// Fill each face with white pixel
 	float whitePixel[3] = { 1.0f, 1.0f, 1.0f };
+	m_fallbackCubemap->Bind(GL_TEXTURE0);
 	for (int face = 0; face < 6; ++face) {
 		glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB16F,
 			1, 1, 0, GL_RGB, GL_FLOAT, whitePixel);
 	}
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+	m_fallbackCubemap->Unbind();
 
-	// Create neutral BRDF LUT fallback
-	glGenTextures(1, &m_fallbackBRDF);
-	glBindTexture(GL_TEXTURE_2D, m_fallbackBRDF);
+	std::cout << "[LightingPass] Created fallback cubemap (ID: " << m_fallbackCubemap->ID() << ")" << std::endl;
+
+	// Create neutral BRDF LUT fallback using Texture builder
+	// 1x1 gray texture for neutral specular response
+	m_fallbackBRDF = Texture::Builder::Texture2D(1, 1, GL_RG16F)
+		.FilterMode(GL_LINEAR, GL_LINEAR)
+		.Build();
+
+	if (!m_fallbackBRDF || !m_fallbackBRDF->IsValid()) {
+		std::cerr << "[LightingPass] Failed to create fallback BRDF LUT" << std::endl;
+		return;
+	}
+
+	// Fill with neutral gray values
 	float brdfPixel[2] = { 0.5f, 0.5f };
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, 1, 1, 0, GL_RG, GL_FLOAT, brdfPixel);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	m_fallbackBRDF->Upload2D(0, 0, 0, 1, 1, GL_RG, GL_FLOAT, brdfPixel);
+
+	std::cout << "[LightingPass] Created fallback BRDF LUT (ID: " << m_fallbackBRDF->ID() << ")" << std::endl;
 }
 
 void LightingPass::Resize(RenderContext& context, int newWidth, int newHeight) {
@@ -231,14 +244,18 @@ void LightingPass::Execute(RenderContext& ctx,
 	}
 	else {
 		// Use fallback IBL
-		glActiveTexture(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallbackCubemap);
+		if (m_fallbackCubemap && m_fallbackCubemap->IsValid()) {
+			m_fallbackCubemap->Bind(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
+			m_fallbackCubemap->Bind(GL_TEXTURE0 + TextureUnits::PREFILTERED_ENV_MAP);
+		} else {
+			std::cerr << "[LightingPass] ERROR: Fallback cubemap is invalid!" << std::endl;
+		}
 
-		glActiveTexture(GL_TEXTURE0 + TextureUnits::PREFILTERED_ENV_MAP);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, m_fallbackCubemap);
-
-		glActiveTexture(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
-		glBindTexture(GL_TEXTURE_2D, m_fallbackBRDF);
+		if (m_fallbackBRDF && m_fallbackBRDF->IsValid()) {
+			m_fallbackBRDF->Bind(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
+		} else {
+			std::cerr << "[LightingPass] ERROR: Fallback BRDF LUT is invalid!" << std::endl;
+		}
 
 		glUniform1f(glGetUniformLocation(m_shader, "prefilteredMaxLOD"), 0.0f);
 
@@ -246,6 +263,8 @@ void LightingPass::Execute(RenderContext& ctx,
 		glUniform1f(glGetUniformLocation(m_shader, "iblIntensity"), 0.3f);
 		glUniform1f(glGetUniformLocation(m_shader, "diffuseIBLScale"), 0.4f);
 		glUniform1f(glGetUniformLocation(m_shader, "specularIBLScale"), 0.5f);
+
+		std::cout << "[LightingPass] Using fallback IBL textures" << std::endl;
 	}
 
 	glUniform1i(glGetUniformLocation(m_shader, "irradianceMap"), TextureUnits::IRRADIANCE_MAP);
