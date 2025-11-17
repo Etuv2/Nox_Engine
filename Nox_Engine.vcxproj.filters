@@ -597,6 +597,9 @@
     <None Include="shaders\ssgi_final_upsample_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
+    <None Include="shaders\svgf_temporal_comp.glsl" />
+    <None Include="shaders\svgf_variance_comp.glsl" />
+    <None Include="shaders\svgf_atrous_comp.glsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

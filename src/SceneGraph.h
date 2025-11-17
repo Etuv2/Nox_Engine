@@ -15,12 +15,6 @@ class LightManager;
 
 /**
  * SceneGraph holds the root node of the entire scene.
- * 
- * REFACTORED: Now integrates component-based architecture alongside traditional scene graph.
- * - ComponentManager stores entity data in contiguous arrays
- * - TransformSystem handles efficient transform propagation
- * - SceneNode acts as compatibility layer during transition
- * - New methods use flat iteration for cache-friendly rendering
  */
 class SceneGraph {
 public:

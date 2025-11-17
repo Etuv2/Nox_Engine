@@ -121,10 +121,16 @@ private:
 	// Advanced path tracing - lighting
 	bool m_rtEnableNEE = true;
 	bool m_rtEnableMIS = true;
-	bool m_rtEnableReSTIR = false;
-	int m_rtReSTIR_M = 8;
-	int m_rtReSTIR_TemporalM = 20;
-	int m_rtReSTIR_SpatialRadius = 4;
+	
+	// SVGF Denoising settings
+	float m_svgfTemporalAlpha = 0.15f;
+	float m_svgfVarianceClipGamma = 1.5f;
+	float m_svgfDepthThreshold = 0.05f;
+	float m_svgfNormalThreshold = 0.9f;
+	int m_svgfAtrousIterations = 4;
+	float m_svgfPhiColor = 5.0f;
+	float m_svgfPhiNormal = 32.0f;
+	float m_svgfPhiDepth = 0.01f;
 	
 	// BVH Debug Visualization
 	bool m_rtDisplayBVH = false;

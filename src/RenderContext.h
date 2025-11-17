@@ -57,19 +57,24 @@ struct RenderContext {
 	int rtMaxBounces = 4;  // Maximum ray bounces
 	float rtResolutionScale = 1.0f;  // Resolution scale for path tracing (0.5 = half res)
 	bool rtAccumulate = true;        // Enable temporal accumulation
-	bool rtDenoise = false;     // Enable denoising (future)
-
+	bool rtDenoise = true;     // Enable SVGF denoising
 
 	// NEW: Advanced path tracing settings
-	bool rtEnableNEE = true;        // Next Event Estimation (direct lighting)
-	bool rtEnableMIS = true;        // Multiple Importance Sampling
-	bool rtEnableReSTIR = false;      // ReSTIR denoising (experimental)
-	int rtReSTIR_M = 8;   // Initial candidates per pixel
-	int rtReSTIR_TemporalM = 20;      // Temporal reuse samples
-	int rtReSTIR_SpatialRadius = 4;   // Spatial reuse radius (not implemented yet)
+	bool rtEnableNEE = true;     // Next Event Estimation (direct lighting)
+	bool rtEnableMIS = true;  // Multiple Importance Sampling
+	
+	// SVGF Denoising settings
+	float svgfTemporalAlpha = 0.15f;   // Temporal blend factor (0.1-0.2)
+	float svgfVarianceClipGamma = 1.5f;   // Variance clipping gamma
+	float svgfDepthThreshold = 0.05f;     // Depth similarity threshold
+	float svgfNormalThreshold = 0.9f;     // Normal similarity threshold (cos angle)
+	int svgfAtrousIterations = 4;         // Number of à-trous filter iterations
+	float svgfPhiColor = 5.0f;    // Color weight parameter
+	float svgfPhiNormal = 32.0f;          // Normal weight parameter
+	float svgfPhiDepth = 0.01f;           // Depth weight parameter
 	
 	// NEW: BVH Debug Visualization
-	bool rtDisplayBVH = false;       // Enable BVH visualization mode
+	bool rtDisplayBVH = false;     // Enable BVH visualization mode
 	bool rtDisplayMultipleBVHLayers = false;  // Show multiple BVH layers
 	int rtBVHLayerToDisplay = 0;     // Which BVH layer to show
 	int rtHeatmapColorLimit = 50;   // Max value for heatmap color scale

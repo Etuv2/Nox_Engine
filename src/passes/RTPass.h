@@ -70,11 +70,23 @@ private:
 		size_t lightCount = 0;
 	} m_lightBuffers;
 	
-	// NEW: ReSTIR reservoir buffers
-	struct ReSTIRBuffers {
-		GLuint reservoirSSBO = 0;   // Per-pixel reservoir data
-		size_t reservoirCount = 0;
-	} m_restirBuffers;
+	// SVGF Denoising buffers
+	struct SVGFBuffers {
+		GLuint momentsSSBO = 0;           // Temporal variance accumulation (mean + variance)
+		GLuint historyLengthSSBO = 0;     // Per-pixel history length for variance calculation
+		size_t pixelCount = 0;
+	} m_svgfBuffers;
+
+	// SVGF intermediate textures
+	TexturePtr m_prevRadianceTexture;    // Previous frame radiance for temporal reprojection
+	TexturePtr m_momentsTexture;     // Mean and variance (RG32F)
+	TexturePtr m_historyLengthTexture; // History length per pixel (R16F)
+	TexturePtr m_denoisedTexture;          // Final denoised output
+	
+	// SVGF compute shaders
+	std::unique_ptr<ComputeShader> m_svgfTemporalShader;      // Temporal reprojection
+	std::unique_ptr<ComputeShader> m_svgfVarianceShader;      // Variance estimation
+	std::unique_ptr<ComputeShader> m_svgfAtrousShader;        // À-trous wavelet filter
 
 	/*
 	* Warmup stage where BVH is built and shaders are prepped
@@ -103,6 +115,13 @@ private:
 	* Reset accumulation (when camera moves)
 	*/
 	void resetAccumulation();
+	
+	/*
+	* SVGF Denoising Pipeline
+	*/
+	void runSVGFTemporal(RenderContext& ctx, const std::shared_ptr<Camera>& camera);
+	void runSVGFVariance(RenderContext& ctx);
+	void runSVGFAtrous(RenderContext& ctx, int iteration);
 	
 	/*
 	* Copy ray traced output to HDR buffer for post-processing

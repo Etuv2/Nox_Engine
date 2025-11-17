@@ -66,10 +66,17 @@ namespace RT {
 		glm::vec3 center;      // offset 96  // alignment 16 // size 12 // total 108 bytes
 		float padding6;       // offset 108 // alignment 4  // size 4  // total 112 bytes
 
-		// Material properties
-		Material material;        // offset 112 // alignment 16 // size 48 // total 160 bytes
+		// Precomputed AABB for fast BVH construction
+		glm::vec3 aabbMin;     // offset 112 // alignment 16 // size 12 // total 124 bytes
+		float padding7;        // offset 124 // alignment 4  // size 4  // total 128 bytes
+		
+		glm::vec3 aabbMax;     // offset 128 // alignment 16 // size 12 // total 140 bytes
+		float padding8;        // offset 140 // alignment 4  // size 4  // total 144 bytes
 
-		Triangle() : padding0(0), padding1(0), padding2(0), padding3(0), padding4(0), padding5(0), padding6(0) {}
+		// Material properties
+		Material material;     // offset 144 // alignment 16 // size 48 // total 192 bytes
+
+		Triangle() : padding0(0), padding1(0), padding2(0), padding3(0), padding4(0), padding5(0), padding6(0), padding7(0), padding8(0) {}
 	};
 
 	/**
@@ -179,28 +186,22 @@ namespace RT {
 
 	/**
 	 * @struct ReSTIRReservoir
-	 * @brief Per-pixel reservoir for ReSTIR light sampling
+	 * @brief REMOVED - ReSTIR has been replaced by SVGF denoising
 	 * 
-	 * Stores weighted light samples that can be reused temporally and spatially
-	 * to reduce noise and improve convergence.
+	 * This structure is kept for reference but is no longer used in the codebase.
+	 * SVGF (Spatiotemporal Variance-Guided Filtering) provides better performance
+	 * and simpler integration for our deferred path tracer.
 	 */
-	struct ReSTIRReservoir {
-		int lightIndex;           // Selected light index (-1 = invalid)
-		float weightSum;          // Sum of weights (W)
-		float targetPDF;          // Target distribution PDF
-		int M;       // Number of samples in reservoir
-		
-		// Sample data
-		glm::vec3 position;    // Light sample position
-		float padding0;
-		glm::vec3 radiance;       // Incoming radiance
-		float padding1;
-		
-		ReSTIRReservoir()
-			: lightIndex(-1), weightSum(0.0f), targetPDF(0.0f), M(0)
-			, position(0.0f), padding0(0.0f)
-			, radiance(0.0f), padding1(0.0f) {}
-	};
+	// struct ReSTIRReservoir {
+	//     int lightIndex;
+	//     float weightSum;
+	// float targetPDF;
+	//     int M;
+	//   glm::vec3 position;
+	//     float padding0;
+	//  glm::vec3 radiance;
+	//     float padding1;
+	// };
 
 	/**
 	 * @struct EnvironmentSample

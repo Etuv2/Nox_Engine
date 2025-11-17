@@ -135,14 +135,9 @@ void BVHBuilder::ComputeBounds(
 	for (int idx : indices) {
 		const RT::Triangle& tri = triangles[idx];
 
-		// Expand bounds to include all three vertices
-		minBounds = glm::min(minBounds, tri.v0);
-		minBounds = glm::min(minBounds, tri.v1);
-		minBounds = glm::min(minBounds, tri.v2);
-
-		maxBounds = glm::max(maxBounds, tri.v0);
-		maxBounds = glm::max(maxBounds, tri.v1);
-		maxBounds = glm::max(maxBounds, tri.v2);
+		// Use precomputed AABB instead of recomputing from three vertices
+		minBounds = glm::min(minBounds, tri.aabbMin);
+		maxBounds = glm::max(maxBounds, tri.aabbMax);
 	}
 }
 
@@ -166,13 +161,14 @@ BVHBuilder::PartitionResult BVHBuilder::PartitionSAH(
 	float bestCost = std::numeric_limits<float>::max();
 	int bestAxis = -1;
 	int bestSplit = -1;
-
 	float parentArea = SurfaceArea(parentMin, parentMax);
+
+	// Reusable sorted indices buffer to avoid repeated allocations
+	std::vector<int> sortedIndices = indices;
 
 	// Try each axis
 	for (int axis = 0; axis < 3; ++axis) {
-		// Sort indices by center along this axis
-		std::vector<int> sortedIndices = indices;
+		// Sort indices by center along this axis (sort once per axis)
 		std::sort(sortedIndices.begin(), sortedIndices.end(),
 			[&](int a, int b) {
 				return triangles[a].center[axis] < triangles[b].center[axis];
@@ -180,65 +176,122 @@ BVHBuilder::PartitionResult BVHBuilder::PartitionSAH(
 
 		// Use binning for large primitive counts
 		if (indices.size() > sahBuckets * 2) {
-			// Binned SAH
+			// Binned SAH with bucket aggregation
 			float axisMin = parentMin[axis];
 			float axisMax = parentMax[axis];
 			float extent = axisMax - axisMin;
 
 			if (extent < 1e-6f) continue;
 
-			for (size_t bucket = 1; bucket < sahBuckets; ++bucket) {
-				float splitPos = axisMin + (extent * bucket) / sahBuckets;
+			// Bucket aggregation structures
+			struct Bucket {
+				glm::vec3 minBounds = glm::vec3(std::numeric_limits<float>::max());
+				glm::vec3 maxBounds = glm::vec3(std::numeric_limits<float>::lowest());
+				int count = 0;
+			};
 
-				// Partition at bucket boundary
-				auto it = std::partition(sortedIndices.begin(), sortedIndices.end(),
-					[&](int idx) {
-						return triangles[idx].center[axis] < splitPos;
-					});
+			std::vector<Bucket> buckets(sahBuckets);
 
-				if (it == sortedIndices.begin() || it == sortedIndices.end()) {
-					continue;
+			// Assign triangles to buckets and accumulate bounds
+			for (int idx : sortedIndices) {
+				float centroid = triangles[idx].center[axis];
+				int bucketIdx = static_cast<int>((centroid - axisMin) / extent * sahBuckets);
+				bucketIdx = glm::clamp(bucketIdx, 0, static_cast<int>(sahBuckets) - 1);
+
+				buckets[bucketIdx].minBounds = glm::min(buckets[bucketIdx].minBounds, triangles[idx].aabbMin);
+				buckets[bucketIdx].maxBounds = glm::max(buckets[bucketIdx].maxBounds, triangles[idx].aabbMax);
+				buckets[bucketIdx].count++;
+			}
+
+			// Evaluate split costs using bucket aggregates
+			for (size_t splitBucket = 1; splitBucket < sahBuckets; ++splitBucket) {
+				// Accumulate left side
+				glm::vec3 leftMin = glm::vec3(std::numeric_limits<float>::max());
+				glm::vec3 leftMax = glm::vec3(std::numeric_limits<float>::lowest());
+				int leftCount = 0;
+
+				for (size_t i = 0; i < splitBucket; ++i) {
+					if (buckets[i].count > 0) {
+						leftMin = glm::min(leftMin, buckets[i].minBounds);
+						leftMax = glm::max(leftMax, buckets[i].maxBounds);
+						leftCount += buckets[i].count;
+					}
 				}
 
-				// Compute bounds and SAH cost
-				std::vector<int> leftIndices(sortedIndices.begin(), it);
-				std::vector<int> rightIndices(it, sortedIndices.end());
+				// Accumulate right side
+				glm::vec3 rightMin = glm::vec3(std::numeric_limits<float>::max());
+				glm::vec3 rightMax = glm::vec3(std::numeric_limits<float>::lowest());
+				int rightCount = 0;
 
-				glm::vec3 leftMin, leftMax, rightMin, rightMax;
-				ComputeBounds(triangles, leftIndices, leftMin, leftMax);
-				ComputeBounds(triangles, rightIndices, rightMin, rightMax);
+				for (size_t i = splitBucket; i < sahBuckets; ++i) {
+					if (buckets[i].count > 0) {
+						rightMin = glm::min(rightMin, buckets[i].minBounds);
+						rightMax = glm::max(rightMax, buckets[i].maxBounds);
+						rightCount += buckets[i].count;
+					}
+				}
+
+				// Skip invalid splits
+				if (leftCount == 0 || rightCount == 0) continue;
 
 				float leftArea = SurfaceArea(leftMin, leftMax);
 				float rightArea = SurfaceArea(rightMin, rightMax);
 
-				// SAH cost: traversal cost + probability * intersection cost
-				float cost = 0.125f + (leftIndices.size() * leftArea +
-					rightIndices.size() * rightArea) / parentArea;
+				// SAH cost
+				float cost = 0.125f + (leftCount * leftArea + rightCount * rightArea) / parentArea;
 
 				if (cost < bestCost) {
 					bestCost = cost;
 					bestAxis = axis;
-					bestSplit = static_cast<int>(bucket);
+					bestSplit = static_cast<int>(splitBucket);
 				}
 			}
 		}
 		else {
-			// Full sweep SAH for small primitive counts
-			for (size_t split = 1; split < indices.size(); ++split) {
-				std::vector<int> leftIndices(sortedIndices.begin(),
-					sortedIndices.begin() + split);
-				std::vector<int> rightIndices(sortedIndices.begin() + split,
-					sortedIndices.end());
+			// Full sweep SAH with prefix/suffix bounds (no repeated allocations or ComputeBounds calls)
+			size_t n = sortedIndices.size();
 
-				glm::vec3 leftMin, leftMax, rightMin, rightMax;
-				ComputeBounds(triangles, leftIndices, leftMin, leftMax);
-				ComputeBounds(triangles, rightIndices, rightMin, rightMax);
+			// Build prefix bounds (left side accumulation)
+			std::vector<glm::vec3> prefixMin(n);
+			std::vector<glm::vec3> prefixMax(n);
+
+			glm::vec3 accMin = glm::vec3(std::numeric_limits<float>::max());
+			glm::vec3 accMax = glm::vec3(std::numeric_limits<float>::lowest());
+
+			for (size_t i = 0; i < n; ++i) {
+				const RT::Triangle& tri = triangles[sortedIndices[i]];
+				accMin = glm::min(accMin, tri.aabbMin);
+				accMax = glm::max(accMax, tri.aabbMax);
+				prefixMin[i] = accMin;
+				prefixMax[i] = accMax;
+			}
+
+			// Build suffix bounds (right side accumulation)
+			std::vector<glm::vec3> suffixMin(n);
+			std::vector<glm::vec3> suffixMax(n);
+
+			accMin = glm::vec3(std::numeric_limits<float>::max());
+			accMax = glm::vec3(std::numeric_limits<float>::lowest());
+
+			for (int i = static_cast<int>(n) - 1; i >= 0; --i) {
+				const RT::Triangle& tri = triangles[sortedIndices[i]];
+				accMin = glm::min(accMin, tri.aabbMin);
+				accMax = glm::max(accMax, tri.aabbMax);
+				suffixMin[i] = accMin;
+				suffixMax[i] = accMax;
+			}
+
+			// Evaluate all splits in O(1) per split using precomputed bounds
+			for (size_t split = 1; split < n; ++split) {
+				glm::vec3 leftMin = prefixMin[split - 1];
+				glm::vec3 leftMax = prefixMax[split - 1];
+				glm::vec3 rightMin = suffixMin[split];
+				glm::vec3 rightMax = suffixMax[split];
 
 				float leftArea = SurfaceArea(leftMin, leftMax);
 				float rightArea = SurfaceArea(rightMin, rightMax);
 
-				float cost = 0.125f + (leftIndices.size() * leftArea +
-					rightIndices.size() * rightArea) / parentArea;
+				float cost = 0.125f + (split * leftArea + (n - split) * rightArea) / parentArea;
 
 				if (cost < bestCost) {
 					bestCost = cost;
@@ -256,8 +309,7 @@ BVHBuilder::PartitionResult BVHBuilder::PartitionSAH(
 		return result;
 	}
 
-	// Perform best split
-	std::vector<int> sortedIndices = indices;
+	// Perform best split using already-sorted indices for best axis
 	std::sort(sortedIndices.begin(), sortedIndices.end(),
 		[&](int a, int b) {
 			return triangles[a].center[bestAxis] < triangles[b].center[bestAxis];
@@ -270,6 +322,7 @@ BVHBuilder::PartitionResult BVHBuilder::PartitionSAH(
 		float extent = axisMax - axisMin;
 		float splitPos = axisMin + (extent * bestSplit) / sahBuckets;
 
+		// Partition using split position
 		auto it = std::partition(sortedIndices.begin(), sortedIndices.end(),
 			[&](int idx) {
 				return triangles[idx].center[bestAxis] < splitPos;
@@ -279,14 +332,12 @@ BVHBuilder::PartitionResult BVHBuilder::PartitionSAH(
 		result.rightIndices.assign(it, sortedIndices.end());
 	}
 	else {
-		// Direct split
-		result.leftIndices.assign(sortedIndices.begin(),
-			sortedIndices.begin() + bestSplit);
-		result.rightIndices.assign(sortedIndices.begin() + bestSplit,
-			sortedIndices.end());
+		// Direct split using precomputed split index
+		result.leftIndices.assign(sortedIndices.begin(), sortedIndices.begin() + bestSplit);
+		result.rightIndices.assign(sortedIndices.begin() + bestSplit, sortedIndices.end());
 	}
 
-	// Compute bounds for children
+	// Compute final bounds for children (only once, after split is determined)
 	ComputeBounds(triangles, result.leftIndices, result.leftMin, result.leftMax);
 	ComputeBounds(triangles, result.rightIndices, result.rightMin, result.rightMax);
 
@@ -443,6 +494,10 @@ std::vector<RT::Triangle> BVHBuilder::ExtractTriangles(
 
 		// Compute center (changed from centroid)
 		tri.center = (tri.v0 + tri.v1 + tri.v2) / 3.0f;
+
+		// Precompute AABB - compute once here instead of repeatedly during BVH build
+		tri.aabbMin = glm::min(glm::min(tri.v0, tri.v1), tri.v2);
+		tri.aabbMax = glm::max(glm::max(tri.v0, tri.v1), tri.v2);
 
 		// Assign material
 		tri.material = material;

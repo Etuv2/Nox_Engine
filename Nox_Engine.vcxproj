@@ -170,6 +170,9 @@
     <None Include="shaders\ssgi_raymarch_comp.glsl" />
     <None Include="shaders\ssgi_temporal_resolve_comp.glsl" />
     <None Include="shaders\ssgi_upsample2x_comp.glsl" />
+    <None Include="shaders\svgf_atrous_comp.glsl" />
+    <None Include="shaders\svgf_temporal_comp.glsl" />
+    <None Include="shaders\svgf_variance_comp.glsl" />
     <None Include="shaders\taa_resolve.glsl" />
     <None Include="shaders\velocity_frag.glsl" />
     <None Include="shaders\velocity_vert.glsl" />

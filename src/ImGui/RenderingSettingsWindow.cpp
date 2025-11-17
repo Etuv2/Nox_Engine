@@ -85,10 +85,16 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_rtDenoise = false;
 	m_rtEnableNEE = true;
 	m_rtEnableMIS = true;
-	m_rtEnableReSTIR = false;
-	m_rtReSTIR_M = 8;
-	m_rtReSTIR_TemporalM = 20;
-	m_rtReSTIR_SpatialRadius = 4;
+	
+	// SVGF Denoising settings
+	m_svgfTemporalAlpha = 0.15f;
+	m_svgfVarianceClipGamma = 1.5f;
+	m_svgfDepthThreshold = 0.05f;
+	m_svgfNormalThreshold = 0.9f;
+	m_svgfAtrousIterations = 4;
+	m_svgfPhiColor = 5.0f;
+	m_svgfPhiNormal = 32.0f;
+	m_svgfPhiDepth = 0.01f;
 	
 	// BVH Debug Visualization
 	m_rtDisplayBVH = false;
@@ -192,10 +198,16 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_rtDenoise = ctx.rtDenoise;
 	m_rtEnableNEE = ctx.rtEnableNEE;
 	m_rtEnableMIS = ctx.rtEnableMIS;
-	m_rtEnableReSTIR = ctx.rtEnableReSTIR;
-	m_rtReSTIR_M = ctx.rtReSTIR_M;
-	m_rtReSTIR_TemporalM = ctx.rtReSTIR_TemporalM;
-	m_rtReSTIR_SpatialRadius = ctx.rtReSTIR_SpatialRadius;
+	
+	// SVGF Denoising settings
+	m_svgfTemporalAlpha = ctx.svgfTemporalAlpha;
+	m_svgfVarianceClipGamma = ctx.svgfVarianceClipGamma;
+	m_svgfDepthThreshold = ctx.svgfDepthThreshold;
+	m_svgfNormalThreshold = ctx.svgfNormalThreshold;
+	m_svgfAtrousIterations = ctx.svgfAtrousIterations;
+	m_svgfPhiColor = ctx.svgfPhiColor;
+	m_svgfPhiNormal = ctx.svgfPhiNormal;
+	m_svgfPhiDepth = ctx.svgfPhiDepth;
 	
 	// BVH Debug Visualization
 	m_rtDisplayBVH = ctx.rtDisplayBVH;
@@ -299,20 +311,19 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.rtDenoise = m_rtDenoise;
 	ctx.rtEnableNEE = m_rtEnableNEE;
 	ctx.rtEnableMIS = m_rtEnableMIS;
-	ctx.rtEnableReSTIR = m_rtEnableReSTIR;
-	ctx.rtReSTIR_M = m_rtReSTIR_M;
-	ctx.rtReSTIR_TemporalM = m_rtReSTIR_TemporalM;
-	ctx.rtReSTIR_SpatialRadius = m_rtReSTIR_SpatialRadius;
+	
+	// SVGF Denoising settings
+	ctx.svgfTemporalAlpha = m_svgfTemporalAlpha;
+	ctx.svgfVarianceClipGamma = m_svgfVarianceClipGamma;
+	ctx.svgfDepthThreshold = m_svgfDepthThreshold;
+	ctx.svgfNormalThreshold = m_svgfNormalThreshold;
+	ctx.svgfAtrousIterations = m_svgfAtrousIterations;
+	ctx.svgfPhiColor = m_svgfPhiColor;
+	ctx.svgfPhiNormal = m_svgfPhiNormal;
+	ctx.svgfPhiDepth = m_svgfPhiDepth;
 	
 	// BVH Debug Visualization
 	ctx.rtDisplayBVH = m_rtDisplayBVH;
-	ctx.rtDisplayMultipleBVHLayers = m_rtDisplayMultipleBVHLayers;
-	ctx.rtBVHLayerToDisplay = m_rtBVHLayerToDisplay;
-	ctx.rtHeatmapColorLimit = m_rtHeatmapColorLimit;
-	
-	// IBL Environment
-	ctx.rtEnableIBL = m_rtEnableIBL;
-	ctx.rtIBLIntensity = m_rtIBLIntensity;
 
 	// Debug visualization settings
 	ctx.debugMode = static_cast<RenderContext::DebugMode>(m_debugMode);
@@ -590,7 +601,7 @@ void RenderingSettingsWindow::Render() {
 			if (m_enableLPV) {
 				ImGui::Separator();
 				ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Quality Settings:");
-
+				
 				if (ImGui::SliderFloat("GI Strength", &m_lpvGIStrength, 0.0f, 3.0f, "%.2f")) {
 					SyncToRenderer();
 				}
@@ -895,47 +906,65 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			ImGui::Separator();
-			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "ReSTIR Denoising (Experimental):");
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "SVGF Denoising:");
 
-			if (ImGui::Checkbox("Enable ReSTIR", &m_rtEnableReSTIR)) {
+			if (ImGui::Checkbox("Enable Denoising", &m_rtDenoise)) {
 				SyncToRenderer();
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("?##rt_restir")) {}
+			if (ImGui::Button("?##rt_denoise")) {}
 			if (ImGui::IsItemHovered()) {
 				ImGui::SetTooltip(
-					"Spatiotemporal reservoir resampling\n"
-					"Experimental denoising technique\n"
-					"May introduce bias but reduces noise significantly"
+					"Spatiotemporal Variance-Guided Filtering\n"
+					"Edge-aware temporal and spatial denoising\n"
+					"Dramatically reduces noise at low sample counts"
 				);
 			}
 
-			if (m_rtEnableReSTIR) {
-				if (ImGui::SliderInt("Initial Candidates (M)", &m_rtReSTIR_M, 1, 32)) {
+			if (m_rtDenoise) {
+				if (ImGui::SliderFloat("Temporal Alpha", &m_svgfTemporalAlpha, 0.05f, 0.3f, "%.2f")) {
 					SyncToRenderer();
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("?##restir_m")) {}
+				if (ImGui::Button("?##svgf_temporal")) {}
 				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip("Number of initial light samples per pixel\nMore = better quality but slower");
+					ImGui::SetTooltip("Blend factor for temporal reprojection\nLower = more stable, Higher = less ghosting");
 				}
 
-				if (ImGui::SliderInt("Temporal Samples", &m_rtReSTIR_TemporalM, 0, 50)) {
+				if (ImGui::SliderInt("Filter Iterations", &m_svgfAtrousIterations, 1, 6)) {
 					SyncToRenderer();
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("?##restir_temporal")) {}
+				if (ImGui::Button("?##svgf_iterations")) {}
 				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip("Number of samples reused from previous frame\nMore = smoother but may introduce ghosting");
+					ImGui::SetTooltip("Number of à-trous filter passes\nMore = smoother but may over-blur");
 				}
 
-				if (ImGui::SliderInt("Spatial Radius", &m_rtReSTIR_SpatialRadius, 0, 16)) {
+				if (ImGui::SliderFloat("Color Sensitivity", &m_svgfPhiColor, 1.0f, 20.0f, "%.1f")) {
 					SyncToRenderer();
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("?##restir_spatial")) {}
+				if (ImGui::Button("?##svgf_color")) {}
 				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip("Spatial reuse radius (not yet implemented)\nWill blur noise across nearby pixels");
+					ImGui::SetTooltip("Color edge preservation\nLower = sharper edges, Higher = more smoothing");
+				}
+
+				if (ImGui::SliderFloat("Normal Sensitivity", &m_svgfPhiNormal, 8.0f, 128.0f, "%.1f")) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##svgf_normal")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip("Normal edge preservation\nHigher = sharper geometric edges");
+				}
+
+				if (ImGui::SliderFloat("Depth Sensitivity", &m_svgfPhiDepth, 0.001f, 0.1f, "%.3f")) {
+					SyncToRenderer();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("?##svgf_depth")) {}
+				if (ImGui::IsItemHovered()) {
+					ImGui::SetTooltip("Depth edge preservation\nLower = sharper depth discontinuities");
 				}
 			}
 
@@ -1304,21 +1333,17 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_rtDenoise = false;
 	m_rtEnableNEE = true;
 	m_rtEnableMIS = true;
-	m_rtEnableReSTIR = false;
-	m_rtReSTIR_M = 8;
-	m_rtReSTIR_TemporalM = 20;
-	m_rtReSTIR_SpatialRadius = 4;
 	
-	// BVH Debug Visualization
-	m_rtDisplayBVH = false;
-	m_rtDisplayMultipleBVHLayers = false;
-	m_rtBVHLayerToDisplay = 0;
-	m_rtHeatmapColorLimit = 50;
+	// SVGF Denoising settings
+	m_svgfTemporalAlpha = 0.15f;
+	m_svgfVarianceClipGamma = 1.5f;
+	m_svgfDepthThreshold = 0.05f;
+	m_svgfNormalThreshold = 0.9f;
+	m_svgfAtrousIterations = 4;
+	m_svgfPhiColor = 5.0f;
+	m_svgfPhiNormal = 32.0f;
+	m_svgfPhiDepth = 0.01f;
 	
-	// IBL Environment
-	m_rtEnableIBL = true;
-	m_rtIBLIntensity = 1.0f;
-
 	// Debug
 	m_debugMode = 0;
 	m_wireframeMode = false;
