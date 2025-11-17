@@ -64,7 +64,7 @@ private:
 		size_t nodeCount = 0;
 	} m_bvhBuffers;
 
-	// NEW: Light data for ray tracing
+	//Light data for ray tracing
 	struct LightBuffers {
 		GLuint lightSSBO = 0;       // Light data SSBO (from LightManager)
 		size_t lightCount = 0;

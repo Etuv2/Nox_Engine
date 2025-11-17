@@ -162,7 +162,7 @@ uint g_seed;
 vec3 tracePath(Ray initialRay);
 vec3 sampleSky(vec3 direction);
 vec3 reconstructWorldPosition(vec2 uv, float depth);
-vec3 octDecode(vec2 oct);
+vec3 DecodeNormalOct8(vec2 oct);
 vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L);
 vec3 randomCosineDirection(vec3 normal);
 
@@ -236,15 +236,12 @@ vec3 randomGGXDirection(vec3 N, vec3 V, float roughness) {
 
 // Octahedral normal decoding (from G-buffer)
 
-vec3 octDecode(vec2 oct) {
-	vec3 n = vec3(oct.x, oct.y, 1.0 - abs(oct.x) - abs(oct.y));
-	if (n.z < 0.0) {
-		vec2 s = vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
-		n.xy = (1.0 - abs(n.yx)) * s;
-	}
+vec3 DecodeNormalOct8(vec2 e) {
+	vec3 n;
+	n.z = 1.0 - abs(e.x) - abs(e.y);
+	n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
 	return normalize(n);
 }
-
 
 // Position reconstruction from depth
 
@@ -775,7 +772,7 @@ void main() {
 	vec3 emissive = emissiveSpec.rgb;
 	float specLuminance = emissiveSpec.a;
 
-	vec3 normal = octDecode(octNormal);
+	vec3 normal = DecodeNormalOct8(octNormal);
 
 	Material gbufferMat;
 	gbufferMat.albedo = albedo;

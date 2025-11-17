@@ -43,14 +43,13 @@ const float kernel[3][3] = {
 };
 
 // Octahedron normal decoding
-vec3 octDecode(vec2 f) {
-    f = f * 2.0 - 1.0;
-    vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-    float t = max(-n.z, 0.0);
-    n.x += (n.x >= 0.0) ? -t : t;
-    n.y += (n.y >= 0.0) ? -t : t;
-    return normalize(n);
+vec3 DecodeNormalOct8(vec2 e) {
+	vec3 n;
+	n.z = 1.0 - abs(e.x) - abs(e.y);
+	n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
+	return normalize(n);
 }
+
 
 // Luminance calculation
 float luminance(vec3 color) {
@@ -69,7 +68,7 @@ void main() {
     vec3 centerColor = texelFetch(u_inputRadiance, pixelCoord, 0).rgb;
     float centerDepth = texelFetch(u_gbufferDepth, pixelCoord, 0).r;
     vec4 centerNormalRM = texelFetch(u_gbufferPackedNormalRM, pixelCoord, 0);
-    vec3 centerNormal = octDecode(centerNormalRM.rg);
+    vec3 centerNormal = DecodeNormalOct8(centerNormalRM.rg);
     float centerVariance = texelFetch(u_varianceTexture, pixelCoord, 0).r;
     
     // Sky pixels don't need filtering
@@ -106,7 +105,7 @@ for (int dx = -1; dx <= 1; dx++) {
             vec3 sampleColor = texelFetch(u_inputRadiance, sampleCoord, 0).rgb;
       float sampleDepth = texelFetch(u_gbufferDepth, sampleCoord, 0).r;
          vec4 sampleNormalRM = texelFetch(u_gbufferPackedNormalRM, sampleCoord, 0);
- vec3 sampleNormal = octDecode(sampleNormalRM.rg);
+ vec3 sampleNormal = DecodeNormalOct8(sampleNormalRM.rg);
         
     // Skip sky pixels
             if (sampleDepth >= 1.0 - EPSILON) {

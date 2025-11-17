@@ -139,6 +139,9 @@
     <Filter Include="Source Files\misc\shaders\global_illumination\ssgi">
       <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\misc\shaders\svgf">
+      <UniqueIdentifier>{21d375c6-8631-41c1-b1bc-5e249e71a0a5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\IMGUI\imgui.cpp">
@@ -597,9 +600,15 @@
     <None Include="shaders\ssgi_final_upsample_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
     </None>
-    <None Include="shaders\svgf_temporal_comp.glsl" />
-    <None Include="shaders\svgf_variance_comp.glsl" />
-    <None Include="shaders\svgf_atrous_comp.glsl" />
+    <None Include="shaders\svgf_atrous_comp.glsl">
+      <Filter>Source Files\misc\shaders\svgf</Filter>
+    </None>
+    <None Include="shaders\svgf_temporal_comp.glsl">
+      <Filter>Source Files\misc\shaders\svgf</Filter>
+    </None>
+    <None Include="shaders\svgf_variance_comp.glsl">
+      <Filter>Source Files\misc\shaders\svgf</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

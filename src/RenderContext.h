@@ -39,18 +39,18 @@ struct RenderContext {
 	// Matrices/state filled each frame
 	glm::mat4 view{ 1.0f };
 	glm::mat4 proj{ 1.0f };
-	
+
 	// Previous frame matrices for TAA
 	glm::mat4 prevView{ 1.0f };
 	glm::mat4 prevProj{ 1.0f };
-	
+
 	// Renderer mode toggle
 	enum class RendererMode {
 		DEFERRED_REALTIME = 0,     // Standard deferred rendering with real-time effects
 		PATH_TRACED = 1          // Path-traced mode using BVH for high-quality offline rendering
 	};
 	RendererMode rendererMode = RendererMode::DEFERRED_REALTIME;
-	
+
 	// Path tracing settings
 	bool enablePathTracing = false;
 	int rtSamplesPerPixel = 4;      // Samples per pixel per frame
@@ -59,27 +59,27 @@ struct RenderContext {
 	bool rtAccumulate = true;        // Enable temporal accumulation
 	bool rtDenoise = true;     // Enable SVGF denoising
 
-	// NEW: Advanced path tracing settings
+	//Advanced path tracing settings
 	bool rtEnableNEE = true;     // Next Event Estimation (direct lighting)
 	bool rtEnableMIS = true;  // Multiple Importance Sampling
-	
+
 	// SVGF Denoising settings
 	float svgfTemporalAlpha = 0.15f;   // Temporal blend factor (0.1-0.2)
 	float svgfVarianceClipGamma = 1.5f;   // Variance clipping gamma
 	float svgfDepthThreshold = 0.05f;     // Depth similarity threshold
 	float svgfNormalThreshold = 0.9f;     // Normal similarity threshold (cos angle)
-	int svgfAtrousIterations = 4;         // Number of à-trous filter iterations
+	int svgfAtrousIterations = 1;         // Number of à-trous filter iterations
 	float svgfPhiColor = 5.0f;    // Color weight parameter
 	float svgfPhiNormal = 32.0f;          // Normal weight parameter
 	float svgfPhiDepth = 0.01f;           // Depth weight parameter
-	
-	// NEW: BVH Debug Visualization
+
+	//BVH Debug Visualization
 	bool rtDisplayBVH = false;     // Enable BVH visualization mode
 	bool rtDisplayMultipleBVHLayers = false;  // Show multiple BVH layers
 	int rtBVHLayerToDisplay = 0;     // Which BVH layer to show
 	int rtHeatmapColorLimit = 50;   // Max value for heatmap color scale
-	
-	// NEW: IBL Environment settings
+
+	//IBL Environment settings
 	bool rtEnableIBL = true;         // Enable IBL environment sampling
 	float rtIBLIntensity = 1.0f;  // IBL intensity multiplier
 
@@ -160,7 +160,7 @@ struct RenderContext {
 	float tm7_peakNits = 1000.0f;   // display peak luminance
 	float tm7_blend = 0.6f;
 	float tm7_fadeStart = 0.98f;
-	float tm7_fadeEnd   = 1.16f;
+	float tm7_fadeEnd = 1.16f;
 	bool  tm7_useJzazbz = false;    // switch UCS
 	bool outputSRGB = true;
 
@@ -191,8 +191,7 @@ struct RenderContext {
 	float lpvDebugBoost = 1.0f;         //Temporary boost for debugging (default 1.0x, set to 5.0x for testing)
 
 	// RTX / Path Tracing settings (consolidated)
-	bool enableRTX = false;  // Legacy - kept for backwards compatibility
-	
+
 	// Debug visualization settings
 	enum class DebugMode {
 		NONE = 0,
