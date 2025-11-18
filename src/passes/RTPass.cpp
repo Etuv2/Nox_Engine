@@ -212,15 +212,22 @@ void RTPass::Execute(RenderContext& ctx,
 		return;
 	}
 
-	//  Only rebuild BVH when transforms actually change
-	// Check if scene geometry has been modified
-	if (sceneGraph->IsBVHDirty()) {
+	// Detect BVH debug mode toggle and reset accumulation
+	if (m_prevBVHDebugState != ctx.rtDisplayBVH) {
+		std::cout << "[RTPass] BVH debug mode " << (ctx.rtDisplayBVH ? "ENABLED" : "DISABLED") 
+		          << " - resetting accumulation" << std::endl;
+		resetAccumulation();
+		m_prevBVHDebugState = ctx.rtDisplayBVH;
+	}
+
+	// Only rebuild BVH when transforms change AND not in debug visualization mode
+	if (sceneGraph->IsBVHDirty() && !ctx.rtDisplayBVH) {
 		std::cout << "[RTPass] BVH dirty - rebuilding with updated transforms..." << std::endl;
 		m_bvhDirty = true;
 	}
 
-	// Build BVH if dirty
-	if (m_bvhDirty) {
+	// Build BVH if dirty (skip if in debug mode)
+	if (m_bvhDirty && !ctx.rtDisplayBVH) {
 		runWarmup(sceneGraph);
 		// Clear dirty flag after successful rebuild
 		sceneGraph->ClearBVHDirty();

@@ -50,16 +50,19 @@ private:
 	// Resolution
 	int m_w = 0, m_h = 0;        // Full resolution (G-buffer resolution)
 	int m_hw = 0, m_hh = 0;    // Working resolution (half or full based on ssgiHalfRes)
-	int m_qw = 0, m_qh = 0;      // Quarter resolution (for efficient denoising)
+	int m_qw = 0, m_qh = 0;    // Quarter resolution (for efficient denoising)
 	float m_renderResolutionScale = 1.0f; // Scale factor for render resolution
 
 	//flag to indicate if BVH needs to be rebuilt
 	bool m_bvhDirty = true;
 	
+	// Track previous BVH debug state to detect toggles
+	bool m_prevBVHDebugState = false;
+	
 	// BVH acceleration structure
 	struct BVHBuffers {
 		GLuint triangleSSBO = 0;  // Triangle data SSBO
-		GLuint bvhSSBO = 0;       // BVH node data SSBO
+		GLuint bvhSSBO = 0;     // BVH node data SSBO
 		size_t triangleCount = 0;
 		size_t nodeCount = 0;
 	} m_bvhBuffers;

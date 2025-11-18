@@ -324,6 +324,13 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	
 	// BVH Debug Visualization
 	ctx.rtDisplayBVH = m_rtDisplayBVH;
+	ctx.rtDisplayMultipleBVHLayers = m_rtDisplayMultipleBVHLayers;
+	ctx.rtBVHLayerToDisplay = m_rtBVHLayerToDisplay;
+	ctx.rtHeatmapColorLimit = m_rtHeatmapColorLimit;
+	
+	// IBL Environment
+	ctx.rtEnableIBL = m_rtEnableIBL;
+	ctx.rtIBLIntensity = m_rtIBLIntensity;
 
 	// Debug visualization settings
 	ctx.debugMode = static_cast<RenderContext::DebugMode>(m_debugMode);
