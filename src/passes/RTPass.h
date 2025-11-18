@@ -79,6 +79,7 @@ private:
 
 	// SVGF intermediate textures
 	TexturePtr m_prevRadianceTexture;    // Previous frame radiance for temporal reprojection
+	TexturePtr m_prevDepthTexture;     // Previous frame depth for reprojection validation
 	TexturePtr m_momentsTexture;     // Mean and variance (RG32F)
 	TexturePtr m_historyLengthTexture; // History length per pixel (R16F)
 	TexturePtr m_denoisedTexture;          // Final denoised output

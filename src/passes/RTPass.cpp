@@ -90,6 +90,12 @@ bool RTPass::Initialize(RenderContext& context)
 		.WrapMode(GL_CLAMP_TO_EDGE)
 		.Build();
 
+	m_prevDepthTexture = Texture::Builder::Texture2D(context.width, context.height, GL_R32F)
+		.Format(GL_RED).DataType(GL_FLOAT)
+		.FilterMode(GL_NEAREST, GL_NEAREST)
+		.WrapMode(GL_CLAMP_TO_EDGE)
+		.Build();
+
 	m_momentsTexture = Texture::Builder::Texture2D(context.width, context.height, GL_RG32F)
 		.Format(GL_RG).DataType(GL_FLOAT)
 		.FilterMode(GL_LINEAR, GL_LINEAR)
@@ -174,6 +180,7 @@ void RTPass::Resize(RenderContext& context, int newWidth, int newHeight)
 
 	// Resize SVGF textures
 	m_prevRadianceTexture->Resize(newWidth, newHeight);
+	m_prevDepthTexture->Resize(newWidth, newHeight);
 	m_momentsTexture->Resize(newWidth, newHeight);
 	m_historyLengthTexture->Resize(newWidth, newHeight);
 	m_denoisedTexture->Resize(newWidth, newHeight);
@@ -473,14 +480,16 @@ void RTPass::runSVGFTemporal(RenderContext& ctx, const std::shared_ptr<Camera>& 
 	glActiveTexture(GL_TEXTURE3);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
 
-	// Previous frame depth (use current for now, will be improved with proper history)
+	// Previous frame depth (now using proper history buffer)
 	glActiveTexture(GL_TEXTURE4);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+	glBindTexture(GL_TEXTURE_2D, m_prevDepthTexture->ID());
 
 	// Bind output images
 	m_svgfTemporalShader->BindTextureWrite(m_denoisedTexture->ID(), 5, 0, GL_RGBA16F);
-	m_svgfTemporalShader->BindTextureWrite(m_momentsTexture->ID(), 6, 0, GL_RG32F);
-	m_svgfTemporalShader->BindTextureWrite(m_historyLengthTexture->ID(), 7, 0, GL_R16F);
+	
+	// Bind moments and history as READ/WRITE (they persist across frames)
+	glBindImageTexture(6, m_momentsTexture->ID(), 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG32F);
+	glBindImageTexture(7, m_historyLengthTexture->ID(), 0, GL_FALSE, 0, GL_READ_WRITE, GL_R16F);
 
 	// Set uniforms
 	m_svgfTemporalShader->SetUniform("u_resolution", glm::vec2(m_w, m_h));
@@ -500,13 +509,20 @@ void RTPass::runSVGFTemporal(RenderContext& ctx, const std::shared_ptr<Camera>& 
 	int groupsY = (m_h + 7) / 8;
 	m_svgfTemporalShader->Dispatch(groupsX, groupsY, 1);
 
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 	glUseProgram(0);
 
 	// Copy current radiance to prev radiance for next frame
 	glCopyImageSubData(
 		m_rtTexture->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
 		m_prevRadianceTexture->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_w, m_h, 1
+	);
+	
+	// Copy current depth to prev depth for next frame
+	glCopyImageSubData(
+		ctx.gbufferFBO->GetDepthTexture(), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_prevDepthTexture->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
 		m_w, m_h, 1
 	);
 }

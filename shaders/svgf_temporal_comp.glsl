@@ -52,13 +52,13 @@ uniform float u_normalThreshold;         // Normal similarity threshold (cos ang
 #define PI 3.1415926535897932384626433832795
 #define EPSILON 1e-4
 
-// Octahedron normal decoding
-vec3 octDecode(vec2 f) {
-    f = f * 2.0 - 1.0;
-    vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-    float t = max(-n.z, 0.0);
-    n.x += (n.x >= 0.0) ? -t : t;
-  n.y += (n.y >= 0.0) ? -t : t;
+// Octahedron normal decoding (matches G-buffer encoding)
+vec3 DecodeNormalOct8(vec2 e) {
+    // Input is in [0,1], convert to [-1,1]
+    e = e * 2.0 - 1.0;
+    vec3 n;
+    n.z = 1.0 - abs(e.x) - abs(e.y);
+    n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
     return normalize(n);
 }
 
@@ -85,19 +85,19 @@ void main() {
     }
     
     // Sample current frame data
-  vec3 currentRadiance = texelFetch(u_currentRadiance, pixelCoord, 0).rgb;
- float depth = texelFetch(u_gbufferDepth, pixelCoord, 0).r;
+    vec3 currentRadiance = texelFetch(u_currentRadiance, pixelCoord, 0).rgb;
+    float depth = texelFetch(u_gbufferDepth, pixelCoord, 0).r;
     vec4 normalRM = texelFetch(u_gbufferPackedNormalRM, pixelCoord, 0);
-    vec3 normal = octDecode(normalRM.rg);
+    vec3 normal = DecodeNormalOct8(normalRM.rg);
     
     // Check for sky/background pixels
     if (depth >= 1.0 - EPSILON) {
         // Sky pixel - no temporal filtering
         imageStore(u_outputRadiance, pixelCoord, vec4(currentRadiance, 1.0));
-      imageStore(u_momentsImage, pixelCoord, vec4(0.0, 0.0, 0.0, 0.0));
-        imageStore(u_historyLengthImage, pixelCoord, vec4(0.0));
-  return;
-  }
+        imageStore(u_momentsImage, pixelCoord, vec4(0.0, 0.0, 0.0, 0.0));
+        imageStore(u_historyLengthImage, pixelCoord, vec4(0.0, 0.0, 0.0, 0.0));
+        return;
+    }
     
     // Reconstruct world position for reprojection
     vec3 worldPos = reconstructWorldPosition(uv, depth);
