@@ -112,7 +112,9 @@ struct Triangle {
 	vec3 n1; float pad4;
 	vec3 n2; float pad5;
 	vec3 center; float pad6;
-	Material material;
+	vec3 aabbMin; float pad7;  // Precomputed AABB min bounds (offset 112)
+	vec3 aabbMax; float pad8;  // Precomputed AABB max bounds (offset 128)
+	Material material;         // Material starts at offset 144
 };
 
 struct BVHNode {
