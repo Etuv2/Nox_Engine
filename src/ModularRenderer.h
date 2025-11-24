@@ -25,8 +25,8 @@ class TransparentForwardPass;
 class PostProcessPass;
 class LPVPass;
 class SSGIPass;
-class GUIPass;  // NEW: Internal GUI rendering pass
-class RTPass;   // NEW: Path tracing pass
+class GUIPass;
+class RTPass;
 
 /**
  * ModularRenderer coordinates all rendering passes using a shared RenderContext.
