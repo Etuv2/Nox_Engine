@@ -10,7 +10,7 @@
   "scene_folder": "scenes",
   "physics": {
     "gravity": [ 0.0, -9.81, 0.0 ],
-    "integration_method": "euler",
+    "integration_method": "verlet",
     "integration_step": 0.016667,
     "maxIterations": 7,
     "restitution": 0.7
@@ -55,7 +55,7 @@
 
   ],
   "text_font": "fonts\\arial.ttf",
-  "vsync": false,
+  "vsync": true,
   "camera": {
     "position": [ -1.0, 1.0, -1.0 ],
     "up": [ 0.0, 1.0, 0.0 ],

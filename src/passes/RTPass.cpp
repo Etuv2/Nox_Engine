@@ -21,9 +21,6 @@ RTPass::~RTPass()
 	if (m_rtFBO_ID) {
 		glDeleteFramebuffers(1, &m_rtFBO_ID);
 	}
-	// Removed deletion of m_lightBuffers.lightSSBO (managed by LightManager)
-	
-	// Clean up SVGF buffers
 	if (m_svgfBuffers.momentsSSBO) {
 		glDeleteBuffers(1, &m_svgfBuffers.momentsSSBO);
 	}
@@ -144,7 +141,6 @@ bool RTPass::Initialize(RenderContext& context)
 	glBufferData(GL_SHADER_STORAGE_BUFFER, emptyHistoryData.size(), emptyHistoryData.data(), GL_DYNAMIC_COPY);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-	// Removed generation of separate light SSBO; will use LightManager's SSBO directly
 
 	// Removed ReSTIR reservoir buffers
 

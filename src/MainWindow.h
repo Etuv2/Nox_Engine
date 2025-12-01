@@ -120,6 +120,15 @@ private:
     std::unique_ptr<BVH::SceneNodeBVH> m_sceneBVH;
     bool m_bvhDirty = true;
 
+    // ImGui data caching flags to avoid redundant per-frame updates
+    std::shared_ptr<Camera> m_cachedImGuiCamera;
+    std::shared_ptr<SceneGraph> m_cachedImGuiSceneGraph;
+    std::shared_ptr<DirectionalLight> m_cachedImGuiLighting;
+
+    // Cached simulation configuration for scene swaps
+    SimulationConfig m_simulationConfig;
+    bool m_simulationConfigLoaded = false;
+
     // Core functions
     void ProcessEvents();
     void Update(float deltaTime);
@@ -132,6 +141,11 @@ private:
     // Enhanced Mouse Picking with BVH acceleration
     void HandleMouseClick(int mouseX, int mouseY);
     std::shared_ptr<SceneNode> PerformRayQuery(const RayCast::Ray& ray);
+
+    // Scene swap management
+    void SwapScene(const std::string& newSceneFile);
+    void CleanupCurrentScene();
+    void ResetOpenGLState();
     
     // Legacy compatibility functions (kept for backward compatibility)
     glm::vec3 ScreenToWorldRay(int mouseX, int mouseY);

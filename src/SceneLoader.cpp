@@ -493,13 +493,9 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
         };
         rb->setVelocity(initVel);
 
-        // Use gravity from SimulationConfig if enabled
-        if (useGravity) {
-            rb->setAcceleration(m_physicsEngine->GetConfig().gravity);
-        }
-        else {
-            rb->setAcceleration(glm::vec3(0.0f));
-        }
+        // Gravity will be applied per-frame by PhysicsEngine
+        // Initialize acceleration to zero (gravity applied in step())
+          rb->setAcceleration(glm::vec3(0.0f));
 
         rb->computeInertiaTensor();
         node->AttachRigidBody(rb);
@@ -561,12 +557,9 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
         };
         rb->setVelocity(initVel);
 
-        if (useGravity) {
-            rb->setAcceleration(m_physicsEngine->GetConfig().gravity);
-        }
-        else {
-            rb->setAcceleration(glm::vec3(0.0f));
-        }
+        // Gravity will be applied per-frame by PhysicsEngine
+        // Initialize acceleration to zero (gravity applied in step())
+          rb->setAcceleration(glm::vec3(0.0f));
 
         rb->computeInertiaTensor();
         node->AttachRigidBody(rb);

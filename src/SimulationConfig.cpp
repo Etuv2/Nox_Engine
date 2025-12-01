@@ -57,5 +57,10 @@ bool SimulationConfig::loadConfig(const std::string& configJsonFile)
         std::cout << "[Config] Max iterations: " << maxIterations << "\n";
     }
 
+    // Validate loaded configuration
+    validate();
+    
+    std::cout << "[Config] Physics configuration loaded and validated successfully.\n";
+    
     return true;
 }
