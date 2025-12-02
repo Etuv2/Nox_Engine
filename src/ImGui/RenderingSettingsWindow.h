@@ -38,6 +38,9 @@ public:
 	glm::vec3 GetEnvColor() const { return m_envColor; }
 
 private:
+	// Engine resolution
+	glm::ivec2 m_windowResolution = glm::ivec2(1920, 1080);
+	int m_resolutionPreset = 0;// 0=1920x1080,1=3840x1440
 	// Post-processing settings
 	float m_exposure = 1.0f;
 	float m_gamma = 2.2f;
