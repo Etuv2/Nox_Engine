@@ -287,12 +287,8 @@ void LightNode::Draw(const glm::mat4& parentTransform, const glm::mat4& view,
         DrawDebugVisualization(view, projection);
     }
     
-    // Draw children (if any) - simplified approach
-    for (auto& child : children) {
-        if (child) {
-            child->Draw(m_lastWorldTransform, view, projection, defaultShaderProgram);
-        }
-    }
+    // Note: Child rendering is now handled by RenderSystem
+    // LightNode children with models will be rendered via the ECS pipeline
 }
 
 void LightNode::DrawDebugVisualization(const glm::mat4& view, const glm::mat4& projection) 

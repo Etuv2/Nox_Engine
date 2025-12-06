@@ -8,7 +8,10 @@
 #include "SpotLight.h"
 #include "ModelManager.h"
 #include "ShaderLoader.h"
-#include "Scene.h" 
+#include "Scene.h"
+#include "HierarchySystem.h"
+#include "AnimationSystem.h"
+#include "RenderSystem.h"
 #include <fstream>
 #include <iostream>
 #include <glm/glm.hpp>
@@ -29,10 +32,20 @@ SceneLoader::~SceneLoader() {
 
 std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFilePath) {
     auto sceneGraph = std::make_shared<SceneGraph>();
+    
+    // CRITICAL: Set the current scene graph BEFORE processing nodes
+    // This is required for CreateECSEntity to work properly
+    m_currentSceneGraph = sceneGraph.get();
+    
+    // Report loading started
+    GuiEventBus::GetInstance().PublishLoadingStarted();
+    GuiEventBus::GetInstance().PublishProgress(0.0f, "Assets");
 
     std::ifstream sceneFile(sceneFilePath);
     if (!sceneFile.is_open()) {
         std::cerr << "Failed to open scene file: " << sceneFilePath << std::endl;
+        GuiEventBus::GetInstance().PublishError("Failed to open scene file: " + sceneFilePath);
+        m_currentSceneGraph = nullptr;
         return sceneGraph;
     }
 
@@ -49,15 +62,30 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 
     // Look for a hierarchical "nodes" array.
     if (sceneJson.contains("nodes") && sceneJson["nodes"].is_array()) {
-        for (auto& nodeEntry : sceneJson["nodes"]) {
-            auto node = ProcessNodeRecursive(nodeEntry);
-            if (node)
-                sceneGraph->GetRoot()->AddChild(node);
+        // Get root entity ID for hierarchy
+        EntityID rootEntityID = INVALID_ENTITY;
+        auto root = sceneGraph->GetRoot();
+        if (root) {
+            // Create ECS entity for root if needed
+            if (root->GetEntityID() == INVALID_ENTITY) {
+                root->CreateECSEntity("Root");
+            }
+            rootEntityID = root->GetEntityID();
         }
+        
+        for (auto& nodeEntry : sceneJson["nodes"]) {
+            auto node = ProcessNodeRecursive(nodeEntry, rootEntityID);
+            if (node) {
+                sceneGraph->GetRoot()->AddChild(node);
+            }
+        }
+        
+        std::cout << "[SceneLoader] Loaded " << sceneJson["nodes"].size() << " root nodes with ECS entities" << std::endl;
     }
     else {
         std::cerr << "Invalid scene file format. 'nodes' array is missing." << std::endl;
     }
+
     // Initialize the skybox if provided.
     if (sceneJson.contains("skybox")) {
         std::string hdrPath = sceneJson.value("skybox", "hdrs//skybox.hdr");
@@ -82,7 +110,13 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
     bool physicsEnabled = sceneJson.value("physics_enabled", true);
     sceneGraph->SetPhysicsEnabled(physicsEnabled);
 
-    // return the skybox
+    // Clear the scene graph reference
+    m_currentSceneGraph = nullptr;
+    
+    // Log ECS statistics
+    std::cout << "[SceneLoader] Scene loaded successfully. ECS entities created: " 
+              << sceneGraph->GetComponentManager()->GetTransformPool().Size() << std::endl;
+
     return sceneGraph;
 }
 
@@ -621,14 +655,21 @@ void SceneLoader::ProcessGuiElementProperties(std::shared_ptr<GuiNode> guiNode, 
     }
 }
 
-std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJson) {
+std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJson, EntityID parentEntityID) {
     auto node = ProcessNode(nodeJson);
-    // If the node has children, process them recursively.
+    if (!node) return nullptr;
+    
+    // Create ECS entity for this node
+    CreateECSEntity(node, parentEntityID);
+    
+    // If the node has children, process them recursively with this node as parent
     if (nodeJson.contains("children") && nodeJson["children"].is_array()) {
+        EntityID myEntityID = node->GetEntityID();
         for (auto& childJson : nodeJson["children"]) {
-            auto childNode = ProcessNodeRecursive(childJson);
-            if (childNode)
+            auto childNode = ProcessNodeRecursive(childJson, myEntityID);
+            if (childNode) {
                 node->AddChild(childNode);
+            }
         }
     }
     return node;
@@ -674,11 +715,14 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
         rot = glm::vec3(nodeJson["rotation"][0], nodeJson["rotation"][1], nodeJson["rotation"][2]);
     if (nodeJson.contains("scale") && nodeJson["scale"].is_array() && nodeJson["scale"].size() == 3)
         scl = glm::vec3(nodeJson["scale"][0], nodeJson["scale"][1], nodeJson["scale"][2]);
-    node->SetRotation(glm::vec3(1, 0, 0), glm::radians(rot.x));
-    node->SetRotation(glm::vec3(0, 1, 0), glm::radians(rot.y));
-    node->SetRotation(glm::vec3(0, 0, 1), glm::radians(rot.z));
-    node->SetScale(scl);
-    node->SetPosition(pos);
+    
+    // FIXED: Apply rotation correctly using combined Euler angles -> quaternion conversion
+    // Previous code called SetRotation three times, but each call replaced the rotation instead of accumulating
+    glm::vec3 radians = glm::radians(rot);
+    glm::quat rotationQuat = glm::quat(radians); // glm::quat from Euler angles (pitch, yaw, roll)
+    
+    // Apply transform using SetLocalTRS which correctly combines translation, rotation, scale
+    node->SetLocalTRS(pos, rotationQuat, scl);
 
     // Set node name if provided
     if (nodeJson.contains("name")) {
@@ -978,4 +1022,138 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 
 
     return node;
+}
+
+// ============== ECS ENTITY AND COMPONENT CREATION ==============
+
+void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID parentID) {
+    if (!node || !m_currentSceneGraph) return;
+    
+    ComponentManager* componentManager = m_currentSceneGraph->GetComponentManager();
+    if (!componentManager) return;
+    
+    // Skip if entity already exists
+    if (node->GetEntityID() != INVALID_ENTITY) {
+        // Just update parent relationship
+        TransformComponent* transform = node->GetTransformComponent();
+        if (transform && parentID != INVALID_ENTITY) {
+            transform->parentID = parentID;
+        }
+        return;
+    }
+    
+    // Determine ECS node type
+    ::NodeType ecsType = ::NodeType::NODE;
+    switch (node->GetNodeType()) {
+        case SceneNode::NODE:       ecsType = ::NodeType::NODE; break;
+        case SceneNode::MODEL:      ecsType = ::NodeType::MODEL; break;
+        case SceneNode::LIGHT:      ecsType = ::NodeType::LIGHT; break;
+        case SceneNode::CAMERA:     ecsType = ::NodeType::CAMERA; break;
+        case SceneNode::AUDIO:      ecsType = ::NodeType::AUDIO; break;
+        case SceneNode::GUI:        ecsType = ::NodeType::GUI; break;
+        case SceneNode::LPV_VOLUME: ecsType = ::NodeType::LPV_VOLUME; break;
+    }
+    
+    // Create entity
+    std::string nodeName = node->GetName();
+    EntityID entityID = componentManager->CreateEntity(nodeName, ecsType);
+    node->SetEntityID(entityID);
+    
+    // Create TransformComponent
+    TransformComponent transformComp;
+    transformComp.localTransform = node->GetTransform();
+    transformComp.animatedTransform = node->GetAnimatedTransform();
+    transformComp.worldTransform = glm::mat4(1.0f);
+    transformComp.isDirty = true;
+    transformComp.parentID = parentID;
+    
+    componentManager->AddTransform(entityID, transformComp);
+    
+    // Create RenderableComponent if node has a model
+    if (node->GetModel()) {
+        CreateRenderableComponent(node, node->GetModel());
+    }
+    
+    // Create AnimationComponent if model has animations
+    if (node->GetModel() && !node->GetModel()->animations.empty()) {
+        CreateAnimationComponent(node, node->GetModel());
+    }
+    
+    std::cout << "[SceneLoader] Created ECS entity " << entityID << " for node: " << nodeName 
+              << " (parent=" << parentID << ")" << std::endl;
+}
+
+void SceneLoader::CreateRenderableComponent(std::shared_ptr<SceneNode> node, const std::shared_ptr<Scene>& model) {
+    if (!node || !model || !m_currentSceneGraph) return;
+    
+    ComponentManager* componentManager = m_currentSceneGraph->GetComponentManager();
+    EntityID entityID = node->GetEntityID();
+    if (!componentManager || entityID == INVALID_ENTITY) return;
+    
+    RenderableComponent renderComp;
+    renderComp.model = model;
+    renderComp.shaderID = node->GetShader();
+    renderComp.boundingRadius = node->boundingRadius;
+    renderComp.isSkinned = node->isSkinned;
+    renderComp.hasAlpha = false;  // Will be determined by mesh materials
+    renderComp.cullingOverride = static_cast<::CullingOverride>(static_cast<uint8_t>(node->GetCullingOverride()));
+    renderComp.boneNodes = node->boneNodes;
+    renderComp.boneInverseBindMatrices = node->boneInverseBindMatrices;
+    renderComp.nodeIndex = node->nodeIndex;
+    
+    componentManager->AddRenderable(entityID, renderComp);
+    
+    std::cout << "[SceneLoader] Created RenderableComponent for entity " << entityID 
+              << " with " << model->meshes.size() << " meshes" << std::endl;
+}
+
+void SceneLoader::CreateAnimationComponent(std::shared_ptr<SceneNode> node, const std::shared_ptr<Scene>& model) {
+    if (!node || !model || !m_currentSceneGraph) return;
+    
+    ComponentManager* componentManager = m_currentSceneGraph->GetComponentManager();
+    EntityID entityID = node->GetEntityID();
+    if (!componentManager || entityID == INVALID_ENTITY) return;
+    
+    // Only create if model has animations
+    if (model->animations.empty()) return;
+    
+    AnimationComponent animComp;
+    animComp.isPlaying = false;
+    animComp.isPaused = false;
+    animComp.animationTime = 0.0f;
+    animComp.currentAnimationIndex = -1;
+    // Controller will be created when animation is played
+    
+    componentManager->AddAnimation(entityID, animComp);
+    
+    std::cout << "[SceneLoader] Created AnimationComponent for entity " << entityID 
+              << " with " << model->animations.size() << " animations available" << std::endl;
+}
+
+void SceneLoader::ReportProgress(float progress, const std::string& stage) {
+    progress = std::min(std::max(progress, 0.0f), 1.0f);
+    
+    // Publish via event bus for GUI systems
+    GuiEventBus::GetInstance().PublishProgress(progress, stage);
+    
+    // Also call callback if registered
+    if (m_progressCallback) {
+        m_progressCallback(progress, stage);
+    }
+}
+
+void SceneLoader::ReportAssetLoadingProgress(float t, int current, int total) {
+    if (total <= 0) return;
+    
+    float assetProgress = (float)current / (float)total;
+    float overallProgress = assetProgress * 0.3f;  // Assets are first 30% of load
+    ReportProgress(overallProgress, "Loading Assets (" + std::to_string(current) + "/" + std::to_string(total) + ")");
+}
+
+void SceneLoader::ReportECSCreationProgress(float t, int current, int total) {
+    if (total <= 0) return;
+    
+    float ecsProgress = (float)current / (float)total;
+    float overallProgress = 0.3f + ecsProgress * 0.35f;  // ECS creation is 35% of load
+    ReportProgress(overallProgress, "Creating ECS Entities (" + std::to_string(current) + "/" + std::to_string(total) + ")");
 }

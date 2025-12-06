@@ -29,7 +29,7 @@ uniform float prefilteredMaxLOD;
 // IBL intensity controls to prevent over-bright results
 uniform float iblIntensity = 0.4;       // Overall IBL multiplier
 uniform float diffuseIBLScale = 0.5;    // Diffuse irradiance scale
-uniform float specularIBLScale = 0.6; // Specular prefiltered scale
+uniform float specularIBLScale = 0.6;   // Specular prefiltered scale
 
 // LPV Global Illumination
 uniform sampler3D lpvTextureR;
@@ -40,8 +40,8 @@ uniform float lpvVoxelSize;
 uniform int lpvGridResolution;
 uniform float lpvGIStrength = 1.0;
 uniform int enableLPV = 0;
-uniform int lpvDebugVisualization = 0; //Show only LPV contribution
-uniform float lpvDebugBoost = 1.0;     //Boost LPV for visibility testing
+uniform int lpvDebugVisualization = 0;
+uniform float lpvDebugBoost = 1.0;
 uniform vec4 lpvGridOrientation = vec4(0.0, 0.0, 0.0, 1.0); // Quaternion (x, y, z, w)
 
 // SSAO
@@ -83,23 +83,40 @@ layout(std430, binding = 1) buffer ShadowMatricesBuffer { mat4 shadowMatrices[];
 const float PI = 3.14159265359;
 const vec3 DIELECTRIC_F0 = vec3(0.04); // Standard dielectric baseline F0
 
+// Octahedral normal decoding - input is [0,1] from RGBA8 texture
 vec3 DecodeNormalOct8(vec2 e) {
-	vec3 n;
-	n.z = 1.0 - abs(e.x) - abs(e.y);
-	n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
-	return normalize(n);
+    // Remap from [0,1] to [-1,1]
+    e = e * 2.0 - 1.0;
+    
+    vec3 n;
+    n.z = 1.0 - abs(e.x) - abs(e.y);
+    
+    if (n.z < 0.0) {
+        // Handle lower hemisphere fold
+        vec2 signE = sign(e);
+        signE = mix(vec2(1.0), signE, step(vec2(0.0001), abs(e)));
+        n.xy = (1.0 - abs(e.yx)) * signE;
+    } else {
+        n.xy = e.xy;
+    }
+    
+    return normalize(n);
 }
 
-// Reconstruct F0 from packed specular luminance using albedo and metallic
+// Reconstruct F0 - properly blend between dielectric and metal
 vec3 ReconstructF0(float specLuminance, vec3 albedo, float metallic) {
-	// For dielectrics, use specular luminance scaled to gray F0
-	// For metals, use albedo as F0
-	vec3 dielectricF0 = vec3(specLuminance);
-	return mix(dielectricF0, albedo, metallic);
+    // Dielectric F0: use the stored specular luminance (typically around 0.04)
+    // Clamp to valid range for dielectrics
+    vec3 dielectricF0 = vec3(clamp(specLuminance, 0.02, 0.08));
+    
+    // Metal F0: metals use their albedo as F0
+    vec3 metalF0 = albedo;
+    
+    // Blend based on metallic
+    return mix(dielectricF0, metalF0, metallic);
 }
 
 vec3 worldPosFromDepth(vec2 uv, float depth) {
-	// Reconstruct world pos from depth using EXACT matrices from G-buffer pass
 	vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
 	vec4 viewPos4 = invProjection * clip;
 	viewPos4 /= viewPos4.w;
@@ -107,48 +124,27 @@ vec3 worldPosFromDepth(vec2 uv, float depth) {
 	return world.xyz;
 }
 
-// Convert normal from view space to world space only if needed
 vec3 getNormalInWorldSpace(vec3 decodedNormal) {
 	if (normalsInWorldSpace == 1) {
-		return decodedNormal; // Already in world space
+		return decodedNormal;
 	} else {
-		return normalize(mat3(invView) * decodedNormal); // Convert from view to world
+		return normalize(mat3(invView) * decodedNormal);
 	}
 }
 
-// Standard metallic workflow F0 calculation
-vec3 CalculatePBRF0(vec3 albedo, float metallic, vec3 specularF0) {
-	// Standard metallic workflow:
-	// - Dielectrics use DIELECTRIC_F0 (~0.04) or authored specularF0 if available
-	// - Metals use albedo as F0
-	vec3 dielectricF0 = (length(specularF0) > 0.01) ? specularF0 : DIELECTRIC_F0;
-	return mix(dielectricF0, albedo, metallic);
-}
-
-// Correct albedo for metallic surfaces
+// Calculate diffuse albedo - metals have no diffuse, only specular
 vec3 CalculateDiffuseAlbedo(vec3 albedo, float metallic) {
-	// Metals have no diffuse component, dielectrics keep their albedo
 	return albedo * (1.0 - metallic);
 }
 
-// Specular occlusion approximation (UE4-style)
 float SpecularOcclusion(float NdotV, float ao, float roughness) {
-	// Bent normals approximation - specular should be less affected by AO
 	float aoInfluence = mix(0.0, 1.0, roughness * roughness);
 	return clamp(pow(NdotV + ao, aoInfluence) - 1.0 + ao, 0.0, 1.0);
 }
 
-// Bounded energy compensation to prevent blow-out
-vec3 BoundedEnergyCompensation(vec3 F, vec2 brdf) {
-	// Prevent division by zero and excessive values
-	float safeBrdfY = max(brdf.y, 0.01);
-	float compensation = min(1.0 / safeBrdfY, 4.0);
-	return 1.0 + F * (compensation - 1.0) * 0.5; // Reduce strength by half
-}
-
-// Microfacet helpers
+// Microfacet BRDF functions
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
-	float a  = roughness * roughness;
+	float a = roughness * roughness;
 	float a2 = a * a;
 	float NdotH = max(dot(N, H), 0.0);
 	float NdotH2 = NdotH * NdotH;
@@ -160,7 +156,7 @@ float DistributionGGX(vec3 N, vec3 H, float roughness) {
 float GeometrySchlickGGX(float NdotV, float roughness) {
 	float r = roughness + 1.0;
 	float k = (r * r) / 8.0;
-	return NdotV / (NdotV * (1.0 - k) + k);
+	return NdotV / max(NdotV * (1.0 - k) + k, 1e-6);
 }
 
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
@@ -173,48 +169,29 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-// Shadow utilities
 bool inUnitCube(vec3 p) {
 	return all(greaterThanEqual(p, vec3(0.0))) && all(lessThanEqual(p, vec3(1.0)));
 }
 
-// Depth-aware bias
 float CalculateAdaptiveShadowBias(vec3 N, vec3 Ld, int cascadeIndex, float depthComp, float distance) {
 	float NdotL = max(dot(N, -Ld), 0.0);
-	
-	// Slope-based bias for grazing angles
 	float slopeFactor = sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.01);
-	
-	// Base bias
 	float baseBias = shadowBias;
-	
-	// Apply slope bias for grazing angles (NdotL < 0.5)
 	if (NdotL < 0.5) {
-		baseBias *= (1.0 + slopeFactor * 1.0); // Increased from 0.5 to handle grazing angles
+		baseBias *= (1.0 + slopeFactor * 1.0);
 	}
-	
-	// Minimal cascade scaling
 	float cascadeScale = 1.0 + float(cascadeIndex) * 0.15;
-	
-	//Depth-based bias to prevent acne without normal offset
-	// Closer surfaces need less bias, distant surfaces need more
-	float depthBias = baseBias * (1.0 + distance * 0.0001); // Very gentle depth scaling
-	
-	// Final bias
+	float depthBias = baseBias * (1.0 + distance * 0.0001);
 	float finalBias = baseBias * cascadeScale + depthBias;
-	
-	// Tighter clamp
-	return clamp(finalBias, shadowBias * 0.5, shadowBias * 5.0); // Increased max to handle grazing angles
+	return clamp(finalBias, shadowBias * 0.5, shadowBias * 5.0);
 }
 
 float SampleShadowArray(int layer, vec3 projCoords, float bias) {
 	if (!inUnitCube(projCoords)) return 1.0;
 	
-	//5x5 PCF with Poisson disk sampling for better quality
 	ivec3 dims = textureSize(multiLightShadowArray, 0);
 	vec2 texel = 1.0 / vec2(dims.xy);
 	
-	// Poisson disk offsets for better shadow softness
 	const vec2 poissonDisk[16] = vec2[](
 		vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
 		vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
@@ -229,13 +206,12 @@ float SampleShadowArray(int layer, vec3 projCoords, float bias) {
 	float sum = 0.0;
 	int count = 16;
 	
-	// Sample with Poisson disk pattern
 	for (int i = 0; i < count; ++i) {
-		vec2 offset = poissonDisk[i] * texel * 1.5; // 1.5x radius for better softness
+		vec2 offset = poissonDisk[i] * texel * 1.5;
 		vec2 uv = projCoords.xy + offset;
 		
 		if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
-			sum += 1.0; // outside -> lit
+			sum += 1.0;
 		} else {
 			sum += texture(multiLightShadowArray, vec4(uv, float(layer), projCoords.z - bias));
 		}
@@ -244,22 +220,17 @@ float SampleShadowArray(int layer, vec3 projCoords, float bias) {
 	return sum / float(count);
 }
 
-// Cascaded directional shadows with smooth blending
 float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 N, vec3 lightDir) {
 	vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
-	float viewDepth = -viewSpacePos.z; // Negate because view space looks down -Z
-	
-	// Use world position directly - NO normal offset
+	float viewDepth = -viewSpacePos.z;
 	vec3 shadowPos = worldPos;
 	
-	// Track best cascade and prepare for blending
 	int selectedCascade = -1;
 	float cascadeBlend = 0.0;
 	vec3 projCoords[2];
 	float shadowSamples[2];
 	int cascadeIndices[2] = int[2](-1, -1);
 	
-	// Find first valid cascade
 	for (int i = 0; i < sliceCount; ++i) {
 		int layer = startSlice + i;
 		mat4 M = shadowMatrices[layer];
@@ -273,7 +244,6 @@ float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 
 				cascadeIndices[0] = i;
 				projCoords[0] = pc;
 				
-				// Edge-based blending
 				vec2 edgeDist = min(pc.xy, 1.0 - pc.xy);
 				float minEdgeDist = min(edgeDist.x, edgeDist.y);
 				
@@ -289,7 +259,7 @@ float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 
 					cascadeIndices[1] = i + 1;
 				}
 			}
-			break; 
+			break;
 		}
 	}
 	
@@ -320,7 +290,6 @@ float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightP
 	vec3 absDir = abs(offsetToLight);
 	int face = 0;
 	
-	// Determine dominant axis
 	if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
 		face = (offsetToLight.x > 0.0) ? 0 : 1;
 	} else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
@@ -361,12 +330,11 @@ float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 
 	else if (lightType == 1) {
 		return ComputePointLightShadow(startSlice, worldPos, N, lightPos);
 	}
-	else { // spot
+	else {
 		vec3 toLight = lightPos - worldPos;
 		float distance = length(toLight);
 		vec3 spotDir = toLight / distance;
 		
-		// Use world position directly - NO normal offset
 		vec3 shadowPos = worldPos;
 		
 		int layer = startSlice;
@@ -381,7 +349,8 @@ float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 
 	}
 }
 
-vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 diffuseAlbedo, float metallic, float roughness, vec3 F0, float diffuseAO) {
+// Proper PBR direct lighting with correct albedo application
+vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float diffuseAO) {
 	LightData Ld = lights[idx];
 	int type = int(Ld.position.w);
 	vec3 lightPos = Ld.position.xyz;
@@ -393,18 +362,25 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 diffuseAlbe
 	float range = Ld.attenuation.w;
 
 	if (type == 0) {
+		// Directional light
 		L = -lightDir;
+		attenuation = intensity;
 	} else {
+		// Point or spot light
 		vec3 diff = lightPos - worldPos;
 		float dist = length(diff);
 		if (dist > range) return vec3(0.0);
 		L = diff / dist;
+		
 		vec3 att = Ld.attenuation.xyz;
 		float inv = 1.0 / (att.x + att.y * dist + att.z * dist * dist);
 		float rf = 1.0 - pow(dist / range, 4.0);
-		rf = max(rf, 0.0); rf *= rf;
+		rf = max(rf, 0.0);
+		rf *= rf;
 		attenuation = inv * rf * intensity;
+		
 		if (type == 2) {
+			// Spot light
 			float theta = dot(L, -lightDir);
 			float innerCos = (Ld.spotData.x > 0.0) ? Ld.spotData.x : cos(radians(20.0));
 			float outerCos = (Ld.spotData.y > 0.0) ? Ld.spotData.y : cos(radians(30.0));
@@ -412,7 +388,7 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 diffuseAlbe
 			if (theta < outerCos) return vec3(0.0);
 			float eps = max(innerCos - outerCos, 0.001);
 			float cone = clamp((theta - outerCos) / eps, 0.0, 1.0);
-			cone = cone * cone * (3.0 - 2.0 * cone); // smooth
+			cone = cone * cone * (3.0 - 2.0 * cone);
 			attenuation *= cone;
 		}
 	}
@@ -421,98 +397,93 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 diffuseAlbe
 	if (NdotL <= 0.0) return vec3(0.0);
 
 	vec3 H = normalize(V + L);
-	float NDF = DistributionGGX(N, H, roughness);
-	float G   = GeometrySmith(N, V, L, roughness);
-	vec3  F   = fresnelSchlick(max(dot(H, V), 0.0), F0);
+	float NdotV = max(dot(N, V), 0.001);
+	float HdotV = max(dot(H, V), 0.0);
 	
-	// Standard BRDF calculation
+	// Cook-Torrance BRDF
+	float NDF = DistributionGGX(N, H, roughness);
+	float G = GeometrySmith(N, V, L, roughness);
+	vec3 F = fresnelSchlick(HdotV, F0);
+	
+	// Specular BRDF
+	vec3 numerator = NDF * G * F;
+	float denominator = 4.0 * NdotV * NdotL;
+	vec3 specular = numerator / max(denominator, 0.001);
+	
+	// Energy conservation: kS is what's reflected (specular), kD is what's refracted (diffuse)
+	// Metals have no diffuse, so multiply by (1 - metallic)
 	vec3 kS = F;
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
-	vec3 specular = (NDF * G * F) / max(4.0 * max(dot(N, V), 0.0) * NdotL, 0.001);
 	
+	// FIXED: Use raw albedo here, kD already handles the metallic factor
+	// Lambertian diffuse = albedo / PI
+	vec3 diffuse = kD * albedo / PI;
+	
+	// Shadow calculation
 	int startSlice = int(Ld.shadowData.x + 0.5);
 	int sliceCount = int(Ld.shadowData.y + 0.5);
 	vec3 shadowLightDir = mix(normalize(lightPos - worldPos), lightDir, float(type == 0));
 	
 	float shadowMapShadow = ComputeShadowForLight(type, startSlice, sliceCount, worldPos, N, shadowLightDir, lightPos);
-	shadowMapShadow = mix(0.3, 1.0, shadowMapShadow); // keep shadows from going full black
+	shadowMapShadow = mix(0.3, 1.0, shadowMapShadow);
 	
-	// Apply shadow only when both enableShadows and shadow data are valid
-	// Uses multiplication instead of branching: if disabled, multiply by 1.0 (no change)
 	float shadowEnableMask = float(enableShadows == 1) * float(Ld.shadowData.z > 0.5);
 	shadowMapShadow = mix(1.0, shadowMapShadow, shadowEnableMask);
 
-	// Screen-space shadow (contact shadow) - sampled from precomputed texture
-	// Contact shadows complement shadow maps by adding fine detail at surface contact points
+	// Contact shadows
 	float contactShadowVisibility = texture(screenSpaceShadowMap, vTexCoord).r;
 	float viewDepth = length(worldPos - viewPos);
    
-	float contactStrength = smoothstep(15.0, 1.0, viewDepth); // Strong at close range, fade at distance
-	contactStrength = mix(0.6, 1.0, contactStrength); // Min 60% strength, max 100%
+	float contactStrength = smoothstep(15.0, 1.0, viewDepth);
+	contactStrength = mix(0.6, 1.0, contactStrength);
 	
-	float litAreaReduction = smoothstep(0.9, 1.0, shadowMapShadow); // Only reduce in VERY bright areas
-	contactStrength *= (1.0 - litAreaReduction * 0.5); // Max 50% reduction (was 80%)
+	float litAreaReduction = smoothstep(0.9, 1.0, shadowMapShadow);
+	contactStrength *= (1.0 - litAreaReduction * 0.5);
 	
-	// Apply contact shadows with proper strength
 	float contactShadow = mix(1.0, contactShadowVisibility, contactStrength * sssStrength);
 	float combinedShadow = shadowMapShadow * contactShadow;
 	combinedShadow = max(combinedShadow, 0.1);
-	vec3 diffuse = kD * diffuseAlbedo / PI * diffuseAO;
 	
-	return (diffuse + specular) * lightColor * attenuation * NdotL * combinedShadow;
+	// Final contribution
+	vec3 radiance = lightColor * attenuation;
+	
+	return (diffuse * diffuseAO + specular) * radiance * NdotL * combinedShadow;
 }
 
-vec3 ComputeIBL(vec3 N, vec3 V, vec3 diffuseAlbedo, float metallic, float roughness, vec3 F0, float diffuseAO, float specularAO) {
+vec3 ComputeIBL(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float diffuseAO, float specularAO) {
 	vec3 R = reflect(-V, N);
 	roughness = max(roughness, 0.04);
   
 	vec3 irradiance = texture(irradianceMap, N).rgb;
 	
-	// Prefiltered map is sampled based on roughness
 	float lod = roughness * prefilteredMaxLOD;
 	vec3 prefiltered = textureLod(prefilteredMap, R, lod).rgb;
 	
-	// Ensure IBL samples are strictly positive
 	irradiance = max(irradiance, vec3(0.0));
 	prefiltered = max(prefiltered, vec3(0.0));
 	
 	float NdotV = max(dot(N, V), 0.0);
 	vec2 brdf = texture(brdfLUT, vec2(NdotV, roughness)).rg;
-	
-	// Ensure BRDF LUT values are valid
 	brdf = max(brdf, vec2(0.0));
 
-	// Calculate Fresnel for IBL
 	vec3 F = fresnelSchlick(NdotV, F0);
 	
-	// The BRDF LUT already handles energy conservation correctly
-	
-	// Diffuse IBL contribution
-	// Irradiance is already integrated over hemisphere with Lambert BRDF baked in
-	// We just need to apply the Fresnel split (kD) and albedo
+	// Energy conservation
 	vec3 kS = F;
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 	
-	vec3 diffuse = kD * diffuseAlbedo * irradiance * diffuseAO;
+	// FIXED: Diffuse IBL uses raw albedo, kD handles metallic
+	vec3 diffuse = kD * albedo * irradiance * diffuseAO * diffuseIBLScale;
 	
-	// Apply diffuse IBL scale
-	diffuse *= diffuseIBLScale;
+	// Specular IBL
+	vec3 specular = prefiltered * (F * brdf.x + brdf.y) * specularAO * specularIBLScale;
 	
-	// Specular IBL contribution
-	vec3 specular = prefiltered * (F * brdf.x + brdf.y) * specularAO;
-	
-	// Apply specular IBL scale
-	specular *= specularIBLScale;
-	
-  // Final clamp to ensure strictly positive IBL output
 	diffuse = max(diffuse, vec3(0.0));
 	specular = max(specular, vec3(0.0));
 	
-	// Apply overall IBL intensity multiplier
-vec3 iblResult = (diffuse + specular) * iblIntensity;
+	vec3 iblResult = (diffuse + specular) * iblIntensity;
 	
-	// Safety check for NaN/Inf
-  if (any(isnan(iblResult)) || any(isinf(iblResult))) {
+	if (any(isnan(iblResult)) || any(isinf(iblResult))) {
 		return vec3(0.0);
 	}
 	
@@ -520,84 +491,59 @@ vec3 iblResult = (diffuse + specular) * iblIntensity;
 }
 
 // LPV Helper functions
-
-// Quaternion rotation helper
 vec3 rotateVector(vec3 v, vec4 q) {
-	// q = (x, y, z, w) quaternion
-	// Formula: v' = v + 2 * cross(q.xyz, cross(q.xyz, v) + q.w * v)
 	vec3 qxyz = q.xyz;
 	float qw = q.w;
 	vec3 t = 2.0 * cross(qxyz, v);
 	return v + qw * t + cross(qxyz, t);
 }
 
-// Inverse quaternion rotation
 vec3 rotateVectorInverse(vec3 v, vec4 q) {
-	// Conjugate quaternion for inverse rotation
 	vec4 qConj = vec4(-q.x, -q.y, -q.z, q.w);
 	return rotateVector(v, qConj);
 }
 
 vec3 WorldToVoxelUVW(vec3 worldPos) {
-	// Convert world position to grid-local coordinates
 	vec3 localPos = worldPos - lpvGridCenter;
-	// Apply inverse rotation to align with grid axes
 	localPos = rotateVectorInverse(localPos, lpvGridOrientation);
-	// Convert to voxel coordinates (grid is centered at origin in voxel space)
 	vec3 voxelPos = (localPos / lpvVoxelSize) + vec3(lpvGridResolution * 0.5);
-	// Normalize to [0,1] UVW coordinates for texture sampling
 	return voxelPos / float(lpvGridResolution);
 }
 
-// Evaluate Spherical Harmonics irradiance for a given normal
 vec3 EvaluateSH(vec4 shR, vec4 shG, vec4 shB, vec3 normal) {
-	// SH basis evaluation (4-band L0, L1x, L1y, L1z)
-	// These coefficients are pre-scaled by their normalization factors
-	float Y00 = 0.282095;       // sqrt(1/(4*PI)) for L0
-	float Y1_1 = 0.488603 * normal.x;  // sqrt(3/(4*PI)) * x for L1,-1
-	float Y10 = 0.488603 * normal.y;   // sqrt(3/(4*PI)) * y for L1,0
-	float Y11 = 0.488603 * normal.z;   // sqrt(3/(4*PI)) * z for L1,1
+	float Y00 = 0.282095;
+	float Y1_1 = 0.488603 * normal.x;
+	float Y10 = 0.488603 * normal.y;
+	float Y11 = 0.488603 * normal.z;
 	
-	// Reconstruct irradiance: E(n) = L0*Y00 + L1x*Y1_1 + L1y*Y10 + L1z*Y11
-	// shR/G/B.xyzw = (L0, L1x, L1y, L1z)
 	vec4 shBasis = vec4(Y00, Y1_1, Y10, Y11);
 	
-	// Dot product evaluates the spherical harmonics for this normal direction
 	float irradianceR = dot(shR, shBasis);
 	float irradianceG = dot(shG, shBasis);
 	float irradianceB = dot(shB, shBasis);
 	
-	// Clamp to prevent negative values (shouldn't happen with proper data, but safety first)
 	return max(vec3(irradianceR, irradianceG, irradianceB), vec3(0.0));
 }
 
-// Sample LPV and compute global illumination contribution
-vec3 SampleLPV(vec3 worldPos, vec3 normal, vec3 diffuseAlbedo, float metallic, float diffuseAO) {
+vec3 SampleLPV(vec3 worldPos, vec3 normal, vec3 albedo, float metallic, float diffuseAO) {
 	if (enableLPV == 0) return vec3(0.0);
-	// Convert world position to LPV UVW coordinates (handles orientation)
+	
 	vec3 uvw = WorldToVoxelUVW(worldPos);
-	// Check if position is inside LPV grid bounds
 	if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) {
-		return vec3(0.0); // Outside grid, no GI contribution
+		return vec3(0.0);
 	}
-	// Sample SH coefficients from LPV 3D textures
-	// Each texel stores 4 SH coefficients as RGBA = (L0, L1x, L1y, L1z)
+	
 	vec4 shR = texture(lpvTextureR, uvw);
 	vec4 shG = texture(lpvTextureG, uvw);
 	vec4 shB = texture(lpvTextureB, uvw);
-	//Transform normal to grid-local space for proper SH evaluation
+	
 	vec3 localNormal = rotateVectorInverse(normal, lpvGridOrientation);
-	// Evaluate incoming irradiance using surface normal (in grid-local space)
-	// This reconstructs the directional distribution of incoming light
 	vec3 irradiance = EvaluateSH(shR, shG, shB, localNormal);
-	// Metals have no diffuse component (all energy goes to specular)
+	
+	// FIXED: Apply metallic factor here, use raw albedo
 	vec3 kD = vec3(1.0 - metallic);
-	// Lambertian diffuse BRDF: albedo / PI
-	// Irradiance is already integrated, so we don't multiply by N·L
-	vec3 giContribution = (diffuseAlbedo / PI) * irradiance * kD;
-	giContribution *= lpvGIStrength;
-	giContribution *= lpvDebugBoost;
-	giContribution *= diffuseAO;
+	vec3 giContribution = (albedo / PI) * irradiance * kD;
+	giContribution *= lpvGIStrength * lpvDebugBoost * diffuseAO;
 	
 	return giContribution;
 }
@@ -607,70 +553,96 @@ void main() {
 	float depth = texture(gDepth, uv).r;
 	if (depth >= 0.9999) { FragColor = vec4(0.0); return; }
 
-	// UNPACK OPTIMIZED G-BUFFER
-	vec4 packedNRM = texture(gPackedNormalRM, uv);  // RG: oct normal, B: roughness, A: metallic
-	vec4 albedoAO = texture(gAlbedoAO, uv);         // RGB: albedo, A: occlusion
-	 vec4 emissiveSpec = texture(gEmissiveSpec, uv); // RGB: emissive, A: specular luminance
+	// Unpack G-buffer
+	vec4 packedNRM = texture(gPackedNormalRM, uv);
+	vec4 albedoAO = texture(gAlbedoAO, uv);
+	vec4 emissiveSpec = texture(gEmissiveSpec, uv);
 	
 	// Extract material properties
 	vec2 encNormal = packedNRM.rg;
 	float roughness = clamp(packedNRM.b, 0.04, 1.0);
 	float metallic = clamp(packedNRM.a, 0.0, 1.0);
-	vec3 albedo = max(albedoAO.rgb, vec3(0.01)); // Prevent pure black
+	
+	// CRITICAL: Extract albedo (base color) directly from G-buffer
+	vec3 albedo = albedoAO.rgb;
+	
+	// Validate albedo - ensure it's not black or invalid
+	if (length(albedo) < 0.001 || any(isnan(albedo))) {
+		albedo = vec3(0.5); // Fallback to gray
+	}
+	
 	float aoTex = clamp(albedoAO.a, 0.0, 1.0);
 	vec3 emissive = emissiveSpec.rgb;
 	float specLuminance = emissiveSpec.a;
 	
-	// SSAO sample (separate texture)
+	// SSAO
 	float ssao = clamp(texture(ssaoMap, uv).r, 0.0, 1.0);
 
-	// Decode normal and validate
+	// Decode normal
 	vec3 decodedNormal = DecodeNormalOct8(encNormal);
 	vec3 N = getNormalInWorldSpace(decodedNormal);
+	
+	// Validate normal
+	if (length(N) < 0.5 || any(isnan(N))) {
+		N = vec3(0.0, 1.0, 0.0);
+	}
+	N = normalize(N);
 	
 	vec3 worldPos = worldPosFromDepth(uv, depth);
 	vec3 V = normalize(viewPos - worldPos);
 	float NdotV = max(dot(N, V), 0.0);
 
-	// Reconstruct F0 from packed data
+	// Reconstruct F0 for specular
 	vec3 F0 = ReconstructF0(specLuminance, albedo, metallic);
-	vec3 diffuseAlbedo = CalculateDiffuseAlbedo(albedo, metallic);
 
-	// Calculate AO factors
+	// AO factors
 	float diffuseAO = mix(1.0, ssao, aoStrength) * aoTex;
 	float specularAO = SpecularOcclusion(NdotV, diffuseAO, roughness);
 
-	vec3 color = emissive; // start with emissive contribution
+	// Start with emissive
+	vec3 color = emissive;
 
-	// Direct lighting
+	// Direct lighting - pass raw albedo, metallic factor is applied inside
 	if (numLights > 0) {
 		int maxLights = min(numLights, 64);
 		for (int i = 0; i < maxLights; ++i) {
-			color += ComputeDirectLight(i, worldPos, N, V, diffuseAlbedo, metallic, roughness, F0, diffuseAO);
+			color += ComputeDirectLight(i, worldPos, N, V, albedo, metallic, roughness, F0, diffuseAO);
 		}
 	} else {
-		// simple fallback directional influence
+		// Fallback ambient lighting
 		vec3 Ld = normalize(vec3(0.2, -0.8, -0.3));
 		float NdotL = max(dot(N, Ld), 0.0);
-		color += (diffuseAlbedo / PI) * NdotL * 0.3 * diffuseAO;
+		// Apply metallic factor for fallback too
+		vec3 diffuseColor = albedo * (1.0 - metallic);
+		color += (diffuseColor / PI) * NdotL * 0.3 * diffuseAO;
 	}
 
-	// IBL contribution
-	color += ComputeIBL(N, V, diffuseAlbedo, metallic, roughness, F0, diffuseAO, specularAO);
+	// IBL - pass raw albedo
+	color += ComputeIBL(N, V, albedo, metallic, roughness, F0, diffuseAO, specularAO);
 
-	// SSGI (Screen Space Global Illumination) - indirect diffuse bounce lighting
-	// Sample SSGI texture and apply albedo as per rendering equation
+	// LPV GI - pass raw albedo
+	if (enableLPV == 1) {
+		vec3 lpvContribution = SampleLPV(worldPos, N, albedo, metallic, diffuseAO);
+		
+		if (lpvDebugVisualization == 1) {
+			FragColor = vec4(lpvContribution, 1.0);
+			return;
+		}
+		
+		color += lpvContribution;
+	}
+
+	// SSGI - apply metallic factor here
 	vec3 ssgiIndirect = texture(ssgiMap, vTexCoord).rgb;
-	// Apply albedo to indirect diffuse (Lambertian BRDF) and AO
-	vec3 ssgiContribution = ssgiIndirect * diffuseAlbedo * ssgiStrength * diffuseAO;
+	vec3 ssgiContribution = ssgiIndirect * albedo * (1.0 - metallic) * ssgiStrength * diffuseAO;
 	color += ssgiContribution;
 
-	// Safety fallback with proper albedo handling
+	// Safety fallback
 	if (length(color) < 0.0005) {
-		color += diffuseAlbedo * 0.1 * diffuseAO;
+		color += albedo * (1.0 - metallic) * 0.1 * diffuseAO;
 	}
 
-	color = max(color, vec3(0.0)); // Only prevent negative values
+	color = max(color, vec3(0.0));
 
 	FragColor = vec4(color, 1.0);
 }

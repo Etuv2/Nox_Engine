@@ -27,6 +27,7 @@ class LPVPass;
 class SSGIPass;
 class GUIPass;
 class RTPass;
+class DebugBBoxPass;
 
 /**
  * ModularRenderer coordinates all rendering passes using a shared RenderContext.
@@ -65,7 +66,10 @@ public:
 	void ResetTAA();
 	int GetTAAFrameIndex() const;
 
-	const bool ErrorPrintingEnabled = true;
+	// Performance: Set to false to disable GL error checking and verbose logging in release builds
+	static constexpr bool DebugErrorChecking = false;
+	static constexpr bool VerboseLogging = false;
+	
 private:
 	bool InitializeSharedResources();
 	void UpdateContext(const std::shared_ptr<Camera>& camera,
@@ -94,4 +98,5 @@ private:
 	std::unique_ptr<TransparentForwardPass> m_transparentPass;
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
 	std::unique_ptr<GUIPass> m_guiPass;  // NEW: Internal GUI rendering
+	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;  // Debug bounding box visualization
 };

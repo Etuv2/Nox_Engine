@@ -153,6 +153,4 @@ private:
     bool RayIntersectNode(const std::shared_ptr<SceneNode>& node, const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::mat4& worldTransform);
     bool RayIntersectAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& aabbMin, const glm::vec3& aabbMax);
 
-    // Utility functions
-    unsigned int CreateShaderProgram(const std::string& vertexPath, const std::string& fragmentPath);
 };

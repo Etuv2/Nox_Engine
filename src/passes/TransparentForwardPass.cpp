@@ -125,35 +125,44 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
     // The depth buffer already contains opaque geometry + skybox at max depth
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);        // Test against existing depth
-    glDepthMask(GL_FALSE);     // Don't write to depth buffer (transparency layering)
+    glDepthMask(GL_FALSE);       // Don't write to depth buffer (transparency layering)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
     glEnable(GL_CULL_FACE);      // Enable culling for proper transparent rendering
     glCullFace(GL_BACK);         // Cull back faces
 
     std::cout << "[TransparentForwardPass] State: Depth test=ENABLED(LESS), Depth writes=DISABLED, "
-    << "Blending=ENABLED(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)" << std::endl;
+        << "Blending=ENABLED(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)" << std::endl;
 
     glUseProgram(m_shader);
 
     // Upload camera and matrices
-glUniformMatrix4fv(glGetUniformLocation(m_shader, "view"), 
-  1, GL_FALSE, glm::value_ptr(ctx.view));
+    glUniformMatrix4fv(glGetUniformLocation(m_shader, "view"), 
+        1, GL_FALSE, glm::value_ptr(ctx.view));
     glUniformMatrix4fv(glGetUniformLocation(m_shader, "projection"), 
-         1, GL_FALSE, glm::value_ptr(ctx.proj));
+        1, GL_FALSE, glm::value_ptr(ctx.proj));
     
     glm::vec3 cameraPos = camera->GetCameraPosition();
-glUniform3fv(glGetUniformLocation(m_shader, "viewPos"), 
-          1, glm::value_ptr(cameraPos));
+    glUniform3fv(glGetUniformLocation(m_shader, "viewPos"), 
+        1, glm::value_ptr(cameraPos));
+
+    // CRITICAL: Upload screen size for depth comparison in fragment shader
+    glUniform2f(glGetUniformLocation(m_shader, "screenSize"), 
+        static_cast<float>(ctx.width), static_cast<float>(ctx.height));
     
     std::cout << "[TransparentForwardPass] Camera position: (" 
-       << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")" << std::endl;
+        << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")" << std::endl;
+
+    // Bind depth buffer from G-buffer for depth comparisons
+    glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_DEPTH);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+    glUniform1i(glGetUniformLocation(m_shader, "gDepth"), TextureUnits::GBUFFER_DEPTH);
 
     // Bind IBL textures for physically correct reflections and lighting
     if (skybox && skybox->ValidateIBLTextures()) {
         std::cout << "[TransparentForwardPass] Binding IBL textures..." << std::endl;
         
-  glActiveTexture(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
+        glActiveTexture(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
         glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->GetIrradianceMap());
 
         glActiveTexture(GL_TEXTURE0 + TextureUnits::PREFILTERED_ENV_MAP);
@@ -162,8 +171,8 @@ glUniform3fv(glGetUniformLocation(m_shader, "viewPos"),
         glActiveTexture(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
         glBindTexture(GL_TEXTURE_2D, skybox->GetBRDFLUT());
 
-      glUniform1i(glGetUniformLocation(m_shader, "irradianceMap"), TextureUnits::IRRADIANCE_MAP);
-   glUniform1i(glGetUniformLocation(m_shader, "prefilteredMap"), TextureUnits::PREFILTERED_ENV_MAP);
+        glUniform1i(glGetUniformLocation(m_shader, "irradianceMap"), TextureUnits::IRRADIANCE_MAP);
+        glUniform1i(glGetUniformLocation(m_shader, "prefilteredMap"), TextureUnits::PREFILTERED_ENV_MAP);
         glUniform1i(glGetUniformLocation(m_shader, "brdfLUT"), TextureUnits::BRDF_LUT);
         glUniform1f(glGetUniformLocation(m_shader, "prefilteredMaxLOD"), skybox->GetPrefilteredMaxLOD());
     } else {
@@ -172,13 +181,13 @@ glUniform3fv(glGetUniformLocation(m_shader, "viewPos"),
 
     // Bind light data for transparent objects
     if (ctx.lightManager && ctx.lightManager->GetActiveLightCount() > 0) {
-  ctx.lightManager->UpdateGPUBuffers();
-     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ctx.lightManager->GetLightDataSSBO());
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx.lightManager->GetShadowMatricesSSBO());
+        ctx.lightManager->UpdateGPUBuffers();
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ctx.lightManager->GetLightDataSSBO());
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx.lightManager->GetShadowMatricesSSBO());
         glUniform1i(glGetUniformLocation(m_shader, "numLights"), 
-    ctx.lightManager->GetActiveLightCount());
+            ctx.lightManager->GetActiveLightCount());
         
-      std::cout << "[TransparentForwardPass] Bound " << ctx.lightManager->GetActiveLightCount() 
+        std::cout << "[TransparentForwardPass] Bound " << ctx.lightManager->GetActiveLightCount() 
            << " active lights" << std::endl;
 
       // Bind shadow array for transparent shadows
@@ -194,53 +203,54 @@ glUniform3fv(glGetUniformLocation(m_shader, "viewPos"),
       std::cout << "[TransparentForwardPass] No active lights available" << std::endl;
     }
 
-    // Glass material uniforms for physically correct transparency
-    glUniform1f(glGetUniformLocation(m_shader, "transmissionFactor"), 0.9f);
-    glUniform1f(glGetUniformLocation(m_shader, "refractionIndex"), 1.5f);
-    glUniform1i(glGetUniformLocation(m_shader, "useScreenSpaceRefraction"), 0);
+    // NOTE: Material-specific transmission and IOR uniforms are now set per-mesh
+    // in SceneNode::Draw() rather than as pass-wide defaults here.
+    // This allows each transparent material to use its own KHR_materials_transmission
+    // and KHR_materials_ior extension values.
 
     //Sort transparent objects back-to-front for correct alpha blending
     std::sort(transparentNodes.begin(), transparentNodes.end(),
         [&cameraPos](const std::shared_ptr<SceneNode>& a, const std::shared_ptr<SceneNode>& b) {
             glm::vec3 posA = glm::vec3(a->GetTransform()[3]);
-  glm::vec3 posB = glm::vec3(b->GetTransform()[3]);
-         float distA = glm::length(cameraPos - posA);
-   float distB = glm::length(cameraPos - posB);
-        return distA > distB; // Back-to-front ordering
-     });
+            glm::vec3 posB = glm::vec3(b->GetTransform()[3]);
+            float distA = glm::length(cameraPos - posA);
+            float distB = glm::length(cameraPos - posB);
+            return distA > distB; // Back-to-front ordering
+        });
 
     // Render transparent objects with proper depth-aware blending
     int renderedCount = 0;
     for (const auto& node : transparentNodes) {
-     if (node && node->GetModel()) {
-  std::cout << "[TransparentForwardPass] Rendering: " << node->GetName() << std::endl;
+        if (node && node->GetModel()) {
+            std::cout << "[TransparentForwardPass] Rendering: " << node->GetName() << std::endl;
      
-     // Upload model matrix
+            // Upload model matrix
             glm::mat4 modelMatrix = node->GetTransform();
             glUniformMatrix4fv(glGetUniformLocation(m_shader, "model"), 
-         1, GL_FALSE, glm::value_ptr(modelMatrix));
+                1, GL_FALSE, glm::value_ptr(modelMatrix));
        
- // Calculate and upload normal matrix for correct lighting
-       glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
-       glUniformMatrix3fv(glGetUniformLocation(m_shader, "normalMatrix"), 
-          1, GL_FALSE, glm::value_ptr(normalMatrix));
+            // Calculate and upload normal matrix for correct lighting
+            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
+            glUniformMatrix3fv(glGetUniformLocation(m_shader, "normalMatrix"), 
+                1, GL_FALSE, glm::value_ptr(normalMatrix));
     
- // Render the model
-       auto sceneModel = node->GetModel();
-      if (sceneModel) {
-     sceneModel->Draw();
-       renderedCount++;
+            // Render the model - material uniforms including transmission and IOR
+            // are set per-mesh in Scene::Draw() via SceneNode
+            auto sceneModel = node->GetModel();
+            if (sceneModel) {
+                sceneModel->Draw();
+                renderedCount++;
             }
         }
     }
     
     std::cout << "[TransparentForwardPass] Successfully rendered " << renderedCount 
-  << " transparent objects" << std::endl;
+        << " transparent objects" << std::endl;
 
- //Restore render state for subsequent passes
+    //Restore render state for subsequent passes
     glDepthMask(GL_TRUE);      // Re-enable depth writes
     glDisable(GL_BLEND);       // Disable blending
-    glDepthFunc(GL_LESS);  // Reset depth function to default
+    glDepthFunc(GL_LESS);      // Reset depth function to default
     
     // DO NOT unbind the HDR FBO - let the pipeline coordinator handle that
     

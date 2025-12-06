@@ -369,7 +369,7 @@ bool MainWindow::Initialize() {
 	// Ensure the ImGui interface has the scene graph
 	m_imguiInterface->SetSceneGraph(m_sceneGraph);
 
-	// CRITICAL: Connect ModularRenderer to UI for real-time rendering control
+	// Connect ModularRenderer to UI for real-time rendering control
 	if (m_imguiInterface && m_modularRenderer) {
 		std::cout << "[MainWindow] Connecting ModularRenderer to ImGui interface for real-time control..." << std::endl;
 		m_imguiInterface->SetModularRenderer(m_modularRenderer);
@@ -423,6 +423,50 @@ void MainWindow::ProcessEvents() {
 		switch (event.type) {
 		case SDL_QUIT:
 			m_running = false;
+			break;
+		case SDL_WINDOWEVENT:
+			// Handle window events for proper resizing
+			switch (event.window.event) {
+			case SDL_WINDOWEVENT_SIZE_CHANGED:
+			case SDL_WINDOWEVENT_RESIZED:
+				{
+					int newWidth = event.window.data1;
+					int newHeight = event.window.data2;
+					if (newWidth > 0 && newHeight > 0 && 
+					    (newWidth != m_windowWidth || newHeight != m_windowHeight)) {
+						m_windowWidth = newWidth;
+						m_windowHeight = newHeight;
+						
+						// Update OpenGL viewport
+						glViewport(0, 0, m_windowWidth, m_windowHeight);
+						
+						// Update camera aspect ratio
+						if (m_camera) {
+							float aspect = static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight);
+							m_camera->SetPerspective(
+								m_camera->GetCameraFov(),
+								aspect,
+								m_camera->GetCameraNearPlane(),
+								m_camera->GetCameraFarPlane()
+							);
+						}
+						
+						// Resize modular renderer
+						if (m_modularRenderer) {
+							m_modularRenderer->Resize(m_windowWidth, m_windowHeight);
+						}
+						
+						std::cout << "[MainWindow] Window resized to " << m_windowWidth << "x" << m_windowHeight << std::endl;
+					}
+				}
+				break;
+			case SDL_WINDOWEVENT_MINIMIZED:
+				// Could pause rendering here if needed
+				break;
+			case SDL_WINDOWEVENT_RESTORED:
+				// Resume rendering if it was paused
+				break;
+			}
 			break;
 		case SDL_KEYDOWN:
 			// Handle any remaining hardcoded keys that haven't been moved to input system yet
@@ -830,7 +874,7 @@ std::shared_ptr<SceneNode> MainWindow::PerformRayQuery(const RayCast::Ray& ray) 
 
 				// Calculate priority: closer distance + smaller size = higher priority
 				float distancePriority = 1000.0f - result.distance; // Closer = higher
-				float sizePriority = 100.0f / (info.size + 1.0f);   // Smaller = higher
+				float sizePriority = 100.0f / (info.size + 0.1f); // Smaller = higher
 				info.priority = distancePriority + sizePriority * config.smallObjectBonus;
 
 				validCandidates.push_back(info);
@@ -838,252 +882,281 @@ std::shared_ptr<SceneNode> MainWindow::PerformRayQuery(const RayCast::Ray& ray) 
 		}
 
 		// Sort by priority (higher = better)
+		std::sort(validCandidates.begin(), validCandidates.end(),
+			[](const CandidateInfo& a, const CandidateInfo& b) {
+				return a.priority > b.priority;
+			});
+
+		// Return best match
 		if (!validCandidates.empty()) {
-			std::sort(validCandidates.begin(), validCandidates.end(),
-				[](const CandidateInfo& a, const CandidateInfo& b) {
-					return a.priority > b.priority;
-				});
-
-			closestNode = validCandidates[0].node;
-			std::cout << "[MousePicking] Fallback selected: " << closestNode->GetName()
-				<< " (distance: " << validCandidates[0].distance
-				<< ", size: " << validCandidates[0].size
-				<< ", priority: " << validCandidates[0].priority << ")" << std::endl;
-		}
-	}
-	else {
-		std::cout << "[MousePicking] Falling back to brute force traversal" << std::endl;
-
-		// Fallback to brute force scene traversal
-		RayCast::HitResult result = RayCast::RayIntersectScene(ray, m_sceneGraph->GetRoot());
-		if (result.hit) {
-			closestNode = result.node;
+			std::cout << "[MousePicking] Selected object: " << validCandidates[0].node->GetName()
+				<< " (dist=" << validCandidates[0].distance
+				<< ", size=" << validCandidates[0].size
+				<< ", priority=" << validCandidates[0].priority << ")" << std::endl;
+			return validCandidates[0].node;
 		}
 	}
 
-	if (closestNode) {
-		std::cout << "[MousePicking] Final selection: " << closestNode->GetName() << std::endl;
-	}
-	else {
-		std::cout << "[MousePicking] No intersection found" << std::endl;
-	}
+	// Fallback: Use legacy ray-scene intersection
+	closestNode = RayIntersectScene(ray.origin, ray.direction);
 
 	return closestNode;
 }
 
-// Legacy compatibility functions (keep existing behavior for backward compatibility)
+void MainWindow::SwapScene(const std::string& newSceneFile) {
+	std::cout << "[MainWindow] Swapping to scene: " << newSceneFile << std::endl;
+	
+	// Store the new scene path
+	m_scene_to_load = newSceneFile;
+	
+	// Cleanup current scene
+	CleanupCurrentScene();
+	
+	// Load new scene
+	if (m_sceneLoader) {
+		auto newGraph = m_sceneLoader->LoadScene(newSceneFile);
+		if (newGraph) {
+			m_sceneGraph = newGraph;
+			m_currentSceneFilePath = newSceneFile;
+			
+			// Update scene metadata
+			m_exposure = m_sceneGraph->m_exposure;
+			m_gamma = m_sceneGraph->m_gamma;
+			m_scene_name = m_sceneGraph->GetSceneName();
+			
+			// Sync physics enabled state from scene JSON
+			m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
+			if (m_physicsEngine) {
+				if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
+			}
+			
+			// Collect lights from the loaded scene
+			if (m_lightManager) {
+				m_lightManager->CollectLightsFromScene(m_sceneGraph);
+				m_lightManager->PrintLightInfo();
+			}
+			
+			// Update ImGui interface with new scene graph
+			if (m_imguiInterface) {
+				m_imguiInterface->SetSceneGraph(m_sceneGraph);
+			}
+			
+			// Update input integration with new scene graph
+			if (m_inputIntegration) {
+				m_inputIntegration->SetSceneGraph(m_sceneGraph);
+			}
+			
+			// Compute scene bounding box
+			ComputeSceneBoundingBox();
+			
+			std::cout << "[MainWindow] Scene swap completed successfully: " << newSceneFile << std::endl;
+		}
+		else {
+			std::cerr << "[MainWindow] Failed to load scene: " << newSceneFile << std::endl;
+		}
+		
+		// Mark BVH as dirty
+		m_bvhDirty = true;
+		m_boundingBoxCached = false;
+		
+		// Reset TAA history
+		if (m_modularRenderer) {
+			m_modularRenderer->ResetTAA();
+		}
+	}
+}
+
+void MainWindow::CleanupCurrentScene() {
+	std::cout << "[MainWindow] Cleaning up current scene" << std::endl;
+	
+	// Reset BVH
+	if (m_sceneBVH) {
+		m_sceneBVH->Clear();
+	}
+	
+	// Clear selection in ImGui
+	if (m_imguiInterface) {
+		m_imguiInterface->SetSelectedNode(nullptr);
+	}
+}
+
+void MainWindow::ResetOpenGLState() {
+	// Reset OpenGL state to known defaults
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, m_windowWidth, m_windowHeight);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glDisable(GL_BLEND);
+}
+
 glm::vec3 MainWindow::ScreenToWorldRay(int mouseX, int mouseY) {
-	RayCast::Ray ray = RayCast::ScreenToWorldRay(mouseX, mouseY, m_camera, m_windowWidth, m_windowHeight);
-	return ray.direction;
+	// Convert screen coordinates to normalized device coordinates
+	float x = (2.0f * mouseX) / m_windowWidth - 1.0f;
+	float y = 1.0f - (2.0f * mouseY) / m_windowHeight;
+	
+	// Get inverse matrices
+	glm::mat4 proj = m_camera->GetProjectionMatrix();
+	glm::mat4 view = m_camera->GetViewMatrix();
+	
+	// Create ray in clip space
+	glm::vec4 rayClip(x, y, -1.0f, 1.0f);
+	
+	// Transform to eye space
+	glm::vec4 rayEye = glm::inverse(proj) * rayClip;
+	rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+	
+	// Transform to world space
+	glm::vec3 rayWorld = glm::vec3(glm::inverse(view) * rayEye);
+	rayWorld = glm::normalize(rayWorld);
+	
+	return rayWorld;
 }
 
 std::shared_ptr<SceneNode> MainWindow::RayIntersectScene(const glm::vec3& rayOrigin, const glm::vec3& rayDirection) {
-	RayCast::Ray ray(rayOrigin, rayDirection);
-	RayCast::HitResult result = RayCast::RayIntersectScene(ray, m_sceneGraph->GetRoot());
-	return result.node;
+	if (!m_sceneGraph || !m_sceneGraph->GetRoot()) {
+		return nullptr;
+	}
+	
+	std::shared_ptr<SceneNode> closestNode = nullptr;
+	float closestDistance = std::numeric_limits<float>::max();
+	
+	// Traverse scene graph and test intersections
+	std::function<void(const std::shared_ptr<SceneNode>&, const glm::mat4&)> traverse;
+	traverse = [&](const std::shared_ptr<SceneNode>& node, const glm::mat4& parentTransform) {
+		if (!node) return;
+		
+		glm::mat4 worldTransform = parentTransform * node->GetTransform();
+		
+		// Test intersection with this node
+		if (node->GetModel()) {
+			auto [minBounds, maxBounds] = node->GetBoundingBox();
+			
+			// Transform bounds to world space
+			glm::vec3 worldMin = glm::vec3(worldTransform * glm::vec4(minBounds, 1.0f));
+			glm::vec3 worldMax = glm::vec3(worldTransform * glm::vec4(maxBounds, 1.0f));
+			
+			// Correct min/max after transform
+			glm::vec3 actualMin = glm::min(worldMin, worldMax);
+			glm::vec3 actualMax = glm::max(worldMin, worldMax);
+			
+			float distance;
+			if (RayIntersectAABB(rayOrigin, rayDirection, actualMin, actualMax) &&
+				glm::distance(rayOrigin, (actualMin + actualMax) * 0.5f) < closestDistance) {
+				closestDistance = glm::distance(rayOrigin, (actualMin + actualMax) * 0.5f);
+				closestNode = node;
+			}
+		}
+		
+		// Recurse to children
+		for (const auto& child : node->children) {
+			traverse(child, worldTransform);
+		}
+	};
+	
+	traverse(m_sceneGraph->GetRoot(), glm::mat4(1.0f));
+	
+	return closestNode;
 }
 
 bool MainWindow::RayIntersectNode(const std::shared_ptr<SceneNode>& node, const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::mat4& worldTransform) {
-	RayCast::Ray ray(rayOrigin, rayDirection);
-	RayCast::HitResult result = RayCast::RayIntersectNode(ray, node, worldTransform);
-	return result.hit;
+	if (!node || !node->GetModel()) return false;
+	
+	auto [minBounds, maxBounds] = node->GetBoundingBox();
+	
+	// Transform bounds to world space
+	glm::vec3 worldMin = glm::vec3(worldTransform * glm::vec4(minBounds, 1.0f));
+	glm::vec3 worldMax = glm::vec3(worldTransform * glm::vec4(maxBounds, 1.0f));
+	
+	return RayIntersectAABB(rayOrigin, rayDirection, glm::min(worldMin, worldMax), glm::max(worldMin, worldMax));
 }
 
 bool MainWindow::RayIntersectAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& aabbMin, const glm::vec3& aabbMax) {
-	RayCast::Ray ray(rayOrigin, rayDirection);
-	RayCast::HitResult result = RayCast::RayIntersectAABB(ray, aabbMin, aabbMax);
-	return result.hit;
+	glm::vec3 invDir = 1.0f / rayDirection;
+	
+	glm::vec3 t0 = (aabbMin - rayOrigin) * invDir;
+	glm::vec3 t1 = (aabbMax - rayOrigin) * invDir;
+	
+	glm::vec3 tmin = glm::min(t0, t1);
+	glm::vec3 tmax = glm::max(t0, t1);
+	
+	float tNear = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
+	float tFar = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
+	
+	return tNear <= tFar && tFar >= 0.0f;
 }
+
 
 void MainWindow::Run() {
 	while (m_running) {
 		Uint32 currentTime = SDL_GetTicks();
 		float deltaTime = (currentTime - m_lastTime) / 1000.0f;
 		m_lastTime = currentTime;
-		float fps = (deltaTime > 0.0f) ? 1.0f / deltaTime : 0.0f;
-		//frame time in milliseconds
+		
+		// Cap delta time to avoid huge jumps
+		if (deltaTime > 0.1f) deltaTime = 0.1f;
+		
+		// Store frame time for profiling
 		m_frameTime = deltaTime * 1000.0f;
-		if (m_frameTime > 1000.0f) m_frameTime = 1000.0f;
-		if (m_frameTime < 0.0f) m_frameTime = 0.0f;
-		constexpr size_t maxSamples = 200;
-		constexpr size_t smoothWindow = 10;
-
 		m_frameTimeData.push_back(m_frameTime);
-
-		// Apply moving average smoothing
-		if (m_frameTimeData.size() >= smoothWindow) {
-			float smoothed = 0.0f;
-			for (size_t i = m_frameTimeData.size() - smoothWindow; i < m_frameTimeData.size(); ++i) {
-				smoothed += m_frameTimeData[i];
-			}
-			smoothed /= smoothWindow;
-			m_frameTimeData.back() = smoothed;
-		}
-
-		// Cap data size to avoid memory bloat
-		if (m_frameTimeData.size() > maxSamples) {
+		if (m_frameTimeData.size() > 100) {
 			m_frameTimeData.erase(m_frameTimeData.begin());
 		}
-
+		
 		ProcessEvents();
 		Update(deltaTime);
-		Render(fps);
+		Render(m_fps);
 	}
 }
 
 void MainWindow::Cleanup() {
-	// Shutdown input system
-	if (m_inputIntegration) {
-		m_inputIntegration->Shutdown();
-	}
-
-	if (ImGui::GetCurrentContext()) {
-		ImGui_ImplOpenGL3_Shutdown();
-		ImGui_ImplSDL2_Shutdown();
-		ImGui::DestroyContext();
-	}
-	if (m_sceneGraph) {
-		m_sceneGraph->GetRoot()->children.clear();
-	}
-	if (m_shaderProgram)  glDeleteProgram(m_shaderProgram);
-	if (m_shadowShader)   glDeleteProgram(m_shadowShader);
-	if (m_physicsEngine) m_physicsEngine->RemoveAllBodies();
-	if (m_glContext)      SDL_GL_DeleteContext(m_glContext);
-	if (m_window)         SDL_DestroyWindow(m_window);
-
-	TTF_Quit();
-	SDL_Quit();
-}
-
-unsigned int MainWindow::CreateShaderProgram(const std::string& vertexPath, const std::string& fragmentPath) {
-	return ::CreateShaderProgram(vertexPath.c_str(), fragmentPath.c_str());
-}
-
-void MainWindow::CleanupCurrentScene() {
-	std::cout << "[MainWindow] Cleaning up current scene..." << std::endl;
-
-	// Shutdown current scene graph
-	if (m_sceneGraph) {
-		m_sceneGraph->Shutdown();
-	}
-
-	// Shutdown physics engine
-	if (m_physicsEngine) {
-		m_physicsEngine->Shutdown();
-	}
-
-	// Clear spatial acceleration structures
-	m_sceneBVH.reset();
-	m_bvhDirty = true;
-
-	// Clear cached bounding box data
-	m_boundingBoxCached = false;
-}
-
-void MainWindow::ResetOpenGLState() {
-	// Reset OpenGL state to prevent interference between scenes
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glUseProgram(0);
-
-	// Unbind all texture units
-	for (int i = 0; i < 16; i++) {
-		glActiveTexture(GL_TEXTURE0 + i);
-		if (i == 9) {
-			glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-		}
-		else {
-			glBindTexture(GL_TEXTURE_2D, 0);
-		}
-	}
-	glActiveTexture(GL_TEXTURE0);
-}
-
-void MainWindow::SwapScene(const std::string& newSceneFile) {
-	std::cout << "[MainWindow] ===== SCENE SWAP INITIATED =====" << std::endl;
-	std::cout << "[MainWindow] Loading scene: " << newSceneFile << std::endl;
-
-	if (!m_modelManager) {
-		std::cerr << "[MainWindow] ERROR: ModelManager is null, cannot swap scene" << std::endl;
-		return;
-	}
-
-	if (!m_modularRenderer) {
-		std::cerr << "[MainWindow] ERROR: ModularRenderer is null, cannot swap scene" << std::endl;
-		return;
-	}
-
-	// Cleanup
-	CleanupCurrentScene();
-	ResetOpenGLState();
-
-	//Reinitialize systems (use cached config)
-	if (!m_simulationConfigLoaded) {
-		if (!m_simulationConfig.loadConfig("config.json")) {
-			std::cerr << "[MainWindow] Warning: Using default simulation config" << std::endl;
-		}
-		m_simulationConfigLoaded = true;
-	}
-
-	m_physicsEngine = std::make_shared<PhysicsEngine>(m_simulationConfig);
-	m_sceneLoader = std::make_shared<SceneLoader>(m_modelManager, m_physicsEngine, m_windowWidth, m_windowHeight);
-
-	//Load new scene
-	auto newSceneGraph = m_sceneLoader->LoadScene(newSceneFile);
-
-	if (!newSceneGraph || !newSceneGraph->GetRoot()) {
-		std::cerr << "[MainWindow] ERROR: Failed to load scene: " << newSceneFile << std::endl;
-		std::cerr << "[MainWindow] Retaining current scene to prevent crash" << std::endl;
-
-		// Reinitialize old scene's physics if we failed
-		if (m_sceneGraph && m_physicsEngine) {
-			m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
-			if (m_physicsEnabledForScene) {
-				m_physicsEngine->Resume();
-			}
-		}
-		return;
-	}
-
-	// Apply new scene
-	m_sceneGraph = std::move(newSceneGraph);
-	m_scene_name = m_sceneGraph->GetSceneName();
-	m_exposure = m_sceneGraph->m_exposure;
-	m_gamma = m_sceneGraph->m_gamma;
-	m_currentSceneFilePath = newSceneFile;
-
-	//Sync physics state
-	m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
-	if (m_physicsEngine) {
-		if (m_physicsEnabledForScene) {
-			m_physicsEngine->Resume();
-		}
-		else {
-			m_physicsEngine->Pause();
-		}
-	}
-
-	//Update lighting system
-	if (m_lightManager) {
-		m_lightManager->CollectLightsFromScene(m_sceneGraph);
-		m_lightManager->PrintLightInfo();
-	}
-
-	//Rebuild spatial structures
-	ComputeSceneBoundingBox();
-
-	//8: Update UI references (invalidate cache to force update)
-	m_cachedImGuiSceneGraph.reset();
+	std::cout << "[MainWindow] Cleaning up..." << std::endl;
+	
+	// Cleanup ImGui
 	if (m_imguiInterface) {
-		m_imguiInterface->SetSceneGraph(m_sceneGraph);
+		m_imguiInterface.reset();
 	}
-
-	//Window management
-	SDL_RestoreWindow(m_window);
-	SDL_ShowWindow(m_window);
-	SDL_RaiseWindow(m_window);
-
-	std::cout << "[MainWindow] ===== SCENE SWAP COMPLETE =====" << std::endl;
-	std::cout << "[MainWindow] New scene: " << m_scene_name << std::endl;
+	
+	// Cleanup input system
+	if (m_inputIntegration) {
+		m_inputIntegration.reset();
+	}
+	
+	// Cleanup renderer
+	if (m_modularRenderer) {
+		m_modularRenderer.reset();
+	}
+	
+	// Cleanup physics
+	if (m_physicsEngine) {
+		m_physicsEngine.reset();
+	}
+	
+	// Cleanup scene resources
+	m_sceneGraph.reset();
+	m_sceneLoader.reset();
+	m_modelManager.reset();
+	m_lighting.reset();
+	m_camera.reset();
+	m_lightManager.reset();
+	m_sceneBVH.reset();
+	
+	// Cleanup OpenGL context
+	if (m_glContext) {
+		SDL_GL_DeleteContext(m_glContext);
+		m_glContext = nullptr;
+	}
+	
+	// Cleanup window
+	if (m_window) {
+		SDL_DestroyWindow(m_window);
+		m_window = nullptr;
+	}
+	
+	// Quit SDL
+	SDL_Quit();
+	
+	std::cout << "[MainWindow] Cleanup complete" << std::endl;
 }

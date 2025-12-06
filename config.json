@@ -55,7 +55,7 @@
 
   ],
   "text_font": "fonts\\arial.ttf",
-  "vsync": true,
+  "vsync": false,
   "camera": {
     "position": [ -1.0, 1.0, -1.0 ],
     "up": [ 0.0, 1.0, 0.0 ],

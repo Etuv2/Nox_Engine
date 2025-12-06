@@ -31,10 +31,74 @@ bool LightingPass::Initialize(RenderContext& context) {
 		}
 	}
 
+	// Cache all uniform locations once at initialization
+	CacheUniformLocations();
+
 	SetupFallbackIBL();
 
 	std::cout << "[LightingPass] Initialized successfully.\n";
 	return true;
+}
+
+void LightingPass::CacheUniformLocations() {
+	if (!m_shader) return;
+	
+	// Sampler uniforms
+	m_uniforms.gPackedNormalRM = glGetUniformLocation(m_shader, "gPackedNormalRM");
+	m_uniforms.gAlbedoAO = glGetUniformLocation(m_shader, "gAlbedoAO");
+	m_uniforms.gEmissiveSpec = glGetUniformLocation(m_shader, "gEmissiveSpec");
+	m_uniforms.gDepth = glGetUniformLocation(m_shader, "gDepth");
+	m_uniforms.ssaoMap = glGetUniformLocation(m_shader, "ssaoMap");
+	m_uniforms.screenSpaceShadowMap = glGetUniformLocation(m_shader, "screenSpaceShadowMap");
+	m_uniforms.ssgiMap = glGetUniformLocation(m_shader, "ssgiMap");
+	m_uniforms.lpvTextureR = glGetUniformLocation(m_shader, "lpvTextureR");
+	m_uniforms.lpvTextureG = glGetUniformLocation(m_shader, "lpvTextureG");
+	m_uniforms.lpvTextureB = glGetUniformLocation(m_shader, "lpvTextureB");
+	m_uniforms.irradianceMap = glGetUniformLocation(m_shader, "irradianceMap");
+	m_uniforms.prefilteredMap = glGetUniformLocation(m_shader, "prefilteredMap");
+	m_uniforms.brdfLUT = glGetUniformLocation(m_shader, "brdfLUT");
+	m_uniforms.multiLightShadowArray = glGetUniformLocation(m_shader, "multiLightShadowArray");
+	
+	// Matrix uniforms
+	m_uniforms.invProjection = glGetUniformLocation(m_shader, "invProjection");
+	m_uniforms.invView = glGetUniformLocation(m_shader, "invView");
+	m_uniforms.view = glGetUniformLocation(m_shader, "view");
+	m_uniforms.viewPos = glGetUniformLocation(m_shader, "viewPos");
+	
+	// IBL uniforms
+	m_uniforms.prefilteredMaxLOD = glGetUniformLocation(m_shader, "prefilteredMaxLOD");
+	m_uniforms.iblIntensity = glGetUniformLocation(m_shader, "iblIntensity");
+	m_uniforms.diffuseIBLScale = glGetUniformLocation(m_shader, "diffuseIBLScale");
+	m_uniforms.specularIBLScale = glGetUniformLocation(m_shader, "specularIBLScale");
+	
+	// Effect strength uniforms
+	m_uniforms.aoStrength = glGetUniformLocation(m_shader, "aoStrength");
+	m_uniforms.sssStrength = glGetUniformLocation(m_shader, "sssStrength");
+	m_uniforms.ssgiStrength = glGetUniformLocation(m_shader, "ssgiStrength");
+	
+	// LPV uniforms
+	m_uniforms.enableLPV = glGetUniformLocation(m_shader, "enableLPV");
+	m_uniforms.lpvGridCenter = glGetUniformLocation(m_shader, "lpvGridCenter");
+	m_uniforms.lpvGridResolution = glGetUniformLocation(m_shader, "lpvGridResolution");
+	m_uniforms.lpvVoxelSize = glGetUniformLocation(m_shader, "lpvVoxelSize");
+	m_uniforms.lpvGIStrength = glGetUniformLocation(m_shader, "lpvGIStrength");
+	m_uniforms.lpvGridOrientation = glGetUniformLocation(m_shader, "lpvGridOrientation");
+	m_uniforms.lpvDebugVisualization = glGetUniformLocation(m_shader, "lpvDebugVisualization");
+	m_uniforms.lpvDebugBoost = glGetUniformLocation(m_shader, "lpvDebugBoost");
+	
+	// Light uniforms
+	m_uniforms.numLights = glGetUniformLocation(m_shader, "numLights");
+	m_uniforms.numDirectionalLights = glGetUniformLocation(m_shader, "numDirectionalLights");
+	m_uniforms.numPointLights = glGetUniformLocation(m_shader, "numPointLights");
+	m_uniforms.numSpotLights = glGetUniformLocation(m_shader, "numSpotLights");
+	m_uniforms.enableShadows = glGetUniformLocation(m_shader, "enableShadows");
+	m_uniforms.shadowBias = glGetUniformLocation(m_shader, "shadowBias");
+	m_uniforms.maxShadowBias = glGetUniformLocation(m_shader, "maxShadowBias");
+	m_uniforms.normalOffsetScale = glGetUniformLocation(m_shader, "normalOffsetScale");
+	m_uniforms.cascadeBiasScale = glGetUniformLocation(m_shader, "cascadeBiasScale");
+	m_uniforms.cascadeCount = glGetUniformLocation(m_shader, "cascadeCount");
+	
+	m_uniformsCached = true;
 }
 
 void LightingPass::SetupFallbackIBL() {
@@ -87,7 +151,10 @@ void LightingPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<DirectionalLight>& dirLight,
 	const std::shared_ptr<Skybox>& skybox) {
-	std::cout << "[LightingPass] Starting execution..." << std::endl;
+	
+	if constexpr (VerboseLogging) {
+		std::cout << "[LightingPass] Starting execution..." << std::endl;
+	}
 
 	if (!camera) {
 		std::cerr << "[LightingPass] ERROR: No camera!" << std::endl;
@@ -104,13 +171,11 @@ void LightingPass::Execute(RenderContext& ctx,
 		return;
 	}
 
-	std::cout << "[LightingPass] Binding HDR FBO (ID: " << ctx.hdrFBO->GetFBO() << ")" << std::endl;
-
 	// Bind HDR FBO
 	ctx.hdrFBO->Bind();
 	glViewport(0, 0, ctx.width, ctx.height);
 
-	//Match legacy renderer - disable blending and enable depth test
+	// Match legacy renderer - disable blending and enable depth test
 	glDisable(GL_BLEND);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
@@ -118,7 +183,6 @@ void LightingPass::Execute(RenderContext& ctx,
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	std::cout << "[LightingPass] Copying depth from G-buffer..." << std::endl;
 	// Copy depth from G-buffer to HDR FBO
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx.gbufferFBO->GetFBO());
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx.hdrFBO->GetFBO());
@@ -127,67 +191,50 @@ void LightingPass::Execute(RenderContext& ctx,
 		GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	glBindFramebuffer(GL_FRAMEBUFFER, ctx.hdrFBO->GetFBO());
 
-	//After depth copy, disable depth test for fullscreen quad
+	// After depth copy, disable depth test for fullscreen quad
 	glDisable(GL_DEPTH_TEST);
 
-	std::cout << "[LightingPass] Using shader program: " << m_shader << std::endl;
 	glUseProgram(m_shader);
-	// Reminder:
+	
+	// Bind G-buffer textures
 	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 	// RT2: RGBA16F - Emissive (RGB) + Specular F0 luminance (A)
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_NORMAL);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));  // Packed: normal+rough+metal
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_ALBEDO);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));  // Packed: albedo+AO
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_EMISSIVE);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(2));  // Packed: emissive+spec
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(2));
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_DEPTH);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
 
-	// Bind SSAO (from SSAOPass output - blur buffer 1)
-	std::cout << "[LightingPass] Binding SSAO texture: " << m_ssaoTexture << std::endl;
+	// Bind SSAO texture (trust validity - texture ID 0 means disabled)
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::SSAO_MAP);
-	if (m_ssaoTexture > 0 && glIsTexture(m_ssaoTexture)) {
+	if (m_ssaoTexture > 0) {
 		glBindTexture(GL_TEXTURE_2D, m_ssaoTexture);
 	}
-	else {
-		std::cerr << "[LightingPass] WARNING: Invalid SSAO texture!" << std::endl;
-	}
 
-	// Bind Screen-Space Shadow (contact shadow)
-	std::cout << "[LightingPass] Binding screen-space shadow texture: " << m_sssTexture << std::endl;
+	// Bind Screen-Space Shadow texture
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::SCREEN_SPACE_SHADOW_MAP);
-	if (m_sssTexture > 0 && glIsTexture(m_sssTexture)) {
+	if (m_sssTexture > 0) {
 		glBindTexture(GL_TEXTURE_2D, m_sssTexture);
 	}
-	else {
-		// Bind a white texture as fallback (no shadowing)
-		std::cout << "[LightingPass] No valid screen-space shadow texture - using white fallback" << std::endl;
-	}
 
-	//Bind SSGI (Screen Space Global Illumination)
-	std::cout << "[LightingPass] Binding SSGI texture: " << m_ssgiTexture << std::endl;
+	// Bind SSGI texture
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::SSGI_MAP);
-	if (m_ssgiTexture > 0 && glIsTexture(m_ssgiTexture)) {
+	if (m_ssgiTexture > 0) {
 		glBindTexture(GL_TEXTURE_2D, m_ssgiTexture);
 	}
-	else {
-		std::cout << "[LightingPass] No valid SSGI texture - indirect diffuse will be disabled" << std::endl;
-	}
 
-	//Bind LPV 3D textures for global illumination
+	// Bind LPV 3D textures for global illumination
 	bool lpvEnabled = ctx.enableLPV && m_lpvTextureR > 0 && m_lpvTextureG > 0 && m_lpvTextureB > 0;
-	std::cout << "[LightingPass] LPV enabled: " << (lpvEnabled ? "YES" : "NO") << std::endl;
 
 	if (lpvEnabled) {
-		std::cout << "[LightingPass] Binding LPV textures - R:" << m_lpvTextureR
-			<< " G:" << m_lpvTextureG << " B:" << m_lpvTextureB << std::endl;
-
 		glActiveTexture(GL_TEXTURE0 + TextureUnits::LPV_TEXTURE_R);
 		glBindTexture(GL_TEXTURE_3D, m_lpvTextureR);
 
@@ -197,28 +244,24 @@ void LightingPass::Execute(RenderContext& ctx,
 		glActiveTexture(GL_TEXTURE0 + TextureUnits::LPV_TEXTURE_B);
 		glBindTexture(GL_TEXTURE_3D, m_lpvTextureB);
 	}
-	else {
-		std::cout << "[LightingPass] No LPV textures available" << std::endl;
-	}
 
-	// Set sampler uniforms
-	glUniform1i(glGetUniformLocation(m_shader, "gPackedNormalRM"), TextureUnits::GBUFFER_NORMAL);
-	glUniform1i(glGetUniformLocation(m_shader, "gAlbedoAO"), TextureUnits::GBUFFER_ALBEDO);
-	glUniform1i(glGetUniformLocation(m_shader, "gEmissiveSpec"), TextureUnits::GBUFFER_EMISSIVE);
-	glUniform1i(glGetUniformLocation(m_shader, "gDepth"), TextureUnits::GBUFFER_DEPTH);
-	glUniform1i(glGetUniformLocation(m_shader, "ssaoMap"), TextureUnits::SSAO_MAP);
-	glUniform1i(glGetUniformLocation(m_shader, "screenSpaceShadowMap"), TextureUnits::SCREEN_SPACE_SHADOW_MAP);
+	// Set sampler uniforms using cached locations
+	glUniform1i(m_uniforms.gPackedNormalRM, TextureUnits::GBUFFER_NORMAL);
+	glUniform1i(m_uniforms.gAlbedoAO, TextureUnits::GBUFFER_ALBEDO);
+	glUniform1i(m_uniforms.gEmissiveSpec, TextureUnits::GBUFFER_EMISSIVE);
+	glUniform1i(m_uniforms.gDepth, TextureUnits::GBUFFER_DEPTH);
+	glUniform1i(m_uniforms.ssaoMap, TextureUnits::SSAO_MAP);
+	glUniform1i(m_uniforms.screenSpaceShadowMap, TextureUnits::SCREEN_SPACE_SHADOW_MAP);
 
-	//Set LPV sampler uniforms
+	// Set LPV sampler uniforms
 	if (lpvEnabled) {
-		glUniform1i(glGetUniformLocation(m_shader, "lpvTextureR"), TextureUnits::LPV_TEXTURE_R);
-		glUniform1i(glGetUniformLocation(m_shader, "lpvTextureG"), TextureUnits::LPV_TEXTURE_G);
-		glUniform1i(glGetUniformLocation(m_shader, "lpvTextureB"), TextureUnits::LPV_TEXTURE_B);
+		glUniform1i(m_uniforms.lpvTextureR, TextureUnits::LPV_TEXTURE_R);
+		glUniform1i(m_uniforms.lpvTextureG, TextureUnits::LPV_TEXTURE_G);
+		glUniform1i(m_uniforms.lpvTextureB, TextureUnits::LPV_TEXTURE_B);
 	}
 
 	// Bind IBL textures (skybox or fallback)
 	bool useValidIBL = (skybox && skybox->ValidateIBLTextures());
-	std::cout << "[LightingPass] Using " << (useValidIBL ? "valid" : "fallback") << " IBL" << std::endl;
 
 	if (useValidIBL) {
 		glActiveTexture(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
@@ -230,118 +273,68 @@ void LightingPass::Execute(RenderContext& ctx,
 		glActiveTexture(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
 		glBindTexture(GL_TEXTURE_2D, skybox->GetBRDFLUT());
 
-		glUniform1f(glGetUniformLocation(m_shader, "prefilteredMaxLOD"),
-			skybox->GetPrefilteredMaxLOD());
-
-		//Set IBL intensity controls to prevent over-bright results
-		glUniform1f(glGetUniformLocation(m_shader, "iblIntensity"), ctx.iblIntensity);
-		glUniform1f(glGetUniformLocation(m_shader, "diffuseIBLScale"), ctx.diffuseIBLScale);
-		glUniform1f(glGetUniformLocation(m_shader, "specularIBLScale"), ctx.specularIBLScale);
-
-		std::cout << "[LightingPass] IBL intensity controls - Overall: " << ctx.iblIntensity
-			<< ", Diffuse: " << ctx.diffuseIBLScale
-			<< ", Specular: " << ctx.specularIBLScale << std::endl;
+		glUniform1f(m_uniforms.prefilteredMaxLOD, skybox->GetPrefilteredMaxLOD());
+		glUniform1f(m_uniforms.iblIntensity, ctx.iblIntensity);
+		glUniform1f(m_uniforms.diffuseIBLScale, ctx.diffuseIBLScale);
+		glUniform1f(m_uniforms.specularIBLScale, ctx.specularIBLScale);
 	}
 	else {
 		// Use fallback IBL
 		if (m_fallbackCubemap && m_fallbackCubemap->IsValid()) {
 			m_fallbackCubemap->Bind(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
 			m_fallbackCubemap->Bind(GL_TEXTURE0 + TextureUnits::PREFILTERED_ENV_MAP);
-		} else {
-			std::cerr << "[LightingPass] ERROR: Fallback cubemap is invalid!" << std::endl;
 		}
 
 		if (m_fallbackBRDF && m_fallbackBRDF->IsValid()) {
 			m_fallbackBRDF->Bind(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
-		} else {
-			std::cerr << "[LightingPass] ERROR: Fallback BRDF LUT is invalid!" << std::endl;
 		}
 
-		glUniform1f(glGetUniformLocation(m_shader, "prefilteredMaxLOD"), 0.0f);
-
-		// Set conservative fallback IBL values
-		glUniform1f(glGetUniformLocation(m_shader, "iblIntensity"), 0.3f);
-		glUniform1f(glGetUniformLocation(m_shader, "diffuseIBLScale"), 0.4f);
-		glUniform1f(glGetUniformLocation(m_shader, "specularIBLScale"), 0.5f);
-
-		std::cout << "[LightingPass] Using fallback IBL textures" << std::endl;
+		glUniform1f(m_uniforms.prefilteredMaxLOD, 0.0f);
+		glUniform1f(m_uniforms.iblIntensity, 0.3f);
+		glUniform1f(m_uniforms.diffuseIBLScale, 0.4f);
+		glUniform1f(m_uniforms.specularIBLScale, 0.5f);
 	}
 
-	glUniform1i(glGetUniformLocation(m_shader, "irradianceMap"), TextureUnits::IRRADIANCE_MAP);
-	glUniform1i(glGetUniformLocation(m_shader, "prefilteredMap"), TextureUnits::PREFILTERED_ENV_MAP);
-	glUniform1i(glGetUniformLocation(m_shader, "brdfLUT"), TextureUnits::BRDF_LUT);
+	glUniform1i(m_uniforms.irradianceMap, TextureUnits::IRRADIANCE_MAP);
+	glUniform1i(m_uniforms.prefilteredMap, TextureUnits::PREFILTERED_ENV_MAP);
+	glUniform1i(m_uniforms.brdfLUT, TextureUnits::BRDF_LUT);
 
-	std::cout << "[LightingPass] Uploading matrices and camera position..." << std::endl;
 	// Upload matrices
 	glm::mat4 invProj = glm::inverse(ctx.proj);
 	glm::mat4 invView = glm::inverse(ctx.view);
-	glUniformMatrix4fv(glGetUniformLocation(m_shader, "invProjection"),
-		1, GL_FALSE, glm::value_ptr(invProj));
-	glUniformMatrix4fv(glGetUniformLocation(m_shader, "invView"),
-		1, GL_FALSE, glm::value_ptr(invView));
-	glUniformMatrix4fv(glGetUniformLocation(m_shader, "view"),
-		1, GL_FALSE, glm::value_ptr(ctx.view));
+	glUniformMatrix4fv(m_uniforms.invProjection, 1, GL_FALSE, glm::value_ptr(invProj));
+	glUniformMatrix4fv(m_uniforms.invView, 1, GL_FALSE, glm::value_ptr(invView));
+	glUniformMatrix4fv(m_uniforms.view, 1, GL_FALSE, glm::value_ptr(ctx.view));
 
 	glm::vec3 camPos = camera->GetCameraPosition();
-	glUniform3fv(glGetUniformLocation(m_shader, "viewPos"), 1, glm::value_ptr(camPos));
+	glUniform3fv(m_uniforms.viewPos, 1, glm::value_ptr(camPos));
 
-	// SSAO strength (from context)
+	// SSAO strength
 	float aoStrength = ctx.enableSSAO ? ctx.ssaoIntensity : 0.0f;
-	glUniform1f(glGetUniformLocation(m_shader, "aoStrength"), aoStrength);
-	std::cout << "[LightingPass] SSAO strength set to: " << aoStrength << std::endl;
+	glUniform1f(m_uniforms.aoStrength, aoStrength);
 
 	// Screen-space shadow strength
 	float sssStrength = ctx.enableScreenSpaceShadows ? 1.0f : 0.0f;
-	glUniform1f(glGetUniformLocation(m_shader, "sssStrength"), sssStrength);
-	std::cout << "[LightingPass] Screen-space shadow strength set to: " << sssStrength << std::endl;
+	glUniform1f(m_uniforms.sssStrength, sssStrength);
 
-	//SSGI uniforms
-	std::cout << "[LightingPass] Binding SSGI texture: " << m_ssgiTexture << std::endl;
-	glActiveTexture(GL_TEXTURE0 + TextureUnits::SSGI_MAP);
-	if (m_ssgiTexture > 0 && glIsTexture(m_ssgiTexture)) {
-		glBindTexture(GL_TEXTURE_2D, m_ssgiTexture);
-	}
-	else {
-		std::cout << "[LightingPass] No valid SSGI texture - indirect diffuse will be disabled" << std::endl;
-	}
-	glUniform1i(glGetUniformLocation(m_shader, "ssgiMap"), TextureUnits::SSGI_MAP);
-	glUniform1f(glGetUniformLocation(m_shader, "ssgiStrength"), ctx.enableSSGI ? ctx.ssgiStrength : 0.0f);
-	std::cout << "[LightingPass] SSGI strength set to: " << (ctx.enableSSGI ? ctx.ssgiStrength : 0.0f) << std::endl;
+	// SSGI uniforms
+	glUniform1i(m_uniforms.ssgiMap, TextureUnits::SSGI_MAP);
+	glUniform1f(m_uniforms.ssgiStrength, ctx.enableSSGI ? ctx.ssgiStrength : 0.0f);
 
-	//Upload LPV parameters
-	glUniform1i(glGetUniformLocation(m_shader, "enableLPV"), lpvEnabled ? 1 : 0);
+	// Upload LPV parameters
+	glUniform1i(m_uniforms.enableLPV, lpvEnabled ? 1 : 0);
 	if (lpvEnabled) {
-		std::cout << "[LightingPass] Setting LPV parameters..." << std::endl;
+		glUniform3fv(m_uniforms.lpvGridCenter, 1, glm::value_ptr(ctx.lpvGridCenter));
+		glUniform1i(m_uniforms.lpvGridResolution, ctx.lpvGridResolution);
+		glUniform1f(m_uniforms.lpvVoxelSize, ctx.lpvVoxelSize);
+		glUniform1f(m_uniforms.lpvGIStrength, ctx.lpvGIStrength);
 
-		//Pass grid parameters to shader
-		glUniform3fv(glGetUniformLocation(m_shader, "lpvGridCenter"), 1, glm::value_ptr(ctx.lpvGridCenter));
-		glUniform1i(glGetUniformLocation(m_shader, "lpvGridResolution"), ctx.lpvGridResolution);
-		glUniform1f(glGetUniformLocation(m_shader, "lpvVoxelSize"), ctx.lpvVoxelSize);
-		glUniform1f(glGetUniformLocation(m_shader, "lpvGIStrength"), ctx.lpvGIStrength);
-
-		//Pass grid orientation as quaternion
 		glm::vec4 orientQuat = glm::vec4(ctx.lpvGridOrientation.x, ctx.lpvGridOrientation.y,
 			ctx.lpvGridOrientation.z, ctx.lpvGridOrientation.w);
-		glUniform4fv(glGetUniformLocation(m_shader, "lpvGridOrientation"), 1, glm::value_ptr(orientQuat));
+		glUniform4fv(m_uniforms.lpvGridOrientation, 1, glm::value_ptr(orientQuat));
 
-		// Debug parameters
-		glUniform1i(glGetUniformLocation(m_shader, "lpvDebugVisualization"), ctx.lpvDebugVisualization ? 1 : 0);
-		glUniform1f(glGetUniformLocation(m_shader, "lpvDebugBoost"), ctx.lpvDebugBoost);
-
-		std::cout << "[LightingPass] LPV grid center: (" << ctx.lpvGridCenter.x << ", "
-			<< ctx.lpvGridCenter.y << ", " << ctx.lpvGridCenter.z << ")" << std::endl;
-		std::cout << "[LightingPass] LPV grid resolution: " << ctx.lpvGridResolution << std::endl;
-		std::cout << "[LightingPass] LPV voxel size: " << ctx.lpvVoxelSize << std::endl;
-		std::cout << "[LightingPass] LPV GI strength: " << ctx.lpvGIStrength << std::endl;
-		std::cout << "[LightingPass] LPV debug mode: " << (ctx.lpvDebugVisualization ? "ON" : "OFF")
-			<< " (boost: " << ctx.lpvDebugBoost << "x)" << std::endl;
-
-		// Verify texture binding
-		std::cout << "[LightingPass] LPV textures bound: R=" << m_lpvTextureR
-			<< " G=" << m_lpvTextureG << " B=" << m_lpvTextureB << std::endl;
-	}
-	else {
-		std::cout << "[LightingPass] LPV disabled" << std::endl;
+		glUniform1i(m_uniforms.lpvDebugVisualization, ctx.lpvDebugVisualization ? 1 : 0);
+		glUniform1f(m_uniforms.lpvDebugBoost, ctx.lpvDebugBoost);
 	}
 
 	// Bind LightManager data
@@ -349,56 +342,45 @@ void LightingPass::Execute(RenderContext& ctx,
 		ctx.lightManager->UpdateGPUBuffers();
 
 		int activeLightCount = ctx.lightManager->GetActiveLightCount();
-		std::cout << "[LightingPass] Binding light data - Active lights: " << activeLightCount << std::endl;
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ctx.lightManager->GetLightDataSSBO());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx.lightManager->GetShadowMatricesSSBO());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ctx.lightManager->GetTileDataSSBO());
 
-		glUniform1i(glGetUniformLocation(m_shader, "numLights"), activeLightCount);
-		glUniform1i(glGetUniformLocation(m_shader, "numDirectionalLights"),
-			static_cast<int>(ctx.lightManager->GetDirectionalLightCount()));
-		glUniform1i(glGetUniformLocation(m_shader, "numPointLights"),
-			static_cast<int>(ctx.lightManager->GetPointLightCount()));
-		glUniform1i(glGetUniformLocation(m_shader, "numSpotLights"),
-			static_cast<int>(ctx.lightManager->GetSpotLightCount()));
+		glUniform1i(m_uniforms.numLights, activeLightCount);
+		glUniform1i(m_uniforms.numDirectionalLights, static_cast<int>(ctx.lightManager->GetDirectionalLightCount()));
+		glUniform1i(m_uniforms.numPointLights, static_cast<int>(ctx.lightManager->GetPointLightCount()));
+		glUniform1i(m_uniforms.numSpotLights, static_cast<int>(ctx.lightManager->GetSpotLightCount()));
 
-		glUniform1i(glGetUniformLocation(m_shader, "enableShadows"), ctx.enableShadows ? 1 : 0);
+		glUniform1i(m_uniforms.enableShadows, ctx.enableShadows ? 1 : 0);
 
 		// Bind shadow array
 		GLuint shadowArray = ctx.lightManager->GetShadowArrayTexture();
-		std::cout << "[LightingPass] Shadow array texture: " << shadowArray << std::endl;
-		if (shadowArray > 0 && glIsTexture(shadowArray)) {
+		if (shadowArray > 0) {
 			glActiveTexture(GL_TEXTURE0 + TextureUnits::SHADOW_MAP_ARRAY);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, shadowArray);
-			glUniform1i(glGetUniformLocation(m_shader, "multiLightShadowArray"),
-				TextureUnits::SHADOW_MAP_ARRAY);
-		}
-		else {
-			std::cerr << "[LightingPass] WARNING: Invalid shadow array texture!" << std::endl;
+			glUniform1i(m_uniforms.multiLightShadowArray, TextureUnits::SHADOW_MAP_ARRAY);
 		}
 
 		// Shadow bias configuration
-		glUniform1f(glGetUniformLocation(m_shader, "shadowBias"), ctx.shadowBias);
-		glUniform1f(glGetUniformLocation(m_shader, "maxShadowBias"), ctx.shadowBias * 10.0f);
-		glUniform1f(glGetUniformLocation(m_shader, "normalOffsetScale"), 0.1f);
-		glUniform1f(glGetUniformLocation(m_shader, "cascadeBiasScale"), 1.0f);
+		glUniform1f(m_uniforms.shadowBias, ctx.shadowBias);
+		glUniform1f(m_uniforms.maxShadowBias, ctx.shadowBias * 10.0f);
+		glUniform1f(m_uniforms.normalOffsetScale, 0.1f);
+		glUniform1f(m_uniforms.cascadeBiasScale, 1.0f);
 
 		// Disable legacy cascade system
-		glUniform1i(glGetUniformLocation(m_shader, "cascadeCount"), 0);
+		glUniform1i(m_uniforms.cascadeCount, 0);
 	}
 	else {
-		std::cout << "[LightingPass] No LightManager - setting zero lights" << std::endl;
 		// No lights
-		glUniform1i(glGetUniformLocation(m_shader, "numLights"), 0);
-		glUniform1i(glGetUniformLocation(m_shader, "numDirectionalLights"), 0);
-		glUniform1i(glGetUniformLocation(m_shader, "numPointLights"), 0);
-		glUniform1i(glGetUniformLocation(m_shader, "numSpotLights"), 0);
-		glUniform1i(glGetUniformLocation(m_shader, "enableShadows"), 0);
-		glUniform1i(glGetUniformLocation(m_shader, "cascadeCount"), 0);
+		glUniform1i(m_uniforms.numLights, 0);
+		glUniform1i(m_uniforms.numDirectionalLights, 0);
+		glUniform1i(m_uniforms.numPointLights, 0);
+		glUniform1i(m_uniforms.numSpotLights, 0);
+		glUniform1i(m_uniforms.enableShadows, 0);
+		glUniform1i(m_uniforms.cascadeCount, 0);
 	}
 
-	std::cout << "[LightingPass] Rendering fullscreen quad..." << std::endl;
 	// Render fullscreen quad
 	if (ctx.screenQuad) {
 		ctx.screenQuad->Render();
@@ -408,5 +390,4 @@ void LightingPass::Execute(RenderContext& ctx,
 	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	std::cout << "[LightingPass] Execution complete" << std::endl;
 }

@@ -8,7 +8,10 @@
 #include <iostream>
 
 SceneGraph::SceneGraph()
-	: m_transformSystem(&m_componentManager)
+	: m_transformSystem(&m_componentManager),
+	  m_renderSystem(&m_componentManager, &m_transformSystem),
+	  m_animationSystem(&m_componentManager, &m_transformSystem),
+	  m_hierarchySystem(&m_componentManager, &m_transformSystem)
 {
 	m_root = std::make_shared<SceneNode>();
 	m_root->SetTransform(glm::mat4(1.0f));
@@ -134,161 +137,48 @@ void SceneGraph::UpdateLightManager() {
 	}
 }
 
-//Forward pass draw
+//Forward pass draw - now uses RenderSystem
 void SceneGraph::Draw(
 	const glm::mat4& view,
 	const glm::mat4& projection,
 	GLuint shaderProgram)
 {
-	// Forward shading pass
-	if (m_root) {
-		m_root->Draw(glm::mat4(1.0f), view, projection, shaderProgram);
-	}
+	// Use ECS-based rendering
+	m_renderSystem.RenderForward(view, projection, shaderProgram);
 }
 
 void SceneGraph::DrawCascade(
 	const glm::mat4& lightSpace,
 	GLuint shadowShader)
 {
-	// CRITICAL DEBUG: Add comprehensive logging to track shadow rendering
-	std::cout << "[SceneGraph] DrawCascade called with shader=" << shadowShader << std::endl;
-
-	if (!m_root) {
-		std::cerr << "[SceneGraph] ERROR: No root node for shadow rendering!" << std::endl;
-		return;
-	}
-
-	// Count how many child nodes we have
-	int childCount = static_cast<int>(m_root->children.size());
-	std::cout << "[SceneGraph] Root has " << childCount << " children for shadow rendering" << std::endl;
-
-	if (childCount == 0) {
-		std::cerr << "[SceneGraph] WARNING: No child nodes to render shadows for!" << std::endl;
-		return;
-	}
-
-	// Verify the shader is valid
-	if (shadowShader == 0) {
-		std::cerr << "[SceneGraph] ERROR: Invalid shadow shader (0)!" << std::endl;
-		return;
-	}
-
-	// Verify OpenGL state
-	GLint currentProgram = 0;
-	glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-	if (currentProgram != shadowShader) {
-		std::cerr << "[SceneGraph] WARNING: Shadow shader not active! Expected=" << shadowShader
-			<< " Current=" << currentProgram << std::endl;
-	}
-
-	// Check if we're rendering to a framebuffer
-	GLint currentFBO = 0;
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFBO);
-	std::cout << "[SceneGraph] Rendering shadows to FBO=" << currentFBO << std::endl;
-
-	// CRITICAL: Actually render the scene for shadows
-	std::cout << "[SceneGraph] Starting shadow geometry rendering..." << std::endl;
-
-	int renderCount = 0;
-
-	// Render all child nodes that have geometry
-	for (auto& child : m_root->children) {
-		if (child) {
-			// Check if this node has renderable geometry
-			bool hasGeometry = (child->GetModel() != nullptr) || (!child->children.empty());
-
-			if (hasGeometry) {
-				std::cout << "[SceneGraph] Rendering shadow for node: " << child->GetName()
-					<< " (type=" << static_cast<int>(child->GetNodeType()) << ")" << std::endl;
-
-				child->DrawCascade(glm::mat4(1.0f), lightSpace, shadowShader);
-				renderCount++;
-			}
-		}
-	}
-
-	std::cout << "[SceneGraph] Shadow cascade rendering complete: " << renderCount << " nodes rendered" << std::endl;
-
-	// If we didn't render anything, try an alternative approach
-	if (renderCount == 0) {
-		std::cout << "[SceneGraph] No geometry rendered - trying alternative geometry pass..." << std::endl;
-
-		// Use the geometry pass as fallback for shadow rendering
-		glUseProgram(shadowShader);
-
-		// Set up uniforms for shadow shader
-		GLint locLightSpace = glGetUniformLocation(shadowShader, "lightSpaceMatrix");
-		if (locLightSpace >= 0) {
-			glUniformMatrix4fv(locLightSpace, 1, GL_FALSE, glm::value_ptr(lightSpace));
-		}
-
-		// Try to render using the geometry pass
-		for (auto& child : m_root->children) {
-			if (child && child->GetModel()) {
-				std::cout << "[SceneGraph] Fallback shadow render for: " << child->GetName() << std::endl;
-				child->DrawGeometry(glm::mat4(1.0f), shadowShader);
-				renderCount++;
-			}
-		}
-
-		std::cout << "[SceneGraph] Fallback rendering complete: " << renderCount << " nodes rendered" << std::endl;
-	}
+	// Use ECS-based shadow rendering
+	m_renderSystem.RenderShadowCascade(lightSpace, shadowShader);
 }
 
 void SceneGraph::CollectRenderableObjects(MDIBatch& batch)
 {
-	if (m_root) {
-		// OPTIMIZATION: Reserve approximate capacity based on tree size
-		// This prevents reallocations during traversal
-		size_t estimatedObjects = EstimateRenderableObjectCount();
-		if (estimatedObjects > 0) {
-			// MDIBatch will handle reservation internally if needed
-		}
-
-		m_root->CollectRenderableObjects(glm::mat4(1.0f), batch);
-	}
+	// Use ECS-based collection
+	m_renderSystem.CollectRenderables(batch);
 }
 
 // OPTIMIZATION: Estimate number of renderable objects for batch reservation
 size_t SceneGraph::EstimateRenderableObjectCount() const
 {
-	if (!m_root) return 0;
-
-	size_t count = 0;
-	// Count nodes with models (simplified estimation)
-	std::function<void(const std::shared_ptr<SceneNode>&)> countNodes;
-	countNodes = [&](const std::shared_ptr<SceneNode>& node) {
-		if (node && node->GetModel()) {
-			// Each model may have multiple meshes
-			auto model = node->GetModel();
-			count += model->meshes.size();
-		}
-		for (const auto& child : node->children) {
-			countNodes(child);
-		}
-		};
-
-	for (const auto& child : m_root->children) {
-		countNodes(child);
-	}
-
-	return count;
+	return m_componentManager.GetRenderablePool().Size();
 }
 
 //Deferred geometry pass
 void SceneGraph::DrawGeometry(GLuint geometryShader)
 {
-	if (m_root) {
-		m_root->DrawGeometry(glm::mat4(1.0f), geometryShader);
-	}
+	// Use ECS-based geometry pass
+	m_renderSystem.RenderGeometry(geometryShader);
 }
 
 //Motion vector pass for TAA
 void SceneGraph::DrawVelocity(GLuint velocityShader)
 {
-	if (m_root) {
-		m_root->DrawVelocity(glm::mat4(1.0f), glm::mat4(1.0f), velocityShader);
-	}
+	// Use ECS-based velocity pass (with identity matrices for legacy compatibility)
+	m_renderSystem.RenderVelocity(glm::mat4(1.0f), glm::mat4(1.0f), glm::mat4(1.0f), glm::mat4(1.0f), velocityShader);
 }
 
 std::vector<std::shared_ptr<SceneNode>> SceneGraph::FindNodesByType(SceneNode::NODE_TYPE type)
@@ -411,161 +301,23 @@ void SceneGraph::Shutdown() {
 
 // NEW: Flat iteration rendering methods for cache-friendly performance
 void SceneGraph::DrawFlat(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram) {
-	// Update transforms first
-	m_transformSystem.UpdateTransforms();
-
-	glUseProgram(shaderProgram);
-
-	// Upload view and projection matrices once
-	GLint locView = glGetUniformLocation(shaderProgram, "view");
-	GLint locProj = glGetUniformLocation(shaderProgram, "projection");
-	if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
-	if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(projection));
-
-	// Iterate through all renderable components directly (cache-friendly)
-	auto& renderablePool = m_componentManager.GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		EntityID entityID = entry.entity;
-		auto& renderable = entry.component;
-
-		// Skip if no model
-		if (!renderable.model) continue;
-
-		// Get world transform from transform system
-		const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entityID);
-
-		// Upload model matrix
-		GLint locModel = glGetUniformLocation(shaderProgram, "model");
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
-
-		// Use custom shader if specified
-		GLuint useShader = (renderable.shaderID != 0) ? renderable.shaderID : shaderProgram;
-		if (useShader != shaderProgram) {
-			glUseProgram(useShader);
-			// Re-upload matrices for custom shader
-			if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
-			if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(projection));
-			if (locModel != -1) glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
-
-		// Draw the model (Scene::Draw handles mesh iteration)
-		renderable.model->Draw();
-
-		// Restore default shader if we switched
-		if (useShader != shaderProgram) {
-			glUseProgram(shaderProgram);
-		}
-	}
+	// Delegate to RenderSystem
+	m_renderSystem.RenderForward(view, projection, shaderProgram);
 }
 
 void SceneGraph::DrawCascadeFlat(const glm::mat4& lightSpace, GLuint shadowShader) {
-	// Update transforms first
-	m_transformSystem.UpdateTransforms();
-
-	glUseProgram(shadowShader);
-
-	// Upload light space matrix once
-	GLint locLS = glGetUniformLocation(shadowShader, "lightSpaceMatrix");
-	if (locLS != -1) {
-		glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
-	}
-
-	// Iterate through all renderable components
-	auto& renderablePool = m_componentManager.GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		auto& renderable = entry.component;
-		if (!renderable.model) continue;
-
-		// Get world transform
-		const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entry.entity);
-
-		// Upload model matrix
-		GLint locModel = glGetUniformLocation(shadowShader, "model");
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
-
-		// Draw model (positions only for shadow pass)
-		renderable.model->Draw();
-	}
+	// Delegate to RenderSystem
+	m_renderSystem.RenderShadowCascade(lightSpace, shadowShader);
 }
 
 void SceneGraph::DrawGeometryFlat(GLuint geometryShader) {
-	// Update transforms first
-	m_transformSystem.UpdateTransforms();
-
-	glUseProgram(geometryShader);
-
-	// Iterate through all renderable components
-	auto& renderablePool = m_componentManager.GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		auto& renderable = entry.component;
-		if (!renderable.model) continue;
-
-		// Get world transform
-		const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entry.entity);
-
-		// Upload model matrix
-		GLint locModel = glGetUniformLocation(geometryShader, "model");
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
-
-		// Handle skinning if needed
-		if (renderable.isSkinned) {
-			// TODO: Upload bone matrices from animation component
-			GLint locUseSkin = glGetUniformLocation(geometryShader, "u_enableSkinning");
-			if (locUseSkin != -1) {
-				glUniform1i(locUseSkin, 1);
-			}
-		}
-		else {
-			GLint locUseSkin = glGetUniformLocation(geometryShader, "u_enableSkinning");
-			if (locUseSkin != -1) {
-				glUniform1i(locUseSkin, 0);
-			}
-		}
-
-		// Draw model
-		renderable.model->Draw();
-	}
+	// Delegate to RenderSystem
+	m_renderSystem.RenderGeometry(geometryShader);
 }
 
 void SceneGraph::CollectRenderableObjectsFlat(MDIBatch& batch) {
-	// Update transforms first
-	m_transformSystem.UpdateTransforms();
-
-	// Iterate through all renderable components
-	auto& renderablePool = m_componentManager.GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		auto& renderable = entry.component;
-		if (!renderable.model) continue;
-
-		// Get world transform
-		const glm::mat4& worldTransform = m_transformSystem.GetWorldTransform(entry.entity);
-
-		// Collect each mesh in the model
-		for (const auto& mesh : renderable.model->meshes) {
-			MDI_RenderableObject obj{};
-			obj.count = static_cast<GLuint>(mesh.indexCount);
-			obj.firstIndex = 0;
-			obj.baseVertex = 0;
-			obj.modelMatrix = worldTransform;
-			obj.vao = mesh.VAO;
-
-			// Use precomputed bounding volume if available
-			if (mesh.boundingVolumeValid) {
-				obj.boundingSphere = glm::vec4(mesh.boundingCenter, mesh.boundingRadius);
-			}
-			else {
-				obj.boundingSphere = glm::vec4(0.0f, 0.0f, 0.0f, renderable.boundingRadius);
-			}
-
-			batch.AddObject(obj);
-		}
-	}
+	// Delegate to RenderSystem
+	m_renderSystem.CollectRenderables(batch);
 }
 
 void SceneGraph::SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, EntityID parentID) {
@@ -573,6 +325,68 @@ void SceneGraph::SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, Enti
 	// This is called when loading scenes to populate the component pools
 	if (!node) return;
 
-	// TODO: Implement when SceneNode facade is complete
-	// This will copy data from SceneNode into component pools
+	// Create ECS entity for this node if it doesn't have one
+	if (node->GetEntityID() == INVALID_ENTITY) {
+		node->CreateECSEntity();
+	}
+	
+	// Update parent relationship
+	if (parentID != INVALID_ENTITY) {
+		TransformComponent* transform = node->GetTransformComponent();
+		if (transform) {
+			transform->parentID = parentID;
+		}
+	}
+	
+	// Recursively sync children
+	EntityID myID = node->GetEntityID();
+	for (auto& child : node->children) {
+		SyncSceneNodeToComponents(child, myID);
+	}
+}
+
+// ============== NEW ECS-BASED RENDERING METHODS ==============
+
+void SceneGraph::RenderForward(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram) {
+	m_renderSystem.RenderForward(view, projection, shaderProgram);
+}
+
+void SceneGraph::RenderShadowCascade(const glm::mat4& lightSpace, GLuint shadowShader) {
+	m_renderSystem.RenderShadowCascade(lightSpace, shadowShader);
+}
+
+void SceneGraph::RenderGeometry(GLuint geometryShader) {
+	m_renderSystem.RenderGeometry(geometryShader);
+}
+
+void SceneGraph::RenderVelocity(const glm::mat4& view, const glm::mat4& projection,
+                                 const glm::mat4& prevView, const glm::mat4& prevProjection,
+                                 GLuint velocityShader) {
+	m_renderSystem.RenderVelocity(view, projection, prevView, prevProjection, velocityShader);
+}
+
+void SceneGraph::RenderTransparent(const glm::mat4& view, const glm::mat4& projection, GLuint shader) {
+	m_renderSystem.RenderTransparent(view, projection, shader);
+}
+
+void SceneGraph::CollectRenderables(MDIBatch& batch) {
+	m_renderSystem.CollectRenderables(batch);
+}
+
+void SceneGraph::SetFrustumPlanes(const glm::mat4& viewProjection) {
+	m_renderSystem.SetFrustumPlanes(viewProjection);
+}
+
+// ============== ANIMATION METHODS ==============
+
+void SceneGraph::UpdateAnimations(float deltaTime) {
+	m_animationSystem.Update(deltaTime);
+}
+
+void SceneGraph::PlayAnimation(EntityID entity, int animationIndex, bool loop) {
+	m_animationSystem.PlayAnimation(entity, animationIndex, loop);
+}
+
+void SceneGraph::StopAnimation(EntityID entity) {
+	m_animationSystem.StopAnimation(entity);
 }

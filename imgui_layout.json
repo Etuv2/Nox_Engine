@@ -8,7 +8,7 @@
       300.0,
       180.0
     ],
-    "visible": true
+    "visible": false
   },
   "Help": {
     "position": [
@@ -52,7 +52,7 @@
       320.0,
       200.0
     ],
-    "visible": true
+    "visible": false
   },
   "Rendering": {
     "position": [

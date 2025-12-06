@@ -4,6 +4,7 @@
 #include "TextureUnits.h"
 #include "FrameBuffer.h"
 #include "GLState.h"
+#include "GLBuffer.h"
 #include <iostream>
 #include <vector>
 #include <glm/gtc/matrix_transform.hpp>
@@ -77,10 +78,17 @@ void Skybox::buildSkyboxCube()
 	};
 
 	glGenVertexArrays(1, &m_skyboxVAO);
-	glGenBuffers(1, &m_skyboxVBO);
 	glBindVertexArray(m_skyboxVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, m_skyboxVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), skyboxVertices, GL_STATIC_DRAW);
+
+	// Create vertex buffer using GLBuffer wrapper
+	m_skyboxVBO = std::make_unique<GLBuffer>(
+		BufferType::Vertex,
+		sizeof(skyboxVertices),
+		skyboxVertices,
+		BufferUsage::StaticDraw
+	);
+	m_skyboxVBO->SetLabel("Skybox_CubeVBO");
+
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 	glBindVertexArray(0);
@@ -233,6 +241,11 @@ void Skybox::Draw(const glm::mat4& view, const glm::mat4& projection)
 		return;
 	}
 
+	// Verify skybox VAO exists (may have been cleaned up during scene switch)
+	if (m_skyboxVAO == 0) {
+		buildSkyboxCube();
+	}
+
 	// Use comprehensive state management for skybox rendering
 	SCOPED_GL_RENDER_STATE();
 
@@ -240,11 +253,12 @@ void Skybox::Draw(const glm::mat4& view, const glm::mat4& projection)
 	glm::mat4 viewNoTrans = glm::mat4(glm::mat3(view));
 
 	// Set up optimal state for skybox rendering
+	// CRITICAL: Must enable depth test and set proper depth function
 	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LEQUAL);
-	glDepthMask(GL_FALSE);
-	glDisable(GL_CULL_FACE);
-	glDisable(GL_BLEND);
+	glDepthFunc(GL_LEQUAL);  // Skybox renders at max depth (z=w in clip space)
+	glDepthMask(GL_FALSE);   // Don't write to depth buffer
+	glDisable(GL_CULL_FACE); // Render all faces of the cube
+	glDisable(GL_BLEND);     // No blending needed for skybox
 
 	// Render the skybox
 	glUseProgram(m_skyboxShader);
@@ -257,12 +271,19 @@ void Skybox::Draw(const glm::mat4& view, const glm::mat4& projection)
 	SET_UNIFORM_TEXTURE_UNIT(m_skyboxShader, "environmentMap", TextureUnits::SKYBOX_CUBEMAP);
 
 	renderCube();
+
+	// CRITICAL: Restore depth mask to prevent issues with subsequent rendering
+	glDepthMask(GL_TRUE);
+	glDepthFunc(GL_LESS);
+	glEnable(GL_CULL_FACE);
 }
 
 void Skybox::Cleanup()
 {
-	if (m_skyboxVBO) glDeleteBuffers(1, &m_skyboxVBO);
+	// GLBuffer handles its own cleanup via RAII
+	m_skyboxVBO.reset();
 	if (m_skyboxVAO) glDeleteVertexArrays(1, &m_skyboxVAO);
+	m_skyboxVAO = 0;
 
 	// New Texture class handles cleanup automatically via smart pointers
 	m_envCubemap.reset();
@@ -277,6 +298,14 @@ void Skybox::Cleanup()
 	if (m_brdfShader) glDeleteProgram(m_brdfShader);
 	if (m_captureFBO) glDeleteFramebuffers(1, &m_captureFBO);
 	if (m_captureRBO) glDeleteRenderbuffers(1, &m_captureRBO);
+
+	m_equiRectToCubeShader = 0;
+	m_skyboxShader = 0;
+	m_irradianceShader = 0;
+	m_prefilterShader = 0;
+	m_brdfShader = 0;
+	m_captureFBO = 0;
+	m_captureRBO = 0;
 
 	m_pipelineReady = false;
 }
@@ -569,7 +598,7 @@ bool Skybox::GenerateBRDFLUT()
 		.Build();
 
 	// Full screen quad for BRDF integration
-	GLuint quadVAO = 0, quadVBO = 0;
+	GLuint quadVAO = 0;
 	float quadVertices[] = {
 		-1.f,  1.f, 0.f, 0.f, 1.f,
 		-1.f, -1.f, 0.f, 0.f, 0.f,
@@ -578,10 +607,11 @@ bool Skybox::GenerateBRDFLUT()
 	};
 
 	glGenVertexArrays(1, &quadVAO);
-	glGenBuffers(1, &quadVBO);
 	glBindVertexArray(quadVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+	// Use GLBuffer wrapper for temporary quad VBO
+	GLBuffer quadVBO(BufferType::Vertex, sizeof(quadVertices), quadVertices, BufferUsage::StaticDraw);
+	
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(1);
@@ -600,7 +630,7 @@ bool Skybox::GenerateBRDFLUT()
 	if (status != GL_FRAMEBUFFER_COMPLETE) {
 		std::cerr << "[Skybox] BRDF LUT FBO incomplete: 0x" << std::hex << status << std::dec << std::endl;
 		glDeleteVertexArrays(1, &quadVAO);
-		glDeleteBuffers(1, &quadVBO);
+		// GLBuffer handles its own cleanup via RAII
 		return false;
 	}
 
@@ -609,7 +639,7 @@ bool Skybox::GenerateBRDFLUT()
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
 	glDeleteVertexArrays(1, &quadVAO);
-	glDeleteBuffers(1, &quadVBO);
+	// GLBuffer handles its own cleanup via RAII
 
 	// Debug sample
 	float debugPixel[2] = { 0, 0 };

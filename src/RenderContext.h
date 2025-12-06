@@ -20,6 +20,9 @@ struct RenderContext {
 	int width = 1920;
 	int height = 1080;
 
+	// Timing
+	float deltaTime = 0.0f;  // Frame delta time in seconds
+
 
 	// Shared FBOs
 	std::unique_ptr<FrameBuffer> gbufferFBO; // Extended G-Buffer
@@ -204,5 +207,6 @@ struct RenderContext {
 	DebugMode debugMode = DebugMode::NONE;
 	bool wireframeMode = false;
 	bool showBoundingBoxes = false;
+	bool showBBoxLegend = true;  // Show color legend when bounding boxes are enabled
 	bool showLightGizmos = false;
 };

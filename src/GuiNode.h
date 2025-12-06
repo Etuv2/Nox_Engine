@@ -1,15 +1,17 @@
 #pragma once
 
 #include "SceneNode.h"
+#include "GuiAnimation.h"
 #include <string>
 #include <vector>
+#include <memory>
 #include <SDL/SDL_ttf.h>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
 class GuiNode : public SceneNode {
 public:
-    enum class GuiType { TEXT, IMAGE, RECT_SOLID, RECT_GRADIENT, RECT_BEVEL };
+    enum class GuiType { TEXT, IMAGE, RECT_SOLID, RECT_GRADIENT, RECT_BEVEL, PROGRESS_BAR };
 
     enum class GradientType { LINEAR_HORIZONTAL, LINEAR_VERTICAL, RADIAL };
 
@@ -28,6 +30,16 @@ public:
         float radius = 1.0f; // For radial gradients
     };
 
+    struct ProgressBarStyle {
+        SDL_Color backgroundColor;
+        SDL_Color fillColor;
+        SDL_Color borderColor;
+        float borderWidth = 2.0f;
+        float cornerRadius = 0.0f;
+        bool showLabel = true;
+        int labelFontSize = 16;
+    };
+
     struct GuiElement {
         GuiType type;
         std::string content;
@@ -38,6 +50,19 @@ public:
         // Rectangle-specific properties
         GradientStyle gradient;
         BevelStyle bevel;
+        
+        // Progress bar specific
+        ProgressBarStyle progressStyle;
+        float progressValue = 0.0f;  // 0.0 to 1.0
+        std::string progressLabel;
+        
+        // Animation support
+        std::shared_ptr<GuiElementAnimator> animator;
+        
+        // Display properties (affected by animation)
+        float displayAlpha = 1.0f;     // Current alpha (can be animated)
+        glm::vec2 displayScale = glm::vec2(1.0f, 1.0f);  // Current scale
+        float displayRotation = 0.0f;   // Current rotation in degrees
         
         // Dynamic sizing properties
         bool isResizable = false;
@@ -72,6 +97,12 @@ public:
     int AddGradientRect(float x, float y, float width, float height, const GradientStyle& gradient);
     int AddBevelRect(float x, float y, float width, float height, SDL_Color baseColor, const BevelStyle& bevel);
     
+    // Progress bar elements
+    int AddProgressBar(float x, float y, float width, float height, const ProgressBarStyle& style);
+    void SetProgressValue(int elementIndex, float value);
+    void SetProgressLabel(int elementIndex, const std::string& label);
+    float GetProgressValue(int elementIndex) const;
+    
     // Dynamic resizing and positioning
     void SetElementPosition(int elementIndex, float x, float y);
     void SetElementSize(int elementIndex, float width, float height);
@@ -79,6 +110,13 @@ public:
     void SetElementRelativeSize(int elementIndex, float relWidth, float relHeight);
     void SetElementResizable(int elementIndex, bool resizable, float minW = 10.0f, float minH = 10.0f, float maxW = -1.0f, float maxH = -1.0f);
     void SetElementAnchor(int elementIndex, GuiElement::Anchor anchor);
+    
+    // Animation control
+    void AddAnimationToElement(int elementIndex, const GuiAnimation::PropertyAnimation& anim);
+    void AddKeyframeAnimationToElement(int elementIndex, const GuiAnimation::KeyframeAnimation& anim);
+    void RemoveAnimationFromElement(int elementIndex, GuiAnimation::PropertyType property);
+    void ClearAnimationsFromElement(int elementIndex);
+    bool ElementHasAnimations(int elementIndex) const;
     
     // Screen size management for responsive design
     void UpdateScreenSize(int newWidth, int newHeight);
@@ -89,6 +127,9 @@ public:
     void ClearAllElements();
     int GetElementCount() const { return static_cast<int>(m_elements.size()); }
     
+    // Update loop (must be called each frame)
+    void Update(float deltaTime);
+    
     // Rendering
     void RenderHUD() const;
 
@@ -96,6 +137,7 @@ private:
     void RenderText(const GuiElement& e) const;
     void RenderImage(const GuiElement& e) const;
     void RenderRect(const GuiElement& e) const; // Unified rectangle rendering
+    void RenderProgressBar(const GuiElement& e) const; // Progress bar rendering
     
     void drawQuad(GLuint tex, float x, float y, float w, float h, const glm::vec4& tint) const;
     void drawRect(float x, float y, float w, float h, const GuiElement& element) const; // Unified rect drawing

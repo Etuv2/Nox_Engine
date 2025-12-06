@@ -1,4 +1,5 @@
 #include "GuiNode.h"
+#include "GuiNode.h"
 #include "ShaderLoader.h"
 #include <SDL/SDL_image.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -57,7 +58,14 @@ void GuiNode::LoadFont(const std::string& path, int size) {
 }
 
 void GuiNode::AddText(const std::string& text, float x, float y, SDL_Color color) {
-    m_elements.push_back({ GuiType::TEXT, text, x, y, 0, 0, color });
+    GuiElement element;
+    element.type = GuiType::TEXT;
+    element.content = text;
+    element.x = x;
+    element.y = y;
+    element.color = color;
+    element.animator = std::make_shared<GuiElementAnimator>();
+    m_elements.push_back(element);
 }
 
 void GuiNode::AddImage(const std::string& path, float x, float y, float w, float h) {
@@ -78,7 +86,17 @@ void GuiNode::AddImage(const std::string& path, float x, float y, float w, float
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     SDL_FreeSurface(image);
 
-    m_elements.push_back({ GuiType::IMAGE, path, x, y, w, h, {255, 255, 255, 255}, texID });
+    GuiElement element;
+    element.type = GuiType::IMAGE;
+    element.content = path;
+    element.x = x;
+    element.y = y;
+    element.width = w;
+    element.height = h;
+    element.color = {255, 255, 255, 255};
+    element.textureID = texID;
+    element.animator = std::make_shared<GuiElementAnimator>();
+    m_elements.push_back(element);
 }
 
 int GuiNode::AddSolidRect(float x, float y, float width, float height, SDL_Color color) {
@@ -89,6 +107,7 @@ int GuiNode::AddSolidRect(float x, float y, float width, float height, SDL_Color
     element.width = width;
     element.height = height;
     element.color = color;
+    element.animator = std::make_shared<GuiElementAnimator>();
     
     m_elements.push_back(element);
     return static_cast<int>(m_elements.size() - 1);
@@ -102,6 +121,7 @@ int GuiNode::AddGradientRect(float x, float y, float width, float height, const 
     element.width = width;
     element.height = height;
     element.gradient = gradient;
+    element.animator = std::make_shared<GuiElementAnimator>();
     
     m_elements.push_back(element);
     return static_cast<int>(m_elements.size() - 1);
@@ -116,9 +136,110 @@ int GuiNode::AddBevelRect(float x, float y, float width, float height, SDL_Color
     element.height = height;
     element.color = baseColor;
     element.bevel = bevel;
+    element.animator = std::make_shared<GuiElementAnimator>();
     
     m_elements.push_back(element);
     return static_cast<int>(m_elements.size() - 1);
+}
+
+int GuiNode::AddProgressBar(float x, float y, float width, float height, const ProgressBarStyle& style) {
+    GuiElement element;
+    element.type = GuiType::PROGRESS_BAR;
+    element.x = x;
+    element.y = y;
+    element.width = width;
+    element.height = height;
+    element.progressStyle = style;
+    element.progressValue = 0.0f;
+    element.animator = std::make_shared<GuiElementAnimator>();
+    
+    m_elements.push_back(element);
+    return static_cast<int>(m_elements.size() - 1);
+}
+
+void GuiNode::SetProgressValue(int elementIndex, float value) {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        m_elements[elementIndex].progressValue = std::clamp(value, 0.0f, 1.0f);
+    }
+}
+
+void GuiNode::SetProgressLabel(int elementIndex, const std::string& label) {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        m_elements[elementIndex].progressLabel = label;
+    }
+}
+
+float GuiNode::GetProgressValue(int elementIndex) const {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        return m_elements[elementIndex].progressValue;
+    }
+    return 0.0f;
+}
+
+void GuiNode::AddAnimationToElement(int elementIndex, const GuiAnimation::PropertyAnimation& anim) {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        if (!m_elements[elementIndex].animator) {
+            m_elements[elementIndex].animator = std::make_shared<GuiElementAnimator>();
+        }
+        m_elements[elementIndex].animator->AddPropertyAnimation(anim);
+    }
+}
+
+void GuiNode::AddKeyframeAnimationToElement(int elementIndex, const GuiAnimation::KeyframeAnimation& anim) {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        if (!m_elements[elementIndex].animator) {
+            m_elements[elementIndex].animator = std::make_shared<GuiElementAnimator>();
+        }
+        m_elements[elementIndex].animator->AddKeyframeAnimation(anim);
+    }
+}
+
+void GuiNode::RemoveAnimationFromElement(int elementIndex, GuiAnimation::PropertyType property) {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        if (m_elements[elementIndex].animator) {
+            m_elements[elementIndex].animator->RemoveAnimation(property);
+        }
+    }
+}
+
+void GuiNode::ClearAnimationsFromElement(int elementIndex) {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        if (m_elements[elementIndex].animator) {
+            m_elements[elementIndex].animator->ClearAnimations();
+        }
+    }
+}
+
+bool GuiNode::ElementHasAnimations(int elementIndex) const {
+    if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
+        if (m_elements[elementIndex].animator) {
+            return m_elements[elementIndex].animator->HasActiveAnimations();
+        }
+    }
+    return false;
+}
+
+void GuiNode::Update(float deltaTime) {
+    // Update all element animations
+    for (auto& element : m_elements) {
+        if (element.animator) {
+            element.animator->Update(deltaTime);
+            
+            // Apply animated properties to element
+            element.displayAlpha = element.animator->GetAnimatedValue(GuiAnimation::PropertyType::ALPHA, element.displayAlpha);
+            element.displayScale.x = element.animator->GetAnimatedValue(GuiAnimation::PropertyType::SCALE_X, element.displayScale.x);
+            element.displayScale.y = element.animator->GetAnimatedValue(GuiAnimation::PropertyType::SCALE_Y, element.displayScale.y);
+            element.displayRotation = element.animator->GetAnimatedValue(GuiAnimation::PropertyType::ROTATION, element.displayRotation);
+            
+            // Handle position animation
+            if (element.animator->HasAnimation(GuiAnimation::PropertyType::POSITION_X)) {
+                element.x = element.animator->GetAnimatedValue(GuiAnimation::PropertyType::POSITION_X, element.x);
+            }
+            if (element.animator->HasAnimation(GuiAnimation::PropertyType::POSITION_Y)) {
+                element.y = element.animator->GetAnimatedValue(GuiAnimation::PropertyType::POSITION_Y, element.y);
+            }
+        }
+    }
 }
 
 void GuiNode::SetElementPosition(int elementIndex, float x, float y) {
@@ -227,11 +348,20 @@ void GuiNode::RenderHUD() const {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Group elements by type to minimize shader switches
-    // First render all rectangles with unified shader
+    // First render all rectangles and progress bars with unified shader
     glUseProgram(m_unifiedRectShader);
     for (const auto& e : m_elements) {
         if (e.type == GuiType::RECT_SOLID || e.type == GuiType::RECT_GRADIENT || e.type == GuiType::RECT_BEVEL) {
+            // Apply animation effects
+            glm::vec4 finalColor = glm::vec4(
+                e.color.r / 255.0f,
+                e.color.g / 255.0f,
+                e.color.b / 255.0f,
+                (e.color.a / 255.0f) * e.displayAlpha
+            );
             RenderRect(e);
+        } else if (e.type == GuiType::PROGRESS_BAR) {
+            RenderProgressBar(e);
         }
     }
 
@@ -293,6 +423,49 @@ void GuiNode::RenderImage(const GuiElement& e) const {
 
 void GuiNode::RenderRect(const GuiElement& e) const {
     drawRect(e.x, e.y, e.width, e.height, e);
+}
+
+void GuiNode::RenderProgressBar(const GuiElement& e) const {
+    if (e.width <= 0 || e.height <= 0) return;
+    
+    // Draw background
+    drawRect(e.x, e.y, e.width, e.height, e);
+    
+    // Draw progress fill
+    if (e.progressValue > 0.0f) {
+        GuiElement fillElement = e;
+        fillElement.type = GuiType::RECT_SOLID;
+        fillElement.width = e.width * e.progressValue;
+        fillElement.color = e.progressStyle.fillColor;
+        drawRect(e.x, e.y, fillElement.width, e.height, fillElement);
+    }
+    
+    // Draw label if enabled
+    if (e.progressStyle.showLabel && !e.progressLabel.empty() && m_font) {
+        // Center text on progress bar
+        SDL_Surface* surf = TTF_RenderText_Blended(m_font, e.progressLabel.c_str(), {255, 255, 255, 255});
+        if (surf) {
+            SDL_Surface* converted = SDL_ConvertSurfaceFormat(surf, SDL_PIXELFORMAT_ABGR8888, 0);
+            SDL_FreeSurface(surf);
+            if (converted) {
+                GLuint tex = 0;
+                glGenTextures(1, &tex);
+                glBindTexture(GL_TEXTURE_2D, tex);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, converted->w, converted->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, converted->pixels);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                
+                float labelX = e.x + (e.width - converted->w) * 0.5f;
+                float labelY = e.y + (e.height - converted->h) * 0.5f;
+                
+                glm::vec4 tint(1.0f, 1.0f, 1.0f, 1.0f);
+                drawQuad(tex, labelX, labelY, converted->w, converted->h, tint);
+                
+                glDeleteTextures(1, &tex);
+                SDL_FreeSurface(converted);
+            }
+        }
+    }
 }
 
 void GuiNode::drawQuad(GLuint tex, float x, float y, float w, float h, const glm::vec4& tint) const {

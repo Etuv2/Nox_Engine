@@ -223,7 +223,13 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_debugMode = static_cast<int>(ctx.debugMode);
 	m_wireframeMode = ctx.wireframeMode;
 	m_showBoundingBoxes = ctx.showBoundingBoxes;
+	m_showBBoxLegend = ctx.showBBoxLegend;
 	m_showLightGizmos = ctx.showLightGizmos;
+
+	std::cout << "[RenderingSettings] Synced to renderer - Exposure: " << m_exposure
+		<< ", Gamma: " << m_gamma << ", TM: " << m_tonemapType
+		<< ", Bloom: " << (m_enableBloom ? "ON" : "OFF")
+		<< ", SSAO: " << (m_enableSSAO ? "ON" : "OFF") << std::endl;
 }
 
 void RenderingSettingsWindow::SyncToRenderer() {
@@ -336,6 +342,7 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.debugMode = static_cast<RenderContext::DebugMode>(m_debugMode);
 	ctx.wireframeMode = m_wireframeMode;
 	ctx.showBoundingBoxes = m_showBoundingBoxes;
+	ctx.showBBoxLegend = m_showBBoxLegend;
 	ctx.showLightGizmos = m_showLightGizmos;
 
 	std::cout << "[RenderingSettings] Synced to renderer - Exposure: " << m_exposure
@@ -1134,6 +1141,32 @@ void RenderingSettingsWindow::Render() {
 
 			if (ImGui::Checkbox("Show Bounding Boxes", &m_showBoundingBoxes)) {
 				SyncToRenderer(); // Apply bounding box toggle
+			}
+			
+			// Show legend toggle and color reference when bounding boxes are enabled
+			if (m_showBoundingBoxes) {
+				ImGui::Indent();
+				if (ImGui::Checkbox("Show Legend", &m_showBBoxLegend)) {
+					SyncToRenderer();
+				}
+				
+				// Color legend
+				ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Color Legend:");
+				ImGui::BulletText(""); ImGui::SameLine();
+				ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Green: MODEL (meshes)");
+				ImGui::BulletText(""); ImGui::SameLine();
+				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.2f, 1.0f), "Yellow: LIGHT nodes");
+				ImGui::BulletText(""); ImGui::SameLine();
+				ImGui::TextColored(ImVec4(0.2f, 0.5f, 1.0f, 1.0f), "Blue: CAMERA nodes");
+				ImGui::BulletText(""); ImGui::SameLine();
+				ImGui::TextColored(ImVec4(0.2f, 1.0f, 1.0f, 1.0f), "Cyan: AUDIO nodes");
+				ImGui::BulletText(""); ImGui::SameLine();
+				ImGui::TextColored(ImVec4(1.0f, 0.2f, 1.0f, 1.0f), "Magenta: LPV volumes");
+				ImGui::BulletText(""); ImGui::SameLine();
+				ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Orange: GUI nodes");
+				ImGui::BulletText(""); ImGui::SameLine();
+				ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "White: Generic nodes");
+				ImGui::Unindent();
 			}
 
 			if (ImGui::Checkbox("Show Light Gizmos", &m_showLightGizmos)) {

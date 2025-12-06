@@ -1,4 +1,5 @@
 ﻿#include "Scene.h"
+#include "GLBuffer.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -240,16 +241,23 @@ static MeshComponent CreateMesh(const std::vector<Vertex>& vertices,
 	mesh.specularTexture = nullptr;
 
 	glGenVertexArrays(1, &mesh.VAO);
-	glGenBuffers(1, &mesh.VBO);
-	glGenBuffers(1, &mesh.EBO);
-
 	glBindVertexArray(mesh.VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, mesh.VBO);
-	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex),
-		vertices.data(), GL_STATIC_DRAW);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-		indices.data(), GL_STATIC_DRAW);
+
+	// Create vertex buffer using GLBuffer wrapper
+	mesh.vertexBuffer = std::make_unique<GLBuffer>(
+		BufferType::Vertex,
+		vertices.size() * sizeof(Vertex),
+		vertices.data(),
+		BufferUsage::StaticDraw
+	);
+
+	// Create index buffer using GLBuffer wrapper
+	mesh.indexBuffer = std::make_unique<GLBuffer>(
+		BufferType::Index,
+		indices.size() * sizeof(unsigned int),
+		indices.data(),
+		BufferUsage::StaticDraw
+	);
 
 	// Vertex attribute pointers
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
@@ -283,7 +291,7 @@ static MeshComponent CreateMesh(const std::vector<Vertex>& vertices,
  * Loads a glTF texture at texIndex, returning a shared_ptr<Texture>.
  * Returns nullptr on failure.
  */
-static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model, int texIndex)
+static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model, int texIndex, bool isNormalMap = false)
 {
 	if (texIndex < 0 || texIndex >= (int)model.textures.size()) {
 		return nullptr;
@@ -319,14 +327,58 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 		internalFormat = GL_RGBA8;
 	}
 
+	// Get sampler settings from glTF if available
+	GLenum wrapS = GL_REPEAT;
+	GLenum wrapT = GL_REPEAT;
+	GLenum minFilter = GL_LINEAR_MIPMAP_LINEAR;
+	GLenum magFilter = GL_LINEAR;
+
+	if (gltfTex.sampler >= 0 && gltfTex.sampler < (int)model.samplers.size()) {
+		const tinygltf::Sampler& sampler = model.samplers[gltfTex.sampler];
+		
+		// Map glTF wrap modes to OpenGL
+		auto mapWrap = [](int gltfWrap) -> GLenum {
+			switch (gltfWrap) {
+				case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE: return GL_CLAMP_TO_EDGE;
+				case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT: return GL_MIRRORED_REPEAT;
+				case TINYGLTF_TEXTURE_WRAP_REPEAT:
+				default: return GL_REPEAT;
+			}
+		};
+		
+		wrapS = mapWrap(sampler.wrapS);
+		wrapT = mapWrap(sampler.wrapT);
+		
+		// Map glTF filter modes to OpenGL
+		if (sampler.minFilter != -1) {
+			switch (sampler.minFilter) {
+				case TINYGLTF_TEXTURE_FILTER_NEAREST: minFilter = GL_NEAREST; break;
+				case TINYGLTF_TEXTURE_FILTER_LINEAR: minFilter = GL_LINEAR; break;
+				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST: minFilter = GL_NEAREST_MIPMAP_NEAREST; break;
+				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST: minFilter = GL_LINEAR_MIPMAP_NEAREST; break;
+				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR: minFilter = GL_NEAREST_MIPMAP_LINEAR; break;
+				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR: 
+				default: minFilter = GL_LINEAR_MIPMAP_LINEAR; break;
+			}
+		}
+		
+		if (sampler.magFilter != -1) {
+			switch (sampler.magFilter) {
+				case TINYGLTF_TEXTURE_FILTER_NEAREST: magFilter = GL_NEAREST; break;
+				case TINYGLTF_TEXTURE_FILTER_LINEAR:
+				default: magFilter = GL_LINEAR; break;
+			}
+		}
+	}
+
 	// Create texture using builder pattern
 	auto texture = Texture::Builder::Texture2D(image.width, image.height, internalFormat)
 		.Format(format)
 		.DataType(GL_UNSIGNED_BYTE)
 		.Data(image.image.data())
 		.GenerateMipmaps(true)
-		.FilterMode(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR)
-		.WrapMode(GL_REPEAT, GL_REPEAT)
+		.FilterMode(minFilter, magFilter)
+		.WrapMode(wrapS, wrapT)
 		.Build();
 
 	return texture;
@@ -601,7 +653,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				if (mat.extensions.count("KHR_materials_specular")) {
 					const auto& specExt = mat.extensions.at("KHR_materials_specular");
 
-					// Extract specular texture
+					// Extract specular texture (scalar factor texture)
 					if (specExt.Has("specularTexture") && specExt.Get("specularTexture").IsObject()) {
 						const auto& specTex = specExt.Get("specularTexture");
 						if (specTex.Has("index") && specTex.Get("index").IsInt()) {
@@ -609,6 +661,18 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
 								mesh.specularTexture = LoadTextureFromGLTF(model, texIndex);
 								std::cout << "[INFO] Using KHR_materials_specular texture.\n";
+							}
+						}
+					}
+
+					// Extract specular color texture
+					if (specExt.Has("specularColorTexture") && specExt.Get("specularColorTexture").IsObject()) {
+						const auto& specColorTex = specExt.Get("specularColorTexture");
+						if (specColorTex.Has("index") && specColorTex.Get("index").IsInt()) {
+							int texIndex = specColorTex.Get("index").Get<int>();
+							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
+								mesh.specularColorTexture = LoadTextureFromGLTF(model, texIndex);
+								std::cout << "[INFO] Using KHR_materials_specular color texture.\n";
 							}
 						}
 					}
@@ -629,6 +693,112 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 						}
 					}
 					std::cout << "[INFO] Applied KHR_materials_specular extension factors.\n";
+				}
+
+				// EXTENSION: KHR_materials_transmission - Extract transmission properties
+				if (mat.extensions.count("KHR_materials_transmission")) {
+					const auto& transExt = mat.extensions.at("KHR_materials_transmission");
+
+					// Extract transmission factor
+					if (transExt.Has("transmissionFactor") && transExt.Get("transmissionFactor").IsNumber()) {
+						mesh.transmissionFactor = static_cast<float>(transExt.Get("transmissionFactor").Get<double>());
+						// Materials with transmission should be treated as transparent
+						if (mesh.transmissionFactor > 0.0f) {
+							mesh.hasAlpha = true;
+							if (mesh.alphaMode == MeshComponent::ALPHA_OPAQUE) {
+								mesh.alphaMode = MeshComponent::ALPHA_BLEND;
+							}
+						}
+						std::cout << "[INFO] Applied KHR_materials_transmission factor: " << mesh.transmissionFactor << "\n";
+					}
+
+					// Extract transmission texture
+					if (transExt.Has("transmissionTexture") && transExt.Get("transmissionTexture").IsObject()) {
+						const auto& transTex = transExt.Get("transmissionTexture");
+						if (transTex.Has("index") && transTex.Get("index").IsInt()) {
+							int texIndex = transTex.Get("index").Get<int>();
+							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
+								mesh.transmissionTexture = LoadTextureFromGLTF(model, texIndex);
+								std::cout << "[INFO] Using KHR_materials_transmission texture.\n";
+							}
+						}
+					}
+				}
+
+				// EXTENSION: KHR_materials_ior - Extract index of refraction
+				if (mat.extensions.count("KHR_materials_ior")) {
+					const auto& iorExt = mat.extensions.at("KHR_materials_ior");
+					if (iorExt.Has("ior") && iorExt.Get("ior").IsNumber()) {
+						mesh.ior = static_cast<float>(iorExt.Get("ior").Get<double>());
+						std::cout << "[INFO] Applied KHR_materials_ior: " << mesh.ior << "\n";
+					}
+				}
+
+				// EXTENSION: KHR_materials_pbrSpecularGlossiness - Legacy specular-glossiness workflow
+				if (mat.extensions.count("KHR_materials_pbrSpecularGlossiness")) {
+					const auto& sgExt = mat.extensions.at("KHR_materials_pbrSpecularGlossiness");
+					mesh.useSpecularGlossinessWorkflow = true;
+
+					// Extract diffuse factor
+					if (sgExt.Has("diffuseFactor") && sgExt.Get("diffuseFactor").IsArray()) {
+						const auto& diffuseArray = sgExt.Get("diffuseFactor");
+						if (diffuseArray.ArrayLen() >= 3) {
+							mesh.diffuseFactor.x = static_cast<float>(diffuseArray.Get(0).Get<double>());
+							mesh.diffuseFactor.y = static_cast<float>(diffuseArray.Get(1).Get<double>());
+							mesh.diffuseFactor.z = static_cast<float>(diffuseArray.Get(2).Get<double>());
+						}
+						// Check for alpha in diffuse factor
+						if (diffuseArray.ArrayLen() >= 4) {
+							float diffuseAlpha = static_cast<float>(diffuseArray.Get(3).Get<double>());
+							if (diffuseAlpha < 1.0f) {
+								mesh.hasAlpha = true;
+								mesh.baseColorFactor.a = diffuseAlpha;
+							}
+						}
+					}
+
+					// Extract specular factor (F0 color)
+					if (sgExt.Has("specularFactor") && sgExt.Get("specularFactor").IsArray()) {
+						const auto& specArray = sgExt.Get("specularFactor");
+						if (specArray.ArrayLen() >= 3) {
+							mesh.specularGlossinessFactor.x = static_cast<float>(specArray.Get(0).Get<double>());
+							mesh.specularGlossinessFactor.y = static_cast<float>(specArray.Get(1).Get<double>());
+							mesh.specularGlossinessFactor.z = static_cast<float>(specArray.Get(2).Get<double>());
+						}
+					}
+
+					// Extract glossiness factor
+					if (sgExt.Has("glossinessFactor") && sgExt.Get("glossinessFactor").IsNumber()) {
+						mesh.glossinessFactor = static_cast<float>(sgExt.Get("glossinessFactor").Get<double>());
+						// Convert glossiness to roughness for unified pipeline
+						mesh.roughnessFactor = 1.0f - mesh.glossinessFactor;
+					}
+
+					// Extract diffuse texture (use as base color)
+					if (sgExt.Has("diffuseTexture") && sgExt.Get("diffuseTexture").IsObject()) {
+						const auto& diffuseTex = sgExt.Get("diffuseTexture");
+						if (diffuseTex.Has("index") && diffuseTex.Get("index").IsInt()) {
+							int texIndex = diffuseTex.Get("index").Get<int>();
+							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
+								mesh.diffuseTexture = LoadTextureFromGLTF(model, texIndex);
+								std::cout << "[INFO] Using specular-glossiness diffuse texture.\n";
+							}
+						}
+					}
+
+					// Extract specular-glossiness texture (RGB = specular, A = glossiness)
+					if (sgExt.Has("specularGlossinessTexture") && sgExt.Get("specularGlossinessTexture").IsObject()) {
+						const auto& sgTex = sgExt.Get("specularGlossinessTexture");
+						if (sgTex.Has("index") && sgTex.Get("index").IsInt()) {
+							int texIndex = sgTex.Get("index").Get<int>();
+							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
+								mesh.specularTexture = LoadTextureFromGLTF(model, texIndex);
+								std::cout << "[INFO] Using specular-glossiness texture.\n";
+							}
+						}
+					}
+
+					std::cout << "[INFO] Applied KHR_materials_pbrSpecularGlossiness extension.\n";
 				}
 
 				// Extract occlusion strength from standard glTF material
@@ -762,23 +932,54 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 					.Build();
 			}
 
+			// Create default specular color texture if not loaded
+			if (mesh.specularColorTexture == nullptr) {
+				unsigned char specColorPixel[3];
+				specColorPixel[0] = (unsigned char)glm::clamp(mesh.specularColorFactor.r * 255.0f, 0.0f, 255.0f);
+				specColorPixel[1] = (unsigned char)glm::clamp(mesh.specularColorFactor.g * 255.0f, 0.0f, 255.0f);
+				specColorPixel[2] = (unsigned char)glm::clamp(mesh.specularColorFactor.b * 255.0f, 0.0f, 255.0f);
+
+				mesh.specularColorTexture = Texture::Builder::Texture2D(1, 1, GL_RGB8)
+					.Format(GL_RGB)
+					.DataType(GL_UNSIGNED_BYTE)
+					.Data(specColorPixel)
+					.FilterMode(GL_LINEAR, GL_LINEAR)
+					.WrapMode(GL_REPEAT, GL_REPEAT)
+					.Build();
+			}
+
+			// Create default transmission texture if not loaded
+			if (mesh.transmissionTexture == nullptr) {
+				unsigned char transmissionPixel = (unsigned char)glm::clamp(mesh.transmissionFactor * 255.0f, 0.0f, 255.0f);
+
+				mesh.transmissionTexture = Texture::Builder::Texture2D(1, 1, GL_R8)
+					.Format(GL_RED)
+					.DataType(GL_UNSIGNED_BYTE)
+					.Data(&transmissionPixel)
+					.FilterMode(GL_LINEAR, GL_LINEAR)
+					.WrapMode(GL_REPEAT, GL_REPEAT)
+					.Build();
+			}
+
 			//Assign the material factor values to the mesh
 			mesh.baseColorFactor = baseColorFactor;
 			mesh.metallicFactor = metallicFactor;
 			mesh.roughnessFactor = roughnessFactor;
 			mesh.emissiveFactor = emissiveFactor;
 
-			std::cout << "[INFO] material factors :"
+			std::cout << "[INFO] material factors: "
 				<< "baseColorFactor: " << baseColorFactor.x << "," << baseColorFactor.y << "," << baseColorFactor.z << "," << baseColorFactor.w
 				<< " metallicFactor: " << metallicFactor
 				<< " roughnessFactor: " << roughnessFactor
 				<< " emissiveFactor: " << emissiveFactor.x << "," << emissiveFactor.y << "," << emissiveFactor.z
 				<< " specularFactor: " << mesh.specularFactor.x
 				<< " occlusionStrength: " << mesh.occlusionStrength
+				<< " transmissionFactor: " << mesh.transmissionFactor
+				<< " ior: " << mesh.ior
 				<< "\n";
 
-			//Add the mesh to the Scene
-			meshes.emplace_back(mesh);
+			//Add the mesh to the Scene (use move since MeshComponent is move-only)
+			meshes.emplace_back(std::move(mesh));
 		}
 	}
 
@@ -943,6 +1144,29 @@ void Scene::Draw() {
 	GLint locMetallic = glGetUniformLocation(currentProgram, "metallicFactor");
 	GLint locRoughness = glGetUniformLocation(currentProgram, "roughnessFactor");
 	GLint locEmissive = glGetUniformLocation(currentProgram, "emissiveFactor");
+	GLint locOcclusionStrength = glGetUniformLocation(currentProgram, "occlusionStrength");
+	GLint locNormalScale = glGetUniformLocation(currentProgram, "normalScale");
+	GLint locAlphaCutoff = glGetUniformLocation(currentProgram, "alphaCutoff");
+
+	// KHR_materials_specular extension
+	GLint locSpecularFactor = glGetUniformLocation(currentProgram, "specularFactor");
+	GLint locSpecularColorFactor = glGetUniformLocation(currentProgram, "specularColorFactor");
+
+	// KHR_materials_transmission extension
+	GLint locTransmission = glGetUniformLocation(currentProgram, "transmissionFactor");
+
+	// KHR_materials_ior extension
+	GLint locIOR = glGetUniformLocation(currentProgram, "ior");
+
+	// Texture presence flags
+	GLint locHasBaseColor = glGetUniformLocation(currentProgram, "hasBaseColorTexture");
+	GLint locHasNormal = glGetUniformLocation(currentProgram, "hasNormalTexture");
+	GLint locHasMR = glGetUniformLocation(currentProgram, "hasMetallicRoughnessTexture");
+	GLint locHasEmissive = glGetUniformLocation(currentProgram, "hasEmissiveTexture");
+	GLint locHasOcclusion = glGetUniformLocation(currentProgram, "hasOcclusionTexture");
+	GLint locHasSpecular = glGetUniformLocation(currentProgram, "hasSpecularTexture");
+	GLint locHasSpecularColor = glGetUniformLocation(currentProgram, "hasSpecularColorTexture");
+	GLint locHasTransmission = glGetUniformLocation(currentProgram, "hasTransmissionTexture");
 
 	// Get texture sampler locations
 	GLint locDiffuse = glGetUniformLocation(currentProgram, "texture_diffuse");
@@ -950,6 +1174,9 @@ void Scene::Draw() {
 	GLint locMetallicRoughness = glGetUniformLocation(currentProgram, "texture_metallic_roughness");
 	GLint locEmissiveTex = glGetUniformLocation(currentProgram, "texture_emissive");
 	GLint locOcclusion = glGetUniformLocation(currentProgram, "texture_occlusion");
+	GLint locSpecularTex = glGetUniformLocation(currentProgram, "texture_specular");
+	GLint locSpecularColorTex = glGetUniformLocation(currentProgram, "texture_specular_color");
+	GLint locTransmissionTex = glGetUniformLocation(currentProgram, "texture_transmission");
 
 	// Set texture samplers once
 	if (locDiffuse != -1) glUniform1i(locDiffuse, 0);
@@ -957,6 +1184,9 @@ void Scene::Draw() {
 	if (locMetallicRoughness != -1) glUniform1i(locMetallicRoughness, 2);
 	if (locEmissiveTex != -1) glUniform1i(locEmissiveTex, 3);
 	if (locOcclusion != -1) glUniform1i(locOcclusion, 4);
+	if (locSpecularTex != -1) glUniform1i(locSpecularTex, 5);
+	if (locSpecularColorTex != -1) glUniform1i(locSpecularColorTex, 6);
+	if (locTransmissionTex != -1) glUniform1i(locTransmissionTex, 7);
 
 	for (auto& mesh : meshes) {
 		// Upload material factor uniforms
@@ -968,6 +1198,44 @@ void Scene::Draw() {
 			glUniform1f(locRoughness, mesh.roughnessFactor);
 		if (locEmissive != -1)
 			glUniform3fv(locEmissive, 1, glm::value_ptr(mesh.emissiveFactor));
+		if (locOcclusionStrength != -1)
+			glUniform1f(locOcclusionStrength, mesh.occlusionStrength);
+		if (locNormalScale != -1)
+			glUniform1f(locNormalScale, mesh.normalScale);
+		if (locAlphaCutoff != -1)
+			glUniform1f(locAlphaCutoff, mesh.alphaCutoff);
+
+		// KHR_materials_specular
+		if (locSpecularFactor != -1)
+			glUniform1f(locSpecularFactor, mesh.specularFactor.x);
+		if (locSpecularColorFactor != -1)
+			glUniform3fv(locSpecularColorFactor, 1, glm::value_ptr(mesh.specularColorFactor));
+
+		// KHR_materials_transmission
+		if (locTransmission != -1)
+			glUniform1f(locTransmission, mesh.transmissionFactor);
+
+		// KHR_materials_ior
+		if (locIOR != -1)
+			glUniform1f(locIOR, mesh.ior);
+
+		// Set texture presence flags
+		if (locHasBaseColor != -1)
+			glUniform1i(locHasBaseColor, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
+		if (locHasNormal != -1)
+			glUniform1i(locHasNormal, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
+		if (locHasMR != -1)
+			glUniform1i(locHasMR, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
+		if (locHasEmissive != -1)
+			glUniform1i(locHasEmissive, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
+		if (locHasOcclusion != -1)
+			glUniform1i(locHasOcclusion, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
+		if (locHasSpecular != -1)
+			glUniform1i(locHasSpecular, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
+		if (locHasSpecularColor != -1)
+			glUniform1i(locHasSpecularColor, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
+		if (locHasTransmission != -1)
+			glUniform1i(locHasTransmission, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
 
 		// Set render states
 		glEnable(GL_DEPTH_TEST);
@@ -986,24 +1254,36 @@ void Scene::Draw() {
 		}
 
 		// Bind textures to specific units for glTF PBR using new Texture API
-		if (mesh.diffuseTexture) {
+		if (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) {
 			mesh.diffuseTexture->Bind(GL_TEXTURE0);
 		}
 
-		if (mesh.normalTexture) {
+		if (mesh.normalTexture && mesh.normalTexture->IsValid()) {
 			mesh.normalTexture->Bind(GL_TEXTURE1);
 		}
 
-		if (mesh.roughnessTexture) {
+		if (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) {
 			mesh.roughnessTexture->Bind(GL_TEXTURE2);
 		}
 
-		if (mesh.emissiveTexture) {
+		if (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) {
 			mesh.emissiveTexture->Bind(GL_TEXTURE3);
 		}
 
-		if (mesh.occlusionTexture) {
+		if (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) {
 			mesh.occlusionTexture->Bind(GL_TEXTURE4);
+		}
+
+		if (mesh.specularTexture && mesh.specularTexture->IsValid()) {
+			mesh.specularTexture->Bind(GL_TEXTURE5);
+		}
+
+		if (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) {
+			mesh.specularColorTexture->Bind(GL_TEXTURE6);
+		}
+
+		if (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) {
+			mesh.transmissionTexture->Bind(GL_TEXTURE7);
 		}
 
 		glBindVertexArray(mesh.VAO);
@@ -1077,8 +1357,9 @@ std::pair<glm::vec3, glm::vec3> Scene::GetBoundingBox() const {
 	bool valid = false;
 
 	for (auto& mc : meshes) {
-		if (!mc.VBO) continue;
-		glBindBuffer(GL_ARRAY_BUFFER, mc.VBO);
+		GLuint vboId = mc.GetVBO();
+		if (!vboId) continue;
+		glBindBuffer(GL_ARRAY_BUFFER, vboId);
 		GLint bufferSize = 0;
 		glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufferSize);
 		if (bufferSize <= 0) {

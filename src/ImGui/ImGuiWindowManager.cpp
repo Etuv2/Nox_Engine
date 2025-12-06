@@ -296,6 +296,17 @@ void ImGuiWindowManager::LoadWindowStates(const std::string& filename) {
 void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
     if (!m_camera || !m_selectedNode || !m_gizmoVisible) return;
 
+    // Safety check: Verify selected node's entity is still valid in current scene
+    if (m_selectedNode->GetEntityID() != INVALID_ENTITY) {
+        ComponentManager* currentManager = SceneNode::GetGlobalSceneGraph() ? 
+            SceneNode::GetGlobalSceneGraph()->GetComponentManager() : nullptr;
+        if (!currentManager || !currentManager->IsEntityValid(m_selectedNode->GetEntityID())) {
+            // Entity no longer valid in current scene, clear selection
+            m_selectedNode.reset();
+            return;
+        }
+    }
+
     ImGuiIO& io = ImGui::GetIO();
     if (io.DisplaySize.x <= 0 || io.DisplaySize.y <= 0) return;
 
@@ -408,6 +419,11 @@ void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
                     }
                 }
             }
+        }
+        
+        // Trigger ECS transform system update to recompute world transforms
+        if (SceneGraph* sceneGraph = SceneNode::GetGlobalSceneGraph()) {
+            sceneGraph->UpdateAllTransforms();
         }
     }
 }

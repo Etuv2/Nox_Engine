@@ -1,11 +1,13 @@
 #pragma once
 #include <GL/glew.h>
+#include "GLBuffer.h"
+#include <memory>
 
 class ScreenQuad
 {
 public:
     ScreenQuad()
-        : m_vao(0), m_vbo(0)
+        : m_vao(0)
     {
         // Create and configure the full-screen quad
         static const float quadVertices[] = {
@@ -17,11 +19,16 @@ public:
         };
 
         glGenVertexArrays(1, &m_vao);
-        glGenBuffers(1, &m_vbo);
-
         glBindVertexArray(m_vao);
-        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+        // Create vertex buffer using GLBuffer wrapper
+        m_vbo = std::make_unique<GLBuffer>(
+            BufferType::Vertex,
+            sizeof(quadVertices),
+            quadVertices,
+            BufferUsage::StaticDraw
+        );
+        m_vbo->SetLabel("ScreenQuad_VBO");
 
         // Position attribute
         glEnableVertexAttribArray(0);
@@ -46,7 +53,6 @@ public:
         );
 
         glBindVertexArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
     // Delete copy constructor and assignment for RAII 
@@ -56,10 +62,9 @@ public:
     // Permit move semantics if desired
     ScreenQuad(ScreenQuad&& other) noexcept
         : m_vao(other.m_vao)
-        , m_vbo(other.m_vbo)
+        , m_vbo(std::move(other.m_vbo))
     {
         other.m_vao = 0;
-        other.m_vbo = 0;
     }
 
     ScreenQuad& operator=(ScreenQuad&& other) noexcept
@@ -71,11 +76,10 @@ public:
 
             // Take ownership of other's
             m_vao = other.m_vao;
-            m_vbo = other.m_vbo;
+            m_vbo = std::move(other.m_vbo);
 
             // Nullify the source
             other.m_vao = 0;
-            other.m_vbo = 0;
         }
         return *this;
     }
@@ -97,14 +101,12 @@ public:
 private:
     void cleanup()
     {
-        if (m_vbo)
-            glDeleteBuffers(1, &m_vbo);
+        m_vbo.reset();  // GLBuffer handles its own cleanup
         if (m_vao)
             glDeleteVertexArrays(1, &m_vao);
-        m_vbo = 0;
         m_vao = 0;
     }
 
     GLuint m_vao;
-    GLuint m_vbo;
+    GLBufferPtr m_vbo;
 };

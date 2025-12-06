@@ -59,6 +59,17 @@ void GBufferPass::Execute(RenderContext& ctx,
     glDisable(GL_BLEND);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // Save wireframe state
+    GLint oldPolygonMode[2];
+    glGetIntegerv(GL_POLYGON_MODE, oldPolygonMode);
+    
+    // Apply wireframe mode if enabled
+    if (ctx.wireframeMode) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glLineWidth(1.0f);
+        std::cout << "[GBufferPass] Wireframe mode enabled" << std::endl;
+    }
+
     std::cout << "[GBufferPass] Using shader program: " << m_shader << std::endl;
     glUseProgram(m_shader);
 
@@ -71,6 +82,11 @@ void GBufferPass::Execute(RenderContext& ctx,
     std::cout << "[GBufferPass] Drawing geometry..." << std::endl;
     // Render scene geometry to G-buffer
     sceneGraph->DrawGeometry(m_shader);
+
+    // Restore wireframe state
+    if (ctx.wireframeMode) {
+        glPolygonMode(GL_FRONT_AND_BACK, oldPolygonMode[0]);
+    }
 
     // Unbind FBO
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

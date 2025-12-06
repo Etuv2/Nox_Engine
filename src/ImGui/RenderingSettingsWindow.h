@@ -146,6 +146,7 @@ private:
 	int m_debugMode = 0;
 	bool m_wireframeMode = false;
 	bool m_showBoundingBoxes = false;
+	bool m_showBBoxLegend = true;  // Show color legend when bounding boxes are enabled
 	bool m_showLightGizmos = false;
 
 	// Quality settings

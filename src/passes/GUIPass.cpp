@@ -34,6 +34,12 @@ void GUIPass::Execute(RenderContext& ctx,
                       const std::shared_ptr<Camera>& camera,
                       const std::shared_ptr<DirectionalLight>& dirLight,
                       const std::shared_ptr<Skybox>& skybox) {
+    // First render any standalone GUI nodes (e.g., loading screens)
+    if (!m_standaloneGuiNodes.empty()) {
+        RenderGuiNodes(ctx, m_standaloneGuiNodes);
+        return;  // If standalone GUI is active, skip scene graph GUI
+    }
+    
     if (!sceneGraph) {
         return;
     }
@@ -48,8 +54,39 @@ void GUIPass::Execute(RenderContext& ctx,
     
     std::cout << "[GUIPass] Rendering " << guiNodes.size() << " GUI node(s)\n";
     
+    RenderGuiNodes(ctx, guiNodes);
+    
+    std::cout << "[GUIPass] Rendering complete\n";
+}
+
+void GUIPass::ExecuteStandaloneGui(RenderContext& ctx, const std::shared_ptr<GuiNode>& guiNode) {
+    if (!guiNode) return;
+    
+    std::vector<std::shared_ptr<GuiNode>> nodes = {guiNode};
+    RenderGuiNodes(ctx, nodes);
+}
+
+void GUIPass::RegisterStandaloneGuiNode(const std::shared_ptr<GuiNode>& guiNode) {
+    if (!guiNode) return;
+    
+    // Check if already registered
+    auto it = std::find(m_standaloneGuiNodes.begin(), m_standaloneGuiNodes.end(), guiNode);
+    if (it == m_standaloneGuiNodes.end()) {
+        m_standaloneGuiNodes.push_back(guiNode);
+        std::cout << "[GUIPass] Registered standalone GUI node\n";
+    }
+}
+
+void GUIPass::UnregisterStandaloneGuiNode(const std::shared_ptr<GuiNode>& guiNode) {
+    auto it = std::find(m_standaloneGuiNodes.begin(), m_standaloneGuiNodes.end(), guiNode);
+    if (it != m_standaloneGuiNodes.end()) {
+        m_standaloneGuiNodes.erase(it);
+        std::cout << "[GUIPass] Unregistered standalone GUI node\n";
+    }
+}
+
+void GUIPass::RenderGuiNodes(RenderContext& ctx, const std::vector<std::shared_ptr<GuiNode>>& guiNodes) {
     // Ensure we're rendering to the default framebuffer (backbuffer)
-    // PostProcessPass should have already done this, but let's be explicit
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
     // Set viewport to full screen
@@ -60,12 +97,15 @@ void GUIPass::Execute(RenderContext& ctx,
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Render each GUI node
+    // Update and render each GUI node
     for (auto& guiNode : guiNodes) {
         if (!guiNode) continue;
         
         // Update screen size if it changed (for responsive GUI)
         guiNode->UpdateScreenSize(ctx.width, ctx.height);
+        
+        // Update animations
+        guiNode->Update(ctx.deltaTime);
         
         // Render the GUI node's elements
         guiNode->RenderHUD();
@@ -74,8 +114,6 @@ void GUIPass::Execute(RenderContext& ctx,
     // Restore OpenGL state
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
-    
-    std::cout << "[GUIPass] Rendering complete\n";
 }
 
 std::vector<std::shared_ptr<GuiNode>> GUIPass::CollectGuiNodes(const std::shared_ptr<SceneGraph>& sceneGraph) {

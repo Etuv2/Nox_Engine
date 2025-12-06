@@ -3,6 +3,7 @@
 #include "../RenderPass.h"
 #include <memory>
 #include <vector>
+#include <algorithm>
 #include <GL/glew.h>
 
 class GuiNode;
@@ -49,6 +50,13 @@ public:
                  const std::shared_ptr<DirectionalLight>& dirLight,
                  const std::shared_ptr<Skybox>& skybox) override;
 
+    // Support for independent GUI rendering (e.g., loading screens without scene graph)
+    void ExecuteStandaloneGui(RenderContext& ctx, const std::shared_ptr<GuiNode>& guiNode);
+    
+    // Register standalone GUI node for rendering
+    void RegisterStandaloneGuiNode(const std::shared_ptr<GuiNode>& guiNode);
+    void UnregisterStandaloneGuiNode(const std::shared_ptr<GuiNode>& guiNode);
+
 private:
     /**
      * @brief Collect all GUI nodes from the scene graph hierarchy
@@ -65,6 +73,9 @@ private:
     void CollectGuiNodesRecursive(const std::shared_ptr<class SceneNode>& node, 
                                    std::vector<std::shared_ptr<GuiNode>>& guiNodes);
 
+    void RenderGuiNodes(RenderContext& ctx, const std::vector<std::shared_ptr<GuiNode>>& guiNodes);
+
     int m_screenWidth = 1920;
     int m_screenHeight = 1080;
+    std::vector<std::shared_ptr<GuiNode>> m_standaloneGuiNodes;  // For independent rendering
 };

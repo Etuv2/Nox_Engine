@@ -7,6 +7,7 @@
 #include "Framebuffer.h"
 #include "TextureUnits.h"
 #include "Texture.h"  // Use new refactored Texture class
+#include "GLBuffer.h"
 
 //Skybox class for loading HDR images, converting to cubemap, and rendering as background.
 
@@ -92,7 +93,7 @@ private:
 
 	// VAO/VBO for drawing a unit cube.
 	GLuint m_skyboxVAO = 0;
-	GLuint m_skyboxVBO = 0;
+	GLBufferPtr m_skyboxVBO;  // Use GLBuffer wrapper
 
 	// Shader programs.
 	GLuint m_equiRectToCubeShader = 0;  // equirectangular-to-cubemap converter

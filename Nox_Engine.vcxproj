@@ -30,6 +30,7 @@
     <ClCompile Include="include\IMGUI\imgui_widgets.cpp" />
     <ClCompile Include="src\Animation.cpp" />
     <ClCompile Include="src\AnimationController.cpp" />
+    <ClCompile Include="src\AnimationSystem.cpp" />
     <ClCompile Include="src\AudioNode.cpp" />
     <ClCompile Include="src\BaseLight.cpp" />
     <ClCompile Include="src\BVH.cpp" />
@@ -42,8 +43,11 @@
     <ClCompile Include="src\FrameBuffer.cpp" />
     <ClCompile Include="src\FrustumCulling.cpp" />
     <ClCompile Include="src\GizmoRayCast.cpp" />
+    <ClCompile Include="src\GLBuffer.cpp" />
     <ClCompile Include="src\GLState.cpp" />
+    <ClCompile Include="src\GuiAnimation.cpp" />
     <ClCompile Include="src\GuiNode.cpp" />
+    <ClCompile Include="src\HierarchySystem.cpp" />
     <ClCompile Include="src\ImGuiInterface.cpp" />
     <ClCompile Include="src\ImGui\BaseWindow.cpp" />
     <ClCompile Include="src\ImGui\CameraWindow.cpp" />
@@ -64,6 +68,7 @@
     <ClCompile Include="src\ModelManager.cpp" />
     <ClCompile Include="src\ModularRenderer.cpp" />
     <ClCompile Include="src\passes\BloomPass.cpp" />
+    <ClCompile Include="src\passes\DebugBBoxPass.cpp" />
     <ClCompile Include="src\passes\GBufferPass.cpp" />
     <ClCompile Include="src\passes\GUIPass.cpp" />
     <ClCompile Include="src\passes\LightingPass.cpp" />
@@ -79,6 +84,7 @@
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\PointLight.cpp" />
     <ClCompile Include="src\RayCast.cpp" />
+    <ClCompile Include="src\RenderSystem.cpp" />
     <ClCompile Include="src\RigidBody.cpp" />
     <ClCompile Include="src\Scene.cpp" />
     <ClCompile Include="src\SceneGraph.cpp" />
@@ -100,7 +106,6 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="config.json" />
     <None Include="config\input_config.json" />
-    <None Include="README.md" />
     <None Include="scenes\animation_test.json" />
     <None Include="scenes\car.json" />
     <None Include="scenes\copied_city.json" />
@@ -125,6 +130,8 @@
     <None Include="shaders\bloom_upsample.glsl" />
     <None Include="shaders\brdf_frag.glsl" />
     <None Include="shaders\brdf_vert.glsl" />
+    <None Include="shaders\debug_bbox_frag.glsl" />
+    <None Include="shaders\debug_bbox_vert.glsl" />
     <None Include="shaders\deferred_lighting_frag.glsl" />
     <None Include="shaders\deferred_lighting_vert.glsl" />
     <None Include="shaders\equirect2cube_frag.glsl" />
@@ -179,6 +186,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Animation.h" />
+    <ClInclude Include="src\AnimationSystem.h" />
     <ClInclude Include="src\AudioNode.h" />
     <ClInclude Include="src\AudioPlayer.h" />
     <ClInclude Include="src\BaseLight.h" />
@@ -196,8 +204,12 @@
     <ClInclude Include="src\FrameBuffer.h" />
     <ClInclude Include="src\FrustumCulling.h" />
     <ClInclude Include="src\GizmoRayCast.h" />
+    <ClInclude Include="src\GLBuffer.h" />
     <ClInclude Include="src\GLState.h" />
+    <ClInclude Include="src\GuiAnimation.h" />
+    <ClInclude Include="src\GuiEventBus.h" />
     <ClInclude Include="src\GuiNode.h" />
+    <ClInclude Include="src\HierarchySystem.h" />
     <ClInclude Include="src\ImGuiInterface.h" />
     <ClInclude Include="src\ImguiStyle.h" />
     <ClInclude Include="src\ImGui\BaseWindow.h" />
@@ -221,6 +233,7 @@
     <ClInclude Include="src\ModelManager.h" />
     <ClInclude Include="src\ModularRenderer.h" />
     <ClInclude Include="src\passes\BloomPass.h" />
+    <ClInclude Include="src\passes\DebugBBoxPass.h" />
     <ClInclude Include="src\passes\GBufferPass.h" />
     <ClInclude Include="src\passes\GUIPass.h" />
     <ClInclude Include="src\passes\LightingPass.h" />
@@ -238,6 +251,7 @@
     <ClInclude Include="src\RayCast.h" />
     <ClInclude Include="src\RenderContext.h" />
     <ClInclude Include="src\RenderPass.h" />
+    <ClInclude Include="src\RenderSystem.h" />
     <ClInclude Include="src\RigidBody.h" />
     <ClInclude Include="src\RTStructures.h" />
     <ClInclude Include="src\Scene.h" />

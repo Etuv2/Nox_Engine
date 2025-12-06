@@ -20,6 +20,7 @@
 #include "passes/TransparentForwardPass.h"
 #include "passes/PostProcessPass.h"
 #include "passes/GUIPass.h"  // NEW: Internal GUI rendering
+#include "passes/DebugBBoxPass.h"  // Debug bounding box visualization
 #include <iostream>
 
 ModularRenderer::ModularRenderer()
@@ -57,6 +58,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_transparentPass = std::make_unique<TransparentForwardPass>();
 	m_postProcessPass = std::make_unique<PostProcessPass>();
 	m_guiPass = std::make_unique<GUIPass>();
+	m_debugBBoxPass = std::make_unique<DebugBBoxPass>();  // Debug bounding box visualization
 
 	bool success = true;
 	success &= m_shadowPass->Initialize(m_context);
@@ -72,6 +74,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_transparentPass->Initialize(m_context);
 	success &= m_postProcessPass->Initialize(m_context);
 	success &= m_guiPass->Initialize(m_context);
+	success &= m_debugBBoxPass->Initialize(m_context);  // Initialize debug bounding box pass
 
 	if (!success) {
 		std::cerr << "[ModularRenderer] Failed to initialize one or more passes.\n";
@@ -85,6 +88,10 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 
 bool ModularRenderer::InitializeSharedResources()
 {
+	// CRITICAL: Enable seamless cubemap sampling for IBL
+	// This must be enabled before any cubemap is created or sampled
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+	
 	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 	// RT2: RGBA16F - Emissive (RGB) + Specular F0 luminance (A)
@@ -151,6 +158,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_transparentPass) m_transparentPass->Resize(m_context, newWidth, newHeight);
 	if (m_postProcessPass) m_postProcessPass->Resize(m_context, newWidth, newHeight);
 	if (m_guiPass) m_guiPass->Resize(m_context, newWidth, newHeight);
+	if (m_debugBBoxPass) m_debugBBoxPass->Resize(m_context, newWidth, newHeight);
 
 	std::cout << "[ModularRenderer] Resized to " << newWidth << "x" << newHeight << "\n";
 }
@@ -198,7 +206,8 @@ void ModularRenderer::UpdateContext(const std::shared_ptr<Camera>& camera,
 
 void ModularRenderer::CheckGLError(const std::string& passName)
 {
-	if (!ErrorPrintingEnabled) return;
+	if constexpr (!DebugErrorChecking) return;
+	
 	GLenum error = glGetError();
 	if (error != GL_NO_ERROR) {
 		std::cerr << "[ModularRenderer] ERROR after " << passName << ": 0x"
@@ -242,6 +251,11 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	int windowWidth,
 	int windowHeight)
 {
+	// Clear any stale GL errors from previous frames (only in debug mode)
+	if constexpr (DebugErrorChecking) {
+		while (glGetError() != GL_NO_ERROR) {}
+	}
+
 	if (!sceneGraph || !camera) {
 		std::cerr << "[ModularRenderer] ERROR: Missing scene graph or camera!\n";
 		return;
@@ -249,7 +263,9 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 
 	// Initialize light manager if needed
 	if (!sceneGraph->GetLightManager()) {
-		std::cout << "[ModularRenderer] Initializing LightManager..." << std::endl;
+		if constexpr (VerboseLogging) {
+			std::cout << "[ModularRenderer] Initializing LightManager..." << std::endl;
+		}
 		auto lightManager = std::make_shared<LightManager>();
 		lightManager->InitializeShadowSystem(12, 512);
 		lightManager->CollectLightsFromScene(sceneGraph);
@@ -288,7 +304,9 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	// DEBUG MODE: Show G-buffer visualizations
 	if (m_context.debugMode != RenderContext::DebugMode::NONE && 
 	    m_context.rendererMode == RenderContext::RendererMode::DEFERRED_REALTIME) {
-		std::cout << "[ModularRenderer] DEBUG MODE - Visualizing G-buffer" << std::endl;
+		if constexpr (VerboseLogging) {
+			std::cout << "[ModularRenderer] DEBUG MODE - Visualizing G-buffer" << std::endl;
+		}
 		visualizeDebugMode(m_context);
 		
 		// Render GUI overlay
@@ -300,15 +318,13 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	
 	// PATH TRACING MODE: Skip deferred passes and run path tracer instead
 	if (m_context.rendererMode == RenderContext::RendererMode::PATH_TRACED) {
-		std::cout << "[ModularRenderer] PATH TRACING MODE - Executing RTPass" << std::endl;
+		if constexpr (VerboseLogging) {
+			std::cout << "[ModularRenderer] PATH TRACING MODE - Executing RTPass" << std::endl;
+		}
 		
 		// Execute ray tracing pass
 		m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		CheckGLError("RTPass");
-		
-		// Copy path traced result to HDR buffer for post-processing
-		// The rest of the pipeline (bloom, TAA, post-process) can still run on the PT output
-		// For now, skip directly to post-processing
 		
 		// Optional: Apply bloom to path-traced output
 		if (m_context.enableBloom) {
@@ -327,11 +343,8 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		return; // Early exit - skip deferred lighting pipeline
 	}
 
-	//LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
-	//This generates dynamic indirect lighting from the first light bounce
+	// LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
 	if (m_context.enableLPV) {
-
-		// Update LPV config from context (these will be overridden if an LPV node exists)
 		if (m_lpvPass) {
 			m_lpvPass->config.enableLPV = m_context.enableLPV;
 			m_lpvPass->config.gridResolution = m_context.lpvGridResolution;
@@ -345,15 +358,9 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 			m_lpvPass->config.giStrength = m_context.lpvGIStrength;
 			m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;
 
-			//gridCenter is intentionally NOT set here - it will be set by the LPV pass
-			// based on either the LPV volume node position or camera position
-
 			m_lpvPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			CheckGLError("LPVPass");
 		}
-	}
-	else {
-		std::cout << "[ModularRenderer] LPV GI Pass SKIPPED (disabled)" << std::endl;
 	}
 
 	// Only execute SSAO if enabled
@@ -363,20 +370,13 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		CheckGLError("SSAOPass");
 		ssaoTex = m_ssaoPass->GetSSAOTexture();
 	}
-	else {
-		std::cout << "[ModularRenderer] SSAO Pass SKIPPED (disabled)" << std::endl;
-	}
 
 	// Screen-space shadows (contact shadows) if enabled
 	GLuint sssTex = 0;
 	if (m_context.enableScreenSpaceShadows) {
-
 		m_screenSpaceShadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		CheckGLError("ScreenSpaceShadowPass");
 		sssTex = m_screenSpaceShadowPass->GetShadowTexture();
-	}
-	else {
-		std::cout << "[ModularRenderer] Screen-Space Shadow Pass SKIPPED (disabled)" << std::endl;
 	}
 
 	// TAA Pass (velocity + resolve) - executes before lighting
@@ -384,25 +384,19 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		m_taaPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		CheckGLError("TAAPass");
 	}
-	else {
-		std::cout << "[ModularRenderer] TAA Pass SKIPPED (disabled)" << std::endl;
-	}
 
-	//SSGI Pass - Screen Space Global Illumination (before lighting)
+	// SSGI Pass - Screen Space Global Illumination (before lighting)
 	if (m_context.enableSSGI && m_ssgiPass) {
 		m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		CheckGLError("SSGIPass");
 	}
-	else {
-		std::cout << "[ModularRenderer] SSGI Pass SKIPPED (disabled)" << std::endl;
-	}
 
-	//Provide SSAO texture to lighting pass (or 0 if disabled)
+	// Provide SSAO texture to lighting pass (or 0 if disabled)
 	m_lightingPass->SetSSAOTexture(ssaoTex);
-	//Provide screen-space shadow texture to lighting pass (or 0 if disabled)
+	// Provide screen-space shadow texture to lighting pass (or 0 if disabled)
 	m_lightingPass->SetScreenSpaceShadowTexture(sssTex);
 
-	//Provide SSGI texture to lighting pass (or 0 if disabled)
+	// Provide SSGI texture to lighting pass (or 0 if disabled)
 	if (m_context.enableSSGI && m_ssgiPass) {
 		m_lightingPass->SetSSGITexture(m_ssgiPass->GetSSGITexture());
 	}
@@ -410,12 +404,11 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		m_lightingPass->SetSSGITexture(0);
 	}
 
-	//Provide LPV textures to lighting pass (or 0 if disabled)
+	// Provide LPV textures to lighting pass (or 0 if disabled)
 	if (m_context.enableLPV && m_lpvPass) {
 		GLuint lpvR = m_lpvPass->GetLPVTextureR();
 		GLuint lpvG = m_lpvPass->GetLPVTextureG();
 		GLuint lpvB = m_lpvPass->GetLPVTextureB();
-
 		m_lightingPass->SetLPVTextures(lpvR, lpvG, lpvB);
 	}
 	else {
@@ -428,44 +421,41 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	// Skybox rendering (background into HDR)
 	if (skybox && skybox->IsReady()) {
 		m_context.hdrFBO->Bind();
-		//Skybox uses GL_LEQUAL depth test and writes depth at far plane (z=w)
 		skybox->Draw(m_context.view, m_context.proj);
 		CheckGLError("Skybox");
 	}
 
-	//// Transparent forward rendering(broken out for debugging)
-	//m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-	//CheckGLError("TransparentForwardPass");
+	// Transparent forward rendering
+	m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	CheckGLError("TransparentForwardPass");
 
-	//Unbinding HDR FBO after both skybox and transparent rendering
+	// Unbinding HDR FBO after both skybox and transparent rendering
 	FrameBuffer::Unbind();
-
 
 	// Only execute Bloom if enabled
 	GLuint bloomTex = 0;
-	if (m_context.enableBloom)
-	{
+	if (m_context.enableBloom) {
 		m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		CheckGLError("BloomPass");
 		bloomTex = m_bloomPass->GetBloomResult();
 	}
-	else {
-		std::cout << "[ModularRenderer] Bloom Pass SKIPPED (disabled)" << std::endl;
-	}
 
-	//Provide bloom texture to post-process (or 0 if disabled)
+	// Provide bloom texture to post-process (or 0 if disabled)
 	m_postProcessPass->SetBloomTexture(bloomTex);
 	m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 	CheckGLError("PostProcessPass");
 
+	// Debug bounding box visualization (after post-process, renders overlay)
+	if (m_context.showBoundingBoxes) {
+		m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		CheckGLError("DebugBBoxPass");
+	}
 
-	//Render internal GUI elements to backbuffer (after post-processing, before ImGui editor UI)
-	//This executes AFTER PostProcessPass which already unbinds to default framebuffer,the backbuffer
+	// Render internal GUI elements to backbuffer
 	m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 	CheckGLError("GUIPass");
 
-
-	//Capture color history for SSGI
+	// Capture color history for SSGI
 	if (m_ssgiPass) {
 		m_ssgiPass->CaptureHistory(m_context);
 	}
@@ -484,6 +474,8 @@ void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 	
 	if (!ctx.gbufferFBO || !ctx.screenQuad) {
 		std::cerr << "[ModularRenderer] Missing G-buffer or screen quad for debug viz" << std::endl;
+		// Restore state before returning
+		glEnable(GL_DEPTH_TEST);
 		return;
 	}
 	
@@ -510,13 +502,19 @@ void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 			);
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 			std::cout << "[ModularRenderer] Visualized depth buffer" << std::endl;
+			// Restore state before returning
+			glEnable(GL_DEPTH_TEST);
 			return;
 		case RenderContext::DebugMode::SHADOW_MAPS:
 		case RenderContext::DebugMode::MOTION_VECTORS:
 			// TODO: Implement these visualizations
 			std::cout << "[ModularRenderer] Debug mode not yet implemented" << std::endl;
+			// Restore state before returning
+			glEnable(GL_DEPTH_TEST);
 			return;
 		default:
+			// Restore state before returning
+			glEnable(GL_DEPTH_TEST);
 			return;
 	}
 	
@@ -532,7 +530,13 @@ void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 		GL_NEAREST
 	);
 	
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	// Restore framebuffer state
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glReadBuffer(GL_BACK);
+	
+	// Restore render state
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
 	
 	std::cout << "[ModularRenderer] Visualized debug mode: " << static_cast<int>(ctx.debugMode) << std::endl;
 }

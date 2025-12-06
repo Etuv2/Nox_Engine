@@ -12,7 +12,7 @@ uniform mat4 projection;
 
 // Skinning uniforms
 uniform bool useSkinning = false;
-uniform mat4 bones[64];
+uniform mat4 bones[128];
 
 out VS_OUT {
     vec3 WorldPos;
@@ -42,13 +42,24 @@ void main() {
     vec4 worldPos = model * localPos;
     vs_out.WorldPos = worldPos.xyz;
     
-    // Transform normal and tangent to world space
-    mat3 normalMatrix = mat3(transpose(inverse(model)));
-    vs_out.Normal = normalize(normalMatrix * localNormal);
+    // Normal Matrix (transpose of inverse for non-uniform scaling)
+    mat3 normalMatrix = transpose(inverse(mat3(model)));
+    
+    // CRITICAL FIX: Gram-Schmidt orthogonalization for seamless tangent space
+    // This matches gbuffer_vert.glsl for consistent normal mapping
+    vec3 N = normalize(normalMatrix * localNormal);
+    vec3 T = normalize(normalMatrix * localTangent);
+    
+    // Re-orthogonalize tangent with respect to normal (Gram-Schmidt process)
+    // This ensures T is perpendicular to N, preventing seams at UV boundaries
+    T = normalize(T - dot(T, N) * N);
+    
+    // Store outputs
+    vs_out.Normal = N;
     
     // Transform tangent to world space, preserve handedness
-    vec3 worldTangent = normalize(normalMatrix * localTangent);
-    vs_out.TangentWS = vec4(worldTangent, aTangent.w);
+    // The handedness (aTangent.w) determines if we need to flip the bitangent
+    vs_out.TangentWS = vec4(T, aTangent.w);
     
     vs_out.UV = aUV;
     

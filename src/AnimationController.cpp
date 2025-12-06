@@ -210,7 +210,7 @@ void AnimationController::ApplyMorphTargets(const std::shared_ptr<SceneNode>& no
     if (!model) return;
     
     for (auto& mesh : model->meshes) {
-        if (mesh.morphTargetCount > 0 && !mesh.morphVBOs.empty()) {
+        if (mesh.morphTargetCount > 0 && !mesh.morphBuffers.empty()) {
             // Update morph target weights
             // This would typically involve updating vertex buffers or shader uniforms
             // The exact implementation depends on your morph target rendering system

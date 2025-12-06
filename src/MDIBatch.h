@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "GLBuffer.h"
 /*
 * Multi-Draw Indirect (MDI) Batch for rendering multiple objects with a single draw call.
 * Each object has its own model matrix and draw parameters.
@@ -30,10 +31,42 @@ struct MDI_DrawCommand {
 class MDIBatch {
 public:
 	MDIBatch() = default;
-	~MDIBatch() {
-		if (m_indirectBuffer) glDeleteBuffers(1, &m_indirectBuffer);
-		if (m_modelMatrixSSBO) glDeleteBuffers(1, &m_modelMatrixSSBO);
+	~MDIBatch() = default;
+
+	// Move semantics for unique_ptr members
+	MDIBatch(MDIBatch&& other) noexcept
+		: m_objects(std::move(other.m_objects))
+		, m_indirectBuffer(std::move(other.m_indirectBuffer))
+		, m_modelMatrixSSBO(std::move(other.m_modelMatrixSSBO))
+		, m_groupCache(std::move(other.m_groupCache))
+		, m_tempCommands(std::move(other.m_tempCommands))
+		, m_tempModelMats(std::move(other.m_tempModelMats))
+		, m_isDirty(other.m_isDirty)
+		, m_uploadedCount(other.m_uploadedCount)
+	{
+		other.m_isDirty = true;
+		other.m_uploadedCount = 0;
 	}
+
+	MDIBatch& operator=(MDIBatch&& other) noexcept {
+		if (this != &other) {
+			m_objects = std::move(other.m_objects);
+			m_indirectBuffer = std::move(other.m_indirectBuffer);
+			m_modelMatrixSSBO = std::move(other.m_modelMatrixSSBO);
+			m_groupCache = std::move(other.m_groupCache);
+			m_tempCommands = std::move(other.m_tempCommands);
+			m_tempModelMats = std::move(other.m_tempModelMats);
+			m_isDirty = other.m_isDirty;
+			m_uploadedCount = other.m_uploadedCount;
+			other.m_isDirty = true;
+			other.m_uploadedCount = 0;
+		}
+		return *this;
+	}
+
+	// Delete copy operations (unique_ptr can't be copied)
+	MDIBatch(const MDIBatch&) = delete;
+	MDIBatch& operator=(const MDIBatch&) = delete;
 
 	void Clear() {
 		m_objects.clear();
@@ -65,28 +98,55 @@ public:
 			m_tempCommands.push_back(cmd);
 		}
 
-		if (m_indirectBuffer == 0) glGenBuffers(1, &m_indirectBuffer);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirectBuffer);
-		glBufferData(GL_DRAW_INDIRECT_BUFFER, m_tempCommands.size() * sizeof(MDI_DrawCommand), m_tempCommands.data(), GL_DYNAMIC_DRAW);
+		// Create indirect buffer if needed or if previous buffer became invalid
+		if (!m_indirectBuffer || !m_indirectBuffer->IsValid()) {
+			m_indirectBuffer = std::make_unique<GLBuffer>(
+				BufferType::DrawIndirect,
+				BufferUsage::DynamicDraw
+			);
+			m_indirectBuffer->SetLabel("MDIBatch_IndirectBuffer");
+		}
+		if (!m_indirectBuffer->SetData(m_tempCommands)) {
+			// Buffer allocation failed - recreate the buffer
+			m_indirectBuffer = std::make_unique<GLBuffer>(
+				BufferType::DrawIndirect,
+				BufferUsage::DynamicDraw
+			);
+			m_indirectBuffer->SetLabel("MDIBatch_IndirectBuffer");
+			m_indirectBuffer->SetData(m_tempCommands);
+		}
 
 		// Upload a tightly packed array of model matrices for SSBO binding=3
 		m_tempModelMats.clear();
 		m_tempModelMats.reserve(m_objects.size());
 		for (const auto& o : m_objects) m_tempModelMats.push_back(o.modelMatrix);
 
-		if (m_modelMatrixSSBO == 0) glGenBuffers(1, &m_modelMatrixSSBO);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_modelMatrixSSBO);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, m_tempModelMats.size() * sizeof(glm::mat4), m_tempModelMats.data(), GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		// Create SSBO if needed or if previous buffer became invalid
+		if (!m_modelMatrixSSBO || !m_modelMatrixSSBO->IsValid()) {
+			m_modelMatrixSSBO = std::make_unique<GLBuffer>(
+				BufferType::ShaderStorage,
+				BufferUsage::DynamicDraw
+			);
+			m_modelMatrixSSBO->SetLabel("MDIBatch_ModelMatrixSSBO");
+		}
+		if (!m_modelMatrixSSBO->SetData(m_tempModelMats)) {
+			// Buffer allocation failed - recreate the buffer
+			m_modelMatrixSSBO = std::make_unique<GLBuffer>(
+				BufferType::ShaderStorage,
+				BufferUsage::DynamicDraw
+			);
+			m_modelMatrixSSBO->SetLabel("MDIBatch_ModelMatrixSSBO");
+			m_modelMatrixSSBO->SetData(m_tempModelMats);
+		}
 
 		m_uploadedCount = m_objects.size();
 		m_isDirty = false;
 	}
 
 	void Bind() const {
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirectBuffer);
+		if (m_indirectBuffer) m_indirectBuffer->Bind();
 		// Bind model matrices SSBO at binding=3 (shader must match)
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, m_modelMatrixSSBO);
+		if (m_modelMatrixSSBO) m_modelMatrixSSBO->BindBase(3);
 	}
 
 	GLsizei GetCommandCount() const { return static_cast<GLsizei>(m_objects.size()); }
@@ -97,7 +157,7 @@ public:
 
 		// Ensure buffers exist and are bound - only upload if dirty
 		UploadToGPU();
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, m_modelMatrixSSBO);
+		if (m_modelMatrixSSBO) m_modelMatrixSSBO->BindBase(3);
 
 		// Rebuild grouping cache if dirty
 		if (m_isDirty || m_groupCache.empty()) {
@@ -108,8 +168,13 @@ public:
 		m_tempCommands.clear();
 		m_tempCommands.reserve(m_objects.size());
 
-		if (m_indirectBuffer == 0) glGenBuffers(1, &m_indirectBuffer);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirectBuffer);
+		if (!m_indirectBuffer) {
+			m_indirectBuffer = std::make_unique<GLBuffer>(
+				BufferType::DrawIndirect,
+				BufferUsage::DynamicDraw
+			);
+		}
+		m_indirectBuffer->Bind();
 
 		// Build complete command buffer with proper offsets
 		struct DrawGroup {
@@ -146,8 +211,7 @@ public:
 
 		// Single upload for all commands
 		if (!m_tempCommands.empty()) {
-			glBufferData(GL_DRAW_INDIRECT_BUFFER, m_tempCommands.size() * sizeof(MDI_DrawCommand),
-				m_tempCommands.data(), GL_DYNAMIC_DRAW);
+			m_indirectBuffer->SetData(m_tempCommands);
 		}
 
 		// Issue draws for each VAO group using offsets into the single buffer
@@ -159,7 +223,7 @@ public:
 		}
 
 		// Unbind buffers to avoid state leaks
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+		m_indirectBuffer->Unbind();
 	}
 
 	// Compatibility path: set a per-draw uniform uObjectIndex and issue glDrawElementsIndirect per command
@@ -167,15 +231,20 @@ public:
 	void RenderBatchedByVAOWithUniform(GLenum mode, GLenum indexType, GLint locObjectIndex) {
 		if (m_objects.empty()) return;
 		UploadToGPU();
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, m_modelMatrixSSBO);
+		if (m_modelMatrixSSBO) m_modelMatrixSSBO->BindBase(3);
 
 		// Rebuild grouping cache if dirty
 		if (m_isDirty || m_groupCache.empty()) {
 			RebuildGroupCache();
 		}
 
-		if (m_indirectBuffer == 0) glGenBuffers(1, &m_indirectBuffer);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirectBuffer);
+		if (!m_indirectBuffer) {
+			m_indirectBuffer = std::make_unique<GLBuffer>(
+				BufferType::DrawIndirect,
+				BufferUsage::DynamicDraw
+			);
+		}
+		m_indirectBuffer->Bind();
 
 		for (const auto& kv : m_groupCache) {
 			GLuint vao = kv.first;
@@ -196,8 +265,7 @@ public:
 			}
 
 			// Upload commands for this VAO
-			glBufferData(GL_DRAW_INDIRECT_BUFFER, m_tempCommands.size() * sizeof(MDI_DrawCommand),
-				m_tempCommands.data(), GL_DYNAMIC_DRAW);
+			m_indirectBuffer->SetData(m_tempCommands);
 			glBindVertexArray(vao);
 
 			for (GLsizei i = 0; i < (GLsizei)m_tempCommands.size(); ++i) {
@@ -209,7 +277,7 @@ public:
 			glBindVertexArray(0);
 		}
 
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+		m_indirectBuffer->Unbind();
 	}
 
 private:
@@ -222,13 +290,13 @@ private:
 	}
 
 	std::vector<MDI_RenderableObject> m_objects;
-	GLuint m_indirectBuffer = 0;     // GL_DRAW_INDIRECT_BUFFER
-	GLuint m_modelMatrixSSBO = 0;    // GL_SHADER_STORAGE_BUFFER (binding=3) with mat4 modelMatrices[]
+	mutable GLBufferPtr m_indirectBuffer;     // GL_DRAW_INDIRECT_BUFFER
+	mutable GLBufferPtr m_modelMatrixSSBO;    // GL_SHADER_STORAGE_BUFFER (binding=3) with mat4 modelMatrices[]
 
 	// Performance optimizations: cached data and reusable buffers
-	std::unordered_map<GLuint, std::vector<size_t>> m_groupCache;
-	std::vector<MDI_DrawCommand> m_tempCommands;
-	std::vector<glm::mat4> m_tempModelMats;
+	mutable std::unordered_map<GLuint, std::vector<size_t>> m_groupCache;
+	mutable std::vector<MDI_DrawCommand> m_tempCommands;
+	mutable std::vector<glm::mat4> m_tempModelMats;
 	bool m_isDirty = true;
 	size_t m_uploadedCount = 0;
 };
