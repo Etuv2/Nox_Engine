@@ -2,6 +2,7 @@
 
 #include "SceneNode.h"
 #include "GuiAnimation.h"
+#include "GLBuffer.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -147,13 +148,39 @@ private:
     glm::vec2 CalculateAbsoluteSize(const GuiElement& element) const;
     SDL_Color LerpColor(const SDL_Color& a, const SDL_Color& b, float t) const;
     
-    // Initialize shaders
+    // Initialize shaders and cache uniform locations
     void InitializeShaders();
+    void CacheUniformLocations();
 
     TTF_Font* m_font;
-    GLuint m_quadVAO, m_quadVBO;
+    GLuint m_quadVAO;
+    GLBufferPtr m_quadVBO;  // Using GLBuffer instead of raw GLuint
     GLuint m_textureShader;     // For text and images
     GLuint m_unifiedRectShader; // Unified shader for all rectangle types
     int m_screenW, m_screenH;
     std::vector<GuiElement> m_elements;
+    
+    // Cached uniform locations for texture shader
+    struct TextureShaderUniforms {
+        GLint mvp = -1;
+        GLint tintColor = -1;
+        GLint tex = -1;
+    } m_texUniforms;
+    
+    // Cached uniform locations for unified rect shader
+    struct RectShaderUniforms {
+        GLint mvp = -1;
+        GLint rectSize = -1;
+        GLint renderMode = -1;
+        GLint baseColor = -1;
+        GLint gradientType = -1;
+        GLint startColor = -1;
+        GLint endColor = -1;
+        GLint gradientCenter = -1;
+        GLint gradientRadius = -1;
+        GLint highlightColor = -1;
+        GLint shadowColor = -1;
+        GLint cornerRadius = -1;
+        GLint bevelSize = -1;
+    } m_rectUniforms;
 };

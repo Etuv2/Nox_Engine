@@ -42,7 +42,7 @@ bool LightingPass::Initialize(RenderContext& context) {
 
 void LightingPass::CacheUniformLocations() {
 	if (!m_shader) return;
-	
+
 	// Sampler uniforms
 	m_uniforms.gPackedNormalRM = glGetUniformLocation(m_shader, "gPackedNormalRM");
 	m_uniforms.gAlbedoAO = glGetUniformLocation(m_shader, "gAlbedoAO");
@@ -58,24 +58,24 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.prefilteredMap = glGetUniformLocation(m_shader, "prefilteredMap");
 	m_uniforms.brdfLUT = glGetUniformLocation(m_shader, "brdfLUT");
 	m_uniforms.multiLightShadowArray = glGetUniformLocation(m_shader, "multiLightShadowArray");
-	
+
 	// Matrix uniforms
 	m_uniforms.invProjection = glGetUniformLocation(m_shader, "invProjection");
 	m_uniforms.invView = glGetUniformLocation(m_shader, "invView");
 	m_uniforms.view = glGetUniformLocation(m_shader, "view");
 	m_uniforms.viewPos = glGetUniformLocation(m_shader, "viewPos");
-	
+
 	// IBL uniforms
 	m_uniforms.prefilteredMaxLOD = glGetUniformLocation(m_shader, "prefilteredMaxLOD");
 	m_uniforms.iblIntensity = glGetUniformLocation(m_shader, "iblIntensity");
 	m_uniforms.diffuseIBLScale = glGetUniformLocation(m_shader, "diffuseIBLScale");
 	m_uniforms.specularIBLScale = glGetUniformLocation(m_shader, "specularIBLScale");
-	
+
 	// Effect strength uniforms
 	m_uniforms.aoStrength = glGetUniformLocation(m_shader, "aoStrength");
 	m_uniforms.sssStrength = glGetUniformLocation(m_shader, "sssStrength");
 	m_uniforms.ssgiStrength = glGetUniformLocation(m_shader, "ssgiStrength");
-	
+
 	// LPV uniforms
 	m_uniforms.enableLPV = glGetUniformLocation(m_shader, "enableLPV");
 	m_uniforms.lpvGridCenter = glGetUniformLocation(m_shader, "lpvGridCenter");
@@ -85,7 +85,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.lpvGridOrientation = glGetUniformLocation(m_shader, "lpvGridOrientation");
 	m_uniforms.lpvDebugVisualization = glGetUniformLocation(m_shader, "lpvDebugVisualization");
 	m_uniforms.lpvDebugBoost = glGetUniformLocation(m_shader, "lpvDebugBoost");
-	
+
 	// Light uniforms
 	m_uniforms.numLights = glGetUniformLocation(m_shader, "numLights");
 	m_uniforms.numDirectionalLights = glGetUniformLocation(m_shader, "numDirectionalLights");
@@ -97,7 +97,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.normalOffsetScale = glGetUniformLocation(m_shader, "normalOffsetScale");
 	m_uniforms.cascadeBiasScale = glGetUniformLocation(m_shader, "cascadeBiasScale");
 	m_uniforms.cascadeCount = glGetUniformLocation(m_shader, "cascadeCount");
-	
+
 	m_uniformsCached = true;
 }
 
@@ -124,8 +124,7 @@ void LightingPass::SetupFallbackIBL() {
 
 	std::cout << "[LightingPass] Created fallback cubemap (ID: " << m_fallbackCubemap->ID() << ")" << std::endl;
 
-	// Create neutral BRDF LUT fallback using Texture builder
-	// 1x1 gray texture for neutral specular response
+	// Create neutral BRDF LUT fallback
 	m_fallbackBRDF = Texture::Builder::Texture2D(1, 1, GL_RG16F)
 		.FilterMode(GL_LINEAR, GL_LINEAR)
 		.Build();
@@ -151,7 +150,7 @@ void LightingPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<DirectionalLight>& dirLight,
 	const std::shared_ptr<Skybox>& skybox) {
-	
+
 	if constexpr (VerboseLogging) {
 		std::cout << "[LightingPass] Starting execution..." << std::endl;
 	}
@@ -174,8 +173,6 @@ void LightingPass::Execute(RenderContext& ctx,
 	// Bind HDR FBO
 	ctx.hdrFBO->Bind();
 	glViewport(0, 0, ctx.width, ctx.height);
-
-	// Match legacy renderer - disable blending and enable depth test
 	glDisable(GL_BLEND);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
@@ -195,7 +192,7 @@ void LightingPass::Execute(RenderContext& ctx,
 	glDisable(GL_DEPTH_TEST);
 
 	glUseProgram(m_shader);
-	
+
 	// Bind G-buffer textures
 	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)

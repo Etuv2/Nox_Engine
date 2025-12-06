@@ -1,5 +1,5 @@
 #include "GuiNode.h"
-#include "GuiNode.h"
+#include "GLBuffer.h"
 #include "ShaderLoader.h"
 #include <SDL/SDL_image.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -8,7 +8,7 @@
 #include <algorithm>
 
 GuiNode::GuiNode(int screenW, int screenH)
-    : m_font(nullptr), m_quadVAO(0), m_quadVBO(0), m_screenW(screenW), m_screenH(screenH)
+    : m_font(nullptr), m_quadVAO(0), m_screenW(screenW), m_screenH(screenH)
 {
     // Create quad vertex data
     float quad[] = {
@@ -17,11 +17,18 @@ GuiNode::GuiNode(int screenW, int screenH)
         0, 0, 0, 1,
         1, 0, 1, 1
     };
+    
+    // Create VAO
     glGenVertexArrays(1, &m_quadVAO);
-    glGenBuffers(1, &m_quadVBO);
     glBindVertexArray(m_quadVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, m_quadVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+    
+    // Create VBO using GLBuffer
+    m_quadVBO = MakeBuffer(BufferType::Vertex, BufferUsage::StaticDraw);
+    m_quadVBO->SetData(quad, 16); // 16 floats
+    m_quadVBO->SetLabel("GuiNode_QuadVBO");
+    
+    // Set up vertex attributes (VBO is already bound by SetData)
+    m_quadVBO->Bind();
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(1);
@@ -32,7 +39,7 @@ GuiNode::GuiNode(int screenW, int screenH)
 }
 
 GuiNode::~GuiNode() {
-    if (m_quadVBO) glDeleteBuffers(1, &m_quadVBO);
+    // GLBuffer cleans itself up via RAII (m_quadVBO is unique_ptr)
     if (m_quadVAO) glDeleteVertexArrays(1, &m_quadVAO);
     if (m_textureShader) glDeleteProgram(m_textureShader);
     if (m_unifiedRectShader) glDeleteProgram(m_unifiedRectShader);
@@ -47,6 +54,35 @@ void GuiNode::InitializeShaders() {
     m_unifiedRectShader = CreateShaderProgram("shaders/gui_unified_vert.glsl", "shaders/gui_unified_frag.glsl");
     if (!m_unifiedRectShader) {
         std::cerr << "[GuiNode] Failed to load unified rectangle shader." << std::endl;
+    }
+    
+    // Cache all uniform locations once at initialization
+    CacheUniformLocations();
+}
+
+void GuiNode::CacheUniformLocations() {
+    // Cache texture shader uniforms
+    if (m_textureShader) {
+        m_texUniforms.mvp = glGetUniformLocation(m_textureShader, "mvp");
+        m_texUniforms.tintColor = glGetUniformLocation(m_textureShader, "tintColor");
+        m_texUniforms.tex = glGetUniformLocation(m_textureShader, "tex");
+    }
+    
+    // Cache unified rect shader uniforms
+    if (m_unifiedRectShader) {
+        m_rectUniforms.mvp = glGetUniformLocation(m_unifiedRectShader, "mvp");
+        m_rectUniforms.rectSize = glGetUniformLocation(m_unifiedRectShader, "rectSize");
+        m_rectUniforms.renderMode = glGetUniformLocation(m_unifiedRectShader, "renderMode");
+        m_rectUniforms.baseColor = glGetUniformLocation(m_unifiedRectShader, "baseColor");
+        m_rectUniforms.gradientType = glGetUniformLocation(m_unifiedRectShader, "gradientType");
+        m_rectUniforms.startColor = glGetUniformLocation(m_unifiedRectShader, "startColor");
+        m_rectUniforms.endColor = glGetUniformLocation(m_unifiedRectShader, "endColor");
+        m_rectUniforms.gradientCenter = glGetUniformLocation(m_unifiedRectShader, "gradientCenter");
+        m_rectUniforms.gradientRadius = glGetUniformLocation(m_unifiedRectShader, "gradientRadius");
+        m_rectUniforms.highlightColor = glGetUniformLocation(m_unifiedRectShader, "highlightColor");
+        m_rectUniforms.shadowColor = glGetUniformLocation(m_unifiedRectShader, "shadowColor");
+        m_rectUniforms.cornerRadius = glGetUniformLocation(m_unifiedRectShader, "cornerRadius");
+        m_rectUniforms.bevelSize = glGetUniformLocation(m_unifiedRectShader, "bevelSize");
     }
 }
 
@@ -474,12 +510,12 @@ void GuiNode::drawQuad(GLuint tex, float x, float y, float w, float h, const glm
     model = glm::scale(model, glm::vec3(w, h, 1.0f));
     glm::mat4 mvp = proj * model;
 
-    glUniformMatrix4fv(glGetUniformLocation(m_textureShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
-    glUniform4fv(glGetUniformLocation(m_textureShader, "tintColor"), 1, glm::value_ptr(tint));
+    glUniformMatrix4fv(m_texUniforms.mvp, 1, GL_FALSE, glm::value_ptr(mvp));
+    glUniform4fv(m_texUniforms.tintColor, 1, glm::value_ptr(tint));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glUniform1i(glGetUniformLocation(m_textureShader, "tex"), 0);
+    glUniform1i(m_texUniforms.tex, 0);
 
     glBindVertexArray(m_quadVAO);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -493,10 +529,10 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
     glm::mat4 mvp = proj * model;
 
     // Set transform matrix
-    glUniformMatrix4fv(glGetUniformLocation(m_unifiedRectShader, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
+    glUniformMatrix4fv(m_rectUniforms.mvp, 1, GL_FALSE, glm::value_ptr(mvp));
     
     // Set rectangle size for SDF calculations
-    glUniform2f(glGetUniformLocation(m_unifiedRectShader, "rectSize"), w, h);
+    glUniform2f(m_rectUniforms.rectSize, w, h);
     
     // Set render mode based on element type
     int renderMode = 0; // Default to solid
@@ -507,7 +543,7 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
     } else if (element.type == GuiType::RECT_BEVEL) {
         renderMode = 2;
     }
-    glUniform1i(glGetUniformLocation(m_unifiedRectShader, "renderMode"), renderMode);
+    glUniform1i(m_rectUniforms.renderMode, renderMode);
     
     // Set base color
     glm::vec4 baseColorVec = glm::vec4(
@@ -516,12 +552,12 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
         element.color.b / 255.0f,
         element.color.a / 255.0f
     );
-    glUniform4fv(glGetUniformLocation(m_unifiedRectShader, "baseColor"), 1, glm::value_ptr(baseColorVec));
+    glUniform4fv(m_rectUniforms.baseColor, 1, glm::value_ptr(baseColorVec));
     
     // Set type-specific uniforms
     if (element.type == GuiType::RECT_GRADIENT) {
         // Gradient uniforms
-        glUniform1i(glGetUniformLocation(m_unifiedRectShader, "gradientType"), static_cast<int>(element.gradient.type));
+        glUniform1i(m_rectUniforms.gradientType, static_cast<int>(element.gradient.type));
         
         glm::vec4 startColor = glm::vec4(
             element.gradient.startColor.r / 255.0f,
@@ -536,10 +572,10 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
             element.gradient.endColor.a / 255.0f
         );
         
-        glUniform4fv(glGetUniformLocation(m_unifiedRectShader, "startColor"), 1, glm::value_ptr(startColor));
-        glUniform4fv(glGetUniformLocation(m_unifiedRectShader, "endColor"), 1, glm::value_ptr(endColor));
-        glUniform2fv(glGetUniformLocation(m_unifiedRectShader, "gradientCenter"), 1, glm::value_ptr(element.gradient.center));
-        glUniform1f(glGetUniformLocation(m_unifiedRectShader, "gradientRadius"), element.gradient.radius);
+        glUniform4fv(m_rectUniforms.startColor, 1, glm::value_ptr(startColor));
+        glUniform4fv(m_rectUniforms.endColor, 1, glm::value_ptr(endColor));
+        glUniform2fv(m_rectUniforms.gradientCenter, 1, glm::value_ptr(element.gradient.center));
+        glUniform1f(m_rectUniforms.gradientRadius, element.gradient.radius);
     } 
     else if (element.type == GuiType::RECT_BEVEL) {
         // Bevel uniforms
@@ -556,10 +592,10 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
             element.bevel.shadowColor.a / 255.0f
         );
         
-        glUniform4fv(glGetUniformLocation(m_unifiedRectShader, "highlightColor"), 1, glm::value_ptr(highlightColorVec));
-        glUniform4fv(glGetUniformLocation(m_unifiedRectShader, "shadowColor"), 1, glm::value_ptr(shadowColorVec));
-        glUniform1f(glGetUniformLocation(m_unifiedRectShader, "cornerRadius"), element.bevel.radius);
-        glUniform1f(glGetUniformLocation(m_unifiedRectShader, "bevelSize"), element.bevel.bevelSize);
+        glUniform4fv(m_rectUniforms.highlightColor, 1, glm::value_ptr(highlightColorVec));
+        glUniform4fv(m_rectUniforms.shadowColor, 1, glm::value_ptr(shadowColorVec));
+        glUniform1f(m_rectUniforms.cornerRadius, element.bevel.radius);
+        glUniform1f(m_rectUniforms.bevelSize, element.bevel.bevelSize);
     }
 
     glBindVertexArray(m_quadVAO);
