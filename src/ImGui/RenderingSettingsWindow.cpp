@@ -10,6 +10,8 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 {
 	m_position = ImVec2(940, 10);
 	m_size = ImVec2(320, 400);
+	// Engine Resolution
+	m_windowResolution = glm::ivec2(1920, 1080);
 
 	// Initialize settings with RenderContext defaults
 	m_exposure = 1.0f;
@@ -85,7 +87,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_rtDenoise = false;
 	m_rtEnableNEE = true;
 	m_rtEnableMIS = true;
-	
+
 	// SVGF Denoising settings
 	m_svgfTemporalAlpha = 0.15f;
 	m_svgfVarianceClipGamma = 1.5f;
@@ -95,13 +97,13 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_svgfPhiColor = 5.0f;
 	m_svgfPhiNormal = 32.0f;
 	m_svgfPhiDepth = 0.01f;
-	
+
 	// BVH Debug Visualization
 	m_rtDisplayBVH = false;
 	m_rtDisplayMultipleBVHLayers = false;
 	m_rtBVHLayerToDisplay = 0;
 	m_rtHeatmapColorLimit = 50;
-	
+
 	// IBL Environment
 	m_rtEnableIBL = true;
 	m_rtIBLIntensity = 1.0f;
@@ -120,7 +122,6 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	if (!m_modularRenderer) return;
 
 	auto& ctx = m_modularRenderer->GetContext();
-
 	// Post-processing settings
 	m_exposure = ctx.exposure;
 	m_gamma = ctx.gamma;
@@ -198,7 +199,7 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_rtDenoise = ctx.rtDenoise;
 	m_rtEnableNEE = ctx.rtEnableNEE;
 	m_rtEnableMIS = ctx.rtEnableMIS;
-	
+
 	// SVGF Denoising settings
 	m_svgfTemporalAlpha = ctx.svgfTemporalAlpha;
 	m_svgfVarianceClipGamma = ctx.svgfVarianceClipGamma;
@@ -208,13 +209,13 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_svgfPhiColor = ctx.svgfPhiColor;
 	m_svgfPhiNormal = ctx.svgfPhiNormal;
 	m_svgfPhiDepth = ctx.svgfPhiDepth;
-	
+
 	// BVH Debug Visualization
 	m_rtDisplayBVH = ctx.rtDisplayBVH;
 	m_rtDisplayMultipleBVHLayers = ctx.rtDisplayMultipleBVHLayers;
 	m_rtBVHLayerToDisplay = ctx.rtBVHLayerToDisplay;
 	m_rtHeatmapColorLimit = ctx.rtHeatmapColorLimit;
-	
+
 	// IBL Environment
 	m_rtEnableIBL = ctx.rtEnableIBL;
 	m_rtIBLIntensity = ctx.rtIBLIntensity;
@@ -236,6 +237,17 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	if (!m_modularRenderer) return;
 
 	auto& ctx = m_modularRenderer->GetContext();
+	// Resolution adjustment based on current resolution preset
+	switch (m_resolutionPreset) {
+	case 0: // 1920x1080
+		ctx.height = 1080;
+		ctx.width = 1920;
+		break;
+	case 1: // 3840x1440
+		ctx.height = 1440;
+		ctx.width = 3840;
+		break;
+	};
 
 	// Post-processing settings
 	ctx.exposure = m_exposure;
@@ -317,7 +329,7 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.rtDenoise = m_rtDenoise;
 	ctx.rtEnableNEE = m_rtEnableNEE;
 	ctx.rtEnableMIS = m_rtEnableMIS;
-	
+
 	// SVGF Denoising settings
 	ctx.svgfTemporalAlpha = m_svgfTemporalAlpha;
 	ctx.svgfVarianceClipGamma = m_svgfVarianceClipGamma;
@@ -327,13 +339,13 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.svgfPhiColor = m_svgfPhiColor;
 	ctx.svgfPhiNormal = m_svgfPhiNormal;
 	ctx.svgfPhiDepth = m_svgfPhiDepth;
-	
+
 	// BVH Debug Visualization
 	ctx.rtDisplayBVH = m_rtDisplayBVH;
 	ctx.rtDisplayMultipleBVHLayers = m_rtDisplayMultipleBVHLayers;
 	ctx.rtBVHLayerToDisplay = m_rtBVHLayerToDisplay;
 	ctx.rtHeatmapColorLimit = m_rtHeatmapColorLimit;
-	
+
 	// IBL Environment
 	ctx.rtEnableIBL = m_rtEnableIBL;
 	ctx.rtIBLIntensity = m_rtIBLIntensity;
@@ -368,7 +380,18 @@ void RenderingSettingsWindow::Render() {
 	ImGui::Separator();
 
 	if (ImGui::BeginTabBar("RenderingTabs")) {
-
+		//General Settings Tab
+		if (ImGui::BeginTabItem("General")) {
+			// Future general settings can be added here
+			ImGui::Text("Engine Resolution:");
+			ImGui::Text("%d x %d", m_windowResolution.x, m_windowResolution.y);
+			//show multiple predefined resolutions
+			const char* resolutions[] = { "1920x1080","3840x1440" };
+			if (ImGui::Combo("Resolution", &m_resolutionPreset, resolutions, IM_ARRAYSIZE(resolutions))) {
+				SyncToRenderer();
+			}
+			ImGui::EndTabItem();
+		}
 		// Post-Processing Tab
 		if (ImGui::BeginTabItem("Post-Process")) {
 			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Tone Mapping & Exposure:");
@@ -615,7 +638,7 @@ void RenderingSettingsWindow::Render() {
 			if (m_enableLPV) {
 				ImGui::Separator();
 				ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Quality Settings:");
-				
+
 				if (ImGui::SliderFloat("GI Strength", &m_lpvGIStrength, 0.0f, 3.0f, "%.2f")) {
 					SyncToRenderer();
 				}
@@ -1373,7 +1396,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_rtDenoise = false;
 	m_rtEnableNEE = true;
 	m_rtEnableMIS = true;
-	
+
 	// SVGF Denoising settings
 	m_svgfTemporalAlpha = 0.15f;
 	m_svgfVarianceClipGamma = 1.5f;
@@ -1383,7 +1406,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_svgfPhiColor = 5.0f;
 	m_svgfPhiNormal = 32.0f;
 	m_svgfPhiDepth = 0.01f;
-	
+
 	// Debug
 	m_debugMode = 0;
 	m_wireframeMode = false;
