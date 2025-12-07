@@ -126,6 +126,37 @@ void FrameBuffer::Init() {
 					: GL_RGBA);
 				type = GL_FLOAT;
 				break;
+				// Integer types (NEW: Support for material ID)
+			case GL_R8UI:
+			case GL_RG8UI:
+			case GL_RGB8UI:
+			case GL_RGBA8UI:
+				fmt = (ifmt == GL_R8UI ? GL_RED_INTEGER
+					: ifmt == GL_RG8UI ? GL_RG_INTEGER
+					: ifmt == GL_RGB8UI ? GL_RGB_INTEGER
+					: GL_RGBA_INTEGER);
+				type = GL_UNSIGNED_BYTE;
+				break;
+			case GL_R16UI:
+			case GL_RG16UI:
+			case GL_RGB16UI:
+			case GL_RGBA16UI:
+				fmt = (ifmt == GL_R16UI ? GL_RED_INTEGER
+					: ifmt == GL_RG16UI ? GL_RG_INTEGER
+					: ifmt == GL_RGB16UI ? GL_RGB_INTEGER
+					: GL_RGBA_INTEGER);
+				type = GL_UNSIGNED_SHORT;
+				break;
+			case GL_R32UI:
+			case GL_RG32UI:
+			case GL_RGB32UI:
+			case GL_RGBA32UI:
+				fmt = (ifmt == GL_R32UI ? GL_RED_INTEGER
+					: ifmt == GL_RG32UI ? GL_RG_INTEGER
+					: ifmt == GL_RGB32UI ? GL_RGB_INTEGER
+					: GL_RGBA_INTEGER);
+				type = GL_UNSIGNED_INT;
+				break;
 				// default to normalized unsigned byte
 			default:
 				fmt = (ifmt == GL_R8 ? GL_RED
@@ -139,8 +170,14 @@ void FrameBuffer::Init() {
 			glTexImage2D(GL_TEXTURE_2D, 0, ifmt, width, height, 0, fmt, type, nullptr);
 
 			// Filtering and wrapping
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			// CRITICAL: Integer textures MUST use NEAREST filtering (not LINEAR)
+			if (ifmt >= GL_R8UI && ifmt <= GL_RGBA32UI) {
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			} else {
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			}
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
@@ -259,6 +296,28 @@ void FrameBuffer::Resize(int newW, int newH) {
 				: ifmt == GL_RGB32F ? GL_RGB
 				: GL_RGBA);
 			type = GL_FLOAT;
+			break;
+		// Integer types (NEW: Support for material ID)
+		case GL_R8UI: case GL_RG8UI: case GL_RGB8UI: case GL_RGBA8UI:
+			fmt = (ifmt == GL_R8UI ? GL_RED_INTEGER
+				: ifmt == GL_RG8UI ? GL_RG_INTEGER
+				: ifmt == GL_RGB8UI ? GL_RGB_INTEGER
+				: GL_RGBA_INTEGER);
+			type = GL_UNSIGNED_BYTE;
+			break;
+		case GL_R16UI: case GL_RG16UI: case GL_RGB16UI: case GL_RGBA16UI:
+			fmt = (ifmt == GL_R16UI ? GL_RED_INTEGER
+				: ifmt == GL_RG16UI ? GL_RG_INTEGER
+				: ifmt == GL_RGB16UI ? GL_RGB_INTEGER
+				: GL_RGBA_INTEGER);
+			type = GL_UNSIGNED_SHORT;
+			break;
+		case GL_R32UI: case GL_RG32UI: case GL_RGB32UI: case GL_RGBA32UI:
+			fmt = (ifmt == GL_R32UI ? GL_RED_INTEGER
+				: ifmt == GL_RG32UI ? GL_RG_INTEGER
+				: ifmt == GL_RGB32UI ? GL_RGB_INTEGER
+				: GL_RGBA_INTEGER);
+			type = GL_UNSIGNED_INT;
 			break;
 		default:
 			fmt = (ifmt == GL_R8 ? GL_RED

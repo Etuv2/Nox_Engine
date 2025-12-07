@@ -43,10 +43,15 @@ layout (rgba16f, binding = 5) uniform image2D u_outputImage;
 layout (binding = 0) uniform sampler2D u_gbufferPackedNormalRM;
 // RT1: Albedo (RGB) + Occlusion (A)
 layout (binding = 1) uniform sampler2D u_gbufferAlbedoAO;
-// RT2: Emissive (RGB) + Specular luminance (A)
-layout (binding = 2) uniform sampler2D u_gbufferEmissiveSpec;
+// RT2: Specular F0 (RGB) + Emissive strength (A)
+layout (binding = 2) uniform sampler2D u_gbufferSpecularF0;
 // Depth buffer
 layout (binding = 3) uniform sampler2D u_gbufferDepth;
+// RT3: Material ID (uint8)
+layout (binding = 8) uniform usampler2D u_gbufferMaterialID;
+// RT4: Emissive color (RGB)
+layout (binding = 9) uniform sampler2D u_gbufferEmissive;
+
 
 // IBL Environment maps
 layout (binding = 4) uniform samplerCube u_environmentMap;  // HDR environment
@@ -798,6 +803,9 @@ void main() {
 
 	vec3 worldPos = reconstructWorldPosition(uv, depth);
 
+	// Read material ID from G-buffer
+	uint materialID = texture(u_gbufferMaterialID, uv).r;
+
 	vec4 packedNormalRM = texture(u_gbufferPackedNormalRM, uv);
 	vec2 octNormal = packedNormalRM.rg;
 	float roughness = packedNormalRM.b;
@@ -807,19 +815,30 @@ void main() {
 	vec3 albedo = albedoAO.rgb;
 	float occlusion = albedoAO.a;
 
-	vec4 emissiveSpec = texture(u_gbufferEmissiveSpec, uv);
-	vec3 emissive = emissiveSpec.rgb;
-	float specLuminance = emissiveSpec.a;
+	vec4 specularF0Data = texture(u_gbufferSpecularF0, uv);
+	vec3 specular = specularF0Data.rgb;
+	float emissiveStrength = specularF0Data.a;
+
+	vec4 emissiveData = texture(u_gbufferEmissive, uv);
+	vec3 emissive = emissiveData.rgb * emissiveStrength;
 
 	vec3 normal = DecodeNormalOct8(octNormal);
+
+	// MATERIAL ROUTING: Apply material-specific adjustments based on ID
+	if (materialID == 2u) {
+		// Transmissive/Glass material - force smooth for refraction
+		roughness = min(roughness, 0.1);
+	}
+	// Material IDs 0 (Standard PBR) and 1 (Specular-Glossiness) use same path tracing BRDF
+	// Future IDs (3=SSS, 4=Cloth, 5=Clearcoat) can modify BRDF here
 
 	Material gbufferMat;
 	gbufferMat.albedo = albedo;
 	gbufferMat.roughness = roughness;
 	gbufferMat.metallic  = metallic;
-	gbufferMat.specular  = vec3(specLuminance);
+	gbufferMat.specular  = specular;
 	gbufferMat.emissive  = emissive;
-	gbufferMat.emissiveStrength = (emissive.r + emissive.g + emissive.b) > 0.0 ? 1.0 : 0.0;
+	gbufferMat.emissiveStrength = emissiveStrength;
 
 	vec3 color = vec3(0.0);
 	vec3 V = normalize(u_cameraPos - worldPos);

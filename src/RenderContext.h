@@ -202,7 +202,8 @@ struct RenderContext {
 		NORMAL = 2,
 		DEPTH = 3,
 		SHADOW_MAPS = 4,
-		MOTION_VECTORS = 5
+		MOTION_VECTORS = 5,
+		MATERIAL_ID = 6  // NEW: Visualize material ID buffer
 	};
 	DebugMode debugMode = DebugMode::NONE;
 	bool wireframeMode = false;

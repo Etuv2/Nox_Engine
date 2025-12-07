@@ -8,10 +8,14 @@ in vec4 RawTangent;  // CRITICAL: Receive tangent with handedness (w component)
 
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
-// RT2: RGBA16F - Emissive (RGB) + Specular F0 luminance (A)
+// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
+// RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
+// RT4: RGBA16F - Emissive color (RGB) + unused (A)
 layout(location = 0) out vec4 gPackedNormalRM;
 layout(location = 1) out vec4 gAlbedoAO;
-layout(location = 2) out vec4 gEmissiveSpec;
+layout(location = 2) out vec4 gSpecularF0;
+layout(location = 3) out uint gMaterialID;
+layout(location = 4) out vec4 gEmissive;
 
 uniform sampler2D texture_diffuse;
 uniform sampler2D texture_normal;
@@ -197,8 +201,6 @@ void main() {
     }
     roughness = clamp(roughness, 0.04, 1.0);
     
-    if (length(albedo) < 0.01) albedo = vec3(0.7);
-
     // --- Emissive ---
     vec3 emissive = emissiveFactor;
     if (hasEmissiveTexture) {
@@ -212,8 +214,22 @@ void main() {
         ao = mix(1.0, texture(texture_occlusion, TexCoords).r, occlusionStrength);
     }
 
-    // Convert F0 to luminance for packing (we'll reconstruct full F0 in lighting pass)
-    float specLuminance = dot(specularF0, vec3(0.299, 0.587, 0.114));
+    // Calculate emissive strength (luminance for alpha channel)
+    float emissiveStrength = dot(emissive, vec3(0.299, 0.587, 0.114));
+
+    // --- Determine Material ID ---
+    uint materialID = 0u; // Default: Standard PBR
+    
+    if (useSpecularGlossinessWorkflow) {
+        materialID = 1u; // Specular-Glossiness workflow
+    } else if (transmissionFactor > 0.01) {
+        materialID = 2u; // Transmissive/Glass material
+    }
+    // Future material IDs:
+    // 3u = Subsurface scattering
+    // 4u = Cloth/fabric
+    // 5u = Clearcoat
+    // 6-255u = Custom materials
 
     // RT0: Oct normal (RG) + roughness (B) + metallic (A)
     gPackedNormalRM = vec4(EncodeNormalOct8(N), roughness, metallic);
@@ -221,6 +237,12 @@ void main() {
     // RT1: Albedo (RGB) + occlusion (A)
     gAlbedoAO = vec4(albedo, ao);
     
-    // RT2: Emissive (RGB) + specular luminance (A)
-    gEmissiveSpec = vec4(emissive, specLuminance);
+    // RT2: Specular F0 (full RGB color) + emissive strength (A)
+    gSpecularF0 = vec4(specularF0, emissiveStrength);
+    
+    // RT3: Material ID
+    gMaterialID = materialID;
+    
+    // RT4: Emissive color (RGB)
+    gEmissive = vec4(emissive, 0.0);
 }

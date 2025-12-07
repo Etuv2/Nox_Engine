@@ -362,13 +362,21 @@ void RTPass::runRayTracing(RenderContext& ctx,
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));
 
-		// RT2: Emissive (RGB) + Specular luminance (A)
+		// RT2: Specular F0 (RGB) + Emissive strength (A)
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(2));
 
 		// Depth buffer (for position reconstruction)
 		glActiveTexture(GL_TEXTURE3);
 		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+
+		// RT3: Material ID (R8UI)
+		glActiveTexture(GL_TEXTURE8);
+		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(3));
+
+		// RT4: Emissive color (RGB)
+		glActiveTexture(GL_TEXTURE9);
+		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(4));
 	}
 
 	// Bind output texture

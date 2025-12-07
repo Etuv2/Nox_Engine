@@ -59,7 +59,9 @@ private:
 		// Sampler uniforms
 		GLint gPackedNormalRM = -1;
 		GLint gAlbedoAO = -1;
-		GLint gEmissiveSpec = -1;
+		GLint gSpecularF0 = -1;  // Changed from gEmissiveSpec
+		GLint gMaterialID = -1;
+		GLint gEmissive = -1;    // NEW: Separate emissive texture
 		GLint gDepth = -1;
 		GLint ssaoMap = -1;
 		GLint screenSpaceShadowMap = -1;

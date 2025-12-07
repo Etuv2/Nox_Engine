@@ -46,7 +46,9 @@ void LightingPass::CacheUniformLocations() {
 	// Sampler uniforms
 	m_uniforms.gPackedNormalRM = glGetUniformLocation(m_shader, "gPackedNormalRM");
 	m_uniforms.gAlbedoAO = glGetUniformLocation(m_shader, "gAlbedoAO");
-	m_uniforms.gEmissiveSpec = glGetUniformLocation(m_shader, "gEmissiveSpec");
+	m_uniforms.gSpecularF0 = glGetUniformLocation(m_shader, "gSpecularF0");
+	m_uniforms.gMaterialID = glGetUniformLocation(m_shader, "gMaterialID");
+	m_uniforms.gEmissive = glGetUniformLocation(m_shader, "gEmissive");
 	m_uniforms.gDepth = glGetUniformLocation(m_shader, "gDepth");
 	m_uniforms.ssaoMap = glGetUniformLocation(m_shader, "ssaoMap");
 	m_uniforms.screenSpaceShadowMap = glGetUniformLocation(m_shader, "screenSpaceShadowMap");
@@ -196,7 +198,9 @@ void LightingPass::Execute(RenderContext& ctx,
 	// Bind G-buffer textures
 	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
-	// RT2: RGBA16F - Emissive (RGB) + Specular F0 luminance (A)
+	// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
+	// RT3: R8UI - Material ID
+	// RT4: RGBA16F - Emissive color (RGB)
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_NORMAL);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
@@ -204,8 +208,14 @@ void LightingPass::Execute(RenderContext& ctx,
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_ALBEDO);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));
 
-	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_EMISSIVE);
+	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_SPECULAR);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(2));
+
+	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_MATERIAL_ID);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(3));
+
+	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_EMISSIVE_COLOR);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(4));
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_DEPTH);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
@@ -245,7 +255,9 @@ void LightingPass::Execute(RenderContext& ctx,
 	// Set sampler uniforms using cached locations
 	glUniform1i(m_uniforms.gPackedNormalRM, TextureUnits::GBUFFER_NORMAL);
 	glUniform1i(m_uniforms.gAlbedoAO, TextureUnits::GBUFFER_ALBEDO);
-	glUniform1i(m_uniforms.gEmissiveSpec, TextureUnits::GBUFFER_EMISSIVE);
+	glUniform1i(m_uniforms.gSpecularF0, TextureUnits::GBUFFER_SPECULAR);
+	glUniform1i(m_uniforms.gMaterialID, TextureUnits::GBUFFER_MATERIAL_ID);
+	glUniform1i(m_uniforms.gEmissive, TextureUnits::GBUFFER_EMISSIVE_COLOR);
 	glUniform1i(m_uniforms.gDepth, TextureUnits::GBUFFER_DEPTH);
 	glUniform1i(m_uniforms.ssaoMap, TextureUnits::SSAO_MAP);
 	glUniform1i(m_uniforms.screenSpaceShadowMap, TextureUnits::SCREEN_SPACE_SHADOW_MAP);

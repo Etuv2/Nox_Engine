@@ -5,11 +5,15 @@ out vec4 FragColor;
 
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
-// RT2: RGBA16F - Emissive (RGB) + Specular F0 luminance (A)
+// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
+// RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
+// RT4: RGBA16F - Emissive color (RGB) + unused (A)
 uniform sampler2D gPackedNormalRM;  // RT0: oct normal (RG) + roughness (B) + metallic (A)
 uniform sampler2D gAlbedoAO;        // RT1: albedo (RGB) + occlusion (A)
-uniform sampler2D gEmissiveSpec;    // RT2: emissive (RGB) + specular luminance (A)
-uniform sampler2D gDepth;   // depth buffer (non-linear 0..1)
+uniform sampler2D gSpecularF0;      // RT2: specular F0 (RGB) + emissive strength (A)
+uniform usampler2D gMaterialID;     // RT3: material ID (uint8)
+uniform sampler2D gEmissive;        // RT4: emissive color (RGB)
+uniform sampler2D gDepth;           // depth buffer (non-linear 0..1)
 
 // Camera - these MUST match the exact matrices used when writing G-buffer
 uniform mat4 invProjection;    // Exact inverse of projection used in G-buffer pass
@@ -104,17 +108,13 @@ vec3 DecodeNormalOct8(vec2 e) {
     return normalize(n);
 }
 
-// Reconstruct F0 - properly blend between dielectric and metal
-vec3 ReconstructF0(float specLuminance, vec3 albedo, float metallic) {
-    // Dielectric F0: use the stored specular luminance (typically around 0.04)
-    // Clamp to valid range for dielectrics
-    vec3 dielectricF0 = vec3(clamp(specLuminance, 0.02, 0.08));
-    
-    // Metal F0: metals use their albedo as F0
-    vec3 metalF0 = albedo;
-    
-    // Blend based on metallic
-    return mix(dielectricF0, metalF0, metallic);
+// Reconstruct F0 - no longer needed, we store full F0 directly!
+// This function is kept for compatibility but just returns the stored F0
+vec3 ReconstructF0(vec3 specularF0, vec3 albedo, float metallic) {
+    // F0 is already correctly computed and stored in G-buffer
+    // For metals, F0 = albedo (handled in G-buffer pass)
+    // For dielectrics, F0 = computed dielectric F0 with specular color
+    return specularF0;
 }
 
 vec3 worldPosFromDepth(vec2 uv, float depth) {
@@ -554,10 +554,14 @@ void main() {
 	float depth = texture(gDepth, uv).r;
 	if (depth >= 0.9999) { FragColor = vec4(0.0); return; }
 
+	// Read material ID
+	uint materialID = texture(gMaterialID, uv).r;
+
 	// Unpack G-buffer
 	vec4 packedNRM = texture(gPackedNormalRM, uv);
 	vec4 albedoAO = texture(gAlbedoAO, uv);
-	vec4 emissiveSpec = texture(gEmissiveSpec, uv);
+	vec4 specF0Data = texture(gSpecularF0, uv);
+	vec4 emissiveData = texture(gEmissive, uv);
 	
 	// Extract material properties
 	vec2 encNormal = packedNRM.rg;
@@ -567,15 +571,21 @@ void main() {
 	// CRITICAL: Extract albedo (base color) directly from G-buffer
 	vec3 albedo = albedoAO.rgb;
 	
-	// Validate albedo - ensure it's not black or invalid
-	if (length(albedo) < 0.001 || any(isnan(albedo))) {
-		albedo = vec3(0.5); // Fallback to gray
+	// FIXED: Only validate for NaN/Inf, NOT for dark colors
+	// Black materials (like tires) are perfectly valid and should not be overridden
+	if (any(isnan(albedo)) || any(isinf(albedo))) {
+		albedo = vec3(0.5); // Fallback only for invalid data
 	}
 	
 	float aoTex = clamp(albedoAO.a, 0.0, 1.0);
-	vec3 emissive = emissiveSpec.rgb;
-	float specLuminance = emissiveSpec.a;
 	
+	// Extract full specular F0 color (RGB) - no more luminance compression!
+	vec3 specularF0 = specF0Data.rgb;
+	float emissiveStrength = specF0Data.a;
+	
+	// Extract emissive color
+	vec3 emissive = emissiveData.rgb * emissiveStrength;
+
 	// SSAO
 	float ssao = clamp(texture(ssaoMap, uv).r, 0.0, 1.0);
 
@@ -593,8 +603,8 @@ void main() {
 	vec3 V = normalize(viewPos - worldPos);
 	float NdotV = max(dot(N, V), 0.0);
 
-	// Reconstruct F0 for specular
-	vec3 F0 = ReconstructF0(specLuminance, albedo, metallic);
+	// Use stored F0 directly - no reconstruction needed!
+	vec3 F0 = ReconstructF0(specularF0, albedo, metallic);
 
 	// AO factors
 	float diffuseAO = mix(1.0, ssao, aoStrength) * aoTex;
@@ -602,6 +612,19 @@ void main() {
 
 	// Start with emissive
 	vec3 color = emissive;
+
+	// MATERIAL ROUTING: Apply different shading based on material ID
+	// Material ID routing allows different BRDF models per surface
+	
+	if (materialID == 2u) {
+		// Transmissive/Glass material (ID 2)
+		// TODO: Implement refraction and transmission in future update
+		// For now, use standard PBR with high specular
+		roughness = min(roughness, 0.1); // Force smooth for glass-like appearance
+	}
+	// Material ID 1 (Specular-Glossiness) uses same BRDF as standard PBR
+	// Material ID 0 (Standard PBR) is default - no special handling needed
+	// Future IDs (3=SSS, 4=Cloth, 5=Clearcoat) can be added here
 
 	// Direct lighting - pass raw albedo, metallic factor is applied inside
 	if (numLights > 0) {
