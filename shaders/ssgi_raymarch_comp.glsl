@@ -46,13 +46,23 @@ float LinearizeDepth(float d) {
 	return B / (z * C - A); // Negative in front of camera (view space Z convention)
 }
 
-// Octahedral decode for world-space normals (matches SSAO exactly)
+// FIXED: Octahedral decode with proper [0,1] to [-1,1] remapping (matches SSAO)
 vec3 octDecode(vec2 e) {
-	vec2 f = e * 2.0 - 1.0;
-	vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-	float t = clamp(-n.z, 0.0, 1.0);
-	n.x += (n.x >= 0.0 ? -t : t);
-	n.y += (n.y >= 0.0 ? -t : t);
+	// Remap from [0,1] (texture storage) to [-1,1]
+	e = e * 2.0 - 1.0;
+	
+	vec3 n;
+	n.z = 1.0 - abs(e.x) - abs(e.y);
+	
+	if (n.z < 0.0) {
+		// Handle lower hemisphere fold
+		vec2 signE = sign(e);
+		signE = mix(vec2(1.0), signE, step(vec2(0.0001), abs(e)));
+		n.xy = (1.0 - abs(e.yx)) * signE;
+	} else {
+		n.xy = e.xy;
+	}
+	
 	return normalize(n);
 }
 
@@ -275,6 +285,12 @@ void main() {
 
 		if (all(greaterThanEqual(hitUV, vec2(0.0))) && all(lessThan(hitUV, vec2(1.0)))) {
 			vec3 hitColor = texture(prevColor, hitUV).rgb;
+			
+			// CRITICAL FIX: hitColor is final lit radiance (HDR), clamp to prevent excessive energy
+			// Real-time SSGI samples final frame buffer which includes direct + indirect + emissive
+			// This can create feedback loops with very bright values
+			hitColor = min(hitColor, vec3(10.0)); // Clamp to reasonable HDR range
+			
 			vec3 irradiance = hitColor;
 
 			float depthRatio = abs(originVS.z) / max(cameraNear, 0.1);
@@ -287,8 +303,13 @@ void main() {
 			vec3 hitDirection = normalize(hitPosVS - originVS);
 			float cosineAtReceiver = max(dot(normalVS, hitDirection), 0.0);
 
+			// Apply geometric term (distance + angle falloff)
 			irradiance *= attenuation * cosineAtReceiver;
-
+			
+			// CRITICAL FIX: Scale down by PI for proper energy conservation
+			// We're treating this as incoming irradiance that will be integrated over hemisphere
+			irradiance *= 0.318309886; // 1/PI
+			
 			float luminance = dot(irradiance, vec3(0.2126, 0.7152, 0.0722));
 			if (luminance > 0.0001) {
 				indirectIrradiance = irradiance;

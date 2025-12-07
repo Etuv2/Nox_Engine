@@ -139,11 +139,18 @@ void SSAOPass::RenderSSAO(RenderContext& ctx) {
     glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "invProj"), 
                        1, GL_FALSE, glm::value_ptr(invProj));
 
+    // CRITICAL FIX: Upload view matrix for normal transformation
+    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "view"), 
+                       1, GL_FALSE, glm::value_ptr(ctx.view));
+    
+    // CRITICAL FIX: Set normals in world space flag
+    glUniform1i(glGetUniformLocation(m_ssaoShader, "normalsInWorldSpace"), 1);
+
     // Screen size
     glUniform2f(glGetUniformLocation(m_ssaoShader, "screenSize"), 
                 static_cast<float>(ctx.width), static_cast<float>(ctx.height));
 
-    // Upload kernel samples (limited to 64 for shader compatibility)
+    // Upload kernel samples (now correctly limited to 64)
     int kernelSamples = std::min(64, static_cast<int>(m_kernel.size()));
     for (int i = 0; i < kernelSamples; ++i) {
         std::string name = "samples[" + std::to_string(i) + "]";

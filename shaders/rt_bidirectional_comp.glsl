@@ -413,8 +413,6 @@ HitInfo traceBVHDebug(Ray ray, inout uint aabbIntersectCount, inout uint triInte
 }
 
 
-// BRDF (GGX)
-
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
 	float a = roughness * roughness;
 	float a2 = a * a;
@@ -482,12 +480,26 @@ vec3 samplePointLight(RTLightData light, vec3 hitPos, out vec3 lightDir, out flo
 	float distance = length(toLight);
 	lightDir = toLight / max(distance, EPSILON);
 
-	float att = light.attenuation.x +
-				light.attenuation.y * distance +
-				light.attenuation.z * distance * distance;
+	// Match deferred renderer's attenuation calculation
+	vec3 att_coeffs = light.attenuation.xyz;
+	float range = light.attenuation.w;
+	float intensity = light.color.w;
+	
+	// Inverse attenuation (standard polynomial falloff)
+	float attDenom = att_coeffs.x + att_coeffs.y * distance + att_coeffs.z * distance * distance;
+	float inv = 1.0 / max(attDenom, 1.0);
+	
+	// Range falloff factor (smooth cutoff at max range)
+	float rf = 1.0 - pow(distance / range, 4.0);
+	rf = max(rf, 0.0);
+	rf = rf * rf;  // Square for smoother falloff
+	
+	float attenuation = inv * rf * intensity;
 
-	pdf = (distance * distance) / max(1.0, att);
-	return light.color.xyz * light.color.w / max(1.0, att);
+	// PDF for light sampling (uniform over solid angle approximation)
+	pdf = 1.0;  // Delta distribution for point lights (deterministic direction)
+	
+	return light.color.xyz * attenuation;
 }
 
 vec3 sampleSpotLight(RTLightData light, vec3 hitPos, out vec3 lightDir, out float pdf) {
@@ -500,14 +512,33 @@ vec3 sampleSpotLight(RTLightData light, vec3 hitPos, out vec3 lightDir, out floa
 	float cosTheta  = dot(-lightDir, spotDir);
 	float innerCos  = light.spotData.x;
 	float outerCos  = light.spotData.y;
-	float spotEffect= smoothstep(outerCos, innerCos, cosTheta);
+	
+	// Match deferred renderer's spot cone calculation
+	outerCos = min(outerCos, innerCos - 0.001);
+	float eps = max(innerCos - outerCos, 0.001);
+	float cone = clamp((cosTheta - outerCos) / eps, 0.0, 1.0);
+	cone = cone * cone * (3.0 - 2.0 * cone);  // Smoothstep
 
-	float att = light.attenuation.x +
-				light.attenuation.y * distance +
-				light.attenuation.z * distance * distance;
+	// Match deferred renderer's attenuation calculation
+	vec3 att_coeffs = light.attenuation.xyz;
+	float range = light.attenuation.w;
+	float intensity = light.color.w;
+	
+	// Inverse attenuation (standard polynomial falloff)
+	float attDenom = att_coeffs.x + att_coeffs.y * distance + att_coeffs.z * distance * distance;
+	float inv = 1.0 / max(attDenom, 1.0);
+	
+	// Range falloff factor (smooth cutoff at max range)
+	float rf = 1.0 - pow(distance / range, 4.0);
+	rf = max(rf, 0.0);
+	rf = rf * rf;  // Square for smoother falloff
+	
+	float attenuation = inv * rf * intensity * cone;
 
-	pdf = (distance * distance) / max(1.0, att * spotEffect);
-	return light.color.xyz * light.color.w * spotEffect / max(1.0, att);
+	// PDF for light sampling (uniform over solid angle approximation)
+	pdf = 1.0;  // Delta distribution for spot lights (deterministic direction)
+	
+	return light.color.xyz * attenuation;
 }
 
 int sampleLightIndex() {
@@ -591,14 +622,20 @@ vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material 
 				if (traceShadowRay(hitPos, lightDir, maxDist)) {
 					vec3 brdf = evaluateBRDF(mat, normal, viewDir, lightDir);
 
-					if (u_enableMIS) {
+					// For delta distributions (point/spot/directional lights), PDF = 1.0
+					// The radiance already includes full attenuation, so we don't divide by PDF
+					// We only apply MIS weighting if enabled
+					if (u_enableMIS && lightPDF > 1.0001) {
+						// Non-delta light source (area lights, etc.)
 						float bsdfPDF = max(dot(normal, lightDir), 0.0) * INV_PI;
 						float w = misPowerHeuristic(lightPDF, bsdfPDF);
 						directLight += radiance * brdf * w / lightPDF;
 					} else {
-						directLight += radiance * brdf / lightPDF;
+						// Delta light source (point/spot/directional) - no PDF division
+						directLight += radiance * brdf;
 					}
 
+					// Account for probability of selecting this light (1 / lightCount)
 					directLight *= float(u_lightCount);
 				}
 			}

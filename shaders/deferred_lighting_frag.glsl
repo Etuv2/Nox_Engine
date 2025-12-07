@@ -82,6 +82,7 @@ layout(std430, binding = 1) buffer ShadowMatricesBuffer { mat4 shadowMatrices[];
 
 const float PI = 3.14159265359;
 const vec3 DIELECTRIC_F0 = vec3(0.04); // Standard dielectric baseline F0
+const float INV_PI = 0.31830988618; // 1/PI
 
 // Octahedral normal decoding - input is [0,1] from RGBA8 texture
 vec3 DecodeNormalOct8(vec2 e) {
@@ -632,9 +633,11 @@ void main() {
 		color += lpvContribution;
 	}
 
-	// SSGI - apply metallic factor here
+	// SSGI - FIXED: ssgiIndirect is already irradiance, don't multiply by albedo
+	// The sampled hit color contains final radiance with albedo baked in
+	// We apply metallic factor and diffuse BRDF (1/PI) for energy conservation
 	vec3 ssgiIndirect = texture(ssgiMap, vTexCoord).rgb;
-	vec3 ssgiContribution = ssgiIndirect * albedo * (1.0 - metallic) * ssgiStrength * diffuseAO;
+	vec3 ssgiContribution = ssgiIndirect * (1.0 - metallic) * INV_PI * ssgiStrength * diffuseAO;
 	color += ssgiContribution;
 
 	// Safety fallback

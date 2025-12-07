@@ -115,8 +115,11 @@ vec2 prevScreenUV = prevUV;
     }
 
     // Neighborhood clamping in working color space
+    // CRITICAL FIX: Use more lenient clamping to prevent destroying valid indirect lighting
     vec3 minColor = vec3(1e9);
     vec3 maxColor = vec3(-1e9);
+    vec3 sumColor = vec3(0.0);
+    float weightSum = 0.0;
 
     for (int j = -1; j <= 1; ++j) {
         for (int i = -1; i <= 1; ++i) {
@@ -130,10 +133,32 @@ vec2 prevScreenUV = prevUV;
 
        minColor = min(minColor, c);
      maxColor = max(maxColor, c);
+            sumColor += c;
+            weightSum += 1.0;
         }
     }
-
-  vec3 historyClamped = clamp(history.rgb, minColor, maxColor);
+    
+    // CRITICAL FIX: Use mean +/- stddev for softer clamping (matches TAA)
+    vec3 meanColor = sumColor / max(weightSum, 1.0);
+    vec3 stdDev = vec3(0.0);
+    
+    for (int j = -1; j <= 1; ++j) {
+        for (int i = -1; i <= 1; ++i) {
+            vec2 nUV = uvWork + vec2(i, j) / vec2(sz);
+            nUV = clamp(nUV, vec2(0.0), vec2(1.0));
+            vec3 c = texture(curSSGI, nUV).rgb;
+            if (useYCoCg) c = RGBToYCoCg(c);
+            vec3 diff = c - meanColor;
+            stdDev += diff * diff;
+        }
+    }
+    stdDev = sqrt(stdDev / max(weightSum, 1.0));
+    
+    // Softer clamping: mean +/- 2*stddev instead of hard min/max
+    vec3 clampMin = meanColor - 2.0 * stdDev;
+    vec3 clampMax = meanColor + 2.0 * stdDev;
+    
+  vec3 historyClamped = clamp(history.rgb, clampMin, clampMax);
 
     float adaptiveAlpha = alpha;
     adaptiveAlpha = mix(0.9, adaptiveAlpha, confidence);

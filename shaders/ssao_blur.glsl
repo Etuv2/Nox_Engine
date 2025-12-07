@@ -8,15 +8,27 @@ uniform sampler2D gDepth;
 uniform sampler2D gPackedNormalRM; 
 
 uniform vec2 texelSize;
-uniform float depthThreshold = 0.02;
-uniform float normalThreshold = 0.2;
+uniform float depthThreshold = 0.01;  // Tighter threshold for better edge preservation
+uniform float normalThreshold = 0.15;
 
-// Decode oct-encoded normal from gNormal
+// FIXED: Decode oct-encoded normal with proper [0,1] to [-1,1] remapping
 vec3 DecodeNormalOct8(vec2 e) {
-	vec3 n;
-	n.z = 1.0 - abs(e.x) - abs(e.y);
-	n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
-	return normalize(n);
+    // Remap from [0,1] (texture storage) to [-1,1]
+    e = e * 2.0 - 1.0;
+    
+    vec3 n;
+    n.z = 1.0 - abs(e.x) - abs(e.y);
+    
+    if (n.z < 0.0) {
+        // Handle lower hemisphere fold
+        vec2 signE = sign(e);
+        signE = mix(vec2(1.0), signE, step(vec2(0.0001), abs(e)));
+        n.xy = (1.0 - abs(e.yx)) * signE;
+    } else {
+        n.xy = e.xy;
+    }
+    
+    return normalize(n);
 }
 
 void main() {
@@ -29,6 +41,7 @@ void main() {
 	float result = 0.0;
 	float weightSum = 0.0;
 
+	// Bilateral blur with 5x5 kernel
 	for (int x = -2; x <= 2; ++x) {
 		for (int y = -2; y <= 2; ++y) {
 			vec2 offset = vec2(x, y) * texelSize;
@@ -39,10 +52,21 @@ void main() {
 			vec2 encSampleNormal = texture(gPackedNormalRM, sampleUV).rg;
 			vec3 sampleNormal = DecodeNormalOct8(encSampleNormal);
 
+			// Depth-aware weighting
 			float depthDiff = abs(centerDepth - sampleDepth);
-			float normalDiff = max(0.0, 1.0 - dot(centerNormal, sampleNormal));
+			
+			// Normal-aware weighting
+			float normalDot = max(0.0, dot(centerNormal, sampleNormal));
+			float normalDiff = 1.0 - normalDot;
 
-			float weight = exp(-depthDiff / depthThreshold) * exp(-normalDiff / normalThreshold);
+			// Gaussian spatial weight based on distance
+			float spatialWeight = exp(-float(x*x + y*y) / 4.0);
+
+			// Combined bilateral weight
+			float weight = spatialWeight * 
+			               exp(-depthDiff / depthThreshold) * 
+			               exp(-normalDiff / normalThreshold);
+			
 			result += sampleAO * weight;
 			weightSum += weight;
 		}
