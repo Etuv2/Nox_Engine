@@ -12,8 +12,10 @@
 #include "HierarchySystem.h"
 #include "AnimationSystem.h"
 #include "RenderSystem.h"
+#include "Camera.h"
 #include <fstream>
 #include <iostream>
+#include <ctime>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -1156,4 +1158,367 @@ void SceneLoader::ReportECSCreationProgress(float t, int current, int total) {
     float ecsProgress = (float)current / (float)total;
     float overallProgress = 0.3f + ecsProgress * 0.35f;  // ECS creation is 35% of load
     ReportProgress(overallProgress, "Creating ECS Entities (" + std::to_string(current) + "/" + std::to_string(total) + ")");
+}
+
+
+// Runtime State Management
+
+
+bool SceneLoader::SaveRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph, 
+                                   const std::shared_ptr<Camera>& camera,
+                                   const std::string& filepath) {
+    if (!sceneGraph || !sceneGraph->GetRoot()) {
+        std::cerr << "[SceneLoader] Cannot save runtime state: invalid scene graph" << std::endl;
+        return false;
+    }
+    
+    std::cout << "[SceneLoader] Saving runtime state to: " << filepath << std::endl;
+    
+    try {
+        nlohmann::json stateJson;
+        
+        // Version for forward/backward compatibility
+        stateJson["version"] = "1.0";
+        stateJson["format"] = "runtime_state";
+        stateJson["timestamp"] = std::time(nullptr);
+        
+        // Serialize camera state
+        if (camera) {
+            nlohmann::json cameraJson;
+            
+            glm::vec3 pos = camera->GetCameraPosition();
+            cameraJson["position"] = { pos.x, pos.y, pos.z };
+            
+            glm::vec3 front = camera->GetCameraFrontVector();
+            cameraJson["front"] = { front.x, front.y, front.z };
+            
+            glm::vec3 up = camera->GetCameraUpVector();
+            cameraJson["up"] = { up.x, up.y, up.z };
+            
+            cameraJson["fov"] = camera->GetCameraFov();
+            cameraJson["near_plane"] = camera->GetCameraNearPlane();
+            cameraJson["far_plane"] = camera->GetCameraFarPlane();
+            cameraJson["movement_speed"] = camera->GetCameraMovementSpeed();
+            cameraJson["mouse_sensitivity"] = camera->GetCameraMouseSensitivity();
+            
+            stateJson["camera"] = cameraJson;
+        }
+        
+        // Serialize scene metadata
+        stateJson["scene_name"] = sceneGraph->GetSceneName();
+        stateJson["exposure"] = sceneGraph->m_exposure;
+        stateJson["gamma"] = sceneGraph->m_gamma;
+        stateJson["physics_enabled"] = sceneGraph->IsPhysicsEnabled();
+        
+        // Serialize all nodes with runtime state
+        nlohmann::json nodesArray = nlohmann::json::array();
+        auto root = sceneGraph->GetRoot();
+        
+        for (const auto& child : root->children) {
+            if (child) {
+                nlohmann::json nodeJson = SerializeNodeRecursive(child);
+                if (!nodeJson.is_null()) {
+                    // Add runtime-specific data
+                    SerializeRuntimeNodeState(child, nodeJson, sceneGraph);
+                    nodesArray.push_back(nodeJson);
+                }
+            }
+        }
+        
+        stateJson["nodes"] = nodesArray;
+        
+        // Write to file with pretty formatting
+        std::ofstream outFile(filepath);
+        if (!outFile.is_open()) {
+            std::cerr << "[SceneLoader] Failed to open file for writing: " << filepath << std::endl;
+            return false;
+        }
+        
+        outFile << stateJson.dump(2);
+        outFile.close();
+        
+        std::cout << "[SceneLoader] Successfully saved runtime state with " 
+                  << nodesArray.size() << " nodes" << std::endl;
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[SceneLoader] Error saving runtime state: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool SceneLoader::LoadRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph,
+                                   const std::shared_ptr<Camera>& camera,
+                                   const std::string& filepath) {
+    if (!sceneGraph || !sceneGraph->GetRoot()) {
+        std::cerr << "[SceneLoader] Cannot load runtime state: invalid scene graph" << std::endl;
+        return false;
+    }
+    
+    std::cout << "[SceneLoader] Loading runtime state from: " << filepath << std::endl;
+    
+    try {
+        std::ifstream inFile(filepath);
+        if (!inFile.is_open()) {
+            std::cerr << "[SceneLoader] Failed to open runtime state file: " << filepath << std::endl;
+            return false;
+        }
+        
+        nlohmann::json stateJson;
+        inFile >> stateJson;
+        inFile.close();
+        
+        // Version check
+        std::string version = stateJson.value("version", "unknown");
+        std::string format = stateJson.value("format", "unknown");
+        
+        if (format != "runtime_state") {
+            std::cerr << "[SceneLoader] Invalid runtime state format: " << format << std::endl;
+            return false;
+        }
+        
+        std::cout << "[SceneLoader] Loading runtime state version: " << version << std::endl;
+        
+        // Restore camera state
+        if (camera && stateJson.contains("camera")) {
+            const auto& cameraJson = stateJson["camera"];
+            
+            if (cameraJson.contains("position") && cameraJson["position"].is_array()) {
+                glm::vec3 pos(
+                    cameraJson["position"][0],
+                    cameraJson["position"][1],
+                    cameraJson["position"][2]
+                );
+                camera->SetPosition(pos);
+            }
+            
+            // Note: Camera doesn't expose setters for front/up vectors directly
+            // They are derived from yaw/pitch which we'd need to calculate
+            // For now, position restore is most critical
+        }
+        
+        // Restore scene metadata
+        if (stateJson.contains("exposure")) {
+            sceneGraph->m_exposure = stateJson["exposure"];
+        }
+        if (stateJson.contains("gamma")) {
+            sceneGraph->m_gamma = stateJson["gamma"];
+        }
+        
+        // Restore node states
+        if (stateJson.contains("nodes") && stateJson["nodes"].is_array()) {
+            auto root = sceneGraph->GetRoot();
+            RestoreNodeStates(stateJson["nodes"], root->children, sceneGraph);
+        }
+        
+        std::cout << "[SceneLoader] Successfully loaded runtime state" << std::endl;
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[SceneLoader] Error loading runtime state: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+void SceneLoader::SerializeRuntimeNodeState(const std::shared_ptr<SceneNode>& node, 
+                                            nlohmann::json& nodeJson,
+                                            const std::shared_ptr<SceneGraph>& sceneGraph) {
+    if (!node || !sceneGraph) return;
+    
+    EntityID entityID = node->GetEntityID();
+    if (entityID == INVALID_ENTITY) return;
+    
+    ComponentManager* cm = sceneGraph->GetComponentManager();
+    if (!cm) return;
+    
+    // Add runtime section
+    nlohmann::json runtimeJson;
+    
+    // Animation state
+    if (cm->HasAnimation(entityID)) {
+        auto* animComp = cm->GetAnimation(entityID);
+        if (animComp) {
+            nlohmann::json animJson;
+            animJson["current_animation_index"] = animComp->currentAnimationIndex;
+            animJson["animation_time"] = animComp->animationTime;
+            animJson["is_playing"] = animComp->isPlaying;
+            animJson["is_paused"] = animComp->isPaused;
+            
+            if (!animComp->morphWeights.empty()) {
+                animJson["morph_weights"] = animComp->morphWeights;
+            }
+            
+            runtimeJson["animation"] = animJson;
+        }
+    }
+    
+    // Physics state (velocity, angular velocity, etc.)
+    auto rb = node->GetRigidBody();
+    if (rb) {
+        nlohmann::json physicsJson;
+        
+        glm::vec3 velocity = rb->getVelocity();
+        physicsJson["velocity"] = { velocity.x, velocity.y, velocity.z };
+        
+        glm::vec3 angularVel = rb->getAngularVelocity();
+        physicsJson["angular_velocity"] = { angularVel.x, angularVel.y, angularVel.z };
+        
+        glm::vec3 acceleration = rb->getAcceleration();
+        physicsJson["acceleration"] = { acceleration.x, acceleration.y, acceleration.z };
+        
+        runtimeJson["physics"] = physicsJson;
+    }
+    
+    // Light state (if it's a light node with runtime modifications)
+    if (node->GetNodeType() == SceneNode::LIGHT) {
+        auto lightNode = std::dynamic_pointer_cast<LightNode>(node);
+        if (lightNode && lightNode->GetLight()) {
+            // Light properties already serialized in SerializeLightProperties
+            // But add runtime-specific state here if needed
+        }
+    }
+    
+    // Store runtime data if any was added
+    if (!runtimeJson.empty()) {
+        nodeJson["runtime_state"] = runtimeJson;
+    }
+    
+    // Recursively serialize children's runtime state
+    if (nodeJson.contains("children") && nodeJson["children"].is_array()) {
+        size_t childIndex = 0;
+        for (const auto& child : node->children) {
+            if (child && childIndex < nodeJson["children"].size()) {
+                SerializeRuntimeNodeState(child, nodeJson["children"][childIndex], sceneGraph);
+                childIndex++;
+            }
+        }
+    }
+}
+
+void SceneLoader::RestoreNodeStates(const nlohmann::json& nodesArray,
+                                   const std::vector<std::shared_ptr<SceneNode>>& nodes,
+                                   const std::shared_ptr<SceneGraph>& sceneGraph) {
+    if (!nodesArray.is_array() || nodes.empty()) return;
+    
+    // Match nodes by name (most robust approach)
+    for (const auto& nodeJson : nodesArray) {
+        if (!nodeJson.contains("name")) continue;
+        
+        std::string nodeName = nodeJson["name"];
+        
+        // Find matching node
+        for (const auto& node : nodes) {
+            if (node && node->GetName() == nodeName) {
+                RestoreNodeState(nodeJson, node, sceneGraph);
+                break;
+            }
+        }
+    }
+}
+
+void SceneLoader::RestoreNodeState(const nlohmann::json& nodeJson,
+                                  const std::shared_ptr<SceneNode>& node,
+                                  const std::shared_ptr<SceneGraph>& sceneGraph) {
+    if (!node || !sceneGraph) return;
+    
+    // Restore transform
+    if (nodeJson.contains("position") && nodeJson["position"].is_array()) {
+        glm::vec3 pos(
+            nodeJson["position"][0],
+            nodeJson["position"][1],
+            nodeJson["position"][2]
+        );
+        node->SetPosition(pos);
+    }
+    
+    if (nodeJson.contains("rotation") && nodeJson["rotation"].is_array()) {
+        // Rotation is stored in degrees, convert to radians
+        glm::vec3 rot(
+            glm::radians(static_cast<float>(nodeJson["rotation"][0])),
+            glm::radians(static_cast<float>(nodeJson["rotation"][1])),
+            glm::radians(static_cast<float>(nodeJson["rotation"][2]))
+        );
+        node->SetRotation(glm::vec3(1, 0, 0), rot.x);
+        node->SetRotation(glm::vec3(0, 1, 0), rot.y);
+        node->SetRotation(glm::vec3(0, 0, 1), rot.z);
+    }
+    
+    if (nodeJson.contains("scale") && nodeJson["scale"].is_array()) {
+        glm::vec3 scale(
+            nodeJson["scale"][0],
+            nodeJson["scale"][1],
+            nodeJson["scale"][2]
+        );
+        node->SetScale(scale);
+    }
+    
+    // Restore runtime state
+    if (nodeJson.contains("runtime_state")) {
+        const auto& runtimeJson = nodeJson["runtime_state"];
+        
+        EntityID entityID = node->GetEntityID();
+        ComponentManager* cm = sceneGraph->GetComponentManager();
+        
+        if (entityID != INVALID_ENTITY && cm) {
+            // Restore animation state
+            if (runtimeJson.contains("animation") && cm->HasAnimation(entityID)) {
+                const auto& animJson = runtimeJson["animation"];
+                auto* animComp = cm->GetAnimation(entityID);
+                
+                if (animComp) {
+                    animComp->currentAnimationIndex = animJson.value("current_animation_index", -1);
+                    animComp->animationTime = animJson.value("animation_time", 0.0f);
+                    animComp->isPlaying = animJson.value("is_playing", false);
+                    animComp->isPaused = animJson.value("is_paused", false);
+                    
+                    if (animJson.contains("morph_weights") && animJson["morph_weights"].is_array()) {
+                        animComp->morphWeights.clear();
+                        for (const auto& weight : animJson["morph_weights"]) {
+                            animComp->morphWeights.push_back(weight);
+                        }
+                    }
+                }
+            }
+            
+            // Restore physics state
+            if (runtimeJson.contains("physics")) {
+                const auto& physicsJson = runtimeJson["physics"];
+                auto rb = node->GetRigidBody();
+                
+                if (rb) {
+                    if (physicsJson.contains("velocity") && physicsJson["velocity"].is_array()) {
+                        glm::vec3 velocity(
+                            physicsJson["velocity"][0],
+                            physicsJson["velocity"][1],
+                            physicsJson["velocity"][2]
+                        );
+                        rb->setVelocity(velocity);
+                    }
+                    
+                    if (physicsJson.contains("angular_velocity") && physicsJson["angular_velocity"].is_array()) {
+                        glm::vec3 angularVel(
+                            physicsJson["angular_velocity"][0],
+                            physicsJson["angular_velocity"][1],
+                            physicsJson["angular_velocity"][2]
+                        );
+                        rb->setAngularVelocity(angularVel);
+                    }
+                    
+                    if (physicsJson.contains("acceleration") && physicsJson["acceleration"].is_array()) {
+                        glm::vec3 acceleration(
+                            physicsJson["acceleration"][0],
+                            physicsJson["acceleration"][1],
+                            physicsJson["acceleration"][2]
+                        );
+                        rb->setAcceleration(acceleration);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Recursively restore children
+    if (nodeJson.contains("children") && nodeJson["children"].is_array()) {
+        RestoreNodeStates(nodeJson["children"], node->children, sceneGraph);
+    }
 }

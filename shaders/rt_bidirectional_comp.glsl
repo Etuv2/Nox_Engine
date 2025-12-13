@@ -173,6 +173,7 @@ vec3 DecodeNormalOct8(vec2 oct);
 vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L);
 vec3 randomCosineDirection(vec3 normal);
 
+// Simple integer hash function for RNG seed initialization
 uint hash(uint x) {
 	x += (x << 10u);
 	x ^= (x >>  6u);
@@ -181,23 +182,22 @@ uint hash(uint x) {
 	x += (x << 15u);
 	return x;
 }
-
+// Initialize RNG seed based on pixel coordinates and frame index
 void initRandom(uvec2 pixel, int frame) {
 	g_seed = hash(pixel.x + hash(pixel.y + hash(uint(frame))));
 }
-
+// Generate a random float in [0, 1)
 float randomFloat() {
 	g_seed = hash(g_seed);
 	return float(g_seed) / 4294967296.0;
 }
-
+// Generate a random vec2 with components in [0, 1)
 vec2 randomVec2() {
 	return vec2(randomFloat(), randomFloat());
 }
 
 
 // Sampling utilities
-
 vec3 randomInUnitSphere() {
 	float z = randomFloat() * 2.0 - 1.0;
 	float a = randomFloat() * 2.0 * PI;
@@ -205,6 +205,7 @@ vec3 randomInUnitSphere() {
 	return vec3(r * cos(a), r * sin(a), z);
 }
 
+// Cosine-weighted hemisphere sampling around normal
 vec3 randomCosineDirection(vec3 normal) {
 	vec2 u = randomVec2();
 	float r = sqrt(u.x);
@@ -220,7 +221,7 @@ vec3 randomCosineDirection(vec3 normal) {
 					 r * sin(theta) * t +
 					 sqrt(1.0 - u.x) * normal);
 }
-
+// GGX importance sampling
 vec3 randomGGXDirection(vec3 N, vec3 V, float roughness) {
 	float alpha = roughness * roughness;
 	vec2  u     = randomVec2();

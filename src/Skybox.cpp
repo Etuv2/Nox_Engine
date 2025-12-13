@@ -113,6 +113,9 @@ bool Skybox::Init(const std::string& hdrPath,
 	std::cout << "[Skybox] HDR file: " << hdrPath << std::endl;
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
+	// Store the HDR path for serialization
+	m_hdrPath = hdrPath;
+
 	m_pipelineReady = false;
 	m_regenAttempted = false;
 

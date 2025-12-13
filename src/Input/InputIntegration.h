@@ -5,7 +5,7 @@
 #include <memory>
 
 // Forward declarations to avoid circular includes
-class MainWindow;
+class Core;
 class Camera;
 class SceneGraph;
 class ImGuiInterface;
@@ -16,8 +16,8 @@ class LightManager;
  * @brief Integration helper for the Input System with NOX Engine
  * 
  * This class provides a bridge between the unified input system and the
- * existing MainWindow implementation, making it easy to migrate from
- * hardcoded input handling to the flexible input system.
+ * Core engine, making it easy to migrate from hardcoded input handling 
+ * to the flexible input system.
  */
 class InputIntegration {
 public:
@@ -25,7 +25,7 @@ public:
     ~InputIntegration();
     
     // Initialization
-    bool Initialize(MainWindow* mainWindow);
+    bool Initialize(Core* core);
     void Shutdown();
     
     // Main update - should be called every frame
@@ -40,7 +40,7 @@ public:
     void SetMouseLocked(bool locked);
     bool IsMouseLocked() const { return m_mouseLocked; }
     
-    // Component setters (called by MainWindow during initialization)
+    // Component setters (called by Core during initialization)
     void SetCamera(std::shared_ptr<Camera> camera) { m_camera = camera; }
     void SetSceneGraph(std::shared_ptr<SceneGraph> sceneGraph) { m_sceneGraph = sceneGraph; }
     void SetImGuiInterface(ImGuiInterface* imguiInterface) { m_imguiInterface = imguiInterface; }
@@ -83,7 +83,7 @@ private:
     
     // Member variables
     std::unique_ptr<Input::InputManager> m_inputManager;
-    MainWindow* m_mainWindow;
+    Core* m_core;
     
     // Component references
     std::shared_ptr<Camera> m_camera;

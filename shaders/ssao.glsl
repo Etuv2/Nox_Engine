@@ -12,7 +12,7 @@ uniform vec2 screenSize;
 // Matrices
 uniform mat4 proj;
 uniform mat4 invProj;
-uniform mat4 view;  // CRITICAL: Need view matrix to transform normals
+uniform mat4 view;
 
 // Normal space configuration (match deferred lighting)
 uniform int normalsInWorldSpace = 1;
@@ -27,7 +27,6 @@ uniform float bias   = 0.025; // push off the surface
 uniform float intensity = 1.0;
 uniform float aoMin = 0.0;   // Changed from 0.25 - allow full occlusion
 
-// --- Oct normal decode (FIXED: proper remapping from [0,1] to [-1,1])
 vec3 DecodeNormalOct8(vec2 e) {
     // Remap from [0,1] (texture storage) to [-1,1]
     e = e * 2.0 - 1.0;
@@ -92,7 +91,7 @@ void main() {
         vec4 clip = proj * vec4(Svs, 1.0);
         vec2 sampleUV = clip.xy / clip.w * 0.5 + 0.5;
 
-        // Off-screen → ignore
+        // Off-screen = ignore
         if (any(lessThan(sampleUV, vec2(0.0))) || any(greaterThan(sampleUV, vec2(1.0)))) 
             continue;
 
@@ -112,8 +111,7 @@ void main() {
         float w = nDot * fall;
         if (w < 1e-4) continue;
 
-        // FIXED: View-space Z test (OpenGL convention: forward is -Z, so more negative = farther)
-        // If scene depth (Q.z) is MORE NEGATIVE (farther) than sample point → occluded
+        // If scene depth (Q.z) is MORE NEGATIVE (farther) than sample point = occluded
         if (Q.z <= Svs.z - bias) {
             occl += w;
         }

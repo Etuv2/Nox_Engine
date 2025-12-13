@@ -148,6 +148,9 @@
     <Filter Include="Source Files\misc\shaders\debug">
       <UniqueIdentifier>{63b9d3e5-0692-4105-9dc2-5a5cf52406e5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Engine\ECS">
+      <UniqueIdentifier>{789fcda5-9019-426f-abcc-bff5ff2e2086}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\IMGUI\imgui.cpp">
@@ -381,7 +384,19 @@
     <ClCompile Include="src\GLBuffer.cpp">
       <Filter>Source Files\scripts\Engine\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="src\ImGui\StateExportWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PerformanceRecorder.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RuntimeStateManager.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
     <ClCompile Include="src\GuiAnimation.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -880,25 +895,37 @@
     <ClInclude Include="src\TransformSystem.h">
       <Filter>Header Files\Node</Filter>
     </ClInclude>
-    <ClInclude Include="src\passes\DebugBBoxPass.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\GLBuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RenderSystem.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\AnimationSystem.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\HierarchySystem.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\GuiAnimation.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\GuiEventBus.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\StateExportWindow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AnimationSystem.h">
+      <Filter>Header Files\Engine\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\HierarchySystem.h">
+      <Filter>Header Files\Engine\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RenderSystem.h">
+      <Filter>Header Files\Engine\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\DebugBBoxPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PerformanceRecorder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RuntimeStateManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

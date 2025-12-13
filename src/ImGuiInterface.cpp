@@ -51,6 +51,23 @@ float ImGuiInterface::GetScaleSnap() const { return m_windowManager ? m_windowMa
 void ImGuiInterface::SetSceneSwapCallback(const std::function<void(const std::string&)>& callback) { if (m_windowManager) m_windowManager->SetSceneSwapCallback(callback); }
 void ImGuiInterface::SetSceneList(const std::vector<std::string>& scenes) { if (m_windowManager) m_windowManager->SetSceneList(scenes); }
 void ImGuiInterface::SetSceneSaveCallback(const std::function<void()>& callback) { if (m_windowManager) m_windowManager->SetSceneSaveCallback(callback); }
+void ImGuiInterface::SetStateExportCallbacks(
+    const std::function<bool(const std::string&)>& saveCallback,
+    const std::function<bool(const std::string&)>& loadCallback,
+    const std::function<bool()>& quickSaveCallback,
+    const std::function<bool(const std::string&)>& exportCSVCallback,
+    const std::function<bool(const std::string&)>& exportJSONCallback,
+    const std::function<void()>& startRecordingCallback,
+    const std::function<void()>& stopRecordingCallback) {
+    if (m_windowManager) {
+        m_windowManager->SetStateExportCallbacks(
+            saveCallback, loadCallback, quickSaveCallback,
+            exportCSVCallback, exportJSONCallback,
+            startRecordingCallback, stopRecordingCallback
+        );
+    }
+}
+void ImGuiInterface::SetRecordingState(bool recording) { if (m_windowManager) m_windowManager->SetRecordingState(recording); }
 void ImGuiInterface::ToggleWindow(const std::string& windowName) { if (m_windowManager) m_windowManager->ToggleWindow(windowName); }
 void ImGuiInterface::SetWindowVisible(const std::string& windowName, bool visible) { if (m_windowManager) m_windowManager->SetWindowVisible(windowName, visible); }
 bool ImGuiInterface::IsWindowVisible(const std::string& windowName) const { return m_windowManager ? m_windowManager->IsWindowVisible(windowName) : false; }

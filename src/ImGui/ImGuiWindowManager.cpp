@@ -6,6 +6,7 @@
 #include "../ModularRenderer.h"
 #include "../LightNode.h"
 #include "../AudioNode.h"
+#include "StateExportWindow.h"
 #include <IMGUI/imgui.h>
 #include <IMGUI/ImGuizmo.h>
 #include <iostream>
@@ -29,6 +30,7 @@ ImGuiWindowManager::ImGuiWindowManager()
     m_renderingSettingsWindow = std::make_unique<RenderingSettingsWindow>();
     m_performanceWindow = std::make_unique<PerformanceWindow>();
     m_helpWindow = std::make_unique<HelpWindow>();
+    m_stateExportWindow = std::make_unique<StateExportWindow>();
 
     // Populate window map
     m_windowMap["Status"] = m_statusWindow.get();
@@ -38,6 +40,7 @@ ImGuiWindowManager::ImGuiWindowManager()
     m_windowMap["Rendering"] = m_renderingSettingsWindow.get();
     m_windowMap["Performance"] = m_performanceWindow.get();
     m_windowMap["Help"] = m_helpWindow.get();
+    m_windowMap["StateExport"] = m_stateExportWindow.get();
 
     // Scene hierarchy selection callback
     m_sceneHierarchyWindow->SetSelectionCallback([this](std::shared_ptr<SceneNode> node) {
@@ -95,6 +98,7 @@ void ImGuiWindowManager::Render(int windowWidth, int windowHeight, float fps,
     m_renderingSettingsWindow->Render();
     m_performanceWindow->Render();
     m_helpWindow->Render();
+    m_stateExportWindow->Render();
 
     // Lightweight gizmo panel (not a BaseWindow, optional)
     if (m_showGizmoPanel) {
@@ -150,6 +154,7 @@ void ImGuiWindowManager::ProcessKeyboardInput() {
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) m_showGizmoPanel = !m_showGizmoPanel; // now toggles panel only
     if (ImGui::IsKeyPressed(ImGuiKey_F6)) ToggleWindow("Rendering");
     if (ImGui::IsKeyPressed(ImGuiKey_F7)) ToggleWindow("Performance");
+    if (ImGui::IsKeyPressed(ImGuiKey_F9)) ToggleWindow("StateExport");
     if (ImGui::IsKeyPressed(ImGuiKey_F12)) ToggleWindow("Help");
 
     if (io.WantCaptureKeyboard) return; // avoid interfering with text inputs
@@ -217,6 +222,33 @@ void ImGuiWindowManager::SetSceneList(const std::vector<std::string>& scenes) {
     m_statusWindow->SetSceneList(scenes);
 }
 
+// State export callbacks
+void ImGuiWindowManager::SetStateExportCallbacks(
+    const std::function<bool(const std::string&)>& saveCallback,
+    const std::function<bool(const std::string&)>& loadCallback,
+    const std::function<bool()>& quickSaveCallback,
+    const std::function<bool(const std::string&)>& exportCSVCallback,
+    const std::function<bool(const std::string&)>& exportJSONCallback,
+    const std::function<void()>& startRecordingCallback,
+    const std::function<void()>& stopRecordingCallback) {
+    
+    if (m_stateExportWindow) {
+        m_stateExportWindow->SetSaveSceneStateCallback(saveCallback);
+        m_stateExportWindow->SetLoadSceneStateCallback(loadCallback);
+        m_stateExportWindow->SetQuickSaveCallback(quickSaveCallback);
+        m_stateExportWindow->SetExportCSVCallback(exportCSVCallback);
+        m_stateExportWindow->SetExportJSONCallback(exportJSONCallback);
+        m_stateExportWindow->SetStartRecordingCallback(startRecordingCallback);
+        m_stateExportWindow->SetStopRecordingCallback(stopRecordingCallback);
+    }
+}
+
+void ImGuiWindowManager::SetRecordingState(bool recording) {
+    if (m_stateExportWindow) {
+        m_stateExportWindow->SetRecording(recording);
+    }
+}
+
 // Window controls
 void ImGuiWindowManager::ToggleWindow(const std::string& windowName) {
     auto it = m_windowMap.find(windowName);
@@ -236,7 +268,58 @@ bool ImGuiWindowManager::IsWindowVisible(const std::string& windowName) const {
     return (it != m_windowMap.end() && it->second) ? it->second->IsVisible() : false;
 }
 
-// Persistence
+// Gizmo overlay rendering - renders as true viewport overlay, not in a window
+void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
+    m_windowWidth = windowWidth;
+    m_windowHeight = windowHeight;
+    
+    // Always call BeginFrame to reset gizmo state for this frame
+    ImGuizmo::BeginFrame();
+    
+    if (!m_selectedNode || !m_gizmoVisible || !m_camera) return;
+    
+    // Configure gizmo for perspective rendering
+    ImGuizmo::SetOrthographic(false);
+    
+    // Use the foreground draw list for true overlay rendering
+    // This renders on top of everything without creating a window
+    ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList());
+    
+    // Set the gizmo rect to cover the entire viewport
+    ImGuizmo::SetRect(0, 0, static_cast<float>(windowWidth), static_cast<float>(windowHeight));
+    
+    glm::mat4 view = m_camera->GetViewMatrix();
+    glm::mat4 projection = m_camera->GetProjectionMatrix();
+    glm::mat4 model = m_selectedNode->GetTransform();
+    
+    // Configure snap values based on current operation
+    float snapValue = 0.0f;
+    if (m_snapEnabled) {
+        if (m_gizmoOperation == ImGuizmo::TRANSLATE) snapValue = m_translateSnap;
+        else if (m_gizmoOperation == ImGuizmo::ROTATE) snapValue = m_rotateSnap;
+        else if (m_gizmoOperation == ImGuizmo::SCALE) snapValue = m_scaleSnap;
+    }
+    float snapArray[3] = { snapValue, snapValue, snapValue };
+    float* snap = m_snapEnabled ? snapArray : nullptr;
+    
+    // Render and manipulate the gizmo
+    ImGuizmo::Manipulate(
+        glm::value_ptr(view),
+        glm::value_ptr(projection),
+        static_cast<ImGuizmo::OPERATION>(m_gizmoOperation),
+        static_cast<ImGuizmo::MODE>(m_gizmoMode),
+        glm::value_ptr(model),
+        nullptr,
+        snap
+    );
+    
+    // Apply transform changes when user is manipulating the gizmo
+    if (ImGuizmo::IsUsing()) {
+        m_selectedNode->SetTransform(model);
+    }
+}
+
+// Window state persistence
 void ImGuiWindowManager::SaveWindowStates(const std::string& filename) {
     try {
         json j;
@@ -244,186 +327,43 @@ void ImGuiWindowManager::SaveWindowStates(const std::string& filename) {
             if (!wnd) continue;
             json wd;
             wd["visible"] = wnd->IsVisible();
-            wd["position"] = { wnd->GetPosition().x, wnd->GetPosition().y };
-            wd["size"] = { wnd->GetSize().x, wnd->GetSize().y };
             j[name] = wd;
         }
-        j["gizmo"] = {
-            {"panel_visible", m_showGizmoPanel},
-            {"visible", m_gizmoVisible},
-            {"operation", m_gizmoOperation},
-            {"mode", m_gizmoMode},
-            {"snap_enabled", m_snapEnabled},
-            {"translate_snap", m_translateSnap},
-            {"rotate_snap", m_rotateSnap},
-            {"scale_snap", m_scaleSnap}
-        };
-        std::ofstream f(filename);
-        if (f.is_open()) f << j.dump(2);
-    } catch (...) {
-        std::cerr << "[ImGuiWindowManager] Failed saving layout" << std::endl;
+        
+        std::ofstream outFile(filename);
+        if (outFile.is_open()) {
+            outFile << j.dump(2);
+            outFile.close();
+            std::cout << "[ImGuiWindowManager] Window states saved to " << filename << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ImGuiWindowManager] Error saving window states: " << e.what() << std::endl;
     }
 }
 
 void ImGuiWindowManager::LoadWindowStates(const std::string& filename) {
     try {
-        std::ifstream f(filename);
-        if (!f.is_open()) return;
-        json j; f >> j;
-        for (auto& [name, wnd] : m_windowMap) {
-            if (!wnd || !j.contains(name)) continue;
-            auto& wd = j[name];
-            if (wd.contains("visible")) wnd->SetVisible(wd["visible"]);
-            if (wd.contains("position") && wd["position"].size()==2) wnd->SetPosition(ImVec2(wd["position"][0], wd["position"][1]));
-            if (wd.contains("size") && wd["size"].size()==2) wnd->SetSize(ImVec2(wd["size"][0], wd["size"][1]));
-        }
-        if (j.contains("gizmo")) {
-            auto& g = j["gizmo"];
-            if (g.contains("panel_visible")) m_showGizmoPanel = g["panel_visible"];
-            if (g.contains("visible")) m_gizmoVisible = g["visible"];
-            if (g.contains("operation")) m_gizmoOperation = g["operation"];
-            if (g.contains("mode")) m_gizmoMode = g["mode"];
-            if (g.contains("snap_enabled")) m_snapEnabled = g["snap_enabled"];
-            if (g.contains("translate_snap")) m_translateSnap = g["translate_snap"];
-            if (g.contains("rotate_snap")) m_rotateSnap = g["rotate_snap"];
-            if (g.contains("scale_snap")) m_scaleSnap = g["scale_snap"];
-        }
-    } catch (...) {
-        std::cerr << "[ImGuiWindowManager] Failed loading layout" << std::endl;
-    }
-}
-
-void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
-    if (!m_camera || !m_selectedNode || !m_gizmoVisible) return;
-
-    // Safety check: Verify selected node's entity is still valid in current scene
-    if (m_selectedNode->GetEntityID() != INVALID_ENTITY) {
-        ComponentManager* currentManager = SceneNode::GetGlobalSceneGraph() ? 
-            SceneNode::GetGlobalSceneGraph()->GetComponentManager() : nullptr;
-        if (!currentManager || !currentManager->IsEntityValid(m_selectedNode->GetEntityID())) {
-            // Entity no longer valid in current scene, clear selection
-            m_selectedNode.reset();
+        std::ifstream inFile(filename);
+        if (!inFile.is_open()) {
+            std::cout << "[ImGuiWindowManager] No saved window states found at " << filename << std::endl;
             return;
         }
-    }
-
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.DisplaySize.x <= 0 || io.DisplaySize.y <= 0) return;
-
-    ImGuizmo::BeginFrame();
-    ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList());
-    ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-    ImGuizmo::SetOrthographic(false);
-
-    glm::mat4 parentWorld(1.0f);
-    if (auto p = m_selectedNode->parentNode.lock()) {
-        parentWorld = p->GetGlobalTransform(glm::mat4(1.0f));
-    }
-    glm::mat4 world = m_selectedNode->GetGlobalTransform(glm::mat4(1.0f));
-
-    glm::mat4 view = m_camera->GetViewMatrix();
-    glm::mat4 proj = m_camera->GetProjectionMatrix();
-
-    float viewM[16]; float projM[16]; float worldM[16];
-    memcpy(viewM, glm::value_ptr(view), sizeof(float)*16);
-    memcpy(projM, glm::value_ptr(proj), sizeof(float)*16);
-    memcpy(worldM, glm::value_ptr(world), sizeof(float)*16);
-
-    ImGuizmo::OPERATION op = static_cast<ImGuizmo::OPERATION>(m_gizmoOperation);
-    ImGuizmo::MODE mode = static_cast<ImGuizmo::MODE>(m_gizmoMode);
-
-    // Removed: previous restriction forcing AudioNode to TRANSLATE only.
-
-    // Stable ID so multiple gizmos (future) don't conflict
-    ImGuizmo::SetID(static_cast<int>(reinterpret_cast<uintptr_t>(m_selectedNode.get()) & 0x7FFFFFFF));
-
-    float snap[3] = {0,0,0};
-    const float* pSnap = nullptr;
-    if (m_snapEnabled || io.KeyCtrl) {
-        switch (op) {
-            case ImGuizmo::TRANSLATE: snap[0]=snap[1]=snap[2]=m_translateSnap; break;
-            case ImGuizmo::ROTATE:    snap[0]=snap[1]=snap[2]=m_rotateSnap; break;
-            case ImGuizmo::SCALE:     snap[0]=snap[1]=snap[2]=m_scaleSnap; break;
-            default: break;
-        }
-        pSnap = snap;
-    }
-
-    ImGuizmo::Enable(true);
-    ImGuizmo::AllowAxisFlip(true);
-    ImGuizmo::SetGizmoSizeClipSpace(0.12f);
-
-    bool manipulated = ImGuizmo::Manipulate(viewM, projM, op, mode, worldM, nullptr, pSnap);
-
-    if (manipulated) {
-        auto isFiniteMat4 = [](const glm::mat4& m){
-            for(int c=0;c<4;++c) for(int r=0;r<4;++r) if(!std::isfinite(m[c][r])) return false; return true; };
-        auto isFiniteVec3 = [](const glm::vec3& v){ return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z); };
-        glm::mat4 newWorld = glm::make_mat4(worldM);
-
-        // FIXED: Get proper parent world transform from hierarchy system
-        glm::mat4 parentInv(1.0f);
-        if (auto parent = m_selectedNode->parentNode.lock()) {
-            glm::mat4 parentWorld = parent->GetWorldPosition4x4();
-            float det = glm::determinant(parentWorld);
-            if (std::abs(det) > 1e-8f) {
-                parentInv = glm::inverse(parentWorld);
-            }
-        }
-
-        glm::mat4 newLocal = parentInv * newWorld;
-        if (!isFiniteMat4(newLocal)) {
-            // Fallback: keep previous local, only update translation safely
-            glm::vec3 worldPos = glm::vec3(newWorld[3]);
-            glm::vec3 localPos = glm::vec3(parentInv * glm::vec4(worldPos,1.0f));
-            if (isFiniteVec3(localPos)) {
-                glm::mat4 prevLocal = m_selectedNode->GetTransform();
-                prevLocal[3] = glm::vec4(localPos,1.0f);
-                newLocal = prevLocal;
-            } else {
-                // Abort completely if still invalid
-                return;
-            }
-        }
-
-        if (auto lightNode = std::dynamic_pointer_cast<LightNode>(m_selectedNode)) {
-            if (!isFiniteMat4(newLocal)) return; // safety
-            lightNode->SetTransform(newLocal);
-            lightNode->UpdateLightFromTransform(true);
-            lightNode->UpdateSelectionProxy();
-        } else {
-            glm::vec3 scale; glm::quat rot; glm::vec3 translation; glm::vec3 skew; glm::vec4 persp;
-            if (glm::decompose(newLocal, scale, rot, translation, skew, persp) && isFiniteVec3(scale) && isFiniteVec3(translation)) {
-                // Sanitize scale (avoid zeros / extreme values leading to singular parent matrices later)
-                const float MIN_SCALE = 1e-4f;
-                scale = glm::max(scale, glm::vec3(MIN_SCALE));
-                rot = glm::normalize(rot);
-                if (!isFiniteVec3(glm::vec3(rot.x,rot.y,rot.z))) rot = glm::quat(1,0,0,0);
-                m_selectedNode->SetLocalTRS(translation, rot, scale);
-
-                if (auto audioNode = std::dynamic_pointer_cast<AudioNode>(m_selectedNode); audioNode && m_camera) {
-                    // The audio position will be automatically updated during the next UpdateAudioNodes call
-                    // since AudioNode now uses the unified hierarchy system
-                    audioNode->UpdateAudioNodes(m_camera->GetCameraPosition(), m_camera->GetCameraFacingAngle());
-                }
-            } else {
-                // If decompose failed, fallback to translation-only update
-                glm::vec3 worldPos = glm::vec3(newWorld[3]);
-                glm::vec3 localPos = glm::vec3(parentInv * glm::vec4(worldPos,1.0f));
-                if (isFiniteVec3(localPos)) {
-                    glm::mat4 prevLocal = m_selectedNode->GetTransform();
-                    prevLocal[3] = glm::vec4(localPos,1.0f);
-                    m_selectedNode->SetTransform(prevLocal);
-                    if (auto audioNode = std::dynamic_pointer_cast<AudioNode>(m_selectedNode); audioNode && m_camera) {
-                        audioNode->UpdateAudioNodes(m_camera->GetCameraPosition(), m_camera->GetCameraFacingAngle());
-                    }
+        
+        json j;
+        inFile >> j;
+        inFile.close();
+        
+        for (const auto& [name, data] : j.items()) {
+            auto it = m_windowMap.find(name);
+            if (it != m_windowMap.end() && it->second) {
+                if (data.contains("visible")) {
+                    it->second->SetVisible(data["visible"]);
                 }
             }
         }
         
-        // Trigger ECS transform system update to recompute world transforms
-        if (SceneGraph* sceneGraph = SceneNode::GetGlobalSceneGraph()) {
-            sceneGraph->UpdateAllTransforms();
-        }
+        std::cout << "[ImGuiWindowManager] Window states loaded from " << filename << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[ImGuiWindowManager] Error loading window states: " << e.what() << std::endl;
     }
 }

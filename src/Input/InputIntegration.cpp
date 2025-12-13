@@ -1,5 +1,5 @@
 #include "InputIntegration.h"
-#include "../MainWindow.h"
+#include "../Core.h"
 #include "../Camera.h"
 #include "../SceneGraph.h"
 #include "../ImGuiInterface.h"
@@ -9,7 +9,7 @@
 
 InputIntegration::InputIntegration()
     : m_inputManager(std::make_unique<Input::InputManager>())
-    , m_mainWindow(nullptr)
+    , m_core(nullptr)
     , m_imguiInterface(nullptr)
     , m_lightManager(nullptr)
     , m_initialized(false)
@@ -23,17 +23,17 @@ InputIntegration::~InputIntegration() {
     Shutdown();
 }
 
-bool InputIntegration::Initialize(MainWindow* mainWindow) {
+bool InputIntegration::Initialize(Core* core) {
     if (m_initialized) {
         return true;
     }
     
-    if (!mainWindow) {
-        std::cerr << "[InputIntegration] MainWindow pointer is null" << std::endl;
+    if (!core) {
+        std::cerr << "[InputIntegration] Core pointer is null" << std::endl;
         return false;
     }
     
-    m_mainWindow = mainWindow;
+    m_core = core;
     
     // Initialize the input manager
     if (!m_inputManager->Initialize()) {
@@ -448,32 +448,26 @@ void InputIntegration::OnCameraLook(float deltaX, float deltaY) {
 }
 
 void InputIntegration::OnApplicationAction(const std::string& action) {
-    if (!m_mainWindow) {
+    if (!m_core) {
         return;
     }
     
     if (action == "exit") {
-        // Set the running flag to false (we'll need to add a method to MainWindow for this)
-        // For now, we can trigger the SDL_QUIT event
+        // Trigger the SDL_QUIT event
         SDL_Event quitEvent;
         quitEvent.type = SDL_QUIT;
         SDL_PushEvent(&quitEvent);
     } else if (action == "fullscreen") {
-        // Toggle fullscreen - we'll need access to MainWindow's fullscreen state
         std::cout << "[InputIntegration] Fullscreen toggle requested" << std::endl;
-        // m_mainWindow->ToggleFullscreen(); // Would need to add this method
     } else if (action == "wireframe") {
-        // Toggle wireframe mode
         std::cout << "[InputIntegration] Wireframe toggle requested" << std::endl;
-        // m_mainWindow->ToggleWireframe(); // Would need to add this method
     } else if (action == "mouse_lock") {
         SetMouseLocked(!m_mouseLocked);
     } else if (action == "toggle_physics") {
         std::cout << "[InputIntegration] Physics toggle requested" << std::endl;
-        // m_mainWindow->TogglePhysics(); // Would need to add this method
+        m_core->RequestPhysicsToggle();
     } else if (action == "toggle_shadows") {
         std::cout << "[InputIntegration] Shadows toggle requested" << std::endl;
-        // m_mainWindow->ToggleShadows(); // Would need to add this method
     } else if (action == "debug_light_info") {
         if (m_lightManager) {
             m_lightManager->PrintLightInfo();

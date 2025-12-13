@@ -31,6 +31,9 @@ public:
 	// Cleanup all OpenGL resources.
 	void Cleanup();
 
+	// Get the source HDR path for serialization
+	const std::string& GetHDRPath() const { return m_hdrPath; }
+
 	// Retrieve the environment cubemap texture ID so other code (e.g., PBR shaders)
 	GLuint GetEnvironmentMap() const { return m_envCubemap ? m_envCubemap->ID() : 0; }
 	
@@ -124,4 +127,7 @@ private:
 	bool m_pipelineReady = false;
 	// Guard to prevent infinite regeneration attempts within a frame
 	mutable bool m_regenAttempted = false;
+	
+	// Source HDR path for serialization
+	std::string m_hdrPath;
 };

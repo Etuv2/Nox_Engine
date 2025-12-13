@@ -14,6 +14,7 @@ class LightNode;
 class HierarchySystem;
 class AnimationSystem;
 class RenderSystem;
+class Camera;
 
 /**
  * SceneLoader - Loads and saves scenes from/to JSON files
@@ -39,6 +40,14 @@ public:
 
 	// Saves the current scene state back to a JSON file
 	bool SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sceneFilePath);
+
+	// Runtime state management - captures full runtime state including camera and all node states
+	bool SaveRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph, 
+	                      const std::shared_ptr<class Camera>& camera,
+	                      const std::string& filepath);
+	bool LoadRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph,
+	                      const std::shared_ptr<class Camera>& camera,
+	                      const std::string& filepath);
 
 	// Progress callback for loading stages
 	using ProgressCallback = std::function<void(float progress, const std::string& stage)>;
@@ -96,4 +105,13 @@ private:
 	nlohmann::json SerializeCollider(const std::shared_ptr<SceneNode>& node);
 	nlohmann::json SerializeGuiElements(const std::shared_ptr<GuiNode>& guiNode);
 	nlohmann::json SerializeLightProperties(const std::shared_ptr<LightNode>& lightNode);
+	
+	// Runtime state helpers
+	void SerializeRuntimeNodeState(const std::shared_ptr<SceneNode>& node, nlohmann::json& nodeJson, 
+	                                const std::shared_ptr<SceneGraph>& sceneGraph);
+	void RestoreNodeStates(const nlohmann::json& nodesArray, 
+	                       const std::vector<std::shared_ptr<SceneNode>>& nodes,
+	                       const std::shared_ptr<SceneGraph>& sceneGraph);
+	void RestoreNodeState(const nlohmann::json& nodeJson, const std::shared_ptr<SceneNode>& node,
+	                      const std::shared_ptr<SceneGraph>& sceneGraph);
 };

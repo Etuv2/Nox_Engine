@@ -73,6 +73,17 @@ public:
     // Set the scene save callback
     void SetSceneSaveCallback(const std::function<void()>& callback);
 
+    // State export and performance recording callbacks
+    void SetStateExportCallbacks(
+        const std::function<bool(const std::string&)>& saveCallback,
+        const std::function<bool(const std::string&)>& loadCallback,
+        const std::function<bool()>& quickSaveCallback,
+        const std::function<bool(const std::string&)>& exportCSVCallback,
+        const std::function<bool(const std::string&)>& exportJSONCallback,
+        const std::function<void()>& startRecordingCallback,
+        const std::function<void()>& stopRecordingCallback);
+    void SetRecordingState(bool recording);
+
     // Window visibility controls (for backward compatibility)
     void ToggleWindow(const std::string& windowName);
     void SetWindowVisible(const std::string& windowName, bool visible);

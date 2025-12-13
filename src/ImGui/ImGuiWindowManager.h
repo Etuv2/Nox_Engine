@@ -26,6 +26,7 @@ class ModularRenderer;
 #include "RenderingSettingsWindow.h"
 #include "PerformanceWindow.h"
 #include "HelpWindow.h"
+#include "StateExportWindow.h"
 
 /**
 * @brief Manages all ImGui windows in the NOX Engine interface
@@ -63,6 +64,17 @@ public:
     // NEW: Scene saving
     void SetSceneSaveCallback(const std::function<void()>& callback);
 
+    // State export and performance recording
+    void SetStateExportCallbacks(
+        const std::function<bool(const std::string&)>& saveCallback,
+        const std::function<bool(const std::string&)>& loadCallback,
+        const std::function<bool()>& quickSaveCallback,
+        const std::function<bool(const std::string&)>& exportCSVCallback,
+        const std::function<bool(const std::string&)>& exportJSONCallback,
+        const std::function<void()>& startRecordingCallback,
+        const std::function<void()>& stopRecordingCallback);
+    void SetRecordingState(bool recording);
+
     // Window visibility controls
     void ToggleWindow(const std::string& windowName);
     void SetWindowVisible(const std::string& windowName, bool visible);
@@ -99,6 +111,7 @@ private:
     std::unique_ptr<RenderingSettingsWindow> m_renderingSettingsWindow;
     std::unique_ptr<PerformanceWindow> m_performanceWindow;
     std::unique_ptr<HelpWindow> m_helpWindow;
+    std::unique_ptr<StateExportWindow> m_stateExportWindow;
 
     // Window lookup map (gizmo removed)
     std::unordered_map<std::string, BaseWindow*> m_windowMap{
@@ -108,7 +121,8 @@ private:
         {"Hierarchy", nullptr},
         {"Rendering", nullptr},
         {"Performance", nullptr},
-        {"Help", nullptr}
+        {"Help", nullptr},
+        {"StateExport", nullptr}
     };
 
     // Data references for windows
