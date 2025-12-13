@@ -11,12 +11,33 @@ uniform float bloomStrength;
 void main()
 {
     vec3 color = texture(hdrBuffer, TexCoord).rgb;
-    float brightness = max(max(color.r, color.g), color.b);
+    
+    // luminance calculation 
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
 
-    float soft = brightness - threshold;
-    soft = clamp(soft / knee, 0.0, 1.0);
-    soft = soft * soft * (3.0 - 2.0 * soft); // smoothstep
+    // Improved soft threshold with quadratic knee
+    float softThreshold = threshold - knee;
+    float hardThreshold = threshold + knee;
+    
+    // Compute weight based on luminance
+    float weight = 0.0;
+    
+    if (luma < softThreshold) {
+        weight = 0.0;
+    } else if (luma > hardThreshold) {
+        weight = 1.0;
+    } else {
+        // Smooth quadratic curve in the knee region
+        float range = hardThreshold - softThreshold;
+        float t = (luma - softThreshold) / max(range, 1e-5);
+        weight = t * t * (3.0 - 2.0 * t); // smoothstep
+    }
 
-    color *= soft * bloomStrength;
-    FragColor = vec4(color, 0.0);
+    // Apply weight and strength
+    vec3 bloom = color * weight * bloomStrength;
+    
+    // Clamp to prevent extreme values
+    bloom = clamp(bloom, 0.0, 64.0);
+    
+    FragColor = vec4(bloom, 1.0);
 }

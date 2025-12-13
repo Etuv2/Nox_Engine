@@ -45,6 +45,9 @@ public:
     //update audio nodes
     virtual void UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle) override;
 
+    // FIXED: Override UpdateTransformSystems to sync audio position from world transform
+    virtual void UpdateTransformSystems(const glm::mat4& worldTransform) override;
+
     float GetSelectionRadius() const { return m_selectionRadius; }
     
     // ENHANCED: Unified world position calculation using hierarchy system
@@ -67,4 +70,8 @@ private:
     
     // NEW: Store the sound file path for serialization
     std::string m_soundFilePath;
+    
+    // FIXED: Cache world position from traversal to avoid recalculation
+    mutable glm::vec3 m_cachedWorldPosition = glm::vec3(0.0f);
+    mutable bool m_worldPositionValid = false;
 };

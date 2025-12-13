@@ -1,0 +1,176 @@
+{
+  "camera": {
+    "far_plane": 600.0,
+    "fov": 120.0,
+    "front": [
+      0.4452953338623047,
+      -0.11441848427057266,
+      -0.8880430459976196
+    ],
+    "mouse_sensitivity": 0.10000000149011612,
+    "movement_speed": 30.0,
+    "near_plane": 0.10000000149011612,
+    "position": [
+      3.0893664360046387,
+      24.47172737121582,
+      6.420804023742676
+    ],
+    "right": [
+      0.8939136862754822,
+      -0.0,
+      0.4482390582561493
+    ],
+    "up": [
+      0.051286835223436356,
+      0.9934326410293579,
+      -0.10228025168180466
+    ]
+  },
+  "environment": {
+    "exposure": 1.0,
+    "gamma": 2.200000047683716,
+    "physics_enabled": true
+  },
+  "format": "nox_scene_state",
+  "nodes": [
+    {
+      "children": [
+        {
+          "audio_properties": {
+            "hearing_distance": 50.0,
+            "is_3d": true,
+            "is_playing": true,
+            "pitch": 1.0,
+            "volume": 0.10000000149011612
+          },
+          "name": "AudioPlayer",
+          "transform": {
+            "orientation": [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              -0.0,
+              0.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "type": "audio"
+        }
+      ],
+      "name": "gundam_unicorn.glb",
+      "transform": {
+        "orientation": [
+          -0.2992939352989197,
+          0.9541609883308411,
+          0.0,
+          0.0
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          -169.67359924316406,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          0.10000000149011612,
+          0.10000003129243851,
+          0.1000000387430191
+        ]
+      },
+      "type": "model"
+    },
+    {
+      "light_properties": {
+        "casts_shadows": true,
+        "color": [
+          0.800000011920929,
+          0.20000000298023224,
+          0.20000000298023224
+        ],
+        "enabled": true,
+        "intensity": 5.0,
+        "range": 10.0
+      },
+      "name": "LightSource",
+      "transform": {
+        "orientation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position": [
+          11.006011962890625,
+          25.273639678955078,
+          0.3677060604095459
+        ],
+        "rotation": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "light"
+    },
+    {
+      "name": "GUI",
+      "transform": {
+        "orientation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "gui"
+    }
+  ],
+  "scene_name": "gundam",
+  "skybox": {
+    "diffuse_scale": 0.5,
+    "enabled": true,
+    "hdr_path": "hdrs\\skybox_night.hdr",
+    "ibl_intensity": 1.0,
+    "skybox_exposure": 1.0,
+    "specular_scale": 0.6000000238418579
+  },
+  "timestamp": 1765661940,
+  "version": "2.0"
+}

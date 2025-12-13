@@ -1,0 +1,367 @@
+{
+  "camera": {
+    "far_plane": 600.0,
+    "fov": 120.0,
+    "front": [
+      -0.10815241932868958,
+      0.009253555908799171,
+      -0.994091272354126
+    ],
+    "mouse_sensitivity": 0.10000000149011612,
+    "movement_speed": 30.0,
+    "near_plane": 0.10000000149011612,
+    "position": [
+      -19.825105667114258,
+      3.0592501163482666,
+      8.263846397399902
+    ],
+    "right": [
+      0.9941338300704956,
+      0.0,
+      -0.10815704613924026
+    ],
+    "up": [
+      0.0010008373064920306,
+      0.999957263469696,
+      0.009199272841215134
+    ]
+  },
+  "environment": {
+    "exposure": 1.2000000476837158,
+    "gamma": 2.200000047683716,
+    "physics_enabled": true
+  },
+  "format": "nox_scene_state",
+  "nodes": [
+    {
+      "lpv_properties": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "extent": [
+          64.0,
+          64.0,
+          64.0
+        ],
+        "grid_resolution": 128,
+        "voxel_size": 0.5
+      },
+      "name": "LPVVolume",
+      "transform": {
+        "orientation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "lpv_volume"
+    },
+    {
+      "name": "copied_city.glb",
+      "transform": {
+        "orientation": [
+          0.7071067094802856,
+          0.7071068286895752,
+          0.0,
+          0.0
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          90.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0000001192092896,
+          1.0000001192092896
+        ]
+      },
+      "type": "model"
+    },
+    {
+      "audio_properties": {
+        "hearing_distance": 2000.0,
+        "is_3d": false,
+        "is_playing": true,
+        "pitch": 1.0,
+        "volume": 0.5
+      },
+      "name": "AudioPlayer",
+      "transform": {
+        "orientation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "audio"
+    },
+    {
+      "light_properties": {
+        "casts_shadows": true,
+        "color": [
+          1.0,
+          0.949999988079071,
+          0.800000011920929
+        ],
+        "enabled": true,
+        "intensity": 1.8200000524520874,
+        "range": 10.0
+      },
+      "name": "LightSource",
+      "transform": {
+        "orientation": [
+          -0.35355332493782043,
+          0.8535534143447876,
+          -0.1464466005563736,
+          -0.3535534143447876
+        ],
+        "position": [
+          0.0,
+          100.0,
+          0.0
+        ],
+        "rotation": [
+          -135.0,
+          45.0,
+          -1.2074182222931995e-06
+        ],
+        "scale": [
+          0.9999998807907104,
+          1.0,
+          0.9999999403953552
+        ]
+      },
+      "type": "light"
+    },
+    {
+      "light_properties": {
+        "casts_shadows": false,
+        "color": [
+          1.0,
+          0.4000000059604645,
+          0.20000000298023224
+        ],
+        "enabled": true,
+        "intensity": 8.0,
+        "range": 15.0
+      },
+      "name": "LightSource",
+      "transform": {
+        "orientation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position": [
+          -21.035823822021484,
+          7.899204254150391,
+          0.1524047553539276
+        ],
+        "rotation": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "light"
+    },
+    {
+      "light_properties": {
+        "casts_shadows": true,
+        "color": [
+          0.20000000298023224,
+          1.0,
+          0.4000000059604645
+        ],
+        "enabled": true,
+        "intensity": 4.760000228881836,
+        "range": 20.0
+      },
+      "name": "LightSource",
+      "transform": {
+        "orientation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position": [
+          -17.87832260131836,
+          7.9643874168396,
+          -23.617456436157227
+        ],
+        "rotation": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "light"
+    },
+    {
+      "light_properties": {
+        "casts_shadows": true,
+        "color": [
+          1.0,
+          1.0,
+          0.800000011920929
+        ],
+        "enabled": true,
+        "intensity": 15.0,
+        "range": 25.0
+      },
+      "name": "LightSource",
+      "transform": {
+        "orientation": [
+          -0.23911763727664948,
+          0.8923990726470947,
+          -0.0990457832813263,
+          -0.3696438670158386
+        ],
+        "position": [
+          -28.804004669189453,
+          14.304540634155273,
+          1.658949851989746
+        ],
+        "rotation": [
+          -150.0,
+          45.0,
+          0.0
+        ],
+        "scale": [
+          0.9999998807907104,
+          0.9999999403953552,
+          0.9999999403953552
+        ]
+      },
+      "type": "light"
+    },
+    {
+      "light_properties": {
+        "casts_shadows": true,
+        "color": [
+          0.800000011920929,
+          0.4000000059604645,
+          1.0
+        ],
+        "enabled": true,
+        "intensity": 10.0,
+        "range": 18.0
+      },
+      "name": "LightSource",
+      "transform": {
+        "orientation": [
+          -0.33141353726387024,
+          0.8001031875610352,
+          0.19134169816970825,
+          0.4619397521018982
+        ],
+        "position": [
+          4.0373854637146,
+          6.7904052734375,
+          -0.1995657980442047
+        ],
+        "rotation": [
+          -135.00001525878906,
+          -59.9999885559082,
+          6.830189249740215e-06
+        ],
+        "scale": [
+          0.9999998807907104,
+          1.0,
+          0.9999999403953552
+        ]
+      },
+      "type": "light"
+    },
+    {
+      "name": "GUI",
+      "transform": {
+        "orientation": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "type": "gui"
+    }
+  ],
+  "scene_name": "Multi-Light Demo Scene",
+  "skybox": {
+    "diffuse_scale": 0.5,
+    "enabled": true,
+    "hdr_path": "hdrs\\overcast_sky.hdr",
+    "ibl_intensity": 1.0,
+    "skybox_exposure": 1.0,
+    "specular_scale": 0.6000000238418579
+  },
+  "timestamp": 1765661861,
+  "version": "2.0"
+}

@@ -139,11 +139,16 @@ public:
     // ============== LIFECYCLE ==============
     virtual void Shutdown();
     virtual void UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle);
+    virtual void UpdateAudioNodesWithTransform(const glm::vec3& listenerPos, float listenerAngle, const glm::mat4& parentWorldTransform);
     void InvalidateTransformCache();
+
+    // ============== TRANSFORM SYNCHRONIZATION ==============
+    virtual void UpdateTransformSystems(const glm::mat4& worldTransform);
 
     // ============== LEGACY ANIMATION (for backward compatibility) ==============
     void UpdateAnimation(float deltaTime);
-
+    void UpdateAnimationWithTransform(float deltaTime, const glm::mat4& parentWorldTransform);
+    
     // ============== ECS INTEGRATION ==============
     static void SetGlobalComponentManager(ComponentManager* manager);
     static void SetGlobalTransformSystem(TransformSystem* transformSystem);

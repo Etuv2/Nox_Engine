@@ -355,139 +355,16 @@ void SceneNode::SyncPhysicsFromTransform() {
 }
 
 void SceneNode::InvalidateTransformCache() {
-	m_transformCacheDirty = true;
 	m_worldTransformValid = false;
-
-	if (s_globalSceneGraph) {
-		s_globalSceneGraph->MarkBVHDirty();
-	}
-	
-	// Sync local transform to ECS TransformComponent and mark dirty
-	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
-		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
-		if (currentManager) {
-			TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID);
-			if (ecsTransform) {
-				ecsTransform->localTransform = transform;
-				ecsTransform->animatedTransform = animatedTransform;
-				ecsTransform->isDirty = true;
-			}
-		}
-	}
-
-	for (auto& child : children) {
-		child->InvalidateTransformCache();
-	}
+	m_transformCacheDirty = true;
 }
 
-// ============== SKINNING ==============
+// ============== TRANSFORM SYNCHRONIZATION ==============
 
-std::vector<glm::mat4> SceneNode::GetBoneTransforms() const {
-	std::vector<glm::mat4> boneMatrices;
-
-	if (!isSkinned || !m_model) {
-		return boneMatrices;
-	}
-
-	size_t numBones = boneInverseBindMatrices.size();
-	if (boneNodes.size() > numBones) numBones = boneNodes.size();
-	
-	if (numBones == 0) {
-		return boneMatrices;
-	}
-
-	boneMatrices.resize(numBones, glm::mat4(1.0f));
-
-	for (size_t i = 0; i < numBones; ++i) {
-		glm::mat4 boneTransform(1.0f);
-
-		if (i < boneNodes.size() && boneNodes[i]) {
-			boneTransform = boneNodes[i]->GetWorldPosition4x4();
-		}
-
-		if (i < boneInverseBindMatrices.size()) {
-			boneMatrices[i] = boneTransform * boneInverseBindMatrices[i];
-		} else {
-			boneMatrices[i] = boneTransform;
-		}
-	}
-
-	return boneMatrices;
-}
-
-std::shared_ptr<SceneNode> SceneNode::FindNodeByIndex(int nodeIdx) {
-	if (nodeIndex == nodeIdx) {
-		return shared_from_this();
-	}
-
-	for (auto& child : children) {
-		auto found = child->FindNodeByIndex(nodeIdx);
-		if (found) {
-			return found;
-		}
-	}
-
-	return nullptr;
-}
-
-void SceneNode::BuildSkeleton(const Scene& model) {
-	if (!isSkinned || model.skin.joints.empty()) {
-		return;
-	}
-
-	boneNodes.clear();
-	boneInverseBindMatrices.clear();
-
-	for (size_t i = 0; i < model.skin.joints.size(); ++i) {
-		int jointIndex = model.skin.joints[i];
-
-		if (jointIndex >= 0 && jointIndex < static_cast<int>(model.nodes.size())) {
-			auto boneNode = FindNodeByIndex(jointIndex);
-			if (!boneNode) {
-				boneNode = std::make_shared<SceneNode>();
-				boneNode->nodeIndex = jointIndex;
-				boneNode->SetTransform(model.nodes[jointIndex].localTransform);
-				AddChild(boneNode);
-			}
-			
-			if (boneNode) {
-				boneNodes.push_back(boneNode);
-
-				if (i < model.skin.inverseBindMatrices.size()) {
-					boneInverseBindMatrices.push_back(model.skin.inverseBindMatrices[i]);
-				} else {
-					boneInverseBindMatrices.push_back(glm::mat4(1.0f));
-				}
-			}
-		}
-	}
-
-	std::cout << "[SceneNode] Built skeleton with " << boneNodes.size() << " bones" << std::endl;
-}
-
-// ============== LEGACY ANIMATION (for backward compatibility) ==============
-
-void SceneNode::UpdateAnimation(float deltaTime) {
-	// Delegate to AnimationSystem if we have an ECS entity
-	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
-		// Use the current scene graph's component manager, not the cached one
-		// (which may point to a destroyed ComponentManager after scene swap)
-		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
-		if (currentManager) {
-			if (AnimationComponent* animComp = currentManager->GetAnimation(m_entityID)) {
-				if (animComp->isPlaying && !animComp->isPaused) {
-					SyncFromECS();
-				}
-			}
-		}
-	}
-	
-	// Recursively update children
-	for (auto& child : children) {
-		if (child) {
-			child->UpdateAnimation(deltaTime);
-		}
-	}
+void SceneNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
+	// Base implementation does nothing
+	// Derived classes (LightNode, AudioNode, etc.) override this to sync their systems
+	// with the calculated world transform
 }
 
 // ============== LIFECYCLE ==============
@@ -511,53 +388,111 @@ void SceneNode::Shutdown() {
 }
 
 void SceneNode::UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle) {
+	UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
+}
+
+void SceneNode::UpdateAudioNodesWithTransform(const glm::vec3& listenerPos, float listenerAngle, const glm::mat4& parentWorldTransform) {
+	// FIXED: Calculate our world transform using parent context
+	glm::mat4 worldTransform = GetGlobalTransform(parentWorldTransform);
+	
+	// FIXED: Propagate world transform to derived node types
+	UpdateTransformSystems(worldTransform);
+	
+	// Recursively update children with our world transform
 	for (auto& child : children) {
-		child->UpdateAudioNodes(listenerPos, listenerAngle);
+		if (child) {
+			child->UpdateAudioNodesWithTransform(listenerPos, listenerAngle, worldTransform);
+		}
 	}
 }
 
-// ============== CULLING HELPER ==============
+// ============== SKINNING HELPERS ==============
 
-void SceneNode::ApplyCullingState(const MeshComponent& mesh, SceneNode::CullingOverride nodeOverride) {
-	bool enableCulling = true;
-	GLenum cullFace = GL_BACK;
-
-	switch (nodeOverride) {
-	case CULLING_FORCE_ENABLE:
-		enableCulling = true;
-		cullFace = GL_BACK;
-		break;
-	case CULLING_FORCE_DISABLE:
-		enableCulling = false;
-		break;
-	case CULLING_FORCE_FRONT:
-		enableCulling = true;
-		cullFace = GL_FRONT;
-		break;
-	case CULLING_INHERIT:
-	default:
-		auto meshCulling = mesh.GetEffectiveCullingMode();
-		switch (meshCulling) {
-		case MeshComponent::CULL_BACK:
-			enableCulling = true;
-			cullFace = GL_BACK;
-			break;
-		case MeshComponent::CULL_FRONT:
-			enableCulling = true;
-			cullFace = GL_FRONT;
-			break;
-		case MeshComponent::CULL_NONE:
-			enableCulling = false;
-			break;
+std::vector<glm::mat4> SceneNode::GetBoneTransforms() const {
+	std::vector<glm::mat4> boneMatrices;
+	boneMatrices.reserve(boneNodes.size());
+	
+	for (size_t i = 0; i < boneNodes.size(); ++i) {
+		if (boneNodes[i]) {
+			// Get bone's world transform
+			glm::mat4 boneWorld = boneNodes[i]->GetTransform();
+			// Apply inverse bind matrix
+			if (i < boneInverseBindMatrices.size()) {
+				boneMatrices.push_back(boneWorld * boneInverseBindMatrices[i]);
+			} else {
+				boneMatrices.push_back(boneWorld);
+			}
+		} else {
+			boneMatrices.push_back(glm::mat4(1.0f));
 		}
-		break;
 	}
+	
+	return boneMatrices;
+}
 
-	if (enableCulling) {
-		glEnable(GL_CULL_FACE);
-		glCullFace(cullFace);
-	} else {
-		glDisable(GL_CULL_FACE);
+std::shared_ptr<SceneNode> SceneNode::FindNodeByIndex(int nodeIdx) {
+	if (nodeIndex == nodeIdx) {
+		return shared_from_this();
+	}
+	
+	for (auto& child : children) {
+		if (child) {
+			auto found = child->FindNodeByIndex(nodeIdx);
+			if (found) return found;
+		}
+	}
+	
+	return nullptr;
+}
+
+void SceneNode::BuildSkeleton(const Scene& model) {
+	// Implementation depends on Scene structure
+	// This is typically called during model loading to set up bone hierarchy
+	// For now, provide a stub that can be expanded based on specific needs
+	
+	if (!m_model) return;
+	
+	// Clear existing bone data
+	boneNodes.clear();
+	boneInverseBindMatrices.clear();
+	
+	// The actual implementation would traverse the model's skeleton
+	// and populate boneNodes with references to corresponding SceneNodes
+	// This is typically handled by the scene loader
+}
+
+// ============== ANIMATION UPDATE WITH TRANSFORM PROPAGATION ==============
+
+void SceneNode::UpdateAnimation(float deltaTime) {
+	UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
+}
+
+void SceneNode::UpdateAnimationWithTransform(float deltaTime, const glm::mat4& parentWorldTransform) {
+	// Delegate to AnimationSystem if we have an ECS entity
+	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
+		// Use the current scene graph's component manager, not the cached one
+		// (which may point to a destroyed ComponentManager after scene swap)
+		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+		if (currentManager) {
+			if (AnimationComponent* animComp = currentManager->GetAnimation(m_entityID)) {
+				if (animComp->isPlaying && !animComp->isPaused) {
+					SyncFromECS();
+				}
+			}
+		}
+	}
+	
+	// FIXED: Calculate our world transform using parent context
+	glm::mat4 worldTransform = GetGlobalTransform(parentWorldTransform);
+	
+	// FIXED: Propagate world transform to derived node types
+	UpdateTransformSystems(worldTransform);
+	
+	// Recursively update children with our world transform
+	for (auto& child : children) {
+		if (child) {
+			child->UpdateAnimationWithTransform(deltaTime, worldTransform);
+		}
 	}
 }
 

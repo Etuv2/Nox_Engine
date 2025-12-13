@@ -32,16 +32,76 @@ void LightNode::SetLight(std::shared_ptr<BaseLight> light)
 
 void LightNode::UpdateTransform(const glm::mat4& parentTransform) 
 {
-    // FIXED: Use the unified hierarchy system - no need for manual caching
-    // The SceneNode system handles this automatically through GetGlobalTransform
+    // FIXED: Use the unified hierarchy system with proper parent context
+    // The parent transform is passed down during scene graph traversal
+    // We need to ensure our light properties sync with the calculated world transform
     
-    // Just ensure our light properties are synchronized with our transform
-    if (m_light && m_lightDirty) {
-        UpdateLightFromTransform(true);
+    // Calculate our world transform using the parent context
+    glm::mat4 worldTransform = GetGlobalTransform(parentTransform);
+    
+    // Sync light properties if dirty or if world transform changed
+    if (m_light && (m_lightDirty || m_transformDirty)) {
+        // Extract world position from calculated transform
+        glm::vec3 worldPosition = glm::vec3(worldTransform[3]);
+        m_light->SetPosition(worldPosition);
+        
+        // For directional and spot lights, update direction from world rotation
+        if (m_light->GetLightType() == BaseLight::LightType::DIRECTIONAL ||
+            m_light->GetLightType() == BaseLight::LightType::SPOT) {
+            
+            // Extract rotation from our local transform
+            glm::vec3 scale, translation, skew;
+            glm::quat rotation;
+            glm::vec4 perspective;
+            glm::decompose(transform, scale, rotation, translation, skew, perspective);
+            
+            // Calculate direction in world space
+            glm::vec3 forward = glm::vec3(0.0f, 0.0f, -1.0f);
+            glm::mat3 rotMat = glm::mat3_cast(rotation);
+            glm::vec3 worldDirection = rotMat * forward;
+            m_light->SetDirection(glm::normalize(worldDirection));
+        }
+        
+        // Update selection proxy to reflect changes
+        UpdateSelectionProxy();
     }
     
-    // Clear the dirty flag since we just updated
+    // Clear dirty flags since we just synchronized
     m_transformDirty = false;
+    m_lightDirty = false;
+}
+
+// FIXED: Override UpdateTransformSystems to sync light from world transform during traversal
+void LightNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
+    if (!m_light) return;
+    
+    // Extract world position from the provided world transform
+    glm::vec3 worldPosition = glm::vec3(worldTransform[3]);
+    m_light->SetPosition(worldPosition);
+    
+    // For directional and spot lights, extract and apply rotation
+    if (m_light->GetLightType() == BaseLight::LightType::DIRECTIONAL ||
+        m_light->GetLightType() == BaseLight::LightType::SPOT) {
+        
+        // Extract rotation from world transform
+        glm::vec3 scale, translation, skew;
+        glm::quat rotation;
+        glm::vec4 perspective;
+        glm::decompose(worldTransform, scale, rotation, translation, skew, perspective);
+        
+        // Calculate direction in world space
+        glm::vec3 forward = glm::vec3(0.0f, 0.0f, -1.0f);
+        glm::mat3 rotMat = glm::mat3_cast(rotation);
+        glm::vec3 worldDirection = rotMat * forward;
+        m_light->SetDirection(glm::normalize(worldDirection));
+    }
+    
+    // Update selection proxy to reflect changes
+    UpdateSelectionProxy();
+    
+    // Clear dirty flags
+    m_transformDirty = false;
+    m_lightDirty = false;
 }
 
 void LightNode::SetPosition(const glm::vec3& position) 
