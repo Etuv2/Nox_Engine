@@ -4,6 +4,7 @@
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
 #include "../ModularRenderer.h"
+#include "../PhysicsEngine.h"
 #include "../LightNode.h"
 #include "../AudioNode.h"
 #include "StateExportWindow.h"
@@ -198,13 +199,19 @@ void ImGuiWindowManager::SetModularRenderer(const std::shared_ptr<ModularRendere
     }
 }
 
+void ImGuiWindowManager::SetPhysicsEngine(const std::shared_ptr<class PhysicsEngine>& physicsEngine) {
+    m_physicsEngine = physicsEngine;
+}
+
 void ImGuiWindowManager::SetSelectedNode(const std::shared_ptr<SceneNode>& node) {
     m_selectedNode = node;
     m_sceneHierarchyWindow->SetSelectedNode(node);
 }
 
-void ImGuiWindowManager::SetFrameTimeData(const std::vector<float>& data) {
-    m_performanceWindow->SetFrameTimeData(data);
+void ImGuiWindowManager::SetFrameTimeData(const float* data, size_t count) {
+    // Create a vector view from the data without copying
+    std::vector<float> frameDataView(data, data + count);
+    m_performanceWindow->SetFrameTimeData(frameDataView);
 }
 
 // Scene management
@@ -276,13 +283,68 @@ void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
     // Always call BeginFrame to reset gizmo state for this frame
     ImGuizmo::BeginFrame();
     
-    if (!m_selectedNode || !m_gizmoVisible || !m_camera) return;
+    // Check if gizmo manipulation just ended - release kinematic mode
+    bool isCurrentlyManipulating = ImGuizmo::IsUsing();
+    if (m_wasManipulatingGizmo && !isCurrentlyManipulating) {
+        // Gizmo was released - restore dynamic body behavior through physics engine
+        if (auto node = m_lastManipulatedNode.lock()) {
+            if (auto rb = node->GetRigidBody()) {
+                if (auto physicsEngine = m_physicsEngine.lock()) {
+                    // Use physics engine's proper cleanup method
+                    // This ensures transform ownership is restored correctly
+                    physicsEngine->EndGizmoGrab(rb);
+                    
+                    // CRITICAL: Immediately sync node from physics body to show final gizmo position
+                    // This ensures visual consistency - the node displays where the physics body ended up
+                    // We must use the current world position from the physics body (not interpolated)
+                    glm::vec3 bodyPos = rb->getPosition();
+                    glm::quat bodyRot = rb->getOrientation();
+                    
+                    // Convert to local space if node has parent
+                    auto parent = node->parentNode.lock();
+                    if (parent) {
+                        glm::mat4 parentWorldTransform = parent->GetWorldPosition4x4();
+                        glm::mat4 parentInverse = glm::inverse(parentWorldTransform);
+                        glm::vec4 localPos = parentInverse * glm::vec4(bodyPos, 1.0f);
+                        bodyPos = glm::vec3(localPos);
+                        
+                        // Extract parent orientation
+                        glm::vec3 parentScale, parentTranslation, parentSkew;
+                        glm::vec4 parentPerspective;
+                        glm::quat parentWorldRot;
+                        glm::decompose(parentWorldTransform, parentScale, parentWorldRot,
+                            parentTranslation, parentSkew, parentPerspective);
+                        
+                        bodyRot = glm::inverse(parentWorldRot) * bodyRot;
+                    }
+                    
+                    // Set node transform and sync to ECS
+                    glm::vec3 scale = node->GetScale();
+                    node->SetLocalTRS(bodyPos, bodyRot, scale);
+                    node->SyncToECS();
+                } else {
+                    // Fallback if physics engine unavailable
+                    rb->setGizmoGrabbed(false);
+                    rb->clearKinematicTarget();
+                    rb->setVelocity(glm::vec3(0.0f));
+                    rb->setAngularVelocity(glm::vec3(0.0f));
+                    rb->storePreviousState();
+                    rb->computeAABB();
+                    rb->wakeUp();
+                }
+            }
+        }
+    }
     
+    if (!m_selectedNode || !m_gizmoVisible || !m_camera) {
+        m_wasManipulatingGizmo = false;
+        return;
+    }
+
     // Configure gizmo for perspective rendering
     ImGuizmo::SetOrthographic(false);
     
     // Use the foreground draw list for true overlay rendering
-    // This renders on top of everything without creating a window
     ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList());
     
     // Set the gizmo rect to cover the entire viewport
@@ -290,7 +352,10 @@ void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
     
     glm::mat4 view = m_camera->GetViewMatrix();
     glm::mat4 projection = m_camera->GetProjectionMatrix();
-    glm::mat4 model = m_selectedNode->GetTransform();
+    
+    // CRITICAL FIX: Use WORLD transform for gizmo manipulation
+    // This ensures physics bodies are properly positioned
+    glm::mat4 model = m_selectedNode->GetWorldPosition4x4();
     
     // Configure snap values based on current operation
     float snapValue = 0.0f;
@@ -315,8 +380,50 @@ void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
     
     // Apply transform changes when user is manipulating the gizmo
     if (ImGuizmo::IsUsing()) {
-        m_selectedNode->SetTransform(model);
+        // CRITICAL FIX: Always apply transform to the node, regardless of physics
+        // Physics grab is optional for nodes with rigid bodies
+        
+        // Convert world transform back to local space for the node
+        auto parent = m_selectedNode->parentNode.lock();
+        glm::mat4 localTransform = model;
+        
+        if (parent) {
+            glm::mat4 parentWorld = parent->GetWorldPosition4x4();
+            localTransform = glm::inverse(parentWorld) * model;
+        }
+        
+        // Apply the transform to the scene node
+        // This works for ALL node types: mesh, light, camera, etc.
+        m_selectedNode->SetTransform(localTransform);
+        
+        // CRITICAL: Sync the node's ECS components after transform change
+        // This ensures Transform, Renderable, Light, and other components are in sync
+        m_selectedNode->SyncToECS();
+        
+        // Handle physics interaction if body exists
+        if (auto rb = m_selectedNode->GetRigidBody()) {
+            if (!rb->isGizmoGrabbed()) {
+                // First frame of manipulation - grab the body
+                if (auto physicsEngine = m_physicsEngine.lock()) {
+                    physicsEngine->BeginGizmoGrab(rb);
+                }
+                m_lastManipulatedNode = m_selectedNode;
+            }
+            
+            // Update gizmo target in physics engine
+            if (auto physicsEngine = m_physicsEngine.lock()) {
+                glm::vec3 gizmoPos = glm::vec3(model[3]);
+                glm::quat gizmoRot = glm::quat_cast(glm::mat3(model));
+                physicsEngine->UpdateGizmoTarget(rb, gizmoPos, gizmoRot);
+            }
+        } else {
+            // No rigid body - just track that we're manipulating for UI feedback
+            m_lastManipulatedNode = m_selectedNode;
+        }
     }
+    
+    // Update manipulation tracking
+    m_wasManipulatingGizmo = ImGuizmo::IsUsing();
 }
 
 // Window state persistence

@@ -1,490 +1,449 @@
-﻿#include "RigidBody.h"
-#include <glm/gtx/quaternion.hpp>
+#include "RigidBody.h"
+#include "SceneNode.h"
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
-#include "SceneNode.h"
 
-// Constructor/Destructor
-RigidBody::RigidBody()
-	: m_position(0.0f), m_prevPosition(0.0f),
-	m_velocity(0.0f), m_acceleration(0.0f),
-	m_linearDamping(0.05f), m_angularDamping(0.05f), m_friction(0.5f),  // Better default damping
-	m_mass(1.0f), m_radius(1.0f),
-	m_orientation(1, 0, 0, 0), m_prevOrientation(1, 0, 0, 0),
-	m_angularVelocity(0.0f), m_torque(0.0f),
-	m_inertiaTensor(1.0f), m_inertiaTensorInv(1.0f),
-	m_shapeType(ShapeType::SPHERE), m_planeNormal(0.0f), m_planeHeight(0.0f),
-	m_halfExtents(1.0f, 1.0f, 1.0f)
-{
-	computeInertiaTensor();
+RigidBody::RigidBody() {
+    // Initialize with default values
+    computeAABB();
 }
 
-RigidBody::~RigidBody() {}
+// ============== BODY TYPE ==============
 
-// Attach a scene node (for visualization, if any)
-void RigidBody::AttachNode(const std::shared_ptr<SceneNode>& node) {
-	m_node = node;
-}
-void RigidBody::DetachNode() {
-	m_node.reset();
-}
-
-// Set and get mass
-void RigidBody::setMass(float m) {
-	m_mass = m;
-	computeInertiaTensor();
-	// Recompute inverse inertia (treat zero/negative mass as static => zero inverse)
-	if (m_mass <= 0.0f) {
-		m_inertiaTensorInv = glm::mat3(0.0f);
-	}
-	else {
-		// Avoid singular matrix inversion if components are zero
-		// For diagonal inertia tensor this is safe
-		m_inertiaTensorInv = glm::inverse(m_inertiaTensor);
-	}
-}
-float RigidBody::getMass() const { return m_mass; }
-
-// Set and get sphere radius
-void RigidBody::setBoundingRadius(float r) {
-	m_radius = r;
-	computeInertiaTensor();
-	if (m_mass <= 0.0f) {
-		m_inertiaTensorInv = glm::mat3(0.0f);
-	}
-	else {
-		m_inertiaTensorInv = glm::inverse(m_inertiaTensor);
-	}
-}
-float RigidBody::getBoundingRadius() const { return m_radius; }
-
-// Set box half extents
-void RigidBody::setBox(const glm::vec3& halfExtents)
-{
-	m_halfExtents = halfExtents;
-	m_radius = glm::length(halfExtents);          // half–diagonal for broad-phase
-	m_shapeType = ShapeType::BOX;
-	computeInertiaTensor();
-	if (m_mass <= 0.0f) {
-		m_inertiaTensorInv = glm::mat3(0.0f);
-	}
-	else {
-		m_inertiaTensorInv = glm::inverse(m_inertiaTensor);
-	}
-}
-glm::vec3 RigidBody::getHalfExtents() const { return m_halfExtents; }
-
-// Linear motion getters/setters
-void RigidBody::setAcceleration(const glm::vec3& a) { m_acceleration = a; }
-glm::vec3 RigidBody::getAcceleration() const { return m_acceleration; }
-void RigidBody::setVelocity(const glm::vec3& v) {
-	m_velocity = v;
-}
-glm::vec3 RigidBody::getVelocity() const { return m_velocity; }
-void RigidBody::setPosition(const glm::vec3& pos) {
-	m_position = pos;
-	// Do NOT update scene node here - let interpolation handle visual updates
-	// This prevents conflict between physics position and interpolated rendering position
-}
-glm::vec3 RigidBody::getPosition() const { return m_position; }
-
-void RigidBody::setLinearDamping(float d)
-{
-	m_linearDamping = d;
-
+void RigidBody::SetBodyType(BodyType type) {
+    m_bodyType = type;
+    
+    // Static bodies have infinite mass
+    if (type == BodyType::STATIC) {
+        m_inverseMass = 0.0f;
+        m_inverseInertiaLocal = glm::mat3(0.0f);
+        m_linearVelocity = glm::vec3(0.0f);
+        m_angularVelocity = glm::vec3(0.0f);
+        m_isSleeping = true;
+        m_transformOwner = TransformOwner::SCENE;  // Static bodies are scene-owned
+    } else if (type == BodyType::KINEMATIC) {
+        if (m_mass > 0.0f) {
+            m_inverseMass = 1.0f / m_mass;
+            computeInertiaTensor();
+        }
+        m_transformOwner = TransformOwner::SCENE;  // Kinematic bodies are scene-owned
+    } else { // DYNAMIC
+        if (m_mass > 0.0f) {
+            m_inverseMass = 1.0f / m_mass;
+            computeInertiaTensor();
+        }
+        m_transformOwner = TransformOwner::PHYSICS;  // Dynamic bodies are physics-owned
+    }
 }
 
-float RigidBody::getLinearDamping() const
-{
-	return m_linearDamping;
+// ============== SHAPE ==============
 
+void RigidBody::setSphere(float radius) {
+    m_shapeType = ShapeType::SPHERE;
+    m_radius = radius;
+    computeInertiaTensor();
+    computeAABB();
 }
 
-// Orientation getters/setters
-void RigidBody::setOrientation(const glm::quat& q) {
-	m_orientation = glm::normalize(q);
-	// Do NOT update scene node here - let interpolation handle visual updates
-	// This prevents conflict between physics orientation and interpolated rendering orientation
-}
-glm::quat RigidBody::getOrientation() const { return m_orientation; }
-void RigidBody::setAngularVelocity(const glm::vec3& w) { m_angularVelocity = w; }
-glm::vec3 RigidBody::getAngularVelocity() const { return m_angularVelocity; }
-
-void RigidBody::setAngularDamping(float d)
-{
-	m_angularDamping = d;
-
-}
-float RigidBody::getAngularDamping() const
-{
-	return m_angularDamping;
-
+void RigidBody::setBox(const glm::vec3& halfExtents) {
+    m_shapeType = ShapeType::BOX;
+    m_halfExtents = halfExtents;
+    computeInertiaTensor();
+    computeAABB();
 }
 
-void RigidBody::setFriction(float f)
-{
-	m_friction = f;
-}
-float RigidBody::getFriction() const
-{
-	return m_friction;
-}
-
-// Store previous state (for interpolation)
-void RigidBody::storePreviousState() {
-	m_prevPosition = m_position;
-	m_prevOrientation = m_orientation;
+void RigidBody::setPlane(const glm::vec3& normal, float distance) {
+    m_shapeType = ShapeType::PLANE;
+    m_planeNormal = glm::normalize(normal);
+    m_planeDistance = distance;
+    
+    // Planes are always static
+    m_bodyType = BodyType::STATIC;
+    m_inverseMass = 0.0f;
+    m_inverseInertiaLocal = glm::mat3(0.0f);
 }
 
-// Set interpolated state (for smooth rendering)
-void RigidBody::setInterpolatedState(float alpha) {
-	glm::vec3 interpPos = glm::mix(m_prevPosition, m_position, alpha);
-	glm::quat interpRot = glm::slerp(m_prevOrientation, m_orientation, alpha);
-	if (auto node = m_node.lock()) {
-		glm::mat4 T = glm::translate(glm::mat4(1.0f), interpPos);
-		glm::mat4 R = glm::toMat4(interpRot);
-		node->SetTransform(T * R);
-	}
+// ============== MASS PROPERTIES ==============
+
+void RigidBody::setMass(float mass) {
+    m_mass = std::max(0.0f, mass);
+    
+    if (m_bodyType == BodyType::STATIC || m_mass <= 0.0f) {
+        m_inverseMass = 0.0f;
+    } else {
+        m_inverseMass = 1.0f / m_mass;
+    }
+    
+    computeInertiaTensor();
 }
 
-// Apply torque
-void RigidBody::applyTorque(const glm::vec3& torque) {
-	m_torque += torque;
-}
-
-// Shape setter/getter
-void RigidBody::setShape(ShapeType type) {
-	m_shapeType = type;
-	computeInertiaTensor();
-	if (m_mass <= 0.0f) {
-		m_inertiaTensorInv = glm::mat3(0.0f);
-	}
-	else {
-		m_inertiaTensorInv = glm::inverse(m_inertiaTensor);
-	}
-}
-RigidBody::ShapeType RigidBody::getShape() const {
-	return m_shapeType;
-}
-
-// Plane definition setter/getter
-void RigidBody::setPlane(const glm::vec3& normal, float height) {
-	m_planeNormal = glm::normalize(normal);
-	m_planeHeight = height;
-	setShape(ShapeType::PLANE);
-}
-glm::vec3 RigidBody::getPlaneNormal() const { return m_planeNormal; }
-float RigidBody::getPlaneHeight() const { return m_planeHeight; }
-
-// Compute inertia tensor based on current shape
 void RigidBody::computeInertiaTensor() {
-	// Reset inertia
-	glm::mat3 I(0.0f);
-	switch (m_shapeType) {
-	case ShapeType::SPHERE: {
-		float Ival = (2.0f / 5.0f) * m_mass * m_radius * m_radius;
-		I = glm::mat3(Ival);  // Creates diagonal matrix with Ival on diagonal
-		break;
-	}
-	case ShapeType::BOX: {
-		glm::vec3 s = m_halfExtents * 2.0f;  // full sizes
-		float ix = (1.0f / 12.0f) * m_mass * (s.y * s.y + s.z * s.z);
-		float iy = (1.0f / 12.0f) * m_mass * (s.x * s.x + s.z * s.z);
-		float iz = (1.0f / 12.0f) * m_mass * (s.x * s.x + s.y * s.y);
-		
-		//Properly construct diagonal matrix
-		m_inertiaTensor = glm::mat3(
-			ix,  0.0f, 0.0f,
-			0.0f, iy,  0.0f,
-			0.0f, 0.0f, iz
-		);
-		
-		if (m_mass <= 0.0f) {
-			m_inertiaTensorInv = glm::mat3(0.0f);
-		}
-		else {
-			m_inertiaTensorInv = glm::inverse(m_inertiaTensor);
-		}
-		return; // early return since we set members directly
-	}
-	case ShapeType::PLANE:
-		// Treat plane as static (infinite inertia)
-		m_inertiaTensor = glm::mat3(0.0f);
-		m_inertiaTensorInv = glm::mat3(0.0f);
-		return;
-	}
-	m_inertiaTensor = I;
-	if (m_mass <= 0.0f) {
-		m_inertiaTensorInv = glm::mat3(0.0f);
-	}
-	else {
-		m_inertiaTensorInv = glm::inverse(m_inertiaTensor);
-	}
+    if (m_bodyType == BodyType::STATIC || m_inverseMass <= 0.0f) {
+        m_inertiaLocal = glm::mat3(0.0f);
+        m_inverseInertiaLocal = glm::mat3(0.0f);
+        return;
+    }
+    
+    glm::mat3 inertia(0.0f);
+    
+    switch (m_shapeType) {
+        case ShapeType::SPHERE: {
+            // Solid sphere: I = (2/5) * m * r^2
+            float I = (2.0f / 5.0f) * m_mass * m_radius * m_radius;
+            inertia[0][0] = I;
+            inertia[1][1] = I;
+            inertia[2][2] = I;
+            break;
+        }
+        
+        case ShapeType::BOX: {
+            // Solid box: I_x = (1/12) * m * (h^2 + d^2), etc.
+            float x = m_halfExtents.x * 2.0f;
+            float y = m_halfExtents.y * 2.0f;
+            float z = m_halfExtents.z * 2.0f;
+            float factor = m_mass / 12.0f;
+            
+            inertia[0][0] = factor * (y * y + z * z);
+            inertia[1][1] = factor * (x * x + z * z);
+            inertia[2][2] = factor * (x * x + y * y);
+            break;
+        }
+        
+        case ShapeType::PLANE: {
+            // Planes have infinite inertia (zero inverse)
+            m_inertiaLocal = glm::mat3(0.0f);
+            m_inverseInertiaLocal = glm::mat3(0.0f);
+            return;
+        }
+    }
+    
+    m_inertiaLocal = inertia;
+    
+    // Compute inverse (assuming diagonal inertia tensor for these primitives)
+    m_inverseInertiaLocal = glm::mat3(0.0f);
+    if (inertia[0][0] > 0.0f) m_inverseInertiaLocal[0][0] = 1.0f / inertia[0][0];
+    if (inertia[1][1] > 0.0f) m_inverseInertiaLocal[1][1] = 1.0f / inertia[1][1];
+    if (inertia[2][2] > 0.0f) m_inverseInertiaLocal[2][2] = 1.0f / inertia[2][2];
 }
 
-// Integrate functions
-void RigidBody::integrate(float dt, const std::string& integrator) {
-	if (m_mass <= 0.0f) {
-		// Static body: no integration
-		m_torque = glm::vec3(0.0f);
-		return;
-	}
-	if (integrator == "euler") {
-		integrateEuler(dt);
-	}
-	else if (integrator == "rk2") {
-		integrateRK2(dt);
-	}
-	else if (integrator == "rk4") {
-		integrateRK4(dt);
-	}
-	else if (integrator == "verlet") {
-		integrateVerlet(dt);
-	}
-	else {
-		integrateEuler(dt);
-	}
-	// Clear torque (forces) after integration step
-	m_torque = glm::vec3(0.0f);
+glm::mat3 RigidBody::getInverseInertiaWorld() const {
+    if (m_bodyType == BodyType::STATIC) {
+        return glm::mat3(0.0f);
+    }
+    
+    // Transform inverse inertia to world space: R * I^-1 * R^T
+    glm::mat3 R = glm::mat3_cast(m_orientation);
+    return R * m_inverseInertiaLocal * glm::transpose(R);
 }
 
-void RigidBody::Shutdown() {
-	DetachNode();  // Ensure visual link is removed
-	m_inertiaTensor = glm::mat3(0.0f);
-	m_inertiaTensorInv = glm::mat3(0.0f);
-	m_position = glm::vec3(0.0f);
-	m_velocity = glm::vec3(0.0f);
-	m_acceleration = glm::vec3(0.0f);
-	m_angularVelocity = glm::vec3(0.0f);
-	m_torque = glm::vec3(0.0f);
+// ============== POSITION & ORIENTATION ==============
+
+void RigidBody::setOrientation(const glm::quat& orient) {
+    m_orientation = glm::normalize(orient);
 }
 
-// Euler integrator 
-void RigidBody::integrateEuler(float dt) {
-	// Linear motion: Semi-implicit Euler (velocity first, then position)
-	m_velocity += m_acceleration * dt;
-	m_position += m_velocity * dt;
-
-	// Angular motion: Properly use world-space inertia tensor
-	if (m_mass > 0.0f && glm::length2(m_torque) > 1e-12f) {
-		glm::mat3 R = glm::toMat3(m_orientation);
-		glm::mat3 iInvWorld = R * m_inertiaTensorInv * glm::transpose(R);
-		glm::vec3 angularAcc = iInvWorld * m_torque;
-
-		m_angularVelocity += angularAcc * dt;
-	}
-	
-	// Update orientation from angular velocity
-	if (glm::length2(m_angularVelocity) > 1e-12f) {
-		glm::quat wQuat(0.0f, m_angularVelocity.x, m_angularVelocity.y, m_angularVelocity.z);
-		m_orientation = glm::normalize(m_orientation + 0.5f * dt * wQuat * m_orientation);
-	}
+void RigidBody::storePreviousState() {
+    m_previousPosition = m_position;
+    m_previousOrientation = m_orientation;
 }
 
-// RK2 integrator (Midpoint) 
-void RigidBody::integrateRK2(float dt) {
-	// Linear motion with constant acceleration
-	glm::vec3 v0 = m_velocity;
-	glm::vec3 p0 = m_position;
-	glm::vec3 a = m_acceleration;
-
-	// Midpoint method
-	glm::vec3 v_half = v0 + a * (dt * 0.5f);
-	glm::vec3 p_half = p0 + v0 * (dt * 0.5f);
-
-	// Full step using midpoint values
-	m_velocity = v0 + a * dt;
-	m_position = p0 + v_half * dt;
-
-	// Angular motion with proper world-space inertia
-	if (m_mass > 0.0f && glm::length2(m_torque) > 1e-12f) {
-		glm::vec3 w0 = m_angularVelocity;
-		glm::quat q0 = m_orientation;
-
-		glm::mat3 R = glm::toMat3(m_orientation);
-		glm::mat3 iInvWorld = R * m_inertiaTensorInv * glm::transpose(R);
-		glm::vec3 alpha = iInvWorld * m_torque;
-
-		// Midpoint angular velocity
-		glm::vec3 w_half = w0 + alpha * (dt * 0.5f);
-
-		// Full step
-		m_angularVelocity = w0 + alpha * dt;
-
-		// Update orientation using midpoint angular velocity
-		glm::quat wHalfQuat(0.0f, w_half.x, w_half.y, w_half.z);
-		m_orientation = glm::normalize(q0 + 0.5f * dt * wHalfQuat * q0);
-	} else if (glm::length2(m_angularVelocity) > 1e-12f) {
-		// No torque, but still rotating
-		glm::quat wQuat(0.0f, m_angularVelocity.x, m_angularVelocity.y, m_angularVelocity.z);
-		m_orientation = glm::normalize(m_orientation + 0.5f * dt * wQuat * m_orientation);
-	}
+glm::vec3 RigidBody::getInterpolatedPosition(float alpha) const {
+    return glm::mix(m_previousPosition, m_position, alpha);
 }
 
-// RK4 integrator 
-void RigidBody::integrateRK4(float dt) {
-	// For linear motion with constant acceleration (gravity)
-	// RK4 simplifies since acceleration doesn't depend on velocity
-	glm::vec3 v0 = m_velocity;
-	glm::vec3 p0 = m_position;
-	glm::vec3 a = m_acceleration;  // Constant (gravity)
-
-	// Linear motion RK4 with constant acceleration
-	glm::vec3 k1v = a;
-	glm::vec3 k1p = v0;
-
-	glm::vec3 k2v = a;  // Acceleration is constant
-	glm::vec3 k2p = v0 + 0.5f * k1v * dt;
-
-	glm::vec3 k3v = a;  // Acceleration is constant
-	glm::vec3 k3p = v0 + 0.5f * k2v * dt;
-
-	glm::vec3 k4v = a;  // Acceleration is constant
-	glm::vec3 k4p = v0 + k3v * dt;
-
-	m_velocity = v0 + (k1v + 2.0f * k2v + 2.0f * k3v + k4v) * (dt / 6.0f);
-	m_position = p0 + (k1p + 2.0f * k2p + 2.0f * k3p + k4p) * (dt / 6.0f);
-
-	// Angular motion - FIXED to properly use world-space inertia tensor
-	if (m_mass > 0.0f && glm::length2(m_torque) > 1e-12f) {
-		glm::vec3 w0 = m_angularVelocity;
-		glm::quat q0 = m_orientation;
-
-		// Compute world-space inertia tensor inverse
-		glm::mat3 R = glm::toMat3(m_orientation);
-		glm::mat3 iInvWorld = R * m_inertiaTensorInv * glm::transpose(R);
-
-		// Angular acceleration from torque
-		glm::vec3 alpha = iInvWorld * m_torque;
-
-		// RK4 for angular velocity (constant torque)
-		glm::vec3 k1w = alpha;
-		glm::vec3 k2w = alpha;
-		glm::vec3 k3w = alpha;
-		glm::vec3 k4w = alpha;
-
-		m_angularVelocity = w0 + (k1w + 2.0f * k2w + 2.0f * k3w + k4w) * (dt / 6.0f);
-
-		// Update orientation using average angular velocity
-		glm::vec3 avgOmega = w0 + 0.5f * alpha * dt;
-		glm::quat wQuat(0.0f, avgOmega.x, avgOmega.y, avgOmega.z);
-		m_orientation = glm::normalize(q0 + 0.5f * dt * wQuat * q0);
-	} else if (glm::length2(m_angularVelocity) > 1e-12f) {
-		// No torque, but still rotating
-		glm::quat wQuat(0.0f, m_angularVelocity.x, m_angularVelocity.y, m_angularVelocity.z);
-		m_orientation = glm::normalize(m_orientation + 0.5f * dt * wQuat * m_orientation);
-	}
+glm::quat RigidBody::getInterpolatedOrientation(float alpha) const {
+    return glm::slerp(m_previousOrientation, m_orientation, alpha);
 }
 
-// Verlet integrator 
-void RigidBody::integrateVerlet(float dt) {
-	// Velocity Verlet for better stability
-	// v(t+dt) = v(t) + a(t)*dt
-	// x(t+dt) = x(t) + v(t)*dt + 0.5*a(t)*dt^2
-	glm::vec3 newPos = m_position + m_velocity * dt + 0.5f * m_acceleration * dt * dt;
-	glm::vec3 newVel = m_velocity + m_acceleration * dt;
-	m_position = newPos;
-	m_velocity = newVel;
-
-	// Angular motion with proper world-space inertia
-	if (m_mass > 0.0f && glm::length2(m_torque) > 1e-12f) {
-		glm::mat3 R = glm::toMat3(m_orientation);
-		glm::mat3 iInvWorld = R * m_inertiaTensorInv * glm::transpose(R);
-		glm::vec3 angularAcc = iInvWorld * m_torque;
-
-		m_angularVelocity += angularAcc * dt;
-	}
-	
-	// Update orientation from angular velocity
-	if (glm::length2(m_angularVelocity) > 1e-12f) {
-		glm::quat wQuat(0.0f, m_angularVelocity.x, m_angularVelocity.y, m_angularVelocity.z);
-		m_orientation = glm::normalize(m_orientation + 0.5f * dt * wQuat * m_orientation);
-	}
+glm::mat4 RigidBody::getTransformMatrix() const {
+    glm::mat4 translation = glm::translate(glm::mat4(1.0f), m_position);
+    glm::mat4 rotation = glm::mat4_cast(m_orientation);
+    return translation * rotation;
 }
 
-// Collision resolution: currently handles sphere-sphere (impulse)
-void RigidBody::resolveCollision(RigidBody& other, float restitution) {
-	// Only sphere-sphere is implemented here
-	if (m_shapeType != ShapeType::SPHERE || other.m_shapeType != ShapeType::SPHERE) {
-		return; // no-op for other shapes
-	}
-	// Positions and radii
-	glm::vec3 posA = getPosition();
-	glm::vec3 posB = other.getPosition();
-	float rA = getBoundingRadius();
-	float rB = other.getBoundingRadius();
+// ============== FORCES & IMPULSES ==============
 
-	glm::vec3 normal = posB - posA;
-	float dist = glm::length(normal);
-	if (dist < 1e-6f) {
-		return; // too close, no collision
-	}
-	normal /= dist;
+void RigidBody::applyForce(const glm::vec3& force) {
+    if (m_bodyType != BodyType::DYNAMIC || m_isSleeping) return;
+    // Validate force is finite
+    if (!std::isfinite(force.x) || !std::isfinite(force.y) || !std::isfinite(force.z)) return;
+    m_force += force;
+}
 
-	// Penetration depth
-	float penetration = (rA + rB) - dist;
-	if (penetration <= 0.0f) return;
+void RigidBody::applyForceAtPoint(const glm::vec3& force, const glm::vec3& worldPoint) {
+    if (m_bodyType != BodyType::DYNAMIC || m_isSleeping) return;
+    // Validate inputs are finite
+    if (!std::isfinite(force.x) || !std::isfinite(force.y) || !std::isfinite(force.z)) return;
+    if (!std::isfinite(worldPoint.x) || !std::isfinite(worldPoint.y) || !std::isfinite(worldPoint.z)) return;
+    m_force += force;
+    m_torque += glm::cross(worldPoint - m_position, force);
+}
 
-	// Relative velocity at contact (including rotation)
-	glm::vec3 vA = getVelocity();
-	glm::vec3 vB = other.getVelocity();
-	glm::vec3 rA_vec = normal * rA;
-	glm::vec3 rB_vec = -normal * rB;
-	glm::vec3 vA_contact = vA + glm::cross(m_angularVelocity, rA_vec);
-	glm::vec3 vB_contact = vB + glm::cross(other.m_angularVelocity, rB_vec);
-	glm::vec3 relVel = vB_contact - vA_contact;
-	float velAlongNormal = glm::dot(relVel, normal);
-	if (velAlongNormal > 0.0f) return; // moving apart
+void RigidBody::applyTorque(const glm::vec3& torque) {
+    if (m_bodyType != BodyType::DYNAMIC || m_isSleeping) return;
+    // Validate torque is finite
+    if (!std::isfinite(torque.x) || !std::isfinite(torque.y) || !std::isfinite(torque.z)) return;
+    m_torque += torque;
+}
 
-	float invMassA = (m_mass <= 0.0f) ? 0.0f : 1.0f / m_mass;
-	float invMassB = (other.m_mass <= 0.0f) ? 0.0f : 1.0f / other.m_mass;
+void RigidBody::applyImpulse(const glm::vec3& impulse) {
+    if (m_bodyType != BodyType::DYNAMIC) return;
+    // Validate impulse is finite
+    if (!std::isfinite(impulse.x) || !std::isfinite(impulse.y) || !std::isfinite(impulse.z)) return;
+    wakeUp();
+    m_linearVelocity += impulse * m_inverseMass;
+    
+    // Clamp velocity to prevent explosion
+    float velMag = glm::length(m_linearVelocity);
+    if (velMag > 100.0f) {
+        m_linearVelocity *= (100.0f / velMag);
+    }
+}
 
-	//Use world-space inertia tensors
-	glm::mat3 RA = glm::toMat3(m_orientation);
-	glm::mat3 RB = glm::toMat3(other.m_orientation);
-	glm::mat3 iInvWorldA = RA * m_inertiaTensorInv * glm::transpose(RA);
-	glm::mat3 iInvWorldB = RB * other.m_inertiaTensorInv * glm::transpose(RB);
-	
-	glm::vec3 rA_cross_n = glm::cross(rA_vec, normal);
-	glm::vec3 rB_cross_n = glm::cross(rB_vec, normal);
-	float angTermA = glm::dot(normal, glm::cross(iInvWorldA * rA_cross_n, rA_vec));
-	float angTermB = glm::dot(normal, glm::cross(iInvWorldB * rB_cross_n, rB_vec));
+void RigidBody::applyImpulseAtPoint(const glm::vec3& impulse, const glm::vec3& worldPoint) {
+    if (m_bodyType != BodyType::DYNAMIC) return;
+    // Validate inputs are finite
+    if (!std::isfinite(impulse.x) || !std::isfinite(impulse.y) || !std::isfinite(impulse.z)) return;
+    if (!std::isfinite(worldPoint.x) || !std::isfinite(worldPoint.y) || !std::isfinite(worldPoint.z)) return;
+    wakeUp();
+    m_linearVelocity += impulse * m_inverseMass;
+    m_angularVelocity += getInverseInertiaWorld() * glm::cross(worldPoint - m_position, impulse);
+    
+    // Clamp velocities to prevent explosion
+    float velMag = glm::length(m_linearVelocity);
+    if (velMag > 100.0f) {
+        m_linearVelocity *= (100.0f / velMag);
+    }
+    float angVelMag = glm::length(m_angularVelocity);
+    if (angVelMag > 50.0f) {
+        m_angularVelocity *= (50.0f / angVelMag);
+    }
+}
 
-	float j = -(1.0f + restitution) * velAlongNormal;
-	float denom = invMassA + invMassB + angTermA + angTermB;
-	if (denom > 0.0f) j /= denom; else j = 0.0f;
-	glm::vec3 impulse = j * normal;
+void RigidBody::applyAngularImpulse(const glm::vec3& impulse) {
+    if (m_bodyType != BodyType::DYNAMIC) return;
+    // Validate impulse is finite
+    if (!std::isfinite(impulse.x) || !std::isfinite(impulse.y) || !std::isfinite(impulse.z)) return;
+    wakeUp();
+    m_angularVelocity += getInverseInertiaWorld() * impulse;
+    
+    // Clamp angular velocity
+    float angVelMag = glm::length(m_angularVelocity);
+    if (angVelMag > 50.0f) {
+        m_angularVelocity *= (50.0f / angVelMag);
+    }
+}
 
-	// Apply linear impulses
-	setVelocity(vA - impulse * invMassA);
-	other.setVelocity(vB + impulse * invMassB);
+void RigidBody::clearForces() {
+    m_force = glm::vec3(0.0f);
+    m_torque = glm::vec3(0.0f);
+}
 
-	// Apply angular impulses with world-space inertia
-	m_angularVelocity += iInvWorldA * glm::cross(rA_vec, -impulse);
-	other.m_angularVelocity += iInvWorldB * glm::cross(rB_vec, impulse);
+// ============== COLLISION FILTERING ==============
 
-	// Friction (Coulomb)
-	glm::vec3 tangent = relVel - (velAlongNormal * normal);
-	float tangentLength = glm::length(tangent);
-	if (tangentLength > 1e-6f) {
-		tangent /= tangentLength;
-		float velT = glm::dot(relVel, tangent);
-		float jt = -velT / denom;
-		float mu = std::sqrt(std::max(0.0f, m_friction) * std::max(0.0f, other.m_friction));
-		float maxF = mu * fabs(j);
-		jt = glm::clamp(jt, -maxF, maxF);
-		glm::vec3 frictionImpulse = jt * tangent;
-		setVelocity(getVelocity() - frictionImpulse * invMassA);
-		other.setVelocity(other.getVelocity() + frictionImpulse * invMassB);
-		m_angularVelocity += iInvWorldA * glm::cross(rA_vec, -frictionImpulse);
-		other.m_angularVelocity += iInvWorldB * glm::cross(rB_vec, frictionImpulse);
-	}
+bool RigidBody::canCollideWith(const RigidBody& other) const {
+    // Check layer/mask compatibility
+    return (m_collisionLayer & other.m_collisionMask) != 0 &&
+           (other.m_collisionLayer & m_collisionMask) != 0;
+}
 
-	// Positional correction
-	const float percent = 0.8f; // Stronger correction for better stability
-	const float slop = 0.01f;   // Slightly larger penetration allowance
-	float corrMag = std::max(penetration - slop, 0.0f) / (invMassA + invMassB) * percent;
-	glm::vec3 correction = corrMag * normal;
-	if (invMassA > 0.0f) m_position -= correction * invMassA;
-	if (invMassB > 0.0f) other.m_position += correction * invMassB;
+// ============== SLEEP MANAGEMENT ==============
+
+void RigidBody::setSleeping(bool sleeping) {
+    if (m_bodyType == BodyType::STATIC) {
+        m_isSleeping = true;
+        m_transformOwner = TransformOwner::SCENE;
+        return;
+    }
+    
+    m_isSleeping = sleeping;
+    if (sleeping) {
+        m_linearVelocity = glm::vec3(0.0f);
+        m_angularVelocity = glm::vec3(0.0f);
+        // Sleeping bodies become scene-owned (no physics updates)
+        if (m_bodyType == BodyType::DYNAMIC) {
+            m_transformOwner = TransformOwner::SCENE;
+        }
+    }
+    m_sleepTime = 0.0f;
+}
+
+void RigidBody::wakeUp() {
+    if (m_bodyType == BodyType::STATIC) return;
+    m_isSleeping = false;
+    m_sleepTime = 0.0f;
+    // Waking dynamic bodies become physics-owned again (unless editor-grabbed)
+    if (m_bodyType == BodyType::DYNAMIC && !m_isGizmoGrabbed) {
+        m_transformOwner = TransformOwner::PHYSICS;
+    }
+}
+
+void RigidBody::updateSleepState(float linearThreshold, float angularThreshold, float dt) {
+    if (!m_sleepingEnabled || m_bodyType != BodyType::DYNAMIC) return;
+    
+    float linearSpeed = glm::length(m_linearVelocity);
+    float angularSpeed = glm::length(m_angularVelocity);
+    
+    if (linearSpeed < linearThreshold && angularSpeed < angularThreshold) {
+        m_sleepTime += dt;
+    } else {
+        m_sleepTime = 0.0f;
+        m_isSleeping = false;
+    }
+}
+
+// ============== GIZMO MANIPULATION ==============
+
+void RigidBody::setKinematicTarget(const glm::vec3& position, const glm::quat& orientation) {
+    m_kinematicTargetPosition = position;
+    m_kinematicTargetOrientation = orientation;
+    m_hasKinematicTarget = true;
+}
+
+// ============== AABB ==============
+
+void RigidBody::computeAABB() {
+    switch (m_shapeType) {
+        case ShapeType::SPHERE: {
+            m_aabbMin = m_position - glm::vec3(m_radius);
+            m_aabbMax = m_position + glm::vec3(m_radius);
+            break;
+        }
+        
+        case ShapeType::BOX: {
+            // Transform box corners to world space and compute AABB
+            glm::mat3 R = glm::mat3_cast(m_orientation);
+            glm::mat3 absR;
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    absR[i][j] = std::abs(R[i][j]);
+                }
+            }
+            
+            glm::vec3 worldExtent = absR * m_halfExtents;
+            m_aabbMin = m_position - worldExtent;
+            m_aabbMax = m_position + worldExtent;
+            break;
+        }
+        
+        case ShapeType::PLANE: {
+            // Planes are infinite - use very large bounds
+            constexpr float LARGE = 1e10f;
+            m_aabbMin = glm::vec3(-LARGE);
+            m_aabbMax = glm::vec3(LARGE);
+            
+            // Restrict in normal direction
+            if (std::abs(m_planeNormal.y) > 0.9f) {
+                m_aabbMin.y = m_planeDistance - 0.01f;
+                m_aabbMax.y = m_planeDistance + 0.01f;
+            }
+            break;
+        }
+    }
+}
+
+void RigidBody::computeFatAABB(float margin) {
+    computeAABB();
+    m_fatAABBMin = m_aabbMin - glm::vec3(margin);
+    m_fatAABBMax = m_aabbMax + glm::vec3(margin);
+}
+
+bool RigidBody::needsFatAABBUpdate(float margin) const {
+    // Check if current AABB has moved outside fat AABB
+    return m_aabbMin.x < m_fatAABBMin.x || m_aabbMin.y < m_fatAABBMin.y || m_aabbMin.z < m_fatAABBMin.z ||
+           m_aabbMax.x > m_fatAABBMax.x || m_aabbMax.y > m_fatAABBMax.y || m_aabbMax.z > m_fatAABBMax.z;
+}
+
+// ============== INTEGRATION ==============
+
+void RigidBody::integrateForces(float dt, const glm::vec3& gravity) {
+    if (m_bodyType != BodyType::DYNAMIC || m_isSleeping) return;
+    
+    // Apply gravity
+    glm::vec3 totalAcceleration = gravity * m_gravityScale + m_acceleration;
+    
+    // Integrate linear velocity: v += (F/m + g) * dt
+    m_linearVelocity += (m_force * m_inverseMass + totalAcceleration) * dt;
+    
+    // Integrate angular velocity: ? += I^-1 * ? * dt
+    m_angularVelocity += getInverseInertiaWorld() * m_torque * dt;
+    
+    // Validate and clamp velocities
+    if (!std::isfinite(m_linearVelocity.x) || !std::isfinite(m_linearVelocity.y) || !std::isfinite(m_linearVelocity.z)) {
+        m_linearVelocity = glm::vec3(0.0f);
+    }
+    if (!std::isfinite(m_angularVelocity.x) || !std::isfinite(m_angularVelocity.y) || !std::isfinite(m_angularVelocity.z)) {
+        m_angularVelocity = glm::vec3(0.0f);
+    }
+}
+
+void RigidBody::integrateVelocities(float dt) {
+    if (m_bodyType == BodyType::STATIC || m_isSleeping) return;
+    
+    if (m_bodyType == BodyType::KINEMATIC && m_hasKinematicTarget) {
+        // Kinematic bodies move directly to target
+        m_position = m_kinematicTargetPosition;
+        m_orientation = m_kinematicTargetOrientation;
+    } else {
+        // Dynamic bodies integrate velocities
+        m_position += m_linearVelocity * dt;
+        
+        // Integrate orientation: q += 0.5 * ? * q * dt
+        glm::quat spin(0.0f, m_angularVelocity.x * 0.5f, m_angularVelocity.y * 0.5f, m_angularVelocity.z * 0.5f);
+        m_orientation += spin * m_orientation * dt;
+        m_orientation = glm::normalize(m_orientation);
+    }
+    
+    // Validate position and orientation
+    if (!std::isfinite(m_position.x) || !std::isfinite(m_position.y) || !std::isfinite(m_position.z)) {
+        m_position = m_previousPosition; // Revert to previous valid state
+        m_linearVelocity = glm::vec3(0.0f);
+    }
+    if (!std::isfinite(m_orientation.x) || !std::isfinite(m_orientation.y) || 
+        !std::isfinite(m_orientation.z) || !std::isfinite(m_orientation.w)) {
+        m_orientation = m_previousOrientation; // Revert to previous valid state
+        m_angularVelocity = glm::vec3(0.0f);
+    }
+    
+    // Clamp position to reasonable bounds
+    m_position = glm::clamp(m_position, glm::vec3(-100000.0f), glm::vec3(100000.0f));
+    
+    computeAABB();
+}
+
+void RigidBody::applyDamping(float dt) {
+    if (m_bodyType != BodyType::DYNAMIC) return;
+    
+    // Apply linear damping: v *= (1 - damping)^dt
+    float linearFactor = std::pow(1.0f - m_linearDamping, dt);
+    m_linearVelocity *= linearFactor;
+    
+    // Apply angular damping
+    float angularFactor = std::pow(1.0f - m_angularDamping, dt);
+    m_angularVelocity *= angularFactor;
+}
+
+// ============== UTILITY ==============
+
+glm::vec3 RigidBody::getVelocityAtPoint(const glm::vec3& worldPoint) const {
+    return m_linearVelocity + glm::cross(m_angularVelocity, worldPoint - m_position);
+}
+
+glm::vec3 RigidBody::worldToLocal(const glm::vec3& worldPoint) const {
+    glm::quat invOrient = glm::conjugate(m_orientation);
+    return invOrient * (worldPoint - m_position);
+}
+
+glm::vec3 RigidBody::localToWorld(const glm::vec3& localPoint) const {
+    return m_position + m_orientation * localPoint;
+}
+
+glm::vec3 RigidBody::worldToLocalDirection(const glm::vec3& worldDir) const {
+    return glm::conjugate(m_orientation) * worldDir;
+}
+
+glm::vec3 RigidBody::localToWorldDirection(const glm::vec3& localDir) const {
+    return m_orientation * localDir;
 }

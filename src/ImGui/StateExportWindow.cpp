@@ -1,5 +1,9 @@
 #include "StateExportWindow.h"
 #include <IMGUI/imgui.h>
+#include <fstream>
+#include "../json.hpp"
+
+using json = nlohmann::json;
 
 StateExportWindow::StateExportWindow()
     : BaseWindow("State & Export", "F9")
@@ -59,6 +63,13 @@ void StateExportWindow::Render() {
     // Custom Load section
     ImGui::Text("Load Scene State:");
     ImGui::InputText("##LoadPath", m_loadStateFilepath, sizeof(m_loadStateFilepath));
+    
+    // FIXED: Show which scene this state belongs to
+    std::string stateInfoText = GetStateFileInfo(m_loadStateFilepath);
+    if (!stateInfoText.empty()) {
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", stateInfoText.c_str());
+    }
+    
     if (ImGui::Button("Load State", ImVec2(-1, 25))) {
         if (m_loadSceneStateCallback) {
             std::string filepath(m_loadStateFilepath);
@@ -195,4 +206,36 @@ void StateExportWindow::Render() {
     }
 
     EndWindow();
+}
+
+std::string StateExportWindow::GetStateFileInfo(const std::string& filepath) {
+    if (filepath.empty()) {
+        return "";
+    }
+    
+    try {
+        std::ifstream inFile(filepath);
+        if (!inFile.is_open()) {
+            return "";
+        }
+        
+        nlohmann::json stateJson;
+        inFile >> stateJson;
+        inFile.close();
+        
+        // Extract info
+        std::string baseScene = stateJson.value("base_scene_file", "Unknown");
+        std::string sceneName = stateJson.value("scene_name", "Unknown");
+        int nodeCount = stateJson.value("scene_node_count", -1);
+        
+        std::string info = "Scene: " + baseScene;
+        if (nodeCount >= 0) {
+            info += " (" + std::to_string(nodeCount) + " nodes)";
+        }
+        
+        return info;
+        
+    } catch (...) {
+        return "";
+    }
 }

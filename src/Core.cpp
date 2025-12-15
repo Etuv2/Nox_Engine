@@ -66,10 +66,12 @@ Core::Core()
 	, m_fpsUpdateTime(0.0f)
 	, m_fps(0.0f)
 	, m_frameTime(0.0f)
+	, m_frameTimeIndex(0)
+	, m_frameTimeCount(0)
 	, m_boundingBoxCached(false)
 	, m_bvhDirty(true)
 {
-	m_frameTimeData.reserve(200);
+	m_frameTimeBuffer.fill(0.0f);
 }
 
 Core::~Core() {
@@ -364,6 +366,16 @@ bool Core::InitializeUI() {
 	// Initialize RuntimeStateManager
 	m_stateManager = std::make_unique<RuntimeStateManager>();
 	std::cout << "[Core] RuntimeStateManager initialized" << std::endl;
+	
+	// FIXED: Set current scene file path for proper state tracking
+	if (m_stateManager) {
+		m_stateManager->SetCurrentSceneFilePath(m_sceneToLoad);
+	}
+	
+	// Set physics engine for gizmo interaction
+	if (m_physicsEngine) {
+		m_imguiInterface->SetPhysicsEngine(m_physicsEngine);
+	}
 
 	// Set up state export and performance recording callbacks
 	m_imguiInterface->SetStateExportCallbacks(
@@ -477,9 +489,15 @@ void Core::Update(float deltaTime) {
 		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
 
 		if (m_physicsEngine && m_physicsEnabledForScene) {
+			// CRITICAL FIX: Physics synchronization is now centralized inside PhysicsEngine::Update()
+			// PreStepSync runs before stepping to push kinematic bodies
+			// PostStepSync runs after stepping to pull dynamic bodies
+			// Step physics simulation
 			m_physicsEngine->Update(deltaTime);
-			float alpha = m_physicsEngine->GetAlpha();
-			m_physicsEngine->Interpolate(alpha);
+			
+			// CRITICAL: Update all transforms in the scene graph after physics changes
+			// This ensures the ECS transform system processes the physics updates
+			m_sceneGraph->UpdateAllTransforms();
 		}
 
 		// FIXED: Use new transform-aware audio update
@@ -493,11 +511,12 @@ void Core::Update(float deltaTime) {
 		}
 	}
 
-	// Store frame time for profiling
+	// Store frame time for profiling using circular buffer
 	m_frameTime = deltaTime * 1000.0f;
-	m_frameTimeData.push_back(m_frameTime);
-	if (m_frameTimeData.size() > 100) {
-		m_frameTimeData.erase(m_frameTimeData.begin());
+	m_frameTimeBuffer[m_frameTimeIndex] = m_frameTime;
+	m_frameTimeIndex = (m_frameTimeIndex + 1) % FRAME_TIME_BUFFER_SIZE;
+	if (m_frameTimeCount < FRAME_TIME_BUFFER_SIZE) {
+		m_frameTimeCount++;
 	}
 
 	// Record performance data if recording is active
@@ -552,7 +571,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 		m_imguiInterface->SetCamera(m_camera);
 		m_cachedImGuiCamera = m_camera;
 	}
-	m_imguiInterface->SetFrameData(m_frameTimeData);
+	m_imguiInterface->SetFrameData(m_frameTimeBuffer.data(), m_frameTimeCount);
 
 	// Render ImGui windows
 	m_imguiInterface->Render(
@@ -700,6 +719,11 @@ void Core::SwapScene(const std::string& newSceneFile) {
 			if (m_physicsEngine) {
 				if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
 			}
+			
+			// FIXED: Update state manager with new scene file path
+			if (m_stateManager) {
+				m_stateManager->SetCurrentSceneFilePath(newSceneFile);
+			}
 
 			if (m_lightManager) {
 				m_lightManager->CollectLightsFromScene(m_sceneGraph);
@@ -761,20 +785,30 @@ void Core::SetMouseLocked(bool locked) {
 	}
 }
 
-
-// Scene Management Helpers
-
-
 void Core::CleanupCurrentScene() {
 	std::cout << "[Core] Cleaning up current scene" << std::endl;
 
+	// CRITICAL FIX: Clean up all physics bodies to prevent memory leaks and duplicate registrations
+	if (m_physicsEngine) {
+		std::cout << "[Core] Removing all physics bodies from engine" << std::endl;
+		m_physicsEngine->RemoveAllBodies();
+	}
+
+	// Clear spatial acceleration structures
 	if (m_sceneBVH) {
 		m_sceneBVH->Clear();
 	}
 
+	// Clear UI selection to prevent dangling pointers
 	if (m_imguiInterface) {
 		m_imguiInterface->SetSelectedNode(nullptr);
 	}
+	
+	// Invalidate cached bounds
+	m_boundingBoxCached = false;
+	m_bvhDirty = true;
+	
+	std::cout << "[Core] Scene cleanup complete" << std::endl;
 }
 
 void Core::ComputeSceneBoundingBox() {
@@ -851,9 +885,6 @@ void Core::RebuildSceneBVH() {
 
 	m_bvhDirty = false;
 }
-
-
-// Ray Casting
 
 
 std::shared_ptr<SceneNode> Core::PerformRayQuery(const RayCast::Ray& ray) {
@@ -1031,8 +1062,6 @@ bool Core::RayIntersectAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDire
 
 	return tNear <= tFar && tFar >= 0.0f;
 }
-
-
 // State Export and Performance Recording
 
 
@@ -1045,11 +1074,88 @@ bool Core::SaveSceneState(const std::string& filepath) {
 }
 
 bool Core::LoadSceneState(const std::string& filepath) {
-	if (!m_sceneGraph || !m_stateManager || !m_camera) {
+	if (!m_stateManager || !m_camera) {
 		std::cerr << "[Core] Cannot load state: missing components" << std::endl;
 		return false;
 	}
-	return m_stateManager->LoadState(m_sceneGraph, m_camera, filepath);
+
+	// FIXED: Use LoadStateWithSceneValidation to ensure correct base scene is loaded first
+	std::cout << "[Core] Loading scene state with automatic scene validation..." << std::endl;
+
+	// Create scene loader callback that Core will use to load the base scene
+	auto sceneLoaderCallback = [this](const std::string& sceneFile) -> std::shared_ptr<SceneGraph> {
+		std::cout << "[Core] Scene loader callback invoked for: " << sceneFile << std::endl;
+
+		// Use existing scene loader to load the scene
+		if (!m_sceneLoader) {
+			std::cerr << "[Core] ERROR: SceneLoader not available!" << std::endl;
+			return nullptr;
+		}
+
+		// Clean up current scene before loading new one
+		CleanupCurrentScene();
+
+		// Load the scene
+		auto newGraph = m_sceneLoader->LoadScene(sceneFile);
+		if (!newGraph || !newGraph->GetRoot()) {
+			std::cerr << "[Core] ERROR: Failed to load scene: " << sceneFile << std::endl;
+			return nullptr;
+		}
+
+		// Initialize scene systems (lights, physics, etc.)
+		m_exposure = newGraph->m_exposure;
+		m_gamma = newGraph->m_gamma;
+		m_sceneName = newGraph->GetSceneName();
+
+		m_physicsEnabledForScene = newGraph->IsPhysicsEnabled();
+		if (m_physicsEngine) {
+			if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
+		}
+
+		if (m_lightManager) {
+			m_lightManager->CollectLightsFromScene(newGraph);
+			m_lightManager->PrintLightInfo();
+		}
+
+		if (m_inputIntegration) {
+			m_inputIntegration->SetSceneGraph(newGraph);
+		}
+
+		ComputeSceneBoundingBox();
+		m_bvhDirty = true;
+		m_boundingBoxCached = false;
+
+		if (m_modularRenderer) {
+			m_modularRenderer->ResetTAA();
+		}
+
+		std::cout << "[Core] Base scene loaded and initialized: " << sceneFile << std::endl;
+		return newGraph;
+		};
+
+	// Load state with automatic scene loading
+	auto loadedSceneGraph = m_stateManager->LoadStateWithSceneValidation(
+		m_camera,
+		filepath,
+		sceneLoaderCallback
+	);
+
+	if (!loadedSceneGraph) {
+		std::cerr << "[Core] Failed to load scene state: " << filepath << std::endl;
+		return false;
+	}
+
+	// Update Core's scene graph reference
+	m_sceneGraph = loadedSceneGraph;
+	m_currentSceneFilePath = m_stateManager->GetCurrentSceneFilePath();
+
+	// Update UI references
+	if (m_imguiInterface) {
+		m_imguiInterface->SetSceneGraph(m_sceneGraph);
+	}
+
+	std::cout << "[Core] Scene state loaded successfully with proper base scene" << std::endl;
+	return true;
 }
 
 bool Core::QuickSave() {

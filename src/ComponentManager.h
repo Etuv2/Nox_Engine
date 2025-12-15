@@ -175,6 +175,13 @@ public:
 	void RemovePhysics(EntityID entity);
 	bool HasPhysics(EntityID entity) const;
 
+	// Component access - Collider
+	ColliderComponent* AddCollider(EntityID entity, const ColliderComponent& collider = ColliderComponent());
+	ColliderComponent* GetCollider(EntityID entity);
+	const ColliderComponent* GetCollider(EntityID entity) const;
+	void RemoveCollider(EntityID entity);
+	bool HasCollider(EntityID entity) const;
+
 	// Component access - Audio
 	AudioComponent* AddAudio(EntityID entity, const AudioComponent& audio = AudioComponent());
 	AudioComponent* GetAudio(EntityID entity);
@@ -205,6 +212,7 @@ public:
 	ComponentPool<CameraComponent>& GetCameraPool() { return m_cameras; }
 	ComponentPool<AnimationComponent>& GetAnimationPool() { return m_animations; }
 	ComponentPool<PhysicsComponent>& GetPhysicsPool() { return m_physics; }
+	ComponentPool<ColliderComponent>& GetColliderPool() { return m_colliders; }
 	ComponentPool<AudioComponent>& GetAudioPool() { return m_audio; }
 	ComponentPool<LPVVolumeComponent>& GetLPVVolumePool() { return m_lpvVolumes; }
 
@@ -236,6 +244,7 @@ private:
 	ComponentPool<CameraComponent> m_cameras;
 	ComponentPool<AnimationComponent> m_animations;
 	ComponentPool<PhysicsComponent> m_physics;
+	ComponentPool<ColliderComponent> m_colliders;
 	ComponentPool<AudioComponent> m_audio;
 	ComponentPool<LPVVolumeComponent> m_lpvVolumes;
 

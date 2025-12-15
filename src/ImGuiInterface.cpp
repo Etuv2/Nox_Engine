@@ -10,13 +10,13 @@
 #include <iostream>
 
 ImGuiInterface::ImGuiInterface() : m_windowManager(std::make_unique<ImGuiWindowManager>()) {
-    if (!m_windowManager->Initialize()) {
-        std::cerr << "[ImGuiInterface] Failed to initialize window manager!" << std::endl;
-    }
+	if (!m_windowManager->Initialize()) {
+		std::cerr << "[ImGuiInterface] Failed to initialize window manager!" << std::endl;
+	}
 }
 
 ImGuiInterface::~ImGuiInterface() {
-    if (m_windowManager) m_windowManager->Shutdown();
+	if (m_windowManager) m_windowManager->Shutdown();
 }
 
 void ImGuiInterface::SetCamera(const std::shared_ptr<Camera>& camera) { if (m_windowManager) m_windowManager->SetCamera(camera); }
@@ -24,14 +24,15 @@ void ImGuiInterface::SetLighting(const std::shared_ptr<DirectionalLight>& lighti
 void ImGuiInterface::SetSceneGraph(const std::shared_ptr<SceneGraph>& sceneGraph) { if (m_windowManager) m_windowManager->SetSceneGraph(sceneGraph); }
 void ImGuiInterface::SetRenderer(const std::shared_ptr<Renderer>& renderer) { if (m_windowManager) m_windowManager->SetRenderer(renderer); }
 void ImGuiInterface::SetModularRenderer(const std::shared_ptr<ModularRenderer>& renderer) { if (m_windowManager) m_windowManager->SetModularRenderer(renderer); }
-void ImGuiInterface::SetFrameData(const std::vector<float>& frameData) { if (m_windowManager) m_windowManager->SetFrameTimeData(frameData); }
+void ImGuiInterface::SetPhysicsEngine(const std::shared_ptr<class PhysicsEngine>& physicsEngine) { if (m_windowManager) m_windowManager->SetPhysicsEngine(physicsEngine); }
+void ImGuiInterface::SetFrameData(const float* frameData, size_t count) { if (m_windowManager) m_windowManager->SetFrameTimeData(frameData, count); }
 
 void ImGuiInterface::Render(int windowWidth, int windowHeight, float fps, std::string sceneName, glm::vec3 lightPos, glm::vec3 lightDir) {
-    if (m_windowManager) m_windowManager->Render(windowWidth, windowHeight, fps, sceneName, lightPos, lightDir);
+	if (m_windowManager) m_windowManager->Render(windowWidth, windowHeight, fps, sceneName, lightPos, lightDir);
 }
 
 void ImGuiInterface::RenderGizmoOverlay(int windowWidth, int windowHeight) {
-    if (m_windowManager) m_windowManager->RenderGizmoOverlay(windowWidth, windowHeight);
+	if (m_windowManager) m_windowManager->RenderGizmoOverlay(windowWidth, windowHeight);
 }
 
 void ImGuiInterface::ProcessKeyboardInput() { if (m_windowManager) m_windowManager->ProcessKeyboardInput(); }
@@ -52,20 +53,20 @@ void ImGuiInterface::SetSceneSwapCallback(const std::function<void(const std::st
 void ImGuiInterface::SetSceneList(const std::vector<std::string>& scenes) { if (m_windowManager) m_windowManager->SetSceneList(scenes); }
 void ImGuiInterface::SetSceneSaveCallback(const std::function<void()>& callback) { if (m_windowManager) m_windowManager->SetSceneSaveCallback(callback); }
 void ImGuiInterface::SetStateExportCallbacks(
-    const std::function<bool(const std::string&)>& saveCallback,
-    const std::function<bool(const std::string&)>& loadCallback,
-    const std::function<bool()>& quickSaveCallback,
-    const std::function<bool(const std::string&)>& exportCSVCallback,
-    const std::function<bool(const std::string&)>& exportJSONCallback,
-    const std::function<void()>& startRecordingCallback,
-    const std::function<void()>& stopRecordingCallback) {
-    if (m_windowManager) {
-        m_windowManager->SetStateExportCallbacks(
-            saveCallback, loadCallback, quickSaveCallback,
-            exportCSVCallback, exportJSONCallback,
-            startRecordingCallback, stopRecordingCallback
-        );
-    }
+	const std::function<bool(const std::string&)>& saveCallback,
+	const std::function<bool(const std::string&)>& loadCallback,
+	const std::function<bool()>& quickSaveCallback,
+	const std::function<bool(const std::string&)>& exportCSVCallback,
+	const std::function<bool(const std::string&)>& exportJSONCallback,
+	const std::function<void()>& startRecordingCallback,
+	const std::function<void()>& stopRecordingCallback) {
+	if (m_windowManager) {
+		m_windowManager->SetStateExportCallbacks(
+			saveCallback, loadCallback, quickSaveCallback,
+			exportCSVCallback, exportJSONCallback,
+			startRecordingCallback, stopRecordingCallback
+		);
+	}
 }
 void ImGuiInterface::SetRecordingState(bool recording) { if (m_windowManager) m_windowManager->SetRecordingState(recording); }
 void ImGuiInterface::ToggleWindow(const std::string& windowName) { if (m_windowManager) m_windowManager->ToggleWindow(windowName); }

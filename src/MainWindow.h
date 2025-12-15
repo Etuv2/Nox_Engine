@@ -102,6 +102,7 @@ private:
     bool m_running;
     Uint32 m_lastTime;
     bool m_cleanedUp;  // Guard to prevent double cleanup
+    bool m_isVisible;  // Cached visibility state to avoid SDL queries every frame
     
     // ========================================================================
     // Engine Core (owns all engine subsystems)

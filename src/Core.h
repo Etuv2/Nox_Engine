@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <array>
 #include <functional>
 
 #include <SDL/SDL.h>
@@ -208,7 +209,12 @@ public:
     ImGuiInterface* GetImGuiInterface() { return m_imguiInterface.get(); }
     InputIntegration* GetInputIntegration() { return m_inputIntegration.get(); }
     float GetFPS() const { return m_fps; }
-    const std::vector<float>& GetFrameTimeData() const { return m_frameTimeData; }
+    
+    // Get frame time data for UI (returns pointer to circular buffer and count)
+    const float* GetFrameTimeData(size_t& outCount) const { 
+        outCount = m_frameTimeCount; 
+        return m_frameTimeBuffer.data(); 
+    }
     
     // Lighting configuration
     glm::vec3 GetLightPosition() const { return m_lightPos; }
@@ -337,7 +343,13 @@ private:
     float m_fpsUpdateTime;
     float m_fps;
     float m_frameTime;
-    std::vector<float> m_frameTimeData;
+    
+    // Circular buffer for frame time data (avoids vector erase overhead)
+    static constexpr size_t FRAME_TIME_BUFFER_SIZE = 100;
+    std::array<float, FRAME_TIME_BUFFER_SIZE> m_frameTimeBuffer;
+    size_t m_frameTimeIndex;
+    size_t m_frameTimeCount;
+    
     static constexpr float FPS_UPDATE_INTERVAL = 0.5f;
     std::unique_ptr<PerformanceRecorder> m_performanceRecorder;
     std::unique_ptr<RuntimeStateManager> m_stateManager;

@@ -24,6 +24,7 @@ MainWindow::MainWindow()
     , m_running(false)
     , m_lastTime(0)
     , m_cleanedUp(false)  // Initialize cleanup guard
+    , m_isVisible(true)   // Assume visible initially
 {
 }
 
@@ -255,11 +256,19 @@ void MainWindow::HandleWindowEvent(const SDL_WindowEvent& windowEvent) {
     break;
     
     case SDL_WINDOWEVENT_MINIMIZED:
-        // Could pause rendering here
+        m_isVisible = false;
+        std::cout << "[MainWindow] Window minimized, pausing rendering" << std::endl;
         break;
         
     case SDL_WINDOWEVENT_RESTORED:
-        // Resume rendering if paused
+    case SDL_WINDOWEVENT_SHOWN:
+        m_isVisible = true;
+        std::cout << "[MainWindow] Window restored/shown, resuming rendering" << std::endl;
+        break;
+        
+    case SDL_WINDOWEVENT_HIDDEN:
+        m_isVisible = false;
+        std::cout << "[MainWindow] Window hidden, pausing rendering" << std::endl;
         break;
     }
 }
@@ -273,22 +282,24 @@ void MainWindow::Run() {
         float deltaTime = (currentTime - m_lastTime) / 1000.0f;
         m_lastTime = currentTime;
 
-        // Process window events
+        // Always process window events
         ProcessEvents();
         
-        // Update and render through Core
+        // Skip rendering and update when window is not visible
+        if (!m_isVisible) {
+            // Still need to sleep briefly to avoid busy-waiting
+            SDL_Delay(10); // 10ms sleep when hidden
+            continue;
+        }
+        
+        // Update and render through Core only when visible
         if (m_core) {
             m_core->Update(deltaTime);
             m_core->Render(m_windowWidth, m_windowHeight);
         }
 
-        // Check if window is visible before swapping
-        Uint32 windowFlags = SDL_GetWindowFlags(m_window);
-        bool isVisible = !(windowFlags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN));
-        
-        if (isVisible) {
-            SDL_GL_SwapWindow(m_window);
-        }
+        // Swap buffers (already checking visibility, so always swap here)
+        SDL_GL_SwapWindow(m_window);
     }
     
     std::cout << "[MainWindow] Main loop ended" << std::endl;

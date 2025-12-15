@@ -38,6 +38,7 @@
     <ClCompile Include="src\Camera.cpp" />
     <ClCompile Include="src\ComponentManager.cpp" />
     <ClCompile Include="src\ComputeShader.cpp" />
+    <ClCompile Include="src\Contact.cpp" />
     <ClCompile Include="src\Core.cpp" />
     <ClCompile Include="src\DefaultTextures.cpp" />
     <ClCompile Include="src\DirectionalLight.cpp" />
@@ -84,6 +85,8 @@
     <ClCompile Include="src\passes\TAAPass.cpp" />
     <ClCompile Include="src\passes\TransparentForwardPass.cpp" />
     <ClCompile Include="src\PerformanceRecorder.cpp" />
+    <ClCompile Include="src\PhysicsBVH.cpp" />
+    <ClCompile Include="src\PhysicsCollision.cpp" />
     <ClCompile Include="src\PhysicsEngine.cpp" />
     <ClCompile Include="src\PointLight.cpp" />
     <ClCompile Include="src\RayCast.cpp" />
@@ -95,7 +98,6 @@
     <ClCompile Include="src\SceneLoader.cpp" />
     <ClCompile Include="src\SceneNode.cpp" />
     <ClCompile Include="src\ShadowMapper.cpp" />
-    <ClCompile Include="src\SimulationConfig.cpp" />
     <ClCompile Include="src\Skybox.cpp" />
     <ClCompile Include="src\SpotLight.cpp" />
     <ClCompile Include="src\StudioLighting.cpp" />
@@ -253,6 +255,8 @@
     <ClInclude Include="src\passes\TAAPass.h" />
     <ClInclude Include="src\passes\TransparentForwardPass.h" />
     <ClInclude Include="src\PerformanceRecorder.h" />
+    <ClInclude Include="src\PhysicsBVH.h" />
+    <ClInclude Include="src\PhysicsCollision.h" />
     <ClInclude Include="src\PhysicsEngine.h" />
     <ClInclude Include="src\PointLight.h" />
     <ClInclude Include="src\RayCast.h" />

@@ -16,6 +16,21 @@
   },
   "nodes": [
     {
+      "type": "light",
+      "name": "MainSun",
+      "position": [ 10.0, 20.0, 10.0 ],
+      "rotation": [ -45.0, 45.0, 0.0 ],
+      "light": {
+        "type": "directional",
+        "color": [ 1.0, 0.95, 0.8 ],
+        "intensity": 3.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.8
+      }
+    },
+    {
       "type": "model",
       "path": "models/plane.glb",
       "position": [ 0.0, 0.0, 0.0 ],
@@ -50,128 +65,6 @@
         "velocity_x": -1.0,
         "velocity_y": 0.0,
         "velocity_z": -0.5
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 2.0, 7.0, -2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 2.0, 9.2, -2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 2.0, 11.4, -2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/cube.glb",
-      "position": [ -6.0, 1.0, -3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "box",
-        "mass": 3.0,
-        "gravity": true,
-        "size": [ 1.0, 1.0, 1.0 ]
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/cube.glb",
-      "position": [ -6.0, 3.2, -3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "box",
-        "mass": 3.0,
-        "gravity": true,
-        "size": [ 1.0, 1.0, 1.0 ]
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/cube.glb",
-      "position": [ -6.0, 5.4, -3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "box",
-        "mass": 3.0,
-        "gravity": true,
-        "size": [ 1.0, 1.0, 1.0 ]
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/cube.glb",
-      "position": [ 5.0, 1.0, 3.0 ],
-      "scale": [ 1.5, 1.0, 1.5 ],
-      "collider": {
-        "type": "box",
-        "mass": 0.0,
-        "gravity": false,
-        "size": [ 1.5, 1.0, 1.5 ]
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 5.0, 4.0, 3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 1.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/cube.glb",
-      "position": [ 0.0, 1.0, -6.0 ],
-      "rotation": [ 0.0, 45.0, 15.0 ],
-      "scale": [ 2.0, 0.5, 2.0 ],
-      "collider": {
-        "type": "box",
-        "mass": 4.0,
-        "gravity": true,
-        "size": [ 2.0, 0.5, 2.0 ]
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 3.5, 3.5, -6.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true,
-        "velocity_x": -3.0
       }
     }
   ]

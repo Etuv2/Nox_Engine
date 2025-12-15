@@ -18,7 +18,11 @@
 
 using json = nlohmann::json;
 
-RuntimeStateManager::RuntimeStateManager() = default;
+RuntimeStateManager::RuntimeStateManager() 
+    : m_cachedNodeCount(0)
+    , m_nodeCountValid(false) 
+{}
+
 RuntimeStateManager::~RuntimeStateManager() = default;
 
 bool RuntimeStateManager::SaveState(const std::shared_ptr<SceneGraph>& sceneGraph,
@@ -39,6 +43,18 @@ bool RuntimeStateManager::SaveState(const std::shared_ptr<SceneGraph>& sceneGrap
 		stateJson["version"] = FORMAT_VERSION;
 		stateJson["timestamp"] = std::time(nullptr);
 		stateJson["scene_name"] = sceneGraph->GetSceneName();
+		
+		// FIXED: Store base scene file path for proper state loading
+		// This allows us to load the correct scene before applying state
+		if (!m_currentSceneFilePath.empty()) {
+			stateJson["base_scene_file"] = m_currentSceneFilePath;
+			std::cout << "[RuntimeStateManager] Saving state for scene: " << m_currentSceneFilePath << std::endl;
+		} else {
+			std::cerr << "[RuntimeStateManager] WARNING: No base scene file path set!" << std::endl;
+		}
+		
+		// Add scene validation hash (for detecting scene modifications)
+		stateJson["scene_node_count"] = CountSceneNodes(sceneGraph);
 
 		// Camera state
 		if (camera) {
@@ -173,9 +189,171 @@ bool RuntimeStateManager::QuickLoad(const std::shared_ptr<SceneGraph>& sceneGrap
 	return LoadState(sceneGraph, camera, m_quickSavePath);
 }
 
+// FIXED: Load state with automatic base scene loading and validation
+std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
+	const std::shared_ptr<Camera>& camera,
+	const std::string& filepath,
+	std::function<std::shared_ptr<SceneGraph>(const std::string&)> sceneLoaderCallback) {
+	
+	std::cout << "[RuntimeStateManager] Loading state with scene validation from: " << filepath << std::endl;
+	
+	try {
+		// Step 1: Read and validate state file
+		std::ifstream inFile(filepath);
+		if (!inFile.is_open()) {
+			std::cerr << "[RuntimeStateManager] ERROR: Failed to open state file: " << filepath << std::endl;
+			return nullptr;
+		}
+		
+		json stateJson;
+		inFile >> stateJson;
+		inFile.close();
+		
+		// Step 2: Validate format
+		std::string format = stateJson.value("format", "unknown");
+		std::string version = stateJson.value("version", "unknown");
+		
+		if (format != FORMAT_TYPE && format != "runtime_state") {
+			std::cerr << "[RuntimeStateManager] ERROR: Invalid format '" << format 
+			          << "', expected '" << FORMAT_TYPE << "'" << std::endl;
+			return nullptr;
+		}
+		
+		std::cout << "[RuntimeStateManager] State file format: " << format << " version: " << version << std::endl;
+		
+		// Step 3: Extract base scene file path
+		if (!stateJson.contains("base_scene_file")) {
+			std::cerr << "[RuntimeStateManager] ERROR: State file missing 'base_scene_file' field." << std::endl;
+			std::cerr << "[RuntimeStateManager] This state was saved with an older version and cannot be loaded safely." << std::endl;
+			return nullptr;
+		}
+		
+		std::string baseSceneFile = stateJson["base_scene_file"];
+		
+		// Validate base scene file path is not empty
+		if (baseSceneFile.empty()) {
+			std::cerr << "[RuntimeStateManager] ERROR: Base scene file path is empty!" << std::endl;
+			return nullptr;
+		}
+		
+		// Check if scene file exists
+		if (!std::filesystem::exists(baseSceneFile)) {
+			std::cerr << "[RuntimeStateManager] ERROR: Base scene file does not exist: " << baseSceneFile << std::endl;
+			std::cerr << "[RuntimeStateManager] Please ensure the scene file is in the correct location." << std::endl;
+			return nullptr;
+		}
+		
+		std::cout << "[RuntimeStateManager] State requires base scene: " << baseSceneFile << std::endl;
+		
+		// Step 4: Load the base scene using callback
+		if (!sceneLoaderCallback) {
+			std::cerr << "[RuntimeStateManager] ERROR: No scene loader callback provided!" << std::endl;
+			return nullptr;
+		}
+		
+		std::cout << "[RuntimeStateManager] Loading base scene: " << baseSceneFile << std::endl;
+		auto sceneGraph = sceneLoaderCallback(baseSceneFile);
+		
+		if (!sceneGraph || !sceneGraph->GetRoot()) {
+			std::cerr << "[RuntimeStateManager] ERROR: Failed to load base scene: " << baseSceneFile << std::endl;
+			return nullptr;
+		}
+		
+		std::cout << "[RuntimeStateManager] Base scene loaded successfully: " << sceneGraph->GetSceneName() << std::endl;
+		
+		// Step 5: Validate scene matches state expectations
+		int actualNodeCount = CountSceneNodes(sceneGraph);
+		int expectedNodeCount = stateJson.value("scene_node_count", -1);
+		
+		if (expectedNodeCount >= 0 && actualNodeCount != expectedNodeCount) {
+			std::cerr << "[RuntimeStateManager] WARNING: Scene node count mismatch!" << std::endl;
+			std::cerr << "[RuntimeStateManager]   Expected: " << expectedNodeCount << " nodes" << std::endl;
+			std::cerr << "[RuntimeStateManager]   Actual:   " << actualNodeCount << " nodes" << std::endl;
+			std::cerr << "[RuntimeStateManager] The scene may have been modified since this state was saved." << std::endl;
+			std::cerr << "[RuntimeStateManager] Proceeding with caution..." << std::endl;
+		} else {
+			std::cout << "[RuntimeStateManager] Scene validation passed: " << actualNodeCount << " nodes" << std::endl;
+		}
+		
+		// Step 6: Apply state to the loaded scene
+		std::cout << "[RuntimeStateManager] Applying saved state to loaded scene..." << std::endl;
+		
+		// Restore in deterministic order (same as LoadState):
+		
+		// 1. Environment settings
+		if (stateJson.contains("environment")) {
+			RestoreEnvironment(stateJson["environment"], sceneGraph);
+		} else {
+			// Legacy format support
+			if (stateJson.contains("exposure")) {
+				sceneGraph->m_exposure = stateJson["exposure"];
+			}
+			if (stateJson.contains("gamma")) {
+				sceneGraph->m_gamma = stateJson["gamma"];
+			}
+		}
+		
+		// 2. Camera
+		if (camera && stateJson.contains("camera")) {
+			RestoreCamera(stateJson["camera"], camera);
+		}
+		
+		// 3. Skybox
+		if (stateJson.contains("skybox")) {
+			RestoreSkybox(stateJson["skybox"], sceneGraph);
+		}
+		
+		// 4. All nodes with their state
+		if (stateJson.contains("nodes") && stateJson["nodes"].is_array()) {
+			auto root = sceneGraph->GetRoot();
+			RestoreNodesRecursive(stateJson["nodes"], root->children, sceneGraph);
+		}
+		
+		std::cout << "[RuntimeStateManager] State applied successfully to scene: " << baseSceneFile << std::endl;
+		
+		// Update current scene file path for future saves
+		m_currentSceneFilePath = baseSceneFile;
+		m_nodeCountValid = false; // Invalidate cache after loading new state
+		
+		return sceneGraph;
+		
+	} catch (const std::exception& e) {
+		std::cerr << "[RuntimeStateManager] ERROR during state load: " << e.what() << std::endl;
+		return nullptr;
+	}
+}
+
 // ============================================================================
 // Serialization Helpers
 // ============================================================================
+
+int RuntimeStateManager::CountSceneNodes(const std::shared_ptr<SceneGraph>& sceneGraph) const {
+	if (!sceneGraph || !sceneGraph->GetRoot()) return 0;
+	
+	// Use cached value if valid
+	if (m_nodeCountValid) {
+		return m_cachedNodeCount;
+	}
+	
+	int count = 0;
+	std::function<void(const std::shared_ptr<SceneNode>&)> countRecursive =
+		[&](const std::shared_ptr<SceneNode>& node) {
+			if (!node) return;
+			count++;
+			for (const auto& child : node->children) {
+				countRecursive(child);
+			}
+		};
+	for (const auto& child : sceneGraph->GetRoot()->children) {
+		countRecursive(child);
+	}
+	
+	// Cache the result
+	m_cachedNodeCount = count;
+	m_nodeCountValid = true;
+	
+	return count;
+}
 
 json RuntimeStateManager::SerializeCamera(const std::shared_ptr<Camera>& camera) {
 	json cameraJson;

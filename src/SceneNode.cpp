@@ -3,6 +3,7 @@
 #include "RigidBody.h"
 #include "SceneGraph.h"
 #include "AudioNode.h"
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -340,16 +341,39 @@ void SceneNode::SyncPhysicsFromTransform() {
 
 	m_updatingFromPhysics = true;
 
+	// CRITICAL FIX: Get WORLD position and orientation, not local
+	// Physics bodies operate in world space, so we need world transform
+	glm::mat4 worldTransform = GetWorldPosition4x4();
+	
 	glm::vec3 scale, translation, skew;
 	glm::vec4 perspective;
 	glm::quat rotation;
-	glm::decompose(transform, scale, rotation, translation, skew, perspective);
+	glm::decompose(worldTransform, scale, rotation, translation, skew, perspective);
 
+	// Update physics body position and orientation (in world space)
 	m_rigidbody->setPosition(translation);
 	m_rigidbody->setOrientation(rotation);
-	m_rigidbody->setVelocity(glm::vec3(0.0f));
-	m_rigidbody->setAngularVelocity(glm::vec3(0.0f));
+	
+	// CRITICAL FIX: Only handle kinematic bodies and already-grabbed bodies
+	// Do NOT auto-grab dynamic bodies - gizmo code should explicitly manage grab state
+	if (m_rigidbody->IsKinematic()) {
+		// Kinematic body - set target position
+		m_rigidbody->setKinematicTarget(translation, rotation);
+	} else if (m_rigidbody->isGizmoGrabbed()) {
+		// Already grabbed by gizmo - update kinematic target
+		m_rigidbody->setKinematicTarget(translation, rotation);
+	}
+	
+	// Update AABB
+	m_rigidbody->computeAABB();
+	
+	// Update previous state to prevent interpolation artifacts
 	m_rigidbody->storePreviousState();
+	
+	// Wake up kinematic and grabbed bodies, but NOT dynamic bodies at rest
+	if (m_rigidbody->IsKinematic() || m_rigidbody->isGizmoGrabbed()) {
+		m_rigidbody->wakeUp();
+	}
 
 	m_updatingFromPhysics = false;
 }
@@ -357,6 +381,17 @@ void SceneNode::SyncPhysicsFromTransform() {
 void SceneNode::InvalidateTransformCache() {
 	m_worldTransformValid = false;
 	m_transformCacheDirty = true;
+	
+	// CRITICAL FIX: Also mark ECS transform as dirty
+	// This ensures the ECS TransformSystem processes the change
+	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
+		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+		if (currentManager) {
+			if (TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
+				ecsTransform->isDirty = true;
+			}
+		}
+	}
 }
 
 // ============== TRANSFORM SYNCHRONIZATION ==============
@@ -371,7 +406,8 @@ void SceneNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
 
 void SceneNode::Shutdown() {
 	if (m_nodeType == MODEL && m_rigidbody) {
-		m_rigidbody->DetachNode();
+		// Clear node attachment (RigidBody uses weak_ptr so this is safe)
+		m_rigidbody->AttachNode(nullptr);
 		m_rigidbody.reset();
 	}
 

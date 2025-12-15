@@ -16,6 +16,7 @@ class SceneGraph;
 class SceneNode;
 class Renderer;
 class ModularRenderer;
+class PhysicsEngine;
 
 // ImGui window includes
 #include "BaseWindow.h"
@@ -43,7 +44,7 @@ public:
     void Render(int windowWidth, int windowHeight, float fps,
                 const std::string& sceneName, glm::vec3 lightPos, glm::vec3 lightDir);
 
-    // New: render 3D gizmo overlay (called from ImGuiInterface after windows)
+    //render 3D gizmo overlay (called from ImGuiInterface after windows)
     void RenderGizmoOverlay(int windowWidth, int windowHeight);
 
     void ProcessKeyboardInput();
@@ -55,13 +56,16 @@ public:
     void SetRenderer(const std::shared_ptr<Renderer>& renderer);
     void SetModularRenderer(const std::shared_ptr<ModularRenderer>& renderer);
     void SetSelectedNode(const std::shared_ptr<SceneNode>& node);
-    void SetFrameTimeData(const std::vector<float>& data);
+    void SetFrameTimeData(const float* data, size_t count);
+    
+    // Physics engine for gizmo interaction
+    void SetPhysicsEngine(const std::shared_ptr<class PhysicsEngine>& physicsEngine);
 
     // Scene management
     void SetSceneSwapCallback(const std::function<void(const std::string&)>& callback);
     void SetSceneList(const std::vector<std::string>& scenes);
 
-    // NEW: Scene saving
+    //Scene saving
     void SetSceneSaveCallback(const std::function<void()>& callback);
 
     // State export and performance recording
@@ -131,6 +135,7 @@ private:
     std::shared_ptr<SceneGraph> m_sceneGraph;
     std::shared_ptr<Renderer> m_renderer;
     std::shared_ptr<SceneNode> m_selectedNode;
+    std::weak_ptr<class PhysicsEngine> m_physicsEngine;  // For gizmo manipulation
 
     // Gizmo state (logic only – rendering done in MainWindow)
     bool m_gizmoVisible = true;
@@ -141,10 +146,14 @@ private:
     float m_translateSnap = 0.5f;
     float m_rotateSnap = 15.0f;
     float m_scaleSnap = 0.1f;
+    
+    // Track gizmo manipulation state to detect when manipulation ends
+    bool m_wasManipulatingGizmo = false;
+    std::weak_ptr<SceneNode> m_lastManipulatedNode;
 
     // Scene management
     std::function<void(const std::string&)> m_sceneSwapCallback;
-    std::function<void()> m_sceneSaveCallback; // NEW: Scene save callback
+    std::function<void()> m_sceneSaveCallback; //Scene save callback
 
     // Cached dimensions
     int m_windowWidth = 1920;

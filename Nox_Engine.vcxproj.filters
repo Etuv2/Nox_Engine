@@ -195,9 +195,6 @@
     <ClCompile Include="src\SceneNode.cpp">
       <Filter>Source Files\scripts\Nodes</Filter>
     </ClCompile>
-    <ClCompile Include="src\RigidBody.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
-    </ClCompile>
     <ClCompile Include="src\Animation.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
@@ -240,17 +237,11 @@
     <ClCompile Include="src\SceneLoader.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="src\SimulationConfig.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
-    </ClCompile>
     <ClCompile Include="src\Texture.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\GuiNode.cpp">
       <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PhysicsEngine.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
     </ClCompile>
     <ClCompile Include="src\BaseLight.cpp">
       <Filter>Source Files\scripts\Lighting</Filter>
@@ -363,16 +354,7 @@
     <ClCompile Include="src\BVHBuilder.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="src\ComponentManager.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\TransformSystem.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
     <ClCompile Include="src\AnimationSystem.cpp">
-      <Filter>Source Files\scripts\Engine\ECS</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\DebugBBoxPass.cpp">
       <Filter>Source Files\scripts\Engine\ECS</Filter>
     </ClCompile>
     <ClCompile Include="src\HierarchySystem.cpp">
@@ -398,6 +380,30 @@
     </ClCompile>
     <ClCompile Include="src\Core.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RigidBody.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Contact.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsCollision.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsBVH.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TransformSystem.cpp">
+      <Filter>Source Files\scripts\Engine\ECS</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ComponentManager.cpp">
+      <Filter>Source Files\scripts\Engine\ECS</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\DebugBBoxPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -667,9 +673,6 @@
     <ClInclude Include="src\DirectionalLight.h">
       <Filter>Header Files\Lighting</Filter>
     </ClInclude>
-    <ClInclude Include="src\RigidBody.h">
-      <Filter>Header Files\Physics</Filter>
-    </ClInclude>
     <ClInclude Include="src\MeshComponent.h">
       <Filter>Header Files\Mesh</Filter>
     </ClInclude>
@@ -738,12 +741,6 @@
     </ClInclude>
     <ClInclude Include="src\ScreenQuad.h">
       <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\PhysicsEngine.h">
-      <Filter>Header Files\Physics</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SimulationConfig.h">
-      <Filter>Header Files\Physics</Filter>
     </ClInclude>
     <ClInclude Include="src\Collider.h">
       <Filter>Header Files\Physics\Colliders</Filter>
@@ -926,6 +923,21 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SimulationConfig.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RigidBody.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PhysicsCollision.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PhysicsBVH.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PhysicsEngine.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

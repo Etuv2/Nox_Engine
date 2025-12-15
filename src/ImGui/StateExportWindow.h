@@ -62,4 +62,7 @@ private:
     char m_loadStateFilepath[256] = "snapshots/scene_state.json";
     char m_exportCSVFilepath[256] = "performance_data.csv";
     char m_exportJSONFilepath[256] = "performance_data.json";
+    
+    // Helper to read state file info
+    std::string GetStateFileInfo(const std::string& filepath);
 };
