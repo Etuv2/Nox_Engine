@@ -147,7 +147,7 @@ void InputIntegration::SetupInputContexts() {
     m_inputManager->PushContext("editor");
     m_inputManager->PushContext("lighting");
     m_inputManager->PushContext("animation");
-    m_inputManager->PushContext("gamepad"); // CRITICAL: Add gamepad context to active stack!
+    m_inputManager->PushContext("gamepad"); // Add gamepad context to active stack!
     
     std::cout << "[InputIntegration] All contexts activated" << std::endl;
 }

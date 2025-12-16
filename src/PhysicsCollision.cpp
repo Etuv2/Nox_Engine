@@ -165,7 +165,7 @@ bool SphereBox(const std::shared_ptr<RigidBody>& sphere,
     glm::vec3 diff = closestPoint - spherePos;
     float distSq = glm::dot(diff, diff);
     
-    // CRITICAL FIX: Use detection threshold for resting contacts
+    // Use detection threshold for resting contacts
     const float detectionThreshold = 0.005f;
     float radiusWithThreshold = radius + detectionThreshold;
     
@@ -191,7 +191,7 @@ bool SphereBox(const std::shared_ptr<RigidBody>& sphere,
         // Contact point is on the sphere surface, in the direction of the box
         cp.point = spherePos + manifold.normal * radius;
         
-        // CRITICAL FIX: True penetration depth (positive when overlapping)
+        // True penetration depth (positive when overlapping)
         cp.penetration = radius - dist;
     } else {
         // Deep penetration - sphere center inside box
@@ -206,7 +206,7 @@ bool SphereBox(const std::shared_ptr<RigidBody>& sphere,
         if (penetrations.y < minPen) { minPen = penetrations.y; minAxis = 1; }
         if (penetrations.z < minPen) { minPen = penetrations.z; minAxis = 2; }
         
-        // CRITICAL FIX: Normal points from sphere toward box face (A to B)
+        // Normal points from sphere toward box face (A to B)
         // If sphere is at positive local X, normal should point toward +X face
         glm::vec3 localNormal(0.0f);
         localNormal[minAxis] = (localPos[minAxis] >= 0.0f) ? 1.0f : -1.0f;
@@ -224,7 +224,7 @@ bool SphereBox(const std::shared_ptr<RigidBody>& sphere,
     
     manifold.computeTangentBasis();
     
-    // CRITICAL FIX: Store local points correctly for warm starting
+    // Store local points correctly for warm starting
     // localPointA is contact point in sphere's local space
     // localPointB is contact point in box's local space
     cp.localPointA = sphere->worldToLocal(cp.point);
@@ -245,7 +245,7 @@ bool SpherePlane(const std::shared_ptr<RigidBody>& sphere,
     // signedDist = distance from sphere center to plane (positive = above plane)
     float signedDist = SignedDistanceToPlane(spherePos, planeNormal, planeDistance);
     
-    // CRITICAL FIX: Use small detection threshold but don't inflate penetration
+    // Use small detection threshold but don't inflate penetration
     const float detectionThreshold = 0.005f;
     
     // Generate contact if sphere surface is at or below plane + threshold
@@ -266,7 +266,7 @@ bool SpherePlane(const std::shared_ptr<RigidBody>& sphere,
     
     ContactPoint& cp = manifold.points[0];
     
-    // CRITICAL FIX: Penetration is the actual distance the sphere surface is below the plane
+    // Penetration is the actual distance the sphere surface is below the plane
     // If signedDist = radius, sphere is exactly touching -> penetration = 0
     // If signedDist < radius, sphere is penetrating -> penetration > 0
     cp.penetration = radius - signedDist;  // True penetration depth
@@ -491,7 +491,7 @@ bool BoxPlane(const std::shared_ptr<RigidBody>& box,
         }
     }
     
-    // CRITICAL FIX: Use detection threshold for contact generation
+    // Use detection threshold for contact generation
     // but DON'T add it to penetration depth
     // Positive dist = above plane, negative dist = below plane (penetrating)
     const float detectionThreshold = 0.005f;  // Detect contacts slightly before penetration
@@ -517,7 +517,7 @@ bool BoxPlane(const std::shared_ptr<RigidBody>& box,
             // Contact point is the box corner
             cp.point = corners[i];
             
-            // CRITICAL FIX: Penetration is the actual distance below the plane
+            // Penetration is the actual distance below the plane
             // Negative dist means below plane, so penetration = -dist
             // If dist is positive (above plane), penetration is 0 or negative
             cp.penetration = -dist;  // True penetration depth (positive when below plane)

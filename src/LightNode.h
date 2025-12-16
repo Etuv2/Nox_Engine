@@ -61,7 +61,7 @@ public:
     void SetPosition(const glm::vec3& position);
     void SetRotation(const glm::vec3& axis, float angle);
     void SetScale(const glm::vec3& scale);
-    void SetTransform(const glm::mat4& transform); // CRITICAL: Sync with light when transform changes
+    void SetTransform(const glm::mat4& transform); // Sync with light when transform changes
     glm::vec3 GetPosition() const;
 
     // Scene graph integration

@@ -2,14 +2,14 @@
 
 ![NOX Engine](images/logo.png)
 
-A modern, high-performance OpenGL 4.5+ rendering engine with advanced features for real-time 3D graphics, physics simulation, and interactive scene editing.
+A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphics, physics simulation, and interactive scene editing.
 
 ---
 
 ## Features
 
-### Advanced Rendering
-- **Deferred Rendering Pipeline**: Efficient multi-light rendering with advanced shading
+### Interesting Rendering
+- **Deferred Rendering Pipeline**: Efficient multi-light rendering with interesting shading
 - **Path Tracing Mode**: BVH-accelerated bidirectional path tracing with temporal accumulation
   - Real-time physically accurate rendering
   - Converges over time when camera is still
@@ -32,7 +32,7 @@ A modern, high-performance OpenGL 4.5+ rendering engine with advanced features f
 - **Light Manager**: Efficient collection and management of scene lights
 - **Configurable Light Properties**: Color, intensity, attenuation, and shadow parameters
 - **Next Event Estimation (NEE)**: Direct lighting optimization for path tracing
-- **Multiple Importance Sampling (MIS)**: Advanced variance reduction for ray tracing
+- **Multiple Importance Sampling (MIS)**: interesting variance reduction for ray tracing
 - **Image-Based Lighting (IBL)**: Environment map sampling for realistic reflections
 
 ### Physics Engine
@@ -102,28 +102,6 @@ A modern, high-performance OpenGL 4.5+ rendering engine with advanced features f
 - nlohmann JSON (JSON for Modern C++)
 - tinyglTF (glTF 2.0 loader)
 
-### Building from Source
-
-#### Prerequisites
-1. Install Visual Studio 2022 or later with C++17 support
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/Nox_Engine.git
-   cd Nox_Engine
-   ```
-
-#### Build Steps
-1. Open `Nox_Engine.sln` in Visual Studio
-2. Set the build configuration to `Release` or `Debug`
-3. Build the solution (Ctrl+Shift+B)
-4. Run the executable from `bin/` directory
-
-### First Run
-1. Ensure `config.json` is in the application root directory
-2. The engine will load the default scene specified in config.json
-3. Use the Help Window (F12) to learn keyboard controls
-
----
 
 ## Usage Guide
 
@@ -357,7 +335,7 @@ Nox_Engine/
 ## Path Tracing System
 
 ### Overview
-NOX Engine features a high-performance path tracing renderer with BVH acceleration and advanced denoising. Path tracing provides physically accurate global illumination and reflections, converging to photorealistic quality over multiple frames.
+NOX Engine features a high-performance path tracing renderer with BVH acceleration and interesting denoising. Path tracing provides physically accurate global illumination and reflections, converging to photorealistic quality over multiple frames.
 
 ### Path Tracing Features
 - **BVH-Accelerated Raytracing**: Rapid rayTraversal using hierarchical bounding volumes

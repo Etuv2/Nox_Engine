@@ -30,8 +30,8 @@ struct SimulationConfig {
     int velocityIterations = 10;               // Velocity constraint solver iterations
     int positionIterations = 4;                // Position correction iterations
     float baumgarteFactor = 0.2f;              // Positional correction factor (0.1-0.3 typical)
-    float allowedPenetration = 0.005f;         // CRITICAL FIX: Tighter slop (was 0.01)
-    float restitutionThreshold = 0.5f;         // CRITICAL FIX: Lower threshold (was 1.0)
+    float allowedPenetration = 0.005f;         // Tighter slop (was 0.01)
+    float restitutionThreshold = 0.5f;         // Lower threshold (was 1.0)
     
     // Contact parameters
     float contactBreakingThreshold = 0.02f;    // Distance for contact point invalidation
@@ -40,15 +40,15 @@ struct SimulationConfig {
     
     // Sleep parameters
     bool enableSleeping = true;
-    float sleepLinearThreshold = 0.05f;        // CRITICAL FIX: Tighter threshold (was 0.1)
-    float sleepAngularThreshold = 0.05f;       // CRITICAL FIX: Tighter threshold (was 0.1)
+    float sleepLinearThreshold = 0.05f;        // Tighter threshold (was 0.1)
+    float sleepAngularThreshold = 0.05f;       // Tighter threshold (was 0.1)
     float sleepTimeThreshold = 0.5f;           // Time below threshold before sleep
     
     // Damping defaults
-    float defaultLinearDamping = 0.01f;        // CRITICAL FIX: Add small damping (was 0.0)
+    float defaultLinearDamping = 0.01f;        // Add small damping (was 0.0)
     float defaultAngularDamping = 0.05f;
     float defaultFriction = 0.5f;
-    float defaultRestitution = 0.0f;           // CRITICAL FIX: No bounce by default (was 0.3)
+    float defaultRestitution = 0.0f;           // No bounce by default (was 0.3)
     
     // BVH/Broadphase parameters
     float fatAABBMargin = 0.1f;                // Fat AABB expansion margin

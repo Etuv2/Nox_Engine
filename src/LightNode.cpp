@@ -469,7 +469,7 @@ void LightNode::SetTransform(const glm::mat4& newTransform)
     // Update the base transform
     transform = newTransform;
     m_transformDirty = true;
-    m_lightDirty = true; // CRITICAL: Mark light as dirty to trigger sync
+    m_lightDirty = true; // Mark light as dirty to trigger sync
     
     // Force immediate light update when gizmo manipulates the node
     if (m_light) {
@@ -496,7 +496,7 @@ void LightNode::SetTransform(const glm::mat4& newTransform)
             m_light->SetDirection(glm::normalize(newDirection));
         }
         
-        // CRITICAL: Force an immediate UpdateLightFromTransform call
+        // Force an immediate UpdateLightFromTransform call
         UpdateLightFromTransform(true); // Force update
         
         // Update selection proxy to reflect new position

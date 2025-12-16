@@ -45,10 +45,10 @@ enum class TextureTarget {
  */
 class Texture {
 public:
-	// === Builder Pattern for Flexible Texture Creation ===
+	// Builder Pattern for Flexible Texture Creation
 	class Builder;
 
-	// === Constructors ===
+	// Constructors
 	Texture();
 
 	// Load from file (2D texture)
@@ -74,11 +74,11 @@ public:
 	Texture(Texture&& other) noexcept;
 	Texture& operator=(Texture&& other) noexcept;
 
-	// === Binding and Usage ===
+	// Binding and Usage
 	void Bind(GLenum unit) const;
 	void Unbind() const;
 
-	// === Parameter Configuration ===
+	// Parameter Configuration
 	void SetParameters(GLint wrapS, GLint wrapT,
 		GLint minFilter, GLint magFilter);
 	void SetWrapMode(GLint wrapS, GLint wrapT, GLint wrapR = GL_REPEAT);
@@ -86,18 +86,18 @@ public:
 	void SetBorderColor(const glm::vec4& color);
 	void SetCompareMode(GLenum mode, GLenum func);
 
-	// === Mipmap Management ===
+	// Mipmap Management
 	void GenerateMipmaps();
 	void SetMipmapRange(GLint baseLevel, GLint maxLevel);
 
-	// === Data Upload ===
+	// Data Upload
 	void Upload2D(GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
 		GLenum format, GLenum type, const void* data);
 	void Upload3D(GLint level, GLint xoffset, GLint yoffset, GLint zoffset,
 		GLsizei width, GLsizei height, GLsizei depth,
 		GLenum format, GLenum type, const void* data);
 
-	// === Getters ===
+	// Getters
 	GLuint ID() const { return id_; }
 	TextureType Type() const { return type_; }
 	TextureTarget Target() const { return target_; }
@@ -109,7 +109,7 @@ public:
 	GLenum DataType() const { return dataType_; }
 	bool HasMipmaps() const { return hasMipmaps_; }
 
-	// === Utility ===
+	// Utility
 	bool IsValid() const { return glIsTexture(id_) == GL_TRUE; }
 	void Resize(int width, int height, int depth = 1);
 	void Clear(const glm::vec4& color = glm::vec4(0.0f));
@@ -204,7 +204,7 @@ private:
 
 using TexturePtr = std::shared_ptr<Texture>;
 
-// === Factory Functions for Common Texture Types ===
+// Factory Functions for Common Texture Types
 namespace TextureFactory {
 	// Create a standard 2D texture from file
 	TexturePtr FromFile(const std::string& path, bool srgb = false, bool mipmaps = true);

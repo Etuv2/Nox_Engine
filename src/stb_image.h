@@ -4707,7 +4707,7 @@ static int stbi__create_png_image_raw(stbi__png *a, stbi_uc *raw, stbi__uint32 r
          filter_bytes = 1;
          width = img_width_bytes;
       }
-      prior = cur - stride; // bugfix: need to compute this after 'cur +=' computation above
+      prior = cur - stride; // bugneed to compute this after 'cur +=' computation above
 
       // if first row, use special filter that doesn't sample previous row
       if (j == 0) filter = first_row_filter[filter];

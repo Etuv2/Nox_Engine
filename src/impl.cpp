@@ -16,6 +16,5 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
-#define IMGUI_DEFINE_MATH_OPERATORS
 #include "IMGUI/imgui.h"
 #include "IMGUI/ImGuizmo.h"

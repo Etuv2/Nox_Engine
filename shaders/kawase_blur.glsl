@@ -9,7 +9,7 @@ uniform int pass;
 
 void main()
 {
-    // Improved Kawase blur with proper offset and weights
+    // Kawase blur with offset and weights
     // Each pass increases the blur radius progressively
     float offset = 0.5 + float(pass) * 0.5;
     vec2 pixelOffset = texelSize * offset;

@@ -1,4 +1,4 @@
-﻿// FrameBuffer.cpp
+// FrameBuffer.cpp
 #include "FrameBuffer.h"
 #include <iostream>
 
@@ -170,7 +170,7 @@ void FrameBuffer::Init() {
 			glTexImage2D(GL_TEXTURE_2D, 0, ifmt, width, height, 0, fmt, type, nullptr);
 
 			// Filtering and wrapping
-			// CRITICAL: Integer textures MUST use NEAREST filtering (not LINEAR)
+			// Integer textures MUST use NEAREST filtering (not LINEAR)
 			if (ifmt >= GL_R8UI && ifmt <= GL_RGBA32UI) {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -330,7 +330,7 @@ void FrameBuffer::Resize(int newW, int newH) {
 		glTexImage2D(GL_TEXTURE_2D, 0, ifmt, width, height, 0, fmt, type, nullptr);
 	}
 
-	// Resize depth‐as‐2D‐array if present
+	// Resize depth-as-2D-array if present
 	if (useDepthAsTextureArray && depthArrayID) {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, depthArrayID);
 		GLenum dfmt = useStencil ? GL_DEPTH24_STENCIL8 : internalDepthFormat;
@@ -338,7 +338,7 @@ void FrameBuffer::Resize(int newW, int newH) {
 		SelectDepthExternalFormatAndType(dfmt, useStencil, dataFmt, dataType);
 		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, dfmt, width, height, arrayLayers, 0, dataFmt, dataType, nullptr);
 	}
-	// Resize depth‐as‐2D‐texture if present
+	// Resize depth-as-2D-texture if present
 	else if (useDepthAsTexture && depthTextureID) {
 		glBindTexture(GL_TEXTURE_2D, depthTextureID);
 		GLenum dfmt = useStencil ? GL_DEPTH24_STENCIL8 : internalDepthFormat;

@@ -441,7 +441,7 @@ void GuiNode::RenderText(const GuiElement& e) const {
         e.color.b / 255.0f,
         e.color.a / 255.0f
     );
-    drawQuad(tex, e.x, e.y, converted->w, converted->h, tint);
+    drawQuad(tex, e.x, e.y, static_cast<float>(converted->w), static_cast<float>(converted->h), tint);
 
     glDeleteTextures(1, &tex);
     SDL_FreeSurface(converted);
@@ -495,7 +495,7 @@ void GuiNode::RenderProgressBar(const GuiElement& e) const {
                 float labelY = e.y + (e.height - converted->h) * 0.5f;
                 
                 glm::vec4 tint(1.0f, 1.0f, 1.0f, 1.0f);
-                drawQuad(tex, labelX, labelY, converted->w, converted->h, tint);
+                drawQuad(tex, labelX, labelY, static_cast<float>(converted->w), static_cast<float>(converted->h), tint);
                 
                 glDeleteTextures(1, &tex);
                 SDL_FreeSurface(converted);

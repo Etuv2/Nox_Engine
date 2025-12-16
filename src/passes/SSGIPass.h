@@ -5,7 +5,7 @@
 #include <memory>
 
 class ComputeShader;
-class RenderContext;
+struct RenderContext;
 class SceneGraph;
 class Camera;
 class DirectionalLight;

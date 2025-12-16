@@ -91,7 +91,7 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
     // Bind & dispatch
     glUseProgram(m_cs->GetProgramID());
 
-    // CRITICAL FIX: Bind depth texture with proper sampler uniform (binding=0)
+    // Bind depth texture with proper sampler uniform (binding=0)
     GLuint depthTex = ctx.gbufferFBO->GetDepthTexture();
   glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, depthTex);

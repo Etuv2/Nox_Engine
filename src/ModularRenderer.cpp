@@ -89,7 +89,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 
 bool ModularRenderer::InitializeSharedResources()
 {
-	// CRITICAL: Enable seamless cubemap sampling for IBL
+	// Enable seamless cubemap sampling for IBL
 	// This must be enabled before any cubemap is created or sampled
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 

@@ -156,7 +156,7 @@ void ContactManifold::warmStart(float warmStartFactor) {
         float tangent1Impulse = cp.tangentImpulseAccum1 * warmStartFactor;
         float tangent2Impulse = cp.tangentImpulseAccum2 * warmStartFactor;
         
-        // CRITICAL FIX: Validate impulse magnitude to prevent explosion
+        // Validate impulse magnitude to prevent explosion
         // Large cached impulses can cause instability after scene changes
         float maxImpulse = 100.0f; // Reasonable max impulse
         normalImpulse = glm::clamp(normalImpulse, 0.0f, maxImpulse);

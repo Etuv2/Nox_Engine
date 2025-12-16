@@ -51,7 +51,7 @@
  * - Materials with hasAlpha flag set
  * - Materials with alpha in baseColorFactor
  * 
- * Critical: This pass does NOT clear or rebind framebuffers. It operates on the
+ * This pass does NOT clear or rebind framebuffers. It operates on the
  * existing HDR FBO content with depth buffer from previous passes.
  * 
  * Note: Requires valid IBL textures from skybox for realistic reflections.

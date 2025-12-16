@@ -102,7 +102,7 @@ public:
     
     // ============== POSITION & ORIENTATION ==============
     
-    // CRITICAL: Transform writes must respect ownership rules
+    // Transform writes must respect ownership rules
     // setPosition/setOrientation can only be called by the owner
     // Physics: during solver and integration
     // Scene: during kinematic setup or scene sync
@@ -228,7 +228,7 @@ public:
      * @return True if write is permitted
      */
     bool ValidateTransformOwnership(TransformOwner requester) const {
-        // CRITICAL: Enforce strict ownership
+        // Enforce strict ownership
         // Physics can only write if it owns the body
         if (requester == TransformOwner::PHYSICS && !isPhysicsOwned()) {
             return false;

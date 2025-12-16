@@ -8,6 +8,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
+#pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
+
 TAAPass::TAAPass() {}
 
 TAAPass::~TAAPass() {

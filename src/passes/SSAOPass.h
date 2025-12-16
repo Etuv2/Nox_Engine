@@ -27,7 +27,7 @@ public:
                  const std::shared_ptr<DirectionalLight>& dirLight,
                  const std::shared_ptr<Skybox>& skybox) override;
 
-    // CRITICAL: Provide SSAO result texture for LightingPass
+    // Provide SSAO result texture for LightingPass
     GLuint GetSSAOTexture() const;
 
 private:

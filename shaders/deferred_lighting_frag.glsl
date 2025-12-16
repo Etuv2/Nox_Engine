@@ -89,6 +89,7 @@ const vec3 DIELECTRIC_F0 = vec3(0.04); // Standard dielectric baseline F0
 const float INV_PI = 0.31830988618; // 1/PI
 
 // Octahedral normal decoding - input is [0,1] from RGBA8 texture
+// https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
 vec3 DecodeNormalOct8(vec2 e) {
     // Remap from [0,1] to [-1,1]
     e = e * 2.0 - 1.0;
@@ -143,7 +144,7 @@ float SpecularOcclusion(float NdotV, float ao, float roughness) {
 	return clamp(pow(NdotV + ao, aoInfluence) - 1.0 + ao, 0.0, 1.0);
 }
 
-// Microfacet BRDF functions
+// Microfacet BRDF functions : GGX / Trowbridge-Reitz
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
 	float a = roughness * roughness;
 	float a2 = a * a;
@@ -166,6 +167,7 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 	return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
 }
 
+// Fresnel Schlick approximation
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
@@ -173,7 +175,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 bool inUnitCube(vec3 p) {
 	return all(greaterThanEqual(p, vec3(0.0))) && all(lessThanEqual(p, vec3(1.0)));
 }
-
+// Adaptive shadow bias calculation
 float CalculateAdaptiveShadowBias(vec3 N, vec3 Ld, int cascadeIndex, float depthComp, float distance) {
 	float NdotL = max(dot(N, -Ld), 0.0);
 	float slopeFactor = sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.01);
@@ -220,7 +222,7 @@ float SampleShadowArray(int layer, vec3 projCoords, float bias) {
 	
 	return sum / float(count);
 }
-
+// Cascaded shadow mapping with blending between cascades
 float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 N, vec3 lightDir) {
 	vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
 	float viewDepth = -viewSpacePos.z;
@@ -279,7 +281,7 @@ float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 
 	
 	return shadowSamples[0];
 }
-
+// Point light shadow mapping using cube map slices
 float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightPos) {
 	vec3 toLight = worldPos - lightPos;
 	float distance = length(toLight);
@@ -321,7 +323,7 @@ float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightP
 	
 	return shadow;
 }
-
+// Compute shadowing for a given light source
 float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 worldPos, vec3 N, vec3 lightDir, vec3 lightPos) {
 	if (sliceCount <= 0 || startSlice < 0) return 1.0;
 
@@ -616,7 +618,7 @@ void main() {
 	// Material routing allows different BRDF models per surface
 	if (materialID == 2u) {
 		// Transmissive/Glass material (ID 2)
-		// TODO: Implement refraction and transmission in future update
+		// TODO: Implement refraction and transmission in future update(s)
 		// For now, use standard PBR with high specular
 		roughness = min(roughness, 0.1); // Force smooth for glass-like appearance
 	}

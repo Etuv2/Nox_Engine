@@ -135,7 +135,7 @@ private:
     std::shared_ptr<SceneGraph> m_sceneGraph;
     std::shared_ptr<Renderer> m_renderer;
     std::shared_ptr<SceneNode> m_selectedNode;
-    std::weak_ptr<class PhysicsEngine> m_physicsEngine;  // For gizmo manipulation
+    std::shared_ptr<class PhysicsEngine> m_physicsEngine;  // For gizmo manipulation - MUST be shared_ptr to keep engine alive
 
     // Gizmo state (logic only – rendering done in MainWindow)
     bool m_gizmoVisible = true;

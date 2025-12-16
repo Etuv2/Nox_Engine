@@ -24,12 +24,13 @@ layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 // Constants
 
-#define PI                    3.1415926535897932384626433832795
-#define INV_PI                0.31830988618379067154
-#define EPSILON               1e-4
-#define MAX_FLOAT             1e30
-#define MAX_BVH_STACK_SIZE    64
-#define MAX_RAY_BOUNCES       8
+const float PI = 3.141592653589793238462643383279; // not entirely sure why i went through the effort of putting all those digits
+const float TAU = 6.283185307179586476925286766558;
+const float INV_PI = 0.31830988618379067154;
+const float EPSILON = 1e-4;
+const float MAX_FLOAT = 1e30;
+const int MAX_BVH_STACK_SIZE = 64;
+const int MAX_RAY_BOUNCES = 8;
 
 
 /* Output image */
@@ -173,7 +174,7 @@ vec3 DecodeNormalOct8(vec2 oct);
 vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L);
 vec3 randomCosineDirection(vec3 normal);
 
-// Simple integer hash function for RNG seed initialization
+// Simple integer hash function for RNG seed initialization: Bob Jenkins' One-At-A-Time hashing algorithm.
 uint hash(uint x) {
 	x += (x << 10u);
 	x ^= (x >>  6u);
@@ -200,7 +201,7 @@ vec2 randomVec2() {
 // Sampling utilities
 vec3 randomInUnitSphere() {
 	float z = randomFloat() * 2.0 - 1.0;
-	float a = randomFloat() * 2.0 * PI;
+	float a = randomFloat() * TAU;
 	float r = sqrt(1.0 - z * z);
 	return vec3(r * cos(a), r * sin(a), z);
 }
@@ -209,7 +210,7 @@ vec3 randomInUnitSphere() {
 vec3 randomCosineDirection(vec3 normal) {
 	vec2 u = randomVec2();
 	float r = sqrt(u.x);
-	float theta = 2.0 * PI * u.y;
+	float theta = TAU * u.y;
 
 	vec3 b = (abs(normal.x) > abs(normal.y))
 		   ? vec3(normal.z, 0.0, -normal.x)
@@ -226,7 +227,7 @@ vec3 randomGGXDirection(vec3 N, vec3 V, float roughness) {
 	float alpha = roughness * roughness;
 	vec2  u     = randomVec2();
 
-	float phi      = 2.0 * PI * u.x;
+	float phi      = TAU * u.x;
 	float cosTheta = sqrt((1.0 - u.y) / (1.0 + (alpha * alpha - 1.0) * u.y));
 	float sinTheta = sqrt(max(1.0 - cosTheta * cosTheta, 0.0));
 
@@ -418,7 +419,7 @@ HitInfo traceBVHDebug(Ray ray, inout uint aabbIntersectCount, inout uint triInte
 	return hitInfo;
 }
 
-
+// PBR BRDF evaluation (Cook-Torrance)
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
 	float a = roughness * roughness;
 	float a2 = a * a;

@@ -381,21 +381,6 @@
     <ClCompile Include="src\Core.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="src\RigidBody.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Contact.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PhysicsCollision.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PhysicsBVH.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PhysicsEngine.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\TransformSystem.cpp">
       <Filter>Source Files\scripts\Engine\ECS</Filter>
     </ClCompile>
@@ -404,6 +389,21 @@
     </ClCompile>
     <ClCompile Include="src\passes\DebugBBoxPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RigidBody.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsBVH.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsCollision.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsEngine.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Contact.cpp">
+      <Filter>Source Files\scripts\Physics</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -660,6 +660,7 @@
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
     <None Include="README.md" />
+    <None Include="CleanComments.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

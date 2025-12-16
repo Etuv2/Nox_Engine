@@ -1,6 +1,6 @@
 #include "GizmoRayCast.h"
 #include "SceneNode.h"
-#include "LightNode.h"  // CRITICAL: Add missing include
+#include "LightNode.h"  // Add missing include
 #include "AudioNode.h"
 #include "Camera.h"
 #include <iostream>
@@ -356,7 +356,7 @@ float GizmoRayCast::CalculateGizmoScale(
 bool GizmoRayCast::IsNodeGizmoCompatible(std::shared_ptr<SceneNode> node) {
     if (!node) return false;
     
-    // PRIORITY FIX: Check if this is a LightNode first
+    // PRIORITY Check if this is a LightNode first
     // Light nodes are ALWAYS gizmo-compatible regardless of having a model
     if (node->GetNodeType() == SceneNode::LIGHT) {
         // Cast to LightNode to verify it has a valid light and selection proxy

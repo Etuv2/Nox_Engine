@@ -65,8 +65,8 @@ public:
 	// Light proxy visualization for editor integration
 	struct LightProxy {
 		std::shared_ptr<LightNode> lightNode;
-		glm::vec3 proxyCenter;
-		float proxyRadius;
+		glm::vec3 proxyCenter = glm::vec3(0.0f);
+		float proxyRadius = 0.0f;
 		bool isSelected = false;
 
 		void UpdateProxy();
@@ -252,7 +252,7 @@ private:
 		int arrayIndex = -1;
 		int resolution = 1024;
 		bool inUse = false;
-		BaseLight::LightType lightType;
+		BaseLight::LightType lightType = BaseLight::LightType::DIRECTIONAL;
 	};
 	std::vector<ShadowMapSlice> m_shadowSlices;
 

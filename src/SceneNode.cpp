@@ -1,4 +1,4 @@
-﻿#include "SceneNode.h"
+#include "SceneNode.h"
 #include "Scene.h"
 #include "RigidBody.h"
 #include "SceneGraph.h"
@@ -341,7 +341,7 @@ void SceneNode::SyncPhysicsFromTransform() {
 
 	m_updatingFromPhysics = true;
 
-	// CRITICAL FIX: Get WORLD position and orientation, not local
+	// Get WORLD position and orientation, not local
 	// Physics bodies operate in world space, so we need world transform
 	glm::mat4 worldTransform = GetWorldPosition4x4();
 	
@@ -354,7 +354,7 @@ void SceneNode::SyncPhysicsFromTransform() {
 	m_rigidbody->setPosition(translation);
 	m_rigidbody->setOrientation(rotation);
 	
-	// CRITICAL FIX: Only handle kinematic bodies and already-grabbed bodies
+	// Only handle kinematic bodies and already-grabbed bodies
 	// Do NOT auto-grab dynamic bodies - gizmo code should explicitly manage grab state
 	if (m_rigidbody->IsKinematic()) {
 		// Kinematic body - set target position
@@ -382,7 +382,7 @@ void SceneNode::InvalidateTransformCache() {
 	m_worldTransformValid = false;
 	m_transformCacheDirty = true;
 	
-	// CRITICAL FIX: Also mark ECS transform as dirty
+	// Also mark ECS transform as dirty
 	// This ensures the ECS TransformSystem processes the change
 	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
 		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();

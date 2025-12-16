@@ -315,16 +315,12 @@ void PhysicsEngine::PreStepSync() {
 		if (!body) continue;
 		if (body->isSleeping()) continue;
 
-		// CRITICAL: Handle gizmo-grabbed bodies FIRST
-		// While grabbed, they should follow the kinematic target exactly
+		// Skip gizmo-grabbed bodies - they're updated directly by UpdateGizmoTarget
+		// which sets position/orientation directly
 		if (body->isGizmoGrabbed()) {
-			// Gizmo-grabbed bodies: update position/orientation from kinematic target
-			// The target was set by UpdateGizmoTarget in the ImGui code
-			body->setPosition(body->getKinematicTargetPosition());
-			body->setOrientation(body->getKinematicTargetOrientation());
 			body->computeAABB();
 			body->storePreviousState();
-			continue;  // Skip other sync logic for grabbed bodies
+			continue;
 		}
 
 		// Sync kinematic bodies - scene is the source of truth
@@ -340,11 +336,6 @@ void PhysicsEngine::PreStepSync() {
 				body->setKinematicTarget(position, orientation);
 				body->computeAABB();
 			}
-		}
-
-		// Handle gizmo-grabbed bodies - clear previous state for smooth interpolation
-		if (body->isGizmoGrabbed()) {
-			body->storePreviousState();
 		}
 	}
 }
@@ -411,7 +402,7 @@ void PhysicsEngine::SyncFromSceneNodes() {
 		auto node = body->getAttachedNode();
 		if (!node) continue;
 
-		// CRITICAL FIX: Use explicit ownership model to determine sync behavior
+		// Use explicit ownership model to determine sync behavior
 		// Only sync from scene for bodies that are NOT physics-owned
 		bool shouldSync = false;
 
@@ -464,7 +455,7 @@ void PhysicsEngine::SyncToSceneNodes() {
 	for (auto& body : m_bodies) {
 		if (!body) continue;
 
-		// CRITICAL FIX: Only sync TO scene for physics-owned bodies
+		// Only sync TO scene for physics-owned bodies
 		// This prevents double-writes and ensures single source of truth
 		if (!body->isPhysicsOwned()) continue;
 
@@ -520,28 +511,27 @@ void PhysicsEngine::SyncToSceneNodes() {
 void PhysicsEngine::BeginGizmoGrab(std::shared_ptr<RigidBody> body) {
 	if (!body) return;
 
-	// Save original body type for restoration later
-	// Store in userData (if available) or just track the fact we're grabbing
+	// Mark body as being gizmo-grabbed
 	body->setGizmoGrabbed(true);
 	
-	// While grabbed, treat as kinematic to allow gizmo to control transform
-	// The original type is determined by the body type itself
-	// We just need to ensure EDITOR ownership is set
+	// Switch to EDITOR ownership during gizmo manipulation
 	body->setTransformOwner(RigidBody::TransformOwner::EDITOR);
 	
-	// Wake up the body
+	// Wake up the body to ensure it processes updates
 	body->wakeUp();
 
-	// Store current position/orientation as kinematic target
-	body->setKinematicTarget(body->getPosition(), body->getOrientation());
+	// DO NOT use kinematic target - it bypasses force integration!
+	// Instead, we'll directly update position while forces continue to apply
+	
+	// Store the starting position for reference (used by UpdateGizmoTarget)
+	// Dampen current velocities to smooth transition
+	body->setVelocity(body->getVelocity() * 0.5f);
+	body->setAngularVelocity(body->getAngularVelocity() * 0.5f);
 
-	// Clear velocities to prevent jittering
-	body->setVelocity(glm::vec3(0.0f));
-	body->setAngularVelocity(glm::vec3(0.0f));
-
-	if (m_config.verboseLogging) {
-		std::cout << "[PhysicsEngine] Begin gizmo grab on body " << body->GetBodyID() << std::endl;
-	}
+	std::cout << "[PhysicsEngine] Begin gizmo grab on body " << body->GetBodyID() 
+		<< " - IsDynamic: " << body->IsDynamic() 
+		<< " - Vel: (" << body->getVelocity().x << ", " << body->getVelocity().y << ", " << body->getVelocity().z << ")"
+		<< " - IsSleeping: " << body->isSleeping() << std::endl;
 }
 
 void PhysicsEngine::UpdateGizmoTarget(std::shared_ptr<RigidBody> body,
@@ -549,20 +539,33 @@ void PhysicsEngine::UpdateGizmoTarget(std::shared_ptr<RigidBody> body,
 	const glm::quat& orientation) {
 	if (!body || !body->isGizmoGrabbed()) return;
 
-	// Update kinematic target for this body
-	body->setKinematicTarget(position, orientation);
+	glm::vec3 currentVel = body->getVelocity();
+	float currentVelMag = glm::length(currentVel);
+
+	// We directly set position to follow gizmo for visual feedback
+	// BUT we still need to allow velocity to accumulate from forces (gravity, etc)
+	// so that when gizmo is released, object continues with realistic motion
 	
-	// Immediately update position/orientation for gizmo responsiveness
+	// Set position exactly where gizmo is
 	body->setPosition(position);
 	body->setOrientation(orientation);
 	
-	// Keep velocities at zero while being dragged
-	body->setVelocity(glm::vec3(0.0f));
-	body->setAngularVelocity(glm::vec3(0.0f));
+	// Do NOT dampen velocities!
+	// We want to preserve ALL velocity accumulated from forces (especially gravity)
+	// The velocity accumulates from integrateForces() each step
+	
+	static int frameCounter = 0;
+	frameCounter++;
+	if (frameCounter % 10 == 0) {
+		std::cout << "[UpdateGizmoTarget] Vel: (" << currentVel.x << ", " << currentVel.y << ", " << currentVel.z 
+			<< ") Mag: " << currentVelMag << std::endl;
+	}
 }
 
 void PhysicsEngine::EndGizmoGrab(std::shared_ptr<RigidBody> body) {
-	if (!body) return;
+
+	glm::vec3 velBeforeEnd = body->getVelocity();
+	float velMagBefore = glm::length(velBeforeEnd);
 
 	// Clear gizmo state
 	body->setGizmoGrabbed(false);
@@ -580,30 +583,31 @@ void PhysicsEngine::EndGizmoGrab(std::shared_ptr<RigidBody> body) {
 		body->setTransformOwner(RigidBody::TransformOwner::SCENE);
 	}
 
-	// CRITICAL: For dynamic bodies, we need to ensure they're ready to simulate
+	// For dynamic bodies, prepare for normal physics simulation
 	if (body->IsDynamic()) {
-		// Ensure velocities are zero (body starts from rest after gizmo release)
-		body->setVelocity(glm::vec3(0.0f));
-		body->setAngularVelocity(glm::vec3(0.0f));
-
+		// Velocities have been preserved and accumulated forces during manipulation
+		// Let them continue naturally - the body will fall under gravity
+		
 		// Store current state as previous for smooth interpolation
-		// This is crucial - it prevents interpolation artifacts on first physics frame
 		body->storePreviousState();
 
 		// Recompute AABB at new position
 		body->computeAABB();
 
-		// CRITICAL: Explicitly mark as NOT sleeping so gravity applies immediately
-		// This is the key - wakeUp() might not be called if already awake, so use setSleeping directly
+		// Explicitly mark as NOT sleeping so gravity and forces apply immediately
 		body->setSleeping(false);
 	} else {
 		// For kinematic and static bodies, just update AABB
 		body->computeAABB();
 	}
 
-	if (m_config.verboseLogging) {
-		std::cout << "[PhysicsEngine] End gizmo grab on body " << body->GetBodyID() << std::endl;
-	}
+	glm::vec3 velAfterEnd = body->getVelocity();
+	float velMagAfter = glm::length(velAfterEnd);
+	
+	std::cout << "[PhysicsEngine] End gizmo grab on body " << body->GetBodyID() 
+		<< " - Vel Before: (" << velBeforeEnd.x << ", " << velBeforeEnd.y << ", " << velBeforeEnd.z << ") Mag: " << velMagBefore
+		<< " - Vel After: (" << velAfterEnd.x << ", " << velAfterEnd.y << ", " << velAfterEnd.z << ") Mag: " << velMagAfter
+		<< " - IsDynamic: " << body->IsDynamic() << " - IsSleeping: " << body->isSleeping() << std::endl;
 }
 
 // ============== QUERIES ==============
@@ -656,9 +660,11 @@ void PhysicsEngine::IntegrateForces(float dt) {
 		if (!body) continue;
 		if (!body->IsDynamic()) continue;
 		if (body->isSleeping()) continue;
-		if (body->isGizmoGrabbed()) continue;
 
-		// CRITICAL FIX: Only integrate forces here, damping happens AFTER solver
+		// We NEED to apply forces even during gizmo manipulation
+		// so that gravity and external forces work correctly
+
+		// Apply forces to all dynamic bodies, including gizmo-grabbed ones
 		body->integrateForces(dt, m_gravity);
 	}
 }
@@ -699,7 +705,7 @@ void PhysicsEngine::Narrowphase() {
 		auto& manifold = m_manifolds[pairKey];
 		manifold.pairKey = pairKey;
 
-		// CRITICAL FIX: Reset lifetime for active manifolds
+		// Reset lifetime for active manifolds
 		manifold.lifetime = 0;
 
 		// Refresh existing contacts
@@ -795,7 +801,7 @@ void PhysicsEngine::PrepareConstraints(float dt) {
 				cp.velocityBias = 0.0f;
 			}
 
-			// CRITICAL FIX: Add restitution bias with correct sign
+			// Add restitution bias with correct sign
 			// Restitution should OPPOSE incoming velocity (make it more negative)
 			glm::vec3 velA = bodyA->getVelocityAtPoint(cp.point);
 			glm::vec3 velB = bodyB->getVelocityAtPoint(cp.point);
@@ -917,7 +923,7 @@ bool PhysicsEngine::SolveContactPosition(ContactManifold& manifold, ContactPoint
 
 	if (!bodyA || !bodyB) return true;
 
-	// CRITICAL FIX: Use stored penetration depth directly
+	// Use stored penetration depth directly
 	// Don't recompute from local points which can drift
 	// The penetration was computed accurately during narrowphase
 	float penetration = cp.penetration;

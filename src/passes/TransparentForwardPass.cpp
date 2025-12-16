@@ -146,7 +146,7 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
     glUniform3fv(glGetUniformLocation(m_shader, "viewPos"), 
         1, glm::value_ptr(cameraPos));
 
-    // CRITICAL: Upload screen size for depth comparison in fragment shader
+    // Upload screen size for depth comparison in fragment shader
     glUniform2f(glGetUniformLocation(m_shader, "screenSize"), 
         static_cast<float>(ctx.width), static_cast<float>(ctx.height));
     

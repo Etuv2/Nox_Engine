@@ -1,4 +1,4 @@
-﻿#include "Skybox.h"
+#include "Skybox.h"
 #include "ShaderLoader.h"
 #include "stb_image.h"
 #include "TextureUnits.h"
@@ -139,7 +139,7 @@ bool Skybox::Init(const std::string& hdrPath,
 		return false;
 	}
 
-	// CRITICAL FIX: Use higher resolution for environment map (512 -> 1024) for better quality
+	// Use higher resolution for environment map (512 -> 1024) for better quality
 	const int envMapSize = 1024;
 	
 	// Create environment cubemap using new Texture builder
@@ -202,10 +202,10 @@ bool Skybox::Init(const std::string& hdrPath,
 	// Generate mipmaps for environment map
 	m_envCubemap->GenerateMipmaps();
 
-	// CRITICAL: Immediately generate IBL resources (strict requirement)
+	// Immediately generate IBL resources (strict requirement)
 	std::cout << "[Skybox] Generating IBL resources with CORRECTED shaders..." << std::endl;
 	if (!GenerateIBLResources() || !VerifyIBLPipelineComplete()) {
-		std::cerr << "[Skybox] FATAL: Initial IBL generation failed – attempting forced regeneration..." << std::endl;
+		std::cerr << "[Skybox] FATAL: Initial IBL generation failed � attempting forced regeneration..." << std::endl;
 		ForceRegenerateIBL();
 		if (!VerifyIBLPipelineComplete()) {
 			std::cerr << "[Skybox] FATAL: Skybox pipeline invalid after forced regeneration." << std::endl;
@@ -256,7 +256,7 @@ void Skybox::Draw(const glm::mat4& view, const glm::mat4& projection)
 	glm::mat4 viewNoTrans = glm::mat4(glm::mat3(view));
 
 	// Set up optimal state for skybox rendering
-	// CRITICAL: Must enable depth test and set proper depth function
+	// Must enable depth test and set proper depth function
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);  // Skybox renders at max depth (z=w in clip space)
 	glDepthMask(GL_FALSE);   // Don't write to depth buffer
@@ -275,7 +275,7 @@ void Skybox::Draw(const glm::mat4& view, const glm::mat4& projection)
 
 	renderCube();
 
-	// CRITICAL: Restore depth mask to prevent issues with subsequent rendering
+	// Restore depth mask to prevent issues with subsequent rendering
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LESS);
 	glEnable(GL_CULL_FACE);

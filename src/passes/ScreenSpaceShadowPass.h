@@ -7,7 +7,7 @@
 #include <memory>
 
 /**
- * Screen-Space Shadow Pass (article approach — view-space ray march).
+ * Screen-Space Shadow Pass (article approach: https://panoskarabelas.com/posts/screen_space_shadows/ — view-space ray march).
  * Produces a single-channel visibility texture [0..1] (0=shadow, 1=lit).
  */
 class ScreenSpaceShadowPass : public RenderPass {

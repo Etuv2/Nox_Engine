@@ -64,7 +64,7 @@ void StateExportWindow::Render() {
     ImGui::Text("Load Scene State:");
     ImGui::InputText("##LoadPath", m_loadStateFilepath, sizeof(m_loadStateFilepath));
     
-    // FIXED: Show which scene this state belongs to
+    // Show which scene this state belongs to
     std::string stateInfoText = GetStateFileInfo(m_loadStateFilepath);
     if (!stateInfoText.empty()) {
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", stateInfoText.c_str());

@@ -18,6 +18,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
+
 
 // LightProxy Implementation
 
@@ -469,7 +471,7 @@ void LightManager::ValidateShadowArrayTexture() const
 	if (m_shadowArrayTexture->Width() != shadowConfig.baseResolution ||
 		m_shadowArrayTexture->Height() != shadowConfig.baseResolution ||
 		m_shadowArrayTexture->Depth() != m_shadowArrayLayers) {
-		std::cerr << "[LightManager] CRITICAL: Shadow array texture corrupted!" << std::endl;
+		std::cerr << "[LightManager] Shadow array texture corrupted!" << std::endl;
 		std::cerr << "  Expected: " << shadowConfig.baseResolution << "x" << shadowConfig.baseResolution
 			<< "x" << m_shadowArrayLayers << std::endl;
 		std::cerr << "  Actual: " << m_shadowArrayTexture->Width() << "x"
@@ -587,9 +589,6 @@ static void BuildCasterSignature(const MDIBatch& batch, glm::vec3& centroidSum, 
 		++count;
 	}
 }
-
-
-// Shadow Map Rendering
 
 
 /**
@@ -1412,9 +1411,6 @@ void LightManager::PerformLightCulling(const glm::mat4&,
 	stats.lightCullingTime = std::chrono::duration<float, std::milli>(end - start).count();
 	stats.visibleLights = (int)m_activeLights.size();
 }
-
-
-// Debug & Diagnostics
 
 
 /**

@@ -372,10 +372,10 @@ void RenderingSettingsWindow::Render() {
 
 	// Show connection status
 	if (m_modularRenderer) {
-		ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "✓ Connected to ModularRenderer");
+		ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "[+] Connected to ModularRenderer");
 	}
 	else {
-		ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "✗ Not connected to renderer");
+		ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "[X] Not connected to renderer");
 	}
 	ImGui::Separator();
 
@@ -394,7 +394,7 @@ void RenderingSettingsWindow::Render() {
 		}
 		// Post-Processing Tab
 		if (ImGui::BeginTabItem("Post-Process")) {
-			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Tone Mapping & Exposure:");
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Tone Mapping & Exposure:**");
 
 			if (ImGui::SliderFloat("Exposure", &m_exposure, 0.1f, 5.0f, "%.2f")) {
 				SyncToRenderer();
@@ -838,7 +838,7 @@ void RenderingSettingsWindow::Render() {
 			// Show warning if path tracing is enabled
 			if (m_rendererMode == 1) {
 				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
-				ImGui::TextWrapped("⚠ Path tracing mode is active. Performance will be reduced.");
+				ImGui::TextWrapped("[!] Path tracing mode is active. Performance will be reduced.");
 				ImGui::TextWrapped("Camera movement will reset accumulation.");
 				ImGui::PopStyleColor();
 			}
@@ -1133,7 +1133,7 @@ void RenderingSettingsWindow::Render() {
 
 				if (m_rtAccumulate) {
 					ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f),
-						"✓ Temporal accumulation will smooth out noise");
+						"[+] Temporal accumulation will smooth out noise");
 				}
 			}
 
@@ -1199,7 +1199,13 @@ void RenderingSettingsWindow::Render() {
 			ImGui::Separator();
 			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Renderer Info:");
 
-			if (m_modularRenderer) {
+// Debug: show renderer connection status
+			if (!m_modularRenderer) {
+				ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "No renderer connected");
+				ImGui::Text("Connect ModularRenderer via");
+				ImGui::Text("SetModularRenderer()");
+			}
+			else {
 				auto& ctx = m_modularRenderer->GetContext();
 				ImGui::Text("Modular Renderer Connected");
 				ImGui::BulletText("Resolution: %dx%d", ctx.width, ctx.height);
@@ -1210,54 +1216,6 @@ void RenderingSettingsWindow::Render() {
 
 				if (ctx.lightManager) {
 					ImGui::BulletText("Active Lights: %d", ctx.lightManager->GetActiveLightCount());
-				}
-			}
-			else {
-				ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "No renderer connected");
-				ImGui::Text("Connect ModularRenderer via");
-				ImGui::Text("SetModularRenderer()");
-
-				// Debug: Show all settings values
-				ImGui::Separator();
-				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.8f, 1.0f), "Current Settings:");
-				ImGui::Text("Exposure: %.2f", m_exposure);
-				ImGui::Text("Gamma: %.2f", m_gamma);
-				ImGui::Text("HDR: %s", m_enableHDR ? "Enabled" : "Disabled");
-				ImGui::ColorEdit3("Sky Color", &m_envColor.x);
-				ImGui::Text("Shadows: %s", m_enableShadows ? "Enabled" : "Disabled");
-				ImGui::Text("Bloom: %s", m_enableBloom ? "Enabled" : "Disabled");
-				ImGui::Text("TAA: %s", m_enableTAA ? "Enabled" : "Disabled");
-				ImGui::Text("SSAO: %s", m_enableSSAO ? "Enabled" : "Disabled");
-
-				// Show Tonemapper settings
-				ImGui::Separator();
-				ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.5f, 1.0f), "Tonemapper Settings:");
-				ImGui::Text("Type: %s",
-					(m_tonemapType == 0) ? "None" :
-					(m_tonemapType == 1) ? "ACES" :
-					(m_tonemapType == 2) ? "Filmic (GT)" :
-					"GT7");
-				ImGui::Text("P: %.2f", m_tm_P);
-				ImGui::Text("a: %.2f", m_tm_a);
-				ImGui::Text("m: %.2f", m_tm_m);
-				ImGui::Text("l: %.2f", m_tm_l);
-				ImGui::Text("c: %.2f", m_tm_c);
-				ImGui::Text("b: %.2f", m_tm_b);
-				ImGui::Text("Output sRGB: %s", m_outputSRGB ? "Enabled" : "Disabled");
-
-				// Show LPV settings
-				ImGui::Separator();
-				ImGui::TextColored(ImVec4(0.6f, 0.9f, 0.6f, 1.0f), "LPV Global Illumination Settings:");
-				ImGui::Text("Enable LPV: %s", m_enableLPV ? "Yes" : "No");
-				if (m_enableLPV) {
-					ImGui::Text("GI Strength: %.2f", m_lpvGIStrength);
-					ImGui::Text("Grid Resolution: %d^3", m_lpvGridResolution);
-					ImGui::Text("Voxel Size: %.2f m", m_lpvVoxelSize);
-					ImGui::Text("RSM Resolution: %d", m_lpvRSMResolution);
-					ImGui::Text("VPL Samples: %d", m_lpvVPLSampleCount);
-					ImGui::Text("Propagation Iterations: %d", m_lpvPropagationIterations);
-					ImGui::Text("Update Frequency: %d", m_lpvUpdateFrequency);
-					ImGui::Text("Debug Visualization: %s", m_lpvDebugVisualization ? "On" : "Off");
 				}
 			}
 

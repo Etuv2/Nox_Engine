@@ -175,7 +175,7 @@ public:
      */
     bool CreatePhysicsBody(EntityID entityID, 
                           uint32_t bodyType,
-                          const class ColliderComponent& colliderComp,
+                          const struct ColliderComponent& colliderComp,
                           const glm::vec3& position,
                           const glm::quat& orientation);
     
@@ -201,7 +201,7 @@ public:
      * - Update moved static colliders and broadphase proxies
      * - Clear previous state for gizmo-grabbed bodies
      * 
-     * CRITICAL: Must be called before Update() during fixed timestep
+     * Must be called before Update() during fixed timestep
      */
     void PreStepSync();
     
@@ -211,7 +211,7 @@ public:
      * - Convert world-space results to local-space for hierarchy
      * - Only sync if body still has both ECS components
      * 
-     * CRITICAL: Must be called after stepping, inside Update()
+     * Must be called after stepping, inside Update()
      */
     void PostStepSync();
     

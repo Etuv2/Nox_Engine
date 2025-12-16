@@ -489,13 +489,13 @@ void Core::Update(float deltaTime) {
 		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
 
 		if (m_physicsEngine && m_physicsEnabledForScene) {
-			// CRITICAL FIX: Physics synchronization is now centralized inside PhysicsEngine::Update()
+			// Physics synchronization is now centralized inside PhysicsEngine::Update()
 			// PreStepSync runs before stepping to push kinematic bodies
 			// PostStepSync runs after stepping to pull dynamic bodies
 			// Step physics simulation
 			m_physicsEngine->Update(deltaTime);
 			
-			// CRITICAL: Update all transforms in the scene graph after physics changes
+			// Update all transforms in the scene graph after physics changes
 			// This ensures the ECS transform system processes the physics updates
 			m_sceneGraph->UpdateAllTransforms();
 		}
@@ -788,7 +788,7 @@ void Core::SetMouseLocked(bool locked) {
 void Core::CleanupCurrentScene() {
 	std::cout << "[Core] Cleaning up current scene" << std::endl;
 
-	// CRITICAL FIX: Clean up all physics bodies to prevent memory leaks and duplicate registrations
+	// Clean up all physics bodies to prevent memory leaks and duplicate registrations
 	if (m_physicsEngine) {
 		std::cout << "[Core] Removing all physics bodies from engine" << std::endl;
 		m_physicsEngine->RemoveAllBodies();

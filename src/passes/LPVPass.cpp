@@ -9,6 +9,8 @@
 #include <random>
 #include <glm/gtc/matrix_transform.hpp>
 
+#pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
+
 LPVPass::LPVPass() {}
 
 LPVPass::~LPVPass() {

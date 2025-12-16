@@ -253,7 +253,7 @@ struct ColliderComponent {
 
 /**
  * Physics Component - Stores rigid body reference and stable BodyID
- * CRITICAL: This component is the authoritative link between ECS and physics world
+ * This component is the authoritative link between ECS and physics world
  */
 struct PhysicsComponent {
 	// Stable ID: unique identifier for the physics body in the physics engine

@@ -1,4 +1,8 @@
-﻿#version 460 core
+﻿/*
+    Screen-Space Ambient Occlusion (SSAO) Shader
+    Technique pulled from LearnOpenGL: https://learnopengl.com/Advanced-Lighting/SSAO
+*/
+#version 460 core
 
 in vec2 TexCoord;
 out float FragColor;
@@ -28,7 +32,7 @@ uniform float intensity = 1.2; // Slightly increased intensity
 uniform float aoMin = 0.0;     // Allow full occlusion
 
 vec3 DecodeNormalOct8(vec2 e) {
-    // Remap from [0,1] (texture storage) to [-1,1]
+    // Remap from [0,1] to [-1,1]
     e = e * 2.0 - 1.0;
     
     vec3 n;
@@ -54,8 +58,7 @@ vec3 GetNormalInViewSpace(vec3 worldNormal) {
         return worldNormal; // Already in view space
     }
 }
-
-// FIXED: Improved view-space position reconstruction
+// Reconstruct view-space position from depth
 vec3 ReconstructViewPos(vec2 uv, float depth01) {
     // Convert depth from [0,1] to NDC [-1,1]
     vec4 ndc = vec4(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0, 1.0);
@@ -87,12 +90,12 @@ void main() {
         return; 
     }
 
-    // UNPACK NORMAL FROM G-BUFFER (world space)
+    // Unpacking the normal, converting to view space
     vec2 encNormal = texture(gPackedNormalRM, uv).rg;
     vec3 worldNormal = DecodeNormalOct8(encNormal);
     vec3 N = GetNormalInViewSpace(worldNormal);  // Convert to view space
-    
-    // FIXED: Reconstruct view-space position with proper depth handling
+
+    // Reconstruct view-space position from depth
     vec3 P = ReconstructViewPos(uv, d);
     
     // Validate reconstructed position
@@ -109,9 +112,6 @@ void main() {
 
     float occl = 0.0;
     float wsum = 0.0;
-    
-    // Get linear depth for better comparison
-    float centerLinearDepth = LinearizeDepth(d);
 
     for (int i = 0; i < kernelSize; ++i) {
         // Sample point in view space (hemisphere oriented by TBN)
@@ -131,7 +131,7 @@ void main() {
         if (sd >= 0.9999) 
             continue;
 
-        // FIXED: Reconstruct scene position at sample location
+        // Reconstruct scene position at sample location
         vec3 Q = ReconstructViewPos(sampleUV, sd);
         
         // Validate sample position
@@ -141,14 +141,14 @@ void main() {
         // Direction from center to sample
         vec3 dir = normalize(Q - P);
 
-        // FIXED: Normal weighting to prevent uniform darkening on flat surfaces
+        // Normal weighting to prevent uniform darkening on flat surfaces
         float nDot = max(dot(N, dir), 0.0);
         
         // Early out for samples pointing away from normal
         if (nDot < 0.01) 
             continue;
 
-        // FIXED: Distance-based falloff with smoother curve
+        // Distance-based falloff with smoother curve
         float dist = length(Q - P);
         float rangeFalloff = 1.0 - smoothstep(0.0, radius, dist);
 
@@ -158,11 +158,12 @@ void main() {
         if (w < 1e-4) 
             continue;
 
-        // FIXED: Depth comparison in view space Z (more negative = farther)
-        // If scene surface (Q.z) is farther than sample point = occluded
-        float depthDiff = Svs.z - Q.z;
+        // Depth comparison in view space Z (more negative = farther)
+        // Check if scene surface Q is closer (less negative Z) than sample point Svs
+        // This indicates the sample point is inside geometry (occluded)
+        float depthDiff = Q.z - Svs.z;
         
-        if (depthDiff > bias && depthDiff < radius * 0.5) {
+        if (depthDiff > bias && depthDiff < radius) {
             occl += w;
         }
 

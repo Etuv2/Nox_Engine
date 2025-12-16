@@ -34,6 +34,8 @@ uniform int hasIBL;                 // 0/1 flag for IBL availability
 uniform float iblFallbackStrength;  // IBL fallback blend strength
 
 
+const float INV_PI = 0.318309886; // 1/PI
+const float DOUBLE_PI = 6.283185307179586; // 2*PI
 // FUNCTIONS
 
 
@@ -46,7 +48,7 @@ float LinearizeDepth(float d) {
 	return B / (z * C - A); // Negative in front of camera (view space Z convention)
 }
 
-// FIXED: Octahedral decode with proper [0,1] to [-1,1] remapping (matches SSAO)
+// Octahedral decode with proper [0,1] to [-1,1] remapping (matches SSAO)
 vec3 octDecode(vec2 e) {
 	// Remap from [0,1] (texture storage) to [-1,1]
 	e = e * 2.0 - 1.0;
@@ -80,14 +82,13 @@ vec2 VS_to_UV(vec3 viewPos) {
 	return ndc * 0.5 + 0.5;
 }
 
-// CRITICAL FIX: Per-pixel view-space footprint for scale-independent stepping
+//  Per-pixel view-space footprint for scale-independent stepping
 float PixelSizeVS(float absViewZ) {
 	float tanHalfFovy = 1.0 / proj[1][1];
 	float viewHeight = 2.0 * absViewZ * tanHalfFovy;
 	return viewHeight / max(workSize.y, 1.0);
 }
 
-// NEW: Edge-aware depth sampling (prevents cross-edge bleeding like screen-space shadows)
 float SampleDepthEdgeAware(vec2 uv, float centerDepth, float edgeThreshold) {
 	ivec2 size = textureSize(gDepth, 0);
 	vec2 texel = 1.0 / vec2(size);
@@ -167,7 +168,7 @@ void main() {
 	vec2 rands = texture(randTex, uvWork).rg;
 
 	float r = sqrt(rands.x);
-	float phi = 6.283185307179586 * rands.y; // 2*PI
+	float phi = DOUBLE_PI * rands.y; // 2*PI
 	vec3 diskSample = vec3(r * cos(phi), r * sin(phi), sqrt(max(0.0, 1.0 - rands.x)));
 
 	// Build orthonormal basis in view space (Gram-Schmidt)
@@ -286,11 +287,6 @@ void main() {
 		if (all(greaterThanEqual(hitUV, vec2(0.0))) && all(lessThan(hitUV, vec2(1.0)))) {
 			vec3 hitColor = texture(prevColor, hitUV).rgb;
 			
-			// CRITICAL FIX: hitColor is final lit radiance (HDR), clamp to prevent excessive energy
-			// Real-time SSGI samples final frame buffer which includes direct + indirect + emissive
-			// This can create feedback loops with very bright values
-			hitColor = min(hitColor, vec3(10.0)); // Clamp to reasonable HDR range
-			
 			vec3 irradiance = hitColor;
 
 			float depthRatio = abs(originVS.z) / max(cameraNear, 0.1);
@@ -305,11 +301,10 @@ void main() {
 
 			// Apply geometric term (distance + angle falloff)
 			irradiance *= attenuation * cosineAtReceiver;
-			
-			// CRITICAL FIX: Scale down by PI for proper energy conservation
-			// We're treating this as incoming irradiance that will be integrated over hemisphere
-			irradiance *= 0.318309886; // 1/PI
-			
+
+			//  Scale down by 1/PI
+			irradiance *= INV_PI;
+
 			float luminance = dot(irradiance, vec3(0.2126, 0.7152, 0.0722));
 			if (luminance > 0.0001) {
 				indirectIrradiance = irradiance;

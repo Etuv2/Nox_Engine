@@ -1,4 +1,4 @@
-﻿#include "SceneLoader.h"
+#include "SceneLoader.h"
 #include "SceneNode.h"
 #include "AudioNode.h"
 #include "GuiNode.h"
@@ -35,7 +35,7 @@ SceneLoader::~SceneLoader() {
 std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFilePath) {
     auto sceneGraph = std::make_shared<SceneGraph>();
     
-    // CRITICAL: Set the current scene graph BEFORE processing nodes
+    // Set the current scene graph BEFORE processing nodes
     // This is required for CreateECSEntity to work properly
     m_currentSceneGraph = sceneGraph.get();
     
