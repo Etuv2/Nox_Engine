@@ -10,12 +10,20 @@ A modern, high-performance OpenGL 4.5+ rendering engine with advanced features f
 
 ### Advanced Rendering
 - **Deferred Rendering Pipeline**: Efficient multi-light rendering with advanced shading
+- **Path Tracing Mode**: BVH-accelerated bidirectional path tracing with temporal accumulation
+  - Real-time physically accurate rendering
+  - Converges over time when camera is still
+  - Adjustable samples per pixel and ray bounce depth
+  - Optional SVGF temporal denoising
 - **Cascaded Shadow Mapping**: 4-level cascade shadow maps for directional lights
 - **Percentage Closer Soft Shadows (PCSS)**: High-quality soft shadows with hardware filtering
 - **Temporal Anti-Aliasing (TAA)**: Reduces aliasing artifacts and improves image quality
 - **Bloom Post-Processing**: Realistic glow effects for bright surfaces
 - **PBR Material System**: Physically-based rendering with metallic and roughness parameters
 - **HDR Rendering**: High dynamic range support with configurable tone mapping
+- **Light Propagation Volumes (LPV)**: Global illumination using reflective shadow maps
+- **Screen-Space Ambient Occlusion (SSAO)**: High-quality AO in screen space
+- **Screen-Space Global Illumination (SSGI)**: Indirect lighting approximation
 
 ### Lighting System
 - **Multi-Light Support**: Directional, Point, and Spot lights
@@ -23,6 +31,9 @@ A modern, high-performance OpenGL 4.5+ rendering engine with advanced features f
 - **Shadow Array System**: Unified GPU buffer packing for all light types
 - **Light Manager**: Efficient collection and management of scene lights
 - **Configurable Light Properties**: Color, intensity, attenuation, and shadow parameters
+- **Next Event Estimation (NEE)**: Direct lighting optimization for path tracing
+- **Multiple Importance Sampling (MIS)**: Advanced variance reduction for ray tracing
+- **Image-Based Lighting (IBL)**: Environment map sampling for realistic reflections
 
 ### Physics Engine
 - **Rigid Body Dynamics**: Static, Dynamic, and Kinematic body types
@@ -94,7 +105,7 @@ A modern, high-performance OpenGL 4.5+ rendering engine with advanced features f
 ### Building from Source
 
 #### Prerequisites
-1. Install Visual Studio 2019 or later with C++17 support
+1. Install Visual Studio 2022 or later with C++17 support
 2. Clone the repository:
    ```bash
    git clone https://github.com/yourusername/Nox_Engine.git
@@ -312,22 +323,98 @@ Nox_Engine/
 
 ## Rendering Pipeline
 
-### Multi-Pass Rendering
+### Multi-Pass Rendering (Deferred Mode)
 
 1. **Shadow Pass**: Render to shadow atlas for all lights
 2. **G-Buffer Pass**: Render scene to deferred buffers (Position, Normal, Albedo, etc.)
 3. **Lighting Pass**: Combine lights with shadow mapping
-4. **Post-Processing**:
+4. **Global Illumination**: LPV or SSGI for indirect lighting
+5. **Post-Processing**:
    - Temporal Anti-Aliasing
    - Bloom extraction and blur
    - Tone mapping and color grading
-5. **UI Overlay**: ImGui windows and 3D gizmo
+6. **UI Overlay**: ImGui windows and 3D gizmo
 
 ### Cascaded Shadow Mapping
 - 4-level cascade splits
 - Configurable cascade distribution
 - PCSS soft shadow filtering
 - PCF for hardware filtering
+
+### Path Tracing Pipeline (Alternative Mode)
+
+1. **BVH Construction**: Build acceleration structure from scene
+2. **Ray Generation**: Primary rays from camera
+3. **Ray Tracing**: Trace rays through BVH hierarchy
+4. **Shading**: Evaluate materials and indirect lighting
+5. **Denoising**: Apply SVGF filter if enabled
+6. **Temporal Accumulation**: Blend with previous frames
+7. **Post-Processing**: Bloom and tone mapping
+8. **UI Overlay**: ImGui windows and 3D gizmo
+
+---
+
+## Path Tracing System
+
+### Overview
+NOX Engine features a high-performance path tracing renderer with BVH acceleration and advanced denoising. Path tracing provides physically accurate global illumination and reflections, converging to photorealistic quality over multiple frames.
+
+### Path Tracing Features
+- **BVH-Accelerated Raytracing**: Rapid rayTraversal using hierarchical bounding volumes
+- **Bidirectional Path Tracing**: Light and camera path sampling for improved convergence
+- **Temporal Accumulation**: Multi-frame accumulation for noise reduction
+- **Adaptive Sampling**: Configurable samples per pixel for quality vs performance tradeoff
+- **Next Event Estimation (NEE)**: Direct light sampling for faster convergence
+- **Multiple Importance Sampling (MIS)**: Variance reduction for better sample efficiency
+- **Depth-based Ray Tracing**: Depth-aware ray intersection testing
+
+### Denoising Pipeline
+- **SVGF (Spatiotemporal Variance-Guided Filtering)**:
+  - Temporal filtering for multi-frame smoothing
+  - Variance clipping for artifact reduction
+  - Depth and normal thresholding for edge preservation
+  - A-Trous filtering for progressive detail recovery
+  - Configurable filter iterations and parameters
+
+### Configuration Parameters
+
+```json
+"path_tracing": {
+  "samples_per_pixel": 4,
+  "max_ray_bounces": 4,
+  "resolution_scale": 1.0,
+  "enable_accumulation": true,
+  "enable_denoising": true,
+  "enable_nee": true,
+  "enable_mis": true,
+  "enable_ibl": true,
+  "ibl_intensity": 1.0,
+  "denoising": {
+    "temporal_alpha": 0.15,
+    "variance_clip_gamma": 1.5,
+    "depth_threshold": 0.05,
+    "normal_threshold": 0.9,
+    "atrous_iterations": 4,
+    "phi_color": 5.0,
+    "phi_normal": 32.0,
+    "phi_depth": 0.01
+  }
+}
+```
+
+### Usage
+1. Open the Rendering Settings window (F6)
+2. Switch "Renderer Mode" to "Path Traced"
+3. Adjust samples per pixel and max bounces
+4. Keep camera still for convergence
+5. Enable SVGF denoising for faster visual quality
+
+### Performance Tips
+- Use 1-4 samples per pixel for interactive preview
+- Reduce resolution scale (0.5 = 4x faster) for real-time exploration
+- Enable denoising for cleaner results with fewer samples
+- Use 4-8 ray bounces for most scenes
+- Set NEE and MIS for faster convergence
 
 ---
 
@@ -518,38 +605,57 @@ For questions, issues, or suggestions:
 
 ## Roadmap
 
+### Completed Features
+- [x] Path tracing with BVH acceleration
+- [x] SVGF temporal denoising
+- [x] Light propagation volumes (LPV)
+- [x] Screen-space global illumination (SSGI)
+- [x] Multiple rendering modes (Deferred/Path Traced)
+
 ### Upcoming Features
-- [ ] Compute shader support for advanced post-processing
+- [ ] Compute shader optimization for path tracing
+- [ ] AI-powered image denoising (OptiX or similar)
 - [ ] NVIDIA DLSS integration
-- [ ] Mesh shader support
+- [ ] Mesh shader support for geometry
 - [ ] Improved animation blending system
 - [ ] Audio engine enhancements
 - [ ] Network multiplayer support
-- [ ] VR headset support
+- [ ] VR headset support (OpenXR)
 - [ ] Mobile platform support (Android/iOS)
+- [ ] Real-time neural radiance fields (NeRF)
 
 ### Performance Improvements
 - [ ] GPU-driven rendering pipeline
 - [ ] Bindless texture support
-- [ ] Virtual texture system
-- [ ] Streaming asset system
+- [ ] Virtual texture streaming system
+- [ ] Compute-based light culling
+- [ ] Progressive path tracing optimization
 
 ---
 
 ## Version History
 
-### v1.0.0 (Current)
+### v1.1.0 (Current)
+- Path tracing renderer with BVH acceleration
+- SVGF temporal denoising pipeline
+- Light propagation volumes (LPV) global illumination
+- Screen-space global illumination (SSGI)
+- Multiple rendering mode switching
+- Enhanced performance profiling
+
+### v1.0.0
 - Initial public release
-- Full rendering pipeline
-- Physics engine
-- Animation system
-- Scene editor
-- Multi-light support
+- Deferred rendering pipeline
+- Physics engine with rigid body dynamics
+- Animation system with glTF 2.0 support
+- Scene editor with gizmo controls
+- Multi-light shadow mapping
+- Real-time ImGui interface
 
 ### v0.9.0 (Beta)
 - Core engine architecture
-- Basic rendering
-- Physics foundation
+- Basic deferred rendering
+- Physics foundation with BVH
 
 ---
 
