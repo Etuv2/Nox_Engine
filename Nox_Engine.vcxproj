@@ -112,6 +112,7 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="config.json" />
     <None Include="config\input_config.json" />
+    <None Include="README.md" />
     <None Include="scenes\animation_test.json" />
     <None Include="scenes\car.json" />
     <None Include="scenes\copied_city.json" />

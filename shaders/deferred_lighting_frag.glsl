@@ -416,7 +416,7 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, flo
 	vec3 kS = F;
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 	
-	// FIXED: Use raw albedo here, kD already handles the metallic factor
+	// Use raw albedo here, kD already handles the metallic factor
 	// Lambertian diffuse = albedo / PI
 	vec3 diffuse = kD * albedo / PI;
 	
@@ -473,7 +473,7 @@ vec3 ComputeIBL(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, ve
 	vec3 kS = F;
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 	
-	// FIXED: Diffuse IBL uses raw albedo, kD handles metallic
+	// Diffuse IBL uses raw albedo, kD handles metallic
 	vec3 diffuse = kD * albedo * irradiance * diffuseAO * diffuseIBLScale;
 	
 	// Specular IBL
@@ -541,7 +541,7 @@ vec3 SampleLPV(vec3 worldPos, vec3 normal, vec3 albedo, float metallic, float di
 	vec3 localNormal = rotateVectorInverse(normal, lpvGridOrientation);
 	vec3 irradiance = EvaluateSH(shR, shG, shB, localNormal);
 	
-	// FIXED: Apply metallic factor here, use raw albedo
+	// Apply metallic factor here, use raw albedo
 	vec3 kD = vec3(1.0 - metallic);
 	vec3 giContribution = (albedo / PI) * irradiance * kD;
 	giContribution *= lpvGIStrength * lpvDebugBoost * diffuseAO;
@@ -568,10 +568,10 @@ void main() {
 	float roughness = clamp(packedNRM.b, 0.04, 1.0);
 	float metallic = clamp(packedNRM.a, 0.0, 1.0);
 	
-	// CRITICAL: Extract albedo (base color) directly from G-buffer
+	// Extract albedo (base color) directly from G-buffer
 	vec3 albedo = albedoAO.rgb;
 	
-	// FIXED: Only validate for NaN/Inf, NOT for dark colors
+	// Only validate for NaN/Inf, NOT for dark colors
 	// Black materials (like tires) are perfectly valid and should not be overridden
 	if (any(isnan(albedo)) || any(isinf(albedo))) {
 		albedo = vec3(0.5); // Fallback only for invalid data
@@ -613,18 +613,13 @@ void main() {
 	// Start with emissive
 	vec3 color = emissive;
 
-	// MATERIAL ROUTING: Apply different shading based on material ID
-	// Material ID routing allows different BRDF models per surface
-	
+	// Material routing allows different BRDF models per surface
 	if (materialID == 2u) {
 		// Transmissive/Glass material (ID 2)
 		// TODO: Implement refraction and transmission in future update
 		// For now, use standard PBR with high specular
 		roughness = min(roughness, 0.1); // Force smooth for glass-like appearance
 	}
-	// Material ID 1 (Specular-Glossiness) uses same BRDF as standard PBR
-	// Material ID 0 (Standard PBR) is default - no special handling needed
-	// Future IDs (3=SSS, 4=Cloth, 5=Clearcoat) can be added here
 
 	// Direct lighting - pass raw albedo, metallic factor is applied inside
 	if (numLights > 0) {
@@ -656,7 +651,7 @@ void main() {
 		color += lpvContribution;
 	}
 
-	// SSGI - FIXED: ssgiIndirect is already irradiance, don't multiply by albedo
+	// SSGI - ssgiIndirect is already irradiance, don't multiply by albedo
 	// The sampled hit color contains final radiance with albedo baked in
 	// We apply metallic factor and diffuse BRDF (1/PI) for energy conservation
 	vec3 ssgiIndirect = texture(ssgiMap, vTexCoord).rgb;

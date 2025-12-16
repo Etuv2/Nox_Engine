@@ -44,9 +44,9 @@ public:
      */
     void Cleanup();
 
-    // ========================================================================
+
     // Window State Accessors (for Core to query if needed)
-    // ========================================================================
+
     
     SDL_Window* GetWindow() { return m_window; }
     SDL_GLContext GetGLContext() { return m_glContext; }
@@ -60,32 +60,32 @@ public:
     void RequestQuit() { m_running = false; }
 
 private:
-    // ========================================================================
+
     // Window Lifecycle
-    // ========================================================================
+
     
     bool LoadWindowConfiguration();
     bool CreateWindow();
     bool CreateGLContext();
     void SetWindowIcon();
     
-    // ========================================================================
+
     // Event Handling
-    // ========================================================================
+
     
     void ProcessEvents();
     void HandleWindowEvent(const SDL_WindowEvent& windowEvent);
 
-    // ========================================================================
+
     // SDL/OpenGL Resources (owned by MainWindow)
-    // ========================================================================
+
     
     SDL_Window* m_window;
     SDL_GLContext m_glContext;
     
-    // ========================================================================
+
     // Window Configuration
-    // ========================================================================
+
     
     json m_config;
     int m_windowWidth;
@@ -95,18 +95,18 @@ private:
     bool m_vsync;
     bool m_fullscreen;
     
-    // ========================================================================
+
     // Application State
-    // ========================================================================
+
     
     bool m_running;
     Uint32 m_lastTime;
     bool m_cleanedUp;  // Guard to prevent double cleanup
     bool m_isVisible;  // Cached visibility state to avoid SDL queries every frame
     
-    // ========================================================================
+
     // Engine Core (owns all engine subsystems)
-    // ========================================================================
+
     
     std::unique_ptr<Core> m_core;
 };

@@ -659,6 +659,7 @@
     <None Include="shaders\debug_bbox_vert.glsl">
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
+    <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">
@@ -892,18 +893,6 @@
     <ClInclude Include="src\TransformSystem.h">
       <Filter>Header Files\Node</Filter>
     </ClInclude>
-    <ClInclude Include="src\GLBuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GuiAnimation.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GuiEventBus.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\StateExportWindow.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\AnimationSystem.h">
       <Filter>Header Files\Engine\ECS</Filter>
     </ClInclude>
@@ -916,29 +905,41 @@
     <ClInclude Include="src\passes\DebugBBoxPass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
-    <ClInclude Include="src\PerformanceRecorder.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RuntimeStateManager.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Core.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SimulationConfig.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RigidBody.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="src\PhysicsEngine.h">
+      <Filter>Header Files\Physics</Filter>
     </ClInclude>
     <ClInclude Include="src\PhysicsCollision.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Physics</Filter>
     </ClInclude>
     <ClInclude Include="src\PhysicsBVH.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Physics</Filter>
     </ClInclude>
-    <ClInclude Include="src\PhysicsEngine.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="src\RigidBody.h">
+      <Filter>Header Files\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SimulationConfig.h">
+      <Filter>Header Files\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GLBuffer.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GuiAnimation.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GuiEventBus.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PerformanceRecorder.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RuntimeStateManager.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\StateExportWindow.h">
+      <Filter>Header Files\Engine</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

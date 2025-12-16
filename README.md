@@ -1,4 +1,4 @@
-# NOX Engine
+﻿# NOX Engine
 
 ![NOX Engine](images/logo.png)
 
@@ -285,38 +285,38 @@ Edit `config.json` to customize engine settings:
 
 ```
 Nox_Engine/
-??? src/
-?   ??? Core.h/.cpp                 # Main engine coordinator
-?   ??? ModularRenderer.h/.cpp      # Rendering pipeline
-?   ??? PhysicsEngine.h/.cpp        # Physics simulation
-?   ??? SceneGraph.h/.cpp           # Scene management
-?   ??? SceneLoader.h/.cpp          # Scene serialization
-?   ??? Camera.h/.cpp               # Camera system
-?   ??? Lighting/
-?   ?   ??? DirectionalLight.h/.cpp
-?   ?   ??? LightManager.h/.cpp
-?   ?   ??? LightNode.h/.cpp
-?   ??? Physics/
-?   ?   ??? RigidBody.h/.cpp
-?   ?   ??? PhysicsCollision.h/.cpp
-?   ?   ??? PhysicsBVH.h/.cpp
-?   ??? Input/
-?   ?   ??? InputIntegration.h/.cpp
-?   ?   ??? InputSystem.h/.cpp
-?   ??? ImGui/
-?       ??? ImGuiInterface.h/.cpp
-?       ??? ImGuiWindowManager.h/.cpp
-?       ??? Windows/
-?           ??? StatusWindow.h/.cpp
-?           ??? CameraWindow.h/.cpp
-?           ??? LightingWindow.h/.cpp
-?           ??? ...
-??? shaders/                        # GLSL shader programs
-??? scenes/                         # Scene JSON files
-??? models/                         # 3D model assets
-??? fonts/                          # Font files
-??? config.json                     # Engine configuration
-??? Nox_Engine.sln                  # Visual Studio solution
+├── src/
+│   ├── Core.h/.cpp                 # Main engine coordinator
+│   ├── ModularRenderer.h/.cpp      # Rendering pipeline
+│   ├── PhysicsEngine.h/.cpp        # Physics simulation
+│   ├── SceneGraph.h/.cpp           # Scene management
+│   ├── SceneLoader.h/.cpp          # Scene serialization
+│   ├── Camera.h/.cpp               # Camera system
+│   ├── Lighting/
+│   │   ├── DirectionalLight.h/.cpp
+│   │   ├── LightManager.h/.cpp
+│   │   └── LightNode.h/.cpp
+│   ├── Physics/
+│   │   ├── RigidBody.h/.cpp
+│   │   ├── PhysicsCollision.h/.cpp
+│   │   └── PhysicsBVH.h/.cpp
+│   ├── Input/
+│   │   ├── InputIntegration.h/.cpp
+│   │   └── InputSystem.h/.cpp
+│   └── ImGui/
+│       ├── ImGuiInterface.h/.cpp
+│       ├── ImGuiWindowManager.h/.cpp
+│       └── Windows/
+│           ├── StatusWindow.h/.cpp
+│           ├── CameraWindow.h/.cpp
+│           ├── LightingWindow.h/.cpp
+│           └── ...
+├── shaders/                        # GLSL shader programs
+├── scenes/                         # Scene JSON files
+├── models/                         # 3D model assets
+├── fonts/                          # Font files
+├── config.json                     # Engine configuration
+└── Nox_Engine.sln                  # Visual Studio solution
 ```
 
 ---
@@ -556,31 +556,6 @@ inputSystem->RegisterAction(Input::Actions::CUSTOM_ACTION,
 - **Example Scenes**: Multiple pre-built scenes in `scenes/` directory
 - **Config Files**: Well-documented JSON configuration
 
----
-
-## Contributing
-
-We welcome contributions! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Coding Standards
-- Use C++17 features
-- Follow Google C++ style guide
-- Document public APIs
-- Include unit tests for new features
-
----
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
 
 ## Acknowledgments
 
@@ -591,77 +566,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **ImGuizmo**: Transform Gizmo for ImGui
 - **nlohmann/json**: JSON for Modern C++
 - **tinyglTF**: glTF 2.0 loader
-
----
-
-## Contact & Support
-
-For questions, issues, or suggestions:
-- **GitHub Issues**: Report bugs and request features
-- **Discussions**: Ask questions and share ideas
-- **Email**: [your-email@example.com](mailto:your-email@example.com)
-
----
-
-## Roadmap
-
-### Completed Features
-- [x] Path tracing with BVH acceleration
-- [x] SVGF temporal denoising
-- [x] Light propagation volumes (LPV)
-- [x] Screen-space global illumination (SSGI)
-- [x] Multiple rendering modes (Deferred/Path Traced)
-
-### Upcoming Features
-- [ ] Compute shader optimization for path tracing
-- [ ] AI-powered image denoising (OptiX or similar)
-- [ ] NVIDIA DLSS integration
-- [ ] Mesh shader support for geometry
-- [ ] Improved animation blending system
-- [ ] Audio engine enhancements
-- [ ] Network multiplayer support
-- [ ] VR headset support (OpenXR)
-- [ ] Mobile platform support (Android/iOS)
-- [ ] Real-time neural radiance fields (NeRF)
-
-### Performance Improvements
-- [ ] GPU-driven rendering pipeline
-- [ ] Bindless texture support
-- [ ] Virtual texture streaming system
-- [ ] Compute-based light culling
-- [ ] Progressive path tracing optimization
-
----
-
-## Version History
-
-### v1.1.0 (Current)
-- Path tracing renderer with BVH acceleration
-- SVGF temporal denoising pipeline
-- Light propagation volumes (LPV) global illumination
-- Screen-space global illumination (SSGI)
-- Multiple rendering mode switching
-- Enhanced performance profiling
-
-### v1.0.0
-- Initial public release
-- Deferred rendering pipeline
-- Physics engine with rigid body dynamics
-- Animation system with glTF 2.0 support
-- Scene editor with gizmo controls
-- Multi-light shadow mapping
-- Real-time ImGui interface
-
-### v0.9.0 (Beta)
-- Core engine architecture
-- Basic deferred rendering
-- Physics foundation with BVH
-
----
-
-Made with care by the NOX Engine Team
-
----
-
-*Last Updated: 2024*
-*Repository: https://github.com/yourusername/Nox_Engine*
