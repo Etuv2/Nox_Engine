@@ -5,10 +5,14 @@
 A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphics, physics simulation, and interactive scene editing.
 
 ---
-
+## Notes
+- Project was initially created during my second year during my 3D Graphics Programming Unit at university.
+- Only part of the engine that remains from the original project is the Main Window,basic structure and some of the rendering code.
+- Rendering system is subject to grading for the Graphics and Computational Programming unit.
+- Data Driven ECS Scene Graph/Scene Node system is subject to grading for the Game Engine Programming unit.
 ## Features
 
-### Interesting Rendering
+### Interesting Rendering Capabilities
 - **Deferred Rendering Pipeline**: Efficient multi-light rendering with interesting shading
 - **Path Tracing Mode**: BVH-accelerated bidirectional path tracing with temporal accumulation
   - Real-time physically accurate rendering

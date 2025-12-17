@@ -1,4 +1,8 @@
 #version 460 core
+
+// Include shared PBR functions
+#include "includes/pbr_common.glsl"
+
 out vec4 FragColor;
 
 in VS_OUT {
@@ -67,15 +71,6 @@ uniform vec3 keyLightDir = normalize(vec3(-0.4, -1.0, -0.2));
 uniform vec3 keyLightColor = vec3(1.0);
 uniform float keyLightIntensity = 1.0;
 
-// Utility functions
-const float PI = 3.14159265359;
-
-// Calculate F0 from IOR
-float F0FromIOR(float materialIOR) {
-    float f = (materialIOR - 1.0) / (materialIOR + 1.0);
-    return f * f;
-}
-
 vec3 getNormalFromMap() {
     // Start with geometric normal
     vec3 N = normalize(fs_in.Normal);
@@ -95,7 +90,7 @@ vec3 getNormalFromMap() {
     // Get tangent from vertex shader (already orthogonalized)
     vec3 T = normalize(fs_in.TangentWS.xyz);
     
-    // CRITICAL FIX: Re-orthogonalize tangent per-pixel after interpolation
+    // Re-orthogonalize tangent per-pixel after interpolation
     // This prevents seams at triangle boundaries
     T = normalize(T - dot(T, N) * N);
     
@@ -118,43 +113,8 @@ vec3 getNormalFromMap() {
     return mappedNormal;
 }
 
-float DistributionGGX(vec3 N, vec3 H, float roughness) {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH * NdotH;
-    
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-    
-    return a2 / max(denom, 0.0001);
-}
-
-float GeometrySchlickGGX(float NdotV, float roughness) {
-    float r = (roughness + 1.0);
-    float k = (r * r) / 8.0;
-    
-    float denom = NdotV * (1.0 - k) + k;
-    
-    return NdotV / max(denom, 0.0001);
-}
-
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-    
-    return ggx1 * ggx2;
-}
-
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
+// Note: DistributionGGX, GeometrySchlickGGX, GeometrySmith, FresnelSchlick, 
+// FresnelSchlickRoughness are now defined in pbr_common.glsl (included above)
 
 // Simplified but physically accurate refraction calculation
 vec3 calculateRefraction(vec3 I, vec3 N, float materialIOR) {
@@ -271,7 +231,7 @@ void main() {
     //Calculate Fresnel term for physically correct reflections
     // Transmissive materials reflect more at grazing angles (Fresnel effect)
     float fresnel = pow(1.0 - NdotV, 5.0);
-    vec3 fresnelTerm = fresnelSchlickRoughness(NdotV, F0, roughness);
+    vec3 fresnelTerm = FresnelSchlickRoughness(NdotV, F0, roughness);
     
     // === TRANSMISSIVE MATERIAL RENDERING ===
     // For transparent materials, we combine:
@@ -305,7 +265,7 @@ void main() {
         // Specular highlights
         float D = DistributionGGX(N, H, roughness);
         float G = GeometrySmith(N, V, L, roughness);
-        vec3 F = fresnelSchlick(HdotV, F0);
+        vec3 F = FresnelSchlick(HdotV, F0);
         
         vec3 numerator = D * G * F;
         float denominator = 4.0 * max(NdotV, 0.0001) * max(NdotL, 0.0001);

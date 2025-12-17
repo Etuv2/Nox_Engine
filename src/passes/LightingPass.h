@@ -112,6 +112,21 @@ private:
 		GLint normalOffsetScale = -1;
 		GLint cascadeBiasScale = -1;
 		GLint cascadeCount = -1;
+		
+		// Cascade blend settings
+		GLint cascadeBlendDistance = -1;
+		GLint cascadeBlendFactor = -1;
+		GLint cascadeSplits = -1;
+		
+		// Point light shadow settings
+		GLint pointLightBias = -1;
+		GLint pointLightSlopeBias = -1;
+		GLint pointLightNormalOffset = -1;
+		
+		// Shadow darkness settings
+		GLint shadowDarkness = -1;
+		GLint shadowMinBrightness = -1;
+		GLint shadowTransitionHardness = -1;
 	} m_uniforms;
 
 	bool m_uniformsCached = false;

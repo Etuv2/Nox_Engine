@@ -1,7 +1,7 @@
 ﻿#version 460 core
 
 // Screen-Space Contact Shadows
-
+// https://panoskarabelas.com/posts/screen_space_shadows/
 // Input / Output
 layout (binding = 0) uniform sampler2D uDepth;       // GBuffer depth
 layout (r8, binding = 1) writeonly uniform image2D uOutShadow; // output 0..1 shadow

@@ -40,9 +40,9 @@ bool ComputeShader::CreateFromFile(const std::string& computeShaderPath,
 		return false;
 	}
 
-	// Load shader source from file
+	// Load shader source from file with include processing
 	std::string source;
-	if (!LoadFileToString(computeShaderPath.c_str(), source)) {
+	if (!LoadFileWithIncludes(computeShaderPath.c_str(), source)) {
 		std::cerr << "[ComputeShader] Failed to load compute shader file: " << computeShaderPath << std::endl;
 		return false;
 	}

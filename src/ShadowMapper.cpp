@@ -1,4 +1,5 @@
 #include "ShadowMapper.h"
+#include "ShadowMapper.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 #include <limits>
@@ -6,7 +7,7 @@
 
 namespace ShadowMapper {
 
-    // Enhanced cascade split calculation with better distribution control
+    // Enhanced cascade split calculation with proper distribution across view frustum
     std::vector<float> ComputeCascadeSplits(float nearPlane, float farPlane, int cascadeCount, float lambda) {
         std::vector<float> splits(cascadeCount);
         float range = farPlane - nearPlane;
@@ -15,26 +16,30 @@ namespace ShadowMapper {
         for (int i = 0; i < cascadeCount; ++i) {
             float p = (i + 1) / float(cascadeCount);
             
-            // Use standard logarithmic/linear blend
-            float log = nearPlane * std::pow(logBase, p);
-            float uni = nearPlane + range * p;
+            // Use standard logarithmic/linear blend (PSSM formula)
+            // Logarithmic distribution gives more resolution to near objects
+            // Linear distribution spreads evenly across depth range
+            float logSplit = nearPlane * std::pow(logBase, p);
+            float linSplit = nearPlane + range * p;
             
-            splits[i] = lambda * log + (1.0f - lambda) * uni;
+            splits[i] = lambda * logSplit + (1.0f - lambda) * linSplit;
         }
         
-        // Override first cascade to be MUCH larger (10% of total range minimum)
-        // This ensures shadows are visible at close range
-        splits[0] = glm::max(splits[0], nearPlane + range * 0.10f);
+        // NO OVERRIDES - use pure logarithmic/linear blend to ensure proper coverage
+        // The lambda parameter controls the distribution:
+        //   lambda = 1.0: Pure logarithmic (more near detail, less far coverage)
+        //   lambda = 0.0: Pure linear (even distribution)
+        //   lambda = 0.5-0.7: Good balance for most scenes
         
-        // Second cascade should be at least 30% of range
-        if (cascadeCount > 1) {
-            splits[1] = glm::max(splits[1], nearPlane + range * 0.30f);
-        }
-        
-        // Ensure monotonic progression
+        // Only ensure monotonic progression with minimal gap
         for (int i = 1; i < cascadeCount; ++i) {
-            splits[i] = glm::max(splits[i], splits[i-1] + range * 0.05f);
+            if (splits[i] <= splits[i-1]) {
+                splits[i] = splits[i-1] + range * 0.01f;
+            }
         }
+        
+        // Ensure last cascade reaches near the far plane
+        splits[cascadeCount - 1] = glm::max(splits[cascadeCount - 1], farPlane * 0.95f);
         
         return splits;
     }
@@ -80,8 +85,18 @@ namespace ShadowMapper {
         int cascadeIndex,
         int shadowMapSize)
     {
-        // Create cascade-specific projection matrix
-        glm::mat4 cascadeProj = glm::perspective(glm::radians(fov), windowAspect, cascadeNear, cascadeFar);
+        // Add generous overlap to cascade bounds to ensure continuous coverage
+        // This is critical to prevent gaps at cascade boundaries
+        float cascadeRange = cascadeFar - cascadeNear;
+        float overlap = cascadeRange * 0.15f; // 15% overlap on each side (increased from 5%)
+        
+        // Extend near slightly back (except for first cascade)
+        float effectiveNear = (cascadeIndex > 0) ? glm::max(0.01f, cascadeNear - overlap) : cascadeNear;
+        // Extend far forward
+        float effectiveFar = cascadeFar + overlap;
+        
+        // Create cascade-specific projection matrix with overlap
+        glm::mat4 cascadeProj = glm::perspective(glm::radians(fov), windowAspect, effectiveNear, effectiveFar);
         glm::mat4 invCascadeVP = glm::inverse(cascadeProj * view);
 
         // Get frustum corners in world space
@@ -100,6 +115,9 @@ namespace ShadowMapper {
             radius = glm::max(radius, distance);
         }
 
+        // Add margin to radius to ensure full coverage (increased from 2% to 10%)
+        radius *= 1.10f;
+
         // Enhanced texel snapping for rock-solid stability
         float texelSize = (radius * 2.0f) / static_cast<float>(shadowMapSize);
         
@@ -109,15 +127,8 @@ namespace ShadowMapper {
         // Calculate optimal light camera position
         glm::vec3 lightDirNorm = glm::normalize(lightDir);
         
-        // Distance calculation with cascade-specific adjustments
-        float lightDistance = radius * 2.5f; // Base distance
-        
-        // Adjust distance based on cascade - closer cascades can use tighter bounds
-        if (cascadeIndex == 0) {
-            lightDistance *= 0.8f; // Tighter for first cascade
-        } else if (cascadeIndex >= 3) {
-            lightDistance *= 1.2f; // More margin for distant cascades
-        }
+        // Distance calculation - push light back far enough to capture all geometry
+        float lightDistance = radius * 4.0f; // Increased from 3x to 4x
         
         glm::vec3 shadowCamPos = center - lightDirNorm * lightDistance;
         
@@ -140,15 +151,14 @@ namespace ShadowMapper {
         shadowCamPos = snappedCenter - lightDirNorm * lightDistance;
         lightView = glm::lookAt(shadowCamPos, snappedCenter, up);
 
-        // Create optimized orthographic projection
-        float nearPlane = 0.01f; // Very close near plane
-        float farPlane = lightDistance + radius + 10.0f; // Conservative far plane
+        // Create orthographic projection with very generous depth range
+        float orthoNear = 0.1f;
+        float orthoFar = lightDistance * 2.0f + radius * 3.0f; // More generous far plane
         
-        // Ultra-tight orthographic bounds for maximum shadow map utilization
         glm::mat4 lightProj = glm::ortho(
             -radius, radius,
             -radius, radius,
-            nearPlane, farPlane
+            orthoNear, orthoFar
         );
         
         return lightProj * lightView;

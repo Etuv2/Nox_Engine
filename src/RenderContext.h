@@ -67,14 +67,14 @@ struct RenderContext {
 	bool rtEnableMIS = true;  // Multiple Importance Sampling
 
 	// SVGF Denoising settings
-	float svgfTemporalAlpha = 0.15f;   // Temporal blend factor (0.1-0.2)
-	float svgfVarianceClipGamma = 1.5f;   // Variance clipping gamma
-	float svgfDepthThreshold = 0.05f;     // Depth similarity threshold
-	float svgfNormalThreshold = 0.9f;     // Normal similarity threshold (cos angle)
-	int svgfAtrousIterations = 1;         // Number of à-trous filter iterations
-	float svgfPhiColor = 5.0f;    // Color weight parameter
-	float svgfPhiNormal = 32.0f;          // Normal weight parameter
-	float svgfPhiDepth = 0.01f;           // Depth weight parameter
+	float svgfTemporalAlpha = 0.1f;       // Temporal blend factor (lower = more stable)
+	float svgfVarianceClipGamma = 1.2f;   // Variance clipping gamma (lower = less ghosting)
+	float svgfDepthThreshold = 0.02f;     // Depth similarity threshold (tighter for edges)
+	float svgfNormalThreshold = 0.95f;    // Normal similarity threshold (cos angle, higher = sharper)
+	int svgfAtrousIterations = 3;         // Number of à-trous filter iterations (3 for balanced quality)
+	float svgfPhiColor = 2.0f;            // Color weight parameter (lower = sharper color edges)
+	float svgfPhiNormal = 64.0f;          // Normal weight parameter (higher = sharper geometric edges)
+	float svgfPhiDepth = 0.005f;          // Depth weight parameter (lower = sharper depth edges)
 
 	//BVH Debug Visualization
 	bool rtDisplayBVH = false;     // Enable BVH visualization mode
@@ -139,6 +139,11 @@ struct RenderContext {
 	float shadowFar = 1000.0f;
 	bool enablePCSS = true;
 	float lightSize = 0.02f;
+	
+	// Shadow darkness settings - control how dark shadows appear for realism
+	float shadowDarkness = 1.0f;           // Multiplier for shadow darkness [0.0=no shadows, 1.0=full darkness]
+	float shadowMinBrightness = 0.05f;     // Minimum brightness in complete shadow (0.05 = 5% for subtle ambient)
+	float shadowTransitionHardness = 1.0f; // Softness of shadow boundaries [0.5=very soft, 2.0=sharp]
 
 	// Screen-space shadow settings (contact shadows)
 	bool enableScreenSpaceShadows = true;

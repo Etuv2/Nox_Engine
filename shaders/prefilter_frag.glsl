@@ -1,4 +1,8 @@
 #version 460 core
+
+// Include shared PBR functions
+#include "includes/pbr_common.glsl"
+
 out vec4 FragColor;
 in vec3 WorldPos;
 
@@ -6,24 +10,7 @@ uniform samplerCube environmentMap;
 uniform float roughness;
 uniform float resolution;
 
-const float PI = 3.14159265359;
-
-// ----------------------------------------------------------------------------
-float DistributionGGX(vec3 N, vec3 H, float roughness)
-{
-    float a = roughness*roughness;
-    float a2 = a*a;
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH*NdotH;
-
-    float num = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-
-    return num / max(denom, 0.0001);
-}
-
-// ----------------------------------------------------------------------------
+// Radical inverse for low-discrepancy sequences (Halton)
 float RadicalInverse_VdC(uint bits) 
 {
     bits = (bits << 16u) | (bits >> 16u);
@@ -34,7 +21,7 @@ float RadicalInverse_VdC(uint bits)
     return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
 
-// ----------------------------------------------------------------------------
+// Hammersley sequence for better sample distribution
 vec2 Hammersley(uint i, uint N)
 {
     return vec2(float(i)/float(N), RadicalInverse_VdC(i));

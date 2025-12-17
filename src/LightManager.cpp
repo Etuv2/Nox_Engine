@@ -825,6 +825,14 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			glm::vec3 lightPos = light->GetPosition();
 			float prev = nearPlane;
 
+			// Debug: Log cascade splits once per second (every ~60 frames)
+			static int debugCounter = 0;
+			if (debugCounter++ % 300 == 0) {
+				std::cout << "[CSM Debug] Near=" << nearPlane << " Far=" << farPlane 
+				          << " Splits: [" << splits[0] << ", " << splits[1] 
+				          << ", " << splits[2] << ", " << splits[3] << "]" << std::endl;
+			}
+
 			for (int cIdx = 0; cIdx < 4 && currentSlice < m_shadowArrayLayers; ++cIdx) {
 				float cNear = (cIdx == 0) ? nearPlane : prev;
 				float cFar = splits[cIdx];
@@ -869,7 +877,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 				unsigned int reason = decideUpdate(currentSlice, BaseLight::LightType::DIRECTIONAL,
 					(int)li, cIdx, ls, lightPos, lightDir,
-					sigC, sigN, cadence);
+				 sigC, sigN, cadence);
 
 				if (reason != DIRTY_NONE) {
 					renderSlice(currentSlice, ls, filtered, BaseLight::LightType::DIRECTIONAL,
@@ -960,7 +968,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		else if (light->GetLightType() == BaseLight::LightType::POINT) {
 			unsigned faceUpdate = (m_roundRobinPoint++) % 6;
 			float range = light->GetRange();
-			glm::mat4 proj90 = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, range * 1.2f);
+			// Use generous far plane to avoid circular shadow cutoff
+			// The shader will handle distance-based attenuation
+			glm::mat4 proj90 = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, range * 2.0f);
 
 			const glm::vec3 dirs[6] = { {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1} };
 			const glm::vec3 ups[6] = { {0,-1,0},{0,-1,0},{0,0,1},{0,0,-1},{0,-1,0},{0,-1,0} };
@@ -1324,8 +1334,9 @@ void LightManager::DisableLightsByType(BaseLight::LightType t)
 }
 
 
-// Statistics & Queries
-
+/**
+ * @brief Statistics & Queries
+ */
 
 size_t LightManager::GetEnabledLightCount() const
 {
@@ -1367,8 +1378,9 @@ void LightManager::PrintPerformanceStats() const
 }
 
 
-// Light Culling (Tiled/Clustered)
-
+/**
+ * @brief Light Culling (Tiled/Clustered)
+ */
 
 /**
  * @brief Perform tiled light culling for deferred rendering

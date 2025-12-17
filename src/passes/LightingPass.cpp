@@ -8,8 +8,10 @@
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
 #include "../RenderContext.h"
+#include "../ShadowMapper.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
+#include <cmath>
 
 LightingPass::LightingPass() {}
 
@@ -99,6 +101,21 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.normalOffsetScale = glGetUniformLocation(m_shader, "normalOffsetScale");
 	m_uniforms.cascadeBiasScale = glGetUniformLocation(m_shader, "cascadeBiasScale");
 	m_uniforms.cascadeCount = glGetUniformLocation(m_shader, "cascadeCount");
+	
+	// Cascade blend settings
+	m_uniforms.cascadeBlendDistance = glGetUniformLocation(m_shader, "cascadeBlendDistance");
+	m_uniforms.cascadeBlendFactor = glGetUniformLocation(m_shader, "cascadeBlendFactor");
+	m_uniforms.cascadeSplits = glGetUniformLocation(m_shader, "cascadeSplits");
+	
+	// Point light shadow settings
+	m_uniforms.pointLightBias = glGetUniformLocation(m_shader, "pointLightBias");
+	m_uniforms.pointLightSlopeBias = glGetUniformLocation(m_shader, "pointLightSlopeBias");
+	m_uniforms.pointLightNormalOffset = glGetUniformLocation(m_shader, "pointLightNormalOffset");
+	
+	// Shadow darkness settings
+	m_uniforms.shadowDarkness = glGetUniformLocation(m_shader, "shadowDarkness");
+	m_uniforms.shadowMinBrightness = glGetUniformLocation(m_shader, "shadowMinBrightness");
+	m_uniforms.shadowTransitionHardness = glGetUniformLocation(m_shader, "shadowTransitionHardness");
 
 	m_uniformsCached = true;
 }
@@ -374,8 +391,34 @@ void LightingPass::Execute(RenderContext& ctx,
 		// Shadow bias configuration
 		glUniform1f(m_uniforms.shadowBias, ctx.shadowBias);
 		glUniform1f(m_uniforms.maxShadowBias, ctx.shadowBias * 10.0f);
-		glUniform1f(m_uniforms.normalOffsetScale, 0.1f);
+		glUniform1f(m_uniforms.normalOffsetScale, 0.01f);  // Reduced from 0.1f to minimize floating shadows
 		glUniform1f(m_uniforms.cascadeBiasScale, 1.0f);
+
+		// Cascade blend settings from LightManager config
+		const auto& shadowConfig = ctx.lightManager->shadowConfig;
+		glUniform1f(m_uniforms.cascadeBlendDistance, shadowConfig.cascadeBlendDistance);
+		glUniform1f(m_uniforms.cascadeBlendFactor, shadowConfig.cascadeBlendFactor);
+		
+		// Calculate cascade splits based on camera near/far planes
+		// CRITICAL: Use the SAME split calculation as LightManager::RenderShadowMaps
+		// to ensure cascade selection in shader matches rendered cascade bounds
+		float nearPlane = camera->GetCameraNearPlane();
+		float farPlane = camera->GetCameraFarPlane();
+		
+		// Use ShadowMapper's cascade split function for consistency
+		std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(nearPlane, farPlane, 4, 0.6f);
+		glm::vec4 cascadeSplits(splits[0], splits[1], splits[2], splits[3]);
+		glUniform4fv(m_uniforms.cascadeSplits, 1, glm::value_ptr(cascadeSplits));
+		
+		// Point light shadow settings
+		glUniform1f(m_uniforms.pointLightBias, shadowConfig.pointLightBias);
+		glUniform1f(m_uniforms.pointLightSlopeBias, shadowConfig.pointLightSlopeBias);
+		glUniform1f(m_uniforms.pointLightNormalOffset, shadowConfig.pointLightNormalOffset);
+		
+		// Shadow darkness settings - realistic shadow rendering
+		glUniform1f(m_uniforms.shadowDarkness, ctx.shadowDarkness);
+		glUniform1f(m_uniforms.shadowMinBrightness, ctx.shadowMinBrightness);
+		glUniform1f(m_uniforms.shadowTransitionHardness, ctx.shadowTransitionHardness);
 
 		// Disable legacy cascade system
 		glUniform1i(m_uniforms.cascadeCount, 0);

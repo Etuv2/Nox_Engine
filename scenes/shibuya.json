@@ -23,10 +23,10 @@
     },
     {
       "type": "model",
-      "path": "models\\full_gameready_city_buildings.glb",
+      "path": "models\\sponza_palace.glb",
       "position": [ 0.0, 0.0, 0.0 ],
-      "rotation": [ 90, 0.0, 0.0 ],
-      "scale": [ 2, 2, 2 ]
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [0.1, 0.1, 0.1 ]
     },
     {
       "type": "model",

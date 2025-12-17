@@ -1,5 +1,4 @@
 #version 460 core
-
 // Generates stochastic hemisphere directions with temporal stability
 // Aligned with SSAO’s noise approach for consistent blue-noise distribution
 
@@ -11,7 +10,7 @@ layout (rgba16f, binding = 0) writeonly uniform image2D outDirs;
 uniform vec2 invScreen;
 uniform int frameIndex;
 
-// Hash function for stable, blue-noise-like randomness across frames
+// Hash function for stable, blue-noise-like randomness across frames : https://www.shadertoy.com/view/4t3cRr
 float hash21(vec2 p) {
     p = fract(p * vec2(123.34, 345.45));
     p += dot(p, p + 34.345);

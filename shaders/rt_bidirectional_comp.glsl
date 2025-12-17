@@ -16,21 +16,22 @@
  * - pbr-book.org: Bounding Volume Hierarchies
  */
 
+// Include shared PBR functions
+#include "includes/pbr_common.glsl"
+#include "includes/material_common.glsl"
 
 // Workgroup
-
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-
-// Constants
-
-const float PI = 3.141592653589793238462643383279; // not entirely sure why i went through the effort of putting all those digits
-const float TAU = 6.283185307179586476925286766558;
-const float INV_PI = 0.31830988618379067154;
-const float EPSILON = 1e-4;
+// RT-specific constants (not in pbr_common)
 const float MAX_FLOAT = 1e30;
 const int MAX_BVH_STACK_SIZE = 64;
 const int MAX_RAY_BOUNCES = 8;
+
+// Note: PI, TAU, INV_PI, EPSILON, DIELECTRIC_F0 are in pbr_common.glsl
+// Note: CalculateDiffuseAlbedo, SpecularOcclusion, DecodeNormalOct, 
+//       DistributionGGX, GeometrySmith, FresnelSchlick, ImportanceSampleGGX
+//       are all defined in pbr_common.glsl
 
 
 /* Output image */
@@ -101,13 +102,52 @@ uniform float u_cameraFar;
 
 // Data structures
 
+/**
+ * @struct Material
+ * @brief Extended PBR material matching RTStructures.h layout (128 bytes)
+ * 
+ * Supports:
+ * - Metallic-roughness workflow (materialID = 0)
+ * - Specular-glossiness workflow (materialID = 1)
+ * - Transmissive/glass materials (materialID = 2)
+ * - Alpha transparency (mask and blend modes)
+ */
 struct Material {
+	// Row 0: Albedo + Metallic
 	vec3  albedo;
 	float metallic;
+	
+	// Row 1: Emissive + Roughness
 	vec3  emissive;
 	float roughness;
+	
+	// Row 2: Specular F0 + Emissive Strength
 	vec3  specular;
 	float emissiveStrength;
+	
+	// Row 3: Specular Color Factor + Transmission
+	vec3  specularColorFactor;
+	float transmissionFactor;
+	
+	// Row 4: Diffuse Factor (spec-gloss) + IOR
+	vec3  diffuseFactor;
+	float ior;
+	
+	// Row 5: Specular-Glossiness Factor + Glossiness
+	vec3  specGlossFactor;
+	float glossinessFactor;
+	
+	// Row 6: Material Flags
+	uint  materialID;       // 0=Standard PBR, 1=SpecGloss, 2=Transmission
+	float normalScale;
+	float occlusionStrength;
+	float specularFactor;
+	
+	// Row 7: Alpha/Transparency
+	float alpha;            // Base alpha value [0,1]
+	float alphaCutoff;      // Cutoff for MASK mode
+	uint  alphaMode;        // 0=OPAQUE, 1=MASK, 2=BLEND
+	float padding0;
 };
 
 struct Triangle {
@@ -120,7 +160,7 @@ struct Triangle {
 	vec3 center; float pad6;
 	vec3 aabbMin; float pad7;  // Precomputed AABB min bounds (offset 112)
 	vec3 aabbMax; float pad8;  // Precomputed AABB max bounds (offset 128)
-	Material material;         // Material starts at offset 144
+	Material material;         // Material starts at offset 144, size 128 bytes, total 272 bytes
 };
 
 struct BVHNode {
@@ -163,7 +203,7 @@ layout(std140, binding = 1) buffer BVHBuffer { BVHNode bvhNodes[];   };
 layout(std430, binding = 2) buffer LightBuffer     { RTLightData lights[];   };
 
 
-// RNG (PCG-ish hash)
+// RNG (PCG-based with better quality)
 
 uint g_seed;
 
@@ -174,30 +214,52 @@ vec3 DecodeNormalOct8(vec2 oct);
 vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L);
 vec3 randomCosineDirection(vec3 normal);
 
-// Simple integer hash function for RNG seed initialization: Bob Jenkins' One-At-A-Time hashing algorithm.
-uint hash(uint x) {
-	x += (x << 10u);
-	x ^= (x >>  6u);
-	x += (x <<  3u);
-	x ^= (x >> 11u);
-	x += (x << 15u);
-	return x;
+// PCG hash: https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
+uint pcg_hash(uint input_) {
+	uint state = input_ * 747796405u + 2891336453u;
+	uint word = ((state >> 27u) ^ state) * 277803737u;
+	return (word >> 22u) ^ word;
 }
-// Initialize RNG seed based on pixel coordinates and frame index
+
+// Initialize RNG seed with better distribution
 void initRandom(uvec2 pixel, int frame) {
-	g_seed = hash(pixel.x + hash(pixel.y + hash(uint(frame))));
+	// Combine pixel and frame with different primes for decorrelation
+	uint seed = pixel.x * 1973u + pixel.y * 9277u + uint(frame) * 26699u;
+	g_seed = pcg_hash(seed);
 }
-// Generate a random float in [0, 1)
+
+// Generate a random float in [0, 1) with better uniformity
 float randomFloat() {
-	g_seed = hash(g_seed);
-	return float(g_seed) / 4294967296.0;
+	g_seed = pcg_hash(g_seed);
+	return float(g_seed) * (1.0 / 4294967296.0);
 }
+
+// Generate stratified random in [0,1) within a cell
+float randomFloatStratified(int sampleIndex, int totalSamples) {
+	float cellSize = 1.0 / float(totalSamples);
+	float base = float(sampleIndex) * cellSize;
+	return base + randomFloat() * cellSize;
+}
+
 // Generate a random vec2 with components in [0, 1)
 vec2 randomVec2() {
 	return vec2(randomFloat(), randomFloat());
 }
 
+// Radical inverse for low-discrepancy sequence (Halton) : https://www.pbr-book.org/3ed-2018/Sampling_and_Reconstruction/The_Halton_Sampler
+float radicalInverse(uint bits) {
+	bits = (bits << 16u) | (bits >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	return float(bits) * 2.3283064365386963e-10;
+}
 
+// Hammersley sequence for better sample distribution
+vec2 hammersleyVec2(uint i, uint N) {
+	return vec2(float(i) / float(N), radicalInverse(i));
+}
 // Sampling utilities
 vec3 randomInUnitSphere() {
 	float z = randomFloat() * 2.0 - 1.0;
@@ -222,34 +284,48 @@ vec3 randomCosineDirection(vec3 normal) {
 					 r * sin(theta) * t +
 					 sqrt(1.0 - u.x) * normal);
 }
-// GGX importance sampling
+// GGX importance sampling - improved version for low roughness metals
+// Uses proper half-vector distribution and handles near-mirror surfaces correctly
 vec3 randomGGXDirection(vec3 N, vec3 V, float roughness) {
-	float alpha = roughness * roughness;
-	vec2  u     = randomVec2();
+	// Clamp roughness to prevent numerical issues with near-zero values
+	float clampedRoughness = max(roughness, 0.001);
+	float alpha = clampedRoughness * clampedRoughness;
+	vec2  u = randomVec2();
 
-	float phi      = TAU * u.x;
+	float phi = TAU * u.x;
 	float cosTheta = sqrt((1.0 - u.y) / (1.0 + (alpha * alpha - 1.0) * u.y));
 	float sinTheta = sqrt(max(1.0 - cosTheta * cosTheta, 0.0));
 
+	// Half vector in tangent space
 	vec3 H = vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
 
-	vec3 up       = (abs(N.z) < 0.999) ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-	vec3 tangent  = normalize(cross(up, N));
-	vec3 bitangent= cross(N, tangent);
+	// Build robust tangent space basis
+	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tangent = normalize(cross(up, N));
+	vec3 bitangent = cross(N, tangent);
 
-	H = tangent * H.x + bitangent * H.y + N * H.z;
+	// Transform H to world space
+	H = normalize(tangent * H.x + bitangent * H.y + N * H.z);
 
-	return reflect(-V, H);
+	// Reflect view direction around half vector to get light direction
+	vec3 L = reflect(-V, H);
+	
+	// For very low roughness (mirror-like), the reflected direction should be close to perfect reflection
+	// Ensure the result is valid (L should be in the same hemisphere as N)
+	if (dot(L, N) <= 0.0) {
+		// Fallback to perfect reflection if sampled direction is below horizon
+		L = reflect(-V, N);
+	}
+	
+	return L;
 }
 
 
 // Octahedral normal decoding (from G-buffer)
-
+// FIXED: Now properly remaps from [0,1] to [-1,1] before decoding
 vec3 DecodeNormalOct8(vec2 e) {
-	vec3 n;
-	n.z = 1.0 - abs(e.x) - abs(e.y);
-	n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
-	return normalize(n);
+	// Use the shared function which handles the remap correctly
+	return DecodeNormalOct(e);
 }
 
 // Position reconstruction from depth
@@ -308,7 +384,7 @@ bool rayAABBIntersect(Ray ray, vec3 minBounds, vec3 maxBounds) {
 }
 
 
-// BVH traversal (iterative stack)
+// BVH traversal (iterative stack) with alpha handling
 
 HitInfo traceBVH(Ray ray) {
 	HitInfo hitInfo;
@@ -341,6 +417,23 @@ HitInfo traceBVH(Ray ray) {
 				vec3 barycentric;
 
 				if (rayTriangleIntersect(ray, tri, t, barycentric)) {
+					// Alpha handling for masked/blended materials
+					Material mat = tri.material;
+					
+					// Alpha MASK mode: discard if below cutoff
+					if (mat.alphaMode == 1u) {
+						if (mat.alpha < mat.alphaCutoff) {
+							continue; // Skip this triangle, ray continues
+						}
+					}
+					// Alpha BLEND mode: stochastic alpha test
+					else if (mat.alphaMode == 2u) {
+						if (randomFloat() > mat.alpha) {
+							continue; // Probabilistic pass-through
+						}
+					}
+					// OPAQUE mode (alphaMode == 0): always accept hit
+					
 					if (t < hitInfo.t) {
 						hitInfo.hit = true;
 						hitInfo.t   = t;
@@ -348,7 +441,7 @@ HitInfo traceBVH(Ray ray) {
 						hitInfo.normal   = normalize(tri.n0 * barycentric.x +
 													 tri.n1 * barycentric.y +
 													 tri.n2 * barycentric.z);
-						hitInfo.material = tri.material;
+						hitInfo.material = mat;
 						ray.tMax = t;
 					}
 				}
@@ -362,7 +455,7 @@ HitInfo traceBVH(Ray ray) {
 	return hitInfo;
 }
 
-// BVH traversal with debug counters
+// BVH traversal with debug counters and alpha handling
 HitInfo traceBVHDebug(Ray ray, inout uint aabbIntersectCount, inout uint triIntersectCount) {
 	HitInfo hitInfo;
 	hitInfo.hit = false;
@@ -398,14 +491,19 @@ HitInfo traceBVHDebug(Ray ray, inout uint aabbIntersectCount, inout uint triInte
 				triIntersectCount++;
 				
 				if (rayTriangleIntersect(ray, tri, t, barycentric)) {
+					// Alpha handling
+					Material mat = tri.material;
+					if (mat.alphaMode == 1u && mat.alpha < mat.alphaCutoff) continue;
+					if (mat.alphaMode == 2u && randomFloat() > mat.alpha) continue;
+					
 					if (t < hitInfo.t) {
 						hitInfo.hit = true;
 						hitInfo.t   = t;
 						hitInfo.position = ray.origin + ray.direction * t;
-						hitInfo.normal= normalize(tri.n0 * barycentric.x +
-													 tri.n1 * barycentric.y +
-													 tri.n2 * barycentric.z);
-						hitInfo.material = tri.material;
+						hitInfo.normal = normalize(tri.n0 * barycentric.x +
+												   tri.n1 * barycentric.y +
+												   tri.n2 * barycentric.z);
+						hitInfo.material = mat;
 						ray.tMax = t;
 					}
 				}
@@ -419,57 +517,173 @@ HitInfo traceBVHDebug(Ray ray, inout uint aabbIntersectCount, inout uint triInte
 	return hitInfo;
 }
 
-// PBR BRDF evaluation (Cook-Torrance)
-float DistributionGGX(vec3 N, vec3 H, float roughness) {
-	float a = roughness * roughness;
-	float a2 = a * a;
-	float NdotH = max(dot(N, H), 0.0);
-	float NdotH2 = NdotH * NdotH;
-
-	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-	denom = PI * denom * denom;
-
-	return a2 / max(denom, 0.0001);
+// Calculate refraction direction using Snell's law
+// Returns reflection direction if total internal reflection occurs
+vec3 calculateRefraction(vec3 I, vec3 N, float materialIOR) {
+	float cosi = dot(I, N);
+	float etai = 1.0; // Air
+	float etat = materialIOR;
+	vec3 n = N;
+	
+	// Check if entering or exiting the material
+	if (cosi < 0.0) {
+		// Entering from air into material
+		cosi = -cosi;
+	} else {
+		// Exiting from material into air (swap IORs)
+		float temp = etai;
+		etai = etat;
+		etat = temp;
+		n = -N;
+	}
+	
+	float eta = etai / etat;
+	float k = 1.0 - eta * eta * (1.0 - cosi * cosi);
+	
+	// Total internal reflection check
+	if (k < 0.0) {
+		return reflect(I, N);
+	}
+	
+	return normalize(eta * I + (eta * cosi - sqrt(k)) * n);
 }
 
-float GeometrySchlickGGX(float NdotV, float roughness) {
-	float r = roughness + 1.0;
-	float k = (r * r) / 8.0;
-	return NdotV / (NdotV * (1.0 - k) + k);
+// Fresnel for dielectrics (Schlick approximation with IOR)
+float fresnelDielectric(float cosTheta, float ior) {
+	float f0 = F0FromIOR(ior);
+	return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-	float NdotV = max(dot(N, V), 0.0);
-	float NdotL = max(dot(N, L), 0.0);
-	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-	return ggx1 * ggx2;
-}
-
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L) {
+// Evaluate BRDF for metallic-roughness workflow (standard PBR)
+vec3 evaluateBRDF_MetallicRoughness(Material mat, vec3 N, vec3 V, vec3 L) {
 	vec3 H = normalize(V + L);
 	float NdotL = max(dot(N, L), 0.0);
 	if (NdotL <= 0.0) return vec3(0.0);
 
-	vec3 F0 = mix(vec3(0.04), mat.albedo, mat.metallic);
+	// Use stored specular F0 directly (already computed with IOR and specular extension)
+	vec3 F0 = mat.specular;
 
 	float D = DistributionGGX(N, H, mat.roughness);
 	float G = GeometrySmith(N, V, L, mat.roughness);
-	vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
 
 	vec3 numerator   = D * G * F;
 	float denominator= 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
-	vec3 specular    = numerator / denominator;
+	vec3 specularBRDF = numerator / denominator;
 
 	vec3 kS = F;
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - mat.metallic);
 	vec3 diffuse = kD * mat.albedo * INV_PI;
 
-	return (diffuse + specular) * NdotL;
+	return (diffuse + specularBRDF) * NdotL;
+}
+
+// Evaluate BRDF for metallic-roughness workflow with separate diffuse/specular for AO
+// This matches deferred lighting's approach where AO is applied separately to diffuse and specular
+void evaluateBRDF_MetallicRoughness_Separated(Material mat, vec3 N, vec3 V, vec3 L, 
+	out vec3 diffuseOut, out vec3 specularOut) {
+	diffuseOut = vec3(0.0);
+	specularOut = vec3(0.0);
+	
+	vec3 H = normalize(V + L);
+	float NdotL = max(dot(N, L), 0.0);
+	if (NdotL <= 0.0) return;
+
+	// Use stored specular F0 directly (already computed with IOR and specular extension)
+	vec3 F0 = mat.specular;
+
+	float D = DistributionGGX(N, H, mat.roughness);
+	float G = GeometrySmith(N, V, L, mat.roughness);
+	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+	vec3 numerator   = D * G * F;
+	float denominator= 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+	specularOut = (numerator / denominator) * NdotL;
+
+	// kD properly accounts for energy conservation - metals have no diffuse
+	vec3 kS = F;
+	vec3 kD = (vec3(1.0) - kS) * (1.0 - mat.metallic);
+	diffuseOut = (kD * mat.albedo * INV_PI) * NdotL;
+}
+
+// Evaluate BRDF for specular-glossiness workflow
+vec3 evaluateBRDF_SpecularGlossiness(Material mat, vec3 N, vec3 V, vec3 L) {
+	vec3 H = normalize(V + L);
+	float NdotL = max(dot(N, L), 0.0);
+	if (NdotL <= 0.0) return vec3(0.0);
+
+	// In spec-gloss workflow: roughness = 1 - glossiness
+	float roughness = 1.0 - mat.glossinessFactor;
+	roughness = max(roughness, 0.04);
+
+	// F0 is the specGlossFactor directly
+	vec3 F0 = mat.specGlossFactor;
+
+	float D = DistributionGGX(N, H, roughness);
+	float G = GeometrySmith(N, V, L, roughness);
+	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+	vec3 numerator   = D * G * F;
+	float denominator= 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+	vec3 specularBRDF = numerator / denominator;
+
+	vec3 kS = F;
+	vec3 kD = (vec3(1.0) - kS);
+	// Use diffuse factor from spec-gloss workflow
+	vec3 diffuse = kD * mat.diffuseFactor * INV_PI;
+
+	return (diffuse + specularBRDF) * NdotL;
+}
+
+// Evaluate BRDF for transmissive materials (glass, etc.)
+vec3 evaluateBRDF_Transmissive(Material mat, vec3 N, vec3 V, vec3 L, out float transmission) {
+	vec3 H = normalize(V + L);
+	float NdotL = max(dot(N, L), 0.0);
+	float NdotV = max(dot(N, V), 0.0);
+	
+	// Calculate Fresnel for this viewing angle
+	float fresnel = fresnelDielectric(NdotV, mat.ior);
+	
+	// Transmission is reduced by Fresnel effect (more reflection at grazing angles)
+	transmission = mat.transmissionFactor * (1.0 - fresnel);
+	
+	if (NdotL <= 0.0) return vec3(0.0);
+
+	// Force smooth roughness for glass-like appearance
+	float roughness = min(mat.roughness, 0.1);
+
+	vec3 F0 = vec3(F0FromIOR(mat.ior)) * mat.specularFactor * mat.specularColorFactor;
+
+	float D = DistributionGGX(N, H, roughness);
+	float G = GeometrySmith(N, V, L, roughness);
+	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+	vec3 numerator   = D * G * F;
+	float denominator= 4.0 * NdotV * NdotL + 0.0001;
+	vec3 specularBRDF = numerator / denominator;
+
+	// Transmissive materials have reduced diffuse (light passes through)
+	vec3 kS = F;
+	vec3 kD = (vec3(1.0) - kS) * (1.0 - mat.metallic) * (1.0 - mat.transmissionFactor);
+	vec3 diffuse = kD * mat.albedo * INV_PI;
+
+	return (diffuse + specularBRDF) * NdotL;
+}
+
+// Main BRDF evaluation with material routing based on materialID
+vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L) {
+	// Route to appropriate BRDF based on material type
+	if (mat.materialID == 1u) {
+		// Specular-Glossiness workflow
+		return evaluateBRDF_SpecularGlossiness(mat, N, V, L);
+	} else if (mat.materialID == 2u) {
+		// Transmissive material - use simplified evaluation for direct lighting
+		float transmission;
+		return evaluateBRDF_Transmissive(mat, N, V, L, transmission);
+	} else {
+		// Standard metallic-roughness PBR (materialID == 0)
+		return evaluateBRDF_MetallicRoughness(mat, N, V, L);
+	}
 }
 
 
@@ -613,7 +827,8 @@ vec3 sampleEnvironmentDirect(vec3 hitPos, vec3 normal, vec3 viewDir, Material ma
 	return envRadiance;
 }
 
-vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material mat) {
+vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material mat, 
+	float diffuseAO, float specularAO) {
 	vec3 directLight = vec3(0.0);
 	
 	// Sample lights
@@ -627,7 +842,14 @@ vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material 
 			if (lightPDF > 0.0 && dot(normal, lightDir) > 0.0) {
 				float maxDist = (int(lights[lightIdx].position.w) == 0) ? 10000.0 : lights[lightIdx].attenuation.w;
 				if (traceShadowRay(hitPos, lightDir, maxDist)) {
-					vec3 brdf = evaluateBRDF(mat, normal, viewDir, lightDir);
+					// Evaluate BRDF with separated components for proper AO application
+					vec3 diffuseBRDF, specularBRDF;
+					evaluateBRDF_MetallicRoughness_Separated(mat, normal, viewDir, lightDir, 
+						diffuseBRDF, specularBRDF);
+					
+					// Apply AO: diffuse uses diffuseAO, specular uses specularAO
+					// This matches deferred lighting: (diffuse * diffuseAO + specular)
+					vec3 brdfWithAO = diffuseBRDF * diffuseAO + specularBRDF;
 
 					// For delta distributions (point/spot/directional lights), PDF = 1.0
 					// The radiance already includes full attenuation, so we don't divide by PDF
@@ -636,10 +858,10 @@ vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material 
 						// Non-delta light source (area lights, etc.)
 						float bsdfPDF = max(dot(normal, lightDir), 0.0) * INV_PI;
 						float w = misPowerHeuristic(lightPDF, bsdfPDF);
-						directLight += radiance * brdf * w / lightPDF;
+						directLight += radiance * brdfWithAO * w / lightPDF;
 					} else {
 						// Delta light source (point/spot/directional) - no PDF division
-						directLight += radiance * brdf;
+						directLight += radiance * brdfWithAO;
 					}
 
 					// Account for probability of selecting this light (1 / lightCount)
@@ -656,15 +878,20 @@ vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material 
 		vec3 envRadiance = sampleEnvironmentDirect(hitPos, normal, viewDir, mat, envLightDir, envPDF);
 		
 		if (envPDF > 0.0 && dot(normal, envLightDir) > 0.0) {
-			// Check if environment is visible (no shadow ray needed for infinite distance)
-			vec3 brdf = evaluateBRDF(mat, normal, viewDir, envLightDir);
+			// Evaluate BRDF with separated components for proper AO application
+			vec3 diffuseBRDF, specularBRDF;
+			evaluateBRDF_MetallicRoughness_Separated(mat, normal, viewDir, envLightDir, 
+				diffuseBRDF, specularBRDF);
+			
+			// Apply AO matching deferred IBL: diffuse uses diffuseAO, specular uses specularAO
+			vec3 brdfWithAO = diffuseBRDF * diffuseAO + specularBRDF * specularAO;
 			
 			if (u_enableMIS) {
 				float bsdfPDF = max(dot(normal, envLightDir), 0.0) * INV_PI;
 				float w = misPowerHeuristic(envPDF, bsdfPDF);
-				directLight += envRadiance * brdf * w / envPDF * 2.0; // *2 because we sample 50% of the time
+				directLight += envRadiance * brdfWithAO * w / envPDF * 2.0; // *2 because we sample 50% of the time
 			} else {
-				directLight += envRadiance * brdf / envPDF * 2.0;
+				directLight += envRadiance * brdfWithAO / envPDF * 2.0;
 			}
 		}
 	}
@@ -752,7 +979,10 @@ void main() {
 
 	initRandom(uvec2(pixel), u_frameIndex);
 
-	vec2 uv = (vec2(pixel) + 0.5) / u_resolution;
+	// Sub-pixel jitter for anti-aliasing and reducing structured artifacts
+	vec2 jitter = vec2(randomFloat(), randomFloat()) - 0.5;
+	vec2 uv = (vec2(pixel) + 0.5 + jitter * 0.5) / u_resolution;
+	
 	float depth = texture(u_gbufferDepth, uv).r;
 
 	// BVH Debug Mode - cast primary ray and visualize traversal
@@ -810,12 +1040,13 @@ void main() {
 
 	vec4 packedNormalRM = texture(u_gbufferPackedNormalRM, uv);
 	vec2 octNormal = packedNormalRM.rg;
-	float roughness = packedNormalRM.b;
-	float metallic  = packedNormalRM.a;
+	// Clamp roughness to minimum 0.04 to match deferred lighting
+	float roughness = clamp(packedNormalRM.b, 0.04, 1.0);
+	float metallic  = clamp(packedNormalRM.a, 0.0, 1.0);
 
 	vec4 albedoAO = texture(u_gbufferAlbedoAO, uv);
 	vec3 albedo = albedoAO.rgb;
-	float occlusion = albedoAO.a;
+	float aoTex = clamp(albedoAO.a, 0.0, 1.0);
 
 	vec4 specularF0Data = texture(u_gbufferSpecularF0, uv);
 	vec3 specular = specularF0Data.rgb;
@@ -825,6 +1056,12 @@ void main() {
 	vec3 emissive = emissiveData.rgb * emissiveStrength;
 
 	vec3 normal = DecodeNormalOct8(octNormal);
+	
+	// Validate normal (match deferred lighting)
+	if (length(normal) < 0.5 || any(isnan(normal))) {
+		normal = vec3(0.0, 1.0, 0.0);
+	}
+	normal = normalize(normal);
 
 	// MATERIAL ROUTING: Apply material-specific adjustments based on ID
 	if (materialID == 2u) {
@@ -841,13 +1078,84 @@ void main() {
 	gbufferMat.specular  = specular;
 	gbufferMat.emissive  = emissive;
 	gbufferMat.emissiveStrength = emissiveStrength;
+	gbufferMat.materialID = materialID;
+	// Set default values for extended properties (not stored in G-buffer)
+	gbufferMat.specularColorFactor = vec3(1.0);
+	gbufferMat.transmissionFactor = (materialID == 2u) ? 0.9 : 0.0;
+	gbufferMat.diffuseFactor = albedo;
+	gbufferMat.ior = 1.5;
+	gbufferMat.specGlossFactor = specular;
+	gbufferMat.glossinessFactor = 1.0 - roughness;
+	gbufferMat.normalScale = 1.0;
+	gbufferMat.occlusionStrength = 1.0;
+	gbufferMat.specularFactor = 1.0;
 
 	vec3 color = vec3(0.0);
 	vec3 V = normalize(u_cameraPos - worldPos);
+	float NdotV = max(dot(normal, V), 0.001);
 
-	// Path tracing from G-buffer surface
+	// === AO Calculation (matching deferred lighting) ===
+	// In RT we don't have SSAO, so use texture AO directly as diffuseAO
+	// aoStrength would be a uniform in a full implementation, here we assume 1.0
+	float diffuseAO = aoTex;
+	float specularAO = SpecularOcclusion(NdotV, diffuseAO, roughness);
+
+	// === Direct Lighting at Primary Surface ===
+	// Compute direct lighting contribution from lights at the G-buffer surface
+	vec3 directLighting = vec3(0.0);
+	if (u_enableNEE && u_lightCount > 0) {
+		directLighting = evaluateDirectLightingMIS(worldPos, normal, V, gbufferMat, diffuseAO, specularAO);
+	}
+	
+	// Add emissive contribution (only once at primary surface)
+	// emissive already includes emissiveStrength multiplication, matching deferred lighting
+	directLighting += gbufferMat.emissive;
+
+	// === Indirect Lighting via Path Tracing ===
+	vec3 indirectLighting = vec3(0.0);
+	
 	for (int i = 0; i < u_sampleCount; ++i) {
-		vec3 rayDir = randomCosineDirection(normal);
+		// Importance sample the hemisphere based on material
+		vec3 rayDir;
+		float pdf;
+		
+		// Use mixed sampling: specular vs diffuse based on material
+		// For metals with low roughness, almost all sampling should be specular
+		float specularWeight = 1.0 - gbufferMat.roughness * gbufferMat.roughness;
+		
+		// Metals should have very high specular weight regardless of roughness
+		// This ensures mirror-like metals get proper reflections
+		specularWeight = mix(specularWeight, 1.0, gbufferMat.metallic);
+		
+		// For near-mirror surfaces, use very high specular probability
+		if (gbufferMat.roughness < 0.1 && gbufferMat.metallic > 0.5) {
+			specularWeight = 0.98;
+		}
+		
+		float specularProb = clamp(specularWeight, 0.1, 0.98);
+		
+		if (randomFloat() < specularProb) {
+			// GGX importance sampling for specular
+			// Use actual roughness for GGX sampling (clamped for numerical stability only)
+			float sampleRoughness = max(gbufferMat.roughness, 0.001);
+			rayDir = randomGGXDirection(normal, V, sampleRoughness);
+			
+			// Compute PDF for GGX sampling
+			vec3 H = normalize(V + rayDir);
+			float NdotH = max(dot(normal, H), 0.0);
+			float VdotH = max(dot(V, H), 0.0);
+			float D = DistributionGGX(normal, H, sampleRoughness);
+			pdf = specularProb * D * NdotH / (4.0 * VdotH + 0.0001);
+		} else {
+			// Cosine-weighted hemisphere for diffuse
+			rayDir = randomCosineDirection(normal);
+			float NdotL = max(dot(normal, rayDir), 0.0);
+			pdf = (1.0 - specularProb) * NdotL * INV_PI;
+		}
+		
+		// Skip invalid samples
+		float NdotL = dot(normal, rayDir);
+		if (NdotL <= 0.0 || pdf < 0.0001) continue;
 
 		Ray ray;
 		ray.origin = worldPos + normal * EPSILON;
@@ -855,87 +1163,211 @@ void main() {
 		ray.tMin = EPSILON;
 		ray.tMax = MAX_FLOAT;
 
-		vec3 pathRadiance = tracePath(ray);
+		// Trace indirect path (returns incoming radiance from that direction)
+		vec3 incomingRadiance = tracePath(ray);
 
+		// Evaluate BRDF for this direction (includes NdotL)
 		vec3 brdf = evaluateBRDF(gbufferMat, normal, V, rayDir);
-		float pdf = max(dot(normal, rayDir), 0.0) * INV_PI;
-
-		if (pdf > 0.0001) color += pathRadiance * brdf / pdf;
+		
+		// Monte Carlo estimator: L_indirect = sum(Li * BRDF / pdf) / N
+		if (pdf > 0.0001) {
+			indirectLighting += incomingRadiance * brdf / pdf;
+		}
 	}
 
-	color /= float(u_sampleCount);
-	color *= occlusion;
+	// Average over samples
+	indirectLighting /= float(max(u_sampleCount, 1));
+	
+	// Apply ambient occlusion to indirect lighting (matching deferred)
+	// Diffuse indirect uses diffuseAO, specular indirect uses specularAO
+	// For simplicity, we use a blend based on material roughness
+	float indirectAO = mix(specularAO, diffuseAO, roughness);
+	indirectLighting *= indirectAO;
 
-	if (gbufferMat.emissiveStrength > 0.0) {
-		color += gbufferMat.emissive * gbufferMat.emissiveStrength;
-	}
-
+	// Combine direct and indirect
+	color = directLighting + indirectLighting;
+	
+	// Clamp to prevent fireflies while preserving HDR range
+	color = min(color, vec3(50.0));
+	
+	// Temporal accumulation with running average
 	vec3 prevColor = imageLoad(u_outputImage, pixel).rgb;
 	float blend = 1.0 / float(u_frameIndex + 1);
 	color = mix(prevColor, color, blend);
 
-	color = min(color, vec3(10.0));
+	// Final safety clamp
+	color = max(color, vec3(0.0));
+	color = min(color, vec3(100.0));
+	
 	imageStore(u_outputImage, pixel, vec4(color, 1.0));
 }
 
 
-// Path tracing
+// Path tracing with transmission support and correct energy conservation
 
 vec3 tracePath(Ray initialRay) {
 	vec3 radiance   = vec3(0.0);
 	vec3 throughput = vec3(1.0);
 
 	Ray ray = initialRay;
+	bool insideMedium = false;  // Track if we're inside a transmissive material
 
 	for (int bounce = 0; bounce < min(u_maxBounces, MAX_RAY_BOUNCES); ++bounce) {
 		HitInfo hit = traceBVH(ray);
-		// Missed scene
+		
+		// Missed scene - sample environment
 		if (!hit.hit) {
-			if (!(u_enableNEE && bounce > 0)) {
-				radiance += throughput * sampleSky(ray.direction);
-			}
+			// Always add sky contribution when ray escapes
+			// NEE already sampled direct environment, but this catches indirect paths
+			radiance += throughput * sampleSky(ray.direction);
 			break;
 		}
-		// Emissive surface
+		
+		// Emissive surface contribution
+		// For NEE: only count emissive on first bounce to avoid double-counting
 		if (hit.material.emissiveStrength > 0.0) {
 			vec3 emission = hit.material.emissive * hit.material.emissiveStrength;
-			radiance += throughput * emission;
+			// On bounce 0 or when NEE is disabled, add emission
+			// With NEE enabled on later bounces, still add for non-light emissive surfaces
+			if (bounce == 0 || !u_enableNEE) {
+				radiance += throughput * emission;
+			}
 		}
-		// Russian roulette
-		float survivalProb = max(throughput.x, max(throughput.y, throughput.z));
-		if (survivalProb < 0.1 && bounce > 2) {
-			if (randomFloat() > survivalProb) break;
-			throughput /= max(survivalProb, 0.0001);
+		
+		// Russian roulette for path termination (energy-conserving)
+		// Only apply after minimum bounces to avoid bias
+		if (bounce > 3) {
+			float maxThroughput = max(throughput.x, max(throughput.y, throughput.z));
+			// Clamp survival probability to reasonable range
+			float survivalProb = clamp(maxThroughput, 0.05, 0.95);
+			
+			if (randomFloat() > survivalProb) {
+				break;  // Terminate path
+			}
+			// Compensate for termination probability
+			throughput /= survivalProb;
 		}
 
 		vec3 V = -ray.direction;
-		// Next Event Estimation
+		vec3 N = hit.normal;
+		
+		// Flip normal if we hit backface (inside medium)
+		if (insideMedium) {
+			N = -N;
+		}
+		
+		// Handle transmissive materials (glass, etc.)
+		if (hit.material.materialID == 2u && hit.material.transmissionFactor > 0.0) {
+			float NdotV = max(abs(dot(N, V)), 0.001);
+			float fresnel = fresnelDielectric(NdotV, hit.material.ior);
+			
+			// Stochastic Fresnel: decide between reflection and refraction
+			float reflectProb = fresnel;
+			
+			if (randomFloat() < reflectProb) {
+				// Reflect
+				vec3 reflectDir = reflect(-V, N);
+				
+				// Perfect specular reflection for glass
+				// No BRDF division needed for delta distribution
+				ray.origin = hit.position + N * EPSILON * 2.0;
+				ray.direction = normalize(reflectDir);
+				
+				// Throughput unchanged for perfect mirror (F/F = 1 when sampling proportional to Fresnel)
+			} else {
+				// Refract
+				float eta = insideMedium ? hit.material.ior : (1.0 / hit.material.ior);
+				vec3 refractDir = refract(-V, N, eta);
+				
+				// Check for total internal reflection
+				if (length(refractDir) < 0.5) {
+					// TIR - reflect instead
+					vec3 reflectDir = reflect(-V, N);
+					ray.origin = hit.position + N * EPSILON * 2.0;
+					ray.direction = normalize(reflectDir);
+				} else {
+					// Successful refraction
+					// Apply Beer's law absorption for colored glass when inside medium
+					if (insideMedium) {
+						// Approximate absorption based on path length (use a fixed small absorption)
+						vec3 absorption = exp(-hit.material.albedo * 0.1);
+						throughput *= absorption;
+					}
+					
+					// Tint by transmission color (sqrt for single interface)
+					throughput *= sqrt(hit.material.albedo) * hit.material.transmissionFactor;
+					
+					ray.origin = hit.position - N * EPSILON * 2.0;
+					ray.direction = normalize(refractDir);
+					insideMedium = !insideMedium;
+				}
+			}
+			
+			ray.tMin = EPSILON;
+			ray.tMax = MAX_FLOAT;
+			continue;
+		}
+		
+		// Next Event Estimation (direct lighting) for opaque materials
 		if (u_enableNEE && u_lightCount > 0) {
-			vec3 directLight = evaluateDirectLightingMIS(hit.position, hit.normal, V, hit.material);
+			// For BVH hit materials, use the material's occlusionStrength as AO
+			// (We don't have per-vertex AO in the triangle data, so use material default)
+			float hitNdotV = max(dot(N, V), 0.001);
+			float hitDiffuseAO = hit.material.occlusionStrength;
+			float hitSpecularAO = SpecularOcclusion(hitNdotV, hitDiffuseAO, hit.material.roughness);
+			
+			vec3 directLight = evaluateDirectLightingMIS(hit.position, N, V, hit.material, hitDiffuseAO, hitSpecularAO);
 			radiance += throughput * directLight;
 		}
 
+		// Sample next direction using BSDF importance sampling
 		vec3 newDirection;
 		float bsdfPDF;
 
-		float specularProb = mix(0.1, 0.9, 1.0 - hit.material.roughness * (1.0 - hit.material.metallic));
-		// Importance sample between specular and diffuse
+		// Probability of sampling specular vs diffuse lobe
+		float specularWeight = 1.0 - hit.material.roughness * hit.material.roughness;
+		specularWeight = mix(specularWeight, 1.0, hit.material.metallic);
+		float specularProb = clamp(specularWeight, 0.1, 0.9);
+		
 		if (randomFloat() < specularProb) {
-			newDirection = randomGGXDirection(hit.normal, V, hit.material.roughness);
-			bsdfPDF = specularProb;
+			// Sample GGX specular lobe
+			newDirection = randomGGXDirection(N, V, max(hit.material.roughness, 0.04));
+			
+			// GGX PDF (approximate for importance sampling)
+			vec3 H = normalize(V + newDirection);
+			float NdotH = max(dot(N, H), 0.0);
+			float VdotH = max(dot(V, H), 0.0);
+			float alpha = hit.material.roughness * hit.material.roughness;
+			float D = DistributionGGX(N, H, hit.material.roughness);
+			bsdfPDF = specularProb * D * NdotH / (4.0 * VdotH + 0.0001);
 		} else {
-			newDirection = randomCosineDirection(hit.normal);
-			bsdfPDF = (1.0 - specularProb) * max(dot(hit.normal, newDirection), 0.0) * INV_PI;
+			// Sample cosine-weighted diffuse
+			newDirection = randomCosineDirection(N);
+			float NdotL = max(dot(N, newDirection), 0.0);
+			bsdfPDF = (1.0 - specularProb) * NdotL * INV_PI;
 		}
 
-		if (dot(newDirection, hit.normal) <= 0.0) break;
-		// Evaluate BRDF
-		vec3 brdf = evaluateBRDF(hit.material, hit.normal, V, newDirection);
-		if (bsdfPDF < 0.0001) break;
-
+		// Validate new direction
+		float NdotL = dot(newDirection, N);
+		if (NdotL <= 0.0 || bsdfPDF < 0.0001) {
+			break;
+		}
+		
+		// Evaluate full BRDF for the sampled direction
+		vec3 brdf = evaluateBRDF(hit.material, N, V, newDirection);
+		
+		// Update throughput: BRDF * cos(theta) / PDF
+		// Note: evaluateBRDF already includes NdotL, so don't multiply again
 		throughput *= brdf / bsdfPDF;
+		
+		// Clamp throughput to prevent fireflies from bad samples
+		float maxT = max(throughput.x, max(throughput.y, throughput.z));
+		if (maxT > 10.0) {
+			throughput *= 10.0 / maxT;
+		}
 
-		ray.origin = hit.position + hit.normal * EPSILON;
+		// Setup next ray
+		ray.origin = hit.position + N * EPSILON;
 		ray.direction = newDirection;
 		ray.tMin = EPSILON;
 		ray.tMax = MAX_FLOAT;

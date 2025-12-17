@@ -152,6 +152,8 @@
     <None Include="shaders\gui_unified_frag.glsl" />
     <None Include="shaders\gui_unified_vert.glsl" />
     <None Include="shaders\gui_vert.glsl" />
+    <None Include="shaders\includes\material_common.glsl" />
+    <None Include="shaders\includes\pbr_common.glsl" />
     <None Include="shaders\irradiance_convolution.glsl" />
     <None Include="shaders\irradiance_convolution_frag.glsl" />
     <None Include="shaders\irradiance_convolution_vert.glsl" />

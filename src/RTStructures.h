@@ -19,22 +19,65 @@ namespace RT {
 	/**
 	 * @struct Material
 	 * @brief Ray tracing material properties (std140 layout)
+	 * 
+	 * Extended to match deferred/forward rendering material system including:
+	 * - Metallic-roughness workflow (default)
+	 * - Specular-glossiness workflow (KHR_materials_pbrSpecularGlossiness)
+	 * - Transmission/refraction (KHR_materials_transmission)
+	 * - IOR (KHR_materials_ior)
+	 * - Full specular extension (KHR_materials_specular)
+	 * - Alpha transparency (mask and blend modes)
 	 */
 	struct Material {
-		// offset 0   // alignment 16 // size 12 // total 12 bytes
-		glm::vec3 albedo;     
-		float metallic;          // offset 12  // alignment 4  // size 4  // total 16 bytes
+		// === Row 0: Albedo + Metallic (16 bytes) ===
+		glm::vec3 albedo;        // offset 0   // alignment 16 // size 12
+		float metallic;          // offset 12  // alignment 4  // size 4
 		
-		glm::vec3 emissive;      // offset 16  // alignment 16 // size 12 // total 28 bytes
-		float roughness;   // offset 28  // alignment 4  // size 4  // total 32 bytes
+		// === Row 1: Emissive + Roughness (16 bytes) ===
+		glm::vec3 emissive;      // offset 16  // alignment 16 // size 12
+		float roughness;         // offset 28  // alignment 4  // size 4
 		
-		glm::vec3 specular;   // offset 32  // alignment 16 // size 12 // total 44 bytes
-		float emissiveStrength;  // offset 44  // alignment 4  // size 4  // total 48 bytes
+		// === Row 2: Specular F0 + Emissive Strength (16 bytes) ===
+		glm::vec3 specular;      // offset 32  // alignment 16 // size 12
+		float emissiveStrength;  // offset 44  // alignment 4  // size 4
+		
+		// === Row 3: Specular Color Factor + Transmission (16 bytes) ===
+		glm::vec3 specularColorFactor;  // offset 48  // alignment 16 // size 12
+		float transmissionFactor;       // offset 60  // alignment 4  // size 4
+		
+		// === Row 4: Diffuse Factor (spec-gloss) + IOR (16 bytes) ===
+		glm::vec3 diffuseFactor;        // offset 64  // alignment 16 // size 12
+		float ior;                      // offset 76  // alignment 4  // size 4
+		
+		// === Row 5: Specular-Glossiness Factor + Glossiness (16 bytes) ===
+		glm::vec3 specGlossFactor;      // offset 80  // alignment 16 // size 12
+		float glossinessFactor;         // offset 92  // alignment 4  // size 4
+		
+		// === Row 6: Material Flags (16 bytes) ===
+		uint32_t materialID;            // offset 96  // alignment 4  // size 4
+		                                // 0 = Standard PBR, 1 = SpecGloss, 2 = Transmission
+		float normalScale;              // offset 100 // alignment 4  // size 4
+		float occlusionStrength;        // offset 104 // alignment 4  // size 4
+		float specularFactor;           // offset 108 // alignment 4  // size 4
+		
+		// === Row 7: Alpha/Transparency (16 bytes) ===
+		float alpha;                    // offset 112 // alignment 4  // size 4 // base alpha value
+		float alphaCutoff;              // offset 116 // alignment 4  // size 4 // cutoff for MASK mode
+		uint32_t alphaMode;             // offset 120 // alignment 4  // size 4 // 0=OPAQUE, 1=MASK, 2=BLEND
+		float padding0;                 // offset 124 // alignment 4  // size 4 // padding for 16-byte alignment
+		
+		// Total: 128 bytes (8 rows x 16 bytes)
 		
 		Material() 
-		 : albedo(1.0f), metallic(0.0f)
-		, emissive(0.0f), roughness(1.0f)
-			, specular(0.0f), emissiveStrength(0.0f) {}
+			: albedo(1.0f), metallic(0.0f)
+			, emissive(0.0f), roughness(1.0f)
+			, specular(0.04f), emissiveStrength(0.0f)
+			, specularColorFactor(1.0f), transmissionFactor(0.0f)
+			, diffuseFactor(1.0f), ior(1.5f)
+			, specGlossFactor(1.0f), glossinessFactor(1.0f)
+			, materialID(0), normalScale(1.0f)
+			, occlusionStrength(1.0f), specularFactor(1.0f)
+			, alpha(1.0f), alphaCutoff(0.5f), alphaMode(0), padding0(0.0f) {}
 	};
 
 	/**
@@ -74,7 +117,7 @@ namespace RT {
 		float padding8;        // offset 140 // alignment 4  // size 4  // total 144 bytes
 
 		// Material properties
-		Material material;     // offset 144 // alignment 16 // size 48 // total 192 bytes
+		Material material;     // offset 144 // alignment 16 // size 128 // total 272 bytes
 
 		Triangle() : padding0(0), padding1(0), padding2(0), padding3(0), padding4(0), padding5(0), padding6(0), padding7(0), padding8(0) {}
 	};
@@ -183,25 +226,6 @@ namespace RT {
 			, shadowData(0.0f), spotData(0.0f)
 			, areaData(0.0f), sampling(0.0f) {}
 	};
-
-	/**
-	 * @struct ReSTIRReservoir
-	 * @brief REMOVED - ReSTIR has been replaced by SVGF denoising
-	 * 
-	 * This structure is kept for reference but is no longer used in the codebase.
-	 * SVGF (Spatiotemporal Variance-Guided Filtering) provides better performance
-	 * and simpler integration for our deferred path tracer.
-	 */
-	// struct ReSTIRReservoir {
-	//     int lightIndex;
-	//     float weightSum;
-	// float targetPDF;
-	//     int M;
-	//   glm::vec3 position;
-	//     float padding0;
-	//  glm::vec3 radiance;
-	//     float padding1;
-	// };
 
 	/**
 	 * @struct EnvironmentSample

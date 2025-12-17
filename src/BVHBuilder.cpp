@@ -512,19 +512,65 @@ RT::Material BVHBuilder::ExtractMaterial(const MeshComponent& mesh)
 {
 	RT::Material material;
 
-	// Base color
-	material.albedo = glm::vec3(mesh.baseColorFactor);
+	// === Determine Material ID based on workflow/transmission ===
+	if (mesh.useSpecularGlossinessWorkflow) {
+		material.materialID = 1; // Specular-Glossiness workflow
+	} else if (mesh.transmissionFactor > 0.01f) {
+		material.materialID = 2; // Transmissive/Glass material
+	} else {
+		material.materialID = 0; // Standard PBR (metallic-roughness)
+	}
 
-	// PBR parameters
+	// === Base PBR Properties ===
+	material.albedo = glm::vec3(mesh.baseColorFactor);
 	material.metallic = mesh.metallicFactor;
 	material.roughness = mesh.roughnessFactor;
 
-	// Emissive
-	material.emissive = mesh.emissiveFactor;
-	material.emissiveStrength = (mesh.emissiveFactor.r + mesh.emissiveFactor.g + mesh.emissiveFactor.b) > 0.0f ? 1.0f : 0.0f;
+	// === Alpha/Transparency ===
+	material.alpha = mesh.baseColorFactor.a;  // Alpha from base color factor
+	material.alphaCutoff = mesh.alphaCutoff;
+	// Map MeshComponent::AlphaMode to RT material alphaMode
+	switch (mesh.alphaMode) {
+		case MeshComponent::ALPHA_OPAQUE: material.alphaMode = 0; break;
+		case MeshComponent::ALPHA_MASK:   material.alphaMode = 1; break;
+		case MeshComponent::ALPHA_BLEND:  material.alphaMode = 2; break;
+		default: material.alphaMode = 0; break;
+	}
 
-	// Specular
-	material.specular = mesh.specularFactor;
+	// === Emissive ===
+	material.emissive = mesh.emissiveFactor;
+	float emissiveLuminance = mesh.emissiveFactor.r * 0.299f + 
+	                          mesh.emissiveFactor.g * 0.587f + 
+	                          mesh.emissiveFactor.b * 0.114f;
+	material.emissiveStrength = emissiveLuminance > 0.0f ? 1.0f : 0.0f;
+
+	// === Specular Extension (KHR_materials_specular) ===
+	// Calculate F0 from IOR (Schlick approximation)
+	float f = (mesh.ior - 1.0f) / (mesh.ior + 1.0f);
+	float baseF0 = f * f;
+	
+	// Apply specular factor and color
+	float specFactorValue = glm::length(mesh.specularFactor) > 0.0f 
+	                        ? (mesh.specularFactor.r + mesh.specularFactor.g + mesh.specularFactor.b) / 3.0f 
+	                        : 1.0f;
+	
+	glm::vec3 dielectricF0 = glm::vec3(baseF0) * specFactorValue * mesh.specularColorFactor;
+	material.specular = glm::mix(dielectricF0, material.albedo, material.metallic);
+	material.specularFactor = specFactorValue;
+	material.specularColorFactor = mesh.specularColorFactor;
+
+	// === Transmission (KHR_materials_transmission) ===
+	material.transmissionFactor = mesh.transmissionFactor;
+	material.ior = mesh.ior;
+
+	// === Specular-Glossiness Workflow (KHR_materials_pbrSpecularGlossiness) ===
+	material.diffuseFactor = mesh.diffuseFactor;
+	material.specGlossFactor = mesh.specularGlossinessFactor;
+	material.glossinessFactor = mesh.glossinessFactor;
+
+	// === Additional Properties ===
+	material.normalScale = mesh.normalScale;
+	material.occlusionStrength = mesh.occlusionStrength;
 
 	return material;
 }

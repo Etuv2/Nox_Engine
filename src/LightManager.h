@@ -117,6 +117,15 @@ public:
 		int baseResolution = 1024;
 		bool enablePCSS = true;
 		bool dynamicResolution = true;
+		
+		// Cascade blend settings - distance in view-space units for smooth transitions
+		float cascadeBlendDistance = 100.0f; // Distance over which to blend cascades
+		float cascadeBlendFactor = 0.15f;   // Fraction of cascade range to use for blending
+		
+		// Point light shadow settings
+		float pointLightBias = 0.002f;      // Base bias for point light shadows
+		float pointLightSlopeBias = 0.005f; // Slope-scaled bias for point lights
+		float pointLightNormalOffset = 0.01f; // Normal offset (minimal to avoid floating)
 	} shadowConfig;
 
 	// Light culling for tiled/clustered deferred rendering

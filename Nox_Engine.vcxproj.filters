@@ -151,6 +151,9 @@
     <Filter Include="Header Files\Engine\ECS">
       <UniqueIdentifier>{789fcda5-9019-426f-abcc-bff5ff2e2086}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\misc\shaders\common">
+      <UniqueIdentifier>{c1aed866-4dfe-422d-9948-5859e03d909c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\IMGUI\imgui.cpp">
@@ -661,6 +664,12 @@
     </None>
     <None Include="README.md" />
     <None Include="CleanComments.ps1" />
+    <None Include="shaders\includes\pbr_common.glsl">
+      <Filter>Source Files\misc\shaders\common</Filter>
+    </None>
+    <None Include="shaders\includes\material_common.glsl">
+      <Filter>Source Files\misc\shaders\common</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">
