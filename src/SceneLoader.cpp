@@ -122,7 +122,7 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
     return sceneGraph;
 }
 
-// NEW: Save scene state back to JSON file
+// Save scene state back to JSON file
 bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sceneFilePath) {
     if (!sceneGraph || !sceneGraph->GetRoot()) {
         std::cerr << "[SceneLoader] Cannot save: invalid scene graph" << std::endl;
@@ -250,7 +250,7 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
     
     nodeJson["position"] = { position.x, position.y, position.z };
     
-    // FIXED: Convert rotation from radians to degrees for saving
+    // Convert rotation from radians to degrees for saving
     nodeJson["rotation"] = { glm::degrees(rotation.x), glm::degrees(rotation.y), glm::degrees(rotation.z) };
     
     nodeJson["scale"] = { scale.x, scale.y, scale.z };
@@ -264,7 +264,7 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
     // Serialize type-specific properties
     switch (nodeType) {
         case SceneNode::MODEL: {
-            // FIXED: Serialize model path using ModelManager
+            // Serialize model path using ModelManager
             auto model = node->GetModel();
             if (model && m_modelManager) {
                 std::string modelPath = m_modelManager->GetModelPath(model.get());
@@ -294,7 +294,7 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
         case SceneNode::AUDIO: {
             auto audioNode = std::dynamic_pointer_cast<AudioNode>(node);
             if (audioNode) {
-                // FIXED: Serialize audio properties
+                // Serialize audio properties
                 nodeJson["pitch"] = audioNode->getPitch();
                 nodeJson["volume"] = audioNode->getVolume();
                 nodeJson["hearing_distance"] = audioNode->getHearingDistance();
@@ -695,7 +695,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
             node = std::make_shared<LightNode>(nullptr); // Will be set based on light properties
             node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
             break;
-        case NodeType::LPV_VOLUME:  // NEW: Handle LPV volume nodes
+        case NodeType::LPV_VOLUME:  // Handle LPV volume nodes
             node = std::make_shared<SceneNode>();
             node->SetNodeType(SceneNode::LPV_VOLUME);
             std::cout << "[SceneLoader] Creating LPV Volume node" << std::endl;
@@ -718,7 +718,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
     if (nodeJson.contains("scale") && nodeJson["scale"].is_array() && nodeJson["scale"].size() == 3)
         scl = glm::vec3(nodeJson["scale"][0], nodeJson["scale"][1], nodeJson["scale"][2]);
     
-    // FIXED: Apply rotation correctly using combined Euler angles -> quaternion conversion
+    // Apply rotation correctly using combined Euler angles -> quaternion conversion
     // Previous code called SetRotation three times, but each call replaced the rotation instead of accumulating
     glm::vec3 radians = glm::radians(rot);
     glm::quat rotationQuat = glm::quat(radians); // glm::quat from Euler angles (pitch, yaw, roll)

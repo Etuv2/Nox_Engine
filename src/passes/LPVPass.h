@@ -60,8 +60,8 @@ public:
         float giStrength = 1.0f;            // GI contribution multiplier
         bool enableOcclusion = true;        // Use geometry volume for blocking
         bool enableDebugVisualization = false;
-        bool useAllLights = true;           // NEW: Use all lights for RSM (not just directional)
-        int maxRSMLights = 3;               // NEW: Maximum number of lights to use for RSM
+        bool useAllLights = true;           // Use all lights for RSM (not just directional)
+        int maxRSMLights = 3;               // Maximum number of lights to use for RSM
         
         // Performance settings
         bool enableLPV = true;              // Master switch
@@ -123,7 +123,7 @@ private:
     GLuint m_rsmShader = 0;          // RSM generation shader
     GLuint m_injectionShader = 0;    // VPL injection compute shader
     GLuint m_propagationShader = 0;  // Light propagation compute shader
-    GLuint m_convertShader = 0;      // NEW: Convert R32UI extended grid -> RGBA16F per-voxel textures
+    GLuint m_convertShader = 0;      // Convert R32UI extended grid -> RGBA16F per-voxel textures
     GLuint m_voxelizeShader = 0;     // Geometry voxelization shader
     GLuint m_debugShader = 0;        // Debug visualization shader
     

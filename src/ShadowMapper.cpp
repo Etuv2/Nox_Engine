@@ -164,7 +164,7 @@ namespace ShadowMapper {
         return lightProj * lightView;
     }
 
-    // New: PCSS (Percentage Closer Soft Shadows) implementation helpers
+    // PCSS (Percentage Closer Soft Shadows) implementation helpers
     namespace PCSS {
         
         // Generate Poisson disk samples for high-quality PCSS filtering
@@ -230,7 +230,7 @@ namespace ShadowMapper {
         }
     }
 
-    // New: Multi-light shadow management
+    // Multi-light shadow management
     namespace MultiLight {
         
         // Calculate optimal shadow map resolution based on light importance

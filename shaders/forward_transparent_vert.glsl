@@ -45,7 +45,7 @@ void main() {
     // Normal Matrix (transpose of inverse for non-uniform scaling)
     mat3 normalMatrix = transpose(inverse(mat3(model)));
     
-    // CRITICAL FIX: Gram-Schmidt orthogonalization for seamless tangent space
+    // Gram-Schmidt orthogonalization for seamless tangent space
     // This matches gbuffer_vert.glsl for consistent normal mapping
     vec3 N = normalize(normalMatrix * localNormal);
     vec3 T = normalize(normalMatrix * localTangent);

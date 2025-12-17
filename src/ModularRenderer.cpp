@@ -10,7 +10,7 @@
 #include "passes/GBufferPass.h"
 #include "passes/ShadowPass.h"
 #include "passes/LPVPass.h"
-#include "passes/RTPass.h"  // NEW: Path tracing pass
+#include "passes/RTPass.h"  // Path tracing pass
 #include "passes/SSAOPass.h"
 #include "passes/ScreenSpaceShadowPass.h"
 #include "passes/SSGIPass.h"
@@ -20,7 +20,7 @@
 #include "passes/TAAPass.h"
 #include "passes/TransparentForwardPass.h"
 #include "passes/PostProcessPass.h"
-#include "passes/GUIPass.h"  // NEW: Internal GUI rendering
+#include "passes/GUIPass.h"  // Internal GUI rendering
 #include "passes/DebugBBoxPass.h"  // Debug bounding box visualization
 #include <iostream>
 

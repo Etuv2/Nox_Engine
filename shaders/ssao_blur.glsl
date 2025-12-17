@@ -1,5 +1,5 @@
 #version 460 core
-
+#include "includes/pbr_common.glsl" // For decoding normal
 in vec2 TexCoord;
 out float FragColor;
 
@@ -11,25 +11,7 @@ uniform vec2 texelSize;
 uniform float depthThreshold = 0.005;  // Tighter threshold for better edge preservation
 uniform float normalThreshold = 0.1;   // Tighter normal threshold
 
-// Decode oct-encoded normal with proper [0,1] to [-1,1] remapping
-vec3 DecodeNormalOct8(vec2 e) {
-    // Remap from [0,1] (texture storage) to [-1,1]
-    e = e * 2.0 - 1.0;
-    
-    vec3 n;
-    n.z = 1.0 - abs(e.x) - abs(e.y);
-    
-    if (n.z < 0.0) {
-        // Handle lower hemisphere fold
-        vec2 signE = sign(e);
-        signE = mix(vec2(1.0), signE, step(vec2(0.0001), abs(e)));
-        n.xy = (1.0 - abs(e.yx)) * signE;
-    } else {
-        n.xy = e.xy;
-    }
-    
-    return normalize(n);
-}
+
 
 // Linearize depth for better comparison
 float LinearizeDepth(float depth) {
@@ -44,7 +26,7 @@ void main() {
 	float centerDepth = texture(gDepth, TexCoord).r;
 	
 	vec2 encNormal = texture(gPackedNormalRM, TexCoord).rg; 
-	vec3 centerNormal = DecodeNormalOct8(encNormal);
+	vec3 centerNormal = DecodeNormalOct(encNormal);
 	
 	// Use linear depth for better bilateral comparison
 	float centerLinearDepth = LinearizeDepth(centerDepth);
@@ -67,7 +49,7 @@ void main() {
 			float sampleAO = texture(ssaoInput, sampleUV).r;
 			float sampleDepth = texture(gDepth, sampleUV).r;
 			vec2 encSampleNormal = texture(gPackedNormalRM, sampleUV).rg;
-			vec3 sampleNormal = DecodeNormalOct8(encSampleNormal);
+			vec3 sampleNormal = DecodeNormalOct(encSampleNormal);
 
 			// Depth-aware weighting using linear depth
 			float sampleLinearDepth = LinearizeDepth(sampleDepth);

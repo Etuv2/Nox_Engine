@@ -26,7 +26,7 @@ public:
     ComputeShader();
     ~ComputeShader();
 
-    // === Core Compute Shader Management ===
+    //  Core Compute Shader Management 
     
     /**
      * @brief Create and compile a compute shader from file
@@ -61,7 +61,7 @@ public:
      */
     void Cleanup();
 
-    // === Dispatch Configuration ===
+    //  Dispatch Configuration 
 
     struct DispatchConfig {
         GLuint numGroupsX = 1;
@@ -99,7 +99,7 @@ public:
      */
     void WaitForCompletion(GLbitfield barriers = GL_ALL_BARRIER_BITS);
 
-    // === Resource Binding Utilities ===
+    //  Resource Binding Utilities 
 
     /**
      * @brief Bind a buffer to a specific binding point
@@ -143,7 +143,7 @@ public:
      */
     void UnbindTexture(GLuint unit);
 
-    // === Uniform Management ===
+    //  Uniform Management 
 
     /**
      * @brief Set uniform values (similar to regular shaders)
@@ -157,7 +157,7 @@ public:
     void SetUniform(const std::string& name, const std::vector<float>& values);
     void SetUniform(const std::string& name, const std::vector<glm::vec3>& values);
 
-    // === Performance and Debugging ===
+    //  Performance and Debugging 
 
     /**
      * @brief Enable/disable GPU timing for this compute shader
@@ -188,7 +188,7 @@ public:
      */
     void PrintDebugInfo() const;
 
-    // === Static Utility Methods ===
+    //  Static Utility Methods 
 
     /**
      * @brief Check if compute shaders are supported on this hardware
@@ -317,7 +317,7 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> m_shaderDefines;
 };
 
-// === Convenience Macros for Common Compute Shader Patterns ===
+//  Convenience Macros for Common Compute Shader Patterns 
 
 #define COMPUTE_DISPATCH_2D(shader, width, height, localX, localY) \
     shader.Dispatch(ComputeShader::CalculateWorkGroups(width, localX), \

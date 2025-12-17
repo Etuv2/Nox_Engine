@@ -12,7 +12,7 @@ extern "C" {
 }
 int main(int argc, char* argv[]) 
 {
-
+	// Create and initialize the main application window
 	MainWindow mainWindow;
 	if (!mainWindow.Initialize())
 		return EXIT_FAILURE;

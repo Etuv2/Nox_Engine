@@ -8,9 +8,13 @@ in vec2 TexCoords;
 
 // Note: PI, GeometrySchlickGGX, GeometrySmith are now in pbr_common.glsl (included above)
 
-// Radical inverse for low-discrepancy sequences (Halton)
+
+// REFERENCES:
 // http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
-// efficient VanDerCorpus calculation.
+// https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
+// Radical inverse for low-discrepancy sequences (Halton) : https://en.wikipedia.org/wiki/Halton_sequence
+
+// Radical Inverse based on Van der Corput sequence
 float RadicalInverse_VdC(uint bits) 
 {
      bits = (bits << 16u) | (bits >> 16u);
@@ -27,31 +31,6 @@ vec2 Hammersley(uint i, uint N)
 	return vec2(float(i)/float(N), RadicalInverse_VdC(i));
 }
 
-// GGX Importance Sampling (matched with pbr_common.glsl)
-vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
-{
-	float a = roughness*roughness;
-	
-	float phi = 2.0 * PI * Xi.x;
-	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
-	float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
-	
-	// from spherical coordinates to cartesian coordinates - halfway vector
-	vec3 H;
-	H.x = cos(phi) * sinTheta;
-	H.y = sin(phi) * sinTheta;
-	H.z = cosTheta;
-	
-	// from tangent-space H vector to world-space sample vector
-	vec3 up          = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-	vec3 tangent   = normalize(cross(up, N));
-	vec3 bitangent = cross(N, tangent);
-	
-	vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
-	return normalize(sampleVec);
-}
-
-// ----------------------------------------------------------------------------
 vec2 IntegrateBRDF(float NdotV, float roughness)
 {
     vec3 V;
@@ -70,12 +49,11 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
         // generates a sample vector that's biased towards the
         // preferred alignment direction (importance sampling).
         vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-        vec3 H = ImportanceSampleGGX(Xi, N, roughness);
-        vec3 L = normalize(2.0 * dot(V, H) * H - V);
+        vec3 L = ImportanceSampleGGX(Xi, N, V, roughness);
 
         float NdotL = max(L.z, 0.0);
-        float NdotH = max(H.z, 0.0);
-        float VdotH = max(dot(V, H), 0.0);
+        float NdotH = max(dot(normalize(V + L), N), 0.0);
+        float VdotH = max(dot(V, normalize(V + L)), 0.0);
 
         if(NdotL > 0.0)
         {
@@ -91,7 +69,6 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
     B /= float(SAMPLE_COUNT);
     return vec2(A, B);
 }
-// ----------------------------------------------------------------------------
 void main() 
 {
     vec2 integratedBRDF = IntegrateBRDF(TexCoords.x, TexCoords.y);

@@ -28,43 +28,6 @@ vec2 Hammersley(uint i, uint N)
 }
 
 // ----------------------------------------------------------------------------
-// Robust tangent frame construction (Duff et al. 2017)
-// This avoids discontinuities at poles that cause seams
-void buildOrthonormalBasis(vec3 n, out vec3 tangent, out vec3 bitangent)
-{
-    float sign = n.z >= 0.0 ? 1.0 : -1.0;
-    float a = -1.0 / (sign + n.z);
-    float b = n.x * n.y * a;
-    
-    tangent = vec3(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x);
-    bitangent = vec3(b, sign + n.y * n.y * a, -n.y);
-}
-
-// ----------------------------------------------------------------------------
-vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
-{
-    float a = roughness*roughness;
-    
-    float phi = 2.0 * PI * Xi.x;
-    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
-    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
-    
-    // From spherical coordinates to Cartesian coordinates - halfway vector
-    vec3 H;
-    H.x = cos(phi) * sinTheta;
-    H.y = sin(phi) * sinTheta;
-    H.z = cosTheta;
-    
-    // Use robust tangent frame construction to avoid seams
-    vec3 tangent, bitangent;
-    buildOrthonormalBasis(N, tangent, bitangent);
-    
-    // Transform from tangent space to world space
-    vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
-    return normalize(sampleVec);
-}
-
-// ----------------------------------------------------------------------------
 void main()
 {		
     vec3 N = normalize(WorldPos);
@@ -87,13 +50,13 @@ void main()
     {
         // Generates a sample vector that's biased towards the preferred alignment direction (importance sampling)
         vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-        vec3 H = ImportanceSampleGGX(Xi, N, roughness);
-        vec3 L = normalize(2.0 * dot(V, H) * H - V);
+        vec3 L = ImportanceSampleGGX(Xi, N, V, roughness);
 
         float NdotL = max(dot(N, L), 0.0);
         if(NdotL > 0.0)
         {
             // Proper mip level calculation
+            vec3 H = normalize(V + L);
             float D = DistributionGGX(N, H, roughness);
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);

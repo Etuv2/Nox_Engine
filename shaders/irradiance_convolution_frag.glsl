@@ -1,10 +1,10 @@
 #version 460 core
+#include "includes/pbr_common.glsl"
 out vec4 FragColor;
 in vec3 WorldPos;
 
 uniform samplerCube environmentMap;
 
-const float PI = 3.14159265359;
 
 // Robust tangent frame construction that avoids pole discontinuities
 // Uses the method from "Building an Orthonormal Basis, Revisited" (Duff et al. 2017)

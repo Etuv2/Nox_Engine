@@ -1,4 +1,7 @@
 #version 460 core
+
+#include "includes/pbr_common.glsl"
+
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 
@@ -34,11 +37,6 @@ uniform int hasIBL;                 // 0/1 flag for IBL availability
 uniform float iblFallbackStrength;  // IBL fallback blend strength
 
 
-const float INV_PI = 0.318309886; // 1/PI
-const float DOUBLE_PI = 6.283185307179586; // 2*PI
-// FUNCTIONS
-
-
 // Linearize depth from [0,1] non-linear to view-space Z
 float LinearizeDepth(float d) {
 	float z = d * 2.0 - 1.0;
@@ -46,26 +44,6 @@ float LinearizeDepth(float d) {
 	float B = proj[3][2];
 	float C = proj[2][3];
 	return B / (z * C - A); // Negative in front of camera (view space Z convention)
-}
-
-// Octahedral decode with proper [0,1] to [-1,1] remapping (matches SSAO)
-vec3 octDecode(vec2 e) {
-	// Remap from [0,1] (texture storage) to [-1,1]
-	e = e * 2.0 - 1.0;
-	
-	vec3 n;
-	n.z = 1.0 - abs(e.x) - abs(e.y);
-	
-	if (n.z < 0.0) {
-		// Handle lower hemisphere fold
-		vec2 signE = sign(e);
-		signE = mix(vec2(1.0), signE, step(vec2(0.0001), abs(e)));
-		n.xy = (1.0 - abs(e.yx)) * signE;
-	} else {
-		n.xy = e.xy;
-	}
-	
-	return normalize(n);
 }
 
 // Reconstruct view-space position from screen UV and depth
@@ -112,14 +90,6 @@ float SampleDepthEdgeAware(vec2 uv, float centerDepth, float edgeThreshold) {
 	return mix(dx0, dx1, f.y);
 }
 
-// Decode normal from oct-encoded 8-bit pair
-vec3 DecodeNormalOct8(vec2 e) {
-	vec3 n;
-	n.z = 1.0 - abs(e.x) - abs(e.y);
-	n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
-	return normalize(n);
-}
-
 
 // MAIN
 
@@ -159,7 +129,7 @@ void main() {
 	// Transform Normal to View Space
 
 	vec2 normalEnc = texture(gPackedNormalRM, uvWork).rg;
-	vec3 normalWorld = octDecode(normalEnc);
+	vec3 normalWorld = DecodeNormalOct(normalEnc);
 	vec3 normalVS = normalize(mat3(view) * normalWorld);
 
 
@@ -168,7 +138,7 @@ void main() {
 	vec2 rands = texture(randTex, uvWork).rg;
 
 	float r = sqrt(rands.x);
-	float phi = DOUBLE_PI * rands.y; // 2*PI
+	float phi = TAU * rands.y; // 2*PI
 	vec3 diskSample = vec3(r * cos(phi), r * sin(phi), sqrt(max(0.0, 1.0 - rands.x)));
 
 	// Build orthonormal basis in view space (Gram-Schmidt)

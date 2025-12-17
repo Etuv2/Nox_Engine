@@ -3,6 +3,8 @@
 // Final upsample from working resolution (half-res) to full resolution
 // Outputs full-res SSGI for the lighting pass
 
+#include "includes/pbr_common.glsl"
+
 layout (local_size_x = 8, local_size_y = 8) in;
 
 // Input textures
@@ -18,16 +20,6 @@ uniform vec2 invDst;        // 1.0 / full-res
 uniform float depthSigma;   // Depth threshold
 uniform float normalThresh; // Normal threshold
 
-vec3 octDecode(vec2 e) {
-	e = e * 2.0 - 1.0;
-	vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
-	if (n.z < 0.0) {
-		vec2 s = vec2(sign(e.x), sign(e.y));
-		n.xy = (1.0 - abs(n.yx)) * s;
-	}
-	return normalize(n);
-}
-
 void main() {
 	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 dstSize = imageSize(outFullRes);
@@ -37,7 +29,7 @@ void main() {
 	vec2 uvFull = (vec2(id) + 0.5) * invDst;
 
 	float centerDepth = textureLod(depthTex, uvFull, 0).r;
-	vec3 centerNormal = octDecode(textureLod(normalTex, uvFull, 0).rg);
+	vec3 centerNormal = DecodeNormalOct(textureLod(normalTex, uvFull, 0).rg);
 
 	vec3 result = vec3(0.0);
 	float weightSum = 0.0;
@@ -51,7 +43,7 @@ void main() {
 
 			vec3 neighborColor = textureLod(inSSGI, uvNeighbor, 0).rgb;
 			float neighborDepth = textureLod(depthTex, uvNeighbor, 0).r;
-			vec3 neighborNormal = octDecode(textureLod(normalTex, uvNeighbor, 0).rg);
+			vec3 neighborNormal = DecodeNormalOct(textureLod(normalTex, uvNeighbor, 0).rg);
 
 			float depthDiff = abs(centerDepth - neighborDepth);
 			float depthWeight = exp(-depthDiff / depthSigma);

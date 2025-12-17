@@ -20,7 +20,7 @@ uniform bool hasBaseColorTexture = false;
 // Light uniforms
 uniform vec3 u_lightColor = vec3(1.0);
 uniform float u_lightIntensity = 1.0;
-uniform vec3 u_lightDirection = vec3(0.0, -1.0, 0.0); // CRITICAL: Actual light direction from CPU
+uniform vec3 u_lightDirection = vec3(0.0, -1.0, 0.0); // Actual light direction from CPU
 
 void main() {
     // Output world position

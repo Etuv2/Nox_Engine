@@ -97,6 +97,6 @@ private:
 	std::unique_ptr<BloomPass> m_bloomPass;
 	std::unique_ptr<TransparentForwardPass> m_transparentPass;
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
-	std::unique_ptr<GUIPass> m_guiPass;  // NEW: Internal GUI rendering
+	std::unique_ptr<GUIPass> m_guiPass;  // Internal GUI rendering
 	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;  // Debug bounding box visualization
 };

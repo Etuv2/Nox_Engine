@@ -367,7 +367,7 @@ bool Core::InitializeUI() {
 	m_stateManager = std::make_unique<RuntimeStateManager>();
 	std::cout << "[Core] RuntimeStateManager initialized" << std::endl;
 	
-	// FIXED: Set current scene file path for proper state tracking
+	// Set current scene file path for proper state tracking
 	if (m_stateManager) {
 		m_stateManager->SetCurrentSceneFilePath(m_sceneToLoad);
 	}
@@ -485,7 +485,7 @@ void Core::Update(float deltaTime) {
 
 	// Update scene
 	if (m_sceneGraph && m_sceneGraph->IsActive()) {
-		// FIXED: Use new transform-aware animation update
+		// Use new transform-aware animation update
 		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
 
 		if (m_physicsEngine && m_physicsEnabledForScene) {
@@ -500,7 +500,7 @@ void Core::Update(float deltaTime) {
 			m_sceneGraph->UpdateAllTransforms();
 		}
 
-		// FIXED: Use new transform-aware audio update
+		// Use new transform-aware audio update
 		glm::vec3 listenerPos = m_camera->GetCameraPosition();
 		float listenerAngle = m_camera->GetCameraFacingAngle();
 		m_sceneGraph->GetRoot()->UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
@@ -521,6 +521,13 @@ void Core::Update(float deltaTime) {
 
 	// Record performance data if recording is active
 	if (m_performanceRecorder && m_performanceRecorder->IsRecording()) {
+		// Update rendering mode in recorder
+		if (m_modularRenderer) {
+			const RenderContext& context = m_modularRenderer->GetContext();
+			std::string renderMode = (context.rendererMode == RenderContext::RendererMode::PATH_TRACED) ? 
+				"Path-Traced" : "Standard";
+			m_performanceRecorder->SetRenderingMode(renderMode);
+		}
 		m_performanceRecorder->RecordFrame(m_frameTime, m_fps);
 	}
 }
@@ -720,7 +727,7 @@ void Core::SwapScene(const std::string& newSceneFile) {
 				if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
 			}
 			
-			// FIXED: Update state manager with new scene file path
+			// Update state manager with new scene file path
 			if (m_stateManager) {
 				m_stateManager->SetCurrentSceneFilePath(newSceneFile);
 			}
@@ -1079,7 +1086,7 @@ bool Core::LoadSceneState(const std::string& filepath) {
 		return false;
 	}
 
-	// FIXED: Use LoadStateWithSceneValidation to ensure correct base scene is loaded first
+	// Use LoadStateWithSceneValidation to ensure correct base scene is loaded first
 	std::cout << "[Core] Loading scene state with automatic scene validation..." << std::endl;
 
 	// Create scene loader callback that Core will use to load the base scene

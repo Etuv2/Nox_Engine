@@ -44,7 +44,7 @@ bool RuntimeStateManager::SaveState(const std::shared_ptr<SceneGraph>& sceneGrap
 		stateJson["timestamp"] = std::time(nullptr);
 		stateJson["scene_name"] = sceneGraph->GetSceneName();
 		
-		// FIXED: Store base scene file path for proper state loading
+		// Store base scene file path for proper state loading
 		// This allows us to load the correct scene before applying state
 		if (!m_currentSceneFilePath.empty()) {
 			stateJson["base_scene_file"] = m_currentSceneFilePath;
@@ -189,7 +189,7 @@ bool RuntimeStateManager::QuickLoad(const std::shared_ptr<SceneGraph>& sceneGrap
 	return LoadState(sceneGraph, camera, m_quickSavePath);
 }
 
-// FIXED: Load state with automatic base scene loading and validation
+// Load state with automatic base scene loading and validation
 std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 	const std::shared_ptr<Camera>& camera,
 	const std::string& filepath,

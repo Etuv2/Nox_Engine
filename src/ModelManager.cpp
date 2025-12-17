@@ -16,7 +16,7 @@ std::shared_ptr<Scene> ModelManager::LoadModel(const std::string& path)
 
     m_modelCache[path] = model;
     
-    // NEW: Track the path for this model
+    // Track the path for this model
     m_modelToPathMap[model.get()] = path;
     
     return model;
@@ -32,7 +32,7 @@ void ModelManager::UnloadModel(const std::string& path)
     }
 }
 
-// NEW: Get the original path for a loaded model
+// Get the original path for a loaded model
 std::string ModelManager::GetModelPath(const Scene* model) const {
     auto it = m_modelToPathMap.find(model);
     if (it != m_modelToPathMap.end()) {

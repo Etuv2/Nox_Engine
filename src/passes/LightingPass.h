@@ -6,6 +6,10 @@
 
 /**
  * LightingPass performs deferred lighting using G-buffer data
+ * It combines lighting information from various sources (e.g., directional lights, point lights)
+ * and applies it to the scene geometry.
+ * REFERENCES:
+ * - LearnOpenGL.com. (n.d.). Deferred Shading: https://learnopengl.com/Advanced-Lighting/Deferred-Shading
  */
 class LightingPass : public RenderPass {
 public:
@@ -61,7 +65,7 @@ private:
 		GLint gAlbedoAO = -1;
 		GLint gSpecularF0 = -1;  // Changed from gEmissiveSpec
 		GLint gMaterialID = -1;
-		GLint gEmissive = -1;    // NEW: Separate emissive texture
+		GLint gEmissive = -1;    // Separate emissive texture
 		GLint gDepth = -1;
 		GLint ssaoMap = -1;
 		GLint screenSpaceShadowMap = -1;

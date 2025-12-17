@@ -1,5 +1,5 @@
 #version 460 core
-
+#include "includes/pbr_common.glsl" // For PI & EPSILON
 /**
  * @file svgf_atrous_comp.glsl
  * @brief SVGF À-Trous Wavelet Filter Pass
@@ -31,9 +31,6 @@ uniform float u_phiColor;   // Color weight parameter (lower = sharper)
 uniform float u_phiNormal;  // Normal weight exponent (higher = sharper)
 uniform float u_phiDepth;   // Depth weight parameter (lower = sharper)
 
-// Constants
-#define PI 3.1415926535897932384626433832795
-#define EPSILON 1e-6
 
 // 3x3 à-trous kernel weights (B-spline based)
 const float kernel[2] = float[2](1.0, 0.5);
@@ -133,13 +130,13 @@ void main() {
             // Kernel weight (B-spline)
             float kernelWeight = kernel[abs(dx)] * kernel[abs(dy)];
             
-            // === Color/Luminance Edge Weight ===
+            //  Color/Luminance Edge Weight 
             float sampleLuma = luminance(sampleColor);
             float lumaDiff = abs(centerLuma - sampleLuma);
             // Gaussian weight based on luminance difference
             float colorWeight = exp(-lumaDiff * lumaDiff / max(adaptivePhiColor * adaptivePhiColor, 0.0001));
             
-            // === Normal Edge Weight (critical for geometric edges) ===
+            //  Normal Edge Weight (critical for geometric edges) 
             float normalSimilarity = max(0.0, dot(centerNormal, sampleNormal));
             // Sharp cutoff for normals - this preserves geometric edges
             float normalWeight = pow(normalSimilarity, u_phiNormal);
@@ -148,7 +145,7 @@ void main() {
                 normalWeight *= 0.05;  // Strong rejection
             }
             
-            // === Depth Edge Weight ===
+            //  Depth Edge Weight 
             float depthDiff = abs(centerDepth - sampleDepth);
             float depthWeight = exp(-depthDiff / max(adaptivePhiDepth, 0.0001));
             // Hard cutoff for depth discontinuities

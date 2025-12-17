@@ -3,6 +3,8 @@
 // Temporal accumulation for SSGI stability
 // Implements exponential moving average with reprojection and rejection heuristics
 
+#include "includes/pbr_common.glsl"
+
 layout (local_size_x = 8, local_size_y = 8) in;
 
 // Input textures - all at working resolution (half-res by default)
@@ -42,16 +44,6 @@ vec3 YCoCgToRGB(vec3 ycocg) {
     return vec3(r, g, b);
 }
 
-vec3 octDecode(vec2 e) {
-    e = e * 2.0 - 1.0;
-    vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
-    if (n.z < 0.0) {
-        vec2 s = vec2(sign(e.x), sign(e.y));
-    n.xy = (1.0 - abs(n.yx)) * s;
-    }
-    return normalize(n);
-}
-
 float luma(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
 }
@@ -88,11 +80,11 @@ void main() {
 
     if (historyValid) {
         float currDepth = texture(depthTex, uvScreen).r;
-      vec3 currNormal = octDecode(texture(normalTex, uvScreen).rg);
+      vec3 currNormal = DecodeNormalOct(texture(normalTex, uvScreen).rg);
 
 vec2 prevScreenUV = prevUV;
    float prevDepth = texture(depthTex, prevScreenUV).r;
-     vec3 prevNormal = octDecode(texture(normalTex, prevScreenUV).rg);
+     vec3 prevNormal = DecodeNormalOct(texture(normalTex, prevScreenUV).rg);
 
         float depthDiff = abs(currDepth - prevDepth);
   float depthConfidence = exp(-depthDiff / depthThreshold);
@@ -115,7 +107,7 @@ vec2 prevScreenUV = prevUV;
     }
 
     // Neighborhood clamping in working color space
-    // CRITICAL FIX: Use more lenient clamping to prevent destroying valid indirect lighting
+    // Use more lenient clamping to prevent destroying valid indirect lighting
     vec3 minColor = vec3(1e9);
     vec3 maxColor = vec3(-1e9);
     vec3 sumColor = vec3(0.0);
@@ -138,7 +130,7 @@ vec2 prevScreenUV = prevUV;
         }
     }
     
-    // CRITICAL FIX: Use mean +/- stddev for softer clamping (matches TAA)
+    // Use mean +/- stddev for softer clamping (matches TAA)
     vec3 meanColor = sumColor / max(weightSum, 1.0);
     vec3 stdDev = vec3(0.0);
     

@@ -10,12 +10,13 @@ struct RenderContext;
 class ComputeShader;
 
 /**
- * @brief RTX Pass using compute shaders
+ * @brief Deferred Path Traced Pass using compute shaders
  * IMPLEMENTATION: Bidirectional Path Tracing with importance sampling
  * Makes use of Bounding Volume Hierarchy (BVH) for ray-scene intersection acceleration
  * REFERENCES:
  * - www.pbr-book.org. (n.d.). Bounding Volume Hierarchies: https://www.pbr-book.org/3ed-2018/Primitives_and_Intersection_Acceleration/Bounding_Volume_Hierarchies
  * - ‌Pbr-book.org. (2025). Bidirectional Path Tracing. : https://www.pbr-book.org/3ed-2018/Light_Transport_III_Bidirectional_Methods/Bidirectional_Path_Tracing
+ * - AMD GPUOpen Deferred Path Tracing By Enscape : https://gpuopen.com/learn/deferred-path-tracing-enscape/
  */
 class RTPass : public RenderPass {
 public:

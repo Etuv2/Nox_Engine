@@ -32,7 +32,7 @@ void LightNode::SetLight(std::shared_ptr<BaseLight> light)
 
 void LightNode::UpdateTransform(const glm::mat4& parentTransform) 
 {
-    // FIXED: Use the unified hierarchy system with proper parent context
+    // Use the unified hierarchy system with proper parent context
     // The parent transform is passed down during scene graph traversal
     // We need to ensure our light properties sync with the calculated world transform
     
@@ -71,7 +71,7 @@ void LightNode::UpdateTransform(const glm::mat4& parentTransform)
     m_lightDirty = false;
 }
 
-// FIXED: Override UpdateTransformSystems to sync light from world transform during traversal
+// Override UpdateTransformSystems to sync light from world transform during traversal
 void LightNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
     if (!m_light) return;
     
@@ -170,7 +170,7 @@ void LightNode::UpdateLightFromTransform(bool forceUpdate)
     // Check if we should update based on dirty flag or force parameter
     if (!forceUpdate && !m_lightDirty) return;
     
-    // FIXED: Get world position using the unified hierarchy system
+    // Get world position using the unified hierarchy system
     glm::vec3 worldPosition = GetWorldPosition();
     
     // Extract rotation from our local transform for direction calculation
@@ -203,7 +203,7 @@ void LightNode::UpdateLightFromTransform(bool forceUpdate)
               << worldPosition.x << "," << worldPosition.y << "," << worldPosition.z << ")" << std::endl;
 }
 
-// FIXED: Add unified method to get world position using hierarchy system
+// Add unified method to get world position using hierarchy system
 glm::vec3 LightNode::GetWorldPosition() const
 {
     // Get parent's world transform if we have a parent

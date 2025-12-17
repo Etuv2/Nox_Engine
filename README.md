@@ -6,9 +6,9 @@ A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphi
 
 ---
 ## Notes
-- Project was initially created during my second year during my 3D Graphics Programming Unit at university.
-- Only part of the engine that remains from the original project is the Main Window,basic structure and some of the rendering code.
-- Rendering system is subject to grading for the Graphics and Computational Programming unit.
+- Project was initially created during my second year at university in the 3D Graphics Programming Unit.
+- Only part of the engine that remains from the original project is the Main Window,basic structure and some of the simple rendering code.
+- Entire Rendering system is subject to grading for the Graphics and Computational Programming unit as it has been almost completely rewritten from scratch.
 - Data Driven ECS Scene Graph/Scene Node system is subject to grading for the Game Engine Programming unit.
 ## Features
 
@@ -19,7 +19,7 @@ A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphi
   - Converges over time when camera is still
   - Adjustable samples per pixel and ray bounce depth
   - Optional SVGF temporal denoising
-- **Cascaded Shadow Mapping**: 4-level cascade shadow maps for directional lights
+- **Cascaded Shadow Mapping**: Cascade shadow maps for directional lights
 - **Percentage Closer Soft Shadows (PCSS)**: High-quality soft shadows with hardware filtering
 - **Temporal Anti-Aliasing (TAA)**: Reduces aliasing artifacts and improves image quality
 - **Bloom Post-Processing**: Realistic glow effects for bright surfaces
@@ -98,12 +98,12 @@ A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphi
 
 ### Dependencies
 - OpenGL 4.5+
-- GLEW (OpenGL Extension Wrangler)
-- SDL2 (Simple DirectMedia Layer)
-- GLM (OpenGL Mathematics)
-- Dear ImGui (Immediate Mode GUI)
-- ImGuizmo (Transform Gizmo)
-- nlohmann JSON (JSON for Modern C++)
+- GLEW 
+- SDL2
+- GLM 
+- Dear ImGui 
+- ImGuizmo 
+- nlohmann JSON 
 - tinyglTF (glTF 2.0 loader)
 
 

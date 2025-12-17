@@ -141,7 +141,7 @@ bool Skybox::Init(const std::string& hdrPath,
 
 	// Use higher resolution for environment map (512 -> 1024) for better quality
 	const int envMapSize = 1024;
-	
+
 	// Create environment cubemap using new Texture builder
 	m_envCubemap = Texture::Builder::TextureCube(envMapSize, GL_RGB16F)
 		.FilterMode(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR)
@@ -614,7 +614,7 @@ bool Skybox::GenerateBRDFLUT()
 
 	// Use GLBuffer wrapper for temporary quad VBO
 	GLBuffer quadVBO(BufferType::Vertex, sizeof(quadVertices), quadVertices, BufferUsage::StaticDraw);
-	
+
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(1);

@@ -97,7 +97,7 @@ void AudioNode::stop()
 	}
 }
 
-// FIXED: Use cached world position from UpdateTransformSystems
+// Use cached world position from UpdateTransformSystems
 void AudioNode::updateAudio(const glm::vec3& listenerPos, float listenerAngle)
 {
     if (!m_isPlaying || m_channel == -1)
@@ -107,7 +107,7 @@ void AudioNode::updateAudio(const glm::vec3& listenerPos, float listenerAngle)
     glm::vec3 safeListenerPos = SanitizeVector(listenerPos);
     float safeListenerAngle = SanitizeAngle(listenerAngle);
 
-    // FIXED: Use cached world position from traversal if available
+    // Use cached world position from traversal if available
     glm::vec3 worldPos;
     if (m_worldPositionValid) {
         worldPos = m_cachedWorldPosition;
@@ -158,7 +158,7 @@ void AudioNode::UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAng
 	}
 }
 
-// FIXED: Updated to use proper hierarchy context propagation
+// Updated to use proper hierarchy context propagation
 glm::vec3 AudioNode::GetWorldPosition() const
 {
 	// Get parent's world transform if we have a parent
@@ -174,7 +174,7 @@ glm::vec3 AudioNode::GetWorldPosition() const
 	return glm::vec3(worldTransform[3]);
 }
 
-// FIXED: Override UpdateTransformSystems to keep cached world position updated during traversal
+// Override UpdateTransformSystems to keep cached world position updated during traversal
 void AudioNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
     // Cache world position for use in updateAudio
     // This is called during UpdateAudioNodesWithTransform traversal

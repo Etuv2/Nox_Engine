@@ -38,14 +38,14 @@ public:
     bool isPlaying() const { return m_isPlaying; }
     bool is3D() const { return m_is3d; }
     
-    // NEW: Get the sound file path for serialization
+    // Get the sound file path for serialization
     std::string getSoundFilePath() const { return m_soundFilePath; }
     bool isLooping() const { return m_isLooping; }
 
     //update audio nodes
     virtual void UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle) override;
 
-    // FIXED: Override UpdateTransformSystems to sync audio position from world transform
+    // Override UpdateTransformSystems to sync audio position from world transform
     virtual void UpdateTransformSystems(const glm::mat4& worldTransform) override;
 
     float GetSelectionRadius() const { return m_selectionRadius; }
@@ -59,7 +59,7 @@ private:
     int m_channel;
     bool m_is3d;
     bool m_isPlaying;
-    bool m_isLooping = false; // NEW: Track loop state
+    bool m_isLooping = false; // Track loop state
 
     // Additional audio properties.
     float m_pitch;           // Pitch factor (1.0 = normal)
@@ -68,10 +68,10 @@ private:
 
     float m_selectionRadius = 0.6f; // gizmo/picking sphere radius
     
-    // NEW: Store the sound file path for serialization
+    // Store the sound file path for serialization
     std::string m_soundFilePath;
     
-    // FIXED: Cache world position from traversal to avoid recalculation
+    // Cache world position from traversal to avoid recalculation
     mutable glm::vec3 m_cachedWorldPosition = glm::vec3(0.0f);
     mutable bool m_worldPositionValid = false;
 };

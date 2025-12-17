@@ -126,7 +126,7 @@ void FrameBuffer::Init() {
 					: GL_RGBA);
 				type = GL_FLOAT;
 				break;
-				// Integer types (NEW: Support for material ID)
+				// Integer types (Support for material ID)
 			case GL_R8UI:
 			case GL_RG8UI:
 			case GL_RGB8UI:
@@ -297,7 +297,7 @@ void FrameBuffer::Resize(int newW, int newH) {
 				: GL_RGBA);
 			type = GL_FLOAT;
 			break;
-		// Integer types (NEW: Support for material ID)
+		// Integer types (Support for material ID)
 		case GL_R8UI: case GL_RG8UI: case GL_RGB8UI: case GL_RGBA8UI:
 			fmt = (ifmt == GL_R8UI ? GL_RED_INTEGER
 				: ifmt == GL_RG8UI ? GL_RG_INTEGER

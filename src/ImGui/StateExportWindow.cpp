@@ -2,6 +2,7 @@
 #include <IMGUI/imgui.h>
 #include <fstream>
 #include "../json.hpp"
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -89,15 +90,47 @@ void StateExportWindow::Render() {
     ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Performance Data Export");
     ImGui::Separator();
 
+    // Auto-recording option
+    ImGui::Checkbox("Auto-Record (30s)", &m_autoRecordingEnabled);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.0f, 1.0f), "?");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Automatically record 30 seconds of performance data\nwhen you start recording");
+    }
+
+    ImGui::Spacing();
+
     // Recording controls
     if (!m_isRecording) {
         if (ImGui::Button("Start Recording", ImVec2(-1, 30))) {
             if (m_startRecordingCallback) {
                 m_startRecordingCallback();
                 m_isRecording = true;
+                if (m_autoRecordingEnabled) {
+                    m_autoRecordingStartTime = std::chrono::high_resolution_clock::now();
+                }
             }
         }
     } else {
+        // Check if auto-recording duration has elapsed
+        if (m_autoRecordingEnabled) {
+            auto now = std::chrono::high_resolution_clock::now();
+            auto elapsedSeconds = std::chrono::duration<double>(now - m_autoRecordingStartTime).count();
+            
+            if (elapsedSeconds >= AUTO_RECORDING_DURATION_SECONDS) {
+                // Auto-stop recording
+                if (m_stopRecordingCallback) {
+                    m_stopRecordingCallback();
+                    m_isRecording = false;
+                }
+            } else {
+                // Show countdown timer
+                double remainingSeconds = AUTO_RECORDING_DURATION_SECONDS - elapsedSeconds;
+                ImGui::TextColored(ImVec4(0.0f, 1.0f, 1.0f, 1.0f), 
+                    "Auto-stop in: %.1f seconds", remainingSeconds);
+            }
+        }
+        
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
         if (ImGui::Button("Stop Recording", ImVec2(-1, 30))) {
             if (m_stopRecordingCallback) {

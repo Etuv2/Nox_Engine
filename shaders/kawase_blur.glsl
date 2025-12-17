@@ -1,5 +1,5 @@
 ﻿#version 460 core
-
+// Kawase Blur Fragment Shader : https://blog.frost.kiwi/dual-kawase/
 in vec2 TexCoord;
 layout(location = 0) out vec4 FragColor;
 

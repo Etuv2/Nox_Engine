@@ -428,10 +428,10 @@ void SceneNode::UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAng
 }
 
 void SceneNode::UpdateAudioNodesWithTransform(const glm::vec3& listenerPos, float listenerAngle, const glm::mat4& parentWorldTransform) {
-	// FIXED: Calculate our world transform using parent context
+	// Calculate our world transform using parent context
 	glm::mat4 worldTransform = GetGlobalTransform(parentWorldTransform);
 	
-	// FIXED: Propagate world transform to derived node types
+	// Propagate world transform to derived node types
 	UpdateTransformSystems(worldTransform);
 	
 	// Recursively update children with our world transform
@@ -518,10 +518,10 @@ void SceneNode::UpdateAnimationWithTransform(float deltaTime, const glm::mat4& p
 		}
 	}
 	
-	// FIXED: Calculate our world transform using parent context
+	// Calculate our world transform using parent context
 	glm::mat4 worldTransform = GetGlobalTransform(parentWorldTransform);
 	
-	// FIXED: Propagate world transform to derived node types
+	// Propagate world transform to derived node types
 	UpdateTransformSystems(worldTransform);
 	
 	// Recursively update children with our world transform

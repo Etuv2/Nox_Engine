@@ -100,5 +100,5 @@ private:
     // Settings
     float m_cameraSpeed;
     float m_mouseSensitivity;
-    float m_gamepadLookSensitivity; // NEW: Separate sensitivity for gamepad looking
+    float m_gamepadLookSensitivity; // Separate sensitivity for gamepad looking
 };

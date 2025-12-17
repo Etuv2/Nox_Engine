@@ -18,7 +18,7 @@ void main(){
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
     if (gid.x >= int(fullSize.x) || gid.y >= int(fullSize.y)) return;
     
-    // CRITICAL FIX: Use normalized UVs for sampling
+    // Use normalized UVs for sampling
     // Both full-res and half-res textures share the same [0,1] UV space
     vec2 uv = (vec2(gid) + 0.5) / fullSize;
     

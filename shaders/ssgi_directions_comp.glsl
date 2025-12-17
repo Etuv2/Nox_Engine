@@ -1,6 +1,5 @@
 #version 460 core
 // Generates stochastic hemisphere directions with temporal stability
-// Aligned with SSAO’s noise approach for consistent blue-noise distribution
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
@@ -10,11 +9,11 @@ layout (rgba16f, binding = 0) writeonly uniform image2D outDirs;
 uniform vec2 invScreen;
 uniform int frameIndex;
 
-// Hash function for stable, blue-noise-like randomness across frames : https://www.shadertoy.com/view/4t3cRr
-float hash21(vec2 p) {
-    p = fract(p * vec2(123.34, 345.45));
-    p += dot(p, p + 34.345);
-    return fract(p.x * p.y);
+// PCG hash: https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
+uint pcg_hash(uint input_) {
+	uint state = input_ * 747796405u + 2891336453u;
+	uint word = ((state >> 27u) ^ state) * 277803737u;
+	return (word >> 22u) ^ word;
 }
 
 // R2 low-discrepancy sequence for temporally stable blue-noise distribution
@@ -36,8 +35,8 @@ void main() {
 
     // Add spatial decorrelation using hash
     vec2 spatialNoise = vec2(
-        hash21(vec2(id) + vec2(frameIndex * 0.1)),
-        hash21(vec2(id.y, id.x) + vec2(frameIndex * 0.1 + 0.5))
+        pcg_hash(uint(vec2(id) + vec2(frameIndex * 0.1))),
+        pcg_hash(uint(vec2(id.y, id.x) + vec2(frameIndex * 0.1 + 0.5)))
     );
 
     // Blend R2 sequence with spatial hash for balanced temporal and spatial variation

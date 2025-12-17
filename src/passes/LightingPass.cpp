@@ -400,7 +400,7 @@ void LightingPass::Execute(RenderContext& ctx,
 		glUniform1f(m_uniforms.cascadeBlendFactor, shadowConfig.cascadeBlendFactor);
 		
 		// Calculate cascade splits based on camera near/far planes
-		// CRITICAL: Use the SAME split calculation as LightManager::RenderShadowMaps
+		// Use the SAME split calculation as LightManager::RenderShadowMaps
 		// to ensure cascade selection in shader matches rendered cascade bounds
 		float nearPlane = camera->GetCameraNearPlane();
 		float farPlane = camera->GetCameraFarPlane();

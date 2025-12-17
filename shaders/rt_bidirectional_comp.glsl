@@ -322,7 +322,7 @@ vec3 randomGGXDirection(vec3 N, vec3 V, float roughness) {
 
 
 // Octahedral normal decoding (from G-buffer)
-// FIXED: Now properly remaps from [0,1] to [-1,1] before decoding
+// Now properly remaps from [0,1] to [-1,1] before decoding
 vec3 DecodeNormalOct8(vec2 e) {
 	// Use the shared function which handles the remap correctly
 	return DecodeNormalOct(e);

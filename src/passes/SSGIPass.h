@@ -15,11 +15,8 @@ class Skybox;
  * @brief Screen Space Global Illumination Pass using compute shaders
  *
  * IMPLEMENTATION: Follows Shubham Sachdeva's "Dynamic, Noise-Free Screen Space Diffuse Global Illumination" approach
- * (https://www.ea.com/seed/news/seed-dd18-presentation-slides-raytracing)
  * REFERENCES:
- * - Shubham Sachdeva, "Dynamic, Noise-Free SSGI", SEED/EA (2018)
- * - Jorge Jimenez, "Practical Real-Time Strategies for Accurate Indirect Occlusion", SIGGRAPH 2016
- * - Jimenez et al., "Filtering Approaches for Real-Time Anti-Aliasing", SIGGRAPH 2011 (temporal filtering)
+ * - Shubham Sachdeva, "Dynamic, Noise-Free Screen Space Diffuse Global Illumination" : https://gamehacker1999.github.io/posts/SSGI/
  */
 class SSGIPass : public RenderPass {
 public:

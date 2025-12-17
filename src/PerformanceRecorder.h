@@ -15,6 +15,7 @@
  * - Efficient circular buffer to avoid memory bloat
  * - CSV export for quick analysis in Excel/Python
  * - JSON export for structured data processing
+ * - Rendering mode tracking (standard vs path-traced)
  * - Minimal performance overhead
  */
 class PerformanceRecorder {
@@ -24,6 +25,7 @@ public:
         float frameTime;         // Total frame time (ms)
         float fps;               // Frames per second
         uint64_t frameIndex;     // Sequential frame number
+        std::string renderMode;  // Rendering mode (e.g., "Standard" or "Path-Traced")
         
         // Optional pass breakdown (can be extended)
         float cpuTime = 0.0f;    // CPU time (ms)
@@ -54,6 +56,12 @@ public:
      * @param fps Frames per second
      */
     void RecordFrame(float frameTime, float fps);
+
+    /**
+     * @brief Set the current rendering mode
+     * @param mode "Standard" for deferred rendering or "Path-Traced" for path tracing
+     */
+    void SetRenderingMode(const std::string& mode) { m_currentRenderMode = mode; }
 
     /**
      * @brief Export recorded data to CSV format
@@ -90,8 +98,11 @@ private:
     std::vector<FrameData> m_frameData;
     size_t m_maxFrames;
     uint64_t m_frameIndex;
+    std::string m_currentRenderMode = "Standard";
     std::chrono::high_resolution_clock::time_point m_startTime;
 
-    // Helper to calculate elapsed time since recording start
+    /**
+     * @brief Get elapsed time since recording started (in seconds)
+     */
     double GetElapsedTime() const;
 };

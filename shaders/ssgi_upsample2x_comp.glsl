@@ -5,6 +5,8 @@
 //        depthTex (full), normalTex (full)
 // Output: image2D outTex (half/working resolution)
 
+#include "includes/pbr_common.glsl"
+
 layout (local_size_x = 8, local_size_y = 8) in;
 
 // Input bindings
@@ -20,24 +22,6 @@ uniform vec2 invFull;     // 1.0 / full-res (for depth/normal sampling)
 uniform float depthSigma;   // Depth threshold for edge detection
 uniform float normalThresh; // Normal threshold for edge detection
 
-// CRITICAL FIX: Use exact same octahedral decoding as SSAO
-vec3 octDecode(vec2 e) {
-	e = e * 2.0 - 1.0;
-	vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
-	if (n.z < 0.0) {
-		vec2 s = vec2(sign(e.x), sign(e.y));
-		n.xy = (1.0 - abs(n.yx)) * s;
-	}
-	return normalize(n);
-}
-
-vec3 DecodeNormalOct8(vec2 e) {
-    vec3 n;
-    n.z = 1.0 - abs(e.x) - abs(e.y);
-    n.xy = n.z >= 0.0 ? e.xy : (1.0 - abs(e.yx)) * sign(e.xy);
-    return normalize(n);
-}
-
 void main() {
 	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 dstSize = imageSize(outTex);
@@ -50,9 +34,9 @@ void main() {
 	vec2 uvWork = (vec2(id) + 0.5) * invDst;
 	vec2 uvScreen = uvWork; // Normalized UVs map directly
 
-	// CRITICAL FIX: Sample center pixel depth/normal from FULL RESOLUTION
+	// Sample center pixel depth/normal from FULL RESOLUTION
 	float centerDepth = textureLod(depthTex, uvScreen, 0).r;
-	vec3 centerNormal = octDecode(textureLod(normalTex, uvScreen, 0).rg);
+	vec3 centerNormal = DecodeNormalOct(textureLod(normalTex, uvScreen, 0).rg);
 
 	// Joint bilateral upsample with 3x3 kernel (matches SSAO logic)
 	vec3 result = vec3(0.0);
@@ -69,7 +53,7 @@ void main() {
 
 			// Sample depth/normal from FULL RESOLUTION
 			float neighborDepth = textureLod(depthTex, uvNScreen, 0).r;
-			vec3 neighborNormal = octDecode(textureLod(normalTex, uvNScreen, 0).rg);
+			vec3 neighborNormal = DecodeNormalOct(textureLod(normalTex, uvNScreen, 0).rg);
 
 			// Depth weight: exponential falloff
 			float depthDiff = abs(centerDepth - neighborDepth);

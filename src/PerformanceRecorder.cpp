@@ -3,9 +3,31 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <filesystem>
 #include "json.hpp"
 
 using json = nlohmann::json;
+namespace fs = std::filesystem;
+
+// Helper function to create directories if they don't exist
+static bool EnsureDirectoryExists(const std::string& filepath) {
+    std::string dirPath = filepath.substr(0, filepath.find_last_of("/\\s"));
+    if (dirPath.empty() || dirPath == filepath) {
+        return true; // No directory specified, file is in current directory
+    }
+    
+    try {
+        fs::path dir(dirPath);
+        if (!fs::exists(dir)) {
+            fs::create_directories(dir);
+            std::cout << "[PerformanceRecorder] Created directory: " << dirPath << std::endl;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "[PerformanceRecorder] Failed to create directory: " << e.what() << std::endl;
+        return false;
+    }
+}
 
 PerformanceRecorder::PerformanceRecorder()
     : m_isRecording(false)
@@ -52,6 +74,7 @@ void PerformanceRecorder::RecordFrame(float frameTime, float fps) {
     frame.frameTime = frameTime;
     frame.fps = fps;
     frame.frameIndex = m_frameIndex++;
+    frame.renderMode = m_currentRenderMode;
 
     // If we've reached max capacity, use circular buffer behavior
     if (m_frameData.size() >= m_maxFrames) {
@@ -68,6 +91,12 @@ bool PerformanceRecorder::ExportToCSV(const std::string& filepath) {
         return false;
     }
 
+    // Ensure directory exists
+    if (!EnsureDirectoryExists(filepath)) {
+        std::cerr << "[PerformanceRecorder] Failed to create output directory for: " << filepath << std::endl;
+        return false;
+    }
+
     std::ofstream outFile(filepath);
     if (!outFile.is_open()) {
         std::cerr << "[PerformanceRecorder] Failed to open file for writing: " << filepath << std::endl;
@@ -75,7 +104,7 @@ bool PerformanceRecorder::ExportToCSV(const std::string& filepath) {
     }
 
     // Write CSV header
-    outFile << "FrameIndex,Timestamp,FrameTime_ms,FPS\n";
+    outFile << "FrameIndex,Timestamp,FrameTime_ms,FPS,RenderMode\n";
 
     // Write data rows
     outFile << std::fixed << std::setprecision(6);
@@ -83,7 +112,8 @@ bool PerformanceRecorder::ExportToCSV(const std::string& filepath) {
         outFile << frame.frameIndex << ","
                 << frame.timestamp << ","
                 << frame.frameTime << ","
-                << frame.fps << "\n";
+                << frame.fps << ","
+                << frame.renderMode << "\n";
     }
 
     outFile.close();
@@ -98,10 +128,30 @@ bool PerformanceRecorder::ExportToJSON(const std::string& filepath) {
         return false;
     }
 
+    if (!EnsureDirectoryExists(filepath)) {
+        return false;
+    }
+
     try {
         json exportData;
         exportData["version"] = "1.0";
         exportData["frame_count"] = m_frameData.size();
+        
+        // Determine rendering mode(s) used during recording
+        std::string recordedRenderMode = "Mixed";
+        if (!m_frameData.empty()) {
+            const std::string& firstMode = m_frameData[0].renderMode;
+            bool allSameMode = true;
+            for (const auto& frame : m_frameData) {
+                if (frame.renderMode != firstMode) {
+                    allSameMode = false;
+                    break;
+                }
+            }
+            if (allSameMode) {
+                recordedRenderMode = firstMode;
+            }
+        }
         
         // Calculate statistics
         float totalTime = 0.0f;
@@ -117,6 +167,7 @@ bool PerformanceRecorder::ExportToJSON(const std::string& filepath) {
         float avgFrameTime = totalTime / m_frameData.size();
         
         exportData["statistics"] = {
+            {"rendering_mode", recordedRenderMode},
             {"avg_frame_time_ms", avgFrameTime},
             {"min_frame_time_ms", minFrameTime},
             {"max_frame_time_ms", maxFrameTime},
@@ -132,6 +183,7 @@ bool PerformanceRecorder::ExportToJSON(const std::string& filepath) {
             frameJson["timestamp"] = frame.timestamp;
             frameJson["frame_time_ms"] = frame.frameTime;
             frameJson["fps"] = frame.fps;
+            frameJson["render_mode"] = frame.renderMode;
             framesArray.push_back(frameJson);
         }
         

@@ -59,7 +59,7 @@ namespace DefaultTextures {
     GLuint AOWhite() { EnsureCreated(); return g_aowhite ? g_aowhite->ID() : 0; }
     GLuint MetallicRoughnessDefault() { EnsureCreated(); return g_mrDefault ? g_mrDefault->ID() : 0; }
 
-    // NEW: Modern TexturePtr accessors for new code
+    // Modern TexturePtr accessors for new code
     TexturePtr GetWhiteTexture() { EnsureCreated(); return g_white; }
     TexturePtr GetBlackTexture() { EnsureCreated(); return g_black; }
     TexturePtr GetNormalTexture() { EnsureCreated(); return g_normal; }

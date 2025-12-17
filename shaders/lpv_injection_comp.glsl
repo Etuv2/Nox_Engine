@@ -7,7 +7,7 @@ uniform sampler2D u_rsmPosition;
 uniform sampler2D u_rsmNormal;
 uniform sampler2D u_rsmFlux;
 
-// LPV 3D textures (output) - CRITICAL: Use RGBA32UI for atomic operations
+// LPV 3D textures (output) - Use RGBA32UI for atomic operations
 layout(r32ui, binding = 0) uniform uimage3D u_lpvR;
 layout(r32ui, binding = 1) uniform uimage3D u_lpvG;
 layout(r32ui, binding = 2) uniform uimage3D u_lpvB;
@@ -20,7 +20,7 @@ uniform int u_rsmResolution;
 uniform int u_sampleCount;
 uniform vec4 u_gridOrientation; // Quaternion (x, y, z, w)
 
-// CRITICAL: Scaling factor for float-to-int conversion
+// Scaling factor for float-to-int conversion
 // We use fixed-point arithmetic: float_value * SCALE_FACTOR = int_value
 // Increase precision to avoid truncation to zero for small contributions
 const uint SCALE_FACTOR = 100000u;
@@ -114,7 +114,7 @@ void main() {
         return;
     }
     
-    // CRITICAL: Transform normal to grid-local space for proper SH evaluation
+    // Transform normal to grid-local space for proper SH evaluation
     vec3 localNormal = rotateVectorInverse(vplNormal, u_gridOrientation);
     
     // Calculate SH coefficients for this VPL's cosine lobe (in grid-local space)
@@ -129,7 +129,7 @@ void main() {
     vec4 contributionG = shCoeffs * vplFlux.g * solidAngle;
     vec4 contributionB = shCoeffs * vplFlux.b * solidAngle;
     
-    // CRITICAL: Convert float contributions to scaled unsigned integers
+    // Convert float contributions to scaled unsigned integers
     uvec4 scaledR = uvec4(
         floatToScaledUInt(contributionR.x),
         floatToScaledUInt(contributionR.y),

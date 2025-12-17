@@ -200,7 +200,6 @@
     <ClInclude Include="src\AudioNode.h" />
     <ClInclude Include="src\AudioPlayer.h" />
     <ClInclude Include="src\BaseLight.h" />
-    <ClInclude Include="src\bend_sss_cpu.h" />
     <ClInclude Include="src\BVH.h" />
     <ClInclude Include="src\BVHBuilder.h" />
     <ClInclude Include="src\Camera.h" />

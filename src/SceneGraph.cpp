@@ -47,7 +47,7 @@ std::map<std::string, std::shared_ptr<SceneNode>> SceneGraph::GetSceneHierarchy(
 	return sceneHierarchy;
 }
 
-// NEW: Update all transforms in one batch using component system
+// Update all transforms in one batch using component system
 void SceneGraph::UpdateAllTransforms() {
 	m_transformSystem.UpdateTransforms();
 }
@@ -210,7 +210,7 @@ std::vector<std::shared_ptr<SceneNode>> SceneGraph::FindNodesByType(SceneNode::N
 	return nodes;
 }
 
-// NEW: Find first LPV volume node in scene
+// Find first LPV volume node in scene
 std::shared_ptr<SceneNode> SceneGraph::FindLPVVolumeNode()
 {
 	if (!m_root) return nullptr;
@@ -224,7 +224,7 @@ std::shared_ptr<SceneNode> SceneGraph::FindLPVVolumeNode()
 	return nullptr;
 }
 
-// NEW: Save scene to file
+// Save scene to file
 bool SceneGraph::SaveToFile(const std::string& filePath)
 {
 	std::cout << "[SceneGraph] Saving scene '" << m_sceneName << "' to: " << filePath << std::endl;
@@ -299,7 +299,7 @@ void SceneGraph::Shutdown() {
 	m_componentManager.Clear();
 }
 
-// NEW: Flat iteration rendering methods for cache-friendly performance
+// Flat iteration rendering methods for cache-friendly performance
 void SceneGraph::DrawFlat(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram) {
 	// Delegate to RenderSystem
 	m_renderSystem.RenderForward(view, projection, shaderProgram);

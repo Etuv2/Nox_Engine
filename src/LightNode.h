@@ -53,7 +53,7 @@ public:
     void SetLight(std::shared_ptr<BaseLight> light);
     std::shared_ptr<BaseLight> GetLight() const { return m_light; }
 
-    // FIXED: Override UpdateTransformSystems to sync light with world transform
+    // Override UpdateTransformSystems to sync light with world transform
     virtual void UpdateTransformSystems(const glm::mat4& worldTransform) override;
 
     // Enhanced transform system with automatic light synchronization

@@ -1,10 +1,10 @@
 #version 460 core
-
+#include "includes/pbr_common.glsl" // For normal encoding/decoding
 in vec3 WorldPos;
 in vec3 WorldNormal;
 in vec2 TexCoords;
 in mat3 TBN;
-in vec4 RawTangent;  // CRITICAL: Receive tangent with handedness (w component)
+in vec4 RawTangent;  // Receive tangent with handedness (w component)
 
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
@@ -60,31 +60,6 @@ uniform bool hasSpecularTexture = false;
 uniform bool hasSpecularColorTexture = false;
 uniform bool hasTransmissionTexture = false;
 
-// Improved octahedral normal encoding with proper sign handling
-vec2 EncodeNormalOct8(vec3 n) {
-    // Normalize to ensure unit length
-    n = normalize(n);
-    
-    // Project onto octahedron
-    n /= (abs(n.x) + abs(n.y) + abs(n.z));
-    
-    // Handle the lower hemisphere (z < 0)
-    if (n.z < 0.0) {
-        vec2 signN = sign(n.xy);
-        // Ensure sign is never zero to avoid discontinuities
-        signN = mix(vec2(1.0), signN, step(vec2(0.0001), abs(n.xy)));
-        n.xy = (1.0 - abs(n.yx)) * signN;
-    }
-    
-    // Map from [-1, 1] to [0, 1]
-    return n.xy * 0.5 + 0.5;
-}
-
-// Calculate F0 from IOR (Schlick approximation)
-float F0FromIOR(float ior) {
-    float f = (ior - 1.0) / (ior + 1.0);
-    return f * f;
-}
 
 void main() {
     // Re-orthonormalize TBN per-pixel after interpolation
@@ -96,7 +71,7 @@ void main() {
     // Gram-Schmidt orthogonalization: ensure T is perpendicular to N
     T = normalize(T - dot(T, N) * N);
     
-    // CRITICAL FIX: Recompute B using handedness from RawTangent.w
+    // Recompute B using handedness from RawTangent.w
     // This preserves the correct orientation across UV seams
     float handedness = RawTangent.w;
     vec3 B = normalize(cross(N, T) * handedness);
@@ -104,7 +79,7 @@ void main() {
     // Rebuild orthonormal TBN matrix
     mat3 orthonormalTBN = mat3(T, B, N);
     
-    // --- Normal mapping ---
+    //  Normal mapping 
     if (hasNormalTexture) {
         // Sample normal map in tangent space (range [0,1])
         vec3 tangentNormal = texture(texture_normal, TexCoords).rgb;
@@ -125,7 +100,7 @@ void main() {
         }
     }
 
-    // --- Material workflow selection ---
+    //  Material workflow selection 
     vec3 albedo;
     float metallic;
     float roughness;
@@ -165,13 +140,13 @@ void main() {
             metallic  = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
         }
         
-        // --- Albedo ---
+        //  Albedo 
         albedo = baseColorFactor.rgb;
         if (hasBaseColorTexture) {
             albedo *= texture(texture_diffuse, TexCoords).rgb;
         }
         
-        // --- Specular F0 calculation with KHR_materials_specular support ---
+        //  Specular F0 calculation with KHR_materials_specular support 
         // Base dielectric F0 from IOR (default ~0.04 for IOR 1.5)
         float baseF0 = F0FromIOR(ior);
         vec3 dielectricF0 = vec3(baseF0);
@@ -201,14 +176,14 @@ void main() {
     }
     roughness = clamp(roughness, 0.04, 1.0);
     
-    // --- Emissive ---
+    //  Emissive 
     vec3 emissive = emissiveFactor;
     if (hasEmissiveTexture) {
         vec3 emissiveTexSample = texture(texture_emissive, TexCoords).rgb;
         emissive *= emissiveTexSample;
     }
 
-    // --- Occlusion ---
+    //  Occlusion 
     float ao = 1.0;
     if (hasOcclusionTexture) {
         ao = mix(1.0, texture(texture_occlusion, TexCoords).r, occlusionStrength);
@@ -217,7 +192,7 @@ void main() {
     // Calculate emissive strength (luminance for alpha channel)
     float emissiveStrength = dot(emissive, vec3(0.299, 0.587, 0.114));
 
-    // --- Determine Material ID ---
+    //  Determine Material ID 
     uint materialID = 0u; // Default: Standard PBR
     
     if (useSpecularGlossinessWorkflow) {
@@ -232,7 +207,7 @@ void main() {
     // 6-255u = Custom materials
 
     // RT0: Oct normal (RG) + roughness (B) + metallic (A)
-    gPackedNormalRM = vec4(EncodeNormalOct8(N), roughness, metallic);
+    gPackedNormalRM = vec4(EncodeNormalOct(N), roughness, metallic);
     
     // RT1: Albedo (RGB) + occlusion (A)
     gAlbedoAO = vec4(albedo, ao);

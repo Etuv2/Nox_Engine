@@ -26,7 +26,7 @@ public:
     // Scene management
     void SetSceneList(const std::vector<std::string>& scenes) { m_sceneList = scenes; }
     void SetSceneSwapCallback(const std::function<void(const std::string&)>& callback) { m_sceneSwapCallback = callback; }
-    void SetSceneSaveCallback(const std::function<void()>& callback) { m_sceneSaveCallback = callback; } // NEW: Scene saving
+    void SetSceneSaveCallback(const std::function<void()>& callback) { m_sceneSaveCallback = callback; } // Scene saving
 
     // Window controls
     void SetWindowToggleCallback(const std::function<void(const std::string&)>& callback) { m_windowToggleCallback = callback; }
@@ -42,6 +42,6 @@ private:
 
     std::vector<std::string> m_sceneList;
     std::function<void(const std::string&)> m_sceneSwapCallback;
-    std::function<void()> m_sceneSaveCallback; // NEW: Save callback
+    std::function<void()> m_sceneSaveCallback; // Save callback
     std::function<void(const std::string&)> m_windowToggleCallback;
 };
