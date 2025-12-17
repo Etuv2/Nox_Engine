@@ -71,7 +71,7 @@ void SceneGraph::UpdateLightManager() {
 	// Clear existing lights and collect from scene
 	m_lightManager->ClearAllLights();
 
-	// CRITICAL DEBUG: Check if scene has any nodes at all
+	// Check if scene has any nodes at all
 	if (!m_root) {
 		std::cerr << "[SceneGraph] ERROR: No root node exists!" << std::endl;
 		return;
@@ -85,7 +85,7 @@ void SceneGraph::UpdateLightManager() {
 
 	std::cout << "[SceneGraph] Found " << lightNodes.size() << " light nodes in scene" << std::endl;
 
-	// CRITICAL DEBUG: If no lights found, create a default directional light
+	// If no lights found, create a default directional light
 	if (lightNodes.empty()) {
 		std::cout << "[SceneGraph] No lights found in scene - this will result in no shadows!" << std::endl;
 		std::cout << "[SceneGraph] Available node types in scene:" << std::endl;
@@ -110,7 +110,7 @@ void SceneGraph::UpdateLightManager() {
 			// Register the light node
 			m_lightManager->RegisterLightNode(lightNode, lightName);
 
-			// CRITICAL DEBUG: Check light properties
+			// Check light properties
 			auto light = lightNode->GetLight();
 			std::cout << "[SceneGraph] Registered light: " << lightName << std::endl;
 			std::cout << "  - Type: " << static_cast<int>(light->GetLightType()) << std::endl;
@@ -128,7 +128,7 @@ void SceneGraph::UpdateLightManager() {
 	std::cout << "[SceneGraph] Light collection complete. Active lights: "
 		<< m_lightManager->GetActiveLightCount() << "/" << m_lightManager->GetLightCount() << std::endl;
 
-	// CRITICAL DEBUG: Report shadow casting status
+	// Report shadow casting status
 	size_t shadowCastingLights = m_lightManager->GetShadowCastingLightCount();
 	std::cout << "[SceneGraph] Shadow-casting lights: " << shadowCastingLights << std::endl;
 
@@ -345,7 +345,7 @@ void SceneGraph::SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, Enti
 	}
 }
 
-// ============== NEW ECS-BASED RENDERING METHODS ==============
+// NEW ECS-BASED RENDERING METHODS
 
 void SceneGraph::RenderForward(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram) {
 	m_renderSystem.RenderForward(view, projection, shaderProgram);
@@ -377,7 +377,7 @@ void SceneGraph::SetFrustumPlanes(const glm::mat4& viewProjection) {
 	m_renderSystem.SetFrustumPlanes(viewProjection);
 }
 
-// ============== ANIMATION METHODS ==============
+// ANIMATION METHODS
 
 void SceneGraph::UpdateAnimations(float deltaTime) {
 	m_animationSystem.Update(deltaTime);

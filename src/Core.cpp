@@ -80,7 +80,7 @@ Core::~Core() {
 
 bool Core::LoadConfiguration() {
 	try {
-		std::ifstream configFile("config.json");
+		std::ifstream configFile(".\\config\\config.json");
 		if (!configFile || !configFile.is_open()) {
 			std::cerr << "[Core] Could not open config.json" << std::endl;
 			return false;
@@ -286,7 +286,7 @@ bool Core::InitializePhysics() {
 	std::cout << "[Core] Initializing physics..." << std::endl;
 
 	SimulationConfig config;
-	if (!config.loadConfig("config.json")) {
+	if (!config.loadConfig(".\\config\\config.json")) {
 		std::cerr << "[Core] Using default simulation config.\n";
 	}
 	m_physicsEngine = std::make_shared<PhysicsEngine>(config);

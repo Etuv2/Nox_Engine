@@ -545,9 +545,6 @@
     <None Include="scenes\animation_test.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
-    <None Include="config.json">
-      <Filter>Source Files\misc\configs</Filter>
-    </None>
     <None Include="config\input_config.json">
       <Filter>Source Files\misc\configs</Filter>
     </None>

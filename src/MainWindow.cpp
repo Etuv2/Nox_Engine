@@ -34,7 +34,7 @@ MainWindow::~MainWindow() {
 
 bool MainWindow::LoadWindowConfiguration() {
     try {
-        std::ifstream configFile("config.json");
+		std::ifstream configFile(".\\config\\config.json");
         if (!configFile || !configFile.is_open()) {
             std::cerr << "[MainWindow] Could not open config.json" << std::endl;
             return false;

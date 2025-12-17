@@ -14,9 +14,9 @@
 #include <cmath>
 #include "stb_image.h"
 
-// ----------------------------------------------------------
+
 // HELPER CONSTANTS & STRUCTS
-// ----------------------------------------------------------
+
 static constexpr int MAX_INFLUENCES = 4;
 
 // A helper struct for sorting influences
@@ -25,9 +25,9 @@ struct Influence {
 	float weight;
 };
 
-// ----------------------------------------------------------
+
 // HELPER FUNCTIONS
-// ----------------------------------------------------------
+
 
 /**
  * Merges JOINTS_0/JOINTS_1 and WEIGHTS_0/WEIGHTS_1 into a single top-4 set.
@@ -335,38 +335,38 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 
 	if (gltfTex.sampler >= 0 && gltfTex.sampler < (int)model.samplers.size()) {
 		const tinygltf::Sampler& sampler = model.samplers[gltfTex.sampler];
-		
+
 		// Map glTF wrap modes to OpenGL
 		auto mapWrap = [](int gltfWrap) -> GLenum {
 			switch (gltfWrap) {
-				case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE: return GL_CLAMP_TO_EDGE;
-				case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT: return GL_MIRRORED_REPEAT;
-				case TINYGLTF_TEXTURE_WRAP_REPEAT:
-				default: return GL_REPEAT;
+			case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE: return GL_CLAMP_TO_EDGE;
+			case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT: return GL_MIRRORED_REPEAT;
+			case TINYGLTF_TEXTURE_WRAP_REPEAT:
+			default: return GL_REPEAT;
 			}
-		};
-		
+			};
+
 		wrapS = mapWrap(sampler.wrapS);
 		wrapT = mapWrap(sampler.wrapT);
-		
+
 		// Map glTF filter modes to OpenGL
 		if (sampler.minFilter != -1) {
 			switch (sampler.minFilter) {
-				case TINYGLTF_TEXTURE_FILTER_NEAREST: minFilter = GL_NEAREST; break;
-				case TINYGLTF_TEXTURE_FILTER_LINEAR: minFilter = GL_LINEAR; break;
-				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST: minFilter = GL_NEAREST_MIPMAP_NEAREST; break;
-				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST: minFilter = GL_LINEAR_MIPMAP_NEAREST; break;
-				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR: minFilter = GL_NEAREST_MIPMAP_LINEAR; break;
-				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR: 
-				default: minFilter = GL_LINEAR_MIPMAP_LINEAR; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST: minFilter = GL_NEAREST; break;
+			case TINYGLTF_TEXTURE_FILTER_LINEAR: minFilter = GL_LINEAR; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST: minFilter = GL_NEAREST_MIPMAP_NEAREST; break;
+			case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST: minFilter = GL_LINEAR_MIPMAP_NEAREST; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR: minFilter = GL_NEAREST_MIPMAP_LINEAR; break;
+			case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+			default: minFilter = GL_LINEAR_MIPMAP_LINEAR; break;
 			}
 		}
-		
+
 		if (sampler.magFilter != -1) {
 			switch (sampler.magFilter) {
-				case TINYGLTF_TEXTURE_FILTER_NEAREST: magFilter = GL_NEAREST; break;
-				case TINYGLTF_TEXTURE_FILTER_LINEAR:
-				default: magFilter = GL_LINEAR; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST: magFilter = GL_NEAREST; break;
+			case TINYGLTF_TEXTURE_FILTER_LINEAR:
+			default: magFilter = GL_LINEAR; break;
 			}
 		}
 	}
@@ -567,7 +567,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			// Create the GPU mesh (VAO, VBO, EBO) without textures yet
 			bool hasAlpha = false;
 			MeshComponent mesh = CreateMesh(vertices, indices, hasAlpha);
-			
+
 			// OPTIMIZATION: Compute and cache bounding volume once at load time
 			mesh.ComputeBoundingVolume();
 

@@ -17,7 +17,7 @@ ComponentManager* SceneNode::s_globalComponentManager = nullptr;
 TransformSystem* SceneNode::s_globalTransformSystem = nullptr;
 SceneGraph* SceneNode::s_globalSceneGraph = nullptr;
 
-// ============== STATIC METHODS ==============
+// STATIC METHODS
 
 void SceneNode::SetGlobalComponentManager(ComponentManager* manager) {
 	s_globalComponentManager = manager;
@@ -31,7 +31,7 @@ void SceneNode::SetGlobalSceneGraph(SceneGraph* sceneGraph) {
 	s_globalSceneGraph = sceneGraph;
 }
 
-// ============== CONSTRUCTORS ==============
+// CONSTRUCTORS
 
 SceneNode::SceneNode()
 	: m_componentManager(s_globalComponentManager)
@@ -46,7 +46,7 @@ SceneNode::SceneNode(ComponentManager* manager, TransformSystem* transformSystem
 {
 }
 
-// ============== LPV VOLUME DATA ==============
+// LPV VOLUME DATA
 
 glm::mat4 SceneNode::LPVVolumeData::GetTransformMatrix() const {
 	glm::mat4 translation = glm::translate(glm::mat4(1.0f), center);
@@ -59,13 +59,13 @@ glm::mat4 SceneNode::LPVVolumeData::GetInverseTransformMatrix() const {
 	return glm::inverse(GetTransformMatrix());
 }
 
-// ============== MODEL ==============
+// MODEL
 
 void SceneNode::SetModel(const std::shared_ptr<Scene>& model) {
 	m_model = model;
 }
 
-// ============== HIERARCHY ==============
+// HIERARCHY
 
 void SceneNode::AddChild(const std::shared_ptr<SceneNode>& child) {
 	child->parentNode = shared_from_this();
@@ -96,7 +96,7 @@ std::string SceneNode::GetName() {
 	return m_model->GetName();
 }
 
-// ============== WORLD POSITION ==============
+// WORLD POSITION
 
 glm::vec3 SceneNode::GetWorldPosition() const {
 	glm::mat4 parentWorld(1.0f);
@@ -142,7 +142,7 @@ glm::mat4 SceneNode::GetGlobalTransform(const glm::mat4& parentTransform) const 
 	return m_cachedWorldTransform;
 }
 
-// ============== BOUNDING BOX ==============
+// BOUNDING BOX
 
 std::pair<glm::vec3, glm::vec3> SceneNode::GetBoundingBox() {
 	glm::vec3 minB(-0.5f), maxB(0.5f);
@@ -199,7 +199,7 @@ std::pair<glm::vec3, glm::vec3> SceneNode::GetBoundingBox() {
 	return {transformedMin, transformedMax};
 }
 
-// ============== TRANSFORM SETTERS ==============
+// TRANSFORM SETTERS
 
 void SceneNode::SetPosition(glm::vec3 pos) {
 	if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z)) {
@@ -304,7 +304,7 @@ void SceneNode::SetLocalTRS(const glm::vec3& translation, const glm::quat& rotat
 	}
 }
 
-// ============== TRANSFORM GETTERS ==============
+// TRANSFORM GETTERS
 
 glm::vec3 SceneNode::GetPosition() const {
 	return glm::vec3(transform[3]);
@@ -334,7 +334,7 @@ glm::quat SceneNode::GetOrientation() const {
 	return rotation;
 }
 
-// ============== PHYSICS ==============
+// PHYSICS
 
 void SceneNode::SyncPhysicsFromTransform() {
 	if (!m_rigidbody || m_updatingFromPhysics) return;
@@ -394,7 +394,7 @@ void SceneNode::InvalidateTransformCache() {
 	}
 }
 
-// ============== TRANSFORM SYNCHRONIZATION ==============
+// TRANSFORM SYNCHRONIZATION
 
 void SceneNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
 	// Base implementation does nothing
@@ -402,7 +402,7 @@ void SceneNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
 	// with the calculated world transform
 }
 
-// ============== LIFECYCLE ==============
+// LIFECYCLE
 
 void SceneNode::Shutdown() {
 	if (m_nodeType == MODEL && m_rigidbody) {
@@ -442,7 +442,7 @@ void SceneNode::UpdateAudioNodesWithTransform(const glm::vec3& listenerPos, floa
 	}
 }
 
-// ============== SKINNING HELPERS ==============
+// SKINNING HELPERS
 
 std::vector<glm::mat4> SceneNode::GetBoneTransforms() const {
 	std::vector<glm::mat4> boneMatrices;
@@ -497,7 +497,7 @@ void SceneNode::BuildSkeleton(const Scene& model) {
 	// This is typically handled by the scene loader
 }
 
-// ============== ANIMATION UPDATE WITH TRANSFORM PROPAGATION ==============
+// ANIMATION UPDATE WITH TRANSFORM PROPAGATION
 
 void SceneNode::UpdateAnimation(float deltaTime) {
 	UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
@@ -532,7 +532,7 @@ void SceneNode::UpdateAnimationWithTransform(float deltaTime, const glm::mat4& p
 	}
 }
 
-// ============== ECS BRIDGE ==============
+// ECS BRIDGE
 
 void SceneNode::SyncToECS() {
 	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return;
@@ -570,7 +570,7 @@ void SceneNode::SyncFromECS() {
 	m_worldTransformValid = !ecsTransform->isDirty;
 }
 
-// ============== ECS COMPONENT ACCESS ==============
+// ECS COMPONENT ACCESS
 
 TransformComponent* SceneNode::GetTransformComponent() {
 	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return nullptr;
@@ -614,7 +614,7 @@ const AnimationComponent* SceneNode::GetAnimationComponent() const {
 	return currentManager->GetAnimation(m_entityID);
 }
 
-// ============== ECS ENTITY CREATION ==============
+// ECS ENTITY CREATION
 
 EntityID SceneNode::CreateECSEntity(const std::string& name) {
 	if (!m_componentManager) {
