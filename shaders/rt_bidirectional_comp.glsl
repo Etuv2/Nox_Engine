@@ -1094,13 +1094,13 @@ void main() {
 	vec3 V = normalize(u_cameraPos - worldPos);
 	float NdotV = max(dot(normal, V), 0.001);
 
-	// === AO Calculation (matching deferred lighting) ===
+	// AO Calculation (matching deferred lighting)
 	// In RT we don't have SSAO, so use texture AO directly as diffuseAO
 	// aoStrength would be a uniform in a full implementation, here we assume 1.0
 	float diffuseAO = aoTex;
 	float specularAO = SpecularOcclusion(NdotV, diffuseAO, roughness);
 
-	// === Direct Lighting at Primary Surface ===
+	// Direct Lighting at Primary Surface
 	// Compute direct lighting contribution from lights at the G-buffer surface
 	vec3 directLighting = vec3(0.0);
 	if (u_enableNEE && u_lightCount > 0) {
@@ -1111,7 +1111,7 @@ void main() {
 	// emissive already includes emissiveStrength multiplication, matching deferred lighting
 	directLighting += gbufferMat.emissive;
 
-	// === Indirect Lighting via Path Tracing ===
+	// Indirect Lighting via Path Tracing
 	vec3 indirectLighting = vec3(0.0);
 	
 	for (int i = 0; i < u_sampleCount; ++i) {

@@ -111,6 +111,7 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Diffuse irradiance.pdf" />
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="CleanComments.ps1" />
+    <None Include="config\config.json" />
     <None Include="config\input_config.json" />
     <None Include="README.md" />
     <None Include="scenes\animation_test.json" />

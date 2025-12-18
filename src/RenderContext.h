@@ -71,8 +71,8 @@ struct RenderContext {
 	float svgfVarianceClipGamma = 1.2f;   // Variance clipping gamma (lower = less ghosting)
 	float svgfDepthThreshold = 0.02f;     // Depth similarity threshold (tighter for edges)
 	float svgfNormalThreshold = 0.95f;    // Normal similarity threshold (cos angle, higher = sharper)
-	int svgfAtrousIterations = 3;         // Number of à-trous filter iterations (3 for balanced quality)
-	float svgfPhiColor = 2.0f;            // Color weight parameter (lower = sharper color edges)
+	int svgfAtrousIterations = 1;         // Number of à-trous filter iterations
+	float svgfPhiColor = 10.0f;            // Color weight parameter (lower = sharper color edges)
 	float svgfPhiNormal = 64.0f;          // Normal weight parameter (higher = sharper geometric edges)
 	float svgfPhiDepth = 0.005f;          // Depth weight parameter (lower = sharper depth edges)
 

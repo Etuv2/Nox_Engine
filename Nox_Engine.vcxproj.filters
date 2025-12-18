@@ -667,6 +667,9 @@
     <None Include="shaders\includes\material_common.glsl">
       <Filter>Source Files\misc\shaders\common</Filter>
     </None>
+    <None Include="config\config.json">
+      <Filter>Source Files\misc\configs</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

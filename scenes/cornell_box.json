@@ -24,7 +24,7 @@
     {
       "type": "light",
       "name": "TestPointLight",
-      "position": [0.0, 19.0, 0.0],
+      "position": [ 0.0, 19.0, 0.0 ],
       "light": {
         "type": "point",
         "color": [ 1.0, 1.0, 1.0 ],
@@ -33,6 +33,27 @@
         "range": 40.0,
         "castsShadows": true
       }
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "This scene is meant to show the capabilities of the engine.",
+          "x": 930,
+          "y": 1000
+        },
+        {
+          "kind": "image",
+          "path": "images\\logo_nobg.png",
+          "x": 1550,
+          "y": 800,
+          "w": 400,
+          "h": 400
+        }
+
+      ]
     }
   ]
 }
