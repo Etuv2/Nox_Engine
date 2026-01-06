@@ -11,6 +11,7 @@
 #include <GL/glew.h>
 #include <iostream>
 #include <algorithm>
+#include <unordered_map>
 
 // Static member initialization
 ComponentManager* SceneNode::s_globalComponentManager = nullptr;
@@ -129,13 +130,10 @@ glm::mat4 SceneNode::GetGlobalTransform(const glm::mat4& parentTransform) const 
 	}
 	
 	// Compute local transform with animation
-	glm::mat4 localTransform = transform;
-	
-	bool hasAnimation = (animatedTransform != glm::mat4(1.0f));
-
-	if (hasAnimation) {
-		localTransform = transform * animatedTransform;
-	}
+	// For skeletal animation: animatedTransform contains the COMPLETE local transform
+	// (either from animation data or from the base node transform)
+	// We use it directly when set (non-identity)
+	glm::mat4 localTransform = (animatedTransform != glm::mat4(1.0f)) ? animatedTransform : transform;
 
 	m_cachedWorldTransform = parentTransform * localTransform;
 	m_worldTransformValid = true;
@@ -173,10 +171,11 @@ std::pair<glm::vec3, glm::vec3> SceneNode::GetBoundingBox() {
 		}
 	}
 
-	// Apply local transform
+	// Apply local transform - for animated nodes, use animated transform if active
 	glm::mat4 localTransform = transform;
 	if (animatedTransform != glm::mat4(1.0f)) {
-		localTransform = transform * animatedTransform;
+		// For skeletal animation, animatedTransform IS the local transform
+		localTransform = animatedTransform;
 	}
 
 	// Transform corners
@@ -448,16 +447,50 @@ std::vector<glm::mat4> SceneNode::GetBoneTransforms() const {
 	std::vector<glm::mat4> boneMatrices;
 	boneMatrices.reserve(boneNodes.size());
 	
+	// Get the skinned mesh's world transform (for proper coordinate space)
+	// Bone matrices must be relative to the mesh's space, not world space
+	glm::mat4 meshWorldTransform = GetWorldPosition4x4();
+	glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
+	
+	// Validate meshWorldInverse
+	bool meshInverseValid = true;
+	for (int c = 0; c < 4 && meshInverseValid; ++c) {
+		for (int r = 0; r < 4 && meshInverseValid; ++r) {
+			if (!std::isfinite(meshWorldInverse[c][r])) {
+				meshInverseValid = false;
+			}
+		}
+	}
+	if (!meshInverseValid) {
+		meshWorldInverse = glm::mat4(1.0f);
+	}
+	
 	for (size_t i = 0; i < boneNodes.size(); ++i) {
 		if (boneNodes[i]) {
-			// Get bone's world transform
-			glm::mat4 boneWorld = boneNodes[i]->GetTransform();
-			// Apply inverse bind matrix
+			// Get bone's WORLD transform (not local!)
+			// This includes the full hierarchy and any animated transforms
+			glm::mat4 boneWorld = boneNodes[i]->GetWorldPosition4x4();
+			
+			// Apply the correct skinning formula:
+			// boneMatrix = inverse(meshWorld) * boneWorld * inverseBindMatrix
+			glm::mat4 boneMatrix;
 			if (i < boneInverseBindMatrices.size()) {
-				boneMatrices.push_back(boneWorld * boneInverseBindMatrices[i]);
+				boneMatrix = meshWorldInverse * boneWorld * boneInverseBindMatrices[i];
 			} else {
-				boneMatrices.push_back(boneWorld);
+				boneMatrix = meshWorldInverse * boneWorld;
 			}
+			
+			// Validate the bone matrix
+			bool valid = true;
+			for (int c = 0; c < 4 && valid; ++c) {
+				for (int r = 0; r < 4 && valid; ++r) {
+					if (!std::isfinite(boneMatrix[c][r])) {
+						valid = false;
+					}
+				}
+			}
+			
+			boneMatrices.push_back(valid ? boneMatrix : glm::mat4(1.0f));
 		} else {
 			boneMatrices.push_back(glm::mat4(1.0f));
 		}
@@ -482,19 +515,83 @@ std::shared_ptr<SceneNode> SceneNode::FindNodeByIndex(int nodeIdx) {
 }
 
 void SceneNode::BuildSkeleton(const Scene& model) {
-	// Implementation depends on Scene structure
-	// This is typically called during model loading to set up bone hierarchy
-	// For now, provide a stub that can be expanded based on specific needs
-	
-	if (!m_model) return;
-	
 	// Clear existing bone data
 	boneNodes.clear();
 	boneInverseBindMatrices.clear();
 	
-	// The actual implementation would traverse the model's skeleton
-	// and populate boneNodes with references to corresponding SceneNodes
-	// This is typically handled by the scene loader
+	// Check if this model has skin data
+	if (!model.hasSkin || model.skin.joints.empty()) {
+		isSkinned = false;
+		return;
+	}
+	
+	// Mark this node as skinned
+	isSkinned = true;
+	
+	// Copy inverse bind matrices from the model's skin
+	boneInverseBindMatrices = model.skin.inverseBindMatrices;
+	
+	// Resize boneNodes to match the number of joints
+	boneNodes.resize(model.skin.joints.size());
+	
+	// Build SceneNode hierarchy for each joint
+	// First, create a flat map of all joint nodes
+	std::unordered_map<int, std::shared_ptr<SceneNode>> jointNodeMap;
+	
+	// Create SceneNodes for each joint in the skin
+	for (size_t i = 0; i < model.skin.joints.size(); ++i) {
+		int jointNodeIndex = model.skin.joints[i];
+		
+		if (jointNodeIndex < 0 || jointNodeIndex >= static_cast<int>(model.nodes.size())) {
+			std::cerr << "[SceneNode::BuildSkeleton] Invalid joint node index: " << jointNodeIndex << std::endl;
+			continue;
+		}
+		
+		const auto& nodeInfo = model.nodes[jointNodeIndex];
+		
+		// Create a new SceneNode for this bone
+		auto boneNode = std::make_shared<SceneNode>();
+		boneNode->nodeIndex = jointNodeIndex;
+		boneNode->transform = nodeInfo.localTransform;
+		boneNode->SetNodeType(SKELETAL);
+		
+		// Store in map and array
+		jointNodeMap[jointNodeIndex] = boneNode;
+		boneNodes[i] = boneNode;
+	}
+	
+	// Establish parent-child relationships based on the glTF node hierarchy
+	for (size_t i = 0; i < model.skin.joints.size(); ++i) {
+		int jointNodeIndex = model.skin.joints[i];
+		
+		if (jointNodeIndex < 0 || jointNodeIndex >= static_cast<int>(model.nodes.size())) {
+			continue;
+		}
+		
+		const auto& nodeInfo = model.nodes[jointNodeIndex];
+		auto boneNode = boneNodes[i];
+		
+		if (!boneNode) continue;
+		
+		// Find and set parent
+		if (nodeInfo.parent >= 0) {
+			auto parentIt = jointNodeMap.find(nodeInfo.parent);
+			if (parentIt != jointNodeMap.end()) {
+				// Parent is in the skeleton
+				parentIt->second->AddChild(boneNode);
+			} else {
+				// Parent is not a joint - bone is a root of the skeleton subtree
+				// Attach to this skinned mesh node
+				AddChild(boneNode);
+			}
+		} else {
+			// No parent - this is a root bone
+			AddChild(boneNode);
+		}
+	}
+	
+	std::cout << "[SceneNode::BuildSkeleton] Built skeleton with " << boneNodes.size() 
+	          << " joints, " << boneInverseBindMatrices.size() << " inverse bind matrices" << std::endl;
 }
 
 // ANIMATION UPDATE WITH TRANSFORM PROPAGATION

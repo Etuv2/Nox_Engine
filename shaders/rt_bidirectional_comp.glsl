@@ -1311,7 +1311,6 @@ vec3 tracePath(Ray initialRay) {
 		// Next Event Estimation (direct lighting) for opaque materials
 		if (u_enableNEE && u_lightCount > 0) {
 			// For BVH hit materials, use the material's occlusionStrength as AO
-			// (We don't have per-vertex AO in the triangle data, so use material default)
 			float hitNdotV = max(dot(N, V), 0.001);
 			float hitDiffuseAO = hit.material.occlusionStrength;
 			float hitSpecularAO = SpecularOcclusion(hitNdotV, hitDiffuseAO, hit.material.roughness);

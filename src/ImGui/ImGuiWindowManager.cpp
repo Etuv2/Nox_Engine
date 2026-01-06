@@ -8,6 +8,7 @@
 #include "../LightNode.h"
 #include "../AudioNode.h"
 #include "StateExportWindow.h"
+#include "AnimationWindow.h"
 #include <IMGUI/imgui.h>
 #include <IMGUI/ImGuizmo.h>
 #include <iostream>
@@ -32,6 +33,7 @@ ImGuiWindowManager::ImGuiWindowManager()
 	m_performanceWindow = std::make_unique<PerformanceWindow>();
 	m_helpWindow = std::make_unique<HelpWindow>();
 	m_stateExportWindow = std::make_unique<StateExportWindow>();
+	m_animationWindow = std::make_unique<AnimationWindow>();
 
 	// Populate window map
 	m_windowMap["Status"] = m_statusWindow.get();
@@ -42,6 +44,7 @@ ImGuiWindowManager::ImGuiWindowManager()
 	m_windowMap["Performance"] = m_performanceWindow.get();
 	m_windowMap["Help"] = m_helpWindow.get();
 	m_windowMap["StateExport"] = m_stateExportWindow.get();
+	m_windowMap["Animation"] = m_animationWindow.get();
 
 	// Scene hierarchy selection callback
 	m_sceneHierarchyWindow->SetSelectionCallback([this](std::shared_ptr<SceneNode> node) {
@@ -84,10 +87,10 @@ void ImGuiWindowManager::Render(int windowWidth, int windowHeight, float fps,
 
 	// F-key hint window
 	ImGui::SetNextWindowPos(ImVec2(10, static_cast<float>(windowHeight) - 60), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(200, 50), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(220, 50), ImGuiCond_Always);
 	if (ImGui::Begin("F-Key Status", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar)) {
 		ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "F-Keys Active");
-		ImGui::Text("F1-F7,F12: Windows");
+		ImGui::Text("F1-F9,F12: Windows | F8:Anim");
 	}
 	ImGui::End();
 
@@ -100,6 +103,7 @@ void ImGuiWindowManager::Render(int windowWidth, int windowHeight, float fps,
 	m_performanceWindow->Render();
 	m_helpWindow->Render();
 	m_stateExportWindow->Render();
+	m_animationWindow->Render();
 
 	// Lightweight gizmo panel (not a BaseWindow, optional)
 	if (m_showGizmoPanel) {
@@ -156,6 +160,7 @@ void ImGuiWindowManager::ProcessKeyboardInput() {
 	if (ImGui::IsKeyPressed(ImGuiKey_F5)) m_showGizmoPanel = !m_showGizmoPanel; // now toggles panel only
 	if (ImGui::IsKeyPressed(ImGuiKey_F6)) ToggleWindow("Rendering");
 	if (ImGui::IsKeyPressed(ImGuiKey_F7)) ToggleWindow("Performance");
+	if (ImGui::IsKeyPressed(ImGuiKey_F8)) ToggleWindow("Animation");
 	if (ImGui::IsKeyPressed(ImGuiKey_F9)) ToggleWindow("StateExport");
 	if (ImGui::IsKeyPressed(ImGuiKey_F12)) ToggleWindow("Help");
 
@@ -185,6 +190,7 @@ void ImGuiWindowManager::SetSceneGraph(const std::shared_ptr<SceneGraph>& sceneG
 	m_lightingWindow->SetSceneGraph(sceneGraph);
 	m_sceneHierarchyWindow->SetSceneGraph(sceneGraph);
 	m_performanceWindow->SetSceneGraph(sceneGraph);
+	m_animationWindow->SetSceneGraph(sceneGraph);
 }
 
 void ImGuiWindowManager::SetRenderer(const std::shared_ptr<Renderer>& renderer) {
@@ -207,6 +213,7 @@ void ImGuiWindowManager::SetPhysicsEngine(const std::shared_ptr<class PhysicsEng
 void ImGuiWindowManager::SetSelectedNode(const std::shared_ptr<SceneNode>& node) {
 	m_selectedNode = node;
 	m_sceneHierarchyWindow->SetSelectedNode(node);
+	m_animationWindow->SetSelectedNode(node);
 }
 
 void ImGuiWindowManager::SetFrameTimeData(const float* data, size_t count) {
@@ -438,4 +445,16 @@ void ImGuiWindowManager::LoadWindowStates(const std::string& filename) {
 	catch (const std::exception& e) {
 		std::cerr << "[ImGuiWindowManager] Error loading window states: " << e.what() << std::endl;
 	}
+}
+
+void ImGuiWindowManager::OnSceneChanged()
+{
+	// Notify animation window of scene change
+	if (m_animationWindow) {
+		m_animationWindow->OnSceneChanged();
+	}
+	
+	// Clear selected node
+	m_selectedNode.reset();
+	m_sceneHierarchyWindow->SetSelectedNode(nullptr);
 }

@@ -99,10 +99,12 @@ void TransformSystem::ComputeWorldTransform(EntityID entity) {
 	auto transform = m_componentManager->GetTransform(entity);
 	if (!transform) return;
 
-	// Combine local transform with animation
+	// For skeletal animation, animatedTransform contains the COMPLETE local transform
+	// (either from animation data or from the base node transform)
+	// We use it directly when hasAnimation is true, otherwise use localTransform
 	glm::mat4 combinedLocal = transform->localTransform;
-	if (transform->hasAnimation) {
-		combinedLocal = transform->localTransform * transform->animatedTransform;
+	if (transform->hasAnimation && transform->animatedTransform != glm::mat4(1.0f)) {
+		combinedLocal = transform->animatedTransform;
 	}
 
 	// Get parent world transform

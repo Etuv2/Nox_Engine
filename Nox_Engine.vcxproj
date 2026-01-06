@@ -51,6 +51,7 @@
     <ClCompile Include="src\GuiNode.cpp" />
     <ClCompile Include="src\HierarchySystem.cpp" />
     <ClCompile Include="src\ImGuiInterface.cpp" />
+    <ClCompile Include="src\ImGui\AnimationWindow.cpp" />
     <ClCompile Include="src\ImGui\BaseWindow.cpp" />
     <ClCompile Include="src\ImGui\CameraWindow.cpp" />
     <ClCompile Include="src\ImGui\HelpWindow.cpp" />
@@ -110,7 +111,7 @@
     <None Include="C:\Users\desti\Downloads\Dynamic, Noise Free, Screen Space Diffuse Global Illumination _ Shubham Sachdeva Blog.pdf" />
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Diffuse irradiance.pdf" />
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
-    <None Include="CleanComments.ps1" />
+    <None Include="ClassDiagram.cd" />
     <None Include="config\config.json" />
     <None Include="config\input_config.json" />
     <None Include="README.md" />
@@ -222,6 +223,7 @@
     <ClInclude Include="src\HierarchySystem.h" />
     <ClInclude Include="src\ImGuiInterface.h" />
     <ClInclude Include="src\ImguiStyle.h" />
+    <ClInclude Include="src\ImGui\AnimationWindow.h" />
     <ClInclude Include="src\ImGui\BaseWindow.h" />
     <ClInclude Include="src\ImGui\CameraWindow.h" />
     <ClInclude Include="src\ImGui\HelpWindow.h" />

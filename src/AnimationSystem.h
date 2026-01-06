@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 class Animation;
 class AnimationController;
@@ -37,6 +38,9 @@ public:
     void PauseAnimation(EntityID entity);
     void StopAnimation(EntityID entity);
     void ResumeAnimation(EntityID entity);
+    
+    // Stop all playing animations (called on scene change)
+    void StopAllAnimations();
 
     // Animation blending
     void BlendToAnimation(EntityID entity, int animationIndex, float blendTime, bool loop = true);
@@ -64,6 +68,21 @@ private:
     // Internal helpers
     void UpdateEntityAnimation(EntityID entity, AnimationComponent& animComp, float deltaTime);
     void ApplyAnimationToTransform(EntityID entity, const Animation& anim, float time);
-    void ComputeBoneMatrices(EntityID entity, const RenderableComponent& renderable, 
+    void ComputeBoneMatrices(EntityID entity, const RenderableComponent& renderable,
                              std::vector<glm::mat4>& outMatrices) const;
+    
+    // Skeletal animation helpers
+    void UpdateSkeletonAnimations(EntityID entity, const Animation& anim, float time,
+                                  const RenderableComponent& renderable);
+    
+    // Compute world transform for a joint, respecting hierarchy
+    glm::mat4 ComputeJointWorldTransform(int jointNodeIndex, 
+                                         const Scene& model,
+                                         const Animation& anim,
+                                         float time,
+                                         std::unordered_map<int, glm::mat4>& jointWorldCache) const;
+    
+    // Get animated local transform for a specific node
+    glm::mat4 GetAnimatedLocalTransform(int nodeIndex, const Animation& anim, float time,
+                                        const Scene& model) const;
 };

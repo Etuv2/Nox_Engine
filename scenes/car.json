@@ -31,7 +31,7 @@
       "path": "models\\car_gtr.glb",
       "position": [ 0.0, 0.0, 0.0 ],
       "rotation": [ -90.0, 0.0, 0.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ]
+      "scale": [ 0.01, 0.01, 0.01 ]
     },
     {
       "type": "light",

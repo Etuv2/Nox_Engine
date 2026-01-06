@@ -1,10 +1,12 @@
 #include "RenderSystem.h"
 #include "Scene.h"
+#include "SceneNode.h"
 #include "MeshComponent.h"
 #include "DefaultTextures.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <iostream>
+#include <cmath>
 
 RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* transformSystem)
 	: m_componentManager(componentManager)
@@ -539,21 +541,66 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 
 void RenderSystem::UploadBoneMatrices(EntityID entity, GLuint shader)
 {
-	// TODO: Get bone matrices from animation component when available
-	// For now, this is a placeholder
 	auto* renderable = m_componentManager->GetRenderable(entity);
-	if (!renderable || renderable->boneInverseBindMatrices.empty()) return;
+	if (!renderable || !renderable->isSkinned) return;
 
+	// Compute bone matrices using the actual bone hierarchy
+	std::vector<glm::mat4> boneMatrices;
+	size_t numBones = renderable->boneInverseBindMatrices.size();
+	if (numBones == 0) return;
+
+	boneMatrices.resize(numBones, glm::mat4(1.0f));
+
+	// Get the skinned mesh's world transform (for proper coordinate space)
+	glm::mat4 meshWorldTransform = m_transformSystem->GetWorldTransform(entity);
+	glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
+
+	// Validate meshWorldInverse - if the mesh transform is degenerate, use identity
+	bool meshInverseValid = true;
+	for (int c = 0; c < 4 && meshInverseValid; ++c) {
+		for (int r = 0; r < 4 && meshInverseValid; ++r) {
+			if (!std::isfinite(meshWorldInverse[c][r])) {
+				meshInverseValid = false;
+			}
+		}
+	}
+	if (!meshInverseValid) {
+		meshWorldInverse = glm::mat4(1.0f);
+	}
+
+	// Compute final bone matrices:
+	// boneMatrix[i] = inverse(meshWorld) * boneWorld[i] * inverseBindMatrix[i]
+	for (size_t i = 0; i < numBones && i < renderable->boneNodes.size(); ++i) {
+		if (renderable->boneNodes[i]) {
+			// Get world transform of bone node (includes animation)
+			glm::mat4 boneWorld = renderable->boneNodes[i]->GetWorldPosition4x4();
+			
+			// Compute final bone matrix
+			glm::mat4 boneMatrix = meshWorldInverse * boneWorld * renderable->boneInverseBindMatrices[i];
+			
+			// Validate the bone matrix - if any component is NaN or Inf, use identity
+			bool valid = true;
+			for (int c = 0; c < 4 && valid; ++c) {
+				for (int r = 0; r < 4 && valid; ++r) {
+					if (!std::isfinite(boneMatrix[c][r])) {
+						valid = false;
+					}
+				}
+			}
+			
+			boneMatrices[i] = valid ? boneMatrix : glm::mat4(1.0f);
+		}
+	}
+
+	// Upload to shader
 	GLint locBones = glGetUniformLocation(shader, "u_boneMatrices");
 	if (locBones == -1) {
 		locBones = glGetUniformLocation(shader, "bones");
 	}
 
 	if (locBones != -1) {
-		// Use identity matrices as placeholder
-		std::vector<glm::mat4> boneMats(renderable->boneInverseBindMatrices.size(), glm::mat4(1.0f));
-		size_t numBones = std::min(boneMats.size(), size_t(128));
-		glUniformMatrix4fv(locBones, static_cast<GLsizei>(numBones), GL_FALSE, glm::value_ptr(boneMats[0]));
+		size_t uploadCount = std::min(boneMatrices.size(), size_t(128));
+		glUniformMatrix4fv(locBones, static_cast<GLsizei>(uploadCount), GL_FALSE, glm::value_ptr(boneMatrices[0]));
 	}
 }
 

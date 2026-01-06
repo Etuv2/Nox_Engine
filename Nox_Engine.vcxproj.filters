@@ -408,6 +408,9 @@
     <ClCompile Include="src\Contact.cpp">
       <Filter>Source Files\scripts\Physics</Filter>
     </ClCompile>
+    <ClCompile Include="src\ImGui\AnimationWindow.cpp">
+      <Filter>Source Files\scripts\Utils\ImGui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\shadow_frag.glsl">
@@ -660,7 +663,6 @@
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
     <None Include="README.md" />
-    <None Include="CleanComments.ps1" />
     <None Include="shaders\includes\pbr_common.glsl">
       <Filter>Source Files\misc\shaders\common</Filter>
     </None>
@@ -670,6 +672,7 @@
     <None Include="config\config.json">
       <Filter>Source Files\misc\configs</Filter>
     </None>
+    <None Include="ClassDiagram.cd" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">
@@ -891,15 +894,6 @@
     <ClInclude Include="src\RTStructures.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
-    <ClInclude Include="src\ComponentManager.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ComponentTypes.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\TransformSystem.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
     <ClInclude Include="src\AnimationSystem.h">
       <Filter>Header Files\Engine\ECS</Filter>
     </ClInclude>
@@ -947,6 +941,18 @@
     </ClInclude>
     <ClInclude Include="src\ImGui\StateExportWindow.h">
       <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\AnimationWindow.h">
+      <Filter>Header Files\Utils\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TransformSystem.h">
+      <Filter>Header Files\Engine\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComponentTypes.h">
+      <Filter>Header Files\Engine\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComponentManager.h">
+      <Filter>Header Files\Engine\ECS</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,9 +1,14 @@
 #include "AnimationSystem.h"
 #include "Animation.h"
 #include "Scene.h"
-#include "SceneNode.h"  // Include for SceneNode methods
+#include "SceneNode.h"
 #include <iostream>
 #include <algorithm>
+#include <queue>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 const std::vector<float> AnimationSystem::s_emptyMorphWeights;
 
@@ -73,8 +78,14 @@ void AnimationSystem::UpdateEntityAnimation(EntityID entity, AnimationComponent&
         }
     }
 
-    // Apply animation to transform
-    ApplyAnimationToTransform(entity, anim, animComp.animationTime);
+    // Apply animation to transform(s)
+    if (renderable->isSkinned) {
+        // For skinned meshes, update all bone node transforms
+        UpdateSkeletonAnimations(entity, anim, animComp.animationTime, *renderable);
+    } else {
+        // For non-skinned, just apply the root transform
+        ApplyAnimationToTransform(entity, anim, animComp.animationTime);
+    }
 }
 
 void AnimationSystem::ApplyAnimationToTransform(EntityID entity, const Animation& anim, float time)
@@ -86,6 +97,122 @@ void AnimationSystem::ApplyAnimationToTransform(EntityID entity, const Animation
 
     // Apply to transform component
     m_transformSystem->SetAnimatedTransform(entity, animatedTransform);
+}
+
+void AnimationSystem::UpdateSkeletonAnimations(EntityID entity, const Animation& anim, float time,
+                                               const RenderableComponent& renderable)
+{
+    if (!renderable.model) return;
+    
+    const Scene& model = *renderable.model;
+    
+    // Apply animation to each bone node
+    // The boneNodes vector contains SceneNode pointers for each joint in the skeleton
+    for (size_t i = 0; i < renderable.boneNodes.size(); ++i) {
+        auto& boneNode = renderable.boneNodes[i];
+        if (!boneNode) continue;
+        
+        int nodeIndex = boneNode->nodeIndex;
+        if (nodeIndex < 0) continue;
+        
+        // Get the animated local transform for this node
+        glm::mat4 animatedLocal = GetAnimatedLocalTransform(nodeIndex, anim, time, model);
+        
+        // Apply to the bone node's animated transform
+        // This is a LOCAL transform that will be combined with the node's base transform
+        boneNode->SetAnimatedTransform(animatedLocal);
+    }
+}
+
+glm::mat4 AnimationSystem::GetAnimatedLocalTransform(int nodeIndex, const Animation& anim, 
+                                                      float time, const Scene& model) const
+{
+    // Get the base transform from the model node
+    glm::vec3 baseTranslation(0.0f);
+    glm::quat baseRotation(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::vec3 baseScale(1.0f);
+    
+    if (nodeIndex >= 0 && nodeIndex < static_cast<int>(model.nodes.size())) {
+        const auto& nodeInfo = model.nodes[nodeIndex];
+        glm::vec3 baseSkew;
+        glm::vec4 basePerspective;
+        glm::decompose(nodeInfo.localTransform, baseScale, baseRotation, 
+                      baseTranslation, baseSkew, basePerspective);
+    }
+    
+    // Start with base values - these will be overridden by animation channels
+    glm::vec3 translation = baseTranslation;
+    glm::quat rotation = baseRotation;
+    glm::vec3 scale = baseScale;
+    
+    // Find all channels that target this node and apply them
+    for (const auto& channel : anim.channels) {
+        if (channel.targetNode != nodeIndex) continue;
+        if (channel.keyframes.empty()) continue;
+        
+        float normalizedTime = anim.NormalizeTime(time);
+        
+        switch (channel.type) {
+            case Animation::ChannelType::TRANSLATION:
+                translation = anim.InterpolateTranslation(channel, normalizedTime);
+                break;
+                
+            case Animation::ChannelType::ROTATION:
+                rotation = anim.InterpolateRotation(channel, normalizedTime);
+                break;
+                
+            case Animation::ChannelType::SCALE:
+                scale = anim.InterpolateScale(channel, normalizedTime);
+                break;
+                
+            case Animation::ChannelType::WEIGHTS:
+                // Morph weights are handled separately
+                break;
+        }
+    }
+    
+    // Build the complete local transform from the TRS values
+    // This always returns the local transform - either animated values or base values
+    glm::mat4 T = glm::translate(glm::mat4(1.0f), translation);
+    glm::mat4 R = glm::mat4_cast(rotation);
+    glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
+    
+    return T * R * S;
+}
+
+glm::mat4 AnimationSystem::ComputeJointWorldTransform(int jointNodeIndex, 
+                                                      const Scene& model,
+                                                      const Animation& anim,
+                                                      float time,
+                                                      std::unordered_map<int, glm::mat4>& jointWorldCache) const
+{
+    // Check cache first
+    auto it = jointWorldCache.find(jointNodeIndex);
+    if (it != jointWorldCache.end()) {
+        return it->second;
+    }
+    
+    if (jointNodeIndex < 0 || jointNodeIndex >= static_cast<int>(model.nodes.size())) {
+        return glm::mat4(1.0f);
+    }
+    
+    const auto& nodeInfo = model.nodes[jointNodeIndex];
+    
+    // Get the animated local transform for this joint
+    glm::mat4 localTransform = GetAnimatedLocalTransform(jointNodeIndex, anim, time, model);
+    
+    // If node has a parent, recursively compute parent's world transform
+    glm::mat4 worldTransform;
+    if (nodeInfo.parent >= 0) {
+        glm::mat4 parentWorld = ComputeJointWorldTransform(nodeInfo.parent, model, anim, time, jointWorldCache);
+        worldTransform = parentWorld * localTransform;
+    } else {
+        worldTransform = localTransform;
+    }
+    
+    // Cache and return
+    jointWorldCache[jointNodeIndex] = worldTransform;
+    return worldTransform;
 }
 
 void AnimationSystem::PlayAnimation(EntityID entity, int animationIndex, bool loop)
@@ -142,7 +269,17 @@ void AnimationSystem::StopAnimation(EntityID entity)
         animComp->currentAnimationIndex = -1;
     }
 
-    // Clear animated transform
+    // Clear animated transforms for all bone nodes
+    auto* renderable = m_componentManager->GetRenderable(entity);
+    if (renderable && renderable->isSkinned) {
+        for (auto& boneNode : renderable->boneNodes) {
+            if (boneNode) {
+                boneNode->SetAnimatedTransform(glm::mat4(1.0f));
+            }
+        }
+    }
+
+    // Clear animated transform for the entity itself
     m_transformSystem->ClearAnimatedTransform(entity);
 }
 
@@ -152,6 +289,41 @@ void AnimationSystem::ResumeAnimation(EntityID entity)
     if (animComp && animComp->isPaused) {
         animComp->isPaused = false;
     }
+}
+
+void AnimationSystem::StopAllAnimations()
+{
+    if (!m_componentManager) return;
+
+    auto& animPool = m_componentManager->GetAnimationPool();
+    for (auto& entry : animPool) {
+        EntityID entityID = entry.entity;
+        auto& animComp = entry.component;
+        
+        // Stop the animation
+        animComp.isPlaying = false;
+        animComp.isPaused = false;
+        animComp.animationTime = 0.0f;
+        animComp.currentAnimationIndex = -1;
+        
+        // Clear animated transforms for bone nodes
+        auto* renderable = m_componentManager->GetRenderable(entityID);
+        if (renderable && renderable->isSkinned) {
+            for (auto& boneNode : renderable->boneNodes) {
+                if (boneNode) {
+                    boneNode->SetAnimatedTransform(glm::mat4(1.0f));
+                }
+            }
+        }
+        
+        // Clear animated transform for the entity
+        if (m_transformSystem) {
+            m_transformSystem->ClearAnimatedTransform(entityID);
+        }
+    }
+    
+    m_activeAnimations = 0;
+    std::cout << "[AnimationSystem] Stopped all animations" << std::endl;
 }
 
 void AnimationSystem::BlendToAnimation(EntityID entity, int animationIndex, float blendTime, bool loop)
@@ -235,14 +407,26 @@ void AnimationSystem::ComputeBoneMatrices(EntityID entity, const RenderableCompo
 
     outMatrices.resize(numBones, glm::mat4(1.0f));
 
-    // Get bone transforms from bone nodes
+    // Get the skinned mesh's world transform (the model's root transform)
+    // This is needed because bone matrices are relative to the mesh's space
+    glm::mat4 meshWorldTransform = m_transformSystem->GetWorldTransform(entity);
+    glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
+
+    // For each bone, compute the final bone matrix:
+    // boneMatrix[i] = inverse(meshWorld) * boneWorld[i] * inverseBindMatrix[i]
+    // 
+    // This transforms a vertex from bind pose to current animated pose:
+    // 1. inverseBindMatrix brings vertex from bind pose to bone local space
+    // 2. boneWorld transforms from bone local to world space
+    // 3. inverse(meshWorld) brings from world to mesh local space
     for (size_t i = 0; i < numBones && i < renderable.boneNodes.size(); ++i) {
         if (renderable.boneNodes[i]) {
-            // Get world transform of bone node
+            // Get world transform of bone node (includes animation)
             glm::mat4 boneWorld = renderable.boneNodes[i]->GetWorldPosition4x4();
             
             // Compute final bone matrix
-            outMatrices[i] = boneWorld * renderable.boneInverseBindMatrices[i];
+            // The formula is: meshWorldInverse * boneWorld * inverseBindMatrix
+            outMatrices[i] = meshWorldInverse * boneWorld * renderable.boneInverseBindMatrices[i];
         }
     }
 }

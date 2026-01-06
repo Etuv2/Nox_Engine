@@ -1,4 +1,7 @@
 {
+  "Animation": {
+    "visible": true
+  },
   "Camera": {
     "visible": true
   },

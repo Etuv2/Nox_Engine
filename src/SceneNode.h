@@ -36,7 +36,8 @@ public:
         LIGHT,
         CAMERA,
         GUI,
-        LPV_VOLUME
+        LPV_VOLUME,
+        SKELETAL
     };
 
     // Culling mode override
@@ -62,12 +63,12 @@ public:
         glm::mat4 GetInverseTransformMatrix() const;
     };
 
-    // ============== CONSTRUCTORS ==============
+    // CONSTRUCTORS
     SceneNode();
     SceneNode(ComponentManager* manager, TransformSystem* transformSystem, EntityID entityID);
     virtual ~SceneNode() = default;
 
-    // ============== HIERARCHY (PUBLIC) ==============
+    // HIERARCHY (PUBLIC)
     std::vector<std::shared_ptr<SceneNode>> children;
     std::weak_ptr<SceneNode> parentNode;
     
@@ -75,14 +76,14 @@ public:
     std::shared_ptr<SceneNode> GetChild(int index);
     size_t GetChildCount() const { return children.size(); }
 
-    // ============== SKINNING DATA (PUBLIC for AnimationController) ==============
+    // SKINNING DATA (PUBLIC for AnimationController)
     bool isSkinned = false;
     int nodeIndex = -1;
     std::vector<glm::mat4> boneInverseBindMatrices;
     std::vector<std::shared_ptr<SceneNode>> boneNodes;
     float boundingRadius = 1.0f;
 
-    // ============== TRANSFORM ==============
+    // TRANSFORM
     void SetPosition(glm::vec3 position);
     void SetRotation(glm::vec3 axis, float angle);
     void SetScale(glm::vec3 scale);
@@ -99,7 +100,7 @@ public:
     glm::mat4 GetWorldPosition4x4() const;
     glm::mat4 GetGlobalTransform(const glm::mat4& parentTransform) const;
 
-    // ============== MODEL/RENDERING ==============
+    // MODEL/RENDERING
     void SetModel(const std::shared_ptr<Scene>& model);
     std::shared_ptr<Scene> GetModel() const { return m_model; }
     void SetShader(unsigned int shader) { m_shader = shader; }
@@ -111,45 +112,45 @@ public:
     std::string GetName();
     std::pair<glm::vec3, glm::vec3> GetBoundingBox();
 
-    // ============== NODE TYPE ==============
+    // NODE TYPE
     void SetNodeType(NODE_TYPE type) { m_nodeType = type; }
     NODE_TYPE GetNodeType() const { return m_nodeType; }
     
-    // ============== LPV VOLUME ==============
+    // LPV VOLUME
     void SetLPVVolumeData(const LPVVolumeData& data) { m_lpvData = data; }
     LPVVolumeData& GetLPVVolumeData() { return m_lpvData; }
     const LPVVolumeData& GetLPVVolumeData() const { return m_lpvData; }
 
-    // ============== PHYSICS ==============
+    // PHYSICS
     void AttachRigidBody(std::shared_ptr<RigidBody> rb) { m_rigidbody = rb; }
     std::shared_ptr<RigidBody> GetRigidBody() const { return m_rigidbody; }
     void SyncPhysicsFromTransform();
     void SetUpdatingFromPhysics(bool updating) { m_updatingFromPhysics = updating; }
     bool IsUpdatingFromPhysics() const { return m_updatingFromPhysics; }
 
-    // ============== ANIMATION TRANSFORM ==============
+    // ANIMATION TRANSFORM
     void SetAnimatedTransform(const glm::mat4& transform) { animatedTransform = transform; }
     glm::mat4 GetAnimatedTransform() const { return animatedTransform; }
 
-    // ============== SKINNING HELPERS ==============
+    // SKINNING HELPERS
     std::vector<glm::mat4> GetBoneTransforms() const;
     std::shared_ptr<SceneNode> FindNodeByIndex(int nodeIdx);
     void BuildSkeleton(const class Scene& model);
 
-    // ============== LIFECYCLE ==============
+    // LIFECYCLE
     virtual void Shutdown();
     virtual void UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle);
     virtual void UpdateAudioNodesWithTransform(const glm::vec3& listenerPos, float listenerAngle, const glm::mat4& parentWorldTransform);
     void InvalidateTransformCache();
 
-    // ============== TRANSFORM SYNCHRONIZATION ==============
+    // TRANSFORM SYNCHRONIZATION
     virtual void UpdateTransformSystems(const glm::mat4& worldTransform);
 
-    // ============== LEGACY ANIMATION (for backward compatibility) ==============
+    // LEGACY ANIMATION (for backward compatibility)
     void UpdateAnimation(float deltaTime);
     void UpdateAnimationWithTransform(float deltaTime, const glm::mat4& parentWorldTransform);
     
-    // ============== ECS INTEGRATION ==============
+    // ECS INTEGRATION
     static void SetGlobalComponentManager(ComponentManager* manager);
     static void SetGlobalTransformSystem(TransformSystem* transformSystem);
     static void SetGlobalSceneGraph(class SceneGraph* sceneGraph);
@@ -180,7 +181,7 @@ public:
         const std::string& name = "",
         NodeType type = NodeType::NODE);
 
-    // ============== CULLING HELPER ==============
+    // CULLING HELPER
     static void ApplyCullingState(const MeshComponent& mesh, CullingOverride nodeOverride);
 
 protected:

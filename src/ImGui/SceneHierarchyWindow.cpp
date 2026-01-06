@@ -55,6 +55,10 @@ void SceneHierarchyWindow::Render() {
                     ImGui::SameLine();
                     ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "[MODEL]");
                     break;
+                case SceneNode::SKELETAL:
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.4f, 1.0f), "[SKELETAL]");
+					break;
                 default:
                     ImGui::SameLine();
                     ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "[NODE]");
@@ -152,6 +156,10 @@ void SceneHierarchyWindow::RenderNode(std::shared_ptr<SceneNode> node) {
         case SceneNode::MODEL:
             typeIcon = "[M] ";
             typeColor = ImVec4(0.8f, 0.8f, 0.8f, 1.0f);
+            break;
+        case SceneNode::SKELETAL:
+            typeIcon = "[S] ";
+            typeColor = ImVec4(1.0f, 0.6f, 0.4f, 1.0f);
             break;
         default:
             typeIcon = "[N] ";

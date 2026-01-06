@@ -485,7 +485,11 @@ void Core::Update(float deltaTime) {
 
 	// Update scene
 	if (m_sceneGraph && m_sceneGraph->IsActive()) {
-		// Use new transform-aware animation update
+		// Update animations through the ECS AnimationSystem
+		// This processes all AnimationComponents and updates bone/transform data
+		m_sceneGraph->UpdateAnimations(deltaTime);
+		
+		// Sync animation changes from ECS to SceneNodes (for rendering)
 		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
 
 		if (m_physicsEngine && m_physicsEnabledForScene) {
@@ -795,6 +799,12 @@ void Core::SetMouseLocked(bool locked) {
 void Core::CleanupCurrentScene() {
 	std::cout << "[Core] Cleaning up current scene" << std::endl;
 
+	// Stop all animations before cleanup
+	if (m_sceneGraph && m_sceneGraph->GetAnimationSystem()) {
+		std::cout << "[Core] Stopping all animations" << std::endl;
+		m_sceneGraph->GetAnimationSystem()->StopAllAnimations();
+	}
+
 	// Clean up all physics bodies to prevent memory leaks and duplicate registrations
 	if (m_physicsEngine) {
 		std::cout << "[Core] Removing all physics bodies from engine" << std::endl;
@@ -806,7 +816,7 @@ void Core::CleanupCurrentScene() {
 		m_sceneBVH->Clear();
 	}
 
-	// Clear UI selection to prevent dangling pointers
+	// Clear UI selection and notify of scene change
 	if (m_imguiInterface) {
 		m_imguiInterface->SetSelectedNode(nullptr);
 	}

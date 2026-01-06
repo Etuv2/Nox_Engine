@@ -28,6 +28,7 @@ class PhysicsEngine;
 #include "PerformanceWindow.h"
 #include "HelpWindow.h"
 #include "StateExportWindow.h"
+#include "AnimationWindow.h"
 
 /**
 * @brief Manages all ImGui windows in the NOX Engine interface
@@ -102,6 +103,9 @@ public:
     float GetTranslateSnap() const { return m_translateSnap; }
     float GetRotateSnap() const { return m_rotateSnap; }
     float GetScaleSnap() const { return m_scaleSnap; }
+    
+    // Notify windows of scene change
+    void OnSceneChanged();
 
 private:
     // Internal lightweight gizmo control panel
@@ -116,8 +120,9 @@ private:
     std::unique_ptr<PerformanceWindow> m_performanceWindow;
     std::unique_ptr<HelpWindow> m_helpWindow;
     std::unique_ptr<StateExportWindow> m_stateExportWindow;
+    std::unique_ptr<AnimationWindow> m_animationWindow;
 
-    // Window lookup map (gizmo removed)
+    // Window lookup map
     std::unordered_map<std::string, BaseWindow*> m_windowMap{
         {"Status", nullptr},
         {"Camera", nullptr},
@@ -126,7 +131,8 @@ private:
         {"Rendering", nullptr},
         {"Performance", nullptr},
         {"Help", nullptr},
-        {"StateExport", nullptr}
+        {"StateExport", nullptr},
+        {"Animation", nullptr}
     };
 
     // Data references for windows

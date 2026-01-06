@@ -10,9 +10,9 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
-// Skinning uniforms
-uniform bool useSkinning = false;
-uniform mat4 bones[128];
+// Skinning uniforms - consistent naming with gbuffer_vert.glsl
+uniform bool u_enableSkinning;
+uniform mat4 u_boneMatrices[128];
 
 out VS_OUT {
     vec3 WorldPos;
@@ -27,15 +27,31 @@ void main() {
     vec3 localTangent = aTangent.xyz;
     
     // Apply skinning if enabled
-    if (useSkinning) {
-        mat4 skinMatrix = bones[aBoneIDs[0]] * aBoneWeights[0];
-        skinMatrix += bones[aBoneIDs[1]] * aBoneWeights[1];
-        skinMatrix += bones[aBoneIDs[2]] * aBoneWeights[2];
-        skinMatrix += bones[aBoneIDs[3]] * aBoneWeights[3];
+    if (u_enableSkinning) {
+        // Calculate total weight to detect degenerate cases
+        float totalWeight = aBoneWeights[0] + aBoneWeights[1] + aBoneWeights[2] + aBoneWeights[3];
         
-        localPos = skinMatrix * localPos;
-        localNormal = mat3(skinMatrix) * localNormal;
-        localTangent = mat3(skinMatrix) * localTangent;
+        // Only apply skinning if we have valid bone weights
+        if (totalWeight > 0.001) {
+            // Normalize weights to ensure they sum to 1.0
+            vec4 normalizedWeights = aBoneWeights / totalWeight;
+            
+            // Clamp bone IDs to valid range
+            int boneID0 = clamp(aBoneIDs[0], 0, 127);
+            int boneID1 = clamp(aBoneIDs[1], 0, 127);
+            int boneID2 = clamp(aBoneIDs[2], 0, 127);
+            int boneID3 = clamp(aBoneIDs[3], 0, 127);
+            
+            mat4 skinMatrix = u_boneMatrices[boneID0] * normalizedWeights[0];
+            skinMatrix += u_boneMatrices[boneID1] * normalizedWeights[1];
+            skinMatrix += u_boneMatrices[boneID2] * normalizedWeights[2];
+            skinMatrix += u_boneMatrices[boneID3] * normalizedWeights[3];
+            
+            localPos = skinMatrix * localPos;
+            localNormal = mat3(skinMatrix) * localNormal;
+            localTangent = mat3(skinMatrix) * localTangent;
+        }
+        // If totalWeight <= 0.001, use the original vertex position (identity skinning)
     }
     
     // Transform to world space

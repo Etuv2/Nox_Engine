@@ -142,7 +142,7 @@ struct RenderContext {
 	
 	// Shadow darkness settings - control how dark shadows appear for realism
 	float shadowDarkness = 1.0f;           // Multiplier for shadow darkness [0.0=no shadows, 1.0=full darkness]
-	float shadowMinBrightness = 0.05f;     // Minimum brightness in complete shadow (0.05 = 5% for subtle ambient)
+	float shadowMinBrightness = 0.02f;     // Minimum brightness in complete shadow (0.02 = 2% for realistic dark shadows)
 	float shadowTransitionHardness = 1.0f; // Softness of shadow boundaries [0.5=very soft, 2.0=sharp]
 
 	// Screen-space shadow settings (contact shadows)
