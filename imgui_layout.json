@@ -15,10 +15,10 @@
     "visible": true
   },
   "Performance": {
-    "visible": true
+    "visible": false
   },
   "Rendering": {
-    "visible": true
+    "visible": false
   },
   "StateExport": {
     "visible": true

@@ -84,6 +84,10 @@ void StatusWindow::Render() {
     if (ImGui::Button("Performance (F7)")) {
         if (m_windowToggleCallback) m_windowToggleCallback("Performance");
     }
+    if (ImGui::Button("Animation (F8)")) {
+        if (m_windowToggleCallback) m_windowToggleCallback("Animation");
+	}
+
     
     if (ImGui::Button("Help (F12)")) {
         if (m_windowToggleCallback) m_windowToggleCallback("Help");
