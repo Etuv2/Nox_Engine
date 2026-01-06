@@ -61,7 +61,8 @@ public:
 		LIGHT,
 		CAMERA,
 		GUI,
-		LPV_VOLUME
+		LPV_VOLUME,
+		SKELETAL
 	};
 
 	static NodeType GetNodeType(const std::string& typeStr) {
@@ -71,6 +72,7 @@ public:
 		if (typeStr == "camera") return NodeType::CAMERA;
 		if (typeStr == "gui")    return NodeType::GUI;
 		if (typeStr == "lpv_volume" || typeStr == "lpvvolume") return NodeType::LPV_VOLUME;
+		if (typeStr == "skeletal") return NodeType::SKELETAL;
 		return NodeType::NODE;
 	}
 

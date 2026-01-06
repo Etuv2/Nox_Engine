@@ -82,6 +82,10 @@ std::shared_ptr<SceneNode> SceneNode::GetChild(int index) {
 }
 
 std::string SceneNode::GetName() {
+	if (!m_name.empty()) {
+		return m_name;
+	}
+
 	if (!m_model) {
 		switch (m_nodeType) {
 		case NODE:   return "Node";
@@ -91,6 +95,7 @@ std::string SceneNode::GetName() {
 		case CAMERA: return "Camera";
 		case GUI:    return "GUI";
 		case LPV_VOLUME: return "LPVVolume";
+		case SKELETAL: return "Skeleton";
 		default:     return "Unknown";
 		}
 	}
@@ -554,6 +559,7 @@ void SceneNode::BuildSkeleton(const Scene& model) {
 		boneNode->nodeIndex = jointNodeIndex;
 		boneNode->transform = nodeInfo.localTransform;
 		boneNode->SetNodeType(SKELETAL);
+		boneNode->SetName(nodeInfo.name);
 		
 		// Store in map and array
 		jointNodeMap[jointNodeIndex] = boneNode;
@@ -736,6 +742,7 @@ EntityID SceneNode::CreateECSEntity(const std::string& name) {
 		case AUDIO:      type = NodeType::AUDIO; break;
 		case GUI:        type = NodeType::GUI; break;
 		case LPV_VOLUME: type = NodeType::LPV_VOLUME; break;
+		case SKELETAL:   type = NodeType::SKELETAL; break;
 	}
 	
 	std::string entityName = name.empty() ? GetName() : name;
@@ -815,6 +822,7 @@ std::shared_ptr<SceneNode> SceneNode::CreateWithECS(
 		case NodeType::AUDIO:      node->SetNodeType(AUDIO); break;
 		case NodeType::GUI:        node->SetNodeType(GUI); break;
 		case NodeType::LPV_VOLUME: node->SetNodeType(LPV_VOLUME); break;
+		case NodeType::SKELETAL:   node->SetNodeType(SKELETAL); break;
 	}
 	
 	return node;

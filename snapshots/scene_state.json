@@ -2,29 +2,29 @@
   "base_scene_file": "scenes\\animation_test.json",
   "camera": {
     "far_plane": 600.0,
-    "fov": 104.0,
+    "fov": 106.0,
     "front": [
-      0.20836542546749115,
-      0.023560525849461555,
-      -0.9777672290802002
+      0.0970952957868576,
+      -0.05425287410616875,
+      -0.9937953352928162
     ],
     "mouse_sensitivity": 0.10000000149011612,
-    "movement_speed": 3.940000057220459,
+    "movement_speed": 30.0,
     "near_plane": 0.10000000149011612,
     "position": [
-      -0.38855838775634766,
-      0.9515849947929382,
-      0.8521692156791687
+      -0.24351519346237183,
+      1.0900837182998657,
+      1.3072803020477295
     ],
     "right": [
-      0.9780386686325073,
+      0.9952611327171326,
       -0.0,
-      0.20842327177524567
+      0.09723851084709167
     ],
     "up": [
-      -0.004910562187433243,
-      0.9997224807739258,
-      0.023043107241392136
+      0.005275468807667494,
+      0.9985272288322449,
+      -0.053995776921510696
     ]
   },
   "environment": {
@@ -43,7 +43,7 @@
                 {
                   "children": [
                     {
-                      "name": "Node",
+                      "name": "Bone_Pelvis_3_0",
                       "transform": {
                         "orientation": [
                           0.7013270258903503,
@@ -70,7 +70,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Spine001_4_1",
                       "transform": {
                         "orientation": [
                           0.7021517753601074,
@@ -97,7 +97,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_FootPinky02_5_2",
                       "transform": {
                         "orientation": [
                           -0.4712758958339691,
@@ -124,7 +124,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_FootIndex02_6_3",
                       "transform": {
                         "orientation": [
                           0.6371123790740967,
@@ -151,7 +151,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_FootPinky02_7_4",
                       "transform": {
                         "orientation": [
                           0.9398816227912903,
@@ -178,7 +178,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_FootIndex02_8_5",
                       "transform": {
                         "orientation": [
                           0.8533461689949036,
@@ -205,7 +205,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_FootPinky01_9_6",
                       "transform": {
                         "orientation": [
                           -0.4712766408920288,
@@ -232,7 +232,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_FootThumb_10_7",
                       "transform": {
                         "orientation": [
                           0.7250035405158997,
@@ -259,7 +259,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_FootIndex01_11_8",
                       "transform": {
                         "orientation": [
                           0.6371124386787415,
@@ -286,7 +286,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_FootPinky01_12_9",
                       "transform": {
                         "orientation": [
                           0.9398816227912903,
@@ -313,34 +313,34 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_FootThumb_13_10",
                       "transform": {
                         "orientation": [
-                          0.7120463848114014,
-                          -0.2140209674835205,
-                          -0.629281759262085,
-                          0.22625084221363068
+                          0.7805926203727722,
+                          -0.16481906175613403,
+                          -0.5922132730484009,
+                          0.11310751736164093
                         ],
                         "position": [
-                          0.20203599333763123,
-                          0.08886659890413284,
-                          -0.5296459794044495
+                          0.7062250375747681,
+                          0.04604392871260643,
+                          -0.9215511679649353
                         ],
                         "rotation": [
-                          -78.83109283447266,
-                          -53.06431579589844,
-                          79.87588500976563
+                          -58.02770233154297,
+                          -62.53218460083008,
+                          53.713253021240234
                         ],
                         "scale": [
-                          1.0000003576278687,
-                          0.9999998211860657,
-                          0.9999995231628418
+                          0.9999999403953552,
+                          0.9999999403953552,
+                          1.0
                         ]
                       },
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_FootIndex01_14_11",
                       "transform": {
                         "orientation": [
                           0.8533461093902588,
@@ -367,7 +367,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Leg_Jiggle_15_12",
                       "transform": {
                         "orientation": [
                           0.577558696269989,
@@ -394,7 +394,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Leg_Jiggle_16_13",
                       "transform": {
                         "orientation": [
                           0.6424182653427124,
@@ -421,7 +421,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tail2_17_14",
                       "transform": {
                         "orientation": [
                           0.6176202297210693,
@@ -448,7 +448,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tail3_18_15",
                       "transform": {
                         "orientation": [
                           0.5739498138427734,
@@ -475,7 +475,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tail4_19_16",
                       "transform": {
                         "orientation": [
                           0.4880487322807312,
@@ -502,7 +502,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tail5_20_17",
                       "transform": {
                         "orientation": [
                           0.42237675189971924,
@@ -529,7 +529,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tail6_21_18",
                       "transform": {
                         "orientation": [
                           0.3941676616668701,
@@ -556,7 +556,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Spine002_22_19",
                       "transform": {
                         "orientation": [
                           0.7066478133201599,
@@ -583,7 +583,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Neck1_23_20",
                       "transform": {
                         "orientation": [
                           0.6294934153556824,
@@ -610,7 +610,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Neck2_24_21",
                       "transform": {
                         "orientation": [
                           0.5063179731369019,
@@ -637,7 +637,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Neck3_25_22",
                       "transform": {
                         "orientation": [
                           0.4643045961856842,
@@ -664,7 +664,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Head_26_23",
                       "transform": {
                         "orientation": [
                           0.5235060453414917,
@@ -691,7 +691,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Jaw_27_24",
                       "transform": {
                         "orientation": [
                           0.5230988264083862,
@@ -718,7 +718,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tongue1_28_25",
                       "transform": {
                         "orientation": [
                           0.5192405581474304,
@@ -745,7 +745,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tongue2_29_26",
                       "transform": {
                         "orientation": [
                           0.5229763388633728,
@@ -772,7 +772,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_HandIndex01_30_27",
                       "transform": {
                         "orientation": [
                           0.5725185871124268,
@@ -799,7 +799,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_HandIndex02_31_28",
                       "transform": {
                         "orientation": [
                           -0.46514347195625305,
@@ -826,7 +826,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_HandMiddle01_32_29",
                       "transform": {
                         "orientation": [
                           0.5042953491210938,
@@ -853,7 +853,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_HandMiddle02_33_30",
                       "transform": {
                         "orientation": [
                           -0.1936870962381363,
@@ -880,7 +880,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_HandPinky01_34_31",
                       "transform": {
                         "orientation": [
                           -0.35279420018196106,
@@ -907,7 +907,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_HandPinky02_35_32",
                       "transform": {
                         "orientation": [
                           0.16310232877731323,
@@ -934,7 +934,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_HandIndex01_36_33",
                       "transform": {
                         "orientation": [
                           -0.28791889548301697,
@@ -961,7 +961,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_HandIndex02_37_34",
                       "transform": {
                         "orientation": [
                           0.13004562258720398,
@@ -988,7 +988,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_HandMiddle01_38_35",
                       "transform": {
                         "orientation": [
                           -0.19958901405334473,
@@ -1015,7 +1015,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_HandMiddle02_39_36",
                       "transform": {
                         "orientation": [
                           -0.08724082261323929,
@@ -1042,7 +1042,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_HandPinky01_40_37",
                       "transform": {
                         "orientation": [
                           -0.25741398334503174,
@@ -1069,7 +1069,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_HandPinky02_41_38",
                       "transform": {
                         "orientation": [
                           -0.038263093680143356,
@@ -1096,7 +1096,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Foot_42_39",
                       "transform": {
                         "orientation": [
                           0.7554941177368164,
@@ -1123,7 +1123,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Eyelid_Low_43_40",
                       "transform": {
                         "orientation": [
                           0.8940384984016418,
@@ -1150,7 +1150,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Eyeball_44_41",
                       "transform": {
                         "orientation": [
                           0.8571144938468933,
@@ -1177,7 +1177,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Eyelid_Up_45_42",
                       "transform": {
                         "orientation": [
                           0.9050997495651245,
@@ -1204,7 +1204,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Eyelid_Low_46_43",
                       "transform": {
                         "orientation": [
                           0.05528971180319786,
@@ -1231,7 +1231,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Eyeball_47_44",
                       "transform": {
                         "orientation": [
                           -0.07135944813489914,
@@ -1258,7 +1258,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Eyelid_Up_48_45",
                       "transform": {
                         "orientation": [
                           0.06097504124045372,
@@ -1285,7 +1285,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_UpLeg_49_46",
                       "transform": {
                         "orientation": [
                           0.5776523351669312,
@@ -1312,7 +1312,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_UpLeg_50_47",
                       "transform": {
                         "orientation": [
                           0.6424185037612915,
@@ -1339,7 +1339,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Arm_51_48",
                       "transform": {
                         "orientation": [
                           0.3732547461986542,
@@ -1366,7 +1366,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_Tail1_52_49",
                       "transform": {
                         "orientation": [
                           0.6784763336181641,
@@ -1393,7 +1393,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Arm_53_50",
                       "transform": {
                         "orientation": [
                           0.5474333167076111,
@@ -1420,7 +1420,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Leg_54_51",
                       "transform": {
                         "orientation": [
                           0.21420343220233917,
@@ -1447,7 +1447,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_ForeArm_55_52",
                       "transform": {
                         "orientation": [
                           0.5901354551315308,
@@ -1474,7 +1474,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Leg_56_53",
                       "transform": {
                         "orientation": [
                           -0.19658614695072174,
@@ -1501,7 +1501,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_ForeArm_57_54",
                       "transform": {
                         "orientation": [
                           0.8730765581130981,
@@ -1528,7 +1528,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Hand_58_55",
                       "transform": {
                         "orientation": [
                           0.7071623206138611,
@@ -1555,7 +1555,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Tarsal_59_56",
                       "transform": {
                         "orientation": [
                           0.5403278470039368,
@@ -1582,7 +1582,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Tarsal_60_57",
                       "transform": {
                         "orientation": [
                           0.7554945349693298,
@@ -1609,7 +1609,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_L_Hand_61_58",
                       "transform": {
                         "orientation": [
                           -0.3832840919494629,
@@ -1636,7 +1636,7 @@
                       "type": "node"
                     },
                     {
-                      "name": "Node",
+                      "name": "Bone_R_Foot_62_59",
                       "transform": {
                         "orientation": [
                           0.5403407216072083,
@@ -1663,7 +1663,7 @@
                       "type": "node"
                     }
                   ],
-                  "name": "Node",
+                  "name": "Bone_Root_2_60",
                   "transform": {
                     "orientation": [
                       0.70710688829422,
@@ -1690,7 +1690,7 @@
                   "type": "node"
                 }
               ],
-              "name": "Node",
+              "name": "Bone_GSRT_1_61",
               "transform": {
                 "orientation": [
                   0.6532814502716064,
@@ -1717,7 +1717,7 @@
               "type": "node"
             }
           ],
-          "name": "Node",
+          "name": "GLTF_created_0_rootJoint",
           "transform": {
             "orientation": [
               1.0,
@@ -1750,7 +1750,7 @@
           "current_index": 0,
           "paused": false,
           "playing": true,
-          "time": 0.820813000202179
+          "time": 3.7785587310791016
         }
       },
       "transform": {
@@ -1787,10 +1787,10 @@
           1.0
         ],
         "enabled": true,
-        "intensity": 3.619999885559082,
+        "intensity": 4.070000171661377,
         "range": 10.0
       },
-      "name": "LightSource",
+      "name": "TestPointLight",
       "transform": {
         "orientation": [
           1.0,
@@ -1799,9 +1799,9 @@
           0.0
         ],
         "position": [
-          1.2989444732666016,
-          1.178751826286316,
-          0.0
+          1.4663238525390625,
+          1.3060302734375,
+          -0.0960083082318306
         ],
         "rotation": [
           0.0,
@@ -1854,6 +1854,6 @@
     "skybox_exposure": 1.0,
     "specular_scale": 0.6000000238418579
   },
-  "timestamp": 1767640295,
+  "timestamp": 1767703069,
   "version": "2.0"
 }

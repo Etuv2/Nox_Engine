@@ -238,6 +238,9 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
         case SceneNode::LPV_VOLUME:
             nodeJson["type"] = "lpv_volume";
             break;
+        case SceneNode::SKELETAL:
+            nodeJson["type"] = "skeletal";
+            break;
         default:
             nodeJson["type"] = "node";
             break;
@@ -700,6 +703,10 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
             node->SetNodeType(SceneNode::LPV_VOLUME);
             std::cout << "[SceneLoader] Creating LPV Volume node" << std::endl;
             break;
+        case NodeType::SKELETAL:
+            node = std::make_shared<SceneNode>();
+            node->SetNodeType(SceneNode::SKELETAL);
+            break;
         case NodeType::MODEL:
             node = std::make_shared<SceneNode>();
             node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
@@ -728,8 +735,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 
     // Set node name if provided
     if (nodeJson.contains("name")) {
-        // Note: SceneNode doesn't have a SetName method, but we can store it for LightManager
-        // The name will be used when registering with LightManager
+        node->SetName(nodeJson["name"]);
     }
 
     // Process type-specific properties.
@@ -1054,6 +1060,7 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
         case SceneNode::AUDIO:      ecsType = ::NodeType::AUDIO; break;
         case SceneNode::GUI:        ecsType = ::NodeType::GUI; break;
         case SceneNode::LPV_VOLUME: ecsType = ::NodeType::LPV_VOLUME; break;
+        case SceneNode::SKELETAL:   ecsType = ::NodeType::SKELETAL; break;
     }
     
     // Create entity

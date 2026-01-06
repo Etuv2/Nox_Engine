@@ -109,7 +109,9 @@ public:
     void SetCullingOverride(CullingOverride override) { m_cullingOverride = override; }
     CullingOverride GetCullingOverride() const { return m_cullingOverride; }
     
+    // BOUNDING BOX
     std::string GetName();
+    void SetName(const std::string& name) { m_name = name; }
     std::pair<glm::vec3, glm::vec3> GetBoundingBox();
 
     // NODE TYPE
@@ -194,6 +196,7 @@ protected:
 private:
     // Model and rendering
     std::shared_ptr<Scene> m_model;
+    std::string m_name;
     unsigned int m_shader = 0;
     CullingOverride m_cullingOverride = CULLING_INHERIT;
     NODE_TYPE m_nodeType = NODE;

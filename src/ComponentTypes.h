@@ -47,7 +47,8 @@ enum class NodeType : uint8_t {
 	CAMERA,
 	AUDIO,
 	GUI,
-	LPV_VOLUME
+	LPV_VOLUME,
+	SKELETAL
 };
 
 // Culling override modes (matches SceneNode::CullingOverride)

@@ -948,11 +948,11 @@
     <ClInclude Include="src\TransformSystem.h">
       <Filter>Header Files\Engine\ECS</Filter>
     </ClInclude>
-    <ClInclude Include="src\ComponentTypes.h">
-      <Filter>Header Files\Engine\ECS</Filter>
-    </ClInclude>
     <ClInclude Include="src\ComponentManager.h">
       <Filter>Header Files\Engine\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComponentTypes.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
