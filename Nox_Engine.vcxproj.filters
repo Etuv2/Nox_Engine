@@ -672,7 +672,6 @@
     <None Include="config\config.json">
       <Filter>Source Files\misc\configs</Filter>
     </None>
-    <None Include="ClassDiagram.cd" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">
@@ -952,7 +951,7 @@
       <Filter>Header Files\Engine\ECS</Filter>
     </ClInclude>
     <ClInclude Include="src\ComponentTypes.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Engine\ECS</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

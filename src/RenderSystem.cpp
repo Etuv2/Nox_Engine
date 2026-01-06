@@ -574,10 +574,10 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, GLuint shader)
 		if (renderable->boneNodes[i]) {
 			// Get world transform of bone node (includes animation)
 			glm::mat4 boneWorld = renderable->boneNodes[i]->GetWorldPosition4x4();
-			
+
 			// Compute final bone matrix
 			glm::mat4 boneMatrix = meshWorldInverse * boneWorld * renderable->boneInverseBindMatrices[i];
-			
+
 			// Validate the bone matrix - if any component is NaN or Inf, use identity
 			bool valid = true;
 			for (int c = 0; c < 4 && valid; ++c) {
@@ -587,7 +587,7 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, GLuint shader)
 					}
 				}
 			}
-			
+
 			boneMatrices[i] = valid ? boneMatrix : glm::mat4(1.0f);
 		}
 	}

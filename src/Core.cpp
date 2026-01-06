@@ -366,12 +366,12 @@ bool Core::InitializeUI() {
 	// Initialize RuntimeStateManager
 	m_stateManager = std::make_unique<RuntimeStateManager>();
 	std::cout << "[Core] RuntimeStateManager initialized" << std::endl;
-	
+
 	// Set current scene file path for proper state tracking
 	if (m_stateManager) {
 		m_stateManager->SetCurrentSceneFilePath(m_sceneToLoad);
 	}
-	
+
 	// Set physics engine for gizmo interaction
 	if (m_physicsEngine) {
 		m_imguiInterface->SetPhysicsEngine(m_physicsEngine);
@@ -488,7 +488,7 @@ void Core::Update(float deltaTime) {
 		// Update animations through the ECS AnimationSystem
 		// This processes all AnimationComponents and updates bone/transform data
 		m_sceneGraph->UpdateAnimations(deltaTime);
-		
+
 		// Sync animation changes from ECS to SceneNodes (for rendering)
 		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
 
@@ -498,7 +498,7 @@ void Core::Update(float deltaTime) {
 			// PostStepSync runs after stepping to pull dynamic bodies
 			// Step physics simulation
 			m_physicsEngine->Update(deltaTime);
-			
+
 			// Update all transforms in the scene graph after physics changes
 			// This ensures the ECS transform system processes the physics updates
 			m_sceneGraph->UpdateAllTransforms();
@@ -528,7 +528,7 @@ void Core::Update(float deltaTime) {
 		// Update rendering mode in recorder
 		if (m_modularRenderer) {
 			const RenderContext& context = m_modularRenderer->GetContext();
-			std::string renderMode = (context.rendererMode == RenderContext::RendererMode::PATH_TRACED) ? 
+			std::string renderMode = (context.rendererMode == RenderContext::RendererMode::PATH_TRACED) ?
 				"Path-Traced" : "Standard";
 			m_performanceRecorder->SetRenderingMode(renderMode);
 		}
@@ -730,7 +730,7 @@ void Core::SwapScene(const std::string& newSceneFile) {
 			if (m_physicsEngine) {
 				if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
 			}
-			
+
 			// Update state manager with new scene file path
 			if (m_stateManager) {
 				m_stateManager->SetCurrentSceneFilePath(newSceneFile);
@@ -820,11 +820,11 @@ void Core::CleanupCurrentScene() {
 	if (m_imguiInterface) {
 		m_imguiInterface->SetSelectedNode(nullptr);
 	}
-	
+
 	// Invalidate cached bounds
 	m_boundingBoxCached = false;
 	m_bvhDirty = true;
-	
+
 	std::cout << "[Core] Scene cleanup complete" << std::endl;
 }
 
@@ -1119,6 +1119,11 @@ bool Core::LoadSceneState(const std::string& filepath) {
 			return nullptr;
 		}
 
+		// Update m_sceneGraph immediately so that state restoration
+		// operates on the correct scene graph instance
+		m_sceneGraph = newGraph;
+		m_currentSceneFilePath = sceneFile;
+
 		// Initialize scene systems (lights, physics, etc.)
 		m_exposure = newGraph->m_exposure;
 		m_gamma = newGraph->m_gamma;
@@ -1132,6 +1137,11 @@ bool Core::LoadSceneState(const std::string& filepath) {
 		if (m_lightManager) {
 			m_lightManager->CollectLightsFromScene(newGraph);
 			m_lightManager->PrintLightInfo();
+		}
+
+		// Update UI reference immediately so state restoration can access it
+		if (m_imguiInterface) {
+			m_imguiInterface->SetSceneGraph(newGraph);
 		}
 
 		if (m_inputIntegration) {
@@ -1162,14 +1172,8 @@ bool Core::LoadSceneState(const std::string& filepath) {
 		return false;
 	}
 
-	// Update Core's scene graph reference
-	m_sceneGraph = loadedSceneGraph;
+	// m_sceneGraph was already updated in the callback, but update state manager path
 	m_currentSceneFilePath = m_stateManager->GetCurrentSceneFilePath();
-
-	// Update UI references
-	if (m_imguiInterface) {
-		m_imguiInterface->SetSceneGraph(m_sceneGraph);
-	}
 
 	std::cout << "[Core] Scene state loaded successfully with proper base scene" << std::endl;
 	return true;

@@ -8,7 +8,7 @@ DirectionalLight::DirectionalLight()
     , m_shadowSize(2048), m_splitLambda(0.6f)  // Optimized lambda for better balance
     , m_shadowShaderID(0)
     , m_shadowNearPlane(0.0f), m_shadowFarPlane(0.0f)
-    , m_pcssConfig()  // Initialize PCSS configuration
+    , m_pcssConfig() 
     , m_useEnhancedFiltering(true)
 {
     m_cascadeLightSpace.fill(glm::mat4(1.0f));
@@ -20,7 +20,7 @@ DirectionalLight::DirectionalLight()
     SetColor(glm::vec3(1.0f, 1.0f, 0.8f));
     SetIntensity(1.0f);
     
-    // Initialize PCSS configuration with sensible defaults
+
     m_pcssConfig.blockerSearchSamples = 16;
     m_pcssConfig.pcfSamples = 32;
     m_pcssConfig.lightSize = 0.025f;
@@ -64,7 +64,7 @@ void DirectionalLight::UpdateCascades(const glm::mat4& view,
         nearPlane, farPlane, NUM_CASCADES, enhancedLambda
     );
 
-    // CRITICAL DEBUG: Log cascade splits to verify they're reasonable
+    // Log cascade splits to verify they're reasonable
     static int debugFrameCounter = 0;
     if (debugFrameCounter++ % 300 == 0) { // Log every ~5 seconds at 60fps
         std::cout << "[DirectionalLight] Cascade splits (near=" << nearPlane << ", far=" << farPlane << "):" << std::endl;

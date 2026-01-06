@@ -67,6 +67,10 @@ private:
     char m_exportCSVFilepath[256] = "performance_data/performance_data.csv";
     char m_exportJSONFilepath[256] = "performance_data/performance_data.json";
     
+    // Cached state file info to avoid parsing JSON every frame
+    std::string m_cachedLoadFilepath;
+    std::string m_cachedStateInfo;
+    
     // Helper to read state file info
     std::string GetStateFileInfo(const std::string& filepath);
 };

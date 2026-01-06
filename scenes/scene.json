@@ -1,9 +1,9 @@
 {
-  "scene_name": "physics_test_scene",
+  "scene_name": "Main Test Scene",
+  "physics_enabled": true,
   "exposure": 1,
   "gamma": 2.2,
   "skybox": "hdrs\\skybox_2.hdr",
-  "physics_enabled": true,
   "main_shaders": {
     "normal_pass": {
       "vertex_shader": "shaders\\vertex_shader.glsl",
@@ -16,337 +16,221 @@
   },
   "nodes": [
     {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 104, 1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 1,
-        "radius": 1.0,
-        "gravity": true
+      "type": "light",
+      "name": "MainSun",
+      "position": [ 10.0, 20.0, 10.0 ],
+      "rotation": [ -45.0, 45.0, 0.0 ],
+      "light": {
+        "type": "directional",
+        "color": [ 1.0, 0.95, 0.8 ],
+        "intensity": 1.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.8
+      }
+    },
+    {
+      "type": "light",
+      "name": "TestPointLight",
+      "position": [ 2.0, 2.0, 2.0 ],
+      "light": {
+        "type": "point",
+        "color": [ 1.0, 1.0, 1.0 ],
+        "intensity": 5.0,
+        "enabled": true,
+        "range": 10.0,
+        "castsShadows": true
+      }
+    },
+    {
+      "type": "light",
+      "name": "TestPointLight",
+      "position": [ 1.0, 1.0, 1.0 ],
+      "light": {
+        "type": "point",
+        "color": [1.0, 1.0, 1.0 ],
+        "intensity": 5.0,
+        "enabled": true,
+        "range": 10.0,
+        "castsShadows": true
       }
     },
     {
       "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
+      "path": "models\\dinosaur_1.glb",
+      "position": [ 0.0, 1.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 10.0, 10.0, 10.0 ],
+      "children": [
+        {
+          "type": "audio",
+          "sound": "sounds\\dinosaur_growl.wav",
+          "position": [ 0.0, 0.0, 0.0 ],
+          "volume": 0.1,
+          "hearing_distance": 1.0,
+          "loop": true,
+          "is3d": true
+        }
+      ]
     },
     {
       "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
+      "path": "models\\test_room.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 10.0, 10.0, 10.0 ]
     },
     {
       "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
+      "path": "models\\dinosaur_1.glb",
+      "position": [ 0.0, 5.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 10.0, 10.0, 10.0 ],
+      "children": [
+        {
+          "type": "audio",
+          "sound": "sounds\\dinosaur_growl.wav",
+          "position": [ 0.0, 0.0, 0.0 ],
+          "volume": 0.1,
+          "hearing_distance": 1.0,
+          "loop": true,
+          "is3d": true
+        }
+      ]
     },
     {
       "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -4.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
+      "path": "models\\dinosaur_1.glb",
+      "position": [ 0.0, 1.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 10.0, 10.0, 10.0 ],
+      "children": [
+        {
+          "type": "audio",
+          "sound": "sounds\\dinosaur_growl.wav",
+          "position": [ 0.0, 0.0, 0.0 ],
+          "volume": 0.1,
+          "hearing_distance": 1.0,
+          "loop": true,
+          "is3d": true
+        }
+      ]
     },
     {
       "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
+      "path": "models\\materials_test.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ -90.0, 0.0, 0.0 ],
+      "scale": [ 0.1, 0.1, 0.1 ]
+    },
+
+    {
+      "type": "node",
+      "name": "Floor",
+      "position": [ -1.0, 0.0, 0.0 ],
+      "scale": [ 10.0, 1.0, 10.0 ],
+      "collider": { "type": "plane" }
     },
     {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 4.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 104, 1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -4.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 4.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 104, 1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, -4.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 1.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 2.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 3.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/sphere.glb",
-      "position": [ 0.0, 102, 4.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
-      "collider": {
-        "type": "sphere",
-        "mass": 2.0,
-        "radius": 1.0,
-        "gravity": true
-      }
-    },
-    {
-      "type": "model",
-      "path": "models/plane.glb",
+      "type": "node",
+      "name": "Wall1",
       "position": [ 0.0, 0.0, 0.0 ],
       "scale": [ 1.0, 1.0, 1.0 ],
       "collider": {
-        "type": "plane"
+        "type": "box",
+        "size": [ 100.0, 100.0, 0.1 ],
+        "mass": 1000.0,
+        "gravity": false,
+        "static": true,
+        "velocity_x": 0.0,
+        "velocity_y": 0.0,
+        "velocity_z": 0.0
       }
+    },
+    {
+      "type": "node",
+      "name": "Wall2",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "box",
+        "size": [ 100.0, 100.0, 0.1 ],
+        "mass": 1000.0,
+        "gravity": false,
+        "static": true,
+        "velocity_x": 0.0,
+        "velocity_y": 0.0,
+        "velocity_z": 0.0
+      }
+    },
+    {
+      "type": "node",
+      "name": "Wall3",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "box",
+        "size": [ 1.0, 100.0, 100.0 ],
+        "mass": 1000.0,
+        "gravity": false,
+        "static": true,
+        "velocity_x": 0.0,
+        "velocity_y": 0.0,
+        "velocity_z": 0.0
+      }
+    },
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ -3.0, 10.5, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 2.0,
+        "radius": 1.0,
+        "gravity": true,
+        "velocity_x": 2.0,
+        "velocity_y": 0.0,
+        "velocity_z": 0.5
+      }
+    },
+
+    {
+      "type": "model",
+      "path": "models/sphere.glb",
+      "position": [ -1.0, 10.5, 0.5 ],
+      "scale": [ 1.0, 1.0, 1.0 ],
+      "collider": {
+        "type": "sphere",
+        "mass": 1.5,
+        "radius": 1.0,
+        "gravity": true,
+        "velocity_x": -1.0,
+        "velocity_y": 0.0,
+        "velocity_z": -0.5
+      }
+    },
+    {
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "This scene is meant to show the capabilities of the engine",
+          "x": 930,
+          "y": 1000
+        },
+        {
+          "kind": "image",
+          "path": "images\\logo_nobg.png",
+          "x": 1550,
+          "y": 800,
+          "w": 400,
+          "h": 400
+        }
+
+      ]
     }
   ]
 }

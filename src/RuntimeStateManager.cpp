@@ -18,10 +18,11 @@
 
 using json = nlohmann::json;
 
-RuntimeStateManager::RuntimeStateManager() 
-    : m_cachedNodeCount(0)
-    , m_nodeCountValid(false) 
-{}
+RuntimeStateManager::RuntimeStateManager()
+	: m_cachedNodeCount(0)
+	, m_nodeCountValid(false)
+{
+}
 
 RuntimeStateManager::~RuntimeStateManager() = default;
 
@@ -43,16 +44,17 @@ bool RuntimeStateManager::SaveState(const std::shared_ptr<SceneGraph>& sceneGrap
 		stateJson["version"] = FORMAT_VERSION;
 		stateJson["timestamp"] = std::time(nullptr);
 		stateJson["scene_name"] = sceneGraph->GetSceneName();
-		
+
 		// Store base scene file path for proper state loading
 		// This allows us to load the correct scene before applying state
 		if (!m_currentSceneFilePath.empty()) {
 			stateJson["base_scene_file"] = m_currentSceneFilePath;
 			std::cout << "[RuntimeStateManager] Saving state for scene: " << m_currentSceneFilePath << std::endl;
-		} else {
+		}
+		else {
 			std::cerr << "[RuntimeStateManager] WARNING: No base scene file path set!" << std::endl;
 		}
-		
+
 		// Add scene validation hash (for detecting scene modifications)
 		stateJson["scene_node_count"] = CountSceneNodes(sceneGraph);
 
@@ -194,9 +196,9 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 	const std::shared_ptr<Camera>& camera,
 	const std::string& filepath,
 	std::function<std::shared_ptr<SceneGraph>(const std::string&)> sceneLoaderCallback) {
-	
+
 	std::cout << "[RuntimeStateManager] Loading state with scene validation from: " << filepath << std::endl;
-	
+
 	try {
 		// Step 1: Read and validate state file
 		std::ifstream inFile(filepath);
@@ -204,86 +206,88 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 			std::cerr << "[RuntimeStateManager] ERROR: Failed to open state file: " << filepath << std::endl;
 			return nullptr;
 		}
-		
+
 		json stateJson;
 		inFile >> stateJson;
 		inFile.close();
-		
+
 		// Step 2: Validate format
 		std::string format = stateJson.value("format", "unknown");
 		std::string version = stateJson.value("version", "unknown");
-		
+
 		if (format != FORMAT_TYPE && format != "runtime_state") {
-			std::cerr << "[RuntimeStateManager] ERROR: Invalid format '" << format 
-			          << "', expected '" << FORMAT_TYPE << "'" << std::endl;
+			std::cerr << "[RuntimeStateManager] ERROR: Invalid format '" << format
+				<< "', expected '" << FORMAT_TYPE << "'" << std::endl;
 			return nullptr;
 		}
-		
+
 		std::cout << "[RuntimeStateManager] State file format: " << format << " version: " << version << std::endl;
-		
+
 		// Step 3: Extract base scene file path
 		if (!stateJson.contains("base_scene_file")) {
 			std::cerr << "[RuntimeStateManager] ERROR: State file missing 'base_scene_file' field." << std::endl;
 			std::cerr << "[RuntimeStateManager] This state was saved with an older version and cannot be loaded safely." << std::endl;
 			return nullptr;
 		}
-		
+
 		std::string baseSceneFile = stateJson["base_scene_file"];
-		
+
 		// Validate base scene file path is not empty
 		if (baseSceneFile.empty()) {
 			std::cerr << "[RuntimeStateManager] ERROR: Base scene file path is empty!" << std::endl;
 			return nullptr;
 		}
-		
+
 		// Check if scene file exists
 		if (!std::filesystem::exists(baseSceneFile)) {
 			std::cerr << "[RuntimeStateManager] ERROR: Base scene file does not exist: " << baseSceneFile << std::endl;
 			std::cerr << "[RuntimeStateManager] Please ensure the scene file is in the correct location." << std::endl;
 			return nullptr;
 		}
-		
+
 		std::cout << "[RuntimeStateManager] State requires base scene: " << baseSceneFile << std::endl;
-		
+
 		// Step 4: Load the base scene using callback
 		if (!sceneLoaderCallback) {
 			std::cerr << "[RuntimeStateManager] ERROR: No scene loader callback provided!" << std::endl;
 			return nullptr;
 		}
-		
+
 		std::cout << "[RuntimeStateManager] Loading base scene: " << baseSceneFile << std::endl;
 		auto sceneGraph = sceneLoaderCallback(baseSceneFile);
-		
+
 		if (!sceneGraph || !sceneGraph->GetRoot()) {
 			std::cerr << "[RuntimeStateManager] ERROR: Failed to load base scene: " << baseSceneFile << std::endl;
 			return nullptr;
 		}
-		
+
 		std::cout << "[RuntimeStateManager] Base scene loaded successfully: " << sceneGraph->GetSceneName() << std::endl;
-		
+
 		// Step 5: Validate scene matches state expectations
 		int actualNodeCount = CountSceneNodes(sceneGraph);
 		int expectedNodeCount = stateJson.value("scene_node_count", -1);
-		
+
 		if (expectedNodeCount >= 0 && actualNodeCount != expectedNodeCount) {
 			std::cerr << "[RuntimeStateManager] WARNING: Scene node count mismatch!" << std::endl;
 			std::cerr << "[RuntimeStateManager]   Expected: " << expectedNodeCount << " nodes" << std::endl;
 			std::cerr << "[RuntimeStateManager]   Actual:   " << actualNodeCount << " nodes" << std::endl;
 			std::cerr << "[RuntimeStateManager] The scene may have been modified since this state was saved." << std::endl;
 			std::cerr << "[RuntimeStateManager] Proceeding with caution..." << std::endl;
-		} else {
+		}
+		else {
 			std::cout << "[RuntimeStateManager] Scene validation passed: " << actualNodeCount << " nodes" << std::endl;
 		}
-		
+
 		// Step 6: Apply state to the loaded scene
 		std::cout << "[RuntimeStateManager] Applying saved state to loaded scene..." << std::endl;
-		
+
 		// Restore in deterministic order (same as LoadState):
-		
+
 		// 1. Environment settings
 		if (stateJson.contains("environment")) {
 			RestoreEnvironment(stateJson["environment"], sceneGraph);
-		} else {
+		}
+		else {
 			// Legacy format support
 			if (stateJson.contains("exposure")) {
 				sceneGraph->m_exposure = stateJson["exposure"];
@@ -292,32 +296,33 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 				sceneGraph->m_gamma = stateJson["gamma"];
 			}
 		}
-		
+
 		// 2. Camera
 		if (camera && stateJson.contains("camera")) {
 			RestoreCamera(stateJson["camera"], camera);
 		}
-		
+
 		// 3. Skybox
 		if (stateJson.contains("skybox")) {
 			RestoreSkybox(stateJson["skybox"], sceneGraph);
 		}
-		
+
 		// 4. All nodes with their state
 		if (stateJson.contains("nodes") && stateJson["nodes"].is_array()) {
 			auto root = sceneGraph->GetRoot();
 			RestoreNodesRecursive(stateJson["nodes"], root->children, sceneGraph);
 		}
-		
+
 		std::cout << "[RuntimeStateManager] State applied successfully to scene: " << baseSceneFile << std::endl;
-		
+
 		// Update current scene file path for future saves
 		m_currentSceneFilePath = baseSceneFile;
 		m_nodeCountValid = false; // Invalidate cache after loading new state
-		
+
 		return sceneGraph;
-		
-	} catch (const std::exception& e) {
+
+	}
+	catch (const std::exception& e) {
 		std::cerr << "[RuntimeStateManager] ERROR during state load: " << e.what() << std::endl;
 		return nullptr;
 	}
@@ -329,29 +334,29 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 
 int RuntimeStateManager::CountSceneNodes(const std::shared_ptr<SceneGraph>& sceneGraph) const {
 	if (!sceneGraph || !sceneGraph->GetRoot()) return 0;
-	
+
 	// Use cached value if valid
 	if (m_nodeCountValid) {
 		return m_cachedNodeCount;
 	}
-	
+
 	int count = 0;
 	std::function<void(const std::shared_ptr<SceneNode>&)> countRecursive =
 		[&](const std::shared_ptr<SceneNode>& node) {
-			if (!node) return;
-			count++;
-			for (const auto& child : node->children) {
-				countRecursive(child);
-			}
+		if (!node) return;
+		count++;
+		for (const auto& child : node->children) {
+			countRecursive(child);
+		}
 		};
 	for (const auto& child : sceneGraph->GetRoot()->children) {
 		countRecursive(child);
 	}
-	
+
 	// Cache the result
 	m_cachedNodeCount = count;
 	m_nodeCountValid = true;
-	
+
 	return count;
 }
 
@@ -656,19 +661,44 @@ void RuntimeStateManager::RestoreNodesRecursive(const nlohmann::json& nodesJson,
 	const std::shared_ptr<SceneGraph>& sceneGraph) {
 	if (!nodesJson.is_array() || nodes.empty()) return;
 
-	// Match nodes by name
-	for (const auto& nodeJson : nodesJson) {
-		if (!nodeJson.contains("name")) continue;
+	// Primary strategy: Match by index position (most reliable for scene state)
+	// The saved state preserves the exact order of nodes, so index matching is most accurate
+	size_t nodeCount = std::min(nodesJson.size(), nodes.size());
 
-		std::string nodeName = nodeJson["name"];
+	for (size_t i = 0; i < nodeCount; ++i) {
+		const auto& nodeJson = nodesJson[i];
+		const auto& node = nodes[i];
 
-		// Find matching node
-		for (const auto& node : nodes) {
-			if (node && node->GetName() == nodeName) {
-				RestoreNodeState(nodeJson, node, sceneGraph);
-				break;
-			}
+		if (!node) continue;
+
+		// Verify type matches as a sanity check
+		std::string savedType = nodeJson.value("type", "node");
+		std::string actualType;
+		switch (node->GetNodeType()) {
+		case SceneNode::MODEL:     actualType = "model"; break;
+		case SceneNode::LIGHT:     actualType = "light"; break;
+		case SceneNode::AUDIO:     actualType = "audio"; break;
+		case SceneNode::CAMERA:    actualType = "camera"; break;
+		case SceneNode::GUI:       actualType = "gui"; break;
+		case SceneNode::LPV_VOLUME: actualType = "lpv_volume"; break;
+		case SceneNode::SKELETAL:  actualType = "skeletal"; break;
+		default:                   actualType = "node"; break;
 		}
+
+		// Log if there's a type mismatch (shouldn't happen if scene hasn't changed)
+		if (savedType != actualType) {
+			std::cerr << "[RuntimeStateManager] Warning: Type mismatch at index " << i
+				<< " - saved: " << savedType << ", actual: " << actualType << std::endl;
+		}
+
+		// Restore the node state
+		RestoreNodeState(nodeJson, node, sceneGraph);
+	}
+
+	// Log if counts don't match
+	if (nodesJson.size() != nodes.size()) {
+		std::cerr << "[RuntimeStateManager] Warning: Node count mismatch - saved: "
+			<< nodesJson.size() << ", actual: " << nodes.size() << std::endl;
 	}
 }
 
@@ -712,39 +742,88 @@ void RuntimeStateManager::RestoreNodeState(const nlohmann::json& nodeJson,
 				node->SetLocalTRS(pos, orientation, scale);
 			}
 			else {
-				// Fallback to position/rotation/scale
+				// Fallback to Euler angles -> quaternion conversion
+				glm::vec3 pos = node->GetPosition();
+				glm::vec3 scale = node->GetScale();
+				glm::quat rotation = node->GetOrientation();
+
 				if (transformJson.contains("position") && transformJson["position"].is_array()) {
-					node->SetPosition(glm::vec3(
+					pos = glm::vec3(
 						transformJson["position"][0],
 						transformJson["position"][1],
 						transformJson["position"][2]
-					));
+					);
 				}
+
+				if (transformJson.contains("rotation") && transformJson["rotation"].is_array()) {
+					// Rotation stored in degrees, convert to quaternion
+					glm::vec3 rotDegrees(
+						transformJson["rotation"][0],
+						transformJson["rotation"][1],
+						transformJson["rotation"][2]
+					);
+					glm::vec3 rotRadians = glm::radians(rotDegrees);
+					rotation = glm::quat(rotRadians);
+				}
+
 				if (transformJson.contains("scale") && transformJson["scale"].is_array()) {
-					node->SetScale(glm::vec3(
+					scale = glm::vec3(
 						transformJson["scale"][0],
 						transformJson["scale"][1],
 						transformJson["scale"][2]
-					));
+					);
 				}
+
+				node->SetLocalTRS(pos, rotation, scale);
 			}
 		}
-		// Legacy format support
+		// Legacy format support (position/rotation/scale at root level)
 		else if (nodeJson.contains("position")) {
+			glm::vec3 pos = node->GetPosition();
+			glm::vec3 scale = node->GetScale();
+			glm::quat rotation = node->GetOrientation();
+
 			if (nodeJson["position"].is_array()) {
-				node->SetPosition(glm::vec3(
+				pos = glm::vec3(
 					nodeJson["position"][0],
 					nodeJson["position"][1],
 					nodeJson["position"][2]
-				));
+				);
 			}
+
+			if (nodeJson.contains("rotation") && nodeJson["rotation"].is_array()) {
+				glm::vec3 rotDegrees(
+					nodeJson["rotation"][0],
+					nodeJson["rotation"][1],
+					nodeJson["rotation"][2]
+				);
+				glm::vec3 rotRadians = glm::radians(rotDegrees);
+				rotation = glm::quat(rotRadians);
+			}
+
 			if (nodeJson.contains("scale") && nodeJson["scale"].is_array()) {
-				node->SetScale(glm::vec3(
+				scale = glm::vec3(
 					nodeJson["scale"][0],
 					nodeJson["scale"][1],
 					nodeJson["scale"][2]
-				));
+				);
 			}
+
+			node->SetLocalTRS(pos, rotation, scale);
+		}
+
+		// Sync transform to ECS after restoring
+		if (node->GetEntityID() != INVALID_ENTITY) {
+			node->SyncToECS();
+		}
+
+		// Sync physics body to match restored transform
+		auto rb = node->GetRigidBody();
+		if (rb) {
+			rb->setPosition(node->GetWorldPosition());
+			rb->setOrientation(node->GetOrientation());
+			rb->computeAABB();
+			rb->storePreviousState();
 		}
 
 		// Restore runtime state
@@ -775,33 +854,30 @@ void RuntimeStateManager::RestoreNodeState(const nlohmann::json& nodeJson,
 					}
 				}
 
-				// Physics state
-				if (runtimeJson.contains("physics")) {
+				// Physics state (velocity, angular velocity, etc.)
+				if (runtimeJson.contains("physics") && rb) {
 					const auto& physicsJson = runtimeJson["physics"];
-					auto rb = node->GetRigidBody();
 
-					if (rb) {
-						if (physicsJson.contains("velocity") && physicsJson["velocity"].is_array()) {
-							rb->setVelocity(glm::vec3(
-								physicsJson["velocity"][0],
-								physicsJson["velocity"][1],
-								physicsJson["velocity"][2]
-							));
-						}
-						if (physicsJson.contains("angular_velocity") && physicsJson["angular_velocity"].is_array()) {
-							rb->setAngularVelocity(glm::vec3(
-								physicsJson["angular_velocity"][0],
-								physicsJson["angular_velocity"][1],
-								physicsJson["angular_velocity"][2]
-							));
-						}
-						if (physicsJson.contains("acceleration") && physicsJson["acceleration"].is_array()) {
-							rb->setAcceleration(glm::vec3(
-								physicsJson["acceleration"][0],
-								physicsJson["acceleration"][1],
-								physicsJson["acceleration"][2]
-							));
-						}
+					if (physicsJson.contains("velocity") && physicsJson["velocity"].is_array()) {
+						rb->setVelocity(glm::vec3(
+							physicsJson["velocity"][0],
+							physicsJson["velocity"][1],
+							physicsJson["velocity"][2]
+						));
+					}
+					if (physicsJson.contains("angular_velocity") && physicsJson["angular_velocity"].is_array()) {
+						rb->setAngularVelocity(glm::vec3(
+							physicsJson["angular_velocity"][0],
+							physicsJson["angular_velocity"][1],
+							physicsJson["angular_velocity"][2]
+						));
+					}
+					if (physicsJson.contains("acceleration") && physicsJson["acceleration"].is_array()) {
+						rb->setAcceleration(glm::vec3(
+							physicsJson["acceleration"][0],
+							physicsJson["acceleration"][1],
+							physicsJson["acceleration"][2]
+						));
 					}
 				}
 			}
@@ -809,7 +885,6 @@ void RuntimeStateManager::RestoreNodeState(const nlohmann::json& nodeJson,
 		// Legacy runtime_state support
 		else if (nodeJson.contains("runtime_state")) {
 			const auto& runtimeJson = nodeJson["runtime_state"];
-			// Same logic as above, just different key name
 			EntityID entityID = node->GetEntityID();
 			ComponentManager* cm = sceneGraph->GetComponentManager();
 
@@ -825,17 +900,14 @@ void RuntimeStateManager::RestoreNodeState(const nlohmann::json& nodeJson,
 					}
 				}
 
-				if (runtimeJson.contains("physics")) {
+				if (runtimeJson.contains("physics") && rb) {
 					const auto& physicsJson = runtimeJson["physics"];
-					auto rb = node->GetRigidBody();
-					if (rb) {
-						if (physicsJson.contains("velocity") && physicsJson["velocity"].is_array()) {
-							rb->setVelocity(glm::vec3(
-								physicsJson["velocity"][0],
-								physicsJson["velocity"][1],
-								physicsJson["velocity"][2]
-							));
-						}
+					if (physicsJson.contains("velocity") && physicsJson["velocity"].is_array()) {
+						rb->setVelocity(glm::vec3(
+							physicsJson["velocity"][0],
+							physicsJson["velocity"][1],
+							physicsJson["velocity"][2]
+						));
 					}
 				}
 			}

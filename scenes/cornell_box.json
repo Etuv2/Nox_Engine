@@ -24,7 +24,8 @@
     {
       "type": "light",
       "name": "TestPointLight",
-      "position": [ 0.0, 19.0, 0.0 ],
+      "position": [ 0.0, 15.0, 0.0 ],
+      "rotation": [ 0.0, 0.0, 0.0 ],
       "light": {
         "type": "point",
         "color": [ 1.0, 1.0, 1.0 ],

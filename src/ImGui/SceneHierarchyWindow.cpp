@@ -76,7 +76,10 @@ void SceneHierarchyWindow::Render() {
             if (m_selectedNode->GetRigidBody()) {
                 ImGui::Text("Has Physics: Yes");
             }
+			//Node entity ID
+			ImGui::Text("Entity ID: %u", m_selectedNode->GetEntityID());
             
+
         } else {
             ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "No selection");
         }

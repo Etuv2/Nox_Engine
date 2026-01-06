@@ -65,10 +65,14 @@ void StateExportWindow::Render() {
     ImGui::Text("Load Scene State:");
     ImGui::InputText("##LoadPath", m_loadStateFilepath, sizeof(m_loadStateFilepath));
     
-    // Show which scene this state belongs to
-    std::string stateInfoText = GetStateFileInfo(m_loadStateFilepath);
-    if (!stateInfoText.empty()) {
-        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", stateInfoText.c_str());
+    // Show which scene this state belongs to - only update when filepath changes
+    std::string currentLoadPath(m_loadStateFilepath);
+    if (currentLoadPath != m_cachedLoadFilepath) {
+        m_cachedLoadFilepath = currentLoadPath;
+        m_cachedStateInfo = GetStateFileInfo(m_loadStateFilepath);
+    }
+    if (!m_cachedStateInfo.empty()) {
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", m_cachedStateInfo.c_str());
     }
     
     if (ImGui::Button("Load State", ImVec2(-1, 25))) {
