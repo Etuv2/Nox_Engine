@@ -142,17 +142,17 @@
     <Filter Include="Source Files\misc\shaders\svgf">
       <UniqueIdentifier>{21d375c6-8631-41c1-b1bc-5e249e71a0a5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\scripts\Engine\ECS">
-      <UniqueIdentifier>{b097a689-e959-430a-887b-e292492972d4}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\misc\shaders\debug">
       <UniqueIdentifier>{63b9d3e5-0692-4105-9dc2-5a5cf52406e5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Engine\ECS">
-      <UniqueIdentifier>{789fcda5-9019-426f-abcc-bff5ff2e2086}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\misc\shaders\common">
       <UniqueIdentifier>{c1aed866-4dfe-422d-9948-5859e03d909c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\ECS">
+      <UniqueIdentifier>{789fcda5-9019-426f-abcc-bff5ff2e2086}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripts\ECS">
+      <UniqueIdentifier>{b097a689-e959-430a-887b-e292492972d4}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -358,13 +358,13 @@
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\AnimationSystem.cpp">
-      <Filter>Source Files\scripts\Engine\ECS</Filter>
+      <Filter>Source Files\scripts\ECS</Filter>
     </ClCompile>
     <ClCompile Include="src\HierarchySystem.cpp">
-      <Filter>Source Files\scripts\Engine\ECS</Filter>
+      <Filter>Source Files\scripts\ECS</Filter>
     </ClCompile>
     <ClCompile Include="src\RenderSystem.cpp">
-      <Filter>Source Files\scripts\Engine\ECS</Filter>
+      <Filter>Source Files\scripts\ECS</Filter>
     </ClCompile>
     <ClCompile Include="src\GLBuffer.cpp">
       <Filter>Source Files\scripts\Engine\Renderer</Filter>
@@ -385,10 +385,10 @@
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\TransformSystem.cpp">
-      <Filter>Source Files\scripts\Engine\ECS</Filter>
+      <Filter>Source Files\scripts\ECS</Filter>
     </ClCompile>
     <ClCompile Include="src\ComponentManager.cpp">
-      <Filter>Source Files\scripts\Engine\ECS</Filter>
+      <Filter>Source Files\scripts\ECS</Filter>
     </ClCompile>
     <ClCompile Include="src\passes\DebugBBoxPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
@@ -894,13 +894,13 @@
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
     <ClInclude Include="src\AnimationSystem.h">
-      <Filter>Header Files\Engine\ECS</Filter>
+      <Filter>Header Files\ECS</Filter>
     </ClInclude>
     <ClInclude Include="src\HierarchySystem.h">
-      <Filter>Header Files\Engine\ECS</Filter>
+      <Filter>Header Files\ECS</Filter>
     </ClInclude>
     <ClInclude Include="src\RenderSystem.h">
-      <Filter>Header Files\Engine\ECS</Filter>
+      <Filter>Header Files\ECS</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\DebugBBoxPass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
@@ -945,13 +945,13 @@
       <Filter>Header Files\Utils\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\TransformSystem.h">
-      <Filter>Header Files\Engine\ECS</Filter>
+      <Filter>Header Files\ECS</Filter>
     </ClInclude>
     <ClInclude Include="src\ComponentManager.h">
-      <Filter>Header Files\Engine\ECS</Filter>
+      <Filter>Header Files\ECS</Filter>
     </ClInclude>
     <ClInclude Include="src\ComponentTypes.h">
-      <Filter>Header Files\Engine\ECS</Filter>
+      <Filter>Header Files\ECS</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -58,7 +58,7 @@ public:
     [[deprecated("Use CollectRenderables() for ECS-based rendering")]]
     void CollectRenderableObjects(MDIBatch& batch);
 
-    // ============== NEW ECS-BASED RENDERING API ==============
+    //  NEW ECS-BASED RENDERING API 
     
     // Forward rendering pass (ECS-based)
     void RenderForward(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram);
@@ -83,7 +83,7 @@ public:
     // Set frustum for culling
     void SetFrustumPlanes(const glm::mat4& viewProjection);
     
-    // ============== ANIMATION API ==============
+    //  ANIMATION API 
     
     // Update all animations (call once per frame)
     void UpdateAnimations(float deltaTime);
@@ -92,7 +92,7 @@ public:
     void PlayAnimation(EntityID entity, int animationIndex, bool loop = true);
     void StopAnimation(EntityID entity);
     
-    // ============== END NEW API ==============
+    //  END NEW API 
 
     // Find all nodes by type
     std::vector<std::shared_ptr<SceneNode>> FindNodesByType(SceneNode::NODE_TYPE type);
