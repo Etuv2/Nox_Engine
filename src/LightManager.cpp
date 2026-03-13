@@ -633,8 +633,27 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	sceneGraph->CollectRenderableObjects(fullBatch);
 
 	glUseProgram(m_shadowShader);
-	const GLint locObjectIndex = glGetUniformLocation(m_shadowShader, "uObjectIndex");
-	const GLint locLS = glGetUniformLocation(m_shadowShader, "lightSpaceMatrix");
+	
+	// Cache uniform locations to avoid expensive driver calls each frame
+	GLint locObjectIndex = m_cachedLocObjectIndex;
+	GLint locLS = m_cachedLocLS;
+	
+	// Invalidate cache if shader changed
+	if (m_lastShadowShader != m_shadowShader) {
+		m_cachedLocObjectIndex = -2;
+		m_cachedLocLS = -2;
+		m_lastShadowShader = m_shadowShader;
+	}
+	
+	// Query locations only if not cached yet
+	if (m_cachedLocObjectIndex == -2) {
+		m_cachedLocObjectIndex = glGetUniformLocation(m_shadowShader, "uObjectIndex");
+		locObjectIndex = m_cachedLocObjectIndex;
+	}
+	if (m_cachedLocLS == -2) {
+		m_cachedLocLS = glGetUniformLocation(m_shadowShader, "lightSpaceMatrix");
+		locLS = m_cachedLocLS;
+	}
 
 	// Seed matrices with cached values
 	std::vector<glm::mat4> matrices;
@@ -1334,7 +1353,7 @@ void LightManager::DisableLightsByType(BaseLight::LightType t)
 }
 
 
-/**
+ /**
  * @brief Statistics & Queries
  */
 

@@ -5,7 +5,7 @@
 */
 #include "MainWindow.h"
 #include <cstdio>
-// Trying to force PC to use GPU instead of integrated graphics(weird bug)
+// Trying to force PC to use dedicated GPU instead of integrated graphics(weird bug)
 extern "C" {
 	__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
 	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;

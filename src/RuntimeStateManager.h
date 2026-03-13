@@ -134,6 +134,10 @@ private:
                           const std::shared_ptr<SceneNode>& node,
                           const std::shared_ptr<SceneGraph>& sceneGraph);
 
+    // Post-restoration synchronization helpers
+    void SyncAllNodesFromECS(const std::shared_ptr<SceneGraph>& sceneGraph);
+    void SyncPhysicsBodiesFromNodes(const std::shared_ptr<SceneGraph>& sceneGraph);
+
     std::string m_quickSavePath = "snapshots/quicksave.json";
     std::string m_currentSceneFilePath;
     

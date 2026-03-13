@@ -193,6 +193,7 @@
     <None Include="shaders\taa_resolve.glsl" />
     <None Include="shaders\velocity_frag.glsl" />
     <None Include="shaders\velocity_vert.glsl" />
+    <None Include="snapshots\scene_state.json" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Animation.h" />

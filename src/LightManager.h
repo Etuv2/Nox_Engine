@@ -277,4 +277,9 @@ private:
 	// Initialization flags
 	bool m_shadowSystemInitialized = false;
 	bool m_buffersInitialized = false;
+
+	// Cached uniform locations for shadow rendering
+	mutable GLint m_cachedLocObjectIndex = -2;  // -2 = not queried yet, -1 = not found
+	mutable GLint m_cachedLocLS = -2;           // -2 = not queried yet, -1 = not found
+	mutable GLuint m_lastShadowShader = 0;      // Track if shader changed
 };

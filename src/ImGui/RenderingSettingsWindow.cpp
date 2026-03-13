@@ -226,6 +226,9 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_showBoundingBoxes = ctx.showBoundingBoxes;
 	m_showBBoxLegend = ctx.showBBoxLegend;
 	m_showLightGizmos = ctx.showLightGizmos;
+	
+	// Rendering overrides
+	m_forceBackfaceCulling = ctx.forceBackfaceCulling;
 
 	std::cout << "[RenderingSettings] Synced to renderer - Exposure: " << m_exposure
 		<< ", Gamma: " << m_gamma << ", TM: " << m_tonemapType
@@ -356,6 +359,9 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.showBoundingBoxes = m_showBoundingBoxes;
 	ctx.showBBoxLegend = m_showBBoxLegend;
 	ctx.showLightGizmos = m_showLightGizmos;
+	
+	// Rendering overrides
+	ctx.forceBackfaceCulling = m_forceBackfaceCulling;
 
 	std::cout << "[RenderingSettings] Synced to renderer - Exposure: " << m_exposure
 		<< ", Gamma: " << m_gamma << ", TM: " << m_tonemapType
@@ -1194,6 +1200,22 @@ void RenderingSettingsWindow::Render() {
 
 			if (ImGui::Checkbox("Show Light Gizmos", &m_showLightGizmos)) {
 				SyncToRenderer(); // Apply light gizmo toggle
+			}
+
+			ImGui::Separator();
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Rendering Overrides:");
+
+			if (ImGui::Checkbox("Force Backface Culling", &m_forceBackfaceCulling)) {
+				SyncToRenderer();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("?##force_backface")) {}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Force backface culling on all meshes\n"
+					"Overrides per-material double-sided settings\n"
+					"Useful for debugging or improving performance"
+				);
 			}
 
 			ImGui::Separator();

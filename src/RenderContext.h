@@ -215,4 +215,7 @@ struct RenderContext {
 	bool showBoundingBoxes = false;
 	bool showBBoxLegend = true;  // Show color legend when bounding boxes are enabled
 	bool showLightGizmos = false;
+
+	// Rendering overrides
+	bool forceBackfaceCulling = false;  // Force backface culling on all meshes regardless of material settings
 };

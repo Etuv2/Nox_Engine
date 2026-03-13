@@ -65,6 +65,10 @@ public:
     size_t GetTotalEntityCount() const { return m_totalCount; }
     size_t GetCulledEntityCount() const { return m_totalCount - m_visibleCount; }
 
+    // Rendering overrides
+    void SetForceBackfaceCulling(bool force) { m_forceBackfaceCulling = force; }
+    bool GetForceBackfaceCulling() const { return m_forceBackfaceCulling; }
+
 private:
     ComponentManager* m_componentManager;
     TransformSystem* m_transformSystem;
@@ -72,6 +76,9 @@ private:
     // Frustum planes for culling
     glm::vec4 m_frustumPlanes[6];
     bool m_frustumValid = false;
+    
+    // Rendering overrides
+    bool m_forceBackfaceCulling = false;
 
     // Statistics
     size_t m_visibleCount = 0;

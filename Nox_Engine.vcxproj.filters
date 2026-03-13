@@ -672,6 +672,9 @@
     <None Include="config\config.json">
       <Filter>Source Files\misc\configs</Filter>
     </None>
+    <None Include="snapshots\scene_state.json">
+      <Filter>Source Files\misc</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\PointLight.h">

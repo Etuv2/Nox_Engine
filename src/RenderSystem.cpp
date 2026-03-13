@@ -494,6 +494,13 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, GLuint shad
 
 void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride override)
 {
+	// If force backface culling is enabled globally, always cull back faces
+	if (m_forceBackfaceCulling) {
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+		return;
+	}
+
 	bool enableCulling = true;
 	GLenum cullFace = GL_BACK;
 

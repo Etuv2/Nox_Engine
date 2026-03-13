@@ -1175,6 +1175,15 @@ bool Core::LoadSceneState(const std::string& filepath) {
 	// m_sceneGraph was already updated in the callback, but update state manager path
 	m_currentSceneFilePath = m_stateManager->GetCurrentSceneFilePath();
 
+	// CRITICAL: Force immediate transform propagation through the hierarchy
+	// After state restoration, all transforms are marked as dirty but world transforms
+	// have not been computed yet. This ensures all node world transforms are correct
+	// immediately, rather than waiting for the next update cycle.
+	if (m_sceneGraph) {
+		m_sceneGraph->UpdateAllTransforms();
+		std::cout << "[Core] Transform hierarchy updated after state restoration" << std::endl;
+	}
+
 	std::cout << "[Core] Scene state loaded successfully with proper base scene" << std::endl;
 	return true;
 }

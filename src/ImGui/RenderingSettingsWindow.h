@@ -151,6 +151,9 @@ private:
 	bool m_showBoundingBoxes = false;
 	bool m_showBBoxLegend = true;  // Show color legend when bounding boxes are enabled
 	bool m_showLightGizmos = false;
+	
+	// Rendering overrides
+	bool m_forceBackfaceCulling = false;  // Force backface culling on all meshes
 
 	// Quality settings
 	int m_textureFiltering = 4;

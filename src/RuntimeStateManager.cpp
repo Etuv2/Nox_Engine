@@ -171,6 +171,23 @@ bool RuntimeStateManager::LoadState(const std::shared_ptr<SceneGraph>& sceneGrap
 			RestoreNodesRecursive(stateJson["nodes"], root->children, sceneGraph);
 		}
 
+		// 5. CRITICAL: Force immediate transform propagation through the hierarchy
+		// First pass: compute all world transforms from local transforms
+		sceneGraph->UpdateAllTransforms();
+		std::cout << "[RuntimeStateManager] Transform hierarchy updated (pass 1)" << std::endl;
+
+		// 6. Sync all SceneNode cached transforms from ECS after first pass
+		SyncAllNodesFromECS(sceneGraph);
+		std::cout << "[RuntimeStateManager] SceneNode caches synced from ECS" << std::endl;
+
+		// 7. Second transform pass to handle any dependencies that weren't resolved
+		sceneGraph->UpdateAllTransforms();
+		std::cout << "[RuntimeStateManager] Transform hierarchy updated (pass 2)" << std::endl;
+
+		// 8. Final physics body synchronization
+		SyncPhysicsBodiesFromNodes(sceneGraph);
+		std::cout << "[RuntimeStateManager] Physics bodies synchronized from node transforms" << std::endl;
+
 		std::cout << "[RuntimeStateManager] State loaded successfully" << std::endl;
 		return true;
 
@@ -313,6 +330,27 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 			RestoreNodesRecursive(stateJson["nodes"], root->children, sceneGraph);
 		}
 
+		// 5. CRITICAL: Force immediate transform propagation through the hierarchy
+		// First pass: compute all world transforms from local transforms
+		sceneGraph->UpdateAllTransforms();
+		std::cout << "[RuntimeStateManager] Transform hierarchy updated (pass 1)" << std::endl;
+
+		// Sync all SceneNode cached transforms from ECS after first pass
+		// This ensures SceneNode local caches match ECS computed values
+		SyncAllNodesFromECS(sceneGraph);
+		std::cout << "[RuntimeStateManager] SceneNode caches synced from ECS" << std::endl;
+
+		// 6. Second transform pass to handle any dependencies that weren't resolved
+		// in the first pass (e.g., deep skeletal hierarchies where parent transforms
+		// need to be finalized before children can be computed correctly)
+		sceneGraph->UpdateAllTransforms();
+		std::cout << "[RuntimeStateManager] Transform hierarchy updated (pass 2)" << std::endl;
+
+		// 8. Final physics body synchronization
+		// Ensure all physics bodies have correct transforms after state restoration
+		SyncPhysicsBodiesFromNodes(sceneGraph);
+		std::cout << "[RuntimeStateManager] Physics bodies synchronized from node transforms" << std::endl;
+
 		std::cout << "[RuntimeStateManager] State applied successfully to scene: " << baseSceneFile << std::endl;
 
 		// Update current scene file path for future saves
@@ -328,9 +366,9 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 	}
 }
 
-// ============================================================================
+
 // Serialization Helpers
-// ============================================================================
+
 
 int RuntimeStateManager::CountSceneNodes(const std::shared_ptr<SceneGraph>& sceneGraph) const {
 	if (!sceneGraph || !sceneGraph->GetRoot()) return 0;
@@ -574,9 +612,9 @@ json RuntimeStateManager::SerializeNodeRuntime(const std::shared_ptr<SceneNode>&
 	return runtimeJson;
 }
 
-// ============================================================================
+
 // Deserialization Helpers
-// ============================================================================
+
 
 bool RuntimeStateManager::RestoreCamera(const nlohmann::json& cameraJson,
 	const std::shared_ptr<Camera>& camera) {
@@ -957,5 +995,66 @@ void RuntimeStateManager::RestoreNodeState(const nlohmann::json& nodeJson,
 	catch (const std::exception& e) {
 		std::cerr << "[RuntimeStateManager] Node restore error for '" << node->GetName()
 			<< "': " << e.what() << std::endl;
+	}
+}
+
+
+// Post-Restoration Synchronization Helpers
+
+
+void RuntimeStateManager::SyncAllNodesFromECS(const std::shared_ptr<SceneGraph>& sceneGraph) {
+	if (!sceneGraph || !sceneGraph->GetRoot()) return;
+
+	// Recursively sync all nodes from ECS to ensure cached transforms are up to date
+	std::function<void(const std::shared_ptr<SceneNode>&)> syncRecursive =
+		[&](const std::shared_ptr<SceneNode>& node) {
+		if (!node) return;
+
+		// Sync this node's cached transform from ECS
+		if (node->GetEntityID() != INVALID_ENTITY) {
+			node->SyncFromECS();
+		}
+
+		// Process children
+		for (const auto& child : node->children) {
+			syncRecursive(child);
+		}
+		};
+
+	auto root = sceneGraph->GetRoot();
+	for (const auto& child : root->children) {
+		syncRecursive(child);
+	}
+}
+
+void RuntimeStateManager::SyncPhysicsBodiesFromNodes(const std::shared_ptr<SceneGraph>& sceneGraph) {
+	if (!sceneGraph || !sceneGraph->GetRoot()) return;
+
+	// Recursively find all nodes with rigid bodies and sync their physics state
+	std::function<void(const std::shared_ptr<SceneNode>&)> syncPhysicsRecursive =
+		[&](const std::shared_ptr<SceneNode>& node) {
+		if (!node) return;
+
+		// If node has a rigid body, sync it from the node's current world transform
+		auto rb = node->GetRigidBody();
+		if (rb) {
+			glm::vec3 worldPos = node->GetWorldPosition();
+			glm::quat orientation = node->GetOrientation();
+
+			rb->setPosition(worldPos);
+			rb->setOrientation(orientation);
+			rb->computeAABB();
+			rb->storePreviousState();
+		}
+
+		// Process children
+		for (const auto& child : node->children) {
+			syncPhysicsRecursive(child);
+		}
+		};
+
+	auto root = sceneGraph->GetRoot();
+	for (const auto& child : root->children) {
+		syncPhysicsRecursive(child);
 	}
 }

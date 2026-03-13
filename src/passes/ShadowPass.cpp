@@ -63,10 +63,4 @@ void ShadowPass::Execute(RenderContext& ctx,
     lightManager->RenderShadowMaps(sceneGraph, camera, ctx.view, ctx.proj, 
                                    m_shadowNear, m_shadowFar, aspect, 
                                    camera->GetCameraFov());
-
-    // Validate completion
-    GLenum error = glGetError();
-    if (error != GL_NO_ERROR) {
-        std::cerr << "[ShadowPass] OpenGL error after shadow rendering: " << error << "\n";
-    }
 }

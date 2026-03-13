@@ -72,6 +72,11 @@ void GBufferPass::Execute(RenderContext& ctx,
         std::cout << "[GBufferPass] Wireframe mode enabled" << std::endl;
     }
 
+    // Apply force backface culling setting to RenderSystem
+    if (auto* renderSystem = sceneGraph->GetRenderSystem()) {
+        renderSystem->SetForceBackfaceCulling(ctx.forceBackfaceCulling);
+    }
+
     std::cout << "[GBufferPass] Using shader program: " << m_shader << std::endl;
     glUseProgram(m_shader);
 
@@ -84,6 +89,16 @@ void GBufferPass::Execute(RenderContext& ctx,
     std::cout << "[GBufferPass] Drawing geometry..." << std::endl;
     // Render scene geometry to G-buffer
     sceneGraph->DrawGeometry(m_shader);
+
+    // Reset force backface culling after geometry rendering to ensure
+    // it doesn't affect other passes (skybox, UI, transparent, etc.)
+    if (auto* renderSystem = sceneGraph->GetRenderSystem()) {
+        renderSystem->SetForceBackfaceCulling(false);
+    }
+
+    // Restore default culling state after geometry pass
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 
     // Restore wireframe state
     if (ctx.wireframeMode) {
