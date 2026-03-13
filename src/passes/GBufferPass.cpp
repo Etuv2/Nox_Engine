@@ -88,7 +88,7 @@ void GBufferPass::Execute(RenderContext& ctx,
 
     std::cout << "[GBufferPass] Drawing geometry..." << std::endl;
     // Render scene geometry to G-buffer
-    sceneGraph->DrawGeometry(m_shader);
+    sceneGraph->RenderGeometry(m_shader);
 
     // Reset force backface culling after geometry rendering to ensure
     // it doesn't affect other passes (skybox, UI, transparent, etc.)

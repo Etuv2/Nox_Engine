@@ -630,7 +630,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 	// Build full batch once
 	MDIBatch fullBatch;
-	sceneGraph->CollectRenderableObjects(fullBatch);
+	sceneGraph->CollectRenderables(fullBatch);
 
 	glUseProgram(m_shadowShader);
 	

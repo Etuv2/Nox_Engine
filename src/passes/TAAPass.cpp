@@ -182,7 +182,7 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 		static_cast<float>(ctx.width), static_cast<float>(ctx.height));
 
 	// Render scene for motion vectors
-	sceneGraph->DrawVelocity(m_velocityShader);
+	sceneGraph->RenderVelocity(ctx.view, ctx.proj, ctx.prevView, ctx.prevProj, m_velocityShader);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
