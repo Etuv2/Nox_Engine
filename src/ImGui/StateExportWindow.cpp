@@ -3,6 +3,7 @@
 #include <fstream>
 #include "../json.hpp"
 #include <chrono>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -10,7 +11,7 @@ StateExportWindow::StateExportWindow()
     : BaseWindow("State & Export", "F9")
 {
     m_position = ImVec2(1020, 370);
-    m_size = ImVec2(360, 320);
+    m_size = ImVec2(380, 420);
 }
 
 void StateExportWindow::Render() {
@@ -149,6 +150,54 @@ void StateExportWindow::Render() {
     }
 
     ImGui::Spacing();
+
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.9f, 0.85f, 0.3f, 1.0f), "Deterministic Capture");
+    ImGui::Checkbox("Enable Frame-Count Capture", &m_deterministicCaptureEnabled);
+    if (m_deterministicCaptureEnabled) {
+        ImGui::InputInt("Warmup Frames", &m_captureWarmupFrames);
+        ImGui::InputInt("Capture Frames", &m_captureFramesTarget);
+        m_captureWarmupFrames = std::max(0, m_captureWarmupFrames);
+        m_captureFramesTarget = std::max(1, m_captureFramesTarget);
+
+        if (!m_captureRunning && !m_isRecording) {
+            if (ImGui::Button("Run Deterministic Capture", ImVec2(-1, 28))) {
+                if (m_startRecordingCallback) {
+                    m_startRecordingCallback();
+                    m_isRecording = true;
+                    m_captureRunning = true;
+                    m_captureFrameCounter = -m_captureWarmupFrames;
+                }
+            }
+        }
+
+        if (m_captureRunning && m_isRecording) {
+            m_captureFrameCounter++;
+            if (m_captureFrameCounter < 0) {
+                ImGui::Text("Warmup: %d frames remaining", -m_captureFrameCounter);
+            } else {
+                int recordedFrames = std::min(m_captureFrameCounter, m_captureFramesTarget);
+                ImGui::Text("Captured: %d / %d frames", recordedFrames, m_captureFramesTarget);
+                if (m_captureFrameCounter >= m_captureFramesTarget) {
+                    if (m_stopRecordingCallback) {
+                        m_stopRecordingCallback();
+                    }
+                    m_isRecording = false;
+                    m_captureRunning = false;
+                }
+            }
+        }
+
+        if (m_captureRunning && ImGui::Button("Cancel Deterministic Capture", ImVec2(-1, 24))) {
+            if (m_stopRecordingCallback && m_isRecording) {
+                m_stopRecordingCallback();
+            }
+            m_isRecording = false;
+            m_captureRunning = false;
+        }
+    }
 
     // CSV Export
     ImGui::Text("Export CSV:");

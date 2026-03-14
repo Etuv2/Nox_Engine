@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <string>
+#include <vector>
+#include <cstdint>
 #include "RenderContext.h"
 #include "RenderPass.h"
 
@@ -66,6 +68,20 @@ public:
 	void ResetTAA();
 	int GetTAAFrameIndex() const;
 
+
+	struct PassTimingMetrics {
+		std::string name;
+		float cpuTimeMs = 0.0f;
+		float gpuTimeMs = 0.0f;
+		uint64_t drawCalls = 0;
+		uint64_t dispatchCount = 0;
+		uint64_t bufferUploadBytes = 0;
+		float cpuWaitSyncMs = 0.0f;
+	};
+
+	const std::vector<PassTimingMetrics>& GetLastPassMetrics() const { return m_lastPassMetrics; }
+	float GetLastCpuWaitSyncMs() const { return m_lastCpuWaitSyncMs; }
+
 	// Performance: Set to false to disable GL error checking and verbose logging in release builds
 	static constexpr bool DebugErrorChecking = false;
 	static constexpr bool VerboseLogging = false;
@@ -99,4 +115,7 @@ private:
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
 	std::unique_ptr<GUIPass> m_guiPass;  // Internal GUI rendering
 	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;  // Debug bounding box visualization
+
+	std::vector<PassTimingMetrics> m_lastPassMetrics;
+	float m_lastCpuWaitSyncMs = 0.0f;
 };

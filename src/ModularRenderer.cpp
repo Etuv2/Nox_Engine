@@ -23,6 +23,9 @@
 #include "passes/GUIPass.h"  // Internal GUI rendering
 #include "passes/DebugBBoxPass.h"  // Debug bounding box visualization
 #include <iostream>
+#include <chrono>
+#include <array>
+#include <functional>
 
 ModularRenderer::ModularRenderer()
 {
@@ -32,6 +35,75 @@ ModularRenderer::~ModularRenderer()
 {
 
 }
+
+namespace {
+	using Clock = std::chrono::high_resolution_clock;
+
+	struct ScopedPassProfiler {
+		ModularRenderer::PassTimingMetrics metrics;
+		Clock::time_point cpuStart;
+		std::array<GLuint, 2> timestampQueries{0, 0};
+		std::array<GLuint, 2> statsQueries{0, 0};
+		bool hasTimerQuery = false;
+		bool hasStatsQuery = false;
+
+		ScopedPassProfiler(const std::string& name) {
+			metrics.name = name;
+			cpuStart = Clock::now();
+
+			if (GLEW_ARB_timer_query) {
+				glGenQueries(2, timestampQueries.data());
+				glQueryCounter(timestampQueries[0], GL_TIMESTAMP);
+				hasTimerQuery = true;
+			}
+
+#ifdef GLEW_ARB_pipeline_statistics_query
+			if (GLEW_ARB_pipeline_statistics_query) {
+				glGenQueries(2, statsQueries.data());
+				glBeginQuery(GL_PRIMITIVES_SUBMITTED_ARB, statsQueries[0]);
+				glBeginQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB, statsQueries[1]);
+				hasStatsQuery = true;
+			}
+#endif
+		}
+
+		void Finish() {
+			const auto cpuEnd = Clock::now();
+			metrics.cpuTimeMs = std::chrono::duration<float, std::milli>(cpuEnd - cpuStart).count();
+
+			if (hasStatsQuery) {
+#ifdef GLEW_ARB_pipeline_statistics_query
+				glEndQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB);
+				glEndQuery(GL_PRIMITIVES_SUBMITTED_ARB);
+				GLuint64 primitives = 0;
+				GLuint64 computeInvocations = 0;
+				glGetQueryObjectui64v(statsQueries[0], GL_QUERY_RESULT, &primitives);
+				glGetQueryObjectui64v(statsQueries[1], GL_QUERY_RESULT, &computeInvocations);
+				metrics.drawCalls = primitives > 0 ? 1 : 0;
+				metrics.dispatchCount = computeInvocations > 0 ? 1 : 0;
+				glDeleteQueries(2, statsQueries.data());
+#endif
+			}
+
+			if (hasTimerQuery) {
+				glQueryCounter(timestampQueries[1], GL_TIMESTAMP);
+				GLuint64 beginNs = 0;
+				GLuint64 endNs = 0;
+				auto waitStart = Clock::now();
+				glGetQueryObjectui64v(timestampQueries[0], GL_QUERY_RESULT, &beginNs);
+				glGetQueryObjectui64v(timestampQueries[1], GL_QUERY_RESULT, &endNs);
+				auto waitEnd = Clock::now();
+				metrics.cpuWaitSyncMs = std::chrono::duration<float, std::milli>(waitEnd - waitStart).count();
+				if (endNs >= beginNs) {
+					metrics.gpuTimeMs = static_cast<float>(endNs - beginNs) / 1000000.0f;
+				}
+				glDeleteQueries(2, timestampQueries.data());
+			}
+		}
+	};
+}
+
+
 
 
 bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
@@ -256,6 +328,8 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	int windowWidth,
 	int windowHeight)
 {
+	m_lastPassMetrics.clear();
+	m_lastCpuWaitSyncMs = 0.0f;
 	// Clear any stale GL errors from previous frames (only in debug mode)
 	if constexpr (DebugErrorChecking) {
 		while (glGetError() != GL_NO_ERROR) {}
@@ -299,11 +373,19 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		skybox->SetSpecularIBLScale(m_context.specularIBLScale);
 	}
 
+	auto profilePass = [this](const char* name, const std::function<void()>& executePass) {
+		ScopedPassProfiler profiler(name);
+		executePass();
+		profiler.Finish();
+		m_lastCpuWaitSyncMs += profiler.metrics.cpuWaitSyncMs;
+		m_lastPassMetrics.push_back(profiler.metrics);
+	};
+
 	// Execute rendering pipeline in correct order
-	m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	profilePass("ShadowPass", [&]() { m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 	CheckGLError("ShadowPass");
 
-	m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	profilePass("GBufferPass", [&]() { m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 	CheckGLError("GBufferPass");
 
 	// DEBUG MODE: Show G-buffer visualizations
@@ -315,7 +397,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		visualizeDebugMode(m_context);
 
 		// Render GUI overlay
-		m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("GUIPass");
 
 		return; // Early exit - skip rest of pipeline for debug view
@@ -328,21 +410,21 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		}
 
 		// Execute ray tracing pass
-		m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("RTPass", [&]() { m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("RTPass");
 
 		// Optional: Apply bloom to path-traced output
 		if (m_context.enableBloom) {
-			m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			profilePass("BloomPass", [&]() { m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 			CheckGLError("BloomPass");
 		}
 
 		// Apply post-processing (tonemapping, etc.)
-		m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("PostProcessPass", [&]() { m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("PostProcessPass");
 
 		// Render GUI overlay
-		m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("GUIPass");
 
 		return; // Early exit - skip deferred lighting pipeline
@@ -363,7 +445,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 			m_lpvPass->config.giStrength = m_context.lpvGIStrength;
 			m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;
 
-			m_lpvPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			profilePass("LPVPass", [&]() { m_lpvPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 			CheckGLError("LPVPass");
 		}
 	}
@@ -371,7 +453,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	// Only execute SSAO if enabled
 	GLuint ssaoTex = 0;
 	if (m_context.enableSSAO) {
-		m_ssaoPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("SSAOPass", [&]() { m_ssaoPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("SSAOPass");
 		ssaoTex = m_ssaoPass->GetSSAOTexture();
 	}
@@ -379,20 +461,20 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	// Screen-space shadows (contact shadows) if enabled
 	GLuint sssTex = 0;
 	if (m_context.enableScreenSpaceShadows) {
-		m_screenSpaceShadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("ScreenSpaceShadowPass", [&]() { m_screenSpaceShadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("ScreenSpaceShadowPass");
 		sssTex = m_screenSpaceShadowPass->GetShadowTexture();
 	}
 
 	// TAA Pass (velocity + resolve) - executes before lighting
 	if (m_context.enableTAA) {
-		m_taaPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("TAAPass", [&]() { m_taaPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("TAAPass");
 	}
 
 	// SSGI Pass - Screen Space Global Illumination (before lighting)
 	if (m_context.enableSSGI && m_ssgiPass) {
-		m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("SSGIPass", [&]() { m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("SSGIPass");
 	}
 
@@ -420,7 +502,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		m_lightingPass->SetLPVTextures(0, 0, 0);
 	}
 
-	m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	profilePass("LightingPass", [&]() { m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 	CheckGLError("LightingPass");
 
 	// Skybox rendering (background into HDR)
@@ -431,7 +513,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	}
 
 	// Transparent forward rendering
-	m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	profilePass("TransparentForwardPass", [&]() { m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 	CheckGLError("TransparentForwardPass");
 
 	// Unbinding HDR FBO after both skybox and transparent rendering
@@ -440,24 +522,24 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	// Only execute Bloom if enabled
 	GLuint bloomTex = 0;
 	if (m_context.enableBloom) {
-		m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("BloomPass", [&]() { m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("BloomPass");
 		bloomTex = m_bloomPass->GetBloomResult();
 	}
 
 	// Provide bloom texture to post-process (or 0 if disabled)
 	m_postProcessPass->SetBloomTexture(bloomTex);
-	m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	profilePass("PostProcessPass", [&]() { m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 	CheckGLError("PostProcessPass");
 
 	// Debug bounding box visualization (after post-process, renders overlay)
 	if (m_context.showBoundingBoxes) {
-		m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		profilePass("DebugBBoxPass", [&]() { m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("DebugBBoxPass");
 	}
 
 	// Render internal GUI elements to backbuffer
-	m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+	profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 	CheckGLError("GUIPass");
 
 	// Capture color history for SSGI

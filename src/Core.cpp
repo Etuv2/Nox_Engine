@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <chrono>
 
 #include <GL/glew.h>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -483,25 +484,33 @@ void Core::Update(float deltaTime) {
 		m_fpsUpdateTime = 0.0f;
 	}
 
+	PerformanceRecorder::ECSMetrics ecsMetrics{};
+
 	// Update scene
 	if (m_sceneGraph && m_sceneGraph->IsActive()) {
 		// Update animations through the ECS AnimationSystem
-		// This processes all AnimationComponents and updates bone/transform data
+		auto animationStart = std::chrono::high_resolution_clock::now();
 		m_sceneGraph->UpdateAnimations(deltaTime);
+		auto animationEnd = std::chrono::high_resolution_clock::now();
+		ecsMetrics.animationSystemMs = std::chrono::duration<float, std::milli>(animationEnd - animationStart).count();
 
 		// Sync animation changes from ECS to SceneNodes (for rendering)
+		auto transformStart = std::chrono::high_resolution_clock::now();
 		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
+		auto transformEnd = std::chrono::high_resolution_clock::now();
+		ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformEnd - transformStart).count();
 
 		if (m_physicsEngine && m_physicsEnabledForScene) {
-			// Physics synchronization is now centralized inside PhysicsEngine::Update()
-			// PreStepSync runs before stepping to push kinematic bodies
-			// PostStepSync runs after stepping to pull dynamic bodies
-			// Step physics simulation
+			auto physicsStart = std::chrono::high_resolution_clock::now();
 			m_physicsEngine->Update(deltaTime);
+			auto physicsEnd = std::chrono::high_resolution_clock::now();
+			ecsMetrics.physicsStepMs = std::chrono::duration<float, std::milli>(physicsEnd - physicsStart).count();
 
 			// Update all transforms in the scene graph after physics changes
-			// This ensures the ECS transform system processes the physics updates
+			auto transformSyncStart = std::chrono::high_resolution_clock::now();
 			m_sceneGraph->UpdateAllTransforms();
+			auto transformSyncEnd = std::chrono::high_resolution_clock::now();
+			ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformSyncEnd - transformSyncStart).count();
 		}
 
 		// Use new transform-aware audio update
@@ -525,13 +534,28 @@ void Core::Update(float deltaTime) {
 
 	// Record performance data if recording is active
 	if (m_performanceRecorder && m_performanceRecorder->IsRecording()) {
-		// Update rendering mode in recorder
+		std::vector<PerformanceRecorder::PassMetrics> passMetrics;
+		float cpuWaitMs = 0.0f;
 		if (m_modularRenderer) {
 			const RenderContext& context = m_modularRenderer->GetContext();
 			std::string renderMode = (context.rendererMode == RenderContext::RendererMode::PATH_TRACED) ?
 				"Path-Traced" : "Standard";
 			m_performanceRecorder->SetRenderingMode(renderMode);
+
+			for (const auto& metric : m_modularRenderer->GetLastPassMetrics()) {
+				passMetrics.push_back({
+					metric.name,
+					metric.cpuTimeMs,
+					metric.gpuTimeMs,
+					metric.drawCalls,
+					metric.dispatchCount,
+					metric.bufferUploadBytes,
+					metric.cpuWaitSyncMs
+				});
+			}
+			cpuWaitMs = m_modularRenderer->GetLastCpuWaitSyncMs();
 		}
+		m_performanceRecorder->SetCurrentFrameMetrics(passMetrics, ecsMetrics, cpuWaitMs, 0);
 		m_performanceRecorder->RecordFrame(m_frameTime, m_fps);
 	}
 }
