@@ -38,24 +38,24 @@ public:
     // Returns the scene's hierarchy as a map
     std::map<std::string, std::shared_ptr<SceneNode>> GetSceneHierarchy();
 
-    // Forward pass draw (legacy - uses SceneNode recursion)
-    [[deprecated("Use RenderForward() for ECS-based rendering")]]
+    // Legacy compatibility shims (tooling/import paths only; not for frame loop).
+    [[deprecated("Compatibility shim only. Use RenderForward() in runtime code")]]
     void Draw(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram);
 
     // Shadow pass draw (legacy)
-    [[deprecated("Use RenderShadowCascade() for ECS-based rendering")]]
+    [[deprecated("Compatibility shim only. Use RenderShadowCascade() in runtime code")]]
     void DrawCascade(const glm::mat4& lightSpace, GLuint shadowShader);
 
     // Deferred geometry pass (legacy)
-    [[deprecated("Use RenderGeometry() for ECS-based rendering")]]
+    [[deprecated("Compatibility shim only. Use RenderGeometry() in runtime code")]]
     void DrawGeometry(GLuint geometryShader);
 
     // Motion vector pass for TAA (legacy)
-    [[deprecated("Use RenderVelocity() for ECS-based rendering")]]
+    [[deprecated("Compatibility shim only. Use RenderVelocity() in runtime code")]]
     void DrawVelocity(GLuint velocityShader);
 
     // MDI collection (legacy)
-    [[deprecated("Use CollectRenderables() for ECS-based rendering")]]
+    [[deprecated("Compatibility shim only. Use CollectRenderables() in runtime code")]]
     void CollectRenderableObjects(MDIBatch& batch);
 
     //  NEW ECS-BASED RENDERING API 
@@ -145,16 +145,6 @@ public:
     const RenderSystem* GetRenderSystem() const { return &m_renderSystem; }
     const AnimationSystem* GetAnimationSystem() const { return &m_animationSystem; }
     const HierarchySystem* GetHierarchySystem() const { return &m_hierarchySystem; }
-    
-    // Flat iteration methods for cache-friendly rendering (legacy)
-    [[deprecated("Use RenderForward() instead")]]
-    void DrawFlat(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram);
-    [[deprecated("Use RenderShadowCascade() instead")]]
-    void DrawCascadeFlat(const glm::mat4& lightSpace, GLuint shadowShader);
-    [[deprecated("Use RenderGeometry() instead")]]
-    void DrawGeometryFlat(GLuint geometryShader);
-    [[deprecated("Use CollectRenderables() instead")]]
-    void CollectRenderableObjectsFlat(MDIBatch& batch);
     
     // Update all transforms in one batch
     void UpdateAllTransforms();

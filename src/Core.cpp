@@ -478,28 +478,26 @@ void Core::Update(float deltaTime) {
 		m_fpsUpdateTime = 0.0f;
 	}
 
-	// Update scene
+	// Frame stage contract (attach each runtime feature to one stage only):
+	// 1) ECS animation/transform stage: animation + transform systems
+	// 2) Physics stage: physics integration + ECS transform refresh
+	// 3) Audio stage: listener/source spatial update
+	// NOTE: Legacy recursive SceneNode update calls are intentionally excluded
+	// from the frame loop when equivalent ECS systems are active.
 	if (m_sceneGraph && m_sceneGraph->IsActive()) {
-		// Update animations through the ECS AnimationSystem
-		// This processes all AnimationComponents and updates bone/transform data
+		// Stage 1: ECS animation/transform
 		m_sceneGraph->UpdateAnimations(deltaTime);
+		m_sceneGraph->UpdateAllTransforms();
 
-		// Sync animation changes from ECS to SceneNodes (for rendering)
-		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
-
+		// Stage 2: physics
 		if (m_physicsEngine && m_physicsEnabledForScene) {
-			// Physics synchronization is now centralized inside PhysicsEngine::Update()
-			// PreStepSync runs before stepping to push kinematic bodies
-			// PostStepSync runs after stepping to pull dynamic bodies
-			// Step physics simulation
+			// Physics synchronization is centralized inside PhysicsEngine::Update()
+			// (PreStepSync before stepping, PostStepSync after stepping).
 			m_physicsEngine->Update(deltaTime);
-
-			// Update all transforms in the scene graph after physics changes
-			// This ensures the ECS transform system processes the physics updates
 			m_sceneGraph->UpdateAllTransforms();
 		}
 
-		// Use new transform-aware audio update
+		// Stage 3: audio
 		glm::vec3 listenerPos = m_camera->GetCameraPosition();
 		float listenerAngle = m_camera->GetCameraFacingAngle();
 		m_sceneGraph->GetRoot()->UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
