@@ -1,6 +1,11 @@
 #pragma once
 #include "../RenderPass.h"
 #include <GL/glew.h>
+#include "../ComponentTypes.h"
+#include <glm/glm.hpp>
+#include <vector>
+
+class Scene;
 
 /**
  * @brief TransparentForwardPass renders transparent objects with physically correct glass-like materials.

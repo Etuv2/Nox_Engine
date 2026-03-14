@@ -60,6 +60,7 @@ public:
     // Culling
     void SetFrustumPlanes(const glm::mat4& viewProjection);
     bool IsSphereVisible(const glm::vec3& center, float radius) const;
+    bool HasValidFrustum() const { return m_frustumValid; }
 
     // Statistics
     size_t GetVisibleEntityCount() const { return m_visibleCount; }
