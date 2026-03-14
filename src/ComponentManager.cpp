@@ -6,7 +6,7 @@ ComponentManager::ComponentManager() {
 	// Pre-allocate for performance
 	m_metadata.reserve(1024);
 	m_nameToEntity.reserve(1024);
-	m_childrenStorage.reserve(2048);
+	m_childrenByParent.reserve(1024);
 }
 
 ComponentManager::~ComponentManager() {
@@ -72,6 +72,7 @@ void ComponentManager::DestroyEntity(EntityID entity) {
 
 	// Add to free list
 	m_freeEntityIDs.push_back(entity);
+	assert(ValidateHierarchyIntegrity());
 }
 
 bool ComponentManager::IsEntityValid(EntityID entity) const {
@@ -129,9 +130,41 @@ const TransformComponent* ComponentManager::GetTransform(EntityID entity) const 
 }
 
 void ComponentManager::RemoveTransform(EntityID entity) {
+	auto transform = GetTransform(entity);
+	if (transform) {
+		const EntityID parentID = transform->parentID;
+		if (parentID != INVALID_ENTITY) {
+			auto parentIt = m_childrenByParent.find(parentID);
+			if (parentIt != m_childrenByParent.end()) {
+				auto& siblings = parentIt->second;
+				auto childIt = std::find(siblings.begin(), siblings.end(), entity);
+				if (childIt != siblings.end()) {
+					*childIt = siblings.back();
+					siblings.pop_back();
+				}
+				if (siblings.empty()) {
+					m_childrenByParent.erase(parentIt);
+				}
+			}
+		}
+
+		auto childrenIt = m_childrenByParent.find(entity);
+		if (childrenIt != m_childrenByParent.end()) {
+			for (EntityID childID : childrenIt->second) {
+				auto* childTransform = GetTransform(childID);
+				if (childTransform) {
+					childTransform->parentID = INVALID_ENTITY;
+					childTransform->isDirty = true;
+				}
+			}
+			m_childrenByParent.erase(childrenIt);
+		}
+	}
+
 	m_transforms.Remove(entity);
 	auto metadata = GetMetadata(entity);
 	if (metadata) metadata->RemoveComponent(ComponentType::TRANSFORM);
+	assert(ValidateHierarchyIntegrity());
 }
 
 bool ComponentManager::HasTransform(EntityID entity) const {
@@ -375,20 +408,28 @@ void ComponentManager::SetParent(EntityID child, EntityID parent) {
 	auto childTransform = GetTransform(child);
 	if (!childTransform) return;
 
-	// Remove from old parent's children list
-	if (childTransform->parentID != INVALID_ENTITY) {
-		auto oldParent = GetTransform(childTransform->parentID);
-		if (oldParent && oldParent->childCount > 0) {
-			// Find and remove from children storage
-			uint32_t startIdx = oldParent->firstChildIndex;
-			uint32_t endIdx = startIdx + oldParent->childCount;
-			for (uint32_t i = startIdx; i < endIdx; ++i) {
-				if (m_childrenStorage[i] == child) {
-					// Swap with last child and decrease count
-					m_childrenStorage[i] = m_childrenStorage[endIdx - 1];
-					oldParent->childCount--;
-					break;
-				}
+	const EntityID oldParentID = childTransform->parentID;
+	if (oldParentID == parent) {
+		return;
+	}
+
+	if (parent != INVALID_ENTITY && (!IsEntityValid(parent) || !HasTransform(parent))) {
+		return;
+	}
+
+	// Remove from old parent's adjacency list
+	if (oldParentID != INVALID_ENTITY) {
+		auto oldParentIt = m_childrenByParent.find(oldParentID);
+		if (oldParentIt != m_childrenByParent.end()) {
+			auto& siblings = oldParentIt->second;
+			auto childIt = std::find(siblings.begin(), siblings.end(), child);
+			if (childIt != siblings.end()) {
+				*childIt = siblings.back();
+				siblings.pop_back();
+			}
+
+			if (siblings.empty()) {
+				m_childrenByParent.erase(oldParentIt);
 			}
 		}
 	}
@@ -397,22 +438,15 @@ void ComponentManager::SetParent(EntityID child, EntityID parent) {
 	childTransform->parentID = parent;
 	childTransform->isDirty = true;
 
-	// Add to new parent's children list
+	// Add to new parent's adjacency list
 	if (parent != INVALID_ENTITY) {
-		auto parentTransform = GetTransform(parent);
-		if (parentTransform) {
-			if (parentTransform->childCount == 0) {
-				// First child
-				parentTransform->firstChildIndex = static_cast<uint32_t>(m_childrenStorage.size());
-				m_childrenStorage.push_back(child);
-			}
-			else {
-				// Append to existing children
-				m_childrenStorage.push_back(child);
-			}
-			parentTransform->childCount++;
+		auto& children = m_childrenByParent[parent];
+		if (std::find(children.begin(), children.end(), child) == children.end()) {
+			children.push_back(child);
 		}
 	}
+
+	assert(ValidateHierarchyIntegrity());
 }
 
 EntityID ComponentManager::GetParent(EntityID entity) const {
@@ -420,20 +454,49 @@ EntityID ComponentManager::GetParent(EntityID entity) const {
 	return transform ? transform->parentID : INVALID_ENTITY;
 }
 
-std::vector<EntityID> ComponentManager::GetChildren(EntityID entity) const {
-	std::vector<EntityID> result;
-	auto transform = GetTransform(entity);
-	if (!transform || transform->childCount == 0) return result;
+const std::vector<EntityID>& ComponentManager::GetChildren(EntityID entity) const {
+	static const std::vector<EntityID> kEmptyChildren;
+	const auto it = m_childrenByParent.find(entity);
+	return (it != m_childrenByParent.end()) ? it->second : kEmptyChildren;
+}
 
-	uint32_t startIdx = transform->firstChildIndex;
-	uint32_t count = transform->childCount;
-	result.reserve(count);
+bool ComponentManager::ValidateHierarchyIntegrity() const {
+	for (const auto& [parentID, children] : m_childrenByParent) {
+		if (!IsEntityValid(parentID) || !HasTransform(parentID)) {
+			return false;
+		}
 
-	for (uint32_t i = 0; i < count; ++i) {
-		result.push_back(m_childrenStorage[startIdx + i]);
+		for (EntityID childID : children) {
+			if (!IsEntityValid(childID)) {
+				return false;
+			}
+
+			const auto* childTransform = GetTransform(childID);
+			if (!childTransform || childTransform->parentID != parentID) {
+				return false;
+			}
+		}
 	}
 
-	return result;
+	for (const auto& entry : m_transforms) {
+		const EntityID entityID = entry.entity;
+		const auto& transform = entry.component;
+		if (transform.parentID == INVALID_ENTITY) {
+			continue;
+		}
+
+		auto parentIt = m_childrenByParent.find(transform.parentID);
+		if (parentIt == m_childrenByParent.end()) {
+			return false;
+		}
+
+		const auto& siblings = parentIt->second;
+		if (std::find(siblings.begin(), siblings.end(), entityID) == siblings.end()) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 // Statistics
@@ -453,7 +516,7 @@ void ComponentManager::PrintStatistics() const {
 	std::cout << "Physics components: " << m_physics.Size() << std::endl;
 	std::cout << "Audio components: " << m_audio.Size() << std::endl;
 	std::cout << "LPV Volume components: " << m_lpvVolumes.Size() << std::endl;
-	std::cout << "Children storage size: " << m_childrenStorage.size() << std::endl;
+	std::cout << "Parents with children: " << m_childrenByParent.size() << std::endl;
 }
 
 void ComponentManager::Clear() {
@@ -467,7 +530,7 @@ void ComponentManager::Clear() {
 	m_lpvVolumes.Clear();
 	m_metadata.clear();
 	m_nameToEntity.clear();
-	m_childrenStorage.clear();
+	m_childrenByParent.clear();
 	m_freeEntityIDs.clear();
 	m_nextEntityID = 1;
 }

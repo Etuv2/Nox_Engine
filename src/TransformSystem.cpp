@@ -46,7 +46,7 @@ void TransformSystem::UpdateTransforms() {
 		ComputeWorldTransform(current);
 
 		// Add children to queue
-		auto children = m_componentManager->GetChildren(current);
+		const auto& children = m_componentManager->GetChildren(current);
 		for (EntityID child : children) {
 			auto childTransform = m_componentManager->GetTransform(child);
 			if (childTransform && childTransform->isDirty) {
@@ -74,7 +74,7 @@ void TransformSystem::MarkSubtreeDirtyRecursive(EntityID entity) {
 	transform->isDirty = true;
 
 	// Recursively mark children
-	auto children = m_componentManager->GetChildren(entity);
+	const auto& children = m_componentManager->GetChildren(entity);
 	for (EntityID child : children) {
 		MarkSubtreeDirtyRecursive(child);
 	}
@@ -287,7 +287,7 @@ void TransformSystem::PrintHierarchy(EntityID root, int depth) const {
 	std::cout << indent << "- " << name << " (ID: " << root << ")" << std::endl;
 
 	// Recursively print children
-	auto children = m_componentManager->GetChildren(root);
+	const auto& children = m_componentManager->GetChildren(root);
 	for (EntityID child : children) {
 		PrintHierarchy(child, depth + 1);
 	}
