@@ -55,7 +55,36 @@ bool TAAPass::Initialize(RenderContext& context) {
 	// Expose velocity texture in context for other passes (e.g., SSGI)
 	context.velocityTex = m_velocityFBO->GetColorAttachment(0);
 
-	std::cout << "[TAAPass] Initialized successfully.\n";
+	m_velocityUniforms.view = glGetUniformLocation(m_velocityShader, "view");
+	m_velocityUniforms.projection = glGetUniformLocation(m_velocityShader, "projection");
+	m_velocityUniforms.prevView = glGetUniformLocation(m_velocityShader, "prevView");
+	m_velocityUniforms.prevProjection = glGetUniformLocation(m_velocityShader, "prevProjection");
+	m_velocityUniforms.jitter = glGetUniformLocation(m_velocityShader, "jitter");
+	m_velocityUniforms.prevJitter = glGetUniformLocation(m_velocityShader, "prevJitter");
+	m_velocityUniforms.screenSize = glGetUniformLocation(m_velocityShader, "screenSize");
+
+	m_resolveUniforms.currentFrame = glGetUniformLocation(m_resolveShader, "currentFrame");
+	m_resolveUniforms.historyFrame = glGetUniformLocation(m_resolveShader, "historyFrame");
+	m_resolveUniforms.velocityBuffer = glGetUniformLocation(m_resolveShader, "velocityBuffer");
+	m_resolveUniforms.depthBuffer = glGetUniformLocation(m_resolveShader, "depthBuffer");
+	m_resolveUniforms.gNormal = glGetUniformLocation(m_resolveShader, "gNormal");
+	m_resolveUniforms.blendFactor = glGetUniformLocation(m_resolveShader, "blendFactor");
+	m_resolveUniforms.varianceThreshold = glGetUniformLocation(m_resolveShader, "varianceThreshold");
+	m_resolveUniforms.lumaWeight = glGetUniformLocation(m_resolveShader, "lumaWeight");
+	m_resolveUniforms.useYCoCg = glGetUniformLocation(m_resolveShader, "useYCoCg");
+	m_resolveUniforms.historyValid = glGetUniformLocation(m_resolveShader, "historyValid");
+	m_resolveUniforms.screenSize = glGetUniformLocation(m_resolveShader, "screenSize");
+	m_resolveUniforms.jitter = glGetUniformLocation(m_resolveShader, "jitter");
+	m_resolveUniforms.depthThreshold = glGetUniformLocation(m_resolveShader, "depthThreshold");
+	m_resolveUniforms.normalThreshold = glGetUniformLocation(m_resolveShader, "normalThreshold");
+	m_resolveUniforms.edgeThreshold = glGetUniformLocation(m_resolveShader, "edgeThreshold");
+	m_resolveUniforms.reactiveMaskStrength = glGetUniformLocation(m_resolveShader, "reactiveMaskStrength");
+
+	if constexpr (VerboseLogging) {
+		if (m_runtimeVerboseLogging) {
+			std::cout << "[TAAPass] Initialized successfully.\n";
+		}
+	}
 	return true;
 }
 
@@ -161,24 +190,24 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 	glUseProgram(m_velocityShader);
 
 	// Upload current and previous matrices
-	glUniformMatrix4fv(glGetUniformLocation(m_velocityShader, "view"),
+	if (m_velocityUniforms.view >= 0) glUniformMatrix4fv(m_velocityUniforms.view,
 		1, GL_FALSE, glm::value_ptr(ctx.view));
-	glUniformMatrix4fv(glGetUniformLocation(m_velocityShader, "projection"),
+	if (m_velocityUniforms.projection >= 0) glUniformMatrix4fv(m_velocityUniforms.projection,
 		1, GL_FALSE, glm::value_ptr(ctx.proj));
 
 	// Previous matrices (stored in context)
-	glUniformMatrix4fv(glGetUniformLocation(m_velocityShader, "prevView"),
+	if (m_velocityUniforms.prevView >= 0) glUniformMatrix4fv(m_velocityUniforms.prevView,
 		1, GL_FALSE, glm::value_ptr(ctx.prevView));
-	glUniformMatrix4fv(glGetUniformLocation(m_velocityShader, "prevProjection"),
+	if (m_velocityUniforms.prevProjection >= 0) glUniformMatrix4fv(m_velocityUniforms.prevProjection,
 		1, GL_FALSE, glm::value_ptr(ctx.prevProj));
 
 	// Upload jitter
-	glUniform2fv(glGetUniformLocation(m_velocityShader, "jitter"),
+	if (m_velocityUniforms.jitter >= 0) glUniform2fv(m_velocityUniforms.jitter,
 		1, glm::value_ptr(m_jitter));
-	glUniform2fv(glGetUniformLocation(m_velocityShader, "prevJitter"),
+	if (m_velocityUniforms.prevJitter >= 0) glUniform2fv(m_velocityUniforms.prevJitter,
 		1, glm::value_ptr(m_prevJitter));
 
-	glUniform2f(glGetUniformLocation(m_velocityShader, "screenSize"),
+	if (m_velocityUniforms.screenSize >= 0) glUniform2f(m_velocityUniforms.screenSize,
 		static_cast<float>(ctx.width), static_cast<float>(ctx.height));
 
 	// Render scene for motion vectors
@@ -200,44 +229,44 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 	// Bind current frame (HDR output)
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, ctx.hdrFBO->GetColorAttachment(0));
-	glUniform1i(glGetUniformLocation(m_resolveShader, "currentFrame"), 0);
+	if (m_resolveUniforms.currentFrame >= 0) glUniform1i(m_resolveUniforms.currentFrame, 0);
 
 	// Bind history
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, m_historyFBO->GetColorAttachment(0));
-	glUniform1i(glGetUniformLocation(m_resolveShader, "historyFrame"), 1);
+	if (m_resolveUniforms.historyFrame >= 0) glUniform1i(m_resolveUniforms.historyFrame, 1);
 
 	// Bind velocity
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, m_velocityFBO->GetColorAttachment(0));
-	glUniform1i(glGetUniformLocation(m_resolveShader, "velocityBuffer"), 2);
+	if (m_resolveUniforms.velocityBuffer >= 0) glUniform1i(m_resolveUniforms.velocityBuffer, 2);
 
 	// Bind depth for disocclusion detection
 	glActiveTexture(GL_TEXTURE3);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-	glUniform1i(glGetUniformLocation(m_resolveShader, "depthBuffer"), 3);
+	if (m_resolveUniforms.depthBuffer >= 0) glUniform1i(m_resolveUniforms.depthBuffer, 3);
 
 	// Bind normal for rejection
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-	glUniform1i(glGetUniformLocation(m_resolveShader, "gNormal"), 4);
+	if (m_resolveUniforms.gNormal >= 0) glUniform1i(m_resolveUniforms.gNormal, 4);
 
 	// Upload TAA parameters
-	glUniform1f(glGetUniformLocation(m_resolveShader, "blendFactor"), ctx.taaBlendFactor);
-	glUniform1f(glGetUniformLocation(m_resolveShader, "varianceThreshold"), ctx.taaVarianceThreshold);
-	glUniform1f(glGetUniformLocation(m_resolveShader, "lumaWeight"), ctx.taaLumaWeight);
-	glUniform1i(glGetUniformLocation(m_resolveShader, "useYCoCg"), ctx.taaUseYCoCg ? 1 : 0);
-	glUniform1i(glGetUniformLocation(m_resolveShader, "historyValid"), m_historyValid ? 1 : 0);
-	glUniform2f(glGetUniformLocation(m_resolveShader, "screenSize"),
+	if (m_resolveUniforms.blendFactor >= 0) glUniform1f(m_resolveUniforms.blendFactor, ctx.taaBlendFactor);
+	if (m_resolveUniforms.varianceThreshold >= 0) glUniform1f(m_resolveUniforms.varianceThreshold, ctx.taaVarianceThreshold);
+	if (m_resolveUniforms.lumaWeight >= 0) glUniform1f(m_resolveUniforms.lumaWeight, ctx.taaLumaWeight);
+	if (m_resolveUniforms.useYCoCg >= 0) glUniform1i(m_resolveUniforms.useYCoCg, ctx.taaUseYCoCg ? 1 : 0);
+	if (m_resolveUniforms.historyValid >= 0) glUniform1i(m_resolveUniforms.historyValid, m_historyValid ? 1 : 0);
+	if (m_resolveUniforms.screenSize >= 0) glUniform2f(m_resolveUniforms.screenSize,
 		static_cast<float>(ctx.width), static_cast<float>(ctx.height));
-	glUniform2fv(glGetUniformLocation(m_resolveShader, "jitter"),
+	if (m_resolveUniforms.jitter >= 0) glUniform2fv(m_resolveUniforms.jitter,
 		1, glm::value_ptr(m_jitter));
 
 	// Enhanced quality parameters
-	glUniform1f(glGetUniformLocation(m_resolveShader, "depthThreshold"), ctx.taaDepthThreshold);
-	glUniform1f(glGetUniformLocation(m_resolveShader, "normalThreshold"), ctx.taaNormalThreshold);
-	glUniform1f(glGetUniformLocation(m_resolveShader, "edgeThreshold"), ctx.taaEdgeThreshold);
-	glUniform1f(glGetUniformLocation(m_resolveShader, "reactiveMaskStrength"), ctx.taaReactiveMaskStrength);
+	if (m_resolveUniforms.depthThreshold >= 0) glUniform1f(m_resolveUniforms.depthThreshold, ctx.taaDepthThreshold);
+	if (m_resolveUniforms.normalThreshold >= 0) glUniform1f(m_resolveUniforms.normalThreshold, ctx.taaNormalThreshold);
+	if (m_resolveUniforms.edgeThreshold >= 0) glUniform1f(m_resolveUniforms.edgeThreshold, ctx.taaEdgeThreshold);
+	if (m_resolveUniforms.reactiveMaskStrength >= 0) glUniform1f(m_resolveUniforms.reactiveMaskStrength, ctx.taaReactiveMaskStrength);
 
 	ctx.screenQuad->Render();
 
