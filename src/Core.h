@@ -205,7 +205,7 @@ public:
     std::shared_ptr<Camera> GetCamera() { return m_camera; }
     std::shared_ptr<SceneGraph> GetSceneGraph() { return m_sceneGraph; }
     std::shared_ptr<DirectionalLight> GetLighting() { return m_lighting; }
-    LightManager* GetLightManager() { return m_lightManager.get(); }
+    LightManager* GetLightManager();
     ImGuiInterface* GetImGuiInterface() { return m_imguiInterface.get(); }
     InputIntegration* GetInputIntegration() { return m_inputIntegration.get(); }
     float GetFPS() const { return m_fps; }
@@ -286,7 +286,6 @@ private:
 
     
     std::shared_ptr<DirectionalLight> m_lighting;
-    std::unique_ptr<LightManager> m_lightManager;
     glm::vec3 m_lightPos;
     glm::vec3 m_lightDir;
     bool m_shadowsEnabled;

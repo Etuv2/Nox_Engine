@@ -182,7 +182,6 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 
 	// Bind light data for transparent objects
 	if (ctx.lightManager && ctx.lightManager->GetActiveLightCount() > 0) {
-		ctx.lightManager->UpdateGPUBuffers();
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ctx.lightManager->GetLightDataSSBO());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx.lightManager->GetShadowMatricesSSBO());
 		glUniform1i(glGetUniformLocation(m_shader, "numLights"),
