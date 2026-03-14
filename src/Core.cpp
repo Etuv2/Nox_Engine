@@ -223,9 +223,6 @@ bool Core::InitializeGraphics() {
 bool Core::InitializeLighting() {
 	std::cout << "[Core] Initializing lighting..." << std::endl;
 
-	// Initialize the Light Manager
-	m_lightManager = std::make_unique<LightManager>();
-
 	// Set up directional light and cascaded shadow mapping
 	m_lighting = std::make_shared<DirectionalLight>();
 
@@ -240,12 +237,6 @@ bool Core::InitializeLighting() {
 	m_lighting->SetCascadeSplits(m_shadowNear, m_shadowFar, 2.0f);
 	m_lighting->SetShadowShaderID(m_shadowShader);
 	m_lighting->SetShadowSize(configShadowSize);
-
-	// Register main directional light with light manager
-	m_lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
-
-	// Initialize light manager shadow system with config values
-	m_lightManager->InitializeShadowSystem(8, configShadowSize);
 
 	return true;
 }
@@ -320,9 +311,14 @@ bool Core::InitializeScene() {
 		if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
 	}
 
-	// Collect lights from the loaded scene
-	m_lightManager->CollectLightsFromScene(m_sceneGraph);
-	m_lightManager->PrintLightInfo();
+	auto lightManager = m_sceneGraph->GetLightManager();
+	if (lightManager) {
+		// Collect lights from the loaded scene
+		lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
+		lightManager->InitializeShadowSystem(8, m_shadowSize);
+		lightManager->CollectLightsFromScene(m_sceneGraph);
+		lightManager->PrintLightInfo();
+	}
 
 	ComputeSceneBoundingBox();
 
@@ -400,6 +396,11 @@ bool Core::InitializeUI() {
 	return true;
 }
 
+LightManager* Core::GetLightManager() {
+	auto lightManager = (m_sceneGraph ? m_sceneGraph->GetLightManager() : nullptr);
+	return lightManager ? lightManager.get() : nullptr;
+}
+
 bool Core::InitializeInput() {
 	std::cout << "[Core] Initializing input system..." << std::endl;
 
@@ -415,7 +416,7 @@ bool Core::InitializeInput() {
 	m_inputIntegration->SetSceneGraph(m_sceneGraph);
 	m_inputIntegration->SetImGuiInterface(m_imguiInterface.get());
 	m_inputIntegration->SetDirectionalLight(m_lighting);
-	m_inputIntegration->SetLightManager(m_lightManager.get());
+	m_inputIntegration->SetLightManager(GetLightManager());
 
 	// Set initial mouse lock state
 	m_inputIntegration->SetMouseLocked(true);
@@ -448,7 +449,6 @@ void Core::Shutdown() {
 	m_modelManager.reset();
 	m_lighting.reset();
 	m_camera.reset();
-	m_lightManager.reset();
 	m_sceneBVH.reset();
 	m_performanceRecorder.reset();
 	m_stateManager.reset();
@@ -469,11 +469,6 @@ void Core::Update(float deltaTime) {
 		m_requestTogglePhysics = false;
 	}
 
-	// Update lighting system
-	if (m_lightManager) {
-		m_lightManager->UpdateLights(deltaTime);
-	}
-
 	// Update FPS counter
 	m_frameCount += 1.0f;
 	m_fpsUpdateTime += deltaTime;
@@ -483,28 +478,26 @@ void Core::Update(float deltaTime) {
 		m_fpsUpdateTime = 0.0f;
 	}
 
-	// Update scene
+	// Frame stage contract (attach each runtime feature to one stage only):
+	// 1) ECS animation/transform stage: animation + transform systems
+	// 2) Physics stage: physics integration + ECS transform refresh
+	// 3) Audio stage: listener/source spatial update
+	// NOTE: Legacy recursive SceneNode update calls are intentionally excluded
+	// from the frame loop when equivalent ECS systems are active.
 	if (m_sceneGraph && m_sceneGraph->IsActive()) {
-		// Update animations through the ECS AnimationSystem
-		// This processes all AnimationComponents and updates bone/transform data
+		// Stage 1: ECS animation/transform
 		m_sceneGraph->UpdateAnimations(deltaTime);
+		m_sceneGraph->UpdateAllTransforms();
 
-		// Sync animation changes from ECS to SceneNodes (for rendering)
-		m_sceneGraph->GetRoot()->UpdateAnimationWithTransform(deltaTime, glm::mat4(1.0f));
-
+		// Stage 2: physics
 		if (m_physicsEngine && m_physicsEnabledForScene) {
-			// Physics synchronization is now centralized inside PhysicsEngine::Update()
-			// PreStepSync runs before stepping to push kinematic bodies
-			// PostStepSync runs after stepping to pull dynamic bodies
-			// Step physics simulation
+			// Physics synchronization is centralized inside PhysicsEngine::Update()
+			// (PreStepSync before stepping, PostStepSync after stepping).
 			m_physicsEngine->Update(deltaTime);
-
-			// Update all transforms in the scene graph after physics changes
-			// This ensures the ECS transform system processes the physics updates
 			m_sceneGraph->UpdateAllTransforms();
 		}
 
-		// Use new transform-aware audio update
+		// Stage 3: audio
 		glm::vec3 listenerPos = m_camera->GetCameraPosition();
 		float listenerAngle = m_camera->GetCameraFacingAngle();
 		m_sceneGraph->GetRoot()->UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
@@ -736,9 +729,12 @@ void Core::SwapScene(const std::string& newSceneFile) {
 				m_stateManager->SetCurrentSceneFilePath(newSceneFile);
 			}
 
-			if (m_lightManager) {
-				m_lightManager->CollectLightsFromScene(m_sceneGraph);
-				m_lightManager->PrintLightInfo();
+			auto lightManager = m_sceneGraph->GetLightManager();
+			if (lightManager) {
+				lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
+				lightManager->InitializeShadowSystem(8, m_shadowSize);
+				lightManager->CollectLightsFromScene(m_sceneGraph);
+				lightManager->PrintLightInfo();
 			}
 
 			if (m_imguiInterface) {
@@ -747,6 +743,7 @@ void Core::SwapScene(const std::string& newSceneFile) {
 
 			if (m_inputIntegration) {
 				m_inputIntegration->SetSceneGraph(m_sceneGraph);
+				m_inputIntegration->SetLightManager(GetLightManager());
 			}
 
 			ComputeSceneBoundingBox();
@@ -910,9 +907,10 @@ std::shared_ptr<SceneNode> Core::PerformRayQuery(const RayCast::Ray& ray) {
 	}
 
 	// Check for light intersections first (lights get priority)
-	if (m_lightManager) {
-		m_lightManager->UpdateLightProxies();
-		auto lightNode = m_lightManager->FindLightAtRay(ray.origin, ray.direction);
+	auto lightManager = GetLightManager();
+	if (lightManager) {
+		lightManager->UpdateLightProxies();
+		auto lightNode = lightManager->FindLightAtRay(ray.origin, ray.direction);
 		if (lightNode) {
 			std::cout << "[Core] PRIORITY: Selected light node" << std::endl;
 			return lightNode;
@@ -1134,9 +1132,12 @@ bool Core::LoadSceneState(const std::string& filepath) {
 			if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
 		}
 
-		if (m_lightManager) {
-			m_lightManager->CollectLightsFromScene(newGraph);
-			m_lightManager->PrintLightInfo();
+		auto lightManager = newGraph->GetLightManager();
+		if (lightManager) {
+			lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
+			lightManager->InitializeShadowSystem(8, m_shadowSize);
+			lightManager->CollectLightsFromScene(newGraph);
+			lightManager->PrintLightInfo();
 		}
 
 		// Update UI reference immediately so state restoration can access it
@@ -1146,6 +1147,7 @@ bool Core::LoadSceneState(const std::string& filepath) {
 
 		if (m_inputIntegration) {
 			m_inputIntegration->SetSceneGraph(newGraph);
+			m_inputIntegration->SetLightManager(GetLightManager());
 		}
 
 		ComputeSceneBoundingBox();

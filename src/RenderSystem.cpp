@@ -15,6 +15,49 @@ RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* 
 	m_renderQueue.reserve(256);
 }
 
+const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLuint shader)
+{
+	auto it = m_shaderUniformCaches.find(shader);
+	if (it != m_shaderUniformCaches.end()) {
+		return it->second;
+	}
+
+	ShaderUniformCache uniforms{};
+	uniforms.view = glGetUniformLocation(shader, "view");
+	uniforms.projection = glGetUniformLocation(shader, "projection");
+	uniforms.model = glGetUniformLocation(shader, "model");
+	uniforms.normalMatrix = glGetUniformLocation(shader, "normalMatrix");
+	uniforms.prevView = glGetUniformLocation(shader, "prevView");
+	uniforms.prevProjection = glGetUniformLocation(shader, "prevProjection");
+	uniforms.prevModel = glGetUniformLocation(shader, "prevModel");
+	uniforms.lightSpaceMatrix = glGetUniformLocation(shader, "lightSpaceMatrix");
+	uniforms.uEnableSkinning = glGetUniformLocation(shader, "u_enableSkinning");
+	uniforms.uBoneMatrices = glGetUniformLocation(shader, "u_boneMatrices");
+	uniforms.bones = glGetUniformLocation(shader, "bones");
+
+	uniforms.textureDiffuse = glGetUniformLocation(shader, "texture_diffuse");
+	uniforms.textureNormal = glGetUniformLocation(shader, "texture_normal");
+	uniforms.textureMetallicRoughness = glGetUniformLocation(shader, "texture_metallic_roughness");
+	uniforms.textureEmissive = glGetUniformLocation(shader, "texture_emissive");
+	uniforms.textureOcclusion = glGetUniformLocation(shader, "texture_occlusion");
+
+	uniforms.hasBaseColorTexture = glGetUniformLocation(shader, "hasBaseColorTexture");
+	uniforms.hasNormalTexture = glGetUniformLocation(shader, "hasNormalTexture");
+	uniforms.hasMetallicRoughnessTexture = glGetUniformLocation(shader, "hasMetallicRoughnessTexture");
+	uniforms.hasEmissiveTexture = glGetUniformLocation(shader, "hasEmissiveTexture");
+	uniforms.hasOcclusionTexture = glGetUniformLocation(shader, "hasOcclusionTexture");
+
+	uniforms.baseColorFactor = glGetUniformLocation(shader, "baseColorFactor");
+	uniforms.metallicFactor = glGetUniformLocation(shader, "metallicFactor");
+	uniforms.roughnessFactor = glGetUniformLocation(shader, "roughnessFactor");
+	uniforms.emissiveFactor = glGetUniformLocation(shader, "emissiveFactor");
+	uniforms.occlusionStrength = glGetUniformLocation(shader, "occlusionStrength");
+	uniforms.normalScale = glGetUniformLocation(shader, "normalScale");
+
+	auto [insertedIt, _] = m_shaderUniformCaches.emplace(shader, uniforms);
+	return insertedIt->second;
+}
+
 void RenderSystem::RenderForward(const glm::mat4& view,
 	const glm::mat4& projection,
 	GLuint defaultShader)
@@ -27,10 +70,9 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 	glUseProgram(defaultShader);
 
 	// Upload view and projection matrices once
-	GLint locView = glGetUniformLocation(defaultShader, "view");
-	GLint locProj = glGetUniformLocation(defaultShader, "projection");
-	if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
-	if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(projection));
+		const auto& uniforms = GetShaderUniformCache(defaultShader);
+	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
+	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
 
 	m_visibleCount = 0;
 	m_totalCount = 0;
@@ -59,20 +101,17 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 		m_visibleCount++;
 
 		// Upload model matrix
-		GLint locModel = glGetUniformLocation(defaultShader, "model");
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+				if (uniforms.model != -1) {
+			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
 		}
 
 		// Handle skinning
 		if (renderable.isSkinned) {
-			UploadBoneMatrices(entityID, defaultShader);
-			GLint locUseSkin = glGetUniformLocation(defaultShader, "u_enableSkinning");
-			if (locUseSkin != -1) glUniform1i(locUseSkin, 1);
+			UploadBoneMatrices(entityID, uniforms);
+			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
 		}
 		else {
-			GLint locUseSkin = glGetUniformLocation(defaultShader, "u_enableSkinning");
-			if (locUseSkin != -1) glUniform1i(locUseSkin, 0);
+			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 0);
 		}
 
 		// Draw each mesh in the model
@@ -90,8 +129,8 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 				glDepthMask(GL_TRUE);
 			}
 
-			BindMaterialTextures(mesh, defaultShader);
-			UploadMaterialUniforms(mesh, defaultShader);
+			BindMaterialTextures(mesh, uniforms);
+			UploadMaterialUniforms(mesh, uniforms);
 
 			glBindVertexArray(mesh.VAO);
 			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
@@ -115,6 +154,7 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 
 	m_transformSystem->UpdateTransforms();
 	glUseProgram(geometryShader);
+	const auto& uniforms = GetShaderUniformCache(geometryShader);
 
 	m_visibleCount = 0;
 	m_totalCount = 0;
@@ -122,7 +162,11 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 	auto& renderablePool = m_componentManager->GetRenderablePool();
 	size_t poolSize = renderablePool.Size();
 
-	std::cout << "[RenderSystem] RenderGeometry - Renderable pool size: " << poolSize << std::endl;
+	if constexpr (VerboseLogging) {
+		if (m_runtimeVerboseLogging) {
+			std::cout << "[RenderSystem] RenderGeometry - Renderable pool size: " << poolSize << std::endl;
+		}
+	}
 
 	for (auto& entry : renderablePool) {
 		EntityID entityID = entry.entity;
@@ -143,20 +187,17 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 
 		m_visibleCount++;
 
-		GLint locModel = glGetUniformLocation(geometryShader, "model");
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+				if (uniforms.model != -1) {
+			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
 		}
 
 		// Handle skinning
 		if (renderable.isSkinned) {
-			UploadBoneMatrices(entityID, geometryShader);
-			GLint locUseSkin = glGetUniformLocation(geometryShader, "u_enableSkinning");
-			if (locUseSkin != -1) glUniform1i(locUseSkin, 1);
+			UploadBoneMatrices(entityID, uniforms);
+			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
 		}
 		else {
-			GLint locUseSkin = glGetUniformLocation(geometryShader, "u_enableSkinning");
-			if (locUseSkin != -1) glUniform1i(locUseSkin, 0);
+			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 0);
 		}
 
 		for (auto& mesh : renderable.model->meshes) {
@@ -164,8 +205,8 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 			if (mesh.RequiresAlphaBlending()) continue;
 
 			ApplyCullingState(mesh, renderable.cullingOverride);
-			BindMaterialTextures(mesh, geometryShader);
-			UploadMaterialUniforms(mesh, geometryShader);
+			BindMaterialTextures(mesh, uniforms);
+			UploadMaterialUniforms(mesh, uniforms);
 
 			glBindVertexArray(mesh.VAO);
 			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
@@ -180,10 +221,10 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 
 	m_transformSystem->UpdateTransforms();
 	glUseProgram(shadowShader);
+	const auto& uniforms = GetShaderUniformCache(shadowShader);
 
-	GLint locLS = glGetUniformLocation(shadowShader, "lightSpaceMatrix");
-	if (locLS != -1) {
-		glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
+	if (uniforms.lightSpaceMatrix != -1) {
+		glUniformMatrix4fv(uniforms.lightSpaceMatrix, 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
 	}
 
 	auto& renderablePool = m_componentManager->GetRenderablePool();
@@ -195,9 +236,8 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
 
-		GLint locModel = glGetUniformLocation(shadowShader, "model");
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+				if (uniforms.model != -1) {
+			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
 		}
 
 		// Draw model (positions only for shadow pass)
@@ -215,17 +255,12 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 
 	m_transformSystem->UpdateTransforms();
 	glUseProgram(velocityShader);
+	const auto& uniforms = GetShaderUniformCache(velocityShader);
 
-	// Upload current and previous view/projection
-	GLint locView = glGetUniformLocation(velocityShader, "view");
-	GLint locProj = glGetUniformLocation(velocityShader, "projection");
-	GLint locPrevView = glGetUniformLocation(velocityShader, "prevView");
-	GLint locPrevProj = glGetUniformLocation(velocityShader, "prevProjection");
-
-	if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
-	if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(projection));
-	if (locPrevView != -1) glUniformMatrix4fv(locPrevView, 1, GL_FALSE, glm::value_ptr(prevView));
-	if (locPrevProj != -1) glUniformMatrix4fv(locPrevProj, 1, GL_FALSE, glm::value_ptr(prevProjection));
+	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
+	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
+	if (uniforms.prevView != -1) glUniformMatrix4fv(uniforms.prevView, 1, GL_FALSE, glm::value_ptr(prevView));
+	if (uniforms.prevProjection != -1) glUniformMatrix4fv(uniforms.prevProjection, 1, GL_FALSE, glm::value_ptr(prevProjection));
 
 	auto& renderablePool = m_componentManager->GetRenderablePool();
 	for (auto& entry : renderablePool) {
@@ -236,15 +271,12 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
 
-		GLint locModel = glGetUniformLocation(velocityShader, "model");
-		GLint locPrevModel = glGetUniformLocation(velocityShader, "prevModel");
-
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+				if (uniforms.model != -1) {
+			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
 		}
 		// For now, use same transform for previous (TODO: store previous frame transforms)
-		if (locPrevModel != -1) {
-			glUniformMatrix4fv(locPrevModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+		if (uniforms.prevModel != -1) {
+			glUniformMatrix4fv(uniforms.prevModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
 		}
 
 		for (auto& mesh : renderable.model->meshes) {
@@ -331,14 +363,13 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 
 	// Render
 	glUseProgram(transparentShader);
+	const auto& uniforms = GetShaderUniformCache(transparentShader);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDepthMask(GL_FALSE);
 
-	GLint locView = glGetUniformLocation(transparentShader, "view");
-	GLint locProj = glGetUniformLocation(transparentShader, "projection");
-	if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
-	if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(projection));
+		if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
+	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
 
 	for (const auto& batch : m_renderQueue) {
 		auto* renderable = m_componentManager->GetRenderable(batch.entity);
@@ -346,17 +377,16 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(batch.entity);
 
-		GLint locModel = glGetUniformLocation(transparentShader, "model");
-		if (locModel != -1) {
-			glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
+				if (uniforms.model != -1) {
+			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
 		}
 
 		for (auto& mesh : renderable->model->meshes) {
 			if (!mesh.RequiresAlphaBlending()) continue;
 
 			ApplyCullingState(mesh, renderable->cullingOverride);
-			BindMaterialTextures(mesh, transparentShader);
-			UploadMaterialUniforms(mesh, transparentShader);
+			BindMaterialTextures(mesh, uniforms);
+			UploadMaterialUniforms(mesh, uniforms);
 
 			glBindVertexArray(mesh.VAO);
 			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
@@ -436,7 +466,7 @@ bool RenderSystem::IsSphereVisible(const glm::vec3& center, float radius) const
 	return true;
 }
 
-void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, GLuint shader)
+void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
 	auto bindTexture = [](GLint loc, GLuint unit, const std::shared_ptr<Texture>& tex, GLuint fallback) {
 		glActiveTexture(GL_TEXTURE0 + unit);
@@ -449,47 +479,27 @@ void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, GLuint shader
 		if (loc >= 0) glUniform1i(loc, unit);
 		};
 
-	GLint uBase = glGetUniformLocation(shader, "texture_diffuse");
-	GLint uNorm = glGetUniformLocation(shader, "texture_normal");
-	GLint uMR = glGetUniformLocation(shader, "texture_metallic_roughness");
-	GLint uEmis = glGetUniformLocation(shader, "texture_emissive");
-	GLint uAO = glGetUniformLocation(shader, "texture_occlusion");
+		bindTexture(uniforms.textureDiffuse, 0, mesh.diffuseTexture, DefaultTextures::White());
+	bindTexture(uniforms.textureNormal, 1, mesh.normalTexture, DefaultTextures::Normal());
+	bindTexture(uniforms.textureMetallicRoughness, 2, mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault());
+	bindTexture(uniforms.textureEmissive, 3, mesh.emissiveTexture, DefaultTextures::Black());
+	bindTexture(uniforms.textureOcclusion, 4, mesh.occlusionTexture, DefaultTextures::AOWhite());
 
-	bindTexture(uBase, 0, mesh.diffuseTexture, DefaultTextures::White());
-	bindTexture(uNorm, 1, mesh.normalTexture, DefaultTextures::Normal());
-	bindTexture(uMR, 2, mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault());
-	bindTexture(uEmis, 3, mesh.emissiveTexture, DefaultTextures::Black());
-	bindTexture(uAO, 4, mesh.occlusionTexture, DefaultTextures::AOWhite());
-
-	// Texture presence flags
-	GLint locHasBase = glGetUniformLocation(shader, "hasBaseColorTexture");
-	GLint locHasNorm = glGetUniformLocation(shader, "hasNormalTexture");
-	GLint locHasMR = glGetUniformLocation(shader, "hasMetallicRoughnessTexture");
-	GLint locHasEmis = glGetUniformLocation(shader, "hasEmissiveTexture");
-	GLint locHasOcc = glGetUniformLocation(shader, "hasOcclusionTexture");
-
-	if (locHasBase >= 0) glUniform1i(locHasBase, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
-	if (locHasNorm >= 0) glUniform1i(locHasNorm, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
-	if (locHasMR >= 0) glUniform1i(locHasMR, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
-	if (locHasEmis >= 0) glUniform1i(locHasEmis, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
-	if (locHasOcc >= 0) glUniform1i(locHasOcc, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasBaseColorTexture >= 0) glUniform1i(uniforms.hasBaseColorTexture, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasNormalTexture >= 0) glUniform1i(uniforms.hasNormalTexture, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasMetallicRoughnessTexture >= 0) glUniform1i(uniforms.hasMetallicRoughnessTexture, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasEmissiveTexture >= 0) glUniform1i(uniforms.hasEmissiveTexture, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasOcclusionTexture >= 0) glUniform1i(uniforms.hasOcclusionTexture, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
 }
 
-void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, GLuint shader)
+void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
-	GLint locBaseColor = glGetUniformLocation(shader, "baseColorFactor");
-	GLint locMetallic = glGetUniformLocation(shader, "metallicFactor");
-	GLint locRoughness = glGetUniformLocation(shader, "roughnessFactor");
-	GLint locEmissive = glGetUniformLocation(shader, "emissiveFactor");
-	GLint locOccStr = glGetUniformLocation(shader, "occlusionStrength");
-	GLint locNormScale = glGetUniformLocation(shader, "normalScale");
-
-	if (locBaseColor >= 0) glUniform4fv(locBaseColor, 1, glm::value_ptr(mesh.baseColorFactor));
-	if (locMetallic >= 0) glUniform1f(locMetallic, mesh.metallicFactor);
-	if (locRoughness >= 0) glUniform1f(locRoughness, mesh.roughnessFactor);
-	if (locEmissive >= 0) glUniform3fv(locEmissive, 1, glm::value_ptr(mesh.emissiveFactor));
-	if (locOccStr >= 0) glUniform1f(locOccStr, mesh.occlusionStrength);
-	if (locNormScale >= 0) glUniform1f(locNormScale, mesh.normalScale);
+	if (uniforms.baseColorFactor >= 0) glUniform4fv(uniforms.baseColorFactor, 1, glm::value_ptr(mesh.baseColorFactor));
+	if (uniforms.metallicFactor >= 0) glUniform1f(uniforms.metallicFactor, mesh.metallicFactor);
+	if (uniforms.roughnessFactor >= 0) glUniform1f(uniforms.roughnessFactor, mesh.roughnessFactor);
+	if (uniforms.emissiveFactor >= 0) glUniform3fv(uniforms.emissiveFactor, 1, glm::value_ptr(mesh.emissiveFactor));
+	if (uniforms.occlusionStrength >= 0) glUniform1f(uniforms.occlusionStrength, mesh.occlusionStrength);
+	if (uniforms.normalScale >= 0) glUniform1f(uniforms.normalScale, mesh.normalScale);
 }
 
 void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride override)
@@ -546,7 +556,7 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 	}
 }
 
-void RenderSystem::UploadBoneMatrices(EntityID entity, GLuint shader)
+void RenderSystem::UploadBoneMatrices(EntityID entity, const ShaderUniformCache& uniforms)
 {
 	auto* renderable = m_componentManager->GetRenderable(entity);
 	if (!renderable || !renderable->isSkinned) return;
@@ -600,10 +610,7 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, GLuint shader)
 	}
 
 	// Upload to shader
-	GLint locBones = glGetUniformLocation(shader, "u_boneMatrices");
-	if (locBones == -1) {
-		locBones = glGetUniformLocation(shader, "bones");
-	}
+	GLint locBones = uniforms.uBoneMatrices != -1 ? uniforms.uBoneMatrices : uniforms.bones;
 
 	if (locBones != -1) {
 		size_t uploadCount = std::min(boneMatrices.size(), size_t(128));
