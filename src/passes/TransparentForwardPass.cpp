@@ -120,11 +120,11 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 		m_transparentCandidates.push_back(std::move(candidate));
 	}
 
-	if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] Found " << transparentNodes.size()
+	if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] Found " << m_transparentCandidates.size()
 		<< " nodes with transparent meshes" << std::endl; }
 
 	// Early exit if no transparent objects to render
-	if (transparentNodes.empty()) {
+	if (m_transparentCandidates.empty()) {
 		if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] No transparent objects found - skipping pass" << std::endl; }
 		return;
 	}
@@ -239,35 +239,21 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 
 	// Render transparent objects with proper depth-aware blending
 	int renderedCount = 0;
-	for (const auto& node : transparentNodes) {
-		if (node && node->GetModel()) {
-			if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] Rendering: " << node->GetName() << std::endl; }
-
-			// Upload model matrix
-			glm::mat4 modelMatrix = node->GetTransform();
-			if (m_uniforms.model >= 0) glUniformMatrix4fv(m_uniforms.model,
-				1, GL_FALSE, glm::value_ptr(modelMatrix));
-
-			// Calculate and upload normal matrix for correct lighting
-			glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
-			if (m_uniforms.normalMatrix >= 0) glUniformMatrix3fv(m_uniforms.normalMatrix,
-				1, GL_FALSE, glm::value_ptr(normalMatrix));
-
-			// Render the model - material uniforms including transmission and IOR
-			// are set per-mesh in Scene::Draw() via SceneNode
-			auto sceneModel = node->GetModel();
-			if (sceneModel) {
-				sceneModel->Draw();
-				renderedCount++;
-			}
+	for (const auto& candidate : m_transparentCandidates) {
+		if (!candidate.model) {
+			continue;
 		}
 
-		glUniformMatrix4fv(glGetUniformLocation(m_shader, "model"),
-			1, GL_FALSE, glm::value_ptr(candidate.worldTransform));
+		if (m_uniforms.model >= 0) {
+			glUniformMatrix4fv(m_uniforms.model,
+				1, GL_FALSE, glm::value_ptr(candidate.worldTransform));
+		}
 
 		const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(candidate.worldTransform)));
-		glUniformMatrix3fv(glGetUniformLocation(m_shader, "normalMatrix"),
-			1, GL_FALSE, glm::value_ptr(normalMatrix));
+		if (m_uniforms.normalMatrix >= 0) {
+			glUniformMatrix3fv(m_uniforms.normalMatrix,
+				1, GL_FALSE, glm::value_ptr(normalMatrix));
+		}
 
 		candidate.model->Draw();
 		renderedCount++;

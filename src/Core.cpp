@@ -458,6 +458,8 @@ void Core::Shutdown() {
 }
 
 void Core::Update(float deltaTime) {
+	PerformanceRecorder::ECSMetrics ecsMetrics{};
+
 	// Update input system
 	if (m_inputIntegration) {
 		m_inputIntegration->Update(deltaTime);
@@ -487,17 +489,29 @@ void Core::Update(float deltaTime) {
 	// from the frame loop when equivalent ECS systems are active.
 	if (m_sceneGraph && m_sceneGraph->IsActive()) {
 		// Stage 1: ECS animation/transform
+		auto animationStart = std::chrono::high_resolution_clock::now();
 		m_sceneGraph->UpdateAnimations(deltaTime);
+		auto animationEnd = std::chrono::high_resolution_clock::now();
+		ecsMetrics.animationSystemMs += std::chrono::duration<float, std::milli>(animationEnd - animationStart).count();
+
+		auto transformSyncStart = std::chrono::high_resolution_clock::now();
 		m_sceneGraph->UpdateAllTransforms();
+		auto transformSyncEnd = std::chrono::high_resolution_clock::now();
+		ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformSyncEnd - transformSyncStart).count();
 
 		// Stage 2: physics
 		if (m_physicsEngine && m_physicsEnabledForScene) {
 			// Physics synchronization is centralized inside PhysicsEngine::Update()
 			// (PreStepSync before stepping, PostStepSync after stepping).
+			auto physicsStart = std::chrono::high_resolution_clock::now();
 			m_physicsEngine->Update(deltaTime);
+			auto physicsEnd = std::chrono::high_resolution_clock::now();
+			ecsMetrics.physicsStepMs += std::chrono::duration<float, std::milli>(physicsEnd - physicsStart).count();
+
+			auto postPhysicsTransformSyncStart = std::chrono::high_resolution_clock::now();
 			m_sceneGraph->UpdateAllTransforms();
-			auto transformSyncEnd = std::chrono::high_resolution_clock::now();
-			ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformSyncEnd - transformSyncStart).count();
+			auto postPhysicsTransformSyncEnd = std::chrono::high_resolution_clock::now();
+			ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(postPhysicsTransformSyncEnd - postPhysicsTransformSyncStart).count();
 		}
 
 		// Stage 3: audio

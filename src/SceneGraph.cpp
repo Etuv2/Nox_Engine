@@ -13,6 +13,7 @@ SceneGraph::SceneGraph()
 	  m_animationSystem(&m_componentManager, &m_transformSystem),
 	  m_hierarchySystem(&m_componentManager, &m_transformSystem)
 {
+	m_lightManager = std::make_shared<LightManager>();
 	m_root = SceneNode::CreateWithECS(&m_componentManager, &m_transformSystem, "Root", NodeType::NODE);
 	if (!m_root) {
 		m_root = std::make_shared<SceneNode>(&m_componentManager, &m_transformSystem);

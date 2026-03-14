@@ -1,5 +1,6 @@
 #include "SceneNode.h"
 #include "Scene.h"
+#include "ComponentManager.h"
 #include "RigidBody.h"
 #include "AudioNode.h"
 #define GLM_ENABLE_EXPERIMENTAL
@@ -599,9 +600,8 @@ void SceneNode::UpdateAnimationWithTransform(float deltaTime, const glm::mat4& p
 	// Delegate to AnimationSystem if we have an ECS entity
 	if (ComponentManager* currentManager = RequireComponentManager("UpdateAnimationWithTransform")) {
 		if (AnimationComponent* animComp = currentManager->GetAnimation(m_entityID)) {
-				if (animComp->isPlaying && !animComp->isPaused) {
-					SyncFromECS();
-				}
+			if (animComp->isPlaying && !animComp->isPaused) {
+				SyncFromECS();
 			}
 		}
 	}

@@ -4,6 +4,7 @@
 #include "../ComponentTypes.h"
 #include <glm/glm.hpp>
 #include <vector>
+#include <memory>
 
 class Scene;
 
@@ -41,8 +42,16 @@ private:
         GLint multiLightShadowArray = -1;
     };
 
+    struct TransparentCandidate {
+        EntityID entity = INVALID_ENTITY;
+        std::shared_ptr<Scene> model;
+        glm::mat4 worldTransform = glm::mat4(1.0f);
+        float distanceToCamera = 0.0f;
+    };
+
     GLuint m_shader = 0; // Forward PBR shader for transparent materials
     UniformLocations m_uniforms;
+    std::vector<TransparentCandidate> m_transparentCandidates;
 
     static constexpr bool VerboseLogging = false;
     bool m_runtimeVerboseLogging = false;
