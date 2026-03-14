@@ -13,23 +13,16 @@ SceneGraph::SceneGraph()
 	  m_animationSystem(&m_componentManager, &m_transformSystem),
 	  m_hierarchySystem(&m_componentManager, &m_transformSystem)
 {
-	m_root = std::make_shared<SceneNode>();
+	m_root = SceneNode::CreateWithECS(&m_componentManager, &m_transformSystem, "Root", NodeType::NODE);
+	if (!m_root) {
+		m_root = std::make_shared<SceneNode>(&m_componentManager, &m_transformSystem);
+	}
 	m_root->SetTransform(glm::mat4(1.0f));
 	m_active = true;
-
-	// Initialize SceneNode static references to use this graph's component system
-	SceneNode::SetGlobalComponentManager(&m_componentManager);
-	SceneNode::SetGlobalTransformSystem(&m_transformSystem);
-	SceneNode::SetGlobalSceneGraph(this); // Register for BVH dirty tracking
 }
 
 SceneGraph::~SceneGraph()
 {
-	// Unregister from SceneNode static tracking
-	if (SceneNode::GetGlobalSceneGraph() == this) {
-		SceneNode::SetGlobalSceneGraph(nullptr);
-	}
-	
 	Shutdown();
 }
 
