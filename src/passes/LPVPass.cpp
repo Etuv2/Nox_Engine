@@ -320,7 +320,7 @@ void LPVPass::RenderRSM(RenderContext& /*ctx*/,
     GLint loc = glGetUniformLocation(m_rsmShader, "u_lightViewProj");
     if (loc >= 0) glUniformMatrix4fv(loc, 1, GL_FALSE, &lightViewProj[0][0]);
 
-    sceneGraph->DrawGeometry(m_rsmShader);
+    sceneGraph->RenderGeometry(m_rsmShader);
 
     FrameBuffer::Unbind();
 }
@@ -411,7 +411,7 @@ void LPVPass::VoxelizeGeometry(const std::shared_ptr<SceneGraph>& sceneGraph) {
     glUniform1f(glGetUniformLocation(m_voxelizeShader, "u_voxelSize"), config.voxelSize);
     glUniform1i(glGetUniformLocation(m_voxelizeShader, "u_gridResolution"), config.gridResolution);
 
-    sceneGraph->DrawGeometry(m_voxelizeShader);
+    sceneGraph->RenderGeometry(m_voxelizeShader);
 
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);

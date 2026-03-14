@@ -7,6 +7,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <cstdint>
 
 class Scene;
 class MeshComponent;
@@ -59,6 +60,7 @@ public:
     // Culling
     void SetFrustumPlanes(const glm::mat4& viewProjection);
     bool IsSphereVisible(const glm::vec3& center, float radius) const;
+    bool HasValidFrustum() const { return m_frustumValid; }
 
     // Statistics
     size_t GetVisibleEntityCount() const { return m_visibleCount; }
@@ -85,10 +87,48 @@ private:
     size_t m_totalCount = 0;
 
     // Internal helpers
-    void BindMaterialTextures(const MeshComponent& mesh, GLuint shader);
-    void UploadMaterialUniforms(const MeshComponent& mesh, GLuint shader);
+
+    struct ShaderUniformCache {
+        GLint view = -1;
+        GLint projection = -1;
+        GLint model = -1;
+        GLint normalMatrix = -1;
+        GLint prevView = -1;
+        GLint prevProjection = -1;
+        GLint prevModel = -1;
+        GLint lightSpaceMatrix = -1;
+        GLint uEnableSkinning = -1;
+        GLint uBoneMatrices = -1;
+        GLint bones = -1;
+
+        GLint textureDiffuse = -1;
+        GLint textureNormal = -1;
+        GLint textureMetallicRoughness = -1;
+        GLint textureEmissive = -1;
+        GLint textureOcclusion = -1;
+
+        GLint hasBaseColorTexture = -1;
+        GLint hasNormalTexture = -1;
+        GLint hasMetallicRoughnessTexture = -1;
+        GLint hasEmissiveTexture = -1;
+        GLint hasOcclusionTexture = -1;
+
+        GLint baseColorFactor = -1;
+        GLint metallicFactor = -1;
+        GLint roughnessFactor = -1;
+        GLint emissiveFactor = -1;
+        GLint occlusionStrength = -1;
+        GLint normalScale = -1;
+    };
+
+    const ShaderUniformCache& GetShaderUniformCache(GLuint shader);
+
+    static constexpr bool VerboseLogging = false;
+    bool m_runtimeVerboseLogging = false;
+    void BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
+    void UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
     void ApplyCullingState(const MeshComponent& mesh, CullingOverride override);
-    void UploadBoneMatrices(EntityID entity, GLuint shader);
+    void UploadBoneMatrices(EntityID entity, const ShaderUniformCache& uniforms);
     
     // Batch processing helpers
     struct RenderBatch {
@@ -108,6 +148,7 @@ private:
         std::vector<EntityID> entities;
     };
     std::unordered_map<uint64_t, InstanceGroup> m_instanceGroups;
+    std::unordered_map<GLuint, ShaderUniformCache> m_shaderUniformCaches;
     
     void BuildInstanceGroups();
     void RenderInstancedGroup(const InstanceGroup& group, GLuint shader);

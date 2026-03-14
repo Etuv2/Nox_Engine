@@ -253,7 +253,7 @@ void RTPass::Execute(RenderContext& ctx,
 		runSVGFTemporal(ctx, camera);
 		runSVGFVariance(ctx);
 		
-		// Run multiple à-trous iterations for progressive filtering
+		// Run multiple Ã -trous iterations for progressive filtering
 		for (int i = 0; i < ctx.svgfAtrousIterations; i++) {
 			runSVGFAtrous(ctx, i);
 		}
@@ -322,7 +322,6 @@ void RTPass::runRayTracing(RenderContext& ctx,
 
 	// Upload light data from LightManager
 	if (ctx.lightManager) {
-		ctx.lightManager->UpdateGPUBuffers();
 		auto lights = ctx.lightManager->GetEnabledLights();
 		m_lightBuffers.lightCount = lights.size();
 		// Use LightManager SSBO directly; no assignment altering ownership
