@@ -68,10 +68,6 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 		EntityID rootEntityID = INVALID_ENTITY;
 		auto root = sceneGraph->GetRoot();
 		if (root) {
-			// Create ECS entity for root if needed
-			if (root->GetEntityID() == INVALID_ENTITY) {
-				root->CreateECSEntity("Root");
-			}
 			rootEntityID = root->GetEntityID();
 		}
 
@@ -733,6 +729,9 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJso
 }
 
 std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
+	ComponentManager* componentManager = m_currentSceneGraph ? m_currentSceneGraph->GetComponentManager() : nullptr;
+	TransformSystem* transformSystem = m_currentSceneGraph ? m_currentSceneGraph->GetTransformSystem() : nullptr;
+
 	// Determine node type.
 	std::string typeStr = nodeJson.value("type", "model");
 	NodeType type = GetNodeType(typeStr);
@@ -744,27 +743,29 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		switch (type) {
 		case NodeType::AUDIO:
 			node = std::make_shared<AudioNode>();
+			node->SetECSContext(componentManager, transformSystem);
 			node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
 			break;
 		case NodeType::LIGHT:
 			node = std::make_shared<LightNode>(nullptr); // Will be set based on light properties
+			node->SetECSContext(componentManager, transformSystem);
 			node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
 			break;
 		case NodeType::LPV_VOLUME:  // Handle LPV volume nodes
-			node = std::make_shared<SceneNode>();
+			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			node->SetNodeType(SceneNode::LPV_VOLUME);
 			std::cout << "[SceneLoader] Creating LPV Volume node" << std::endl;
 			break;
 		case NodeType::SKELETAL:
-			node = std::make_shared<SceneNode>();
+			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			node->SetNodeType(SceneNode::SKELETAL);
 			break;
 		case NodeType::MODEL:
-			node = std::make_shared<SceneNode>();
+			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
 			break;
 		default:
-			node = std::make_shared<SceneNode>();
+			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			break;
 		}
 

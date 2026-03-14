@@ -65,7 +65,7 @@ public:
 
     // CONSTRUCTORS
     SceneNode();
-    SceneNode(ComponentManager* manager, TransformSystem* transformSystem, EntityID entityID);
+    SceneNode(ComponentManager* manager, TransformSystem* transformSystem, EntityID entityID = INVALID_ENTITY);
     virtual ~SceneNode() = default;
 
     // HIERARCHY (PUBLIC)
@@ -153,13 +153,7 @@ public:
     void UpdateAnimationWithTransform(float deltaTime, const glm::mat4& parentWorldTransform);
     
     // ECS INTEGRATION
-    static void SetGlobalComponentManager(ComponentManager* manager);
-    static void SetGlobalTransformSystem(TransformSystem* transformSystem);
-    static void SetGlobalSceneGraph(class SceneGraph* sceneGraph);
-    static class SceneGraph* GetGlobalSceneGraph() { return s_globalSceneGraph; }
-    static ComponentManager* GetGlobalComponentManager() { return s_globalComponentManager; }
-    static TransformSystem* GetGlobalTransformSystem() { return s_globalTransformSystem; }
-    
+    void SetECSContext(ComponentManager* manager, TransformSystem* transformSystem);
     EntityID GetEntityID() const { return m_entityID; }
     void SetEntityID(EntityID id) { m_entityID = id; }
     bool HasECSEntity() const { return m_entityID != INVALID_ENTITY && m_componentManager != nullptr; }
@@ -214,8 +208,5 @@ private:
     ComponentManager* m_componentManager = nullptr;
     TransformSystem* m_transformSystem = nullptr;
     
-    // Static global references
-    static ComponentManager* s_globalComponentManager;
-    static TransformSystem* s_globalTransformSystem;
-    static class SceneGraph* s_globalSceneGraph;
+    ComponentManager* RequireComponentManager(const char* caller) const;
 };
