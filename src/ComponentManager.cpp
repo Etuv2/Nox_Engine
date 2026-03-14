@@ -2,6 +2,35 @@
 #include <iostream>
 #include <algorithm>
 
+#ifndef NDEBUG
+namespace {
+void RunColliderCleanupRegressionCheck(ComponentManager& componentManager) {
+	EntityID destroyEntity = componentManager.CreateEntity("__debug_collider_destroy");
+	componentManager.AddCollider(destroyEntity);
+
+	auto* destroyMetadata = componentManager.GetMetadata(destroyEntity);
+	assert(destroyMetadata && destroyMetadata->HasComponent(ComponentType::COLLIDER));
+	assert(componentManager.GetColliderPool().Size() == 1);
+
+	componentManager.DestroyEntity(destroyEntity);
+	assert(componentManager.GetColliderPool().Size() == 0);
+	assert(!componentManager.IsEntityValid(destroyEntity));
+
+	EntityID clearEntity = componentManager.CreateEntity("__debug_collider_clear");
+	componentManager.AddCollider(clearEntity);
+
+	auto* clearMetadata = componentManager.GetMetadata(clearEntity);
+	assert(clearMetadata && clearMetadata->HasComponent(ComponentType::COLLIDER));
+	assert(componentManager.GetColliderPool().Size() == 1);
+
+	componentManager.Clear();
+	assert(componentManager.GetColliderPool().Size() == 0);
+	assert(componentManager.GetActiveEntityCount() == 0);
+	assert(componentManager.GetMetadata(clearEntity) == nullptr);
+}
+}
+#endif
+
 ComponentManager::ComponentManager() {
 	// Pre-allocate for performance
 	m_metadata.reserve(1024);
@@ -64,6 +93,7 @@ void ComponentManager::DestroyEntity(EntityID entity) {
 	if (HasCamera(entity)) RemoveCamera(entity);
 	if (HasAnimation(entity)) RemoveAnimation(entity);
 	if (HasPhysics(entity)) RemovePhysics(entity);
+	if (HasCollider(entity)) RemoveCollider(entity);
 	if (HasAudio(entity)) RemoveAudio(entity);
 	if (HasLPVVolume(entity)) RemoveLPVVolume(entity);
 
@@ -514,6 +544,7 @@ void ComponentManager::PrintStatistics() const {
 	std::cout << "Camera components: " << m_cameras.Size() << std::endl;
 	std::cout << "Animation components: " << m_animations.Size() << std::endl;
 	std::cout << "Physics components: " << m_physics.Size() << std::endl;
+	std::cout << "Collider components: " << m_colliders.Size() << std::endl;
 	std::cout << "Audio components: " << m_audio.Size() << std::endl;
 	std::cout << "LPV Volume components: " << m_lpvVolumes.Size() << std::endl;
 	std::cout << "Parents with children: " << m_childrenByParent.size() << std::endl;
@@ -526,6 +557,7 @@ void ComponentManager::Clear() {
 	m_cameras.Clear();
 	m_animations.Clear();
 	m_physics.Clear();
+	m_colliders.Clear();
 	m_audio.Clear();
 	m_lpvVolumes.Clear();
 	m_metadata.clear();
