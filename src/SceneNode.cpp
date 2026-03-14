@@ -1,7 +1,6 @@
 #include "SceneNode.h"
 #include "Scene.h"
 #include "RigidBody.h"
-#include "SceneGraph.h"
 #include "AudioNode.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
@@ -12,39 +11,34 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
-
-// Static member initialization
-ComponentManager* SceneNode::s_globalComponentManager = nullptr;
-TransformSystem* SceneNode::s_globalTransformSystem = nullptr;
-SceneGraph* SceneNode::s_globalSceneGraph = nullptr;
-
-// STATIC METHODS
-
-void SceneNode::SetGlobalComponentManager(ComponentManager* manager) {
-	s_globalComponentManager = manager;
-}
-
-void SceneNode::SetGlobalTransformSystem(TransformSystem* transformSystem) {
-	s_globalTransformSystem = transformSystem;
-}
-
-void SceneNode::SetGlobalSceneGraph(SceneGraph* sceneGraph) {
-	s_globalSceneGraph = sceneGraph;
-}
+#include <cassert>
 
 // CONSTRUCTORS
 
-SceneNode::SceneNode()
-	: m_componentManager(s_globalComponentManager)
-	, m_transformSystem(s_globalTransformSystem)
-{
-}
+SceneNode::SceneNode() = default;
 
 SceneNode::SceneNode(ComponentManager* manager, TransformSystem* transformSystem, EntityID entityID)
 	: m_entityID(entityID)
 	, m_componentManager(manager)
 	, m_transformSystem(transformSystem)
 {
+}
+
+void SceneNode::SetECSContext(ComponentManager* manager, TransformSystem* transformSystem) {
+	m_componentManager = manager;
+	m_transformSystem = transformSystem;
+}
+
+ComponentManager* SceneNode::RequireComponentManager(const char* caller) const {
+	if (m_entityID == INVALID_ENTITY) {
+		return nullptr;
+	}
+	assert(m_componentManager && "SceneNode ECS context not wired: ComponentManager is null");
+	if (!m_componentManager) {
+		std::cerr << "[SceneNode] " << caller << " requires ECS context but ComponentManager is null" << std::endl;
+		return nullptr;
+	}
+	return m_componentManager;
 }
 
 // LPV VOLUME DATA
@@ -70,6 +64,12 @@ void SceneNode::SetModel(const std::shared_ptr<Scene>& model) {
 
 void SceneNode::AddChild(const std::shared_ptr<SceneNode>& child) {
 	child->parentNode = shared_from_this();
+	if (!child->m_componentManager) {
+		child->m_componentManager = m_componentManager;
+	}
+	if (!child->m_transformSystem) {
+		child->m_transformSystem = m_transformSystem;
+	}
 	children.push_back(child);
 	child->InvalidateTransformCache();
 }
@@ -123,21 +123,15 @@ glm::mat4 SceneNode::GetWorldPosition4x4() const {
 
 glm::mat4 SceneNode::GetGlobalTransform(const glm::mat4& parentTransform) const {
 	// Prefer ECS cached transform if available
-	// Use current ComponentManager from SceneGraph, not cached pointer (which may be stale after scene swap)
-	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
-		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
-		if (currentManager) {
-			const TransformComponent* comp = currentManager->GetTransform(m_entityID);
-			if (comp && !comp->isDirty) {
+	if (ComponentManager* currentManager = RequireComponentManager("GetGlobalTransform")) {
+		if (const TransformComponent* comp = currentManager->GetTransform(m_entityID)) {
+			if (!comp->isDirty) {
 				return comp->worldTransform;
 			}
 		}
 	}
-	
+
 	// Compute local transform with animation
-	// For skeletal animation: animatedTransform contains the COMPLETE local transform
-	// (either from animation data or from the base node transform)
-	// We use it directly when set (non-identity)
 	glm::mat4 localTransform = (animatedTransform != glm::mat4(1.0f)) ? animatedTransform : transform;
 
 	m_cachedWorldTransform = parentTransform * localTransform;
@@ -385,15 +379,10 @@ void SceneNode::SyncPhysicsFromTransform() {
 void SceneNode::InvalidateTransformCache() {
 	m_worldTransformValid = false;
 	m_transformCacheDirty = true;
-	
-	// Also mark ECS transform as dirty
-	// This ensures the ECS TransformSystem processes the change
-	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
-		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
-		if (currentManager) {
-			if (TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
-				ecsTransform->isDirty = true;
-			}
+
+	if (ComponentManager* currentManager = RequireComponentManager("InvalidateTransformCache")) {
+		if (TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
+			ecsTransform->isDirty = true;
 		}
 	}
 }
@@ -555,7 +544,7 @@ void SceneNode::BuildSkeleton(const Scene& model) {
 		const auto& nodeInfo = model.nodes[jointNodeIndex];
 		
 		// Create a new SceneNode for this bone
-		auto boneNode = std::make_shared<SceneNode>();
+		auto boneNode = std::make_shared<SceneNode>(m_componentManager, m_transformSystem);
 		boneNode->nodeIndex = jointNodeIndex;
 		boneNode->transform = nodeInfo.localTransform;
 		boneNode->SetNodeType(SKELETAL);
@@ -608,12 +597,8 @@ void SceneNode::UpdateAnimation(float deltaTime) {
 
 void SceneNode::UpdateAnimationWithTransform(float deltaTime, const glm::mat4& parentWorldTransform) {
 	// Delegate to AnimationSystem if we have an ECS entity
-	if (m_entityID != INVALID_ENTITY && s_globalSceneGraph) {
-		// Use the current scene graph's component manager, not the cached one
-		// (which may point to a destroyed ComponentManager after scene swap)
-		ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
-		if (currentManager) {
-			if (AnimationComponent* animComp = currentManager->GetAnimation(m_entityID)) {
+	if (ComponentManager* currentManager = RequireComponentManager("UpdateAnimationWithTransform")) {
+		if (AnimationComponent* animComp = currentManager->GetAnimation(m_entityID)) {
 				if (animComp->isPlaying && !animComp->isPaused) {
 					SyncFromECS();
 				}
@@ -638,9 +623,7 @@ void SceneNode::UpdateAnimationWithTransform(float deltaTime, const glm::mat4& p
 // ECS BRIDGE
 
 void SceneNode::SyncToECS() {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return;
-	
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("SyncToECS");
 	if (!currentManager) return;
 	
 	TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID);
@@ -659,9 +642,7 @@ void SceneNode::SyncToECS() {
 }
 
 void SceneNode::SyncFromECS() {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return;
-	
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("SyncFromECS");
 	if (!currentManager) return;
 	
 	const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID);
@@ -676,43 +657,37 @@ void SceneNode::SyncFromECS() {
 // ECS COMPONENT ACCESS
 
 TransformComponent* SceneNode::GetTransformComponent() {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return nullptr;
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("GetTransformComponent");
 	if (!currentManager) return nullptr;
 	return currentManager->GetTransform(m_entityID);
 }
 
 const TransformComponent* SceneNode::GetTransformComponent() const {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return nullptr;
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("GetTransformComponent const");
 	if (!currentManager) return nullptr;
 	return currentManager->GetTransform(m_entityID);
 }
 
 RenderableComponent* SceneNode::GetRenderableComponent() {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return nullptr;
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("GetRenderableComponent");
 	if (!currentManager) return nullptr;
 	return currentManager->GetRenderable(m_entityID);
 }
 
 const RenderableComponent* SceneNode::GetRenderableComponent() const {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return nullptr;
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("GetRenderableComponent const");
 	if (!currentManager) return nullptr;
 	return currentManager->GetRenderable(m_entityID);
 }
 
 AnimationComponent* SceneNode::GetAnimationComponent() {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return nullptr;
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("GetAnimationComponent");
 	if (!currentManager) return nullptr;
 	return currentManager->GetAnimation(m_entityID);
 }
 
 const AnimationComponent* SceneNode::GetAnimationComponent() const {
-	if (m_entityID == INVALID_ENTITY || !s_globalSceneGraph) return nullptr;
-	ComponentManager* currentManager = s_globalSceneGraph->GetComponentManager();
+	ComponentManager* currentManager = RequireComponentManager("GetAnimationComponent const");
 	if (!currentManager) return nullptr;
 	return currentManager->GetAnimation(m_entityID);
 }
@@ -720,13 +695,6 @@ const AnimationComponent* SceneNode::GetAnimationComponent() const {
 // ECS ENTITY CREATION
 
 EntityID SceneNode::CreateECSEntity(const std::string& name) {
-	if (!m_componentManager) {
-		m_componentManager = s_globalComponentManager;
-	}
-	if (!m_transformSystem) {
-		m_transformSystem = s_globalTransformSystem;
-	}
-	
 	if (!m_componentManager) {
 		std::cerr << "[SceneNode] Cannot create ECS entity: no ComponentManager" << std::endl;
 		return INVALID_ENTITY;

@@ -41,6 +41,42 @@ private:
     GLuint m_velocityShader = 0;
     GLuint m_resolveShader = 0;
 
+
+    struct VelocityUniforms {
+        GLint view = -1;
+        GLint projection = -1;
+        GLint prevView = -1;
+        GLint prevProjection = -1;
+        GLint jitter = -1;
+        GLint prevJitter = -1;
+        GLint screenSize = -1;
+    };
+
+    struct ResolveUniforms {
+        GLint currentFrame = -1;
+        GLint historyFrame = -1;
+        GLint velocityBuffer = -1;
+        GLint depthBuffer = -1;
+        GLint gNormal = -1;
+        GLint blendFactor = -1;
+        GLint varianceThreshold = -1;
+        GLint lumaWeight = -1;
+        GLint useYCoCg = -1;
+        GLint historyValid = -1;
+        GLint screenSize = -1;
+        GLint jitter = -1;
+        GLint depthThreshold = -1;
+        GLint normalThreshold = -1;
+        GLint edgeThreshold = -1;
+        GLint reactiveMaskStrength = -1;
+    };
+
+    VelocityUniforms m_velocityUniforms;
+    ResolveUniforms m_resolveUniforms;
+
+    static constexpr bool VerboseLogging = false;
+    bool m_runtimeVerboseLogging = false;
+
     std::unique_ptr<FrameBuffer> m_velocityFBO;
     std::unique_ptr<FrameBuffer> m_currentFBO;
     std::unique_ptr<FrameBuffer> m_historyFBO;

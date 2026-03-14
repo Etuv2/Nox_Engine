@@ -266,24 +266,16 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		return;
 	}
 
-	// Initialize light manager if needed
-	if (!sceneGraph->GetLightManager()) {
-		if constexpr (VerboseLogging) {
-			std::cout << "[ModularRenderer] Initializing LightManager..." << std::endl;
-		}
-		auto lightManager = std::make_shared<LightManager>();
-		lightManager->InitializeShadowSystem(12, 512);
-		lightManager->CollectLightsFromScene(sceneGraph);
-		sceneGraph->SetLightManager(lightManager);
-	}
-
-	// Update context with light manager
+	// Use scene-owned light manager (required by initialization flow)
 	m_context.lightManager = sceneGraph->GetLightManager();
-
-	// Update lights
-	if (m_context.lightManager) {
-		m_context.lightManager->UpdateLights(0.016f);
+	if (!m_context.lightManager) {
+		std::cerr << "[ModularRenderer] ERROR: SceneGraph has no LightManager!\n";
+		return;
 	}
+
+	// Deterministic per-frame light update location
+	m_context.lightManager->UpdateLights(0.016f);
+	m_context.lightManager->UpdateGPUBuffers();
 
 	// Update context with current frame parameters
 	UpdateContext(camera, exposure, gamma, enableShadows, shadowBias, envColor);

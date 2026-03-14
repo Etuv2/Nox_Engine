@@ -69,8 +69,6 @@ struct alignas(16) TransformComponent {
 	glm::mat4 animatedTransform;   // Animation offset transform
 
 	EntityID parentID;     // Parent entity ID (INVALID_ENTITY if root)
-	uint32_t firstChildIndex;      // Index into children array
-	uint16_t childCount;           // Number of children
 
 	bool isDirty : 1;              // World transform needs recalculation
 	bool hasAnimation : 1;       // Has animated transform
@@ -81,8 +79,6 @@ struct alignas(16) TransformComponent {
 		, worldTransform(1.0f)
 		, animatedTransform(1.0f)
 		, parentID(INVALID_ENTITY)
-		, firstChildIndex(0)
-		, childCount(0)
 		, isDirty(true)
 		, hasAnimation(false)
 		, padding(0)

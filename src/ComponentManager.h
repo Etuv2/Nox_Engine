@@ -203,7 +203,8 @@ public:
 	// Hierarchy helpers (stored in transform component)
 	void SetParent(EntityID child, EntityID parent);
 	EntityID GetParent(EntityID entity) const;
-	std::vector<EntityID> GetChildren(EntityID entity) const;
+	const std::vector<EntityID>& GetChildren(EntityID entity) const;
+	bool ValidateHierarchyIntegrity() const;
 
 	// Bulk operations for iteration
 	ComponentPool<TransformComponent>& GetTransformPool() { return m_transforms; }
@@ -251,6 +252,6 @@ private:
 	// Name to entity lookup
 	std::unordered_map<std::string, EntityID> m_nameToEntity;
 
-	// Children storage (flat array)
-	std::vector<EntityID> m_childrenStorage;
+	// Parent -> children adjacency list
+	std::unordered_map<EntityID, std::vector<EntityID>> m_childrenByParent;
 };
