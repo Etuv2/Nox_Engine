@@ -130,13 +130,13 @@ void SceneGraph::UpdateLightManager() {
 	}
 }
 
-//Forward pass draw - now uses RenderSystem
+// Legacy compatibility shim: delegates to ECS RenderSystem (tooling/import use only)
 void SceneGraph::Draw(
 	const glm::mat4& view,
 	const glm::mat4& projection,
 	GLuint shaderProgram)
 {
-	// Use ECS-based rendering
+	// Delegate to authoritative ECS API
 	m_renderSystem.RenderForward(view, projection, shaderProgram);
 }
 
@@ -144,13 +144,13 @@ void SceneGraph::DrawCascade(
 	const glm::mat4& lightSpace,
 	GLuint shadowShader)
 {
-	// Use ECS-based shadow rendering
+	// Delegate to authoritative ECS API
 	m_renderSystem.RenderShadowCascade(lightSpace, shadowShader);
 }
 
 void SceneGraph::CollectRenderableObjects(MDIBatch& batch)
 {
-	// Use ECS-based collection
+	// Delegate to authoritative ECS API
 	m_renderSystem.CollectRenderables(batch);
 }
 
@@ -163,14 +163,14 @@ size_t SceneGraph::EstimateRenderableObjectCount() const
 //Deferred geometry pass
 void SceneGraph::DrawGeometry(GLuint geometryShader)
 {
-	// Use ECS-based geometry pass
+	// Delegate to authoritative ECS API
 	m_renderSystem.RenderGeometry(geometryShader);
 }
 
 //Motion vector pass for TAA
 void SceneGraph::DrawVelocity(GLuint velocityShader)
 {
-	// Use ECS-based velocity pass (with identity matrices for legacy compatibility)
+	// Delegate to authoritative ECS API with identity matrices for legacy compatibility
 	m_renderSystem.RenderVelocity(glm::mat4(1.0f), glm::mat4(1.0f), glm::mat4(1.0f), glm::mat4(1.0f), velocityShader);
 }
 
@@ -290,27 +290,6 @@ void SceneGraph::Shutdown() {
 
 	// Clear component system
 	m_componentManager.Clear();
-}
-
-// Flat iteration rendering methods for cache-friendly performance
-void SceneGraph::DrawFlat(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram) {
-	// Delegate to RenderSystem
-	m_renderSystem.RenderForward(view, projection, shaderProgram);
-}
-
-void SceneGraph::DrawCascadeFlat(const glm::mat4& lightSpace, GLuint shadowShader) {
-	// Delegate to RenderSystem
-	m_renderSystem.RenderShadowCascade(lightSpace, shadowShader);
-}
-
-void SceneGraph::DrawGeometryFlat(GLuint geometryShader) {
-	// Delegate to RenderSystem
-	m_renderSystem.RenderGeometry(geometryShader);
-}
-
-void SceneGraph::CollectRenderableObjectsFlat(MDIBatch& batch) {
-	// Delegate to RenderSystem
-	m_renderSystem.CollectRenderables(batch);
 }
 
 void SceneGraph::SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, EntityID parentID) {
