@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <chrono>
 
 #include <GL/glew.h>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -495,6 +496,8 @@ void Core::Update(float deltaTime) {
 			// (PreStepSync before stepping, PostStepSync after stepping).
 			m_physicsEngine->Update(deltaTime);
 			m_sceneGraph->UpdateAllTransforms();
+			auto transformSyncEnd = std::chrono::high_resolution_clock::now();
+			ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformSyncEnd - transformSyncStart).count();
 		}
 
 		// Stage 3: audio
@@ -518,13 +521,28 @@ void Core::Update(float deltaTime) {
 
 	// Record performance data if recording is active
 	if (m_performanceRecorder && m_performanceRecorder->IsRecording()) {
-		// Update rendering mode in recorder
+		std::vector<PerformanceRecorder::PassMetrics> passMetrics;
+		float cpuWaitMs = 0.0f;
 		if (m_modularRenderer) {
 			const RenderContext& context = m_modularRenderer->GetContext();
 			std::string renderMode = (context.rendererMode == RenderContext::RendererMode::PATH_TRACED) ?
 				"Path-Traced" : "Standard";
 			m_performanceRecorder->SetRenderingMode(renderMode);
+
+			for (const auto& metric : m_modularRenderer->GetLastPassMetrics()) {
+				passMetrics.push_back({
+					metric.name,
+					metric.cpuTimeMs,
+					metric.gpuTimeMs,
+					metric.drawCalls,
+					metric.dispatchCount,
+					metric.bufferUploadBytes,
+					metric.cpuWaitSyncMs
+				});
+			}
+			cpuWaitMs = m_modularRenderer->GetLastCpuWaitSyncMs();
 		}
+		m_performanceRecorder->SetCurrentFrameMetrics(passMetrics, ecsMetrics, cpuWaitMs, 0);
 		m_performanceRecorder->RecordFrame(m_frameTime, m_fps);
 	}
 }

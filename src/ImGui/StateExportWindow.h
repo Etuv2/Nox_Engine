@@ -60,6 +60,13 @@ private:
     bool m_autoRecordingEnabled = false;
     std::chrono::high_resolution_clock::time_point m_autoRecordingStartTime;
     static constexpr double AUTO_RECORDING_DURATION_SECONDS = 30.0;
+
+    // Deterministic capture controls for reproducible profiling
+    bool m_deterministicCaptureEnabled = false;
+    int m_captureWarmupFrames = 120;
+    int m_captureFramesTarget = 600;
+    int m_captureFrameCounter = 0;
+    bool m_captureRunning = false;
     
     // UI state
     char m_saveStateFilepath[256] = "snapshots/scene_state.json";
