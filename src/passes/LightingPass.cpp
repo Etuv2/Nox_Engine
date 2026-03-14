@@ -365,7 +365,6 @@ void LightingPass::Execute(RenderContext& ctx,
 
 	// Bind LightManager data
 	if (ctx.lightManager) {
-		ctx.lightManager->UpdateGPUBuffers();
 
 		int activeLightCount = ctx.lightManager->GetActiveLightCount();
 

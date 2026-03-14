@@ -16,6 +16,7 @@ SceneGraph::SceneGraph()
 	m_root = std::make_shared<SceneNode>();
 	m_root->SetTransform(glm::mat4(1.0f));
 	m_active = true;
+	m_lightManager = std::make_shared<LightManager>();
 
 	// Initialize SceneNode static references to use this graph's component system
 	SceneNode::SetGlobalComponentManager(&m_componentManager);
