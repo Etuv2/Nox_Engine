@@ -1,4 +1,5 @@
 #include "PostProcessPass.h"
+#include "PassLogging.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
@@ -32,8 +33,6 @@ void PostProcessPass::Execute(RenderContext& ctx,
                               const std::shared_ptr<Camera>& camera,
                               const std::shared_ptr<DirectionalLight>& dirLight,
                               const std::shared_ptr<Skybox>& skybox) {
-    std::cout << "[PostProcessPass] Starting execution..." << std::endl;
-    
     // Output to backbuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, ctx.width, ctx.height);
@@ -51,7 +50,7 @@ void PostProcessPass::Execute(RenderContext& ctx,
     glClearColor(ctx.envColor.r, ctx.envColor.g, ctx.envColor.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    std::cout << "[PostProcessPass] Using shader: " << m_shader << std::endl;
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Using shader: " << m_shader);
     glUseProgram(m_shader);
 
     // Helper to set uniform only if present
@@ -78,8 +77,8 @@ void PostProcessPass::Execute(RenderContext& ctx,
     set1f("uTm7FadeEnd", ctx.tm7_fadeEnd);
     set1i("uTm7UseJzazbz", ctx.tm7_useJzazbz ? 1 : 0);
 
-    std::cout << "[PostProcessPass] HDR FBO: " << (ctx.hdrFBO ? ctx.hdrFBO->GetFBO() : 0) << std::endl;
-    std::cout << "[PostProcessPass] HDR texture: " << (ctx.hdrFBO ? ctx.hdrFBO->GetColorAttachment(0) : 0) << std::endl;
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] HDR FBO: " << (ctx.hdrFBO ? ctx.hdrFBO->GetFBO() : 0));
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] HDR texture: " << (ctx.hdrFBO ? ctx.hdrFBO->GetColorAttachment(0) : 0));
     
     // Bind HDR scene (or TAA-resolved output if TAA is enabled)
     glActiveTexture(GL_TEXTURE0);
@@ -87,7 +86,7 @@ void PostProcessPass::Execute(RenderContext& ctx,
         GLuint hdrTex = ctx.hdrFBO->GetColorAttachment(0);
         if (glIsTexture(hdrTex)) {
             glBindTexture(GL_TEXTURE_2D, hdrTex);
-            std::cout << "[PostProcessPass] Bound HDR texture successfully" << std::endl;
+            PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bound HDR texture successfully");
         } else {
             std::cerr << "[PostProcessPass] ERROR: Invalid HDR texture!" << std::endl;
         }
@@ -96,26 +95,24 @@ void PostProcessPass::Execute(RenderContext& ctx,
     }
     set1i("hdrBuffer", 0);
 
-    std::cout << "[PostProcessPass] Bloom texture: " << m_bloomTexture << std::endl;
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bloom texture: " << m_bloomTexture);
     // Bind bloom result
     glActiveTexture(GL_TEXTURE1);
     if (m_bloomTexture > 0 && glIsTexture(m_bloomTexture)) {
         glBindTexture(GL_TEXTURE_2D, m_bloomTexture);
-        std::cout << "[PostProcessPass] Bound bloom texture successfully" << std::endl;
+        PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bound bloom texture successfully");
     } else {
-        std::cout << "[PostProcessPass] WARNING: No valid bloom texture, using black" << std::endl;
+        PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] No valid bloom texture, using black");
         // Optionally bind 0
         glBindTexture(GL_TEXTURE_2D, 0);
     }
     set1i("bloomBlur", 1);
 
-    std::cout << "[PostProcessPass] Rendering fullscreen quad..." << std::endl;
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Rendering fullscreen quad...");
     // Render fullscreen quad
     if (ctx.screenQuad) {
         ctx.screenQuad->Render();
     } else {
         std::cerr << "[PostProcessPass] ERROR: ScreenQuad is null!" << std::endl;
     }
-    
-    std::cout << "[PostProcessPass] Execution complete" << std::endl;
 }

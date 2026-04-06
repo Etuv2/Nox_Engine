@@ -1,4 +1,5 @@
 #include "BloomPass.h"
+#include "PassLogging.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
@@ -71,18 +72,15 @@ void BloomPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<DirectionalLight>& dirLight,
 	const std::shared_ptr<Skybox>& skybox) {
-	std::cout << "[BloomPass] Starting execution..." << std::endl;
-
 	// Source is HDR FBO color attachment
 	GLuint sourceTex = ctx.hdrFBO->GetColorAttachment(0);
-	std::cout << "[BloomPass] Source HDR texture: " << sourceTex << std::endl;
+	PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[BloomPass] Source HDR texture: " << sourceTex);
 
 	ExtractBrightPixels(ctx, sourceTex);
 	Downsample(ctx);
 	Upsample(ctx);
 
-	std::cout << "[BloomPass] Bloom result texture: " << GetBloomResult() << std::endl;
-	std::cout << "[BloomPass] Execution complete" << std::endl;
+	PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[BloomPass] Bloom result texture: " << GetBloomResult());
 }
 
 void BloomPass::ExtractBrightPixels(RenderContext& ctx, GLuint sourceTex) {
