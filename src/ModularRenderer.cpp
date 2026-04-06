@@ -484,7 +484,52 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		m_lastPassMetrics.push_back(profiler.metrics);
 	};
 
-	// Execute rendering pipeline in correct order
+	// Decide renderer mode once near the top of the frame to keep branch-specific
+	// pass dependencies explicit and prevent accidental cross-mode regressions.
+	const RenderContext::RendererMode rendererMode = m_context.rendererMode;
+
+	// PATH-TRACED MODE DEPENDENCIES:
+	// - Must run RTPass first to produce HDR scene color.
+	// - Bloom/PostProcess/GUI consume the composited color chain from RTPass.
+	// - Deferred-only passes (shadow map, G-buffer, SSAO/SSGI/TAA, lighting, transparent)
+	//   are intentionally skipped in this mode.
+	if (rendererMode == RenderContext::RendererMode::PATH_TRACED) {
+		if constexpr (VerboseLogging) {
+			std::cout << "[ModularRenderer] PATH TRACING MODE - Executing RTPass" << std::endl;
+		}
+
+		// 1) Primary path-traced output
+		profilePass("RTPass", [&]() { m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
+		CheckGLError("RTPass");
+
+		// 2) Optional bloom over path-traced HDR color
+		GLuint bloomTex = 0;
+		if (m_context.enableBloom) {
+			profilePass("BloomPass", [&]() { m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
+			CheckGLError("BloomPass");
+			bloomTex = m_bloomPass->GetBloomResult();
+		}
+		m_postProcessPass->SetBloomTexture(bloomTex);
+
+		// Ensure post-process/gui draw to the backbuffer in this branch as well.
+		FrameBuffer::Unbind();
+
+		// 3) Tonemapping/post-effects
+		profilePass("PostProcessPass", [&]() { m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
+		CheckGLError("PostProcessPass");
+
+		// 4) GUI overlay
+		profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
+		CheckGLError("GUIPass");
+
+		return;
+	}
+
+	// DEFERRED MODE DEPENDENCIES:
+	// ShadowPass -> GBufferPass -> (optional) SSAO/SSS/TAA/SSGI/LPV -> LightingPass.
+	// Lighting output is then combined with skybox + transparency and fed into
+	// Bloom/PostProcess/GUI. Debug G-buffer visualization is valid only after
+	// GBufferPass and only in deferred mode.
 	profilePass("ShadowPass", [&]() { m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 	CheckGLError("ShadowPass");
 
@@ -492,8 +537,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	CheckGLError("GBufferPass");
 
 	// DEBUG MODE: Show G-buffer visualizations
-	if (m_context.debugMode != RenderContext::DebugMode::NONE &&
-		m_context.rendererMode == RenderContext::RendererMode::DEFERRED_REALTIME) {
+	if (m_context.debugMode != RenderContext::DebugMode::NONE) {
 		if constexpr (VerboseLogging) {
 			std::cout << "[ModularRenderer] DEBUG MODE - Visualizing G-buffer" << std::endl;
 		}
@@ -503,34 +547,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
 		CheckGLError("GUIPass");
 
-		return; // Early exit - skip rest of pipeline for debug view
-	}
-
-	// PATH TRACING MODE: Skip deferred passes and run path tracer instead
-	if (m_context.rendererMode == RenderContext::RendererMode::PATH_TRACED) {
-		if constexpr (VerboseLogging) {
-			std::cout << "[ModularRenderer] PATH TRACING MODE - Executing RTPass" << std::endl;
-		}
-
-		// Execute ray tracing pass
-		profilePass("RTPass", [&]() { m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("RTPass");
-
-		// Optional: Apply bloom to path-traced output
-		if (m_context.enableBloom) {
-			profilePass("BloomPass", [&]() { m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-			CheckGLError("BloomPass");
-		}
-
-		// Apply post-processing (tonemapping, etc.)
-		profilePass("PostProcessPass", [&]() { m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("PostProcessPass");
-
-		// Render GUI overlay
-		profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("GUIPass");
-
-		return; // Early exit - skip deferred lighting pipeline
+		return; // Early exit - skip rest of deferred pipeline for debug view
 	}
 
 	// LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
