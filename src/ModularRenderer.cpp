@@ -26,8 +26,11 @@
 #include <chrono>
 #include <array>
 #include <unordered_map>
+#include <unordered_set>
 #include <functional>
 #include <cstdlib>
+#include <queue>
+#include <algorithm>
 
 ModularRenderer::ModularRenderer()
 {
@@ -210,6 +213,16 @@ namespace {
 #endif
 		}
 	};
+
+	namespace ResourceNames {
+		static const std::string SSAO = "SSAO";
+		static const std::string ScreenSpaceShadow = "ScreenSpaceShadow";
+		static const std::string SSGI = "SSGI";
+		static const std::string Bloom = "Bloom";
+		static const std::string LPVR = "LPV_R";
+		static const std::string LPVG = "LPV_G";
+		static const std::string LPVB = "LPV_B";
+	}
 }
 
 
@@ -266,6 +279,335 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	std::cout << "[ModularRenderer] Initialized successfully with " << windowWidth
 		<< "x" << windowHeight << " resolution.\n";
 	return true;
+}
+
+std::size_t ModularRenderer::PlanCacheKeyHash::operator()(const PlanCacheKey& key) const
+{
+	std::size_t seed = static_cast<std::size_t>(key.mode);
+	const auto hashCombine = [&seed](bool value) {
+		seed ^= static_cast<std::size_t>(value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+	};
+	hashCombine(key.enableBloom);
+	hashCombine(key.enableSSAO);
+	hashCombine(key.enableSSGI);
+	hashCombine(key.enableScreenSpaceShadows);
+	hashCombine(key.enableLPV);
+	hashCombine(key.enableTAA);
+	return seed;
+}
+
+ModularRenderer::FrameGraphMode ModularRenderer::DetermineFrameGraphMode() const
+{
+	if (m_context.rendererMode == RenderContext::RendererMode::PATH_TRACED) {
+		return FrameGraphMode::PATH_TRACED;
+	}
+	if (m_context.debugMode != RenderContext::DebugMode::NONE) {
+		return FrameGraphMode::DEFERRED_DEBUG;
+	}
+	return FrameGraphMode::DEFERRED;
+}
+
+ModularRenderer::PlanCacheKey ModularRenderer::BuildPlanCacheKey() const
+{
+	PlanCacheKey key;
+	key.mode = DetermineFrameGraphMode();
+	key.enableBloom = m_context.enableBloom;
+	key.enableSSAO = m_context.enableSSAO;
+	key.enableSSGI = m_context.enableSSGI;
+	key.enableScreenSpaceShadows = m_context.enableScreenSpaceShadows;
+	key.enableLPV = m_context.enableLPV;
+	key.enableTAA = m_context.enableTAA;
+	return key;
+}
+
+std::vector<ModularRenderer::ResourceHandle> ModularRenderer::GetRequiredOutputsForKey(const PlanCacheKey& key) const
+{
+	if (key.mode == FrameGraphMode::PATH_TRACED) {
+		return { "Backbuffer" };
+	}
+	if (key.mode == FrameGraphMode::DEFERRED_DEBUG) {
+		return { "Backbuffer" };
+	}
+	return { "Backbuffer", "SSGIHistory" };
+}
+
+void ModularRenderer::ExecuteFramePlan(const FramePlan& plan)
+{
+	for (const PassDescriptor* descriptor : plan.executionOrder) {
+		if (!descriptor) {
+			continue;
+		}
+		m_profilePassFunc(descriptor->name.c_str(), descriptor->execute);
+		CheckGLError(descriptor->name);
+	}
+}
+
+ModularRenderer::FramePlan ModularRenderer::CompileFramePlan(const PlanCacheKey& key) const
+{
+	FramePlan plan;
+	std::vector<const PassDescriptor*> activePasses;
+	activePasses.reserve(m_passDescriptors.size());
+	for (const PassDescriptor& descriptor : m_passDescriptors) {
+		if (!descriptor.condition || descriptor.condition(m_context)) {
+			activePasses.push_back(&descriptor);
+		}
+	}
+
+	std::unordered_map<ResourceHandle, std::vector<const PassDescriptor*>> producers;
+	for (const PassDescriptor* descriptor : activePasses) {
+		for (const ResourceHandle& output : descriptor->outputs) {
+			producers[output].push_back(descriptor);
+		}
+	}
+
+	std::unordered_set<const PassDescriptor*> livePasses;
+	std::queue<ResourceHandle> requiredQueue;
+	std::unordered_set<ResourceHandle> visitedResources;
+	for (const ResourceHandle& output : GetRequiredOutputsForKey(key)) {
+		requiredQueue.push(output);
+		visitedResources.insert(output);
+	}
+
+	while (!requiredQueue.empty()) {
+		const ResourceHandle resource = requiredQueue.front();
+		requiredQueue.pop();
+		const auto producerIt = producers.find(resource);
+		if (producerIt == producers.end()) {
+			continue;
+		}
+		for (const PassDescriptor* producer : producerIt->second) {
+			if (!livePasses.insert(producer).second) {
+				continue;
+			}
+			for (const ResourceHandle& input : producer->inputs) {
+				if (visitedResources.insert(input).second) {
+					requiredQueue.push(input);
+				}
+			}
+		}
+	}
+
+	std::unordered_map<const PassDescriptor*, int> indegree;
+	std::unordered_map<const PassDescriptor*, std::vector<const PassDescriptor*>> graph;
+	for (const PassDescriptor* pass : activePasses) {
+		if (livePasses.find(pass) == livePasses.end()) {
+			continue;
+		}
+		indegree[pass] = 0;
+	}
+
+	std::unordered_map<ResourceHandle, const PassDescriptor*> singleProducer;
+	for (const PassDescriptor* pass : activePasses) {
+		if (livePasses.find(pass) == livePasses.end()) {
+			continue;
+		}
+		for (const ResourceHandle& output : pass->outputs) {
+			singleProducer[output] = pass;
+		}
+	}
+
+	for (const PassDescriptor* pass : activePasses) {
+		if (livePasses.find(pass) == livePasses.end()) {
+			continue;
+		}
+		for (const ResourceHandle& input : pass->inputs) {
+			const auto producerIt = singleProducer.find(input);
+			if (producerIt == singleProducer.end()) {
+				continue;
+			}
+			const PassDescriptor* producer = producerIt->second;
+			if (producer == pass) {
+				continue;
+			}
+			graph[producer].push_back(pass);
+			++indegree[pass];
+		}
+	}
+
+	std::queue<const PassDescriptor*> ready;
+	for (const PassDescriptor* pass : activePasses) {
+		if (livePasses.find(pass) == livePasses.end()) {
+			continue;
+		}
+		if (indegree[pass] == 0) {
+			ready.push(pass);
+		}
+	}
+
+	while (!ready.empty()) {
+		const PassDescriptor* current = ready.front();
+		ready.pop();
+		plan.executionOrder.push_back(current);
+		for (const PassDescriptor* dependent : graph[current]) {
+			if (--indegree[dependent] == 0) {
+				ready.push(dependent);
+			}
+		}
+	}
+
+	return plan;
+}
+
+void ModularRenderer::BuildPassDescriptors(
+	const std::shared_ptr<SceneGraph>& sceneGraph,
+	const std::shared_ptr<Camera>& camera,
+	const std::shared_ptr<DirectionalLight>& lighting,
+	const std::shared_ptr<Skybox>& skybox)
+{
+	m_passDescriptors.clear();
+
+	auto addPass = [this](PassDescriptor descriptor) {
+		m_passDescriptors.push_back(std::move(descriptor));
+	};
+
+	addPass({
+		"RTPass", {}, { "HDRColor" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::PATH_TRACED; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+	});
+	addPass({
+		"ShadowPass", {}, { "ShadowMap" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+	});
+	addPass({
+		"GBufferPass", { "ShadowMap" }, { "GBuffer" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+	});
+	addPass({
+		"DebugViewPass", { "GBuffer" }, { "CompositedColor" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
+		[this]() { visualizeDebugMode(m_context); }
+	});
+	addPass({
+		"LPVPass", { "GBuffer" }, { ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB },
+		[](const RenderContext& ctx) { return ctx.enableLPV; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			if (!m_lpvPass) {
+				return;
+			}
+			m_lpvPass->config.enableLPV = m_context.enableLPV;
+			m_lpvPass->config.gridResolution = m_context.lpvGridResolution;
+			m_lpvPass->config.voxelSize = m_context.lpvVoxelSize;
+			m_lpvPass->config.rsmResolution = m_context.lpvRSMResolution;
+			m_lpvPass->config.vplSampleCount = m_context.lpvVPLSampleCount;
+			m_lpvPass->config.propagationIterations = m_context.lpvPropagationIterations;
+			m_lpvPass->config.propagationAttenuation = m_context.lpvPropagationAttenuation;
+			m_lpvPass->config.propagationBias = m_context.lpvPropagationBias;
+			m_lpvPass->config.enableOcclusion = m_context.lpvEnableOcclusion;
+			m_lpvPass->config.giStrength = m_context.lpvGIStrength;
+			m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;
+			m_lpvPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::LPVR] = m_lpvPass->GetLPVTextureR();
+			m_namedResources[ResourceNames::LPVG] = m_lpvPass->GetLPVTextureG();
+			m_namedResources[ResourceNames::LPVB] = m_lpvPass->GetLPVTextureB();
+		}
+	});
+	addPass({
+		"SSAOPass", { "GBuffer" }, { ResourceNames::SSAO },
+		[](const RenderContext& ctx) { return ctx.enableSSAO; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			m_ssaoPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::SSAO] = m_ssaoPass->GetSSAOTexture();
+		}
+	});
+	addPass({
+		"ScreenSpaceShadowPass", { "GBuffer" }, { ResourceNames::ScreenSpaceShadow },
+		[](const RenderContext& ctx) { return ctx.enableScreenSpaceShadows; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			m_screenSpaceShadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::ScreenSpaceShadow] = m_screenSpaceShadowPass->GetShadowTexture();
+		}
+	});
+	addPass({
+		"TAAPass", { "GBuffer" }, { "TAA" },
+		[](const RenderContext& ctx) { return ctx.enableTAA; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			m_taaPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		}
+	});
+	addPass({
+		"SSGIPass", { "GBuffer" }, { ResourceNames::SSGI },
+		[](const RenderContext& ctx) { return ctx.enableSSGI; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			if (!m_ssgiPass) {
+				return;
+			}
+			m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::SSGI] = m_ssgiPass->GetSSGITexture();
+		}
+	});
+	addPass({
+		"LightingPass", { "GBuffer", "TAA", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::SSGI, ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB }, { "HDRLit" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
+			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
+			m_lightingPass->SetSSGITexture(m_namedResources[ResourceNames::SSGI]);
+			m_lightingPass->SetLPVTextures(
+				m_namedResources[ResourceNames::LPVR],
+				m_namedResources[ResourceNames::LPVG],
+				m_namedResources[ResourceNames::LPVB]);
+			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		}
+	});
+	addPass({
+		"SkyboxPass", { "HDRLit" }, { "HDRWithSkybox" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this, &skybox]() {
+			if (!skybox || !skybox->IsReady()) {
+				return;
+			}
+			m_context.hdrFBO->Bind();
+			skybox->Draw(m_context.view, m_context.proj);
+		}
+	});
+	addPass({
+		"TransparentForwardPass", { "HDRWithSkybox" }, { "HDRColor" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+	});
+	addPass({
+		"BloomPass", { "HDRColor" }, { ResourceNames::Bloom },
+		[this](const RenderContext& ctx) { return ctx.enableBloom && DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::Bloom] = m_bloomPass->GetBloomResult();
+		}
+	});
+	addPass({
+		"PostProcessPass", { "HDRColor", ResourceNames::Bloom }, { "CompositedColor" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			FrameBuffer::Unbind();
+			m_postProcessPass->SetBloomTexture(m_namedResources[ResourceNames::Bloom]);
+			m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		}
+	});
+	addPass({
+		"OverlayComposePass", { "CompositedColor" }, { "OverlayColor" },
+		[](const RenderContext&) { return true; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			if (m_context.showBoundingBoxes) {
+				m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			}
+		}
+	});
+	addPass({
+		"GUIPass", { "OverlayColor" }, { "Backbuffer" },
+		[](const RenderContext&) { return true; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+	});
+	addPass({
+		"SSGIHistoryPass", { "Backbuffer" }, { "SSGIHistory" },
+		[](const RenderContext& ctx) { return ctx.rendererMode == RenderContext::RendererMode::DEFERRED_REALTIME; },
+		[this]() {
+			if (m_ssgiPass) {
+				m_ssgiPass->CaptureHistory(m_context);
+			}
+		}
+	});
 }
 
 bool ModularRenderer::InitializeSharedResources()
@@ -475,8 +817,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		skybox->SetDiffuseIBLScale(m_context.diffuseIBLScale);
 		skybox->SetSpecularIBLScale(m_context.specularIBLScale);
 	}
-
-	auto profilePass = [this, &profilerPool](const char* name, const std::function<void()>& executePass) {
+	m_profilePassFunc = [this, &profilerPool](const char* name, const std::function<void()>& executePass) {
 		ScopedPassProfiler profiler(name, profilerPool);
 		executePass();
 		profiler.Finish();
@@ -484,188 +825,23 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		m_lastPassMetrics.push_back(profiler.metrics);
 	};
 
-	// Decide renderer mode once near the top of the frame to keep branch-specific
-	// pass dependencies explicit and prevent accidental cross-mode regressions.
-	const RenderContext::RendererMode rendererMode = m_context.rendererMode;
+	m_namedResources.clear();
+	m_namedResources[ResourceNames::SSAO] = 0;
+	m_namedResources[ResourceNames::ScreenSpaceShadow] = 0;
+	m_namedResources[ResourceNames::SSGI] = 0;
+	m_namedResources[ResourceNames::Bloom] = 0;
+	m_namedResources[ResourceNames::LPVR] = 0;
+	m_namedResources[ResourceNames::LPVG] = 0;
+	m_namedResources[ResourceNames::LPVB] = 0;
 
-	// PATH-TRACED MODE DEPENDENCIES:
-	// - Must run RTPass first to produce HDR scene color.
-	// - Bloom/PostProcess/GUI consume the composited color chain from RTPass.
-	// - Deferred-only passes (shadow map, G-buffer, SSAO/SSGI/TAA, lighting, transparent)
-	//   are intentionally skipped in this mode.
-	if (rendererMode == RenderContext::RendererMode::PATH_TRACED) {
-		if constexpr (VerboseLogging) {
-			std::cout << "[ModularRenderer] PATH TRACING MODE - Executing RTPass" << std::endl;
-		}
-
-		// 1) Primary path-traced output
-		profilePass("RTPass", [&]() { m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("RTPass");
-
-		// 2) Optional bloom over path-traced HDR color
-		GLuint bloomTex = 0;
-		if (m_context.enableBloom) {
-			profilePass("BloomPass", [&]() { m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-			CheckGLError("BloomPass");
-			bloomTex = m_bloomPass->GetBloomResult();
-		}
-		m_postProcessPass->SetBloomTexture(bloomTex);
-
-		// Ensure post-process/gui draw to the backbuffer in this branch as well.
-		FrameBuffer::Unbind();
-
-		// 3) Tonemapping/post-effects
-		profilePass("PostProcessPass", [&]() { m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("PostProcessPass");
-
-		// 4) GUI overlay
-		profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("GUIPass");
-
-		return;
+	BuildPassDescriptors(sceneGraph, camera, lighting, skybox);
+	const PlanCacheKey key = BuildPlanCacheKey();
+	auto planIt = m_planCache.find(key);
+	if (planIt == m_planCache.end()) {
+		FramePlan compiledPlan = CompileFramePlan(key);
+		planIt = m_planCache.emplace(key, std::move(compiledPlan)).first;
 	}
-
-	// DEFERRED MODE DEPENDENCIES:
-	// ShadowPass -> GBufferPass -> (optional) SSAO/SSS/TAA/SSGI/LPV -> LightingPass.
-	// Lighting output is then combined with skybox + transparency and fed into
-	// Bloom/PostProcess/GUI. Debug G-buffer visualization is valid only after
-	// GBufferPass and only in deferred mode.
-	profilePass("ShadowPass", [&]() { m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-	CheckGLError("ShadowPass");
-
-	profilePass("GBufferPass", [&]() { m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-	CheckGLError("GBufferPass");
-
-	// DEBUG MODE: Show G-buffer visualizations
-	if (m_context.debugMode != RenderContext::DebugMode::NONE) {
-		if constexpr (VerboseLogging) {
-			std::cout << "[ModularRenderer] DEBUG MODE - Visualizing G-buffer" << std::endl;
-		}
-		visualizeDebugMode(m_context);
-
-		// Render GUI overlay
-		profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("GUIPass");
-
-		return; // Early exit - skip rest of deferred pipeline for debug view
-	}
-
-	// LPV Global Illumination Pass (AFTER G-buffer, so geometry is available for RSM)
-	if (m_context.enableLPV) {
-		if (m_lpvPass) {
-			m_lpvPass->config.enableLPV = m_context.enableLPV;
-			m_lpvPass->config.gridResolution = m_context.lpvGridResolution;
-			m_lpvPass->config.voxelSize = m_context.lpvVoxelSize;
-			m_lpvPass->config.rsmResolution = m_context.lpvRSMResolution;
-			m_lpvPass->config.vplSampleCount = m_context.lpvVPLSampleCount;
-			m_lpvPass->config.propagationIterations = m_context.lpvPropagationIterations;
-			m_lpvPass->config.propagationAttenuation = m_context.lpvPropagationAttenuation;
-			m_lpvPass->config.propagationBias = m_context.lpvPropagationBias;
-			m_lpvPass->config.enableOcclusion = m_context.lpvEnableOcclusion;
-			m_lpvPass->config.giStrength = m_context.lpvGIStrength;
-			m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;
-
-			profilePass("LPVPass", [&]() { m_lpvPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-			CheckGLError("LPVPass");
-		}
-	}
-
-	// Only execute SSAO if enabled
-	GLuint ssaoTex = 0;
-	if (m_context.enableSSAO) {
-		profilePass("SSAOPass", [&]() { m_ssaoPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("SSAOPass");
-		ssaoTex = m_ssaoPass->GetSSAOTexture();
-	}
-
-	// Screen-space shadows (contact shadows) if enabled
-	GLuint sssTex = 0;
-	if (m_context.enableScreenSpaceShadows) {
-		profilePass("ScreenSpaceShadowPass", [&]() { m_screenSpaceShadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("ScreenSpaceShadowPass");
-		sssTex = m_screenSpaceShadowPass->GetShadowTexture();
-	}
-
-	// TAA Pass (velocity + resolve) - executes before lighting
-	if (m_context.enableTAA) {
-		profilePass("TAAPass", [&]() { m_taaPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("TAAPass");
-	}
-
-	// SSGI Pass - Screen Space Global Illumination (before lighting)
-	if (m_context.enableSSGI && m_ssgiPass) {
-		profilePass("SSGIPass", [&]() { m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("SSGIPass");
-	}
-
-	// Provide SSAO texture to lighting pass (or 0 if disabled)
-	m_lightingPass->SetSSAOTexture(ssaoTex);
-	// Provide screen-space shadow texture to lighting pass (or 0 if disabled)
-	m_lightingPass->SetScreenSpaceShadowTexture(sssTex);
-
-	// Provide SSGI texture to lighting pass (or 0 if disabled)
-	if (m_context.enableSSGI && m_ssgiPass) {
-		m_lightingPass->SetSSGITexture(m_ssgiPass->GetSSGITexture());
-	}
-	else {
-		m_lightingPass->SetSSGITexture(0);
-	}
-
-	// Provide LPV textures to lighting pass (or 0 if disabled)
-	if (m_context.enableLPV && m_lpvPass) {
-		GLuint lpvR = m_lpvPass->GetLPVTextureR();
-		GLuint lpvG = m_lpvPass->GetLPVTextureG();
-		GLuint lpvB = m_lpvPass->GetLPVTextureB();
-		m_lightingPass->SetLPVTextures(lpvR, lpvG, lpvB);
-	}
-	else {
-		m_lightingPass->SetLPVTextures(0, 0, 0);
-	}
-
-	profilePass("LightingPass", [&]() { m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-	CheckGLError("LightingPass");
-
-	// Skybox rendering (background into HDR)
-	if (skybox && skybox->IsReady()) {
-		m_context.hdrFBO->Bind();
-		skybox->Draw(m_context.view, m_context.proj);
-		CheckGLError("Skybox");
-	}
-
-	// Transparent forward rendering
-	profilePass("TransparentForwardPass", [&]() { m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-	CheckGLError("TransparentForwardPass");
-
-	// Unbinding HDR FBO after both skybox and transparent rendering
-	FrameBuffer::Unbind();
-
-	// Only execute Bloom if enabled
-	GLuint bloomTex = 0;
-	if (m_context.enableBloom) {
-		profilePass("BloomPass", [&]() { m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("BloomPass");
-		bloomTex = m_bloomPass->GetBloomResult();
-	}
-
-	// Provide bloom texture to post-process (or 0 if disabled)
-	m_postProcessPass->SetBloomTexture(bloomTex);
-	profilePass("PostProcessPass", [&]() { m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-	CheckGLError("PostProcessPass");
-
-	// Debug bounding box visualization (after post-process, renders overlay)
-	if (m_context.showBoundingBoxes) {
-		profilePass("DebugBBoxPass", [&]() { m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-		CheckGLError("DebugBBoxPass");
-	}
-
-	// Render internal GUI elements to backbuffer
-	profilePass("GUIPass", [&]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); });
-	CheckGLError("GUIPass");
-
-	// Capture color history for SSGI
-	if (m_ssgiPass) {
-		m_ssgiPass->CaptureHistory(m_context);
-	}
+	ExecuteFramePlan(planIt->second);
 }
 
 void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
