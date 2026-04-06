@@ -769,6 +769,7 @@ void ModularRenderer::CheckGLError(const std::string& passName)
 void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<DirectionalLight>& lighting,
+	float deltaTime,
 	float exposure,
 	float gamma,
 	bool enableShadows,
@@ -801,8 +802,12 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	}
 
 	// Deterministic per-frame light update location
-	m_context.lightManager->UpdateLights(0.016f);
-	m_context.lightManager->UpdateGPUBuffers();
+	m_context.deltaTime = deltaTime;
+	m_context.lightManager->ResetFrameUploadStats();
+	m_context.lightManager->UpdateLights(m_context.deltaTime);
+	if (m_context.lightManager->IsLightDataDirty()) {
+		m_context.lightManager->UpdateGPUBuffers();
+	}
 
 	// Update context with current frame parameters
 	UpdateContext(camera, exposure, gamma, enableShadows, shadowBias, envColor);

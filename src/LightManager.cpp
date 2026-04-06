@@ -15,6 +15,7 @@
 #include <chrono>
 #include <limits>
 #include <cmath>
+#include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -169,6 +170,7 @@ void LightManager::RegisterLight(std::shared_ptr<BaseLight> light, const std::st
 	std::string lightName = name.empty() ? GenerateLightName(light->GetLightType()) : name;
 	m_lights[lightName] = light;
 	UpdateActiveLights();
+	m_lightDataDirty = true;
 
 	std::cout << "[LightManager] Registered " << lightName << " (Type: "
 		<< static_cast<int>(light->GetLightType()) << ", Enabled: " << light->IsEnabled()
@@ -206,6 +208,7 @@ void LightManager::UnregisterLight(const std::string& name)
 		m_lightShadowInfo.erase(it->second.get());
 		m_lights.erase(it);
 		UpdateActiveLights();
+		m_lightDataDirty = true;
 		std::cout << "[LightManager] Unregistered " << name << std::endl;
 	}
 }
@@ -223,6 +226,7 @@ void LightManager::UnregisterLight(std::shared_ptr<BaseLight> light)
 			m_lightShadowInfo.erase(light.get());
 			m_lights.erase(it);
 			UpdateActiveLights();
+			m_lightDataDirty = true;
 			break;
 		}
 	}
@@ -418,6 +422,7 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 		totalLayers * sizeof(glm::mat4),
 		identityMatrices.data(), GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	m_shadowMatricesInitialized = true;
 
 	m_shadowSystemInitialized = true;
 	m_buffersInitialized = true;
@@ -625,6 +630,8 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	}
 
 	auto frameStart = std::chrono::high_resolution_clock::now();
+	m_lastBufferUploadStats.shadowMatrixUploadBytes = 0;
+	m_lastBufferUploadStats.shadowMatrixUploadCount = 0;
 	++m_frameCounter;
 	m_lightShadowInfo.clear();
 
@@ -1056,13 +1063,58 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		matrices.push_back(glm::mat4(1.0f));
 	}
 
-	// Upload shadow matrices to GPU
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_shadowMatricesSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER,
-		matrices.size() * sizeof(glm::mat4),
-		matrices.data(),
-		GL_DYNAMIC_DRAW);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	// Upload only matrix ranges that changed
+	std::vector<int> dirtyMatrixIndices;
+	dirtyMatrixIndices.reserve(matrices.size());
+	for (int i = 0; i < currentSlice; ++i) {
+		if (m_cachedSlices[i].dirtyBits != DIRTY_NONE) {
+			dirtyMatrixIndices.push_back(i);
+		}
+	}
+
+	if (!m_shadowMatricesInitialized) {
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_shadowMatricesSSBO);
+		glBufferData(GL_SHADER_STORAGE_BUFFER,
+			matrices.size() * sizeof(glm::mat4),
+			matrices.data(),
+			GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		m_shadowMatricesInitialized = true;
+		m_lastBufferUploadStats.shadowMatrixUploadCount += 1;
+		m_lastBufferUploadStats.shadowMatrixUploadBytes += static_cast<uint64_t>(matrices.size()) * sizeof(glm::mat4);
+	}
+	else if (!dirtyMatrixIndices.empty()) {
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_shadowMatricesSSBO);
+		size_t segmentStart = static_cast<size_t>(dirtyMatrixIndices.front());
+		size_t segmentLen = 1;
+		for (size_t n = 1; n < dirtyMatrixIndices.size(); ++n) {
+			const size_t idx = static_cast<size_t>(dirtyMatrixIndices[n]);
+			if (idx == segmentStart + segmentLen) {
+				++segmentLen;
+				continue;
+			}
+
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+				static_cast<GLintptr>(segmentStart * sizeof(glm::mat4)),
+				static_cast<GLsizeiptr>(segmentLen * sizeof(glm::mat4)),
+				matrices.data() + segmentStart);
+			m_lastBufferUploadStats.shadowMatrixUploadCount += 1;
+			m_lastBufferUploadStats.shadowMatrixUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(glm::mat4);
+			segmentStart = idx;
+			segmentLen = 1;
+		}
+
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+			static_cast<GLintptr>(segmentStart * sizeof(glm::mat4)),
+			static_cast<GLsizeiptr>(segmentLen * sizeof(glm::mat4)),
+			matrices.data() + segmentStart);
+		m_lastBufferUploadStats.shadowMatrixUploadCount += 1;
+		m_lastBufferUploadStats.shadowMatrixUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(glm::mat4);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	}
+
+	m_totalBufferUploadStats.shadowMatrixUploadCount += m_lastBufferUploadStats.shadowMatrixUploadCount;
+	m_totalBufferUploadStats.shadowMatrixUploadBytes += m_lastBufferUploadStats.shadowMatrixUploadBytes;
 
 	FrameBuffer::Unbind();
 
@@ -1114,6 +1166,8 @@ void LightManager::UpdateGPUBuffers()
 	}
 
 	auto startTime = std::chrono::high_resolution_clock::now();
+	m_lastBufferUploadStats.lightUploadBytes = 0;
+	m_lastBufferUploadStats.lightUploadCount = 0;
 
 	std::vector<LightData> arr;
 	arr.reserve(m_activeLights.size());
@@ -1159,14 +1213,62 @@ void LightManager::UpdateGPUBuffers()
 		arr.push_back(d);
 	}
 
-	if (!arr.empty()) {
+	bool forceFullUpload = m_cachedLightData.size() != arr.size();
+	std::vector<int> dirtyIndices;
+	dirtyIndices.reserve(arr.size());
+
+	if (!forceFullUpload) {
+		for (size_t i = 0; i < arr.size(); ++i) {
+			if (std::memcmp(&arr[i], &m_cachedLightData[i], sizeof(LightData)) != 0) {
+				dirtyIndices.push_back(static_cast<int>(i));
+			}
+		}
+	}
+
+	if (forceFullUpload || (!arr.empty() && !dirtyIndices.empty())) {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_lightDataSSBO);
-		glBufferData(GL_SHADER_STORAGE_BUFFER,
-			arr.size() * sizeof(LightData),
-			arr.data(),
-			GL_DYNAMIC_DRAW);
+		if (forceFullUpload) {
+			glBufferData(GL_SHADER_STORAGE_BUFFER,
+				arr.size() * sizeof(LightData),
+				arr.data(),
+				GL_DYNAMIC_DRAW);
+			m_lastBufferUploadStats.lightUploadCount += 1;
+			m_lastBufferUploadStats.lightUploadBytes += static_cast<uint64_t>(arr.size()) * sizeof(LightData);
+		}
+		else {
+			size_t segmentStart = static_cast<size_t>(dirtyIndices.front());
+			size_t segmentLen = 1;
+			for (size_t n = 1; n < dirtyIndices.size(); ++n) {
+				const size_t idx = static_cast<size_t>(dirtyIndices[n]);
+				if (idx == segmentStart + segmentLen) {
+					++segmentLen;
+					continue;
+				}
+
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+					static_cast<GLintptr>(segmentStart * sizeof(LightData)),
+					static_cast<GLsizeiptr>(segmentLen * sizeof(LightData)),
+					arr.data() + segmentStart);
+				m_lastBufferUploadStats.lightUploadCount += 1;
+				m_lastBufferUploadStats.lightUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(LightData);
+				segmentStart = idx;
+				segmentLen = 1;
+			}
+
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+				static_cast<GLintptr>(segmentStart * sizeof(LightData)),
+				static_cast<GLsizeiptr>(segmentLen * sizeof(LightData)),
+				arr.data() + segmentStart);
+			m_lastBufferUploadStats.lightUploadCount += 1;
+			m_lastBufferUploadStats.lightUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(LightData);
+		}
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
+
+	m_totalBufferUploadStats.lightUploadCount += m_lastBufferUploadStats.lightUploadCount;
+	m_totalBufferUploadStats.lightUploadBytes += m_lastBufferUploadStats.lightUploadBytes;
+	m_cachedLightData = std::move(arr);
+	m_lightDataDirty = false;
 
 	auto endTime = std::chrono::high_resolution_clock::now();
 	stats.bufferUpdateTime = std::chrono::duration<float, std::milli>(endTime - startTime).count();
@@ -1190,6 +1292,7 @@ void LightManager::UpdateActiveLights()
 				return (int)a->GetLightType() < (int)b->GetLightType();
 			return a->GetIntensity() > b->GetIntensity();
 		});
+	m_lightDataDirty = true;
 }
 
 /**
@@ -1244,9 +1347,29 @@ void LightManager::CollectLightsFromScene(std::shared_ptr<SceneGraph> sceneGraph
  */
 void LightManager::UpdateLights(float dt)
 {
+	bool dirty = false;
 	for (auto& p : m_lights) {
 		if (p.second) {
+			const glm::vec3 prevPos = p.second->GetPosition();
+			const glm::vec3 prevDir = p.second->GetDirection();
+			const glm::vec3 prevColor = p.second->GetEffectiveColor();
+			const float prevIntensity = p.second->GetIntensity();
+			const glm::vec3 prevAtt = p.second->GetAttenuation();
+			const float prevRange = p.second->GetRange();
+			const bool prevEnabled = p.second->IsEnabled();
+			const bool prevCastsShadows = p.second->CastsShadows();
+
 			p.second->Update(dt);
+
+			dirty = dirty ||
+				(glm::length(p.second->GetPosition() - prevPos) > 1e-5f) ||
+				(glm::length(p.second->GetDirection() - prevDir) > 1e-5f) ||
+				(glm::length(p.second->GetEffectiveColor() - prevColor) > 1e-5f) ||
+				(std::abs(p.second->GetIntensity() - prevIntensity) > 1e-5f) ||
+				(glm::length(p.second->GetAttenuation() - prevAtt) > 1e-5f) ||
+				(std::abs(p.second->GetRange() - prevRange) > 1e-5f) ||
+				(p.second->IsEnabled() != prevEnabled) ||
+				(p.second->CastsShadows() != prevCastsShadows);
 		}
 	}
 
@@ -1254,6 +1377,10 @@ void LightManager::UpdateLights(float dt)
 		if (ln) {
 			ln->UpdateLightFromTransform();
 		}
+	}
+	if (dirty) {
+		m_lightDataDirty = true;
+		UpdateActiveLights();
 	}
 }
 
@@ -1285,6 +1412,8 @@ void LightManager::ClearAllLights()
 	m_lightNodes.clear();
 	m_lightProxies.clear();
 	m_lightShadowInfo.clear();
+	m_cachedLightData.clear();
+	m_lightDataDirty = true;
 	m_directionalCount = m_pointCount = m_spotCount = m_areaCount = 0;
 }
 

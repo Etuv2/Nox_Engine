@@ -53,6 +53,7 @@ public:
 	void Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		const std::shared_ptr<Camera>& camera,
 		const std::shared_ptr<DirectionalLight>& lighting,
+		float deltaTime,
 		float exposure,
 		float gamma,
 		bool enableShadows,
