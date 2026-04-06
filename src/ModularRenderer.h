@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <functional>
+#include <unordered_map>
 #include "RenderContext.h"
 #include "RenderPass.h"
 
@@ -94,6 +96,61 @@ private:
 		glm::vec3 envColor);
 
 	void CheckGLError(const std::string& passName);
+
+	enum class FrameGraphMode {
+		DEFERRED = 0,
+		DEFERRED_DEBUG = 1,
+		PATH_TRACED = 2
+	};
+
+	using ResourceHandle = std::string;
+
+	struct PassDescriptor {
+		std::string name;
+		std::vector<ResourceHandle> inputs;
+		std::vector<ResourceHandle> outputs;
+		std::function<bool(const RenderContext&)> condition;
+		std::function<void()> execute;
+	};
+
+	struct FramePlan {
+		std::vector<const PassDescriptor*> executionOrder;
+	};
+
+	struct PlanCacheKey {
+		FrameGraphMode mode = FrameGraphMode::DEFERRED;
+		bool enableBloom = false;
+		bool enableSSAO = false;
+		bool enableSSGI = false;
+		bool enableScreenSpaceShadows = false;
+		bool enableLPV = false;
+		bool enableTAA = false;
+
+		bool operator==(const PlanCacheKey& other) const {
+			return mode == other.mode &&
+				enableBloom == other.enableBloom &&
+				enableSSAO == other.enableSSAO &&
+				enableSSGI == other.enableSSGI &&
+				enableScreenSpaceShadows == other.enableScreenSpaceShadows &&
+				enableLPV == other.enableLPV &&
+				enableTAA == other.enableTAA;
+		}
+	};
+
+	struct PlanCacheKeyHash {
+		std::size_t operator()(const PlanCacheKey& key) const;
+	};
+
+	void BuildPassDescriptors(
+		const std::shared_ptr<SceneGraph>& sceneGraph,
+		const std::shared_ptr<Camera>& camera,
+		const std::shared_ptr<DirectionalLight>& lighting,
+		const std::shared_ptr<Skybox>& skybox);
+	FramePlan CompileFramePlan(const PlanCacheKey& key) const;
+	std::vector<ResourceHandle> GetRequiredOutputsForKey(const PlanCacheKey& key) const;
+	PlanCacheKey BuildPlanCacheKey() const;
+	FrameGraphMode DetermineFrameGraphMode() const;
+	void ExecuteFramePlan(const FramePlan& plan);
 	
 	// Debug visualization
 	void visualizeDebugMode(RenderContext& ctx);
@@ -115,6 +172,11 @@ private:
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
 	std::unique_ptr<GUIPass> m_guiPass;  // Internal GUI rendering
 	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;  // Debug bounding box visualization
+
+	std::vector<PassDescriptor> m_passDescriptors;
+	std::unordered_map<PlanCacheKey, FramePlan, PlanCacheKeyHash> m_planCache;
+	std::unordered_map<ResourceHandle, GLuint> m_namedResources;
+	std::function<void(const char*, const std::function<void()>&)> m_profilePassFunc;
 
 	std::vector<PassTimingMetrics> m_lastPassMetrics;
 	float m_lastCpuWaitSyncMs = 0.0f;
