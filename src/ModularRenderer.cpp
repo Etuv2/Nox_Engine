@@ -25,7 +25,9 @@
 #include <iostream>
 #include <chrono>
 #include <array>
+#include <unordered_map>
 #include <functional>
+#include <cstdlib>
 
 ModularRenderer::ModularRenderer()
 {
@@ -38,31 +40,150 @@ ModularRenderer::~ModularRenderer()
 
 namespace {
 	using Clock = std::chrono::high_resolution_clock;
+	static constexpr std::size_t kProfilerFramesInFlight = 4;
+	static constexpr std::size_t kProfilerReadbackDelay = kProfilerFramesInFlight - 1;
+
+	struct PassQuerySlot {
+		std::array<GLuint, 2> timestampQueries{0, 0};
+		std::array<GLuint, 2> statsQueries{0, 0};
+		bool timerIssued = false;
+		bool statsIssued = false;
+	};
+
+	struct PassQueryState {
+		std::array<PassQuerySlot, kProfilerFramesInFlight> slots{};
+		bool initialized = false;
+	};
+
+	struct GpuProfilerPool {
+		std::unordered_map<std::string, PassQueryState> passStates;
+		std::size_t frameIndex = 0;
+		bool strictTiming = false;
+
+		GpuProfilerPool() {
+			// Diagnostic mode: allows strict (potentially blocking) timing if needed.
+			strictTiming = std::getenv("NOX_STRICT_GPU_TIMING") != nullptr;
+		}
+
+		std::size_t CurrentSlotIndex() const {
+			return (frameIndex - 1) % kProfilerFramesInFlight;
+		}
+
+		std::size_t ReadbackSlotIndex() const {
+			return ((frameIndex - 1) + kProfilerFramesInFlight - kProfilerReadbackDelay) % kProfilerFramesInFlight;
+		}
+
+		bool CanReadback() const {
+			return frameIndex > kProfilerReadbackDelay;
+		}
+
+		void BeginFrame() {
+			++frameIndex;
+		}
+
+		PassQueryState& GetOrCreatePassState(const std::string& passName) {
+			auto [it, inserted] = passStates.try_emplace(passName);
+			if (inserted || !it->second.initialized) {
+				InitializePassState(it->second);
+			}
+			return it->second;
+		}
+
+		static bool AreQueryResultsReady(const std::array<GLuint, 2>& queries) {
+			GLint availableA = GL_FALSE;
+			GLint availableB = GL_FALSE;
+			glGetQueryObjectiv(queries[0], GL_QUERY_RESULT_AVAILABLE, &availableA);
+			glGetQueryObjectiv(queries[1], GL_QUERY_RESULT_AVAILABLE, &availableB);
+			return availableA == GL_TRUE && availableB == GL_TRUE;
+		}
+
+		void ResolvePassMetrics(const std::string& passName, ModularRenderer::PassTimingMetrics& metrics) {
+			auto it = passStates.find(passName);
+			if (it == passStates.end() || !CanReadback()) {
+				return;
+			}
+
+			PassQuerySlot& readbackSlot = it->second.slots[ReadbackSlotIndex()];
+
+			if (readbackSlot.statsIssued) {
+#ifdef GLEW_ARB_pipeline_statistics_query
+				if (GLEW_ARB_pipeline_statistics_query) {
+					const bool ready = strictTiming || AreQueryResultsReady(readbackSlot.statsQueries);
+					if (ready) {
+						auto waitStart = Clock::now();
+						GLuint64 primitives = 0;
+						GLuint64 computeInvocations = 0;
+						glGetQueryObjectui64v(readbackSlot.statsQueries[0], GL_QUERY_RESULT, &primitives);
+						glGetQueryObjectui64v(readbackSlot.statsQueries[1], GL_QUERY_RESULT, &computeInvocations);
+						auto waitEnd = Clock::now();
+						metrics.cpuWaitSyncMs += std::chrono::duration<float, std::milli>(waitEnd - waitStart).count();
+						metrics.drawCalls = primitives > 0 ? 1 : 0;
+						metrics.dispatchCount = computeInvocations > 0 ? 1 : 0;
+						readbackSlot.statsIssued = false;
+					}
+				}
+#endif
+			}
+
+			if (readbackSlot.timerIssued && GLEW_ARB_timer_query) {
+				const bool ready = strictTiming || AreQueryResultsReady(readbackSlot.timestampQueries);
+				if (ready) {
+					auto waitStart = Clock::now();
+					GLuint64 beginNs = 0;
+					GLuint64 endNs = 0;
+					glGetQueryObjectui64v(readbackSlot.timestampQueries[0], GL_QUERY_RESULT, &beginNs);
+					glGetQueryObjectui64v(readbackSlot.timestampQueries[1], GL_QUERY_RESULT, &endNs);
+					auto waitEnd = Clock::now();
+					metrics.cpuWaitSyncMs += std::chrono::duration<float, std::milli>(waitEnd - waitStart).count();
+					if (endNs >= beginNs) {
+						metrics.gpuTimeMs = static_cast<float>(endNs - beginNs) / 1000000.0f;
+					}
+					readbackSlot.timerIssued = false;
+				}
+			}
+		}
+
+	private:
+		static void InitializePassState(PassQueryState& state) {
+			for (auto& slot : state.slots) {
+				if (GLEW_ARB_timer_query) {
+					glGenQueries(2, slot.timestampQueries.data());
+				}
+#ifdef GLEW_ARB_pipeline_statistics_query
+				if (GLEW_ARB_pipeline_statistics_query) {
+					glGenQueries(2, slot.statsQueries.data());
+				}
+#endif
+			}
+			state.initialized = true;
+		}
+	};
 
 	struct ScopedPassProfiler {
 		ModularRenderer::PassTimingMetrics metrics;
 		Clock::time_point cpuStart;
-		std::array<GLuint, 2> timestampQueries{0, 0};
-		std::array<GLuint, 2> statsQueries{0, 0};
-		bool hasTimerQuery = false;
-		bool hasStatsQuery = false;
+		GpuProfilerPool& queryPool;
+		PassQuerySlot* activeSlot = nullptr;
 
-		ScopedPassProfiler(const std::string& name) {
+		ScopedPassProfiler(const std::string& name, GpuProfilerPool& profilerPool)
+			: queryPool(profilerPool) {
 			metrics.name = name;
 			cpuStart = Clock::now();
+			queryPool.ResolvePassMetrics(name, metrics);
+
+			PassQueryState& passState = queryPool.GetOrCreatePassState(name);
+			activeSlot = &passState.slots[queryPool.CurrentSlotIndex()];
+			activeSlot->timerIssued = false;
+			activeSlot->statsIssued = false;
 
 			if (GLEW_ARB_timer_query) {
-				glGenQueries(2, timestampQueries.data());
-				glQueryCounter(timestampQueries[0], GL_TIMESTAMP);
-				hasTimerQuery = true;
+				glQueryCounter(activeSlot->timestampQueries[0], GL_TIMESTAMP);
 			}
 
 #ifdef GLEW_ARB_pipeline_statistics_query
 			if (GLEW_ARB_pipeline_statistics_query) {
-				glGenQueries(2, statsQueries.data());
-				glBeginQuery(GL_PRIMITIVES_SUBMITTED_ARB, statsQueries[0]);
-				glBeginQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB, statsQueries[1]);
-				hasStatsQuery = true;
+				glBeginQuery(GL_PRIMITIVES_SUBMITTED_ARB, activeSlot->statsQueries[0]);
+				glBeginQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB, activeSlot->statsQueries[1]);
 			}
 #endif
 		}
@@ -71,34 +192,22 @@ namespace {
 			const auto cpuEnd = Clock::now();
 			metrics.cpuTimeMs = std::chrono::duration<float, std::milli>(cpuEnd - cpuStart).count();
 
-			if (hasStatsQuery) {
-#ifdef GLEW_ARB_pipeline_statistics_query
-				glEndQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB);
-				glEndQuery(GL_PRIMITIVES_SUBMITTED_ARB);
-				GLuint64 primitives = 0;
-				GLuint64 computeInvocations = 0;
-				glGetQueryObjectui64v(statsQueries[0], GL_QUERY_RESULT, &primitives);
-				glGetQueryObjectui64v(statsQueries[1], GL_QUERY_RESULT, &computeInvocations);
-				metrics.drawCalls = primitives > 0 ? 1 : 0;
-				metrics.dispatchCount = computeInvocations > 0 ? 1 : 0;
-				glDeleteQueries(2, statsQueries.data());
-#endif
+			if (!activeSlot) {
+				return;
 			}
 
-			if (hasTimerQuery) {
-				glQueryCounter(timestampQueries[1], GL_TIMESTAMP);
-				GLuint64 beginNs = 0;
-				GLuint64 endNs = 0;
-				auto waitStart = Clock::now();
-				glGetQueryObjectui64v(timestampQueries[0], GL_QUERY_RESULT, &beginNs);
-				glGetQueryObjectui64v(timestampQueries[1], GL_QUERY_RESULT, &endNs);
-				auto waitEnd = Clock::now();
-				metrics.cpuWaitSyncMs = std::chrono::duration<float, std::milli>(waitEnd - waitStart).count();
-				if (endNs >= beginNs) {
-					metrics.gpuTimeMs = static_cast<float>(endNs - beginNs) / 1000000.0f;
-				}
-				glDeleteQueries(2, timestampQueries.data());
+			if (GLEW_ARB_timer_query) {
+				glQueryCounter(activeSlot->timestampQueries[1], GL_TIMESTAMP);
+				activeSlot->timerIssued = true;
 			}
+
+#ifdef GLEW_ARB_pipeline_statistics_query
+			if (GLEW_ARB_pipeline_statistics_query) {
+				glEndQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB);
+				glEndQuery(GL_PRIMITIVES_SUBMITTED_ARB);
+				activeSlot->statsIssued = true;
+			}
+#endif
 		}
 	};
 }
@@ -330,6 +439,8 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 {
 	m_lastPassMetrics.clear();
 	m_lastCpuWaitSyncMs = 0.0f;
+	static GpuProfilerPool profilerPool;
+	profilerPool.BeginFrame();
 	// Clear any stale GL errors from previous frames (only in debug mode)
 	if constexpr (DebugErrorChecking) {
 		while (glGetError() != GL_NO_ERROR) {}
@@ -365,8 +476,8 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		skybox->SetSpecularIBLScale(m_context.specularIBLScale);
 	}
 
-	auto profilePass = [this](const char* name, const std::function<void()>& executePass) {
-		ScopedPassProfiler profiler(name);
+	auto profilePass = [this, &profilerPool](const char* name, const std::function<void()>& executePass) {
+		ScopedPassProfiler profiler(name, profilerPool);
 		executePass();
 		profiler.Finish();
 		m_lastCpuWaitSyncMs += profiler.metrics.cpuWaitSyncMs;
