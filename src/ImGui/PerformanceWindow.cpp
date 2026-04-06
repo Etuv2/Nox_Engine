@@ -71,6 +71,20 @@ void PerformanceWindow::Render() {
             ImGui::Text("Directional: %zu", lightManager->GetDirectionalLightCount());
             ImGui::Text("Point: %zu", lightManager->GetPointLightCount());
             ImGui::Text("Spot: %zu", lightManager->GetSpotLightCount());
+
+            const auto& uploadStats = lightManager->GetLastBufferUploadStats();
+            const auto& uploadTotals = lightManager->GetTotalBufferUploadStats();
+            ImGui::Separator();
+            ImGui::Text("Light Buffer Uploads (frame):");
+            ImGui::Text("Light SSBO: %u uploads, %.2f KB",
+                uploadStats.lightUploadCount,
+                static_cast<float>(uploadStats.lightUploadBytes) / 1024.0f);
+            ImGui::Text("Shadow Matrices: %u uploads, %.2f KB",
+                uploadStats.shadowMatrixUploadCount,
+                static_cast<float>(uploadStats.shadowMatrixUploadBytes) / 1024.0f);
+            ImGui::Text("Uploads (total): %u, %.2f MB",
+                uploadTotals.lightUploadCount + uploadTotals.shadowMatrixUploadCount,
+                static_cast<float>(uploadTotals.lightUploadBytes + uploadTotals.shadowMatrixUploadBytes) / (1024.0f * 1024.0f));
         } else {
             ImGui::Text("Light Manager: Not available");
         }

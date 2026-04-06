@@ -573,6 +573,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 			m_sceneGraph,
 			m_camera,
 			m_lighting,
+			m_frameTime * 0.001f,
 			m_exposure,
 			m_gamma,
 			m_shadowsEnabled,

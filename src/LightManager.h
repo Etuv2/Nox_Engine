@@ -78,6 +78,18 @@ public:
 	GLuint GetLightDataSSBO() const { return m_lightDataSSBO; }
 	GLuint GetShadowMatricesSSBO() const { return m_shadowMatricesSSBO; }
 	int GetActiveLightCount() const { return static_cast<int>(m_activeLights.size()); }
+	bool IsLightDataDirty() const { return m_lightDataDirty; }
+
+	struct BufferUploadStats {
+		uint32_t lightUploadCount = 0;
+		uint64_t lightUploadBytes = 0;
+		uint32_t shadowMatrixUploadCount = 0;
+		uint64_t shadowMatrixUploadBytes = 0;
+	};
+
+	const BufferUploadStats& GetLastBufferUploadStats() const { return m_lastBufferUploadStats; }
+	const BufferUploadStats& GetTotalBufferUploadStats() const { return m_totalBufferUploadStats; }
+	void ResetFrameUploadStats() { m_lastBufferUploadStats = {}; }
 
 	// Shadow system integration
 	void InitializeShadowSystem(int maxShadowCastingLights = 8, int baseResolution = 1024);
@@ -277,6 +289,13 @@ private:
 	// Initialization flags
 	bool m_shadowSystemInitialized = false;
 	bool m_buffersInitialized = false;
+
+	// Dirty tracking and upload instrumentation
+	bool m_lightDataDirty = true;
+	std::vector<LightData> m_cachedLightData;
+	BufferUploadStats m_lastBufferUploadStats{};
+	BufferUploadStats m_totalBufferUploadStats{};
+	bool m_shadowMatricesInitialized = false;
 
 	// Cached uniform locations for shadow rendering
 	mutable GLint m_cachedLocObjectIndex = -2;  // -2 = not queried yet, -1 = not found
