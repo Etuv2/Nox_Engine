@@ -39,4 +39,5 @@ private:
     std::unique_ptr<FrameBuffer> m_extractFBO;
     std::unique_ptr<FrameBuffer> m_downsampleFBO[4];
     std::unique_ptr<FrameBuffer> m_upsampleFBO[4];
+    bool m_runtimeVerboseLogging = false;
 };

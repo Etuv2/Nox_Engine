@@ -27,4 +27,5 @@ public:
 
 private:
     GLuint m_shader = 0;
+    bool m_runtimeVerboseLogging = false;
 };

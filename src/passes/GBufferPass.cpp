@@ -1,4 +1,5 @@
 #include "GBufferPass.h"
+#include "PassLogging.h"
 #include "../ShaderLoader.h"
 #include "../SceneGraph.h"
 #include "../Camera.h"
@@ -32,7 +33,7 @@ bool GBufferPass::Initialize(RenderContext& context) {
 
 void GBufferPass::Resize(RenderContext& context, int newWidth, int newHeight) {
     // G-buffer FBO is resized by Renderer coordinator
-    std::cout << "[GBufferPass] Resized to " << newWidth << "x" << newHeight << "\n";
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[GBufferPass] Resized to " << newWidth << "x" << newHeight);
 }
 
 void GBufferPass::Execute(RenderContext& ctx,
@@ -40,8 +41,6 @@ void GBufferPass::Execute(RenderContext& ctx,
                           const std::shared_ptr<Camera>& camera,
                           const std::shared_ptr<DirectionalLight>& dirLight,
                           const std::shared_ptr<Skybox>& skybox) {
-    std::cout << "[GBufferPass] Starting execution..." << std::endl;
-    
     if (!sceneGraph || !camera) {
         std::cerr << "[GBufferPass] ERROR: Missing sceneGraph or camera!" << std::endl;
         return;
@@ -52,8 +51,6 @@ void GBufferPass::Execute(RenderContext& ctx,
         return;
     }
 
-    std::cout << "[GBufferPass] Binding G-buffer FBO (ID: " << ctx.gbufferFBO->GetFBO() << ")" << std::endl;
-    
     // Bind G-buffer FBO
     ctx.gbufferFBO->Bind();
     glViewport(0, 0, ctx.width, ctx.height);
@@ -69,7 +66,7 @@ void GBufferPass::Execute(RenderContext& ctx,
     if (ctx.wireframeMode) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glLineWidth(1.0f);
-        std::cout << "[GBufferPass] Wireframe mode enabled" << std::endl;
+        // Wireframe state is surfaced via UI/profiler context instead of per-frame console logging.
     }
 
     // Apply force backface culling setting to RenderSystem
@@ -77,7 +74,6 @@ void GBufferPass::Execute(RenderContext& ctx,
         renderSystem->SetForceBackfaceCulling(ctx.forceBackfaceCulling);
     }
 
-    std::cout << "[GBufferPass] Using shader program: " << m_shader << std::endl;
     glUseProgram(m_shader);
 
     // Upload matrices
@@ -86,7 +82,6 @@ void GBufferPass::Execute(RenderContext& ctx,
     glUniformMatrix4fv(glGetUniformLocation(m_shader, "projection"), 
                        1, GL_FALSE, glm::value_ptr(ctx.proj));
 
-    std::cout << "[GBufferPass] Drawing geometry..." << std::endl;
     // Render scene geometry to G-buffer
     sceneGraph->RenderGeometry(m_shader);
 
@@ -107,5 +102,4 @@ void GBufferPass::Execute(RenderContext& ctx,
 
     // Unbind FBO
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    std::cout << "[GBufferPass] Execution complete" << std::endl;
 }
