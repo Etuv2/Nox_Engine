@@ -46,9 +46,24 @@ namespace {
 	static constexpr std::size_t kProfilerFramesInFlight = 4;
 	static constexpr std::size_t kProfilerReadbackDelay = kProfilerFramesInFlight - 1;
 
+	static bool IsEnvVarEnabled(const char* name) {
+#if defined(_MSC_VER)
+		char* value = nullptr;
+		size_t length = 0;
+		if (_dupenv_s(&value, &length, name) != 0) {
+			return false;
+		}
+		const bool enabled = value != nullptr;
+		std::free(value);
+		return enabled;
+#else
+		return std::getenv(name) != nullptr;
+#endif
+	}
+
 	struct PassQuerySlot {
-		std::array<GLuint, 2> timestampQueries{0, 0};
-		std::array<GLuint, 2> statsQueries{0, 0};
+		std::array<GLuint, 2> timestampQueries{ 0, 0 };
+		std::array<GLuint, 2> statsQueries{ 0, 0 };
 		bool timerIssued = false;
 		bool statsIssued = false;
 	};
@@ -65,7 +80,7 @@ namespace {
 
 		GpuProfilerPool() {
 			// Diagnostic mode: allows strict (potentially blocking) timing if needed.
-			strictTiming = std::getenv("NOX_STRICT_GPU_TIMING") != nullptr;
+			strictTiming = IsEnvVarEnabled("NOX_STRICT_GPU_TIMING");
 		}
 
 		std::size_t CurrentSlotIndex() const {
@@ -286,7 +301,7 @@ std::size_t ModularRenderer::PlanCacheKeyHash::operator()(const PlanCacheKey& ke
 	std::size_t seed = static_cast<std::size_t>(key.mode);
 	const auto hashCombine = [&seed](bool value) {
 		seed ^= static_cast<std::size_t>(value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-	};
+		};
 	hashCombine(key.enableBloom);
 	hashCombine(key.enableSSAO);
 	hashCombine(key.enableSSGI);
@@ -458,28 +473,28 @@ void ModularRenderer::BuildPassDescriptors(
 
 	auto addPass = [this](PassDescriptor descriptor) {
 		m_passDescriptors.push_back(std::move(descriptor));
-	};
+		};
 
 	addPass({
 		"RTPass", {}, { "HDRColor" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::PATH_TRACED; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_rtPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
-	});
+		});
 	addPass({
 		"ShadowPass", {}, { "ShadowMap" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
-	});
+		});
 	addPass({
 		"GBufferPass", { "ShadowMap" }, { "GBuffer" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
-	});
+		});
 	addPass({
 		"DebugViewPass", { "GBuffer" }, { "CompositedColor" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
 		[this]() { visualizeDebugMode(m_context); }
-	});
+		});
 	addPass({
 		"LPVPass", { "GBuffer" }, { ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB },
 		[](const RenderContext& ctx) { return ctx.enableLPV; },
@@ -503,7 +518,7 @@ void ModularRenderer::BuildPassDescriptors(
 			m_namedResources[ResourceNames::LPVG] = m_lpvPass->GetLPVTextureG();
 			m_namedResources[ResourceNames::LPVB] = m_lpvPass->GetLPVTextureB();
 		}
-	});
+		});
 	addPass({
 		"SSAOPass", { "GBuffer" }, { ResourceNames::SSAO },
 		[](const RenderContext& ctx) { return ctx.enableSSAO; },
@@ -511,7 +526,7 @@ void ModularRenderer::BuildPassDescriptors(
 			m_ssaoPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			m_namedResources[ResourceNames::SSAO] = m_ssaoPass->GetSSAOTexture();
 		}
-	});
+		});
 	addPass({
 		"ScreenSpaceShadowPass", { "GBuffer" }, { ResourceNames::ScreenSpaceShadow },
 		[](const RenderContext& ctx) { return ctx.enableScreenSpaceShadows; },
@@ -519,14 +534,14 @@ void ModularRenderer::BuildPassDescriptors(
 			m_screenSpaceShadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			m_namedResources[ResourceNames::ScreenSpaceShadow] = m_screenSpaceShadowPass->GetShadowTexture();
 		}
-	});
+		});
 	addPass({
 		"TAAPass", { "GBuffer" }, { "TAA" },
 		[](const RenderContext& ctx) { return ctx.enableTAA; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			m_taaPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		}
-	});
+		});
 	addPass({
 		"SSGIPass", { "GBuffer" }, { ResourceNames::SSGI },
 		[](const RenderContext& ctx) { return ctx.enableSSGI; },
@@ -537,7 +552,7 @@ void ModularRenderer::BuildPassDescriptors(
 			m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			m_namedResources[ResourceNames::SSGI] = m_ssgiPass->GetSSGITexture();
 		}
-	});
+		});
 	addPass({
 		"LightingPass", { "GBuffer", "TAA", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::SSGI, ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB }, { "HDRLit" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
@@ -551,7 +566,7 @@ void ModularRenderer::BuildPassDescriptors(
 				m_namedResources[ResourceNames::LPVB]);
 			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		}
-	});
+		});
 	addPass({
 		"SkyboxPass", { "HDRLit" }, { "HDRWithSkybox" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
@@ -562,12 +577,12 @@ void ModularRenderer::BuildPassDescriptors(
 			m_context.hdrFBO->Bind();
 			skybox->Draw(m_context.view, m_context.proj);
 		}
-	});
+		});
 	addPass({
 		"TransparentForwardPass", { "HDRWithSkybox" }, { "HDRColor" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
-	});
+		});
 	addPass({
 		"BloomPass", { "HDRColor" }, { ResourceNames::Bloom },
 		[this](const RenderContext& ctx) { return ctx.enableBloom && DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
@@ -575,7 +590,7 @@ void ModularRenderer::BuildPassDescriptors(
 			m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			m_namedResources[ResourceNames::Bloom] = m_bloomPass->GetBloomResult();
 		}
-	});
+		});
 	addPass({
 		"PostProcessPass", { "HDRColor", ResourceNames::Bloom }, { "CompositedColor" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
@@ -584,7 +599,7 @@ void ModularRenderer::BuildPassDescriptors(
 			m_postProcessPass->SetBloomTexture(m_namedResources[ResourceNames::Bloom]);
 			m_postProcessPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		}
-	});
+		});
 	addPass({
 		"OverlayComposePass", { "CompositedColor" }, { "OverlayColor" },
 		[](const RenderContext&) { return true; },
@@ -593,12 +608,12 @@ void ModularRenderer::BuildPassDescriptors(
 				m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			}
 		}
-	});
+		});
 	addPass({
 		"GUIPass", { "OverlayColor" }, { "Backbuffer" },
 		[](const RenderContext&) { return true; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
-	});
+		});
 	addPass({
 		"SSGIHistoryPass", { "Backbuffer" }, { "SSGIHistory" },
 		[](const RenderContext& ctx) { return ctx.rendererMode == RenderContext::RendererMode::DEFERRED_REALTIME; },
@@ -607,7 +622,7 @@ void ModularRenderer::BuildPassDescriptors(
 				m_ssgiPass->CaptureHistory(m_context);
 			}
 		}
-	});
+		});
 }
 
 bool ModularRenderer::InitializeSharedResources()
@@ -629,7 +644,7 @@ bool ModularRenderer::InitializeSharedResources()
 			GL_RGBA16F,  // RT2: Specular F0 (full RGB) + emissive strength
 			GL_R8UI,     // RT3: Material ID
 			GL_RGBA16F   // RT4: Emissive color (RGB)
-		},
+	},
 		true,  // useDepthAsTexture
 		false  // useDepthAsTextureArray
 	);
@@ -822,13 +837,13 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		skybox->SetDiffuseIBLScale(m_context.diffuseIBLScale);
 		skybox->SetSpecularIBLScale(m_context.specularIBLScale);
 	}
-	m_profilePassFunc = [this, &profilerPool](const char* name, const std::function<void()>& executePass) {
+	m_profilePassFunc = [this](const char* name, const std::function<void()>& executePass) {
 		ScopedPassProfiler profiler(name, profilerPool);
 		executePass();
 		profiler.Finish();
 		m_lastCpuWaitSyncMs += profiler.metrics.cpuWaitSyncMs;
 		m_lastPassMetrics.push_back(profiler.metrics);
-	};
+		};
 
 	m_namedResources.clear();
 	m_namedResources[ResourceNames::SSAO] = 0;
