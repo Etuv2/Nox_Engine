@@ -106,6 +106,37 @@ A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphi
 - nlohmann JSON 
 - tinyglTF (glTF 2.0 loader)
 
+### Building with CMake
+
+The project now supports a first-class CMake workflow.
+
+#### Windows (bundled prebuilt libraries)
+
+This repository already includes prebuilt SDL2/GLEW/Assimp libraries for Windows in `lib/` and runtime `.dll` files at the repository root.
+
+```bash
+cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
+cmake --build build --config Release
+```
+
+#### Linux/macOS (system packages)
+
+Install development packages for:
+- OpenGL
+- GLEW
+- SDL2
+- SDL2_image
+- SDL2_ttf
+- SDL2_mixer
+- assimp
+
+Then build:
+
+```bash
+cmake -S . -B build -G Ninja
+cmake --build build
+```
+
 
 ## Usage Guide
 
