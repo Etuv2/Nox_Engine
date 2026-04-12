@@ -189,7 +189,7 @@ void RigidBody::applyTorque(const glm::vec3& torque) {
 }
 
 void RigidBody::applyImpulse(const glm::vec3& impulse) {
-    if (m_bodyType != BodyType::DYNAMIC) return;
+    if (m_bodyType != BodyType::DYNAMIC || isEditorControlled()) return;
     // Validate impulse is finite
     if (!std::isfinite(impulse.x) || !std::isfinite(impulse.y) || !std::isfinite(impulse.z)) return;
     wakeUp();
@@ -203,7 +203,7 @@ void RigidBody::applyImpulse(const glm::vec3& impulse) {
 }
 
 void RigidBody::applyImpulseAtPoint(const glm::vec3& impulse, const glm::vec3& worldPoint) {
-    if (m_bodyType != BodyType::DYNAMIC) return;
+    if (m_bodyType != BodyType::DYNAMIC || isEditorControlled()) return;
     // Validate inputs are finite
     if (!std::isfinite(impulse.x) || !std::isfinite(impulse.y) || !std::isfinite(impulse.z)) return;
     if (!std::isfinite(worldPoint.x) || !std::isfinite(worldPoint.y) || !std::isfinite(worldPoint.z)) return;
@@ -223,7 +223,7 @@ void RigidBody::applyImpulseAtPoint(const glm::vec3& impulse, const glm::vec3& w
 }
 
 void RigidBody::applyAngularImpulse(const glm::vec3& impulse) {
-    if (m_bodyType != BodyType::DYNAMIC) return;
+    if (m_bodyType != BodyType::DYNAMIC || isEditorControlled()) return;
     // Validate impulse is finite
     if (!std::isfinite(impulse.x) || !std::isfinite(impulse.y) || !std::isfinite(impulse.z)) return;
     wakeUp();
@@ -262,8 +262,8 @@ void RigidBody::setSleeping(bool sleeping) {
     if (sleeping) {
         m_linearVelocity = glm::vec3(0.0f);
         m_angularVelocity = glm::vec3(0.0f);
-        // Sleeping bodies become scene-owned (no physics updates)
-        if (m_bodyType == BodyType::DYNAMIC) {
+        // Sleeping bodies become scene-owned unless the editor is actively driving them.
+        if (m_bodyType == BodyType::DYNAMIC && !m_isGizmoGrabbed) {
             m_transformOwner = TransformOwner::SCENE;
         }
     }
@@ -359,7 +359,7 @@ bool RigidBody::needsFatAABBUpdate(float margin) const {
 // ============== INTEGRATION ==============
 
 void RigidBody::integrateForces(float dt, const glm::vec3& gravity) {
-    if (m_bodyType != BodyType::DYNAMIC || m_isSleeping) return;
+    if (m_bodyType != BodyType::DYNAMIC || m_isSleeping || isEditorControlled()) return;
     
     // Apply gravity
     glm::vec3 totalAcceleration = gravity * m_gravityScale + m_acceleration;
@@ -380,7 +380,7 @@ void RigidBody::integrateForces(float dt, const glm::vec3& gravity) {
 }
 
 void RigidBody::integrateVelocities(float dt) {
-    if (m_bodyType == BodyType::STATIC || m_isSleeping) return;
+    if (m_bodyType == BodyType::STATIC || m_isSleeping || isEditorControlled()) return;
     
     if (m_bodyType == BodyType::KINEMATIC && m_hasKinematicTarget) {
         // Kinematic bodies move directly to target

@@ -24,6 +24,9 @@ class RigidBody;
 using EntityID = uint32_t;
 constexpr EntityID INVALID_ENTITY = 0;
 
+using TransformID = uint32_t;
+constexpr TransformID INVALID_TRANSFORM_ID = 0;
+
 // Component type enumeration for quick type checking
 enum class ComponentType : uint8_t {
 	TRANSFORM = 0,
@@ -66,9 +69,12 @@ enum class CullingOverride : uint8_t {
 struct alignas(16) TransformComponent {
 	glm::mat4 localTransform;      // Local transformation matrix
 	glm::mat4 worldTransform;      // Cached world transformation
+	glm::mat4 prevWorldTransform;  // Previous frame world transform for temporal systems
 	glm::mat4 animatedTransform;   // Animation offset transform
 
 	EntityID parentID;     // Parent entity ID (INVALID_ENTITY if root)
+	TransformID transformID;       // Stable render/transform identity
+	uint32_t transformGeneration;  // Identity generation for stale-handle rejection
 
 	bool isDirty : 1;              // World transform needs recalculation
 	bool hasAnimation : 1;       // Has animated transform
@@ -77,8 +83,11 @@ struct alignas(16) TransformComponent {
 	TransformComponent()
 		: localTransform(1.0f)
 		, worldTransform(1.0f)
+		, prevWorldTransform(1.0f)
 		, animatedTransform(1.0f)
 		, parentID(INVALID_ENTITY)
+		, transformID(INVALID_TRANSFORM_ID)
+		, transformGeneration(0)
 		, isDirty(true)
 		, hasAnimation(false)
 		, padding(0)

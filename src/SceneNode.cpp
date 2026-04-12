@@ -338,6 +338,17 @@ glm::quat SceneNode::GetOrientation() const {
 void SceneNode::SyncPhysicsFromTransform() {
 	if (!m_rigidbody || m_updatingFromPhysics) return;
 
+	// Editor-driven grabs are authored through PhysicsEngine::UpdateGizmoTarget.
+	// Avoid a second transform write path from SceneNode while the editor owns the body.
+	if (m_rigidbody->isEditorControlled()) {
+		return;
+	}
+
+	// Scene-side writes should only push into scene-owned or kinematic bodies.
+	if (!m_rigidbody->IsKinematic() && !m_rigidbody->isSceneOwned()) {
+		return;
+	}
+
 	m_updatingFromPhysics = true;
 
 	// Get WORLD position and orientation, not local
@@ -353,13 +364,8 @@ void SceneNode::SyncPhysicsFromTransform() {
 	m_rigidbody->setPosition(translation);
 	m_rigidbody->setOrientation(rotation);
 	
-	// Only handle kinematic bodies and already-grabbed bodies
-	// Do NOT auto-grab dynamic bodies - gizmo code should explicitly manage grab state
+	// Only handle scene-authored kinematic targets here.
 	if (m_rigidbody->IsKinematic()) {
-		// Kinematic body - set target position
-		m_rigidbody->setKinematicTarget(translation, rotation);
-	} else if (m_rigidbody->isGizmoGrabbed()) {
-		// Already grabbed by gizmo - update kinematic target
 		m_rigidbody->setKinematicTarget(translation, rotation);
 	}
 	
@@ -369,8 +375,9 @@ void SceneNode::SyncPhysicsFromTransform() {
 	// Update previous state to prevent interpolation artifacts
 	m_rigidbody->storePreviousState();
 	
-	// Wake up kinematic and grabbed bodies, but NOT dynamic bodies at rest
-	if (m_rigidbody->IsKinematic() || m_rigidbody->isGizmoGrabbed()) {
+	// Only wake kinematic bodies here; sleeping dynamics stay scene-owned until
+	// an explicit physics-side interaction wakes them.
+	if (m_rigidbody->IsKinematic()) {
 		m_rigidbody->wakeUp();
 	}
 
@@ -633,6 +640,7 @@ void SceneNode::SyncToECS() {
 	ecsTransform->animatedTransform = animatedTransform;
 	ecsTransform->hasAnimation = (animatedTransform != glm::mat4(1.0f));
 	ecsTransform->isDirty = true;
+	ecsTransform->prevWorldTransform = ecsTransform->worldTransform;
 	
 	if (auto parent = parentNode.lock()) {
 		ecsTransform->parentID = parent->GetEntityID();
@@ -721,6 +729,7 @@ EntityID SceneNode::CreateECSEntity(const std::string& name) {
 	transformComp.localTransform = transform;
 	transformComp.animatedTransform = animatedTransform;
 	transformComp.worldTransform = m_cachedWorldTransform;
+	transformComp.prevWorldTransform = m_cachedWorldTransform;
 	transformComp.isDirty = true;
 	
 	if (auto parent = parentNode.lock()) {

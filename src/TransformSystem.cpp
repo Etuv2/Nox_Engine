@@ -111,6 +111,7 @@ void TransformSystem::ComputeWorldTransform(EntityID entity) {
 	glm::mat4 parentWorld = GetParentWorldTransform(entity);
 
 	// Compute world transform
+	transform->prevWorldTransform = transform->worldTransform;
 	transform->worldTransform = parentWorld * combinedLocal;
 	transform->isDirty = false;
 }

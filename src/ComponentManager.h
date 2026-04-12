@@ -233,6 +233,7 @@ public:
 private:
 	// Entity ID generation
 	EntityID m_nextEntityID = 1;  // Start at 1, 0 is INVALID_ENTITY
+	TransformID m_nextTransformID = 1;  // Stable transform identity allocator
 	std::vector<EntityID> m_freeEntityIDs;  // Recycled IDs
 
 	// Entity metadata storage

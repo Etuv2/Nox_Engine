@@ -636,6 +636,7 @@ bool ModularRenderer::InitializeSharedResources()
 	// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
 	// RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
 	// RT4: RGBA16F - Emissive color (RGB) + unused (A)
+	// RT5: R32UI - Stable TransformID for temporal/surfel workflows
 	m_context.gbufferFBO = std::make_unique<FrameBuffer>(
 		m_context.width, m_context.height,
 		std::vector<GLenum>{
@@ -643,7 +644,8 @@ bool ModularRenderer::InitializeSharedResources()
 			GL_RGBA16F,  // RT1: Albedo + occlusion
 			GL_RGBA16F,  // RT2: Specular F0 (full RGB) + emissive strength
 			GL_R8UI,     // RT3: Material ID
-			GL_RGBA16F   // RT4: Emissive color (RGB)
+			GL_RGBA16F,  // RT4: Emissive color (RGB)
+			GL_R32UI     // RT5: Transform ID
 	},
 		true,  // useDepthAsTexture
 		false  // useDepthAsTextureArray
@@ -895,6 +897,9 @@ void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 		break;
 	case RenderContext::DebugMode::MATERIAL_ID:
 		sourceAttachment = 3; // Material ID is in RT3
+		break;
+	case RenderContext::DebugMode::TRANSFORM_ID:
+		sourceAttachment = 5; // Transform ID is in RT5
 		break;
 	case RenderContext::DebugMode::DEPTH:
 		// Use depth buffer

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\build\vs2022-x64\CMakeFiles\649b6e9474560f443e73bb9d97e0f8d8\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{930935D7-558C-3CA1-98CC-4383EF2E441D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

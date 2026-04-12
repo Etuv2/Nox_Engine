@@ -3,10 +3,221 @@
 #include "Contact.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cmath>
 #include <limits>
 
 namespace PhysicsCollision {
+namespace {
+
+struct SupportVertex {
+    glm::vec3 pointA{0.0f};
+    glm::vec3 pointB{0.0f};
+    glm::vec3 minkowski{0.0f};
+};
+
+bool HasConvexSupport(RigidBody::ShapeType shapeType) {
+    return shapeType == RigidBody::ShapeType::BOX || shapeType == RigidBody::ShapeType::SPHERE;
+}
+
+glm::vec3 SupportPointForBody(const std::shared_ptr<RigidBody>& body, const glm::vec3& direction) {
+    if (!body) {
+        return glm::vec3(0.0f);
+    }
+
+    glm::vec3 dir = direction;
+    if (glm::dot(dir, dir) < 1e-8f) {
+        dir = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+
+    switch (body->getShapeType()) {
+    case RigidBody::ShapeType::SPHERE:
+        return body->getPosition() + glm::normalize(dir) * body->getRadius();
+
+    case RigidBody::ShapeType::BOX: {
+        glm::vec3 localDir = body->worldToLocalDirection(dir);
+        glm::vec3 localSupport(
+            localDir.x >= 0.0f ? body->getHalfExtents().x : -body->getHalfExtents().x,
+            localDir.y >= 0.0f ? body->getHalfExtents().y : -body->getHalfExtents().y,
+            localDir.z >= 0.0f ? body->getHalfExtents().z : -body->getHalfExtents().z);
+        return body->localToWorld(localSupport);
+    }
+
+    case RigidBody::ShapeType::PLANE:
+    default:
+        return body->getPosition();
+    }
+}
+
+SupportVertex GetSupportVertex(const std::shared_ptr<RigidBody>& bodyA,
+                               const std::shared_ptr<RigidBody>& bodyB,
+                               const glm::vec3& direction) {
+    SupportVertex vertex;
+    vertex.pointA = SupportPointForBody(bodyA, direction);
+    vertex.pointB = SupportPointForBody(bodyB, -direction);
+    vertex.minkowski = vertex.pointA - vertex.pointB;
+    return vertex;
+}
+
+uint32_t QuantizeContactCoordinate(float value) {
+    const float scaled = glm::clamp(value * 1024.0f, -2048.0f, 2047.0f);
+    return static_cast<uint32_t>(static_cast<int32_t>(std::round(scaled)) + 2048);
+}
+
+uint32_t MakeFeatureId(const glm::vec3& localPointA, const glm::vec3& localPointB) {
+    uint32_t hash = 2166136261u;
+    const std::array<uint32_t, 6> values = {
+        QuantizeContactCoordinate(localPointA.x),
+        QuantizeContactCoordinate(localPointA.y),
+        QuantizeContactCoordinate(localPointA.z),
+        QuantizeContactCoordinate(localPointB.x),
+        QuantizeContactCoordinate(localPointB.y),
+        QuantizeContactCoordinate(localPointB.z)
+    };
+
+    for (uint32_t value : values) {
+        hash ^= value;
+        hash *= 16777619u;
+    }
+
+    return hash;
+}
+
+void AssignFeatureId(ContactPoint& cp) {
+    cp.featureId = MakeFeatureId(cp.localPointA, cp.localPointB);
+}
+
+void ReorientManifold(ContactManifold& manifold,
+                      const std::shared_ptr<RigidBody>& expectedA,
+                      const std::shared_ptr<RigidBody>& expectedB) {
+    if (manifold.bodyA == expectedA && manifold.bodyB == expectedB) {
+        return;
+    }
+
+    if (manifold.bodyA == expectedB && manifold.bodyB == expectedA) {
+        std::swap(manifold.bodyA, manifold.bodyB);
+        manifold.normal = -manifold.normal;
+        for (int i = 0; i < manifold.pointCount; ++i) {
+            std::swap(manifold.points[i].localPointA, manifold.points[i].localPointB);
+            AssignFeatureId(manifold.points[i]);
+        }
+        manifold.computeTangentBasis();
+    }
+}
+
+bool UpdateSimplex(std::vector<SupportVertex>& simplex, glm::vec3& direction) {
+    const glm::vec3 origin(0.0f);
+    const SupportVertex& a = simplex.back();
+    const glm::vec3 ao = origin - a.minkowski;
+
+    if (simplex.size() == 2) {
+        const glm::vec3 ab = simplex[0].minkowski - a.minkowski;
+        direction = glm::cross(glm::cross(ab, ao), ab);
+        if (glm::dot(direction, direction) < 1e-8f) {
+            direction = glm::vec3(-ab.y, ab.x, 0.0f);
+            if (glm::dot(direction, direction) < 1e-8f) {
+                direction = glm::vec3(0.0f, -ab.z, ab.y);
+            }
+        }
+        return false;
+    }
+
+    if (simplex.size() == 3) {
+        const glm::vec3 ab = simplex[1].minkowski - a.minkowski;
+        const glm::vec3 ac = simplex[0].minkowski - a.minkowski;
+        const glm::vec3 abc = glm::cross(ab, ac);
+
+        const glm::vec3 abPerp = glm::cross(abc, ab);
+        if (glm::dot(abPerp, ao) > 0.0f) {
+            simplex.erase(simplex.begin());
+            direction = glm::cross(glm::cross(ab, ao), ab);
+            return false;
+        }
+
+        const glm::vec3 acPerp = glm::cross(ac, abc);
+        if (glm::dot(acPerp, ao) > 0.0f) {
+            simplex.erase(simplex.begin() + 1);
+            direction = glm::cross(glm::cross(ac, ao), ac);
+            return false;
+        }
+
+        direction = (glm::dot(abc, ao) > 0.0f) ? abc : -abc;
+        if (glm::dot(abc, ao) <= 0.0f) {
+            std::swap(simplex[0], simplex[1]);
+        }
+        return false;
+    }
+
+    if (simplex.size() == 4) {
+        const glm::vec3 ab = simplex[2].minkowski - a.minkowski;
+        const glm::vec3 ac = simplex[1].minkowski - a.minkowski;
+        const glm::vec3 ad = simplex[0].minkowski - a.minkowski;
+
+        const glm::vec3 abc = glm::cross(ab, ac);
+        const glm::vec3 acd = glm::cross(ac, ad);
+        const glm::vec3 adb = glm::cross(ad, ab);
+
+        if (glm::dot(abc, ao) > 0.0f) {
+            simplex.erase(simplex.begin());
+            direction = abc;
+            return false;
+        }
+        if (glm::dot(acd, ao) > 0.0f) {
+            simplex.erase(simplex.begin() + 2);
+            direction = acd;
+            return false;
+        }
+        if (glm::dot(adb, ao) > 0.0f) {
+            simplex.erase(simplex.begin() + 1);
+            direction = adb;
+            return false;
+        }
+
+        return true;
+    }
+
+    direction = ao;
+    return false;
+}
+
+bool ConvexOverlapGJK(const std::shared_ptr<RigidBody>& bodyA,
+                      const std::shared_ptr<RigidBody>& bodyB) {
+    std::vector<SupportVertex> simplex;
+    simplex.reserve(4);
+
+    glm::vec3 direction = bodyB->getPosition() - bodyA->getPosition();
+    if (glm::dot(direction, direction) < 1e-8f) {
+        direction = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+
+    simplex.push_back(GetSupportVertex(bodyA, bodyB, direction));
+    direction = -simplex.back().minkowski;
+
+    for (int iteration = 0; iteration < 20; ++iteration) {
+        SupportVertex candidate = GetSupportVertex(bodyA, bodyB, direction);
+        if (glm::dot(candidate.minkowski, direction) <= 1e-5f) {
+            return false;
+        }
+
+        simplex.push_back(candidate);
+        if (UpdateSimplex(simplex, direction)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool RequiresConvexPrepass(RigidBody::ShapeType typeA, RigidBody::ShapeType typeB) {
+    if (!HasConvexSupport(typeA) || !HasConvexSupport(typeB)) {
+        return false;
+    }
+
+    return typeA == RigidBody::ShapeType::BOX || typeB == RigidBody::ShapeType::BOX;
+}
+
+} // namespace
 
 bool TestCollision(const std::shared_ptr<RigidBody>& bodyA,
                    const std::shared_ptr<RigidBody>& bodyB,
@@ -15,6 +226,13 @@ bool TestCollision(const std::shared_ptr<RigidBody>& bodyA,
     
     auto typeA = bodyA->getShapeType();
     auto typeB = bodyB->getShapeType();
+
+    // Transitional convex path: use GJK for convex overlap testing before
+    // dispatching to the existing manifold builders. EPA/manifold generation
+    // still needs follow-up work, but this gives us a shared convex seam now.
+    if (RequiresConvexPrepass(typeA, typeB) && !ConvexOverlapGJK(bodyA, bodyB)) {
+        return false;
+    }
     
     // Dispatch based on shape types
     if (typeA == RigidBody::ShapeType::SPHERE) {
@@ -27,25 +245,9 @@ bool TestCollision(const std::shared_ptr<RigidBody>& bodyA,
         }
     } else if (typeA == RigidBody::ShapeType::BOX) {
         if (typeB == RigidBody::ShapeType::SPHERE) {
-            // Box-Sphere: call SphereBox with swapped order
-            // SphereBox returns: bodyA=sphere(bodyB), bodyB=box(bodyA), normal from sphere to box
             bool result = SphereBox(bodyB, bodyA, manifold);
             if (result) {
-                // After SphereBox: normal points from bodyB (sphere) toward bodyA (box)
-                // We need normal to point from original bodyA (box) to original bodyB (sphere)
-                // So we flip the normal
-                manifold.normal = -manifold.normal;
-                
-                // Swap bodies back to original order
-                std::swap(manifold.bodyA, manifold.bodyB);
-                
-                // Also swap local points since they were computed for swapped bodies
-                for (int i = 0; i < manifold.pointCount; i++) {
-                    std::swap(manifold.points[i].localPointA, manifold.points[i].localPointB);
-                }
-                
-                // Recompute tangent basis with new normal
-                manifold.computeTangentBasis();
+                ReorientManifold(manifold, bodyA, bodyB);
             }
             return result;
         } else if (typeB == RigidBody::ShapeType::BOX) {
@@ -55,47 +257,15 @@ bool TestCollision(const std::shared_ptr<RigidBody>& bodyA,
         }
     } else if (typeA == RigidBody::ShapeType::PLANE) {
         if (typeB == RigidBody::ShapeType::SPHERE) {
-            // Plane-Sphere: call SpherePlane with swapped order
-            // SpherePlane returns: normal = planeNormal (pointing from plane toward sphere)
             bool result = SpherePlane(bodyB, bodyA, manifold);
             if (result) {
-                // After SpherePlane: bodyA=sphere(bodyB), bodyB=plane(bodyA)
-                // Normal points from plane toward sphere (which is A to B in original order)
-                // So we flip normal to point from original A (plane) to original B (sphere)
-                manifold.normal = -manifold.normal;
-                
-                // Swap bodies back to original order
-                std::swap(manifold.bodyA, manifold.bodyB);
-                
-                // Swap local points
-                for (int i = 0; i < manifold.pointCount; i++) {
-                    std::swap(manifold.points[i].localPointA, manifold.points[i].localPointB);
-                }
-                
-                // Recompute tangent basis
-                manifold.computeTangentBasis();
+                ReorientManifold(manifold, bodyA, bodyB);
             }
             return result;
         } else if (typeB == RigidBody::ShapeType::BOX) {
-            // Plane-Box: call BoxPlane with swapped order
-            // BoxPlane returns: normal = planeNormal (pointing from plane toward box)
             bool result = BoxPlane(bodyB, bodyA, manifold);
             if (result) {
-                // After BoxPlane: bodyA=box(bodyB), bodyB=plane(bodyA)
-                // Normal points from plane toward box
-                // Flip to point from original A (plane) to original B (box)
-                manifold.normal = -manifold.normal;
-                
-                // Swap bodies back
-                std::swap(manifold.bodyA, manifold.bodyB);
-                
-                // Swap local points
-                for (int i = 0; i < manifold.pointCount; i++) {
-                    std::swap(manifold.points[i].localPointA, manifold.points[i].localPointB);
-                }
-                
-                // Recompute tangent basis
-                manifold.computeTangentBasis();
+                ReorientManifold(manifold, bodyA, bodyB);
             }
             return result;
         }
@@ -144,6 +314,7 @@ bool SphereSphere(const std::shared_ptr<RigidBody>& sphereA,
     cp.point = posA + manifold.normal * (radiusA - cp.penetration * 0.5f);
     cp.localPointA = sphereA->worldToLocal(cp.point);
     cp.localPointB = sphereB->worldToLocal(cp.point);
+    AssignFeatureId(cp);
     
     return true;
 }
@@ -229,6 +400,7 @@ bool SphereBox(const std::shared_ptr<RigidBody>& sphere,
     // localPointB is contact point in box's local space
     cp.localPointA = sphere->worldToLocal(cp.point);
     cp.localPointB = box->worldToLocal(cp.point);
+    AssignFeatureId(cp);
     
     return true;
 }
@@ -275,6 +447,7 @@ bool SpherePlane(const std::shared_ptr<RigidBody>& sphere,
     cp.point = spherePos - planeNormal * signedDist;
     cp.localPointA = sphere->worldToLocal(cp.point);
     cp.localPointB = plane->worldToLocal(cp.point);
+    AssignFeatureId(cp);
     
     return true;
 }
@@ -440,6 +613,7 @@ bool BoxBox(const std::shared_ptr<RigidBody>& boxA,
             cp.penetration = -dist;
             cp.localPointA = boxA->worldToLocal(vert);
             cp.localPointB = boxB->worldToLocal(vert);
+            AssignFeatureId(cp);
             manifold.pointCount++;
         }
     }
@@ -463,8 +637,10 @@ bool BoxBox(const std::shared_ptr<RigidBody>& boxA,
         cp.penetration = minPenetration;
         cp.localPointA = boxA->worldToLocal(deepestPoint);
         cp.localPointB = boxB->worldToLocal(deepestPoint);
+        AssignFeatureId(cp);
         manifold.pointCount = 1;
     }
+    manifold.stabilizePointOrder();
     
     return manifold.pointCount > 0;
 }
@@ -531,10 +707,12 @@ bool BoxPlane(const std::shared_ptr<RigidBody>& box,
             // Project corner onto plane surface for localPointB
             glm::vec3 planeContactPoint = corners[i] - planeNormal * dist;
             cp.localPointB = plane->worldToLocal(planeContactPoint);
+            AssignFeatureId(cp);
             
             manifold.pointCount++;
         }
     }
+    manifold.stabilizePointOrder();
     
     return manifold.pointCount > 0;
 }

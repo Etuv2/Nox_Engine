@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "BaseWindow.h"
 #include <glm/glm.hpp>
@@ -83,8 +83,11 @@ private:
 	float m_taaLumaWeight = 0.2f;
 	bool m_taaUseYCoCg = true;
 	bool m_enableSSAO = false;
+	bool m_ssaoHalfRes = true;
+	float m_ssaoResolutionScale = 0.5f;
 	float m_ssaoRadius = 1.0f;
 	float m_ssaoIntensity = 1.0f;
+	float m_ssaoTemporalAlpha = 0.12f;
 
 	//SSGI settings
 	bool m_enableSSGI = true;
@@ -92,10 +95,17 @@ private:
 	float m_ssgiRadius = 1.0f;
 	int   m_ssgiSampleCount = 128;
 	bool  m_ssgiHalfRes = true;
+	float m_ssgiWorkingResolutionScale = 0.5f;
+	float m_ssgiTraceResolutionScale = 0.25f;
 	float m_ssgiTemporalAlpha = 0.12f;
 	float m_ssgiNormalReject = 0.25f;
 	float m_ssgiDepthReject = 0.5f;
 	float m_ssgiThickness = 0.2f;
+	bool  m_ssgiEnableSpatialDenoise = true;
+
+	// Screen-space contact shadow settings
+	float m_sssResolutionScale = 0.5f;
+	float m_sssTemporalAlpha = 0.1f;
 
 	//LPV Global Illumination settings
 	bool m_enableLPV = true;

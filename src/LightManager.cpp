@@ -100,11 +100,19 @@ LightManager::LightManager()
 {
 	// Initialize default shadow configuration
 	shadowConfig.maxDirectionalLights = 2;
+	shadowConfig.directionalCascadeCount = 4;
 	shadowConfig.maxSpotLights = 4;
 	shadowConfig.maxPointLights = 4;
 	shadowConfig.baseResolution = 1024;
-	shadowConfig.enablePCSS = true;
+	shadowConfig.enablePCSS = false;
+	shadowConfig.useRotatedPoissonPCF = true;
 	shadowConfig.dynamicResolution = true;
+	shadowConfig.stableTexelSnapping = true;
+	shadowConfig.directionalSplitLambda = 0.6f;
+	shadowConfig.cascadeBaseOverlap = 0.02f;
+	shadowConfig.directionalConstantBias = 0.0008f;
+	shadowConfig.directionalSlopeBias = 0.0045f;
+	shadowConfig.directionalNormalOffset = 0.01f;
 
 	// Initialize performance stats
 	memset(&stats, 0, sizeof(stats));
@@ -114,6 +122,7 @@ LightManager::LightManager()
 
 	std::cout << "[LightManager] Created with shadow configuration:" << std::endl;
 	std::cout << "  - Max directional lights: " << shadowConfig.maxDirectionalLights << std::endl;
+	std::cout << "  - Directional cascades: " << shadowConfig.directionalCascadeCount << std::endl;
 	std::cout << "  - Max spot lights: " << shadowConfig.maxSpotLights << std::endl;
 	std::cout << "  - Max point lights: " << shadowConfig.maxPointLights << std::endl;
 	std::cout << "  - Base resolution: " << shadowConfig.baseResolution << std::endl;
@@ -331,21 +340,24 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 	}
 
 	shadowConfig.baseResolution = baseResolution;
-	// Fast path by default: disable PCSS and rely on hardware PCF
+	shadowConfig.directionalCascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
+	// Fast path by default: disable PCSS and rely on stable rotated PCF.
 	shadowConfig.enablePCSS = false;
+	shadowConfig.useRotatedPoissonPCF = true;
 
 	std::cout << "[LightManager] Initializing unified shadow system:" << std::endl;
 	std::cout << "  - Base resolution: " << baseResolution << "x" << baseResolution << std::endl;
 
 	// Calculate total shadow map layers needed
-	const int totalLayers = shadowConfig.maxDirectionalLights * 4 +  // 4 cascades each
+	const int totalLayers = shadowConfig.maxDirectionalLights * shadowConfig.directionalCascadeCount +
 		shadowConfig.maxSpotLights * 1 +    // 1 shadow map each
 		shadowConfig.maxPointLights * 6;  // 6 faces each (cubemap)
 
 	m_shadowArrayLayers = totalLayers;
 
 	std::cout << "- Total shadow layers: " << totalLayers << std::endl;
-	std::cout << "  - Directional lights: " << shadowConfig.maxDirectionalLights << " x 4 cascades" << std::endl;
+	std::cout << "  - Directional lights: " << shadowConfig.maxDirectionalLights << " x "
+		<< shadowConfig.directionalCascadeCount << " cascades" << std::endl;
 	std::cout << "  - Spot lights: " << shadowConfig.maxSpotLights << std::endl;
 	std::cout << "  - Point lights: " << shadowConfig.maxPointLights << " x 6 faces" << std::endl;
 
@@ -846,7 +858,13 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		// Directional Light Cascades
 
 		if (light->GetLightType() == BaseLight::LightType::DIRECTIONAL) {
-			std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(nearPlane, farPlane, 4, 0.6f);
+			const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
+			std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(
+				nearPlane,
+				farPlane,
+				cascadeCount,
+				shadowConfig.directionalSplitLambda
+			);
 			glm::vec3 lightDir = glm::normalize(light->GetDirection());
 			glm::vec3 lightPos = light->GetPosition();
 			float prev = nearPlane;
@@ -855,11 +873,14 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			static int debugCounter = 0;
 			if (debugCounter++ % 300 == 0) {
 				std::cout << "[CSM Debug] Near=" << nearPlane << " Far=" << farPlane 
-				          << " Splits: [" << splits[0] << ", " << splits[1] 
-				          << ", " << splits[2] << ", " << splits[3] << "]" << std::endl;
+				          << " Splits:";
+				for (int splitIndex = 0; splitIndex < cascadeCount; ++splitIndex) {
+					std::cout << (splitIndex == 0 ? " [" : ", ") << splits[splitIndex];
+				}
+				std::cout << "]" << std::endl;
 			}
 
-			for (int cIdx = 0; cIdx < 4 && currentSlice < m_shadowArrayLayers; ++cIdx) {
+			for (int cIdx = 0; cIdx < cascadeCount && currentSlice < m_shadowArrayLayers; ++cIdx) {
 				float cNear = (cIdx == 0) ? nearPlane : prev;
 				float cFar = splits[cIdx];
 				prev = cFar;
@@ -867,7 +888,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 				glm::mat4 ls = ShadowMapper::ComputeCascadeLightSpace(cNear, cFar, view, projection,
 					lightPos, lightDir, aspect, fov,
 					cIdx, shadowConfig.baseResolution);
-				ls = SnapCascadeToTexels(ls, shadowConfig.baseResolution);
+				if (shadowConfig.stableTexelSnapping) {
+					ls = SnapCascadeToTexels(ls, shadowConfig.baseResolution);
+				}
 
 				unsigned cadence = (cIdx == 0) ? 1u : (cIdx == 1) ? 2u : (cIdx == 2) ? 3u : 7u;
 
@@ -924,7 +947,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 				++currentSlice;
 			}
 
-			m_lightShadowInfo[light.get()] = { startSliceForLight, 4 };
+			m_lightShadowInfo[light.get()] = { startSliceForLight, cascadeCount };
 		}
 
 		// Spot Light Shadow

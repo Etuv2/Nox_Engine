@@ -13,10 +13,12 @@ out vec3 WorldNormal;
 out vec2 TexCoords;
 out mat3 TBN;
 out vec4 RawTangent; 
+flat out uint TransformID;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform uint uTransformID;
 
 // Skinning uniforms
 uniform bool u_enableSkinning;
@@ -84,6 +86,7 @@ void main()
     WorldNormal = N;
     TBN = mat3(T, B, N);
     RawTangent = aTangent;
+    TransformID = uTransformID;
 
     gl_Position = projection * view * worldPos;
 }

@@ -8,6 +8,12 @@
 #include <iostream>
 #include <cmath>
 
+namespace {
+	constexpr GLuint kGlobalTransformBufferBinding = 6;
+	constexpr uint32_t kTransformFlagRenderable = 1u << 0;
+	constexpr uint32_t kTransformFlagSkinned = 1u << 1;
+}
+
 RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* transformSystem)
 	: m_componentManager(componentManager)
 	, m_transformSystem(transformSystem)
@@ -30,6 +36,7 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.prevView = glGetUniformLocation(shader, "prevView");
 	uniforms.prevProjection = glGetUniformLocation(shader, "prevProjection");
 	uniforms.prevModel = glGetUniformLocation(shader, "prevModel");
+	uniforms.transformID = glGetUniformLocation(shader, "uTransformID");
 	uniforms.lightSpaceMatrix = glGetUniformLocation(shader, "lightSpaceMatrix");
 	uniforms.uEnableSkinning = glGetUniformLocation(shader, "u_enableSkinning");
 	uniforms.uBoneMatrices = glGetUniformLocation(shader, "u_boneMatrices");
@@ -66,8 +73,13 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 
 	// Update all transforms first
 	m_transformSystem->UpdateTransforms();
+	UpdateGpuTransformBuffer();
 
 	glUseProgram(defaultShader);
+	EnsureTransformBuffer();
+	if (m_transformBuffer) {
+		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
+	}
 
 	// Upload view and projection matrices once
 		const auto& uniforms = GetShaderUniformCache(defaultShader);
@@ -101,9 +113,7 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 		m_visibleCount++;
 
 		// Upload model matrix
-				if (uniforms.model != -1) {
-			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
+		UploadTransformUniforms(entityID, worldTransform, uniforms);
 
 		// Handle skinning
 		if (renderable.isSkinned) {
@@ -153,7 +163,12 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 	}
 
 	m_transformSystem->UpdateTransforms();
+	UpdateGpuTransformBuffer();
 	glUseProgram(geometryShader);
+	EnsureTransformBuffer();
+	if (m_transformBuffer) {
+		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
+	}
 	const auto& uniforms = GetShaderUniformCache(geometryShader);
 
 	m_visibleCount = 0;
@@ -187,9 +202,7 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 
 		m_visibleCount++;
 
-				if (uniforms.model != -1) {
-			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
+		UploadTransformUniforms(entityID, worldTransform, uniforms);
 
 		// Handle skinning
 		if (renderable.isSkinned) {
@@ -220,7 +233,12 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 	if (!m_componentManager || !m_transformSystem) return;
 
 	m_transformSystem->UpdateTransforms();
+	UpdateGpuTransformBuffer();
 	glUseProgram(shadowShader);
+	EnsureTransformBuffer();
+	if (m_transformBuffer) {
+		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
+	}
 	const auto& uniforms = GetShaderUniformCache(shadowShader);
 
 	if (uniforms.lightSpaceMatrix != -1) {
@@ -236,9 +254,7 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
 
-				if (uniforms.model != -1) {
-			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
+		UploadTransformUniforms(entityID, worldTransform, uniforms);
 
 		// Draw model (positions only for shadow pass)
 		renderable.model->Draw();
@@ -254,7 +270,12 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 	if (!m_componentManager || !m_transformSystem) return;
 
 	m_transformSystem->UpdateTransforms();
+	UpdateGpuTransformBuffer();
 	glUseProgram(velocityShader);
+	EnsureTransformBuffer();
+	if (m_transformBuffer) {
+		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
+	}
 	const auto& uniforms = GetShaderUniformCache(velocityShader);
 
 	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
@@ -271,13 +292,7 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
 
-				if (uniforms.model != -1) {
-			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
-		// For now, use same transform for previous (TODO: store previous frame transforms)
-		if (uniforms.prevModel != -1) {
-			glUniformMatrix4fv(uniforms.prevModel, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
+		UploadTransformUniforms(entityID, worldTransform, uniforms);
 
 		for (auto& mesh : renderable.model->meshes) {
 			ApplyCullingState(mesh, renderable.cullingOverride);
@@ -294,6 +309,7 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 	if (!m_componentManager || !m_transformSystem) return;
 
 	m_transformSystem->UpdateTransforms();
+	UpdateGpuTransformBuffer();
 
 	auto& renderablePool = m_componentManager->GetRenderablePool();
 	for (auto& entry : renderablePool) {
@@ -329,6 +345,8 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 	GLuint transparentShader)
 {
 	if (!m_componentManager || !m_transformSystem) return;
+	m_transformSystem->UpdateTransforms();
+	UpdateGpuTransformBuffer();
 
 	glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]);
 
@@ -363,6 +381,10 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 
 	// Render
 	glUseProgram(transparentShader);
+	EnsureTransformBuffer();
+	if (m_transformBuffer) {
+		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
+	}
 	const auto& uniforms = GetShaderUniformCache(transparentShader);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -377,9 +399,7 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(batch.entity);
 
-				if (uniforms.model != -1) {
-			glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
-		}
+		UploadTransformUniforms(batch.entity, worldTransform, uniforms);
 
 		for (auto& mesh : renderable->model->meshes) {
 			if (!mesh.RequiresAlphaBlending()) continue;
@@ -502,6 +522,27 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.normalScale >= 0) glUniform1f(uniforms.normalScale, mesh.normalScale);
 }
 
+void RenderSystem::UploadTransformUniforms(EntityID entity,
+	const glm::mat4& worldTransform,
+	const ShaderUniformCache& uniforms)
+{
+	if (uniforms.model != -1) {
+		glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
+	}
+
+	const TransformComponent* transform = m_componentManager ? m_componentManager->GetTransform(entity) : nullptr;
+	const glm::mat4& prevWorldTransform = transform ? transform->prevWorldTransform : worldTransform;
+
+	if (uniforms.prevModel != -1) {
+		glUniformMatrix4fv(uniforms.prevModel, 1, GL_FALSE, glm::value_ptr(prevWorldTransform));
+	}
+
+	if (uniforms.transformID != -1) {
+		const GLuint transformID = transform ? transform->transformID : INVALID_TRANSFORM_ID;
+		glUniform1ui(uniforms.transformID, transformID);
+	}
+}
+
 void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride override)
 {
 	// If force backface culling is enabled globally, always cull back faces
@@ -615,6 +656,78 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, const ShaderUniformCache&
 	if (locBones != -1) {
 		size_t uploadCount = std::min(boneMatrices.size(), size_t(128));
 		glUniformMatrix4fv(locBones, static_cast<GLsizei>(uploadCount), GL_FALSE, glm::value_ptr(boneMatrices[0]));
+	}
+}
+
+void RenderSystem::EnsureTransformBuffer()
+{
+	if (m_transformBuffer && m_transformBuffer->IsValid()) {
+		return;
+	}
+
+	m_transformBuffer = std::make_unique<GLBuffer>(
+		BufferType::ShaderStorage,
+		BufferUsage::DynamicDraw
+	);
+	m_transformBuffer->SetLabel("RenderSystem_GlobalTransformSSBO");
+}
+
+void RenderSystem::UpdateGpuTransformBuffer()
+{
+	if (!m_componentManager) {
+		return;
+	}
+
+	size_t maxTransformID = 0;
+	auto& transformPool = m_componentManager->GetTransformPool();
+	for (const auto& entry : transformPool) {
+		maxTransformID = std::max(maxTransformID, static_cast<size_t>(entry.component.transformID));
+	}
+
+	if (maxTransformID == 0) {
+		m_gpuTransformRecords.assign(1, GpuTransformRecord{});
+	}
+	else {
+		m_gpuTransformRecords.assign(maxTransformID + 1, GpuTransformRecord{});
+	}
+
+	for (auto& record : m_gpuTransformRecords) {
+		record.world = glm::mat4(1.0f);
+		record.prevWorld = glm::mat4(1.0f);
+		record.metadata = glm::uvec4(0u);
+	}
+
+	for (const auto& entry : transformPool) {
+		const TransformComponent& transform = entry.component;
+		if (transform.transformID == INVALID_TRANSFORM_ID) {
+			continue;
+		}
+
+		GpuTransformRecord& record = m_gpuTransformRecords[transform.transformID];
+		record.world = transform.worldTransform;
+		record.prevWorld = transform.prevWorldTransform;
+		record.metadata.z = transform.transformGeneration;
+
+		if (const RenderableComponent* renderable = m_componentManager->GetRenderable(entry.entity)) {
+			record.metadata.x |= kTransformFlagRenderable;
+			if (renderable->isSkinned) {
+				record.metadata.x |= kTransformFlagSkinned;
+			}
+		}
+	}
+
+	EnsureTransformBuffer();
+	if (!m_transformBuffer) {
+		return;
+	}
+
+	if (!m_transformBuffer->SetData(m_gpuTransformRecords)) {
+		m_transformBuffer = std::make_unique<GLBuffer>(
+			BufferType::ShaderStorage,
+			BufferUsage::DynamicDraw
+		);
+		m_transformBuffer->SetLabel("RenderSystem_GlobalTransformSSBO");
+		m_transformBuffer->SetData(m_gpuTransformRecords);
 	}
 }
 

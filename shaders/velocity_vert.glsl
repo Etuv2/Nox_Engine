@@ -5,6 +5,7 @@ layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoords;
 
 uniform mat4 model;
+uniform mat4 prevModel;
 uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 prevView;
@@ -30,8 +31,9 @@ void main()
     // Apply current jitter
     currentPos.xy += jitter * currentPos.w;
     
-    // Previous frame position (using same model matrix for simplicity)
-    vec4 prevViewPos = prevView * worldPos;
+    // Previous frame position from the stable previous-world transform
+    vec4 prevWorldPos = prevModel * vec4(aPos, 1.0);
+    vec4 prevViewPos = prevView * prevWorldPos;
     prevPos = prevProjection * prevViewPos;
     
     // Apply previous jitter

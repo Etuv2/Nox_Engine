@@ -106,6 +106,7 @@ A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphi
 - nlohmann JSON 
 - tinyglTF (glTF 2.0 loader)
 
+<<<<<<< Updated upstream
 ### Building with CMake
 
 The project now supports a first-class CMake workflow.
@@ -136,6 +137,18 @@ Then build:
 cmake -S . -B build -G Ninja
 cmake --build build
 ```
+=======
+### Building With CMake
+
+The repository now includes a top-level `CMakeLists.txt` and `CMakePresets.json` for Visual Studio 2022 builds on Windows.
+
+```powershell
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --preset vs2022-x64
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build --preset vs2022-x64-release --parallel
+```
+
+The generated executable is placed under `build/vs2022-x64/Release/`, and the required runtime DLLs are copied there automatically after the build completes.
+>>>>>>> Stashed changes
 
 
 ## Usage Guide

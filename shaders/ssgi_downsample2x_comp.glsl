@@ -1,4 +1,4 @@
-#version 460 core
+﻿#version 460 core
 
 // 2x downsample with simple 4-tap box filter (operates on half-res to produce quarter-res)
 // Input: sampler2D inTex (half-res)
@@ -30,3 +30,4 @@ void main() {
 
     imageStore(outTex, gid, vec4(c, 1.0));
 }
+

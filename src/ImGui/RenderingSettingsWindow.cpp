@@ -48,8 +48,11 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 
 	// SSAO settings
 	m_enableSSAO = false;
+	m_ssaoHalfRes = true;
+	m_ssaoResolutionScale = 0.5f;
 	m_ssaoRadius = 0.5f; // Match RenderContext default
 	m_ssaoIntensity = 1.0f;
+	m_ssaoTemporalAlpha = 0.12f;
 
 	// SSGI settings
 	m_enableSSGI = false;
@@ -57,10 +60,17 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_ssgiRadius = 5.0f;
 	m_ssgiSampleCount = 16;
 	m_ssgiHalfRes = true;
+	m_ssgiWorkingResolutionScale = 0.5f;
+	m_ssgiTraceResolutionScale = 0.25f;
 	m_ssgiTemporalAlpha = 0.15f;
 	m_ssgiNormalReject = 0.15f;
 	m_ssgiDepthReject = 0.2f;
 	m_ssgiThickness = 0.02f;
+	m_ssgiEnableSpatialDenoise = true;
+
+	// Screen-space contact shadows
+	m_sssResolutionScale = 0.5f;
+	m_sssTemporalAlpha = 0.1f;
 
 	//LPV GI settings - match RenderContext defaults
 	m_enableLPV = true;
@@ -160,8 +170,11 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 
 	// SSAO settings
 	m_enableSSAO = ctx.enableSSAO;
+	m_ssaoHalfRes = ctx.ssaoHalfRes;
+	m_ssaoResolutionScale = ctx.ssaoResolutionScale;
 	m_ssaoRadius = ctx.ssaoRadius;
 	m_ssaoIntensity = ctx.ssaoIntensity;
+	m_ssaoTemporalAlpha = ctx.ssaoTemporalAlpha;
 
 	// SSGI settings
 	m_enableSSGI = ctx.enableSSGI;
@@ -169,10 +182,15 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_ssgiRadius = ctx.ssgiRadius;
 	m_ssgiSampleCount = ctx.ssgiSampleCount;
 	m_ssgiHalfRes = ctx.ssgiHalfRes;
+	m_ssgiWorkingResolutionScale = ctx.ssgiWorkingResolutionScale;
+	m_ssgiTraceResolutionScale = ctx.ssgiTraceResolutionScale;
 	m_ssgiTemporalAlpha = ctx.ssgiTemporalAlpha;
 	m_ssgiNormalReject = ctx.ssgiNormalReject;
 	m_ssgiDepthReject = ctx.ssgiDepthReject;
 	m_ssgiThickness = ctx.ssgiThickness;
+	m_ssgiEnableSpatialDenoise = ctx.ssgiEnableSpatialDenoise;
+	m_sssResolutionScale = ctx.sssResolutionScale;
+	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
 	//LPV settings
 	m_enableLPV = ctx.enableLPV;
@@ -291,10 +309,13 @@ void RenderingSettingsWindow::SyncToRenderer() {
 
 	// SSAO settings
 	ctx.enableSSAO = m_enableSSAO;
+	ctx.ssaoHalfRes = m_ssaoHalfRes;
+	ctx.ssaoResolutionScale = m_ssaoResolutionScale;
 	ctx.ssaoRadius = m_ssaoRadius;
 	ctx.ssaoBias = 0.025f; // Keep default bias
 	ctx.ssaoIntensity = m_ssaoIntensity;
 	ctx.ssaoBlurDepthThreshold = 0.01f; // Keep default
+	ctx.ssaoTemporalAlpha = m_ssaoTemporalAlpha;
 
 	// SSGI settings
 	ctx.enableSSGI = m_enableSSGI;
@@ -302,10 +323,15 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.ssgiRadius = m_ssgiRadius;
 	ctx.ssgiSampleCount = m_ssgiSampleCount;
 	ctx.ssgiHalfRes = m_ssgiHalfRes;
+	ctx.ssgiWorkingResolutionScale = m_ssgiWorkingResolutionScale;
+	ctx.ssgiTraceResolutionScale = m_ssgiTraceResolutionScale;
 	ctx.ssgiTemporalAlpha = m_ssgiTemporalAlpha;
 	ctx.ssgiNormalReject = m_ssgiNormalReject;
 	ctx.ssgiDepthReject = m_ssgiDepthReject;
 	ctx.ssgiThickness = m_ssgiThickness;
+	ctx.ssgiEnableSpatialDenoise = m_ssgiEnableSpatialDenoise;
+	ctx.sssResolutionScale = m_sssResolutionScale;
+	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
 	//LPV settings
 	ctx.enableLPV = m_enableLPV;
@@ -605,12 +631,24 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			if (m_enableSSAO) {
+				if (ImGui::Checkbox("SSAO Half Resolution", &m_ssaoHalfRes)) {
+					SyncToRenderer();
+				}
+
+				if (ImGui::SliderFloat("SSAO Resolution Scale", &m_ssaoResolutionScale, 0.25f, 1.0f, "%.2f")) {
+					SyncToRenderer();
+				}
+
 				if (ImGui::SliderFloat("SSAO Radius", &m_ssaoRadius, 0.1f, 2.0f, "%.2f")) {
 					SyncToRenderer(); // Apply immediately
 				}
 
 				if (ImGui::SliderFloat("SSAO Intensity", &m_ssaoIntensity, 0.0f, 2.0f, "%.2f")) {
 					SyncToRenderer(); // Apply immediately
+				}
+
+				if (ImGui::SliderFloat("SSAO Temporal Alpha", &m_ssaoTemporalAlpha, 0.0f, 1.0f, "%.2f")) {
+					SyncToRenderer();
 				}
 			}
 
@@ -626,10 +664,15 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderFloat("SSGI Radius (VS)", &m_ssgiRadius, 0.1f, 5.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("SSGI Samples", &m_ssgiSampleCount, 8, 256)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Half Resolution", &m_ssgiHalfRes)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Working Resolution Scale", &m_ssgiWorkingResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Trace Resolution Scale", &m_ssgiTraceResolutionScale, 0.125f, 0.5f, "%.3f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Temporal Alpha", &m_ssgiTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_ssgiNormalReject, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Depth Reject", &m_ssgiDepthReject, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Thickness", &m_ssgiThickness, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Enable Spatial Denoise", &m_ssgiEnableSpatialDenoise)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Contact Shadow Resolution Scale", &m_sssResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Contact Shadow Temporal Alpha", &m_sssTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 			}
 
 			ImGui::Separator();
@@ -1157,8 +1200,8 @@ void RenderingSettingsWindow::Render() {
 		if (ImGui::BeginTabItem("Debug")) {
 			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Debug Visualization:");
 
-			const char* debugModes[] = { "None", "Albedo", "Normal", "Depth", "Shadow Maps", "Motion Vectors" };
-			if (ImGui::Combo("Debug Mode", &m_debugMode, debugModes, 6)) {
+			const char* debugModes[] = { "None", "Albedo", "Normal", "Depth", "Shadow Maps", "Motion Vectors", "Material ID", "Transform ID" };
+			if (ImGui::Combo("Debug Mode", &m_debugMode, debugModes, 8)) {
 				SyncToRenderer(); // Apply debug mode to renderer
 			}
 
@@ -1348,8 +1391,29 @@ void RenderingSettingsWindow::ResetToDefaults() {
 
 	// SSAO - match RenderContext defaults
 	m_enableSSAO = false;
+	m_ssaoHalfRes = true;
+	m_ssaoResolutionScale = 0.5f;
 	m_ssaoRadius = 0.5f;
 	m_ssaoIntensity = 1.0f;
+	m_ssaoTemporalAlpha = 0.12f;
+
+	// SSGI - match RenderContext defaults
+	m_enableSSGI = true;
+	m_ssgiStrength = 1.2f;
+	m_ssgiRadius = 3.0f;
+	m_ssgiSampleCount = 256;
+	m_ssgiHalfRes = true;
+	m_ssgiWorkingResolutionScale = 0.5f;
+	m_ssgiTraceResolutionScale = 0.25f;
+	m_ssgiTemporalAlpha = 0.15f;
+	m_ssgiNormalReject = 0.15f;
+	m_ssgiDepthReject = 0.2f;
+	m_ssgiThickness = 0.01f;
+	m_ssgiEnableSpatialDenoise = true;
+
+	// Contact shadows - match RenderContext defaults
+	m_sssResolutionScale = 0.5f;
+	m_sssTemporalAlpha = 0.1f;
 
 	//LPV - match RenderContext defaults
 	m_enableLPV = true;

@@ -32,6 +32,8 @@ class LightNode;
 class LightManager
 {
 public:
+	struct ShadowConfig;
+
 	LightManager();
 	~LightManager();
 
@@ -94,6 +96,8 @@ public:
 	// Shadow system integration
 	void InitializeShadowSystem(int maxShadowCastingLights = 8, int baseResolution = 1024);
 	GLuint GetShadowArrayTexture() const;
+	ShadowConfig& GetShadowConfig() { return shadowConfig; }
+	const ShadowConfig& GetShadowConfig() const { return shadowConfig; }
 
 	// Shadow shader management
 	void SetShadowShader(GLuint shadowShader) { m_shadowShader = shadowShader; }
@@ -124,15 +128,23 @@ public:
 	// Multi-light shadow configuration
 	struct ShadowConfig {
 		int maxDirectionalLights = 2;
+		int directionalCascadeCount = 4;
 		int maxSpotLights = 4;
 		int maxPointLights = 4;
 		int baseResolution = 1024;
 		bool enablePCSS = true;
+		bool useRotatedPoissonPCF = true;
 		bool dynamicResolution = true;
+		bool stableTexelSnapping = true;
+		float directionalSplitLambda = 0.6f;
+		float cascadeBaseOverlap = 0.02f;
 		
 		// Cascade blend settings - distance in view-space units for smooth transitions
 		float cascadeBlendDistance = 100.0f; // Distance over which to blend cascades
 		float cascadeBlendFactor = 0.15f;   // Fraction of cascade range to use for blending
+		float directionalConstantBias = 0.0008f;
+		float directionalSlopeBias = 0.0045f;
+		float directionalNormalOffset = 0.01f;
 		
 		// Point light shadow settings
 		float pointLightBias = 0.002f;      // Base bias for point light shadows

@@ -5,6 +5,7 @@
 #include "../LightManager.h"
 #include "../RenderContext.h"
 #include <iostream>
+#include <algorithm>
 
 ShadowPass::ShadowPass() {}
 
@@ -44,6 +45,14 @@ void ShadowPass::Execute(RenderContext& ctx,
         std::cerr << "[ShadowPass] No LightManager available!\n";
         return;
     }
+
+    auto& shadowConfig = lightManager->GetShadowConfig();
+    shadowConfig.enablePCSS = ctx.enablePCSS;
+    shadowConfig.directionalConstantBias = ctx.shadowBias;
+    shadowConfig.directionalSlopeBias = std::max(ctx.shadowBias * 2.0f, ctx.shadowBias);
+    shadowConfig.directionalNormalOffset = std::max(0.001f, ctx.shadowBias * 4.0f);
+    shadowConfig.useRotatedPoissonPCF = true;
+    shadowConfig.stableTexelSnapping = true;
 
     // Ensure shadow shader is set on LightManager
     if (m_shadowShader > 0 && lightManager->GetShadowShader() == 0) {

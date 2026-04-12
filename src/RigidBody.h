@@ -220,6 +220,7 @@ public:
     // Check if scene/editor can write transforms for this body
     bool isSceneOwned() const { return m_transformOwner == TransformOwner::SCENE; }
     bool isEditorOwned() const { return m_transformOwner == TransformOwner::EDITOR; }
+    bool isEditorControlled() const { return m_isGizmoGrabbed || m_transformOwner == TransformOwner::EDITOR; }
     
     /**
      * Validate that a transform write is permitted from the given owner

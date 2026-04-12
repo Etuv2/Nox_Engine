@@ -96,9 +96,17 @@ void PhysicsBVH::QueryPairs(std::vector<Pair>& pairs) const {
     pairs.clear();
     
     if (m_root == NULL_PROXY) return;
+
+    std::vector<ProxyID> proxyIds;
+    proxyIds.reserve(m_proxyToNode.size());
+    for (const auto& [proxyId, nodeId] : m_proxyToNode) {
+        (void)nodeId;
+        proxyIds.push_back(proxyId);
+    }
+    std::sort(proxyIds.begin(), proxyIds.end());
     
     // For each proxy, query against all others
-    for (const auto& [proxyId, nodeId] : m_proxyToNode) {
+    for (ProxyID proxyId : proxyIds) {
         const Proxy& proxy = m_proxies[proxyId];
         
         // Query tree for overlapping proxies

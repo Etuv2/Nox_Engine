@@ -1,80 +1,125 @@
 #include "Contact.h"
 #include "RigidBody.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
+namespace {
+
+constexpr float kContactMergeDistanceSq = 0.0001f;
+
+bool ContactPointLess(const ContactPoint& lhs, const ContactPoint& rhs) {
+    if (lhs.penetration != rhs.penetration) {
+        return lhs.penetration > rhs.penetration;
+    }
+    if (lhs.featureId != rhs.featureId) {
+        return lhs.featureId < rhs.featureId;
+    }
+    if (lhs.localPointA.x != rhs.localPointA.x) return lhs.localPointA.x < rhs.localPointA.x;
+    if (lhs.localPointA.y != rhs.localPointA.y) return lhs.localPointA.y < rhs.localPointA.y;
+    if (lhs.localPointA.z != rhs.localPointA.z) return lhs.localPointA.z < rhs.localPointA.z;
+    if (lhs.localPointB.x != rhs.localPointB.x) return lhs.localPointB.x < rhs.localPointB.x;
+    if (lhs.localPointB.y != rhs.localPointB.y) return lhs.localPointB.y < rhs.localPointB.y;
+    return lhs.localPointB.z < rhs.localPointB.z;
+}
+
+bool ContactPointsEquivalent(const ContactPoint& lhs, const ContactPoint& rhs) {
+    if (lhs.featureId != 0 && rhs.featureId != 0) {
+        return lhs.featureId == rhs.featureId;
+    }
+
+    const glm::vec3 delta = lhs.point - rhs.point;
+    return glm::dot(delta, delta) <= kContactMergeDistanceSq;
+}
+
+void PreserveCachedImpulses(ContactPoint& dst, const ContactPoint& src) {
+    dst.normalImpulseAccum = src.normalImpulseAccum;
+    dst.tangentImpulseAccum1 = src.tangentImpulseAccum1;
+    dst.tangentImpulseAccum2 = src.tangentImpulseAccum2;
+}
+
+} // namespace
+
 void ContactManifold::addPoint(const ContactPoint& newPoint) {
-	// If we have room, just add it
-	if (pointCount < MAX_CONTACTS) {
-		points[pointCount] = newPoint;
-		pointCount++;
-		return;
-	}
+    for (int i = 0; i < pointCount; ++i) {
+        if (!ContactPointsEquivalent(points[i], newPoint)) {
+            continue;
+        }
 
-	// Manifold is full - find the point to replace
-	// Strategy: Keep the deepest point and the 4 that form the largest contact area
+        ContactPoint merged = newPoint;
+        PreserveCachedImpulses(merged, points[i]);
+        points[i] = merged;
+        stabilizePointOrder();
+        return;
+    }
 
-	// Find the deepest existing point
-	int deepestIndex = 0;
-	float deepestPen = points[0].penetration;
-	for (int i = 1; i < pointCount; i++) {
-		if (points[i].penetration > deepestPen) {
-			deepestPen = points[i].penetration;
-			deepestIndex = i;
-		}
-	}
+    std::array<ContactPoint, MAX_CONTACTS + 1> candidates{};
+    int candidateCount = 0;
+    for (int i = 0; i < pointCount; ++i) {
+        candidates[candidateCount++] = points[i];
+    }
+    candidates[candidateCount++] = newPoint;
 
-	// If new point is deepest, replace the shallowest existing point
-	if (newPoint.penetration > deepestPen) {
-		int shallowestIndex = 0;
-		float shallowestPen = points[0].penetration;
-		for (int i = 1; i < pointCount; i++) {
-			if (i != deepestIndex && points[i].penetration < shallowestPen) {
-				shallowestPen = points[i].penetration;
-				shallowestIndex = i;
-			}
-		}
-		points[shallowestIndex] = newPoint;
-		return;
-	}
+    std::sort(candidates.begin(), candidates.begin() + candidateCount, ContactPointLess);
 
-	// Otherwise, find the point that contributes least to contact area
-	// Use distance from existing points as heuristic
-	float maxMinDist = 0.0f;
-	int replaceIndex = 0;
+    if (candidateCount <= MAX_CONTACTS) {
+        pointCount = candidateCount;
+        for (int i = 0; i < pointCount; ++i) {
+            points[i] = candidates[i];
+        }
+        stabilizePointOrder();
+        return;
+    }
 
-	for (int i = 0; i < pointCount; i++) {
-		if (i == deepestIndex) continue;
+    std::array<ContactPoint, MAX_CONTACTS> selected{};
+    std::array<bool, MAX_CONTACTS + 1> used{};
 
-		float minDist = std::numeric_limits<float>::max();
-		for (int j = 0; j < pointCount; j++) {
-			if (i != j) {
-				float d = glm::length(points[i].point - points[j].point);
-				minDist = std::min(minDist, d);
-			}
-		}
+    selected[0] = candidates[0];
+    used[0] = true;
+    int selectedCount = 1;
 
-		// Check distance to new point too
-		float dNew = glm::length(points[i].point - newPoint.point);
+    while (selectedCount < MAX_CONTACTS) {
+        float bestScore = -1.0f;
+        int bestIndex = -1;
 
-		// Replace point that is closest to others (least unique)
-		if (minDist < maxMinDist || replaceIndex == deepestIndex) {
-			maxMinDist = minDist;
-			replaceIndex = i;
-		}
-	}
+        for (int candidateIndex = 1; candidateIndex < candidateCount; ++candidateIndex) {
+            if (used[candidateIndex]) {
+                continue;
+            }
 
-	// Only replace if new point adds diversity
-	float newMinDist = std::numeric_limits<float>::max();
-	for (int i = 0; i < pointCount; i++) {
-		float d = glm::length(points[i].point - newPoint.point);
-		newMinDist = std::min(newMinDist, d);
-	}
+            float minDistanceSq = std::numeric_limits<float>::max();
+            for (int chosenIndex = 0; chosenIndex < selectedCount; ++chosenIndex) {
+                const glm::vec3 delta = candidates[candidateIndex].point - selected[chosenIndex].point;
+                minDistanceSq = std::min(minDistanceSq, glm::dot(delta, delta));
+            }
 
-	if (newMinDist > maxMinDist) {
-		points[replaceIndex] = newPoint;
-	}
+            if (minDistanceSq > bestScore) {
+                bestScore = minDistanceSq;
+                bestIndex = candidateIndex;
+            } else if (bestIndex >= 0 && minDistanceSq == bestScore &&
+                       ContactPointLess(candidates[candidateIndex], candidates[bestIndex])) {
+                bestIndex = candidateIndex;
+            }
+        }
+
+        if (bestIndex < 0) {
+            break;
+        }
+
+        selected[selectedCount++] = candidates[bestIndex];
+        used[bestIndex] = true;
+    }
+
+    pointCount = selectedCount;
+    for (int i = 0; i < pointCount; ++i) {
+        points[i] = selected[i];
+    }
+    stabilizePointOrder();
+}
+
+void ContactManifold::stabilizePointOrder() {
+    std::sort(points.begin(), points.begin() + pointCount, ContactPointLess);
 }
 
 void ContactManifold::computeTangentBasis() {
@@ -131,14 +176,15 @@ void ContactManifold::refreshContacts(float breakingThreshold) {
 	}
 
 	pointCount = writeIndex;
+    stabilizePointOrder();
 }
 
 void ContactManifold::warmStart(float warmStartFactor) {
 	if (!bodyA || !bodyB || warmStartFactor <= 0.0f) return;
 
 	// Validate that bodies can receive impulses
-	bool aCanReceive = bodyA->IsDynamic();
-	bool bCanReceive = bodyB->IsDynamic();
+	bool aCanReceive = bodyA->IsDynamic() && !bodyA->isEditorControlled();
+	bool bCanReceive = bodyB->IsDynamic() && !bodyB->isEditorControlled();
 	if (!aCanReceive && !bCanReceive) return;
 
 	for (int i = 0; i < pointCount; i++) {

@@ -2,6 +2,7 @@
 #include "ComponentManager.h"
 #include "TransformSystem.h"
 #include "MDIBatch.h"
+#include "GLBuffer.h"
 #include <glm/glm.hpp>
 #include <GL/glew.h>
 #include <vector>
@@ -27,6 +28,12 @@ class MeshComponent;
  */
 class RenderSystem {
 public:
+    struct GpuTransformRecord {
+        glm::mat4 world{ 1.0f };
+        glm::mat4 prevWorld{ 1.0f };
+        glm::uvec4 metadata{ 0u, 0u, 0u, 0u }; // x=flags, y=skinPaletteOffset, z=generation
+    };
+
     RenderSystem(ComponentManager* componentManager, TransformSystem* transformSystem);
     ~RenderSystem() = default;
 
@@ -66,6 +73,7 @@ public:
     size_t GetVisibleEntityCount() const { return m_visibleCount; }
     size_t GetTotalEntityCount() const { return m_totalCount; }
     size_t GetCulledEntityCount() const { return m_totalCount - m_visibleCount; }
+    GLuint GetTransformBufferID() const { return m_transformBuffer ? m_transformBuffer->GetID() : 0; }
 
     // Rendering overrides
     void SetForceBackfaceCulling(bool force) { m_forceBackfaceCulling = force; }
@@ -96,6 +104,7 @@ private:
         GLint prevView = -1;
         GLint prevProjection = -1;
         GLint prevModel = -1;
+        GLint transformID = -1;
         GLint lightSpaceMatrix = -1;
         GLint uEnableSkinning = -1;
         GLint uBoneMatrices = -1;
@@ -127,8 +136,13 @@ private:
     bool m_runtimeVerboseLogging = false;
     void BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
     void UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
+    void UploadTransformUniforms(EntityID entity,
+                                 const glm::mat4& worldTransform,
+                                 const ShaderUniformCache& uniforms);
     void ApplyCullingState(const MeshComponent& mesh, CullingOverride override);
     void UploadBoneMatrices(EntityID entity, const ShaderUniformCache& uniforms);
+    void UpdateGpuTransformBuffer();
+    void EnsureTransformBuffer();
     
     // Batch processing helpers
     struct RenderBatch {
@@ -158,4 +172,7 @@ private:
     GLuint m_instanceVBO = 0;
     size_t m_instanceBufferCapacity = 0;
     void EnsureInstanceBuffer(size_t requiredSize);
+
+    GLBufferPtr m_transformBuffer;
+    std::vector<GpuTransformRecord> m_gpuTransformRecords;
 };

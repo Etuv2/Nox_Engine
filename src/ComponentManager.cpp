@@ -145,7 +145,15 @@ void ComponentManager::SetEntityName(EntityID entity, const std::string& name) {
 // Transform component methods
 TransformComponent* ComponentManager::AddTransform(EntityID entity, const TransformComponent& transform) {
 	if (!IsEntityValid(entity)) return nullptr;
-	m_transforms.Add(entity, transform);
+	TransformComponent initialized = transform;
+	if (initialized.transformID == INVALID_TRANSFORM_ID) {
+		initialized.transformID = m_nextTransformID++;
+		initialized.transformGeneration = 1;
+	}
+	else if (initialized.transformGeneration == 0) {
+		initialized.transformGeneration = 1;
+	}
+	m_transforms.Add(entity, initialized);
 	auto metadata = GetMetadata(entity);
 	if (metadata) metadata->AddComponent(ComponentType::TRANSFORM);
 	return GetTransform(entity);
@@ -565,4 +573,5 @@ void ComponentManager::Clear() {
 	m_childrenByParent.clear();
 	m_freeEntityIDs.clear();
 	m_nextEntityID = 1;
+	m_nextTransformID = 1;
 }

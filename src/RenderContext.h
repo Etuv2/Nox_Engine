@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -71,7 +71,7 @@ struct RenderContext {
 	float svgfVarianceClipGamma = 1.2f;   // Variance clipping gamma (lower = less ghosting)
 	float svgfDepthThreshold = 0.02f;     // Depth similarity threshold (tighter for edges)
 	float svgfNormalThreshold = 0.95f;    // Normal similarity threshold (cos angle, higher = sharper)
-	int svgfAtrousIterations = 1;         // Number of �-trous filter iterations
+	int svgfAtrousIterations = 1;         // Number of à-trous filter iterations
 	float svgfPhiColor = 10.0f;            // Color weight parameter (lower = sharper color edges)
 	float svgfPhiNormal = 64.0f;          // Normal weight parameter (higher = sharper geometric edges)
 	float svgfPhiDepth = 0.005f;          // Depth weight parameter (lower = sharper depth edges)
@@ -89,10 +89,13 @@ struct RenderContext {
 
 	// SSAO settings
 	bool enableSSAO = true;
+	bool ssaoHalfRes = true;
+	float ssaoResolutionScale = 0.5f;
 	float ssaoRadius = 0.75f;   //Keeps AO localized to corners and crevices (was 0.5)
 	float ssaoBias = 0.02f;          //Tighter bias for better contact (was 0.025)
 	float ssaoIntensity = 0.5f;  //Subtle darkening, not overpowering (was 1.0)
 	float ssaoBlurDepthThreshold = 0.015f; // INCREASED: Better edge preservation (was 0.01)
+	float ssaoTemporalAlpha = 0.12f;
 
 
 	// SSGI settings
@@ -101,10 +104,13 @@ struct RenderContext {
 	float ssgiRadius = 3.0f;  //Ray length in view-space units
 	int ssgiSampleCount = 256;
 	bool ssgiHalfRes = true;  // Run SSGI at half-res for performance (recommended)
+	float ssgiWorkingResolutionScale = 0.5f;
+	float ssgiTraceResolutionScale = 0.25f;
 	float ssgiTemporalAlpha = 0.15f;      //Small alpha for stable convergence
 	float ssgiNormalReject = 0.15f;  // Bilateral normal threshold in radians
 	float ssgiDepthReject = 0.2f;         // Bilateral depth sigma in view-space units
 	float ssgiThickness = 0.01f;   //Ray-surface intersection thickness 
+	bool ssgiEnableSpatialDenoise = true;
 
 
 	// Bloom settings
@@ -147,12 +153,14 @@ struct RenderContext {
 
 	// Screen-space shadow settings (contact shadows)
 	bool enableScreenSpaceShadows = true;
+	float sssResolutionScale = 0.5f;
 	float sssMaxRayLength = 10.0f;       // View-space units (changed from pixels)
 	int sssSampleCount = 16;             // Reduced from 60 for better performance
 	float sssThickness = 0.5f;           // Increased from 0.0015 for more visible shadows
 	float sssEdgeThreshold = 0.01f;      // Increased from 0.0025 for better edge detection
 	float sssBlendStrength = 0.6f;       // How much contact shadows blend with shadow maps (0.0-1.0)
 	float sssLitAreaReduction = 0.7f;    // Reduce contact shadows in bright areas (0.0-1.0)
+	float sssTemporalAlpha = 0.1f;
 
 
 	// Post-processing settings
@@ -208,7 +216,8 @@ struct RenderContext {
 		DEPTH = 3,
 		SHADOW_MAPS = 4,
 		MOTION_VECTORS = 5,
-		MATERIAL_ID = 6  // Visualize material ID buffer
+		MATERIAL_ID = 6,  // Visualize material ID buffer
+		TRANSFORM_ID = 7  // Visualize stable TransformID buffer
 	};
 	DebugMode debugMode = DebugMode::NONE;
 	bool wireframeMode = false;

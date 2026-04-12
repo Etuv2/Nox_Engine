@@ -10,6 +10,67 @@
 #include <cmath>
 #include <sstream>
 
+namespace {
+
+constexpr float kBodyMotionWakeThreshold = 0.05f;
+
+float BodyMotionMetric(const std::shared_ptr<RigidBody>& body) {
+	if (!body) {
+		return 0.0f;
+	}
+
+	return glm::length(body->getVelocity()) + glm::length(body->getAngularVelocity());
+}
+
+float SolverInverseMass(const std::shared_ptr<RigidBody>& body) {
+	if (!body || !body->IsDynamic() || body->isEditorControlled()) {
+		return 0.0f;
+	}
+	return body->getInverseMass();
+}
+
+glm::mat3 SolverInverseInertia(const std::shared_ptr<RigidBody>& body) {
+	if (!body || !body->IsDynamic() || body->isEditorControlled()) {
+		return glm::mat3(0.0f);
+	}
+	return body->getInverseInertiaWorld();
+}
+
+bool ShouldWakeSleepingBody(const std::shared_ptr<RigidBody>& candidate,
+							const std::shared_ptr<RigidBody>& other,
+							const ContactManifold& manifold,
+							const SimulationConfig& config) {
+	if (!candidate || !candidate->IsDynamic() || !candidate->isSleeping() || candidate->isEditorControlled()) {
+		return false;
+	}
+
+	if (other && (other->IsKinematic() || other->isEditorControlled())) {
+		return true;
+	}
+
+	if (other && BodyMotionMetric(other) > kBodyMotionWakeThreshold) {
+		return true;
+	}
+
+	for (int i = 0; i < manifold.pointCount; ++i) {
+		if (manifold.points[i].penetration > config.allowedPenetration * 2.0f) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+uint64_t MakePairSortKey(const PhysicsBVH& bvh, const PhysicsBVH::Pair& pair) {
+	const PhysicsBVH::Proxy* proxyA = bvh.GetProxy(pair.proxyA);
+	const PhysicsBVH::Proxy* proxyB = bvh.GetProxy(pair.proxyB);
+	const uint32_t bodyA = proxyA ? proxyA->bodyId : 0u;
+	const uint32_t bodyB = proxyB ? proxyB->bodyId : 0u;
+	return ContactManifold::makePairKey(bodyA, bodyB);
+}
+
+} // namespace
+
 PhysicsEngine::PhysicsEngine(const SimulationConfig& config)
 	: m_config(config)
 	, m_gravity(config.gravityX, config.gravityY, config.gravityZ)
@@ -516,22 +577,19 @@ void PhysicsEngine::BeginGizmoGrab(std::shared_ptr<RigidBody> body) {
 	
 	// Switch to EDITOR ownership during gizmo manipulation
 	body->setTransformOwner(RigidBody::TransformOwner::EDITOR);
-	
-	// Wake up the body to ensure it processes updates
-	body->wakeUp();
 
-	// DO NOT use kinematic target - it bypasses force integration!
-	// Instead, we'll directly update position while forces continue to apply
-	
-	// Store the starting position for reference (used by UpdateGizmoTarget)
-	// Dampen current velocities to smooth transition
-	body->setVelocity(body->getVelocity() * 0.5f);
-	body->setAngularVelocity(body->getAngularVelocity() * 0.5f);
+	body->setSleeping(false);
+	body->clearKinematicTarget();
+	body->clearForces();
+	body->setVelocity(glm::vec3(0.0f));
+	body->setAngularVelocity(glm::vec3(0.0f));
+	body->storePreviousState();
+	body->computeAABB();
 
-	std::cout << "[PhysicsEngine] Begin gizmo grab on body " << body->GetBodyID() 
-		<< " - IsDynamic: " << body->IsDynamic() 
-		<< " - Vel: (" << body->getVelocity().x << ", " << body->getVelocity().y << ", " << body->getVelocity().z << ")"
-		<< " - IsSleeping: " << body->isSleeping() << std::endl;
+	if (m_config.verboseLogging) {
+		std::cout << "[PhysicsEngine] Begin gizmo grab on body " << body->GetBodyID()
+			<< " (dynamic=" << body->IsDynamic() << ", sleeping=" << body->isSleeping() << ")" << std::endl;
+	}
 }
 
 void PhysicsEngine::UpdateGizmoTarget(std::shared_ptr<RigidBody> body,
@@ -539,33 +597,16 @@ void PhysicsEngine::UpdateGizmoTarget(std::shared_ptr<RigidBody> body,
 	const glm::quat& orientation) {
 	if (!body || !body->isGizmoGrabbed()) return;
 
-	glm::vec3 currentVel = body->getVelocity();
-	float currentVelMag = glm::length(currentVel);
-
-	// We directly set position to follow gizmo for visual feedback
-	// BUT we still need to allow velocity to accumulate from forces (gravity, etc)
-	// so that when gizmo is released, object continues with realistic motion
-	
-	// Set position exactly where gizmo is
 	body->setPosition(position);
 	body->setOrientation(orientation);
-	
-	// Do NOT dampen velocities!
-	// We want to preserve ALL velocity accumulated from forces (especially gravity)
-	// The velocity accumulates from integrateForces() each step
-	
-	static int frameCounter = 0;
-	frameCounter++;
-	if (frameCounter % 10 == 0) {
-		std::cout << "[UpdateGizmoTarget] Vel: (" << currentVel.x << ", " << currentVel.y << ", " << currentVel.z 
-			<< ") Mag: " << currentVelMag << std::endl;
-	}
+	body->setVelocity(glm::vec3(0.0f));
+	body->setAngularVelocity(glm::vec3(0.0f));
+	body->storePreviousState();
+	body->computeAABB();
 }
 
 void PhysicsEngine::EndGizmoGrab(std::shared_ptr<RigidBody> body) {
-
-	glm::vec3 velBeforeEnd = body->getVelocity();
-	float velMagBefore = glm::length(velBeforeEnd);
+	if (!body) return;
 
 	// Clear gizmo state
 	body->setGizmoGrabbed(false);
@@ -585,29 +626,20 @@ void PhysicsEngine::EndGizmoGrab(std::shared_ptr<RigidBody> body) {
 
 	// For dynamic bodies, prepare for normal physics simulation
 	if (body->IsDynamic()) {
-		// Velocities have been preserved and accumulated forces during manipulation
-		// Let them continue naturally - the body will fall under gravity
-		
-		// Store current state as previous for smooth interpolation
 		body->storePreviousState();
-
-		// Recompute AABB at new position
-		body->computeAABB();
-
-		// Explicitly mark as NOT sleeping so gravity and forces apply immediately
 		body->setSleeping(false);
+		body->wakeUp();
 	} else {
-		// For kinematic and static bodies, just update AABB
-		body->computeAABB();
+		body->setSleeping(body->IsStatic());
 	}
+	body->setVelocity(glm::vec3(0.0f));
+	body->setAngularVelocity(glm::vec3(0.0f));
+	body->computeAABB();
 
-	glm::vec3 velAfterEnd = body->getVelocity();
-	float velMagAfter = glm::length(velAfterEnd);
-	
-	std::cout << "[PhysicsEngine] End gizmo grab on body " << body->GetBodyID() 
-		<< " - Vel Before: (" << velBeforeEnd.x << ", " << velBeforeEnd.y << ", " << velBeforeEnd.z << ") Mag: " << velMagBefore
-		<< " - Vel After: (" << velAfterEnd.x << ", " << velAfterEnd.y << ", " << velAfterEnd.z << ") Mag: " << velMagAfter
-		<< " - IsDynamic: " << body->IsDynamic() << " - IsSleeping: " << body->isSleeping() << std::endl;
+	if (m_config.verboseLogging) {
+		std::cout << "[PhysicsEngine] End gizmo grab on body " << body->GetBodyID()
+			<< " (dynamic=" << body->IsDynamic() << ", sleeping=" << body->isSleeping() << ")" << std::endl;
+	}
 }
 
 // ============== QUERIES ==============
@@ -660,11 +692,8 @@ void PhysicsEngine::IntegrateForces(float dt) {
 		if (!body) continue;
 		if (!body->IsDynamic()) continue;
 		if (body->isSleeping()) continue;
+		if (body->isEditorControlled()) continue;
 
-		// We NEED to apply forces even during gizmo manipulation
-		// so that gravity and external forces work correctly
-
-		// Apply forces to all dynamic bodies, including gizmo-grabbed ones
 		body->integrateForces(dt, m_gravity);
 	}
 }
@@ -672,11 +701,22 @@ void PhysicsEngine::IntegrateForces(float dt) {
 void PhysicsEngine::Broadphase() {
 	m_broadphasePairs.clear();
 	m_bvh->QueryPairs(m_broadphasePairs);
+	std::sort(m_broadphasePairs.begin(), m_broadphasePairs.end(),
+		[this](const PhysicsBVH::Pair& lhs, const PhysicsBVH::Pair& rhs) {
+			return MakePairSortKey(*m_bvh, lhs) < MakePairSortKey(*m_bvh, rhs);
+		});
 	m_profiling.pairCount = static_cast<int>(m_broadphasePairs.size());
 }
 
 void PhysicsEngine::Narrowphase() {
 	m_activeManifolds.clear();
+	m_profiling.manifoldsCreated = 0;
+	m_profiling.manifoldsUpdated = 0;
+	m_profiling.bodiesWokenByContacts = 0;
+	m_profiling.maxPenetration = 0.0f;
+	m_profiling.averagePenetration = 0.0f;
+	float penetrationSum = 0.0f;
+	int penetrationCount = 0;
 
 	// Mark existing manifolds as not updated
 	for (auto& [key, manifold] : m_manifolds) {
@@ -702,8 +742,15 @@ void PhysicsEngine::Narrowphase() {
 		uint64_t pairKey = ContactManifold::makePairKey(bodyA->GetBodyID(), bodyB->GetBodyID());
 
 		// Get or create manifold
-		auto& manifold = m_manifolds[pairKey];
+		auto [manifoldIt, inserted] = m_manifolds.try_emplace(pairKey);
+		auto& manifold = manifoldIt->second;
 		manifold.pairKey = pairKey;
+		if (inserted) {
+			m_profiling.manifoldsCreated++;
+		}
+		else {
+			m_profiling.manifoldsUpdated++;
+		}
 
 		// Reset lifetime for active manifolds
 		manifold.lifetime = 0;
@@ -727,12 +774,25 @@ void PhysicsEngine::Narrowphase() {
 			manifold.computeTangentBasis();
 			manifold.friction = newManifold.friction;
 			manifold.restitution = newManifold.restitution;
+			manifold.stabilizePointOrder();
 
 			m_activeManifolds.push_back(&manifold);
 
-			// Wake up bodies on contact
-			bodyA->wakeUp();
-			bodyB->wakeUp();
+			if (ShouldWakeSleepingBody(bodyA, bodyB, manifold, m_config)) {
+				bodyA->wakeUp();
+				m_profiling.bodiesWokenByContacts++;
+			}
+			if (ShouldWakeSleepingBody(bodyB, bodyA, manifold, m_config)) {
+				bodyB->wakeUp();
+				m_profiling.bodiesWokenByContacts++;
+			}
+
+			for (int i = 0; i < manifold.pointCount; ++i) {
+				const float penetration = manifold.points[i].penetration;
+				m_profiling.maxPenetration = std::max(m_profiling.maxPenetration, penetration);
+				penetrationSum += penetration;
+				penetrationCount++;
+			}
 		}
 	}
 
@@ -746,10 +806,17 @@ void PhysicsEngine::Narrowphase() {
 		}
 	}
 
+	std::sort(m_activeManifolds.begin(), m_activeManifolds.end(),
+		[](const ContactManifold* lhs, const ContactManifold* rhs) {
+			return lhs && rhs ? lhs->pairKey < rhs->pairKey : lhs < rhs;
+		});
+
 	m_profiling.contactCount = 0;
 	for (const auto* manifold : m_activeManifolds) {
 		m_profiling.contactCount += manifold->pointCount;
 	}
+	m_profiling.activeManifoldCount = static_cast<int>(m_activeManifolds.size());
+	m_profiling.averagePenetration = penetrationCount > 0 ? (penetrationSum / static_cast<float>(penetrationCount)) : 0.0f;
 }
 
 void PhysicsEngine::PrepareConstraints(float dt) {
@@ -771,24 +838,29 @@ void PhysicsEngine::PrepareConstraints(float dt) {
 			glm::vec3 rnA = glm::cross(rA, manifold->normal);
 			glm::vec3 rnB = glm::cross(rB, manifold->normal);
 
-			float kNormal = bodyA->getInverseMass() + bodyB->getInverseMass();
-			kNormal += glm::dot(rnA, bodyA->getInverseInertiaWorld() * rnA);
-			kNormal += glm::dot(rnB, bodyB->getInverseInertiaWorld() * rnB);
+			const float invMassA = SolverInverseMass(bodyA);
+			const float invMassB = SolverInverseMass(bodyB);
+			const glm::mat3 invInertiaA = SolverInverseInertia(bodyA);
+			const glm::mat3 invInertiaB = SolverInverseInertia(bodyB);
+
+			float kNormal = invMassA + invMassB;
+			kNormal += glm::dot(rnA, invInertiaA * rnA);
+			kNormal += glm::dot(rnB, invInertiaB * rnB);
 			cp.normalMass = (kNormal > 0.0f) ? 1.0f / kNormal : 0.0f;
 
 			// Compute effective mass for tangent constraints
 			glm::vec3 rt1A = glm::cross(rA, manifold->tangent1);
 			glm::vec3 rt1B = glm::cross(rB, manifold->tangent1);
-			float kTangent1 = bodyA->getInverseMass() + bodyB->getInverseMass();
-			kTangent1 += glm::dot(rt1A, bodyA->getInverseInertiaWorld() * rt1A);
-			kTangent1 += glm::dot(rt1B, bodyB->getInverseInertiaWorld() * rt1B);
+			float kTangent1 = invMassA + invMassB;
+			kTangent1 += glm::dot(rt1A, invInertiaA * rt1A);
+			kTangent1 += glm::dot(rt1B, invInertiaB * rt1B);
 			cp.tangentMass1 = (kTangent1 > 0.0f) ? 1.0f / kTangent1 : 0.0f;
 
 			glm::vec3 rt2A = glm::cross(rA, manifold->tangent2);
 			glm::vec3 rt2B = glm::cross(rB, manifold->tangent2);
-			float kTangent2 = bodyA->getInverseMass() + bodyB->getInverseMass();
-			kTangent2 += glm::dot(rt2A, bodyA->getInverseInertiaWorld() * rt2A);
-			kTangent2 += glm::dot(rt2B, bodyB->getInverseInertiaWorld() * rt2B);
+			float kTangent2 = invMassA + invMassB;
+			kTangent2 += glm::dot(rt2A, invInertiaA * rt2A);
+			kTangent2 += glm::dot(rt2B, invInertiaB * rt2B);
 			cp.tangentMass2 = (kTangent2 > 0.0f) ? 1.0f / kTangent2 : 0.0f;
 
 			// Compute velocity bias for position correction (Baumgarte)
@@ -948,9 +1020,14 @@ bool PhysicsEngine::SolveContactPosition(ContactManifold& manifold, ContactPoint
 	glm::vec3 rnA = glm::cross(rA, manifold.normal);
 	glm::vec3 rnB = glm::cross(rB, manifold.normal);
 
-	float k = bodyA->getInverseMass() + bodyB->getInverseMass();
-	k += glm::dot(rnA, bodyA->getInverseInertiaWorld() * rnA);
-	k += glm::dot(rnB, bodyB->getInverseInertiaWorld() * rnB);
+	const float invMassA = SolverInverseMass(bodyA);
+	const float invMassB = SolverInverseMass(bodyB);
+	const glm::mat3 invInertiaA = SolverInverseInertia(bodyA);
+	const glm::mat3 invInertiaB = SolverInverseInertia(bodyB);
+
+	float k = invMassA + invMassB;
+	k += glm::dot(rnA, invInertiaA * rnA);
+	k += glm::dot(rnB, invInertiaB * rnB);
 
 	if (k <= 0.0f) return true;
 
@@ -971,13 +1048,13 @@ bool PhysicsEngine::SolveContactPosition(ContactManifold& manifold, ContactPoint
 	glm::vec3 P = manifold.normal * correction;
 
 	// Apply position correction (linear only for stability)
-	if (bodyA->IsDynamic() && !bodyA->isGizmoGrabbed()) {
-		glm::vec3 posA = bodyA->getPosition() - P * bodyA->getInverseMass();
+	if (invMassA > 0.0f) {
+		glm::vec3 posA = bodyA->getPosition() - P * invMassA;
 		bodyA->setPosition(posA);
 	}
 
-	if (bodyB->IsDynamic() && !bodyB->isGizmoGrabbed()) {
-		glm::vec3 posB = bodyB->getPosition() + P * bodyB->getInverseMass();
+	if (invMassB > 0.0f) {
+		glm::vec3 posB = bodyB->getPosition() + P * invMassB;
 		bodyB->setPosition(posB);
 	}
 
@@ -1027,17 +1104,31 @@ std::string PhysicsEngine::GetContactDebugInfo() const {
 	std::ostringstream oss;
 	
 	oss << "=== CONTACT DEBUG INFO ===\n";
+	oss << "Pairs: " << m_profiling.pairCount << "\n";
 	oss << "Active manifolds: " << m_activeManifolds.size() << "\n";
 	oss << "Total manifolds: " << m_manifolds.size() << "\n";
 	oss << "Total contacts: " << m_profiling.contactCount << "\n\n";
+	oss << "Manifolds created this step: " << m_profiling.manifoldsCreated << "\n";
+	oss << "Manifolds updated this step: " << m_profiling.manifoldsUpdated << "\n";
+	oss << "Bodies woken by contacts: " << m_profiling.bodiesWokenByContacts << "\n";
+	oss << "Average penetration: " << m_profiling.averagePenetration << "\n";
+	oss << "Max penetration: " << m_profiling.maxPenetration << "\n\n";
 	
 	int manifoldIdx = 0;
 	for (const auto* manifold : m_activeManifolds) {
 		if (!manifold || !manifold->bodyA || !manifold->bodyB) continue;
+
+		const glm::vec3 velocityA = manifold->bodyA->getVelocity();
+		const glm::vec3 velocityB = manifold->bodyB->getVelocity();
 		
 		oss << "Manifold " << manifoldIdx << ":\n";
+		oss << "  Pair key: " << manifold->pairKey << "\n";
 		oss << "  BodyA ID: " << manifold->bodyA->GetBodyID() << "\n";
 		oss << "  BodyB ID: " << manifold->bodyB->GetBodyID() << "\n";
+		oss << "  BodyA sleeping/editor: " << manifold->bodyA->isSleeping() << "/" << manifold->bodyA->isEditorControlled() << "\n";
+		oss << "  BodyB sleeping/editor: " << manifold->bodyB->isSleeping() << "/" << manifold->bodyB->isEditorControlled() << "\n";
+		oss << "  BodyA vel: [" << velocityA.x << ", " << velocityA.y << ", " << velocityA.z << "]\n";
+		oss << "  BodyB vel: [" << velocityB.x << ", " << velocityB.y << ", " << velocityB.z << "]\n";
 		oss << "  Contact count: " << manifold->pointCount << "\n";
 		oss << "  Normal: [" << manifold->normal.x << ", " << manifold->normal.y 
 			<< ", " << manifold->normal.z << "]\n";
@@ -1046,9 +1137,21 @@ std::string PhysicsEngine::GetContactDebugInfo() const {
 		
 		for (int i = 0; i < manifold->pointCount; i++) {
 			const auto& cp = manifold->points[i];
+			const glm::vec3 pointVelocityA = manifold->bodyA->getVelocityAtPoint(cp.point);
+			const glm::vec3 pointVelocityB = manifold->bodyB->getVelocityAtPoint(cp.point);
+			const float normalSpeed = glm::dot(pointVelocityB - pointVelocityA, manifold->normal);
 			oss << "    Contact " << i << ":\n";
+			oss << "      Feature ID: " << cp.featureId << "\n";
 			oss << "      Penetration: " << cp.penetration << "\n";
+			oss << "      Normal speed: " << normalSpeed << "\n";
 			oss << "      Normal impulse: " << cp.normalImpulseAccum << "\n";
+			oss << "      Tangent impulse 1: " << cp.tangentImpulseAccum1 << "\n";
+			oss << "      Tangent impulse 2: " << cp.tangentImpulseAccum2 << "\n";
+			oss << "      Velocity bias: " << cp.velocityBias << "\n";
+			oss << "      Local A: [" << cp.localPointA.x << ", " << cp.localPointA.y
+				<< ", " << cp.localPointA.z << "]\n";
+			oss << "      Local B: [" << cp.localPointB.x << ", " << cp.localPointB.y
+				<< ", " << cp.localPointB.z << "]\n";
 			oss << "      Position: [" << cp.point.x << ", " << cp.point.y 
 				<< ", " << cp.point.z << "]\n";
 		}

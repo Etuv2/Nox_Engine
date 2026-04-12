@@ -290,8 +290,14 @@ public:
         float syncTimeMs = 0.0f;
         int pairCount = 0;
         int contactCount = 0;
+        int activeManifoldCount = 0;
+        int manifoldsCreated = 0;
+        int manifoldsUpdated = 0;
+        int bodiesWokenByContacts = 0;
         int activeBodyCount = 0;
         int sleepingBodyCount = 0;
+        float maxPenetration = 0.0f;
+        float averagePenetration = 0.0f;
     };
     
     const ProfilingData& GetProfilingData() const { return m_profiling; }

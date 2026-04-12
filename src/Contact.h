@@ -72,6 +72,12 @@ struct ContactManifold {
      * Maintains up to MAX_CONTACTS points, replacing worst if full
      */
     void addPoint(const ContactPoint& point);
+
+    /**
+     * Sort contact points into a deterministic order.
+     * Keeps cached-impulse matching stable across runs.
+     */
+    void stabilizePointOrder();
     
     /**
      * Clear all contact points

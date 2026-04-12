@@ -42,6 +42,7 @@ namespace TextureUnits {
     constexpr int GBUFFER_OCCLUSION = 22;       // gOcclusion (R)
     constexpr int GBUFFER_MATERIAL_ID = 28;     // gMaterialID (R8UI - material routing)
     constexpr int GBUFFER_EMISSIVE_COLOR = 29;  // gEmissive color (RGB16F - separate from specular)
+    constexpr int GBUFFER_TRANSFORM_ID = 30;    // gTransformID (R32UI - stable surface identity)
     
     // ======================================
     // LIGHT PROPAGATION VOLUMES (LPV) - GLOBAL ILLUMINATION

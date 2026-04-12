@@ -6,6 +6,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <random>
 #include <iostream>
+#include <algorithm>
 
 SSAOPass::SSAOPass() {}
 
@@ -16,52 +17,40 @@ SSAOPass::~SSAOPass() {
 }
 
 bool SSAOPass::Initialize(RenderContext& context) {
-    m_ssaoShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", 
+    m_ssaoShader = CreateShaderProgram("shaders/fullscreen_vert.glsl",
                                        "shaders/ssao.glsl");
-    m_blurShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", 
+    m_blurShader = CreateShaderProgram("shaders/fullscreen_vert.glsl",
                                        "shaders/ssao_blur.glsl");
-    
+
     if (!m_ssaoShader || !m_blurShader) {
         std::cerr << "[SSAOPass] Failed to create shaders.\n";
         return false;
     }
 
-    // Create framebuffers
-    m_ssaoFBO = std::make_unique<FrameBuffer>(
-        context.width, context.height,
-        std::vector<GLenum>{ GL_R8 },
-        false, false, 1, false, GL_DEPTH24_STENCIL8
-    );
+    GenerateKernel();
+    GenerateNoise();
+    Resize(context, context.width, context.height);
 
-    for (int i = 0; i < 2; ++i) {
-        m_blurFBO[i] = std::make_unique<FrameBuffer>(
-            context.width, context.height,
-            std::vector<GLenum>{ GL_R8 },
-            false, false
-        );
-    }
-
-    if (!m_ssaoFBO->IsComplete() || !m_blurFBO[0]->IsComplete() || !m_blurFBO[1]->IsComplete()) {
+    if (!m_ssaoFBO || !m_historyFBO || !m_resolveFBO ||
+        !m_ssaoFBO->IsComplete() || !m_historyFBO->IsComplete() || !m_resolveFBO->IsComplete()) {
         std::cerr << "[SSAOPass] SSAO framebuffers not complete!\n";
         return false;
     }
 
-    GenerateKernel();
-    GenerateNoise();
-
-    std::cout << "[SSAOPass] Initialized successfully.\n";
+    std::cout << "[SSAOPass] Initialized successfully at "
+              << m_renderWidth << "x" << m_renderHeight << " internal resolution.\n";
     return true;
 }
 
 void SSAOPass::GenerateKernel() {
-    // 192 samples with hemisphere distribution
-    const int sampleCount = 192;
+    const int sampleCount = 64;
+    m_kernel.clear();
     m_kernel.reserve(sampleCount);
-    
+
     std::random_device rd;
     std::mt19937 rng(rd());
     std::uniform_real_distribution<float> rnd01(0.0f, 1.0f);
-    
+
     for (int i = 0; i < sampleCount; ++i) {
         glm::vec3 sample(
             rnd01(rng) * 2.0f - 1.0f,
@@ -69,24 +58,22 @@ void SSAOPass::GenerateKernel() {
             rnd01(rng)
         );
         sample = glm::normalize(sample) * rnd01(rng);
-        
-        // Scale samples so more are closer to origin
-        float scale = float(i) / float(sampleCount);
+
+        float scale = static_cast<float>(i) / static_cast<float>(sampleCount);
         scale = glm::mix(0.1f, 1.0f, scale * scale);
         sample *= scale;
-        
+
         m_kernel.push_back(sample);
     }
 }
 
 void SSAOPass::GenerateNoise() {
-    // 4x4 noise texture for rotation
     std::vector<glm::vec3> noise(16);
-    
+
     std::random_device rd;
     std::mt19937 rng(rd());
     std::uniform_real_distribution<float> rnd01(0.0f, 1.0f);
-    
+
     for (auto& n : noise) {
         n = glm::normalize(glm::vec3(
             rnd01(rng) * 2.0f - 1.0f,
@@ -94,7 +81,7 @@ void SSAOPass::GenerateNoise() {
             0.0f
         ));
     }
-    
+
     glGenTextures(1, &m_noiseTex);
     glBindTexture(GL_TEXTURE_2D, m_noiseTex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, noise.data());
@@ -104,121 +91,143 @@ void SSAOPass::GenerateNoise() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 }
 
-void SSAOPass::Resize(RenderContext& context, int newWidth, int newHeight) {
-    if (m_ssaoFBO) m_ssaoFBO->Resize(newWidth, newHeight);
-    for (int i = 0; i < 2; ++i) {
-        if (m_blurFBO[i]) m_blurFBO[i]->Resize(newWidth, newHeight);
-    }
+void SSAOPass::Resize(RenderContext&, int newWidth, int newHeight) {
+    m_renderWidth = std::max(1, static_cast<int>(newWidth * m_config.resolutionScale));
+    m_renderHeight = std::max(1, static_cast<int>(newHeight * m_config.resolutionScale));
+
+    m_ssaoFBO = std::make_unique<FrameBuffer>(
+        m_renderWidth, m_renderHeight,
+        std::vector<GLenum>{ GL_R8 },
+        false, false, 1, false, GL_DEPTH24_STENCIL8
+    );
+
+    m_historyFBO = std::make_unique<FrameBuffer>(
+        m_renderWidth, m_renderHeight,
+        std::vector<GLenum>{ GL_R8 },
+        false, false
+    );
+
+    m_resolveFBO = std::make_unique<FrameBuffer>(
+        newWidth, newHeight,
+        std::vector<GLenum>{ GL_R8 },
+        false, false
+    );
+
+    m_historyValid = false;
 }
 
 GLuint SSAOPass::GetSSAOTexture() const {
-    return m_blurFBO[1] ? m_blurFBO[1]->GetColorAttachment(0) : 0;
+    return m_resolveFBO ? m_resolveFBO->GetColorAttachment(0) : 0;
 }
 
 void SSAOPass::Execute(RenderContext& ctx,
-                       const std::shared_ptr<SceneGraph>& sceneGraph,
-                       const std::shared_ptr<Camera>& camera,
-                       const std::shared_ptr<DirectionalLight>& dirLight,
-                       const std::shared_ptr<Skybox>& skybox) {
+                       const std::shared_ptr<SceneGraph>&,
+                       const std::shared_ptr<Camera>&,
+                       const std::shared_ptr<DirectionalLight>&,
+                       const std::shared_ptr<Skybox>&) {
+    if (!ctx.enableSSAO || !ctx.gbufferFBO || !ctx.screenQuad || !m_ssaoFBO || !m_resolveFBO) {
+        return;
+    }
+
     RenderSSAO(ctx);
-    BilateralBlur(ctx);
+    ResolveSSAO(ctx);
+
+    if (m_historyFBO) {
+        glCopyImageSubData(m_ssaoFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
+                           m_historyFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
+                           m_renderWidth, m_renderHeight, 1);
+        m_historyValid = true;
+    }
 }
 
 void SSAOPass::RenderSSAO(RenderContext& ctx) {
     m_ssaoFBO->Bind();
-    glViewport(0, 0, ctx.width, ctx.height);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glViewport(0, 0, m_renderWidth, m_renderHeight);
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(m_ssaoShader);
 
-    // Upload matrices
-    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "proj"), 
+    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "proj"),
                        1, GL_FALSE, glm::value_ptr(ctx.proj));
-    
+
     glm::mat4 invProj = glm::inverse(ctx.proj);
-    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "invProj"), 
+    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "invProj"),
                        1, GL_FALSE, glm::value_ptr(invProj));
-
-    // Upload view matrix for normal transformation
-    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "view"), 
+    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "view"),
                        1, GL_FALSE, glm::value_ptr(ctx.view));
-    
-    // Set normals in world space flag
+
     glUniform1i(glGetUniformLocation(m_ssaoShader, "normalsInWorldSpace"), 1);
+    glUniform2f(glGetUniformLocation(m_ssaoShader, "screenSize"),
+                static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight));
 
-    // Screen size
-    glUniform2f(glGetUniformLocation(m_ssaoShader, "screenSize"), 
-                static_cast<float>(ctx.width), static_cast<float>(ctx.height));
-
-    // Upload kernel samples (now correctly limited to 64)
-    int kernelSamples = std::min(64, static_cast<int>(m_kernel.size()));
+    const int kernelSamples = std::clamp(
+        m_config.sampleCount,
+        1,
+        std::min(64, static_cast<int>(m_kernel.size()))
+    );
+    glUniform1i(glGetUniformLocation(m_ssaoShader, "sampleCount"), kernelSamples);
     for (int i = 0; i < kernelSamples; ++i) {
         std::string name = "samples[" + std::to_string(i) + "]";
-        glUniform3fv(glGetUniformLocation(m_ssaoShader, name.c_str()), 
+        glUniform3fv(glGetUniformLocation(m_ssaoShader, name.c_str()),
                      1, glm::value_ptr(m_kernel[i]));
     }
 
-    // Bind G-buffer depth texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
     glUniform1i(glGetUniformLocation(m_ssaoShader, "gDepth"), 0);
 
-    // Bind G-buffer packed normals (RT0: oct normal + roughness + metallic)
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
     glUniform1i(glGetUniformLocation(m_ssaoShader, "gPackedNormalRM"), 1);
 
-    // Bind noise texture
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, m_noiseTex);
     glUniform1i(glGetUniformLocation(m_ssaoShader, "noiseTex"), 2);
 
-    // SSAO parameters
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, m_historyFBO ? m_historyFBO->GetColorAttachment(0) : 0);
+    glUniform1i(glGetUniformLocation(m_ssaoShader, "historyAO"), 3);
+
     glUniform1f(glGetUniformLocation(m_ssaoShader, "radius"), ctx.ssaoRadius);
     glUniform1f(glGetUniformLocation(m_ssaoShader, "bias"), ctx.ssaoBias);
+    glUniform1f(glGetUniformLocation(m_ssaoShader, "temporalBlend"), m_config.temporalBlend);
+    glUniform1i(glGetUniformLocation(m_ssaoShader, "historyValid"), m_historyValid ? 1 : 0);
 
     ctx.screenQuad->Render();
-  
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void SSAOPass::BilateralBlur(RenderContext& ctx) {
+void SSAOPass::ResolveSSAO(RenderContext& ctx) {
+    m_resolveFBO->Bind();
+    glViewport(0, 0, ctx.width, ctx.height);
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
+
     glUseProgram(m_blurShader);
 
-    GLuint srcTex = m_ssaoFBO->GetColorAttachment(0);
+    glm::vec2 inputTexelSize(1.0f / static_cast<float>(m_renderWidth),
+                             1.0f / static_cast<float>(m_renderHeight));
+    glm::vec2 fullResTexelSize(1.0f / static_cast<float>(ctx.width),
+                               1.0f / static_cast<float>(ctx.height));
+    glUniform2fv(glGetUniformLocation(m_blurShader, "inputTexelSize"), 1, glm::value_ptr(inputTexelSize));
+    glUniform2fv(glGetUniformLocation(m_blurShader, "fullResTexelSize"), 1, glm::value_ptr(fullResTexelSize));
+    glUniform1f(glGetUniformLocation(m_blurShader, "depthThreshold"), std::max(0.001f, ctx.ssaoBlurDepthThreshold));
+    glUniform1f(glGetUniformLocation(m_blurShader, "normalThreshold"), m_config.normalThreshold);
 
-    for (int i = 0; i < 2; ++i) {
-        m_blurFBO[i % 2]->Bind();
-        glViewport(0, 0, ctx.width, ctx.height);
-        glClear(GL_COLOR_BUFFER_BIT);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_ssaoFBO->GetColorAttachment(0));
+    glUniform1i(glGetUniformLocation(m_blurShader, "ssaoInput"), 0);
 
-        glm::vec2 texelSize(1.0f / ctx.width, 1.0f / ctx.height);
-        glUniform2fv(glGetUniformLocation(m_blurShader, "texelSize"), 
-                     1, glm::value_ptr(texelSize));
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+    glUniform1i(glGetUniformLocation(m_blurShader, "gDepth"), 1);
 
-        glUniform1f(glGetUniformLocation(m_blurShader, "depthThreshold"), 
-                    ctx.ssaoBlurDepthThreshold);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+    glUniform1i(glGetUniformLocation(m_blurShader, "gPackedNormalRM"), 2);
 
-        // Bind SSAO input texture
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, srcTex);
-        glUniform1i(glGetUniformLocation(m_blurShader, "ssaoInput"), 0);
-
-        // Bind depth for bilateral filtering
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-        glUniform1i(glGetUniformLocation(m_blurShader, "gDepth"), 1);
-
-        // Bind packed normals from RT0
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-        glUniform1i(glGetUniformLocation(m_blurShader, "gPackedNormalRM"), 2);
-
-        ctx.screenQuad->Render();
-
-        srcTex = m_blurFBO[i % 2]->GetColorAttachment(0);
-    }
-
+    ctx.screenQuad->Render();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }

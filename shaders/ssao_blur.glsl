@@ -1,79 +1,56 @@
 #version 460 core
-#include "includes/pbr_common.glsl" // For decoding normal
+#include "includes/screen_space_reconstruction.glsl"
+
 in vec2 TexCoord;
 out float FragColor;
 
 uniform sampler2D ssaoInput;
 uniform sampler2D gDepth;
-uniform sampler2D gPackedNormalRM; 
+uniform sampler2D gPackedNormalRM;
 
-uniform vec2 texelSize;
-uniform float depthThreshold = 0.005;  // Tighter threshold for better edge preservation
-uniform float normalThreshold = 0.1;   // Tighter normal threshold
-
-
-
-// Linearize depth for better comparison
-float LinearizeDepth(float depth) {
-    float near = 0.1;
-    float far = 1000.0;
-    float z = depth * 2.0 - 1.0; // Back to NDC
-    return (2.0 * near * far) / (far + near - z * (far - near));
-}
+uniform vec2 inputTexelSize;
+uniform vec2 fullResTexelSize;
+uniform float depthThreshold = 0.005;
+uniform float normalThreshold = 0.1;
 
 void main() {
-	float centerAO = texture(ssaoInput, TexCoord).r;
-	float centerDepth = texture(gDepth, TexCoord).r;
-	
-	vec2 encNormal = texture(gPackedNormalRM, TexCoord).rg; 
-	vec3 centerNormal = DecodeNormalOct(encNormal);
-	
-	// Use linear depth for better bilateral comparison
-	float centerLinearDepth = LinearizeDepth(centerDepth);
+    float centerScalar = texture(ssaoInput, TexCoord).r;
+    float centerDepth = texture(gDepth, TexCoord).r;
 
-	float result = 0.0;
-	float weightSum = 0.0;
+    if (centerDepth >= 0.9999) {
+        FragColor = 1.0;
+        return;
+    }
 
-	// Bilateral blur with 5x5 kernel
-	const int KERNEL_RADIUS = 2;
-	for (int x = -KERNEL_RADIUS; x <= KERNEL_RADIUS; ++x) {
-		for (int y = -KERNEL_RADIUS; y <= KERNEL_RADIUS; ++y) {
-			vec2 offset = vec2(x, y) * texelSize;
-			vec2 sampleUV = TexCoord + offset;
-			
-			// Clamp to valid texture coordinates
-			if (any(lessThan(sampleUV, vec2(0.0))) || any(greaterThan(sampleUV, vec2(1.0)))) {
-				continue;
-			}
+    vec3 centerNormal = DecodeOctNormal01(texture(gPackedNormalRM, TexCoord).rg);
 
-			float sampleAO = texture(ssaoInput, sampleUV).r;
-			float sampleDepth = texture(gDepth, sampleUV).r;
-			vec2 encSampleNormal = texture(gPackedNormalRM, sampleUV).rg;
-			vec3 sampleNormal = DecodeNormalOct(encSampleNormal);
+    float result = 0.0;
+    float weightSum = 0.0;
 
-			// Depth-aware weighting using linear depth
-			float sampleLinearDepth = LinearizeDepth(sampleDepth);
-			float depthDiff = abs(centerLinearDepth - sampleLinearDepth);
-			
-			// Improved normal similarity check
-			float normalDot = max(0.0, dot(centerNormal, sampleNormal));
-			
-			//  Gaussian spatial weight based on distance
-			float distSq = float(x*x + y*y);
-			float spatialWeight = exp(-distSq / 8.0);
+    const int kernelRadius = 1;
+    for (int x = -kernelRadius; x <= kernelRadius; ++x) {
+        for (int y = -kernelRadius; y <= kernelRadius; ++y) {
+            vec2 sampleUV = TexCoord + vec2(x, y) * inputTexelSize;
+            if (any(lessThan(sampleUV, vec2(0.0))) || any(greaterThan(sampleUV, vec2(1.0)))) {
+                continue;
+            }
 
-			// Bilateral weight combines spatial, depth, and normal similarity
-			// Sharp falloff for edge preservation
-			float depthWeight = exp(-depthDiff / depthThreshold);
-			float normalWeight = pow(normalDot, 4.0); // Sharp normal falloff
-			
-			float weight = spatialWeight * depthWeight * normalWeight;
-			
-			result += sampleAO * weight;
-			weightSum += weight;
-		}
-	}
+            float sampleScalar = texture(ssaoInput, sampleUV).r;
+            float sampleDepth = texture(gDepth, sampleUV).r;
+            vec3 sampleNormal = DecodeOctNormal01(texture(gPackedNormalRM, sampleUV).rg);
 
-	// Avoid division by zero and ensure minimum smoothing
-	FragColor = result / max(weightSum, 1e-5);
+            float depthDiff = abs(centerDepth - sampleDepth);
+            float normalDot = max(0.0, dot(centerNormal, sampleNormal));
+            float spatialWeight = exp(-float(x * x + y * y) / 4.0);
+            float depthWeight = exp(-depthDiff / max(depthThreshold, 1e-4));
+            float normalWeight = pow(normalDot, 16.0);
+            float weight = spatialWeight * depthWeight * normalWeight;
+
+            result += sampleScalar * weight;
+            weightSum += weight;
+        }
+    }
+
+    float resolved = (weightSum > 1e-5) ? (result / weightSum) : centerScalar;
+    FragColor = clamp(resolved, 0.0, 1.0);
 }

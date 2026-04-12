@@ -5,17 +5,20 @@ in vec3 WorldNormal;
 in vec2 TexCoords;
 in mat3 TBN;
 in vec4 RawTangent;  // Receive tangent with handedness (w component)
+flat in uint TransformID;
 
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
 // RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
+// RT5: R32UI - Stable TransformID for temporal/surfel/GPU tracking
 layout(location = 0) out vec4 gPackedNormalRM;
 layout(location = 1) out vec4 gAlbedoAO;
 layout(location = 2) out vec4 gSpecularF0;
 layout(location = 3) out uint gMaterialID;
 layout(location = 4) out vec4 gEmissive;
+layout(location = 5) out uint gTransformID;
 
 uniform sampler2D texture_diffuse;
 uniform sampler2D texture_normal;
@@ -220,4 +223,7 @@ void main() {
     
     // RT4: Emissive color (RGB)
     gEmissive = vec4(emissive, 0.0);
+
+    // RT5: Stable transform/surface identity
+    gTransformID = TransformID;
 }
