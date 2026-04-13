@@ -90,14 +90,14 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <ConformanceMode>true</ConformanceMode>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <MinimalRebuild></MinimalRebuild>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <Optimization>Disabled</Optimization>
@@ -105,16 +105,17 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <SupportJustMyCode></SupportJustMyCode>
       <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -124,15 +125,6 @@
     <PostBuildEvent>
       <Message>						</Message>
       <Command>setlocal
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Debug
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd
-setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Debug
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -178,6 +170,15 @@ exit /b %1
 :cmDone
 if %errorlevel% neq 0 goto :VCEnd
 setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Debug
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/assimp-vc143-mt.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Debug
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -188,8 +189,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>opengl32.lib;glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;SDL2_image.lib;SDL2_mixer.lib;SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64/$(Configuration);C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\GLEW\x64\glew32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2main.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_image.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_mixer.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -203,13 +204,13 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ConformanceMode>true</ConformanceMode>
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <MinimalRebuild></MinimalRebuild>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <Optimization>MaxSpeed</Optimization>
@@ -217,6 +218,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <SupportJustMyCode></SupportJustMyCode>
       <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
@@ -225,10 +227,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -238,15 +240,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <PostBuildEvent>
       <Message>						</Message>
       <Command>setlocal
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Release
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd
-setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Release
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -292,6 +285,15 @@ exit /b %1
 :cmDone
 if %errorlevel% neq 0 goto :VCEnd
 setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Release
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/assimp-vc143-mt.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Release
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -302,8 +304,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>opengl32.lib;glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;SDL2_image.lib;SDL2_mixer.lib;SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64/$(Configuration);C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\GLEW\x64\glew32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2main.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_image.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_mixer.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -317,13 +319,13 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ConformanceMode>true</ConformanceMode>
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <MinimalRebuild></MinimalRebuild>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <Optimization>MinSpace</Optimization>
@@ -331,6 +333,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <SupportJustMyCode></SupportJustMyCode>
       <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
@@ -339,10 +342,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -352,15 +355,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <PostBuildEvent>
       <Message>						</Message>
       <Command>setlocal
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/MinSizeRel
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd
-setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/MinSizeRel
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -406,6 +400,15 @@ exit /b %1
 :cmDone
 if %errorlevel% neq 0 goto :VCEnd
 setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/MinSizeRel
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/assimp-vc143-mt.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/MinSizeRel
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -416,8 +419,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>opengl32.lib;glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;SDL2_image.lib;SDL2_mixer.lib;SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64/$(Configuration);C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\GLEW\x64\glew32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2main.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_image.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_mixer.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -431,14 +434,14 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ConformanceMode>true</ConformanceMode>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <MinimalRebuild></MinimalRebuild>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <Optimization>MaxSpeed</Optimization>
@@ -446,16 +449,17 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <SupportJustMyCode></SupportJustMyCode>
       <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\desti\Documents\GithubStuff\Nox_Engine;C:\Users\desti\Documents\GithubStuff\Nox_Engine\src;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\SDL;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\GLM;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\JSON;C:\Users\desti\Documents\GithubStuff\Nox_Engine\include\IMGUI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -465,15 +469,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <PostBuildEvent>
       <Message>						</Message>
       <Command>setlocal
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/RelWithDebInfo
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd
-setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/RelWithDebInfo
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -519,6 +514,15 @@ exit /b %1
 :cmDone
 if %errorlevel% neq 0 goto :VCEnd
 setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/glew32.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/RelWithDebInfo
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/assimp-vc143-mt.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/RelWithDebInfo
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -529,8 +533,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>opengl32.lib;glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;SDL2_image.lib;SDL2_mixer.lib;SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/SDL/x64/$(Configuration);C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64;C:/Users/desti/Documents/GithubStuff/Nox_Engine/lib/GLEW/x64/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\GLEW\x64\glew32.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2main.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_image.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_ttf.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\SDL\x64\SDL2_mixer.lib;C:\Users\desti\Documents\GithubStuff\Nox_Engine\lib\ASSIMP\assimp-vc143-mt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -684,6 +688,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\ScreenSpaceShadowPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\ShadowPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\TAAPass.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\TransformHistoryPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\TransparentForwardPass.cpp" />
   </ItemGroup>
   <ItemGroup />

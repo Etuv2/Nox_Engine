@@ -19,6 +19,8 @@ namespace TextureUnits {
     constexpr int MATERIAL_EMISSIVE = 3;        // texture_emissive
     constexpr int MATERIAL_OCCLUSION = 4;       // texture_occlusion
     constexpr int MATERIAL_SPECULAR = 5;        // texture_specular (KHR_materials_specular F0 color/factor)
+    constexpr int MATERIAL_SPECULAR_COLOR = 6;  // texture_specular_color (KHR_materials_specular)
+    constexpr int MATERIAL_TRANSMISSION = 7;    // texture_transmission (KHR_materials_transmission)
     
     // ======================================
     // DEFERRED LIGHTING PASS (SEPARATE FROM GEOMETRY)
@@ -43,6 +45,7 @@ namespace TextureUnits {
     constexpr int GBUFFER_MATERIAL_ID = 28;     // gMaterialID (R8UI - material routing)
     constexpr int GBUFFER_EMISSIVE_COLOR = 29;  // gEmissive color (RGB16F - separate from specular)
     constexpr int GBUFFER_TRANSFORM_ID = 30;    // gTransformID (R32UI - stable surface identity)
+    constexpr int GBUFFER_CLEARCOAT = 31;       // gClearCoat (RG16F - factor + roughness)
     
     // ======================================
     // LIGHT PROPAGATION VOLUMES (LPV) - GLOBAL ILLUMINATION
@@ -69,7 +72,7 @@ namespace TextureUnits {
     // ======================================
     // FORWARD TRANSPARENT PASS (IBL + MATERIALS)
     // ======================================
-    // Forward transparent uses same material units as geometry pass (0-5)
+    // Forward transparent uses same material units as geometry pass (0-7)
     // Plus specialized IBL units to avoid conflicts with deferred pass
     constexpr int FORWARD_IRRADIANCE_MAP = 16;      // Reuse from deferred
     constexpr int FORWARD_PREFILTERED_ENV_MAP = 17; // Reuse from deferred  

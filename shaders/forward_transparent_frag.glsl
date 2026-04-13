@@ -23,6 +23,7 @@ uniform vec4 baseColorFactor = vec4(1.0);
 uniform float metallicFactor = 0.0;
 uniform float roughnessFactor = 1.0;
 uniform vec3 emissiveFactor = vec3(0.0);
+uniform float emissiveStrength = 1.0;
 uniform float occlusionStrength = 1.0;
 uniform float normalScale = 1.0;
 uniform float alphaCutoff = 0.5;
@@ -30,10 +31,15 @@ uniform float alphaCutoff = 0.5;
 // KHR_materials_specular extension
 uniform float specularFactor = 1.0;
 uniform vec3 specularColorFactor = vec3(1.0);
+uniform float clearcoatFactor = 0.0;
+uniform float clearcoatRoughnessFactor = 0.0;
 
 // KHR_materials_transmission extension (from material, not hardcoded)
 uniform float transmissionFactor = 0.0;    // Material transmission [0,1]
 uniform sampler2D texture_transmission;    // Transmission texture
+uniform float thicknessFactor = 0.0;
+uniform float attenuationDistance = 0.0;
+uniform vec3 attenuationColor = vec3(1.0);
 
 // KHR_materials_ior extension (from material, not hardcoded)
 uniform float ior = 1.5;                   // Index of refraction from material
@@ -62,6 +68,9 @@ uniform samplerCube irradianceMap;
 uniform samplerCube prefilteredMap;
 uniform sampler2D brdfLUT;
 uniform float prefilteredMaxLOD = 4.0;
+uniform float iblIntensity = 0.4;
+uniform float diffuseIBLScale = 0.5;
+uniform float specularIBLScale = 0.6;
 
 // Camera
 uniform vec3 viewPos;
@@ -164,10 +173,19 @@ vec3 sampleEnvironmentWithRefraction(vec3 viewDir, vec3 normal, float roughness,
     return mix(reflectedColor, refractedColor, transmission);
 }
 
+vec3 ComputeVolumeTransmittance(vec3 baseTint, float thickness, float distanceScale, vec3 volumeColor) {
+    float pathLength = max(thickness, 0.0);
+    if (pathLength <= 0.0) {
+        return vec3(1.0);
+    }
+
+    vec3 safeColor = max(volumeColor, vec3(1e-3));
+    vec3 sigmaA = -log(safeColor) / max(distanceScale, 1e-3);
+    vec3 volumeTransmittance = exp(-sigmaA * pathLength);
+    return mix(vec3(1.0), volumeTransmittance * baseTint, clamp(pathLength, 0.0, 1.0));
+}
+
 void main() {
-    //Calculate screen UV from fragment position for depth reads
-    vec2 screenUV = gl_FragCoord.xy / screenSize;
-    
     // Sample base color and alpha
     vec4 baseColorSample = hasBaseColorTexture ? texture(texture_diffuse, fs_in.UV) : vec4(1.0);
     vec4 baseColor = baseColorSample * baseColorFactor;
@@ -190,6 +208,7 @@ void main() {
     if (hasTransmissionTexture) {
         transmission *= texture(texture_transmission, fs_in.UV).r;
     }
+    float thickness = thicknessFactor;
     
     // Sample emissive
     vec3 emissive = emissiveFactor;
@@ -210,28 +229,16 @@ void main() {
     
     float NdotV = max(dot(N, V), 0.0);
     
-    // Calculate F0 using material IOR and specular extension
     vec3 albedo = baseColor.rgb;
-    float baseF0 = F0FromIOR(ior);
-    
-    // Apply specular factor and color if using specular extension
-    float specFactorSample = specularFactor;
+    float specFactorSample = 1.0;
     if (hasSpecularTexture) {
         specFactorSample *= texture(texture_specular, fs_in.UV).a;
     }
-    
-    vec3 specColorSample = specularColorFactor;
+    vec3 specularColor = specularColorFactor;
     if (hasSpecularColorTexture) {
-        specColorSample *= texture(texture_specular_color, fs_in.UV).rgb;
+        specularColor *= texture(texture_specular_color, fs_in.UV).rgb;
     }
-    
-    vec3 dielectricF0 = vec3(baseF0) * specFactorSample * specColorSample;
-    vec3 F0 = mix(dielectricF0, albedo, metallic);
-    
-    //Calculate Fresnel term for physically correct reflections
-    // Transmissive materials reflect more at grazing angles (Fresnel effect)
-    float fresnel = pow(1.0 - NdotV, 5.0);
-    vec3 fresnelTerm = FresnelSchlickRoughness(NdotV, F0, roughness);
+    vec3 F0 = ComputeSurfaceF0(albedo, metallic, ior, specularFactor * specFactorSample, specularColor);
     
     // === TRANSMISSIVE MATERIAL RENDERING ===
     // For transparent materials, we combine:
@@ -243,78 +250,57 @@ void main() {
     vec3 envColor = sampleEnvironmentWithRefraction(V, N, roughness, transmission, ior);
     
     // Apply Fresnel-modulated environment contribution
-    vec3 reflectionColor = textureLod(prefilteredMap, R, roughness * prefilteredMaxLOD).rgb;
-    
-    // Blend reflection and transmission based on Fresnel and transmission factor
-    vec3 transmissiveColor = mix(
-        envColor * albedo,           // Refracted color (tinted by base color)
-        reflectionColor,             // Reflected color
-        fresnel * (1.0 - transmission) // Fresnel increases reflection at edges
-    );
+    float transmissionWeight = ComputeTransmissionWeight(transmission, NdotV, F0);
     
     // === DIRECT LIGHTING ===
-    // Transmissive materials have reduced diffuse contribution
     vec3 directLighting = vec3(0.0);
     
     vec3 L = normalize(-keyLightDir);
-    vec3 H = normalize(V + L);
     float NdotL = max(dot(N, L), 0.0);
-    float HdotV = max(dot(H, V), 0.0);
     
     if (NdotL > 0.0) {
-        // Specular highlights
-        float D = DistributionGGX(N, H, roughness);
-        float G = GeometrySmith(N, V, L, roughness);
-        vec3 F = FresnelSchlick(HdotV, F0);
-        
-        vec3 numerator = D * G * F;
-        float denominator = 4.0 * max(NdotV, 0.0001) * max(NdotL, 0.0001);
-        vec3 specular = numerator / max(denominator, 0.0001);
-        
-        // Diffuse contribution (reduced by transmission and metallic)
-        vec3 kS = F;
-        vec3 kD = (1.0 - kS) * (1.0 - metallic) * (1.0 - transmission);
-        vec3 diffuse = kD * albedo / PI;
-        
-        // Scale direct lighting based on transmission (more transmissive = less direct lighting)
-        float directScale = mix(1.0, 0.3, transmission);
-        directLighting = (diffuse + specular) * keyLightColor * keyLightIntensity * NdotL * directScale;
+        vec3 directDiffuse, directSpecular;
+        EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, transmission, clearcoatFactor, clearcoatRoughnessFactor, directDiffuse, directSpecular);
+        directLighting = (directDiffuse + directSpecular) * keyLightColor * keyLightIntensity;
     }
     
     // === IBL ===
-    // Diffuse IBL (reduced by transmission)
-    vec3 irradiance = texture(irradianceMap, N).rgb;
-    vec3 diffuseIBL = irradiance * albedo * (1.0 - metallic) * (1.0 - transmission) * ao;
-    
-    // Specular IBL
-    vec2 brdf = texture(brdfLUT, vec2(NdotV, roughness)).rg;
-    vec3 specularIBL = reflectionColor * (fresnelTerm * brdf.x + brdf.y) * ao;
-    
+    float diffuseAO = ao;
+    float specularAO = SpecularOcclusion(NdotV, diffuseAO, roughness);
+    vec3 pbrIBL = EvaluateCanonicalIBL(
+        N, V, R, albedo, metallic, roughness, F0, transmission, clearcoatFactor, clearcoatRoughnessFactor,
+        diffuseAO, specularAO,
+        irradianceMap, prefilteredMap, brdfLUT,
+        prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale
+    );
+
+    // Blend the canonical PBR response with the transmission-tinted environment.
+    vec3 transmittance = ComputeVolumeTransmittance(albedo, thickness, attenuationDistance, attenuationColor);
+    vec3 transmissiveColor = mix(
+        pbrIBL + directLighting,
+        envColor * transmittance,
+        transmissionWeight
+    );
+
     // === COMBINE LIGHTING ===
     // Balance between transmissive appearance and standard PBR
-    vec3 finalColor = mix(
-        diffuseIBL + specularIBL + directLighting,  // Standard PBR
-        transmissiveColor,                           // Transmissive appearance
-        transmission * 0.7                           // Blend based on transmission
-    ) + emissive;
+    vec3 finalColor = transmissiveColor + emissive * emissiveStrength;
     
     //Calculate final alpha for transmissive materials
     // Base alpha is controlled by material alpha and transmission factor
-    float baseAlpha = alpha * (1.0 - transmission * 0.9);
+    float mediumOpacity = 1.0 - dot(transmittance, vec3(0.3333333333));
+    float baseAlpha = alpha * (1.0 - transmissionWeight * 0.9) + mediumOpacity * transmissionWeight;
     
     // Fresnel increases opacity at edges for realistic appearance
-    float finalAlpha = mix(baseAlpha, min(baseAlpha + fresnel * 0.4, 1.0), 0.5);
+    float finalAlpha = mix(baseAlpha, min(baseAlpha + transmissionWeight * 0.4, 1.0), 0.5);
     
     // For highly transmissive materials, ensure minimum visibility
-    if (transmission > 0.5) {
+    if (transmissionWeight > 0.5) {
         finalAlpha = max(finalAlpha, 0.05);
     }
     
     // Ensure alpha stays in valid range
     finalAlpha = clamp(finalAlpha, 0.0, 1.0);
-    
-    // Read scene depth for transparency ordering (from packed G-buffer depth)
-    float sceneDepth = texture(gDepth, screenUV).r;
     
     // === OUTPUT ===
     // Output in linear color space - gamma correction happens in post-processing

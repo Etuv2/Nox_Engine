@@ -10,15 +10,17 @@ flat in uint TransformID;
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-// RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
+// RT3: R8UI - Material ID (0=opaque PBR, 2=Transmission)
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
 // RT5: R32UI - Stable TransformID for temporal/surfel/GPU tracking
+// RT6: RG16F - Clearcoat factor + clearcoat roughness
 layout(location = 0) out vec4 gPackedNormalRM;
 layout(location = 1) out vec4 gAlbedoAO;
 layout(location = 2) out vec4 gSpecularF0;
 layout(location = 3) out uint gMaterialID;
 layout(location = 4) out vec4 gEmissive;
 layout(location = 5) out uint gTransformID;
+layout(location = 6) out vec2 gClearCoat;
 
 uniform sampler2D texture_diffuse;
 uniform sampler2D texture_normal;
@@ -34,6 +36,7 @@ uniform float metallicFactor  = 0.0;  // default non-metallic
 uniform float roughnessFactor = 1.0;  // default fully rough
 uniform vec4  baseColorFactor = vec4(1.0);
 uniform vec3  emissiveFactor  = vec3(0.0);
+uniform float emissiveStrength = 1.0;
 uniform float occlusionStrength = 1.0; // multiplier
 uniform float normalScale = 1.0;       // Normal map intensity
 
@@ -46,12 +49,8 @@ uniform float transmissionFactor = 0.0;       // transmission factor [0,1]
 
 // KHR_materials_ior extension
 uniform float ior = 1.5;                      // index of refraction
-
-// KHR_materials_pbrSpecularGlossiness support
-uniform bool useSpecularGlossinessWorkflow = false;
-uniform vec3 diffuseFactor = vec3(1.0);
-uniform vec3 specularGlossinessFactor = vec3(1.0);
-uniform float glossinessFactor = 1.0;
+uniform float clearcoatFactor = 0.0;
+uniform float clearcoatRoughnessFactor = 0.0;
 
 // Presence flags
 uniform bool hasBaseColorTexture = false;
@@ -62,7 +61,6 @@ uniform bool hasOcclusionTexture = false;
 uniform bool hasSpecularTexture = false;
 uniform bool hasSpecularColorTexture = false;
 uniform bool hasTransmissionTexture = false;
-
 
 void main() {
     // Re-orthonormalize TBN per-pixel after interpolation
@@ -103,81 +101,25 @@ void main() {
         }
     }
 
-    //  Material workflow selection 
-    vec3 albedo;
-    float metallic;
-    float roughness;
-    vec3 specularF0;
+    // Canonical metallic-roughness workflow.
+    // Legacy spec-gloss inputs are normalized into the same runtime contract.
+    vec3 albedo = baseColorFactor.rgb;
+    if (hasBaseColorTexture) {
+        albedo *= texture(texture_diffuse, TexCoords).rgb;
+    }
 
-    if (useSpecularGlossinessWorkflow) {
-        // KHR_materials_pbrSpecularGlossiness workflow
-        albedo = diffuseFactor;
-        if (hasBaseColorTexture) {
-            albedo *= texture(texture_diffuse, TexCoords).rgb;
-        }
-        
-        // In specular-glossiness, specular IS the F0
-        specularF0 = specularGlossinessFactor;
-        if (hasSpecularTexture) {
-            vec4 sgSample = texture(texture_specular, TexCoords);
-            specularF0 *= sgSample.rgb;
-            // A channel contains glossiness in specular-glossiness workflow
-            roughness = 1.0 - (sgSample.a * glossinessFactor);
-        } else {
-            roughness = 1.0 - glossinessFactor;
-        }
-        
-        // Metallic is derived from specular in this workflow
-        // High specular luminance = more metallic-like behavior
-        metallic = clamp(dot(specularF0, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
-        
-    } else {
-        // Standard metallic-roughness workflow
-        metallic = metallicFactor;
-        roughness = roughnessFactor;
-        
-        if (hasMetallicRoughnessTexture) {
-            vec4 mrSample = texture(texture_metallic_roughness, TexCoords);
-            // glTF: G = roughness, B = metallic
-            roughness = clamp(mrSample.g * roughnessFactor, 0.0, 1.0);
-            metallic  = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
-        }
-        
-        //  Albedo 
-        albedo = baseColorFactor.rgb;
-        if (hasBaseColorTexture) {
-            albedo *= texture(texture_diffuse, TexCoords).rgb;
-        }
-        
-        //  Specular F0 calculation with KHR_materials_specular support 
-        // Base dielectric F0 from IOR (default ~0.04 for IOR 1.5)
-        float baseF0 = F0FromIOR(ior);
-        vec3 dielectricF0 = vec3(baseF0);
-        
-        // Apply specular factor and color from extension
-        float specFactorSample = specularFactor;
-        if (hasSpecularTexture) {
-            specFactorSample *= texture(texture_specular, TexCoords).a; // A channel for scalar factor
-        }
-        
-        vec3 specColorSample = specularColorFactor;
-        if (hasSpecularColorTexture) {
-            specColorSample *= texture(texture_specular_color, TexCoords).rgb;
-        }
-        
-        // Final dielectric F0 = base F0 * specular factor * specular color
-        dielectricF0 = dielectricF0 * specFactorSample * specColorSample;
-        dielectricF0 = clamp(dielectricF0, vec3(0.0), vec3(1.0));
-        
-        // Metals use albedo as F0, dielectrics use computed F0
-        specularF0 = mix(dielectricF0, albedo, metallic);
+    float metallic = metallicFactor;
+    float roughness = ClampPerceptualRoughness(roughnessFactor);
+    vec3 specularF0 = ComputeSurfaceF0(albedo, metallic, ior, specularFactor, specularColorFactor);
+
+    if (hasMetallicRoughnessTexture) {
+        vec4 mrSample = texture(texture_metallic_roughness, TexCoords);
+        roughness = ClampPerceptualRoughness(mrSample.g * roughnessFactor);
+        metallic  = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
+        specularF0 = ComputeSurfaceF0(albedo, metallic, ior, specularFactor, specularColorFactor);
     }
-    
-    // Minimum roughness for dielectrics to prevent numerical issues
-    if (metallic < 0.1) {
-        roughness = max(roughness, 0.2);
-    }
-    roughness = clamp(roughness, 0.04, 1.0);
+
+    roughness = ClampPerceptualRoughness(roughness);
     
     //  Emissive 
     vec3 emissive = emissiveFactor;
@@ -192,15 +134,10 @@ void main() {
         ao = mix(1.0, texture(texture_occlusion, TexCoords).r, occlusionStrength);
     }
 
-    // Calculate emissive strength (luminance for alpha channel)
-    float emissiveStrength = dot(emissive, vec3(0.299, 0.587, 0.114));
-
     //  Determine Material ID 
-    uint materialID = 0u; // Default: Standard PBR
-    
-    if (useSpecularGlossinessWorkflow) {
-        materialID = 1u; // Specular-Glossiness workflow
-    } else if (transmissionFactor > 0.01) {
+    uint materialID = 0u; // Default: canonical metallic-roughness PBR
+
+    if (transmissionFactor > 0.01) {
         materialID = 2u; // Transmissive/Glass material
     }
     // Future material IDs:
@@ -226,4 +163,7 @@ void main() {
 
     // RT5: Stable transform/surface identity
     gTransformID = TransformID;
+
+    // RT6: Clearcoat factor + clearcoat roughness
+    gClearCoat = vec2(clamp(clearcoatFactor, 0.0, 1.0), ClampPerceptualRoughness(clearcoatRoughnessFactor));
 }

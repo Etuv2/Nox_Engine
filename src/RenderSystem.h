@@ -74,6 +74,7 @@ public:
     size_t GetTotalEntityCount() const { return m_totalCount; }
     size_t GetCulledEntityCount() const { return m_totalCount - m_visibleCount; }
     GLuint GetTransformBufferID() const { return m_transformBuffer ? m_transformBuffer->GetID() : 0; }
+    size_t GetTransformRecordCount() const { return m_gpuTransformRecords.size(); }
 
     // Rendering overrides
     void SetForceBackfaceCulling(bool force) { m_forceBackfaceCulling = force; }
@@ -115,19 +116,36 @@ private:
         GLint textureMetallicRoughness = -1;
         GLint textureEmissive = -1;
         GLint textureOcclusion = -1;
+        GLint textureSpecular = -1;
+        GLint textureSpecularColor = -1;
+        GLint textureTransmission = -1;
 
         GLint hasBaseColorTexture = -1;
         GLint hasNormalTexture = -1;
         GLint hasMetallicRoughnessTexture = -1;
         GLint hasEmissiveTexture = -1;
         GLint hasOcclusionTexture = -1;
+        GLint hasSpecularTexture = -1;
+        GLint hasSpecularColorTexture = -1;
+        GLint hasTransmissionTexture = -1;
 
         GLint baseColorFactor = -1;
         GLint metallicFactor = -1;
         GLint roughnessFactor = -1;
         GLint emissiveFactor = -1;
+        GLint emissiveStrength = -1;
         GLint occlusionStrength = -1;
         GLint normalScale = -1;
+        GLint alphaCutoff = -1;
+        GLint specularFactor = -1;
+        GLint specularColorFactor = -1;
+        GLint clearcoatFactor = -1;
+        GLint clearcoatRoughnessFactor = -1;
+        GLint transmissionFactor = -1;
+        GLint thicknessFactor = -1;
+        GLint attenuationDistance = -1;
+        GLint attenuationColor = -1;
+        GLint ior = -1;
     };
 
     const ShaderUniformCache& GetShaderUniformCache(GLuint shader);

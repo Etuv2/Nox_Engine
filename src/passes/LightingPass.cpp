@@ -51,6 +51,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.gSpecularF0 = glGetUniformLocation(m_shader, "gSpecularF0");
 	m_uniforms.gMaterialID = glGetUniformLocation(m_shader, "gMaterialID");
 	m_uniforms.gEmissive = glGetUniformLocation(m_shader, "gEmissive");
+	m_uniforms.gClearCoat = glGetUniformLocation(m_shader, "gClearCoat");
 	m_uniforms.gDepth = glGetUniformLocation(m_shader, "gDepth");
 	m_uniforms.ssaoMap = glGetUniformLocation(m_shader, "ssaoMap");
 	m_uniforms.screenSpaceShadowMap = glGetUniformLocation(m_shader, "screenSpaceShadowMap");
@@ -106,6 +107,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.cascadeBlendDistance = glGetUniformLocation(m_shader, "cascadeBlendDistance");
 	m_uniforms.cascadeBlendFactor = glGetUniformLocation(m_shader, "cascadeBlendFactor");
 	m_uniforms.cascadeSplits = glGetUniformLocation(m_shader, "cascadeSplits");
+	m_uniforms.shadowDebugVisualization = glGetUniformLocation(m_shader, "shadowDebugVisualization");
 	
 	// Point light shadow settings
 	m_uniforms.pointLightBias = glGetUniformLocation(m_shader, "pointLightBias");
@@ -218,6 +220,8 @@ void LightingPass::Execute(RenderContext& ctx,
 	// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
 	// RT3: R8UI - Material ID
 	// RT4: RGBA16F - Emissive color (RGB)
+	// RT5: R32UI - Transform ID
+	// RT6: RG16F - Clearcoat factor + roughness
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_NORMAL);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
@@ -233,6 +237,9 @@ void LightingPass::Execute(RenderContext& ctx,
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_EMISSIVE_COLOR);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(4));
+
+	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_CLEARCOAT);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(6));
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_DEPTH);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
@@ -275,6 +282,7 @@ void LightingPass::Execute(RenderContext& ctx,
 	glUniform1i(m_uniforms.gSpecularF0, TextureUnits::GBUFFER_SPECULAR);
 	glUniform1i(m_uniforms.gMaterialID, TextureUnits::GBUFFER_MATERIAL_ID);
 	glUniform1i(m_uniforms.gEmissive, TextureUnits::GBUFFER_EMISSIVE_COLOR);
+	glUniform1i(m_uniforms.gClearCoat, TextureUnits::GBUFFER_CLEARCOAT);
 	glUniform1i(m_uniforms.gDepth, TextureUnits::GBUFFER_DEPTH);
 	glUniform1i(m_uniforms.ssaoMap, TextureUnits::SSAO_MAP);
 	glUniform1i(m_uniforms.screenSpaceShadowMap, TextureUnits::SCREEN_SPACE_SHADOW_MAP);
@@ -405,9 +413,23 @@ void LightingPass::Execute(RenderContext& ctx,
 		float farPlane = camera->GetCameraFarPlane();
 		
 		// Use ShadowMapper's cascade split function for consistency
-		std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(nearPlane, farPlane, 4, 0.6f);
-		glm::vec4 cascadeSplits(splits[0], splits[1], splits[2], splits[3]);
+		const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
+		std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(
+			nearPlane,
+			farPlane,
+			cascadeCount,
+			shadowConfig.directionalSplitLambda
+		);
+		glm::vec4 cascadeSplits(0.0f);
+		for (int i = 0; i < std::min(4, static_cast<int>(splits.size())); ++i) {
+			cascadeSplits[i] = splits[i];
+		}
 		glUniform4fv(m_uniforms.cascadeSplits, 1, glm::value_ptr(cascadeSplits));
+		const int shadowDebugVisualization =
+			ctx.debugMode == RenderContext::DebugMode::SHADOW_MAPS
+			? static_cast<int>(ctx.shadowDebugVisualization)
+			: 0;
+		glUniform1i(m_uniforms.shadowDebugVisualization, shadowDebugVisualization);
 		
 		// Point light shadow settings
 		glUniform1f(m_uniforms.pointLightBias, shadowConfig.pointLightBias);
@@ -419,8 +441,7 @@ void LightingPass::Execute(RenderContext& ctx,
 		glUniform1f(m_uniforms.shadowMinBrightness, ctx.shadowMinBrightness);
 		glUniform1f(m_uniforms.shadowTransitionHardness, ctx.shadowTransitionHardness);
 
-		// Disable legacy cascade system
-		glUniform1i(m_uniforms.cascadeCount, 0);
+		glUniform1i(m_uniforms.cascadeCount, cascadeCount);
 	}
 	else {
 		// No lights
@@ -430,6 +451,7 @@ void LightingPass::Execute(RenderContext& ctx,
 		glUniform1i(m_uniforms.numSpotLights, 0);
 		glUniform1i(m_uniforms.enableShadows, 0);
 		glUniform1i(m_uniforms.cascadeCount, 0);
+		glUniform1i(m_uniforms.shadowDebugVisualization, 0);
 	}
 
 	// Render fullscreen quad

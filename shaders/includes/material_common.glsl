@@ -18,22 +18,26 @@ struct PBRMaterial {
     vec3 albedo;              // Base color (RGB)
     float metallic;           // Metallic factor [0,1]
     float roughness;          // Roughness factor [0.04,1]
-    vec3 specularF0;          // Specular F0 (full RGB color)
+    vec3 specularF0;          // Canonical specular F0 (full RGB color)
     vec3 emissive;            // Emissive color (already scaled by strength)
     float ao;                 // Ambient occlusion from texture [0,1]
-    uint materialID;          // Material type (0=PBR, 1=SpecGloss, 2=Transmissive)
-    
-    // Extended properties for special materials
     float transmission;       // Transmission factor for glass [0,1]
     float ior;                // Index of refraction (default 1.5)
+    float specularFactor;     // KHR_materials_specular factor (default 1.0)
+    vec3 specularColorFactor; // KHR_materials_specular color factor (default 1.0)
+    float alpha;              // Base alpha for transparent materials
+    float clearcoat;
+    float clearcoatRoughness;
+    uint materialID;          // Material type (0=opaque MR, 2=transmissive)
 };
 
 // === G-Buffer Layout Reference ===
 // RT0: RGBA8   - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-// RT3: R8UI    - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission)
+// RT3: R8UI    - Material ID (0=opaque MR, 2=Transmission)
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
+// RT6: RG16F   - Clearcoat factor (R) + clearcoat roughness (G)
 // Depth buffer - Non-linear depth [0,1]
 
 // === G-Buffer Unpacking Functions ===
@@ -46,6 +50,7 @@ PBRMaterial UnpackGBufferMaterial(
     sampler2D gSpecularF0,
     usampler2D gMaterialID,
     sampler2D gEmissive,
+    sampler2D gClearCoat,
     vec2 uv,
     out vec3 worldNormal
 ) {
@@ -54,7 +59,7 @@ PBRMaterial UnpackGBufferMaterial(
     // RT0: Normal + Roughness + Metallic
     vec4 packedNRM = texture(gPackedNormalRM, uv);
     vec2 encNormal = packedNRM.rg;
-    mat.roughness = clamp(packedNRM.b, 0.04, 1.0);  // Minimum roughness for stability
+    mat.roughness = ClampPerceptualRoughness(packedNRM.b);
     mat.metallic = clamp(packedNRM.a, 0.0, 1.0);
     
     // Decode normal
@@ -91,13 +96,13 @@ PBRMaterial UnpackGBufferMaterial(
     // Set defaults for extended properties
     mat.transmission = (mat.materialID == 2u) ? 0.9 : 0.0;
     mat.ior = 1.5;
-    
-    // Material-specific adjustments
-    if (mat.materialID == 2u) {
-        // Transmissive materials should be smooth
-        mat.roughness = min(mat.roughness, 0.1);
-    }
-    
+    mat.specularFactor = 1.0;
+    mat.specularColorFactor = vec3(1.0);
+    mat.alpha = 1.0;
+    vec2 clearcoatData = texture(gClearCoat, uv).rg;
+    mat.clearcoat = clamp(clearcoatData.r, 0.0, 1.0);
+    mat.clearcoatRoughness = ClampPerceptualRoughness(clearcoatData.g);
+
     return mat;
 }
 
@@ -149,12 +154,13 @@ void ComputeAOFactorsSimple(
 vec3 ComputeDirectLightContribution(
     vec3 N, vec3 V, vec3 L,
     vec3 albedo, float metallic, float roughness, vec3 F0,
+    float transmission, float clearcoat, float clearcoatRoughness,
     vec3 lightColor, float attenuation,
     float diffuseAO,
     float shadow
 ) {
     vec3 diffuse, specular;
-    EvaluateBRDF_Separated(N, V, L, albedo, metallic, roughness, F0, diffuse, specular);
+    EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuse, specular);
     
     // Apply AO to diffuse component only (specular should use specularAO in IBL)
     // For direct lighting, diffuseAO affects diffuse, specular is unaffected

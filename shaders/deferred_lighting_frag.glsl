@@ -10,13 +10,14 @@ out vec4 FragColor;
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-// RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
+// RT3: R8UI - Material ID (opaque PBR or transmission)
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
 uniform sampler2D gPackedNormalRM;  // RT0: oct normal (RG) + roughness (B) + metallic (A)
 uniform sampler2D gAlbedoAO;        // RT1: albedo (RGB) + occlusion (A)
 uniform sampler2D gSpecularF0;      // RT2: specular F0 (RGB) + emissive strength (A)
 uniform usampler2D gMaterialID;     // RT3: material ID (uint8)
 uniform sampler2D gEmissive;        // RT4: emissive color (RGB)
+uniform sampler2D gClearCoat;       // RT6: clearcoat factor + roughness
 uniform sampler2D gDepth;           // depth buffer (non-linear 0..1)
 
 // Camera - these MUST match the exact matrices used when writing G-buffer
@@ -90,7 +91,7 @@ uniform float shadowTransitionHardness = 1.0; // Softness of shadow boundaries [
 uniform vec4 cascadeSplits = vec4(10.0, 30.0, 100.0, 500.0);  // Far distances per cascade
 
 // Debug visualization
-uniform int debugCascadeVisualization = 0; // 0=off, 1=show cascade colors, 2=show depth
+uniform int shadowDebugVisualization = 0; // 0=off, 1=cascade index, 2=raw depth, 3=bias, 4=texel density, 5=shadow mask
 
 // Lights
 uniform int numLights = 0; // total active lights (any type)
@@ -108,18 +109,11 @@ struct LightData {
 layout(std430, binding = 0) buffer LightDataBuffer { LightData lights[]; };
 layout(std430, binding = 1) buffer ShadowMatricesBuffer { mat4 shadowMatrices[]; };
 
+#include "includes/shadow_common.glsl"
+
 // Note: PI, INV_PI, DIELECTRIC_F0 are now defined in pbr_common.glsl
 // Note: DecodeNormalOct, DistributionGGX, GeometrySchlickGGX, GeometrySmith, 
 //       FresnelSchlick, CalculateDiffuseAlbedo, SpecularOcclusion are in pbr_common.glsl
-
-// Reconstruct F0 - no longer needed, we store full F0 directly!
-// This function is kept for compatibility but just returns the stored F0
-vec3 ReconstructF0(vec3 specularF0, vec3 albedo, float metallic) {
-    // F0 is already correctly computed and stored in G-buffer
-    // For metals, F0 = albedo (handled in G-buffer pass)
-    // For dielectrics, F0 = computed dielectric F0 with specular color
-    return specularF0;
-}
 
 vec3 worldPosFromDepth(vec2 uv, float depth) {
 	vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -136,29 +130,6 @@ vec3 getNormalInWorldSpace(vec3 decodedNormal) {
 		return normalize(mat3(invView) * decodedNormal);
 	}
 }
-
-bool inUnitCube(vec3 p) {
-	return all(greaterThanEqual(p, vec3(0.0))) && all(lessThanEqual(p, vec3(1.0)));
-}
-
-// More lenient bounds check for shadow sampling - allows slight depth overflow
-bool inShadowBounds(vec3 p) {
-	return p.x >= 0.0 && p.x <= 1.0 && 
-	       p.y >= 0.0 && p.y <= 1.0 && 
-	       p.z >= -0.01 && p.z <= 1.01;
-}
-
-// Cascade debug colors for visualization
-vec3 GetCascadeDebugColor(int cascadeIndex) {
-	if (cascadeIndex == 0) return vec3(1.0, 0.0, 0.0); // Red
-	if (cascadeIndex == 1) return vec3(0.0, 1.0, 0.0); // Green
-	if (cascadeIndex == 2) return vec3(0.0, 0.0, 1.0); // Blue
-	if (cascadeIndex == 3) return vec3(1.0, 1.0, 0.0); // Yellow
-	return vec3(1.0, 0.0, 1.0); // Magenta for invalid
-}
-
-// Global variable to store last used cascade for debug visualization
-int g_lastCascadeIndex = -1;
 
 // Apply realistic shadow darkening
 // Accounts for indirect lighting, material reflectivity, and perceptual shadow intensity
@@ -194,76 +165,25 @@ float ApplyRealisticShadow(float shadowVisibility, vec3 albedo, float roughness,
 	
 	return result;
 }
-// Slope-scaled shadow bias calculation - physically reasonable biasing
-float CalculateSlopeBias(vec3 N, vec3 L, float baseBias) {
-	float NdotL = max(dot(N, L), 0.001);
-	// Slope factor: tan(angle) approximated as sqrt(1 - cos^2) / cos
-	float cosAngle = NdotL;
-	float sinAngle = sqrt(max(1.0 - cosAngle * cosAngle, 0.0));
-	float tanAngle = sinAngle / cosAngle;
-	
-	// Clamp slope factor to prevent extreme bias on grazing angles
-	float slopeFactor = clamp(tanAngle, 0.0, 10.0);
-	
-	return baseBias * (1.0 + slopeFactor * 0.5);
-}
-
-// Adaptive shadow bias calculation for cascaded shadow maps
-float CalculateAdaptiveShadowBias(vec3 N, vec3 Ld, int cascadeIndex, float depthComp, float distance) {
-	// Use slope-based bias as the primary mechanism
-	float slopeBias = CalculateSlopeBias(N, -Ld, shadowBias);
-	
-	// Scale by cascade - distant cascades cover larger areas and need more bias
-	float cascadeScale = 1.0 + float(cascadeIndex) * 0.1;
-	
-	// Small distance-based component to handle depth precision issues at range
-	float depthBias = shadowBias * 0.0001 * distance;
-	
-	float finalBias = slopeBias * cascadeScale + depthBias;
-	return clamp(finalBias, shadowBias * 0.25, maxShadowBias);
-}
-
-float SampleShadowArray(int layer, vec3 projCoords, float bias) {
-	// Use lenient bounds for depth, strict for XY
-	if (!inShadowBounds(projCoords)) return 1.0;
-	
-	// Clamp depth to valid range for sampling
-	float sampleDepth = clamp(projCoords.z, 0.0, 1.0);
-	
-	ivec3 dims = textureSize(multiLightShadowArray, 0);
-	vec2 texel = 1.0 / vec2(dims.xy);
-	
-	const vec2 poissonDisk[16] = vec2[](
-		vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
-		vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
-		vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464),
-		vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
-		vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420),
-		vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
-		vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),
-		vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790)
-	);
-	
-	float sum = 0.0;
-	int count = 16;
-	
-	for (int i = 0; i < count; ++i) {
-		vec2 offset = poissonDisk[i] * texel * 1.5;
-		vec2 uv = projCoords.xy + offset;
-		
-		if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
-			sum += 1.0;
-		} else {
-			sum += texture(multiLightShadowArray, vec4(uv, float(layer), sampleDepth - bias));
-		}
-	}
-	
-	return sum / float(count);
-}
 // Cascaded shadow mapping with cascade selection and smooth blending
-float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 N, vec3 lightDir) {
+float ComputeCascadedShadow(
+	int startSlice,
+	int sliceCount,
+	vec3 worldPos,
+	vec3 N,
+	vec3 lightDir,
+	out int cascadeIndex,
+	out vec3 projCoords,
+	out float cascadeBias,
+	out float cascadeCoverage,
+	out float viewDepth
+) {
 	vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
-	float viewDepth = -viewSpacePos.z; // Linear view-space depth (positive)
+	viewDepth = -viewSpacePos.z; // Linear view-space depth (positive)
+	cascadeIndex = -1;
+	projCoords = vec3(0.0);
+	cascadeBias = 0.0;
+	cascadeCoverage = 0.0;
 	
 	// Clamp sliceCount to valid range
 	sliceCount = min(sliceCount, 4);
@@ -294,7 +214,7 @@ float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 
 		pc = pc * 0.5 + 0.5;
 		
 		// Check if this cascade covers the point
-		if (inShadowBounds(pc)) {
+		if (InShadowBounds(pc)) {
 			// Calculate how well-centered the point is in this cascade
 			// Prefer cascades where the point is more centered (not at edges)
 			vec2 centerDist = abs(pc.xy - 0.5);
@@ -325,17 +245,16 @@ float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 
 	
 	// No cascade covers this point
 	if (bestCascade < 0) {
-		g_lastCascadeIndex = -1;
 		return 1.0;
 	}
 	
-	// Store cascade index for debug visualization
-	g_lastCascadeIndex = bestCascade;
-	
 	// Sample the best cascade
 	int layer0 = startSlice + bestCascade;
-	float bias0 = CalculateAdaptiveShadowBias(N, lightDir, bestCascade, bestProjCoords.z, viewDepth);
-	float shadow0 = SampleShadowArray(layer0, bestProjCoords, bias0);
+	cascadeIndex = bestCascade;
+	cascadeBias = CalculateAdaptiveShadowBias(N, lightDir, bestCascade, bestProjCoords.z, viewDepth);
+	projCoords = bestProjCoords;
+	cascadeCoverage = bestCoverage;
+	float shadow0 = SampleShadowArray(layer0, bestProjCoords, cascadeBias);
 	
 	// Cascade blending - blend with next cascade at boundaries
 	float cascadeNear = (bestCascade == 0) ? 0.0 : cascadeSplits[bestCascade - 1];
@@ -362,7 +281,7 @@ float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 
 			vec3 pc1 = lsp1.xyz / lsp1.w;
 			pc1 = pc1 * 0.5 + 0.5;
 			
-			if (inShadowBounds(pc1)) {
+			if (InShadowBounds(pc1)) {
 				float bias1 = CalculateAdaptiveShadowBias(N, lightDir, nextCascade, pc1.z, viewDepth);
 				float shadow1 = SampleShadowArray(layer1, pc1, bias1);
 				shadow0 = mix(shadow0, shadow1, blendFactor);
@@ -387,60 +306,6 @@ float ComputeCascadedShadow(int startSlice, int sliceCount, vec3 worldPos, vec3 
 	}
 	
 	return shadow0;
-}
-
-// Edge-safe shadow sampling for point light cubemap faces
-// Constrains filter kernel near edges to avoid sampling undefined space
-float SampleShadowArrayEdgeSafe(int layer, vec3 projCoords, float bias, float edgeMargin) {
-	if (!inShadowBounds(projCoords)) return 1.0;
-	
-	ivec3 dims = textureSize(multiLightShadowArray, 0);
-	vec2 texel = 1.0 / vec2(dims.xy);
-	
-	// Calculate distance to nearest edge
-	vec2 edgeDist = min(projCoords.xy, 1.0 - projCoords.xy);
-	float minEdgeDist = min(edgeDist.x, edgeDist.y);
-	
-	// Determine kernel scale based on edge proximity
-	// Near edges, reduce filter radius to stay within valid texels
-	float maxKernelRadius = minEdgeDist / texel.x;
-	float kernelScale = clamp(maxKernelRadius / 1.5, 0.0, 1.0);
-	
-	// Clamp depth to valid range
-	float sampleDepth = clamp(projCoords.z, 0.0, 1.0);
-	
-	// If very close to edge, use single sample
-	if (kernelScale < 0.1) {
-		vec2 clampedUV = clamp(projCoords.xy, texel * 0.5, 1.0 - texel * 0.5);
-		return texture(multiLightShadowArray, vec4(clampedUV, float(layer), sampleDepth - bias));
-	}
-	
-	const vec2 poissonDisk[16] = vec2[](
-		vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
-		vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
-		vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464),
-		vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
-		vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420),
-		vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
-		vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),
-		vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790)
-	);
-	
-	float sum = 0.0;
-	int count = 16;
-	float filterRadius = 1.5 * kernelScale;
-	
-	for (int i = 0; i < count; ++i) {
-		vec2 offset = poissonDisk[i] * texel * filterRadius;
-		vec2 uv = projCoords.xy + offset;
-		
-		// Clamp to valid texture region (half-texel inset from edges)
-		uv = clamp(uv, texel * 0.5, 1.0 - texel * 0.5);
-		
-		sum += texture(multiLightShadowArray, vec4(uv, float(layer), sampleDepth - bias));
-	}
-	
-	return sum / float(count);
 }
 
 float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightPos) {
@@ -505,7 +370,12 @@ float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 
 	if (sliceCount <= 0 || startSlice < 0) return 1.0;
 
 	if (lightType == 0 && sliceCount > 1) {
-		return ComputeCascadedShadow(startSlice, sliceCount, worldPos, N, lightDir);
+		int cascadeIndex;
+		vec3 projCoords;
+		float cascadeBias;
+		float cascadeCoverage;
+		float viewDepth;
+		return ComputeCascadedShadow(startSlice, sliceCount, worldPos, N, lightDir, cascadeIndex, projCoords, cascadeBias, cascadeCoverage, viewDepth);
 	}
 	else if (lightType == 1) {
 		return ComputePointLightShadow(startSlice, worldPos, N, lightPos);
@@ -522,15 +392,95 @@ float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 
 		vec4 lsp = M * vec4(shadowPos, 1.0);
 		lsp.xyz /= lsp.w;
 		vec3 pc = lsp.xyz * 0.5 + 0.5;
-		if (!inUnitCube(pc)) return 1.0;
+		if (!InShadowBounds(pc)) return 1.0;
 		
 		float bias = CalculateAdaptiveShadowBias(N, -spotDir, 0, pc.z, distance);
 		return SampleShadowArray(layer, pc, bias);
 	}
 }
 
+vec3 EvaluateDirectionalShadowDebug(LightData Ld, vec3 worldPos, vec3 N) {
+	int startSlice = int(Ld.shadowData.x + 0.5);
+	int sliceCount = int(Ld.shadowData.y + 0.5);
+	vec3 lightDir = normalize(Ld.direction.xyz);
+
+	int cascadeIndex;
+	vec3 projCoords;
+	float cascadeBias;
+	float cascadeCoverage;
+	float viewDepth;
+	float shadow = ComputeCascadedShadow(
+		startSlice,
+		sliceCount,
+		worldPos,
+		N,
+		lightDir,
+		cascadeIndex,
+		projCoords,
+		cascadeBias,
+		cascadeCoverage,
+		viewDepth
+	);
+
+	if (cascadeIndex < 0) {
+		return vec3(0.0);
+	}
+
+	if (shadowDebugVisualization == 1) {
+		return GetCascadeDebugColor(cascadeIndex);
+	}
+
+	if (shadowDebugVisualization == 2) {
+		float maxCascadeDepth = cascadeSplits[max(sliceCount - 1, 0)];
+		float normalizedDepth = clamp(viewDepth / max(maxCascadeDepth, 0.001), 0.0, 1.0);
+		return vec3(normalizedDepth);
+	}
+
+	if (shadowDebugVisualization == 3) {
+		float normalizedBias = clamp(cascadeBias / max(maxShadowBias, 0.0001), 0.0, 1.0);
+		return vec3(normalizedBias, 1.0 - normalizedBias, 0.15);
+	}
+
+	if (shadowDebugVisualization == 4) {
+		float texelDensity = EstimateCascadeTexelDensity(startSlice + cascadeIndex, worldPos);
+		float coverage = clamp(cascadeCoverage, 0.0, 1.0);
+		vec3 lowDensityColor = vec3(0.12, 0.28, 1.0);
+		vec3 highDensityColor = vec3(1.0, 0.92, 0.2);
+		vec3 densityColor = mix(lowDensityColor, highDensityColor, texelDensity);
+		return densityColor * mix(0.55, 1.0, coverage);
+	}
+
+	if (shadowDebugVisualization == 5) {
+		return vec3(shadow);
+	}
+
+	return vec3(shadow);
+}
+
+bool EvaluateShadowDebugView(vec3 worldPos, vec3 N, out vec3 debugColor) {
+	if (shadowDebugVisualization <= 0) {
+		return false;
+	}
+
+	int maxLights = min(numLights, 64);
+	for (int i = 0; i < maxLights; ++i) {
+		LightData Ld = lights[i];
+		if (int(Ld.position.w) != 0) {
+			continue;
+		}
+		if (Ld.shadowData.z <= 0.5 || int(Ld.shadowData.y + 0.5) <= 0) {
+			continue;
+		}
+
+		debugColor = EvaluateDirectionalShadowDebug(Ld, worldPos, N);
+		return true;
+	}
+
+	return false;
+}
+
 // Proper PBR direct lighting with correct albedo application
-vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float diffuseAO) {
+vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float transmission, float clearcoat, float clearcoatRoughness, float diffuseAO) {
 	LightData Ld = lights[idx];
 	int type = int(Ld.position.w);
 	vec3 lightPos = Ld.position.xyz;
@@ -576,28 +526,8 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, flo
 	float NdotL = max(dot(N, L), 0.0);
 	if (NdotL <= 0.0) return vec3(0.0);
 
-	vec3 H = normalize(V + L);
-	float NdotV = max(dot(N, V), 0.001);
-	float HdotV = max(dot(H, V), 0.0);
-	
-	// Cook-Torrance BRDF
-	float NDF = DistributionGGX(N, H, roughness);
-	float G = GeometrySmith(N, V, L, roughness);
-	vec3 F = FresnelSchlick(HdotV, F0);
-	
-	// Specular BRDF
-	vec3 numerator = NDF * G * F;
-	float denominator = 4.0 * NdotV * NdotL;
-	vec3 specular = numerator / max(denominator, 0.001);
-	
-	// Energy conservation: kS is what's reflected (specular), kD is what's refracted (diffuse)
-	// Metals have no diffuse, so multiply by (1 - metallic)
-	vec3 kS = F;
-	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
-	
-	// Use raw albedo here, kD already handles the metallic factor
-	// Lambertian diffuse = albedo / PI
-	vec3 diffuse = kD * albedo / PI;
+	vec3 diffuse, specular;
+	EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuse, specular);
 	
 	// Shadow calculation
 	int startSlice = int(Ld.shadowData.x + 0.5);
@@ -634,41 +564,16 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, flo
 	// Final contribution
 	vec3 radiance = lightColor * attenuation;
 	
-	return (diffuse * diffuseAO + specular) * radiance * NdotL * combinedShadow;
+	return (diffuse * diffuseAO + specular) * radiance * combinedShadow;
 }
 
-vec3 ComputeIBL(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float diffuseAO, float specularAO) {
-	vec3 R = reflect(-V, N);
-	roughness = max(roughness, 0.04);
-  
-	vec3 irradiance = texture(irradianceMap, N).rgb;
-	
-	float lod = roughness * prefilteredMaxLOD;
-	vec3 prefiltered = textureLod(prefilteredMap, R, lod).rgb;
-	
-	irradiance = max(irradiance, vec3(0.0));
-	prefiltered = max(prefiltered, vec3(0.0));
-	
-	float NdotV = max(dot(N, V), 0.0);
-	vec2 brdf = texture(brdfLUT, vec2(NdotV, roughness)).rg;
-	brdf = max(brdf, vec2(0.0));
-
-	vec3 F = FresnelSchlick(NdotV, F0);
-	
-	// Energy conservation
-	vec3 kS = F;
-	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
-	
-	// Diffuse IBL uses raw albedo, kD handles metallic
-	vec3 diffuse = kD * albedo * irradiance * diffuseAO * diffuseIBLScale;
-	
-	// Specular IBL
-	vec3 specular = prefiltered * (F * brdf.x + brdf.y) * specularAO * specularIBLScale;
-	
-	diffuse = max(diffuse, vec3(0.0));
-	specular = max(specular, vec3(0.0));
-	
-	vec3 iblResult = (diffuse + specular) * iblIntensity;
+vec3 ComputeIBL(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float transmission, float clearcoat, float clearcoatRoughness, float diffuseAO, float specularAO) {
+	vec3 iblResult = EvaluateCanonicalIBL(
+		N, V, reflect(-V, N), albedo, metallic, ClampPerceptualRoughness(roughness), F0, transmission, clearcoat, clearcoatRoughness,
+		diffuseAO, specularAO,
+		irradianceMap, prefilteredMap, brdfLUT,
+		prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale
+	);
 	
 	if (any(isnan(iblResult)) || any(isinf(iblResult))) {
 		return vec3(0.0);
@@ -740,43 +645,32 @@ void main() {
 	float depth = texture(gDepth, uv).r;
 	if (depth >= 0.9999) { FragColor = vec4(0.0); return; }
 
-	// Read material ID
-	uint materialID = texture(gMaterialID, uv).r;
+	// Read material contract from the G-buffer using the shared unpack path.
+	vec3 decodedNormal;
+	PBRMaterial material = UnpackGBufferMaterial(
+		gPackedNormalRM,
+		gAlbedoAO,
+		gSpecularF0,
+		gMaterialID,
+		gEmissive,
+		gClearCoat,
+		uv,
+		decodedNormal
+	);
 
-	// Unpack G-buffer
-	vec4 packedNRM = texture(gPackedNormalRM, uv);
-	vec4 albedoAO = texture(gAlbedoAO, uv);
-	vec4 specF0Data = texture(gSpecularF0, uv);
-	vec4 emissiveData = texture(gEmissive, uv);
-	
-	// Extract material properties
-	vec2 encNormal = packedNRM.rg;
-	float roughness = clamp(packedNRM.b, 0.04, 1.0);
-	float metallic = clamp(packedNRM.a, 0.0, 1.0);
-	
-	// Extract albedo (base color) directly from G-buffer
-	vec3 albedo = albedoAO.rgb;
-	
-	// Only validate for NaN/Inf, NOT for dark colors
-	// Black materials (like tires) are perfectly valid and should not be overridden
-	if (any(isnan(albedo)) || any(isinf(albedo))) {
-		albedo = vec3(0.5); // Fallback only for invalid data
-	}
-	
-	float aoTex = clamp(albedoAO.a, 0.0, 1.0);
-	
-	// Extract full specular F0 color (RGB) - no more luminance compression!
-	vec3 specularF0 = specF0Data.rgb;
-	float emissiveStrength = specF0Data.a;
-	
-	// Extract emissive color
-	vec3 emissive = emissiveData.rgb * emissiveStrength;
+	vec3 albedo = material.albedo;
+	float metallic = material.metallic;
+	float roughness = material.roughness;
+	vec3 specularF0 = material.specularF0;
+	float aoTex = material.ao;
+	vec3 emissive = material.emissive;
+	float transmission = material.transmission;
+	float clearcoat = material.clearcoat;
+	float clearcoatRoughness = material.clearcoatRoughness;
 
 	// SSAO
 	float ssao = clamp(texture(ssaoMap, uv).r, 0.0, 1.0);
 
-	// Decode normal
-	vec3 decodedNormal = DecodeNormalOct(encNormal);
 	vec3 N = getNormalInWorldSpace(decodedNormal);
 	
 	// Validate normal
@@ -789,8 +683,15 @@ void main() {
 	vec3 V = normalize(viewPos - worldPos);
 	float NdotV = max(dot(N, V), 0.0);
 
-	// Use stored F0 directly - no reconstruction needed!
-	vec3 F0 = ReconstructF0(specularF0, albedo, metallic);
+	if (shadowDebugVisualization > 0) {
+		vec3 shadowDebugColor;
+		if (EvaluateShadowDebugView(worldPos, N, shadowDebugColor)) {
+			FragColor = vec4(shadowDebugColor, 1.0);
+			return;
+		}
+	}
+
+	vec3 F0 = specularF0;
 
 	// AO factors
 	float diffuseAO = mix(1.0, ssao, aoStrength) * aoTex;
@@ -799,19 +700,11 @@ void main() {
 	// Start with emissive
 	vec3 color = emissive;
 
-	// Material routing allows different BRDF models per surface
-	if (materialID == 2u) {
-		// Transmissive/Glass material (ID 2)
-		// TODO: Implement refraction and transmission in future update(s)
-		// For now, use standard PBR with high specular
-		roughness = min(roughness, 0.1); // Force smooth for glass-like appearance
-	}
-
 	// Direct lighting - pass raw albedo, metallic factor is applied inside
 	if (numLights > 0) {
 		int maxLights = min(numLights, 64);
 		for (int i = 0; i < maxLights; ++i) {
-			color += ComputeDirectLight(i, worldPos, N, V, albedo, metallic, roughness, F0, diffuseAO);
+			color += ComputeDirectLight(i, worldPos, N, V, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuseAO);
 		}
 	} else {
 		// Fallback ambient lighting
@@ -823,7 +716,7 @@ void main() {
 	}
 
 	// IBL - pass raw albedo
-	color += ComputeIBL(N, V, albedo, metallic, roughness, F0, diffuseAO, specularAO);
+	color += ComputeIBL(N, V, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuseAO, specularAO);
 
 	// LPV GI - pass raw albedo
 	if (enableLPV == 1) {
@@ -850,19 +743,6 @@ void main() {
 	}
 
 	color = max(color, vec3(0.0));
-
-	// Debug cascade visualization
-	if (debugCascadeVisualization == 1 && g_lastCascadeIndex >= 0) {
-		// Overlay cascade colors
-		vec3 cascadeColor = GetCascadeDebugColor(g_lastCascadeIndex);
-		color = mix(color, cascadeColor, 0.5);
-	} else if (debugCascadeVisualization == 2) {
-		// Show view depth as grayscale
-		vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
-		float viewDepth = -viewSpacePos.z;
-		float normalizedDepth = viewDepth / cascadeSplits[3];
-		color = vec3(normalizedDepth);
-	}
 
 	FragColor = vec4(color, 1.0);
 }

@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <cmath>
+#include <iterator>
 #include <limits>
 
 namespace PhysicsCollision {
@@ -15,6 +16,32 @@ struct SupportVertex {
     glm::vec3 pointA{0.0f};
     glm::vec3 pointB{0.0f};
     glm::vec3 minkowski{0.0f};
+};
+
+struct GJKResult {
+    bool intersecting = false;
+    std::vector<SupportVertex> simplex;
+};
+
+struct EPAEdge {
+    int a = -1;
+    int b = -1;
+};
+
+struct EPAFace {
+    int a = -1;
+    int b = -1;
+    int c = -1;
+    glm::vec3 normal{0.0f};
+    float distance = 0.0f;
+};
+
+struct EPAResult {
+    bool valid = false;
+    glm::vec3 normal{0.0f, 1.0f, 0.0f};
+    float depth = 0.0f;
+    glm::vec3 witnessA{0.0f};
+    glm::vec3 witnessB{0.0f};
 };
 
 bool HasConvexSupport(RigidBody::ShapeType shapeType) {
@@ -87,6 +114,297 @@ uint32_t MakeFeatureId(const glm::vec3& localPointA, const glm::vec3& localPoint
 void AssignFeatureId(ContactPoint& cp) {
     cp.featureId = MakeFeatureId(cp.localPointA, cp.localPointB);
 }
+
+void AddBoundaryEdge(std::vector<EPAEdge>& edges, int a, int b) {
+    for (auto it = edges.begin(); it != edges.end(); ++it) {
+        if (it->a == b && it->b == a) {
+            edges.erase(it);
+            return;
+        }
+    }
+
+    edges.push_back({a, b});
+}
+
+bool BarycentricCoordinates(const glm::vec3& p,
+                            const glm::vec3& a,
+                            const glm::vec3& b,
+                            const glm::vec3& c,
+                            float& outU,
+                            float& outV,
+                            float& outW) {
+    const glm::vec3 v0 = b - a;
+    const glm::vec3 v1 = c - a;
+    const glm::vec3 v2 = p - a;
+
+    const float d00 = glm::dot(v0, v0);
+    const float d01 = glm::dot(v0, v1);
+    const float d11 = glm::dot(v1, v1);
+    const float d20 = glm::dot(v2, v0);
+    const float d21 = glm::dot(v2, v1);
+    const float denom = d00 * d11 - d01 * d01;
+
+    if (std::abs(denom) < 1e-12f) {
+        return false;
+    }
+
+    outV = (d11 * d20 - d01 * d21) / denom;
+    outW = (d00 * d21 - d01 * d20) / denom;
+    outU = 1.0f - outV - outW;
+
+    if (!std::isfinite(outU) || !std::isfinite(outV) || !std::isfinite(outW)) {
+        return false;
+    }
+
+    return true;
+}
+
+void NormalizeBarycentrics(float& u, float& v, float& w) {
+    u = std::max(0.0f, u);
+    v = std::max(0.0f, v);
+    w = std::max(0.0f, w);
+
+    const float sum = u + v + w;
+    if (sum > 1e-8f) {
+        const float invSum = 1.0f / sum;
+        u *= invSum;
+        v *= invSum;
+        w *= invSum;
+    } else {
+        u = 1.0f;
+        v = 0.0f;
+        w = 0.0f;
+    }
+}
+
+bool BuildEPAFace(std::vector<EPAFace>& faces,
+                  const std::vector<SupportVertex>& vertices,
+                  int a,
+                  int b,
+                  int c) {
+    const glm::vec3 ab = vertices[b].minkowski - vertices[a].minkowski;
+    const glm::vec3 ac = vertices[c].minkowski - vertices[a].minkowski;
+    glm::vec3 normal = glm::cross(ab, ac);
+    const float lengthSq = glm::dot(normal, normal);
+    if (lengthSq < 1e-12f) {
+        return false;
+    }
+
+    normal *= 1.0f / std::sqrt(lengthSq);
+    if (glm::dot(normal, vertices[a].minkowski) < 0.0f) {
+        normal = -normal;
+        std::swap(b, c);
+    }
+
+    EPAFace face;
+    face.a = a;
+    face.b = b;
+    face.c = c;
+    face.normal = normal;
+    face.distance = glm::dot(normal, vertices[a].minkowski);
+
+    if (!std::isfinite(face.distance)) {
+        return false;
+    }
+
+    faces.push_back(face);
+    return true;
+}
+
+bool UpdateEPAFaceOrder(const EPAFace& lhs, const EPAFace& rhs) {
+    if (lhs.distance != rhs.distance) {
+        return lhs.distance < rhs.distance;
+    }
+    if (lhs.normal.x != rhs.normal.x) return lhs.normal.x < rhs.normal.x;
+    if (lhs.normal.y != rhs.normal.y) return lhs.normal.y < rhs.normal.y;
+    if (lhs.normal.z != rhs.normal.z) return lhs.normal.z < rhs.normal.z;
+    if (lhs.a != rhs.a) return lhs.a < rhs.a;
+    if (lhs.b != rhs.b) return lhs.b < rhs.b;
+    return lhs.c < rhs.c;
+}
+
+bool UpdateSimplex(std::vector<SupportVertex>& simplex, glm::vec3& direction);
+
+GJKResult RunGJK(const std::shared_ptr<RigidBody>& bodyA,
+                 const std::shared_ptr<RigidBody>& bodyB) {
+    GJKResult result;
+    result.simplex.reserve(4);
+
+    glm::vec3 direction = bodyB->getPosition() - bodyA->getPosition();
+    if (glm::dot(direction, direction) < 1e-8f) {
+        direction = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+
+    result.simplex.push_back(GetSupportVertex(bodyA, bodyB, direction));
+    direction = -result.simplex.back().minkowski;
+
+    for (int iteration = 0; iteration < 24; ++iteration) {
+        SupportVertex candidate = GetSupportVertex(bodyA, bodyB, direction);
+        if (glm::dot(candidate.minkowski, direction) <= 1e-5f) {
+            result.intersecting = false;
+            return result;
+        }
+
+        result.simplex.push_back(candidate);
+        if (UpdateSimplex(result.simplex, direction)) {
+            result.intersecting = true;
+            return result;
+        }
+    }
+
+    result.intersecting = false;
+    return result;
+}
+
+bool RunEPA(const std::shared_ptr<RigidBody>& bodyA,
+            const std::shared_ptr<RigidBody>& bodyB,
+            const std::vector<SupportVertex>& simplex,
+            EPAResult& outResult) {
+    if (simplex.size() < 4) {
+        return false;
+    }
+
+    std::vector<SupportVertex> polytope = simplex;
+    std::vector<EPAFace> faces;
+    faces.reserve(32);
+
+    if (!BuildEPAFace(faces, polytope, 0, 1, 2) ||
+        !BuildEPAFace(faces, polytope, 0, 3, 1) ||
+        !BuildEPAFace(faces, polytope, 0, 2, 3) ||
+        !BuildEPAFace(faces, polytope, 1, 3, 2)) {
+        return false;
+    }
+
+    constexpr int kMaxIterations = 48;
+    constexpr float kDistanceTolerance = 1e-4f;
+    constexpr float kVisibilityThreshold = 1e-6f;
+
+    for (int iteration = 0; iteration < kMaxIterations; ++iteration) {
+        auto closestFaceIt = std::min_element(faces.begin(), faces.end(), UpdateEPAFaceOrder);
+        if (closestFaceIt == faces.end()) {
+            return false;
+        }
+
+        const int faceIndex = static_cast<int>(std::distance(faces.begin(), closestFaceIt));
+        const EPAFace closestFace = faces[faceIndex];
+        SupportVertex candidate = GetSupportVertex(bodyA, bodyB, closestFace.normal);
+        const float supportDistance = glm::dot(candidate.minkowski, closestFace.normal);
+
+        if (supportDistance - closestFace.distance <= kDistanceTolerance) {
+            float u = 0.0f, v = 0.0f, w = 0.0f;
+            const glm::vec3 projectedPoint = closestFace.normal * closestFace.distance;
+            if (!BarycentricCoordinates(projectedPoint,
+                                        polytope[closestFace.a].minkowski,
+                                        polytope[closestFace.b].minkowski,
+                                        polytope[closestFace.c].minkowski,
+                                        u, v, w)) {
+                u = 1.0f;
+                v = 0.0f;
+                w = 0.0f;
+            }
+            NormalizeBarycentrics(u, v, w);
+
+            outResult.valid = true;
+            outResult.normal = closestFace.normal;
+            outResult.depth = closestFace.distance;
+            outResult.witnessA = polytope[closestFace.a].pointA * u +
+                                 polytope[closestFace.b].pointA * v +
+                                 polytope[closestFace.c].pointA * w;
+            outResult.witnessB = polytope[closestFace.a].pointB * u +
+                                 polytope[closestFace.b].pointB * v +
+                                 polytope[closestFace.c].pointB * w;
+            return true;
+        }
+
+        const int newVertexIndex = static_cast<int>(polytope.size());
+        polytope.push_back(candidate);
+
+        std::vector<EPAFace> visibleFaces;
+        std::vector<EPAEdge> boundaryEdges;
+        visibleFaces.reserve(faces.size());
+        boundaryEdges.reserve(faces.size() * 3);
+
+        for (const auto& face : faces) {
+            const glm::vec3 toNewVertex = candidate.minkowski - polytope[face.a].minkowski;
+            if (glm::dot(face.normal, toNewVertex) > kVisibilityThreshold) {
+                visibleFaces.push_back(face);
+                AddBoundaryEdge(boundaryEdges, face.a, face.b);
+                AddBoundaryEdge(boundaryEdges, face.b, face.c);
+                AddBoundaryEdge(boundaryEdges, face.c, face.a);
+            }
+        }
+
+        if (visibleFaces.empty()) {
+            return false;
+        }
+
+        std::sort(boundaryEdges.begin(), boundaryEdges.end(),
+            [](const EPAEdge& lhs, const EPAEdge& rhs) {
+                if (lhs.a != rhs.a) return lhs.a < rhs.a;
+                return lhs.b < rhs.b;
+            });
+
+        std::vector<EPAFace> remainingFaces;
+        remainingFaces.reserve(faces.size() + boundaryEdges.size());
+        for (const auto& face : faces) {
+            bool isVisible = false;
+            for (const auto& visibleFace : visibleFaces) {
+                if (face.a == visibleFace.a && face.b == visibleFace.b && face.c == visibleFace.c) {
+                    isVisible = true;
+                    break;
+                }
+            }
+            if (!isVisible) {
+                remainingFaces.push_back(face);
+            }
+        }
+
+        faces.swap(remainingFaces);
+        for (const auto& edge : boundaryEdges) {
+            BuildEPAFace(faces, polytope, edge.a, edge.b, newVertexIndex);
+        }
+    }
+
+    return false;
+}
+
+bool BuildWitnessManifoldFromEPA(const std::shared_ptr<RigidBody>& bodyA,
+                                 const std::shared_ptr<RigidBody>& bodyB,
+                                 const EPAResult& epa,
+                                 ContactManifold& manifold) {
+    if (!epa.valid || !bodyA || !bodyB) {
+        return false;
+    }
+
+    manifold.bodyA = bodyA;
+    manifold.bodyB = bodyB;
+    manifold.normal = epa.normal;
+    manifold.computeTangentBasis();
+    manifold.pointCount = 1;
+    manifold.friction = CombineFriction(bodyA->getFriction(), bodyB->getFriction());
+    manifold.restitution = CombineRestitution(bodyA->getRestitution(), bodyB->getRestitution());
+
+    ContactPoint& cp = manifold.points[0];
+    cp.point = (epa.witnessA + epa.witnessB) * 0.5f;
+    cp.penetration = epa.depth;
+    cp.localPointA = bodyA->worldToLocal(epa.witnessA);
+    cp.localPointB = bodyB->worldToLocal(epa.witnessB);
+    AssignFeatureId(cp);
+    return true;
+}
+
+bool TryBuildEPAResult(const std::shared_ptr<RigidBody>& bodyA,
+                       const std::shared_ptr<RigidBody>& bodyB,
+                       EPAResult& outResult) {
+    const GJKResult gjk = RunGJK(bodyA, bodyB);
+    if (!gjk.intersecting) {
+        return false;
+    }
+
+    return RunEPA(bodyA, bodyB, gjk.simplex, outResult);
+}
+
+bool UpdateSimplex(std::vector<SupportVertex>& simplex, glm::vec3& direction);
 
 void ReorientManifold(ContactManifold& manifold,
                       const std::shared_ptr<RigidBody>& expectedA,
@@ -183,30 +501,7 @@ bool UpdateSimplex(std::vector<SupportVertex>& simplex, glm::vec3& direction) {
 
 bool ConvexOverlapGJK(const std::shared_ptr<RigidBody>& bodyA,
                       const std::shared_ptr<RigidBody>& bodyB) {
-    std::vector<SupportVertex> simplex;
-    simplex.reserve(4);
-
-    glm::vec3 direction = bodyB->getPosition() - bodyA->getPosition();
-    if (glm::dot(direction, direction) < 1e-8f) {
-        direction = glm::vec3(1.0f, 0.0f, 0.0f);
-    }
-
-    simplex.push_back(GetSupportVertex(bodyA, bodyB, direction));
-    direction = -simplex.back().minkowski;
-
-    for (int iteration = 0; iteration < 20; ++iteration) {
-        SupportVertex candidate = GetSupportVertex(bodyA, bodyB, direction);
-        if (glm::dot(candidate.minkowski, direction) <= 1e-5f) {
-            return false;
-        }
-
-        simplex.push_back(candidate);
-        if (UpdateSimplex(simplex, direction)) {
-            return true;
-        }
-    }
-
-    return false;
+    return RunGJK(bodyA, bodyB).intersecting;
 }
 
 bool RequiresConvexPrepass(RigidBody::ShapeType typeA, RigidBody::ShapeType typeB) {
@@ -365,6 +660,18 @@ bool SphereBox(const std::shared_ptr<RigidBody>& sphere,
         // True penetration depth (positive when overlapping)
         cp.penetration = radius - dist;
     } else {
+        EPAResult epa;
+        if (TryBuildEPAResult(sphere, box, epa)) {
+            manifold.normal = epa.normal;
+            cp.point = (epa.witnessA + epa.witnessB) * 0.5f;
+            cp.penetration = epa.depth;
+            manifold.computeTangentBasis();
+            cp.localPointA = sphere->worldToLocal(epa.witnessA);
+            cp.localPointB = box->worldToLocal(epa.witnessB);
+            AssignFeatureId(cp);
+            return true;
+        }
+
         // Deep penetration - sphere center inside box
         // Find closest face and project sphere center onto it
         glm::vec3 localPos = box->worldToLocal(spherePos);
@@ -492,6 +799,8 @@ bool BoxBox(const std::shared_ptr<RigidBody>& boxA,
     float minPenetration = std::numeric_limits<float>::max();
     int minAxis = -1;
     glm::vec3 separatingNormal;
+    EPAResult epa;
+    const bool hasEPA = TryBuildEPAResult(boxA, boxB, epa);
     
     glm::vec3 centerDiff = posB - posA;
     
@@ -522,6 +831,11 @@ bool BoxBox(const std::shared_ptr<RigidBody>& boxA,
     }
     
     if (minAxis < 0) return false;
+
+    if (hasEPA) {
+        separatingNormal = epa.normal;
+        minPenetration = epa.depth;
+    }
     
     // Setup manifold
     manifold.bodyA = boxA;
@@ -618,8 +932,14 @@ bool BoxBox(const std::shared_ptr<RigidBody>& boxA,
         }
     }
     
-    // If no points from clipping, use deepest penetrating corner
+    // If no points from clipping, prefer the EPA witness pair and then
+    // fall back to the deepest penetrating corner for legacy stability.
     if (manifold.pointCount == 0) {
+        if (hasEPA && BuildWitnessManifoldFromEPA(boxA, boxB, epa, manifold)) {
+            manifold.stabilizePointOrder();
+            return true;
+        }
+
         auto corners = GetBoxFaceVertices(*incPos, *incRot, *incHalf, incidentFace);
         float deepest = 0.0f;
         glm::vec3 deepestPoint = corners[0];

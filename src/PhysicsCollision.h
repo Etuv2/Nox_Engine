@@ -16,7 +16,7 @@ struct ContactPoint;
  * - Sphere vs Sphere
  * - Sphere vs Box
  * - Sphere vs Plane
- * - Box vs Box (SAT with manifold generation)
+ * - Box vs Box (SAT with EPA-backed fallback contacts)
  * - Box vs Plane
  * 
  * All methods generate contact manifolds for stable collision response.
@@ -61,8 +61,8 @@ namespace PhysicsCollision {
     // ============== BOX COLLISIONS ==============
     
     /**
-     * Box vs Box collision using SAT (Separating Axis Theorem)
-     * Generates up to 4 contact points for stable stacking
+     * Box vs Box collision using SAT with EPA-backed witness fallback.
+     * Generates up to 4 contact points for stable stacking.
      */
     bool BoxBox(const std::shared_ptr<RigidBody>& boxA,
                 const std::shared_ptr<RigidBody>& boxB,

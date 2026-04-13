@@ -75,6 +75,7 @@ private:
 	float m_shadowFar = 100.0f;
 	bool m_enablePCSS = false;
 	float m_lightSize = 0.02f;
+	int m_shadowDebugVisualization = 0;
 
 	// Anti-aliasing settings
 	bool m_enableTAA = true;

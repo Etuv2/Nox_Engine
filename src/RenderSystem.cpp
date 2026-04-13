@@ -3,6 +3,7 @@
 #include "SceneNode.h"
 #include "MeshComponent.h"
 #include "DefaultTextures.h"
+#include "TextureUnits.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <iostream>
@@ -47,19 +48,36 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.textureMetallicRoughness = glGetUniformLocation(shader, "texture_metallic_roughness");
 	uniforms.textureEmissive = glGetUniformLocation(shader, "texture_emissive");
 	uniforms.textureOcclusion = glGetUniformLocation(shader, "texture_occlusion");
+	uniforms.textureSpecular = glGetUniformLocation(shader, "texture_specular");
+	uniforms.textureSpecularColor = glGetUniformLocation(shader, "texture_specular_color");
+	uniforms.textureTransmission = glGetUniformLocation(shader, "texture_transmission");
 
 	uniforms.hasBaseColorTexture = glGetUniformLocation(shader, "hasBaseColorTexture");
 	uniforms.hasNormalTexture = glGetUniformLocation(shader, "hasNormalTexture");
 	uniforms.hasMetallicRoughnessTexture = glGetUniformLocation(shader, "hasMetallicRoughnessTexture");
 	uniforms.hasEmissiveTexture = glGetUniformLocation(shader, "hasEmissiveTexture");
 	uniforms.hasOcclusionTexture = glGetUniformLocation(shader, "hasOcclusionTexture");
+	uniforms.hasSpecularTexture = glGetUniformLocation(shader, "hasSpecularTexture");
+	uniforms.hasSpecularColorTexture = glGetUniformLocation(shader, "hasSpecularColorTexture");
+	uniforms.hasTransmissionTexture = glGetUniformLocation(shader, "hasTransmissionTexture");
 
 	uniforms.baseColorFactor = glGetUniformLocation(shader, "baseColorFactor");
 	uniforms.metallicFactor = glGetUniformLocation(shader, "metallicFactor");
 	uniforms.roughnessFactor = glGetUniformLocation(shader, "roughnessFactor");
 	uniforms.emissiveFactor = glGetUniformLocation(shader, "emissiveFactor");
+	uniforms.emissiveStrength = glGetUniformLocation(shader, "emissiveStrength");
 	uniforms.occlusionStrength = glGetUniformLocation(shader, "occlusionStrength");
 	uniforms.normalScale = glGetUniformLocation(shader, "normalScale");
+	uniforms.alphaCutoff = glGetUniformLocation(shader, "alphaCutoff");
+	uniforms.specularFactor = glGetUniformLocation(shader, "specularFactor");
+	uniforms.specularColorFactor = glGetUniformLocation(shader, "specularColorFactor");
+	uniforms.clearcoatFactor = glGetUniformLocation(shader, "clearcoatFactor");
+	uniforms.clearcoatRoughnessFactor = glGetUniformLocation(shader, "clearcoatRoughnessFactor");
+	uniforms.transmissionFactor = glGetUniformLocation(shader, "transmissionFactor");
+	uniforms.thicknessFactor = glGetUniformLocation(shader, "thicknessFactor");
+	uniforms.attenuationDistance = glGetUniformLocation(shader, "attenuationDistance");
+	uniforms.attenuationColor = glGetUniformLocation(shader, "attenuationColor");
+	uniforms.ior = glGetUniformLocation(shader, "ior");
 
 	auto [insertedIt, _] = m_shaderUniformCaches.emplace(shader, uniforms);
 	return insertedIt->second;
@@ -326,6 +344,9 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 			obj.firstIndex = 0;
 			obj.baseVertex = 0;
 			obj.modelMatrix = worldTransform;
+			if (const TransformComponent* transform = m_componentManager->GetTransform(entityID)) {
+				obj.transformID = transform->transformID;
+			}
 			obj.vao = mesh.VAO;
 
 			if (mesh.boundingVolumeValid) {
@@ -499,27 +520,46 @@ void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderU
 		if (loc >= 0) glUniform1i(loc, unit);
 		};
 
-		bindTexture(uniforms.textureDiffuse, 0, mesh.diffuseTexture, DefaultTextures::White());
-	bindTexture(uniforms.textureNormal, 1, mesh.normalTexture, DefaultTextures::Normal());
-	bindTexture(uniforms.textureMetallicRoughness, 2, mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault());
-	bindTexture(uniforms.textureEmissive, 3, mesh.emissiveTexture, DefaultTextures::Black());
-	bindTexture(uniforms.textureOcclusion, 4, mesh.occlusionTexture, DefaultTextures::AOWhite());
+	bindTexture(uniforms.textureDiffuse, TextureUnits::MATERIAL_BASE_COLOR, mesh.diffuseTexture, DefaultTextures::White());
+	bindTexture(uniforms.textureNormal, TextureUnits::MATERIAL_NORMAL, mesh.normalTexture, DefaultTextures::Normal());
+	bindTexture(uniforms.textureMetallicRoughness, TextureUnits::MATERIAL_METALLIC_ROUGHNESS, mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault());
+	bindTexture(uniforms.textureEmissive, TextureUnits::MATERIAL_EMISSIVE, mesh.emissiveTexture, DefaultTextures::Black());
+	bindTexture(uniforms.textureOcclusion, TextureUnits::MATERIAL_OCCLUSION, mesh.occlusionTexture, DefaultTextures::AOWhite());
+	bindTexture(uniforms.textureSpecular, TextureUnits::MATERIAL_SPECULAR, mesh.specularTexture, DefaultTextures::White());
+	bindTexture(uniforms.textureSpecularColor, TextureUnits::MATERIAL_SPECULAR_COLOR, mesh.specularColorTexture, DefaultTextures::White());
+	bindTexture(uniforms.textureTransmission, TextureUnits::MATERIAL_TRANSMISSION, mesh.transmissionTexture, DefaultTextures::Black());
 
 	if (uniforms.hasBaseColorTexture >= 0) glUniform1i(uniforms.hasBaseColorTexture, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
 	if (uniforms.hasNormalTexture >= 0) glUniform1i(uniforms.hasNormalTexture, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
 	if (uniforms.hasMetallicRoughnessTexture >= 0) glUniform1i(uniforms.hasMetallicRoughnessTexture, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
 	if (uniforms.hasEmissiveTexture >= 0) glUniform1i(uniforms.hasEmissiveTexture, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
 	if (uniforms.hasOcclusionTexture >= 0) glUniform1i(uniforms.hasOcclusionTexture, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasSpecularTexture >= 0) glUniform1i(uniforms.hasSpecularTexture, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasSpecularColorTexture >= 0) glUniform1i(uniforms.hasSpecularColorTexture, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasTransmissionTexture >= 0) glUniform1i(uniforms.hasTransmissionTexture, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
 }
 
 void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
-	if (uniforms.baseColorFactor >= 0) glUniform4fv(uniforms.baseColorFactor, 1, glm::value_ptr(mesh.baseColorFactor));
-	if (uniforms.metallicFactor >= 0) glUniform1f(uniforms.metallicFactor, mesh.metallicFactor);
-	if (uniforms.roughnessFactor >= 0) glUniform1f(uniforms.roughnessFactor, mesh.roughnessFactor);
-	if (uniforms.emissiveFactor >= 0) glUniform3fv(uniforms.emissiveFactor, 1, glm::value_ptr(mesh.emissiveFactor));
-	if (uniforms.occlusionStrength >= 0) glUniform1f(uniforms.occlusionStrength, mesh.occlusionStrength);
-	if (uniforms.normalScale >= 0) glUniform1f(uniforms.normalScale, mesh.normalScale);
+	const MaterialDesc& material = mesh.material;
+
+	if (uniforms.baseColorFactor >= 0) glUniform4fv(uniforms.baseColorFactor, 1, glm::value_ptr(material.baseColorFactor));
+	if (uniforms.metallicFactor >= 0) glUniform1f(uniforms.metallicFactor, material.metallicFactor);
+	if (uniforms.roughnessFactor >= 0) glUniform1f(uniforms.roughnessFactor, material.roughnessFactor);
+	if (uniforms.emissiveFactor >= 0) glUniform3fv(uniforms.emissiveFactor, 1, glm::value_ptr(material.emissiveFactor));
+	if (uniforms.emissiveStrength >= 0) glUniform1f(uniforms.emissiveStrength, material.emissiveStrength);
+	if (uniforms.occlusionStrength >= 0) glUniform1f(uniforms.occlusionStrength, material.occlusionStrength);
+	if (uniforms.normalScale >= 0) glUniform1f(uniforms.normalScale, material.normalScale);
+	if (uniforms.alphaCutoff >= 0) glUniform1f(uniforms.alphaCutoff, material.alphaCutoff);
+	if (uniforms.specularFactor >= 0) glUniform1f(uniforms.specularFactor, material.specularFactor.x);
+	if (uniforms.specularColorFactor >= 0) glUniform3fv(uniforms.specularColorFactor, 1, glm::value_ptr(material.specularColorFactor));
+	if (uniforms.clearcoatFactor >= 0) glUniform1f(uniforms.clearcoatFactor, material.clearcoatFactor);
+	if (uniforms.clearcoatRoughnessFactor >= 0) glUniform1f(uniforms.clearcoatRoughnessFactor, material.clearcoatRoughnessFactor);
+	if (uniforms.transmissionFactor >= 0) glUniform1f(uniforms.transmissionFactor, material.transmissionFactor);
+	if (uniforms.thicknessFactor >= 0) glUniform1f(uniforms.thicknessFactor, material.thicknessFactor);
+	if (uniforms.attenuationDistance >= 0) glUniform1f(uniforms.attenuationDistance, material.attenuationDistance);
+	if (uniforms.attenuationColor >= 0) glUniform3fv(uniforms.attenuationColor, 1, glm::value_ptr(material.attenuationColor));
+	if (uniforms.ior >= 0) glUniform1f(uniforms.ior, material.ior);
 }
 
 void RenderSystem::UploadTransformUniforms(EntityID entity,

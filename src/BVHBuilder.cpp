@@ -511,26 +511,21 @@ std::vector<RT::Triangle> BVHBuilder::ExtractTriangles(
 RT::Material BVHBuilder::ExtractMaterial(const MeshComponent& mesh)
 {
 	RT::Material material;
+	const MaterialDesc& source = mesh.material;
 
-	// === Determine Material ID based on workflow/transmission ===
-	if (mesh.useSpecularGlossinessWorkflow) {
-		material.materialID = 1; // Specular-Glossiness workflow
-	} else if (mesh.transmissionFactor > 0.01f) {
-		material.materialID = 2; // Transmissive/Glass material
-	} else {
-		material.materialID = 0; // Standard PBR (metallic-roughness)
-	}
+	// Normalize RT packing around the canonical metallic-roughness contract.
+	material.materialID = source.transmissionFactor > 0.01f ? 2u : 0u;
 
 	// === Base PBR Properties ===
-	material.albedo = glm::vec3(mesh.baseColorFactor);
-	material.metallic = mesh.metallicFactor;
-	material.roughness = mesh.roughnessFactor;
+	material.albedo = glm::vec3(source.baseColorFactor);
+	material.metallic = source.metallicFactor;
+	material.roughness = source.roughnessFactor;
 
 	// === Alpha/Transparency ===
-	material.alpha = mesh.baseColorFactor.a;  // Alpha from base color factor
-	material.alphaCutoff = mesh.alphaCutoff;
+	material.alpha = source.baseColorFactor.a;
+	material.alphaCutoff = source.alphaCutoff;
 	// Map MeshComponent::AlphaMode to RT material alphaMode
-	switch (mesh.alphaMode) {
+	switch (static_cast<MeshComponent::AlphaMode>(static_cast<uint32_t>(source.alphaMode))) {
 		case MeshComponent::ALPHA_OPAQUE: material.alphaMode = 0; break;
 		case MeshComponent::ALPHA_MASK:   material.alphaMode = 1; break;
 		case MeshComponent::ALPHA_BLEND:  material.alphaMode = 2; break;
@@ -538,39 +533,33 @@ RT::Material BVHBuilder::ExtractMaterial(const MeshComponent& mesh)
 	}
 
 	// === Emissive ===
-	material.emissive = mesh.emissiveFactor;
-	float emissiveLuminance = mesh.emissiveFactor.r * 0.299f + 
-	                          mesh.emissiveFactor.g * 0.587f + 
-	                          mesh.emissiveFactor.b * 0.114f;
-	material.emissiveStrength = emissiveLuminance > 0.0f ? 1.0f : 0.0f;
+	material.emissive = source.emissiveFactor;
+	material.emissiveStrength = source.emissiveStrength;
 
 	// === Specular Extension (KHR_materials_specular) ===
 	// Calculate F0 from IOR (Schlick approximation)
-	float f = (mesh.ior - 1.0f) / (mesh.ior + 1.0f);
+	float f = (source.ior - 1.0f) / (source.ior + 1.0f);
 	float baseF0 = f * f;
 	
 	// Apply specular factor and color
-	float specFactorValue = glm::length(mesh.specularFactor) > 0.0f 
-	                        ? (mesh.specularFactor.r + mesh.specularFactor.g + mesh.specularFactor.b) / 3.0f 
+	float specFactorValue = glm::length(source.specularFactor) > 0.0f 
+	                        ? (source.specularFactor.r + source.specularFactor.g + source.specularFactor.b) / 3.0f 
 	                        : 1.0f;
 	
-	glm::vec3 dielectricF0 = glm::vec3(baseF0) * specFactorValue * mesh.specularColorFactor;
+	glm::vec3 dielectricF0 = glm::vec3(baseF0) * specFactorValue * source.specularColorFactor;
 	material.specular = glm::mix(dielectricF0, material.albedo, material.metallic);
 	material.specularFactor = specFactorValue;
-	material.specularColorFactor = mesh.specularColorFactor;
+	material.specularColorFactor = source.specularColorFactor;
 
 	// === Transmission (KHR_materials_transmission) ===
-	material.transmissionFactor = mesh.transmissionFactor;
-	material.ior = mesh.ior;
-
-	// === Specular-Glossiness Workflow (KHR_materials_pbrSpecularGlossiness) ===
-	material.diffuseFactor = mesh.diffuseFactor;
-	material.specGlossFactor = mesh.specularGlossinessFactor;
-	material.glossinessFactor = mesh.glossinessFactor;
+	material.transmissionFactor = source.transmissionFactor;
+	material.clearcoatFactor = source.clearcoatFactor;
+	material.clearcoatRoughnessFactor = source.clearcoatRoughnessFactor;
+	material.ior = source.ior;
 
 	// === Additional Properties ===
-	material.normalScale = mesh.normalScale;
-	material.occlusionStrength = mesh.occlusionStrength;
+	material.normalScale = source.normalScale;
+	material.occlusionStrength = source.occlusionStrength;
 
 	return material;
 }

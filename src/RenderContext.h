@@ -219,7 +219,16 @@ struct RenderContext {
 		MATERIAL_ID = 6,  // Visualize material ID buffer
 		TRANSFORM_ID = 7  // Visualize stable TransformID buffer
 	};
+	enum class ShadowDebugVisualization {
+		NONE = 0,
+		CASCADE_INDEX = 1,
+		RAW_CASCADE_DEPTH = 2,
+		BIAS_HEATMAP = 3,
+		TEXEL_DENSITY = 4,
+		SHADOW_MASK = 5
+	};
 	DebugMode debugMode = DebugMode::NONE;
+	ShadowDebugVisualization shadowDebugVisualization = ShadowDebugVisualization::NONE;
 	bool wireframeMode = false;
 	bool showBoundingBoxes = false;
 	bool showBBoxLegend = true;  // Show color legend when bounding boxes are enabled
@@ -227,4 +236,5 @@ struct RenderContext {
 
 	// Rendering overrides
 	bool forceBackfaceCulling = false;  // Force backface culling on all meshes regardless of material settings
+
 };

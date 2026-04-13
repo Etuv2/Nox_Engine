@@ -8,6 +8,7 @@
 #include "LightManager.h"
 
 #include "passes/GBufferPass.h"
+#include "passes/TransformHistoryPass.h"
 #include "passes/ShadowPass.h"
 #include "passes/LPVPass.h"
 #include "passes/RTPass.h"  // Path tracing pass
@@ -258,6 +259,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_shadowPass = std::make_unique<ShadowPass>();
 	m_lpvPass = std::make_unique<LPVPass>(); //Create LPV pass
 	m_gbufferPass = std::make_unique<GBufferPass>();
+	m_transformHistoryPass = std::make_unique<TransformHistoryPass>();
 	m_rtPass = std::make_unique<RTPass>();  // Create path tracing pass
 	m_ssaoPass = std::make_unique<SSAOPass>();
 	m_screenSpaceShadowPass = std::make_unique<ScreenSpaceShadowPass>();
@@ -274,6 +276,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_shadowPass->Initialize(m_context);
 	success &= m_lpvPass->Initialize(m_context);
 	success &= m_gbufferPass->Initialize(m_context);
+	success &= m_transformHistoryPass->Initialize(m_context);
 	success &= m_rtPass->Initialize(m_context);  // Initialize path tracing pass
 	success &= m_ssaoPass->Initialize(m_context);
 	success &= m_screenSpaceShadowPass->Initialize(m_context);
@@ -316,8 +319,15 @@ ModularRenderer::FrameGraphMode ModularRenderer::DetermineFrameGraphMode() const
 	if (m_context.rendererMode == RenderContext::RendererMode::PATH_TRACED) {
 		return FrameGraphMode::PATH_TRACED;
 	}
-	if (m_context.debugMode != RenderContext::DebugMode::NONE) {
+	switch (m_context.debugMode) {
+	case RenderContext::DebugMode::ALBEDO:
+	case RenderContext::DebugMode::NORMAL:
+	case RenderContext::DebugMode::DEPTH:
+	case RenderContext::DebugMode::MATERIAL_ID:
+	case RenderContext::DebugMode::TRANSFORM_ID:
 		return FrameGraphMode::DEFERRED_DEBUG;
+	default:
+		break;
 	}
 	return FrameGraphMode::DEFERRED;
 }
@@ -491,12 +501,21 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
-		"DebugViewPass", { "GBuffer" }, { "CompositedColor" },
+		"TransformHistoryPass", { "GBuffer" }, { "TransformHistory" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			if (m_transformHistoryPass) {
+				m_transformHistoryPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			}
+		}
+		});
+	addPass({
+		"DebugViewPass", { "TransformHistory" }, { "CompositedColor" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
 		[this]() { visualizeDebugMode(m_context); }
 		});
 	addPass({
-		"LPVPass", { "GBuffer" }, { ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB },
+		"LPVPass", { "TransformHistory" }, { ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB },
 		[](const RenderContext& ctx) { return ctx.enableLPV; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (!m_lpvPass) {
@@ -637,6 +656,7 @@ bool ModularRenderer::InitializeSharedResources()
 	// RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
 	// RT4: RGBA16F - Emissive color (RGB) + unused (A)
 	// RT5: R32UI - Stable TransformID for temporal/surfel workflows
+	// RT6: RG16F - Clearcoat factor (R) + clearcoat roughness (G)
 	m_context.gbufferFBO = std::make_unique<FrameBuffer>(
 		m_context.width, m_context.height,
 		std::vector<GLenum>{
@@ -645,7 +665,8 @@ bool ModularRenderer::InitializeSharedResources()
 			GL_RGBA16F,  // RT2: Specular F0 (full RGB) + emissive strength
 			GL_R8UI,     // RT3: Material ID
 			GL_RGBA16F,  // RT4: Emissive color (RGB)
-			GL_R32UI     // RT5: Transform ID
+			GL_R32UI,    // RT5: Transform ID
+			GL_RG16F     // RT6: Clearcoat
 	},
 		true,  // useDepthAsTexture
 		false  // useDepthAsTextureArray
@@ -693,6 +714,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_shadowPass) m_shadowPass->Resize(m_context, newWidth, newHeight);
 	if (m_lpvPass) m_lpvPass->Resize(m_context, newWidth, newHeight);
 	if (m_gbufferPass) m_gbufferPass->Resize(m_context, newWidth, newHeight);
+	if (m_transformHistoryPass) m_transformHistoryPass->Resize(m_context, newWidth, newHeight);
 	if (m_rtPass) m_rtPass->Resize(m_context, newWidth, newHeight);  // Resize path tracing pass
 	if (m_ssaoPass) m_ssaoPass->Resize(m_context, newWidth, newHeight);
 	if (m_screenSpaceShadowPass) m_screenSpaceShadowPass->Resize(m_context, newWidth, newHeight);

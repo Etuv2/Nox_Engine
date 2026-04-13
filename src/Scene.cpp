@@ -1,5 +1,6 @@
 ﻿#include "Scene.h"
 #include "GLBuffer.h"
+#include "TextureUnits.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -734,71 +735,43 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 					}
 				}
 
-				// EXTENSION: KHR_materials_pbrSpecularGlossiness - Legacy specular-glossiness workflow
-				if (mat.extensions.count("KHR_materials_pbrSpecularGlossiness")) {
-					const auto& sgExt = mat.extensions.at("KHR_materials_pbrSpecularGlossiness");
-					mesh.useSpecularGlossinessWorkflow = true;
-
-					// Extract diffuse factor
-					if (sgExt.Has("diffuseFactor") && sgExt.Get("diffuseFactor").IsArray()) {
-						const auto& diffuseArray = sgExt.Get("diffuseFactor");
-						if (diffuseArray.ArrayLen() >= 3) {
-							mesh.diffuseFactor.x = static_cast<float>(diffuseArray.Get(0).Get<double>());
-							mesh.diffuseFactor.y = static_cast<float>(diffuseArray.Get(1).Get<double>());
-							mesh.diffuseFactor.z = static_cast<float>(diffuseArray.Get(2).Get<double>());
-						}
-						// Check for alpha in diffuse factor
-						if (diffuseArray.ArrayLen() >= 4) {
-							float diffuseAlpha = static_cast<float>(diffuseArray.Get(3).Get<double>());
-							if (diffuseAlpha < 1.0f) {
-								mesh.hasAlpha = true;
-								mesh.baseColorFactor.a = diffuseAlpha;
-							}
+				if (mat.extensions.count("KHR_materials_volume")) {
+					const auto& volumeExt = mat.extensions.at("KHR_materials_volume");
+					if (volumeExt.Has("thicknessFactor") && volumeExt.Get("thicknessFactor").IsNumber()) {
+						mesh.thicknessFactor = static_cast<float>(volumeExt.Get("thicknessFactor").Get<double>());
+					}
+					if (volumeExt.Has("attenuationDistance") && volumeExt.Get("attenuationDistance").IsNumber()) {
+						mesh.attenuationDistance = static_cast<float>(volumeExt.Get("attenuationDistance").Get<double>());
+					}
+					if (volumeExt.Has("attenuationColor") && volumeExt.Get("attenuationColor").IsArray()) {
+						const auto& colorArray = volumeExt.Get("attenuationColor");
+						if (colorArray.ArrayLen() >= 3) {
+							mesh.attenuationColor = glm::vec3(
+								static_cast<float>(colorArray.Get(0).Get<double>()),
+								static_cast<float>(colorArray.Get(1).Get<double>()),
+								static_cast<float>(colorArray.Get(2).Get<double>())
+							);
 						}
 					}
+				}
 
-					// Extract specular factor (F0 color)
-					if (sgExt.Has("specularFactor") && sgExt.Get("specularFactor").IsArray()) {
-						const auto& specArray = sgExt.Get("specularFactor");
-						if (specArray.ArrayLen() >= 3) {
-							mesh.specularGlossinessFactor.x = static_cast<float>(specArray.Get(0).Get<double>());
-							mesh.specularGlossinessFactor.y = static_cast<float>(specArray.Get(1).Get<double>());
-							mesh.specularGlossinessFactor.z = static_cast<float>(specArray.Get(2).Get<double>());
-						}
+				// EXTENSION: KHR_materials_emissive_strength
+				if (mat.extensions.count("KHR_materials_emissive_strength")) {
+					const auto& emissiveExt = mat.extensions.at("KHR_materials_emissive_strength");
+					if (emissiveExt.Has("emissiveStrength") && emissiveExt.Get("emissiveStrength").IsNumber()) {
+						mesh.emissiveStrength = static_cast<float>(emissiveExt.Get("emissiveStrength").Get<double>());
 					}
+				}
 
-					// Extract glossiness factor
-					if (sgExt.Has("glossinessFactor") && sgExt.Get("glossinessFactor").IsNumber()) {
-						mesh.glossinessFactor = static_cast<float>(sgExt.Get("glossinessFactor").Get<double>());
-						// Convert glossiness to roughness for unified pipeline
-						mesh.roughnessFactor = 1.0f - mesh.glossinessFactor;
+				// EXTENSION: KHR_materials_clearcoat
+				if (mat.extensions.count("KHR_materials_clearcoat")) {
+					const auto& clearcoatExt = mat.extensions.at("KHR_materials_clearcoat");
+					if (clearcoatExt.Has("clearcoatFactor") && clearcoatExt.Get("clearcoatFactor").IsNumber()) {
+						mesh.clearcoatFactor = static_cast<float>(clearcoatExt.Get("clearcoatFactor").Get<double>());
 					}
-
-					// Extract diffuse texture (use as base color)
-					if (sgExt.Has("diffuseTexture") && sgExt.Get("diffuseTexture").IsObject()) {
-						const auto& diffuseTex = sgExt.Get("diffuseTexture");
-						if (diffuseTex.Has("index") && diffuseTex.Get("index").IsInt()) {
-							int texIndex = diffuseTex.Get("index").Get<int>();
-							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
-								mesh.diffuseTexture = LoadTextureFromGLTF(model, texIndex);
-								std::cout << "[INFO] Using specular-glossiness diffuse texture.\n";
-							}
-						}
+					if (clearcoatExt.Has("clearcoatRoughnessFactor") && clearcoatExt.Get("clearcoatRoughnessFactor").IsNumber()) {
+						mesh.clearcoatRoughnessFactor = static_cast<float>(clearcoatExt.Get("clearcoatRoughnessFactor").Get<double>());
 					}
-
-					// Extract specular-glossiness texture (RGB = specular, A = glossiness)
-					if (sgExt.Has("specularGlossinessTexture") && sgExt.Get("specularGlossinessTexture").IsObject()) {
-						const auto& sgTex = sgExt.Get("specularGlossinessTexture");
-						if (sgTex.Has("index") && sgTex.Get("index").IsInt()) {
-							int texIndex = sgTex.Get("index").Get<int>();
-							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
-								mesh.specularTexture = LoadTextureFromGLTF(model, texIndex);
-								std::cout << "[INFO] Using specular-glossiness texture.\n";
-							}
-						}
-					}
-
-					std::cout << "[INFO] Applied KHR_materials_pbrSpecularGlossiness extension.\n";
 				}
 
 				// Extract occlusion strength from standard glTF material
@@ -961,21 +934,44 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 					.Build();
 			}
 
-			//Assign the material factor values to the mesh
-			mesh.baseColorFactor = baseColorFactor;
-			mesh.metallicFactor = metallicFactor;
-			mesh.roughnessFactor = roughnessFactor;
-			mesh.emissiveFactor = emissiveFactor;
+			//Assign the normalized material contract to the mesh and keep the legacy fields mirrored.
+			MaterialDesc normalizedMaterial;
+			normalizedMaterial.alphaMode = static_cast<MaterialDesc::AlphaMode>(static_cast<uint32_t>(mesh.alphaMode));
+			normalizedMaterial.doubleSided = mesh.doubleSided;
+			normalizedMaterial.hasAlpha = mesh.hasAlpha;
+			normalizedMaterial.baseColorFactor = baseColorFactor;
+			normalizedMaterial.metallicFactor = metallicFactor;
+			normalizedMaterial.roughnessFactor = roughnessFactor;
+			normalizedMaterial.alphaCutoff = mesh.alphaCutoff;
+			normalizedMaterial.emissiveFactor = emissiveFactor;
+			normalizedMaterial.emissiveStrength = mesh.emissiveStrength;
+			normalizedMaterial.specularFactor = mesh.specularFactor;
+			normalizedMaterial.specularColorFactor = mesh.specularColorFactor;
+			normalizedMaterial.clearcoatFactor = mesh.clearcoatFactor;
+			normalizedMaterial.clearcoatRoughnessFactor = mesh.clearcoatRoughnessFactor;
+			normalizedMaterial.transmissionFactor = mesh.transmissionFactor;
+			normalizedMaterial.thicknessFactor = mesh.thicknessFactor;
+			normalizedMaterial.attenuationDistance = mesh.attenuationDistance;
+			normalizedMaterial.attenuationColor = mesh.attenuationColor;
+			normalizedMaterial.ior = mesh.ior;
+			normalizedMaterial.occlusionStrength = mesh.occlusionStrength;
+			normalizedMaterial.normalScale = mesh.normalScale;
+			mesh.SetMaterialDesc(normalizedMaterial);
 
 			std::cout << "[INFO] material factors: "
-				<< "baseColorFactor: " << baseColorFactor.x << "," << baseColorFactor.y << "," << baseColorFactor.z << "," << baseColorFactor.w
-				<< " metallicFactor: " << metallicFactor
-				<< " roughnessFactor: " << roughnessFactor
-				<< " emissiveFactor: " << emissiveFactor.x << "," << emissiveFactor.y << "," << emissiveFactor.z
-				<< " specularFactor: " << mesh.specularFactor.x
-				<< " occlusionStrength: " << mesh.occlusionStrength
-				<< " transmissionFactor: " << mesh.transmissionFactor
-				<< " ior: " << mesh.ior
+				<< "baseColorFactor: " << mesh.material.baseColorFactor.x << "," << mesh.material.baseColorFactor.y << "," << mesh.material.baseColorFactor.z << "," << mesh.material.baseColorFactor.w
+				<< " metallicFactor: " << mesh.material.metallicFactor
+				<< " roughnessFactor: " << mesh.material.roughnessFactor
+				<< " emissiveFactor: " << mesh.material.emissiveFactor.x << "," << mesh.material.emissiveFactor.y << "," << mesh.material.emissiveFactor.z
+				<< " emissiveStrength: " << mesh.material.emissiveStrength
+				<< " specularFactor: " << mesh.material.specularFactor.x
+				<< " clearcoatFactor: " << mesh.material.clearcoatFactor
+				<< " clearcoatRoughnessFactor: " << mesh.material.clearcoatRoughnessFactor
+				<< " occlusionStrength: " << mesh.material.occlusionStrength
+				<< " transmissionFactor: " << mesh.material.transmissionFactor
+				<< " thicknessFactor: " << mesh.material.thicknessFactor
+				<< " attenuationDistance: " << mesh.material.attenuationDistance
+				<< " ior: " << mesh.material.ior
 				<< "\n";
 
 			//Add the mesh to the Scene (use move since MeshComponent is move-only)
@@ -1144,6 +1140,7 @@ void Scene::Draw() {
 	GLint locMetallic = glGetUniformLocation(currentProgram, "metallicFactor");
 	GLint locRoughness = glGetUniformLocation(currentProgram, "roughnessFactor");
 	GLint locEmissive = glGetUniformLocation(currentProgram, "emissiveFactor");
+	GLint locEmissiveStrength = glGetUniformLocation(currentProgram, "emissiveStrength");
 	GLint locOcclusionStrength = glGetUniformLocation(currentProgram, "occlusionStrength");
 	GLint locNormalScale = glGetUniformLocation(currentProgram, "normalScale");
 	GLint locAlphaCutoff = glGetUniformLocation(currentProgram, "alphaCutoff");
@@ -1151,9 +1148,14 @@ void Scene::Draw() {
 	// KHR_materials_specular extension
 	GLint locSpecularFactor = glGetUniformLocation(currentProgram, "specularFactor");
 	GLint locSpecularColorFactor = glGetUniformLocation(currentProgram, "specularColorFactor");
+	GLint locClearcoat = glGetUniformLocation(currentProgram, "clearcoatFactor");
+	GLint locClearcoatRoughness = glGetUniformLocation(currentProgram, "clearcoatRoughnessFactor");
 
 	// KHR_materials_transmission extension
 	GLint locTransmission = glGetUniformLocation(currentProgram, "transmissionFactor");
+	GLint locThickness = glGetUniformLocation(currentProgram, "thicknessFactor");
+	GLint locAttenuationDistance = glGetUniformLocation(currentProgram, "attenuationDistance");
+	GLint locAttenuationColor = glGetUniformLocation(currentProgram, "attenuationColor");
 
 	// KHR_materials_ior extension
 	GLint locIOR = glGetUniformLocation(currentProgram, "ior");
@@ -1189,35 +1191,49 @@ void Scene::Draw() {
 	if (locTransmissionTex != -1) glUniform1i(locTransmissionTex, 7);
 
 	for (auto& mesh : meshes) {
+		const MaterialDesc& material = mesh.material;
+
 		// Upload material factor uniforms
 		if (locBaseColor != -1)
-			glUniform4fv(locBaseColor, 1, glm::value_ptr(mesh.baseColorFactor));
+			glUniform4fv(locBaseColor, 1, glm::value_ptr(material.baseColorFactor));
 		if (locMetallic != -1)
-			glUniform1f(locMetallic, mesh.metallicFactor);
+			glUniform1f(locMetallic, material.metallicFactor);
 		if (locRoughness != -1)
-			glUniform1f(locRoughness, mesh.roughnessFactor);
+			glUniform1f(locRoughness, material.roughnessFactor);
 		if (locEmissive != -1)
-			glUniform3fv(locEmissive, 1, glm::value_ptr(mesh.emissiveFactor));
+			glUniform3fv(locEmissive, 1, glm::value_ptr(material.emissiveFactor));
+		if (locEmissiveStrength != -1)
+			glUniform1f(locEmissiveStrength, material.emissiveStrength);
 		if (locOcclusionStrength != -1)
-			glUniform1f(locOcclusionStrength, mesh.occlusionStrength);
+			glUniform1f(locOcclusionStrength, material.occlusionStrength);
 		if (locNormalScale != -1)
-			glUniform1f(locNormalScale, mesh.normalScale);
+			glUniform1f(locNormalScale, material.normalScale);
 		if (locAlphaCutoff != -1)
-			glUniform1f(locAlphaCutoff, mesh.alphaCutoff);
+			glUniform1f(locAlphaCutoff, material.alphaCutoff);
 
 		// KHR_materials_specular
 		if (locSpecularFactor != -1)
-			glUniform1f(locSpecularFactor, mesh.specularFactor.x);
+			glUniform1f(locSpecularFactor, material.specularFactor.x);
 		if (locSpecularColorFactor != -1)
-			glUniform3fv(locSpecularColorFactor, 1, glm::value_ptr(mesh.specularColorFactor));
+			glUniform3fv(locSpecularColorFactor, 1, glm::value_ptr(material.specularColorFactor));
+		if (locClearcoat != -1)
+			glUniform1f(locClearcoat, material.clearcoatFactor);
+		if (locClearcoatRoughness != -1)
+			glUniform1f(locClearcoatRoughness, material.clearcoatRoughnessFactor);
 
 		// KHR_materials_transmission
 		if (locTransmission != -1)
-			glUniform1f(locTransmission, mesh.transmissionFactor);
+			glUniform1f(locTransmission, material.transmissionFactor);
+		if (locThickness != -1)
+			glUniform1f(locThickness, material.thicknessFactor);
+		if (locAttenuationDistance != -1)
+			glUniform1f(locAttenuationDistance, material.attenuationDistance);
+		if (locAttenuationColor != -1)
+			glUniform3fv(locAttenuationColor, 1, glm::value_ptr(material.attenuationColor));
 
 		// KHR_materials_ior
 		if (locIOR != -1)
-			glUniform1f(locIOR, mesh.ior);
+			glUniform1f(locIOR, material.ior);
 
 		// Set texture presence flags
 		if (locHasBaseColor != -1)
@@ -1255,35 +1271,35 @@ void Scene::Draw() {
 
 		// Bind textures to specific units for glTF PBR using new Texture API
 		if (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) {
-			mesh.diffuseTexture->Bind(GL_TEXTURE0);
+			mesh.diffuseTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_BASE_COLOR);
 		}
 
 		if (mesh.normalTexture && mesh.normalTexture->IsValid()) {
-			mesh.normalTexture->Bind(GL_TEXTURE1);
+			mesh.normalTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_NORMAL);
 		}
 
 		if (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) {
-			mesh.roughnessTexture->Bind(GL_TEXTURE2);
+			mesh.roughnessTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_METALLIC_ROUGHNESS);
 		}
 
 		if (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) {
-			mesh.emissiveTexture->Bind(GL_TEXTURE3);
+			mesh.emissiveTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_EMISSIVE);
 		}
 
 		if (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) {
-			mesh.occlusionTexture->Bind(GL_TEXTURE4);
+			mesh.occlusionTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_OCCLUSION);
 		}
 
 		if (mesh.specularTexture && mesh.specularTexture->IsValid()) {
-			mesh.specularTexture->Bind(GL_TEXTURE5);
+			mesh.specularTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_SPECULAR);
 		}
 
 		if (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) {
-			mesh.specularColorTexture->Bind(GL_TEXTURE6);
+			mesh.specularColorTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_SPECULAR_COLOR);
 		}
 
 		if (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) {
-			mesh.transmissionTexture->Bind(GL_TEXTURE7);
+			mesh.transmissionTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_TRANSMISSION);
 		}
 
 		glBindVertexArray(mesh.VAO);

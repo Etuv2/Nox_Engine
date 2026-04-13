@@ -5,6 +5,45 @@
 #include "GLBuffer.h"
 #include <vector>
 #include <memory>
+#include <cstdint>
+
+/**
+ * Canonical CPU-side material contract shared by import, renderer uploads, and RT packing.
+ *
+ * The goal is to normalize all material data toward glTF metallic-roughness while retaining
+ * the supported extension values needed by the engine today and by future RT paths.
+ */
+struct MaterialDesc {
+	enum class AlphaMode : uint32_t {
+		Opaque = 0,
+		Mask = 1,
+		Blend = 2
+	};
+
+	AlphaMode alphaMode = AlphaMode::Opaque;
+	bool doubleSided = false;
+	bool hasAlpha = false;
+
+	glm::vec4 baseColorFactor = glm::vec4(1.0f);
+	float metallicFactor = 0.0f;
+	float roughnessFactor = 1.0f;
+	float alphaCutoff = 0.5f;
+	glm::vec3 emissiveFactor = glm::vec3(0.0f);
+	float emissiveStrength = 1.0f;
+
+	glm::vec3 specularFactor = glm::vec3(1.0f);
+	glm::vec3 specularColorFactor = glm::vec3(1.0f);
+	float clearcoatFactor = 0.0f;
+	float clearcoatRoughnessFactor = 0.0f;
+	float transmissionFactor = 0.0f;
+	float thicknessFactor = 0.0f;
+	float attenuationDistance = 0.0f;
+	glm::vec3 attenuationColor = glm::vec3(1.0f);
+	float ior = 1.5f;
+
+	float occlusionStrength = 1.0f;
+	float normalScale = 1.0f;
+};
 
 class MeshComponent {
 public:
@@ -30,6 +69,9 @@ public:
 	std::shared_ptr<Texture> specularColorTexture;  // Specular color texture (KHR_materials_specular)
 	std::shared_ptr<Texture> transmissionTexture;   // Transmission texture (KHR_materials_transmission)
 
+	// Canonical normalized material state used by import, raster uploads, and RT packing.
+	MaterialDesc material;
+
 	// Material properties
 	bool hasAlpha;                // Requires alpha blending
 	bool doubleSided;             // Disable backface culling (from glTF material)
@@ -46,22 +88,22 @@ public:
 	glm::vec3 emissiveFactor = glm::vec3(0.0f);      // Emissive color multiplier
 
 	// Additional material factors for extensions
-	glm::vec3 specularFactor = glm::vec3(0.0f);      // KHR_materials_specular
+	glm::vec3 specularFactor = glm::vec3(1.0f);      // KHR_materials_specular
 	glm::vec3 specularColorFactor = glm::vec3(1.0f); // KHR_materials_specular
+	float emissiveStrength = 1.0f;                   // KHR_materials_emissive_strength
+	float clearcoatFactor = 0.0f;                    // KHR_materials_clearcoat
+	float clearcoatRoughnessFactor = 0.0f;           // KHR_materials_clearcoat
 	float occlusionStrength = 1.0f;                  // Occlusion strength
 	float normalScale = 1.0f;                        // Normal map intensity
 
 	// KHR_materials_transmission extension
 	float transmissionFactor = 0.0f;                 // Transmission factor [0,1]
+	float thicknessFactor = 0.0f;                    // KHR_materials_volume thickness
+	float attenuationDistance = 0.0f;                // KHR_materials_volume attenuation distance
+	glm::vec3 attenuationColor = glm::vec3(1.0f);    // KHR_materials_volume attenuation color
 
 	// KHR_materials_ior extension
 	float ior = 1.5f;                                // Index of refraction (default 1.5 for glass)
-
-	// KHR_materials_pbrSpecularGlossiness extension support
-	bool useSpecularGlossinessWorkflow = false;
-	glm::vec3 diffuseFactor = glm::vec3(1.0f);
-	glm::vec3 specularGlossinessFactor = glm::vec3(1.0f);
-	float glossinessFactor = 1.0f;
 
 	// Alpha mode enumeration following glTF spec
 	enum AlphaMode {
@@ -113,6 +155,7 @@ public:
 		, specularTexture(std::move(other.specularTexture))
 		, specularColorTexture(std::move(other.specularColorTexture))
 		, transmissionTexture(std::move(other.transmissionTexture))
+		, material(other.material)
 		, hasAlpha(other.hasAlpha)
 		, doubleSided(other.doubleSided)
 		, morphBuffers(std::move(other.morphBuffers))
@@ -124,14 +167,16 @@ public:
 		, emissiveFactor(other.emissiveFactor)
 		, specularFactor(other.specularFactor)
 		, specularColorFactor(other.specularColorFactor)
+		, emissiveStrength(other.emissiveStrength)
+		, clearcoatFactor(other.clearcoatFactor)
+		, clearcoatRoughnessFactor(other.clearcoatRoughnessFactor)
 		, occlusionStrength(other.occlusionStrength)
 		, normalScale(other.normalScale)
 		, transmissionFactor(other.transmissionFactor)
+		, thicknessFactor(other.thicknessFactor)
+		, attenuationDistance(other.attenuationDistance)
+		, attenuationColor(other.attenuationColor)
 		, ior(other.ior)
-		, useSpecularGlossinessWorkflow(other.useSpecularGlossinessWorkflow)
-		, diffuseFactor(other.diffuseFactor)
-		, specularGlossinessFactor(other.specularGlossinessFactor)
-		, glossinessFactor(other.glossinessFactor)
 		, alphaMode(other.alphaMode)
 		, cullingMode(other.cullingMode)
 		, rawVertices(std::move(other.rawVertices))
@@ -160,6 +205,7 @@ public:
 			specularTexture = std::move(other.specularTexture);
 			specularColorTexture = std::move(other.specularColorTexture);
 			transmissionTexture = std::move(other.transmissionTexture);
+			material = other.material;
 			hasAlpha = other.hasAlpha;
 			doubleSided = other.doubleSided;
 			morphBuffers = std::move(other.morphBuffers);
@@ -171,14 +217,16 @@ public:
 			emissiveFactor = other.emissiveFactor;
 			specularFactor = other.specularFactor;
 			specularColorFactor = other.specularColorFactor;
+			emissiveStrength = other.emissiveStrength;
+			clearcoatFactor = other.clearcoatFactor;
+			clearcoatRoughnessFactor = other.clearcoatRoughnessFactor;
 			occlusionStrength = other.occlusionStrength;
 			normalScale = other.normalScale;
 			transmissionFactor = other.transmissionFactor;
+			thicknessFactor = other.thicknessFactor;
+			attenuationDistance = other.attenuationDistance;
+			attenuationColor = other.attenuationColor;
 			ior = other.ior;
-			useSpecularGlossinessWorkflow = other.useSpecularGlossinessWorkflow;
-			diffuseFactor = other.diffuseFactor;
-			specularGlossinessFactor = other.specularGlossinessFactor;
-			glossinessFactor = other.glossinessFactor;
 			alphaMode = other.alphaMode;
 			cullingMode = other.cullingMode;
 			rawVertices = std::move(other.rawVertices);
@@ -195,6 +243,34 @@ public:
 	// Delete copy operations (unique_ptr can't be copied)
 	MeshComponent(const MeshComponent&) = delete;
 	MeshComponent& operator=(const MeshComponent&) = delete;
+
+	void SetMaterialDesc(const MaterialDesc& desc) {
+		material = desc;
+		baseColorFactor = desc.baseColorFactor;
+		metallicFactor = desc.metallicFactor;
+		roughnessFactor = desc.roughnessFactor;
+		alphaCutoff = desc.alphaCutoff;
+		emissiveFactor = desc.emissiveFactor;
+		emissiveStrength = desc.emissiveStrength;
+		specularFactor = desc.specularFactor;
+		specularColorFactor = desc.specularColorFactor;
+		clearcoatFactor = desc.clearcoatFactor;
+		clearcoatRoughnessFactor = desc.clearcoatRoughnessFactor;
+		transmissionFactor = desc.transmissionFactor;
+		thicknessFactor = desc.thicknessFactor;
+		attenuationDistance = desc.attenuationDistance;
+		attenuationColor = desc.attenuationColor;
+		ior = desc.ior;
+		occlusionStrength = desc.occlusionStrength;
+		normalScale = desc.normalScale;
+		hasAlpha = desc.hasAlpha;
+		doubleSided = desc.doubleSided;
+		alphaMode = static_cast<AlphaMode>(static_cast<uint32_t>(desc.alphaMode));
+	}
+
+	MaterialDesc GetMaterialDesc() const {
+		return material;
+	}
 
 	// Determine if this mesh needs special rendering treatment
 	bool RequiresAlphaBlending() const {

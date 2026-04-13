@@ -15,6 +15,7 @@ struct MDI_RenderableObject {
 	GLuint firstIndex = 0;
 	GLuint baseVertex = 0;
 	glm::mat4 modelMatrix{ 1.0f };
+	uint32_t transformID = 0;
 	glm::vec4 boundingSphere{ 0.0f }; // x, y, z, radius (optional)
 	// VAO that encapsulates VBO/EBO for this draw
 	GLuint vao = 0;

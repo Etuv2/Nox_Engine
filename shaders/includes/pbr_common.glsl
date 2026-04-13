@@ -71,6 +71,29 @@ float F0FromIOR(float ior) {
     return f * f;
 }
 
+// Canonical dielectric F0 for glTF-style specular control
+vec3 ComputeDielectricF0(float ior, float specularFactor, vec3 specularColorFactor) {
+    float baseF0 = F0FromIOR(ior);
+    vec3 dielectricF0 = vec3(baseF0);
+    dielectricF0 *= max(specularFactor, 0.0);
+    dielectricF0 *= max(specularColorFactor, vec3(0.0));
+    return clamp(dielectricF0, vec3(0.0), vec3(1.0));
+}
+
+float ClampPerceptualRoughness(float roughness) {
+    return clamp(roughness, 0.04, 1.0);
+}
+
+vec3 ComputeSurfaceF0(vec3 albedo, float metallic, float ior, float specularFactor, vec3 specularColorFactor) {
+    vec3 dielectricF0 = ComputeDielectricF0(ior, specularFactor, specularColorFactor);
+    return mix(dielectricF0, albedo, clamp(metallic, 0.0, 1.0));
+}
+
+float ComputeTransmissionWeight(float transmission, float NdotV, vec3 F0) {
+    float fresnel = dot(FresnelSchlick(clamp(NdotV, 0.0, 1.0), F0), vec3(0.3333333333));
+    return clamp(transmission * (1.0 - fresnel), 0.0, 1.0);
+}
+
 // Fresnel for dielectrics using IOR
 float FresnelDielectric(float cosTheta, float ior) {
     float f0 = F0FromIOR(ior);
@@ -149,11 +172,12 @@ vec3 EvaluateDiffuseBRDF(vec3 albedo, float metallic, vec3 F) {
     return kD * albedo * INV_PI;
 }
 
-// Evaluate full PBR BRDF with separated diffuse and specular outputs
+// Evaluate full metallic-roughness BRDF with separated diffuse and specular outputs
 // This allows proper AO application where diffuse and specular have different occlusion
-void EvaluateBRDF_Separated(
+void EvaluateCanonicalBRDFSeparated(
     vec3 N, vec3 V, vec3 L,
-    vec3 albedo, float metallic, float roughness, vec3 F0,
+    vec3 albedo, float metallic, float roughness, vec3 F0, float transmission,
+    float clearcoat, float clearcoatRoughness,
     out vec3 diffuseOut, out vec3 specularOut
 ) {
     diffuseOut = vec3(0.0);
@@ -177,26 +201,41 @@ void EvaluateBRDF_Separated(
     
     // Diffuse BRDF with energy conservation
     vec3 kS = F;
-    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic) * (1.0 - clamp(transmission, 0.0, 1.0));
     diffuseOut = (kD * albedo * INV_PI) * NdotL;
+
+    float clearcoatWeight = 0.25 * clamp(clearcoat, 0.0, 1.0);
+    if (clearcoatWeight > 0.0) {
+        vec3 ccF0 = vec3(0.04);
+        float ccRoughness = ClampPerceptualRoughness(max(clearcoatRoughness, 0.001));
+        vec3 ccF = FresnelSchlick(HdotV, ccF0);
+        float ccD = DistributionGGX(N, H, ccRoughness);
+        float ccG = GeometrySmith(N, V, L, ccRoughness);
+        vec3 clearcoatBRDF = ((ccD * ccG * ccF) / denominator) * NdotL;
+        float attenuation = 1.0 - clearcoatWeight * FresnelSchlick(NdotV, ccF0).r;
+        diffuseOut *= attenuation;
+        specularOut = specularOut * attenuation + clearcoatWeight * clearcoatBRDF;
+    }
 }
 
-// Evaluate combined PBR BRDF (returns diffuse + specular with NdotL)
-vec3 EvaluateBRDF(
+// Evaluate combined canonical BRDF (returns diffuse + specular with NdotL)
+vec3 EvaluateCanonicalBRDF(
     vec3 N, vec3 V, vec3 L,
-    vec3 albedo, float metallic, float roughness, vec3 F0
+    vec3 albedo, float metallic, float roughness, vec3 F0, float transmission,
+    float clearcoat, float clearcoatRoughness
 ) {
     vec3 diffuse, specular;
-    EvaluateBRDF_Separated(N, V, L, albedo, metallic, roughness, F0, diffuse, specular);
+    EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuse, specular);
     return diffuse + specular;
 }
 
 //  IBL Evaluation 
 
 // Evaluate Image-Based Lighting contribution
-vec3 EvaluateIBL(
+vec3 EvaluateCanonicalIBL(
     vec3 N, vec3 V, vec3 R,
-    vec3 albedo, float metallic, float roughness, vec3 F0,
+    vec3 albedo, float metallic, float roughness, vec3 F0, float transmission,
+    float clearcoat, float clearcoatRoughness,
     float diffuseAO, float specularAO,
     samplerCube irradianceMap, samplerCube prefilteredMap, sampler2D brdfLUT,
     float prefilteredMaxLOD,
@@ -220,7 +259,7 @@ vec3 EvaluateIBL(
     
     // Energy conservation
     vec3 kS = F;
-    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic) * (1.0 - clamp(transmission, 0.0, 1.0));
     
     // Diffuse IBL
     vec3 diffuse = kD * albedo * irradiance * diffuseAO * diffuseIBLScale;
@@ -228,7 +267,81 @@ vec3 EvaluateIBL(
     // Specular IBL
     vec3 specular = prefiltered * (F * brdf.x + brdf.y) * specularAO * specularIBLScale;
     
-    return (diffuse + specular) * iblIntensity;
+    vec3 ibl = (diffuse + specular) * iblIntensity;
+    float clearcoatWeight = 0.25 * clamp(clearcoat, 0.0, 1.0);
+    if (clearcoatWeight > 0.0) {
+        float ccNdotV = max(dot(N, V), 0.0);
+        vec3 ccF0 = vec3(0.04);
+        vec3 ccF = FresnelSchlickRoughness(ccNdotV, ccF0, ClampPerceptualRoughness(clearcoatRoughness));
+        vec3 ccPrefiltered = textureLod(prefilteredMap, R, ClampPerceptualRoughness(clearcoatRoughness) * prefilteredMaxLOD).rgb;
+        vec3 ccSpecular = ccPrefiltered * (ccF * brdf.x + brdf.y) * specularAO * specularIBLScale;
+        float attenuation = 1.0 - clearcoatWeight * FresnelSchlick(ccNdotV, ccF0).r;
+        ibl = ibl * attenuation + clearcoatWeight * ccSpecular * iblIntensity;
+    }
+    return ibl;
+}
+
+// Backwards-compatible wrappers for older shader call sites.
+vec3 EvaluateBRDF(
+    vec3 N, vec3 V, vec3 L,
+    vec3 albedo, float metallic, float roughness, vec3 F0
+) {
+    return EvaluateCanonicalBRDF(N, V, L, albedo, metallic, roughness, F0, 0.0, 0.0, 0.0);
+}
+
+void EvaluateBRDF_Separated(
+    vec3 N, vec3 V, vec3 L,
+    vec3 albedo, float metallic, float roughness, vec3 F0,
+    out vec3 diffuseOut, out vec3 specularOut
+) {
+    EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, 0.0, 0.0, 0.0, diffuseOut, specularOut);
+}
+
+vec3 EvaluateMetallicRoughnessBRDF(
+    vec3 N, vec3 V, vec3 L,
+    vec3 albedo, float metallic, float roughness, vec3 F0
+) {
+    return EvaluateCanonicalBRDF(N, V, L, albedo, metallic, roughness, F0, 0.0, 0.0, 0.0);
+}
+
+void EvaluateMetallicRoughnessBRDFSeparated(
+    vec3 N, vec3 V, vec3 L,
+    vec3 albedo, float metallic, float roughness, vec3 F0,
+    out vec3 diffuseOut, out vec3 specularOut
+) {
+    EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, 0.0, 0.0, 0.0, diffuseOut, specularOut);
+}
+
+vec3 EvaluateIBL(
+    vec3 N, vec3 V, vec3 R,
+    vec3 albedo, float metallic, float roughness, vec3 F0,
+    float diffuseAO, float specularAO,
+    samplerCube irradianceMap, samplerCube prefilteredMap, sampler2D brdfLUT,
+    float prefilteredMaxLOD,
+    float iblIntensity, float diffuseIBLScale, float specularIBLScale
+) {
+    return EvaluateCanonicalIBL(
+        N, V, R, albedo, metallic, roughness, F0, 0.0, 0.0, 0.0,
+        diffuseAO, specularAO,
+        irradianceMap, prefilteredMap, brdfLUT,
+        prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale
+    );
+}
+
+vec3 EvaluateMetallicRoughnessIBL(
+    vec3 N, vec3 V, vec3 R,
+    vec3 albedo, float metallic, float roughness, vec3 F0,
+    float diffuseAO, float specularAO,
+    samplerCube irradianceMap, samplerCube prefilteredMap, sampler2D brdfLUT,
+    float prefilteredMaxLOD,
+    float iblIntensity, float diffuseIBLScale, float specularIBLScale
+) {
+    return EvaluateCanonicalIBL(
+        N, V, R, albedo, metallic, roughness, F0, 0.0, 0.0, 0.0,
+        diffuseAO, specularAO,
+        irradianceMap, prefilteredMap, brdfLUT,
+        prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale
+    );
 }
 
 //  Sampling Utilities (for path tracing) 

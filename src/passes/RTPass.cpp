@@ -376,6 +376,10 @@ void RTPass::runRayTracing(RenderContext& ctx,
 		// RT4: Emissive color (RGB)
 		glActiveTexture(GL_TEXTURE9);
 		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(4));
+
+		// RT6: Clearcoat factor + roughness
+		glActiveTexture(GL_TEXTURE10);
+		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(6));
 	}
 
 	// Bind output texture

@@ -1,4 +1,4 @@
-#version 460 core
+ï»¿#version 460 core
 
 /**
  * @file rt_bidirectional_comp.glsl
@@ -8,7 +8,7 @@
  * Uses BVH acceleration for efficient ray-scene intersection and supports:
  * - Multiple importance sampling
  * - Temporal accumulation for progressive refinement
- * - PBR materials (metallic-roughness workflow)
+ * - PBR materials (canonical metallic-roughness workflow)
  * - Indirect lighting and reflections
  *
  * References:
@@ -49,10 +49,12 @@ layout (binding = 1) uniform sampler2D u_gbufferAlbedoAO;
 layout (binding = 2) uniform sampler2D u_gbufferSpecularF0;
 // Depth buffer
 layout (binding = 3) uniform sampler2D u_gbufferDepth;
-// RT3: Material ID (uint8)
+// RT3: Material ID (uint8, opaque PBR or transmission)
 layout (binding = 8) uniform usampler2D u_gbufferMaterialID;
 // RT4: Emissive color (RGB)
 layout (binding = 9) uniform sampler2D u_gbufferEmissive;
+// RT6: Clearcoat factor + roughness
+layout (binding = 10) uniform sampler2D u_gbufferClearCoat;
 
 
 // IBL Environment maps
@@ -108,7 +110,6 @@ uniform float u_cameraFar;
  * 
  * Supports:
  * - Metallic-roughness workflow (materialID = 0)
- * - Specular-glossiness workflow (materialID = 1)
  * - Transmissive/glass materials (materialID = 2)
  * - Alpha transparency (mask and blend modes)
  */
@@ -129,16 +130,17 @@ struct Material {
 	vec3  specularColorFactor;
 	float transmissionFactor;
 	
-	// Row 4: Diffuse Factor (spec-gloss) + IOR
-	vec3  diffuseFactor;
+	// Row 4: Clearcoat + IOR
+	float clearcoatFactor;
+	float clearcoatRoughnessFactor;
 	float ior;
+	float paddingMedium;
 	
-	// Row 5: Specular-Glossiness Factor + Glossiness
-	vec3  specGlossFactor;
-	float glossinessFactor;
+	// Row 5: Reserved for future layered lobes
+	vec4  reserved0;
 	
 	// Row 6: Material Flags
-	uint  materialID;       // 0=Standard PBR, 1=SpecGloss, 2=Transmission
+	uint  materialID;       // 0=Standard PBR, 2=Transmission
 	float normalScale;
 	float occlusionStrength;
 	float specularFactor;
@@ -340,7 +342,7 @@ vec3 reconstructWorldPosition(vec2 uv, float depth) {
 }
 
 
-// Ray / Triangle (Möller–Trumbore)
+// Ray / Triangle (MÃ¶llerâ€“Trumbore)
 
 bool rayTriangleIntersect(Ray ray, Triangle tri, out float t, out vec3 barycentric) {
 	vec3 edge1 = tri.v1 - tri.v0;
@@ -548,142 +550,58 @@ vec3 calculateRefraction(vec3 I, vec3 N, float materialIOR) {
 	return normalize(eta * I + (eta * cosi - sqrt(k)) * n);
 }
 
-// Fresnel for dielectrics (Schlick approximation with IOR)
-float fresnelDielectric(float cosTheta, float ior) {
-	float f0 = F0FromIOR(ior);
-	return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+// Evaluate BRDF for canonical metallic-roughness workflow (standard PBR + transmission)
+vec3 evaluateBRDF_Canonical(Material mat, vec3 N, vec3 V, vec3 L) {
+	vec3 F0 = ComputeSurfaceF0(mat.albedo, mat.metallic, mat.ior, mat.specularFactor, mat.specularColorFactor);
+	return EvaluateCanonicalBRDF(
+		N, V, L,
+		mat.albedo, mat.metallic, mat.roughness, F0, mat.transmissionFactor,
+		mat.clearcoatFactor, mat.clearcoatRoughnessFactor
+	);
 }
 
-// Evaluate BRDF for metallic-roughness workflow (standard PBR)
-vec3 evaluateBRDF_MetallicRoughness(Material mat, vec3 N, vec3 V, vec3 L) {
-	vec3 H = normalize(V + L);
-	float NdotL = max(dot(N, L), 0.0);
-	if (NdotL <= 0.0) return vec3(0.0);
-
-	// Use stored specular F0 directly (already computed with IOR and specular extension)
-	vec3 F0 = mat.specular;
-
-	float D = DistributionGGX(N, H, mat.roughness);
-	float G = GeometrySmith(N, V, L, mat.roughness);
-	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-	vec3 numerator   = D * G * F;
-	float denominator= 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
-	vec3 specularBRDF = numerator / denominator;
-
-	vec3 kS = F;
-	vec3 kD = (vec3(1.0) - kS) * (1.0 - mat.metallic);
-	vec3 diffuse = kD * mat.albedo * INV_PI;
-
-	return (diffuse + specularBRDF) * NdotL;
-}
-
-// Evaluate BRDF for metallic-roughness workflow with separate diffuse/specular for AO
+// Evaluate BRDF for canonical workflow with separate diffuse/specular outputs
 // This matches deferred lighting's approach where AO is applied separately to diffuse and specular
-void evaluateBRDF_MetallicRoughness_Separated(Material mat, vec3 N, vec3 V, vec3 L, 
+void evaluateBRDF_Canonical_Separated(Material mat, vec3 N, vec3 V, vec3 L,
 	out vec3 diffuseOut, out vec3 specularOut) {
-	diffuseOut = vec3(0.0);
-	specularOut = vec3(0.0);
-	
-	vec3 H = normalize(V + L);
-	float NdotL = max(dot(N, L), 0.0);
-	if (NdotL <= 0.0) return;
-
-	// Use stored specular F0 directly (already computed with IOR and specular extension)
-	vec3 F0 = mat.specular;
-
-	float D = DistributionGGX(N, H, mat.roughness);
-	float G = GeometrySmith(N, V, L, mat.roughness);
-	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-	vec3 numerator   = D * G * F;
-	float denominator= 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
-	specularOut = (numerator / denominator) * NdotL;
-
-	// kD properly accounts for energy conservation - metals have no diffuse
-	vec3 kS = F;
-	vec3 kD = (vec3(1.0) - kS) * (1.0 - mat.metallic);
-	diffuseOut = (kD * mat.albedo * INV_PI) * NdotL;
+	vec3 F0 = ComputeSurfaceF0(mat.albedo, mat.metallic, mat.ior, mat.specularFactor, mat.specularColorFactor);
+	EvaluateCanonicalBRDFSeparated(
+		N, V, L,
+		mat.albedo, mat.metallic, mat.roughness, F0, mat.transmissionFactor,
+		mat.clearcoatFactor, mat.clearcoatRoughnessFactor,
+		diffuseOut, specularOut
+	);
 }
 
-// Evaluate BRDF for specular-glossiness workflow
-vec3 evaluateBRDF_SpecularGlossiness(Material mat, vec3 N, vec3 V, vec3 L) {
-	vec3 H = normalize(V + L);
-	float NdotL = max(dot(N, L), 0.0);
-	if (NdotL <= 0.0) return vec3(0.0);
+// Backwards-compatible metallic-roughness wrappers now map to the canonical material contract.
+vec3 evaluateBRDF_MetallicRoughness(Material mat, vec3 N, vec3 V, vec3 L) {
+	return evaluateBRDF_Canonical(mat, N, V, L);
+}
 
-	// In spec-gloss workflow: roughness = 1 - glossiness
-	float roughness = 1.0 - mat.glossinessFactor;
-	roughness = max(roughness, 0.04);
-
-	// F0 is the specGlossFactor directly
-	vec3 F0 = mat.specGlossFactor;
-
-	float D = DistributionGGX(N, H, roughness);
-	float G = GeometrySmith(N, V, L, roughness);
-	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-	vec3 numerator   = D * G * F;
-	float denominator= 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
-	vec3 specularBRDF = numerator / denominator;
-
-	vec3 kS = F;
-	vec3 kD = (vec3(1.0) - kS);
-	// Use diffuse factor from spec-gloss workflow
-	vec3 diffuse = kD * mat.diffuseFactor * INV_PI;
-
-	return (diffuse + specularBRDF) * NdotL;
+void evaluateBRDF_MetallicRoughness_Separated(Material mat, vec3 N, vec3 V, vec3 L,
+	out vec3 diffuseOut, out vec3 specularOut) {
+	evaluateBRDF_Canonical_Separated(mat, N, V, L, diffuseOut, specularOut);
 }
 
 // Evaluate BRDF for transmissive materials (glass, etc.)
 vec3 evaluateBRDF_Transmissive(Material mat, vec3 N, vec3 V, vec3 L, out float transmission) {
-	vec3 H = normalize(V + L);
-	float NdotL = max(dot(N, L), 0.0);
+	vec3 F0 = ComputeSurfaceF0(mat.albedo, mat.metallic, mat.ior, mat.specularFactor, mat.specularColorFactor);
 	float NdotV = max(dot(N, V), 0.0);
-	
-	// Calculate Fresnel for this viewing angle
-	float fresnel = fresnelDielectric(NdotV, mat.ior);
-	
-	// Transmission is reduced by Fresnel effect (more reflection at grazing angles)
-	transmission = mat.transmissionFactor * (1.0 - fresnel);
-	
-	if (NdotL <= 0.0) return vec3(0.0);
-
-	// Force smooth roughness for glass-like appearance
-	float roughness = min(mat.roughness, 0.1);
-
-	vec3 F0 = vec3(F0FromIOR(mat.ior)) * mat.specularFactor * mat.specularColorFactor;
-
-	float D = DistributionGGX(N, H, roughness);
-	float G = GeometrySmith(N, V, L, roughness);
-	vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-	vec3 numerator   = D * G * F;
-	float denominator= 4.0 * NdotV * NdotL + 0.0001;
-	vec3 specularBRDF = numerator / denominator;
-
-	// Transmissive materials have reduced diffuse (light passes through)
-	vec3 kS = F;
-	vec3 kD = (vec3(1.0) - kS) * (1.0 - mat.metallic) * (1.0 - mat.transmissionFactor);
-	vec3 diffuse = kD * mat.albedo * INV_PI;
-
-	return (diffuse + specularBRDF) * NdotL;
+	transmission = ComputeTransmissionWeight(mat.transmissionFactor, NdotV, F0);
+	return EvaluateCanonicalBRDF(
+		N, V, L,
+		mat.albedo, mat.metallic, mat.roughness, F0, mat.transmissionFactor,
+		mat.clearcoatFactor, mat.clearcoatRoughnessFactor
+	);
 }
 
 // Main BRDF evaluation with material routing based on materialID
 vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L) {
-	// Route to appropriate BRDF based on material type
-	if (mat.materialID == 1u) {
-		// Specular-Glossiness workflow
-		return evaluateBRDF_SpecularGlossiness(mat, N, V, L);
-	} else if (mat.materialID == 2u) {
-		// Transmissive material - use simplified evaluation for direct lighting
+	if (mat.materialID == 2u) {
 		float transmission;
 		return evaluateBRDF_Transmissive(mat, N, V, L, transmission);
-	} else {
-		// Standard metallic-roughness PBR (materialID == 0)
-		return evaluateBRDF_MetallicRoughness(mat, N, V, L);
 	}
+	return evaluateBRDF_Canonical(mat, N, V, L);
 }
 
 
@@ -844,7 +762,7 @@ vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material 
 				if (traceShadowRay(hitPos, lightDir, maxDist)) {
 					// Evaluate BRDF with separated components for proper AO application
 					vec3 diffuseBRDF, specularBRDF;
-					evaluateBRDF_MetallicRoughness_Separated(mat, normal, viewDir, lightDir, 
+					evaluateBRDF_Canonical_Separated(mat, normal, viewDir, lightDir,
 						diffuseBRDF, specularBRDF);
 					
 					// Apply AO: diffuse uses diffuseAO, specular uses specularAO
@@ -880,7 +798,7 @@ vec3 evaluateDirectLightingMIS(vec3 hitPos, vec3 normal, vec3 viewDir, Material 
 		if (envPDF > 0.0 && dot(normal, envLightDir) > 0.0) {
 			// Evaluate BRDF with separated components for proper AO application
 			vec3 diffuseBRDF, specularBRDF;
-			evaluateBRDF_MetallicRoughness_Separated(mat, normal, viewDir, envLightDir, 
+			evaluateBRDF_Canonical_Separated(mat, normal, viewDir, envLightDir,
 				diffuseBRDF, specularBRDF);
 			
 			// Apply AO matching deferred IBL: diffuse uses diffuseAO, specular uses specularAO
@@ -1041,7 +959,7 @@ void main() {
 	vec4 packedNormalRM = texture(u_gbufferPackedNormalRM, uv);
 	vec2 octNormal = packedNormalRM.rg;
 	// Clamp roughness to minimum 0.04 to match deferred lighting
-	float roughness = clamp(packedNormalRM.b, 0.04, 1.0);
+	float roughness = ClampPerceptualRoughness(packedNormalRM.b);
 	float metallic  = clamp(packedNormalRM.a, 0.0, 1.0);
 
 	vec4 albedoAO = texture(u_gbufferAlbedoAO, uv);
@@ -1054,6 +972,7 @@ void main() {
 
 	vec4 emissiveData = texture(u_gbufferEmissive, uv);
 	vec3 emissive = emissiveData.rgb * emissiveStrength;
+	vec2 clearcoatData = texture(u_gbufferClearCoat, uv).rg;
 
 	vec3 normal = DecodeNormalOct8(octNormal);
 	
@@ -1063,12 +982,7 @@ void main() {
 	}
 	normal = normalize(normal);
 
-	// MATERIAL ROUTING: Apply material-specific adjustments based on ID
-	if (materialID == 2u) {
-		// Transmissive/Glass material - force smooth for refraction
-		roughness = min(roughness, 0.1);
-	}
-	// Material IDs 0 (Standard PBR) and 1 (Specular-Glossiness) use same path tracing BRDF
+	// Material IDs 0 (standard PBR) and 2 (transmission) share the canonical BRDF core.
 	// Future IDs (3=SSS, 4=Cloth, 5=Clearcoat) can modify BRDF here
 
 	Material gbufferMat;
@@ -1082,10 +996,9 @@ void main() {
 	// Set default values for extended properties (not stored in G-buffer)
 	gbufferMat.specularColorFactor = vec3(1.0);
 	gbufferMat.transmissionFactor = (materialID == 2u) ? 0.9 : 0.0;
-	gbufferMat.diffuseFactor = albedo;
+	gbufferMat.clearcoatFactor = clearcoatData.r;
+	gbufferMat.clearcoatRoughnessFactor = ClampPerceptualRoughness(clearcoatData.g);
 	gbufferMat.ior = 1.5;
-	gbufferMat.specGlossFactor = specular;
-	gbufferMat.glossinessFactor = 1.0 - roughness;
 	gbufferMat.normalScale = 1.0;
 	gbufferMat.occlusionStrength = 1.0;
 	gbufferMat.specularFactor = 1.0;
@@ -1125,7 +1038,7 @@ void main() {
 		
 		// Metals should have very high specular weight regardless of roughness
 		// This ensures mirror-like metals get proper reflections
-		specularWeight = mix(specularWeight, 1.0, gbufferMat.metallic);
+		specularWeight = mix(specularWeight, 1.0, max(gbufferMat.metallic, gbufferMat.transmissionFactor));
 		
 		// For near-mirror surfaces, use very high specular probability
 		if (gbufferMat.roughness < 0.1 && gbufferMat.metallic > 0.5) {
@@ -1258,11 +1171,18 @@ vec3 tracePath(Ray initialRay) {
 		
 		// Handle transmissive materials (glass, etc.)
 		if (hit.material.materialID == 2u && hit.material.transmissionFactor > 0.0) {
+			vec3 transmissionF0 = ComputeSurfaceF0(
+				hit.material.albedo,
+				hit.material.metallic,
+				hit.material.ior,
+				hit.material.specularFactor,
+				hit.material.specularColorFactor
+			);
 			float NdotV = max(abs(dot(N, V)), 0.001);
-			float fresnel = fresnelDielectric(NdotV, hit.material.ior);
+			float transmissionWeight = ComputeTransmissionWeight(hit.material.transmissionFactor, NdotV, transmissionF0);
 			
 			// Stochastic Fresnel: decide between reflection and refraction
-			float reflectProb = fresnel;
+			float reflectProb = 1.0 - transmissionWeight;
 			
 			if (randomFloat() < reflectProb) {
 				// Reflect
@@ -1295,7 +1215,7 @@ vec3 tracePath(Ray initialRay) {
 					}
 					
 					// Tint by transmission color (sqrt for single interface)
-					throughput *= sqrt(hit.material.albedo) * hit.material.transmissionFactor;
+					throughput *= mix(vec3(1.0), sqrt(hit.material.albedo), hit.material.transmissionFactor);
 					
 					ray.origin = hit.position - N * EPSILON * 2.0;
 					ray.direction = normalize(refractDir);
@@ -1325,12 +1245,12 @@ vec3 tracePath(Ray initialRay) {
 
 		// Probability of sampling specular vs diffuse lobe
 		float specularWeight = 1.0 - hit.material.roughness * hit.material.roughness;
-		specularWeight = mix(specularWeight, 1.0, hit.material.metallic);
+		specularWeight = mix(specularWeight, 1.0, max(hit.material.metallic, hit.material.transmissionFactor));
 		float specularProb = clamp(specularWeight, 0.1, 0.9);
 		
 		if (randomFloat() < specularProb) {
 			// Sample GGX specular lobe
-			newDirection = randomGGXDirection(N, V, max(hit.material.roughness, 0.04));
+			newDirection = randomGGXDirection(N, V, ClampPerceptualRoughness(hit.material.roughness));
 			
 			// GGX PDF (approximate for importance sampling)
 			vec3 H = normalize(V + newDirection);

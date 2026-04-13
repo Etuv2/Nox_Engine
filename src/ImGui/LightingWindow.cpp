@@ -1,4 +1,4 @@
-#include "LightingWindow.h"
+ï»¿#include "LightingWindow.h"
 #include "../SceneGraph.h"
 #include "../LightManager.h"
 #include "../BaseLight.h"
@@ -6,6 +6,7 @@
 #include "../PointLight.h"
 #include "../SpotLight.h"
 #include <glm/gtc/type_ptr.hpp>
+#include <algorithm>
 
 LightingWindow::LightingWindow()
     : BaseWindow("Lighting System", "F3")
@@ -46,6 +47,8 @@ void LightingWindow::Render() {
         if (ImGui::Button("Print Light Info")) {
             lightManager->PrintLightInfo();
         }
+
+        RenderShadowDiagnostics(lightManager);
         
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Individual Light Controls");
@@ -129,6 +132,41 @@ void LightingWindow::RenderSingleLightControls() {
     ImGui::Separator();
     ImGui::Text("Direction: (%.2f, %.2f, %.2f)", m_lightDir.x, m_lightDir.y, m_lightDir.z);
     ImGui::Text("Position: (%.2f, %.2f, %.2f)", m_lightPos.x, m_lightPos.y, m_lightPos.z);
+}
+
+void LightingWindow::RenderShadowDiagnostics(const std::shared_ptr<LightManager>& lightManager) {
+    if (!lightManager) return;
+
+    if (ImGui::CollapsingHeader("Shadow Diagnostics")) {
+        auto& shadowConfig = lightManager->GetShadowConfig();
+        ImGui::Text("Cascade Count: %d", shadowConfig.directionalCascadeCount);
+        ImGui::Text("Split Lambda: %.2f", shadowConfig.directionalSplitLambda);
+        ImGui::Text("Base Resolution: %d", shadowConfig.baseResolution);
+        ImGui::Text("Stable Snapping: %s", shadowConfig.stableTexelSnapping ? "On" : "Off");
+        ImGui::Text("Rotated PCF: %s", shadowConfig.useRotatedPoissonPCF ? "On" : "Off");
+        ImGui::Text("PCSS: %s", shadowConfig.enablePCSS ? "On" : "Off");
+        ImGui::Text("Dir Bias: %.5f / %.5f / %.5f",
+            shadowConfig.directionalConstantBias,
+            shadowConfig.directionalSlopeBias,
+            shadowConfig.directionalNormalOffset);
+
+        const auto slices = lightManager->GetShadowSliceDebug();
+        ImGui::Text("Shadow Slices: %d", static_cast<int>(slices.size()));
+
+        const int maxSlicesToShow = std::min<int>(8, static_cast<int>(slices.size()));
+        for (int i = 0; i < maxSlicesToShow; ++i) {
+            const auto& slice = slices[i];
+            ImGui::BulletText(
+                "Slice %d | Light %d | Sub %d | Age %u | Dirty 0x%X | %.2f ms",
+                slice.arrayIndex,
+                slice.lightIndex,
+                slice.subIndex,
+                slice.age,
+                slice.dirtyReason,
+                slice.lastUpdateMs
+            );
+        }
+    }
 }
 
 void LightingWindow::RenderDirectionalLightControls(std::shared_ptr<BaseLight> light, int index) {
@@ -255,12 +293,12 @@ void LightingWindow::RenderSpotLightControls(std::shared_ptr<BaseLight> light, i
         // Spot light specific controls
         if (auto spotLight = std::dynamic_pointer_cast<SpotLight>(light)) {
             float cutOff = spotLight->GetCutOff();
-            if (ImGui::SliderFloat(("Inner Angle" + lightID).c_str(), &cutOff, 0.0f, 89.0f, "%.1f°")) {
+            if (ImGui::SliderFloat(("Inner Angle" + lightID).c_str(), &cutOff, 0.0f, 89.0f, "%.1fÂ°")) {
                 spotLight->SetCutOff(cutOff);
             }
             
             float outerCutOff = spotLight->GetOuterCutOff();
-            if (ImGui::SliderFloat(("Outer Angle" + lightID).c_str(), &outerCutOff, cutOff + 1.0f, 90.0f, "%.1f°")) {
+            if (ImGui::SliderFloat(("Outer Angle" + lightID).c_str(), &outerCutOff, cutOff + 1.0f, 90.0f, "%.1fÂ°")) {
                 spotLight->SetOuterCutOff(outerCutOff);
             }
         }

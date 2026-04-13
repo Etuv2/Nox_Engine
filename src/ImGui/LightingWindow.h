@@ -6,6 +6,7 @@
 
 // Forward declarations
 class BaseLight;
+class LightManager;
 
 /**
  * @brief Lighting controls window for managing lights in the scene
@@ -29,4 +30,5 @@ private:
     void RenderDirectionalLightControls(std::shared_ptr<BaseLight> light, int index);
     void RenderPointLightControls(std::shared_ptr<BaseLight> light, int index);
     void RenderSpotLightControls(std::shared_ptr<BaseLight> light, int index);
+    void RenderShadowDiagnostics(const std::shared_ptr<LightManager>& lightManager);
 };

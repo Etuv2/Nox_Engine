@@ -1205,6 +1205,20 @@ void RenderingSettingsWindow::Render() {
 				SyncToRenderer(); // Apply debug mode to renderer
 			}
 
+			if (m_debugMode == static_cast<int>(RenderContext::DebugMode::SHADOW_MAPS)) {
+				const char* shadowDebugViews[] = {
+					"Off",
+					"Cascade Index",
+					"Raw Cascade Depth",
+					"Bias Heatmap",
+					"Texel Density / Coverage",
+					"Shadow Mask"
+				};
+				if (ImGui::Combo("Shadow Debug View", &m_shadowDebugVisualization, shadowDebugViews, 6)) {
+					SyncToRenderer();
+				}
+			}
+
 			ImGui::Separator();
 
 			if (ImGui::Checkbox("Wireframe Mode", &m_wireframeMode)) {
