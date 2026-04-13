@@ -21,7 +21,7 @@ struct PBRMaterial {
     vec3 specularF0;          // Canonical specular F0 (full RGB color)
     vec3 emissive;            // Emissive color (already scaled by strength)
     float ao;                 // Ambient occlusion from texture [0,1]
-    float transmission;       // Transmission factor for glass [0,1]
+    float transmission;       // Opaque deferred path keeps this at 0; forward transparent handles transmission.
     float ior;                // Index of refraction (default 1.5)
     float specularFactor;     // KHR_materials_specular factor (default 1.0)
     vec3 specularColorFactor; // KHR_materials_specular color factor (default 1.0)
@@ -35,7 +35,7 @@ struct PBRMaterial {
 // RT0: RGBA8   - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-// RT3: R8UI    - Material ID (0=opaque MR, 2=Transmission)
+// RT3: R32UI   - Stable material identity used for debugging and tracking
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
 // RT6: RG16F   - Clearcoat factor (R) + clearcoat roughness (G)
 // Depth buffer - Non-linear depth [0,1]
@@ -93,8 +93,8 @@ PBRMaterial UnpackGBufferMaterial(
     vec4 emissiveData = texture(gEmissive, uv);
     mat.emissive = emissiveData.rgb * emissiveStrength;
     
-    // Set defaults for extended properties
-    mat.transmission = (mat.materialID == 2u) ? 0.9 : 0.0;
+    // Deferred G-buffer only contains opaque materials. Transparent transmission is handled in the forward pass.
+    mat.transmission = 0.0;
     mat.ior = 1.5;
     mat.specularFactor = 1.0;
     mat.specularColorFactor = vec3(1.0);

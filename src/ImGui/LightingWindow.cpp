@@ -5,6 +5,7 @@
 #include "../DirectionalLight.h"
 #include "../PointLight.h"
 #include "../SpotLight.h"
+#include "../LightNode.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 
@@ -226,7 +227,19 @@ void LightingWindow::RenderPointLightControls(std::shared_ptr<BaseLight> light, 
         // Position control
         glm::vec3 position = light->GetPosition();
         if (ImGui::DragFloat3(("Position" + lightID).c_str(), glm::value_ptr(position), 0.1f)) {
-            light->SetPosition(position);
+            if (m_sceneGraph) {
+                if (auto lm = m_sceneGraph->GetLightManager()) {
+                    if (auto lightNode = lm->FindLightNodeForLight(light)) {
+                        lightNode->SetPosition(position);
+                    } else {
+                        light->SetPosition(position);
+                    }
+                } else {
+                    light->SetPosition(position);
+                }
+            } else {
+                light->SetPosition(position);
+            }
         }
         
         // Range control
@@ -275,7 +288,19 @@ void LightingWindow::RenderSpotLightControls(std::shared_ptr<BaseLight> light, i
         // Position control
         glm::vec3 position = light->GetPosition();
         if (ImGui::DragFloat3(("Position" + lightID).c_str(), glm::value_ptr(position), 0.1f)) {
-            light->SetPosition(position);
+            if (m_sceneGraph) {
+                if (auto lm = m_sceneGraph->GetLightManager()) {
+                    if (auto lightNode = lm->FindLightNodeForLight(light)) {
+                        lightNode->SetPosition(position);
+                    } else {
+                        light->SetPosition(position);
+                    }
+                } else {
+                    light->SetPosition(position);
+                }
+            } else {
+                light->SetPosition(position);
+            }
         }
         
         // Direction control

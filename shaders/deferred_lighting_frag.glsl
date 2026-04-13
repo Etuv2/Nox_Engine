@@ -179,133 +179,83 @@ float ComputeCascadedShadow(
 	out float viewDepth
 ) {
 	vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
-	viewDepth = -viewSpacePos.z; // Linear view-space depth (positive)
+	viewDepth = -viewSpacePos.z;
 	cascadeIndex = -1;
 	projCoords = vec3(0.0);
 	cascadeBias = 0.0;
-	cascadeCoverage = 0.0;
-	
-	// Clamp sliceCount to valid range
+	cascadeCoverage = 1.0;
+
 	sliceCount = min(sliceCount, 4);
-	if (sliceCount <= 0) return 1.0;
-	
-	// Beyond max shadow distance - fade out smoothly
-	float maxCascadeDepth = cascadeSplits[sliceCount - 1];
-	if (viewDepth > maxCascadeDepth) {
-		// Smooth fade over 10% beyond max cascade
-		float fadeStart = maxCascadeDepth;
-		float fadeEnd = maxCascadeDepth * 1.1;
-		float fadeFactor = clamp((viewDepth - fadeStart) / (fadeEnd - fadeStart), 0.0, 1.0);
-		if (fadeFactor >= 1.0) return 1.0;
-		// Continue to sample last cascade but fade result
-	}
-	
-	// Try each cascade in order and find the first one that contains this point
-	// This is more robust than calculating the cascade from depth
-	int bestCascade = -1;
-	vec3 bestProjCoords = vec3(0.0);
-	float bestCoverage = 0.0; // How well the cascade covers this point (0 = edge, 1 = center)
-	
-	for (int i = 0; i < sliceCount; ++i) {
-		int layer = startSlice + i;
-		mat4 M = shadowMatrices[layer];
-		vec4 lsp = M * vec4(worldPos, 1.0);
-		vec3 pc = lsp.xyz / lsp.w;
-		pc = pc * 0.5 + 0.5;
-		
-		// Check if this cascade covers the point
-		if (InShadowBounds(pc)) {
-			// Calculate how well-centered the point is in this cascade
-			// Prefer cascades where the point is more centered (not at edges)
-			vec2 centerDist = abs(pc.xy - 0.5);
-			float coverage = 1.0 - max(centerDist.x, centerDist.y) * 2.0;
-			coverage = clamp(coverage, 0.0, 1.0);
-			
-			// Also prefer the cascade that matches the view depth best
-			float cascadeNear = (i == 0) ? 0.0 : cascadeSplits[i - 1];
-			float cascadeFar = cascadeSplits[i];
-			
-			// Is this the "correct" cascade for this depth?
-			bool isCorrectCascade = (viewDepth >= cascadeNear && viewDepth <= cascadeFar);
-			
-			if (isCorrectCascade) {
-				// This is the ideal cascade - use it
-				bestCascade = i;
-				bestProjCoords = pc;
-				bestCoverage = coverage;
-				break; // Found the best one
-			} else if (bestCascade < 0 || coverage > bestCoverage) {
-				// First valid cascade or better coverage than previous
-				bestCascade = i;
-				bestProjCoords = pc;
-				bestCoverage = coverage;
-			}
-		}
-	}
-	
-	// No cascade covers this point
-	if (bestCascade < 0) {
+	if (sliceCount <= 0) {
 		return 1.0;
 	}
-	
-	// Sample the best cascade
-	int layer0 = startSlice + bestCascade;
-	cascadeIndex = bestCascade;
-	cascadeBias = CalculateAdaptiveShadowBias(N, lightDir, bestCascade, bestProjCoords.z, viewDepth);
-	projCoords = bestProjCoords;
-	cascadeCoverage = bestCoverage;
-	float shadow0 = SampleShadowArray(layer0, bestProjCoords, cascadeBias);
-	
-	// Cascade blending - blend with next cascade at boundaries
-	float cascadeNear = (bestCascade == 0) ? 0.0 : cascadeSplits[bestCascade - 1];
-	float cascadeFar = cascadeSplits[bestCascade];
-	float cascadeRange = max(cascadeFar - cascadeNear, 0.001);
-	
-	// Calculate blend factor for transition to next cascade
-	if (bestCascade < sliceCount - 1) {
-		float blendZoneSize = cascadeRange * cascadeBlendFactor;
-		blendZoneSize = min(blendZoneSize, cascadeBlendDistance);
-		blendZoneSize = max(blendZoneSize, cascadeRange * 0.05); // At least 5% blend zone
-		float blendStart = cascadeFar - blendZoneSize;
-		
-		if (viewDepth > blendStart) {
-			float blendFactor = (viewDepth - blendStart) / blendZoneSize;
-			blendFactor = clamp(blendFactor, 0.0, 1.0);
-			blendFactor = smoothstep(0.0, 1.0, blendFactor);
-			
-			// Try to sample next cascade
-			int nextCascade = bestCascade + 1;
-			int layer1 = startSlice + nextCascade;
-			mat4 M1 = shadowMatrices[layer1];
-			vec4 lsp1 = M1 * vec4(worldPos, 1.0);
-			vec3 pc1 = lsp1.xyz / lsp1.w;
-			pc1 = pc1 * 0.5 + 0.5;
-			
-			if (InShadowBounds(pc1)) {
-				float bias1 = CalculateAdaptiveShadowBias(N, lightDir, nextCascade, pc1.z, viewDepth);
-				float shadow1 = SampleShadowArray(layer1, pc1, bias1);
-				shadow0 = mix(shadow0, shadow1, blendFactor);
-			}
-		}
-	}
-	
-	// Apply distance fade for last cascade
+
+	float maxCascadeDepth = cascadeSplits[sliceCount - 1];
 	if (viewDepth > maxCascadeDepth) {
 		float fadeStart = maxCascadeDepth;
 		float fadeEnd = maxCascadeDepth * 1.1;
 		float fadeFactor = clamp((viewDepth - fadeStart) / (fadeEnd - fadeStart), 0.0, 1.0);
-		shadow0 = mix(shadow0, 1.0, fadeFactor);
+		if (fadeFactor >= 1.0) {
+			return 1.0;
+		}
 	}
-	
-	// Edge fade - fade shadows near cascade projection edges to avoid hard cuts
-	vec2 edgeDist = min(bestProjCoords.xy, 1.0 - bestProjCoords.xy);
-	float minEdgeDist = min(edgeDist.x, edgeDist.y);
-	if (minEdgeDist < 0.05) {
-		float edgeFade = minEdgeDist / 0.05;
-		shadow0 = mix(1.0, shadow0, edgeFade);
+
+	int primaryCascade = sliceCount - 1;
+	for (int i = 0; i < sliceCount; ++i) {
+		if (viewDepth <= cascadeSplits[i]) {
+			primaryCascade = i;
+			break;
+		}
 	}
-	
-	return shadow0;
+
+	int layer0 = startSlice + primaryCascade;
+	vec4 lsp0 = shadowMatrices[layer0] * vec4(worldPos, 1.0);
+	vec3 pc0 = lsp0.xyz / lsp0.w;
+	pc0 = pc0 * 0.5 + 0.5;
+	if (!InShadowBounds(pc0)) {
+		return 1.0;
+	}
+
+	cascadeIndex = primaryCascade;
+	projCoords = pc0;
+	cascadeBias = CalculateAdaptiveShadowBias(N, lightDir, primaryCascade, pc0.z, viewDepth);
+	float shadowValue = SampleShadowArrayEdgeSafe(layer0, pc0, cascadeBias, 0.05);
+
+	float cascadeNear = (primaryCascade == 0) ? 0.0 : cascadeSplits[primaryCascade - 1];
+	float cascadeFar = cascadeSplits[primaryCascade];
+	float cascadeRange = max(cascadeFar - cascadeNear, 0.001);
+
+	if (primaryCascade < sliceCount - 1) {
+		float blendZoneSize = cascadeRange * cascadeBlendFactor;
+		blendZoneSize = min(blendZoneSize, cascadeBlendDistance);
+		blendZoneSize = max(blendZoneSize, cascadeRange * 0.05);
+		float blendStart = cascadeFar - blendZoneSize;
+
+		if (viewDepth > blendStart) {
+			int nextCascade = primaryCascade + 1;
+			int layer1 = startSlice + nextCascade;
+			vec4 lsp1 = shadowMatrices[layer1] * vec4(worldPos, 1.0);
+			vec3 pc1 = lsp1.xyz / lsp1.w;
+			pc1 = pc1 * 0.5 + 0.5;
+
+			if (InShadowBounds(pc1)) {
+				float bias1 = CalculateAdaptiveShadowBias(N, lightDir, nextCascade, pc1.z, viewDepth);
+				float shadow1 = SampleShadowArrayEdgeSafe(layer1, pc1, bias1, 0.05);
+				float blendFactor = smoothstep(blendStart, cascadeFar, viewDepth);
+				shadowValue = mix(shadowValue, shadow1, blendFactor);
+				cascadeCoverage = 1.0 - blendFactor;
+			}
+		}
+	}
+
+	if (viewDepth > maxCascadeDepth) {
+		float fadeStart = maxCascadeDepth;
+		float fadeEnd = maxCascadeDepth * 1.1;
+		float fadeFactor = clamp((viewDepth - fadeStart) / (fadeEnd - fadeStart), 0.0, 1.0);
+		shadowValue = mix(shadowValue, 1.0, fadeFactor);
+	}
+
+	return shadowValue;
 }
 
 float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightPos) {

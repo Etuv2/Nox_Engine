@@ -20,6 +20,7 @@ struct MaterialDesc {
 		Blend = 2
 	};
 
+	uint32_t stableMaterialID = 1u;
 	AlphaMode alphaMode = AlphaMode::Opaque;
 	bool doubleSided = false;
 	bool hasAlpha = false;
@@ -130,6 +131,8 @@ public:
 	glm::vec3 boundingCenter = glm::vec3(0.0f);
 	float boundingRadius = 1.0f;
 	bool boundingVolumeValid = false;
+	glm::mat4 localTransform = glm::mat4(1.0f);
+	int sourceNodeIndex = -1;
 
 	MeshComponent()
 		: VAO(0),
@@ -184,6 +187,8 @@ public:
 		, boundingCenter(other.boundingCenter)
 		, boundingRadius(other.boundingRadius)
 		, boundingVolumeValid(other.boundingVolumeValid)
+		, localTransform(other.localTransform)
+		, sourceNodeIndex(other.sourceNodeIndex)
 	{
 		other.VAO = 0;
 		other.indexCount = 0;
@@ -234,6 +239,8 @@ public:
 			boundingCenter = other.boundingCenter;
 			boundingRadius = other.boundingRadius;
 			boundingVolumeValid = other.boundingVolumeValid;
+			localTransform = other.localTransform;
+			sourceNodeIndex = other.sourceNodeIndex;
 			other.VAO = 0;
 			other.indexCount = 0;
 		}
@@ -274,7 +281,7 @@ public:
 
 	// Determine if this mesh needs special rendering treatment
 	bool RequiresAlphaBlending() const {
-		return alphaMode == ALPHA_BLEND || hasAlpha;
+		return alphaMode == ALPHA_BLEND;
 	}
 
 	bool RequiresAlphaTesting() const {
@@ -282,7 +289,7 @@ public:
 	}
 
 	bool IsOpaque() const {
-		return alphaMode == ALPHA_OPAQUE && !hasAlpha;
+		return alphaMode != ALPHA_BLEND;
 	}
 
 	// Get effective culling mode considering both mesh and material settings

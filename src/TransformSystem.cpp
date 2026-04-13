@@ -29,10 +29,21 @@ void TransformSystem::UpdateTransforms() {
 	// Process parents before children naturally
 	std::queue<EntityID> queue;
 
-	// Start with root entities (no parent)
+	// Start with dirty entities whose parent is either missing, invalid, or already clean.
+	// This preserves parent-before-child ordering without requiring edits to begin at a true ECS root.
 	for (EntityID entity : m_dirtyEntities) {
 		auto transform = m_componentManager->GetTransform(entity);
-		if (transform && transform->parentID == INVALID_ENTITY) {
+		if (!transform) {
+			continue;
+		}
+
+		if (transform->parentID == INVALID_ENTITY) {
+			queue.push(entity);
+			continue;
+		}
+
+		auto parentTransform = m_componentManager->GetTransform(transform->parentID);
+		if (!parentTransform || !parentTransform->isDirty) {
 			queue.push(entity);
 		}
 	}
@@ -127,7 +138,13 @@ glm::mat4 TransformSystem::GetParentWorldTransform(EntityID entity) const {
 		return glm::mat4(1.0f);
 	}
 
-	// Return parent's world transform (may need to compute if dirty)
+	// Parent world transforms must be authoritative before children compose against them.
+	// Imported glTF hierarchies often involve deep non-root chains, and reading a stale
+	// parent matrix here causes child renderables/gizmo edits to appear detached.
+	if (parentTransform->isDirty) {
+		const_cast<TransformSystem*>(this)->ComputeWorldTransform(transform->parentID);
+	}
+
 	return parentTransform->worldTransform;
 }
 

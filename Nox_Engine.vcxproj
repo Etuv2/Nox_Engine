@@ -84,6 +84,7 @@
     <ClCompile Include="src\passes\SSAOPass.cpp" />
     <ClCompile Include="src\passes\SSGIPass.cpp" />
     <ClCompile Include="src\passes\TAAPass.cpp" />
+    <ClCompile Include="src\passes\TransformHistoryPass.cpp" />
     <ClCompile Include="src\passes\TransparentForwardPass.cpp" />
     <ClCompile Include="src\PerformanceRecorder.cpp" />
     <ClCompile Include="src\PhysicsBVH.cpp" />

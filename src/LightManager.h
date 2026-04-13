@@ -214,6 +214,7 @@ public:
 	void UpdateLightProxies();
 	std::vector<LightProxy> GetLightProxies() const { return m_lightProxies; }
 	std::shared_ptr<LightNode> FindLightAtRay(const glm::vec3& rayOrigin, const glm::vec3& rayDir) const;
+	std::shared_ptr<LightNode> FindLightNodeForLight(const std::shared_ptr<BaseLight>& light) const;
 
 private:
 	// Light storage

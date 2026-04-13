@@ -44,8 +44,14 @@ bool TransparentForwardPass::Initialize(RenderContext& context)
 	m_uniforms.prefilteredMap = glGetUniformLocation(m_shader, "prefilteredMap");
 	m_uniforms.brdfLUT = glGetUniformLocation(m_shader, "brdfLUT");
 	m_uniforms.prefilteredMaxLOD = glGetUniformLocation(m_shader, "prefilteredMaxLOD");
+	m_uniforms.iblIntensity = glGetUniformLocation(m_shader, "iblIntensity");
+	m_uniforms.diffuseIBLScale = glGetUniformLocation(m_shader, "diffuseIBLScale");
+	m_uniforms.specularIBLScale = glGetUniformLocation(m_shader, "specularIBLScale");
 	m_uniforms.numLights = glGetUniformLocation(m_shader, "numLights");
 	m_uniforms.multiLightShadowArray = glGetUniformLocation(m_shader, "multiLightShadowArray");
+	m_uniforms.keyLightDir = glGetUniformLocation(m_shader, "keyLightDir");
+	m_uniforms.keyLightColor = glGetUniformLocation(m_shader, "keyLightColor");
+	m_uniforms.keyLightIntensity = glGetUniformLocation(m_shader, "keyLightIntensity");
 
 	if constexpr (VerboseLogging) {
 		if (m_runtimeVerboseLogging) {
@@ -81,65 +87,33 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 		return;
 	}
 
-	transformSystem->UpdateTransforms();
-
-	const auto& renderablePool = componentManager->GetRenderablePool();
-	const size_t poolSize = renderablePool.Size();
-	m_transparentCandidates.clear();
-	m_transparentCandidates.reserve(poolSize);
-
-	for (const auto& entry : renderablePool) {
-		const auto& renderable = entry.component;
-		if (!renderable.model) {
-			continue;
+	bool hasTransparentMeshes = false;
+	auto& renderablePool = componentManager->GetRenderablePool();
+	for (auto& entry : renderablePool) {
+		auto& renderable = entry.component;
+		if (renderable.hasAlpha) {
+			hasTransparentMeshes = true;
+			break;
 		}
-
-		bool hasTransparency = false;
-		for (const auto& mesh : renderable.model->meshes) {
-			if (mesh.RequiresAlphaBlending()) {
-				hasTransparency = true;
-				break;
-			}
-		}
-		if (!hasTransparency) {
-			continue;
-		}
-
-		const glm::mat4& worldTransform = transformSystem->GetWorldTransform(entry.entity);
-		if (renderSystem->HasValidFrustum()) {
-			const glm::vec3 center = glm::vec3(worldTransform[3]);
-			if (!renderSystem->IsSphereVisible(center, renderable.boundingRadius)) {
-				continue;
-			}
-		}
-
-		TransparentCandidate candidate;
-		candidate.entity = entry.entity;
-		candidate.model = renderable.model;
-		candidate.worldTransform = worldTransform;
-		m_transparentCandidates.push_back(std::move(candidate));
 	}
 
-	if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] Found " << m_transparentCandidates.size()
-		<< " nodes with transparent meshes" << std::endl; }
-
-	// Early exit if no transparent objects to render
-	if (m_transparentCandidates.empty()) {
-		if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] No transparent objects found - skipping pass" << std::endl; }
+	if (!hasTransparentMeshes) {
 		return;
 	}
 
-	//HDR FBO should already be bound from skybox rendering
-	// We DO NOT rebind or unbind - just verify it's correct
 	if (!ctx.hdrFBO) {
 		std::cerr << "[TransparentForwardPass] ERROR: HDR FBO is null!" << std::endl;
 		return;
 	}
 
+	// Always bind the HDR target explicitly. The pass must not depend on
+	// skybox availability or previous pass side effects to pick the right FBO.
+	ctx.hdrFBO->Bind();
+	glViewport(0, 0, ctx.width, ctx.height);
+
 	if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] Rendering to HDR FBO (ID: " << ctx.hdrFBO->GetFBO() << ")" << std::endl; }
 
-	//Set up transparent rendering state WITHOUT clearing or rebinding
-	// The depth buffer already contains opaque geometry + skybox at max depth
+	// The HDR depth buffer is populated during lighting via a depth blit from the G-buffer.
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);        // Test against existing depth
 	glDepthMask(GL_FALSE);       // Don't write to depth buffer (transparency layering)
@@ -188,10 +162,13 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 		glActiveTexture(GL_TEXTURE0 + TextureUnits::BRDF_LUT);
 		glBindTexture(GL_TEXTURE_2D, skybox->GetBRDFLUT());
 
-				if (m_uniforms.irradianceMap >= 0) glUniform1i(m_uniforms.irradianceMap, TextureUnits::IRRADIANCE_MAP);
+		if (m_uniforms.irradianceMap >= 0) glUniform1i(m_uniforms.irradianceMap, TextureUnits::IRRADIANCE_MAP);
 		if (m_uniforms.prefilteredMap >= 0) glUniform1i(m_uniforms.prefilteredMap, TextureUnits::PREFILTERED_ENV_MAP);
 		if (m_uniforms.brdfLUT >= 0) glUniform1i(m_uniforms.brdfLUT, TextureUnits::BRDF_LUT);
 		if (m_uniforms.prefilteredMaxLOD >= 0) glUniform1f(m_uniforms.prefilteredMaxLOD, skybox->GetPrefilteredMaxLOD());
+		if (m_uniforms.iblIntensity >= 0) glUniform1f(m_uniforms.iblIntensity, ctx.iblIntensity);
+		if (m_uniforms.diffuseIBLScale >= 0) glUniform1f(m_uniforms.diffuseIBLScale, ctx.diffuseIBLScale);
+		if (m_uniforms.specularIBLScale >= 0) glUniform1f(m_uniforms.specularIBLScale, ctx.specularIBLScale);
 	}
 	else {
 		if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] WARNING: No valid IBL textures available" << std::endl; }
@@ -221,46 +198,33 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 		if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] No active lights available" << std::endl; }
 	}
 
+	if (m_uniforms.keyLightDir >= 0 || m_uniforms.keyLightColor >= 0 || m_uniforms.keyLightIntensity >= 0) {
+		glm::vec3 keyLightDir = glm::normalize(glm::vec3(-0.4f, -1.0f, -0.2f));
+		glm::vec3 keyLightColor = glm::vec3(1.0f);
+		float keyLightIntensity = 1.0f;
+
+		if (ctx.lightManager) {
+			for (const auto& light : ctx.lightManager->GetEnabledLights()) {
+				if (light && light->GetLightType() == BaseLight::LightType::DIRECTIONAL) {
+					keyLightDir = glm::normalize(light->GetDirection());
+					keyLightColor = light->GetEffectiveColor();
+					keyLightIntensity = light->GetIntensity();
+					break;
+				}
+			}
+		}
+
+		if (m_uniforms.keyLightDir >= 0) glUniform3fv(m_uniforms.keyLightDir, 1, glm::value_ptr(keyLightDir));
+		if (m_uniforms.keyLightColor >= 0) glUniform3fv(m_uniforms.keyLightColor, 1, glm::value_ptr(keyLightColor));
+		if (m_uniforms.keyLightIntensity >= 0) glUniform1f(m_uniforms.keyLightIntensity, keyLightIntensity);
+	}
+
 	// NOTE: Material-specific transmission and IOR uniforms are now set per-mesh
 	// in Scene::Draw() rather than as pass-wide defaults here.
 	// This allows each transparent material to use its own KHR_materials_transmission
 	// and KHR_materials_ior extension values.
 
-	for (auto& candidate : m_transparentCandidates) {
-		const glm::vec3 objPos = glm::vec3(candidate.worldTransform[3]);
-		candidate.distanceToCamera = glm::length(cameraPos - objPos);
-	}
-
-	// Sort transparent objects back-to-front for correct alpha blending
-	std::sort(m_transparentCandidates.begin(), m_transparentCandidates.end(),
-		[](const TransparentCandidate& a, const TransparentCandidate& b) {
-			return a.distanceToCamera > b.distanceToCamera;
-		});
-
-	// Render transparent objects with proper depth-aware blending
-	int renderedCount = 0;
-	for (const auto& candidate : m_transparentCandidates) {
-		if (!candidate.model) {
-			continue;
-		}
-
-		if (m_uniforms.model >= 0) {
-			glUniformMatrix4fv(m_uniforms.model,
-				1, GL_FALSE, glm::value_ptr(candidate.worldTransform));
-		}
-
-		const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(candidate.worldTransform)));
-		if (m_uniforms.normalMatrix >= 0) {
-			glUniformMatrix3fv(m_uniforms.normalMatrix,
-				1, GL_FALSE, glm::value_ptr(normalMatrix));
-		}
-
-		candidate.model->Draw();
-		renderedCount++;
-	}
-
-	if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] Successfully rendered " << renderedCount
-		<< " transparent objects" << std::endl; }
+	renderSystem->RenderTransparent(ctx.view, ctx.proj, m_shader);
 
 	//Restore render state for subsequent passes
 	glDepthMask(GL_TRUE);      // Re-enable depth writes

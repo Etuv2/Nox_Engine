@@ -211,6 +211,18 @@ void ImGuiWindowManager::SetPhysicsEngine(const std::shared_ptr<class PhysicsEng
 }
 
 void ImGuiWindowManager::SetSelectedNode(const std::shared_ptr<SceneNode>& node) {
+	if (m_selectedNode != node) {
+		if (auto previousNode = m_lastManipulatedNode.lock()) {
+			if (auto rb = previousNode->GetRigidBody()) {
+				if (m_physicsEngine && rb->isGizmoGrabbed()) {
+					m_physicsEngine->EndGizmoGrab(rb);
+				}
+			}
+			m_lastManipulatedNode.reset();
+			m_wasManipulatingGizmo = false;
+		}
+	}
+
 	m_selectedNode = node;
 	m_sceneHierarchyWindow->SetSelectedNode(node);
 	m_animationWindow->SetSelectedNode(node);
@@ -310,6 +322,14 @@ void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
 	}
 
 	if (!m_selectedNode || !m_gizmoVisible || !m_camera) {
+		if (auto lastNode = m_lastManipulatedNode.lock()) {
+			if (auto rb = lastNode->GetRigidBody()) {
+				if (m_physicsEngine && rb->isGizmoGrabbed()) {
+					m_physicsEngine->EndGizmoGrab(rb);
+				}
+			}
+			m_lastManipulatedNode.reset();
+		}
 		m_wasManipulatingGizmo = false;
 		return;
 	}

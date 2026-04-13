@@ -158,17 +158,6 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
     glBindTexture(GL_TEXTURE_2D, m_historyColor->ID());
     glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "prevColor"), 4);
 
-    GLuint ibl = 0;
-    if (skybox) {
-        ibl = skybox->GetIrradianceMap();
-        if (ibl == 0) ibl = skybox->GetEnvironmentMap();
-    }
-    glActiveTexture(GL_TEXTURE5);
-    if (ibl != 0) {
-        glBindTexture(GL_TEXTURE_CUBE_MAP, ibl);
-    }
-    glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "iblIrradiance"), 5);
-
     glBindImageTexture(0, m_ssgiRaw->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
     glm::mat4 invProj = glm::inverse(ctx.proj);
@@ -185,9 +174,6 @@ void SSGIPass::runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& ca
     glUniform2f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "workSize"), float(m_qw), float(m_qh));
     glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "cameraNear"), camera->GetCameraNearPlane());
     glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "cameraFar"), camera->GetCameraFarPlane());
-    glUniform1f(glGetUniformLocation(m_csRaymarch->GetProgramID(), "iblFallbackStrength"), 1.0f);
-    glUniform1i(glGetUniformLocation(m_csRaymarch->GetProgramID(), "hasIBL"), ibl != 0 ? 1 : 0);
-
     GLuint gx = (m_qw + 7) / 8;
     GLuint gy = (m_qh + 7) / 8;
     glDispatchCompute(gx, gy, 1);

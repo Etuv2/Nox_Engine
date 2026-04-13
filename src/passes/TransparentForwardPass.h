@@ -38,8 +38,14 @@ private:
         GLint prefilteredMap = -1;
         GLint brdfLUT = -1;
         GLint prefilteredMaxLOD = -1;
+        GLint iblIntensity = -1;
+        GLint diffuseIBLScale = -1;
+        GLint specularIBLScale = -1;
         GLint numLights = -1;
         GLint multiLightShadowArray = -1;
+        GLint keyLightDir = -1;
+        GLint keyLightColor = -1;
+        GLint keyLightIntensity = -1;
     };
 
     struct TransparentCandidate {

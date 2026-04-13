@@ -51,6 +51,7 @@ uniform float transmissionFactor = 0.0;       // transmission factor [0,1]
 uniform float ior = 1.5;                      // index of refraction
 uniform float clearcoatFactor = 0.0;
 uniform float clearcoatRoughnessFactor = 0.0;
+uniform uint uMaterialID = 1u;
 
 // Presence flags
 uniform bool hasBaseColorTexture = false;
@@ -134,18 +135,6 @@ void main() {
         ao = mix(1.0, texture(texture_occlusion, TexCoords).r, occlusionStrength);
     }
 
-    //  Determine Material ID 
-    uint materialID = 0u; // Default: canonical metallic-roughness PBR
-
-    if (transmissionFactor > 0.01) {
-        materialID = 2u; // Transmissive/Glass material
-    }
-    // Future material IDs:
-    // 3u = Subsurface scattering
-    // 4u = Cloth/fabric
-    // 5u = Clearcoat
-    // 6-255u = Custom materials
-
     // RT0: Oct normal (RG) + roughness (B) + metallic (A)
     gPackedNormalRM = vec4(EncodeNormalOct(N), roughness, metallic);
     
@@ -156,7 +145,7 @@ void main() {
     gSpecularF0 = vec4(specularF0, emissiveStrength);
     
     // RT3: Material ID
-    gMaterialID = materialID;
+    gMaterialID = uMaterialID;
     
     // RT4: Emissive color (RGB)
     gEmissive = vec4(emissive, 0.0);

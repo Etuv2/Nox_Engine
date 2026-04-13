@@ -8,7 +8,6 @@ uniform sampler2D gPackedNormalRM;
 uniform sampler2D gAlbedoAO;
 uniform sampler2D randTex;
 uniform sampler2D prevColor;
-uniform samplerCube iblIrradiance;
 
 layout(rgba16f, binding = 0) writeonly uniform image2D outputImage;
 
@@ -23,8 +22,6 @@ uniform vec2 screenSize;
 uniform vec2 workSize;
 uniform float cameraNear;
 uniform float cameraFar;
-uniform int hasIBL;
-uniform float iblFallbackStrength;
 
 float PixelSizeVS(float absViewZ) {
     float tanHalfFovy = 1.0 / proj[1][1];
@@ -32,24 +29,10 @@ float PixelSizeVS(float absViewZ) {
     return viewHeight / max(workSize.y, 1.0);
 }
 
-float SampleDepthEdgeAware(vec2 uv, float centerDepth, float edgeThreshold) {
+float SampleDepthNearest(vec2 uv) {
     ivec2 size = textureSize(gDepth, 0);
-    vec2 st = uv * vec2(size) - 0.5;
-    ivec2 ij = ivec2(floor(st));
-    vec2 f = fract(st);
-
-    float d00 = texelFetch(gDepth, clamp(ij, ivec2(0), size - 1), 0).r;
-    float d10 = texelFetch(gDepth, clamp(ij + ivec2(1, 0), ivec2(0), size - 1), 0).r;
-    float d01 = texelFetch(gDepth, clamp(ij + ivec2(0, 1), ivec2(0), size - 1), 0).r;
-    float d11 = texelFetch(gDepth, clamp(ij + ivec2(1, 1), ivec2(0), size - 1), 0).r;
-
-    if (abs(d00 - d10) > edgeThreshold || abs(d01 - d11) > edgeThreshold) {
-        return centerDepth;
-    }
-
-    float dx0 = mix(d00, d10, f.x);
-    float dx1 = mix(d01, d11, f.x);
-    return mix(dx0, dx1, f.y);
+    ivec2 texel = clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
+    return texelFetch(gDepth, texel, 0).r;
 }
 
 void main() {
@@ -92,10 +75,10 @@ void main() {
     float pixelVS = PixelSizeVS(abs(originVS.z));
     float stepLenVS = max(maxRayLenVS / float(max(numSteps, 1)), pixelVS * 0.75);
     vec3 stepVS = directionVS * stepLenVS;
-    vec3 rayPosVS = originVS;
+    vec3 rayPosVS = originVS + normalVS * max(thickness * 2.0, pixelVS * 1.5);
     vec3 hitPosVS = vec3(0.0);
     bool foundHit = false;
-    float adaptiveThickness = max(thickness, pixelVS * 1.5);
+    float adaptiveThickness = max(thickness, pixelVS * 2.0);
 
     for (int i = 0; i < numSteps; ++i) {
         rayPosVS += stepVS;
@@ -105,18 +88,22 @@ void main() {
             break;
         }
 
-        float sampleDepth = SampleDepthEdgeAware(sampleUV, depthRaw, 0.01);
+        float sampleDepth = SampleDepthNearest(sampleUV);
         if (sampleDepth >= 0.999) {
             continue;
         }
 
         vec3 surfaceVS = ReconstructViewPosition(sampleUV, sampleDepth, invProj);
         float depthDifference = surfaceVS.z - rayPosVS.z;
-        bool intersects = (depthDifference < 0.0) && (depthDifference > -adaptiveThickness * 2.0);
+        bool intersects = depthDifference >= 0.0 && depthDifference <= adaptiveThickness;
 
         if (intersects) {
+            vec3 hitNormalVS = DecodeSceneNormalVS(texture(gPackedNormalRM, sampleUV).rg, view, true);
+            if (dot(hitNormalVS, -directionVS) <= 0.05) {
+                continue;
+            }
             foundHit = true;
-            hitPosVS = rayPosVS;
+            hitPosVS = surfaceVS;
             break;
         }
     }
@@ -141,12 +128,6 @@ void main() {
                 validityMask = 1.0;
             }
         }
-    }
-
-    if (hasIBL == 1 && validityMask < 0.5) {
-        vec3 worldNormal = normalize(mat3(invView) * normalVS);
-        vec3 iblIrr = texture(iblIrradiance, worldNormal).rgb;
-        indirectIrradiance = mix(indirectIrradiance, iblIrr, iblFallbackStrength);
     }
 
     imageStore(outputImage, id, vec4(max(indirectIrradiance, vec3(0.0)), validityMask));

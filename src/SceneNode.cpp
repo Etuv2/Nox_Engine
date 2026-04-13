@@ -1,6 +1,7 @@
 #include "SceneNode.h"
 #include "Scene.h"
 #include "ComponentManager.h"
+#include "TransformSystem.h"
 #include "RigidBody.h"
 #include "AudioNode.h"
 #define GLM_ENABLE_EXPERIMENTAL
@@ -28,18 +29,32 @@ SceneNode::SceneNode(ComponentManager* manager, TransformSystem* transformSystem
 void SceneNode::SetECSContext(ComponentManager* manager, TransformSystem* transformSystem) {
 	m_componentManager = manager;
 	m_transformSystem = transformSystem;
+
+	for (auto& child : children) {
+		if (child) {
+			child->SetECSContext(manager, transformSystem);
+		}
+	}
 }
 
 ComponentManager* SceneNode::RequireComponentManager(const char* caller) const {
 	if (m_entityID == INVALID_ENTITY) {
 		return nullptr;
 	}
-	assert(m_componentManager && "SceneNode ECS context not wired: ComponentManager is null");
-	if (!m_componentManager) {
+
+	ComponentManager* resolvedManager = m_componentManager;
+	if (!resolvedManager) {
+		if (auto parent = parentNode.lock()) {
+			resolvedManager = parent->m_componentManager;
+		}
+	}
+
+	if (!resolvedManager) {
 		std::cerr << "[SceneNode] " << caller << " requires ECS context but ComponentManager is null" << std::endl;
 		return nullptr;
 	}
-	return m_componentManager;
+
+	return resolvedManager;
 }
 
 // LPV VOLUME DATA
@@ -65,12 +80,7 @@ void SceneNode::SetModel(const std::shared_ptr<Scene>& model) {
 
 void SceneNode::AddChild(const std::shared_ptr<SceneNode>& child) {
 	child->parentNode = shared_from_this();
-	if (!child->m_componentManager) {
-		child->m_componentManager = m_componentManager;
-	}
-	if (!child->m_transformSystem) {
-		child->m_transformSystem = m_transformSystem;
-	}
+	child->SetECSContext(m_componentManager, m_transformSystem);
 	children.push_back(child);
 	child->InvalidateTransformCache();
 }
@@ -123,12 +133,14 @@ glm::mat4 SceneNode::GetWorldPosition4x4() const {
 }
 
 glm::mat4 SceneNode::GetGlobalTransform(const glm::mat4& parentTransform) const {
-	// Prefer ECS cached transform if available
+	// Prefer ECS/TransformSystem world transform whenever available so editor and renderer
+	// read the same authoritative hierarchy result.
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		return m_transformSystem->GetWorldTransform(m_entityID);
+	}
 	if (ComponentManager* currentManager = RequireComponentManager("GetGlobalTransform")) {
 		if (const TransformComponent* comp = currentManager->GetTransform(m_entityID)) {
-			if (!comp->isDirty) {
-				return comp->worldTransform;
-			}
+			return comp->worldTransform;
 		}
 	}
 
@@ -216,6 +228,9 @@ void SceneNode::SetPosition(glm::vec3 pos) {
 	            glm::mat4_cast(rotation) * 
 	            glm::scale(glm::mat4(1.0f), scale);
 	InvalidateTransformCache();
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		m_transformSystem->SetLocalTransform(m_entityID, transform);
+	}
 }
 
 void SceneNode::SetRotation(glm::vec3 axis, float angle) {
@@ -234,6 +249,9 @@ void SceneNode::SetRotation(glm::vec3 axis, float angle) {
 	            glm::mat4_cast(newRotation) * 
 	            glm::scale(glm::mat4(1.0f), scale);
 	InvalidateTransformCache();
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		m_transformSystem->SetLocalTransform(m_entityID, transform);
+	}
 }
 
 void SceneNode::SetScale(glm::vec3 scale) {
@@ -252,6 +270,9 @@ void SceneNode::SetScale(glm::vec3 scale) {
 	            glm::mat4_cast(rotation) * 
 	            glm::scale(glm::mat4(1.0f), scale);
 	InvalidateTransformCache();
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		m_transformSystem->SetLocalTransform(m_entityID, transform);
+	}
 }
 
 void SceneNode::SetTransform(const glm::mat4& newTransform) {
@@ -270,6 +291,9 @@ void SceneNode::SetTransform(const glm::mat4& newTransform) {
 		SyncPhysicsFromTransform();
 	}
 	InvalidateTransformCache();
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		m_transformSystem->SetLocalTransform(m_entityID, transform);
+	}
 }
 
 void SceneNode::SetLocalTRS(const glm::vec3& translation, const glm::quat& rotation, const glm::vec3& scale) {
@@ -298,6 +322,9 @@ void SceneNode::SetLocalTRS(const glm::vec3& translation, const glm::quat& rotat
 	            glm::scale(glm::mat4(1.0f), safeS);
 	
 	InvalidateTransformCache();
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		m_transformSystem->SetLocalTransform(m_entityID, transform);
+	}
 	if (m_rigidbody && !m_updatingFromPhysics) {
 		SyncPhysicsFromTransform();
 	}
@@ -306,30 +333,58 @@ void SceneNode::SetLocalTRS(const glm::vec3& translation, const glm::quat& rotat
 // TRANSFORM GETTERS
 
 glm::vec3 SceneNode::GetPosition() const {
+	if (ComponentManager* currentManager = RequireComponentManager("GetPosition")) {
+		if (const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
+			return glm::vec3(ecsTransform->localTransform[3]);
+		}
+	}
 	return glm::vec3(transform[3]);
 }
 
 glm::vec3 SceneNode::GetRotation() const {
-	return glm::eulerAngles(glm::quat_cast(transform));
+	glm::mat4 source = transform;
+	if (ComponentManager* currentManager = RequireComponentManager("GetRotation")) {
+		if (const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
+			source = ecsTransform->localTransform;
+		}
+	}
+	return glm::eulerAngles(glm::quat_cast(source));
 }
 
 glm::vec3 SceneNode::GetScale() const {
+	glm::mat4 source = transform;
+	if (ComponentManager* currentManager = RequireComponentManager("GetScale")) {
+		if (const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
+			source = ecsTransform->localTransform;
+		}
+	}
 	glm::vec3 translation, scale, skew;
 	glm::vec4 perspective;
 	glm::quat rotation;
-	glm::decompose(transform, scale, rotation, translation, skew, perspective);
+	glm::decompose(source, scale, rotation, translation, skew, perspective);
 	return scale;
 }
 
 glm::mat4 SceneNode::GetTransform() const {
+	if (ComponentManager* currentManager = RequireComponentManager("GetTransform")) {
+		if (const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
+			return ecsTransform->localTransform;
+		}
+	}
 	return transform;
 }
 
 glm::quat SceneNode::GetOrientation() const {
+	glm::mat4 source = transform;
+	if (ComponentManager* currentManager = RequireComponentManager("GetOrientation")) {
+		if (const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
+			source = ecsTransform->localTransform;
+		}
+	}
 	glm::vec3 scale, translation, skew;
 	glm::vec4 perspective;
 	glm::quat rotation;
-	glm::decompose(transform, scale, rotation, translation, skew, perspective);
+	glm::decompose(source, scale, rotation, translation, skew, perspective);
 	return rotation;
 }
 
@@ -391,6 +446,17 @@ void SceneNode::InvalidateTransformCache() {
 	if (ComponentManager* currentManager = RequireComponentManager("InvalidateTransformCache")) {
 		if (TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
 			ecsTransform->isDirty = true;
+		}
+	}
+
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		m_transformSystem->MarkSubtreeDirty(m_entityID);
+	}
+
+	for (auto& child : children) {
+		if (child) {
+			child->m_worldTransformValid = false;
+			child->m_transformCacheDirty = true;
 		}
 	}
 }
@@ -636,17 +702,23 @@ void SceneNode::SyncToECS() {
 	TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID);
 	if (!ecsTransform) return;
 	
-	ecsTransform->localTransform = transform;
+	if (m_transformSystem) {
+		m_transformSystem->SetLocalTransform(m_entityID, transform);
+		ecsTransform = currentManager->GetTransform(m_entityID);
+		if (!ecsTransform) return;
+	} else {
+		ecsTransform->localTransform = transform;
+	}
 	ecsTransform->animatedTransform = animatedTransform;
 	ecsTransform->hasAnimation = (animatedTransform != glm::mat4(1.0f));
 	ecsTransform->isDirty = true;
 	ecsTransform->prevWorldTransform = ecsTransform->worldTransform;
-	
+
+	EntityID parentID = INVALID_ENTITY;
 	if (auto parent = parentNode.lock()) {
-		ecsTransform->parentID = parent->GetEntityID();
-	} else {
-		ecsTransform->parentID = INVALID_ENTITY;
+		parentID = parent->GetEntityID();
 	}
+	currentManager->SetParent(m_entityID, parentID);
 }
 
 void SceneNode::SyncFromECS() {
@@ -737,6 +809,7 @@ EntityID SceneNode::CreateECSEntity(const std::string& name) {
 	}
 	
 	m_componentManager->AddTransform(m_entityID, transformComp);
+	m_componentManager->SetParent(m_entityID, transformComp.parentID);
 	
 	// Add renderable if we have a model
 	if (m_model) {
@@ -767,7 +840,7 @@ void SceneNode::MigrateHierarchyToECS() {
 			
 			TransformComponent* childTransform = child->GetTransformComponent();
 			if (childTransform) {
-				childTransform->parentID = m_entityID;
+				m_componentManager->SetParent(child->GetEntityID(), m_entityID);
 			}
 		}
 	}

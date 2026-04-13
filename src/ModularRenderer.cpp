@@ -1,6 +1,7 @@
 #include "ModularRenderer.h"
 #include "FrameBuffer.h"
 #include "ScreenQuad.h"
+#include "ShaderLoader.h"
 #include "SceneGraph.h"
 #include "Camera.h"
 #include "DirectionalLight.h"
@@ -39,7 +40,10 @@ ModularRenderer::ModularRenderer()
 
 ModularRenderer::~ModularRenderer()
 {
-
+	if (m_debugViewShader) {
+		glDeleteProgram(m_debugViewShader);
+		m_debugViewShader = 0;
+	}
 }
 
 namespace {
@@ -289,6 +293,12 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_guiPass->Initialize(m_context);
 	success &= m_debugBBoxPass->Initialize(m_context);  // Initialize debug bounding box pass
 
+	m_debugViewShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/debug_view_frag.glsl");
+	if (!m_debugViewShader) {
+		std::cerr << "[ModularRenderer] Failed to create debug view shader.\n";
+		return false;
+	}
+
 	if (!success) {
 		std::cerr << "[ModularRenderer] Failed to initialize one or more passes.\n";
 		return false;
@@ -323,6 +333,8 @@ ModularRenderer::FrameGraphMode ModularRenderer::DetermineFrameGraphMode() const
 	case RenderContext::DebugMode::ALBEDO:
 	case RenderContext::DebugMode::NORMAL:
 	case RenderContext::DebugMode::DEPTH:
+	case RenderContext::DebugMode::SHADOW_MAPS:
+	case RenderContext::DebugMode::MOTION_VECTORS:
 	case RenderContext::DebugMode::MATERIAL_ID:
 	case RenderContext::DebugMode::TRANSFORM_ID:
 		return FrameGraphMode::DEFERRED_DEBUG;
@@ -492,17 +504,31 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"ShadowPass", {}, { "ShadowMap" },
-		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
+		[this](const RenderContext& ctx) {
+			if (DetermineFrameGraphMode() == FrameGraphMode::DEFERRED) {
+				return true;
+			}
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG &&
+				ctx.debugMode == RenderContext::DebugMode::SHADOW_MAPS;
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
-		"GBufferPass", { "ShadowMap" }, { "GBuffer" },
-		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
+		"GBufferPass", {}, { "GBuffer" },
+		[this](const RenderContext& ctx) {
+			if (DetermineFrameGraphMode() == FrameGraphMode::DEFERRED) {
+				return true;
+			}
+			if (DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG) {
+				return false;
+			}
+			return ctx.debugMode != RenderContext::DebugMode::SHADOW_MAPS;
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
 		"TransformHistoryPass", { "GBuffer" }, { "TransformHistory" },
-		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED || DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (m_transformHistoryPass) {
 				m_transformHistoryPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
@@ -510,7 +536,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"DebugViewPass", { "TransformHistory" }, { "CompositedColor" },
+		"DebugViewPass", {}, { "CompositedColor" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED_DEBUG; },
 		[this]() { visualizeDebugMode(m_context); }
 		});
@@ -590,11 +616,10 @@ void ModularRenderer::BuildPassDescriptors(
 		"SkyboxPass", { "HDRLit" }, { "HDRWithSkybox" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
 		[this, &skybox]() {
-			if (!skybox || !skybox->IsReady()) {
-				return;
-			}
 			m_context.hdrFBO->Bind();
-			skybox->Draw(m_context.view, m_context.proj);
+			if (skybox) {
+				skybox->Draw(m_context.view, m_context.proj);
+			}
 		}
 		});
 	addPass({
@@ -653,7 +678,7 @@ bool ModularRenderer::InitializeSharedResources()
 	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 	// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-	// RT3: R8UI - Material ID (0=Standard PBR, 1=SpecGloss, 2=Transmission, etc.)
+	// RT3: R32UI - Stable material identity for debug/tracking
 	// RT4: RGBA16F - Emissive color (RGB) + unused (A)
 	// RT5: R32UI - Stable TransformID for temporal/surfel workflows
 	// RT6: RG16F - Clearcoat factor (R) + clearcoat roughness (G)
@@ -663,7 +688,7 @@ bool ModularRenderer::InitializeSharedResources()
 		GL_RGBA8,    // RT0: Oct normal + roughness/metallic
 			GL_RGBA16F,  // RT1: Albedo + occlusion
 			GL_RGBA16F,  // RT2: Specular F0 (full RGB) + emissive strength
-			GL_R8UI,     // RT3: Material ID
+			GL_R32UI,    // RT3: Material ID
 			GL_RGBA16F,  // RT4: Emissive color (RGB)
 			GL_R32UI,    // RT5: Transform ID
 			GL_RG16F     // RT6: Clearcoat
@@ -906,66 +931,74 @@ void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 		return;
 	}
 
-	// Simple fullscreen quad shader for visualization
-	// For now, use glBlitFramebuffer as a quick solution
-	GLuint sourceAttachment = 0;
-
-	switch (ctx.debugMode) {
-	case RenderContext::DebugMode::ALBEDO:
-		sourceAttachment = 1; // Albedo is in RT1
-		break;
-	case RenderContext::DebugMode::NORMAL:
-		sourceAttachment = 0; // Normal is in RT0
-		break;
-	case RenderContext::DebugMode::MATERIAL_ID:
-		sourceAttachment = 3; // Material ID is in RT3
-		break;
-	case RenderContext::DebugMode::TRANSFORM_ID:
-		sourceAttachment = 5; // Transform ID is in RT5
-		break;
-	case RenderContext::DebugMode::DEPTH:
-		// Use depth buffer
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx.gbufferFBO->GetFBO());
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-		glBlitFramebuffer(
-			0, 0, ctx.width, ctx.height,
-			0, 0, ctx.width, ctx.height,
-			GL_DEPTH_BUFFER_BIT,
-			GL_NEAREST
-		);
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-		std::cout << "[ModularRenderer] Visualized depth buffer" << std::endl;
-		// Restore state before returning
-		glEnable(GL_DEPTH_TEST);
-		return;
-	case RenderContext::DebugMode::SHADOW_MAPS:
-	case RenderContext::DebugMode::MOTION_VECTORS:
-		// TODO: Implement these visualizations
-		std::cout << "[ModularRenderer] Debug mode not yet implemented" << std::endl;
-		// Restore state before returning
-		glEnable(GL_DEPTH_TEST);
-		return;
-	default:
-		// Restore state before returning
+	if (!m_debugViewShader) {
 		glEnable(GL_DEPTH_TEST);
 		return;
 	}
 
-	// Blit color attachment to backbuffer
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx.gbufferFBO->GetFBO());
-	glReadBuffer(GL_COLOR_ATTACHMENT0 + sourceAttachment);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	int mode = 0;
+	switch (ctx.debugMode) {
+	case RenderContext::DebugMode::ALBEDO:
+		mode = 1;
+		break;
+	case RenderContext::DebugMode::NORMAL:
+		mode = 2;
+		break;
+	case RenderContext::DebugMode::DEPTH:
+		mode = 3;
+		break;
+	case RenderContext::DebugMode::SHADOW_MAPS:
+		mode = 4;
+		break;
+	case RenderContext::DebugMode::MATERIAL_ID:
+		mode = 5;
+		break;
+	case RenderContext::DebugMode::TRANSFORM_ID:
+		mode = 6;
+		break;
+	default:
+		glEnable(GL_DEPTH_TEST);
+		return;
+	}
 
-	glBlitFramebuffer(
-		0, 0, ctx.width, ctx.height,
-		0, 0, ctx.width, ctx.height,
-		GL_COLOR_BUFFER_BIT,
-		GL_NEAREST
-	);
+	glUseProgram(m_debugViewShader);
 
-	// Restore framebuffer state
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glReadBuffer(GL_BACK);
+	const GLint locMode = glGetUniformLocation(m_debugViewShader, "uMode");
+	const GLint locShadowLayer = glGetUniformLocation(m_debugViewShader, "uShadowLayer");
+	if (locMode >= 0) glUniform1i(locMode, mode);
+	if (locShadowLayer >= 0) glUniform1i(locShadowLayer, 0);
+
+	glActiveTexture(GL_TEXTURE0 + 0);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));
+	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uAlbedo"); loc >= 0) glUniform1i(loc, 0);
+
+	glActiveTexture(GL_TEXTURE0 + 1);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uNormalPacked"); loc >= 0) glUniform1i(loc, 1);
+
+	glActiveTexture(GL_TEXTURE0 + 2);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(3));
+	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uMaterialID"); loc >= 0) glUniform1i(loc, 2);
+
+	glActiveTexture(GL_TEXTURE0 + 3);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(5));
+	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uTransformID"); loc >= 0) glUniform1i(loc, 3);
+
+	glActiveTexture(GL_TEXTURE0 + 4);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uDepth"); loc >= 0) glUniform1i(loc, 4);
+
+	glActiveTexture(GL_TEXTURE0 + 5);
+	GLuint shadowArray = (ctx.lightManager ? ctx.lightManager->GetShadowArrayTexture() : 0);
+	if (shadowArray > 0 && glIsTexture(shadowArray)) {
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadowArray);
+	}
+	else {
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+	}
+	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uShadowArray"); loc >= 0) glUniform1i(loc, 5);
+
+	ctx.screenQuad->Render();
 
 	// Restore render state
 	glEnable(GL_DEPTH_TEST);

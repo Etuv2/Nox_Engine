@@ -1371,6 +1371,40 @@ void LightManager::CollectLightsFromScene(std::shared_ptr<SceneGraph> sceneGraph
 void LightManager::UpdateLights(float dt)
 {
 	bool dirty = false;
+	bool activeSetChanged = false;
+
+	// Rebuild active light list every frame so UI/editor toggles are reflected immediately.
+	std::vector<std::shared_ptr<BaseLight>> refreshedActiveLights;
+	refreshedActiveLights.reserve(m_lights.size());
+	for (auto& pair : m_lights) {
+		if (pair.second && pair.second->IsEnabled()) {
+			refreshedActiveLights.push_back(pair.second);
+		}
+	}
+	std::sort(refreshedActiveLights.begin(), refreshedActiveLights.end(),
+		[](const std::shared_ptr<BaseLight>& a, const std::shared_ptr<BaseLight>& b) {
+			if (a->GetLightType() != b->GetLightType()) {
+				return (int)a->GetLightType() < (int)b->GetLightType();
+			}
+			return a->GetIntensity() > b->GetIntensity();
+		});
+
+	if (refreshedActiveLights.size() != m_activeLights.size()) {
+		activeSetChanged = true;
+	}
+	else {
+		for (size_t i = 0; i < refreshedActiveLights.size(); ++i) {
+			if (refreshedActiveLights[i].get() != m_activeLights[i].get()) {
+				activeSetChanged = true;
+				break;
+			}
+		}
+	}
+
+	if (activeSetChanged) {
+		m_activeLights = std::move(refreshedActiveLights);
+		dirty = true;
+	}
 	for (auto& p : m_lights) {
 		if (p.second) {
 			const glm::vec3 prevPos = p.second->GetPosition();
@@ -1401,9 +1435,57 @@ void LightManager::UpdateLights(float dt)
 			ln->UpdateLightFromTransform();
 		}
 	}
+
+	if (!dirty) {
+		if (m_cachedLightData.size() != m_activeLights.size()) {
+			dirty = true;
+		}
+		else {
+			for (size_t i = 0; i < m_activeLights.size(); ++i) {
+				auto& light = m_activeLights[i];
+				if (!light) {
+					dirty = true;
+					break;
+				}
+
+				LightData packed{};
+				packed.position = glm::vec4(light->GetPosition(), (float)light->GetLightType());
+				packed.direction = glm::vec4(light->GetDirection(), 0.0f);
+				packed.color = glm::vec4(light->GetEffectiveColor(), light->GetIntensity());
+				packed.attenuation = glm::vec4(light->GetAttenuation(), light->GetRange());
+				packed.spotData = glm::vec4(0.0f);
+				packed.areaData = glm::vec4(0.0f);
+				packed.sampling = glm::vec4(0.0f);
+
+				auto shadowIt = m_lightShadowInfo.find(light.get());
+				if (shadowIt != m_lightShadowInfo.end()) {
+					packed.shadowData = glm::vec4((float)shadowIt->second.startSlice,
+						(float)shadowIt->second.count,
+						light->CastsShadows() ? 1.0f : 0.0f,
+						shadowConfig.enablePCSS ? 1.0f : 0.0f);
+				}
+				else {
+					packed.shadowData = glm::vec4(-1.0f, 0.0f, 0.0f, 0.0f);
+				}
+
+				if (light->GetLightType() == BaseLight::LightType::SPOT) {
+					if (auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+						const float inner = glm::cos(glm::radians(spot->GetCutOff()));
+						const float outer = glm::cos(glm::radians(spot->GetOuterCutOff()));
+						packed.spotData = glm::vec4(inner, outer, 0.0f, 0.0f);
+					}
+				}
+
+				if (std::memcmp(&packed, &m_cachedLightData[i], sizeof(LightData)) != 0) {
+					dirty = true;
+					break;
+				}
+			}
+		}
+	}
+
 	if (dirty) {
 		m_lightDataDirty = true;
-		UpdateActiveLights();
 	}
 }
 
@@ -1462,6 +1544,21 @@ std::shared_ptr<LightNode> LightManager::FindLightAtRay(const glm::vec3& rayOrig
 	}
 
 	return best;
+}
+
+std::shared_ptr<LightNode> LightManager::FindLightNodeForLight(const std::shared_ptr<BaseLight>& light) const
+{
+	if (!light) {
+		return nullptr;
+	}
+
+	for (const auto& node : m_lightNodes) {
+		if (node && node->GetLight() == light) {
+			return node;
+		}
+	}
+
+	return nullptr;
 }
 
 

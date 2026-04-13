@@ -1,0 +1,234 @@
+{
+	"globsDependent" : 
+	[
+		{
+			"expression" : "C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/*.cpp",
+			"paths" : 
+			[
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/ImGuizmo.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui_demo.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui_draw.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui_impl_opengl3.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui_impl_sdl2.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui_impl_sdlrenderer2.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui_tables.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/include/IMGUI/imgui_widgets.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/*.cpp",
+			"paths" : 
+			[
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Animation.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/AnimationController.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/AnimationSystem.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/AudioNode.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/BVH.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/BVHBuilder.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/BaseLight.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Camera.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ComponentManager.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ComputeShader.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Contact.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Core.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/DefaultTextures.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/DirectionalLight.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Framebuffer.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/FrustumCulling.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/GLBuffer.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/GLState.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/GizmoRayCast.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/GuiAnimation.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/GuiNode.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/HierarchySystem.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/AnimationWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/BaseWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/CameraWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/HelpWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/ImGuiWindowManager.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/LightingWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/PerformanceWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/RenderingSettingsWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/SceneHierarchyWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/StateExportWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGui/StatusWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ImGuiInterface.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Input/InputIntegration.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Input/InputSystem.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/LightManager.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/LightNode.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/MainWindow.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ModelManager.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ModularRenderer.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/PerformanceRecorder.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/PhysicsBVH.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/PhysicsCollision.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/PhysicsEngine.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/PointLight.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/RayCast.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/RenderSystem.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/RigidBody.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/RuntimeStateManager.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Scene.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/SceneGraph.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/SceneLoader.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/SceneNode.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/ShadowMapper.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Skybox.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/SpotLight.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/StudioLighting.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/Texture.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/TransformSystem.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/impl.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/main.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/BloomPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/DebugBBoxPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/GBufferPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/GUIPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/LPVPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/LightingPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/PostProcessPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/RTPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/SSAOPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/SSGIPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/ScreenSpaceShadowPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/ShadowPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/TAAPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/TransformHistoryPass.cpp",
+				"C:/Users/desti/Documents/GithubStuff/Nox_Engine/src/passes/TransparentForwardPass.cpp"
+			],
+			"recurse" : true
+		}
+	],
+	"inputs" : 
+	[
+		{
+			"path" : "CMakeLists.txt"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "build/vs2022-x64/CMakeFiles/3.31.6-msvc6/CMakeSystem.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeSystemSpecificInitialize.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-Initialize.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "build/vs2022-x64/CMakeFiles/3.31.6-msvc6/CMakeCXXCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeSystemSpecificInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeGenericSystem.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeInitializeConfigs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/WindowsPaths.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCXXInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeLanguageInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "build/vs2022-x64/CMakeFiles/3.31.6-msvc6/CMakeRCCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeRCInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCXXLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC.cmake"
+		}
+	],
+	"kind" : "cmakeFiles",
+	"paths" : 
+	{
+		"build" : "C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64",
+		"source" : "C:/Users/desti/Documents/GithubStuff/Nox_Engine"
+	},
+	"version" : 
+	{
+		"major" : 1,
+		"minor" : 1
+	}
+}

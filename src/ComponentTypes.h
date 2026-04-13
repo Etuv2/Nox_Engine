@@ -104,7 +104,9 @@ struct RenderableComponent {
 	float boundingRadius;
 	bool isSkinned;
 	bool hasAlpha;
+	bool renderWholeModel;
 	CullingOverride cullingOverride;
+	std::vector<uint32_t> meshIndices;
 
 	// Skinning data
 	std::vector<std::shared_ptr<class SceneNode>> boneNodes;  // Temporary during transition
@@ -116,6 +118,7 @@ struct RenderableComponent {
 		, boundingRadius(1.0f)
 		, isSkinned(false)
 		, hasAlpha(false)
+		, renderWholeModel(true)
 		, cullingOverride(CullingOverride::CULLING_INHERIT)
 		, nodeIndex(-1)
 	{

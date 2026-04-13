@@ -95,6 +95,8 @@ private:
 	std::shared_ptr<SceneNode> ProcessNode(const nlohmann::json& nodeJson);
 	void ProcessCollider(const nlohmann::json& colliderJson, std::shared_ptr<SceneNode> node);
 	void ProcessGuiElementProperties(std::shared_ptr<GuiNode> guiNode, int elementId, const nlohmann::json& elementJson);
+	void CreateExistingChildEntitiesRecursive(const std::shared_ptr<SceneNode>& node, EntityID parentID);
+	void BuildImportedMeshNodeChildren(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<Scene>& model);
 
 	// ECS entity and component creation
 	void CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID parentID = INVALID_ENTITY);

@@ -16,10 +16,35 @@
 #include <fstream>
 #include <iostream>
 #include <ctime>
+#include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 using json = nlohmann::json;
+
+namespace {
+float ComputeRenderableBoundingRadius(const Scene& model, const std::vector<uint32_t>& meshIndices)
+{
+	float radius = 1.0f;
+	bool foundMesh = false;
+	for (uint32_t meshIndex : meshIndices) {
+		if (meshIndex >= model.meshes.size()) {
+			continue;
+		}
+
+		const MeshComponent& mesh = model.meshes[meshIndex];
+		float candidate = mesh.boundingRadius;
+		if (mesh.boundingVolumeValid) {
+			candidate = glm::length(mesh.boundingCenter) + mesh.boundingRadius;
+		}
+
+		radius = foundMesh ? std::max(radius, candidate) : candidate;
+		foundMesh = true;
+	}
+
+	return foundMesh ? radius : 1.0f;
+}
+}
 
 SceneLoader::SceneLoader(std::shared_ptr<ModelManager> modelManager, std::shared_ptr<PhysicsEngine> physicsEngine, int screenW, int screenH) :
 	m_modelManager(modelManager),
@@ -715,9 +740,14 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJso
 	// Create ECS entity for this node
 	CreateECSEntity(node, parentEntityID);
 
+	EntityID myEntityID = node->GetEntityID();
+	const size_t importedChildCount = node->children.size();
+	for (size_t i = 0; i < importedChildCount; ++i) {
+		CreateExistingChildEntitiesRecursive(node->children[i], myEntityID);
+	}
+
 	// If the node has children, process them recursively with this node as parent
 	if (nodeJson.contains("children") && nodeJson["children"].is_array()) {
-		EntityID myEntityID = node->GetEntityID();
 		for (auto& childJson : nodeJson["children"]) {
 			auto childNode = ProcessNodeRecursive(childJson, myEntityID);
 			if (childNode) {
@@ -799,8 +829,9 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			auto model = m_modelManager->LoadModel(modelPath); // Load the model using the ModelManager
 			if (model) {
 				node->SetModel(model); // Set the model to the node
-				if (model->hasSkin)
+				if (model->hasSkin) {
 					node->BuildSkeleton(*model);
+				}
 			}
 		}
 		// Check for custom shader properties
@@ -815,6 +846,9 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 					std::cerr << "[ERROR] Custom shader compilation failed for node ("
 					<< node->GetName() << "). Falling back to default shader." << std::endl;
 			}
+		}
+		if (auto model = node->GetModel(); model && !model->hasSkin) {
+			BuildImportedMeshNodeChildren(node, model);
 		}
 		break;
 	}
@@ -1137,9 +1171,10 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 	transformComp.parentID = parentID;
 
 	componentManager->AddTransform(entityID, transformComp);
+	componentManager->SetParent(entityID, parentID);
 
 	// Create RenderableComponent if node has a model
-	if (node->GetModel()) {
+	if (node->GetModel() && (node->renderWholeModel || !node->renderMeshIndices.empty())) {
 		CreateRenderableComponent(node, node->GetModel());
 	}
 
@@ -1164,16 +1199,123 @@ void SceneLoader::CreateRenderableComponent(std::shared_ptr<SceneNode> node, con
 	renderComp.shaderID = node->GetShader();
 	renderComp.boundingRadius = node->boundingRadius;
 	renderComp.isSkinned = node->isSkinned;
-	renderComp.hasAlpha = false;  // Will be determined by mesh materials
+	renderComp.hasAlpha = false;
+	renderComp.renderWholeModel = node->renderWholeModel;
 	renderComp.cullingOverride = static_cast<::CullingOverride>(static_cast<uint8_t>(node->GetCullingOverride()));
+	renderComp.meshIndices = node->renderMeshIndices;
 	renderComp.boneNodes = node->boneNodes;
 	renderComp.boneInverseBindMatrices = node->boneInverseBindMatrices;
 	renderComp.nodeIndex = node->nodeIndex;
+
+	auto markAlpha = [&](const MeshComponent& mesh) {
+		if (mesh.RequiresAlphaBlending()) {
+			renderComp.hasAlpha = true;
+		}
+	};
+
+	if (renderComp.renderWholeModel) {
+		for (const auto& mesh : model->meshes) {
+			markAlpha(mesh);
+		}
+	}
+	else {
+		for (uint32_t meshIndex : renderComp.meshIndices) {
+			if (meshIndex < model->meshes.size()) {
+				markAlpha(model->meshes[meshIndex]);
+			}
+		}
+	}
 
 	componentManager->AddRenderable(entityID, renderComp);
 
 	std::cout << "[SceneLoader] Created RenderableComponent for entity " << entityID
 		<< " with " << model->meshes.size() << " meshes" << std::endl;
+}
+
+void SceneLoader::CreateExistingChildEntitiesRecursive(const std::shared_ptr<SceneNode>& node, EntityID parentID)
+{
+	if (!node) {
+		return;
+	}
+
+	CreateECSEntity(node, parentID);
+	const EntityID entityID = node->GetEntityID();
+	const size_t childCount = node->children.size();
+	for (size_t i = 0; i < childCount; ++i) {
+		CreateExistingChildEntitiesRecursive(node->children[i], entityID);
+	}
+}
+
+void SceneLoader::BuildImportedMeshNodeChildren(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<Scene>& model)
+{
+	if (!node || !model || model->meshes.empty()) {
+		return;
+	}
+
+	std::unordered_map<int, std::vector<uint32_t>> meshesBySourceNode;
+	std::vector<uint32_t> rootMeshIndices;
+
+	for (uint32_t meshIndex = 0; meshIndex < static_cast<uint32_t>(model->meshes.size()); ++meshIndex) {
+		const MeshComponent& mesh = model->meshes[meshIndex];
+		if (mesh.sourceNodeIndex >= 0) {
+			meshesBySourceNode[mesh.sourceNodeIndex].push_back(meshIndex);
+		}
+		else {
+			rootMeshIndices.push_back(meshIndex);
+		}
+	}
+
+	if (meshesBySourceNode.empty()) {
+		return;
+	}
+
+	node->renderWholeModel = false;
+	node->renderMeshIndices = rootMeshIndices;
+	node->boundingRadius = ComputeRenderableBoundingRadius(*model, rootMeshIndices);
+
+	ComponentManager* componentManager = m_currentSceneGraph ? m_currentSceneGraph->GetComponentManager() : nullptr;
+	TransformSystem* transformSystem = m_currentSceneGraph ? m_currentSceneGraph->GetTransformSystem() : nullptr;
+
+	std::vector<std::shared_ptr<SceneNode>> importedNodes(model->nodes.size());
+	for (size_t nodeIndex = 0; nodeIndex < model->nodes.size(); ++nodeIndex) {
+		const Scene::NodeInfo& nodeInfo = model->nodes[nodeIndex];
+		const auto meshIt = meshesBySourceNode.find(static_cast<int>(nodeIndex));
+		const bool hasRenderableMeshes = meshIt != meshesBySourceNode.end() && !meshIt->second.empty();
+
+		auto importedNode = std::make_shared<SceneNode>(componentManager, transformSystem);
+		importedNode->SetNodeType(hasRenderableMeshes ? SceneNode::MODEL : SceneNode::NODE);
+		importedNode->SetShader(node->GetShader());
+		importedNode->SetCullingOverride(node->GetCullingOverride());
+		importedNode->SetTransform(nodeInfo.localTransform);
+		importedNode->SetName(!nodeInfo.name.empty()
+			? nodeInfo.name
+			: node->GetName() + "_node_" + std::to_string(nodeIndex));
+		importedNode->nodeIndex = static_cast<int>(nodeIndex);
+
+		if (hasRenderableMeshes) {
+			importedNode->SetModel(model);
+			importedNode->renderWholeModel = false;
+			importedNode->renderMeshIndices = meshIt->second;
+			importedNode->boundingRadius = ComputeRenderableBoundingRadius(*model, meshIt->second);
+		}
+
+		importedNodes[nodeIndex] = importedNode;
+	}
+
+	for (size_t nodeIndex = 0; nodeIndex < model->nodes.size(); ++nodeIndex) {
+		auto& importedNode = importedNodes[nodeIndex];
+		if (!importedNode) {
+			continue;
+		}
+
+		const int parentIndex = model->nodes[nodeIndex].parent;
+		if (parentIndex >= 0 && parentIndex < static_cast<int>(importedNodes.size()) && importedNodes[parentIndex]) {
+			importedNodes[parentIndex]->AddChild(importedNode);
+		}
+		else {
+			node->AddChild(importedNode);
+		}
+	}
 }
 
 void SceneLoader::CreateAnimationComponent(std::shared_ptr<SceneNode> node, const std::shared_ptr<Scene>& model) {

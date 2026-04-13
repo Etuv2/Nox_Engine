@@ -8,6 +8,8 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <array>
+#include <limits>
 #include <cstdint>
 
 class Scene;
@@ -106,6 +108,7 @@ private:
         GLint prevProjection = -1;
         GLint prevModel = -1;
         GLint transformID = -1;
+        GLint materialID = -1;
         GLint lightSpaceMatrix = -1;
         GLint uEnableSkinning = -1;
         GLint uBoneMatrices = -1;
@@ -155,18 +158,20 @@ private:
     void BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
     void UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
     void UploadTransformUniforms(EntityID entity,
-                                 const glm::mat4& worldTransform,
+                                 const glm::mat4& modelTransform,
                                  const ShaderUniformCache& uniforms);
     void ApplyCullingState(const MeshComponent& mesh, CullingOverride override);
-    void UploadBoneMatrices(EntityID entity, const ShaderUniformCache& uniforms);
+    void UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms);
     void UpdateGpuTransformBuffer();
     void EnsureTransformBuffer();
     
     // Batch processing helpers
     struct RenderBatch {
         EntityID entity;
+        const MeshComponent* mesh = nullptr;
         float distanceToCamera;
-        bool isTransparent;
+        uint64_t sortKey = 0;
+        bool isTransparent = false;
     };
     std::vector<RenderBatch> m_renderQueue;
     void SortRenderQueue(const glm::vec3& cameraPos);
@@ -190,7 +195,11 @@ private:
     GLuint m_instanceVBO = 0;
     size_t m_instanceBufferCapacity = 0;
     void EnsureInstanceBuffer(size_t requiredSize);
+    void ResetMaterialStateCache(GLuint shader);
 
     GLBufferPtr m_transformBuffer;
     std::vector<GpuTransformRecord> m_gpuTransformRecords;
+    std::array<GLuint, 8> m_boundMaterialTextures{};
+    GLuint m_cachedMaterialShader = 0;
+    uint32_t m_cachedMaterialID = std::numeric_limits<uint32_t>::max();
 };

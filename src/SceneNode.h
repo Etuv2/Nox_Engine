@@ -82,6 +82,8 @@ public:
     std::vector<glm::mat4> boneInverseBindMatrices;
     std::vector<std::shared_ptr<SceneNode>> boneNodes;
     float boundingRadius = 1.0f;
+    bool renderWholeModel = true;
+    std::vector<uint32_t> renderMeshIndices;
 
     // TRANSFORM
     void SetPosition(glm::vec3 position);

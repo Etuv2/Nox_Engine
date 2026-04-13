@@ -13,12 +13,131 @@
 #include <algorithm>
 #include <iostream>
 #include <cmath>
+#include <cstdint>
 #include "stb_image.h"
 
 
 // HELPER CONSTANTS & STRUCTS
 
 static constexpr int MAX_INFLUENCES = 4;
+
+static uint32_t HashStableMaterialKey(const std::string& modelPath, int meshIndex, int primitiveIndex, int materialIndex)
+{
+	constexpr uint32_t fnvOffset = 2166136261u;
+	constexpr uint32_t fnvPrime = 16777619u;
+	uint32_t hash = fnvOffset;
+
+	auto mixByte = [&hash](uint8_t byte) {
+		hash ^= static_cast<uint32_t>(byte);
+		hash *= fnvPrime;
+	};
+
+	for (unsigned char c : modelPath) {
+		mixByte(c);
+	}
+
+	const uint32_t values[3] = {
+		static_cast<uint32_t>(meshIndex + 1),
+		static_cast<uint32_t>(primitiveIndex + 1),
+		static_cast<uint32_t>(materialIndex + 2)
+	};
+	for (uint32_t value : values) {
+		for (int shift = 0; shift < 32; shift += 8) {
+			mixByte(static_cast<uint8_t>((value >> shift) & 0xffu));
+		}
+	}
+
+	return hash == 0u ? 1u : hash;
+}
+
+static glm::mat4 BuildNodeLocalTransform(const tinygltf::Node& gltfNode)
+{
+	glm::mat4 localMat(1.0f);
+	if (!gltfNode.matrix.empty()) {
+		std::memcpy(glm::value_ptr(localMat), gltfNode.matrix.data(), 16 * sizeof(float));
+		return localMat;
+	}
+
+	if (!gltfNode.translation.empty()) {
+		localMat = glm::translate(localMat, glm::vec3(
+			static_cast<float>(gltfNode.translation[0]),
+			static_cast<float>(gltfNode.translation[1]),
+			static_cast<float>(gltfNode.translation[2])
+		));
+	}
+	if (!gltfNode.rotation.empty()) {
+		glm::quat q(
+			static_cast<float>(gltfNode.rotation[3]),
+			static_cast<float>(gltfNode.rotation[0]),
+			static_cast<float>(gltfNode.rotation[1]),
+			static_cast<float>(gltfNode.rotation[2])
+		);
+		localMat *= glm::mat4_cast(q);
+	}
+	if (!gltfNode.scale.empty()) {
+		localMat = glm::scale(localMat, glm::vec3(
+			static_cast<float>(gltfNode.scale[0]),
+			static_cast<float>(gltfNode.scale[1]),
+			static_cast<float>(gltfNode.scale[2])
+		));
+	}
+	return localMat;
+}
+
+static void PopulateSceneNodesAndWorldTransforms(const tinygltf::Model& model, std::vector<Scene::NodeInfo>& outNodes, std::vector<glm::mat4>& outWorldTransforms)
+{
+	outNodes.resize(model.nodes.size());
+	outWorldTransforms.assign(model.nodes.size(), glm::mat4(1.0f));
+	std::vector<bool> worldComputed(model.nodes.size(), false);
+
+	for (size_t i = 0; i < model.nodes.size(); ++i) {
+		const tinygltf::Node& gltfNode = model.nodes[i];
+		Scene::NodeInfo& nodeInfo = outNodes[i];
+		nodeInfo.name = gltfNode.name;
+		nodeInfo.localTransform = BuildNodeLocalTransform(gltfNode);
+		nodeInfo.parent = -1;
+		nodeInfo.children.clear();
+	}
+
+	for (size_t i = 0; i < model.nodes.size(); ++i) {
+		const tinygltf::Node& gltfNode = model.nodes[i];
+		for (int childIdx : gltfNode.children) {
+			if (childIdx >= 0 && childIdx < static_cast<int>(model.nodes.size())) {
+				outNodes[i].children.push_back(childIdx);
+				outNodes[childIdx].parent = static_cast<int>(i);
+			}
+		}
+	}
+
+	std::function<glm::mat4(int)> computeWorldTransform = [&](int nodeIndex) -> glm::mat4 {
+		Scene::NodeInfo& nodeInfo = outNodes[nodeIndex];
+		if (worldComputed[nodeIndex]) {
+			return outWorldTransforms[nodeIndex];
+		}
+		if (nodeInfo.parent < 0) {
+			outWorldTransforms[nodeIndex] = nodeInfo.localTransform;
+			worldComputed[nodeIndex] = true;
+			return outWorldTransforms[nodeIndex];
+		}
+		glm::mat4 parentWorld = computeWorldTransform(nodeInfo.parent);
+		outWorldTransforms[nodeIndex] = parentWorld * nodeInfo.localTransform;
+		worldComputed[nodeIndex] = true;
+		return outWorldTransforms[nodeIndex];
+	};
+
+	for (size_t i = 0; i < model.nodes.size(); ++i) {
+		computeWorldTransform(static_cast<int>(i));
+	}
+}
+
+static int FindSceneRootNodeIndex(const std::vector<Scene::NodeInfo>& nodes, int nodeIndex)
+{
+	int current = nodeIndex;
+	while (current >= 0 && current < static_cast<int>(nodes.size()) && nodes[current].parent >= 0) {
+		current = nodes[current].parent;
+	}
+	return current;
+}
 
 // A helper struct for sorting influences
 struct Influence {
@@ -421,6 +540,9 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	skin.inverseBindMatrices.clear();
 	m_model_name = path.substr(path.find_last_of("/\\") + 1);
 
+	std::vector<glm::mat4> nodeWorldTransforms;
+	PopulateSceneNodesAndWorldTransforms(model, nodes, nodeWorldTransforms);
+
 	// If there's a skin, note the total joint count for blending weights
 	int totalJoints = 0;
 	if (!model.skins.empty()) {
@@ -453,10 +575,42 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		}
 	}
 
-	// (1) Parse all meshes/primitives from the glTF model
+	// (1) Parse all meshes/primitives from the glTF model.
+	// We expand them per glTF node so node-local transforms survive import.
 	for (size_t mm = 0; mm < model.meshes.size(); mm++) {
 		const tinygltf::Mesh& gltfMesh = model.meshes[mm];
-		for (size_t p = 0; p < gltfMesh.primitives.size(); p++) {
+		std::vector<int> referencingNodes;
+		for (size_t nodeIdx = 0; nodeIdx < model.nodes.size(); ++nodeIdx) {
+			if (model.nodes[nodeIdx].mesh == static_cast<int>(mm)) {
+				referencingNodes.push_back(static_cast<int>(nodeIdx));
+			}
+		}
+		if (referencingNodes.empty()) {
+			referencingNodes.push_back(-1);
+		}
+
+		for (int nodeIndex : referencingNodes) {
+			glm::mat4 meshLocalTransform = glm::mat4(1.0f);
+			if (nodeIndex >= 0 && nodeIndex < static_cast<int>(nodeWorldTransforms.size())) {
+				meshLocalTransform = nodeWorldTransforms[nodeIndex];
+				const int rootNodeIndex = FindSceneRootNodeIndex(nodes, nodeIndex);
+				if (rootNodeIndex >= 0 && rootNodeIndex < static_cast<int>(nodeWorldTransforms.size())) {
+					glm::mat4 rootInverse = glm::inverse(nodeWorldTransforms[rootNodeIndex]);
+					bool validInverse = true;
+					for (int c = 0; c < 4 && validInverse; ++c) {
+						for (int r = 0; r < 4 && validInverse; ++r) {
+							if (!std::isfinite(rootInverse[c][r])) {
+								validInverse = false;
+							}
+						}
+					}
+					if (validInverse) {
+						meshLocalTransform = rootInverse * meshLocalTransform;
+					}
+				}
+			}
+
+			for (size_t p = 0; p < gltfMesh.primitives.size(); p++) {
 			const tinygltf::Primitive& primitive = gltfMesh.primitives[p];
 			if (primitive.attributes.find("POSITION") == primitive.attributes.end()) {
 				// Skip primitive with no position data
@@ -571,6 +725,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 			// OPTIMIZATION: Compute and cache bounding volume once at load time
 			mesh.ComputeBoundingVolume();
+			mesh.localTransform = meshLocalTransform;
+			mesh.sourceNodeIndex = nodeIndex;
 
 			// Load material textures and properties for this primitive
 			mesh.hasAlpha = false;
@@ -600,19 +756,6 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				}
 				else {
 					mesh.alphaMode = MeshComponent::ALPHA_OPAQUE;
-				}
-
-				// Check baseColorFactor alpha for additional transparency detection
-				if (!mat.pbrMetallicRoughness.baseColorFactor.empty()) {
-					float baseAlpha = static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[3]);
-					if (baseAlpha < 1.0f) {
-						mesh.hasAlpha = true;
-						// If not explicitly set to BLEND, infer from alpha value
-						if (mesh.alphaMode == MeshComponent::ALPHA_OPAQUE) {
-							mesh.alphaMode = MeshComponent::ALPHA_BLEND;
-							std::cout << "[INFO] Detected transparency from baseColorFactor alpha: " << baseAlpha << "\n";
-						}
-					}
 				}
 
 				// Double-sided material (disables backface culling)
@@ -936,6 +1079,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 			//Assign the normalized material contract to the mesh and keep the legacy fields mirrored.
 			MaterialDesc normalizedMaterial;
+			normalizedMaterial.stableMaterialID = HashStableMaterialKey(path, static_cast<int>(mm), static_cast<int>(p), primitive.material);
 			normalizedMaterial.alphaMode = static_cast<MaterialDesc::AlphaMode>(static_cast<uint32_t>(mesh.alphaMode));
 			normalizedMaterial.doubleSided = mesh.doubleSided;
 			normalizedMaterial.hasAlpha = mesh.hasAlpha;
@@ -976,6 +1120,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 			//Add the mesh to the Scene (use move since MeshComponent is move-only)
 			meshes.emplace_back(std::move(mesh));
+			}
 		}
 	}
 
@@ -1079,52 +1224,6 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			// Update animation duration
 			anim.UpdateDuration();
 			animations.push_back(std::move(anim));
-		}
-	}
-
-	// (3) Load node hierarchy (local transforms and parent-child relations)
-	nodes.resize(model.nodes.size());
-	for (size_t i = 0; i < model.nodes.size(); ++i) {
-		const tinygltf::Node& gltfNode = model.nodes[i];
-		NodeInfo& nodeInfo = nodes[i];
-		glm::mat4 localMat(1.0f);
-		if (!gltfNode.matrix.empty()) {
-			memcpy(glm::value_ptr(localMat), gltfNode.matrix.data(), 16 * sizeof(float));
-		}
-		else {
-			if (!gltfNode.translation.empty()) {
-				localMat = glm::translate(localMat, glm::vec3(
-					(float)gltfNode.translation[0],
-					(float)gltfNode.translation[1],
-					(float)gltfNode.translation[2]
-				));
-			}
-			if (!gltfNode.rotation.empty()) {
-				glm::quat q((float)gltfNode.rotation[3],
-					(float)gltfNode.rotation[0],
-					(float)gltfNode.rotation[1],
-					(float)gltfNode.rotation[2]);
-				localMat *= glm::mat4_cast(q);
-			}
-			if (!gltfNode.scale.empty()) {
-				localMat = glm::scale(localMat, glm::vec3(
-					(float)gltfNode.scale[0],
-					(float)gltfNode.scale[1],
-					(float)gltfNode.scale[2]
-				));
-			}
-		}
-		nodeInfo.localTransform = localMat;
-		nodeInfo.parent = -1;
-		nodeInfo.name = gltfNode.name;
-	}
-	for (size_t i = 0; i < model.nodes.size(); ++i) {
-		const tinygltf::Node& gltfNode = model.nodes[i];
-		for (int childIdx : gltfNode.children) {
-			if (childIdx >= 0 && childIdx < (int)model.nodes.size()) {
-				nodes[i].children.push_back(childIdx);
-				nodes[childIdx].parent = static_cast<int>(i);
-			}
 		}
 	}
 

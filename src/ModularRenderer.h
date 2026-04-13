@@ -175,6 +175,7 @@ private:
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
 	std::unique_ptr<GUIPass> m_guiPass;  // Internal GUI rendering
 	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;  // Debug bounding box visualization
+	GLuint m_debugViewShader = 0;
 
 	std::vector<PassDescriptor> m_passDescriptors;
 	std::unordered_map<PlanCacheKey, FramePlan, PlanCacheKeyHash> m_planCache;

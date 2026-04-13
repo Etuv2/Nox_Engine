@@ -13,6 +13,27 @@ namespace {
 	constexpr GLuint kGlobalTransformBufferBinding = 6;
 	constexpr uint32_t kTransformFlagRenderable = 1u << 0;
 	constexpr uint32_t kTransformFlagSkinned = 1u << 1;
+
+	template <typename Fn>
+	void ForEachRenderableMesh(const RenderableComponent& renderable, Fn&& fn)
+	{
+		if (!renderable.model) {
+			return;
+		}
+
+		if (renderable.renderWholeModel) {
+			for (const auto& mesh : renderable.model->meshes) {
+				fn(mesh);
+			}
+			return;
+		}
+
+		for (uint32_t meshIndex : renderable.meshIndices) {
+			if (meshIndex < renderable.model->meshes.size()) {
+				fn(renderable.model->meshes[meshIndex]);
+			}
+		}
+	}
 }
 
 RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* transformSystem)
@@ -38,6 +59,7 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.prevProjection = glGetUniformLocation(shader, "prevProjection");
 	uniforms.prevModel = glGetUniformLocation(shader, "prevModel");
 	uniforms.transformID = glGetUniformLocation(shader, "uTransformID");
+	uniforms.materialID = glGetUniformLocation(shader, "uMaterialID");
 	uniforms.lightSpaceMatrix = glGetUniformLocation(shader, "lightSpaceMatrix");
 	uniforms.uEnableSkinning = glGetUniformLocation(shader, "u_enableSkinning");
 	uniforms.uBoneMatrices = glGetUniformLocation(shader, "u_boneMatrices");
@@ -94,6 +116,7 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 	UpdateGpuTransformBuffer();
 
 	glUseProgram(defaultShader);
+	ResetMaterialStateCache(defaultShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
@@ -109,6 +132,7 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 
 	// Iterate through all renderable components
 	auto& renderablePool = m_componentManager->GetRenderablePool();
+
 	for (auto& entry : renderablePool) {
 		EntityID entityID = entry.entity;
 		auto& renderable = entry.component;
@@ -131,19 +155,18 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 		m_visibleCount++;
 
 		// Upload model matrix
-		UploadTransformUniforms(entityID, worldTransform, uniforms);
-
-		// Handle skinning
-		if (renderable.isSkinned) {
-			UploadBoneMatrices(entityID, uniforms);
-			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
-		}
-		else {
-			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 0);
-		}
-
 		// Draw each mesh in the model
-		for (auto& mesh : renderable.model->meshes) {
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			UploadTransformUniforms(entityID, worldTransform, uniforms);
+
+			if (renderable.isSkinned) {
+				UploadBoneMatrices(entityID, worldTransform, uniforms);
+				if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
+			}
+			else if (uniforms.uEnableSkinning != -1) {
+				glUniform1i(uniforms.uEnableSkinning, 0);
+			}
+
 			ApplyCullingState(mesh, renderable.cullingOverride);
 
 			// Handle alpha blending
@@ -169,7 +192,7 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 				glDisable(GL_BLEND);
 				glDepthMask(GL_TRUE);
 			}
-		}
+		});
 	}
 }
 
@@ -183,6 +206,7 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 	m_transformSystem->UpdateTransforms();
 	UpdateGpuTransformBuffer();
 	glUseProgram(geometryShader);
+	ResetMaterialStateCache(geometryShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
@@ -194,6 +218,14 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 
 	auto& renderablePool = m_componentManager->GetRenderablePool();
 	size_t poolSize = renderablePool.Size();
+	struct OpaqueDraw {
+		EntityID entity = INVALID_ENTITY;
+		const MeshComponent* mesh = nullptr;
+		glm::mat4 worldTransform{ 1.0f };
+		uint64_t sortKey = 0;
+	};
+	std::vector<OpaqueDraw> opaqueDraws;
+	opaqueDraws.reserve(poolSize * 2);
 
 	if constexpr (VerboseLogging) {
 		if (m_runtimeVerboseLogging) {
@@ -220,29 +252,58 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 
 		m_visibleCount++;
 
-		UploadTransformUniforms(entityID, worldTransform, uniforms);
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			// Skip transparent meshes in deferred pass
+			if (mesh.RequiresAlphaBlending()) {
+				return;
+			}
 
-		// Handle skinning
-		if (renderable.isSkinned) {
-			UploadBoneMatrices(entityID, uniforms);
+			OpaqueDraw draw;
+			draw.entity = entityID;
+			draw.mesh = &mesh;
+			draw.worldTransform = worldTransform;
+			draw.sortKey = (static_cast<uint64_t>(mesh.material.stableMaterialID) << 32u) | static_cast<uint64_t>(mesh.VAO);
+			opaqueDraws.push_back(draw);
+		});
+	}
+
+	std::sort(opaqueDraws.begin(), opaqueDraws.end(),
+		[](const OpaqueDraw& a, const OpaqueDraw& b) {
+			if (a.sortKey != b.sortKey) {
+				return a.sortKey < b.sortKey;
+			}
+			return a.entity < b.entity;
+		});
+
+	GLuint currentVAO = 0;
+	for (const OpaqueDraw& draw : opaqueDraws) {
+		auto* renderable = m_componentManager->GetRenderable(draw.entity);
+		if (!renderable || !draw.mesh) {
+			continue;
+		}
+
+		UploadTransformUniforms(draw.entity, draw.worldTransform, uniforms);
+		if (renderable->isSkinned) {
+			UploadBoneMatrices(draw.entity, draw.worldTransform, uniforms);
 			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
 		}
-		else {
-			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 0);
+		else if (uniforms.uEnableSkinning != -1) {
+			glUniform1i(uniforms.uEnableSkinning, 0);
 		}
 
-		for (auto& mesh : renderable.model->meshes) {
-			// Skip transparent meshes in deferred pass
-			if (mesh.RequiresAlphaBlending()) continue;
+		ApplyCullingState(*draw.mesh, renderable->cullingOverride);
+		BindMaterialTextures(*draw.mesh, uniforms);
+		UploadMaterialUniforms(*draw.mesh, uniforms);
 
-			ApplyCullingState(mesh, renderable.cullingOverride);
-			BindMaterialTextures(mesh, uniforms);
-			UploadMaterialUniforms(mesh, uniforms);
-
-			glBindVertexArray(mesh.VAO);
-			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
-			glBindVertexArray(0);
+		if (currentVAO != draw.mesh->VAO) {
+			glBindVertexArray(draw.mesh->VAO);
+			currentVAO = draw.mesh->VAO;
 		}
+		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(draw.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+	}
+
+	if (currentVAO != 0) {
+		glBindVertexArray(0);
 	}
 }
 
@@ -253,6 +314,7 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 	m_transformSystem->UpdateTransforms();
 	UpdateGpuTransformBuffer();
 	glUseProgram(shadowShader);
+	ResetMaterialStateCache(shadowShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
@@ -271,11 +333,27 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 		if (!renderable.model) continue;
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
+		GLuint currentVAO = 0;
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			UploadTransformUniforms(entityID, worldTransform, uniforms);
+			if (renderable.isSkinned) {
+				UploadBoneMatrices(entityID, worldTransform, uniforms);
+				if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
+			}
+			else if (uniforms.uEnableSkinning != -1) {
+				glUniform1i(uniforms.uEnableSkinning, 0);
+			}
 
-		UploadTransformUniforms(entityID, worldTransform, uniforms);
-
-		// Draw model (positions only for shadow pass)
-		renderable.model->Draw();
+			ApplyCullingState(mesh, renderable.cullingOverride);
+			if (currentVAO != mesh.VAO) {
+				glBindVertexArray(mesh.VAO);
+				currentVAO = mesh.VAO;
+			}
+			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
+		});
+		if (currentVAO != 0) {
+			glBindVertexArray(0);
+		}
 	}
 }
 
@@ -290,6 +368,7 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 	m_transformSystem->UpdateTransforms();
 	UpdateGpuTransformBuffer();
 	glUseProgram(velocityShader);
+	ResetMaterialStateCache(velocityShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
@@ -310,15 +389,22 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
 
-		UploadTransformUniforms(entityID, worldTransform, uniforms);
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			UploadTransformUniforms(entityID, worldTransform, uniforms);
+			if (renderable.isSkinned) {
+				UploadBoneMatrices(entityID, worldTransform, uniforms);
+				if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
+			}
+			else if (uniforms.uEnableSkinning != -1) {
+				glUniform1i(uniforms.uEnableSkinning, 0);
+			}
 
-		for (auto& mesh : renderable.model->meshes) {
 			ApplyCullingState(mesh, renderable.cullingOverride);
 
 			glBindVertexArray(mesh.VAO);
 			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
 			glBindVertexArray(0);
-		}
+		});
 	}
 }
 
@@ -338,7 +424,7 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
 
-		for (const auto& mesh : renderable.model->meshes) {
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
 			MDI_RenderableObject obj{};
 			obj.count = static_cast<GLuint>(mesh.indexCount);
 			obj.firstIndex = 0;
@@ -357,7 +443,7 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 			}
 
 			batch.AddObject(obj);
-		}
+		});
 	}
 }
 
@@ -379,22 +465,22 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 		auto& renderable = entry.component;
 		if (!renderable.model) continue;
 
-		// Check if any mesh is transparent
-		bool hasTransparent = false;
-		for (const auto& mesh : renderable.model->meshes) {
-			if (mesh.RequiresAlphaBlending()) {
-				hasTransparent = true;
-				break;
+		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entry.entity);
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			if (!mesh.RequiresAlphaBlending()) {
+				return;
 			}
-		}
 
-		if (hasTransparent) {
-			const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entry.entity);
-			glm::vec3 objPos = glm::vec3(worldTransform[3]);
-			float dist = glm::length(objPos - cameraPos);
-
-			m_renderQueue.push_back({ entry.entity, dist, true });
-		}
+			glm::vec3 centerWS = glm::vec3(worldTransform * glm::vec4(mesh.boundingCenter, 1.0f));
+			if (m_frustumValid && !IsSphereVisible(centerWS, mesh.boundingRadius)) {
+				return;
+			}
+			float dist = glm::length(centerWS - cameraPos);
+			uint64_t sortKey =
+				(static_cast<uint64_t>(mesh.material.stableMaterialID) << 32u) |
+				static_cast<uint64_t>(mesh.VAO);
+			m_renderQueue.push_back({ entry.entity, &mesh, dist, sortKey, true });
+		});
 	}
 
 	// Sort back to front
@@ -402,6 +488,7 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 
 	// Render
 	glUseProgram(transparentShader);
+	ResetMaterialStateCache(transparentShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
@@ -414,25 +501,35 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 		if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
 	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
 
+	GLuint currentVAO = 0;
 	for (const auto& batch : m_renderQueue) {
 		auto* renderable = m_componentManager->GetRenderable(batch.entity);
-		if (!renderable || !renderable->model) continue;
+		if (!renderable || !renderable->model || !batch.mesh) continue;
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(batch.entity);
 
 		UploadTransformUniforms(batch.entity, worldTransform, uniforms);
-
-		for (auto& mesh : renderable->model->meshes) {
-			if (!mesh.RequiresAlphaBlending()) continue;
-
-			ApplyCullingState(mesh, renderable->cullingOverride);
-			BindMaterialTextures(mesh, uniforms);
-			UploadMaterialUniforms(mesh, uniforms);
-
-			glBindVertexArray(mesh.VAO);
-			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
-			glBindVertexArray(0);
+		if (renderable->isSkinned) {
+			UploadBoneMatrices(batch.entity, worldTransform, uniforms);
+			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
 		}
+		else if (uniforms.uEnableSkinning != -1) {
+			glUniform1i(uniforms.uEnableSkinning, 0);
+		}
+
+		ApplyCullingState(*batch.mesh, renderable->cullingOverride);
+		BindMaterialTextures(*batch.mesh, uniforms);
+		UploadMaterialUniforms(*batch.mesh, uniforms);
+
+		if (currentVAO != batch.mesh->VAO) {
+			glBindVertexArray(batch.mesh->VAO);
+			currentVAO = batch.mesh->VAO;
+		}
+		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(batch.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+	}
+
+	if (currentVAO != 0) {
+		glBindVertexArray(0);
 	}
 
 	glDepthMask(GL_TRUE);
@@ -509,13 +606,12 @@ bool RenderSystem::IsSphereVisible(const glm::vec3& center, float radius) const
 
 void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
-	auto bindTexture = [](GLint loc, GLuint unit, const std::shared_ptr<Texture>& tex, GLuint fallback) {
-		glActiveTexture(GL_TEXTURE0 + unit);
-		if (tex && tex->IsValid()) {
-			tex->Bind(GL_TEXTURE0 + unit);
-		}
-		else {
-			glBindTexture(GL_TEXTURE_2D, fallback);
+	auto bindTexture = [this](GLint loc, GLuint unit, const std::shared_ptr<Texture>& tex, GLuint fallback) {
+		const GLuint desiredTexture = (tex && tex->IsValid()) ? tex->ID() : fallback;
+		if (m_boundMaterialTextures[unit] != desiredTexture) {
+			glActiveTexture(GL_TEXTURE0 + unit);
+			glBindTexture(GL_TEXTURE_2D, desiredTexture);
+			m_boundMaterialTextures[unit] = desiredTexture;
 		}
 		if (loc >= 0) glUniform1i(loc, unit);
 		};
@@ -542,7 +638,11 @@ void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderU
 void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
 	const MaterialDesc& material = mesh.material;
+	if (m_cachedMaterialID == material.stableMaterialID) {
+		return;
+	}
 
+	if (uniforms.materialID >= 0) glUniform1ui(uniforms.materialID, material.stableMaterialID);
 	if (uniforms.baseColorFactor >= 0) glUniform4fv(uniforms.baseColorFactor, 1, glm::value_ptr(material.baseColorFactor));
 	if (uniforms.metallicFactor >= 0) glUniform1f(uniforms.metallicFactor, material.metallicFactor);
 	if (uniforms.roughnessFactor >= 0) glUniform1f(uniforms.roughnessFactor, material.roughnessFactor);
@@ -560,21 +660,38 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.attenuationDistance >= 0) glUniform1f(uniforms.attenuationDistance, material.attenuationDistance);
 	if (uniforms.attenuationColor >= 0) glUniform3fv(uniforms.attenuationColor, 1, glm::value_ptr(material.attenuationColor));
 	if (uniforms.ior >= 0) glUniform1f(uniforms.ior, material.ior);
+	m_cachedMaterialID = material.stableMaterialID;
 }
 
 void RenderSystem::UploadTransformUniforms(EntityID entity,
-	const glm::mat4& worldTransform,
+	const glm::mat4& modelTransform,
 	const ShaderUniformCache& uniforms)
 {
 	if (uniforms.model != -1) {
-		glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(worldTransform));
+		glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(modelTransform));
 	}
 
 	const TransformComponent* transform = m_componentManager ? m_componentManager->GetTransform(entity) : nullptr;
-	const glm::mat4& prevWorldTransform = transform ? transform->prevWorldTransform : worldTransform;
+	glm::mat4 prevModelTransform = modelTransform;
+	if (transform) {
+		glm::mat4 localTransform = glm::mat4(1.0f);
+		glm::mat4 worldInverse = glm::inverse(transform->worldTransform);
+		bool validInverse = true;
+		for (int c = 0; c < 4 && validInverse; ++c) {
+			for (int r = 0; r < 4 && validInverse; ++r) {
+				if (!std::isfinite(worldInverse[c][r])) {
+					validInverse = false;
+				}
+			}
+		}
+		if (validInverse) {
+			localTransform = worldInverse * modelTransform;
+		}
+		prevModelTransform = transform->prevWorldTransform * localTransform;
+	}
 
 	if (uniforms.prevModel != -1) {
-		glUniformMatrix4fv(uniforms.prevModel, 1, GL_FALSE, glm::value_ptr(prevWorldTransform));
+		glUniformMatrix4fv(uniforms.prevModel, 1, GL_FALSE, glm::value_ptr(prevModelTransform));
 	}
 
 	if (uniforms.transformID != -1) {
@@ -637,7 +754,7 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 	}
 }
 
-void RenderSystem::UploadBoneMatrices(EntityID entity, const ShaderUniformCache& uniforms)
+void RenderSystem::UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms)
 {
 	auto* renderable = m_componentManager->GetRenderable(entity);
 	if (!renderable || !renderable->isSkinned) return;
@@ -650,7 +767,6 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, const ShaderUniformCache&
 	boneMatrices.resize(numBones, glm::mat4(1.0f));
 
 	// Get the skinned mesh's world transform (for proper coordinate space)
-	glm::mat4 meshWorldTransform = m_transformSystem->GetWorldTransform(entity);
 	glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
 
 	// Validate meshWorldInverse - if the mesh transform is degenerate, use identity
@@ -776,8 +892,18 @@ void RenderSystem::SortRenderQueue(const glm::vec3& cameraPos)
 	// Sort back to front for transparent objects
 	std::sort(m_renderQueue.begin(), m_renderQueue.end(),
 		[](const RenderBatch& a, const RenderBatch& b) {
-			return a.distanceToCamera > b.distanceToCamera;
+			if (a.distanceToCamera != b.distanceToCamera) {
+				return a.distanceToCamera > b.distanceToCamera;
+			}
+			return a.sortKey < b.sortKey;
 		});
+}
+
+void RenderSystem::ResetMaterialStateCache(GLuint shader)
+{
+	m_cachedMaterialShader = shader;
+	m_cachedMaterialID = std::numeric_limits<uint32_t>::max();
+	m_boundMaterialTextures.fill(std::numeric_limits<GLuint>::max());
 }
 
 void RenderSystem::BuildInstanceGroups()
@@ -796,9 +922,11 @@ void RenderSystem::BuildInstanceGroups()
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
 
 		// Group by VAO + shader combination
-		for (const auto& mesh : renderable.model->meshes) {
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
 			// Skip transparent meshes (they need special sorting)
-			if (mesh.RequiresAlphaBlending()) continue;
+			if (mesh.RequiresAlphaBlending()) {
+				return;
+			}
 
 			uint64_t key = ComputeMeshKey(mesh.VAO, renderable.shaderID);
 
@@ -811,7 +939,7 @@ void RenderSystem::BuildInstanceGroups()
 
 			group.transforms.push_back(worldTransform);
 			group.entities.push_back(entityID);
-		}
+		});
 	}
 }
 
