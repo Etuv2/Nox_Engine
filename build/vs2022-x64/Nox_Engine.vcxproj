@@ -123,8 +123,17 @@
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
     <PostBuildEvent>
-      <Message>						</Message>
+      <Message>							</Message>
       <Command>setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -DNOX_ENGINE_ROOT=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine\" -DNOX_ENGINE_OUTPUT_DIR=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Debug\" -DNOX_ENGINE_BUILD_CONFIG=\"Debug\" -P C:/Users/desti/Documents/GithubStuff/Nox_Engine/cmake/EnsureRuntimeAssets.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Debug
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -238,8 +247,17 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
     <PostBuildEvent>
-      <Message>						</Message>
+      <Message>							</Message>
       <Command>setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -DNOX_ENGINE_ROOT=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine\" -DNOX_ENGINE_OUTPUT_DIR=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Release\" -DNOX_ENGINE_BUILD_CONFIG=\"Release\" -P C:/Users/desti/Documents/GithubStuff/Nox_Engine/cmake/EnsureRuntimeAssets.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/Release
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -353,8 +371,17 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
     <PostBuildEvent>
-      <Message>						</Message>
+      <Message>							</Message>
       <Command>setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -DNOX_ENGINE_ROOT=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine\" -DNOX_ENGINE_OUTPUT_DIR=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/MinSizeRel\" -DNOX_ENGINE_BUILD_CONFIG=\"MinSizeRel\" -P C:/Users/desti/Documents/GithubStuff/Nox_Engine/cmake/EnsureRuntimeAssets.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/MinSizeRel
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
@@ -467,8 +494,17 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
     <PostBuildEvent>
-      <Message>						</Message>
+      <Message>							</Message>
       <Command>setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -DNOX_ENGINE_ROOT=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine\" -DNOX_ENGINE_OUTPUT_DIR=\"C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/RelWithDebInfo\" -DNOX_ENGINE_BUILD_CONFIG=\"RelWithDebInfo\" -P C:/Users/desti/Documents/GithubStuff/Nox_Engine/cmake/EnsureRuntimeAssets.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+setlocal
 "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different C:/Users/desti/Documents/GithubStuff/Nox_Engine/SDL2.dll C:/Users/desti/Documents/GithubStuff/Nox_Engine/build/vs2022-x64/RelWithDebInfo
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
