@@ -305,10 +305,7 @@ void SceneGraph::SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, Enti
 	
 	// Update parent relationship
 	if (parentID != INVALID_ENTITY) {
-		TransformComponent* transform = node->GetTransformComponent();
-		if (transform) {
-			transform->parentID = parentID;
-		}
+		m_componentManager.SetParent(node->GetEntityID(), parentID);
 	}
 	
 	// Recursively sync children

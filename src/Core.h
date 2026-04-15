@@ -313,6 +313,7 @@ private:
     std::string m_currentSceneFilePath;
     float m_exposure;
     float m_gamma;
+    bool m_sceneHasAudioNodes;
 
 
     // Physics (owned)

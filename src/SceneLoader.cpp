@@ -17,13 +17,81 @@
 #include <iostream>
 #include <ctime>
 #include <unordered_map>
+#include <functional>
+#include <cmath>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 using json = nlohmann::json;
 
 namespace {
-float ComputeRenderableBoundingRadius(const Scene& model, const std::vector<uint32_t>& meshIndices)
+constexpr bool kVerboseEntityCreationLogs = false;
+constexpr float kImportedTransformTolerance = 1e-3f;
+
+bool IsFiniteMatrix(const glm::mat4& m)
+{
+	for (int c = 0; c < 4; ++c) {
+		for (int r = 0; r < 4; ++r) {
+			if (!std::isfinite(m[c][r])) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+float MaxMatrixAbsDelta(const glm::mat4& a, const glm::mat4& b)
+{
+	float delta = 0.0f;
+	for (int c = 0; c < 4; ++c) {
+		for (int r = 0; r < 4; ++r) {
+			delta = std::max(delta, std::abs(a[c][r] - b[c][r]));
+		}
+	}
+	return delta;
+}
+
+std::vector<glm::mat4> ComputeModelNodeWorldTransforms(const Scene& model)
+{
+	std::vector<glm::mat4> world(model.nodes.size(), glm::mat4(1.0f));
+	std::vector<uint8_t> state(model.nodes.size(), 0u);
+
+	std::function<glm::mat4(int)> computeWorld = [&](int nodeIndex) -> glm::mat4 {
+		if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
+			return glm::mat4(1.0f);
+		}
+
+		if (state[nodeIndex] == 2u) {
+			return world[nodeIndex];
+		}
+
+		if (state[nodeIndex] == 1u) {
+			// Defensive cycle break for malformed content.
+			return model.nodes[nodeIndex].localTransform;
+		}
+
+		state[nodeIndex] = 1u;
+		const Scene::NodeInfo& nodeInfo = model.nodes[nodeIndex];
+		glm::mat4 local = IsFiniteMatrix(nodeInfo.localTransform)
+			? nodeInfo.localTransform
+			: glm::mat4(1.0f);
+		glm::mat4 nodeWorld = local;
+		if (nodeInfo.parent >= 0) {
+			nodeWorld = computeWorld(nodeInfo.parent) * local;
+		}
+		world[nodeIndex] = nodeWorld;
+		state[nodeIndex] = 2u;
+		return nodeWorld;
+	};
+
+	for (size_t i = 0; i < model.nodes.size(); ++i) {
+		computeWorld(static_cast<int>(i));
+	}
+
+	return world;
+}
+
+float ComputeRenderableBoundingRadius(const Scene& model, const std::vector<uint32_t>& meshIndices, int referenceNodeIndex)
 {
 	float radius = 1.0f;
 	bool foundMesh = false;
@@ -1134,12 +1202,15 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 	ComponentManager* componentManager = m_currentSceneGraph->GetComponentManager();
 	if (!componentManager) return;
 
+	const glm::mat4 authoredLocalTransform = node->GetTransform();
+	const glm::mat4 authoredAnimatedTransform = node->GetAnimatedTransform();
+
 	// Skip if entity already exists
 	if (node->GetEntityID() != INVALID_ENTITY) {
-		// Just update parent relationship
-		TransformComponent* transform = node->GetTransformComponent();
-		if (transform && parentID != INVALID_ENTITY) {
-			transform->parentID = parentID;
+		// Keep ECS adjacency authoritative whenever an existing node is reattached.
+		componentManager->SetParent(node->GetEntityID(), parentID);
+		if (TransformComponent* transform = node->GetTransformComponent()) {
+			transform->isDirty = true;
 		}
 		return;
 	}
@@ -1164,11 +1235,11 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 
 	// Create TransformComponent
 	TransformComponent transformComp;
-	transformComp.localTransform = node->GetTransform();
-	transformComp.animatedTransform = node->GetAnimatedTransform();
+	transformComp.localTransform = authoredLocalTransform;
+	transformComp.animatedTransform = authoredAnimatedTransform;
 	transformComp.worldTransform = glm::mat4(1.0f);
 	transformComp.isDirty = true;
-	transformComp.parentID = parentID;
+	transformComp.parentID = INVALID_ENTITY;
 
 	componentManager->AddTransform(entityID, transformComp);
 	componentManager->SetParent(entityID, parentID);
@@ -1183,8 +1254,10 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 		CreateAnimationComponent(node, node->GetModel());
 	}
 
-	std::cout << "[SceneLoader] Created ECS entity " << entityID << " for node: " << nodeName
-		<< " (parent=" << parentID << ")" << std::endl;
+	if constexpr (kVerboseEntityCreationLogs) {
+		std::cout << "[SceneLoader] Created ECS entity " << entityID << " for node: " << nodeName
+			<< " (parent=" << parentID << ")" << std::endl;
+	}
 }
 
 void SceneLoader::CreateRenderableComponent(std::shared_ptr<SceneNode> node, const std::shared_ptr<Scene>& model) {
@@ -1228,8 +1301,10 @@ void SceneLoader::CreateRenderableComponent(std::shared_ptr<SceneNode> node, con
 
 	componentManager->AddRenderable(entityID, renderComp);
 
-	std::cout << "[SceneLoader] Created RenderableComponent for entity " << entityID
-		<< " with " << model->meshes.size() << " meshes" << std::endl;
+	if constexpr (kVerboseEntityCreationLogs) {
+		std::cout << "[SceneLoader] Created RenderableComponent for entity " << entityID
+			<< " with " << model->meshes.size() << " meshes" << std::endl;
+	}
 }
 
 void SceneLoader::CreateExistingChildEntitiesRecursive(const std::shared_ptr<SceneNode>& node, EntityID parentID)
@@ -1248,45 +1323,53 @@ void SceneLoader::CreateExistingChildEntitiesRecursive(const std::shared_ptr<Sce
 
 void SceneLoader::BuildImportedMeshNodeChildren(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<Scene>& model)
 {
-	if (!node || !model || model->meshes.empty()) {
+	if (!node || !model || model->nodes.empty()) {
 		return;
 	}
 
-	std::unordered_map<int, std::vector<uint32_t>> meshesBySourceNode;
-	std::vector<uint32_t> rootMeshIndices;
+	const std::vector<glm::mat4> sourceWorldTransforms = ComputeModelNodeWorldTransforms(*model);
 
-	for (uint32_t meshIndex = 0; meshIndex < static_cast<uint32_t>(model->meshes.size()); ++meshIndex) {
-		const MeshComponent& mesh = model->meshes[meshIndex];
-		if (mesh.sourceNodeIndex >= 0) {
-			meshesBySourceNode[mesh.sourceNodeIndex].push_back(meshIndex);
+	std::vector<uint32_t> rootMeshIndices;
+	std::vector<bool> meshAttached(model->meshes.size(), false);
+	for (const Scene::NodeInfo& nodeInfo : model->nodes) {
+		for (uint32_t meshIndex : nodeInfo.meshIndices) {
+			if (meshIndex < meshAttached.size()) {
+				meshAttached[meshIndex] = true;
+			}
 		}
-		else {
+	}
+	for (uint32_t meshIndex = 0; meshIndex < static_cast<uint32_t>(meshAttached.size()); ++meshIndex) {
+		if (!meshAttached[meshIndex]) {
 			rootMeshIndices.push_back(meshIndex);
 		}
 	}
 
-	if (meshesBySourceNode.empty()) {
-		return;
-	}
-
 	node->renderWholeModel = false;
 	node->renderMeshIndices = rootMeshIndices;
-	node->boundingRadius = ComputeRenderableBoundingRadius(*model, rootMeshIndices);
+	node->boundingRadius = ComputeRenderableBoundingRadius(*model, rootMeshIndices, -1);
 
 	ComponentManager* componentManager = m_currentSceneGraph ? m_currentSceneGraph->GetComponentManager() : nullptr;
 	TransformSystem* transformSystem = m_currentSceneGraph ? m_currentSceneGraph->GetTransformSystem() : nullptr;
 
+	size_t invalidLocalTransformCount = 0;
+	size_t reparentedToRootCount = 0;
+	size_t correctedLocalTransformCount = 0;
+
 	std::vector<std::shared_ptr<SceneNode>> importedNodes(model->nodes.size());
 	for (size_t nodeIndex = 0; nodeIndex < model->nodes.size(); ++nodeIndex) {
 		const Scene::NodeInfo& nodeInfo = model->nodes[nodeIndex];
-		const auto meshIt = meshesBySourceNode.find(static_cast<int>(nodeIndex));
-		const bool hasRenderableMeshes = meshIt != meshesBySourceNode.end() && !meshIt->second.empty();
+		const bool hasRenderableMeshes = !nodeInfo.meshIndices.empty();
+		glm::mat4 localTransform = nodeInfo.localTransform;
+		if (!IsFiniteMatrix(localTransform)) {
+			localTransform = glm::mat4(1.0f);
+			++invalidLocalTransformCount;
+		}
 
 		auto importedNode = std::make_shared<SceneNode>(componentManager, transformSystem);
 		importedNode->SetNodeType(hasRenderableMeshes ? SceneNode::MODEL : SceneNode::NODE);
 		importedNode->SetShader(node->GetShader());
 		importedNode->SetCullingOverride(node->GetCullingOverride());
-		importedNode->SetTransform(nodeInfo.localTransform);
+		importedNode->SetTransform(localTransform);
 		importedNode->SetName(!nodeInfo.name.empty()
 			? nodeInfo.name
 			: node->GetName() + "_node_" + std::to_string(nodeIndex));
@@ -1295,8 +1378,8 @@ void SceneLoader::BuildImportedMeshNodeChildren(const std::shared_ptr<SceneNode>
 		if (hasRenderableMeshes) {
 			importedNode->SetModel(model);
 			importedNode->renderWholeModel = false;
-			importedNode->renderMeshIndices = meshIt->second;
-			importedNode->boundingRadius = ComputeRenderableBoundingRadius(*model, meshIt->second);
+			importedNode->renderMeshIndices = nodeInfo.meshIndices;
+			importedNode->boundingRadius = ComputeRenderableBoundingRadius(*model, nodeInfo.meshIndices, static_cast<int>(nodeIndex));
 		}
 
 		importedNodes[nodeIndex] = importedNode;
@@ -1313,8 +1396,76 @@ void SceneLoader::BuildImportedMeshNodeChildren(const std::shared_ptr<SceneNode>
 			importedNodes[parentIndex]->AddChild(importedNode);
 		}
 		else {
+			if (parentIndex >= 0 && nodeIndex < sourceWorldTransforms.size()) {
+				// Preserve authored world placement if malformed parent links force a root fallback.
+				importedNode->SetTransform(sourceWorldTransforms[nodeIndex]);
+				++reparentedToRootCount;
+			}
 			node->AddChild(importedNode);
 		}
+	}
+
+	std::unordered_map<int, glm::mat4> importedWorldCache;
+	std::function<glm::mat4(int)> computeImportedWorld = [&](int nodeIndex) -> glm::mat4 {
+		auto cached = importedWorldCache.find(nodeIndex);
+		if (cached != importedWorldCache.end()) {
+			return cached->second;
+		}
+
+		if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model->nodes.size()) || !importedNodes[nodeIndex]) {
+			return glm::mat4(1.0f);
+		}
+
+		glm::mat4 localTransform = importedNodes[nodeIndex]->GetTransform();
+		if (!IsFiniteMatrix(localTransform)) {
+			localTransform = glm::mat4(1.0f);
+		}
+
+		const int parentIndex = model->nodes[nodeIndex].parent;
+		glm::mat4 worldTransform = (parentIndex >= 0)
+			? computeImportedWorld(parentIndex) * localTransform
+			: localTransform;
+		importedWorldCache[nodeIndex] = worldTransform;
+		return worldTransform;
+	};
+
+	for (size_t nodeIndex = 0; nodeIndex < importedNodes.size(); ++nodeIndex) {
+		if (!importedNodes[nodeIndex] || nodeIndex >= sourceWorldTransforms.size()) {
+			continue;
+		}
+
+		glm::mat4 importedWorld = computeImportedWorld(static_cast<int>(nodeIndex));
+		const glm::mat4& sourceWorld = sourceWorldTransforms[nodeIndex];
+		if (!IsFiniteMatrix(importedWorld) || !IsFiniteMatrix(sourceWorld)) {
+			continue;
+		}
+
+		if (MaxMatrixAbsDelta(importedWorld, sourceWorld) <= kImportedTransformTolerance) {
+			continue;
+		}
+
+		glm::mat4 correctedLocal = sourceWorld;
+		const int parentIndex = model->nodes[nodeIndex].parent;
+		if (parentIndex >= 0 && parentIndex < static_cast<int>(sourceWorldTransforms.size())) {
+			glm::mat4 parentInverse = glm::inverse(sourceWorldTransforms[parentIndex]);
+			if (IsFiniteMatrix(parentInverse)) {
+				correctedLocal = parentInverse * sourceWorld;
+			}
+		}
+
+		if (IsFiniteMatrix(correctedLocal)) {
+			importedNodes[nodeIndex]->SetTransform(correctedLocal);
+			importedWorldCache.clear();
+			++correctedLocalTransformCount;
+		}
+	}
+
+	if (invalidLocalTransformCount > 0 || reparentedToRootCount > 0 || correctedLocalTransformCount > 0) {
+		std::cout << "[SceneLoader] Imported transform diagnostics for model node '" << node->GetName()
+			<< "': invalidLocal=" << invalidLocalTransformCount
+			<< ", reparentedToRoot=" << reparentedToRootCount
+			<< ", correctedLocal=" << correctedLocalTransformCount
+			<< std::endl;
 	}
 }
 
@@ -1337,8 +1488,10 @@ void SceneLoader::CreateAnimationComponent(std::shared_ptr<SceneNode> node, cons
 
 	componentManager->AddAnimation(entityID, animComp);
 
-	std::cout << "[SceneLoader] Created AnimationComponent for entity " << entityID
-		<< " with " << model->animations.size() << " animations available" << std::endl;
+	if constexpr (kVerboseEntityCreationLogs) {
+		std::cout << "[SceneLoader] Created AnimationComponent for entity " << entityID
+			<< " with " << model->animations.size() << " animations available" << std::endl;
+	}
 }
 
 void SceneLoader::ReportProgress(float progress, const std::string& stage) {

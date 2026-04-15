@@ -36,6 +36,7 @@ ComponentManager::ComponentManager() {
 	m_metadata.reserve(1024);
 	m_nameToEntity.reserve(1024);
 	m_childrenByParent.reserve(1024);
+	m_pendingTransformUpdates.reserve(256);
 }
 
 ComponentManager::~ComponentManager() {
@@ -156,6 +157,7 @@ TransformComponent* ComponentManager::AddTransform(EntityID entity, const Transf
 	m_transforms.Add(entity, initialized);
 	auto metadata = GetMetadata(entity);
 	if (metadata) metadata->AddComponent(ComponentType::TRANSFORM);
+	QueueTransformUpdate(entity);
 	return GetTransform(entity);
 }
 
@@ -193,6 +195,7 @@ void ComponentManager::RemoveTransform(EntityID entity) {
 				if (childTransform) {
 					childTransform->parentID = INVALID_ENTITY;
 					childTransform->isDirty = true;
+					QueueTransformUpdate(childID);
 				}
 			}
 			m_childrenByParent.erase(childrenIt);
@@ -447,11 +450,24 @@ void ComponentManager::SetParent(EntityID child, EntityID parent) {
 	if (!childTransform) return;
 
 	const EntityID oldParentID = childTransform->parentID;
-	if (oldParentID == parent) {
+	if (parent != INVALID_ENTITY && (!IsEntityValid(parent) || !HasTransform(parent))) {
 		return;
 	}
 
-	if (parent != INVALID_ENTITY && (!IsEntityValid(parent) || !HasTransform(parent))) {
+	// Even if the logical parent is unchanged, we still need to guarantee the
+	// authoritative child adjacency cache contains this relationship. Imported
+	// glTF hierarchies rely on that cache for dirty propagation and descendant
+	// updates, so an early-out here can leave empty-parent chains detached.
+	if (oldParentID == parent) {
+		if (parent != INVALID_ENTITY) {
+			auto& children = m_childrenByParent[parent];
+			if (std::find(children.begin(), children.end(), child) == children.end()) {
+				children.push_back(child);
+			}
+		}
+		childTransform->isDirty = true;
+		QueueTransformUpdate(child);
+		assert(ValidateHierarchyIntegrity());
 		return;
 	}
 
@@ -475,6 +491,7 @@ void ComponentManager::SetParent(EntityID child, EntityID parent) {
 	// Set new parent
 	childTransform->parentID = parent;
 	childTransform->isDirty = true;
+	QueueTransformUpdate(child);
 
 	// Add to new parent's adjacency list
 	if (parent != INVALID_ENTITY) {
@@ -485,6 +502,28 @@ void ComponentManager::SetParent(EntityID child, EntityID parent) {
 	}
 
 	assert(ValidateHierarchyIntegrity());
+}
+
+void ComponentManager::QueueTransformUpdate(EntityID entity) {
+	if (entity == INVALID_ENTITY || !HasTransform(entity)) {
+		return;
+	}
+
+	if (std::find(m_pendingTransformUpdates.begin(), m_pendingTransformUpdates.end(), entity) ==
+		m_pendingTransformUpdates.end()) {
+		m_pendingTransformUpdates.push_back(entity);
+		++m_transformUpdateRevision;
+	}
+}
+
+std::vector<EntityID> ComponentManager::ConsumePendingTransformUpdates() {
+	std::vector<EntityID> updates;
+	updates.swap(m_pendingTransformUpdates);
+	return updates;
+}
+
+size_t ComponentManager::GetPendingTransformUpdateCount() const {
+	return m_pendingTransformUpdates.size();
 }
 
 EntityID ComponentManager::GetParent(EntityID entity) const {
@@ -571,6 +610,7 @@ void ComponentManager::Clear() {
 	m_metadata.clear();
 	m_nameToEntity.clear();
 	m_childrenByParent.clear();
+	m_pendingTransformUpdates.clear();
 	m_freeEntityIDs.clear();
 	m_nextEntityID = 1;
 	m_nextTransformID = 1;

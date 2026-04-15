@@ -8,6 +8,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <array>
 #include <limits>
 #include <cstdint>
@@ -77,6 +78,7 @@ public:
     size_t GetCulledEntityCount() const { return m_totalCount - m_visibleCount; }
     GLuint GetTransformBufferID() const { return m_transformBuffer ? m_transformBuffer->GetID() : 0; }
     size_t GetTransformRecordCount() const { return m_gpuTransformRecords.size(); }
+    size_t GetTransformUploadCount() const { return m_transformUploadCount; }
 
     // Rendering overrides
     void SetForceBackfaceCulling(bool force) { m_forceBackfaceCulling = force; }
@@ -160,10 +162,11 @@ private:
     void UploadTransformUniforms(EntityID entity,
                                  const glm::mat4& modelTransform,
                                  const ShaderUniformCache& uniforms);
-    void ApplyCullingState(const MeshComponent& mesh, CullingOverride override);
+    void ApplyCullingState(const MeshComponent& mesh, CullingOverride override, const glm::mat4& modelTransform);
     void UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms);
     void UpdateGpuTransformBuffer();
     void EnsureTransformBuffer();
+    void PrepareFrameTransforms();
     
     // Batch processing helpers
     struct RenderBatch {
@@ -199,7 +202,11 @@ private:
 
     GLBufferPtr m_transformBuffer;
     std::vector<GpuTransformRecord> m_gpuTransformRecords;
+    size_t m_transformUploadCount = 0;
+    uint64_t m_lastPreparedTransformRevision = 0;
     std::array<GLuint, 8> m_boundMaterialTextures{};
     GLuint m_cachedMaterialShader = 0;
     uint32_t m_cachedMaterialID = std::numeric_limits<uint32_t>::max();
+    std::unordered_map<EntityID, std::vector<glm::mat4>> m_cachedBoneMatrices;
+    std::unordered_set<EntityID> m_warnedBoneLimitEntities;
 };

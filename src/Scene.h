@@ -24,7 +24,7 @@
  * The Scene class holds:
  *   - Mesh data (vertex/index buffers) for all primitives
  *   - A glTF node hierarchy (nodes[]), each with a local transform
- *   - A Skin structure (joints + inverseBindMatrices) if it’s a skinned mesh
+ *   - A Skin structure (joints + inverseBindMatrices) if it's a skinned mesh
  *   - Animations loaded from glTF
  */
 class Scene {
@@ -39,9 +39,12 @@ public:
     // Node info from the glTF: local transform, parent index, and child indices
     struct NodeInfo {
         std::string name;
+        int gltfNodeIndex = -1;
         glm::mat4 localTransform = glm::mat4(1.0f);
         int parent = -1;
         std::vector<int> children;
+        std::vector<uint32_t> meshIndices;
+        int skinIndex = -1;
     };
     std::vector<NodeInfo> nodes;
 
@@ -51,7 +54,9 @@ public:
         std::vector<glm::mat4> inverseBindMatrices;
     };
     Skin skin;
-    bool hasSkin = false;
+    bool hasSkin = false;          // Runtime skinning required (weighted JOINTS/WEIGHTS present)
+    bool hasSkinMetadata = false;  // glTF declared one or more skins
+    bool hasWeightedSkinData = false;
     bool hasTangents = false;
 
     // Loads the scene from a glTF file (ASCII or binary), including PBR material textures.
@@ -72,4 +77,3 @@ public:
         return !m_model_name.empty() ? m_model_name : "No name";
     }
 };
-

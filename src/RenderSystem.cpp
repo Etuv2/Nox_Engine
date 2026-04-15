@@ -8,11 +8,30 @@
 #include <algorithm>
 #include <iostream>
 #include <cmath>
+#include <unordered_map>
 
 namespace {
 	constexpr GLuint kGlobalTransformBufferBinding = 6;
 	constexpr uint32_t kTransformFlagRenderable = 1u << 0;
 	constexpr uint32_t kTransformFlagSkinned = 1u << 1;
+
+	float ExtractMaxScale(const glm::mat4& transform)
+	{
+		const glm::vec3 basisX(transform[0]);
+		const glm::vec3 basisY(transform[1]);
+		const glm::vec3 basisZ(transform[2]);
+		return std::max({ glm::length(basisX), glm::length(basisY), glm::length(basisZ), 1e-6f });
+	}
+
+	glm::vec3 ComputeMeshCenterWS(const glm::mat4& worldTransform, const MeshComponent& mesh)
+	{
+		return glm::vec3(worldTransform * glm::vec4(mesh.boundingCenter, 1.0f));
+	}
+
+	float ComputeMeshRadiusWS(const glm::mat4& worldTransform, const MeshComponent& mesh)
+	{
+		return mesh.boundingRadius * ExtractMaxScale(worldTransform);
+	}
 
 	template <typename Fn>
 	void ForEachRenderableMesh(const RenderableComponent& renderable, Fn&& fn)
@@ -34,6 +53,51 @@ namespace {
 			}
 		}
 	}
+
+	int ResolveRenderableNodeIndex(const RenderableComponent& renderable)
+	{
+		return renderable.nodeIndex;
+	}
+
+	glm::mat4 ResolveAnimatedNodeLocalTransform(const Scene& model, int nodeIndex, const AnimationComponent* animation)
+	{
+		if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
+			return glm::mat4(1.0f);
+		}
+
+		if (animation &&
+			(animation->isPlaying || animation->isPaused) &&
+			animation->currentAnimationIndex >= 0 &&
+			animation->currentAnimationIndex < static_cast<int>(model.animations.size())) {
+			const Animation& activeAnimation = model.animations[animation->currentAnimationIndex];
+			return activeAnimation.GetBoneTransformForNode(nodeIndex, animation->animationTime, model);
+		}
+
+		return model.nodes[nodeIndex].localTransform;
+	}
+
+	glm::mat4 ComputeAnimatedNodeWorldTransform(const Scene& model,
+		int nodeIndex,
+		const AnimationComponent* animation,
+		std::unordered_map<int, glm::mat4>& cache)
+	{
+		if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
+			return glm::mat4(1.0f);
+		}
+
+		auto cacheIt = cache.find(nodeIndex);
+		if (cacheIt != cache.end()) {
+			return cacheIt->second;
+		}
+
+		const Scene::NodeInfo& nodeInfo = model.nodes[nodeIndex];
+		glm::mat4 localTransform = ResolveAnimatedNodeLocalTransform(model, nodeIndex, animation);
+		glm::mat4 worldTransform = (nodeInfo.parent >= 0)
+			? ComputeAnimatedNodeWorldTransform(model, nodeInfo.parent, animation, cache) * localTransform
+			: localTransform;
+		cache[nodeIndex] = worldTransform;
+		return worldTransform;
+	}
 }
 
 RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* transformSystem)
@@ -41,6 +105,25 @@ RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* 
 	, m_transformSystem(transformSystem)
 {
 	m_renderQueue.reserve(256);
+}
+
+void RenderSystem::PrepareFrameTransforms()
+{
+	if (!m_componentManager || !m_transformSystem) {
+		return;
+	}
+
+	const uint64_t currentRevision = m_componentManager->GetTransformUpdateRevision();
+	if (m_lastPreparedTransformRevision == currentRevision &&
+		m_transformBuffer &&
+		m_transformBuffer->IsValid() &&
+		!m_gpuTransformRecords.empty()) {
+		return;
+	}
+
+	m_transformSystem->UpdateTransforms();
+	UpdateGpuTransformBuffer();
+	m_lastPreparedTransformRevision = currentRevision;
 }
 
 const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLuint shader)
@@ -111,9 +194,8 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 {
 	if (!m_componentManager || !m_transformSystem) return;
 
-	// Update all transforms first
-	m_transformSystem->UpdateTransforms();
-	UpdateGpuTransformBuffer();
+	PrepareFrameTransforms();
+	m_cachedBoneMatrices.clear();
 
 	glUseProgram(defaultShader);
 	ResetMaterialStateCache(defaultShader);
@@ -143,20 +225,18 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 
 		// Get world transform
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
+		bool entityVisible = false;
 
-		// Frustum culling
-		if (m_frustumValid) {
-			glm::vec3 center = glm::vec3(worldTransform[3]);
-			if (!IsSphereVisible(center, renderable.boundingRadius)) {
-				continue; // Culled
-			}
-		}
-
-		m_visibleCount++;
-
-		// Upload model matrix
-		// Draw each mesh in the model
 		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			if (m_frustumValid) {
+				const glm::vec3 centerWS = ComputeMeshCenterWS(worldTransform, mesh);
+				const float radiusWS = ComputeMeshRadiusWS(worldTransform, mesh);
+				if (!IsSphereVisible(centerWS, radiusWS)) {
+					return;
+				}
+			}
+
+			entityVisible = true;
 			UploadTransformUniforms(entityID, worldTransform, uniforms);
 
 			if (renderable.isSkinned) {
@@ -167,7 +247,7 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 				glUniform1i(uniforms.uEnableSkinning, 0);
 			}
 
-			ApplyCullingState(mesh, renderable.cullingOverride);
+			ApplyCullingState(mesh, renderable.cullingOverride, worldTransform);
 
 			// Handle alpha blending
 			if (mesh.RequiresAlphaBlending()) {
@@ -193,6 +273,10 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 				glDepthMask(GL_TRUE);
 			}
 		});
+
+		if (entityVisible) {
+			m_visibleCount++;
+		}
 	}
 }
 
@@ -203,8 +287,8 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 		return;
 	}
 
-	m_transformSystem->UpdateTransforms();
-	UpdateGpuTransformBuffer();
+	PrepareFrameTransforms();
+	m_cachedBoneMatrices.clear();
 	glUseProgram(geometryShader);
 	ResetMaterialStateCache(geometryShader);
 	EnsureTransformBuffer();
@@ -241,21 +325,20 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 		if (!renderable.model) continue;
 
 		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
-
-		// Frustum culling
-		if (m_frustumValid) {
-			glm::vec3 center = glm::vec3(worldTransform[3]);
-			if (!IsSphereVisible(center, renderable.boundingRadius)) {
-				continue;
-			}
-		}
-
-		m_visibleCount++;
+		bool entityVisible = false;
 
 		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
 			// Skip transparent meshes in deferred pass
 			if (mesh.RequiresAlphaBlending()) {
 				return;
+			}
+
+			if (m_frustumValid) {
+				const glm::vec3 centerWS = ComputeMeshCenterWS(worldTransform, mesh);
+				const float radiusWS = ComputeMeshRadiusWS(worldTransform, mesh);
+				if (!IsSphereVisible(centerWS, radiusWS)) {
+					return;
+				}
 			}
 
 			OpaqueDraw draw;
@@ -264,7 +347,12 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 			draw.worldTransform = worldTransform;
 			draw.sortKey = (static_cast<uint64_t>(mesh.material.stableMaterialID) << 32u) | static_cast<uint64_t>(mesh.VAO);
 			opaqueDraws.push_back(draw);
+			entityVisible = true;
 		});
+
+		if (entityVisible) {
+			m_visibleCount++;
+		}
 	}
 
 	std::sort(opaqueDraws.begin(), opaqueDraws.end(),
@@ -291,7 +379,7 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 			glUniform1i(uniforms.uEnableSkinning, 0);
 		}
 
-		ApplyCullingState(*draw.mesh, renderable->cullingOverride);
+		ApplyCullingState(*draw.mesh, renderable->cullingOverride, draw.worldTransform);
 		BindMaterialTextures(*draw.mesh, uniforms);
 		UploadMaterialUniforms(*draw.mesh, uniforms);
 
@@ -311,8 +399,8 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 {
 	if (!m_componentManager || !m_transformSystem) return;
 
-	m_transformSystem->UpdateTransforms();
-	UpdateGpuTransformBuffer();
+	PrepareFrameTransforms();
+	m_cachedBoneMatrices.clear();
 	glUseProgram(shadowShader);
 	ResetMaterialStateCache(shadowShader);
 	EnsureTransformBuffer();
@@ -344,7 +432,7 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 				glUniform1i(uniforms.uEnableSkinning, 0);
 			}
 
-			ApplyCullingState(mesh, renderable.cullingOverride);
+			ApplyCullingState(mesh, renderable.cullingOverride, worldTransform);
 			if (currentVAO != mesh.VAO) {
 				glBindVertexArray(mesh.VAO);
 				currentVAO = mesh.VAO;
@@ -365,8 +453,8 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 {
 	if (!m_componentManager || !m_transformSystem) return;
 
-	m_transformSystem->UpdateTransforms();
-	UpdateGpuTransformBuffer();
+	PrepareFrameTransforms();
+	m_cachedBoneMatrices.clear();
 	glUseProgram(velocityShader);
 	ResetMaterialStateCache(velocityShader);
 	EnsureTransformBuffer();
@@ -399,7 +487,7 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 				glUniform1i(uniforms.uEnableSkinning, 0);
 			}
 
-			ApplyCullingState(mesh, renderable.cullingOverride);
+			ApplyCullingState(mesh, renderable.cullingOverride, worldTransform);
 
 			glBindVertexArray(mesh.VAO);
 			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
@@ -412,8 +500,7 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 {
 	if (!m_componentManager || !m_transformSystem) return;
 
-	m_transformSystem->UpdateTransforms();
-	UpdateGpuTransformBuffer();
+	PrepareFrameTransforms();
 
 	auto& renderablePool = m_componentManager->GetRenderablePool();
 	for (auto& entry : renderablePool) {
@@ -452,8 +539,8 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 	GLuint transparentShader)
 {
 	if (!m_componentManager || !m_transformSystem) return;
-	m_transformSystem->UpdateTransforms();
-	UpdateGpuTransformBuffer();
+	PrepareFrameTransforms();
+	m_cachedBoneMatrices.clear();
 
 	glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]);
 
@@ -471,8 +558,9 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 				return;
 			}
 
-			glm::vec3 centerWS = glm::vec3(worldTransform * glm::vec4(mesh.boundingCenter, 1.0f));
-			if (m_frustumValid && !IsSphereVisible(centerWS, mesh.boundingRadius)) {
+			glm::vec3 centerWS = ComputeMeshCenterWS(worldTransform, mesh);
+			float radiusWS = ComputeMeshRadiusWS(worldTransform, mesh);
+			if (m_frustumValid && !IsSphereVisible(centerWS, radiusWS)) {
 				return;
 			}
 			float dist = glm::length(centerWS - cameraPos);
@@ -517,7 +605,7 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 			glUniform1i(uniforms.uEnableSkinning, 0);
 		}
 
-		ApplyCullingState(*batch.mesh, renderable->cullingOverride);
+		ApplyCullingState(*batch.mesh, renderable->cullingOverride, worldTransform);
 		BindMaterialTextures(*batch.mesh, uniforms);
 		UploadMaterialUniforms(*batch.mesh, uniforms);
 
@@ -700,8 +788,15 @@ void RenderSystem::UploadTransformUniforms(EntityID entity,
 	}
 }
 
-void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride override)
+void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride override, const glm::mat4& modelTransform)
 {
+	GLenum frontFace = GL_CCW;
+	const float determinant = glm::determinant(glm::mat3(modelTransform));
+	if (std::isfinite(determinant) && determinant < 0.0f) {
+		frontFace = GL_CW;
+	}
+	glFrontFace(frontFace);
+
 	// If force backface culling is enabled globally, always cull back faces
 	if (m_forceBackfaceCulling) {
 		glEnable(GL_CULL_FACE);
@@ -757,61 +852,115 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 void RenderSystem::UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms)
 {
 	auto* renderable = m_componentManager->GetRenderable(entity);
-	if (!renderable || !renderable->isSkinned) return;
+	if (!renderable || !renderable->isSkinned || !renderable->model) return;
 
-	// Compute bone matrices using the actual bone hierarchy
-	std::vector<glm::mat4> boneMatrices;
-	size_t numBones = renderable->boneInverseBindMatrices.size();
+	constexpr size_t kMaxShaderBones = 128;
+	const size_t numBones = renderable->boneInverseBindMatrices.size();
 	if (numBones == 0) return;
 
-	boneMatrices.resize(numBones, glm::mat4(1.0f));
-
-	// Get the skinned mesh's world transform (for proper coordinate space)
-	glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
-
-	// Validate meshWorldInverse - if the mesh transform is degenerate, use identity
-	bool meshInverseValid = true;
-	for (int c = 0; c < 4 && meshInverseValid; ++c) {
-		for (int r = 0; r < 4 && meshInverseValid; ++r) {
-			if (!std::isfinite(meshWorldInverse[c][r])) {
-				meshInverseValid = false;
-			}
+	auto cacheIt = m_cachedBoneMatrices.find(entity);
+	if (cacheIt == m_cachedBoneMatrices.end()) {
+		if (numBones > kMaxShaderBones && m_warnedBoneLimitEntities.insert(entity).second) {
+			std::cout << "[RenderSystem] Skinned entity " << entity
+				<< " has " << numBones << " bones; clamping to shader limit " << kMaxShaderBones << std::endl;
 		}
-	}
-	if (!meshInverseValid) {
-		meshWorldInverse = glm::mat4(1.0f);
-	}
 
-	// Compute final bone matrices:
-	// boneMatrix[i] = inverse(meshWorld) * boneWorld[i] * inverseBindMatrix[i]
-	for (size_t i = 0; i < numBones && i < renderable->boneNodes.size(); ++i) {
-		if (renderable->boneNodes[i]) {
-			// Get world transform of bone node (includes animation)
-			glm::mat4 boneWorld = renderable->boneNodes[i]->GetWorldPosition4x4();
+		const size_t computeBoneCount = std::min(numBones, kMaxShaderBones);
+		std::vector<glm::mat4> boneMatrices(computeBoneCount, glm::mat4(1.0f));
+		const Scene& model = *renderable->model;
+		const AnimationComponent* animation = m_componentManager->GetAnimation(entity);
+		const bool useLegacyBoneNodeWorlds = animation && animation->controller && animation->controller->HasActiveAnimations();
 
-			// Compute final bone matrix
-			glm::mat4 boneMatrix = meshWorldInverse * boneWorld * renderable->boneInverseBindMatrices[i];
-
-			// Validate the bone matrix - if any component is NaN or Inf, use identity
-			bool valid = true;
-			for (int c = 0; c < 4 && valid; ++c) {
-				for (int r = 0; r < 4 && valid; ++r) {
-					if (!std::isfinite(boneMatrix[c][r])) {
-						valid = false;
+		if (useLegacyBoneNodeWorlds) {
+			glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
+			bool meshInverseValid = true;
+			for (int c = 0; c < 4 && meshInverseValid; ++c) {
+				for (int r = 0; r < 4 && meshInverseValid; ++r) {
+					if (!std::isfinite(meshWorldInverse[c][r])) {
+						meshInverseValid = false;
 					}
 				}
 			}
+			if (!meshInverseValid) {
+				meshWorldInverse = glm::mat4(1.0f);
+			}
 
-			boneMatrices[i] = valid ? boneMatrix : glm::mat4(1.0f);
+			for (size_t i = 0; i < computeBoneCount && i < renderable->boneNodes.size(); ++i) {
+				if (!renderable->boneNodes[i]) {
+					continue;
+				}
+
+				glm::mat4 boneWorld = renderable->boneNodes[i]->GetWorldPosition4x4();
+				glm::mat4 boneMatrix = meshWorldInverse * boneWorld * renderable->boneInverseBindMatrices[i];
+				bool valid = true;
+				for (int c = 0; c < 4 && valid; ++c) {
+					for (int r = 0; r < 4 && valid; ++r) {
+						if (!std::isfinite(boneMatrix[c][r])) {
+							valid = false;
+						}
+					}
+				}
+				boneMatrices[i] = valid ? boneMatrix : glm::mat4(1.0f);
+			}
 		}
+
+		if (!useLegacyBoneNodeWorlds) {
+			std::unordered_map<int, glm::mat4> nodeWorldCache;
+
+			int meshNodeIndex = ResolveRenderableNodeIndex(*renderable);
+			glm::mat4 meshModelTransform = glm::mat4(1.0f);
+			if (meshNodeIndex >= 0) {
+				meshModelTransform = ComputeAnimatedNodeWorldTransform(model, meshNodeIndex, animation, nodeWorldCache);
+			}
+
+			glm::mat4 meshModelInverse = glm::inverse(meshModelTransform);
+			bool meshInverseValid = true;
+			for (int c = 0; c < 4 && meshInverseValid; ++c) {
+				for (int r = 0; r < 4 && meshInverseValid; ++r) {
+					if (!std::isfinite(meshModelInverse[c][r])) {
+						meshInverseValid = false;
+					}
+				}
+			}
+			if (!meshInverseValid) {
+				meshModelInverse = glm::mat4(1.0f);
+			}
+
+			for (size_t i = 0; i < computeBoneCount; ++i) {
+				int jointNodeIndex = (i < model.skin.joints.size()) ? model.skin.joints[i] : -1;
+				if (jointNodeIndex < 0 && i < renderable->boneNodes.size() && renderable->boneNodes[i]) {
+					jointNodeIndex = renderable->boneNodes[i]->nodeIndex;
+				}
+
+				glm::mat4 boneMatrix = glm::mat4(1.0f);
+				if (jointNodeIndex >= 0) {
+					glm::mat4 jointModelWorld = ComputeAnimatedNodeWorldTransform(model, jointNodeIndex, animation, nodeWorldCache);
+					boneMatrix = meshModelInverse * jointModelWorld * renderable->boneInverseBindMatrices[i];
+				}
+
+				bool valid = true;
+				for (int c = 0; c < 4 && valid; ++c) {
+					for (int r = 0; r < 4 && valid; ++r) {
+						if (!std::isfinite(boneMatrix[c][r])) {
+							valid = false;
+						}
+					}
+				}
+
+				boneMatrices[i] = valid ? boneMatrix : glm::mat4(1.0f);
+			}
+		}
+
+		m_cachedBoneMatrices.emplace(entity, std::move(boneMatrices));
+		cacheIt = m_cachedBoneMatrices.find(entity);
 	}
 
-	// Upload to shader
 	GLint locBones = uniforms.uBoneMatrices != -1 ? uniforms.uBoneMatrices : uniforms.bones;
-
-	if (locBones != -1) {
-		size_t uploadCount = std::min(boneMatrices.size(), size_t(128));
-		glUniformMatrix4fv(locBones, static_cast<GLsizei>(uploadCount), GL_FALSE, glm::value_ptr(boneMatrices[0]));
+	if (locBones != -1 && cacheIt != m_cachedBoneMatrices.end() && !cacheIt->second.empty()) {
+		glUniformMatrix4fv(locBones,
+			static_cast<GLsizei>(cacheIt->second.size()),
+			GL_FALSE,
+			glm::value_ptr(cacheIt->second[0]));
 	}
 }
 
@@ -834,17 +983,25 @@ void RenderSystem::UpdateGpuTransformBuffer()
 		return;
 	}
 
-	size_t maxTransformID = 0;
+	const size_t maxTransformID = static_cast<size_t>(m_componentManager->GetMaxAllocatedTransformID());
 	auto& transformPool = m_componentManager->GetTransformPool();
-	for (const auto& entry : transformPool) {
-		maxTransformID = std::max(maxTransformID, static_cast<size_t>(entry.component.transformID));
-	}
 
 	if (maxTransformID == 0) {
+		if (m_transformBuffer && m_transformSystem &&
+			m_transformSystem->GetLastTransformsRecomputedCount() == 0 &&
+			m_gpuTransformRecords.size() == 1) {
+			return;
+		}
 		m_gpuTransformRecords.assign(1, GpuTransformRecord{});
 	}
 	else {
-		m_gpuTransformRecords.assign(maxTransformID + 1, GpuTransformRecord{});
+		const size_t requiredRecordCount = maxTransformID + 1;
+		if (m_transformBuffer && m_transformSystem &&
+			m_transformSystem->GetLastTransformsRecomputedCount() == 0 &&
+			m_gpuTransformRecords.size() == requiredRecordCount) {
+			return;
+		}
+		m_gpuTransformRecords.assign(requiredRecordCount, GpuTransformRecord{});
 	}
 
 	for (auto& record : m_gpuTransformRecords) {
@@ -885,6 +1042,7 @@ void RenderSystem::UpdateGpuTransformBuffer()
 		m_transformBuffer->SetLabel("RenderSystem_GlobalTransformSSBO");
 		m_transformBuffer->SetData(m_gpuTransformRecords);
 	}
+	++m_transformUploadCount;
 }
 
 void RenderSystem::SortRenderQueue(const glm::vec3& cameraPos)

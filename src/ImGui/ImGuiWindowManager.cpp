@@ -373,21 +373,11 @@ void ImGuiWindowManager::RenderGizmoOverlay(int windowWidth, int windowHeight) {
 
 	// Apply transform changes when user is manipulating the gizmo
 	if (ImGuizmo::IsUsing()) {
-
-		// Convert world transform back to local space for the node
-		auto parent = m_selectedNode->parentNode.lock();
-		glm::mat4 localTransform = model;
-
-		if (parent) {
-			glm::mat4 parentWorld = parent->GetWorldPosition4x4();
-			localTransform = glm::inverse(parentWorld) * model;
-		}
-		// Apply the transform to the scene node
-		// This works for ALL node types: mesh, light, camera, etc.
-		m_selectedNode->SetTransform(localTransform);
-
-		// This ensures Transform, Renderable, Light, and other components are in sync
-		m_selectedNode->SyncToECS();
+		// Apply the manipulated WORLD transform through the ECS authority.
+		// This keeps deep imported hierarchies coherent and lets child entities
+		// follow their authored parents instead of round-tripping through a second
+		// local-transform write path in the editor.
+		m_selectedNode->SetWorldTransform(model);
 
 		// Handle physics interaction if body exists
 		if (auto rb = m_selectedNode->GetRigidBody()) {

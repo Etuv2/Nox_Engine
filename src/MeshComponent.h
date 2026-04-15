@@ -128,6 +128,8 @@ public:
 	std::vector<uint32_t> rawIndices;
 
 	// Precomputed bounding volume
+ glm::vec3 boundingMin = glm::vec3(0.0f);
+	glm::vec3 boundingMax = glm::vec3(0.0f);
 	glm::vec3 boundingCenter = glm::vec3(0.0f);
 	float boundingRadius = 1.0f;
 	bool boundingVolumeValid = false;
@@ -184,6 +186,8 @@ public:
 		, cullingMode(other.cullingMode)
 		, rawVertices(std::move(other.rawVertices))
 		, rawIndices(std::move(other.rawIndices))
+      , boundingMin(other.boundingMin)
+		, boundingMax(other.boundingMax)
 		, boundingCenter(other.boundingCenter)
 		, boundingRadius(other.boundingRadius)
 		, boundingVolumeValid(other.boundingVolumeValid)
@@ -303,6 +307,8 @@ public:
 	// Compute and cache bounding volume once at mesh creation
 	void ComputeBoundingVolume() {
 		if (rawVertices.empty()) {
+           boundingMin = glm::vec3(0.0f);
+			boundingMax = glm::vec3(0.0f);
 			boundingCenter = glm::vec3(0.0f);
 			boundingRadius = 1.0f;
 			boundingVolumeValid = false;
@@ -317,6 +323,8 @@ public:
 			maxB = glm::max(maxB, v.position);
 		}
 
+      boundingMin = minB;
+		boundingMax = maxB;
 		boundingCenter = (minB + maxB) * 0.5f;
 		boundingRadius = glm::length(maxB - boundingCenter);
 		boundingVolumeValid = true;

@@ -3,92 +3,109 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
+#include <algorithm>
 #include <iostream>
 #include <queue>
+#include <unordered_map>
 
 TransformSystem::TransformSystem(ComponentManager* componentManager)
 	: m_componentManager(componentManager)
 {
-	m_dirtyEntities.reserve(256);
+	m_dirtyRoots.reserve(256);
 }
 
 void TransformSystem::UpdateTransforms() {
 	if (!m_componentManager) return;
 
-	// Collect all dirty entities
-	m_dirtyEntities.clear();
+	m_lastDirtyRootCount = 0;
+	m_lastTransformsRecomputed = 0;
+	m_dirtyRoots.clear();
 
+	// Start with explicitly queued dirty roots from hierarchy mutations.
+	// The actual subtree recomputation happens top-down from those roots, using the
+	// authoritative child adjacency cache instead of recursively scanning the full pool.
+	auto queuedDirtyRoots = m_componentManager->ConsumePendingTransformUpdates();
+	m_dirtyRoots.insert(m_dirtyRoots.end(), queuedDirtyRoots.begin(), queuedDirtyRoots.end());
+
+	// Keep a safety net for legacy direct dirty writes that still exist in the codebase.
 	auto& transformPool = m_componentManager->GetTransformPool();
 	for (auto& entry : transformPool) {
 		if (entry.component.isDirty) {
-			m_dirtyEntities.push_back(entry.entity);
+			m_dirtyRoots.push_back(entry.entity);
 		}
 	}
 
-	// Update in breadth-first order to respect dependencies
-	// Process parents before children naturally
-	std::queue<EntityID> queue;
-
-	// Start with dirty entities whose parent is either missing, invalid, or already clean.
-	// This preserves parent-before-child ordering without requiring edits to begin at a true ECS root.
-	for (EntityID entity : m_dirtyEntities) {
-		auto transform = m_componentManager->GetTransform(entity);
-		if (!transform) {
-			continue;
-		}
-
-		if (transform->parentID == INVALID_ENTITY) {
-			queue.push(entity);
-			continue;
-		}
-
-		auto parentTransform = m_componentManager->GetTransform(transform->parentID);
-		if (!parentTransform || !parentTransform->isDirty) {
-			queue.push(entity);
-		}
+	if (m_dirtyRoots.empty()) {
+		return;
 	}
 
-	// Process queue
-	while (!queue.empty()) {
-		EntityID current = queue.front();
-		queue.pop();
+	std::unordered_map<EntityID, size_t> depthCache;
+	auto getDepth = [&](EntityID entity) -> size_t {
+		auto it = depthCache.find(entity);
+		if (it != depthCache.end()) {
+			return it->second;
+		}
 
-		// Compute world transform
-		ComputeWorldTransform(current);
-
-		// Add children to queue
-		const auto& children = m_componentManager->GetChildren(current);
-		for (EntityID child : children) {
-			auto childTransform = m_componentManager->GetTransform(child);
-			if (childTransform && childTransform->isDirty) {
-				queue.push(child);
+		size_t depth = 0;
+		EntityID current = entity;
+		while (current != INVALID_ENTITY) {
+			auto* transform = m_componentManager->GetTransform(current);
+			if (!transform || transform->parentID == INVALID_ENTITY) {
+				break;
 			}
+			++depth;
+			current = transform->parentID;
 		}
+
+		depthCache[entity] = depth;
+		return depth;
+	};
+
+	std::sort(m_dirtyRoots.begin(), m_dirtyRoots.end(),
+		[&](EntityID a, EntityID b) {
+			const size_t depthA = getDepth(a);
+			const size_t depthB = getDepth(b);
+			if (depthA == depthB) {
+				return a < b;
+			}
+			return depthA < depthB;
+		});
+
+	m_dirtyRoots.erase(std::unique(m_dirtyRoots.begin(), m_dirtyRoots.end()), m_dirtyRoots.end());
+
+	for (EntityID entity : m_dirtyRoots) {
+		auto transform = m_componentManager->GetTransform(entity);
+		if (!transform || !transform->isDirty) {
+			continue;
+		}
+
+		EntityID dirtyRoot = FindTopDirtyAncestor(entity);
+		if (dirtyRoot == INVALID_ENTITY) {
+			continue;
+		}
+
+		auto rootTransform = m_componentManager->GetTransform(dirtyRoot);
+		if (!rootTransform || !rootTransform->isDirty) {
+			continue;
+		}
+
+		ComputeWorldTransform(dirtyRoot);
+		++m_lastDirtyRootCount;
 	}
 }
 
 void TransformSystem::MarkDirty(EntityID entity) {
-	auto transform = m_componentManager->GetTransform(entity);
-	if (transform) {
-		transform->isDirty = true;
-	}
+	MarkSubtreeDirty(entity);
 }
 
 void TransformSystem::MarkSubtreeDirty(EntityID root) {
-	MarkSubtreeDirtyRecursive(root);
-}
-
-void TransformSystem::MarkSubtreeDirtyRecursive(EntityID entity) {
-	auto transform = m_componentManager->GetTransform(entity);
+	auto transform = m_componentManager->GetTransform(root);
 	if (!transform) return;
 
+	// Only the root of the affected subtree needs to be queued; descendants are
+	// recomputed by walking the authoritative child adjacency when the root is processed.
 	transform->isDirty = true;
-
-	// Recursively mark children
-	const auto& children = m_componentManager->GetChildren(entity);
-	for (EntityID child : children) {
-		MarkSubtreeDirtyRecursive(child);
-	}
+	m_componentManager->QueueTransformUpdate(root);
 }
 
 const glm::mat4& TransformSystem::GetWorldTransform(EntityID entity) {
@@ -98,15 +115,26 @@ const glm::mat4& TransformSystem::GetWorldTransform(EntityID entity) {
 		return identity;
 	}
 
-	// Update if dirty
-	if (transform->isDirty) {
-		ComputeWorldTransform(entity);
+	EntityID dirtyRoot = FindTopDirtyAncestor(entity);
+	if (dirtyRoot != INVALID_ENTITY) {
+		auto dirtyTransform = m_componentManager->GetTransform(dirtyRoot);
+		if (dirtyTransform && dirtyTransform->isDirty) {
+			ComputeWorldTransform(dirtyRoot);
+		}
 	}
 
 	return transform->worldTransform;
 }
 
 void TransformSystem::ComputeWorldTransform(EntityID entity) {
+	auto transform = m_componentManager->GetTransform(entity);
+	if (!transform) return;
+
+	const glm::mat4 parentWorld = GetCleanParentWorldTransform(entity);
+	ComputeSubtreeWorldTransforms(entity, parentWorld);
+}
+
+void TransformSystem::ComputeSubtreeWorldTransforms(EntityID entity, const glm::mat4& parentWorld) {
 	auto transform = m_componentManager->GetTransform(entity);
 	if (!transform) return;
 
@@ -118,13 +146,17 @@ void TransformSystem::ComputeWorldTransform(EntityID entity) {
 		combinedLocal = transform->animatedTransform;
 	}
 
-	// Get parent world transform
-	glm::mat4 parentWorld = GetParentWorldTransform(entity);
-
 	// Compute world transform
 	transform->prevWorldTransform = transform->worldTransform;
 	transform->worldTransform = parentWorld * combinedLocal;
 	transform->isDirty = false;
+	++m_lastTransformsRecomputed;
+
+	const glm::mat4 currentWorld = transform->worldTransform;
+	const auto& children = m_componentManager->GetChildren(entity);
+	for (EntityID child : children) {
+		ComputeSubtreeWorldTransforms(child, currentWorld);
+	}
 }
 
 glm::mat4 TransformSystem::GetParentWorldTransform(EntityID entity) const {
@@ -141,8 +173,12 @@ glm::mat4 TransformSystem::GetParentWorldTransform(EntityID entity) const {
 	// Parent world transforms must be authoritative before children compose against them.
 	// Imported glTF hierarchies often involve deep non-root chains, and reading a stale
 	// parent matrix here causes child renderables/gizmo edits to appear detached.
-	if (parentTransform->isDirty) {
-		const_cast<TransformSystem*>(this)->ComputeWorldTransform(transform->parentID);
+	EntityID dirtyRoot = const_cast<TransformSystem*>(this)->FindTopDirtyAncestor(transform->parentID);
+	if (dirtyRoot != INVALID_ENTITY) {
+		auto* dirtyTransform = m_componentManager->GetTransform(dirtyRoot);
+		if (dirtyTransform && dirtyTransform->isDirty) {
+			const_cast<TransformSystem*>(this)->ComputeWorldTransform(dirtyRoot);
+		}
 	}
 
 	return parentTransform->worldTransform;
@@ -309,4 +345,61 @@ void TransformSystem::PrintHierarchy(EntityID root, int depth) const {
 	for (EntityID child : children) {
 		PrintHierarchy(child, depth + 1);
 	}
+}
+
+size_t TransformSystem::GetPendingDirtyRootCount() const {
+	return m_componentManager ? m_componentManager->GetPendingTransformUpdateCount() : 0;
+}
+
+EntityID TransformSystem::FindTopDirtyAncestor(EntityID entity) const {
+	EntityID current = entity;
+	EntityID highestDirtyAncestor = INVALID_ENTITY;
+	while (current != INVALID_ENTITY) {
+		auto currentTransform = m_componentManager->GetTransform(current);
+		if (!currentTransform) {
+			break;
+		}
+
+		if (currentTransform->isDirty) {
+			highestDirtyAncestor = current;
+		}
+
+		if (currentTransform->parentID == INVALID_ENTITY) {
+			break;
+		}
+
+		current = currentTransform->parentID;
+	}
+
+	return highestDirtyAncestor;
+}
+
+glm::mat4 TransformSystem::GetCleanParentWorldTransform(EntityID entity) const {
+	auto transform = m_componentManager->GetTransform(entity);
+	if (!transform || transform->parentID == INVALID_ENTITY) {
+		return glm::mat4(1.0f);
+	}
+
+	auto parentTransform = m_componentManager->GetTransform(transform->parentID);
+	if (!parentTransform) {
+		return glm::mat4(1.0f);
+	}
+
+	return parentTransform->worldTransform;
+}
+
+size_t TransformSystem::GetHierarchyDepth(EntityID entity) const {
+	size_t depth = 0;
+	EntityID current = entity;
+	while (current != INVALID_ENTITY) {
+		auto* transform = m_componentManager->GetTransform(current);
+		if (!transform || transform->parentID == INVALID_ENTITY) {
+			break;
+		}
+
+		++depth;
+		current = transform->parentID;
+	}
+
+	return depth;
 }

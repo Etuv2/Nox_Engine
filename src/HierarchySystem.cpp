@@ -21,8 +21,8 @@ void HierarchySystem::SetParent(EntityID child, EntityID parent, bool preserveWo
 		worldTransform = m_transformSystem->GetWorldTransform(child);
 	}
 
-	// Update parent ID
-	childTransform->parentID = parent;
+	// Update parent relationship through the authoritative adjacency path.
+	m_componentManager->SetParent(child, parent);
 	InvalidateCache();
 
 	if (preserveWorldTransform && parent != INVALID_ENTITY) {

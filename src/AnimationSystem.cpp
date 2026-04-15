@@ -5,12 +5,41 @@
 #include <iostream>
 #include <algorithm>
 #include <queue>
+#include <unordered_map>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 const std::vector<float> AnimationSystem::s_emptyMorphWeights;
+
+namespace {
+int ResolveRenderableNodeIndex(const RenderableComponent& renderable)
+{
+	return renderable.nodeIndex;
+}
+
+glm::mat4 ComputeStaticNodeWorldTransform(const Scene& model,
+	int nodeIndex,
+	std::unordered_map<int, glm::mat4>& cache)
+{
+	if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
+		return glm::mat4(1.0f);
+	}
+
+	auto cacheIt = cache.find(nodeIndex);
+	if (cacheIt != cache.end()) {
+		return cacheIt->second;
+	}
+
+	const Scene::NodeInfo& nodeInfo = model.nodes[nodeIndex];
+	glm::mat4 worldTransform = (nodeInfo.parent >= 0)
+		? ComputeStaticNodeWorldTransform(model, nodeInfo.parent, cache) * nodeInfo.localTransform
+		: nodeInfo.localTransform;
+	cache[nodeIndex] = worldTransform;
+	return worldTransform;
+}
+}
 
 AnimationSystem::AnimationSystem(ComponentManager* componentManager, TransformSystem* transformSystem)
 	: m_componentManager(componentManager)
@@ -409,27 +438,52 @@ void AnimationSystem::ComputeBoneMatrices(EntityID entity, const RenderableCompo
 	if (numBones == 0) return;
 
 	outMatrices.resize(numBones, glm::mat4(1.0f));
+	if (!renderable.model) return;
 
-	// Get the skinned mesh's world transform (the model's root transform)
-	// This is needed because bone matrices are relative to the mesh's space
-	glm::mat4 meshWorldTransform = m_transformSystem->GetWorldTransform(entity);
-	glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
+	const Scene& model = *renderable.model;
+	const AnimationComponent* animation = m_componentManager->GetAnimation(entity);
+	const bool useLegacyBoneNodeWorlds = animation && animation->controller && animation->controller->HasActiveAnimations();
+	const Animation* activeAnimation = nullptr;
+	if (!useLegacyBoneNodeWorlds &&
+		animation &&
+		(animation->isPlaying || animation->isPaused) &&
+		animation->currentAnimationIndex >= 0 &&
+		animation->currentAnimationIndex < static_cast<int>(model.animations.size())) {
+		activeAnimation = &model.animations[animation->currentAnimationIndex];
+	}
 
-	// For each bone, compute the final bone matrix:
-	// boneMatrix[i] = inverse(meshWorld) * boneWorld[i] * inverseBindMatrix[i]
-	// 
-	// This transforms a vertex from bind pose to current animated pose:
-	// 1. inverseBindMatrix brings vertex from bind pose to bone local space
-	// 2. boneWorld transforms from bone local to world space
-	// 3. inverse(meshWorld) brings from world to mesh local space
-	for (size_t i = 0; i < numBones && i < renderable.boneNodes.size(); ++i) {
-		if (renderable.boneNodes[i]) {
-			// Get world transform of bone node (includes animation)
+	if (useLegacyBoneNodeWorlds) {
+		glm::mat4 meshWorldTransform = m_transformSystem->GetWorldTransform(entity);
+		glm::mat4 meshWorldInverse = glm::inverse(meshWorldTransform);
+		for (size_t i = 0; i < numBones && i < renderable.boneNodes.size(); ++i) {
+			if (!renderable.boneNodes[i]) {
+				continue;
+			}
 			glm::mat4 boneWorld = renderable.boneNodes[i]->GetWorldPosition4x4();
-
-			// Compute final bone matrix
-			// The formula is: meshWorldInverse * boneWorld * inverseBindMatrix
 			outMatrices[i] = meshWorldInverse * boneWorld * renderable.boneInverseBindMatrices[i];
 		}
+		return;
+	}
+
+	std::unordered_map<int, glm::mat4> nodeWorldCache;
+	int meshNodeIndex = ResolveRenderableNodeIndex(renderable);
+	glm::mat4 meshModelWorld = glm::mat4(1.0f);
+	if (meshNodeIndex >= 0) {
+		meshModelWorld = activeAnimation
+			? ComputeJointWorldTransform(meshNodeIndex, model, *activeAnimation, animation ? animation->animationTime : 0.0f, nodeWorldCache)
+			: ComputeStaticNodeWorldTransform(model, meshNodeIndex, nodeWorldCache);
+	}
+	glm::mat4 meshModelInverse = glm::inverse(meshModelWorld);
+
+	for (size_t i = 0; i < numBones; ++i) {
+		int jointNodeIndex = (i < model.skin.joints.size()) ? model.skin.joints[i] : -1;
+		if (jointNodeIndex < 0) {
+			continue;
+		}
+
+		glm::mat4 jointWorld = activeAnimation
+			? ComputeJointWorldTransform(jointNodeIndex, model, *activeAnimation, animation ? animation->animationTime : 0.0f, nodeWorldCache)
+			: ComputeStaticNodeWorldTransform(model, jointNodeIndex, nodeWorldCache);
+		outMatrices[i] = meshModelInverse * jointWorld * renderable.boneInverseBindMatrices[i];
 	}
 }

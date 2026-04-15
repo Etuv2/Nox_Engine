@@ -15,6 +15,104 @@
 #include <unordered_map>
 #include <cassert>
 
+namespace {
+glm::mat4 ComputeImportedNodeWorldTransform(const Scene& model, int nodeIndex, std::unordered_map<int, glm::mat4>& cache)
+{
+	if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
+		return glm::mat4(1.0f);
+	}
+
+	auto it = cache.find(nodeIndex);
+	if (it != cache.end()) {
+		return it->second;
+	}
+
+	const Scene::NodeInfo& nodeInfo = model.nodes[nodeIndex];
+	glm::mat4 worldTransform = nodeInfo.localTransform;
+	if (nodeInfo.parent >= 0) {
+		worldTransform = ComputeImportedNodeWorldTransform(model, nodeInfo.parent, cache) * worldTransform;
+	}
+
+	cache[nodeIndex] = worldTransform;
+	return worldTransform;
+}
+
+glm::mat4 ComputeRelativeImportedNodeTransform(const Scene& model, int referenceNodeIndex, int sourceNodeIndex)
+{
+	if (sourceNodeIndex < 0 || sourceNodeIndex >= static_cast<int>(model.nodes.size())) {
+		return glm::mat4(1.0f);
+	}
+
+	if (referenceNodeIndex == sourceNodeIndex) {
+		return glm::mat4(1.0f);
+	}
+
+	std::unordered_map<int, glm::mat4> cache;
+	glm::mat4 sourceWorld = ComputeImportedNodeWorldTransform(model, sourceNodeIndex, cache);
+	if (referenceNodeIndex < 0 || referenceNodeIndex >= static_cast<int>(model.nodes.size())) {
+		return sourceWorld;
+	}
+
+	glm::mat4 referenceWorld = ComputeImportedNodeWorldTransform(model, referenceNodeIndex, cache);
+	glm::mat4 referenceInverse = glm::inverse(referenceWorld);
+	for (int c = 0; c < 4; ++c) {
+		for (int r = 0; r < 4; ++r) {
+			if (!std::isfinite(referenceInverse[c][r])) {
+				return sourceWorld;
+			}
+		}
+	}
+	return referenceInverse * sourceWorld;
+}
+
+void RefreshDerivedSystemsRecursive(SceneNode& node, const glm::mat4& parentWorldTransform)
+{
+	glm::mat4 worldTransform = node.GetGlobalTransform(parentWorldTransform);
+	node.UpdateTransformSystems(worldTransform);
+
+	for (auto& child : node.children) {
+		if (child) {
+			RefreshDerivedSystemsRecursive(*child, worldTransform);
+		}
+	}
+}
+
+void ExpandBoundsWithTransformedBox(const MeshComponent& mesh,
+	const glm::mat4& transform,
+	glm::vec3& minBounds,
+	glm::vec3& maxBounds,
+	bool& valid)
+{
+	if (!mesh.boundingVolumeValid) {
+		return;
+	}
+
+	const glm::vec3 corners[8] = {
+		{mesh.boundingMin.x, mesh.boundingMin.y, mesh.boundingMin.z},
+		{mesh.boundingMax.x, mesh.boundingMin.y, mesh.boundingMin.z},
+		{mesh.boundingMin.x, mesh.boundingMax.y, mesh.boundingMin.z},
+		{mesh.boundingMax.x, mesh.boundingMax.y, mesh.boundingMin.z},
+		{mesh.boundingMin.x, mesh.boundingMin.y, mesh.boundingMax.z},
+		{mesh.boundingMax.x, mesh.boundingMin.y, mesh.boundingMax.z},
+		{mesh.boundingMin.x, mesh.boundingMax.y, mesh.boundingMax.z},
+		{mesh.boundingMax.x, mesh.boundingMax.y, mesh.boundingMax.z}
+	};
+
+	for (const glm::vec3& corner : corners) {
+		glm::vec3 transformed = glm::vec3(transform * glm::vec4(corner, 1.0f));
+		if (!valid) {
+			minBounds = transformed;
+			maxBounds = transformed;
+			valid = true;
+		}
+		else {
+			minBounds = glm::min(minBounds, transformed);
+			maxBounds = glm::max(maxBounds, transformed);
+		}
+	}
+}
+}
+
 // CONSTRUCTORS
 
 SceneNode::SceneNode() = default;
@@ -79,9 +177,28 @@ void SceneNode::SetModel(const std::shared_ptr<Scene>& model) {
 // HIERARCHY
 
 void SceneNode::AddChild(const std::shared_ptr<SceneNode>& child) {
+	if (!child) {
+		return;
+	}
+
+	if (auto oldParent = child->parentNode.lock()) {
+		if (oldParent.get() != this) {
+			auto& siblings = oldParent->children;
+			siblings.erase(std::remove(siblings.begin(), siblings.end(), child), siblings.end());
+		}
+	}
+
 	child->parentNode = shared_from_this();
 	child->SetECSContext(m_componentManager, m_transformSystem);
 	children.push_back(child);
+
+	if (m_componentManager && m_entityID != INVALID_ENTITY && child->GetEntityID() != INVALID_ENTITY) {
+		m_componentManager->SetParent(child->GetEntityID(), m_entityID);
+		if (m_transformSystem) {
+			m_transformSystem->MarkSubtreeDirty(child->GetEntityID());
+		}
+	}
+
 	child->InvalidateTransformCache();
 }
 
@@ -158,9 +275,35 @@ std::pair<glm::vec3, glm::vec3> SceneNode::GetBoundingBox() {
 	glm::vec3 minB(-0.5f), maxB(0.5f);
 	
 	if (m_model) {
-		auto [modelMin, modelMax] = m_model->GetBoundingBox();
-		minB = modelMin;
-		maxB = modelMax;
+		if (!renderWholeModel && !renderMeshIndices.empty()) {
+			bool valid = false;
+			for (uint32_t meshIndex : renderMeshIndices) {
+				if (meshIndex >= m_model->meshes.size()) {
+					continue;
+				}
+
+				const MeshComponent& mesh = m_model->meshes[meshIndex];
+				glm::mat4 meshTransform = glm::mat4(1.0f);
+				ExpandBoundsWithTransformedBox(mesh, meshTransform, minB, maxB, valid);
+			}
+
+			if (!valid) {
+				minB = glm::vec3(-0.5f);
+				maxB = glm::vec3(0.5f);
+			}
+		}
+		else {
+			bool valid = false;
+			for (const auto& mesh : m_model->meshes) {
+				ExpandBoundsWithTransformedBox(mesh, glm::mat4(1.0f), minB, maxB, valid);
+			}
+
+			if (!valid) {
+				auto [modelMin, modelMax] = m_model->GetBoundingBox();
+				minB = modelMin;
+				maxB = modelMax;
+			}
+		}
 	} else {
 		switch (m_nodeType) {
 			case LIGHT:
@@ -293,6 +436,48 @@ void SceneNode::SetTransform(const glm::mat4& newTransform) {
 	InvalidateTransformCache();
 	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
 		m_transformSystem->SetLocalTransform(m_entityID, transform);
+	}
+}
+
+void SceneNode::SetWorldTransform(const glm::mat4& newWorldTransform) {
+	for (int c = 0; c < 4; ++c) {
+		for (int r = 0; r < 4; ++r) {
+			if (!std::isfinite(newWorldTransform[c][r])) {
+				return;
+			}
+		}
+	}
+
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		m_transformSystem->SetWorldTransform(m_entityID, newWorldTransform);
+		m_transformSystem->UpdateTransforms();
+		SyncFromECS();
+		RefreshDerivedSystemsRecursive(*this, glm::mat4(1.0f));
+		return;
+	}
+
+	glm::mat4 localTransform = newWorldTransform;
+	if (auto parent = parentNode.lock()) {
+		glm::mat4 parentWorld = parent->GetWorldPosition4x4();
+		glm::mat4 parentInverse = glm::inverse(parentWorld);
+		bool validInverse = true;
+		for (int c = 0; c < 4 && validInverse; ++c) {
+			for (int r = 0; r < 4 && validInverse; ++r) {
+				if (!std::isfinite(parentInverse[c][r])) {
+					validInverse = false;
+				}
+			}
+		}
+		if (validInverse) {
+			localTransform = parentInverse * newWorldTransform;
+		}
+	}
+
+	transform = localTransform;
+	InvalidateTransformCache();
+
+	if (m_rigidbody && !m_updatingFromPhysics) {
+		SyncPhysicsFromTransform();
 	}
 }
 
@@ -719,6 +904,11 @@ void SceneNode::SyncToECS() {
 		parentID = parent->GetEntityID();
 	}
 	currentManager->SetParent(m_entityID, parentID);
+
+	if (m_transformSystem) {
+		m_transformSystem->UpdateTransforms();
+		RefreshDerivedSystemsRecursive(*this, glm::mat4(1.0f));
+	}
 }
 
 void SceneNode::SyncFromECS() {
@@ -803,22 +993,26 @@ EntityID SceneNode::CreateECSEntity(const std::string& name) {
 	transformComp.worldTransform = m_cachedWorldTransform;
 	transformComp.prevWorldTransform = m_cachedWorldTransform;
 	transformComp.isDirty = true;
-	
-	if (auto parent = parentNode.lock()) {
-		transformComp.parentID = parent->GetEntityID();
-	}
+	transformComp.parentID = INVALID_ENTITY;
 	
 	m_componentManager->AddTransform(m_entityID, transformComp);
-	m_componentManager->SetParent(m_entityID, transformComp.parentID);
+
+	EntityID parentID = INVALID_ENTITY;
+	if (auto parent = parentNode.lock()) {
+		parentID = parent->GetEntityID();
+	}
+	m_componentManager->SetParent(m_entityID, parentID);
 	
 	// Add renderable if we have a model
-	if (m_model) {
+	if (m_model && (renderWholeModel || !renderMeshIndices.empty())) {
 		RenderableComponent renderComp;
 		renderComp.model = m_model;
 		renderComp.shaderID = m_shader;
 		renderComp.boundingRadius = boundingRadius;
 		renderComp.isSkinned = isSkinned;
 		renderComp.cullingOverride = static_cast<::CullingOverride>(static_cast<uint8_t>(m_cullingOverride));
+		renderComp.renderWholeModel = renderWholeModel;
+		renderComp.meshIndices = renderMeshIndices;
 		renderComp.boneNodes = boneNodes;
 		renderComp.boneInverseBindMatrices = boneInverseBindMatrices;
 		renderComp.nodeIndex = nodeIndex;

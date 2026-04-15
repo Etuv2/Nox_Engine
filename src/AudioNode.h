@@ -44,6 +44,7 @@ public:
 
     //update audio nodes
     virtual void UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle) override;
+    virtual void UpdateAudioNodesWithTransform(const glm::vec3& listenerPos, float listenerAngle, const glm::mat4& parentWorldTransform) override;
 
     // Override UpdateTransformSystems to sync audio position from world transform
     virtual void UpdateTransformSystems(const glm::mat4& worldTransform) override;

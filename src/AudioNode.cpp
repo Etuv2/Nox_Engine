@@ -143,17 +143,21 @@ void AudioNode::updateAudio(const glm::vec3& listenerPos, float listenerAngle)
 
 void AudioNode::UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle)
 {
-	// Validate input parameters at the top level
+	UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
+}
+
+void AudioNode::UpdateAudioNodesWithTransform(const glm::vec3& listenerPos, float listenerAngle, const glm::mat4& parentWorldTransform)
+{
 	glm::vec3 safeListenerPos = SanitizeVector(listenerPos);
 	float safeListenerAngle = SanitizeAngle(listenerAngle);
 
-	// Always update this node's audio based on current world position from hierarchy
+	glm::mat4 worldTransform = GetGlobalTransform(parentWorldTransform);
+	UpdateTransformSystems(worldTransform);
 	updateAudio(safeListenerPos, safeListenerAngle);
 
-	// Recursively update children with sanitized parameters
 	for (auto& child : children) {
 		if (child) {
-			child->UpdateAudioNodes(safeListenerPos, safeListenerAngle);
+			child->UpdateAudioNodesWithTransform(safeListenerPos, safeListenerAngle, worldTransform);
 		}
 	}
 }

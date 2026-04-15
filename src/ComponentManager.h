@@ -206,6 +206,13 @@ public:
 	const std::vector<EntityID>& GetChildren(EntityID entity) const;
 	bool ValidateHierarchyIntegrity() const;
 
+	// Transform update queue used by the hierarchy/transform systems
+	void QueueTransformUpdate(EntityID entity);
+	std::vector<EntityID> ConsumePendingTransformUpdates();
+	size_t GetPendingTransformUpdateCount() const;
+	uint64_t GetTransformUpdateRevision() const { return m_transformUpdateRevision; }
+	TransformID GetMaxAllocatedTransformID() const { return (m_nextTransformID > 0) ? (m_nextTransformID - 1) : 0; }
+
 	// Bulk operations for iteration
 	ComponentPool<TransformComponent>& GetTransformPool() { return m_transforms; }
 	ComponentPool<RenderableComponent>& GetRenderablePool() { return m_renderables; }
@@ -255,4 +262,8 @@ private:
 
 	// Parent -> children adjacency list
 	std::unordered_map<EntityID, std::vector<EntityID>> m_childrenByParent;
+
+	// Pending transform roots that need recomputation
+	std::vector<EntityID> m_pendingTransformUpdates;
+	uint64_t m_transformUpdateRevision = 1;
 };

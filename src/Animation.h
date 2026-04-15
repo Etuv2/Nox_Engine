@@ -125,6 +125,7 @@ public:
     
     // Animation state queries
     bool IsAnimationPlaying(const std::string& animationName) const;
+    bool HasActiveAnimations() const;
     float GetAnimationTime(const std::string& animationName) const;
     void SetAnimationTime(const std::string& animationName, float time);
     void SetAnimationSpeed(const std::string& animationName, float speed);

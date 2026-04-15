@@ -61,7 +61,7 @@ inline bool ProcessIncludesRecursive(const std::string& filePath,
     std::string normalizedPath;
     try {
         normalizedPath = std::filesystem::canonical(filePath).string();
-    } catch (const std::filesystem::filesystem_error& e) {
+    } catch (const std::filesystem::filesystem_error&) {
         // File doesn't exist, try with original path
         normalizedPath = filePath;
     }

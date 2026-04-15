@@ -14,6 +14,8 @@
 #include <iostream>
 #include <cmath>
 #include <cstdint>
+#include <functional>
+#include <unordered_map>
 #include "stb_image.h"
 
 
@@ -54,7 +56,9 @@ static glm::mat4 BuildNodeLocalTransform(const tinygltf::Node& gltfNode)
 {
 	glm::mat4 localMat(1.0f);
 	if (!gltfNode.matrix.empty()) {
-		std::memcpy(glm::value_ptr(localMat), gltfNode.matrix.data(), 16 * sizeof(float));
+		for (int i = 0; i < 16; ++i) {
+			glm::value_ptr(localMat)[i] = static_cast<float>(gltfNode.matrix[i]);
+		}
 		return localMat;
 	}
 
@@ -84,59 +88,206 @@ static glm::mat4 BuildNodeLocalTransform(const tinygltf::Node& gltfNode)
 	return localMat;
 }
 
+static bool IsNearlyIdentityTransform(const glm::mat4& transform, float epsilon = 1e-5f)
+{
+	for (int c = 0; c < 4; ++c) {
+		for (int r = 0; r < 4; ++r) {
+			const float expected = (c == r) ? 1.0f : 0.0f;
+			if (std::abs(transform[c][r] - expected) > epsilon) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 static void PopulateSceneNodesAndWorldTransforms(const tinygltf::Model& model, std::vector<Scene::NodeInfo>& outNodes, std::vector<glm::mat4>& outWorldTransforms)
 {
+	const int nodeCount = static_cast<int>(model.nodes.size());
 	outNodes.resize(model.nodes.size());
 	outWorldTransforms.assign(model.nodes.size(), glm::mat4(1.0f));
-	std::vector<bool> worldComputed(model.nodes.size(), false);
 
-	for (size_t i = 0; i < model.nodes.size(); ++i) {
-		const tinygltf::Node& gltfNode = model.nodes[i];
-		Scene::NodeInfo& nodeInfo = outNodes[i];
+	for (int i = 0; i < nodeCount; ++i) {
+		const tinygltf::Node& gltfNode = model.nodes[static_cast<size_t>(i)];
+		Scene::NodeInfo& nodeInfo = outNodes[static_cast<size_t>(i)];
 		nodeInfo.name = gltfNode.name;
 		nodeInfo.localTransform = BuildNodeLocalTransform(gltfNode);
 		nodeInfo.parent = -1;
 		nodeInfo.children.clear();
 	}
 
-	for (size_t i = 0; i < model.nodes.size(); ++i) {
-		const tinygltf::Node& gltfNode = model.nodes[i];
-		for (int childIdx : gltfNode.children) {
-			if (childIdx >= 0 && childIdx < static_cast<int>(model.nodes.size())) {
-				outNodes[i].children.push_back(childIdx);
-				outNodes[childIdx].parent = static_cast<int>(i);
-			}
+	std::vector<int> sceneRoots;
+	sceneRoots.reserve(model.nodes.size());
+	std::vector<bool> rootSeen(model.nodes.size(), false);
+	std::vector<bool> canonicalSceneRoot(model.nodes.size(), false);
+	auto addSceneRoot = [&](int nodeIdx) {
+		if (nodeIdx < 0 || nodeIdx >= nodeCount) {
+			return;
 		}
-	}
-
-	std::function<glm::mat4(int)> computeWorldTransform = [&](int nodeIndex) -> glm::mat4 {
-		Scene::NodeInfo& nodeInfo = outNodes[nodeIndex];
-		if (worldComputed[nodeIndex]) {
-			return outWorldTransforms[nodeIndex];
+		if (!rootSeen[static_cast<size_t>(nodeIdx)]) {
+			rootSeen[static_cast<size_t>(nodeIdx)] = true;
+			canonicalSceneRoot[static_cast<size_t>(nodeIdx)] = true;
+			sceneRoots.push_back(nodeIdx);
 		}
-		if (nodeInfo.parent < 0) {
-			outWorldTransforms[nodeIndex] = nodeInfo.localTransform;
-			worldComputed[nodeIndex] = true;
-			return outWorldTransforms[nodeIndex];
-		}
-		glm::mat4 parentWorld = computeWorldTransform(nodeInfo.parent);
-		outWorldTransforms[nodeIndex] = parentWorld * nodeInfo.localTransform;
-		worldComputed[nodeIndex] = true;
-		return outWorldTransforms[nodeIndex];
 	};
 
-	for (size_t i = 0; i < model.nodes.size(); ++i) {
-		computeWorldTransform(static_cast<int>(i));
+	if (!model.scenes.empty()) {
+		int activeSceneIndex = model.defaultScene;
+		if (activeSceneIndex < 0 || activeSceneIndex >= static_cast<int>(model.scenes.size())) {
+			activeSceneIndex = 0;
+		}
+		for (int rootNodeIdx : model.scenes[static_cast<size_t>(activeSceneIndex)].nodes) {
+			addSceneRoot(rootNodeIdx);
+		}
 	}
-}
 
-static int FindSceneRootNodeIndex(const std::vector<Scene::NodeInfo>& nodes, int nodeIndex)
-{
-	int current = nodeIndex;
-	while (current >= 0 && current < static_cast<int>(nodes.size()) && nodes[current].parent >= 0) {
-		current = nodes[current].parent;
+	if (sceneRoots.empty()) {
+		std::vector<int> inDegree(model.nodes.size(), 0);
+		for (const tinygltf::Node& gltfNode : model.nodes) {
+			for (int childIdx : gltfNode.children) {
+				if (childIdx >= 0 && childIdx < nodeCount) {
+					++inDegree[static_cast<size_t>(childIdx)];
+				}
+			}
+		}
+		for (int nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
+			if (inDegree[static_cast<size_t>(nodeIdx)] == 0) {
+				addSceneRoot(nodeIdx);
+			}
+		}
+		if (sceneRoots.empty() && nodeCount > 0) {
+			addSceneRoot(0);
+		}
 	}
-	return current;
+
+	std::vector<uint8_t> traversalState(model.nodes.size(), 0); // 0=unvisited, 1=visiting, 2=done
+	size_t skippedCycleEdges = 0;
+	size_t skippedMultiParentEdges = 0;
+	size_t skippedInvalidChildEdges = 0;
+	size_t skippedIncomingRootEdges = 0;
+	bool loggedCycleWarning = false;
+	bool loggedMultiParentWarning = false;
+	bool loggedInvalidChildWarning = false;
+	bool loggedIncomingRootWarning = false;
+
+	std::function<void(int)> attachNodeChildren = [&](int nodeIndex) {
+		if (nodeIndex < 0 || nodeIndex >= nodeCount) {
+			return;
+		}
+		if (traversalState[static_cast<size_t>(nodeIndex)] == 1 || traversalState[static_cast<size_t>(nodeIndex)] == 2) {
+			return;
+		}
+
+		traversalState[static_cast<size_t>(nodeIndex)] = 1;
+		const tinygltf::Node& gltfNode = model.nodes[static_cast<size_t>(nodeIndex)];
+
+		for (int childIdx : gltfNode.children) {
+			if (childIdx < 0 || childIdx >= nodeCount) {
+				++skippedInvalidChildEdges;
+				if (!loggedInvalidChildWarning) {
+					std::cout << "[Scene] Ignoring invalid glTF child node index while building hierarchy." << std::endl;
+					loggedInvalidChildWarning = true;
+				}
+				continue;
+			}
+
+			if (canonicalSceneRoot[static_cast<size_t>(childIdx)] && childIdx != nodeIndex) {
+				++skippedIncomingRootEdges;
+				if (!loggedIncomingRootWarning) {
+					std::cout << "[Scene] Ignoring incoming edges to canonical glTF scene root node(s)." << std::endl;
+					loggedIncomingRootWarning = true;
+				}
+				continue;
+			}
+
+			if (traversalState[static_cast<size_t>(childIdx)] == 1) {
+				++skippedCycleEdges;
+				if (!loggedCycleWarning) {
+					std::cout << "[Scene] Detected cyclic child edge in glTF hierarchy; skipping cyclic edge(s)." << std::endl;
+					loggedCycleWarning = true;
+				}
+				continue;
+			}
+
+			Scene::NodeInfo& childInfo = outNodes[static_cast<size_t>(childIdx)];
+			if (childInfo.parent >= 0 && childInfo.parent != nodeIndex) {
+				++skippedMultiParentEdges;
+				if (!loggedMultiParentWarning) {
+					std::cout << "[Scene] Detected multi-parent glTF node usage; keeping first parent assignment for stable transforms." << std::endl;
+					loggedMultiParentWarning = true;
+				}
+				continue;
+			}
+
+			Scene::NodeInfo& parentInfo = outNodes[static_cast<size_t>(nodeIndex)];
+			if (std::find(parentInfo.children.begin(), parentInfo.children.end(), childIdx) == parentInfo.children.end()) {
+				parentInfo.children.push_back(childIdx);
+			}
+			if (childInfo.parent < 0) {
+				childInfo.parent = nodeIndex;
+			}
+
+			attachNodeChildren(childIdx);
+		}
+
+		traversalState[static_cast<size_t>(nodeIndex)] = 2;
+	};
+
+	for (int rootNodeIdx : sceneRoots) {
+		attachNodeChildren(rootNodeIdx);
+	}
+
+	for (int nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
+		if (traversalState[static_cast<size_t>(nodeIdx)] == 0) {
+			attachNodeChildren(nodeIdx);
+		}
+	}
+
+	if (skippedCycleEdges > 0 || skippedMultiParentEdges > 0 || skippedInvalidChildEdges > 0 || skippedIncomingRootEdges > 0) {
+		std::cout << "[Scene] Hierarchy sanitization for glTF import: "
+			<< "cyclesSkipped=" << skippedCycleEdges
+			<< ", multiParentSkipped=" << skippedMultiParentEdges
+			<< ", invalidChildSkipped=" << skippedInvalidChildEdges
+			<< ", incomingRootSkipped=" << skippedIncomingRootEdges
+			<< std::endl;
+	}
+
+	std::vector<uint8_t> worldState(model.nodes.size(), 0); // 0=unvisited, 1=visiting, 2=done
+	bool loggedWorldCycleWarning = false;
+
+	std::function<glm::mat4(int)> computeWorldTransform = [&](int nodeIndex) -> glm::mat4 {
+		if (nodeIndex < 0 || nodeIndex >= nodeCount) {
+			return glm::mat4(1.0f);
+		}
+
+		if (worldState[static_cast<size_t>(nodeIndex)] == 2) {
+			return outWorldTransforms[static_cast<size_t>(nodeIndex)];
+		}
+		if (worldState[static_cast<size_t>(nodeIndex)] == 1) {
+			if (!loggedWorldCycleWarning) {
+				std::cout << "[Scene] Cycle encountered during world transform build; using local transform fallback for affected node(s)." << std::endl;
+				loggedWorldCycleWarning = true;
+			}
+			return outNodes[static_cast<size_t>(nodeIndex)].localTransform;
+		}
+
+		worldState[static_cast<size_t>(nodeIndex)] = 1;
+		Scene::NodeInfo& nodeInfo = outNodes[static_cast<size_t>(nodeIndex)];
+		if (nodeInfo.parent < 0 || nodeInfo.parent >= nodeCount) {
+			outWorldTransforms[static_cast<size_t>(nodeIndex)] = nodeInfo.localTransform;
+		}
+		else {
+			glm::mat4 parentWorld = computeWorldTransform(nodeInfo.parent);
+			outWorldTransforms[static_cast<size_t>(nodeIndex)] = parentWorld * nodeInfo.localTransform;
+		}
+
+		worldState[static_cast<size_t>(nodeIndex)] = 2;
+		return outWorldTransforms[static_cast<size_t>(nodeIndex)];
+	};
+
+	for (int nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
+		computeWorldTransform(nodeIdx);
+	}
 }
 
 // A helper struct for sorting influences
@@ -251,6 +402,65 @@ static void SanitizeScale(glm::mat4& m) {
 	}
 }
 
+static float ReadAccessorComponentAsFloat(const unsigned char* componentPtr, int componentType, bool normalized)
+{
+	switch (componentType) {
+	case TINYGLTF_COMPONENT_TYPE_FLOAT:
+		return *reinterpret_cast<const float*>(componentPtr);
+	case TINYGLTF_COMPONENT_TYPE_DOUBLE:
+		return static_cast<float>(*reinterpret_cast<const double*>(componentPtr));
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: {
+		const auto value = *reinterpret_cast<const uint8_t*>(componentPtr);
+		return normalized ? static_cast<float>(value) / 255.0f : static_cast<float>(value);
+	}
+	case TINYGLTF_COMPONENT_TYPE_BYTE: {
+		const auto value = *reinterpret_cast<const int8_t*>(componentPtr);
+		if (!normalized) return static_cast<float>(value);
+		return std::max(static_cast<float>(value) / 127.0f, -1.0f);
+	}
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: {
+		const auto value = *reinterpret_cast<const uint16_t*>(componentPtr);
+		return normalized ? static_cast<float>(value) / 65535.0f : static_cast<float>(value);
+	}
+	case TINYGLTF_COMPONENT_TYPE_SHORT: {
+		const auto value = *reinterpret_cast<const int16_t*>(componentPtr);
+		if (!normalized) return static_cast<float>(value);
+		return std::max(static_cast<float>(value) / 32767.0f, -1.0f);
+	}
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT: {
+		const auto value = *reinterpret_cast<const uint32_t*>(componentPtr);
+		return normalized ? static_cast<float>(static_cast<double>(value) / 4294967295.0) : static_cast<float>(value);
+	}
+	case TINYGLTF_COMPONENT_TYPE_INT: {
+		const auto value = *reinterpret_cast<const int32_t*>(componentPtr);
+		if (!normalized) return static_cast<float>(value);
+		return std::max(static_cast<float>(static_cast<double>(value) / 2147483647.0), -1.0f);
+	}
+	default:
+		return 0.0f;
+	}
+}
+
+static uint32_t ReadAccessorComponentAsUInt(const unsigned char* componentPtr, int componentType)
+{
+	switch (componentType) {
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+		return *reinterpret_cast<const uint8_t*>(componentPtr);
+	case TINYGLTF_COMPONENT_TYPE_BYTE:
+		return static_cast<uint32_t>(std::max<int32_t>(*reinterpret_cast<const int8_t*>(componentPtr), 0));
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+		return *reinterpret_cast<const uint16_t*>(componentPtr);
+	case TINYGLTF_COMPONENT_TYPE_SHORT:
+		return static_cast<uint32_t>(std::max<int32_t>(*reinterpret_cast<const int16_t*>(componentPtr), 0));
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+		return *reinterpret_cast<const uint32_t*>(componentPtr);
+	case TINYGLTF_COMPONENT_TYPE_INT:
+		return static_cast<uint32_t>(std::max<int32_t>(*reinterpret_cast<const int32_t*>(componentPtr), 0));
+	default:
+		return 0u;
+	}
+}
+
 
 /**
  * Reads a float-based attribute (e.g. "POSITION", "NORMAL", "TEXCOORD_0")
@@ -278,11 +488,69 @@ static bool ReadFloatAttribute(
 	const tinygltf::Accessor& acc = model.accessors[accessorIndex];
 	const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
 	const tinygltf::Buffer& buf = model.buffers[bv.buffer];
-	const float* dataPtr = reinterpret_cast<const float*>(
-		&buf.data[bv.byteOffset + acc.byteOffset]);
+	const unsigned char* dataPtr = &buf.data[bv.byteOffset + acc.byteOffset];
+	const int accessorComponents = tinygltf::GetNumComponentsInType(acc.type);
+	const int componentSize = tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(acc.componentType));
+	const size_t stride = bv.byteStride > 0
+		? static_cast<size_t>(bv.byteStride)
+		: static_cast<size_t>(accessorComponents * componentSize);
+
+	if (accessorComponents < static_cast<int>(numComponents) || componentSize <= 0) {
+		return false;
+	}
 
 	for (size_t i = 0; i < acc.count; i++) {
-		setVertexData(i, &dataPtr[i * numComponents]);
+		float values[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		const unsigned char* elementPtr = dataPtr + i * stride;
+		for (size_t c = 0; c < numComponents; ++c) {
+			values[c] = ReadAccessorComponentAsFloat(
+				elementPtr + c * componentSize,
+				acc.componentType,
+				acc.normalized);
+		}
+		setVertexData(i, values);
+	}
+
+	return true;
+}
+
+static bool ReadUIntAttribute(
+	const tinygltf::Model& model,
+	const tinygltf::Primitive& primitive,
+	const std::string& attributeName,
+	size_t numComponents,
+	std::function<void(size_t, const uint32_t*)> setVertexData)
+{
+	auto it = primitive.attributes.find(attributeName);
+	if (it == primitive.attributes.end()) {
+		return false;
+	}
+	int accessorIndex = it->second;
+	if (accessorIndex < 0 || accessorIndex >= static_cast<int>(model.accessors.size())) {
+		return false;
+	}
+
+	const tinygltf::Accessor& acc = model.accessors[accessorIndex];
+	const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
+	const tinygltf::Buffer& buf = model.buffers[bv.buffer];
+	const unsigned char* dataPtr = &buf.data[bv.byteOffset + acc.byteOffset];
+	const int accessorComponents = tinygltf::GetNumComponentsInType(acc.type);
+	const int componentSize = tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(acc.componentType));
+	const size_t stride = bv.byteStride > 0
+		? static_cast<size_t>(bv.byteStride)
+		: static_cast<size_t>(accessorComponents * componentSize);
+
+	if (accessorComponents < static_cast<int>(numComponents) || componentSize <= 0) {
+		return false;
+	}
+
+	for (size_t i = 0; i < acc.count; ++i) {
+		uint32_t values[4] = { 0u, 0u, 0u, 0u };
+		const unsigned char* elementPtr = dataPtr + i * stride;
+		for (size_t c = 0; c < numComponents; ++c) {
+			values[c] = ReadAccessorComponentAsUInt(elementPtr + c * componentSize, acc.componentType);
+		}
+		setVertexData(i, values);
 	}
 
 	return true;
@@ -307,37 +575,55 @@ static std::vector<unsigned int> ReadIndices(
 
 	const unsigned char* indexData = &buf.data[bv.byteOffset + acc.byteOffset];
 	size_t count = acc.count;
+	const int componentSize = tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(acc.componentType));
+	const size_t stride = bv.byteStride > 0 ? static_cast<size_t>(bv.byteStride) : static_cast<size_t>(componentSize);
 	out.resize(count);
-
-	if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-		const unsigned int* p = reinterpret_cast<const unsigned int*>(indexData);
-		for (size_t i = 0; i < count; i++) out[i] = p[i];
-	}
-	else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-		const unsigned short* p = reinterpret_cast<const unsigned short*>(indexData);
-		for (size_t i = 0; i < count; i++) out[i] = p[i];
-	}
-	else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-		const unsigned char* p = reinterpret_cast<const unsigned char*>(indexData);
-		for (size_t i = 0; i < count; i++) out[i] = p[i];
-	}
-	else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_INT) {
-		const int* p = reinterpret_cast<const int*>(indexData);
-		for (size_t i = 0; i < count; i++) out[i] = p[i];
-	}
-	else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_SHORT) {
-		const short* p = reinterpret_cast<const short*>(indexData);
-		for (size_t i = 0; i < count; i++) out[i] = p[i];
-	}
-	else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_BYTE) {
-		const char* p = reinterpret_cast<const char*>(indexData);
-		for (size_t i = 0; i < count; i++) out[i] = p[i];
-	}
-	else {
-		// Unsupported index type
-		out.clear();
+	for (size_t i = 0; i < count; ++i) {
+		out[i] = ReadAccessorComponentAsUInt(indexData + i * stride, acc.componentType);
 	}
 	return out;
+}
+
+static bool ReadMat4Attribute(
+	const tinygltf::Model& model,
+	int accessorIndex,
+	std::function<void(size_t, const glm::mat4&)> setMatrixData)
+{
+	if (accessorIndex < 0 || accessorIndex >= static_cast<int>(model.accessors.size())) {
+		return false;
+	}
+
+	const tinygltf::Accessor& acc = model.accessors[accessorIndex];
+	if (acc.type != TINYGLTF_TYPE_MAT4) {
+		return false;
+	}
+
+	const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
+	const tinygltf::Buffer& buf = model.buffers[bv.buffer];
+	const unsigned char* dataPtr = &buf.data[bv.byteOffset + acc.byteOffset];
+	const int accessorComponents = tinygltf::GetNumComponentsInType(acc.type);
+	const int componentSize = tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(acc.componentType));
+	const size_t stride = bv.byteStride > 0
+		? static_cast<size_t>(bv.byteStride)
+		: static_cast<size_t>(accessorComponents * componentSize);
+
+	if (accessorComponents != 16 || componentSize <= 0) {
+		return false;
+	}
+
+	for (size_t i = 0; i < acc.count; ++i) {
+		glm::mat4 matrix(1.0f);
+		const unsigned char* elementPtr = dataPtr + i * stride;
+		for (int c = 0; c < 16; ++c) {
+			glm::value_ptr(matrix)[c] = ReadAccessorComponentAsFloat(
+				elementPtr + c * componentSize,
+				acc.componentType,
+				acc.normalized);
+		}
+		setMatrixData(i, matrix);
+	}
+
+	return true;
 }
 
 /**
@@ -535,6 +821,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	animations.clear();
 	nodes.clear();
 	hasSkin = false;
+	hasSkinMetadata = false;
+	hasWeightedSkinData = false;
 	hasTangents = false;
 	skin.joints.clear();
 	skin.inverseBindMatrices.clear();
@@ -545,10 +833,12 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 	// If there's a skin, note the total joint count for blending weights
 	int totalJoints = 0;
+	bool hasDeclaredSkinMetadata = false;
 	if (!model.skins.empty()) {
 		const tinygltf::Skin& gltfSkin = model.skins[0]; // Use first skin
 		totalJoints = static_cast<int>(gltfSkin.joints.size());
-		hasSkin = true;
+		hasDeclaredSkinMetadata = true;
+		hasSkinMetadata = true;
 
 		// Load skin data
 		skin.joints = gltfSkin.joints;
@@ -556,16 +846,16 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		// Load inverse bind matrices
 		if (gltfSkin.inverseBindMatrices >= 0) {
 			const tinygltf::Accessor& accessor = model.accessors[gltfSkin.inverseBindMatrices];
-			const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
-			const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
-
-			const float* matrixData = reinterpret_cast<const float*>(
-				&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
-
 			skin.inverseBindMatrices.reserve(accessor.count);
-			for (size_t i = 0; i < accessor.count; ++i) {
-				glm::mat4 matrix;
-				std::memcpy(glm::value_ptr(matrix), &matrixData[i * 16], 16 * sizeof(float));
+			ReadMat4Attribute(model, gltfSkin.inverseBindMatrices,
+				[&](size_t i, const glm::mat4& matrix) {
+				if (i >= skin.inverseBindMatrices.size()) {
+					skin.inverseBindMatrices.resize(i + 1);
+				}
+				skin.inverseBindMatrices[i] = matrix;
+			});
+			for (size_t i = skin.inverseBindMatrices.size(); i < accessor.count; ++i) {
+				glm::mat4 matrix(1.0f);
 				skin.inverseBindMatrices.push_back(matrix);
 			}
 
@@ -575,43 +865,19 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		}
 	}
 
-	// (1) Parse all meshes/primitives from the glTF model.
-	// We expand them per glTF node so node-local transforms survive import.
+	size_t primitiveCount = 0;
+	size_t primitivesWithJointAttributes = 0;
+	size_t primitivesWithWeightAttributes = 0;
+	size_t primitivesWithMeaningfulSkinData = 0;
+
+	// (1) Parse all meshes/primitives once, then attach them to authored nodes.
+	// The glTF node table is the source of truth for ownership and transforms.
+	std::vector<std::vector<uint32_t>> meshPrimitivesByGltfMesh(model.meshes.size());
 	for (size_t mm = 0; mm < model.meshes.size(); mm++) {
 		const tinygltf::Mesh& gltfMesh = model.meshes[mm];
-		std::vector<int> referencingNodes;
-		for (size_t nodeIdx = 0; nodeIdx < model.nodes.size(); ++nodeIdx) {
-			if (model.nodes[nodeIdx].mesh == static_cast<int>(mm)) {
-				referencingNodes.push_back(static_cast<int>(nodeIdx));
-			}
-		}
-		if (referencingNodes.empty()) {
-			referencingNodes.push_back(-1);
-		}
-
-		for (int nodeIndex : referencingNodes) {
-			glm::mat4 meshLocalTransform = glm::mat4(1.0f);
-			if (nodeIndex >= 0 && nodeIndex < static_cast<int>(nodeWorldTransforms.size())) {
-				meshLocalTransform = nodeWorldTransforms[nodeIndex];
-				const int rootNodeIndex = FindSceneRootNodeIndex(nodes, nodeIndex);
-				if (rootNodeIndex >= 0 && rootNodeIndex < static_cast<int>(nodeWorldTransforms.size())) {
-					glm::mat4 rootInverse = glm::inverse(nodeWorldTransforms[rootNodeIndex]);
-					bool validInverse = true;
-					for (int c = 0; c < 4 && validInverse; ++c) {
-						for (int r = 0; r < 4 && validInverse; ++r) {
-							if (!std::isfinite(rootInverse[c][r])) {
-								validInverse = false;
-							}
-						}
-					}
-					if (validInverse) {
-						meshLocalTransform = rootInverse * meshLocalTransform;
-					}
-				}
-			}
-
-			for (size_t p = 0; p < gltfMesh.primitives.size(); p++) {
+		for (size_t p = 0; p < gltfMesh.primitives.size(); p++) {
 			const tinygltf::Primitive& primitive = gltfMesh.primitives[p];
+			++primitiveCount;
 			if (primitive.attributes.find("POSITION") == primitive.attributes.end()) {
 				// Skip primitive with no position data
 				continue;
@@ -643,50 +909,95 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				});
 
 			// Skinning data (up to 8 weights, merged into 4)
-			const unsigned short* joints0Data = nullptr;
-			const unsigned short* joints1Data = nullptr;
-			const float* weights0Data = nullptr;
-			const float* weights1Data = nullptr;
-			// JOINTS_0
-			auto j0It = primitive.attributes.find("JOINTS_0");
-			if (j0It != primitive.attributes.end()) {
-				const auto& acc = model.accessors[j0It->second];
-				const auto& view = model.bufferViews[acc.bufferView];
-				joints0Data = reinterpret_cast<const unsigned short*>(&model.buffers[view.buffer].data[view.byteOffset + acc.byteOffset]);
+			std::vector<glm::u32vec4> joints0Values(vertexCount, glm::u32vec4(0u));
+			std::vector<glm::u32vec4> joints1Values(vertexCount, glm::u32vec4(0u));
+			std::vector<glm::vec4> weights0Values(vertexCount, glm::vec4(0.0f));
+			std::vector<glm::vec4> weights1Values(vertexCount, glm::vec4(0.0f));
+
+			const bool hasJoints0 = ReadUIntAttribute(model, primitive, "JOINTS_0", 4,
+				[&](size_t i, const uint32_t* data) {
+					joints0Values[i] = glm::u32vec4(data[0], data[1], data[2], data[3]);
+				});
+			const bool hasJoints1 = ReadUIntAttribute(model, primitive, "JOINTS_1", 4,
+				[&](size_t i, const uint32_t* data) {
+					joints1Values[i] = glm::u32vec4(data[0], data[1], data[2], data[3]);
+				});
+			const bool hasWeights0 = ReadFloatAttribute(model, primitive, "WEIGHTS_0", 4,
+				[&](size_t i, const float* data) {
+					weights0Values[i] = glm::vec4(data[0], data[1], data[2], data[3]);
+				});
+			const bool hasWeights1 = ReadFloatAttribute(model, primitive, "WEIGHTS_1", 4,
+				[&](size_t i, const float* data) {
+					weights1Values[i] = glm::vec4(data[0], data[1], data[2], data[3]);
+				});
+
+			if (hasJoints0 || hasJoints1) {
+				++primitivesWithJointAttributes;
 			}
-			// JOINTS_1
-			auto j1It = primitive.attributes.find("JOINTS_1");
-			if (j1It != primitive.attributes.end()) {
-				const auto& acc = model.accessors[j1It->second];
-				const auto& view = model.bufferViews[acc.bufferView];
-				joints1Data = reinterpret_cast<const unsigned short*>(&model.buffers[view.buffer].data[view.byteOffset + acc.byteOffset]);
+			if (hasWeights0 || hasWeights1) {
+				++primitivesWithWeightAttributes;
 			}
-			// WEIGHTS_0
-			auto w0It = primitive.attributes.find("WEIGHTS_0");
-			if (w0It != primitive.attributes.end()) {
-				const auto& acc = model.accessors[w0It->second];
-				const auto& view = model.bufferViews[acc.bufferView];
-				weights0Data = reinterpret_cast<const float*>(&model.buffers[view.buffer].data[view.byteOffset + acc.byteOffset]);
-			}
-			// WEIGHTS_1
-			auto w1It = primitive.attributes.find("WEIGHTS_1");
-			if (w1It != primitive.attributes.end()) {
-				const auto& acc = model.accessors[w1It->second];
-				const auto& view = model.bufferViews[acc.bufferView];
-				weights1Data = reinterpret_cast<const float*>(&model.buffers[view.buffer].data[view.byteOffset + acc.byteOffset]);
-			}
-			// Merge up to 8 bone influences into 4 (standard)
-			if (joints0Data || joints1Data) {
-				for (size_t i = 0; i < vertexCount; i++) {
+
+			bool primitiveHasMeaningfulSkinning = false;
+
+			if (hasJoints0 || hasJoints1) {
+				for (size_t i = 0; i < vertexCount; ++i) {
+					std::vector<Influence> influences;
+					influences.reserve(8);
+
+					auto appendInfluenceSet = [&](const glm::u32vec4& jointSet, const glm::vec4& weightSet, bool enabled) {
+						if (!enabled) {
+							return;
+						}
+						for (int c = 0; c < 4; ++c) {
+							Influence inf;
+							inf.boneID = static_cast<int>(jointSet[c]);
+							inf.weight = weightSet[c];
+							if (inf.boneID < 0) {
+								inf.boneID = 0;
+							}
+							if (totalJoints > 0 && inf.boneID >= totalJoints) {
+								inf.boneID = totalJoints - 1;
+							}
+							influences.push_back(inf);
+						}
+					};
+
+					appendInfluenceSet(joints0Values[i], weights0Values[i], hasJoints0);
+					appendInfluenceSet(joints1Values[i], weights1Values[i], hasJoints1);
+
+					std::sort(influences.begin(), influences.end(),
+						[](const Influence& a, const Influence& b) {
+							return a.weight > b.weight;
+						});
+
 					glm::ivec4 finalIDs(0);
 					glm::vec4 finalWeights(0.0f);
-					MergeBoneData(joints0Data, joints1Data,
-						weights0Data, weights1Data,
-						i, finalIDs, finalWeights,
-						totalJoints);
+					float totalWeight = 0.0f;
+					for (int c = 0; c < 4 && c < static_cast<int>(influences.size()); ++c) {
+						finalIDs[c] = influences[c].boneID;
+						finalWeights[c] = influences[c].weight;
+						totalWeight += influences[c].weight;
+					}
+
+					if (totalWeight < 1e-6f) {
+						finalIDs = glm::ivec4(0, 0, 0, 0);
+						finalWeights = glm::vec4(1, 0, 0, 0);
+					}
+					else {
+						finalWeights /= totalWeight;
+						if ((hasWeights0 || hasWeights1) && totalJoints > 0) {
+							primitiveHasMeaningfulSkinning = true;
+						}
+					}
+
 					vertices[i].boneIDs = finalIDs;
 					vertices[i].boneWeights = finalWeights;
 				}
+			}
+
+			if (primitiveHasMeaningfulSkinning) {
+				++primitivesWithMeaningfulSkinData;
 			}
 			if (primitive.attributes.find("TANGENT") != primitive.attributes.end()) {
 				hasTangents = true;
@@ -725,8 +1036,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 			// OPTIMIZATION: Compute and cache bounding volume once at load time
 			mesh.ComputeBoundingVolume();
-			mesh.localTransform = meshLocalTransform;
-			mesh.sourceNodeIndex = nodeIndex;
+			mesh.localTransform = glm::mat4(1.0f);
+			mesh.sourceNodeIndex = -1;
 
 			// Load material textures and properties for this primitive
 			mesh.hasAlpha = false;
@@ -1119,9 +1430,83 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				<< "\n";
 
 			//Add the mesh to the Scene (use move since MeshComponent is move-only)
+			meshPrimitivesByGltfMesh[mm].push_back(static_cast<uint32_t>(meshes.size()));
 			meshes.emplace_back(std::move(mesh));
-			}
 		}
+	}
+
+	hasWeightedSkinData = (primitivesWithMeaningfulSkinData > 0);
+	hasSkin = hasDeclaredSkinMetadata && hasWeightedSkinData && !skin.joints.empty();
+
+	std::cout << "[Scene] Import summary for " << m_model_name
+		<< ": nodes=" << nodes.size()
+		<< ", meshes=" << model.meshes.size()
+		<< ", primitives=" << primitiveCount
+		<< ", skins=" << model.skins.size()
+		<< ", joints=" << totalJoints
+		<< ", animations=" << model.animations.size()
+		<< ", jointPrimitives=" << primitivesWithJointAttributes
+		<< ", weightPrimitives=" << primitivesWithWeightAttributes
+		<< ", weightedSkinPrimitives=" << primitivesWithMeaningfulSkinData
+		<< ", runtimeSkinned=" << (hasSkin ? "yes" : "no")
+		<< std::endl;
+
+	if (hasDeclaredSkinMetadata && !hasSkin) {
+		std::cout << "[Scene] Skin metadata found but no meaningful weighted skin data; treating model as static hierarchy for runtime transforms." << std::endl;
+	}
+
+	for (size_t nodeIdx = 0; nodeIdx < model.nodes.size() && nodeIdx < nodes.size(); ++nodeIdx) {
+		const tinygltf::Node& gltfNode = model.nodes[nodeIdx];
+		Scene::NodeInfo& nodeInfo = nodes[nodeIdx];
+		nodeInfo.gltfNodeIndex = static_cast<int>(nodeIdx);
+		nodeInfo.skinIndex = gltfNode.skin;
+		nodeInfo.meshIndices.clear();
+
+		if (gltfNode.mesh >= 0 && gltfNode.mesh < static_cast<int>(meshPrimitivesByGltfMesh.size())) {
+			const auto& attachedMeshes = meshPrimitivesByGltfMesh[gltfNode.mesh];
+			nodeInfo.meshIndices.insert(nodeInfo.meshIndices.end(), attachedMeshes.begin(), attachedMeshes.end());
+		}
+	}
+
+	// Some exporters add identity-only wrapper nodes (e.g. material/object shells) under the
+	// authored transform node. Promote mesh ownership to the nearest non-identity ancestor so
+	// imported renderables keep meaningful local offsets (instead of landing on identity leaves).
+	size_t promotedMeshAttachmentCount = 0;
+	for (size_t nodeIdx = 0; nodeIdx < nodes.size(); ++nodeIdx) {
+		if (nodes[nodeIdx].meshIndices.empty()) {
+			continue;
+		}
+
+		int currentIndex = static_cast<int>(nodeIdx);
+		while (currentIndex >= 0 && currentIndex < static_cast<int>(nodes.size())) {
+			Scene::NodeInfo& currentNode = nodes[static_cast<size_t>(currentIndex)];
+			if (currentNode.meshIndices.empty()) {
+				break;
+			}
+
+			if (!IsNearlyIdentityTransform(currentNode.localTransform)) {
+				break;
+			}
+
+			const int parentIndex = currentNode.parent;
+			if (parentIndex < 0 || parentIndex >= static_cast<int>(nodes.size())) {
+				break;
+			}
+
+			Scene::NodeInfo& parentNode = nodes[static_cast<size_t>(parentIndex)];
+			parentNode.meshIndices.insert(parentNode.meshIndices.end(),
+				currentNode.meshIndices.begin(),
+				currentNode.meshIndices.end());
+			promotedMeshAttachmentCount += currentNode.meshIndices.size();
+			currentNode.meshIndices.clear();
+
+			currentIndex = parentIndex;
+		}
+	}
+
+	if (promotedMeshAttachmentCount > 0) {
+		std::cout << "[Scene] Promoted " << promotedMeshAttachmentCount
+			<< " mesh attachment(s) from identity wrapper nodes to transform-carrying ancestors." << std::endl;
 	}
 
 	// (2) Load animations (if any) from the glTF
@@ -1471,34 +1856,19 @@ std::pair<glm::vec3, glm::vec3> Scene::GetBoundingBox() const {
 	glm::vec3 maxB(-std::numeric_limits<float>::max());
 	bool valid = false;
 
-	for (auto& mc : meshes) {
-		GLuint vboId = mc.GetVBO();
-		if (!vboId) continue;
-		glBindBuffer(GL_ARRAY_BUFFER, vboId);
-		GLint bufferSize = 0;
-		glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufferSize);
-		if (bufferSize <= 0) {
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
+   for (const auto& mc : meshes) {
+		if (!mc.boundingVolumeValid) {
 			continue;
 		}
-		void* dataPtr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
-		if (!dataPtr) {
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		if (!std::isfinite(mc.boundingMin.x) || !std::isfinite(mc.boundingMin.y) || !std::isfinite(mc.boundingMin.z) ||
+			!std::isfinite(mc.boundingMax.x) || !std::isfinite(mc.boundingMax.y) || !std::isfinite(mc.boundingMax.z)) {
 			continue;
 		}
-		const Vertex* v = (const Vertex*)dataPtr;
-		size_t count = bufferSize / sizeof(Vertex);
-		for (size_t i = 0; i < count; i++) {
-			if (std::isfinite(v[i].position.x) &&
-				std::isfinite(v[i].position.y) &&
-				std::isfinite(v[i].position.z)) {
-				minB = glm::min(minB, v[i].position);
-				maxB = glm::max(maxB, v[i].position);
-				valid = true;
-			}
-		}
-		glUnmapBuffer(GL_ARRAY_BUFFER);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		minB = glm::min(minB, mc.boundingMin);
+		maxB = glm::max(maxB, mc.boundingMax);
+		valid = true;
 	}
 
 	if (!valid) {

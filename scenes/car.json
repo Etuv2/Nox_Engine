@@ -37,9 +37,9 @@
       "type": "light",
       "name": "TestPointLight",
       "position": [
-        2.0,
-        2.0,
-        2.0
+        0.0,
+        5.0,
+        0.0
       ],
       "light": {
         "type": "point",
@@ -48,37 +48,10 @@
           10.0,
           10.0
         ],
-        "intensity": 5.0,
+        "intensity": 0.1,
         "enabled": true,
-        "range": 10.0,
+        "range": 20.0,
         "castsShadows": true
-      }
-    },
-    {
-      "type": "light",
-      "name": "MainSun",
-      "position": [
-        10.0,
-        20.0,
-        10.0
-      ],
-      "rotation": [
-        -45.0,
-        45.0,
-        0.0
-      ],
-      "light": {
-        "type": "directional",
-        "color": [
-          1.0,
-          0.95,
-          0.8
-        ],
-        "intensity": 3.0,
-        "enabled": true,
-        "castsShadows": true,
-        "shadowSize": 2048,
-        "splitLambda": 0.8
       }
     },
     {

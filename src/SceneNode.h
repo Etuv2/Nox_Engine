@@ -90,6 +90,7 @@ public:
     void SetRotation(glm::vec3 axis, float angle);
     void SetScale(glm::vec3 scale);
     void SetTransform(const glm::mat4& transform);
+    void SetWorldTransform(const glm::mat4& worldTransform);
     void SetLocalTRS(const glm::vec3& translation, const glm::quat& rotation, const glm::vec3& scale);
     
     glm::vec3 GetPosition() const;

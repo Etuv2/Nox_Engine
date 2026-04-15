@@ -106,55 +106,42 @@ void LightNode::UpdateTransformSystems(const glm::mat4& worldTransform) {
 
 void LightNode::SetPosition(const glm::vec3& position) 
 {
-    // Update our local transform matrix
-    transform[3][0] = position.x;
-    transform[3][1] = position.y;
-    transform[3][2] = position.z;
-    
-    // Mark as needing light sync
+    SceneNode::SetPosition(position);
+
     m_lightDirty = true;
-    
-    if (m_light) {
-        // Update light position immediately
-        m_light->SetPosition(position);
-        
-        // Update selection proxy to reflect new position
-        UpdateSelectionProxy();
-        
-        std::cout << "[LightNode] Position set to (" 
-                  << position.x << "," << position.y << "," << position.z << ")" << std::endl;
-    }
+    m_transformDirty = true;
+    UpdateLightFromTransform(true);
+    UpdateSelectionProxy();
+
+    std::cout << "[LightNode] Position set to ("
+              << position.x << "," << position.y << "," << position.z << ")" << std::endl;
 }
 
 void LightNode::SetRotation(const glm::vec3& axis, float angle) 
 {
-    // Apply rotation to transform matrix
-    glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), angle, axis);
-    transform = transform * rotation;
-    
-    // Mark as needing sync
+    SceneNode::SetRotation(axis, angle);
+
     m_lightDirty = true;
-    
-    // Update light immediately
+    m_transformDirty = true;
     UpdateLightFromTransform(true);
-    
-    // Update selection proxy to reflect rotation
     UpdateSelectionProxy();
 }
 
 void LightNode::SetScale(const glm::vec3& scale) 
 {
-    // Apply scale to transform matrix
-    glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.0f), scale);
-    transform = transform * scaleMatrix;
-    
-    // Scale could affect light range for point/spot lights
+    SceneNode::SetScale(scale);
+
+    m_transformDirty = true;
+    m_lightDirty = true;
+
     if (m_light && (m_light->GetLightType() == BaseLight::LightType::POINT ||
                    m_light->GetLightType() == BaseLight::LightType::SPOT)) {
         float avgScale = (scale.x + scale.y + scale.z) / 3.0f;
         m_light->SetRange(m_light->GetRange() * avgScale);
-        UpdateSelectionProxy();
     }
+
+    UpdateLightFromTransform(true);
+    UpdateSelectionProxy();
 }
 
 // Helper to get position from transform matrix
@@ -170,14 +157,14 @@ void LightNode::UpdateLightFromTransform(bool forceUpdate)
     // Check if we should update based on dirty flag or force parameter
     if (!forceUpdate && !m_lightDirty) return;
     
-    // Get world position using the unified hierarchy system
-    glm::vec3 worldPosition = GetWorldPosition();
-    
-    // Extract rotation from our local transform for direction calculation
+    // Resolve from the authoritative world transform so parent-child motion affects lights
+    // exactly the same way it affects renderable nodes and gizmo edits.
+    glm::mat4 worldTransform = GetWorldPosition4x4();
+    glm::vec3 worldPosition = glm::vec3(worldTransform[3]);
     glm::vec3 scale, translation, skew;
     glm::quat rotation;
     glm::vec4 perspective;
-    glm::decompose(transform, scale, rotation, translation, skew, perspective);
+    glm::decompose(worldTransform, scale, rotation, translation, skew, perspective);
     
     // Update light position with world position
     m_light->SetPosition(worldPosition);
@@ -461,49 +448,9 @@ void LightNode::Deserialize(const nlohmann::json& json)
 
 void LightNode::SetTransform(const glm::mat4& newTransform) 
 {
-    // Override SetTransform to ensure light-node synchronization
-    
-    // Store the old transform for comparison
-    glm::mat4 oldTransform = transform;
-    
-    // Update the base transform
-    transform = newTransform;
+    SceneNode::SetTransform(newTransform);
     m_transformDirty = true;
-    m_lightDirty = true; // Mark light as dirty to trigger sync
-    
-    // Force immediate light update when gizmo manipulates the node
-    if (m_light) {
-        // Extract position from the new transform matrix
-        glm::vec3 newPosition = glm::vec3(newTransform[3]);
-        
-        // Update light position immediately
-        m_light->SetPosition(newPosition);
-        
-        // For directional and spot lights, extract rotation and update direction
-        if (m_light->GetLightType() == BaseLight::LightType::DIRECTIONAL ||
-            m_light->GetLightType() == BaseLight::LightType::SPOT) {
-            
-            // Extract rotation from transform
-            glm::vec3 scale, translation, skew;
-            glm::quat rotation;
-            glm::vec4 perspective;
-            glm::decompose(newTransform, scale, rotation, translation, skew, perspective);
-            
-            // Calculate new direction based on rotation
-            glm::vec3 forward = glm::vec3(0.0f, 0.0f, -1.0f); // Default forward direction
-            glm::mat3 rotMat = glm::mat3_cast(rotation);
-            glm::vec3 newDirection = rotMat * forward;
-            m_light->SetDirection(glm::normalize(newDirection));
-        }
-        
-        // Force an immediate UpdateLightFromTransform call
-        UpdateLightFromTransform(true); // Force update
-        
-        // Update selection proxy to reflect new position
-        UpdateSelectionProxy();
-    }
-    
-    // Mark transform as clean since we just updated everything
-    m_transformDirty = false;
-    m_lightDirty = false;
+    m_lightDirty = true;
+    UpdateLightFromTransform(true);
+    UpdateSelectionProxy();
 }

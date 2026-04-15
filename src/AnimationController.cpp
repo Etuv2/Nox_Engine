@@ -243,6 +243,16 @@ bool AnimationController::IsAnimationPlaying(const std::string& animationName) c
     return it != m_activeAnimations.end() && it->second.isPlaying && !it->second.isPaused;
 }
 
+bool AnimationController::HasActiveAnimations() const {
+    for (const auto& pair : m_activeAnimations) {
+        const AnimationState& state = pair.second;
+        if ((state.isPlaying || state.isPaused) && state.animation) {
+            return true;
+        }
+    }
+    return false;
+}
+
 float AnimationController::GetAnimationTime(const std::string& animationName) const {
     auto it = m_activeAnimations.find(animationName);
     return (it != m_activeAnimations.end()) ? it->second.currentTime : 0.0f;

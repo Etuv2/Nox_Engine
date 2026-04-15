@@ -52,17 +52,34 @@ public:
 	// Debug
 	void PrintHierarchy(EntityID root = INVALID_ENTITY, int depth = 0) const;
 
+	size_t GetLastDirtyRootCount() const { return m_lastDirtyRootCount; }
+	size_t GetLastTransformsRecomputedCount() const { return m_lastTransformsRecomputed; }
+	size_t GetPendingDirtyRootCount() const;
+
 private:
 	ComponentManager* m_componentManager;
 
-	// Cached list of entities with dirty transforms for batch processing
-	std::vector<EntityID> m_dirtyEntities;
+	// Cached list of dirty roots for batch processing
+	std::vector<EntityID> m_dirtyRoots;
+
+	// Diagnostics for deep hierarchy profiling
+	size_t m_lastDirtyRootCount = 0;
+	size_t m_lastTransformsRecomputed = 0;
 
 	// Helper to compute world transform from local + parent
 	void ComputeWorldTransform(EntityID entity);
 
-	// Recursive helper for marking subtrees dirty
-	void MarkSubtreeDirtyRecursive(EntityID entity);
+	// Recursive helper for subtree recomputation
+	void ComputeSubtreeWorldTransforms(EntityID entity, const glm::mat4& parentWorld);
+
+	// Helper to find the highest dirty ancestor for on-demand recomputation
+	EntityID FindTopDirtyAncestor(EntityID entity) const;
+
+	// Helper to fetch a parent world transform when the parent is already clean
+	glm::mat4 GetCleanParentWorldTransform(EntityID entity) const;
+
+	// Hierarchy depth for stable dirty-root ordering
+	size_t GetHierarchyDepth(EntityID entity) const;
 
 	// Helper to get parent world transform
 	glm::mat4 GetParentWorldTransform(EntityID entity) const;

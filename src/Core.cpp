@@ -61,6 +61,7 @@ Core::Core()
 	, m_splitLambda(0.95f)
 	, m_exposure(1.0f)
 	, m_gamma(2.2f)
+	, m_sceneHasAudioNodes(false)
 	, m_physicsEnabledForScene(false)
 	, m_requestTogglePhysics(false)
 	, m_frameCount(0.0f)
@@ -305,6 +306,7 @@ bool Core::InitializeScene() {
 	m_exposure = m_sceneGraph->m_exposure;
 	m_gamma = m_sceneGraph->m_gamma;
 	m_sceneName = m_sceneGraph->GetSceneName();
+	m_sceneHasAudioNodes = !m_sceneGraph->FindNodesByType(SceneNode::AUDIO).empty();
 
 	// Sync physics enabled state from scene JSON
 	m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
@@ -515,9 +517,11 @@ void Core::Update(float deltaTime) {
 		}
 
 		// Stage 3: audio
-		glm::vec3 listenerPos = m_camera->GetCameraPosition();
-		float listenerAngle = m_camera->GetCameraFacingAngle();
-		m_sceneGraph->GetRoot()->UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
+		if (m_sceneHasAudioNodes) {
+			glm::vec3 listenerPos = m_camera->GetCameraPosition();
+			float listenerAngle = m_camera->GetCameraFacingAngle();
+			m_sceneGraph->GetRoot()->UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
+		}
 
 		// Rebuild BVH if needed
 		if (m_bvhDirty) {
@@ -751,6 +755,7 @@ void Core::SwapScene(const std::string& newSceneFile) {
 			m_exposure = m_sceneGraph->m_exposure;
 			m_gamma = m_sceneGraph->m_gamma;
 			m_sceneName = m_sceneGraph->GetSceneName();
+			m_sceneHasAudioNodes = !m_sceneGraph->FindNodesByType(SceneNode::AUDIO).empty();
 
 			m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
 			if (m_physicsEngine) {
@@ -854,6 +859,7 @@ void Core::CleanupCurrentScene() {
 	// Invalidate cached bounds
 	m_boundingBoxCached = false;
 	m_bvhDirty = true;
+	m_sceneHasAudioNodes = false;
 
 	std::cout << "[Core] Scene cleanup complete" << std::endl;
 }
@@ -1159,6 +1165,7 @@ bool Core::LoadSceneState(const std::string& filepath) {
 		m_exposure = newGraph->m_exposure;
 		m_gamma = newGraph->m_gamma;
 		m_sceneName = newGraph->GetSceneName();
+		m_sceneHasAudioNodes = !newGraph->FindNodesByType(SceneNode::AUDIO).empty();
 
 		m_physicsEnabledForScene = newGraph->IsPhysicsEnabled();
 		if (m_physicsEngine) {
