@@ -703,7 +703,14 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneGraph.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneLoader.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneNode.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneRuntimeData.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ShadowMapper.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SimdKernels.cpp">
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Skybox.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SpotLight.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\StudioLighting.cpp" />

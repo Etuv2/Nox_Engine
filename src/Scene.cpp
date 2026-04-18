@@ -10,10 +10,13 @@
 #include <glm/gtx/matrix_interpolation.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <limits>
+#include <chrono>
+#include <filesystem>
 #include <algorithm>
 #include <iostream>
 #include <cmath>
 #include <cstdint>
+#include <array>
 #include <functional>
 #include <unordered_map>
 #include "stb_image.h"
@@ -22,6 +25,51 @@
 // HELPER CONSTANTS & STRUCTS
 
 static constexpr int MAX_INFLUENCES = 4;
+static constexpr bool kVerboseSceneImportLogging = false;
+
+static void AppendLoadDiagnosticsCsv(const std::string& modelName,
+	float totalMs,
+	float parseMs,
+	float nodeBuildMs,
+	float primitiveBuildMs,
+	float materialSetupMs,
+	float animationLoadMs,
+	size_t nodeCount,
+	size_t meshCount,
+	size_t primitiveCount,
+	size_t vertexCount,
+	size_t indexCount)
+{
+	namespace fs = std::filesystem;
+	const fs::path outputDir = fs::path("performance_data");
+	const fs::path outputPath = outputDir / "load_diagnostics.csv";
+
+	std::error_code ec;
+	fs::create_directories(outputDir, ec);
+	const bool hasExistingFile = fs::exists(outputPath, ec);
+
+	std::ofstream out(outputPath.string(), std::ios::app);
+	if (!out.is_open()) {
+		return;
+	}
+
+	if (!hasExistingFile) {
+		out << "Model,TotalMs,ParseMs,NodeBuildMs,PrimitiveBuildMs,MaterialSetupMs,AnimationLoadMs,NodeCount,MeshCount,PrimitiveCount,VertexCount,IndexCount\n";
+	}
+
+	out << modelName << ","
+		<< totalMs << ","
+		<< parseMs << ","
+		<< nodeBuildMs << ","
+		<< primitiveBuildMs << ","
+		<< materialSetupMs << ","
+		<< animationLoadMs << ","
+		<< nodeCount << ","
+		<< meshCount << ","
+		<< primitiveCount << ","
+		<< vertexCount << ","
+		<< indexCount << "\n";
+}
 
 static uint32_t HashStableMaterialKey(const std::string& modelPath, int meshIndex, int primitiveIndex, int materialIndex)
 {
@@ -584,6 +632,51 @@ static std::vector<unsigned int> ReadIndices(
 	return out;
 }
 
+static void ComputeVertexNormalsFromIndexedTriangles(std::vector<Vertex>& vertices,
+	const std::vector<unsigned int>& indices)
+{
+	if (vertices.empty()) {
+		return;
+	}
+
+	for (Vertex& v : vertices) {
+		v.normal = glm::vec3(0.0f);
+	}
+
+	if (indices.size() >= 3) {
+		for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+			const unsigned int i0 = indices[i + 0];
+			const unsigned int i1 = indices[i + 1];
+			const unsigned int i2 = indices[i + 2];
+			if (i0 >= vertices.size() || i1 >= vertices.size() || i2 >= vertices.size()) {
+				continue;
+			}
+
+			const glm::vec3 e1 = vertices[i1].position - vertices[i0].position;
+			const glm::vec3 e2 = vertices[i2].position - vertices[i0].position;
+			const glm::vec3 faceNormal = glm::cross(e1, e2);
+			const float lenSq = glm::dot(faceNormal, faceNormal);
+			if (lenSq <= 1e-12f) {
+				continue;
+			}
+
+			vertices[i0].normal += faceNormal;
+			vertices[i1].normal += faceNormal;
+			vertices[i2].normal += faceNormal;
+		}
+	}
+
+	for (Vertex& v : vertices) {
+		const float lenSq = glm::dot(v.normal, v.normal);
+		if (lenSq <= 1e-12f) {
+			v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+		}
+		else {
+			v.normal = glm::normalize(v.normal);
+		}
+	}
+}
+
 static bool ReadMat4Attribute(
 	const tinygltf::Model& model,
 	int accessorIndex,
@@ -675,6 +768,9 @@ static MeshComponent CreateMesh(const std::vector<Vertex>& vertices,
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
 		(void*)offsetof(Vertex, texCoord));
 	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(10, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+		(void*)offsetof(Vertex, texCoord1));
+	glEnableVertexAttribArray(10);
 	// **Tangent with 4 components (XYZ + handedness):**
 	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex),
 		(void*)offsetof(Vertex, tangent));
@@ -696,8 +792,11 @@ static MeshComponent CreateMesh(const std::vector<Vertex>& vertices,
 /**
  * Loads a glTF texture at texIndex, returning a shared_ptr<Texture>.
  * Returns nullptr on failure.
+ *
+ * glTF color textures (base-color/emissive/specular-color) are sampled in sRGB,
+ * while data textures (normal/metal-rough/occlusion/etc.) remain linear.
  */
-static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model, int texIndex, bool isNormalMap = false)
+static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model, int texIndex, bool useSRGB = false)
 {
 	if (texIndex < 0 || texIndex >= (int)model.textures.size()) {
 		return nullptr;
@@ -726,11 +825,11 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 	}
 	else if (image.component == 3) {
 		format = GL_RGB;
-		internalFormat = GL_RGB8;
+		internalFormat = useSRGB ? GL_SRGB8 : GL_RGB8;
 	}
 	else if (image.component == 4) {
 		format = GL_RGBA;
-		internalFormat = GL_RGBA8;
+		internalFormat = useSRGB ? GL_SRGB8_ALPHA8 : GL_RGBA8;
 	}
 
 	// Get sampler settings from glTF if available
@@ -791,10 +890,21 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 }
 
 bool Scene::LoadFromGLTF(const std::string& path) {
+	using Clock = std::chrono::high_resolution_clock;
+	const auto loadStart = Clock::now();
+	float parseMs = 0.0f;
+	float nodeBuildMs = 0.0f;
+	float primitiveBuildMs = 0.0f;
+	float materialSetupMs = 0.0f;
+	float animationLoadMs = 0.0f;
+	size_t totalVertexCount = 0;
+	size_t totalIndexCount = 0;
+
 	tinygltf::TinyGLTF loader;
 	tinygltf::Model model;
 	std::string err, warn;
 	bool ret = false;
+	const auto parseStart = Clock::now();
 
 	// Determine extension to choose ASCII vs binary loading
 	std::string extension = path.substr(path.find_last_of('.') + 1);
@@ -815,11 +925,14 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		std::cerr << "[GLTF Error] Failed to load: " << path << std::endl;
 		return false;
 	}
+	const auto parseEnd = Clock::now();
+	parseMs = std::chrono::duration<float, std::milli>(parseEnd - parseStart).count();
 
 	// Clear any existing data in this Scene
 	meshes.clear();
 	animations.clear();
 	nodes.clear();
+	nodeWorldTransforms.clear();
 	hasSkin = false;
 	hasSkinMetadata = false;
 	hasWeightedSkinData = false;
@@ -828,8 +941,10 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	skin.inverseBindMatrices.clear();
 	m_model_name = path.substr(path.find_last_of("/\\") + 1);
 
-	std::vector<glm::mat4> nodeWorldTransforms;
+	const auto nodeBuildStart = Clock::now();
 	PopulateSceneNodesAndWorldTransforms(model, nodes, nodeWorldTransforms);
+	const auto nodeBuildEnd = Clock::now();
+	nodeBuildMs = std::chrono::duration<float, std::milli>(nodeBuildEnd - nodeBuildStart).count();
 
 	// If there's a skin, note the total joint count for blending weights
 	int totalJoints = 0;
@@ -869,10 +984,240 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	size_t primitivesWithJointAttributes = 0;
 	size_t primitivesWithWeightAttributes = 0;
 	size_t primitivesWithMeaningfulSkinData = 0;
+	size_t primitivesWithImportedNormals = 0;
+	size_t primitivesWithGeneratedNormals = 0;
+	size_t primitivesNormalMapSuppressed = 0;
+	size_t primitivesWithTexCoord1 = 0;
+	size_t primitivesUsingUVSet1 = 0;
 
 	// (1) Parse all meshes/primitives once, then attach them to authored nodes.
 	// The glTF node table is the source of truth for ownership and transforms.
 	std::vector<std::vector<uint32_t>> meshPrimitivesByGltfMesh(model.meshes.size());
+	std::unordered_map<uint64_t, std::shared_ptr<Texture>> textureCache;
+	textureCache.reserve(model.textures.size());
+	size_t textureLoadRequests = 0;
+	size_t uniqueTextureLoads = 0;
+	struct CachedMaterialData {
+		bool initialized = false;
+		MeshComponent::AlphaMode alphaMode = MeshComponent::ALPHA_OPAQUE;
+		bool hasAlpha = false;
+		bool doubleSided = false;
+		float alphaCutoff = 0.5f;
+		glm::vec4 baseColorFactor = glm::vec4(1.0f);
+		float metallicFactor = 1.0f;
+		float roughnessFactor = 1.0f;
+		glm::vec3 emissiveFactor = glm::vec3(0.0f);
+		float specularFactor = 1.0f;
+		glm::vec3 specularColorFactor = glm::vec3(1.0f);
+		float emissiveStrength = 1.0f;
+		float clearcoatFactor = 0.0f;
+		float clearcoatRoughnessFactor = 0.0f;
+		float occlusionStrength = 1.0f;
+		float normalScale = 1.0f;
+		float transmissionFactor = 0.0f;
+		float thicknessFactor = 0.0f;
+		float attenuationDistance = std::numeric_limits<float>::infinity();
+		glm::vec3 attenuationColor = glm::vec3(1.0f);
+		float ior = 1.5f;
+		int diffuseTextureIndex = -1;
+		int normalTextureIndex = -1;
+		int roughnessTextureIndex = -1;
+		int emissiveTextureIndex = -1;
+		int occlusionTextureIndex = -1;
+		int specularTextureIndex = -1;
+		int specularColorTextureIndex = -1;
+		int transmissionTextureIndex = -1;
+		int baseColorTexCoord = 0;
+		int normalTexCoord = 0;
+		int metallicRoughnessTexCoord = 0;
+		int emissiveTexCoord = 0;
+		int occlusionTexCoord = 0;
+		int specularTexCoord = 0;
+		int specularColorTexCoord = 0;
+		int transmissionTexCoord = 0;
+	};
+	std::vector<CachedMaterialData> materialCache(model.materials.size());
+	size_t materialCacheHits = 0;
+	size_t materialCacheMisses = 0;
+	auto buildCachedMaterialData = [](const tinygltf::Material& mat, CachedMaterialData& cached) {
+		cached = CachedMaterialData{};
+
+		if (mat.alphaMode == "BLEND") {
+			cached.hasAlpha = true;
+			cached.alphaMode = MeshComponent::ALPHA_BLEND;
+		}
+		else if (mat.alphaMode == "MASK") {
+			cached.alphaMode = MeshComponent::ALPHA_MASK;
+			if (mat.alphaCutoff >= 0.0) {
+				cached.alphaCutoff = static_cast<float>(mat.alphaCutoff);
+			}
+		}
+
+		cached.doubleSided = mat.doubleSided;
+		cached.diffuseTextureIndex = mat.pbrMetallicRoughness.baseColorTexture.index;
+		cached.normalTextureIndex = mat.normalTexture.index;
+		cached.baseColorTexCoord = mat.pbrMetallicRoughness.baseColorTexture.texCoord;
+		cached.normalTexCoord = mat.normalTexture.texCoord;
+		if (cached.normalTextureIndex >= 0) {
+			cached.normalScale = static_cast<float>(mat.normalTexture.scale);
+		}
+		cached.roughnessTextureIndex = mat.pbrMetallicRoughness.metallicRoughnessTexture.index;
+		cached.metallicRoughnessTexCoord = mat.pbrMetallicRoughness.metallicRoughnessTexture.texCoord;
+		cached.emissiveTextureIndex = mat.emissiveTexture.index;
+		cached.emissiveTexCoord = mat.emissiveTexture.texCoord;
+		cached.occlusionTextureIndex = mat.occlusionTexture.index;
+		cached.occlusionTexCoord = mat.occlusionTexture.texCoord;
+
+		if (mat.extensions.count("KHR_materials_specular")) {
+			const auto& specExt = mat.extensions.at("KHR_materials_specular");
+			if (specExt.Has("specularTexture") && specExt.Get("specularTexture").IsObject()) {
+				const auto& specTex = specExt.Get("specularTexture");
+				if (specTex.Has("index") && specTex.Get("index").IsInt()) {
+					cached.specularTextureIndex = specTex.Get("index").Get<int>();
+				}
+				if (specTex.Has("texCoord") && specTex.Get("texCoord").IsInt()) {
+					cached.specularTexCoord = specTex.Get("texCoord").Get<int>();
+				}
+			}
+			if (specExt.Has("specularColorTexture") && specExt.Get("specularColorTexture").IsObject()) {
+				const auto& specColorTex = specExt.Get("specularColorTexture");
+				if (specColorTex.Has("index") && specColorTex.Get("index").IsInt()) {
+					cached.specularColorTextureIndex = specColorTex.Get("index").Get<int>();
+				}
+				if (specColorTex.Has("texCoord") && specColorTex.Get("texCoord").IsInt()) {
+					cached.specularColorTexCoord = specColorTex.Get("texCoord").Get<int>();
+				}
+			}
+			if (specExt.Has("specularFactor") && specExt.Get("specularFactor").IsNumber()) {
+				cached.specularFactor = static_cast<float>(specExt.Get("specularFactor").Get<double>());
+			}
+			if (specExt.Has("specularColorFactor") && specExt.Get("specularColorFactor").IsArray()) {
+				const auto& colorArray = specExt.Get("specularColorFactor");
+				if (colorArray.ArrayLen() >= 3) {
+					cached.specularColorFactor = glm::vec3(
+						static_cast<float>(colorArray.Get(0).Get<double>()),
+						static_cast<float>(colorArray.Get(1).Get<double>()),
+						static_cast<float>(colorArray.Get(2).Get<double>())
+					);
+				}
+			}
+		}
+
+		if (mat.extensions.count("KHR_materials_transmission")) {
+			const auto& transExt = mat.extensions.at("KHR_materials_transmission");
+			if (transExt.Has("transmissionFactor") && transExt.Get("transmissionFactor").IsNumber()) {
+				cached.transmissionFactor = static_cast<float>(transExt.Get("transmissionFactor").Get<double>());
+				if (cached.transmissionFactor > 0.0f) {
+					cached.hasAlpha = true;
+					if (cached.alphaMode == MeshComponent::ALPHA_OPAQUE) {
+						cached.alphaMode = MeshComponent::ALPHA_BLEND;
+					}
+				}
+			}
+			if (transExt.Has("transmissionTexture") && transExt.Get("transmissionTexture").IsObject()) {
+				const auto& transTex = transExt.Get("transmissionTexture");
+				if (transTex.Has("index") && transTex.Get("index").IsInt()) {
+					cached.transmissionTextureIndex = transTex.Get("index").Get<int>();
+				}
+				if (transTex.Has("texCoord") && transTex.Get("texCoord").IsInt()) {
+					cached.transmissionTexCoord = transTex.Get("texCoord").Get<int>();
+				}
+			}
+		}
+
+		if (mat.extensions.count("KHR_materials_ior")) {
+			const auto& iorExt = mat.extensions.at("KHR_materials_ior");
+			if (iorExt.Has("ior") && iorExt.Get("ior").IsNumber()) {
+				cached.ior = static_cast<float>(iorExt.Get("ior").Get<double>());
+			}
+		}
+
+		if (mat.extensions.count("KHR_materials_volume")) {
+			const auto& volumeExt = mat.extensions.at("KHR_materials_volume");
+			if (volumeExt.Has("thicknessFactor") && volumeExt.Get("thicknessFactor").IsNumber()) {
+				cached.thicknessFactor = static_cast<float>(volumeExt.Get("thicknessFactor").Get<double>());
+			}
+			if (volumeExt.Has("attenuationDistance") && volumeExt.Get("attenuationDistance").IsNumber()) {
+				cached.attenuationDistance = static_cast<float>(volumeExt.Get("attenuationDistance").Get<double>());
+			}
+			if (volumeExt.Has("attenuationColor") && volumeExt.Get("attenuationColor").IsArray()) {
+				const auto& colorArray = volumeExt.Get("attenuationColor");
+				if (colorArray.ArrayLen() >= 3) {
+					cached.attenuationColor = glm::vec3(
+						static_cast<float>(colorArray.Get(0).Get<double>()),
+						static_cast<float>(colorArray.Get(1).Get<double>()),
+						static_cast<float>(colorArray.Get(2).Get<double>())
+					);
+				}
+			}
+		}
+
+		if (mat.extensions.count("KHR_materials_emissive_strength")) {
+			const auto& emissiveExt = mat.extensions.at("KHR_materials_emissive_strength");
+			if (emissiveExt.Has("emissiveStrength") && emissiveExt.Get("emissiveStrength").IsNumber()) {
+				cached.emissiveStrength = static_cast<float>(emissiveExt.Get("emissiveStrength").Get<double>());
+			}
+		}
+
+		if (mat.extensions.count("KHR_materials_clearcoat")) {
+			const auto& clearcoatExt = mat.extensions.at("KHR_materials_clearcoat");
+			if (clearcoatExt.Has("clearcoatFactor") && clearcoatExt.Get("clearcoatFactor").IsNumber()) {
+				cached.clearcoatFactor = static_cast<float>(clearcoatExt.Get("clearcoatFactor").Get<double>());
+			}
+			if (clearcoatExt.Has("clearcoatRoughnessFactor") && clearcoatExt.Get("clearcoatRoughnessFactor").IsNumber()) {
+				cached.clearcoatRoughnessFactor = static_cast<float>(clearcoatExt.Get("clearcoatRoughnessFactor").Get<double>());
+			}
+		}
+
+		if (mat.occlusionTexture.index >= 0) {
+			cached.occlusionStrength = static_cast<float>(mat.occlusionTexture.strength);
+		}
+
+		if (!mat.pbrMetallicRoughness.baseColorFactor.empty()) {
+			cached.baseColorFactor = glm::vec4(
+				static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[0]),
+				static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[1]),
+				static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[2]),
+				static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[3])
+			);
+			if (cached.baseColorFactor.a < 1.0f) {
+				cached.hasAlpha = true;
+			}
+		}
+
+		cached.metallicFactor = static_cast<float>(mat.pbrMetallicRoughness.metallicFactor);
+		cached.roughnessFactor = static_cast<float>(mat.pbrMetallicRoughness.roughnessFactor);
+		if (!mat.emissiveFactor.empty()) {
+			cached.emissiveFactor = glm::vec3(
+				static_cast<float>(mat.emissiveFactor[0]),
+				static_cast<float>(mat.emissiveFactor[1]),
+				static_cast<float>(mat.emissiveFactor[2])
+			);
+		}
+
+		cached.initialized = true;
+	};
+	auto loadTextureCached = [&](int texIndex, bool useSRGB = false) -> std::shared_ptr<Texture> {
+		++textureLoadRequests;
+		if (texIndex < 0 || texIndex >= static_cast<int>(model.textures.size())) {
+			return nullptr;
+		}
+
+		const uint64_t cacheKey = (static_cast<uint64_t>(static_cast<uint32_t>(texIndex)) << 1ull) | (useSRGB ? 1ull : 0ull);
+
+		auto it = textureCache.find(cacheKey);
+		if (it != textureCache.end()) {
+			return it->second;
+		}
+
+		std::shared_ptr<Texture> loadedTexture = LoadTextureFromGLTF(model, texIndex, useSRGB);
+		textureCache.emplace(cacheKey, loadedTexture);
+		if (loadedTexture) {
+			++uniqueTextureLoads;
+		}
+		return loadedTexture;
+	};
+	const auto primitiveBuildStart = Clock::now();
 	for (size_t mm = 0; mm < model.meshes.size(); mm++) {
 		const tinygltf::Mesh& gltfMesh = model.meshes[mm];
 		for (size_t p = 0; p < gltfMesh.primitives.size(); p++) {
@@ -890,23 +1235,48 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 			// Prepare vertex buffer
 			std::vector<Vertex> vertices(vertexCount);
-			vertices.resize(vertexCount);
-			vertices.shrink_to_fit();
+			for (Vertex& v : vertices) {
+				v.position = glm::vec3(0.0f);
+				v.normal = glm::vec3(0.0f);
+				v.texCoord = glm::vec2(0.0f);
+				v.texCoord1 = glm::vec2(0.0f);
+				v.tangent = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+				v.color = glm::vec4(1.0f);
+			}
 
 			// A) Read vertex attributes (positions, normals, tangents, texcoords, skin joints/weights)
 			ReadFloatAttribute(model, primitive, "POSITION", 3, [&](size_t i, const float* data) {
 				vertices[i].position = glm::vec3(data[0], data[1], data[2]);
 				});
-			ReadFloatAttribute(model, primitive, "NORMAL", 3, [&](size_t i, const float* data) {
-				vertices[i].normal = glm::vec3(data[0], data[1], data[2]);
+			size_t validImportedNormalCount = 0;
+			const bool hasNormalsForPrimitive = ReadFloatAttribute(model, primitive, "NORMAL", 3, [&](size_t i, const float* data) {
+				const glm::vec3 n(data[0], data[1], data[2]);
+				const float lenSq = glm::dot(n, n);
+				if (lenSq > 1e-12f) {
+					vertices[i].normal = glm::normalize(n);
+					++validImportedNormalCount;
+				}
+				else {
+					vertices[i].normal = glm::vec3(0.0f);
+				}
 				});
-			ReadFloatAttribute(model, primitive, "TANGENT", 4, [&](size_t i, const float* data) {
+			const bool useImportedNormals = hasNormalsForPrimitive && validImportedNormalCount > 0;
+			if (useImportedNormals) {
+				++primitivesWithImportedNormals;
+			}
+			const bool hasTangentsForPrimitive = ReadFloatAttribute(model, primitive, "TANGENT", 4, [&](size_t i, const float* data) {
 				// Store tangent XYZ and handedness (data[3]) in the vertex
 				vertices[i].tangent = glm::vec4(data[0], data[1], data[2], data[3]);
 				});
 			ReadFloatAttribute(model, primitive, "TEXCOORD_0", 2, [&](size_t i, const float* data) {
 				vertices[i].texCoord = glm::vec2(data[0], data[1]);
 				});
+			const bool hasTexCoord1 = ReadFloatAttribute(model, primitive, "TEXCOORD_1", 2, [&](size_t i, const float* data) {
+				vertices[i].texCoord1 = glm::vec2(data[0], data[1]);
+				});
+			if (hasTexCoord1) {
+				++primitivesWithTexCoord1;
+			}
 
 			// Skinning data (up to 8 weights, merged into 4)
 			std::vector<glm::u32vec4> joints0Values(vertexCount, glm::u32vec4(0u));
@@ -942,14 +1312,17 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 			if (hasJoints0 || hasJoints1) {
 				for (size_t i = 0; i < vertexCount; ++i) {
-					std::vector<Influence> influences;
-					influences.reserve(8);
+					std::array<Influence, 8> influences{};
+					int influenceCount = 0;
 
 					auto appendInfluenceSet = [&](const glm::u32vec4& jointSet, const glm::vec4& weightSet, bool enabled) {
 						if (!enabled) {
 							return;
 						}
 						for (int c = 0; c < 4; ++c) {
+							if (influenceCount >= static_cast<int>(influences.size())) {
+								break;
+							}
 							Influence inf;
 							inf.boneID = static_cast<int>(jointSet[c]);
 							inf.weight = weightSet[c];
@@ -959,25 +1332,27 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 							if (totalJoints > 0 && inf.boneID >= totalJoints) {
 								inf.boneID = totalJoints - 1;
 							}
-							influences.push_back(inf);
+							influences[static_cast<size_t>(influenceCount++)] = inf;
 						}
 					};
 
 					appendInfluenceSet(joints0Values[i], weights0Values[i], hasJoints0);
 					appendInfluenceSet(joints1Values[i], weights1Values[i], hasJoints1);
 
-					std::sort(influences.begin(), influences.end(),
-						[](const Influence& a, const Influence& b) {
-							return a.weight > b.weight;
-						});
+					if (influenceCount > 1) {
+						std::sort(influences.begin(), influences.begin() + influenceCount,
+							[](const Influence& a, const Influence& b) {
+								return a.weight > b.weight;
+							});
+					}
 
 					glm::ivec4 finalIDs(0);
 					glm::vec4 finalWeights(0.0f);
 					float totalWeight = 0.0f;
-					for (int c = 0; c < 4 && c < static_cast<int>(influences.size()); ++c) {
-						finalIDs[c] = influences[c].boneID;
-						finalWeights[c] = influences[c].weight;
-						totalWeight += influences[c].weight;
+					for (int c = 0; c < 4 && c < influenceCount; ++c) {
+						finalIDs[c] = influences[static_cast<size_t>(c)].boneID;
+						finalWeights[c] = influences[static_cast<size_t>(c)].weight;
+						totalWeight += influences[static_cast<size_t>(c)].weight;
 					}
 
 					if (totalWeight < 1e-6f) {
@@ -999,12 +1374,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			if (primitiveHasMeaningfulSkinning) {
 				++primitivesWithMeaningfulSkinData;
 			}
-			if (primitive.attributes.find("TANGENT") != primitive.attributes.end()) {
+			if (hasTangentsForPrimitive) {
 				hasTangents = true;
-				ReadFloatAttribute(model, primitive, "TANGENT", 4,
-					[&](size_t i, const float* data) {
-						vertices[i].tangent = glm::vec4(data[0], data[1], data[2], data[3]);
-					});
 			}
 			else {
 				// Initialize tangent.w to 1 by default to avoid undefined data
@@ -1014,10 +1385,25 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			}
 			// Read index data for this primitive
 			std::vector<unsigned int> indices = ReadIndices(model, primitive.indices);
+			totalVertexCount += vertexCount;
+			totalIndexCount += indices.size();
+			if (!useImportedNormals) {
+				ComputeVertexNormalsFromIndexedTriangles(vertices, indices);
+				++primitivesWithGeneratedNormals;
+			}
+			else if (validImportedNormalCount < vertexCount) {
+				std::vector<Vertex> generatedNormalsVertices = vertices;
+				ComputeVertexNormalsFromIndexedTriangles(generatedNormalsVertices, indices);
+				for (size_t vi = 0; vi < vertices.size(); ++vi) {
+					if (glm::dot(vertices[vi].normal, vertices[vi].normal) <= 1e-12f) {
+						vertices[vi].normal = generatedNormalsVertices[vi].normal;
+					}
+				}
+			}
 
 			// **Compute tangents if normal mapping is used but tangents were not provided:**
 			int materialIndex = primitive.material;
-			bool needsTangents = !hasTangents;
+			bool needsTangents = !hasTangentsForPrimitive;
 			bool hasNormalMapTexture = false;
 			if (materialIndex >= 0 && materialIndex < model.materials.size()) {
 				const tinygltf::Material& mat = model.materials[materialIndex];
@@ -1026,7 +1412,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				}
 			}
 			if (needsTangents && hasNormalMapTexture) {
-				std::cout << "[INFO] Computing tangents for normal mapping...\n";
+				if constexpr (kVerboseSceneImportLogging) { std::cout << "[INFO] Computing tangents for normal mapping...\n"; }
 				ComputeTangents(vertices, indices);
 			}
 
@@ -1042,351 +1428,95 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			// Load material textures and properties for this primitive
 			mesh.hasAlpha = false;
 			mesh.doubleSided = false;
-			const tinygltf::Material* pMaterial = nullptr;
-			//Create variables to hold the material factors with proper glTF defaults.
+			mesh.alphaMode = MeshComponent::ALPHA_OPAQUE;
+			mesh.alphaCutoff = 0.5f;
+			// Create variables to hold the material factors with proper glTF defaults.
 			glm::vec4 baseColorFactor(1.0f);  // White
-			float metallicFactor = 0.0f;      // Non-metallic by default (glTF spec)
+			float metallicFactor = 1.0f;      // glTF metallic-roughness default
 			float roughnessFactor = 1.0f;     // Fully rough by default (glTF spec)
 			glm::vec3 emissiveFactor(0.0f);   // No emission
+			int baseColorTexCoord = 0;
+			int normalTexCoord = 0;
+			int metallicRoughnessTexCoord = 0;
+			int emissiveTexCoord = 0;
+			int occlusionTexCoord = 0;
+			int specularTexCoord = 0;
+			int specularColorTexCoord = 0;
+			int transmissionTexCoord = 0;
+			const auto materialSetupStart = Clock::now();
 
-			if (primitive.material >= 0 && primitive.material < (int)model.materials.size()) {
-				pMaterial = &model.materials[primitive.material];
-				const tinygltf::Material& mat = *pMaterial;
-				// Alpha mode: mark transparent objects
-				if (mat.alphaMode == "BLEND") {
-					mesh.hasAlpha = true;
-					mesh.alphaMode = MeshComponent::ALPHA_BLEND;
-					std::cout << "[INFO] Material uses alpha blending.\n";
+			auto setTextureIfPresent = [&](int texIndex, std::shared_ptr<Texture>& destination, bool useSRGB = false) {
+				if (texIndex >= 0) {
+					destination = loadTextureCached(texIndex, useSRGB);
 				}
-				else if (mat.alphaMode == "MASK") {
-					mesh.alphaMode = MeshComponent::ALPHA_MASK;
-					if (mat.alphaCutoff >= 0.0) {
-						mesh.alphaCutoff = static_cast<float>(mat.alphaCutoff);
-					}
-					std::cout << "[INFO] Material uses alpha masking with cutoff: " << mesh.alphaCutoff << "\n";
+			};
+
+			if (primitive.material >= 0 && primitive.material < static_cast<int>(materialCache.size())) {
+				CachedMaterialData& cached = materialCache[primitive.material];
+				if (!cached.initialized) {
+					buildCachedMaterialData(model.materials[primitive.material], cached);
+					++materialCacheMisses;
 				}
 				else {
-					mesh.alphaMode = MeshComponent::ALPHA_OPAQUE;
+					++materialCacheHits;
 				}
 
-				// Double-sided material (disables backface culling)
-				if (mat.doubleSided) {
-					mesh.doubleSided = true;
-				}
-				// Base Color (albedo) texture
-				if (mat.pbrMetallicRoughness.baseColorTexture.index >= 0) {
-					int texIndex = mat.pbrMetallicRoughness.baseColorTexture.index;
-					mesh.diffuseTexture = LoadTextureFromGLTF(model, texIndex);
-					std::cout << "[INFO] Using base color texture for diffuse map.\n";
-				}
-				// Normal map texture
-				if (mat.normalTexture.index >= 0) {
-					int texIndex = mat.normalTexture.index;
-					mesh.normalTexture = LoadTextureFromGLTF(model, texIndex);
-					std::cout << "[INFO] Using normal map texture.\n";
-				}
-				// Metallic-Roughness texture (single texture containing both)
-				if (mat.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
-					int texIndex = mat.pbrMetallicRoughness.metallicRoughnessTexture.index;
-					mesh.roughnessTexture = LoadTextureFromGLTF(model, texIndex);
-					std::cout << "[INFO] Using metallic-roughness texture for roughness map.\n";
-				}
-				// Emissive texture
-				if (mat.emissiveTexture.index >= 0) {
-					int texIndex = mat.emissiveTexture.index;
-					mesh.emissiveTexture = LoadTextureFromGLTF(model, texIndex);
-					std::cout << "[INFO] Using emissive texture.\n";
-				}
-				// Occlusion texture (ambient occlusion, usually in R channel)
-				if (mat.occlusionTexture.index >= 0) {
-					int texIndex = mat.occlusionTexture.index;
-					mesh.occlusionTexture = LoadTextureFromGLTF(model, texIndex);
-					std::cout << "[INFO] Using occlusion texture.\n";
+				mesh.hasAlpha = cached.hasAlpha;
+				mesh.doubleSided = cached.doubleSided;
+				mesh.alphaMode = cached.alphaMode;
+				mesh.alphaCutoff = cached.alphaCutoff;
+				mesh.specularFactor = cached.specularFactor;
+				mesh.specularColorFactor = cached.specularColorFactor;
+				mesh.emissiveStrength = cached.emissiveStrength;
+				mesh.clearcoatFactor = cached.clearcoatFactor;
+				mesh.clearcoatRoughnessFactor = cached.clearcoatRoughnessFactor;
+				mesh.occlusionStrength = cached.occlusionStrength;
+				mesh.normalScale = cached.normalScale;
+				mesh.transmissionFactor = cached.transmissionFactor;
+				mesh.thicknessFactor = cached.thicknessFactor;
+				mesh.attenuationDistance = cached.attenuationDistance;
+				mesh.attenuationColor = cached.attenuationColor;
+				mesh.ior = cached.ior;
+
+				baseColorFactor = cached.baseColorFactor;
+				metallicFactor = cached.metallicFactor;
+				roughnessFactor = cached.roughnessFactor;
+				emissiveFactor = cached.emissiveFactor;
+				baseColorTexCoord = cached.baseColorTexCoord;
+				normalTexCoord = cached.normalTexCoord;
+				metallicRoughnessTexCoord = cached.metallicRoughnessTexCoord;
+				emissiveTexCoord = cached.emissiveTexCoord;
+				occlusionTexCoord = cached.occlusionTexCoord;
+				specularTexCoord = cached.specularTexCoord;
+				specularColorTexCoord = cached.specularColorTexCoord;
+				transmissionTexCoord = cached.transmissionTexCoord;
+				if (baseColorTexCoord > 0 || normalTexCoord > 0 || metallicRoughnessTexCoord > 0 ||
+					emissiveTexCoord > 0 || occlusionTexCoord > 0 || specularTexCoord > 0 ||
+					specularColorTexCoord > 0 || transmissionTexCoord > 0) {
+					++primitivesUsingUVSet1;
 				}
 
-				// EXTENSION: KHR_materials_specular - Extract specular texture and factors
-				if (mat.extensions.count("KHR_materials_specular")) {
-					const auto& specExt = mat.extensions.at("KHR_materials_specular");
-
-					// Extract specular texture (scalar factor texture)
-					if (specExt.Has("specularTexture") && specExt.Get("specularTexture").IsObject()) {
-						const auto& specTex = specExt.Get("specularTexture");
-						if (specTex.Has("index") && specTex.Get("index").IsInt()) {
-							int texIndex = specTex.Get("index").Get<int>();
-							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
-								mesh.specularTexture = LoadTextureFromGLTF(model, texIndex);
-								std::cout << "[INFO] Using KHR_materials_specular texture.\n";
-							}
-						}
-					}
-
-					// Extract specular color texture
-					if (specExt.Has("specularColorTexture") && specExt.Get("specularColorTexture").IsObject()) {
-						const auto& specColorTex = specExt.Get("specularColorTexture");
-						if (specColorTex.Has("index") && specColorTex.Get("index").IsInt()) {
-							int texIndex = specColorTex.Get("index").Get<int>();
-							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
-								mesh.specularColorTexture = LoadTextureFromGLTF(model, texIndex);
-								std::cout << "[INFO] Using KHR_materials_specular color texture.\n";
-							}
-						}
-					}
-
-					// Extract specular factors
-					if (specExt.Has("specularFactor") && specExt.Get("specularFactor").IsNumber()) {
-						mesh.specularFactor.x = static_cast<float>(specExt.Get("specularFactor").Get<double>());
-						mesh.specularFactor.y = mesh.specularFactor.x; // uniform scalar
-						mesh.specularFactor.z = mesh.specularFactor.x;
-					}
-
-					if (specExt.Has("specularColorFactor") && specExt.Get("specularColorFactor").IsArray()) {
-						const auto& colorArray = specExt.Get("specularColorFactor");
-						if (colorArray.ArrayLen() >= 3) {
-							mesh.specularColorFactor.x = static_cast<float>(colorArray.Get(0).Get<double>());
-							mesh.specularColorFactor.y = static_cast<float>(colorArray.Get(1).Get<double>());
-							mesh.specularColorFactor.z = static_cast<float>(colorArray.Get(2).Get<double>());
-						}
-					}
-					std::cout << "[INFO] Applied KHR_materials_specular extension factors.\n";
-				}
-
-				// EXTENSION: KHR_materials_transmission - Extract transmission properties
-				if (mat.extensions.count("KHR_materials_transmission")) {
-					const auto& transExt = mat.extensions.at("KHR_materials_transmission");
-
-					// Extract transmission factor
-					if (transExt.Has("transmissionFactor") && transExt.Get("transmissionFactor").IsNumber()) {
-						mesh.transmissionFactor = static_cast<float>(transExt.Get("transmissionFactor").Get<double>());
-						// Materials with transmission should be treated as transparent
-						if (mesh.transmissionFactor > 0.0f) {
-							mesh.hasAlpha = true;
-							if (mesh.alphaMode == MeshComponent::ALPHA_OPAQUE) {
-								mesh.alphaMode = MeshComponent::ALPHA_BLEND;
-							}
-						}
-						std::cout << "[INFO] Applied KHR_materials_transmission factor: " << mesh.transmissionFactor << "\n";
-					}
-
-					// Extract transmission texture
-					if (transExt.Has("transmissionTexture") && transExt.Get("transmissionTexture").IsObject()) {
-						const auto& transTex = transExt.Get("transmissionTexture");
-						if (transTex.Has("index") && transTex.Get("index").IsInt()) {
-							int texIndex = transTex.Get("index").Get<int>();
-							if (texIndex >= 0 && texIndex < (int)model.textures.size()) {
-								mesh.transmissionTexture = LoadTextureFromGLTF(model, texIndex);
-								std::cout << "[INFO] Using KHR_materials_transmission texture.\n";
-							}
-						}
-					}
-				}
-
-				// EXTENSION: KHR_materials_ior - Extract index of refraction
-				if (mat.extensions.count("KHR_materials_ior")) {
-					const auto& iorExt = mat.extensions.at("KHR_materials_ior");
-					if (iorExt.Has("ior") && iorExt.Get("ior").IsNumber()) {
-						mesh.ior = static_cast<float>(iorExt.Get("ior").Get<double>());
-						std::cout << "[INFO] Applied KHR_materials_ior: " << mesh.ior << "\n";
-					}
-				}
-
-				if (mat.extensions.count("KHR_materials_volume")) {
-					const auto& volumeExt = mat.extensions.at("KHR_materials_volume");
-					if (volumeExt.Has("thicknessFactor") && volumeExt.Get("thicknessFactor").IsNumber()) {
-						mesh.thicknessFactor = static_cast<float>(volumeExt.Get("thicknessFactor").Get<double>());
-					}
-					if (volumeExt.Has("attenuationDistance") && volumeExt.Get("attenuationDistance").IsNumber()) {
-						mesh.attenuationDistance = static_cast<float>(volumeExt.Get("attenuationDistance").Get<double>());
-					}
-					if (volumeExt.Has("attenuationColor") && volumeExt.Get("attenuationColor").IsArray()) {
-						const auto& colorArray = volumeExt.Get("attenuationColor");
-						if (colorArray.ArrayLen() >= 3) {
-							mesh.attenuationColor = glm::vec3(
-								static_cast<float>(colorArray.Get(0).Get<double>()),
-								static_cast<float>(colorArray.Get(1).Get<double>()),
-								static_cast<float>(colorArray.Get(2).Get<double>())
-							);
-						}
-					}
-				}
-
-				// EXTENSION: KHR_materials_emissive_strength
-				if (mat.extensions.count("KHR_materials_emissive_strength")) {
-					const auto& emissiveExt = mat.extensions.at("KHR_materials_emissive_strength");
-					if (emissiveExt.Has("emissiveStrength") && emissiveExt.Get("emissiveStrength").IsNumber()) {
-						mesh.emissiveStrength = static_cast<float>(emissiveExt.Get("emissiveStrength").Get<double>());
-					}
-				}
-
-				// EXTENSION: KHR_materials_clearcoat
-				if (mat.extensions.count("KHR_materials_clearcoat")) {
-					const auto& clearcoatExt = mat.extensions.at("KHR_materials_clearcoat");
-					if (clearcoatExt.Has("clearcoatFactor") && clearcoatExt.Get("clearcoatFactor").IsNumber()) {
-						mesh.clearcoatFactor = static_cast<float>(clearcoatExt.Get("clearcoatFactor").Get<double>());
-					}
-					if (clearcoatExt.Has("clearcoatRoughnessFactor") && clearcoatExt.Get("clearcoatRoughnessFactor").IsNumber()) {
-						mesh.clearcoatRoughnessFactor = static_cast<float>(clearcoatExt.Get("clearcoatRoughnessFactor").Get<double>());
-					}
-				}
-
-				// Extract occlusion strength from standard glTF material
-				if (mat.occlusionTexture.index >= 0) {
-					// Default occlusion strength is 1.0, but can be overridden
-					mesh.occlusionStrength = 1.0f;
-					// Check if there are additional properties in occlusionTexture
-					if (mat.extensions.count("occlusionTexture")) {
-						const auto& occExt = mat.extensions.at("occlusionTexture");
-						if (occExt.Has("strength") && occExt.Get("strength").IsNumber()) {
-							mesh.occlusionStrength = static_cast<float>(occExt.Get("strength").Get<double>());
-						}
-					}
-				}
-
-				// Retrieve material factors from the glTF material
-				if (!mat.pbrMetallicRoughness.baseColorFactor.empty()) {
-					baseColorFactor = glm::vec4(
-						static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[0]),
-						static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[1]),
-						static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[2]),
-						static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[3])
-					);
-					if (baseColorFactor.a < 1.0f) {
-						mesh.hasAlpha = true;
-					}
-				}
-				// Use actual glTF material values, preserving defaults if not specified
-				metallicFactor = static_cast<float>(mat.pbrMetallicRoughness.metallicFactor);
-				roughnessFactor = static_cast<float>(mat.pbrMetallicRoughness.roughnessFactor);
-				if (!mat.emissiveFactor.empty()) {
-					emissiveFactor = glm::vec3(
-						static_cast<float>(mat.emissiveFactor[0]),
-						static_cast<float>(mat.emissiveFactor[1]),
-						static_cast<float>(mat.emissiveFactor[2])
-					);
-				}
+				setTextureIfPresent(cached.diffuseTextureIndex, mesh.diffuseTexture, true);
+				setTextureIfPresent(cached.normalTextureIndex, mesh.normalTexture, false);
+				setTextureIfPresent(cached.roughnessTextureIndex, mesh.roughnessTexture, false);
+				setTextureIfPresent(cached.emissiveTextureIndex, mesh.emissiveTexture, true);
+				setTextureIfPresent(cached.occlusionTextureIndex, mesh.occlusionTexture, false);
+				setTextureIfPresent(cached.specularTextureIndex, mesh.specularTexture, false);
+				setTextureIfPresent(cached.specularColorTextureIndex, mesh.specularColorTexture, true);
+				setTextureIfPresent(cached.transmissionTextureIndex, mesh.transmissionTexture, false);
 			}
 			else {
 				// No material specified: use default glTF PBR values
 				baseColorFactor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);  // White diffuse
-				metallicFactor = 0.0f;    // Non-metallic by default
+				metallicFactor = 1.0f;    // glTF metallic-roughness default
 				roughnessFactor = 1.0f;   // Fully rough by default
 				emissiveFactor = glm::vec3(0.0f);  // No emission
 			}
 
-			// Create fallback textures for any missing material maps to ensure robust PBR shading
-			if (mesh.diffuseTexture == nullptr) {
-				// Create a 1x1 RGBA texture filled with baseColorFactor
-				unsigned char color[4];
-				color[0] = (unsigned char)glm::clamp(baseColorFactor.r * 255.0f, 0.0f, 255.0f);
-				color[1] = (unsigned char)glm::clamp(baseColorFactor.g * 255.0f, 0.0f, 255.0f);
-				color[2] = (unsigned char)glm::clamp(baseColorFactor.b * 255.0f, 0.0f, 255.0f);
-				color[3] = (unsigned char)glm::clamp(baseColorFactor.a * 255.0f, 0.0f, 255.0f);
-
-				mesh.diffuseTexture = Texture::Builder::Texture2D(1, 1, GL_RGBA8)
-					.Format(GL_RGBA)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(color)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
-			if (mesh.normalTexture == nullptr) {
-				// Default normal map: flat normal (0.5, 0.5, 1.0) in tangent space
-				unsigned char normalPixel[3] = { 128, 128, 255 };
-
-				mesh.normalTexture = Texture::Builder::Texture2D(1, 1, GL_RGB8)
-					.Format(GL_RGB)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(normalPixel)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
-			if (mesh.roughnessTexture == nullptr) {
-				// glTF metallic-roughness format: R=unused, G=roughness, B=metallic, A=unused
-				unsigned char mrPixel[4];
-				mrPixel[0] = 255;  // R unused
-				mrPixel[1] = (unsigned char)glm::clamp(roughnessFactor * 255.0f, 0.0f, 255.0f);  // G = roughness
-				mrPixel[2] = (unsigned char)glm::clamp(metallicFactor * 255.0f, 0.0f, 255.0f);   // B = metallic
-				mrPixel[3] = 255;  // A unused
-
-				mesh.roughnessTexture = Texture::Builder::Texture2D(1, 1, GL_RGBA8)
-					.Format(GL_RGBA)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(mrPixel)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
-			if (mesh.emissiveTexture == nullptr) {
-				// Create white emissive texture - when multiplied with emissiveFactor, gives correct result
-				unsigned char emissivePixel[3] = { 255, 255, 255 }; // White texture - emissiveFactor * white = emissiveFactor
-
-				mesh.emissiveTexture = Texture::Builder::Texture2D(1, 1, GL_RGB8)
-					.Format(GL_RGB)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(emissivePixel)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
-			if (mesh.occlusionTexture == nullptr) {
-				// White occlusion = no occlusion
-				unsigned char whitePixel = 255;
-
-				mesh.occlusionTexture = Texture::Builder::Texture2D(1, 1, GL_R8)
-					.Format(GL_RED)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(&whitePixel)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
-
-			if (mesh.specularTexture == nullptr) {
-				// Create default specular texture with specularFactor * specularColorFactor
-				glm::vec3 defaultSpecular = mesh.specularFactor * mesh.specularColorFactor;
-				unsigned char specPixel[3];
-				specPixel[0] = (unsigned char)glm::clamp(defaultSpecular.r * 255.0f, 0.0f, 255.0f);
-				specPixel[1] = (unsigned char)glm::clamp(defaultSpecular.g * 255.0f, 0.0f, 255.0f);
-				specPixel[2] = (unsigned char)glm::clamp(defaultSpecular.b * 255.0f, 0.0f, 255.0f);
-
-				mesh.specularTexture = Texture::Builder::Texture2D(1, 1, GL_RGB8)
-					.Format(GL_RGB)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(specPixel)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
-
-			// Create default specular color texture if not loaded
-			if (mesh.specularColorTexture == nullptr) {
-				unsigned char specColorPixel[3];
-				specColorPixel[0] = (unsigned char)glm::clamp(mesh.specularColorFactor.r * 255.0f, 0.0f, 255.0f);
-				specColorPixel[1] = (unsigned char)glm::clamp(mesh.specularColorFactor.g * 255.0f, 0.0f, 255.0f);
-				specColorPixel[2] = (unsigned char)glm::clamp(mesh.specularColorFactor.b * 255.0f, 0.0f, 255.0f);
-
-				mesh.specularColorTexture = Texture::Builder::Texture2D(1, 1, GL_RGB8)
-					.Format(GL_RGB)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(specColorPixel)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
-
-			// Create default transmission texture if not loaded
-			if (mesh.transmissionTexture == nullptr) {
-				unsigned char transmissionPixel = (unsigned char)glm::clamp(mesh.transmissionFactor * 255.0f, 0.0f, 255.0f);
-
-				mesh.transmissionTexture = Texture::Builder::Texture2D(1, 1, GL_R8)
-					.Format(GL_RED)
-					.DataType(GL_UNSIGNED_BYTE)
-					.Data(&transmissionPixel)
-					.FilterMode(GL_LINEAR, GL_LINEAR)
-					.WrapMode(GL_REPEAT, GL_REPEAT)
-					.Build();
-			}
+			// Missing textures are intentionally left null and resolved at render time via
+			// global default texture bindings plus has*Texture flags.
+			const auto materialSetupEnd = Clock::now();
+			materialSetupMs += std::chrono::duration<float, std::milli>(materialSetupEnd - materialSetupStart).count();
 
 			//Assign the normalized material contract to the mesh and keep the legacy fields mirrored.
 			MaterialDesc normalizedMaterial;
@@ -1411,29 +1541,42 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			normalizedMaterial.ior = mesh.ior;
 			normalizedMaterial.occlusionStrength = mesh.occlusionStrength;
 			normalizedMaterial.normalScale = mesh.normalScale;
+			normalizedMaterial.baseColorTexCoord = baseColorTexCoord;
+			normalizedMaterial.normalTexCoord = normalTexCoord;
+			normalizedMaterial.metallicRoughnessTexCoord = metallicRoughnessTexCoord;
+			normalizedMaterial.emissiveTexCoord = emissiveTexCoord;
+			normalizedMaterial.occlusionTexCoord = occlusionTexCoord;
+			normalizedMaterial.specularTexCoord = specularTexCoord;
+			normalizedMaterial.specularColorTexCoord = specularColorTexCoord;
+			normalizedMaterial.transmissionTexCoord = transmissionTexCoord;
+			normalizedMaterial.Normalize();
 			mesh.SetMaterialDesc(normalizedMaterial);
 
-			std::cout << "[INFO] material factors: "
-				<< "baseColorFactor: " << mesh.material.baseColorFactor.x << "," << mesh.material.baseColorFactor.y << "," << mesh.material.baseColorFactor.z << "," << mesh.material.baseColorFactor.w
-				<< " metallicFactor: " << mesh.material.metallicFactor
-				<< " roughnessFactor: " << mesh.material.roughnessFactor
-				<< " emissiveFactor: " << mesh.material.emissiveFactor.x << "," << mesh.material.emissiveFactor.y << "," << mesh.material.emissiveFactor.z
-				<< " emissiveStrength: " << mesh.material.emissiveStrength
-				<< " specularFactor: " << mesh.material.specularFactor.x
-				<< " clearcoatFactor: " << mesh.material.clearcoatFactor
-				<< " clearcoatRoughnessFactor: " << mesh.material.clearcoatRoughnessFactor
-				<< " occlusionStrength: " << mesh.material.occlusionStrength
-				<< " transmissionFactor: " << mesh.material.transmissionFactor
-				<< " thicknessFactor: " << mesh.material.thicknessFactor
-				<< " attenuationDistance: " << mesh.material.attenuationDistance
-				<< " ior: " << mesh.material.ior
-				<< "\n";
+			if constexpr (kVerboseSceneImportLogging) {
+				std::cout << "[INFO] material factors: "
+					<< "baseColorFactor: " << mesh.material.baseColorFactor.x << "," << mesh.material.baseColorFactor.y << "," << mesh.material.baseColorFactor.z << "," << mesh.material.baseColorFactor.w
+					<< " metallicFactor: " << mesh.material.metallicFactor
+					<< " roughnessFactor: " << mesh.material.roughnessFactor
+					<< " emissiveFactor: " << mesh.material.emissiveFactor.x << "," << mesh.material.emissiveFactor.y << "," << mesh.material.emissiveFactor.z
+					<< " emissiveStrength: " << mesh.material.emissiveStrength
+					<< " specularFactor: " << mesh.material.specularFactor
+					<< " clearcoatFactor: " << mesh.material.clearcoatFactor
+					<< " clearcoatRoughnessFactor: " << mesh.material.clearcoatRoughnessFactor
+					<< " occlusionStrength: " << mesh.material.occlusionStrength
+					<< " transmissionFactor: " << mesh.material.transmissionFactor
+					<< " thicknessFactor: " << mesh.material.thicknessFactor
+					<< " attenuationDistance: " << mesh.material.attenuationDistance
+					<< " ior: " << mesh.material.ior
+					<< "\n";
+			}
 
 			//Add the mesh to the Scene (use move since MeshComponent is move-only)
 			meshPrimitivesByGltfMesh[mm].push_back(static_cast<uint32_t>(meshes.size()));
 			meshes.emplace_back(std::move(mesh));
 		}
 	}
+	const auto primitiveBuildEnd = Clock::now();
+	primitiveBuildMs = std::chrono::duration<float, std::milli>(primitiveBuildEnd - primitiveBuildStart).count();
 
 	hasWeightedSkinData = (primitivesWithMeaningfulSkinData > 0);
 	hasSkin = hasDeclaredSkinMetadata && hasWeightedSkinData && !skin.joints.empty();
@@ -1442,6 +1585,11 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		<< ": nodes=" << nodes.size()
 		<< ", meshes=" << model.meshes.size()
 		<< ", primitives=" << primitiveCount
+		<< ", importedNormals=" << primitivesWithImportedNormals
+		<< ", generatedNormals=" << primitivesWithGeneratedNormals
+		<< ", normalMapsSuppressed=" << primitivesNormalMapSuppressed
+		<< ", texCoord1Primitives=" << primitivesWithTexCoord1
+		<< ", uvSet1Materials=" << primitivesUsingUVSet1
 		<< ", skins=" << model.skins.size()
 		<< ", joints=" << totalJoints
 		<< ", animations=" << model.animations.size()
@@ -1454,6 +1602,9 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	if (hasDeclaredSkinMetadata && !hasSkin) {
 		std::cout << "[Scene] Skin metadata found but no meaningful weighted skin data; treating model as static hierarchy for runtime transforms." << std::endl;
 	}
+	if (!hasSkin) {
+		std::cout << "[Scene] Model loaded as non-skinned geometry (runtime skinning disabled)." << std::endl;
+	}
 
 	for (size_t nodeIdx = 0; nodeIdx < model.nodes.size() && nodeIdx < nodes.size(); ++nodeIdx) {
 		const tinygltf::Node& gltfNode = model.nodes[nodeIdx];
@@ -1465,6 +1616,23 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		if (gltfNode.mesh >= 0 && gltfNode.mesh < static_cast<int>(meshPrimitivesByGltfMesh.size())) {
 			const auto& attachedMeshes = meshPrimitivesByGltfMesh[gltfNode.mesh];
 			nodeInfo.meshIndices.insert(nodeInfo.meshIndices.end(), attachedMeshes.begin(), attachedMeshes.end());
+		}
+	}
+
+	for (size_t nodeIdx = 0; nodeIdx < nodes.size() && nodeIdx < nodeWorldTransforms.size(); ++nodeIdx) {
+		const Scene::NodeInfo& nodeInfo = nodes[nodeIdx];
+		for (uint32_t meshIndex : nodeInfo.meshIndices) {
+			if (meshIndex >= meshes.size()) {
+				continue;
+			}
+
+			MeshComponent& mesh = meshes[meshIndex];
+			if (mesh.sourceNodeIndex >= 0) {
+				continue;
+			}
+
+			mesh.sourceNodeIndex = static_cast<int>(nodeIdx);
+			mesh.localTransform = nodeWorldTransforms[nodeIdx];
 		}
 	}
 
@@ -1510,6 +1678,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	}
 
 	// (2) Load animations (if any) from the glTF
+	const auto animationLoadStart = Clock::now();
 	if (!model.animations.empty()) {
 		for (const auto& gltfAnim : model.animations) {
 			Animation anim;
@@ -1611,6 +1780,38 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			animations.push_back(std::move(anim));
 		}
 	}
+	const auto animationLoadEnd = Clock::now();
+	animationLoadMs = std::chrono::duration<float, std::milli>(animationLoadEnd - animationLoadStart).count();
+
+	const auto loadEnd = Clock::now();
+	const float totalLoadMs = std::chrono::duration<float, std::milli>(loadEnd - loadStart).count();
+	std::cout << "[Scene] Load diagnostics for " << m_model_name
+		<< ": totalMs=" << totalLoadMs
+		<< ", parseMs=" << parseMs
+		<< ", nodeBuildMs=" << nodeBuildMs
+		<< ", primitiveBuildMs=" << primitiveBuildMs
+		<< ", materialSetupMs=" << materialSetupMs
+		<< ", animationLoadMs=" << animationLoadMs
+		<< ", materialCacheHits=" << materialCacheHits
+		<< ", materialCacheMisses=" << materialCacheMisses
+		<< ", textureRefs=" << textureLoadRequests
+		<< ", uniqueTextureLoads=" << uniqueTextureLoads
+		<< ", totalVertices=" << totalVertexCount
+		<< ", totalIndices=" << totalIndexCount
+		<< std::endl;
+
+	AppendLoadDiagnosticsCsv(m_model_name,
+		totalLoadMs,
+		parseMs,
+		nodeBuildMs,
+		primitiveBuildMs,
+		materialSetupMs,
+		animationLoadMs,
+		nodes.size(),
+		model.meshes.size(),
+		primitiveCount,
+		totalVertexCount,
+		totalIndexCount);
 
 	return true;
 }
@@ -1675,7 +1876,7 @@ void Scene::Draw() {
 	if (locTransmissionTex != -1) glUniform1i(locTransmissionTex, 7);
 
 	for (auto& mesh : meshes) {
-		const MaterialDesc& material = mesh.material;
+		const MaterialDesc material = mesh.GetMaterialDesc();
 
 		// Upload material factor uniforms
 		if (locBaseColor != -1)
@@ -1697,7 +1898,7 @@ void Scene::Draw() {
 
 		// KHR_materials_specular
 		if (locSpecularFactor != -1)
-			glUniform1f(locSpecularFactor, material.specularFactor.x);
+			glUniform1f(locSpecularFactor, material.specularFactor);
 		if (locSpecularColorFactor != -1)
 			glUniform3fv(locSpecularColorFactor, 1, glm::value_ptr(material.specularColorFactor));
 		if (locClearcoat != -1)
@@ -1846,7 +2047,7 @@ void Scene::ComputeTangents(std::vector<Vertex>& vertices,
 		float handedness = (glm::dot(B, glm::normalize(bitanSum[i])) < 0.0f) ? -1.0f : 1.0f;
 		vertices[i].tangent = glm::vec4(T, handedness);
 	}
-	std::cout << "[INFO] Tangents computed for normal mapping.\n";
+	if constexpr (kVerboseSceneImportLogging) { std::cout << "[INFO] Tangents computed for normal mapping.\n"; }
 }
 std::pair<glm::vec3, glm::vec3> Scene::GetBoundingBox() const {
 	if (meshes.empty()) {

@@ -2,6 +2,7 @@
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNormal;
 layout(location=2) in vec2 aUV;
+layout(location=10) in vec2 aUV1;
 layout(location=3) in vec4 aTangent;
 layout(location=4) in ivec4 aBoneIDs;
 layout(location=5) in vec4 aBoneWeights;
@@ -18,6 +19,7 @@ out VS_OUT {
     vec3 WorldPos;
     vec3 Normal;
     vec2 UV;
+    vec2 UV1;
     vec4 TangentWS; // Tangent in world space (w = handedness)
 } vs_out;
 
@@ -48,8 +50,16 @@ void main() {
             skinMatrix += u_boneMatrices[boneID3] * normalizedWeights[3];
             
             localPos = skinMatrix * localPos;
-            localNormal = mat3(skinMatrix) * localNormal;
-            localTangent = mat3(skinMatrix) * localTangent;
+            mat3 skinMatrix3 = mat3(skinMatrix);
+            float skinDet = determinant(skinMatrix3);
+            if (abs(skinDet) > 1e-8) {
+                mat3 skinNormalMatrix = transpose(inverse(skinMatrix3));
+                localNormal = skinNormalMatrix * localNormal;
+                localTangent = skinNormalMatrix * localTangent;
+            } else {
+                localNormal = skinMatrix3 * localNormal;
+                localTangent = skinMatrix3 * localTangent;
+            }
         }
         // If totalWeight <= 0.001, use the original vertex position (identity skinning)
     }
@@ -78,6 +88,7 @@ void main() {
     vs_out.TangentWS = vec4(T, aTangent.w);
     
     vs_out.UV = aUV;
+    vs_out.UV1 = aUV1;
     
     gl_Position = projection * view * worldPos;
 }

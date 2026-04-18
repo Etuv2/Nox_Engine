@@ -95,6 +95,7 @@ private:
 	void UpdateContext(const std::shared_ptr<Camera>& camera,
 		float exposure, float gamma,
 		bool enableShadows, float shadowBias,
+		float shadowNear, float shadowFar,
 		glm::vec3 envColor);
 
 	void CheckGLError(const std::string& passName);

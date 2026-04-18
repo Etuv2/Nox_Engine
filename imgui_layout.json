@@ -1,6 +1,6 @@
 {
   "Animation": {
-    "visible": true
+    "visible": false
   },
   "Camera": {
     "visible": true
@@ -9,10 +9,10 @@
     "visible": false
   },
   "Hierarchy": {
-    "visible": true
+    "visible": false
   },
   "Lighting": {
-    "visible": true
+    "visible": false
   },
   "Performance": {
     "visible": false

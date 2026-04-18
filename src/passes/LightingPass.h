@@ -67,6 +67,7 @@ private:
 		GLint gMaterialID = -1;
 		GLint gEmissive = -1;    // Separate emissive texture
 		GLint gClearCoat = -1;
+		GLint gPrincipledParams = -1;
 		GLint gDepth = -1;
 		GLint ssaoMap = -1;
 		GLint screenSpaceShadowMap = -1;
@@ -95,6 +96,7 @@ private:
 		GLint aoStrength = -1;
 		GLint sssStrength = -1;
 		GLint ssgiStrength = -1;
+		GLint ssgiDebugMode = -1;
 
 		// LPV uniforms
 		GLint enableLPV = -1;

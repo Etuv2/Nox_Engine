@@ -49,16 +49,16 @@ private:
 	float m_bloomStrength = 0.8f;
 	float m_bloomKnee = 0.5f;
 	float m_bloomThreshold = 1.0f;
-	glm::vec3 m_envColor = glm::vec3(0.1f, 0.15f, 0.2f);
+	glm::vec3 m_envColor = glm::vec3(0.05f, 0.05f, 0.05f);
 
 	// IBL intensity controls
-	float m_iblIntensity = 0.4f;
+	float m_iblIntensity = 0.35f;
 	float m_skyboxExposure = 1.0f;
-	float m_diffuseIBLScale = 0.5f;
-	float m_specularIBLScale = 0.6f;
+	float m_diffuseIBLScale = 0.3f;
+	float m_specularIBLScale = 0.45f;
 
 	// Tonemapping UI state
-	int   m_tonemapType = 2; // 0=None,1=ACES,2=GT,3=GT7
+	int   m_tonemapType = 1; // 0=None,1=ACES,2=GT,3=GT7
 	float m_tm_P = 1.0f, m_tm_a = 1.0f, m_tm_m = 0.22f, m_tm_l = 0.4f, m_tm_c = 1.33f, m_tm_b = 0.0f;
 	// GT7 params
 	float m_tm7_peakNits = 1000.0f;
@@ -70,7 +70,7 @@ private:
 
 	// Shadow settings
 	bool m_enableShadows = true;
-	float m_shadowBias = 0.005f;
+	float m_shadowBias = 0.0008f;
 	float m_shadowNear = 1.0f;
 	float m_shadowFar = 100.0f;
 	bool m_enablePCSS = false;
@@ -92,17 +92,21 @@ private:
 
 	//SSGI settings
 	bool m_enableSSGI = true;
-	float m_ssgiStrength = 1.0f;
-	float m_ssgiRadius = 1.0f;
-	int   m_ssgiSampleCount = 128;
+	float m_ssgiStrength = 1.35f;
+	float m_ssgiRadius = 4.5f;
+	int   m_ssgiSampleCount = 256;
 	bool  m_ssgiHalfRes = true;
 	float m_ssgiWorkingResolutionScale = 0.5f;
 	float m_ssgiTraceResolutionScale = 0.25f;
-	float m_ssgiTemporalAlpha = 0.12f;
-	float m_ssgiNormalReject = 0.25f;
-	float m_ssgiDepthReject = 0.5f;
-	float m_ssgiThickness = 0.2f;
+	float m_ssgiTemporalAlpha = 0.055f;
+	float m_ssgiNormalReject = 0.10f;
+	float m_ssgiDepthReject = 0.1f;
+	float m_ssgiThickness = 0.01f;
 	bool  m_ssgiEnableSpatialDenoise = true;
+	float m_ssgiTemporalResponse = 0.2f;
+	float m_ssgiUpscaleSharpness = 1.8f;
+	int   m_ssgiSectorCount = 16;
+	int   m_ssgiDebugMode = 0;
 
 	// Screen-space contact shadow settings
 	float m_sssResolutionScale = 0.5f;

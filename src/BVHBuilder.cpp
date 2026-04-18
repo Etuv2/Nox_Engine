@@ -511,7 +511,7 @@ std::vector<RT::Triangle> BVHBuilder::ExtractTriangles(
 RT::Material BVHBuilder::ExtractMaterial(const MeshComponent& mesh)
 {
 	RT::Material material;
-	const MaterialDesc& source = mesh.material;
+	const MaterialDesc source = mesh.GetMaterialDesc();
 
 	// Normalize RT packing around the canonical metallic-roughness contract.
 	material.materialID = source.transmissionFactor > 0.01f ? 2u : 0u;
@@ -542,10 +542,7 @@ RT::Material BVHBuilder::ExtractMaterial(const MeshComponent& mesh)
 	float baseF0 = f * f;
 	
 	// Apply specular factor and color
-	float specFactorValue = glm::length(source.specularFactor) > 0.0f 
-	                        ? (source.specularFactor.r + source.specularFactor.g + source.specularFactor.b) / 3.0f 
-	                        : 1.0f;
-	
+	const float specFactorValue = source.specularFactor;
 	glm::vec3 dielectricF0 = glm::vec3(baseF0) * specFactorValue * source.specularColorFactor;
 	material.specular = glm::mix(dielectricF0, material.albedo, material.metallic);
 	material.specularFactor = specFactorValue;
@@ -556,6 +553,9 @@ RT::Material BVHBuilder::ExtractMaterial(const MeshComponent& mesh)
 	material.clearcoatFactor = source.clearcoatFactor;
 	material.clearcoatRoughnessFactor = source.clearcoatRoughnessFactor;
 	material.ior = source.ior;
+	material.thicknessFactor = source.thicknessFactor;
+	material.attenuationDistance = source.attenuationDistance;
+	material.attenuationColor = source.attenuationColor;
 
 	// === Additional Properties ===
 	material.normalScale = source.normalScale;

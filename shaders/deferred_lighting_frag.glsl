@@ -10,14 +10,16 @@ out vec4 FragColor;
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-// RT3: R8UI - Material ID (opaque PBR or transmission)
+// RT3: R32UI - Material ID (opaque PBR or transmission)
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
+// RT7: RGBA16F - Principled extras: transmission (R), IOR (G), reserved (BA)
 uniform sampler2D gPackedNormalRM;  // RT0: oct normal (RG) + roughness (B) + metallic (A)
 uniform sampler2D gAlbedoAO;        // RT1: albedo (RGB) + occlusion (A)
 uniform sampler2D gSpecularF0;      // RT2: specular F0 (RGB) + emissive strength (A)
-uniform usampler2D gMaterialID;     // RT3: material ID (uint8)
+uniform usampler2D gMaterialID;     // RT3: material ID (uint)
 uniform sampler2D gEmissive;        // RT4: emissive color (RGB)
 uniform sampler2D gClearCoat;       // RT6: clearcoat factor + roughness
+uniform sampler2D gPrincipledParams;// RT7: principled extras
 uniform sampler2D gDepth;           // depth buffer (non-linear 0..1)
 
 // Camera - these MUST match the exact matrices used when writing G-buffer
@@ -36,9 +38,9 @@ uniform sampler2D brdfLUT;
 uniform float prefilteredMaxLOD;
 
 // IBL intensity controls to prevent over-bright results
-uniform float iblIntensity = 0.4;       // Overall IBL multiplier
-uniform float diffuseIBLScale = 0.5;    // Diffuse irradiance scale
-uniform float specularIBLScale = 0.6;   // Specular prefiltered scale
+uniform float iblIntensity = 0.35;       // Overall IBL multiplier
+uniform float diffuseIBLScale = 0.3;    // Diffuse irradiance scale
+uniform float specularIBLScale = 0.45;   // Specular prefiltered scale
 
 // LPV Global Illumination
 uniform sampler3D lpvTextureR;
@@ -59,11 +61,12 @@ uniform float aoStrength = 0.9;
 
 // Screen-Space Shadows (Contact Shadows)
 uniform sampler2D screenSpaceShadowMap;
-uniform float sssStrength = 1.0; // Contact shadow strength [0,1]
+uniform float sssStrength = 0.6; // Contact shadow blend strength [0,1]
 
 // Screen-Space Global Illumination (SSGI)
 uniform sampler2D ssgiMap;
 uniform float ssgiStrength = 1.0; // SSGI contribution strength [0,1]
+uniform int ssgiDebugMode = 0;
 
 // Shadows
 uniform sampler2DArrayShadow multiLightShadowArray;
@@ -84,7 +87,7 @@ uniform float pointLightNormalOffset = 0.01;
 
 // Shadow darkness settings - control how dark shadows appear
 uniform float shadowDarkness = 1.0;           // Multiplier for shadow darkness [0.0=no shadows, 1.0=full darkness]
-uniform float shadowMinBrightness = 0.05;     // Minimum brightness in complete shadow (0.05 = 5% for subtle ambient)
+uniform float shadowMinBrightness = 0.0;      // Minimum brightness in complete shadow (0.0 = physically dark direct shadows)
 uniform float shadowTransitionHardness = 1.0; // Softness of shadow boundaries [0.5=very soft, 2.0=sharp]
 
 // Cascade split depths for view-depth blending (set from LightManager)
@@ -131,38 +134,17 @@ vec3 getNormalInWorldSpace(vec3 decodedNormal) {
 	}
 }
 
-// Apply realistic shadow darkening
-// Accounts for indirect lighting, material reflectivity, and perceptual shadow intensity
-float ApplyRealisticShadow(float shadowVisibility, vec3 albedo, float roughness, float metallic, float ao) {
-	// Rougher surfaces receive more ambient light in shadow (better light scattering)
-	float roughnessInfluence = mix(0.5, 1.0, roughness * roughness);
-	
-	// Metals stay mostly dark in shadow (minimal diffuse scattering)
-	// Dielectrics get more ambient bounce light
-	float metallicInfluence = mix(1.0, 0.3, metallic);
-	
-	// Darker surfaces appear darker in shadow (less light bounces back)
-	// Use relative luminance
-	float albedoLuminance = dot(albedo, vec3(0.299, 0.587, 0.114));
-	float albedoInfluence = mix(0.4, 1.0, albedoLuminance);
-	
-	// Calculate ambient shadow contribution (indirect light in shadow)
-	// Combine all factors for physically-plausible ambient falloff
-	float ambientShadowFactor = roughnessInfluence * metallicInfluence * albedoInfluence * ao;
-	
-	// Shadow transition: blend between full darkness and ambient
-	// shadowVisibility: 1.0 = lit, 0.0 = fully shadowed
-	float shadowIntensity = 1.0 - shadowVisibility;
-	
-	// Apply shadow with material-dependent ambient contribution
-	// In shadow: result interpolates from ambientShadowFactor to shadowMinBrightness
-	// In light: result is full brightness (1.0)
-	float ambientInShadow = mix(shadowMinBrightness, ambientShadowFactor, ao);
-	float result = mix(ambientInShadow, 1.0, shadowVisibility);
-	
-	// Apply darkness multiplier
-	result = mix(1.0, result, shadowDarkness);
-	
+// Apply physically-plausible shadow visibility shaping.
+// Direct shadowing should be independent of material albedo/metalness/roughness.
+float ApplyRealisticShadow(float shadowVisibility) {
+	float visibility = clamp(shadowVisibility, 0.0, 1.0);
+	float transitionHardness = max(shadowTransitionHardness, 0.25);
+	float shapedVisibility = pow(visibility, transitionHardness);
+
+	// Keep only an explicit user floor instead of an AO-driven artificial lift.
+	float ambientFloor = clamp(shadowMinBrightness, 0.0, 1.0);
+	float result = mix(ambientFloor, 1.0, shapedVisibility);
+	result = mix(1.0, result, clamp(shadowDarkness, 0.0, 1.0));
 	return result;
 }
 // Cascaded shadow mapping with cascade selection and smooth blending
@@ -258,62 +240,124 @@ float ComputeCascadedShadow(
 	return shadowValue;
 }
 
-float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightPos) {
-	vec3 toLight = worldPos - lightPos;
-	float distance = length(toLight);
-	vec3 lightDir = normalize(toLight);
-	
-	// Use world position directly - normal offset causes shadow displacement issues
-	// The bias in depth comparison handles self-shadowing
-	vec3 shadowPos = worldPos;
-	vec3 offsetToLight = shadowPos - lightPos;
-	
-	// Face selection matching the render pass exactly
-	// Faces: +X=0, -X=1, +Y=2, -Y=3, +Z=4, -Z=5
-	vec3 absDir = abs(offsetToLight);
-	int face;
-	
-	if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
-		face = (offsetToLight.x > 0.0) ? 0 : 1;
-	} else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
-		face = (offsetToLight.y > 0.0) ? 2 : 3;
-	} else {
-		face = (offsetToLight.z > 0.0) ? 4 : 5;
+float AxisComponent(vec3 v, int axis) {
+	if (axis == 0) return v.x;
+	if (axis == 1) return v.y;
+	return v.z;
+}
+
+int PointFaceFromAxisSign(int axis, float signedValue) {
+	if (axis == 0) return (signedValue >= 0.0) ? 0 : 1;
+	if (axis == 1) return (signedValue >= 0.0) ? 2 : 3;
+	return (signedValue >= 0.0) ? 4 : 5;
+}
+
+bool ProjectPointShadowToLayer(int layer, vec3 shadowPos, out vec3 projCoords) {
+	vec4 lsp = shadowMatrices[layer] * vec4(shadowPos, 1.0);
+	if (abs(lsp.w) < 1e-6) {
+		projCoords = vec3(0.0);
+		return false;
 	}
-	
-	int layer = startSlice + face;
-	mat4 M = shadowMatrices[layer];
-	vec4 lsp = M * vec4(shadowPos, 1.0);
-	
-	// Perspective divide
+
 	vec3 ndc = lsp.xyz / lsp.w;
-	vec3 pc = ndc * 0.5 + 0.5;
-	
-	// For point lights, only check XY bounds - Z can exceed 1.0 for distant objects
-	// The depth comparison will naturally handle objects beyond the light range
-	if (pc.x < 0.0 || pc.x > 1.0 || pc.y < 0.0 || pc.y > 1.0) {
+	projCoords = ndc * 0.5 + 0.5;
+	if (projCoords.z > 1.0) {
+		return false;
+	}
+
+	return projCoords.x >= 0.0 && projCoords.x <= 1.0 &&
+		projCoords.y >= 0.0 && projCoords.y <= 1.0;
+}
+
+float SamplePointShadowFace(int startSlice, int face, vec3 shadowPos, float bias, out bool valid) {
+	int layer = startSlice + face;
+	vec3 projCoords;
+	valid = ProjectPointShadowToLayer(layer, shadowPos, projCoords);
+	if (!valid) {
 		return 1.0;
 	}
-	
-	// Clamp depth to valid range for sampling
-	float sampleDepth = clamp(pc.z, 0.0, 1.0);
-	
-	// If beyond the shadow map's far plane, object is outside light range - no shadow
-	if (pc.z > 1.0) {
+
+	vec3 sampleCoords = vec3(projCoords.xy, clamp(projCoords.z, 0.0, 1.0));
+	return SampleShadowArrayEdgeSafe(layer, sampleCoords, bias, 0.02);
+}
+
+float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightPos) {
+	vec3 toSurface = worldPos - lightPos;
+	float distanceToLight = length(toSurface);
+	if (distanceToLight <= 1e-5) {
 		return 1.0;
 	}
-	
-	// Slope-scaled bias for point lights
-	float NdotL = max(dot(N, -lightDir), 0.001);
-	float slopeScale = sqrt(1.0 - NdotL * NdotL) / NdotL;
-	slopeScale = clamp(slopeScale, 0.0, 3.0);
-	float bias = pointLightBias * (1.0 + slopeScale * 0.5);
-	
-	// Use edge-safe sampling to avoid seams at cubemap face boundaries
-	vec3 sampleCoords = vec3(pc.xy, sampleDepth);
-	float shadow = SampleShadowArrayEdgeSafe(layer, sampleCoords, bias, 0.05);
-	
-	return shadow;
+
+	vec3 lightToSurfaceDir = toSurface / distanceToLight;
+	vec3 surfaceToLightDir = -lightToSurfaceDir;
+
+	// Keep normal offset extremely conservative to avoid visible shadow detachment.
+	float receiverFacing = clamp(dot(N, surfaceToLightDir), 0.0, 1.0);
+	float normalOffset = pointLightNormalOffset * (1.0 - receiverFacing);
+	vec3 shadowPos = worldPos + N * normalOffset;
+
+	vec3 offsetToLight = shadowPos - lightPos;
+	vec3 absDir = abs(offsetToLight);
+
+	int primaryAxis;
+	int secondaryAxis;
+	if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
+		primaryAxis = 0;
+		secondaryAxis = (absDir.y >= absDir.z) ? 1 : 2;
+	} else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
+		primaryAxis = 1;
+		secondaryAxis = (absDir.x >= absDir.z) ? 0 : 2;
+	} else {
+		primaryAxis = 2;
+		secondaryAxis = (absDir.x >= absDir.y) ? 0 : 1;
+	}
+	int tertiaryAxis = 3 - primaryAxis - secondaryAxis;
+
+	int primaryFace = PointFaceFromAxisSign(primaryAxis, AxisComponent(offsetToLight, primaryAxis));
+	int secondaryFace = PointFaceFromAxisSign(secondaryAxis, AxisComponent(offsetToLight, secondaryAxis));
+	int tertiaryFace = PointFaceFromAxisSign(tertiaryAxis, AxisComponent(offsetToLight, tertiaryAxis));
+
+	float NdotL = max(dot(N, surfaceToLightDir), 0.0);
+	float slopeScale = sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.06);
+	slopeScale = clamp(slopeScale, 0.0, 2.0);
+	float bias = pointLightBias + pointLightSlopeBias * slopeScale;
+	bias = clamp(bias, pointLightBias * 0.5, pointLightBias * 3.0);
+
+	bool primaryValid = false;
+	float primaryShadow = SamplePointShadowFace(startSlice, primaryFace, shadowPos, bias, primaryValid);
+	if (!primaryValid) {
+		return 1.0;
+	}
+
+	float axisSum = max(absDir.x + absDir.y + absDir.z, 1e-5);
+	float primaryDominance = AxisComponent(absDir, primaryAxis) / axisSum;
+	float seamBlend = 1.0 - smoothstep(0.72, 0.90, primaryDominance);
+	if (seamBlend <= 1e-3) {
+		return primaryShadow;
+	}
+
+	bool secondaryValid = false;
+	bool tertiaryValid = false;
+	float secondaryShadow = SamplePointShadowFace(startSlice, secondaryFace, shadowPos, bias, secondaryValid);
+	float tertiaryShadow = SamplePointShadowFace(startSlice, tertiaryFace, shadowPos, bias, tertiaryValid);
+
+	float wPrimary = 1.0;
+	float wSecondary = seamBlend * (AxisComponent(absDir, secondaryAxis) / axisSum);
+	float wTertiary = seamBlend * (AxisComponent(absDir, tertiaryAxis) / axisSum);
+
+	if (!secondaryValid) {
+		wSecondary = 0.0;
+	}
+	if (!tertiaryValid) {
+		wTertiary = 0.0;
+	}
+
+	float weightSum = wPrimary + wSecondary + wTertiary;
+	if (weightSum <= 1e-5) {
+		return primaryShadow;
+	}
+
+	return (primaryShadow * wPrimary + secondaryShadow * wSecondary + tertiaryShadow * wTertiary) / weightSum;
 }
 // Compute shadowing for a given light source
 float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 worldPos, vec3 N, vec3 lightDir, vec3 lightPos) {
@@ -345,7 +389,7 @@ float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 
 		if (!InShadowBounds(pc)) return 1.0;
 		
 		float bias = CalculateAdaptiveShadowBias(N, -spotDir, 0, pc.z, distance);
-		return SampleShadowArray(layer, pc, bias);
+		return SampleShadowArrayEdgeSafe(layer, pc, bias, 0.02);
 	}
 }
 
@@ -429,8 +473,8 @@ bool EvaluateShadowDebugView(vec3 worldPos, vec3 N, out vec3 debugColor) {
 	return false;
 }
 
-// Proper PBR direct lighting with correct albedo application
-vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float transmission, float clearcoat, float clearcoatRoughness, float diffuseAO) {
+// Proper PBR direct lighting with principled surface layering
+vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurface surface) {
 	LightData Ld = lights[idx];
 	int type = int(Ld.position.w);
 	vec3 lightPos = Ld.position.xyz;
@@ -477,7 +521,7 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, flo
 	if (NdotL <= 0.0) return vec3(0.0);
 
 	vec3 diffuse, specular;
-	EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuse, specular);
+	EvaluatePrincipledBRDFSeparated(surface, N, V, L, diffuse, specular);
 	
 	// Shadow calculation
 	int startSlice = int(Ld.shadowData.x + 0.5);
@@ -489,37 +533,34 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, vec3 albedo, flo
 	// Apply realistic shadow darkening based on material properties
 	// This makes shadows darker while accounting for indirect lighting and material characteristics
 	float shadowEnableMask = float(enableShadows == 1) * float(Ld.shadowData.z > 0.5);
-	shadowMapShadow = mix(1.0, ApplyRealisticShadow(shadowMapShadow, albedo, roughness, metallic, diffuseAO), shadowEnableMask);
+	shadowMapShadow = mix(1.0, ApplyRealisticShadow(shadowMapShadow), shadowEnableMask);
 
-	// Contact shadows - blend with shadow map
-	float contactShadowVisibility = texture(screenSpaceShadowMap, vTexCoord).r;
-	float viewDepth = length(worldPos - viewPos);
-   
-	// Contact shadow strength increases close to camera, fades out at distance
-	float contactStrength = smoothstep(15.0, 1.0, viewDepth);
-	contactStrength = mix(0.6, 1.0, contactStrength);
-	
-	// Reduce contact shadow strength where shadow map already shows shadows
-	// This prevents over-darkening where both systems agree
-	float litAreaReduction = smoothstep(0.9, 1.0, shadowMapShadow);
-	contactStrength *= (1.0 - litAreaReduction * 0.5);
-	
-	// Apply contact shadows with realistic darkening
-	float contactShadow = mix(ApplyRealisticShadow(contactShadowVisibility, albedo, roughness, metallic, diffuseAO), 1.0, 1.0 - contactStrength * sssStrength);
-	
-	// Combine shadow map and contact shadows with realistic blending
-	float combinedShadow = shadowMapShadow * contactShadow;
-	combinedShadow = max(combinedShadow, shadowMinBrightness);
+	float combinedShadow = shadowMapShadow;
+	if (type == 0 && sssStrength > 0.001) {
+		// Contact shadows are view-space directional refinements, so only blend for directional lights.
+		float contactShadowVisibility = texture(screenSpaceShadowMap, vTexCoord).r;
+		float viewDepth = length(worldPos - viewPos);
+
+		float contactStrength = smoothstep(15.0, 1.0, viewDepth);
+		contactStrength = mix(0.6, 1.0, contactStrength);
+
+		float litAreaReduction = smoothstep(0.9, 1.0, shadowMapShadow);
+		contactStrength *= (1.0 - litAreaReduction * 0.5);
+
+		float contactBlend = clamp(contactStrength * sssStrength, 0.0, 1.0);
+		float contactShadow = mix(1.0, ApplyRealisticShadow(contactShadowVisibility), contactBlend);
+		combinedShadow = min(shadowMapShadow, contactShadow);
+	}
 	
 	// Final contribution
 	vec3 radiance = lightColor * attenuation;
 	
-	return (diffuse * diffuseAO + specular) * radiance * combinedShadow;
+	return (diffuse + specular) * radiance * combinedShadow;
 }
 
-vec3 ComputeIBL(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, vec3 F0, float transmission, float clearcoat, float clearcoatRoughness, float diffuseAO, float specularAO) {
-	vec3 iblResult = EvaluateCanonicalIBL(
-		N, V, reflect(-V, N), albedo, metallic, ClampPerceptualRoughness(roughness), F0, transmission, clearcoat, clearcoatRoughness,
+vec3 ComputeIBL(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+	vec3 iblResult = EvaluatePrincipledIBL(
+		surface, N, V, reflect(-V, N),
 		diffuseAO, specularAO,
 		irradianceMap, prefilteredMap, brdfLUT,
 		prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale
@@ -595,6 +636,12 @@ void main() {
 	float depth = texture(gDepth, uv).r;
 	if (depth >= 0.9999) { FragColor = vec4(0.0); return; }
 
+	if (ssgiDebugMode > 0) {
+		vec4 ssgiDbg = texture(ssgiMap, uv);
+		FragColor = vec4(max(ssgiDbg.rgb, vec3(0.0)), 1.0);
+		return;
+	}
+
 	// Read material contract from the G-buffer using the shared unpack path.
 	vec3 decodedNormal;
 	PBRMaterial material = UnpackGBufferMaterial(
@@ -604,19 +651,14 @@ void main() {
 		gMaterialID,
 		gEmissive,
 		gClearCoat,
+		gPrincipledParams,
 		uv,
 		decodedNormal
 	);
 
-	vec3 albedo = material.albedo;
-	float metallic = material.metallic;
-	float roughness = material.roughness;
-	vec3 specularF0 = material.specularF0;
 	float aoTex = material.ao;
 	vec3 emissive = material.emissive;
-	float transmission = material.transmission;
-	float clearcoat = material.clearcoat;
-	float clearcoatRoughness = material.clearcoatRoughness;
+	PrincipledSurface surface = BuildPrincipledSurfaceFromMaterial(material);
 
 	// SSAO
 	float ssao = clamp(texture(ssaoMap, uv).r, 0.0, 1.0);
@@ -641,36 +683,26 @@ void main() {
 		}
 	}
 
-	vec3 F0 = specularF0;
-
 	// AO factors
 	float diffuseAO = mix(1.0, ssao, aoStrength) * aoTex;
-	float specularAO = SpecularOcclusion(NdotV, diffuseAO, roughness);
+	float specularAO = SpecularOcclusion(NdotV, diffuseAO, surface.perceptualRoughness);
 
 	// Start with emissive
 	vec3 color = emissive;
 
-	// Direct lighting - pass raw albedo, metallic factor is applied inside
+	// Direct lighting - layered principled evaluation from the shared surface contract
 	if (numLights > 0) {
 		int maxLights = min(numLights, 64);
 		for (int i = 0; i < maxLights; ++i) {
-			color += ComputeDirectLight(i, worldPos, N, V, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuseAO);
+			color += ComputeDirectLight(i, worldPos, N, V, surface);
 		}
-	} else {
-		// Fallback ambient lighting
-		vec3 Ld = normalize(vec3(0.2, -0.8, -0.3));
-		float NdotL = max(dot(N, Ld), 0.0);
-		// Apply metallic factor for fallback too
-		vec3 diffuseColor = albedo * (1.0 - metallic);
-		color += (diffuseColor / PI) * NdotL * 0.3 * diffuseAO;
 	}
 
-	// IBL - pass raw albedo
-	color += ComputeIBL(N, V, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuseAO, specularAO);
+	color += ComputeIBL(N, V, surface, diffuseAO, specularAO);
 
-	// LPV GI - pass raw albedo
+	// LPV GI still uses the legacy diffuse-only path until volumetric GI is upgraded
 	if (enableLPV == 1) {
-		vec3 lpvContribution = SampleLPV(worldPos, N, albedo, metallic, diffuseAO);
+		vec3 lpvContribution = SampleLPV(worldPos, N, material.albedo, material.metallic, diffuseAO);
 		
 		if (lpvDebugVisualization == 1) {
 			FragColor = vec4(lpvContribution, 1.0);
@@ -680,17 +712,15 @@ void main() {
 		color += lpvContribution;
 	}
 
-	// SSGI - ssgiIndirect is already irradiance, don't multiply by albedo
-	// The sampled hit color contains final radiance with albedo baked in
-	// We apply metallic factor and diffuse BRDF (1/PI) for energy conservation
-	vec3 ssgiIndirect = texture(ssgiMap, vTexCoord).rgb;
-	vec3 ssgiContribution = ssgiIndirect * (1.0 - metallic) * INV_PI * ssgiStrength * diffuseAO;
+	// SSGI stores incoming diffuse irradiance; apply receiver diffuse BRDF once.
+	vec4 ssgiSample = texture(ssgiMap, vTexCoord);
+	vec3 ssgiIndirect = max(ssgiSample.rgb, vec3(0.0));
+	float ssgiValidityRaw = clamp(ssgiSample.a, 0.0, 1.0);
+	float ssgiValidity = smoothstep(0.02, 0.55, ssgiValidityRaw);
+	ssgiValidity = max(ssgiValidity, ssgiValidityRaw * 0.55);
+	float ssgiEnergy = mix(0.75, 1.15, ssgiValidity);
+	vec3 ssgiContribution = ssgiIndirect * surface.diffuseColor * INV_PI * ssgiStrength * diffuseAO * ssgiValidity * ssgiEnergy;
 	color += ssgiContribution;
-
-	// Safety fallback
-	if (length(color) < 0.0005) {
-		color += albedo * (1.0 - metallic) * 0.1 * diffuseAO;
-	}
 
 	color = max(color, vec3(0.0));
 

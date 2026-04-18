@@ -25,6 +25,12 @@ public:
                  const std::shared_ptr<DirectionalLight>& dirLight,
                  const std::shared_ptr<Skybox>& skybox) override;
 
+    void PrepareJitter(int pattern);
+    void ExecuteVelocity(RenderContext& ctx,
+                         const std::shared_ptr<SceneGraph>& sceneGraph,
+                         const std::shared_ptr<Camera>& camera);
+    void ExecuteResolve(RenderContext& ctx);
+
     void ResetHistory() { m_historyValid = false; m_frameIndex = 0; }
     int GetFrameIndex() const { return m_frameIndex; }
     glm::vec2 GetCurrentJitter() const { return m_jitter; }
@@ -47,9 +53,6 @@ private:
         GLint projection = -1;
         GLint prevView = -1;
         GLint prevProjection = -1;
-        GLint jitter = -1;
-        GLint prevJitter = -1;
-        GLint screenSize = -1;
     };
 
     struct ResolveUniforms {
@@ -57,14 +60,15 @@ private:
         GLint historyFrame = -1;
         GLint velocityBuffer = -1;
         GLint depthBuffer = -1;
-        GLint gNormal = -1;
+        GLint normalBuffer = -1;
+        GLint historyDepthBuffer = -1;
+        GLint historyNormalBuffer = -1;
         GLint blendFactor = -1;
         GLint varianceThreshold = -1;
         GLint lumaWeight = -1;
         GLint useYCoCg = -1;
         GLint historyValid = -1;
         GLint screenSize = -1;
-        GLint jitter = -1;
         GLint depthThreshold = -1;
         GLint normalThreshold = -1;
         GLint edgeThreshold = -1;
@@ -80,9 +84,14 @@ private:
     std::unique_ptr<FrameBuffer> m_velocityFBO;
     std::unique_ptr<FrameBuffer> m_currentFBO;
     std::unique_ptr<FrameBuffer> m_historyFBO;
+    GLuint m_historyDepthTex = 0;
+    GLuint m_historyNormalTex = 0;
 
     glm::vec2 m_jitter{0.0f};
     glm::vec2 m_prevJitter{0.0f};
     int m_frameIndex = 0;
     bool m_historyValid = false;
+
+    void RecreateHistoryValidationTextures(int width, int height);
+    void DestroyHistoryValidationTextures();
 };

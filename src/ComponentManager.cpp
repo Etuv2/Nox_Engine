@@ -37,6 +37,7 @@ ComponentManager::ComponentManager() {
 	m_nameToEntity.reserve(1024);
 	m_childrenByParent.reserve(1024);
 	m_pendingTransformUpdates.reserve(256);
+	m_transformUpdateQueued.reserve(1024);
 }
 
 ComponentManager::~ComponentManager() {
@@ -63,6 +64,9 @@ EntityID ComponentManager::CreateEntity(const std::string& name, NodeType type) 
 	metadata.componentMask = 0;
 
 	m_metadata[newID] = metadata;
+	if (newID >= m_transformUpdateQueued.size()) {
+		m_transformUpdateQueued.resize(newID + 1, 0u);
+	}
 
 	// Register name lookup
 	if (!name.empty()) {
@@ -71,6 +75,7 @@ EntityID ComponentManager::CreateEntity(const std::string& name, NodeType type) 
 
 	// All entities get a transform component by default
 	AddTransform(newID);
+	++m_hierarchyRevision;
 
 	return newID;
 }
@@ -103,6 +108,7 @@ void ComponentManager::DestroyEntity(EntityID entity) {
 
 	// Add to free list
 	m_freeEntityIDs.push_back(entity);
+	++m_hierarchyRevision;
 	assert(ValidateHierarchyIntegrity());
 }
 
@@ -205,6 +211,7 @@ void ComponentManager::RemoveTransform(EntityID entity) {
 	m_transforms.Remove(entity);
 	auto metadata = GetMetadata(entity);
 	if (metadata) metadata->RemoveComponent(ComponentType::TRANSFORM);
+	++m_hierarchyRevision;
 	assert(ValidateHierarchyIntegrity());
 }
 
@@ -218,6 +225,7 @@ RenderableComponent* ComponentManager::AddRenderable(EntityID entity, const Rend
 	m_renderables.Add(entity, renderable);
 	auto metadata = GetMetadata(entity);
 	if (metadata) metadata->AddComponent(ComponentType::RENDERABLE);
+	++m_renderableRevision;
 	return GetRenderable(entity);
 }
 
@@ -233,6 +241,7 @@ void ComponentManager::RemoveRenderable(EntityID entity) {
 	m_renderables.Remove(entity);
 	auto metadata = GetMetadata(entity);
 	if (metadata) metadata->RemoveComponent(ComponentType::RENDERABLE);
+	++m_renderableRevision;
 }
 
 bool ComponentManager::HasRenderable(EntityID entity) const {
@@ -501,6 +510,7 @@ void ComponentManager::SetParent(EntityID child, EntityID parent) {
 		}
 	}
 
+	++m_hierarchyRevision;
 	assert(ValidateHierarchyIntegrity());
 }
 
@@ -509,8 +519,12 @@ void ComponentManager::QueueTransformUpdate(EntityID entity) {
 		return;
 	}
 
-	if (std::find(m_pendingTransformUpdates.begin(), m_pendingTransformUpdates.end(), entity) ==
-		m_pendingTransformUpdates.end()) {
+	if (entity >= m_transformUpdateQueued.size()) {
+		m_transformUpdateQueued.resize(entity + 1, 0u);
+	}
+
+	if (m_transformUpdateQueued[entity] == 0u) {
+		m_transformUpdateQueued[entity] = 1u;
 		m_pendingTransformUpdates.push_back(entity);
 		++m_transformUpdateRevision;
 	}
@@ -519,6 +533,11 @@ void ComponentManager::QueueTransformUpdate(EntityID entity) {
 std::vector<EntityID> ComponentManager::ConsumePendingTransformUpdates() {
 	std::vector<EntityID> updates;
 	updates.swap(m_pendingTransformUpdates);
+	for (EntityID entity : updates) {
+		if (entity < m_transformUpdateQueued.size()) {
+			m_transformUpdateQueued[entity] = 0u;
+		}
+	}
 	return updates;
 }
 
@@ -611,7 +630,11 @@ void ComponentManager::Clear() {
 	m_nameToEntity.clear();
 	m_childrenByParent.clear();
 	m_pendingTransformUpdates.clear();
+	m_transformUpdateQueued.clear();
 	m_freeEntityIDs.clear();
 	m_nextEntityID = 1;
 	m_nextTransformID = 1;
+	m_transformUpdateRevision = 1;
+	m_hierarchyRevision = 1;
+	m_renderableRevision = 1;
 }

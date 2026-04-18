@@ -2,6 +2,7 @@
 #include <glm/glm.hpp>
 #include <GL/glew.h>
 #include <vector>
+#include <limits>
 
 /**
  * @file RTStructures.h
@@ -49,10 +50,11 @@ namespace RT {
 		float clearcoatFactor;          // offset 64  // alignment 4  // size 4
 		float clearcoatRoughnessFactor; // offset 68  // alignment 4  // size 4
 		float ior;                      // offset 72  // alignment 4  // size 4
-		float paddingMedium;            // offset 76  // alignment 4  // size 4
+		float attenuationDistance;      // offset 76  // alignment 4  // size 4
 		
-		// === Row 5: Reserved for future layered lobes (16 bytes) ===
-		glm::vec4 reserved0{ 0.0f };
+		// === Row 5: Volume attenuation + thickness (16 bytes) ===
+		glm::vec3 attenuationColor;     // offset 80  // alignment 16 // size 12
+		float thicknessFactor;          // offset 92  // alignment 4  // size 4
 		
 		// === Row 6: Material Flags (16 bytes) ===
 		uint32_t materialID;            // offset 96  // alignment 4  // size 4
@@ -74,7 +76,8 @@ namespace RT {
 			, emissive(0.0f), roughness(1.0f)
 			, specular(0.04f), emissiveStrength(0.0f)
 			, specularColorFactor(1.0f), transmissionFactor(0.0f)
-			, clearcoatFactor(0.0f), clearcoatRoughnessFactor(0.0f), ior(1.5f), paddingMedium(0.0f)
+			, clearcoatFactor(0.0f), clearcoatRoughnessFactor(0.0f), ior(1.5f), attenuationDistance(std::numeric_limits<float>::infinity())
+			, attenuationColor(1.0f), thicknessFactor(0.0f)
 			, materialID(0), normalScale(1.0f)
 			, occlusionStrength(1.0f), specularFactor(1.0f)
 			, alpha(1.0f), alphaCutoff(0.5f), alphaMode(0), paddingAlpha(0.0f) {}

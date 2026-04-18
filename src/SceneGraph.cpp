@@ -8,11 +8,13 @@
 #include <iostream>
 
 SceneGraph::SceneGraph()
-	: m_transformSystem(&m_componentManager),
+	: m_runtimeScene(&m_componentManager),
+	  m_transformSystem(&m_componentManager, &m_runtimeScene),
 	  m_renderSystem(&m_componentManager, &m_transformSystem),
 	  m_animationSystem(&m_componentManager, &m_transformSystem),
 	  m_hierarchySystem(&m_componentManager, &m_transformSystem)
 {
+	m_renderSystem.SetRuntimeScene(&m_runtimeScene);
 	m_lightManager = std::make_shared<LightManager>();
 	m_root = SceneNode::CreateWithECS(&m_componentManager, &m_transformSystem, "Root", NodeType::NODE);
 	if (!m_root) {

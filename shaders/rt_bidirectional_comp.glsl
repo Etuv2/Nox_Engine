@@ -55,6 +55,8 @@ layout (binding = 8) uniform usampler2D u_gbufferMaterialID;
 layout (binding = 9) uniform sampler2D u_gbufferEmissive;
 // RT6: Clearcoat factor + roughness
 layout (binding = 10) uniform sampler2D u_gbufferClearCoat;
+// RT7: Principled extras: transmission (R), IOR (G), reserved (BA)
+layout (binding = 11) uniform sampler2D u_gbufferPrincipledParams;
 
 
 // IBL Environment maps
@@ -134,10 +136,11 @@ struct Material {
 	float clearcoatFactor;
 	float clearcoatRoughnessFactor;
 	float ior;
-	float paddingMedium;
+	float attenuationDistance;
 	
-	// Row 5: Reserved for future layered lobes
-	vec4  reserved0;
+	// Row 5: Volume attenuation + thickness
+	vec3  attenuationColor;
+	float thicknessFactor;
 	
 	// Row 6: Material Flags
 	uint  materialID;       // 0=Standard PBR, 2=Transmission
@@ -215,6 +218,7 @@ vec3 reconstructWorldPosition(vec2 uv, float depth);
 vec3 DecodeNormalOct8(vec2 oct);
 vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L);
 vec3 randomCosineDirection(vec3 normal);
+vec3 ResolveMaterialF0(Material mat);
 
 // PCG hash: https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
 uint pcg_hash(uint input_) {
@@ -289,36 +293,10 @@ vec3 randomCosineDirection(vec3 normal) {
 // GGX importance sampling - improved version for low roughness metals
 // Uses proper half-vector distribution and handles near-mirror surfaces correctly
 vec3 randomGGXDirection(vec3 N, vec3 V, float roughness) {
-	// Clamp roughness to prevent numerical issues with near-zero values
-	float clampedRoughness = max(roughness, 0.001);
-	float alpha = clampedRoughness * clampedRoughness;
-	vec2  u = randomVec2();
-
-	float phi = TAU * u.x;
-	float cosTheta = sqrt((1.0 - u.y) / (1.0 + (alpha * alpha - 1.0) * u.y));
-	float sinTheta = sqrt(max(1.0 - cosTheta * cosTheta, 0.0));
-
-	// Half vector in tangent space
-	vec3 H = vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-
-	// Build robust tangent space basis
-	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-	vec3 tangent = normalize(cross(up, N));
-	vec3 bitangent = cross(N, tangent);
-
-	// Transform H to world space
-	H = normalize(tangent * H.x + bitangent * H.y + N * H.z);
-
-	// Reflect view direction around half vector to get light direction
-	vec3 L = reflect(-V, H);
-	
-	// For very low roughness (mirror-like), the reflected direction should be close to perfect reflection
-	// Ensure the result is valid (L should be in the same hemisphere as N)
+	vec3 L = ImportanceSampleGGX(randomVec2(), N, V, ClampPerceptualRoughness(roughness));
 	if (dot(L, N) <= 0.0) {
-		// Fallback to perfect reflection if sampled direction is below horizon
 		L = reflect(-V, N);
 	}
-	
 	return L;
 }
 
@@ -522,37 +500,13 @@ HitInfo traceBVHDebug(Ray ray, inout uint aabbIntersectCount, inout uint triInte
 // Calculate refraction direction using Snell's law
 // Returns reflection direction if total internal reflection occurs
 vec3 calculateRefraction(vec3 I, vec3 N, float materialIOR) {
-	float cosi = dot(I, N);
-	float etai = 1.0; // Air
-	float etat = materialIOR;
-	vec3 n = N;
-	
-	// Check if entering or exiting the material
-	if (cosi < 0.0) {
-		// Entering from air into material
-		cosi = -cosi;
-	} else {
-		// Exiting from material into air (swap IORs)
-		float temp = etai;
-		etai = etat;
-		etat = temp;
-		n = -N;
-	}
-	
-	float eta = etai / etat;
-	float k = 1.0 - eta * eta * (1.0 - cosi * cosi);
-	
-	// Total internal reflection check
-	if (k < 0.0) {
-		return reflect(I, N);
-	}
-	
-	return normalize(eta * I + (eta * cosi - sqrt(k)) * n);
+	bool totalInternalReflection = false;
+	return ComputeRefractionDirection(I, N, materialIOR, totalInternalReflection);
 }
 
 // Evaluate BRDF for canonical metallic-roughness workflow (standard PBR + transmission)
 vec3 evaluateBRDF_Canonical(Material mat, vec3 N, vec3 V, vec3 L) {
-	vec3 F0 = ComputeSurfaceF0(mat.albedo, mat.metallic, mat.ior, mat.specularFactor, mat.specularColorFactor);
+	vec3 F0 = ResolveMaterialF0(mat);
 	return EvaluateCanonicalBRDF(
 		N, V, L,
 		mat.albedo, mat.metallic, mat.roughness, F0, mat.transmissionFactor,
@@ -564,7 +518,7 @@ vec3 evaluateBRDF_Canonical(Material mat, vec3 N, vec3 V, vec3 L) {
 // This matches deferred lighting's approach where AO is applied separately to diffuse and specular
 void evaluateBRDF_Canonical_Separated(Material mat, vec3 N, vec3 V, vec3 L,
 	out vec3 diffuseOut, out vec3 specularOut) {
-	vec3 F0 = ComputeSurfaceF0(mat.albedo, mat.metallic, mat.ior, mat.specularFactor, mat.specularColorFactor);
+	vec3 F0 = ResolveMaterialF0(mat);
 	EvaluateCanonicalBRDFSeparated(
 		N, V, L,
 		mat.albedo, mat.metallic, mat.roughness, F0, mat.transmissionFactor,
@@ -585,7 +539,7 @@ void evaluateBRDF_MetallicRoughness_Separated(Material mat, vec3 N, vec3 V, vec3
 
 // Evaluate BRDF for transmissive materials (glass, etc.)
 vec3 evaluateBRDF_Transmissive(Material mat, vec3 N, vec3 V, vec3 L, out float transmission) {
-	vec3 F0 = ComputeSurfaceF0(mat.albedo, mat.metallic, mat.ior, mat.specularFactor, mat.specularColorFactor);
+	vec3 F0 = ResolveMaterialF0(mat);
 	float NdotV = max(dot(N, V), 0.0);
 	transmission = ComputeTransmissionWeight(mat.transmissionFactor, NdotV, F0);
 	return EvaluateCanonicalBRDF(
@@ -973,6 +927,7 @@ void main() {
 	vec4 emissiveData = texture(u_gbufferEmissive, uv);
 	vec3 emissive = emissiveData.rgb * emissiveStrength;
 	vec2 clearcoatData = texture(u_gbufferClearCoat, uv).rg;
+	vec4 principledData = texture(u_gbufferPrincipledParams, uv);
 
 	vec3 normal = DecodeNormalOct8(octNormal);
 	
@@ -995,13 +950,20 @@ void main() {
 	gbufferMat.materialID = materialID;
 	// Set default values for extended properties (not stored in G-buffer)
 	gbufferMat.specularColorFactor = vec3(1.0);
-	gbufferMat.transmissionFactor = (materialID == 2u) ? 0.9 : 0.0;
+	gbufferMat.transmissionFactor = clamp(principledData.r, 0.0, 1.0);
 	gbufferMat.clearcoatFactor = clearcoatData.r;
 	gbufferMat.clearcoatRoughnessFactor = ClampPerceptualRoughness(clearcoatData.g);
-	gbufferMat.ior = 1.5;
+	gbufferMat.ior = principledData.g > 0.0 ? principledData.g : 1.5;
+	gbufferMat.attenuationDistance = 1e30;
+	gbufferMat.attenuationColor = vec3(1.0);
+	gbufferMat.thicknessFactor = 0.0;
 	gbufferMat.normalScale = 1.0;
 	gbufferMat.occlusionStrength = 1.0;
 	gbufferMat.specularFactor = 1.0;
+	gbufferMat.alpha = 1.0;
+	gbufferMat.alphaCutoff = 0.5;
+	gbufferMat.alphaMode = 0u;
+	gbufferMat.padding0 = 0.0;
 
 	vec3 color = vec3(0.0);
 	vec3 V = normalize(u_cameraPos - worldPos);
@@ -1171,13 +1133,7 @@ vec3 tracePath(Ray initialRay) {
 		
 		// Handle transmissive materials (glass, etc.)
 		if (hit.material.materialID == 2u && hit.material.transmissionFactor > 0.0) {
-			vec3 transmissionF0 = ComputeSurfaceF0(
-				hit.material.albedo,
-				hit.material.metallic,
-				hit.material.ior,
-				hit.material.specularFactor,
-				hit.material.specularColorFactor
-			);
+			vec3 transmissionF0 = ResolveMaterialF0(hit.material);
 			float NdotV = max(abs(dot(N, V)), 0.001);
 			float transmissionWeight = ComputeTransmissionWeight(hit.material.transmissionFactor, NdotV, transmissionF0);
 			
@@ -1196,27 +1152,25 @@ vec3 tracePath(Ray initialRay) {
 				// Throughput unchanged for perfect mirror (F/F = 1 when sampling proportional to Fresnel)
 			} else {
 				// Refract
-				float eta = insideMedium ? hit.material.ior : (1.0 / hit.material.ior);
-				vec3 refractDir = refract(-V, N, eta);
-				
-				// Check for total internal reflection
-				if (length(refractDir) < 0.5) {
+				bool totalInternalReflection = false;
+				vec3 refractDir = ComputeRefractionDirection(-V, N, hit.material.ior, totalInternalReflection);
+
+				if (totalInternalReflection) {
 					// TIR - reflect instead
 					vec3 reflectDir = reflect(-V, N);
 					ray.origin = hit.position + N * EPSILON * 2.0;
 					ray.direction = normalize(reflectDir);
 				} else {
-					// Successful refraction
-					// Apply Beer's law absorption for colored glass when inside medium
 					if (insideMedium) {
-						// Approximate absorption based on path length (use a fixed small absorption)
-						vec3 absorption = exp(-hit.material.albedo * 0.1);
-						throughput *= absorption;
+						vec3 mediumTransmittance = ComputeVolumeTransmittance(
+							hit.material.albedo,
+							hit.material.thicknessFactor,
+							hit.material.attenuationDistance,
+							hit.material.attenuationColor
+						);
+						throughput *= mix(vec3(1.0), mediumTransmittance, hit.material.transmissionFactor);
 					}
-					
-					// Tint by transmission color (sqrt for single interface)
-					throughput *= mix(vec3(1.0), sqrt(hit.material.albedo), hit.material.transmissionFactor);
-					
+
 					ray.origin = hit.position - N * EPSILON * 2.0;
 					ray.direction = normalize(refractDir);
 					insideMedium = !insideMedium;
@@ -1293,4 +1247,7 @@ vec3 tracePath(Ray initialRay) {
 	}
 
 	return radiance;
+}
+vec3 ResolveMaterialF0(Material mat) {
+	return max(mat.specular, vec3(0.0));
 }

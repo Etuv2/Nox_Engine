@@ -72,8 +72,13 @@ void BloomPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<DirectionalLight>& dirLight,
 	const std::shared_ptr<Skybox>& skybox) {
-	// Source is HDR FBO color attachment
-	GLuint sourceTex = ctx.hdrFBO->GetColorAttachment(0);
+	// Prefer temporally resolved HDR when TAA is active.
+	FrameBuffer* sourceFBO = (ctx.enableTAA && ctx.taaFBO) ? ctx.taaFBO : ctx.hdrFBO.get();
+	GLuint sourceTex = sourceFBO ? sourceFBO->GetColorAttachment(0) : 0;
+	if (!sourceTex) {
+		PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[BloomPass] Missing source texture, skipping bloom.");
+		return;
+	}
 	PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[BloomPass] Source HDR texture: " << sourceTex);
 
 	ExtractBrightPixels(ctx, sourceTex);

@@ -190,7 +190,13 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneNode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneRuntimeData.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ShadowMapper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SimdKernels.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Skybox.cpp">

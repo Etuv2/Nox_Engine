@@ -6,6 +6,9 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 /**
  * Canonical CPU-side material contract shared by import, renderer uploads, and RT packing.
@@ -26,24 +29,69 @@ struct MaterialDesc {
 	bool hasAlpha = false;
 
 	glm::vec4 baseColorFactor = glm::vec4(1.0f);
-	float metallicFactor = 0.0f;
+	float metallicFactor = 1.0f;
 	float roughnessFactor = 1.0f;
 	float alphaCutoff = 0.5f;
 	glm::vec3 emissiveFactor = glm::vec3(0.0f);
 	float emissiveStrength = 1.0f;
 
-	glm::vec3 specularFactor = glm::vec3(1.0f);
+	float specularFactor = 1.0f;
 	glm::vec3 specularColorFactor = glm::vec3(1.0f);
 	float clearcoatFactor = 0.0f;
 	float clearcoatRoughnessFactor = 0.0f;
 	float transmissionFactor = 0.0f;
 	float thicknessFactor = 0.0f;
-	float attenuationDistance = 0.0f;
+	float attenuationDistance = std::numeric_limits<float>::infinity();
 	glm::vec3 attenuationColor = glm::vec3(1.0f);
 	float ior = 1.5f;
 
 	float occlusionStrength = 1.0f;
 	float normalScale = 1.0f;
+
+	int baseColorTexCoord = 0;
+	int normalTexCoord = 0;
+	int metallicRoughnessTexCoord = 0;
+	int emissiveTexCoord = 0;
+	int occlusionTexCoord = 0;
+	int specularTexCoord = 0;
+	int specularColorTexCoord = 0;
+	int transmissionTexCoord = 0;
+
+	void Normalize() {
+		baseColorFactor = glm::clamp(baseColorFactor, glm::vec4(0.0f), glm::vec4(1.0f));
+		metallicFactor = std::clamp(metallicFactor, 0.0f, 1.0f);
+		roughnessFactor = std::clamp(roughnessFactor, 0.0f, 1.0f);
+		alphaCutoff = std::clamp(alphaCutoff, 0.0f, 1.0f);
+		emissiveStrength = std::max(emissiveStrength, 0.0f);
+		specularFactor = std::clamp(specularFactor, 0.0f, 1.0f);
+		specularColorFactor = glm::clamp(specularColorFactor, glm::vec3(0.0f), glm::vec3(1.0f));
+		clearcoatFactor = std::clamp(clearcoatFactor, 0.0f, 1.0f);
+		clearcoatRoughnessFactor = std::clamp(clearcoatRoughnessFactor, 0.0f, 1.0f);
+		transmissionFactor = std::clamp(transmissionFactor, 0.0f, 1.0f);
+		thicknessFactor = std::max(thicknessFactor, 0.0f);
+		if (!std::isfinite(attenuationDistance)) {
+			attenuationDistance = std::numeric_limits<float>::infinity();
+		}
+		else {
+			attenuationDistance = std::max(attenuationDistance, 0.0f);
+		}
+		attenuationColor = glm::clamp(attenuationColor, glm::vec3(0.0f), glm::vec3(1.0f));
+		ior = std::max(ior, 1.0f);
+		occlusionStrength = std::clamp(occlusionStrength, 0.0f, 1.0f);
+		normalScale = std::max(normalScale, 0.0f);
+
+		auto clampSupportedUVSet = [](int uvSet) { return uvSet == 1 ? 1 : 0; };
+		baseColorTexCoord = clampSupportedUVSet(baseColorTexCoord);
+		normalTexCoord = clampSupportedUVSet(normalTexCoord);
+		metallicRoughnessTexCoord = clampSupportedUVSet(metallicRoughnessTexCoord);
+		emissiveTexCoord = clampSupportedUVSet(emissiveTexCoord);
+		occlusionTexCoord = clampSupportedUVSet(occlusionTexCoord);
+		specularTexCoord = clampSupportedUVSet(specularTexCoord);
+		specularColorTexCoord = clampSupportedUVSet(specularColorTexCoord);
+		transmissionTexCoord = clampSupportedUVSet(transmissionTexCoord);
+
+		hasAlpha = hasAlpha || alphaMode == AlphaMode::Blend || baseColorFactor.a < 1.0f || transmissionFactor > 0.0f;
+	}
 };
 
 class MeshComponent {
@@ -83,13 +131,13 @@ public:
 
 	// glTF 2.0 standard material factors
 	glm::vec4 baseColorFactor = glm::vec4(1.0f);     // RGBA base color multiplier
-	float metallicFactor = 0.0f;                     // Metallic factor [0,1]
+	float metallicFactor = 1.0f;                     // Metallic factor [0,1]
 	float roughnessFactor = 1.0f;                    // Roughness factor [0,1]
 	float alphaCutoff = 0.5f;                        // Alpha cutoff for alpha testing
 	glm::vec3 emissiveFactor = glm::vec3(0.0f);      // Emissive color multiplier
 
 	// Additional material factors for extensions
-	glm::vec3 specularFactor = glm::vec3(1.0f);      // KHR_materials_specular
+	float specularFactor = 1.0f;                     // KHR_materials_specular scalar weight
 	glm::vec3 specularColorFactor = glm::vec3(1.0f); // KHR_materials_specular
 	float emissiveStrength = 1.0f;                   // KHR_materials_emissive_strength
 	float clearcoatFactor = 0.0f;                    // KHR_materials_clearcoat
@@ -100,7 +148,7 @@ public:
 	// KHR_materials_transmission extension
 	float transmissionFactor = 0.0f;                 // Transmission factor [0,1]
 	float thicknessFactor = 0.0f;                    // KHR_materials_volume thickness
-	float attenuationDistance = 0.0f;                // KHR_materials_volume attenuation distance
+	float attenuationDistance = std::numeric_limits<float>::infinity(); // KHR_materials_volume attenuation distance
 	glm::vec3 attenuationColor = glm::vec3(1.0f);    // KHR_materials_volume attenuation color
 
 	// KHR_materials_ior extension
@@ -255,32 +303,63 @@ public:
 	MeshComponent(const MeshComponent&) = delete;
 	MeshComponent& operator=(const MeshComponent&) = delete;
 
+	void SyncLegacyMaterialStateFromDesc() {
+		baseColorFactor = material.baseColorFactor;
+		metallicFactor = material.metallicFactor;
+		roughnessFactor = material.roughnessFactor;
+		alphaCutoff = material.alphaCutoff;
+		emissiveFactor = material.emissiveFactor;
+		emissiveStrength = material.emissiveStrength;
+		specularFactor = material.specularFactor;
+		specularColorFactor = material.specularColorFactor;
+		clearcoatFactor = material.clearcoatFactor;
+		clearcoatRoughnessFactor = material.clearcoatRoughnessFactor;
+		transmissionFactor = material.transmissionFactor;
+		thicknessFactor = material.thicknessFactor;
+		attenuationDistance = material.attenuationDistance;
+		attenuationColor = material.attenuationColor;
+		ior = material.ior;
+		occlusionStrength = material.occlusionStrength;
+		normalScale = material.normalScale;
+		hasAlpha = material.hasAlpha;
+		doubleSided = material.doubleSided;
+		alphaMode = static_cast<AlphaMode>(static_cast<uint32_t>(material.alphaMode));
+	}
+
+	MaterialDesc BuildMaterialDescFromLegacy() const {
+		MaterialDesc desc = material;
+		desc.baseColorFactor = baseColorFactor;
+		desc.metallicFactor = metallicFactor;
+		desc.roughnessFactor = roughnessFactor;
+		desc.alphaCutoff = alphaCutoff;
+		desc.emissiveFactor = emissiveFactor;
+		desc.emissiveStrength = emissiveStrength;
+		desc.specularFactor = specularFactor;
+		desc.specularColorFactor = specularColorFactor;
+		desc.clearcoatFactor = clearcoatFactor;
+		desc.clearcoatRoughnessFactor = clearcoatRoughnessFactor;
+		desc.transmissionFactor = transmissionFactor;
+		desc.thicknessFactor = thicknessFactor;
+		desc.attenuationDistance = attenuationDistance;
+		desc.attenuationColor = attenuationColor;
+		desc.ior = ior;
+		desc.occlusionStrength = occlusionStrength;
+		desc.normalScale = normalScale;
+		desc.hasAlpha = hasAlpha;
+		desc.doubleSided = doubleSided;
+		desc.alphaMode = static_cast<MaterialDesc::AlphaMode>(static_cast<uint32_t>(alphaMode));
+		desc.Normalize();
+		return desc;
+	}
+
 	void SetMaterialDesc(const MaterialDesc& desc) {
 		material = desc;
-		baseColorFactor = desc.baseColorFactor;
-		metallicFactor = desc.metallicFactor;
-		roughnessFactor = desc.roughnessFactor;
-		alphaCutoff = desc.alphaCutoff;
-		emissiveFactor = desc.emissiveFactor;
-		emissiveStrength = desc.emissiveStrength;
-		specularFactor = desc.specularFactor;
-		specularColorFactor = desc.specularColorFactor;
-		clearcoatFactor = desc.clearcoatFactor;
-		clearcoatRoughnessFactor = desc.clearcoatRoughnessFactor;
-		transmissionFactor = desc.transmissionFactor;
-		thicknessFactor = desc.thicknessFactor;
-		attenuationDistance = desc.attenuationDistance;
-		attenuationColor = desc.attenuationColor;
-		ior = desc.ior;
-		occlusionStrength = desc.occlusionStrength;
-		normalScale = desc.normalScale;
-		hasAlpha = desc.hasAlpha;
-		doubleSided = desc.doubleSided;
-		alphaMode = static_cast<AlphaMode>(static_cast<uint32_t>(desc.alphaMode));
+		material.Normalize();
+		SyncLegacyMaterialStateFromDesc();
 	}
 
 	MaterialDesc GetMaterialDesc() const {
-		return material;
+		return BuildMaterialDescFromLegacy();
 	}
 
 	// Determine if this mesh needs special rendering treatment

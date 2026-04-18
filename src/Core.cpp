@@ -316,10 +316,11 @@ bool Core::InitializeScene() {
 
 	auto lightManager = m_sceneGraph->GetLightManager();
 	if (lightManager) {
-		// Collect lights from the loaded scene
-		lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
 		lightManager->InitializeShadowSystem(8, m_shadowSize);
 		lightManager->CollectLightsFromScene(m_sceneGraph);
+		if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
+			lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
+		}
 		lightManager->PrintLightInfo();
 	}
 
@@ -490,6 +491,10 @@ void Core::Update(float deltaTime) {
 	// NOTE: Legacy recursive SceneNode update calls are intentionally excluded
 	// from the frame loop when equivalent ECS systems are active.
 	if (m_sceneGraph && m_sceneGraph->IsActive()) {
+		if (TransformSystem* transformSystem = m_sceneGraph->GetTransformSystem()) {
+			transformSystem->BeginFrameDiagnostics();
+		}
+
 		// Stage 1: ECS animation/transform
 		auto animationStart = std::chrono::high_resolution_clock::now();
 		m_sceneGraph->UpdateAnimations(deltaTime);
@@ -526,6 +531,46 @@ void Core::Update(float deltaTime) {
 		// Rebuild BVH if needed
 		if (m_bvhDirty) {
 			RebuildSceneBVH();
+		}
+
+		if (const TransformSystem* transformSystem = m_sceneGraph->GetTransformSystem()) {
+			const TransformSystem::Diagnostics& diagnostics = transformSystem->GetDiagnostics();
+			ecsMetrics.transformUpdateMs = diagnostics.updateTransformsMs;
+			ecsMetrics.runtimeDirtyEvalMs = diagnostics.runtimeDirtyEvalMs;
+			ecsMetrics.transformUpdateCalls = diagnostics.updateCallCount;
+			ecsMetrics.pendingDirtyRoots = diagnostics.pendingDirtyRoots;
+			ecsMetrics.dirtyRootsProcessed = diagnostics.dirtyRootsProcessed;
+			ecsMetrics.transformsRecomputed = diagnostics.transformsRecomputed;
+			ecsMetrics.ancestorQueryCalls = diagnostics.findTopDirtyAncestorCalls;
+			ecsMetrics.ancestorQuerySteps = diagnostics.findTopDirtyAncestorSteps;
+			ecsMetrics.depthQueryCalls = diagnostics.hierarchyDepthQueryCalls;
+			ecsMetrics.depthQuerySteps = diagnostics.hierarchyDepthQuerySteps;
+			ecsMetrics.runtimeDirtySpanCount = diagnostics.runtimeDirtySpanCount;
+			ecsMetrics.runtimeDirtySpanCoverageNodes = diagnostics.runtimeDirtySpanCoverageNodes;
+		}
+
+		if (const RenderSystem* renderSystem = m_sceneGraph->GetRenderSystem()) {
+			const RenderSystem::Diagnostics& diagnostics = renderSystem->GetDiagnostics();
+			ecsMetrics.renderItemCount = diagnostics.renderItemCount;
+			ecsMetrics.visibleAllCount = diagnostics.visibleAllCount;
+			ecsMetrics.visibleOpaqueCount = diagnostics.visibleOpaqueCount;
+			ecsMetrics.visibleTransparentCount = diagnostics.visibleTransparentCount;
+			ecsMetrics.frustumCulledCount = diagnostics.frustumCulledCount;
+			ecsMetrics.shadowVisibleCount = diagnostics.shadowVisibleCount;
+			ecsMetrics.forwardDrawCalls = diagnostics.forwardDrawCalls;
+			ecsMetrics.geometryDrawCalls = diagnostics.geometryDrawCalls;
+			ecsMetrics.shadowDrawCalls = diagnostics.shadowDrawCalls;
+			ecsMetrics.velocityDrawCalls = diagnostics.velocityDrawCalls;
+			ecsMetrics.transparentDrawCalls = diagnostics.transparentDrawCalls;
+			ecsMetrics.materialUploadCount = diagnostics.materialUploadCount;
+			ecsMetrics.materialCacheHitCount = diagnostics.materialCacheHitCount;
+			ecsMetrics.textureBindCount = diagnostics.textureBindCount;
+			ecsMetrics.transformFullUploadCount = diagnostics.transformFullUploads;
+			ecsMetrics.transformPartialUploadCount = diagnostics.transformPartialUploads;
+			ecsMetrics.transformUploadBytes = diagnostics.transformUploadBytes;
+			ecsMetrics.cameraCacheBuildMs = diagnostics.cameraCacheBuildMs;
+			ecsMetrics.shadowCacheBuildMs = diagnostics.shadowCacheBuildMs;
+			ecsMetrics.transparentSortMs = diagnostics.transparentSortMs;
 		}
 	}
 
@@ -573,6 +618,10 @@ void Core::Render(int windowWidth, int windowHeight) {
 
 	// Use ModularRenderer for all rendering
 	if (m_modularRenderer) {
+		if (RenderSystem* renderSystem = m_sceneGraph->GetRenderSystem()) {
+			renderSystem->BeginFrameDiagnostics();
+		}
+
 		m_modularRenderer->Render(
 			m_sceneGraph,
 			m_camera,
@@ -769,9 +818,11 @@ void Core::SwapScene(const std::string& newSceneFile) {
 
 			auto lightManager = m_sceneGraph->GetLightManager();
 			if (lightManager) {
-				lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
 				lightManager->InitializeShadowSystem(8, m_shadowSize);
 				lightManager->CollectLightsFromScene(m_sceneGraph);
+				if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
+					lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
+				}
 				lightManager->PrintLightInfo();
 			}
 
@@ -1174,9 +1225,11 @@ bool Core::LoadSceneState(const std::string& filepath) {
 
 		auto lightManager = newGraph->GetLightManager();
 		if (lightManager) {
-			lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
 			lightManager->InitializeShadowSystem(8, m_shadowSize);
 			lightManager->CollectLightsFromScene(newGraph);
+			if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
+				lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
+			}
 			lightManager->PrintLightInfo();
 		}
 

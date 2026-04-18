@@ -149,7 +149,12 @@ bool PerformanceRecorder::ExportToCSV(const std::string& filepath) {
     }
 
     // Write CSV header
-    outFile << "FrameIndex,Timestamp,FrameTime_ms,FPS,RenderMode,CPUTime_ms,GPUTime_ms,CPUWaitSync_ms,DrawCalls,DispatchCount,BufferUploadBytes,TransformSystem_ms,AnimationSystem_ms,PhysicsStep_ms,Passes\n";
+    outFile << "FrameIndex,Timestamp,FrameTime_ms,FPS,RenderMode,CPUTime_ms,GPUTime_ms,CPUWaitSync_ms,DrawCalls,DispatchCount,BufferUploadBytes,"
+               "TransformSystem_ms,AnimationSystem_ms,PhysicsStep_ms,TransformUpdate_ms,RuntimeDirtyEval_ms,TransformUpdateCalls,PendingDirtyRoots,"
+               "DirtyRootsProcessed,TransformsRecomputed,AncestorQueryCalls,AncestorQuerySteps,DepthQueryCalls,DepthQuerySteps,RuntimeDirtySpanCount,"
+               "RuntimeDirtySpanCoverageNodes,RenderItemCount,VisibleAllCount,VisibleOpaqueCount,VisibleTransparentCount,FrustumCulledCount,ShadowVisibleCount,"
+               "ForwardDrawCalls,GeometryDrawCalls,ShadowDrawCalls,VelocityDrawCalls,TransparentDrawCalls,MaterialUploadCount,MaterialCacheHitCount,TextureBindCount,"
+               "TransformFullUploadCount,TransformPartialUploadCount,TransformUploadBytes,CameraCacheBuild_ms,ShadowCacheBuild_ms,TransparentSort_ms,Passes\n";
 
     // Write data rows
     outFile << std::fixed << std::setprecision(6);
@@ -181,7 +186,39 @@ bool PerformanceRecorder::ExportToCSV(const std::string& filepath) {
                 << frame.bufferUploadBytes << ","
                 << frame.ecsMetrics.transformSystemMs << ","
                 << frame.ecsMetrics.animationSystemMs << ","
-                << frame.ecsMetrics.physicsStepMs << ",\""
+                << frame.ecsMetrics.physicsStepMs << ","
+                << frame.ecsMetrics.transformUpdateMs << ","
+                << frame.ecsMetrics.runtimeDirtyEvalMs << ","
+                << frame.ecsMetrics.transformUpdateCalls << ","
+                << frame.ecsMetrics.pendingDirtyRoots << ","
+                << frame.ecsMetrics.dirtyRootsProcessed << ","
+                << frame.ecsMetrics.transformsRecomputed << ","
+                << frame.ecsMetrics.ancestorQueryCalls << ","
+                << frame.ecsMetrics.ancestorQuerySteps << ","
+                << frame.ecsMetrics.depthQueryCalls << ","
+                << frame.ecsMetrics.depthQuerySteps << ","
+                << frame.ecsMetrics.runtimeDirtySpanCount << ","
+                << frame.ecsMetrics.runtimeDirtySpanCoverageNodes << ","
+                << frame.ecsMetrics.renderItemCount << ","
+                << frame.ecsMetrics.visibleAllCount << ","
+                << frame.ecsMetrics.visibleOpaqueCount << ","
+                << frame.ecsMetrics.visibleTransparentCount << ","
+                << frame.ecsMetrics.frustumCulledCount << ","
+                << frame.ecsMetrics.shadowVisibleCount << ","
+                << frame.ecsMetrics.forwardDrawCalls << ","
+                << frame.ecsMetrics.geometryDrawCalls << ","
+                << frame.ecsMetrics.shadowDrawCalls << ","
+                << frame.ecsMetrics.velocityDrawCalls << ","
+                << frame.ecsMetrics.transparentDrawCalls << ","
+                << frame.ecsMetrics.materialUploadCount << ","
+                << frame.ecsMetrics.materialCacheHitCount << ","
+                << frame.ecsMetrics.textureBindCount << ","
+                << frame.ecsMetrics.transformFullUploadCount << ","
+                << frame.ecsMetrics.transformPartialUploadCount << ","
+                << frame.ecsMetrics.transformUploadBytes << ","
+                << frame.ecsMetrics.cameraCacheBuildMs << ","
+                << frame.ecsMetrics.shadowCacheBuildMs << ","
+                << frame.ecsMetrics.transparentSortMs << ",\""
                 << passes.str() << "\"\n";
     }
 
@@ -270,7 +307,39 @@ bool PerformanceRecorder::ExportToJSON(const std::string& filepath) {
             frameJson["ecs_metrics"] = {
                 {"transform_system_ms", frame.ecsMetrics.transformSystemMs},
                 {"animation_system_ms", frame.ecsMetrics.animationSystemMs},
-                {"physics_step_ms", frame.ecsMetrics.physicsStepMs}
+                {"physics_step_ms", frame.ecsMetrics.physicsStepMs},
+                {"transform_update_ms", frame.ecsMetrics.transformUpdateMs},
+                {"runtime_dirty_eval_ms", frame.ecsMetrics.runtimeDirtyEvalMs},
+                {"transform_update_calls", frame.ecsMetrics.transformUpdateCalls},
+                {"pending_dirty_roots", frame.ecsMetrics.pendingDirtyRoots},
+                {"dirty_roots_processed", frame.ecsMetrics.dirtyRootsProcessed},
+                {"transforms_recomputed", frame.ecsMetrics.transformsRecomputed},
+                {"ancestor_query_calls", frame.ecsMetrics.ancestorQueryCalls},
+                {"ancestor_query_steps", frame.ecsMetrics.ancestorQuerySteps},
+                {"depth_query_calls", frame.ecsMetrics.depthQueryCalls},
+                {"depth_query_steps", frame.ecsMetrics.depthQuerySteps},
+                {"runtime_dirty_span_count", frame.ecsMetrics.runtimeDirtySpanCount},
+                {"runtime_dirty_span_coverage_nodes", frame.ecsMetrics.runtimeDirtySpanCoverageNodes},
+                {"render_item_count", frame.ecsMetrics.renderItemCount},
+                {"visible_all_count", frame.ecsMetrics.visibleAllCount},
+                {"visible_opaque_count", frame.ecsMetrics.visibleOpaqueCount},
+                {"visible_transparent_count", frame.ecsMetrics.visibleTransparentCount},
+                {"frustum_culled_count", frame.ecsMetrics.frustumCulledCount},
+                {"shadow_visible_count", frame.ecsMetrics.shadowVisibleCount},
+                {"forward_draw_calls", frame.ecsMetrics.forwardDrawCalls},
+                {"geometry_draw_calls", frame.ecsMetrics.geometryDrawCalls},
+                {"shadow_draw_calls", frame.ecsMetrics.shadowDrawCalls},
+                {"velocity_draw_calls", frame.ecsMetrics.velocityDrawCalls},
+                {"transparent_draw_calls", frame.ecsMetrics.transparentDrawCalls},
+                {"material_upload_count", frame.ecsMetrics.materialUploadCount},
+                {"material_cache_hit_count", frame.ecsMetrics.materialCacheHitCount},
+                {"texture_bind_count", frame.ecsMetrics.textureBindCount},
+                {"transform_full_upload_count", frame.ecsMetrics.transformFullUploadCount},
+                {"transform_partial_upload_count", frame.ecsMetrics.transformPartialUploadCount},
+                {"transform_upload_bytes", frame.ecsMetrics.transformUploadBytes},
+                {"camera_cache_build_ms", frame.ecsMetrics.cameraCacheBuildMs},
+                {"shadow_cache_build_ms", frame.ecsMetrics.shadowCacheBuildMs},
+                {"transparent_sort_ms", frame.ecsMetrics.transparentSortMs}
             };
 
             json passes = json::array();

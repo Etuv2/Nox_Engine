@@ -12,6 +12,10 @@ uint pcg_hash(uint inputValue) {
     return (word >> 22u) ^ word;
 }
 
+float u01(uint value) {
+    return float(value) * (1.0 / 4294967296.0);
+}
+
 vec2 r2Sequence(int n) {
     const float g = 1.32471795724474602596;
     const float a1 = 1.0 / g;
@@ -26,13 +30,14 @@ void main() {
         return;
     }
 
-    int seed = id.x + id.y * size.x + frameIndex * size.x * size.y;
-    vec2 base = r2Sequence(seed);
+    int linearIndex = id.x + id.y * size.x;
+    uint seed = uint(linearIndex);
+    uint scrambleX = pcg_hash(seed ^ 0x68bc21ebu);
+    uint scrambleY = pcg_hash(seed ^ 0x02e5be93u);
+    vec2 pixelScramble = vec2(u01(scrambleX), u01(scrambleY));
 
-    uint hx = pcg_hash(uint(seed) ^ 0x68bc21ebu);
-    uint hy = pcg_hash(uint(seed) ^ 0x02e5be93u);
-    vec2 hashNoise = vec2(float(hx & 1023u), float(hy & 1023u)) / 1024.0;
-
-    vec2 r = fract(base + hashNoise * 0.25);
+    // Use a low-discrepancy temporal sequence with stable per-pixel scrambling.
+    vec2 temporal = r2Sequence(frameIndex & 255);
+    vec2 r = fract(pixelScramble + temporal);
     imageStore(outDirs, id, vec4(r, 0.0, 0.0));
 }

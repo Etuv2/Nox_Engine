@@ -147,9 +147,9 @@ public:
 		float directionalNormalOffset = 0.01f;
 		
 		// Point light shadow settings
-		float pointLightBias = 0.002f;      // Base bias for point light shadows
-		float pointLightSlopeBias = 0.005f; // Slope-scaled bias for point lights
-		float pointLightNormalOffset = 0.01f; // Normal offset (minimal to avoid floating)
+		float pointLightBias = 0.0008f;       // Base bias for point light shadows
+		float pointLightSlopeBias = 0.0025f;  // Slope-scaled bias for point lights
+		float pointLightNormalOffset = 0.002f; // Keep very small to avoid detached shadows
 	} shadowConfig;
 
 	// Light culling for tiled/clustered deferred rendering
@@ -271,6 +271,14 @@ private:
 	int m_frameCounter = 0;
 	unsigned m_roundRobinSpot = 0;
 	unsigned m_roundRobinPoint = 0;
+	uint64_t m_lastShadowScenePublication = 0;
+	glm::mat4 m_lastShadowView = glm::mat4(1.0f);
+	glm::mat4 m_lastShadowProjection = glm::mat4(1.0f);
+	float m_lastShadowNearPlane = 0.0f;
+	float m_lastShadowFarPlane = 0.0f;
+	float m_lastShadowAspect = 1.0f;
+	float m_lastShadowFov = 0.0f;
+	bool m_hasShadowFrameState = false;
 
 	// Light culling data
 	glm::ivec2 m_tileCount = glm::ivec2(0);

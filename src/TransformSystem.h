@@ -1,5 +1,6 @@
 #pragma once
 #include "ComponentManager.h"
+#include "SceneRuntimeData.h"
 #include <glm/glm.hpp>
 #include <vector>
 
@@ -13,7 +14,25 @@
  */
 class TransformSystem {
 public:
-	TransformSystem(ComponentManager* componentManager);
+	struct Diagnostics {
+		float updateTransformsMs = 0.0f;
+		float runtimeDirtyEvalMs = 0.0f;
+		size_t updateCallCount = 0;
+		size_t pendingDirtyRoots = 0;
+		size_t dirtyRootsProcessed = 0;
+		size_t transformsRecomputed = 0;
+		size_t findTopDirtyAncestorCalls = 0;
+		size_t findTopDirtyAncestorSteps = 0;
+		size_t hierarchyDepthQueryCalls = 0;
+		size_t hierarchyDepthQuerySteps = 0;
+		size_t runtimeDirtySpanCount = 0;
+		size_t runtimeDirtySpanCoverageNodes = 0;
+	};
+
+	TransformSystem(ComponentManager* componentManager, SceneRuntimeData* runtimeScene = nullptr);
+	void SetRuntimeScene(SceneRuntimeData* runtimeScene);
+	void BeginFrameDiagnostics();
+	const Diagnostics& GetDiagnostics() const { return m_diagnostics; }
 
 	// Update all dirty transforms in the scene
 	void UpdateTransforms();
@@ -55,9 +74,13 @@ public:
 	size_t GetLastDirtyRootCount() const { return m_lastDirtyRootCount; }
 	size_t GetLastTransformsRecomputedCount() const { return m_lastTransformsRecomputed; }
 	size_t GetPendingDirtyRootCount() const;
+	uint64_t GetWorldPublicationGeneration() const { return m_worldPublicationGeneration; }
+	const std::vector<EntityID>& GetLastChangedEntities() const { return m_lastChangedEntities; }
+	const std::vector<uint32_t>& GetLastChangedRuntimeIndices() const { return m_lastChangedRuntimeIndices; }
 
 private:
 	ComponentManager* m_componentManager;
+	SceneRuntimeData* m_runtimeScene = nullptr;
 
 	// Cached list of dirty roots for batch processing
 	std::vector<EntityID> m_dirtyRoots;
@@ -65,6 +88,10 @@ private:
 	// Diagnostics for deep hierarchy profiling
 	size_t m_lastDirtyRootCount = 0;
 	size_t m_lastTransformsRecomputed = 0;
+	uint64_t m_worldPublicationGeneration = 0;
+	std::vector<EntityID> m_lastChangedEntities;
+	std::vector<uint32_t> m_lastChangedRuntimeIndices;
+	mutable Diagnostics m_diagnostics;
 
 	// Helper to compute world transform from local + parent
 	void ComputeWorldTransform(EntityID entity);

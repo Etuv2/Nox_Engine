@@ -3,6 +3,7 @@
 layout(location = 0) in vec3 aPos;       
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
+layout(location = 10) in vec2 aTexCoords1;
 layout(location = 3) in vec4 aTangent; // XYZ = tangent direction, W = handedness
 layout(location = 4) in ivec4 aBoneIDs;
 layout(location = 5) in vec4 aBoneWeights;
@@ -11,6 +12,7 @@ layout(location = 5) in vec4 aBoneWeights;
 out vec3 WorldPos;
 out vec3 WorldNormal;
 out vec2 TexCoords;
+out vec2 TexCoords1;
 out mat3 TBN;
 out vec4 RawTangent; 
 flat out uint TransformID;
@@ -52,8 +54,16 @@ void main()
             skinMatrix += u_boneMatrices[boneID3] * normalizedWeights[3];
             
             localPos = skinMatrix * localPos;
-            localNormal = mat3(skinMatrix) * localNormal;
-            localTangent = mat3(skinMatrix) * localTangent;
+            mat3 skinMatrix3 = mat3(skinMatrix);
+            float skinDet = determinant(skinMatrix3);
+            if (abs(skinDet) > 1e-8) {
+                mat3 skinNormalMatrix = transpose(inverse(skinMatrix3));
+                localNormal = skinNormalMatrix * localNormal;
+                localTangent = skinNormalMatrix * localTangent;
+            } else {
+                localNormal = skinMatrix3 * localNormal;
+                localTangent = skinMatrix3 * localTangent;
+            }
         }
         // If totalWeight <= 0.001, use the original vertex position (identity skinning)
     }
@@ -62,6 +72,7 @@ void main()
     vec4 worldPos = model * localPos;
     WorldPos = worldPos.xyz;
     TexCoords = aTexCoords;
+    TexCoords1 = aTexCoords1;
 
     // Normal Matrix (transpose of inverse for non-uniform scaling)
     mat3 normalMatrix = transpose(inverse(mat3(model)));

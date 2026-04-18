@@ -265,5 +265,12 @@ private:
 
 	// Pending transform roots that need recomputation
 	std::vector<EntityID> m_pendingTransformUpdates;
+	std::vector<uint8_t> m_transformUpdateQueued;
 	uint64_t m_transformUpdateRevision = 1;
+	uint64_t m_hierarchyRevision = 1;
+	uint64_t m_renderableRevision = 1;
+
+public:
+	uint64_t GetHierarchyRevision() const { return m_hierarchyRevision; }
+	uint64_t GetRenderableRevision() const { return m_renderableRevision; }
 };

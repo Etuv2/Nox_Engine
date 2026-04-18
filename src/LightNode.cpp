@@ -178,16 +178,9 @@ void LightNode::UpdateLightFromTransform(bool forceUpdate)
         glm::mat3 rotMat = glm::mat3_cast(rotation);
         glm::vec3 worldDirection = rotMat * forward;
         m_light->SetDirection(glm::normalize(worldDirection));
-        
-        std::cout << "[LightNode] Updated light direction to (" 
-                  << worldDirection.x << "," << worldDirection.y << "," << worldDirection.z << ")" << std::endl;
     }
     
     m_lightDirty = false;
-    
-    // Debug output for position updates
-    std::cout << "[LightNode] Updated light from transform: pos(" 
-              << worldPosition.x << "," << worldPosition.y << "," << worldPosition.z << ")" << std::endl;
 }
 
 // Add unified method to get world position using hierarchy system

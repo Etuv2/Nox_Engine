@@ -6,10 +6,13 @@ in vec4 prevPos;
 
 layout (location = 0) out vec2 velocity;
 
-uniform vec2 screenSize;
-
 void main()
 {
+    if (currentPos.w <= 0.0 || prevPos.w <= 0.0) {
+        velocity = vec2(0.0);
+        return;
+    }
+
     // Convert to NDC space
     vec2 currentNDC = currentPos.xy / currentPos.w;
     vec2 prevNDC = prevPos.xy / prevPos.w;
@@ -20,14 +23,9 @@ void main()
     
     // Calculate motion vector in screen space
     vec2 motionVector = currentScreen - prevScreen;
-    
-    // Apply dilation for better coverage at object edges
-    float motionLength = length(motionVector * screenSize);
-    if (motionLength > 0.1) {
-        // Normalize and extend the motion vector slightly
-        vec2 motionDir = normalize(motionVector);
-        float dilation = 1.2; // Extend by 20%
-        motionVector = motionDir * (motionLength * dilation) / screenSize;
+
+    if (any(isnan(motionVector)) || any(isinf(motionVector))) {
+        motionVector = vec2(0.0);
     }
     
     // Output velocity in UV space

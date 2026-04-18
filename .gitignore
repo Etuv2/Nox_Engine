@@ -37,6 +37,7 @@
 
 # Build system directories (Visual Studio / MSBuild)
 [Bb]in/
+build/
 [Ll]og/
 [Dd]ebug/
 [Dd]ebugPublic/
@@ -136,6 +137,7 @@ cmake-build-release*/
 
 # VSCode
 .vscode/
+.github/
 
 # Python virtual env (if tools/scripts)
 venv/

@@ -11,10 +11,6 @@ uniform mat4 projection;
 uniform mat4 prevView;
 uniform mat4 prevProjection;
 
-uniform vec2 jitter;
-uniform vec2 prevJitter;
-uniform vec2 screenSize;
-
 out vec2 TexCoord;
 out vec4 currentPos;
 out vec4 prevPos;
@@ -28,16 +24,10 @@ void main()
     vec4 viewPos = view * worldPos;
     currentPos = projection * viewPos;
     
-    // Apply current jitter
-    currentPos.xy += jitter * currentPos.w;
-    
     // Previous frame position from the stable previous-world transform
     vec4 prevWorldPos = prevModel * vec4(aPos, 1.0);
     vec4 prevViewPos = prevView * prevWorldPos;
     prevPos = prevProjection * prevViewPos;
-    
-    // Apply previous jitter
-    prevPos.xy += prevJitter * prevPos.w;
     
     gl_Position = currentPos;
 }

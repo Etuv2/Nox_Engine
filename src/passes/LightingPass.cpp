@@ -12,6 +12,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 
 LightingPass::LightingPass() {}
 
@@ -52,6 +53,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.gMaterialID = glGetUniformLocation(m_shader, "gMaterialID");
 	m_uniforms.gEmissive = glGetUniformLocation(m_shader, "gEmissive");
 	m_uniforms.gClearCoat = glGetUniformLocation(m_shader, "gClearCoat");
+	m_uniforms.gPrincipledParams = glGetUniformLocation(m_shader, "gPrincipledParams");
 	m_uniforms.gDepth = glGetUniformLocation(m_shader, "gDepth");
 	m_uniforms.ssaoMap = glGetUniformLocation(m_shader, "ssaoMap");
 	m_uniforms.screenSpaceShadowMap = glGetUniformLocation(m_shader, "screenSpaceShadowMap");
@@ -80,6 +82,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.aoStrength = glGetUniformLocation(m_shader, "aoStrength");
 	m_uniforms.sssStrength = glGetUniformLocation(m_shader, "sssStrength");
 	m_uniforms.ssgiStrength = glGetUniformLocation(m_shader, "ssgiStrength");
+	m_uniforms.ssgiDebugMode = glGetUniformLocation(m_shader, "ssgiDebugMode");
 
 	// LPV uniforms
 	m_uniforms.enableLPV = glGetUniformLocation(m_shader, "enableLPV");
@@ -134,12 +137,12 @@ void LightingPass::SetupFallbackIBL() {
 		return;
 	}
 
-	// Fill each face with white pixel
-	float whitePixel[3] = { 1.0f, 1.0f, 1.0f };
+	// Fill each face with black pixel so "no valid IBL" does not inject ambient light.
+	float blackPixel[3] = { 0.0f, 0.0f, 0.0f };
 	m_fallbackCubemap->Bind(GL_TEXTURE0);
 	for (int face = 0; face < 6; ++face) {
 		glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB16F,
-			1, 1, 0, GL_RGB, GL_FLOAT, whitePixel);
+			1, 1, 0, GL_RGB, GL_FLOAT, blackPixel);
 	}
 	m_fallbackCubemap->Unbind();
 
@@ -218,10 +221,11 @@ void LightingPass::Execute(RenderContext& ctx,
 	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 	// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-	// RT3: R8UI - Material ID
+	// RT3: R32UI - Material ID
 	// RT4: RGBA16F - Emissive color (RGB)
 	// RT5: R32UI - Transform ID
 	// RT6: RG16F - Clearcoat factor + roughness
+	// RT7: RGBA16F - Principled extras (transmission, IOR, reserved)
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_NORMAL);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
@@ -240,6 +244,9 @@ void LightingPass::Execute(RenderContext& ctx,
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_CLEARCOAT);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(6));
+
+	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_PRINCIPLED);
+	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(7));
 
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::GBUFFER_DEPTH);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
@@ -283,6 +290,7 @@ void LightingPass::Execute(RenderContext& ctx,
 	glUniform1i(m_uniforms.gMaterialID, TextureUnits::GBUFFER_MATERIAL_ID);
 	glUniform1i(m_uniforms.gEmissive, TextureUnits::GBUFFER_EMISSIVE_COLOR);
 	glUniform1i(m_uniforms.gClearCoat, TextureUnits::GBUFFER_CLEARCOAT);
+	glUniform1i(m_uniforms.gPrincipledParams, TextureUnits::GBUFFER_PRINCIPLED);
 	glUniform1i(m_uniforms.gDepth, TextureUnits::GBUFFER_DEPTH);
 	glUniform1i(m_uniforms.ssaoMap, TextureUnits::SSAO_MAP);
 	glUniform1i(m_uniforms.screenSpaceShadowMap, TextureUnits::SCREEN_SPACE_SHADOW_MAP);
@@ -324,9 +332,9 @@ void LightingPass::Execute(RenderContext& ctx,
 		}
 
 		glUniform1f(m_uniforms.prefilteredMaxLOD, 0.0f);
-		glUniform1f(m_uniforms.iblIntensity, 0.3f);
-		glUniform1f(m_uniforms.diffuseIBLScale, 0.4f);
-		glUniform1f(m_uniforms.specularIBLScale, 0.5f);
+		glUniform1f(m_uniforms.iblIntensity, 0.0f);
+		glUniform1f(m_uniforms.diffuseIBLScale, 0.0f);
+		glUniform1f(m_uniforms.specularIBLScale, 0.0f);
 	}
 
 	glUniform1i(m_uniforms.irradianceMap, TextureUnits::IRRADIANCE_MAP);
@@ -348,12 +356,13 @@ void LightingPass::Execute(RenderContext& ctx,
 	glUniform1f(m_uniforms.aoStrength, aoStrength);
 
 	// Screen-space shadow strength
-	float sssStrength = ctx.enableScreenSpaceShadows ? 1.0f : 0.0f;
+	float sssStrength = ctx.enableScreenSpaceShadows ? std::clamp(ctx.sssBlendStrength, 0.0f, 1.0f) : 0.0f;
 	glUniform1f(m_uniforms.sssStrength, sssStrength);
 
 	// SSGI uniforms
 	glUniform1i(m_uniforms.ssgiMap, TextureUnits::SSGI_MAP);
 	glUniform1f(m_uniforms.ssgiStrength, ctx.enableSSGI ? ctx.ssgiStrength : 0.0f);
+	glUniform1i(m_uniforms.ssgiDebugMode, ctx.enableSSGI ? ctx.ssgiDebugMode : 0);
 
 	// Upload LPV parameters
 	glUniform1i(m_uniforms.enableLPV, lpvEnabled ? 1 : 0);
@@ -409,8 +418,8 @@ void LightingPass::Execute(RenderContext& ctx,
 		// Calculate cascade splits based on camera near/far planes
 		// Use the SAME split calculation as LightManager::RenderShadowMaps
 		// to ensure cascade selection in shader matches rendered cascade bounds
-		float nearPlane = camera->GetCameraNearPlane();
-		float farPlane = camera->GetCameraFarPlane();
+		float nearPlane = ctx.shadowNear;
+		float farPlane = ctx.shadowFar;
 		
 		// Use ShadowMapper's cascade split function for consistency
 		const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);

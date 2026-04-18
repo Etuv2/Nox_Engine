@@ -57,8 +57,8 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 
         if(NdotL > 0.0)
         {
-            float G = GeometrySmith(N, V, L, roughness);
-            float G_Vis = (G * VdotH) / (NdotH * NdotV);
+            float Vis = VisibilitySmithGGXCorrelated(NdotV, NdotL, roughness);
+            float G_Vis = (4.0 * Vis * VdotH * NdotL) / max(NdotH, 1e-6);
             float Fc = pow(1.0 - VdotH, 5.0);
 
             A += (1.0 - Fc) * G_Vis;

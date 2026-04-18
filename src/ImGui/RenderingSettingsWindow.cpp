@@ -14,20 +14,20 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_windowResolution = glm::ivec2(1920, 1080);
 
 	// Initialize settings with RenderContext defaults
-	m_exposure = 1.0f;
+	m_exposure = 0.8f;
 	m_gamma = 2.2f;
 	m_enableHDR = true;
-	m_envColor = glm::vec3(0.3f, 0.3f, 0.3f);
+	m_envColor = glm::vec3(0.05f, 0.05f, 0.05f);
 
 	// IBL intensity controls
-	m_iblIntensity = 0.4f;
+	m_iblIntensity = 0.35f;
 	m_skyboxExposure = 1.0f;
-	m_diffuseIBLScale = 0.5f;
-	m_specularIBLScale = 0.6f;
+	m_diffuseIBLScale = 0.3f;
+	m_specularIBLScale = 0.45f;
 
 	// Shadow settings - match RenderContext defaults
 	m_enableShadows = true;
-	m_shadowBias = 0.005f;
+	m_shadowBias = 0.0008f;
 	m_shadowNear = 0.1f;
 	m_shadowFar = 1000.0f;
 	m_enablePCSS = false;
@@ -55,18 +55,22 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_ssaoTemporalAlpha = 0.12f;
 
 	// SSGI settings
-	m_enableSSGI = false;
-	m_ssgiStrength = 1.0f;
-	m_ssgiRadius = 5.0f;
-	m_ssgiSampleCount = 16;
+	m_enableSSGI = true;
+	m_ssgiStrength = 1.35f;
+	m_ssgiRadius = 4.5f;
+	m_ssgiSampleCount = 256;
 	m_ssgiHalfRes = true;
 	m_ssgiWorkingResolutionScale = 0.5f;
 	m_ssgiTraceResolutionScale = 0.25f;
-	m_ssgiTemporalAlpha = 0.15f;
-	m_ssgiNormalReject = 0.15f;
-	m_ssgiDepthReject = 0.2f;
+	m_ssgiTemporalAlpha = 0.055f;
+	m_ssgiNormalReject = 0.10f;
+	m_ssgiDepthReject = 0.1f;
 	m_ssgiThickness = 0.02f;
 	m_ssgiEnableSpatialDenoise = true;
+	m_ssgiTemporalResponse = 0.2f;
+	m_ssgiUpscaleSharpness = 1.8f;
+	m_ssgiSectorCount = 16;
+	m_ssgiDebugMode = 0;
 
 	// Screen-space contact shadows
 	m_sssResolutionScale = 0.5f;
@@ -189,6 +193,10 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_ssgiDepthReject = ctx.ssgiDepthReject;
 	m_ssgiThickness = ctx.ssgiThickness;
 	m_ssgiEnableSpatialDenoise = ctx.ssgiEnableSpatialDenoise;
+	m_ssgiTemporalResponse = ctx.ssgiTemporalResponse;
+	m_ssgiUpscaleSharpness = ctx.ssgiUpscaleSharpness;
+	m_ssgiSectorCount = ctx.ssgiSectorCount;
+	m_ssgiDebugMode = ctx.ssgiDebugMode;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -330,6 +338,10 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.ssgiDepthReject = m_ssgiDepthReject;
 	ctx.ssgiThickness = m_ssgiThickness;
 	ctx.ssgiEnableSpatialDenoise = m_ssgiEnableSpatialDenoise;
+	ctx.ssgiTemporalResponse = m_ssgiTemporalResponse;
+	ctx.ssgiUpscaleSharpness = m_ssgiUpscaleSharpness;
+	ctx.ssgiSectorCount = m_ssgiSectorCount;
+	ctx.ssgiDebugMode = m_ssgiDebugMode;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
@@ -506,10 +518,10 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			if (ImGui::Button("Reset IBL to Defaults")) {
-				m_iblIntensity = 0.4f;
+				m_iblIntensity = 0.35f;
 				m_skyboxExposure = 1.0f;
-				m_diffuseIBLScale = 0.5f;
-				m_specularIBLScale = 0.6f;
+				m_diffuseIBLScale = 0.3f;
+				m_specularIBLScale = 0.45f;
 				SyncToRenderer();
 			}
 
@@ -661,16 +673,31 @@ void RenderingSettingsWindow::Render() {
 			if (ImGui::Checkbox("Enable SSGI", &m_enableSSGI)) { SyncToRenderer(); }
 			if (m_enableSSGI) {
 				if (ImGui::SliderFloat("SSGI Strength", &m_ssgiStrength, 0.0f, 3.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("SSGI Radius (VS)", &m_ssgiRadius, 0.1f, 5.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderInt("SSGI Samples", &m_ssgiSampleCount, 8, 256)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("SSGI Radius (VS)", &m_ssgiRadius, 0.1f, 8.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderInt("SSGI Samples", &m_ssgiSampleCount, 16, 512)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Half Resolution", &m_ssgiHalfRes)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Working Resolution Scale", &m_ssgiWorkingResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Trace Resolution Scale", &m_ssgiTraceResolutionScale, 0.125f, 0.5f, "%.3f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Temporal Alpha", &m_ssgiTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Temporal Response", &m_ssgiTemporalResponse, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_ssgiNormalReject, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Depth Reject", &m_ssgiDepthReject, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Thickness", &m_ssgiThickness, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Thickness", &m_ssgiThickness, 0.001f, 1.0f, "%.3f")) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Sector Count", &m_ssgiSectorCount, 8, 24)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Upscale Sharpness", &m_ssgiUpscaleSharpness, 0.5f, 4.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Enable Spatial Denoise", &m_ssgiEnableSpatialDenoise)) { SyncToRenderer(); }
+				const char* ssgiDebugItems[] = {
+					"Final",
+					"Raw Horizons",
+					"Sector Bitmask",
+					"Raw Indirect",
+					"Directional Basis",
+					"Temporal Weight",
+					"Disocclusion Reject",
+					"Denoised Indirect",
+					"Upscaled Output"
+				};
+				if (ImGui::Combo("SSGI Debug", &m_ssgiDebugMode, ssgiDebugItems, IM_ARRAYSIZE(ssgiDebugItems))) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Contact Shadow Resolution Scale", &m_sssResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Contact Shadow Temporal Alpha", &m_sssTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 			}
@@ -1371,16 +1398,16 @@ void RenderingSettingsWindow::ApplyQualityPreset(int quality) {
 
 void RenderingSettingsWindow::ResetToDefaults() {
 	// Post-processing - match RenderContext defaults
-	m_exposure = 1.0f;
+	m_exposure = 0.8f;
 	m_gamma = 2.2f;
 	m_enableHDR = true;
-	m_envColor = glm::vec3(0.3f, 0.3f, 0.3f);
+	m_envColor = glm::vec3(0.05f, 0.05f, 0.05f);
 
 	// IBL intensity controls
-	m_iblIntensity = 0.4f;
+	m_iblIntensity = 0.35f;
 	m_skyboxExposure = 1.0f;
-	m_diffuseIBLScale = 0.5f;
-	m_specularIBLScale = 0.6f;
+	m_diffuseIBLScale = 0.3f;
+	m_specularIBLScale = 0.45f;
 
 	// Shadows - match RenderContext defaults
 	m_enableShadows = true;
@@ -1413,15 +1440,15 @@ void RenderingSettingsWindow::ResetToDefaults() {
 
 	// SSGI - match RenderContext defaults
 	m_enableSSGI = true;
-	m_ssgiStrength = 1.2f;
-	m_ssgiRadius = 3.0f;
+	m_ssgiStrength = 1.35f;
+	m_ssgiRadius = 4.5f;
 	m_ssgiSampleCount = 256;
 	m_ssgiHalfRes = true;
 	m_ssgiWorkingResolutionScale = 0.5f;
 	m_ssgiTraceResolutionScale = 0.25f;
-	m_ssgiTemporalAlpha = 0.15f;
-	m_ssgiNormalReject = 0.15f;
-	m_ssgiDepthReject = 0.2f;
+	m_ssgiTemporalAlpha = 0.055f;
+	m_ssgiNormalReject = 0.10f;
+	m_ssgiDepthReject = 0.1f;
 	m_ssgiThickness = 0.01f;
 	m_ssgiEnableSpatialDenoise = true;
 

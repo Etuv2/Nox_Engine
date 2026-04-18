@@ -3,6 +3,7 @@
 in vec3 WorldPos;
 in vec3 WorldNormal;
 in vec2 TexCoords;
+in vec2 TexCoords1;
 in mat3 TBN;
 in vec4 RawTangent;  // Receive tangent with handedness (w component)
 flat in uint TransformID;
@@ -10,10 +11,11 @@ flat in uint TransformID;
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-// RT3: R8UI - Material ID (0=opaque PBR, 2=Transmission)
+// RT3: R32UI - Material ID (0=opaque PBR, 2=Transmission)
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
 // RT5: R32UI - Stable TransformID for temporal/surfel/GPU tracking
 // RT6: RG16F - Clearcoat factor + clearcoat roughness
+// RT7: RGBA16F - Principled extras: transmission (R), IOR (G), reserved (BA)
 layout(location = 0) out vec4 gPackedNormalRM;
 layout(location = 1) out vec4 gAlbedoAO;
 layout(location = 2) out vec4 gSpecularF0;
@@ -21,6 +23,7 @@ layout(location = 3) out uint gMaterialID;
 layout(location = 4) out vec4 gEmissive;
 layout(location = 5) out uint gTransformID;
 layout(location = 6) out vec2 gClearCoat;
+layout(location = 7) out vec4 gPrincipledParams;
 
 uniform sampler2D texture_diffuse;
 uniform sampler2D texture_normal;
@@ -63,6 +66,20 @@ uniform bool hasSpecularTexture = false;
 uniform bool hasSpecularColorTexture = false;
 uniform bool hasTransmissionTexture = false;
 
+// glTF per-texture UV set selectors (0=TEXCOORD_0, 1=TEXCOORD_1)
+uniform int baseColorUVSet = 0;
+uniform int normalUVSet = 0;
+uniform int metallicRoughnessUVSet = 0;
+uniform int emissiveUVSet = 0;
+uniform int occlusionUVSet = 0;
+uniform int specularUVSet = 0;
+uniform int specularColorUVSet = 0;
+uniform int transmissionUVSet = 0;
+
+vec2 SelectUV(int uvSet) {
+    return (uvSet == 1) ? TexCoords1 : TexCoords;
+}
+
 void main() {
     // Re-orthonormalize TBN per-pixel after interpolation
     vec3 N = normalize(WorldNormal);
@@ -84,7 +101,7 @@ void main() {
     //  Normal mapping 
     if (hasNormalTexture) {
         // Sample normal map in tangent space (range [0,1])
-        vec3 tangentNormal = texture(texture_normal, TexCoords).rgb;
+        vec3 tangentNormal = texture(texture_normal, SelectUV(normalUVSet)).rgb;
         
         // Convert from [0,1] to [-1,1] range
         tangentNormal = tangentNormal * 2.0 - 1.0;
@@ -106,33 +123,65 @@ void main() {
     // Legacy spec-gloss inputs are normalized into the same runtime contract.
     vec3 albedo = baseColorFactor.rgb;
     if (hasBaseColorTexture) {
-        albedo *= texture(texture_diffuse, TexCoords).rgb;
+        albedo *= texture(texture_diffuse, SelectUV(baseColorUVSet)).rgb;
     }
 
     float metallic = metallicFactor;
     float roughness = ClampPerceptualRoughness(roughnessFactor);
-    vec3 specularF0 = ComputeSurfaceF0(albedo, metallic, ior, specularFactor, specularColorFactor);
+
+    float specFactorSample = 1.0;
+    if (hasSpecularTexture) {
+        // KHR_materials_specular uses alpha channel for scalar strength.
+        specFactorSample = texture(texture_specular, SelectUV(specularUVSet)).a;
+    }
+
+    vec3 specularColorSample = specularColorFactor;
+    if (hasSpecularColorTexture) {
+        specularColorSample *= texture(texture_specular_color, SelectUV(specularColorUVSet)).rgb;
+    }
 
     if (hasMetallicRoughnessTexture) {
-        vec4 mrSample = texture(texture_metallic_roughness, TexCoords);
+        vec4 mrSample = texture(texture_metallic_roughness, SelectUV(metallicRoughnessUVSet));
         roughness = ClampPerceptualRoughness(mrSample.g * roughnessFactor);
         metallic  = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
-        specularF0 = ComputeSurfaceF0(albedo, metallic, ior, specularFactor, specularColorFactor);
     }
 
     roughness = ClampPerceptualRoughness(roughness);
+
+    float transmission = clamp(transmissionFactor, 0.0, 1.0);
+    if (hasTransmissionTexture) {
+        transmission *= texture(texture_transmission, SelectUV(transmissionUVSet)).r;
+    }
+
+    PrincipledSurface surface = BuildPrincipledSurface(
+        albedo,
+        metallic,
+        roughness,
+        ior,
+        specularFactor * specFactorSample,
+        specularColorSample,
+        transmission,
+        clearcoatFactor,
+        clearcoatRoughnessFactor,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        vec3(1.0),
+        1.0
+    );
     
     //  Emissive 
     vec3 emissive = emissiveFactor;
     if (hasEmissiveTexture) {
-        vec3 emissiveTexSample = texture(texture_emissive, TexCoords).rgb;
+        vec3 emissiveTexSample = texture(texture_emissive, SelectUV(emissiveUVSet)).rgb;
         emissive *= emissiveTexSample;
     }
 
     //  Occlusion 
     float ao = 1.0;
     if (hasOcclusionTexture) {
-        ao = mix(1.0, texture(texture_occlusion, TexCoords).r, occlusionStrength);
+        ao = mix(1.0, texture(texture_occlusion, SelectUV(occlusionUVSet)).r, occlusionStrength);
     }
 
     // RT0: Oct normal (RG) + roughness (B) + metallic (A)
@@ -142,7 +191,7 @@ void main() {
     gAlbedoAO = vec4(albedo, ao);
     
     // RT2: Specular F0 (full RGB color) + emissive strength (A)
-    gSpecularF0 = vec4(specularF0, emissiveStrength);
+    gSpecularF0 = vec4(surface.specularF0, emissiveStrength);
     
     // RT3: Material ID
     gMaterialID = uMaterialID;
@@ -154,5 +203,8 @@ void main() {
     gTransformID = TransformID;
 
     // RT6: Clearcoat factor + clearcoat roughness
-    gClearCoat = vec2(clamp(clearcoatFactor, 0.0, 1.0), ClampPerceptualRoughness(clearcoatRoughnessFactor));
+    gClearCoat = vec2(surface.clearcoat, surface.clearcoatRoughness);
+
+    // Preserve principled parameters that deferred/RT consumers cannot safely infer later.
+    gPrincipledParams = vec4(surface.transmission, surface.ior, 0.0, 0.0);
 }

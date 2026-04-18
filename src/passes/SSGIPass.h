@@ -14,9 +14,8 @@ class Skybox;
 class SSGIPass : public RenderPass {
 public:
     struct Config {
-        float workingScale = 0.5f;
-        float raymarchScale = 0.25f;
-        int maxRaySteps = 32;
+        float quarterScale = 0.25f;
+        int maxDepthMip = 6;
     };
 
     SSGIPass() = default;
@@ -36,36 +35,51 @@ public:
     const Config& GetConfig() const { return m_config; }
 
 private:
-    std::unique_ptr<ComputeShader> m_csDirections;
-    std::unique_ptr<ComputeShader> m_csRaymarch;
-    std::unique_ptr<ComputeShader> m_csBilateral;
-    std::unique_ptr<ComputeShader> m_csUpsample;
+    std::unique_ptr<ComputeShader> m_csDepthPrefilter;
+    std::unique_ptr<ComputeShader> m_csRadiance;
+    std::unique_ptr<ComputeShader> m_csHorizonGather;
     std::unique_ptr<ComputeShader> m_csTemporal;
+    std::unique_ptr<ComputeShader> m_csBilateral;
     std::unique_ptr<ComputeShader> m_csFinalUpsample;
 
-    TexturePtr m_dirTex;
-    TexturePtr m_ssgiRaw;
-    TexturePtr m_ssgiQuarterBlur;
-    TexturePtr m_ssgiBlur;
-    TexturePtr m_ssgiWork;
+    TexturePtr m_depthLinearQuarter;
+    TexturePtr m_normalQuarter;
+    TexturePtr m_radianceTex;
+    TexturePtr m_indirectRaw;
+    TexturePtr m_directionalRaw;
+    TexturePtr m_horizonDebug;
+    TexturePtr m_sectorDebug;
+
+    TexturePtr m_indirectTemporal;
+    TexturePtr m_directionalTemporal;
+    TexturePtr m_temporalDebug;
+
+    TexturePtr m_indirectDenoised;
+    TexturePtr m_directionalDenoised;
+
     TexturePtr m_ssgiTex;
+    TexturePtr m_debugOutput;
+
     TexturePtr m_historyColor;
-    TexturePtr m_historySSGI;
+    TexturePtr m_historyIndirect;
+    TexturePtr m_historyDirectional;
+    GLuint m_historyDepthTex = 0;
+    GLuint m_historyNormalTex = 0;
 
     int m_w = 0;
     int m_h = 0;
-    int m_hw = 0;
-    int m_hh = 0;
     int m_qw = 0;
     int m_qh = 0;
+    int m_depthMipCount = 1;
     int m_frameIndex = 0;
 
     Config m_config{};
 
-    void runDirections(RenderContext& ctx);
-    void runRaymarch(RenderContext& ctx, const std::shared_ptr<Camera>& camera, const std::shared_ptr<Skybox>& skybox);
-    void runBilateral(RenderContext& ctx);
-    void runUpsample(RenderContext& ctx);
+    void runDepthPrefilter(RenderContext& ctx);
+    void runRadiance(RenderContext& ctx);
+    void runHorizonGather(RenderContext& ctx, const std::shared_ptr<Camera>& camera);
     void runTemporal(RenderContext& ctx);
+    void runBilateral(RenderContext& ctx);
     void runFinalUpsample(RenderContext& ctx);
+    void resizeTemporalHistoryBuffers();
 };

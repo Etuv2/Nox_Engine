@@ -100,17 +100,21 @@ struct RenderContext {
 
 	// SSGI settings
 	bool enableSSGI = true;
-	float ssgiStrength = 1.2f;         // Overall GI contribution multiplier
-	float ssgiRadius = 3.0f;  //Ray length in view-space units
+	float ssgiStrength = 1.35f;         // Overall GI contribution multiplier
+	float ssgiRadius = 4.5f;            // Ray length in view-space units
 	int ssgiSampleCount = 256;
 	bool ssgiHalfRes = true;  // Run SSGI at half-res for performance (recommended)
 	float ssgiWorkingResolutionScale = 0.5f;
 	float ssgiTraceResolutionScale = 0.25f;
-	float ssgiTemporalAlpha = 0.15f;      //Small alpha for stable convergence
-	float ssgiNormalReject = 0.15f;  // Bilateral normal threshold in radians
-	float ssgiDepthReject = 0.2f;         // Bilateral depth sigma in view-space units
+	float ssgiTemporalAlpha = 0.055f;    // Balanced temporal responsiveness for visible GI
+	float ssgiNormalReject = 0.10f;      // Tighter normal rejection for edge stability
+	float ssgiDepthReject = 0.1f;         // Bilateral depth sigma in view-space units
 	float ssgiThickness = 0.01f;   //Ray-surface intersection thickness 
 	bool ssgiEnableSpatialDenoise = true;
+	float ssgiTemporalResponse = 0.2f;    // Extra response control for history confidence scaling
+	float ssgiUpscaleSharpness = 1.8f;    // Depth-aware upscale edge sharpness
+	int ssgiSectorCount = 16;             // Visibility bitmask sectors per slice
+	int ssgiDebugMode = 0;                // 0=final, 1..8 stage debug
 
 
 	// Bloom settings
@@ -140,7 +144,7 @@ struct RenderContext {
 
 	// Shadow settings
 	bool enableShadows = true;
-	float shadowBias = 0.005f;
+	float shadowBias = 0.0008f;
 	float shadowNear = 0.001f;
 	float shadowFar = 1000.0f;
 	bool enablePCSS = true;
@@ -148,7 +152,7 @@ struct RenderContext {
 	
 	// Shadow darkness settings - control how dark shadows appear for realism
 	float shadowDarkness = 1.0f;           // Multiplier for shadow darkness [0.0=no shadows, 1.0=full darkness]
-	float shadowMinBrightness = 0.02f;     // Minimum brightness in complete shadow (0.02 = 2% for realistic dark shadows)
+	float shadowMinBrightness = 0.0f;      // Keep direct-light shadows physically dark by default
 	float shadowTransitionHardness = 1.0f; // Softness of shadow boundaries [0.5=very soft, 2.0=sharp]
 
 	// Screen-space shadow settings (contact shadows)
@@ -164,13 +168,13 @@ struct RenderContext {
 
 
 	// Post-processing settings
-	float exposure = 1.0f;
+	float exposure = 0.8f;
 	float gamma = 2.2f;
 	bool enableHDR = true;
 
 	// Tonemapping settings (GT / Uchimura)
 	enum class TonemapType { None = 0, ACES = 1, GT = 2, GT7 = 3 };
-	TonemapType tonemapType = TonemapType::GT;
+	TonemapType tonemapType = TonemapType::ACES;
 	float tm_P = 1.0f, tm_a = 1.0f, tm_m = 0.22f, tm_l = 0.4f, tm_c = 1.33f, tm_b = 0.0f;
 	// GT7 parameters
 	float tm7_peakNits = 1000.0f;   // display peak luminance
@@ -181,13 +185,13 @@ struct RenderContext {
 	bool outputSRGB = true;
 
 	// Environment settings
-	glm::vec3 envColor{ 0.3f, 0.3f, 0.3f };
+	glm::vec3 envColor{ 0.05f, 0.05f, 0.05f };
 
 	// IBL (Image-Based Lighting) intensity controls
-	float iblIntensity = 1.0f;          // Overall IBL contribution 
+	float iblIntensity = 0.35f;          // Overall IBL contribution 
 	float skyboxExposure = 1.0f;        // Skybox background exposure
-	float diffuseIBLScale = 0.5f;   // Diffuse IBL scale
-	float specularIBLScale = 0.6f;      // Specular IBL scale
+	float diffuseIBLScale = 0.3f;       // Diffuse IBL scale
+	float specularIBLScale = 0.45f;     // Specular IBL scale
 
 	// LPV Global Illumination settings
 	bool enableLPV = false;

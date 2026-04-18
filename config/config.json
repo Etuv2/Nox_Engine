@@ -3,13 +3,21 @@
   "windowHeight": 1080,
   "windowTitle": "Nox Engine",
   "iconPath": "images\\logo.png",
-  "environmentColor": [ 0.1, 0.1, 0.1 ],
+  "environmentColor": [
+    0.1,
+    0.1,
+    0.1
+  ],
   "environmentIntensity": 0.5,
   "environmentPath": "hdrs\\skybox.hdr",
-  "first_scene": "scenes\\gundam.json",
+  "first_scene": "scenes\\shibuya.json",
   "scene_folder": "scenes",
   "physics": {
-    "gravity": [ 0.0, -9.81, 0.0 ],
+    "gravity": [
+      0.0,
+      -9.81,
+      0.0
+    ],
     "integration_method": "verlet",
     "integration_step": 0.016667,
     "maxIterations": 7,
@@ -19,7 +27,6 @@
     {
       "path": "scenes\\otters.json"
     },
-
     {
       "path": "scenes\\scene.json"
     },
@@ -41,24 +48,53 @@
     {
       "path": "scenes\\mat_test.json"
     },
-    { "path": "scenes\\lighting_demo.json" },
-    { "path": "scenes\\miku.json" },
-    { "path": "scenes\\graphics_test.json" },
-    { "path": "scenes\\copied_city.json" },
-    { "path": "scenes\\multi_light_demo.json" },
-    { "path": "scenes\\studio_lighting.json" },
-    { "path": "scenes\\light_test.json" },
-    { "path": "scenes\\light_test_2.json" },
-    { "path": "scenes\\gui_demo.json" },
-    { "path": "scenes\\animation_test.json" },
-    { "path": "scenes\\cornell_box.json"  }
-
+    {
+      "path": "scenes\\lighting_demo.json"
+    },
+    {
+      "path": "scenes\\miku.json"
+    },
+    {
+      "path": "scenes\\graphics_test.json"
+    },
+    {
+      "path": "scenes\\copied_city.json"
+    },
+    {
+      "path": "scenes\\multi_light_demo.json"
+    },
+    {
+      "path": "scenes\\studio_lighting.json"
+    },
+    {
+      "path": "scenes\\light_test.json"
+    },
+    {
+      "path": "scenes\\light_test_2.json"
+    },
+    {
+      "path": "scenes\\gui_demo.json"
+    },
+    {
+      "path": "scenes\\animation_test.json"
+    },
+    {
+      "path": "scenes\\cornell_box.json"
+    }
   ],
   "text_font": "fonts\\arial.ttf",
   "vsync": false,
   "camera": {
-    "position": [ -1.0, 1.0, -1.0 ],
-    "up": [ 0.0, 1.0, 0.0 ],
+    "position": [
+      -1.0,
+      1.0,
+      -1.0
+    ],
+    "up": [
+      0.0,
+      1.0,
+      0.0
+    ],
     "yaw": -90.0,
     "pitch": 0.0,
     "pitch_constraint": 89.0,
@@ -69,8 +105,16 @@
     "mouse_sensitivity": 0.1
   },
   "light": {
-    "position": [ 0.0, 0.0, 0.0 ],
-    "direction": [ -0.5, -1.0, -0.5 ],
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "direction": [
+      -0.5,
+      -1.0,
+      -0.5
+    ],
     "shadows_enabled": true,
     "shadow_bias": 0.002,
     "shadow_near": 0.1,

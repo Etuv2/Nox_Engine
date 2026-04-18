@@ -35,6 +35,40 @@ public:
         float transformSystemMs = 0.0f;
         float animationSystemMs = 0.0f;
         float physicsStepMs = 0.0f;
+
+        float transformUpdateMs = 0.0f;
+        float runtimeDirtyEvalMs = 0.0f;
+        size_t transformUpdateCalls = 0;
+        size_t pendingDirtyRoots = 0;
+        size_t dirtyRootsProcessed = 0;
+        size_t transformsRecomputed = 0;
+        size_t ancestorQueryCalls = 0;
+        size_t ancestorQuerySteps = 0;
+        size_t depthQueryCalls = 0;
+        size_t depthQuerySteps = 0;
+        size_t runtimeDirtySpanCount = 0;
+        size_t runtimeDirtySpanCoverageNodes = 0;
+
+        size_t renderItemCount = 0;
+        size_t visibleAllCount = 0;
+        size_t visibleOpaqueCount = 0;
+        size_t visibleTransparentCount = 0;
+        size_t frustumCulledCount = 0;
+        size_t shadowVisibleCount = 0;
+        size_t forwardDrawCalls = 0;
+        size_t geometryDrawCalls = 0;
+        size_t shadowDrawCalls = 0;
+        size_t velocityDrawCalls = 0;
+        size_t transparentDrawCalls = 0;
+        size_t materialUploadCount = 0;
+        size_t materialCacheHitCount = 0;
+        size_t textureBindCount = 0;
+        size_t transformFullUploadCount = 0;
+        size_t transformPartialUploadCount = 0;
+        size_t transformUploadBytes = 0;
+        float cameraCacheBuildMs = 0.0f;
+        float shadowCacheBuildMs = 0.0f;
+        float transparentSortMs = 0.0f;
     };
 
     struct FrameData {

@@ -201,6 +201,8 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	bool physicsEnabled = sceneJson.value("physics_enabled", true);
 	sceneGraph->SetPhysicsEnabled(physicsEnabled);
 
+	// Publish authored scene transforms before the scene is handed back to callers.
+	sceneGraph->UpdateAllTransforms();
 	// Clear the scene graph reference
 	m_currentSceneGraph = nullptr;
 
@@ -1200,6 +1202,7 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 	if (!node || !m_currentSceneGraph) return;
 
 	ComponentManager* componentManager = m_currentSceneGraph->GetComponentManager();
+	TransformSystem* transformSystem = m_currentSceneGraph->GetTransformSystem();
 	if (!componentManager) return;
 
 	const glm::mat4 authoredLocalTransform = node->GetTransform();
@@ -1233,17 +1236,31 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 	EntityID entityID = componentManager->CreateEntity(nodeName, ecsType);
 	node->SetEntityID(entityID);
 
-	// Create TransformComponent
-	TransformComponent transformComp;
-	transformComp.localTransform = authoredLocalTransform;
-	transformComp.animatedTransform = authoredAnimatedTransform;
-	transformComp.worldTransform = glm::mat4(1.0f);
-	transformComp.isDirty = true;
-	transformComp.parentID = INVALID_ENTITY;
+	// CreateEntity already allocates a transform component. Populate it in place so the
+	// loader authors the final local transform instead of layering a second AddTransform call.
+	TransformComponent* transformComp = componentManager->GetTransform(entityID);
+	if (!transformComp) {
+		return;
+	}
+	transformComp->localTransform = authoredLocalTransform;
+	transformComp->animatedTransform = authoredAnimatedTransform;
+	transformComp->worldTransform = glm::mat4(1.0f);
+	transformComp->prevWorldTransform = glm::mat4(1.0f);
+	transformComp->hasAnimation = (authoredAnimatedTransform != glm::mat4(1.0f));
+	transformComp->isDirty = true;
+	transformComp->parentID = INVALID_ENTITY;
 
-	componentManager->AddTransform(entityID, transformComp);
 	componentManager->SetParent(entityID, parentID);
-
+	componentManager->QueueTransformUpdate(entityID);
+	if (transformSystem) {
+		transformSystem->SetLocalTransform(entityID, authoredLocalTransform);
+		if (authoredAnimatedTransform != glm::mat4(1.0f)) {
+			transformSystem->SetAnimatedTransform(entityID, authoredAnimatedTransform);
+		}
+		else {
+			transformSystem->ClearAnimatedTransform(entityID);
+		}
+	}
 	// Create RenderableComponent if node has a model
 	if (node->GetModel() && (node->renderWholeModel || !node->renderMeshIndices.empty())) {
 		CreateRenderableComponent(node, node->GetModel());
@@ -1327,7 +1344,15 @@ void SceneLoader::BuildImportedMeshNodeChildren(const std::shared_ptr<SceneNode>
 		return;
 	}
 
-	const std::vector<glm::mat4> sourceWorldTransforms = ComputeModelNodeWorldTransforms(*model);
+	const std::vector<glm::mat4>& cachedSourceWorldTransforms = model->GetNodeWorldTransforms();
+	const bool hasCachedSourceWorldTransforms = (cachedSourceWorldTransforms.size() == model->nodes.size());
+	std::vector<glm::mat4> fallbackSourceWorldTransforms;
+	if (!hasCachedSourceWorldTransforms) {
+		fallbackSourceWorldTransforms = ComputeModelNodeWorldTransforms(*model);
+	}
+	const std::vector<glm::mat4>& sourceWorldTransforms = hasCachedSourceWorldTransforms
+		? cachedSourceWorldTransforms
+		: fallbackSourceWorldTransforms;
 
 	std::vector<uint32_t> rootMeshIndices;
 	std::vector<bool> meshAttached(model->meshes.size(), false);

@@ -77,21 +77,22 @@ void PostProcessPass::Execute(RenderContext& ctx,
     set1f("uTm7FadeEnd", ctx.tm7_fadeEnd);
     set1i("uTm7UseJzazbz", ctx.tm7_useJzazbz ? 1 : 0);
 
-    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] HDR FBO: " << (ctx.hdrFBO ? ctx.hdrFBO->GetFBO() : 0));
-    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] HDR texture: " << (ctx.hdrFBO ? ctx.hdrFBO->GetColorAttachment(0) : 0));
+    FrameBuffer* sourceFBO = (ctx.enableTAA && ctx.taaFBO) ? ctx.taaFBO : ctx.hdrFBO.get();
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Source FBO: " << (sourceFBO ? sourceFBO->GetFBO() : 0));
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Source texture: " << (sourceFBO ? sourceFBO->GetColorAttachment(0) : 0));
     
     // Bind HDR scene (or TAA-resolved output if TAA is enabled)
     glActiveTexture(GL_TEXTURE0);
-    if (ctx.hdrFBO) {
-        GLuint hdrTex = ctx.hdrFBO->GetColorAttachment(0);
+    if (sourceFBO) {
+        GLuint hdrTex = sourceFBO->GetColorAttachment(0);
         if (glIsTexture(hdrTex)) {
             glBindTexture(GL_TEXTURE_2D, hdrTex);
-            PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bound HDR texture successfully");
+            PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bound source texture successfully");
         } else {
-            std::cerr << "[PostProcessPass] ERROR: Invalid HDR texture!" << std::endl;
+            std::cerr << "[PostProcessPass] ERROR: Invalid source texture!" << std::endl;
         }
     } else {
-        std::cerr << "[PostProcessPass] ERROR: HDR FBO is null!" << std::endl;
+        std::cerr << "[PostProcessPass] ERROR: Source FBO is null!" << std::endl;
     }
     set1i("hdrBuffer", 0);
 

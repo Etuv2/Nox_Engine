@@ -47,6 +47,8 @@ public:
         int skinIndex = -1;
     };
     std::vector<NodeInfo> nodes;
+    // Cached authored node world transforms built during import.
+    std::vector<glm::mat4> nodeWorldTransforms;
 
     // Skin data
     struct Skin {
@@ -75,5 +77,9 @@ public:
 
     std::string GetName() {
         return !m_model_name.empty() ? m_model_name : "No name";
+    }
+
+    const std::vector<glm::mat4>& GetNodeWorldTransforms() const {
+        return nodeWorldTransforms;
     }
 };

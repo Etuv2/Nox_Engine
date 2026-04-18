@@ -15,6 +15,45 @@ TAAPass::TAAPass() {}
 TAAPass::~TAAPass() {
 	if (m_velocityShader) glDeleteProgram(m_velocityShader);
 	if (m_resolveShader) glDeleteProgram(m_resolveShader);
+	DestroyHistoryValidationTextures();
+}
+
+void TAAPass::DestroyHistoryValidationTextures() {
+	if (m_historyDepthTex != 0) {
+		glDeleteTextures(1, &m_historyDepthTex);
+		m_historyDepthTex = 0;
+	}
+	if (m_historyNormalTex != 0) {
+		glDeleteTextures(1, &m_historyNormalTex);
+		m_historyNormalTex = 0;
+	}
+}
+
+void TAAPass::RecreateHistoryValidationTextures(int width, int height) {
+	DestroyHistoryValidationTextures();
+
+	glGenTextures(1, &m_historyDepthTex);
+	glBindTexture(GL_TEXTURE_2D, m_historyDepthTex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+	float clearDepth = 1.0f;
+	glClearTexImage(m_historyDepthTex, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &clearDepth);
+
+	glGenTextures(1, &m_historyNormalTex);
+	glBindTexture(GL_TEXTURE_2D, m_historyNormalTex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	const GLint clearNormal[4] = { 0, 0, 0, 0 };
+	glClearTexImage(m_historyNormalTex, 0, GL_RGBA, GL_INT, clearNormal);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 bool TAAPass::Initialize(RenderContext& context) {
@@ -51,6 +90,7 @@ bool TAAPass::Initialize(RenderContext& context) {
 		std::cerr << "[TAAPass] TAA framebuffers not complete!\n";
 		return false;
 	}
+	RecreateHistoryValidationTextures(context.width, context.height);
 
 	// Expose velocity texture in context for other passes (e.g., SSGI)
 	context.velocityTex = m_velocityFBO->GetColorAttachment(0);
@@ -59,22 +99,20 @@ bool TAAPass::Initialize(RenderContext& context) {
 	m_velocityUniforms.projection = glGetUniformLocation(m_velocityShader, "projection");
 	m_velocityUniforms.prevView = glGetUniformLocation(m_velocityShader, "prevView");
 	m_velocityUniforms.prevProjection = glGetUniformLocation(m_velocityShader, "prevProjection");
-	m_velocityUniforms.jitter = glGetUniformLocation(m_velocityShader, "jitter");
-	m_velocityUniforms.prevJitter = glGetUniformLocation(m_velocityShader, "prevJitter");
-	m_velocityUniforms.screenSize = glGetUniformLocation(m_velocityShader, "screenSize");
 
 	m_resolveUniforms.currentFrame = glGetUniformLocation(m_resolveShader, "currentFrame");
 	m_resolveUniforms.historyFrame = glGetUniformLocation(m_resolveShader, "historyFrame");
 	m_resolveUniforms.velocityBuffer = glGetUniformLocation(m_resolveShader, "velocityBuffer");
 	m_resolveUniforms.depthBuffer = glGetUniformLocation(m_resolveShader, "depthBuffer");
-	m_resolveUniforms.gNormal = glGetUniformLocation(m_resolveShader, "gNormal");
+	m_resolveUniforms.normalBuffer = glGetUniformLocation(m_resolveShader, "normalBuffer");
+	m_resolveUniforms.historyDepthBuffer = glGetUniformLocation(m_resolveShader, "historyDepthBuffer");
+	m_resolveUniforms.historyNormalBuffer = glGetUniformLocation(m_resolveShader, "historyNormalBuffer");
 	m_resolveUniforms.blendFactor = glGetUniformLocation(m_resolveShader, "blendFactor");
 	m_resolveUniforms.varianceThreshold = glGetUniformLocation(m_resolveShader, "varianceThreshold");
 	m_resolveUniforms.lumaWeight = glGetUniformLocation(m_resolveShader, "lumaWeight");
 	m_resolveUniforms.useYCoCg = glGetUniformLocation(m_resolveShader, "useYCoCg");
 	m_resolveUniforms.historyValid = glGetUniformLocation(m_resolveShader, "historyValid");
 	m_resolveUniforms.screenSize = glGetUniformLocation(m_resolveShader, "screenSize");
-	m_resolveUniforms.jitter = glGetUniformLocation(m_resolveShader, "jitter");
 	m_resolveUniforms.depthThreshold = glGetUniformLocation(m_resolveShader, "depthThreshold");
 	m_resolveUniforms.normalThreshold = glGetUniformLocation(m_resolveShader, "normalThreshold");
 	m_resolveUniforms.edgeThreshold = glGetUniformLocation(m_resolveShader, "edgeThreshold");
@@ -92,6 +130,7 @@ void TAAPass::Resize(RenderContext& context, int newWidth, int newHeight) {
 	if (m_velocityFBO) m_velocityFBO->Resize(newWidth, newHeight);
 	if (m_currentFBO) m_currentFBO->Resize(newWidth, newHeight);
 	if (m_historyFBO) m_historyFBO->Resize(newWidth, newHeight);
+	RecreateHistoryValidationTextures(newWidth, newHeight);
 	context.velocityTex = m_velocityFBO ? m_velocityFBO->GetColorAttachment(0) : 0;
 	// Invalidate history on resize
 	m_historyValid = false;
@@ -140,41 +179,34 @@ void TAAPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<DirectionalLight>& dirLight,
 	const std::shared_ptr<Skybox>& skybox) {
+	ExecuteVelocity(ctx, sceneGraph, camera);
+
+	if (ctx.enableTAA) {
+		ExecuteResolve(ctx);
+	} else {
+		ctx.taaFBO = ctx.hdrFBO.get();
+	}
+}
+
+void TAAPass::PrepareJitter(int pattern) {
+	m_prevJitter = m_jitter;
+	m_jitter = GetJitter(m_frameIndex, pattern);
+}
+
+void TAAPass::ExecuteVelocity(RenderContext& ctx,
+	const std::shared_ptr<SceneGraph>& sceneGraph,
+	const std::shared_ptr<Camera>& camera) {
+	RenderVelocity(ctx, sceneGraph, camera);
+}
+
+void TAAPass::ExecuteResolve(RenderContext& ctx) {
 	if (!ctx.enableTAA) {
-		// TAA disabled - just copy HDR to current
-		m_currentFBO->Bind();
-		glViewport(0, 0, ctx.width, ctx.height);
-		glClear(GL_COLOR_BUFFER_BIT);
-
-		glUseProgram(0); // Use a simple blit or copy shader if available
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, ctx.hdrFBO->GetColorAttachment(0));
-
-		ctx.screenQuad->Render();
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		// Still expose the FBO for SSGI
-		ctx.taaFBO = m_currentFBO.get();
+		ctx.taaFBO = ctx.hdrFBO.get();
 		return;
 	}
 
-	// Update jitter
-	m_prevJitter = m_jitter;
-	m_jitter = GetJitter(m_frameIndex, ctx.taaJitterPattern);
-	m_frameIndex++;
-
-	// Render velocity buffer
-	RenderVelocity(ctx, sceneGraph, camera);
-
-	// Resolve TAA
 	ResolveTemporalAntiAliasing(ctx);
-
-	// Swap current and history
-	m_currentFBO.swap(m_historyFBO);
-	m_historyValid = true;
-
-	// Expose current FBO to context for SSGI to use
-	ctx.taaFBO = m_currentFBO.get();
+	m_frameIndex++;
 }
 
 void TAAPass::RenderVelocity(RenderContext& ctx,
@@ -200,15 +232,6 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 		1, GL_FALSE, glm::value_ptr(ctx.prevView));
 	if (m_velocityUniforms.prevProjection >= 0) glUniformMatrix4fv(m_velocityUniforms.prevProjection,
 		1, GL_FALSE, glm::value_ptr(ctx.prevProj));
-
-	// Upload jitter
-	if (m_velocityUniforms.jitter >= 0) glUniform2fv(m_velocityUniforms.jitter,
-		1, glm::value_ptr(m_jitter));
-	if (m_velocityUniforms.prevJitter >= 0) glUniform2fv(m_velocityUniforms.prevJitter,
-		1, glm::value_ptr(m_prevJitter));
-
-	if (m_velocityUniforms.screenSize >= 0) glUniform2f(m_velocityUniforms.screenSize,
-		static_cast<float>(ctx.width), static_cast<float>(ctx.height));
 
 	// Render scene for motion vectors
 	sceneGraph->RenderVelocity(ctx.view, ctx.proj, ctx.prevView, ctx.prevProj, m_velocityShader);
@@ -249,7 +272,16 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 	// Bind normal for rejection
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-	if (m_resolveUniforms.gNormal >= 0) glUniform1i(m_resolveUniforms.gNormal, 4);
+	if (m_resolveUniforms.normalBuffer >= 0) glUniform1i(m_resolveUniforms.normalBuffer, 4);
+
+	// Bind previous-frame depth and normal for robust disocclusion checks
+	glActiveTexture(GL_TEXTURE5);
+	glBindTexture(GL_TEXTURE_2D, m_historyDepthTex);
+	if (m_resolveUniforms.historyDepthBuffer >= 0) glUniform1i(m_resolveUniforms.historyDepthBuffer, 5);
+
+	glActiveTexture(GL_TEXTURE6);
+	glBindTexture(GL_TEXTURE_2D, m_historyNormalTex);
+	if (m_resolveUniforms.historyNormalBuffer >= 0) glUniform1i(m_resolveUniforms.historyNormalBuffer, 6);
 
 	// Upload TAA parameters
 	if (m_resolveUniforms.blendFactor >= 0) glUniform1f(m_resolveUniforms.blendFactor, ctx.taaBlendFactor);
@@ -259,8 +291,6 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 	if (m_resolveUniforms.historyValid >= 0) glUniform1i(m_resolveUniforms.historyValid, m_historyValid ? 1 : 0);
 	if (m_resolveUniforms.screenSize >= 0) glUniform2f(m_resolveUniforms.screenSize,
 		static_cast<float>(ctx.width), static_cast<float>(ctx.height));
-	if (m_resolveUniforms.jitter >= 0) glUniform2fv(m_resolveUniforms.jitter,
-		1, glm::value_ptr(m_jitter));
 
 	// Enhanced quality parameters
 	if (m_resolveUniforms.depthThreshold >= 0) glUniform1f(m_resolveUniforms.depthThreshold, ctx.taaDepthThreshold);
@@ -271,4 +301,19 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 	ctx.screenQuad->Render();
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glCopyImageSubData(m_currentFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_historyFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
+		ctx.width, ctx.height, 1);
+
+	glCopyImageSubData(ctx.gbufferFBO->GetDepthTexture(), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_historyDepthTex, GL_TEXTURE_2D, 0, 0, 0, 0,
+		ctx.width, ctx.height, 1);
+
+	glCopyImageSubData(ctx.gbufferFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
+		m_historyNormalTex, GL_TEXTURE_2D, 0, 0, 0, 0,
+		ctx.width, ctx.height, 1);
+
+	m_historyValid = true;
+	ctx.taaFBO = m_currentFBO.get();
 }

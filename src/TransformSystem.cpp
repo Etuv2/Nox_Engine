@@ -4,43 +4,71 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <queue>
 #include <unordered_map>
 
-TransformSystem::TransformSystem(ComponentManager* componentManager)
+namespace {
+constexpr bool kEnableLegacyDirtyValidation = false;
+}
+
+TransformSystem::TransformSystem(ComponentManager* componentManager, SceneRuntimeData* runtimeScene)
 	: m_componentManager(componentManager)
+	, m_runtimeScene(runtimeScene)
 {
 	m_dirtyRoots.reserve(256);
+	m_lastChangedEntities.reserve(256);
+	m_lastChangedRuntimeIndices.reserve(256);
+}
+
+void TransformSystem::SetRuntimeScene(SceneRuntimeData* runtimeScene)
+{
+	m_runtimeScene = runtimeScene;
+}
+
+void TransformSystem::BeginFrameDiagnostics()
+{
+	m_diagnostics = Diagnostics{};
 }
 
 void TransformSystem::UpdateTransforms() {
+	const auto updateStart = std::chrono::high_resolution_clock::now();
+	++m_diagnostics.updateCallCount;
+
 	if (!m_componentManager) return;
+	if (m_runtimeScene) {
+		m_runtimeScene->EnsureCompiled();
+	}
 
 	m_lastDirtyRootCount = 0;
 	m_lastTransformsRecomputed = 0;
 	m_dirtyRoots.clear();
+	m_lastChangedEntities.clear();
+	m_lastChangedRuntimeIndices.clear();
 
-	// Start with explicitly queued dirty roots from hierarchy mutations.
-	// The actual subtree recomputation happens top-down from those roots, using the
-	// authoritative child adjacency cache instead of recursively scanning the full pool.
 	auto queuedDirtyRoots = m_componentManager->ConsumePendingTransformUpdates();
+	m_diagnostics.pendingDirtyRoots += queuedDirtyRoots.size();
 	m_dirtyRoots.insert(m_dirtyRoots.end(), queuedDirtyRoots.begin(), queuedDirtyRoots.end());
 
-	// Keep a safety net for legacy direct dirty writes that still exist in the codebase.
-	auto& transformPool = m_componentManager->GetTransformPool();
-	for (auto& entry : transformPool) {
-		if (entry.component.isDirty) {
-			m_dirtyRoots.push_back(entry.entity);
+	if constexpr (kEnableLegacyDirtyValidation) {
+		auto& transformPool = m_componentManager->GetTransformPool();
+		for (auto& entry : transformPool) {
+			if (entry.component.isDirty) {
+				m_dirtyRoots.push_back(entry.entity);
+			}
 		}
 	}
 
 	if (m_dirtyRoots.empty()) {
+		const auto updateEnd = std::chrono::high_resolution_clock::now();
+		m_diagnostics.updateTransformsMs += std::chrono::duration<float, std::milli>(updateEnd - updateStart).count();
 		return;
 	}
 
 	std::unordered_map<EntityID, size_t> depthCache;
 	auto getDepth = [&](EntityID entity) -> size_t {
+		++m_diagnostics.hierarchyDepthQueryCalls;
 		auto it = depthCache.find(entity);
 		if (it != depthCache.end()) {
 			return it->second;
@@ -49,6 +77,7 @@ void TransformSystem::UpdateTransforms() {
 		size_t depth = 0;
 		EntityID current = entity;
 		while (current != INVALID_ENTITY) {
+			++m_diagnostics.hierarchyDepthQuerySteps;
 			auto* transform = m_componentManager->GetTransform(current);
 			if (!transform || transform->parentID == INVALID_ENTITY) {
 				break;
@@ -73,13 +102,43 @@ void TransformSystem::UpdateTransforms() {
 
 	m_dirtyRoots.erase(std::unique(m_dirtyRoots.begin(), m_dirtyRoots.end()), m_dirtyRoots.end());
 
+	std::unordered_map<EntityID, EntityID> topDirtyAncestorCache;
+	topDirtyAncestorCache.reserve(m_dirtyRoots.size() * 2u + 1u);
+	auto resolveTopDirtyAncestor = [&](auto&& self, EntityID current) -> EntityID {
+		++m_diagnostics.findTopDirtyAncestorCalls;
+		auto cacheIt = topDirtyAncestorCache.find(current);
+		if (cacheIt != topDirtyAncestorCache.end()) {
+			return cacheIt->second;
+		}
+
+		++m_diagnostics.findTopDirtyAncestorSteps;
+		const TransformComponent* transform = m_componentManager->GetTransform(current);
+		if (!transform) {
+			topDirtyAncestorCache[current] = INVALID_ENTITY;
+			return INVALID_ENTITY;
+		}
+
+		EntityID highestDirtyAncestor = INVALID_ENTITY;
+		if (transform->parentID != INVALID_ENTITY) {
+			highestDirtyAncestor = self(self, transform->parentID);
+		}
+		if (highestDirtyAncestor == INVALID_ENTITY && transform->isDirty) {
+			highestDirtyAncestor = current;
+		}
+
+		topDirtyAncestorCache[current] = highestDirtyAncestor;
+		return highestDirtyAncestor;
+	};
+
+	std::vector<EntityID> uniqueRoots;
+	uniqueRoots.reserve(m_dirtyRoots.size());
 	for (EntityID entity : m_dirtyRoots) {
 		auto transform = m_componentManager->GetTransform(entity);
 		if (!transform || !transform->isDirty) {
 			continue;
 		}
 
-		EntityID dirtyRoot = FindTopDirtyAncestor(entity);
+		EntityID dirtyRoot = resolveTopDirtyAncestor(resolveTopDirtyAncestor, entity);
 		if (dirtyRoot == INVALID_ENTITY) {
 			continue;
 		}
@@ -89,9 +148,38 @@ void TransformSystem::UpdateTransforms() {
 			continue;
 		}
 
-		ComputeWorldTransform(dirtyRoot);
-		++m_lastDirtyRootCount;
+		uniqueRoots.push_back(dirtyRoot);
 	}
+
+	if (uniqueRoots.empty()) {
+		const auto updateEnd = std::chrono::high_resolution_clock::now();
+		m_diagnostics.updateTransformsMs += std::chrono::duration<float, std::milli>(updateEnd - updateStart).count();
+		return;
+	}
+
+	std::sort(uniqueRoots.begin(), uniqueRoots.end());
+	uniqueRoots.erase(std::unique(uniqueRoots.begin(), uniqueRoots.end()), uniqueRoots.end());
+	m_lastDirtyRootCount = uniqueRoots.size();
+	m_diagnostics.dirtyRootsProcessed += uniqueRoots.size();
+
+	if (m_runtimeScene) {
+		m_lastTransformsRecomputed = m_runtimeScene->EvaluateDirtySubtrees(uniqueRoots,
+			&m_lastChangedEntities,
+			&m_lastChangedRuntimeIndices);
+		const SceneRuntimeData::Diagnostics& runtimeDiagnostics = m_runtimeScene->GetDiagnostics();
+		m_diagnostics.runtimeDirtySpanCount += runtimeDiagnostics.lastDirtySpanCount;
+		m_diagnostics.runtimeDirtySpanCoverageNodes += runtimeDiagnostics.lastDirtySpanCoverageNodes;
+		m_diagnostics.runtimeDirtyEvalMs += runtimeDiagnostics.evaluateDirtySubtreesMs;
+	} else {
+		for (EntityID entity : uniqueRoots) {
+			ComputeWorldTransform(entity);
+		}
+	}
+	m_diagnostics.transformsRecomputed += m_lastTransformsRecomputed;
+
+	++m_worldPublicationGeneration;
+	const auto updateEnd = std::chrono::high_resolution_clock::now();
+	m_diagnostics.updateTransformsMs += std::chrono::duration<float, std::milli>(updateEnd - updateStart).count();
 }
 
 void TransformSystem::MarkDirty(EntityID entity) {
@@ -119,14 +207,46 @@ const glm::mat4& TransformSystem::GetWorldTransform(EntityID entity) {
 	if (dirtyRoot != INVALID_ENTITY) {
 		auto dirtyTransform = m_componentManager->GetTransform(dirtyRoot);
 		if (dirtyTransform && dirtyTransform->isDirty) {
-			ComputeWorldTransform(dirtyRoot);
+			if (m_runtimeScene) {
+				std::vector<EntityID> dirtyRoots{ dirtyRoot };
+				m_lastChangedEntities.clear();
+				m_lastChangedRuntimeIndices.clear();
+				m_lastTransformsRecomputed = m_runtimeScene->EvaluateDirtySubtrees(dirtyRoots,
+					&m_lastChangedEntities,
+					&m_lastChangedRuntimeIndices);
+				const SceneRuntimeData::Diagnostics& runtimeDiagnostics = m_runtimeScene->GetDiagnostics();
+				m_diagnostics.runtimeDirtySpanCount += runtimeDiagnostics.lastDirtySpanCount;
+				m_diagnostics.runtimeDirtySpanCoverageNodes += runtimeDiagnostics.lastDirtySpanCoverageNodes;
+				m_diagnostics.runtimeDirtyEvalMs += runtimeDiagnostics.evaluateDirtySubtreesMs;
+				m_diagnostics.transformsRecomputed += m_lastTransformsRecomputed;
+				++m_worldPublicationGeneration;
+			}
+			else {
+				ComputeWorldTransform(dirtyRoot);
+			}
 		}
 	}
 
+	if (m_runtimeScene) {
+		return m_runtimeScene->GetWorldTransform(entity);
+	}
 	return transform->worldTransform;
 }
 
 void TransformSystem::ComputeWorldTransform(EntityID entity) {
+	if (m_runtimeScene) {
+		std::vector<EntityID> dirtyRoots{ entity };
+		m_lastTransformsRecomputed = m_runtimeScene->EvaluateDirtySubtrees(dirtyRoots,
+			&m_lastChangedEntities,
+			&m_lastChangedRuntimeIndices);
+		const SceneRuntimeData::Diagnostics& runtimeDiagnostics = m_runtimeScene->GetDiagnostics();
+		m_diagnostics.runtimeDirtySpanCount += runtimeDiagnostics.lastDirtySpanCount;
+		m_diagnostics.runtimeDirtySpanCoverageNodes += runtimeDiagnostics.lastDirtySpanCoverageNodes;
+		m_diagnostics.runtimeDirtyEvalMs += runtimeDiagnostics.evaluateDirtySubtreesMs;
+		m_diagnostics.transformsRecomputed += m_lastTransformsRecomputed;
+		return;
+	}
+
 	auto transform = m_componentManager->GetTransform(entity);
 	if (!transform) return;
 
@@ -151,6 +271,7 @@ void TransformSystem::ComputeSubtreeWorldTransforms(EntityID entity, const glm::
 	transform->worldTransform = parentWorld * combinedLocal;
 	transform->isDirty = false;
 	++m_lastTransformsRecomputed;
+	++m_diagnostics.transformsRecomputed;
 
 	const glm::mat4 currentWorld = transform->worldTransform;
 	const auto& children = m_componentManager->GetChildren(entity);
@@ -352,9 +473,11 @@ size_t TransformSystem::GetPendingDirtyRootCount() const {
 }
 
 EntityID TransformSystem::FindTopDirtyAncestor(EntityID entity) const {
+	++m_diagnostics.findTopDirtyAncestorCalls;
 	EntityID current = entity;
 	EntityID highestDirtyAncestor = INVALID_ENTITY;
 	while (current != INVALID_ENTITY) {
+		++m_diagnostics.findTopDirtyAncestorSteps;
 		auto currentTransform = m_componentManager->GetTransform(current);
 		if (!currentTransform) {
 			break;
@@ -389,6 +512,12 @@ glm::mat4 TransformSystem::GetCleanParentWorldTransform(EntityID entity) const {
 }
 
 size_t TransformSystem::GetHierarchyDepth(EntityID entity) const {
+	if (m_runtimeScene) {
+		if (const RuntimeTransformNode* node = m_runtimeScene->GetRuntimeNode(entity)) {
+			return node->depth;
+		}
+	}
+
 	size_t depth = 0;
 	EntityID current = entity;
 	while (current != INVALID_ENTITY) {

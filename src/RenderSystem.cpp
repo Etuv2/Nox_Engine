@@ -6,6 +6,7 @@
 #include "TextureUnits.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <cmath>
 #include <unordered_map>
@@ -14,6 +15,18 @@ namespace {
 	constexpr GLuint kGlobalTransformBufferBinding = 6;
 	constexpr uint32_t kTransformFlagRenderable = 1u << 0;
 	constexpr uint32_t kTransformFlagSkinned = 1u << 1;
+
+	bool MatricesMatchExact(const glm::mat4& lhs, const glm::mat4& rhs)
+	{
+		for (int column = 0; column < 4; ++column) {
+			for (int row = 0; row < 4; ++row) {
+				if (lhs[column][row] != rhs[column][row]) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
 
 	float ExtractMaxScale(const glm::mat4& transform)
 	{
@@ -31,6 +44,16 @@ namespace {
 	float ComputeMeshRadiusWS(const glm::mat4& worldTransform, const MeshComponent& mesh)
 	{
 		return mesh.boundingRadius * ExtractMaxScale(worldTransform);
+	}
+
+	glm::vec3 ComputeTransformedLocalCenter(const MeshComponent& mesh, const glm::mat4& localTransform)
+	{
+		return glm::vec3(localTransform * glm::vec4(mesh.boundingCenter, 1.0f));
+	}
+
+	float ComputeTransformedLocalRadius(const MeshComponent& mesh, const glm::mat4& localTransform)
+	{
+		return mesh.boundingRadius * ExtractMaxScale(localTransform);
 	}
 
 	template <typename Fn>
@@ -57,6 +80,40 @@ namespace {
 	int ResolveRenderableNodeIndex(const RenderableComponent& renderable)
 	{
 		return renderable.nodeIndex;
+	}
+
+	glm::mat4 ResolveRenderableMeshLocalTransform(const RenderableComponent& renderable, const MeshComponent& mesh)
+	{
+		if (!renderable.renderWholeModel || mesh.sourceNodeIndex < 0 || !renderable.model) {
+			return glm::mat4(1.0f);
+		}
+
+		const int referenceNodeIndex = ResolveRenderableNodeIndex(renderable);
+		if (referenceNodeIndex < 0 || referenceNodeIndex == mesh.sourceNodeIndex) {
+			return mesh.localTransform;
+		}
+
+		const auto& nodeWorldTransforms = renderable.model->GetNodeWorldTransforms();
+		if (referenceNodeIndex >= static_cast<int>(nodeWorldTransforms.size()) ||
+			mesh.sourceNodeIndex >= static_cast<int>(nodeWorldTransforms.size())) {
+			return mesh.localTransform;
+		}
+
+		glm::mat4 referenceInverse = glm::inverse(nodeWorldTransforms[referenceNodeIndex]);
+		for (int c = 0; c < 4; ++c) {
+			for (int r = 0; r < 4; ++r) {
+				if (!std::isfinite(referenceInverse[c][r])) {
+					return mesh.localTransform;
+				}
+			}
+		}
+
+		return referenceInverse * mesh.localTransform;
+	}
+
+	glm::mat4 ComposeRenderItemWorldTransform(const glm::mat4& entityWorldTransform, const RenderSystem::RenderItem& item)
+	{
+		return entityWorldTransform * item.localTransform;
 	}
 
 	glm::mat4 ResolveAnimatedNodeLocalTransform(const Scene& model, int nodeIndex, const AnimationComponent* animation)
@@ -105,6 +162,25 @@ RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* 
 	, m_transformSystem(transformSystem)
 {
 	m_renderQueue.reserve(256);
+	m_submissionCache.visibleAllItems.items.reserve(1024);
+	m_submissionCache.visibleOpaqueItems.items.reserve(1024);
+	m_submissionCache.visibleTransparentItems.items.reserve(512);
+	m_submissionCache.velocityItems.items.reserve(1024);
+	m_submissionCache.shadowVisibleItems.items.reserve(1024);
+	m_simdBackend = SimdKernels::DetectBestBackend();
+}
+
+void RenderSystem::SetRuntimeScene(SceneRuntimeData* runtimeScene)
+{
+	m_runtimeScene = runtimeScene;
+	m_lastRenderItemRevision = 0;
+	m_lastCameraCachePublication = 0;
+	m_lastShadowCachePublication = 0;
+}
+
+void RenderSystem::BeginFrameDiagnostics()
+{
+	m_diagnostics = Diagnostics{};
 }
 
 void RenderSystem::PrepareFrameTransforms()
@@ -114,16 +190,21 @@ void RenderSystem::PrepareFrameTransforms()
 	}
 
 	const uint64_t currentRevision = m_componentManager->GetTransformUpdateRevision();
-	if (m_lastPreparedTransformRevision == currentRevision &&
-		m_transformBuffer &&
-		m_transformBuffer->IsValid() &&
-		!m_gpuTransformRecords.empty()) {
-		return;
+	const uint64_t currentRenderableRevision = m_componentManager->GetRenderableRevision();
+	if (m_lastPreparedTransformRevision != currentRevision ||
+		m_lastPreparedRenderableRevision != currentRenderableRevision ||
+		!m_transformBuffer ||
+		!m_transformBuffer->IsValid() ||
+		m_gpuTransformRecords.empty()) {
+		m_transformSystem->UpdateTransforms();
+		UpdateGpuTransformBuffer();
+		m_lastPreparedTransformRevision = currentRevision;
+		m_lastPreparedRenderableRevision = currentRenderableRevision;
+		m_lastPreparedTransformPublication = m_transformSystem ? m_transformSystem->GetWorldPublicationGeneration() : 0;
 	}
 
-	m_transformSystem->UpdateTransforms();
-	UpdateGpuTransformBuffer();
-	m_lastPreparedTransformRevision = currentRevision;
+	RebuildRenderItemsIfNeeded();
+	UpdateChangedRenderItemBounds();
 }
 
 const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLuint shader)
@@ -184,6 +265,15 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.attenuationColor = glGetUniformLocation(shader, "attenuationColor");
 	uniforms.ior = glGetUniformLocation(shader, "ior");
 
+	uniforms.baseColorUVSet = glGetUniformLocation(shader, "baseColorUVSet");
+	uniforms.normalUVSet = glGetUniformLocation(shader, "normalUVSet");
+	uniforms.metallicRoughnessUVSet = glGetUniformLocation(shader, "metallicRoughnessUVSet");
+	uniforms.emissiveUVSet = glGetUniformLocation(shader, "emissiveUVSet");
+	uniforms.occlusionUVSet = glGetUniformLocation(shader, "occlusionUVSet");
+	uniforms.specularUVSet = glGetUniformLocation(shader, "specularUVSet");
+	uniforms.specularColorUVSet = glGetUniformLocation(shader, "specularColorUVSet");
+	uniforms.transmissionUVSet = glGetUniformLocation(shader, "transmissionUVSet");
+
 	auto [insertedIt, _] = m_shaderUniformCaches.emplace(shader, uniforms);
 	return insertedIt->second;
 }
@@ -195,6 +285,7 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 	if (!m_componentManager || !m_transformSystem) return;
 
 	PrepareFrameTransforms();
+	PrepareCameraSubmissionCache();
 	m_cachedBoneMatrices.clear();
 
 	glUseProgram(defaultShader);
@@ -208,75 +299,81 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 		const auto& uniforms = GetShaderUniformCache(defaultShader);
 	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
 	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
+	int skinningState = -1;
+		GLuint currentVAO = 0;
+		bool blendEnabled = false;
+		bool depthWriteEnabled = true;
+		glDisable(GL_BLEND);
+		glDepthMask(GL_TRUE);
 
 	m_visibleCount = 0;
-	m_totalCount = 0;
+	m_totalCount = m_renderItems.size();
+	m_visibleCount = m_submissionCache.visibleAllItems.items.size();
 
-	// Iterate through all renderable components
-	auto& renderablePool = m_componentManager->GetRenderablePool();
+	for (uint32_t itemIndex : m_submissionCache.visibleAllItems.items) {
+		if (itemIndex >= m_renderItems.size()) {
+			continue;
+		}
 
-	for (auto& entry : renderablePool) {
-		EntityID entityID = entry.entity;
-		auto& renderable = entry.component;
-		m_totalCount++;
+		const RenderItem& item = m_renderItems[itemIndex];
+		if (!item.mesh) {
+			continue;
+		}
 
-		// Skip entities without models
-		if (!renderable.model) continue;
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(item.entity);
+		const glm::mat4 worldTransform = ComposeRenderItemWorldTransform(entityWorldTransform, item);
 
-		// Get world transform
-		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
-		bool entityVisible = false;
-
-		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
-			if (m_frustumValid) {
-				const glm::vec3 centerWS = ComputeMeshCenterWS(worldTransform, mesh);
-				const float radiusWS = ComputeMeshRadiusWS(worldTransform, mesh);
-				if (!IsSphereVisible(centerWS, radiusWS)) {
-					return;
-				}
+		UploadTransformUniforms(item.entity, worldTransform, uniforms);
+		if (item.skinned) {
+			UploadBoneMatrices(item.entity, worldTransform, uniforms);
+			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
+				glUniform1i(uniforms.uEnableSkinning, 1);
+				skinningState = 1;
 			}
+		}
+		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
+			glUniform1i(uniforms.uEnableSkinning, 0);
+			skinningState = 0;
+		}
 
-			entityVisible = true;
-			UploadTransformUniforms(entityID, worldTransform, uniforms);
+		ApplyCullingState(*item.mesh, item.cullingOverride, worldTransform);
 
-			if (renderable.isSkinned) {
-				UploadBoneMatrices(entityID, worldTransform, uniforms);
-				if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
-			}
-			else if (uniforms.uEnableSkinning != -1) {
-				glUniform1i(uniforms.uEnableSkinning, 0);
-			}
-
-			ApplyCullingState(mesh, renderable.cullingOverride, worldTransform);
-
-			// Handle alpha blending
-			if (mesh.RequiresAlphaBlending()) {
+		if (item.transparent != blendEnabled) {
+			if (item.transparent) {
 				glEnable(GL_BLEND);
 				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-				glDepthMask(GL_FALSE);
 			}
 			else {
 				glDisable(GL_BLEND);
-				glDepthMask(GL_TRUE);
 			}
-
-			BindMaterialTextures(mesh, uniforms);
-			UploadMaterialUniforms(mesh, uniforms);
-
-			glBindVertexArray(mesh.VAO);
-			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
-			glBindVertexArray(0);
-
-			// Reset blend state
-			if (mesh.RequiresAlphaBlending()) {
-				glDisable(GL_BLEND);
-				glDepthMask(GL_TRUE);
-			}
-		});
-
-		if (entityVisible) {
-			m_visibleCount++;
+			blendEnabled = item.transparent;
 		}
+		if (item.transparent == depthWriteEnabled) {
+			glDepthMask(item.transparent ? GL_FALSE : GL_TRUE);
+			depthWriteEnabled = !item.transparent;
+		}
+
+		BindMaterialTextures(*item.mesh, uniforms);
+		UploadMaterialUniforms(*item.mesh, uniforms);
+
+		if (currentVAO != item.mesh->VAO) {
+			glBindVertexArray(item.mesh->VAO);
+			currentVAO = item.mesh->VAO;
+		}
+		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(item.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		++m_diagnostics.forwardDrawCalls;
+	}
+
+	if (currentVAO != 0) {
+		glBindVertexArray(0);
+	}
+	if (blendEnabled) {
+		glDisable(GL_BLEND);
+	}
+	if (!depthWriteEnabled) {
+		glDepthMask(GL_TRUE);
 	}
 }
 
@@ -288,6 +385,7 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 	}
 
 	PrepareFrameTransforms();
+	PrepareCameraSubmissionCache();
 	m_cachedBoneMatrices.clear();
 	glUseProgram(geometryShader);
 	ResetMaterialStateCache(geometryShader);
@@ -300,94 +398,65 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 	m_visibleCount = 0;
 	m_totalCount = 0;
 
-	auto& renderablePool = m_componentManager->GetRenderablePool();
-	size_t poolSize = renderablePool.Size();
-	struct OpaqueDraw {
-		EntityID entity = INVALID_ENTITY;
-		const MeshComponent* mesh = nullptr;
-		glm::mat4 worldTransform{ 1.0f };
-		uint64_t sortKey = 0;
-	};
-	std::vector<OpaqueDraw> opaqueDraws;
-	opaqueDraws.reserve(poolSize * 2);
+	std::vector<uint32_t> sortedOpaqueItemIndices;
+	sortedOpaqueItemIndices.reserve(m_submissionCache.visibleOpaqueItems.items.size());
+	m_totalCount = m_renderItems.size();
+	m_visibleCount = m_submissionCache.visibleOpaqueItems.items.size();
 
-	if constexpr (VerboseLogging) {
-		if (m_runtimeVerboseLogging) {
-			std::cout << "[RenderSystem] RenderGeometry - Renderable pool size: " << poolSize << std::endl;
+	for (uint32_t itemIndex : m_submissionCache.visibleOpaqueItems.items) {
+		if (itemIndex >= m_renderItems.size()) {
+			continue;
 		}
+		sortedOpaqueItemIndices.push_back(itemIndex);
 	}
 
-	for (auto& entry : renderablePool) {
-		EntityID entityID = entry.entity;
-		auto& renderable = entry.component;
-		m_totalCount++;
-
-		if (!renderable.model) continue;
-
-		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
-		bool entityVisible = false;
-
-		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
-			// Skip transparent meshes in deferred pass
-			if (mesh.RequiresAlphaBlending()) {
-				return;
+	std::sort(sortedOpaqueItemIndices.begin(), sortedOpaqueItemIndices.end(),
+		[this](uint32_t a, uint32_t b) {
+			const RenderItem& itemA = m_renderItems[a];
+			const RenderItem& itemB = m_renderItems[b];
+			if (itemA.sortKey != itemB.sortKey) {
+				return itemA.sortKey < itemB.sortKey;
 			}
-
-			if (m_frustumValid) {
-				const glm::vec3 centerWS = ComputeMeshCenterWS(worldTransform, mesh);
-				const float radiusWS = ComputeMeshRadiusWS(worldTransform, mesh);
-				if (!IsSphereVisible(centerWS, radiusWS)) {
-					return;
-				}
-			}
-
-			OpaqueDraw draw;
-			draw.entity = entityID;
-			draw.mesh = &mesh;
-			draw.worldTransform = worldTransform;
-			draw.sortKey = (static_cast<uint64_t>(mesh.material.stableMaterialID) << 32u) | static_cast<uint64_t>(mesh.VAO);
-			opaqueDraws.push_back(draw);
-			entityVisible = true;
-		});
-
-		if (entityVisible) {
-			m_visibleCount++;
-		}
-	}
-
-	std::sort(opaqueDraws.begin(), opaqueDraws.end(),
-		[](const OpaqueDraw& a, const OpaqueDraw& b) {
-			if (a.sortKey != b.sortKey) {
-				return a.sortKey < b.sortKey;
-			}
-			return a.entity < b.entity;
+			return itemA.entity < itemB.entity;
 		});
 
 	GLuint currentVAO = 0;
-	for (const OpaqueDraw& draw : opaqueDraws) {
-		auto* renderable = m_componentManager->GetRenderable(draw.entity);
-		if (!renderable || !draw.mesh) {
+	int skinningState = -1;
+	for (uint32_t itemIndex : sortedOpaqueItemIndices) {
+		const RenderItem& item = m_renderItems[itemIndex];
+		if (!item.mesh) {
 			continue;
 		}
 
-		UploadTransformUniforms(draw.entity, draw.worldTransform, uniforms);
-		if (renderable->isSkinned) {
-			UploadBoneMatrices(draw.entity, draw.worldTransform, uniforms);
-			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(item.entity);
+		const glm::mat4 worldTransform = ComposeRenderItemWorldTransform(entityWorldTransform, item);
+		const MeshComponent& mesh = *item.mesh;
+
+		UploadTransformUniforms(item.entity, worldTransform, uniforms);
+		if (item.skinned) {
+			UploadBoneMatrices(item.entity, worldTransform, uniforms);
+			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
+				glUniform1i(uniforms.uEnableSkinning, 1);
+				skinningState = 1;
+			}
 		}
-		else if (uniforms.uEnableSkinning != -1) {
+		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
 			glUniform1i(uniforms.uEnableSkinning, 0);
+			skinningState = 0;
 		}
 
-		ApplyCullingState(*draw.mesh, renderable->cullingOverride, draw.worldTransform);
-		BindMaterialTextures(*draw.mesh, uniforms);
-		UploadMaterialUniforms(*draw.mesh, uniforms);
+		ApplyCullingState(mesh, item.cullingOverride, worldTransform);
+		BindMaterialTextures(mesh, uniforms);
+		UploadMaterialUniforms(mesh, uniforms);
 
-		if (currentVAO != draw.mesh->VAO) {
-			glBindVertexArray(draw.mesh->VAO);
-			currentVAO = draw.mesh->VAO;
+		if (currentVAO != mesh.VAO) {
+			glBindVertexArray(mesh.VAO);
+			currentVAO = mesh.VAO;
 		}
-		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(draw.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
+		++m_diagnostics.geometryDrawCalls;
 	}
 
 	if (currentVAO != 0) {
@@ -400,6 +469,7 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 	if (!m_componentManager || !m_transformSystem) return;
 
 	PrepareFrameTransforms();
+	PrepareShadowSubmissionCache(lightSpaceMatrix);
 	m_cachedBoneMatrices.clear();
 	glUseProgram(shadowShader);
 	ResetMaterialStateCache(shadowShader);
@@ -413,35 +483,41 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 		glUniformMatrix4fv(uniforms.lightSpaceMatrix, 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
 	}
 
-	auto& renderablePool = m_componentManager->GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		EntityID entityID = entry.entity;
-		auto& renderable = entry.component;
-
-		if (!renderable.model) continue;
-
-		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
-		GLuint currentVAO = 0;
-		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
-			UploadTransformUniforms(entityID, worldTransform, uniforms);
-			if (renderable.isSkinned) {
-				UploadBoneMatrices(entityID, worldTransform, uniforms);
-				if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
-			}
-			else if (uniforms.uEnableSkinning != -1) {
-				glUniform1i(uniforms.uEnableSkinning, 0);
-			}
-
-			ApplyCullingState(mesh, renderable.cullingOverride, worldTransform);
-			if (currentVAO != mesh.VAO) {
-				glBindVertexArray(mesh.VAO);
-				currentVAO = mesh.VAO;
-			}
-			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
-		});
-		if (currentVAO != 0) {
-			glBindVertexArray(0);
+	GLuint currentVAO = 0;
+	int skinningState = -1;
+	for (uint32_t itemIndex : m_submissionCache.shadowVisibleItems.items) {
+		if (itemIndex >= m_renderItems.size()) {
+			continue;
 		}
+
+		const RenderItem& item = m_renderItems[itemIndex];
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(item.entity);
+		const glm::mat4 worldTransform = ComposeRenderItemWorldTransform(entityWorldTransform, item);
+		UploadTransformUniforms(item.entity, worldTransform, uniforms);
+		if (item.skinned) {
+			UploadBoneMatrices(item.entity, worldTransform, uniforms);
+			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
+				glUniform1i(uniforms.uEnableSkinning, 1);
+				skinningState = 1;
+			}
+		}
+		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
+			glUniform1i(uniforms.uEnableSkinning, 0);
+			skinningState = 0;
+		}
+
+		ApplyCullingState(*item.mesh, item.cullingOverride, worldTransform);
+		if (currentVAO != item.mesh->VAO) {
+			glBindVertexArray(item.mesh->VAO);
+			currentVAO = item.mesh->VAO;
+		}
+		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(item.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		++m_diagnostics.shadowDrawCalls;
+	}
+	if (currentVAO != 0) {
+		glBindVertexArray(0);
 	}
 }
 
@@ -454,6 +530,7 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 	if (!m_componentManager || !m_transformSystem) return;
 
 	PrepareFrameTransforms();
+	PrepareCameraSubmissionCache();
 	m_cachedBoneMatrices.clear();
 	glUseProgram(velocityShader);
 	ResetMaterialStateCache(velocityShader);
@@ -467,32 +544,44 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
 	if (uniforms.prevView != -1) glUniformMatrix4fv(uniforms.prevView, 1, GL_FALSE, glm::value_ptr(prevView));
 	if (uniforms.prevProjection != -1) glUniformMatrix4fv(uniforms.prevProjection, 1, GL_FALSE, glm::value_ptr(prevProjection));
+	int skinningState = -1;
+	GLuint currentVAO = 0;
 
-	auto& renderablePool = m_componentManager->GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		EntityID entityID = entry.entity;
-		auto& renderable = entry.component;
+	for (uint32_t itemIndex : m_submissionCache.velocityItems.items) {
+		if (itemIndex >= m_renderItems.size()) {
+			continue;
+		}
 
-		if (!renderable.model) continue;
+		const RenderItem& item = m_renderItems[itemIndex];
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(item.entity);
+		const glm::mat4 worldTransform = ComposeRenderItemWorldTransform(entityWorldTransform, item);
 
-		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
-
-		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
-			UploadTransformUniforms(entityID, worldTransform, uniforms);
-			if (renderable.isSkinned) {
-				UploadBoneMatrices(entityID, worldTransform, uniforms);
-				if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
+		UploadTransformUniforms(item.entity, worldTransform, uniforms);
+		if (item.skinned) {
+			UploadBoneMatrices(item.entity, worldTransform, uniforms);
+			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
+				glUniform1i(uniforms.uEnableSkinning, 1);
+				skinningState = 1;
 			}
-			else if (uniforms.uEnableSkinning != -1) {
-				glUniform1i(uniforms.uEnableSkinning, 0);
-			}
+		}
+		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
+			glUniform1i(uniforms.uEnableSkinning, 0);
+			skinningState = 0;
+		}
 
-			ApplyCullingState(mesh, renderable.cullingOverride, worldTransform);
+		ApplyCullingState(*item.mesh, item.cullingOverride, worldTransform);
+		if (currentVAO != item.mesh->VAO) {
+			glBindVertexArray(item.mesh->VAO);
+			currentVAO = item.mesh->VAO;
+		}
+		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(item.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		++m_diagnostics.velocityDrawCalls;
+	}
 
-			glBindVertexArray(mesh.VAO);
-			glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
-			glBindVertexArray(0);
-		});
+	if (currentVAO != 0) {
+		glBindVertexArray(0);
 	}
 }
 
@@ -501,36 +590,31 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 	if (!m_componentManager || !m_transformSystem) return;
 
 	PrepareFrameTransforms();
+	RebuildRenderItemsIfNeeded();
+	UpdateChangedRenderItemBounds();
+	for (size_t itemIndex = 0; itemIndex < m_renderItems.size(); ++itemIndex) {
+		const RenderItem& item = m_renderItems[itemIndex];
+		if (!item.mesh) {
+			continue;
+		}
 
-	auto& renderablePool = m_componentManager->GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		EntityID entityID = entry.entity;
-		auto& renderable = entry.component;
-
-		if (!renderable.model) continue;
-
-		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entityID);
-
-		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
-			MDI_RenderableObject obj{};
-			obj.count = static_cast<GLuint>(mesh.indexCount);
-			obj.firstIndex = 0;
-			obj.baseVertex = 0;
-			obj.modelMatrix = worldTransform;
-			if (const TransformComponent* transform = m_componentManager->GetTransform(entityID)) {
-				obj.transformID = transform->transformID;
-			}
-			obj.vao = mesh.VAO;
-
-			if (mesh.boundingVolumeValid) {
-				obj.boundingSphere = glm::vec4(mesh.boundingCenter, mesh.boundingRadius);
-			}
-			else {
-				obj.boundingSphere = glm::vec4(0.0f, 0.0f, 0.0f, renderable.boundingRadius);
-			}
-
-			batch.AddObject(obj);
-		});
+		MDI_RenderableObject obj{};
+		obj.count = static_cast<GLuint>(item.mesh->indexCount);
+		obj.firstIndex = 0;
+		obj.baseVertex = 0;
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(item.entity);
+		obj.modelMatrix = ComposeRenderItemWorldTransform(entityWorldTransform, item);
+		if (const TransformComponent* transform = m_componentManager->GetTransform(item.entity)) {
+			obj.transformID = transform->transformID;
+		}
+		obj.vao = item.mesh->VAO;
+		obj.boundingSphere = glm::vec4(m_renderItemWorldCenterX[itemIndex],
+			m_renderItemWorldCenterY[itemIndex],
+			m_renderItemWorldCenterZ[itemIndex],
+			m_renderItemWorldRadius[itemIndex]);
+		batch.AddObject(obj);
 	}
 }
 
@@ -540,39 +624,42 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 {
 	if (!m_componentManager || !m_transformSystem) return;
 	PrepareFrameTransforms();
+	PrepareCameraSubmissionCache();
 	m_cachedBoneMatrices.clear();
 
 	glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]);
 
-	// Collect transparent objects
 	m_renderQueue.clear();
+	for (uint32_t itemIndex : m_submissionCache.visibleTransparentItems.items) {
+		if (itemIndex >= m_renderItems.size()) {
+			continue;
+		}
 
-	auto& renderablePool = m_componentManager->GetRenderablePool();
-	for (auto& entry : renderablePool) {
-		auto& renderable = entry.component;
-		if (!renderable.model) continue;
-
-		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(entry.entity);
-		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
-			if (!mesh.RequiresAlphaBlending()) {
-				return;
-			}
-
-			glm::vec3 centerWS = ComputeMeshCenterWS(worldTransform, mesh);
-			float radiusWS = ComputeMeshRadiusWS(worldTransform, mesh);
-			if (m_frustumValid && !IsSphereVisible(centerWS, radiusWS)) {
-				return;
-			}
-			float dist = glm::length(centerWS - cameraPos);
-			uint64_t sortKey =
-				(static_cast<uint64_t>(mesh.material.stableMaterialID) << 32u) |
-				static_cast<uint64_t>(mesh.VAO);
-			m_renderQueue.push_back({ entry.entity, &mesh, dist, sortKey, true });
-		});
+		const glm::vec3 centerWS(
+			m_renderItemWorldCenterX[itemIndex],
+			m_renderItemWorldCenterY[itemIndex],
+			m_renderItemWorldCenterZ[itemIndex]);
+		const glm::vec3 toCamera = centerWS - cameraPos;
+		const float dist = glm::dot(toCamera, toCamera);
+		const RenderItem& item = m_renderItems[itemIndex];
+		RenderBatch batch;
+		batch.entity = item.entity;
+		batch.runtimeNodeIndex = item.runtimeNodeIndex;
+		batch.mesh = item.mesh;
+		batch.localTransform = item.localTransform;
+		batch.distanceToCamera = dist;
+		batch.sortKey = item.sortKey;
+		batch.isTransparent = true;
+		batch.cullingOverride = item.cullingOverride;
+		batch.skinned = item.skinned;
+		m_renderQueue.push_back(batch);
 	}
 
 	// Sort back to front
+	const auto sortStart = std::chrono::high_resolution_clock::now();
 	SortRenderQueue(cameraPos);
+	const auto sortEnd = std::chrono::high_resolution_clock::now();
+	m_diagnostics.transparentSortMs += std::chrono::duration<float, std::milli>(sortEnd - sortStart).count();
 
 	// Render
 	glUseProgram(transparentShader);
@@ -586,26 +673,35 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDepthMask(GL_FALSE);
 
-		if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
+	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
 	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
 
 	GLuint currentVAO = 0;
+	int skinningState = -1;
 	for (const auto& batch : m_renderQueue) {
-		auto* renderable = m_componentManager->GetRenderable(batch.entity);
-		if (!renderable || !renderable->model || !batch.mesh) continue;
+		if (!batch.mesh) {
+			continue;
+		}
 
-		const glm::mat4& worldTransform = m_transformSystem->GetWorldTransform(batch.entity);
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && batch.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(batch.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(batch.entity);
+		const glm::mat4 worldTransform = entityWorldTransform * batch.localTransform;
 
 		UploadTransformUniforms(batch.entity, worldTransform, uniforms);
-		if (renderable->isSkinned) {
+		if (batch.skinned) {
 			UploadBoneMatrices(batch.entity, worldTransform, uniforms);
-			if (uniforms.uEnableSkinning != -1) glUniform1i(uniforms.uEnableSkinning, 1);
+			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
+				glUniform1i(uniforms.uEnableSkinning, 1);
+				skinningState = 1;
+			}
 		}
-		else if (uniforms.uEnableSkinning != -1) {
+		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
 			glUniform1i(uniforms.uEnableSkinning, 0);
+			skinningState = 0;
 		}
 
-		ApplyCullingState(*batch.mesh, renderable->cullingOverride, worldTransform);
+		ApplyCullingState(*batch.mesh, batch.cullingOverride, worldTransform);
 		BindMaterialTextures(*batch.mesh, uniforms);
 		UploadMaterialUniforms(*batch.mesh, uniforms);
 
@@ -614,6 +710,7 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 			currentVAO = batch.mesh->VAO;
 		}
 		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(batch.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		++m_diagnostics.transparentDrawCalls;
 	}
 
 	if (currentVAO != 0) {
@@ -679,6 +776,7 @@ void RenderSystem::SetFrustumPlanes(const glm::mat4& viewProjection)
 	}
 
 	m_frustumValid = true;
+	++m_frustumSerial;
 }
 
 bool RenderSystem::IsSphereVisible(const glm::vec3& center, float radius) const
@@ -700,6 +798,7 @@ void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderU
 			glActiveTexture(GL_TEXTURE0 + unit);
 			glBindTexture(GL_TEXTURE_2D, desiredTexture);
 			m_boundMaterialTextures[unit] = desiredTexture;
+			++m_diagnostics.textureBindCount;
 		}
 		if (loc >= 0) glUniform1i(loc, unit);
 		};
@@ -712,23 +811,16 @@ void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderU
 	bindTexture(uniforms.textureSpecular, TextureUnits::MATERIAL_SPECULAR, mesh.specularTexture, DefaultTextures::White());
 	bindTexture(uniforms.textureSpecularColor, TextureUnits::MATERIAL_SPECULAR_COLOR, mesh.specularColorTexture, DefaultTextures::White());
 	bindTexture(uniforms.textureTransmission, TextureUnits::MATERIAL_TRANSMISSION, mesh.transmissionTexture, DefaultTextures::Black());
-
-	if (uniforms.hasBaseColorTexture >= 0) glUniform1i(uniforms.hasBaseColorTexture, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasNormalTexture >= 0) glUniform1i(uniforms.hasNormalTexture, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasMetallicRoughnessTexture >= 0) glUniform1i(uniforms.hasMetallicRoughnessTexture, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasEmissiveTexture >= 0) glUniform1i(uniforms.hasEmissiveTexture, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasOcclusionTexture >= 0) glUniform1i(uniforms.hasOcclusionTexture, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasSpecularTexture >= 0) glUniform1i(uniforms.hasSpecularTexture, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasSpecularColorTexture >= 0) glUniform1i(uniforms.hasSpecularColorTexture, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasTransmissionTexture >= 0) glUniform1i(uniforms.hasTransmissionTexture, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
 }
 
 void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
-	const MaterialDesc& material = mesh.material;
+	const MaterialDesc material = mesh.GetMaterialDesc();
 	if (m_cachedMaterialID == material.stableMaterialID) {
+		++m_diagnostics.materialCacheHitCount;
 		return;
 	}
+	++m_diagnostics.materialUploadCount;
 
 	if (uniforms.materialID >= 0) glUniform1ui(uniforms.materialID, material.stableMaterialID);
 	if (uniforms.baseColorFactor >= 0) glUniform4fv(uniforms.baseColorFactor, 1, glm::value_ptr(material.baseColorFactor));
@@ -739,7 +831,7 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.occlusionStrength >= 0) glUniform1f(uniforms.occlusionStrength, material.occlusionStrength);
 	if (uniforms.normalScale >= 0) glUniform1f(uniforms.normalScale, material.normalScale);
 	if (uniforms.alphaCutoff >= 0) glUniform1f(uniforms.alphaCutoff, material.alphaCutoff);
-	if (uniforms.specularFactor >= 0) glUniform1f(uniforms.specularFactor, material.specularFactor.x);
+	if (uniforms.specularFactor >= 0) glUniform1f(uniforms.specularFactor, material.specularFactor);
 	if (uniforms.specularColorFactor >= 0) glUniform3fv(uniforms.specularColorFactor, 1, glm::value_ptr(material.specularColorFactor));
 	if (uniforms.clearcoatFactor >= 0) glUniform1f(uniforms.clearcoatFactor, material.clearcoatFactor);
 	if (uniforms.clearcoatRoughnessFactor >= 0) glUniform1f(uniforms.clearcoatRoughnessFactor, material.clearcoatRoughnessFactor);
@@ -748,6 +840,26 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.attenuationDistance >= 0) glUniform1f(uniforms.attenuationDistance, material.attenuationDistance);
 	if (uniforms.attenuationColor >= 0) glUniform3fv(uniforms.attenuationColor, 1, glm::value_ptr(material.attenuationColor));
 	if (uniforms.ior >= 0) glUniform1f(uniforms.ior, material.ior);
+
+	auto clampUVSet = [](int uvSet) { return (uvSet == 1) ? 1 : 0; };
+	if (uniforms.baseColorUVSet >= 0) glUniform1i(uniforms.baseColorUVSet, clampUVSet(material.baseColorTexCoord));
+	if (uniforms.normalUVSet >= 0) glUniform1i(uniforms.normalUVSet, clampUVSet(material.normalTexCoord));
+	if (uniforms.metallicRoughnessUVSet >= 0) glUniform1i(uniforms.metallicRoughnessUVSet, clampUVSet(material.metallicRoughnessTexCoord));
+	if (uniforms.emissiveUVSet >= 0) glUniform1i(uniforms.emissiveUVSet, clampUVSet(material.emissiveTexCoord));
+	if (uniforms.occlusionUVSet >= 0) glUniform1i(uniforms.occlusionUVSet, clampUVSet(material.occlusionTexCoord));
+	if (uniforms.specularUVSet >= 0) glUniform1i(uniforms.specularUVSet, clampUVSet(material.specularTexCoord));
+	if (uniforms.specularColorUVSet >= 0) glUniform1i(uniforms.specularColorUVSet, clampUVSet(material.specularColorTexCoord));
+	if (uniforms.transmissionUVSet >= 0) glUniform1i(uniforms.transmissionUVSet, clampUVSet(material.transmissionTexCoord));
+
+	if (uniforms.hasBaseColorTexture >= 0) glUniform1i(uniforms.hasBaseColorTexture, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasNormalTexture >= 0) glUniform1i(uniforms.hasNormalTexture, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasMetallicRoughnessTexture >= 0) glUniform1i(uniforms.hasMetallicRoughnessTexture, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasEmissiveTexture >= 0) glUniform1i(uniforms.hasEmissiveTexture, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasOcclusionTexture >= 0) glUniform1i(uniforms.hasOcclusionTexture, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasSpecularTexture >= 0) glUniform1i(uniforms.hasSpecularTexture, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasSpecularColorTexture >= 0) glUniform1i(uniforms.hasSpecularColorTexture, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasTransmissionTexture >= 0) glUniform1i(uniforms.hasTransmissionTexture, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
+
 	m_cachedMaterialID = material.stableMaterialID;
 }
 
@@ -762,20 +874,25 @@ void RenderSystem::UploadTransformUniforms(EntityID entity,
 	const TransformComponent* transform = m_componentManager ? m_componentManager->GetTransform(entity) : nullptr;
 	glm::mat4 prevModelTransform = modelTransform;
 	if (transform) {
-		glm::mat4 localTransform = glm::mat4(1.0f);
-		glm::mat4 worldInverse = glm::inverse(transform->worldTransform);
-		bool validInverse = true;
-		for (int c = 0; c < 4 && validInverse; ++c) {
-			for (int r = 0; r < 4 && validInverse; ++r) {
-				if (!std::isfinite(worldInverse[c][r])) {
-					validInverse = false;
+		if (MatricesMatchExact(modelTransform, transform->worldTransform)) {
+			prevModelTransform = transform->prevWorldTransform;
+		}
+		else {
+			glm::mat4 localTransform = glm::mat4(1.0f);
+			glm::mat4 worldInverse = glm::inverse(transform->worldTransform);
+			bool validInverse = true;
+			for (int c = 0; c < 4 && validInverse; ++c) {
+				for (int r = 0; r < 4 && validInverse; ++r) {
+					if (!std::isfinite(worldInverse[c][r])) {
+						validInverse = false;
+					}
 				}
 			}
+			if (validInverse) {
+				localTransform = worldInverse * modelTransform;
+			}
+			prevModelTransform = transform->prevWorldTransform * localTransform;
 		}
-		if (validInverse) {
-			localTransform = worldInverse * modelTransform;
-		}
-		prevModelTransform = transform->prevWorldTransform * localTransform;
 	}
 
 	if (uniforms.prevModel != -1) {
@@ -795,12 +912,24 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 	if (std::isfinite(determinant) && determinant < 0.0f) {
 		frontFace = GL_CW;
 	}
-	glFrontFace(frontFace);
+	if (!m_cachedFrontFaceValid || m_cachedFrontFace != frontFace) {
+		glFrontFace(frontFace);
+		m_cachedFrontFace = frontFace;
+		m_cachedFrontFaceValid = true;
+	}
 
 	// If force backface culling is enabled globally, always cull back faces
 	if (m_forceBackfaceCulling) {
-		glEnable(GL_CULL_FACE);
-		glCullFace(GL_BACK);
+		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
+			glEnable(GL_CULL_FACE);
+			m_cachedCullEnabled = true;
+			m_cachedCullEnabledValid = true;
+		}
+		if (!m_cachedCullFaceValid || m_cachedCullFace != GL_BACK) {
+			glCullFace(GL_BACK);
+			m_cachedCullFace = GL_BACK;
+			m_cachedCullFaceValid = true;
+		}
 		return;
 	}
 
@@ -841,11 +970,23 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 	}
 
 	if (enableCulling) {
-		glEnable(GL_CULL_FACE);
-		glCullFace(cullFace);
+		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
+			glEnable(GL_CULL_FACE);
+			m_cachedCullEnabled = true;
+			m_cachedCullEnabledValid = true;
+		}
+		if (!m_cachedCullFaceValid || m_cachedCullFace != cullFace) {
+			glCullFace(cullFace);
+			m_cachedCullFace = cullFace;
+			m_cachedCullFaceValid = true;
+		}
 	}
 	else {
-		glDisable(GL_CULL_FACE);
+		if (!m_cachedCullEnabledValid || m_cachedCullEnabled) {
+			glDisable(GL_CULL_FACE);
+			m_cachedCullEnabled = false;
+			m_cachedCullEnabledValid = true;
+		}
 	}
 }
 
@@ -985,46 +1126,92 @@ void RenderSystem::UpdateGpuTransformBuffer()
 
 	const size_t maxTransformID = static_cast<size_t>(m_componentManager->GetMaxAllocatedTransformID());
 	auto& transformPool = m_componentManager->GetTransformPool();
+	const size_t requiredRecordCount = (maxTransformID == 0) ? 1 : (maxTransformID + 1);
+	const bool renderableRevisionChanged =
+		(m_lastPreparedRenderableRevision != m_componentManager->GetRenderableRevision());
+	const bool forceFullUpload =
+		!m_transformBuffer ||
+		!m_transformBuffer->IsValid() ||
+		m_gpuTransformRecords.size() != requiredRecordCount ||
+		renderableRevisionChanged;
 
-	if (maxTransformID == 0) {
-		if (m_transformBuffer && m_transformSystem &&
-			m_transformSystem->GetLastTransformsRecomputedCount() == 0 &&
-			m_gpuTransformRecords.size() == 1) {
-			return;
+	if (forceFullUpload) {
+		m_gpuTransformRecords.assign(requiredRecordCount, GpuTransformRecord{});
+		for (auto& record : m_gpuTransformRecords) {
+			record.world = glm::mat4(1.0f);
+			record.prevWorld = glm::mat4(1.0f);
+			record.metadata = glm::uvec4(0u);
 		}
-		m_gpuTransformRecords.assign(1, GpuTransformRecord{});
+
+		for (const auto& entry : transformPool) {
+			const TransformComponent& transform = entry.component;
+			if (transform.transformID == INVALID_TRANSFORM_ID) {
+				continue;
+			}
+
+			GpuTransformRecord& record = m_gpuTransformRecords[transform.transformID];
+			record.world = transform.worldTransform;
+			record.prevWorld = transform.prevWorldTransform;
+			record.metadata = glm::uvec4(0u);
+			record.metadata.z = transform.transformGeneration;
+
+			if (const RenderableComponent* renderable = m_componentManager->GetRenderable(entry.entity)) {
+				record.metadata.x |= kTransformFlagRenderable;
+				if (renderable->isSkinned) {
+					record.metadata.x |= kTransformFlagSkinned;
+				}
+			}
+		}
 	}
 	else {
-		const size_t requiredRecordCount = maxTransformID + 1;
-		if (m_transformBuffer && m_transformSystem &&
-			m_transformSystem->GetLastTransformsRecomputedCount() == 0 &&
-			m_gpuTransformRecords.size() == requiredRecordCount) {
+		if (m_transformSystem && m_transformSystem->GetLastTransformsRecomputedCount() == 0) {
 			return;
 		}
-		m_gpuTransformRecords.assign(requiredRecordCount, GpuTransformRecord{});
-	}
 
-	for (auto& record : m_gpuTransformRecords) {
-		record.world = glm::mat4(1.0f);
-		record.prevWorld = glm::mat4(1.0f);
-		record.metadata = glm::uvec4(0u);
-	}
+		std::vector<TransformID> dirtyTransformIDs;
+		const auto& changedEntities = m_transformSystem->GetLastChangedEntities();
+		dirtyTransformIDs.reserve(changedEntities.size());
 
-	for (const auto& entry : transformPool) {
-		const TransformComponent& transform = entry.component;
-		if (transform.transformID == INVALID_TRANSFORM_ID) {
-			continue;
+		for (EntityID entity : changedEntities) {
+			const TransformComponent* transform = m_componentManager->GetTransform(entity);
+			if (!transform || transform->transformID == INVALID_TRANSFORM_ID) {
+				continue;
+			}
+			dirtyTransformIDs.push_back(transform->transformID);
 		}
 
-		GpuTransformRecord& record = m_gpuTransformRecords[transform.transformID];
-		record.world = transform.worldTransform;
-		record.prevWorld = transform.prevWorldTransform;
-		record.metadata.z = transform.transformGeneration;
+		if (dirtyTransformIDs.empty()) {
+			return;
+		}
 
-		if (const RenderableComponent* renderable = m_componentManager->GetRenderable(entry.entity)) {
-			record.metadata.x |= kTransformFlagRenderable;
-			if (renderable->isSkinned) {
-				record.metadata.x |= kTransformFlagSkinned;
+		std::sort(dirtyTransformIDs.begin(), dirtyTransformIDs.end());
+		dirtyTransformIDs.erase(std::unique(dirtyTransformIDs.begin(), dirtyTransformIDs.end()),
+			dirtyTransformIDs.end());
+
+		for (TransformID transformID : dirtyTransformIDs) {
+			GpuTransformRecord& record = m_gpuTransformRecords[transformID];
+			record.world = glm::mat4(1.0f);
+			record.prevWorld = glm::mat4(1.0f);
+			record.metadata = glm::uvec4(0u);
+		}
+
+		for (EntityID entity : changedEntities) {
+			const TransformComponent* transform = m_componentManager->GetTransform(entity);
+			if (!transform || transform->transformID == INVALID_TRANSFORM_ID) {
+				continue;
+			}
+
+			GpuTransformRecord& record = m_gpuTransformRecords[transform->transformID];
+			record.world = transform->worldTransform;
+			record.prevWorld = transform->prevWorldTransform;
+			record.metadata = glm::uvec4(0u);
+			record.metadata.z = transform->transformGeneration;
+
+			if (const RenderableComponent* renderable = m_componentManager->GetRenderable(entity)) {
+				record.metadata.x |= kTransformFlagRenderable;
+				if (renderable->isSkinned) {
+					record.metadata.x |= kTransformFlagSkinned;
+				}
 			}
 		}
 	}
@@ -1034,15 +1221,389 @@ void RenderSystem::UpdateGpuTransformBuffer()
 		return;
 	}
 
-	if (!m_transformBuffer->SetData(m_gpuTransformRecords)) {
-		m_transformBuffer = std::make_unique<GLBuffer>(
-			BufferType::ShaderStorage,
-			BufferUsage::DynamicDraw
-		);
-		m_transformBuffer->SetLabel("RenderSystem_GlobalTransformSSBO");
-		m_transformBuffer->SetData(m_gpuTransformRecords);
+	if (forceFullUpload) {
+		if (!m_transformBuffer->SetData(m_gpuTransformRecords)) {
+			m_transformBuffer = std::make_unique<GLBuffer>(
+				BufferType::ShaderStorage,
+				BufferUsage::DynamicDraw
+			);
+			m_transformBuffer->SetLabel("RenderSystem_GlobalTransformSSBO");
+			m_transformBuffer->SetData(m_gpuTransformRecords);
+		}
+		++m_transformUploadCount;
+		m_submissionCache.bytesUploaded = m_gpuTransformRecords.size() * sizeof(GpuTransformRecord);
+		++m_diagnostics.transformFullUploads;
+		m_diagnostics.transformUploadBytes += m_submissionCache.bytesUploaded;
+		return;
 	}
+
+	std::vector<TransformID> dirtyTransformIDs;
+	const auto& changedEntities = m_transformSystem->GetLastChangedEntities();
+	dirtyTransformIDs.reserve(changedEntities.size());
+	for (EntityID entity : changedEntities) {
+		const TransformComponent* transform = m_componentManager->GetTransform(entity);
+		if (!transform || transform->transformID == INVALID_TRANSFORM_ID) {
+			continue;
+		}
+		dirtyTransformIDs.push_back(transform->transformID);
+	}
+
+	if (dirtyTransformIDs.empty()) {
+		return;
+	}
+
+	std::sort(dirtyTransformIDs.begin(), dirtyTransformIDs.end());
+	dirtyTransformIDs.erase(std::unique(dirtyTransformIDs.begin(), dirtyTransformIDs.end()),
+		dirtyTransformIDs.end());
+
+	size_t uploadedBytes = 0;
+	size_t segmentStart = static_cast<size_t>(dirtyTransformIDs.front());
+	size_t segmentLen = 1;
+	for (size_t i = 1; i < dirtyTransformIDs.size(); ++i) {
+		const size_t transformID = static_cast<size_t>(dirtyTransformIDs[i]);
+		if (transformID == segmentStart + segmentLen) {
+			++segmentLen;
+			continue;
+		}
+
+		m_transformBuffer->SubData(segmentStart * sizeof(GpuTransformRecord),
+			segmentLen * sizeof(GpuTransformRecord),
+			m_gpuTransformRecords.data() + segmentStart);
+		uploadedBytes += segmentLen * sizeof(GpuTransformRecord);
+		segmentStart = transformID;
+		segmentLen = 1;
+	}
+
+	m_transformBuffer->SubData(segmentStart * sizeof(GpuTransformRecord),
+		segmentLen * sizeof(GpuTransformRecord),
+		m_gpuTransformRecords.data() + segmentStart);
+	uploadedBytes += segmentLen * sizeof(GpuTransformRecord);
+
 	++m_transformUploadCount;
+	m_submissionCache.bytesUploaded = uploadedBytes;
+	++m_diagnostics.transformPartialUploads;
+	m_diagnostics.transformUploadBytes += uploadedBytes;
+}
+
+void RenderSystem::RebuildRenderItemsIfNeeded()
+{
+	if (!m_componentManager) {
+		return;
+	}
+
+	if (m_runtimeScene) {
+		m_runtimeScene->EnsureCompiled();
+	}
+
+	const uint64_t renderableRevision = m_componentManager->GetRenderableRevision();
+	const bool runtimeSizeChanged = m_runtimeScene && (m_runtimeNodeToRenderItems.size() != m_runtimeScene->GetNodeCount());
+	if (m_lastRenderItemRevision == renderableRevision && !runtimeSizeChanged && !m_renderItems.empty()) {
+		return;
+	}
+
+	m_renderItems.clear();
+	m_runtimeNodeToRenderItems.clear();
+	if (m_runtimeScene) {
+		m_runtimeNodeToRenderItems.resize(m_runtimeScene->GetNodeCount());
+	}
+
+	auto& renderablePool = m_componentManager->GetRenderablePool();
+	for (auto& entry : renderablePool) {
+		const EntityID entity = entry.entity;
+		const RenderableComponent& renderable = entry.component;
+		if (!renderable.model) {
+			continue;
+		}
+
+		const uint32_t runtimeIndex = m_runtimeScene ? m_runtimeScene->FindRuntimeIndex(entity) : INVALID_RUNTIME_NODE_INDEX;
+		uint32_t meshIndex = 0;
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			RenderItem item;
+			item.entity = entity;
+			item.runtimeNodeIndex = runtimeIndex;
+			item.mesh = &mesh;
+			item.model = renderable.model;
+			item.localTransform = ResolveRenderableMeshLocalTransform(renderable, mesh);
+			item.meshIndex = meshIndex++;
+			const MaterialDesc material = mesh.GetMaterialDesc();
+			item.materialKey = material.stableMaterialID;
+			item.sortKey = (static_cast<uint64_t>(material.stableMaterialID) << 32u) | static_cast<uint64_t>(mesh.VAO);
+			item.cullingOverride = renderable.cullingOverride;
+			item.transparent = mesh.RequiresAlphaBlending();
+			item.skinned = renderable.isSkinned;
+			const uint32_t newItemIndex = static_cast<uint32_t>(m_renderItems.size());
+			m_renderItems.push_back(item);
+			if (runtimeIndex != INVALID_RUNTIME_NODE_INDEX && runtimeIndex < m_runtimeNodeToRenderItems.size()) {
+				m_runtimeNodeToRenderItems[runtimeIndex].push_back(newItemIndex);
+			}
+		});
+	}
+
+	const size_t itemCount = m_renderItems.size();
+	m_renderItemRuntimeIndices.assign(itemCount, INVALID_RUNTIME_NODE_INDEX);
+	m_renderItemLocalCenterX.assign(itemCount, 0.0f);
+	m_renderItemLocalCenterY.assign(itemCount, 0.0f);
+	m_renderItemLocalCenterZ.assign(itemCount, 0.0f);
+	m_renderItemLocalRadius.assign(itemCount, 1.0f);
+	m_renderItemWorldCenterX.assign(itemCount, 0.0f);
+	m_renderItemWorldCenterY.assign(itemCount, 0.0f);
+	m_renderItemWorldCenterZ.assign(itemCount, 0.0f);
+	m_renderItemWorldRadius.assign(itemCount, 1.0f);
+	m_renderItemVisibleMask.assign(itemCount, 1u);
+	m_changedRenderItemScratch.clear();
+	m_changedRenderItemScratch.reserve(itemCount);
+
+	for (size_t itemIndex = 0; itemIndex < itemCount; ++itemIndex) {
+		const RenderItem& item = m_renderItems[itemIndex];
+		m_renderItemRuntimeIndices[itemIndex] = item.runtimeNodeIndex;
+		if (item.mesh && item.mesh->boundingVolumeValid) {
+			const glm::vec3 localCenter = ComputeTransformedLocalCenter(*item.mesh, item.localTransform);
+			m_renderItemLocalCenterX[itemIndex] = localCenter.x;
+			m_renderItemLocalCenterY[itemIndex] = localCenter.y;
+			m_renderItemLocalCenterZ[itemIndex] = localCenter.z;
+			m_renderItemLocalRadius[itemIndex] = ComputeTransformedLocalRadius(*item.mesh, item.localTransform);
+		}
+	}
+
+	UpdateAllRenderItemBounds();
+	m_lastRenderItemRevision = renderableRevision;
+	m_lastCameraCachePublication = 0;
+	m_lastShadowCachePublication = 0;
+}
+
+void RenderSystem::UpdateChangedRenderItemBounds()
+{
+	if (!m_runtimeScene || !m_transformSystem) {
+		UpdateAllRenderItemBounds();
+		return;
+	}
+
+	const uint64_t publication = m_transformSystem->GetWorldPublicationGeneration();
+	if (publication == 0 || publication == m_lastBoundsUpdatePublication) {
+		return;
+	}
+
+	m_changedRenderItemScratch.clear();
+	const auto& changedRuntimeIndices = m_transformSystem->GetLastChangedRuntimeIndices();
+	if (changedRuntimeIndices.empty()) {
+		UpdateAllRenderItemBounds();
+		m_lastBoundsUpdatePublication = publication;
+		return;
+	}
+
+	for (uint32_t runtimeIndex : changedRuntimeIndices) {
+		if (runtimeIndex >= m_runtimeNodeToRenderItems.size()) {
+			continue;
+		}
+		for (uint32_t itemIndex : m_runtimeNodeToRenderItems[runtimeIndex]) {
+			m_changedRenderItemScratch.push_back(itemIndex);
+		}
+	}
+
+	if (m_changedRenderItemScratch.empty()) {
+		m_lastBoundsUpdatePublication = publication;
+		return;
+	}
+
+	std::sort(m_changedRenderItemScratch.begin(), m_changedRenderItemScratch.end());
+	m_changedRenderItemScratch.erase(std::unique(m_changedRenderItemScratch.begin(), m_changedRenderItemScratch.end()),
+		m_changedRenderItemScratch.end());
+
+	SimdKernels::UpdateWorldBounds(m_simdBackend,
+		m_runtimeScene->GetWorldTransforms(),
+		m_renderItemRuntimeIndices,
+		m_renderItemLocalCenterX.data(),
+		m_renderItemLocalCenterY.data(),
+		m_renderItemLocalCenterZ.data(),
+		m_renderItemLocalRadius.data(),
+		m_renderItems.size(),
+		m_changedRenderItemScratch.data(),
+		m_changedRenderItemScratch.size(),
+		m_renderItemWorldCenterX.data(),
+		m_renderItemWorldCenterY.data(),
+		m_renderItemWorldCenterZ.data(),
+		m_renderItemWorldRadius.data());
+
+	m_lastBoundsUpdatePublication = publication;
+	m_lastCameraCachePublication = 0;
+	m_lastShadowCachePublication = 0;
+}
+
+void RenderSystem::UpdateAllRenderItemBounds()
+{
+	if (m_renderItems.empty()) {
+		return;
+	}
+
+	if (!m_runtimeScene) {
+		for (size_t itemIndex = 0; itemIndex < m_renderItems.size(); ++itemIndex) {
+			const RenderItem& item = m_renderItems[itemIndex];
+			const glm::mat4 world = ComposeRenderItemWorldTransform(m_transformSystem->GetWorldTransform(item.entity), item);
+			const glm::vec3 center = item.mesh && item.mesh->boundingVolumeValid
+				? ComputeMeshCenterWS(world, *item.mesh)
+				: glm::vec3(world[3]);
+			const float radius = item.mesh && item.mesh->boundingVolumeValid
+				? ComputeMeshRadiusWS(world, *item.mesh)
+				: 1.0f;
+			m_renderItemWorldCenterX[itemIndex] = center.x;
+			m_renderItemWorldCenterY[itemIndex] = center.y;
+			m_renderItemWorldCenterZ[itemIndex] = center.z;
+			m_renderItemWorldRadius[itemIndex] = radius;
+		}
+	}
+	else {
+		SimdKernels::UpdateWorldBounds(m_simdBackend,
+			m_runtimeScene->GetWorldTransforms(),
+			m_renderItemRuntimeIndices,
+			m_renderItemLocalCenterX.data(),
+			m_renderItemLocalCenterY.data(),
+			m_renderItemLocalCenterZ.data(),
+			m_renderItemLocalRadius.data(),
+			m_renderItems.size(),
+			nullptr,
+			m_renderItems.size(),
+			m_renderItemWorldCenterX.data(),
+			m_renderItemWorldCenterY.data(),
+			m_renderItemWorldCenterZ.data(),
+			m_renderItemWorldRadius.data());
+	}
+
+	m_lastBoundsUpdatePublication = m_transformSystem ? m_transformSystem->GetWorldPublicationGeneration() : 0;
+}
+
+void RenderSystem::PrepareCameraSubmissionCache()
+{
+	const auto cacheBuildStart = std::chrono::high_resolution_clock::now();
+	bool cacheRebuilt = false;
+
+	RebuildRenderItemsIfNeeded();
+	if (!m_runtimeScene || !m_transformSystem) {
+		UpdateAllRenderItemBounds();
+	}
+
+	const uint64_t publication = m_transformSystem ? m_transformSystem->GetWorldPublicationGeneration() : 0;
+	if (m_lastCameraCachePublication == publication && m_submissionCache.frustumSerial == m_frustumSerial) {
+		m_diagnostics.renderItemCount = m_renderItems.size();
+		m_diagnostics.visibleAllCount = m_submissionCache.visibleAllItems.items.size();
+		m_diagnostics.visibleOpaqueCount = m_submissionCache.visibleOpaqueItems.items.size();
+		m_diagnostics.visibleTransparentCount = m_submissionCache.visibleTransparentItems.items.size();
+		m_diagnostics.frustumCulledCount = m_renderItems.size() >= m_submissionCache.visibleAllItems.items.size()
+			? (m_renderItems.size() - m_submissionCache.visibleAllItems.items.size())
+			: 0;
+		return;
+	}
+	cacheRebuilt = true;
+
+	m_submissionCache.visibleAllItems.Clear();
+	m_submissionCache.visibleOpaqueItems.Clear();
+	m_submissionCache.visibleTransparentItems.Clear();
+	m_submissionCache.velocityItems.Clear();
+
+	if (m_renderItems.empty()) {
+		m_lastCameraCachePublication = publication;
+		m_submissionCache.frustumSerial = m_frustumSerial;
+		return;
+	}
+
+	if (m_frustumValid) {
+		SimdFrustumPlanes frustum{};
+		for (size_t plane = 0; plane < 6; ++plane) {
+			frustum.nx[plane] = m_frustumPlanes[plane].x;
+			frustum.ny[plane] = m_frustumPlanes[plane].y;
+			frustum.nz[plane] = m_frustumPlanes[plane].z;
+			frustum.d[plane] = m_frustumPlanes[plane].w;
+		}
+
+		SimdKernels::CullSpheres(m_simdBackend,
+			frustum,
+			m_renderItemWorldCenterX.data(),
+			m_renderItemWorldCenterY.data(),
+			m_renderItemWorldCenterZ.data(),
+			m_renderItemWorldRadius.data(),
+			m_renderItems.size(),
+			m_renderItemVisibleMask.data());
+	}
+	else {
+		std::fill(m_renderItemVisibleMask.begin(), m_renderItemVisibleMask.end(), 1u);
+	}
+
+	for (uint32_t itemIndex = 0; itemIndex < m_renderItems.size(); ++itemIndex) {
+		if (m_frustumValid && m_renderItemVisibleMask[itemIndex] == 0u) {
+			continue;
+		}
+
+		const RenderItem& item = m_renderItems[itemIndex];
+		m_submissionCache.visibleAllItems.items.push_back(itemIndex);
+		m_submissionCache.velocityItems.items.push_back(itemIndex);
+		if (item.transparent) {
+			m_submissionCache.visibleTransparentItems.items.push_back(itemIndex);
+		}
+		else {
+			m_submissionCache.visibleOpaqueItems.items.push_back(itemIndex);
+		}
+	}
+
+	m_submissionCache.cameraBuildGeneration = publication;
+	m_submissionCache.frustumSerial = m_frustumSerial;
+	m_submissionCache.drawCount = m_submissionCache.visibleAllItems.items.size();
+	m_lastCameraCachePublication = publication;
+
+	m_diagnostics.renderItemCount = m_renderItems.size();
+	m_diagnostics.visibleAllCount = m_submissionCache.visibleAllItems.items.size();
+	m_diagnostics.visibleOpaqueCount = m_submissionCache.visibleOpaqueItems.items.size();
+	m_diagnostics.visibleTransparentCount = m_submissionCache.visibleTransparentItems.items.size();
+	m_diagnostics.frustumCulledCount = m_renderItems.size() >= m_submissionCache.visibleAllItems.items.size()
+		? (m_renderItems.size() - m_submissionCache.visibleAllItems.items.size())
+		: 0;
+	if (cacheRebuilt) {
+		const auto cacheBuildEnd = std::chrono::high_resolution_clock::now();
+		m_diagnostics.cameraCacheBuildMs += std::chrono::duration<float, std::milli>(cacheBuildEnd - cacheBuildStart).count();
+	}
+}
+
+void RenderSystem::PrepareShadowSubmissionCache(const glm::mat4& lightSpaceMatrix)
+{
+	const auto cacheBuildStart = std::chrono::high_resolution_clock::now();
+	bool cacheRebuilt = false;
+
+	RebuildRenderItemsIfNeeded();
+	const uint64_t publication = m_transformSystem ? m_transformSystem->GetWorldPublicationGeneration() : 0;
+	if (m_lastShadowCachePublication == publication && MatricesMatchExact(m_lastShadowLightSpace, lightSpaceMatrix)) {
+		m_diagnostics.shadowVisibleCount = m_submissionCache.shadowVisibleItems.items.size();
+		return;
+	}
+	cacheRebuilt = true;
+
+	m_submissionCache.shadowVisibleItems.Clear();
+	for (uint32_t itemIndex = 0; itemIndex < m_renderItems.size(); ++itemIndex) {
+		const glm::vec3 center(
+			m_renderItemWorldCenterX[itemIndex],
+			m_renderItemWorldCenterY[itemIndex],
+			m_renderItemWorldCenterZ[itemIndex]);
+		const float radius = m_renderItemWorldRadius[itemIndex];
+		const glm::vec4 clip = lightSpaceMatrix * glm::vec4(center, 1.0f);
+		bool visible = true;
+		if (clip.w != 0.0f) {
+			const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+			const float margin = 0.2f * (1.0f + std::abs(ndc.z) * 0.5f) + radius * 0.01f;
+			visible = ndc.x >= -1.0f - margin && ndc.x <= 1.0f + margin &&
+				ndc.y >= -1.0f - margin && ndc.y <= 1.0f + margin &&
+				ndc.z >= -1.0f - margin && ndc.z <= 1.0f + margin;
+		}
+
+		if (visible) {
+			m_submissionCache.shadowVisibleItems.items.push_back(itemIndex);
+		}
+	}
+
+	m_submissionCache.shadowBuildGeneration = publication;
+	m_lastShadowCachePublication = publication;
+	m_lastShadowLightSpace = lightSpaceMatrix;
+	m_diagnostics.shadowVisibleCount = m_submissionCache.shadowVisibleItems.items.size();
+	if (cacheRebuilt) {
+		const auto cacheBuildEnd = std::chrono::high_resolution_clock::now();
+		m_diagnostics.shadowCacheBuildMs += std::chrono::duration<float, std::milli>(cacheBuildEnd - cacheBuildStart).count();
+	}
 }
 
 void RenderSystem::SortRenderQueue(const glm::vec3& cameraPos)
@@ -1062,6 +1623,9 @@ void RenderSystem::ResetMaterialStateCache(GLuint shader)
 	m_cachedMaterialShader = shader;
 	m_cachedMaterialID = std::numeric_limits<uint32_t>::max();
 	m_boundMaterialTextures.fill(std::numeric_limits<GLuint>::max());
+	m_cachedFrontFaceValid = false;
+	m_cachedCullFaceValid = false;
+	m_cachedCullEnabledValid = false;
 }
 
 void RenderSystem::BuildInstanceGroups()

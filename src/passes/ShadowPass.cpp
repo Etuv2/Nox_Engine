@@ -6,6 +6,7 @@
 #include "../RenderContext.h"
 #include <iostream>
 #include <algorithm>
+#include <glm/gtc/matrix_transform.hpp>
 
 ShadowPass::ShadowPass() {}
 
@@ -47,6 +48,8 @@ void ShadowPass::Execute(RenderContext& ctx,
     }
 
     auto& shadowConfig = lightManager->GetShadowConfig();
+    m_shadowNear = ctx.shadowNear;
+    m_shadowFar = ctx.shadowFar;
     shadowConfig.enablePCSS = ctx.enablePCSS;
     shadowConfig.directionalConstantBias = ctx.shadowBias;
     shadowConfig.directionalSlopeBias = std::max(ctx.shadowBias * 2.0f, ctx.shadowBias);
@@ -64,12 +67,23 @@ void ShadowPass::Execute(RenderContext& ctx,
     GLuint shadowArray = lightManager->GetShadowArrayTexture();
     if (shadowArray == 0) {
         std::cerr << "[ShadowPass] Shadow array not initialized - reinitializing...\n";
-        lightManager->InitializeShadowSystem(12, 1024);
+        lightManager->InitializeShadowSystem(12, shadowConfig.baseResolution);
     }
 
     // Render all shadow maps into unified array
     float aspect = static_cast<float>(ctx.width) / static_cast<float>(ctx.height);
-    lightManager->RenderShadowMaps(sceneGraph, camera, ctx.view, ctx.proj, 
+    glm::mat4 shadowView = camera->GetViewMatrix();
+    glm::mat4 shadowProj = glm::perspective(
+        glm::radians(camera->GetCameraFov()),
+        aspect,
+        m_shadowNear,
+        m_shadowFar
+    );
+
+    lightManager->RenderShadowMaps(sceneGraph, camera, shadowView, shadowProj,
                                    m_shadowNear, m_shadowFar, aspect, 
                                    camera->GetCameraFov());
+    if (lightManager->IsLightDataDirty()) {
+        lightManager->UpdateGPUBuffers();
+    }
 }

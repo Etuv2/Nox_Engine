@@ -21,13 +21,19 @@ struct PBRMaterial {
     vec3 specularF0;          // Canonical specular F0 (full RGB color)
     vec3 emissive;            // Emissive color (already scaled by strength)
     float ao;                 // Ambient occlusion from texture [0,1]
-    float transmission;       // Opaque deferred path keeps this at 0; forward transparent handles transmission.
+    float transmission;       // Shader-side principled transmission factor from RT7, or 0 when unavailable.
     float ior;                // Index of refraction (default 1.5)
     float specularFactor;     // KHR_materials_specular factor (default 1.0)
     vec3 specularColorFactor; // KHR_materials_specular color factor (default 1.0)
     float alpha;              // Base alpha for transparent materials
     float clearcoat;
     float clearcoatRoughness;
+    float sheen;
+    float sheenTint;
+    float subsurface;
+    float thickness;
+    vec3 attenuationColor;
+    float attenuationDistance;
     uint materialID;          // Material type (0=opaque MR, 2=transmissive)
 };
 
@@ -35,9 +41,10 @@ struct PBRMaterial {
 // RT0: RGBA8   - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 // RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-// RT3: R32UI   - Stable material identity used for debugging and tracking
+// RT3: R32UI   - Material routing/debug ID
 // RT4: RGBA16F - Emissive color (RGB) + unused (A)
 // RT6: RG16F   - Clearcoat factor (R) + clearcoat roughness (G)
+// RT7: RGBA16F - Principled extras: transmission (R), IOR (G), reserved (BA)
 // Depth buffer - Non-linear depth [0,1]
 
 // === G-Buffer Unpacking Functions ===
@@ -51,6 +58,7 @@ PBRMaterial UnpackGBufferMaterial(
     usampler2D gMaterialID,
     sampler2D gEmissive,
     sampler2D gClearCoat,
+    sampler2D gPrincipledParams,
     vec2 uv,
     out vec3 worldNormal
 ) {
@@ -93,17 +101,44 @@ PBRMaterial UnpackGBufferMaterial(
     vec4 emissiveData = texture(gEmissive, uv);
     mat.emissive = emissiveData.rgb * emissiveStrength;
     
-    // Deferred G-buffer only contains opaque materials. Transparent transmission is handled in the forward pass.
-    mat.transmission = 0.0;
-    mat.ior = 1.5;
+    vec4 principledData = texture(gPrincipledParams, uv);
+    mat.transmission = clamp(principledData.r, 0.0, 1.0);
+    mat.ior = principledData.g > 0.0 ? principledData.g : 1.5;
     mat.specularFactor = 1.0;
     mat.specularColorFactor = vec3(1.0);
     mat.alpha = 1.0;
+    mat.sheen = 0.0;
+    mat.sheenTint = 0.0;
+    mat.subsurface = 0.0;
+    mat.thickness = 0.0;
+    mat.attenuationColor = vec3(1.0);
+    mat.attenuationDistance = 1.0;
     vec2 clearcoatData = texture(gClearCoat, uv).rg;
     mat.clearcoat = clamp(clearcoatData.r, 0.0, 1.0);
     mat.clearcoatRoughness = ClampPerceptualRoughness(clearcoatData.g);
 
     return mat;
+}
+
+PrincipledSurface BuildPrincipledSurfaceFromMaterial(PBRMaterial mat) {
+    PrincipledSurface surface = BuildStoredPrincipledSurface(
+        mat.albedo,
+        mat.metallic,
+        mat.roughness,
+        mat.specularF0,
+        mat.transmission,
+        mat.clearcoat,
+        mat.clearcoatRoughness
+    );
+    surface.ior = max(mat.ior, 1.0);
+    surface.specularFactor = max(mat.specularFactor, 0.0);
+    surface.sheen = clamp(mat.sheen, 0.0, 1.0);
+    surface.sheenTint = clamp(mat.sheenTint, 0.0, 1.0);
+    surface.subsurface = clamp(mat.subsurface, 0.0, 1.0);
+    surface.thickness = max(mat.thickness, 0.0);
+    surface.attenuationColor = max(mat.attenuationColor, vec3(1e-3));
+    surface.attenuationDistance = max(mat.attenuationDistance, 1e-3);
+    return surface;
 }
 
 // === World Position Reconstruction ===
@@ -152,15 +187,14 @@ void ComputeAOFactorsSimple(
 
 // Compute direct lighting contribution from a single light with proper AO
 vec3 ComputeDirectLightContribution(
+    PrincipledSurface surface,
     vec3 N, vec3 V, vec3 L,
-    vec3 albedo, float metallic, float roughness, vec3 F0,
-    float transmission, float clearcoat, float clearcoatRoughness,
     vec3 lightColor, float attenuation,
     float diffuseAO,
     float shadow
 ) {
     vec3 diffuse, specular;
-    EvaluateCanonicalBRDFSeparated(N, V, L, albedo, metallic, roughness, F0, transmission, clearcoat, clearcoatRoughness, diffuse, specular);
+    EvaluatePrincipledBRDFSeparated(surface, N, V, L, diffuse, specular);
     
     // Apply AO to diffuse component only (specular should use specularAO in IBL)
     // For direct lighting, diffuseAO affects diffuse, specular is unaffected

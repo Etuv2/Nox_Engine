@@ -581,14 +581,16 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"TAAPass", { "GBuffer" }, { "TAA" },
-		[](const RenderContext& ctx) { return ctx.enableTAA; },
+		"TAAVelocityPass", { "GBuffer" }, { "Velocity" },
+		[](const RenderContext& ctx) { return ctx.enableTAA || ctx.enableSSGI; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
-			m_taaPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			if (m_taaPass) {
+				m_taaPass->ExecuteVelocity(m_context, sceneGraph, camera);
+			}
 		}
 		});
 	addPass({
-		"SSGIPass", { "GBuffer" }, { ResourceNames::SSGI },
+		"SSGIPass", { "GBuffer", "Velocity" }, { ResourceNames::SSGI },
 		[](const RenderContext& ctx) { return ctx.enableSSGI; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (!m_ssgiPass) {
@@ -599,7 +601,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"LightingPass", { "GBuffer", "TAA", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::SSGI, ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB }, { "HDRLit" },
+		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::SSGI, ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB }, { "HDRLit" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
@@ -628,7 +630,16 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
-		"BloomPass", { "HDRColor" }, { ResourceNames::Bloom },
+		"TAAResolvePass", { "HDRColor", "Velocity" }, { "TAAColor" },
+		[](const RenderContext& ctx) { return ctx.enableTAA; },
+		[this]() {
+			if (m_taaPass) {
+				m_taaPass->ExecuteResolve(m_context);
+			}
+		}
+		});
+	addPass({
+		"BloomPass", { "HDRColor", "TAAColor" }, { ResourceNames::Bloom },
 		[this](const RenderContext& ctx) { return ctx.enableBloom && DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
@@ -636,7 +647,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"PostProcessPass", { "HDRColor", ResourceNames::Bloom }, { "CompositedColor" },
+		"PostProcessPass", { "HDRColor", "TAAColor", ResourceNames::Bloom }, { "CompositedColor" },
 		[this](const RenderContext&) { return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			FrameBuffer::Unbind();
@@ -675,13 +686,14 @@ bool ModularRenderer::InitializeSharedResources()
 	// This must be enabled before any cubemap is created or sampled
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
-	// RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
+	// RT0: RGBA8   - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 	// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
-	// RT3: R32UI - Stable material identity for debug/tracking
+	// RT3: R32UI   - Material routing/debug ID
 	// RT4: RGBA16F - Emissive color (RGB) + unused (A)
-	// RT5: R32UI - Stable TransformID for temporal/surfel workflows
-	// RT6: RG16F - Clearcoat factor (R) + clearcoat roughness (G)
+	// RT5: R32UI   - Stable TransformID for temporal/surfel workflows
+	// RT6: RG16F   - Clearcoat factor (R) + clearcoat roughness (G)
+	// RT7: RGBA16F - Principled extras: transmission (R), IOR (G), reserved (BA)
 	m_context.gbufferFBO = std::make_unique<FrameBuffer>(
 		m_context.width, m_context.height,
 		std::vector<GLenum>{
@@ -691,7 +703,8 @@ bool ModularRenderer::InitializeSharedResources()
 			GL_R32UI,    // RT3: Material ID
 			GL_RGBA16F,  // RT4: Emissive color (RGB)
 			GL_R32UI,    // RT5: Transform ID
-			GL_RG16F     // RT6: Clearcoat
+			GL_RG16F,    // RT6: Clearcoat
+			GL_RGBA16F   // RT7: Principled extras
 	},
 		true,  // useDepthAsTexture
 		false  // useDepthAsTextureArray
@@ -758,6 +771,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 void ModularRenderer::UpdateContext(const std::shared_ptr<Camera>& camera,
 	float exposure, float gamma,
 	bool enableShadows, float shadowBias,
+	float shadowNear, float shadowFar,
 	glm::vec3 envColor)
 {
 	// Update per-frame parameters (from MainWindow function call)
@@ -765,13 +779,19 @@ void ModularRenderer::UpdateContext(const std::shared_ptr<Camera>& camera,
 	m_context.gamma = gamma;
 	m_context.enableShadows = enableShadows;
 	m_context.shadowBias = shadowBias;
+	m_context.shadowNear = shadowNear;
+	m_context.shadowFar = shadowFar;
 	m_context.envColor = envColor;
 
 
 	// Compute view/projection matrices
 	float aspect = static_cast<float>(m_context.width) / static_cast<float>(m_context.height);
 
-	// Store previous matrices for TAA
+	if (m_context.enableTAA && m_taaPass) {
+		m_taaPass->PrepareJitter(m_context.taaJitterPattern);
+	}
+
+	// Store previous matrices for temporal reprojection
 	m_context.prevView = m_context.view;
 	m_context.prevProj = m_context.proj;
 
@@ -782,17 +802,17 @@ void ModularRenderer::UpdateContext(const std::shared_ptr<Camera>& camera,
 		camera->GetCameraFarPlane()
 	);
 
-	m_context.view = view;
-	m_context.proj = proj;
-
 	// Apply TAA jitter if enabled
 	if (m_context.enableTAA && m_taaPass) {
 		glm::vec2 jitter = m_taaPass->GetCurrentJitter();
 		// Scale jitter to projection space
 		jitter *= (1.0f / glm::vec2(m_context.width, m_context.height));
-		m_context.proj[2][0] += jitter.x;
-		m_context.proj[2][1] += jitter.y;
+		proj[2][0] += jitter.x;
+		proj[2][1] += jitter.y;
 	}
+
+	m_context.view = view;
+	m_context.proj = proj;
 }
 
 
@@ -874,7 +894,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	}
 
 	// Update context with current frame parameters
-	UpdateContext(camera, exposure, gamma, enableShadows, shadowBias, envColor);
+	UpdateContext(camera, exposure, gamma, enableShadows, shadowBias, shadow_near, shadow_far, envColor);
 
 	// Get skybox from scene
 	auto skybox = sceneGraph->GetSkybox();

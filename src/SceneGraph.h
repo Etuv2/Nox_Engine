@@ -12,6 +12,7 @@
 #include "RenderSystem.h"
 #include "AnimationSystem.h"
 #include "HierarchySystem.h"
+#include "SceneRuntimeData.h"
 
 // Forward declarations
 class LightManager;
@@ -139,12 +140,14 @@ public:
     RenderSystem* GetRenderSystem() { return &m_renderSystem; }
     AnimationSystem* GetAnimationSystem() { return &m_animationSystem; }
     HierarchySystem* GetHierarchySystem() { return &m_hierarchySystem; }
+    SceneRuntimeData* GetRuntimeScene() { return &m_runtimeScene; }
     
     const ComponentManager* GetComponentManager() const { return &m_componentManager; }
     const TransformSystem* GetTransformSystem() const { return &m_transformSystem; }
     const RenderSystem* GetRenderSystem() const { return &m_renderSystem; }
     const AnimationSystem* GetAnimationSystem() const { return &m_animationSystem; }
     const HierarchySystem* GetHierarchySystem() const { return &m_hierarchySystem; }
+    const SceneRuntimeData* GetRuntimeScene() const { return &m_runtimeScene; }
     
     // Update all transforms in one batch
     void UpdateAllTransforms();
@@ -179,6 +182,7 @@ private:
     
     // Component-based architecture (ECS)
     ComponentManager m_componentManager;
+    SceneRuntimeData m_runtimeScene;
     TransformSystem m_transformSystem;
     RenderSystem m_renderSystem;
     AnimationSystem m_animationSystem;

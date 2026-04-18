@@ -21,6 +21,20 @@
 
 #pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
 
+namespace {
+bool MatricesNearEqual(const glm::mat4& lhs, const glm::mat4& rhs, float epsilon = 1e-4f)
+{
+	for (int column = 0; column < 4; ++column) {
+		for (int row = 0; row < 4; ++row) {
+			if (std::abs(lhs[column][row] - rhs[column][row]) > epsilon) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+}
+
 
 // LightProxy Implementation
 
@@ -472,6 +486,8 @@ void LightManager::ValidateShadowArrayTexture() const
 		return;
 	}
 
+	while (glGetError() != GL_NO_ERROR) {}
+
 	// Use Texture class methods to validate
 	GLuint shadowTexID = m_shadowArrayTexture->ID();
 
@@ -641,10 +657,106 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		return;
 	}
 
+	bool hasShadowCastingLight = false;
+	for (const auto& light : m_activeLights) {
+		if (light && light->CastsShadows()) {
+			hasShadowCastingLight = true;
+			break;
+		}
+	}
+	if (!hasShadowCastingLight) {
+		m_lightShadowInfo.clear();
+		m_lightDataDirty = true;
+		return;
+	}
+
 	auto frameStart = std::chrono::high_resolution_clock::now();
 	m_lastBufferUploadStats.shadowMatrixUploadBytes = 0;
 	m_lastBufferUploadStats.shadowMatrixUploadCount = 0;
 	++m_frameCounter;
+	const uint64_t scenePublication = (sceneGraph->GetTransformSystem() != nullptr)
+		? sceneGraph->GetTransformSystem()->GetWorldPublicationGeneration()
+		: 0;
+	const bool sceneChanged = !m_hasShadowFrameState || (scenePublication != m_lastShadowScenePublication);
+	const bool cameraChanged = !m_hasShadowFrameState ||
+		!MatricesNearEqual(view, m_lastShadowView) ||
+		!MatricesNearEqual(projection, m_lastShadowProjection) ||
+		std::abs(nearPlane - m_lastShadowNearPlane) > 1e-5f ||
+		std::abs(farPlane - m_lastShadowFarPlane) > 1e-4f ||
+		std::abs(aspect - m_lastShadowAspect) > 1e-5f ||
+		std::abs(fov - m_lastShadowFov) > 1e-4f;
+
+	bool needsShadowWork = m_lightDataDirty || !m_shadowMatricesInitialized || !m_hasShadowFrameState;
+	if (!needsShadowWork) {
+		int predictedSlice = 0;
+		for (size_t li = 0; li < m_activeLights.size() && predictedSlice < m_shadowArrayLayers && !needsShadowWork; ++li) {
+			const auto& light = m_activeLights[li];
+			if (!light || !light->CastsShadows()) {
+				continue;
+			}
+
+			const glm::vec3 lightPos = light->GetPosition();
+			const glm::vec3 lightDir = glm::normalize(light->GetDirection());
+
+			if (light->GetLightType() == BaseLight::LightType::DIRECTIONAL) {
+				const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
+				for (int cIdx = 0; cIdx < cascadeCount && predictedSlice < m_shadowArrayLayers; ++cIdx, ++predictedSlice) {
+					const auto& cached = m_cachedSlices[predictedSlice];
+					if (!cached.inUse ||
+						cached.type != BaseLight::LightType::DIRECTIONAL ||
+						cached.lightIndex != static_cast<int>(li) ||
+						cached.subIndex != cIdx ||
+						sceneChanged ||
+						cameraChanged ||
+						glm::length(lightPos - cached.lastLightPos) > 0.01f ||
+						glm::dot(lightDir, glm::normalize(cached.lastLightDir)) < (1.0f - 0.0025f)) {
+						needsShadowWork = true;
+						break;
+					}
+				}
+			}
+			else if (light->GetLightType() == BaseLight::LightType::SPOT) {
+				const auto& cached = m_cachedSlices[predictedSlice++];
+				if (!cached.inUse ||
+					cached.type != BaseLight::LightType::SPOT ||
+					cached.lightIndex != static_cast<int>(li) ||
+					sceneChanged ||
+					glm::length(lightPos - cached.lastLightPos) > 0.01f ||
+					glm::dot(lightDir, glm::normalize(cached.lastLightDir)) < (1.0f - 0.0025f)) {
+					needsShadowWork = true;
+				}
+			}
+			else if (light->GetLightType() == BaseLight::LightType::POINT) {
+				for (int face = 0; face < 6 && predictedSlice < m_shadowArrayLayers; ++face, ++predictedSlice) {
+					const auto& cached = m_cachedSlices[predictedSlice];
+					if (!cached.inUse ||
+						cached.type != BaseLight::LightType::POINT ||
+						cached.lightIndex != static_cast<int>(li) ||
+						cached.subIndex != face ||
+						sceneChanged ||
+						glm::length(lightPos - cached.lastLightPos) > 0.01f) {
+						needsShadowWork = true;
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	if (!needsShadowWork) {
+		stats.shadowUpdateTime = 0.0f;
+		m_lastShadowScenePublication = scenePublication;
+		m_lastShadowView = view;
+		m_lastShadowProjection = projection;
+		m_lastShadowNearPlane = nearPlane;
+		m_lastShadowFarPlane = farPlane;
+		m_lastShadowAspect = aspect;
+		m_lastShadowFov = fov;
+		m_hasShadowFrameState = true;
+		return;
+	}
+
+	const auto previousShadowInfo = m_lightShadowInfo;
 	m_lightShadowInfo.clear();
 
 	// Build full batch once
@@ -707,21 +819,13 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 		for (size_t i = 0; i < objs.size(); ++i) {
 			const auto& obj = objs[i];
-			glm::vec3 localCenter = glm::vec3(obj.boundingSphere);
-			float localRadius = obj.boundingSphere.w;
-			glm::vec3 worldCenter = glm::vec3(obj.modelMatrix * glm::vec4(localCenter, 1.0f));
-
-			float sx = glm::length(glm::vec3(obj.modelMatrix[0]));
-			float sy = glm::length(glm::vec3(obj.modelMatrix[1]));
-			float sz = glm::length(glm::vec3(obj.modelMatrix[2]));
-			float scaleMax = std::max(sx, std::max(sy, sz));
-			float worldRadius = localRadius * scaleMax;
+			const glm::vec3 worldCenter = glm::vec3(obj.boundingSphere);
+			const float worldRadius = obj.boundingSphere.w;
 
 			if (SphereIntersectsLightClip(worldCenter, worldRadius, ls)) {
 				filteredIndices.push_back(i);
 				// Build signature inline
-				glm::vec3 c = glm::vec3(obj.modelMatrix[3]);
-				sigC += c;
+				sigC += worldCenter;
 				++sigN;
 			}
 		}
@@ -869,17 +973,6 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			glm::vec3 lightPos = light->GetPosition();
 			float prev = nearPlane;
 
-			// Debug: Log cascade splits once per second (every ~60 frames)
-			static int debugCounter = 0;
-			if (debugCounter++ % 300 == 0) {
-				std::cout << "[CSM Debug] Near=" << nearPlane << " Far=" << farPlane 
-				          << " Splits:";
-				for (int splitIndex = 0; splitIndex < cascadeCount; ++splitIndex) {
-					std::cout << (splitIndex == 0 ? " [" : ", ") << splits[splitIndex];
-				}
-				std::cout << "]" << std::endl;
-			}
-
 			for (int cIdx = 0; cIdx < cascadeCount && currentSlice < m_shadowArrayLayers; ++cIdx) {
 				float cNear = (cIdx == 0) ? nearPlane : prev;
 				float cFar = splits[cIdx];
@@ -896,18 +989,14 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 				// Quick check if we can skip filtering entirely
 				auto& c = m_cachedSlices[currentSlice];
-				bool cadenceHit = (m_frameCounter % cadence) == 0;
-				bool needsUpdate = !c.inUse || cadenceHit;
-
-				// Early transform check before filtering
-				if (c.inUse && !cadenceHit) {
+				// Reuse cached cascades while the scene, camera, and light are unchanged.
+				if (c.inUse && !sceneChanged && !cameraChanged) {
 					const float posThresh = 0.01f;
 					const float dirThresh = 0.0025f;
 
 					if (glm::length(lightPos - c.lastLightPos) <= posThresh &&
 						glm::dot(glm::normalize(lightDir), glm::normalize(c.lastLightDir)) >= (1.0f - dirThresh) &&
-						glm::all(glm::epsilonEqual(glm::vec4(ls[3]), glm::vec4(c.lastMatrix[3]), 1e-4f))) {
-						// Can skip filtering - no significant changes
+						MatricesNearEqual(ls, c.lastMatrix)) {
 						c.inUse = true;
 						c.type = BaseLight::LightType::DIRECTIONAL;
 						c.lightIndex = (int)li;
@@ -953,21 +1042,27 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		// Spot Light Shadow
 
 		else if (light->GetLightType() == BaseLight::LightType::SPOT) {
-			bool rrSelected = ((m_roundRobinSpot++) % 2) == 0;
 			glm::vec3 lightPos = light->GetPosition();
 			glm::vec3 lightDir = glm::normalize(light->GetDirection());
 			glm::vec3 up = (fabs(glm::dot(lightDir, glm::vec3(0, 1, 0))) > 0.95f) ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
+
+			float outerCutoffDeg = 45.0f;
+			if (auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+				outerCutoffDeg = std::max(spot->GetOuterCutOff(), 1.0f);
+			}
+
+			float spotFov = glm::clamp(outerCutoffDeg * 2.0f * 1.05f, 10.0f, 170.0f);
+			float spotNear = std::max(0.05f, std::min(0.5f, light->GetRange() * 0.02f));
+			float spotFar = std::max(spotNear + 0.5f, light->GetRange() * 1.05f);
 			glm::mat4 viewL = glm::lookAt(lightPos, lightPos + lightDir, up);
-			glm::mat4 projL = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, light->GetRange() * 1.1f);
+			glm::mat4 projL = glm::perspective(glm::radians(spotFov), 1.0f, spotNear, spotFar);
 			glm::mat4 ls = projL * viewL;
 
-			unsigned cadence = rrSelected ? 1u : 4u;
+			unsigned cadence = 1u;
 
 			// Quick check before filtering
 			auto& c = m_cachedSlices[currentSlice];
-			bool cadenceHit = (m_frameCounter % cadence) == 0;
-
-			if (c.inUse && !cadenceHit) {
+			if (c.inUse && !sceneChanged) {
 				const float posThresh = 0.01f;
 				const float dirThresh = 0.0025f;
 
@@ -1015,11 +1110,11 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		// Point Light Cubemap Shadow
 
 		else if (light->GetLightType() == BaseLight::LightType::POINT) {
-			unsigned faceUpdate = (m_roundRobinPoint++) % 6;
 			float range = light->GetRange();
-			// Use generous far plane to avoid circular shadow cutoff
-			// The shader will handle distance-based attenuation
-			glm::mat4 proj90 = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, range * 2.0f);
+			float nearPlane = std::max(0.05f, std::min(0.5f, range * 0.02f));
+			float farPlane = std::max(nearPlane + 0.5f, range * 1.05f);
+			// Slightly wider than 90 deg to improve inter-face overlap and reduce seams.
+			glm::mat4 proj90 = glm::perspective(glm::radians(92.0f), 1.0f, nearPlane, farPlane);
 
 			const glm::vec3 dirs[6] = { {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1} };
 			const glm::vec3 ups[6] = { {0,-1,0},{0,-1,0},{0,0,1},{0,0,-1},{0,-1,0},{0,-1,0} };
@@ -1030,14 +1125,12 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 				glm::mat4 viewFace = glm::lookAt(lightPos, lightPos + dirs[face], ups[face]);
 				glm::mat4 ls = proj90 * viewFace;
 
-				unsigned cadence = (face == (int)faceUpdate) ? 1u : 8u;
+				unsigned cadence = 1u;
 
 				// Quick check before filtering
 				auto& c = m_cachedSlices[currentSlice];
-				bool cadenceHit = (m_frameCounter % cadence) == 0;
-
-				if (c.inUse && !cadenceHit) {
-					const float posThresh = 0.01f;
+				if (c.inUse && !sceneChanged) {
+				const float posThresh = 0.01f;
 
 					if (glm::length(lightPos - c.lastLightPos) <= posThresh) {
 						// Can skip filtering for this face
@@ -1139,7 +1232,39 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	m_totalBufferUploadStats.shadowMatrixUploadCount += m_lastBufferUploadStats.shadowMatrixUploadCount;
 	m_totalBufferUploadStats.shadowMatrixUploadBytes += m_lastBufferUploadStats.shadowMatrixUploadBytes;
 
+	bool shadowAssignmentsChanged = previousShadowInfo.size() != m_lightShadowInfo.size();
+	if (!shadowAssignmentsChanged) {
+		for (const auto& [lightPtr, info] : m_lightShadowInfo) {
+			const auto previousIt = previousShadowInfo.find(lightPtr);
+			if (previousIt == previousShadowInfo.end() ||
+				previousIt->second.startSlice != info.startSlice ||
+				previousIt->second.count != info.count) {
+				shadowAssignmentsChanged = true;
+				break;
+			}
+		}
+	}
+
+	for (size_t sliceIndex = 0; sliceIndex < m_cachedSlices.size(); ++sliceIndex) {
+		m_cachedSlices[sliceIndex].dirtyBits = DIRTY_NONE;
+		if (static_cast<int>(sliceIndex) >= currentSlice) {
+			m_cachedSlices[sliceIndex].inUse = false;
+			m_cachedSlices[sliceIndex].lightIndex = -1;
+			m_cachedSlices[sliceIndex].subIndex = 0;
+		}
+	}
+
+	m_lightDataDirty = shadowAssignmentsChanged;
+
 	FrameBuffer::Unbind();
+	m_lastShadowScenePublication = scenePublication;
+	m_lastShadowView = view;
+	m_lastShadowProjection = projection;
+	m_lastShadowNearPlane = nearPlane;
+	m_lastShadowFarPlane = farPlane;
+	m_lastShadowAspect = aspect;
+	m_lastShadowFov = fov;
+	m_hasShadowFrameState = true;
 
 	auto frameEnd = std::chrono::high_resolution_clock::now();
 	stats.shadowUpdateTime = std::chrono::duration<float, std::milli>(frameEnd - frameStart).count();
@@ -1199,7 +1324,7 @@ void LightManager::UpdateGPUBuffers()
 		LightData d{};
 		d.position = glm::vec4(light->GetPosition(), (float)light->GetLightType());
 		d.direction = glm::vec4(light->GetDirection(), 0.0f);
-		d.color = glm::vec4(light->GetEffectiveColor(), light->GetIntensity());
+		d.color = glm::vec4(light->GetColor(), light->GetIntensity());
 
 		glm::vec3 att = light->GetAttenuation();
 		d.attenuation = glm::vec4(att, light->GetRange());
@@ -1409,7 +1534,7 @@ void LightManager::UpdateLights(float dt)
 		if (p.second) {
 			const glm::vec3 prevPos = p.second->GetPosition();
 			const glm::vec3 prevDir = p.second->GetDirection();
-			const glm::vec3 prevColor = p.second->GetEffectiveColor();
+			const glm::vec3 prevColor = p.second->GetColor();
 			const float prevIntensity = p.second->GetIntensity();
 			const glm::vec3 prevAtt = p.second->GetAttenuation();
 			const float prevRange = p.second->GetRange();
@@ -1421,7 +1546,7 @@ void LightManager::UpdateLights(float dt)
 			dirty = dirty ||
 				(glm::length(p.second->GetPosition() - prevPos) > 1e-5f) ||
 				(glm::length(p.second->GetDirection() - prevDir) > 1e-5f) ||
-				(glm::length(p.second->GetEffectiveColor() - prevColor) > 1e-5f) ||
+				(glm::length(p.second->GetColor() - prevColor) > 1e-5f) ||
 				(std::abs(p.second->GetIntensity() - prevIntensity) > 1e-5f) ||
 				(glm::length(p.second->GetAttenuation() - prevAtt) > 1e-5f) ||
 				(std::abs(p.second->GetRange() - prevRange) > 1e-5f) ||
@@ -1451,7 +1576,7 @@ void LightManager::UpdateLights(float dt)
 				LightData packed{};
 				packed.position = glm::vec4(light->GetPosition(), (float)light->GetLightType());
 				packed.direction = glm::vec4(light->GetDirection(), 0.0f);
-				packed.color = glm::vec4(light->GetEffectiveColor(), light->GetIntensity());
+				packed.color = glm::vec4(light->GetColor(), light->GetIntensity());
 				packed.attenuation = glm::vec4(light->GetAttenuation(), light->GetRange());
 				packed.spotData = glm::vec4(0.0f);
 				packed.areaData = glm::vec4(0.0f);

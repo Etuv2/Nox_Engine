@@ -46,6 +46,7 @@ namespace TextureUnits {
     constexpr int GBUFFER_EMISSIVE_COLOR = 29;  // gEmissive color (RGB16F - separate from specular)
     constexpr int GBUFFER_TRANSFORM_ID = 30;    // gTransformID (R32UI - stable surface identity)
     constexpr int GBUFFER_CLEARCOAT = 31;       // gClearCoat (RG16F - factor + roughness)
+    constexpr int GBUFFER_PRINCIPLED = 32;      // gPrincipledParams (RGBA16F - transmission/ior + reserved principled slots)
     
     // ======================================
     // LIGHT PROPAGATION VOLUMES (LPV) - GLOBAL ILLUMINATION
