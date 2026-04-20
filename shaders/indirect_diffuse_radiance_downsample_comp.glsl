@@ -11,6 +11,7 @@ layout(binding = 4) uniform sampler2D velocityTex;
 layout(binding = 5) uniform sampler2D previousLinearDepthQuarter;
 layout(binding = 6) uniform sampler2D previousNormalTex;
 layout(binding = 7) uniform sampler2D normalFromDepthTex;
+layout(binding = 8) uniform sampler2D depthFull;
 
 layout(binding = 0, rgba16f) writeonly uniform image2D outRadianceQuarter;
 
@@ -19,6 +20,7 @@ uniform float previousIndirectFeedback;
 uniform float depthReject;
 uniform float normalRejectCos;
 uniform float disocclusionReject;
+uniform mat4 invProj;
 
 const float kInvalidDepth = 65504.0;
 
@@ -28,6 +30,11 @@ float Luma(vec3 c) {
 
 bool IsValidDepth(float depth) {
     return depth > 0.0 && depth < kInvalidDepth;
+}
+
+float ViewDepthFromDeviceDepth(vec2 uv, float depth01) {
+    vec3 viewPos = ReconstructViewPosition(uv, depth01, invProj);
+    return max(-viewPos.z, 1e-4);
 }
 
 void main() {
@@ -57,16 +64,34 @@ void main() {
     for (int y = 0; y < 4; ++y) {
         for (int x = 0; x < 4; ++x) {
             ivec2 src = clamp(base + ivec2(x, y), ivec2(0), srcSize - ivec2(1));
+            vec2 srcUV = (vec2(src) + 0.5) / vec2(srcSize);
+            float srcDepth01 = texelFetch(depthFull, src, 0).r;
+            if (srcDepth01 >= 0.999999) {
+                continue;
+            }
+
+            float srcDepthVS = ViewDepthFromDeviceDepth(srcUV, srcDepth01);
+            float depthRel = abs(srcDepthVS - currDepth) / max(max(srcDepthVS, currDepth), 1e-4);
+            if (depthRel > max(depthReject * 3.0, 0.12)) {
+                continue;
+            }
+
             vec3 bounceable = texelFetch(bounceableDiffuseTex, src, 0).rgb;
             vec3 emissive = texelFetch(emissiveTex, src, 0).rgb;
             vec3 source = max(bounceable + emissive, vec3(0.0));
-            float w = 1.0 / (1.0 + 0.15 * Luma(source));
+            float depthW = exp(-depthRel / max(depthReject * 0.75, 1e-4));
+            float w = depthW;
+            if (w <= 1e-6) {
+                continue;
+            }
             sourceRadiance += source * w;
             sourceWeight += w;
         }
     }
 
-    vec3 radiance = sourceRadiance / max(sourceWeight, 1e-6);
+    vec3 radiance = (sourceWeight > 1e-6)
+        ? (sourceRadiance / sourceWeight)
+        : max(texelFetch(bounceableDiffuseTex, clamp(base + ivec2(1, 1), ivec2(0), srcSize - ivec2(1)), 0).rgb, vec3(0.0));
     float reinjectWeight = 0.0;
 
     if (usePreviousIndirect == 1 && previousIndirectFeedback > 0.0) {
@@ -94,10 +119,11 @@ void main() {
                 float motionPixels = length(velocity * vec2(textureSize(linearDepthQuarter, 0)));
                 float motionW = exp(-motionPixels / 64.0);
 
-                float historySignal = clamp(prevIndirect.a, 0.0, 1.0);
-                reinjectWeight = clamp(previousIndirectFeedback, 0.0, 0.5) * historySignal;
+                float historySignal = Luma(max(prevIndirect.rgb, vec3(0.0)));
+                float historySignalWeight = 1.0 - exp(-historySignal * 0.75);
+                reinjectWeight = clamp(previousIndirectFeedback, 0.0, 0.75) * historySignalWeight;
                 reinjectWeight *= depthW * normalW * motionW * (1.0 - disocclusion);
-                reinjectWeight = clamp(reinjectWeight, 0.0, 0.5);
+                reinjectWeight = clamp(reinjectWeight, 0.0, 0.65);
 
                 radiance += max(prevIndirect.rgb, vec3(0.0)) * reinjectWeight;
             }

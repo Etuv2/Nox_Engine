@@ -18,7 +18,7 @@ class FrameBuffer; class ScreenQuad; class LightManager;
 struct RenderContext {
 	struct IndirectDiffuseDefaults {
 		static constexpr bool Enable = true;
-		static constexpr float Strength = 0.90f;
+		static constexpr float Strength = 1.50f;
 		static constexpr int SliceCount = 4;
 		static constexpr int SamplesPerSlice = 4;
 		static constexpr float RadiusVS = 4.0f;

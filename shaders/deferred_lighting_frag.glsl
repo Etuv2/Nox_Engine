@@ -479,8 +479,12 @@ bool EvaluateShadowDebugView(vec3 worldPos, vec3 N, out vec3 debugColor) {
 	return false;
 }
 
-// Proper PBR direct lighting with principled surface layering
-vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurface surface) {
+// Shared direct-light evaluation so full lighting and bounceable radiance use the same
+// attenuation and shadowing, while still allowing diffuse-only GI source construction.
+void ComputeDirectLightSeparated(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurface surface, out vec3 diffuseOut, out vec3 specularOut) {
+	diffuseOut = vec3(0.0);
+	specularOut = vec3(0.0);
+
 	LightData Ld = lights[idx];
 	int type = int(Ld.position.w);
 	vec3 lightPos = Ld.position.xyz;
@@ -499,7 +503,7 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurfac
 		// Point or spot light
 		vec3 diff = lightPos - worldPos;
 		float dist = length(diff);
-		if (dist > range) return vec3(0.0);
+		if (dist > range) return;
 		L = diff / dist;
 		
 		vec3 att = Ld.attenuation.xyz;
@@ -515,7 +519,7 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurfac
 			float innerCos = (Ld.spotData.x > 0.0) ? Ld.spotData.x : cos(radians(20.0));
 			float outerCos = (Ld.spotData.y > 0.0) ? Ld.spotData.y : cos(radians(30.0));
 			outerCos = min(outerCos, innerCos - 0.001);
-			if (theta < outerCos) return vec3(0.0);
+			if (theta < outerCos) return;
 			float eps = max(innerCos - outerCos, 0.001);
 			float cone = clamp((theta - outerCos) / eps, 0.0, 1.0);
 			cone = cone * cone * (3.0 - 2.0 * cone);
@@ -524,7 +528,7 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurfac
 	}
 
 	float NdotL = max(dot(N, L), 0.0);
-	if (NdotL <= 0.0) return vec3(0.0);
+	if (NdotL <= 0.0) return;
 
 	vec3 diffuse, specular;
 	EvaluatePrincipledBRDFSeparated(surface, N, V, L, diffuse, specular);
@@ -560,8 +564,17 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurfac
 	
 	// Final contribution
 	vec3 radiance = lightColor * attenuation;
-	
-	return (diffuse + specular) * radiance * combinedShadow;
+
+	diffuseOut = diffuse * radiance * combinedShadow;
+	specularOut = specular * radiance * combinedShadow;
+}
+
+// Proper PBR direct lighting with principled surface layering
+vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurface surface) {
+	vec3 diffuse;
+	vec3 specular;
+	ComputeDirectLightSeparated(idx, worldPos, N, V, surface, diffuse, specular);
+	return diffuse + specular;
 }
 
 vec3 ComputeIBL(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
@@ -640,7 +653,7 @@ vec3 SampleLPV(vec3 worldPos, vec3 normal, vec3 albedo, float metallic, float di
 void main() {
 	vec2 uv = vTexCoord;
 	float depth = texture(gDepth, uv).r;
-	if (depth >= 0.9999) { FragColor = vec4(0.0); return; }
+	if (depth >= 0.999999) { FragColor = vec4(0.0); return; }
 
 	// Read material contract from the G-buffer using the shared unpack path.
 	vec3 decodedNormal;
@@ -689,15 +702,20 @@ void main() {
 
 	// Evaluate direct and indirect terms separately so indirect diffuse stays local and debuggable.
 	vec3 directLighting = vec3(0.0);
+	vec3 directDiffuseLighting = vec3(0.0);
 	if (numLights > 0) {
 		int maxLights = min(numLights, 64);
 		for (int i = 0; i < maxLights; ++i) {
-			directLighting += ComputeDirectLight(i, worldPos, N, V, surface);
+			vec3 diffuseLight;
+			vec3 specularLight;
+			ComputeDirectLightSeparated(i, worldPos, N, V, surface, diffuseLight, specularLight);
+			directDiffuseLighting += diffuseLight;
+			directLighting += diffuseLight + specularLight;
 		}
 	}
 
 	if (lightingOutputMode == 1) {
-		FragColor = vec4(max(directLighting, vec3(0.0)), 1.0);
+		FragColor = vec4(max(directDiffuseLighting, vec3(0.0)), 1.0);
 		return;
 	}
 
@@ -717,8 +735,9 @@ void main() {
 	vec4 indirectSample = texture(indirectDiffuseMap, vTexCoord);
 	vec3 indirectIrradiance = max(indirectSample.rgb, vec3(0.0));
 	float indirectAO = clamp(indirectSample.a, 0.0, 1.0);
-	vec3 indirectContribution = indirectIrradiance * surface.diffuseColor * indirectDiffuseStrength * indirectAO;
-	indirectContribution = clamp(indirectContribution, vec3(0.0), vec3(2.5));
+	float indirectAttenuation = mix(0.35, 1.0, indirectAO);
+	vec3 indirectContribution = indirectIrradiance * surface.diffuseColor * indirectDiffuseStrength * indirectAttenuation * 2.5;
+	indirectContribution = clamp(indirectContribution, vec3(0.0), vec3(6.0));
 
 	vec3 color = emissive;
 	color += directLighting;

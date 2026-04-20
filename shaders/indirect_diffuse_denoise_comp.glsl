@@ -61,19 +61,20 @@ void main() {
     }
 
     float centerConf = clamp(textureLod(temporalDebug, uv, 0.0).x, 0.0, 1.0);
+    vec3 centerColor = max(centerI.rgb, vec3(0.0));
     float centerLuma = Luma(max(centerI.rgb, vec3(0.0)));
     float centerAO = clamp(centerI.a, 0.0, 1.0);
-    float centerDirEnergy = max(centerD.x, 0.0);
-    vec3 centerDirVec = centerD.yzw;
+    vec4 centerSH = centerD;
 
     float stageTightness = (kernelRadius <= 1) ? 1.0 : 0.0;
     float stageScale = mix(1.0, 0.62, stageTightness);
     float confPower = max(confidencePower, 0.1);
     float stability = mix(0.78, 1.0, centerConf);
 
-    float depthSigmaEff = max(depthSigma * max(denoiseStrength, 0.35) * stageScale * mix(0.92, 1.08, centerConf), 0.003);
-    float normalSigmaEff = max(max(normalReject, mix(0.18, 0.10, stageTightness)) * stageScale * mix(0.90, 1.05, centerConf), 0.020);
-    float spatialSigma = max(float(max(kernelRadius, 1)) * mix(1.85, 1.15, stageTightness), 0.65);
+    float denoiseScale = mix(1.0, 1.15, clamp((denoiseStrength - 1.0) / 2.0, 0.0, 1.0));
+    float depthSigmaEff = max(depthSigma * stageScale * mix(0.92, 1.08, centerConf) * denoiseScale, 0.003);
+    float normalSigmaEff = max(max(normalReject, mix(0.14, 0.08, stageTightness)) * mix(0.82, 1.0, stageTightness) * mix(0.90, 1.05, centerConf), 0.015);
+    float spatialSigma = max(float(max(kernelRadius, 1)) * mix(1.20, 0.95, stageTightness), 0.55);
     float colorSigma = max(lumaPhi, mix(0.22, 0.12, stageTightness));
     float aoSigma = mix(0.24, 0.14, stageTightness);
     float dirSigma = mix(0.28, 0.16, stageTightness);
@@ -102,31 +103,40 @@ void main() {
             }
 
             float sampleConf = clamp(textureLod(temporalDebug, sampleUV, 0.0).x, 0.0, 1.0);
+            vec3 sampleColor = max(sampleI.rgb, vec3(0.0));
             float sampleLuma = Luma(max(sampleI.rgb, vec3(0.0)));
             float sampleAO = clamp(sampleI.a, 0.0, 1.0);
-            float sampleDirEnergy = max(sampleD.x, 0.0);
-            vec3 sampleDirVec = sampleD.yzw;
+            vec4 sampleSH = sampleD;
 
             float dz = abs(centerDepth - sampleDepth) / max(max(centerDepth, sampleDepth), 1e-4);
+            if (dz > max(depthSigmaEff * 3.0, 0.06)) {
+                continue;
+            }
             float depthW = exp(-dz / max(depthSigmaEff, 1e-4));
 
             float ndot = max(dot(centerN, sampleN), 0.0);
+            if (ndot < mix(0.80, 0.60, stageTightness)) {
+                continue;
+            }
             float normalW = exp(-(1.0 - ndot) / max(normalSigmaEff, 1e-4));
 
             float spatialW = exp(-float(x * x + y * y) / max(spatialSigma * spatialSigma, 1e-4));
             float historyW = mix(0.20, 1.0, pow(sampleConf, confPower));
             historyW *= stability;
 
-            float lumaDenom = max(mix(centerLuma, sampleLuma, 0.5), 1.0);
-            float colorW = exp(-abs(sampleLuma - centerLuma) / max(colorSigma * lumaDenom, 0.05));
-            colorW = mix(0.40, 1.0, colorW);
+            float lumaDenom = max(mix(centerLuma, sampleLuma, 0.5), 0.15);
+            float lumaDelta = abs(sampleLuma - centerLuma) / lumaDenom;
+            float chromaDelta = length(sampleColor - centerColor) / max(centerLuma + sampleLuma, 0.15);
+            if (chromaDelta > mix(1.25, 2.5, stageTightness)) {
+                continue;
+            }
+            float colorDelta = lumaDelta + chromaDelta * 1.5;
+            float colorW = exp(-colorDelta / max(colorSigma, 0.04));
 
             float aoW = exp(-abs(sampleAO - centerAO) / max(aoSigma, 0.02));
-            aoW = mix(0.45, 1.0, aoW);
 
-            float dirDelta = abs(sampleDirEnergy - centerDirEnergy) + 0.5 * length(sampleDirVec - centerDirVec);
-            float dirW = exp(-dirDelta / max(dirSigma * max(centerDirEnergy + sampleDirEnergy, 1.0), 0.05));
-            dirW = mix(0.50, 1.0, dirW);
+            float shDelta = length(sampleSH - centerSH) / max(length(sampleSH) + length(centerSH), 0.10);
+            float dirW = exp(-shDelta / max(dirSigma, 0.04));
 
             float w = depthW * normalW * spatialW * historyW * colorW * aoW * dirW;
             if (w <= 1e-6) {

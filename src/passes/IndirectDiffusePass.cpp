@@ -173,9 +173,6 @@ void IndirectDiffusePass::Execute(RenderContext& ctx,
     glCopyImageSubData(m_indirectDiffuseTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
         m_historyResolvedGI->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
         m_w, m_h, 1);
-    glCopyImageSubData(m_indirectDiffuseTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-        m_debugOutput->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-        m_w, m_h, 1);
     ctx.indirectDiffuseHistoryReset = false;
 }
 
@@ -226,14 +223,21 @@ void IndirectDiffusePass::runRadiance(RenderContext& ctx) {
     glBindTextureUnit(5, m_historyDepthQuarter->ID());
     glBindTextureUnit(6, m_historyNormalFull->ID());
     glBindTextureUnit(7, m_normalQuarter->ID());
+    glBindTextureUnit(8, ctx.gbufferFBO->GetDepthTexture());
     glBindImageTexture(0, m_bounceableRadianceQuarter->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
     glUniform1i(glGetUniformLocation(m_csRadiance->GetProgramID(), "usePreviousIndirect"),
         (ctx.velocityTex != 0 && m_historyDepthQuarter && m_historyNormalFull && !ctx.indirectDiffuseHistoryReset) ? 1 : 0);
-    glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "previousIndirectFeedback"), 0.5f);
+    // Keep the optional multi-bounce reinjection disabled while validating the
+    // core visibility-bitmask pipeline. Feeding previous indirect back into the
+    // source buffer is useful later, but right now it contaminates stage color
+    // debugging and makes it much harder to judge whether gather/temporal/denoise
+    // are correct on their own.
+    glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "previousIndirectFeedback"), 0.0f);
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "depthReject"), std::clamp(ctx.indirectDiffuseDepthReject, 0.01f, 0.35f));
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "normalRejectCos"), std::clamp(1.0f - ctx.indirectDiffuseNormalReject, 0.55f, 0.99f));
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "disocclusionReject"), std::clamp(ctx.indirectDiffuseDepthReject * 1.5f, 0.02f, 0.25f));
+    glUniformMatrix4fv(glGetUniformLocation(m_csRadiance->GetProgramID(), "invProj"), 1, GL_FALSE, glm::value_ptr(glm::inverse(ctx.proj)));
 
     const GLuint gx = (m_qw + 7) / 8;
     const GLuint gy = (m_qh + 7) / 8;
@@ -353,62 +357,23 @@ void IndirectDiffusePass::runTemporal(RenderContext& ctx) {
 }
 
 void IndirectDiffusePass::runBilateral(RenderContext& ctx) {
-    const GLuint gx = (m_qw + 7) / 8;
-    const GLuint gy = (m_qh + 7) / 8;
-    const float denoiseStrength = std::clamp(ctx.indirectDiffuseDenoiseStrength, 0.5f, 3.0f);
+    // Temporarily bypass the denoiser to keep the pipeline in a trustworthy
+    // validation state. Recent color regressions made Denoise1/Denoise2 an
+    // unreliable debugging stage, so keep stage ownership intact while copying
+    // temporal outputs straight through.
+    glCopyImageSubData(m_indirectTemporal->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_indirectDenoiseStage1->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_qw, m_qh, 1);
+    glCopyImageSubData(m_directionalTemporal->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_directionalDenoiseStage1->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_qw, m_qh, 1);
 
-    auto dispatchDenoise = [&](GLuint inIndirect, GLuint inDirectional,
-                               GLuint outIndirect, GLuint outDirectional,
-                               int kernelRadius,
-                               float depthScale,
-                               float normalScale,
-                               float confidencePower,
-                               float lumaPhi) {
-        glUseProgram(m_csBilateral->GetProgramID());
-
-        glBindTextureUnit(0, inIndirect);
-        glBindTextureUnit(1, inDirectional);
-        glBindTextureUnit(2, m_depthLinearQuarter->ID());
-        glBindTextureUnit(3, m_normalQuarter->ID());
-        glBindTextureUnit(4, m_temporalDebug->ID());
-
-        glBindImageTexture(5, outIndirect, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(6, outDirectional, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-
-        glUniform2f(glGetUniformLocation(m_csBilateral->GetProgramID(), "invQuarterSize"), 1.0f / float(m_qw), 1.0f / float(m_qh));
-        glUniform2f(glGetUniformLocation(m_csBilateral->GetProgramID(), "fullResolution"), float(m_w), float(m_h));
-        glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "depthSigma"), std::max(0.01f, ctx.indirectDiffuseDepthReject * depthScale));
-        glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "normalReject"), std::max(0.0f, ctx.indirectDiffuseNormalReject * normalScale));
-        glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "denoiseStrength"), denoiseStrength);
-        glUniform1i(glGetUniformLocation(m_csBilateral->GetProgramID(), "kernelRadius"), kernelRadius);
-        glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "confidencePower"), confidencePower);
-        glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "lumaPhi"), lumaPhi);
-
-        glDispatchCompute(gx, gy, 1);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-    };
-
-    dispatchDenoise(
-        m_indirectTemporal->ID(),
-        m_directionalTemporal->ID(),
-        m_indirectDenoiseStage1->ID(),
-        m_directionalDenoiseStage1->ID(),
-        2,
-        1.0f,
-        1.0f,
-        1.0f,
-        0.0f);
-
-    dispatchDenoise(
-        m_indirectDenoiseStage1->ID(),
-        m_directionalDenoiseStage1->ID(),
-        m_indirectDenoised->ID(),
-        m_directionalDenoised->ID(),
-        1,
-        0.65f,
-        0.0f,
-        1.0f,
-        0.0f);
+    glCopyImageSubData(m_indirectTemporal->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_indirectDenoised->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_qw, m_qh, 1);
+    glCopyImageSubData(m_directionalTemporal->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_directionalDenoised->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+        m_qw, m_qh, 1);
 }
 
 void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
@@ -432,6 +397,7 @@ void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
     glBindTextureUnit(15, m_indirectTemporal->ID());
 
     glBindImageTexture(0, m_indirectDiffuseTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    glBindImageTexture(1, m_debugOutput->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
     glUniform2f(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "invFullSize"), 1.0f / float(m_w), 1.0f / float(m_h));
     glUniform2f(glGetUniformLocation(m_csFinalUpsample->GetProgramID(), "invQuarterSize"), 1.0f / float(m_qw), 1.0f / float(m_qh));
@@ -448,5 +414,3 @@ void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
     glDispatchCompute(gx, gy, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 }
-
-

@@ -11,7 +11,7 @@ uniform mat4 invProj;
 const float kInvalidDepth = 65504.0;
 
 float LinearDepthFromDepth01(vec2 uv, float depth01) {
-    if (depth01 >= 0.9999) {
+    if (depth01 >= 0.999999) {
         return kInvalidDepth;
     }
     vec3 viewPos = ReconstructViewPosition(uv, depth01, invProj);

@@ -21,7 +21,7 @@ vec2 EncodeOctNormal01(vec3 n) {
 bool ReconstructViewPos(ivec2 src, ivec2 srcSize, out vec3 viewPos, out float depth01) {
     src = clamp(src, ivec2(0), srcSize - ivec2(1));
     depth01 = texelFetch(gDepth, src, 0).r;
-    if (depth01 >= 0.9999) {
+    if (depth01 >= 0.999999) {
         viewPos = vec3(0.0);
         return false;
     }

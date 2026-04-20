@@ -666,7 +666,7 @@ void RenderingSettingsWindow::Render() {
 			ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.5f, 1.0f), "Visibility-Bitmask Indirect Diffuse:");
 			if (ImGui::Checkbox("Enable Indirect Diffuse", &m_enableIndirectDiffuse)) { SyncToRenderer(); }
 			if (m_enableIndirectDiffuse) {
-				if (ImGui::SliderFloat("Indirect Strength", &m_indirectDiffuseStrength, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Indirect Strength", &m_indirectDiffuseStrength, 0.0f, 6.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Slice Count", &m_indirectDiffuseSliceCount, 1, 8)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 16)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 8.0f, "%.2f")) { SyncToRenderer(); }

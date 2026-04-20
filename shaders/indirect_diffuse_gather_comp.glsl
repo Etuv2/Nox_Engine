@@ -24,7 +24,7 @@ uniform vec2 invQuarterSize;
 uniform vec2 fullResolution;
 uniform float projScaleX;
 uniform float projScaleY;
-uniform float rayLength;     // Gather radius in quarter-res pixels.
+uniform float rayLength;     // Gather radius in view-space units.
 uniform float thicknessVS;   // Constant thickness in view-space units.
 uniform int rayCount;        // Slice count. Default target: 4.
 uniform int stepCount;       // Samples per slice. Default target: 4.
@@ -77,6 +77,10 @@ vec3 BuildTangent(vec3 normal, vec3 cameraVec) {
 
 vec3 BuildBitangent(vec3 normal, vec3 tangent) {
     return normalize(cross(normal, tangent));
+}
+
+vec3 ProjectOntoPlane(vec3 v, vec3 planeNormal) {
+    return v - planeNormal * dot(v, planeNormal);
 }
 
 vec4 SHBasisL1(vec3 dir) {
@@ -167,7 +171,14 @@ void main() {
     float thicknessHalf = max(thicknessVS * 0.5, 1e-4);
     float invSliceCount = 1.0 / float(sliceCount);
     float invSamplesPerSlice = 1.0 / float(samplesPerSlice);
-    float maxRadiusPx = max(rayLength, 0.0);
+    vec2 quarterSize = vec2(textureSize(linearDepthQuarter, 0));
+    float projectedPixelsPerViewUnit =
+        0.5 * max(projScaleX * quarterSize.x, projScaleY * quarterSize.y) / max(centerDepth, 1e-4);
+    float maxRadiusPx = clamp(
+        max(rayLength, 0.05) * projectedPixelsPerViewUnit,
+        2.0,
+        0.5 * max(quarterSize.x, quarterSize.y)
+    );
 
     for (int slice = 0; slice < sliceCount; ++slice) {
         float sliceJitter = InterleavedGradientNoise(vec2(id) + vec2(float(slice), 3.0), float(frameIndex));
@@ -181,6 +192,14 @@ void main() {
             vec3(sliceDirVS.x * projScaleX, sliceDirVS.y * projScaleY, 0.0),
             vec3(1.0, 0.0, 0.0)
         ).xy;
+        vec3 slicePlaneNormal = SafeNormalize(
+            cross(sliceDirVS, cameraVec),
+            cross(sliceDirVS, tangent)
+        );
+        vec3 projectedNormal = SafeNormalize(
+            ProjectOntoPlane(centerNormal, slicePlaneNormal),
+            centerNormal
+        );
 
         uint coveredMask = 0u;
         vec3 sliceIndirect = vec3(0.0);
@@ -225,10 +244,15 @@ void main() {
 
             vec3 sampleDir = deltaVS / dist;
             float planarDist = max(abs(dot(deltaVS, sliceDirVS)), 1e-5);
-            float height = dot(deltaVS, centerNormal);
+            vec3 sampleDirPlane = SafeNormalize(
+                ProjectOntoPlane(sampleDir, slicePlaneNormal),
+                sampleDir
+            );
+            float sampleElevation = asin(clamp(dot(sampleDirPlane, projectedNormal), -1.0, 1.0));
+            float thicknessAngle = atan(thicknessHalf, planarDist);
 
-            float thetaMin = atan(max(height - thicknessHalf, 0.0), planarDist);
-            float thetaMax = atan(max(height + thicknessHalf, 0.0), planarDist);
+            float thetaMin = sampleElevation - thicknessAngle;
+            float thetaMax = sampleElevation + thicknessAngle;
             thetaMin = clamp(thetaMin, 0.0, HALF_PI);
             thetaMax = clamp(thetaMax, 0.0, HALF_PI);
             if (thetaMax <= 0.0) {
@@ -258,9 +282,9 @@ void main() {
             );
 
             float sectorWeight = float(newSectorCount) * INV_SECTOR_COUNT;
-            float cosineWeight = max(dot(centerNormal, sampleDir), 0.0);
-            float distanceWeight = 1.0 / (1.0 + dist / max(thicknessVS * 4.0, 0.25));
-            float transport = sectorWeight * cosineWeight * distanceWeight;
+            float cosineWeight = max(dot(projectedNormal, sampleDirPlane), 0.0);
+            float distanceWeight = 1.0 / (1.0 + dist / max(rayLength, 0.25));
+            float transport = sectorWeight * mix(0.35, 1.0, cosineWeight) * distanceWeight * 2.25;
             if (transport <= 1e-6) {
                 continue;
             }
@@ -272,7 +296,7 @@ void main() {
             }
 
             float surfaceFacing = max(dot(sampleNormal, -sampleDir), 0.0);
-            transport *= mix(0.5, 1.0, surfaceFacing);
+            transport *= mix(0.35, 1.0, surfaceFacing);
             if (transport <= 1e-6) {
                 continue;
             }
