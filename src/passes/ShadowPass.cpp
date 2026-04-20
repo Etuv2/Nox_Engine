@@ -73,16 +73,9 @@ void ShadowPass::Execute(RenderContext& ctx,
     // Render all shadow maps into unified array
     float aspect = static_cast<float>(ctx.width) / static_cast<float>(ctx.height);
     glm::mat4 shadowView = camera->GetViewMatrix();
-    glm::mat4 shadowProj = glm::perspective(
-        glm::radians(camera->GetCameraFov()),
-        aspect,
-        m_shadowNear,
-        m_shadowFar
-    );
 
-    lightManager->RenderShadowMaps(sceneGraph, camera, shadowView, shadowProj,
-                                   m_shadowNear, m_shadowFar, aspect, 
-                                   camera->GetCameraFov());
+    lightManager->RenderShadowMaps(sceneGraph, camera, shadowView,
+                                   m_shadowNear, m_shadowFar, aspect);
     if (lightManager->IsLightDataDirty()) {
         lightManager->UpdateGPUBuffers();
     }

@@ -123,6 +123,7 @@ LightManager::LightManager()
 	shadowConfig.dynamicResolution = true;
 	shadowConfig.stableTexelSnapping = true;
 	shadowConfig.directionalSplitLambda = 0.6f;
+	shadowConfig.directionalShadowFitFov = 0.0f;  // 0 = auto-fit based on cascade splits, >0 = fixed FOV fit
 	shadowConfig.cascadeBaseOverlap = 0.02f;
 	shadowConfig.directionalConstantBias = 0.0008f;
 	shadowConfig.directionalSlopeBias = 0.0045f;
@@ -637,20 +638,16 @@ static void BuildCasterSignature(const MDIBatch& batch, glm::vec3& centroidSum, 
  * @param sceneGraph The scene graph containing renderable objects
  * @param camera The active camera
  * @param view The view matrix
- * @param projection The projection matrix
  * @param nearPlane Camera near plane
  * @param farPlane Camera far plane
  * @param aspect Camera aspect ratio
- * @param fov Camera field of view in degrees
  */
 void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGraph,
 	const std::shared_ptr<Camera>& camera,
 	const glm::mat4& view,
-	const glm::mat4& projection,
 	float nearPlane,
 	float farPlane,
-	float aspect,
-	float fov)
+	float aspect)
 {
 	if (!m_shadowSystemInitialized || !sceneGraph || m_shadowShader == 0) {
 		std::cout << "[LightManager] Shadow rendering skipped - system not ready" << std::endl;
@@ -680,11 +677,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	const bool sceneChanged = !m_hasShadowFrameState || (scenePublication != m_lastShadowScenePublication);
 	const bool cameraChanged = !m_hasShadowFrameState ||
 		!MatricesNearEqual(view, m_lastShadowView) ||
-		!MatricesNearEqual(projection, m_lastShadowProjection) ||
 		std::abs(nearPlane - m_lastShadowNearPlane) > 1e-5f ||
 		std::abs(farPlane - m_lastShadowFarPlane) > 1e-4f ||
-		std::abs(aspect - m_lastShadowAspect) > 1e-5f ||
-		std::abs(fov - m_lastShadowFov) > 1e-4f;
+		std::abs(aspect - m_lastShadowAspect) > 1e-5f;
 
 	bool needsShadowWork = m_lightDataDirty || !m_shadowMatricesInitialized || !m_hasShadowFrameState;
 	if (!needsShadowWork) {
@@ -747,11 +742,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		stats.shadowUpdateTime = 0.0f;
 		m_lastShadowScenePublication = scenePublication;
 		m_lastShadowView = view;
-		m_lastShadowProjection = projection;
 		m_lastShadowNearPlane = nearPlane;
 		m_lastShadowFarPlane = farPlane;
 		m_lastShadowAspect = aspect;
-		m_lastShadowFov = fov;
 		m_hasShadowFrameState = true;
 		return;
 	}
@@ -948,6 +941,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		};
 
 	int currentSlice = 0;
+	const float cascadeFitFov = glm::clamp(shadowConfig.directionalShadowFitFov, 10.0f, 170.0f);
 
 	// Iterate through all active lights
 	for (size_t li = 0; li < m_activeLights.size() && currentSlice < m_shadowArrayLayers; ++li) {
@@ -978,9 +972,16 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 				float cFar = splits[cIdx];
 				prev = cFar;
 
-				glm::mat4 ls = ShadowMapper::ComputeCascadeLightSpace(cNear, cFar, view, projection,
-					lightPos, lightDir, aspect, fov,
-					cIdx, shadowConfig.baseResolution);
+				glm::mat4 ls = ShadowMapper::ComputeCascadeLightSpace(
+					cNear,
+					cFar,
+					view,
+					lightPos,
+					lightDir,
+					aspect,
+					cascadeFitFov,
+					cIdx,
+					shadowConfig.baseResolution);
 				if (shadowConfig.stableTexelSnapping) {
 					ls = SnapCascadeToTexels(ls, shadowConfig.baseResolution);
 				}
@@ -1259,11 +1260,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	FrameBuffer::Unbind();
 	m_lastShadowScenePublication = scenePublication;
 	m_lastShadowView = view;
-	m_lastShadowProjection = projection;
 	m_lastShadowNearPlane = nearPlane;
 	m_lastShadowFarPlane = farPlane;
 	m_lastShadowAspect = aspect;
-	m_lastShadowFov = fov;
 	m_hasShadowFrameState = true;
 
 	auto frameEnd = std::chrono::high_resolution_clock::now();

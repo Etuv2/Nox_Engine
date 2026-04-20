@@ -57,7 +57,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.gDepth = glGetUniformLocation(m_shader, "gDepth");
 	m_uniforms.ssaoMap = glGetUniformLocation(m_shader, "ssaoMap");
 	m_uniforms.screenSpaceShadowMap = glGetUniformLocation(m_shader, "screenSpaceShadowMap");
-	m_uniforms.ssgiMap = glGetUniformLocation(m_shader, "ssgiMap");
+	m_uniforms.indirectDiffuseMap = glGetUniformLocation(m_shader, "indirectDiffuseMap");
 	m_uniforms.lpvTextureR = glGetUniformLocation(m_shader, "lpvTextureR");
 	m_uniforms.lpvTextureG = glGetUniformLocation(m_shader, "lpvTextureG");
 	m_uniforms.lpvTextureB = glGetUniformLocation(m_shader, "lpvTextureB");
@@ -81,8 +81,9 @@ void LightingPass::CacheUniformLocations() {
 	// Effect strength uniforms
 	m_uniforms.aoStrength = glGetUniformLocation(m_shader, "aoStrength");
 	m_uniforms.sssStrength = glGetUniformLocation(m_shader, "sssStrength");
-	m_uniforms.ssgiStrength = glGetUniformLocation(m_shader, "ssgiStrength");
-	m_uniforms.ssgiDebugMode = glGetUniformLocation(m_shader, "ssgiDebugMode");
+	m_uniforms.indirectDiffuseStrength = glGetUniformLocation(m_shader, "indirectDiffuseStrength");
+	m_uniforms.indirectDiffuseCompositeMode = glGetUniformLocation(m_shader, "indirectDiffuseCompositeMode");
+	m_uniforms.lightingOutputMode = glGetUniformLocation(m_shader, "lightingOutputMode");
 
 	// LPV uniforms
 	m_uniforms.enableLPV = glGetUniformLocation(m_shader, "enableLPV");
@@ -263,10 +264,9 @@ void LightingPass::Execute(RenderContext& ctx,
 		glBindTexture(GL_TEXTURE_2D, m_sssTexture);
 	}
 
-	// Bind SSGI texture
-	glActiveTexture(GL_TEXTURE0 + TextureUnits::SSGI_MAP);
-	if (m_ssgiTexture > 0) {
-		glBindTexture(GL_TEXTURE_2D, m_ssgiTexture);
+	glActiveTexture(GL_TEXTURE0 + TextureUnits::INDIRECT_DIFFUSE_MAP);
+	if (m_indirectDiffuseTexture > 0) {
+		glBindTexture(GL_TEXTURE_2D, m_indirectDiffuseTexture);
 	}
 
 	// Bind LPV 3D textures for global illumination
@@ -294,6 +294,7 @@ void LightingPass::Execute(RenderContext& ctx,
 	glUniform1i(m_uniforms.gDepth, TextureUnits::GBUFFER_DEPTH);
 	glUniform1i(m_uniforms.ssaoMap, TextureUnits::SSAO_MAP);
 	glUniform1i(m_uniforms.screenSpaceShadowMap, TextureUnits::SCREEN_SPACE_SHADOW_MAP);
+	glUniform1i(m_uniforms.indirectDiffuseMap, TextureUnits::INDIRECT_DIFFUSE_MAP);
 
 	// Set LPV sampler uniforms
 	if (lpvEnabled) {
@@ -359,10 +360,13 @@ void LightingPass::Execute(RenderContext& ctx,
 	float sssStrength = ctx.enableScreenSpaceShadows ? std::clamp(ctx.sssBlendStrength, 0.0f, 1.0f) : 0.0f;
 	glUniform1f(m_uniforms.sssStrength, sssStrength);
 
-	// SSGI uniforms
-	glUniform1i(m_uniforms.ssgiMap, TextureUnits::SSGI_MAP);
-	glUniform1f(m_uniforms.ssgiStrength, ctx.enableSSGI ? ctx.ssgiStrength : 0.0f);
-	glUniform1i(m_uniforms.ssgiDebugMode, ctx.enableSSGI ? ctx.ssgiDebugMode : 0);
+	glUniform1f(
+		m_uniforms.indirectDiffuseStrength,
+		ctx.enableIndirectDiffuse ? ctx.indirectDiffuseStrength : 0.0f);
+	glUniform1i(
+		m_uniforms.indirectDiffuseCompositeMode,
+		ctx.enableIndirectDiffuse ? ctx.indirectDiffuseCompositeMode : 0);
+	glUniform1i(m_uniforms.lightingOutputMode, static_cast<int>(m_outputMode));
 
 	// Upload LPV parameters
 	glUniform1i(m_uniforms.enableLPV, lpvEnabled ? 1 : 0);

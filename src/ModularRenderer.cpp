@@ -15,7 +15,7 @@
 #include "passes/RTPass.h"  // Path tracing pass
 #include "passes/SSAOPass.h"
 #include "passes/ScreenSpaceShadowPass.h"
-#include "passes/SSGIPass.h"
+#include "passes/IndirectDiffusePass.h"
 
 #include "passes/LightingPass.h"
 #include "passes/BloomPass.h"
@@ -43,6 +43,10 @@ ModularRenderer::~ModularRenderer()
 	if (m_debugViewShader) {
 		glDeleteProgram(m_debugViewShader);
 		m_debugViewShader = 0;
+	}
+	if (m_indirectDiffuseDebugPresentShader) {
+		glDeleteProgram(m_indirectDiffuseDebugPresentShader);
+		m_indirectDiffuseDebugPresentShader = 0;
 	}
 }
 
@@ -237,7 +241,9 @@ namespace {
 	namespace ResourceNames {
 		static const std::string SSAO = "SSAO";
 		static const std::string ScreenSpaceShadow = "ScreenSpaceShadow";
-		static const std::string SSGI = "SSGI";
+		static const std::string BounceableRadiance = "BounceableRadiance";
+		static const std::string IndirectDiffuse = "IndirectDiffuse";
+		static const std::string IndirectDiffuseDebug = "IndirectDiffuseDebug";
 		static const std::string Bloom = "Bloom";
 		static const std::string LPVR = "LPV_R";
 		static const std::string LPVG = "LPV_G";
@@ -267,7 +273,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_rtPass = std::make_unique<RTPass>();  // Create path tracing pass
 	m_ssaoPass = std::make_unique<SSAOPass>();
 	m_screenSpaceShadowPass = std::make_unique<ScreenSpaceShadowPass>();
-	m_ssgiPass = std::make_unique<SSGIPass>(); //Create SSGI pass
+	m_indirectDiffusePass = std::make_unique<IndirectDiffusePass>();
 	m_lightingPass = std::make_unique<LightingPass>();
 	m_bloomPass = std::make_unique<BloomPass>();
 	m_taaPass = std::make_unique<TAAPass>();
@@ -284,7 +290,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_rtPass->Initialize(m_context);  // Initialize path tracing pass
 	success &= m_ssaoPass->Initialize(m_context);
 	success &= m_screenSpaceShadowPass->Initialize(m_context);
-	success &= m_ssgiPass->Initialize(m_context);
+	success &= m_indirectDiffusePass->Initialize(m_context);
 	success &= m_lightingPass->Initialize(m_context);
 	success &= m_bloomPass->Initialize(m_context);
 	success &= m_taaPass->Initialize(m_context);
@@ -296,6 +302,13 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_debugViewShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/debug_view_frag.glsl");
 	if (!m_debugViewShader) {
 		std::cerr << "[ModularRenderer] Failed to create debug view shader.\n";
+		return false;
+	}
+	m_indirectDiffuseDebugPresentShader = CreateShaderProgram(
+		"shaders/fullscreen_vert.glsl",
+		"shaders/indirect_diffuse_debug_present_frag.glsl");
+	if (!m_indirectDiffuseDebugPresentShader) {
+		std::cerr << "[ModularRenderer] Failed to create indirect diffuse debug present shader.\n";
 		return false;
 	}
 
@@ -317,7 +330,8 @@ std::size_t ModularRenderer::PlanCacheKeyHash::operator()(const PlanCacheKey& ke
 		};
 	hashCombine(key.enableBloom);
 	hashCombine(key.enableSSAO);
-	hashCombine(key.enableSSGI);
+	hashCombine(key.enableIndirectDiffuse);
+	hashCombine(key.presentIndirectDiffuseDebug);
 	hashCombine(key.enableScreenSpaceShadows);
 	hashCombine(key.enableLPV);
 	hashCombine(key.enableTAA);
@@ -350,7 +364,11 @@ ModularRenderer::PlanCacheKey ModularRenderer::BuildPlanCacheKey() const
 	key.mode = DetermineFrameGraphMode();
 	key.enableBloom = m_context.enableBloom;
 	key.enableSSAO = m_context.enableSSAO;
-	key.enableSSGI = m_context.enableSSGI;
+	key.enableIndirectDiffuse = m_context.enableIndirectDiffuse;
+	key.presentIndirectDiffuseDebug =
+		m_context.enableIndirectDiffuse &&
+		m_context.indirectDiffuseDebugStage > 0 &&
+		key.mode == FrameGraphMode::DEFERRED;
 	key.enableScreenSpaceShadows = m_context.enableScreenSpaceShadows;
 	key.enableLPV = m_context.enableLPV;
 	key.enableTAA = m_context.enableTAA;
@@ -365,7 +383,10 @@ std::vector<ModularRenderer::ResourceHandle> ModularRenderer::GetRequiredOutputs
 	if (key.mode == FrameGraphMode::DEFERRED_DEBUG) {
 		return { "Backbuffer" };
 	}
-	return { "Backbuffer", "SSGIHistory" };
+	if (key.presentIndirectDiffuseDebug) {
+		return { "Backbuffer", ResourceNames::IndirectDiffuseDebug };
+	}
+	return { "Backbuffer", "HDRColor" };
 }
 
 void ModularRenderer::ExecuteFramePlan(const FramePlan& plan)
@@ -542,7 +563,9 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"LPVPass", { "TransformHistory" }, { ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB },
-		[](const RenderContext& ctx) { return ctx.enableLPV; },
+		[](const RenderContext& ctx) {
+			return ctx.enableLPV && !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (!m_lpvPass) {
 				return;
@@ -582,7 +605,7 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"TAAVelocityPass", { "GBuffer" }, { "Velocity" },
-		[](const RenderContext& ctx) { return ctx.enableTAA || ctx.enableSSGI; },
+		[](const RenderContext& ctx) { return ctx.enableTAA || ctx.enableIndirectDiffuse; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (m_taaPass) {
 				m_taaPass->ExecuteVelocity(m_context, sceneGraph, camera);
@@ -590,33 +613,58 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"SSGIPass", { "GBuffer", "Velocity" }, { ResourceNames::SSGI },
-		[](const RenderContext& ctx) { return ctx.enableSSGI; },
-		[this, &sceneGraph, &camera, &lighting, &skybox]() {
-			if (!m_ssgiPass) {
-				return;
-			}
-			m_ssgiPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-			m_namedResources[ResourceNames::SSGI] = m_ssgiPass->GetSSGITexture();
-		}
-		});
-	addPass({
-		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::SSGI, ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB }, { "HDRLit" },
-		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		"BounceableRadiancePass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow }, { ResourceNames::BounceableRadiance },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.enableIndirectDiffuse;
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
 			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
-			m_lightingPass->SetSSGITexture(m_namedResources[ResourceNames::SSGI]);
+			m_lightingPass->SetIndirectDiffuseTexture(0);
+			m_lightingPass->SetLPVTextures(0, 0, 0);
+			m_lightingPass->SetOutputMode(LightingPass::OutputMode::BounceableRadiance);
+			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_lightingPass->SetOutputMode(LightingPass::OutputMode::FullLighting);
+			m_namedResources[ResourceNames::BounceableRadiance] = m_context.hdrFBO->GetColorAttachment(0);
+		}
+		});
+	addPass({
+		"IndirectDiffusePass", { "GBuffer", "Velocity", ResourceNames::BounceableRadiance }, { ResourceNames::IndirectDiffuse, ResourceNames::IndirectDiffuseDebug },
+		[](const RenderContext& ctx) { return ctx.enableIndirectDiffuse; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			if (!m_indirectDiffusePass) {
+				return;
+			}
+			m_indirectDiffusePass->SetBounceableRadianceTexture(m_namedResources[ResourceNames::BounceableRadiance]);
+			m_indirectDiffusePass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::IndirectDiffuse] = m_indirectDiffusePass->GetIndirectDiffuseTexture();
+			m_namedResources[ResourceNames::IndirectDiffuseDebug] = m_indirectDiffusePass->GetDebugTexture();
+		}
+		});
+	addPass({
+		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB }, { "HDRLit" },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
+			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
+			m_lightingPass->SetIndirectDiffuseTexture(m_namedResources[ResourceNames::IndirectDiffuse]);
 			m_lightingPass->SetLPVTextures(
 				m_namedResources[ResourceNames::LPVR],
 				m_namedResources[ResourceNames::LPVG],
 				m_namedResources[ResourceNames::LPVB]);
+			m_lightingPass->SetOutputMode(LightingPass::OutputMode::FullLighting);
 			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		}
 		});
 	addPass({
 		"SkyboxPass", { "HDRLit" }, { "HDRWithSkybox" },
-		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
 		[this, &skybox]() {
 			m_context.hdrFBO->Bind();
 			if (skybox) {
@@ -626,12 +674,17 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"TransparentForwardPass", { "HDRWithSkybox" }, { "HDRColor" },
-		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
 		"TAAResolvePass", { "HDRColor", "Velocity" }, { "TAAColor" },
-		[](const RenderContext& ctx) { return ctx.enableTAA; },
+		[](const RenderContext& ctx) {
+			return ctx.enableTAA && !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
 		[this]() {
 			if (m_taaPass) {
 				m_taaPass->ExecuteResolve(m_context);
@@ -640,7 +693,11 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"BloomPass", { "HDRColor", "TAAColor" }, { ResourceNames::Bloom },
-		[this](const RenderContext& ctx) { return ctx.enableBloom && DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
+		[this](const RenderContext& ctx) {
+			return ctx.enableBloom &&
+				DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			m_bloomPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			m_namedResources[ResourceNames::Bloom] = m_bloomPass->GetBloomResult();
@@ -648,7 +705,10 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"PostProcessPass", { "HDRColor", "TAAColor", ResourceNames::Bloom }, { "CompositedColor" },
-		[this](const RenderContext&) { return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG; },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			FrameBuffer::Unbind();
 			m_postProcessPass->SetBloomTexture(m_namedResources[ResourceNames::Bloom]);
@@ -657,7 +717,7 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"OverlayComposePass", { "CompositedColor" }, { "OverlayColor" },
-		[](const RenderContext&) { return true; },
+		[](const RenderContext& ctx) { return !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0); },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (m_context.showBoundingBoxes) {
 				m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
@@ -665,18 +725,33 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"GUIPass", { "OverlayColor" }, { "Backbuffer" },
-		[](const RenderContext&) { return true; },
-		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		"IndirectDiffuseDebugPresent", { ResourceNames::IndirectDiffuseDebug }, { "Backbuffer" },
+		[](const RenderContext& ctx) { return ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0; },
+		[this]() {
+			if (!m_indirectDiffuseDebugPresentShader || !m_context.screenQuad) {
+				return;
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, m_context.width, m_context.height);
+			glDisable(GL_DEPTH_TEST);
+			glDisable(GL_BLEND);
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+			glUseProgram(m_indirectDiffuseDebugPresentShader);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, m_namedResources[ResourceNames::IndirectDiffuseDebug]);
+			if (const GLint textureLoc = glGetUniformLocation(m_indirectDiffuseDebugPresentShader, "uTexture"); textureLoc >= 0) {
+				glUniform1i(textureLoc, 0);
+			}
+			m_context.screenQuad->Render();
+			glEnable(GL_DEPTH_TEST);
+			glEnable(GL_BLEND);
+		}
 		});
 	addPass({
-		"SSGIHistoryPass", { "Backbuffer" }, { "SSGIHistory" },
-		[](const RenderContext& ctx) { return ctx.rendererMode == RenderContext::RendererMode::DEFERRED_REALTIME; },
-		[this]() {
-			if (m_ssgiPass) {
-				m_ssgiPass->CaptureHistory(m_context);
-			}
-		}
+		"GUIPass", { "OverlayColor" }, { "Backbuffer" },
+		[](const RenderContext& ctx) { return !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0); },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 }
 
@@ -756,7 +831,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_rtPass) m_rtPass->Resize(m_context, newWidth, newHeight);  // Resize path tracing pass
 	if (m_ssaoPass) m_ssaoPass->Resize(m_context, newWidth, newHeight);
 	if (m_screenSpaceShadowPass) m_screenSpaceShadowPass->Resize(m_context, newWidth, newHeight);
-	if (m_ssgiPass) m_ssgiPass->Resize(m_context, newWidth, newHeight);
+	if (m_indirectDiffusePass) m_indirectDiffusePass->Resize(m_context, newWidth, newHeight);
 	if (m_lightingPass) m_lightingPass->Resize(m_context, newWidth, newHeight);
 	if (m_bloomPass) m_bloomPass->Resize(m_context, newWidth, newHeight);
 	if (m_taaPass) m_taaPass->Resize(m_context, newWidth, newHeight);
@@ -917,7 +992,9 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	m_namedResources.clear();
 	m_namedResources[ResourceNames::SSAO] = 0;
 	m_namedResources[ResourceNames::ScreenSpaceShadow] = 0;
-	m_namedResources[ResourceNames::SSGI] = 0;
+	m_namedResources[ResourceNames::BounceableRadiance] = 0;
+	m_namedResources[ResourceNames::IndirectDiffuse] = 0;
+	m_namedResources[ResourceNames::IndirectDiffuseDebug] = 0;
 	m_namedResources[ResourceNames::Bloom] = 0;
 	m_namedResources[ResourceNames::LPVR] = 0;
 	m_namedResources[ResourceNames::LPVG] = 0;

@@ -44,40 +44,38 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_taaBlendFactor = 0.15f;
 	m_taaVarianceThreshold = 0.8f;
 	m_taaLumaWeight = 0.2f;
-	m_taaUseYCoCg = true;
+	m_taaUseYCoCg = false;
 
 	// SSAO settings
-	m_enableSSAO = false;
+	m_enableSSAO = true;
 	m_ssaoHalfRes = true;
 	m_ssaoResolutionScale = 0.5f;
-	m_ssaoRadius = 0.5f; // Match RenderContext default
-	m_ssaoIntensity = 1.0f;
+	m_ssaoRadius = 0.75f;
+	m_ssaoIntensity = 0.5f;
 	m_ssaoTemporalAlpha = 0.12f;
 
-	// SSGI settings
-	m_enableSSGI = true;
-	m_ssgiStrength = 1.35f;
-	m_ssgiRadius = 4.5f;
-	m_ssgiSampleCount = 256;
-	m_ssgiHalfRes = true;
-	m_ssgiWorkingResolutionScale = 0.5f;
-	m_ssgiTraceResolutionScale = 0.25f;
-	m_ssgiTemporalAlpha = 0.055f;
-	m_ssgiNormalReject = 0.10f;
-	m_ssgiDepthReject = 0.1f;
-	m_ssgiThickness = 0.02f;
-	m_ssgiEnableSpatialDenoise = true;
-	m_ssgiTemporalResponse = 0.2f;
-	m_ssgiUpscaleSharpness = 1.8f;
-	m_ssgiSectorCount = 16;
-	m_ssgiDebugMode = 0;
+	// Indirect diffuse settings
+	m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;
+	m_indirectDiffuseStrength = RenderContext::IndirectDiffuseDefaults::Strength;
+	m_indirectDiffuseSliceCount = RenderContext::IndirectDiffuseDefaults::SliceCount;
+	m_indirectDiffuseSamplesPerSlice = RenderContext::IndirectDiffuseDefaults::SamplesPerSlice;
+	m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
+	m_indirectDiffuseThicknessVS = RenderContext::IndirectDiffuseDefaults::ThicknessVS;
+	m_indirectDiffuseTemporalAlpha = RenderContext::IndirectDiffuseDefaults::TemporalAlpha;
+	m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
+	m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
+	m_indirectDiffuseHistoryReset = false;
+	m_indirectDiffuseDenoiseStrength = RenderContext::IndirectDiffuseDefaults::DenoiseStrength;
+	m_indirectDiffuseUpscaleSharpness = RenderContext::IndirectDiffuseDefaults::UpscaleSharpness;
+	m_indirectDiffuseDebugStage = RenderContext::IndirectDiffuseDefaults::DebugMode;
+	m_indirectDiffuseCompositeMode = RenderContext::IndirectDiffuseDefaults::CompositeMode;
 
 	// Screen-space contact shadows
 	m_sssResolutionScale = 0.5f;
 	m_sssTemporalAlpha = 0.1f;
 
 	//LPV GI settings - match RenderContext defaults
-	m_enableLPV = true;
+	m_enableLPV = false;
 	m_lpvGIStrength = 1.0f;
 	m_lpvGridResolution = 128;
 	m_lpvVoxelSize = 0.5f;
@@ -180,23 +178,21 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_ssaoIntensity = ctx.ssaoIntensity;
 	m_ssaoTemporalAlpha = ctx.ssaoTemporalAlpha;
 
-	// SSGI settings
-	m_enableSSGI = ctx.enableSSGI;
-	m_ssgiStrength = ctx.ssgiStrength;
-	m_ssgiRadius = ctx.ssgiRadius;
-	m_ssgiSampleCount = ctx.ssgiSampleCount;
-	m_ssgiHalfRes = ctx.ssgiHalfRes;
-	m_ssgiWorkingResolutionScale = ctx.ssgiWorkingResolutionScale;
-	m_ssgiTraceResolutionScale = ctx.ssgiTraceResolutionScale;
-	m_ssgiTemporalAlpha = ctx.ssgiTemporalAlpha;
-	m_ssgiNormalReject = ctx.ssgiNormalReject;
-	m_ssgiDepthReject = ctx.ssgiDepthReject;
-	m_ssgiThickness = ctx.ssgiThickness;
-	m_ssgiEnableSpatialDenoise = ctx.ssgiEnableSpatialDenoise;
-	m_ssgiTemporalResponse = ctx.ssgiTemporalResponse;
-	m_ssgiUpscaleSharpness = ctx.ssgiUpscaleSharpness;
-	m_ssgiSectorCount = ctx.ssgiSectorCount;
-	m_ssgiDebugMode = ctx.ssgiDebugMode;
+	// Indirect diffuse settings
+	m_enableIndirectDiffuse = ctx.enableIndirectDiffuse;
+	m_indirectDiffuseStrength = ctx.indirectDiffuseStrength;
+	m_indirectDiffuseSliceCount = ctx.indirectDiffuseSliceCount;
+	m_indirectDiffuseSamplesPerSlice = ctx.indirectDiffuseSamplesPerSlice;
+	m_indirectDiffuseRadiusVS = ctx.indirectDiffuseRadiusVS;
+	m_indirectDiffuseThicknessVS = ctx.indirectDiffuseThicknessVS;
+	m_indirectDiffuseTemporalAlpha = ctx.indirectDiffuseTemporalAlpha;
+	m_indirectDiffuseNormalReject = ctx.indirectDiffuseNormalReject;
+	m_indirectDiffuseDepthReject = ctx.indirectDiffuseDepthReject;
+	m_indirectDiffuseHistoryReset = ctx.indirectDiffuseHistoryReset;
+	m_indirectDiffuseDenoiseStrength = ctx.indirectDiffuseDenoiseStrength;
+	m_indirectDiffuseUpscaleSharpness = ctx.indirectDiffuseUpscaleSharpness;
+	m_indirectDiffuseDebugStage = ctx.indirectDiffuseDebugStage;
+	m_indirectDiffuseCompositeMode = ctx.indirectDiffuseCompositeMode;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -325,23 +321,21 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.ssaoBlurDepthThreshold = 0.01f; // Keep default
 	ctx.ssaoTemporalAlpha = m_ssaoTemporalAlpha;
 
-	// SSGI settings
-	ctx.enableSSGI = m_enableSSGI;
-	ctx.ssgiStrength = m_ssgiStrength;
-	ctx.ssgiRadius = m_ssgiRadius;
-	ctx.ssgiSampleCount = m_ssgiSampleCount;
-	ctx.ssgiHalfRes = m_ssgiHalfRes;
-	ctx.ssgiWorkingResolutionScale = m_ssgiWorkingResolutionScale;
-	ctx.ssgiTraceResolutionScale = m_ssgiTraceResolutionScale;
-	ctx.ssgiTemporalAlpha = m_ssgiTemporalAlpha;
-	ctx.ssgiNormalReject = m_ssgiNormalReject;
-	ctx.ssgiDepthReject = m_ssgiDepthReject;
-	ctx.ssgiThickness = m_ssgiThickness;
-	ctx.ssgiEnableSpatialDenoise = m_ssgiEnableSpatialDenoise;
-	ctx.ssgiTemporalResponse = m_ssgiTemporalResponse;
-	ctx.ssgiUpscaleSharpness = m_ssgiUpscaleSharpness;
-	ctx.ssgiSectorCount = m_ssgiSectorCount;
-	ctx.ssgiDebugMode = m_ssgiDebugMode;
+	// Indirect diffuse settings
+	ctx.enableIndirectDiffuse = m_enableIndirectDiffuse;
+	ctx.indirectDiffuseStrength = m_indirectDiffuseStrength;
+	ctx.indirectDiffuseSliceCount = m_indirectDiffuseSliceCount;
+	ctx.indirectDiffuseSamplesPerSlice = m_indirectDiffuseSamplesPerSlice;
+	ctx.indirectDiffuseRadiusVS = m_indirectDiffuseRadiusVS;
+	ctx.indirectDiffuseThicknessVS = m_indirectDiffuseThicknessVS;
+	ctx.indirectDiffuseTemporalAlpha = m_indirectDiffuseTemporalAlpha;
+	ctx.indirectDiffuseNormalReject = m_indirectDiffuseNormalReject;
+	ctx.indirectDiffuseDepthReject = m_indirectDiffuseDepthReject;
+	ctx.indirectDiffuseHistoryReset = m_indirectDiffuseHistoryReset;
+	ctx.indirectDiffuseDenoiseStrength = m_indirectDiffuseDenoiseStrength;
+	ctx.indirectDiffuseUpscaleSharpness = m_indirectDiffuseUpscaleSharpness;
+	ctx.indirectDiffuseDebugStage = m_indirectDiffuseDebugStage;
+	ctx.indirectDiffuseCompositeMode = m_indirectDiffuseCompositeMode;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
@@ -669,35 +663,45 @@ void RenderingSettingsWindow::Render() {
 
 		//Global Illumination Tab
 		if (ImGui::BeginTabItem("Global Illumination")) {
-			ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.5f, 1.0f), "Screen Space Global Illumination (SSGI):");
-			if (ImGui::Checkbox("Enable SSGI", &m_enableSSGI)) { SyncToRenderer(); }
-			if (m_enableSSGI) {
-				if (ImGui::SliderFloat("SSGI Strength", &m_ssgiStrength, 0.0f, 3.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("SSGI Radius (VS)", &m_ssgiRadius, 0.1f, 8.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderInt("SSGI Samples", &m_ssgiSampleCount, 16, 512)) { SyncToRenderer(); }
-				if (ImGui::Checkbox("Half Resolution", &m_ssgiHalfRes)) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Working Resolution Scale", &m_ssgiWorkingResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Trace Resolution Scale", &m_ssgiTraceResolutionScale, 0.125f, 0.5f, "%.3f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Temporal Alpha", &m_ssgiTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Temporal Response", &m_ssgiTemporalResponse, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Normal Reject", &m_ssgiNormalReject, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Depth Reject", &m_ssgiDepthReject, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Thickness", &m_ssgiThickness, 0.001f, 1.0f, "%.3f")) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Sector Count", &m_ssgiSectorCount, 8, 24)) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Upscale Sharpness", &m_ssgiUpscaleSharpness, 0.5f, 4.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::Checkbox("Enable Spatial Denoise", &m_ssgiEnableSpatialDenoise)) { SyncToRenderer(); }
-				const char* ssgiDebugItems[] = {
-					"Final",
-					"Raw Horizons",
-					"Sector Bitmask",
-					"Raw Indirect",
-					"Directional Basis",
-					"Temporal Weight",
-					"Disocclusion Reject",
-					"Denoised Indirect",
-					"Upscaled Output"
+			ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.5f, 1.0f), "Visibility-Bitmask Indirect Diffuse:");
+			if (ImGui::Checkbox("Enable Indirect Diffuse", &m_enableIndirectDiffuse)) { SyncToRenderer(); }
+			if (m_enableIndirectDiffuse) {
+				if (ImGui::SliderFloat("Indirect Strength", &m_indirectDiffuseStrength, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Slice Count", &m_indirectDiffuseSliceCount, 1, 8)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 16)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 8.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Thickness VS", &m_indirectDiffuseThicknessVS, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Temporal Alpha", &m_indirectDiffuseTemporalAlpha, 0.02f, 0.35f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Normal Reject", &m_indirectDiffuseNormalReject, 0.05f, 0.50f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Depth Reject", &m_indirectDiffuseDepthReject, 0.01f, 0.30f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Denoise Strength", &m_indirectDiffuseDenoiseStrength, 0.5f, 3.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Upscale Sharpness", &m_indirectDiffuseUpscaleSharpness, 0.5f, 3.0f, "%.2f")) { SyncToRenderer(); }
+				const char* indirectDiffuseDebugItems[] = {
+					"Disabled",
+					"DepthQuarter",
+					"NormalsQuarter",
+					"BounceableRadiance",
+					"SliceIntervals",
+					"SectorCoverage",
+					"NewSectorCount",
+					"RawIndirect",
+					"RawAO",
+					"HistoryReprojected",
+					"HistoryConfidence",
+					"HistoryRejected",
+					"BounceReinjection",
+					"Denoise1",
+					"Denoise2",
+					"UpscaledIndirect",
+					"FinalIndirectOnly"
 				};
-				if (ImGui::Combo("SSGI Debug", &m_ssgiDebugMode, ssgiDebugItems, IM_ARRAYSIZE(ssgiDebugItems))) { SyncToRenderer(); }
+				if (ImGui::Combo("Indirect Debug Stage", &m_indirectDiffuseDebugStage, indirectDiffuseDebugItems, IM_ARRAYSIZE(indirectDiffuseDebugItems))) { SyncToRenderer(); }
+				const char* indirectDiffuseCompositeModes[] = {
+					"Additive",
+					"Modulative"
+				};
+				if (ImGui::Combo("Composite Mode", &m_indirectDiffuseCompositeMode, indirectDiffuseCompositeModes, IM_ARRAYSIZE(indirectDiffuseCompositeModes))) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Reset History", &m_indirectDiffuseHistoryReset)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Contact Shadow Resolution Scale", &m_sssResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Contact Shadow Temporal Alpha", &m_sssTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 			}
@@ -903,7 +907,7 @@ void RenderingSettingsWindow::Render() {
 			if (ImGui::Button("?##renderer_mode")) {}
 			if (ImGui::IsItemHovered()) {
 				ImGui::SetTooltip(
-					"Deferred Real-Time: Standard pipeline with SSAO, SSGI, shadows\n"
+					"Deferred Real-Time: Standard pipeline with SSAO, indirect diffuse, shadows\n"
 					"Path Traced: BVH-accelerated bidirectional path tracing\n"
 					"  - Converges over time when camera is still\n"
 					"  - Physically accurate lighting and reflections\n"
@@ -1428,36 +1432,38 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_taaBlendFactor = 0.15f;
 	m_taaVarianceThreshold = 0.8f;
 	m_taaLumaWeight = 0.2f;
-	m_taaUseYCoCg = true;
+	m_taaUseYCoCg = false;
 
 	// SSAO - match RenderContext defaults
-	m_enableSSAO = false;
+	m_enableSSAO = true;
 	m_ssaoHalfRes = true;
 	m_ssaoResolutionScale = 0.5f;
-	m_ssaoRadius = 0.5f;
-	m_ssaoIntensity = 1.0f;
+	m_ssaoRadius = 0.75f;
+	m_ssaoIntensity = 0.5f;
 	m_ssaoTemporalAlpha = 0.12f;
 
-	// SSGI - match RenderContext defaults
-	m_enableSSGI = true;
-	m_ssgiStrength = 1.35f;
-	m_ssgiRadius = 4.5f;
-	m_ssgiSampleCount = 256;
-	m_ssgiHalfRes = true;
-	m_ssgiWorkingResolutionScale = 0.5f;
-	m_ssgiTraceResolutionScale = 0.25f;
-	m_ssgiTemporalAlpha = 0.055f;
-	m_ssgiNormalReject = 0.10f;
-	m_ssgiDepthReject = 0.1f;
-	m_ssgiThickness = 0.01f;
-	m_ssgiEnableSpatialDenoise = true;
+	// Indirect diffuse - match RenderContext defaults
+	m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;
+	m_indirectDiffuseStrength = RenderContext::IndirectDiffuseDefaults::Strength;
+	m_indirectDiffuseSliceCount = RenderContext::IndirectDiffuseDefaults::SliceCount;
+	m_indirectDiffuseSamplesPerSlice = RenderContext::IndirectDiffuseDefaults::SamplesPerSlice;
+	m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
+	m_indirectDiffuseThicknessVS = RenderContext::IndirectDiffuseDefaults::ThicknessVS;
+	m_indirectDiffuseTemporalAlpha = RenderContext::IndirectDiffuseDefaults::TemporalAlpha;
+	m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
+	m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
+	m_indirectDiffuseHistoryReset = false;
+	m_indirectDiffuseDenoiseStrength = RenderContext::IndirectDiffuseDefaults::DenoiseStrength;
+	m_indirectDiffuseUpscaleSharpness = RenderContext::IndirectDiffuseDefaults::UpscaleSharpness;
+	m_indirectDiffuseDebugStage = RenderContext::IndirectDiffuseDefaults::DebugMode;
+	m_indirectDiffuseCompositeMode = RenderContext::IndirectDiffuseDefaults::CompositeMode;
 
 	// Contact shadows - match RenderContext defaults
 	m_sssResolutionScale = 0.5f;
 	m_sssTemporalAlpha = 0.1f;
 
 	//LPV - match RenderContext defaults
-	m_enableLPV = true;
+	m_enableLPV = false;
 	m_lpvGIStrength = 1.0f;
 	m_lpvGridResolution = 128;
 	m_lpvVoxelSize = 0.5f;

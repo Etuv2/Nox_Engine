@@ -56,6 +56,8 @@ void DirectionalLight::UpdateCascades(const glm::mat4& view,
     float nearPlane, float farPlane,
     float windowAspect, float fov)
 {
+    (void)projection;
+
     // Use enhanced lambda for optimal distribution
     float enhancedLambda = m_splitLambda;
     
@@ -109,7 +111,7 @@ void DirectionalLight::UpdateCascades(const glm::mat4& view,
         // Compute enhanced light-space matrix with stability improvements
         m_cascadeLightSpace[i] = ShadowMapper::ComputeCascadeLightSpace(
             cascadeStart, cascadeEnd,
-            view, projection,
+            view,
             GetPosition(), GetDirection(),
             windowAspect, fov,
             i,              // Cascade index for optimization

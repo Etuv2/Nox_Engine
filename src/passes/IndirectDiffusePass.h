@@ -11,15 +11,15 @@ class Camera;
 class DirectionalLight;
 class Skybox;
 
-class SSGIPass : public RenderPass {
+class IndirectDiffusePass : public RenderPass {
 public:
     struct Config {
-        float quarterScale = 0.25f;
+        float workingScale = 0.25f;
         int maxDepthMip = 6;
     };
 
-    SSGIPass() = default;
-    ~SSGIPass() override;
+    IndirectDiffusePass() = default;
+    ~IndirectDiffusePass() override;
 
     bool Initialize(RenderContext& context) override;
     void Resize(RenderContext& context, int newWidth, int newHeight) override;
@@ -29,13 +29,16 @@ public:
         const std::shared_ptr<DirectionalLight>& dirLight,
         const std::shared_ptr<Skybox>& skybox) override;
 
-    void CaptureHistory(RenderContext& ctx);
-    GLuint GetSSGITexture() const { return m_ssgiTex ? m_ssgiTex->ID() : 0; }
+    GLuint GetIndirectDiffuseTexture() const { return m_indirectDiffuseTex ? m_indirectDiffuseTex->ID() : 0; }
+    GLuint GetDebugTexture() const { return m_debugOutput ? m_debugOutput->ID() : 0; }
+    void SetBounceableRadianceTexture(GLuint texture) { m_bounceableRadianceFull = texture; }
     void SetConfig(const Config& config) { m_config = config; }
     const Config& GetConfig() const { return m_config; }
 
 private:
     std::unique_ptr<ComputeShader> m_csDepthPrefilter;
+    std::unique_ptr<ComputeShader> m_csDepthPyramid;
+    std::unique_ptr<ComputeShader> m_csNormalBuild;
     std::unique_ptr<ComputeShader> m_csRadiance;
     std::unique_ptr<ComputeShader> m_csHorizonGather;
     std::unique_ptr<ComputeShader> m_csTemporal;
@@ -44,7 +47,7 @@ private:
 
     TexturePtr m_depthLinearQuarter;
     TexturePtr m_normalQuarter;
-    TexturePtr m_radianceTex;
+    TexturePtr m_bounceableRadianceQuarter;
     TexturePtr m_indirectRaw;
     TexturePtr m_directionalRaw;
     TexturePtr m_horizonDebug;
@@ -54,18 +57,21 @@ private:
     TexturePtr m_directionalTemporal;
     TexturePtr m_temporalDebug;
 
+    TexturePtr m_indirectDenoiseStage1;
+    TexturePtr m_directionalDenoiseStage1;
+
     TexturePtr m_indirectDenoised;
     TexturePtr m_directionalDenoised;
 
-    TexturePtr m_ssgiTex;
+    TexturePtr m_indirectDiffuseTex;
     TexturePtr m_debugOutput;
 
-    TexturePtr m_historyColor;
+    TexturePtr m_historyResolvedGI;
     TexturePtr m_historyIndirect;
     TexturePtr m_historyDirectional;
-    GLuint m_historyDepthTex = 0;
-    GLuint m_historyNormalTex = 0;
-
+    TexturePtr m_historyDepthQuarter;
+    TexturePtr m_historyNormalFull;
+    GLuint m_bounceableRadianceFull = 0;
     int m_w = 0;
     int m_h = 0;
     int m_qw = 0;
@@ -81,5 +87,4 @@ private:
     void runTemporal(RenderContext& ctx);
     void runBilateral(RenderContext& ctx);
     void runFinalUpsample(RenderContext& ctx);
-    void resizeTemporalHistoryBuffers();
 };

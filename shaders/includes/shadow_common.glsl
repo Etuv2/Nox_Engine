@@ -43,52 +43,82 @@ float CalculateAdaptiveShadowBias(vec3 N, vec3 Ld, int cascadeIndex, float depth
 	return clamp(finalBias, shadowBias * 0.25, maxShadowBias);
 }
 
-float SampleShadowArray(int layer, vec3 projCoords, float bias) {
-	if (!InShadowBounds(projCoords)) return 1.0;
-
-	float sampleDepth = clamp(projCoords.z, 0.0, 1.0);
-	ivec3 dims = textureSize(multiLightShadowArray, 0);
-	vec2 texel = 1.0 / vec2(dims.xy);
-
-	float sum = 0.0;
-	for (int i = 0; i < 16; ++i) {
-		vec2 offset = NOX_SHADOW_POISSON_DISK_16[i] * texel * 1.5;
-		vec2 uv = projCoords.xy + offset;
-		if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
-			sum += 1.0;
-		} else {
-			sum += texture(multiLightShadowArray, vec4(uv, float(layer), sampleDepth - bias));
-		}
-	}
-
-	return sum / 16.0;
+float ShadowHash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
 }
 
-float SampleShadowArrayEdgeSafe(int layer, vec3 projCoords, float bias, float edgeMargin) {
-	if (!InShadowBounds(projCoords)) return 1.0;
-
-	ivec3 dims = textureSize(multiLightShadowArray, 0);
+float ComputeAdaptiveFilterRadiusTexels(vec3 projCoords, ivec3 dims, float edgeMargin, float radiusScale) {
 	vec2 texel = 1.0 / vec2(dims.xy);
 	vec2 edgeDist = min(projCoords.xy, 1.0 - projCoords.xy);
 	float minEdgeDist = min(edgeDist.x, edgeDist.y);
-	float maxKernelRadius = minEdgeDist / texel.x;
-	float kernelScale = clamp(maxKernelRadius / 1.5, 0.0, 1.0);
+	float minEdgeTexels = min(edgeDist.x / texel.x, edgeDist.y / texel.y);
+	float safeEdgeRadius = max(minEdgeTexels - 0.75, 0.0);
+
+	float effectiveMargin = max(edgeMargin, max(texel.x, texel.y) * 1.5);
+	float edgeFade = smoothstep(0.0, effectiveMargin, minEdgeDist);
+	float depthSoftness = smoothstep(0.18, 1.0, clamp(projCoords.z, 0.0, 1.0));
+	float baseRadius = mix(0.85, 1.75, depthSoftness);
+
+	float radiusTexels = baseRadius * max(radiusScale, 0.2);
+	radiusTexels = min(radiusTexels, safeEdgeRadius);
+	return clamp(radiusTexels * edgeFade, 0.0, 4.0);
+}
+
+float SampleShadowArrayFiltered(int layer, vec3 projCoords, float bias, float edgeMargin, float radiusScale) {
+	if (!InShadowBounds(projCoords)) {
+		return 1.0;
+	}
+
+	ivec3 dims = textureSize(multiLightShadowArray, 0);
+	vec2 texel = 1.0 / vec2(dims.xy);
+	vec2 centerUV = clamp(projCoords.xy, texel * 0.5, 1.0 - texel * 0.5);
 	float sampleDepth = clamp(projCoords.z, 0.0, 1.0);
 
-	if (kernelScale < 0.1) {
-		vec2 clampedUV = clamp(projCoords.xy, texel * 0.5, 1.0 - texel * 0.5);
-		return texture(multiLightShadowArray, vec4(clampedUV, float(layer), sampleDepth - bias));
+	float radiusTexels = ComputeAdaptiveFilterRadiusTexels(projCoords, dims, edgeMargin, radiusScale);
+	if (radiusTexels < 0.2) {
+		return texture(multiLightShadowArray, vec4(centerUV, float(layer), sampleDepth - bias));
 	}
+
+	vec2 texelCoord = floor(projCoords.xy * vec2(dims.xy));
+	float angle = ShadowHash12(texelCoord) * 6.28318530718;
+	float s = sin(angle);
+	float c = cos(angle);
+	mat2 rot = mat2(c, -s, s, c);
 
 	float sum = 0.0;
-	float filterRadius = 1.5 * kernelScale;
+	float weightSum = 0.0;
 	for (int i = 0; i < 16; ++i) {
-		vec2 offset = NOX_SHADOW_POISSON_DISK_16[i] * texel * filterRadius;
-		vec2 uv = clamp(projCoords.xy + offset, texel * 0.5, 1.0 - texel * 0.5);
-		sum += texture(multiLightShadowArray, vec4(uv, float(layer), sampleDepth - bias));
+		vec2 disk = rot * NOX_SHADOW_POISSON_DISK_16[i];
+		vec2 uv = projCoords.xy + disk * texel * radiusTexels;
+		if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+			continue;
+		}
+
+		float radial = dot(disk, disk);
+		float weight = 1.0 / (1.0 + radial * 1.5);
+		sum += texture(multiLightShadowArray, vec4(uv, float(layer), sampleDepth - bias)) * weight;
+		weightSum += weight;
 	}
 
-	return sum / 16.0;
+	if (weightSum <= 1e-5) {
+		return texture(multiLightShadowArray, vec4(centerUV, float(layer), sampleDepth - bias));
+	}
+
+	return sum / weightSum;
+}
+
+float SampleShadowArray(int layer, vec3 projCoords, float bias) {
+	return SampleShadowArrayFiltered(layer, projCoords, bias, 0.0, 1.0);
+}
+
+float SampleShadowArrayEdgeSafe(int layer, vec3 projCoords, float bias, float edgeMargin, float radiusScale) {
+	return SampleShadowArrayFiltered(layer, projCoords, bias, edgeMargin, radiusScale);
+}
+
+float SampleShadowArrayEdgeSafe(int layer, vec3 projCoords, float bias, float edgeMargin) {
+	return SampleShadowArrayFiltered(layer, projCoords, bias, edgeMargin, 1.0);
 }
 
 float EstimateCascadeCoverage(vec3 projCoords) {

@@ -56,9 +56,9 @@ namespace TextureUnits {
     constexpr int LPV_TEXTURE_B = 26;           // lpvTextureB (3D texture - Blue SH coefficient)
     
     // ======================================
-    // SCREEN SPACE GLOBAL ILLUMINATION (SSGI)
+    // SCREEN SPACE INDIRECT DIFFUSE
     // ======================================
-    constexpr int SSGI_MAP = 27;                // ssgiMap (RGB16F - screen space indirect diffuse lighting)
+    constexpr int INDIRECT_DIFFUSE_MAP = 27;    // indirectDiffuseMap (RGBA16F - indirect diffuse RGB + AO/visibility A)
     
     // ======================================
     // POST-PROCESSING PASSES

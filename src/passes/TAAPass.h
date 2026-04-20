@@ -43,6 +43,7 @@ private:
                        const std::shared_ptr<Camera>& camera);
     void ResolveTemporalAntiAliasing(RenderContext& ctx);
     glm::vec2 GetJitter(int frameIndex, int pattern);
+    glm::mat4 RemoveProjectionJitter(const glm::mat4& projection, const glm::vec2& jitterPixels, const RenderContext& ctx) const;
 
     GLuint m_velocityShader = 0;
     GLuint m_resolveShader = 0;

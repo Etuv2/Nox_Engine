@@ -29,7 +29,7 @@ class TAAPass;
 class TransparentForwardPass;
 class PostProcessPass;
 class LPVPass;
-class SSGIPass;
+class IndirectDiffusePass;
 class GUIPass;
 class RTPass;
 class DebugBBoxPass;
@@ -124,7 +124,8 @@ private:
 		FrameGraphMode mode = FrameGraphMode::DEFERRED;
 		bool enableBloom = false;
 		bool enableSSAO = false;
-		bool enableSSGI = false;
+		bool enableIndirectDiffuse = false;
+		bool presentIndirectDiffuseDebug = false;
 		bool enableScreenSpaceShadows = false;
 		bool enableLPV = false;
 		bool enableTAA = false;
@@ -133,7 +134,8 @@ private:
 			return mode == other.mode &&
 				enableBloom == other.enableBloom &&
 				enableSSAO == other.enableSSAO &&
-				enableSSGI == other.enableSSGI &&
+				enableIndirectDiffuse == other.enableIndirectDiffuse &&
+				presentIndirectDiffuseDebug == other.presentIndirectDiffuseDebug &&
 				enableScreenSpaceShadows == other.enableScreenSpaceShadows &&
 				enableLPV == other.enableLPV &&
 				enableTAA == other.enableTAA;
@@ -168,7 +170,7 @@ private:
 	std::unique_ptr<RTPass> m_rtPass;  // Path tracing pass
 	std::unique_ptr<SSAOPass> m_ssaoPass;
 	std::unique_ptr<ScreenSpaceShadowPass> m_screenSpaceShadowPass;
-	std::unique_ptr<SSGIPass> m_ssgiPass;
+	std::unique_ptr<IndirectDiffusePass> m_indirectDiffusePass;
 	std::unique_ptr<TAAPass> m_taaPass;
 	std::unique_ptr<LightingPass> m_lightingPass;
 	std::unique_ptr<BloomPass> m_bloomPass;
@@ -177,6 +179,7 @@ private:
 	std::unique_ptr<GUIPass> m_guiPass;  // Internal GUI rendering
 	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;  // Debug bounding box visualization
 	GLuint m_debugViewShader = 0;
+	GLuint m_indirectDiffuseDebugPresentShader = 0;
 
 	std::vector<PassDescriptor> m_passDescriptors;
 	std::unordered_map<PlanCacheKey, FramePlan, PlanCacheKeyHash> m_planCache;

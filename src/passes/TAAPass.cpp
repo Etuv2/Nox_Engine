@@ -209,6 +209,16 @@ void TAAPass::ExecuteResolve(RenderContext& ctx) {
 	m_frameIndex++;
 }
 
+glm::mat4 TAAPass::RemoveProjectionJitter(const glm::mat4& projection, const glm::vec2& jitterPixels, const RenderContext& ctx) const {
+	glm::mat4 unjittered = projection;
+	if (ctx.width > 0 && ctx.height > 0) {
+		const glm::vec2 jitterNdc = jitterPixels / glm::vec2(static_cast<float>(ctx.width), static_cast<float>(ctx.height));
+		unjittered[2][0] -= jitterNdc.x;
+		unjittered[2][1] -= jitterNdc.y;
+	}
+	return unjittered;
+}
+
 void TAAPass::RenderVelocity(RenderContext& ctx,
 	const std::shared_ptr<SceneGraph>& sceneGraph,
 	const std::shared_ptr<Camera>& camera) {
@@ -221,20 +231,23 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 
 	glUseProgram(m_velocityShader);
 
+	const glm::mat4 currentVelocityProj = RemoveProjectionJitter(ctx.proj, m_jitter, ctx);
+	const glm::mat4 previousVelocityProj = RemoveProjectionJitter(ctx.prevProj, m_prevJitter, ctx);
+
 	// Upload current and previous matrices
 	if (m_velocityUniforms.view >= 0) glUniformMatrix4fv(m_velocityUniforms.view,
 		1, GL_FALSE, glm::value_ptr(ctx.view));
 	if (m_velocityUniforms.projection >= 0) glUniformMatrix4fv(m_velocityUniforms.projection,
-		1, GL_FALSE, glm::value_ptr(ctx.proj));
+		1, GL_FALSE, glm::value_ptr(currentVelocityProj));
 
 	// Previous matrices (stored in context)
 	if (m_velocityUniforms.prevView >= 0) glUniformMatrix4fv(m_velocityUniforms.prevView,
 		1, GL_FALSE, glm::value_ptr(ctx.prevView));
 	if (m_velocityUniforms.prevProjection >= 0) glUniformMatrix4fv(m_velocityUniforms.prevProjection,
-		1, GL_FALSE, glm::value_ptr(ctx.prevProj));
+		1, GL_FALSE, glm::value_ptr(previousVelocityProj));
 
 	// Render scene for motion vectors
-	sceneGraph->RenderVelocity(ctx.view, ctx.proj, ctx.prevView, ctx.prevProj, m_velocityShader);
+	sceneGraph->RenderVelocity(ctx.view, currentVelocityProj, ctx.prevView, previousVelocityProj, m_velocityShader);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

@@ -136,7 +136,7 @@
     <Filter Include="Source Files\misc\shaders\raytrace">
       <UniqueIdentifier>{ae9325ff-bf98-4fc3-9515-e0567a5dc20e}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\global_illumination\ssgi">
+    <Filter Include="Source Files\misc\shaders\global_illumination\indirect_diffuse">
       <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\misc\shaders\svgf">
@@ -351,7 +351,7 @@
     <ClCompile Include="src\passes\LPVPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
-    <ClCompile Include="src\passes\SSGIPass.cpp">
+    <ClCompile Include="src\passes\IndirectDiffusePass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
     <ClCompile Include="src\passes\GUIPass.cpp">
@@ -623,23 +623,29 @@
     <None Include="scenes\cornell_box.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
-    <None Include="shaders\ssgi_bilateral_blur_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
+    <None Include="shaders\indirect_diffuse_denoise_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
     </None>
-    <None Include="shaders\ssgi_directions_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
+    <None Include="shaders\indirect_diffuse_full_normals_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
     </None>
-    <None Include="shaders\ssgi_downsample2x_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
+    <None Include="shaders\indirect_diffuse_depth_prepare_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
     </None>
-    <None Include="shaders\ssgi_raymarch_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
+    <None Include="shaders\indirect_diffuse_depth_pyramid_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
     </None>
-    <None Include="shaders\ssgi_temporal_resolve_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
+    <None Include="shaders\indirect_diffuse_debug_present_frag.glsl">
+      <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
-    <None Include="shaders\ssgi_upsample2x_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
+    <None Include="shaders\indirect_diffuse_gather_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
+    </None>
+    <None Include="shaders\indirect_diffuse_temporal_resolve_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
+    </None>
+    <None Include="shaders\indirect_diffuse_radiance_downsample_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
     </None>
     <None Include="shaders\rt_bidirectional_comp.glsl">
       <Filter>Source Files\misc\shaders\raytrace</Filter>
@@ -650,8 +656,8 @@
     <None Include="shaders\gbuffer_vert.glsl">
       <Filter>Source Files\misc\shaders\gbuffer</Filter>
     </None>
-    <None Include="shaders\ssgi_final_upsample_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination\ssgi</Filter>
+    <None Include="shaders\indirect_diffuse_upsample_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
     </None>
     <None Include="shaders\svgf_atrous_comp.glsl">
       <Filter>Source Files\misc\shaders\svgf</Filter>
@@ -887,7 +893,7 @@
     <ClInclude Include="src\passes\LPVPass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
-    <ClInclude Include="src\passes\SSGIPass.h">
+    <ClInclude Include="src\passes\IndirectDiffusePass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\RTPass.h">
@@ -964,3 +970,5 @@
     </ClInclude>
   </ItemGroup>
 </Project>
+
+

@@ -643,6 +643,11 @@ void Core::Render(int windowWidth, int windowHeight) {
 		return;
 	}
 
+	const bool presentIndirectDiffuseDebug =
+		m_modularRenderer &&
+		m_modularRenderer->GetContext().enableIndirectDiffuse &&
+		m_modularRenderer->GetContext().indirectDiffuseDebugStage > 0;
+
 	// Start ImGui frame
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
@@ -674,7 +679,9 @@ void Core::Render(int windowWidth, int windowHeight) {
 	);
 
 	// Render gizmo overlay
-	m_imguiInterface->RenderGizmoOverlay(m_windowWidth, m_windowHeight);
+	if (!presentIndirectDiffuseDebug) {
+		m_imguiInterface->RenderGizmoOverlay(m_windowWidth, m_windowHeight);
+	}
 
 	// Finally, render ImGui
 	ImGui::Render();

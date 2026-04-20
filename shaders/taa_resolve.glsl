@@ -177,10 +177,10 @@ void main() {
     float normalSimilarity = max(dot(currentNormal, historyNormal), 0.0);
     float normalConfidence = smoothstep(normalThreshold, 1.0, normalSimilarity);
     float velocityPixels = length(velocity * screenSize);
-    float motionConfidence = exp(-velocityPixels * 0.15);
-    float historyConfidence = depthConfidence * normalConfidence * motionConfidence;
+    float motionConfidence = exp(-velocityPixels * 0.045);
+    float historyConfidence = depthConfidence * normalConfidence * mix(0.55, 1.0, motionConfidence);
 
-    if (historyConfidence < 0.15) {
+    if (depthConfidence * normalConfidence < 0.08 || historyConfidence < 0.04) {
         taaResult = currentColor;
         return;
     }
@@ -200,7 +200,9 @@ void main() {
     vec3 clampedHistory = ClampHistoryToNeighborhood(historyColor, minColor, maxColor, meanColor, variance);
     float reactiveMask = ComputeReactiveMask(currentColor, clampedHistory, edgeMask);
 
-    float currentWeight = mix(blendFactor, 1.0, 1.0 - historyConfidence);
+    float motionResponsiveWeight = clamp(velocityPixels / 42.0, 0.0, 0.60);
+    float currentWeight = mix(blendFactor, 0.90, 1.0 - historyConfidence);
+    currentWeight = max(currentWeight, motionResponsiveWeight);
     currentWeight = mix(currentWeight, 1.0, reactiveMask);
     currentWeight = clamp(currentWeight, blendFactor, 1.0);
 

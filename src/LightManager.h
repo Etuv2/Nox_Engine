@@ -106,8 +106,8 @@ public:
 	// Shadow rendering method
 	void RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGraph,
 		const std::shared_ptr<Camera>& camera,
-		const glm::mat4& view, const glm::mat4& projection,
-		float nearPlane, float farPlane, float aspect, float fov);
+		const glm::mat4& view,
+		float nearPlane, float farPlane, float aspect);
 
 	// Shadow rendering helpers with correct return types
 	std::vector<glm::mat4> RenderDirectionalLightShadows(const std::shared_ptr<SceneGraph>& sceneGraph,
@@ -137,6 +137,8 @@ public:
 		bool dynamicResolution = true;
 		bool stableTexelSnapping = true;
 		float directionalSplitLambda = 0.6f;
+		// Fixed fit FOV keeps directional cascade texel density stable across camera zoom.
+		float directionalShadowFitFov = 90.0f;
 		float cascadeBaseOverlap = 0.02f;
 		
 		// Cascade blend settings - distance in view-space units for smooth transitions
@@ -273,11 +275,9 @@ private:
 	unsigned m_roundRobinPoint = 0;
 	uint64_t m_lastShadowScenePublication = 0;
 	glm::mat4 m_lastShadowView = glm::mat4(1.0f);
-	glm::mat4 m_lastShadowProjection = glm::mat4(1.0f);
 	float m_lastShadowNearPlane = 0.0f;
 	float m_lastShadowFarPlane = 0.0f;
 	float m_lastShadowAspect = 1.0f;
-	float m_lastShadowFov = 0.0f;
 	bool m_hasShadowFrameState = false;
 
 	// Light culling data

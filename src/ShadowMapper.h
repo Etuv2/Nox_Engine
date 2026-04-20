@@ -16,11 +16,10 @@ namespace ShadowMapper {
         float cascadeNear,
         float cascadeFar,
         const glm::mat4& view,
-        const glm::mat4& projection,
         const glm::vec3& lightPos,
         const glm::vec3& lightDir,
         float windowAspect,
-        float fov,
+        float fitFov,
         int cascadeIndex = 0,
         int shadowMapSize = 2048
     );

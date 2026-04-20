@@ -168,6 +168,7 @@ models/
 sounds/
 x64/
 hdrs/
+docs/superpowers/
 
 # Ignore exported binaries / packaged builds
 Dist/

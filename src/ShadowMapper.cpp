@@ -77,11 +77,10 @@ namespace ShadowMapper {
         float cascadeNear,
         float cascadeFar,
         const glm::mat4& view,
-        const glm::mat4& projection,
         const glm::vec3& lightPos,
         const glm::vec3& lightDir,
         float windowAspect,
-        float fov,
+        float fitFov,
         int cascadeIndex,
         int shadowMapSize)
     {
@@ -96,7 +95,7 @@ namespace ShadowMapper {
         float effectiveFar = cascadeFar + overlap;
         
         // Create cascade-specific projection matrix with overlap
-        glm::mat4 cascadeProj = glm::perspective(glm::radians(fov), windowAspect, effectiveNear, effectiveFar);
+        glm::mat4 cascadeProj = glm::perspective(glm::radians(fitFov), windowAspect, effectiveNear, effectiveFar);
         glm::mat4 invCascadeVP = glm::inverse(cascadeProj * view);
 
         // Get frustum corners in world space

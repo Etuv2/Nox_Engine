@@ -63,10 +63,10 @@ uniform float aoStrength = 0.9;
 uniform sampler2D screenSpaceShadowMap;
 uniform float sssStrength = 0.6; // Contact shadow blend strength [0,1]
 
-// Screen-Space Global Illumination (SSGI)
-uniform sampler2D ssgiMap;
-uniform float ssgiStrength = 1.0; // SSGI contribution strength [0,1]
-uniform int ssgiDebugMode = 0;
+uniform sampler2D indirectDiffuseMap;
+uniform float indirectDiffuseStrength = 1.0;
+uniform int indirectDiffuseCompositeMode = 0; // 0 additive, 1 modulative
+uniform int lightingOutputMode = 0; // 0 full lighting, 1 bounceable radiance
 
 // Shadows
 uniform sampler2DArrayShadow multiLightShadowArray;
@@ -201,7 +201,10 @@ float ComputeCascadedShadow(
 	cascadeIndex = primaryCascade;
 	projCoords = pc0;
 	cascadeBias = CalculateAdaptiveShadowBias(N, lightDir, primaryCascade, pc0.z, viewDepth);
-	float shadowValue = SampleShadowArrayEdgeSafe(layer0, pc0, cascadeBias, 0.05);
+	float depthSoftness = clamp(viewDepth / max(maxCascadeDepth, 0.001), 0.0, 1.0);
+	float cascadeSoftness = float(primaryCascade) / float(max(sliceCount - 1, 1));
+	float primaryFilterScale = mix(0.9, 1.8, max(depthSoftness, cascadeSoftness));
+	float shadowValue = SampleShadowArrayEdgeSafe(layer0, pc0, cascadeBias, 0.05, primaryFilterScale);
 
 	float cascadeNear = (primaryCascade == 0) ? 0.0 : cascadeSplits[primaryCascade - 1];
 	float cascadeFar = cascadeSplits[primaryCascade];
@@ -222,7 +225,9 @@ float ComputeCascadedShadow(
 
 			if (InShadowBounds(pc1)) {
 				float bias1 = CalculateAdaptiveShadowBias(N, lightDir, nextCascade, pc1.z, viewDepth);
-				float shadow1 = SampleShadowArrayEdgeSafe(layer1, pc1, bias1, 0.05);
+				float nextCascadeSoftness = float(nextCascade) / float(max(sliceCount - 1, 1));
+				float nextFilterScale = mix(0.9, 1.8, max(depthSoftness, nextCascadeSoftness));
+				float shadow1 = SampleShadowArrayEdgeSafe(layer1, pc1, bias1, 0.05, nextFilterScale);
 				float blendFactor = smoothstep(blendStart, cascadeFar, viewDepth);
 				shadowValue = mix(shadowValue, shadow1, blendFactor);
 				cascadeCoverage = 1.0 - blendFactor;
@@ -278,7 +283,7 @@ float SamplePointShadowFace(int startSlice, int face, vec3 shadowPos, float bias
 	}
 
 	vec3 sampleCoords = vec3(projCoords.xy, clamp(projCoords.z, 0.0, 1.0));
-	return SampleShadowArrayEdgeSafe(layer, sampleCoords, bias, 0.02);
+	return SampleShadowArrayEdgeSafe(layer, sampleCoords, bias, 0.02, 1.1);
 }
 
 float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightPos) {
@@ -389,7 +394,8 @@ float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 
 		if (!InShadowBounds(pc)) return 1.0;
 		
 		float bias = CalculateAdaptiveShadowBias(N, -spotDir, 0, pc.z, distance);
-		return SampleShadowArrayEdgeSafe(layer, pc, bias, 0.02);
+		float spotFilterScale = mix(0.9, 1.3, clamp(distance / 40.0, 0.0, 1.0));
+		return SampleShadowArrayEdgeSafe(layer, pc, bias, 0.02, spotFilterScale);
 	}
 }
 
@@ -636,12 +642,6 @@ void main() {
 	float depth = texture(gDepth, uv).r;
 	if (depth >= 0.9999) { FragColor = vec4(0.0); return; }
 
-	if (ssgiDebugMode > 0) {
-		vec4 ssgiDbg = texture(ssgiMap, uv);
-		FragColor = vec4(max(ssgiDbg.rgb, vec3(0.0)), 1.0);
-		return;
-	}
-
 	// Read material contract from the G-buffer using the shared unpack path.
 	vec3 decodedNormal;
 	PBRMaterial material = UnpackGBufferMaterial(
@@ -687,40 +687,48 @@ void main() {
 	float diffuseAO = mix(1.0, ssao, aoStrength) * aoTex;
 	float specularAO = SpecularOcclusion(NdotV, diffuseAO, surface.perceptualRoughness);
 
-	// Start with emissive
-	vec3 color = emissive;
-
-	// Direct lighting - layered principled evaluation from the shared surface contract
+	// Evaluate direct and indirect terms separately so indirect diffuse stays local and debuggable.
+	vec3 directLighting = vec3(0.0);
 	if (numLights > 0) {
 		int maxLights = min(numLights, 64);
 		for (int i = 0; i < maxLights; ++i) {
-			color += ComputeDirectLight(i, worldPos, N, V, surface);
+			directLighting += ComputeDirectLight(i, worldPos, N, V, surface);
 		}
 	}
 
-	color += ComputeIBL(N, V, surface, diffuseAO, specularAO);
+	if (lightingOutputMode == 1) {
+		FragColor = vec4(max(directLighting, vec3(0.0)), 1.0);
+		return;
+	}
+
+	vec3 iblContribution = ComputeIBL(N, V, surface, diffuseAO, specularAO);
+	vec3 lpvContribution = vec3(0.0);
 
 	// LPV GI still uses the legacy diffuse-only path until volumetric GI is upgraded
 	if (enableLPV == 1) {
-		vec3 lpvContribution = SampleLPV(worldPos, N, material.albedo, material.metallic, diffuseAO);
+		lpvContribution = SampleLPV(worldPos, N, material.albedo, material.metallic, diffuseAO);
 		
 		if (lpvDebugVisualization == 1) {
 			FragColor = vec4(lpvContribution, 1.0);
 			return;
 		}
-		
-		color += lpvContribution;
 	}
 
-	// SSGI stores incoming diffuse irradiance; apply receiver diffuse BRDF once.
-	vec4 ssgiSample = texture(ssgiMap, vTexCoord);
-	vec3 ssgiIndirect = max(ssgiSample.rgb, vec3(0.0));
-	float ssgiValidityRaw = clamp(ssgiSample.a, 0.0, 1.0);
-	float ssgiValidity = smoothstep(0.02, 0.55, ssgiValidityRaw);
-	ssgiValidity = max(ssgiValidity, ssgiValidityRaw * 0.55);
-	float ssgiEnergy = mix(0.75, 1.15, ssgiValidity);
-	vec3 ssgiContribution = ssgiIndirect * surface.diffuseColor * INV_PI * ssgiStrength * diffuseAO * ssgiValidity * ssgiEnergy;
-	color += ssgiContribution;
+	vec4 indirectSample = texture(indirectDiffuseMap, vTexCoord);
+	vec3 indirectIrradiance = max(indirectSample.rgb, vec3(0.0));
+	float indirectAO = clamp(indirectSample.a, 0.0, 1.0);
+	vec3 indirectContribution = indirectIrradiance * surface.diffuseColor * indirectDiffuseStrength * indirectAO;
+	indirectContribution = clamp(indirectContribution, vec3(0.0), vec3(2.5));
+
+	vec3 color = emissive;
+	color += directLighting;
+	color += iblContribution + lpvContribution;
+	if (indirectDiffuseCompositeMode == 1) {
+		color *= vec3(1.0) + indirectContribution;
+	}
+	else {
+		color += indirectContribution;
+	}
 
 	color = max(color, vec3(0.0));
 

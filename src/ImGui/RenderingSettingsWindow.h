@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "BaseWindow.h"
+#include "../RenderContext.h"
 #include <glm/glm.hpp>
 
 // Forward declare ModularRenderer to avoid circular dependency
@@ -82,7 +83,7 @@ private:
 	float m_taaBlendFactor = 0.15f;
 	float m_taaVarianceThreshold = 0.8f;
 	float m_taaLumaWeight = 0.2f;
-	bool m_taaUseYCoCg = true;
+	bool m_taaUseYCoCg = false;
 	bool m_enableSSAO = false;
 	bool m_ssaoHalfRes = true;
 	float m_ssaoResolutionScale = 0.5f;
@@ -90,30 +91,28 @@ private:
 	float m_ssaoIntensity = 1.0f;
 	float m_ssaoTemporalAlpha = 0.12f;
 
-	//SSGI settings
-	bool m_enableSSGI = true;
-	float m_ssgiStrength = 1.35f;
-	float m_ssgiRadius = 4.5f;
-	int   m_ssgiSampleCount = 256;
-	bool  m_ssgiHalfRes = true;
-	float m_ssgiWorkingResolutionScale = 0.5f;
-	float m_ssgiTraceResolutionScale = 0.25f;
-	float m_ssgiTemporalAlpha = 0.055f;
-	float m_ssgiNormalReject = 0.10f;
-	float m_ssgiDepthReject = 0.1f;
-	float m_ssgiThickness = 0.01f;
-	bool  m_ssgiEnableSpatialDenoise = true;
-	float m_ssgiTemporalResponse = 0.2f;
-	float m_ssgiUpscaleSharpness = 1.8f;
-	int   m_ssgiSectorCount = 16;
-	int   m_ssgiDebugMode = 0;
+	// Indirect diffuse settings
+	bool m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;
+	float m_indirectDiffuseStrength = RenderContext::IndirectDiffuseDefaults::Strength;
+	int m_indirectDiffuseSliceCount = RenderContext::IndirectDiffuseDefaults::SliceCount;
+	int m_indirectDiffuseSamplesPerSlice = RenderContext::IndirectDiffuseDefaults::SamplesPerSlice;
+	float m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
+	float m_indirectDiffuseThicknessVS = RenderContext::IndirectDiffuseDefaults::ThicknessVS;
+	float m_indirectDiffuseTemporalAlpha = RenderContext::IndirectDiffuseDefaults::TemporalAlpha;
+	float m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
+	float m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
+	bool m_indirectDiffuseHistoryReset = false;
+	float m_indirectDiffuseDenoiseStrength = RenderContext::IndirectDiffuseDefaults::DenoiseStrength;
+	float m_indirectDiffuseUpscaleSharpness = RenderContext::IndirectDiffuseDefaults::UpscaleSharpness;
+	int m_indirectDiffuseDebugStage = RenderContext::IndirectDiffuseDefaults::DebugMode;
+	int m_indirectDiffuseCompositeMode = RenderContext::IndirectDiffuseDefaults::CompositeMode;
 
 	// Screen-space contact shadow settings
 	float m_sssResolutionScale = 0.5f;
 	float m_sssTemporalAlpha = 0.1f;
 
 	//LPV Global Illumination settings
-	bool m_enableLPV = true;
+	bool m_enableLPV = false;
 	float m_lpvGIStrength = 1.0f;
 	int m_lpvGridResolution = 128;
 	float m_lpvVoxelSize = 0.5f;

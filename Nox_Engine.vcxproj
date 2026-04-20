@@ -82,7 +82,7 @@
     <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp" />
     <ClCompile Include="src\passes\ShadowPass.cpp" />
     <ClCompile Include="src\passes\SSAOPass.cpp" />
-    <ClCompile Include="src\passes\SSGIPass.cpp" />
+    <ClCompile Include="src\passes\IndirectDiffusePass.cpp" />
     <ClCompile Include="src\passes\TAAPass.cpp" />
     <ClCompile Include="src\passes\TransformHistoryPass.cpp" />
     <ClCompile Include="src\passes\TransparentForwardPass.cpp" />
@@ -183,13 +183,15 @@
     <None Include="shaders\skybox_vert.glsl" />
     <None Include="shaders\ssao_blur.glsl" />
     <None Include="shaders\ssao.glsl" />
-    <None Include="shaders\ssgi_bilateral_blur_comp.glsl" />
-    <None Include="shaders\ssgi_directions_comp.glsl" />
-    <None Include="shaders\ssgi_downsample2x_comp.glsl" />
-    <None Include="shaders\ssgi_final_upsample_comp.glsl" />
-    <None Include="shaders\ssgi_raymarch_comp.glsl" />
-    <None Include="shaders\ssgi_temporal_resolve_comp.glsl" />
-    <None Include="shaders\ssgi_upsample2x_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_denoise_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_full_normals_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_depth_prepare_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_depth_pyramid_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_upsample_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_debug_present_frag.glsl" />
+    <None Include="shaders\indirect_diffuse_gather_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_temporal_resolve_comp.glsl" />
+    <None Include="shaders\indirect_diffuse_radiance_downsample_comp.glsl" />
     <None Include="shaders\svgf_atrous_comp.glsl" />
     <None Include="shaders\svgf_temporal_comp.glsl" />
     <None Include="shaders\svgf_variance_comp.glsl" />
@@ -259,7 +261,7 @@
     <ClInclude Include="src\passes\ScreenSpaceShadowPass.h" />
     <ClInclude Include="src\passes\ShadowPass.h" />
     <ClInclude Include="src\passes\SSAOPass.h" />
-    <ClInclude Include="src\passes\SSGIPass.h" />
+    <ClInclude Include="src\passes\IndirectDiffusePass.h" />
     <ClInclude Include="src\passes\TAAPass.h" />
     <ClInclude Include="src\passes\TransparentForwardPass.h" />
     <ClInclude Include="src\PerformanceRecorder.h" />
@@ -422,5 +424,6 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
+
 
 

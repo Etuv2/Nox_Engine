@@ -16,6 +16,22 @@ class FrameBuffer; class ScreenQuad; class LightManager;
 */
 
 struct RenderContext {
+	struct IndirectDiffuseDefaults {
+		static constexpr bool Enable = true;
+		static constexpr float Strength = 0.90f;
+		static constexpr int SliceCount = 4;
+		static constexpr int SamplesPerSlice = 4;
+		static constexpr float RadiusVS = 4.0f;
+		static constexpr float ThicknessVS = 0.5f;
+		static constexpr float TemporalAlpha = 0.12f;
+		static constexpr float NormalReject = 0.22f;
+		static constexpr float DepthReject = 0.10f;
+		static constexpr float DenoiseStrength = 1.00f;
+		static constexpr float UpscaleSharpness = 1.35f;
+		static constexpr int DebugMode = 0;
+		static constexpr int CompositeMode = 0;
+	};
+
 	// Dimensions
 	int width = 1920;
 	int height = 1080;
@@ -27,7 +43,7 @@ struct RenderContext {
 	// Shared FBOs
 	std::unique_ptr<FrameBuffer> gbufferFBO; // Extended G-Buffer
 	std::unique_ptr<FrameBuffer> hdrFBO; // HDR target
-	FrameBuffer* taaFBO = nullptr; // TAA output (for SSGI history) - raw pointer to avoid ownership
+	FrameBuffer* taaFBO = nullptr; // TAA output for post/bloom source selection - raw pointer to avoid ownership
 
 
 	// Screen quad
@@ -98,23 +114,21 @@ struct RenderContext {
 	float ssaoTemporalAlpha = 0.12f;
 
 
-	// SSGI settings
-	bool enableSSGI = true;
-	float ssgiStrength = 1.35f;         // Overall GI contribution multiplier
-	float ssgiRadius = 4.5f;            // Ray length in view-space units
-	int ssgiSampleCount = 256;
-	bool ssgiHalfRes = true;  // Run SSGI at half-res for performance (recommended)
-	float ssgiWorkingResolutionScale = 0.5f;
-	float ssgiTraceResolutionScale = 0.25f;
-	float ssgiTemporalAlpha = 0.055f;    // Balanced temporal responsiveness for visible GI
-	float ssgiNormalReject = 0.10f;      // Tighter normal rejection for edge stability
-	float ssgiDepthReject = 0.1f;         // Bilateral depth sigma in view-space units
-	float ssgiThickness = 0.01f;   //Ray-surface intersection thickness 
-	bool ssgiEnableSpatialDenoise = true;
-	float ssgiTemporalResponse = 0.2f;    // Extra response control for history confidence scaling
-	float ssgiUpscaleSharpness = 1.8f;    // Depth-aware upscale edge sharpness
-	int ssgiSectorCount = 16;             // Visibility bitmask sectors per slice
-	int ssgiDebugMode = 0;                // 0=final, 1..8 stage debug
+	// Indirect diffuse settings
+	bool enableIndirectDiffuse = IndirectDiffuseDefaults::Enable;
+	float indirectDiffuseStrength = IndirectDiffuseDefaults::Strength;
+	int indirectDiffuseSliceCount = IndirectDiffuseDefaults::SliceCount;
+	int indirectDiffuseSamplesPerSlice = IndirectDiffuseDefaults::SamplesPerSlice;
+	float indirectDiffuseRadiusVS = IndirectDiffuseDefaults::RadiusVS;
+	float indirectDiffuseThicknessVS = IndirectDiffuseDefaults::ThicknessVS;
+	float indirectDiffuseTemporalAlpha = IndirectDiffuseDefaults::TemporalAlpha;
+	float indirectDiffuseNormalReject = IndirectDiffuseDefaults::NormalReject;
+	float indirectDiffuseDepthReject = IndirectDiffuseDefaults::DepthReject;
+	bool indirectDiffuseHistoryReset = false;
+	float indirectDiffuseDenoiseStrength = IndirectDiffuseDefaults::DenoiseStrength;
+	float indirectDiffuseUpscaleSharpness = IndirectDiffuseDefaults::UpscaleSharpness;
+	int indirectDiffuseDebugStage = IndirectDiffuseDefaults::DebugMode;
+	int indirectDiffuseCompositeMode = IndirectDiffuseDefaults::CompositeMode;
 
 
 	// Bloom settings
