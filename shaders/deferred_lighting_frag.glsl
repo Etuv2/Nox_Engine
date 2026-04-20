@@ -588,8 +588,28 @@ vec3 ComputeIBL(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, floa
 	if (any(isnan(iblResult)) || any(isinf(iblResult))) {
 		return vec3(0.0);
 	}
-	
+
 	return max(iblResult, vec3(0.0));
+}
+
+vec3 ComputeDiffuseIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO) {
+	float NdotV = Saturate(dot(N, V));
+	vec3 irradiance = max(texture(irradianceMap, N).rgb, vec3(0.0));
+	vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
+	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
+
+	vec3 FssEss = F * brdf.x + brdf.y;
+	float Ess = brdf.x + brdf.y;
+	float Ems = 1.0 - Ess;
+	vec3 Favg = surface.specularF0 + (vec3(1.0) - surface.specularF0) * (1.0 / 21.0);
+	vec3 Fms = (FssEss * Favg) / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
+	vec3 kS = clamp(FssEss + Fms, vec3(0.0), vec3(0.98));
+
+	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
+	float diffuseTerm = mix(1.0, 1.0 + 0.5 * surface.perceptualRoughness, surface.subsurface);
+	vec3 kD = max(vec3(0.0), (vec3(1.0) - kS) * (1.0 - surface.metallic) * (1.0 - transmissionWeight));
+	vec3 diffuse = kD * surface.diffuseColor * irradiance * diffuseAO * diffuseIBLScale * diffuseTerm;
+	return max(diffuse * iblIntensity, vec3(0.0));
 }
 
 // LPV Helper functions
@@ -715,7 +735,8 @@ void main() {
 	}
 
 	if (lightingOutputMode == 1) {
-		FragColor = vec4(max(directDiffuseLighting, vec3(0.0)), 1.0);
+		vec3 bounceableIBL = ComputeDiffuseIBLSource(N, V, surface, diffuseAO);
+		FragColor = vec4(max(directDiffuseLighting + bounceableIBL, vec3(0.0)), 1.0);
 		return;
 	}
 

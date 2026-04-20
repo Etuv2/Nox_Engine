@@ -506,9 +506,9 @@ void IndirectDiffusePass::runBilateral(RenderContext& ctx) {
     glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "depthSigma"), std::clamp(ctx.indirectDiffuseDepthReject, 0.01f, 0.20f));
     glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "normalReject"), std::clamp(ctx.indirectDiffuseNormalReject, 0.04f, 0.24f));
     glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "denoiseStrength"), std::clamp(ctx.indirectDiffuseDenoiseStrength, 0.5f, 2.5f));
-    glUniform1i(glGetUniformLocation(m_csBilateral->GetProgramID(), "kernelRadius"), 1);
+    glUniform1i(glGetUniformLocation(m_csBilateral->GetProgramID(), "kernelRadius"), 2);
     glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "confidencePower"), 1.6f);
-    glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "lumaPhi"), 0.12f);
+    glUniform1f(glGetUniformLocation(m_csBilateral->GetProgramID(), "lumaPhi"), 0.16f);
     glDispatchCompute((m_qw + 7) / 8, (m_qh + 7) / 8, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 

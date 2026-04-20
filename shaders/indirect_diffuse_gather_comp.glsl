@@ -188,14 +188,19 @@ void main() {
             tangent * cos(sliceAngle) + bitangent * sin(sliceAngle),
             tangent
         );
-        vec2 sliceDirUV = SafeNormalize(
-            vec3(sliceDirVS.x * projScaleX, sliceDirVS.y * projScaleY, 0.0),
-            vec3(1.0, 0.0, 0.0)
-        ).xy;
         vec3 slicePlaneNormal = SafeNormalize(
             cross(sliceDirVS, cameraVec),
             cross(sliceDirVS, tangent)
         );
+        vec3 slicePerpVS = SafeNormalize(cross(slicePlaneNormal, sliceDirVS), bitangent);
+        vec2 sliceDirUV = SafeNormalize(
+            vec3(sliceDirVS.x * projScaleX, sliceDirVS.y * projScaleY, 0.0),
+            vec3(1.0, 0.0, 0.0)
+        ).xy;
+        vec2 slicePerpUV = SafeNormalize(
+            vec3(slicePerpVS.x * projScaleX, slicePerpVS.y * projScaleY, 0.0),
+            vec3(0.0, 1.0, 0.0)
+        ).xy;
         vec3 projectedNormal = SafeNormalize(
             ProjectOntoPlane(centerNormal, slicePlaneNormal),
             centerNormal
@@ -216,8 +221,16 @@ void main() {
             );
 
             float sampleT = (float(sampleIndex) + 1.0 + sampleJitter) / float(samplesPerSlice + 1);
+            sampleT = sqrt(clamp(sampleT, 0.0, 1.0));
             float sampleRadiusPx = maxRadiusPx * sampleT;
-            vec2 sampleUV = uv + sliceDirUV * (sampleRadiusPx * invQuarterSize);
+            float laneJitter = (InterleavedGradientNoise(
+                vec2(id) + vec2(float(slice) * 31.0, float(sampleIndex) * 11.0),
+                float(frameIndex) + 5.0
+            ) - 0.5) * 2.0;
+            float crossOffsetPx = laneJitter * mix(0.35, 0.95, sampleT);
+            vec2 sampleUV = uv
+                + sliceDirUV * (sampleRadiusPx * invQuarterSize)
+                + slicePerpUV * (crossOffsetPx * invQuarterSize);
             if (any(lessThan(sampleUV, vec2(0.0))) || any(greaterThan(sampleUV, vec2(1.0)))) {
                 break;
             }
@@ -283,8 +296,10 @@ void main() {
 
             float sectorWeight = float(newSectorCount) * INV_SECTOR_COUNT;
             float cosineWeight = max(dot(projectedNormal, sampleDirPlane), 0.0);
-            float distanceWeight = 1.0 / (1.0 + dist / max(rayLength, 0.25));
-            float transport = sectorWeight * mix(0.35, 1.0, cosineWeight) * distanceWeight * 2.25;
+            float normalizedDist = clamp(dist / max(rayLength, 0.25), 0.0, 4.0);
+            float distanceWeight = exp(-normalizedDist * 0.65);
+            float farFieldBoost = mix(0.75, 1.35, clamp(sampleT, 0.0, 1.0));
+            float transport = sectorWeight * mix(0.35, 1.0, cosineWeight) * distanceWeight * farFieldBoost * 2.4;
             if (transport <= 1e-6) {
                 continue;
             }
