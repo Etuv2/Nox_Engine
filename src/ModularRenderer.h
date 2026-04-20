@@ -17,6 +17,13 @@ class DirectionalLight;
 class Skybox;
 class LightManager;
 
+struct IndirectDiffuseProbeSample {
+	glm::vec4 value{ 0.0f };
+	glm::vec4 aux{ 0.0f };
+	float luma = 0.0f;
+	bool valid = false;
+};
+
 // Forward declare pass classes
 class GBufferPass;
 class TransformHistoryPass;
@@ -67,6 +74,8 @@ public:
 
 	// Access to context for UI tuning
 	RenderContext& GetContext() { return m_context; }
+	bool ExportIndirectDiffuseValidationStages(const std::string& directory) const;
+	bool ReadIndirectDiffuseProbe(int stage, int pixelX, int pixelY, IndirectDiffuseProbeSample& outSample) const;
 
 	// TAA controls
 	void ResetTAA();

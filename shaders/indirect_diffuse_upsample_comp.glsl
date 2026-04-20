@@ -19,9 +19,17 @@ layout(binding = 12) uniform sampler2D normalFull;
 layout(binding = 13) uniform sampler2D gAlbedoAO;
 layout(binding = 14) uniform sampler2D sectorDebugQuarter;
 layout(binding = 15) uniform sampler2D indirectTemporal;
+layout(binding = 16) uniform sampler2D radianceCurrentQuarter;
+layout(binding = 17) uniform sampler2D radianceReinjectionQuarter;
+layout(binding = 18) uniform sampler2D radianceProvenanceQuarter;
+layout(binding = 19) uniform sampler2D temporalHistoryRawQuarter;
+layout(binding = 20) uniform sampler2D temporalHistoryClampedQuarter;
+layout(binding = 21) uniform sampler2D denoiseWeightQuarter;
 
 layout(binding = 0, rgba16f) writeonly uniform image2D outFull;
 layout(binding = 1, rgba16f) writeonly uniform image2D outDebug;
+layout(binding = 2, rgba16f) writeonly uniform image2D outUpscaledDebug;
+layout(binding = 3, rgba16f) writeonly uniform image2D outFinalIndirectDebug;
 
 uniform vec2 invFullSize;
 uniform vec2 invQuarterSize;
@@ -29,6 +37,7 @@ uniform float projScaleX;
 uniform float projScaleY;
 uniform float upscaleSharpness;
 uniform int debugMode;
+uniform float indirectStrength;
 uniform mat4 view;
 uniform int normalsInWorldSpace;
 uniform mat4 invProj;
@@ -223,7 +232,31 @@ vec3 SampleDebugMode(int mode, vec2 uv, vec3 fullNormal, vec4 upscaledOut) {
     if (mode == 16) {
         vec3 albedo = max(textureLod(gAlbedoAO, uv, 0.0).rgb, vec3(0.0));
         float visibility = mix(0.35, 1.0, clamp(upscaledOut.a, 0.0, 1.0));
-        return DebugTonemap(upscaledOut.rgb * albedo * visibility, 8.0);
+        return DebugTonemap(upscaledOut.rgb * albedo * visibility * indirectStrength * 2.5, 8.0);
+    }
+    if (mode == 17) {
+        return DebugTonemap(textureLod(radianceCurrentQuarter, uv, 0.0).rgb, 3.0);
+    }
+    if (mode == 18) {
+        return DebugTonemap(textureLod(radianceReinjectionQuarter, uv, 0.0).rgb, 6.0);
+    }
+    if (mode == 19) {
+        return DebugTonemap(textureLod(radianceQuarter, uv, 0.0).rgb, 3.0);
+    }
+    if (mode == 20) {
+        return DebugTonemap(textureLod(temporalHistoryRawQuarter, uv, 0.0).rgb, 8.0);
+    }
+    if (mode == 21) {
+        return DebugTonemap(textureLod(temporalHistoryClampedQuarter, uv, 0.0).rgb, 8.0);
+    }
+    if (mode == 22) {
+        return DebugTonemap(textureLod(indirectTemporal, uv, 0.0).rgb, 8.0);
+    }
+    if (mode == 23) {
+        return textureLod(denoiseWeightQuarter, uv, 0.0).rgb;
+    }
+    if (mode == 24) {
+        return textureLod(radianceProvenanceQuarter, uv, 0.0).rgb;
     }
     return upscaledOut.rgb;
 }
@@ -251,7 +284,12 @@ void main() {
 
     vec4 upscaledOut = SampleQuarterResolved(uv, normalize(fullNormal), fullDepthVS, fullDepth01, QuarterNormalMip());
     vec3 debugRGB = SampleDebugMode(debugMode, uv, normalize(fullNormal), upscaledOut);
+    vec3 albedo = max(textureLod(gAlbedoAO, uv, 0.0).rgb, vec3(0.0));
+    float visibility = mix(0.35, 1.0, clamp(upscaledOut.a, 0.0, 1.0));
+    vec3 finalIndirectOnly = upscaledOut.rgb * albedo * visibility * indirectStrength * 2.5;
 
     imageStore(outFull, id, vec4(max(upscaledOut.rgb, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
     imageStore(outDebug, id, vec4(max(debugRGB, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
+    imageStore(outUpscaledDebug, id, vec4(max(upscaledOut.rgb, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
+    imageStore(outFinalIndirectDebug, id, vec4(max(finalIndirectOnly, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
 }

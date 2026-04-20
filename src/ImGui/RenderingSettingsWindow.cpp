@@ -2,8 +2,10 @@
 #include "../ModularRenderer.h"
 #include "../RenderContext.h"
 #include "../LightManager.h"
+#include "../passes/IndirectDiffusePass.h"
 #include <IMGUI/imgui.h>
 #include <iostream>
+#include <filesystem>
 
 RenderingSettingsWindow::RenderingSettingsWindow()
 	: BaseWindow("Rendering Settings", "F6")
@@ -57,6 +59,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	// Indirect diffuse settings
 	m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;
 	m_indirectDiffuseStrength = RenderContext::IndirectDiffuseDefaults::Strength;
+	m_indirectDiffuseBounceFeedback = RenderContext::IndirectDiffuseDefaults::BounceFeedback;
 	m_indirectDiffuseSliceCount = RenderContext::IndirectDiffuseDefaults::SliceCount;
 	m_indirectDiffuseSamplesPerSlice = RenderContext::IndirectDiffuseDefaults::SamplesPerSlice;
 	m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
@@ -69,6 +72,11 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_indirectDiffuseUpscaleSharpness = RenderContext::IndirectDiffuseDefaults::UpscaleSharpness;
 	m_indirectDiffuseDebugStage = RenderContext::IndirectDiffuseDefaults::DebugMode;
 	m_indirectDiffuseCompositeMode = RenderContext::IndirectDiffuseDefaults::CompositeMode;
+	m_indirectDiffuseValidationShowLegend = true;
+	m_indirectDiffuseValidationEnableCursorProbe = false;
+	m_indirectDiffuseValidationDisableReinjection = false;
+	m_indirectDiffuseValidationDisableTemporal = false;
+	m_indirectDiffuseValidationDisableDenoise = false;
 
 	// Screen-space contact shadows
 	m_sssResolutionScale = 0.5f;
@@ -181,6 +189,7 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	// Indirect diffuse settings
 	m_enableIndirectDiffuse = ctx.enableIndirectDiffuse;
 	m_indirectDiffuseStrength = ctx.indirectDiffuseStrength;
+	m_indirectDiffuseBounceFeedback = ctx.indirectDiffuseBounceFeedback;
 	m_indirectDiffuseSliceCount = ctx.indirectDiffuseSliceCount;
 	m_indirectDiffuseSamplesPerSlice = ctx.indirectDiffuseSamplesPerSlice;
 	m_indirectDiffuseRadiusVS = ctx.indirectDiffuseRadiusVS;
@@ -193,6 +202,11 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_indirectDiffuseUpscaleSharpness = ctx.indirectDiffuseUpscaleSharpness;
 	m_indirectDiffuseDebugStage = ctx.indirectDiffuseDebugStage;
 	m_indirectDiffuseCompositeMode = ctx.indirectDiffuseCompositeMode;
+	m_indirectDiffuseValidationShowLegend = ctx.indirectDiffuseValidationShowLegend;
+	m_indirectDiffuseValidationEnableCursorProbe = ctx.indirectDiffuseValidationEnableCursorProbe;
+	m_indirectDiffuseValidationDisableReinjection = ctx.indirectDiffuseValidationDisableReinjection;
+	m_indirectDiffuseValidationDisableTemporal = ctx.indirectDiffuseValidationDisableTemporal;
+	m_indirectDiffuseValidationDisableDenoise = ctx.indirectDiffuseValidationDisableDenoise;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -324,6 +338,7 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	// Indirect diffuse settings
 	ctx.enableIndirectDiffuse = m_enableIndirectDiffuse;
 	ctx.indirectDiffuseStrength = m_indirectDiffuseStrength;
+	ctx.indirectDiffuseBounceFeedback = m_indirectDiffuseBounceFeedback;
 	ctx.indirectDiffuseSliceCount = m_indirectDiffuseSliceCount;
 	ctx.indirectDiffuseSamplesPerSlice = m_indirectDiffuseSamplesPerSlice;
 	ctx.indirectDiffuseRadiusVS = m_indirectDiffuseRadiusVS;
@@ -336,6 +351,11 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.indirectDiffuseUpscaleSharpness = m_indirectDiffuseUpscaleSharpness;
 	ctx.indirectDiffuseDebugStage = m_indirectDiffuseDebugStage;
 	ctx.indirectDiffuseCompositeMode = m_indirectDiffuseCompositeMode;
+	ctx.indirectDiffuseValidationShowLegend = m_indirectDiffuseValidationShowLegend;
+	ctx.indirectDiffuseValidationEnableCursorProbe = m_indirectDiffuseValidationEnableCursorProbe;
+	ctx.indirectDiffuseValidationDisableReinjection = m_indirectDiffuseValidationDisableReinjection;
+	ctx.indirectDiffuseValidationDisableTemporal = m_indirectDiffuseValidationDisableTemporal;
+	ctx.indirectDiffuseValidationDisableDenoise = m_indirectDiffuseValidationDisableDenoise;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
@@ -667,6 +687,7 @@ void RenderingSettingsWindow::Render() {
 			if (ImGui::Checkbox("Enable Indirect Diffuse", &m_enableIndirectDiffuse)) { SyncToRenderer(); }
 			if (m_enableIndirectDiffuse) {
 				if (ImGui::SliderFloat("Indirect Strength", &m_indirectDiffuseStrength, 0.0f, 6.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Bounce Feedback", &m_indirectDiffuseBounceFeedback, 0.0f, 0.75f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Slice Count", &m_indirectDiffuseSliceCount, 1, 8)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 16)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 8.0f, "%.2f")) { SyncToRenderer(); }
@@ -693,7 +714,15 @@ void RenderingSettingsWindow::Render() {
 					"Denoise1",
 					"Denoise2",
 					"UpscaledIndirect",
-					"FinalIndirectOnly"
+					"FinalIndirectOnly",
+					"RadianceSourceCurrent",
+					"RadianceSourceReinjection",
+					"RadianceSourceFinal",
+					"TemporalHistoryRaw",
+					"TemporalHistoryClamped",
+					"TemporalResolved",
+					"DenoiseWeights",
+					"ContributionProvenance"
 				};
 				if (ImGui::Combo("Indirect Debug Stage", &m_indirectDiffuseDebugStage, indirectDiffuseDebugItems, IM_ARRAYSIZE(indirectDiffuseDebugItems))) { SyncToRenderer(); }
 				const char* indirectDiffuseCompositeModes[] = {
@@ -702,6 +731,48 @@ void RenderingSettingsWindow::Render() {
 				};
 				if (ImGui::Combo("Composite Mode", &m_indirectDiffuseCompositeMode, indirectDiffuseCompositeModes, IM_ARRAYSIZE(indirectDiffuseCompositeModes))) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Reset History", &m_indirectDiffuseHistoryReset)) { SyncToRenderer(); }
+				ImGui::Separator();
+				ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "GI Validation:");
+				if (ImGui::Checkbox("Show Stage Legend", &m_indirectDiffuseValidationShowLegend)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Cursor Probe", &m_indirectDiffuseValidationEnableCursorProbe)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Isolate Reinjection", &m_indirectDiffuseValidationDisableReinjection)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Isolate Temporal", &m_indirectDiffuseValidationDisableTemporal)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Isolate Denoise", &m_indirectDiffuseValidationDisableDenoise)) { SyncToRenderer(); }
+
+				if (m_modularRenderer && ImGui::Button("Export GI Validation Stages", ImVec2(-1, 24))) {
+					const std::filesystem::path exportDir = std::filesystem::path("snapshots") / "gi_validation";
+					const bool ok = m_modularRenderer->ExportIndirectDiffuseValidationStages(exportDir.string());
+					std::cout << "[RenderingSettings] GI validation export " << (ok ? "succeeded" : "failed")
+						<< " -> " << exportDir.string() << std::endl;
+				}
+
+				if (m_indirectDiffuseValidationShowLegend) {
+					ImGui::TextWrapped("Stage: %s", IndirectDiffusePass::GetDebugStageLabel(m_indirectDiffuseDebugStage));
+					ImGui::TextWrapped("Meaning: %s", IndirectDiffusePass::GetDebugStageMeaning(m_indirectDiffuseDebugStage));
+					ImGui::Text("Resolution: %s", IndirectDiffusePass::IsQuarterResolutionStage(m_indirectDiffuseDebugStage) ? "Quarter" : "Full");
+					if (m_indirectDiffuseValidationDisableTemporal) {
+						ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.55f, 1.0f), "Temporal isolation active");
+					}
+					if (m_indirectDiffuseValidationDisableDenoise) {
+						ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.55f, 1.0f), "Denoise isolation active");
+					}
+					if (m_indirectDiffuseValidationDisableReinjection) {
+						ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.55f, 1.0f), "Reinjection isolation active");
+					}
+				}
+
+				if (m_modularRenderer && m_indirectDiffuseValidationEnableCursorProbe && m_indirectDiffuseDebugStage > 0) {
+					ImVec2 mouse = ImGui::GetIO().MousePos;
+					const int probeX = std::max(0, std::min(static_cast<int>(mouse.x), m_modularRenderer->GetContext().width - 1));
+					const int probeY = std::max(0, std::min(static_cast<int>(mouse.y), m_modularRenderer->GetContext().height - 1));
+					IndirectDiffuseProbeSample probe;
+					if (m_modularRenderer->ReadIndirectDiffuseProbe(m_indirectDiffuseDebugStage, probeX, probeY, probe) && probe.valid) {
+						ImGui::Text("Probe Pixel: %d, %d", probeX, probeY);
+						ImGui::Text("RGBA: %.4f %.4f %.4f %.4f", probe.value.x, probe.value.y, probe.value.z, probe.value.w);
+						ImGui::Text("Luma: %.4f", probe.luma);
+						ImGui::Text("Aux: %.4f %.4f %.4f %.4f", probe.aux.x, probe.aux.y, probe.aux.z, probe.aux.w);
+					}
+				}
 				if (ImGui::SliderFloat("Contact Shadow Resolution Scale", &m_sssResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Contact Shadow Temporal Alpha", &m_sssTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 			}
@@ -1445,6 +1516,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	// Indirect diffuse - match RenderContext defaults
 	m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;
 	m_indirectDiffuseStrength = RenderContext::IndirectDiffuseDefaults::Strength;
+	m_indirectDiffuseBounceFeedback = RenderContext::IndirectDiffuseDefaults::BounceFeedback;
 	m_indirectDiffuseSliceCount = RenderContext::IndirectDiffuseDefaults::SliceCount;
 	m_indirectDiffuseSamplesPerSlice = RenderContext::IndirectDiffuseDefaults::SamplesPerSlice;
 	m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
@@ -1457,6 +1529,11 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_indirectDiffuseUpscaleSharpness = RenderContext::IndirectDiffuseDefaults::UpscaleSharpness;
 	m_indirectDiffuseDebugStage = RenderContext::IndirectDiffuseDefaults::DebugMode;
 	m_indirectDiffuseCompositeMode = RenderContext::IndirectDiffuseDefaults::CompositeMode;
+	m_indirectDiffuseValidationShowLegend = true;
+	m_indirectDiffuseValidationEnableCursorProbe = false;
+	m_indirectDiffuseValidationDisableReinjection = false;
+	m_indirectDiffuseValidationDisableTemporal = false;
+	m_indirectDiffuseValidationDisableDenoise = false;
 
 	// Contact shadows - match RenderContext defaults
 	m_sssResolutionScale = 0.5f;

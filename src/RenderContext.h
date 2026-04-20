@@ -19,6 +19,7 @@ struct RenderContext {
 	struct IndirectDiffuseDefaults {
 		static constexpr bool Enable = true;
 		static constexpr float Strength = 1.50f;
+		static constexpr float BounceFeedback = 0.35f;
 		static constexpr int SliceCount = 4;
 		static constexpr int SamplesPerSlice = 4;
 		static constexpr float RadiusVS = 4.0f;
@@ -117,6 +118,7 @@ struct RenderContext {
 	// Indirect diffuse settings
 	bool enableIndirectDiffuse = IndirectDiffuseDefaults::Enable;
 	float indirectDiffuseStrength = IndirectDiffuseDefaults::Strength;
+	float indirectDiffuseBounceFeedback = IndirectDiffuseDefaults::BounceFeedback;
 	int indirectDiffuseSliceCount = IndirectDiffuseDefaults::SliceCount;
 	int indirectDiffuseSamplesPerSlice = IndirectDiffuseDefaults::SamplesPerSlice;
 	float indirectDiffuseRadiusVS = IndirectDiffuseDefaults::RadiusVS;
@@ -129,6 +131,11 @@ struct RenderContext {
 	float indirectDiffuseUpscaleSharpness = IndirectDiffuseDefaults::UpscaleSharpness;
 	int indirectDiffuseDebugStage = IndirectDiffuseDefaults::DebugMode;
 	int indirectDiffuseCompositeMode = IndirectDiffuseDefaults::CompositeMode;
+	bool indirectDiffuseValidationShowLegend = true;
+	bool indirectDiffuseValidationEnableCursorProbe = false;
+	bool indirectDiffuseValidationDisableReinjection = false;
+	bool indirectDiffuseValidationDisableTemporal = false;
+	bool indirectDiffuseValidationDisableDenoise = false;
 
 
 	// Bloom settings

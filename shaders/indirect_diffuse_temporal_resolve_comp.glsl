@@ -16,6 +16,8 @@ layout(binding = 8) uniform sampler2D previousNormalTex;
 layout(binding = 0, rgba16f) writeonly uniform image2D outIndirect;
 layout(binding = 1, rgba16f) writeonly uniform image2D outDirectional;
 layout(binding = 2, rgba16f) writeonly uniform image2D outTemporalDebug;
+layout(binding = 3, rgba16f) writeonly uniform image2D outHistoryRawDebug;
+layout(binding = 4, rgba16f) writeonly uniform image2D outHistoryClampedDebug;
 
 uniform int useHistory;
 uniform float historyBlend;
@@ -66,6 +68,8 @@ void main() {
         imageStore(outIndirect, id, vec4(0.0));
         imageStore(outDirectional, id, vec4(0.0));
         imageStore(outTemporalDebug, id, vec4(0.0, 1.0, 0.0, 0.0));
+        imageStore(outHistoryRawDebug, id, vec4(0.0));
+        imageStore(outHistoryClampedDebug, id, vec4(0.0));
         return;
     }
 
@@ -86,6 +90,8 @@ void main() {
         imageStore(outIndirect, id, curI);
         imageStore(outDirectional, id, curD);
         imageStore(outTemporalDebug, id, vec4(0.0, 1.0, 0.0, currentSignal));
+        imageStore(outHistoryRawDebug, id, vec4(0.0));
+        imageStore(outHistoryClampedDebug, id, vec4(0.0));
         return;
     }
 
@@ -93,14 +99,19 @@ void main() {
         imageStore(outIndirect, id, curI);
         imageStore(outDirectional, id, curD);
         imageStore(outTemporalDebug, id, vec4(0.0, 1.0, 0.0, currentSignal));
+        imageStore(outHistoryRawDebug, id, vec4(0.0));
+        imageStore(outHistoryClampedDebug, id, vec4(0.0));
         return;
     }
 
-    vec4 prevI = textureLod(previousIndirectRaw, prevUV, 0.0);
+    vec4 prevIUnclamped = textureLod(previousIndirectRaw, prevUV, 0.0);
     vec4 prevD = textureLod(previousDirectionalRaw, prevUV, 0.0);
+    imageStore(outHistoryRawDebug, id, prevIUnclamped);
 
+    vec4 prevI = prevIUnclamped;
     prevI = ClampHistoryToNeighborhood(uv, prevI, currentIndirectRaw, invOutSize, historyClampStrength);
     prevD = ClampHistoryToNeighborhood(uv, prevD, currentDirectionalRaw, invOutSize, historyClampStrength * 0.75);
+    imageStore(outHistoryClampedDebug, id, prevI);
 
     float prevDepth = textureLod(previousLinearDepthQuarter, prevUV, 0.0).r;
     vec3 prevNormal = DecodeOctNormal01(textureLod(previousNormalTex, prevUV, 0.0).rg);
@@ -129,7 +140,7 @@ void main() {
     if (historyConfidence < minHistoryConfidence) {
         imageStore(outIndirect, id, curI);
         imageStore(outDirectional, id, curD);
-        imageStore(outTemporalDebug, id, vec4(historyConfidence, disocclusion, 0.0, currentSignal));
+        imageStore(outTemporalDebug, id, vec4(historyConfidence, 1.0 - historyConfidence, 0.0, currentSignal));
         return;
     }
 
@@ -146,5 +157,5 @@ void main() {
 
     imageStore(outIndirect, id, resolvedIndirect);
     imageStore(outDirectional, id, resolvedDirectional);
-    imageStore(outTemporalDebug, id, vec4(historyConfidence, disocclusion, historyWeight, currentSignal));
+    imageStore(outTemporalDebug, id, vec4(historyConfidence, 1.0 - historyConfidence, historyWeight, currentSignal));
 }

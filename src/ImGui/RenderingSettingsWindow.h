@@ -94,6 +94,7 @@ private:
 	// Indirect diffuse settings
 	bool m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;
 	float m_indirectDiffuseStrength = RenderContext::IndirectDiffuseDefaults::Strength;
+	float m_indirectDiffuseBounceFeedback = RenderContext::IndirectDiffuseDefaults::BounceFeedback;
 	int m_indirectDiffuseSliceCount = RenderContext::IndirectDiffuseDefaults::SliceCount;
 	int m_indirectDiffuseSamplesPerSlice = RenderContext::IndirectDiffuseDefaults::SamplesPerSlice;
 	float m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
@@ -106,6 +107,11 @@ private:
 	float m_indirectDiffuseUpscaleSharpness = RenderContext::IndirectDiffuseDefaults::UpscaleSharpness;
 	int m_indirectDiffuseDebugStage = RenderContext::IndirectDiffuseDefaults::DebugMode;
 	int m_indirectDiffuseCompositeMode = RenderContext::IndirectDiffuseDefaults::CompositeMode;
+	bool m_indirectDiffuseValidationShowLegend = true;
+	bool m_indirectDiffuseValidationEnableCursorProbe = false;
+	bool m_indirectDiffuseValidationDisableReinjection = false;
+	bool m_indirectDiffuseValidationDisableTemporal = false;
+	bool m_indirectDiffuseValidationDisableDenoise = false;
 
 	// Screen-space contact shadow settings
 	float m_sssResolutionScale = 0.5f;

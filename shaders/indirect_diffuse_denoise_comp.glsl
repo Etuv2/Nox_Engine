@@ -11,6 +11,7 @@ layout(binding = 4) uniform sampler2D temporalDebug;
 
 layout(binding = 5, rgba16f) writeonly uniform image2D outIndirect;
 layout(binding = 6, rgba16f) writeonly uniform image2D outDirectional;
+layout(binding = 7, rgba16f) writeonly uniform image2D outDenoiseDebug;
 
 uniform vec2 invQuarterSize;
 uniform vec2 fullResolution;
@@ -51,6 +52,7 @@ void main() {
     if (centerDepth > kInvalidDepth) {
         imageStore(outIndirect, id, vec4(0.0));
         imageStore(outDirectional, id, vec4(0.0));
+        imageStore(outDenoiseDebug, id, vec4(0.0));
         return;
     }
 
@@ -82,6 +84,8 @@ void main() {
     vec4 indirectAcc = vec4(0.0);
     vec4 directionalAcc = vec4(0.0);
     float weightAcc = 0.0;
+    float acceptedSamples = 0.0;
+    float visitedSamples = 0.0;
 
     for (int y = -kernelRadius; y <= kernelRadius; ++y) {
         for (int x = -kernelRadius; x <= kernelRadius; ++x) {
@@ -96,6 +100,7 @@ void main() {
             if (sampleDepth > kInvalidDepth) {
                 continue;
             }
+            visitedSamples += 1.0;
 
             vec3 sampleN = DecodeOctNormal01(textureLod(normalFromDepthTex, sampleUV, normalMip).rg);
             if (length(sampleN) < 0.5 || any(isnan(sampleN))) {
@@ -146,12 +151,14 @@ void main() {
             indirectAcc += sampleI * w;
             directionalAcc += sampleD * w;
             weightAcc += w;
+            acceptedSamples += 1.0;
         }
     }
 
     if (weightAcc <= 1e-6) {
         imageStore(outIndirect, id, centerI);
         imageStore(outDirectional, id, centerD);
+        imageStore(outDenoiseDebug, id, vec4(0.0, 0.0, centerConf, 0.0));
         return;
     }
 
@@ -164,4 +171,9 @@ void main() {
 
     imageStore(outIndirect, id, denoisedIndirect);
     imageStore(outDirectional, id, denoisedDirectional);
+    imageStore(outDenoiseDebug, id, vec4(
+        clamp(weightAcc / max(visitedSamples, 1.0), 0.0, 1.0),
+        clamp(acceptedSamples / max(visitedSamples, 1.0), 0.0, 1.0),
+        centerConf,
+        0.0));
 }

@@ -1116,3 +1116,29 @@ int ModularRenderer::GetTAAFrameIndex() const
 {
 	return m_taaPass ? m_taaPass->GetFrameIndex() : 0;
 }
+
+bool ModularRenderer::ExportIndirectDiffuseValidationStages(const std::string& directory) const
+{
+	if (!m_indirectDiffusePass) {
+		return false;
+	}
+	return m_indirectDiffusePass->ExportValidationStages(directory);
+}
+
+bool ModularRenderer::ReadIndirectDiffuseProbe(int stage, int pixelX, int pixelY, IndirectDiffuseProbeSample& outSample) const
+{
+	if (!m_indirectDiffusePass) {
+		return false;
+	}
+
+	IndirectDiffusePass::ProbeSample probe;
+	if (!m_indirectDiffusePass->ReadValidationProbe(stage, pixelX, pixelY, probe)) {
+		return false;
+	}
+
+	outSample.value = probe.value;
+	outSample.aux = probe.aux;
+	outSample.luma = probe.luma;
+	outSample.valid = probe.valid;
+	return true;
+}
