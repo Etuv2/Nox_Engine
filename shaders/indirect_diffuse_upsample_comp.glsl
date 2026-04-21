@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/pbr_common.glsl"
 #include "includes/screen_space_reconstruction.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
@@ -25,6 +26,8 @@ layout(binding = 18) uniform sampler2D radianceProvenanceQuarter;
 layout(binding = 19) uniform sampler2D temporalHistoryRawQuarter;
 layout(binding = 20) uniform sampler2D temporalHistoryClampedQuarter;
 layout(binding = 21) uniform sampler2D denoiseWeightQuarter;
+layout(binding = 22) uniform sampler2D gSpecularF0;
+layout(binding = 23) uniform sampler2D gClearCoat;
 
 layout(binding = 0, rgba16f) writeonly uniform image2D outFull;
 layout(binding = 1, rgba16f) writeonly uniform image2D outDebug;
@@ -42,40 +45,14 @@ uniform mat4 view;
 uniform int normalsInWorldSpace;
 uniform mat4 invProj;
 
-const float kInvalidDepth = 65000.0;
-const float PI = 3.14159265359;
-
-float Luma(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
-}
-
 vec3 DecodeNormalVS(vec2 encoded) {
-    vec3 n = normalize(DecodeOctNormal01(encoded));
-    return (normalsInWorldSpace == 1) ? normalize(mat3(view) * n) : n;
-}
-
-float QuarterNormalMip() {
-    return max(log2(max(float(textureSize(normalFromDepthTex, 0).x) / max(float(textureSize(depthLinearQuarter, 0).x), 1.0), 1.0)), 0.0);
-}
-
-vec3 ViewPosFromLinearDepth(vec2 uv, float linearDepth) {
-    vec2 ndc = uv * 2.0 - 1.0;
-    return vec3(
-        ndc.x * linearDepth / max(projScaleX, 1e-5),
-        ndc.y * linearDepth / max(projScaleY, 1e-5),
-        -linearDepth
-    );
+    return DecodeSceneNormalVS(encoded, view, normalsInWorldSpace == 1);
 }
 
 float SampleDepthQuarterNearest(vec2 uv, int mipLevel) {
     ivec2 mipSize = textureSize(depthLinearQuarter, mipLevel);
     ivec2 coord = clamp(ivec2(uv * vec2(mipSize)), ivec2(0), mipSize - ivec2(1));
     return texelFetch(depthLinearQuarter, coord, mipLevel).r;
-}
-
-float ViewDepthFromDeviceDepth(vec2 uv, float depth01) {
-    vec3 viewPos = ReconstructViewPosition(uv, depth01, invProj);
-    return max(-viewPos.z, 1e-4);
 }
 
 float BrdfSH(vec4 sh, vec3 normalVS) {
@@ -86,6 +63,40 @@ float BrdfSH(vec4 sh, vec3 normalVS) {
 vec3 DebugTonemap(vec3 hdr, float exposure) {
     vec3 scaled = max(hdr, vec3(0.0)) * max(exposure, 0.0);
     return scaled / (vec3(1.0) + scaled);
+}
+
+vec3 ComputeIndirectBaseColorFloor(vec3 baseColor, float glossMask, float clearcoat) {
+    float baseLuma = Luminance(baseColor);
+    float darkMask = 1.0 - smoothstep(0.015, 0.18, baseLuma);
+    float materialMask = Saturate(max(glossMask, clearcoat));
+    float floorLuma = mix(0.0, 0.075, darkMask * materialMask);
+    vec3 hue = baseLuma > 1e-4 ? baseColor / baseLuma : vec3(1.0);
+    hue = mix(vec3(1.0), clamp(hue, vec3(0.25), vec3(4.0)), 0.65);
+    return max(baseColor, hue * floorLuma);
+}
+
+vec3 ComputeDebugIndirectMaterialResponse(vec2 uv, vec3 indirectIrradiance, vec3 fullNormalVS, float visibility) {
+    vec4 packedNormalRM = textureLod(normalFull, uv, 0.0);
+    vec3 albedo = max(textureLod(gAlbedoAO, uv, 0.0).rgb, vec3(0.0));
+    vec3 specularF0 = max(textureLod(gSpecularF0, uv, 0.0).rgb, vec3(0.0));
+    vec2 clearcoatData = textureLod(gClearCoat, uv, 0.0).rg;
+
+    float roughness = ClampPerceptualRoughness(packedNormalRM.b);
+    float metallic = clamp(packedNormalRM.a, 0.0, 1.0);
+    float clearcoat = clamp(clearcoatData.r, 0.0, 1.0);
+    float clearcoatRoughness = ClampPerceptualRoughness(clearcoatData.g);
+    float NdotV = clamp(abs(normalize(fullNormalVS).z), 0.08, 1.0);
+
+    vec3 F = FresnelSchlickRoughness(NdotV, specularF0, roughness);
+
+    float baseGloss = pow(1.0 - roughness, 2.0);
+    float clearcoatGloss = clearcoat * pow(1.0 - clearcoatRoughness, 2.0);
+    vec3 effectiveBase = ComputeIndirectBaseColorFloor(albedo, max(baseGloss, clearcoatGloss), clearcoat);
+    vec3 diffuseResponse = (vec3(1.0) - F) * (1.0 - metallic) * effectiveBase;
+    vec3 specularResponse = F * baseGloss * 0.35;
+
+    vec3 materialResponse = diffuseResponse + specularResponse;
+    return max(indirectIrradiance * materialResponse * visibility * indirectStrength * 2.5, vec3(0.0));
 }
 
 vec4 SampleQuarterResolved(vec2 uv, vec3 fullNormal, float fullDepthVS, float fullDepth01, float normalMip) {
@@ -109,7 +120,7 @@ vec4 SampleQuarterResolved(vec2 uv, vec3 fullNormal, float fullDepthVS, float fu
         for (int x = -1; x <= 1; ++x) {
             vec2 sampleUV = clamp(uv + vec2(x, y) * invQuarterSize, vec2(0.0), vec2(1.0));
             float sampleDepth = SampleDepthQuarterNearest(sampleUV, 0);
-            if (sampleDepth > kInvalidDepth) {
+            if (!IsValidLinearDepth(sampleDepth)) {
                 continue;
             }
 
@@ -120,7 +131,7 @@ vec4 SampleQuarterResolved(vec2 uv, vec3 fullNormal, float fullDepthVS, float fu
                 sampleNormal = centerQuarterNormal;
             }
 
-            vec3 sampleViewPos = ViewPosFromLinearDepth(sampleUV, sampleDepth);
+            vec3 sampleViewPos = ViewPosFromLinearDepth(sampleUV, sampleDepth, projScaleX, projScaleY);
             float depthDelta = abs(sampleDepth - fullDepthVS) / max(max(sampleDepth, fullDepthVS), 1e-4);
             float planeDelta = abs(dot(fullNormal, sampleViewPos - fullViewPos));
             float normalAlign = max(dot(fullNormal, sampleNormal), 0.0);
@@ -160,7 +171,7 @@ vec3 VisualizeDepthPyramid(vec2 uv) {
     float d4 = textureLod(depthLinearQuarter, uv, float(min(4, maxMip))).r;
     vec3 d = vec3(d0, d2, d4);
 
-    if (d0 > kInvalidDepth) {
+    if (!IsValidLinearDepth(d0)) {
         return vec3(0.0);
     }
 
@@ -181,7 +192,7 @@ vec3 SampleDebugMode(int mode, vec2 uv, vec3 fullNormal, vec4 upscaledOut) {
         return VisualizeDepthPyramid(uv);
     }
     if (mode == 2) {
-        vec3 qn = DecodeNormalVS(textureLod(normalFromDepthTex, uv, QuarterNormalMip()).rg);
+        vec3 qn = DecodeNormalVS(textureLod(normalFromDepthTex, uv, QuarterNormalMip(normalFromDepthTex, depthLinearQuarter)).rg);
         return qn * 0.5 + 0.5;
     }
     if (mode == 3) {
@@ -230,9 +241,8 @@ vec3 SampleDebugMode(int mode, vec2 uv, vec3 fullNormal, vec4 upscaledOut) {
         return DebugTonemap(upscaledOut.rgb, 8.0);
     }
     if (mode == 16) {
-        vec3 albedo = max(textureLod(gAlbedoAO, uv, 0.0).rgb, vec3(0.0));
         float visibility = mix(0.35, 1.0, clamp(upscaledOut.a, 0.0, 1.0));
-        return DebugTonemap(upscaledOut.rgb * albedo * visibility * indirectStrength * 2.5, 8.0);
+        return DebugTonemap(ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, fullNormal, visibility), 8.0);
     }
     if (mode == 17) {
         return DebugTonemap(textureLod(radianceCurrentQuarter, uv, 0.0).rgb, 3.0);
@@ -276,17 +286,16 @@ void main() {
         return;
     }
 
-    float fullDepthVS = ViewDepthFromDeviceDepth(uv, fullDepth01);
+    float fullDepthVS = ViewDepthFromDeviceDepth(uv, fullDepth01, invProj);
     vec3 fullNormal = DecodeNormalVS(textureLod(normalFull, uv, 0.0).rg);
     if (length(fullNormal) < 0.5 || any(isnan(fullNormal))) {
         fullNormal = vec3(0.0, 0.0, 1.0);
     }
 
-    vec4 upscaledOut = SampleQuarterResolved(uv, normalize(fullNormal), fullDepthVS, fullDepth01, QuarterNormalMip());
+    vec4 upscaledOut = SampleQuarterResolved(uv, normalize(fullNormal), fullDepthVS, fullDepth01, QuarterNormalMip(normalFromDepthTex, depthLinearQuarter));
     vec3 debugRGB = SampleDebugMode(debugMode, uv, normalize(fullNormal), upscaledOut);
-    vec3 albedo = max(textureLod(gAlbedoAO, uv, 0.0).rgb, vec3(0.0));
     float visibility = mix(0.35, 1.0, clamp(upscaledOut.a, 0.0, 1.0));
-    vec3 finalIndirectOnly = upscaledOut.rgb * albedo * visibility * indirectStrength * 2.5;
+    vec3 finalIndirectOnly = ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, normalize(fullNormal), visibility);
 
     imageStore(outFull, id, vec4(max(upscaledOut.rgb, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
     imageStore(outDebug, id, vec4(max(debugRGB, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));

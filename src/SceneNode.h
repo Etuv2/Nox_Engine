@@ -134,7 +134,7 @@ public:
     bool IsUpdatingFromPhysics() const { return m_updatingFromPhysics; }
 
     // ANIMATION TRANSFORM
-    void SetAnimatedTransform(const glm::mat4& transform) { animatedTransform = transform; }
+    void SetAnimatedTransform(const glm::mat4& transform);
     glm::mat4 GetAnimatedTransform() const { return animatedTransform; }
 
     // SKINNING HELPERS

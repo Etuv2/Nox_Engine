@@ -48,8 +48,8 @@ void ShadowPass::Execute(RenderContext& ctx,
     }
 
     auto& shadowConfig = lightManager->GetShadowConfig();
-    m_shadowNear = ctx.shadowNear;
-    m_shadowFar = ctx.shadowFar;
+    m_shadowNear = std::max(ctx.shadowNear, camera->GetCameraNearPlane());
+    m_shadowFar = std::max(m_shadowNear + 1.0f, std::min(ctx.shadowFar, camera->GetCameraFarPlane()));
     shadowConfig.enablePCSS = ctx.enablePCSS;
     shadowConfig.directionalConstantBias = ctx.shadowBias;
     shadowConfig.directionalSlopeBias = std::max(ctx.shadowBias * 2.0f, ctx.shadowBias);

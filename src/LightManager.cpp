@@ -123,7 +123,7 @@ LightManager::LightManager()
 	shadowConfig.dynamicResolution = true;
 	shadowConfig.stableTexelSnapping = true;
 	shadowConfig.directionalSplitLambda = 0.6f;
-	shadowConfig.directionalShadowFitFov = 0.0f;  // 0 = auto-fit based on cascade splits, >0 = fixed FOV fit
+	shadowConfig.directionalShadowFitFov = 90.0f;
 	shadowConfig.cascadeBaseOverlap = 0.02f;
 	shadowConfig.directionalConstantBias = 0.0008f;
 	shadowConfig.directionalSlopeBias = 0.0045f;
@@ -674,7 +674,11 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	const uint64_t scenePublication = (sceneGraph->GetTransformSystem() != nullptr)
 		? sceneGraph->GetTransformSystem()->GetWorldPublicationGeneration()
 		: 0;
-	const bool sceneChanged = !m_hasShadowFrameState || (scenePublication != m_lastShadowScenePublication);
+	const bool animatedShadowPoseChanged = sceneGraph->GetAnimationSystem() &&
+		sceneGraph->GetAnimationSystem()->GetActiveAnimationCount() > 0;
+	const bool sceneChanged = !m_hasShadowFrameState ||
+		(scenePublication != m_lastShadowScenePublication) ||
+		animatedShadowPoseChanged;
 	const bool cameraChanged = !m_hasShadowFrameState ||
 		!MatricesNearEqual(view, m_lastShadowView) ||
 		std::abs(nearPlane - m_lastShadowNearPlane) > 1e-5f ||
@@ -912,7 +916,10 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 				glPolygonOffset(2.0f, 4.0f);
 			}
 
-			if (locObjectIndex < 0) {
+			if (RenderSystem* renderSystem = sceneGraph->GetRenderSystem()) {
+				renderSystem->RenderShadowCascade(lightSpace, m_shadowShader);
+			}
+			else if (locObjectIndex < 0) {
 				filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
 			}
 			else {
@@ -941,7 +948,12 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		};
 
 	int currentSlice = 0;
-	const float cascadeFitFov = glm::clamp(shadowConfig.directionalShadowFitFov, 10.0f, 170.0f);
+	const float cascadeFitFov = glm::clamp(
+		shadowConfig.directionalShadowFitFov > 0.0f
+			? shadowConfig.directionalShadowFitFov
+			: (camera ? camera->GetCameraFov() : 90.0f),
+		35.0f,
+		120.0f);
 
 	// Iterate through all active lights
 	for (size_t li = 0; li < m_activeLights.size() && currentSlice < m_shadowArrayLayers; ++li) {

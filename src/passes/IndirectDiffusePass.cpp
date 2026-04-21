@@ -343,13 +343,13 @@ void IndirectDiffusePass::runRadiance(RenderContext& ctx) {
         (ctx.velocityTex != 0 && m_historyDepthQuarter && m_historyNormalFull && !ctx.indirectDiffuseHistoryReset) ? 1 : 0);
     const float reinjectionFeedback = ctx.indirectDiffuseValidationDisableReinjection
         ? 0.0f
-        : std::clamp(ctx.indirectDiffuseBounceFeedback, 0.0f, 0.75f);
+        : std::clamp(ctx.indirectDiffuseBounceFeedback, 0.0f, 2.0f);
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "previousIndirectFeedback"), reinjectionFeedback);
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "depthReject"), std::clamp(ctx.indirectDiffuseDepthReject, 0.01f, 0.35f));
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "normalRejectCos"), std::clamp(1.0f - ctx.indirectDiffuseNormalReject, 0.55f, 0.99f));
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "disocclusionReject"), std::clamp(ctx.indirectDiffuseDepthReject * 1.5f, 0.02f, 0.25f));
-    glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "sourceNormalRejectCos"), 0.75f);
-    glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "sourceAlbedoReject"), 0.45f);
+    glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "sourceNormalRejectCos"), 0.68f);
+    glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "sourceAlbedoReject"), 1.15f);
     glUniformMatrix4fv(glGetUniformLocation(m_csRadiance->GetProgramID(), "invProj"), 1, GL_FALSE, glm::value_ptr(glm::inverse(ctx.proj)));
 
     const GLuint gx = (m_qw + 7) / 8;
@@ -548,6 +548,8 @@ void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
     glBindTextureUnit(19, m_temporalHistoryRawDebug->ID());
     glBindTextureUnit(20, m_temporalHistoryClampedDebug->ID());
     glBindTextureUnit(21, m_denoiseWeightDebug->ID());
+    glBindTextureUnit(22, ctx.gbufferFBO->GetColorAttachment(2));
+    glBindTextureUnit(23, ctx.gbufferFBO->GetColorAttachment(6));
 
     glBindImageTexture(0, m_indirectDiffuseTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
     glBindImageTexture(1, m_debugOutput->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);

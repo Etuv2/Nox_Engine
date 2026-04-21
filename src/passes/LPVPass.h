@@ -69,11 +69,12 @@ public:
         int updateFrequency = 1;            // Update every N frames (1 = every frame)
     } config;
 
-    // Access to LPV textures for sampling in lighting pass
+    // Access to LPV textures for debug tooling and legacy inspectors.
     GLuint GetLPVTextureR() const { return m_lpvSampleTextures[0]; }
     GLuint GetLPVTextureG() const { return m_lpvSampleTextures[1]; }
     GLuint GetLPVTextureB() const { return m_lpvSampleTextures[2]; }
     GLuint GetGeometryVolume() const { return m_geometryVolume; }
+    GLuint GetResolvedIndirectTexture() const { return m_resolvedIndirectTexture; }
 
     // Debug visualization
     void RenderDebugVisualization(const glm::mat4& view, const glm::mat4& projection);
@@ -88,6 +89,7 @@ private:
     // Recreate helpers when resolution changes at runtime
     void DestroyLPVResourcesOnly();
     void DestroyRSMResourcesOnly();
+    bool EnsureResolvedIndirectTexture(int width, int height);
 
     // Rendering stages
     void RenderRSM(RenderContext& ctx,
@@ -96,6 +98,7 @@ private:
     
     void InjectVPLs();
     void PropagateLPV();
+    void ResolveIndirect(RenderContext& ctx);
     void VoxelizeGeometry(const std::shared_ptr<SceneGraph>& sceneGraph);
 
     // Utility
@@ -111,12 +114,13 @@ private:
     GLuint m_lpvSampleTexturesTemp[3] = {0, 0, 0};  // Temp for propagation (RGBA16F)
 
     GLuint m_geometryVolume = 0;                 // Occlusion volume (R8)
+    GLuint m_resolvedIndirectTexture = 0;         // Full-screen RGBA16F irradiance + visibility
     
     // RSM framebuffer and textures
     std::unique_ptr<FrameBuffer> m_rsmFBO;
     GLuint m_rsmPosition = 0;       // World-space position (RGB16F)
     GLuint m_rsmNormal = 0;         // World-space normal (RGB16F)
-    GLuint m_rsmFlux = 0;           // Color * N·L * radiance (RGB16F)
+    GLuint m_rsmFlux = 0;           // Color * NÂ·L * radiance (RGB16F)
     GLuint m_rsmDepth = 0;          // Depth buffer
     
     // Shaders
@@ -124,6 +128,7 @@ private:
     GLuint m_injectionShader = 0;    // VPL injection compute shader
     GLuint m_propagationShader = 0;  // Light propagation compute shader
     GLuint m_convertShader = 0;      // Convert R32UI extended grid -> RGBA16F per-voxel textures
+    GLuint m_resolveShader = 0;      // Resolve LPV SH volumes into generic screen-space indirect
     GLuint m_voxelizeShader = 0;     // Geometry voxelization shader
     GLuint m_debugShader = 0;        // Debug visualization shader
     
@@ -135,4 +140,6 @@ private:
     // Track allocated resolutions to recreate textures when user changes settings
     int m_allocatedGridResolution = 0;  // base resolution used to allocate LPV/geometry textures
     int m_allocatedRSMResolution = 0;   // resolution used to allocate RSM resources
+    int m_resolvedIndirectWidth = 0;
+    int m_resolvedIndirectHeight = 0;
 };

@@ -29,32 +29,29 @@ uniform float sourceNormalRejectCos;
 uniform float sourceAlbedoReject;
 uniform mat4 invProj;
 
-const float kInvalidDepth = 65504.0;
+vec3 ShapeIndirectRadiance(vec3 radiance) {
+    radiance = max(radiance, vec3(0.0));
+    float luma = Luma(radiance);
+    if (luma <= 1e-5) {
+        return vec3(0.0);
+    }
 
-float Luma(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
-}
-
-bool IsValidDepth(float depth) {
-    return depth > 0.0 && depth < kInvalidDepth;
-}
-
-float ViewDepthFromDeviceDepth(vec2 uv, float depth01) {
-    vec3 viewPos = ReconstructViewPosition(uv, depth01, invProj);
-    return max(-viewPos.z, 1e-4);
+    float lowLift = mix(1.45, 1.0, smoothstep(0.04, 0.45, luma));
+    float softKnee = 1.0 / (1.0 + max(luma - 1.25, 0.0) * 0.55);
+    return radiance * (lowLift * softKnee);
 }
 
 bool TryLoadSourceDepthVS(ivec2 src, ivec2 srcSize, out float depthVS, out float depth01) {
     ivec2 clampedSrc = clamp(src, ivec2(0), srcSize - ivec2(1));
     depth01 = texelFetch(depthFull, clampedSrc, 0).r;
     if (depth01 >= 0.999999) {
-        depthVS = kInvalidDepth;
+        depthVS = NOX_FP16_MAX;
         return false;
     }
 
     vec2 srcUV = (vec2(clampedSrc) + 0.5) / vec2(srcSize);
-    depthVS = ViewDepthFromDeviceDepth(srcUV, depth01);
-    return IsValidDepth(depthVS);
+    depthVS = ViewDepthFromDeviceDepth(srcUV, depth01, invProj);
+    return IsValidLinearDepth(depthVS);
 }
 
 void main() {
@@ -66,7 +63,7 @@ void main() {
 
     vec2 uv = (vec2(id) + 0.5) / vec2(outSize);
     float currDepth = texelFetch(linearDepthQuarter, id, 0).r;
-    if (!IsValidDepth(currDepth)) {
+    if (!IsValidLinearDepth(currDepth)) {
         imageStore(outRadianceQuarter, id, vec4(0.0));
         return;
     }
@@ -79,7 +76,7 @@ void main() {
     ivec2 srcSize = textureSize(bounceableDiffuseTex, 0);
     ivec2 base = id * 4;
     ivec2 anchorSrc = clamp(base + ivec2(1, 1), ivec2(0), srcSize - ivec2(1));
-    float anchorDepthVS = kInvalidDepth;
+    float anchorDepthVS = NOX_FP16_MAX;
     float anchorDepth01 = 1.0;
 
     for (int y = 0; y < 4; ++y) {
@@ -137,7 +134,7 @@ void main() {
 
             vec3 bounceable = texelFetch(bounceableDiffuseTex, src, 0).rgb;
             vec3 emissive = texelFetch(emissiveTex, src, 0).rgb;
-            vec3 source = max(bounceable + emissive, vec3(0.0));
+            vec3 source = ShapeIndirectRadiance(bounceable + emissive);
             float depthW = exp(-depthRel / max(depthReject * 0.75, 1e-4));
             float normalW = smoothstep(sourceNormalRejectCos, 1.0, normalSim);
             float albedoW = exp(-albedoDelta / max(sourceAlbedoReject * 0.5, 1e-4));
@@ -156,7 +153,7 @@ void main() {
 
     vec3 currentRadiance = (sourceWeight > 1e-6)
         ? (sourceRadiance / sourceWeight)
-        : max(texelFetch(bounceableDiffuseTex, anchorSrc, 0).rgb + texelFetch(emissiveTex, anchorSrc, 0).rgb, vec3(0.0));
+        : ShapeIndirectRadiance(texelFetch(bounceableDiffuseTex, anchorSrc, 0).rgb + texelFetch(emissiveTex, anchorSrc, 0).rgb);
     vec3 radiance = currentRadiance;
     float reinjectWeight = 0.0;
     vec3 reinjectionRadiance = vec3(0.0);
@@ -173,7 +170,7 @@ void main() {
             vec3 prevNormal = DecodeOctNormal01(textureLod(previousNormalTex, prevUV, 0.0).rg);
             vec4 prevIndirect = textureLod(previousIndirectTex, prevUV, 0.0);
 
-            if (IsValidDepth(prevDepth) && !any(isnan(prevNormal)) && !any(isinf(prevNormal))) {
+            if (IsValidLinearDepth(prevDepth) && !any(isnan(prevNormal)) && !any(isinf(prevNormal))) {
                 float depthRel = abs(currDepth - prevDepth) / max(max(currDepth, prevDepth), 1e-4);
                 float depthW = exp(-depthRel / max(depthReject, 1e-4));
 
@@ -188,9 +185,9 @@ void main() {
 
                 float historySignal = Luma(max(prevIndirect.rgb, vec3(0.0)));
                 float historySignalWeight = 1.0 - exp(-historySignal * 0.75);
-                reinjectWeight = clamp(previousIndirectFeedback, 0.0, 0.75) * historySignalWeight;
+                reinjectWeight = clamp(previousIndirectFeedback, 0.0, 2.0) * historySignalWeight;
                 reinjectWeight *= depthW * normalW * motionW * (1.0 - disocclusion);
-                reinjectWeight = clamp(reinjectWeight, 0.0, 0.65);
+                reinjectWeight = clamp(reinjectWeight, 0.0, 0.90);
 
                 reinjectionRadiance = max(prevIndirect.rgb, vec3(0.0)) * reinjectWeight;
                 radiance += reinjectionRadiance;

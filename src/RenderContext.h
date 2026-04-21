@@ -18,13 +18,13 @@ class FrameBuffer; class ScreenQuad; class LightManager;
 struct RenderContext {
 	struct IndirectDiffuseDefaults {
 		static constexpr bool Enable = true;
-		static constexpr float Strength = 1.50f;
-		static constexpr float BounceFeedback = 0.35f;
-		static constexpr int SliceCount = 4;
-		static constexpr int SamplesPerSlice = 4;
-		static constexpr float RadiusVS = 4.0f;
-		static constexpr float ThicknessVS = 0.5f;
-		static constexpr float TemporalAlpha = 0.12f;
+		static constexpr float Strength = 1.0f;
+		static constexpr float BounceFeedback = 2.0f;
+		static constexpr int SliceCount = 8;
+		static constexpr int SamplesPerSlice = 16;
+		static constexpr float RadiusVS = 3.04f;
+		static constexpr float ThicknessVS = 0.10f;
+		static constexpr float TemporalAlpha = 0.35f;
 		static constexpr float NormalReject = 0.22f;
 		static constexpr float DepthReject = 0.10f;
 		static constexpr float DenoiseStrength = 1.00f;
@@ -166,7 +166,7 @@ struct RenderContext {
 	// Shadow settings
 	bool enableShadows = true;
 	float shadowBias = 0.0008f;
-	float shadowNear = 0.001f;
+	float shadowNear = 0.1f;
 	float shadowFar = 1000.0f;
 	bool enablePCSS = true;
 	float lightSize = 0.02f;
@@ -189,14 +189,14 @@ struct RenderContext {
 
 
 	// Post-processing settings
-	float exposure = 0.8f;
-	float gamma = 2.2f;
+	float exposure = 0.96f;
+	float gamma = 2.16f;
 	bool enableHDR = true;
 
 	// Tonemapping settings (GT / Uchimura)
 	enum class TonemapType { None = 0, ACES = 1, GT = 2, GT7 = 3 };
-	TonemapType tonemapType = TonemapType::ACES;
-	float tm_P = 1.0f, tm_a = 1.0f, tm_m = 0.22f, tm_l = 0.4f, tm_c = 1.33f, tm_b = 0.0f;
+	TonemapType tonemapType = TonemapType::GT;
+	float tm_P = 1.0f, tm_a = 1.0f, tm_m = 0.22f, tm_l = 0.4f, tm_c = 2.022f, tm_b = 0.0f;
 	// GT7 parameters
 	float tm7_peakNits = 1000.0f;   // display peak luminance
 	float tm7_blend = 0.6f;
@@ -206,10 +206,10 @@ struct RenderContext {
 	bool outputSRGB = true;
 
 	// Environment settings
-	glm::vec3 envColor{ 0.05f, 0.05f, 0.05f };
+	glm::vec3 envColor{ 13.0f / 255.0f, 13.0f / 255.0f, 13.0f / 255.0f };
 
 	// IBL (Image-Based Lighting) intensity controls
-	float iblIntensity = 0.35f;          // Overall IBL contribution 
+	float iblIntensity = 0.1f;          // Overall IBL contribution 
 	float skyboxExposure = 1.0f;        // Skybox background exposure
 	float diffuseIBLScale = 0.3f;       // Diffuse IBL scale
 	float specularIBLScale = 0.45f;     // Specular IBL scale

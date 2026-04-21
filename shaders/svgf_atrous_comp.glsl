@@ -1,5 +1,5 @@
 #version 460 core
-#include "includes/pbr_common.glsl" // For PI & EPSILON
+#include "includes/pbr_common.glsl" // For EPSILON and oct-normal helpers
 /**
  * @file svgf_atrous_comp.glsl
  * @brief SVGF À-Trous Wavelet Filter Pass
@@ -35,26 +35,6 @@ uniform float u_phiDepth;   // Depth weight parameter (lower = sharper)
 // 3x3 à-trous kernel weights (B-spline based)
 const float kernel[2] = float[2](1.0, 0.5);
 
-// Octahedron normal decoding
-vec3 DecodeNormalOct8(vec2 e) {
-    e = e * 2.0 - 1.0;
-    vec3 n;
-    n.z = 1.0 - abs(e.x) - abs(e.y);
-    if (n.z < 0.0) {
-        vec2 signE = sign(e);
-        signE = mix(vec2(1.0), signE, step(vec2(0.0001), abs(e)));
-        n.xy = (1.0 - abs(e.yx)) * signE;
-    } else {
-        n.xy = e.xy;
-    }
-    return normalize(n);
-}
-
-// Luminance calculation
-float luminance(vec3 color) {
-    return dot(color, vec3(0.2126, 0.7152, 0.0722));
-}
-
 void main() {
     ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
     
@@ -66,7 +46,7 @@ void main() {
     vec3 centerColor = texelFetch(u_inputRadiance, pixelCoord, 0).rgb;
     float centerDepth = texelFetch(u_gbufferDepth, pixelCoord, 0).r;
     vec4 centerNormalRM = texelFetch(u_gbufferPackedNormalRM, pixelCoord, 0);
-    vec3 centerNormal = DecodeNormalOct8(centerNormalRM.rg);
+    vec3 centerNormal = DecodeNormalOct(centerNormalRM.rg);
     float centerRoughness = centerNormalRM.b;
     float centerVariance = texelFetch(u_varianceTexture, pixelCoord, 0).r;
     
@@ -95,7 +75,7 @@ void main() {
     float adaptivePhiDepth = u_phiDepth * (1.0 + varianceFactor);
     
     // Center luminance for color weight calculation
-    float centerLuma = luminance(centerColor);
+    float centerLuma = Luminance(centerColor);
     
     // Accumulate weighted samples - start with center
     vec3 colorSum = centerColor;
@@ -120,7 +100,7 @@ void main() {
             vec3 sampleColor = texelFetch(u_inputRadiance, sampleCoord, 0).rgb;
             float sampleDepth = texelFetch(u_gbufferDepth, sampleCoord, 0).r;
             vec4 sampleNormalRM = texelFetch(u_gbufferPackedNormalRM, sampleCoord, 0);
-            vec3 sampleNormal = DecodeNormalOct8(sampleNormalRM.rg);
+            vec3 sampleNormal = DecodeNormalOct(sampleNormalRM.rg);
             
             // Skip sky pixels
             if (sampleDepth >= 1.0 - EPSILON) {
@@ -131,7 +111,7 @@ void main() {
             float kernelWeight = kernel[abs(dx)] * kernel[abs(dy)];
             
             //  Color/Luminance Edge Weight 
-            float sampleLuma = luminance(sampleColor);
+            float sampleLuma = Luminance(sampleColor);
             float lumaDiff = abs(centerLuma - sampleLuma);
             // Gaussian weight based on luminance difference
             float colorWeight = exp(-lumaDiff * lumaDiff / max(adaptivePhiColor * adaptivePhiColor, 0.0001));

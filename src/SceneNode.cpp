@@ -355,6 +355,20 @@ std::pair<glm::vec3, glm::vec3> SceneNode::GetBoundingBox() {
 
 // TRANSFORM SETTERS
 
+void SceneNode::SetAnimatedTransform(const glm::mat4& newAnimatedTransform) {
+	animatedTransform = newAnimatedTransform;
+	InvalidateTransformCache();
+	if (m_transformSystem && m_entityID != INVALID_ENTITY) {
+		const bool hasAnimatedPose = (newAnimatedTransform != glm::mat4(1.0f));
+		if (hasAnimatedPose) {
+			m_transformSystem->SetAnimatedTransform(m_entityID, newAnimatedTransform);
+		}
+		else {
+			m_transformSystem->ClearAnimatedTransform(m_entityID);
+		}
+	}
+}
+
 void SceneNode::SetPosition(glm::vec3 pos) {
 	if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z)) {
 		return;

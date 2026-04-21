@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/screen_space_reconstruction.glsl"
 layout(location = 0) out vec4 FragColor;
 
 in vec2 TexCoord;
@@ -35,14 +36,6 @@ vec3 StableDebugIDColor(uint id) {
     return hsv2rgb(vec3(hue, saturation, value));
 }
 
-vec3 decodeOctNormal(vec2 e) {
-    vec2 f = e * 2.0 - 1.0;
-    vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-    float t = clamp(-n.z, 0.0, 1.0);
-    n.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t);
-    return normalize(n);
-}
-
 void main() {
     vec2 uv = TexCoord;
 
@@ -53,7 +46,7 @@ void main() {
 
     if (uMode == 2) {
         vec2 oct = texture(uNormalPacked, uv).rg;
-        vec3 n = decodeOctNormal(oct);
+        vec3 n = DecodeOctNormal01(oct);
         FragColor = vec4(n * 0.5 + 0.5, 1.0);
         return;
     }

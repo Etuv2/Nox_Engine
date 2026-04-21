@@ -245,9 +245,7 @@ namespace {
 		static const std::string IndirectDiffuse = "IndirectDiffuse";
 		static const std::string IndirectDiffuseDebug = "IndirectDiffuseDebug";
 		static const std::string Bloom = "Bloom";
-		static const std::string LPVR = "LPV_R";
-		static const std::string LPVG = "LPV_G";
-		static const std::string LPVB = "LPV_B";
+		static const std::string LPVIndirect = "LPVIndirect";
 	}
 }
 
@@ -562,7 +560,7 @@ void ModularRenderer::BuildPassDescriptors(
 		[this]() { visualizeDebugMode(m_context); }
 		});
 	addPass({
-		"LPVPass", { "TransformHistory" }, { ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB },
+		"LPVPass", { "TransformHistory" }, { ResourceNames::LPVIndirect },
 		[](const RenderContext& ctx) {
 			return ctx.enableLPV && !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
 		},
@@ -582,9 +580,7 @@ void ModularRenderer::BuildPassDescriptors(
 			m_lpvPass->config.giStrength = m_context.lpvGIStrength;
 			m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;
 			m_lpvPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-			m_namedResources[ResourceNames::LPVR] = m_lpvPass->GetLPVTextureR();
-			m_namedResources[ResourceNames::LPVG] = m_lpvPass->GetLPVTextureG();
-			m_namedResources[ResourceNames::LPVB] = m_lpvPass->GetLPVTextureB();
+			m_namedResources[ResourceNames::LPVIndirect] = m_lpvPass->GetResolvedIndirectTexture();
 		}
 		});
 	addPass({
@@ -620,8 +616,7 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
 			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
-			m_lightingPass->SetIndirectDiffuseTexture(0);
-			m_lightingPass->SetLPVTextures(0, 0, 0);
+			m_lightingPass->ClearIndirectDiffuseSources();
 			m_lightingPass->SetOutputMode(LightingPass::OutputMode::BounceableRadiance);
 			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 			m_lightingPass->SetOutputMode(LightingPass::OutputMode::FullLighting);
@@ -642,7 +637,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVR, ResourceNames::LPVG, ResourceNames::LPVB }, { "HDRLit" },
+		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVIndirect }, { "HDRLit" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -650,11 +645,19 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
 			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
-			m_lightingPass->SetIndirectDiffuseTexture(m_namedResources[ResourceNames::IndirectDiffuse]);
-			m_lightingPass->SetLPVTextures(
-				m_namedResources[ResourceNames::LPVR],
-				m_namedResources[ResourceNames::LPVG],
-				m_namedResources[ResourceNames::LPVB]);
+			m_lightingPass->ClearIndirectDiffuseSources();
+			if (m_context.enableIndirectDiffuse) {
+				m_lightingPass->SetIndirectDiffuseSource(
+					0,
+					m_namedResources[ResourceNames::IndirectDiffuse],
+					m_context.indirectDiffuseStrength);
+			}
+			if (m_context.enableLPV) {
+				m_lightingPass->SetIndirectDiffuseSource(
+					1,
+					m_namedResources[ResourceNames::LPVIndirect],
+					1.0f);
+			}
 			m_lightingPass->SetOutputMode(LightingPass::OutputMode::FullLighting);
 			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		}
@@ -996,9 +999,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	m_namedResources[ResourceNames::IndirectDiffuse] = 0;
 	m_namedResources[ResourceNames::IndirectDiffuseDebug] = 0;
 	m_namedResources[ResourceNames::Bloom] = 0;
-	m_namedResources[ResourceNames::LPVR] = 0;
-	m_namedResources[ResourceNames::LPVG] = 0;
-	m_namedResources[ResourceNames::LPVB] = 0;
+	m_namedResources[ResourceNames::LPVIndirect] = 0;
 
 	BuildPassDescriptors(sceneGraph, camera, lighting, skybox);
 	const PlanCacheKey key = BuildPlanCacheKey();

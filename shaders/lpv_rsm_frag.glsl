@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/pbr_common.glsl"
 
 // Input from vertex shader
 in VS_OUT {
@@ -44,7 +45,6 @@ void main() {
     // Calculate flux: albedo * N·L * lightColor * lightIntensity
     // Flux represents the outgoing light energy (exitant radiance)
     // Scale by PI to convert from irradiance to radiance (Lambertian BRDF)
-    const float PI = 3.14159265359;
     outFlux = (albedo / PI) * NdotL * u_lightColor * u_lightIntensity;
     
     // Energy boost for better visibility (can be tuned)

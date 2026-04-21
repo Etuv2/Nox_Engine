@@ -8,6 +8,7 @@
 #include <iostream>
 #include <random>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
 
@@ -68,6 +69,7 @@ void LPVPass::DestroyRSMResourcesOnly() {
     if (m_rsmNormal)   { glDeleteTextures(1, &m_rsmNormal);   m_rsmNormal = 0; }
     if (m_rsmFlux)     { glDeleteTextures(1, &m_rsmFlux);     m_rsmFlux = 0; }
     if (m_rsmDepth)    { glDeleteTextures(1, &m_rsmDepth);    m_rsmDepth = 0; }
+    if (m_resolvedIndirectTexture) { glDeleteTextures(1, &m_resolvedIndirectTexture); m_resolvedIndirectTexture = 0; }
     m_rsmFBO.reset();
 }
 
@@ -155,7 +157,10 @@ void LPVPass::Execute(RenderContext& ctx,
     // Now propagate in float domain using ping-pong between m_lpvSampleTextures and m_lpvSampleTexturesTemp
     PropagateLPV();
 
-    // Ensure the final float volumes are visible to the lighting pass
+    // Resolve LPV's 3D SH representation into a generic full-screen indirect texture.
+    ResolveIndirect(ctx);
+
+    // Ensure the final float volumes and resolved texture are visible to downstream passes
     glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 }
 
@@ -171,6 +176,9 @@ bool LPVPass::CreateShaders() {
 
     m_convertShader = CreateComputeShader("shaders/lpv_convert_comp.glsl");
     if (!m_convertShader) return false;
+
+    m_resolveShader = CreateComputeShader("shaders/lpv_resolve_indirect_comp.glsl");
+    if (!m_resolveShader) return false;
 
     m_voxelizeShader = CreateShaderProgramWithGeometry(
         "shaders/lpv_voxelize_vert.glsl",
@@ -294,6 +302,36 @@ bool LPVPass::CreateRSMResources() {
     return complete;
 }
 
+bool LPVPass::EnsureResolvedIndirectTexture(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    if (m_resolvedIndirectTexture != 0 &&
+        m_resolvedIndirectWidth == width &&
+        m_resolvedIndirectHeight == height) {
+        return true;
+    }
+
+    if (m_resolvedIndirectTexture != 0) {
+        glDeleteTextures(1, &m_resolvedIndirectTexture);
+        m_resolvedIndirectTexture = 0;
+    }
+
+    glGenTextures(1, &m_resolvedIndirectTexture);
+    glBindTexture(GL_TEXTURE_2D, m_resolvedIndirectTexture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA16F, width, height);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    m_resolvedIndirectWidth = width;
+    m_resolvedIndirectHeight = height;
+    return glGetError() == GL_NO_ERROR;
+}
+
 void LPVPass::RenderRSM(RenderContext& /*ctx*/,
                         const std::shared_ptr<SceneGraph>& sceneGraph,
                         const std::shared_ptr<DirectionalLight>& dirLight) {
@@ -396,6 +434,54 @@ void LPVPass::PropagateLPV() {
     }
 }
 
+void LPVPass::ResolveIndirect(RenderContext& ctx) {
+    if (m_resolveShader == 0 || !ctx.gbufferFBO || !EnsureResolvedIndirectTexture(ctx.width, ctx.height)) {
+        return;
+    }
+
+    GLuint* finalVolumes = (config.propagationIterations % 2 == 0)
+        ? m_lpvSampleTextures
+        : m_lpvSampleTexturesTemp;
+
+    glUseProgram(m_resolveShader);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_3D, finalVolumes[0]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_3D, finalVolumes[1]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_3D, finalVolumes[2]);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+
+    glUniform1i(glGetUniformLocation(m_resolveShader, "u_lpvTextureR"), 0);
+    glUniform1i(glGetUniformLocation(m_resolveShader, "u_lpvTextureG"), 1);
+    glUniform1i(glGetUniformLocation(m_resolveShader, "u_lpvTextureB"), 2);
+    glUniform1i(glGetUniformLocation(m_resolveShader, "u_packedNormalRM"), 3);
+    glUniform1i(glGetUniformLocation(m_resolveShader, "u_depth"), 4);
+
+    const glm::mat4 invProjection = glm::inverse(ctx.proj);
+    const glm::mat4 invView = glm::inverse(ctx.view);
+    glUniformMatrix4fv(glGetUniformLocation(m_resolveShader, "u_invProjection"), 1, GL_FALSE, glm::value_ptr(invProjection));
+    glUniformMatrix4fv(glGetUniformLocation(m_resolveShader, "u_invView"), 1, GL_FALSE, glm::value_ptr(invView));
+    glUniform3fv(glGetUniformLocation(m_resolveShader, "u_gridCenter"), 1, glm::value_ptr(config.gridCenter));
+    glUniform1f(glGetUniformLocation(m_resolveShader, "u_voxelSize"), config.voxelSize);
+    glUniform1i(glGetUniformLocation(m_resolveShader, "u_gridResolution"), config.gridResolution);
+
+    glm::vec4 orientation(config.gridOrientation.x, config.gridOrientation.y, config.gridOrientation.z, config.gridOrientation.w);
+    glUniform4fv(glGetUniformLocation(m_resolveShader, "u_gridOrientation"), 1, glm::value_ptr(orientation));
+    glUniform1f(glGetUniformLocation(m_resolveShader, "u_giStrength"), config.giStrength);
+    glUniform1i(glGetUniformLocation(m_resolveShader, "u_normalsInWorldSpace"), 1);
+
+    glBindImageTexture(0, m_resolvedIndirectTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    const int groupsX = (ctx.width + 7) / 8;
+    const int groupsY = (ctx.height + 7) / 8;
+    glDispatchCompute(groupsX, groupsY, 1);
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+}
+
 void LPVPass::VoxelizeGeometry(const std::shared_ptr<SceneGraph>& sceneGraph) {
     // Clear geometry volume
     glBindTexture(GL_TEXTURE_3D, m_geometryVolume);
@@ -460,10 +546,12 @@ void LPVPass::CleanupResources() {
     if (m_rsmNormal) glDeleteTextures(1, &m_rsmNormal);
     if (m_rsmFlux) glDeleteTextures(1, &m_rsmFlux);
     if (m_rsmDepth) glDeleteTextures(1, &m_rsmDepth);
+    if (m_resolvedIndirectTexture) glDeleteTextures(1, &m_resolvedIndirectTexture);
     if (m_rsmShader) glDeleteProgram(m_rsmShader);
     if (m_injectionShader) glDeleteProgram(m_injectionShader);
     if (m_propagationShader) glDeleteProgram(m_propagationShader);
     if (m_convertShader) glDeleteProgram(m_convertShader);
+    if (m_resolveShader) glDeleteProgram(m_resolveShader);
     if (m_voxelizeShader) glDeleteProgram(m_voxelizeShader);
     if (m_debugShader) glDeleteProgram(m_debugShader);
     m_rsmFBO.reset();

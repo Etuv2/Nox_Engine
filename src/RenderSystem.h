@@ -5,6 +5,7 @@
 #include "SimdKernels.h"
 #include "MDIBatch.h"
 #include "GLBuffer.h"
+#include "Vertex.h"
 #include <glm/glm.hpp>
 #include <GL/glew.h>
 #include <vector>
@@ -63,7 +64,7 @@ public:
     };
 
     RenderSystem(ComponentManager* componentManager, TransformSystem* transformSystem);
-    ~RenderSystem() = default;
+    ~RenderSystem();
     void SetRuntimeScene(SceneRuntimeData* runtimeScene);
     void BeginFrameDiagnostics();
     const Diagnostics& GetDiagnostics() const { return m_diagnostics; }
@@ -90,6 +91,7 @@ public:
     struct FrameSubmissionCache {
         VisibilityList visibleAllItems;
         VisibilityList visibleOpaqueItems;
+        VisibilityList sortedOpaqueItems;
         VisibilityList visibleTransparentItems;
         VisibilityList velocityItems;
         VisibilityList shadowVisibleItems;
@@ -107,6 +109,7 @@ public:
 
     // Deferred geometry pass (G-buffer fill)
     void RenderGeometry(GLuint geometryShader);
+    void RenderGeometryBatchedGBuffer(GLuint geometryShader);
 
     // Shadow cascade pass
     void RenderShadowCascade(const glm::mat4& lightSpaceMatrix,
@@ -174,6 +177,8 @@ private:
         GLint prevProjection = -1;
         GLint prevModel = -1;
         GLint transformID = -1;
+        GLint useVertexTransformID = -1;
+        GLint useModelMatrixUniform = -1;
         GLint materialID = -1;
         GLint lightSpaceMatrix = -1;
         GLint uEnableSkinning = -1;
@@ -206,6 +211,7 @@ private:
         GLint occlusionStrength = -1;
         GLint normalScale = -1;
         GLint alphaCutoff = -1;
+        GLint alphaMode = -1;
         GLint specularFactor = -1;
         GLint specularColorFactor = -1;
         GLint clearcoatFactor = -1;
@@ -231,11 +237,13 @@ private:
     static constexpr bool VerboseLogging = false;
     bool m_runtimeVerboseLogging = false;
     void BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
+    void UploadMaterialSamplerUniforms(const ShaderUniformCache& uniforms);
     void UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms);
     void UploadTransformUniforms(EntityID entity,
                                  const glm::mat4& modelTransform,
                                  const ShaderUniformCache& uniforms);
     void ApplyCullingState(const MeshComponent& mesh, CullingOverride override, const glm::mat4& modelTransform);
+    void ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, GLenum frontFace);
     void UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms);
     void UpdateGpuTransformBuffer();
     void EnsureTransformBuffer();
@@ -245,6 +253,7 @@ private:
     void UpdateAllRenderItemBounds();
     void PrepareCameraSubmissionCache();
     void PrepareShadowSubmissionCache(const glm::mat4& lightSpaceMatrix);
+    void RenderGeometryPrepared(GLuint geometryShader);
     
     // Batch processing helpers
     struct RenderBatch {
@@ -281,6 +290,33 @@ private:
     size_t m_instanceBufferCapacity = 0;
     void EnsureInstanceBuffer(size_t requiredSize);
     void ResetMaterialStateCache(GLuint shader);
+
+    struct BakedGBufferVertex {
+        Vertex vertex;
+        uint32_t runtimeTransformIndex = INVALID_RUNTIME_NODE_INDEX;
+        uint32_t stableTransformID = INVALID_TRANSFORM_ID;
+    };
+
+    struct BakedGBufferBatch {
+        GLuint vao = 0;
+        GLBufferPtr vertexBuffer;
+        GLBufferPtr indexBuffer;
+        size_t indexCount = 0;
+        const MeshComponent* materialMesh = nullptr;
+        CullingOverride cullingOverride = CullingOverride::CULLING_INHERIT;
+        GLenum frontFace = GL_CCW;
+    };
+
+    void RebuildBakedGBufferBatches();
+    void UpdateBakedGBufferTransformBuffer();
+    void ClearBakedGBufferBatches();
+    bool ShouldUseBakedGBufferPath() const;
+    uint64_t ComputeBakedBatchKey(const MeshComponent& mesh, CullingOverride override, GLenum frontFace) const;
+    std::vector<BakedGBufferBatch> m_bakedGBufferBatches;
+    GLBufferPtr m_bakedGBufferTransformBuffer;
+    std::vector<GpuTransformRecord> m_bakedGBufferTransformRecords;
+    uint64_t m_bakedGBufferRenderableRevision = 0;
+    uint64_t m_bakedGBufferTransformPublication = 0;
 
     GLBufferPtr m_transformBuffer;
     std::vector<GpuTransformRecord> m_gpuTransformRecords;

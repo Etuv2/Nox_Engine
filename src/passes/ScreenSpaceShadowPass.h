@@ -56,6 +56,10 @@ private:
     int m_traceHeight = 0;
     bool m_historyValid = false;
     uint32_t m_frameIndex = 0;
+    float m_lastRayLength = -1.0f;
+    float m_lastThickness = -1.0f;
+    float m_lastEdgeFade = -1.0f;
+    int m_lastSteps = -1;
 
     Config m_cfg{};
 

@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/pbr_common.glsl"
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -59,7 +60,6 @@ vec4 SH_CosineLobe(vec3 normal) {
     
     // Pack SH coefficients (4-band approximation)
     // Multiply by PI to convert from cosine-weighted to hemispherical integration
-    const float PI = 3.14159265359;
     return vec4(Y00, Y1_1, Y10, Y11) * PI;
 }
 
@@ -122,7 +122,6 @@ void main() {
     
     // Inject flux into LPV grid (split RGB channels)
     // Scale flux by solid angle to properly distribute energy
-    const float PI = 3.14159265359;
     float solidAngle = (4.0 * PI) / float(u_sampleCount);
     
     vec4 contributionR = shCoeffs * vplFlux.r * solidAngle;

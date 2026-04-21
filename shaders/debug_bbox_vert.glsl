@@ -24,8 +24,7 @@ out vec4 v_Color;
 
 void main()
 {
-    // Get instance index from gl_DrawID (MDI draw index)
-    uint instanceIdx = gl_DrawID;
+    uint instanceIdx = uint(gl_InstanceID);
     
     BBoxInstance inst = instances[instanceIdx];
     

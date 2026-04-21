@@ -118,7 +118,7 @@ private:
 	GLuint m_brdfShader = 0;  // BRDF integration shader
 
 	// IBL intensity controls to prevent over-bright results
-	float m_iblIntensity = 0.35f;  // Overall IBL multiplier
+	float m_iblIntensity = 0.1f;  // Overall IBL multiplier
 	float m_skyboxExposure = 1.0f;      // Exposure for skybox rendering only
 	float m_diffuseIBLScale = 0.3f;     // Scale for diffuse irradiance contribution
 	float m_specularIBLScale = 0.45f;    // Scale for specular prefiltered contribution

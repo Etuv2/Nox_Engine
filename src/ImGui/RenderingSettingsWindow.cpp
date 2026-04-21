@@ -16,13 +16,20 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_windowResolution = glm::ivec2(1920, 1080);
 
 	// Initialize settings with RenderContext defaults
-	m_exposure = 0.8f;
-	m_gamma = 2.2f;
+	m_exposure = 0.96f;
+	m_gamma = 2.16f;
 	m_enableHDR = true;
-	m_envColor = glm::vec3(0.05f, 0.05f, 0.05f);
+	m_envColor = glm::vec3(13.0f / 255.0f);
+	m_tonemapType = static_cast<int>(RenderContext::TonemapType::GT);
+	m_tm_P = 1.0f;
+	m_tm_a = 1.0f;
+	m_tm_m = 0.22f;
+	m_tm_l = 0.4f;
+	m_tm_c = 2.022f;
+	m_tm_b = 0.0f;
 
 	// IBL intensity controls
-	m_iblIntensity = 0.35f;
+	m_iblIntensity = 0.1f;
 	m_skyboxExposure = 1.0f;
 	m_diffuseIBLScale = 0.3f;
 	m_specularIBLScale = 0.45f;
@@ -532,7 +539,7 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			if (ImGui::Button("Reset IBL to Defaults")) {
-				m_iblIntensity = 0.35f;
+				m_iblIntensity = 0.1f;
 				m_skyboxExposure = 1.0f;
 				m_diffuseIBLScale = 0.3f;
 				m_specularIBLScale = 0.45f;
@@ -687,10 +694,10 @@ void RenderingSettingsWindow::Render() {
 			if (ImGui::Checkbox("Enable Indirect Diffuse", &m_enableIndirectDiffuse)) { SyncToRenderer(); }
 			if (m_enableIndirectDiffuse) {
 				if (ImGui::SliderFloat("Indirect Strength", &m_indirectDiffuseStrength, 0.0f, 6.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Bounce Feedback", &m_indirectDiffuseBounceFeedback, 0.0f, 0.75f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Bounce Feedback", &m_indirectDiffuseBounceFeedback, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Slice Count", &m_indirectDiffuseSliceCount, 1, 8)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 16)) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 8.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 16.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Thickness VS", &m_indirectDiffuseThicknessVS, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Temporal Alpha", &m_indirectDiffuseTemporalAlpha, 0.02f, 0.35f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_indirectDiffuseNormalReject, 0.05f, 0.50f, "%.2f")) { SyncToRenderer(); }
@@ -1473,13 +1480,20 @@ void RenderingSettingsWindow::ApplyQualityPreset(int quality) {
 
 void RenderingSettingsWindow::ResetToDefaults() {
 	// Post-processing - match RenderContext defaults
-	m_exposure = 0.8f;
-	m_gamma = 2.2f;
+	m_exposure = 0.96f;
+	m_gamma = 2.16f;
 	m_enableHDR = true;
-	m_envColor = glm::vec3(0.05f, 0.05f, 0.05f);
+	m_envColor = glm::vec3(13.0f / 255.0f);
+	m_tonemapType = static_cast<int>(RenderContext::TonemapType::GT);
+	m_tm_P = 1.0f;
+	m_tm_a = 1.0f;
+	m_tm_m = 0.22f;
+	m_tm_l = 0.4f;
+	m_tm_c = 2.022f;
+	m_tm_b = 0.0f;
 
 	// IBL intensity controls
-	m_iblIntensity = 0.35f;
+	m_iblIntensity = 0.1f;
 	m_skyboxExposure = 1.0f;
 	m_diffuseIBLScale = 0.3f;
 	m_specularIBLScale = 0.45f;

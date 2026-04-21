@@ -215,7 +215,6 @@ uint g_seed;
 vec3 tracePath(Ray initialRay);
 vec3 sampleSky(vec3 direction);
 vec3 reconstructWorldPosition(vec2 uv, float depth);
-vec3 DecodeNormalOct8(vec2 oct);
 vec3 evaluateBRDF(Material mat, vec3 N, vec3 V, vec3 L);
 vec3 randomCosineDirection(vec3 normal);
 vec3 ResolveMaterialF0(Material mat);
@@ -300,13 +299,6 @@ vec3 randomGGXDirection(vec3 N, vec3 V, float roughness) {
 	return L;
 }
 
-
-// Octahedral normal decoding (from G-buffer)
-// Now properly remaps from [0,1] to [-1,1] before decoding
-vec3 DecodeNormalOct8(vec2 e) {
-	// Use the shared function which handles the remap correctly
-	return DecodeNormalOct(e);
-}
 
 // Position reconstruction from depth
 
@@ -929,7 +921,7 @@ void main() {
 	vec2 clearcoatData = texture(u_gbufferClearCoat, uv).rg;
 	vec4 principledData = texture(u_gbufferPrincipledParams, uv);
 
-	vec3 normal = DecodeNormalOct8(octNormal);
+	vec3 normal = DecodeNormalOct(octNormal);
 	
 	// Validate normal (match deferred lighting)
 	if (length(normal) < 0.5 || any(isnan(normal))) {

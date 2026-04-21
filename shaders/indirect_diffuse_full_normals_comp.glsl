@@ -8,16 +8,6 @@ layout(binding = 1, rg16f) writeonly uniform image2D outNormalQuarter;
 
 uniform mat4 invProj;
 
-const float kInvalidDepth = 65504.0;
-
-vec2 EncodeOctNormal01(vec3 n) {
-    n /= (abs(n.x) + abs(n.y) + abs(n.z) + 1e-6);
-    if (n.z < 0.0) {
-        n.xy = (1.0 - abs(n.yx)) * sign(n.xy + vec2(1e-6));
-    }
-    return n.xy * 0.5 + 0.5;
-}
-
 bool ReconstructViewPos(ivec2 src, ivec2 srcSize, out vec3 viewPos, out float depth01) {
     src = clamp(src, ivec2(0), srcSize - ivec2(1));
     depth01 = texelFetch(gDepth, src, 0).r;
@@ -48,7 +38,7 @@ void main() {
     ivec2 base = id * 4;
 
     ivec2 anchor = clamp(base + ivec2(1, 1), ivec2(0), srcSize - ivec2(1));
-    float bestDepth = kInvalidDepth;
+    float bestDepth = NOX_FP16_MAX;
     float anchorDepth01 = 1.0;
 
     for (int y = 0; y < 4; ++y) {
@@ -69,7 +59,7 @@ void main() {
         }
     }
 
-    if (bestDepth >= kInvalidDepth) {
+    if (bestDepth >= NOX_FP16_MAX) {
         imageStore(outNormalQuarter, id, vec4(0.5, 0.5, 0.0, 0.0));
         return;
     }

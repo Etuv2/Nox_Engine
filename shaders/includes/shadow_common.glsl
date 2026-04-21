@@ -58,12 +58,12 @@ float ComputeAdaptiveFilterRadiusTexels(vec3 projCoords, ivec3 dims, float edgeM
 
 	float effectiveMargin = max(edgeMargin, max(texel.x, texel.y) * 1.5);
 	float edgeFade = smoothstep(0.0, effectiveMargin, minEdgeDist);
-	float depthSoftness = smoothstep(0.18, 1.0, clamp(projCoords.z, 0.0, 1.0));
-	float baseRadius = mix(0.85, 1.75, depthSoftness);
+	float depthSoftness = smoothstep(0.35, 1.0, clamp(projCoords.z, 0.0, 1.0));
+	float baseRadius = mix(0.55, 1.15, depthSoftness);
 
 	float radiusTexels = baseRadius * max(radiusScale, 0.2);
 	radiusTexels = min(radiusTexels, safeEdgeRadius);
-	return clamp(radiusTexels * edgeFade, 0.0, 4.0);
+	return clamp(radiusTexels * edgeFade, 0.0, 2.25);
 }
 
 float SampleShadowArrayFiltered(int layer, vec3 projCoords, float bias, float edgeMargin, float radiusScale) {

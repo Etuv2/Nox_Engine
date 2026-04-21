@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/screen_space_reconstruction.glsl"
 
 /**
  * @file svgf_temporal_comp.glsl
@@ -48,20 +49,6 @@ uniform float u_varianceClipGamma;       // Variance clipping gamma (1.0-2.0)
 uniform float u_depthThreshold;      // Depth similarity threshold
 uniform float u_normalThreshold;         // Normal similarity threshold (cos angle)
 
-// Constants
-#define PI 3.1415926535897932384626433832795
-#define EPSILON 1e-4
-
-// Octahedron normal decoding
-vec3 octDecode(vec2 f) {
-    f = f * 2.0 - 1.0;
-    vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-    float t = max(-n.z, 0.0);
-    n.x += (n.x >= 0.0) ? -t : t;
-  n.y += (n.y >= 0.0) ? -t : t;
-    return normalize(n);
-}
-
 // Reconstruct world position from depth
 vec3 reconstructWorldPosition(vec2 uv, float depth) {
     vec4 clipSpace = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -69,11 +56,6 @@ vec3 reconstructWorldPosition(vec2 uv, float depth) {
     viewSpace /= viewSpace.w;
     vec4 worldSpace = u_invView * viewSpace;
     return worldSpace.xyz;
-}
-
-// Luminance calculation
-float luminance(vec3 color) {
- return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
 void main() {
@@ -88,10 +70,10 @@ void main() {
   vec3 currentRadiance = texelFetch(u_currentRadiance, pixelCoord, 0).rgb;
  float depth = texelFetch(u_gbufferDepth, pixelCoord, 0).r;
     vec4 normalRM = texelFetch(u_gbufferPackedNormalRM, pixelCoord, 0);
-    vec3 normal = octDecode(normalRM.rg);
+    vec3 normal = DecodeOctNormal01(normalRM.rg);
     
     // Check for sky/background pixels
-    if (depth >= 1.0 - EPSILON) {
+    if (depth >= 1.0 - 1e-4) {
         // Sky pixel - no temporal filtering
         imageStore(u_outputRadiance, pixelCoord, vec4(currentRadiance, 1.0));
       imageStore(u_momentsImage, pixelCoord, vec4(0.0, 0.0, 0.0, 0.0));
@@ -148,7 +130,7 @@ void main() {
      outputRadiance = mix(prevRadiance, currentRadiance, alpha);
         
         // Update moments for variance calculation
- float currentLuma = luminance(currentRadiance);
+        float currentLuma = Luma(currentRadiance);
         float prevMean = prevMoments.x;
         float prevM2 = prevMoments.y;
      
@@ -163,7 +145,7 @@ void main() {
     } else {
         // No valid history - use current frame
         outputRadiance = currentRadiance;
-        float currentLuma = luminance(currentRadiance);
+        float currentLuma = Luma(currentRadiance);
         outputMoments = vec2(currentLuma, 0.0);
         outputHistoryLength = 1.0;
     }

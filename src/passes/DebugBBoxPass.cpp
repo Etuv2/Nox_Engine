@@ -1,9 +1,13 @@
 #include "DebugBBoxPass.h"
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
+#include "../Scene.h"
+#include "../MeshComponent.h"
 #include "../Camera.h"
 #include "../RenderContext.h"
 #include "../ShaderLoader.h"
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -30,6 +34,117 @@ static const unsigned int s_cubeIndices[] = {
     0, 4,  1, 5,  2, 6,  3, 7
 };
 
+namespace {
+void ExpandLocalBoundsWithMesh(const MeshComponent& mesh,
+                               const glm::mat4& localTransform,
+                               glm::vec3& minBounds,
+                               glm::vec3& maxBounds,
+                               bool& valid)
+{
+    if (!mesh.boundingVolumeValid) {
+        return;
+    }
+
+    const glm::vec3 corners[8] = {
+        {mesh.boundingMin.x, mesh.boundingMin.y, mesh.boundingMin.z},
+        {mesh.boundingMax.x, mesh.boundingMin.y, mesh.boundingMin.z},
+        {mesh.boundingMin.x, mesh.boundingMax.y, mesh.boundingMin.z},
+        {mesh.boundingMax.x, mesh.boundingMax.y, mesh.boundingMin.z},
+        {mesh.boundingMin.x, mesh.boundingMin.y, mesh.boundingMax.z},
+        {mesh.boundingMax.x, mesh.boundingMin.y, mesh.boundingMax.z},
+        {mesh.boundingMin.x, mesh.boundingMax.y, mesh.boundingMax.z},
+        {mesh.boundingMax.x, mesh.boundingMax.y, mesh.boundingMax.z}
+    };
+
+    for (const glm::vec3& corner : corners) {
+        const glm::vec3 transformed = glm::vec3(localTransform * glm::vec4(corner, 1.0f));
+        if (!valid) {
+            minBounds = transformed;
+            maxBounds = transformed;
+            valid = true;
+        }
+        else {
+            minBounds = glm::min(minBounds, transformed);
+            maxBounds = glm::max(maxBounds, transformed);
+        }
+    }
+}
+
+glm::mat4 ResolveMeshLocalTransformForDebug(const SceneNode& node, const MeshComponent& mesh)
+{
+    const auto model = node.GetModel();
+    if (!node.renderWholeModel || mesh.sourceNodeIndex < 0 || !model) {
+        return glm::mat4(1.0f);
+    }
+
+    const int referenceNodeIndex = node.nodeIndex;
+    if (referenceNodeIndex < 0 || referenceNodeIndex == mesh.sourceNodeIndex) {
+        return mesh.localTransform;
+    }
+
+    const auto& nodeWorldTransforms = model->GetNodeWorldTransforms();
+    if (referenceNodeIndex >= static_cast<int>(nodeWorldTransforms.size()) ||
+        mesh.sourceNodeIndex >= static_cast<int>(nodeWorldTransforms.size())) {
+        return mesh.localTransform;
+    }
+
+    const glm::mat4 referenceInverse = glm::inverse(nodeWorldTransforms[referenceNodeIndex]);
+    for (int c = 0; c < 4; ++c) {
+        for (int r = 0; r < 4; ++r) {
+            if (!std::isfinite(referenceInverse[c][r])) {
+                return mesh.localTransform;
+            }
+        }
+    }
+
+    return referenceInverse * mesh.localTransform;
+}
+
+bool ComputeDebugLocalBounds(const SceneNode& node, glm::vec3& minBounds, glm::vec3& maxBounds)
+{
+    const auto model = node.GetModel();
+    if (model) {
+        bool valid = false;
+        if (node.renderWholeModel) {
+            for (const MeshComponent& mesh : model->meshes) {
+                ExpandLocalBoundsWithMesh(mesh, ResolveMeshLocalTransformForDebug(node, mesh),
+                                          minBounds, maxBounds, valid);
+            }
+        }
+        else {
+            for (uint32_t meshIndex : node.renderMeshIndices) {
+                if (meshIndex < model->meshes.size()) {
+                    const MeshComponent& mesh = model->meshes[meshIndex];
+                    ExpandLocalBoundsWithMesh(mesh, glm::mat4(1.0f), minBounds, maxBounds, valid);
+                }
+            }
+        }
+
+        if (valid) {
+            return true;
+        }
+    }
+
+    switch (node.GetNodeType()) {
+        case SceneNode::LIGHT:
+        case SceneNode::CAMERA:
+        case SceneNode::NODE:
+        default:
+            minBounds = glm::vec3(-0.5f);
+            maxBounds = glm::vec3(0.5f);
+            return true;
+        case SceneNode::AUDIO:
+            minBounds = glm::vec3(-0.25f);
+            maxBounds = glm::vec3(0.25f);
+            return true;
+        case SceneNode::GUI:
+            minBounds = glm::vec3(-0.1f);
+            maxBounds = glm::vec3(0.1f);
+            return true;
+    }
+}
+}
+
 DebugBBoxPass::DebugBBoxPass() {}
 
 DebugBBoxPass::~DebugBBoxPass() {
@@ -39,7 +154,7 @@ DebugBBoxPass::~DebugBBoxPass() {
 }
 
 bool DebugBBoxPass::Initialize(RenderContext& context) {
-    // Load MDI-enabled bounding box shader
+    // Load instanced bounding box shader
     m_shaderProgram = CreateShaderProgram(
         "shaders/debug_bbox_vert.glsl",
         "shaders/debug_bbox_frag.glsl"
@@ -86,13 +201,6 @@ bool DebugBBoxPass::Initialize(RenderContext& context) {
     // Now safe to unbind VBO (not part of VAO state after glVertexAttribPointer)
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // Create MDI buffers (initially empty, will be sized on first use)
-    m_indirectBuffer = std::make_unique<GLBuffer>(
-        BufferType::DrawIndirect,
-        BufferUsage::DynamicDraw
-    );
-    m_indirectBuffer->SetLabel("DebugBBox_IndirectBuffer");
-
     m_instanceSSBO = std::make_unique<GLBuffer>(
         BufferType::ShaderStorage,
         BufferUsage::DynamicDraw
@@ -101,10 +209,9 @@ bool DebugBBoxPass::Initialize(RenderContext& context) {
 
     // Reserve initial capacity
     m_instances.reserve(256);
-    m_drawCommands.reserve(256);
 
     m_initialized = true;
-    std::cout << "[DebugBBoxPass] Initialized successfully with MDI batching\n";
+    std::cout << "[DebugBBoxPass] Initialized successfully with instanced batching\n";
     return true;
 }
 
@@ -129,17 +236,13 @@ void DebugBBoxPass::Execute(RenderContext& ctx,
 
     // Clear previous frame's data
     m_instances.clear();
-    m_drawCommands.clear();
 
     // Collect all nodes and build instance data
     CollectNodesRecursive(sceneGraph->GetRoot(), glm::mat4(1.0f));
 
     if (m_instances.empty()) {
-        std::cout << "[DebugBBoxPass] No bounding boxes to draw\n";
         return;
     }
-
-    std::cout << "[DebugBBoxPass] Collected " << m_instances.size() << " bounding box(es) to render\n";
 
     // Upload to GPU
     UploadToGPU();
@@ -148,44 +251,33 @@ void DebugBBoxPass::Execute(RenderContext& ctx,
     glBindFramebuffer(GL_FRAMEBUFFER, 0);  // Render to backbuffer
     glViewport(0, 0, ctx.width, ctx.height);
     
-    // Save state before modifying
-    GLint oldPolygonMode[2];
-    glGetIntegerv(GL_POLYGON_MODE, oldPolygonMode);
-    
+    // Save only state this pass actually changes. GL_LINES does not need polygon mode or cull tweaks.
     GLboolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
     GLint oldDepthFunc;
     glGetIntegerv(GL_DEPTH_FUNC, &oldDepthFunc);
     
-    GLboolean cullFaceWasEnabled = glIsEnabled(GL_CULL_FACE);
     GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
     GLint oldBlendSrc, oldBlendDst;
     glGetIntegerv(GL_BLEND_SRC, &oldBlendSrc);
     glGetIntegerv(GL_BLEND_DST, &oldBlendDst);
-    
-    GLfloat oldLineWidth;
-    glGetFloatv(GL_LINE_WIDTH, &oldLineWidth);
-    
+
     // Configure state for debug box rendering
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);  // Allow drawing on same depth
-    glDisable(GL_CULL_FACE);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     glLineWidth(2.0f);
     
     // Enable blending for semi-transparent boxes
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Render using MDI
+    // Render using one instanced draw
     glm::mat4 viewProj = ctx.proj * ctx.view;
-    RenderMDI(viewProj);
+    RenderInstanced(viewProj);
 
     // Restore OpenGL state precisely
-    glPolygonMode(GL_FRONT_AND_BACK, oldPolygonMode[0]);
-    glLineWidth(oldLineWidth);
+    glLineWidth(1.0f);
     glDepthFunc(oldDepthFunc);
     if (!depthTestWasEnabled) glDisable(GL_DEPTH_TEST);
-    if (cullFaceWasEnabled) glEnable(GL_CULL_FACE);
     if (blendWasEnabled) {
         glEnable(GL_BLEND);
         glBlendFunc(oldBlendSrc, oldBlendDst);
@@ -203,8 +295,11 @@ void DebugBBoxPass::CollectNodesRecursive(
     // Compute world transform for this node
     glm::mat4 worldTransform = node->GetGlobalTransform(parentTransform);
 
-    // Get bounding box from node
-    auto [minBounds, maxBounds] = node->GetBoundingBox();
+    glm::vec3 minBounds(0.0f);
+    glm::vec3 maxBounds(0.0f);
+    if (!ComputeDebugLocalBounds(*node, minBounds, maxBounds)) {
+        return;
+    }
     
     // Skip nodes with invalid/empty bounding boxes (check for non-zero size)
     glm::vec3 size = maxBounds - minBounds;
@@ -217,22 +312,6 @@ void DebugBBoxPass::CollectNodesRecursive(
         instance.boundsMax = glm::vec4(maxBounds, 0.0f);
         
         m_instances.push_back(instance);
-        
-        // Create corresponding draw command
-        DebugBBoxDrawCommand cmd;
-        cmd.count = 24;  // 12 edges * 2 vertices
-        cmd.instanceCount = 1;
-        cmd.firstIndex = 0;
-        cmd.baseVertex = 0;
-        cmd.baseInstance = static_cast<GLuint>(m_instances.size() - 1);
-        
-        m_drawCommands.push_back(cmd);
-        
-        // Debug output
-        std::string nodeName = node->GetName();
-        std::cout << "[DebugBBoxPass] Added bbox for " << nodeName 
-                  << " (type " << static_cast<int>(node->GetNodeType()) << ")"
-                  << " size: " << glm::length(size) << std::endl;
     }
 
     // Recursively process children
@@ -244,20 +323,21 @@ void DebugBBoxPass::CollectNodesRecursive(
 void DebugBBoxPass::UploadToGPU() {
     if (m_instances.empty()) return;
 
-    // Upload instance data to SSBO
-    size_t instanceDataSize = m_instances.size() * sizeof(DebugBBoxInstance);
-    
-    // Always reallocate to ensure clean state (orphan pattern)
-    m_instanceSSBO->Allocate(instanceDataSize, m_instances.data());
-    
-    // Also upload indirect buffer
-    size_t cmdSize = m_drawCommands.size() * sizeof(DebugBBoxDrawCommand);
-    m_indirectBuffer->Allocate(cmdSize, m_drawCommands.data());
+    const size_t instanceDataSize = m_instances.size() * sizeof(DebugBBoxInstance);
+    if (m_instances.size() > m_instanceCapacity) {
+        m_instanceCapacity = std::max<size_t>(256, m_instanceCapacity);
+        while (m_instanceCapacity < m_instances.size()) {
+            m_instanceCapacity *= 2;
+        }
+        m_instanceSSBO->Allocate(m_instanceCapacity * sizeof(DebugBBoxInstance), nullptr);
+    }
+
+    m_instanceSSBO->SubData(0, instanceDataSize, m_instances.data());
     
     m_lastInstanceCount = m_instances.size();
 }
 
-void DebugBBoxPass::RenderMDI(const glm::mat4& viewProj) {
+void DebugBBoxPass::RenderInstanced(const glm::mat4& viewProj) {
     // Use shader
     glUseProgram(m_shaderProgram);
 
@@ -270,21 +350,17 @@ void DebugBBoxPass::RenderMDI(const glm::mat4& viewProj) {
     // Bind VAO (contains VBO and EBO)
     glBindVertexArray(m_cubeVAO);
 
-    // Bind indirect buffer for MDI
-    m_indirectBuffer->Bind();
-
-    // Issue single MDI draw call for all bounding boxes
-    glMultiDrawElementsIndirect(
+    // Issue one draw for all bounding boxes. This avoids one indirect command per box.
+    glDrawElementsInstanced(
         GL_LINES,
+        24,
         GL_UNSIGNED_INT,
-        nullptr,  // Offset in indirect buffer (0)
-        static_cast<GLsizei>(m_drawCommands.size()),
-        sizeof(DebugBBoxDrawCommand)
+        nullptr,
+        static_cast<GLsizei>(m_instances.size())
     );
 
     // Cleanup state
     glBindVertexArray(0);
-    m_indirectBuffer->Unbind();
     glUseProgram(0);
 }
 

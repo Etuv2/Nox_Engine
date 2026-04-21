@@ -49,16 +49,10 @@ namespace TextureUnits {
     constexpr int GBUFFER_PRINCIPLED = 32;      // gPrincipledParams (RGBA16F - transmission/ior + reserved principled slots)
     
     // ======================================
-    // LIGHT PROPAGATION VOLUMES (LPV) - GLOBAL ILLUMINATION
+    // RESOLVED INDIRECT DIFFUSE SOURCES
     // ======================================
-    constexpr int LPV_TEXTURE_R = 24;           // lpvTextureR (3D texture - Red SH coefficient)
-    constexpr int LPV_TEXTURE_G = 25;           // lpvTextureG (3D texture - Green SH coefficient)
-    constexpr int LPV_TEXTURE_B = 26;           // lpvTextureB (3D texture - Blue SH coefficient)
-    
-    // ======================================
-    // SCREEN SPACE INDIRECT DIFFUSE
-    // ======================================
-    constexpr int INDIRECT_DIFFUSE_MAP = 27;    // indirectDiffuseMap (RGBA16F - indirect diffuse RGB + AO/visibility A)
+    constexpr int MAX_INDIRECT_DIFFUSE_SOURCES = 4;
+    constexpr int INDIRECT_DIFFUSE_SOURCE_BASE = 24; // indirectDiffuseMaps[0..3], RGBA16F irradiance + visibility
     
     // ======================================
     // POST-PROCESSING PASSES

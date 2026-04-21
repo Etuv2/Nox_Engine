@@ -10,6 +10,7 @@
 #include <iostream>
 #include <cmath>
 #include <unordered_map>
+#include <limits>
 
 namespace {
 	constexpr GLuint kGlobalTransformBufferBinding = 6;
@@ -164,10 +165,20 @@ RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* 
 	m_renderQueue.reserve(256);
 	m_submissionCache.visibleAllItems.items.reserve(1024);
 	m_submissionCache.visibleOpaqueItems.items.reserve(1024);
+	m_submissionCache.sortedOpaqueItems.items.reserve(1024);
 	m_submissionCache.visibleTransparentItems.items.reserve(512);
 	m_submissionCache.velocityItems.items.reserve(1024);
 	m_submissionCache.shadowVisibleItems.items.reserve(1024);
 	m_simdBackend = SimdKernels::DetectBestBackend();
+}
+
+RenderSystem::~RenderSystem()
+{
+	ClearBakedGBufferBatches();
+	if (m_instanceVBO != 0) {
+		glDeleteBuffers(1, &m_instanceVBO);
+		m_instanceVBO = 0;
+	}
 }
 
 void RenderSystem::SetRuntimeScene(SceneRuntimeData* runtimeScene)
@@ -223,6 +234,8 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.prevProjection = glGetUniformLocation(shader, "prevProjection");
 	uniforms.prevModel = glGetUniformLocation(shader, "prevModel");
 	uniforms.transformID = glGetUniformLocation(shader, "uTransformID");
+	uniforms.useVertexTransformID = glGetUniformLocation(shader, "uUseVertexTransformID");
+	uniforms.useModelMatrixUniform = glGetUniformLocation(shader, "uUseModelMatrixUniform");
 	uniforms.materialID = glGetUniformLocation(shader, "uMaterialID");
 	uniforms.lightSpaceMatrix = glGetUniformLocation(shader, "lightSpaceMatrix");
 	uniforms.uEnableSkinning = glGetUniformLocation(shader, "u_enableSkinning");
@@ -255,6 +268,7 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.occlusionStrength = glGetUniformLocation(shader, "occlusionStrength");
 	uniforms.normalScale = glGetUniformLocation(shader, "normalScale");
 	uniforms.alphaCutoff = glGetUniformLocation(shader, "alphaCutoff");
+	uniforms.alphaMode = glGetUniformLocation(shader, "alphaMode");
 	uniforms.specularFactor = glGetUniformLocation(shader, "specularFactor");
 	uniforms.specularColorFactor = glGetUniformLocation(shader, "specularColorFactor");
 	uniforms.clearcoatFactor = glGetUniformLocation(shader, "clearcoatFactor");
@@ -296,9 +310,10 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 	}
 
 	// Upload view and projection matrices once
-		const auto& uniforms = GetShaderUniformCache(defaultShader);
+	const auto& uniforms = GetShaderUniformCache(defaultShader);
 	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
 	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
+	UploadMaterialSamplerUniforms(uniforms);
 	int skinningState = -1;
 		GLuint currentVAO = 0;
 		bool blendEnabled = false;
@@ -386,6 +401,11 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 
 	PrepareFrameTransforms();
 	PrepareCameraSubmissionCache();
+	RenderGeometryPrepared(geometryShader);
+}
+
+void RenderSystem::RenderGeometryPrepared(GLuint geometryShader)
+{
 	m_cachedBoneMatrices.clear();
 	glUseProgram(geometryShader);
 	ResetMaterialStateCache(geometryShader);
@@ -394,35 +414,22 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
 	}
 	const auto& uniforms = GetShaderUniformCache(geometryShader);
+	UploadMaterialSamplerUniforms(uniforms);
+	if (uniforms.useVertexTransformID != -1) {
+		glUniform1i(uniforms.useVertexTransformID, 0);
+	}
 
 	m_visibleCount = 0;
 	m_totalCount = 0;
-
-	std::vector<uint32_t> sortedOpaqueItemIndices;
-	sortedOpaqueItemIndices.reserve(m_submissionCache.visibleOpaqueItems.items.size());
 	m_totalCount = m_renderItems.size();
 	m_visibleCount = m_submissionCache.visibleOpaqueItems.items.size();
 
-	for (uint32_t itemIndex : m_submissionCache.visibleOpaqueItems.items) {
+	GLuint currentVAO = 0;
+	int skinningState = -1;
+	for (uint32_t itemIndex : m_submissionCache.sortedOpaqueItems.items) {
 		if (itemIndex >= m_renderItems.size()) {
 			continue;
 		}
-		sortedOpaqueItemIndices.push_back(itemIndex);
-	}
-
-	std::sort(sortedOpaqueItemIndices.begin(), sortedOpaqueItemIndices.end(),
-		[this](uint32_t a, uint32_t b) {
-			const RenderItem& itemA = m_renderItems[a];
-			const RenderItem& itemB = m_renderItems[b];
-			if (itemA.sortKey != itemB.sortKey) {
-				return itemA.sortKey < itemB.sortKey;
-			}
-			return itemA.entity < itemB.entity;
-		});
-
-	GLuint currentVAO = 0;
-	int skinningState = -1;
-	for (uint32_t itemIndex : sortedOpaqueItemIndices) {
 		const RenderItem& item = m_renderItems[itemIndex];
 		if (!item.mesh) {
 			continue;
@@ -464,6 +471,77 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 	}
 }
 
+void RenderSystem::RenderGeometryBatchedGBuffer(GLuint geometryShader)
+{
+	if (!m_componentManager || !m_transformSystem) {
+		std::cerr << "[RenderSystem] ERROR: Missing component manager or transform system!" << std::endl;
+		return;
+	}
+
+	PrepareFrameTransforms();
+	PrepareCameraSubmissionCache();
+
+	if (!ShouldUseBakedGBufferPath()) {
+		RenderGeometryPrepared(geometryShader);
+		return;
+	}
+
+	RebuildBakedGBufferBatches();
+	if (m_bakedGBufferBatches.empty()) {
+		RenderGeometryPrepared(geometryShader);
+		return;
+	}
+	UpdateBakedGBufferTransformBuffer();
+	if (!m_bakedGBufferTransformBuffer || !m_bakedGBufferTransformBuffer->IsValid()) {
+		RenderGeometryPrepared(geometryShader);
+		return;
+	}
+
+	m_cachedBoneMatrices.clear();
+	glUseProgram(geometryShader);
+	ResetMaterialStateCache(geometryShader);
+	m_bakedGBufferTransformBuffer->BindBase(kGlobalTransformBufferBinding);
+	const auto& uniforms = GetShaderUniformCache(geometryShader);
+	UploadMaterialSamplerUniforms(uniforms);
+
+	const glm::mat4 identity(1.0f);
+	const glm::mat3 identityNormal(1.0f);
+	if (uniforms.model != -1) {
+		glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(identity));
+	}
+	if (uniforms.normalMatrix != -1) {
+		glUniformMatrix3fv(uniforms.normalMatrix, 1, GL_FALSE, glm::value_ptr(identityNormal));
+	}
+	if (uniforms.uEnableSkinning != -1) {
+		glUniform1i(uniforms.uEnableSkinning, 0);
+	}
+	if (uniforms.useVertexTransformID != -1) {
+		glUniform1i(uniforms.useVertexTransformID, 1);
+	}
+
+	m_totalCount = m_renderItems.size();
+	m_visibleCount = m_submissionCache.visibleOpaqueItems.items.size();
+
+	for (const BakedGBufferBatch& batch : m_bakedGBufferBatches) {
+		if (!batch.materialMesh || batch.vao == 0 || batch.indexCount == 0) {
+			continue;
+		}
+
+		ApplyBakedBatchCulling(*batch.materialMesh, batch.cullingOverride, batch.frontFace);
+		BindMaterialTextures(*batch.materialMesh, uniforms);
+		UploadMaterialUniforms(*batch.materialMesh, uniforms);
+
+		glBindVertexArray(batch.vao);
+		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(batch.indexCount), GL_UNSIGNED_INT, nullptr);
+		++m_diagnostics.geometryDrawCalls;
+	}
+
+	glBindVertexArray(0);
+	if (uniforms.useVertexTransformID != -1) {
+		glUniform1i(uniforms.useVertexTransformID, 0);
+	}
+}
+
 void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint shadowShader)
 {
 	if (!m_componentManager || !m_transformSystem) return;
@@ -478,9 +556,13 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
 	}
 	const auto& uniforms = GetShaderUniformCache(shadowShader);
+	UploadMaterialSamplerUniforms(uniforms);
 
 	if (uniforms.lightSpaceMatrix != -1) {
 		glUniformMatrix4fv(uniforms.lightSpaceMatrix, 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
+	}
+	if (uniforms.useModelMatrixUniform != -1) {
+		glUniform1i(uniforms.useModelMatrixUniform, 1);
 	}
 
 	GLuint currentVAO = 0;
@@ -509,6 +591,8 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 		}
 
 		ApplyCullingState(*item.mesh, item.cullingOverride, worldTransform);
+		BindMaterialTextures(*item.mesh, uniforms);
+		UploadMaterialUniforms(*item.mesh, uniforms);
 		if (currentVAO != item.mesh->VAO) {
 			glBindVertexArray(item.mesh->VAO);
 			currentVAO = item.mesh->VAO;
@@ -518,6 +602,9 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 	}
 	if (currentVAO != 0) {
 		glBindVertexArray(0);
+	}
+	if (uniforms.useModelMatrixUniform != -1) {
+		glUniform1i(uniforms.useModelMatrixUniform, 0);
 	}
 }
 
@@ -539,6 +626,7 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
 	}
 	const auto& uniforms = GetShaderUniformCache(velocityShader);
+	UploadMaterialSamplerUniforms(uniforms);
 
 	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
 	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
@@ -669,6 +757,7 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
 	}
 	const auto& uniforms = GetShaderUniformCache(transparentShader);
+	UploadMaterialSamplerUniforms(uniforms);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDepthMask(GL_FALSE);
@@ -792,7 +881,7 @@ bool RenderSystem::IsSphereVisible(const glm::vec3& center, float radius) const
 
 void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
-	auto bindTexture = [this](GLint loc, GLuint unit, const std::shared_ptr<Texture>& tex, GLuint fallback) {
+	auto bindTexture = [this](GLuint unit, const std::shared_ptr<Texture>& tex, GLuint fallback) {
 		const GLuint desiredTexture = (tex && tex->IsValid()) ? tex->ID() : fallback;
 		if (m_boundMaterialTextures[unit] != desiredTexture) {
 			glActiveTexture(GL_TEXTURE0 + unit);
@@ -800,17 +889,28 @@ void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderU
 			m_boundMaterialTextures[unit] = desiredTexture;
 			++m_diagnostics.textureBindCount;
 		}
-		if (loc >= 0) glUniform1i(loc, unit);
 		};
 
-	bindTexture(uniforms.textureDiffuse, TextureUnits::MATERIAL_BASE_COLOR, mesh.diffuseTexture, DefaultTextures::White());
-	bindTexture(uniforms.textureNormal, TextureUnits::MATERIAL_NORMAL, mesh.normalTexture, DefaultTextures::Normal());
-	bindTexture(uniforms.textureMetallicRoughness, TextureUnits::MATERIAL_METALLIC_ROUGHNESS, mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault());
-	bindTexture(uniforms.textureEmissive, TextureUnits::MATERIAL_EMISSIVE, mesh.emissiveTexture, DefaultTextures::Black());
-	bindTexture(uniforms.textureOcclusion, TextureUnits::MATERIAL_OCCLUSION, mesh.occlusionTexture, DefaultTextures::AOWhite());
-	bindTexture(uniforms.textureSpecular, TextureUnits::MATERIAL_SPECULAR, mesh.specularTexture, DefaultTextures::White());
-	bindTexture(uniforms.textureSpecularColor, TextureUnits::MATERIAL_SPECULAR_COLOR, mesh.specularColorTexture, DefaultTextures::White());
-	bindTexture(uniforms.textureTransmission, TextureUnits::MATERIAL_TRANSMISSION, mesh.transmissionTexture, DefaultTextures::Black());
+	bindTexture(TextureUnits::MATERIAL_BASE_COLOR, mesh.diffuseTexture, DefaultTextures::White());
+	bindTexture(TextureUnits::MATERIAL_NORMAL, mesh.normalTexture, DefaultTextures::Normal());
+	bindTexture(TextureUnits::MATERIAL_METALLIC_ROUGHNESS, mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault());
+	bindTexture(TextureUnits::MATERIAL_EMISSIVE, mesh.emissiveTexture, DefaultTextures::Black());
+	bindTexture(TextureUnits::MATERIAL_OCCLUSION, mesh.occlusionTexture, DefaultTextures::AOWhite());
+	bindTexture(TextureUnits::MATERIAL_SPECULAR, mesh.specularTexture, DefaultTextures::White());
+	bindTexture(TextureUnits::MATERIAL_SPECULAR_COLOR, mesh.specularColorTexture, DefaultTextures::White());
+	bindTexture(TextureUnits::MATERIAL_TRANSMISSION, mesh.transmissionTexture, DefaultTextures::Black());
+}
+
+void RenderSystem::UploadMaterialSamplerUniforms(const ShaderUniformCache& uniforms)
+{
+	if (uniforms.textureDiffuse >= 0) glUniform1i(uniforms.textureDiffuse, TextureUnits::MATERIAL_BASE_COLOR);
+	if (uniforms.textureNormal >= 0) glUniform1i(uniforms.textureNormal, TextureUnits::MATERIAL_NORMAL);
+	if (uniforms.textureMetallicRoughness >= 0) glUniform1i(uniforms.textureMetallicRoughness, TextureUnits::MATERIAL_METALLIC_ROUGHNESS);
+	if (uniforms.textureEmissive >= 0) glUniform1i(uniforms.textureEmissive, TextureUnits::MATERIAL_EMISSIVE);
+	if (uniforms.textureOcclusion >= 0) glUniform1i(uniforms.textureOcclusion, TextureUnits::MATERIAL_OCCLUSION);
+	if (uniforms.textureSpecular >= 0) glUniform1i(uniforms.textureSpecular, TextureUnits::MATERIAL_SPECULAR);
+	if (uniforms.textureSpecularColor >= 0) glUniform1i(uniforms.textureSpecularColor, TextureUnits::MATERIAL_SPECULAR_COLOR);
+	if (uniforms.textureTransmission >= 0) glUniform1i(uniforms.textureTransmission, TextureUnits::MATERIAL_TRANSMISSION);
 }
 
 void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
@@ -831,6 +931,7 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.occlusionStrength >= 0) glUniform1f(uniforms.occlusionStrength, material.occlusionStrength);
 	if (uniforms.normalScale >= 0) glUniform1f(uniforms.normalScale, material.normalScale);
 	if (uniforms.alphaCutoff >= 0) glUniform1f(uniforms.alphaCutoff, material.alphaCutoff);
+	if (uniforms.alphaMode >= 0) glUniform1i(uniforms.alphaMode, static_cast<int>(material.alphaMode));
 	if (uniforms.specularFactor >= 0) glUniform1f(uniforms.specularFactor, material.specularFactor);
 	if (uniforms.specularColorFactor >= 0) glUniform3fv(uniforms.specularColorFactor, 1, glm::value_ptr(material.specularColorFactor));
 	if (uniforms.clearcoatFactor >= 0) glUniform1f(uniforms.clearcoatFactor, material.clearcoatFactor);
@@ -869,6 +970,10 @@ void RenderSystem::UploadTransformUniforms(EntityID entity,
 {
 	if (uniforms.model != -1) {
 		glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(modelTransform));
+	}
+	if (uniforms.normalMatrix != -1) {
+		const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelTransform)));
+		glUniformMatrix3fv(uniforms.normalMatrix, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 	}
 
 	const TransformComponent* transform = m_componentManager ? m_componentManager->GetTransform(entity) : nullptr;
@@ -987,6 +1092,81 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 			m_cachedCullEnabled = false;
 			m_cachedCullEnabledValid = true;
 		}
+	}
+}
+
+void RenderSystem::ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, GLenum frontFace)
+{
+	if (!m_cachedFrontFaceValid || m_cachedFrontFace != frontFace) {
+		glFrontFace(frontFace);
+		m_cachedFrontFace = frontFace;
+		m_cachedFrontFaceValid = true;
+	}
+
+	if (m_forceBackfaceCulling) {
+		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
+			glEnable(GL_CULL_FACE);
+			m_cachedCullEnabled = true;
+			m_cachedCullEnabledValid = true;
+		}
+		if (!m_cachedCullFaceValid || m_cachedCullFace != GL_BACK) {
+			glCullFace(GL_BACK);
+			m_cachedCullFace = GL_BACK;
+			m_cachedCullFaceValid = true;
+		}
+		return;
+	}
+
+	bool enableCulling = true;
+	GLenum cullFace = GL_BACK;
+	switch (override) {
+	case CullingOverride::CULLING_FORCE_ENABLE:
+		enableCulling = true;
+		cullFace = GL_BACK;
+		break;
+	case CullingOverride::CULLING_FORCE_DISABLE:
+		enableCulling = false;
+		break;
+	case CullingOverride::CULLING_FORCE_FRONT:
+		enableCulling = true;
+		cullFace = GL_FRONT;
+		break;
+	case CullingOverride::CULLING_INHERIT:
+	default:
+		switch (mesh.GetEffectiveCullingMode()) {
+		case MeshComponent::CULL_BACK:
+			enableCulling = true;
+			cullFace = GL_BACK;
+			break;
+		case MeshComponent::CULL_FRONT:
+			enableCulling = true;
+			cullFace = GL_FRONT;
+			break;
+		case MeshComponent::CULL_NONE:
+			enableCulling = false;
+			break;
+		default:
+			break;
+		}
+		break;
+	}
+
+	if (enableCulling) {
+		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
+			glEnable(GL_CULL_FACE);
+			m_cachedCullEnabled = true;
+			m_cachedCullEnabledValid = true;
+		}
+		if (!m_cachedCullFaceValid || m_cachedCullFace != cullFace) {
+			glCullFace(cullFace);
+			m_cachedCullFace = cullFace;
+			m_cachedCullFaceValid = true;
+		}
+	}
+	else if (!m_cachedCullEnabledValid || m_cachedCullEnabled) {
+		glDisable(GL_CULL_FACE);
+		m_cachedCullEnabled = false;
+		m_cachedCullEnabledValid = true;
 	}
 }
 
@@ -1496,6 +1676,7 @@ void RenderSystem::PrepareCameraSubmissionCache()
 
 	m_submissionCache.visibleAllItems.Clear();
 	m_submissionCache.visibleOpaqueItems.Clear();
+	m_submissionCache.sortedOpaqueItems.Clear();
 	m_submissionCache.visibleTransparentItems.Clear();
 	m_submissionCache.velocityItems.Clear();
 
@@ -1542,6 +1723,17 @@ void RenderSystem::PrepareCameraSubmissionCache()
 			m_submissionCache.visibleOpaqueItems.items.push_back(itemIndex);
 		}
 	}
+
+	m_submissionCache.sortedOpaqueItems.items = m_submissionCache.visibleOpaqueItems.items;
+	std::sort(m_submissionCache.sortedOpaqueItems.items.begin(), m_submissionCache.sortedOpaqueItems.items.end(),
+		[this](uint32_t a, uint32_t b) {
+			const RenderItem& itemA = m_renderItems[a];
+			const RenderItem& itemB = m_renderItems[b];
+			if (itemA.sortKey != itemB.sortKey) {
+				return itemA.sortKey < itemB.sortKey;
+			}
+			return itemA.entity < itemB.entity;
+		});
 
 	m_submissionCache.cameraBuildGeneration = publication;
 	m_submissionCache.frustumSerial = m_frustumSerial;
@@ -1730,4 +1922,235 @@ void RenderSystem::EnsureInstanceBuffer(size_t requiredSize)
 
 		m_instanceBufferCapacity = newCapacity;
 	}
+}
+
+bool RenderSystem::ShouldUseBakedGBufferPath() const
+{
+	if (!m_runtimeScene) {
+		return false;
+	}
+
+	const size_t total = m_renderItems.size();
+	const size_t visibleOpaque = m_submissionCache.visibleOpaqueItems.items.size();
+	if (total < 512 || visibleOpaque < 256) {
+		return false;
+	}
+
+	return visibleOpaque * 100 >= total * 65;
+}
+
+uint64_t RenderSystem::ComputeBakedBatchKey(const MeshComponent& mesh, CullingOverride override, GLenum frontFace) const
+{
+	const MaterialDesc material = mesh.GetMaterialDesc();
+	auto textureID = [](const std::shared_ptr<Texture>& texture, GLuint fallback) {
+		return (texture && texture->IsValid()) ? texture->ID() : fallback;
+	};
+	auto mix = [](uint64_t seed, uint64_t value) {
+		return seed ^ (value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2));
+	};
+
+	uint64_t key = material.stableMaterialID;
+	key = mix(key, static_cast<uint64_t>(override));
+	key = mix(key, static_cast<uint64_t>(mesh.GetEffectiveCullingMode()));
+	key = mix(key, static_cast<uint64_t>(frontFace));
+	key = mix(key, textureID(mesh.diffuseTexture, DefaultTextures::White()));
+	key = mix(key, textureID(mesh.normalTexture, DefaultTextures::Normal()));
+	key = mix(key, textureID(mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault()));
+	key = mix(key, textureID(mesh.emissiveTexture, DefaultTextures::Black()));
+	key = mix(key, textureID(mesh.occlusionTexture, DefaultTextures::AOWhite()));
+	key = mix(key, textureID(mesh.specularTexture, DefaultTextures::White()));
+	key = mix(key, textureID(mesh.specularColorTexture, DefaultTextures::White()));
+	key = mix(key, textureID(mesh.transmissionTexture, DefaultTextures::Black()));
+	return key;
+}
+
+void RenderSystem::ClearBakedGBufferBatches()
+{
+	for (BakedGBufferBatch& batch : m_bakedGBufferBatches) {
+		if (batch.vao != 0) {
+			glDeleteVertexArrays(1, &batch.vao);
+			batch.vao = 0;
+		}
+	}
+	m_bakedGBufferBatches.clear();
+}
+
+void RenderSystem::UpdateBakedGBufferTransformBuffer()
+{
+	if (!m_runtimeScene || !m_transformSystem) {
+		return;
+	}
+
+	const size_t nodeCount = m_runtimeScene->GetNodeCount();
+	if (nodeCount == 0) {
+		return;
+	}
+
+	const uint64_t publication = m_transformSystem->GetWorldPublicationGeneration();
+	if (m_bakedGBufferTransformBuffer &&
+		m_bakedGBufferTransformBuffer->IsValid() &&
+		m_bakedGBufferTransformPublication == publication &&
+		m_bakedGBufferTransformRecords.size() == nodeCount) {
+		return;
+	}
+
+	m_bakedGBufferTransformRecords.resize(nodeCount);
+	for (uint32_t runtimeIndex = 0; runtimeIndex < nodeCount; ++runtimeIndex) {
+		GpuTransformRecord& record = m_bakedGBufferTransformRecords[runtimeIndex];
+		record.world = m_runtimeScene->GetWorldTransformByIndex(runtimeIndex);
+		record.prevWorld = m_runtimeScene->GetPreviousWorldTransformByIndex(runtimeIndex);
+		record.metadata = glm::uvec4(0u);
+		if (const RuntimeTransformNode* node = m_runtimeScene->GetRuntimeNodeByIndex(runtimeIndex)) {
+			record.metadata.z = node->worldGeneration;
+		}
+	}
+
+	const size_t requiredBytes = m_bakedGBufferTransformRecords.size() * sizeof(GpuTransformRecord);
+	if (!m_bakedGBufferTransformBuffer || !m_bakedGBufferTransformBuffer->IsValid()) {
+		m_bakedGBufferTransformBuffer = std::make_unique<GLBuffer>(
+			BufferType::ShaderStorage,
+			requiredBytes,
+			m_bakedGBufferTransformRecords.data(),
+			BufferUsage::DynamicDraw);
+		m_bakedGBufferTransformBuffer->SetLabel("RenderSystem_BakedGBufferRuntimeTransformSSBO");
+	}
+	else if (m_bakedGBufferTransformBuffer->GetSize() == requiredBytes) {
+		m_bakedGBufferTransformBuffer->SubData(0, requiredBytes, m_bakedGBufferTransformRecords.data());
+	}
+	else {
+		m_bakedGBufferTransformBuffer->SetData(m_bakedGBufferTransformRecords);
+	}
+
+	m_bakedGBufferTransformPublication = publication;
+}
+
+void RenderSystem::RebuildBakedGBufferBatches()
+{
+	const uint64_t renderableRevision = m_componentManager ? m_componentManager->GetRenderableRevision() : 0;
+	if (!m_bakedGBufferBatches.empty() &&
+		m_bakedGBufferRenderableRevision == renderableRevision) {
+		return;
+	}
+
+	ClearBakedGBufferBatches();
+
+	struct BuildBatch {
+		std::vector<BakedGBufferVertex> vertices;
+		std::vector<uint32_t> indices;
+		const MeshComponent* materialMesh = nullptr;
+		CullingOverride cullingOverride = CullingOverride::CULLING_INHERIT;
+		GLenum frontFace = GL_CCW;
+	};
+
+	std::unordered_map<uint64_t, BuildBatch> buildBatches;
+	buildBatches.reserve(m_renderItems.size() / 4);
+
+	for (const RenderItem& item : m_renderItems) {
+		if (!item.mesh || item.transparent || item.skinned) {
+			continue;
+		}
+
+		const MeshComponent& mesh = *item.mesh;
+		if (mesh.rawVertices.empty() || mesh.rawIndices.empty() || mesh.morphTargetCount > 0 ||
+			item.runtimeNodeIndex == INVALID_RUNTIME_NODE_INDEX) {
+			continue;
+		}
+
+		const TransformComponent* transform = m_componentManager ? m_componentManager->GetTransform(item.entity) : nullptr;
+		if (!transform || transform->transformID == INVALID_TRANSFORM_ID) {
+			continue;
+		}
+
+		const glm::mat4& localTransform = item.localTransform;
+		const float determinant = glm::determinant(glm::mat3(localTransform));
+		const GLenum frontFace = (std::isfinite(determinant) && determinant < 0.0f) ? GL_CW : GL_CCW;
+		const uint64_t key = ComputeBakedBatchKey(mesh, item.cullingOverride, frontFace);
+		BuildBatch& batch = buildBatches[key];
+		if (!batch.materialMesh) {
+			batch.materialMesh = &mesh;
+			batch.cullingOverride = item.cullingOverride;
+			batch.frontFace = frontFace;
+		}
+
+		const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(localTransform)));
+		const uint32_t baseVertex = static_cast<uint32_t>(batch.vertices.size());
+
+		batch.vertices.reserve(batch.vertices.size() + mesh.rawVertices.size());
+		for (const Vertex& source : mesh.rawVertices) {
+			BakedGBufferVertex baked{};
+			baked.vertex = source;
+			baked.vertex.position = glm::vec3(localTransform * glm::vec4(source.position, 1.0f));
+			baked.vertex.normal = glm::normalize(normalMatrix * source.normal);
+			baked.vertex.tangent = glm::vec4(glm::normalize(normalMatrix * glm::vec3(source.tangent)), source.tangent.w);
+			baked.runtimeTransformIndex = item.runtimeNodeIndex;
+			baked.stableTransformID = transform->transformID;
+			batch.vertices.push_back(baked);
+		}
+
+		batch.indices.reserve(batch.indices.size() + mesh.rawIndices.size());
+		for (uint32_t index : mesh.rawIndices) {
+			batch.indices.push_back(baseVertex + index);
+		}
+	}
+
+	m_bakedGBufferBatches.reserve(buildBatches.size());
+	for (auto& [_, buildBatch] : buildBatches) {
+		if (buildBatch.vertices.empty() || buildBatch.indices.empty() || !buildBatch.materialMesh) {
+			continue;
+		}
+
+		BakedGBufferBatch batch{};
+		batch.indexCount = buildBatch.indices.size();
+		batch.materialMesh = buildBatch.materialMesh;
+		batch.cullingOverride = buildBatch.cullingOverride;
+		batch.frontFace = buildBatch.frontFace;
+
+		glGenVertexArrays(1, &batch.vao);
+		glBindVertexArray(batch.vao);
+
+		batch.vertexBuffer = std::make_unique<GLBuffer>(
+			BufferType::Vertex,
+			buildBatch.vertices.size() * sizeof(BakedGBufferVertex),
+			buildBatch.vertices.data(),
+			BufferUsage::StaticDraw);
+		batch.indexBuffer = std::make_unique<GLBuffer>(
+			BufferType::Index,
+			buildBatch.indices.size() * sizeof(uint32_t),
+			buildBatch.indices.data(),
+			BufferUsage::StaticDraw);
+
+		const GLsizei stride = sizeof(BakedGBufferVertex);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, position)));
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, normal)));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, texCoord)));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(10, 2, GL_FLOAT, GL_FALSE, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, texCoord1)));
+		glEnableVertexAttribArray(10);
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, tangent)));
+		glEnableVertexAttribArray(3);
+		glVertexAttribIPointer(4, 4, GL_INT, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneIDs)));
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneWeights)));
+		glEnableVertexAttribArray(5);
+		glVertexAttribIPointer(11, 1, GL_UNSIGNED_INT, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, runtimeTransformIndex)));
+		glEnableVertexAttribArray(11);
+		glVertexAttribIPointer(12, 1, GL_UNSIGNED_INT, stride,
+			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, stableTransformID)));
+		glEnableVertexAttribArray(12);
+		glBindVertexArray(0);
+		m_bakedGBufferBatches.push_back(std::move(batch));
+	}
+
+	m_bakedGBufferRenderableRevision = renderableRevision;
+	m_bakedGBufferTransformPublication = 0;
 }

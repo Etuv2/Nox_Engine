@@ -15,17 +15,6 @@ class Skybox;
 struct RenderContext;
 
 /**
- * @brief MDI draw command for debug bounding boxes
- */
-struct DebugBBoxDrawCommand {
-    GLuint count = 24;       // 12 edges * 2 vertices = 24 indices
-    GLuint instanceCount = 1;
-    GLuint firstIndex = 0;
-    GLuint baseVertex = 0;
-    GLuint baseInstance = 0;
-};
-
-/**
  * @brief Per-instance data for bounding box rendering
  */
 struct DebugBBoxInstance {
@@ -39,8 +28,8 @@ struct DebugBBoxInstance {
  * @brief DebugBBoxPass renders wireframe bounding boxes for all scene nodes
  * 
  * This debug visualization pass draws AABBs (Axis-Aligned Bounding Boxes) 
- * around scene nodes with colors based on node type. Uses Multi-Draw Indirect
- * (MDI) batching for optimal performance with many debug primitives.
+ * around scene nodes with colors based on node type. Uses one instanced line
+ * draw for all boxes to keep debug visualization cheap with many primitives.
  * 
  * Color Legend:
  * - Green:   MODEL nodes (meshes, geometry)
@@ -56,10 +45,9 @@ struct DebugBBoxInstance {
  * - Uses depth testing (GL_LEQUAL) to respect scene geometry
  * - Renders as wireframe lines
  * 
- * MDI Optimization:
- * - All bounding boxes are batched into a single draw call
+ * Instancing Optimization:
+ * - All bounding boxes are rendered by a single instanced draw call
  * - Instance data (transforms, colors, bounds) stored in SSBO
- * - Draw commands stored in indirect buffer
  * - Significantly reduces CPU overhead for large scenes
  */
 class DebugBBoxPass : public RenderPass {
@@ -98,10 +86,10 @@ private:
     void UploadToGPU();
 
     /**
-     * @brief Render all bounding boxes using MDI
+     * @brief Render all bounding boxes using one instanced draw
      * @param viewProj Combined view-projection matrix
      */
-    void RenderMDI(const glm::mat4& viewProj);
+    void RenderInstanced(const glm::mat4& viewProj);
 
     // Shader program
     GLuint m_shaderProgram = 0;
@@ -111,13 +99,11 @@ private:
     GLBufferPtr m_vertexBuffer;      // Cube vertices
     GLBufferPtr m_indexBuffer;       // Cube edge indices
 
-    // MDI buffers (using GLBuffer wrapper)
-    GLBufferPtr m_indirectBuffer;    // Draw commands
+    // Per-frame instance data
     GLBufferPtr m_instanceSSBO;      // Per-instance data (transforms, colors, bounds)
 
     // Collected instance data (CPU side)
     std::vector<DebugBBoxInstance> m_instances;
-    std::vector<DebugBBoxDrawCommand> m_drawCommands;
 
     // Uniform locations
     GLint m_locViewProjection = -1;
@@ -125,6 +111,7 @@ private:
     // State
     bool m_initialized = false;
     size_t m_lastInstanceCount = 0;
+    size_t m_instanceCapacity = 0;
 
     // SSBO binding point
     static constexpr GLuint INSTANCE_SSBO_BINDING = 4;

@@ -28,8 +28,6 @@ uniform float motionRejectPixels;
 uniform float historyClampStrength;
 uniform float minHistoryConfidence;
 
-const float kInvalidDepth = 65504.0;
-
 vec4 ClampHistoryToNeighborhood(vec2 uv, vec4 value, sampler2D tex, vec2 invSize, float clampStrength) {
     vec4 minV = vec4(1e30);
     vec4 maxV = vec4(-1e30);
@@ -46,10 +44,6 @@ vec4 ClampHistoryToNeighborhood(vec2 uv, vec4 value, sampler2D tex, vec2 invSize
     return clamp(value, minV - ext, maxV + ext);
 }
 
-bool IsValidDepth(float depth) {
-    return depth > 0.0 && depth < kInvalidDepth;
-}
-
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
     ivec2 outSize = imageSize(outIndirect);
@@ -64,7 +58,7 @@ void main() {
     vec4 curD = textureLod(currentDirectionalRaw, uv, 0.0);
 
     float currDepth = textureLod(linearDepthQuarter, uv, 0.0).r;
-    if (!IsValidDepth(currDepth)) {
+    if (!IsValidLinearDepth(currDepth)) {
         imageStore(outIndirect, id, vec4(0.0));
         imageStore(outDirectional, id, vec4(0.0));
         imageStore(outTemporalDebug, id, vec4(0.0, 1.0, 0.0, 0.0));

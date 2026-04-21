@@ -57,7 +57,7 @@ Core::Core()
 	, m_shadowBias(0.005f)
 	, m_shadowNear(0.1f)
 	, m_shadowFar(1000.0f)
-	, m_shadowSize(1024)
+	, m_shadowSize(2048)
 	, m_splitLambda(0.95f)
 	, m_exposure(1.0f)
 	, m_gamma(2.2f)
@@ -100,7 +100,7 @@ bool Core::LoadConfiguration() {
 			m_shadowBias = std::min(0.001f, lightConfig.value("shadow_bias", 0.005f));
 			m_shadowNear = lightConfig.value("shadow_near", 0.1f);
 			m_shadowFar = lightConfig.value("shadow_far", 1000.0f);
-			m_shadowSize = lightConfig.value("shadow_size", 1024);
+			m_shadowSize = lightConfig.value("shadow_size", 2048);
 			m_splitLambda = lightConfig.value("split_lambda", 0.95f);
 		}
 

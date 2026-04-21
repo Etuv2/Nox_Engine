@@ -27,6 +27,8 @@ bool GBufferPass::Initialize(RenderContext& context) {
         std::cerr << "[GBufferPass] Failed to create shader.\n";
         return false;
     }
+    m_locView = glGetUniformLocation(m_shader, "view");
+    m_locProjection = glGetUniformLocation(m_shader, "projection");
     std::cout << "[GBufferPass] Initialized successfully.\n";
     return true;
 }
@@ -58,12 +60,10 @@ void GBufferPass::Execute(RenderContext& ctx,
     glDisable(GL_BLEND);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Save wireframe state
-    GLint oldPolygonMode[2];
-    glGetIntegerv(GL_POLYGON_MODE, oldPolygonMode);
-    
     // Apply wireframe mode if enabled
+    GLint oldPolygonMode[2] = { GL_FILL, GL_FILL };
     if (ctx.wireframeMode) {
+        glGetIntegerv(GL_POLYGON_MODE, oldPolygonMode);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glLineWidth(1.0f);
         // Wireframe state is surfaced via UI/profiler context instead of per-frame console logging.
@@ -77,13 +77,19 @@ void GBufferPass::Execute(RenderContext& ctx,
     glUseProgram(m_shader);
 
     // Upload matrices
-    glUniformMatrix4fv(glGetUniformLocation(m_shader, "view"), 
-                       1, GL_FALSE, glm::value_ptr(ctx.view));
-    glUniformMatrix4fv(glGetUniformLocation(m_shader, "projection"), 
-                       1, GL_FALSE, glm::value_ptr(ctx.proj));
+    if (m_locView >= 0) {
+        glUniformMatrix4fv(m_locView, 1, GL_FALSE, glm::value_ptr(ctx.view));
+    }
+    if (m_locProjection >= 0) {
+        glUniformMatrix4fv(m_locProjection, 1, GL_FALSE, glm::value_ptr(ctx.proj));
+    }
 
     // Render scene geometry to G-buffer
-    sceneGraph->RenderGeometry(m_shader);
+    if (auto* renderSystem = sceneGraph->GetRenderSystem()) {
+        renderSystem->RenderGeometryBatchedGBuffer(m_shader);
+    } else {
+        sceneGraph->RenderGeometry(m_shader);
+    }
 
     // Reset force backface culling after geometry rendering to ensure
     // it doesn't affect other passes (skybox, UI, transparent, etc.)

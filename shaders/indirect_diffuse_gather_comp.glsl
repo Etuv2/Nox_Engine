@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/pbr_common.glsl"
 #include "includes/screen_space_reconstruction.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
@@ -30,34 +31,19 @@ uniform int rayCount;        // Slice count. Default target: 4.
 uniform int stepCount;       // Samples per slice. Default target: 4.
 uniform int frameIndex;
 
-const float PI = 3.14159265359;
 const float HALF_PI = 1.57079632679;
 const float INV_HALF_PI = 0.63661977237;
 const float SECTOR_COUNT_F = 32.0;
 const float INV_SECTOR_COUNT = 1.0 / 32.0;
 const float INV_SECTOR_ANGLE = SECTOR_COUNT_F / HALF_PI;
 const uint FULL_MASK_32 = 0xffffffffu;
-const float kInvalidDepth = 65000.0;
 
-float Luma(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
-}
-
-vec3 SafeNormalize(vec3 v, vec3 fallback) {
+vec3 SafeNormalizeStrict(vec3 v, vec3 fallback) {
     float len2 = dot(v, v);
     if (len2 > 1e-12) {
         return v * inversesqrt(len2);
     }
     return fallback;
-}
-
-vec3 ViewPosFromLinearDepth(vec2 uv, float linearDepth) {
-    vec2 ndc = uv * 2.0 - 1.0;
-    return vec3(
-        ndc.x * linearDepth / max(projScaleX, 1e-5),
-        ndc.y * linearDepth / max(projScaleY, 1e-5),
-        -linearDepth
-    );
 }
 
 float InterleavedGradientNoise(vec2 pixel, float frameSeed) {
@@ -86,6 +72,18 @@ vec3 ProjectOntoPlane(vec3 v, vec3 planeNormal) {
 vec4 SHBasisL1(vec3 dir) {
     // Compact luminance SH packing: L00, L1x, L1y, L1z.
     return vec4(0.282095, 0.488603 * dir.x, 0.488603 * dir.y, 0.488603 * dir.z);
+}
+
+vec3 ShapeGatherRadiance(vec3 radiance) {
+    radiance = max(radiance, vec3(0.0));
+    float luma = Luma(radiance);
+    if (luma <= 1e-5) {
+        return vec3(0.0);
+    }
+
+    float lowLift = mix(1.30, 1.0, smoothstep(0.035, 0.35, luma));
+    float softKnee = 1.0 / (1.0 + max(luma - 1.15, 0.0) * 0.45);
+    return radiance * (lowLift * softKnee);
 }
 
 int ClampSectorIndex(float theta) {
@@ -119,7 +117,7 @@ void main() {
 
     vec2 uv = (vec2(id) + 0.5) * invQuarterSize;
     float centerDepth = texelFetch(linearDepthQuarter, id, 0).r;
-    if (centerDepth <= 0.0 || centerDepth > kInvalidDepth) {
+    if (!IsValidLinearDepth(centerDepth)) {
         imageStore(outIndirectRaw, id, vec4(0.0));
         imageStore(outDirectionalRaw, id, vec4(0.0));
         imageStore(outHorizonDebug, id, vec4(0.0));
@@ -127,11 +125,11 @@ void main() {
         return;
     }
 
-    vec3 centerPos = ViewPosFromLinearDepth(uv, centerDepth);
-    vec3 cameraVec = SafeNormalize(-centerPos, vec3(0.0, 0.0, 1.0));
+    vec3 centerPos = ViewPosFromLinearDepth(uv, centerDepth, projScaleX, projScaleY);
+    vec3 cameraVec = SafeNormalizeStrict(-centerPos, vec3(0.0, 0.0, 1.0));
 
     vec3 centerNormal = DecodeOctNormal01(textureLod(normalFromDepthTex, uv, 0.0).rg);
-    centerNormal = SafeNormalize(centerNormal, vec3(0.0, 0.0, 1.0));
+    centerNormal = SafeNormalizeStrict(centerNormal, vec3(0.0, 0.0, 1.0));
     if (dot(centerNormal, cameraVec) < 0.0) {
         centerNormal = -centerNormal;
     }
@@ -182,26 +180,26 @@ void main() {
 
     for (int slice = 0; slice < sliceCount; ++slice) {
         float sliceJitter = InterleavedGradientNoise(vec2(id) + vec2(float(slice), 3.0), float(frameIndex));
-        float sliceAngle = (2.0 * PI) * ((float(slice) + sliceJitter + pixelSeed) * invSliceCount);
+        float sliceAngle = TAU * ((float(slice) + sliceJitter + pixelSeed) * invSliceCount);
 
-        vec3 sliceDirVS = SafeNormalize(
+        vec3 sliceDirVS = SafeNormalizeStrict(
             tangent * cos(sliceAngle) + bitangent * sin(sliceAngle),
             tangent
         );
-        vec3 slicePlaneNormal = SafeNormalize(
+        vec3 slicePlaneNormal = SafeNormalizeStrict(
             cross(sliceDirVS, cameraVec),
             cross(sliceDirVS, tangent)
         );
-        vec3 slicePerpVS = SafeNormalize(cross(slicePlaneNormal, sliceDirVS), bitangent);
-        vec2 sliceDirUV = SafeNormalize(
+        vec3 slicePerpVS = SafeNormalizeStrict(cross(slicePlaneNormal, sliceDirVS), bitangent);
+        vec2 sliceDirUV = SafeNormalizeStrict(
             vec3(sliceDirVS.x * projScaleX, sliceDirVS.y * projScaleY, 0.0),
             vec3(1.0, 0.0, 0.0)
         ).xy;
-        vec2 slicePerpUV = SafeNormalize(
+        vec2 slicePerpUV = SafeNormalizeStrict(
             vec3(slicePerpVS.x * projScaleX, slicePerpVS.y * projScaleY, 0.0),
             vec3(0.0, 1.0, 0.0)
         ).xy;
-        vec3 projectedNormal = SafeNormalize(
+        vec3 projectedNormal = SafeNormalizeStrict(
             ProjectOntoPlane(centerNormal, slicePlaneNormal),
             centerNormal
         );
@@ -244,11 +242,11 @@ void main() {
             ivec2 depthSize = textureSize(linearDepthQuarter, depthMip);
             ivec2 depthCoord = clamp(ivec2(sampleUV * vec2(depthSize)), ivec2(0), depthSize - ivec2(1));
             float sampleDepth = texelFetch(linearDepthQuarter, depthCoord, depthMip).r;
-            if (sampleDepth <= 0.0 || sampleDepth > kInvalidDepth) {
+            if (!IsValidLinearDepth(sampleDepth)) {
                 continue;
             }
 
-            vec3 samplePos = ViewPosFromLinearDepth(sampleUV, sampleDepth);
+            vec3 samplePos = ViewPosFromLinearDepth(sampleUV, sampleDepth, projScaleX, projScaleY);
             vec3 deltaVS = samplePos - centerPos;
             float dist = length(deltaVS);
             if (dist <= 1e-6) {
@@ -257,7 +255,7 @@ void main() {
 
             vec3 sampleDir = deltaVS / dist;
             float planarDist = max(abs(dot(deltaVS, sliceDirVS)), 1e-5);
-            vec3 sampleDirPlane = SafeNormalize(
+            vec3 sampleDirPlane = SafeNormalizeStrict(
                 ProjectOntoPlane(sampleDir, slicePlaneNormal),
                 sampleDir
             );
@@ -297,26 +295,26 @@ void main() {
             float sectorWeight = float(newSectorCount) * INV_SECTOR_COUNT;
             float cosineWeight = max(dot(projectedNormal, sampleDirPlane), 0.0);
             float normalizedDist = clamp(dist / max(rayLength, 0.25), 0.0, 4.0);
-            float distanceWeight = exp(-normalizedDist * 0.65);
-            float farFieldBoost = mix(0.75, 1.35, clamp(sampleT, 0.0, 1.0));
-            float transport = sectorWeight * mix(0.35, 1.0, cosineWeight) * distanceWeight * farFieldBoost * 2.4;
+            float distanceWeight = exp(-normalizedDist * 0.38);
+            float farFieldBoost = mix(0.90, 1.90, clamp(sampleT, 0.0, 1.0));
+            float transport = sectorWeight * mix(0.45, 1.0, cosineWeight) * distanceWeight * farFieldBoost * 3.15;
             if (transport <= 1e-6) {
                 continue;
             }
 
             vec3 sampleNormal = DecodeOctNormal01(textureLod(normalFromDepthTex, sampleUV, normalLod).rg);
-            sampleNormal = SafeNormalize(sampleNormal, centerNormal);
+            sampleNormal = SafeNormalizeStrict(sampleNormal, centerNormal);
             if (dot(sampleNormal, -sampleDir) < 0.0) {
                 sampleNormal = -sampleNormal;
             }
 
             float surfaceFacing = max(dot(sampleNormal, -sampleDir), 0.0);
-            transport *= mix(0.35, 1.0, surfaceFacing);
+            transport *= mix(0.50, 1.0, surfaceFacing);
             if (transport <= 1e-6) {
                 continue;
             }
 
-            vec3 sampleRadiance = max(textureLod(radianceTex, sampleUV, radianceLod).rgb, vec3(0.0));
+            vec3 sampleRadiance = ShapeGatherRadiance(textureLod(radianceTex, sampleUV, radianceLod).rgb);
             float sampleLuma = Luma(sampleRadiance);
 
             sliceIndirect += sampleRadiance * transport;

@@ -27,5 +27,7 @@ public:
 
 private:
     GLuint m_shader = 0;
+    GLint m_locView = -1;
+    GLint m_locProjection = -1;
     bool m_runtimeVerboseLogging = false;
 };

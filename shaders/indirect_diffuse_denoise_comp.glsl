@@ -22,22 +22,6 @@ uniform int kernelRadius;
 uniform float confidencePower;
 uniform float lumaPhi;
 
-const float kInvalidDepth = 65000.0;
-
-float Luma(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
-}
-
-float QuarterNormalMip() {
-    int maxMip = max(textureQueryLevels(normalFromDepthTex) - 1, 0);
-    if (maxMip == 0) {
-        return 0.0;
-    }
-    ivec2 outSize = imageSize(outIndirect);
-    float desiredMip = max(log2(max(fullResolution.x / max(float(outSize.x), 1.0), 1.0)), 0.0);
-    return clamp(desiredMip, 0.0, float(maxMip));
-}
-
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
     ivec2 outSize = imageSize(outIndirect);
@@ -49,14 +33,14 @@ void main() {
     vec4 centerI = textureLod(inIndirect, uv, 0.0);
     vec4 centerD = textureLod(inDirectional, uv, 0.0);
     float centerDepth = textureLod(linearDepthQuarter, uv, 0.0).r;
-    if (centerDepth > kInvalidDepth) {
+    if (!IsValidLinearDepth(centerDepth)) {
         imageStore(outIndirect, id, vec4(0.0));
         imageStore(outDirectional, id, vec4(0.0));
         imageStore(outDenoiseDebug, id, vec4(0.0));
         return;
     }
 
-    float normalMip = QuarterNormalMip();
+    float normalMip = QuarterNormalMip(normalFromDepthTex, fullResolution, imageSize(outIndirect));
     vec3 centerN = DecodeOctNormal01(textureLod(normalFromDepthTex, uv, normalMip).rg);
     if (length(centerN) < 0.5 || any(isnan(centerN))) {
         centerN = vec3(0.0, 0.0, 1.0);
@@ -97,7 +81,7 @@ void main() {
             vec4 sampleI = textureLod(inIndirect, sampleUV, 0.0);
             vec4 sampleD = textureLod(inDirectional, sampleUV, 0.0);
             float sampleDepth = textureLod(linearDepthQuarter, sampleUV, 0.0).r;
-            if (sampleDepth > kInvalidDepth) {
+            if (!IsValidLinearDepth(sampleDepth)) {
                 continue;
             }
             visitedSamples += 1.0;

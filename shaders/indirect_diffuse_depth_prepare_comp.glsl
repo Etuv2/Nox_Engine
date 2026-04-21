@@ -8,14 +8,11 @@ layout(binding = 2, r16f) writeonly uniform image2D outLinearDepthQuarter;
 
 uniform mat4 invProj;
 
-const float kInvalidDepth = 65504.0;
-
 float LinearDepthFromDepth01(vec2 uv, float depth01) {
     if (depth01 >= 0.999999) {
-        return kInvalidDepth;
+        return NOX_FP16_MAX;
     }
-    vec3 viewPos = ReconstructViewPosition(uv, depth01, invProj);
-    return max(-viewPos.z, 1e-4);
+    return ViewDepthFromDeviceDepth(uv, depth01, invProj);
 }
 
 void main() {
@@ -28,7 +25,7 @@ void main() {
     ivec2 srcSize = textureSize(gDepth, 0);
     ivec2 base = id * 4;
 
-    float minDepth = kInvalidDepth;
+    float minDepth = NOX_FP16_MAX;
     for (int y = 0; y < 4; ++y) {
         for (int x = 0; x < 4; ++x) {
             ivec2 src = clamp(base + ivec2(x, y), ivec2(0), srcSize - ivec2(1));

@@ -37,6 +37,10 @@ struct PBRMaterial {
     uint materialID;          // Material type (0=opaque MR, 2=transmissive)
 };
 
+vec2 SelectUVSet(int uvSet, vec2 uv0, vec2 uv1) {
+    return (uvSet == 1) ? uv1 : uv0;
+}
+
 // === G-Buffer Layout Reference ===
 // RT0: RGBA8   - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)

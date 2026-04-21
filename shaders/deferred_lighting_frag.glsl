@@ -38,22 +38,9 @@ uniform sampler2D brdfLUT;
 uniform float prefilteredMaxLOD;
 
 // IBL intensity controls to prevent over-bright results
-uniform float iblIntensity = 0.35;       // Overall IBL multiplier
+uniform float iblIntensity = 0.1;        // Overall IBL multiplier
 uniform float diffuseIBLScale = 0.3;    // Diffuse irradiance scale
 uniform float specularIBLScale = 0.45;   // Specular prefiltered scale
-
-// LPV Global Illumination
-uniform sampler3D lpvTextureR;
-uniform sampler3D lpvTextureG;
-uniform sampler3D lpvTextureB;
-uniform vec3 lpvGridCenter;
-uniform float lpvVoxelSize;
-uniform int lpvGridResolution;
-uniform float lpvGIStrength = 1.0;
-uniform int enableLPV = 0;
-uniform int lpvDebugVisualization = 0;
-uniform float lpvDebugBoost = 1.0;
-uniform vec4 lpvGridOrientation = vec4(0.0, 0.0, 0.0, 1.0); // Quaternion (x, y, z, w)
 
 // SSAO
 uniform sampler2D ssaoMap;
@@ -63,8 +50,10 @@ uniform float aoStrength = 0.9;
 uniform sampler2D screenSpaceShadowMap;
 uniform float sssStrength = 0.6; // Contact shadow blend strength [0,1]
 
-uniform sampler2D indirectDiffuseMap;
-uniform float indirectDiffuseStrength = 1.0;
+const int MAX_INDIRECT_DIFFUSE_SOURCES = 4;
+uniform sampler2D indirectDiffuseMaps[MAX_INDIRECT_DIFFUSE_SOURCES];
+uniform float indirectDiffuseStrengths[MAX_INDIRECT_DIFFUSE_SOURCES];
+uniform int indirectDiffuseSourceCount = 0;
 uniform int indirectDiffuseCompositeMode = 0; // 0 additive, 1 modulative
 uniform int lightingOutputMode = 0; // 0 full lighting, 1 bounceable radiance
 
@@ -119,11 +108,7 @@ layout(std430, binding = 1) buffer ShadowMatricesBuffer { mat4 shadowMatrices[];
 //       FresnelSchlick, CalculateDiffuseAlbedo, SpecularOcclusion are in pbr_common.glsl
 
 vec3 worldPosFromDepth(vec2 uv, float depth) {
-	vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-	vec4 viewPos4 = invProjection * clip;
-	viewPos4 /= viewPos4.w;
-	vec4 world = invView * viewPos4;
-	return world.xyz;
+	return ReconstructWorldPosition(uv, depth, invProjection, invView);
 }
 
 vec3 getNormalInWorldSpace(vec3 decodedNormal) {
@@ -203,7 +188,7 @@ float ComputeCascadedShadow(
 	cascadeBias = CalculateAdaptiveShadowBias(N, lightDir, primaryCascade, pc0.z, viewDepth);
 	float depthSoftness = clamp(viewDepth / max(maxCascadeDepth, 0.001), 0.0, 1.0);
 	float cascadeSoftness = float(primaryCascade) / float(max(sliceCount - 1, 1));
-	float primaryFilterScale = mix(0.9, 1.8, max(depthSoftness, cascadeSoftness));
+	float primaryFilterScale = mix(0.65, 1.2, max(depthSoftness, cascadeSoftness));
 	float shadowValue = SampleShadowArrayEdgeSafe(layer0, pc0, cascadeBias, 0.05, primaryFilterScale);
 
 	float cascadeNear = (primaryCascade == 0) ? 0.0 : cascadeSplits[primaryCascade - 1];
@@ -226,7 +211,7 @@ float ComputeCascadedShadow(
 			if (InShadowBounds(pc1)) {
 				float bias1 = CalculateAdaptiveShadowBias(N, lightDir, nextCascade, pc1.z, viewDepth);
 				float nextCascadeSoftness = float(nextCascade) / float(max(sliceCount - 1, 1));
-				float nextFilterScale = mix(0.9, 1.8, max(depthSoftness, nextCascadeSoftness));
+				float nextFilterScale = mix(0.65, 1.2, max(depthSoftness, nextCascadeSoftness));
 				float shadow1 = SampleShadowArrayEdgeSafe(layer1, pc1, bias1, 0.05, nextFilterScale);
 				float blendFactor = smoothstep(blendStart, cascadeFar, viewDepth);
 				shadowValue = mix(shadowValue, shadow1, blendFactor);
@@ -551,15 +536,11 @@ void ComputeDirectLightSeparated(int idx, vec3 worldPos, vec3 N, vec3 V, Princip
 		float contactShadowVisibility = texture(screenSpaceShadowMap, vTexCoord).r;
 		float viewDepth = length(worldPos - viewPos);
 
-		float contactStrength = smoothstep(15.0, 1.0, viewDepth);
-		contactStrength = mix(0.6, 1.0, contactStrength);
-
-		float litAreaReduction = smoothstep(0.9, 1.0, shadowMapShadow);
-		contactStrength *= (1.0 - litAreaReduction * 0.5);
-
-		float contactBlend = clamp(contactStrength * sssStrength, 0.0, 1.0);
+		float contactStrength = smoothstep(18.0, 0.75, viewDepth);
+		float shadowMapLitMask = smoothstep(0.35, 0.95, shadowMapShadow);
+		float contactBlend = clamp(contactStrength * shadowMapLitMask * sssStrength, 0.0, 1.0);
 		float contactShadow = mix(1.0, ApplyRealisticShadow(contactShadowVisibility), contactBlend);
-		combinedShadow = min(shadowMapShadow, contactShadow);
+		combinedShadow = mix(shadowMapShadow, min(shadowMapShadow, contactShadow), contactBlend);
 	}
 	
 	// Final contribution
@@ -578,6 +559,10 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurfac
 }
 
 vec3 ComputeIBL(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+	if (iblIntensity <= 0.0001 || (diffuseIBLScale <= 0.0001 && specularIBLScale <= 0.0001)) {
+		return vec3(0.0);
+	}
+
 	vec3 iblResult = EvaluatePrincipledIBL(
 		surface, N, V, reflect(-V, N),
 		diffuseAO, specularAO,
@@ -593,6 +578,10 @@ vec3 ComputeIBL(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, floa
 }
 
 vec3 ComputeDiffuseIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO) {
+	if (iblIntensity <= 0.0001 || diffuseIBLScale <= 0.0001) {
+		return vec3(0.0);
+	}
+
 	float NdotV = Saturate(dot(N, V));
 	vec3 irradiance = max(texture(irradianceMap, N).rgb, vec3(0.0));
 	vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
@@ -612,62 +601,93 @@ vec3 ComputeDiffuseIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float di
 	return max(diffuse * iblIntensity, vec3(0.0));
 }
 
-// LPV Helper functions
-vec3 rotateVector(vec3 v, vec4 q) {
-	vec3 qxyz = q.xyz;
-	float qw = q.w;
-	vec3 t = 2.0 * cross(qxyz, v);
-	return v + qw * t + cross(qxyz, t);
+vec3 ComputeBounceableIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+	vec3 diffuseSource = ComputeDiffuseIBLSource(N, V, surface, diffuseAO);
+	if (iblIntensity <= 0.0001 || specularIBLScale <= 0.0001) {
+		return diffuseSource;
+	}
+
+	float NdotV = Saturate(dot(N, V));
+	vec3 R = reflect(-V, N);
+	vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
+	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
+	vec3 FssEss = F * brdf.x + brdf.y;
+	float Ess = brdf.x + brdf.y;
+	float Ems = 1.0 - Ess;
+	vec3 Favg = surface.specularF0 + (vec3(1.0) - surface.specularF0) * (1.0 / 21.0);
+	vec3 Fms = (FssEss * Favg) / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
+	vec3 kS = clamp(FssEss + Fms, vec3(0.0), vec3(0.98));
+
+	float baseGloss = pow(1.0 - surface.perceptualRoughness, 2.0);
+	vec3 prefiltered = max(textureLod(prefilteredMap, R, surface.perceptualRoughness * prefilteredMaxLOD).rgb, vec3(0.0));
+	vec3 glossySource = prefiltered * kS * baseGloss * mix(specularAO, 1.0, 0.25) * specularIBLScale;
+
+	float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
+	vec3 source = diffuseSource + glossySource * baseAttenuation * iblIntensity * 0.35;
+	return max(source, vec3(0.0));
 }
 
-vec3 rotateVectorInverse(vec3 v, vec4 q) {
-	vec4 qConj = vec4(-q.x, -q.y, -q.z, q.w);
-	return rotateVector(v, qConj);
+vec3 ComputeIndirectBaseColorFloor(vec3 baseColor, float glossMask, float clearcoat) {
+	float baseLuma = Luminance(baseColor);
+	float darkMask = 1.0 - smoothstep(0.015, 0.18, baseLuma);
+	float materialMask = Saturate(max(glossMask, clearcoat));
+	float floorLuma = mix(0.0, 0.075, darkMask * materialMask);
+	vec3 hue = baseLuma > 1e-4 ? baseColor / baseLuma : vec3(1.0);
+	hue = mix(vec3(1.0), clamp(hue, vec3(0.25), vec3(4.0)), 0.65);
+	return max(baseColor, hue * floorLuma);
 }
 
-vec3 WorldToVoxelUVW(vec3 worldPos) {
-	vec3 localPos = worldPos - lpvGridCenter;
-	localPos = rotateVectorInverse(localPos, lpvGridOrientation);
-	vec3 voxelPos = (localPos / lpvVoxelSize) + vec3(lpvGridResolution * 0.5);
-	return voxelPos / float(lpvGridResolution);
+vec3 ComputeIndirectGIResponse(vec3 indirectIrradiance, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+	float NdotV = Saturate(dot(N, V));
+
+	vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
+	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
+	vec3 FssEss = F * brdf.x + brdf.y;
+	float Ess = brdf.x + brdf.y;
+	float Ems = 1.0 - Ess;
+	vec3 Favg = surface.specularF0 + (vec3(1.0) - surface.specularF0) * (1.0 / 21.0);
+	vec3 Fms = (FssEss * Favg) / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
+	vec3 kS = clamp(FssEss + Fms, vec3(0.0), vec3(0.98));
+
+	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
+	float diffuseTerm = mix(1.0, 1.0 + 0.5 * surface.perceptualRoughness, surface.subsurface);
+	vec3 kD = max(vec3(0.0), (vec3(1.0) - kS) * (1.0 - surface.metallic) * (1.0 - transmissionWeight));
+
+	float baseGloss = pow(1.0 - surface.perceptualRoughness, 2.0);
+	float clearcoatGloss = surface.clearcoat * pow(1.0 - surface.clearcoatRoughness, 2.0);
+	vec3 effectiveBase = ComputeIndirectBaseColorFloor(surface.baseColor, max(baseGloss, clearcoatGloss), surface.clearcoat);
+	vec3 effectiveDiffuseColor = effectiveBase * (1.0 - surface.metallic);
+	vec3 diffuseResponse = kD * effectiveDiffuseColor * diffuseAO * diffuseTerm * diffuseIBLScale;
+
+	vec3 specularResponse = kS * baseGloss * specularAO * specularIBLScale * 0.35;
+
+	float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
+	vec3 materialResponse = diffuseResponse * baseAttenuation + specularResponse * baseAttenuation;
+	return max(indirectIrradiance * materialResponse, vec3(0.0));
 }
 
-vec3 EvaluateSH(vec4 shR, vec4 shG, vec4 shB, vec3 normal) {
-	float Y00 = 0.282095;
-	float Y1_1 = 0.488603 * normal.x;
-	float Y10 = 0.488603 * normal.y;
-	float Y11 = 0.488603 * normal.z;
-	
-	vec4 shBasis = vec4(Y00, Y1_1, Y10, Y11);
-	
-	float irradianceR = dot(shR, shBasis);
-	float irradianceG = dot(shG, shBasis);
-	float irradianceB = dot(shB, shBasis);
-	
-	return max(vec3(irradianceR, irradianceG, irradianceB), vec3(0.0));
-}
-
-vec3 SampleLPV(vec3 worldPos, vec3 normal, vec3 albedo, float metallic, float diffuseAO) {
-	if (enableLPV == 0) return vec3(0.0);
-	
-	vec3 uvw = WorldToVoxelUVW(worldPos);
-	if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) {
+vec3 CompressIndirectContribution(vec3 indirectContribution) {
+	float luma = Luminance(indirectContribution);
+	if (luma <= 1e-5) {
 		return vec3(0.0);
 	}
-	
-	vec4 shR = texture(lpvTextureR, uvw);
-	vec4 shG = texture(lpvTextureG, uvw);
-	vec4 shB = texture(lpvTextureB, uvw);
-	
-	vec3 localNormal = rotateVectorInverse(normal, lpvGridOrientation);
-	vec3 irradiance = EvaluateSH(shR, shG, shB, localNormal);
-	
-	// Apply metallic factor here, use raw albedo
-	vec3 kD = vec3(1.0 - metallic);
-	vec3 giContribution = (albedo / PI) * irradiance * kD;
-	giContribution *= lpvGIStrength * lpvDebugBoost * diffuseAO;
-	
-	return giContribution;
+
+	float softKnee = 1.0 / (1.0 + max(luma - 2.2, 0.0) * 0.28);
+	return min(indirectContribution * softKnee, vec3(8.0));
+}
+
+vec3 EvaluateIndirectDiffuseMap(int sourceIndex, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+	float strength = indirectDiffuseStrengths[sourceIndex];
+	if (strength <= 0.0001) {
+		return vec3(0.0);
+	}
+
+	vec4 indirectSample = texture(indirectDiffuseMaps[sourceIndex], vTexCoord);
+	vec3 indirectIrradiance = max(indirectSample.rgb, vec3(0.0));
+	float indirectAO = clamp(indirectSample.a, 0.0, 1.0);
+	float indirectAttenuation = mix(0.35, 1.0, indirectAO);
+	vec3 contribution = ComputeIndirectGIResponse(indirectIrradiance, N, V, surface, diffuseAO, specularAO) * strength * indirectAttenuation * 2.5;
+	return CompressIndirectContribution(contribution);
 }
 
 void main() {
@@ -694,7 +714,7 @@ void main() {
 	PrincipledSurface surface = BuildPrincipledSurfaceFromMaterial(material);
 
 	// SSAO
-	float ssao = clamp(texture(ssaoMap, uv).r, 0.0, 1.0);
+	float ssao = (aoStrength > 0.0001) ? clamp(texture(ssaoMap, uv).r, 0.0, 1.0) : 1.0;
 
 	vec3 N = getNormalInWorldSpace(decodedNormal);
 	
@@ -735,34 +755,22 @@ void main() {
 	}
 
 	if (lightingOutputMode == 1) {
-		vec3 bounceableIBL = ComputeDiffuseIBLSource(N, V, surface, diffuseAO);
+		vec3 bounceableIBL = ComputeBounceableIBLSource(N, V, surface, diffuseAO, specularAO);
 		FragColor = vec4(max(directDiffuseLighting + bounceableIBL, vec3(0.0)), 1.0);
 		return;
 	}
 
 	vec3 iblContribution = ComputeIBL(N, V, surface, diffuseAO, specularAO);
-	vec3 lpvContribution = vec3(0.0);
 
-	// LPV GI still uses the legacy diffuse-only path until volumetric GI is upgraded
-	if (enableLPV == 1) {
-		lpvContribution = SampleLPV(worldPos, N, material.albedo, material.metallic, diffuseAO);
-		
-		if (lpvDebugVisualization == 1) {
-			FragColor = vec4(lpvContribution, 1.0);
-			return;
-		}
+	vec3 indirectContribution = vec3(0.0);
+	int indirectCount = clamp(indirectDiffuseSourceCount, 0, MAX_INDIRECT_DIFFUSE_SOURCES);
+	for (int i = 0; i < indirectCount; ++i) {
+		indirectContribution += EvaluateIndirectDiffuseMap(i, N, V, surface, diffuseAO, specularAO);
 	}
-
-	vec4 indirectSample = texture(indirectDiffuseMap, vTexCoord);
-	vec3 indirectIrradiance = max(indirectSample.rgb, vec3(0.0));
-	float indirectAO = clamp(indirectSample.a, 0.0, 1.0);
-	float indirectAttenuation = mix(0.35, 1.0, indirectAO);
-	vec3 indirectContribution = indirectIrradiance * surface.diffuseColor * indirectDiffuseStrength * indirectAttenuation * 2.5;
-	indirectContribution = clamp(indirectContribution, vec3(0.0), vec3(6.0));
 
 	vec3 color = emissive;
 	color += directLighting;
-	color += iblContribution + lpvContribution;
+	color += iblContribution;
 	if (indirectDiffuseCompositeMode == 1) {
 		color *= vec3(1.0) + indirectContribution;
 	}

@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/screen_space_reconstruction.glsl"
 
 in vec2 TexCoord;
 
@@ -38,18 +39,8 @@ vec3 YCoCgToRGB(vec3 ycocg) {
     return vec3(Y + Co - Cg, Y + Cg, Y - Co - Cg);
 }
 
-vec3 DecodeNormal(vec2 encoded) {
-    encoded = encoded * 2.0 - 1.0;
-    vec3 n = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
-    if (n.z < 0.0) {
-        vec2 signNotZero = vec2(sign(encoded.x), sign(encoded.y));
-        n.xy = (1.0 - abs(n.yx)) * signNotZero;
-    }
-    return normalize(n);
-}
-
 float ComputeLuma(vec3 c) {
-    return dot(c, vec3(0.2126, 0.7152, 0.0722));
+    return Luma(c);
 }
 
 vec3 SampleHistoryCatmullRom(vec2 uv) {
@@ -170,8 +161,8 @@ void main() {
 
     float currentDepth = texture(depthBuffer, uv).r;
     float historyDepth = texture(historyDepthBuffer, historyUV).r;
-    vec3 currentNormal = DecodeNormal(texture(normalBuffer, uv).rg);
-    vec3 historyNormal = DecodeNormal(texture(historyNormalBuffer, historyUV).rg);
+    vec3 currentNormal = DecodeOctNormal01(texture(normalBuffer, uv).rg);
+    vec3 historyNormal = DecodeOctNormal01(texture(historyNormalBuffer, historyUV).rg);
 
     float depthConfidence = exp(-abs(currentDepth - historyDepth) / max(depthThreshold, 1e-5));
     float normalSimilarity = max(dot(currentNormal, historyNormal), 0.0);

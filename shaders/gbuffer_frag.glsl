@@ -1,5 +1,6 @@
 #version 460 core
 #include "includes/pbr_common.glsl" // For normal encoding/decoding
+#include "includes/material_common.glsl"
 in vec3 WorldPos;
 in vec3 WorldNormal;
 in vec2 TexCoords;
@@ -42,6 +43,7 @@ uniform vec3  emissiveFactor  = vec3(0.0);
 uniform float emissiveStrength = 1.0;
 uniform float occlusionStrength = 1.0; // multiplier
 uniform float normalScale = 1.0;       // Normal map intensity
+uniform float alphaCutoff = 0.5;
 
 // KHR_materials_specular extension factors
 uniform float specularFactor = 1.0;           // overall F0 strength multiplier
@@ -55,6 +57,7 @@ uniform float ior = 1.5;                      // index of refraction
 uniform float clearcoatFactor = 0.0;
 uniform float clearcoatRoughnessFactor = 0.0;
 uniform uint uMaterialID = 1u;
+uniform int alphaMode = 0; // 0=OPAQUE, 1=MASK, 2=BLEND
 
 // Presence flags
 uniform bool hasBaseColorTexture = false;
@@ -76,32 +79,19 @@ uniform int specularUVSet = 0;
 uniform int specularColorUVSet = 0;
 uniform int transmissionUVSet = 0;
 
-vec2 SelectUV(int uvSet) {
-    return (uvSet == 1) ? TexCoords1 : TexCoords;
-}
-
 void main() {
-    // Re-orthonormalize TBN per-pixel after interpolation
     vec3 N = normalize(WorldNormal);
-    
-    // Reconstruct T from interpolated TBN
-    vec3 T = normalize(TBN[0]);
-    
-    // Gram-Schmidt orthogonalization: ensure T is perpendicular to N
-    T = normalize(T - dot(T, N) * N);
-    
-    // Recompute B using handedness from RawTangent.w
-    // This preserves the correct orientation across UV seams
-    float handedness = RawTangent.w;
-    vec3 B = normalize(cross(N, T) * handedness);
-    
-    // Rebuild orthonormal TBN matrix
-    mat3 orthonormalTBN = mat3(T, B, N);
     
     //  Normal mapping 
     if (hasNormalTexture) {
+        // Re-orthonormalize TBN only for materials that actually sample a normal map.
+        vec3 T = normalize(TBN[0]);
+        T = normalize(T - dot(T, N) * N);
+        vec3 B = normalize(cross(N, T) * RawTangent.w);
+        mat3 orthonormalTBN = mat3(T, B, N);
+
         // Sample normal map in tangent space (range [0,1])
-        vec3 tangentNormal = texture(texture_normal, SelectUV(normalUVSet)).rgb;
+        vec3 tangentNormal = texture(texture_normal, SelectUVSet(normalUVSet, TexCoords, TexCoords1)).rgb;
         
         // Convert from [0,1] to [-1,1] range
         tangentNormal = tangentNormal * 2.0 - 1.0;
@@ -121,10 +111,14 @@ void main() {
 
     // Canonical metallic-roughness workflow.
     // Legacy spec-gloss inputs are normalized into the same runtime contract.
-    vec3 albedo = baseColorFactor.rgb;
+    vec4 baseColor = baseColorFactor;
     if (hasBaseColorTexture) {
-        albedo *= texture(texture_diffuse, SelectUV(baseColorUVSet)).rgb;
+        baseColor *= texture(texture_diffuse, SelectUVSet(baseColorUVSet, TexCoords, TexCoords1));
     }
+    if (alphaMode == 1 && baseColor.a < alphaCutoff) {
+        discard;
+    }
+    vec3 albedo = baseColor.rgb;
 
     float metallic = metallicFactor;
     float roughness = ClampPerceptualRoughness(roughnessFactor);
@@ -132,16 +126,16 @@ void main() {
     float specFactorSample = 1.0;
     if (hasSpecularTexture) {
         // KHR_materials_specular uses alpha channel for scalar strength.
-        specFactorSample = texture(texture_specular, SelectUV(specularUVSet)).a;
+        specFactorSample = texture(texture_specular, SelectUVSet(specularUVSet, TexCoords, TexCoords1)).a;
     }
 
     vec3 specularColorSample = specularColorFactor;
     if (hasSpecularColorTexture) {
-        specularColorSample *= texture(texture_specular_color, SelectUV(specularColorUVSet)).rgb;
+        specularColorSample *= texture(texture_specular_color, SelectUVSet(specularColorUVSet, TexCoords, TexCoords1)).rgb;
     }
 
     if (hasMetallicRoughnessTexture) {
-        vec4 mrSample = texture(texture_metallic_roughness, SelectUV(metallicRoughnessUVSet));
+        vec4 mrSample = texture(texture_metallic_roughness, SelectUVSet(metallicRoughnessUVSet, TexCoords, TexCoords1));
         roughness = ClampPerceptualRoughness(mrSample.g * roughnessFactor);
         metallic  = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
     }
@@ -150,7 +144,7 @@ void main() {
 
     float transmission = clamp(transmissionFactor, 0.0, 1.0);
     if (hasTransmissionTexture) {
-        transmission *= texture(texture_transmission, SelectUV(transmissionUVSet)).r;
+        transmission *= texture(texture_transmission, SelectUVSet(transmissionUVSet, TexCoords, TexCoords1)).r;
     }
 
     PrincipledSurface surface = BuildPrincipledSurface(
@@ -174,14 +168,14 @@ void main() {
     //  Emissive 
     vec3 emissive = emissiveFactor;
     if (hasEmissiveTexture) {
-        vec3 emissiveTexSample = texture(texture_emissive, SelectUV(emissiveUVSet)).rgb;
+        vec3 emissiveTexSample = texture(texture_emissive, SelectUVSet(emissiveUVSet, TexCoords, TexCoords1)).rgb;
         emissive *= emissiveTexSample;
     }
 
     //  Occlusion 
     float ao = 1.0;
     if (hasOcclusionTexture) {
-        ao = mix(1.0, texture(texture_occlusion, SelectUV(occlusionUVSet)).r, occlusionStrength);
+        ao = mix(1.0, texture(texture_occlusion, SelectUVSet(occlusionUVSet, TexCoords, TexCoords1)).r, occlusionStrength);
     }
 
     // RT0: Oct normal (RG) + roughness (B) + metallic (A)

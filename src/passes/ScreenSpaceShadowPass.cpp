@@ -102,16 +102,33 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
     if (desiredTraceWidth != m_traceWidth || desiredTraceHeight != m_traceHeight ||
         ctx.width != m_width || ctx.height != m_height) {
         createOutput(ctx.width, ctx.height);
+        if (!m_traceTex || !m_historyTex || !m_resolveFBO || !m_resolveFBO->IsComplete()) {
+            return;
+        }
     }
-
-    glm::vec3 lightDirection = glm::normalize(dirLight->GetDirection());
-    glm::vec3 lightToSurfaceVS = glm::normalize(glm::mat3(ctx.view) * lightDirection);
-    glm::vec3 surfaceToLightVS = -lightToSurfaceVS;
 
     m_cfg.steps = std::clamp(ctx.sssSampleCount, 4, 24);
     m_cfg.rayLength = ctx.sssMaxRayLength;
     m_cfg.thickness = std::max(0.001f, ctx.sssThickness);
     m_cfg.edgeFade = std::max(0.0005f, ctx.sssEdgeThreshold);
+    const bool settingsChanged =
+        m_lastSteps != m_cfg.steps ||
+        std::abs(m_lastRayLength - m_cfg.rayLength) > 1e-4f ||
+        std::abs(m_lastThickness - m_cfg.thickness) > 1e-4f ||
+        std::abs(m_lastEdgeFade - m_cfg.edgeFade) > 1e-5f;
+    if (settingsChanged) {
+        m_historyValid = false;
+        m_lastSteps = m_cfg.steps;
+        m_lastRayLength = m_cfg.rayLength;
+        m_lastThickness = m_cfg.thickness;
+        m_lastEdgeFade = m_cfg.edgeFade;
+    }
+
+    glm::vec3 surfaceToLightWS = -dirLight->GetDirection();
+    if (glm::dot(surfaceToLightWS, surfaceToLightWS) < 1e-8f) {
+        surfaceToLightWS = glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    glm::vec3 surfaceToLightVS = glm::normalize(glm::mat3(ctx.view) * glm::normalize(surfaceToLightWS));
 
     updateUBO(surfaceToLightVS, ctx.proj);
 
@@ -133,11 +150,17 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
 
     resolveToFullResolution(ctx);
 
-    glCopyImageSubData(m_traceTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-                       m_historyTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-                       m_traceWidth, m_traceHeight, 1);
+    bool copiedHistory = false;
+    if (m_traceTex && m_historyTex && m_traceTex->ID() != 0 && m_historyTex->ID() != 0 &&
+        m_traceTex->Width() == m_historyTex->Width() &&
+        m_traceTex->Height() == m_historyTex->Height()) {
+        glCopyImageSubData(m_traceTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+                           m_historyTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+                           m_traceWidth, m_traceHeight, 1);
+        copiedHistory = true;
+    }
 
-    m_historyValid = true;
+    m_historyValid = copiedHistory;
     ++m_frameIndex;
 }
 

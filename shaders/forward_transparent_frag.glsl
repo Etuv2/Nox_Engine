@@ -2,6 +2,7 @@
 
 // Include shared PBR functions
 #include "includes/pbr_common.glsl"
+#include "includes/material_common.glsl"
 
 out vec4 FragColor;
 
@@ -28,6 +29,7 @@ uniform float emissiveStrength = 1.0;
 uniform float occlusionStrength = 1.0;
 uniform float normalScale = 1.0;
 uniform float alphaCutoff = 0.5;
+uniform int alphaMode = 2; // 0=OPAQUE, 1=MASK, 2=BLEND
 
 // KHR_materials_specular extension
 uniform float specularFactor = 1.0;
@@ -79,7 +81,7 @@ uniform samplerCube irradianceMap;
 uniform samplerCube prefilteredMap;
 uniform sampler2D brdfLUT;
 uniform float prefilteredMaxLOD = 4.0;
-uniform float iblIntensity = 0.35;
+uniform float iblIntensity = 0.1;
 uniform float diffuseIBLScale = 0.3;
 uniform float specularIBLScale = 0.45;
 
@@ -91,10 +93,6 @@ uniform vec3 keyLightDir = normalize(vec3(-0.4, -1.0, -0.2));
 uniform vec3 keyLightColor = vec3(1.0);
 uniform float keyLightIntensity = 1.0;
 
-vec2 SelectUV(int uvSet) {
-    return (uvSet == 1) ? fs_in.UV1 : fs_in.UV;
-}
-
 vec3 getNormalFromMap() {
     // Start with geometric normal
     vec3 N = normalize(fs_in.Normal);
@@ -105,7 +103,7 @@ vec3 getNormalFromMap() {
     }
     
     // Sample normal map in tangent space
-    vec3 tangentNormal = texture(texture_normal, SelectUV(normalUVSet)).xyz * 2.0 - 1.0;
+    vec3 tangentNormal = texture(texture_normal, SelectUVSet(normalUVSet, fs_in.UV, fs_in.UV1)).xyz * 2.0 - 1.0;
     
     // Apply normal scale for intensity control, then renormalize
     tangentNormal.xy *= normalScale;
@@ -160,18 +158,17 @@ vec3 sampleEnvironmentRefraction(
 
 void main() {
     // Sample base color and alpha
-    vec4 baseColorSample = hasBaseColorTexture ? texture(texture_diffuse, SelectUV(baseColorUVSet)) : vec4(1.0);
+    vec4 baseColorSample = hasBaseColorTexture ? texture(texture_diffuse, SelectUVSet(baseColorUVSet, fs_in.UV, fs_in.UV1)) : vec4(1.0);
     vec4 baseColor = baseColorSample * baseColorFactor;
     float alpha = baseColor.a;
     
-    // Alpha testing for masked materials
-    if (alpha < alphaCutoff) discard;
+    if ((alphaMode == 1 && alpha < alphaCutoff) || alpha <= 0.001) discard;
     
     // Sample material properties with proper texture presence checks
     float metallic = metallicFactor;
     float roughness = roughnessFactor;
     if (hasMetallicRoughnessTexture) {
-        vec4 mrSample = texture(texture_metallic_roughness, SelectUV(metallicRoughnessUVSet));
+        vec4 mrSample = texture(texture_metallic_roughness, SelectUVSet(metallicRoughnessUVSet, fs_in.UV, fs_in.UV1));
         metallic = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
         roughness = clamp(mrSample.g * roughnessFactor, 0.04, 1.0);
     }
@@ -179,18 +176,18 @@ void main() {
     // Sample transmission from material
     float transmission = transmissionFactor;
     if (hasTransmissionTexture) {
-        transmission *= texture(texture_transmission, SelectUV(transmissionUVSet)).r;
+        transmission *= texture(texture_transmission, SelectUVSet(transmissionUVSet, fs_in.UV, fs_in.UV1)).r;
     }
     // Sample emissive
     vec3 emissive = emissiveFactor;
     if (hasEmissiveTexture) {
-        emissive *= texture(texture_emissive, SelectUV(emissiveUVSet)).rgb;
+        emissive *= texture(texture_emissive, SelectUVSet(emissiveUVSet, fs_in.UV, fs_in.UV1)).rgb;
     }
     
     // Sample occlusion
     float ao = 1.0;
     if (hasOcclusionTexture) {
-        ao = mix(1.0, texture(texture_occlusion, SelectUV(occlusionUVSet)).r, occlusionStrength);
+        ao = mix(1.0, texture(texture_occlusion, SelectUVSet(occlusionUVSet, fs_in.UV, fs_in.UV1)).r, occlusionStrength);
     }
     
     // Calculate vectors
@@ -203,11 +200,11 @@ void main() {
     vec3 albedo = baseColor.rgb;
     float specFactorSample = 1.0;
     if (hasSpecularTexture) {
-        specFactorSample *= texture(texture_specular, SelectUV(specularUVSet)).a;
+        specFactorSample *= texture(texture_specular, SelectUVSet(specularUVSet, fs_in.UV, fs_in.UV1)).a;
     }
     vec3 specularColor = specularColorFactor;
     if (hasSpecularColorTexture) {
-        specularColor *= texture(texture_specular_color, SelectUV(specularColorUVSet)).rgb;
+        specularColor *= texture(texture_specular_color, SelectUVSet(specularColorUVSet, fs_in.UV, fs_in.UV1)).rgb;
     }
 
     PrincipledSurface surface = BuildPrincipledSurface(

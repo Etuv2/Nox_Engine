@@ -889,6 +889,63 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 	return texture;
 }
 
+struct GltfTextureAlphaInfo {
+	bool hasAlphaChannel = false;
+	bool hasTransparentPixels = false;
+	bool hasSoftTransparency = false;
+};
+
+static GltfTextureAlphaInfo AnalyzeTextureAlpha(const tinygltf::Model& model, int texIndex)
+{
+	GltfTextureAlphaInfo info;
+	if (texIndex < 0 || texIndex >= static_cast<int>(model.textures.size())) {
+		return info;
+	}
+
+	const tinygltf::Texture& texture = model.textures[texIndex];
+	if (texture.source < 0 || texture.source >= static_cast<int>(model.images.size())) {
+		return info;
+	}
+
+	const tinygltf::Image& image = model.images[texture.source];
+	const int alphaComponent = (image.component == 4) ? 3 : (image.component == 2 ? 1 : -1);
+	if (alphaComponent < 0 || image.image.empty()) {
+		return info;
+	}
+
+	info.hasAlphaChannel = true;
+	const int bytesPerComponent = std::max(1, image.bits / 8);
+	const int pixelStride = image.component * bytesPerComponent;
+	const size_t pixelCount = static_cast<size_t>(std::max(image.width, 0)) * static_cast<size_t>(std::max(image.height, 0));
+	const size_t requiredBytes = pixelCount * static_cast<size_t>(pixelStride);
+	if (pixelCount == 0 || image.image.size() < requiredBytes) {
+		return info;
+	}
+
+	for (size_t i = 0; i < pixelCount; ++i) {
+		const size_t alphaOffset = i * static_cast<size_t>(pixelStride) + static_cast<size_t>(alphaComponent * bytesPerComponent);
+		float alpha = 1.0f;
+		if (bytesPerComponent == 1) {
+			alpha = static_cast<float>(image.image[alphaOffset]) / 255.0f;
+		}
+		else {
+			const uint16_t lo = static_cast<uint16_t>(image.image[alphaOffset]);
+			const uint16_t hi = static_cast<uint16_t>(image.image[alphaOffset + 1]);
+			alpha = static_cast<float>(lo | (hi << 8)) / 65535.0f;
+		}
+
+		if (alpha < 0.98f) {
+			info.hasTransparentPixels = true;
+		}
+		if (alpha > 0.02f && alpha < 0.98f) {
+			info.hasSoftTransparency = true;
+			break;
+		}
+	}
+
+	return info;
+}
+
 bool Scene::LoadFromGLTF(const std::string& path) {
 	using Clock = std::chrono::high_resolution_clock;
 	const auto loadStart = Clock::now();
@@ -1039,7 +1096,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	std::vector<CachedMaterialData> materialCache(model.materials.size());
 	size_t materialCacheHits = 0;
 	size_t materialCacheMisses = 0;
-	auto buildCachedMaterialData = [](const tinygltf::Material& mat, CachedMaterialData& cached) {
+	auto buildCachedMaterialData = [&model](const tinygltf::Material& mat, CachedMaterialData& cached) {
 		cached = CachedMaterialData{};
 
 		if (mat.alphaMode == "BLEND") {
@@ -1058,6 +1115,17 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		cached.normalTextureIndex = mat.normalTexture.index;
 		cached.baseColorTexCoord = mat.pbrMetallicRoughness.baseColorTexture.texCoord;
 		cached.normalTexCoord = mat.normalTexture.texCoord;
+		const GltfTextureAlphaInfo baseColorAlpha = AnalyzeTextureAlpha(model, cached.diffuseTextureIndex);
+		if (baseColorAlpha.hasTransparentPixels) {
+			if (cached.alphaMode == MeshComponent::ALPHA_OPAQUE) {
+				cached.alphaMode = baseColorAlpha.hasSoftTransparency
+					? MeshComponent::ALPHA_BLEND
+					: MeshComponent::ALPHA_MASK;
+			}
+			if (cached.alphaMode == MeshComponent::ALPHA_BLEND) {
+				cached.hasAlpha = true;
+			}
+		}
 		if (cached.normalTextureIndex >= 0) {
 			cached.normalScale = static_cast<float>(mat.normalTexture.scale);
 		}
@@ -1182,6 +1250,9 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			);
 			if (cached.baseColorFactor.a < 1.0f) {
 				cached.hasAlpha = true;
+				if (cached.alphaMode == MeshComponent::ALPHA_OPAQUE) {
+					cached.alphaMode = MeshComponent::ALPHA_BLEND;
+				}
 			}
 		}
 
@@ -1829,6 +1900,7 @@ void Scene::Draw() {
 	GLint locOcclusionStrength = glGetUniformLocation(currentProgram, "occlusionStrength");
 	GLint locNormalScale = glGetUniformLocation(currentProgram, "normalScale");
 	GLint locAlphaCutoff = glGetUniformLocation(currentProgram, "alphaCutoff");
+	GLint locAlphaMode = glGetUniformLocation(currentProgram, "alphaMode");
 
 	// KHR_materials_specular extension
 	GLint locSpecularFactor = glGetUniformLocation(currentProgram, "specularFactor");
@@ -1895,6 +1967,8 @@ void Scene::Draw() {
 			glUniform1f(locNormalScale, material.normalScale);
 		if (locAlphaCutoff != -1)
 			glUniform1f(locAlphaCutoff, material.alphaCutoff);
+		if (locAlphaMode != -1)
+			glUniform1i(locAlphaMode, static_cast<int>(material.alphaMode));
 
 		// KHR_materials_specular
 		if (locSpecularFactor != -1)
