@@ -137,6 +137,16 @@ struct RenderContext {
 	bool indirectDiffuseValidationDisableTemporal = false;
 	bool indirectDiffuseValidationDisableDenoise = false;
 
+	// Surfel GI surfelization infrastructure. This stage builds a persistent
+	// surface-space cache only; it is not composited into lighting yet.
+	bool enableSurfelGI = false;
+	int surfelGITileSize = 16;
+	float surfelGITargetRadiusPixels = 8.0f;
+	float surfelGICoverageThreshold = 0.85f;
+	float surfelGINormalReject = 0.35f;
+	float surfelGIRecyclePressure = 0.65f;
+	int surfelGIDebugMode = 0; // 0=off,1=discs,2=normals,3=radii,4=tile coverage,5=cell population,6=recycled/IDs,7=transform follow,8=active/dormant
+
 
 	// Bloom settings
 	bool enableBloom = true;

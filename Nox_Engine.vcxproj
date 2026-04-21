@@ -83,6 +83,7 @@
     <ClCompile Include="src\passes\ShadowPass.cpp" />
     <ClCompile Include="src\passes\SSAOPass.cpp" />
     <ClCompile Include="src\passes\IndirectDiffusePass.cpp" />
+    <ClCompile Include="src\passes\SurfelGIPass.cpp" />
     <ClCompile Include="src\passes\TAAPass.cpp" />
     <ClCompile Include="src\passes\TransformHistoryPass.cpp" />
     <ClCompile Include="src\passes\TransparentForwardPass.cpp" />
@@ -192,6 +193,14 @@
     <None Include="shaders\indirect_diffuse_gather_comp.glsl" />
     <None Include="shaders\indirect_diffuse_temporal_resolve_comp.glsl" />
     <None Include="shaders\indirect_diffuse_radiance_downsample_comp.glsl" />
+    <None Include="shaders\includes\surfel_gi_common.glsl" />
+    <None Include="shaders\surfel_gi_debug_frag.glsl" />
+    <None Include="shaders\surfel_gi_debug_vert.glsl" />
+    <None Include="shaders\surfel_gi_grid_build_comp.glsl" />
+    <None Include="shaders\surfel_gi_grid_clear_comp.glsl" />
+    <None Include="shaders\surfel_gi_init_comp.glsl" />
+    <None Include="shaders\surfel_gi_lifecycle_comp.glsl" />
+    <None Include="shaders\surfel_gi_spawn_comp.glsl" />
     <None Include="shaders\svgf_atrous_comp.glsl" />
     <None Include="shaders\svgf_temporal_comp.glsl" />
     <None Include="shaders\svgf_variance_comp.glsl" />
@@ -262,6 +271,7 @@
     <ClInclude Include="src\passes\ShadowPass.h" />
     <ClInclude Include="src\passes\SSAOPass.h" />
     <ClInclude Include="src\passes\IndirectDiffusePass.h" />
+    <ClInclude Include="src\passes\SurfelGIPass.h" />
     <ClInclude Include="src\passes\TAAPass.h" />
     <ClInclude Include="src\passes\TransparentForwardPass.h" />
     <ClInclude Include="src\PerformanceRecorder.h" />

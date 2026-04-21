@@ -3,6 +3,7 @@
 #include "../RenderContext.h"
 #include "../LightManager.h"
 #include "../passes/IndirectDiffusePass.h"
+#include "../passes/SurfelGIPass.h"
 #include <IMGUI/imgui.h>
 #include <iostream>
 #include <filesystem>
@@ -84,6 +85,14 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_indirectDiffuseValidationDisableReinjection = false;
 	m_indirectDiffuseValidationDisableTemporal = false;
 	m_indirectDiffuseValidationDisableDenoise = false;
+
+	m_enableSurfelGI = false;
+	m_surfelGITileSize = 16;
+	m_surfelGITargetRadiusPixels = 8.0f;
+	m_surfelGICoverageThreshold = 0.85f;
+	m_surfelGINormalReject = 0.35f;
+	m_surfelGIRecyclePressure = 0.65f;
+	m_surfelGIDebugMode = 0;
 
 	// Screen-space contact shadows
 	m_sssResolutionScale = 0.5f;
@@ -214,6 +223,13 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_indirectDiffuseValidationDisableReinjection = ctx.indirectDiffuseValidationDisableReinjection;
 	m_indirectDiffuseValidationDisableTemporal = ctx.indirectDiffuseValidationDisableTemporal;
 	m_indirectDiffuseValidationDisableDenoise = ctx.indirectDiffuseValidationDisableDenoise;
+	m_enableSurfelGI = ctx.enableSurfelGI;
+	m_surfelGITileSize = ctx.surfelGITileSize;
+	m_surfelGITargetRadiusPixels = ctx.surfelGITargetRadiusPixels;
+	m_surfelGICoverageThreshold = ctx.surfelGICoverageThreshold;
+	m_surfelGINormalReject = ctx.surfelGINormalReject;
+	m_surfelGIRecyclePressure = ctx.surfelGIRecyclePressure;
+	m_surfelGIDebugMode = ctx.surfelGIDebugMode;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -363,6 +379,13 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.indirectDiffuseValidationDisableReinjection = m_indirectDiffuseValidationDisableReinjection;
 	ctx.indirectDiffuseValidationDisableTemporal = m_indirectDiffuseValidationDisableTemporal;
 	ctx.indirectDiffuseValidationDisableDenoise = m_indirectDiffuseValidationDisableDenoise;
+	ctx.enableSurfelGI = m_enableSurfelGI;
+	ctx.surfelGITileSize = m_surfelGITileSize;
+	ctx.surfelGITargetRadiusPixels = m_surfelGITargetRadiusPixels;
+	ctx.surfelGICoverageThreshold = m_surfelGICoverageThreshold;
+	ctx.surfelGINormalReject = m_surfelGINormalReject;
+	ctx.surfelGIRecyclePressure = m_surfelGIRecyclePressure;
+	ctx.surfelGIDebugMode = m_surfelGIDebugMode;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
@@ -782,6 +805,34 @@ void RenderingSettingsWindow::Render() {
 				}
 				if (ImGui::SliderFloat("Contact Shadow Resolution Scale", &m_sssResolutionScale, 0.25f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Contact Shadow Temporal Alpha", &m_sssTemporalAlpha, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
+			}
+
+			ImGui::Separator();
+			ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.5f, 1.0f), "Surfel GI Surfelization:");
+			if (ImGui::Checkbox("Enable Surfelization", &m_enableSurfelGI)) { SyncToRenderer(); }
+			if (m_enableSurfelGI) {
+				ImGui::Text("Fixed Pool: %u surfels", SurfelGIPass::kMaxSurfels);
+				if (ImGui::SliderInt("Tile Size", &m_surfelGITileSize, 4, 16)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Projected Radius", &m_surfelGITargetRadiusPixels, 2.0f, 24.0f, "%.1f px")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Coverage Threshold", &m_surfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Normal Reject", &m_surfelGINormalReject, 0.02f, 0.75f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Recycle Pressure", &m_surfelGIRecyclePressure, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				const char* surfelDebugModes[] = {
+					"Off",
+					"Discs",
+					"Normals",
+					"Radii",
+					"Tile Coverage",
+					"Cell Population",
+					"Recycled IDs",
+					"Transform Follow",
+					"Active Dormant"
+				};
+				if (ImGui::Combo("Surfel Debug", &m_surfelGIDebugMode, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
+				if (m_modularRenderer) {
+					ImGui::BulletText("Pool budget is fixed to keep allocation and dispatch costs deterministic");
+					ImGui::BulletText("Debug mode overlays after post-process; indirect diffuse is unchanged");
+				}
 			}
 
 			ImGui::Separator();
@@ -1548,6 +1599,14 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_indirectDiffuseValidationDisableReinjection = false;
 	m_indirectDiffuseValidationDisableTemporal = false;
 	m_indirectDiffuseValidationDisableDenoise = false;
+
+	m_enableSurfelGI = false;
+	m_surfelGITileSize = 16;
+	m_surfelGITargetRadiusPixels = 8.0f;
+	m_surfelGICoverageThreshold = 0.85f;
+	m_surfelGINormalReject = 0.35f;
+	m_surfelGIRecyclePressure = 0.65f;
+	m_surfelGIDebugMode = 0;
 
 	// Contact shadows - match RenderContext defaults
 	m_sssResolutionScale = 0.5f;
