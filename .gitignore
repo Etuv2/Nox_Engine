@@ -138,6 +138,7 @@ cmake-build-release*/
 # VSCode
 .vscode/
 .github/
+.agents/skills/
 
 # Python virtual env (if tools/scripts)
 venv/
@@ -169,6 +170,7 @@ sounds/
 x64/
 hdrs/
 docs/superpowers/
+
 
 # Ignore exported binaries / packaged builds
 Dist/
