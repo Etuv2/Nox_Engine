@@ -72,36 +72,29 @@ void main()
     SurfelBuildOrthonormalBasis(normal, tangent, bitangent);
 
     vec2 centerPx;
-    vec2 axisA;
-    vec2 axisB;
-    if (!SurfelProjectPatchAxes(worldPos, tangent, bitangent, radius, uView, uProjection, uResolution, centerPx, axisA, axisB)) {
-        return;
-    }
-    if (length(axisA) < 0.5 || length(axisB) < 0.5) {
+    vec2 corner00;
+    vec2 corner10;
+    vec2 corner01;
+    vec2 corner11;
+    if (!SurfelProjectPatchCorners(
+        worldPos,
+        tangent,
+        bitangent,
+        radius,
+        uView,
+        uProjection,
+        uResolution,
+        centerPx,
+        corner00,
+        corner10,
+        corner01,
+        corner11)) {
         return;
     }
 
-    vec2 rawSupportExtent = abs(axisA) + abs(axisB);
-    vec2 viewportMax = max(uResolution, vec2(1.0)) - vec2(1.0);
-    if (centerPx.x + rawSupportExtent.x < 0.0 ||
-        centerPx.y + rawSupportExtent.y < 0.0 ||
-        centerPx.x - rawSupportExtent.x > viewportMax.x ||
-        centerPx.y - rawSupportExtent.y > viewportMax.y) {
-        return;
-    }
-
-    ivec2 screenSize = ivec2(max(uResolution, vec2(1.0)));
     ivec2 minPixel;
     ivec2 maxPixel;
-    SurfelSupportBoundsFromAxes(centerPx, axisA, axisB, uResolution, minPixel, maxPixel);
-    float projectedRadiusHint = max(s.metrics.z, 1.0);
-    float maxExtentPx = clamp(max(projectedRadiusHint * 2.5, 24.0), 24.0, 96.0);
-    vec2 clampedMin = max(centerPx - vec2(maxExtentPx), vec2(0.0));
-    vec2 clampedMax = min(centerPx + vec2(maxExtentPx), viewportMax);
-    minPixel = max(minPixel, ivec2(floor(clampedMin)));
-    maxPixel = min(maxPixel, ivec2(ceil(clampedMax)));
-    minPixel = max(minPixel, ivec2(0));
-    maxPixel = min(maxPixel, screenSize - ivec2(1));
+    SurfelSupportBoundsFromCornerPixels(centerPx, corner00, corner10, corner01, corner11, uResolution, minPixel, maxPixel);
     if (any(greaterThan(minPixel, maxPixel))) {
         return;
     }
@@ -127,14 +120,13 @@ void main()
                 continue;
             }
 
-            vec2 deltaPx = (vec2(pixel) + vec2(0.5)) - centerPx;
-            float ellipse = SurfelProjectedEllipseMetric(deltaPx, axisA, axisB);
-            if (ellipse > 1.0) {
+            vec2 samplePx = vec2(pixel) + vec2(0.5);
+            if (!SurfelPointInConvexQuad(samplePx, corner00, corner10, corner11, corner01)) {
                 continue;
             }
 
-            float ellipseWeight = 1.0 - smoothstep(0.82, 1.0, ellipse);
-            uint quantizedRawWeight = uint(clamp(ellipseWeight * 1024.0, 1.0, 4096.0));
+            float supportWeight = 1.0;
+            uint quantizedRawWeight = uint(clamp(supportWeight * 1024.0, 1.0, 4096.0));
             imageAtomicAdd(uRawProjectedSupport, pixel, quantizedRawWeight);
 
             vec3 receiverNormal = SurfelGIDecodeNormalOct(texelFetch(uPackedNormalRM, pixel, 0).xy);
@@ -159,7 +151,7 @@ void main()
 
             float momentWeight = SurfelDepthValidityWeight(s, receiverWorldPos, receiverNormal);
             momentWeight = max(mix(1.0, momentWeight, 0.35), 0.65);
-            float weight = ellipseWeight * compat.validCoverage * momentWeight;
+            float weight = supportWeight * compat.validCoverage * momentWeight;
             if (weight <= 0.001) {
                 continue;
             }

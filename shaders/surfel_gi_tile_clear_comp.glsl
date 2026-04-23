@@ -23,5 +23,5 @@ void main()
     }
 
     uvec4 previousTile = tileCoverage[id];
-    tileCoverage[id] = previousTile;
+    tileCoverage[id] = uvec4(0u, previousTile.y, previousTile.z, previousTile.w);
 }

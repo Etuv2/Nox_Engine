@@ -121,9 +121,7 @@ float ComputeWorldRadiusForProjectedPixels(float viewZ, float targetPixels, floa
 
 float ComputeAutoTargetRadiusPixels(float tileSize, float coverageThreshold)
 {
-    float coverage = clamp(coverageThreshold, 0.25, 1.25);
-    float tile = max(tileSize, 1.0);
-    return clamp(tile * mix(0.54, 0.72, coverage / 1.25), 6.0, 14.0);
+    return 12.0;
 }
 
 float ResolveTargetRadiusPixels(float requestedPixels, float tileSize, float coverageThreshold)

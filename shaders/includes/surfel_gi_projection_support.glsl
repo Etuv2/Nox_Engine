@@ -77,6 +77,11 @@ bool SurfelProjectPatchCorners(
     bool valid01 = SurfelProjectWorldToPixel(cornerWorld01, view, projection, resolution, corner01);
     bool valid11 = SurfelProjectWorldToPixel(cornerWorld11, view, projection, resolution, corner11);
 
+    if (!valid00) corner00 = centerPx;
+    if (!valid10) corner10 = centerPx;
+    if (!valid01) corner01 = centerPx;
+    if (!valid11) corner11 = centerPx;
+
     return valid00 || valid10 || valid01 || valid11;
 }
 
@@ -188,6 +193,36 @@ bool SurfelInvertProjectedCoordinates(
     localUV.x = (deltaPx.x * axisBitangentPx.y - deltaPx.y * axisBitangentPx.x) / det;
     localUV.y = (-deltaPx.x * axisTangentPx.y + deltaPx.y * axisTangentPx.x) / det;
     return true;
+}
+
+float SurfelEdgeFunction(vec2 a, vec2 b, vec2 p)
+{
+    vec2 ab = b - a;
+    vec2 ap = p - a;
+    return ab.x * ap.y - ab.y * ap.x;
+}
+
+bool SurfelPointInConvexQuad(
+    vec2 p,
+    vec2 corner00,
+    vec2 corner10,
+    vec2 corner11,
+    vec2 corner01)
+{
+    float e0 = SurfelEdgeFunction(corner00, corner10, p);
+    float e1 = SurfelEdgeFunction(corner10, corner11, p);
+    float e2 = SurfelEdgeFunction(corner11, corner01, p);
+    float e3 = SurfelEdgeFunction(corner01, corner00, p);
+
+    bool nonNegative = e0 >= -SURFEL_GI_PROJECTION_EPSILON &&
+        e1 >= -SURFEL_GI_PROJECTION_EPSILON &&
+        e2 >= -SURFEL_GI_PROJECTION_EPSILON &&
+        e3 >= -SURFEL_GI_PROJECTION_EPSILON;
+    bool nonPositive = e0 <= SURFEL_GI_PROJECTION_EPSILON &&
+        e1 <= SURFEL_GI_PROJECTION_EPSILON &&
+        e2 <= SURFEL_GI_PROJECTION_EPSILON &&
+        e3 <= SURFEL_GI_PROJECTION_EPSILON;
+    return nonNegative || nonPositive;
 }
 
 float SurfelSignedPlaneDistance(vec3 point, vec3 planePoint, vec3 planeNormal)

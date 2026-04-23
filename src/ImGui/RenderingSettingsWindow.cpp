@@ -88,7 +88,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 
 	m_enableSurfelGI = false;
 	m_surfelGITileSize = 16;
-	m_surfelGITargetRadiusPixels = 8.0f;
+	m_surfelGITargetRadiusPixels = 12.0f;
 	m_surfelGICoverageThreshold = 0.60f;
 	m_surfelGINormalReject = 0.35f;
 	m_surfelGIRecyclePressure = 0.65f;
@@ -852,6 +852,17 @@ void RenderingSettingsWindow::Render() {
 						stats.budgetRecycledCount,
 						stats.invalidTransformRecycledCount,
 						stats.lifecycleViolationCount);
+					ImGui::Text("Surfels ms: total %.2f  lifecycle %.2f  recycle %.2f  grid %.2f",
+						stats.totalTimeMs,
+						stats.lifecycleTimeMs,
+						stats.recycleTimeMs,
+						stats.gridBuildTimeMs);
+					ImGui::Text("Coverage ms: coarse %.2f  exact %.2f  deficit %.2f  spawn %.2f  integrate %.2f",
+						stats.coarseCoverageTimeMs,
+						stats.exactCoverageTimeMs,
+						stats.deficitTimeMs,
+						stats.spawnTimeMs,
+						stats.integrationTimeMs);
 					const auto& liveHistory = m_modularRenderer->GetSurfelGIPass()->GetLiveHistory();
 					const auto& freeHistory = m_modularRenderer->GetSurfelGIPass()->GetFreeHistory();
 					const auto& spawnHistory = m_modularRenderer->GetSurfelGIPass()->GetSpawnHistory();
@@ -1674,7 +1685,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 
 	m_enableSurfelGI = false;
 	m_surfelGITileSize = 16;
-	m_surfelGITargetRadiusPixels = 8.0f;
+	m_surfelGITargetRadiusPixels = 12.0f;
 	m_surfelGICoverageThreshold = 0.60f;
 	m_surfelGINormalReject = 0.35f;
 	m_surfelGIRecyclePressure = 0.65f;

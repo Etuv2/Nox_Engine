@@ -11,6 +11,7 @@
 #include "../TextureUnits.h"
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -36,7 +37,7 @@ namespace {
     constexpr GLuint kImageCoverageHistory = 6;
 
     constexpr uint32_t kSurfelTileSize = 16;
-    constexpr uint32_t kSpawnIterations = 1;
+    constexpr uint32_t kSpawnIterations = 2;
     constexpr float kFreePoolReserveFraction = 0.02f;
     constexpr float kSurfelLightingApplyStrength = 0.35f;
     constexpr uint32_t kGridDimX = 32;
@@ -490,6 +491,8 @@ void SurfelGIPass::RunPersistentTileCoverage(RenderContext& ctx)
         return;
     }
 
+    using Clock = std::chrono::high_resolution_clock;
+
     const uint32_t tileCount = m_allocatedTileCountX * m_allocatedTileCountY;
 
     glUseProgram(m_tileClearShader->GetProgramID());
@@ -497,9 +500,28 @@ void SurfelGIPass::RunPersistentTileCoverage(RenderContext& ctx)
     m_tileClearShader->Dispatch(ComputeShader::CalculateWorkGroups(tileCount, 256u), 1u, 1u);
     m_tileClearShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
+    if (m_tileCoverageShader && m_tileCoverageShader->IsValid()) {
+        const auto coarseBegin = Clock::now();
+        glUseProgram(m_tileCoverageShader->GetProgramID());
+        m_tileCoverageShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
+        m_tileCoverageShader->SetUniform("uResolution", glm::vec2(float(ctx.width), float(ctx.height)));
+        m_tileCoverageShader->SetUniform("uView", ctx.view);
+        m_tileCoverageShader->SetUniform("uProjection", ctx.proj);
+        m_tileCoverageShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
+        m_tileCoverageShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 256u), 1u, 1u);
+        m_tileCoverageShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+        m_lastStats.coarseCoverageTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - coarseBegin).count();
+    } else {
+        m_lastStats.coarseCoverageTimeMs = 0.0f;
+    }
+
     const glm::mat4 invViewProj = glm::inverse(ctx.proj * ctx.view);
+    auto exactBegin = Clock::now();
     RunProjectedCoverage(ctx, invViewProj, m_projectedCoverageMaxTransformID);
+    m_lastStats.exactCoverageTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - exactBegin).count();
+    auto deficitBegin = Clock::now();
     RunCoverageDeficit(ctx);
+    m_lastStats.deficitTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - deficitBegin).count();
 }
 
 void SurfelGIPass::RunProjectedCoverage(RenderContext& ctx, const glm::mat4& invViewProj, uint32_t maxTransformID)
@@ -792,17 +814,35 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     const glm::mat4 invView = glm::inverse(ctx.view);
     m_projectedCoverageMaxTransformID = maxTransformID;
 
+    using Clock = std::chrono::high_resolution_clock;
+    const auto totalBegin = Clock::now();
+
     BindCommonBuffers(transformBuffer);
     ResetFrameStats(m_frameIndex);
-    RunPersistentStateUpdate(ctx, *renderSystem, camera);
-    RebuildSpatialGrid(ctx.view);
-    RunRecycleDecision(ctx);
-    RunPersistentTileCoverage(ctx);
-    RunCoverageGapFill(ctx, *renderSystem, camera, invViewProj, invView);
-    RunRecycleDecision(ctx);
-    RebuildSpatialGrid(ctx.view);
 
+    auto stageBegin = Clock::now();
+    RunPersistentStateUpdate(ctx, *renderSystem, camera);
+    m_lastStats.lifecycleTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RebuildSpatialGrid(ctx.view);
+    m_lastStats.gridBuildTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RunRecycleDecision(ctx);
+    m_lastStats.recycleTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    RunPersistentTileCoverage(ctx);
+
+    stageBegin = Clock::now();
+    RunCoverageGapFill(ctx, *renderSystem, camera, invViewProj, invView);
+    m_lastStats.spawnTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
     RunIrradianceIntegration(ctx, dirLight);
+    m_lastStats.integrationTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    m_lastStats.totalTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - totalBegin).count();
     PublishResources(ctx);
 
     glUseProgram(0);

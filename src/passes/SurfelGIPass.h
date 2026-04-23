@@ -12,7 +12,7 @@ class RenderSystem;
 
 class SurfelGIPass : public RenderPass {
 public:
-    static constexpr uint32_t kMaxSurfels = 131072u;
+    static constexpr uint32_t kMaxSurfels = 65536u; // Must be <= 65536 to fit live count in 16 bits for atomic counters and avoid overflow in short-term spawn/recycle stats.
     static constexpr uint32_t kStatsHistoryLength = 180u;
 
     struct Stats {
@@ -40,6 +40,15 @@ public:
         uint32_t tileCountX = 0;
         uint32_t tileCountY = 0;
         uint32_t gridCellCount = 0;
+        float lifecycleTimeMs = 0.0f;
+        float recycleTimeMs = 0.0f;
+        float gridBuildTimeMs = 0.0f;
+        float coarseCoverageTimeMs = 0.0f;
+        float exactCoverageTimeMs = 0.0f;
+        float deficitTimeMs = 0.0f;
+        float spawnTimeMs = 0.0f;
+        float integrationTimeMs = 0.0f;
+        float totalTimeMs = 0.0f;
     };
 
     SurfelGIPass();

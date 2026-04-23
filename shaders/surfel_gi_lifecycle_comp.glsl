@@ -126,19 +126,7 @@ void main()
     vec4 viewPos = uView * followedPos;
     float targetRadiusPixels = ResolveTargetRadiusPixels(uTargetRadiusPixels, float(header.tiling.z), uCoverageThreshold);
     float desiredRadius = ComputeWorldRadiusForProjectedPixels(viewPos.z, targetRadiusPixels, uResolution.y, uProjection);
-    vec3 toCamera = normalize(uCameraPos - followedPos.xyz);
-    float viewAlignment = clamp(abs(dot(followedNormal, toCamera)), 0.0, 1.0);
-    float orientationScale = mix(0.72, 1.05, viewAlignment);
-    float depthVariance = max(s.depthMoments.y - s.depthMoments.x * s.depthMoments.x, 0.0);
-    float complexity = clamp(sqrt(depthVariance) / max(s.depthMoments.w, 0.02), 0.0, 1.0);
-    float complexityScale = mix(1.0, 0.62, complexity);
-    desiredRadius *= orientationScale * complexityScale;
-
-    float previousRadius = max(s.worldPositionRadius.w, 0.005);
-    float relativeDelta = abs(desiredRadius - previousRadius) / max(previousRadius, 0.001);
-    float hysteresis = smoothstep(0.04, 0.35, relativeDelta);
-    float blend = mix(0.08, 0.32, hysteresis);
-    float radius = clamp(mix(previousRadius, desiredRadius, blend), 0.005, 8.0);
+    float radius = clamp(desiredRadius, 0.005, 8.0);
 
     s.worldPositionRadius = vec4(followedPos.xyz, radius);
     s.worldNormalRecycle.xyz = followedNormal;

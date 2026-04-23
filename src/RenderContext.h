@@ -141,7 +141,7 @@ struct RenderContext {
 	// world-space irradiance cache that deferred lighting consumes directly.
 	bool enableSurfelGI = false;
 	int surfelGITileSize = 16;
-	float surfelGITargetRadiusPixels = 8.0f; // <=0 uses automatic tile-derived projected radius
+	float surfelGITargetRadiusPixels = 12.0f; // <=0 uses the accepted default projected radius
 	float surfelGICoverageThreshold = 0.60f;
 	float surfelGINormalReject = 0.35f;
 	float surfelGIRecyclePressure = 0.65f;
