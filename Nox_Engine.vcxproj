@@ -199,8 +199,12 @@
     <None Include="shaders\surfel_gi_grid_build_comp.glsl" />
     <None Include="shaders\surfel_gi_grid_clear_comp.glsl" />
     <None Include="shaders\surfel_gi_init_comp.glsl" />
+    <None Include="shaders\surfel_gi_integrate_comp.glsl" />
     <None Include="shaders\surfel_gi_lifecycle_comp.glsl" />
+    <None Include="shaders\surfel_gi_recycle_comp.glsl" />
     <None Include="shaders\surfel_gi_spawn_comp.glsl" />
+    <None Include="shaders\surfel_gi_tile_clear_comp.glsl" />
+    <None Include="shaders\surfel_gi_tile_coverage_comp.glsl" />
     <None Include="shaders\svgf_atrous_comp.glsl" />
     <None Include="shaders\svgf_temporal_comp.glsl" />
     <None Include="shaders\svgf_variance_comp.glsl" />

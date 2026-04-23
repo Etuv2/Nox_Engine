@@ -245,7 +245,7 @@ private:
     void ApplyCullingState(const MeshComponent& mesh, CullingOverride override, const glm::mat4& modelTransform);
     void ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, GLenum frontFace);
     void UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms);
-    void UpdateGpuTransformBuffer();
+    void UpdateGpuTransformBuffer(bool forceFullTransformUpload = false);
     void EnsureTransformBuffer();
     void PrepareFrameTransforms();
     void RebuildRenderItemsIfNeeded();

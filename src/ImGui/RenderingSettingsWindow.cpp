@@ -89,7 +89,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_enableSurfelGI = false;
 	m_surfelGITileSize = 16;
 	m_surfelGITargetRadiusPixels = 8.0f;
-	m_surfelGICoverageThreshold = 0.85f;
+	m_surfelGICoverageThreshold = 0.60f;
 	m_surfelGINormalReject = 0.35f;
 	m_surfelGIRecyclePressure = 0.65f;
 	m_surfelGIDebugMode = 0;
@@ -812,8 +812,65 @@ void RenderingSettingsWindow::Render() {
 			if (ImGui::Checkbox("Enable Surfelization", &m_enableSurfelGI)) { SyncToRenderer(); }
 			if (m_enableSurfelGI) {
 				ImGui::Text("Fixed Pool: %u surfels", SurfelGIPass::kMaxSurfels);
-				if (ImGui::SliderInt("Tile Size", &m_surfelGITileSize, 4, 16)) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Projected Radius", &m_surfelGITargetRadiusPixels, 2.0f, 24.0f, "%.1f px")) { SyncToRenderer(); }
+				if (m_modularRenderer && m_modularRenderer->GetSurfelGIPass()) {
+					const auto& stats = m_modularRenderer->GetSurfelGIPass()->GetLastStats();
+					ImGui::Text("Live: %u  Free: %u  Spawned: %u  Recycled: %u  Attempts: %u",
+						stats.liveCount,
+						stats.freeCount,
+						stats.spawnedThisFrame,
+						stats.recycledThisFrame,
+						stats.spawnAttemptsThisFrame);
+					ImGui::Text("Dormant: %u  Tiles: %ux%u  Grid Cells: %u",
+						stats.dormantCount,
+						stats.tileCountX,
+						stats.tileCountY,
+						stats.gridCellCount);
+					ImGui::Text("Spawn requests: %u  accepted: %u  prevented by coverage: %u",
+						stats.spawnAttemptsThisFrame,
+						stats.spawnedThisFrame,
+						stats.coveragePreventedSpawns);
+					ImGui::Text("Spawn skipped: duplicate %u  no free ID %u  deficit gate %u",
+						stats.duplicateRejectedSpawns,
+						stats.freeStackExhaustedSpawns,
+						stats.probabilityRejectedSpawns);
+					ImGui::Text("Visible coverage: %.1f%%  covered pixels: %u / %u",
+						stats.validCoveragePercent,
+						stats.validCoveragePixelCount,
+						stats.visibleSurfacePixelCount);
+					const uint32_t oldContrib = stats.oldCoverageContributions + stats.oldIntegratedContributions;
+					const uint32_t newContrib = stats.newCoverageContributions + stats.newIntegratedContributions;
+					const uint32_t totalContrib = oldContrib + newContrib;
+					const float oldContributionPct = totalContrib > 0
+						? (100.0f * static_cast<float>(oldContrib) / static_cast<float>(totalContrib))
+						: 0.0f;
+					ImGui::Text("Reuse: old %.1f%%  old hits %u  new hits %u",
+						oldContributionPct,
+						oldContrib,
+						newContrib);
+					ImGui::Text("Recycle candidates: %u  budget: %u  invalid transform: %u  invariant violations: %u",
+						stats.recycleCandidateCount,
+						stats.budgetRecycledCount,
+						stats.invalidTransformRecycledCount,
+						stats.lifecycleViolationCount);
+					const auto& liveHistory = m_modularRenderer->GetSurfelGIPass()->GetLiveHistory();
+					const auto& freeHistory = m_modularRenderer->GetSurfelGIPass()->GetFreeHistory();
+					const auto& spawnHistory = m_modularRenderer->GetSurfelGIPass()->GetSpawnHistory();
+					const auto& recycleHistory = m_modularRenderer->GetSurfelGIPass()->GetRecycleHistory();
+					const auto& preventedHistory = m_modularRenderer->GetSurfelGIPass()->GetPreventedSpawnHistory();
+					const auto& oldContributionHistory = m_modularRenderer->GetSurfelGIPass()->GetOldContributionHistory();
+					const auto& newContributionHistory = m_modularRenderer->GetSurfelGIPass()->GetNewContributionHistory();
+					const int historyCount = static_cast<int>(SurfelGIPass::kStatsHistoryLength);
+					const int historyHead = static_cast<int>(m_modularRenderer->GetSurfelGIPass()->GetStatsHistoryHead());
+					ImGui::PlotLines("Live Surfels", liveHistory.data(), historyCount, historyHead, nullptr, 0.0f, float(SurfelGIPass::kMaxSurfels), ImVec2(-1, 38));
+					ImGui::PlotLines("Free Stack", freeHistory.data(), historyCount, historyHead, nullptr, 0.0f, float(SurfelGIPass::kMaxSurfels), ImVec2(-1, 38));
+					ImGui::PlotLines("Spawned / Frame", spawnHistory.data(), historyCount, historyHead, nullptr, 0.0f, 16000.0f, ImVec2(-1, 34));
+					ImGui::PlotLines("Recycled / Frame", recycleHistory.data(), historyCount, historyHead, nullptr, 0.0f, 16000.0f, ImVec2(-1, 34));
+					ImGui::PlotLines("Prevented Spawns", preventedHistory.data(), historyCount, historyHead, nullptr, 0.0f, 16000.0f, ImVec2(-1, 34));
+					ImGui::PlotLines("Old Contributions", oldContributionHistory.data(), historyCount, historyHead, nullptr, 0.0f, 64000.0f, ImVec2(-1, 34));
+					ImGui::PlotLines("New Contributions", newContributionHistory.data(), historyCount, historyHead, nullptr, 0.0f, 64000.0f, ImVec2(-1, 34));
+				}
+				ImGui::Text("Surfelizer Tile: 16x16 texels");
+				if (ImGui::SliderFloat("Projected Radius Pixels", &m_surfelGITargetRadiusPixels, 0.0f, 24.0f, "%.1f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Coverage Threshold", &m_surfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_surfelGINormalReject, 0.02f, 0.75f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Recycle Pressure", &m_surfelGIRecyclePressure, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
@@ -821,17 +878,32 @@ void RenderingSettingsWindow::Render() {
 					"Off",
 					"Discs",
 					"Normals",
-					"Radii",
-					"Tile Coverage",
-					"Cell Population",
-					"Recycled IDs",
+					"Projected Radius",
+					"Coverage",
+					"Cell Occupancy",
+					"Recent Recycled IDs",
 					"Transform Follow",
-					"Active Dormant"
+					"Lifecycle State",
+					"Recycle Pressure",
+					"Spawn/Recycle Reason",
+					"Last Contributed",
+					"Distance To Camera",
+					"Persistence Age",
+					"Last Visible",
+					"Reused vs Fresh",
+					"Irradiance History",
+					"Depth Moments",
+					"Raw Projected Support",
+					"Valid Coverage",
+					"Deficit Heatmap",
+					"Depth Rejection",
+					"Normal Rejection",
+					"Winner Surfel ID"
 				};
 				if (ImGui::Combo("Surfel Debug", &m_surfelGIDebugMode, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
 				if (m_modularRenderer) {
-					ImGui::BulletText("Pool budget is fixed to keep allocation and dispatch costs deterministic");
-					ImGui::BulletText("Debug mode overlays after post-process; indirect diffuse is unchanged");
+					ImGui::BulletText("Turn away and back: stable regions should stay mostly blue/aged, not all green respawns");
+					ImGui::BulletText("Advance/retreat: projected radius and coverage should rebalance without pool growth");
 				}
 			}
 
@@ -1603,7 +1675,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_enableSurfelGI = false;
 	m_surfelGITileSize = 16;
 	m_surfelGITargetRadiusPixels = 8.0f;
-	m_surfelGICoverageThreshold = 0.85f;
+	m_surfelGICoverageThreshold = 0.60f;
 	m_surfelGINormalReject = 0.35f;
 	m_surfelGIRecyclePressure = 0.65f;
 	m_surfelGIDebugMode = 0;

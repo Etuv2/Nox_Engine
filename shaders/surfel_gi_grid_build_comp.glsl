@@ -22,6 +22,8 @@ layout(binding = 26, std430) buffer GridEntryBuffer {
 
 uniform mat4 uView;
 
+const int kMaxGridOverlapCellRadius = 1;
+
 void InsertIntoCell(uint cellIndex, uint surfelID)
 {
     if (cellIndex >= header.tiling.w) {
@@ -59,24 +61,25 @@ void main()
     InsertIntoCell(primaryCell, id);
 
     vec3 fracCoord = fract(gridCoord);
-    float approxCellRadius = clamp(s.worldPositionRadius.w / max(header.gridParams.w, 0.05), 0.05, 1.0);
+    vec3 coordRadius = clamp(GridCoordRadiusForViewSphere(viewPos, s.worldPositionRadius.w, header), vec3(0.05), vec3(1.75));
+    ivec3 radiusCells = ivec3(clamp(ceil(coordRadius), vec3(1.0), vec3(float(kMaxGridOverlapCellRadius))));
     uvec3 dims = max(header.gridDims.xyz, uvec3(1u));
 
-    for (int z = -1; z <= 1; ++z) {
-        for (int y = -1; y <= 1; ++y) {
-            for (int x = -1; x <= 1; ++x) {
+    for (int z = -radiusCells.z; z <= radiusCells.z; ++z) {
+        for (int y = -radiusCells.y; y <= radiusCells.y; ++y) {
+            for (int x = -radiusCells.x; x <= radiusCells.x; ++x) {
                 ivec3 offset = ivec3(x, y, z);
                 if (all(equal(offset, ivec3(0)))) {
                     continue;
                 }
 
                 bool overlaps = true;
-                if (offset.x < 0) overlaps = overlaps && fracCoord.x < approxCellRadius;
-                if (offset.x > 0) overlaps = overlaps && (1.0 - fracCoord.x) < approxCellRadius;
-                if (offset.y < 0) overlaps = overlaps && fracCoord.y < approxCellRadius;
-                if (offset.y > 0) overlaps = overlaps && (1.0 - fracCoord.y) < approxCellRadius;
-                if (offset.z < 0) overlaps = overlaps && fracCoord.z < approxCellRadius;
-                if (offset.z > 0) overlaps = overlaps && (1.0 - fracCoord.z) < approxCellRadius;
+                if (offset.x < 0) overlaps = overlaps && fracCoord.x < coordRadius.x;
+                if (offset.x > 0) overlaps = overlaps && (1.0 - fracCoord.x) < coordRadius.x;
+                if (offset.y < 0) overlaps = overlaps && fracCoord.y < coordRadius.y;
+                if (offset.y > 0) overlaps = overlaps && (1.0 - fracCoord.y) < coordRadius.y;
+                if (offset.z < 0) overlaps = overlaps && fracCoord.z < coordRadius.z;
+                if (offset.z > 0) overlaps = overlaps && (1.0 - fracCoord.z) < coordRadius.z;
                 if (!overlaps) {
                     continue;
                 }

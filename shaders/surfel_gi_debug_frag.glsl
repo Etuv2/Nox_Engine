@@ -21,7 +21,7 @@ void main()
 
     vec2 uv = gl_FragCoord.xy / max(uScreenSize, vec2(1.0));
     float sceneDepth = texture(uDepthTex, uv).r;
-    if (sceneDepth >= 0.9999 || gl_FragCoord.z > sceneDepth + 0.0025) {
+    if (sceneDepth >= 0.9999 || gl_FragCoord.z > sceneDepth + 0.015) {
         discard;
     }
 

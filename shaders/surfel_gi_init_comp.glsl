@@ -46,6 +46,10 @@ void main()
         header.tiling.x = uint(max(uTileCount.x, 1.0));
         header.tiling.y = uint(max(uTileCount.y, 1.0));
         header.tiling.w = uint(max(uGridCellCount, 1));
+        header.coverageStats = uvec4(0u);
+        header.contributionStats = uvec4(0u);
+        header.recycleStats = uvec4(0u);
+        header.coverageMetricStats = uvec4(0u);
     }
 
     if (id < maxSurfels) {
@@ -55,8 +59,14 @@ void main()
         surfels[id].localNormalDebug = vec4(0.0, 1.0, 0.0, 0.0);
         surfels[id].ids = uvec4(0u, 0u, id, HashUInt(id + 17u));
         surfels[id].frames = uvec4(0u);
-        surfels[id].grid = uvec4(0u);
+        surfels[id].grid = uvec4(0u, 0u, 0u, SURFEL_STATE_FREE);
         surfels[id].metrics = vec4(0.0);
+        surfels[id].irradianceHistory = vec4(0.0);
+        surfels[id].shortTermStats = vec4(0.0);
+        surfels[id].longTermStats = vec4(0.0);
+        surfels[id].recycleData = vec4(0.0);
+        surfels[id].depthMoments = vec4(0.0);
+        surfels[id].guidingState = vec4(0.0);
         freeStack[id] = maxSurfels - 1u - id;
         recycleStack[id] = 0u;
     }

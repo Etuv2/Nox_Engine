@@ -97,6 +97,8 @@ private:
 		GLint indirectDiffuseSourceCount = -1;
 		GLint indirectDiffuseCompositeMode = -1;
 		GLint lightingOutputMode = -1;
+		GLint surfelGIEnabled = -1;
+		GLint surfelGIStrength = -1;
 
 		// Light uniforms
 		GLint numLights = -1;

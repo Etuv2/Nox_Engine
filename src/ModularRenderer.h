@@ -77,6 +77,7 @@ public:
 	RenderContext& GetContext() { return m_context; }
 	bool ExportIndirectDiffuseValidationStages(const std::string& directory) const;
 	bool ReadIndirectDiffuseProbe(int stage, int pixelX, int pixelY, IndirectDiffuseProbeSample& outSample) const;
+	const SurfelGIPass* GetSurfelGIPass() const { return m_surfelGIPass.get(); }
 
 	// TAA controls
 	void ResetTAA();

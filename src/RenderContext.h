@@ -137,15 +137,30 @@ struct RenderContext {
 	bool indirectDiffuseValidationDisableTemporal = false;
 	bool indirectDiffuseValidationDisableDenoise = false;
 
-	// Surfel GI surfelization infrastructure. This stage builds a persistent
-	// surface-space cache only; it is not composited into lighting yet.
+	// Surfel GI surfelization infrastructure. This builds a persistent
+	// world-space irradiance cache that deferred lighting consumes directly.
 	bool enableSurfelGI = false;
 	int surfelGITileSize = 16;
-	float surfelGITargetRadiusPixels = 8.0f;
-	float surfelGICoverageThreshold = 0.85f;
+	float surfelGITargetRadiusPixels = 8.0f; // <=0 uses automatic tile-derived projected radius
+	float surfelGICoverageThreshold = 0.60f;
 	float surfelGINormalReject = 0.35f;
 	float surfelGIRecyclePressure = 0.65f;
-	int surfelGIDebugMode = 0; // 0=off,1=discs,2=normals,3=radii,4=tile coverage,5=cell population,6=recycled/IDs,7=transform follow,8=active/dormant
+	// Surfel GI debug modes:
+	// 0=off, 1=discs, 2=normals, 3=projected radius, 4=coverage, 5=cell occupancy,
+	// 6=recent recycled/IDs, 7=transform follow, 8=lifecycle, 9=recycle pressure,
+	// 10=spawn/recycle reason, 11=last contributed, 12=distance, 13=persistence age,
+	// 14=last visible, 15=reused vs fresh, 16=irradiance, 17=depth moments,
+	// 18=raw projected support, 19=valid coverage, 20=screen-space deficit,
+	// 21=depth rejection, 22=normal rejection, 23=winner surfel ID.
+	// The overlay shader currently exposes: raw projected support, valid coverage,
+	// deficit, depth rejection, normal rejection, and winner surfel ID views.
+	int surfelGIDebugMode = 0;
+	GLuint surfelGISurfelBuffer = 0;
+	GLuint surfelGIHeaderBuffer = 0;
+	GLuint surfelGIGridHeaderBuffer = 0;
+	GLuint surfelGIGridEntryBuffer = 0;
+	float surfelGIApplyStrength = 0.0f;
+	bool surfelGIGridReady = false;
 
 
 	// Bloom settings

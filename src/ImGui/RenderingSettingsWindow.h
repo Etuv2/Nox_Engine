@@ -117,7 +117,7 @@ private:
 	bool m_enableSurfelGI = false;
 	int m_surfelGITileSize = 16;
 	float m_surfelGITargetRadiusPixels = 8.0f;
-	float m_surfelGICoverageThreshold = 0.85f;
+	float m_surfelGICoverageThreshold = 0.60f;
 	float m_surfelGINormalReject = 0.35f;
 	float m_surfelGIRecyclePressure = 0.65f;
 	int m_surfelGIDebugMode = 0;

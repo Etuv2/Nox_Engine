@@ -202,13 +202,22 @@ void RenderSystem::PrepareFrameTransforms()
 
 	const uint64_t currentRevision = m_componentManager->GetTransformUpdateRevision();
 	const uint64_t currentRenderableRevision = m_componentManager->GetRenderableRevision();
+	const uint64_t currentPublication = m_transformSystem->GetWorldPublicationGeneration();
 	if (m_lastPreparedTransformRevision != currentRevision ||
 		m_lastPreparedRenderableRevision != currentRenderableRevision ||
+		m_lastPreparedTransformPublication != currentPublication ||
 		!m_transformBuffer ||
 		!m_transformBuffer->IsValid() ||
 		m_gpuTransformRecords.empty()) {
+		const bool dirtyListAlreadyConsumed =
+			m_componentManager->GetPendingTransformUpdateCount() == 0 &&
+			m_lastPreparedTransformPublication != currentPublication;
 		m_transformSystem->UpdateTransforms();
-		UpdateGpuTransformBuffer();
+		const bool publicationChangedWithoutDirtyList =
+			dirtyListAlreadyConsumed &&
+			m_transformSystem->GetLastTransformsRecomputedCount() == 0;
+		const bool forceFullTransformUpload = publicationChangedWithoutDirtyList;
+		UpdateGpuTransformBuffer(forceFullTransformUpload);
 		m_lastPreparedTransformRevision = currentRevision;
 		m_lastPreparedRenderableRevision = currentRenderableRevision;
 		m_lastPreparedTransformPublication = m_transformSystem ? m_transformSystem->GetWorldPublicationGeneration() : 0;
@@ -1298,7 +1307,7 @@ void RenderSystem::EnsureTransformBuffer()
 	m_transformBuffer->SetLabel("RenderSystem_GlobalTransformSSBO");
 }
 
-void RenderSystem::UpdateGpuTransformBuffer()
+void RenderSystem::UpdateGpuTransformBuffer(bool forceFullTransformUpload)
 {
 	if (!m_componentManager) {
 		return;
@@ -1310,6 +1319,7 @@ void RenderSystem::UpdateGpuTransformBuffer()
 	const bool renderableRevisionChanged =
 		(m_lastPreparedRenderableRevision != m_componentManager->GetRenderableRevision());
 	const bool forceFullUpload =
+		forceFullTransformUpload ||
 		!m_transformBuffer ||
 		!m_transformBuffer->IsValid() ||
 		m_gpuTransformRecords.size() != requiredRecordCount ||

@@ -14,6 +14,13 @@
 #include <cmath>
 #include <algorithm>
 
+namespace {
+	constexpr GLuint kSurfelBindingSurfels = 20;
+	constexpr GLuint kSurfelBindingHeader = 21;
+	constexpr GLuint kSurfelBindingGridHeaders = 25;
+	constexpr GLuint kSurfelBindingGridEntries = 26;
+}
+
 LightingPass::LightingPass() {}
 
 LightingPass::~LightingPass() {
@@ -114,6 +121,8 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.indirectDiffuseSourceCount = glGetUniformLocation(m_shader, "indirectDiffuseSourceCount");
 	m_uniforms.indirectDiffuseCompositeMode = glGetUniformLocation(m_shader, "indirectDiffuseCompositeMode");
 	m_uniforms.lightingOutputMode = glGetUniformLocation(m_shader, "lightingOutputMode");
+	m_uniforms.surfelGIEnabled = glGetUniformLocation(m_shader, "uEnableSurfelGI");
+	m_uniforms.surfelGIStrength = glGetUniformLocation(m_shader, "uSurfelGIStrength");
 
 	// Light uniforms
 	m_uniforms.numLights = glGetUniformLocation(m_shader, "numLights");
@@ -373,6 +382,24 @@ void LightingPass::Execute(RenderContext& ctx,
 		m_uniforms.indirectDiffuseCompositeMode,
 		ctx.enableIndirectDiffuse ? ctx.indirectDiffuseCompositeMode : 0);
 	glUniform1i(m_uniforms.lightingOutputMode, static_cast<int>(m_outputMode));
+
+	const bool surfelGIReady =
+		ctx.enableSurfelGI &&
+		ctx.surfelGIGridReady &&
+		ctx.surfelGISurfelBuffer != 0 &&
+		ctx.surfelGIHeaderBuffer != 0 &&
+		ctx.surfelGIGridHeaderBuffer != 0 &&
+		ctx.surfelGIGridEntryBuffer != 0;
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingSurfels, surfelGIReady ? ctx.surfelGISurfelBuffer : 0);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingHeader, surfelGIReady ? ctx.surfelGIHeaderBuffer : 0);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingGridHeaders, surfelGIReady ? ctx.surfelGIGridHeaderBuffer : 0);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingGridEntries, surfelGIReady ? ctx.surfelGIGridEntryBuffer : 0);
+	if (m_uniforms.surfelGIEnabled >= 0) {
+		glUniform1i(m_uniforms.surfelGIEnabled, surfelGIReady ? 1 : 0);
+	}
+	if (m_uniforms.surfelGIStrength >= 0) {
+		glUniform1f(m_uniforms.surfelGIStrength, surfelGIReady ? std::max(ctx.surfelGIApplyStrength, 0.0f) : 0.0f);
+	}
 
 	// Bind LightManager data
 	if (ctx.lightManager) {
