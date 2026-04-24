@@ -47,6 +47,10 @@ namespace {
     constexpr float kCentralGridExtent = 24.0f;
     constexpr float kNearScale = 1.0f;
     constexpr float kFarScale = 120.0f;
+    constexpr uint32_t kStatsReadbackInterval = 4;
+    constexpr uint32_t kMaxDebugSurfelInstances = 16384;
+    constexpr uint32_t kExactCoverageFrameModulo = 2;
+    constexpr uint32_t kIntegrationFrameInterval = 2;
 
     static GLuint CreateBuffer(GLsizeiptr sizeBytes, const void* data = nullptr)
     {
@@ -94,6 +98,11 @@ namespace {
             internalFormat == GL_R32UI ? GL_UNSIGNED_INT : GL_FLOAT,
             nullptr);
         glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    static bool ShouldReadBackStats(uint32_t frameIndex)
+    {
+        return (frameIndex % kStatsReadbackInterval) == 0u;
     }
 }
 
@@ -608,6 +617,8 @@ void SurfelGIPass::RunProjectedCoverage(RenderContext& ctx, const glm::mat4& inv
     m_projectCoverageShader->SetUniform("uNormalReject", ctx.surfelGINormalReject);
     m_projectCoverageShader->SetUniform("uDepthThicknessScale", 0.75f);
     m_projectCoverageShader->SetUniform("uMaxTransformID", static_cast<int>(maxTransformID));
+    m_projectCoverageShader->SetUniform("uProjectionFrameModulo", static_cast<int>(kExactCoverageFrameModulo));
+    m_projectCoverageShader->SetUniform("uProjectionFramePhase", static_cast<int>(m_frameIndex % kExactCoverageFrameModulo));
 
     m_projectCoverageShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 64u), 1u, 1u);
     m_projectCoverageShader->WaitForCompletion(
@@ -663,7 +674,7 @@ void SurfelGIPass::RunCoverageDeficit(RenderContext& ctx)
 
     m_deficitShader->SetUniform("uResolution", glm::vec2(float(ctx.width), float(ctx.height)));
     m_deficitShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
-    m_deficitShader->SetUniform("uCoverageHistoryHysteresis", 0.82f);
+    m_deficitShader->SetUniform("uCoverageHistoryHysteresis", 0.92f);
 
     const GLuint groupsX = ComputeShader::CalculateWorkGroups(static_cast<GLuint>(std::max(ctx.width, 1)), 16u);
     const GLuint groupsY = ComputeShader::CalculateWorkGroups(static_cast<GLuint>(std::max(ctx.height, 1)), 16u);
@@ -732,6 +743,9 @@ void SurfelGIPass::RunCoverageGapFill(RenderContext& ctx,
 void SurfelGIPass::RunIrradianceIntegration(RenderContext& ctx, const std::shared_ptr<DirectionalLight>& dirLight)
 {
     if (!m_integrateShader || !m_integrateShader->IsValid()) {
+        return;
+    }
+    if ((m_frameIndex % kIntegrationFrameInterval) != 0u) {
         return;
     }
 
@@ -847,7 +861,9 @@ void SurfelGIPass::Execute(RenderContext& ctx,
 
     glUseProgram(0);
     ++m_frameIndex;
-    ReadBackStats();
+    if (ShouldReadBackStats(m_frameIndex)) {
+        ReadBackStats();
+    }
 }
 
 void SurfelGIPass::ReadBackStats()
@@ -1032,7 +1048,12 @@ void SurfelGIPass::RenderDebug(RenderContext& ctx) const
         glUniform1i(loc, 3);
     }
 
-    const uint32_t debugInstanceCount = std::clamp(m_lastStats.liveCount + 4096u, 0u, kMaxSurfels);
+    const uint32_t debugSourceCount = std::clamp(m_lastStats.liveCount + 4096u, 0u, kMaxSurfels);
+    const uint32_t debugInstanceCount = std::min(debugSourceCount, kMaxDebugSurfelInstances);
+    const uint32_t debugInstanceStride = std::max(1u, (debugSourceCount + debugInstanceCount - 1u) / std::max(debugInstanceCount, 1u));
+    if (GLint loc = glGetUniformLocation(m_debugProgram, "uDebugInstanceStride"); loc >= 0) {
+        glUniform1ui(loc, debugInstanceStride);
+    }
     glBindVertexArray(m_debugVAO);
     glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(debugInstanceCount));
     glBindVertexArray(0);

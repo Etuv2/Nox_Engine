@@ -196,12 +196,30 @@ void main()
     bool emergency = emergencyPressure > 0.75 &&
         age > 90.0 &&
         (!protectedByRecentVisibility || oversubScore > 0.92);
-    bool allowedByPersistence = staleEnough || redundantEnough || emergency;
+    float targetFreeReserve = max(reserve * 0.55, 0.006);
+    bool emergencyReserveRefill = poolStall && freeFraction < targetFreeReserve;
+    bool stallRecycleCandidate =
+        farFromCamera ||
+        offscreenScore > 0.03 ||
+        redundantEnough ||
+        oversubScore > mix(0.46, 0.18, stallPressure) ||
+        (!protectedByRecentContribution && framesSinceVisible > mix(18.0, 2.0, stallPressure));
+    float stallRecycleHash = Hash01(HashUInt(id ^ (frameIndex * 1103515245u) ^ 0x9e3779b9u));
+    float emergencyRefillProbability = emergencyReserveRefill
+        ? mix(0.035, 0.24, stallPressure) * (farFromCamera ? 1.0 : 0.45)
+        : 0.0;
+    bool emergencyRefillAllowed =
+        emergencyReserveRefill &&
+        stallRecycleCandidate &&
+        age > mix(30.0, 6.0, stallPressure) &&
+        stallRecycleHash < emergencyRefillProbability;
+    bool allowedByPersistence = staleEnough || redundantEnough || emergency || emergencyRefillAllowed;
     if (!allowedByPersistence) {
         return;
     }
 
     bool forceRecycle = poolStall && (
+        emergencyRefillAllowed ||
         demandReclaimOldFarCoverage ||
         (redundantEnough && (farFromCamera || offscreenScore > 0.12)) ||
         (!protectedByRecentVisibility && framesSinceContributing > mix(45.0, 12.0, stallPressure)) ||
@@ -212,7 +230,9 @@ void main()
             framesSinceVisible > mix(12.0, 3.0, stallPressure)));
 
     uint recycleReason = SURFEL_RECYCLE_POOL_PRESSURE;
-    if (redundantEnough || oversubScore > 0.35) {
+    if (emergencyRefillAllowed) {
+        recycleReason = SURFEL_RECYCLE_POOL_PRESSURE;
+    } else if (redundantEnough || oversubScore > 0.35) {
         recycleReason = SURFEL_RECYCLE_OVERSAMPLED;
     } else if (staleEnough) {
         recycleReason = SURFEL_RECYCLE_STALE;

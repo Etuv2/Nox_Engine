@@ -18,6 +18,7 @@ uniform mat4 uViewProj;
 uniform vec2 uScreenSize;
 uniform int uDebugMode;
 uniform uint uFrameIndex;
+uniform uint uDebugInstanceStride;
 
 out vec2 vDiscUV;
 out vec4 vColor;
@@ -43,7 +44,15 @@ vec3 IdColor(uint id)
 
 void main()
 {
-    uint surfelID = uint(gl_InstanceID);
+    uint surfelID = uint(gl_InstanceID) * max(uDebugInstanceStride, 1u);
+    if (surfelID >= header.counts.x) {
+        gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
+        vDiscUV = vec2(0.0);
+        vColor = vec4(0.0);
+        vWorldPos = vec3(0.0);
+        vWorldNormal = vec3(0.0, 1.0, 0.0);
+        return;
+    }
     SurfelRecord s = surfels[surfelID];
 
     vec2 corners[4] = vec2[4](

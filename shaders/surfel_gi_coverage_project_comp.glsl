@@ -37,11 +37,36 @@ uniform mat4 uInvViewProj;
 uniform float uNormalReject;
 uniform float uDepthThicknessScale;
 uniform int uMaxTransformID;
+uniform int uProjectionFrameModulo;
+uniform int uProjectionFramePhase;
+
+const float kMaxExactCoverageSupportPixels = 48.0;
+
+float SurfelExactCoverageSupportWeight(vec2 samplePx, vec2 centerPx, vec2 axisTangentPx, vec2 axisBitangentPx)
+{
+    vec2 localUV;
+    if (!SurfelInvertProjectedCoordinates(samplePx - centerPx, axisTangentPx, axisBitangentPx, localUV)) {
+        return 0.0;
+    }
+
+    float radial = length(localUV);
+    if (radial >= 1.0) {
+        return 0.0;
+    }
+
+    float centerWeight = 1.0 - smoothstep(0.55, 1.0, radial);
+    return clamp(mix(0.25, 1.0, centerWeight), 0.0, 1.0);
+}
 
 void main()
 {
     uint surfelID = gl_GlobalInvocationID.x;
     if (surfelID >= header.counts.x) {
+        return;
+    }
+    uint projectionModulo = uint(max(uProjectionFrameModulo, 1));
+    uint projectionPhase = uint(max(uProjectionFramePhase, 0)) % projectionModulo;
+    if ((surfelID % projectionModulo) != projectionPhase) {
         return;
     }
 
@@ -76,6 +101,8 @@ void main()
     vec2 corner10;
     vec2 corner01;
     vec2 corner11;
+    vec2 axisTangentPx;
+    vec2 axisBitangentPx;
     if (!SurfelProjectPatchCorners(
         worldPos,
         tangent,
@@ -91,10 +118,27 @@ void main()
         corner11)) {
         return;
     }
+    if (!SurfelProjectPatchAxes(
+        worldPos,
+        tangent,
+        bitangent,
+        radius,
+        uView,
+        uProjection,
+        uResolution,
+        centerPx,
+        axisTangentPx,
+        axisBitangentPx)) {
+        return;
+    }
 
     ivec2 minPixel;
     ivec2 maxPixel;
     SurfelSupportBoundsFromCornerPixels(centerPx, corner00, corner10, corner01, corner11, uResolution, minPixel, maxPixel);
+    vec2 exactSupport = min(abs(axisTangentPx) + abs(axisBitangentPx) + vec2(1.0), vec2(kMaxExactCoverageSupportPixels));
+    ivec2 screenMax = max(ivec2(floor(uResolution)) - ivec2(1), ivec2(0));
+    minPixel = max(minPixel, clamp(ivec2(floor(centerPx - exactSupport)), ivec2(0), screenMax));
+    maxPixel = min(maxPixel, clamp(ivec2(ceil(centerPx + exactSupport)), ivec2(0), screenMax));
     if (any(greaterThan(minPixel, maxPixel))) {
         return;
     }
@@ -125,7 +169,10 @@ void main()
                 continue;
             }
 
-            float supportWeight = 1.0;
+            float supportWeight = SurfelExactCoverageSupportWeight(samplePx, centerPx, axisTangentPx, axisBitangentPx);
+            if (supportWeight <= 0.001) {
+                continue;
+            }
             uint quantizedRawWeight = uint(clamp(supportWeight * 1024.0, 1.0, 4096.0));
             imageAtomicAdd(uRawProjectedSupport, pixel, quantizedRawWeight);
 
