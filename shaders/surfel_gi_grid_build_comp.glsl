@@ -20,7 +20,7 @@ layout(binding = 26, std430) buffer GridEntryBuffer {
     uint gridEntries[];
 };
 
-uniform mat4 uView;
+uniform vec3 uCameraPos;
 
 const int kMaxGridOverlapCellRadius = 1;
 
@@ -49,8 +49,8 @@ void main()
         return;
     }
 
-    vec3 viewPos = (uView * vec4(s.worldPositionRadius.xyz, 1.0)).xyz;
-    vec3 gridCoord = NonLinearGridCoord(viewPos, header);
+    vec3 gridPos = s.worldPositionRadius.xyz - uCameraPos;
+    vec3 gridCoord = NonLinearGridCoord(gridPos, header);
     uvec3 baseCell = uvec3(floor(gridCoord));
     uint primaryCell = GridCellIndexFromCoord(baseCell, header);
 
@@ -61,7 +61,7 @@ void main()
     InsertIntoCell(primaryCell, id);
 
     vec3 fracCoord = fract(gridCoord);
-    vec3 coordRadius = clamp(GridCoordRadiusForViewSphere(viewPos, s.worldPositionRadius.w, header), vec3(0.05), vec3(1.75));
+    vec3 coordRadius = clamp(GridCoordRadiusForViewSphere(gridPos, s.worldPositionRadius.w, header), vec3(0.05), vec3(1.75));
     ivec3 radiusCells = ivec3(clamp(ceil(coordRadius), vec3(1.0), vec3(float(kMaxGridOverlapCellRadius))));
     uvec3 dims = max(header.gridDims.xyz, uvec3(1u));
 

@@ -13,6 +13,7 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cmath>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
@@ -27,6 +28,10 @@ namespace {
     constexpr GLuint kBindingTileCoverage = 24;
     constexpr GLuint kBindingGridHeaders = 25;
     constexpr GLuint kBindingGridEntries = 26;
+    constexpr GLuint kBindingTileQueue = 27;
+    constexpr GLuint kBindingIrradianceHeader = 28;
+    constexpr GLuint kBindingGuidingBins = 29;
+    constexpr GLuint kBindingRadialDepthBins = 30;
     constexpr GLuint kBindingTransforms = 6;
     constexpr GLuint kImageProjectedCoverage = 0;
     constexpr GLuint kImageDeficit = 1;
@@ -37,7 +42,7 @@ namespace {
     constexpr GLuint kImageCoverageHistory = 6;
 
     constexpr uint32_t kSurfelTileSize = 16;
-    constexpr uint32_t kSpawnIterations = 2;
+    constexpr uint32_t kTileQueueBucketCount = 4;
     constexpr float kFreePoolReserveFraction = 0.02f;
     constexpr float kSurfelLightingApplyStrength = 0.35f;
     constexpr uint32_t kGridDimX = 32;
@@ -49,8 +54,18 @@ namespace {
     constexpr float kFarScale = 120.0f;
     constexpr uint32_t kStatsReadbackInterval = 4;
     constexpr uint32_t kMaxDebugSurfelInstances = 16384;
-    constexpr uint32_t kExactCoverageFrameModulo = 2;
-    constexpr uint32_t kIntegrationFrameInterval = 2;
+    constexpr uint32_t kMinTileScanBudget = 32;
+    constexpr uint32_t kMinSpawnCandidateBudget = 8;
+    constexpr uint32_t kMinSpawnBudget = 2;
+    constexpr uint32_t kMinLifecycleBudget = 1024;
+    constexpr uint32_t kMinRecycleBudget = 256;
+    constexpr uint32_t kMinProjectedBudget = 1024;
+    constexpr uint32_t kMinIntegrateBudget = 512;
+    constexpr uint32_t kMinIrradianceRayBudget = 256;
+    constexpr uint32_t kMinRayTracedSurfels = 512;
+    constexpr uint32_t kGuidingBinsPerSurfel = 36;
+    constexpr uint32_t kRadialDepthBinsPerSurfel = 16;
+    constexpr uint32_t kDefaultGridRebuildInterval = 1;
 
     static GLuint CreateBuffer(GLsizeiptr sizeBytes, const void* data = nullptr)
     {
@@ -104,6 +119,11 @@ namespace {
     {
         return (frameIndex % kStatsReadbackInterval) == 0u;
     }
+
+    static float LerpFloat(float a, float b, float t)
+    {
+        return a + (b - a) * t;
+    }
 }
 
 SurfelGIPass::SurfelGIPass() = default;
@@ -132,12 +152,20 @@ bool SurfelGIPass::Initialize(RenderContext&)
     m_recycleShader = std::make_unique<ComputeShader>();
     m_tileClearShader = std::make_unique<ComputeShader>();
     m_tileCoverageShader = std::make_unique<ComputeShader>();
+    m_tileSelectShader = std::make_unique<ComputeShader>();
     m_projectCoverageShader = std::make_unique<ComputeShader>();
     m_deficitShader = std::make_unique<ComputeShader>();
     m_gridClearShader = std::make_unique<ComputeShader>();
     m_gridBuildShader = std::make_unique<ComputeShader>();
     m_spawnShader = std::make_unique<ComputeShader>();
     m_integrateShader = std::make_unique<ComputeShader>();
+    m_rayRequestShader = std::make_unique<ComputeShader>();
+    m_rayAllocateShader = std::make_unique<ComputeShader>();
+    m_rayTraceShader = std::make_unique<ComputeShader>();
+    m_temporalAccumulateShader = std::make_unique<ComputeShader>();
+    m_guidingUpdateShader = std::make_unique<ComputeShader>();
+    m_neighbourShareShader = std::make_unique<ComputeShader>();
+    m_radialDepthUpdateShader = std::make_unique<ComputeShader>();
 
     bool ok = true;
     ok &= m_initShader->CreateFromFile("shaders/surfel_gi_init_comp.glsl");
@@ -145,12 +173,20 @@ bool SurfelGIPass::Initialize(RenderContext&)
     ok &= m_recycleShader->CreateFromFile("shaders/surfel_gi_recycle_comp.glsl");
     ok &= m_tileClearShader->CreateFromFile("shaders/surfel_gi_tile_clear_comp.glsl");
     ok &= m_tileCoverageShader->CreateFromFile("shaders/surfel_gi_tile_coverage_comp.glsl");
+    ok &= m_tileSelectShader->CreateFromFile("shaders/surfel_gi_tile_select_comp.glsl");
     ok &= m_projectCoverageShader->CreateFromFile("shaders/surfel_gi_coverage_project_comp.glsl");
     ok &= m_deficitShader->CreateFromFile("shaders/surfel_gi_deficit_comp.glsl");
     ok &= m_gridClearShader->CreateFromFile("shaders/surfel_gi_grid_clear_comp.glsl");
     ok &= m_gridBuildShader->CreateFromFile("shaders/surfel_gi_grid_build_comp.glsl");
     ok &= m_spawnShader->CreateFromFile("shaders/surfel_gi_spawn_comp.glsl");
     ok &= m_integrateShader->CreateFromFile("shaders/surfel_gi_integrate_comp.glsl");
+    ok &= m_rayRequestShader->CreateFromFile("shaders/surfel_gi_ray_request_comp.glsl");
+    ok &= m_rayAllocateShader->CreateFromFile("shaders/surfel_gi_ray_allocate_comp.glsl");
+    ok &= m_rayTraceShader->CreateFromFile("shaders/surfel_gi_ray_trace_comp.glsl");
+    ok &= m_temporalAccumulateShader->CreateFromFile("shaders/surfel_gi_temporal_accumulate_comp.glsl");
+    ok &= m_guidingUpdateShader->CreateFromFile("shaders/surfel_gi_guiding_update_comp.glsl");
+    ok &= m_neighbourShareShader->CreateFromFile("shaders/surfel_gi_neighbour_share_comp.glsl");
+    ok &= m_radialDepthUpdateShader->CreateFromFile("shaders/surfel_gi_radial_depth_update_comp.glsl");
 
     m_debugProgram = CreateShaderProgram("shaders/surfel_gi_debug_vert.glsl", "shaders/surfel_gi_debug_frag.glsl");
     m_debugOverlayProgram = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/surfel_gi_debug_overlay_frag.glsl");
@@ -176,14 +212,18 @@ void SurfelGIPass::Resize(RenderContext&, int, int)
 
 void SurfelGIPass::ReleaseBuffers()
 {
-    const std::array<GLuint, 8> buffers = {
+    const std::array<GLuint, 12> buffers = {
         m_surfelSSBO,
         m_headerSSBO,
         m_freeStackSSBO,
         m_recycleStackSSBO,
         m_tileCoverageSSBO,
+        m_tileQueueSSBO,
         m_gridHeaderSSBO,
         m_gridEntrySSBO,
+        m_irradianceHeaderSSBO,
+        m_guidingBinsSSBO,
+        m_radialDepthBinsSSBO,
         m_statsReadbackPBO
     };
     for (GLuint buffer : buffers) {
@@ -196,8 +236,12 @@ void SurfelGIPass::ReleaseBuffers()
     m_freeStackSSBO = 0;
     m_recycleStackSSBO = 0;
     m_tileCoverageSSBO = 0;
+    m_tileQueueSSBO = 0;
     m_gridHeaderSSBO = 0;
     m_gridEntrySSBO = 0;
+    m_irradianceHeaderSSBO = 0;
+    m_guidingBinsSSBO = 0;
+    m_radialDepthBinsSSBO = 0;
     m_statsReadbackPBO = 0;
 
     if (m_projectedCoverageTex) {
@@ -255,7 +299,13 @@ void SurfelGIPass::EnsureResources(RenderContext& ctx)
         m_winnerIDTex == 0 ||
         m_coverageHistoryTex == 0 ||
         m_deficitTex == 0;
-    const bool firstAllocation = m_headerSSBO == 0 || m_surfelSSBO == 0 || m_freeStackSSBO == 0;
+    const bool firstAllocation =
+        m_headerSSBO == 0 ||
+        m_surfelSSBO == 0 ||
+        m_freeStackSSBO == 0 ||
+        m_irradianceHeaderSSBO == 0 ||
+        m_guidingBinsSSBO == 0 ||
+        m_radialDepthBinsSSBO == 0;
 
     if (!tilingChanged && !gridChanged && !firstAllocation && !coverageResolutionChanged) {
         return;
@@ -276,6 +326,10 @@ void SurfelGIPass::EnsureResources(RenderContext& ctx)
         glm::uvec4(0u),
         glm::uvec4(0u),
         glm::uvec4(0u),
+        glm::uvec4(0u),
+        glm::uvec4(0u),
+        glm::uvec4(0u),
+        glm::uvec4(0u),
         glm::uvec4(0u)
     };
 
@@ -284,6 +338,9 @@ void SurfelGIPass::EnsureResources(RenderContext& ctx)
         ResizeBuffer(m_surfelSSBO, static_cast<GLsizeiptr>(kMaxSurfels * sizeof(GpuSurfelRecord)));
         ResizeBuffer(m_freeStackSSBO, static_cast<GLsizeiptr>(kMaxSurfels * sizeof(uint32_t)));
         ResizeBuffer(m_recycleStackSSBO, static_cast<GLsizeiptr>(kMaxSurfels * sizeof(uint32_t)));
+        ResizeBuffer(m_irradianceHeaderSSBO, sizeof(GpuIrradianceHeader));
+        ResizeBuffer(m_guidingBinsSSBO, static_cast<GLsizeiptr>(kMaxSurfels * kGuidingBinsPerSurfel * sizeof(float)));
+        ResizeBuffer(m_radialDepthBinsSSBO, static_cast<GLsizeiptr>(kMaxSurfels * kRadialDepthBinsPerSurfel * sizeof(glm::vec4)));
         ResizeBuffer(m_statsReadbackPBO, sizeof(GpuPoolHeader));
         m_needsPoolInit = true;
     } else {
@@ -304,10 +361,20 @@ void SurfelGIPass::EnsureResources(RenderContext& ctx)
     }
 
     if (tilingChanged || !m_tileCoverageSSBO) {
-        std::vector<glm::uvec4> zeroTiles(static_cast<size_t>(tileCountX) * tileCountY, glm::uvec4(0u));
+        std::vector<GpuTileMeta> zeroTiles(static_cast<size_t>(tileCountX) * tileCountY, GpuTileMeta{});
         ResizeBuffer(m_tileCoverageSSBO,
-            static_cast<GLsizeiptr>(zeroTiles.size() * sizeof(glm::uvec4)),
+            static_cast<GLsizeiptr>(zeroTiles.size() * sizeof(GpuTileMeta)),
             zeroTiles.empty() ? nullptr : zeroTiles.data());
+        m_tileScanCursor = 0;
+    }
+    if (tilingChanged || !m_tileQueueSSBO) {
+        const uint32_t totalTiles = std::max(tileCountX * tileCountY, 1u);
+        const uint32_t maxTilesPerBucket = totalTiles;
+        const GLsizeiptr queueBytes =
+            static_cast<GLsizeiptr>(sizeof(GpuTileQueueHeader)) +
+            static_cast<GLsizeiptr>(kTileQueueBucketCount * maxTilesPerBucket * sizeof(uint32_t));
+        ResizeBuffer(m_tileQueueSSBO, queueBytes);
+        ResetTileQueue(maxTilesPerBucket, RuntimeBudget{});
     }
     if (gridChanged || !m_gridHeaderSSBO || !m_gridEntrySSBO) {
         ResizeBuffer(m_gridHeaderSSBO, static_cast<GLsizeiptr>(gridCellCount * sizeof(glm::uvec4)));
@@ -369,6 +436,10 @@ void SurfelGIPass::BindCommonBuffers(GLuint transformBuffer) const
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingTileCoverage, m_tileCoverageSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingGridHeaders, m_gridHeaderSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingGridEntries, m_gridEntrySSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingTileQueue, m_tileQueueSSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingIrradianceHeader, m_irradianceHeaderSSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingGuidingBins, m_guidingBinsSSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingRadialDepthBins, m_radialDepthBinsSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingTransforms, transformBuffer);
 }
 
@@ -385,12 +456,43 @@ void SurfelGIPass::InitializePool()
     m_initShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 256u), 1u, 1u);
     m_initShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
     glUseProgram(0);
+    m_tileScanCursor = 0;
+    m_lifecycleCursor = 0;
+    m_recycleCursor = 0;
+    m_projectCursor = 0;
+    m_integrationCursor = 0;
+    m_rayCursor = 0;
+    m_sharingCursor = 0;
+    m_coarseCoverageCursor = 0;
+    m_gridRebuildCountdown = 0;
+    m_dynamicBudgetScale = 1.0f;
     m_needsPoolInit = false;
+
+    const float zeroFloat = 0.0f;
+    const glm::vec4 zeroVec(0.0f);
+    GpuIrradianceHeader zeroHeader{};
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_irradianceHeaderSSBO);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GpuIrradianceHeader), &zeroHeader);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_guidingBinsSSBO);
+    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32F, GL_RED, GL_FLOAT, &zeroFloat);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_radialDepthBinsSSBO);
+    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32F, GL_RGBA, GL_FLOAT, &zeroVec);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
 void SurfelGIPass::ResetFrameStats(uint32_t frameIndex)
 {
     const glm::uvec4 zeroStats(0u);
+    const glm::uvec4 runtimeState(
+        m_tileScanCursor,
+        m_lifecycleCursor,
+        m_recycleCursor,
+        m_projectCursor);
+    const glm::uvec4 queueState(
+        0u,
+        0u,
+        std::max(m_lastStats.gridRebuildInterval, 1u),
+        m_gridRebuildCountdown);
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_headerSSBO);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER,
@@ -417,12 +519,134 @@ void SurfelGIPass::ResetFrameStats(uint32_t frameIndex)
         static_cast<GLintptr>(offsetof(GpuPoolHeader, coverageMetricStats)),
         sizeof(glm::uvec4),
         &zeroStats);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+        static_cast<GLintptr>(offsetof(GpuPoolHeader, tileWorkStats)),
+        sizeof(glm::uvec4),
+        &zeroStats);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+        static_cast<GLintptr>(offsetof(GpuPoolHeader, budgetStats)),
+        sizeof(glm::uvec4),
+        &zeroStats);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+        static_cast<GLintptr>(offsetof(GpuPoolHeader, runtimeState)),
+        sizeof(glm::uvec4),
+        &runtimeState);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+        static_cast<GLintptr>(offsetof(GpuPoolHeader, queueStats)),
+        sizeof(glm::uvec4),
+        &queueState);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void SurfelGIPass::RunPersistentStateUpdate(RenderContext& ctx, RenderSystem& renderSystem, const std::shared_ptr<Camera>& camera)
+SurfelGIPass::RuntimeBudget SurfelGIPass::ComputeRuntimeBudget(const RenderContext& ctx) const
+{
+    const uint32_t totalTiles = std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u);
+    const float userScale = std::clamp(ctx.surfelGIBudgetScale, 0.25f, 2.0f);
+    const float effectiveScale = std::clamp(m_dynamicBudgetScale * userScale, 0.20f, 2.25f);
+    const auto scaledBudget = [effectiveScale](int baseValue, uint32_t minValue, uint32_t maxValue) {
+        const float scaled = static_cast<float>(std::max(baseValue, 0)) * effectiveScale;
+        const uint32_t rounded = static_cast<uint32_t>(std::max(0.0f, std::round(scaled)));
+        return std::clamp(rounded, minValue, maxValue);
+    };
+
+    RuntimeBudget budget{};
+    budget.maxTilesToScan = scaledBudget(ctx.surfelGIMaxTilesScanned, kMinTileScanBudget, totalTiles);
+    budget.maxSpawnCandidates = scaledBudget(
+        ctx.surfelGIMaxSpawnCandidates,
+        kMinSpawnCandidateBudget,
+        std::max(budget.maxTilesToScan, 1u));
+    budget.maxSurfelsToSpawn = scaledBudget(
+        ctx.surfelGIMaxSpawns,
+        kMinSpawnBudget,
+        std::max(budget.maxSpawnCandidates, 1u));
+    budget.maxRecycleDecisions = scaledBudget(
+        ctx.surfelGIMaxRecycleDecisions,
+        kMinRecycleBudget,
+        kMaxSurfels);
+    budget.maxProjectedSurfels = scaledBudget(
+        ctx.surfelGIMaxProjectedSurfels,
+        kMinProjectedBudget,
+        kMaxSurfels);
+    budget.maxLifecycleUpdates = scaledBudget(
+        ctx.surfelGIMaxLifecycleUpdates,
+        kMinLifecycleBudget,
+        kMaxSurfels);
+    budget.maxIntegrationUpdates = scaledBudget(
+        ctx.surfelGIMaxIntegrationUpdates,
+        kMinIntegrateBudget,
+        kMaxSurfels);
+    budget.maxCoarseCoverageSurfels = scaledBudget(
+        ctx.surfelGIMaxCoarseCoverageSurfels,
+        kMinProjectedBudget,
+        kMaxSurfels);
+    budget.maxIrradianceRays = scaledBudget(
+        ctx.surfelGIMaxIrradianceRays,
+        kMinIrradianceRayBudget,
+        kMaxSurfels);
+    budget.maxRayTracedSurfels = scaledBudget(
+        ctx.surfelGIMaxRayTracedSurfels,
+        kMinRayTracedSurfels,
+        kMaxSurfels);
+
+    const float inverseScale = std::clamp(1.0f / std::max(effectiveScale, 0.20f), 0.5f, 4.0f);
+    const uint32_t rebuildInterval = std::clamp(
+        static_cast<uint32_t>(std::max(1.0f, std::round(static_cast<float>(ctx.surfelGIGridRebuildInterval) * inverseScale))),
+        1u,
+        8u);
+    budget.gridRebuildInterval = std::max(rebuildInterval, kDefaultGridRebuildInterval);
+    return budget;
+}
+
+void SurfelGIPass::UpdateDynamicBudgetScale(const RenderContext& ctx)
+{
+    const float targetMs = std::max(ctx.surfelGIFrameBudgetMs, 0.5f);
+    m_lastStats.targetBudgetMs = targetMs;
+    if (!ctx.surfelGIAdaptiveBudget) {
+        m_dynamicBudgetScale = 1.0f;
+        return;
+    }
+
+    const float elapsed = std::max(m_lastStats.totalTimeMs, 0.0f);
+    if (elapsed > targetMs) {
+        const float overshoot = std::clamp((elapsed - targetMs) / std::max(targetMs, 0.001f), 0.0f, 2.0f);
+        m_dynamicBudgetScale *= std::max(0.55f, 0.90f - overshoot * 0.22f);
+    } else if (elapsed < targetMs * 0.72f) {
+        const float slack = std::clamp((targetMs * 0.72f - elapsed) / std::max(targetMs, 0.001f), 0.0f, 1.0f);
+        m_dynamicBudgetScale *= (1.02f + slack * 0.06f);
+    }
+
+    m_dynamicBudgetScale = std::clamp(m_dynamicBudgetScale, 0.25f, 1.50f);
+}
+
+void SurfelGIPass::ResetTileQueue(uint32_t maxTilesPerBucket, const RuntimeBudget& budget)
+{
+    if (!m_tileQueueSSBO) {
+        return;
+    }
+
+    GpuTileQueueHeader queueHeader{};
+    queueHeader.config = glm::uvec4(
+        std::max(maxTilesPerBucket, 1u),
+        std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u),
+        std::max(budget.maxSpawnCandidates, 1u),
+        std::max(budget.maxSurfelsToSpawn, 1u));
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_tileQueueSSBO);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GpuTileQueueHeader), &queueHeader);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+}
+
+void SurfelGIPass::RunPersistentStateUpdate(RenderContext& ctx,
+    RenderSystem& renderSystem,
+    const std::shared_ptr<Camera>& camera,
+    const RuntimeBudget& budget)
 {
     if (!m_lifecycleShader || !m_lifecycleShader->IsValid() || !camera) {
+        return;
+    }
+
+    const uint32_t surfelCount = std::min(budget.maxLifecycleUpdates, kMaxSurfels);
+    if (surfelCount == 0u) {
         return;
     }
 
@@ -439,13 +663,23 @@ void SurfelGIPass::RunPersistentStateUpdate(RenderContext& ctx, RenderSystem& re
     m_lifecycleShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
     m_lifecycleShader->SetUniform("uRecyclePressure", ctx.surfelGIRecyclePressure);
     m_lifecycleShader->SetUniform("uFreePoolReserveFraction", kFreePoolReserveFraction);
-    m_lifecycleShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 256u), 1u, 1u);
+    m_lifecycleShader->SetUniform("uSurfelStart", static_cast<int>(m_lifecycleCursor));
+    m_lifecycleShader->SetUniform("uSurfelCount", static_cast<int>(surfelCount));
+    m_lifecycleShader->Dispatch(ComputeShader::CalculateWorkGroups(surfelCount, 256u), 1u, 1u);
     m_lifecycleShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    m_lastStats.lifecycleSurfelsProcessed = surfelCount;
+    m_lifecycleCursor = (m_lifecycleCursor + surfelCount) % kMaxSurfels;
 }
 
-void SurfelGIPass::RunRecycleDecision(RenderContext& ctx)
+void SurfelGIPass::RunRecycleDecision(RenderContext& ctx, const RuntimeBudget& budget)
 {
     if (!m_recycleShader || !m_recycleShader->IsValid()) {
+        return;
+    }
+
+    const uint32_t recycleCount = std::min(budget.maxRecycleDecisions, kMaxSurfels);
+    if (recycleCount == 0u) {
         return;
     }
 
@@ -472,11 +706,17 @@ void SurfelGIPass::RunRecycleDecision(RenderContext& ctx)
     m_recycleShader->SetUniform("uFreePoolReserveFraction", kFreePoolReserveFraction);
     m_recycleShader->SetUniform("uRecyclePressure", ctx.surfelGIRecyclePressure);
     m_recycleShader->SetUniform("uCoverageDemandPressure", coverageDemandPressure);
-    m_recycleShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 256u), 1u, 1u);
+    m_recycleShader->SetUniform("uSurfelStart", static_cast<int>(m_recycleCursor));
+    m_recycleShader->SetUniform("uSurfelCount", static_cast<int>(recycleCount));
+    m_recycleShader->SetUniform("uMaxRecycleDecisions", static_cast<int>(recycleCount));
+    m_recycleShader->Dispatch(ComputeShader::CalculateWorkGroups(recycleCount, 256u), 1u, 1u);
     m_recycleShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    m_lastStats.recycleSurfelsProcessed = recycleCount;
+    m_recycleCursor = (m_recycleCursor + recycleCount) % kMaxSurfels;
 }
 
-void SurfelGIPass::RebuildSpatialGrid(const glm::mat4& view)
+void SurfelGIPass::RebuildSpatialGrid(const glm::vec3& cameraPos)
 {
     if (!m_gridClearShader || !m_gridBuildShader ||
         !m_gridClearShader->IsValid() || !m_gridBuildShader->IsValid()) {
@@ -489,27 +729,29 @@ void SurfelGIPass::RebuildSpatialGrid(const glm::mat4& view)
     m_gridClearShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 
     glUseProgram(m_gridBuildShader->GetProgramID());
-    m_gridBuildShader->SetUniform("uView", view);
+    m_gridBuildShader->SetUniform("uCameraPos", cameraPos);
     m_gridBuildShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 256u), 1u, 1u);
     m_gridBuildShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
-void SurfelGIPass::RunPersistentTileCoverage(RenderContext& ctx)
+void SurfelGIPass::RunPersistentTileCoverage(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion)
 {
-    if (!m_tileClearShader || !m_tileClearShader->IsValid()) {
+    if (!m_tileCoverageShader || !m_tileCoverageShader->IsValid()) {
         return;
     }
 
     using Clock = std::chrono::high_resolution_clock;
+    const uint32_t tileCount = std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u);
 
-    const uint32_t tileCount = m_allocatedTileCountX * m_allocatedTileCountY;
+    if (m_tileClearShader && m_tileClearShader->IsValid()) {
+        glUseProgram(m_tileClearShader->GetProgramID());
+        m_tileClearShader->SetUniform("uTileCount", static_cast<int>(tileCount));
+        m_tileClearShader->Dispatch(ComputeShader::CalculateWorkGroups(tileCount, 256u), 1u, 1u);
+        m_tileClearShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+    }
 
-    glUseProgram(m_tileClearShader->GetProgramID());
-    m_tileClearShader->SetUniform("uTileCount", static_cast<int>(tileCount));
-    m_tileClearShader->Dispatch(ComputeShader::CalculateWorkGroups(tileCount, 256u), 1u, 1u);
-    m_tileClearShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-
-    if (m_tileCoverageShader && m_tileCoverageShader->IsValid()) {
+    const uint32_t coarseCount = std::min(budget.maxCoarseCoverageSurfels, kMaxSurfels);
+    if (coarseCount > 0u) {
         const auto coarseBegin = Clock::now();
         glUseProgram(m_tileCoverageShader->GetProgramID());
         m_tileCoverageShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
@@ -517,23 +759,34 @@ void SurfelGIPass::RunPersistentTileCoverage(RenderContext& ctx)
         m_tileCoverageShader->SetUniform("uView", ctx.view);
         m_tileCoverageShader->SetUniform("uProjection", ctx.proj);
         m_tileCoverageShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
-        m_tileCoverageShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 256u), 1u, 1u);
+        m_tileCoverageShader->SetUniform("uSurfelStart", static_cast<int>(m_coarseCoverageCursor));
+        m_tileCoverageShader->SetUniform("uSurfelCount", static_cast<int>(coarseCount));
+        m_tileCoverageShader->Dispatch(ComputeShader::CalculateWorkGroups(coarseCount, 256u), 1u, 1u);
         m_tileCoverageShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
         m_lastStats.coarseCoverageTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - coarseBegin).count();
+        m_coarseCoverageCursor = (m_coarseCoverageCursor + coarseCount) % kMaxSurfels;
     } else {
         m_lastStats.coarseCoverageTimeMs = 0.0f;
     }
 
     const glm::mat4 invViewProj = glm::inverse(ctx.proj * ctx.view);
     auto exactBegin = Clock::now();
-    RunProjectedCoverage(ctx, invViewProj, m_projectedCoverageMaxTransformID);
+    RunProjectedCoverage(ctx, invViewProj, m_projectedCoverageMaxTransformID, budget);
     m_lastStats.exactCoverageTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - exactBegin).count();
     auto deficitBegin = Clock::now();
-    RunCoverageDeficit(ctx);
+    RunCoverageDeficit(ctx, budget, cameraMotion);
     m_lastStats.deficitTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - deficitBegin).count();
+
+    auto selectionBegin = Clock::now();
+    RunTileSelection(ctx, budget, cameraMotion);
+    m_lastStats.tileSelectTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - selectionBegin).count();
 }
 
-void SurfelGIPass::RunProjectedCoverage(RenderContext& ctx, const glm::mat4& invViewProj, uint32_t maxTransformID)
+void SurfelGIPass::RunProjectedCoverage(
+    RenderContext& ctx,
+    const glm::mat4& invViewProj,
+    uint32_t maxTransformID,
+    const RuntimeBudget& budget)
 {
     if (!m_projectCoverageShader || !m_projectCoverageShader->IsValid() ||
         !m_rawProjectedSupportTex || !m_projectedCoverageTex ||
@@ -548,6 +801,11 @@ void SurfelGIPass::RunProjectedCoverage(RenderContext& ctx, const glm::mat4& inv
     glClearTexImage(m_depthRejectTex, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &clearValue);
     glClearTexImage(m_normalRejectTex, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &clearValue);
     glClearTexImage(m_winnerIDTex, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &winnerClearValue);
+
+    const uint32_t projectedCount = std::min(budget.maxProjectedSurfels, kMaxSurfels);
+    if (projectedCount == 0u) {
+        return;
+    }
 
     glUseProgram(m_projectCoverageShader->GetProgramID());
     glBindImageTexture(
@@ -617,17 +875,20 @@ void SurfelGIPass::RunProjectedCoverage(RenderContext& ctx, const glm::mat4& inv
     m_projectCoverageShader->SetUniform("uNormalReject", ctx.surfelGINormalReject);
     m_projectCoverageShader->SetUniform("uDepthThicknessScale", 0.75f);
     m_projectCoverageShader->SetUniform("uMaxTransformID", static_cast<int>(maxTransformID));
-    m_projectCoverageShader->SetUniform("uProjectionFrameModulo", static_cast<int>(kExactCoverageFrameModulo));
-    m_projectCoverageShader->SetUniform("uProjectionFramePhase", static_cast<int>(m_frameIndex % kExactCoverageFrameModulo));
+    m_projectCoverageShader->SetUniform("uSurfelStart", static_cast<int>(m_projectCursor));
+    m_projectCoverageShader->SetUniform("uSurfelCount", static_cast<int>(projectedCount));
 
-    m_projectCoverageShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 64u), 1u, 1u);
+    m_projectCoverageShader->Dispatch(ComputeShader::CalculateWorkGroups(projectedCount, 64u), 1u, 1u);
     m_projectCoverageShader->WaitForCompletion(
         GL_SHADER_IMAGE_ACCESS_BARRIER_BIT |
         GL_SHADER_STORAGE_BARRIER_BIT |
         GL_TEXTURE_FETCH_BARRIER_BIT);
+
+    m_lastStats.projectedSurfelsProcessed = projectedCount;
+    m_projectCursor = (m_projectCursor + projectedCount) % kMaxSurfels;
 }
 
-void SurfelGIPass::RunCoverageDeficit(RenderContext& ctx)
+void SurfelGIPass::RunCoverageDeficit(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion)
 {
     if (!m_deficitShader || !m_deficitShader->IsValid() ||
         !m_projectedCoverageTex || !m_coverageHistoryTex || !m_deficitTex || !ctx.gbufferFBO) {
@@ -674,7 +935,21 @@ void SurfelGIPass::RunCoverageDeficit(RenderContext& ctx)
 
     m_deficitShader->SetUniform("uResolution", glm::vec2(float(ctx.width), float(ctx.height)));
     m_deficitShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
-    m_deficitShader->SetUniform("uCoverageHistoryHysteresis", 0.92f);
+    const float motionPressure = std::clamp((cameraMotion - 0.015f) / 0.22f, 0.0f, 1.0f);
+    m_deficitShader->SetUniform("uCoverageHistoryHysteresis", LerpFloat(0.92f, 0.35f, motionPressure));
+    const uint32_t totalTiles = std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u);
+    const float tileFraction = float(std::max(budget.maxTilesToScan, 1u)) / float(totalTiles);
+    uint32_t pixelUpdateModulo = 1u;
+    if (motionPressure > 0.10f) {
+        pixelUpdateModulo = 1u;
+    } else if (tileFraction < 0.35f) {
+        pixelUpdateModulo = 4u;
+    } else if (tileFraction < 0.70f) {
+        pixelUpdateModulo = 2u;
+    }
+    m_deficitShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
+    m_deficitShader->SetUniform("uPixelUpdateModulo", static_cast<int>(pixelUpdateModulo));
+    m_deficitShader->SetUniform("uPixelUpdatePhase", static_cast<int>(m_frameIndex % pixelUpdateModulo));
 
     const GLuint groupsX = ComputeShader::CalculateWorkGroups(static_cast<GLuint>(std::max(ctx.width, 1)), 16u);
     const GLuint groupsY = ComputeShader::CalculateWorkGroups(static_cast<GLuint>(std::max(ctx.height, 1)), 16u);
@@ -685,13 +960,70 @@ void SurfelGIPass::RunCoverageDeficit(RenderContext& ctx)
         GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
+void SurfelGIPass::RunTileSelection(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion)
+{
+    if (!m_tileSelectShader || !m_tileSelectShader->IsValid() || !ctx.gbufferFBO || !m_tileQueueSSBO) {
+        return;
+    }
+
+    const uint32_t totalTiles = std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u);
+    const uint32_t scanCount = std::min(std::max(budget.maxTilesToScan, 1u), totalTiles);
+    if (scanCount == 0u) {
+        return;
+    }
+
+    ResetTileQueue(totalTiles, budget);
+
+    glUseProgram(m_tileSelectShader->GetProgramID());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+    if (GLint loc = glGetUniformLocation(m_tileSelectShader->GetProgramID(), "uDepthTex"); loc >= 0) {
+        glUniform1i(loc, 0);
+    }
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+    if (GLint loc = glGetUniformLocation(m_tileSelectShader->GetProgramID(), "uPackedNormalRM"); loc >= 0) {
+        glUniform1i(loc, 1);
+    }
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(5));
+    if (GLint loc = glGetUniformLocation(m_tileSelectShader->GetProgramID(), "uTransformIDTex"); loc >= 0) {
+        glUniform1i(loc, 2);
+    }
+
+    glBindImageTexture(kImageDeficit, m_deficitTex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+
+    m_tileSelectShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
+    m_tileSelectShader->SetUniform("uResolution", glm::vec2(float(ctx.width), float(ctx.height)));
+    m_tileSelectShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
+    m_tileSelectShader->SetUniform("uTileScanCursor", static_cast<int>(m_tileScanCursor));
+    m_tileSelectShader->SetUniform("uMaxTilesToScan", static_cast<int>(scanCount));
+    m_tileSelectShader->SetUniform("uCameraMotion", cameraMotion);
+    m_tileSelectShader->SetUniform("uQualityScale", m_dynamicBudgetScale);
+
+    m_tileSelectShader->Dispatch(scanCount, 1u, 1u);
+    m_tileSelectShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+    m_tileScanCursor = (m_tileScanCursor + scanCount) % totalTiles;
+}
+
 void SurfelGIPass::RunCoverageGapFill(RenderContext& ctx,
     RenderSystem& renderSystem,
     const std::shared_ptr<Camera>& camera,
     const glm::mat4& invViewProj,
-    const glm::mat4& invView)
+    const glm::mat4& invView,
+    const RuntimeBudget& budget)
 {
     if (!m_spawnShader || !m_spawnShader->IsValid() || !camera) {
+        return;
+    }
+
+    const uint32_t candidateBudget = std::min(
+        std::max(budget.maxSpawnCandidates, 1u),
+        std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u));
+    if (candidateBudget == 0u) {
         return;
     }
 
@@ -712,40 +1044,43 @@ void SurfelGIPass::RunCoverageGapFill(RenderContext& ctx,
         if (GLint loc = glGetUniformLocation(program, "uDepthTex"); loc >= 0) glUniform1i(loc, 2);
     };
 
-    for (uint32_t iteration = 0; iteration < kSpawnIterations; ++iteration) {
-        bindGBufferTextures(m_spawnShader->GetProgramID());
-        glBindImageTexture(
-            kImageDeficit,
-            m_deficitTex,
-            0,
-            GL_FALSE,
-            0,
-            GL_READ_ONLY,
-            GL_R32F);
-        m_spawnShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
-        m_spawnShader->SetUniform("uSpawnIteration", static_cast<int>(iteration));
-        m_spawnShader->SetUniform("uMaxTransformID", static_cast<int>(renderSystem.GetTransformRecordCount()));
-        m_spawnShader->SetUniform("uResolution", glm::vec2(float(ctx.width), float(ctx.height)));
-        m_spawnShader->SetUniform("uView", ctx.view);
-        m_spawnShader->SetUniform("uProjection", ctx.proj);
-        m_spawnShader->SetUniform("uInvViewProj", invViewProj);
-        m_spawnShader->SetUniform("uInvView", invView);
-        m_spawnShader->SetUniform("uTargetRadiusPixels", ctx.surfelGITargetRadiusPixels);
-        m_spawnShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
-        m_spawnShader->SetUniform("uNormalReject", ctx.surfelGINormalReject);
-        m_spawnShader->SetUniform("uCameraPos", cameraPos);
-        m_spawnShader->SetUniform("uFreePoolReserveFraction", kFreePoolReserveFraction);
-        m_spawnShader->Dispatch(m_allocatedTileCountX, m_allocatedTileCountY, 1u);
-        m_spawnShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-    }
+    bindGBufferTextures(m_spawnShader->GetProgramID());
+    glBindImageTexture(
+        kImageDeficit,
+        m_deficitTex,
+        0,
+        GL_FALSE,
+        0,
+        GL_READ_ONLY,
+        GL_R32F);
+    m_spawnShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
+    m_spawnShader->SetUniform("uMaxTransformID", static_cast<int>(renderSystem.GetTransformRecordCount()));
+    m_spawnShader->SetUniform("uResolution", glm::vec2(float(ctx.width), float(ctx.height)));
+    m_spawnShader->SetUniform("uView", ctx.view);
+    m_spawnShader->SetUniform("uProjection", ctx.proj);
+    m_spawnShader->SetUniform("uInvViewProj", invViewProj);
+    m_spawnShader->SetUniform("uInvView", invView);
+    m_spawnShader->SetUniform("uTargetRadiusPixels", ctx.surfelGITargetRadiusPixels);
+    m_spawnShader->SetUniform("uCoverageThreshold", ctx.surfelGICoverageThreshold);
+    m_spawnShader->SetUniform("uNormalReject", ctx.surfelGINormalReject);
+    m_spawnShader->SetUniform("uCameraPos", cameraPos);
+    m_spawnShader->SetUniform("uFreePoolReserveFraction", kFreePoolReserveFraction);
+    m_spawnShader->SetUniform("uMaxSpawnCandidates", static_cast<int>(candidateBudget));
+    m_spawnShader->SetUniform("uMaxSpawns", static_cast<int>(std::max(budget.maxSurfelsToSpawn, 1u)));
+    m_spawnShader->Dispatch(ComputeShader::CalculateWorkGroups(candidateBudget, 64u), 1u, 1u);
+    m_spawnShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 }
 
-void SurfelGIPass::RunIrradianceIntegration(RenderContext& ctx, const std::shared_ptr<DirectionalLight>& dirLight)
+void SurfelGIPass::RunIrradianceIntegration(
+    RenderContext& ctx,
+    const std::shared_ptr<DirectionalLight>& dirLight,
+    const RuntimeBudget& budget)
 {
     if (!m_integrateShader || !m_integrateShader->IsValid()) {
         return;
     }
-    if ((m_frameIndex % kIntegrationFrameInterval) != 0u) {
+    const uint32_t integrationCount = std::min(budget.maxIntegrationUpdates, kMaxSurfels);
+    if (integrationCount == 0u) {
         return;
     }
 
@@ -780,8 +1115,167 @@ void SurfelGIPass::RunIrradianceIntegration(RenderContext& ctx, const std::share
     m_integrateShader->SetUniform("uInvViewProj", glm::inverse(ctx.proj * ctx.view));
     m_integrateShader->SetUniform("uDirectionalLightDir", lightDirection);
     m_integrateShader->SetUniform("uDirectionalLightColor", lightColor);
-    m_integrateShader->Dispatch(ComputeShader::CalculateWorkGroups(kMaxSurfels, 256u), 1u, 1u);
+    m_integrateShader->SetUniform("uSurfelStart", static_cast<int>(m_integrationCursor));
+    m_integrateShader->SetUniform("uSurfelCount", static_cast<int>(integrationCount));
+    m_integrateShader->Dispatch(ComputeShader::CalculateWorkGroups(integrationCount, 256u), 1u, 1u);
     m_integrateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+    m_lastStats.integratedSurfelsProcessed = integrationCount;
+    m_integrationCursor = (m_integrationCursor + integrationCount) % kMaxSurfels;
+}
+
+void SurfelGIPass::ResetIrradianceFrameState(const RuntimeBudget& budget)
+{
+    if (!m_irradianceHeaderSSBO) {
+        return;
+    }
+
+    GpuIrradianceHeader header{};
+    header.config = glm::uvec4(
+        budget.maxIrradianceRays,
+        0u,
+        m_rayCursor,
+        std::min(budget.maxRayTracedSurfels, kMaxSurfels));
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_irradianceHeaderSSBO);
+    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GpuIrradianceHeader), &header);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+}
+
+void SurfelGIPass::RunAdaptiveRayRequest(RenderContext& ctx, const RuntimeBudget& budget)
+{
+    if (!m_rayRequestShader || !m_rayRequestShader->IsValid()) {
+        return;
+    }
+    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    if (raySurfelCount == 0u) {
+        return;
+    }
+
+    glUseProgram(m_rayRequestShader->GetProgramID());
+    m_rayRequestShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
+    m_rayRequestShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_rayRequestShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_rayRequestShader->SetUniform("uMaxRaysPerSurfel", std::max(ctx.surfelGIMaxRaysPerSurfel, 1));
+    m_rayRequestShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
+    m_rayRequestShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
+void SurfelGIPass::RunGlobalRayAllocation(RenderContext&, const RuntimeBudget& budget)
+{
+    if (!m_rayAllocateShader || !m_rayAllocateShader->IsValid()) {
+        return;
+    }
+    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    if (raySurfelCount == 0u || budget.maxIrradianceRays == 0u) {
+        return;
+    }
+
+    glUseProgram(m_rayAllocateShader->GetProgramID());
+    m_rayAllocateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_rayAllocateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_rayAllocateShader->SetUniform("uGlobalRayBudget", static_cast<int>(budget.maxIrradianceRays));
+    m_rayAllocateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
+    m_rayAllocateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
+void SurfelGIPass::RunBoundedRayTrace(
+    RenderContext&,
+    const std::shared_ptr<DirectionalLight>& dirLight,
+    const RuntimeBudget& budget)
+{
+    if (!m_rayTraceShader || !m_rayTraceShader->IsValid()) {
+        return;
+    }
+    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    if (raySurfelCount == 0u) {
+        return;
+    }
+
+    const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(0.0f, -1.0f, 0.0f);
+    const glm::vec3 lightColor = dirLight && dirLight->IsEnabled() ? dirLight->GetEffectiveColor() : glm::vec3(0.0f);
+
+    glUseProgram(m_rayTraceShader->GetProgramID());
+    m_rayTraceShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
+    m_rayTraceShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_rayTraceShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_rayTraceShader->SetUniform("uDirectionalLightDir", lightDirection);
+    m_rayTraceShader->SetUniform("uDirectionalLightColor", lightColor);
+    m_rayTraceShader->SetUniform("uCameraPos", m_prevCameraPos);
+    m_rayTraceShader->SetUniform("uMaxRayDistance", 8.0f);
+    m_rayTraceShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
+    m_rayTraceShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
+void SurfelGIPass::RunTemporalAccumulation(RenderContext&, const RuntimeBudget& budget)
+{
+    if (!m_temporalAccumulateShader || !m_temporalAccumulateShader->IsValid()) {
+        return;
+    }
+    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    if (raySurfelCount == 0u) {
+        return;
+    }
+
+    glUseProgram(m_temporalAccumulateShader->GetProgramID());
+    m_temporalAccumulateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
+    m_temporalAccumulateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_temporalAccumulateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_temporalAccumulateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
+    m_temporalAccumulateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
+void SurfelGIPass::RunGuidingUpdate(RenderContext&, const RuntimeBudget& budget)
+{
+    if (!m_guidingUpdateShader || !m_guidingUpdateShader->IsValid()) {
+        return;
+    }
+    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    if (raySurfelCount == 0u) {
+        return;
+    }
+
+    glUseProgram(m_guidingUpdateShader->GetProgramID());
+    m_guidingUpdateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_guidingUpdateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_guidingUpdateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
+    m_guidingUpdateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
+void SurfelGIPass::RunNeighbourSharing(RenderContext&, const RuntimeBudget& budget)
+{
+    if (!m_neighbourShareShader || !m_neighbourShareShader->IsValid()) {
+        return;
+    }
+    const uint32_t shareCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    if (shareCount == 0u) {
+        return;
+    }
+
+    glUseProgram(m_neighbourShareShader->GetProgramID());
+    m_neighbourShareShader->SetUniform("uSurfelStart", static_cast<int>(m_sharingCursor));
+    m_neighbourShareShader->SetUniform("uSurfelCount", static_cast<int>(shareCount));
+    m_neighbourShareShader->Dispatch(ComputeShader::CalculateWorkGroups(shareCount, 256u), 1u, 1u);
+    m_neighbourShareShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+    m_sharingCursor = (m_sharingCursor + shareCount) % kMaxSurfels;
+}
+
+void SurfelGIPass::RunRadialDepthValidityUpdate(RenderContext&, const RuntimeBudget& budget)
+{
+    if (!m_radialDepthUpdateShader || !m_radialDepthUpdateShader->IsValid()) {
+        return;
+    }
+    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    if (raySurfelCount == 0u) {
+        return;
+    }
+
+    glUseProgram(m_radialDepthUpdateShader->GetProgramID());
+    m_radialDepthUpdateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_radialDepthUpdateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_radialDepthUpdateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
+    m_radialDepthUpdateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+    m_rayCursor = (m_rayCursor + raySurfelCount) % kMaxSurfels;
 }
 
 void SurfelGIPass::PublishResources(RenderContext& ctx) const
@@ -826,6 +1320,43 @@ void SurfelGIPass::Execute(RenderContext& ctx,
         static_cast<size_t>(std::numeric_limits<uint32_t>::max())));
     const glm::mat4 invViewProj = glm::inverse(ctx.proj * ctx.view);
     const glm::mat4 invView = glm::inverse(ctx.view);
+    const glm::vec3 cameraPos = camera->GetCameraPosition();
+    float cameraMotion = 0.0f;
+    const glm::vec3 cameraFront = glm::normalize(camera->GetCameraFrontVector());
+    if (m_hasPrevCameraPos) {
+        const float positionalMotion = glm::length(cameraPos - m_prevCameraPos);
+        const float rotationalMotion = glm::length(cameraFront - m_prevCameraFront) * 0.75f;
+        cameraMotion = std::max(positionalMotion, rotationalMotion);
+    }
+    cameraMotion = std::max(cameraMotion, 0.35f);
+    m_prevCameraPos = cameraPos;
+    m_prevCameraFront = cameraFront;
+    m_hasPrevCameraPos = true;
+
+    UpdateDynamicBudgetScale(ctx);
+    RuntimeBudget budget = ComputeRuntimeBudget(ctx);
+    const float motionPressure = std::clamp((cameraMotion - 0.015f) / 0.22f, 0.0f, 1.0f);
+    if (motionPressure > 0.0f) {
+        const uint32_t totalTiles = std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u);
+        const auto motionBoost = [motionPressure](uint32_t current, uint32_t target) {
+            const float boosted = LerpFloat(static_cast<float>(current), static_cast<float>(target), motionPressure);
+            return std::max(current, static_cast<uint32_t>(std::round(boosted)));
+        };
+        const uint32_t tileTarget = std::min(totalTiles, std::max(budget.maxTilesToScan, 2048u));
+        const uint32_t candidateTarget = std::min(totalTiles, std::max(budget.maxSpawnCandidates, 768u));
+        budget.maxTilesToScan = motionBoost(budget.maxTilesToScan, tileTarget);
+        budget.maxSpawnCandidates = motionBoost(budget.maxSpawnCandidates, candidateTarget);
+        budget.maxSurfelsToSpawn = motionBoost(budget.maxSurfelsToSpawn, std::max(budget.maxSurfelsToSpawn, 192u));
+        budget.maxRecycleDecisions = motionBoost(budget.maxRecycleDecisions, std::max(budget.maxRecycleDecisions, 4096u));
+        budget.maxProjectedSurfels = motionBoost(budget.maxProjectedSurfels, std::max(budget.maxProjectedSurfels, 24576u));
+        budget.maxCoarseCoverageSurfels = motionBoost(budget.maxCoarseCoverageSurfels, std::max(budget.maxCoarseCoverageSurfels, 24576u));
+        budget.maxLifecycleUpdates = motionBoost(budget.maxLifecycleUpdates, std::max(budget.maxLifecycleUpdates, 32768u));
+        budget.maxRayTracedSurfels = motionBoost(budget.maxRayTracedSurfels, std::max(budget.maxRayTracedSurfels, 16384u));
+        budget.gridRebuildInterval = 1u;
+    }
+    const float userScale = std::clamp(ctx.surfelGIBudgetScale, 0.25f, 2.0f);
+    m_lastStats.budgetScale = std::clamp(m_dynamicBudgetScale * userScale, 0.20f, 2.25f);
+    m_lastStats.gridRebuildInterval = std::max(budget.gridRebuildInterval, 1u);
     m_projectedCoverageMaxTransformID = maxTransformID;
 
     using Clock = std::chrono::high_resolution_clock;
@@ -833,30 +1364,98 @@ void SurfelGIPass::Execute(RenderContext& ctx,
 
     BindCommonBuffers(transformBuffer);
     ResetFrameStats(m_frameIndex);
+    m_lastStats.tilesScannedThisFrame = 0;
+    m_lastStats.tilesSkippedByConfidence = 0;
+    m_lastStats.undercoveredTilesQueued = 0;
+    m_lastStats.spawnCandidatesEvaluated = 0;
+    m_lastStats.queueOverflowCount = 0;
+    m_lastStats.projectedSurfelsProcessed = 0;
+    m_lastStats.lifecycleSurfelsProcessed = 0;
+    m_lastStats.recycleSurfelsProcessed = 0;
+    m_lastStats.integratedSurfelsProcessed = 0;
+    m_lastStats.requestedRaysThisFrame = 0;
+    m_lastStats.allocatedRaysThisFrame = 0;
+    m_lastStats.rayEligibleSurfels = 0;
+    m_lastStats.rayActiveSurfels = 0;
+    m_lastStats.rayEvaluatedSurfels = 0;
+    m_lastStats.sharedSurfels = 0;
+    m_lastStats.radialDepthUpdates = 0;
+    m_lastStats.bleedRejectedContributions = 0;
+    m_lastStats.guidingUpdates = 0;
+    m_lastStats.rayBudgetUtilizationPercent = 0.0f;
+    m_lastStats.tileSelectTimeMs = 0.0f;
+    m_lastStats.rayRequestTimeMs = 0.0f;
+    m_lastStats.rayAllocationTimeMs = 0.0f;
+    m_lastStats.rayTraceTimeMs = 0.0f;
+    m_lastStats.temporalAccumulationTimeMs = 0.0f;
+    m_lastStats.guidingTimeMs = 0.0f;
+    m_lastStats.sharingTimeMs = 0.0f;
+    m_lastStats.radialDepthTimeMs = 0.0f;
 
     auto stageBegin = Clock::now();
-    RunPersistentStateUpdate(ctx, *renderSystem, camera);
+    RunPersistentStateUpdate(ctx, *renderSystem, camera, budget);
     m_lastStats.lifecycleTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
-    stageBegin = Clock::now();
-    RebuildSpatialGrid(ctx.view);
-    m_lastStats.gridBuildTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+    if (m_gridRebuildCountdown == 0u) {
+        stageBegin = Clock::now();
+        RebuildSpatialGrid(cameraPos);
+        m_lastStats.gridBuildTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+        m_gridRebuildCountdown = m_lastStats.gridRebuildInterval > 0u ? (m_lastStats.gridRebuildInterval - 1u) : 0u;
+    } else {
+        m_lastStats.gridBuildTimeMs = 0.0f;
+        --m_gridRebuildCountdown;
+    }
+    m_lastStats.gridRebuildCountdown = m_gridRebuildCountdown;
 
     stageBegin = Clock::now();
-    RunRecycleDecision(ctx);
+    RunRecycleDecision(ctx, budget);
     m_lastStats.recycleTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
-    RunPersistentTileCoverage(ctx);
+    RunPersistentTileCoverage(ctx, budget, cameraMotion);
 
     stageBegin = Clock::now();
-    RunCoverageGapFill(ctx, *renderSystem, camera, invViewProj, invView);
+    RunCoverageGapFill(ctx, *renderSystem, camera, invViewProj, invView, budget);
     m_lastStats.spawnTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
     stageBegin = Clock::now();
-    RunIrradianceIntegration(ctx, dirLight);
+    RunIrradianceIntegration(ctx, dirLight, budget);
     m_lastStats.integrationTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
+    ResetIrradianceFrameState(budget);
+
+    stageBegin = Clock::now();
+    RunAdaptiveRayRequest(ctx, budget);
+    m_lastStats.rayRequestTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RunGlobalRayAllocation(ctx, budget);
+    m_lastStats.rayAllocationTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RunBoundedRayTrace(ctx, dirLight, budget);
+    m_lastStats.rayTraceTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RunTemporalAccumulation(ctx, budget);
+    m_lastStats.temporalAccumulationTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RunGuidingUpdate(ctx, budget);
+    m_lastStats.guidingTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RunNeighbourSharing(ctx, budget);
+    m_lastStats.sharingTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    RunRadialDepthValidityUpdate(ctx, budget);
+    m_lastStats.radialDepthTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
     m_lastStats.totalTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - totalBegin).count();
+    m_lastStats.tileCursor = m_tileScanCursor;
+    m_lastStats.lifecycleCursor = m_lifecycleCursor;
+    m_lastStats.recycleCursor = m_recycleCursor;
+    m_lastStats.projectedCursor = m_projectCursor;
     PublishResources(ctx);
 
     glUseProgram(0);
@@ -900,6 +1499,21 @@ void SurfelGIPass::ReadBackStats()
     m_lastStats.validCoveragePercent = header.coverageMetricStats.x > 0u
         ? (100.0f * static_cast<float>(header.coverageMetricStats.y) / static_cast<float>(header.coverageMetricStats.x))
         : 0.0f;
+    m_lastStats.tilesScannedThisFrame = header.tileWorkStats.x;
+    m_lastStats.tilesSkippedByConfidence = header.tileWorkStats.y;
+    m_lastStats.undercoveredTilesQueued = header.tileWorkStats.z;
+    m_lastStats.spawnCandidatesEvaluated = header.tileWorkStats.w;
+    m_lastStats.projectedSurfelsProcessed = header.budgetStats.x;
+    m_lastStats.lifecycleSurfelsProcessed = header.budgetStats.y;
+    m_lastStats.recycleSurfelsProcessed = header.budgetStats.z;
+    m_lastStats.integratedSurfelsProcessed = header.budgetStats.w;
+    m_lastStats.tileCursor = m_tileScanCursor;
+    m_lastStats.lifecycleCursor = m_lifecycleCursor;
+    m_lastStats.recycleCursor = m_recycleCursor;
+    m_lastStats.projectedCursor = m_projectCursor;
+    m_lastStats.queueOverflowCount = header.queueStats.x;
+    m_lastStats.gridRebuildInterval = std::max(header.queueStats.z, 1u);
+    m_lastStats.gridRebuildCountdown = header.queueStats.w;
     m_lastStats.tileCountX = header.tiling.x;
     m_lastStats.tileCountY = header.tiling.y;
     m_lastStats.gridCellCount = header.tiling.w;
@@ -909,6 +1523,27 @@ void SurfelGIPass::ReadBackStats()
         m_needsPoolInit = true;
         m_lastStats.liveCount = 0;
         m_lastStats.freeCount = kMaxSurfels;
+    }
+
+    if (m_irradianceHeaderSSBO) {
+        GpuIrradianceHeader irradianceHeader{};
+        glBindBuffer(GL_COPY_READ_BUFFER, m_irradianceHeaderSSBO);
+        glGetBufferSubData(GL_COPY_READ_BUFFER, 0, sizeof(GpuIrradianceHeader), &irradianceHeader);
+        glBindBuffer(GL_COPY_READ_BUFFER, 0);
+
+        m_lastStats.requestedRaysThisFrame = irradianceHeader.rayStats.x;
+        m_lastStats.allocatedRaysThisFrame = irradianceHeader.rayStats.y;
+        m_lastStats.rayEligibleSurfels = irradianceHeader.rayStats.z;
+        m_lastStats.rayActiveSurfels = irradianceHeader.rayStats.w;
+        m_lastStats.rayEvaluatedSurfels = irradianceHeader.passStats.x;
+        m_lastStats.sharedSurfels = irradianceHeader.passStats.y;
+        m_lastStats.radialDepthUpdates = irradianceHeader.passStats.z;
+        m_lastStats.bleedRejectedContributions = irradianceHeader.passStats.w;
+        m_lastStats.guidingUpdates = irradianceHeader.debugStats.z;
+        const uint32_t rayBudgetCap = std::max(irradianceHeader.config.x, 1u);
+        m_lastStats.rayBudgetUtilizationPercent = irradianceHeader.config.x > 0u
+            ? (100.0f * static_cast<float>(m_lastStats.allocatedRaysThisFrame) / static_cast<float>(rayBudgetCap))
+            : 0.0f;
     }
 
     PushStatsHistory();

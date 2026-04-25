@@ -25,6 +25,8 @@ uniform mat4 uProjection;
 uniform mat4 uInvViewProj;
 uniform vec3 uDirectionalLightDir;
 uniform vec3 uDirectionalLightColor;
+uniform int uSurfelStart;
+uniform int uSurfelCount;
 
 vec3 ReconstructWorldPositionAtPixel(ivec2 pixel, float depth)
 {
@@ -36,15 +38,20 @@ vec3 ReconstructWorldPositionAtPixel(ivec2 pixel, float depth)
 
 void main()
 {
-    uint id = gl_GlobalInvocationID.x;
-    if (id >= header.counts.x) {
+    uint localIndex = gl_GlobalInvocationID.x;
+    uint surfelCount = uint(max(uSurfelCount, 0));
+    if (localIndex >= surfelCount || header.counts.x == 0u) {
         return;
     }
+
+    uint id = (uint(max(uSurfelStart, 0)) + localIndex) % header.counts.x;
 
     SurfelRecord s = surfels[id];
     if (!IsSurfelValid(s)) {
         return;
     }
+
+    atomicAdd(header.budgetStats.w, 1u);
 
     vec4 viewPos = uView * vec4(s.worldPositionRadius.xyz, 1.0);
     vec4 clip = uProjection * viewPos;
@@ -88,21 +95,23 @@ void main()
     vec3 visibleSurfaceIrradiance = max(emissive + albedoAO.rgb * (directIrradiance + vec3(0.025)) * albedoAO.a, vec3(0.0));
 
     float historySamples = max(s.irradianceHistory.w, 0.0);
-    float alpha = historySamples < 1.0 ? 1.0 : clamp(1.0 / min(historySamples + 1.0, 32.0), 0.035, 0.20);
     vec3 previous = s.irradianceHistory.rgb;
-    vec3 integrated = mix(previous, visibleSurfaceIrradiance, alpha);
-    float delta = length(integrated - previous);
-    float luma = LumaSurfel(integrated);
+    float luma = LumaSurfel(visibleSurfaceIrradiance);
 
     float shortSamples = min(s.shortTermStats.w + 1.0, 64.0);
     float shortAlpha = shortSamples <= 1.0 ? 1.0 : 0.18;
+    float shortResidual = luma - s.shortTermStats.x;
     float shortMean = mix(s.shortTermStats.x, luma, shortAlpha);
-    float shortDeviation = mix(s.shortTermStats.y, abs(luma - shortMean), shortAlpha);
+    float shortVariance = mix(max(s.shortTermStats.y, 0.0), shortResidual * shortResidual, shortAlpha);
 
     float longSamples = min(s.longTermStats.z + 1.0, 4096.0);
-    float longAlpha = 1.0 / max(longSamples, 1.0);
+    float longAlpha = clamp(1.0 / max(longSamples, 1.0), 0.002, 0.03);
+    float longResidual = luma - s.longTermStats.x;
     float longMean = mix(s.longTermStats.x, luma, longAlpha);
-    float longVariance = mix(s.longTermStats.y, (luma - longMean) * (luma - longMean), longAlpha);
+    float longVariance = mix(max(s.longTermStats.y, 0.0), longResidual * longResidual, longAlpha);
+    float instability = clamp(abs(shortMean - s.longTermStats.x) / max(sqrt(max(longVariance, 0.000001)), 0.01), 0.0, 1.0);
+    float alpha = historySamples < 1.0 ? 1.0 : mix(0.025, 0.22, smoothstep(0.35, 1.0, instability));
+    vec3 integrated = mix(previous, visibleSurfaceIrradiance, alpha);
     float depthSamples = min(s.depthMoments.z + 1.0, 512.0);
     float depthAlpha = depthSamples <= 1.0 ? 1.0 : clamp(1.0 / depthSamples, 0.02, 0.35);
     float depthMean = mix(s.depthMoments.x, signedLocalDepth, depthAlpha);
@@ -117,10 +126,16 @@ void main()
     }
 
     s.irradianceHistory = vec4(integrated, min(historySamples + 1.0, 65535.0));
-    s.shortTermStats = vec4(shortMean, shortDeviation, delta, shortSamples);
+    s.rawIrradiance = vec4(visibleSurfaceIrradiance, 1.0);
+    s.sharedIrradiance = vec4(visibleSurfaceIrradiance, 0.0);
+    s.shortTermStats = vec4(shortMean, shortVariance, instability, shortSamples);
     s.longTermStats = vec4(longMean, longVariance, longSamples, min(s.longTermStats.w + 1.0, 65535.0));
     s.depthMoments = vec4(depthMean, depthSecondMoment, depthSamples, max(s.worldPositionRadius.w * 0.35, 0.001));
-    s.guidingState.xyz = mix(s.guidingState.xyz, normal, 0.15);
+    vec3 incidentDir = normalize(-uDirectionalLightDir);
+    vec3 hemiDir = SurfelWorldToHemi(incidentDir, normal);
+    float guideAlpha = clamp(0.05 + LumaSurfel(visibleSurfaceIrradiance) * 0.02, 0.05, 0.20);
+    s.guidingState.xyz = mix(s.guidingState.xyz, hemiDir, guideAlpha);
+    s.solveState.w = float(frameIndex);
     s.frames.z = frameIndex;
     surfels[id] = s;
 }

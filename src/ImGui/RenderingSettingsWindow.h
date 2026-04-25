@@ -120,6 +120,18 @@ private:
 	float m_surfelGICoverageThreshold = 0.60f;
 	float m_surfelGINormalReject = 0.35f;
 	float m_surfelGIRecyclePressure = 0.65f;
+	float m_surfelGIFrameBudgetMs = 6.0f;
+	bool m_surfelGIAdaptiveBudget = true;
+	float m_surfelGIBudgetScale = 1.0f;
+	int m_surfelGIMaxTilesScanned = 640;
+	int m_surfelGIMaxSpawnCandidates = 256;
+	int m_surfelGIMaxSpawns = 64;
+	int m_surfelGIMaxRecycleDecisions = 2048;
+	int m_surfelGIMaxProjectedSurfels = 12288;
+	int m_surfelGIMaxLifecycleUpdates = 16384;
+	int m_surfelGIMaxIntegrationUpdates = 8192;
+	int m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	int m_surfelGIGridRebuildInterval = 1;
 	int m_surfelGIDebugMode = 0;
 
 	// Screen-space contact shadow settings

@@ -21,7 +21,12 @@ layout(binding = 23, std430) buffer RecycleStackBuffer {
 };
 
 layout(binding = 24, std430) buffer TileCoverageBuffer {
-    uvec4 tileCoverage[];
+    SurfelTileMeta tileCoverage[];
+};
+
+layout(binding = 27, std430) buffer TileQueueBuffer {
+    uvec4 queueHeader[4];
+    uint tileQueue[];
 };
 
 layout(binding = 25, std430) buffer GridHeaderBuffer {
@@ -50,6 +55,16 @@ void main()
         header.contributionStats = uvec4(0u);
         header.recycleStats = uvec4(0u);
         header.coverageMetricStats = uvec4(0u);
+        header.tileWorkStats = uvec4(0u);
+        header.budgetStats = uvec4(0u);
+        header.runtimeState = uvec4(0u);
+        header.queueStats = uvec4(0u);
+
+        uint totalTiles = uint(max(uTileCount.x, 1.0)) * uint(max(uTileCount.y, 1.0));
+        queueHeader[0] = uvec4(0u);
+        queueHeader[1] = uvec4(0u);
+        queueHeader[2] = uvec4(totalTiles, totalTiles, totalTiles, 1u);
+        queueHeader[3] = uvec4(0u);
     }
 
     if (id < maxSurfels) {
@@ -67,13 +82,19 @@ void main()
         surfels[id].recycleData = vec4(0.0);
         surfels[id].depthMoments = vec4(0.0);
         surfels[id].guidingState = vec4(0.0);
+        surfels[id].rawIrradiance = vec4(0.0);
+        surfels[id].sharedIrradiance = vec4(0.0);
+        surfels[id].solveState = vec4(0.0);
         freeStack[id] = maxSurfels - 1u - id;
         recycleStack[id] = 0u;
     }
 
     uint tileCount = uint(max(uTileCount.x, 1.0)) * uint(max(uTileCount.y, 1.0));
     if (id < tileCount) {
-        tileCoverage[id] = uvec4(0u);
+        tileCoverage[id].coverage = uvec4(0u);
+        tileCoverage[id].geom = uvec4(0u);
+        tileCoverage[id].state = uvec4(0u);
+        tileCoverage[id].stats = uvec4(0u);
     }
 
     if (id < uint(max(uGridCellCount, 1))) {

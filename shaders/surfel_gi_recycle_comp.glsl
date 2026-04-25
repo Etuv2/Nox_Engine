@@ -23,6 +23,9 @@ uniform int uFrameIndex;
 uniform float uFreePoolReserveFraction;
 uniform float uRecyclePressure;
 uniform float uCoverageDemandPressure;
+uniform int uSurfelStart;
+uniform int uSurfelCount;
+uniform int uMaxRecycleDecisions;
 
 float EstimateCurrentGridCoverage(uint selfID, SurfelRecord self)
 {
@@ -113,8 +116,15 @@ void RecyclePersistentSurfel(uint id, uint frameIndex, uint recycleReason)
 
 void main()
 {
-    uint id = gl_GlobalInvocationID.x;
-    if (id >= header.counts.x) {
+    uint localIndex = gl_GlobalInvocationID.x;
+    uint surfelCount = uint(max(uSurfelCount, 0));
+    if (localIndex >= surfelCount || header.counts.x == 0u) {
+        return;
+    }
+
+    uint id = (uint(max(uSurfelStart, 0)) + localIndex) % header.counts.x;
+    uint processedIndex = atomicAdd(header.budgetStats.z, 1u);
+    if (processedIndex >= uint(max(uMaxRecycleDecisions, 0))) {
         return;
     }
 
@@ -204,7 +214,7 @@ void main()
         redundantEnough ||
         oversubScore > mix(0.46, 0.18, stallPressure) ||
         (!protectedByRecentContribution && framesSinceVisible > mix(18.0, 2.0, stallPressure));
-    float stallRecycleHash = Hash01(HashUInt(id ^ (frameIndex * 1103515245u) ^ 0x9e3779b9u));
+    float stallRecycleHash = SpatioTemporalBlueNoise01(id ^ 0x51633e2du, frameIndex);
     float emergencyRefillProbability = emergencyReserveRefill
         ? mix(0.035, 0.24, stallPressure) * (farFromCamera ? 1.0 : 0.45)
         : 0.0;
@@ -240,7 +250,7 @@ void main()
     surfels[id].grid.w = SURFEL_STATE_RECYCLABLE;
     surfels[id].recycleData.y = float(recycleReason);
 
-    float recycleRand = Hash01(HashUInt(id ^ (frameIndex * 747796405u)));
+    float recycleRand = SpatioTemporalBlueNoise01(id, frameIndex);
     float demandRecycleFloor = demandPressure * (
         (demandReclaimOldFarCoverage ? 0.58 : 0.0) +
         (redundantEnough ? 0.46 : 0.0) +

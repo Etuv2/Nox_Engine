@@ -35,6 +35,8 @@ uniform float uTargetRadiusPixels;
 uniform float uCoverageThreshold;
 uniform float uRecyclePressure;
 uniform float uFreePoolReserveFraction;
+uniform int uSurfelStart;
+uniform int uSurfelCount;
 
 float EstimateLocalCoverage(uint selfID, SurfelRecord self)
 {
@@ -77,10 +79,13 @@ float EstimateLocalCoverage(uint selfID, SurfelRecord self)
 
 void main()
 {
-    uint id = gl_GlobalInvocationID.x;
-    if (id >= header.counts.x) {
+    uint localIndex = gl_GlobalInvocationID.x;
+    uint surfelCount = uint(max(uSurfelCount, 0));
+    if (localIndex >= surfelCount || header.counts.x == 0u) {
         return;
     }
+
+    uint id = (uint(max(uSurfelStart, 0)) + localIndex) % header.counts.x;
 
     SurfelRecord s = surfels[id];
     if (!IsSurfelValid(s)) {
@@ -217,6 +222,8 @@ void main()
     if (recycleScore > 0.05) {
         atomicAdd(header.recycleStats.x, 1u);
     }
+
+    atomicAdd(header.budgetStats.y, 1u);
 
     surfels[id] = s;
 }

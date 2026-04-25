@@ -92,6 +92,18 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGICoverageThreshold = 0.60f;
 	m_surfelGINormalReject = 0.35f;
 	m_surfelGIRecyclePressure = 0.65f;
+	m_surfelGIFrameBudgetMs = 6.0f;
+	m_surfelGIAdaptiveBudget = true;
+	m_surfelGIBudgetScale = 1.0f;
+	m_surfelGIMaxTilesScanned = 640;
+	m_surfelGIMaxSpawnCandidates = 256;
+	m_surfelGIMaxSpawns = 64;
+	m_surfelGIMaxRecycleDecisions = 2048;
+	m_surfelGIMaxProjectedSurfels = 12288;
+	m_surfelGIMaxLifecycleUpdates = 16384;
+	m_surfelGIMaxIntegrationUpdates = 8192;
+	m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	m_surfelGIGridRebuildInterval = 1;
 	m_surfelGIDebugMode = 0;
 
 	// Screen-space contact shadows
@@ -229,6 +241,18 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_surfelGICoverageThreshold = ctx.surfelGICoverageThreshold;
 	m_surfelGINormalReject = ctx.surfelGINormalReject;
 	m_surfelGIRecyclePressure = ctx.surfelGIRecyclePressure;
+	m_surfelGIFrameBudgetMs = ctx.surfelGIFrameBudgetMs;
+	m_surfelGIAdaptiveBudget = ctx.surfelGIAdaptiveBudget;
+	m_surfelGIBudgetScale = ctx.surfelGIBudgetScale;
+	m_surfelGIMaxTilesScanned = ctx.surfelGIMaxTilesScanned;
+	m_surfelGIMaxSpawnCandidates = ctx.surfelGIMaxSpawnCandidates;
+	m_surfelGIMaxSpawns = ctx.surfelGIMaxSpawns;
+	m_surfelGIMaxRecycleDecisions = ctx.surfelGIMaxRecycleDecisions;
+	m_surfelGIMaxProjectedSurfels = ctx.surfelGIMaxProjectedSurfels;
+	m_surfelGIMaxLifecycleUpdates = ctx.surfelGIMaxLifecycleUpdates;
+	m_surfelGIMaxIntegrationUpdates = ctx.surfelGIMaxIntegrationUpdates;
+	m_surfelGIMaxCoarseCoverageSurfels = ctx.surfelGIMaxCoarseCoverageSurfels;
+	m_surfelGIGridRebuildInterval = ctx.surfelGIGridRebuildInterval;
 	m_surfelGIDebugMode = ctx.surfelGIDebugMode;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
@@ -385,6 +409,18 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.surfelGICoverageThreshold = m_surfelGICoverageThreshold;
 	ctx.surfelGINormalReject = m_surfelGINormalReject;
 	ctx.surfelGIRecyclePressure = m_surfelGIRecyclePressure;
+	ctx.surfelGIFrameBudgetMs = m_surfelGIFrameBudgetMs;
+	ctx.surfelGIAdaptiveBudget = m_surfelGIAdaptiveBudget;
+	ctx.surfelGIBudgetScale = m_surfelGIBudgetScale;
+	ctx.surfelGIMaxTilesScanned = m_surfelGIMaxTilesScanned;
+	ctx.surfelGIMaxSpawnCandidates = m_surfelGIMaxSpawnCandidates;
+	ctx.surfelGIMaxSpawns = m_surfelGIMaxSpawns;
+	ctx.surfelGIMaxRecycleDecisions = m_surfelGIMaxRecycleDecisions;
+	ctx.surfelGIMaxProjectedSurfels = m_surfelGIMaxProjectedSurfels;
+	ctx.surfelGIMaxLifecycleUpdates = m_surfelGIMaxLifecycleUpdates;
+	ctx.surfelGIMaxIntegrationUpdates = m_surfelGIMaxIntegrationUpdates;
+	ctx.surfelGIMaxCoarseCoverageSurfels = m_surfelGIMaxCoarseCoverageSurfels;
+	ctx.surfelGIGridRebuildInterval = m_surfelGIGridRebuildInterval;
 	ctx.surfelGIDebugMode = m_surfelGIDebugMode;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
@@ -863,6 +899,29 @@ void RenderingSettingsWindow::Render() {
 						stats.deficitTimeMs,
 						stats.spawnTimeMs,
 						stats.integrationTimeMs);
+					ImGui::Text("Budget: target %.2fms  scale %.2f  tile select %.2fms",
+						stats.targetBudgetMs,
+						stats.budgetScale,
+						stats.tileSelectTimeMs);
+					ImGui::Text("Tiles: scanned %u  confidence-skip %u  queued %u  candidates %u  queue overflow %u",
+						stats.tilesScannedThisFrame,
+						stats.tilesSkippedByConfidence,
+						stats.undercoveredTilesQueued,
+						stats.spawnCandidatesEvaluated,
+						stats.queueOverflowCount);
+					ImGui::Text("Work: lifecycle %u  recycle %u  projected %u  integrate %u",
+						stats.lifecycleSurfelsProcessed,
+						stats.recycleSurfelsProcessed,
+						stats.projectedSurfelsProcessed,
+						stats.integratedSurfelsProcessed);
+					ImGui::Text("Cursors: tile %u  lifecycle %u  recycle %u  projected %u",
+						stats.tileCursor,
+						stats.lifecycleCursor,
+						stats.recycleCursor,
+						stats.projectedCursor);
+					ImGui::Text("Grid rebuild: interval %u frames  countdown %u",
+						stats.gridRebuildInterval,
+						stats.gridRebuildCountdown);
 					const auto& liveHistory = m_modularRenderer->GetSurfelGIPass()->GetLiveHistory();
 					const auto& freeHistory = m_modularRenderer->GetSurfelGIPass()->GetFreeHistory();
 					const auto& spawnHistory = m_modularRenderer->GetSurfelGIPass()->GetSpawnHistory();
@@ -885,6 +944,18 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderFloat("Coverage Threshold", &m_surfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_surfelGINormalReject, 0.02f, 0.75f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Recycle Pressure", &m_surfelGIRecyclePressure, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Frame Budget (ms)", &m_surfelGIFrameBudgetMs, 2.0f, 12.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Adaptive Budget", &m_surfelGIAdaptiveBudget)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Budget Scale", &m_surfelGIBudgetScale, 0.25f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Tiles Scanned", &m_surfelGIMaxTilesScanned, 32, 4096)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Spawn Candidates", &m_surfelGIMaxSpawnCandidates, 8, 1024)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Spawns", &m_surfelGIMaxSpawns, 1, 512)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Recycle Decisions", &m_surfelGIMaxRecycleDecisions, 64, 8192)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Projected Surfels", &m_surfelGIMaxProjectedSurfels, 512, 65536)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Lifecycle Updates", &m_surfelGIMaxLifecycleUpdates, 512, 65536)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Integrate Updates", &m_surfelGIMaxIntegrationUpdates, 256, 65536)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Coarse Coverage Surfels", &m_surfelGIMaxCoarseCoverageSurfels, 512, 65536)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Grid Rebuild Interval", &m_surfelGIGridRebuildInterval, 1, 8)) { SyncToRenderer(); }
 				const char* surfelDebugModes[] = {
 					"Off",
 					"Discs",
@@ -1689,6 +1760,18 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGICoverageThreshold = 0.60f;
 	m_surfelGINormalReject = 0.35f;
 	m_surfelGIRecyclePressure = 0.65f;
+	m_surfelGIFrameBudgetMs = 6.0f;
+	m_surfelGIAdaptiveBudget = true;
+	m_surfelGIBudgetScale = 1.0f;
+	m_surfelGIMaxTilesScanned = 640;
+	m_surfelGIMaxSpawnCandidates = 256;
+	m_surfelGIMaxSpawns = 64;
+	m_surfelGIMaxRecycleDecisions = 2048;
+	m_surfelGIMaxProjectedSurfels = 12288;
+	m_surfelGIMaxLifecycleUpdates = 16384;
+	m_surfelGIMaxIntegrationUpdates = 8192;
+	m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	m_surfelGIGridRebuildInterval = 1;
 	m_surfelGIDebugMode = 0;
 
 	// Contact shadows - match RenderContext defaults

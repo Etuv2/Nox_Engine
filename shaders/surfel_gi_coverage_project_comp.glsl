@@ -37,8 +37,8 @@ uniform mat4 uInvViewProj;
 uniform float uNormalReject;
 uniform float uDepthThicknessScale;
 uniform int uMaxTransformID;
-uniform int uProjectionFrameModulo;
-uniform int uProjectionFramePhase;
+uniform int uSurfelStart;
+uniform int uSurfelCount;
 
 const float kMaxExactCoverageSupportPixels = 48.0;
 
@@ -60,20 +60,20 @@ float SurfelExactCoverageSupportWeight(vec2 samplePx, vec2 centerPx, vec2 axisTa
 
 void main()
 {
-    uint surfelID = gl_GlobalInvocationID.x;
-    if (surfelID >= header.counts.x) {
+    uint localIndex = gl_GlobalInvocationID.x;
+    uint surfelCount = uint(max(uSurfelCount, 0));
+    if (localIndex >= surfelCount || header.counts.x == 0u) {
         return;
     }
-    uint projectionModulo = uint(max(uProjectionFrameModulo, 1));
-    uint projectionPhase = uint(max(uProjectionFramePhase, 0)) % projectionModulo;
-    if ((surfelID % projectionModulo) != projectionPhase) {
-        return;
-    }
+
+    uint surfelID = (uint(max(uSurfelStart, 0)) + localIndex) % header.counts.x;
 
     SurfelRecord s = surfels[surfelID];
     if (!IsSurfelValid(s)) {
         return;
     }
+
+    atomicAdd(header.budgetStats.x, 1u);
 
     uint surfelTransformID = s.ids.x;
     if (surfelTransformID == 0u || surfelTransformID >= uint(max(uMaxTransformID, 1))) {

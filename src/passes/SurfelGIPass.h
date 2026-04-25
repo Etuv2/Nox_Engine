@@ -12,7 +12,7 @@ class RenderSystem;
 
 class SurfelGIPass : public RenderPass {
 public:
-    static constexpr uint32_t kMaxSurfels = 65536u; // Must be <= 65536 to fit live count in 16 bits for atomic counters and avoid overflow in short-term spawn/recycle stats.
+    static constexpr uint32_t kMaxSurfels = 131072u;
     static constexpr uint32_t kStatsHistoryLength = 180u;
 
     struct Stats {
@@ -40,14 +40,49 @@ public:
         uint32_t tileCountX = 0;
         uint32_t tileCountY = 0;
         uint32_t gridCellCount = 0;
+        uint32_t tilesScannedThisFrame = 0;
+        uint32_t tilesSkippedByConfidence = 0;
+        uint32_t undercoveredTilesQueued = 0;
+        uint32_t spawnCandidatesEvaluated = 0;
+        uint32_t queueOverflowCount = 0;
+        uint32_t projectedSurfelsProcessed = 0;
+        uint32_t lifecycleSurfelsProcessed = 0;
+        uint32_t recycleSurfelsProcessed = 0;
+        uint32_t integratedSurfelsProcessed = 0;
+        uint32_t requestedRaysThisFrame = 0;
+        uint32_t allocatedRaysThisFrame = 0;
+        uint32_t rayEligibleSurfels = 0;
+        uint32_t rayActiveSurfels = 0;
+        uint32_t rayEvaluatedSurfels = 0;
+        uint32_t sharedSurfels = 0;
+        uint32_t radialDepthUpdates = 0;
+        uint32_t bleedRejectedContributions = 0;
+        uint32_t guidingUpdates = 0;
+        float rayBudgetUtilizationPercent = 0.0f;
+        uint32_t tileCursor = 0;
+        uint32_t lifecycleCursor = 0;
+        uint32_t recycleCursor = 0;
+        uint32_t projectedCursor = 0;
+        uint32_t gridRebuildInterval = 1;
+        uint32_t gridRebuildCountdown = 0;
+        float budgetScale = 1.0f;
+        float targetBudgetMs = 6.0f;
         float lifecycleTimeMs = 0.0f;
         float recycleTimeMs = 0.0f;
         float gridBuildTimeMs = 0.0f;
         float coarseCoverageTimeMs = 0.0f;
         float exactCoverageTimeMs = 0.0f;
         float deficitTimeMs = 0.0f;
+        float tileSelectTimeMs = 0.0f;
         float spawnTimeMs = 0.0f;
         float integrationTimeMs = 0.0f;
+        float rayRequestTimeMs = 0.0f;
+        float rayAllocationTimeMs = 0.0f;
+        float rayTraceTimeMs = 0.0f;
+        float temporalAccumulationTimeMs = 0.0f;
+        float guidingTimeMs = 0.0f;
+        float sharingTimeMs = 0.0f;
+        float radialDepthTimeMs = 0.0f;
         float totalTimeMs = 0.0f;
     };
 
@@ -93,8 +128,19 @@ private:
         glm::vec4 recycleData{ 0.0f };
         glm::vec4 depthMoments{ 0.0f };
         glm::vec4 guidingState{ 0.0f };
+        glm::vec4 rawIrradiance{ 0.0f };
+        glm::vec4 sharedIrradiance{ 0.0f };
+        glm::vec4 solveState{ 0.0f };
     };
-    static_assert(sizeof(GpuSurfelRecord) == 224, "GpuSurfelRecord must match shaders/includes/surfel_gi_common.glsl SurfelRecord std430 layout.");
+    static_assert(sizeof(GpuSurfelRecord) == 272, "GpuSurfelRecord must match shaders/includes/surfel_gi_common.glsl SurfelRecord std430 layout.");
+
+    struct GpuIrradianceHeader {
+        glm::uvec4 rayStats{ 0u };
+        glm::uvec4 passStats{ 0u };
+        glm::uvec4 debugStats{ 0u };
+        glm::uvec4 config{ 0u };
+    };
+    static_assert(sizeof(GpuIrradianceHeader) == 64, "GpuIrradianceHeader must match shaders/includes/surfel_gi_common.glsl SurfelIrradianceHeader std430 layout.");
 
     struct GpuPoolHeader {
         glm::uvec4 counts{ 0u };      // x=maxSurfels,y=live,z=free,w=frame
@@ -106,33 +152,82 @@ private:
         glm::uvec4 contributionStats{ 0u };
         glm::uvec4 recycleStats{ 0u };
         glm::uvec4 coverageMetricStats{ 0u };
+        glm::uvec4 tileWorkStats{ 0u };
+        glm::uvec4 budgetStats{ 0u };
+        glm::uvec4 runtimeState{ 0u };
+        glm::uvec4 queueStats{ 0u };
     };
-    static_assert(sizeof(GpuPoolHeader) == 144, "GpuPoolHeader must match shaders/includes/surfel_gi_common.glsl SurfelPoolHeader std430 layout.");
+    static_assert(sizeof(GpuPoolHeader) == 208, "GpuPoolHeader must match shaders/includes/surfel_gi_common.glsl SurfelPoolHeader std430 layout.");
+
+    struct GpuTileMeta {
+        glm::uvec4 coverage{ 0u };
+        glm::uvec4 geom{ 0u };
+        glm::uvec4 state{ 0u };
+        glm::uvec4 stats{ 0u };
+    };
+    static_assert(sizeof(GpuTileMeta) == 64, "GpuTileMeta must match shaders/includes/surfel_gi_common.glsl SurfelTileMeta std430 layout.");
+
+    struct GpuTileQueueHeader {
+        glm::uvec4 bucketCounts{ 0u };
+        glm::uvec4 bucketReadIndices{ 0u };
+        glm::uvec4 config{ 0u }; // x=maxTilesPerBucket,y=totalTiles,z=maxSpawnCandidates,w=maxSpawns
+        glm::uvec4 stats{ 0u };  // x=queue overflow, y=spawn budget rejects, z/w reserved
+    };
+
+    struct RuntimeBudget {
+        uint32_t maxTilesToScan = 0;
+        uint32_t maxSpawnCandidates = 0;
+        uint32_t maxSurfelsToSpawn = 0;
+        uint32_t maxRecycleDecisions = 0;
+        uint32_t maxProjectedSurfels = 0;
+        uint32_t maxLifecycleUpdates = 0;
+        uint32_t maxIntegrationUpdates = 0;
+        uint32_t maxCoarseCoverageSurfels = 0;
+        uint32_t maxIrradianceRays = 0;
+        uint32_t maxRayTracedSurfels = 0;
+        uint32_t gridRebuildInterval = 1;
+    };
 
     void EnsureResources(RenderContext& ctx);
     void ReleaseBuffers();
     void InitializePool();
     void ResetFrameStats(uint32_t frameIndex);
-    void RunPersistentStateUpdate(RenderContext& ctx, RenderSystem& renderSystem, const std::shared_ptr<Camera>& camera);
-    void RunRecycleDecision(RenderContext& ctx);
-    void RebuildSpatialGrid(const glm::mat4& view);
-    void RunPersistentTileCoverage(RenderContext& ctx);
-    void RunProjectedCoverage(RenderContext& ctx, const glm::mat4& invViewProj, uint32_t maxTransformID);
-    void RunCoverageDeficit(RenderContext& ctx);
-    void RunCoverageGapFill(RenderContext& ctx, RenderSystem& renderSystem, const std::shared_ptr<Camera>& camera, const glm::mat4& invViewProj, const glm::mat4& invView);
-    void RunIrradianceIntegration(RenderContext& ctx, const std::shared_ptr<DirectionalLight>& dirLight);
+    RuntimeBudget ComputeRuntimeBudget(const RenderContext& ctx) const;
+    void UpdateDynamicBudgetScale(const RenderContext& ctx);
+    void RunPersistentStateUpdate(RenderContext& ctx, RenderSystem& renderSystem, const std::shared_ptr<Camera>& camera, const RuntimeBudget& budget);
+    void RunRecycleDecision(RenderContext& ctx, const RuntimeBudget& budget);
+    void RebuildSpatialGrid(const glm::vec3& cameraPos);
+    void RunPersistentTileCoverage(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion);
+    void RunProjectedCoverage(RenderContext& ctx, const glm::mat4& invViewProj, uint32_t maxTransformID, const RuntimeBudget& budget);
+    void RunCoverageDeficit(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion);
+    void RunTileSelection(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion);
+    void RunCoverageGapFill(RenderContext& ctx, RenderSystem& renderSystem, const std::shared_ptr<Camera>& camera, const glm::mat4& invViewProj, const glm::mat4& invView, const RuntimeBudget& budget);
+    void RunIrradianceIntegration(RenderContext& ctx, const std::shared_ptr<DirectionalLight>& dirLight, const RuntimeBudget& budget);
+    void ResetIrradianceFrameState(const RuntimeBudget& budget);
+    void RunAdaptiveRayRequest(RenderContext& ctx, const RuntimeBudget& budget);
+    void RunGlobalRayAllocation(RenderContext& ctx, const RuntimeBudget& budget);
+    void RunBoundedRayTrace(RenderContext& ctx, const std::shared_ptr<DirectionalLight>& dirLight, const RuntimeBudget& budget);
+    void RunTemporalAccumulation(RenderContext& ctx, const RuntimeBudget& budget);
+    void RunGuidingUpdate(RenderContext& ctx, const RuntimeBudget& budget);
+    void RunNeighbourSharing(RenderContext& ctx, const RuntimeBudget& budget);
+    void RunRadialDepthValidityUpdate(RenderContext& ctx, const RuntimeBudget& budget);
     void PublishResources(RenderContext& ctx) const;
     void ReadBackStats();
     void PushStatsHistory();
     void BindCommonBuffers(GLuint transformBuffer) const;
+    void ResetTileQueue(uint32_t maxTilesPerBucket, const RuntimeBudget& budget);
 
     GLuint m_surfelSSBO = 0;
     GLuint m_headerSSBO = 0;
     GLuint m_freeStackSSBO = 0;
     GLuint m_recycleStackSSBO = 0;
     GLuint m_tileCoverageSSBO = 0;
+    GLuint m_tileQueueSSBO = 0;
     GLuint m_gridHeaderSSBO = 0;
     GLuint m_gridEntrySSBO = 0;
+    GLuint m_irradianceHeaderSSBO = 0;
+    GLuint m_guidingBinsSSBO = 0;
+    GLuint m_radialDepthBinsSSBO = 0;
     GLuint m_rawProjectedSupportTex = 0;
     GLuint m_projectedCoverageTex = 0;
     GLuint m_depthRejectTex = 0;
@@ -150,12 +245,20 @@ private:
     std::unique_ptr<ComputeShader> m_recycleShader;
     std::unique_ptr<ComputeShader> m_tileClearShader;
     std::unique_ptr<ComputeShader> m_tileCoverageShader;
+    std::unique_ptr<ComputeShader> m_tileSelectShader;
     std::unique_ptr<ComputeShader> m_projectCoverageShader;
     std::unique_ptr<ComputeShader> m_deficitShader;
     std::unique_ptr<ComputeShader> m_gridClearShader;
     std::unique_ptr<ComputeShader> m_gridBuildShader;
     std::unique_ptr<ComputeShader> m_spawnShader;
     std::unique_ptr<ComputeShader> m_integrateShader;
+    std::unique_ptr<ComputeShader> m_rayRequestShader;
+    std::unique_ptr<ComputeShader> m_rayAllocateShader;
+    std::unique_ptr<ComputeShader> m_rayTraceShader;
+    std::unique_ptr<ComputeShader> m_temporalAccumulateShader;
+    std::unique_ptr<ComputeShader> m_guidingUpdateShader;
+    std::unique_ptr<ComputeShader> m_neighbourShareShader;
+    std::unique_ptr<ComputeShader> m_radialDepthUpdateShader;
     GLuint m_debugProgram = 0;
     GLuint m_debugOverlayProgram = 0;
 
@@ -163,6 +266,19 @@ private:
     uint32_t m_allocatedTileCountY = 0;
     uint32_t m_allocatedGridCellCount = 0;
     uint32_t m_projectedCoverageMaxTransformID = 0;
+    uint32_t m_tileScanCursor = 0;
+    uint32_t m_lifecycleCursor = 0;
+    uint32_t m_recycleCursor = 0;
+    uint32_t m_projectCursor = 0;
+    uint32_t m_integrationCursor = 0;
+    uint32_t m_rayCursor = 0;
+    uint32_t m_sharingCursor = 0;
+    uint32_t m_coarseCoverageCursor = 0;
+    uint32_t m_gridRebuildCountdown = 0;
+    float m_dynamicBudgetScale = 1.0f;
+    glm::vec3 m_prevCameraPos{ 0.0f };
+    glm::vec3 m_prevCameraFront{ 0.0f, 0.0f, -1.0f };
+    bool m_hasPrevCameraPos = false;
     uint32_t m_frameIndex = 0;
     bool m_needsPoolInit = true;
 

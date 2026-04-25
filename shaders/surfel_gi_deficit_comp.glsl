@@ -17,6 +17,9 @@ uniform usampler2D uTransformIDTex;
 uniform vec2 uResolution;
 uniform float uCoverageThreshold;
 uniform float uCoverageHistoryHysteresis;
+uniform int uFrameIndex;
+uniform int uPixelUpdateModulo;
+uniform int uPixelUpdatePhase;
 
 float ResolveCoverageWithHistory(ivec2 pixel, float currentCoverage)
 {
@@ -33,6 +36,13 @@ void main()
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 resolution = ivec2(max(uResolution, vec2(1.0)));
     if (pixel.x >= resolution.x || pixel.y >= resolution.y) {
+        return;
+    }
+
+    uint updateModulo = uint(max(uPixelUpdateModulo, 1));
+    uint updatePhase = uint(max(uPixelUpdatePhase, 0)) % updateModulo;
+    uint pixelPhase = (uint(pixel.x) + uint(pixel.y) * 3u + uint(max(uFrameIndex, 0))) % updateModulo;
+    if (pixelPhase != updatePhase) {
         return;
     }
 

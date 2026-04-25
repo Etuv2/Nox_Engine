@@ -9,7 +9,7 @@ layout(binding = 21, std430) buffer HeaderBuffer {
 };
 
 layout(binding = 24, std430) buffer TileCoverageBuffer {
-    uvec4 tileCoverage[];
+    SurfelTileMeta tileCoverage[];
 };
 
 uniform int uTileCount;
@@ -22,6 +22,11 @@ void main()
         return;
     }
 
-    uvec4 previousTile = tileCoverage[id];
-    tileCoverage[id] = uvec4(0u, previousTile.y, previousTile.z, previousTile.w);
+    SurfelTileMeta tile = tileCoverage[id];
+    tile.coverage.x = 0u;
+    tile.geom.w = 0u;
+    tile.state.z &= ~(SURFEL_TILE_FLAG_HIGH_MOTION |
+        SURFEL_TILE_FLAG_NEWLY_EXPOSED |
+        SURFEL_TILE_FLAG_NEAR_CAMERA);
+    tileCoverage[id] = tile;
 }

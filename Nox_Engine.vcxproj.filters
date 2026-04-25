@@ -683,13 +683,34 @@
     <None Include="shaders\surfel_gi_integrate_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
+    <None Include="shaders\surfel_gi_guiding_update_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
     <None Include="shaders\surfel_gi_lifecycle_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi_neighbour_share_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi_radial_depth_update_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi_ray_allocate_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi_ray_request_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi_ray_trace_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
     <None Include="shaders\surfel_gi_recycle_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
     <None Include="shaders\surfel_gi_spawn_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi_temporal_accumulate_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
     <None Include="shaders\surfel_gi_tile_clear_comp.glsl">

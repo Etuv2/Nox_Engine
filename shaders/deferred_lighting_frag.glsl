@@ -704,8 +704,7 @@ vec3 EvaluatePersistentSurfelGI(vec3 worldPos, vec3 N, vec3 V, PrincipledSurface
 		return vec3(0.0);
 	}
 
-	vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
-	uint cell = GridCellIndexForViewPosition(viewSpacePos, surfelHeader);
+	uint cell = GridCellIndexForViewPosition(worldPos - viewPos, surfelHeader);
 
 	vec3 accumulatedIrradiance = vec3(0.0);
 	float accumulatedWeight = 0.0;
@@ -739,11 +738,21 @@ vec3 EvaluatePersistentSurfelGI(vec3 worldPos, vec3 N, vec3 V, PrincipledSurface
 		float historyWeight = clamp(s.irradianceHistory.w / 24.0, 0.15, 1.0);
 		float depthValidityWeight = SurfelDepthValidityWeight(s, worldPos, N);
 		float weight = tangentWeight * planeWeight * clamp(normalAlign, 0.0, 1.0) * historyWeight * depthValidityWeight;
+		float guideConfidence = clamp(length(s.guidingState.xyz), 0.0, 1.0);
+		if (guideConfidence > 0.001) {
+			vec3 guidedWorldDir = SurfelHemiToWorld(s.guidingState.xyz, surfelNormal);
+			vec3 receiverDir = normalize(worldPos - s.worldPositionRadius.xyz);
+			float guidedAlign = clamp(dot(guidedWorldDir, receiverDir), 0.0, 1.0);
+			weight *= mix(1.0, 0.55 + 0.45 * guidedAlign, guideConfidence);
+		}
 		if (weight <= 0.0001) {
 			continue;
 		}
 
-		accumulatedIrradiance += max(s.irradianceHistory.rgb, vec3(0.0)) * weight;
+		vec3 surfelIrradiance = s.sharedIrradiance.w > 0.0001
+			? mix(s.irradianceHistory.rgb, s.sharedIrradiance.rgb, clamp(s.sharedIrradiance.w, 0.0, 0.35))
+			: s.irradianceHistory.rgb;
+		accumulatedIrradiance += max(surfelIrradiance, vec3(0.0)) * weight;
 		accumulatedWeight += weight;
 	}
 

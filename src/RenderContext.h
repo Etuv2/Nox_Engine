@@ -145,13 +145,30 @@ struct RenderContext {
 	float surfelGICoverageThreshold = 0.60f;
 	float surfelGINormalReject = 0.35f;
 	float surfelGIRecyclePressure = 0.65f;
+	float surfelGIFrameBudgetMs = 6.0f;
+	bool surfelGIAdaptiveBudget = true;
+	float surfelGIBudgetScale = 1.0f;
+	int surfelGIMaxTilesScanned = 640;
+	int surfelGIMaxSpawnCandidates = 256;
+	int surfelGIMaxSpawns = 64;
+	int surfelGIMaxRecycleDecisions = 2048;
+	int surfelGIMaxProjectedSurfels = 12288;
+	int surfelGIMaxLifecycleUpdates = 16384;
+	int surfelGIMaxIntegrationUpdates = 8192;
+	int surfelGIMaxCoarseCoverageSurfels = 12288;
+	int surfelGIMaxIrradianceRays = 4096;
+	int surfelGIMaxRayTracedSurfels = 8192;
+	int surfelGIMaxRaysPerSurfel = 8;
+	int surfelGIGridRebuildInterval = 1;
 	// Surfel GI debug modes:
 	// 0=off, 1=discs, 2=normals, 3=projected radius, 4=coverage, 5=cell occupancy,
 	// 6=recent recycled/IDs, 7=transform follow, 8=lifecycle, 9=recycle pressure,
 	// 10=spawn/recycle reason, 11=last contributed, 12=distance, 13=persistence age,
 	// 14=last visible, 15=reused vs fresh, 16=irradiance, 17=depth moments,
 	// 18=raw projected support, 19=valid coverage, 20=screen-space deficit,
-	// 21=depth rejection, 22=normal rejection, 23=winner surfel ID.
+	// 21=depth rejection, 22=normal rejection, 23=winner surfel ID,
+	// 24=requested rays, 25=allocated rays, 26=raw irradiance, 27=shared irradiance,
+	// 28=history confidence, 29=guiding confidence.
 	// The overlay shader currently exposes: raw projected support, valid coverage,
 	// deficit, depth rejection, normal rejection, and winner surfel ID views.
 	int surfelGIDebugMode = 0;

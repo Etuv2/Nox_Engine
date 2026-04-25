@@ -22,6 +22,13 @@
 #define SURFEL_RECYCLE_STALE 3u
 #define SURFEL_RECYCLE_INVALID_TRANSFORM 4u
 
+#define SURFEL_TILE_FLAG_VISIBLE 1u
+#define SURFEL_TILE_FLAG_UNDERCOVERED 2u
+#define SURFEL_TILE_FLAG_HIGH_MOTION 4u
+#define SURFEL_TILE_FLAG_NEWLY_EXPOSED 8u
+#define SURFEL_TILE_FLAG_CONFIDENT_COVERED 16u
+#define SURFEL_TILE_FLAG_NEAR_CAMERA 32u
+
 struct SurfelRecord {
     vec4 worldPositionRadius; // xyz=world position, w=world radius
     vec4 localPositionAge;    // xyz=local position relative to transform, w=age in frames
@@ -37,6 +44,23 @@ struct SurfelRecord {
     vec4 recycleData;         // x=priority, y=recycle reason, z=redundancy, w=pool pressure
     vec4 depthMoments;        // x=mean signed local depth, y=second moment, z=sample count, w=support radius
     vec4 guidingState;        // xyz=guiding direction seed, w=attachment generation/dominant-bone token
+    vec4 rawIrradiance;       // rgb=latest bounded ray estimate before sharing, w=ray samples accumulated this frame
+    vec4 sharedIrradiance;    // rgb=post-neighbour sharing estimate, w=share confidence/weight
+    vec4 solveState;          // x=requested rays, y=allocated rays, z=solve state/priority, w=last irradiance integration frame
+};
+
+struct SurfelIrradianceHeader {
+    uvec4 rayStats;      // x=requested rays, y=allocated rays, z=eligible surfels, w=active surfels
+    uvec4 passStats;     // x=ray-evaluated surfels, y=shared surfels, z=depth updates, w=bleed rejections
+    uvec4 debugStats;    // x=bootstrap surfels, y=dormant surfels, z=guiding updates, w=reserved
+    uvec4 config;        // x=ray budget, y=max rays per surfel, z=surfel start, w=surfel count
+};
+
+struct SurfelTileMeta {
+    uvec4 coverage; // x=coverage sum Q10, y=min coverage Q10, z=candidate pixel packed (y<<16|x), w=last updated frame+1
+    uvec4 geom;     // x=min depth Q16, y=max depth Q16, z=normal variance Q16, w=priority Q16
+    uvec4 state;    // x=last covered frame+1, y=last spawn frame+1, z=flags, w=last queued frame+1
+    uvec4 stats;    // x=processed count, y=confidence skips, z=duplicate rejects, w=spawn rejects
 };
 
 struct SurfelPoolHeader {
@@ -49,6 +73,10 @@ struct SurfelPoolHeader {
     uvec4 contributionStats; // x=old coverage hits, y=new coverage hits, z=old integrated, w=new integrated
     uvec4 recycleStats;      // x=candidates, y=budget recycled, z=invalid-transform recycled, w=lifecycle violations
     uvec4 coverageMetricStats; // x=visible G-buffer pixels, y=valid covered pixels, z/w reserved
+    uvec4 tileWorkStats;     // x=tiles scanned, y=tiles skipped by confidence, z=undercovered queued, w=spawn candidates evaluated
+    uvec4 budgetStats;       // x=projected surfels processed, y=lifecycle surfels processed, z=recycle surfels processed, w=integrated surfels processed
+    uvec4 runtimeState;      // x=tile scan cursor, y=lifecycle cursor, z=recycle cursor, w=projected cursor
+    uvec4 queueStats;        // x=queue overflow, y=spawn budget rejected, z=grid rebuild interval, w=grid rebuild countdown
 };
 
 uint HashUInt(uint x)
@@ -64,6 +92,15 @@ uint HashUInt(uint x)
 float Hash01(uint x)
 {
     return float(HashUInt(x) & 0x00ffffffu) / 16777215.0;
+}
+
+float SpatioTemporalBlueNoise01(uint stableID, uint frameIndex)
+{
+    uint ranked = HashUInt(stableID ^ 0x9e3779b9u);
+    float spatialRank = float(ranked & 0x0000ffffu) / 65535.0;
+    float temporalRotation = fract(float(frameIndex & 1023u) * 0.61803398875);
+    float decorrelator = Hash01(ranked ^ (frameIndex * 747796405u)) * (1.0 / 65536.0);
+    return fract(spatialRank + temporalRotation + decorrelator);
 }
 
 bool IsSurfelValid(SurfelRecord s)
@@ -135,6 +172,56 @@ float ResolveTargetRadiusPixels(float requestedPixels, float tileSize, float cov
 float LumaSurfel(vec3 color)
 {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+void SurfelBuildBasis(vec3 normal, out vec3 tangent, out vec3 bitangent)
+{
+    vec3 n = normalize(normal);
+    vec3 up = abs(n.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    tangent = normalize(cross(up, n));
+    bitangent = cross(n, tangent);
+}
+
+vec3 SurfelWorldToHemi(vec3 dir, vec3 normal)
+{
+    vec3 tangent;
+    vec3 bitangent;
+    vec3 n = normalize(normal);
+    SurfelBuildBasis(n, tangent, bitangent);
+    return vec3(dot(dir, tangent), dot(dir, bitangent), max(dot(dir, n), 0.0));
+}
+
+vec3 SurfelHemiToWorld(vec3 hemi, vec3 normal)
+{
+    vec3 tangent;
+    vec3 bitangent;
+    vec3 n = normalize(normal);
+    SurfelBuildBasis(n, tangent, bitangent);
+    return normalize(tangent * hemi.x + bitangent * hemi.y + n * max(hemi.z, 0.0));
+}
+
+vec3 SurfelCosineHemisphereSample(float u1, float u2)
+{
+    float r = sqrt(max(u1, 0.0));
+    float phi = 6.28318530718 * u2;
+    float x = r * cos(phi);
+    float y = r * sin(phi);
+    float z = sqrt(max(1.0 - u1, 0.0));
+    return vec3(x, y, z);
+}
+
+uint SurfelGuideBin(vec3 hemiDir)
+{
+    vec2 uv = clamp(hemiDir.xy * 0.5 + 0.5, vec2(0.0), vec2(0.999));
+    uvec2 texel = uvec2(floor(uv * 6.0));
+    return min(texel.y * 6u + texel.x, 35u);
+}
+
+uint SurfelRadialDepthBin(vec3 hemiDir)
+{
+    vec2 uv = clamp(hemiDir.xy * 0.5 + 0.5, vec2(0.0), vec2(0.999));
+    uvec2 texel = uvec2(floor(uv * 4.0));
+    return min(texel.y * 4u + texel.x, 15u);
 }
 
 vec3 NonLinearGridCoord(vec3 viewPos, SurfelPoolHeader header)

@@ -183,6 +183,28 @@ void main()
         float variance = max(s.depthMoments.y - s.depthMoments.x * s.depthMoments.x, 0.0);
         color = HeatColor(clamp(sqrt(variance) / max(s.depthMoments.w, 0.001), 0.0, 1.0));
         alpha = clamp(s.depthMoments.z / 24.0, 0.20, 0.82);
+    } else if (uDebugMode == 24) {
+        color = HeatColor(clamp(s.solveState.x / 8.0, 0.0, 1.0));
+        alpha = 0.78;
+    } else if (uDebugMode == 25) {
+        color = HeatColor(clamp(s.solveState.y / 8.0, 0.0, 1.0));
+        alpha = s.solveState.y > 0.0 ? 0.88 : 0.24;
+    } else if (uDebugMode == 26) {
+        vec3 raw = max(s.rawIrradiance.rgb, vec3(0.0));
+        float luma = max(dot(raw, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
+        color = clamp(raw / max(luma, 0.15), vec3(0.0), vec3(1.0)) * clamp(luma * 2.0, 0.15, 1.0);
+        alpha = clamp(s.rawIrradiance.w / 8.0, 0.18, 0.84);
+    } else if (uDebugMode == 27) {
+        vec3 sharedDebugIrradiance = max(s.sharedIrradiance.rgb, vec3(0.0));
+        float luma = max(dot(sharedDebugIrradiance, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
+        color = clamp(sharedDebugIrradiance / max(luma, 0.15), vec3(0.0), vec3(1.0)) * clamp(luma * 2.0, 0.15, 1.0);
+        alpha = clamp(0.24 + s.sharedIrradiance.w, 0.20, 0.90);
+    } else if (uDebugMode == 28) {
+        color = HeatColor(clamp(s.irradianceHistory.w / 96.0, 0.0, 1.0));
+        alpha = 0.76;
+    } else if (uDebugMode == 29) {
+        color = HeatColor(clamp(length(s.guidingState.xyz), 0.0, 1.0));
+        alpha = 0.78;
     }
 
     vColor = vec4(color, alpha);

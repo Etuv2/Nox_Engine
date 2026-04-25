@@ -13,7 +13,7 @@ layout(binding = 21, std430) buffer HeaderBuffer {
 };
 
 layout(binding = 24, std430) buffer TileCoverageBuffer {
-    uvec4 tileCoverage[];
+    SurfelTileMeta tileCoverage[];
 };
 
 uniform int uFrameIndex;
@@ -21,6 +21,8 @@ uniform vec2 uResolution;
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform float uCoverageThreshold;
+uniform int uSurfelStart;
+uniform int uSurfelCount;
 
 void AccumulateTileCoverage(ivec2 tile, ivec2 tileDims, vec2 centerPx, float radiusPx, uint frameIndex)
 {
@@ -37,16 +39,19 @@ void AccumulateTileCoverage(ivec2 tile, ivec2 tileDims, vec2 centerPx, float rad
         return;
     }
 
-    atomicAdd(tileCoverage[tileIndex].x, packedWeight);
-    atomicMax(tileCoverage[tileIndex].w, frameIndex + 1u);
+    atomicAdd(tileCoverage[tileIndex].coverage.x, packedWeight);
+    atomicMax(tileCoverage[tileIndex].coverage.w, frameIndex + 1u);
 }
 
 void main()
 {
-    uint surfelID = gl_GlobalInvocationID.x;
-    if (surfelID >= header.counts.x) {
+    uint localSurfelIndex = gl_GlobalInvocationID.x;
+    uint surfelCount = uint(max(uSurfelCount, 0));
+    if (localSurfelIndex >= surfelCount || header.counts.x == 0u) {
         return;
     }
+
+    uint surfelID = (uint(max(uSurfelStart, 0)) + localSurfelIndex) % header.counts.x;
 
     SurfelRecord s = surfels[surfelID];
     if (!IsSurfelValid(s)) {
