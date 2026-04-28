@@ -100,8 +100,10 @@ public:
     void RenderDebug(RenderContext& ctx) const;
 
     GLuint GetSurfelBuffer() const { return m_surfelSSBO; }
+    GLuint GetHeaderBuffer() const { return m_headerSSBO; }
     GLuint GetGridHeaderBuffer() const { return m_gridHeaderSSBO; }
     GLuint GetGridEntryBuffer() const { return m_gridEntrySSBO; }
+    GLuint GetRadialDepthBinsBuffer() const { return m_radialDepthBinsSSBO; }
     const Stats& GetLastStats() const { return m_lastStats; }
     const std::array<float, kStatsHistoryLength>& GetLiveHistory() const { return m_liveHistory; }
     const std::array<float, kStatsHistoryLength>& GetFreeHistory() const { return m_freeHistory; }

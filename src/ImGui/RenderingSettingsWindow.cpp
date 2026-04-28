@@ -105,13 +105,28 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGIMaxLifecycleUpdates = 16384;
 	m_surfelGIMaxIntegrationUpdates = 8192;
 	m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	m_surfelGIMaxIrradianceRays = 4096;
+	m_surfelGIMaxRayTracedSurfels = 8192;
+	m_surfelGIMaxRaysPerSurfel = 8;
 	m_surfelGIRTMaxTriangles = 250000;
 	m_surfelGIRTBuildBudgetMs = 0.75f;
 	m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	m_surfelGIRTMaxResidentMB = 512;
 	m_surfelGIRTIncludeSkinnedMeshes = false;
 	m_surfelGIGridRebuildInterval = 1;
+	m_surfelGITLASHeatmapColorLimit = 50;
+	m_surfelGITLASDisplayMultipleBVHLayers = false;
+	m_surfelGITLASBVHLayerToDisplay = 0;
 	m_surfelGIDebugMode = 0;
+	m_enableSurfelIndirectDiffuse = true;
+	m_surfelIndirectDiffuseStrength = 1.0f;
+	m_surfelIndirectDiffuseDebugMode = 0;
+	m_surfelIndirectDiffuseNeighborRadius = 1;
+	m_surfelIndirectDiffuseMaxCandidates = 96;
+	m_surfelIndirectDiffuseMaxAccepted = 24;
+	m_surfelIndirectDiffuseFallbackStrength = 0.65f;
+	m_surfelUseLegacyFragmentGather = false;
+	m_lightingCompositeDebugMode = 0;
 
 	// Screen-space contact shadows
 	m_sssResolutionScale = 0.5f;
@@ -259,13 +274,28 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_surfelGIMaxLifecycleUpdates = ctx.surfelGIMaxLifecycleUpdates;
 	m_surfelGIMaxIntegrationUpdates = ctx.surfelGIMaxIntegrationUpdates;
 	m_surfelGIMaxCoarseCoverageSurfels = ctx.surfelGIMaxCoarseCoverageSurfels;
+	m_surfelGIMaxIrradianceRays = ctx.surfelGIMaxIrradianceRays;
+	m_surfelGIMaxRayTracedSurfels = ctx.surfelGIMaxRayTracedSurfels;
+	m_surfelGIMaxRaysPerSurfel = ctx.surfelGIMaxRaysPerSurfel;
 	m_surfelGIRTMaxTriangles = ctx.surfelGIRTMaxTriangles;
 	m_surfelGIRTBuildBudgetMs = ctx.surfelGIRTBuildBudgetMs;
 	m_surfelGIRTMaxBLASTrianglesPerFrame = ctx.surfelGIRTMaxBLASTrianglesPerFrame;
 	m_surfelGIRTMaxResidentMB = ctx.surfelGIRTMaxResidentMB;
 	m_surfelGIRTIncludeSkinnedMeshes = ctx.surfelGIRTIncludeSkinnedMeshes;
 	m_surfelGIGridRebuildInterval = ctx.surfelGIGridRebuildInterval;
+	m_surfelGITLASHeatmapColorLimit = ctx.surfelGITLASHeatmapColorLimit;
+	m_surfelGITLASDisplayMultipleBVHLayers = ctx.surfelGITLASDisplayMultipleBVHLayers;
+	m_surfelGITLASBVHLayerToDisplay = ctx.surfelGITLASBVHLayerToDisplay;
 	m_surfelGIDebugMode = ctx.surfelGIDebugMode;
+	m_enableSurfelIndirectDiffuse = ctx.enableSurfelIndirectDiffuse;
+	m_surfelIndirectDiffuseStrength = ctx.surfelIndirectDiffuseStrength;
+	m_surfelIndirectDiffuseDebugMode = ctx.surfelIndirectDiffuseDebugMode;
+	m_surfelIndirectDiffuseNeighborRadius = ctx.surfelIndirectDiffuseNeighborRadius;
+	m_surfelIndirectDiffuseMaxCandidates = ctx.surfelIndirectDiffuseMaxCandidates;
+	m_surfelIndirectDiffuseMaxAccepted = ctx.surfelIndirectDiffuseMaxAccepted;
+	m_surfelIndirectDiffuseFallbackStrength = ctx.surfelIndirectDiffuseFallbackStrength;
+	m_surfelUseLegacyFragmentGather = ctx.surfelUseLegacyFragmentGather;
+	m_lightingCompositeDebugMode = ctx.lightingCompositeDebugMode;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -432,13 +462,28 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.surfelGIMaxLifecycleUpdates = m_surfelGIMaxLifecycleUpdates;
 	ctx.surfelGIMaxIntegrationUpdates = m_surfelGIMaxIntegrationUpdates;
 	ctx.surfelGIMaxCoarseCoverageSurfels = m_surfelGIMaxCoarseCoverageSurfels;
+	ctx.surfelGIMaxIrradianceRays = m_surfelGIMaxIrradianceRays;
+	ctx.surfelGIMaxRayTracedSurfels = m_surfelGIMaxRayTracedSurfels;
+	ctx.surfelGIMaxRaysPerSurfel = m_surfelGIMaxRaysPerSurfel;
 	ctx.surfelGIRTMaxTriangles = m_surfelGIRTMaxTriangles;
 	ctx.surfelGIRTBuildBudgetMs = m_surfelGIRTBuildBudgetMs;
 	ctx.surfelGIRTMaxBLASTrianglesPerFrame = m_surfelGIRTMaxBLASTrianglesPerFrame;
 	ctx.surfelGIRTMaxResidentMB = m_surfelGIRTMaxResidentMB;
 	ctx.surfelGIRTIncludeSkinnedMeshes = m_surfelGIRTIncludeSkinnedMeshes;
 	ctx.surfelGIGridRebuildInterval = m_surfelGIGridRebuildInterval;
+	ctx.surfelGITLASHeatmapColorLimit = m_surfelGITLASHeatmapColorLimit;
+	ctx.surfelGITLASDisplayMultipleBVHLayers = m_surfelGITLASDisplayMultipleBVHLayers;
+	ctx.surfelGITLASBVHLayerToDisplay = m_surfelGITLASBVHLayerToDisplay;
 	ctx.surfelGIDebugMode = m_surfelGIDebugMode;
+	ctx.enableSurfelIndirectDiffuse = m_enableSurfelIndirectDiffuse;
+	ctx.surfelIndirectDiffuseStrength = m_surfelIndirectDiffuseStrength;
+	ctx.surfelIndirectDiffuseDebugMode = m_surfelIndirectDiffuseDebugMode;
+	ctx.surfelIndirectDiffuseNeighborRadius = m_surfelIndirectDiffuseNeighborRadius;
+	ctx.surfelIndirectDiffuseMaxCandidates = m_surfelIndirectDiffuseMaxCandidates;
+	ctx.surfelIndirectDiffuseMaxAccepted = m_surfelIndirectDiffuseMaxAccepted;
+	ctx.surfelIndirectDiffuseFallbackStrength = m_surfelIndirectDiffuseFallbackStrength;
+	ctx.surfelUseLegacyFragmentGather = m_surfelUseLegacyFragmentGather;
+	ctx.lightingCompositeDebugMode = m_lightingCompositeDebugMode;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
@@ -920,6 +965,19 @@ void RenderingSettingsWindow::Render() {
 						stats.targetBudgetMs,
 						stats.budgetScale,
 						stats.tileSelectTimeMs);
+					ImGui::Text("Irradiance rays: requested %u  allocated %u  evaluated surfels %u  valid %u  util %.1f%%",
+						stats.requestedRaysThisFrame,
+						stats.allocatedRaysThisFrame,
+						stats.rayEvaluatedSurfels,
+						stats.rayActiveSurfels,
+						stats.rayBudgetUtilizationPercent);
+					ImGui::Text("Lighting ms: request %.2f  allocate %.2f  trace %.2f  temporal %.2f  share %.2f  radial %.2f",
+						stats.rayRequestTimeMs,
+						stats.rayAllocationTimeMs,
+						stats.rayTraceTimeMs,
+						stats.temporalAccumulationTimeMs,
+						stats.sharingTimeMs,
+						stats.radialDepthTimeMs);
 					ImGui::Text("Tiles: scanned %u  confidence-skip %u  queued %u  candidates %u  queue overflow %u",
 						stats.tilesScannedThisFrame,
 						stats.tilesSkippedByConfidence,
@@ -972,6 +1030,9 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderInt("Max Lifecycle Updates", &m_surfelGIMaxLifecycleUpdates, 512, 65536)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Integrate Updates", &m_surfelGIMaxIntegrationUpdates, 256, 65536)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Coarse Coverage Surfels", &m_surfelGIMaxCoarseCoverageSurfels, 512, 65536)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Irradiance Rays", &m_surfelGIMaxIrradianceRays, 0, 32768)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Ray-Traced Surfels", &m_surfelGIMaxRayTracedSurfels, 512, 65536)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Rays / Surfel", &m_surfelGIMaxRaysPerSurfel, 1, 32)) { SyncToRenderer(); }
 				if (ImGui::InputInt("RT Triangle Cap", &m_surfelGIRTMaxTriangles, 10000, 100000)) {
 					m_surfelGIRTMaxTriangles = std::max(0, m_surfelGIRTMaxTriangles);
 					SyncToRenderer();
@@ -1029,6 +1090,69 @@ void RenderingSettingsWindow::Render() {
 					"TLAS BVH Heatmap"
 				};
 				if (ImGui::Combo("Surfel Debug", &m_surfelGIDebugMode, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
+				if (m_surfelGIDebugMode == 24) {
+					ImGui::Separator();
+					ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "TLAS BVH Debug Visualization:");
+
+					if (ImGui::SliderInt("TLAS Heatmap Color Limit", &m_surfelGITLASHeatmapColorLimit, 10, 200)) {
+						SyncToRenderer();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("?##surfel_tlas_heatmap")) {}
+					if (ImGui::IsItemHovered()) {
+						ImGui::SetTooltip(
+							"Maximum traversal complexity mapped into the heatmap\n"
+							"Lower = more sensitive\n"
+							"Higher = less sensitive"
+						);
+					}
+
+					if (ImGui::Checkbox("Show Multiple Layers", &m_surfelGITLASDisplayMultipleBVHLayers)) {
+						SyncToRenderer();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("?##surfel_tlas_layers")) {}
+					if (ImGui::IsItemHovered()) {
+						ImGui::SetTooltip(
+							"When enabled, the TLAS heatmap accumulates all layers up to the selected depth\n"
+							"When disabled, only the selected layer contributes"
+						);
+					}
+
+					if (ImGui::SliderInt("Layer to Display", &m_surfelGITLASBVHLayerToDisplay, 0, 10)) {
+						SyncToRenderer();
+					}
+				}
+				ImGui::Separator();
+				ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Surfel GI Final Gather:");
+				if (ImGui::Checkbox("Enable Surfel Final Gather", &m_enableSurfelIndirectDiffuse)) { SyncToRenderer(); }
+				if (m_enableSurfelIndirectDiffuse) {
+					if (ImGui::SliderFloat("Surfel GI Strength", &m_surfelIndirectDiffuseStrength, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
+					if (ImGui::SliderInt("Gather Neighbor Radius", &m_surfelIndirectDiffuseNeighborRadius, 0, 2)) { SyncToRenderer(); }
+					if (ImGui::SliderInt("Max Gather Candidates", &m_surfelIndirectDiffuseMaxCandidates, 8, 256)) { SyncToRenderer(); }
+					if (ImGui::SliderInt("Max Accepted Surfels", &m_surfelIndirectDiffuseMaxAccepted, 1, 64)) { SyncToRenderer(); }
+					if (ImGui::SliderFloat("Fallback Blend", &m_surfelIndirectDiffuseFallbackStrength, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
+					const char* surfelApplyDebugModes[] = {
+						"Raw Irradiance",
+						"Candidate Count",
+						"Accepted Count",
+						"Weight Sum",
+						"Confidence",
+						"Fallback Usage",
+						"Reject Reasons"
+					};
+					if (ImGui::Combo("Surfel Apply Debug", &m_surfelIndirectDiffuseDebugMode, surfelApplyDebugModes, IM_ARRAYSIZE(surfelApplyDebugModes))) { SyncToRenderer(); }
+				}
+				if (ImGui::Checkbox("Legacy Fragment Gather Debug", &m_surfelUseLegacyFragmentGather)) { SyncToRenderer(); }
+				const char* compositeDebugModes[] = {
+					"Full Composite",
+					"Direct Only",
+					"IBL Only",
+					"SSGI Only",
+					"Surfel GI Only",
+					"LPV Only"
+				};
+				if (ImGui::Combo("Lighting Composite Debug", &m_lightingCompositeDebugMode, compositeDebugModes, IM_ARRAYSIZE(compositeDebugModes))) { SyncToRenderer(); }
 				if (m_modularRenderer) {
 					ImGui::BulletText("Turn away and back: stable regions should stay mostly blue/aged, not all green respawns");
 					ImGui::BulletText("Advance/retreat: projected radius and coverage should rebalance without pool growth");
@@ -1817,13 +1941,28 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGIMaxLifecycleUpdates = 16384;
 	m_surfelGIMaxIntegrationUpdates = 8192;
 	m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	m_surfelGIMaxIrradianceRays = 4096;
+	m_surfelGIMaxRayTracedSurfels = 8192;
+	m_surfelGIMaxRaysPerSurfel = 8;
 	m_surfelGIRTMaxTriangles = 250000;
 	m_surfelGIRTBuildBudgetMs = 0.75f;
 	m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	m_surfelGIRTMaxResidentMB = 512;
 	m_surfelGIRTIncludeSkinnedMeshes = false;
 	m_surfelGIGridRebuildInterval = 1;
+	m_surfelGITLASHeatmapColorLimit = 50;
+	m_surfelGITLASDisplayMultipleBVHLayers = false;
+	m_surfelGITLASBVHLayerToDisplay = 0;
 	m_surfelGIDebugMode = 0;
+	m_enableSurfelIndirectDiffuse = true;
+	m_surfelIndirectDiffuseStrength = 1.0f;
+	m_surfelIndirectDiffuseDebugMode = 0;
+	m_surfelIndirectDiffuseNeighborRadius = 1;
+	m_surfelIndirectDiffuseMaxCandidates = 96;
+	m_surfelIndirectDiffuseMaxAccepted = 24;
+	m_surfelIndirectDiffuseFallbackStrength = 0.65f;
+	m_surfelUseLegacyFragmentGather = false;
+	m_lightingCompositeDebugMode = 0;
 
 	// Contact shadows - match RenderContext defaults
 	m_sssResolutionScale = 0.5f;

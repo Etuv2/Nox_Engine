@@ -38,6 +38,7 @@ public:
 
 	void ClearIndirectDiffuseSources();
 	void SetIndirectDiffuseSource(int index, GLuint indirectDiffuseTex, float strength = 1.0f);
+	void SetSurfelIndirectDiffuseTexture(GLuint surfelIndirectTex) { m_surfelIndirectDiffuseTexture = surfelIndirectTex; }
 	void SetOutputMode(OutputMode mode) { m_outputMode = mode; }
 
 	// Enable/disable verbose logging (disabled by default for performance)
@@ -54,6 +55,7 @@ private:
 	TexturePtr m_fallbackBRDF;
 	GLuint m_ssaoTexture = 0;
 	GLuint m_sssTexture = 0;
+	GLuint m_surfelIndirectDiffuseTexture = 0;
 	std::array<GLuint, MaxIndirectDiffuseSources> m_indirectDiffuseTextures{};
 	std::array<float, MaxIndirectDiffuseSources> m_indirectDiffuseStrengths{};
 	int m_indirectDiffuseSourceCount = 0;
@@ -73,6 +75,7 @@ private:
 		GLint ssaoMap = -1;
 		GLint screenSpaceShadowMap = -1;
 		GLint indirectDiffuseMaps = -1;
+		GLint surfelIndirectDiffuseMap = -1;
 		GLint irradianceMap = -1;
 		GLint prefilteredMap = -1;
 		GLint brdfLUT = -1;
@@ -99,6 +102,9 @@ private:
 		GLint lightingOutputMode = -1;
 		GLint surfelGIEnabled = -1;
 		GLint surfelGIStrength = -1;
+		GLint surfelIndirectDiffuseStrength = -1;
+		GLint useLegacySurfelFragmentGather = -1;
+		GLint lightingCompositeDebugMode = -1;
 
 		// Light uniforms
 		GLint numLights = -1;

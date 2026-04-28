@@ -52,12 +52,16 @@ uniform float sssStrength = 0.6; // Contact shadow blend strength [0,1]
 
 const int MAX_INDIRECT_DIFFUSE_SOURCES = 4;
 uniform sampler2D indirectDiffuseMaps[MAX_INDIRECT_DIFFUSE_SOURCES];
+uniform sampler2D surfelIndirectDiffuseMap;
 uniform float indirectDiffuseStrengths[MAX_INDIRECT_DIFFUSE_SOURCES];
 uniform int indirectDiffuseSourceCount = 0;
 uniform int indirectDiffuseCompositeMode = 0; // 0 additive, 1 modulative
 uniform int lightingOutputMode = 0; // 0 full lighting, 1 bounceable radiance
 uniform int uEnableSurfelGI = 0;
 uniform float uSurfelGIStrength = 0.0;
+uniform float uSurfelIndirectDiffuseStrength = 0.0;
+uniform int uUseLegacySurfelFragmentGather = 0;
+uniform int uLightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
 
 // Shadows
 uniform sampler2DArrayShadow multiLightShadowArray;
@@ -636,42 +640,17 @@ vec3 ComputeBounceableIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float
 	return max(source, vec3(0.0));
 }
 
-vec3 ComputeIndirectBaseColorFloor(vec3 baseColor, float glossMask, float clearcoat) {
-	float baseLuma = Luminance(baseColor);
-	float darkMask = 1.0 - smoothstep(0.015, 0.18, baseLuma);
-	float materialMask = Saturate(max(glossMask, clearcoat));
-	float floorLuma = mix(0.0, 0.075, darkMask * materialMask);
-	vec3 hue = baseLuma > 1e-4 ? baseColor / baseLuma : vec3(1.0);
-	hue = mix(vec3(1.0), clamp(hue, vec3(0.25), vec3(4.0)), 0.65);
-	return max(baseColor, hue * floorLuma);
-}
-
 vec3 ComputeIndirectGIResponse(vec3 indirectIrradiance, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
 	float NdotV = Saturate(dot(N, V));
 
-	vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
 	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
-	vec3 FssEss = F * brdf.x + brdf.y;
-	float Ess = brdf.x + brdf.y;
-	float Ems = 1.0 - Ess;
-	vec3 Favg = surface.specularF0 + (vec3(1.0) - surface.specularF0) * (1.0 / 21.0);
-	vec3 Fms = (FssEss * Favg) / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
-	vec3 kS = clamp(FssEss + Fms, vec3(0.0), vec3(0.98));
-
+	vec3 kD = clamp(vec3(1.0) - F, vec3(0.0), vec3(1.0));
 	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
-	float diffuseTerm = mix(1.0, 1.0 + 0.5 * surface.perceptualRoughness, surface.subsurface);
-	vec3 kD = max(vec3(0.0), (vec3(1.0) - kS) * (1.0 - surface.metallic) * (1.0 - transmissionWeight));
-
-	float baseGloss = pow(1.0 - surface.perceptualRoughness, 2.0);
-	float clearcoatGloss = surface.clearcoat * pow(1.0 - surface.clearcoatRoughness, 2.0);
-	vec3 effectiveBase = ComputeIndirectBaseColorFloor(surface.baseColor, max(baseGloss, clearcoatGloss), surface.clearcoat);
-	vec3 effectiveDiffuseColor = effectiveBase * (1.0 - surface.metallic);
-	vec3 diffuseResponse = kD * effectiveDiffuseColor * diffuseAO * diffuseTerm * diffuseIBLScale;
-
-	vec3 specularResponse = kS * baseGloss * specularAO * specularIBLScale * 0.35;
-
+	vec3 diffuseAlbedo = surface.baseColor * (1.0 - surface.metallic) * (1.0 - transmissionWeight);
+	float diffuseTerm = mix(1.0, 1.0 + 0.35 * surface.perceptualRoughness, surface.subsurface);
+	float aoPolicy = mix(0.55, 1.0, clamp(diffuseAO, 0.0, 1.0));
 	float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
-	vec3 materialResponse = diffuseResponse * baseAttenuation + specularResponse * baseAttenuation;
+	vec3 materialResponse = kD * diffuseAlbedo * INV_PI * diffuseTerm * aoPolicy * baseAttenuation;
 	return max(indirectIrradiance * materialResponse, vec3(0.0));
 }
 
@@ -699,8 +678,24 @@ vec3 EvaluateIndirectDiffuseMap(int sourceIndex, vec3 N, vec3 V, PrincipledSurfa
 	return CompressIndirectContribution(contribution);
 }
 
+vec3 EvaluateSurfelIndirectDiffuseMap(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+	if (uSurfelIndirectDiffuseStrength <= 0.0001) {
+		return vec3(0.0);
+	}
+
+	vec4 indirectSample = texture(surfelIndirectDiffuseMap, vTexCoord);
+	vec3 surfelIrradiance = max(indirectSample.rgb, vec3(0.0));
+	float confidence = clamp(indirectSample.a, 0.0, 1.0);
+	if (confidence <= 0.0001 && max(max(surfelIrradiance.r, surfelIrradiance.g), surfelIrradiance.b) <= 0.0001) {
+		return vec3(0.0);
+	}
+
+	vec3 contribution = ComputeIndirectGIResponse(surfelIrradiance, N, V, surface, diffuseAO, specularAO);
+	return max(contribution * uSurfelIndirectDiffuseStrength * mix(0.35, 1.0, confidence), vec3(0.0));
+}
+
 vec3 EvaluatePersistentSurfelGI(vec3 worldPos, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
-	if (uEnableSurfelGI == 0 || uSurfelGIStrength <= 0.0001 || surfelHeader.counts.y == 0u) {
+	if (uUseLegacySurfelFragmentGather == 0 || uEnableSurfelGI == 0 || uSurfelGIStrength <= 0.0001 || surfelHeader.counts.y == 0u) {
 		return vec3(0.0);
 	}
 
@@ -837,21 +832,41 @@ void main() {
 
 	vec3 iblContribution = ComputeIBL(N, V, surface, diffuseAO, specularAO);
 
-	vec3 indirectContribution = vec3(0.0);
+	vec3 ssgiContribution = vec3(0.0);
+	vec3 lpvContribution = vec3(0.0);
 	int indirectCount = clamp(indirectDiffuseSourceCount, 0, MAX_INDIRECT_DIFFUSE_SOURCES);
 	for (int i = 0; i < indirectCount; ++i) {
-		indirectContribution += EvaluateIndirectDiffuseMap(i, N, V, surface, diffuseAO, specularAO);
+		vec3 sourceContribution = EvaluateIndirectDiffuseMap(i, N, V, surface, diffuseAO, specularAO);
+		if (i == 0) {
+			ssgiContribution += sourceContribution;
+		} else {
+			lpvContribution += sourceContribution;
+		}
 	}
-	indirectContribution += EvaluatePersistentSurfelGI(worldPos, N, V, surface, diffuseAO, specularAO);
-
+	vec3 surfelContribution = EvaluateSurfelIndirectDiffuseMap(N, V, surface, diffuseAO, specularAO);
+	surfelContribution += EvaluatePersistentSurfelGI(worldPos, N, V, surface, diffuseAO, specularAO);
 	vec3 color = emissive;
-	color += directLighting;
-	color += iblContribution;
-	if (indirectDiffuseCompositeMode == 1) {
-		color *= vec3(1.0) + indirectContribution;
-	}
-	else {
-		color += indirectContribution;
+	if (uLightingCompositeDebugMode == 1) {
+		color += directLighting;
+	} else if (uLightingCompositeDebugMode == 2) {
+		color += iblContribution;
+	} else if (uLightingCompositeDebugMode == 3) {
+		color += ssgiContribution;
+	} else if (uLightingCompositeDebugMode == 4) {
+		color += surfelContribution;
+	} else if (uLightingCompositeDebugMode == 5) {
+		color += lpvContribution;
+	} else {
+		color += directLighting;
+		color += iblContribution;
+		if (indirectDiffuseCompositeMode == 1) {
+			vec3 legacyIndirectContribution = ssgiContribution + lpvContribution;
+			color *= vec3(1.0) + legacyIndirectContribution;
+			color += surfelContribution;
+		}
+		else {
+			color += ssgiContribution + lpvContribution + surfelContribution;
+		}
 	}
 
 	color = max(color, vec3(0.0));

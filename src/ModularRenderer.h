@@ -31,6 +31,7 @@ class ShadowPass;
 class SSAOPass;
 class ScreenSpaceShadowPass;
 class SurfelGIPass;
+class SurfelIndirectDiffusePass;
 class LightingPass;
 class BloomPass;
 class TAAPass;
@@ -136,7 +137,8 @@ private:
 		bool enableBloom = false;
 		bool enableSSAO = false;
 		bool enableIndirectDiffuse = false;
-		bool enableSurfelGI = false;
+	bool enableSurfelGI = false;
+	bool enableSurfelIndirectDiffuse = false;
 		bool presentSurfelGIDebug = false;
 		bool presentIndirectDiffuseDebug = false;
 		bool enableScreenSpaceShadows = false;
@@ -149,6 +151,7 @@ private:
 				enableSSAO == other.enableSSAO &&
 				enableIndirectDiffuse == other.enableIndirectDiffuse &&
 				enableSurfelGI == other.enableSurfelGI &&
+				enableSurfelIndirectDiffuse == other.enableSurfelIndirectDiffuse &&
 				presentSurfelGIDebug == other.presentSurfelGIDebug &&
 				presentIndirectDiffuseDebug == other.presentIndirectDiffuseDebug &&
 				enableScreenSpaceShadows == other.enableScreenSpaceShadows &&
@@ -186,6 +189,7 @@ private:
 	std::unique_ptr<SSAOPass> m_ssaoPass;
 	std::unique_ptr<ScreenSpaceShadowPass> m_screenSpaceShadowPass;
 	std::unique_ptr<SurfelGIPass> m_surfelGIPass;
+	std::unique_ptr<SurfelIndirectDiffusePass> m_surfelIndirectDiffusePass;
 	std::unique_ptr<IndirectDiffusePass> m_indirectDiffusePass;
 	std::unique_ptr<TAAPass> m_taaPass;
 	std::unique_ptr<LightingPass> m_lightingPass;

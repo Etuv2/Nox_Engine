@@ -84,7 +84,6 @@ void main()
         return;
     }
 
-    vec4 albedoAO = texelFetch(uAlbedoAO, pixel, 0);
     vec3 emissive = texelFetch(uEmissive, pixel, 0).rgb;
     vec3 normal = normalize(s.worldNormalRecycle.xyz);
     vec3 visibleWorldPos = ReconstructWorldPositionAtPixel(pixel, sceneDepth);
@@ -92,7 +91,7 @@ void main()
     vec3 lightDir = normalize(-uDirectionalLightDir);
     float nDotL = max(dot(normal, lightDir), 0.0);
     vec3 directIrradiance = max(uDirectionalLightColor, vec3(0.0)) * nDotL;
-    vec3 visibleSurfaceIrradiance = max(emissive + albedoAO.rgb * (directIrradiance + vec3(0.025)) * albedoAO.a, vec3(0.0));
+    vec3 visibleSurfaceIrradiance = max(directIrradiance + emissive + vec3(0.025), vec3(0.0));
 
     float historySamples = max(s.irradianceHistory.w, 0.0);
     vec3 previous = s.irradianceHistory.rgb;

@@ -10,6 +10,8 @@ uniform mat4 uInvViewProj;
 uniform int uMode; // 0=raw projected support, 1=valid coverage, 2=deficit, 3=depth rejection, 4=normal rejection, 5=winner surfel ID, 6=TLAS BVH heatmap
 uniform float uCoverageThreshold;
 uniform int uHeatmapColorLimit;
+uniform bool uDisplayMultipleBVHLayers;
+uniform int uBVHLayerToDisplay;
 
 #include "includes/rt_scene_common.glsl"
 
@@ -60,29 +62,47 @@ uint TraceTlasDebug(Ray ray, out uint nodeTests, out uint instanceTests)
         return 0u;
     }
 
-    int nodeStack[RT_SCENE_MAX_BVH_STACK_SIZE];
+    const int targetLayer = max(uBVHLayerToDisplay, 0);
+
+    ivec2 nodeStack[RT_SCENE_MAX_BVH_STACK_SIZE];
     int nodeStackPtr = 0;
-    nodeStack[nodeStackPtr++] = 0;
+    nodeStack[nodeStackPtr++] = ivec2(0, 0);
 
     while (nodeStackPtr > 0 && nodeStackPtr < RT_SCENE_MAX_BVH_STACK_SIZE) {
-        int nodeIndex = nodeStack[--nodeStackPtr];
+        ivec2 stackEntry = nodeStack[--nodeStackPtr];
+        int nodeIndex = stackEntry.x;
+        int depth = stackEntry.y;
+
         if (nodeIndex < 0 || nodeIndex >= u_rtInstanceNodeCount) {
             continue;
         }
 
-        ++nodeTests;
         RTInstanceNode node = rtInstanceNodes[nodeIndex];
         if (!rayAABBIntersect(ray, node.boundsMin.xyz, node.boundsMax.xyz)) {
             continue;
         }
 
-        if (node.children.x >= 0 || node.children.y >= 0) {
+        bool countThisLayer = uDisplayMultipleBVHLayers ? (depth <= targetLayer) : (depth == targetLayer);
+        if (countThisLayer) {
+            ++nodeTests;
+        }
+
+        bool hasChildren = (node.children.x >= 0 || node.children.y >= 0);
+        if (hasChildren) {
+            if (depth >= targetLayer) {
+                continue;
+            }
+
             if (node.children.y >= 0 && nodeStackPtr < RT_SCENE_MAX_BVH_STACK_SIZE) {
-                nodeStack[nodeStackPtr++] = node.children.y;
+                nodeStack[nodeStackPtr++] = ivec2(node.children.y, depth + 1);
             }
             if (node.children.x >= 0 && nodeStackPtr < RT_SCENE_MAX_BVH_STACK_SIZE) {
-                nodeStack[nodeStackPtr++] = node.children.x;
+                nodeStack[nodeStackPtr++] = ivec2(node.children.x, depth + 1);
             }
+            continue;
+        }
+
+        if (!countThisLayer) {
             continue;
         }
 

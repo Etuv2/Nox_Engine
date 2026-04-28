@@ -17,6 +17,7 @@
 #include "passes/SSAOPass.h"
 #include "passes/ScreenSpaceShadowPass.h"
 #include "passes/SurfelGIPass.h"
+#include "passes/SurfelIndirectDiffusePass.h"
 #include "passes/IndirectDiffusePass.h"
 
 #include "passes/LightingPass.h"
@@ -246,6 +247,8 @@ namespace {
 		static const std::string SurfelField = "SurfelField";
 		static const std::string SurfelGrid = "SurfelGrid";
 		static const std::string SurfelDebug = "SurfelDebug";
+		static const std::string SurfelIndirectDiffuse = "SurfelIndirectDiffuse";
+		static const std::string SurfelIndirectDiffuseDebug = "SurfelIndirectDiffuseDebug";
 		static const std::string BounceableRadiance = "BounceableRadiance";
 		static const std::string IndirectDiffuse = "IndirectDiffuse";
 		static const std::string IndirectDiffuseDebug = "IndirectDiffuseDebug";
@@ -278,6 +281,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_ssaoPass = std::make_unique<SSAOPass>();
 	m_screenSpaceShadowPass = std::make_unique<ScreenSpaceShadowPass>();
 	m_surfelGIPass = std::make_unique<SurfelGIPass>();
+	m_surfelIndirectDiffusePass = std::make_unique<SurfelIndirectDiffusePass>();
 	m_indirectDiffusePass = std::make_unique<IndirectDiffusePass>();
 	m_lightingPass = std::make_unique<LightingPass>();
 	m_bloomPass = std::make_unique<BloomPass>();
@@ -296,6 +300,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_ssaoPass->Initialize(m_context);
 	success &= m_screenSpaceShadowPass->Initialize(m_context);
 	success &= m_surfelGIPass->Initialize(m_context);
+	success &= m_surfelIndirectDiffusePass->Initialize(m_context);
 	success &= m_indirectDiffusePass->Initialize(m_context);
 	success &= m_lightingPass->Initialize(m_context);
 	success &= m_bloomPass->Initialize(m_context);
@@ -338,6 +343,7 @@ std::size_t ModularRenderer::PlanCacheKeyHash::operator()(const PlanCacheKey& ke
 	hashCombine(key.enableSSAO);
 	hashCombine(key.enableIndirectDiffuse);
 	hashCombine(key.enableSurfelGI);
+	hashCombine(key.enableSurfelIndirectDiffuse);
 	hashCombine(key.presentSurfelGIDebug);
 	hashCombine(key.presentIndirectDiffuseDebug);
 	hashCombine(key.enableScreenSpaceShadows);
@@ -374,6 +380,9 @@ ModularRenderer::PlanCacheKey ModularRenderer::BuildPlanCacheKey() const
 	key.enableSSAO = m_context.enableSSAO;
 	key.enableIndirectDiffuse = m_context.enableIndirectDiffuse;
 	key.enableSurfelGI = m_context.enableSurfelGI;
+	key.enableSurfelIndirectDiffuse =
+		m_context.enableSurfelGI &&
+		m_context.enableSurfelIndirectDiffuse;
 	key.presentSurfelGIDebug =
 		m_context.enableSurfelGI &&
 		m_context.surfelGIDebugMode > 0 &&
@@ -669,7 +678,24 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVIndirect }, { "HDRLit" },
+		"SurfelIndirectDiffusePass", { "GBuffer", ResourceNames::SurfelField, ResourceNames::SurfelGrid }, { ResourceNames::SurfelIndirectDiffuse, ResourceNames::SurfelIndirectDiffuseDebug },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				ctx.enableSurfelGI &&
+				ctx.enableSurfelIndirectDiffuse &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			if (!m_surfelIndirectDiffusePass) {
+				return;
+			}
+			m_surfelIndirectDiffusePass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::SurfelIndirectDiffuse] = m_surfelIndirectDiffusePass->GetIrradianceTexture();
+			m_namedResources[ResourceNames::SurfelIndirectDiffuseDebug] = m_surfelIndirectDiffusePass->GetDebugTexture();
+		}
+		});
+	addPass({
+		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVIndirect, ResourceNames::SurfelIndirectDiffuse }, { "HDRLit" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -690,6 +716,7 @@ void ModularRenderer::BuildPassDescriptors(
 					m_namedResources[ResourceNames::LPVIndirect],
 					1.0f);
 			}
+			m_lightingPass->SetSurfelIndirectDiffuseTexture(m_namedResources[ResourceNames::SurfelIndirectDiffuse]);
 			m_lightingPass->SetOutputMode(LightingPass::OutputMode::FullLighting);
 			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		}
@@ -871,6 +898,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_ssaoPass) m_ssaoPass->Resize(m_context, newWidth, newHeight);
 	if (m_screenSpaceShadowPass) m_screenSpaceShadowPass->Resize(m_context, newWidth, newHeight);
 	if (m_surfelGIPass) m_surfelGIPass->Resize(m_context, newWidth, newHeight);
+	if (m_surfelIndirectDiffusePass) m_surfelIndirectDiffusePass->Resize(m_context, newWidth, newHeight);
 	if (m_indirectDiffusePass) m_indirectDiffusePass->Resize(m_context, newWidth, newHeight);
 	if (m_lightingPass) m_lightingPass->Resize(m_context, newWidth, newHeight);
 	if (m_bloomPass) m_bloomPass->Resize(m_context, newWidth, newHeight);
@@ -1035,6 +1063,8 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	m_namedResources[ResourceNames::SurfelField] = 0;
 	m_namedResources[ResourceNames::SurfelGrid] = 0;
 	m_namedResources[ResourceNames::SurfelDebug] = 0;
+	m_namedResources[ResourceNames::SurfelIndirectDiffuse] = 0;
+	m_namedResources[ResourceNames::SurfelIndirectDiffuseDebug] = 0;
 	m_namedResources[ResourceNames::BounceableRadiance] = 0;
 	m_namedResources[ResourceNames::IndirectDiffuse] = 0;
 	m_namedResources[ResourceNames::IndirectDiffuseDebug] = 0;

@@ -357,6 +357,9 @@
     <ClCompile Include="src\passes\SurfelGIPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
+    <ClCompile Include="src\passes\SurfelIndirectDiffusePass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
     <ClCompile Include="src\passes\GUIPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
@@ -716,6 +719,9 @@
     <None Include="shaders\surfel_gi_temporal_accumulate_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
+    <None Include="shaders\surfel_indirect_diffuse_gather_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
     <None Include="shaders\surfel_gi_tile_clear_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
@@ -960,6 +966,9 @@
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\SurfelGIPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SurfelIndirectDiffusePass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\RTPass.h">

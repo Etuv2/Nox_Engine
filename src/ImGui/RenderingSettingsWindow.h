@@ -131,13 +131,28 @@ private:
 	int m_surfelGIMaxLifecycleUpdates = 16384;
 	int m_surfelGIMaxIntegrationUpdates = 8192;
 	int m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	int m_surfelGIMaxIrradianceRays = 4096;
+	int m_surfelGIMaxRayTracedSurfels = 8192;
+	int m_surfelGIMaxRaysPerSurfel = 8;
 	int m_surfelGIRTMaxTriangles = 250000;
 	float m_surfelGIRTBuildBudgetMs = 0.75f;
 	int m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	int m_surfelGIRTMaxResidentMB = 512;
 	bool m_surfelGIRTIncludeSkinnedMeshes = false;
 	int m_surfelGIGridRebuildInterval = 1;
+	int m_surfelGITLASHeatmapColorLimit = 50;
+	bool m_surfelGITLASDisplayMultipleBVHLayers = false;
+	int m_surfelGITLASBVHLayerToDisplay = 0;
 	int m_surfelGIDebugMode = 0;
+	bool m_enableSurfelIndirectDiffuse = true;
+	float m_surfelIndirectDiffuseStrength = 1.0f;
+	int m_surfelIndirectDiffuseDebugMode = 0;
+	int m_surfelIndirectDiffuseNeighborRadius = 1;
+	int m_surfelIndirectDiffuseMaxCandidates = 96;
+	int m_surfelIndirectDiffuseMaxAccepted = 24;
+	float m_surfelIndirectDiffuseFallbackStrength = 0.65f;
+	bool m_surfelUseLegacyFragmentGather = false;
+	int m_lightingCompositeDebugMode = 0;
 
 	// Screen-space contact shadow settings
 	float m_sssResolutionScale = 0.5f;

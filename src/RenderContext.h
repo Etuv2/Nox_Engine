@@ -167,6 +167,9 @@ struct RenderContext {
 	int surfelGIRTMaxResidentMB = 512;
 	bool surfelGIRTIncludeSkinnedMeshes = false;
 	int surfelGIGridRebuildInterval = 1;
+	int surfelGITLASHeatmapColorLimit = 50;
+	bool surfelGITLASDisplayMultipleBVHLayers = false;
+	int surfelGITLASBVHLayerToDisplay = 0;
 	// Surfel GI debug modes:
 	// 0=off, 1=discs, 2=normals, 3=projected radius, 4=coverage, 5=cell occupancy,
 	// 6=recent recycled/IDs, 7=transform follow, 8=lifecycle, 9=recycle pressure,
@@ -174,17 +177,26 @@ struct RenderContext {
 	// 14=last visible, 15=reused vs fresh, 16=irradiance, 17=depth moments,
 	// 18=raw projected support, 19=valid coverage, 20=screen-space deficit,
 	// 21=depth rejection, 22=normal rejection, 23=winner surfel ID,
-	// 24=requested rays, 25=allocated rays, 26=raw irradiance, 27=shared irradiance,
-	// 28=history confidence, 29=guiding confidence.
-	// The overlay shader currently exposes: raw projected support, valid coverage,
-	// deficit, depth rejection, normal rejection, and winner surfel ID views.
+	// 24=TLAS BVH heatmap.
+	// The TLAS overlay exposes its own color limit and layer controls from the settings window.
 	int surfelGIDebugMode = 0;
 	GLuint surfelGISurfelBuffer = 0;
 	GLuint surfelGIHeaderBuffer = 0;
 	GLuint surfelGIGridHeaderBuffer = 0;
 	GLuint surfelGIGridEntryBuffer = 0;
+	GLuint surfelGIRadialDepthBinsBuffer = 0;
 	float surfelGIApplyStrength = 0.0f;
 	bool surfelGIGridReady = false;
+	bool enableSurfelIndirectDiffuse = true;
+	float surfelIndirectDiffuseStrength = 1.0f;
+	int surfelIndirectDiffuseDebugMode = 0;
+	int surfelIndirectDiffuseNeighborRadius = 1;
+	int surfelIndirectDiffuseMaxCandidates = 96;
+	int surfelIndirectDiffuseMaxAccepted = 24;
+	float surfelIndirectDiffuseFallbackStrength = 0.65f;
+	bool surfelIndirectDiffuseUseTemporal = false;
+	bool surfelUseLegacyFragmentGather = false;
+	int lightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
 
 
 	// Bloom settings

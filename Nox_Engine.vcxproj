@@ -83,6 +83,7 @@
     <ClCompile Include="src\passes\ShadowPass.cpp" />
     <ClCompile Include="src\passes\SSAOPass.cpp" />
     <ClCompile Include="src\passes\IndirectDiffusePass.cpp" />
+    <ClCompile Include="src\passes\SurfelIndirectDiffusePass.cpp" />
     <ClCompile Include="src\passes\SurfelGIPass.cpp" />
     <ClCompile Include="src\passes\TAAPass.cpp" />
     <ClCompile Include="src\passes\TransformHistoryPass.cpp" />
@@ -211,6 +212,7 @@
     <None Include="shaders\surfel_gi_recycle_comp.glsl" />
     <None Include="shaders\surfel_gi_spawn_comp.glsl" />
     <None Include="shaders\surfel_gi_temporal_accumulate_comp.glsl" />
+    <None Include="shaders\surfel_indirect_diffuse_gather_comp.glsl" />
     <None Include="shaders\surfel_gi_tile_clear_comp.glsl" />
     <None Include="shaders\surfel_gi_tile_coverage_comp.glsl" />
     <None Include="shaders\svgf_atrous_comp.glsl" />
@@ -283,6 +285,7 @@
     <ClInclude Include="src\passes\ShadowPass.h" />
     <ClInclude Include="src\passes\SSAOPass.h" />
     <ClInclude Include="src\passes\IndirectDiffusePass.h" />
+    <ClInclude Include="src\passes\SurfelIndirectDiffusePass.h" />
     <ClInclude Include="src\passes\SurfelGIPass.h" />
     <ClInclude Include="src\passes\TAAPass.h" />
     <ClInclude Include="src\passes\TransparentForwardPass.h" />

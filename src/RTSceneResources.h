@@ -2,6 +2,7 @@
 
 #include <GL/glew.h>
 #include <cstddef>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -76,6 +77,7 @@ private:
         std::size_t triangleOffset = 0;
         bool ready = false;
         bool failed = false;
+        bool uploaded = false;
     };
 
     struct TLASInstance {
@@ -154,9 +156,16 @@ private:
     bool m_cachedIncludeSkinnedMeshes = false;
     bool m_incrementalInstanceTopologyDirty = false;
 
+    std::vector<RT::Triangle> m_incrementalPackedTriangles;
+    std::vector<RT::BVHNode> m_incrementalPackedNodes;
+    std::size_t m_incrementalTriangleBufferCapacityBytes = 0;
+    std::size_t m_incrementalNodeBufferCapacityBytes = 0;
+    std::size_t m_incrementalUploadedTriangleCount = 0;
+    std::size_t m_incrementalUploadedNodeCount = 0;
+
     std::unordered_map<const MeshComponent*, std::size_t> m_blasLookup;
     std::vector<BLASRecord> m_blasRecords;
-    std::vector<std::size_t> m_pendingBLAS;
+    std::deque<std::size_t> m_pendingBLAS;
     std::vector<TLASInstance> m_tlasInstances;
     std::unordered_map<EntityID, EntityInstanceRange> m_entityInstanceRanges;
     std::unordered_map<IncrementalInstanceCacheKey, CachedTLASInstance, IncrementalInstanceCacheKeyHash> m_incrementalInstanceCache;

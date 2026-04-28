@@ -97,6 +97,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.ssaoMap = glGetUniformLocation(m_shader, "ssaoMap");
 	m_uniforms.screenSpaceShadowMap = glGetUniformLocation(m_shader, "screenSpaceShadowMap");
 	m_uniforms.indirectDiffuseMaps = glGetUniformLocation(m_shader, "indirectDiffuseMaps[0]");
+	m_uniforms.surfelIndirectDiffuseMap = glGetUniformLocation(m_shader, "surfelIndirectDiffuseMap");
 	m_uniforms.irradianceMap = glGetUniformLocation(m_shader, "irradianceMap");
 	m_uniforms.prefilteredMap = glGetUniformLocation(m_shader, "prefilteredMap");
 	m_uniforms.brdfLUT = glGetUniformLocation(m_shader, "brdfLUT");
@@ -123,6 +124,9 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.lightingOutputMode = glGetUniformLocation(m_shader, "lightingOutputMode");
 	m_uniforms.surfelGIEnabled = glGetUniformLocation(m_shader, "uEnableSurfelGI");
 	m_uniforms.surfelGIStrength = glGetUniformLocation(m_shader, "uSurfelGIStrength");
+	m_uniforms.surfelIndirectDiffuseStrength = glGetUniformLocation(m_shader, "uSurfelIndirectDiffuseStrength");
+	m_uniforms.useLegacySurfelFragmentGather = glGetUniformLocation(m_shader, "uUseLegacySurfelFragmentGather");
+	m_uniforms.lightingCompositeDebugMode = glGetUniformLocation(m_shader, "uLightingCompositeDebugMode");
 
 	// Light uniforms
 	m_uniforms.numLights = glGetUniformLocation(m_shader, "numLights");
@@ -168,6 +172,7 @@ void LightingPass::UploadStaticSamplerUniforms() {
 	if (m_uniforms.gDepth >= 0) glUniform1i(m_uniforms.gDepth, TextureUnits::GBUFFER_DEPTH);
 	if (m_uniforms.ssaoMap >= 0) glUniform1i(m_uniforms.ssaoMap, TextureUnits::SSAO_MAP);
 	if (m_uniforms.screenSpaceShadowMap >= 0) glUniform1i(m_uniforms.screenSpaceShadowMap, TextureUnits::SCREEN_SPACE_SHADOW_MAP);
+	if (m_uniforms.surfelIndirectDiffuseMap >= 0) glUniform1i(m_uniforms.surfelIndirectDiffuseMap, TextureUnits::SURFEL_INDIRECT_DIFFUSE);
 	if (m_uniforms.indirectDiffuseMaps >= 0) {
 		GLint units[MaxIndirectDiffuseSources]{};
 		for (int i = 0; i < MaxIndirectDiffuseSources; ++i) {
@@ -324,6 +329,9 @@ void LightingPass::Execute(RenderContext& ctx,
 		glBindTexture(GL_TEXTURE_2D, m_indirectDiffuseTextures[static_cast<size_t>(i)]);
 	}
 
+	glActiveTexture(GL_TEXTURE0 + TextureUnits::SURFEL_INDIRECT_DIFFUSE);
+	glBindTexture(GL_TEXTURE_2D, m_surfelIndirectDiffuseTexture);
+
 	// Bind IBL textures (skybox or fallback)
 	bool useValidIBL = (skybox && skybox->ValidateIBLTextures());
 
@@ -399,6 +407,19 @@ void LightingPass::Execute(RenderContext& ctx,
 	}
 	if (m_uniforms.surfelGIStrength >= 0) {
 		glUniform1f(m_uniforms.surfelGIStrength, surfelGIReady ? std::max(ctx.surfelGIApplyStrength, 0.0f) : 0.0f);
+	}
+	if (m_uniforms.surfelIndirectDiffuseStrength >= 0) {
+		const float surfelIndirectStrength =
+			(ctx.enableSurfelGI && ctx.enableSurfelIndirectDiffuse && m_surfelIndirectDiffuseTexture != 0)
+			? std::max(ctx.surfelIndirectDiffuseStrength, 0.0f)
+			: 0.0f;
+		glUniform1f(m_uniforms.surfelIndirectDiffuseStrength, surfelIndirectStrength);
+	}
+	if (m_uniforms.useLegacySurfelFragmentGather >= 0) {
+		glUniform1i(m_uniforms.useLegacySurfelFragmentGather, ctx.surfelUseLegacyFragmentGather ? 1 : 0);
+	}
+	if (m_uniforms.lightingCompositeDebugMode >= 0) {
+		glUniform1i(m_uniforms.lightingCompositeDebugMode, std::clamp(ctx.lightingCompositeDebugMode, 0, 5));
 	}
 
 	// Bind LightManager data

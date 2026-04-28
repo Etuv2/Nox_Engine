@@ -90,6 +90,57 @@ glm::mat4 ResolveRenderableMeshLocalTransform(const RenderableComponent& rendera
 
     return referenceInverse * mesh.localTransform;
 }
+
+template <typename T>
+void UploadPackedBuffer(GLuint buffer,
+    GLenum target,
+    std::size_t& capacityBytes,
+    std::vector<T>& packedData,
+    std::size_t& uploadedCount)
+{
+    const std::size_t elementCount = packedData.size();
+    const std::size_t requiredBytes = elementCount * sizeof(T);
+    const std::size_t uploadedBytes = uploadedCount * sizeof(T);
+
+    glBindBuffer(target, buffer);
+
+    if (requiredBytes == 0) {
+        if (capacityBytes != 0) {
+            glBufferData(target, 0, nullptr, GL_DYNAMIC_DRAW);
+        }
+        capacityBytes = 0;
+        uploadedCount = 0;
+        return;
+    }
+
+    if (requiredBytes < uploadedBytes || requiredBytes > capacityBytes) {
+        std::size_t newCapacity = capacityBytes > 0 ? capacityBytes : requiredBytes;
+        while (newCapacity < requiredBytes) {
+            newCapacity = std::max(newCapacity * 2, requiredBytes);
+        }
+
+        glBufferData(target,
+            static_cast<GLsizeiptr>(newCapacity),
+            nullptr,
+            GL_DYNAMIC_DRAW);
+        glBufferSubData(target,
+            0,
+            static_cast<GLsizeiptr>(requiredBytes),
+            packedData.data());
+
+        capacityBytes = newCapacity;
+        uploadedCount = elementCount;
+        return;
+    }
+
+    if (requiredBytes > uploadedBytes) {
+        glBufferSubData(target,
+            static_cast<GLintptr>(uploadedBytes),
+            static_cast<GLsizeiptr>(requiredBytes - uploadedBytes),
+            packedData.data() + uploadedCount);
+        uploadedCount = elementCount;
+    }
+}
 }
 
 RTSceneResources::~RTSceneResources()
@@ -556,34 +607,37 @@ void RTSceneResources::UploadIncrementalScene()
         return;
     }
 
+    bool geometryUpdated = false;
     if (geometryDirty) {
-        std::vector<RT::Triangle> packedTriangles;
-        std::vector<RT::BVHNode> packedNodes;
-
         for (BLASRecord& record : m_blasRecords) {
-            if (!record.ready || record.bvh.triangles.empty() || record.bvh.nodes.empty()) {
+            if (!record.ready || record.uploaded || record.bvh.triangles.empty() || record.bvh.nodes.empty()) {
                 continue;
             }
-            record.nodeOffset = packedNodes.size();
-            record.triangleOffset = packedTriangles.size();
-            packedNodes.insert(packedNodes.end(), record.bvh.nodes.begin(), record.bvh.nodes.end());
-            packedTriangles.insert(packedTriangles.end(), record.bvh.triangles.begin(), record.bvh.triangles.end());
+            record.nodeOffset = m_incrementalPackedNodes.size();
+            record.triangleOffset = m_incrementalPackedTriangles.size();
+            m_incrementalPackedNodes.insert(m_incrementalPackedNodes.end(), record.bvh.nodes.begin(), record.bvh.nodes.end());
+            m_incrementalPackedTriangles.insert(m_incrementalPackedTriangles.end(), record.bvh.triangles.begin(), record.bvh.triangles.end());
+            record.uploaded = true;
+            geometryUpdated = true;
         }
 
-        m_incrementalTriangleCount = packedTriangles.size();
-        m_incrementalNodeCount = packedNodes.size();
+        if (geometryUpdated) {
+            m_incrementalTriangleCount = m_incrementalPackedTriangles.size();
+            m_incrementalNodeCount = m_incrementalPackedNodes.size();
 
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_incrementalTriangleSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER,
-            packedTriangles.empty() ? 0 : packedTriangles.size() * sizeof(RT::Triangle),
-            packedTriangles.empty() ? nullptr : packedTriangles.data(),
-            GL_STATIC_DRAW);
-
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_incrementalBVHSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER,
-            packedNodes.empty() ? 0 : packedNodes.size() * sizeof(RT::BVHNode),
-            packedNodes.empty() ? nullptr : packedNodes.data(),
-            GL_STATIC_DRAW);
+            UploadPackedBuffer(
+                m_incrementalTriangleSSBO,
+                GL_SHADER_STORAGE_BUFFER,
+                m_incrementalTriangleBufferCapacityBytes,
+                m_incrementalPackedTriangles,
+                m_incrementalUploadedTriangleCount);
+            UploadPackedBuffer(
+                m_incrementalBVHSSBO,
+                GL_SHADER_STORAGE_BUFFER,
+                m_incrementalNodeBufferCapacityBytes,
+                m_incrementalPackedNodes,
+                m_incrementalUploadedNodeCount);
+        }
     }
 
     std::vector<RT::Instance> instances;
@@ -666,7 +720,7 @@ bool RTSceneResources::EnsureIncrementalBLAS(
         }
 
         const std::size_t recordIndex = m_pendingBLAS.front();
-        m_pendingBLAS.erase(m_pendingBLAS.begin());
+        m_pendingBLAS.pop_front();
         if (recordIndex >= m_blasRecords.size()) {
             continue;
         }

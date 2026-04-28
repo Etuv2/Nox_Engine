@@ -1137,8 +1137,8 @@ void SurfelGIPass::ResetIrradianceFrameState(const RuntimeBudget& budget)
     header.config = glm::uvec4(
         budget.maxIrradianceRays,
         0u,
-        m_rayCursor,
-        std::min(budget.maxRayTracedSurfels, kMaxSurfels));
+        0u,
+        kMaxSurfels);
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_irradianceHeaderSSBO);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GpuIrradianceHeader), &header);
@@ -1150,14 +1150,14 @@ void SurfelGIPass::RunAdaptiveRayRequest(RenderContext& ctx, const RuntimeBudget
     if (!m_rayRequestShader || !m_rayRequestShader->IsValid()) {
         return;
     }
-    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const uint32_t raySurfelCount = kMaxSurfels;
     if (raySurfelCount == 0u) {
         return;
     }
 
     glUseProgram(m_rayRequestShader->GetProgramID());
     m_rayRequestShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
-    m_rayRequestShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_rayRequestShader->SetUniform("uSurfelStart", 0);
     m_rayRequestShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_rayRequestShader->SetUniform("uMaxRaysPerSurfel", std::max(ctx.surfelGIMaxRaysPerSurfel, 1));
     m_rayRequestShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
@@ -1169,13 +1169,13 @@ void SurfelGIPass::RunGlobalRayAllocation(RenderContext&, const RuntimeBudget& b
     if (!m_rayAllocateShader || !m_rayAllocateShader->IsValid()) {
         return;
     }
-    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const uint32_t raySurfelCount = kMaxSurfels;
     if (raySurfelCount == 0u || budget.maxIrradianceRays == 0u) {
         return;
     }
 
     glUseProgram(m_rayAllocateShader->GetProgramID());
-    m_rayAllocateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_rayAllocateShader->SetUniform("uSurfelStart", 0);
     m_rayAllocateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_rayAllocateShader->SetUniform("uGlobalRayBudget", static_cast<int>(budget.maxIrradianceRays));
     m_rayAllocateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
@@ -1191,7 +1191,7 @@ void SurfelGIPass::RunBoundedRayTrace(
     if (!m_rayTraceShader || !m_rayTraceShader->IsValid()) {
         return;
     }
-    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const uint32_t raySurfelCount = kMaxSurfels;
     if (raySurfelCount == 0u) {
         return;
     }
@@ -1207,7 +1207,7 @@ void SurfelGIPass::RunBoundedRayTrace(
     ctx.rtSceneResources->BindIncrementalForTracing(0u, 1u, 31u, 32u);
     ctx.rtSceneResources->BindLights(2u);
     m_rayTraceShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
-    m_rayTraceShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_rayTraceShader->SetUniform("uSurfelStart", 0);
     m_rayTraceShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_rayTraceShader->SetUniform("u_triangleCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalTriangleCount()));
     m_rayTraceShader->SetUniform("u_bvhNodeCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalNodeCount()));
@@ -1227,14 +1227,14 @@ void SurfelGIPass::RunTemporalAccumulation(RenderContext&, const RuntimeBudget& 
     if (!m_temporalAccumulateShader || !m_temporalAccumulateShader->IsValid()) {
         return;
     }
-    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const uint32_t raySurfelCount = kMaxSurfels;
     if (raySurfelCount == 0u) {
         return;
     }
 
     glUseProgram(m_temporalAccumulateShader->GetProgramID());
     m_temporalAccumulateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
-    m_temporalAccumulateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_temporalAccumulateShader->SetUniform("uSurfelStart", 0);
     m_temporalAccumulateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_temporalAccumulateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_temporalAccumulateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1245,13 +1245,13 @@ void SurfelGIPass::RunGuidingUpdate(RenderContext&, const RuntimeBudget& budget)
     if (!m_guidingUpdateShader || !m_guidingUpdateShader->IsValid()) {
         return;
     }
-    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const uint32_t raySurfelCount = kMaxSurfels;
     if (raySurfelCount == 0u) {
         return;
     }
 
     glUseProgram(m_guidingUpdateShader->GetProgramID());
-    m_guidingUpdateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_guidingUpdateShader->SetUniform("uSurfelStart", 0);
     m_guidingUpdateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_guidingUpdateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_guidingUpdateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1262,7 +1262,7 @@ void SurfelGIPass::RunNeighbourSharing(RenderContext&, const RuntimeBudget& budg
     if (!m_neighbourShareShader || !m_neighbourShareShader->IsValid()) {
         return;
     }
-    const uint32_t shareCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const uint32_t shareCount = kMaxSurfels;
     if (shareCount == 0u) {
         return;
     }
@@ -1280,17 +1280,17 @@ void SurfelGIPass::RunRadialDepthValidityUpdate(RenderContext&, const RuntimeBud
     if (!m_radialDepthUpdateShader || !m_radialDepthUpdateShader->IsValid()) {
         return;
     }
-    const uint32_t raySurfelCount = std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const uint32_t raySurfelCount = kMaxSurfels;
     if (raySurfelCount == 0u) {
         return;
     }
 
     glUseProgram(m_radialDepthUpdateShader->GetProgramID());
-    m_radialDepthUpdateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
+    m_radialDepthUpdateShader->SetUniform("uSurfelStart", 0);
     m_radialDepthUpdateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_radialDepthUpdateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_radialDepthUpdateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
-    m_rayCursor = (m_rayCursor + raySurfelCount) % kMaxSurfels;
+    m_rayCursor = 0;
 }
 
 void SurfelGIPass::PublishResources(RenderContext& ctx) const
@@ -1299,12 +1299,14 @@ void SurfelGIPass::PublishResources(RenderContext& ctx) const
     ctx.surfelGIHeaderBuffer = m_headerSSBO;
     ctx.surfelGIGridHeaderBuffer = m_gridHeaderSSBO;
     ctx.surfelGIGridEntryBuffer = m_gridEntrySSBO;
+    ctx.surfelGIRadialDepthBinsBuffer = m_radialDepthBinsSSBO;
     ctx.surfelGIApplyStrength = kSurfelLightingApplyStrength;
     ctx.surfelGIGridReady =
         m_surfelSSBO != 0 &&
         m_headerSSBO != 0 &&
         m_gridHeaderSSBO != 0 &&
-        m_gridEntrySSBO != 0;
+        m_gridEntrySSBO != 0 &&
+        m_radialDepthBinsSSBO != 0;
 }
 
 void SurfelGIPass::Execute(RenderContext& ctx,
@@ -1690,7 +1692,13 @@ void SurfelGIPass::RenderDebug(RenderContext& ctx) const
                 glUniform1i(loc, static_cast<GLint>(ctx.rtSceneResources->GetIncrementalInstanceNodeCount()));
             }
             if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "uHeatmapColorLimit"); loc >= 0) {
-                glUniform1i(loc, std::max(ctx.rtHeatmapColorLimit, 1));
+                glUniform1i(loc, std::max(ctx.surfelGITLASHeatmapColorLimit, 1));
+            }
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "uDisplayMultipleBVHLayers"); loc >= 0) {
+                glUniform1i(loc, ctx.surfelGITLASDisplayMultipleBVHLayers ? 1 : 0);
+            }
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "uBVHLayerToDisplay"); loc >= 0) {
+                glUniform1i(loc, std::max(ctx.surfelGITLASBVHLayerToDisplay, 0));
             }
         }
 

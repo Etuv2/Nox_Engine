@@ -37,6 +37,7 @@ void main()
 
     uint frameIndex = uint(max(uFrameIndex, 0));
     uint ageFrames = frameIndex - min(s.frames.x, frameIndex);
+    uint framesSinceVisible = frameIndex - min(s.frames.y, frameIndex);
     uint framesSinceContribution = frameIndex - min(s.frames.z, frameIndex);
     bool dormant = (s.ids.y & SURFEL_FLAG_DORMANT) != 0u;
 
@@ -46,11 +47,23 @@ void main()
     float instability = clamp(s.shortTermStats.z * 2.0, 0.0, 1.0);
     float newness = 1.0 - smoothstep(8.0, 64.0, float(ageFrames));
     float staleSolve = smoothstep(16.0, 180.0, float(framesSinceContribution));
+    float recentVisibility = 1.0 - smoothstep(8.0, 180.0, float(framesSinceVisible));
+    float historyDeficit = 1.0 - smoothstep(4.0, 48.0, max(s.irradianceHistory.w, 0.0));
     float visibleRelevance = clamp(s.metrics.w, 0.0, 1.0);
 
-    float priority = newness * 0.45 + varianceSignal * 0.30 + instability * 0.20 + staleSolve * 0.10 + visibleRelevance * 0.15;
+    float priority = newness * 0.45 +
+        varianceSignal * 0.30 +
+        instability * 0.20 +
+        staleSolve * 0.10 +
+        visibleRelevance * 0.15 +
+        recentVisibility * 0.18 +
+        historyDeficit * 0.35;
     if (dormant) {
-        priority *= mix(0.08, 0.45, max(varianceSignal, newness));
+        float wakeSignal = max(max(varianceSignal, newness), max(recentVisibility, historyDeficit));
+        priority *= mix(0.18, 0.75, wakeSignal);
+    }
+    if (max(recentVisibility, historyDeficit) > 0.35) {
+        priority = max(priority, 0.16);
     }
 
     uint maxRays = uint(clamp(uMaxRaysPerSurfel, 1, 32));
@@ -62,8 +75,9 @@ void main()
         atomicAdd(irradianceHeader.rayStats.x, requested);
         atomicAdd(irradianceHeader.rayStats.z, 1u);
     }
+    atomicAdd(irradianceHeader.rayStats.w, 1u);
     if (!dormant) {
-        atomicAdd(irradianceHeader.rayStats.w, 1u);
+        atomicAdd(irradianceHeader.debugStats.x, 1u);
     } else {
         atomicAdd(irradianceHeader.debugStats.y, 1u);
     }
