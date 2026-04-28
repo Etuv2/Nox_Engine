@@ -4,6 +4,14 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #include "includes/surfel_gi_common.glsl"
 
+uniform int u_triangleCount;
+uniform int u_bvhNodeCount;
+uniform int u_rtInstanceCount;
+uniform int u_rtInstanceNodeCount;
+
+#define RT_SCENE_EXTERNAL_COUNTS
+#include "includes/rt_scene_common.glsl"
+
 layout(binding = 20, std430) buffer SurfelBuffer {
     SurfelRecord surfels[];
 };
@@ -32,13 +40,108 @@ layout(binding = 30, std430) buffer RadialDepthBinsBuffer {
     vec4 radialDepthBins[];
 };
 
+struct RTLightData {
+    vec4 position;
+    vec4 direction;
+    vec4 color;
+    vec4 attenuation;
+    vec4 shadowData;
+    vec4 spotData;
+    vec4 areaData;
+    vec4 sampling;
+};
+
+layout(binding = 2, std430) readonly buffer LightBuffer {
+    RTLightData lights[];
+};
+
 uniform int uFrameIndex;
 uniform int uSurfelStart;
 uniform int uSurfelCount;
+uniform int u_lightCount;
 uniform vec3 uDirectionalLightDir;
 uniform vec3 uDirectionalLightColor;
 uniform vec3 uCameraPos;
 uniform float uMaxRayDistance;
+
+vec3 SampleSurfelSky(vec3 direction)
+{
+    float t = clamp(direction.y * 0.5 + 0.5, 0.0, 1.0);
+    return mix(vec3(0.55, 0.62, 0.72), vec3(0.18, 0.32, 0.58), t) * 0.18;
+}
+
+float TraceLightVisibility(vec3 point, vec3 normal, vec3 lightDir, float maxDistance)
+{
+    Ray shadowRay;
+    shadowRay.origin = point + normal * max(RT_SCENE_EPSILON * 4.0, 0.002);
+    shadowRay.direction = lightDir;
+    shadowRay.tMin = RT_SCENE_EPSILON;
+    shadowRay.tMax = max(maxDistance - RT_SCENE_EPSILON, RT_SCENE_EPSILON);
+
+    HitInfo shadowHit = traceBVH(shadowRay);
+    return shadowHit.hit ? 0.0 : 1.0;
+}
+
+vec3 EvaluateSharedSceneLights(vec3 point, vec3 normal)
+{
+    vec3 result = vec3(0.0);
+    uint lightCount = uint(clamp(u_lightCount, 0, 16));
+
+    for (uint i = 0u; i < lightCount; ++i) {
+        RTLightData light = lights[i];
+        int lightType = int(light.position.w);
+        vec3 lightDir = vec3(0.0);
+        vec3 radiance = vec3(0.0);
+        float maxDistance = RT_SCENE_MAX_FLOAT;
+
+        if (lightType == 0) {
+            lightDir = normalize(-light.direction.xyz);
+            radiance = max(light.color.xyz, vec3(0.0)) * max(light.color.w, 0.0);
+            maxDistance = 10000.0;
+        } else if (lightType == 1 || lightType == 2) {
+            vec3 toLight = light.position.xyz - point;
+            float distance = length(toLight);
+            if (distance <= RT_SCENE_EPSILON) {
+                continue;
+            }
+            lightDir = toLight / distance;
+            maxDistance = distance;
+
+            float range = max(light.attenuation.w, 0.001);
+            if (distance > range) {
+                continue;
+            }
+
+            vec3 att = light.attenuation.xyz;
+            float denom = max(att.x + att.y * distance + att.z * distance * distance, 1.0);
+            float rangeFalloff = max(1.0 - pow(distance / range, 4.0), 0.0);
+            rangeFalloff *= rangeFalloff;
+            float cone = 1.0;
+            if (lightType == 2) {
+                vec3 spotDir = normalize(light.direction.xyz);
+                float cosTheta = dot(-lightDir, spotDir);
+                float innerCos = light.spotData.x;
+                float outerCos = min(light.spotData.y, innerCos - 0.001);
+                float width = max(innerCos - outerCos, 0.001);
+                cone = clamp((cosTheta - outerCos) / width, 0.0, 1.0);
+                cone = cone * cone * (3.0 - 2.0 * cone);
+            }
+            radiance = max(light.color.xyz, vec3(0.0)) * max(light.color.w, 0.0) * rangeFalloff * cone / denom;
+        } else {
+            continue;
+        }
+
+        float ndotl = max(dot(normal, lightDir), 0.0);
+        if (ndotl <= 0.0) {
+            continue;
+        }
+
+        float visibility = TraceLightVisibility(point, normal, lightDir, maxDistance);
+        result += radiance * ndotl * visibility;
+    }
+
+    return result;
+}
 
 vec3 SampleNearbyCache(vec3 point, vec3 normal, uint selfID)
 {
@@ -131,20 +234,42 @@ void main()
         }
 
         vec3 rayDir = SurfelHemiToWorld(hemi, normal);
-        vec3 hitPoint = s.worldPositionRadius.xyz + normal * max(s.worldPositionRadius.w * 0.05, 0.002) + rayDir * maxDistance;
-        vec3 hitNormal = normal;
-        vec3 lightDir = normalize(-uDirectionalLightDir);
-        float direct = max(dot(hitNormal, lightDir), 0.0);
-        vec3 directIrradiance = max(uDirectionalLightColor, vec3(0.0)) * direct;
-        vec3 bounced = SampleNearbyCache(hitPoint, hitNormal, id) * 0.65;
-        vec3 incoming = directIrradiance + bounced + vec3(0.015);
+        Ray sceneRay;
+        sceneRay.origin = s.worldPositionRadius.xyz + normal * max(s.worldPositionRadius.w * 0.05, 0.002);
+        sceneRay.direction = rayDir;
+        sceneRay.tMin = RT_SCENE_EPSILON;
+        sceneRay.tMax = maxDistance;
+
+        HitInfo hit = traceBVH(sceneRay);
+        vec3 incoming;
+        float sampleDepth = maxDistance;
+
+        if (hit.hit) {
+            vec3 hitNormal = normalize(hit.normal);
+            if (dot(hitNormal, -rayDir) < 0.0) {
+                hitNormal = -hitNormal;
+            }
+
+            vec3 lightDir = normalize(-uDirectionalLightDir);
+            float direct = max(dot(hitNormal, lightDir), 0.0);
+            float visibility = direct > 0.0 ? TraceLightVisibility(hit.position, hitNormal, lightDir, 10000.0) : 0.0;
+            vec3 directIrradiance = max(uDirectionalLightColor, vec3(0.0)) * direct * visibility;
+            directIrradiance += EvaluateSharedSceneLights(hit.position, hitNormal);
+            vec3 bounced = SampleNearbyCache(hit.position, hitNormal, id) * 0.65;
+            vec3 albedo = max(hit.material.albedo, vec3(0.0));
+            vec3 emission = max(hit.material.emissive, vec3(0.0)) * max(hit.material.emissiveStrength, 0.0);
+            incoming = emission + albedo * (directIrradiance + bounced) + vec3(0.015);
+            sampleDepth = hit.t;
+        } else {
+            incoming = SampleSurfelSky(rayDir);
+        }
+
         accum += incoming;
         accepted += 1.0;
 
         vec3 localDir = SurfelWorldToHemi(rayDir, normal);
         uint depthBin = id * 16u + SurfelRadialDepthBin(localDir);
         vec4 depth = radialDepthBins[depthBin];
-        float sampleDepth = maxDistance;
         float samples = min(depth.z + 1.0, 1024.0);
         float alpha = samples <= 1.0 ? 1.0 : clamp(1.0 / samples, 0.02, 0.35);
         depth.x = mix(depth.x <= 0.0 ? sampleDepth : depth.x, sampleDepth, alpha);

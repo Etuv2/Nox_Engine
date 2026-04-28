@@ -157,6 +157,21 @@ namespace RT {
 		}
 	};
 
+	struct Instance {
+		glm::vec4 boundsMin;       // xyz = world AABB min, w reserved
+		glm::vec4 boundsMax;       // xyz = world AABB max, w reserved
+		glm::mat4 worldFromLocal;
+		glm::mat4 localFromWorld;
+		glm::uvec4 metadata;       // x=node offset, y=triangle offset, z=flags, w=reserved
+	};
+
+	struct InstanceNode {
+		glm::vec4 boundsMin;       // xyz = world AABB min, w reserved
+		glm::vec4 boundsMax;       // xyz = world AABB max, w reserved
+		glm::ivec4 children;       // child node indices or -1 for leaf
+		glm::ivec4 instances;      // instance indices for leaf nodes or -1
+	};
+
 	/**
 	 * @struct Ray
 	 * @brief Ray structure for GPU ray tracing

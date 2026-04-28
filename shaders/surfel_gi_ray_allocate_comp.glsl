@@ -19,6 +19,7 @@ layout(binding = 28, std430) buffer IrradianceHeaderBuffer {
 uniform int uSurfelStart;
 uniform int uSurfelCount;
 uniform int uGlobalRayBudget;
+uniform int uFrameIndex;
 
 void main()
 {
@@ -42,7 +43,21 @@ void main()
         if (totalRequested <= globalBudget) {
             allocated = requested;
         } else {
-            allocated = uint(floor(float(requested) * float(globalBudget) / float(totalRequested)));
+            float exactShare = float(requested) * float(globalBudget) / float(totalRequested);
+            uint baseShare = uint(floor(float(requested) * float(globalBudget) / float(totalRequested)));
+            uint frameSalt = uint(max(uFrameIndex, 0)) * 1597334677u;
+            float remainderScore = fract(exactShare) + Hash01(s.ids.z ^ (uint(id) * 747796405u) ^ frameSalt);
+            uint desired = min(requested, baseShare + (remainderScore >= 1.0 ? 1u : 0u));
+
+            for (uint ray = 0u; ray < desired; ++ray) {
+                uint previous = atomicAdd(irradianceHeader.rayStats.y, 1u);
+                if (previous < globalBudget) {
+                    ++allocated;
+                } else {
+                    atomicAdd(irradianceHeader.rayStats.y, uint(-1));
+                    break;
+                }
+            }
         }
     }
 
@@ -52,7 +67,7 @@ void main()
 
     s.solveState.y = float(allocated);
     surfels[id] = s;
-    if (allocated > 0u) {
+    if (allocated > 0u && totalRequested <= globalBudget) {
         atomicAdd(irradianceHeader.rayStats.y, allocated);
     }
 }

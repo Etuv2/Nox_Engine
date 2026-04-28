@@ -1,10 +1,12 @@
 ﻿#include "RenderingSettingsWindow.h"
 #include "../ModularRenderer.h"
 #include "../RenderContext.h"
+#include "../RTSceneResources.h"
 #include "../LightManager.h"
 #include "../passes/IndirectDiffusePass.h"
 #include "../passes/SurfelGIPass.h"
 #include <IMGUI/imgui.h>
+#include <algorithm>
 #include <iostream>
 #include <filesystem>
 
@@ -103,6 +105,11 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGIMaxLifecycleUpdates = 16384;
 	m_surfelGIMaxIntegrationUpdates = 8192;
 	m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	m_surfelGIRTMaxTriangles = 250000;
+	m_surfelGIRTBuildBudgetMs = 0.75f;
+	m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
+	m_surfelGIRTMaxResidentMB = 512;
+	m_surfelGIRTIncludeSkinnedMeshes = false;
 	m_surfelGIGridRebuildInterval = 1;
 	m_surfelGIDebugMode = 0;
 
@@ -252,6 +259,11 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_surfelGIMaxLifecycleUpdates = ctx.surfelGIMaxLifecycleUpdates;
 	m_surfelGIMaxIntegrationUpdates = ctx.surfelGIMaxIntegrationUpdates;
 	m_surfelGIMaxCoarseCoverageSurfels = ctx.surfelGIMaxCoarseCoverageSurfels;
+	m_surfelGIRTMaxTriangles = ctx.surfelGIRTMaxTriangles;
+	m_surfelGIRTBuildBudgetMs = ctx.surfelGIRTBuildBudgetMs;
+	m_surfelGIRTMaxBLASTrianglesPerFrame = ctx.surfelGIRTMaxBLASTrianglesPerFrame;
+	m_surfelGIRTMaxResidentMB = ctx.surfelGIRTMaxResidentMB;
+	m_surfelGIRTIncludeSkinnedMeshes = ctx.surfelGIRTIncludeSkinnedMeshes;
 	m_surfelGIGridRebuildInterval = ctx.surfelGIGridRebuildInterval;
 	m_surfelGIDebugMode = ctx.surfelGIDebugMode;
 	m_sssResolutionScale = ctx.sssResolutionScale;
@@ -420,6 +432,11 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.surfelGIMaxLifecycleUpdates = m_surfelGIMaxLifecycleUpdates;
 	ctx.surfelGIMaxIntegrationUpdates = m_surfelGIMaxIntegrationUpdates;
 	ctx.surfelGIMaxCoarseCoverageSurfels = m_surfelGIMaxCoarseCoverageSurfels;
+	ctx.surfelGIRTMaxTriangles = m_surfelGIRTMaxTriangles;
+	ctx.surfelGIRTBuildBudgetMs = m_surfelGIRTBuildBudgetMs;
+	ctx.surfelGIRTMaxBLASTrianglesPerFrame = m_surfelGIRTMaxBLASTrianglesPerFrame;
+	ctx.surfelGIRTMaxResidentMB = m_surfelGIRTMaxResidentMB;
+	ctx.surfelGIRTIncludeSkinnedMeshes = m_surfelGIRTIncludeSkinnedMeshes;
 	ctx.surfelGIGridRebuildInterval = m_surfelGIGridRebuildInterval;
 	ctx.surfelGIDebugMode = m_surfelGIDebugMode;
 	ctx.sssResolutionScale = m_sssResolutionScale;
@@ -955,6 +972,34 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderInt("Max Lifecycle Updates", &m_surfelGIMaxLifecycleUpdates, 512, 65536)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Integrate Updates", &m_surfelGIMaxIntegrationUpdates, 256, 65536)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Coarse Coverage Surfels", &m_surfelGIMaxCoarseCoverageSurfels, 512, 65536)) { SyncToRenderer(); }
+				if (ImGui::InputInt("RT Triangle Cap", &m_surfelGIRTMaxTriangles, 10000, 100000)) {
+					m_surfelGIRTMaxTriangles = std::max(0, m_surfelGIRTMaxTriangles);
+					SyncToRenderer();
+				}
+				ImGui::TextDisabled("0 disables the cap; higher values may stall or use significant memory.");
+				if (ImGui::SliderFloat("RT BLAS Build Budget (ms)", &m_surfelGIRTBuildBudgetMs, 0.1f, 4.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::InputInt("RT BLAS Tris / Frame", &m_surfelGIRTMaxBLASTrianglesPerFrame, 5000, 25000)) {
+					m_surfelGIRTMaxBLASTrianglesPerFrame = std::max(1, m_surfelGIRTMaxBLASTrianglesPerFrame);
+					SyncToRenderer();
+				}
+				if (ImGui::InputInt("RT BLAS Memory MB", &m_surfelGIRTMaxResidentMB, 64, 256)) {
+					m_surfelGIRTMaxResidentMB = std::max(1, m_surfelGIRTMaxResidentMB);
+					SyncToRenderer();
+				}
+				if (ImGui::Checkbox("RT Include Skinned Meshes", &m_surfelGIRTIncludeSkinnedMeshes)) { SyncToRenderer(); }
+				if (m_modularRenderer && m_modularRenderer->GetContext().rtSceneResources) {
+					const auto& rtStats = m_modularRenderer->GetContext().rtSceneResources->GetDiagnostics();
+					ImGui::Text("RT BLAS: ready %zu  queued %zu  failed %zu  instances %zu",
+						rtStats.blasReady,
+						rtStats.blasQueued,
+						rtStats.blasFailed,
+						rtStats.tlasInstances);
+					ImGui::Text("RT Build: %.2fms  tris %zu  memory %.1f MB  skipped skinned %zu",
+						rtStats.buildMsThisFrame,
+						rtStats.trianglesBuiltThisFrame,
+						static_cast<double>(rtStats.residentBytes) / (1024.0 * 1024.0),
+						rtStats.skippedSkinnedInstances);
+				}
 				if (ImGui::SliderInt("Grid Rebuild Interval", &m_surfelGIGridRebuildInterval, 1, 8)) { SyncToRenderer(); }
 				const char* surfelDebugModes[] = {
 					"Off",
@@ -980,7 +1025,8 @@ void RenderingSettingsWindow::Render() {
 					"Deficit Heatmap",
 					"Depth Rejection",
 					"Normal Rejection",
-					"Winner Surfel ID"
+					"Winner Surfel ID",
+					"TLAS BVH Heatmap"
 				};
 				if (ImGui::Combo("Surfel Debug", &m_surfelGIDebugMode, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
 				if (m_modularRenderer) {
@@ -1771,6 +1817,11 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGIMaxLifecycleUpdates = 16384;
 	m_surfelGIMaxIntegrationUpdates = 8192;
 	m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	m_surfelGIRTMaxTriangles = 250000;
+	m_surfelGIRTBuildBudgetMs = 0.75f;
+	m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
+	m_surfelGIRTMaxResidentMB = 512;
+	m_surfelGIRTIncludeSkinnedMeshes = false;
 	m_surfelGIGridRebuildInterval = 1;
 	m_surfelGIDebugMode = 0;
 

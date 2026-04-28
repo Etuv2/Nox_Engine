@@ -8,6 +8,7 @@
 #include "../ScreenQuad.h"
 #include "../SceneGraph.h"
 #include "../ShaderLoader.h"
+#include "../RTSceneResources.h"
 #include "../TextureUnits.h"
 #include <algorithm>
 #include <array>
@@ -579,10 +580,12 @@ SurfelGIPass::RuntimeBudget SurfelGIPass::ComputeRuntimeBudget(const RenderConte
         ctx.surfelGIMaxCoarseCoverageSurfels,
         kMinProjectedBudget,
         kMaxSurfels);
-    budget.maxIrradianceRays = scaledBudget(
-        ctx.surfelGIMaxIrradianceRays,
-        kMinIrradianceRayBudget,
-        kMaxSurfels);
+    {
+        const uint32_t userRayCap = static_cast<uint32_t>(std::max(ctx.surfelGIMaxIrradianceRays, 0));
+        const float scaled = static_cast<float>(userRayCap) * effectiveScale;
+        const uint32_t rounded = static_cast<uint32_t>(std::max(0.0f, std::round(scaled)));
+        budget.maxIrradianceRays = std::min(rounded, userRayCap);
+    }
     budget.maxRayTracedSurfels = scaledBudget(
         ctx.surfelGIMaxRayTracedSurfels,
         kMinRayTracedSurfels,
@@ -1175,12 +1178,13 @@ void SurfelGIPass::RunGlobalRayAllocation(RenderContext&, const RuntimeBudget& b
     m_rayAllocateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
     m_rayAllocateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_rayAllocateShader->SetUniform("uGlobalRayBudget", static_cast<int>(budget.maxIrradianceRays));
+    m_rayAllocateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
     m_rayAllocateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_rayAllocateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
 void SurfelGIPass::RunBoundedRayTrace(
-    RenderContext&,
+    RenderContext& ctx,
     const std::shared_ptr<DirectionalLight>& dirLight,
     const RuntimeBudget& budget)
 {
@@ -1191,14 +1195,25 @@ void SurfelGIPass::RunBoundedRayTrace(
     if (raySurfelCount == 0u) {
         return;
     }
+    if (!ctx.rtSceneResources || !ctx.rtSceneResources->IsIncrementalReady()) {
+        return;
+    }
 
     const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(0.0f, -1.0f, 0.0f);
     const glm::vec3 lightColor = dirLight && dirLight->IsEnabled() ? dirLight->GetEffectiveColor() : glm::vec3(0.0f);
+    ctx.rtSceneResources->UpdateLights(ctx.lightManager);
 
     glUseProgram(m_rayTraceShader->GetProgramID());
+    ctx.rtSceneResources->BindIncrementalForTracing(0u, 1u, 31u, 32u);
+    ctx.rtSceneResources->BindLights(2u);
     m_rayTraceShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
     m_rayTraceShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
     m_rayTraceShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_rayTraceShader->SetUniform("u_triangleCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalTriangleCount()));
+    m_rayTraceShader->SetUniform("u_bvhNodeCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalNodeCount()));
+    m_rayTraceShader->SetUniform("u_rtInstanceCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalInstanceCount()));
+    m_rayTraceShader->SetUniform("u_rtInstanceNodeCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalInstanceNodeCount()));
+    m_rayTraceShader->SetUniform("u_lightCount", static_cast<int>(ctx.rtSceneResources->GetLightCount()));
     m_rayTraceShader->SetUniform("uDirectionalLightDir", lightDirection);
     m_rayTraceShader->SetUniform("uDirectionalLightColor", lightColor);
     m_rayTraceShader->SetUniform("uCameraPos", m_prevCameraPos);
@@ -1313,6 +1328,15 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     if (m_needsPoolInit) {
         InitializePool();
     }
+    if (!ctx.rtSceneResources) {
+        ctx.rtSceneResources = std::make_shared<RTSceneResources>();
+    }
+    RTSceneResources::IncrementalBuildSettings rtBuildSettings;
+    rtBuildSettings.maxBuildMsPerFrame = std::max(ctx.surfelGIRTBuildBudgetMs, 0.1f);
+    rtBuildSettings.maxBlasTrianglesPerFrame = static_cast<size_t>(std::max(ctx.surfelGIRTMaxBLASTrianglesPerFrame, 1));
+    rtBuildSettings.maxResidentBytes = static_cast<size_t>(std::max(ctx.surfelGIRTMaxResidentMB, 1)) * 1024ull * 1024ull;
+    rtBuildSettings.includeSkinnedMeshes = ctx.surfelGIRTIncludeSkinnedMeshes;
+    ctx.rtSceneResources->EnsureIncrementalBLAS(sceneGraph, rtBuildSettings);
 
     const GLuint transformBuffer = renderSystem->GetTransformBufferID();
     const uint32_t maxTransformID = static_cast<uint32_t>(std::min<size_t>(
@@ -1351,7 +1375,6 @@ void SurfelGIPass::Execute(RenderContext& ctx,
         budget.maxProjectedSurfels = motionBoost(budget.maxProjectedSurfels, std::max(budget.maxProjectedSurfels, 24576u));
         budget.maxCoarseCoverageSurfels = motionBoost(budget.maxCoarseCoverageSurfels, std::max(budget.maxCoarseCoverageSurfels, 24576u));
         budget.maxLifecycleUpdates = motionBoost(budget.maxLifecycleUpdates, std::max(budget.maxLifecycleUpdates, 32768u));
-        budget.maxRayTracedSurfels = motionBoost(budget.maxRayTracedSurfels, std::max(budget.maxRayTracedSurfels, 16384u));
         budget.gridRebuildInterval = 1u;
     }
     const float userScale = std::clamp(ctx.surfelGIBudgetScale, 0.25f, 2.0f);
@@ -1566,8 +1589,12 @@ void SurfelGIPass::PushStatsHistory()
 
 void SurfelGIPass::RenderDebug(RenderContext& ctx) const
 {
-    const bool overlayMode = ctx.surfelGIDebugMode >= 18 && ctx.surfelGIDebugMode <= 23;
+    const bool overlayMode = ctx.surfelGIDebugMode >= 18 && ctx.surfelGIDebugMode <= 24;
+    const bool tlasOverlayMode = ctx.surfelGIDebugMode == 24;
     if (!ctx.enableSurfelGI || ctx.surfelGIDebugMode <= 0 || !ctx.gbufferFBO) {
+        return;
+    }
+    if (tlasOverlayMode && (!ctx.rtSceneResources || !ctx.rtSceneResources->IsIncrementalReady())) {
         return;
     }
     if (!overlayMode && (!m_debugProgram || !m_surfelSSBO || !m_headerSSBO || !m_gridHeaderSSBO)) {
@@ -1614,6 +1641,8 @@ void SurfelGIPass::RenderDebug(RenderContext& ctx) const
         } else if (ctx.surfelGIDebugMode == 23) {
             overlayCoverageTex = m_winnerIDTex;
             overlayModeIndex = 5;
+        } else if (ctx.surfelGIDebugMode == 24) {
+            overlayModeIndex = 6;
         }
 
         glActiveTexture(GL_TEXTURE0);
@@ -1639,6 +1668,30 @@ void SurfelGIPass::RenderDebug(RenderContext& ctx) const
         }
         if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "uCoverageThreshold"); loc >= 0) {
             glUniform1f(loc, std::max(ctx.surfelGICoverageThreshold, 0.05f));
+        }
+
+        if (tlasOverlayMode && ctx.rtSceneResources) {
+            ctx.rtSceneResources->BindIncrementalForTracing(0, 1, 31, 32);
+
+            const glm::mat4 invViewProj = glm::inverse(ctx.proj * ctx.view);
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "uInvViewProj"); loc >= 0) {
+                glUniformMatrix4fv(loc, 1, GL_FALSE, &(invViewProj[0][0]));
+            }
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "u_triangleCount"); loc >= 0) {
+                glUniform1i(loc, static_cast<GLint>(ctx.rtSceneResources->GetIncrementalTriangleCount()));
+            }
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "u_bvhNodeCount"); loc >= 0) {
+                glUniform1i(loc, static_cast<GLint>(ctx.rtSceneResources->GetIncrementalNodeCount()));
+            }
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "u_rtInstanceCount"); loc >= 0) {
+                glUniform1i(loc, static_cast<GLint>(ctx.rtSceneResources->GetIncrementalInstanceCount()));
+            }
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "u_rtInstanceNodeCount"); loc >= 0) {
+                glUniform1i(loc, static_cast<GLint>(ctx.rtSceneResources->GetIncrementalInstanceNodeCount()));
+            }
+            if (GLint loc = glGetUniformLocation(m_debugOverlayProgram, "uHeatmapColorLimit"); loc >= 0) {
+                glUniform1i(loc, std::max(ctx.rtHeatmapColorLimit, 1));
+            }
         }
 
         ctx.screenQuad->Render();

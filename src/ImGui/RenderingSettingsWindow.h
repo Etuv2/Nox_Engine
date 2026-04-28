@@ -131,6 +131,11 @@ private:
 	int m_surfelGIMaxLifecycleUpdates = 16384;
 	int m_surfelGIMaxIntegrationUpdates = 8192;
 	int m_surfelGIMaxCoarseCoverageSurfels = 12288;
+	int m_surfelGIRTMaxTriangles = 250000;
+	float m_surfelGIRTBuildBudgetMs = 0.75f;
+	int m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
+	int m_surfelGIRTMaxResidentMB = 512;
+	bool m_surfelGIRTIncludeSkinnedMeshes = false;
 	int m_surfelGIGridRebuildInterval = 1;
 	int m_surfelGIDebugMode = 0;
 

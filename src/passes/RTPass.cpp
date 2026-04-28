@@ -5,19 +5,13 @@
 #include "../SceneGraph.h"
 #include "../Camera.h"
 #include "../ComputeShader.h"
-#include "../BVHBuilder.h"
 #include "../LightManager.h"
+#include "../RTSceneResources.h"
 #include <iostream>
 
 
 RTPass::~RTPass()
 {
-	if (m_bvhBuffers.triangleSSBO) {
-		glDeleteBuffers(1, &m_bvhBuffers.triangleSSBO);
-	}
-	if (m_bvhBuffers.bvhSSBO) {
-		glDeleteBuffers(1, &m_bvhBuffers.bvhSSBO);
-	}
 	if (m_rtFBO_ID) {
 		glDeleteFramebuffers(1, &m_rtFBO_ID);
 	}
@@ -119,10 +113,6 @@ bool RTPass::Initialize(RenderContext& context)
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	// Initialize BVH buffers
-	glGenBuffers(1, &m_bvhBuffers.triangleSSBO);
-	glGenBuffers(1, &m_bvhBuffers.bvhSSBO);
-
 	// Initialize SVGF buffers
 	glGenBuffers(1, &m_svgfBuffers.momentsSSBO);
 	glGenBuffers(1, &m_svgfBuffers.historyLengthSSBO);
@@ -223,10 +213,15 @@ void RTPass::Execute(RenderContext& ctx,
 	}
 
 	// Build BVH if dirty (skip if in debug mode)
-	if (m_bvhDirty && !ctx.rtDisplayBVH) {
-		runWarmup(sceneGraph);
-		// Clear dirty flag after successful rebuild
-		sceneGraph->ClearBVHDirty();
+	if (!ctx.rtSceneResources) {
+		ctx.rtSceneResources = std::make_shared<RTSceneResources>();
+	}
+	if ((m_bvhDirty || !ctx.rtSceneResources->IsReady()) && !ctx.rtDisplayBVH) {
+		std::cout << "[RTPass] Updating shared RT scene resources..." << std::endl;
+		if (ctx.rtSceneResources->EnsureBuilt(sceneGraph, true)) {
+			m_bvhDirty = false;
+			sceneGraph->ClearBVHDirty();
+		}
 	}
 
 	// Check if camera moved (reset accumulation)
@@ -266,76 +261,25 @@ void RTPass::Execute(RenderContext& ctx,
 	copyToHDRBuffer(ctx);
 }
 
-void RTPass::runWarmup(const std::shared_ptr<SceneGraph>& sceneGraph)
-{
-	std::cout << "[RTPass] Building BVH..." << std::endl;
-	buildAndUploadBVH(sceneGraph);
-	m_bvhDirty = false;
-}
-
-void RTPass::buildAndUploadBVH(const std::shared_ptr<SceneGraph>& sceneGraph)
-{
-	// Build BVH from scene
-	BVHBuilder::BuildParams params;
-	params.maxLeafPrimitives = 2;
-	params.maxDepth = 24;
-	params.sahBuckets = 32;
-
-	RT::BVHData bvhData = BVHBuilder::BuildFromScene(sceneGraph, params);
-
-	if (bvhData.triangles.empty() || bvhData.nodes.empty()) {
-		std::cerr << "[RTPass] Failed to build BVH - no geometry" << std::endl;
-		return;
-	}
-
-	m_bvhBuffers.triangleCount = bvhData.triangles.size();
-	m_bvhBuffers.nodeCount = bvhData.nodes.size();
-
-	// Upload triangle data
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_bvhBuffers.triangleSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER,
-		bvhData.GetTriangleBufferSize(),
-		bvhData.triangles.data(),
-		GL_STATIC_DRAW);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-	// Upload BVH node data
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_bvhBuffers.bvhSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER,
-		bvhData.GetNodeBufferSize(),
-		bvhData.nodes.data(),
-		GL_STATIC_DRAW);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-	std::cout << "[RTPass] BVH uploaded: "
-		<< m_bvhBuffers.triangleCount << " triangles, "
-		<< m_bvhBuffers.nodeCount << " nodes, "
-		<< "max depth " << bvhData.maxDepth << std::endl;
-}
-
 void RTPass::runRayTracing(RenderContext& ctx,
 	const std::shared_ptr<SceneGraph>& sceneGraph,
 	const std::shared_ptr<Camera>& camera,
 	const std::shared_ptr<Skybox>& skybox)
 {
 	if (!m_rtShader) return;
+	if (!ctx.rtSceneResources || !ctx.rtSceneResources->IsReady()) {
+		return;
+	}
 
 	// Upload light data from LightManager
-	if (ctx.lightManager) {
-		auto lights = ctx.lightManager->GetEnabledLights();
-		m_lightBuffers.lightCount = lights.size();
-		// Use LightManager SSBO directly; no assignment altering ownership
-		m_lightBuffers.lightSSBO = ctx.lightManager->GetLightDataSSBO();
-	}
-	else {
-		m_lightBuffers.lightCount =0;
-	}
+	ctx.rtSceneResources->UpdateLights(ctx.lightManager);
+	m_lightBuffers.lightCount = ctx.rtSceneResources->GetLightCount();
+	m_lightBuffers.lightSSBO = ctx.rtSceneResources->GetLightSSBO();
 	// Activate compute shader
 	glUseProgram(m_rtShader->GetProgramID());
 
 	// Bind BVH buffers
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_bvhBuffers.triangleSSBO);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_bvhBuffers.bvhSSBO);
+	ctx.rtSceneResources->BindForTracing(0u, 1u);
 
 	// Bind light buffer (from LightManager)
 	if (m_lightBuffers.lightSSBO != 0) {
@@ -393,8 +337,8 @@ void RTPass::runRayTracing(RenderContext& ctx,
 	m_rtShader->SetUniform("u_frameIndex", m_frameIndex);
 	m_rtShader->SetUniform("u_sampleCount", ctx.rtSamplesPerPixel);
 	m_rtShader->SetUniform("u_maxBounces", ctx.rtMaxBounces);
-	m_rtShader->SetUniform("u_triangleCount", static_cast<int>(m_bvhBuffers.triangleCount));
-	m_rtShader->SetUniform("u_bvhNodeCount", static_cast<int>(m_bvhBuffers.nodeCount));
+	m_rtShader->SetUniform("u_triangleCount", static_cast<int>(ctx.rtSceneResources->GetTriangleCount()));
+	m_rtShader->SetUniform("u_bvhNodeCount", static_cast<int>(ctx.rtSceneResources->GetNodeCount()));
 
 	// Light system uniforms
 	m_rtShader->SetUniform("u_lightCount", static_cast<int>(m_lightBuffers.lightCount));

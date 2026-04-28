@@ -166,6 +166,9 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PointLight.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\RTSceneResources.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\RayCast.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

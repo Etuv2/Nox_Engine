@@ -405,6 +405,9 @@
     <ClCompile Include="src\RigidBody.cpp">
       <Filter>Source Files\scripts\Physics</Filter>
     </ClCompile>
+    <ClCompile Include="src\RTSceneResources.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
     <ClCompile Include="src\PhysicsBVH.cpp">
       <Filter>Source Files\scripts\Physics</Filter>
     </ClCompile>
@@ -969,6 +972,9 @@
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
     <ClInclude Include="src\RTStructures.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RTSceneResources.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
     <ClInclude Include="src\AnimationSystem.h">

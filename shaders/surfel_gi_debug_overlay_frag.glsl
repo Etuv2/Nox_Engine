@@ -6,8 +6,12 @@ layout(location = 0) out vec4 FragColor;
 uniform usampler2D uCoverageTex;
 uniform sampler2D uDeficitTex;
 uniform sampler2D uDepthTex;
-uniform int uMode; // 0=raw projected support, 1=valid coverage, 2=deficit, 3=depth rejection, 4=normal rejection, 5=winner surfel ID
+uniform mat4 uInvViewProj;
+uniform int uMode; // 0=raw projected support, 1=valid coverage, 2=deficit, 3=depth rejection, 4=normal rejection, 5=winner surfel ID, 6=TLAS BVH heatmap
 uniform float uCoverageThreshold;
+uniform int uHeatmapColorLimit;
+
+#include "includes/rt_scene_common.glsl"
 
 vec3 HeatRamp(float t)
 {
@@ -47,8 +51,93 @@ vec3 HashToColor(uint value)
     return mix(vec3(0.15), color, 0.9);
 }
 
+uint TraceTlasDebug(Ray ray, out uint nodeTests, out uint instanceTests)
+{
+    nodeTests = 0u;
+    instanceTests = 0u;
+
+    if (u_rtInstanceNodeCount <= 0) {
+        return 0u;
+    }
+
+    int nodeStack[RT_SCENE_MAX_BVH_STACK_SIZE];
+    int nodeStackPtr = 0;
+    nodeStack[nodeStackPtr++] = 0;
+
+    while (nodeStackPtr > 0 && nodeStackPtr < RT_SCENE_MAX_BVH_STACK_SIZE) {
+        int nodeIndex = nodeStack[--nodeStackPtr];
+        if (nodeIndex < 0 || nodeIndex >= u_rtInstanceNodeCount) {
+            continue;
+        }
+
+        ++nodeTests;
+        RTInstanceNode node = rtInstanceNodes[nodeIndex];
+        if (!rayAABBIntersect(ray, node.boundsMin.xyz, node.boundsMax.xyz)) {
+            continue;
+        }
+
+        if (node.children.x >= 0 || node.children.y >= 0) {
+            if (node.children.y >= 0 && nodeStackPtr < RT_SCENE_MAX_BVH_STACK_SIZE) {
+                nodeStack[nodeStackPtr++] = node.children.y;
+            }
+            if (node.children.x >= 0 && nodeStackPtr < RT_SCENE_MAX_BVH_STACK_SIZE) {
+                nodeStack[nodeStackPtr++] = node.children.x;
+            }
+            continue;
+        }
+
+        for (int leafSlot = 0; leafSlot < 4; ++leafSlot) {
+            int instanceIndex = node.instances[leafSlot];
+            if (instanceIndex < 0 || instanceIndex >= u_rtInstanceCount) {
+                continue;
+            }
+
+            ++instanceTests;
+            RTInstance instance = rtInstances[instanceIndex];
+            if (!rayAABBIntersect(ray, instance.boundsMin.xyz, instance.boundsMax.xyz)) {
+                continue;
+            }
+        }
+    }
+
+    return nodeTests + instanceTests * 3u;
+}
+
+vec3 TlasDebugColor(vec2 uv)
+{
+    vec2 ndc = uv * 2.0 - 1.0;
+    vec4 nearClip = vec4(ndc, -1.0, 1.0);
+    vec4 farClip = vec4(ndc, 1.0, 1.0);
+
+    vec4 nearWorld = uInvViewProj * nearClip;
+    vec4 farWorld = uInvViewProj * farClip;
+    if (abs(nearWorld.w) < 1e-6 || abs(farWorld.w) < 1e-6) {
+        return vec3(0.0);
+    }
+
+    vec3 rayOrigin = nearWorld.xyz / nearWorld.w;
+    vec3 rayDirection = normalize((farWorld.xyz / farWorld.w) - rayOrigin);
+
+    Ray ray;
+    ray.origin = rayOrigin;
+    ray.direction = rayDirection;
+    ray.tMin = RT_SCENE_EPSILON;
+    ray.tMax = RT_SCENE_MAX_FLOAT;
+
+    uint nodeTests = 0u;
+    uint instanceTests = 0u;
+    uint complexity = TraceTlasDebug(ray, nodeTests, instanceTests);
+    float scale = float(max(uHeatmapColorLimit, 1));
+    return HeatRamp(float(complexity) / scale);
+}
+
 void main()
 {
+    if (uMode == 6) {
+        FragColor = vec4(TlasDebugColor(TexCoord), 1.0);
+        return;
+    }
+
     float depth = texture(uDepthTex, TexCoord).r;
     if (depth >= 0.9999) {
         FragColor = vec4(0.0, 0.0, 0.0, 1.0);

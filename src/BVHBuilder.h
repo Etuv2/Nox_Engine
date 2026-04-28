@@ -25,6 +25,7 @@ public:
 		size_t maxLeafPrimitives = 4;    // Max triangles per leaf node
 		size_t maxDepth = 30;           // Max tree depth
 		size_t sahBuckets = 16;           // Number of buckets for SAH binning
+		bool verbose = true;
 
 		BuildParams() = default;
 	};
@@ -107,6 +108,48 @@ private:
 		const glm::vec3& maxBounds,
 		int depth,
 		int& maxDepthOut,
+		const BuildParams& params
+	);
+
+	static void ComputeBoundsRange(
+		const std::vector<RT::Triangle>& triangles,
+		const std::vector<int>& indices,
+		size_t begin,
+		size_t end,
+		glm::vec3& minBounds,
+		glm::vec3& maxBounds
+	);
+
+	static void BuildRecursiveRange(
+		std::vector<RT::BVHNode>& nodes,
+		const std::vector<RT::Triangle>& triangles,
+		std::vector<int>& triangleIndices,
+		size_t begin,
+		size_t end,
+		const glm::vec3& minBounds,
+		const glm::vec3& maxBounds,
+		int depth,
+		int& maxDepthOut,
+		const BuildParams& params
+	);
+
+	static bool PartitionRangeSAH(
+		const std::vector<RT::Triangle>& triangles,
+		std::vector<int>& triangleIndices,
+		size_t begin,
+		size_t end,
+		const glm::vec3& parentMin,
+		const glm::vec3& parentMax,
+		size_t sahBuckets,
+		size_t& splitOut,
+		glm::vec3& leftMin,
+		glm::vec3& leftMax,
+		glm::vec3& rightMin,
+		glm::vec3& rightMax
+	);
+
+	static void BuildFromExtractedTriangles(
+		RT::BVHData& bvhData,
 		const BuildParams& params
 	);
 

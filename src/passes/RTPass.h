@@ -60,14 +60,6 @@ private:
 	// Track previous BVH debug state to detect toggles
 	bool m_prevBVHDebugState = false;
 	
-	// BVH acceleration structure
-	struct BVHBuffers {
-		GLuint triangleSSBO = 0;  // Triangle data SSBO
-		GLuint bvhSSBO = 0;     // BVH node data SSBO
-		size_t triangleCount = 0;
-		size_t nodeCount = 0;
-	} m_bvhBuffers;
-
 	//Light data for ray tracing
 	struct LightBuffers {
 		GLuint lightSSBO = 0;       // Light data SSBO (from LightManager)
@@ -91,16 +83,6 @@ private:
 	std::unique_ptr<ComputeShader> m_svgfTemporalShader;      // Temporal reprojection
 	std::unique_ptr<ComputeShader> m_svgfVarianceShader;      // Variance estimation
 	std::unique_ptr<ComputeShader> m_svgfAtrousShader;        // À-trous wavelet filter
-
-	/*
-	* Warmup stage where BVH is built and shaders are prepped
-	*/
-	void runWarmup(const std::shared_ptr<SceneGraph>& sceneGraph);
-	
-	/*
-	* Build and upload BVH to GPU
-	*/
-	void buildAndUploadBVH(const std::shared_ptr<SceneGraph>& sceneGraph);
 
 	/*
 	* Ray tracing execution stage

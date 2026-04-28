@@ -2,6 +2,7 @@
 #include "SceneNode.h"
 #include "Scene.h"
 #include <algorithm>
+#include <array>
 #include <queue>
 #include <iostream>
 
@@ -20,25 +21,16 @@ RT::BVHData BVHBuilder::BuildFromMesh(
 		return bvhData;
 	}
 
-	std::cout << "[BVHBuilder] Building BVH for " << bvhData.triangles.size() << " triangles..." << std::endl;
-
-	// Create initial index list
-	std::vector<int> triangleIndices(bvhData.triangles.size());
-	for (size_t i = 0; i < triangleIndices.size(); ++i) {
-		triangleIndices[i] = static_cast<int>(i);
+	if (params.verbose) {
+		std::cout << "[BVHBuilder] Building BVH for " << bvhData.triangles.size() << " triangles..." << std::endl;
 	}
 
-	// Compute root bounds
-	glm::vec3 minBounds, maxBounds;
-	ComputeBounds(bvhData.triangles, triangleIndices, minBounds, maxBounds);
+	BuildFromExtractedTriangles(bvhData, params);
 
-	// Build BVH tree
-	bvhData.maxDepth = 0;
-	BuildRecursive(bvhData.nodes, bvhData.triangles, triangleIndices,
-		minBounds, maxBounds, 0, bvhData.maxDepth, params);
-
-	std::cout << "[BVHBuilder] Built BVH with " << bvhData.nodes.size()
-		<< " nodes, max depth " << bvhData.maxDepth << std::endl;
+	if (params.verbose) {
+		std::cout << "[BVHBuilder] Built BVH with " << bvhData.nodes.size()
+			<< " nodes, max depth " << bvhData.maxDepth << std::endl;
+	}
 
 	return bvhData;
 }
@@ -89,11 +81,13 @@ RT::BVHData BVHBuilder::BuildFromScene(
 		return bvhData;
 	}
 
-	std::cout << "[BVHBuilder] Building scene BVH for " << bvhData.triangles.size()
-		<< " triangles (world-space transformed)..." << std::endl;
+	if (params.verbose) {
+		std::cout << "[BVHBuilder] Building scene BVH for " << bvhData.triangles.size()
+			<< " triangles (world-space transformed)..." << std::endl;
+	}
 
 	// Debug: Print bounds of first triangle to verify world-space coordinates
-	if (!bvhData.triangles.empty()) {
+	if (params.verbose && !bvhData.triangles.empty()) {
 		const auto& firstTri = bvhData.triangles[0];
 		std::cout << "[BVHBuilder] First triangle vertices (world-space):" << std::endl;
 		std::cout << "  v0: (" << firstTri.v0.x << ", " << firstTri.v0.y << ", " << firstTri.v0.z << ")" << std::endl;
@@ -102,23 +96,12 @@ RT::BVHData BVHBuilder::BuildFromScene(
 		std::cout << "  center: (" << firstTri.center.x << ", " << firstTri.center.y << ", " << firstTri.center.z << ")" << std::endl;
 	}
 
-	// Create initial index list
-	std::vector<int> triangleIndices(bvhData.triangles.size());
-	for (size_t i = 0; i < triangleIndices.size(); ++i) {
-		triangleIndices[i] = static_cast<int>(i);
+	BuildFromExtractedTriangles(bvhData, params);
+
+	if (params.verbose) {
+		std::cout << "[BVHBuilder] Built scene BVH with " << bvhData.nodes.size()
+			<< " nodes, max depth " << bvhData.maxDepth << std::endl;
 	}
-
-	// Compute root bounds
-	glm::vec3 minBounds, maxBounds;
-	ComputeBounds(bvhData.triangles, triangleIndices, minBounds, maxBounds);
-
-	// Build BVH tree
-	bvhData.maxDepth = 0;
-	BuildRecursive(bvhData.nodes, bvhData.triangles, triangleIndices,
-		minBounds, maxBounds, 0, bvhData.maxDepth, params);
-
-	std::cout << "[BVHBuilder] Built scene BVH with " << bvhData.nodes.size()
-		<< " nodes, max depth " << bvhData.maxDepth << std::endl;
 
 	return bvhData;
 }
@@ -455,6 +438,261 @@ void BVHBuilder::BuildRecursive(
 			partition.rightMin, partition.rightMax,
 			depth + 1, maxDepthOut, params);
 	}
+}
+
+void BVHBuilder::ComputeBoundsRange(
+	const std::vector<RT::Triangle>& triangles,
+	const std::vector<int>& indices,
+	size_t begin,
+	size_t end,
+	glm::vec3& minBounds,
+	glm::vec3& maxBounds)
+{
+	minBounds = glm::vec3(std::numeric_limits<float>::max());
+	maxBounds = glm::vec3(std::numeric_limits<float>::lowest());
+
+	for (size_t i = begin; i < end; ++i) {
+		const RT::Triangle& tri = triangles[indices[i]];
+		minBounds = glm::min(minBounds, tri.aabbMin);
+		maxBounds = glm::max(maxBounds, tri.aabbMax);
+	}
+}
+
+bool BVHBuilder::PartitionRangeSAH(
+	const std::vector<RT::Triangle>& triangles,
+	std::vector<int>& triangleIndices,
+	size_t begin,
+	size_t end,
+	const glm::vec3& parentMin,
+	const glm::vec3& parentMax,
+	size_t sahBuckets,
+	size_t& splitOut,
+	glm::vec3& leftMin,
+	glm::vec3& leftMax,
+	glm::vec3& rightMin,
+	glm::vec3& rightMax)
+{
+	const size_t count = end - begin;
+	if (count <= 1 || sahBuckets < 2) {
+		return false;
+	}
+
+	struct Bucket {
+		glm::vec3 minBounds = glm::vec3(std::numeric_limits<float>::max());
+		glm::vec3 maxBounds = glm::vec3(std::numeric_limits<float>::lowest());
+		size_t count = 0;
+	};
+
+	const float parentArea = std::max(SurfaceArea(parentMin, parentMax), 1e-8f);
+	float bestCost = std::numeric_limits<float>::max();
+	int bestAxis = -1;
+	size_t bestBucket = 0;
+	std::vector<Bucket> buckets(std::max<size_t>(sahBuckets, 2));
+
+	for (int axis = 0; axis < 3; ++axis) {
+		const float axisMin = parentMin[axis];
+		const float axisMax = parentMax[axis];
+		const float extent = axisMax - axisMin;
+		if (extent < 1e-6f) {
+			continue;
+		}
+
+		for (Bucket& bucket : buckets) {
+			bucket = Bucket{};
+		}
+
+		for (size_t i = begin; i < end; ++i) {
+			const int triIndex = triangleIndices[i];
+			const RT::Triangle& tri = triangles[triIndex];
+			int bucketIndex = static_cast<int>(((tri.center[axis] - axisMin) / extent) * static_cast<float>(buckets.size()));
+			bucketIndex = glm::clamp(bucketIndex, 0, static_cast<int>(buckets.size()) - 1);
+			Bucket& bucket = buckets[static_cast<size_t>(bucketIndex)];
+			bucket.minBounds = glm::min(bucket.minBounds, tri.aabbMin);
+			bucket.maxBounds = glm::max(bucket.maxBounds, tri.aabbMax);
+			++bucket.count;
+		}
+
+		std::vector<glm::vec3> prefixMin(buckets.size());
+		std::vector<glm::vec3> prefixMax(buckets.size());
+		std::vector<glm::vec3> suffixMin(buckets.size());
+		std::vector<glm::vec3> suffixMax(buckets.size());
+		std::vector<size_t> prefixCount(buckets.size(), 0);
+		std::vector<size_t> suffixCount(buckets.size(), 0);
+
+		glm::vec3 accMin(std::numeric_limits<float>::max());
+		glm::vec3 accMax(std::numeric_limits<float>::lowest());
+		size_t accCount = 0;
+		for (size_t i = 0; i < buckets.size(); ++i) {
+			if (buckets[i].count > 0) {
+				accMin = glm::min(accMin, buckets[i].minBounds);
+				accMax = glm::max(accMax, buckets[i].maxBounds);
+				accCount += buckets[i].count;
+			}
+			prefixMin[i] = accMin;
+			prefixMax[i] = accMax;
+			prefixCount[i] = accCount;
+		}
+
+		accMin = glm::vec3(std::numeric_limits<float>::max());
+		accMax = glm::vec3(std::numeric_limits<float>::lowest());
+		accCount = 0;
+		for (int i = static_cast<int>(buckets.size()) - 1; i >= 0; --i) {
+			const size_t bucketIndex = static_cast<size_t>(i);
+			if (buckets[bucketIndex].count > 0) {
+				accMin = glm::min(accMin, buckets[bucketIndex].minBounds);
+				accMax = glm::max(accMax, buckets[bucketIndex].maxBounds);
+				accCount += buckets[bucketIndex].count;
+			}
+			suffixMin[bucketIndex] = accMin;
+			suffixMax[bucketIndex] = accMax;
+			suffixCount[bucketIndex] = accCount;
+		}
+
+		for (size_t splitBucket = 1; splitBucket < buckets.size(); ++splitBucket) {
+			const size_t leftCount = prefixCount[splitBucket - 1];
+			const size_t rightCount = suffixCount[splitBucket];
+			if (leftCount == 0 || rightCount == 0) {
+				continue;
+			}
+
+			const float leftArea = SurfaceArea(prefixMin[splitBucket - 1], prefixMax[splitBucket - 1]);
+			const float rightArea = SurfaceArea(suffixMin[splitBucket], suffixMax[splitBucket]);
+			const float cost = 0.125f + (static_cast<float>(leftCount) * leftArea +
+				static_cast<float>(rightCount) * rightArea) / parentArea;
+
+			if (cost < bestCost) {
+				bestCost = cost;
+				bestAxis = axis;
+				bestBucket = splitBucket;
+			}
+		}
+	}
+
+	if (bestAxis < 0) {
+		return false;
+	}
+
+	const float axisMin = parentMin[bestAxis];
+	const float axisMax = parentMax[bestAxis];
+	const float extent = axisMax - axisMin;
+	if (extent < 1e-6f) {
+		return false;
+	}
+
+	const float splitPos = axisMin + extent * (static_cast<float>(bestBucket) / static_cast<float>(std::max<size_t>(sahBuckets, 2)));
+	auto splitIt = std::partition(
+		triangleIndices.begin() + static_cast<std::ptrdiff_t>(begin),
+		triangleIndices.begin() + static_cast<std::ptrdiff_t>(end),
+		[&](int triIndex) {
+			return triangles[triIndex].center[bestAxis] < splitPos;
+		});
+
+	splitOut = static_cast<size_t>(std::distance(triangleIndices.begin(), splitIt));
+	if (splitOut <= begin || splitOut >= end) {
+		const glm::vec3 extentVec = parentMax - parentMin;
+		const int fallbackAxis = (extentVec.x >= extentVec.y && extentVec.x >= extentVec.z) ? 0 :
+			(extentVec.y >= extentVec.z ? 1 : 2);
+		const size_t mid = begin + count / 2;
+		std::nth_element(
+			triangleIndices.begin() + static_cast<std::ptrdiff_t>(begin),
+			triangleIndices.begin() + static_cast<std::ptrdiff_t>(mid),
+			triangleIndices.begin() + static_cast<std::ptrdiff_t>(end),
+			[&](int a, int b) {
+				return triangles[a].center[fallbackAxis] < triangles[b].center[fallbackAxis];
+			});
+		splitOut = mid;
+	}
+
+	ComputeBoundsRange(triangles, triangleIndices, begin, splitOut, leftMin, leftMax);
+	ComputeBoundsRange(triangles, triangleIndices, splitOut, end, rightMin, rightMax);
+	return splitOut > begin && splitOut < end;
+}
+
+void BVHBuilder::BuildRecursiveRange(
+	std::vector<RT::BVHNode>& nodes,
+	const std::vector<RT::Triangle>& triangles,
+	std::vector<int>& triangleIndices,
+	size_t begin,
+	size_t end,
+	const glm::vec3& minBounds,
+	const glm::vec3& maxBounds,
+	int depth,
+	int& maxDepthOut,
+	const BuildParams& params)
+{
+	maxDepthOut = std::max(maxDepthOut, depth);
+
+	const int nodeIndex = static_cast<int>(nodes.size());
+	nodes.emplace_back();
+	RT::BVHNode& node = nodes[nodeIndex];
+	node.minBounds = minBounds;
+	node.maxBounds = maxBounds;
+
+	const size_t count = end - begin;
+	if (count <= params.maxLeafPrimitives || depth >= static_cast<int>(params.maxDepth)) {
+		const size_t leafCount = std::min(count, static_cast<size_t>(4));
+		for (size_t i = 0; i < leafCount; ++i) {
+			switch (i) {
+			case 0: node.triangleIndex0 = triangleIndices[begin + i]; break;
+			case 1: node.triangleIndex1 = triangleIndices[begin + i]; break;
+			case 2: node.triangleIndex2 = triangleIndices[begin + i]; break;
+			case 3: node.triangleIndex3 = triangleIndices[begin + i]; break;
+			}
+		}
+		return;
+	}
+
+	size_t split = begin;
+	glm::vec3 leftMin, leftMax, rightMin, rightMax;
+	if (!PartitionRangeSAH(triangles, triangleIndices, begin, end,
+		minBounds, maxBounds, params.sahBuckets, split,
+		leftMin, leftMax, rightMin, rightMax)) {
+		const size_t leafCount = std::min(count, static_cast<size_t>(4));
+		for (size_t i = 0; i < leafCount; ++i) {
+			switch (i) {
+			case 0: node.triangleIndex0 = triangleIndices[begin + i]; break;
+			case 1: node.triangleIndex1 = triangleIndices[begin + i]; break;
+			case 2: node.triangleIndex2 = triangleIndices[begin + i]; break;
+			case 3: node.triangleIndex3 = triangleIndices[begin + i]; break;
+			}
+		}
+		return;
+	}
+
+	node.child0 = static_cast<int>(nodes.size());
+	BuildRecursiveRange(nodes, triangles, triangleIndices, begin, split,
+		leftMin, leftMax, depth + 1, maxDepthOut, params);
+
+	RT::BVHNode& currentNode = nodes[nodeIndex];
+	currentNode.child1 = static_cast<int>(nodes.size());
+	BuildRecursiveRange(nodes, triangles, triangleIndices, split, end,
+		rightMin, rightMax, depth + 1, maxDepthOut, params);
+}
+
+void BVHBuilder::BuildFromExtractedTriangles(
+	RT::BVHData& bvhData,
+	const BuildParams& params)
+{
+	bvhData.nodes.clear();
+	if (bvhData.triangles.empty()) {
+		bvhData.maxDepth = 0;
+		return;
+	}
+
+	std::vector<int> triangleIndices(bvhData.triangles.size());
+	for (size_t i = 0; i < triangleIndices.size(); ++i) {
+		triangleIndices[i] = static_cast<int>(i);
+	}
+
+	glm::vec3 minBounds, maxBounds;
+	ComputeBoundsRange(bvhData.triangles, triangleIndices, 0, triangleIndices.size(), minBounds, maxBounds);
+
+	bvhData.nodes.reserve(std::max<size_t>(1, bvhData.triangles.size() * 2));
+	bvhData.maxDepth = 0;
+	BuildRecursiveRange(bvhData.nodes, bvhData.triangles, triangleIndices,
+		0, triangleIndices.size(),
+		minBounds, maxBounds,
+		0, bvhData.maxDepth, params);
 }
 
 std::vector<RT::Triangle> BVHBuilder::ExtractTriangles(

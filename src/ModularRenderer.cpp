@@ -7,6 +7,7 @@
 #include "DirectionalLight.h"
 #include "Skybox.h"
 #include "LightManager.h"
+#include "RTSceneResources.h"
 
 #include "passes/GBufferPass.h"
 #include "passes/TransformHistoryPass.h"
@@ -260,6 +261,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 {
 	m_context.width = windowWidth;
 	m_context.height = windowHeight;
+	m_context.rtSceneResources = std::make_shared<RTSceneResources>();
 
 	// Initialize shared resources (FBOs, screen quad)
 	if (!InitializeSharedResources()) {

@@ -6,6 +6,7 @@
 
 
 class FrameBuffer; class ScreenQuad; class LightManager;
+class RTSceneResources;
 /*
 * @struct RenderContext
 * @brief Centralized rendering context holding shared resources and settings.
@@ -54,6 +55,7 @@ struct RenderContext {
 	// Light system
 	//std::shared_ptr<LightManager> lightManager;
 	std::shared_ptr<LightManager> lightManager;
+	std::shared_ptr<RTSceneResources> rtSceneResources;
 
 
 	// Matrices/state filled each frame
@@ -159,6 +161,11 @@ struct RenderContext {
 	int surfelGIMaxIrradianceRays = 4096;
 	int surfelGIMaxRayTracedSurfels = 8192;
 	int surfelGIMaxRaysPerSurfel = 8;
+	int surfelGIRTMaxTriangles = 250000; // 0 disables the Surfel GI preflight cap
+	float surfelGIRTBuildBudgetMs = 0.75f;
+	int surfelGIRTMaxBLASTrianglesPerFrame = 12000;
+	int surfelGIRTMaxResidentMB = 512;
+	bool surfelGIRTIncludeSkinnedMeshes = false;
 	int surfelGIGridRebuildInterval = 1;
 	// Surfel GI debug modes:
 	// 0=off, 1=discs, 2=normals, 3=projected radius, 4=coverage, 5=cell occupancy,
