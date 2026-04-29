@@ -85,6 +85,7 @@ void main()
         surfels[id].rawIrradiance = vec4(0.0);
         surfels[id].sharedIrradiance = vec4(0.0);
         surfels[id].solveState = vec4(0.0);
+        surfels[id].lightingState = vec4(float(SURFEL_LIGHTING_STATE_UNINITIALIZED), 0.0, 0.0, 0.0);
         freeStack[id] = maxSurfels - 1u - id;
         recycleStack[id] = 0u;
     }

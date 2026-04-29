@@ -61,7 +61,9 @@ uniform int uEnableSurfelGI = 0;
 uniform float uSurfelGIStrength = 0.0;
 uniform float uSurfelIndirectDiffuseStrength = 0.0;
 uniform int uUseLegacySurfelFragmentGather = 0;
-uniform int uLightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
+uniform int uLightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel final, 5 LPV, 6 raw surfel irradiance
+
+const float SURFEL_INDIRECT_RESPONSE_SCALE = 2.5;
 
 // Shadows
 uniform sampler2DArrayShadow multiLightShadowArray;
@@ -691,7 +693,12 @@ vec3 EvaluateSurfelIndirectDiffuseMap(vec3 N, vec3 V, PrincipledSurface surface,
 	}
 
 	vec3 contribution = ComputeIndirectGIResponse(surfelIrradiance, N, V, surface, diffuseAO, specularAO);
-	return max(contribution * uSurfelIndirectDiffuseStrength * mix(0.35, 1.0, confidence), vec3(0.0));
+	return max(contribution * uSurfelIndirectDiffuseStrength * SURFEL_INDIRECT_RESPONSE_SCALE * mix(0.35, 1.0, confidence), vec3(0.0));
+}
+
+vec3 EvaluateRawSurfelIndirectDiffuseMap() {
+	vec4 indirectSample = texture(surfelIndirectDiffuseMap, vTexCoord);
+	return max(indirectSample.rgb, vec3(0.0));
 }
 
 vec3 EvaluatePersistentSurfelGI(vec3 worldPos, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
@@ -716,7 +723,7 @@ vec3 EvaluatePersistentSurfelGI(vec3 worldPos, vec3 N, vec3 V, PrincipledSurface
 			continue;
 		}
 
-		vec3 surfelNormal = normalize(s.worldNormalRecycle.xyz);
+		vec3 surfelNormal = SurfelStableNormal(s.worldNormalRecycle.xyz);
 		float normalAlign = dot(N, surfelNormal);
 		if (normalAlign < 0.45) {
 			continue;
@@ -744,9 +751,7 @@ vec3 EvaluatePersistentSurfelGI(vec3 worldPos, vec3 N, vec3 V, PrincipledSurface
 			continue;
 		}
 
-		vec3 surfelIrradiance = s.sharedIrradiance.w > 0.0001
-			? mix(s.irradianceHistory.rgb, s.sharedIrradiance.rgb, clamp(s.sharedIrradiance.w, 0.0, 0.35))
-			: s.irradianceHistory.rgb;
+		vec3 surfelIrradiance = max(s.irradianceHistory.rgb, vec3(0.0));
 		accumulatedIrradiance += max(surfelIrradiance, vec3(0.0)) * weight;
 		accumulatedWeight += weight;
 	}
@@ -757,7 +762,7 @@ vec3 EvaluatePersistentSurfelGI(vec3 worldPos, vec3 N, vec3 V, PrincipledSurface
 
 	vec3 indirectIrradiance = accumulatedIrradiance / accumulatedWeight;
 	vec3 contribution = ComputeIndirectGIResponse(indirectIrradiance, N, V, surface, diffuseAO, specularAO);
-	return CompressIndirectContribution(contribution * uSurfelGIStrength);
+	return CompressIndirectContribution(contribution * uSurfelGIStrength * SURFEL_INDIRECT_RESPONSE_SCALE);
 }
 
 void main() {
@@ -845,6 +850,7 @@ void main() {
 	}
 	vec3 surfelContribution = EvaluateSurfelIndirectDiffuseMap(N, V, surface, diffuseAO, specularAO);
 	surfelContribution += EvaluatePersistentSurfelGI(worldPos, N, V, surface, diffuseAO, specularAO);
+	vec3 rawSurfelIrradiance = EvaluateRawSurfelIndirectDiffuseMap();
 	vec3 color = emissive;
 	if (uLightingCompositeDebugMode == 1) {
 		color += directLighting;
@@ -856,6 +862,8 @@ void main() {
 		color += surfelContribution;
 	} else if (uLightingCompositeDebugMode == 5) {
 		color += lpvContribution;
+	} else if (uLightingCompositeDebugMode == 6) {
+		color += rawSurfelIrradiance;
 	} else {
 		color += directLighting;
 		color += iblContribution;

@@ -80,6 +80,15 @@
     },
     {
       "path": "scenes\\cornell_box.json"
+    },
+    {
+      "path": "scenes\\surfel_gi_cornell_validation.json"
+    },
+    {
+      "path": "scenes\\surfel_gi_wall_leak_validation.json"
+    },
+    {
+      "path": "scenes\\surfel_gi_material_response_validation.json"
     }
   ],
   "text_font": "fonts\\arial.ttf",

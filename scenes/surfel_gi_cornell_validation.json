@@ -1,0 +1,30 @@
+{
+  "scene_name": "surfel_gi_cornell_validation",
+  "exposure": 1.0,
+  "gamma": 2.2,
+  "skybox": "",
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\cornell_box.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0]
+    },
+    {
+      "type": "light",
+      "name": "CornellSun",
+      "position": [0.0, 3.5, 2.0],
+      "rotation": [-65.0, 0.0, 0.0],
+      "light": {
+        "type": "directional",
+        "color": [1.0, 0.92, 0.78],
+        "intensity": 4.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.8
+      }
+    }
+  ]
+}

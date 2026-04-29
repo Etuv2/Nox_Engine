@@ -14,6 +14,10 @@ public:
         int maxCandidates = 96;
         int maxAccepted = 24;
         float fallbackStrength = 0.65f;
+        bool disableRadialDepthReject = false;
+        bool disableNormalReject = false;
+        bool disableConfidenceReject = false;
+        bool disableFallback = false;
     };
 
     SurfelIndirectDiffusePass() = default;
@@ -37,8 +41,10 @@ private:
 
     std::unique_ptr<ComputeShader> m_gatherShader;
     TexturePtr m_irradiance;
+    TexturePtr m_history;
     TexturePtr m_debug;
     int m_width = 0;
     int m_height = 0;
+    bool m_hasHistory = false;
     Config m_config{};
 };

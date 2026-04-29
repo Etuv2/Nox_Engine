@@ -10,6 +10,39 @@
 #include <iostream>
 #include <filesystem>
 
+namespace {
+	struct DebugComboEntry {
+		int value;
+		const char* label;
+	};
+
+	bool DebugCombo(const char* label, int* value, const DebugComboEntry* entries, int entryCount) {
+		const char* preview = entries[0].label;
+		for (int i = 0; i < entryCount; ++i) {
+			if (entries[i].value == *value) {
+				preview = entries[i].label;
+				break;
+			}
+		}
+
+		bool changed = false;
+		if (ImGui::BeginCombo(label, preview)) {
+			for (int i = 0; i < entryCount; ++i) {
+				const bool selected = entries[i].value == *value;
+				if (ImGui::Selectable(entries[i].label, selected)) {
+					*value = entries[i].value;
+					changed = true;
+				}
+				if (selected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+		return changed;
+	}
+}
+
 RenderingSettingsWindow::RenderingSettingsWindow()
 	: BaseWindow("Rendering Settings", "F6")
 {
@@ -117,13 +150,14 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGITLASHeatmapColorLimit = 50;
 	m_surfelGITLASDisplayMultipleBVHLayers = false;
 	m_surfelGITLASBVHLayerToDisplay = 0;
+	m_surfelGIDebugSettings = RenderContext::SurfelGIDebugSettings{};
 	m_surfelGIDebugMode = 0;
 	m_enableSurfelIndirectDiffuse = true;
 	m_surfelIndirectDiffuseStrength = 1.0f;
 	m_surfelIndirectDiffuseDebugMode = 0;
 	m_surfelIndirectDiffuseNeighborRadius = 1;
-	m_surfelIndirectDiffuseMaxCandidates = 96;
-	m_surfelIndirectDiffuseMaxAccepted = 24;
+	m_surfelIndirectDiffuseMaxCandidates = 48;
+	m_surfelIndirectDiffuseMaxAccepted = 12;
 	m_surfelIndirectDiffuseFallbackStrength = 0.65f;
 	m_surfelUseLegacyFragmentGather = false;
 	m_lightingCompositeDebugMode = 0;
@@ -286,16 +320,26 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_surfelGITLASHeatmapColorLimit = ctx.surfelGITLASHeatmapColorLimit;
 	m_surfelGITLASDisplayMultipleBVHLayers = ctx.surfelGITLASDisplayMultipleBVHLayers;
 	m_surfelGITLASBVHLayerToDisplay = ctx.surfelGITLASBVHLayerToDisplay;
-	m_surfelGIDebugMode = ctx.surfelGIDebugMode;
+	m_surfelGIDebugSettings = ctx.surfelGIDebug;
+	if (m_surfelGIDebugSettings.surfelDebugView == 0 && ctx.surfelGIDebugMode != 0) {
+		m_surfelGIDebugSettings.surfelDebugView = ctx.surfelGIDebugMode;
+	}
+	if (m_surfelGIDebugSettings.gatherDebugView == 0 && ctx.surfelIndirectDiffuseDebugMode != 0) {
+		m_surfelGIDebugSettings.gatherDebugView = ctx.surfelIndirectDiffuseDebugMode;
+	}
+	if (m_surfelGIDebugSettings.compositeDebugView == 0 && ctx.lightingCompositeDebugMode != 0) {
+		m_surfelGIDebugSettings.compositeDebugView = ctx.lightingCompositeDebugMode;
+	}
+	m_surfelGIDebugMode = m_surfelGIDebugSettings.surfelDebugView;
 	m_enableSurfelIndirectDiffuse = ctx.enableSurfelIndirectDiffuse;
 	m_surfelIndirectDiffuseStrength = ctx.surfelIndirectDiffuseStrength;
-	m_surfelIndirectDiffuseDebugMode = ctx.surfelIndirectDiffuseDebugMode;
+	m_surfelIndirectDiffuseDebugMode = m_surfelGIDebugSettings.gatherDebugView;
 	m_surfelIndirectDiffuseNeighborRadius = ctx.surfelIndirectDiffuseNeighborRadius;
 	m_surfelIndirectDiffuseMaxCandidates = ctx.surfelIndirectDiffuseMaxCandidates;
 	m_surfelIndirectDiffuseMaxAccepted = ctx.surfelIndirectDiffuseMaxAccepted;
 	m_surfelIndirectDiffuseFallbackStrength = ctx.surfelIndirectDiffuseFallbackStrength;
 	m_surfelUseLegacyFragmentGather = ctx.surfelUseLegacyFragmentGather;
-	m_lightingCompositeDebugMode = ctx.lightingCompositeDebugMode;
+	m_lightingCompositeDebugMode = m_surfelGIDebugSettings.compositeDebugView;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -474,6 +518,10 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.surfelGITLASHeatmapColorLimit = m_surfelGITLASHeatmapColorLimit;
 	ctx.surfelGITLASDisplayMultipleBVHLayers = m_surfelGITLASDisplayMultipleBVHLayers;
 	ctx.surfelGITLASBVHLayerToDisplay = m_surfelGITLASBVHLayerToDisplay;
+	m_surfelGIDebugSettings.surfelDebugView = m_surfelGIDebugMode;
+	m_surfelGIDebugSettings.gatherDebugView = m_surfelIndirectDiffuseDebugMode;
+	m_surfelGIDebugSettings.compositeDebugView = m_lightingCompositeDebugMode;
+	ctx.surfelGIDebug = m_surfelGIDebugSettings;
 	ctx.surfelGIDebugMode = m_surfelGIDebugMode;
 	ctx.enableSurfelIndirectDiffuse = m_enableSurfelIndirectDiffuse;
 	ctx.surfelIndirectDiffuseStrength = m_surfelIndirectDiffuseStrength;
@@ -965,12 +1013,90 @@ void RenderingSettingsWindow::Render() {
 						stats.targetBudgetMs,
 						stats.budgetScale,
 						stats.tileSelectTimeMs);
-					ImGui::Text("Irradiance rays: requested %u  allocated %u  evaluated surfels %u  valid %u  util %.1f%%",
+					const uint32_t rejectedRaySurfels =
+						stats.rejectedInvalidLifecycle + stats.rejectedInvalidTransform +
+						stats.rejectedInvalidNormal + stats.rejectedInvalidRadius +
+						stats.rejectedMissingSpatialCell + stats.rejectedNotVisibleOrRecent +
+						stats.rejectedOutsideResidency + stats.rejectedDormant +
+						stats.rejectedAlreadySolved + stats.rejectedPoolPressure +
+						stats.rejectedNoFreeIDs + stats.rejectedBudgetScaleZero +
+						stats.rejectedMaxRayTracedSurfelsZero + stats.rejectedMaxRaysPerSurfelZero +
+						stats.rejectedInvalidIrradianceSlot + stats.rejectedMaterialOrTLAS +
+						stats.rejectedSelectionCapped;
+					ImGui::Text("Irradiance rays: requested %u  allocated %u  evaluated %u  eligible %u  active %u  rejected %u  util %.1f%%",
 						stats.requestedRaysThisFrame,
 						stats.allocatedRaysThisFrame,
 						stats.rayEvaluatedSurfels,
+						stats.rayEligibleSurfels,
 						stats.rayActiveSurfels,
+						rejectedRaySurfels,
 						stats.rayBudgetUtilizationPercent);
+					if (stats.liveCount > 0u && stats.rayActiveSurfels == 0u && rejectedRaySurfels == 0u) {
+						ImGui::TextColored(ImVec4(1.0f, 0.22f, 0.12f, 1.0f),
+							"Surfel GI failure: request accounting gap. Live pool exists, but request pass counted no active or rejected records.");
+					} else if (stats.liveCount > 0u && stats.requestedRaysThisFrame == 0u) {
+						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
+							"Surfel GI failure: no ray requests. Inspect eligibility rejection counters below.");
+					} else if (stats.requestedRaysThisFrame > 0u && stats.allocatedRaysThisFrame == 0u) {
+						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
+							"Surfel GI failure: requests exist, allocation is zero. Inspect global ray cap and allocation budget.");
+					} else if (stats.allocatedRaysThisFrame > 0u && stats.raysDispatched == 0u) {
+						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
+							"Surfel GI failure: rays allocated, dispatch is zero. Inspect TLAS readiness, indirect dispatch, and ray trace uniforms.");
+					} else if (stats.raysDispatched > 0u && (stats.tlasHits + stats.tlasMisses) == 0u) {
+						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
+							"Surfel GI failure: dispatch ran without hit/miss accounting. Inspect ray shader control flow.");
+					} else if (stats.tlasHits > 0u && stats.meanDirectRadianceLuma <= 0.0001f && stats.meanRawIrradianceLuma <= 0.0001f) {
+						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
+							"Surfel GI failure: TLAS hits have no direct/raw radiance. Inspect material, light, shadow, BRDF/PDF path.");
+					} else if (stats.meanRawIrradianceLuma > 0.0001f && stats.meanAccumulatedIrradianceLuma <= 0.0001f) {
+						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
+							"Surfel GI failure: raw ray energy is lost in accumulation. Inspect history writes, barriers, and IDs.");
+					} else if (stats.meanAccumulatedIrradianceLuma > 0.0001f && stats.meanGatheredIrradianceLuma <= 0.0001f) {
+						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
+							"Surfel GI failure: accumulated energy is lost in final gather. Inspect lookup, weights, and rejection gates.");
+					}
+					ImGui::Text("Eligibility reject: lifecycle %u transform %u normal %u radius %u cell %u visible %u residency %u dormant %u",
+						stats.rejectedInvalidLifecycle,
+						stats.rejectedInvalidTransform,
+						stats.rejectedInvalidNormal,
+						stats.rejectedInvalidRadius,
+						stats.rejectedMissingSpatialCell,
+						stats.rejectedNotVisibleOrRecent,
+						stats.rejectedOutsideResidency,
+						stats.rejectedDormant);
+					ImGui::Text("Eligibility notes/reject: zeroConf %u zeroSamples %u solved %u pool %u noIDs %u scale0 %u maxSurf0 %u maxRay0 %u slot %u tlas %u capped %u",
+						stats.rejectedZeroHistoryConfidence,
+						stats.rejectedZeroSampleCount,
+						stats.rejectedAlreadySolved,
+						stats.rejectedPoolPressure,
+						stats.rejectedNoFreeIDs,
+						stats.rejectedBudgetScaleZero,
+						stats.rejectedMaxRayTracedSurfelsZero,
+						stats.rejectedMaxRaysPerSurfelZero,
+						stats.rejectedInvalidIrradianceSlot,
+						stats.rejectedMaterialOrTLAS,
+						stats.rejectedSelectionCapped);
+					ImGui::Text("Ray signal: dispatched %u  skipped %u  hits %u  misses %u  shadow visible %u  occluded %u",
+						stats.raysDispatched,
+						stats.raysSkippedByBudget,
+						stats.tlasHits,
+						stats.tlasMisses,
+						stats.shadowRaysVisible,
+						stats.shadowRaysOccluded);
+					ImGui::Text("Ray luma: hitDist %.2f  albedo %.3f  direct %.3f  raw %.3f  accum %.3f  shared %.3f",
+						stats.meanHitDistance,
+						stats.meanHitAlbedoLuma,
+						stats.meanDirectRadianceLuma,
+						stats.meanRawIrradianceLuma,
+						stats.meanAccumulatedIrradianceLuma,
+						stats.meanSharedIrradianceLuma);
+					ImGui::Text("Final gather: candidates %u  accepted %u  fallback %u  gathered %.3f  final indirect %.3f",
+						stats.gatherCandidateCount,
+						stats.gatherAcceptedCount,
+						stats.gatherFallbackCount,
+						stats.meanGatheredIrradianceLuma,
+						stats.meanFinalIndirectLuma);
 					ImGui::Text("Lighting ms: request %.2f  allocate %.2f  trace %.2f  temporal %.2f  share %.2f  radial %.2f",
 						stats.rayRequestTimeMs,
 						stats.rayAllocationTimeMs,
@@ -1050,46 +1176,88 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::Checkbox("RT Include Skinned Meshes", &m_surfelGIRTIncludeSkinnedMeshes)) { SyncToRenderer(); }
 				if (m_modularRenderer && m_modularRenderer->GetContext().rtSceneResources) {
 					const auto& rtStats = m_modularRenderer->GetContext().rtSceneResources->GetDiagnostics();
-					ImGui::Text("RT BLAS: ready %zu  queued %zu  failed %zu  instances %zu",
-						rtStats.blasReady,
-						rtStats.blasQueued,
-						rtStats.blasFailed,
-						rtStats.tlasInstances);
-					ImGui::Text("RT Build: %.2fms  tris %zu  memory %.1f MB  skipped skinned %zu",
+                    ImGui::Text("RT BLAS: ready %zu  queued %zu  failed %zu  instances %zu",
+                        rtStats.blasReady,
+                        rtStats.blasQueued,
+                        rtStats.blasFailed,
+                        rtStats.tlasInstances);
+                    ImGui::Text("RT TLAS: traceable instances %zu  nodes %zu",
+                        rtStats.traceableInstances,
+                        rtStats.tlasNodes);
+                    ImGui::Text("RT Build: %.2fms  tris %zu  memory %.1f MB  skipped skinned %zu",
 						rtStats.buildMsThisFrame,
 						rtStats.trianglesBuiltThisFrame,
 						static_cast<double>(rtStats.residentBytes) / (1024.0 * 1024.0),
 						rtStats.skippedSkinnedInstances);
 				}
 				if (ImGui::SliderInt("Grid Rebuild Interval", &m_surfelGIGridRebuildInterval, 1, 8)) { SyncToRenderer(); }
-				const char* surfelDebugModes[] = {
-					"Off",
-					"Discs",
-					"Normals",
-					"Projected Radius",
-					"Coverage",
-					"Cell Occupancy",
-					"Recent Recycled IDs",
-					"Transform Follow",
-					"Lifecycle State",
-					"Recycle Pressure",
-					"Spawn/Recycle Reason",
-					"Last Contributed",
-					"Distance To Camera",
-					"Persistence Age",
-					"Last Visible",
-					"Reused vs Fresh",
-					"Irradiance History",
-					"Depth Moments",
-					"Raw Projected Support",
-					"Valid Coverage",
-					"Deficit Heatmap",
-					"Depth Rejection",
-					"Normal Rejection",
-					"Winner Surfel ID",
-					"TLAS BVH Heatmap"
+				static const DebugComboEntry validationModes[] = {
+					{ RenderContext::SurfelGIDebugSettings::Production, "Production" },
+					{ RenderContext::SurfelGIDebugSettings::BruteForceCorrectness, "Brute Force Correctness" },
+					{ RenderContext::SurfelGIDebugSettings::ConstantIrradianceInjection, "Constant Irradiance Injection" },
+					{ RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate, "Single Surfel Isolate" }
 				};
-				if (ImGui::Combo("Surfel Debug", &m_surfelGIDebugMode, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
+				if (DebugCombo("Surfel GI Validation", &m_surfelGIDebugSettings.validationMode, validationModes, IM_ARRAYSIZE(validationModes))) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Force Surfel GI Ray Bootstrap", &m_surfelGIDebugSettings.forceRayBootstrap)) { SyncToRenderer(); }
+
+				static const DebugComboEntry surfelDebugModes[] = {
+					{ 0, "Off" },
+					{ 1, "Discs" },
+					{ 2, "Normals" },
+					{ 3, "Projected Radius" },
+					{ 4, "Coverage" },
+					{ 5, "Cell Occupancy" },
+					{ 6, "Recent Recycled IDs" },
+					{ 7, "Transform Follow" },
+					{ 8, "Lifecycle State" },
+					{ 9, "Recycle Pressure" },
+					{ 10, "Spawn/Recycle Reason" },
+					{ 11, "Last Contributed" },
+					{ 12, "Distance To Camera" },
+					{ 13, "Persistence Age" },
+					{ 14, "Last Visible" },
+					{ 15, "Reused vs Fresh" },
+					{ 16, "Surfel Irradiance History (16)" },
+					{ 17, "Depth Moments" },
+					{ 18, "Raw Projected Support" },
+					{ 19, "Valid Coverage" },
+					{ 20, "Deficit Heatmap" },
+					{ 21, "Depth Rejection" },
+					{ 22, "Normal Rejection" },
+					{ 23, "Winner Surfel ID" },
+					{ 24, "TLAS BVH Heatmap (24)" },
+					{ 25, "Allocated Rays (25)" },
+					{ 26, "Current Ray Sample (26)" },
+					{ 27, "Shared Irradiance (27)" },
+					{ 28, "History Confidence (28)" },
+					{ 29, "Guiding Strength (29)" },
+					{ 30, "Lighting State (30)" }
+				};
+				if (DebugCombo("Surfel Debug View", &m_surfelGIDebugMode, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
+				m_surfelGIDebugSettings.surfelDebugView = m_surfelGIDebugMode;
+
+				if (m_surfelGIDebugSettings.validationMode == RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate) {
+					if (ImGui::InputInt("Selected Surfel ID", &m_surfelGIDebugSettings.selectedSurfelID, 1, 16)) {
+						m_surfelGIDebugSettings.selectedSurfelID = std::max(-1, m_surfelGIDebugSettings.selectedSurfelID);
+						SyncToRenderer();
+					}
+				}
+				if (m_surfelGIDebugSettings.validationMode == RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate) {
+					if (ImGui::SliderInt("Isolated Ray Count", &m_surfelGIDebugSettings.isolatedRayCount, 0, 1024)) { SyncToRenderer(); }
+				}
+
+				if (ImGui::TreeNode("Surfel GI Validation Overrides")) {
+					bool changed = false;
+					changed |= ImGui::Checkbox("Disable Guiding", &m_surfelGIDebugSettings.disableGuiding);
+					changed |= ImGui::Checkbox("Disable Neighbour Sharing", &m_surfelGIDebugSettings.disableNeighbourSharing);
+					changed |= ImGui::Checkbox("Disable Radial Depth Reject", &m_surfelGIDebugSettings.disableRadialDepthReject);
+					changed |= ImGui::Checkbox("Disable Dormancy", &m_surfelGIDebugSettings.disableDormancy);
+					changed |= ImGui::Checkbox("Disable Normal Reject", &m_surfelGIDebugSettings.disableNormalReject);
+					changed |= ImGui::Checkbox("Disable Confidence Reject", &m_surfelGIDebugSettings.disableConfidenceReject);
+					changed |= ImGui::Checkbox("Disable Gather Fallback", &m_surfelGIDebugSettings.disableGatherFallback);
+					if (changed) { SyncToRenderer(); }
+					ImGui::TreePop();
+				}
 				if (m_surfelGIDebugMode == 24) {
 					ImGui::Separator();
 					ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "TLAS BVH Debug Visualization:");
@@ -1132,27 +1300,39 @@ void RenderingSettingsWindow::Render() {
 					if (ImGui::SliderInt("Max Gather Candidates", &m_surfelIndirectDiffuseMaxCandidates, 8, 256)) { SyncToRenderer(); }
 					if (ImGui::SliderInt("Max Accepted Surfels", &m_surfelIndirectDiffuseMaxAccepted, 1, 64)) { SyncToRenderer(); }
 					if (ImGui::SliderFloat("Fallback Blend", &m_surfelIndirectDiffuseFallbackStrength, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
-					const char* surfelApplyDebugModes[] = {
-						"Raw Irradiance",
-						"Candidate Count",
-						"Accepted Count",
-						"Weight Sum",
-						"Confidence",
-						"Fallback Usage",
-						"Reject Reasons"
+					static const DebugComboEntry surfelApplyDebugModes[] = {
+						{ 0, "Final Gather Irradiance" },
+						{ 1, "Candidate Count" },
+						{ 2, "Accepted Count" },
+						{ 3, "Weight Sum" },
+						{ 4, "Confidence" },
+						{ 5, "Fallback Usage" },
+						{ 6, "Reject Reasons" },
+						{ 7, "Reject Distance" },
+						{ 8, "Reject Normal" },
+						{ 9, "Reject Radial Depth" },
+						{ 10, "Reject Confidence" },
+						{ 11, "BRDF-Scaled Indirect" }
 					};
-					if (ImGui::Combo("Surfel Apply Debug", &m_surfelIndirectDiffuseDebugMode, surfelApplyDebugModes, IM_ARRAYSIZE(surfelApplyDebugModes))) { SyncToRenderer(); }
+					if (DebugCombo("Gather Debug View", &m_surfelIndirectDiffuseDebugMode, surfelApplyDebugModes, IM_ARRAYSIZE(surfelApplyDebugModes))) {
+						m_surfelGIDebugSettings.gatherDebugView = m_surfelIndirectDiffuseDebugMode;
+						SyncToRenderer();
+					}
 				}
 				if (ImGui::Checkbox("Legacy Fragment Gather Debug", &m_surfelUseLegacyFragmentGather)) { SyncToRenderer(); }
-				const char* compositeDebugModes[] = {
-					"Full Composite",
-					"Direct Only",
-					"IBL Only",
-					"SSGI Only",
-					"Surfel GI Only",
-					"LPV Only"
+				static const DebugComboEntry compositeDebugModes[] = {
+					{ 0, "Full Composite" },
+					{ 1, "Direct Only" },
+					{ 2, "IBL Only" },
+					{ 3, "SSGI Only" },
+					{ 4, "Surfel BRDF Indirect" },
+					{ 5, "LPV Only" },
+					{ 6, "Surfel Gather Irradiance" }
 				};
-				if (ImGui::Combo("Lighting Composite Debug", &m_lightingCompositeDebugMode, compositeDebugModes, IM_ARRAYSIZE(compositeDebugModes))) { SyncToRenderer(); }
+				if (DebugCombo("Composite Debug View", &m_lightingCompositeDebugMode, compositeDebugModes, IM_ARRAYSIZE(compositeDebugModes))) {
+					m_surfelGIDebugSettings.compositeDebugView = m_lightingCompositeDebugMode;
+					SyncToRenderer();
+				}
 				if (m_modularRenderer) {
 					ImGui::BulletText("Turn away and back: stable regions should stay mostly blue/aged, not all green respawns");
 					ImGui::BulletText("Advance/retreat: projected radius and coverage should rebalance without pool growth");
@@ -1953,13 +2133,14 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGITLASHeatmapColorLimit = 50;
 	m_surfelGITLASDisplayMultipleBVHLayers = false;
 	m_surfelGITLASBVHLayerToDisplay = 0;
+	m_surfelGIDebugSettings = RenderContext::SurfelGIDebugSettings{};
 	m_surfelGIDebugMode = 0;
 	m_enableSurfelIndirectDiffuse = true;
 	m_surfelIndirectDiffuseStrength = 1.0f;
 	m_surfelIndirectDiffuseDebugMode = 0;
 	m_surfelIndirectDiffuseNeighborRadius = 1;
-	m_surfelIndirectDiffuseMaxCandidates = 96;
-	m_surfelIndirectDiffuseMaxAccepted = 24;
+	m_surfelIndirectDiffuseMaxCandidates = 48;
+	m_surfelIndirectDiffuseMaxAccepted = 12;
 	m_surfelIndirectDiffuseFallbackStrength = 0.65f;
 	m_surfelUseLegacyFragmentGather = false;
 	m_lightingCompositeDebugMode = 0;

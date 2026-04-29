@@ -12,7 +12,13 @@ constexpr GLuint kSurfelBindingSurfels = 20;
 constexpr GLuint kSurfelBindingHeader = 21;
 constexpr GLuint kSurfelBindingGridHeaders = 25;
 constexpr GLuint kSurfelBindingGridEntries = 26;
+constexpr GLuint kSurfelBindingIrradianceHeader = 28;
 constexpr GLuint kSurfelBindingRadialDepth = 30;
+constexpr GLuint kSurfelBindingGridAverages = 33;
+constexpr int kGatherResolutionDivisor = 2;
+constexpr GLuint kWinnerSurfelTextureUnit = 7;
+constexpr GLuint kHistoryTextureUnit = 8;
+constexpr GLuint kVelocityTextureUnit = 9;
 }
 
 SurfelIndirectDiffusePass::~SurfelIndirectDiffusePass() = default;
@@ -26,17 +32,19 @@ bool SurfelIndirectDiffusePass::Initialize(RenderContext& context)
     }
 
     Resize(context, context.width, context.height);
-    std::cout << "[SurfelIndirectDiffusePass] Initialized at full resolution" << std::endl;
+    std::cout << "[SurfelIndirectDiffusePass] Initialized at half resolution" << std::endl;
     return true;
 }
 
 void SurfelIndirectDiffusePass::Resize(RenderContext&, int newWidth, int newHeight)
 {
-    if (newWidth == m_width && newHeight == m_height && m_irradiance && m_debug) {
+    const int internalWidth = std::max(1, (newWidth + kGatherResolutionDivisor - 1) / kGatherResolutionDivisor);
+    const int internalHeight = std::max(1, (newHeight + kGatherResolutionDivisor - 1) / kGatherResolutionDivisor);
+    if (internalWidth == m_width && internalHeight == m_height && m_irradiance && m_history && m_debug) {
         return;
     }
 
-    AllocateTextures(std::max(1, newWidth), std::max(1, newHeight));
+    AllocateTextures(internalWidth, internalHeight);
 }
 
 void SurfelIndirectDiffusePass::AllocateTextures(int width, int height)
@@ -51,12 +59,21 @@ void SurfelIndirectDiffusePass::AllocateTextures(int width, int height)
         .WrapMode(GL_CLAMP_TO_EDGE)
         .Build();
 
+    m_history = Texture::Builder::Texture2D(m_width, m_height, GL_RGBA16F)
+        .Format(GL_RGBA)
+        .DataType(GL_HALF_FLOAT)
+        .FilterMode(GL_LINEAR, GL_LINEAR)
+        .WrapMode(GL_CLAMP_TO_EDGE)
+        .Build();
+
     m_debug = Texture::Builder::Texture2D(m_width, m_height, GL_RGBA16F)
         .Format(GL_RGBA)
         .DataType(GL_HALF_FLOAT)
         .FilterMode(GL_LINEAR, GL_LINEAR)
         .WrapMode(GL_CLAMP_TO_EDGE)
         .Build();
+
+    m_hasHistory = false;
 }
 
 void SurfelIndirectDiffusePass::Execute(RenderContext& ctx,
@@ -81,7 +98,10 @@ void SurfelIndirectDiffusePass::Execute(RenderContext& ctx,
         ctx.surfelGIHeaderBuffer != 0 &&
         ctx.surfelGIGridHeaderBuffer != 0 &&
         ctx.surfelGIGridEntryBuffer != 0 &&
-        ctx.surfelGIRadialDepthBinsBuffer != 0;
+        ctx.surfelGIGridAverageBuffer != 0 &&
+        ctx.surfelGIIrradianceHeaderBuffer != 0 &&
+        ctx.surfelGIRadialDepthBinsBuffer != 0 &&
+        ctx.surfelGIWinnerIDTexture != 0;
 
     if (!ready) {
         const GLfloat clearValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -91,13 +111,26 @@ void SurfelIndirectDiffusePass::Execute(RenderContext& ctx,
         if (m_debug) {
             glClearTexImage(m_debug->ID(), 0, GL_RGBA, GL_FLOAT, clearValue);
         }
+        if (m_history) {
+            glClearTexImage(m_history->ID(), 0, GL_RGBA, GL_FLOAT, clearValue);
+        }
+        m_hasHistory = false;
         return;
     }
 
     m_config.neighborRadius = std::clamp(ctx.surfelIndirectDiffuseNeighborRadius, 0, 2);
-    m_config.maxCandidates = std::clamp(ctx.surfelIndirectDiffuseMaxCandidates, 8, 256);
-    m_config.maxAccepted = std::clamp(ctx.surfelIndirectDiffuseMaxAccepted, 1, 64);
+    const bool validationMode =
+        ctx.surfelGIDebug.forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode != RenderContext::SurfelGIDebugSettings::Production;
+    const int productionCandidateCap = validationMode ? 256 : 32;
+    const int productionAcceptedCap = validationMode ? 64 : 10;
+    m_config.maxCandidates = std::clamp(ctx.surfelIndirectDiffuseMaxCandidates, 8, productionCandidateCap);
+    m_config.maxAccepted = std::clamp(ctx.surfelIndirectDiffuseMaxAccepted, 1, productionAcceptedCap);
     m_config.fallbackStrength = std::clamp(ctx.surfelIndirectDiffuseFallbackStrength, 0.0f, 1.0f);
+    m_config.disableRadialDepthReject = ctx.surfelGIDebug.disableRadialDepthReject;
+    m_config.disableNormalReject = ctx.surfelGIDebug.disableNormalReject;
+    m_config.disableConfidenceReject = ctx.surfelGIDebug.disableConfidenceReject;
+    m_config.disableFallback = ctx.surfelGIDebug.disableGatherFallback;
 
     glUseProgram(m_gatherShader->GetProgramID());
 
@@ -108,6 +141,9 @@ void SurfelIndirectDiffusePass::Execute(RenderContext& ctx,
     glBindTextureUnit(4, ctx.gbufferFBO->GetColorAttachment(4));
     glBindTextureUnit(5, ctx.gbufferFBO->GetColorAttachment(5));
     glBindTextureUnit(6, ctx.gbufferFBO->GetColorAttachment(7));
+    glBindTextureUnit(kWinnerSurfelTextureUnit, ctx.surfelGIWinnerIDTexture);
+    glBindTextureUnit(kHistoryTextureUnit, m_history ? m_history->ID() : 0);
+    glBindTextureUnit(kVelocityTextureUnit, ctx.velocityTex);
 
     glBindImageTexture(0, m_irradiance->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
     glBindImageTexture(1, m_debug->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
@@ -116,7 +152,9 @@ void SurfelIndirectDiffusePass::Execute(RenderContext& ctx,
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingHeader, ctx.surfelGIHeaderBuffer);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingGridHeaders, ctx.surfelGIGridHeaderBuffer);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingGridEntries, ctx.surfelGIGridEntryBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingIrradianceHeader, ctx.surfelGIIrradianceHeaderBuffer);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingRadialDepth, ctx.surfelGIRadialDepthBinsBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSurfelBindingGridAverages, ctx.surfelGIGridAverageBuffer);
 
     const glm::mat4 invProjection = glm::inverse(ctx.proj);
     const glm::mat4 invView = glm::inverse(ctx.view);
@@ -129,9 +167,25 @@ void SurfelIndirectDiffusePass::Execute(RenderContext& ctx,
     m_gatherShader->SetUniform("uMaxCandidates", m_config.maxCandidates);
     m_gatherShader->SetUniform("uMaxAccepted", m_config.maxAccepted);
     m_gatherShader->SetUniform("uFallbackStrength", m_config.fallbackStrength);
-    m_gatherShader->SetUniform("uDebugMode", std::clamp(ctx.surfelIndirectDiffuseDebugMode, 0, 10));
+    m_gatherShader->SetUniform("uDebugMode", std::clamp(ctx.surfelIndirectDiffuseDebugMode, 0, 11));
+    m_gatherShader->SetUniform("uDisableRadialDepthReject", m_config.disableRadialDepthReject ? 1 : 0);
+    m_gatherShader->SetUniform("uDisableNormalReject", m_config.disableNormalReject ? 1 : 0);
+    m_gatherShader->SetUniform("uDisableConfidenceReject", m_config.disableConfidenceReject ? 1 : 0);
+    m_gatherShader->SetUniform("uDisableFallback", m_config.disableFallback ? 1 : 0);
+    m_gatherShader->SetUniform("uUseTemporal", ctx.surfelIndirectDiffuseUseTemporal ? 1 : 0);
+    m_gatherShader->SetUniform("uTemporalAlpha", 0.24f);
+    m_gatherShader->SetUniform("uTemporalReset", m_hasHistory ? 0 : 1);
+    m_gatherShader->SetUniform("uHasVelocityHistory", (ctx.velocityTex != 0 && m_hasHistory) ? 1 : 0);
 
     m_gatherShader->Dispatch(ComputeShader::CalculateWorkGroups(static_cast<GLuint>(m_width), 8u),
         ComputeShader::CalculateWorkGroups(static_cast<GLuint>(m_height), 8u), 1u);
     m_gatherShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+    if (m_history && m_irradiance) {
+        glCopyImageSubData(m_irradiance->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+            m_history->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
+            m_width, m_height, 1);
+        glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        m_hasHistory = true;
+    }
 }

@@ -54,10 +54,48 @@ public:
         uint32_t rayEligibleSurfels = 0;
         uint32_t rayActiveSurfels = 0;
         uint32_t rayEvaluatedSurfels = 0;
+        uint32_t rejectedInvalidLifecycle = 0;
+        uint32_t rejectedInvalidTransform = 0;
+        uint32_t rejectedInvalidNormal = 0;
+        uint32_t rejectedInvalidRadius = 0;
+        uint32_t rejectedMissingSpatialCell = 0;
+        uint32_t rejectedNotVisibleOrRecent = 0;
+        uint32_t rejectedOutsideResidency = 0;
+        uint32_t rejectedDormant = 0;
+        uint32_t rejectedZeroHistoryConfidence = 0;
+        uint32_t rejectedZeroSampleCount = 0;
+        uint32_t rejectedAlreadySolved = 0;
+        uint32_t rejectedPoolPressure = 0;
+        uint32_t rejectedNoFreeIDs = 0;
+        uint32_t rejectedBudgetScaleZero = 0;
+        uint32_t rejectedMaxRayTracedSurfelsZero = 0;
+        uint32_t rejectedMaxRaysPerSurfelZero = 0;
+        uint32_t rejectedInvalidIrradianceSlot = 0;
+        uint32_t rejectedMaterialOrTLAS = 0;
+        uint32_t rejectedSelectionCapped = 0;
         uint32_t sharedSurfels = 0;
+        uint32_t raysDispatched = 0;
+        uint32_t raysSkippedByBudget = 0;
+        uint32_t tlasHits = 0;
+        uint32_t tlasMisses = 0;
+        uint32_t shadowRaysVisible = 0;
+        uint32_t shadowRaysOccluded = 0;
+        uint32_t zeroRadianceHits = 0;
+        uint32_t backfaceCorrections = 0;
+        float meanHitDistance = 0.0f;
+        float meanHitAlbedoLuma = 0.0f;
+        float meanDirectRadianceLuma = 0.0f;
+        float meanRawIrradianceLuma = 0.0f;
+        float meanAccumulatedIrradianceLuma = 0.0f;
+        float meanSharedIrradianceLuma = 0.0f;
+        float meanGatheredIrradianceLuma = 0.0f;
+        float meanFinalIndirectLuma = 0.0f;
         uint32_t radialDepthUpdates = 0;
         uint32_t bleedRejectedContributions = 0;
         uint32_t guidingUpdates = 0;
+        uint32_t gatherCandidateCount = 0;
+        uint32_t gatherAcceptedCount = 0;
+        uint32_t gatherFallbackCount = 0;
         float rayBudgetUtilizationPercent = 0.0f;
         uint32_t tileCursor = 0;
         uint32_t lifecycleCursor = 0;
@@ -103,6 +141,7 @@ public:
     GLuint GetHeaderBuffer() const { return m_headerSSBO; }
     GLuint GetGridHeaderBuffer() const { return m_gridHeaderSSBO; }
     GLuint GetGridEntryBuffer() const { return m_gridEntrySSBO; }
+    GLuint GetGridAverageBuffer() const { return m_gridAverageSSBO; }
     GLuint GetRadialDepthBinsBuffer() const { return m_radialDepthBinsSSBO; }
     const Stats& GetLastStats() const { return m_lastStats; }
     const std::array<float, kStatsHistoryLength>& GetLiveHistory() const { return m_liveHistory; }
@@ -133,16 +172,31 @@ private:
         glm::vec4 rawIrradiance{ 0.0f };
         glm::vec4 sharedIrradiance{ 0.0f };
         glm::vec4 solveState{ 0.0f };
+        glm::vec4 lightingState{ 0.0f };
     };
-    static_assert(sizeof(GpuSurfelRecord) == 272, "GpuSurfelRecord must match shaders/includes/surfel_gi_common.glsl SurfelRecord std430 layout.");
+    static_assert(sizeof(GpuSurfelRecord) == 288, "GpuSurfelRecord must match shaders/includes/surfel_gi_common.glsl SurfelRecord std430 layout.");
 
     struct GpuIrradianceHeader {
         glm::uvec4 rayStats{ 0u };
         glm::uvec4 passStats{ 0u };
         glm::uvec4 debugStats{ 0u };
         glm::uvec4 config{ 0u };
+        glm::uvec4 rayDebugStats{ 0u };
+        glm::uvec4 rayDebugStats2{ 0u };
+        glm::vec4 rayDebugSums{ 0.0f };
+        glm::vec4 irradianceDebugSums{ 0.0f };
+        glm::uvec4 eligibilityReject0{ 0u };
+        glm::uvec4 eligibilityReject1{ 0u };
+        glm::uvec4 eligibilityReject2{ 0u };
+        glm::uvec4 eligibilityReject3{ 0u };
+        glm::uvec4 eligibilityReject4{ 0u };
+        glm::uvec4 gatherStats{ 0u };
+        glm::vec4 gatherDebugSums{ 0.0f };
+        glm::uvec4 rayDebugSumsFixed{ 0u };
+        glm::uvec4 irradianceDebugSumsFixed{ 0u };
+        glm::uvec4 gatherDebugSumsFixed{ 0u };
     };
-    static_assert(sizeof(GpuIrradianceHeader) == 64, "GpuIrradianceHeader must match shaders/includes/surfel_gi_common.glsl SurfelIrradianceHeader std430 layout.");
+    static_assert(sizeof(GpuIrradianceHeader) == 288, "GpuIrradianceHeader must match shaders/includes/surfel_gi_common.glsl SurfelIrradianceHeader std430 layout.");
 
     struct GpuPoolHeader {
         glm::uvec4 counts{ 0u };      // x=maxSurfels,y=live,z=free,w=frame
@@ -199,6 +253,7 @@ private:
     void RunPersistentStateUpdate(RenderContext& ctx, RenderSystem& renderSystem, const std::shared_ptr<Camera>& camera, const RuntimeBudget& budget);
     void RunRecycleDecision(RenderContext& ctx, const RuntimeBudget& budget);
     void RebuildSpatialGrid(const glm::vec3& cameraPos);
+    void BuildGridCellAverages();
     void RunPersistentTileCoverage(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion);
     void RunProjectedCoverage(RenderContext& ctx, const glm::mat4& invViewProj, uint32_t maxTransformID, const RuntimeBudget& budget);
     void RunCoverageDeficit(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion);
@@ -227,6 +282,7 @@ private:
     GLuint m_tileQueueSSBO = 0;
     GLuint m_gridHeaderSSBO = 0;
     GLuint m_gridEntrySSBO = 0;
+    GLuint m_gridAverageSSBO = 0;
     GLuint m_irradianceHeaderSSBO = 0;
     GLuint m_guidingBinsSSBO = 0;
     GLuint m_radialDepthBinsSSBO = 0;
@@ -252,6 +308,7 @@ private:
     std::unique_ptr<ComputeShader> m_deficitShader;
     std::unique_ptr<ComputeShader> m_gridClearShader;
     std::unique_ptr<ComputeShader> m_gridBuildShader;
+    std::unique_ptr<ComputeShader> m_gridAverageShader;
     std::unique_ptr<ComputeShader> m_spawnShader;
     std::unique_ptr<ComputeShader> m_integrateShader;
     std::unique_ptr<ComputeShader> m_rayRequestShader;

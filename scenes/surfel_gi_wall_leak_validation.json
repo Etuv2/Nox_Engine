@@ -1,0 +1,44 @@
+{
+  "scene_name": "surfel_gi_wall_leak_validation",
+  "exposure": 1.0,
+  "gamma": 2.2,
+  "skybox": "",
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\plane.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [8.0, 1.0, 8.0]
+    },
+    {
+      "type": "model",
+      "path": "models\\cube.glb",
+      "position": [0.0, 1.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [0.12, 3.0, 8.0]
+    },
+    {
+      "type": "model",
+      "path": "models\\cube.glb",
+      "position": [-2.5, 1.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0]
+    },
+    {
+      "type": "light",
+      "name": "BrightRoomLight",
+      "position": [-3.0, 3.0, 0.0],
+      "rotation": [-75.0, 35.0, 0.0],
+      "light": {
+        "type": "directional",
+        "color": [1.0, 0.95, 0.82],
+        "intensity": 5.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.8
+      }
+    }
+  ]
+}

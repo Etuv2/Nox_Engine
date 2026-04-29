@@ -642,7 +642,11 @@ void ModularRenderer::BuildPassDescriptors(
 		});
 	addPass({
 		"TAAVelocityPass", { "GBuffer" }, { "Velocity" },
-		[](const RenderContext& ctx) { return ctx.enableTAA || ctx.enableIndirectDiffuse; },
+		[](const RenderContext& ctx) {
+			return ctx.enableTAA ||
+				ctx.enableIndirectDiffuse ||
+				(ctx.enableSurfelGI && ctx.enableSurfelIndirectDiffuse);
+		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (m_taaPass) {
 				m_taaPass->ExecuteVelocity(m_context, sceneGraph, camera);
@@ -678,7 +682,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"SurfelIndirectDiffusePass", { "GBuffer", ResourceNames::SurfelField, ResourceNames::SurfelGrid }, { ResourceNames::SurfelIndirectDiffuse, ResourceNames::SurfelIndirectDiffuseDebug },
+		"SurfelIndirectDiffusePass", { "GBuffer", "Velocity", ResourceNames::SurfelField, ResourceNames::SurfelGrid }, { ResourceNames::SurfelIndirectDiffuse, ResourceNames::SurfelIndirectDiffuseDebug },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				ctx.enableSurfelGI &&
@@ -704,13 +708,16 @@ void ModularRenderer::BuildPassDescriptors(
 			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
 			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
 			m_lightingPass->ClearIndirectDiffuseSources();
-			if (m_context.enableIndirectDiffuse) {
+			const bool surfelValidationActive =
+				m_context.enableSurfelGI &&
+				m_context.surfelGIDebug.validationMode != RenderContext::SurfelGIDebugSettings::Production;
+			if (m_context.enableIndirectDiffuse && !surfelValidationActive) {
 				m_lightingPass->SetIndirectDiffuseSource(
 					0,
 					m_namedResources[ResourceNames::IndirectDiffuse],
 					m_context.indirectDiffuseStrength);
 			}
-			if (m_context.enableLPV) {
+			if (m_context.enableLPV && !surfelValidationActive) {
 				m_lightingPass->SetIndirectDiffuseSource(
 					1,
 					m_namedResources[ResourceNames::LPVIndirect],

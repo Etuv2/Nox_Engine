@@ -26,6 +26,7 @@ layout(binding = 28, std430) buffer IrradianceHeaderBuffer {
 
 uniform int uSurfelStart;
 uniform int uSurfelCount;
+uniform vec3 uCameraPos;
 
 const uint kMaxSharedNeighbors = 8u;
 
@@ -50,7 +51,7 @@ void main()
     }
 
     uint count = min(gridHeaders[s.grid.x].x, header.gridDims.w);
-    vec3 normal = normalize(s.worldNormalRecycle.xyz);
+    vec3 normal = SurfelStableNormal(s.worldNormalRecycle.xyz);
     vec3 sharedAccum = s.rawIrradiance.rgb;
     float sharedWeight = 1.0;
     uint accepted = 0u;
@@ -66,7 +67,7 @@ void main()
             continue;
         }
 
-        vec3 otherNormal = normalize(other.worldNormalRecycle.xyz);
+        vec3 otherNormal = SurfelStableNormal(other.worldNormalRecycle.xyz);
         float normalAlign = dot(normal, otherNormal);
         if (normalAlign < 0.75) {
             continue;

@@ -34,6 +34,7 @@ uniform vec2 uResolution;
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform mat4 uInvViewProj;
+uniform vec3 uCameraPos;
 uniform float uNormalReject;
 uniform float uDepthThicknessScale;
 uniform int uMaxTransformID;
@@ -83,7 +84,7 @@ void main()
     GpuTransformRecord transformRecord = transforms[surfelTransformID];
     mat4 worldFromLocal = transformRecord.world;
     vec3 worldPos = (worldFromLocal * vec4(s.localPositionAge.xyz, 1.0)).xyz;
-    vec3 normal = normalize(transpose(inverse(mat3(worldFromLocal))) * s.localNormalDebug.xyz);
+    vec3 normal = SurfelStableNormal(transpose(inverse(mat3(worldFromLocal))) * s.localNormalDebug.xyz);
     float radius = max(s.worldPositionRadius.w, 0.001);
 
     vec4 viewCenter = uView * vec4(worldPos, 1.0);
@@ -176,8 +177,8 @@ void main()
             uint quantizedRawWeight = uint(clamp(supportWeight * 1024.0, 1.0, 4096.0));
             imageAtomicAdd(uRawProjectedSupport, pixel, quantizedRawWeight);
 
-            vec3 receiverNormal = SurfelGIDecodeNormalOct(texelFetch(uPackedNormalRM, pixel, 0).xy);
             vec3 receiverWorldPos = SurfelGIReconstructWorldPosition(pixel, depth, uResolution, uInvViewProj);
+            vec3 receiverNormal = SurfelStableNormal(SurfelGIDecodeNormalOct(texelFetch(uPackedNormalRM, pixel, 0).xy));
             SurfelGIVisibilityCompatResult compat = SurfelGIEvaluateVisibilityCompatibility(
                 worldPos,
                 normal,
@@ -205,13 +206,15 @@ void main()
 
             uint quantizedWeight = uint(clamp(weight * 1024.0, 1.0, 4096.0));
             imageAtomicAdd(uProjectedCoverage, pixel, quantizedWeight);
-            imageAtomicMin(uWinnerSurfelID, pixel, surfelID);
+            imageAtomicMax(uWinnerSurfelID, pixel, SurfelPackWinner(surfelID, quantizedWeight));
             contributed = true;
         }
     }
 
     if (contributed) {
-        atomicMax(surfels[surfelID].frames.y, frameIndex);
+        s.frames.y = max(s.frames.y, frameIndex);
+        s.metrics.w = max(s.metrics.w, 1.0);
+        surfels[surfelID] = s;
         uint ageFrames = frameIndex - min(s.frames.x, frameIndex);
         if (ageFrames > 45u) {
             atomicAdd(header.contributionStats.x, 1u);

@@ -332,8 +332,12 @@ void LightingPass::Execute(RenderContext& ctx,
 	glActiveTexture(GL_TEXTURE0 + TextureUnits::SURFEL_INDIRECT_DIFFUSE);
 	glBindTexture(GL_TEXTURE_2D, m_surfelIndirectDiffuseTexture);
 
-	// Bind IBL textures (skybox or fallback)
-	bool useValidIBL = (skybox && skybox->ValidateIBLTextures());
+	// Bind IBL textures (skybox or fallback). Surfel GI validation isolates the surfel
+	// signal from diffuse/specular IBL so fallback paths cannot mask failures.
+	const bool surfelValidationActive =
+		ctx.enableSurfelGI &&
+		ctx.surfelGIDebug.validationMode != RenderContext::SurfelGIDebugSettings::Production;
+	bool useValidIBL = !surfelValidationActive && (skybox && skybox->ValidateIBLTextures());
 
 	if (useValidIBL) {
 		glActiveTexture(GL_TEXTURE0 + TextureUnits::IRRADIANCE_MAP);
@@ -419,7 +423,7 @@ void LightingPass::Execute(RenderContext& ctx,
 		glUniform1i(m_uniforms.useLegacySurfelFragmentGather, ctx.surfelUseLegacyFragmentGather ? 1 : 0);
 	}
 	if (m_uniforms.lightingCompositeDebugMode >= 0) {
-		glUniform1i(m_uniforms.lightingCompositeDebugMode, std::clamp(ctx.lightingCompositeDebugMode, 0, 5));
+		glUniform1i(m_uniforms.lightingCompositeDebugMode, std::clamp(ctx.lightingCompositeDebugMode, 0, 6));
 	}
 
 	// Bind LightManager data

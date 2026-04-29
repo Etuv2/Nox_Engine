@@ -63,6 +63,13 @@ uniform vec3 uDirectionalLightDir;
 uniform vec3 uDirectionalLightColor;
 uniform vec3 uCameraPos;
 uniform float uMaxRayDistance;
+uniform int uSurfelGIValidationMode;
+uniform int uSurfelGIValidationSelectedSurfel;
+uniform int uSurfelGIValidationIsolatedRayCount;
+uniform int uSurfelGIValidationDisableGuiding;
+uniform int uSurfelGIValidationDisableNeighbourSharing;
+uniform int uSurfelGIValidationDisableRadialDepth;
+uniform int uSurfelGIValidationDisableDormancy;
 
 vec3 SampleSurfelSky(vec3 direction)
 {
@@ -73,19 +80,24 @@ vec3 SampleSurfelSky(vec3 direction)
 float TraceLightVisibility(vec3 point, vec3 normal, vec3 lightDir, float maxDistance)
 {
     Ray shadowRay;
-    shadowRay.origin = point + normal * max(RT_SCENE_EPSILON * 4.0, 0.002);
+    shadowRay.origin = point + lightDir * max(RT_SCENE_EPSILON * 4.0, 0.002) + normal * RT_SCENE_EPSILON;
     shadowRay.direction = lightDir;
     shadowRay.tMin = RT_SCENE_EPSILON;
     shadowRay.tMax = max(maxDistance - RT_SCENE_EPSILON, RT_SCENE_EPSILON);
 
     HitInfo shadowHit = traceBVH(shadowRay);
-    return shadowHit.hit ? 0.0 : 1.0;
+    if (shadowHit.hit) {
+        atomicAdd(irradianceHeader.rayDebugStats.w, 1u);
+        return 0.0;
+    }
+    atomicAdd(irradianceHeader.rayDebugStats.z, 1u);
+    return 1.0;
 }
 
 vec3 EvaluateSharedSceneLights(vec3 point, vec3 normal)
 {
     vec3 result = vec3(0.0);
-    uint lightCount = uint(clamp(u_lightCount, 0, 16));
+    uint lightCount = uint(clamp(u_lightCount, 0, 64));
 
     for (uint i = 0u; i < lightCount; ++i) {
         RTLightData light = lights[i];
@@ -161,7 +173,7 @@ vec3 SampleNearbyCache(vec3 point, vec3 normal, uint selfID)
             continue;
         }
 
-        vec3 neighborNormal = normalize(n.worldNormalRecycle.xyz);
+        vec3 neighborNormal = SurfelStableNormal(n.worldNormalRecycle.xyz);
         float normalWeight = clamp(dot(normal, neighborNormal), 0.0, 1.0);
         vec3 delta = point - n.worldPositionRadius.xyz;
         float radius = max(n.worldPositionRadius.w * 2.0, 0.001);
@@ -184,31 +196,65 @@ void main()
     }
 
     uint id = (uint(max(uSurfelStart, 0)) + localIndex) % header.counts.x;
+    if (uSurfelGIValidationSelectedSurfel >= 0 && id != uint(uSurfelGIValidationSelectedSurfel)) {
+        return;
+    }
+
     SurfelRecord s = surfels[id];
     if (!IsSurfelValid(s)) {
         return;
     }
 
+    if (uSurfelGIValidationMode == SURFEL_GI_VALIDATION_MODE_CONSTANT_INJECTION) {
+        vec3 injected = vec3(1.0, 0.42, 0.08);
+        s.rawIrradiance = vec4(injected, 1.0);
+        s.irradianceHistory = vec4(injected, max(s.irradianceHistory.w, 32.0));
+        s.sharedIrradiance = vec4(injected, 1.0);
+        s.solveState.w = float(max(uFrameIndex, 0));
+        s.lightingState = vec4(float(SURFEL_LIGHTING_STATE_STABLE), 1.0, 0.0, 0.0);
+        surfels[id] = s;
+        atomicAdd(irradianceHeader.passStats.x, 1u);
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.x, SurfelEncodeDebugSum(LumaSurfel(injected)));
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.y, SurfelEncodeDebugSum(LumaSurfel(injected)));
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.z, SurfelEncodeDebugSum(LumaSurfel(injected)));
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.w, 1u);
+        return;
+    }
+
     uint allocated = uint(max(s.solveState.y, 0.0));
+    if (uSurfelGIValidationDisableDormancy != 0 && allocated == 0u && (s.ids.y & SURFEL_FLAG_DORMANT) != 0u) {
+        allocated = max(uint(max(s.solveState.x, 0.0)), 1u);
+    }
+    if (uSurfelGIValidationIsolatedRayCount > 0) {
+        allocated = uint(clamp(uSurfelGIValidationIsolatedRayCount, 1, 32));
+    }
     if (allocated == 0u) {
         s.rawIrradiance = vec4(0.0);
+        s.sharedIrradiance = vec4(0.0);
         surfels[id] = s;
         return;
     }
 
-    vec3 normal = normalize(s.worldNormalRecycle.xyz);
+    vec3 normal = SurfelStableNormal(s.worldNormalRecycle.xyz);
+    s.worldNormalRecycle.xyz = normal;
     vec3 accum = vec3(0.0);
     float accepted = 0.0;
     float maxDistance = max(uMaxRayDistance, s.worldPositionRadius.w * 2.0);
+    vec4 raySums = vec4(0.0);
+    uint traceLimit = min(allocated, 32u);
+    if (allocated > traceLimit) {
+        atomicAdd(irradianceHeader.rayDebugStats2.w, allocated - traceLimit);
+    }
 
-    for (uint ray = 0u; ray < allocated && ray < 32u; ++ray) {
+    for (uint ray = 0u; ray < traceLimit; ++ray) {
+        atomicAdd(irradianceHeader.rayDebugStats2.z, 1u);
         uint seed = HashUInt(s.ids.z ^ (uint(max(uFrameIndex, 0)) * 9781u) ^ (ray * 6271u));
         float u1 = Hash01(seed);
         float u2 = Hash01(seed ^ 0x68bc21ebu);
 
         vec3 hemi = SurfelCosineHemisphereSample(u1, u2);
         float guideConfidence = clamp(length(s.guidingState.xyz), 0.0, 1.0);
-        if (guideConfidence > 0.08 && Hash01(seed ^ 0x9e3779b9u) < guideConfidence * 0.65) {
+        if (uSurfelGIValidationDisableGuiding == 0 && guideConfidence > 0.08 && Hash01(seed ^ 0x9e3779b9u) < guideConfidence * 0.65) {
             uint guideBase = id * 36u;
             float sum = 0.0;
             for (uint bin = 0u; bin < 36u; ++bin) {
@@ -243,11 +289,14 @@ void main()
         HitInfo hit = traceBVH(sceneRay);
         vec3 incoming;
         float sampleDepth = maxDistance;
+        float directLuma = 0.0;
 
         if (hit.hit) {
+            atomicAdd(irradianceHeader.rayDebugStats.x, 1u);
             vec3 hitNormal = normalize(hit.normal);
             if (dot(hitNormal, -rayDir) < 0.0) {
                 hitNormal = -hitNormal;
+                atomicAdd(irradianceHeader.rayDebugStats2.y, 1u);
             }
 
             vec3 lightDir = normalize(-uDirectionalLightDir);
@@ -255,31 +304,51 @@ void main()
             float visibility = direct > 0.0 ? TraceLightVisibility(hit.position, hitNormal, lightDir, 10000.0) : 0.0;
             vec3 directIrradiance = max(uDirectionalLightColor, vec3(0.0)) * direct * visibility;
             directIrradiance += EvaluateSharedSceneLights(hit.position, hitNormal);
-            vec3 bounced = SampleNearbyCache(hit.position, hitNormal, id) * 0.65;
+            directLuma = max(LumaSurfel(directIrradiance), 0.0);
+            vec3 bounced = uSurfelGIValidationDisableNeighbourSharing != 0 ? vec3(0.0) : SampleNearbyCache(hit.position, hitNormal, id) * 0.65;
             vec3 albedo = max(hit.material.albedo, vec3(0.0));
             vec3 emission = max(hit.material.emissive, vec3(0.0)) * max(hit.material.emissiveStrength, 0.0);
-            incoming = emission + albedo * (directIrradiance + bounced) + vec3(0.015);
+            raySums.x += max(hit.t, 0.0);
+            raySums.y += max(LumaSurfel(albedo), 0.0);
+            if (uSurfelGIValidationMode == SURFEL_GI_VALIDATION_MODE_BRUTE_FORCE ||
+                uSurfelGIValidationMode == SURFEL_GI_VALIDATION_MODE_SINGLE_SURFEL) {
+                incoming = albedo * directIrradiance;
+            } else {
+                incoming = emission + albedo * (directIrradiance + bounced) + vec3(0.015);
+            }
             sampleDepth = hit.t;
         } else {
-            incoming = SampleSurfelSky(rayDir);
+            atomicAdd(irradianceHeader.rayDebugStats.y, 1u);
+            incoming = (uSurfelGIValidationMode == SURFEL_GI_VALIDATION_MODE_BRUTE_FORCE ||
+                uSurfelGIValidationMode == SURFEL_GI_VALIDATION_MODE_SINGLE_SURFEL) ? vec3(0.0) : SampleSurfelSky(rayDir);
         }
 
+        float incomingLuma = max(LumaSurfel(incoming), 0.0);
+        if (incomingLuma <= 0.00001) {
+            atomicAdd(irradianceHeader.rayDebugStats2.x, 1u);
+        }
+        raySums.z += directLuma;
+        raySums.w += incomingLuma;
         accum += incoming;
         accepted += 1.0;
 
         vec3 localDir = SurfelWorldToHemi(rayDir, normal);
-        uint depthBin = id * 16u + SurfelRadialDepthBin(localDir);
-        vec4 depth = radialDepthBins[depthBin];
-        float samples = min(depth.z + 1.0, 1024.0);
-        float alpha = samples <= 1.0 ? 1.0 : clamp(1.0 / samples, 0.02, 0.35);
-        depth.x = mix(depth.x <= 0.0 ? sampleDepth : depth.x, sampleDepth, alpha);
-        depth.y = mix(depth.y, sampleDepth * sampleDepth, alpha);
-        depth.z = samples;
-        depth.w = max(s.worldPositionRadius.w, 0.001);
-        radialDepthBins[depthBin] = depth;
+        if (uSurfelGIValidationDisableRadialDepth == 0) {
+            uint depthBin = id * 16u + SurfelRadialDepthBin(localDir);
+            vec4 depth = radialDepthBins[depthBin];
+            float samples = min(depth.z + 1.0, 1024.0);
+            float alpha = samples <= 1.0 ? 1.0 : clamp(1.0 / samples, 0.02, 0.35);
+            depth.x = mix(depth.x <= 0.0 ? sampleDepth : depth.x, sampleDepth, alpha);
+            depth.y = mix(depth.y, sampleDepth * sampleDepth, alpha);
+            depth.z = samples;
+            depth.w = max(s.worldPositionRadius.w, 0.001);
+            radialDepthBins[depthBin] = depth;
+        }
 
-        uint guideBin = id * 36u + SurfelGuideBin(localDir);
-        guidingBins[guideBin] = mix(guidingBins[guideBin], max(LumaSurfel(incoming), 0.0), 0.10);
+        if (uSurfelGIValidationDisableGuiding == 0) {
+            uint guideBin = id * 36u + SurfelGuideBin(localDir);
+            guidingBins[guideBin] = mix(guidingBins[guideBin], incomingLuma, 0.10);
+        }
     }
 
     vec3 raw = accepted > 0.0 ? accum / accepted : vec3(0.0);
@@ -287,5 +356,9 @@ void main()
     s.sharedIrradiance = vec4(max(raw, vec3(0.0)), 0.0);
     s.solveState.w = float(max(uFrameIndex, 0));
     surfels[id] = s;
+    atomicAdd(irradianceHeader.rayDebugSumsFixed.x, SurfelEncodeDebugSum(raySums.x));
+    atomicAdd(irradianceHeader.rayDebugSumsFixed.y, SurfelEncodeDebugSum(raySums.y));
+    atomicAdd(irradianceHeader.rayDebugSumsFixed.z, SurfelEncodeDebugSum(raySums.z));
+    atomicAdd(irradianceHeader.rayDebugSumsFixed.w, SurfelEncodeDebugSum(raySums.w));
     atomicAdd(irradianceHeader.passStats.x, 1u);
 }

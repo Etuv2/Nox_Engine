@@ -525,6 +525,8 @@ void RTSceneResources::RefreshIncrementalDiagnostics(double buildMsThisFrame, st
         }
     }
     m_diagnostics.tlasInstances = m_tlasInstances.size();
+    m_diagnostics.traceableInstances = m_incrementalInstanceCount;
+    m_diagnostics.tlasNodes = m_incrementalInstanceNodeCount;
     m_diagnostics.skippedSkinnedInstances = m_skippedSkinnedInstances;
     m_diagnostics.residentBytes = m_incrementalResidentBytes;
     m_diagnostics.trianglesBuiltThisFrame = trianglesBuiltThisFrame;
@@ -640,6 +642,7 @@ void RTSceneResources::UploadIncrementalScene()
         }
     }
 
+    const std::size_t previousTraceableInstanceCount = m_incrementalInstanceCount;
     std::vector<RT::Instance> instances;
     instances.reserve(m_tlasInstances.size());
     for (const TLASInstance& source : m_tlasInstances) {
@@ -664,6 +667,10 @@ void RTSceneResources::UploadIncrementalScene()
         instances.push_back(instance);
     }
 
+    const bool readyInstanceSetChanged =
+        geometryUpdated ||
+        instances.size() != previousTraceableInstanceCount ||
+        (instances.empty() && m_incrementalInstanceNodeCount != 0);
     m_incrementalInstanceCount = instances.size();
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_instanceSSBO);
@@ -672,7 +679,7 @@ void RTSceneResources::UploadIncrementalScene()
         instances.empty() ? nullptr : instances.data(),
         GL_DYNAMIC_DRAW);
 
-    if (topologyDirty) {
+    if (topologyDirty || readyInstanceSetChanged || m_incrementalInstanceNodeCount == 0) {
         std::vector<RT::InstanceNode> instanceNodes;
         BuildInstanceTLAS(instances, instanceNodes);
         m_incrementalInstanceNodeCount = instanceNodes.size();

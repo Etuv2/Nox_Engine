@@ -1,0 +1,30 @@
+{
+  "scene_name": "surfel_gi_material_response_validation",
+  "exposure": 1.0,
+  "gamma": 2.2,
+  "skybox": "",
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models\\materials_test.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0]
+    },
+    {
+      "type": "light",
+      "name": "MaterialResponseSun",
+      "position": [2.0, 4.0, 2.0],
+      "rotation": [-60.0, 30.0, 0.0],
+      "light": {
+        "type": "directional",
+        "color": [1.0, 0.95, 0.85],
+        "intensity": 4.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.8
+      }
+    }
+  ]
+}

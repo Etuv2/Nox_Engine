@@ -12,9 +12,15 @@ layout(binding = 21, std430) buffer HeaderBuffer {
     SurfelPoolHeader header;
 };
 
+layout(binding = 28, std430) buffer IrradianceHeaderBuffer {
+    SurfelIrradianceHeader irradianceHeader;
+};
+
 uniform int uFrameIndex;
 uniform int uSurfelStart;
 uniform int uSurfelCount;
+uniform int uSurfelGIValidationMode;
+uniform int uSurfelGIValidationSelectedSurfel;
 
 void main()
 {
@@ -25,23 +31,33 @@ void main()
     }
 
     uint id = (uint(max(uSurfelStart, 0)) + localIndex) % header.counts.x;
+    if (uSurfelGIValidationSelectedSurfel >= 0 && id != uint(uSurfelGIValidationSelectedSurfel)) {
+        return;
+    }
+
     SurfelRecord s = surfels[id];
     if (!IsSurfelValid(s) || s.rawIrradiance.w <= 0.0) {
         return;
     }
 
-    vec3 sampleIrradiance = s.sharedIrradiance.w > 0.0001 ? s.sharedIrradiance.rgb : s.rawIrradiance.rgb;
+    uint frameIndex = uint(max(uFrameIndex, 0));
+    if (uint(max(s.solveState.w, 0.0)) != frameIndex) {
+        return;
+    }
+
+    // Temporal history only integrates the newest ray sample; sharedIrradiance stays transient.
+    vec3 sampleIrradiance = max(s.rawIrradiance.rgb, vec3(0.0));
     sampleIrradiance = max(sampleIrradiance, vec3(0.0));
     float sampleLuma = LumaSurfel(sampleIrradiance);
 
-    float shortSamples = min(s.shortTermStats.w + s.rawIrradiance.w, 256.0);
+    float shortSamples = min(s.shortTermStats.w + 1.0, 256.0);
     float previousShortMean = s.shortTermStats.x;
     float shortAlpha = s.shortTermStats.w <= 1.0 ? 1.0 : 0.22;
     float shortResidual = sampleLuma - previousShortMean;
     float shortMean = mix(previousShortMean, sampleLuma, shortAlpha);
     float shortVariance = mix(max(s.shortTermStats.y, 0.0), shortResidual * shortResidual, shortAlpha);
 
-    float longSamples = min(s.longTermStats.z + s.rawIrradiance.w, 65535.0);
+    float longSamples = min(s.longTermStats.z + 1.0, 65535.0);
     float previousLongMean = s.longTermStats.x;
     float longResidual = sampleLuma - previousLongMean;
     float longAlphaStats = clamp(1.0 / max(longSamples, 1.0), 0.002, 0.030);
@@ -54,6 +70,26 @@ void main()
     float instability = clamp(meanShift * 0.22 + rgbDelta * 0.18, 0.0, 1.0);
 
     float historySamples = max(s.irradianceHistory.w, 0.0);
+    if (uSurfelGIValidationMode == SURFEL_GI_VALIDATION_MODE_SINGLE_SURFEL) {
+        float arithmeticAlpha = 1.0 / max(historySamples + 1.0, 1.0);
+        s.irradianceHistory.rgb = mix(s.irradianceHistory.rgb, sampleIrradiance, arithmeticAlpha);
+        s.irradianceHistory.w = min(historySamples + 1.0, 65535.0);
+        s.shortTermStats = vec4(sampleLuma, 0.0, 0.0, min(s.shortTermStats.w + 1.0, 256.0));
+        s.longTermStats = vec4(sampleLuma, 0.0, min(s.longTermStats.z + 1.0, 65535.0), min(s.longTermStats.w + 1.0, 65535.0));
+        s.frames.z = frameIndex;
+        s.lightingState = vec4(
+            float(SurfelLightingStateFromHistory(s)),
+            SurfelHistoryConfidence(s),
+            0.0,
+            0.0);
+        surfels[id] = s;
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.x, SurfelEncodeDebugSum(sampleLuma));
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.y, SurfelEncodeDebugSum(LumaSurfel(max(s.irradianceHistory.rgb, vec3(0.0)))));
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.z, SurfelEncodeDebugSum(LumaSurfel(max(s.sharedIrradiance.rgb, vec3(0.0)))));
+        atomicAdd(irradianceHeader.irradianceDebugSumsFixed.w, 1u);
+        return;
+    }
+
     float bootstrapAlpha = historySamples < 4.0 ? 1.0 / max(historySamples + 1.0, 1.0) : 0.0;
     float stableAlpha = mix(0.035, 0.012, clamp(historySamples / 96.0, 0.0, 1.0));
     float reactiveAlpha = mix(stableAlpha, 0.32, smoothstep(0.22, 0.95, instability));
@@ -61,9 +97,18 @@ void main()
     float alpha = bootstrapAlpha > 0.0 ? bootstrapAlpha : mix(stableAlpha, reactiveAlpha, max(instability, noiseGuard * 0.15));
 
     s.irradianceHistory.rgb = mix(s.irradianceHistory.rgb, sampleIrradiance, clamp(alpha, 0.01, 1.0));
-    s.irradianceHistory.w = min(historySamples + s.rawIrradiance.w, 65535.0);
+    s.irradianceHistory.w = min(historySamples + 1.0, 65535.0);
     s.shortTermStats = vec4(shortMean, shortVariance, instability, shortSamples);
     s.longTermStats = vec4(longMean, longVariance, longSamples, min(s.longTermStats.w + 1.0, 65535.0));
-    s.frames.z = uint(max(uFrameIndex, 0));
+    s.frames.z = frameIndex;
+    s.lightingState = vec4(
+        float(SurfelLightingStateFromHistory(s)),
+        SurfelHistoryConfidence(s),
+        max(shortVariance, longVariance),
+        instability);
     surfels[id] = s;
+    atomicAdd(irradianceHeader.irradianceDebugSumsFixed.x, SurfelEncodeDebugSum(sampleLuma));
+    atomicAdd(irradianceHeader.irradianceDebugSumsFixed.y, SurfelEncodeDebugSum(LumaSurfel(max(s.irradianceHistory.rgb, vec3(0.0)))));
+    atomicAdd(irradianceHeader.irradianceDebugSumsFixed.z, SurfelEncodeDebugSum(LumaSurfel(max(s.sharedIrradiance.rgb, vec3(0.0)))));
+    atomicAdd(irradianceHeader.irradianceDebugSumsFixed.w, 1u);
 }

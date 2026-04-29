@@ -273,7 +273,7 @@ void SpawnSurfelFromTile(uint tileIndex, SurfelTileMeta tile, uint frameIndex)
     }
 
     vec4 packedNormal = texelFetch(uPackedNormalRM, pixel, 0);
-    vec3 normal = DecodeNormalOctSurfel(packedNormal.xy);
+    vec3 normal = SurfelStableNormal(DecodeNormalOctSurfel(packedNormal.xy));
     vec3 worldPos = ReconstructWorldPosition(pixel, depth);
     vec4 viewPos = uView * vec4(worldPos, 1.0);
     float targetRadiusPixels = ResolveTargetRadiusPixels(uTargetRadiusPixels, float(header.tiling.z), uCoverageThreshold);
@@ -308,7 +308,7 @@ void SpawnSurfelFromTile(uint tileIndex, SurfelTileMeta tile, uint frameIndex)
     s.worldNormalRecycle = vec4(normal, 0.0);
     s.localNormalDebug = vec4(localNormal, float(spawnReason));
     s.ids = uvec4(transformID, SURFEL_FLAG_VALID, surfelID, HashUInt(surfelID ^ frameIndex ^ tileIndex));
-    s.frames = uvec4(frameIndex, frameIndex, frameIndex, 0u);
+    s.frames = uvec4(frameIndex, frameIndex, 0u, 0u);
     s.grid = uvec4(0u, 0u, 0u, SURFEL_STATE_ACTIVE);
     s.metrics = vec4(minCoverage, distance(worldPos, uCameraPos), projectedRadius, 1.0);
     s.irradianceHistory = vec4(0.0);
@@ -320,6 +320,7 @@ void SpawnSurfelFromTile(uint tileIndex, SurfelTileMeta tile, uint frameIndex)
     s.rawIrradiance = vec4(0.0);
     s.sharedIrradiance = vec4(0.0);
     s.solveState = vec4(0.0, 0.0, 1.0, float(frameIndex));
+    s.lightingState = vec4(float(SURFEL_LIGHTING_STATE_BOOTSTRAP), 0.0, 1.0, 0.0);
     surfels[surfelID] = s;
 
     atomicAdd(header.counts.y, 1u);

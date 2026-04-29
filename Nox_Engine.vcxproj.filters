@@ -677,6 +677,9 @@
     <None Include="shaders\surfel_gi_debug_vert.glsl">
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
+    <None Include="shaders\surfel_gi_grid_average_comp.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
     <None Include="shaders\surfel_gi_grid_build_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>

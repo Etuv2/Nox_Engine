@@ -38,15 +38,21 @@ void main()
     uint requested = uint(max(s.solveState.x, 0.0));
     uint totalRequested = max(irradianceHeader.rayStats.x, 1u);
     uint globalBudget = uint(max(uGlobalRayBudget, 0));
+    float allocationPriority = clamp(max(s.solveState.z, 0.001), 0.001, 1.0);
     uint allocated = 0u;
     if (requested > 0u && globalBudget > 0u) {
         if (totalRequested <= globalBudget) {
             allocated = requested;
         } else {
             float exactShare = float(requested) * float(globalBudget) / float(totalRequested);
-            uint baseShare = uint(floor(float(requested) * float(globalBudget) / float(totalRequested)));
+            float budgetRatio = clamp(float(globalBudget) / float(max(totalRequested, 1u)), 0.0, 1.0);
+            float priorityFloor = mix(0.58, 0.0, smoothstep(0.15, 0.80, budgetRatio));
+            float priorityShare = allocationPriority < priorityFloor
+                ? 0.0
+                : exactShare * mix(0.15, 10.0, allocationPriority * allocationPriority);
+            uint baseShare = uint(floor(priorityShare));
             uint frameSalt = uint(max(uFrameIndex, 0)) * 1597334677u;
-            float remainderScore = fract(exactShare) + Hash01(s.ids.z ^ (uint(id) * 747796405u) ^ frameSalt);
+            float remainderScore = fract(priorityShare) + Hash01(s.ids.z ^ (uint(id) * 747796405u) ^ frameSalt);
             uint desired = min(requested, baseShare + (remainderScore >= 1.0 ? 1u : 0u));
 
             for (uint ray = 0u; ray < desired; ++ray) {

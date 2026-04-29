@@ -198,6 +198,7 @@
     <None Include="shaders\includes\surfel_gi_common.glsl" />
     <None Include="shaders\surfel_gi_debug_frag.glsl" />
     <None Include="shaders\surfel_gi_debug_vert.glsl" />
+    <None Include="shaders\surfel_gi_grid_average_comp.glsl" />
     <None Include="shaders\surfel_gi_grid_build_comp.glsl" />
     <None Include="shaders\surfel_gi_grid_clear_comp.glsl" />
     <None Include="shaders\surfel_gi_init_comp.glsl" />

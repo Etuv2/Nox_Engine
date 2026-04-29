@@ -31,6 +31,8 @@ public:
         std::size_t blasReady = 0;
         std::size_t blasFailed = 0;
         std::size_t tlasInstances = 0;
+        std::size_t traceableInstances = 0;
+        std::size_t tlasNodes = 0;
         std::size_t skippedSkinnedInstances = 0;
         std::size_t residentBytes = 0;
         std::size_t trianglesBuiltThisFrame = 0;

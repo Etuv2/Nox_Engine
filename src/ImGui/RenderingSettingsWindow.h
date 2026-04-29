@@ -143,6 +143,7 @@ private:
 	int m_surfelGITLASHeatmapColorLimit = 50;
 	bool m_surfelGITLASDisplayMultipleBVHLayers = false;
 	int m_surfelGITLASBVHLayerToDisplay = 0;
+	RenderContext::SurfelGIDebugSettings m_surfelGIDebugSettings;
 	int m_surfelGIDebugMode = 0;
 	bool m_enableSurfelIndirectDiffuse = true;
 	float m_surfelIndirectDiffuseStrength = 1.0f;

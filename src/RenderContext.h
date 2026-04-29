@@ -141,6 +141,30 @@ struct RenderContext {
 
 	// Surfel GI surfelization infrastructure. This builds a persistent
 	// world-space irradiance cache that deferred lighting consumes directly.
+	struct SurfelGIDebugSettings {
+		enum ValidationMode {
+			Production = 0,
+			BruteForceCorrectness = 1,
+			ConstantIrradianceInjection = 2,
+			SingleSurfelIsolate = 3
+		};
+
+		int validationMode = Production;
+		int surfelDebugView = 0;
+		int gatherDebugView = 0;
+		int compositeDebugView = 0;
+		int selectedSurfelID = 0;
+		int isolatedRayCount = 256;
+		bool forceRayBootstrap = false;
+		bool disableGuiding = false;
+		bool disableNeighbourSharing = false;
+		bool disableRadialDepthReject = false;
+		bool disableDormancy = false;
+		bool disableNormalReject = false;
+		bool disableConfidenceReject = false;
+		bool disableGatherFallback = false;
+	};
+
 	bool enableSurfelGI = false;
 	int surfelGITileSize = 16;
 	float surfelGITargetRadiusPixels = 12.0f; // <=0 uses the accepted default projected radius
@@ -174,27 +198,33 @@ struct RenderContext {
 	// 0=off, 1=discs, 2=normals, 3=projected radius, 4=coverage, 5=cell occupancy,
 	// 6=recent recycled/IDs, 7=transform follow, 8=lifecycle, 9=recycle pressure,
 	// 10=spawn/recycle reason, 11=last contributed, 12=distance, 13=persistence age,
-	// 14=last visible, 15=reused vs fresh, 16=irradiance, 17=depth moments,
+	// 14=last visible, 15=reused vs fresh, 16=surfel irradiance history, 17=depth moments,
 	// 18=raw projected support, 19=valid coverage, 20=screen-space deficit,
 	// 21=depth rejection, 22=normal rejection, 23=winner surfel ID,
-	// 24=TLAS BVH heatmap.
+	// 24=TLAS BVH heatmap, 25=allocated rays, 26=current ray sample,
+	// 27=shared irradiance, 28=history confidence, 29=guiding strength,
+	// 30=lighting state.
 	// The TLAS overlay exposes its own color limit and layer controls from the settings window.
+	SurfelGIDebugSettings surfelGIDebug;
 	int surfelGIDebugMode = 0;
 	GLuint surfelGISurfelBuffer = 0;
 	GLuint surfelGIHeaderBuffer = 0;
 	GLuint surfelGIGridHeaderBuffer = 0;
 	GLuint surfelGIGridEntryBuffer = 0;
+	GLuint surfelGIGridAverageBuffer = 0;
 	GLuint surfelGIRadialDepthBinsBuffer = 0;
+	GLuint surfelGIIrradianceHeaderBuffer = 0;
+	GLuint surfelGIWinnerIDTexture = 0;
 	float surfelGIApplyStrength = 0.0f;
 	bool surfelGIGridReady = false;
 	bool enableSurfelIndirectDiffuse = true;
 	float surfelIndirectDiffuseStrength = 1.0f;
 	int surfelIndirectDiffuseDebugMode = 0;
 	int surfelIndirectDiffuseNeighborRadius = 1;
-	int surfelIndirectDiffuseMaxCandidates = 96;
-	int surfelIndirectDiffuseMaxAccepted = 24;
+	int surfelIndirectDiffuseMaxCandidates = 48;
+	int surfelIndirectDiffuseMaxAccepted = 12;
 	float surfelIndirectDiffuseFallbackStrength = 0.65f;
-	bool surfelIndirectDiffuseUseTemporal = false;
+	bool surfelIndirectDiffuseUseTemporal = true;
 	bool surfelUseLegacyFragmentGather = false;
 	int lightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
 

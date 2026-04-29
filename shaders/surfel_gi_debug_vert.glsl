@@ -205,6 +205,30 @@ void main()
     } else if (uDebugMode == 29) {
         color = HeatColor(clamp(length(s.guidingState.xyz), 0.0, 1.0));
         alpha = 0.78;
+    } else if (uDebugMode == 30) {
+        uint lightingState = uint(max(s.lightingState.x, 0.0) + 0.5);
+        if ((s.ids.y & SURFEL_FLAG_RECYCLED) != 0u) {
+            color = vec3(1.0, 0.16, 0.05);
+            alpha = 0.82;
+        } else if ((s.ids.y & SURFEL_FLAG_TRANSFORM_INVALID) != 0u || !valid) {
+            color = vec3(1.0, 0.0, 0.9);
+            alpha = 0.82;
+        } else if (lightingState == SURFEL_LIGHTING_STATE_UNINITIALIZED) {
+            color = vec3(0.05, 0.15, 1.0);
+            alpha = 0.86;
+        } else if (lightingState == SURFEL_LIGHTING_STATE_BOOTSTRAP) {
+            color = vec3(0.0, 0.92, 1.0);
+            alpha = 0.88;
+        } else if (lightingState == SURFEL_LIGHTING_STATE_ACTIVE) {
+            color = vec3(0.04, 1.0, 0.32);
+            alpha = 0.76;
+        } else if (lightingState == SURFEL_LIGHTING_STATE_STABLE) {
+            color = vec3(1.0, 0.86, 0.08);
+            alpha = 0.68;
+        } else {
+            color = vec3(0.50, 0.50, 0.58);
+            alpha = 0.42;
+        }
     }
 
     vColor = vec4(color, alpha);

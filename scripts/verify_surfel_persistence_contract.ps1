@@ -66,7 +66,7 @@ foreach ($shader in $phaseShaders) {
     Assert-Contains "Nox_Engine.vcxproj" ([regex]::Escape($shader)) "Project must include $shader."
 }
 
-Assert-Contains "src/passes/SurfelGIPass.h" "GpuSurfelRecord\).*== 272" "CPU surfel layout must match the expanded shader payload."
+Assert-Contains "src/passes/SurfelGIPass.h" "GpuSurfelRecord\).*== 288" "CPU surfel layout must match the expanded shader payload."
 Assert-Contains "src/passes/SurfelGIPass.h" "GpuIrradianceHeader" "CPU pass must mirror the irradiance dispatch header."
 Assert-Contains "src/passes/SurfelGIPass.h" "m_guidingBinsSSBO" "Surfel GI must allocate a stable-ID guiding distribution buffer."
 Assert-Contains "src/passes/SurfelGIPass.h" "m_radialDepthBinsSSBO" "Surfel GI must allocate a stable-ID radial depth buffer."
@@ -92,7 +92,9 @@ Assert-Contains "src/passes/SurfelGIPass.cpp" "RunGuidingUpdate\(ctx, budget\);"
 Assert-Contains "src/passes/SurfelGIPass.cpp" "RunNeighbourSharing\(ctx, budget\);" "Execute path must run neighbour sharing."
 Assert-Contains "src/passes/SurfelGIPass.cpp" "RunRadialDepthValidityUpdate\(ctx, budget\);" "Execute path must run radial-depth validity updates."
 
-Assert-Contains "shaders/surfel_gi_ray_allocate_comp.glsl" "floor\(float\(requested\) \* float\(globalBudget\) / float\(totalRequested\)\)" "Ray allocation must proportionally enforce the global ray budget."
+Assert-Contains "shaders/surfel_gi_ray_allocate_comp.glsl" "exactShare\s*=\s*float\(requested\) \* float\(globalBudget\) / float\(totalRequested\)" "Ray allocation must compute each surfel's capped global-budget share."
+Assert-Contains "shaders/surfel_gi_ray_allocate_comp.glsl" "priorityFloor" "Ray allocation must suppress low-priority surfels when requests heavily exceed the global ray budget."
+Assert-Contains "shaders/surfel_gi_ray_allocate_comp.glsl" "priorityShare" "Ray allocation must bias scarce rays toward high-priority surfels."
 Assert-Contains "shaders/surfel_gi_ray_allocate_comp.glsl" "remainderScore" "Ray allocation must include deterministic remainder scoring so one-ray surfels are not starved by flooring."
 Assert-Contains "shaders/includes/rt_scene_common.glsl" "HitInfo\s+traceBVH" "Shared RT scene include must expose BVH traversal."
 Assert-Contains "shaders/surfel_gi_ray_trace_comp.glsl" "includes/rt_scene_common.glsl" "Surfel ray tracing must use the shared RT traversal include."
@@ -108,7 +110,7 @@ Assert-Contains "src/passes/SurfelGIPass.cpp" "BindIncrementalForTracing\(0u,\s*
 Assert-Contains "shaders/includes/rt_scene_common.glsl" "RTInstanceNodeBuffer" "Shared RT scene include must use a TLAS node buffer instead of a linear instance scan."
 Assert-NotContains "src/passes/SurfelGIPass.cpp" "EnsureBuilt\(sceneGraph" "Surfel GI must not trigger the old monolithic full-scene BVH builder."
 Assert-NotContains "shaders/deferred_lighting_frag.glsl" "RunCoverageGapFill|SpawnSurfel|RecycleSurfel" "Deferred shading must consume surfel irradiance without generating or recycling surfels."
-Assert-Contains "shaders/deferred_lighting_frag.glsl" "sharedIrradiance" "Deferred shading must consume shared persistent irradiance when available."
+Assert-Contains "shaders/deferred_lighting_frag.glsl" "irradianceHistory" "Deferred shading must consume persistent irradiance when available."
 Assert-Contains "shaders/surfel_gi_debug_vert.glsl" "uDebugMode == 24" "Debug views must expose requested ray counts."
 Assert-Contains "shaders/surfel_gi_debug_vert.glsl" "uDebugMode == 25" "Debug views must expose allocated ray counts."
 Assert-Contains "shaders/surfel_gi_debug_vert.glsl" "uDebugMode == 26" "Debug views must expose raw irradiance."

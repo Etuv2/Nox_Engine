@@ -33,6 +33,7 @@ namespace {
     constexpr GLuint kBindingIrradianceHeader = 28;
     constexpr GLuint kBindingGuidingBins = 29;
     constexpr GLuint kBindingRadialDepthBins = 30;
+    constexpr GLuint kBindingGridAverages = 33;
     constexpr GLuint kBindingTransforms = 6;
     constexpr GLuint kImageProjectedCoverage = 0;
     constexpr GLuint kImageDeficit = 1;
@@ -61,9 +62,15 @@ namespace {
     constexpr uint32_t kMinLifecycleBudget = 1024;
     constexpr uint32_t kMinRecycleBudget = 256;
     constexpr uint32_t kMinProjectedBudget = 1024;
+    constexpr uint32_t kMinFinalGatherProjectionBudget = 16384;
     constexpr uint32_t kMinIntegrateBudget = 512;
     constexpr uint32_t kMinIrradianceRayBudget = 256;
     constexpr uint32_t kMinRayTracedSurfels = 512;
+    constexpr uint32_t kProductionMaxIrradianceRayBudget = 4096;
+    constexpr uint32_t kProductionMaxRayTracedSurfels = 4096;
+    constexpr int kProductionMaxRaysPerSurfel = 8;
+    constexpr uint32_t kForceBootstrapSurfelCount = 4096;
+    constexpr float kDebugSumFixedScale = 256.0f;
     constexpr uint32_t kGuidingBinsPerSurfel = 36;
     constexpr uint32_t kRadialDepthBinsPerSurfel = 16;
     constexpr uint32_t kDefaultGridRebuildInterval = 1;
@@ -125,6 +132,11 @@ namespace {
     {
         return a + (b - a) * t;
     }
+
+    static float DecodeDebugSum(uint32_t value)
+    {
+        return static_cast<float>(value) / kDebugSumFixedScale;
+    }
 }
 
 SurfelGIPass::SurfelGIPass() = default;
@@ -158,6 +170,7 @@ bool SurfelGIPass::Initialize(RenderContext&)
     m_deficitShader = std::make_unique<ComputeShader>();
     m_gridClearShader = std::make_unique<ComputeShader>();
     m_gridBuildShader = std::make_unique<ComputeShader>();
+    m_gridAverageShader = std::make_unique<ComputeShader>();
     m_spawnShader = std::make_unique<ComputeShader>();
     m_integrateShader = std::make_unique<ComputeShader>();
     m_rayRequestShader = std::make_unique<ComputeShader>();
@@ -179,6 +192,7 @@ bool SurfelGIPass::Initialize(RenderContext&)
     ok &= m_deficitShader->CreateFromFile("shaders/surfel_gi_deficit_comp.glsl");
     ok &= m_gridClearShader->CreateFromFile("shaders/surfel_gi_grid_clear_comp.glsl");
     ok &= m_gridBuildShader->CreateFromFile("shaders/surfel_gi_grid_build_comp.glsl");
+    ok &= m_gridAverageShader->CreateFromFile("shaders/surfel_gi_grid_average_comp.glsl");
     ok &= m_spawnShader->CreateFromFile("shaders/surfel_gi_spawn_comp.glsl");
     ok &= m_integrateShader->CreateFromFile("shaders/surfel_gi_integrate_comp.glsl");
     ok &= m_rayRequestShader->CreateFromFile("shaders/surfel_gi_ray_request_comp.glsl");
@@ -213,7 +227,7 @@ void SurfelGIPass::Resize(RenderContext&, int, int)
 
 void SurfelGIPass::ReleaseBuffers()
 {
-    const std::array<GLuint, 12> buffers = {
+    const std::array<GLuint, 13> buffers = {
         m_surfelSSBO,
         m_headerSSBO,
         m_freeStackSSBO,
@@ -222,6 +236,7 @@ void SurfelGIPass::ReleaseBuffers()
         m_tileQueueSSBO,
         m_gridHeaderSSBO,
         m_gridEntrySSBO,
+        m_gridAverageSSBO,
         m_irradianceHeaderSSBO,
         m_guidingBinsSSBO,
         m_radialDepthBinsSSBO,
@@ -240,6 +255,7 @@ void SurfelGIPass::ReleaseBuffers()
     m_tileQueueSSBO = 0;
     m_gridHeaderSSBO = 0;
     m_gridEntrySSBO = 0;
+    m_gridAverageSSBO = 0;
     m_irradianceHeaderSSBO = 0;
     m_guidingBinsSSBO = 0;
     m_radialDepthBinsSSBO = 0;
@@ -304,6 +320,7 @@ void SurfelGIPass::EnsureResources(RenderContext& ctx)
         m_headerSSBO == 0 ||
         m_surfelSSBO == 0 ||
         m_freeStackSSBO == 0 ||
+        m_gridAverageSSBO == 0 ||
         m_irradianceHeaderSSBO == 0 ||
         m_guidingBinsSSBO == 0 ||
         m_radialDepthBinsSSBO == 0;
@@ -377,9 +394,10 @@ void SurfelGIPass::EnsureResources(RenderContext& ctx)
         ResizeBuffer(m_tileQueueSSBO, queueBytes);
         ResetTileQueue(maxTilesPerBucket, RuntimeBudget{});
     }
-    if (gridChanged || !m_gridHeaderSSBO || !m_gridEntrySSBO) {
+    if (gridChanged || !m_gridHeaderSSBO || !m_gridEntrySSBO || !m_gridAverageSSBO) {
         ResizeBuffer(m_gridHeaderSSBO, static_cast<GLsizeiptr>(gridCellCount * sizeof(glm::uvec4)));
         ResizeBuffer(m_gridEntrySSBO, static_cast<GLsizeiptr>(gridCellCount * kMaxEntriesPerCell * sizeof(uint32_t)));
+        ResizeBuffer(m_gridAverageSSBO, static_cast<GLsizeiptr>(gridCellCount * sizeof(glm::vec4) * 2u));
     }
 
     if (coverageResolutionChanged) {
@@ -441,6 +459,7 @@ void SurfelGIPass::BindCommonBuffers(GLuint transformBuffer) const
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingIrradianceHeader, m_irradianceHeaderSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingGuidingBins, m_guidingBinsSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingRadialDepthBins, m_radialDepthBinsSSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingGridAverages, m_gridAverageSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBindingTransforms, transformBuffer);
 }
 
@@ -477,6 +496,8 @@ void SurfelGIPass::InitializePool()
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_guidingBinsSSBO);
     glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32F, GL_RED, GL_FLOAT, &zeroFloat);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_radialDepthBinsSSBO);
+    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32F, GL_RGBA, GL_FLOAT, &zeroVec);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_gridAverageSSBO);
     glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32F, GL_RGBA, GL_FLOAT, &zeroVec);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
@@ -542,6 +563,9 @@ void SurfelGIPass::ResetFrameStats(uint32_t frameIndex)
 SurfelGIPass::RuntimeBudget SurfelGIPass::ComputeRuntimeBudget(const RenderContext& ctx) const
 {
     const uint32_t totalTiles = std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u);
+    const bool validationBudget =
+        ctx.surfelGIDebug.forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode != RenderContext::SurfelGIDebugSettings::Production;
     const float userScale = std::clamp(ctx.surfelGIBudgetScale, 0.25f, 2.0f);
     const float effectiveScale = std::clamp(m_dynamicBudgetScale * userScale, 0.20f, 2.25f);
     const auto scaledBudget = [effectiveScale](int baseValue, uint32_t minValue, uint32_t maxValue) {
@@ -580,23 +604,29 @@ SurfelGIPass::RuntimeBudget SurfelGIPass::ComputeRuntimeBudget(const RenderConte
         ctx.surfelGIMaxCoarseCoverageSurfels,
         kMinProjectedBudget,
         kMaxSurfels);
+    const uint32_t finalGatherProjectionBudget = std::min(
+        kMaxSurfels,
+        std::max(kMinFinalGatherProjectionBudget, static_cast<uint32_t>(std::max(ctx.surfelGIMaxProjectedSurfels, 0))));
+    budget.maxProjectedSurfels = std::max(budget.maxProjectedSurfels, finalGatherProjectionBudget);
     {
         const uint32_t userRayCap = static_cast<uint32_t>(std::max(ctx.surfelGIMaxIrradianceRays, 0));
         const float scaled = static_cast<float>(userRayCap) * effectiveScale;
         const uint32_t rounded = static_cast<uint32_t>(std::max(0.0f, std::round(scaled)));
         budget.maxIrradianceRays = std::min(rounded, userRayCap);
+        if (!validationBudget) {
+            budget.maxIrradianceRays = std::min(budget.maxIrradianceRays, kProductionMaxIrradianceRayBudget);
+        }
     }
     budget.maxRayTracedSurfels = scaledBudget(
         ctx.surfelGIMaxRayTracedSurfels,
         kMinRayTracedSurfels,
         kMaxSurfels);
+    if (!validationBudget) {
+        budget.maxRayTracedSurfels = std::min(budget.maxRayTracedSurfels, kProductionMaxRayTracedSurfels);
+    }
 
-    const float inverseScale = std::clamp(1.0f / std::max(effectiveScale, 0.20f), 0.5f, 4.0f);
-    const uint32_t rebuildInterval = std::clamp(
-        static_cast<uint32_t>(std::max(1.0f, std::round(static_cast<float>(ctx.surfelGIGridRebuildInterval) * inverseScale))),
-        1u,
-        8u);
-    budget.gridRebuildInterval = std::max(rebuildInterval, kDefaultGridRebuildInterval);
+    (void)ctx.surfelGIGridRebuildInterval;
+    budget.gridRebuildInterval = kDefaultGridRebuildInterval;
     return budget;
 }
 
@@ -737,6 +767,17 @@ void SurfelGIPass::RebuildSpatialGrid(const glm::vec3& cameraPos)
     m_gridBuildShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
+void SurfelGIPass::BuildGridCellAverages()
+{
+    if (!m_gridAverageShader || !m_gridAverageShader->IsValid() || !m_gridAverageSSBO) {
+        return;
+    }
+
+    glUseProgram(m_gridAverageShader->GetProgramID());
+    m_gridAverageShader->Dispatch(ComputeShader::CalculateWorkGroups(m_allocatedGridCellCount, 256u), 1u, 1u);
+    m_gridAverageShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
 void SurfelGIPass::RunPersistentTileCoverage(RenderContext& ctx, const RuntimeBudget& budget, float cameraMotion)
 {
     if (!m_tileCoverageShader || !m_tileCoverageShader->IsValid()) {
@@ -798,7 +839,7 @@ void SurfelGIPass::RunProjectedCoverage(
     }
 
     const GLuint clearValue = 0u;
-    const GLuint winnerClearValue = 0xffffffffu;
+    const GLuint winnerClearValue = 0u;
     glClearTexImage(m_rawProjectedSupportTex, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &clearValue);
     glClearTexImage(m_projectedCoverageTex, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &clearValue);
     glClearTexImage(m_depthRejectTex, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &clearValue);
@@ -875,6 +916,7 @@ void SurfelGIPass::RunProjectedCoverage(
     m_projectCoverageShader->SetUniform("uView", ctx.view);
     m_projectCoverageShader->SetUniform("uProjection", ctx.proj);
     m_projectCoverageShader->SetUniform("uInvViewProj", invViewProj);
+    m_projectCoverageShader->SetUniform("uCameraPos", m_prevCameraPos);
     m_projectCoverageShader->SetUniform("uNormalReject", ctx.surfelGINormalReject);
     m_projectCoverageShader->SetUniform("uDepthThicknessScale", 0.75f);
     m_projectCoverageShader->SetUniform("uMaxTransformID", static_cast<int>(maxTransformID));
@@ -1079,6 +1121,7 @@ void SurfelGIPass::RunIrradianceIntegration(
     const std::shared_ptr<DirectionalLight>& dirLight,
     const RuntimeBudget& budget)
 {
+    (void)dirLight;
     if (!m_integrateShader || !m_integrateShader->IsValid()) {
         return;
     }
@@ -1087,37 +1130,25 @@ void SurfelGIPass::RunIrradianceIntegration(
         return;
     }
 
-    const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(0.0f, -1.0f, 0.0f);
-    const glm::vec3 lightColor = dirLight && dirLight->IsEnabled() ? dirLight->GetEffectiveColor() : glm::vec3(0.0f);
-
     glUseProgram(m_integrateShader->GetProgramID());
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
     if (GLint loc = glGetUniformLocation(m_integrateShader->GetProgramID(), "uPackedNormalRM"); loc >= 0) glUniform1i(loc, 0);
 
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));
-    if (GLint loc = glGetUniformLocation(m_integrateShader->GetProgramID(), "uAlbedoAO"); loc >= 0) glUniform1i(loc, 1);
+    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(5));
+    if (GLint loc = glGetUniformLocation(m_integrateShader->GetProgramID(), "uTransformIDTex"); loc >= 0) glUniform1i(loc, 1);
 
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(4));
-    if (GLint loc = glGetUniformLocation(m_integrateShader->GetProgramID(), "uEmissive"); loc >= 0) glUniform1i(loc, 2);
-
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(5));
-    if (GLint loc = glGetUniformLocation(m_integrateShader->GetProgramID(), "uTransformIDTex"); loc >= 0) glUniform1i(loc, 3);
-
-    glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-    if (GLint loc = glGetUniformLocation(m_integrateShader->GetProgramID(), "uDepthTex"); loc >= 0) glUniform1i(loc, 4);
+    if (GLint loc = glGetUniformLocation(m_integrateShader->GetProgramID(), "uDepthTex"); loc >= 0) glUniform1i(loc, 2);
 
     m_integrateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
     m_integrateShader->SetUniform("uResolution", glm::vec2(float(ctx.width), float(ctx.height)));
     m_integrateShader->SetUniform("uView", ctx.view);
     m_integrateShader->SetUniform("uProjection", ctx.proj);
     m_integrateShader->SetUniform("uInvViewProj", glm::inverse(ctx.proj * ctx.view));
-    m_integrateShader->SetUniform("uDirectionalLightDir", lightDirection);
-    m_integrateShader->SetUniform("uDirectionalLightColor", lightColor);
+    m_integrateShader->SetUniform("uCameraPos", m_prevCameraPos);
     m_integrateShader->SetUniform("uSurfelStart", static_cast<int>(m_integrationCursor));
     m_integrateShader->SetUniform("uSurfelCount", static_cast<int>(integrationCount));
     m_integrateShader->Dispatch(ComputeShader::CalculateWorkGroups(integrationCount, 256u), 1u, 1u);
@@ -1156,12 +1187,41 @@ void SurfelGIPass::RunAdaptiveRayRequest(RenderContext& ctx, const RuntimeBudget
     }
 
     glUseProgram(m_rayRequestShader->GetProgramID());
+    const bool forceRayBootstrap =
+        ctx.surfelGIDebug.forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    const int validationMode = forceRayBootstrap
+        ? RenderContext::SurfelGIDebugSettings::BruteForceCorrectness
+        : std::max(ctx.surfelGIDebug.validationMode, 0);
+    const bool controlledValidation = validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    const uint32_t rayWindowStart = controlledValidation ? 0u : m_rayCursor;
+    const uint32_t maxRayTracedSurfels = controlledValidation
+        ? std::min(budget.maxRayTracedSurfels, kForceBootstrapSurfelCount)
+        : std::min(budget.maxRayTracedSurfels, kMaxSurfels);
+    const int maxRaysPerSurfel = controlledValidation
+        ? std::clamp(ctx.surfelGIMaxRaysPerSurfel, 1, 8)
+        : std::clamp(ctx.surfelGIMaxRaysPerSurfel, 1, kProductionMaxRaysPerSurfel);
+    const int fixedRaysPerSurfel = controlledValidation
+        ? maxRaysPerSurfel
+        : 0;
+    const int rtReady = (ctx.rtSceneResources && ctx.rtSceneResources->IsIncrementalReady()) ? 1 : 0;
     m_rayRequestShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
-    m_rayRequestShader->SetUniform("uSurfelStart", 0);
+    m_rayRequestShader->SetUniform("uSurfelStart", static_cast<int>(rayWindowStart));
     m_rayRequestShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
-    m_rayRequestShader->SetUniform("uMaxRaysPerSurfel", std::max(ctx.surfelGIMaxRaysPerSurfel, 1));
+    m_rayRequestShader->SetUniform("uMaxRaysPerSurfel", maxRaysPerSurfel);
+    m_rayRequestShader->SetUniform("uMaxRayTracedSurfels", static_cast<int>(maxRayTracedSurfels));
+    m_rayRequestShader->SetUniform("uGlobalRayBudget", static_cast<int>(budget.maxIrradianceRays));
+    m_rayRequestShader->SetUniform("uMaxTransformID", static_cast<int>(std::max(m_projectedCoverageMaxTransformID, 1u)));
+    m_rayRequestShader->SetUniform("uSurfelGIValidationMode", validationMode);
+    m_rayRequestShader->SetUniform("uFixedRaysPerSurfel", fixedRaysPerSurfel);
+    m_rayRequestShader->SetUniform("uEffectiveBudgetScale", m_lastStats.budgetScale);
+    m_rayRequestShader->SetUniform("uRTReady", rtReady);
+    m_rayRequestShader->SetUniform("uDisableDormancy", ctx.surfelGIDebug.disableDormancy ? 1 : 0);
     m_rayRequestShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_rayRequestShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+    if (!controlledValidation && maxRayTracedSurfels > 0u) {
+        m_rayCursor = (m_rayCursor + maxRayTracedSurfels) % kMaxSurfels;
+    }
 }
 
 void SurfelGIPass::RunGlobalRayAllocation(RenderContext&, const RuntimeBudget& budget)
@@ -1195,34 +1255,72 @@ void SurfelGIPass::RunBoundedRayTrace(
     if (raySurfelCount == 0u) {
         return;
     }
-    if (!ctx.rtSceneResources || !ctx.rtSceneResources->IsIncrementalReady()) {
+    const auto& debug = ctx.surfelGIDebug;
+    const bool forceRayBootstrap =
+        debug.forceRayBootstrap ||
+        debug.validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    const int validationMode = forceRayBootstrap
+        ? RenderContext::SurfelGIDebugSettings::BruteForceCorrectness
+        : std::max(debug.validationMode, 0);
+    const bool constantInjection =
+        validationMode == RenderContext::SurfelGIDebugSettings::ConstantIrradianceInjection;
+    const bool rtReady = ctx.rtSceneResources && ctx.rtSceneResources->IsIncrementalReady();
+    if (!rtReady && !constantInjection) {
+        if (m_irradianceHeaderSSBO) {
+            GpuIrradianceHeader header{};
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_irradianceHeaderSSBO);
+            glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GpuIrradianceHeader), &header);
+            ++header.debugStats.w;
+            header.eligibilityReject4.y += std::max(header.rayStats.z, 1u);
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GpuIrradianceHeader), &header);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        }
         return;
     }
 
     const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(0.0f, -1.0f, 0.0f);
     const glm::vec3 lightColor = dirLight && dirLight->IsEnabled() ? dirLight->GetEffectiveColor() : glm::vec3(0.0f);
-    ctx.rtSceneResources->UpdateLights(ctx.lightManager);
+    if (rtReady) {
+        ctx.rtSceneResources->UpdateLights(ctx.lightManager);
+    }
 
     glUseProgram(m_rayTraceShader->GetProgramID());
-    ctx.rtSceneResources->BindIncrementalForTracing(0u, 1u, 31u, 32u);
-    ctx.rtSceneResources->BindLights(2u);
+    if (rtReady) {
+        ctx.rtSceneResources->BindIncrementalForTracing(0u, 1u, 31u, 32u);
+        ctx.rtSceneResources->BindLights(2u);
+    }
     m_rayTraceShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
     m_rayTraceShader->SetUniform("uSurfelStart", 0);
     m_rayTraceShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
-    m_rayTraceShader->SetUniform("u_triangleCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalTriangleCount()));
-    m_rayTraceShader->SetUniform("u_bvhNodeCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalNodeCount()));
-    m_rayTraceShader->SetUniform("u_rtInstanceCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalInstanceCount()));
-    m_rayTraceShader->SetUniform("u_rtInstanceNodeCount", static_cast<int>(ctx.rtSceneResources->GetIncrementalInstanceNodeCount()));
-    m_rayTraceShader->SetUniform("u_lightCount", static_cast<int>(ctx.rtSceneResources->GetLightCount()));
+    m_rayTraceShader->SetUniform("u_triangleCount", rtReady ? static_cast<int>(ctx.rtSceneResources->GetIncrementalTriangleCount()) : 0);
+    m_rayTraceShader->SetUniform("u_bvhNodeCount", rtReady ? static_cast<int>(ctx.rtSceneResources->GetIncrementalNodeCount()) : 0);
+    m_rayTraceShader->SetUniform("u_rtInstanceCount", rtReady ? static_cast<int>(ctx.rtSceneResources->GetIncrementalInstanceCount()) : 0);
+    m_rayTraceShader->SetUniform("u_rtInstanceNodeCount", rtReady ? static_cast<int>(ctx.rtSceneResources->GetIncrementalInstanceNodeCount()) : 0);
+    m_rayTraceShader->SetUniform("u_lightCount", rtReady ? static_cast<int>(ctx.rtSceneResources->GetLightCount()) : 0);
     m_rayTraceShader->SetUniform("uDirectionalLightDir", lightDirection);
     m_rayTraceShader->SetUniform("uDirectionalLightColor", lightColor);
     m_rayTraceShader->SetUniform("uCameraPos", m_prevCameraPos);
-    m_rayTraceShader->SetUniform("uMaxRayDistance", 8.0f);
+    // Urban validation scenes need rays to cross streets/rooms; 8m clipped most useful bounce candidates.
+    m_rayTraceShader->SetUniform("uMaxRayDistance", 32.0f);
+    const bool controlledValidation = validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    const int selectedSurfel = validationMode == RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate
+        ? std::max(debug.selectedSurfelID, 0)
+        : -1;
+    const int isolatedRayCount = validationMode == RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate
+        ? std::clamp(debug.isolatedRayCount, 1, 32)
+        : 0;
+    m_rayTraceShader->SetUniform("uSurfelGIValidationMode", validationMode);
+    m_rayTraceShader->SetUniform("uSurfelGIValidationSelectedSurfel", selectedSurfel);
+    m_rayTraceShader->SetUniform("uSurfelGIValidationIsolatedRayCount", isolatedRayCount);
+    m_rayTraceShader->SetUniform("uSurfelGIValidationDisableGuiding", (debug.disableGuiding || controlledValidation) ? 1 : 0);
+    m_rayTraceShader->SetUniform("uSurfelGIValidationDisableNeighbourSharing", (debug.disableNeighbourSharing || controlledValidation) ? 1 : 0);
+    m_rayTraceShader->SetUniform("uSurfelGIValidationDisableRadialDepth", (debug.disableRadialDepthReject || controlledValidation) ? 1 : 0);
+    m_rayTraceShader->SetUniform("uSurfelGIValidationDisableDormancy", (debug.disableDormancy || controlledValidation) ? 1 : 0);
     m_rayTraceShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_rayTraceShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
-void SurfelGIPass::RunTemporalAccumulation(RenderContext&, const RuntimeBudget& budget)
+void SurfelGIPass::RunTemporalAccumulation(RenderContext& ctx, const RuntimeBudget& budget)
 {
     if (!m_temporalAccumulateShader || !m_temporalAccumulateShader->IsValid()) {
         return;
@@ -1236,12 +1334,25 @@ void SurfelGIPass::RunTemporalAccumulation(RenderContext&, const RuntimeBudget& 
     m_temporalAccumulateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
     m_temporalAccumulateShader->SetUniform("uSurfelStart", 0);
     m_temporalAccumulateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    const auto& debug = ctx.surfelGIDebug;
+    const int validationMode = std::max(debug.validationMode, 0);
+    const int selectedSurfel = validationMode == RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate
+        ? std::max(debug.selectedSurfelID, 0)
+        : -1;
+    m_temporalAccumulateShader->SetUniform("uSurfelGIValidationMode", validationMode);
+    m_temporalAccumulateShader->SetUniform("uSurfelGIValidationSelectedSurfel", selectedSurfel);
     m_temporalAccumulateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_temporalAccumulateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
-void SurfelGIPass::RunGuidingUpdate(RenderContext&, const RuntimeBudget& budget)
+void SurfelGIPass::RunGuidingUpdate(RenderContext& ctx, const RuntimeBudget& budget)
 {
+    const bool controlledValidation =
+        ctx.surfelGIDebug.forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    if (ctx.surfelGIDebug.disableGuiding || controlledValidation) {
+        return;
+    }
     if (!m_guidingUpdateShader || !m_guidingUpdateShader->IsValid()) {
         return;
     }
@@ -1257,8 +1368,14 @@ void SurfelGIPass::RunGuidingUpdate(RenderContext&, const RuntimeBudget& budget)
     m_guidingUpdateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
-void SurfelGIPass::RunNeighbourSharing(RenderContext&, const RuntimeBudget& budget)
+void SurfelGIPass::RunNeighbourSharing(RenderContext& ctx, const RuntimeBudget& budget)
 {
+    const bool controlledValidation =
+        ctx.surfelGIDebug.forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    if (ctx.surfelGIDebug.disableNeighbourSharing || controlledValidation) {
+        return;
+    }
     if (!m_neighbourShareShader || !m_neighbourShareShader->IsValid()) {
         return;
     }
@@ -1270,13 +1387,20 @@ void SurfelGIPass::RunNeighbourSharing(RenderContext&, const RuntimeBudget& budg
     glUseProgram(m_neighbourShareShader->GetProgramID());
     m_neighbourShareShader->SetUniform("uSurfelStart", static_cast<int>(m_sharingCursor));
     m_neighbourShareShader->SetUniform("uSurfelCount", static_cast<int>(shareCount));
+    m_neighbourShareShader->SetUniform("uCameraPos", m_prevCameraPos);
     m_neighbourShareShader->Dispatch(ComputeShader::CalculateWorkGroups(shareCount, 256u), 1u, 1u);
     m_neighbourShareShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
     m_sharingCursor = (m_sharingCursor + shareCount) % kMaxSurfels;
 }
 
-void SurfelGIPass::RunRadialDepthValidityUpdate(RenderContext&, const RuntimeBudget& budget)
+void SurfelGIPass::RunRadialDepthValidityUpdate(RenderContext& ctx, const RuntimeBudget& budget)
 {
+    const bool controlledValidation =
+        ctx.surfelGIDebug.forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    if (ctx.surfelGIDebug.disableRadialDepthReject || controlledValidation) {
+        return;
+    }
     if (!m_radialDepthUpdateShader || !m_radialDepthUpdateShader->IsValid()) {
         return;
     }
@@ -1290,7 +1414,6 @@ void SurfelGIPass::RunRadialDepthValidityUpdate(RenderContext&, const RuntimeBud
     m_radialDepthUpdateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_radialDepthUpdateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_radialDepthUpdateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
-    m_rayCursor = 0;
 }
 
 void SurfelGIPass::PublishResources(RenderContext& ctx) const
@@ -1299,14 +1422,19 @@ void SurfelGIPass::PublishResources(RenderContext& ctx) const
     ctx.surfelGIHeaderBuffer = m_headerSSBO;
     ctx.surfelGIGridHeaderBuffer = m_gridHeaderSSBO;
     ctx.surfelGIGridEntryBuffer = m_gridEntrySSBO;
+    ctx.surfelGIGridAverageBuffer = m_gridAverageSSBO;
     ctx.surfelGIRadialDepthBinsBuffer = m_radialDepthBinsSSBO;
+    ctx.surfelGIIrradianceHeaderBuffer = m_irradianceHeaderSSBO;
+    ctx.surfelGIWinnerIDTexture = m_winnerIDTex;
     ctx.surfelGIApplyStrength = kSurfelLightingApplyStrength;
     ctx.surfelGIGridReady =
         m_surfelSSBO != 0 &&
         m_headerSSBO != 0 &&
         m_gridHeaderSSBO != 0 &&
         m_gridEntrySSBO != 0 &&
-        m_radialDepthBinsSSBO != 0;
+        m_gridAverageSSBO != 0 &&
+        m_radialDepthBinsSSBO != 0 &&
+        m_irradianceHeaderSSBO != 0;
 }
 
 void SurfelGIPass::Execute(RenderContext& ctx,
@@ -1349,20 +1477,35 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     const glm::vec3 cameraPos = camera->GetCameraPosition();
     float cameraMotion = 0.0f;
     const glm::vec3 cameraFront = glm::normalize(camera->GetCameraFrontVector());
-    if (m_hasPrevCameraPos) {
+    const bool firstCameraFrame = !m_hasPrevCameraPos;
+    if (!firstCameraFrame) {
         const float positionalMotion = glm::length(cameraPos - m_prevCameraPos);
         const float rotationalMotion = glm::length(cameraFront - m_prevCameraFront) * 0.75f;
         cameraMotion = std::max(positionalMotion, rotationalMotion);
+    } else {
+        cameraMotion = 0.35f;
     }
-    cameraMotion = std::max(cameraMotion, 0.35f);
     m_prevCameraPos = cameraPos;
     m_prevCameraFront = cameraFront;
     m_hasPrevCameraPos = true;
 
     UpdateDynamicBudgetScale(ctx);
     RuntimeBudget budget = ComputeRuntimeBudget(ctx);
+    const bool forceRayBootstrap =
+        ctx.surfelGIDebug.forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode == RenderContext::SurfelGIDebugSettings::BruteForceCorrectness;
+    if (forceRayBootstrap) {
+        const uint32_t fixedRaysPerSurfel = static_cast<uint32_t>(std::clamp(ctx.surfelGIMaxRaysPerSurfel, 1, 8));
+        const uint32_t forcedSurfels = std::min(kForceBootstrapSurfelCount, kMaxSurfels);
+        const uint32_t targetRayBudget = std::max(forcedSurfels * fixedRaysPerSurfel, fixedRaysPerSurfel);
+        budget.maxIrradianceRays = std::max(budget.maxIrradianceRays, targetRayBudget);
+        budget.maxRayTracedSurfels = forcedSurfels;
+    }
     const float motionPressure = std::clamp((cameraMotion - 0.015f) / 0.22f, 0.0f, 1.0f);
-    if (motionPressure > 0.0f) {
+    const bool validationBudget =
+        forceRayBootstrap ||
+        ctx.surfelGIDebug.validationMode != RenderContext::SurfelGIDebugSettings::Production;
+    if (motionPressure > 0.0f && validationBudget) {
         const uint32_t totalTiles = std::max(m_allocatedTileCountX * m_allocatedTileCountY, 1u);
         const auto motionBoost = [motionPressure](uint32_t current, uint32_t target) {
             const float boosted = LerpFloat(static_cast<float>(current), static_cast<float>(target), motionPressure);
@@ -1377,6 +1520,9 @@ void SurfelGIPass::Execute(RenderContext& ctx,
         budget.maxProjectedSurfels = motionBoost(budget.maxProjectedSurfels, std::max(budget.maxProjectedSurfels, 24576u));
         budget.maxCoarseCoverageSurfels = motionBoost(budget.maxCoarseCoverageSurfels, std::max(budget.maxCoarseCoverageSurfels, 24576u));
         budget.maxLifecycleUpdates = motionBoost(budget.maxLifecycleUpdates, std::max(budget.maxLifecycleUpdates, 32768u));
+        budget.gridRebuildInterval = 1u;
+    } else if (motionPressure > 0.0f) {
+        // Production uses motion-vector reprojection instead of validation-scale catch-up work.
         budget.gridRebuildInterval = 1u;
     }
     const float userScale = std::clamp(ctx.surfelGIBudgetScale, 0.25f, 2.0f);
@@ -1398,16 +1544,6 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     m_lastStats.lifecycleSurfelsProcessed = 0;
     m_lastStats.recycleSurfelsProcessed = 0;
     m_lastStats.integratedSurfelsProcessed = 0;
-    m_lastStats.requestedRaysThisFrame = 0;
-    m_lastStats.allocatedRaysThisFrame = 0;
-    m_lastStats.rayEligibleSurfels = 0;
-    m_lastStats.rayActiveSurfels = 0;
-    m_lastStats.rayEvaluatedSurfels = 0;
-    m_lastStats.sharedSurfels = 0;
-    m_lastStats.radialDepthUpdates = 0;
-    m_lastStats.bleedRejectedContributions = 0;
-    m_lastStats.guidingUpdates = 0;
-    m_lastStats.rayBudgetUtilizationPercent = 0.0f;
     m_lastStats.tileSelectTimeMs = 0.0f;
     m_lastStats.rayRequestTimeMs = 0.0f;
     m_lastStats.rayAllocationTimeMs = 0.0f;
@@ -1424,6 +1560,7 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     if (m_gridRebuildCountdown == 0u) {
         stageBegin = Clock::now();
         RebuildSpatialGrid(cameraPos);
+        BuildGridCellAverages();
         m_lastStats.gridBuildTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
         m_gridRebuildCountdown = m_lastStats.gridRebuildInterval > 0u ? (m_lastStats.gridRebuildInterval - 1u) : 0u;
     } else {
@@ -1445,6 +1582,21 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     stageBegin = Clock::now();
     RunIrradianceIntegration(ctx, dirLight, budget);
     m_lastStats.integrationTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    if (m_irradianceHeaderSSBO) {
+        GpuIrradianceHeader previousHeader{};
+        glBindBuffer(GL_COPY_READ_BUFFER, m_irradianceHeaderSSBO);
+        glGetBufferSubData(GL_COPY_READ_BUFFER, 0, sizeof(GpuIrradianceHeader), &previousHeader);
+        glBindBuffer(GL_COPY_READ_BUFFER, 0);
+        if (previousHeader.gatherDebugSumsFixed.w > 0u) {
+            const float gatherPixelCount = static_cast<float>(previousHeader.gatherDebugSumsFixed.w);
+            m_lastStats.gatherCandidateCount = previousHeader.gatherStats.x;
+            m_lastStats.gatherAcceptedCount = previousHeader.gatherStats.y;
+            m_lastStats.gatherFallbackCount = previousHeader.gatherStats.z;
+            m_lastStats.meanGatheredIrradianceLuma = DecodeDebugSum(previousHeader.gatherDebugSumsFixed.x) / gatherPixelCount;
+            m_lastStats.meanFinalIndirectLuma = DecodeDebugSum(previousHeader.gatherDebugSumsFixed.y) / gatherPixelCount;
+        }
+    }
 
     ResetIrradianceFrameState(budget);
 
@@ -1565,6 +1717,59 @@ void SurfelGIPass::ReadBackStats()
         m_lastStats.radialDepthUpdates = irradianceHeader.passStats.z;
         m_lastStats.bleedRejectedContributions = irradianceHeader.passStats.w;
         m_lastStats.guidingUpdates = irradianceHeader.debugStats.z;
+        m_lastStats.tlasHits = irradianceHeader.rayDebugStats.x;
+        m_lastStats.tlasMisses = irradianceHeader.rayDebugStats.y;
+        m_lastStats.shadowRaysVisible = irradianceHeader.rayDebugStats.z;
+        m_lastStats.shadowRaysOccluded = irradianceHeader.rayDebugStats.w;
+        m_lastStats.zeroRadianceHits = irradianceHeader.rayDebugStats2.x;
+        m_lastStats.backfaceCorrections = irradianceHeader.rayDebugStats2.y;
+        m_lastStats.raysDispatched = irradianceHeader.rayDebugStats2.z;
+        m_lastStats.raysSkippedByBudget = irradianceHeader.rayDebugStats2.w;
+        const float hitCount = static_cast<float>(std::max(m_lastStats.tlasHits, 1u));
+        const float dispatchedCount = static_cast<float>(std::max(m_lastStats.raysDispatched, 1u));
+        const float accumulatedCount = static_cast<float>(std::max(irradianceHeader.irradianceDebugSumsFixed.w, 1u));
+        const float gatherPixelCount = static_cast<float>(std::max(irradianceHeader.gatherDebugSumsFixed.w, 1u));
+        const float hitDistanceSum = irradianceHeader.rayDebugSumsFixed.x > 0u
+            ? DecodeDebugSum(irradianceHeader.rayDebugSumsFixed.x)
+            : irradianceHeader.rayDebugSums.x;
+        const float hitAlbedoSum = irradianceHeader.rayDebugSumsFixed.y > 0u
+            ? DecodeDebugSum(irradianceHeader.rayDebugSumsFixed.y)
+            : irradianceHeader.rayDebugSums.y;
+        const float directLumaSum = irradianceHeader.rayDebugSumsFixed.z > 0u
+            ? DecodeDebugSum(irradianceHeader.rayDebugSumsFixed.z)
+            : irradianceHeader.rayDebugSums.z;
+        m_lastStats.meanHitDistance = hitDistanceSum / hitCount;
+        m_lastStats.meanHitAlbedoLuma = hitAlbedoSum / hitCount;
+        m_lastStats.meanDirectRadianceLuma = directLumaSum / dispatchedCount;
+        m_lastStats.meanRawIrradianceLuma = DecodeDebugSum(irradianceHeader.irradianceDebugSumsFixed.x) / accumulatedCount;
+        m_lastStats.meanAccumulatedIrradianceLuma = DecodeDebugSum(irradianceHeader.irradianceDebugSumsFixed.y) / accumulatedCount;
+        m_lastStats.meanSharedIrradianceLuma = DecodeDebugSum(irradianceHeader.irradianceDebugSumsFixed.z) / accumulatedCount;
+        m_lastStats.rejectedInvalidLifecycle = irradianceHeader.eligibilityReject0.x;
+        m_lastStats.rejectedInvalidTransform = irradianceHeader.eligibilityReject0.y;
+        m_lastStats.rejectedInvalidNormal = irradianceHeader.eligibilityReject0.z;
+        m_lastStats.rejectedInvalidRadius = irradianceHeader.eligibilityReject0.w;
+        m_lastStats.rejectedMissingSpatialCell = irradianceHeader.eligibilityReject1.x;
+        m_lastStats.rejectedNotVisibleOrRecent = irradianceHeader.eligibilityReject1.y;
+        m_lastStats.rejectedOutsideResidency = irradianceHeader.eligibilityReject1.z;
+        m_lastStats.rejectedDormant = irradianceHeader.eligibilityReject1.w;
+        m_lastStats.rejectedZeroHistoryConfidence = irradianceHeader.eligibilityReject2.x;
+        m_lastStats.rejectedZeroSampleCount = irradianceHeader.eligibilityReject2.y;
+        m_lastStats.rejectedAlreadySolved = irradianceHeader.eligibilityReject2.z;
+        m_lastStats.rejectedPoolPressure = irradianceHeader.eligibilityReject2.w;
+        m_lastStats.rejectedNoFreeIDs = irradianceHeader.eligibilityReject3.x;
+        m_lastStats.rejectedBudgetScaleZero = irradianceHeader.eligibilityReject3.y;
+        m_lastStats.rejectedMaxRayTracedSurfelsZero = irradianceHeader.eligibilityReject3.z;
+        m_lastStats.rejectedMaxRaysPerSurfelZero = irradianceHeader.eligibilityReject3.w;
+        m_lastStats.rejectedInvalidIrradianceSlot = irradianceHeader.eligibilityReject4.x;
+        m_lastStats.rejectedMaterialOrTLAS = irradianceHeader.eligibilityReject4.y;
+        m_lastStats.rejectedSelectionCapped = irradianceHeader.eligibilityReject4.z;
+        if (irradianceHeader.gatherDebugSumsFixed.w > 0u) {
+            m_lastStats.gatherCandidateCount = irradianceHeader.gatherStats.x;
+            m_lastStats.gatherAcceptedCount = irradianceHeader.gatherStats.y;
+            m_lastStats.gatherFallbackCount = irradianceHeader.gatherStats.z;
+            m_lastStats.meanGatheredIrradianceLuma = DecodeDebugSum(irradianceHeader.gatherDebugSumsFixed.x) / gatherPixelCount;
+            m_lastStats.meanFinalIndirectLuma = DecodeDebugSum(irradianceHeader.gatherDebugSumsFixed.y) / gatherPixelCount;
+        }
         const uint32_t rayBudgetCap = std::max(irradianceHeader.config.x, 1u);
         m_lastStats.rayBudgetUtilizationPercent = irradianceHeader.config.x > 0u
             ? (100.0f * static_cast<float>(m_lastStats.allocatedRaysThisFrame) / static_cast<float>(rayBudgetCap))

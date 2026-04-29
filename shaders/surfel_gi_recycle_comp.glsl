@@ -18,6 +18,8 @@ layout(binding = 22, std430) buffer FreeStackBuffer {
 
 layout(binding = 25, std430) readonly buffer GridHeaderBuffer { uvec4 gridHeaders[]; };
 layout(binding = 26, std430) readonly buffer GridEntryBuffer { uint gridEntries[]; };
+layout(binding = 29, std430) buffer GuidingBinsBuffer { float guidingBins[]; };
+layout(binding = 30, std430) buffer RadialDepthBinsBuffer { vec4 radialDepthBins[]; };
 
 uniform int uFrameIndex;
 uniform float uFreePoolReserveFraction;
@@ -98,12 +100,33 @@ void RecyclePersistentSurfel(uint id, uint frameIndex, uint recycleReason)
         return;
     }
 
-    surfels[id].ids.y = SURFEL_FLAG_RECYCLED;
-    surfels[id].frames.w = frameIndex;
-    surfels[id].worldNormalRecycle.w = 1.0;
-    surfels[id].recycleData.x = 1.0;
-    surfels[id].recycleData.y = float(recycleReason);
-    surfels[id].grid.w = SURFEL_STATE_DEAD;
+    SurfelRecord cleared;
+    cleared.worldPositionRadius = vec4(0.0);
+    cleared.localPositionAge = vec4(0.0);
+    cleared.worldNormalRecycle = vec4(0.0, 1.0, 0.0, 1.0);
+    cleared.localNormalDebug = vec4(0.0, 1.0, 0.0, 0.0);
+    cleared.ids = uvec4(0u, SURFEL_FLAG_RECYCLED, id, HashUInt(id ^ frameIndex ^ 0x4d6f7821u));
+    cleared.frames = uvec4(0u, 0u, 0u, frameIndex);
+    cleared.grid = uvec4(0u, 0u, 0u, SURFEL_STATE_DEAD);
+    cleared.metrics = vec4(0.0);
+    cleared.irradianceHistory = vec4(0.0);
+    cleared.shortTermStats = vec4(0.0);
+    cleared.longTermStats = vec4(0.0);
+    cleared.recycleData = vec4(1.0, float(recycleReason), 0.0, 0.0);
+    cleared.depthMoments = vec4(0.0);
+    cleared.guidingState = vec4(0.0);
+    cleared.rawIrradiance = vec4(0.0);
+    cleared.sharedIrradiance = vec4(0.0);
+    cleared.solveState = vec4(0.0);
+    cleared.lightingState = vec4(float(SURFEL_LIGHTING_STATE_UNINITIALIZED), 0.0, 0.0, float(SURFEL_FLAG_RECYCLED));
+    surfels[id] = cleared;
+
+    for (uint bin = 0u; bin < 36u; ++bin) {
+        guidingBins[id * 36u + bin] = 0.0;
+    }
+    for (uint bin = 0u; bin < 16u; ++bin) {
+        radialDepthBins[id * 16u + bin] = vec4(0.0);
+    }
     PushFreeSurfelID(id);
 
     atomicAdd(header.frameStats.y, 1u);

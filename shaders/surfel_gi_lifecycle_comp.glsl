@@ -126,7 +126,7 @@ void main()
     mat4 world = transformRecord.world;
     vec4 followedPos = world * vec4(s.localPositionAge.xyz, 1.0);
     mat3 normalMatrix = transpose(inverse(mat3(world)));
-    vec3 followedNormal = normalize(normalMatrix * s.localNormalDebug.xyz);
+    vec3 followedNormal = SurfelStableNormal(normalMatrix * s.localNormalDebug.xyz);
 
     vec4 viewPos = uView * followedPos;
     float targetRadiusPixels = ResolveTargetRadiusPixels(uTargetRadiusPixels, float(header.tiling.z), uCoverageThreshold);
@@ -204,20 +204,42 @@ void main()
         }
     }
 
+    float screenFootprintRelevance = inFrustum ? smoothstep(0.75, max(targetRadiusPixels * 0.75, 1.5), projectedRadius) : 0.0;
+    float recentlyVisibleRelevance = (1.0 - smoothstep(12.0, 120.0, framesSinceVisible)) * screenFootprintRelevance;
+    float recentlyLitRelevance = (1.0 - smoothstep(8.0, 120.0, framesSinceContributing)) * 0.45;
+    float rayRelevance = max(recentlyVisibleRelevance, recentlyLitRelevance) * (1.0 - recycleScore);
+
     s.metrics.x = screenCoverageRatio;
     s.metrics.y = cameraDistance;
     s.metrics.z = projectedRadius;
-    s.metrics.w = 1.0 - recycleScore;
+    // Keep 1.0 reserved for coverage-project hits written later in the frame.
+    s.metrics.w = clamp(rayRelevance, 0.0, 0.65);
     s.worldNormalRecycle.w = recycleScore;
     s.recycleData = vec4(recycleScore, float(recycleReason), oversubScore, poolPressure);
     s.grid.w = recycleScore > 0.05 ? SURFEL_STATE_RECYCLABLE : SURFEL_STATE_ACTIVE;
 
-    if (framesSinceContributing > 120.0 || framesSinceVisible > 300.0) {
+    bool hasInitializedLighting = SurfelHasInitializedLighting(s);
+    float lightingConfidence = SurfelHistoryConfidence(s);
+    float lightingVariance = max(max(s.shortTermStats.y, s.longTermStats.y), 0.0);
+    bool canEnterDormancy = hasInitializedLighting &&
+        s.irradianceHistory.w >= 16.0 &&
+        lightingConfidence >= 0.55 &&
+        lightingVariance < 0.035 &&
+        s.shortTermStats.z < 0.10;
+    bool staleEnoughForDormancy = framesSinceContributing > 120.0 || framesSinceVisible > 300.0;
+    bool lightingNeedsWake = !hasInitializedLighting || lightingVariance > 0.10 || s.shortTermStats.z > 0.18;
+
+    if (canEnterDormancy && staleEnoughForDormancy && !lightingNeedsWake) {
         s.ids.y |= SURFEL_FLAG_DORMANT;
         atomicAdd(header.frameStats.z, 1u);
     } else {
         s.ids.y &= ~SURFEL_FLAG_DORMANT;
     }
+    s.lightingState = vec4(
+        float(SurfelLightingStateFromHistory(s)),
+        lightingConfidence,
+        lightingVariance,
+        lightingNeedsWake ? 1.0 : 0.0);
 
     if (recycleScore > 0.05) {
         atomicAdd(header.recycleStats.x, 1u);

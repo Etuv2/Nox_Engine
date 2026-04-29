@@ -29,6 +29,12 @@
 #define SURFEL_TILE_FLAG_CONFIDENT_COVERED 16u
 #define SURFEL_TILE_FLAG_NEAR_CAMERA 32u
 
+#define SURFEL_LIGHTING_STATE_UNINITIALIZED 0u
+#define SURFEL_LIGHTING_STATE_BOOTSTRAP 1u
+#define SURFEL_LIGHTING_STATE_ACTIVE 2u
+#define SURFEL_LIGHTING_STATE_STABLE 3u
+#define SURFEL_LIGHTING_STATE_DORMANT 4u
+
 struct SurfelRecord {
     vec4 worldPositionRadius; // xyz=world position, w=world radius
     vec4 localPositionAge;    // xyz=local position relative to transform, w=age in frames
@@ -47,14 +53,43 @@ struct SurfelRecord {
     vec4 rawIrradiance;       // rgb=latest bounded ray estimate before sharing, w=ray samples accumulated this frame
     vec4 sharedIrradiance;    // rgb=post-neighbour sharing estimate, w=share confidence/weight
     vec4 solveState;          // x=requested rays, y=allocated rays, z=solve state/priority, w=last irradiance integration frame
+    vec4 lightingState;       // x=lighting state enum, y=history confidence, z=variance proxy, w=debug flags
 };
 
 struct SurfelIrradianceHeader {
     uvec4 rayStats;      // x=requested rays, y=allocated rays, z=eligible surfels, w=active surfels
     uvec4 passStats;     // x=ray-evaluated surfels, y=shared surfels, z=depth updates, w=bleed rejections
-    uvec4 debugStats;    // x=bootstrap surfels, y=dormant surfels, z=guiding updates, w=reserved
+    uvec4 debugStats;    // x=bootstrap surfels, y=dormant surfels, z=guiding updates, w=RT/validation skips
     uvec4 config;        // x=ray budget, y=max rays per surfel, z=surfel start, w=surfel count
+    uvec4 rayDebugStats;       // x=primary hits, y=primary misses, z=shadow visible, w=shadow occluded
+    uvec4 rayDebugStats2;      // x=zero-radiance samples, y=backface corrections, z=rays dispatched, w=rays skipped by budget
+    vec4 rayDebugSums;         // x=hit distance sum, y=hit albedo luma sum, z=direct radiance luma sum, w=raw incoming luma sum
+    vec4 irradianceDebugSums;  // x=raw irradiance luma sum, y=accumulated irradiance luma sum, z=shared irradiance luma sum, w=sample count
+    uvec4 eligibilityReject0;  // x=invalid lifecycle, y=invalid transform, z=invalid normal, w=invalid radius
+    uvec4 eligibilityReject1;  // x=missing spatial cell, y=not visible/recent, z=outside residency, w=marked dormant
+    uvec4 eligibilityReject2;  // x=zero history confidence, y=sample count zero, z=already solved, w=pool pressure
+    uvec4 eligibilityReject3;  // x=no free ids, y=budget scale zero, z=max ray-traced surfels zero, w=max rays per surfel zero
+    uvec4 eligibilityReject4;  // x=invalid irradiance slot, y=material/tlas rejection, z=selection/budget capped, w=reserved
+    uvec4 gatherStats;         // x=final-gather candidates, y=final-gather accepted, z=fallback used, w=reserved
+    vec4 gatherDebugSums;      // x=gathered irradiance luma sum, y=final indirect luma sum, z=weight sum, w=pixel count
+    uvec4 rayDebugSumsFixed;        // fixed-point mirrors of rayDebugSums for atomic debug accumulation
+    uvec4 irradianceDebugSumsFixed; // fixed-point mirrors of irradianceDebugSums for atomic debug accumulation
+    uvec4 gatherDebugSumsFixed;     // fixed-point mirrors of gatherDebugSums for atomic debug accumulation
 };
+
+struct SurfelGridCellAverage {
+    vec4 irradianceWeight; // rgb=cell-average accumulated irradiance, w=cell confidence
+    vec4 normalCount;      // xyz=confidence-weighted average normal, w=lit surfel count
+};
+
+#define SURFEL_GI_VALIDATION_MODE_PRODUCTION 0
+#define SURFEL_GI_VALIDATION_MODE_BRUTE_FORCE 1
+#define SURFEL_GI_VALIDATION_MODE_DIRECT_LIGHT_ONLY SURFEL_GI_VALIDATION_MODE_BRUTE_FORCE
+#define SURFEL_GI_VALIDATION_MODE_CONSTANT_INJECTION 2
+#define SURFEL_GI_VALIDATION_MODE_SINGLE_SURFEL 3
+
+#define SURFEL_WINNER_ID_BITS 17u
+#define SURFEL_WINNER_ID_MASK ((1u << SURFEL_WINNER_ID_BITS) - 1u)
 
 struct SurfelTileMeta {
     uvec4 coverage; // x=coverage sum Q10, y=min coverage Q10, z=candidate pixel packed (y<<16|x), w=last updated frame+1
@@ -103,6 +138,21 @@ float SpatioTemporalBlueNoise01(uint stableID, uint frameIndex)
     return fract(spatialRank + temporalRotation + decorrelator);
 }
 
+uint SurfelPackWinner(uint surfelID, uint supportWeightQ10)
+{
+    uint clampedID = min(surfelID, SURFEL_WINNER_ID_MASK);
+    uint score = clamp(supportWeightQ10, 1u, 0x7fffu);
+    return (score << SURFEL_WINNER_ID_BITS) | (SURFEL_WINNER_ID_MASK - clampedID);
+}
+
+uint SurfelUnpackWinnerID(uint packedWinner)
+{
+    if (packedWinner == 0u) {
+        return 0xffffffffu;
+    }
+    return SURFEL_WINNER_ID_MASK - (packedWinner & SURFEL_WINNER_ID_MASK);
+}
+
 bool IsSurfelValid(SurfelRecord s)
 {
     return (s.ids.y & SURFEL_FLAG_VALID) != 0u &&
@@ -120,13 +170,21 @@ void MarkSurfelLifecycleState(inout SurfelRecord s, uint state)
     s.grid.w = state;
 }
 
+vec3 SurfelStableNormal(vec3 normal)
+{
+    if (length(normal) < 0.0001 || any(isnan(normal)) || any(isinf(normal))) {
+        return vec3(0.0, 1.0, 0.0);
+    }
+    return normalize(normal);
+}
+
 float SurfelDepthValidityWeight(SurfelRecord s, vec3 receiverWorldPos, vec3 receiverNormal)
 {
     if (s.depthMoments.z <= 1.0) {
         return 1.0;
     }
 
-    vec3 surfelNormal = normalize(s.worldNormalRecycle.xyz);
+    vec3 surfelNormal = SurfelStableNormal(s.worldNormalRecycle.xyz);
     float normalAgreement = clamp(dot(receiverNormal, surfelNormal), 0.0, 1.0);
     float signedDepth = dot(receiverWorldPos - s.worldPositionRadius.xyz, surfelNormal);
     float meanDepth = s.depthMoments.x;
@@ -147,6 +205,16 @@ vec3 DecodeNormalOctSurfel(vec2 e)
         v.y = xy.y;
     }
     return normalize(v);
+}
+
+vec3 SurfelFaceForwardToView(vec3 normal, vec3 worldPos, vec3 cameraPos)
+{
+    vec3 n = normalize(length(normal) > 0.0001 ? normal : vec3(0.0, 1.0, 0.0));
+    vec3 toView = cameraPos - worldPos;
+    if (dot(toView, toView) > 0.000001 && dot(n, toView) < 0.0) {
+        n = -n;
+    }
+    return n;
 }
 
 float ComputeWorldRadiusForProjectedPixels(float viewZ, float targetPixels, float viewportHeight, mat4 projection)
@@ -172,6 +240,64 @@ float ResolveTargetRadiusPixels(float requestedPixels, float tileSize, float cov
 float LumaSurfel(vec3 color)
 {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+float SurfelHistoryConfidence(SurfelRecord s)
+{
+    float sampleConfidence = clamp(s.irradianceHistory.w / 16.0, 0.0, 1.0);
+    float variancePenalty = 1.0 - smoothstep(0.02, 0.35, max(s.longTermStats.y, 0.0));
+    return max(clamp(s.lightingState.y, 0.0, 1.0), sampleConfidence * variancePenalty);
+}
+
+bool SurfelHasAccumulatedIrradiance(SurfelRecord s)
+{
+    return any(greaterThan(abs(s.irradianceHistory.rgb), vec3(0.000001)));
+}
+
+bool SurfelHasInitializedLighting(SurfelRecord s)
+{
+    return s.irradianceHistory.w > 0.0 &&
+        SurfelHistoryConfidence(s) > 0.0001 &&
+        SurfelHasAccumulatedIrradiance(s);
+}
+
+bool SurfelLightingIsUninitialized(SurfelRecord s)
+{
+    return s.irradianceHistory.w <= 0.0 ||
+        SurfelHistoryConfidence(s) <= 0.0001 ||
+        !SurfelHasAccumulatedIrradiance(s);
+}
+
+uint SurfelLightingStateFromHistory(SurfelRecord s)
+{
+    if ((s.ids.y & SURFEL_FLAG_RECYCLED) != 0u || !IsSurfelValid(s)) {
+        return SURFEL_LIGHTING_STATE_UNINITIALIZED;
+    }
+    if (SurfelLightingIsUninitialized(s)) {
+        return s.irradianceHistory.w <= 0.0 ? SURFEL_LIGHTING_STATE_UNINITIALIZED : SURFEL_LIGHTING_STATE_BOOTSTRAP;
+    }
+
+    float confidence = SurfelHistoryConfidence(s);
+    float variance = max(max(s.shortTermStats.y, s.longTermStats.y), 0.0);
+    if (s.irradianceHistory.w < 8.0 || confidence < 0.35) {
+        return SURFEL_LIGHTING_STATE_BOOTSTRAP;
+    }
+    if (variance > 0.08 || s.shortTermStats.z > 0.18) {
+        return SURFEL_LIGHTING_STATE_ACTIVE;
+    }
+    if ((s.ids.y & SURFEL_FLAG_DORMANT) != 0u && confidence >= 0.65 && variance < 0.025) {
+        return SURFEL_LIGHTING_STATE_DORMANT;
+    }
+    if (s.irradianceHistory.w >= 32.0 && confidence >= 0.65 && variance < 0.025) {
+        return SURFEL_LIGHTING_STATE_STABLE;
+    }
+    return SURFEL_LIGHTING_STATE_ACTIVE;
+}
+
+uint SurfelEncodeDebugSum(float value)
+{
+    const float SURFEL_DEBUG_SUM_FIXED_SCALE = 256.0;
+    return uint(clamp(max(value, 0.0) * SURFEL_DEBUG_SUM_FIXED_SCALE, 0.0, 4294967040.0));
 }
 
 void SurfelBuildBasis(vec3 normal, out vec3 tangent, out vec3 bitangent)
