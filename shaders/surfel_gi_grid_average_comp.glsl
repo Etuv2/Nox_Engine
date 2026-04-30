@@ -45,16 +45,11 @@ void main()
         }
 
         SurfelRecord s = surfels[surfelID];
-        if (!IsSurfelValid(s) || !SurfelHasInitializedLighting(s)) {
+        if (!IsSurfelValid(s) || !SurfelHasReliableGatherLighting(s)) {
             continue;
         }
 
         vec3 irradiance = max(s.irradianceHistory.rgb, vec3(0.0));
-        float irradianceLuma = LumaSurfel(irradiance);
-        if (irradianceLuma <= 0.000001) {
-            continue;
-        }
-
         float confidence = clamp(SurfelHistoryConfidence(s), 0.0, 1.0);
         float sampleWeight = clamp(s.irradianceHistory.w / 32.0, 0.12, 1.0);
         float variance = max(max(s.shortTermStats.y, s.longTermStats.y), 0.0);

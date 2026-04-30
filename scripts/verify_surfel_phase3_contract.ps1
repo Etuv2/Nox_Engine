@@ -35,7 +35,7 @@ Require-Text 'shaders/deferred_lighting_frag.glsl' 'EvaluateSurfelIndirectDiffus
 Require-Text 'shaders/deferred_lighting_frag.glsl' 'INV_PI' 'surfel GI diffuse response uses lambert scaling'
 Require-Text 'shaders/deferred_lighting_frag.glsl' 'uUseLegacySurfelFragmentGather' 'legacy per-fragment gather is debug gated'
 Require-Text 'shaders/surfel_indirect_diffuse_gather_comp.glsl' 'ComputeFallbackSurfelWeight' 'fallback irradiance is receiver-relative weighted'
-Require-Text 'shaders/surfel_indirect_diffuse_gather_comp.glsl' 'for \(int shell = 0; shell <= neighborRadius; \+\+shell\)' 'receiver cell is visited before neighbor cells'
+Require-Text 'shaders/surfel_indirect_diffuse_gather_comp.glsl' 'for \(int shell = 0; shell <= neighborRadius(?: && !gatherComplete)?; \+\+shell\)' 'receiver cell is visited before neighbor cells'
 Require-Text 'shaders/surfel_indirect_diffuse_gather_comp.glsl' 'j \* count\) / max\(sampleCount, 1u\)' 'overfull cells are sampled across their populated range'
 Require-Text 'shaders/surfel_indirect_diffuse_gather_comp.glsl' 'perCellBudget' 'candidate budget is distributed across queried cells'
 Reject-Text 'shaders/surfel_indirect_diffuse_gather_comp.glsl' 'traceBVH' 'per-pixel ray tracing in Phase 3'

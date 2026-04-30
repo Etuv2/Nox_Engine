@@ -1235,7 +1235,7 @@ void SurfelGIPass::RunGlobalRayAllocation(RenderContext&, const RuntimeBudget& b
     }
 
     glUseProgram(m_rayAllocateShader->GetProgramID());
-    m_rayAllocateShader->SetUniform("uSurfelStart", 0);
+    m_rayAllocateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor));
     m_rayAllocateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
     m_rayAllocateShader->SetUniform("uGlobalRayBudget", static_cast<int>(budget.maxIrradianceRays));
     m_rayAllocateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
@@ -1364,6 +1364,7 @@ void SurfelGIPass::RunGuidingUpdate(RenderContext& ctx, const RuntimeBudget& bud
     glUseProgram(m_guidingUpdateShader->GetProgramID());
     m_guidingUpdateShader->SetUniform("uSurfelStart", 0);
     m_guidingUpdateShader->SetUniform("uSurfelCount", static_cast<int>(raySurfelCount));
+    m_guidingUpdateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
     m_guidingUpdateShader->Dispatch(ComputeShader::CalculateWorkGroups(raySurfelCount, 256u), 1u, 1u);
     m_guidingUpdateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 }
@@ -1387,6 +1388,7 @@ void SurfelGIPass::RunNeighbourSharing(RenderContext& ctx, const RuntimeBudget& 
     glUseProgram(m_neighbourShareShader->GetProgramID());
     m_neighbourShareShader->SetUniform("uSurfelStart", static_cast<int>(m_sharingCursor));
     m_neighbourShareShader->SetUniform("uSurfelCount", static_cast<int>(shareCount));
+    m_neighbourShareShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex));
     m_neighbourShareShader->SetUniform("uCameraPos", m_prevCameraPos);
     m_neighbourShareShader->Dispatch(ComputeShader::CalculateWorkGroups(shareCount, 256u), 1u, 1u);
     m_neighbourShareShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1560,7 +1562,6 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     if (m_gridRebuildCountdown == 0u) {
         stageBegin = Clock::now();
         RebuildSpatialGrid(cameraPos);
-        BuildGridCellAverages();
         m_lastStats.gridBuildTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
         m_gridRebuildCountdown = m_lastStats.gridRebuildInterval > 0u ? (m_lastStats.gridRebuildInterval - 1u) : 0u;
     } else {
@@ -1613,10 +1614,6 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     m_lastStats.rayTraceTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
     stageBegin = Clock::now();
-    RunTemporalAccumulation(ctx, budget);
-    m_lastStats.temporalAccumulationTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
-
-    stageBegin = Clock::now();
     RunGuidingUpdate(ctx, budget);
     m_lastStats.guidingTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
@@ -1625,8 +1622,16 @@ void SurfelGIPass::Execute(RenderContext& ctx,
     m_lastStats.sharingTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
     stageBegin = Clock::now();
+    RunTemporalAccumulation(ctx, budget);
+    m_lastStats.temporalAccumulationTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
     RunRadialDepthValidityUpdate(ctx, budget);
     m_lastStats.radialDepthTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
+
+    stageBegin = Clock::now();
+    BuildGridCellAverages();
+    m_lastStats.gridBuildTimeMs += std::chrono::duration<float, std::milli>(Clock::now() - stageBegin).count();
 
     m_lastStats.totalTimeMs = std::chrono::duration<float, std::milli>(Clock::now() - totalBegin).count();
     m_lastStats.tileCursor = m_tileScanCursor;

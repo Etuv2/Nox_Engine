@@ -36,17 +36,20 @@ void main()
     }
 
     SurfelRecord s = surfels[id];
-    if (!IsSurfelValid(s) || s.rawIrradiance.w <= 0.0) {
-        return;
-    }
-
     uint frameIndex = uint(max(uFrameIndex, 0));
-    if (uint(max(s.solveState.w, 0.0)) != frameIndex) {
+    if (!IsSurfelValid(s) || !SurfelHasCurrentRawSample(s, frameIndex)) {
         return;
     }
 
-    // Temporal history only integrates the newest ray sample; sharedIrradiance stays transient.
+    // Integrate the newest ray sample after local neighbour sharing has had a
+    // chance to stabilize bootstrap surfels.
     vec3 sampleIrradiance = max(s.rawIrradiance.rgb, vec3(0.0));
+    if (s.sharedIrradiance.w > 0.0001) {
+        sampleIrradiance = mix(
+            sampleIrradiance,
+            max(s.sharedIrradiance.rgb, vec3(0.0)),
+            clamp(s.sharedIrradiance.w, 0.0, 1.0));
+    }
     sampleIrradiance = max(sampleIrradiance, vec3(0.0));
     float sampleLuma = LumaSurfel(sampleIrradiance);
 

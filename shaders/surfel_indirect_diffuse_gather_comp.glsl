@@ -118,10 +118,15 @@ float ComputeSurfelWeight(
         rejectBits |= 1u;
         return 0.0;
     }
-    if (s.irradianceHistory.w <= 0.0 && uDisableConfidenceReject == 0) {
+    if (!SurfelHasLightingSamples(s)) {
         rejectBits |= 1u;
         return 0.0;
     }
+    if (!SurfelHasReliableGatherLighting(s)) {
+        rejectBits |= 1u;
+        return 0.0;
+    }
+    float gatherReliability = SurfelGatherReliability(s);
 
     vec3 surfelPos = s.worldPositionRadius.xyz;
     vec3 surfelNormal = SurfelStableNormal(s.worldNormalRecycle.xyz);
@@ -151,7 +156,7 @@ float ComputeSurfelWeight(
     float receiverHemisphere = clamp(dot(receiverNormal, -surfelToReceiver), 0.0, 1.0);
     float orientationWeight = mix(0.35, 1.0, max(surfelHemisphere, receiverHemisphere));
 
-    float historyWeight = uDisableConfidenceReject != 0 ? 1.0 : clamp(s.irradianceHistory.w / 32.0, 0.10, 1.0);
+    float historyWeight = clamp(gatherReliability, 0.10, 1.0);
     float transformWeight = receiverTransformID == 0u || s.ids.x == 0u || receiverTransformID == s.ids.x ? 1.0 : 0.85;
 
     float radialWeight = uDisableRadialDepthReject != 0 ? 1.0 : RadialDepthValidity(surfelID, s, receiverWorldPos);
@@ -174,9 +179,13 @@ float ComputeFallbackSurfelWeight(
     if (!IsSurfelValid(s)) {
         return 0.0;
     }
-    if (s.irradianceHistory.w <= 0.0 && uDisableConfidenceReject == 0) {
+    if (!SurfelHasLightingSamples(s)) {
         return 0.0;
     }
+    if (!SurfelHasReliableGatherLighting(s)) {
+        return 0.0;
+    }
+    float gatherReliability = SurfelGatherReliability(s);
 
     vec3 surfelPos = s.worldPositionRadius.xyz;
     vec3 surfelNormal = SurfelStableNormal(s.worldNormalRecycle.xyz);
@@ -204,7 +213,7 @@ float ComputeFallbackSurfelWeight(
         return 0.0;
     }
 
-    float historyWeight = uDisableConfidenceReject != 0 ? 1.0 : clamp(s.irradianceHistory.w / 96.0, 0.0, 1.0);
+    float historyWeight = clamp(gatherReliability, 0.0, 1.0);
     float transformWeight = receiverTransformID == 0u || s.ids.x == 0u || receiverTransformID == s.ids.x ? 1.0 : 0.65;
     float normalWeight = smoothstep(0.05, 0.65, normalAlign);
 
@@ -514,12 +523,12 @@ void main()
     }
 
     if (uDisableFallback == 0 && hasCellAverageFallback) {
-        float directWeight = clamp(weightSum, 0.0, 1.0);
-        float cellFillWeight = (1.0 - directWeight) * cellAverageConfidence *
+        float directReliability = confidence * clamp(float(acceptedCount) / float(max(maxAccepted, 1)), 0.0, 1.0);
+        float cellFillWeight = (1.0 - directReliability) * cellAverageConfidence *
             clamp(uFallbackStrength, 0.0, 1.0) * 0.75;
         if (cellFillWeight > 0.0001) {
-            float combinedWeight = max(directWeight + cellFillWeight, 0.0001);
-            irradiance = (irradiance * directWeight + cellAverageIrradiance * cellFillWeight) / combinedWeight;
+            float combinedWeight = max(directReliability + cellFillWeight, 0.0001);
+            irradiance = (irradiance * directReliability + cellAverageIrradiance * cellFillWeight) / combinedWeight;
             confidence = max(confidence, clamp(cellFillWeight * 0.85, 0.0, 1.0));
             fallbackUsed = max(fallbackUsed, cellFillWeight);
         }

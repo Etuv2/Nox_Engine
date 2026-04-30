@@ -37,6 +37,18 @@ def main() -> None:
         "common shader must expose lighting-state derivation from irradiance history",
     )
     require(
+        "SurfelHasCurrentRawSample" in common,
+        "common shader must expose a current-frame raw-sample validity helper",
+    )
+    require(
+        "SurfelHasLightingSamples" in common and "SurfelHasReliableGatherLighting" in common,
+        "common shader must distinguish sampled lighting history from reliable gather contributors",
+    )
+    require(
+        "!SurfelHasAccumulatedIrradiance" not in common.partition("bool SurfelHasInitializedLighting")[2].partition("}")[0],
+        "initialized lighting must not require nonzero RGB; valid black irradiance is still initialized after samples",
+    )
+    require(
         "lightingState = vec4(float(SURFEL_LIGHTING_STATE_UNINITIALIZED)" in init,
         "pool init must explicitly initialize lightingState",
     )
@@ -114,6 +126,15 @@ def main() -> None:
         "ray allocation must prioritize high-priority surfels when requests exceed the global ray cap",
     )
     require(
+        'm_rayAllocateShader->SetUniform("uSurfelStart", static_cast<int>(m_rayCursor))' in pass_cpp,
+        "ray allocation must rotate allocation order with the request cursor instead of always starting at surfel ID 0",
+    )
+    require(
+        "dormant ? 0.0 : max(priority" not in request and
+        "allocationPriorityFloor" in request,
+        "dormant/maintenance surfels that request rays must keep a nonzero allocation priority",
+    )
+    require(
         "budget.maxRayTracedSurfels" in pass_cpp and "m_rayCursor" in pass_cpp,
         "ray request/allocation/trace dispatch must honor maxRayTracedSurfels with cursoring",
     )
@@ -134,16 +155,40 @@ def main() -> None:
         "GIBS final gather requires a per-cell average irradiance buffer exposed to the gather pass",
     )
     require(
-        "SurfelHasInitializedLighting(s)" in grid_average and
+        "RunNeighbourSharing(ctx, budget);" in pass_cpp and
+        pass_cpp.find("RunNeighbourSharing(ctx, budget);") < pass_cpp.find("RunTemporalAccumulation(ctx, budget);") <
+        pass_cpp.rfind("BuildGridCellAverages();"),
+        "neighbour sharing must feed temporal history, and grid cell averages must be rebuilt from post-accumulation history",
+    )
+    require(
+        ("SurfelHasInitializedLighting(s)" in grid_average or "SurfelHasReliableGatherLighting(s)" in grid_average) and
         "gridCellAverages[cell].irradianceWeight" in grid_average and
         "gridCellAverages[cell].normalCount" in grid_average,
-        "grid average pass must compute cell irradiance from initialized persistent surfel history",
+        "grid average pass must compute cell irradiance from reliable persistent surfel history",
+    )
+    require(
+        "irradianceLuma <= 0.000001" not in grid_average and "if (irradianceLuma" not in grid_average,
+        "grid cell averages must preserve reliable dark irradiance instead of treating black as missing data",
     )
     require(
         "ResolveSmoothCellAverageFallback" in gather and
         "cellAverageConfidence" in gather and
-        "1.0 - directWeight" in gather,
-        "final gather must fill missing surfel contribution with smoothed cell-average irradiance",
+        "directReliability" in gather and
+        "1.0 - directReliability" in gather,
+        "final gather must fill missing surfel contribution with smoothed cell-average irradiance based on reliability, not raw weight sum",
+    )
+    require(
+        "SurfelHasReliableGatherLighting" in gather and
+        "uDisableConfidenceReject != 0" not in gather.partition("float ComputeSurfelWeight")[2].partition("return tangentWeight")[0],
+        "final gather must not let disabled confidence rejection promote uninitialized black surfels into full-weight contributors",
+    )
+    require(
+        "SurfelHasCurrentRawSample(s, frameIndex)" in read("shaders/surfel_gi_temporal_accumulate_comp.glsl") and
+        "SurfelHasCurrentRawSample(s, frameIndex)" in read("shaders/surfel_gi_guiding_update_comp.glsl") and
+        "SurfelHasCurrentRawSample(s, frameIndex)" in read("shaders/surfel_gi_neighbour_share_comp.glsl") and
+        'm_guidingUpdateShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex))' in pass_cpp and
+        'm_neighbourShareShader->SetUniform("uFrameIndex", static_cast<int>(m_frameIndex))' in pass_cpp,
+        "raw, guiding, and neighbour sharing must consume only current-frame ray samples",
     )
     require(
         "uVelocity" in gather and

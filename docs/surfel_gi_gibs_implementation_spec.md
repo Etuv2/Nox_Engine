@@ -433,10 +433,6 @@ Store prefix sums to convert from world distance to slice index.
 
 Each slice can itself be subdivided in the two orthogonal axes at a lower effective resolution so that projected cell size remains near constant.
 
-### 8.4 Simplified alternative
-
-If you need a simpler first implementation, use a **multi-resolution clipmap grid** instead. It is not identical to the talk’s trapezoidal layout, but it captures the same idea: finer cells near the camera, coarser cells farther away.
-
 ### 8.5 Cell contents
 
 Each cell should contain:
@@ -643,6 +639,7 @@ For each surfel, rays are shot into the scene. At ray hit points, the system eva
 The talk says this yields **effectively infinite bounce over time**, as long as surfel coverage exists. [Ref 1]
 
 This is the crucial recursive idea:
+
 - ray hits read from the *previously solved* surfel cache
 - the new sample is written back into the surfel cache
 - repeated over frames, multi-bounce energy propagates through the scene
@@ -1276,38 +1273,48 @@ A coding agent should not consider the implementation done until these tests pas
 ## 23. Common failure modes and fixes
 
 ### 23.1 Surfel overspawn
+
 **Symptoms:** too many surfels on high-detail or noisy geometry  
 **Fixes:**
+
 - raise coverage threshold
 - clamp spawn count per tile
 - use normal/depth discontinuity aware coverage
 - combine with SSGI for near-screen detail, as the talk suggests as a future direction
 
 ### 23.2 Light bleeding
+
 **Symptoms:** bright surfels affect geometry through walls  
 **Fixes:**
+
 - enable radial depth moments
 - reduce surfel radius
 - tighten final apply weight
 - avoid cross-surface sharing in neighborhood filter
 
 ### 23.3 Temporal lag / ghosting
+
 **Symptoms:** irradiance takes too long to respond  
 **Fixes:**
+
 - increase short-term alpha
 - increase reactive long-term alpha
 - raise initial variance for spawned / moved surfels
 
 ### 23.4 Noise remains blotchy
+
 **Symptoms:** independent surfels converge at visibly different speeds  
 **Fixes:**
+
 - enable irradiance sharing under high variance
 - improve ray guiding
 - raise minimum rays for visible surfels
 
 ### 23.5 Poor traversal performance
+
 **Symptoms:** ray pass takes too long even with low ray count  
 **Fixes:**
+
 - bin rays by position + direction
 - reduce divergence in hit shading
 - compact active surfel list
@@ -1341,6 +1348,7 @@ This order matters. Do not start with many-light sampling or probe clipmaps befo
 ## 25. What is faithful to GIBS and what is an adaptation
 
 ### Faithful to the published 2021 talk
+
 - G-buffer opportunistic surfel spawn
 - persistent surfels
 - transform-attachment to geometry and one-bone skinned support
@@ -1355,6 +1363,7 @@ This order matters. Do not start with many-light sampling or probe clipmaps befo
 - probe clipmap fallback for transparency
 
 ### Adaptations required for a complete implementation
+
 - exact equations for spawn coverage
 - exact non-linear grid mapping
 - exact accumulation coefficients
@@ -1371,6 +1380,7 @@ That distinction should remain explicit in code comments and technical docs.
 The original GIBS talk assumes hardware ray tracing. If you implement in OpenGL 4.6 without RT cores, keep the architecture but replace the ray backend.
 
 ### 26.1 Keep
+
 - surfels
 - persistence
 - adaptive budgets
@@ -1380,11 +1390,13 @@ The original GIBS talk assumes hardware ray tracing. If you implement in OpenGL 
 - final apply
 
 ### 26.2 Replace
+
 - hardware RTAS traversal with:
   - software BVH traversal in compute
   - or a hybrid of screen-space tracing for short-range hits plus software BVH for off-screen rays
 
 ### 26.3 Expect
+
 - fewer rays per frame
 - heavier reliance on temporal reuse
 - more importance from ray guiding and irradiance sharing

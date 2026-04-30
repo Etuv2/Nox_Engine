@@ -269,7 +269,11 @@ void main()
         atomicAdd(irradianceHeader.eligibilityReject4.z, 1u);
     }
 
-    s.solveState = vec4(float(requested), 0.0, dormant ? 0.0 : max(priority, 0.001), s.solveState.w);
+    float allocationPriorityFloor = 0.0;
+    if (requested > 0u) {
+        allocationPriorityFloor = max(priority, dormant && !disableDormancy ? 0.08 : 0.001);
+    }
+    s.solveState = vec4(float(requested), 0.0, allocationPriorityFloor, s.solveState.w);
     s.lightingState = vec4(
         float(SurfelLightingStateFromHistory(s)),
         historyConfidence,

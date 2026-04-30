@@ -22,6 +22,7 @@ layout(binding = 29, std430) buffer GuidingBinsBuffer {
 
 uniform int uSurfelStart;
 uniform int uSurfelCount;
+uniform int uFrameIndex;
 
 void main()
 {
@@ -33,7 +34,8 @@ void main()
 
     uint id = (uint(max(uSurfelStart, 0)) + localIndex) % header.counts.x;
     SurfelRecord s = surfels[id];
-    if (!IsSurfelValid(s) || s.rawIrradiance.w <= 0.0) {
+    uint frameIndex = uint(max(uFrameIndex, 0));
+    if (!IsSurfelValid(s) || !SurfelHasCurrentRawSample(s, frameIndex)) {
         return;
     }
 

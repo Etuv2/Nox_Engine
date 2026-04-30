@@ -254,18 +254,55 @@ bool SurfelHasAccumulatedIrradiance(SurfelRecord s)
     return any(greaterThan(abs(s.irradianceHistory.rgb), vec3(0.000001)));
 }
 
+bool SurfelHasFiniteIrradiance(SurfelRecord s)
+{
+    return !any(isnan(s.irradianceHistory.rgb)) && !any(isinf(s.irradianceHistory.rgb));
+}
+
+bool SurfelHasLightingSamples(SurfelRecord s)
+{
+    return s.irradianceHistory.w > 0.0 && SurfelHasFiniteIrradiance(s);
+}
+
+bool SurfelHasCurrentRawSample(SurfelRecord s, uint frameIndex)
+{
+    return s.rawIrradiance.w > 0.0 &&
+        uint(max(s.solveState.w, 0.0)) == frameIndex &&
+        !any(isnan(s.rawIrradiance.rgb)) &&
+        !any(isinf(s.rawIrradiance.rgb));
+}
+
+float SurfelGatherReliability(SurfelRecord s)
+{
+    if (!SurfelHasLightingSamples(s)) {
+        return 0.0;
+    }
+
+    float confidence = SurfelHistoryConfidence(s);
+    float samples = max(s.irradianceHistory.w, 0.0);
+    float sampleRamp = smoothstep(1.0, 16.0, samples);
+    float irradianceLuma = LumaSurfel(max(s.irradianceHistory.rgb, vec3(0.0)));
+    float blackReliability = irradianceLuma > 0.000001
+        ? 1.0
+        : smoothstep(12.0, 32.0, samples) * smoothstep(0.25, 0.65, confidence);
+    return clamp(confidence * sampleRamp * blackReliability, 0.0, 1.0);
+}
+
+bool SurfelHasReliableGatherLighting(SurfelRecord s)
+{
+    return SurfelGatherReliability(s) > 0.02;
+}
+
 bool SurfelHasInitializedLighting(SurfelRecord s)
 {
-    return s.irradianceHistory.w > 0.0 &&
-        SurfelHistoryConfidence(s) > 0.0001 &&
-        SurfelHasAccumulatedIrradiance(s);
+    return SurfelHasLightingSamples(s) &&
+        SurfelHistoryConfidence(s) > 0.0001;
 }
 
 bool SurfelLightingIsUninitialized(SurfelRecord s)
 {
-    return s.irradianceHistory.w <= 0.0 ||
-        SurfelHistoryConfidence(s) <= 0.0001 ||
-        !SurfelHasAccumulatedIrradiance(s);
+    return !SurfelHasLightingSamples(s) ||
+        SurfelHistoryConfidence(s) <= 0.0001;
 }
 
 uint SurfelLightingStateFromHistory(SurfelRecord s)
