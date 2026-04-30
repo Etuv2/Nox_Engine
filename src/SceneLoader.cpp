@@ -19,6 +19,11 @@
 #include <unordered_map>
 #include <functional>
 #include <cmath>
+#include <cctype>
+#include <exception>
+#include <filesystem>
+#include <sstream>
+#include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -27,6 +32,149 @@ using json = nlohmann::json;
 namespace {
 constexpr bool kVerboseEntityCreationLogs = false;
 constexpr float kImportedTransformTolerance = 1e-3f;
+constexpr float kMinimumSceneScale = 1e-5f;
+
+namespace fs = std::filesystem;
+
+std::string TrimPathValue(const std::string& value)
+{
+	size_t begin = 0;
+	size_t end = value.size();
+	while (begin < end && std::isspace(static_cast<unsigned char>(value[begin]))) {
+		++begin;
+	}
+	while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+		--end;
+	}
+	std::string trimmed = value.substr(begin, end - begin);
+	if (trimmed.size() >= 2) {
+		const char first = trimmed.front();
+		const char last = trimmed.back();
+		if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+			trimmed = trimmed.substr(1, trimmed.size() - 2);
+		}
+	}
+	return trimmed;
+}
+
+bool ReadableFileExists(const fs::path& path)
+{
+	std::error_code ec;
+	return fs::exists(path, ec) && fs::is_regular_file(path, ec);
+}
+
+std::string NormalizePathForLog(const fs::path& path)
+{
+	std::error_code ec;
+	fs::path absolutePath = fs::absolute(path, ec);
+	if (!ec) {
+		return absolutePath.lexically_normal().string();
+	}
+	return path.lexically_normal().string();
+}
+
+void PushUniquePath(std::vector<fs::path>& paths, const fs::path& path)
+{
+	const fs::path normalized = path.lexically_normal();
+	for (const fs::path& existing : paths) {
+		if (existing.lexically_normal() == normalized) {
+			return;
+		}
+	}
+	paths.push_back(normalized);
+}
+
+std::vector<fs::path> BuildRelativeAssetCandidates(const std::string& rawPath, const std::string& sceneDirectory)
+{
+	std::vector<fs::path> candidates;
+	const std::string trimmed = TrimPathValue(rawPath);
+	if (trimmed.empty()) {
+		return candidates;
+	}
+
+	const fs::path authoredPath(trimmed);
+	PushUniquePath(candidates, authoredPath);
+	if (!authoredPath.is_absolute() && !sceneDirectory.empty()) {
+		const fs::path sceneDir(sceneDirectory);
+		PushUniquePath(candidates, sceneDir / authoredPath);
+		PushUniquePath(candidates, sceneDir / ".." / authoredPath);
+	}
+	return candidates;
+}
+
+std::string ResolveReadableAssetPath(
+	const std::string& rawPath,
+	const std::string& sceneDirectory,
+	const char* assetKind,
+	bool required,
+	bool* resolved)
+{
+	if (resolved) {
+		*resolved = false;
+	}
+
+	const std::string trimmed = TrimPathValue(rawPath);
+	if (trimmed.empty()) {
+		if (required) {
+			std::cerr << "[SceneLoader] Missing required " << assetKind << " path." << std::endl;
+		}
+		return {};
+	}
+
+	const auto candidates = BuildRelativeAssetCandidates(trimmed, sceneDirectory);
+	for (const fs::path& candidate : candidates) {
+		if (ReadableFileExists(candidate)) {
+			if (resolved) {
+				*resolved = true;
+			}
+			return candidate.lexically_normal().string();
+		}
+	}
+
+	std::ostringstream message;
+	message << "[SceneLoader] " << (required ? "ERROR" : "Warning")
+		<< ": could not resolve " << assetKind << " path '" << trimmed << "'. Tried:";
+	for (const fs::path& candidate : candidates) {
+		message << "\n  - " << NormalizePathForLog(candidate);
+	}
+
+	if (required) {
+		std::cerr << message.str() << std::endl;
+	}
+	else {
+		std::cout << message.str() << std::endl;
+	}
+	return trimmed;
+}
+
+std::string ResolveSceneJsonPath(const std::string& rawPath)
+{
+	const std::string trimmed = TrimPathValue(rawPath);
+	if (trimmed.empty()) {
+		return {};
+	}
+
+	std::vector<fs::path> candidates;
+	const fs::path authoredPath(trimmed);
+	PushUniquePath(candidates, authoredPath);
+	if (!authoredPath.has_extension()) {
+		PushUniquePath(candidates, fs::path(trimmed + ".json"));
+	}
+	if (!authoredPath.is_absolute()) {
+		PushUniquePath(candidates, fs::path("scenes") / authoredPath);
+		if (!authoredPath.has_extension()) {
+			PushUniquePath(candidates, fs::path("scenes") / fs::path(trimmed + ".json"));
+		}
+	}
+
+	for (const fs::path& candidate : candidates) {
+		if (ReadableFileExists(candidate)) {
+			return candidate.lexically_normal().string();
+		}
+	}
+
+	return trimmed;
+}
 
 bool IsFiniteMatrix(const glm::mat4& m)
 {
@@ -49,6 +197,66 @@ float MaxMatrixAbsDelta(const glm::mat4& a, const glm::mat4& b)
 		}
 	}
 	return delta;
+}
+
+bool IsFiniteVec3(const glm::vec3& value)
+{
+	return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+bool TryReadVec3Array(const json& parent, const char* key, glm::vec3& value)
+{
+	if (!parent.contains(key) || !parent[key].is_array() || parent[key].size() != 3) {
+		return false;
+	}
+
+	const auto& array = parent[key];
+	for (size_t i = 0; i < 3; ++i) {
+		if (!array[i].is_number()) {
+			return false;
+		}
+	}
+
+	value = glm::vec3(
+		array[0].get<float>(),
+		array[1].get<float>(),
+		array[2].get<float>());
+	return IsFiniteVec3(value);
+}
+
+glm::vec3 ReadSceneVec3(const json& parent, const char* key, const glm::vec3& fallback, const std::string& nodeName)
+{
+	glm::vec3 value = fallback;
+	if (!parent.contains(key)) {
+		return value;
+	}
+
+	if (!TryReadVec3Array(parent, key, value)) {
+		std::cerr << "[SceneLoader] Warning: node '" << nodeName
+			<< "' has invalid " << key << "; using fallback ("
+			<< fallback.x << ", " << fallback.y << ", " << fallback.z << ")." << std::endl;
+		return fallback;
+	}
+
+	return value;
+}
+
+glm::vec3 SanitizeSceneScale(const glm::vec3& scale, const std::string& nodeName)
+{
+	glm::vec3 sanitized = scale;
+	bool changed = false;
+	for (int i = 0; i < 3; ++i) {
+		if (!std::isfinite(sanitized[i]) || std::abs(sanitized[i]) < kMinimumSceneScale) {
+			sanitized[i] = 1.0f;
+			changed = true;
+		}
+	}
+	if (changed) {
+		std::cerr << "[SceneLoader] Warning: node '" << nodeName
+			<< "' had invalid or near-zero scale; sanitized to ("
+			<< sanitized.x << ", " << sanitized.y << ", " << sanitized.z << ")." << std::endl;
+	}
+	return sanitized;
 }
 
 std::vector<glm::mat4> ComputeModelNodeWorldTransforms(const Scene& model)
@@ -126,26 +334,58 @@ SceneLoader::~SceneLoader() {
 }
 
 std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFilePath) {
+	const std::string resolvedScenePath = ResolveSceneJsonPath(sceneFilePath);
+	if (resolvedScenePath.empty()) {
+		std::cerr << "[SceneLoader] Failed to load scene: empty scene path." << std::endl;
+		GuiEventBus::GetInstance().PublishError("Failed to load scene: empty scene path");
+		return nullptr;
+	}
+
 	auto sceneGraph = std::make_shared<SceneGraph>();
 
 	// Set the current scene graph BEFORE processing nodes
 	// This is required for CreateECSEntity to work properly
 	m_currentSceneGraph = sceneGraph.get();
+	m_currentSceneDirectory = fs::path(resolvedScenePath).parent_path().string();
+	m_loadedModelCount = 0;
+	m_missingCriticalAssetCount = 0;
+	m_loadedSkyboxCount = 0;
+	m_disabledSkyboxCount = 0;
 
 	// Report loading started
 	GuiEventBus::GetInstance().PublishLoadingStarted();
 	GuiEventBus::GetInstance().PublishProgress(0.0f, "Assets");
 
-	std::ifstream sceneFile(sceneFilePath);
+	std::cout << "[SceneLoader] Loading scene: " << resolvedScenePath << std::endl;
+	std::ifstream sceneFile(resolvedScenePath);
 	if (!sceneFile.is_open()) {
-		std::cerr << "Failed to open scene file: " << sceneFilePath << std::endl;
-		GuiEventBus::GetInstance().PublishError("Failed to open scene file: " + sceneFilePath);
+		std::cerr << "[SceneLoader] Failed to open scene file: " << resolvedScenePath << std::endl;
+		GuiEventBus::GetInstance().PublishError("Failed to open scene file: " + resolvedScenePath);
 		m_currentSceneGraph = nullptr;
-		return sceneGraph;
+		m_currentSceneDirectory.clear();
+		return nullptr;
 	}
 
 	json sceneJson;
-	sceneFile >> sceneJson;
+	try {
+		sceneFile >> sceneJson;
+	}
+	catch (const std::exception& e) {
+		std::cerr << "[SceneLoader] Failed to parse scene file '" << resolvedScenePath
+			<< "': " << e.what() << std::endl;
+		GuiEventBus::GetInstance().PublishError("Failed to parse scene file: " + resolvedScenePath);
+		m_currentSceneGraph = nullptr;
+		m_currentSceneDirectory.clear();
+		return nullptr;
+	}
+
+	if (!sceneJson.is_object()) {
+		std::cerr << "[SceneLoader] Invalid scene file: root JSON value must be an object: "
+			<< resolvedScenePath << std::endl;
+		m_currentSceneGraph = nullptr;
+		m_currentSceneDirectory.clear();
+		return nullptr;
+	}
 
 	// Set the scene name if provided.
 	std::string sceneName = sceneJson.value("scene_name", "Unnamed Scene");
@@ -174,26 +414,62 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 		std::cout << "[SceneLoader] Loaded " << sceneJson["nodes"].size() << " root nodes with ECS entities" << std::endl;
 	}
 	else {
-		std::cerr << "Invalid scene file format. 'nodes' array is missing." << std::endl;
+		std::cerr << "[SceneLoader] Invalid scene file format. 'nodes' array is missing: "
+			<< resolvedScenePath << std::endl;
+		m_currentSceneGraph = nullptr;
+		m_currentSceneDirectory.clear();
+		return nullptr;
+	}
+
+	if (m_missingCriticalAssetCount > 0) {
+		std::cerr << "[SceneLoader] Aborting scene load for '" << resolvedScenePath
+			<< "' due to " << m_missingCriticalAssetCount
+			<< " missing required asset(s)." << std::endl;
+		m_currentSceneGraph = nullptr;
+		m_currentSceneDirectory.clear();
+		return nullptr;
 	}
 
 	// Initialize the skybox if provided.
 	if (sceneJson.contains("skybox")) {
-		std::string hdrPath = sceneJson.value("skybox", "hdrs//skybox.hdr");
-
-		auto sb = std::make_shared<Skybox>();
-		if (!sb->Init(hdrPath,
-			"shaders/equirect2cube_vert.glsl",
-			"shaders/equirect2cube_frag.glsl",
-			"shaders/skybox_vert.glsl",
-			"shaders/skybox_frag.glsl",
-			m_screenW,
-			m_screenH)) {
-			std::cerr << "[SceneLoader] Failed to load skybox: " << hdrPath << "\n";
+		std::string hdrPath = TrimPathValue(sceneJson.value("skybox", ""));
+		if (hdrPath.empty()) {
+			++m_disabledSkyboxCount;
+			std::cout << "[SceneLoader] Skybox disabled for scene '" << sceneName
+				<< "' because the skybox path is empty." << std::endl;
 		}
 		else {
-			std::cout << "[SceneLoader] Loading skybox: " << hdrPath << std::endl;
-			sceneGraph->SetSkybox(sb);
+			bool skyboxResolved = false;
+			const std::string resolvedHdrPath = ResolveReadableAssetPath(
+				hdrPath,
+				m_currentSceneDirectory,
+				"skybox",
+				false,
+				&skyboxResolved);
+
+			if (!skyboxResolved) {
+				++m_disabledSkyboxCount;
+				std::cout << "[SceneLoader] Skybox disabled for scene '" << sceneName
+					<< "' because the HDR asset could not be resolved: " << hdrPath << std::endl;
+			}
+			else {
+				auto sb = std::make_shared<Skybox>();
+				if (!sb->Init(resolvedHdrPath,
+					"shaders/equirect2cube_vert.glsl",
+					"shaders/equirect2cube_frag.glsl",
+					"shaders/skybox_vert.glsl",
+					"shaders/skybox_frag.glsl",
+					m_screenW,
+					m_screenH)) {
+					++m_disabledSkyboxCount;
+					std::cerr << "[SceneLoader] Failed to load skybox: " << resolvedHdrPath << "\n";
+				}
+				else {
+					++m_loadedSkyboxCount;
+					std::cout << "[SceneLoader] Loading skybox: " << resolvedHdrPath << std::endl;
+					sceneGraph->SetSkybox(sb);
+				}
+			}
 		}
 	}
 
@@ -205,10 +481,22 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	sceneGraph->UpdateAllTransforms();
 	// Clear the scene graph reference
 	m_currentSceneGraph = nullptr;
+	m_currentSceneDirectory.clear();
 
 	// Log ECS statistics
-	std::cout << "[SceneLoader] Scene loaded successfully. ECS entities created: "
-		<< sceneGraph->GetComponentManager()->GetTransformPool().Size() << std::endl;
+	auto* componentManager = sceneGraph->GetComponentManager();
+	std::cout << "[SceneLoader] Scene load summary: scene='" << sceneName
+		<< "', path='" << resolvedScenePath
+		<< "', authoredRootNodes=" << sceneJson["nodes"].size()
+		<< ", models=" << m_loadedModelCount
+		<< ", transforms=" << componentManager->GetTransformPool().Size()
+		<< ", maxTransformID=" << componentManager->GetMaxAllocatedTransformID()
+		<< ", renderables=" << componentManager->GetRenderablePool().Size()
+		<< ", lights=" << componentManager->GetLightPool().Size()
+		<< ", cameras=" << componentManager->GetCameraPool().Size()
+		<< ", skyboxesLoaded=" << m_loadedSkyboxCount
+		<< ", skyboxesDisabled=" << m_disabledSkyboxCount
+		<< std::endl;
 
 	return sceneGraph;
 }
@@ -851,6 +1139,10 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			node->SetECSContext(componentManager, transformSystem);
 			node->SetNodeType(static_cast<SceneNode::NODE_TYPE>(type));
 			break;
+		case NodeType::CAMERA:
+			node = std::make_shared<SceneNode>(componentManager, transformSystem);
+			node->SetNodeType(SceneNode::CAMERA);
+			break;
 		case NodeType::LPV_VOLUME:  // Handle LPV volume nodes
 			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			node->SetNodeType(SceneNode::LPV_VOLUME);
@@ -870,13 +1162,12 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		}
 
 	// Process common transform data.
-	glm::vec3 pos(0.0f), rot(0.0f), scl(1.0f);
-	if (nodeJson.contains("position") && nodeJson["position"].is_array() && nodeJson["position"].size() == 3)
-		pos = glm::vec3(nodeJson["position"][0], nodeJson["position"][1], nodeJson["position"][2]);
-	if (nodeJson.contains("rotation") && nodeJson["rotation"].is_array() && nodeJson["rotation"].size() == 3)
-		rot = glm::vec3(nodeJson["rotation"][0], nodeJson["rotation"][1], nodeJson["rotation"][2]);
-	if (nodeJson.contains("scale") && nodeJson["scale"].is_array() && nodeJson["scale"].size() == 3)
-		scl = glm::vec3(nodeJson["scale"][0], nodeJson["scale"][1], nodeJson["scale"][2]);
+	const std::string nodeDebugName = nodeJson.value("name", typeStr);
+	glm::vec3 pos = ReadSceneVec3(nodeJson, "position", glm::vec3(0.0f), nodeDebugName);
+	glm::vec3 rot = ReadSceneVec3(nodeJson, "rotation", glm::vec3(0.0f), nodeDebugName);
+	glm::vec3 scl = SanitizeSceneScale(
+		ReadSceneVec3(nodeJson, "scale", glm::vec3(1.0f), nodeDebugName),
+		nodeDebugName);
 
 	// Apply rotation correctly using combined Euler angles -> quaternion conversion
 	// Previous code called SetRotation three times, but each call replaced the rotation instead of accumulating
@@ -887,22 +1178,45 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 	node->SetLocalTRS(pos, rotationQuat, scl);
 
 	// Set node name if provided
-	if (nodeJson.contains("name")) {
-		node->SetName(nodeJson["name"]);
+	const std::string nodeName = nodeJson.value("name", "");
+	if (!nodeName.empty()) {
+		node->SetName(nodeName);
 	}
 
 	// Process type-specific properties.
 	switch (type) {
 	case NodeType::MODEL: { // ModelNode
 		std::string modelPath = nodeJson.value("path", "");
-		if (!modelPath.empty()) {
+		bool modelResolved = false;
+		modelPath = ResolveReadableAssetPath(
+			modelPath,
+			m_currentSceneDirectory,
+			"model",
+			true,
+			&modelResolved);
+		if (modelResolved) {
+			if (!m_modelManager) {
+				++m_missingCriticalAssetCount;
+				std::cerr << "[SceneLoader] ERROR: ModelManager unavailable while loading node '"
+					<< nodeDebugName << "': " << modelPath << std::endl;
+				break;
+			}
 			auto model = m_modelManager->LoadModel(modelPath); // Load the model using the ModelManager
 			if (model) {
+				++m_loadedModelCount;
 				node->SetModel(model); // Set the model to the node
 				if (model->hasSkin) {
 					node->BuildSkeleton(*model);
 				}
 			}
+			else {
+				++m_missingCriticalAssetCount;
+				std::cerr << "[SceneLoader] ERROR: Model import failed for node '"
+					<< nodeDebugName << "': " << modelPath << std::endl;
+			}
+		}
+		else {
+			++m_missingCriticalAssetCount;
 		}
 		// Check for custom shader properties
 		if (nodeJson.contains("vertex_shader") && nodeJson.contains("fragment_shader")) {
@@ -1035,6 +1349,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 	}
 	case NodeType::GUI: {
 		auto guiNode = std::make_shared<GuiNode>(m_screenW, m_screenH); // Create a GUI node,this acts as a container for GUI elements in the scene
+		guiNode->SetECSContext(componentManager, transformSystem);
 
 		// Load font if specified
 		std::string fontPath = nodeJson.value("font_path", "fonts\\arial.ttf");
@@ -1179,6 +1494,10 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		}
 		node = guiNode;
 		node->SetNodeType(SceneNode::GUI); // Set the node type to GUI
+		node->SetLocalTRS(pos, rotationQuat, scl);
+		if (!nodeName.empty()) {
+			node->SetName(nodeName);
+		}
 		break;
 	}
 
@@ -1264,6 +1583,41 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 	// Create RenderableComponent if node has a model
 	if (node->GetModel() && (node->renderWholeModel || !node->renderMeshIndices.empty())) {
 		CreateRenderableComponent(node, node->GetModel());
+	}
+
+	if (node->GetNodeType() == SceneNode::LIGHT) {
+		auto lightNode = std::dynamic_pointer_cast<LightNode>(node);
+		if (lightNode && lightNode->GetLight()) {
+			LightComponent lightComp;
+			lightComp.light = lightNode->GetLight();
+			lightComp.enabled = lightNode->GetLight()->IsEnabled();
+			lightComp.castsShadows = lightNode->GetLight()->CastsShadows();
+			componentManager->AddLight(entityID, lightComp);
+		}
+	}
+	else if (node->GetNodeType() == SceneNode::CAMERA) {
+		CameraComponent cameraComp;
+		if (auto cameraNode = std::dynamic_pointer_cast<Camera>(node)) {
+			cameraComp.up = cameraNode->GetCameraUpVector();
+			cameraComp.front = cameraNode->GetCameraFrontVector();
+			cameraComp.right = cameraNode->GetCameraRightVector();
+			cameraComp.yaw = cameraNode->GetCameraFacingAngle();
+			cameraComp.pitch = 0.0f;
+			cameraComp.fov = cameraNode->GetCameraFov();
+			cameraComp.aspectRatio = (m_screenH != 0) ? static_cast<float>(m_screenW) / static_cast<float>(m_screenH) : cameraComp.aspectRatio;
+			cameraComp.nearPlane = cameraNode->GetCameraNearPlane();
+			cameraComp.farPlane = cameraNode->GetCameraFarPlane();
+			cameraComp.movementSpeed = cameraNode->GetCameraMovementSpeed();
+			cameraComp.mouseSensitivity = cameraNode->GetCameraMouseSensitivity();
+		}
+		else {
+			const glm::mat4 cameraTransform = node->GetTransform();
+			cameraComp.right = glm::normalize(glm::vec3(cameraTransform[0]));
+			cameraComp.up = glm::normalize(glm::vec3(cameraTransform[1]));
+			cameraComp.front = glm::normalize(-glm::vec3(cameraTransform[2]));
+			cameraComp.aspectRatio = (m_screenH != 0) ? static_cast<float>(m_screenW) / static_cast<float>(m_screenH) : cameraComp.aspectRatio;
+		}
+		componentManager->AddCamera(entityID, cameraComp);
 	}
 
 	// Create AnimationComponent if model has animations

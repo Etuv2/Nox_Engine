@@ -217,7 +217,7 @@ struct RenderContext {
 	GLuint surfelGIWinnerIDTexture = 0;
 	float surfelGIApplyStrength = 0.0f;
 	bool surfelGIGridReady = false;
-	bool enableSurfelIndirectDiffuse = true;
+	bool enableSurfelIndirectDiffuse = false;
 	float surfelIndirectDiffuseStrength = 1.0f;
 	int surfelIndirectDiffuseDebugMode = 0;
 	int surfelIndirectDiffuseNeighborRadius = 1;
@@ -227,6 +227,31 @@ struct RenderContext {
 	bool surfelIndirectDiffuseUseTemporal = true;
 	bool surfelUseLegacyFragmentGather = false;
 	int lightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
+
+	// Clean EA GIBS-style Surfel GI subsystem. This is separate from the
+	// quarantined legacy surfel controls above and remains disabled by default.
+	bool enableCleanSurfelGI = false;
+	int cleanSurfelGIQualityTier = 1;
+	int cleanSurfelGIDebugView = 0;
+	int cleanSurfelGIMaxSurfels = 131072;
+	int cleanSurfelGIMaxRayBudget = 32768;
+	int cleanSurfelGISpawnTileSize = 8;
+	int cleanSurfelGIMaxSurfelsPerCell = 64;
+	int cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
+	float cleanSurfelGITargetRadiusPixels = 3.0f;
+	float cleanSurfelGIMinRadius = 0.03f;
+	float cleanSurfelGIMaxRadius = 5.0f;
+	float cleanSurfelGICoverageThreshold = 0.85f;
+	float cleanSurfelGIRecyclePressure = 0.85f;
+	float cleanSurfelGINormalReject = 0.25f;
+	float cleanSurfelGIFinalGatherNormalReject = 0.15f;
+	float cleanSurfelGIRadialDepthVariance = 1.0e-4f;
+	float cleanSurfelGIIntensity = 1.0f;
+	bool cleanSurfelGIUseRadialDepth = false;
+	bool cleanSurfelGIUseRayGuiding = false;
+	bool cleanSurfelGIUseRayBinning = true;
+	bool cleanSurfelGIUseScreenTrace = true;
+	bool cleanSurfelGIUseSurfelFallbackTrace = true;
 
 
 	// Bloom settings

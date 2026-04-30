@@ -1,0 +1,377 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "../includes/pbr_common.glsl"
+#include "../includes/material_common.glsl"
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
+{
+    SurfelCellEntry gridEntries[];
+};
+
+layout(binding = B_RADIAL_DEPTH, std430) readonly buffer SurfelRadialDepthBuffer
+{
+    RadialDepthTexel radialDepth[];
+};
+
+layout(binding = 0, rgba16f) writeonly uniform image2D uOutIndirect;
+
+uniform sampler2D uPackedNormalRMTex;
+uniform sampler2D uDepthTex;
+uniform usampler2D uMaterialIDTex;
+
+uniform uvec2 uResolution;
+uniform uvec2 uInputResolution;
+uniform mat4 uInvProjection;
+uniform mat4 uInvView;
+uniform uint uMaxSurfels;
+uniform uint uGridCellCount;
+uniform uint uMaxSurfelsPerCell;
+uniform uint uMaxGatherSurfelsPerPixel;
+uniform uint uGatherNeighborRadius;
+uniform uvec3 uGridResolution;
+uniform vec3 uGridMin;
+uniform vec3 uGridMax;
+uniform float uNormalRejectCos;
+uniform int uUseMaterialIDReject = 0;
+uniform int uUseRadialDepth = 1;
+uniform float uRadialDepthMinVariance = 1e-4;
+uniform float uFallbackStrength = 0.65;
+uniform uint uFrameIndex = 0u;
+uniform uint uDebugView = 0u;
+
+const uint SURFEL_APPLY_MAX_GATHER_CANDIDATES = 2048u;
+const uint SURFEL_APPLY_MAX_GATHER_CELLS = 27u;
+const float SURFEL_APPLY_EARLY_WEIGHT = 4.0;
+const uint DEBUG_SURFEL_GRID_CELLS = 6u;
+
+bool SurfelMaterialAllowsDiffuseGI(uint materialID)
+{
+    // Material ID 2 is the engine's transmissive route. It should not seed or receive
+    // opaque diffuse GI because the deferred composite handles it as a different lobe.
+    return materialID != 2u;
+}
+
+vec3 DecodePackedCellAverage(uint packedAverage, out float confidence)
+{
+    vec4 averageValue = unpackUnorm4x8(packedAverage);
+    vec3 mapped = clamp(averageValue.rgb, vec3(0.0), vec3(0.999));
+    confidence = clamp(averageValue.a, 0.0, 1.0);
+    return mapped / max(vec3(1.0) - mapped, vec3(1e-4));
+}
+
+float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
+{
+    if (!SurfelMaterialAllowsDiffuseGI(surfel.ids.y)) {
+        return 0.0;
+    }
+
+    vec3 surfelPos = surfel.worldPos_radius.xyz;
+    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    vec3 delta = receiverPos - surfelPos;
+    float distSq = dot(delta, delta);
+    float dist = sqrt(max(distSq, 1e-8));
+    vec3 toReceiver = delta / dist;
+
+    vec3 gridCellSize = (uGridMax - uGridMin) / vec3(max(uGridResolution, uvec3(1u)));
+    float maxCellSize = max(max(gridCellSize.x, gridCellSize.y), gridCellSize.z);
+    float supportRadius = max(max(radius * 2.0, maxCellSize * 0.08), 0.06);
+    float normalizedDistance = dist / max(supportRadius, 1e-4);
+    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 4.0);
+    distanceWeight *= smoothstep(1.15, 0.45, normalizedDistance);
+
+    // GI transfer is strongest when the surfel emits toward the receiver and the
+    // receiver faces the surfel. Requiring parallel normals rejects valid color
+    // bleeding between perpendicular surfaces.
+    float emitterFacing = max(dot(surfelNormal, toReceiver), 0.0);
+    float receiverFacing = max(dot(receiverNormal, -toReceiver), 0.0);
+    float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0));
+    float coplanarFacing = max(dot(receiverNormal, surfelNormal), 0.0) * 0.35;
+    float normalWeight = max(transferFacing, coplanarFacing);
+    float relaxedReject = max(uNormalRejectCos * 0.25, 0.02);
+    normalWeight = SurfelSaturate((normalWeight - relaxedReject) / max(1.0 - relaxedReject, 1e-4));
+    float surfelPlane = abs(dot(delta, surfelNormal));
+    float receiverPlane = abs(dot(delta, receiverNormal));
+    float planeSigma = max(max(radius * 1.25, maxCellSize * 0.10), 0.04);
+    float coplanarWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
+    float planeWeight = mix(coplanarWeight, 1.0, transferFacing);
+    float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
+
+    return distanceWeight * normalWeight * planeWeight * mix(0.25, 1.0, confidence);
+}
+
+vec3 DebugGridIDColor(uint cellID)
+{
+    uint h = SurfelHash(cellID * 747796405u + 2891336453u);
+    vec3 color = vec3(
+        float(h & 255u),
+        float((h >> 8u) & 255u),
+        float((h >> 16u) & 255u)
+    ) / 255.0;
+    return mix(vec3(0.08), color, 0.85);
+}
+
+vec3 SampleCellAverage(uvec3 cellCoord, out float confidence)
+{
+    confidence = 0.0;
+    uint cell = SurfelFlattenCell(cellCoord, uGridResolution);
+    if (cell >= uGridCellCount) {
+        return vec3(0.0);
+    }
+
+    SurfelCellHeader header = gridHeaders[cell];
+    if (header.averagePackedIrradiance == 0u ||
+        (header.flags & SURFEL_CELL_HAS_AVERAGE) == 0u) {
+        return vec3(0.0);
+    }
+
+    return DecodePackedCellAverage(header.averagePackedIrradiance, confidence);
+}
+
+vec3 SampleTrilinearGridIrradiance(vec3 worldPos, out float confidence)
+{
+    confidence = 0.0;
+    if (any(equal(uGridResolution, uvec3(0u)))) {
+        return vec3(0.0);
+    }
+
+    vec3 extent = max(uGridMax - uGridMin, vec3(0.0001));
+    vec3 gridCoord = ((worldPos - uGridMin) / extent) * vec3(uGridResolution) - vec3(0.5);
+    ivec3 base = ivec3(floor(gridCoord));
+    vec3 f = fract(gridCoord);
+
+    vec3 sum = vec3(0.0);
+    float weightSum = 0.0;
+    for (int z = 0; z <= 1; ++z) {
+        for (int y = 0; y <= 1; ++y) {
+            for (int x = 0; x <= 1; ++x) {
+                ivec3 c = base + ivec3(x, y, z);
+                if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+                    continue;
+                }
+
+                vec3 axisWeight = mix(vec3(1.0) - f, f, vec3(x, y, z));
+                float trilinearWeight = axisWeight.x * axisWeight.y * axisWeight.z;
+                float cellConfidence;
+                vec3 cellIrradiance = SampleCellAverage(uvec3(c), cellConfidence);
+                float w = trilinearWeight * cellConfidence;
+                if (w <= 1e-5) {
+                    continue;
+                }
+
+                sum += cellIrradiance * w;
+                weightSum += w;
+                confidence += cellConfidence * w;
+            }
+        }
+    }
+
+    if (weightSum <= 1e-5) {
+        confidence = 0.0;
+        return vec3(0.0);
+    }
+
+    confidence = clamp(confidence / weightSum, 0.0, 1.0);
+    return sum / weightSum;
+}
+
+void AccumulateCell(uint cell,
+                    ivec3 cellCoord,
+                    vec3 worldPos,
+                    vec3 normal,
+                    uint gatherBudget,
+                    inout vec3 sumIrradiance,
+                    inout float sumWeight,
+                    inout uint candidateCount,
+                    inout uint sampleCount,
+                    inout vec3 fallbackIrradiance,
+                    inout float fallbackWeight)
+{
+    if (cell >= uGridCellCount || uMaxSurfelsPerCell == 0u) {
+        return;
+    }
+
+    SurfelCellHeader header = gridHeaders[cell];
+    uint count = min(header.entryCount, uMaxSurfelsPerCell);
+    uint firstEntry = header.firstEntry;
+    if (firstEntry == 0u && cell != 0u) {
+        firstEntry = cell * uMaxSurfelsPerCell;
+    }
+
+    uint budget = min(count, uMaxSurfelsPerCell);
+
+    uint acceptedInCell = 0u;
+    for (uint i = 0u; i < budget; ++i) {
+        uint entryIndex = firstEntry + i;
+        SurfelCellEntry entry = gridEntries[entryIndex];
+        ++candidateCount;
+        if (entry.surfelID >= uMaxSurfels) {
+            continue;
+        }
+
+        uint surfelID = entry.surfelID;
+        Surfel surfel = surfels[surfelID];
+        if (!SurfelIsAlive(surfel)) {
+            continue;
+        }
+
+        float weight = ReceiverSurfelGatherWeight(worldPos, normal, surfel);
+        if (weight <= 1e-5) {
+            continue;
+        }
+
+        if (uUseRadialDepth != 0) {
+            vec3 surfelToReceiver = worldPos - surfel.worldPos_radius.xyz;
+            uint radialIndex = SurfelRadialDepthIndex(entry.surfelID, surfelToReceiver, surfel.worldNormal_age.xyz);
+            weight *= SurfelRadialDepthVisibility(
+                radialDepth[radialIndex],
+                length(surfelToReceiver),
+                uRadialDepthMinVariance
+            );
+            if (weight <= 1e-5) {
+                continue;
+            }
+        }
+
+        sumIrradiance += max(surfel.irradiance.rgb, vec3(0.0)) * weight;
+        sumWeight += weight;
+        ++sampleCount;
+        ++acceptedInCell;
+        surfel.frameInfo.y = uFrameIndex;
+        surfels[surfelID] = surfel;
+    }
+
+    if (uFallbackStrength > 0.0 &&
+        header.averagePackedIrradiance != 0u &&
+        (header.flags & SURFEL_CELL_HAS_AVERAGE) != 0u) {
+        float fallbackConfidence;
+        vec3 cellIrradiance = DecodePackedCellAverage(header.averagePackedIrradiance, fallbackConfidence);
+        vec3 gridCellSize = (uGridMax - uGridMin) / vec3(max(uGridResolution, uvec3(1u)));
+        vec3 cellCenter = uGridMin + (vec3(cellCoord) + vec3(0.5)) * gridCellSize;
+        float maxCellSize = max(max(gridCellSize.x, gridCellSize.y), gridCellSize.z);
+        float centerDistance = length(worldPos - cellCenter);
+        float spatialWeight = exp(-(centerDistance * centerDistance) / max(maxCellSize * maxCellSize * 2.0, 1e-4));
+        float cellWeight = fallbackConfidence * clamp(uFallbackStrength, 0.0, 1.0) * spatialWeight;
+        if (acceptedInCell == 0u) {
+            cellWeight *= 0.02;
+        } else {
+            cellWeight *= 0.01;
+        }
+        if (cellWeight > 1e-5) {
+            fallbackIrradiance += cellIrradiance * cellWeight;
+            fallbackWeight += cellWeight;
+        }
+    }
+}
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= int(uResolution.x) || pixel.y >= int(uResolution.y)) {
+        return;
+    }
+
+    uvec2 safeResolution = max(uResolution, uvec2(1u));
+    uvec2 safeInputResolution = max(uInputResolution, uvec2(1u));
+    ivec2 inputPixel = ivec2(clamp(
+        floor((vec2(pixel) + vec2(0.5)) * vec2(safeInputResolution) / vec2(safeResolution)),
+        vec2(0.0),
+        vec2(safeInputResolution - uvec2(1u))));
+
+    float depth = texelFetch(uDepthTex, inputPixel, 0).r;
+    if (depth <= 0.0 || depth >= 0.999999) {
+        imageStore(uOutIndirect, pixel, vec4(0.0));
+        return;
+    }
+
+    if (uUseMaterialIDReject != 0 && !SurfelMaterialAllowsDiffuseGI(texelFetch(uMaterialIDTex, inputPixel, 0).r)) {
+        imageStore(uOutIndirect, pixel, vec4(0.0));
+        return;
+    }
+
+    vec2 uv = (vec2(inputPixel) + vec2(0.5)) / vec2(safeInputResolution);
+    vec3 worldPos = ReconstructWorldPosition(uv, depth, uInvProjection, uInvView);
+    vec3 normal = SurfelSafeNormalize(DecodeNormalOct(texelFetch(uPackedNormalRMTex, inputPixel, 0).rg));
+
+    uvec3 baseCell;
+    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell)) {
+        imageStore(uOutIndirect, pixel, vec4(0.0));
+        return;
+    }
+
+    if (uDebugView == DEBUG_SURFEL_GRID_CELLS) {
+        uint cellID = SurfelFlattenCell(baseCell, uGridResolution);
+        imageStore(uOutIndirect, pixel, vec4(DebugGridIDColor(cellID), 1.0));
+        return;
+    }
+
+    vec3 sumIrradiance = vec3(0.0);
+    float sumWeight = 0.0;
+    uint gatherBudget = min(max(uMaxGatherSurfelsPerPixel, 1u), SURFEL_APPLY_MAX_GATHER_CANDIDATES);
+    uint gatherCellCount = uGatherNeighborRadius == 0u ? 1u : SURFEL_APPLY_MAX_GATHER_CELLS;
+    uint candidateCount = 0u;
+    uint sampleCount = 0u;
+    vec3 fallbackIrradiance = vec3(0.0);
+    float fallbackWeight = 0.0;
+
+    for (uint i = 0u; i < gatherCellCount; ++i) {
+        if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || candidateCount >= gatherBudget) {
+            break;
+        }
+
+        ivec3 c = ivec3(baseCell) + (gatherCellCount > 7u ? SurfelCubeNeighborOffset(i) : SurfelCrossNeighborOffset(i));
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+            continue;
+        }
+
+        AccumulateCell(SurfelFlattenCell(uvec3(c), uGridResolution),
+                       c,
+                       worldPos,
+                       normal,
+                       gatherBudget,
+                       sumIrradiance,
+                       sumWeight,
+                       candidateCount,
+                       sampleCount,
+                       fallbackIrradiance,
+                       fallbackWeight);
+    }
+
+    if (fallbackWeight > 1e-5 && sumWeight > 0.35) {
+        vec3 fallbackMean = fallbackIrradiance / fallbackWeight;
+        float missingCoverage = 1.0 - clamp(sumWeight / 1.25, 0.0, 1.0);
+        float smoothFallbackWeight = fallbackWeight * missingCoverage * 0.005;
+        sumIrradiance += fallbackMean * smoothFallbackWeight;
+        sumWeight += smoothFallbackWeight;
+    }
+
+    float gridConfidence;
+    vec3 gridIrradiance = SampleTrilinearGridIrradiance(worldPos, gridConfidence);
+
+    if (sumWeight <= 1e-5) {
+        imageStore(uOutIndirect, pixel, vec4(0.0));
+        return;
+    }
+
+    vec3 individualIrradiance = sumIrradiance / sumWeight;
+    float individualConfidence = clamp(sumWeight / max(float(max(sampleCount, 1u)), 1.0), 0.0, 1.0);
+    float gridBlend = gridConfidence > 1e-5 ? clamp((1.0 - individualConfidence) * gridConfidence * 0.20, 0.0, 0.20) : 0.0;
+    vec3 irradiance = mix(individualIrradiance, gridIrradiance, gridBlend);
+    float confidence = max(individualConfidence, gridConfidence * gridBlend);
+    // Output contract: linear HDR irradiance only. Receiver albedo/BRDF response is
+    // applied later in deferred_lighting_frag.glsl to avoid double tinting.
+    imageStore(uOutIndirect, pixel, vec4(irradiance, confidence));
+}

@@ -81,6 +81,11 @@ private:
 	std::shared_ptr<PhysicsEngine> m_physicsEngine;
 	int m_screenW, m_screenH;
 	ProgressCallback m_progressCallback;
+	std::string m_currentSceneDirectory;
+	size_t m_loadedModelCount = 0;
+	size_t m_missingCriticalAssetCount = 0;
+	size_t m_loadedSkyboxCount = 0;
+	size_t m_disabledSkyboxCount = 0;
 	
 	// Internal helper methods for progress reporting
 	void ReportProgress(float progress, const std::string& stage);

@@ -1,0 +1,95 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_RAY_REQUESTS, std430) readonly buffer SurfelRayRequestBuffer
+{
+    SurfelRayRequest rayRequests[];
+};
+
+layout(binding = B_RAY_HITS, std430) readonly buffer SurfelRayHitBuffer
+{
+    SurfelRayHit hits[];
+};
+
+layout(binding = B_RADIAL_DEPTH, std430) buffer SurfelRadialDepth
+{
+    RadialDepthTexel radialDepth[];
+};
+
+uniform uint uMaxSurfels;
+uniform uint uMaxRays;
+
+const float SURFEL_RADIAL_DEPTH_UPDATE_ALPHA = 0.20;
+const uint SURFEL_RADIAL_MAX_RAYS_PER_SURFEL = 8u;
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID >= uMaxSurfels) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    float defaultDepth = max(surfel.worldPos_radius.w * 8.0, 1.25);
+    uint base = surfelID * SURFEL_RADIAL_DEPTH_TEXELS;
+    if (radialDepth[base].meanDepth <= 0.0) {
+        for (uint bin = 0u; bin < SURFEL_RADIAL_DEPTH_TEXELS; ++bin) {
+            uint index = base + bin;
+            radialDepth[index].meanDepth = defaultDepth;
+            radialDepth[index].meanDepthSq = defaultDepth * defaultDepth;
+        }
+    }
+
+    SurfelRayRequest request = rayRequests[surfelID];
+    if (request.surfelID != surfelID || request.allocatedCount == 0u) {
+        return;
+    }
+
+    if (request.firstRay >= uMaxRays) {
+        return;
+    }
+
+    vec3 normal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    uint rayCount = min(min(request.allocatedCount, SURFEL_RADIAL_MAX_RAYS_PER_SURFEL), uMaxRays - request.firstRay);
+    for (uint i = 0u; i < rayCount; ++i) {
+        uint rayID = request.firstRay + i;
+
+        SurfelRayHit hit = hits[rayID];
+        if (hit.ids.x != surfelID || hit.position_t.w <= 0.0) {
+            continue;
+        }
+
+        vec3 surfelToHit = hit.position_t.xyz - surfel.worldPos_radius.xyz;
+        float hitDepth = length(surfelToHit);
+        if (hitDepth <= 0.0 ||
+            hitDepth > defaultDepth ||
+            isnan(hitDepth) ||
+            isinf(hitDepth) ||
+            any(isnan(surfelToHit)) ||
+            any(isinf(surfelToHit))) {
+            continue;
+        }
+
+        vec3 hemiDir = SurfelWorldToHemiDir(surfelToHit, normal);
+        if (hemiDir.z <= 0.0) {
+            continue;
+        }
+
+        uint index = base + SurfelRadialDepthBin(hemiDir);
+        float depthSq = hitDepth * hitDepth;
+        radialDepth[index].meanDepth = mix(radialDepth[index].meanDepth, hitDepth, SURFEL_RADIAL_DEPTH_UPDATE_ALPHA);
+        radialDepth[index].meanDepthSq = mix(radialDepth[index].meanDepthSq, depthSq, SURFEL_RADIAL_DEPTH_UPDATE_ALPHA);
+    }
+}

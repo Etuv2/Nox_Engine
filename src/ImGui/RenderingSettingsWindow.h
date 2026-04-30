@@ -145,7 +145,7 @@ private:
 	int m_surfelGITLASBVHLayerToDisplay = 0;
 	RenderContext::SurfelGIDebugSettings m_surfelGIDebugSettings;
 	int m_surfelGIDebugMode = 0;
-	bool m_enableSurfelIndirectDiffuse = true;
+	bool m_enableSurfelIndirectDiffuse = false;
 	float m_surfelIndirectDiffuseStrength = 1.0f;
 	int m_surfelIndirectDiffuseDebugMode = 0;
 	int m_surfelIndirectDiffuseNeighborRadius = 1;
@@ -154,6 +154,29 @@ private:
 	float m_surfelIndirectDiffuseFallbackStrength = 0.65f;
 	bool m_surfelUseLegacyFragmentGather = false;
 	int m_lightingCompositeDebugMode = 0;
+
+	bool m_enableCleanSurfelGI = false;
+	int m_cleanSurfelGIQualityTier = 1;
+	int m_cleanSurfelGIDebugView = 0;
+	int m_cleanSurfelGIMaxSurfels = 131072;
+	int m_cleanSurfelGIMaxRayBudget = 32768;
+	int m_cleanSurfelGISpawnTileSize = 8;
+	int m_cleanSurfelGIMaxSurfelsPerCell = 64;
+	int m_cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
+	float m_cleanSurfelGITargetRadiusPixels = 3.0f;
+	float m_cleanSurfelGIMinRadius = 0.03f;
+	float m_cleanSurfelGIMaxRadius = 5.0f;
+	float m_cleanSurfelGICoverageThreshold = 0.85f;
+	float m_cleanSurfelGIRecyclePressure = 0.85f;
+	float m_cleanSurfelGINormalReject = 0.25f;
+	float m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
+	float m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
+	float m_cleanSurfelGIIntensity = 1.0f;
+	bool m_cleanSurfelGIUseRadialDepth = false;
+	bool m_cleanSurfelGIUseRayGuiding = false;
+	bool m_cleanSurfelGIUseRayBinning = true;
+	bool m_cleanSurfelGIUseScreenTrace = true;
+	bool m_cleanSurfelGIUseSurfelFallbackTrace = true;
 
 	// Screen-space contact shadow settings
 	float m_sssResolutionScale = 0.5f;

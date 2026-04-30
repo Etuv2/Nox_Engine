@@ -1,0 +1,33 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
+{
+    SurfelCellEntry gridEntries[];
+};
+
+uniform uvec2 uCoverageTileCount;
+
+void main()
+{
+    uvec2 tile = gl_GlobalInvocationID.xy;
+    if (tile.x >= uCoverageTileCount.x || tile.y >= uCoverageTileCount.y) {
+        return;
+    }
+
+    // First-pass placeholder: coverage tile storage is intentionally left to the
+    // C++ resource agent. This shader is bounded and side-effect free until then.
+}

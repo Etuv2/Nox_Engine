@@ -38,6 +38,7 @@ public:
     void SetPerspective(float fov, float aspect, float nearPlane, float farPlane);
     void SetOrthographic(float left, float right, float bottom, float top, float nearPlane, float farPlane);
     void SetProjectionType(ProjectionType type);
+    void SetPose(glm::vec3 position, glm::vec3 worldUp, float yaw, float pitch);
 
     // —— Input Controls ——  
     void ProcessKeyboard(const Uint8* keystate, float deltaTime);

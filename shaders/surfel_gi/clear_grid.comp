@@ -1,0 +1,35 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uGridCellCount;
+uniform uint uMaxSurfelsPerCell;
+
+void main()
+{
+    uint cell = gl_GlobalInvocationID.x;
+    if (cell >= uGridCellCount) {
+        return;
+    }
+
+    if (cell == 0u) {
+        counters.overflowGridEntries = 0u;
+    }
+
+    gridHeaders[cell].firstEntry = cell * max(uMaxSurfelsPerCell, 1u);
+    gridHeaders[cell].entryCount = 0u;
+    gridHeaders[cell].averagePackedIrradiance = 0u;
+    gridHeaders[cell].flags = 0u;
+}

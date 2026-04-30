@@ -13,6 +13,8 @@
 #include <iostream>
 #include <filesystem>
 #include <ctime>
+#include <algorithm>
+#include <cmath>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -621,17 +623,56 @@ bool RuntimeStateManager::RestoreCamera(const nlohmann::json& cameraJson,
 	if (!camera) return false;
 
 	try {
+		glm::vec3 pos = camera->GetCameraPosition();
 		if (cameraJson.contains("position") && cameraJson["position"].is_array()) {
-			glm::vec3 pos(
+			pos = glm::vec3(
 				cameraJson["position"][0],
 				cameraJson["position"][1],
 				cameraJson["position"][2]
 			);
+		}
+
+		glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+		if (cameraJson.contains("up") && cameraJson["up"].is_array()) {
+			worldUp = glm::vec3(
+				cameraJson["up"][0],
+				cameraJson["up"][1],
+				cameraJson["up"][2]
+			);
+			if (glm::dot(worldUp, worldUp) <= 1e-8f) {
+				worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
+			}
+			else {
+				worldUp = glm::normalize(worldUp);
+			}
+		}
+
+		if (cameraJson.contains("front") && cameraJson["front"].is_array()) {
+			glm::vec3 front(
+				cameraJson["front"][0],
+				cameraJson["front"][1],
+				cameraJson["front"][2]
+			);
+			if (glm::dot(front, front) > 1e-8f) {
+				front = glm::normalize(front);
+				const float pitch = glm::degrees(std::asin(glm::clamp(front.y, -1.0f, 1.0f)));
+				const float yaw = glm::degrees(std::atan2(front.z, front.x));
+				camera->SetPose(pos, worldUp, yaw, pitch);
+			}
+			else {
+				camera->SetPosition(pos);
+			}
+		}
+		else {
 			camera->SetPosition(pos);
 		}
 
-		// TODO: Restore yaw/pitch from front vector if Camera exposes setters
-		// For now, position is the most critical
+		const float fov = cameraJson.value("fov", camera->GetCameraFov());
+		const float nearPlane = cameraJson.value("near_plane", camera->GetCameraNearPlane());
+		const float farPlane = cameraJson.value("far_plane", camera->GetCameraFarPlane());
+		camera->SetPerspective(fov, 16.0f / 9.0f, nearPlane, farPlane);
+		camera->m_movementSpeed = std::max(cameraJson.value("movement_speed", camera->GetCameraMovementSpeed()), 0.0f);
+		camera->m_mouseSensitivity = std::max(cameraJson.value("mouse_sensitivity", camera->GetCameraMouseSensitivity()), 0.0f);
 
 		return true;
 	}

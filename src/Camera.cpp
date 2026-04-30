@@ -52,6 +52,18 @@ void Camera::SetProjectionType(ProjectionType type) {
     m_projType = type;
 }
 
+void Camera::SetPose(glm::vec3 position, glm::vec3 worldUp, float yaw, float pitch) {
+    if (glm::dot(worldUp, worldUp) <= 1e-8f) {
+        m_worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
+    } else {
+        m_worldUp = glm::normalize(worldUp);
+    }
+    m_yaw = yaw;
+    m_pitch = glm::clamp(pitch, -89.0f, 89.0f);
+    SetPosition(position);
+    updateCameraVectors();
+}
+
 void Camera::ProcessKeyboard(const Uint8* ks, float dt) {
     float v = m_movementSpeed * dt;
     glm::vec3 pos = glm::vec3(transform[3]);

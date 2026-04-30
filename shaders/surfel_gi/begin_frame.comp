@@ -1,0 +1,20 @@
+#version 460 core
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+void main()
+{
+    counters.spawnedThisFrame = 0u;
+    counters.recycledThisFrame = 0u;
+    counters.requestedRays = 0u;
+    counters.allocatedRays = 0u;
+    counters.overflowSurfels = 0u;
+    counters.overflowGridEntries = 0u;
+}

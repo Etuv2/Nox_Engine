@@ -16,9 +16,8 @@
 #include "passes/RTPass.h"  // Path tracing pass
 #include "passes/SSAOPass.h"
 #include "passes/ScreenSpaceShadowPass.h"
-#include "passes/SurfelGIPass.h"
-#include "passes/SurfelIndirectDiffusePass.h"
 #include "passes/IndirectDiffusePass.h"
+#include "passes/SurfelGIManager.h"
 
 #include "passes/LightingPass.h"
 #include "passes/BloomPass.h"
@@ -71,6 +70,82 @@ namespace {
 #else
 		return std::getenv(name) != nullptr;
 #endif
+	}
+
+	static std::string GetEnvVarString(const char* name) {
+#if defined(_MSC_VER)
+		char* value = nullptr;
+		size_t length = 0;
+		if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+			return {};
+		}
+		std::string result(value);
+		std::free(value);
+		return result;
+#else
+		const char* value = std::getenv(name);
+		return value ? std::string(value) : std::string{};
+#endif
+	}
+
+	static int GetEnvVarInt(const char* name, int fallback) {
+		const std::string value = GetEnvVarString(name);
+		if (value.empty()) {
+			return fallback;
+		}
+		char* end = nullptr;
+		const long parsed = std::strtol(value.c_str(), &end, 10);
+		return end != value.c_str() ? static_cast<int>(parsed) : fallback;
+	}
+
+	static float GetEnvVarFloat(const char* name, float fallback) {
+		const std::string value = GetEnvVarString(name);
+		if (value.empty()) {
+			return fallback;
+		}
+		char* end = nullptr;
+		const float parsed = std::strtof(value.c_str(), &end);
+		return end != value.c_str() ? parsed : fallback;
+	}
+
+	struct CleanSurfelGIBudgetCaps {
+		uint32_t maxSurfels = 131072u;
+		uint32_t maxRayBudget = 32768u;
+		uint32_t minSpawnTileSize = 32u;
+		uint32_t maxSurfelsPerCell = 64u;
+		uint32_t maxGatherSurfelsPerPixel = 512u;
+		uint32_t gatherNeighborRadius = 0u;
+		float finalGatherResolutionScale = 1.0f;
+		bool allowRayGuiding = false;
+	};
+
+	static CleanSurfelGIBudgetCaps GetCleanSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
+		switch (tier) {
+		case SurfelGIQualityTier::Low:
+			return { 16384u, 2048u, 32u, 16u, 24u, 1u, 0.5f, false };
+		case SurfelGIQualityTier::High:
+			return { 131072u, 32768u, 8u, 64u, 512u, 1u, 1.0f, false };
+		case SurfelGIQualityTier::Ultra:
+			return { 131072u, 32768u, 8u, 64u, 512u, 1u, 1.0f, true };
+		case SurfelGIQualityTier::Medium:
+		default:
+			return { 131072u, 32768u, 8u, 64u, 512u, 1u, 1.0f, false };
+		}
+	}
+
+	static void ApplyCleanSurfelGIRealtimeBudget(SurfelGISettings& settings, bool captureMode) {
+		const CleanSurfelGIBudgetCaps caps = GetCleanSurfelGIBudgetCaps(settings.qualityTier);
+		if (!captureMode) {
+			settings.maxSurfels = std::min(settings.maxSurfels, caps.maxSurfels);
+			settings.maxRayBudget = std::min(settings.maxRayBudget, caps.maxRayBudget);
+			settings.spawnTileSize = std::max(settings.spawnTileSize, caps.minSpawnTileSize);
+			settings.maxSurfelsPerCell = std::min(settings.maxSurfelsPerCell, caps.maxSurfelsPerCell);
+			settings.maxGatherSurfelsPerPixel = std::min(settings.maxGatherSurfelsPerPixel, caps.maxGatherSurfelsPerPixel);
+			settings.useRayGuiding = settings.useRayGuiding && caps.allowRayGuiding;
+		}
+
+		settings.gatherNeighborRadius = caps.gatherNeighborRadius;
+		settings.finalGatherResolutionScale = std::clamp(caps.finalGatherResolutionScale, 0.25f, 1.0f);
 	}
 
 	struct PassQuerySlot {
@@ -244,16 +319,34 @@ namespace {
 	namespace ResourceNames {
 		static const std::string SSAO = "SSAO";
 		static const std::string ScreenSpaceShadow = "ScreenSpaceShadow";
-		static const std::string SurfelField = "SurfelField";
-		static const std::string SurfelGrid = "SurfelGrid";
-		static const std::string SurfelDebug = "SurfelDebug";
-		static const std::string SurfelIndirectDiffuse = "SurfelIndirectDiffuse";
-		static const std::string SurfelIndirectDiffuseDebug = "SurfelIndirectDiffuseDebug";
 		static const std::string BounceableRadiance = "BounceableRadiance";
 		static const std::string IndirectDiffuse = "IndirectDiffuse";
 		static const std::string IndirectDiffuseDebug = "IndirectDiffuseDebug";
+		static const std::string SurfelGIIndirect = "SurfelGIIndirect";
 		static const std::string Bloom = "Bloom";
 		static const std::string LPVIndirect = "LPVIndirect";
+	}
+
+	void QuarantineDeprecatedSurfelGI(RenderContext& ctx) {
+		ctx.enableSurfelGI = false;
+		ctx.enableSurfelIndirectDiffuse = false;
+		ctx.surfelGIDebug = RenderContext::SurfelGIDebugSettings{};
+		ctx.surfelGIDebugMode = 0;
+		ctx.surfelIndirectDiffuseDebugMode = 0;
+		ctx.lightingCompositeDebugMode = ctx.lightingCompositeDebugMode == 6
+			? 0
+			: ctx.lightingCompositeDebugMode;
+		ctx.surfelGISurfelBuffer = 0;
+		ctx.surfelGIHeaderBuffer = 0;
+		ctx.surfelGIGridHeaderBuffer = 0;
+		ctx.surfelGIGridEntryBuffer = 0;
+		ctx.surfelGIGridAverageBuffer = 0;
+		ctx.surfelGIRadialDepthBinsBuffer = 0;
+		ctx.surfelGIIrradianceHeaderBuffer = 0;
+		ctx.surfelGIWinnerIDTexture = 0;
+		ctx.surfelGIApplyStrength = 0.0f;
+		ctx.surfelGIGridReady = false;
+		ctx.surfelUseLegacyFragmentGather = false;
 	}
 }
 
@@ -280,9 +373,8 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_rtPass = std::make_unique<RTPass>();  // Create path tracing pass
 	m_ssaoPass = std::make_unique<SSAOPass>();
 	m_screenSpaceShadowPass = std::make_unique<ScreenSpaceShadowPass>();
-	m_surfelGIPass = std::make_unique<SurfelGIPass>();
-	m_surfelIndirectDiffusePass = std::make_unique<SurfelIndirectDiffusePass>();
 	m_indirectDiffusePass = std::make_unique<IndirectDiffusePass>();
+	m_surfelGIManager = std::make_unique<SurfelGIManager>();
 	m_lightingPass = std::make_unique<LightingPass>();
 	m_bloomPass = std::make_unique<BloomPass>();
 	m_taaPass = std::make_unique<TAAPass>();
@@ -299,9 +391,8 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_rtPass->Initialize(m_context);  // Initialize path tracing pass
 	success &= m_ssaoPass->Initialize(m_context);
 	success &= m_screenSpaceShadowPass->Initialize(m_context);
-	success &= m_surfelGIPass->Initialize(m_context);
-	success &= m_surfelIndirectDiffusePass->Initialize(m_context);
 	success &= m_indirectDiffusePass->Initialize(m_context);
+	success &= m_surfelGIManager->Init(m_context, SurfelGISettings{});
 	success &= m_lightingPass->Initialize(m_context);
 	success &= m_bloomPass->Initialize(m_context);
 	success &= m_taaPass->Initialize(m_context);
@@ -343,8 +434,6 @@ std::size_t ModularRenderer::PlanCacheKeyHash::operator()(const PlanCacheKey& ke
 	hashCombine(key.enableSSAO);
 	hashCombine(key.enableIndirectDiffuse);
 	hashCombine(key.enableSurfelGI);
-	hashCombine(key.enableSurfelIndirectDiffuse);
-	hashCombine(key.presentSurfelGIDebug);
 	hashCombine(key.presentIndirectDiffuseDebug);
 	hashCombine(key.enableScreenSpaceShadows);
 	hashCombine(key.enableLPV);
@@ -379,14 +468,7 @@ ModularRenderer::PlanCacheKey ModularRenderer::BuildPlanCacheKey() const
 	key.enableBloom = m_context.enableBloom;
 	key.enableSSAO = m_context.enableSSAO;
 	key.enableIndirectDiffuse = m_context.enableIndirectDiffuse;
-	key.enableSurfelGI = m_context.enableSurfelGI;
-	key.enableSurfelIndirectDiffuse =
-		m_context.enableSurfelGI &&
-		m_context.enableSurfelIndirectDiffuse;
-	key.presentSurfelGIDebug =
-		m_context.enableSurfelGI &&
-		m_context.surfelGIDebugMode > 0 &&
-		key.mode == FrameGraphMode::DEFERRED;
+	key.enableSurfelGI = m_surfelGIManager && m_surfelGIManager->GetSettings().enabled;
 	key.presentIndirectDiffuseDebug =
 		m_context.enableIndirectDiffuse &&
 		m_context.indirectDiffuseDebugStage > 0 &&
@@ -395,6 +477,73 @@ ModularRenderer::PlanCacheKey ModularRenderer::BuildPlanCacheKey() const
 	key.enableLPV = m_context.enableLPV;
 	key.enableTAA = m_context.enableTAA;
 	return key;
+}
+
+void ModularRenderer::SyncCleanSurfelGISettings()
+{
+	if (!m_surfelGIManager) {
+		return;
+	}
+
+	SurfelGISettings settings = m_surfelGIManager->GetSettings();
+	const bool forcedOnForValidation = IsEnvVarEnabled("NOX_ENABLE_SURFEL_GI");
+	const bool forcedOffForValidation = IsEnvVarEnabled("NOX_DISABLE_SURFEL_GI");
+	settings.enabled = !forcedOffForValidation && (m_context.enableCleanSurfelGI || forcedOnForValidation);
+	if (forcedOnForValidation) {
+		m_context.enableCleanSurfelGI = true;
+	}
+	if (forcedOffForValidation) {
+		m_context.enableCleanSurfelGI = false;
+	}
+
+	settings.qualityTier = static_cast<SurfelGIQualityTier>(
+		std::clamp(m_context.cleanSurfelGIQualityTier, 0, 3));
+	settings.debugView = static_cast<SurfelGIDebugView>(
+		std::clamp(m_context.cleanSurfelGIDebugView, 0, 16));
+	settings.maxSurfels = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxSurfels, 1024));
+	settings.maxRayBudget = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxRayBudget, 1024));
+	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGISpawnTileSize, 4, 64));
+	settings.maxSurfelsPerCell = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGIMaxSurfelsPerCell, 8, 256));
+	settings.maxGatherSurfelsPerPixel = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGIMaxGatherSurfelsPerPixel, 4, 2048));
+	settings.targetSurfelScreenRadiusPx = std::max(m_context.cleanSurfelGITargetRadiusPixels, 1.0f);
+	settings.minSurfelRadius = std::max(m_context.cleanSurfelGIMinRadius, 0.001f);
+	settings.maxSurfelRadius = std::max(m_context.cleanSurfelGIMaxRadius, settings.minSurfelRadius);
+	settings.spawnCoverageThreshold = std::clamp(m_context.cleanSurfelGICoverageThreshold, 0.05f, 2.0f);
+	settings.recyclePressureStart = std::clamp(m_context.cleanSurfelGIRecyclePressure, 0.1f, 0.99f);
+	settings.normalRejectCos = std::clamp(m_context.cleanSurfelGINormalReject, -0.2f, 0.95f);
+	settings.finalGatherNormalCos = std::clamp(m_context.cleanSurfelGIFinalGatherNormalReject, -0.2f, 0.95f);
+	settings.radialDepthSigmaScale = std::max(m_context.cleanSurfelGIRadialDepthVariance, 1.0e-6f);
+	settings.indirectIntensity = std::max(m_context.cleanSurfelGIIntensity, 0.0f);
+	settings.useRadialDepth = m_context.cleanSurfelGIUseRadialDepth;
+	settings.useRayGuiding = m_context.cleanSurfelGIUseRayGuiding;
+	settings.useRayBinning = m_context.cleanSurfelGIUseRayBinning;
+	settings.useScreenSpaceTrace = m_context.cleanSurfelGIUseScreenTrace;
+	settings.useSurfelFallbackTrace = m_context.cleanSurfelGIUseSurfelFallbackTrace;
+
+	if (forcedOnForValidation) {
+		settings.debugView = static_cast<SurfelGIDebugView>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 16));
+		settings.maxSurfels = static_cast<uint32_t>(
+			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_SURFELS", static_cast<int>(settings.maxSurfels)), 1024));
+		settings.maxRayBudget = static_cast<uint32_t>(
+			std::max(GetEnvVarInt("NOX_SURFEL_GI_RAY_BUDGET", static_cast<int>(settings.maxRayBudget)), 1024));
+		settings.indirectIntensity = std::max(GetEnvVarFloat("NOX_SURFEL_GI_INTENSITY", settings.indirectIntensity), 0.0f);
+		m_context.lightingCompositeDebugMode = std::clamp(
+			GetEnvVarInt("NOX_SURFEL_GI_COMPOSITE_DEBUG", m_context.lightingCompositeDebugMode),
+			0,
+			5);
+	}
+	else {
+		m_context.lightingCompositeDebugMode = std::clamp(
+			GetEnvVarInt("NOX_LIGHTING_COMPOSITE_DEBUG", m_context.lightingCompositeDebugMode),
+			0,
+			5);
+	}
+
+	const bool captureMode = IsEnvVarEnabled("NOX_SURFEL_GI_CAPTURE");
+	ApplyCleanSurfelGIRealtimeBudget(settings, captureMode);
+
+	m_surfelGIManager->SetSettings(settings);
 }
 
 std::vector<ModularRenderer::ResourceHandle> ModularRenderer::GetRequiredOutputsForKey(const PlanCacheKey& key) const
@@ -407,9 +556,6 @@ std::vector<ModularRenderer::ResourceHandle> ModularRenderer::GetRequiredOutputs
 	}
 	if (key.presentIndirectDiffuseDebug) {
 		return { "Backbuffer", ResourceNames::IndirectDiffuseDebug };
-	}
-	if (key.presentSurfelGIDebug) {
-		return { "Backbuffer", "HDRColor", ResourceNames::SurfelDebug };
 	}
 	return { "Backbuffer", "HDRColor" };
 }
@@ -582,17 +728,19 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"SurfelGIPass", { "GBuffer", "TransformHistory" }, { ResourceNames::SurfelField, ResourceNames::SurfelGrid },
-		[this](const RenderContext& ctx) {
-			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.enableSurfelGI;
+		"SurfelGIUpdatePass", { "GBuffer", "TransformHistory" }, { ResourceNames::SurfelGIIndirect },
+		[this](const RenderContext&) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				m_surfelGIManager &&
+				m_surfelGIManager->GetSettings().enabled;
 		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
-			if (!m_surfelGIPass) {
-				return;
+			m_surfelGIManager->BeginFrame(m_context, sceneGraph, camera);
+			m_surfelGIManager->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			if (m_context.hdrFBO) {
+				m_surfelGIManager->ApplyIndirect(m_context, *m_context.hdrFBO);
 			}
-			m_surfelGIPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-			m_namedResources[ResourceNames::SurfelField] = m_surfelGIPass->GetSurfelBuffer();
-			m_namedResources[ResourceNames::SurfelGrid] = m_surfelGIPass->GetGridHeaderBuffer();
+			m_namedResources[ResourceNames::SurfelGIIndirect] = m_surfelGIManager->GetIndirectTexture();
 		}
 		});
 	addPass({
@@ -644,8 +792,7 @@ void ModularRenderer::BuildPassDescriptors(
 		"TAAVelocityPass", { "GBuffer" }, { "Velocity" },
 		[](const RenderContext& ctx) {
 			return ctx.enableTAA ||
-				ctx.enableIndirectDiffuse ||
-				(ctx.enableSurfelGI && ctx.enableSurfelIndirectDiffuse);
+				ctx.enableIndirectDiffuse;
 		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (m_taaPass) {
@@ -682,24 +829,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"SurfelIndirectDiffusePass", { "GBuffer", "Velocity", ResourceNames::SurfelField, ResourceNames::SurfelGrid }, { ResourceNames::SurfelIndirectDiffuse, ResourceNames::SurfelIndirectDiffuseDebug },
-		[this](const RenderContext& ctx) {
-			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
-				ctx.enableSurfelGI &&
-				ctx.enableSurfelIndirectDiffuse &&
-				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
-		},
-		[this, &sceneGraph, &camera, &lighting, &skybox]() {
-			if (!m_surfelIndirectDiffusePass) {
-				return;
-			}
-			m_surfelIndirectDiffusePass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-			m_namedResources[ResourceNames::SurfelIndirectDiffuse] = m_surfelIndirectDiffusePass->GetIrradianceTexture();
-			m_namedResources[ResourceNames::SurfelIndirectDiffuseDebug] = m_surfelIndirectDiffusePass->GetDebugTexture();
-		}
-		});
-	addPass({
-		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVIndirect, ResourceNames::SurfelIndirectDiffuse }, { "HDRLit" },
+		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVIndirect, ResourceNames::SurfelGIIndirect }, { "HDRLit" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -708,9 +838,7 @@ void ModularRenderer::BuildPassDescriptors(
 			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
 			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
 			m_lightingPass->ClearIndirectDiffuseSources();
-			const bool surfelValidationActive =
-				m_context.enableSurfelGI &&
-				m_context.surfelGIDebug.validationMode != RenderContext::SurfelGIDebugSettings::Production;
+			const bool surfelValidationActive = false;
 			if (m_context.enableIndirectDiffuse && !surfelValidationActive) {
 				m_lightingPass->SetIndirectDiffuseSource(
 					0,
@@ -723,7 +851,14 @@ void ModularRenderer::BuildPassDescriptors(
 					m_namedResources[ResourceNames::LPVIndirect],
 					1.0f);
 			}
-			m_lightingPass->SetSurfelIndirectDiffuseTexture(m_namedResources[ResourceNames::SurfelIndirectDiffuse]);
+			if (m_surfelGIManager &&
+				m_surfelGIManager->GetSettings().enabled &&
+				m_namedResources[ResourceNames::SurfelGIIndirect] != 0u) {
+				m_lightingPass->SetIndirectDiffuseSource(
+					2,
+					m_namedResources[ResourceNames::SurfelGIIndirect],
+					m_surfelGIManager->GetSettings().indirectIntensity);
+			}
 			m_lightingPass->SetOutputMode(LightingPass::OutputMode::FullLighting);
 			m_lightingPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
 		}
@@ -785,15 +920,11 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"OverlayComposePass", { "CompositedColor", ResourceNames::SurfelField, ResourceNames::SurfelGrid }, { "OverlayColor", ResourceNames::SurfelDebug },
+		"OverlayComposePass", { "CompositedColor" }, { "OverlayColor" },
 		[](const RenderContext& ctx) { return !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0); },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
 			if (m_context.showBoundingBoxes) {
 				m_debugBBoxPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-			}
-			if (m_surfelGIPass && m_context.enableSurfelGI && m_context.surfelGIDebugMode > 0) {
-				m_surfelGIPass->RenderDebug(m_context);
-				m_namedResources[ResourceNames::SurfelDebug] = m_surfelGIPass->GetSurfelBuffer();
 			}
 		}
 		});
@@ -904,9 +1035,8 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_rtPass) m_rtPass->Resize(m_context, newWidth, newHeight);  // Resize path tracing pass
 	if (m_ssaoPass) m_ssaoPass->Resize(m_context, newWidth, newHeight);
 	if (m_screenSpaceShadowPass) m_screenSpaceShadowPass->Resize(m_context, newWidth, newHeight);
-	if (m_surfelGIPass) m_surfelGIPass->Resize(m_context, newWidth, newHeight);
-	if (m_surfelIndirectDiffusePass) m_surfelIndirectDiffusePass->Resize(m_context, newWidth, newHeight);
 	if (m_indirectDiffusePass) m_indirectDiffusePass->Resize(m_context, newWidth, newHeight);
+	if (m_surfelGIManager) m_surfelGIManager->Resize(m_context, static_cast<uint32_t>(newWidth), static_cast<uint32_t>(newHeight));
 	if (m_lightingPass) m_lightingPass->Resize(m_context, newWidth, newHeight);
 	if (m_bloomPass) m_bloomPass->Resize(m_context, newWidth, newHeight);
 	if (m_taaPass) m_taaPass->Resize(m_context, newWidth, newHeight);
@@ -963,6 +1093,8 @@ void ModularRenderer::UpdateContext(const std::shared_ptr<Camera>& camera,
 
 	m_context.view = view;
 	m_context.proj = proj;
+	QuarantineDeprecatedSurfelGI(m_context);
+	SyncCleanSurfelGISettings();
 }
 
 
@@ -1067,14 +1199,10 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	m_namedResources.clear();
 	m_namedResources[ResourceNames::SSAO] = 0;
 	m_namedResources[ResourceNames::ScreenSpaceShadow] = 0;
-	m_namedResources[ResourceNames::SurfelField] = 0;
-	m_namedResources[ResourceNames::SurfelGrid] = 0;
-	m_namedResources[ResourceNames::SurfelDebug] = 0;
-	m_namedResources[ResourceNames::SurfelIndirectDiffuse] = 0;
-	m_namedResources[ResourceNames::SurfelIndirectDiffuseDebug] = 0;
 	m_namedResources[ResourceNames::BounceableRadiance] = 0;
 	m_namedResources[ResourceNames::IndirectDiffuse] = 0;
 	m_namedResources[ResourceNames::IndirectDiffuseDebug] = 0;
+	m_namedResources[ResourceNames::SurfelGIIndirect] = 0;
 	m_namedResources[ResourceNames::Bloom] = 0;
 	m_namedResources[ResourceNames::LPVIndirect] = 0;
 
@@ -1086,6 +1214,35 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		planIt = m_planCache.emplace(key, std::move(compiledPlan)).first;
 	}
 	ExecuteFramePlan(planIt->second);
+
+	if (m_surfelGIManager &&
+		m_surfelGIManager->GetSettings().enabled &&
+		m_surfelGIManager->GetSettings().debugView != SurfelGIDebugView::Off) {
+		m_profilePassFunc("SurfelGIDebugPass", [this]() {
+			m_surfelGIManager->RenderDebug(m_context);
+		});
+		CheckGLError("SurfelGIDebugPass");
+	}
+
+	if (IsEnvVarEnabled("NOX_LOG_PASS_METRICS")) {
+		static uint32_t metricsLogFrame = 0;
+		const uint32_t interval = static_cast<uint32_t>(
+			std::max(GetEnvVarInt("NOX_LOG_PASS_METRICS_INTERVAL", 120), 1));
+		if ((metricsLogFrame++ % interval) == 0u) {
+			std::cout << "[FramePassMetrics] begin frame=" << metricsLogFrame
+				<< " passCount=" << m_lastPassMetrics.size() << std::endl;
+			for (const auto& metric : m_lastPassMetrics) {
+				std::cout << "[FramePassMetrics] pass=" << metric.name
+					<< " cpuMs=" << metric.cpuTimeMs
+					<< " gpuMs=" << metric.gpuTimeMs
+					<< " dispatches=" << metric.dispatchCount
+					<< " drawCalls=" << metric.drawCalls
+					<< " cpuWaitMs=" << metric.cpuWaitSyncMs
+					<< std::endl;
+			}
+			std::cout << "[FramePassMetrics] end" << std::endl;
+		}
+	}
 }
 
 void ModularRenderer::visualizeDebugMode(RenderContext& ctx)

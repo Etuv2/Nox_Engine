@@ -1,0 +1,261 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
+{
+    SurfelCellEntry gridEntries[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) readonly buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+layout(binding = B_RAYS_IN, std430) readonly buffer SurfelRayBuffer
+{
+    SurfelRay rays[];
+};
+
+layout(binding = B_RAY_HITS, std430) buffer SurfelRayHitBuffer
+{
+    SurfelRayHit hits[];
+};
+
+uniform uint uActiveRayCount;
+uniform uint uMaxRays;
+uniform uint uMaxSurfels;
+uniform uint uGridCellCount;
+uniform uint uMaxSurfelsPerCell;
+uniform uvec3 uGridResolution;
+uniform vec3 uGridMin;
+uniform vec3 uGridMax;
+uniform float uNormalRejectCos;
+uniform vec3 uDirectionalLightDirection;
+uniform vec3 uDirectionalLightRadiance;
+uniform vec3 uSkyRadiance;
+
+const uint SURFEL_TRACE_STEPS = 8u;
+const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
+const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
+const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 8u;
+const uint SURFEL_TRACE_MAX_CANDIDATES = 64u;
+const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 1.6;
+const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
+const float SURFEL_TRACE_MISS_KIND = 0.0;
+const float SURFEL_INV_PI = 0.3183098861837907;
+
+struct TraceGather
+{
+    vec3 radiance;
+    vec3 normal;
+    vec3 position;
+    float weight;
+    float closestT;
+    uint hitSurfelID;
+    uint candidatesTested;
+};
+
+void TraceGatherInit(out TraceGather gather, vec3 missPosition)
+{
+    gather.radiance = vec3(0.0);
+    gather.normal = vec3(0.0, 1.0, 0.0);
+    gather.position = missPosition;
+    gather.weight = 0.0;
+    gather.closestT = 3.402823466e+38;
+    gather.hitSurfelID = SURFEL_INVALID_INDEX;
+    gather.candidatesTested = 0u;
+}
+
+void TraceGatherSurfel(SurfelRay ray,
+                       vec3 origin,
+                       vec3 direction,
+                       float tMin,
+                       float tMax,
+                       uint surfelID,
+                       inout TraceGather gather)
+{
+    if (surfelID >= uMaxSurfels || surfelID == ray.ids.x) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    vec3 surfelPos = surfel.worldPos_radius.xyz;
+    vec3 toSurfel = surfelPos - origin;
+    float t = dot(toSurfel, direction);
+    if (t < tMin || t > tMax) {
+        return;
+    }
+
+    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float facing = dot(surfelNormal, -direction);
+    if (facing <= uNormalRejectCos) {
+        return;
+    }
+
+    vec3 closestPoint = origin + direction * t;
+    vec3 radialDelta = closestPoint - surfelPos;
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    float hitRadius = max(radius * 2.4, 0.03);
+    float radialDistSq = dot(radialDelta, radialDelta);
+    if (radialDistSq > hitRadius * hitRadius) {
+        return;
+    }
+
+    float radialWeight = exp(-radialDistSq / max(hitRadius * hitRadius, 1e-4));
+    float normalWeight = SurfelSaturate((facing - uNormalRejectCos) / max(1.0 - uNormalRejectCos, 1e-4));
+    float confidence = max(surfel.irradiance.a, 0.05);
+    float weight = radialWeight * normalWeight * confidence;
+    if (weight <= 1e-5) {
+        return;
+    }
+
+    vec3 albedo = max(surfel.albedo_life.rgb, vec3(0.0));
+    vec3 lightToSurface = SurfelSafeNormalize(uDirectionalLightDirection);
+    vec3 surfaceToLight = -lightToSurface;
+    float nDotL = max(dot(surfelNormal, surfaceToLight), 0.0);
+    vec3 directIrradiance = uDirectionalLightRadiance * nDotL;
+    vec3 skyIrradiance = uSkyRadiance * max(surfelNormal.y, 0.0);
+    vec3 bounced = albedo * SURFEL_INV_PI * (directIrradiance + skyIrradiance + max(surfel.irradiance.rgb, vec3(0.0)));
+    gather.radiance += bounced * weight;
+    gather.normal += surfelNormal * weight;
+    gather.weight += weight;
+
+    if (t < gather.closestT) {
+        gather.closestT = t;
+        gather.position = surfelPos;
+        gather.hitSurfelID = surfelID;
+    }
+}
+
+void TraceGatherCell(SurfelRay ray,
+                     vec3 origin,
+                     vec3 direction,
+                     float tMin,
+                     float tMax,
+                     uint cell,
+                     inout TraceGather gather)
+{
+    if (cell >= uGridCellCount ||
+        uMaxSurfelsPerCell == 0u ||
+        gather.candidatesTested >= SURFEL_TRACE_MAX_CANDIDATES ||
+        gather.weight >= SURFEL_TRACE_EARLY_HIT_WEIGHT) {
+        return;
+    }
+
+    SurfelCellHeader header = gridHeaders[cell];
+    uint count = min(header.entryCount, uMaxSurfelsPerCell);
+    uint budget = min(min(count, SURFEL_TRACE_MAX_CELL_ENTRIES), SURFEL_TRACE_MAX_CANDIDATES - gather.candidatesTested);
+    uint firstEntry = header.firstEntry;
+    if (firstEntry == 0u && cell != 0u) {
+        firstEntry = cell * uMaxSurfelsPerCell;
+    }
+
+    for (uint i = 0u; i < budget; ++i) {
+        SurfelCellEntry entry = gridEntries[firstEntry + i];
+        ++gather.candidatesTested;
+        TraceGatherSurfel(ray, origin, direction, tMin, tMax, entry.surfelID, gather);
+        if (gather.weight >= SURFEL_TRACE_EARLY_HIT_WEIGHT) {
+            break;
+        }
+    }
+
+}
+
+void TraceGatherAroundPoint(SurfelRay ray,
+                            vec3 origin,
+                            vec3 direction,
+                            float tMin,
+                            float tMax,
+                            vec3 worldPos,
+                            inout TraceGather gather)
+{
+    uvec3 baseCell;
+    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell)) {
+        return;
+    }
+
+    for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
+        if (gather.candidatesTested >= SURFEL_TRACE_MAX_CANDIDATES ||
+            gather.weight >= SURFEL_TRACE_EARLY_HIT_WEIGHT) {
+            break;
+        }
+
+        ivec3 c = ivec3(baseCell) + (SURFEL_TRACE_NEIGHBOR_RADIUS > 0u ? SurfelCubeNeighborOffset(i) : SurfelCrossNeighborOffset(i));
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+            continue;
+        }
+
+        TraceGatherCell(ray, origin, direction, tMin, tMax, SurfelFlattenCell(uvec3(c), uGridResolution), gather);
+    }
+}
+
+TraceGather TraceSurfelGrid(SurfelRay ray)
+{
+    vec3 direction = SurfelSafeNormalize(ray.direction_tMax.xyz);
+    float tMin = max(ray.origin_tMin.w, 0.0);
+    float tMax = max(ray.direction_tMax.w, tMin);
+    vec3 missPosition = ray.origin_tMin.xyz + direction * tMax;
+
+    TraceGather gather;
+    TraceGatherInit(gather, missPosition);
+
+    if (uGridCellCount == 0u || uMaxSurfelsPerCell == 0u || any(equal(uGridResolution, uvec3(0u))) || tMax <= tMin) {
+        return gather;
+    }
+
+    float segment = tMax - tMin;
+    for (uint step = 0u; step < SURFEL_TRACE_STEPS; ++step) {
+        float u = (float(step) + 0.5) / float(SURFEL_TRACE_STEPS);
+        float t = tMin + segment * u;
+        TraceGatherAroundPoint(ray, ray.origin_tMin.xyz, direction, tMin, tMax, ray.origin_tMin.xyz + direction * t, gather);
+        if (gather.candidatesTested >= SURFEL_TRACE_MAX_CANDIDATES ||
+            gather.weight >= SURFEL_TRACE_EARLY_HIT_WEIGHT) {
+            break;
+        }
+    }
+
+    if (gather.weight > 1e-5) {
+        gather.radiance /= gather.weight;
+        gather.normal = SurfelSafeNormalize(gather.normal);
+    }
+    return gather;
+}
+
+void main()
+{
+    uint rayID = gl_GlobalInvocationID.x;
+    uint activeRayLimit = min(min(uActiveRayCount, uMaxRays), counters.allocatedRays);
+    if (rayID >= activeRayLimit) {
+        return;
+    }
+
+    SurfelRay ray = rays[rayID];
+    TraceGather gather = TraceSurfelGrid(ray);
+    bool hit = gather.weight > 1e-5;
+    if (!hit) {
+        vec3 rayDir = SurfelSafeNormalize(ray.direction_tMax.xyz);
+        gather.radiance = uSkyRadiance * max(rayDir.y, 0.0);
+    }
+
+    hits[rayID].position_t = vec4(gather.position, hit ? gather.closestT : -1.0);
+    hits[rayID].normal_hitKind = vec4(gather.normal, hit ? SURFEL_TRACE_HIT_KIND_GRID : SURFEL_TRACE_MISS_KIND);
+    hits[rayID].radiance_pdf = vec4(gather.radiance * max(ray.throughput.rgb, vec3(0.0)), ray.throughput.a);
+    hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, 0u);
+}

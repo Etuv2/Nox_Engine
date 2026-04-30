@@ -1,10 +1,8 @@
 ﻿#include "RenderingSettingsWindow.h"
 #include "../ModularRenderer.h"
 #include "../RenderContext.h"
-#include "../RTSceneResources.h"
 #include "../LightManager.h"
 #include "../passes/IndirectDiffusePass.h"
-#include "../passes/SurfelGIPass.h"
 #include <IMGUI/imgui.h>
 #include <algorithm>
 #include <iostream>
@@ -152,7 +150,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGITLASBVHLayerToDisplay = 0;
 	m_surfelGIDebugSettings = RenderContext::SurfelGIDebugSettings{};
 	m_surfelGIDebugMode = 0;
-	m_enableSurfelIndirectDiffuse = true;
+	m_enableSurfelIndirectDiffuse = false;
 	m_surfelIndirectDiffuseStrength = 1.0f;
 	m_surfelIndirectDiffuseDebugMode = 0;
 	m_surfelIndirectDiffuseNeighborRadius = 1;
@@ -161,6 +159,28 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelIndirectDiffuseFallbackStrength = 0.65f;
 	m_surfelUseLegacyFragmentGather = false;
 	m_lightingCompositeDebugMode = 0;
+	m_enableCleanSurfelGI = false;
+	m_cleanSurfelGIQualityTier = 1;
+	m_cleanSurfelGIDebugView = 0;
+	m_cleanSurfelGIMaxSurfels = 131072;
+	m_cleanSurfelGIMaxRayBudget = 32768;
+	m_cleanSurfelGISpawnTileSize = 8;
+	m_cleanSurfelGIMaxSurfelsPerCell = 64;
+	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
+	m_cleanSurfelGITargetRadiusPixels = 3.0f;
+	m_cleanSurfelGIMinRadius = 0.03f;
+	m_cleanSurfelGIMaxRadius = 5.0f;
+	m_cleanSurfelGICoverageThreshold = 0.85f;
+	m_cleanSurfelGIRecyclePressure = 0.85f;
+	m_cleanSurfelGINormalReject = 0.25f;
+	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
+	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
+	m_cleanSurfelGIIntensity = 1.0f;
+	m_cleanSurfelGIUseRadialDepth = false;
+	m_cleanSurfelGIUseRayGuiding = false;
+	m_cleanSurfelGIUseRayBinning = true;
+	m_cleanSurfelGIUseScreenTrace = true;
+	m_cleanSurfelGIUseSurfelFallbackTrace = true;
 
 	// Screen-space contact shadows
 	m_sssResolutionScale = 0.5f;
@@ -291,7 +311,7 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_indirectDiffuseValidationDisableReinjection = ctx.indirectDiffuseValidationDisableReinjection;
 	m_indirectDiffuseValidationDisableTemporal = ctx.indirectDiffuseValidationDisableTemporal;
 	m_indirectDiffuseValidationDisableDenoise = ctx.indirectDiffuseValidationDisableDenoise;
-	m_enableSurfelGI = ctx.enableSurfelGI;
+	m_enableSurfelGI = false;
 	m_surfelGITileSize = ctx.surfelGITileSize;
 	m_surfelGITargetRadiusPixels = ctx.surfelGITargetRadiusPixels;
 	m_surfelGICoverageThreshold = ctx.surfelGICoverageThreshold;
@@ -320,26 +340,41 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_surfelGITLASHeatmapColorLimit = ctx.surfelGITLASHeatmapColorLimit;
 	m_surfelGITLASDisplayMultipleBVHLayers = ctx.surfelGITLASDisplayMultipleBVHLayers;
 	m_surfelGITLASBVHLayerToDisplay = ctx.surfelGITLASBVHLayerToDisplay;
-	m_surfelGIDebugSettings = ctx.surfelGIDebug;
-	if (m_surfelGIDebugSettings.surfelDebugView == 0 && ctx.surfelGIDebugMode != 0) {
-		m_surfelGIDebugSettings.surfelDebugView = ctx.surfelGIDebugMode;
-	}
-	if (m_surfelGIDebugSettings.gatherDebugView == 0 && ctx.surfelIndirectDiffuseDebugMode != 0) {
-		m_surfelGIDebugSettings.gatherDebugView = ctx.surfelIndirectDiffuseDebugMode;
-	}
-	if (m_surfelGIDebugSettings.compositeDebugView == 0 && ctx.lightingCompositeDebugMode != 0) {
-		m_surfelGIDebugSettings.compositeDebugView = ctx.lightingCompositeDebugMode;
-	}
-	m_surfelGIDebugMode = m_surfelGIDebugSettings.surfelDebugView;
-	m_enableSurfelIndirectDiffuse = ctx.enableSurfelIndirectDiffuse;
+	m_surfelGIDebugSettings = RenderContext::SurfelGIDebugSettings{};
+	m_surfelGIDebugMode = 0;
+	m_enableSurfelIndirectDiffuse = false;
 	m_surfelIndirectDiffuseStrength = ctx.surfelIndirectDiffuseStrength;
-	m_surfelIndirectDiffuseDebugMode = m_surfelGIDebugSettings.gatherDebugView;
+	m_surfelIndirectDiffuseDebugMode = 0;
 	m_surfelIndirectDiffuseNeighborRadius = ctx.surfelIndirectDiffuseNeighborRadius;
 	m_surfelIndirectDiffuseMaxCandidates = ctx.surfelIndirectDiffuseMaxCandidates;
 	m_surfelIndirectDiffuseMaxAccepted = ctx.surfelIndirectDiffuseMaxAccepted;
 	m_surfelIndirectDiffuseFallbackStrength = ctx.surfelIndirectDiffuseFallbackStrength;
-	m_surfelUseLegacyFragmentGather = ctx.surfelUseLegacyFragmentGather;
-	m_lightingCompositeDebugMode = m_surfelGIDebugSettings.compositeDebugView;
+	m_surfelUseLegacyFragmentGather = false;
+	m_lightingCompositeDebugMode = ctx.lightingCompositeDebugMode == 6
+		? 0
+		: ctx.lightingCompositeDebugMode;
+	m_enableCleanSurfelGI = ctx.enableCleanSurfelGI;
+	m_cleanSurfelGIQualityTier = ctx.cleanSurfelGIQualityTier;
+	m_cleanSurfelGIDebugView = ctx.cleanSurfelGIDebugView;
+	m_cleanSurfelGIMaxSurfels = ctx.cleanSurfelGIMaxSurfels;
+	m_cleanSurfelGIMaxRayBudget = ctx.cleanSurfelGIMaxRayBudget;
+	m_cleanSurfelGISpawnTileSize = ctx.cleanSurfelGISpawnTileSize;
+	m_cleanSurfelGIMaxSurfelsPerCell = ctx.cleanSurfelGIMaxSurfelsPerCell;
+	m_cleanSurfelGIMaxGatherSurfelsPerPixel = ctx.cleanSurfelGIMaxGatherSurfelsPerPixel;
+	m_cleanSurfelGITargetRadiusPixels = ctx.cleanSurfelGITargetRadiusPixels;
+	m_cleanSurfelGIMinRadius = ctx.cleanSurfelGIMinRadius;
+	m_cleanSurfelGIMaxRadius = ctx.cleanSurfelGIMaxRadius;
+	m_cleanSurfelGICoverageThreshold = ctx.cleanSurfelGICoverageThreshold;
+	m_cleanSurfelGIRecyclePressure = ctx.cleanSurfelGIRecyclePressure;
+	m_cleanSurfelGINormalReject = ctx.cleanSurfelGINormalReject;
+	m_cleanSurfelGIFinalGatherNormalReject = ctx.cleanSurfelGIFinalGatherNormalReject;
+	m_cleanSurfelGIRadialDepthVariance = ctx.cleanSurfelGIRadialDepthVariance;
+	m_cleanSurfelGIIntensity = ctx.cleanSurfelGIIntensity;
+	m_cleanSurfelGIUseRadialDepth = ctx.cleanSurfelGIUseRadialDepth;
+	m_cleanSurfelGIUseRayGuiding = ctx.cleanSurfelGIUseRayGuiding;
+	m_cleanSurfelGIUseRayBinning = ctx.cleanSurfelGIUseRayBinning;
+	m_cleanSurfelGIUseScreenTrace = ctx.cleanSurfelGIUseScreenTrace;
+	m_cleanSurfelGIUseSurfelFallbackTrace = ctx.cleanSurfelGIUseSurfelFallbackTrace;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -489,7 +524,8 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.indirectDiffuseValidationDisableReinjection = m_indirectDiffuseValidationDisableReinjection;
 	ctx.indirectDiffuseValidationDisableTemporal = m_indirectDiffuseValidationDisableTemporal;
 	ctx.indirectDiffuseValidationDisableDenoise = m_indirectDiffuseValidationDisableDenoise;
-	ctx.enableSurfelGI = m_enableSurfelGI;
+	m_enableSurfelGI = false;
+	ctx.enableSurfelGI = false;
 	ctx.surfelGITileSize = m_surfelGITileSize;
 	ctx.surfelGITargetRadiusPixels = m_surfelGITargetRadiusPixels;
 	ctx.surfelGICoverageThreshold = m_surfelGICoverageThreshold;
@@ -518,20 +554,58 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.surfelGITLASHeatmapColorLimit = m_surfelGITLASHeatmapColorLimit;
 	ctx.surfelGITLASDisplayMultipleBVHLayers = m_surfelGITLASDisplayMultipleBVHLayers;
 	ctx.surfelGITLASBVHLayerToDisplay = m_surfelGITLASBVHLayerToDisplay;
-	m_surfelGIDebugSettings.surfelDebugView = m_surfelGIDebugMode;
-	m_surfelGIDebugSettings.gatherDebugView = m_surfelIndirectDiffuseDebugMode;
+	m_surfelGIDebugSettings = RenderContext::SurfelGIDebugSettings{};
+	m_surfelGIDebugMode = 0;
+	m_surfelIndirectDiffuseDebugMode = 0;
+	m_enableSurfelIndirectDiffuse = false;
+	m_surfelUseLegacyFragmentGather = false;
 	m_surfelGIDebugSettings.compositeDebugView = m_lightingCompositeDebugMode;
 	ctx.surfelGIDebug = m_surfelGIDebugSettings;
-	ctx.surfelGIDebugMode = m_surfelGIDebugMode;
-	ctx.enableSurfelIndirectDiffuse = m_enableSurfelIndirectDiffuse;
+	ctx.surfelGIDebugMode = 0;
+	ctx.enableSurfelIndirectDiffuse = false;
 	ctx.surfelIndirectDiffuseStrength = m_surfelIndirectDiffuseStrength;
-	ctx.surfelIndirectDiffuseDebugMode = m_surfelIndirectDiffuseDebugMode;
+	ctx.surfelIndirectDiffuseDebugMode = 0;
 	ctx.surfelIndirectDiffuseNeighborRadius = m_surfelIndirectDiffuseNeighborRadius;
 	ctx.surfelIndirectDiffuseMaxCandidates = m_surfelIndirectDiffuseMaxCandidates;
 	ctx.surfelIndirectDiffuseMaxAccepted = m_surfelIndirectDiffuseMaxAccepted;
 	ctx.surfelIndirectDiffuseFallbackStrength = m_surfelIndirectDiffuseFallbackStrength;
-	ctx.surfelUseLegacyFragmentGather = m_surfelUseLegacyFragmentGather;
+	ctx.surfelUseLegacyFragmentGather = false;
+	ctx.surfelGISurfelBuffer = 0;
+	ctx.surfelGIHeaderBuffer = 0;
+	ctx.surfelGIGridHeaderBuffer = 0;
+	ctx.surfelGIGridEntryBuffer = 0;
+	ctx.surfelGIGridAverageBuffer = 0;
+	ctx.surfelGIRadialDepthBinsBuffer = 0;
+	ctx.surfelGIIrradianceHeaderBuffer = 0;
+	ctx.surfelGIWinnerIDTexture = 0;
+	ctx.surfelGIApplyStrength = 0.0f;
+	ctx.surfelGIGridReady = false;
+	if (m_lightingCompositeDebugMode == 6) {
+		m_lightingCompositeDebugMode = 0;
+	}
 	ctx.lightingCompositeDebugMode = m_lightingCompositeDebugMode;
+	ctx.enableCleanSurfelGI = m_enableCleanSurfelGI;
+	ctx.cleanSurfelGIQualityTier = m_cleanSurfelGIQualityTier;
+	ctx.cleanSurfelGIDebugView = m_cleanSurfelGIDebugView;
+	ctx.cleanSurfelGIMaxSurfels = m_cleanSurfelGIMaxSurfels;
+	ctx.cleanSurfelGIMaxRayBudget = m_cleanSurfelGIMaxRayBudget;
+	ctx.cleanSurfelGISpawnTileSize = m_cleanSurfelGISpawnTileSize;
+	ctx.cleanSurfelGIMaxSurfelsPerCell = m_cleanSurfelGIMaxSurfelsPerCell;
+	ctx.cleanSurfelGIMaxGatherSurfelsPerPixel = m_cleanSurfelGIMaxGatherSurfelsPerPixel;
+	ctx.cleanSurfelGITargetRadiusPixels = m_cleanSurfelGITargetRadiusPixels;
+	ctx.cleanSurfelGIMinRadius = m_cleanSurfelGIMinRadius;
+	ctx.cleanSurfelGIMaxRadius = m_cleanSurfelGIMaxRadius;
+	ctx.cleanSurfelGICoverageThreshold = m_cleanSurfelGICoverageThreshold;
+	ctx.cleanSurfelGIRecyclePressure = m_cleanSurfelGIRecyclePressure;
+	ctx.cleanSurfelGINormalReject = m_cleanSurfelGINormalReject;
+	ctx.cleanSurfelGIFinalGatherNormalReject = m_cleanSurfelGIFinalGatherNormalReject;
+	ctx.cleanSurfelGIRadialDepthVariance = m_cleanSurfelGIRadialDepthVariance;
+	ctx.cleanSurfelGIIntensity = m_cleanSurfelGIIntensity;
+	ctx.cleanSurfelGIUseRadialDepth = m_cleanSurfelGIUseRadialDepth;
+	ctx.cleanSurfelGIUseRayGuiding = m_cleanSurfelGIUseRayGuiding;
+	ctx.cleanSurfelGIUseRayBinning = m_cleanSurfelGIUseRayBinning;
+	ctx.cleanSurfelGIUseScreenTrace = m_cleanSurfelGIUseScreenTrace;
+	ctx.cleanSurfelGIUseSurfelFallbackTrace = m_cleanSurfelGIUseSurfelFallbackTrace;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
@@ -954,390 +1028,54 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			ImGui::Separator();
-			ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.5f, 1.0f), "Surfel GI Surfelization:");
-			if (ImGui::Checkbox("Enable Surfelization", &m_enableSurfelGI)) { SyncToRenderer(); }
-			if (m_enableSurfelGI) {
-				ImGui::Text("Fixed Pool: %u surfels", SurfelGIPass::kMaxSurfels);
-				if (m_modularRenderer && m_modularRenderer->GetSurfelGIPass()) {
-					const auto& stats = m_modularRenderer->GetSurfelGIPass()->GetLastStats();
-					ImGui::Text("Live: %u  Free: %u  Spawned: %u  Recycled: %u  Attempts: %u",
-						stats.liveCount,
-						stats.freeCount,
-						stats.spawnedThisFrame,
-						stats.recycledThisFrame,
-						stats.spawnAttemptsThisFrame);
-					ImGui::Text("Dormant: %u  Tiles: %ux%u  Grid Cells: %u",
-						stats.dormantCount,
-						stats.tileCountX,
-						stats.tileCountY,
-						stats.gridCellCount);
-					ImGui::Text("Spawn requests: %u  accepted: %u  prevented by coverage: %u",
-						stats.spawnAttemptsThisFrame,
-						stats.spawnedThisFrame,
-						stats.coveragePreventedSpawns);
-					ImGui::Text("Spawn skipped: duplicate %u  no free ID %u  deficit gate %u",
-						stats.duplicateRejectedSpawns,
-						stats.freeStackExhaustedSpawns,
-						stats.probabilityRejectedSpawns);
-					ImGui::Text("Visible coverage: %.1f%%  covered pixels: %u / %u",
-						stats.validCoveragePercent,
-						stats.validCoveragePixelCount,
-						stats.visibleSurfacePixelCount);
-					const uint32_t oldContrib = stats.oldCoverageContributions + stats.oldIntegratedContributions;
-					const uint32_t newContrib = stats.newCoverageContributions + stats.newIntegratedContributions;
-					const uint32_t totalContrib = oldContrib + newContrib;
-					const float oldContributionPct = totalContrib > 0
-						? (100.0f * static_cast<float>(oldContrib) / static_cast<float>(totalContrib))
-						: 0.0f;
-					ImGui::Text("Reuse: old %.1f%%  old hits %u  new hits %u",
-						oldContributionPct,
-						oldContrib,
-						newContrib);
-					ImGui::Text("Recycle candidates: %u  budget: %u  invalid transform: %u  invariant violations: %u",
-						stats.recycleCandidateCount,
-						stats.budgetRecycledCount,
-						stats.invalidTransformRecycledCount,
-						stats.lifecycleViolationCount);
-					ImGui::Text("Surfels ms: total %.2f  lifecycle %.2f  recycle %.2f  grid %.2f",
-						stats.totalTimeMs,
-						stats.lifecycleTimeMs,
-						stats.recycleTimeMs,
-						stats.gridBuildTimeMs);
-					ImGui::Text("Coverage ms: coarse %.2f  exact %.2f  deficit %.2f  spawn %.2f  integrate %.2f",
-						stats.coarseCoverageTimeMs,
-						stats.exactCoverageTimeMs,
-						stats.deficitTimeMs,
-						stats.spawnTimeMs,
-						stats.integrationTimeMs);
-					ImGui::Text("Budget: target %.2fms  scale %.2f  tile select %.2fms",
-						stats.targetBudgetMs,
-						stats.budgetScale,
-						stats.tileSelectTimeMs);
-					const uint32_t rejectedRaySurfels =
-						stats.rejectedInvalidLifecycle + stats.rejectedInvalidTransform +
-						stats.rejectedInvalidNormal + stats.rejectedInvalidRadius +
-						stats.rejectedMissingSpatialCell + stats.rejectedNotVisibleOrRecent +
-						stats.rejectedOutsideResidency + stats.rejectedDormant +
-						stats.rejectedAlreadySolved + stats.rejectedPoolPressure +
-						stats.rejectedNoFreeIDs + stats.rejectedBudgetScaleZero +
-						stats.rejectedMaxRayTracedSurfelsZero + stats.rejectedMaxRaysPerSurfelZero +
-						stats.rejectedInvalidIrradianceSlot + stats.rejectedMaterialOrTLAS +
-						stats.rejectedSelectionCapped;
-					ImGui::Text("Irradiance rays: requested %u  allocated %u  evaluated %u  eligible %u  active %u  rejected %u  util %.1f%%",
-						stats.requestedRaysThisFrame,
-						stats.allocatedRaysThisFrame,
-						stats.rayEvaluatedSurfels,
-						stats.rayEligibleSurfels,
-						stats.rayActiveSurfels,
-						rejectedRaySurfels,
-						stats.rayBudgetUtilizationPercent);
-					if (stats.liveCount > 0u && stats.rayActiveSurfels == 0u && rejectedRaySurfels == 0u) {
-						ImGui::TextColored(ImVec4(1.0f, 0.22f, 0.12f, 1.0f),
-							"Surfel GI failure: request accounting gap. Live pool exists, but request pass counted no active or rejected records.");
-					} else if (stats.liveCount > 0u && stats.requestedRaysThisFrame == 0u) {
-						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
-							"Surfel GI failure: no ray requests. Inspect eligibility rejection counters below.");
-					} else if (stats.requestedRaysThisFrame > 0u && stats.allocatedRaysThisFrame == 0u) {
-						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
-							"Surfel GI failure: requests exist, allocation is zero. Inspect global ray cap and allocation budget.");
-					} else if (stats.allocatedRaysThisFrame > 0u && stats.raysDispatched == 0u) {
-						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
-							"Surfel GI failure: rays allocated, dispatch is zero. Inspect TLAS readiness, indirect dispatch, and ray trace uniforms.");
-					} else if (stats.raysDispatched > 0u && (stats.tlasHits + stats.tlasMisses) == 0u) {
-						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
-							"Surfel GI failure: dispatch ran without hit/miss accounting. Inspect ray shader control flow.");
-					} else if (stats.tlasHits > 0u && stats.meanDirectRadianceLuma <= 0.0001f && stats.meanRawIrradianceLuma <= 0.0001f) {
-						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
-							"Surfel GI failure: TLAS hits have no direct/raw radiance. Inspect material, light, shadow, BRDF/PDF path.");
-					} else if (stats.meanRawIrradianceLuma > 0.0001f && stats.meanAccumulatedIrradianceLuma <= 0.0001f) {
-						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
-							"Surfel GI failure: raw ray energy is lost in accumulation. Inspect history writes, barriers, and IDs.");
-					} else if (stats.meanAccumulatedIrradianceLuma > 0.0001f && stats.meanGatheredIrradianceLuma <= 0.0001f) {
-						ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.20f, 1.0f),
-							"Surfel GI failure: accumulated energy is lost in final gather. Inspect lookup, weights, and rejection gates.");
-					}
-					ImGui::Text("Eligibility reject: lifecycle %u transform %u normal %u radius %u cell %u visible %u residency %u dormant %u",
-						stats.rejectedInvalidLifecycle,
-						stats.rejectedInvalidTransform,
-						stats.rejectedInvalidNormal,
-						stats.rejectedInvalidRadius,
-						stats.rejectedMissingSpatialCell,
-						stats.rejectedNotVisibleOrRecent,
-						stats.rejectedOutsideResidency,
-						stats.rejectedDormant);
-					ImGui::Text("Eligibility notes/reject: zeroConf %u zeroSamples %u solved %u pool %u noIDs %u scale0 %u maxSurf0 %u maxRay0 %u slot %u tlas %u capped %u",
-						stats.rejectedZeroHistoryConfidence,
-						stats.rejectedZeroSampleCount,
-						stats.rejectedAlreadySolved,
-						stats.rejectedPoolPressure,
-						stats.rejectedNoFreeIDs,
-						stats.rejectedBudgetScaleZero,
-						stats.rejectedMaxRayTracedSurfelsZero,
-						stats.rejectedMaxRaysPerSurfelZero,
-						stats.rejectedInvalidIrradianceSlot,
-						stats.rejectedMaterialOrTLAS,
-						stats.rejectedSelectionCapped);
-					ImGui::Text("Ray signal: dispatched %u  skipped %u  hits %u  misses %u  shadow visible %u  occluded %u",
-						stats.raysDispatched,
-						stats.raysSkippedByBudget,
-						stats.tlasHits,
-						stats.tlasMisses,
-						stats.shadowRaysVisible,
-						stats.shadowRaysOccluded);
-					ImGui::Text("Ray luma: hitDist %.2f  albedo %.3f  direct %.3f  raw %.3f  accum %.3f  shared %.3f",
-						stats.meanHitDistance,
-						stats.meanHitAlbedoLuma,
-						stats.meanDirectRadianceLuma,
-						stats.meanRawIrradianceLuma,
-						stats.meanAccumulatedIrradianceLuma,
-						stats.meanSharedIrradianceLuma);
-					ImGui::Text("Final gather: candidates %u  accepted %u  fallback %u  gathered %.3f  final indirect %.3f",
-						stats.gatherCandidateCount,
-						stats.gatherAcceptedCount,
-						stats.gatherFallbackCount,
-						stats.meanGatheredIrradianceLuma,
-						stats.meanFinalIndirectLuma);
-					ImGui::Text("Lighting ms: request %.2f  allocate %.2f  trace %.2f  temporal %.2f  share %.2f  radial %.2f",
-						stats.rayRequestTimeMs,
-						stats.rayAllocationTimeMs,
-						stats.rayTraceTimeMs,
-						stats.temporalAccumulationTimeMs,
-						stats.sharingTimeMs,
-						stats.radialDepthTimeMs);
-					ImGui::Text("Tiles: scanned %u  confidence-skip %u  queued %u  candidates %u  queue overflow %u",
-						stats.tilesScannedThisFrame,
-						stats.tilesSkippedByConfidence,
-						stats.undercoveredTilesQueued,
-						stats.spawnCandidatesEvaluated,
-						stats.queueOverflowCount);
-					ImGui::Text("Work: lifecycle %u  recycle %u  projected %u  integrate %u",
-						stats.lifecycleSurfelsProcessed,
-						stats.recycleSurfelsProcessed,
-						stats.projectedSurfelsProcessed,
-						stats.integratedSurfelsProcessed);
-					ImGui::Text("Cursors: tile %u  lifecycle %u  recycle %u  projected %u",
-						stats.tileCursor,
-						stats.lifecycleCursor,
-						stats.recycleCursor,
-						stats.projectedCursor);
-					ImGui::Text("Grid rebuild: interval %u frames  countdown %u",
-						stats.gridRebuildInterval,
-						stats.gridRebuildCountdown);
-					const auto& liveHistory = m_modularRenderer->GetSurfelGIPass()->GetLiveHistory();
-					const auto& freeHistory = m_modularRenderer->GetSurfelGIPass()->GetFreeHistory();
-					const auto& spawnHistory = m_modularRenderer->GetSurfelGIPass()->GetSpawnHistory();
-					const auto& recycleHistory = m_modularRenderer->GetSurfelGIPass()->GetRecycleHistory();
-					const auto& preventedHistory = m_modularRenderer->GetSurfelGIPass()->GetPreventedSpawnHistory();
-					const auto& oldContributionHistory = m_modularRenderer->GetSurfelGIPass()->GetOldContributionHistory();
-					const auto& newContributionHistory = m_modularRenderer->GetSurfelGIPass()->GetNewContributionHistory();
-					const int historyCount = static_cast<int>(SurfelGIPass::kStatsHistoryLength);
-					const int historyHead = static_cast<int>(m_modularRenderer->GetSurfelGIPass()->GetStatsHistoryHead());
-					ImGui::PlotLines("Live Surfels", liveHistory.data(), historyCount, historyHead, nullptr, 0.0f, float(SurfelGIPass::kMaxSurfels), ImVec2(-1, 38));
-					ImGui::PlotLines("Free Stack", freeHistory.data(), historyCount, historyHead, nullptr, 0.0f, float(SurfelGIPass::kMaxSurfels), ImVec2(-1, 38));
-					ImGui::PlotLines("Spawned / Frame", spawnHistory.data(), historyCount, historyHead, nullptr, 0.0f, 16000.0f, ImVec2(-1, 34));
-					ImGui::PlotLines("Recycled / Frame", recycleHistory.data(), historyCount, historyHead, nullptr, 0.0f, 16000.0f, ImVec2(-1, 34));
-					ImGui::PlotLines("Prevented Spawns", preventedHistory.data(), historyCount, historyHead, nullptr, 0.0f, 16000.0f, ImVec2(-1, 34));
-					ImGui::PlotLines("Old Contributions", oldContributionHistory.data(), historyCount, historyHead, nullptr, 0.0f, 64000.0f, ImVec2(-1, 34));
-					ImGui::PlotLines("New Contributions", newContributionHistory.data(), historyCount, historyHead, nullptr, 0.0f, 64000.0f, ImVec2(-1, 34));
-				}
-				ImGui::Text("Surfelizer Tile: 16x16 texels");
-				if (ImGui::SliderFloat("Projected Radius Pixels", &m_surfelGITargetRadiusPixels, 0.0f, 24.0f, "%.1f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Coverage Threshold", &m_surfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Normal Reject", &m_surfelGINormalReject, 0.02f, 0.75f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Recycle Pressure", &m_surfelGIRecyclePressure, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Frame Budget (ms)", &m_surfelGIFrameBudgetMs, 2.0f, 12.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::Checkbox("Adaptive Budget", &m_surfelGIAdaptiveBudget)) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Budget Scale", &m_surfelGIBudgetScale, 0.25f, 2.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Tiles Scanned", &m_surfelGIMaxTilesScanned, 32, 4096)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Spawn Candidates", &m_surfelGIMaxSpawnCandidates, 8, 1024)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Spawns", &m_surfelGIMaxSpawns, 1, 512)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Recycle Decisions", &m_surfelGIMaxRecycleDecisions, 64, 8192)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Projected Surfels", &m_surfelGIMaxProjectedSurfels, 512, 65536)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Lifecycle Updates", &m_surfelGIMaxLifecycleUpdates, 512, 65536)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Integrate Updates", &m_surfelGIMaxIntegrationUpdates, 256, 65536)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Coarse Coverage Surfels", &m_surfelGIMaxCoarseCoverageSurfels, 512, 65536)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Irradiance Rays", &m_surfelGIMaxIrradianceRays, 0, 32768)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Ray-Traced Surfels", &m_surfelGIMaxRayTracedSurfels, 512, 65536)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Rays / Surfel", &m_surfelGIMaxRaysPerSurfel, 1, 32)) { SyncToRenderer(); }
-				if (ImGui::InputInt("RT Triangle Cap", &m_surfelGIRTMaxTriangles, 10000, 100000)) {
-					m_surfelGIRTMaxTriangles = std::max(0, m_surfelGIRTMaxTriangles);
-					SyncToRenderer();
-				}
-				ImGui::TextDisabled("0 disables the cap; higher values may stall or use significant memory.");
-				if (ImGui::SliderFloat("RT BLAS Build Budget (ms)", &m_surfelGIRTBuildBudgetMs, 0.1f, 4.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::InputInt("RT BLAS Tris / Frame", &m_surfelGIRTMaxBLASTrianglesPerFrame, 5000, 25000)) {
-					m_surfelGIRTMaxBLASTrianglesPerFrame = std::max(1, m_surfelGIRTMaxBLASTrianglesPerFrame);
-					SyncToRenderer();
-				}
-				if (ImGui::InputInt("RT BLAS Memory MB", &m_surfelGIRTMaxResidentMB, 64, 256)) {
-					m_surfelGIRTMaxResidentMB = std::max(1, m_surfelGIRTMaxResidentMB);
-					SyncToRenderer();
-				}
-				if (ImGui::Checkbox("RT Include Skinned Meshes", &m_surfelGIRTIncludeSkinnedMeshes)) { SyncToRenderer(); }
-				if (m_modularRenderer && m_modularRenderer->GetContext().rtSceneResources) {
-					const auto& rtStats = m_modularRenderer->GetContext().rtSceneResources->GetDiagnostics();
-                    ImGui::Text("RT BLAS: ready %zu  queued %zu  failed %zu  instances %zu",
-                        rtStats.blasReady,
-                        rtStats.blasQueued,
-                        rtStats.blasFailed,
-                        rtStats.tlasInstances);
-                    ImGui::Text("RT TLAS: traceable instances %zu  nodes %zu",
-                        rtStats.traceableInstances,
-                        rtStats.tlasNodes);
-                    ImGui::Text("RT Build: %.2fms  tris %zu  memory %.1f MB  skipped skinned %zu",
-						rtStats.buildMsThisFrame,
-						rtStats.trianglesBuiltThisFrame,
-						static_cast<double>(rtStats.residentBytes) / (1024.0 * 1024.0),
-						rtStats.skippedSkinnedInstances);
-				}
-				if (ImGui::SliderInt("Grid Rebuild Interval", &m_surfelGIGridRebuildInterval, 1, 8)) { SyncToRenderer(); }
-				static const DebugComboEntry validationModes[] = {
-					{ RenderContext::SurfelGIDebugSettings::Production, "Production" },
-					{ RenderContext::SurfelGIDebugSettings::BruteForceCorrectness, "Brute Force Correctness" },
-					{ RenderContext::SurfelGIDebugSettings::ConstantIrradianceInjection, "Constant Irradiance Injection" },
-					{ RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate, "Single Surfel Isolate" }
-				};
-				if (DebugCombo("Surfel GI Validation", &m_surfelGIDebugSettings.validationMode, validationModes, IM_ARRAYSIZE(validationModes))) { SyncToRenderer(); }
-				if (ImGui::Checkbox("Force Surfel GI Ray Bootstrap", &m_surfelGIDebugSettings.forceRayBootstrap)) { SyncToRenderer(); }
-
-				static const DebugComboEntry surfelDebugModes[] = {
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Clean Surfel GI:");
+			if (ImGui::Checkbox("Enable Clean Surfel GI", &m_enableCleanSurfelGI)) { SyncToRenderer(); }
+			if (m_enableCleanSurfelGI) {
+				const char* qualityItems[] = { "Low", "Medium", "High", "Ultra" };
+				if (ImGui::Combo("Quality", &m_cleanSurfelGIQualityTier, qualityItems, IM_ARRAYSIZE(qualityItems))) { SyncToRenderer(); }
+				const DebugComboEntry surfelDebugModes[] = {
 					{ 0, "Off" },
-					{ 1, "Discs" },
+					{ 1, "Live Surfels" },
 					{ 2, "Normals" },
-					{ 3, "Projected Radius" },
-					{ 4, "Coverage" },
-					{ 5, "Cell Occupancy" },
-					{ 6, "Recent Recycled IDs" },
-					{ 7, "Transform Follow" },
-					{ 8, "Lifecycle State" },
-					{ 9, "Recycle Pressure" },
-					{ 10, "Spawn/Recycle Reason" },
-					{ 11, "Last Contributed" },
-					{ 12, "Distance To Camera" },
-					{ 13, "Persistence Age" },
-					{ 14, "Last Visible" },
-					{ 15, "Reused vs Fresh" },
-					{ 16, "Surfel Irradiance History (16)" },
-					{ 17, "Depth Moments" },
-					{ 18, "Raw Projected Support" },
-					{ 19, "Valid Coverage" },
-					{ 20, "Deficit Heatmap" },
-					{ 21, "Depth Rejection" },
-					{ 22, "Normal Rejection" },
-					{ 23, "Winner Surfel ID" },
-					{ 24, "TLAS BVH Heatmap (24)" },
-					{ 25, "Allocated Rays (25)" },
-					{ 26, "Current Ray Sample (26)" },
-					{ 27, "Shared Irradiance (27)" },
-					{ 28, "History Confidence (28)" },
-					{ 29, "Guiding Strength (29)" },
-					{ 30, "Lighting State (30)" }
+					{ 3, "Age" },
+					{ 4, "Variance" },
+					{ 5, "Coverage" },
+					{ 6, "Grid Cells" },
+					{ 7, "Cell Occupancy" },
+					{ 8, "Spawn/Recycled" },
+					{ 9, "Ray Counts" },
+					{ 10, "Guide/Confidence" },
+					{ 11, "Radial Depth" },
+					{ 12, "Irradiance" },
+					{ 13, "Difference vs SSGI" },
+					{ 14, "Timings" },
+					{ 15, "Recycle Score" },
+					{ 16, "Stale Surfels" }
 				};
-				if (DebugCombo("Surfel Debug View", &m_surfelGIDebugMode, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
-				m_surfelGIDebugSettings.surfelDebugView = m_surfelGIDebugMode;
-
-				if (m_surfelGIDebugSettings.validationMode == RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate) {
-					if (ImGui::InputInt("Selected Surfel ID", &m_surfelGIDebugSettings.selectedSurfelID, 1, 16)) {
-						m_surfelGIDebugSettings.selectedSurfelID = std::max(-1, m_surfelGIDebugSettings.selectedSurfelID);
-						SyncToRenderer();
-					}
-				}
-				if (m_surfelGIDebugSettings.validationMode == RenderContext::SurfelGIDebugSettings::SingleSurfelIsolate) {
-					if (ImGui::SliderInt("Isolated Ray Count", &m_surfelGIDebugSettings.isolatedRayCount, 0, 1024)) { SyncToRenderer(); }
-				}
-
-				if (ImGui::TreeNode("Surfel GI Validation Overrides")) {
-					bool changed = false;
-					changed |= ImGui::Checkbox("Disable Guiding", &m_surfelGIDebugSettings.disableGuiding);
-					changed |= ImGui::Checkbox("Disable Neighbour Sharing", &m_surfelGIDebugSettings.disableNeighbourSharing);
-					changed |= ImGui::Checkbox("Disable Radial Depth Reject", &m_surfelGIDebugSettings.disableRadialDepthReject);
-					changed |= ImGui::Checkbox("Disable Dormancy", &m_surfelGIDebugSettings.disableDormancy);
-					changed |= ImGui::Checkbox("Disable Normal Reject", &m_surfelGIDebugSettings.disableNormalReject);
-					changed |= ImGui::Checkbox("Disable Confidence Reject", &m_surfelGIDebugSettings.disableConfidenceReject);
-					changed |= ImGui::Checkbox("Disable Gather Fallback", &m_surfelGIDebugSettings.disableGatherFallback);
-					if (changed) { SyncToRenderer(); }
-					ImGui::TreePop();
-				}
-				if (m_surfelGIDebugMode == 24) {
-					ImGui::Separator();
-					ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "TLAS BVH Debug Visualization:");
-
-					if (ImGui::SliderInt("TLAS Heatmap Color Limit", &m_surfelGITLASHeatmapColorLimit, 10, 200)) {
-						SyncToRenderer();
-					}
-					ImGui::SameLine();
-					if (ImGui::Button("?##surfel_tlas_heatmap")) {}
-					if (ImGui::IsItemHovered()) {
-						ImGui::SetTooltip(
-							"Maximum traversal complexity mapped into the heatmap\n"
-							"Lower = more sensitive\n"
-							"Higher = less sensitive"
-						);
-					}
-
-					if (ImGui::Checkbox("Show Multiple Layers", &m_surfelGITLASDisplayMultipleBVHLayers)) {
-						SyncToRenderer();
-					}
-					ImGui::SameLine();
-					if (ImGui::Button("?##surfel_tlas_layers")) {}
-					if (ImGui::IsItemHovered()) {
-						ImGui::SetTooltip(
-							"When enabled, the TLAS heatmap accumulates all layers up to the selected depth\n"
-							"When disabled, only the selected layer contributes"
-						);
-					}
-
-					if (ImGui::SliderInt("Layer to Display", &m_surfelGITLASBVHLayerToDisplay, 0, 10)) {
-						SyncToRenderer();
-					}
-				}
-				ImGui::Separator();
-				ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Surfel GI Final Gather:");
-				if (ImGui::Checkbox("Enable Surfel Final Gather", &m_enableSurfelIndirectDiffuse)) { SyncToRenderer(); }
-				if (m_enableSurfelIndirectDiffuse) {
-					if (ImGui::SliderFloat("Surfel GI Strength", &m_surfelIndirectDiffuseStrength, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
-					if (ImGui::SliderInt("Gather Neighbor Radius", &m_surfelIndirectDiffuseNeighborRadius, 0, 2)) { SyncToRenderer(); }
-					if (ImGui::SliderInt("Max Gather Candidates", &m_surfelIndirectDiffuseMaxCandidates, 8, 256)) { SyncToRenderer(); }
-					if (ImGui::SliderInt("Max Accepted Surfels", &m_surfelIndirectDiffuseMaxAccepted, 1, 64)) { SyncToRenderer(); }
-					if (ImGui::SliderFloat("Fallback Blend", &m_surfelIndirectDiffuseFallbackStrength, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
-					static const DebugComboEntry surfelApplyDebugModes[] = {
-						{ 0, "Final Gather Irradiance" },
-						{ 1, "Candidate Count" },
-						{ 2, "Accepted Count" },
-						{ 3, "Weight Sum" },
-						{ 4, "Confidence" },
-						{ 5, "Fallback Usage" },
-						{ 6, "Reject Reasons" },
-						{ 7, "Reject Distance" },
-						{ 8, "Reject Normal" },
-						{ 9, "Reject Radial Depth" },
-						{ 10, "Reject Confidence" },
-						{ 11, "BRDF-Scaled Indirect" }
-					};
-					if (DebugCombo("Gather Debug View", &m_surfelIndirectDiffuseDebugMode, surfelApplyDebugModes, IM_ARRAYSIZE(surfelApplyDebugModes))) {
-						m_surfelGIDebugSettings.gatherDebugView = m_surfelIndirectDiffuseDebugMode;
-						SyncToRenderer();
-					}
-				}
-				if (ImGui::Checkbox("Legacy Fragment Gather Debug", &m_surfelUseLegacyFragmentGather)) { SyncToRenderer(); }
-				static const DebugComboEntry compositeDebugModes[] = {
-					{ 0, "Full Composite" },
-					{ 1, "Direct Only" },
-					{ 2, "IBL Only" },
-					{ 3, "SSGI Only" },
-					{ 4, "Surfel BRDF Indirect" },
-					{ 5, "LPV Only" },
-					{ 6, "Surfel Gather Irradiance" }
-				};
-				if (DebugCombo("Composite Debug View", &m_lightingCompositeDebugMode, compositeDebugModes, IM_ARRAYSIZE(compositeDebugModes))) {
-					m_surfelGIDebugSettings.compositeDebugView = m_lightingCompositeDebugMode;
-					SyncToRenderer();
-				}
-				if (m_modularRenderer) {
-					ImGui::BulletText("Turn away and back: stable regions should stay mostly blue/aged, not all green respawns");
-					ImGui::BulletText("Advance/retreat: projected radius and coverage should rebalance without pool growth");
-				}
+				if (DebugCombo("Surfel Debug View", &m_cleanSurfelGIDebugView, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("GI Intensity", &m_cleanSurfelGIIntensity, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Surfels", &m_cleanSurfelGIMaxSurfels, 4096, 524288)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Ray Budget", &m_cleanSurfelGIMaxRayBudget, 4096, 524288)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Spawn Tile", &m_cleanSurfelGISpawnTileSize, 4, 64)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Gather Surfels", &m_cleanSurfelGIMaxGatherSurfelsPerPixel, 4, 2048)) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Coverage Threshold", &m_cleanSurfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Normal Reject", &m_cleanSurfelGINormalReject, -0.2f, 0.95f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Final Gather Normal Reject", &m_cleanSurfelGIFinalGatherNormalReject, -0.2f, 0.95f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Radial Depth Rejection", &m_cleanSurfelGIUseRadialDepth)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Ray Guiding", &m_cleanSurfelGIUseRayGuiding)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Ray Binning", &m_cleanSurfelGIUseRayBinning)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Screen Trace Path", &m_cleanSurfelGIUseScreenTrace)) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Surfel Fallback Trace", &m_cleanSurfelGIUseSurfelFallbackTrace)) { SyncToRenderer(); }
 			}
+			static const DebugComboEntry compositeDebugModes[] = {
+				{ 0, "Full Composite" },
+				{ 1, "Direct Only" },
+				{ 2, "IBL Only" },
+				{ 3, "SSGI Only" },
+				{ 4, "Surfel Only" },
+				{ 5, "LPV Only" }
+			};
+			if (DebugCombo("Composite Debug View", &m_lightingCompositeDebugMode, compositeDebugModes, IM_ARRAYSIZE(compositeDebugModes))) { SyncToRenderer(); }
 
 			ImGui::Separator();
 			ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.5f, 1.0f), "Light Propagation Volumes (LPV):");
@@ -2135,7 +1873,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGITLASBVHLayerToDisplay = 0;
 	m_surfelGIDebugSettings = RenderContext::SurfelGIDebugSettings{};
 	m_surfelGIDebugMode = 0;
-	m_enableSurfelIndirectDiffuse = true;
+	m_enableSurfelIndirectDiffuse = false;
 	m_surfelIndirectDiffuseStrength = 1.0f;
 	m_surfelIndirectDiffuseDebugMode = 0;
 	m_surfelIndirectDiffuseNeighborRadius = 1;
@@ -2144,6 +1882,28 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelIndirectDiffuseFallbackStrength = 0.65f;
 	m_surfelUseLegacyFragmentGather = false;
 	m_lightingCompositeDebugMode = 0;
+	m_enableCleanSurfelGI = false;
+	m_cleanSurfelGIQualityTier = 1;
+	m_cleanSurfelGIDebugView = 0;
+	m_cleanSurfelGIMaxSurfels = 131072;
+	m_cleanSurfelGIMaxRayBudget = 32768;
+	m_cleanSurfelGISpawnTileSize = 8;
+	m_cleanSurfelGIMaxSurfelsPerCell = 64;
+	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
+	m_cleanSurfelGITargetRadiusPixels = 3.0f;
+	m_cleanSurfelGIMinRadius = 0.03f;
+	m_cleanSurfelGIMaxRadius = 5.0f;
+	m_cleanSurfelGICoverageThreshold = 0.85f;
+	m_cleanSurfelGIRecyclePressure = 0.85f;
+	m_cleanSurfelGINormalReject = 0.25f;
+	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
+	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
+	m_cleanSurfelGIIntensity = 1.0f;
+	m_cleanSurfelGIUseRadialDepth = false;
+	m_cleanSurfelGIUseRayGuiding = false;
+	m_cleanSurfelGIUseRayBinning = true;
+	m_cleanSurfelGIUseScreenTrace = true;
+	m_cleanSurfelGIUseSurfelFallbackTrace = true;
 
 	// Contact shadows - match RenderContext defaults
 	m_sssResolutionScale = 0.5f;

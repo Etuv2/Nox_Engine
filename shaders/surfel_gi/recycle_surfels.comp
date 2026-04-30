@@ -1,0 +1,124 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_SURFEL_FREELIST, std430) buffer SurfelFreeList
+{
+    uint freeIndices[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uMaxSurfels;
+uniform uint uFrameIndex;
+uniform vec3 uCameraPosition;
+uniform float uRecyclePressureStart;
+uniform float uMaxDistance;
+
+void PushFreeIndex(uint surfelID)
+{
+    uint slot = atomicAdd(counters.freeTop, 1u);
+    if (slot < uMaxSurfels) {
+        freeIndices[slot] = surfelID;
+    } else {
+        atomicAdd(counters.overflowSurfels, 1u);
+        counters.freeTop = uMaxSurfels;
+    }
+}
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID >= uMaxSurfels) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    uint flags = SurfelFlags(surfel);
+    if (flags == SURFEL_DEAD) {
+        return;
+    }
+
+    bool invalidTransform = (flags & SURFEL_INVALID) != 0u;
+    uint sampleAge = uFrameIndex >= surfel.frameInfo.x ? (uFrameIndex - surfel.frameInfo.x) : 0u;
+    uint contributionAge = uFrameIndex >= surfel.frameInfo.y ? (uFrameIndex - surfel.frameInfo.y) : 0u;
+    uint updateAge = uFrameIndex >= surfel.frameInfo.z ? (uFrameIndex - surfel.frameInfo.z) : 0u;
+    float pressure = 1.0 - clamp(float(counters.freeTop) / max(float(uMaxSurfels), 1.0), 0.0, 1.0);
+    float confidence = SurfelSaturate(surfel.irradiance.a);
+    float variance = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
+    float distanceToCamera = length(surfel.worldPos_radius.xyz - uCameraPosition);
+    float maxDistance = max(uMaxDistance, 1.0);
+    float distance01 = SurfelSaturate(distanceToCamera / maxDistance);
+    float stale01 = SurfelSaturate(float(contributionAge) / 180.0);
+    float sampleStale01 = SurfelSaturate(float(sampleAge) / 240.0);
+    float updateStale01 = SurfelSaturate(float(updateAge) / 32.0);
+    float lowConfidence01 = 1.0 - confidence;
+    float lowVariance01 = 1.0 - SurfelSaturate(variance * 32.0);
+    float radiusGrowth = surfel.localPos_spawnRadius.w > 0.0
+        ? surfel.worldPos_radius.w / max(surfel.localPos_spawnRadius.w, 0.001)
+        : 1.0;
+    float oversized01 = SurfelSaturate((radiusGrowth - 2.25) / 4.0);
+    float pressure01 = smoothstep(clamp(uRecyclePressureStart, 0.0, 0.99), 1.0, pressure);
+
+    float recycleScore =
+        invalidTransform ? 1.0 :
+        max(
+            distance01 * 0.30 +
+            stale01 * 0.28 +
+            sampleStale01 * 0.12 +
+            lowConfidence01 * 0.10 +
+            lowVariance01 * 0.08 +
+            oversized01 * 0.22 +
+            pressure01 * 0.30,
+            updateStale01 * 0.65
+        );
+    recycleScore = SurfelSaturate(recycleScore);
+
+    float random = SurfelHash01(surfelID ^ (uFrameIndex * 1664525u) ^ (surfel.ids.x * 1013904223u));
+    float probability = pressure01 > 0.0
+        ? mix(0.02, 0.35, recycleScore) * pressure01
+        : mix(0.0, 0.08, max(stale01, oversized01));
+
+    bool tooFar = uMaxDistance > 0.0 && distanceToCamera > uMaxDistance * 1.15;
+    bool staleCull = contributionAge > 360u && confidence < 0.75 && random < 0.12;
+    bool oversizedCull = radiusGrowth > 5.0 && contributionAge > 24u && random < 0.20;
+    bool pressureCull = pressure > clamp(uRecyclePressureStart, 0.0, 0.99) &&
+        contributionAge > 16u &&
+        random < probability;
+    bool shouldRecycle = invalidTransform ||
+        surfel.albedo_life.a <= 0.0 ||
+        staleCull ||
+        oversizedCull ||
+        pressureCull ||
+        tooFar;
+    surfel.debug.w = recycleScore;
+    if (!shouldRecycle || flags == SURFEL_DEAD) {
+        surfels[surfelID] = surfel;
+        return;
+    }
+
+    SurfelMarkDead(surfel);
+    surfel.ids.w += 1u;
+    surfel.frameInfo = uvec4(0u, 0u, uFrameIndex, uFrameIndex);
+    surfel.irradiance = vec4(0.0);
+    surfel.shortMean = vec4(0.0);
+    surfel.shortM2 = vec4(0.0);
+    surfel.debug = vec4(0.0, 0.0, 0.0, 1.0);
+    surfels[surfelID] = surfel;
+
+    PushFreeIndex(surfelID);
+    atomicAdd(counters.recycledThisFrame, 1u);
+    if (counters.liveCount > 0u) {
+        atomicAdd(counters.liveCount, uint(-1));
+    }
+}

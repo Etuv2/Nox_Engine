@@ -1,0 +1,147 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_RAY_REQUESTS, std430) readonly buffer SurfelRayRequestBuffer
+{
+    SurfelRayRequest rayRequests[];
+};
+
+layout(binding = B_RAYS_IN, std430) buffer SurfelRayBuffer
+{
+    SurfelRay rays[];
+};
+
+layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
+{
+    GuideCell guideCells[];
+};
+
+layout(binding = B_RAY_BINS, std430) buffer SurfelRayBinBuffer
+{
+    uint rayBins[];
+};
+
+uniform uint uMaxSurfels;
+uniform uint uMaxRays;
+uniform uint uFrameIndex;
+uniform int uUseRayGuiding = 0;
+uniform float uRayTMin;
+uniform float uRayTMax;
+
+const uint SURFEL_GUIDE_SIDE = 6u;
+const float SURFEL_GUIDE_CELL_DENSITY = 9.0;
+const uint SURFEL_GENERATE_MAX_RAYS_PER_SURFEL = 8u;
+
+float SurfelGuideCellWeight(uint surfelID, uint guideBin)
+{
+    uint index = surfelID * SURFEL_GUIDE_CELLS + guideBin;
+    uint packedRadiance = guideCells[index].packedRadiance;
+    if (packedRadiance == 0u) {
+        return 0.0;
+    }
+
+    vec4 guide = unpackUnorm4x8(packedRadiance);
+    return max(SurfelLuminance(guide.rgb), 0.0);
+}
+
+bool SurfelSampleGuideMap(uint surfelID, uint seed, out vec3 hemiDir, out float pdf)
+{
+    if (uUseRayGuiding == 0) {
+        hemiDir = vec3(0.0, 0.0, 1.0);
+        pdf = 1.0 / SURFEL_PI;
+        return false;
+    }
+
+    float totalWeight = 0.0;
+    float bestScore = 3.402823466e+38;
+    float selectedWeight = 0.0;
+    uint selectedBin = 0u;
+    for (uint guideBin = 0u; guideBin < SURFEL_GUIDE_CELLS; ++guideBin) {
+        float weight = SurfelGuideCellWeight(surfelID, guideBin);
+        totalWeight += weight;
+        if (weight > 0.0) {
+            float score = SurfelHash01(seed ^ (guideBin * 0x9e3779b9u)) / max(weight, 1e-6);
+            if (score < bestScore) {
+                bestScore = score;
+                selectedWeight = weight;
+                selectedBin = guideBin;
+            }
+        }
+    }
+
+    if (!(totalWeight > 1e-6) || !(selectedWeight > 0.0) || isnan(totalWeight) || isinf(totalWeight)) {
+        hemiDir = vec3(0.0, 0.0, 1.0);
+        pdf = 1.0 / SURFEL_PI;
+        return false;
+    }
+
+    vec2 jitter = vec2(
+        SurfelHash01(seed ^ 0x02e5be93u),
+        SurfelHash01(seed ^ 0x0f1bbcdcu));
+    vec2 cell = vec2(float(selectedBin % SURFEL_GUIDE_SIDE), float(selectedBin / SURFEL_GUIDE_SIDE));
+    vec2 uv = (cell + jitter) / float(SURFEL_GUIDE_SIDE);
+    vec2 xy = uv * 2.0 - 1.0;
+    float xyLenSq = dot(xy, xy);
+    if (xyLenSq >= 0.999) {
+        xy *= inversesqrt(max(xyLenSq, 1e-6)) * 0.999;
+        xyLenSq = dot(xy, xy);
+    }
+
+    hemiDir = vec3(xy, sqrt(max(1.0 - xyLenSq, 0.0)));
+    pdf = max((selectedWeight / totalWeight) * SURFEL_GUIDE_CELL_DENSITY * max(hemiDir.z, 0.0), 1e-4);
+    return true;
+}
+
+void main()
+{
+    uint requestID = gl_GlobalInvocationID.x;
+    if (requestID >= uMaxSurfels) {
+        return;
+    }
+
+    SurfelRayRequest request = rayRequests[requestID];
+    if (request.allocatedCount == 0u || request.surfelID >= uMaxSurfels) {
+        return;
+    }
+
+    Surfel surfel = surfels[request.surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    vec3 normal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    if (request.firstRay >= uMaxRays) {
+        return;
+    }
+
+    uint rayCount = min(min(request.allocatedCount, SURFEL_GENERATE_MAX_RAYS_PER_SURFEL), uMaxRays - request.firstRay);
+    for (uint i = 0u; i < rayCount; ++i) {
+        uint rayID = request.firstRay + i;
+
+        uint seed = SurfelHash(request.surfelID ^ (uFrameIndex * 747796405u) ^ (i * 2891336453u));
+        vec3 hemiDir;
+        float pdf;
+        bool guided = uUseRayGuiding != 0 && SurfelSampleGuideMap(request.surfelID, seed, hemiDir, pdf);
+        if (!guided) {
+            hemiDir = SurfelCosineHemisphereSample(SurfelHash01(seed), SurfelHash01(seed ^ 0x9e3779b9u));
+            pdf = max(hemiDir.z, 0.0) / SURFEL_PI;
+        }
+
+        vec3 direction = SurfelHemiToWorld(hemiDir, normal);
+        uint directionBin = SurfelGuideBin(SurfelWorldToHemiDir(direction, normal));
+
+        rays[rayID].origin_tMin = vec4(surfel.worldPos_radius.xyz + normal * max(surfel.worldPos_radius.w * 0.05, 0.001), max(uRayTMin, 0.0));
+        rays[rayID].direction_tMax = vec4(direction, max(uRayTMax, 0.001));
+        rays[rayID].ids = uvec4(request.surfelID, directionBin, i, 0u);
+        rays[rayID].throughput = vec4(1.0, 1.0, 1.0, max(pdf, 1e-4));
+        rayBins[rayID] = directionBin;
+    }
+}

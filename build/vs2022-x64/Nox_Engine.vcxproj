@@ -726,11 +726,12 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\SSAOPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\ScreenSpaceShadowPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\ShadowPass.cpp" />
-    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\SurfelGIPass.cpp" />
-    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\SurfelIndirectDiffusePass.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\SurfelGIManager.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\SurfelGIPipeline.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\TAAPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\TransformHistoryPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\TransparentForwardPass.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\surfel_gi\SurfelGIResources.cpp" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

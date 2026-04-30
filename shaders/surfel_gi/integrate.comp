@@ -1,0 +1,168 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_RAY_REQUESTS, std430) readonly buffer SurfelRayRequestBuffer
+{
+    SurfelRayRequest rayRequests[];
+};
+
+layout(binding = B_RAY_HITS, std430) readonly buffer SurfelRayHitBuffer
+{
+    SurfelRayHit hits[];
+};
+
+layout(binding = B_RAYS_IN, std430) readonly buffer SurfelRayBuffer
+{
+    SurfelRay rays[];
+};
+
+layout(binding = B_GUIDE_MAP, std430) buffer SurfelGuideMapBuffer
+{
+    GuideCell guideMap[];
+};
+
+uniform uint uMaxSurfels;
+uniform uint uMaxRays;
+uniform uint uFrameIndex;
+uniform int uUseRayGuiding;
+
+const float SURFEL_SHORT_HISTORY_RAYS = 32.0;
+const float SURFEL_MAX_SAMPLE_IRRADIANCE = 64.0;
+const float SURFEL_MAX_EMISSIVE_IRRADIANCE = 64.0;
+
+vec3 SurfelClampRadiance(vec3 radiance)
+{
+    if (any(isnan(radiance)) || any(isinf(radiance))) {
+        return vec3(0.0);
+    }
+    return clamp(radiance, vec3(0.0), vec3(SURFEL_MAX_SAMPLE_IRRADIANCE));
+}
+
+vec3 SurfelClampEmissive(vec3 emissive)
+{
+    if (any(isnan(emissive)) || any(isinf(emissive))) {
+        return vec3(0.0);
+    }
+    return clamp(emissive, vec3(0.0), vec3(SURFEL_MAX_EMISSIVE_IRRADIANCE));
+}
+
+void UpdateGuideCell(uint surfelID, uint rayID, vec3 normal, vec3 sampleRadiance)
+{
+    if (uUseRayGuiding == 0 || surfelID >= uMaxSurfels || rayID >= uMaxRays) {
+        return;
+    }
+
+    vec3 hemiDir = SurfelWorldToHemiDir(rays[rayID].direction_tMax.xyz, normal);
+    uint guideIndex = surfelID * SURFEL_GUIDE_CELLS + SurfelGuideBin(hemiDir);
+    vec4 oldPacked = unpackUnorm4x8(guideMap[guideIndex].packedRadiance);
+    vec3 oldMapped = clamp(oldPacked.rgb, vec3(0.0), vec3(0.999));
+    vec3 oldRadiance = oldMapped / max(vec3(1.0) - oldMapped, vec3(1e-4));
+    float oldConfidence = clamp(oldPacked.a, 0.0, 1.0);
+    float alpha = mix(0.35, 0.08, oldConfidence);
+    vec3 learned = mix(oldRadiance, SurfelClampRadiance(sampleRadiance), alpha);
+    guideMap[guideIndex].packedRadiance = SurfelPackIrradiance(learned, SurfelSaturate(oldConfidence + 0.05));
+}
+
+void main()
+{
+    uint requestID = gl_GlobalInvocationID.x;
+    if (requestID >= uMaxSurfels) {
+        return;
+    }
+
+    SurfelRayRequest request = rayRequests[requestID];
+    if (request.surfelID >= uMaxSurfels || request.allocatedCount == 0u) {
+        return;
+    }
+
+    Surfel surfel = surfels[request.surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    vec3 batchMean = vec3(0.0);
+    vec3 batchM2 = vec3(0.0);
+    uint accepted = 0u;
+    vec3 normal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    for (uint i = 0u; i < request.allocatedCount; ++i) {
+        uint rayID = request.firstRay + i;
+        if (rayID >= uMaxRays) {
+            break;
+        }
+        ++accepted;
+
+        float samplePdf = max(hits[rayID].radiance_pdf.a, 1e-4);
+        float sampleCos = max(dot(normal, SurfelSafeNormalize(rays[rayID].direction_tMax.xyz)), 0.0);
+        vec3 sampleIrradiance = SurfelClampRadiance(hits[rayID].radiance_pdf.rgb * (sampleCos / samplePdf));
+        UpdateGuideCell(request.surfelID, rayID, normal, sampleIrradiance);
+        vec3 delta = sampleIrradiance - batchMean;
+        batchMean += delta / float(accepted);
+        batchM2 += delta * (sampleIrradiance - batchMean);
+    }
+
+    surfel.shortM2.a = float(request.requestedCount);
+    surfel.debug.y = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
+    surfel.debug.z = float(request.allocatedCount);
+
+    if (accepted == 0u) {
+        surfels[request.surfelID] = surfel;
+        return;
+    }
+
+    vec3 sampleMean = batchMean;
+    vec3 sampleVariance = accepted > 1u ? batchM2 / float(accepted - 1u) : vec3(0.0);
+    bool resetEstimator = SurfelIsNew(surfel) || surfel.shortMean.a <= 0.0 || surfel.irradiance.a <= 0.0;
+    vec3 emissiveBaseline = resetEstimator ? SurfelClampEmissive(surfel.irradiance.rgb) : vec3(0.0);
+    vec3 priorIrradiance = SurfelClampRadiance(surfel.irradiance.rgb);
+    if (SurfelLuminance(sampleMean) <= 1e-5 && SurfelLuminance(priorIrradiance) > 1e-5) {
+        sampleMean = priorIrradiance;
+        sampleVariance = vec3(0.0);
+    }
+
+    if (resetEstimator) {
+        surfel.shortMean.rgb = max(sampleMean, emissiveBaseline);
+        surfel.shortM2.rgb = sampleVariance;
+        surfel.shortMean.a = min(float(accepted), SURFEL_SHORT_HISTORY_RAYS);
+    } else {
+        float shortAlpha = clamp(float(accepted) / SURFEL_SHORT_HISTORY_RAYS, 0.05, 0.35);
+        vec3 oldShort = surfel.shortMean.rgb;
+        vec3 shiftedVariance = sampleVariance + (sampleMean - oldShort) * (sampleMean - oldShort);
+        surfel.shortMean.rgb = mix(oldShort, sampleMean, shortAlpha);
+        surfel.shortM2.rgb = mix(max(surfel.shortM2.rgb, vec3(0.0)), max(shiftedVariance, vec3(0.0)), shortAlpha);
+        surfel.shortMean.a = min(surfel.shortMean.a + float(accepted), SURFEL_SHORT_HISTORY_RAYS);
+    }
+
+    vec3 previousIrradiance = resetEstimator ? max(priorIrradiance, emissiveBaseline) : priorIrradiance;
+    float varLum = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
+    float diffLum = SurfelLuminance(abs(surfel.shortMean.rgb - previousIrradiance));
+    float reactive = SurfelSaturate(varLum * 4.0 + diffLum * 2.0);
+    float alpha = mix(0.02, 0.35, reactive);
+    if (resetEstimator) {
+        alpha = max(alpha, 0.60);
+        SurfelSetFlags(surfel, SurfelFlags(surfel) & ~SURFEL_NEW);
+    }
+
+    surfel.irradiance.rgb = SurfelClampRadiance(mix(previousIrradiance, surfel.shortMean.rgb, alpha));
+
+    float acceptedRatio = SurfelSaturate(float(accepted) / max(float(request.allocatedCount), 1.0));
+    float allocationRatio = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
+    float confidenceGain = mix(0.05, 0.015, reactive) * acceptedRatio * allocationRatio;
+    if (resetEstimator) {
+        surfel.irradiance.a = max(SurfelSaturate(surfel.irradiance.a), SurfelSaturate(0.25 + 0.50 * acceptedRatio * allocationRatio));
+    } else {
+        surfel.irradiance.a = SurfelSaturate(surfel.irradiance.a + confidenceGain);
+    }
+
+    surfel.frameInfo.x = uFrameIndex;
+    surfel.frameInfo.y = uFrameIndex;
+    surfel.debug.x = varLum;
+    surfels[request.surfelID] = surfel;
+}

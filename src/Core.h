@@ -238,6 +238,7 @@ private:
 
     
     void CleanupCurrentScene();
+    bool ApplySceneCameraOverride(const std::string& sceneFilePath);
     void ComputeSceneBoundingBox();
     void RebuildSceneBVH();
     

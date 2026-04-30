@@ -1,0 +1,80 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_RAY_REQUESTS, std430) buffer SurfelRayRequestBuffer
+{
+    SurfelRayRequest rayRequests[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uMaxSurfels;
+uniform uint uMaxRayBudget;
+
+const uint SURFEL_ALLOCATE_CAS_ATTEMPTS = 8u;
+
+uint ProportionalAllocation(uint requested, uint totalRequested, uint budget)
+{
+    if (requested == 0u || totalRequested == 0u || budget == 0u) {
+        return 0u;
+    }
+    if (totalRequested <= budget) {
+        return requested;
+    }
+
+    float scaled = floor((float(requested) * float(budget)) / float(totalRequested));
+    uint allocated = min(requested, uint(scaled));
+    return allocated == 0u ? 1u : allocated;
+}
+
+uint ReserveRays(uint desired, uint budget, out uint firstRay)
+{
+    firstRay = 0u;
+    if (desired == 0u || budget == 0u) {
+        return 0u;
+    }
+
+    for (uint attempt = 0u; attempt < SURFEL_ALLOCATE_CAS_ATTEMPTS; ++attempt) {
+        uint current = counters.allocatedRays;
+        if (current >= budget) {
+            return 0u;
+        }
+
+        uint granted = min(desired, budget - current);
+        uint original = atomicCompSwap(counters.allocatedRays, current, current + granted);
+        if (original == current) {
+            firstRay = current;
+            return granted;
+        }
+    }
+
+    return 0u;
+}
+
+void main()
+{
+    uint requestID = gl_GlobalInvocationID.x;
+    if (requestID >= uMaxSurfels) {
+        return;
+    }
+
+    uint requested = rayRequests[requestID].requestedCount;
+    uint budget = min(uMaxRayBudget, counters.requestedRays);
+    uint allocated = ProportionalAllocation(requested, counters.requestedRays, budget);
+    if (allocated == 0u) {
+        rayRequests[requestID].allocatedCount = 0u;
+        rayRequests[requestID].firstRay = 0u;
+        return;
+    }
+
+    uint firstRay = 0u;
+    allocated = ReserveRays(allocated, budget, firstRay);
+    rayRequests[requestID].allocatedCount = allocated;
+    rayRequests[requestID].firstRay = allocated > 0u ? firstRay : 0u;
+}

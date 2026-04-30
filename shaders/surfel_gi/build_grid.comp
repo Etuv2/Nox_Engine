@@ -1,0 +1,70 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_ENTRIES, std430) buffer SurfelGridEntryBuffer
+{
+    SurfelCellEntry gridEntries[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uMaxSurfels;
+uniform uint uGridCellCount;
+uniform uint uMaxSurfelsPerCell;
+uniform uvec3 uGridResolution;
+uniform vec3 uGridMin;
+uniform vec3 uGridMax;
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID >= uMaxSurfels || uGridCellCount == 0u || uMaxSurfelsPerCell == 0u) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    uvec3 cellCoord;
+    if (!SurfelWorldToGridCell(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, cellCoord)) {
+        return;
+    }
+
+    uint cell = SurfelFlattenCell(cellCoord, uGridResolution);
+    if (cell >= uGridCellCount) {
+        return;
+    }
+
+    uint slot = atomicAdd(gridHeaders[cell].entryCount, 1u);
+    uint firstEntry = gridHeaders[cell].firstEntry;
+    if (firstEntry == 0u && cell != 0u) {
+        firstEntry = cell * uMaxSurfelsPerCell;
+    }
+
+    if (slot < uMaxSurfelsPerCell) {
+        uint entryIndex = firstEntry + slot;
+        gridEntries[entryIndex].surfelID = surfelID;
+        gridEntries[entryIndex].next = SURFEL_INVALID_INDEX;
+    } else {
+        atomicOr(gridHeaders[cell].flags, SURFEL_CELL_OVERFLOWED);
+        atomicAdd(counters.overflowGridEntries, 1u);
+    }
+}

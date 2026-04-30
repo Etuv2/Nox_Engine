@@ -1,0 +1,13 @@
+{
+    "pid":  62648,
+    "exited":  false,
+    "exitCode":  null,
+    "windowTitle":  "Nox Engine",
+    "capture":  "release_window_capture.png",
+    "windowRect":  [
+                       408,
+                       5,
+                       2344,
+                       1124
+                   ]
+}

@@ -1,0 +1,27 @@
+﻿{
+    "scene":  "shibuya",
+    "surfel_gi":  "enabled realtime full composite",
+    "capture":  "C:\\Users\\desti\\Documents\\GithubStuff\\Nox_Engine\\validation_output\\runtime_surfel_gi_20260430_14_shibuya_realtime\\release_window_capture.png",
+    "rect":  {
+                 "left":  408,
+                 "width":  1936,
+                 "top":  5,
+                 "height":  1119
+             },
+    "stdout_lines":  14690,
+    "stderr_lines":  0,
+    "shader_errors":  [
+
+                      ],
+    "scene_summary":  [
+                          "[SceneLoader] Loading scene: scenes\\shibuya.json",
+                          "[SceneLoader] Loaded 4 root nodes with ECS entities",
+                          "[SceneLoader] Scene load summary: scene=\u0027shibuya\u0027, path=\u0027scenes\\shibuya.json\u0027, authoredRootNodes=4, models=2, transforms=5117, maxTransformID=5118, renderables=1611, lights=1, cameras=0, skyboxesLoaded=1, skyboxesDisabled=0"
+                      ],
+    "perf_lines":  [
+                       "[Core] Initializing engine subsystems...",
+                       "[Scene] Load diagnostics for porsche_911_gt3.glb: totalMs=221.465, parseMs=167.054, nodeBuildMs=1.1777, primitiveBuildMs=52.2205, materialSetupMs=16.2548, animationLoadMs=0.0001, materialCacheHits=1610, materialCacheMisses=20, textureRefs=2738, uniqueTextureLoads=27, totalVertices=184649, totalIndices=707163",
+                       "[Scene] Load diagnostics for sponza_palace.glb: totalMs=461.168, parseMs=355.437, nodeBuildMs=0.0495, primitiveBuildMs=104.836, materialSetupMs=82.0948, animationLoadMs=0.0001, materialCacheHits=78, materialCacheMisses=25, textureRefs=307, uniqueTextureLoads=69, totalVertices=192489, totalIndices=786798",
+                       "[SceneLoader] Scene load summary: scene=\u0027shibuya\u0027, path=\u0027scenes\\shibuya.json\u0027, authoredRootNodes=4, models=2, transforms=5117, maxTransformID=5118, renderables=1611, lights=1, cameras=0, skyboxesLoaded=1, skyboxesDisabled=0"
+                   ]
+}

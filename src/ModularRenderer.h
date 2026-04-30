@@ -30,8 +30,6 @@ class TransformHistoryPass;
 class ShadowPass;
 class SSAOPass;
 class ScreenSpaceShadowPass;
-class SurfelGIPass;
-class SurfelIndirectDiffusePass;
 class LightingPass;
 class BloomPass;
 class TAAPass;
@@ -39,6 +37,7 @@ class TransparentForwardPass;
 class PostProcessPass;
 class LPVPass;
 class IndirectDiffusePass;
+class SurfelGIManager;
 class GUIPass;
 class RTPass;
 class DebugBBoxPass;
@@ -78,7 +77,6 @@ public:
 	RenderContext& GetContext() { return m_context; }
 	bool ExportIndirectDiffuseValidationStages(const std::string& directory) const;
 	bool ReadIndirectDiffuseProbe(int stage, int pixelX, int pixelY, IndirectDiffuseProbeSample& outSample) const;
-	const SurfelGIPass* GetSurfelGIPass() const { return m_surfelGIPass.get(); }
 
 	// TAA controls
 	void ResetTAA();
@@ -111,6 +109,7 @@ private:
 		glm::vec3 envColor);
 
 	void CheckGLError(const std::string& passName);
+	void SyncCleanSurfelGISettings();
 
 	enum class FrameGraphMode {
 		DEFERRED = 0,
@@ -137,9 +136,7 @@ private:
 		bool enableBloom = false;
 		bool enableSSAO = false;
 		bool enableIndirectDiffuse = false;
-	bool enableSurfelGI = false;
-	bool enableSurfelIndirectDiffuse = false;
-		bool presentSurfelGIDebug = false;
+		bool enableSurfelGI = false;
 		bool presentIndirectDiffuseDebug = false;
 		bool enableScreenSpaceShadows = false;
 		bool enableLPV = false;
@@ -151,8 +148,6 @@ private:
 				enableSSAO == other.enableSSAO &&
 				enableIndirectDiffuse == other.enableIndirectDiffuse &&
 				enableSurfelGI == other.enableSurfelGI &&
-				enableSurfelIndirectDiffuse == other.enableSurfelIndirectDiffuse &&
-				presentSurfelGIDebug == other.presentSurfelGIDebug &&
 				presentIndirectDiffuseDebug == other.presentIndirectDiffuseDebug &&
 				enableScreenSpaceShadows == other.enableScreenSpaceShadows &&
 				enableLPV == other.enableLPV &&
@@ -188,9 +183,8 @@ private:
 	std::unique_ptr<RTPass> m_rtPass;  // Path tracing pass
 	std::unique_ptr<SSAOPass> m_ssaoPass;
 	std::unique_ptr<ScreenSpaceShadowPass> m_screenSpaceShadowPass;
-	std::unique_ptr<SurfelGIPass> m_surfelGIPass;
-	std::unique_ptr<SurfelIndirectDiffusePass> m_surfelIndirectDiffusePass;
 	std::unique_ptr<IndirectDiffusePass> m_indirectDiffusePass;
+	std::unique_ptr<SurfelGIManager> m_surfelGIManager;
 	std::unique_ptr<TAAPass> m_taaPass;
 	std::unique_ptr<LightingPass> m_lightingPass;
 	std::unique_ptr<BloomPass> m_bloomPass;

@@ -1,0 +1,104 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_RAY_REQUESTS, std430) buffer SurfelRayRequestBuffer
+{
+    SurfelRayRequest rayRequests[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uMaxSurfels;
+uniform uint uFrameIndex;
+
+const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 4u;
+const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 4u;
+const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 2u;
+
+uint FrameDelta(uint newerFrame, uint olderFrame)
+{
+    return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
+}
+
+uint ComputeRayRequest(Surfel surfel)
+{
+    if (!SurfelIsAlive(surfel)) {
+        return 0u;
+    }
+
+    bool isNew = SurfelIsNew(surfel) || surfel.worldNormal_age.w < 2.0 || surfel.shortMean.a < 1.0;
+    float confidence = SurfelSaturate(surfel.irradiance.a);
+    float lowConfidence = 1.0 - confidence;
+    vec3 varianceRgb = max(surfel.shortM2.rgb, vec3(0.0));
+    float variance = SurfelSaturate(max(max(varianceRgb.r, varianceRgb.g), varianceRgb.b) * 8.0);
+    float signal = SurfelSaturate(SurfelLuminance(max(surfel.irradiance.rgb, surfel.shortMean.rgb)) * 2.0);
+
+    uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
+    float visible = exp(-0.02 * float(framesSinceContribution));
+    bool dormantLowVariance = !isNew &&
+        framesSinceContribution > 48u &&
+        variance < 0.03 &&
+        confidence > 0.85;
+
+    if (dormantLowVariance) {
+        return signal > 0.10 ? 1u : 0u;
+    }
+
+    bool stableLowVariance = !isNew &&
+        framesSinceContribution > 8u &&
+        variance < 0.02 &&
+        confidence > 0.80;
+    if (stableLowVariance && ((uFrameIndex + surfel.ids.z) & 3u) != 0u) {
+        return 0u;
+    }
+
+    float ageScore = SurfelSaturate(surfel.worldNormal_age.w / 16.0);
+    float importance =
+        variance * 0.40 +
+        visible * signal * 0.25 +
+        (isNew ? 0.20 : 0.0) +
+        lowConfidence * 0.15;
+    importance *= mix(1.5, 1.0, ageScore);
+
+    uint requested = uint(round(mix(1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL), SurfelSaturate(importance))));
+    if (isNew) {
+        requested = max(requested, SURFEL_REQUEST_NEW_SURFEL_RAYS);
+    }
+    if (confidence < 0.40) {
+        requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
+    }
+
+    if (!isNew && confidence > 0.92 && variance < 0.01 && signal < 0.02) {
+        requested = min(requested, 1u);
+    }
+
+    return min(requested, SURFEL_REQUEST_MAX_RAYS_PER_SURFEL);
+}
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID >= uMaxSurfels) {
+        return;
+    }
+    uint requested = ComputeRayRequest(surfels[surfelID]);
+    if (requested > 0u) {
+        atomicAdd(counters.requestedRays, requested);
+    }
+
+    rayRequests[surfelID].surfelID = surfelID;
+    rayRequests[surfelID].requestedCount = requested;
+    rayRequests[surfelID].allocatedCount = 0u;
+    rayRequests[surfelID].firstRay = 0u;
+}

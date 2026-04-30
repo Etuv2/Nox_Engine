@@ -1,0 +1,75 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_TRANSFORMS, std430) readonly buffer TransformBuffer
+{
+    GpuTransformRecord transforms[];
+};
+
+uniform uint uMaxSurfels;
+uniform uint uTransformCount;
+uniform uint uFrameIndex;
+uniform vec2 uViewportSize;
+uniform mat4 uView;
+uniform mat4 uProjection;
+uniform float uTargetSurfelScreenRadiusPx;
+uniform float uMinSurfelRadius;
+uniform float uMaxSurfelRadius;
+
+float WorldUnitsPerPixel(vec3 worldPos)
+{
+    vec4 viewPos = uView * vec4(worldPos, 1.0);
+    float focalY = max(abs(uProjection[1][1]), 0.0001);
+    return max(abs(viewPos.z), 0.05) / (max(uViewportSize.y, 1.0) * focalY);
+}
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID >= uMaxSurfels) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    uint transformID = surfel.ids.x;
+    if (transformID >= uTransformCount) {
+        SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_INVALID);
+        surfel.debug.w = 1.0;
+        surfels[surfelID] = surfel;
+        return;
+    }
+
+    GpuTransformRecord transform = transforms[transformID];
+    if ((transform.metadata.x & GPU_TRANSFORM_INVALID) != 0u) {
+        SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_INVALID);
+        surfel.debug.w = 1.0;
+        surfels[surfelID] = surfel;
+        return;
+    }
+
+    vec4 worldPos = transform.world * vec4(surfel.localPos_spawnRadius.xyz, 1.0);
+    mat3 normalMatrix = transpose(inverse(mat3(transform.world)));
+    vec3 worldNormal = SurfelSafeNormalize(normalMatrix * surfel.localNormal_flags.xyz);
+
+    float targetPixels = uTargetSurfelScreenRadiusPx > 0.0 ? uTargetSurfelScreenRadiusPx : 8.0;
+    float minRadius = max(uMinSurfelRadius, 0.001);
+    float maxRadius = max(uMaxSurfelRadius, minRadius);
+    float radius = clamp(targetPixels * WorldUnitsPerPixel(worldPos.xyz), minRadius, maxRadius);
+
+    surfel.worldPos_radius = vec4(worldPos.xyz, radius);
+    surfel.worldNormal_age = vec4(worldNormal, surfel.worldNormal_age.w + 1.0);
+    surfel.frameInfo.z = uFrameIndex;
+    surfels[surfelID] = surfel;
+}

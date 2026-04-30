@@ -1,0 +1,42 @@
+﻿{
+    "scene":  "shibuya",
+    "capture":  "C:\\Users\\desti\\Documents\\GithubStuff\\Nox_Engine\\validation_output\\runtime_surfel_gi_20260430_19_shibuya_camera_alley_enabled\\release_window_capture.png",
+    "rect":  {
+                 "left":  408,
+                 "width":  1936,
+                 "top":  5,
+                 "height":  1119
+             },
+    "stdout_lines":  8180,
+    "stderr_lines":  0,
+    "shader_errors":  [
+
+                      ],
+    "scene_summary":  [
+                          "[Core] NOX_FIRST_SCENE override resolved to: scenes\\shibuya.json",
+                          "[SceneLoader] Loading scene: scenes\\shibuya.json",
+                          "[SceneLoader] Loaded 4 root nodes with ECS entities",
+                          "[SceneLoader] Scene load summary: scene=\u0027shibuya\u0027, path=\u0027scenes\\shibuya.json\u0027, authoredRootNodes=4, models=2, transforms=5117, maxTransformID=5118, renderables=1611, lights=1, cameras=0, skyboxesLoaded=1, skyboxesDisabled=0",
+                          "[Core] Applied scene camera override from scenes\\shibuya.json position=(-3.44547, 1.37261, -0.132752) yaw=-90 pitch=0 fov=120 near=0.1 far=600"
+                      ],
+    "metrics_tail":  [
+                         "[FramePassMetrics] begin frame=991 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0965 gpuMs=0.093184 dispatches=1 drawCalls=0 cpuWaitMs=0.0005",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0663 gpuMs=0.13312 dispatches=0 drawCalls=1 cpuWaitMs=0.0003",
+                         "[FramePassMetrics] begin frame=1081 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0745 gpuMs=0.094208 dispatches=1 drawCalls=0 cpuWaitMs=0.0005",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0659 gpuMs=0.13312 dispatches=0 drawCalls=1 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] begin frame=1171 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0841 gpuMs=0.093184 dispatches=1 drawCalls=0 cpuWaitMs=0.0003",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0722 gpuMs=0.508928 dispatches=0 drawCalls=1 cpuWaitMs=0.0004",
+                         "[FramePassMetrics] begin frame=1261 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0857 gpuMs=0.09728 dispatches=1 drawCalls=0 cpuWaitMs=0.0005",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0665 gpuMs=0.13312 dispatches=0 drawCalls=1 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] begin frame=1351 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.07 gpuMs=0.096256 dispatches=1 drawCalls=0 cpuWaitMs=0.0004",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0642 gpuMs=0.607232 dispatches=0 drawCalls=1 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] begin frame=1441 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.1012 gpuMs=0.095232 dispatches=1 drawCalls=0 cpuWaitMs=0.0004",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.068 gpuMs=0.217088 dispatches=0 drawCalls=1 cpuWaitMs=0.0002"
+                     ]
+}

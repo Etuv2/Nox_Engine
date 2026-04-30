@@ -39,7 +39,6 @@ namespace TextureUnits {
     constexpr int KEY_LIGHT_SHADOW = 19;        // keyLightShadowMap
     constexpr int RIM_LIGHT_SHADOW = 20;        // rimLightShadowMap
     constexpr int SCREEN_SPACE_SHADOW_MAP = 23; // screenSpaceShadowMap (contact shadows)
-    constexpr int SURFEL_INDIRECT_DIFFUSE = 22; // surfelIndirectDiffuseMap (RGBA16F irradiance + confidence)
     // Extended G-buffer (bound after creation in renderer)
     constexpr int GBUFFER_SPECULAR = 21;        // gSpecularF0 (RGB16F - full color)
     constexpr int GBUFFER_OCCLUSION = 22;       // gOcclusion (R)

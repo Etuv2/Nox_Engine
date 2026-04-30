@@ -6,6 +6,11 @@
 #include <functional>
 #include <limits>
 #include <chrono>
+#include <cstdlib>
+#include <cctype>
+#include <cmath>
+#include <filesystem>
+#include <vector>
 
 #include <GL/glew.h>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -38,6 +43,115 @@
 #include "ShaderLoader.h"
 #include "Input/InputIntegration.h"
 #include "PerformanceRecorder.h"
+
+namespace {
+namespace fs = std::filesystem;
+
+std::string GetEnvVarString(const char* name)
+{
+#if defined(_MSC_VER)
+	char* value = nullptr;
+	size_t length = 0;
+	if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+		return {};
+	}
+	std::string result(value);
+	std::free(value);
+	return result;
+#else
+	const char* value = std::getenv(name);
+	return value ? std::string(value) : std::string{};
+#endif
+}
+
+std::string TrimScenePathValue(const std::string& value)
+{
+	size_t begin = 0;
+	size_t end = value.size();
+	while (begin < end && std::isspace(static_cast<unsigned char>(value[begin]))) {
+		++begin;
+	}
+	while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+		--end;
+	}
+	std::string trimmed = value.substr(begin, end - begin);
+	if (trimmed.size() >= 2) {
+		const char first = trimmed.front();
+		const char last = trimmed.back();
+		if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+			trimmed = trimmed.substr(1, trimmed.size() - 2);
+		}
+	}
+	return trimmed;
+}
+
+bool SceneFileExists(const fs::path& path)
+{
+	std::error_code ec;
+	return fs::exists(path, ec) && fs::is_regular_file(path, ec);
+}
+
+void PushUniqueSceneCandidate(std::vector<fs::path>& candidates, const fs::path& candidate)
+{
+	const fs::path normalized = candidate.lexically_normal();
+	for (const fs::path& existing : candidates) {
+		if (existing.lexically_normal() == normalized) {
+			return;
+		}
+	}
+	candidates.push_back(normalized);
+}
+
+std::string ResolveSceneFilePath(const std::string& requestedPath)
+{
+	const std::string trimmed = TrimScenePathValue(requestedPath);
+	if (trimmed.empty()) {
+		return {};
+	}
+
+	std::vector<fs::path> candidates;
+	const fs::path authoredPath(trimmed);
+	PushUniqueSceneCandidate(candidates, authoredPath);
+	if (!authoredPath.has_extension()) {
+		PushUniqueSceneCandidate(candidates, fs::path(trimmed + ".json"));
+	}
+	if (!authoredPath.is_absolute()) {
+		PushUniqueSceneCandidate(candidates, fs::path("scenes") / authoredPath);
+		if (!authoredPath.has_extension()) {
+			PushUniqueSceneCandidate(candidates, fs::path("scenes") / fs::path(trimmed + ".json"));
+		}
+	}
+
+	for (const fs::path& candidate : candidates) {
+		if (SceneFileExists(candidate)) {
+			return candidate.lexically_normal().string();
+		}
+	}
+
+	std::cerr << "[Core] Warning: scene path could not be resolved before load: "
+		<< trimmed << std::endl;
+	return trimmed;
+}
+
+bool ReadSceneCameraVec3(const json& object, const char* key, glm::vec3& outValue)
+{
+	if (!object.contains(key) || !object[key].is_array() || object[key].size() != 3) {
+		return false;
+	}
+
+	try {
+		outValue = glm::vec3(
+			object[key][0].get<float>(),
+			object[key][1].get<float>(),
+			object[key][2].get<float>());
+	}
+	catch (const std::exception&) {
+		return false;
+	}
+
+	return std::isfinite(outValue.x) && std::isfinite(outValue.y) && std::isfinite(outValue.z);
+}
+}
 #include "RuntimeStateManager.h"
 
 Core::Core()
@@ -275,6 +389,75 @@ bool Core::InitializeCamera() {
 	return true;
 }
 
+bool Core::ApplySceneCameraOverride(const std::string& sceneFilePath) {
+	if (!m_camera) {
+		return false;
+	}
+
+	std::ifstream sceneFile(sceneFilePath);
+	if (!sceneFile.is_open()) {
+		std::cerr << "[Core] Scene camera override skipped; failed to open scene file: "
+			<< sceneFilePath << std::endl;
+		return false;
+	}
+
+	json sceneJson;
+	try {
+		sceneFile >> sceneJson;
+	}
+	catch (const std::exception& e) {
+		std::cerr << "[Core] Scene camera override skipped; failed to parse scene file '"
+			<< sceneFilePath << "': " << e.what() << std::endl;
+		return false;
+	}
+
+	if (!sceneJson.is_object() || !sceneJson.contains("camera") || !sceneJson["camera"].is_object()) {
+		return false;
+	}
+
+	const json& cameraJson = sceneJson["camera"];
+	glm::vec3 position(0.0f);
+	if (!ReadSceneCameraVec3(cameraJson, "position", position)) {
+		std::cerr << "[Core] Scene camera override skipped; camera.position is missing or invalid in "
+			<< sceneFilePath << std::endl;
+		return false;
+	}
+
+	glm::vec3 up(0.0f, 1.0f, 0.0f);
+	(void)ReadSceneCameraVec3(cameraJson, "up", up);
+
+	float yaw = cameraJson.value("yaw", m_camera->GetCameraFacingAngle());
+	float pitch = cameraJson.value("pitch", 0.0f);
+	glm::vec3 lookAt(0.0f);
+	if ((!cameraJson.contains("yaw") || !cameraJson.contains("pitch")) &&
+		ReadSceneCameraVec3(cameraJson, "look_at", lookAt)) {
+		const glm::vec3 direction = glm::normalize(lookAt - position);
+		if (std::isfinite(direction.x) && std::isfinite(direction.y) && std::isfinite(direction.z)) {
+			yaw = glm::degrees(std::atan2(direction.z, direction.x));
+			pitch = glm::degrees(std::asin(glm::clamp(direction.y, -1.0f, 1.0f)));
+		}
+	}
+
+	const float fov = glm::clamp(cameraJson.value("fov", m_camera->GetCameraFov()), 1.0f, 120.0f);
+	const float nearPlane = std::max(cameraJson.value("near", m_camera->GetCameraNearPlane()), 0.001f);
+	const float farPlane = std::max(cameraJson.value("far", m_camera->GetCameraFarPlane()), nearPlane + 0.001f);
+	const float aspect = (m_windowHeight > 0) ?
+		static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight) :
+		16.0f / 9.0f;
+
+	m_camera->SetPose(position, up, yaw, pitch);
+	m_camera->SetPerspective(fov, aspect, nearPlane, farPlane);
+	m_camera->SetProjectionType(Camera::ProjectionType::Perspective);
+	m_camera->m_movementSpeed = std::max(cameraJson.value("movement_speed", m_camera->GetCameraMovementSpeed()), 0.0f);
+	m_camera->m_mouseSensitivity = std::max(cameraJson.value("mouse_sensitivity", m_camera->GetCameraMouseSensitivity()), 0.0f);
+
+	std::cout << "[Core] Applied scene camera override from " << sceneFilePath
+		<< " position=(" << position.x << ", " << position.y << ", " << position.z
+		<< ") yaw=" << yaw << " pitch=" << pitch << " fov=" << fov
+		<< " near=" << nearPlane << " far=" << farPlane << std::endl;
+	return true;
+}
+
 bool Core::InitializePhysics() {
 	std::cout << "[Core] Initializing physics..." << std::endl;
 
@@ -290,7 +473,12 @@ bool Core::InitializePhysics() {
 bool Core::InitializeScene() {
 	std::cout << "[Core] Initializing scene..." << std::endl;
 
-	m_sceneToLoad = m_config.value("first_scene", "scenes/scene.json");
+	m_sceneToLoad = ResolveSceneFilePath(m_config.value("first_scene", "scenes/scene.json"));
+	const std::string forcedScene = GetEnvVarString("NOX_FIRST_SCENE");
+	if (!forcedScene.empty()) {
+		m_sceneToLoad = ResolveSceneFilePath(forcedScene);
+		std::cout << "[Core] NOX_FIRST_SCENE override resolved to: " << m_sceneToLoad << std::endl;
+	}
 	m_modelManager = std::make_shared<ModelManager>();
 
 	// Load the Scene using SceneLoader
@@ -307,6 +495,7 @@ bool Core::InitializeScene() {
 	m_gamma = m_sceneGraph->m_gamma;
 	m_sceneName = m_sceneGraph->GetSceneName();
 	m_sceneHasAudioNodes = !m_sceneGraph->FindNodesByType(SceneNode::AUDIO).empty();
+	ApplySceneCameraOverride(m_sceneToLoad);
 
 	// Sync physics enabled state from scene JSON
 	m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
@@ -391,6 +580,14 @@ bool Core::InitializeUI() {
 
 	// Set scene graph reference
 	m_imguiInterface->SetSceneGraph(m_sceneGraph);
+
+	const std::string forcedState = GetEnvVarString("NOX_FIRST_SCENE_STATE");
+	if (!forcedState.empty()) {
+		std::cout << "[Core] NOX_FIRST_SCENE_STATE override loading: " << forcedState << std::endl;
+		if (!LoadSceneState(forcedState)) {
+			std::cerr << "[Core] Failed to load NOX_FIRST_SCENE_STATE: " << forcedState << std::endl;
+		}
+	}
 
 	// Connect ModularRenderer to UI for real-time rendering control
 	if (m_modularRenderer) {
@@ -799,19 +996,21 @@ void Core::OnWindowResize(int newWidth, int newHeight) {
 void Core::SwapScene(const std::string& newSceneFile) {
 	std::cout << "[Core] Swapping to scene: " << newSceneFile << std::endl;
 
-	m_sceneToLoad = newSceneFile;
+	const std::string resolvedSceneFile = ResolveSceneFilePath(newSceneFile);
+	m_sceneToLoad = resolvedSceneFile;
 	CleanupCurrentScene();
 
 	if (m_sceneLoader) {
-		auto newGraph = m_sceneLoader->LoadScene(newSceneFile);
+		auto newGraph = m_sceneLoader->LoadScene(resolvedSceneFile);
 		if (newGraph) {
 			m_sceneGraph = newGraph;
-			m_currentSceneFilePath = newSceneFile;
+			m_currentSceneFilePath = resolvedSceneFile;
 
 			m_exposure = m_sceneGraph->m_exposure;
 			m_gamma = m_sceneGraph->m_gamma;
 			m_sceneName = m_sceneGraph->GetSceneName();
 			m_sceneHasAudioNodes = !m_sceneGraph->FindNodesByType(SceneNode::AUDIO).empty();
+			ApplySceneCameraOverride(resolvedSceneFile);
 
 			m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
 			if (m_physicsEngine) {
@@ -820,7 +1019,7 @@ void Core::SwapScene(const std::string& newSceneFile) {
 
 			// Update state manager with new scene file path
 			if (m_stateManager) {
-				m_stateManager->SetCurrentSceneFilePath(newSceneFile);
+				m_stateManager->SetCurrentSceneFilePath(resolvedSceneFile);
 			}
 
 			auto lightManager = m_sceneGraph->GetLightManager();
@@ -844,10 +1043,10 @@ void Core::SwapScene(const std::string& newSceneFile) {
 
 			ComputeSceneBoundingBox();
 
-			std::cout << "[Core] Scene swap completed successfully: " << newSceneFile << std::endl;
+			std::cout << "[Core] Scene swap completed successfully: " << resolvedSceneFile << std::endl;
 		}
 		else {
-			std::cerr << "[Core] Failed to load scene: " << newSceneFile << std::endl;
+			std::cerr << "[Core] Failed to load scene: " << resolvedSceneFile << std::endl;
 		}
 
 		m_bvhDirty = true;
@@ -1208,16 +1407,17 @@ bool Core::LoadSceneState(const std::string& filepath) {
 		CleanupCurrentScene();
 
 		// Load the scene
-		auto newGraph = m_sceneLoader->LoadScene(sceneFile);
+		const std::string resolvedSceneFile = ResolveSceneFilePath(sceneFile);
+		auto newGraph = m_sceneLoader->LoadScene(resolvedSceneFile);
 		if (!newGraph || !newGraph->GetRoot()) {
-			std::cerr << "[Core] ERROR: Failed to load scene: " << sceneFile << std::endl;
+			std::cerr << "[Core] ERROR: Failed to load scene: " << resolvedSceneFile << std::endl;
 			return nullptr;
 		}
 
 		// Update m_sceneGraph immediately so that state restoration
 		// operates on the correct scene graph instance
 		m_sceneGraph = newGraph;
-		m_currentSceneFilePath = sceneFile;
+		m_currentSceneFilePath = resolvedSceneFile;
 
 		// Initialize scene systems (lights, physics, etc.)
 		m_exposure = newGraph->m_exposure;
@@ -1258,7 +1458,7 @@ bool Core::LoadSceneState(const std::string& filepath) {
 			m_modularRenderer->ResetTAA();
 		}
 
-		std::cout << "[Core] Base scene loaded and initialized: " << sceneFile << std::endl;
+		std::cout << "[Core] Base scene loaded and initialized: " << resolvedSceneFile << std::endl;
 		return newGraph;
 		};
 

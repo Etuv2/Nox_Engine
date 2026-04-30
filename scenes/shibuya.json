@@ -2,6 +2,16 @@
   "scene_name": "shibuya",
   "exposure": 1,
   "gamma": 2.2,
+  "camera": {
+    "position": [-3.4454684, 1.3726143, -0.13275225],
+    "yaw": -90.0,
+    "pitch": 0.0,
+    "fov": 120.0,
+    "near": 0.1,
+    "far": 600.0,
+    "movement_speed": 30.0,
+    "mouse_sensitivity": 0.1
+  },
   "skybox": "hdrs\\skybox_2.hdr",
   "main_shaders": {
     "normal_pass": {

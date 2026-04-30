@@ -2,6 +2,16 @@
   "scene_name": "surfel_gi_cornell_validation",
   "exposure": 1.0,
   "gamma": 2.2,
+  "camera": {
+    "position": [0.0, 1.25, 4.25],
+    "yaw": -90.0,
+    "pitch": -5.0,
+    "fov": 55.0,
+    "near": 0.05,
+    "far": 50.0,
+    "movement_speed": 2.5,
+    "mouse_sensitivity": 0.1
+  },
   "skybox": "",
   "nodes": [
     {

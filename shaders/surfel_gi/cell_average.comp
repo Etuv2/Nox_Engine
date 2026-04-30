@@ -1,0 +1,64 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
+{
+    SurfelCellEntry gridEntries[];
+};
+
+uniform uint uGridCellCount;
+uniform uint uMaxSurfelsPerCell;
+uniform uint uMaxSurfels;
+
+void main()
+{
+    uint cell = gl_GlobalInvocationID.x;
+    if (cell >= uGridCellCount || uMaxSurfelsPerCell == 0u) {
+        return;
+    }
+
+    uint count = min(gridHeaders[cell].entryCount, uMaxSurfelsPerCell);
+    uint firstEntry = gridHeaders[cell].firstEntry;
+    if (firstEntry == 0u && cell != 0u) {
+        firstEntry = cell * uMaxSurfelsPerCell;
+    }
+
+    vec3 sumIrradiance = vec3(0.0);
+    float sumWeight = 0.0;
+    for (uint i = 0u; i < count; ++i) {
+        uint surfelID = gridEntries[firstEntry + i].surfelID;
+        if (surfelID >= uMaxSurfels) {
+            continue;
+        }
+
+        Surfel surfel = surfels[surfelID];
+        if (!SurfelIsAlive(surfel)) {
+            continue;
+        }
+
+        float weight = max(surfel.irradiance.a, 0.0);
+        sumIrradiance += max(surfel.irradiance.rgb, vec3(0.0)) * weight;
+        sumWeight += weight;
+    }
+
+    if (sumWeight > 0.0) {
+        gridHeaders[cell].averagePackedIrradiance = SurfelPackIrradiance(sumIrradiance / sumWeight, SurfelSaturate(sumWeight / max(float(count), 1.0)));
+        gridHeaders[cell].flags |= SURFEL_CELL_HAS_AVERAGE;
+    } else {
+        gridHeaders[cell].averagePackedIrradiance = 0u;
+        gridHeaders[cell].flags &= ~SURFEL_CELL_HAS_AVERAGE;
+    }
+}

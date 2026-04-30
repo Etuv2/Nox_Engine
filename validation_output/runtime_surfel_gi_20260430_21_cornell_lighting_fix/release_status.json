@@ -1,0 +1,43 @@
+﻿{
+    "scene":  "surfel_gi_cornell_validation",
+    "mode":  "surfel only after lighting fix",
+    "capture":  "C:\\Users\\desti\\Documents\\GithubStuff\\Nox_Engine\\validation_output\\runtime_surfel_gi_20260430_21_cornell_lighting_fix\\release_window_capture.png",
+    "rect":  {
+                 "left":  408,
+                 "width":  1936,
+                 "top":  5,
+                 "height":  1119
+             },
+    "stdout_lines":  10013,
+    "stderr_lines":  0,
+    "shader_errors":  [
+
+                      ],
+    "scene_summary":  [
+                          "[Core] NOX_FIRST_SCENE override resolved to: scenes\\surfel_gi_cornell_validation.json",
+                          "[SceneLoader] Loading scene: scenes\\surfel_gi_cornell_validation.json",
+                          "[SceneLoader] Loaded 2 root nodes with ECS entities",
+                          "[SceneLoader] Scene load summary: scene=\u0027surfel_gi_cornell_validation\u0027, path=\u0027scenes\\surfel_gi_cornell_validation.json\u0027, authoredRootNodes=2, models=1, transforms=13, maxTransformID=14, renderables=1, lights=1, cameras=0, skyboxesLoaded=0, skyboxesDisabled=1",
+                          "[Core] Applied scene camera override from scenes\\surfel_gi_cornell_validation.json position=(0, 1.25, 4.25) yaw=-90 pitch=-5 fov=55 near=0.05 far=50"
+                      ],
+    "metrics_tail":  [
+                         "[FramePassMetrics] begin frame=3961 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0691 gpuMs=0.113664 dispatches=1 drawCalls=0 cpuWaitMs=0.0005",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0686 gpuMs=0.2048 dispatches=0 drawCalls=1 cpuWaitMs=0.0006",
+                         "[FramePassMetrics] begin frame=4051 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0485 gpuMs=0.113664 dispatches=1 drawCalls=0 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.059 gpuMs=0.203776 dispatches=0 drawCalls=1 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] begin frame=4141 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0652 gpuMs=0.111616 dispatches=1 drawCalls=0 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0734 gpuMs=0.211968 dispatches=0 drawCalls=1 cpuWaitMs=0.0005",
+                         "[FramePassMetrics] begin frame=4231 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0506 gpuMs=0.110592 dispatches=1 drawCalls=0 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0608 gpuMs=0.206848 dispatches=0 drawCalls=1 cpuWaitMs=0.0004",
+                         "[FramePassMetrics] begin frame=4321 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0693 gpuMs=0.11264 dispatches=1 drawCalls=0 cpuWaitMs=0.0002",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0897 gpuMs=0.201728 dispatches=0 drawCalls=1 cpuWaitMs=0.0006",
+                         "[FramePassMetrics] begin frame=4411 passCount=17",
+                         "[FramePassMetrics] pass=SurfelGIUpdatePass cpuMs=0.0563 gpuMs=0.115712 dispatches=1 drawCalls=0 cpuWaitMs=0.0004",
+                         "[FramePassMetrics] pass=LightingPass cpuMs=0.0594 gpuMs=0.202752 dispatches=0 drawCalls=1 cpuWaitMs=0.0003"
+                     ]
+}

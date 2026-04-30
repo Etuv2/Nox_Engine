@@ -354,11 +354,14 @@
     <ClCompile Include="src\passes\IndirectDiffusePass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
-    <ClCompile Include="src\passes\SurfelGIPass.cpp">
+    <ClCompile Include="src\passes\SurfelGIManager.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
-    <ClCompile Include="src\passes\SurfelIndirectDiffusePass.cpp">
+    <ClCompile Include="src\passes\SurfelGIPipeline.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\surfel_gi\SurfelGIResources.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\passes\GUIPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
@@ -668,67 +671,61 @@
     <None Include="shaders\indirect_diffuse_upsample_comp.glsl">
       <Filter>Source Files\misc\shaders\global_illumination\indirect_diffuse</Filter>
     </None>
-    <None Include="shaders\includes\surfel_gi_common.glsl">
+    <None Include="shaders\includes\surfel_gi_resources.glsl">
       <Filter>Source Files\misc\shaders\common</Filter>
     </None>
-    <None Include="shaders\surfel_gi_debug_frag.glsl">
+    <None Include="shaders\surfel_gi\allocate_rays.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\apply_indirect.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\begin_frame.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\build_grid.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\cell_average.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\clear_grid.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\common.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\coverage.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\debug_surfels.frag">
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
-    <None Include="shaders\surfel_gi_debug_vert.glsl">
+    <None Include="shaders\surfel_gi\debug_surfels.vert">
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
-    <None Include="shaders\surfel_gi_grid_average_comp.glsl">
+    <None Include="shaders\surfel_gi\generate_rays.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
-    <None Include="shaders\surfel_gi_grid_build_comp.glsl">
+    <None Include="shaders\surfel_gi\integrate.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
-    <None Include="shaders\surfel_gi_grid_clear_comp.glsl">
+    <None Include="shaders\surfel_gi\radial_depth_update.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
-    <None Include="shaders\surfel_gi_init_comp.glsl">
+    <None Include="shaders\surfel_gi\recycle_surfels.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
-    <None Include="shaders\surfel_gi_integrate_comp.glsl">
+    <None Include="shaders\surfel_gi\request_rays.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
-    <None Include="shaders\surfel_gi_guiding_update_comp.glsl">
+    <None Include="shaders\surfel_gi\spawn.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
-    <None Include="shaders\surfel_gi_lifecycle_comp.glsl">
+    <None Include="shaders\surfel_gi\trace_rays.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
-    <None Include="shaders\surfel_gi_neighbour_share_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_radial_depth_update_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_ray_allocate_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_ray_request_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_ray_trace_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_recycle_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_spawn_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_temporal_accumulate_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_indirect_diffuse_gather_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_tile_clear_comp.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi_tile_coverage_comp.glsl">
+    <None Include="shaders\surfel_gi\update_surfels.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
     <None Include="shaders\svgf_atrous_comp.glsl">
@@ -968,10 +965,13 @@
     <ClInclude Include="src\passes\IndirectDiffusePass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
-    <ClInclude Include="src\passes\SurfelGIPass.h">
+    <ClInclude Include="src\passes\SurfelGIManager.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
-    <ClInclude Include="src\passes\SurfelIndirectDiffusePass.h">
+    <ClInclude Include="src\surfel_gi\SurfelGIResources.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SurfelGIPipeline.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\RTPass.h">

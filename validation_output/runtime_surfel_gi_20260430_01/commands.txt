@@ -1,0 +1,3 @@
+New-Item -ItemType Directory -Force -Path validation_output\runtime_surfel_gi_20260430_01
+Start-Process -FilePath .\build\vs2022-x64\Release\Nox_Engine.exe -WorkingDirectory . -RedirectStandardOutput validation_output\runtime_surfel_gi_20260430_01\release_stdout.log -RedirectStandardError validation_output\runtime_surfel_gi_20260430_01\release_stderr.log -PassThru; wait/capture/stop after 25s
+Start-Process -FilePath .\build\vs2022-x64\Release\Nox_Engine.exe -WorkingDirectory . -RedirectStandardOutput validation_output\runtime_surfel_gi_20260430_01\release2_stdout.log -RedirectStandardError validation_output\runtime_surfel_gi_20260430_01\release2_stderr.log -PassThru; wait; ShowWindow/SetForegroundWindow; CopyFromScreen; Stop-Process
