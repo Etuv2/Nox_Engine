@@ -1,0 +1,6 @@
+{
+    "frameB":  "C:\\Users\\desti\\Documents\\GithubStuff\\Nox_Engine\\validation_output\\runtime_surfel_gi_20260430_codex_stability\\frame_b.png",
+    "frameA":  "C:\\Users\\desti\\Documents\\GithubStuff\\Nox_Engine\\validation_output\\runtime_surfel_gi_20260430_codex_stability\\frame_a.png",
+    "crop":  "1150,280,950,820",
+    "meanAbsDiff01":  0.0046136637342646288
+}

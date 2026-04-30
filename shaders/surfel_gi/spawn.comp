@@ -106,9 +106,12 @@ bool PopFreeIndex(out uint surfelID)
 uvec2 DeterministicTilePixel(uvec2 tile, uvec2 tileExtent, uint frameIndex, uint passIndex, uint passCount)
 {
     uint pixelCount = max(tileExtent.x * tileExtent.y, 1u);
-    uint tileSeed = SurfelHash(tile.x ^ (tile.y * 0x9e3779b9u));
-    uint sweepIndex = (frameIndex * max(passCount, 1u) + passIndex + (tileSeed % pixelCount)) % pixelCount;
-    return uvec2(sweepIndex % tileExtent.x, sweepIndex / tileExtent.x);
+    uint seed = tile.x * 0x8da6b343u ^
+        tile.y * 0xd8163841u ^
+        frameIndex * 0xcb1ab31fu ^
+        (passIndex + passCount * 17u) * 0x165667b1u;
+    uint sampleIndex = SurfelHash(seed) % pixelCount;
+    return uvec2(sampleIndex % tileExtent.x, sampleIndex / tileExtent.x);
 }
 
 void main()
@@ -162,44 +165,46 @@ void main()
     }
 
     uvec3 baseCell;
-    if (SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell)) {
-        float coverage = 0.0;
-        uint coverageTests = 0u;
-        for (uint n = 0u; n < SURFEL_SPAWN_MAX_COVERAGE_CELLS; ++n) {
-            if (coverageTests >= SURFEL_SPAWN_MAX_COVERAGE_TESTS) {
-                break;
-            }
+    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell)) {
+        return;
+    }
 
-            ivec3 c = ivec3(baseCell) + SurfelCrossNeighborOffset(n);
-            if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+    float coverage = 0.0;
+    uint coverageTests = 0u;
+    for (uint n = 0u; n < SURFEL_SPAWN_MAX_COVERAGE_CELLS; ++n) {
+        if (coverageTests >= SURFEL_SPAWN_MAX_COVERAGE_TESTS) {
+            break;
+        }
+
+        ivec3 c = ivec3(baseCell) + SurfelCrossNeighborOffset(n);
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+            continue;
+        }
+
+        uint cell = SurfelFlattenCell(uvec3(c), uGridResolution);
+        if (cell >= uGridCellCount) {
+            continue;
+        }
+
+        SurfelCellHeader header = gridHeaders[cell];
+        uint count = min(header.entryCount, uMaxSurfelsPerCell);
+        uint budget = min(min(count, SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES),
+                          SURFEL_SPAWN_MAX_COVERAGE_TESTS - coverageTests);
+        uint firstEntry = header.firstEntry;
+        if (firstEntry == 0u && cell != 0u) {
+            firstEntry = cell * uMaxSurfelsPerCell;
+        }
+
+        for (uint i = 0u; i < budget; ++i) {
+            SurfelCellEntry entry = gridEntries[firstEntry + i];
+            ++coverageTests;
+            if (entry.surfelID >= uMaxSurfels) {
                 continue;
             }
 
-            uint cell = SurfelFlattenCell(uvec3(c), uGridResolution);
-            if (cell >= uGridCellCount) {
-                continue;
-            }
-
-            SurfelCellHeader header = gridHeaders[cell];
-            uint count = min(header.entryCount, uMaxSurfelsPerCell);
-            uint budget = min(min(count, SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES),
-                              SURFEL_SPAWN_MAX_COVERAGE_TESTS - coverageTests);
-            uint firstEntry = header.firstEntry;
-            if (firstEntry == 0u && cell != 0u) {
-                firstEntry = cell * uMaxSurfelsPerCell;
-            }
-
-            for (uint i = 0u; i < budget; ++i) {
-                SurfelCellEntry entry = gridEntries[firstEntry + i];
-                ++coverageTests;
-                if (entry.surfelID >= uMaxSurfels) {
-                    continue;
-                }
-
-                coverage += SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos);
-                if (coverage >= uCoverageThreshold) {
-                    return;
-                }
+            coverage += SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos);
+            if (coverage >= uCoverageThreshold) {
+                return;
             }
         }
     }
@@ -228,7 +233,7 @@ void main()
     surfel.worldNormal_age = vec4(worldNormal, 0.0);
     surfel.localPos_spawnRadius = vec4(localPos.xyz, radius);
     surfel.localNormal_flags = vec4(localNormal, uintBitsToFloat(SURFEL_ALIVE | SURFEL_NEW));
-    surfel.ids = uvec4(transformID, materialID, candidate, 0u);
+    surfel.ids = uvec4(transformID, 0u, materialID, 0u);
     surfel.albedo_life = vec4(albedo, 1.0);
     surfel.irradiance = vec4(initialIrradiance, initialConfidence);
     surfel.shortMean = vec4(initialIrradiance, 1.0);

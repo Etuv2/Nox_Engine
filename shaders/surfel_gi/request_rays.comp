@@ -31,7 +31,7 @@ uint FrameDelta(uint newerFrame, uint olderFrame)
     return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
 }
 
-uint ComputeRayRequest(Surfel surfel)
+uint ComputeRayRequest(uint surfelID, Surfel surfel)
 {
     if (!SurfelIsAlive(surfel)) {
         return 0u;
@@ -59,7 +59,7 @@ uint ComputeRayRequest(Surfel surfel)
         framesSinceContribution > 8u &&
         variance < 0.02 &&
         confidence > 0.80;
-    if (stableLowVariance && ((uFrameIndex + surfel.ids.z) & 3u) != 0u) {
+    if (stableLowVariance && ((uFrameIndex + surfelID) & 3u) != 0u) {
         return 0u;
     }
 
@@ -92,7 +92,7 @@ void main()
     if (surfelID >= uMaxSurfels) {
         return;
     }
-    uint requested = ComputeRayRequest(surfels[surfelID]);
+    uint requested = ComputeRayRequest(surfelID, surfels[surfelID]);
     if (requested > 0u) {
         atomicAdd(counters.requestedRays, requested);
     }

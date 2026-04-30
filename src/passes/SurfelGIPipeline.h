@@ -109,6 +109,7 @@ private:
 	uint32_t m_indirectHeight = 0;
 	uint32_t m_frameIndex = 0;
 	uint32_t m_stationaryFrameCount = 0;
+	uint32_t m_lastTransformCount = 0;
 	bool m_hasLastCameraState = false;
 	bool m_initialized = false;
 };

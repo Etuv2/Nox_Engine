@@ -5,9 +5,13 @@ in vec4 vStyle;
 in vec4 vDisk0;
 in vec4 vDisk1;
 in vec4 vDisk2;
+in float vClipDepth01;
 out vec4 FragColor;
 
 uniform mat4 uProjection;
+uniform sampler2D uSceneDepthTex;
+uniform int uUseDepthReject = 1;
+uniform float uDepthRejectBias = 0.0015;
 
 void main()
 {
@@ -31,6 +35,25 @@ void main()
     float r2 = validDisk ? diskR2 : spriteR2;
     if (r2 > 1.0 || spriteR2 > 1.0) {
         discard;
+    }
+
+    if (uUseDepthReject != 0) {
+        vec2 uv = fragNdc * 0.5 + 0.5;
+        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+            discard;
+        }
+
+        float sceneDepth = texture(uSceneDepthTex, uv).r;
+        float surfelDepth = vClipDepth01;
+        if (validDisk) {
+            vec4 fragClip = uProjection * vec4(viewRay * planeT, 1.0);
+            surfelDepth = fragClip.z / max(abs(fragClip.w), 1e-6) * 0.5 + 0.5;
+        }
+
+        if (sceneDepth > 0.0 && sceneDepth < 0.999999 &&
+            surfelDepth > sceneDepth + uDepthRejectBias) {
+            discard;
+        }
     }
 
     float edge = 1.0 - smoothstep(0.65, 1.0, r2);

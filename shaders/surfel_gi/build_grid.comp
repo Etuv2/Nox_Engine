@@ -31,23 +31,8 @@ uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
 
-void main()
+void InsertIntoCell(uint surfelID, uvec3 cellCoord)
 {
-    uint surfelID = gl_GlobalInvocationID.x;
-    if (surfelID >= uMaxSurfels || uGridCellCount == 0u || uMaxSurfelsPerCell == 0u) {
-        return;
-    }
-
-    Surfel surfel = surfels[surfelID];
-    if (!SurfelIsAlive(surfel)) {
-        return;
-    }
-
-    uvec3 cellCoord;
-    if (!SurfelWorldToGridCell(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, cellCoord)) {
-        return;
-    }
-
     uint cell = SurfelFlattenCell(cellCoord, uGridResolution);
     if (cell >= uGridCellCount) {
         return;
@@ -66,5 +51,45 @@ void main()
     } else {
         atomicOr(gridHeaders[cell].flags, SURFEL_CELL_OVERFLOWED);
         atomicAdd(counters.overflowGridEntries, 1u);
+    }
+}
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID >= uMaxSurfels || uGridCellCount == 0u || uMaxSurfelsPerCell == 0u) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    uvec3 cellCoord;
+    if (!SurfelWorldToGridCell(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, cellCoord)) {
+        return;
+    }
+
+    vec3 gridCellSize = (uGridMax - uGridMin) / vec3(max(uGridResolution, uvec3(1u)));
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    vec3 cellMin = uGridMin + vec3(cellCoord) * gridCellSize;
+    vec3 cellMax = cellMin + gridCellSize;
+
+    InsertIntoCell(surfelID, cellCoord);
+
+    for (uint i = 1u; i < 27u; ++i) {
+        ivec3 neighbor = ivec3(cellCoord) + SurfelCubeNeighborOffset(i);
+        if (any(lessThan(neighbor, ivec3(0))) || any(greaterThanEqual(neighbor, ivec3(uGridResolution)))) {
+            continue;
+        }
+
+        vec3 neighborMin = uGridMin + vec3(neighbor) * gridCellSize;
+        vec3 neighborMax = neighborMin + gridCellSize;
+        vec3 closest = clamp(surfel.worldPos_radius.xyz, neighborMin, neighborMax);
+        vec3 delta = closest - surfel.worldPos_radius.xyz;
+        if (dot(delta, delta) <= radius * radius) {
+            InsertIntoCell(surfelID, uvec3(neighbor));
+        }
     }
 }

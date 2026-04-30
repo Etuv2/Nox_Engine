@@ -1050,7 +1050,14 @@ void RenderingSettingsWindow::Render() {
 					{ 13, "Difference vs SSGI" },
 					{ 14, "Timings" },
 					{ 15, "Recycle Score" },
-					{ 16, "Stale Surfels" }
+					{ 16, "Stale Surfels" },
+					{ 17, "Ray Hit Radiance" },
+					{ 18, "Gather Weights" },
+					{ 19, "GBuffer World Pos" },
+					{ 20, "GBuffer Normal" },
+					{ 21, "GBuffer Transform ID" },
+					{ 22, "GBuffer Material ID" },
+					{ 23, "Spawn Candidates" }
 				};
 				if (DebugCombo("Surfel Debug View", &m_cleanSurfelGIDebugView, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("GI Intensity", &m_cleanSurfelGIIntensity, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }

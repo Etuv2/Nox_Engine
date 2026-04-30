@@ -12,6 +12,11 @@ layout(binding = B_RAY_REQUESTS, std430) readonly buffer SurfelRayRequestBuffer
     SurfelRayRequest rayRequests[];
 };
 
+layout(binding = B_RAY_HITS, std430) readonly buffer SurfelRayHitBuffer
+{
+    SurfelRayHit rayHits[];
+};
+
 layout(binding = B_RADIAL_DEPTH, std430) readonly buffer SurfelRadialDepthBuffer
 {
     RadialDepthTexel radialDepth[];
@@ -25,6 +30,7 @@ layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform uint uMaxSurfels;
+uniform uint uMaxRays;
 uniform uint uDebugView;
 uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
@@ -36,6 +42,7 @@ out vec4 vStyle;
 out vec4 vDisk0;
 out vec4 vDisk1;
 out vec4 vDisk2;
+out float vClipDepth01;
 
 const uint DEBUG_SURFEL_SPHERES = 1u;
 const uint DEBUG_SURFEL_NORMALS = 2u;
@@ -51,6 +58,7 @@ const uint DEBUG_RADIAL_DEPTH = 11u;
 const uint DEBUG_INDIRECT_ONLY = 12u;
 const uint DEBUG_RECYCLE_SCORE = 15u;
 const uint DEBUG_STALE_SURFELS = 16u;
+const uint DEBUG_RAY_HIT_RADIANCE = 17u;
 
 float Safe01(float value)
 {
@@ -99,6 +107,7 @@ void HidePoint()
     vDisk0 = vec4(0.0);
     vDisk1 = vec4(0.0);
     vDisk2 = vec4(0.0);
+    vClipDepth01 = 1.0;
 }
 
 float VarianceSignal(Surfel surfel)
@@ -155,6 +164,30 @@ vec3 RayCountColor(uint surfelID, Surfel surfel, out float ring)
     vec3 ratioColor = mix(vec3(1.0, 0.08, 0.03), vec3(0.08, 0.95, 0.38), ratio);
     vec3 demandColor = mix(vec3(0.08, 0.18, 0.55), ratioColor, max(demand, allocatedSignal));
     return demandColor;
+}
+
+vec3 RayHitRadianceColor(uint surfelID, out float ring)
+{
+    ring = 0.0;
+    SurfelRayRequest request = rayRequests[surfelID];
+    if (request.surfelID != surfelID || request.allocatedCount == 0u || request.firstRay >= uMaxRays) {
+        ring = 0.85;
+        return vec3(0.04, 0.05, 0.08);
+    }
+
+    vec3 radianceSum = vec3(0.0);
+    float hitCount = 0.0;
+    uint rayCount = min(min(request.allocatedCount, 8u), uMaxRays - request.firstRay);
+    for (uint i = 0u; i < rayCount; ++i) {
+        SurfelRayHit hit = rayHits[request.firstRay + i];
+        float hitSignal = hit.normal_hitKind.w > 0.5 ? 1.0 : 0.0;
+        radianceSum += SafePositive(hit.radiance_pdf.rgb);
+        hitCount += hitSignal;
+    }
+
+    float invRayCount = 1.0 / max(float(rayCount), 1.0);
+    ring = 1.0 - Safe01(hitCount * invRayCount);
+    return max(TonemapDebug(radianceSum * invRayCount), vec3(0.015));
 }
 
 vec4 GuideStats(uint surfelID)
@@ -283,6 +316,8 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
         color = LifecycleColor(surfel, alive, recycleMarker, ring);
     } else if (uDebugView == DEBUG_RAY_COUNTS) {
         color = RayCountColor(surfelID, surfel, ring);
+    } else if (uDebugView == DEBUG_RAY_HIT_RADIANCE) {
+        color = RayHitRadianceColor(surfelID, ring);
     } else if (uDebugView == DEBUG_RAY_GUIDE) {
         color = GuideConfidenceColor(surfelID, surfel, ring);
     } else if (uDebugView == DEBUG_RADIAL_DEPTH) {
@@ -333,8 +368,9 @@ void main()
 
     float viewDepth = -centerView4.z;
     float projectedRadiusPx = surfelRadius * uProjection[1][1] * max(uViewportSize.y, 1.0) * 0.5 / viewDepth;
-    float densityScale = mix(0.70, 1.0, Safe01(surfel.albedo_life.a));
-    float pointRadiusPx = recycleMarker ? 6.0 : clamp(projectedRadiusPx * densityScale, 2.5, 36.0);
+    float maxDebugRadiusPx = uDebugView == DEBUG_SURFEL_SPHERES ? 48.0 : 1.25;
+    float minDebugRadiusPx = uDebugView == DEBUG_SURFEL_SPHERES ? 1.0 : 1.0;
+    float pointRadiusPx = recycleMarker ? 3.0 : clamp(projectedRadiusPx, minDebugRadiusPx, maxDebugRadiusPx);
 
     gl_Position = clip;
     gl_PointSize = pointRadiusPx * 2.0;
@@ -342,4 +378,5 @@ void main()
     vDisk0 = vec4(centerView4.xyz, surfelRadius);
     vDisk1 = vec4(normalView, pointRadiusPx);
     vDisk2 = vec4(clip.xy / max(abs(clip.w), 1e-6), max(uViewportSize, vec2(1.0)));
+    vClipDepth01 = clip.z / max(abs(clip.w), 1e-6) * 0.5 + 0.5;
 }

@@ -10,6 +10,29 @@ bool RequiresPipelineReset(const SurfelGISettings& oldSettings, const SurfelGISe
 		oldSettings.maxSurfelsPerCell != newSettings.maxSurfelsPerCell ||
 		oldSettings.useNonLinearGrid != newSettings.useNonLinearGrid;
 }
+
+bool IsSurfelOverlayDebugView(SurfelGIDebugView view)
+{
+	switch (view) {
+	case SurfelGIDebugView::SurfelSpheres:
+	case SurfelGIDebugView::SurfelNormals:
+	case SurfelGIDebugView::SurfelAge:
+	case SurfelGIDebugView::SurfelVariance:
+	case SurfelGIDebugView::SurfelCoverage:
+	case SurfelGIDebugView::CellOccupancy:
+	case SurfelGIDebugView::SpawnRecycle:
+	case SurfelGIDebugView::RayCounts:
+	case SurfelGIDebugView::RayGuide:
+	case SurfelGIDebugView::RadialDepth:
+	case SurfelGIDebugView::IndirectOnly:
+	case SurfelGIDebugView::RecycleScore:
+	case SurfelGIDebugView::StaleSurfels:
+	case SurfelGIDebugView::RayHitRadiance:
+		return true;
+	default:
+		return false;
+	}
+}
 }
 
 SurfelGIManager::SurfelGIManager()
@@ -98,7 +121,7 @@ void SurfelGIManager::ApplyIndirect(RenderContext& context, FrameBuffer& lightin
 
 void SurfelGIManager::RenderDebug(RenderContext& context) const
 {
-	if (!HasReadyPipeline() || m_settings.debugView == SurfelGIDebugView::Off) {
+	if (!HasReadyPipeline() || !IsSurfelOverlayDebugView(m_settings.debugView)) {
 		return;
 	}
 

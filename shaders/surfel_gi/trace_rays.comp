@@ -47,12 +47,12 @@ uniform vec3 uDirectionalLightDirection;
 uniform vec3 uDirectionalLightRadiance;
 uniform vec3 uSkyRadiance;
 
-const uint SURFEL_TRACE_STEPS = 8u;
+const uint SURFEL_TRACE_STEPS = 12u;
 const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
 const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
-const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 8u;
-const uint SURFEL_TRACE_MAX_CANDIDATES = 64u;
-const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 1.6;
+const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 64u;
+const uint SURFEL_TRACE_MAX_CANDIDATES = 256u;
+const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 3.0;
 const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
@@ -97,29 +97,34 @@ void TraceGatherSurfel(SurfelRay ray,
     }
 
     vec3 surfelPos = surfel.worldPos_radius.xyz;
-    vec3 toSurfel = surfelPos - origin;
-    float t = dot(toSurfel, direction);
+    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float facing = dot(surfelNormal, -direction);
+    if (facing <= 1e-4) {
+        return;
+    }
+
+    float denom = dot(direction, surfelNormal);
+    if (abs(denom) <= 1e-5) {
+        return;
+    }
+
+    float t = dot(surfelPos - origin, surfelNormal) / denom;
     if (t < tMin || t > tMax) {
         return;
     }
 
-    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
-    float facing = dot(surfelNormal, -direction);
-    if (facing <= uNormalRejectCos) {
-        return;
-    }
-
-    vec3 closestPoint = origin + direction * t;
-    vec3 radialDelta = closestPoint - surfelPos;
+    vec3 hitPoint = origin + direction * t;
+    vec3 radialDelta = hitPoint - surfelPos;
     float radius = max(surfel.worldPos_radius.w, 0.001);
-    float hitRadius = max(radius * 2.4, 0.03);
+    float hitRadius = max(radius * 1.35, 0.03);
     float radialDistSq = dot(radialDelta, radialDelta);
     if (radialDistSq > hitRadius * hitRadius) {
         return;
     }
 
-    float radialWeight = exp(-radialDistSq / max(hitRadius * hitRadius, 1e-4));
-    float normalWeight = SurfelSaturate((facing - uNormalRejectCos) / max(1.0 - uNormalRejectCos, 1e-4));
+    float normalizedRadius = sqrt(radialDistSq) / max(hitRadius, 1e-4);
+    float radialWeight = exp(-normalizedRadius * normalizedRadius * 3.0);
+    float normalWeight = smoothstep(0.0, 0.35, facing);
     float confidence = max(surfel.irradiance.a, 0.05);
     float weight = radialWeight * normalWeight * confidence;
     if (weight <= 1e-5) {
@@ -132,14 +137,14 @@ void TraceGatherSurfel(SurfelRay ray,
     float nDotL = max(dot(surfelNormal, surfaceToLight), 0.0);
     vec3 directIrradiance = uDirectionalLightRadiance * nDotL;
     vec3 skyIrradiance = uSkyRadiance * max(surfelNormal.y, 0.0);
-    vec3 bounced = albedo * SURFEL_INV_PI * (directIrradiance + skyIrradiance + max(surfel.irradiance.rgb, vec3(0.0)));
+    vec3 bounced = albedo * SURFEL_INV_PI * (directIrradiance + skyIrradiance + max(surfel.irradiance.rgb, vec3(0.0)) * 0.35);
     gather.radiance += bounced * weight;
     gather.normal += surfelNormal * weight;
     gather.weight += weight;
 
     if (t < gather.closestT) {
         gather.closestT = t;
-        gather.position = surfelPos;
+        gather.position = hitPoint;
         gather.hitSurfelID = surfelID;
     }
 }

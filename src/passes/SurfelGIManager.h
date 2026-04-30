@@ -36,7 +36,14 @@ enum class SurfelGIDebugView : uint32_t {
 	IndirectDifferenceVsSSGI = 13,
 	Timings = 14,
 	RecycleScore = 15,
-	StaleSurfels = 16
+	StaleSurfels = 16,
+	RayHitRadiance = 17,
+	GatherWeights = 18,
+	GBufferWorldPosition = 19,
+	GBufferNormal = 20,
+	GBufferTransformID = 21,
+	GBufferMaterialID = 22,
+	SpawnCandidates = 23
 };
 
 struct SurfelGISettings {

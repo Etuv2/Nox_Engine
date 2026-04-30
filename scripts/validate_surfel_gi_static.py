@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,11 +158,13 @@ def main() -> None:
     for token in manager_budget_tokens:
         require(token in manager_h, f"real-time clean Surfel GI default missing from SurfelGIManager.h: {token}")
 
-    require("const uint SURFEL_TRACE_STEPS = 8u" in trace_rays,
+    trace_steps = re.search(r"const\s+uint\s+SURFEL_TRACE_STEPS\s*=\s*(\d+)u\s*;", trace_rays)
+    require(trace_steps is not None and int(trace_steps.group(1)) >= 8,
             "correctness surfel trace must use enough steps to hit coloured bounce sources")
     require("const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u" in trace_rays,
             "correctness surfel trace must scan neighboring cells")
-    require("const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 8u" in trace_rays,
+    trace_cell_entries = re.search(r"const\s+uint\s+SURFEL_TRACE_MAX_CELL_ENTRIES\s*=\s*(\d+)u\s*;", trace_rays)
+    require(trace_cell_entries is not None and int(trace_cell_entries.group(1)) >= 8,
             "correctness surfel trace must inspect enough entries per cell")
     require("uniform uint uGatherNeighborRadius" in apply_indirect,
             "final gather must expose a bounded neighbor radius uniform")

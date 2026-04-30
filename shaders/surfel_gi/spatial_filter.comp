@@ -54,9 +54,9 @@ void main()
 
     vec4 center = texelFetch(uRawIndirectTex, pixel, 0);
     float centerConfidence = clamp(center.a, 0.0, 1.0);
-    vec3 sum = max(center.rgb, vec3(0.0)) * centerConfidence * 2.0;
-    float weightSum = centerConfidence * 2.0;
-    float confidenceSum = clamp(center.a, 0.0, 1.0) * 2.0;
+    vec3 sum = max(center.rgb, vec3(0.0)) * max(centerConfidence, 1e-4) * 2.0;
+    float weightSum = max(centerConfidence, 1e-4) * 2.0;
+    float confidenceSum = centerConfidence * 2.0;
 
     for (int y = -FILTER_RADIUS; y <= FILTER_RADIUS; ++y) {
         for (int x = -FILTER_RADIUS; x <= FILTER_RADIUS; ++x) {
@@ -86,7 +86,7 @@ void main()
 
             sum += max(sampleIndirect.rgb, vec3(0.0)) * w;
             weightSum += w;
-            confidenceSum += sampleConfidence * w;
+            confidenceSum += w;
         }
     }
 

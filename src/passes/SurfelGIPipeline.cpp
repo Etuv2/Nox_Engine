@@ -144,6 +144,33 @@ bool CreateCompute(std::unique_ptr<ComputeShader>& shader, const char* path)
 	return true;
 }
 
+bool IsSurfelFullscreenDebugView(SurfelGIDebugView view)
+{
+	return view == SurfelGIDebugView::SurfelGridCells ||
+		view == SurfelGIDebugView::GatherWeights ||
+		view == SurfelGIDebugView::GBufferWorldPosition ||
+		view == SurfelGIDebugView::GBufferNormal ||
+		view == SurfelGIDebugView::GBufferTransformID ||
+		view == SurfelGIDebugView::GBufferMaterialID ||
+		view == SurfelGIDebugView::SpawnCandidates;
+}
+
+glm::vec3 CameraPositionFromView(const glm::mat4& view)
+{
+	const glm::mat4 invView = glm::inverse(view);
+	return glm::vec3(invView[3]);
+}
+
+void ComputeCameraCenteredGridBounds(const SurfelGridSettings& gridSettings,
+	const glm::vec3& cameraPosition,
+	glm::vec3& gridMin,
+	glm::vec3& gridMax)
+{
+	const glm::vec3 halfExtent = gridSettings.worldExtent * 0.5f;
+	gridMin = cameraPosition - halfExtent;
+	gridMax = cameraPosition + halfExtent;
+}
+
 void SetUniform1ui(GLuint program, const char* name, GLuint value)
 {
 	const GLint loc = glGetUniformLocation(program, name);
@@ -350,9 +377,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	const uint32_t maxSurfels = m_settings.maxSurfels;
 	const GLuint groupsSurfels = DivRoundUp(maxSurfels, 64u);
 	const SurfelGridSettings& gridSettings = m_grid.GetSettings();
-	const glm::vec3 halfExtent = gridSettings.worldExtent * 0.5f;
-	const glm::vec3 gridMin = -halfExtent;
-	const glm::vec3 gridMax = halfExtent;
+	const glm::vec3 cameraPosition = camera ? camera->GetCameraPosition() : CameraPositionFromView(context.view);
+	glm::vec3 gridMin(0.0f);
+	glm::vec3 gridMax(0.0f);
+	ComputeCameraCenteredGridBounds(gridSettings, cameraPosition, gridMin, gridMax);
 
 	GLuint transformBuffer = 0u;
 	uint32_t transformCount = 0u;
@@ -364,10 +392,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 				std::numeric_limits<uint32_t>::max()));
 		}
 	}
+	m_lastTransformCount = transformCount;
 
 	BindCoreResources(transformBuffer);
 
-	const glm::vec3 cameraPosition = camera ? camera->GetCameraPosition() : glm::vec3(0.0f);
 	if (m_hasLastCameraState) {
 		const float positionDelta = glm::length(cameraPosition - m_lastCameraPosition);
 		const float viewDelta = MatrixMaxAbsDelta(context.view, m_lastView);
@@ -447,7 +475,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
-		SetUniform3fv(program, "uCameraPosition", camera ? camera->GetCameraPosition() : glm::vec3(0.0f));
+		SetUniform3fv(program, "uCameraPosition", cameraPosition);
+		SetUniform3fv(program, "uGridMin", gridMin);
+		SetUniform3fv(program, "uGridMax", gridMax);
 		SetUniform1f(program, "uRecyclePressureStart", m_settings.recyclePressureStart);
 		SetUniform1f(program, "uMaxDistance", glm::length(gridSettings.worldExtent));
 		m_recycleShader->Dispatch(groupsSurfels, 1u, 1u);
@@ -617,9 +647,14 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	}
 
 	const SurfelGridSettings& gridSettings = m_grid.GetSettings();
-	const glm::vec3 halfExtent = gridSettings.worldExtent * 0.5f;
-	const glm::vec3 gridMin = -halfExtent;
-	const glm::vec3 gridMax = halfExtent;
+	const glm::vec3 cameraPosition = CameraPositionFromView(context.view);
+	glm::vec3 gridMin(0.0f);
+	glm::vec3 gridMax(0.0f);
+	ComputeCameraCenteredGridBounds(gridSettings, cameraPosition, gridMin, gridMax);
+	const GLuint applyDebugView = IsSurfelFullscreenDebugView(m_settings.debugView)
+		? static_cast<GLuint>(m_settings.debugView)
+		: 0u;
+	const bool fullscreenDebug = applyDebugView != 0u;
 	BindCoreResources(0u);
 
 	const GLuint program = m_applyIndirectShader->GetProgramID();
@@ -631,19 +666,27 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetDepthTexture());
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(3));
-	const bool debugGridIDs = m_settings.debugView == SurfelGIDebugView::SurfelGridCells;
-	const GLuint applyTarget = debugGridIDs ? m_resources.indirectTexture : m_resources.rawIndirectTexture;
-	glBindImageTexture(0, applyTarget, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(5));
+	glBindImageTexture(0,
+		fullscreenDebug ? m_resources.indirectTexture : m_resources.rawIndirectTexture,
+		0,
+		GL_FALSE,
+		0,
+		GL_WRITE_ONLY,
+		GL_RGBA16F);
 
 	SetUniform1i(program, "uPackedNormalRMTex", 0);
 	SetUniform1i(program, "uDepthTex", 1);
 	SetUniform1i(program, "uMaterialIDTex", 2);
+	SetUniform1i(program, "uTransformIDTex", 3);
 	SetUniform1i(program, "uUseMaterialIDReject", 1);
 	SetUniform2ui(program, "uResolution", m_indirectWidth, m_indirectHeight);
 	SetUniform2ui(program, "uInputResolution", m_width, m_height);
 	SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
 	SetUniformMat4(program, "uInvView", glm::inverse(context.view));
 	SetUniform1ui(program, "uMaxSurfels", m_settings.maxSurfels);
+	SetUniform1ui(program, "uTransformCount", m_lastTransformCount);
 	SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 	SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
 	SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
@@ -655,14 +698,14 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1f(program, "uNormalRejectCos", m_settings.finalGatherNormalCos);
 	SetUniform1i(program, "uUseRadialDepth", m_settings.useRadialDepth ? 1 : 0);
 	SetUniform1f(program, "uRadialDepthMinVariance", std::max(m_settings.radialDepthSigmaScale, 1.0e-6f));
-	SetUniform1f(program, "uFallbackStrength", 0.0f);
-	SetUniform1ui(program, "uDebugView", static_cast<GLuint>(m_settings.debugView));
+	SetUniform1f(program, "uFallbackStrength", 1.0f);
+	SetUniform1ui(program, "uDebugView", applyDebugView);
 
 	m_applyIndirectShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
 	m_applyIndirectShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 	glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
-	if (!debugGridIDs && m_spatialFilterShader && m_spatialFilterShader->IsValid()) {
+	if (!fullscreenDebug && m_spatialFilterShader && m_spatialFilterShader->IsValid()) {
 		const GLuint filterProgram = m_spatialFilterShader->GetProgramID();
 		glUseProgram(filterProgram);
 		glActiveTexture(GL_TEXTURE0);
@@ -704,15 +747,25 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context) const
 
 	glUseProgram(m_debugProgram);
 	const SurfelGridSettings& gridSettings = m_grid.GetSettings();
-	const glm::vec3 halfExtent = gridSettings.worldExtent * 0.5f;
+	const glm::vec3 cameraPosition = CameraPositionFromView(context.view);
+	glm::vec3 gridMin(0.0f);
+	glm::vec3 gridMax(0.0f);
+	ComputeCameraCenteredGridBounds(gridSettings, cameraPosition, gridMin, gridMax);
+	const bool hasSceneDepth = context.gbufferFBO && context.gbufferFBO->GetDepthTexture() != 0u;
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, hasSceneDepth ? context.gbufferFBO->GetDepthTexture() : 0u);
 	SetUniformMat4(m_debugProgram, "uView", context.view);
 	SetUniformMat4(m_debugProgram, "uProjection", context.proj);
 	SetUniform2f(m_debugProgram, "uViewportSize", static_cast<GLfloat>(std::max(context.width, 1)), static_cast<GLfloat>(std::max(context.height, 1)));
 	SetUniform1ui(m_debugProgram, "uMaxSurfels", m_settings.maxSurfels);
 	SetUniform1ui(m_debugProgram, "uDebugView", static_cast<GLuint>(m_settings.debugView));
+	SetUniform1ui(m_debugProgram, "uMaxRays", m_settings.maxRayBudget);
+	SetUniform1i(m_debugProgram, "uSceneDepthTex", 0);
+	SetUniform1i(m_debugProgram, "uUseDepthReject", hasSceneDepth ? 1 : 0);
+	SetUniform1f(m_debugProgram, "uDepthRejectBias", 0.0015f);
 	SetUniform3ui(m_debugProgram, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
-	SetUniform3fv(m_debugProgram, "uGridMin", -halfExtent);
-	SetUniform3fv(m_debugProgram, "uGridMax", halfExtent);
+	SetUniform3fv(m_debugProgram, "uGridMin", gridMin);
+	SetUniform3fv(m_debugProgram, "uGridMax", gridMax);
 
 	glBindVertexArray(m_debugVAO);
 	glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(m_settings.maxSurfels));
