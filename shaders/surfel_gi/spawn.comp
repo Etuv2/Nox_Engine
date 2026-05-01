@@ -81,8 +81,8 @@ const uint SURFEL_SPAWN_FREE_POP_ATTEMPTS = 2048u;
 const uint SURFEL_PLACEMENT_VALIDATION_CANDIDATES = 2u;
 const uint SURFEL_PLACEMENT_VALIDATION_TILE_PHASES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELLS = 7u;
-const uint SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES = 8u;
-const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 32u;
+const uint SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES = 16u;
+const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 64u;
 const float SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT = 0.025;
 
 struct SpawnCandidate
@@ -170,16 +170,22 @@ float ComputeCandidateCoverage(vec3 worldPos, vec3 worldNormal, uvec3 baseCell)
         }
 
         SurfelCellHeader header = gridHeaders[cell];
-        uint count = min(header.entryCount, uMaxSurfelsPerCell);
-        uint budget = min(min(count, SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES),
+        uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
+        uint budget = min(min(storedCount, SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES),
                           SURFEL_SPAWN_MAX_COVERAGE_TESTS - coverageTests);
         uint firstEntry = header.firstEntry;
         if (firstEntry == 0u && cell != 0u) {
             firstEntry = cell * uMaxSurfelsPerCell;
         }
 
+        uint strideSeed = SurfelHash(uFrameIndex ^ (cell * 747796405u));
+        uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
+        uint sampleStride = max(storedCount / max(budget, 1u), 1u);
         for (uint i = 0u; i < budget; ++i) {
-            SurfelCellEntry entry = gridEntries[firstEntry + i];
+            uint sampleIndex = (storedCount <= budget)
+                ? i
+                : (startIndex + i * sampleStride) % storedCount;
+            SurfelCellEntry entry = gridEntries[firstEntry + sampleIndex];
             ++coverageTests;
             if (entry.surfelID >= uMaxSurfels) {
                 continue;
@@ -256,6 +262,13 @@ bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
         return false;
     }
 
+    uint baseCellIndex = SurfelFlattenCell(baseCell, uGridResolution);
+    if (baseCellIndex < uGridCellCount &&
+        gridHeaders[baseCellIndex].entryCount >= uMaxSurfelsPerCell) {
+        atomicAdd(counters.rejectedOutsideGrid, 1u);
+        return false;
+    }
+
     candidate.valid = true;
     candidate.worldPos = worldPos;
     candidate.worldNormal = worldNormal;
@@ -314,7 +327,7 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
                         0.0);
     surfels[surfelID] = surfel;
 
-    float radialDefaultDepth = max(radius * 2.0, 0.001);
+    float radialDefaultDepth = max(radius * 8.0, 1.25);
     uint radialBase = surfelID * SURFEL_RADIAL_DEPTH_TEXELS;
     for (uint bin = 0u; bin < SURFEL_RADIAL_DEPTH_TEXELS; ++bin) {
         radialDepth[radialBase + bin].meanDepth = radialDefaultDepth;

@@ -651,8 +651,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 
 	}
 
-	const uint32_t rayUpdateInterval = std::max(m_settings.rayUpdateInterval, 1u);
-	const bool updateRaysThisFrame = m_frameIndex < 8u || (m_frameIndex % rayUpdateInterval) == 0u;
+	const bool updateRaysThisFrame = true;
 	if (!placementOnly && updateRaysThisFrame && m_requestRaysShader && m_requestRaysShader->IsValid()) {
 		const GLuint program = m_requestRaysShader->GetProgramID();
 		glUseProgram(program);
@@ -717,9 +716,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_integrateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	const uint32_t radialUpdateInterval = std::max(m_settings.radialDepthUpdateInterval, 1u);
 	if (!placementOnly && updateRaysThisFrame && m_settings.useRadialDepth &&
-		(m_frameIndex % radialUpdateInterval) == 0u &&
 		m_radialDepthShader && m_radialDepthShader->IsValid()) {
 		const GLuint program = m_radialDepthShader->GetProgramID();
 		glUseProgram(program);
@@ -812,7 +809,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1f(program, "uNormalRejectCos", m_settings.finalGatherNormalCos);
 	SetUniform1i(program, "uUseRadialDepth", m_settings.useRadialDepth ? 1 : 0);
 	SetUniform1f(program, "uRadialDepthMinVariance", std::max(m_settings.radialDepthSigmaScale, 1.0e-6f));
-	SetUniform1f(program, "uFallbackStrength", m_settings.useIrradianceSharing ? 0.35f : 0.0f);
+	SetUniform1f(program, "uFallbackStrength", 0.0f);
 	SetUniform1ui(program, "uDebugView", applyDebugView);
 
 	m_applyIndirectShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);

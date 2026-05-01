@@ -51,6 +51,13 @@ void InsertIntoCell(uint surfelID, uvec3 cellCoord)
     } else {
         atomicOr(gridHeaders[cell].flags, SURFEL_CELL_OVERFLOWED);
         atomicAdd(counters.overflowGridEntries, 1u);
+        uint replaceHash = SurfelHash(surfelID ^ (cell * 747796405u) ^ (slot * 2891336453u));
+        uint seenCount = max(slot + 1u, 1u);
+        if ((replaceHash % seenCount) < uMaxSurfelsPerCell) {
+            uint replaceIndex = firstEntry + (replaceHash % uMaxSurfelsPerCell);
+            gridEntries[replaceIndex].surfelID = surfelID;
+            gridEntries[replaceIndex].next = SURFEL_INVALID_INDEX;
+        }
     }
 }
 

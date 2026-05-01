@@ -116,14 +116,14 @@ void TraceGatherSurfel(SurfelRay ray,
     vec3 hitPoint = origin + direction * t;
     vec3 radialDelta = hitPoint - surfelPos;
     float radius = max(surfel.worldPos_radius.w, 0.001);
-    float hitRadius = max(radius * 1.35, 0.03);
+    float hitRadius = max(radius * 4.0, 0.08);
     float radialDistSq = dot(radialDelta, radialDelta);
     if (radialDistSq > hitRadius * hitRadius) {
         return;
     }
 
     float normalizedRadius = sqrt(radialDistSq) / max(hitRadius, 1e-4);
-    float radialWeight = exp(-normalizedRadius * normalizedRadius * 3.0);
+    float radialWeight = exp(-normalizedRadius * normalizedRadius * 2.0);
     float normalWeight = smoothstep(0.0, 0.35, facing);
     float confidence = max(surfel.irradiance.a, 0.05);
     float weight = radialWeight * normalWeight * confidence;
@@ -165,15 +165,21 @@ void TraceGatherCell(SurfelRay ray,
     }
 
     SurfelCellHeader header = gridHeaders[cell];
-    uint count = min(header.entryCount, uMaxSurfelsPerCell);
-    uint budget = min(min(count, SURFEL_TRACE_MAX_CELL_ENTRIES), SURFEL_TRACE_MAX_CANDIDATES - gather.candidatesTested);
+    uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
+    uint budget = min(min(storedCount, SURFEL_TRACE_MAX_CELL_ENTRIES), SURFEL_TRACE_MAX_CANDIDATES - gather.candidatesTested);
     uint firstEntry = header.firstEntry;
     if (firstEntry == 0u && cell != 0u) {
         firstEntry = cell * uMaxSurfelsPerCell;
     }
+    uint strideSeed = SurfelHash(ray.ids.x ^ (cell * 747796405u) ^ (ray.ids.z * 2891336453u));
+    uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
+    uint sampleStride = max(storedCount / max(budget, 1u), 1u);
 
     for (uint i = 0u; i < budget; ++i) {
-        SurfelCellEntry entry = gridEntries[firstEntry + i];
+        uint sampleIndex = (storedCount <= budget)
+            ? i
+            : (startIndex + i * sampleStride) % storedCount;
+        SurfelCellEntry entry = gridEntries[firstEntry + sampleIndex];
         ++gather.candidatesTested;
         TraceGatherSurfel(ray, origin, direction, tMin, tMax, entry.surfelID, gather);
         if (gather.weight >= SURFEL_TRACE_EARLY_HIT_WEIGHT) {

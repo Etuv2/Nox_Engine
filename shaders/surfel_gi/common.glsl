@@ -51,6 +51,7 @@ const uint SURFEL_GUIDE_CELLS = 36u;
 const uint SURFEL_INVALID_INDEX = 0xffffffffu;
 const uint SURFEL_SPAWN_TILE_CANDIDATES = 8u;
 const float SURFEL_PI = 3.14159265358979323846;
+const float SURFEL_RADIAL_DEPTH_MIN_VISIBILITY = 0.35;
 
 struct Surfel
 {
@@ -303,7 +304,8 @@ float SurfelRadialDepthVisibility(RadialDepthTexel texel, float receiverDistance
     float variance = max(texel.meanDepthSq - mean * mean, max(minVariance, 1e-6));
     float delta = receiverDistance - mean;
     float pMax = variance / max(variance + delta * delta, 1e-6);
-    return smoothstep(0.05, 1.0, SurfelSaturate(pMax));
+    float visibility = smoothstep(0.05, 1.0, SurfelSaturate(pMax));
+    return mix(SURFEL_RADIAL_DEPTH_MIN_VISIBILITY, 1.0, visibility);
 }
 
 uint SurfelGuideBin(vec3 hemiDir)

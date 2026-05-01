@@ -31,6 +31,8 @@ def main() -> None:
     trace_shader = read("shaders/surfel_gi/trace_rays.comp")
     spawn_shader = read("shaders/surfel_gi/spawn.comp")
     recycle_shader = read("shaders/surfel_gi/recycle_surfels.comp")
+    build_grid_shader = read("shaders/surfel_gi/build_grid.comp")
+    spatial_filter_shader = read("shaders/surfel_gi/spatial_filter.comp")
     count_live_shader = read("shaders/surfel_gi/count_live_surfels.comp")
     common_shader = read("shaders/surfel_gi/common.glsl")
     debug_vert = read("shaders/surfel_gi/debug_surfels.vert")
@@ -71,13 +73,15 @@ def main() -> None:
         require(token in manager_h, f"SurfelGI debug enum must expose {token}")
     require("SetUniform1ui(program, \"uDebugView\", applyDebugView)" in pipeline_cpp,
             "pipeline must route fullscreen surfel debug views into the apply shader")
-    require("m_settings.useIrradianceSharing ? 0.35f : 0.0f" in pipeline_cpp,
-            "pipeline must keep cell-average fallback bounded and sourced only from real surfels")
+    require("SetUniform1f(program, \"uFallbackStrength\", 0.0f)" in pipeline_cpp,
+            "surfel-only output must not use cell-average fallback because it creates visible grid patterns")
 
     require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CELL_ENTRIES") >= 32,
             "ray tracing must inspect enough cell entries to avoid arbitrary first-entry bias")
     require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CANDIDATES") >= 192,
             "ray tracing must use enough candidates for stable colour-bleed hits")
+    require("float hitRadius = max(radius * 4.0, 0.08);" in trace_shader,
+            "surfel ray tracing must use cache-element support, not tiny disk hits that miss most diffuse bounce")
 
     require("RayHitRadiance" in manager_h and "GatherWeights" in manager_h and "SpawnCandidates" in manager_h,
             "SurfelGI debug enum must expose ray-hit radiance and gather-weight diagnostics")
@@ -157,8 +161,26 @@ def main() -> None:
     require("atomicMax(surfels[entry.surfelID].frameInfo.x, uFrameIndex)" in spawn_shader and
             "SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT" in spawn_shader,
             "coverage gap detection must refresh lastVisible for existing surfels that cover current G-buffer candidates")
+    require("const float SURFEL_RADIAL_DEPTH_MIN_VISIBILITY" in common_shader and
+            "mix(SURFEL_RADIAL_DEPTH_MIN_VISIBILITY, 1.0" in common_shader,
+            "radial depth rejection must soften leakage without creating black splotches")
+    require("float radialDefaultDepth = max(radius * 8.0, 1.25);" in spawn_shader,
+            "new surfels must initialize radial depth with the same conservative default used by the radial update pass")
+    require("SurfelUnpackGuideRadiance" in read("shaders/surfel_gi/generate_rays.comp") and
+            "SURFEL_GUIDE_MIX_PROBABILITY" in read("shaders/surfel_gi/generate_rays.comp"),
+            "ray guiding must sample decoded learned radiance through a bounded mixture PDF")
+    require("const bool updateRaysThisFrame = true;" in pipeline_cpp,
+            "correctness path must not make GI/ray coverage update on a visible fixed interval")
     require("outsideGridScore" in recycle_shader and "outsideGrid ? 1.0" not in recycle_shader and "outsideGrid ||" not in recycle_shader,
             "recycling must treat outside-grid surfels as heuristic candidates, not immediately discard persistent cached surfels on camera movement")
+    require("float radius = clamp(surfel.localPos_spawnRadius.w, minRadius, maxRadius);" in read("shaders/surfel_gi/update_surfels.comp"),
+            "surfel update must preserve spawned radius instead of changing coverage from current camera projection")
+    require("contributionAge > 720u" in recycle_shader and "confidence < 0.45" in recycle_shader,
+            "stale recycling must be gradual and relevance-based, not a high-probability constant interval churn")
+    require("SURFEL_CELL_OVERFLOWED" in build_grid_shader and "replaceHash" in build_grid_shader and "seenCount" in build_grid_shader,
+            "overflowed grid cells must reservoir-replace entries instead of preserving only early surfel IDs")
+    require("const int FILTER_RADIUS = 7;" in spatial_filter_shader and "centerConfidence > 1e-4" in spatial_filter_shader and "6000.0" in spatial_filter_shader,
+            "spatial resolve must fill unsupported surfel gather holes instead of preserving black center samples")
     require("bool cameraMoving" in pipeline_cpp and
             "productionPhase" not in spawn_shader,
             "camera/view movement must not depend on timed production tile phases for coverage refresh")

@@ -95,21 +95,24 @@ void main()
 
     float random = SurfelHash01(surfelID ^ (uFrameIndex * 1664525u) ^ (surfel.ids.x * 1013904223u));
     float probability = pressure01 > 0.0
-        ? mix(0.02, 0.35, recycleScore) * pressure01
-        : mix(0.0, 0.08, max(stale01, oversized01));
+        ? mix(0.01, 0.18, recycleScore) * pressure01
+        : mix(0.0, 0.015, max(stale01, oversized01));
 
     bool tooFar = uMaxDistance > 0.0 && distanceToCamera > uMaxDistance * 1.35 &&
         contributionAge > 90u &&
         sampleAge > 30u;
     bool outsideGridCull = outsideGrid &&
-        contributionAge > 120u &&
-        sampleAge > 45u &&
+        contributionAge > 240u &&
+        sampleAge > 120u &&
         (pressure01 > 0.0 || outsideGridScore > 0.85) &&
-        random < mix(0.02, 0.18, max(pressure01, outsideGridScore));
-    bool staleCull = contributionAge > 360u && confidence < 0.75 && random < 0.12;
-    bool oversizedCull = radiusGrowth > 5.0 && contributionAge > 24u && random < 0.20;
+        random < mix(0.005, 0.08, max(pressure01, outsideGridScore));
+    bool staleCull = contributionAge > 720u &&
+        sampleAge > 240u &&
+        confidence < 0.45 &&
+        random < 0.015;
+    bool oversizedCull = radiusGrowth > 6.0 && contributionAge > 120u && random < 0.05;
     bool pressureCull = pressure > clamp(uRecyclePressureStart, 0.0, 0.99) &&
-        contributionAge > 16u &&
+        contributionAge > 64u &&
         random < probability;
     bool shouldRecycle = invalidTransform ||
         surfel.albedo_life.a <= 0.0 ||

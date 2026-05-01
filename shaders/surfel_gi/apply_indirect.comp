@@ -282,13 +282,16 @@ void AccumulateCell(uint cell,
     }
 
     SurfelCellHeader header = gridHeaders[cell];
-    uint count = min(header.entryCount, uMaxSurfelsPerCell);
+    uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
     uint firstEntry = header.firstEntry;
     if (firstEntry == 0u && cell != 0u) {
         firstEntry = cell * uMaxSurfelsPerCell;
     }
 
-    uint budget = min(count, uMaxSurfelsPerCell);
+    uint budget = min(storedCount, uMaxSurfelsPerCell);
+    uint strideSeed = SurfelHash(uFrameIndex ^ (cell * 747796405u) ^ (uint(gl_GlobalInvocationID.x) * 2891336453u) ^ (uint(gl_GlobalInvocationID.y) * 1597334677u));
+    uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
+    uint sampleStride = max(storedCount / max(budget, 1u), 1u);
 
     uint acceptedInCell = 0u;
     for (uint i = 0u; i < budget; ++i) {
@@ -296,7 +299,10 @@ void AccumulateCell(uint cell,
             break;
         }
 
-        uint entryIndex = firstEntry + i;
+        uint sampleIndex = (storedCount <= budget)
+            ? i
+            : (startIndex + i * sampleStride) % storedCount;
+        uint entryIndex = firstEntry + sampleIndex;
         SurfelCellEntry entry = gridEntries[entryIndex];
         ++candidateCount;
         if (entry.surfelID >= uMaxSurfels) {

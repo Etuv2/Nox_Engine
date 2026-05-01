@@ -63,10 +63,9 @@ void main()
     mat3 normalMatrix = transpose(inverse(mat3(transform.world)));
     vec3 worldNormal = SurfelSafeNormalize(normalMatrix * surfel.localNormal_flags.xyz);
 
-    float targetPixels = uTargetSurfelScreenRadiusPx > 0.0 ? uTargetSurfelScreenRadiusPx : 8.0;
     float minRadius = max(uMinSurfelRadius, 0.001);
     float maxRadius = max(uMaxSurfelRadius, minRadius);
-    float radius = clamp(targetPixels * WorldUnitsPerPixel(worldPos.xyz), minRadius, maxRadius);
+    float radius = clamp(surfel.localPos_spawnRadius.w, minRadius, maxRadius);
 
     surfel.worldPos_radius = vec4(worldPos.xyz, radius);
     surfel.worldNormal_age = vec4(worldNormal, surfel.worldNormal_age.w + 1.0);
