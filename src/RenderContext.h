@@ -252,6 +252,7 @@ struct RenderContext {
 	bool cleanSurfelGIUseRayBinning = true;
 	bool cleanSurfelGIUseScreenTrace = true;
 	bool cleanSurfelGIUseSurfelFallbackTrace = true;
+	bool cleanSurfelGIPlacementValidation = false;
 
 
 	// Bloom settings

@@ -6,7 +6,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "../includes/material_common.glsl"
 #include "common.glsl"
 
-layout(binding = B_SURFELS, std430) buffer SurfelBuffer
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
 {
     Surfel surfels[];
 };
@@ -28,10 +28,10 @@ layout(binding = B_RADIAL_DEPTH, std430) readonly buffer SurfelRadialDepthBuffer
 
 layout(binding = 0, rgba16f) writeonly uniform image2D uOutIndirect;
 
-uniform sampler2D uPackedNormalRMTex;
-uniform sampler2D uDepthTex;
-uniform usampler2D uMaterialIDTex;
-uniform usampler2D uTransformIDTex;
+layout(binding = T_SURFEL_GBUFFER_NORMAL_RM) uniform sampler2D uPackedNormalRMTex;
+layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
+layout(binding = T_SURFEL_GBUFFER_MATERIAL_ID) uniform usampler2D uMaterialIDTex;
+layout(binding = T_SURFEL_GBUFFER_TRANSFORM_ID) uniform usampler2D uTransformIDTex;
 
 uniform uvec2 uResolution;
 uniform uvec2 uInputResolution;
@@ -53,10 +53,15 @@ uniform float uRadialDepthMinVariance = 1e-4;
 uniform float uFallbackStrength = 0.65;
 uniform uint uFrameIndex = 0u;
 uniform uint uDebugView = 0u;
+uniform uint uSpawnTileSize = 8u;
+uniform uint uSpawnPassCount = 1u;
+uniform uint uSpawnDebugFrameIndex = 0u;
 
 const uint SURFEL_APPLY_MAX_GATHER_CANDIDATES = 2048u;
 const uint SURFEL_APPLY_MAX_GATHER_CELLS = 27u;
 const int SURFEL_GRID_FALLBACK_KERNEL_RADIUS = 1;
+const float SURFEL_GATHER_MIN_SUPPORT_FRACTION = 0.24;
+const float SURFEL_GATHER_MIN_SUPPORT_WORLD = 0.18;
 const float SURFEL_APPLY_EARLY_WEIGHT = 64.0;
 const uint DEBUG_SURFEL_GRID_CELLS = 6u;
 const uint DEBUG_FINAL_GATHER_WEIGHT = 18u;
@@ -65,6 +70,7 @@ const uint DEBUG_GBUFFER_NORMAL = 20u;
 const uint DEBUG_GBUFFER_TRANSFORM_ID = 21u;
 const uint DEBUG_GBUFFER_MATERIAL_ID = 22u;
 const uint DEBUG_SPAWN_CANDIDATES = 23u;
+const uint DEBUG_GBUFFER_DEPTH = 24u;
 
 bool SurfelMaterialAllowsDiffuseGI(uint materialID)
 {
@@ -92,23 +98,43 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
     float radius = max(surfel.worldPos_radius.w, 0.001);
     vec3 delta = receiverPos - surfelPos;
     float distSq = dot(delta, delta);
+    float dist = sqrt(max(distSq, 1e-8));
+    vec3 toReceiver = delta / dist;
 
     vec3 gridCellSize = (uGridMax - uGridMin) / vec3(max(uGridResolution, uvec3(1u)));
     float maxCellSize = max(max(gridCellSize.x, gridCellSize.y), gridCellSize.z);
-    float supportRadius = max(max(radius * 3.0, maxCellSize * 0.12), 0.08);
-    float normalizedDistance = sqrt(max(distSq, 0.0)) / max(supportRadius, 1e-4);
-    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 2.2);
+    float supportRadius = max(max(radius * 4.5, maxCellSize * SURFEL_GATHER_MIN_SUPPORT_FRACTION), SURFEL_GATHER_MIN_SUPPORT_WORLD);
+    float normalizedDistance = dist / max(supportRadius, 1e-4);
+    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 1.35);
+    if (distanceWeight <= 1e-5) {
+        return 0.0;
+    }
 
-    float normalDot = max(dot(receiverNormal, surfelNormal), 0.0);
-    float relaxedReject = clamp(uNormalRejectCos, 0.0, 0.95);
-    float normalWeight = SurfelSaturate((normalDot - relaxedReject) / max(1.0 - relaxedReject, 1e-4));
+    // Diffuse transfer between perpendicular surfaces is valid color bleeding.
+    // Parallel-normal weighting alone rejects Cornell wall-to-floor bounce.
+    float emitterFacing = max(dot(surfelNormal, toReceiver), 0.0);
+    float receiverFacing = max(dot(receiverNormal, -toReceiver), 0.0);
+    float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0));
+    float coplanarFacing = max(dot(receiverNormal, surfelNormal), 0.0) * 0.35;
+    float normalWeight = max(transferFacing, coplanarFacing);
+    float relaxedReject = max(uNormalRejectCos * 0.25, 0.02);
+    normalWeight = SurfelSaturate((normalWeight - relaxedReject) / max(1.0 - relaxedReject, 1e-4));
     float surfelPlane = abs(dot(delta, surfelNormal));
     float receiverPlane = abs(dot(delta, receiverNormal));
-    float planeSigma = max(max(radius * 1.75, maxCellSize * 0.12), 0.05);
-    float planeWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
+    float planeSigma = max(max(radius * 1.25, maxCellSize * 0.10), 0.04);
+    float coplanarWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
+    float planeWeight = mix(coplanarWeight, 1.0, transferFacing);
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
 
     return distanceWeight * normalWeight * planeWeight * mix(0.25, 1.0, confidence);
+}
+
+vec3 SurfelOutgoingDiffuseRadiance(Surfel surfel)
+{
+    vec3 irradiance = max(surfel.irradiance.rgb, vec3(0.0));
+    vec3 albedo = clamp(surfel.albedo_life.rgb, vec3(0.0), vec3(1.0));
+    vec3 sourceReflectance = max(albedo, vec3(0.04));
+    return irradiance * sourceReflectance;
 }
 
 vec3 DebugGridIDColor(uint cellID)
@@ -124,7 +150,12 @@ vec3 DebugGridIDColor(uint cellID)
 
 vec3 DebugWorldPositionColor(vec3 worldPos)
 {
-    return fract(abs(worldPos) * 0.125);
+    if (any(isnan(worldPos)) || any(isinf(worldPos))) {
+        return vec3(1.0, 0.0, 1.0);
+    }
+
+    vec3 extent = max(uGridMax - uGridMin, vec3(1e-4));
+    return clamp((worldPos - uGridMin) / extent, vec3(0.0), vec3(1.0));
 }
 
 vec3 DebugSpawnCandidateColor(bool validTransform, bool materialAllowed, bool insideGrid)
@@ -148,6 +179,25 @@ vec3 DebugGatherWeightColor(float directBlend, float fallbackConfidence, uint sa
     return vec3(clamp(directBlend, 0.0, 1.0),
                 clamp(fallbackConfidence, 0.0, 1.0),
                 max(sampleSignal, rejectionSignal * 0.35));
+}
+
+bool IsSelectedSpawnSamplePixel(uvec2 inputPixel)
+{
+    uint tileSize = max(uSpawnTileSize, 1u);
+    uvec2 tile = inputPixel / tileSize;
+    uvec2 origin = tile * tileSize;
+    uvec2 tileExtent = min(uvec2(tileSize), max(uInputResolution, uvec2(1u)) - origin);
+    uvec2 local = inputPixel - origin;
+    uint passCount = clamp(uSpawnPassCount, 1u, 16u);
+    for (uint passIndex = 0u; passIndex < passCount; ++passIndex) {
+        for (uint candidateIndex = 0u; candidateIndex < SURFEL_SPAWN_TILE_CANDIDATES; ++candidateIndex) {
+            if (all(equal(local, SurfelSpawnTilePixel(tile, tileExtent, uSpawnDebugFrameIndex, passIndex, passCount, candidateIndex)))) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 vec3 SampleCellAverage(uvec3 cellCoord, out float confidence)
@@ -242,6 +292,10 @@ void AccumulateCell(uint cell,
 
     uint acceptedInCell = 0u;
     for (uint i = 0u; i < budget; ++i) {
+        if (candidateCount >= gatherBudget) {
+            break;
+        }
+
         uint entryIndex = firstEntry + i;
         SurfelCellEntry entry = gridEntries[entryIndex];
         ++candidateCount;
@@ -249,8 +303,7 @@ void AccumulateCell(uint cell,
             continue;
         }
 
-        uint surfelID = entry.surfelID;
-        Surfel surfel = surfels[surfelID];
+        Surfel surfel = surfels[entry.surfelID];
         if (!SurfelIsAlive(surfel)) {
             continue;
         }
@@ -273,12 +326,10 @@ void AccumulateCell(uint cell,
             }
         }
 
-        sumIrradiance += max(surfel.irradiance.rgb, vec3(0.0)) * weight;
+        sumIrradiance += SurfelOutgoingDiffuseRadiance(surfel) * weight;
         sumWeight += weight;
         ++sampleCount;
         ++acceptedInCell;
-        surfel.frameInfo.y = uFrameIndex;
-        surfels[surfelID] = surfel;
     }
 
     if (uFallbackStrength > 0.0 &&
@@ -325,7 +376,7 @@ void main()
     }
 
     vec2 uv = (vec2(inputPixel) + vec2(0.5)) / vec2(safeInputResolution);
-    vec3 worldPos = ReconstructWorldPosition(uv, depth, uInvProjection, uInvView);
+    vec3 worldPos = SurfelReconstructWorldPosition(uv, depth, uInvProjection, uInvView);
     vec3 normal = SurfelSafeNormalize(DecodeNormalOct(texelFetch(uPackedNormalRMTex, inputPixel, 0).rg));
     uint materialID = texelFetch(uMaterialIDTex, inputPixel, 0).r;
     uint transformID = texelFetch(uTransformIDTex, inputPixel, 0).r;
@@ -333,8 +384,12 @@ void main()
     uvec3 baseCell;
     bool insideGrid = SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell);
     bool materialAllowed = SurfelMaterialAllowsDiffuseGI(materialID);
-    bool validTransform = transformID != 0u && (uTransformCount == 0u || transformID < uTransformCount);
+    bool validTransform = transformID != 0u && transformID < uTransformCount;
 
+    if (uDebugView == DEBUG_GBUFFER_DEPTH) {
+        imageStore(uOutIndirect, pixel, vec4(vec3(clamp(depth, 0.0, 1.0)), 1.0));
+        return;
+    }
     if (uDebugView == DEBUG_GBUFFER_WORLD_POSITION) {
         imageStore(uOutIndirect, pixel, vec4(DebugWorldPositionColor(worldPos), 1.0));
         return;
@@ -352,7 +407,9 @@ void main()
         return;
     }
     if (uDebugView == DEBUG_SPAWN_CANDIDATES) {
-        imageStore(uOutIndirect, pixel, vec4(DebugSpawnCandidateColor(validTransform, materialAllowed, insideGrid), 1.0));
+        bool selected = IsSelectedSpawnSamplePixel(uvec2(inputPixel));
+        vec3 candidateColor = DebugSpawnCandidateColor(validTransform, materialAllowed, insideGrid);
+        imageStore(uOutIndirect, pixel, vec4(selected ? candidateColor : candidateColor * 0.04, 1.0));
         return;
     }
 
@@ -404,9 +461,13 @@ void main()
                        fallbackWeight);
     }
 
+    float fallbackStrength = clamp(uFallbackStrength, 0.0, 1.0);
     float gridConfidence = 0.0;
-    vec3 gridIrradiance = SampleTrilinearGridIrradiance(worldPos, gridConfidence);
-    gridConfidence *= clamp(uFallbackStrength, 0.0, 1.0);
+    vec3 gridIrradiance = vec3(0.0);
+    if (fallbackStrength > 0.0) {
+        gridIrradiance = SampleTrilinearGridIrradiance(worldPos, gridConfidence);
+        gridConfidence *= fallbackStrength;
+    }
 
     vec3 cellFallbackIrradiance = fallbackWeight > 1e-5
         ? fallbackIrradiance / fallbackWeight
@@ -421,8 +482,8 @@ void main()
         ? sumIrradiance / sumWeight
         : vec3(0.0);
     float fallbackConfidence = clamp(gridConfidence, 0.0, 1.0);
-    float directCoverage = smoothstep(0.12, 1.20, sumWeight);
-    float directBlend = fallbackConfidence > 1e-5 ? directCoverage * 0.45 : directCoverage;
+    float directCoverage = smoothstep(0.02, 0.30, sumWeight);
+    float directBlend = directCoverage;
 
     if (uDebugView == DEBUG_FINAL_GATHER_WEIGHT) {
         imageStore(uOutIndirect, pixel, vec4(DebugGatherWeightColor(directBlend, fallbackConfidence, sampleCount, candidateCount), 1.0));

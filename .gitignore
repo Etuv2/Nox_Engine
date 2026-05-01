@@ -139,6 +139,7 @@ cmake-build-release*/
 .vscode/
 .github/
 .agents/skills/
+validation_output/
 
 # Python virtual env (if tools/scripts)
 venv/

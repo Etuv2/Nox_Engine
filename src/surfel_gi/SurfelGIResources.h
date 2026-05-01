@@ -76,6 +76,17 @@ struct alignas(16) Surfel {
     glm::vec4 debug{ 0.0f };
 };
 static_assert(sizeof(Surfel) == 176, "Surfel must match std430 GLSL layout.");
+static_assert(offsetof(Surfel, worldPos_radius) == 0, "Surfel.worldPos_radius offset mismatch.");
+static_assert(offsetof(Surfel, worldNormal_age) == 16, "Surfel.worldNormal_age offset mismatch.");
+static_assert(offsetof(Surfel, localPos_spawnRadius) == 32, "Surfel.localPos_spawnRadius offset mismatch.");
+static_assert(offsetof(Surfel, localNormal_flags) == 48, "Surfel.localNormal_flags offset mismatch.");
+static_assert(offsetof(Surfel, ids) == 64, "Surfel.ids offset mismatch.");
+static_assert(offsetof(Surfel, albedo_life) == 80, "Surfel.albedo_life offset mismatch.");
+static_assert(offsetof(Surfel, irradiance) == 96, "Surfel.irradiance offset mismatch.");
+static_assert(offsetof(Surfel, shortMean) == 112, "Surfel.shortMean offset mismatch.");
+static_assert(offsetof(Surfel, shortM2) == 128, "Surfel.shortM2 offset mismatch.");
+static_assert(offsetof(Surfel, frameInfo) == 144, "Surfel.frameInfo offset mismatch.");
+static_assert(offsetof(Surfel, debug) == 160, "Surfel.debug offset mismatch.");
 
 struct alignas(16) SurfelCounters {
     uint32_t freeTop = 0u;
@@ -86,8 +97,16 @@ struct alignas(16) SurfelCounters {
     uint32_t allocatedRays = 0u;
     uint32_t overflowSurfels = 0u;
     uint32_t overflowGridEntries = 0u;
+    uint32_t rejectedInvalidDepth = 0u;
+    uint32_t rejectedInvalidTransform = 0u;
+    uint32_t rejectedInvalidMaterial = 0u;
+    uint32_t rejectedOutsideGrid = 0u;
+    uint32_t rejectedInvalidWorldPos = 0u;
+    uint32_t rejectedInvalidNormal = 0u;
+    uint32_t rejectedInvalidRadius = 0u;
+    uint32_t rejectedPoolFull = 0u;
 };
-static_assert(sizeof(SurfelCounters) == 32, "SurfelCounters must match std430 GLSL layout.");
+static_assert(sizeof(SurfelCounters) == 64, "SurfelCounters must match std430 GLSL layout.");
 
 struct alignas(16) SurfelGISettingsGpu {
     glm::uvec4 budgets{ 0u };

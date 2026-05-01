@@ -41,12 +41,12 @@ layout(binding = B_RADIAL_DEPTH, std430) buffer SurfelRadialDepth
     RadialDepthTexel radialDepth[];
 };
 
-uniform sampler2D uPackedNormalRMTex;
-uniform sampler2D uAlbedoAOTex;
-uniform usampler2D uMaterialIDTex;
-uniform sampler2D uEmissiveTex;
-uniform usampler2D uTransformIDTex;
-uniform sampler2D uDepthTex;
+layout(binding = T_SURFEL_GBUFFER_NORMAL_RM) uniform sampler2D uPackedNormalRMTex;
+layout(binding = T_SURFEL_GBUFFER_ALBEDO_AO) uniform sampler2D uAlbedoAOTex;
+layout(binding = T_SURFEL_GBUFFER_MATERIAL_ID) uniform usampler2D uMaterialIDTex;
+layout(binding = T_SURFEL_GBUFFER_EMISSIVE) uniform sampler2D uEmissiveTex;
+layout(binding = T_SURFEL_GBUFFER_TRANSFORM_ID) uniform usampler2D uTransformIDTex;
+layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
 
 uniform uint uMaxSpawnCandidates;
 uniform uvec2 uTileCount;
@@ -64,21 +64,52 @@ uniform vec3 uGridMin;
 uniform vec3 uGridMax;
 uniform mat4 uInvProjection;
 uniform mat4 uInvView;
-uniform float uSpawnRadius;
+uniform mat4 uView;
+uniform mat4 uProjection;
+uniform vec2 uViewportSize;
+uniform float uTargetSurfelScreenRadiusPx;
+uniform float uMinSurfelRadius;
+uniform float uMaxSurfelRadius;
 uniform float uCoverageThreshold;
 uniform float uNormalRejectCos;
 uniform vec3 uDirectionalLightDirection;
 uniform vec3 uDirectionalLightRadiance;
 uniform vec3 uSkyRadiance;
+uniform int uPlacementValidationMode = 0;
 
-const uint SURFEL_SPAWN_FREE_POP_ATTEMPTS = 4u;
+const uint SURFEL_SPAWN_FREE_POP_ATTEMPTS = 2048u;
+const uint SURFEL_PRODUCTION_TILE_PHASES = 8u;
+const uint SURFEL_PLACEMENT_VALIDATION_CANDIDATES = 2u;
+const uint SURFEL_PLACEMENT_VALIDATION_TILE_PHASES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELLS = 7u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 32u;
 
+struct SpawnCandidate
+{
+    bool valid;
+    uvec2 pixelU;
+    vec3 worldPos;
+    vec3 worldNormal;
+    uvec3 baseCell;
+    uint transformID;
+    uint materialID;
+    float coverage;
+};
+
 bool MaterialAllowsSurfelGI(uint materialID)
 {
     return materialID != 2u;
+}
+
+bool IsFiniteVec3(vec3 value)
+{
+    return !any(isnan(value)) && !any(isinf(value));
+}
+
+bool IsReasonableWorldPosition(vec3 worldPos)
+{
+    return IsFiniteVec3(worldPos) && all(lessThan(abs(worldPos), vec3(100000.0)));
 }
 
 bool PopFreeIndex(out uint surfelID)
@@ -88,6 +119,7 @@ bool PopFreeIndex(out uint surfelID)
         uint oldTop = counters.freeTop;
         if (oldTop == 0u) {
             atomicAdd(counters.overflowSurfels, 1u);
+            atomicAdd(counters.rejectedPoolFull, 1u);
             return false;
         }
 
@@ -103,72 +135,23 @@ bool PopFreeIndex(out uint surfelID)
     return false;
 }
 
-uvec2 DeterministicTilePixel(uvec2 tile, uvec2 tileExtent, uint frameIndex, uint passIndex, uint passCount)
+float WorldUnitsPerPixel(vec3 worldPos)
 {
-    uint pixelCount = max(tileExtent.x * tileExtent.y, 1u);
-    uint seed = tile.x * 0x8da6b343u ^
-        tile.y * 0xd8163841u ^
-        frameIndex * 0xcb1ab31fu ^
-        (passIndex + passCount * 17u) * 0x165667b1u;
-    uint sampleIndex = SurfelHash(seed) % pixelCount;
-    return uvec2(sampleIndex % tileExtent.x, sampleIndex / tileExtent.x);
+    vec4 viewPos = uView * vec4(worldPos, 1.0);
+    float focalY = max(abs(uProjection[1][1]), 0.0001);
+    return max(abs(viewPos.z), 0.05) / (max(uViewportSize.y, 1.0) * focalY);
 }
 
-void main()
+float SpawnRadiusForWorldPosition(vec3 worldPos)
 {
-    uint candidate = gl_GlobalInvocationID.x;
-    if (candidate >= uMaxSpawnCandidates) {
-        return;
-    }
+    float targetPixels = uTargetSurfelScreenRadiusPx > 0.0 ? uTargetSurfelScreenRadiusPx : 8.0;
+    float minRadius = max(uMinSurfelRadius, 0.001);
+    float maxRadius = max(uMaxSurfelRadius, minRadius);
+    return clamp(targetPixels * WorldUnitsPerPixel(worldPos), minRadius, maxRadius);
+}
 
-    if (uTileCount.x == 0u || uTileSize == 0u || any(equal(uResolution, uvec2(0u)))) {
-        return;
-    }
-
-    uint passCount = max(uSpawnPassCount, 1u);
-    uint passIndex = min(uSpawnPassIndex, passCount - 1u);
-    uvec2 tile = uvec2(candidate % uTileCount.x, candidate / uTileCount.x);
-    if (tile.y >= uTileCount.y) {
-        return;
-    }
-
-    if (counters.freeTop == 0u) {
-        return;
-    }
-
-    uvec2 tileExtent = min(uvec2(uTileSize), uResolution - tile * uTileSize);
-    uvec2 pixelOffset = DeterministicTilePixel(tile, tileExtent, uFrameIndex, passIndex, passCount);
-    uvec2 pixelU = min(tile * uTileSize + pixelOffset, uResolution - uvec2(1u));
-    ivec2 pixel = ivec2(pixelU);
-    float depth = texelFetch(uDepthTex, pixel, 0).r;
-    if (depth <= 0.0 || depth >= 0.999999) {
-        return;
-    }
-
-    uint transformID = texelFetch(uTransformIDTex, pixel, 0).r;
-    if (transformID == 0u || transformID >= uTransformCount) {
-        return;
-    }
-
-    GpuTransformRecord transform = transforms[transformID];
-    if ((transform.metadata.x & GPU_TRANSFORM_INVALID) != 0u) {
-        return;
-    }
-
-    vec2 uv = (vec2(pixelU) + vec2(0.5)) / vec2(uResolution);
-    vec4 packedNormal = texelFetch(uPackedNormalRMTex, pixel, 0);
-    vec3 worldNormal = SurfelSafeNormalize(DecodeNormalOct(packedNormal.rg));
-    vec3 worldPos = ReconstructWorldPosition(uv, depth, uInvProjection, uInvView);
-    uint materialID = texelFetch(uMaterialIDTex, pixel, 0).r;
-    if (!MaterialAllowsSurfelGI(materialID)) {
-        return;
-    }
-
-    uvec3 baseCell;
-    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell)) {
-        return;
-    }
-
+float ComputeCandidateCoverage(vec3 worldPos, vec3 worldNormal, uvec3 baseCell)
+{
     float coverage = 0.0;
     uint coverageTests = 0u;
     for (uint n = 0u; n < SURFEL_SPAWN_MAX_COVERAGE_CELLS; ++n) {
@@ -204,23 +187,106 @@ void main()
 
             coverage += SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos);
             if (coverage >= uCoverageThreshold) {
-                return;
+                return coverage;
             }
         }
     }
 
+    return coverage;
+}
+
+bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
+{
+    candidate.valid = false;
+    candidate.pixelU = pixelU;
+    candidate.worldPos = vec3(0.0);
+    candidate.worldNormal = vec3(0.0, 1.0, 0.0);
+    candidate.baseCell = uvec3(0u);
+    candidate.transformID = 0u;
+    candidate.materialID = 0u;
+    candidate.coverage = 3.402823466e+38;
+
+    ivec2 pixel = ivec2(pixelU);
+    float depth = texelFetch(uDepthTex, pixel, 0).r;
+    if (depth <= 0.0 || depth >= 0.999999) {
+        atomicAdd(counters.rejectedInvalidDepth, 1u);
+        return false;
+    }
+
+    uint transformID = texelFetch(uTransformIDTex, pixel, 0).r;
+    if (transformID == 0u || transformID >= uTransformCount) {
+        atomicAdd(counters.rejectedInvalidTransform, 1u);
+        return false;
+    }
+
+    GpuTransformRecord transform = transforms[transformID];
+    if ((transform.metadata.x & GPU_TRANSFORM_INVALID) != 0u) {
+        atomicAdd(counters.rejectedInvalidTransform, 1u);
+        return false;
+    }
+
+    uint materialID = texelFetch(uMaterialIDTex, pixel, 0).r;
+    if (!MaterialAllowsSurfelGI(materialID)) {
+        atomicAdd(counters.rejectedInvalidMaterial, 1u);
+        return false;
+    }
+
+    vec2 uv = (vec2(pixelU) + vec2(0.5)) / vec2(uResolution);
+    vec4 packedNormal = texelFetch(uPackedNormalRMTex, pixel, 0);
+    vec3 worldNormal = SurfelSafeNormalize(DecodeNormalOct(packedNormal.rg));
+    vec3 worldPos = SurfelReconstructWorldPosition(uv, depth, uInvProjection, uInvView);
+    if (!IsReasonableWorldPosition(worldPos)) {
+        atomicAdd(counters.rejectedInvalidWorldPos, 1u);
+        return false;
+    }
+
+    float normalLenSq = dot(worldNormal, worldNormal);
+    if (!IsFiniteVec3(worldNormal) || normalLenSq < 0.25 || normalLenSq > 4.0) {
+        atomicAdd(counters.rejectedInvalidNormal, 1u);
+        return false;
+    }
+
+    uvec3 baseCell;
+    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell)) {
+        atomicAdd(counters.rejectedOutsideGrid, 1u);
+        return false;
+    }
+
+    candidate.valid = true;
+    candidate.worldPos = worldPos;
+    candidate.worldNormal = worldNormal;
+    candidate.baseCell = baseCell;
+    candidate.transformID = transformID;
+    candidate.materialID = materialID;
+    candidate.coverage = ComputeCandidateCoverage(worldPos, worldNormal, baseCell);
+    return true;
+}
+
+bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
+{
+    ivec2 pixel = ivec2(candidate.pixelU);
+    vec3 worldPos = candidate.worldPos;
+    vec3 worldNormal = candidate.worldNormal;
+    uint transformID = candidate.transformID;
+    uint materialID = candidate.materialID;
+    GpuTransformRecord transform = transforms[transformID];
+
     mat4 localFromWorld = inverse(transform.world);
     vec4 localPos = localFromWorld * vec4(worldPos, 1.0);
     vec3 localNormal = SurfelSafeNormalize(transpose(mat3(transform.world)) * worldNormal);
+    float radius = SpawnRadiusForWorldPosition(worldPos);
+    if (isnan(radius) || isinf(radius) || radius <= 0.0 || radius > max(uMaxSurfelRadius * 4.0, 0.01)) {
+        atomicAdd(counters.rejectedInvalidRadius, 1u);
+        return false;
+    }
 
     uint surfelID = SURFEL_INVALID_INDEX;
     if (!PopFreeIndex(surfelID)) {
-        return;
+        return false;
     }
 
     vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0));
     vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
-    float radius = max(uSpawnRadius, 0.001);
     vec3 lightToSurface = SurfelSafeNormalize(uDirectionalLightDirection);
     vec3 surfaceToLight = -lightToSurface;
     float nDotL = max(dot(worldNormal, surfaceToLight), 0.0);
@@ -239,10 +305,12 @@ void main()
     surfel.shortMean = vec4(initialIrradiance, 1.0);
     surfel.shortM2 = vec4(0.0);
     surfel.frameInfo = uvec4(uFrameIndex, uFrameIndex, uFrameIndex, 0u);
-    surfel.debug = vec4(0.0, 1.0, 0.0, 0.0);
+    surfel.debug = vec4((vec2(candidate.pixelU) + vec2(0.5)) / vec2(uResolution),
+                        clamp(candidateCoverage / max(uCoverageThreshold, 1e-4), 0.0, 1.0),
+                        0.0);
     surfels[surfelID] = surfel;
 
-    float radialDefaultDepth = max(radius * 8.0, 1.25);
+    float radialDefaultDepth = max(radius * 2.0, 0.001);
     uint radialBase = surfelID * SURFEL_RADIAL_DEPTH_TEXELS;
     for (uint bin = 0u; bin < SURFEL_RADIAL_DEPTH_TEXELS; ++bin) {
         radialDepth[radialBase + bin].meanDepth = radialDefaultDepth;
@@ -250,5 +318,96 @@ void main()
     }
 
     atomicAdd(counters.spawnedThisFrame, 1u);
-    atomicAdd(counters.liveCount, 1u);
+    return true;
+}
+
+uint TileSpawnPhase(uint tileIndex, uint phaseCount)
+{
+    return SurfelHash(tileIndex * 0x9e3779b9u + 0x85ebca6bu) % max(phaseCount, 1u);
+}
+
+void main()
+{
+    uint tileIndex = gl_GlobalInvocationID.x;
+    if (tileIndex >= uMaxSpawnCandidates) {
+        return;
+    }
+
+    if (uTileCount.x == 0u || uTileSize == 0u || any(equal(uResolution, uvec2(0u)))) {
+        return;
+    }
+
+    uint passCount = max(uSpawnPassCount, 1u);
+    uint passIndex = min(uSpawnPassIndex, passCount - 1u);
+    uvec2 tile = uvec2(tileIndex % uTileCount.x, tileIndex / uTileCount.x);
+    if (tile.y >= uTileCount.y) {
+        return;
+    }
+
+    if (uPlacementValidationMode != 0) {
+        uint placementPhase = uFrameIndex % SURFEL_PLACEMENT_VALIDATION_TILE_PHASES;
+        uint phase = TileSpawnPhase(tileIndex, SURFEL_PLACEMENT_VALIDATION_TILE_PHASES);
+        if (phase != placementPhase) {
+            return;
+        }
+    } else {
+        uint productionPhase = (uFrameIndex + passIndex * 3u) % SURFEL_PRODUCTION_TILE_PHASES;
+        uint phase = TileSpawnPhase(tileIndex, SURFEL_PRODUCTION_TILE_PHASES);
+        if (phase != productionPhase) {
+            return;
+        }
+    }
+
+    if (counters.freeTop == 0u) {
+        return;
+    }
+
+    uvec2 tileExtent = min(uvec2(uTileSize), uResolution - tile * uTileSize);
+
+    if (uPlacementValidationMode != 0) {
+        uint spawnedInTile = 0u;
+        for (uint candidateIndex = 0u; candidateIndex < SURFEL_SPAWN_TILE_CANDIDATES; ++candidateIndex) {
+            uvec2 pixelOffset = SurfelSpawnTilePixel(tile, tileExtent, uFrameIndex, passIndex, passCount, candidateIndex);
+            uvec2 pixelU = min(tile * uTileSize + pixelOffset, uResolution - uvec2(1u));
+
+            SpawnCandidate current;
+            if (!EvaluateSpawnCandidate(pixelU, current) || current.coverage >= uCoverageThreshold) {
+                continue;
+            }
+
+            if (SpawnSurfelFromCandidate(current, current.coverage)) {
+                ++spawnedInTile;
+                if (spawnedInTile >= SURFEL_PLACEMENT_VALIDATION_CANDIDATES) {
+                    break;
+                }
+            }
+        }
+        return;
+    }
+
+    SpawnCandidate bestCandidate;
+    bestCandidate.valid = false;
+    bestCandidate.coverage = 3.402823466e+38;
+    float bestCoverage = bestCandidate.coverage;
+
+    for (uint candidateIndex = 0u; candidateIndex < SURFEL_SPAWN_TILE_CANDIDATES; ++candidateIndex) {
+        uvec2 pixelOffset = SurfelSpawnTilePixel(tile, tileExtent, uFrameIndex, passIndex, passCount, candidateIndex);
+        uvec2 pixelU = min(tile * uTileSize + pixelOffset, uResolution - uvec2(1u));
+
+        SpawnCandidate current;
+        if (!EvaluateSpawnCandidate(pixelU, current)) {
+            continue;
+        }
+
+        if (!bestCandidate.valid || current.coverage < bestCoverage) {
+            bestCandidate = current;
+            bestCoverage = current.coverage;
+        }
+    }
+
+    if (!bestCandidate.valid || bestCoverage >= uCoverageThreshold) {
+        return;
+    }
+
+    SpawnSurfelFromCandidate(bestCandidate, bestCoverage);
 }

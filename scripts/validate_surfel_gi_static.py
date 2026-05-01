@@ -50,6 +50,7 @@ def main() -> None:
         "shaders/includes/surfel_gi_resources.glsl",
         "shaders/surfel_gi/common.glsl",
         "shaders/surfel_gi/begin_frame.comp",
+        "shaders/surfel_gi/count_live_surfels.comp",
         "shaders/surfel_gi/apply_indirect.comp",
         "shaders/surfel_gi/debug_surfels.vert",
         "shaders/surfel_gi/debug_surfels.frag",
@@ -115,9 +116,9 @@ def main() -> None:
             "clean surfel shaders must consume the engine transform contract")
     for binding in ("#define B_SURFELS 10", "#define B_SURFEL_FREELIST 11", "#define B_TRANSFORMS 22"):
         require(binding in common, f"clean surfel binding contract missing {binding}")
-    require("PopFreeIndex" in spawn and "ReconstructWorldPosition" in spawn and "GpuTransformRecord" in spawn,
+    require("PopFreeIndex" in spawn and "SurfelReconstructWorldPosition" in spawn and "GpuTransformRecord" in spawn,
             "spawn shader must allocate persistent surfels from G-buffer and transform IDs")
-    require("uSpawnPassCount" in spawn and "DeterministicTilePixel" in spawn,
+    require("uSpawnPassCount" in spawn and "SurfelSpawnTilePixel" in spawn,
             "spawn shader must use bounded deterministic per-tile pixel sweeps")
     require(("ReceiverSurfelGatherWeight" in apply_indirect or "SurfelCoverageWeight" in apply_indirect) and
             "imageStore(uOutIndirect" in apply_indirect,

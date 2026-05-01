@@ -38,6 +38,7 @@ class PostProcessPass;
 class LPVPass;
 class IndirectDiffusePass;
 class SurfelGIManager;
+struct SurfelGIFrameStats;
 class GUIPass;
 class RTPass;
 class DebugBBoxPass;
@@ -75,6 +76,8 @@ public:
 
 	// Access to context for UI tuning
 	RenderContext& GetContext() { return m_context; }
+	const RenderContext& GetContext() const { return m_context; }
+	const SurfelGIFrameStats* GetCleanSurfelGIStats() const;
 	bool ExportIndirectDiffuseValidationStages(const std::string& directory) const;
 	bool ReadIndirectDiffuseProbe(int stage, int pixelX, int pixelY, IndirectDiffuseProbeSample& outSample) const;
 

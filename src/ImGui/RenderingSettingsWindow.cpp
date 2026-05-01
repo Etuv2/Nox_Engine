@@ -1,5 +1,6 @@
 ﻿#include "RenderingSettingsWindow.h"
 #include "../ModularRenderer.h"
+#include "../passes/SurfelGIManager.h"
 #include "../RenderContext.h"
 #include "../LightManager.h"
 #include "../passes/IndirectDiffusePass.h"
@@ -181,6 +182,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_cleanSurfelGIUseRayBinning = true;
 	m_cleanSurfelGIUseScreenTrace = true;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;
+	m_cleanSurfelGIPlacementValidation = false;
 
 	// Screen-space contact shadows
 	m_sssResolutionScale = 0.5f;
@@ -375,6 +377,7 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_cleanSurfelGIUseRayBinning = ctx.cleanSurfelGIUseRayBinning;
 	m_cleanSurfelGIUseScreenTrace = ctx.cleanSurfelGIUseScreenTrace;
 	m_cleanSurfelGIUseSurfelFallbackTrace = ctx.cleanSurfelGIUseSurfelFallbackTrace;
+	m_cleanSurfelGIPlacementValidation = ctx.cleanSurfelGIPlacementValidation;
 	m_sssResolutionScale = ctx.sssResolutionScale;
 	m_sssTemporalAlpha = ctx.sssTemporalAlpha;
 
@@ -606,6 +609,7 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.cleanSurfelGIUseRayBinning = m_cleanSurfelGIUseRayBinning;
 	ctx.cleanSurfelGIUseScreenTrace = m_cleanSurfelGIUseScreenTrace;
 	ctx.cleanSurfelGIUseSurfelFallbackTrace = m_cleanSurfelGIUseSurfelFallbackTrace;
+	ctx.cleanSurfelGIPlacementValidation = m_cleanSurfelGIPlacementValidation;
 	ctx.sssResolutionScale = m_sssResolutionScale;
 	ctx.sssTemporalAlpha = m_sssTemporalAlpha;
 
@@ -1057,9 +1061,16 @@ void RenderingSettingsWindow::Render() {
 					{ 20, "GBuffer Normal" },
 					{ 21, "GBuffer Transform ID" },
 					{ 22, "GBuffer Material ID" },
-					{ 23, "Spawn Candidates" }
+					{ 23, "Spawn Candidates" },
+					{ 24, "GBuffer Depth" },
+					{ 25, "Stored World Pos" },
+					{ 26, "Stored Radius" },
+					{ 27, "Stored Transform ID" },
+					{ 28, "Stored Flags" },
+					{ 29, "Debug Draw Position" }
 				};
 				if (DebugCombo("Surfel Debug View", &m_cleanSurfelGIDebugView, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
+				if (ImGui::Checkbox("Placement Validation Mode", &m_cleanSurfelGIPlacementValidation)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("GI Intensity", &m_cleanSurfelGIIntensity, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Surfels", &m_cleanSurfelGIMaxSurfels, 4096, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Ray Budget", &m_cleanSurfelGIMaxRayBudget, 4096, 524288)) { SyncToRenderer(); }
@@ -1073,6 +1084,22 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::Checkbox("Ray Binning", &m_cleanSurfelGIUseRayBinning)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Screen Trace Path", &m_cleanSurfelGIUseScreenTrace)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Surfel Fallback Trace", &m_cleanSurfelGIUseSurfelFallbackTrace)) { SyncToRenderer(); }
+				if (const SurfelGIFrameStats* stats = m_modularRenderer ? m_modularRenderer->GetCleanSurfelGIStats() : nullptr) {
+					ImGui::Text("Surfels live/spawn/recycle: %u / %u / %u",
+						stats->liveSurfels,
+						stats->spawnedThisFrame,
+						stats->recycledThisFrame);
+					ImGui::Text("Reject depth/xform/material/grid: %u / %u / %u / %u",
+						stats->rejectedInvalidDepth,
+						stats->rejectedInvalidTransform,
+						stats->rejectedInvalidMaterial,
+						stats->rejectedOutsideGrid);
+					ImGui::Text("Reject pos/normal/radius/pool: %u / %u / %u / %u",
+						stats->rejectedInvalidWorldPos,
+						stats->rejectedInvalidNormal,
+						stats->rejectedInvalidRadius,
+						stats->rejectedPoolFull);
+				}
 			}
 			static const DebugComboEntry compositeDebugModes[] = {
 				{ 0, "Full Composite" },
@@ -1911,6 +1938,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_cleanSurfelGIUseRayBinning = true;
 	m_cleanSurfelGIUseScreenTrace = true;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;
+	m_cleanSurfelGIPlacementValidation = false;
 
 	// Contact shadows - match RenderContext defaults
 	m_sssResolutionScale = 0.5f;

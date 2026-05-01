@@ -52,6 +52,11 @@ ModularRenderer::~ModularRenderer()
 	}
 }
 
+const SurfelGIFrameStats* ModularRenderer::GetCleanSurfelGIStats() const
+{
+	return m_surfelGIManager ? &m_surfelGIManager->GetStats() : nullptr;
+}
+
 namespace {
 	using Clock = std::chrono::high_resolution_clock;
 	static constexpr std::size_t kProfilerFramesInFlight = 4;
@@ -499,7 +504,7 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 	settings.qualityTier = static_cast<SurfelGIQualityTier>(
 		std::clamp(m_context.cleanSurfelGIQualityTier, 0, 3));
 	settings.debugView = static_cast<SurfelGIDebugView>(
-		std::clamp(m_context.cleanSurfelGIDebugView, 0, 23));
+		std::clamp(m_context.cleanSurfelGIDebugView, 0, 29));
 	settings.maxSurfels = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxSurfels, 1024));
 	settings.maxRayBudget = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxRayBudget, 1024));
 	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGISpawnTileSize, 4, 64));
@@ -519,10 +524,12 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 	settings.useRayBinning = m_context.cleanSurfelGIUseRayBinning;
 	settings.useScreenSpaceTrace = m_context.cleanSurfelGIUseScreenTrace;
 	settings.useSurfelFallbackTrace = m_context.cleanSurfelGIUseSurfelFallbackTrace;
+	settings.placementValidationMode = m_context.cleanSurfelGIPlacementValidation ||
+		IsEnvVarEnabled("NOX_SURFEL_GI_PLACEMENT_VALIDATION");
 
 	if (forcedOnForValidation) {
 		settings.debugView = static_cast<SurfelGIDebugView>(
-			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 23));
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 29));
 		settings.maxSurfels = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_SURFELS", static_cast<int>(settings.maxSurfels)), 1024));
 		settings.maxRayBudget = static_cast<uint32_t>(

@@ -204,6 +204,7 @@
     <None Include="shaders\surfel_gi\cell_average.comp" />
     <None Include="shaders\surfel_gi\clear_grid.comp" />
     <None Include="shaders\surfel_gi\common.glsl" />
+    <None Include="shaders\surfel_gi\count_live_surfels.comp" />
     <None Include="shaders\surfel_gi\coverage.comp" />
     <None Include="shaders\surfel_gi\debug_surfels.frag" />
     <None Include="shaders\surfel_gi\debug_surfels.vert" />

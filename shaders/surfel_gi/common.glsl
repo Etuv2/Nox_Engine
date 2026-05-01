@@ -24,6 +24,13 @@
 #define B_GRID_COUNTERS 29
 #define B_SURFEL_GI_SETTINGS 30
 
+#define T_SURFEL_GBUFFER_NORMAL_RM 0
+#define T_SURFEL_GBUFFER_ALBEDO_AO 1
+#define T_SURFEL_GBUFFER_MATERIAL_ID 2
+#define T_SURFEL_GBUFFER_EMISSIVE 3
+#define T_SURFEL_GBUFFER_TRANSFORM_ID 4
+#define T_SURFEL_GBUFFER_DEPTH 5
+
 #include "../includes/transform_tracking_contract.glsl"
 
 #define SURFEL_DEAD 0x00000000u
@@ -42,6 +49,7 @@
 const uint SURFEL_RADIAL_DEPTH_TEXELS = 16u;
 const uint SURFEL_GUIDE_CELLS = 36u;
 const uint SURFEL_INVALID_INDEX = 0xffffffffu;
+const uint SURFEL_SPAWN_TILE_CANDIDATES = 8u;
 const float SURFEL_PI = 3.14159265358979323846;
 
 struct Surfel
@@ -69,6 +77,14 @@ struct SurfelCounters
     uint allocatedRays;
     uint overflowSurfels;
     uint overflowGridEntries;
+    uint rejectedInvalidDepth;
+    uint rejectedInvalidTransform;
+    uint rejectedInvalidMaterial;
+    uint rejectedOutsideGrid;
+    uint rejectedInvalidWorldPos;
+    uint rejectedInvalidNormal;
+    uint rejectedInvalidRadius;
+    uint rejectedPoolFull;
 };
 
 struct RadialDepthTexel
@@ -175,6 +191,34 @@ uint SurfelHash(uint value)
     value *= 0x846ca68bu;
     value ^= value >> 16u;
     return value;
+}
+
+uvec2 SurfelSpawnTilePixel(uvec2 tile,
+                           uvec2 tileExtent,
+                           uint frameIndex,
+                           uint passIndex,
+                           uint passCount,
+                           uint sampleIndex)
+{
+    uint pixelCount = max(tileExtent.x * tileExtent.y, 1u);
+    uint seed = tile.x * 0x8da6b343u ^
+        tile.y * 0xd8163841u ^
+        frameIndex * 0xcb1ab31fu ^
+        (passIndex + passCount * 17u) * 0x165667b1u ^
+        sampleIndex * 0x9e3779b9u;
+    uint pixelIndex = SurfelHash(seed) % pixelCount;
+    return uvec2(pixelIndex % tileExtent.x, pixelIndex / tileExtent.x);
+}
+
+vec3 SurfelReconstructWorldPosition(vec2 uv, float depth01, mat4 invProjection, mat4 invView)
+{
+    vec4 clipPosition = vec4(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0, 1.0);
+    vec4 viewPosition = invProjection * clipPosition;
+    float invW = 1.0 / max(abs(viewPosition.w), 1e-6);
+    viewPosition.xyz *= invW;
+    viewPosition.w = 1.0;
+    vec4 worldPosition = invView * viewPosition;
+    return worldPosition.xyz;
 }
 
 float SurfelHash01(uint value)

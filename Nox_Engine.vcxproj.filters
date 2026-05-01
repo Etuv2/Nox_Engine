@@ -695,6 +695,9 @@
     <None Include="shaders\surfel_gi\common.glsl">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
+    <None Include="shaders\surfel_gi\count_live_surfels.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
     <None Include="shaders\surfel_gi\coverage.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>

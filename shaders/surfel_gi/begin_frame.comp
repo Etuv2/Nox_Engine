@@ -11,10 +11,19 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 
 void main()
 {
+    counters.liveCount = 0u;
     counters.spawnedThisFrame = 0u;
     counters.recycledThisFrame = 0u;
     counters.requestedRays = 0u;
     counters.allocatedRays = 0u;
     counters.overflowSurfels = 0u;
     counters.overflowGridEntries = 0u;
+    counters.rejectedInvalidDepth = 0u;
+    counters.rejectedInvalidTransform = 0u;
+    counters.rejectedInvalidMaterial = 0u;
+    counters.rejectedOutsideGrid = 0u;
+    counters.rejectedInvalidWorldPos = 0u;
+    counters.rejectedInvalidNormal = 0u;
+    counters.rejectedInvalidRadius = 0u;
+    counters.rejectedPoolFull = 0u;
 }

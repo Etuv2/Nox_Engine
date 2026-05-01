@@ -3,6 +3,7 @@
 #include "../ComputeShader.h"
 #include "../Camera.h"
 #include "../DirectionalLight.h"
+#include "../GLState.h"
 #include "../RenderContext.h"
 #include "../RenderSystem.h"
 #include "../SceneGraph.h"
@@ -20,6 +21,12 @@
 namespace {
 constexpr uint32_t kRadialDepthTexelsPerSurfel = 16u;
 constexpr uint32_t kGuideCellsPerSurfel = 36u;
+constexpr GLuint kSurfelGIGBufferNormalRMUnit = 0u;
+constexpr GLuint kSurfelGIGBufferAlbedoAOUnit = 1u;
+constexpr GLuint kSurfelGIGBufferMaterialIDUnit = 2u;
+constexpr GLuint kSurfelGIGBufferEmissiveUnit = 3u;
+constexpr GLuint kSurfelGIGBufferTransformIDUnit = 4u;
+constexpr GLuint kSurfelGIGBufferDepthUnit = 5u;
 
 void DeleteBuffer(GLuint& buffer)
 {
@@ -67,6 +74,28 @@ bool AllocateBuffer(GLuint& buffer, GLsizeiptr sizeBytes, const char* label)
 		glObjectLabel(GL_BUFFER, buffer, -1, label);
 	}
 	return true;
+}
+
+void ClearBufferUInt(GLuint buffer, uint32_t value)
+{
+	if (buffer == 0u) {
+		return;
+	}
+
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
+	glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &value);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+}
+
+void ClearBufferVec4(GLuint buffer, const glm::vec4& value)
+{
+	if (buffer == 0u) {
+		return;
+	}
+
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
+	glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32F, GL_RGBA, GL_FLOAT, glm::value_ptr(value));
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
 bool AllocateIndirectTexture(GLuint& texture, uint32_t width, uint32_t height)
@@ -148,6 +177,7 @@ bool IsSurfelFullscreenDebugView(SurfelGIDebugView view)
 {
 	return view == SurfelGIDebugView::SurfelGridCells ||
 		view == SurfelGIDebugView::GatherWeights ||
+		view == SurfelGIDebugView::GBufferDepth ||
 		view == SurfelGIDebugView::GBufferWorldPosition ||
 		view == SurfelGIDebugView::GBufferNormal ||
 		view == SurfelGIDebugView::GBufferTransformID ||
@@ -233,6 +263,46 @@ void SetUniformMat4(GLuint program, const char* name, const glm::mat4& value)
 	if (loc >= 0) {
 		glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 	}
+}
+
+void BindSurfelGIGBufferTextures(const RenderContext& context)
+{
+	if (!context.gbufferFBO) {
+		return;
+	}
+
+	glBindTextureUnit(kSurfelGIGBufferNormalRMUnit, context.gbufferFBO->GetColorAttachment(0));
+	glBindTextureUnit(kSurfelGIGBufferAlbedoAOUnit, context.gbufferFBO->GetColorAttachment(1));
+	glBindTextureUnit(kSurfelGIGBufferMaterialIDUnit, context.gbufferFBO->GetColorAttachment(3));
+	glBindTextureUnit(kSurfelGIGBufferEmissiveUnit, context.gbufferFBO->GetColorAttachment(4));
+	glBindTextureUnit(kSurfelGIGBufferTransformIDUnit, context.gbufferFBO->GetColorAttachment(5));
+	glBindTextureUnit(kSurfelGIGBufferDepthUnit, context.gbufferFBO->GetDepthTexture());
+}
+
+void SetSurfelGIGBufferSamplerUniforms(GLuint program)
+{
+	SetUniform1i(program, "uPackedNormalRMTex", static_cast<GLint>(kSurfelGIGBufferNormalRMUnit));
+	SetUniform1i(program, "uAlbedoAOTex", static_cast<GLint>(kSurfelGIGBufferAlbedoAOUnit));
+	SetUniform1i(program, "uMaterialIDTex", static_cast<GLint>(kSurfelGIGBufferMaterialIDUnit));
+	SetUniform1i(program, "uEmissiveTex", static_cast<GLint>(kSurfelGIGBufferEmissiveUnit));
+	SetUniform1i(program, "uTransformIDTex", static_cast<GLint>(kSurfelGIGBufferTransformIDUnit));
+	SetUniform1i(program, "uDepthTex", static_cast<GLint>(kSurfelGIGBufferDepthUnit));
+}
+
+void LogSurfelGIGBufferBindings(const RenderContext& context)
+{
+	if (!context.gbufferFBO) {
+		return;
+	}
+
+	std::cout << "[SurfelGIPipeline] G-buffer bindings:"
+		<< " normalRM(unit " << kSurfelGIGBufferNormalRMUnit << ")=" << context.gbufferFBO->GetColorAttachment(0)
+		<< " albedoAO(unit " << kSurfelGIGBufferAlbedoAOUnit << ")=" << context.gbufferFBO->GetColorAttachment(1)
+		<< " materialID(unit " << kSurfelGIGBufferMaterialIDUnit << ")=" << context.gbufferFBO->GetColorAttachment(3)
+		<< " emissive(unit " << kSurfelGIGBufferEmissiveUnit << ")=" << context.gbufferFBO->GetColorAttachment(4)
+		<< " transformID(unit " << kSurfelGIGBufferTransformIDUnit << ")=" << context.gbufferFBO->GetColorAttachment(5)
+		<< " depth(unit " << kSurfelGIGBufferDepthUnit << ")=" << context.gbufferFBO->GetDepthTexture()
+		<< "\n";
 }
 
 GLuint DivRoundUp(GLuint value, GLuint divisor)
@@ -351,7 +421,9 @@ void SurfelGIPipeline::Shutdown()
 	m_indirectHeight = 0;
 	m_frameIndex = 0;
 	m_stationaryFrameCount = 0;
+	m_lastSpawnPassCount = 1;
 	m_hasLastCameraState = false;
+	m_loggedGBufferBindings = false;
 	m_initialized = false;
 }
 
@@ -381,6 +453,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	glm::vec3 gridMin(0.0f);
 	glm::vec3 gridMax(0.0f);
 	ComputeCameraCenteredGridBounds(gridSettings, cameraPosition, gridMin, gridMax);
+	const bool placementOnly = m_settings.placementValidationMode;
 
 	GLuint transformBuffer = 0u;
 	uint32_t transformCount = 0u;
@@ -395,6 +468,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	m_lastTransformCount = transformCount;
 
 	BindCoreResources(transformBuffer);
+	if (!m_loggedGBufferBindings) {
+		LogSurfelGIGBufferBindings(context);
+		m_loggedGBufferBindings = true;
+	}
 
 	if (m_hasLastCameraState) {
 		const float positionDelta = glm::length(cameraPosition - m_lastCameraPosition);
@@ -411,6 +488,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	m_hasLastCameraState = true;
 
 	auto buildCellAverages = [&]() {
+		if (placementOnly) {
+			return;
+		}
 		if (m_cellAverageShader && m_cellAverageShader->IsValid()) {
 			const GLuint program = m_cellAverageShader->GetProgramID();
 			glUseProgram(program);
@@ -448,13 +528,33 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		buildCellAverages();
 	};
 
+	auto countLiveSurfels = [&]() {
+		if (m_countLiveShader && m_countLiveShader->IsValid()) {
+			const GLuint program = m_countLiveShader->GetProgramID();
+			glUseProgram(program);
+			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
+			m_countLiveShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_countLiveShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		}
+	};
+
 	if (m_beginFrameShader && m_beginFrameShader->IsValid()) {
 		glUseProgram(m_beginFrameShader->GetProgramID());
 		m_beginFrameShader->Dispatch(1u, 1u, 1u);
 		m_beginFrameShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	if (m_updateShader && m_updateShader->IsValid() && transformBuffer != 0u && transformCount > 0u) {
+	if (placementOnly && !m_wasPlacementValidationMode) {
+		// Placement validation resets on entry, then accumulates spawned
+		// world-space records without transform reattachment. A per-frame reset
+		// makes the debug draw look like sparse screen-tile samples instead of
+		// a persistent surface distribution.
+		m_pool.ResetFreeList();
+		BindCoreResources(transformBuffer);
+	}
+	m_wasPlacementValidationMode = placementOnly;
+
+	if (!placementOnly && m_updateShader && m_updateShader->IsValid() && transformBuffer != 0u && transformCount > 0u) {
 		const GLuint program = m_updateShader->GetProgramID();
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -470,7 +570,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_updateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	if (m_recycleShader && m_recycleShader->IsValid()) {
+	if (!placementOnly && m_recycleShader && m_recycleShader->IsValid()) {
 		const GLuint program = m_recycleShader->GetProgramID();
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -491,31 +591,15 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		const GLuint tilesX = DivRoundUp(m_width, tileSize);
 		const GLuint tilesY = DivRoundUp(m_height, tileSize);
 		const GLuint spawnPassCount = ComputeSpawnPassCount(m_settings, m_frameIndex, m_stationaryFrameCount);
+		m_lastSpawnPassCount = spawnPassCount;
 		const GLuint tileCount = tilesX * tilesY;
 		const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
 		const glm::vec3 lightRadiance = dirLight ? dirLight->GetLightColor() * dirLight->GetIntensity() : glm::vec3(1.0f);
 		const GLuint program = m_spawnShader->GetProgramID();
 		glUseProgram(program);
 
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(0));
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(1));
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(3));
-		glActiveTexture(GL_TEXTURE3);
-		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(4));
-		glActiveTexture(GL_TEXTURE4);
-		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(5));
-		glActiveTexture(GL_TEXTURE5);
-		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetDepthTexture());
-
-		SetUniform1i(program, "uPackedNormalRMTex", 0);
-		SetUniform1i(program, "uAlbedoAOTex", 1);
-		SetUniform1i(program, "uMaterialIDTex", 2);
-		SetUniform1i(program, "uEmissiveTex", 3);
-		SetUniform1i(program, "uTransformIDTex", 4);
-		SetUniform1i(program, "uDepthTex", 5);
+		BindSurfelGIGBufferTextures(context);
+		SetSurfelGIGBufferSamplerUniforms(program);
 		SetUniform1ui(program, "uMaxSpawnCandidates", tileCount);
 		SetUniform2ui(program, "uTileCount", tilesX, tilesY);
 		SetUniform1ui(program, "uTileSize", tileSize);
@@ -531,12 +615,18 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uGridMax", gridMax);
 		SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
 		SetUniformMat4(program, "uInvView", glm::inverse(context.view));
-		SetUniform1f(program, "uSpawnRadius", m_settings.minSurfelRadius);
+		SetUniformMat4(program, "uView", context.view);
+		SetUniformMat4(program, "uProjection", context.proj);
+		SetUniform2f(program, "uViewportSize", static_cast<float>(m_width), static_cast<float>(m_height));
+		SetUniform1f(program, "uTargetSurfelScreenRadiusPx", m_settings.targetSurfelScreenRadiusPx);
+		SetUniform1f(program, "uMinSurfelRadius", m_settings.minSurfelRadius);
+		SetUniform1f(program, "uMaxSurfelRadius", m_settings.maxSurfelRadius);
 		SetUniform1f(program, "uCoverageThreshold", m_settings.spawnCoverageThreshold);
 		SetUniform1f(program, "uNormalRejectCos", m_settings.normalRejectCos);
 		SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
 		SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
 		SetUniform3fv(program, "uSkyRadiance", context.envColor * m_settings.skyMissRadianceMultiplier);
+		SetUniform1i(program, "uPlacementValidationMode", placementOnly ? 1 : 0);
 
 		// Spawned surfels must be visible to same-frame ray tracing and final
 		// gather; otherwise the composited output can remain one frame behind
@@ -549,11 +639,12 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			rebuildGridAndAverages();
 			glUseProgram(program);
 		}
+
 	}
 
 	const uint32_t rayUpdateInterval = std::max(m_settings.rayUpdateInterval, 1u);
 	const bool updateRaysThisFrame = m_frameIndex < 8u || (m_frameIndex % rayUpdateInterval) == 0u;
-	if (updateRaysThisFrame && m_requestRaysShader && m_requestRaysShader->IsValid()) {
+	if (!placementOnly && updateRaysThisFrame && m_requestRaysShader && m_requestRaysShader->IsValid()) {
 		const GLuint program = m_requestRaysShader->GetProgramID();
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -562,7 +653,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_requestRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	if (updateRaysThisFrame && m_allocateRaysShader && m_allocateRaysShader->IsValid()) {
+	if (!placementOnly && updateRaysThisFrame && m_allocateRaysShader && m_allocateRaysShader->IsValid()) {
 		const GLuint program = m_allocateRaysShader->GetProgramID();
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -571,7 +662,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_allocateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	if (updateRaysThisFrame && m_generateRaysShader && m_generateRaysShader->IsValid()) {
+	if (!placementOnly && updateRaysThisFrame && m_generateRaysShader && m_generateRaysShader->IsValid()) {
 		const GLuint program = m_generateRaysShader->GetProgramID();
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -584,7 +675,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_generateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	if (updateRaysThisFrame && m_traceRaysShader && m_traceRaysShader->IsValid()) {
+	if (!placementOnly && updateRaysThisFrame && m_traceRaysShader && m_traceRaysShader->IsValid()) {
 		const GLuint rayBudget = std::max(m_settings.maxRayBudget, 1u);
 		const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
 		const glm::vec3 lightRadiance = dirLight ? dirLight->GetLightColor() * dirLight->GetIntensity() : glm::vec3(1.0f);
@@ -606,7 +697,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_traceRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	if (updateRaysThisFrame && m_integrateShader && m_integrateShader->IsValid()) {
+	if (!placementOnly && updateRaysThisFrame && m_integrateShader && m_integrateShader->IsValid()) {
 		const GLuint program = m_integrateShader->GetProgramID();
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -618,7 +709,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	}
 
 	const uint32_t radialUpdateInterval = std::max(m_settings.radialDepthUpdateInterval, 1u);
-	if (updateRaysThisFrame && m_settings.useRadialDepth &&
+	if (!placementOnly && updateRaysThisFrame && m_settings.useRadialDepth &&
 		(m_frameIndex % radialUpdateInterval) == 0u &&
 		m_radialDepthShader && m_radialDepthShader->IsValid()) {
 		const GLuint program = m_radialDepthShader->GetProgramID();
@@ -629,12 +720,33 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_radialDepthShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	if (updateRaysThisFrame) {
+	if (!placementOnly && updateRaysThisFrame) {
 		buildCellAverages();
 	}
 
+	countLiveSurfels();
+
 	glUseProgram(0);
 	++m_frameIndex;
+	if ((placementOnly || m_settings.debugView != SurfelGIDebugView::Off) && m_resources.countersBuffer != 0u) {
+		SurfelCounters counters{};
+		glGetNamedBufferSubData(m_resources.countersBuffer, 0, sizeof(SurfelCounters), &counters);
+		m_stats.liveSurfels = counters.liveCount;
+		m_stats.spawnedThisFrame = counters.spawnedThisFrame;
+		m_stats.recycledThisFrame = counters.recycledThisFrame;
+		m_stats.requestedRays = counters.requestedRays;
+		m_stats.allocatedRays = counters.allocatedRays;
+		m_stats.overflowSurfels = counters.overflowSurfels;
+		m_stats.overflowGridEntries = counters.overflowGridEntries;
+		m_stats.rejectedInvalidDepth = counters.rejectedInvalidDepth;
+		m_stats.rejectedInvalidTransform = counters.rejectedInvalidTransform;
+		m_stats.rejectedInvalidMaterial = counters.rejectedInvalidMaterial;
+		m_stats.rejectedOutsideGrid = counters.rejectedOutsideGrid;
+		m_stats.rejectedInvalidWorldPos = counters.rejectedInvalidWorldPos;
+		m_stats.rejectedInvalidNormal = counters.rejectedInvalidNormal;
+		m_stats.rejectedInvalidRadius = counters.rejectedInvalidRadius;
+		m_stats.rejectedPoolFull = counters.rejectedPoolFull;
+	}
 	m_stats.ready = IsReady();
 }
 
@@ -660,14 +772,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	const GLuint program = m_applyIndirectShader->GetProgramID();
 	glUseProgram(program);
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(0));
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetDepthTexture());
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(3));
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(5));
+	BindSurfelGIGBufferTextures(context);
 	glBindImageTexture(0,
 		fullscreenDebug ? m_resources.indirectTexture : m_resources.rawIndirectTexture,
 		0,
@@ -676,10 +781,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		GL_WRITE_ONLY,
 		GL_RGBA16F);
 
-	SetUniform1i(program, "uPackedNormalRMTex", 0);
-	SetUniform1i(program, "uDepthTex", 1);
-	SetUniform1i(program, "uMaterialIDTex", 2);
-	SetUniform1i(program, "uTransformIDTex", 3);
+	SetSurfelGIGBufferSamplerUniforms(program);
 	SetUniform1i(program, "uUseMaterialIDReject", 1);
 	SetUniform2ui(program, "uResolution", m_indirectWidth, m_indirectHeight);
 	SetUniform2ui(program, "uInputResolution", m_width, m_height);
@@ -688,6 +790,9 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1ui(program, "uMaxSurfels", m_settings.maxSurfels);
 	SetUniform1ui(program, "uTransformCount", m_lastTransformCount);
 	SetUniform1ui(program, "uFrameIndex", m_frameIndex);
+	SetUniform1ui(program, "uSpawnTileSize", std::max(m_settings.spawnTileSize, 1u));
+	SetUniform1ui(program, "uSpawnPassCount", std::max(m_lastSpawnPassCount, 1u));
+	SetUniform1ui(program, "uSpawnDebugFrameIndex", m_frameIndex > 0u ? m_frameIndex - 1u : 0u);
 	SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
 	SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
 	SetUniform1ui(program, "uMaxGatherSurfelsPerPixel", m_settings.maxGatherSurfelsPerPixel);
@@ -698,7 +803,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1f(program, "uNormalRejectCos", m_settings.finalGatherNormalCos);
 	SetUniform1i(program, "uUseRadialDepth", m_settings.useRadialDepth ? 1 : 0);
 	SetUniform1f(program, "uRadialDepthMinVariance", std::max(m_settings.radialDepthSigmaScale, 1.0e-6f));
-	SetUniform1f(program, "uFallbackStrength", 1.0f);
+	SetUniform1f(program, "uFallbackStrength", m_settings.useIrradianceSharing ? 0.35f : 0.0f);
 	SetUniform1ui(program, "uDebugView", applyDebugView);
 
 	m_applyIndirectShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
@@ -736,6 +841,7 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context) const
 		return;
 	}
 
+	GLRenderStateGuard renderStateGuard;
 	BindCoreResources(0u);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -743,6 +849,8 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context) const
 	glEnable(GL_PROGRAM_POINT_SIZE);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
 	glDepthMask(GL_FALSE);
 
 	glUseProgram(m_debugProgram);
@@ -752,15 +860,14 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context) const
 	glm::vec3 gridMax(0.0f);
 	ComputeCameraCenteredGridBounds(gridSettings, cameraPosition, gridMin, gridMax);
 	const bool hasSceneDepth = context.gbufferFBO && context.gbufferFBO->GetDepthTexture() != 0u;
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, hasSceneDepth ? context.gbufferFBO->GetDepthTexture() : 0u);
+	glBindTextureUnit(kSurfelGIGBufferDepthUnit, hasSceneDepth ? context.gbufferFBO->GetDepthTexture() : 0u);
 	SetUniformMat4(m_debugProgram, "uView", context.view);
 	SetUniformMat4(m_debugProgram, "uProjection", context.proj);
 	SetUniform2f(m_debugProgram, "uViewportSize", static_cast<GLfloat>(std::max(context.width, 1)), static_cast<GLfloat>(std::max(context.height, 1)));
 	SetUniform1ui(m_debugProgram, "uMaxSurfels", m_settings.maxSurfels);
 	SetUniform1ui(m_debugProgram, "uDebugView", static_cast<GLuint>(m_settings.debugView));
 	SetUniform1ui(m_debugProgram, "uMaxRays", m_settings.maxRayBudget);
-	SetUniform1i(m_debugProgram, "uSceneDepthTex", 0);
+	SetUniform1i(m_debugProgram, "uSceneDepthTex", static_cast<GLint>(kSurfelGIGBufferDepthUnit));
 	SetUniform1i(m_debugProgram, "uUseDepthReject", hasSceneDepth ? 1 : 0);
 	SetUniform1f(m_debugProgram, "uDepthRejectBias", 0.0015f);
 	SetUniform3ui(m_debugProgram, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
@@ -768,7 +875,7 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context) const
 	SetUniform3fv(m_debugProgram, "uGridMax", gridMax);
 
 	glBindVertexArray(m_debugVAO);
-	glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(m_settings.maxSurfels));
+	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(m_settings.maxSurfels));
 	glBindVertexArray(0);
 	glUseProgram(0);
 
@@ -778,7 +885,15 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context) const
 bool SurfelGIPipeline::ReloadShaders()
 {
 	ReleaseShaders();
-	return !m_settings.enabled || LoadShaders();
+	const bool loaded = !m_settings.enabled || LoadShaders();
+	if (loaded && m_pool.IsCreated()) {
+		m_pool.ResetFreeList();
+		m_frameIndex = 0u;
+		m_stationaryFrameCount = 0u;
+		m_hasLastCameraState = false;
+		m_wasPlacementValidationMode = false;
+	}
+	return loaded;
 }
 
 void SurfelGIPipeline::SetSettings(const SurfelGISettings& settings)
@@ -840,6 +955,11 @@ bool SurfelGIPipeline::CreateAuxiliaryResources()
 	if (!ok) {
 		ReleaseAuxiliaryResources();
 	}
+	else {
+		ClearBufferUInt(m_resources.radialDepthBuffer, 0u);
+		ClearBufferUInt(m_resources.guideMapBuffer, 0u);
+		ClearBufferVec4(m_resources.guideScaleBuffer, glm::vec4(0.0f));
+	}
 	return ok;
 }
 
@@ -853,6 +973,7 @@ void SurfelGIPipeline::ReleaseAuxiliaryResources()
 bool SurfelGIPipeline::LoadShaders()
 {
 	const bool computeOk = CreateCompute(m_beginFrameShader, "shaders/surfel_gi/begin_frame.comp") &&
+		CreateCompute(m_countLiveShader, "shaders/surfel_gi/count_live_surfels.comp") &&
 		CreateCompute(m_updateShader, "shaders/surfel_gi/update_surfels.comp") &&
 		CreateCompute(m_recycleShader, "shaders/surfel_gi/recycle_surfels.comp") &&
 		CreateCompute(m_coverageShader, "shaders/surfel_gi/coverage.comp") &&
@@ -890,6 +1011,7 @@ bool SurfelGIPipeline::LoadShaders()
 void SurfelGIPipeline::ReleaseShaders()
 {
 	m_beginFrameShader.reset();
+	m_countLiveShader.reset();
 	m_updateShader.reset();
 	m_recycleShader.reset();
 	m_coverageShader.reset();

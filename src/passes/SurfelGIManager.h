@@ -43,7 +43,13 @@ enum class SurfelGIDebugView : uint32_t {
 	GBufferNormal = 20,
 	GBufferTransformID = 21,
 	GBufferMaterialID = 22,
-	SpawnCandidates = 23
+	SpawnCandidates = 23,
+	GBufferDepth = 24,
+	StoredSurfelWorldPosition = 25,
+	StoredSurfelRadius = 26,
+	StoredSurfelTransformID = 27,
+	StoredSurfelFlags = 28,
+	DebugDrawPosition = 29
 };
 
 struct SurfelGISettings {
@@ -85,6 +91,7 @@ struct SurfelGISettings {
 	bool useScreenSpaceTrace = true;
 	bool useSoftwareBVHTrace = true;
 	bool useSurfelFallbackTrace = true;
+	bool placementValidationMode = false;
 };
 
 struct SurfelGIFrameStats {
@@ -97,6 +104,14 @@ struct SurfelGIFrameStats {
 	uint32_t allocatedRays = 0;
 	uint32_t overflowSurfels = 0;
 	uint32_t overflowGridEntries = 0;
+	uint32_t rejectedInvalidDepth = 0;
+	uint32_t rejectedInvalidTransform = 0;
+	uint32_t rejectedInvalidMaterial = 0;
+	uint32_t rejectedOutsideGrid = 0;
+	uint32_t rejectedInvalidWorldPos = 0;
+	uint32_t rejectedInvalidNormal = 0;
+	uint32_t rejectedInvalidRadius = 0;
+	uint32_t rejectedPoolFull = 0;
 	float updateTimeMs = 0.0f;
 	float traceTimeMs = 0.0f;
 	float applyTimeMs = 0.0f;

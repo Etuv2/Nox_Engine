@@ -177,6 +177,7 @@ private:
 	bool m_cleanSurfelGIUseRayBinning = true;
 	bool m_cleanSurfelGIUseScreenTrace = true;
 	bool m_cleanSurfelGIUseSurfelFallbackTrace = true;
+	bool m_cleanSurfelGIPlacementValidation = false;
 
 	// Screen-space contact shadow settings
 	float m_sssResolutionScale = 0.5f;

@@ -42,7 +42,7 @@ out vec4 vStyle;
 out vec4 vDisk0;
 out vec4 vDisk1;
 out vec4 vDisk2;
-out float vClipDepth01;
+out vec2 vDiskUV;
 
 const uint DEBUG_SURFEL_SPHERES = 1u;
 const uint DEBUG_SURFEL_NORMALS = 2u;
@@ -59,6 +59,12 @@ const uint DEBUG_INDIRECT_ONLY = 12u;
 const uint DEBUG_RECYCLE_SCORE = 15u;
 const uint DEBUG_STALE_SURFELS = 16u;
 const uint DEBUG_RAY_HIT_RADIANCE = 17u;
+const uint DEBUG_STORED_SURFEL_WORLD_POSITION = 25u;
+const uint DEBUG_STORED_SURFEL_RADIUS = 26u;
+const uint DEBUG_STORED_SURFEL_TRANSFORM_ID = 27u;
+const uint DEBUG_STORED_SURFEL_FLAGS = 28u;
+const uint DEBUG_DEBUG_DRAW_POSITION = 29u;
+const float DEBUG_DISK_GRAZING_RADIUS_SCALE = 0.28;
 
 float Safe01(float value)
 {
@@ -107,7 +113,17 @@ void HidePoint()
     vDisk0 = vec4(0.0);
     vDisk1 = vec4(0.0);
     vDisk2 = vec4(0.0);
-    vClipDepth01 = 1.0;
+    vDiskUV = vec2(2.0);
+}
+
+vec3 WorldPositionColor(vec3 worldPos)
+{
+    if (any(isnan(worldPos)) || any(isinf(worldPos))) {
+        return vec3(1.0, 0.0, 1.0);
+    }
+
+    vec3 extent = max(uGridMax - uGridMin, vec3(1e-4));
+    return clamp((worldPos - uGridMin) / extent, vec3(0.0), vec3(1.0));
 }
 
 float VarianceSignal(Surfel surfel)
@@ -318,6 +334,23 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
         color = RayCountColor(surfelID, surfel, ring);
     } else if (uDebugView == DEBUG_RAY_HIT_RADIANCE) {
         color = RayHitRadianceColor(surfelID, ring);
+    } else if (uDebugView == DEBUG_STORED_SURFEL_WORLD_POSITION) {
+        color = WorldPositionColor(surfel.worldPos_radius.xyz);
+    } else if (uDebugView == DEBUG_STORED_SURFEL_RADIUS) {
+        color = Heat(surfel.worldPos_radius.w / max(surfel.localPos_spawnRadius.w * 4.0, 0.001));
+        ring = Safe01(surfel.debug.z);
+    } else if (uDebugView == DEBUG_STORED_SURFEL_TRANSFORM_ID) {
+        color = HashColor(surfel.ids.x);
+    } else if (uDebugView == DEBUG_STORED_SURFEL_FLAGS) {
+        uint flags = SurfelFlags(surfel);
+        color = vec3(
+            (flags & SURFEL_ALIVE) != 0u ? 0.0 : 1.0,
+            (flags & SURFEL_NEW) != 0u ? 1.0 : 0.25,
+            (flags & SURFEL_INVALID) != 0u ? 1.0 : 0.05);
+        ring = (flags & SURFEL_INVALID) != 0u ? 1.0 : 0.0;
+    } else if (uDebugView == DEBUG_DEBUG_DRAW_POSITION) {
+        color = WorldPositionColor(surfel.worldPos_radius.xyz);
+        ring = 0.35;
     } else if (uDebugView == DEBUG_RAY_GUIDE) {
         color = GuideConfidenceColor(surfelID, surfel, ring);
     } else if (uDebugView == DEBUG_RADIAL_DEPTH) {
@@ -338,7 +371,7 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
 
 void main()
 {
-    uint surfelID = uint(gl_VertexID);
+    uint surfelID = uint(gl_InstanceID);
     if (surfelID >= uMaxSurfels) {
         HidePoint();
         return;
@@ -355,28 +388,36 @@ void main()
     }
 
     vec3 normal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
-    float surfelRadius = alive ? max(surfel.worldPos_radius.w, 0.001) : max(surfel.localPos_spawnRadius.w, 0.05);
-    float lift = recycleMarker ? 0.0 : min(max(surfelRadius * 0.025, 0.0005), 0.015);
-    vec3 diskWorldPos = surfel.worldPos_radius.xyz + normal * lift;
-    vec4 centerView4 = uView * vec4(diskWorldPos, 1.0);
     vec3 normalView = SurfelSafeNormalize(mat3(uView) * normal);
+    float rawSurfelRadius = alive ? max(surfel.worldPos_radius.w, 0.001) : max(surfel.localPos_spawnRadius.w, 0.05);
+    float viewFacing = abs(dot(normalView, vec3(0.0, 0.0, 1.0)));
+    float grazingScale = mix(DEBUG_DISK_GRAZING_RADIUS_SCALE, 1.0, smoothstep(0.12, 0.65, viewFacing));
+    float surfelRadius = max(rawSurfelRadius * grazingScale, 0.001);
+    vec3 tangent;
+    vec3 bitangent;
+    SurfelBuildBasis(normal, tangent, bitangent);
+
+    vec2 corner = vec2((gl_VertexID & 1) != 0 ? 1.0 : -1.0,
+                       (gl_VertexID & 2) != 0 ? 1.0 : -1.0);
+    vDiskUV = corner;
+
+    vec3 diskCenterWorld = surfel.worldPos_radius.xyz;
+    vec3 diskWorldPos = diskCenterWorld + (tangent * corner.x + bitangent * corner.y) * surfelRadius;
+    vec4 diskCenterView4 = uView * vec4(diskCenterWorld, 1.0);
+    vec4 centerView4 = uView * vec4(diskWorldPos, 1.0);
     vec4 clip = uProjection * centerView4;
     if (centerView4.z >= -0.001 || clip.w <= 0.0) {
         HidePoint();
         return;
     }
 
-    float viewDepth = -centerView4.z;
-    float projectedRadiusPx = surfelRadius * uProjection[1][1] * max(uViewportSize.y, 1.0) * 0.5 / viewDepth;
-    float maxDebugRadiusPx = uDebugView == DEBUG_SURFEL_SPHERES ? 48.0 : 1.25;
-    float minDebugRadiusPx = uDebugView == DEBUG_SURFEL_SPHERES ? 1.0 : 1.0;
-    float pointRadiusPx = recycleMarker ? 3.0 : clamp(projectedRadiusPx, minDebugRadiusPx, maxDebugRadiusPx);
+    float viewDepth = -diskCenterView4.z;
+    float projectedRadiusPx = surfelRadius * uProjection[1][1] * max(uViewportSize.y, 1.0) * 0.5 / max(viewDepth, 1e-4);
 
     gl_Position = clip;
-    gl_PointSize = pointRadiusPx * 2.0;
+    gl_PointSize = 1.0;
     vColor = DebugColor(surfelID, surfel, alive, recycleMarker);
-    vDisk0 = vec4(centerView4.xyz, surfelRadius);
-    vDisk1 = vec4(normalView, pointRadiusPx);
+    vDisk0 = vec4(diskCenterView4.xyz, surfelRadius);
+    vDisk1 = vec4(normalView, projectedRadiusPx);
     vDisk2 = vec4(clip.xy / max(abs(clip.w), 1e-6), max(uViewportSize, vec2(1.0)));
-    vClipDepth01 = clip.z / max(abs(clip.w), 1e-6) * 0.5 + 0.5;
 }

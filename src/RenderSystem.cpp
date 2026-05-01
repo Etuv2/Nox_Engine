@@ -16,6 +16,7 @@ namespace {
 	constexpr GLuint kGlobalTransformBufferBinding = 6;
 	constexpr uint32_t kTransformFlagRenderable = 1u << 0;
 	constexpr uint32_t kTransformFlagSkinned = 1u << 1;
+	constexpr uint32_t kTransformFlagInvalid = 1u << 31;
 
 	bool MatricesMatchExact(const glm::mat4& lhs, const glm::mat4& rhs)
 	{
@@ -1330,7 +1331,7 @@ void RenderSystem::UpdateGpuTransformBuffer(bool forceFullTransformUpload)
 		for (auto& record : m_gpuTransformRecords) {
 			record.world = glm::mat4(1.0f);
 			record.prevWorld = glm::mat4(1.0f);
-			record.metadata = glm::uvec4(0u);
+			record.metadata = glm::uvec4(kTransformFlagInvalid, 0u, 0u, 0u);
 		}
 
 		for (const auto& entry : transformPool) {
@@ -1382,7 +1383,7 @@ void RenderSystem::UpdateGpuTransformBuffer(bool forceFullTransformUpload)
 			GpuTransformRecord& record = m_gpuTransformRecords[transformID];
 			record.world = glm::mat4(1.0f);
 			record.prevWorld = glm::mat4(1.0f);
-			record.metadata = glm::uvec4(0u);
+			record.metadata = glm::uvec4(kTransformFlagInvalid, 0u, 0u, 0u);
 		}
 
 		for (EntityID entity : changedEntities) {

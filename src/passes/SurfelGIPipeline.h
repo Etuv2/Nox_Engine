@@ -85,6 +85,7 @@ private:
 	SurfelRayQueue m_rayQueue;
 	std::unique_ptr<ComputeShader> m_updateShader;
 	std::unique_ptr<ComputeShader> m_beginFrameShader;
+	std::unique_ptr<ComputeShader> m_countLiveShader;
 	std::unique_ptr<ComputeShader> m_recycleShader;
 	std::unique_ptr<ComputeShader> m_coverageShader;
 	std::unique_ptr<ComputeShader> m_spawnShader;
@@ -110,6 +111,9 @@ private:
 	uint32_t m_frameIndex = 0;
 	uint32_t m_stationaryFrameCount = 0;
 	uint32_t m_lastTransformCount = 0;
+	uint32_t m_lastSpawnPassCount = 1;
 	bool m_hasLastCameraState = false;
+	bool m_loggedGBufferBindings = false;
+	bool m_wasPlacementValidationMode = false;
 	bool m_initialized = false;
 };

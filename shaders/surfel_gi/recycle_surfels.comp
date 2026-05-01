@@ -34,7 +34,7 @@ void PushFreeIndex(uint surfelID)
         freeIndices[slot] = surfelID;
     } else {
         atomicAdd(counters.overflowSurfels, 1u);
-        counters.freeTop = uMaxSurfels;
+        atomicExchange(counters.freeTop, uMaxSurfels);
     }
 }
 
@@ -125,7 +125,4 @@ void main()
 
     PushFreeIndex(surfelID);
     atomicAdd(counters.recycledThisFrame, 1u);
-    if (counters.liveCount > 0u) {
-        atomicAdd(counters.liveCount, uint(-1));
-    }
 }

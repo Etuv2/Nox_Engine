@@ -8,7 +8,8 @@ bool RequiresPipelineReset(const SurfelGISettings& oldSettings, const SurfelGISe
 	return oldSettings.maxSurfels != newSettings.maxSurfels ||
 		oldSettings.maxRayBudget != newSettings.maxRayBudget ||
 		oldSettings.maxSurfelsPerCell != newSettings.maxSurfelsPerCell ||
-		oldSettings.useNonLinearGrid != newSettings.useNonLinearGrid;
+		oldSettings.useNonLinearGrid != newSettings.useNonLinearGrid ||
+		oldSettings.placementValidationMode != newSettings.placementValidationMode;
 }
 
 bool IsSurfelOverlayDebugView(SurfelGIDebugView view)
@@ -28,6 +29,11 @@ bool IsSurfelOverlayDebugView(SurfelGIDebugView view)
 	case SurfelGIDebugView::RecycleScore:
 	case SurfelGIDebugView::StaleSurfels:
 	case SurfelGIDebugView::RayHitRadiance:
+	case SurfelGIDebugView::StoredSurfelWorldPosition:
+	case SurfelGIDebugView::StoredSurfelRadius:
+	case SurfelGIDebugView::StoredSurfelTransformID:
+	case SurfelGIDebugView::StoredSurfelFlags:
+	case SurfelGIDebugView::DebugDrawPosition:
 		return true;
 	default:
 		return false;

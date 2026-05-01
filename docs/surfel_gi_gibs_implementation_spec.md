@@ -1,1423 +1,1495 @@
-# Surfel GI (GIBS) Implementation Spec for Coding Agents
+# AGENT.md — Nox Engine EA GIBS-Style Surfel GI Implementation Spec
 
-This document is an implementation-oriented explanation of **Global Illumination Based on Surfels (GIBS)** as presented in the **SIGGRAPH Advances 2021 - Surfel GI** material, expanded into a full engineering spec. It is written for LLM coding agents and software engineers who need a practical, end-to-end plan rather than a high-level overview.
-
-The original GIBS talk describes a production real-time **diffuse indirect illumination** system that combines:
-
-- **dynamic surfelization of visible geometry**
-- **persistent world-space caching of irradiance**
-- **hardware ray tracing for sparse lighting queries**
-- **temporal accumulation with variance-aware blending**
-- **specialized data structures for scalable lookup and memory control**
-
-The talk gives many of the core ideas, but it does **not** fully specify every data layout, threshold, equation, or pass boundary needed to build the system from scratch. This document therefore does two things:
-
-1. It records the **source-backed details** from the talk and related surfel literature.
-2. It proposes **implementation defaults** where the talk is silent.
-
-Whenever a detail is directly from the talk or uploaded literature, it is marked **Source-backed**. Whenever it is a practical design choice needed to complete the implementation, it is marked **Recommended default**.
+**Project:** Real-Time Surfel-Based Global Illumination in OpenGL 4.6  
+**Engine:** Nox Engine, custom C++ OpenGL deferred renderer  
+**Target implementer:** autonomous coding agent or graphics-programming assistant  
+**Primary goal:** implement an EA GIBS-inspired dynamic diffuse GI system using persistent GPU surfels, adapted to OpenGL 4.6 without relying on DXR/Vulkan RT.
 
 ---
 
-## 1. What problem GIBS solves
+## 0. Read This First
 
-Traditional real-time GI techniques usually fall into one of these groups:
+This file is the implementation contract for the agent. Do not treat the GI system as a single shader. Implement it as a renderer subsystem with persistent GPU resources, staged compute passes, debug visualisation, profiling, and fallback paths.
 
-- **screen-space GI**: cheap, but loses all off-screen information and becomes unstable when the camera changes
-- **probe grids / DDGI**: persistent and stable, but store lighting in empty space and can struggle with thin geometry and high-detail surfaces
-- **voxel GI / voxel cone tracing**: fully dynamic, but expensive in memory and resolution, with common light leaking and thin-geometry issues
-- **full path tracing**: physically faithful, but too expensive for mainstream real-time budgets unless heavily denoised and simplified
+The reference technique is Electronic Arts’ **Global Illumination Based on Surfels (GIBS)** presented at SIGGRAPH Advances 2021. The original GIBS system uses hardware ray tracing, persistent surfels, G-buffer spawning, transform tracking, non-linear surfel acceleration, temporal irradiance accumulation, radial depth functions, ray guiding, ray binning, many-light sampling, spatial filtering, and probe clipmaps for transparent / non-deferred shading. Nox Engine targets OpenGL 4.6, so the implementation must preserve the architecture while replacing hardware ray tracing with an OpenGL-compatible hybrid trace path.
 
-GIBS uses **surfels** instead. A surfel is a small oriented surface sample with:
+### Non-negotiable constraints
 
-- world position
-- normal
-- radius
-- cached irradiance
-- auxiliary state for temporal integration and artifact suppression
-
-Instead of caching GI in volume space, GIBS caches it **on surfaces**. This avoids empty-space waste and lets the system spend rays only where geometry actually exists. The key idea is that surfels are:
-
-- **spawned on demand from the G-buffer**
-- **persistent across frames**
-- **updated as attached geometry moves**
-- **recycled when they become irrelevant**
-
-That persistence is what makes the technique powerful: once a surface region has been surfelized and partially solved, the work is not thrown away just because the camera looks elsewhere. This is the major advantage over screen-space GI, and one of the major advantages over pure per-frame ray tracing.
-
-**Source-backed:** the official EA material describes GIBS as a real-time indirect diffuse GI solution that combines ray tracing with discretized scene geometry to cache and amortize lighting calculations across time and space, requires no prebake, no special meshes, and no special UVs, and is built for arbitrary scene scale and dynamic content. The uploaded talk also states that surfels are spawned from the G-buffer, persist across frames, and are used to cache irradiance on opaque surfaces. [Refs 1, 2]
+1. Use **C++ + OpenGL 4.6 + GLSL 460 compute shaders**.
+2. Store persistent surfel data in **Shader Storage Buffer Objects (SSBOs)** using `std430` layout.
+3. Avoid CPU readback in the frame loop except for optional debug counters using delayed query/readback.
+4. Integrate as a **renderer subsystem** compatible with the existing deferred renderer and ECS-style scene update.
+5. Keep all resource sizes bounded by user-configurable budgets.
+6. Every major pass must have a debug view and GPU timing hook.
+7. The first working milestone may use a uniform grid and simplified tracing, but the final target must include the complete GIBS-style architecture described below.
 
 ---
 
-## 2. Core design goals
+## 1. System Definition
 
-Your implementation should preserve these goals:
+### 1.1 What the system computes
 
-1. **Dynamic scene support**  
-   No prebake. Geometry, lighting, characters, and emissives can move.
+The system computes **indirect diffuse illumination** by discretising visible and recently visible scene surfaces into persistent surfels. Each surfel approximates a small disk-shaped surface neighbourhood and caches diffuse irradiance over time. During final deferred lighting, shaded pixels gather nearby surfel irradiance as an additional indirect diffuse term.
 
-2. **Scale independence**  
-   Near surfaces get denser surfels. Distant surfaces get fewer, larger surfels.
+The system should support:
 
-3. **Persistence**  
-   Lighting should survive camera motion and continue converging over time.
+- fully dynamic camera movement;
+- dynamic lights;
+- moving rigid meshes;
+- skinned meshes via dominant transform / bone tracking where available;
+- off-screen indirect lighting persistence;
+- colour bleeding;
+- emissive surfaces where material data exists;
+- bounded memory and bounded ray budget;
+- comparison against the existing Nox SSGI implementation.
 
-4. **Ray budget control**  
-   Expensive ray queries must be sparse and prioritized.
+### 1.2 What the system does not need to solve initially
 
-5. **Stable memory footprint**  
-   Surfel memory must be fixed-capacity and GPU-managed.
-
-6. **Leak resistance**  
-   Surfels must not apply lighting through walls just because they are close in Euclidean distance.
-
-7. **Agent-friendly modularity**  
-   The codebase should split into clean passes and buffers so each subsystem can be debugged independently.
+The first implementation does **not** need physically exact path tracing, caustics, glossy multi-bounce GI, participating media, perfect transparent-object GI, or full ReSTIR. Those are stretch goals. The required result is a robust, measurable, dynamic, diffuse GI cache.
 
 ---
 
-## 3. System overview
+## 2. High-Level Rendering Frame
 
-At a high level, implement GIBS as these stages every frame:
-
-1. **Render G-buffer**
-2. **Spawn new surfels from under-covered visible pixels**
-3. **Update persistent surfel transforms**
-4. **Recycle stale surfels**
-5. **Insert surfels into the spatial acceleration structure**
-6. **Estimate requested ray count per surfel**
-7. **Allocate actual ray budget globally**
-8. **Generate and bin rays**
-9. **Trace rays**
-10. **Shade ray hits**
-11. **Update surfel irradiance and auxiliary data**
-12. **Filter or share irradiance locally if needed**
-13. **Apply surfel lighting to the main shading pass**
-14. **Handle transparent / unsuitable geometry with probe fallback**
-
-### 3.1 Minimal pass graph
+Implement the GI frame in this order. Each item is a concrete pass or CPU-side orchestration step.
 
 ```text
-Depth Prepass / GBuffer
-    -> Surfel Spawn Pass
-    -> Surfel Transform Update Pass
-    -> Surfel Recycle Pass
-    -> Surfel Grid Clear + Build Pass
-    -> Surfel Ray Request Pass
-    -> Global Ray Allocation Pass
-    -> Ray Generation Pass
-    -> Ray Binning / Sorting Pass
-    -> Ray Trace Pass
-    -> Ray Hit Lighting Pass
-    -> Surfel Integrate / MSME Pass
-    -> Surfel Neighborhood Share / Filter Pass
-    -> Final Lighting Apply Pass
-    -> Transparent Probe Pass (parallel subsystem)
+Existing Renderer:
+  00. ECS / scene update
+  01. G-buffer pass
+      outputs: depth, normal, albedo, material, emissive, motion if available,
+               entity/material/mesh/transform ID
+
+Surfel GI Persistent Work:
+  02. Update transform buffer for objects / bones
+  03. Update live surfel world positions from local position + transform ID
+  04. Recycle irrelevant surfels under memory pressure
+  05. Clear surfel acceleration grid
+  06. Insert live surfels into grid cells
+  07. Build per-cell aggregate irradiance / fallback values
+
+Surfel Spawn Work:
+  08. Compute screen-space surfel coverage from G-buffer + grid
+  09. Spawn new surfels from least-covered 16x16 screen tiles
+  10. Initialise new surfel irradiance, radial depth, guide map, history
+  11. Insert spawned surfels into the grid or rebuild affected grid range
+
+Lighting Integration:
+  12. Ray request pass: each live surfel requests rays according to variance, age, contribution
+  13. Ray allocation pass: enforce global ray budget proportionally
+  14. Ray generation pass: cosine / guided hemisphere sampling
+  15. Ray binning and sorting pass for coherence
+  16. Trace / gather pass: hybrid screen-space + software-BVH + surfel-grid fallback
+  17. Direct-light / emissive / indirect-at-hit evaluation
+  18. Temporal irradiance integration with adaptive MSME-style estimator
+  19. Update radial depth function and ray-guiding map
+  20. Spatial irradiance sharing / filtering when variance is high
+
+Final Lighting:
+  21. Deferred lighting apply pass samples surfel grid per pixel
+  22. Composite indirect diffuse into renderer lighting buffer
+  23. Optional TAA / denoise integration
+
+Optional Transparent / Non-Deferred Support:
+  24. Probe clipmap update
+  25. Probe SH reconstruction for transparents / forward passes
+
+Debug / Evaluation:
+  26. Render debug overlays
+  27. Record GPU timings and counters
 ```
 
 ---
 
-## 4. Surfel representation
+## 3. Engine Integration Points
 
-A coding agent should treat surfels as persistent records, not temporary shading samples.
+### 3.1 Required C++ classes
 
-## 4.1 Required surfel fields
-
-Use a GPU-compact struct similar to this.
+Create or extend the following renderer-side classes. Names may be adapted to the existing Nox style, but responsibilities must remain separate.
 
 ```cpp
+class SurfelGIManager;
+class SurfelGIPipeline;
+class SurfelPool;
+class SurfelGrid;
+class SurfelRayQueue;
+class SurfelLightSampler;
+class SurfelProbeClipmap;       // optional target feature
+class SurfelGIDebugRenderer;
+class GpuTimerScope;
+```
+
+#### `SurfelGIManager`
+Owns all public settings, GPU resources, pass order, debug modes, and integration with the deferred renderer.
+
+Required methods:
+
+```cpp
+void Init(const SurfelGISettings& settings);
+void Resize(uint32_t width, uint32_t height);
+void Shutdown();
+void BeginFrame(const Camera& camera, const SceneRenderData& scene);
+void Execute(const GBuffer& gbuffer, const LightingData& lights);
+void ApplyIndirect(const GBuffer& gbuffer, RenderTarget& lightingBuffer);
+void RenderDebug(DebugDrawContext& ctx);
+void ReloadShaders();
+```
+
+#### `SurfelPool`
+Owns the persistent surfel SSBO and free-list stack.
+
+Required methods:
+
+```cpp
+void Create(uint32_t maxSurfels);
+void ResetFreeList();
+GLuint GetSurfelBuffer() const;
+GLuint GetFreeListBuffer() const;
+GLuint GetCountersBuffer() const;
+```
+
+#### `SurfelGrid`
+Owns the acceleration structure used for neighbour lookup, surfel insertion, final gathering, irradiance sharing, and ray fallback queries.
+
+Required methods:
+
+```cpp
+void Create(const SurfelGridSettings& settings);
+void Clear();
+void Build(GLuint surfelBuffer, uint32_t maxSurfels);
+void BuildCellAverages();
+GLuint GetCellHeaderBuffer() const;
+GLuint GetCellEntryBuffer() const;
+```
+
+#### `SurfelRayQueue`
+Owns ray request, ray allocation, binning, sorted ray buffers, and hit buffers.
+
+Required methods:
+
+```cpp
+void Create(uint32_t maxRays, uint32_t maxSurfels);
+void Clear();
+void RequestRays(GLuint surfelBuffer);
+void AllocateRays(GLuint surfelBuffer, uint32_t globalBudget);
+void GenerateRays(GLuint surfelBuffer, GLuint gridBuffer);
+void BinAndSortRays();
+void TraceRays(const TraceResources& traceResources);
+void IntegrateHits(GLuint surfelBuffer);
+```
+
+### 3.2 G-buffer requirements
+
+The current deferred G-buffer must expose enough data for surfel spawning and lighting:
+
+| Field | Required | Purpose |
+|---|---:|---|
+| Depth | yes | Reconstruct world position and run screen-space tracing |
+| World normal | yes | Initialise surfel normal and compute final gather weights |
+| Albedo / base colour | yes | Indirect diffuse response and hit shading |
+| Material flags | yes | reject sky, particles, decals, invalid surfaces; identify emissive surfaces |
+| Emissive radiance | target | direct ray-hit contribution from emissive materials |
+| Roughness / metallic | optional | reject metals or weight diffuse contribution correctly |
+| Entity / mesh ID | yes | stable material and transform lookup |
+| Transform ID | yes | surfel persistence on moving objects |
+| Dominant bone ID | target | approximate surfel tracking on skinned meshes |
+| Motion vector | optional | debug and future reprojection |
+
+If Nox currently lacks transform IDs in the G-buffer, add a single unsigned integer render target or pack an ID into an existing integer material target. Do not pack IDs into normal/albedo floats unless there is no alternative.
+
+### 3.3 Transform buffer
+
+Maintain a GPU transform table updated each frame after ECS hierarchy propagation.
+
+```glsl
+struct GpuTransform
+{
+    mat4 worldFromLocal;
+    mat4 localFromWorld;
+    mat4 prevWorldFromLocal;
+    uint flags;
+    uint parentEntity;
+    uint _pad0;
+    uint _pad1;
+};
+```
+
+Surfels store local-space position and normal plus a transform ID. Each frame, the update pass computes the surfel world position. For skinned geometry, use the dominant bone transform ID written during the G-buffer pass. If dominant-bone IDs are not available, spawn surfels only on rigid/deferred geometry until the animation path is implemented.
+
+---
+
+## 4. GPU Resource Layout
+
+### 4.1 Settings
+
+```cpp
+struct SurfelGISettings
+{
+    bool enabled = true;
+    uint32_t maxSurfels = 262144;
+    uint32_t maxRayBudget = 262144;
+    uint32_t spawnTileSize = 16;
+    uint32_t maxSurfelsPerCell = 64;
+    uint32_t maxGatherSurfelsPerPixel = 32;
+    float targetSurfelScreenRadiusPx = 8.0f;
+    float minSurfelRadius = 0.03f;
+    float maxSurfelRadius = 5.0f;
+    float spawnCoverageThreshold = 0.65f;
+    float recyclePressureStart = 0.85f;
+    float normalRejectCos = 0.25f;
+    float finalGatherNormalCos = 0.15f;
+    float radialDepthSigmaScale = 1.0f;
+    float indirectIntensity = 1.0f;
+    float skyMissRadianceMultiplier = 1.0f;
+    bool useNonLinearGrid = true;
+    bool useRadialDepth = true;
+    bool useRayGuiding = true;
+    bool useRayBinning = true;
+    bool useIrradianceSharing = true;
+    bool useScreenSpaceTrace = true;
+    bool useSoftwareBVHTrace = true;
+    bool useSurfelFallbackTrace = true;
+};
+```
+
+### 4.2 Surfel SSBO struct
+
+Use `std430`. Keep 16-byte alignment. Split very large optional data into separate buffers/textures to avoid bloating the core surfel record.
+
+```glsl
 struct Surfel
 {
-    // identity / lifecycle
-    uint32_t surfelId;
-    uint32_t flags;              // alive, spawnedThisFrame, markedForRecycle, etc.
-    uint32_t transformId;        // parent transform / bone id
-    uint32_t lastVisibleFrame;
-    uint32_t lastContributedFrame;
-    uint32_t ageFrames;
+    // Disk in world space, updated every frame.
+    vec4 worldPos_radius;        // xyz = world position, w = radius
+    vec4 worldNormal_age;        // xyz = normal, w = age in frames
 
-    // geometric state
-    float3 localPosition;        // stored in parent local space
-    float3 localNormal;
-    float3 worldPosition;
-    float3 worldNormal;
-    float  radiusWorld;
+    // Persistent attachment.
+    vec4 localPos_spawnRadius;   // xyz = local-space position, w = initial radius
+    vec4 localNormal_flags;      // xyz = local-space normal, w = packed flags as floatBitsToUint
 
-    // material / shading
-    float3 albedo;
-    float3 emissive;
-    float  opacityClass;         // usually 1 for opaque surfels
+    // Material / identity.
+    uvec4 ids;                   // x transformID, y entityID, z materialID, w generation
+    vec4 albedo_life;            // rgb = diffuse albedo, a = life / confidence
 
-    // irradiance state
-    float3 irradianceMeanLong;   // long-term estimate
-    float3 irradianceMeanShort;  // short-term estimate
-    float3 irradianceVarShort;   // short-term variance estimate
+    // Irradiance estimator.
+    vec4 irradiance;             // rgb = long-term irradiance, a = confidence
+    vec4 shortMean;              // rgb = short-term mean, a = short sample count
+    vec4 shortM2;                // rgb = short-term variance accumulator / M2, a = requested rays
 
-    // requested / allocated work
-    uint32_t requestedRays;
-    uint32_t allocatedRays;
-
-    // ray guiding
-    uint16_t guidingScale;       // shared normalization scale
-    uint8_t  guidingTex[6*6*3];  // example packed RGB; layout may vary
-
-    // leak suppression
-    // 4x4 radial depth moments per hemisphere texel is a good default
-    float depthMean[16];
-    float depthMeanSq[16];
-
-    // grid / neighborhood cache
-    uint32_t cellIndex;
-    uint32_t cellLocalSlot;
-
-    // optional
-    float3 debugColor;
+    // Usage and lifecycle.
+    uvec4 frameInfo;             // x lastVisible, y lastContributed, z lastUpdated, w lastSpawned
+    vec4 debug;                  // x variance luminance, y coverage, z last ray count, w recycle score
 };
 ```
 
-### 4.2 Notes
-
-- **Source-backed:** the talk explicitly defines surfels by position, radius, and normal, and describes per-surfel irradiance caching, variance tracking, ray guiding, and a radial depth function with stored mean and depth-squared moments. It also states the default radial depth resolution is **4x4 texels per surfel hemisphere**, and the ray-guiding texture is typically **6x6 texels** plus a scale value. [Ref 1]
-- **Recommended default:** store both local-space and world-space data. This makes transform updates simple and keeps spawn independent from later motion.
-- **Recommended default:** keep albedo and emissive on the surfel if you want direct relighting or emissive bounce to be stable even when the original mesh is no longer visible.
-- **Recommended default:** use SOA or split-buffer storage in production. The struct above is conceptual. For real GPU performance, separate hot and cold data.
-
----
-
-## 5. Surfel spawning from the G-buffer
-
-The source talk makes this one of the key features of GIBS.
-
-### 5.1 Source-backed algorithm
-
-The screen is divided into **16x16 tiles**. For each tile:
-
-1. Determine which visible texel currently has the **least surfel coverage**.
-2. If the coverage is below a randomized threshold, spawn a surfel from the G-buffer sample at that texel.
-3. Continue only until the tile has sufficient coverage.
-4. Newly spawned surfels are persistent and no longer tied to the current view except for later lifecycle management.
-
-The talk also states that surfels are sized so that their **screen-space projection is roughly constant**. As the camera approaches geometry, surfels shrink and more are spawned. As the camera moves away, surfels grow and excess coverage can be removed. [Ref 1]
-
-### 5.2 Recommended practical spawn definition
-
-Define a target projected radius in pixels:
+Flags:
 
 ```cpp
-const float targetSurfelRadiusPx = 6.0f;   // tune 4..8
-```
-
-Given a perspective projection with focal length `f_px` in pixels and G-buffer depth `z_view`, estimate world radius:
-
-```cpp
-radiusWorld = targetSurfelRadiusPx * z_view / f_px;
-```
-
-Use the G-buffer fields:
-
-- world position from depth reconstruction
-- geometric normal
-- material id / transform id / bone id
-- albedo and emissive
-- object id if available
-
-### 5.3 Coverage estimation
-
-The talk says “least coverage currently” but does not publish the exact coverage metric. A workable implementation is:
-
-```cpp
-coverage(texel) =
-    sum over nearby surfels S:
-        projectedDiscCoverage(S, texel)
-```
-
-Use a disk approximation in screen space:
-
-```cpp
-projectedRadiusPx = f_px * surfel.radiusWorld / surfel.viewDepth;
-contribution = saturate(1 - distance(texel, surfelScreenPos) / projectedRadiusPx);
-coverage += contribution;
-```
-
-### 5.4 Spawn rule
-
-A good rule that matches the talk’s intent:
-
-```cpp
-if (minCoverageInTile < randomThreshold(tile, frame))
-    spawnSurfelFromMinCoverageTexel();
-```
-
-Where:
-
-```cpp
-randomThreshold = lerp(0.6f, 1.0f, blueNoise(tile, frame));
-```
-
-This randomization prevents structured popping and distributes spawn work across frames.
-
-### 5.5 Spawn initialization
-
-For each new surfel:
-
-- pop an id from the free-stack
-- set lifecycle state
-- store parent `transformId`
-- convert world position and normal into parent local space
-- initialize long and short irradiance to zero or a cheap first estimate
-- initialize short variance high
-- initialize radial depth means to `radiusWorld * 2` or just `radiusWorld` diameter, matching the talk’s “initialize to the diameter of the surfel”
-- clear guiding texture
-- boost initial requested rays for rapid convergence
-
-```cpp
-surfel.flags = Alive | SpawnedThisFrame;
-surfel.ageFrames = 0;
-surfel.lastVisibleFrame = currentFrame;
-surfel.lastContributedFrame = currentFrame;
-surfel.irradianceMeanLong = float3(0);
-surfel.irradianceMeanShort = float3(0);
-surfel.irradianceVarShort = float3(largeValue);
-surfel.requestedRays = initialRayBoost;
-```
-
-### 5.6 Duplicate suppression
-
-The talk visually implies gap filling rather than unrestricted spawning. You still need hard duplicate suppression. Use either:
-
-- coverage metric only, or
-- coverage metric + nearest existing surfel test in world space and normal space
-
-Suggested check:
-
-```cpp
-reject if exists surfel N in neighboring cells:
-    distance(N.pos, candidate.pos) < 0.5 * min(N.radius, candidate.radius)
-    && dot(N.normal, candidate.normal) > 0.95
-```
-
----
-
-## 6. Persistence and transform following
-
-Persistence is one of the defining properties of GIBS.
-
-### 6.1 Source-backed behavior
-
-The talk states that spawned surfels store a **transform identifier** for the geometry they are attached to. The G-buffer writes this id when the surfel is created. Frostbite keeps a **global transform buffer** that includes rigid transforms and skinned bones. Each frame, the surfel recomputes world position from:
-
-- local position
-- stored transform id
-- current transform in the global transform buffer
-
-For skinned meshes, the talk says the G-buffer writes the **bone with the highest skinning weight**, giving an effective one-bone approximation for surfel attachment. This is imperfect but “fairly forgiving” in practice. [Ref 1]
-
-### 6.2 Update pass
-
-Per frame:
-
-```cpp
-Transform T = globalTransformBuffer[surfel.transformId];
-surfel.worldPosition = mul(T, float4(surfel.localPosition, 1)).xyz;
-surfel.worldNormal   = normalize(mul((float3x3)T, surfel.localNormal));
-surfel.ageFrames++;
-```
-
-### 6.3 Recommended defaults
-
-- If the transform id is invalid because the source object was destroyed, mark the surfel for recycle.
-- If transform motion is too large in one frame, reset short-term variance high so temporal estimators react faster.
-- For high-quality characters, consider storing **two** bone ids plus weights. The talk uses one-bone for simplicity, but this is an implementation tradeoff, not a theoretical requirement.
-
----
-
-## 7. Fixed-capacity memory and recycling
-
-GIBS does not allow surfel count to grow unbounded.
-
-### 7.1 Source-backed behavior
-
-The talk states that all surfel resources are **allocated up front**, so the system has a fixed maximum surfel count. A GPU-side free stack stores available surfel ids.
-
-- On spawn: decrement stack counter atomically and read an id.
-- On recycle: increment stack counter atomically and write the freed id back.
-
-Recycling probability uses factors including:
-
-1. how many surfels are live
-2. when the surfel last contributed to scene lighting
-3. how far away the surfel is
-
-The talk states these are combined and compared against a random value so less relevant surfels are more likely to be recycled. [Ref 1]
-
-### 7.2 Recommended scoring function
-
-A practical implementation:
-
-```cpp
-float livePressure   = liveSurfels / maxSurfels;
-float staleVisible   = currentFrame - surfel.lastVisibleFrame;
-float staleContrib   = currentFrame - surfel.lastContributedFrame;
-float distanceScore  = saturate(distance(cameraPos, surfel.worldPosition) / maxKeepDistance);
-float agePenalty     = saturate(surfel.ageFrames / warmupFrames);
-
-float recycleScore =
-      0.35f * livePressure
-    + 0.20f * saturate(staleVisible / 120.0f)
-    + 0.25f * saturate(staleContrib / 120.0f)
-    + 0.20f * distanceScore
-    - 0.10f * (1.0f - agePenalty);
-```
-
-Then:
-
-```cpp
-if (blueNoise(surfelId, currentFrame) < recycleScore)
-    recycleSurfel(surfelId);
-```
-
-### 7.3 Hard recycle conditions
-
-Also force recycle if:
-
-- source transform no longer exists
-- surfel is behind a far cull distance and memory pressure is high
-- surfel never received meaningful contribution for many frames
-- procedural / temporary geometry invalidated it
-
-### 7.4 Avoiding destructive thrash
-
-Do **not** recycle surfels aggressively just because they are off-screen for a short time. Persistence is the point of the algorithm. Prefer probabilistic pressure-driven recycling over hard screen-visibility eviction.
-
----
-
-## 8. Spatial acceleration structure
-
-This is the other defining subsystem of GIBS.
-
-### 8.1 Why a uniform grid is not enough
-
-The talk explains that the original PICA PICA implementation used a uniform grid, but this breaks down for large environments because distant surfels become large in world space if their projected screen size is held constant. To avoid discontinuities, the uniform cells would need to become huge, destroying lookup efficiency. [Ref 1]
-
-### 8.2 Source-backed GIBS design
-
-The production solution keeps:
-
-- a **uniform grid** near the camera
-- plus **trapezoidal grids** along each principal axis outside that center region
-
-The slices get thicker with distance. This matches perspective scaling, so the grid keeps roughly constant “surfels per cell” behavior in screen space. The talk describes this as a **non-linear acceleration structure** whose trapezoidal grids behave like regular grids under a non-linear transform. [Ref 1]
-
-### 8.3 Recommended implementation model
-
-Use a camera-centered piecewise structure.
-
-#### Region A: near uniform cube
-
-```cpp
-centerExtent = 16 m to 32 m per axis
-baseCellSize = chosen from target projected surfel size at near-mid depth
-uniformResolution = e.g. 32^3 or 48^3 logical cells
-```
-
-#### Region B: axis-aligned outer frusta / trapezoids
-
-For each axis direction `+X, -X, +Y, -Y, +Z, -Z`, define slices whose thickness increases geometrically:
-
-```cpp
-sliceThickness[i] = baseCellSize * pow(growthFactor, i)
-growthFactor      = 1.15 .. 1.30
-```
-
-Store prefix sums to convert from world distance to slice index.
-
-Each slice can itself be subdivided in the two orthogonal axes at a lower effective resolution so that projected cell size remains near constant.
-
-### 8.5 Cell contents
-
-Each cell should contain:
-
-- count of surfels
-- start offset into a compact surfel index list
-- optional averaged irradiance
-- optional averaged normal
-- optional visibility / light metadata
-- optional neighbor aggregation data
-
-```cpp
-struct SurfelCell
+enum SurfelFlags : uint32_t
 {
-    uint32_t start;
-    uint32_t count;
-    float3   avgIrradiance;
-    float    avgWeight;
-    float3   avgNormal;
-    float    pad0;
+    SURFEL_DEAD           = 0u,
+    SURFEL_ALIVE          = 1u << 0,
+    SURFEL_NEW            = 1u << 1,
+    SURFEL_DYNAMIC        = 1u << 2,
+    SURFEL_SKINNED        = 1u << 3,
+    SURFEL_EMISSIVE       = 1u << 4,
+    SURFEL_INVALID        = 1u << 31
 };
 ```
 
-### 8.6 Insertion
+### 4.3 Free-list and counters
 
-The talk says surfels are inserted every frame and also inserted into **immediate neighboring cells** if their radius overlaps those cells. It also guarantees surfel radius is never larger than a cell side in the original regular-grid explanation. [Ref 1]
+```glsl
+layout(std430, binding = B_SURFEL_FREELIST) buffer SurfelFreeList
+{
+    uint freeIndices[];
+};
 
-Recommended procedure:
+struct SurfelCounters
+{
+    uint freeTop;
+    uint liveCount;
+    uint spawnedThisFrame;
+    uint recycledThisFrame;
+    uint requestedRays;
+    uint allocatedRays;
+    uint overflowSurfels;
+    uint overflowGridEntries;
+};
+```
 
-1. Compute primary cell index from world position.
-2. Insert surfel into that cell.
-3. For each adjacent cell:
-   - if surfel sphere overlaps cell AABB, insert there too.
+Spawning pops from `freeIndices` with an atomic decrement on `freeTop`. Recycling pushes back with an atomic increment. Initialise all indices once on startup and when resetting the GI system.
 
-This is important for lookup continuity and avoids discontinuities at cell boundaries.
+### 4.4 Radial depth data
 
-### 8.7 Build approach
+EA GIBS uses a low-resolution radial depth function per surfel hemisphere to reduce light bleeding. Implement this as a separate buffer, not inside the main surfel struct.
 
-Use a GPU two-pass build:
+Recommended layout:
 
-1. **Count pass**
-   - each surfel computes all overlapped cells
-   - atomic increment per cell count
+```glsl
+// 4x4 hemisphere texels per surfel. Each texel stores depth mean and depth squared mean.
+struct RadialDepthTexel
+{
+    float meanDepth;
+    float meanDepthSq;
+};
 
-2. **Prefix-sum pass**
-   - exclusive scan on counts to get `start`
+layout(std430, binding = B_RADIAL_DEPTH) buffer SurfelRadialDepth
+{
+    RadialDepthTexel radialDepth[]; // index = surfelID * 16 + hemiTexel
+};
+```
 
-3. **Scatter pass**
-   - each surfel computes overlapped cells again
-   - atomic increment cell-local cursor
-   - write surfel index into compact index array
+MVP may store only `R16F meanDepth`; final target stores mean and mean-square so variance can be reconstructed.
+
+### 4.5 Ray-guiding data
+
+EA GIBS tracks a compact hemispherical radiance map per surfel, typically described as a 6x6 function plus a scale value. Use a separate buffer.
+
+```glsl
+// MVP: luminance only. Target: RGB or RGBE-like encoding.
+struct GuideCell
+{
+    uint packedRadiance; // R8/G8/B8/confidence or luminance8 + flags
+};
+
+layout(std430, binding = B_GUIDE_MAP) buffer SurfelGuideMap
+{
+    GuideCell guideCells[]; // index = surfelID * 36 + guideCell
+};
+
+layout(std430, binding = B_GUIDE_SCALE) buffer SurfelGuideScale
+{
+    vec4 guideScale[]; // rgb scale, a confidence / total luminance
+};
+```
+
+For MVP, use 36 `float` luminance values per surfel if memory permits. Convert to compact packed storage once functionality is correct.
+
+### 4.6 Grid resources
+
+Support two modes:
+
+1. **MVP uniform grid:** easier to implement, sufficient to get visible GI working.
+2. **Target non-linear GIBS grid:** central uniform region plus six axis-aligned trapezoidal / non-linear regions with cell size increasing with distance from the camera.
+
+Grid header:
+
+```glsl
+struct SurfelCellHeader
+{
+    uint firstEntry;
+    uint entryCount;
+    uint averagePackedIrradiance;
+    uint flags;
+};
+
+struct SurfelCellEntry
+{
+    uint surfelID;
+    uint next;       // optional linked-list mode
+};
+```
+
+Prefer fixed entry ranges or append-buffer ranges over linked lists for cache coherence. Use overflow counters and debug views.
+
+### 4.7 Ray buffers
+
+```glsl
+struct SurfelRayRequest
+{
+    uint surfelID;
+    uint requestedCount;
+    uint allocatedCount;
+    uint firstRay;
+};
+
+struct SurfelRay
+{
+    vec4 origin_tMin;
+    vec4 direction_tMax;
+    uvec4 ids;       // x surfelID, y binID, z sampleIndex, w flags
+    vec4 throughput; // rgb = estimator throughput, a = pdf
+};
+
+struct SurfelRayHit
+{
+    vec4 position_t;
+    vec4 normal_hitKind;
+    vec4 radiance_pdf;
+    uvec4 ids;       // surfelID, materialID, primitiveID, flags
+};
+```
 
 ---
 
-## 9. Applying surfel lighting to pixels
+## 5. Pass Specifications
 
-The talk explicitly describes this pass.
+## 5.1 Pass 02 — Transform Buffer Update
 
-### 9.1 Source-backed behavior
+### Purpose
+Upload all object and bone transforms needed by surfels.
 
-In the final pass:
+### CPU responsibilities
 
-1. reconstruct world position of each shaded pixel
-2. find the containing cell
-3. fetch the first `N` surfels in that cell
-4. accumulate their irradiance weighted by:
-   - distance from surfel to shaded point
-   - orientation of surfel relative to shaded point and pixel normal/orientation
-5. if the total contribution of these surfels is less than one, add the weighted average irradiance of the grid cell as fallback
+- After ECS hierarchy propagation, write world matrices to a persistently mapped buffer or update with `glBufferSubData` / orphaning.
+- Maintain stable transform IDs. IDs must not change every frame.
+- For destroyed objects, mark transform entry invalid so attached surfels can be recycled.
 
-This cell-average fallback helps fill gaps and stabilize lighting. [Ref 1]
+### Agent tasks
 
-### 9.2 Recommended weight function
-
-For pixel `x` with normal `n_x`, and surfel `s`:
-
-```cpp
-float3 d     = x - s.worldPosition;
-float  dist2 = dot(d, d);
-float  dist  = sqrt(dist2);
-float3 dir   = d / max(dist, 1e-5);
-
-float w_dist   = saturate(1.0f - dist / s.radiusWorld);
-float w_surfel = saturate(dot(s.worldNormal, dir));
-float w_pixel  = saturate(dot(n_x, -dir));
-float w = w_dist * w_surfel * w_pixel;
-```
-
-Then:
-
-```cpp
-accum += w * s.irradianceMeanLong;
-sumW  += w;
-```
-
-If `sumW < 1` then blend in the cell average:
-
-```cpp
-accum += (1 - sumW) * cell.avgIrradiance;
-```
-
-### 9.3 Practical notes
-
-- Clamp to first `N` surfels for cost control. Start with 16 or 24.
-- Sort cell surfels by recency, contribution, or distance if needed.
-- Use TAA after this pass; the talk repeatedly assumes temporal filtering exists.
+- Add transform ID allocation to renderable entities.
+- Add optional dominant bone ID path for skinned meshes.
+- Add G-buffer output for transform ID.
 
 ---
 
-## 10. Leak suppression with a radial depth function
+## 5.2 Pass 03 — Update Live Surfels
 
-This is one of the most important implementation details from the talk.
+### Purpose
+Move surfels with their parent transform.
 
-### 10.1 The problem
-
-A surfel outside a wall can incorrectly light geometry on the inside if the two surfaces are close enough spatially. Since a surfel by itself has only a point, normal, and radius, it does not inherently know about nearby occluding geometry.
-
-### 10.2 Source-backed solution
-
-The talk solves this with a **radial depth function**:
-
-- initialize the depth function to the **diameter** of the surfel
-- as rays are traced for irradiance gathering, if they hit geometry within the surfel diameter, update the depth function
-- store both:
-  - moving average of depth
-  - moving average of depth squared
-- reconstruct mean and variance
-- use **Chebyshev’s inequality** for a smooth depth test
-- default resolution is **4x4 texels per surfel hemisphere**
-
-The talk explicitly states this is inspired by **Variance Shadow Maps** and **DDGI**, but only stores depth in the surfel-local hemisphere within the surfel diameter. [Ref 1]
-
-### 10.3 Recommended parameterization
-
-Represent the hemisphere in local surfel tangent space using octahedral or hemi-octahedral mapping.
-
-```cpp
-float2 uv = HemiOctEncode(localHitDirection);
-int2   ij = clamp(int2(uv * 4.0), 0, 3);
-int    k  = ij.y * 4 + ij.x;
-```
-
-Update moments with exponential moving average:
-
-```cpp
-float alpha = 0.1f; // fast enough to react, stable enough not to flicker
-depthMean[k]   = lerp(depthMean[k],   hitDistance, alpha);
-depthMeanSq[k] = lerp(depthMeanSq[k], hitDistance * hitDistance, alpha);
-```
-
-### 10.4 Chebyshev visibility test
-
-For candidate shading point distance `t` along local direction bucket `k`:
-
-```cpp
-float mu   = depthMean[k];
-float mu2  = depthMeanSq[k];
-float var  = max(mu2 - mu * mu, 1e-4f);
-
-float d = t - mu;
-float p = var / (var + d * d);  // upper-bound style
-```
-
-Then use:
-
-```cpp
-float occlusionFactor = (t <= mu) ? 1.0f : p;
-```
-
-Interpretation:
-
-- near expected depth -> accepted
-- well behind expected depth -> rejected or strongly attenuated
-
-### 10.5 Usage in final apply pass
-
-When evaluating a surfel’s contribution to a shaded point:
-
-1. transform pixel position into surfel-local tangent space
-2. find hemisphere bucket
-3. compute radial distance
-4. use moment test to attenuate the contribution
-
-```cpp
-w *= occlusionFactor;
-```
-
-This is the main anti-bleed mechanism.
-
----
-
-## 11. Irradiance integration on surfels
-
-This is where the actual GI is solved.
-
-### 11.1 Source-backed behavior
-
-For each surfel, rays are shot into the scene. At ray hit points, the system evaluates:
-
-- direct diffuse lighting
-- shadowing against scene lights
-- existing surfel lighting at the hit point
-
-The talk says this yields **effectively infinite bounce over time**, as long as surfel coverage exists. [Ref 1]
-
-This is the crucial recursive idea:
-
-- ray hits read from the *previously solved* surfel cache
-- the new sample is written back into the surfel cache
-- repeated over frames, multi-bounce energy propagates through the scene
-
-### 11.2 One-sample estimate
-
-For surfel `s`, each ray sample contributes an estimate of incoming diffuse irradiance:
-
-```cpp
-L_sample =
-    directDiffuseAtHit(hitPoint, hitNormal)
-  + surfelIndirectAtHit(hitPoint, hitNormal);
-```
-
-If sampling is cosine-weighted around the surfel normal, the Monte Carlo estimator for diffuse irradiance can be simplified:
-
-```cpp
-E_hat = (1 / M) * sum_i L_sample_i
-```
-
-if the cosine-weighted BRDF/pdf cancellation is already accounted for.
-
-Otherwise the general estimator is:
-
-```cpp
-E_hat = (1 / M) * sum_i [ L_i * max(0, dot(n_s, wi)) / pdf(wi) ]
-```
-
-For cosine-weighted hemisphere sampling with `pdf = cos(theta)/pi`, this becomes:
-
-```cpp
-E_hat = pi * mean(L_i)
-```
-
-### 11.3 Recommended storage choice
-
-Store **diffuse irradiance RGB** on each surfel, not outgoing radiance. This matches the talk’s language and makes final apply cheaper.
-
----
-
-## 12. Temporal accumulation with variance-aware blending
-
-This is the heart of the convergence strategy.
-
-### 12.1 Source-backed behavior
-
-The talk says they use a **modified moving average estimator**. A normal moving average forces a fixed blend tradeoff between responsiveness and convergence. GIBS instead tracks:
-
-- a longer-term moving average
-- a shorter-term mean
-- a shorter-term variance
-
-The short-term statistics modulate the blend factor of the long-term accumulator. This allows the system to:
-
-- react quickly when lighting changes
-- converge smoothly when the scene is stable
-
-The literature review identifies this as a **multi-scale mean estimator (MSME)**. [Refs 1, 6]
-
-### 12.2 Recommended implementation
-
-Let:
-
-- `L_t` = newly estimated irradiance this frame
-- `M_long` = long-term mean
-- `M_short` = short-term mean
-- `V_short` = short-term variance
-
-Update short-term statistics with larger alpha:
-
-```cpp
-const float aShort = 0.2f;
-M_short = lerp(M_short, L_t, aShort);
-float3 delta = L_t - M_short;
-V_short = lerp(V_short, delta * delta, aShort);
-```
-
-Now derive a reactivity scalar from variance magnitude:
-
-```cpp
-float varianceScalar = max_component(V_short);
-float reactive = saturate(varianceScalar / varianceScale);
-```
-
-Convert to long-term alpha:
-
-```cpp
-float aLong = lerp(alphaStable, alphaReactive, reactive);
-// e.g. alphaStable = 0.02, alphaReactive = 0.35
-```
-
-Then update:
-
-```cpp
-M_long = lerp(M_long, L_t, aLong);
-```
-
-### 12.3 Reset triggers
-
-Force `reactive = 1` or reinitialize short-term stats if:
-
-- surfel just spawned
-- source transform changed sharply
-- surfel moved between cells
-- local visibility classification changed a lot
-- emissive state changed
-
----
-
-## 13. Adaptive ray budgeting
-
-The talk makes clear that surfels do not all get the same number of rays.
-
-### 13.1 Source-backed behavior
-
-Requested ray counts depend on:
-
-- variance
-- how recently the surfel contributed to visible lighting
-- whether it just spawned
-
-Content creators can set a **global total ray budget**. The system first runs a ray-count pass to accumulate requested work, then allocates actual rays proportionally in a later pass. Surfels with low variance can go nearly dormant and only send enough rays to detect change. [Ref 1]
-
-### 13.2 Recommended request formula
-
-```cpp
-float varianceScore   = saturate(max_component(surfel.irradianceVarShort) / varianceScale);
-float visibleScore    = exp(-0.02f * (currentFrame - surfel.lastContributedFrame));
-float spawnScore      = surfel.flags & SpawnedThisFrame ? 1.0f : 0.0f;
-float ageScore        = saturate(surfel.ageFrames / 16.0f);
-
-float importance =
-      0.50f * varianceScore
-    + 0.25f * visibleScore
-    + 0.25f * spawnScore;
-
-importance *= lerp(1.5f, 1.0f, ageScore);
-
-surfel.requestedRays = clamp(
-    int(round(lerp(minRays, maxRays, importance))),
-    minRays,
-    maxRays);
-```
-
-Good starting range:
-
-```cpp
-minRays = 1;
-maxRays = 8;
-spawnBoost = 12 for first few frames if budget allows;
-```
-
-### 13.3 Budget normalization
-
-If total requested rays exceed the global budget:
-
-```cpp
-allocated = floor(requested * globalBudget / totalRequested);
-```
-
-Preserve at least one ray for eligible surfels when possible.
-
----
-
-## 14. Ray guiding
-
-This is another major convergence accelerator in the talk.
-
-### 14.1 Source-backed behavior
-
-The talk notes that cosine-lobe importance sampling is not always enough. When most light comes from a narrow or unusual direction, many cosine-sampled rays are wasted. Their solution is per-surfel **ray guiding**:
-
-- map the surfel hemisphere to a quad
-- store a compact radiance function
-- default storage is **6x6 texels**, **8 bits per component**, plus a **16-bit scale**
-- normalize after each iteration to track relative radiance
-- when the function is sufficiently populated, use it to guide future rays
-- sample by inverse CDF style walking over the discrete distribution
-- return both direction and PDF
-
-The talk explicitly walks through importance sampling using the cumulative sum over the discrete 2D map. [Ref 1]
-
-### 14.2 Recommended data model
-
-Store a 6x6 luminance or RGB guide over the local surfel hemisphere using hemi-octahedral mapping.
-
-For each traced ray that returns radiance `L` from direction `wi_local`:
-
-1. map `wi_local` to `uv`
-2. find texel
-3. accumulate radiance estimate
-4. renormalize occasionally
-
-### 14.3 Updating the guide
-
-Use EMA per texel:
-
-```cpp
-guide[k] = lerp(guide[k], incomingRadiance, guideAlpha);
-```
-
-Or accumulate and renormalize over a short window.
-
-### 14.4 Sampling from the guide
-
-Let `w[k]` be positive weights over the 36 texels.
-
-```cpp
-float sumW = sum_k w[k];
-float u = random01() * sumW;
-
-float accum = 0;
-for k in 0..35:
-    accum += w[k];
-    if (accum >= u) { choose k; break; }
-```
-
-Then:
-
-- sample a jittered point inside texel `k`
-- map back to hemisphere direction
-- pdf = `w[k] / sumW * 1 / texelSolidAngleApprox`
-
-### 14.5 Mixture sampling
-
-Do not fully replace cosine sampling. Use a mixture:
-
-```cpp
-with probability pGuide: sample from guide
-else: sample cosine hemisphere
-```
-
-Then the combined PDF is:
-
-```cpp
-pdf = pGuide * pdfGuide + (1 - pGuide) * pdfCosine;
-```
-
-Start with `pGuide = 0` until the guide has enough confidence. Then ramp toward `0.5 .. 0.8`.
-
----
-
-## 15. Irradiance sharing between neighboring surfels
-
-The talk mentions this explicitly as a way to reduce perceived noise.
-
-### 15.1 Source-backed behavior
-
-Since surfels are independent, noise can remain blotchy. The talk says the acceleration structure is used to share information among neighboring surfels, especially when variance is high. This significantly reduces perceived noise. [Ref 1]
-
-### 15.2 Recommended filter
-
-Only share when the target surfel’s variance is high. Gather neighbors from the same or adjacent cells and use a bilateral-like filter:
-
-```cpp
-w = w_dist * w_normal * w_radius * w_variance;
-```
-
-Suggested terms:
-
-```cpp
-w_dist    = exp(-dist2 / (2 * sigmaPos2));
-w_normal  = pow(saturate(dot(n_i, n_j)), 16);
-w_radius  = saturate(min(r_i, r_j) / max(r_i, r_j));
-w_var     = saturate(var_j / (var_i + var_j + eps));
-```
-
-Then blend neighbor irradiance into the short-term estimate, not directly into the long-term state.
-
----
-
-## 16. Ray binning / sorting for traversal coherence
-
-The talk says unordered rays hurt cache behavior and traversal efficiency, so they use a **ray binning** strategy similar to Battlefield 5. Rays are binned by position and orientation. The surfel cell coordinate converted to 1D acts as the dominant spatial component of the bin index. Then a second directional component is added from the shot ray direction. Reordering is done in multiple passes using bin counts and offsets. [Ref 1]
-
-### 16.1 Recommended implementation
-
-For each generated ray:
-
-```cpp
-uint spatialHash = surfel.cellIndex;
-uint dirHash     = QuantizeDirectionOct(rayDir, dirBins);
-uint binIndex    = spatialHash * dirBins + dirHash;
-```
-
-Then:
-
-1. count rays per bin
-2. prefix sum counts
-3. scatter rays into a sorted ray array
-
-This improves BVH / RTAS coherence, especially on GPUs.
-
----
-
-## 17. Many-light sampling at ray hits
-
-The talk includes substantial production detail here.
-
-### 17.1 Source-backed options
-
-At ray hits, direct diffuse lighting must be computed against potentially many lights. The talk discusses:
-
-- **brute-force random light sampling**: too noisy for many lights
-- **stochastic lightcuts**
-- **reservoir sampling** inspired by ReSTIR
-
-The lightcuts implementation:
-
-- stores light positions in view space
-- sorts lights by Morton code
-- builds a tree bottom-up where internal nodes store combined bounds and intensities
-- chooses a cut with a small node limit (typically **2-8 nodes**)
-- then traverses stochastically to leaf lights using importance weights
-
-The reservoir approach:
-
-- randomly samples **4-8 lights**
-- chooses a single winner using weighted reservoir logic
-- normalizes the resulting PDF by total sampled weight
-
-The talk says reservoir sampling is cheaper on consoles in their setup, while stochastic lightcuts can converge faster but be more expensive. [Ref 1]
-
-### 17.2 Recommended advice
-
-If building a first implementation:
-
-- start with reservoir light sampling
-- defer lightcuts until the rest of GIBS is stable
-
-At each ray hit:
-
-```cpp
-for i in 1..NcandidateLights:
-    sample random light
-    compute importance weight
-    update reservoir
-trace shadow ray to winning light
-evaluate direct diffuse if visible
-```
-
-This keeps the integration system simple.
-
----
-
-## 18. Transparency and “geometry that does not fit surfels”
-
-The talk says surfels are a good fit for **opaque surfaces**, but not for transparent geometry because surfels are spawned from the G-buffer, which is naturally biased toward the primary visible opaque surface. Their fallback is a **probe volume** solved with a similar temporal integrator.
-
-### 18.1 Source-backed design
-
-For transparents:
-
-- use ray-traced probes instead of surfels
-- gather diffuse radiance into probes
-- project probe radiance to **spherical harmonics**
-- accumulate those SH coefficients across frames using the same adaptive MSME-style integrator
-- store results in a **probe volume**
-- solve scale using **volume clipmaps**
-- shift clipmaps when the camera moves
-- initialize newly exposed probes from higher levels by interpolation
-- blend or dither between adjacent clip levels to avoid boundary popping
-- the talk mentions **blue-noise dithered sampling** as a cheaper alternative to two-level blending
-
-It also states the integrator computes the number of rays to shoot based on variance, and Sloan’s deringing window is used to reduce SH ringing. [Ref 1]
-
-### 18.2 Recommended boundary of responsibility
-
-Do **not** force surfels to solve transparency directly unless you are deliberately researching a new extension. Use:
-
-- GIBS surfels for opaque diffuse GI
-- clipmapped SH probes for transparency / foliage / unsupported cases
-
----
-
-## 19. What the original technique does not fully specify
-
-A coding agent must know which parts are not fully public.
-
-The talk does **not** fully publish:
-
-- exact spawn threshold equations
-- exact coverage metric
-- exact non-linear grid mapping function
-- exact MSME equations and parameters
-- exact irradiance-sharing filter
-- exact many-light PDFs and error heuristics
-- exact final shading weight function
-- exact memory layouts used in Frostbite
-
-Therefore a complete implementation must contain deliberate engineering defaults. That is normal. The implementation is still faithful if it preserves the same architecture:
-
-- G-buffer opportunistic surfel spawn
-- persistence
-- transform-following
-- fixed-capacity recycling
-- non-linear spatial lookup
-- sparse ray solving
-- variance-aware temporal accumulation
-- ray guiding
-- radial depth leak suppression
-- probe fallback for transparency
-
----
-
-## 20. A complete recommended frame algorithm
-
-This is the most practical section for coding agents.
-
-### 20.1 Pass A: G-buffer
-
-Output at least:
-
-- depth
-- world normal
-- albedo
-- emissive
-- transform id / bone id
-- object id
-- motion vectors if available
-
-### 20.2 Pass B: transform update
-
-Update all live surfels from their stored local-space attachment.
-
-### 20.3 Pass C: spawn candidates
-
-Per 16x16 screen tile:
-
-- estimate coverage
-- find least-covered visible texel
-- if below threshold, claim a surfel from the free stack
-- initialize it
-
-### 20.4 Pass D: recycle
-
-Score all surfels and recycle some under memory pressure.
-
-### 20.5 Pass E: build acceleration structure
-
-- clear cell counts
-- count insertions
-- prefix sum
-- scatter surfel ids
-- compute cell averages
-
-### 20.6 Pass F: requested rays
-
-Compute local requested rays per surfel from:
-
-- variance
-- visibility / contribution recency
-- spawned status
-
-### 20.7 Pass G: allocate global budget
-
-Normalize requests to the global frame ray budget.
-
-### 20.8 Pass H: generate rays
+### GLSL behaviour
 
 For each surfel:
 
-- decide sample count
-- use mixture of cosine sampling + guiding
-- store ray origin, direction, surfel id, pdf, and metadata
+1. Skip if not alive.
+2. Fetch `GpuTransform` by `transformID`.
+3. If transform invalid, mark surfel for recycling.
+4. Compute:
 
-### 20.9 Pass I: bin rays
+```glsl
+worldPos = (worldFromLocal * vec4(localPos, 1.0)).xyz;
+worldNormal = normalize((transpose(localFromWorld) * vec4(localNormal, 0.0)).xyz);
+```
 
-Sort rays for traversal coherence.
+5. Update age and frame metadata.
+6. Recompute radius so screen projection remains roughly constant:
 
-### 20.10 Pass J: trace rays
+```glsl
+float worldUnitsPerPixel = ComputeWorldUnitsPerPixel(camera, worldPos);
+float radius = clamp(settings.targetSurfelScreenRadiusPx * worldUnitsPerPixel,
+                     settings.minSurfelRadius,
+                     settings.maxSurfelRadius);
+```
 
-Use hardware ray tracing if available. If not, use software BVH / hybrid solution.
-
-### 20.11 Pass K: shade hits
-
-At each hit:
-
-- evaluate direct diffuse with light sampling
-- optionally shoot one shadow ray to selected light
-- sample current surfel cache at the hit point
-- return total incoming radiance estimate
-
-### 20.12 Pass L: update surfels
-
-Per surfel:
-
-- reduce all sample returns into an irradiance estimate
-- update guiding texture
-- update radial depth moments
-- update short/long estimators
-- update requested-ray statistics
-- update contribution timestamps
-
-### 20.13 Pass M: neighborhood share
-
-If variance high, borrow irradiance from neighbors.
-
-### 20.14 Pass N: final apply
-
-For every shaded pixel:
-
-- reconstruct world position and normal
-- find cell
-- gather first `N` surfels
-- weight by distance, normal alignment, and radial-depth test
-- fill remaining weight with cell average irradiance
-
-### 20.15 Pass O: transparent probe solve
-
-Run probe clipmaps in parallel or at a lower frequency.
+7. Mark surfels outside hard distance / invalid transform for recycling, not immediate deletion unless memory pressure is critical.
 
 ---
 
-## 21. Pseudocode skeleton
+## 5.3 Pass 04 — Recycling
+
+### Purpose
+Bound memory and discard irrelevant surfels without destroying useful cached lighting unnecessarily.
+
+### Recycle score
+
+Compute a probability-like score:
+
+```glsl
+float livePressure = saturate((liveCount / maxSurfels - recyclePressureStart) /
+                              (1.0 - recyclePressureStart));
+float distanceScore = saturate((distanceToCamera - recycleNear) / (recycleFar - recycleNear));
+float staleScore = saturate((frameIndex - lastContributedFrame) / staleFrameThreshold);
+float invisibleScore = saturate((frameIndex - lastVisibleFrame) / invisibleFrameThreshold);
+float oversizeScore = saturate((radius - desiredRadius * 2.0) / desiredRadius);
+
+float recycleScore = weighted_sum(livePressure, distanceScore, staleScore,
+                                  invisibleScore, oversizeScore);
+```
+
+Recycle if:
+
+```glsl
+recycleScore > BlueNoiseOrHash01(surfelID, frameIndex)
+```
+
+### Required behaviour
+
+- Always recycle if parent transform is invalid.
+- Recycle more aggressively under free-list pressure.
+- Never recycle all surfels simply because they are off-screen; persistence is core to the technique.
+- Push recycled IDs back to free-list on GPU.
+
+---
+
+## 5.4 Pass 05 / 06 — Grid Clear and Build
+
+### Purpose
+Enable fast lookup of nearby surfels for coverage, final gathering, filtering, and approximate tracing.
+
+### MVP uniform grid
+
+Use a camera-centred world-space grid:
 
 ```cpp
-void UpdateSurfelGI(FrameContext& ctx)
+gridResolution = ivec3(64, 64, 64);
+gridExtent = vec3(80.0f); // tune by scene scale
+cellSize = 2.0f * gridExtent / gridResolution;
+```
+
+Each live surfel inserts into its primary cell and immediate neighbours if its radius overlaps cell boundaries. Ensure radius is never larger than one cell side in uniform-grid MVP.
+
+### Target non-linear grid
+
+Implement the GIBS-style grid:
+
+- central uniform cube around the camera;
+- six surrounding axis regions: +X, -X, +Y, -Y, +Z, -Z;
+- depth slices grow in thickness with distance from centre;
+- lateral cell width grows with slice depth so projected cell size remains approximately constant;
+- mapping must be deterministic and reversible enough for lookup.
+
+Suggested mapping:
+
+```glsl
+GridCoord MapWorldToNonLinearGrid(vec3 worldPos)
 {
-    RenderGBuffer(ctx);
+    vec3 p = worldPos - cameraPos;
 
-    UpdatePersistentSurfels(ctx);
-    SpawnSurfelsFromGBuffer(ctx);
-    RecycleSurfels(ctx);
+    if (InsideCentralGrid(p))
+        return MapCentralUniform(p);
 
-    BuildSurfelAcceleration(ctx);
+    int axis = DominantAbsAxis(p);       // 0 x, 1 y, 2 z
+    int sign = p[axis] >= 0.0 ? 1 : -1;
+    float d = abs(p[axis]) - centerHalfExtent;
 
-    ComputeRequestedRayCounts(ctx);
-    AllocateRayBudget(ctx);
+    // Log/exponential depth slicing approximates growing trapezoid thickness.
+    int slice = clamp(int(floor(log2(1.0 + d / baseCellSize) * sliceScale)), 0, sliceCount - 1);
+    float sliceCellSize = baseCellSize * pow(sliceGrowth, float(slice));
 
-    GenerateSurfelRays(ctx);
-    BinAndSortRays(ctx);
-    TraceRays(ctx);
-    ShadeRayHits(ctx);
+    vec2 lateral = RemainingAxes(p, axis);
+    ivec2 uv = ivec2(floor(lateral / sliceCellSize + lateralGridHalf));
 
-    IntegrateSurfelIrradiance(ctx);
-    ShareIrradianceAcrossNeighbors(ctx);
-
-    SolveTransparentProbeFallback(ctx);
+    return EncodeAxisGrid(axis, sign, slice, uv);
 }
 ```
 
-```cpp
-float3 SolveSurfelIndirectAtPixel(PixelData p)
+Do not spend excessive time perfecting the final mapping before the MVP works. Build uniform grid first, then replace it with non-linear mapping behind the same `SurfelGrid` interface.
+
+### Cell averages
+
+After insertion, compute per-cell average irradiance and average normal. The apply pass uses this as fallback when individual surfel weights do not cover a pixel sufficiently.
+
+---
+
+## 5.5 Pass 08 / 09 — Coverage and Spawning
+
+### Purpose
+Spawn surfels from the G-buffer where screen-space coverage is insufficient.
+
+### Algorithm
+
+The screen is divided into **16x16 tiles**.
+
+For each tile:
+
+1. Iterate candidate pixels in the tile.
+2. Reject invalid pixels: sky, transparent, non-diffuse-only if desired, backfaces, decals if unsupported.
+3. Reconstruct world position and normal.
+4. Query nearby surfels using the grid.
+5. Compute current coverage:
+
+```glsl
+float SurfelCoverage(vec3 p, vec3 n, Surfel s)
 {
-    SurfelCell cell = LookupCell(p.worldPos);
-
-    float3 accum = 0;
-    float  sumW  = 0;
-
-    for (uint i = 0; i < min(cell.count, MAX_SURFELS_PER_PIXEL); ++i)
-    {
-        Surfel s = Surfels[SurfelIndices[cell.start + i]];
-        float w = ComputeSurfelApplyWeight(s, p.worldPos, p.normal);
-
-        if (w > 0)
-        {
-            w *= RadialDepthOcclusion(s, p.worldPos);
-            accum += w * s.irradianceMeanLong;
-            sumW  += w;
-        }
-    }
-
-    if (sumW < 1.0f)
-        accum += (1.0f - sumW) * cell.avgIrradiance;
-
-    return accum;
+    vec3 d = p - s.worldPos;
+    float dist2 = dot(d, d);
+    float r2 = s.radius * s.radius;
+    float disk = exp(-dist2 / max(r2, 1e-4));
+    float normal = saturate((dot(n, s.normal) - normalRejectCos) / (1.0 - normalRejectCos));
+    float plane = exp(-abs(dot(d, s.normal)) / max(s.radius * 0.25, 1e-4));
+    return disk * normal * plane;
 }
+```
+
+6. Track the pixel with the lowest coverage.
+7. If lowest coverage is below a randomised threshold, spawn one surfel from that pixel.
+
+### Randomised threshold
+
+```glsl
+float threshold = settings.spawnCoverageThreshold + 0.15 * (BlueNoise(tileID, frame) - 0.5);
+if (lowestCoverage < threshold) SpawnSurfel(lowestPixel);
+```
+
+### Spawn initialisation
+
+New surfel fields:
+
+- world position from depth;
+- world normal from G-buffer;
+- local position = `localFromWorld * worldPos`;
+- local normal = inverse-transpose transform;
+- radius from target screen projection;
+- albedo/material/entity/transform IDs;
+- irradiance initialised from rough environment / direct ambient / neighbour average;
+- short mean = initial irradiance;
+- variance high enough to request more rays at first;
+- age = 0;
+- frameInfo set to current frame;
+- radial depth initialised to surfel diameter;
+- guide map initialised to uniform cosine/luminance.
+
+### Required rejection rules
+
+Do not spawn surfels on:
+
+- sky/background;
+- water / transparent materials unless explicitly supported;
+- particles and decals;
+- invalid entity ID;
+- surfaces below minimum normal confidence;
+- pixels with depth discontinuity if normal/position derivatives indicate unstable geometry.
+
+---
+
+## 5.6 Pass 12 / 13 — Ray Request and Allocation
+
+### Purpose
+Adapt ray count per surfel while enforcing a global ray budget.
+
+### Ray request score
+
+```glsl
+float varianceScore = saturate(luminance(shortM2.rgb) * varianceScale);
+float newScore = IsNewSurfel ? 1.0 : 0.0;
+float contributionScore = saturate(1.0 - (frameIndex - lastContributedFrame) / contributionFalloffFrames);
+float staleScore = saturate((frameIndex - lastUpdatedFrame) / staleUpdateFrames);
+
+float desired = baseRays
+              + newScore * newSurfelExtraRays
+              + varianceScore * varianceExtraRays
+              + contributionScore * contributionExtraRays
+              + staleScore * staleExtraRays;
+```
+
+The request pass sums all requested rays using atomics. The allocation pass computes:
+
+```glsl
+allocated = max(minRaysForAliveSurfels,
+                floor(requested * globalRayBudget / max(totalRequested, 1)));
+```
+
+Low-variance surfels may become nearly dormant and shoot only occasional detection rays.
+
+---
+
+## 5.7 Pass 14 — Ray Generation and Ray Guiding
+
+### Purpose
+Generate hemisphere rays from surfels according to cosine-weighted sampling and learned guide maps.
+
+### MVP sampling
+
+Use cosine-weighted hemisphere sampling around surfel normal:
+
+```glsl
+vec3 dir = CosineSampleHemisphere(rand2, surfel.normal);
+float pdf = max(dot(dir, surfel.normal), 0.0) / PI;
+```
+
+### Target guided sampling
+
+Use a mixture distribution:
+
+```glsl
+float guideProbability = saturate(guideConfidence);
+if (rand < guideProbability)
+    dir = SampleGuideMap6x6(surfelID, rand2, out guidedPdf);
+else
+    dir = CosineSampleHemisphere(rand2, surfel.normal, out cosinePdf);
+
+float finalPdf = mix(cosinePdf, guidedPdf, guideProbability);
+```
+
+Guide map sampling:
+
+1. Map surfel hemisphere to a 2D 6x6 domain.
+2. Interpret stored guide values as an unnormalised discrete PDF.
+3. Generate a uniform random number multiplied by sum of guide values.
+4. Walk cells in deterministic order until cumulative sum exceeds the random value.
+5. Jitter inside selected cell.
+6. Map UV back to hemisphere direction.
+7. Return PDF including cell probability and hemisphere mapping term.
+
+Update guide map after ray hits using incoming radiance luminance/RGB. Normalise guide values periodically or store per-surfel scale so 8-bit cells remain useful.
+
+---
+
+## 5.8 Pass 15 — Ray Binning and Sorting
+
+### Purpose
+Improve trace coherence by sorting rays with similar origin cells and directions.
+
+### Bin ID
+
+```glsl
+uint spatial = FlattenCellCoord(surfelCellCoord);
+uint dirBin = OctahedralDirectionBin(ray.direction, DIR_BIN_RES); // e.g. 8x8
+uint binID = spatial * DIR_BIN_COUNT + dirBin;
+```
+
+### Passes
+
+1. Count rays per bin.
+2. Prefix sum bin counts to offsets.
+3. Scatter rays to sorted buffer.
+4. Trace sorted rays.
+
+MVP may skip sorting. Target implementation should include it behind `settings.useRayBinning`.
+
+---
+
+## 5.9 Pass 16 — OpenGL Hybrid Trace
+
+### Purpose
+EA GIBS uses hardware ray tracing. Nox OpenGL needs a compatible substitute. Implement a hybrid trace path with clearly separated backends.
+
+### Trace backends
+
+#### Backend A — Screen-space trace
+
+Use depth-buffer / Hi-Z ray marching for short rays and visible geometry:
+
+- project ray origin and direction to screen;
+- march in view space or clip space;
+- compare against depth pyramid;
+- return hit position, normal, material if hit;
+- reject unreliable hits near screen edges and depth discontinuities.
+
+Pros: cheap, captures visible detail.  
+Cons: cannot see off-screen or occluded geometry.
+
+#### Backend B — Software BVH trace
+
+Build or upload a simple GPU BVH over static opaque meshes, with optional dynamic mesh update later.
+
+Minimum viable BVH:
+
+```glsl
+struct BvhNode
+{
+    vec4 boundsMin_leftFirst;
+    vec4 boundsMax_count;
+};
+
+struct TriangleData
+{
+    vec4 p0;
+    vec4 p1;
+    vec4 p2;
+    vec4 n0_material;
+    vec4 n1_entity;
+    vec4 n2_flags;
+};
+```
+
+Trace with an explicit stack in compute shader. Keep this path optional and budgeted. If BVH work is too large for the first milestone, implement screen-space + surfel fallback first, but leave the interface intact.
+
+#### Backend C — Surfel-grid fallback trace
+
+Approximate ray hits by intersecting ray against surfel disks in grid cells:
+
+```glsl
+bool IntersectSurfelDisk(Ray r, Surfel s, out float t)
+{
+    float denom = dot(r.dir, s.normal);
+    if (abs(denom) < 1e-4) return false;
+    t = dot(s.worldPos - r.origin, s.normal) / denom;
+    if (t < r.tMin || t > r.tMax) return false;
+    vec3 p = r.origin + t * r.dir;
+    return length(p - s.worldPos) <= s.radius;
+}
+```
+
+Pros: sees persistent off-screen surfels.  
+Cons: approximate, can miss thin geometry, can self-intersect if bias is wrong.
+
+### Trace priority
+
+```text
+1. Try screen-space trace for near hit.
+2. If no reliable hit, try software BVH trace if enabled.
+3. If no BVH hit or BVH unavailable, try surfel-grid fallback.
+4. If no hit, sample sky/environment.
+```
+
+### Hit bias
+
+Offset ray origin:
+
+```glsl
+origin = surfel.worldPos + surfel.normal * max(0.01, surfel.radius * 0.05);
+```
+
+Avoid self-intersection by ignoring the source surfel ID and nearby same-surface surfels for very small `t`.
+
+---
+
+## 5.10 Pass 17 — Hit Lighting Evaluation
+
+### Purpose
+Compute incoming radiance seen by the surfel ray.
+
+At each hit point:
+
+```glsl
+Li = DirectDiffuse(hit) + Emissive(hit) + ExistingSurfelIndirect(hit);
+```
+
+#### Direct diffuse
+
+Use engine light data. For each selected light:
+
+```glsl
+float NoL = max(dot(hitNormal, lightDir), 0.0);
+vec3 direct = lightRadiance * NoL * visibility;
+```
+
+Visibility options:
+
+1. existing shadow maps for directional/spot lights;
+2. software shadow ray if BVH is available;
+3. unshadowed approximation for early MVP;
+4. many-light stochastic sampling for high light counts.
+
+#### Existing surfel indirect at hit
+
+Query surfel grid at hit point and gather irradiance exactly like final apply, but with lower max surfel count to keep tracing cheap. This is how multi-bounce / effectively infinite-bounce lighting appears over time.
+
+#### Sample estimator
+
+For diffuse irradiance at the source surfel:
+
+```glsl
+float cosTheta = max(dot(rayDir, surfel.normal), 0.0);
+vec3 sampleIrradiance = Li * cosTheta / max(rayPdf, 1e-5);
+```
+
+Use radiometric consistency. If Nox’s lighting buffer stores diffuse radiance rather than irradiance, document the convention and keep it consistent through apply.
+
+---
+
+## 5.11 Pass 18 — Adaptive Temporal Integration
+
+### Purpose
+Accumulate irradiance across frames while reacting quickly to scene changes.
+
+EA GIBS describes a modified moving average with long-term mean plus short-term mean/variance. Implement this simplified MSME-style estimator:
+
+```glsl
+void IntegrateSurfelSample(inout Surfel s, vec3 x)
+{
+    // Short-term exponential mean.
+    float aShort = 0.20;
+    vec3 oldShort = s.shortMean.rgb;
+    s.shortMean.rgb = mix(s.shortMean.rgb, x, aShort);
+
+    // Short-term variance proxy.
+    vec3 delta = x - oldShort;
+    s.shortM2.rgb = mix(s.shortM2.rgb, delta * delta, aShort);
+
+    float varLum = luminance(s.shortM2.rgb);
+    float diffLum = luminance(abs(s.shortMean.rgb - s.irradiance.rgb));
+
+    float reactive = saturate(varLum * varianceReactiveScale + diffLum * differenceReactiveScale);
+    float alpha = mix(alphaStable, alphaReactive, reactive);
+
+    // New surfels converge quickly.
+    if (IsNewSurfel(s)) alpha = max(alpha, alphaNewSurfel);
+
+    s.irradiance.rgb = mix(s.irradiance.rgb, s.shortMean.rgb, alpha);
+    s.irradiance.a = saturate(s.irradiance.a + confidenceGain);
+    s.debug.x = varLum;
+}
+```
+
+Recommended starting values:
+
+```cpp
+alphaStable = 0.02f;
+alphaReactive = 0.35f;
+alphaNewSurfel = 0.60f;
+varianceReactiveScale = 4.0f;
+differenceReactiveScale = 2.0f;
+```
+
+Clamp extreme radiance to reduce fireflies:
+
+```glsl
+x = min(x, vec3(maxSampleIrradiance));
+```
+
+Do not hide severe errors with excessive clamping. Add debug view for clamped samples.
+
+---
+
+## 5.12 Pass 19 — Radial Depth Function
+
+### Purpose
+Reduce light leaking through walls and across nearby disconnected surfaces.
+
+Each surfel stores a low-resolution depth distribution over its normal hemisphere. During ray integration, if the ray hits geometry within approximately the surfel diameter, update the radial depth texel corresponding to ray direction.
+
+### Hemisphere mapping
+
+Use octahedral or polar mapping. Keep mapping consistent for update and lookup.
+
+```glsl
+ivec2 texel = HemiDirectionTo4x4Texel(localDir);
+uint idx = surfelID * 16 + texel.y * 4 + texel.x;
+```
+
+### Update
+
+```glsl
+float d = min(hitDistance, surfel.radius * 2.0);
+float a = 0.05;
+mean = mix(mean, d, a);
+meanSq = mix(meanSq, d * d, a);
+```
+
+Initialise `mean = surfel.radius * 2.0`, `meanSq = mean * mean`.
+
+### Visibility test during final gather
+
+When a receiver point samples a surfel:
+
+1. Compute vector from surfel to receiver.
+2. Map direction to radial depth texel.
+3. Fetch mean and variance.
+4. If receiver distance is greater than mean, attenuate using a Chebyshev-style bound:
+
+```glsl
+float variance = max(meanSq - mean * mean, minVariance);
+float delta = receiverDistance - mean;
+float pMax = variance / (variance + delta * delta);
+float visibility = (receiverDistance <= mean) ? 1.0 : saturate(pMax);
+visibility = smoothstep(0.05, 1.0, visibility);
+```
+
+Multiply surfel contribution by `visibility`. Add debug mode showing radial-depth rejection.
+
+---
+
+## 5.13 Pass 20 — Irradiance Sharing / Spatial Filtering
+
+### Purpose
+Reduce blotchy variance by sharing irradiance between neighbouring surfels.
+
+For each high-variance surfel:
+
+1. Query neighbouring surfels in the same grid cell and adjacent cells.
+2. Reject neighbours with incompatible normals, large plane distance, or radial depth occlusion.
+3. Compute weighted average:
+
+```glsl
+float w = normalWeight * distanceWeight * planeWeight * confidenceWeight;
+```
+
+4. Blend only when variance is high:
+
+```glsl
+float shareAmount = saturate(varLum * shareScale) * maxShareAmount;
+s.irradiance.rgb = mix(s.irradiance.rgb, neighbourAverage, shareAmount);
+```
+
+Do not over-filter. Preserve colour bleeding gradients and contact contrast.
+
+---
+
+## 5.14 Pass 21 / 22 — Final Deferred Apply
+
+### Purpose
+Add surfel GI to the lighting buffer.
+
+For each shaded pixel:
+
+1. Reconstruct world position and normal.
+2. Map world position to surfel grid cell.
+3. Fetch up to `maxGatherSurfelsPerPixel` surfels from cell and neighbours if needed.
+4. Accumulate irradiance:
+
+```glsl
+vec3 indirectIrradiance = vec3(0.0);
+float totalWeight = 0.0;
+
+for each surfel s:
+    vec3 d = pixelPos - s.worldPos;
+    float dist = length(d);
+    float radius = s.radius;
+    float distanceW = exp(-(dist * dist) / max(radius * radius, 1e-4));
+    float normalW = saturate((dot(pixelNormal, s.normal) - finalGatherNormalCos) /
+                             (1.0 - finalGatherNormalCos));
+    float planeW = exp(-abs(dot(d, s.normal)) / max(radius * 0.33, 1e-4));
+    float radialW = useRadialDepth ? RadialDepthVisibility(s, pixelPos) : 1.0;
+    float w = distanceW * normalW * planeW * radialW * s.irradiance.a;
+    indirectIrradiance += s.irradiance.rgb * w;
+    totalWeight += w;
+```
+
+5. If `totalWeight < 1`, blend in cell-average irradiance:
+
+```glsl
+indirectIrradiance += cellAverage * max(0.0, 1.0 - totalWeight);
+totalWeight = max(totalWeight, 1.0);
+```
+
+6. Convert irradiance to outgoing diffuse contribution:
+
+```glsl
+vec3 indirectDiffuse = albedo * indirectIrradiance / PI;
+lightingBuffer.rgb += settings.indirectIntensity * indirectDiffuse;
+```
+
+If the engine’s PBR convention already folds `1/PI` into diffuse BRDF elsewhere, avoid double division. Document the convention in code comments.
+
+---
+
+## 6. Many-Light Sampling
+
+### 6.1 MVP reservoir light sampling
+
+When many point/spot lights exist, do not evaluate all lights at each ray hit. Use stochastic reservoir-style selection.
+
+For each ray hit:
+
+1. Randomly sample `N = 4..8` lights from the active light list.
+2. Compute weight:
+
+```glsl
+weight = lightIntensity * attenuation * max(dot(hitNormal, lightDir), 0.0);
+```
+
+3. Keep one winner with weighted reservoir update.
+4. Trace or query visibility for the winner only.
+5. Normalise contribution by selected PDF.
+
+### 6.2 Target stochastic lightcuts
+
+Build a light tree each frame or when lights change:
+
+1. Store light positions in view space for precision.
+2. Morton-sort lights by position.
+3. Build tree bottom-up.
+4. Each internal node stores bounds, total intensity, representative colour, and child indices.
+5. At hit point, choose a cut with 2–8 nodes based on error/importance.
+6. Stochastically descend from each cut node to one light using child probabilities.
+7. Evaluate chosen lights with visibility.
+
+Lightcuts are a target feature because they converge faster in many-light stress scenes, but they are more complex and more expensive than reservoir selection.
+
+### 6.3 Future ReSTIR-like extension
+
+Store selected light reservoirs per surfel or per grid cell and resample spatially/temporally. This is a stretch goal, not required for the first final artefact.
+
+---
+
+## 7. Probe Clipmaps for Transparent / Non-Deferred Objects
+
+Surfels spawn from opaque G-buffer data, so they do not naturally support transparent or forward-rendered objects. EA GIBS uses ray-traced probes for arbitrary-location irradiance. Implement this only after the opaque surfel system is stable.
+
+### 7.1 Probe data
+
+Use low-order spherical harmonics, e.g. 3 bands / 9 coefficients per RGB channel.
+
+```glsl
+struct ProbeSH
+{
+    vec4 shR0; // pack coefficients across multiple vec4s
+    vec4 shR1;
+    vec4 shR2;
+    vec4 shG0;
+    vec4 shG1;
+    vec4 shG2;
+    vec4 shB0;
+    vec4 shB1;
+    vec4 shB2;
+    vec4 variance;
+};
+```
+
+### 7.2 Clipmap structure
+
+Use nested volumes centred on the camera:
+
+```cpp
+levels = 3 or 4;
+resolutionPerLevel = 16^3 or 24^3;
+levelWorldSize[i] = baseSize * pow(2, i);
+```
+
+When the camera moves outside a level’s centre region:
+
+1. Shift probe volume indices.
+2. Preserve existing probes where possible.
+3. Initialise newly exposed probes from the next coarser level by interpolation.
+4. Update only a subset of probes per frame.
+
+### 7.3 Probe integration
+
+For selected probes per frame:
+
+1. Shoot a few rays over the sphere.
+2. Evaluate incident radiance via the same trace/hit-light path as surfels.
+3. Project sample to SH.
+4. Accumulate with the same adaptive estimator.
+5. Apply de-ringing/windowing to reduce SH banding.
+
+### 7.4 Probe sampling
+
+Forward or transparent shaders:
+
+1. Select highest-detail clipmap containing world position.
+2. Either blend two nearest levels near borders or use blue-noise dithered level selection.
+3. Reconstruct irradiance from SH using surface normal.
+4. Add diffuse/transparent lighting contribution.
+
+---
+
+## 8. Debug Views
+
+Implement these debug modes before optimising:
+
+| Mode | Description |
+|---|---|
+| `SurfelSpheres` | draw surfel disks/spheres coloured by irradiance |
+| `SurfelNormals` | surfel normal visualisation |
+| `SurfelAge` | age / persistence heatmap |
+| `SurfelVariance` | short-term variance, blue low, red high |
+| `SurfelCoverage` | screen-space coverage per tile |
+| `SurfelGridCells` | grid cell boundaries / selected cell under cursor |
+| `CellOccupancy` | heatmap of surfels per cell |
+| `SpawnRecycle` | green spawned, red recycled |
+| `RayCounts` | requested / allocated rays per surfel |
+| `RayGuide` | selected surfel’s 6x6 guide map |
+| `RadialDepth` | radial depth visibility/rejection |
+| `IndirectOnly` | final indirect diffuse only |
+| `IndirectDifferenceVsSSGI` | compare against current SSGI |
+| `ProbeClipmapLevel` | transparent probe sample level, if implemented |
+| `Timings` | per-pass GPU timings overlay |
+
+Add hotkeys or ImGui controls to switch modes and edit core settings live.
+
+---
+
+## 9. Performance Rules
+
+1. All GPU buffers must be preallocated at startup or resolution change.
+2. No per-frame heap allocation in renderer hot path.
+3. Use `glMemoryBarrier` correctly after compute passes writing SSBO/image data.
+4. Prefer ping-pong buffers for ray queues and temporary reductions.
+5. Tune compute workgroups; start with 64 or 128 threads per group.
+6. Keep separate GPU timers for spawn, update, grid build, ray work, filtering, and apply.
+7. Track overflows for surfel pool, grid entries, ray queue, and light list.
+8. Add quality tiers:
+
+```text
+Low:     fewer surfels, uniform grid, no ray guiding, small ray budget
+Medium:  non-linear grid, radial depth, ray budget scaling
+High:    ray guiding, ray binning, irradiance sharing, software BVH
+Ultra:   many-light tree, probes, higher resolution / budgets
 ```
 
 ---
 
-## 22. Validation checklist
+## 10. Milestone Plan for Agent
 
-A coding agent should not consider the implementation done until these tests pass.
+### Milestone A — Renderer plumbing and data
 
-### 22.1 Spawn / persistence
+- Add `SurfelGIManager` and settings.
+- Create SSBOs: surfel pool, free list, counters.
+- Add transform ID to G-buffer.
+- Add transform buffer.
+- Add shader reload and debug UI.
+- Acceptance: renderer runs with GI enabled but no visible GI yet; debug counters valid.
 
-- surfels appear only in under-covered regions
-- camera pan away and back returns to previously solved lighting faster than a cold start
-- distant geometry uses larger surfels and fewer of them
+### Milestone B — Persistent surfel spawning
 
-### 22.2 Transform following
+- Implement 16x16 tile coverage pass.
+- Spawn surfels from G-buffer.
+- Update surfel world positions from transform buffer.
+- Implement free-list pop/push and simple recycling.
+- Debug draw surfel disks.
+- Acceptance: surfels cover visible opaque geometry, persist when camera moves, and follow moving rigid objects.
 
-- rigid objects drag attached surfels correctly
-- skinned characters keep approximate lighting coherence
-- destroying the source object invalidates attached surfels safely
+### Milestone C — Uniform grid and final gather
 
-### 22.3 Recycling
+- Build uniform grid.
+- Insert surfels and compute cell averages.
+- Implement final deferred apply from surfel irradiance.
+- Initialise surfels with simple ambient/skylight so gather can be seen.
+- Acceptance: indirect-only debug view shows stable surfel-based lighting field.
 
-- fixed max surfel count is never exceeded
-- free stack remains coherent under stress
-- no spawn/recycle thrash during normal camera movement
+### Milestone D — Ray integration MVP
 
-### 22.4 Acceleration structure
+- Generate cosine hemisphere rays.
+- Implement screen-space ray trace.
+- Evaluate direct light at hit point, initially unshadowed or shadow-map based.
+- Integrate irradiance temporally.
+- Acceptance: colour bleeding works in a Cornell-box-style test; moving light causes surfel irradiance to update.
 
-- lookup cost stays bounded as world size grows
-- average surfels per cell stays roughly stable in screen space
-- neighbor overlap insertion removes boundary seams
+### Milestone E — OpenGL off-screen tracing
 
-### 22.5 Leak suppression
+- Add surfel-grid fallback trace.
+- Add software BVH trace if feasible within project time.
+- Use existing surfel indirect at hit for multi-bounce over time.
+- Acceptance: off-screen coloured wall continues contributing after it leaves screen, unlike SSGI.
 
-- bright exterior surfels do not light dark interiors through thin walls
-- disabling radial depth moments visibly reintroduces the problem
-- 4x4 depth moments are enough in common scenes
+### Milestone F — Artifact mitigation
+- Implement radial depth mean / variance.
+- Add radial depth test in final apply and neighbour sharing.
+- Acceptance: wall light-leak test visibly improves with radial depth enabled.
 
-### 22.6 Temporal accumulation
+### Milestone G — Adaptive quality
 
-- static scenes converge to low-noise results
-- light changes react quickly
-- spawned surfels converge faster than dormant ones
+- Implement variance-driven ray requests.
+- Enforce global ray budget.
+- Add ray guiding 6x6 map.
+- Add ray binning/sorting if time permits.
+- Acceptance: stable scene ray cost drops after convergence; new/high-variance surfels get more rays.
 
-### 22.7 Ray guiding
+### Milestone H — Many lights and probes
 
-- guiding outperforms pure cosine sampling in directional-light-entry scenes
-- mixed guide + cosine sampling remains unbiased relative to the chosen estimator
+- Add reservoir light sampling.
+- Add stochastic lightcuts only if reservoir is insufficient.
+- Add probe clipmaps for transparent / forward objects as stretch.
+- Acceptance: many-light test converges better than brute-force random light sampling under equal ray budget.
 
-### 22.8 Final apply
+### Milestone I — Evaluation and polish
 
-- missing coverage is softened by cell-average fallback
-- no obvious popping at cell boundaries
-- weighting remains stable under motion
-
-### 22.9 Transparent probe fallback
-
-- transparent geometry receives plausible indirect diffuse
-- probe clip levels transition without visible hard seams
-
----
-
-## 23. Common failure modes and fixes
-
-### 23.1 Surfel overspawn
-
-**Symptoms:** too many surfels on high-detail or noisy geometry  
-**Fixes:**
-
-- raise coverage threshold
-- clamp spawn count per tile
-- use normal/depth discontinuity aware coverage
-- combine with SSGI for near-screen detail, as the talk suggests as a future direction
-
-### 23.2 Light bleeding
-
-**Symptoms:** bright surfels affect geometry through walls  
-**Fixes:**
-
-- enable radial depth moments
-- reduce surfel radius
-- tighten final apply weight
-- avoid cross-surface sharing in neighborhood filter
-
-### 23.3 Temporal lag / ghosting
-
-**Symptoms:** irradiance takes too long to respond  
-**Fixes:**
-
-- increase short-term alpha
-- increase reactive long-term alpha
-- raise initial variance for spawned / moved surfels
-
-### 23.4 Noise remains blotchy
-
-**Symptoms:** independent surfels converge at visibly different speeds  
-**Fixes:**
-
-- enable irradiance sharing under high variance
-- improve ray guiding
-- raise minimum rays for visible surfels
-
-### 23.5 Poor traversal performance
-
-**Symptoms:** ray pass takes too long even with low ray count  
-**Fixes:**
-
-- bin rays by position + direction
-- reduce divergence in hit shading
-- compact active surfel list
-- reduce dynamic geometry rebuild cost
+- Add controlled test scenes.
+- Add GPU timing capture.
+- Add comparison screenshots vs SSGI and direct-only.
+- Add documentation and known limitations.
+- Acceptance: artefact is stable enough for video demonstration and dissertation evaluation.
 
 ---
 
-## 24. Recommended implementation order for an engine team
+## 11. Required Test Scenes
 
-This sequence minimizes integration pain.
+Create or configure these scenes inside Nox:
 
-1. **Opaque surfel storage + spawn**
-2. **Persistent transforms**
-3. **Uniform-grid prototype**
-4. **Final-apply pass from cached irradiance only**
-5. **Simple cosine-sampled ray solve**
-6. **Temporal accumulation**
-7. **Adaptive ray budget**
-8. **Ray binning**
-9. **Radial depth leak suppression**
-10. **Ray guiding**
-11. **Neighborhood irradiance sharing**
-12. **Many-light sampling**
-13. **Transparent probe clipmaps**
-14. **Replace prototype grid with the non-linear production structure**
+1. **Cornell colour-bleed box**  
+   White box, red wall, blue/green wall, one area/light source. Demonstrates bounce colour.
 
-This order matters. Do not start with many-light sampling or probe clipmaps before the opaque surfel pipeline is stable.
+2. **Off-screen bounce test**  
+   Bright coloured wall starts visible, then camera turns away. SSGI should lose contribution; surfel GI should persist.
 
----
+3. **Thin wall leak test**  
+   Bright light on one side of a wall, dark room on other side. Radial depth should reduce leaking.
 
-## 25. What is faithful to GIBS and what is an adaptation
+4. **Moving rigid object test**  
+   Coloured cube moves near white floor. Surfels should follow transform and update lighting.
 
-### Faithful to the published 2021 talk
+5. **Dynamic light test**  
+   Light turns on/off or changes colour. Adaptive estimator should react faster than a fixed low-alpha average.
 
-- G-buffer opportunistic surfel spawn
-- persistent surfels
-- transform-attachment to geometry and one-bone skinned support
-- fixed-capacity surfel memory with GPU stack recycle
-- non-linear camera-centered surfel lookup structure
-- final apply by gathering nearby surfels and falling back to cell average
-- radial depth moments for leak suppression
-- variance-aware temporal accumulation
-- adaptive per-surfel ray counts under global ray budget
-- per-surfel ray guiding
-- irradiance sharing across neighboring surfels
-- probe clipmap fallback for transparency
+6. **Many light stress test**  
+   100–1000 small lights. Compare random light sampling, reservoir sampling, and lightcuts if implemented.
 
-### Adaptations required for a complete implementation
-
-- exact equations for spawn coverage
-- exact non-linear grid mapping
-- exact accumulation coefficients
-- exact final weighting function
-- exact many-light integrator details
-- exact buffer packing
-
-That distinction should remain explicit in code comments and technical docs.
+7. **Transparency/probe test**  
+   Only if probe clipmaps are implemented. Transparent object samples indirect irradiance without spawning surfels on itself.
 
 ---
 
-## 26. Practical advice for OpenGL 4.6 or non-RT implementations
+## 12. Acceptance Criteria
 
-The original GIBS talk assumes hardware ray tracing. If you implement in OpenGL 4.6 without RT cores, keep the architecture but replace the ray backend.
+### Functional acceptance
 
-### 26.1 Keep
+- GI can be toggled on/off at runtime.
+- Surfel pool is bounded and does not grow dynamically.
+- Surfels spawn from G-buffer coverage gaps.
+- Surfels persist across frames and are recycled gradually.
+- Surfels follow rigid transforms using transform IDs.
+- Grid lookup supports final gather and debug occupancy views.
+- Indirect diffuse lighting appears in deferred output.
+- Ray integration updates surfel irradiance over time.
+- Dynamic lights affect indirect lighting.
+- Off-screen indirect contribution persists better than SSGI.
+- Radial depth reduces at least one obvious light-leak test.
 
-- surfels
-- persistence
-- adaptive budgets
-- temporal accumulation
-- radial depth
-- guiding
-- final apply
+### Technical acceptance
 
-### 26.2 Replace
+- Uses OpenGL 4.6 compute shaders and SSBOs.
+- Uses explicit memory barriers between dependent compute/render passes.
+- All major buffers are named with `glObjectLabel` where debug contexts support it.
+- Shader compilation errors include file name and pass name.
+- Per-pass timings are recorded.
+- Overflow counters are visible in debug UI.
+- No synchronous CPU readbacks in normal rendering mode.
 
-- hardware RTAS traversal with:
-  - software BVH traversal in compute
-  - or a hybrid of screen-space tracing for short-range hits plus software BVH for off-screen rays
+### Evaluation acceptance
 
-### 26.3 Expect
+The implementation must support measurements for:
 
-- fewer rays per frame
-- heavier reliance on temporal reuse
-- more importance from ray guiding and irradiance sharing
-
-This is still viable because surfel GI is designed to amortize sparse ray work over time.
+- total GI GPU time;
+- per-pass GPU time;
+- live surfel count;
+- spawned/recycled surfels per frame;
+- requested/allocated rays per frame;
+- average rays per live surfel;
+- grid occupancy distribution;
+- visual comparison vs direct-only and SSGI;
+- temporal stability under light/camera movement.
 
 ---
 
-## 27. Final condensed spec
+## 13. Known Risks and Required Fallbacks
 
-If an agent needs the shortest possible interpretation:
-
-> Build a fixed-capacity GPU surfel cache on opaque surfaces. Spawn surfels from under-covered G-buffer regions using 16x16 screen tiles and constant projected surfel size. Keep surfels persistent across frames by storing parent transform ids and local-space attachment. Recycle them probabilistically under memory pressure using contribution recency and distance. Insert surfels every frame into a camera-centered non-linear grid with fine central cells and coarser outer trapezoidal slices. For each surfel, request a ray count based on variance and visibility importance, normalize against a global frame budget, generate a mixture of cosine and guided rays, bin them for traversal coherence, trace them, and evaluate direct lighting plus previously cached surfel lighting at hit points. Accumulate the returned irradiance with a variance-aware multi-scale temporal estimator. Maintain a 4x4 radial depth-moment field per surfel hemisphere and use a Chebyshev-style test during final apply to prevent light leaking through walls. At shading time, reconstruct the pixel world position, fetch nearby surfels from the containing cell, weight their irradiance by distance and orientation, attenuate with the radial depth test, and fill missing weight with cell-average irradiance. Use a clipmapped SH probe volume as fallback for transparency and geometry not suitable for surfels.
+| Risk | Symptom | Required fallback |
+|---|---|---|
+| Software BVH too slow | ray pass dominates frame | use screen-space + surfel fallback, lower ray budget |
+| Uniform grid scale issues | distant surfels overfill cells | implement non-linear grid or multiple grid cascades |
+| Light leaking | bright surfels affect hidden surfaces | radial depth test, normal/plane rejection, smaller radius |
+| Temporal lag | GI reacts too slowly | increase reactive alpha from variance/difference |
+| Noise/blotches | sparse rays visible | irradiance sharing, ray guiding, TAA, higher budget |
+| Overspawning | too many surfels on detailed geometry | stronger coverage threshold, normal variance rules, recycle pressure |
+| Surfels detach from skinned mesh | lighting floats near characters | dominant bone IDs or reject skinned spawning until implemented |
+| GPU memory pressure | allocation failure / slow frame | lower `maxSurfels`, compact guide/radial storage |
 
 ---
 
-## References
+## 14. Implementation Notes for OpenGL 4.6
 
-1. **SIGGRAPH Advances 2021 - Surfel GI** (uploaded course slides / transcript extract). This is the primary source for the production GIBS architecture, including spawning, persistence, recycling, non-linear acceleration, radial depth moments, adaptive ray counts, ray guiding, irradiance sharing, many-light sampling, and transparent probe fallback.
-2. **EA SEED / Frostbite SIGGRAPH 2021 pages** describing GIBS as a real-time indirect diffuse GI method based on surfels, used in Frostbite and designed for dynamic scenes and arbitrary scale.
-3. **Pfister et al., 2000, Surfels: Surface Elements as Rendering Primitives.** Foundational surfel paper. Important for the geometric idea of surfels as surface elements, even though modern GIBS uses them as irradiance caches rather than direct rendering primitives.
-4. **Kajiya, 1986, The Rendering Equation.** The theoretical basis of the indirect illumination integral that GIBS approximates.
-5. **Sloan, Kautz, Snyder, 2002, Precomputed Radiance Transfer.** Relevant for the SH-based probe fallback and for the general idea of transport caching.
-6. **Zhang, 2023, Design and implementation of a global illumination rendering system based on Surfels.** Useful as an implementation-oriented companion and for practical adaptations where static and dynamic surfels are treated differently.
+### 14.1 Barriers
+
+Use barriers after each write pass before subsequent reads. Typical examples:
+
+```cpp
+glDispatchCompute(groupsX, groupsY, groupsZ);
+glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+```
+
+Use more specific barriers where possible. Do not rely on implicit ordering between compute and draw calls.
+
+### 14.2 SSBO binding discipline
+
+Define shared binding indices in one header used by C++ and GLSL generation:
+
+```cpp
+enum SurfelGIBindings
+{
+    B_SURFELS = 10,
+    B_SURFEL_FREELIST = 11,
+    B_SURFEL_COUNTERS = 12,
+    B_GRID_HEADERS = 13,
+    B_GRID_ENTRIES = 14,
+    B_RAY_REQUESTS = 15,
+    B_RAYS_IN = 16,
+    B_RAYS_SORTED = 17,
+    B_RAY_HITS = 18,
+    B_RADIAL_DEPTH = 19,
+    B_GUIDE_MAP = 20,
+    B_GUIDE_SCALE = 21,
+    B_TRANSFORMS = 22,
+    B_LIGHTS = 23,
+    B_BVH_NODES = 24,
+    B_BVH_TRIANGLES = 25
+};
+```
+
+### 14.3 Shader organisation
+
+Recommended shader files:
+
+```text
+assets/shaders/surfel_gi/common.glsl
+assets/shaders/surfel_gi/update_surfels.comp
+assets/shaders/surfel_gi/recycle_surfels.comp
+assets/shaders/surfel_gi/clear_grid.comp
+assets/shaders/surfel_gi/build_grid.comp
+assets/shaders/surfel_gi/cell_average.comp
+assets/shaders/surfel_gi/coverage.comp
+assets/shaders/surfel_gi/spawn.comp
+assets/shaders/surfel_gi/request_rays.comp
+assets/shaders/surfel_gi/allocate_rays.comp
+assets/shaders/surfel_gi/generate_rays.comp
+assets/shaders/surfel_gi/bin_rays.comp
+assets/shaders/surfel_gi/prefix_sum.comp
+assets/shaders/surfel_gi/scatter_rays.comp
+assets/shaders/surfel_gi/trace_rays.comp
+assets/shaders/surfel_gi/integrate.comp
+assets/shaders/surfel_gi/filter.comp
+assets/shaders/surfel_gi/apply_indirect.frag
+assets/shaders/surfel_gi/debug_surfels.vert
+assets/shaders/surfel_gi/debug_surfels.frag
+```
+
+---
+
+## 15. Agent Coding Rules
+
+1. Implement in small passes. Do not write all shaders at once without testing.
+2. After every pass, add a debug counter or debug visualisation.
+3. Keep the renderer working if GI resources fail to initialise; disable GI and log an error.
+4. Use deterministic random seeds for reproducible evaluation. Use blue-noise textures if available; otherwise hash-based RNG.
+5. Comment every approximation that differs from EA’s hardware-ray-traced version.
+6. Keep all tuning constants in `SurfelGISettings`, not hardcoded inside shaders, unless compile-time constants are required for buffer layout.
+7. Add asserts for SSBO sizes and OpenGL limits.
+8. Do not remove the existing SSGI path; it is needed for comparison and potential hybridisation.
+9. No hidden external dependencies unless explicitly approved.
+10. Produce screenshots and timing logs for each milestone.
+
+---
+
+## 16. Future Extensions
+
+Only implement these after the required system is stable:
+
+- hybrid SSGI + surfel GI, using SSGI for fine visible detail and surfels for off-screen persistence;
+- ReSTIR-like light reservoir reuse per surfel or per grid cell;
+- probe clipmaps with SH for transparents and forward shading;
+- hardware ray tracing backend if the renderer later moves to Vulkan/DXR;
+- surfel compaction pass to improve cache locality;
+- per-material GI controls;
+- specular GI approximation using probes or radiance cache;
+- editor tooling to inspect surfel lifetime and per-object GI contribution.
+
+---
+
+## 17. Reference Notes
+
+Use these as conceptual anchors while coding:
+
+- **Kajiya rendering equation:** establishes GI as recursive light transport; this implementation approximates the diffuse indirect part with a persistent surface cache.
+- **Pfister et al. surfels:** a surfel is a point/surface element with position, normal, colour/material, and radius-like support; Nox uses surfels as irradiance cache elements, not as primary rendering primitives.
+- **EA GIBS 2021:** dynamic G-buffer surfel spawning, persistent surfel cache, transform tracking, non-linear grid, radial depth, adaptive integration, ray guiding, ray binning, many-light sampling, and probe clipmaps.
+- **Zhang 2023 surfel renderer:** supports the idea of storing surfel attributes in GPU buffers and adapting surfel lifecycle for static/dynamic objects.
+- **OpenGL 4.6 / GLSL 460:** compute shaders can write images, SSBOs, and atomic counters; SSBOs are writable and suitable for large GPU-side surfel pools.
+
+---
+
+## 18. Bibliography / Source Trail
+
+- Electronic Arts SEED. “SIGGRAPH 21: Global Illumination Based on Surfels.” EA official site, 2021.  
+  https://www.ea.com/seed/news/siggraph21-global-illumination-surfels
+- Electronic Arts SEED. “SEED Presentations at SIGGRAPH 2021.” EA official site, 2021.  
+  https://www.ea.com/seed/news/seed-siggraph-2021
+- Halen, H., Brinck, A., Hayward, K., & Bei, X. “Global Illumination Based on Surfels.” SIGGRAPH Advances in Real-Time Rendering in Games, 2021.
+- Electronic Arts. “GIBS Lighting Technology in EA SPORTS College Football 25.” EA Technology, 2024.  
+  https://www.ea.com/technology/news/gibs-lighting-ea-sports-college-football-25
+- Pfister, H., Zwicker, M., van Baar, J., & Gross, M. “Surfels: Surface Elements as Rendering Primitives.” SIGGRAPH 2000.
+- Kajiya, J. T. “The Rendering Equation.” SIGGRAPH 1986.
+- Zhang, H. “Design and Implementation of a Global Illumination Rendering System Based on Surfels.” ICIIBMS 2023.
+- Khronos Group. “The OpenGL Shading Language, Version 4.60.”
+- Khronos OpenGL Wiki. “Shader Storage Buffer Object.”
+
+---
+
+## 19. Final Deliverable Checklist
+
+Before declaring the GI system complete, ensure the repository contains:
+
+- [ ] C++ subsystem classes and renderer integration.
+- [ ] GLSL compute/fragment/debug shaders.
+- [ ] Configurable `SurfelGISettings` with UI controls.
+- [ ] Debug views listed in section 8.
+- [ ] Test scenes listed in section 11.
+- [ ] GPU timing overlay.
+- [ ] Screenshot set: direct-only, SSGI, surfel GI, indirect-only, debug surfels.
+- [ ] Performance table at minimum/medium/high settings.
+- [ ] Known limitations document.
+- [ ] Dissertation-ready technical notes explaining deviations from EA GIBS due to OpenGL/no hardware RT.
+

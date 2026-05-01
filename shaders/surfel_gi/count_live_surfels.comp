@@ -1,0 +1,29 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uMaxSurfels;
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID >= uMaxSurfels) {
+        return;
+    }
+
+    if (SurfelIsAlive(surfels[surfelID])) {
+        atomicAdd(counters.liveCount, 1u);
+    }
+}

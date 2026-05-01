@@ -25,6 +25,13 @@
 #define B_GRID_COUNTERS 29
 #define B_SURFEL_GI_SETTINGS 30
 
+#define T_SURFEL_GBUFFER_NORMAL_RM 0
+#define T_SURFEL_GBUFFER_ALBEDO_AO 1
+#define T_SURFEL_GBUFFER_MATERIAL_ID 2
+#define T_SURFEL_GBUFFER_EMISSIVE 3
+#define T_SURFEL_GBUFFER_TRANSFORM_ID 4
+#define T_SURFEL_GBUFFER_DEPTH 5
+
 #define SURFEL_DEAD 0u
 #define SURFEL_ALIVE (1u << 0)
 #define SURFEL_NEW (1u << 1)
@@ -56,6 +63,14 @@ struct SurfelCounters {
     uint allocatedRays;
     uint overflowSurfels;
     uint overflowGridEntries;
+    uint rejectedInvalidDepth;
+    uint rejectedInvalidTransform;
+    uint rejectedInvalidMaterial;
+    uint rejectedOutsideGrid;
+    uint rejectedInvalidWorldPos;
+    uint rejectedInvalidNormal;
+    uint rejectedInvalidRadius;
+    uint rejectedPoolFull;
 };
 
 struct SurfelGISettingsGpu {
