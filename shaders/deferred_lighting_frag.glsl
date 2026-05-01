@@ -662,7 +662,7 @@ vec3 EvaluateIndirectDiffuseMap(int sourceIndex, vec3 N, vec3 V, PrincipledSurfa
 	vec3 indirectIrradiance = max(indirectSample.rgb, vec3(0.0));
 	float indirectAO = clamp(indirectSample.a, 0.0, 1.0);
 	float indirectAttenuation = mix(0.35, 1.0, indirectAO);
-	float sourceScale = 2.5;
+	float sourceScale = 1.0;
 	vec3 contribution = ComputeIndirectGIResponse(indirectIrradiance, N, V, surface, diffuseAO, specularAO) * strength * indirectAttenuation * sourceScale;
 	return CompressIndirectContribution(contribution);
 }

@@ -99,7 +99,10 @@ struct SpawnCandidate
 
 bool MaterialAllowsSurfelGI(uint materialID)
 {
-    return materialID != 2u;
+    // RT3 stores a stable material key in the deferred renderer, not a material
+    // route enum. Transmission lives in RT7, so rejecting key 2 here drops
+    // valid opaque geometry such as Cornell's white material.
+    return true;
 }
 
 bool IsFiniteVec3(vec3 value)
@@ -178,7 +181,7 @@ float ComputeCandidateCoverage(vec3 worldPos, vec3 worldNormal, uvec3 baseCell)
             firstEntry = cell * uMaxSurfelsPerCell;
         }
 
-        uint strideSeed = SurfelHash(uFrameIndex ^ (cell * 747796405u));
+        uint strideSeed = SurfelHash((cell * 747796405u) ^ (uint(baseCell.x) * 2891336453u) ^ (uint(baseCell.y) * 1597334677u) ^ (uint(baseCell.z) * 3812015801u));
         uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
         uint sampleStride = max(storedCount / max(budget, 1u), 1u);
         for (uint i = 0u; i < budget; ++i) {
@@ -191,7 +194,7 @@ float ComputeCandidateCoverage(vec3 worldPos, vec3 worldNormal, uvec3 baseCell)
                 continue;
             }
 
-            float weight = SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos);
+            float weight = SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos, uGridMin, uGridMax, uGridResolution);
             coverage += weight;
             if (weight > SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT) {
                 atomicMax(surfels[entry.surfelID].frameInfo.x, uFrameIndex);
@@ -262,13 +265,6 @@ bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
         return false;
     }
 
-    uint baseCellIndex = SurfelFlattenCell(baseCell, uGridResolution);
-    if (baseCellIndex < uGridCellCount &&
-        gridHeaders[baseCellIndex].entryCount >= uMaxSurfelsPerCell) {
-        atomicAdd(counters.rejectedOutsideGrid, 1u);
-        return false;
-    }
-
     candidate.valid = true;
     candidate.worldPos = worldPos;
     candidate.worldNormal = worldNormal;
@@ -304,12 +300,8 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
 
     vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0));
     vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
-    vec3 lightToSurface = SurfelSafeNormalize(uDirectionalLightDirection);
-    vec3 surfaceToLight = -lightToSurface;
-    float nDotL = max(dot(worldNormal, surfaceToLight), 0.0);
-    vec3 skyDiffuse = uSkyRadiance * max(worldNormal.y, 0.0);
-    vec3 initialIrradiance = emissive + uDirectionalLightRadiance * nDotL + skyDiffuse;
-    float initialConfidence = SurfelLuminance(initialIrradiance) > 0.0 ? 0.35 : 0.05;
+    vec3 initialIrradiance = emissive;
+    float initialConfidence = SurfelLuminance(initialIrradiance) > 0.0 ? 0.35 : 0.02;
 
     Surfel surfel;
     surfel.worldPos_radius = vec4(worldPos, radius);

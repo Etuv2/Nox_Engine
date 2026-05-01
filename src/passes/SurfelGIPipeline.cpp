@@ -4,16 +4,23 @@
 #include "../Camera.h"
 #include "../DirectionalLight.h"
 #include "../GLState.h"
+#include "../LightManager.h"
 #include "../RenderContext.h"
 #include "../RenderSystem.h"
+#include "../RTSceneResources.h"
 #include "../SceneGraph.h"
 #include "../ShaderLoader.h"
+#include "../ShadowMapper.h"
+#include "../TextureUnits.h"
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <string>
+#include <vector>
 #include <glm/geometric.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -27,6 +34,33 @@ constexpr GLuint kSurfelGIGBufferMaterialIDUnit = 2u;
 constexpr GLuint kSurfelGIGBufferEmissiveUnit = 3u;
 constexpr GLuint kSurfelGIGBufferTransformIDUnit = 4u;
 constexpr GLuint kSurfelGIGBufferDepthUnit = 5u;
+constexpr GLuint kSurfelGIShadowArrayUnit = static_cast<GLuint>(TextureUnits::SHADOW_MAP_ARRAY);
+
+bool EnvFlagEnabled(const char* name, bool fallback)
+{
+#if defined(_MSC_VER)
+	char* rawValue = nullptr;
+	std::size_t length = 0;
+	if (_dupenv_s(&rawValue, &length, name) != 0 || rawValue == nullptr || length == 0) {
+		return fallback;
+	}
+	const std::string value(rawValue);
+	std::free(rawValue);
+#else
+	const char* rawValue = std::getenv(name);
+	if (rawValue == nullptr || rawValue[0] == '\0') {
+		return fallback;
+	}
+	const std::string value(rawValue);
+#endif
+
+	if (value[0] == '0' ||
+		value[0] == 'f' || value[0] == 'F' ||
+		value[0] == 'n' || value[0] == 'N') {
+		return false;
+	}
+	return true;
+}
 
 void DeleteBuffer(GLuint& buffer)
 {
@@ -254,6 +288,14 @@ void SetUniform3fv(GLuint program, const char* name, const glm::vec3& value)
 	const GLint loc = glGetUniformLocation(program, name);
 	if (loc >= 0) {
 		glUniform3fv(loc, 1, glm::value_ptr(value));
+	}
+}
+
+void SetUniform4fv(GLuint program, const char* name, const glm::vec4& value)
+{
+	const GLint loc = glGetUniformLocation(program, name);
+	if (loc >= 0) {
+		glUniform4fv(loc, 1, glm::value_ptr(value));
 	}
 }
 
@@ -666,6 +708,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uMaxRayBudget", m_settings.maxRayBudget);
+		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 		m_allocateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
@@ -678,29 +721,113 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
 		SetUniform1f(program, "uRayTMin", 0.01f);
-		SetUniform1f(program, "uRayTMax", std::max(m_settings.maxSurfelRadius * 16.0f, 4.0f));
+		const float localBounceRayLength = std::clamp(m_settings.maxSurfelRadius * 2.5f, 4.0f, 12.0f);
+		SetUniform1f(program, "uRayTMax", localBounceRayLength);
 		m_generateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 		m_generateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
+	const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
+	const glm::vec3 lightRadiance = dirLight ? dirLight->GetLightColor() * dirLight->GetIntensity() : glm::vec3(1.0f);
+	const glm::vec3 surfelSkyRadiance = context.envColor * m_settings.skyMissRadianceMultiplier;
 	if (!placementOnly && updateRaysThisFrame && m_traceRaysShader && m_traceRaysShader->IsValid()) {
 		const GLuint rayBudget = std::max(m_settings.maxRayBudget, 1u);
-		const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
-		const glm::vec3 lightRadiance = dirLight ? dirLight->GetLightColor() * dirLight->GetIntensity() : glm::vec3(1.0f);
 		const GLuint program = m_traceRaysShader->GetProgramID();
 		glUseProgram(program);
+		BindSurfelGIGBufferTextures(context);
+		SetSurfelGIGBufferSamplerUniforms(program);
+		GLuint bvhTriangleCount = 0u;
+		GLuint bvhNodeCount = 0u;
+		if (m_settings.useSoftwareBVHTrace && context.rtSceneResources && sceneGraph) {
+			const std::size_t maxTriangleCount = context.surfelGIRTMaxTriangles > 0
+				? static_cast<std::size_t>(context.surfelGIRTMaxTriangles)
+				: 0u;
+			context.rtSceneResources->EnsureBuilt(sceneGraph, false, maxTriangleCount);
+			if (context.rtSceneResources->IsReady()) {
+				context.rtSceneResources->BindForTracing(
+					ToGLuint(SurfelGIBinding::BvhTriangles),
+					ToGLuint(SurfelGIBinding::BvhNodes));
+				bvhTriangleCount = static_cast<GLuint>(std::min<std::size_t>(
+					context.rtSceneResources->GetTriangleCount(),
+					std::numeric_limits<GLuint>::max()));
+				bvhNodeCount = static_cast<GLuint>(std::min<std::size_t>(
+					context.rtSceneResources->GetNodeCount(),
+					std::numeric_limits<GLuint>::max()));
+			}
+		}
+		if (bvhTriangleCount == 0u || bvhNodeCount == 0u) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::BvhTriangles), 0u);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::BvhNodes), 0u);
+		}
 		SetUniform1ui(program, "uActiveRayCount", rayBudget);
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
 		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+		SetUniform1ui(program, "uTriangleCount", bvhTriangleCount);
+		SetUniform1ui(program, "uBVHNodeCount", bvhNodeCount);
 		SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 		SetUniform3fv(program, "uGridMin", gridMin);
 		SetUniform3fv(program, "uGridMax", gridMax);
+		SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
+		SetUniformMat4(program, "uInvView", glm::inverse(context.view));
+		SetUniformMat4(program, "uView", context.view);
+		SetUniformMat4(program, "uProjection", context.proj);
 		SetUniform1f(program, "uNormalRejectCos", m_settings.normalRejectCos);
 		SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
 		SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
-		SetUniform3fv(program, "uSkyRadiance", context.envColor * m_settings.skyMissRadianceMultiplier);
+		SetUniform3fv(program, "uSkyRadiance", surfelSkyRadiance);
+		SetUniform1i(program, "uUseScreenSpaceTrace", m_settings.useScreenSpaceTrace ? 1 : 0);
+		SetUniform1i(program, "uUseSoftwareBVHTrace", (m_settings.useSoftwareBVHTrace && bvhTriangleCount > 0u && bvhNodeCount > 0u) ? 1 : 0);
+		SetUniform1i(program, "uUseSurfelFallbackTrace", m_settings.useSurfelFallbackTrace ? 1 : 0);
+		GLuint lightCount = 0u;
+		GLuint shadowArray = 0u;
+		GLuint shadowMatrices = 0u;
+		glm::vec4 cascadeSplits(10.0f, 30.0f, 100.0f, 500.0f);
+		float pointLightBias = 0.002f;
+		float pointLightSlopeBias = 0.005f;
+		float pointLightNormalOffset = 0.01f;
+		if (context.lightManager && context.lightManager->GetLightDataSSBO() != 0u) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+				ToGLuint(SurfelGIBinding::Lights),
+				context.lightManager->GetLightDataSSBO());
+			lightCount = static_cast<GLuint>(std::max(context.lightManager->GetActiveLightCount(), 0));
+			shadowArray = context.lightManager->GetShadowArrayTexture();
+			shadowMatrices = context.lightManager->GetShadowMatricesSSBO();
+			const auto& shadowConfig = context.lightManager->shadowConfig;
+			pointLightBias = shadowConfig.pointLightBias;
+			pointLightSlopeBias = shadowConfig.pointLightSlopeBias;
+			pointLightNormalOffset = shadowConfig.pointLightNormalOffset;
+			const float nearPlane = std::max(context.shadowNear, camera ? camera->GetCameraNearPlane() : context.shadowNear);
+			const float farPlane = std::max(nearPlane + 1.0f,
+				std::min(context.shadowFar, camera ? camera->GetCameraFarPlane() : context.shadowFar));
+			const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
+			const std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(
+				nearPlane,
+				farPlane,
+				cascadeCount,
+				shadowConfig.directionalSplitLambda);
+			for (int i = 0; i < std::min(4, static_cast<int>(splits.size())); ++i) {
+				cascadeSplits[i] = splits[i];
+			}
+		}
+		else {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::Lights), 0u);
+		}
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+			ToGLuint(SurfelGIBinding::ShadowMatrices),
+			shadowMatrices);
+		glBindTextureUnit(kSurfelGIShadowArrayUnit, shadowArray);
+		SetUniform1i(program, "uMultiLightShadowArray", static_cast<GLint>(kSurfelGIShadowArrayUnit));
+		const bool enableTraceShadows = EnvFlagEnabled("NOX_SURFEL_GI_TRACE_SHADOWS", true);
+		SetUniform1i(program, "uEnableShadows", (enableTraceShadows && context.enableShadows && shadowArray != 0u && shadowMatrices != 0u) ? 1 : 0);
+		SetUniform4fv(program, "uCascadeSplits", cascadeSplits);
+		SetUniform1f(program, "uShadowBias", context.shadowBias);
+		SetUniform1f(program, "uMaxShadowBias", context.shadowBias * 10.0f);
+		SetUniform1f(program, "uPointLightBias", pointLightBias);
+		SetUniform1f(program, "uPointLightSlopeBias", pointLightSlopeBias);
+		SetUniform1f(program, "uPointLightNormalOffset", pointLightNormalOffset);
+		SetUniform1ui(program, "uLightCount", lightCount);
 		m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);
 		m_traceRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}

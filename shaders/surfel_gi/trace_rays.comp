@@ -34,28 +34,139 @@ layout(binding = B_RAY_HITS, std430) buffer SurfelRayHitBuffer
     SurfelRayHit hits[];
 };
 
+struct LightData {
+    vec4 position;
+    vec4 direction;
+    vec4 color;
+    vec4 attenuation;
+    vec4 shadowData;
+    vec4 spotData;
+    vec4 areaData;
+    vec4 sampling;
+};
+
+layout(binding = B_LIGHTS, std430) readonly buffer LightDataBuffer
+{
+    LightData lights[];
+};
+
+layout(binding = B_SHADOW_MATRICES, std430) readonly buffer ShadowMatricesBuffer
+{
+    mat4 shadowMatrices[];
+};
+
+struct RTMaterial {
+    vec3 albedo;
+    float metallic;
+    vec3 emissive;
+    float roughness;
+    vec3 specular;
+    float emissiveStrength;
+    vec3 specularColorFactor;
+    float transmissionFactor;
+    float clearcoatFactor;
+    float clearcoatRoughnessFactor;
+    float ior;
+    float attenuationDistance;
+    vec3 attenuationColor;
+    float thicknessFactor;
+    uint materialID;
+    float normalScale;
+    float occlusionStrength;
+    float specularFactor;
+    float alpha;
+    float alphaCutoff;
+    uint alphaMode;
+    float padding0;
+};
+
+struct RTTriangle {
+    vec3 v0; float pad0;
+    vec3 v1; float pad1;
+    vec3 v2; float pad2;
+    vec3 n0; float pad3;
+    vec3 n1; float pad4;
+    vec3 n2; float pad5;
+    vec3 center; float pad6;
+    vec3 aabbMin; float pad7;
+    vec3 aabbMax; float pad8;
+    RTMaterial material;
+};
+
+struct RTBVHNode {
+    vec3 minBounds; int child0;
+    vec3 maxBounds; int child1;
+    int tri0;
+    int tri1;
+    int tri2;
+    int tri3;
+};
+
+layout(std140, binding = B_BVH_TRIANGLES) readonly buffer SurfelTraceTriangleBuffer
+{
+    RTTriangle bvhTriangles[];
+};
+
+layout(std140, binding = B_BVH_NODES) readonly buffer SurfelTraceBVHNodeBuffer
+{
+    RTBVHNode bvhNodes[];
+};
+
+layout(binding = T_SURFEL_GBUFFER_NORMAL_RM) uniform sampler2D uPackedNormalRMTex;
+layout(binding = T_SURFEL_GBUFFER_ALBEDO_AO) uniform sampler2D uAlbedoAOTex;
+layout(binding = T_SURFEL_GBUFFER_MATERIAL_ID) uniform usampler2D uMaterialIDTex;
+layout(binding = T_SURFEL_GBUFFER_EMISSIVE) uniform sampler2D uEmissiveTex;
+layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
+uniform sampler2DArrayShadow uMultiLightShadowArray;
+
 uniform uint uActiveRayCount;
 uniform uint uMaxRays;
 uniform uint uMaxSurfels;
 uniform uint uGridCellCount;
 uniform uint uMaxSurfelsPerCell;
+uniform uint uTriangleCount = 0u;
+uniform uint uBVHNodeCount = 0u;
 uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
+uniform mat4 uInvProjection;
+uniform mat4 uInvView;
+uniform mat4 uView;
+uniform mat4 uProjection;
 uniform float uNormalRejectCos;
 uniform vec3 uDirectionalLightDirection;
 uniform vec3 uDirectionalLightRadiance;
 uniform vec3 uSkyRadiance;
+uniform uint uLightCount;
+uniform int uUseScreenSpaceTrace = 1;
+uniform int uUseSoftwareBVHTrace = 1;
+uniform int uUseSurfelFallbackTrace = 1;
+uniform int uEnableShadows = 1;
+uniform vec4 uCascadeSplits = vec4(10.0, 30.0, 100.0, 500.0);
+uniform float uShadowBias = 0.0008;
+uniform float uMaxShadowBias = 0.008;
+uniform float uPointLightBias = 0.002;
+uniform float uPointLightSlopeBias = 0.005;
+uniform float uPointLightNormalOffset = 0.01;
 
-const uint SURFEL_TRACE_STEPS = 12u;
+const uint SURFEL_TRACE_STEPS = 40u;
 const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
 const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
 const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 64u;
-const uint SURFEL_TRACE_MAX_CANDIDATES = 256u;
-const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 3.0;
+const uint SURFEL_TRACE_MAX_CANDIDATES = 1024u;
+const uint SURFEL_TRACE_MAX_VISITED_CELLS = 128u;
+const uint SURFEL_TRACE_MAX_LIGHTS = 32u;
+const uint SURFEL_SCREEN_TRACE_STEPS = 48u;
+const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 2.0;
+const float SURFEL_TRACE_HIT_RADIUS_SCALE = 5.5;
+const float SURFEL_TRACE_MIN_HIT_RADIUS = 0.14;
+const float SURFEL_TRACE_MAX_HIT_RADIUS = 0.80;
 const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
+const float SURFEL_TRACE_HIT_KIND_SCREEN = 2.0;
+const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
+const int SURFEL_TRACE_BVH_STACK_SIZE = 64;
 
 struct TraceGather
 {
@@ -64,6 +175,7 @@ struct TraceGather
     vec3 position;
     float weight;
     float closestT;
+    float hitKind;
     uint hitSurfelID;
     uint candidatesTested;
 };
@@ -75,8 +187,646 @@ void TraceGatherInit(out TraceGather gather, vec3 missPosition)
     gather.position = missPosition;
     gather.weight = 0.0;
     gather.closestT = 3.402823466e+38;
+    gather.hitKind = SURFEL_TRACE_MISS_KIND;
     gather.hitSurfelID = SURFEL_INVALID_INDEX;
     gather.candidatesTested = 0u;
+}
+
+struct SoftwareBVHHit
+{
+    bool hit;
+    float t;
+    vec3 position;
+    vec3 normal;
+    RTMaterial material;
+};
+
+vec3 SurfelDecodeNormalOct(vec2 e)
+{
+    e = e * 2.0 - 1.0;
+    vec3 v = vec3(e.xy, 1.0 - abs(e.x) - abs(e.y));
+    if (v.z < 0.0) {
+        vec2 folded = (1.0 - abs(v.yx)) * sign(v.xy);
+        v.xy = folded;
+    }
+    return SurfelSafeNormalize(v);
+}
+
+bool SurfelProjectWorldToScreen(vec3 worldPos, out vec2 uv, out float depth01)
+{
+    vec4 clip = uProjection * uView * vec4(worldPos, 1.0);
+    if (clip.w <= 1e-5) {
+        uv = vec2(0.0);
+        depth01 = 1.0;
+        return false;
+    }
+
+    vec3 ndc = clip.xyz / clip.w;
+    uv = ndc.xy * 0.5 + 0.5;
+    depth01 = ndc.z * 0.5 + 0.5;
+    return all(greaterThanEqual(uv, vec2(0.0))) &&
+        all(lessThanEqual(uv, vec2(1.0))) &&
+        depth01 >= 0.0 &&
+        depth01 <= 1.0;
+}
+
+bool SurfelScreenDepthValid(float depth01)
+{
+    return depth01 > 0.0 && depth01 < 0.999999 && !isnan(depth01) && !isinf(depth01);
+}
+
+bool SurfelTraceTriangle(vec3 origin,
+                         vec3 direction,
+                         float tMin,
+                         float tMax,
+                         RTTriangle tri,
+                         out float t,
+                         out vec3 barycentric)
+{
+    vec3 edge1 = tri.v1 - tri.v0;
+    vec3 edge2 = tri.v2 - tri.v0;
+    vec3 h = cross(direction, edge2);
+    float a = dot(edge1, h);
+    if (abs(a) < 1e-6) {
+        return false;
+    }
+
+    float invA = 1.0 / a;
+    vec3 s = origin - tri.v0;
+    float u = invA * dot(s, h);
+    if (u < 0.0 || u > 1.0) {
+        return false;
+    }
+
+    vec3 q = cross(s, edge1);
+    float v = invA * dot(direction, q);
+    if (v < 0.0 || u + v > 1.0) {
+        return false;
+    }
+
+    t = invA * dot(edge2, q);
+    if (t < tMin || t > tMax) {
+        return false;
+    }
+
+    barycentric = vec3(1.0 - u - v, u, v);
+    return true;
+}
+
+bool SurfelTraceAABB(vec3 origin, vec3 direction, vec3 minBounds, vec3 maxBounds, float tMin, float tMax)
+{
+    vec3 safeDirection = mix(vec3(1e-8), direction, greaterThan(abs(direction), vec3(1e-8)));
+    vec3 invDir = 1.0 / safeDirection;
+    vec3 t0 = (minBounds - origin) * invDir;
+    vec3 t1 = (maxBounds - origin) * invDir;
+    vec3 tNear3 = min(t0, t1);
+    vec3 tFar3 = max(t0, t1);
+    float tNear = max(max(tNear3.x, tNear3.y), max(tNear3.z, tMin));
+    float tFar = min(min(tFar3.x, tFar3.y), min(tFar3.z, tMax));
+    return tNear <= tFar;
+}
+
+SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float tMax)
+{
+    SoftwareBVHHit hit;
+    hit.hit = false;
+    hit.t = tMax;
+    hit.position = origin + direction * tMax;
+    hit.normal = vec3(0.0, 1.0, 0.0);
+
+    if (uUseSoftwareBVHTrace == 0 || uBVHNodeCount == 0u || uTriangleCount == 0u) {
+        return hit;
+    }
+
+    int stack[SURFEL_TRACE_BVH_STACK_SIZE];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0;
+
+    while (stackPtr > 0) {
+        int nodeIndex = stack[--stackPtr];
+        if (nodeIndex < 0 || uint(nodeIndex) >= uBVHNodeCount) {
+            continue;
+        }
+
+        RTBVHNode node = bvhNodes[nodeIndex];
+        if (!SurfelTraceAABB(origin, direction, node.minBounds, node.maxBounds, tMin, hit.t)) {
+            continue;
+        }
+
+        bool leaf = node.child0 < 0 && node.child1 < 0;
+        if (leaf) {
+            int triIndices[4] = int[4](node.tri0, node.tri1, node.tri2, node.tri3);
+            for (int i = 0; i < 4; ++i) {
+                int triIndex = triIndices[i];
+                if (triIndex < 0 || uint(triIndex) >= uTriangleCount) {
+                    continue;
+                }
+
+                RTTriangle tri = bvhTriangles[triIndex];
+                if (tri.material.alphaMode != 0u && tri.material.alpha < tri.material.alphaCutoff) {
+                    continue;
+                }
+
+                float t;
+                vec3 bary;
+                if (!SurfelTraceTriangle(origin, direction, tMin, hit.t, tri, t, bary)) {
+                    continue;
+                }
+
+                vec3 normal = SurfelSafeNormalize(tri.n0 * bary.x + tri.n1 * bary.y + tri.n2 * bary.z);
+                if (dot(normal, -direction) < 0.0) {
+                    normal = -normal;
+                }
+
+                hit.hit = true;
+                hit.t = t;
+                hit.position = origin + direction * t;
+                hit.normal = normal;
+                hit.material = tri.material;
+            }
+        } else {
+            if (node.child1 >= 0 && stackPtr < SURFEL_TRACE_BVH_STACK_SIZE) {
+                stack[stackPtr++] = node.child1;
+            }
+            if (node.child0 >= 0 && stackPtr < SURFEL_TRACE_BVH_STACK_SIZE) {
+                stack[stackPtr++] = node.child0;
+            }
+        }
+    }
+
+    return hit;
+}
+
+bool ShadowInBounds(vec3 p)
+{
+    return p.x >= 0.0 && p.x <= 1.0 &&
+        p.y >= 0.0 && p.y <= 1.0 &&
+        p.z >= -0.01 && p.z <= 1.01;
+}
+
+float ShadowSlopeBias(vec3 normal, vec3 surfaceToLight, float baseBias)
+{
+    float nDotL = max(dot(normal, surfaceToLight), 0.001);
+    float sinAngle = sqrt(max(1.0 - nDotL * nDotL, 0.0));
+    float slope = clamp(sinAngle / nDotL, 0.0, 10.0);
+    return baseBias * (1.0 + slope * 0.5);
+}
+
+float ShadowAdaptiveBias(vec3 normal, vec3 lightDirection, int cascadeIndex, float viewDepth)
+{
+    float slopeBias = ShadowSlopeBias(normal, -lightDirection, uShadowBias);
+    float cascadeScale = 1.0 + float(max(cascadeIndex, 0)) * 0.1;
+    float depthBias = uShadowBias * 0.0001 * viewDepth;
+    return clamp(slopeBias * cascadeScale + depthBias, uShadowBias * 0.25, uMaxShadowBias);
+}
+
+float SampleShadowLayer(int layer, vec3 projCoords, float bias)
+{
+    if (!ShadowInBounds(projCoords) || layer < 0) {
+        return 1.0;
+    }
+
+    vec2 texel = 1.0 / vec2(max(textureSize(uMultiLightShadowArray, 0).xy, ivec2(1)));
+    vec2 uv = clamp(projCoords.xy, texel * 0.5, vec2(1.0) - texel * 0.5);
+    float compareDepth = clamp(projCoords.z, 0.0, 1.0) - bias;
+
+    float center = texture(uMultiLightShadowArray, vec4(uv, float(layer), compareDepth));
+    float sum = center * 2.0;
+    float weight = 2.0;
+    vec2 offsets[4] = vec2[](
+        vec2(1.0, 0.0),
+        vec2(-1.0, 0.0),
+        vec2(0.0, 1.0),
+        vec2(0.0, -1.0)
+    );
+    for (int i = 0; i < 4; ++i) {
+        vec2 sampleUV = uv + offsets[i] * texel;
+        if (any(lessThan(sampleUV, vec2(0.0))) || any(greaterThan(sampleUV, vec2(1.0)))) {
+            continue;
+        }
+        sum += texture(uMultiLightShadowArray, vec4(sampleUV, float(layer), compareDepth));
+        weight += 1.0;
+    }
+
+    return sum / max(weight, 1e-5);
+}
+
+float DirectionalShadowVisibility(int startSlice, int sliceCount, vec3 worldPos, vec3 normal, vec3 lightDirection)
+{
+    int cascades = clamp(sliceCount, 1, 4);
+    vec3 viewSpacePos = (uView * vec4(worldPos, 1.0)).xyz;
+    float viewDepth = max(-viewSpacePos.z, 0.0);
+    int cascadeIndex = cascades - 1;
+    for (int i = 0; i < 4; ++i) {
+        if (i >= cascades) {
+            break;
+        }
+        if (viewDepth <= uCascadeSplits[i]) {
+            cascadeIndex = i;
+            break;
+        }
+    }
+
+    int layer = startSlice + cascadeIndex;
+    vec4 lightSpacePos = shadowMatrices[layer] * vec4(worldPos, 1.0);
+    if (abs(lightSpacePos.w) <= 1e-6) {
+        return 1.0;
+    }
+
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    float bias = ShadowAdaptiveBias(normal, lightDirection, cascadeIndex, viewDepth);
+    return SampleShadowLayer(layer, projCoords, bias);
+}
+
+bool ProjectShadowLayer(int layer, vec3 worldPos, out vec3 projCoords)
+{
+    vec4 lightSpacePos = shadowMatrices[layer] * vec4(worldPos, 1.0);
+    if (abs(lightSpacePos.w) <= 1e-6) {
+        projCoords = vec3(0.0);
+        return false;
+    }
+
+    projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    return ShadowInBounds(projCoords);
+}
+
+float PointShadowVisibility(int startSlice, vec3 worldPos, vec3 normal, vec3 lightPos)
+{
+    vec3 toSurface = worldPos - lightPos;
+    float distanceToLight = length(toSurface);
+    if (distanceToLight <= 1e-5) {
+        return 1.0;
+    }
+
+    vec3 surfaceToLight = -toSurface / distanceToLight;
+    float receiverFacing = clamp(dot(normal, surfaceToLight), 0.0, 1.0);
+    vec3 shadowPos = worldPos + normal * (uPointLightNormalOffset * (1.0 - receiverFacing));
+    vec3 absDir = abs(shadowPos - lightPos);
+    int face = 0;
+    if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
+        face = (shadowPos.x - lightPos.x) >= 0.0 ? 0 : 1;
+    } else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
+        face = (shadowPos.y - lightPos.y) >= 0.0 ? 2 : 3;
+    } else {
+        face = (shadowPos.z - lightPos.z) >= 0.0 ? 4 : 5;
+    }
+
+    int layer = startSlice + face;
+    vec3 projCoords;
+    if (!ProjectShadowLayer(layer, shadowPos, projCoords)) {
+        return 1.0;
+    }
+
+    float slope = ShadowSlopeBias(normal, surfaceToLight, uPointLightSlopeBias);
+    float bias = clamp(uPointLightBias + slope, uPointLightBias * 0.5, uPointLightBias * 4.0);
+    return SampleShadowLayer(layer, projCoords, bias);
+}
+
+float SpotShadowVisibility(int startSlice, vec3 worldPos, vec3 normal, vec3 lightPos)
+{
+    int layer = startSlice;
+    vec3 projCoords;
+    if (!ProjectShadowLayer(layer, worldPos, projCoords)) {
+        return 1.0;
+    }
+
+    vec3 surfaceToLight = SurfelSafeNormalize(lightPos - worldPos);
+    float bias = ShadowAdaptiveBias(normal, -surfaceToLight, 0, length(lightPos - worldPos));
+    return SampleShadowLayer(layer, projCoords, bias);
+}
+
+float EvaluateLightShadow(int type, LightData light, vec3 worldPos, vec3 normal, vec3 surfaceToLight)
+{
+    if (uEnableShadows == 0 || light.shadowData.z <= 0.5) {
+        return 1.0;
+    }
+
+    int startSlice = int(light.shadowData.x + 0.5);
+    int sliceCount = int(light.shadowData.y + 0.5);
+    if (startSlice < 0 || sliceCount <= 0) {
+        return 1.0;
+    }
+
+    if (type == 0) {
+        return DirectionalShadowVisibility(startSlice, sliceCount, worldPos, normal, SurfelSafeNormalize(light.direction.xyz));
+    }
+    if (type == 1) {
+        return PointShadowVisibility(startSlice, worldPos, normal, light.position.xyz);
+    }
+    if (type == 2) {
+        return SpotShadowVisibility(startSlice, worldPos, normal, light.position.xyz);
+    }
+
+    return 1.0;
+}
+
+vec3 EvaluateHitDirectIrradiance(vec3 worldPos, vec3 normal)
+{
+    vec3 direct = vec3(0.0);
+    uint lightCount = min(uLightCount, SURFEL_TRACE_MAX_LIGHTS);
+    for (uint i = 0u; i < lightCount; ++i) {
+        LightData light = lights[i];
+        int type = int(light.position.w + 0.5);
+        vec3 lightDir = SurfelSafeNormalize(light.direction.xyz);
+        vec3 L = vec3(0.0);
+        float attenuation = 1.0;
+
+        if (type == 0) {
+            L = -lightDir;
+            attenuation = max(light.color.w, 0.0);
+        } else {
+            vec3 toLight = light.position.xyz - worldPos;
+            float dist = length(toLight);
+            float range = max(light.attenuation.w, 0.001);
+            if (dist <= 0.001 || dist > range) {
+                continue;
+            }
+
+            L = toLight / dist;
+            vec3 att = light.attenuation.xyz;
+            float invAtt = 1.0 / max(att.x + att.y * dist + att.z * dist * dist, 1e-4);
+            float rangeFade = max(1.0 - pow(dist / range, 4.0), 0.0);
+            attenuation = invAtt * rangeFade * rangeFade * max(light.color.w, 0.0);
+
+            if (type == 2) {
+                float theta = dot(L, -lightDir);
+                float innerCos = light.spotData.x > 0.0 ? light.spotData.x : cos(radians(20.0));
+                float outerCos = light.spotData.y > 0.0 ? light.spotData.y : cos(radians(30.0));
+                outerCos = min(outerCos, innerCos - 0.001);
+                if (theta < outerCos) {
+                    continue;
+                }
+                attenuation *= smoothstep(outerCos, innerCos, theta);
+            }
+        }
+
+        vec3 surfaceToLight = SurfelSafeNormalize(L);
+        float nDotL = max(dot(normal, surfaceToLight), 0.0);
+        if (nDotL <= 0.0) {
+            continue;
+        }
+        float shadow = EvaluateLightShadow(type, light, worldPos, normal, surfaceToLight);
+        direct += max(light.color.rgb, vec3(0.0)) * attenuation * nDotL * shadow;
+    }
+
+    if (lightCount == 0u) {
+        vec3 lightToSurface = SurfelSafeNormalize(uDirectionalLightDirection);
+        vec3 surfaceToLight = -lightToSurface;
+        float nDotL = max(dot(normal, surfaceToLight), 0.0);
+        direct = uDirectionalLightRadiance * nDotL;
+    }
+
+    return direct;
+}
+
+float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
+{
+    vec3 surfelPos = surfel.worldPos_radius.xyz;
+    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    vec3 delta = receiverPos - surfelPos;
+    float dist = length(delta);
+    float supportRadius = SurfelCoverageSupportRadius(radius, uGridMin, uGridMax, uGridResolution);
+    float normalizedDistance = dist / max(supportRadius, 1e-4);
+    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 1.10);
+    if (distanceWeight <= 1e-5) {
+        return 0.0;
+    }
+
+    float sameSurface = max(dot(receiverNormal, surfelNormal), 0.0);
+    float normalWeight = smoothstep(max(uNormalRejectCos * 0.35, 0.02), 0.95, sameSurface);
+    float planeSigma = max(max(radius * 2.0, supportRadius * 0.18), 0.04);
+    float planeWeight = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
+    float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
+    float luminance = SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0)));
+    if (confidence < 0.08 && luminance <= 1e-5) {
+        return 0.0;
+    }
+
+    return distanceWeight * normalWeight * planeWeight * mix(0.25, 1.0, smoothstep(0.05, 0.65, confidence));
+}
+
+vec3 TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelID, uint seed)
+{
+    uvec3 baseCell;
+    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell) ||
+        uGridCellCount == 0u ||
+        uMaxSurfelsPerCell == 0u) {
+        return vec3(0.0);
+    }
+
+    vec3 sumIrradiance = vec3(0.0);
+    float sumWeight = 0.0;
+    uint candidates = 0u;
+    const uint maxCandidates = 96u;
+    const uint perCellBudget = 4u;
+    for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
+        if (candidates >= maxCandidates || sumWeight >= 24.0) {
+            break;
+        }
+
+        ivec3 c = ivec3(baseCell) + SurfelCubeNeighborOffset(i);
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+            continue;
+        }
+
+        uint cell = SurfelFlattenCell(uvec3(c), uGridResolution);
+        if (cell >= uGridCellCount) {
+            continue;
+        }
+
+        SurfelCellHeader header = gridHeaders[cell];
+        uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
+        if (storedCount == 0u) {
+            continue;
+        }
+
+        uint firstEntry = header.firstEntry;
+        if (firstEntry == 0u && cell != 0u) {
+            firstEntry = cell * uMaxSurfelsPerCell;
+        }
+        uint budget = min(min(storedCount, perCellBudget), maxCandidates - candidates);
+        uint strideSeed = SurfelHash(seed ^ (cell * 747796405u));
+        uint startIndex = strideSeed % storedCount;
+        uint sampleStride = max(storedCount / max(budget, 1u), 1u);
+        for (uint sampleSlot = 0u; sampleSlot < budget; ++sampleSlot) {
+            uint sampleIndex = (storedCount <= budget)
+                ? sampleSlot
+                : (startIndex + sampleSlot * sampleStride) % storedCount;
+            SurfelCellEntry entry = gridEntries[firstEntry + sampleIndex];
+            ++candidates;
+            if (entry.surfelID >= uMaxSurfels || entry.surfelID == sourceSurfelID) {
+                continue;
+            }
+
+            Surfel surfel = surfels[entry.surfelID];
+            if (!SurfelIsAlive(surfel)) {
+                continue;
+            }
+
+            float weight = TraceSurfaceCacheWeight(worldPos, normal, surfel);
+            if (weight <= 1e-5) {
+                continue;
+            }
+
+            sumIrradiance += max(surfel.irradiance.rgb, vec3(0.0)) * weight;
+            sumWeight += weight;
+        }
+    }
+
+    return sumWeight > 1e-5 ? clamp(sumIrradiance / sumWeight, vec3(0.0), vec3(16.0)) : vec3(0.0);
+}
+
+bool ScreenSpaceHitRadiance(vec2 uv,
+                            vec3 hitPos,
+                            vec3 rayDirection,
+                            uint sourceSurfelID,
+                            uint seed,
+                            out vec3 radiance,
+                            out vec3 hitNormal)
+{
+    ivec2 texSize = textureSize(uDepthTex, 0);
+    ivec2 pixel = ivec2(clamp(uv * vec2(texSize), vec2(0.0), vec2(texSize - ivec2(1))));
+    hitNormal = SurfelDecodeNormalOct(texelFetch(uPackedNormalRMTex, pixel, 0).rg);
+    float facing = dot(hitNormal, -rayDirection);
+    if (facing < 0.0) {
+        hitNormal = -hitNormal;
+        facing = -facing;
+    }
+    if (facing <= 0.02) {
+        radiance = vec3(0.0);
+        return false;
+    }
+
+    vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0));
+    vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
+    vec3 directIrradiance = EvaluateHitDirectIrradiance(hitPos, hitNormal);
+    vec3 skyIrradiance = uSkyRadiance * max(hitNormal.y, 0.0);
+    vec3 cachedIndirectIrradiance = TraceCachedIndirectAtSurface(hitPos, hitNormal, sourceSurfelID, seed);
+    radiance = albedo * SURFEL_INV_PI * (directIrradiance + skyIrradiance + cachedIndirectIrradiance) + emissive;
+    return true;
+}
+
+bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
+{
+    if (uUseSoftwareBVHTrace == 0) {
+        return false;
+    }
+
+    vec3 origin = ray.origin_tMin.xyz;
+    vec3 direction = SurfelSafeNormalize(ray.direction_tMax.xyz);
+    float tMin = max(ray.origin_tMin.w, 0.0);
+    float tMax = max(ray.direction_tMax.w, tMin);
+    SoftwareBVHHit hit = TraceSoftwareBVH(origin, direction, tMin, tMax);
+    if (!hit.hit) {
+        return false;
+    }
+
+    float facing = dot(hit.normal, -direction);
+    if (facing < 0.0) {
+        hit.normal = -hit.normal;
+        facing = -facing;
+    }
+    if (facing <= 0.02) {
+        return false;
+    }
+
+    vec3 albedo = max(hit.material.albedo, vec3(0.0));
+    vec3 emissive = max(hit.material.emissive * max(hit.material.emissiveStrength, 1.0), vec3(0.0));
+    vec3 directIrradiance = EvaluateHitDirectIrradiance(hit.position, hit.normal);
+    vec3 skyIrradiance = uSkyRadiance * max(hit.normal.y, 0.0);
+    vec3 cachedIndirectIrradiance = TraceCachedIndirectAtSurface(hit.position,
+                                                                 hit.normal,
+                                                                 ray.ids.x,
+                                                                 ray.ids.x ^ (ray.ids.z * 0x9e3779b9u));
+
+    gather.radiance = albedo * SURFEL_INV_PI * (directIrradiance + skyIrradiance + cachedIndirectIrradiance) + emissive;
+    gather.normal = hit.normal;
+    gather.position = hit.position;
+    gather.weight = 1.0;
+    gather.closestT = hit.t;
+    gather.hitKind = SURFEL_TRACE_HIT_KIND_BVH;
+    gather.hitSurfelID = SURFEL_INVALID_INDEX;
+    return true;
+}
+
+bool TraceScreenSpace(SurfelRay ray, inout TraceGather gather)
+{
+    if (uUseScreenSpaceTrace == 0) {
+        return false;
+    }
+
+    vec3 origin = ray.origin_tMin.xyz;
+    vec3 direction = SurfelSafeNormalize(ray.direction_tMax.xyz);
+    float tMin = max(ray.origin_tMin.w, 0.0);
+    float tMax = max(ray.direction_tMax.w, tMin);
+    float segment = tMax - tMin;
+    if (segment <= 1e-4) {
+        return false;
+    }
+
+    for (uint step = 0u; step < SURFEL_SCREEN_TRACE_STEPS; ++step) {
+        float u = (float(step) + 0.5) / float(SURFEL_SCREEN_TRACE_STEPS);
+        float t = tMin + segment * u;
+        vec3 samplePos = origin + direction * t;
+
+        vec2 uv;
+        float sampleDepth;
+        if (!SurfelProjectWorldToScreen(samplePos, uv, sampleDepth)) {
+            continue;
+        }
+
+        float sceneDepth = textureLod(uDepthTex, uv, 0.0).r;
+        if (!SurfelScreenDepthValid(sceneDepth) || sampleDepth < sceneDepth - 0.0015) {
+            continue;
+        }
+
+        vec3 scenePos = SurfelReconstructWorldPosition(uv, sceneDepth, uInvProjection, uInvView);
+        vec3 toHit = scenePos - origin;
+        float tHit = dot(toHit, direction);
+        if (tHit < max(tMin, 0.08) || tHit > tMax) {
+            continue;
+        }
+
+        float alongError = abs(tHit - t);
+        float maxAlongError = max(0.20, 0.08 * tHit);
+        if (alongError > maxAlongError) {
+            continue;
+        }
+
+        vec3 closest = origin + direction * tHit;
+        float rayDistance = length(scenePos - closest);
+        float thickness = max(0.06, 0.015 * tHit);
+        if (rayDistance > thickness) {
+            continue;
+        }
+
+        vec3 radiance;
+        vec3 hitNormal;
+        if (!ScreenSpaceHitRadiance(uv,
+                                    scenePos,
+                                    direction,
+                                    ray.ids.x,
+                                    ray.ids.x ^ (ray.ids.z * 0x9e3779b9u) ^ step,
+                                    radiance,
+                                    hitNormal)) {
+            continue;
+        }
+
+        gather.radiance = radiance;
+        gather.normal = hitNormal;
+        gather.position = scenePos;
+        gather.weight = 1.0;
+        gather.closestT = tHit;
+        gather.hitKind = SURFEL_TRACE_HIT_KIND_SCREEN;
+        gather.hitSurfelID = SURFEL_INVALID_INDEX;
+        gather.candidatesTested = step + 1u;
+        return true;
+    }
+
+    return false;
 }
 
 void TraceGatherSurfel(SurfelRay ray,
@@ -116,7 +866,9 @@ void TraceGatherSurfel(SurfelRay ray,
     vec3 hitPoint = origin + direction * t;
     vec3 radialDelta = hitPoint - surfelPos;
     float radius = max(surfel.worldPos_radius.w, 0.001);
-    float hitRadius = max(radius * 4.0, 0.08);
+    float hitRadius = clamp(radius * SURFEL_TRACE_HIT_RADIUS_SCALE,
+                            SURFEL_TRACE_MIN_HIT_RADIUS,
+                            SURFEL_TRACE_MAX_HIT_RADIUS);
     float radialDistSq = dot(radialDelta, radialDelta);
     if (radialDistSq > hitRadius * hitRadius) {
         return;
@@ -125,27 +877,37 @@ void TraceGatherSurfel(SurfelRay ray,
     float normalizedRadius = sqrt(radialDistSq) / max(hitRadius, 1e-4);
     float radialWeight = exp(-normalizedRadius * normalizedRadius * 2.0);
     float normalWeight = smoothstep(0.0, 0.35, facing);
-    float confidence = max(surfel.irradiance.a, 0.05);
-    float weight = radialWeight * normalWeight * confidence;
+    float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
+    float weight = radialWeight * normalWeight * mix(0.5, 1.0, confidence);
     if (weight <= 1e-5) {
         return;
     }
 
     vec3 albedo = max(surfel.albedo_life.rgb, vec3(0.0));
-    vec3 lightToSurface = SurfelSafeNormalize(uDirectionalLightDirection);
-    vec3 surfaceToLight = -lightToSurface;
-    float nDotL = max(dot(surfelNormal, surfaceToLight), 0.0);
-    vec3 directIrradiance = uDirectionalLightRadiance * nDotL;
+    vec3 directIrradiance = EvaluateHitDirectIrradiance(surfelPos, surfelNormal);
     vec3 skyIrradiance = uSkyRadiance * max(surfelNormal.y, 0.0);
-    vec3 bounced = albedo * SURFEL_INV_PI * (directIrradiance + skyIrradiance + max(surfel.irradiance.rgb, vec3(0.0)) * 0.35);
-    gather.radiance += bounced * weight;
-    gather.normal += surfelNormal * weight;
-    gather.weight += weight;
-
-    if (t < gather.closestT) {
+    vec3 cachedIndirectIrradiance = max(surfel.irradiance.rgb, vec3(0.0));
+    vec3 bounced = albedo * SURFEL_INV_PI * (directIrradiance + skyIrradiance + cachedIndirectIrradiance);
+    float clusterThickness = max(hitRadius * 0.40, 0.035);
+    if (t < gather.closestT - clusterThickness) {
+        gather.radiance = vec3(0.0);
+        gather.normal = vec3(0.0);
+        gather.weight = 0.0;
         gather.closestT = t;
         gather.position = hitPoint;
         gather.hitSurfelID = surfelID;
+        gather.hitKind = SURFEL_TRACE_HIT_KIND_GRID;
+    }
+
+    if (abs(t - gather.closestT) <= clusterThickness) {
+        gather.radiance += bounced * weight;
+        gather.normal += surfelNormal * weight;
+        gather.weight += weight;
+        if (t <= gather.closestT) {
+            gather.closestT = t;
+            gather.position = hitPoint;
+            gather.hitSurfelID = surfelID;
+        }
     }
 }
 
@@ -189,12 +951,33 @@ void TraceGatherCell(SurfelRay ray,
 
 }
 
+bool TraceMarkVisitedCell(uint cell,
+                          inout uint visitedCells[SURFEL_TRACE_MAX_VISITED_CELLS],
+                          inout uint visitedCount)
+{
+    for (uint i = 0u; i < visitedCount; ++i) {
+        if (visitedCells[i] == cell) {
+            return false;
+        }
+    }
+
+    if (visitedCount >= SURFEL_TRACE_MAX_VISITED_CELLS) {
+        return false;
+    }
+
+    visitedCells[visitedCount] = cell;
+    ++visitedCount;
+    return true;
+}
+
 void TraceGatherAroundPoint(SurfelRay ray,
                             vec3 origin,
                             vec3 direction,
                             float tMin,
                             float tMax,
                             vec3 worldPos,
+                            inout uint visitedCells[SURFEL_TRACE_MAX_VISITED_CELLS],
+                            inout uint visitedCount,
                             inout TraceGather gather)
 {
     uvec3 baseCell;
@@ -213,7 +996,12 @@ void TraceGatherAroundPoint(SurfelRay ray,
             continue;
         }
 
-        TraceGatherCell(ray, origin, direction, tMin, tMax, SurfelFlattenCell(uvec3(c), uGridResolution), gather);
+        uint cell = SurfelFlattenCell(uvec3(c), uGridResolution);
+        if (!TraceMarkVisitedCell(cell, visitedCells, visitedCount)) {
+            continue;
+        }
+
+        TraceGatherCell(ray, origin, direction, tMin, tMax, cell, gather);
     }
 }
 
@@ -227,17 +1015,40 @@ TraceGather TraceSurfelGrid(SurfelRay ray)
     TraceGather gather;
     TraceGatherInit(gather, missPosition);
 
-    if (uGridCellCount == 0u || uMaxSurfelsPerCell == 0u || any(equal(uGridResolution, uvec3(0u))) || tMax <= tMin) {
+    if (TraceScreenSpace(ray, gather)) {
+        return gather;
+    }
+
+    if (TraceSoftwareBVHRadiance(ray, gather)) {
+        return gather;
+    }
+
+    if (uUseSurfelFallbackTrace == 0 ||
+        uGridCellCount == 0u ||
+        uMaxSurfelsPerCell == 0u ||
+        any(equal(uGridResolution, uvec3(0u))) ||
+        tMax <= tMin) {
         return gather;
     }
 
     float segment = tMax - tMin;
+    uint visitedCells[SURFEL_TRACE_MAX_VISITED_CELLS];
+    uint visitedCount = 0u;
     for (uint step = 0u; step < SURFEL_TRACE_STEPS; ++step) {
         float u = (float(step) + 0.5) / float(SURFEL_TRACE_STEPS);
         float t = tMin + segment * u;
-        TraceGatherAroundPoint(ray, ray.origin_tMin.xyz, direction, tMin, tMax, ray.origin_tMin.xyz + direction * t, gather);
+        TraceGatherAroundPoint(ray,
+                               ray.origin_tMin.xyz,
+                               direction,
+                               tMin,
+                               tMax,
+                               ray.origin_tMin.xyz + direction * t,
+                               visitedCells,
+                               visitedCount,
+                               gather);
         if (gather.candidatesTested >= SURFEL_TRACE_MAX_CANDIDATES ||
-            gather.weight >= SURFEL_TRACE_EARLY_HIT_WEIGHT) {
+            gather.weight >= SURFEL_TRACE_EARLY_HIT_WEIGHT ||
+            visitedCount >= SURFEL_TRACE_MAX_VISITED_CELLS) {
             break;
         }
     }
@@ -266,7 +1077,7 @@ void main()
     }
 
     hits[rayID].position_t = vec4(gather.position, hit ? gather.closestT : -1.0);
-    hits[rayID].normal_hitKind = vec4(gather.normal, hit ? SURFEL_TRACE_HIT_KIND_GRID : SURFEL_TRACE_MISS_KIND);
+    hits[rayID].normal_hitKind = vec4(gather.normal, hit ? gather.hitKind : SURFEL_TRACE_MISS_KIND);
     hits[rayID].radiance_pdf = vec4(gather.radiance * max(ray.throughput.rgb, vec3(0.0)), ray.throughput.a);
     hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, 0u);
 }

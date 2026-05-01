@@ -131,14 +131,14 @@ namespace {
 	static CleanSurfelGIBudgetCaps GetCleanSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 8192u, 1024u, 32u, 16u, 32u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };
+			return { 8192u, 1024u, 32u, 16u, 64u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };
 		case SurfelGIQualityTier::High:
-			return { 65536u, 8192u, 16u, 64u, 128u, 1u, 0.75f, false, 3u, 2u, 3u, 8u };
+			return { 65536u, 8192u, 16u, 64u, 256u, 2u, 0.75f, false, 3u, 2u, 3u, 8u };
 		case SurfelGIQualityTier::Ultra:
-			return { 131072u, 32768u, 8u, 64u, 512u, 1u, 1.0f, true, 2u, 2u, 4u, 12u };
+			return { 131072u, 32768u, 8u, 64u, 512u, 2u, 1.0f, true, 2u, 2u, 4u, 12u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 12288u, 1536u, 32u, 20u, 36u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };
+			return { 12288u, 1536u, 32u, 20u, 128u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };
 		}
 	}
 
@@ -512,7 +512,7 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 	settings.qualityTier = static_cast<SurfelGIQualityTier>(
 		std::clamp(m_context.cleanSurfelGIQualityTier, 0, 3));
 	settings.debugView = static_cast<SurfelGIDebugView>(
-		std::clamp(m_context.cleanSurfelGIDebugView, 0, 29));
+		std::clamp(m_context.cleanSurfelGIDebugView, 0, 30));
 	settings.maxSurfels = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxSurfels, 1024));
 	settings.maxRayBudget = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxRayBudget, 1024));
 	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGISpawnTileSize, 4, 64));
@@ -536,13 +536,28 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 		IsEnvVarEnabled("NOX_SURFEL_GI_PLACEMENT_VALIDATION");
 
 	if (forcedOnForValidation) {
+		auto applyEnvToggle = [&settings](const char* name, bool& target) {
+			const std::string value = GetEnvVarString(name);
+			if (value.empty()) {
+				return;
+			}
+
+			target = !(value == "0" || value == "false" || value == "FALSE" ||
+				value == "False" || value == "no" || value == "NO" || value == "No");
+		};
+
 		settings.debugView = static_cast<SurfelGIDebugView>(
-			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 29));
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 30));
 		settings.maxSurfels = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_SURFELS", static_cast<int>(settings.maxSurfels)), 1024));
 		settings.maxRayBudget = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_RAY_BUDGET", static_cast<int>(settings.maxRayBudget)), 1024));
 		settings.indirectIntensity = std::max(GetEnvVarFloat("NOX_SURFEL_GI_INTENSITY", settings.indirectIntensity), 0.0f);
+		applyEnvToggle("NOX_SURFEL_GI_SCREEN_TRACE", settings.useScreenSpaceTrace);
+		applyEnvToggle("NOX_SURFEL_GI_BVH_TRACE", settings.useSoftwareBVHTrace);
+		applyEnvToggle("NOX_SURFEL_GI_SURFEL_FALLBACK_TRACE", settings.useSurfelFallbackTrace);
+		applyEnvToggle("NOX_SURFEL_GI_RAY_GUIDING", settings.useRayGuiding);
+		applyEnvToggle("NOX_SURFEL_GI_RADIAL_DEPTH", settings.useRadialDepth);
 		m_context.lightingCompositeDebugMode = std::clamp(
 			GetEnvVarInt("NOX_SURFEL_GI_COMPOSITE_DEBUG", m_context.lightingCompositeDebugMode),
 			0,

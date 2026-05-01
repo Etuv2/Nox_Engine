@@ -16,6 +16,7 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 
 uniform uint uMaxSurfels;
 uniform uint uMaxRayBudget;
+uniform uint uFrameIndex;
 
 const uint SURFEL_ALLOCATE_CAS_ATTEMPTS = 8u;
 
@@ -59,11 +60,14 @@ uint ReserveRays(uint desired, uint budget, out uint firstRay)
 
 void main()
 {
-    uint requestID = gl_GlobalInvocationID.x;
-    if (requestID >= uMaxSurfels) {
+    uint linearRequestID = gl_GlobalInvocationID.x;
+    if (linearRequestID >= uMaxSurfels) {
         return;
     }
 
+    uint rotation = uMaxSurfels == 0u ? 0u : (SurfelHash(uFrameIndex * 747796405u) % uMaxSurfels);
+    uint rotatedRequestID = (linearRequestID + rotation) % uMaxSurfels;
+    uint requestID = rotatedRequestID;
     uint requested = rayRequests[requestID].requestedCount;
     uint budget = min(uMaxRayBudget, counters.requestedRays);
     uint allocated = ProportionalAllocation(requested, counters.requestedRays, budget);

@@ -80,6 +80,7 @@ void main()
 
     vec3 gridCellSize = (uGridMax - uGridMin) / vec3(max(uGridResolution, uvec3(1u)));
     float radius = max(surfel.worldPos_radius.w, 0.001);
+    float supportRadius = SurfelCoverageSupportRadius(radius, uGridMin, uGridMax, uGridResolution);
     vec3 cellMin = uGridMin + vec3(cellCoord) * gridCellSize;
     vec3 cellMax = cellMin + gridCellSize;
 
@@ -95,7 +96,7 @@ void main()
         vec3 neighborMax = neighborMin + gridCellSize;
         vec3 closest = clamp(surfel.worldPos_radius.xyz, neighborMin, neighborMax);
         vec3 delta = closest - surfel.worldPos_radius.xyz;
-        if (dot(delta, delta) <= radius * radius) {
+        if (dot(delta, delta) <= supportRadius * supportRadius) {
             InsertIntoCell(surfelID, uvec3(neighbor));
         }
     }

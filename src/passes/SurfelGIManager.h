@@ -49,7 +49,8 @@ enum class SurfelGIDebugView : uint32_t {
 	StoredSurfelRadius = 26,
 	StoredSurfelTransformID = 27,
 	StoredSurfelFlags = 28,
-	DebugDrawPosition = 29
+	DebugDrawPosition = 29,
+	StoredSurfelAlbedo = 30
 };
 
 struct SurfelGISettings {

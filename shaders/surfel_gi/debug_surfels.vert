@@ -64,6 +64,7 @@ const uint DEBUG_STORED_SURFEL_RADIUS = 26u;
 const uint DEBUG_STORED_SURFEL_TRANSFORM_ID = 27u;
 const uint DEBUG_STORED_SURFEL_FLAGS = 28u;
 const uint DEBUG_DEBUG_DRAW_POSITION = 29u;
+const uint DEBUG_STORED_SURFEL_ALBEDO = 30u;
 const float DEBUG_DISK_GRAZING_RADIUS_SCALE = 0.28;
 const float GIBS_PAPER_DISK_SCALE = 2.75;
 const float GIBS_PAPER_MIN_RADIUS_PX = 7.0;
@@ -366,6 +367,9 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
     } else if (uDebugView == DEBUG_DEBUG_DRAW_POSITION) {
         color = WorldPositionColor(surfel.worldPos_radius.xyz);
         ring = 0.35;
+    } else if (uDebugView == DEBUG_STORED_SURFEL_ALBEDO) {
+        color = SafePositive(surfel.albedo_life.rgb);
+        ring = 0.25;
     } else if (uDebugView == DEBUG_RAY_GUIDE) {
         color = GuideConfidenceColor(surfelID, surfel, ring);
     } else if (uDebugView == DEBUG_RADIAL_DEPTH) {

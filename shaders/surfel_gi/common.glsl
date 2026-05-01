@@ -23,6 +23,7 @@
 #define B_RAY_COUNTERS 28
 #define B_GRID_COUNTERS 29
 #define B_SURFEL_GI_SETTINGS 30
+#define B_SHADOW_MATRICES 31
 
 #define T_SURFEL_GBUFFER_NORMAL_RM 0
 #define T_SURFEL_GBUFFER_ALBEDO_AO 1
@@ -361,6 +362,15 @@ ivec3 SurfelCubeNeighborOffset(uint index)
     return ivec3(x, y, z);
 }
 
+ivec3 SurfelCubeRadius2NeighborOffset(uint index)
+{
+    uint clampedIndex = min(index, 124u);
+    int x = int(clampedIndex % 5u) - 2;
+    int y = int((clampedIndex / 5u) % 5u) - 2;
+    int z = int(clampedIndex / 25u) - 2;
+    return ivec3(x, y, z);
+}
+
 bool SurfelWorldToGridCell(vec3 worldPos,
                            vec3 gridMin,
                            vec3 gridMax,
@@ -382,15 +392,35 @@ bool SurfelWorldToGridCell(vec3 worldPos,
     return true;
 }
 
-float SurfelCoverageWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel, float normalRejectCos)
+float SurfelMaxGridCellSize(vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
+{
+    vec3 cellSize = (gridMax - gridMin) / vec3(max(gridResolution, uvec3(1u)));
+    return max(max(cellSize.x, cellSize.y), cellSize.z);
+}
+
+float SurfelCoverageSupportRadius(float radius, vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
+{
+    float cellSize = SurfelMaxGridCellSize(gridMin, gridMax, gridResolution);
+    return max(max(radius * 8.0, cellSize * 1.05), 0.32);
+}
+
+float SurfelCoverageWeight(vec3 receiverPos,
+                           vec3 receiverNormal,
+                           Surfel surfel,
+                           float normalRejectCos,
+                           vec3 gridMin,
+                           vec3 gridMax,
+                           uvec3 gridResolution)
 {
     vec3 surfelPos = surfel.worldPos_radius.xyz;
     vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
     float radius = max(surfel.worldPos_radius.w, 0.001);
+    float supportRadius = SurfelCoverageSupportRadius(radius, gridMin, gridMax, gridResolution);
     vec3 delta = receiverPos - surfelPos;
-    float disk = exp(-dot(delta, delta) / max(radius * radius, 1e-4));
+    float disk = exp(-dot(delta, delta) / max(supportRadius * supportRadius, 1e-4));
     float normal = SurfelSaturate((dot(receiverNormal, surfelNormal) - normalRejectCos) / max(1.0 - normalRejectCos, 1e-4));
-    float plane = exp(-abs(dot(delta, surfelNormal)) / max(radius * 0.25, 1e-4));
+    float planeSigma = max(max(radius * 2.0, supportRadius * 0.18), 0.035);
+    float plane = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
     return disk * normal * plane;
 }
 

@@ -8,7 +8,7 @@
 struct SurfelGridSettings {
     glm::uvec3 resolution{ 64u, 64u, 64u };
     uint32_t maxSurfelsPerCell = 64u;
-    glm::vec3 worldExtent{ 80.0f };
+    glm::vec3 worldExtent{ 24.0f };
     float nearScale = 1.0f;
     float farScale = 120.0f;
     bool useNonLinearGrid = true;
@@ -52,7 +52,8 @@ enum class SurfelGIBinding : GLuint {
     RayBins = 27u,
     RayCounters = 28u,
     GridCounters = 29u,
-    Settings = 30u
+    Settings = 30u,
+    ShadowMatrices = 31u
 };
 
 constexpr GLuint ToGLuint(SurfelGIBinding binding)

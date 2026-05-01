@@ -14,7 +14,7 @@ uniform sampler2D uDepthTex;
 uniform uvec2 uResolution;
 uniform uvec2 uInputResolution;
 
-const int FILTER_RADIUS = 7;
+const int FILTER_RADIUS = 5;
 
 float DepthWeight(float centerDepth, float sampleDepth)
 {
@@ -22,12 +22,12 @@ float DepthWeight(float centerDepth, float sampleDepth)
         return 0.0;
     }
     float dz = abs(centerDepth - sampleDepth);
-    return exp(-dz * dz * 6000.0);
+    return exp(-dz * dz * 2600.0);
 }
 
 float NormalWeight(vec3 centerNormal, vec3 sampleNormal)
 {
-    return smoothstep(0.35, 0.95, max(dot(centerNormal, sampleNormal), 0.0));
+    return smoothstep(0.25, 0.92, max(dot(centerNormal, sampleNormal), 0.0));
 }
 
 void main()
@@ -58,7 +58,7 @@ void main()
     float weightSum = 0.0;
     float confidenceSum = 0.0;
     if (centerConfidence > 1e-4 && SurfelLuminance(center.rgb) > 1e-5) {
-        float centerWeight = mix(0.25, 2.0, centerConfidence);
+        float centerWeight = mix(0.25, 1.15, centerConfidence);
         sum = max(center.rgb, vec3(0.0)) * centerWeight;
         weightSum = centerWeight;
         confidenceSum = centerConfidence * centerWeight;
@@ -84,15 +84,20 @@ void main()
             float sampleDepth = texelFetch(uDepthTex, sampleInputPixel, 0).r;
             vec3 sampleNormal = SurfelSafeNormalize(DecodeNormalOct(texelFetch(uPackedNormalRMTex, sampleInputPixel, 0).rg));
 
-            float spatial = exp(-float(x * x + y * y) / 28.0);
+            float colorDelta = abs(SurfelLuminance(sampleIndirect.rgb) - SurfelLuminance(center.rgb));
+            float colorWeight = centerConfidence > 1e-4
+                ? exp(-colorDelta * colorDelta * 0.18)
+                : 1.0;
+            float spatial = exp(-float(x * x + y * y) / 26.0);
             float w = spatial * DepthWeight(centerDepth, sampleDepth) * NormalWeight(centerNormal, sampleNormal) * sampleConfidence;
+            w *= colorWeight;
             if (w <= 1e-5) {
                 continue;
             }
 
             sum += max(sampleIndirect.rgb, vec3(0.0)) * w;
             weightSum += w;
-            confidenceSum += w;
+            confidenceSum += sampleConfidence * w;
         }
     }
 

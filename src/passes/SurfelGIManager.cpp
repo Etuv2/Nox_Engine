@@ -34,6 +34,7 @@ bool IsSurfelOverlayDebugView(SurfelGIDebugView view)
 	case SurfelGIDebugView::StoredSurfelTransformID:
 	case SurfelGIDebugView::StoredSurfelFlags:
 	case SurfelGIDebugView::DebugDrawPosition:
+	case SurfelGIDebugView::StoredSurfelAlbedo:
 		return true;
 	default:
 		return false;

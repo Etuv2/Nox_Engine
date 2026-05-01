@@ -1067,7 +1067,8 @@ void RenderingSettingsWindow::Render() {
 					{ 26, "Stored Radius" },
 					{ 27, "Stored Transform ID" },
 					{ 28, "Stored Flags" },
-					{ 29, "Debug Draw Position" }
+					{ 29, "Debug Draw Position" },
+					{ 30, "Stored Albedo" }
 				};
 				if (DebugCombo("Surfel Debug View", &m_cleanSurfelGIDebugView, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Placement Validation Mode", &m_cleanSurfelGIPlacementValidation)) { SyncToRenderer(); }

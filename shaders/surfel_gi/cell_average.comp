@@ -23,12 +23,9 @@ uniform uint uGridCellCount;
 uniform uint uMaxSurfelsPerCell;
 uniform uint uMaxSurfels;
 
-vec3 SurfelOutgoingDiffuseRadiance(Surfel surfel)
+vec3 SurfelCachedIndirectIrradiance(Surfel surfel)
 {
-    vec3 irradiance = max(surfel.irradiance.rgb, vec3(0.0));
-    vec3 albedo = clamp(surfel.albedo_life.rgb, vec3(0.0), vec3(1.0));
-    vec3 sourceReflectance = max(albedo, vec3(0.04));
-    return irradiance * sourceReflectance;
+    return max(surfel.irradiance.rgb, vec3(0.0));
 }
 
 void main()
@@ -58,7 +55,7 @@ void main()
         }
 
         float weight = max(surfel.irradiance.a, 0.0);
-        sumIrradiance += SurfelOutgoingDiffuseRadiance(surfel) * weight;
+        sumIrradiance += SurfelCachedIndirectIrradiance(surfel) * weight;
         sumWeight += weight;
     }
 
