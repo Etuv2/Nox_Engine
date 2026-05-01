@@ -149,14 +149,14 @@ uniform float uPointLightBias = 0.002;
 uniform float uPointLightSlopeBias = 0.005;
 uniform float uPointLightNormalOffset = 0.01;
 
-const uint SURFEL_TRACE_STEPS = 40u;
+const uint SURFEL_TRACE_STEPS = 16u;
 const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
 const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
-const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 64u;
-const uint SURFEL_TRACE_MAX_CANDIDATES = 1024u;
-const uint SURFEL_TRACE_MAX_VISITED_CELLS = 128u;
+const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 12u;
+const uint SURFEL_TRACE_MAX_CANDIDATES = 128u;
+const uint SURFEL_TRACE_MAX_VISITED_CELLS = 40u;
 const uint SURFEL_TRACE_MAX_LIGHTS = 32u;
-const uint SURFEL_SCREEN_TRACE_STEPS = 48u;
+const uint SURFEL_SCREEN_TRACE_STEPS = 32u;
 const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 2.0;
 const float SURFEL_TRACE_HIT_RADIUS_SCALE = 5.5;
 const float SURFEL_TRACE_MIN_HIT_RADIUS = 0.14;
@@ -620,8 +620,8 @@ vec3 TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
     vec3 sumIrradiance = vec3(0.0);
     float sumWeight = 0.0;
     uint candidates = 0u;
-    const uint maxCandidates = 96u;
-    const uint perCellBudget = 4u;
+    const uint maxCandidates = 64u;
+    const uint perCellBudget = 2u;
     for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
         if (candidates >= maxCandidates || sumWeight >= 24.0) {
             break;

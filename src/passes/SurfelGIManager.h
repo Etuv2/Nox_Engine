@@ -64,7 +64,7 @@ struct SurfelGISettings {
 	uint32_t maxSurfelsPerCell = 64u;
 	uint32_t maxGatherSurfelsPerPixel = 512u;
 	uint32_t gatherNeighborRadius = 1u;
-	uint32_t rayUpdateInterval = 2u;
+	uint32_t rayUpdateInterval = 1u;
 	uint32_t radialDepthUpdateInterval = 4u;
 	uint32_t spawnPasses = 2u;
 	uint32_t fastFillSpawnPasses = 4u;

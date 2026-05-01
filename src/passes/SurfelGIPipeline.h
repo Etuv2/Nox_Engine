@@ -7,6 +7,8 @@
 #include <GL/glew.h>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
@@ -69,6 +71,11 @@ public:
 	const SurfelGIFrameStats& GetStats() const { return m_stats; }
 
 private:
+	struct SubpassGpuTiming {
+		std::string label;
+		double gpuMs = 0.0;
+	};
+
 	bool LoadShaders();
 	void ReleaseShaders();
 	bool CreateIndirectTexture();
@@ -80,6 +87,7 @@ private:
 	SurfelGISettings m_settings{};
 	SurfelGIPipelineResources m_resources{};
 	SurfelGIFrameStats m_stats{};
+	std::vector<SubpassGpuTiming> m_subpassTimings;
 	SurfelPool m_pool;
 	SurfelGrid m_grid;
 	SurfelRayQueue m_rayQueue;
@@ -112,8 +120,10 @@ private:
 	uint32_t m_stationaryFrameCount = 0;
 	uint32_t m_lastTransformCount = 0;
 	uint32_t m_lastSpawnPassCount = 1;
+	uint32_t m_subpassMetricsInterval = 120;
 	bool m_hasLastCameraState = false;
 	bool m_loggedGBufferBindings = false;
 	bool m_wasPlacementValidationMode = false;
+	bool m_logSubpassMetrics = false;
 	bool m_initialized = false;
 };

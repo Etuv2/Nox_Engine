@@ -122,6 +122,7 @@ namespace {
 		uint32_t gatherNeighborRadius = 0u;
 		float finalGatherResolutionScale = 1.0f;
 		bool allowRayGuiding = false;
+		bool allowRadialDepth = false;
 		uint32_t minRayUpdateInterval = 2u;
 		uint32_t maxSpawnPasses = 2u;
 		uint32_t maxFastFillSpawnPasses = 4u;
@@ -131,14 +132,14 @@ namespace {
 	static CleanSurfelGIBudgetCaps GetCleanSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 8192u, 1024u, 32u, 16u, 64u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };
+			return { 8192u, 512u, 32u, 16u, 64u, 1u, 0.5f, false, false, 4u, 1u, 1u, 3u };
 		case SurfelGIQualityTier::High:
-			return { 65536u, 8192u, 16u, 64u, 256u, 2u, 0.75f, false, 3u, 2u, 3u, 8u };
+			return { 65536u, 8192u, 16u, 64u, 256u, 2u, 0.75f, false, false, 3u, 2u, 3u, 8u };
 		case SurfelGIQualityTier::Ultra:
-			return { 131072u, 32768u, 8u, 64u, 512u, 2u, 1.0f, true, 2u, 2u, 4u, 12u };
+			return { 131072u, 32768u, 8u, 64u, 512u, 2u, 1.0f, true, false, 2u, 2u, 4u, 12u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 12288u, 1536u, 32u, 20u, 128u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };
+			return { 12288u, 192u, 32u, 20u, 32u, 1u, 0.375f, false, false, 1u, 1u, 1u, 3u };
 		}
 	}
 
@@ -151,6 +152,7 @@ namespace {
 			settings.maxSurfelsPerCell = std::min(settings.maxSurfelsPerCell, caps.maxSurfelsPerCell);
 			settings.maxGatherSurfelsPerPixel = std::min(settings.maxGatherSurfelsPerPixel, caps.maxGatherSurfelsPerPixel);
 			settings.useRayGuiding = settings.useRayGuiding && caps.allowRayGuiding;
+			settings.useRadialDepth = settings.useRadialDepth && caps.allowRadialDepth;
 			settings.rayUpdateInterval = std::max(settings.rayUpdateInterval, caps.minRayUpdateInterval);
 			settings.spawnPasses = std::min(settings.spawnPasses, caps.maxSpawnPasses);
 			settings.fastFillSpawnPasses = std::min(settings.fastFillSpawnPasses, caps.maxFastFillSpawnPasses);

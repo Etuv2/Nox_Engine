@@ -93,10 +93,10 @@ def main() -> None:
     require("SetUniform1f(program, \"uFallbackStrength\", 0.0f)" in pipeline_cpp,
             "surfel-only baseline must not hide missing GI with cell-average fallback")
 
-    require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CELL_ENTRIES") >= 32,
-            "ray tracing must inspect enough cell entries to avoid arbitrary first-entry bias")
-    require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CANDIDATES") >= 192,
-            "ray tracing must use enough candidates for stable colour-bleed hits")
+    require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CELL_ENTRIES") == 12,
+            "default surfel fallback tracing must sample enough cell entries without blowing the real-time budget")
+    require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CANDIDATES") == 128,
+            "default surfel fallback tracing must use a bounded candidate budget for stable real-time colour-bleed hits")
     require("SURFEL_TRACE_HIT_RADIUS_SCALE" in trace_shader and
             "SURFEL_TRACE_MIN_HIT_RADIUS" in trace_shader and
             "SURFEL_TRACE_MAX_HIT_RADIUS" in trace_shader,
@@ -193,11 +193,22 @@ def main() -> None:
             "sourceIndex == 2 ? indirectAO" not in deferred_shader and
             "float sourceScale = 1.0;" in deferred_shader,
             "indirect diffuse composite must preserve the linear irradiance contract without hidden global intensity boosts")
-    require("return { 12288u, 1536u, 32u, 20u, 128u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };" in modular_cpp,
+    require("return { 12288u, 192u, 32u, 20u, 32u, 1u, 0.375f, false, false, 1u, 1u, 1u, 3u };" in modular_cpp,
             "default Medium Clean Surfel GI preset must use a bounded sub-full-resolution gather only after grid artifacts are solved")
     require("settings.rayUpdateInterval = std::max(settings.rayUpdateInterval, caps.minRayUpdateInterval);" in modular_cpp and
+            "settings.useRadialDepth = settings.useRadialDepth && caps.allowRadialDepth;" in modular_cpp and
             "settings.spawnPasses = std::min(settings.spawnPasses, caps.maxSpawnPasses);" in modular_cpp,
-            "real-time budget must cap update cadence and spawn passes, not only buffer sizes")
+            "real-time budget must cap unstable optional features, update cadence, and spawn passes, not only buffer sizes")
+    require("NOX_SURFEL_GI_LOG_SUBPASS_METRICS" in pipeline_cpp and
+            "[SurfelGISubpassMetrics]" in pipeline_cpp and
+            '"trace_rays"' in pipeline_cpp and
+            '"apply_indirect"' in pipeline_cpp and
+            '"spatial_filter"' in pipeline_cpp,
+            "SurfelGI must expose opt-in per-subpass GPU metrics for real-time budget debugging")
+    require("const bool updateRaysThisFrame = true;" not in pipeline_cpp and
+            "rayUpdateInterval" in pipeline_cpp and
+            "m_frameIndex % rayUpdateInterval" in pipeline_cpp,
+            "ray tracing must honor the configured ray update interval instead of tracing the full budget every frame")
     require("atomicMax(surfels[entry.surfelID].frameInfo.x, uFrameIndex)" in spawn_shader and
             "SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT" in spawn_shader,
             "coverage gap detection must refresh lastVisible for existing surfels that cover current G-buffer candidates")
@@ -216,10 +227,11 @@ def main() -> None:
             "++accepted;" in integrate_shader,
             "surfel integration must not increase irradiance confidence from black ray misses")
     trace_shader = read("shaders/surfel_gi/trace_rays.comp")
-    require("const uint SURFEL_TRACE_STEPS = 40u;" in trace_shader and
-            uint_constant(trace_shader, "SURFEL_TRACE_MAX_CANDIDATES") >= 1024 and
+    require(12 <= uint_constant(trace_shader, "SURFEL_TRACE_STEPS") <= 20 and
+            128 <= uint_constant(trace_shader, "SURFEL_TRACE_MAX_CANDIDATES") <= 256 and
+            uint_constant(trace_shader, "SURFEL_TRACE_MAX_VISITED_CELLS") <= 40 and
             "localBounceRayLength" in pipeline_cpp,
-            "surfel-grid fallback rays must sample a bounded local GI segment densely enough to hit Cornell-scale geometry")
+            "default surfel-grid fallback rays must stay bounded while sampling a local GI segment densely enough to hit Cornell-scale geometry")
     require("layout(binding = B_LIGHTS, std430) readonly buffer LightDataBuffer" in trace_shader and
             "uniform uint uLightCount" in trace_shader and
             "EvaluateHitDirectIrradiance" in trace_shader and
@@ -229,6 +241,10 @@ def main() -> None:
     require("TraceCachedIndirectAtSurface" in trace_shader and
             "directIrradiance + skyIrradiance + cachedIndirectIrradiance" in trace_shader,
             "screen/BVH ray hits must include the persistent surfel cache so traced GI can produce multi-bounce output")
+    require("const uint SURFEL_SCREEN_TRACE_STEPS = 32u;" in trace_shader and
+            "const uint maxCandidates = 64u;" in trace_shader and
+            "const uint perCellBudget = 2u;" in trace_shader,
+            "default trace shader must bound screen-walk and cached multi-bounce lookup work for the real-time preset")
     require("layout(binding = B_SHADOW_MATRICES, std430) readonly buffer ShadowMatricesBuffer" in trace_shader and
             "uniform sampler2DArrayShadow uMultiLightShadowArray" in trace_shader and
             "EvaluateLightShadow" in trace_shader and
@@ -267,8 +283,9 @@ def main() -> None:
     require("SurfelUnpackGuideRadiance" in read("shaders/surfel_gi/generate_rays.comp") and
             "SURFEL_GUIDE_MIX_PROBABILITY" in read("shaders/surfel_gi/generate_rays.comp"),
             "ray guiding must sample decoded learned radiance through a bounded mixture PDF")
-    require("const bool updateRaysThisFrame = true;" in pipeline_cpp,
-            "correctness path must not make GI/ray coverage update on a visible fixed interval")
+    require("const bool updateRaysThisFrame = true;" not in pipeline_cpp and
+            "m_frameIndex < m_settings.fastFillFrameCount" in pipeline_cpp,
+            "real-time ray tracing may be cadenced, but startup must fast-fill and coverage/spawn must stay independent")
     require("outsideGridScore" in recycle_shader and "outsideGrid ? 1.0" not in recycle_shader and "outsideGrid ||" not in recycle_shader,
             "recycling must treat outside-grid surfels as heuristic candidates, not immediately discard persistent cached surfels on camera movement")
     require("float radius = clamp(surfel.localPos_spawnRadius.w, minRadius, maxRadius);" in read("shaders/surfel_gi/update_surfels.comp"),
@@ -281,7 +298,7 @@ def main() -> None:
             "centerConfidence > 1e-4" in spatial_filter_shader and
             "colorWeight" in spatial_filter_shader and
             "sampleConfidence * w" in spatial_filter_shader,
-            "spatial resolve must fill unsupported holes without smearing sparse cache errors into large blobs")
+            "realtime spatial resolve must fill unsupported holes without smearing sparse cache errors into large blobs")
     require("bool cameraMoving" in pipeline_cpp and
             "productionPhase" not in spawn_shader,
             "camera/view movement must not depend on timed production tile phases for coverage refresh")

@@ -62,6 +62,32 @@ bool EnvFlagEnabled(const char* name, bool fallback)
 	return true;
 }
 
+uint32_t EnvUInt(const char* name, uint32_t fallback)
+{
+#if defined(_MSC_VER)
+	char* rawValue = nullptr;
+	std::size_t length = 0;
+	if (_dupenv_s(&rawValue, &length, name) != 0 || rawValue == nullptr || length == 0) {
+		return fallback;
+	}
+	const std::string value(rawValue);
+	std::free(rawValue);
+#else
+	const char* rawValue = std::getenv(name);
+	if (rawValue == nullptr || rawValue[0] == '\0') {
+		return fallback;
+	}
+	const std::string value(rawValue);
+#endif
+
+	char* end = nullptr;
+	const unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
+	if (end == value.c_str()) {
+		return fallback;
+	}
+	return static_cast<uint32_t>(std::max<unsigned long>(parsed, 1ul));
+}
+
 void DeleteBuffer(GLuint& buffer)
 {
 	if (buffer != 0u) {
@@ -467,15 +493,21 @@ void SurfelGIPipeline::Shutdown()
 	m_frameIndex = 0;
 	m_stationaryFrameCount = 0;
 	m_lastSpawnPassCount = 1;
+	m_subpassMetricsInterval = 120;
 	m_hasLastCameraState = false;
 	m_loggedGBufferBindings = false;
 	m_initialized = false;
+	m_logSubpassMetrics = false;
+	m_subpassTimings.clear();
 }
 
 void SurfelGIPipeline::BeginFrame(RenderContext&,
 	const std::shared_ptr<SceneGraph>&,
 	const std::shared_ptr<Camera>&)
 {
+	m_logSubpassMetrics = EnvFlagEnabled("NOX_SURFEL_GI_LOG_SUBPASS_METRICS", false);
+	m_subpassMetricsInterval = EnvUInt("NOX_SURFEL_GI_LOG_SUBPASS_METRICS_INTERVAL", 120u);
+	m_subpassTimings.clear();
 	m_stats.configuredEnabled = m_settings.enabled;
 	m_stats.ready = IsReady();
 }
@@ -499,6 +531,36 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	glm::vec3 gridMax(0.0f);
 	ComputeCameraCenteredGridBounds(gridSettings, cameraPosition, gridMin, gridMax);
 	const bool placementOnly = m_settings.placementValidationMode;
+	auto timedDispatch = [&](const char* label, auto&& work) {
+		if (!m_logSubpassMetrics) {
+			work();
+			return;
+		}
+
+		GLuint queries[2] = { 0u, 0u };
+		glGenQueries(2, queries);
+		if (queries[0] == 0u || queries[1] == 0u) {
+			work();
+			if (queries[0] != 0u || queries[1] != 0u) {
+				glDeleteQueries(2, queries);
+			}
+			return;
+		}
+
+		glQueryCounter(queries[0], GL_TIMESTAMP);
+		work();
+		glQueryCounter(queries[1], GL_TIMESTAMP);
+
+		GLuint64 beginNs = 0u;
+		GLuint64 endNs = 0u;
+		glGetQueryObjectui64v(queries[0], GL_QUERY_RESULT, &beginNs);
+		glGetQueryObjectui64v(queries[1], GL_QUERY_RESULT, &endNs);
+		glDeleteQueries(2, queries);
+
+		if (endNs >= beginNs) {
+			m_subpassTimings.push_back({ label, static_cast<double>(endNs - beginNs) * 1.0e-6 });
+		}
+	};
 
 	GLuint transformBuffer = 0u;
 	uint32_t transformCount = 0u;
@@ -544,8 +606,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
 			SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
 			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
-			m_cellAverageShader->Dispatch(DivRoundUp(m_grid.GetCellCount(), 64u), 1u, 1u);
-			m_cellAverageShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			timedDispatch("cell_average", [&]() {
+				m_cellAverageShader->Dispatch(DivRoundUp(m_grid.GetCellCount(), 64u), 1u, 1u);
+				m_cellAverageShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			});
 		}
 	};
 
@@ -555,8 +619,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			glUseProgram(program);
 			SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
 			SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
-			m_clearGridShader->Dispatch(DivRoundUp(m_grid.GetCellCount(), 64u), 1u, 1u);
-			m_clearGridShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			timedDispatch("clear_grid", [&]() {
+				m_clearGridShader->Dispatch(DivRoundUp(m_grid.GetCellCount(), 64u), 1u, 1u);
+				m_clearGridShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			});
 		}
 
 		if (m_buildGridShader && m_buildGridShader->IsValid()) {
@@ -568,8 +634,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 			SetUniform3fv(program, "uGridMin", gridMin);
 			SetUniform3fv(program, "uGridMax", gridMax);
-			m_buildGridShader->Dispatch(groupsSurfels, 1u, 1u);
-			m_buildGridShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			timedDispatch("build_grid", [&]() {
+				m_buildGridShader->Dispatch(groupsSurfels, 1u, 1u);
+				m_buildGridShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			});
 		}
 
 		if (includeCellAverages) {
@@ -582,15 +650,19 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			const GLuint program = m_countLiveShader->GetProgramID();
 			glUseProgram(program);
 			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
-			m_countLiveShader->Dispatch(groupsSurfels, 1u, 1u);
-			m_countLiveShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			timedDispatch("count_live", [&]() {
+				m_countLiveShader->Dispatch(groupsSurfels, 1u, 1u);
+				m_countLiveShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			});
 		}
 	};
 
 	if (m_beginFrameShader && m_beginFrameShader->IsValid()) {
 		glUseProgram(m_beginFrameShader->GetProgramID());
-		m_beginFrameShader->Dispatch(1u, 1u, 1u);
-		m_beginFrameShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("begin_frame", [&]() {
+			m_beginFrameShader->Dispatch(1u, 1u, 1u);
+			m_beginFrameShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	if (placementOnly && !m_wasPlacementValidationMode) {
@@ -615,8 +687,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uTargetSurfelScreenRadiusPx", m_settings.targetSurfelScreenRadiusPx);
 		SetUniform1f(program, "uMinSurfelRadius", m_settings.minSurfelRadius);
 		SetUniform1f(program, "uMaxSurfelRadius", m_settings.maxSurfelRadius);
-		m_updateShader->Dispatch(groupsSurfels, 1u, 1u);
-		m_updateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("update_surfels", [&]() {
+			m_updateShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_updateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	if (!placementOnly && m_recycleShader && m_recycleShader->IsValid()) {
@@ -629,8 +703,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uGridMax", gridMax);
 		SetUniform1f(program, "uRecyclePressureStart", m_settings.recyclePressureStart);
 		SetUniform1f(program, "uMaxDistance", glm::length(gridSettings.worldExtent));
-		m_recycleShader->Dispatch(groupsSurfels, 1u, 1u);
-		m_recycleShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("recycle_surfels", [&]() {
+			m_recycleShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_recycleShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	rebuildGridAndAverages(true);
@@ -683,8 +759,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		// passes so later visible-tile samples observe fresh coverage.
 		for (GLuint spawnPass = 0u; spawnPass < spawnPassCount; ++spawnPass) {
 			SetUniform1ui(program, "uSpawnPassIndex", spawnPass);
-			m_spawnShader->Dispatch(DivRoundUp(tileCount, 64u), 1u, 1u);
-			m_spawnShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			timedDispatch("spawn", [&]() {
+				m_spawnShader->Dispatch(DivRoundUp(tileCount, 64u), 1u, 1u);
+				m_spawnShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+			});
 			rebuildGridAndAverages(false);
 			glUseProgram(program);
 		}
@@ -693,14 +771,20 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 
 	}
 
-	const bool updateRaysThisFrame = true;
+	const uint32_t rayUpdateInterval = std::max(m_settings.rayUpdateInterval, 1u);
+	const bool updateRaysThisFrame = !placementOnly &&
+		(rayUpdateInterval <= 1u ||
+		 m_frameIndex < m_settings.fastFillFrameCount ||
+		 (m_frameIndex % rayUpdateInterval) == 0u);
 	if (!placementOnly && updateRaysThisFrame && m_requestRaysShader && m_requestRaysShader->IsValid()) {
 		const GLuint program = m_requestRaysShader->GetProgramID();
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
-		m_requestRaysShader->Dispatch(groupsSurfels, 1u, 1u);
-		m_requestRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("request_rays", [&]() {
+			m_requestRaysShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_requestRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	if (!placementOnly && updateRaysThisFrame && m_allocateRaysShader && m_allocateRaysShader->IsValid()) {
@@ -709,8 +793,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uMaxRayBudget", m_settings.maxRayBudget);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
-		m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
-		m_allocateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("allocate_rays", [&]() {
+			m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_allocateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	if (!placementOnly && updateRaysThisFrame && m_generateRaysShader && m_generateRaysShader->IsValid()) {
@@ -723,8 +809,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uRayTMin", 0.01f);
 		const float localBounceRayLength = std::clamp(m_settings.maxSurfelRadius * 2.5f, 4.0f, 12.0f);
 		SetUniform1f(program, "uRayTMax", localBounceRayLength);
-		m_generateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
-		m_generateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("generate_rays", [&]() {
+			m_generateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_generateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
@@ -828,8 +916,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uPointLightSlopeBias", pointLightSlopeBias);
 		SetUniform1f(program, "uPointLightNormalOffset", pointLightNormalOffset);
 		SetUniform1ui(program, "uLightCount", lightCount);
-		m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);
-		m_traceRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("trace_rays", [&]() {
+			m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);
+			m_traceRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	if (!placementOnly && updateRaysThisFrame && m_integrateShader && m_integrateShader->IsValid()) {
@@ -839,8 +929,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
-		m_integrateShader->Dispatch(groupsSurfels, 1u, 1u);
-		m_integrateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("integrate", [&]() {
+			m_integrateShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_integrateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	if (!placementOnly && updateRaysThisFrame && m_settings.useRadialDepth &&
@@ -849,8 +941,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
-		m_radialDepthShader->Dispatch(groupsSurfels, 1u, 1u);
-		m_radialDepthShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		timedDispatch("radial_depth", [&]() {
+			m_radialDepthShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_radialDepthShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
 	}
 
 	if (!placementOnly && updateRaysThisFrame) {
@@ -901,6 +995,36 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		: 0u;
 	const bool fullscreenDebug = applyDebugView != 0u;
 	BindCoreResources(0u);
+	auto timedDispatch = [&](const char* label, auto&& work) {
+		if (!m_logSubpassMetrics) {
+			work();
+			return;
+		}
+
+		GLuint queries[2] = { 0u, 0u };
+		glGenQueries(2, queries);
+		if (queries[0] == 0u || queries[1] == 0u) {
+			work();
+			if (queries[0] != 0u || queries[1] != 0u) {
+				glDeleteQueries(2, queries);
+			}
+			return;
+		}
+
+		glQueryCounter(queries[0], GL_TIMESTAMP);
+		work();
+		glQueryCounter(queries[1], GL_TIMESTAMP);
+
+		GLuint64 beginNs = 0u;
+		GLuint64 endNs = 0u;
+		glGetQueryObjectui64v(queries[0], GL_QUERY_RESULT, &beginNs);
+		glGetQueryObjectui64v(queries[1], GL_QUERY_RESULT, &endNs);
+		glDeleteQueries(2, queries);
+
+		if (endNs >= beginNs) {
+			m_subpassTimings.push_back({ label, static_cast<double>(endNs - beginNs) * 1.0e-6 });
+		}
+	};
 
 	const GLuint program = m_applyIndirectShader->GetProgramID();
 	glUseProgram(program);
@@ -939,8 +1063,10 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1f(program, "uFallbackStrength", 0.0f);
 	SetUniform1ui(program, "uDebugView", applyDebugView);
 
-	m_applyIndirectShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
-	m_applyIndirectShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+	timedDispatch("apply_indirect", [&]() {
+		m_applyIndirectShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
+		m_applyIndirectShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+	});
 	glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	if (!fullscreenDebug && m_spatialFilterShader && m_spatialFilterShader->IsValid()) {
@@ -958,12 +1084,33 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		SetUniform1i(filterProgram, "uDepthTex", 2);
 		SetUniform2ui(filterProgram, "uResolution", m_indirectWidth, m_indirectHeight);
 		SetUniform2ui(filterProgram, "uInputResolution", m_width, m_height);
-		m_spatialFilterShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
-		m_spatialFilterShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		timedDispatch("spatial_filter", [&]() {
+			m_spatialFilterShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
+			m_spatialFilterShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		});
 		glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 	}
 
 	glUseProgram(0);
+	if (m_logSubpassMetrics && !m_subpassTimings.empty() &&
+		m_subpassMetricsInterval > 0u &&
+		(m_frameIndex % m_subpassMetricsInterval) == 0u) {
+		double totalGpuMs = 0.0;
+		for (const SubpassGpuTiming& timing : m_subpassTimings) {
+			totalGpuMs += timing.gpuMs;
+		}
+		std::cout << "[SurfelGISubpassMetrics] frame=" << m_frameIndex
+			<< " totalGpuMs=" << totalGpuMs
+			<< " indirectResolution=" << m_indirectWidth << "x" << m_indirectHeight
+			<< " maxSurfels=" << m_settings.maxSurfels
+			<< " rayBudget=" << m_settings.maxRayBudget
+			<< " gatherBudget=" << m_settings.maxGatherSurfelsPerPixel
+			<< '\n';
+		for (const SubpassGpuTiming& timing : m_subpassTimings) {
+			std::cout << "[SurfelGISubpassMetrics]   "
+				<< timing.label << " gpuMs=" << timing.gpuMs << '\n';
+		}
+	}
 	m_stats.ready = IsReady();
 }
 
