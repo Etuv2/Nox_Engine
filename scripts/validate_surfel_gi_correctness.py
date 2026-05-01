@@ -36,6 +36,7 @@ def main() -> None:
     debug_vert = read("shaders/surfel_gi/debug_surfels.vert")
     debug_frag = read("shaders/surfel_gi/debug_surfels.frag")
     pipeline_cpp = read("src/passes/SurfelGIPipeline.cpp")
+    modular_cpp = read("src/ModularRenderer.cpp")
     manager_h = read("src/passes/SurfelGIManager.h")
     resources_h = read("src/surfel_gi/SurfelGIResources.h")
     ui_cpp = read("src/ImGui/RenderingSettingsWindow.cpp")
@@ -144,6 +145,11 @@ def main() -> None:
             "sourceIndex == 2 ? indirectAO" not in deferred_shader and
             "float sourceScale = 2.5;" in deferred_shader,
             "surfel-only composite must not apply an extra confidence/scale penalty compared with SSGI")
+    require("return { 12288u, 1536u, 32u, 20u, 36u, 1u, 0.5f, false, 8u, 1u, 1u, 3u };" in modular_cpp,
+            "default Medium Clean Surfel GI preset must be a real-time budget, not the capture budget")
+    require("settings.rayUpdateInterval = std::max(settings.rayUpdateInterval, caps.minRayUpdateInterval);" in modular_cpp and
+            "settings.spawnPasses = std::min(settings.spawnPasses, caps.maxSpawnPasses);" in modular_cpp,
+            "real-time budget must cap update cadence and spawn passes, not only buffer sizes")
     require("outsideGrid" in recycle_shader and "uGridMin" in recycle_shader and "uGridMax" in recycle_shader,
             "recycling must remove surfels that leave the active camera-centered grid")
     require("T_SURFEL_GBUFFER_NORMAL_RM" in common_shader and
