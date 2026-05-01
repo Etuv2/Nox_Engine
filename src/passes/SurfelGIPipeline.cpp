@@ -330,7 +330,10 @@ uint32_t ComputeSpawnPassCount(const SurfelGISettings& settings,
 	const bool initialFill = frameIndex < settings.fastFillFrameCount;
 	const bool stationaryFill = stationaryFrameCount > 0u &&
 		stationaryFrameCount <= settings.stationaryFastFillFrames;
-	return initialFill || stationaryFill ? fastPasses : steadyPasses;
+	if (initialFill || stationaryFill) {
+		return fastPasses;
+	}
+	return steadyPasses;
 }
 }
 
@@ -473,11 +476,13 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_loggedGBufferBindings = true;
 	}
 
+	bool cameraMoving = false;
 	if (m_hasLastCameraState) {
 		const float positionDelta = glm::length(cameraPosition - m_lastCameraPosition);
 		const float viewDelta = MatrixMaxAbsDelta(context.view, m_lastView);
-		if (positionDelta <= m_settings.stationaryCameraEpsilon &&
-			viewDelta <= m_settings.stationaryCameraEpsilon) {
+		cameraMoving = positionDelta > m_settings.stationaryCameraEpsilon ||
+			viewDelta > m_settings.stationaryCameraEpsilon;
+		if (!cameraMoving) {
 			m_stationaryFrameCount = std::min(m_stationaryFrameCount + 1u, 1024u);
 		} else {
 			m_stationaryFrameCount = 0u;
@@ -502,7 +507,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		}
 	};
 
-	auto rebuildGridAndAverages = [&]() {
+	auto rebuildGridAndAverages = [&](bool includeCellAverages) {
 		if (m_clearGridShader && m_clearGridShader->IsValid()) {
 			const GLuint program = m_clearGridShader->GetProgramID();
 			glUseProgram(program);
@@ -525,7 +530,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			m_buildGridShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
 
-		buildCellAverages();
+		if (includeCellAverages) {
+			buildCellAverages();
+		}
 	};
 
 	auto countLiveSurfels = [&]() {
@@ -584,7 +591,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_recycleShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
-	rebuildGridAndAverages();
+	rebuildGridAndAverages(true);
 
 	if (m_spawnShader && m_spawnShader->IsValid()) {
 		const GLuint tileSize = std::max(m_settings.spawnTileSize, 1u);
@@ -636,9 +643,11 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform1ui(program, "uSpawnPassIndex", spawnPass);
 			m_spawnShader->Dispatch(DivRoundUp(tileCount, 64u), 1u, 1u);
 			m_spawnShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
-			rebuildGridAndAverages();
+			rebuildGridAndAverages(false);
 			glUseProgram(program);
 		}
+
+		rebuildGridAndAverages(true);
 
 	}
 

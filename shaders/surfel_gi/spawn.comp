@@ -78,12 +78,12 @@ uniform vec3 uSkyRadiance;
 uniform int uPlacementValidationMode = 0;
 
 const uint SURFEL_SPAWN_FREE_POP_ATTEMPTS = 2048u;
-const uint SURFEL_PRODUCTION_TILE_PHASES = 8u;
 const uint SURFEL_PLACEMENT_VALIDATION_CANDIDATES = 2u;
 const uint SURFEL_PLACEMENT_VALIDATION_TILE_PHASES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELLS = 7u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 32u;
+const float SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT = 0.025;
 
 struct SpawnCandidate
 {
@@ -185,7 +185,11 @@ float ComputeCandidateCoverage(vec3 worldPos, vec3 worldNormal, uvec3 baseCell)
                 continue;
             }
 
-            coverage += SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos);
+            float weight = SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos);
+            coverage += weight;
+            if (weight > SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT) {
+                atomicMax(surfels[entry.surfelID].frameInfo.x, uFrameIndex);
+            }
             if (coverage >= uCoverageThreshold) {
                 return coverage;
             }
@@ -348,12 +352,6 @@ void main()
         uint placementPhase = uFrameIndex % SURFEL_PLACEMENT_VALIDATION_TILE_PHASES;
         uint phase = TileSpawnPhase(tileIndex, SURFEL_PLACEMENT_VALIDATION_TILE_PHASES);
         if (phase != placementPhase) {
-            return;
-        }
-    } else {
-        uint productionPhase = (uFrameIndex + passIndex * 3u) % SURFEL_PRODUCTION_TILE_PHASES;
-        uint phase = TileSpawnPhase(tileIndex, SURFEL_PRODUCTION_TILE_PHASES);
-        if (phase != productionPhase) {
             return;
         }
     }

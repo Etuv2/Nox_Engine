@@ -36,6 +36,16 @@ void main()
         }
     }
 
+    if (vStyle.w > 0.5) {
+        float softEdge = 1.0 - smoothstep(0.82, 1.0, r2);
+        float paperAlpha = vColor.a * softEdge * 0.96;
+        float facing = abs(dot(normalView, vec3(0.0, 0.0, 1.0)));
+        vec3 color = vColor.rgb * mix(0.86, 1.04, facing);
+        color = mix(color, color * 1.08, 1.0 - smoothstep(0.0, 0.72, r2));
+        FragColor = vec4(color, paperAlpha);
+        return;
+    }
+
     float edge = 1.0 - smoothstep(0.65, 1.0, r2);
     float rim = smoothstep(0.48, 0.82, r2) * (1.0 - smoothstep(0.76, 1.0, r2));
     float centerDot = 1.0 - smoothstep(0.0, 0.08, r2);

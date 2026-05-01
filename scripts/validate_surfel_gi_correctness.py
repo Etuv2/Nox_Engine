@@ -88,6 +88,10 @@ def main() -> None:
             "surfel debug draw must render instanced oriented disk quads, not point sprites")
     require("gl_InstanceID" in debug_vert and "SurfelBuildBasis" in debug_vert and "vDiskUV" in debug_vert,
             "surfel debug vertex shader must build disk geometry from world position, normal, and radius")
+    require("GIBS_PAPER_DISK_SCALE" in debug_vert and "GIBSPaperColor" in debug_vert and "vStyle.w = paperStyle ? 1.0 : 0.0" in debug_vert,
+            "primary live surfel debug mode must render EA GIBS-style large colored surface disks")
+    require("if (vStyle.w > 0.5)" in debug_frag and "paperAlpha" in debug_frag and "centerDot" in debug_frag,
+            "GIBS-style live surfel disks must use flat colored disks while diagnostic modes keep glyph rings")
     require("DEBUG_DISK_GRAZING_RADIUS_SCALE" in debug_vert and "smoothstep(0.12, 0.65, viewFacing)" in debug_vert,
             "primary surfel debug disks must clamp grazing-angle footprint so attached disks do not appear as screen-space streaks")
     require("gl_PointCoord" not in debug_frag and "spriteR2" not in debug_frag,
@@ -120,10 +124,10 @@ def main() -> None:
             "placementPhase" in spawn_shader and
             "SpawnSurfelFromCandidate" in spawn_shader,
             "placement validation must spawn a bounded multi-candidate surface sample per tile instead of visualizing one production amortization sample")
-    require("SURFEL_PRODUCTION_TILE_PHASES" in spawn_shader and
-            "productionPhase" in spawn_shader and
-            "TileSpawnPhase" in spawn_shader,
-            "normal production spawn must phase hashed tiles too; otherwise it stamps screen-row surfel patterns")
+    require("SURFEL_PRODUCTION_TILE_PHASES" not in spawn_shader and
+            "productionPhase" not in spawn_shader and
+            "TileSpawnPhase(tileIndex, SURFEL_PRODUCTION_TILE_PHASES)" not in spawn_shader,
+            "normal production coverage must evaluate visible tiles every frame instead of refreshing coverage on a timed hash phase")
     require("SetUniform1i(program, \"uPlacementValidationMode\", placementOnly ? 1 : 0)" in pipeline_cpp,
             "pipeline must tell spawn.comp when it is running placement validation")
     require(glsl_uint_constant(spawn_shader, "SURFEL_SPAWN_FREE_POP_ATTEMPTS") >= 1024,
@@ -150,8 +154,16 @@ def main() -> None:
     require("settings.rayUpdateInterval = std::max(settings.rayUpdateInterval, caps.minRayUpdateInterval);" in modular_cpp and
             "settings.spawnPasses = std::min(settings.spawnPasses, caps.maxSpawnPasses);" in modular_cpp,
             "real-time budget must cap update cadence and spawn passes, not only buffer sizes")
-    require("outsideGrid" in recycle_shader and "uGridMin" in recycle_shader and "uGridMax" in recycle_shader,
-            "recycling must remove surfels that leave the active camera-centered grid")
+    require("atomicMax(surfels[entry.surfelID].frameInfo.x, uFrameIndex)" in spawn_shader and
+            "SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT" in spawn_shader,
+            "coverage gap detection must refresh lastVisible for existing surfels that cover current G-buffer candidates")
+    require("outsideGridScore" in recycle_shader and "outsideGrid ? 1.0" not in recycle_shader and "outsideGrid ||" not in recycle_shader,
+            "recycling must treat outside-grid surfels as heuristic candidates, not immediately discard persistent cached surfels on camera movement")
+    require("bool cameraMoving" in pipeline_cpp and
+            "productionPhase" not in spawn_shader,
+            "camera/view movement must not depend on timed production tile phases for coverage refresh")
+    require("rebuildGridAndAverages(false)" in pipeline_cpp and "rebuildGridAndAverages(true)" in pipeline_cpp,
+            "multi-pass spawning must rebuild grid coverage between passes without rebuilding expensive cell averages every pass")
     require("T_SURFEL_GBUFFER_NORMAL_RM" in common_shader and
             "layout(binding = T_SURFEL_GBUFFER_DEPTH)" in spawn_shader and
             "layout(binding = T_SURFEL_GBUFFER_DEPTH)" in apply_shader,

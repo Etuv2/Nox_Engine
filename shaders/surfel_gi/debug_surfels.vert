@@ -65,6 +65,9 @@ const uint DEBUG_STORED_SURFEL_TRANSFORM_ID = 27u;
 const uint DEBUG_STORED_SURFEL_FLAGS = 28u;
 const uint DEBUG_DEBUG_DRAW_POSITION = 29u;
 const float DEBUG_DISK_GRAZING_RADIUS_SCALE = 0.28;
+const float GIBS_PAPER_DISK_SCALE = 2.75;
+const float GIBS_PAPER_MIN_RADIUS_PX = 7.0;
+const float GIBS_PAPER_MAX_RADIUS_PX = 30.0;
 
 float Safe01(float value)
 {
@@ -96,6 +99,18 @@ vec3 HashColor(uint value)
         0.20 + 0.80 * float((hash >> 8u) & 0xffu) / 255.0,
         0.20 + 0.80 * float((hash >> 16u) & 0xffu) / 255.0
     );
+}
+
+vec3 GIBSPaperColor(uint surfelID, Surfel surfel)
+{
+    uint materialID = surfel.ids.z;
+    uint transformID = surfel.ids.x;
+    vec3 hashColor = HashColor(surfelID * 747796405u ^ materialID * 2891336453u ^ transformID * 1597334677u);
+    vec3 albedo = max(SafePositive(surfel.albedo_life.rgb), vec3(0.08));
+    float confidence = Safe01(surfel.irradiance.a);
+    vec3 pastel = mix(vec3(1.0), hashColor, 0.72);
+    vec3 materialTint = mix(pastel, albedo, 0.28);
+    return materialTint * mix(0.82, 1.18, confidence);
 }
 
 vec3 TonemapDebug(vec3 hdr)
@@ -362,10 +377,12 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
     } else if (uDebugView == DEBUG_STALE_SURFELS) {
         color = StaleColor(surfel, ring);
     } else {
-        color = LiveSurfelColor(surfel);
+        color = GIBSPaperColor(surfelID, surfel);
     }
 
+    bool paperStyle = uDebugView == DEBUG_SURFEL_SPHERES;
     vStyle = vec4(Safe01(ring), recycleMarker ? 1.0 : 0.0, alive ? 1.0 : 0.0, 0.0);
+    vStyle.w = paperStyle ? 1.0 : 0.0;
     return vec4(color, recycleMarker ? 0.85 : 1.0);
 }
 
@@ -391,7 +408,9 @@ void main()
     vec3 normalView = SurfelSafeNormalize(mat3(uView) * normal);
     float rawSurfelRadius = alive ? max(surfel.worldPos_radius.w, 0.001) : max(surfel.localPos_spawnRadius.w, 0.05);
     float viewFacing = abs(dot(normalView, vec3(0.0, 0.0, 1.0)));
-    float grazingScale = mix(DEBUG_DISK_GRAZING_RADIUS_SCALE, 1.0, smoothstep(0.12, 0.65, viewFacing));
+    bool paperStyle = uDebugView == DEBUG_SURFEL_SPHERES;
+    float minGrazingScale = paperStyle ? 0.55 : DEBUG_DISK_GRAZING_RADIUS_SCALE;
+    float grazingScale = mix(minGrazingScale, 1.0, smoothstep(0.12, 0.65, viewFacing));
     float surfelRadius = max(rawSurfelRadius * grazingScale, 0.001);
     vec3 tangent;
     vec3 bitangent;
@@ -413,6 +432,20 @@ void main()
 
     float viewDepth = -diskCenterView4.z;
     float projectedRadiusPx = surfelRadius * uProjection[1][1] * max(uViewportSize.y, 1.0) * 0.5 / max(viewDepth, 1e-4);
+    if (paperStyle) {
+        float targetRadiusPx = clamp(projectedRadiusPx * GIBS_PAPER_DISK_SCALE,
+                                     GIBS_PAPER_MIN_RADIUS_PX,
+                                     GIBS_PAPER_MAX_RADIUS_PX);
+        surfelRadius *= targetRadiusPx / max(projectedRadiusPx, 1e-4);
+        diskWorldPos = diskCenterWorld + (tangent * corner.x + bitangent * corner.y) * surfelRadius;
+        centerView4 = uView * vec4(diskWorldPos, 1.0);
+        clip = uProjection * centerView4;
+        if (centerView4.z >= -0.001 || clip.w <= 0.0) {
+            HidePoint();
+            return;
+        }
+        projectedRadiusPx = targetRadiusPx;
+    }
 
     gl_Position = clip;
     gl_PointSize = 1.0;

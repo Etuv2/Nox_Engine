@@ -70,14 +70,16 @@ void main()
         ? surfel.worldPos_radius.w / max(surfel.localPos_spawnRadius.w, 0.001)
         : 1.0;
     vec3 gridMargin = vec3(max(surfel.worldPos_radius.w * 2.0, 0.25));
-    bool outsideGrid = any(lessThan(surfel.worldPos_radius.xyz, uGridMin - gridMargin)) ||
-        any(greaterThanEqual(surfel.worldPos_radius.xyz, uGridMax + gridMargin));
+    vec3 outsideBelow = max((uGridMin - gridMargin) - surfel.worldPos_radius.xyz, vec3(0.0));
+    vec3 outsideAbove = max(surfel.worldPos_radius.xyz - (uGridMax + gridMargin), vec3(0.0));
+    float outsideDistance = length(outsideBelow + outsideAbove);
+    bool outsideGrid = outsideDistance > 0.0;
+    float outsideGridScore = SurfelSaturate(outsideDistance / max(maxDistance * 0.20, 1.0));
     float oversized01 = SurfelSaturate((radiusGrowth - 2.25) / 4.0);
     float pressure01 = smoothstep(clamp(uRecyclePressureStart, 0.0, 0.99), 1.0, pressure);
 
     float recycleScore =
         invalidTransform ? 1.0 :
-        outsideGrid ? 1.0 :
         max(
             distance01 * 0.30 +
             stale01 * 0.28 +
@@ -85,6 +87,7 @@ void main()
             lowConfidence01 * 0.10 +
             lowVariance01 * 0.08 +
             oversized01 * 0.22 +
+            outsideGridScore * 0.20 +
             pressure01 * 0.30,
             updateStale01 * 0.65
         );
@@ -95,7 +98,14 @@ void main()
         ? mix(0.02, 0.35, recycleScore) * pressure01
         : mix(0.0, 0.08, max(stale01, oversized01));
 
-    bool tooFar = uMaxDistance > 0.0 && distanceToCamera > uMaxDistance * 1.15;
+    bool tooFar = uMaxDistance > 0.0 && distanceToCamera > uMaxDistance * 1.35 &&
+        contributionAge > 90u &&
+        sampleAge > 30u;
+    bool outsideGridCull = outsideGrid &&
+        contributionAge > 120u &&
+        sampleAge > 45u &&
+        (pressure01 > 0.0 || outsideGridScore > 0.85) &&
+        random < mix(0.02, 0.18, max(pressure01, outsideGridScore));
     bool staleCull = contributionAge > 360u && confidence < 0.75 && random < 0.12;
     bool oversizedCull = radiusGrowth > 5.0 && contributionAge > 24u && random < 0.20;
     bool pressureCull = pressure > clamp(uRecyclePressureStart, 0.0, 0.99) &&
@@ -103,7 +113,7 @@ void main()
         random < probability;
     bool shouldRecycle = invalidTransform ||
         surfel.albedo_life.a <= 0.0 ||
-        outsideGrid ||
+        outsideGridCull ||
         staleCull ||
         oversizedCull ||
         pressureCull ||
