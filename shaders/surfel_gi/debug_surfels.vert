@@ -36,6 +36,9 @@ uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
 uniform vec2 uViewportSize;
+uniform uint uUseNonLinearGrid;
+uniform float uGridFarExtent;
+uniform float uTargetSurfelScreenRadiusPx;
 
 out vec4 vColor;
 out vec4 vStyle;
@@ -65,6 +68,10 @@ const uint DEBUG_STORED_SURFEL_TRANSFORM_ID = 27u;
 const uint DEBUG_STORED_SURFEL_FLAGS = 28u;
 const uint DEBUG_DEBUG_DRAW_POSITION = 29u;
 const uint DEBUG_STORED_SURFEL_ALBEDO = 30u;
+const uint DEBUG_RADIUS_ERROR = 31u;
+const uint DEBUG_GRID_AXIS_REGION = 32u;
+const uint DEBUG_GRID_OVERFLOW = 33u;
+const uint DEBUG_IRRADIANCE_CONFIDENCE = 34u;
 const float DEBUG_DISK_GRAZING_RADIUS_SCALE = 0.28;
 const float GIBS_PAPER_DISK_SCALE = 2.75;
 const float GIBS_PAPER_MIN_RADIUS_PX = 7.0;
@@ -336,9 +343,9 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
     } else if (uDebugView == DEBUG_SURFEL_COVERAGE) {
         color = CoverageProxyColor(surfel);
     } else if (uDebugView == DEBUG_SURFEL_GRID_CELLS) {
-        uvec3 cellCoord;
-        if (SurfelWorldToGridCell(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, cellCoord)) {
-            color = HashColor(SurfelFlattenCell(cellCoord, uGridResolution));
+        SurfelGridAddress address;
+        if (SurfelWorldToGridAddress(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address)) {
+            color = HashColor(address.cell);
         } else {
             color = vec3(1.0, 0.0, 1.0);
         }
@@ -370,6 +377,37 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
     } else if (uDebugView == DEBUG_STORED_SURFEL_ALBEDO) {
         color = SafePositive(surfel.albedo_life.rgb);
         ring = 0.25;
+    } else if (uDebugView == DEBUG_RADIUS_ERROR) {
+        float error = Safe01(surfel.debug.z);
+        color = Heat(error);
+        ring = error;
+    } else if (uDebugView == DEBUG_GRID_AXIS_REGION) {
+        SurfelGridAddress address;
+        if (SurfelWorldToGridAddress(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address)) {
+            vec3 debugBoundsCenter;
+            vec3 debugBoundsHalfExtent;
+            uint debugRegion;
+            SurfelGridCellDebugBounds(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, debugBoundsCenter, debugBoundsHalfExtent, debugRegion);
+            color = HashColor(address.region * 92837111u + address.coord.z * 1013904223u);
+            ring = address.region == SURFEL_GRID_REGION_CENTRAL ? 0.0 : 0.45;
+        } else {
+            color = vec3(1.0, 0.0, 1.0);
+            ring = 1.0;
+        }
+    } else if (uDebugView == DEBUG_GRID_OVERFLOW) {
+        SurfelGridAddress address;
+        if (SurfelWorldToGridAddress(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address)) {
+            float overflowish = Safe01(float(min(address.coord.z, 24u)) / 24.0);
+            color = mix(vec3(0.05, 0.20, 0.75), vec3(1.0, 0.08, 0.02), overflowish);
+            ring = overflowish;
+        } else {
+            color = vec3(1.0, 0.0, 1.0);
+            ring = 1.0;
+        }
+    } else if (uDebugView == DEBUG_IRRADIANCE_CONFIDENCE) {
+        float confidence = Safe01(surfel.irradiance.a);
+        color = mix(vec3(0.35, 0.02, 0.65), vec3(0.05, 0.95, 0.85), confidence);
+        ring = 1.0 - confidence;
     } else if (uDebugView == DEBUG_RAY_GUIDE) {
         color = GuideConfidenceColor(surfelID, surfel, ring);
     } else if (uDebugView == DEBUG_RADIAL_DEPTH) {

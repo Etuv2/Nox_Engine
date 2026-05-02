@@ -14,7 +14,7 @@ uniform sampler2D uDepthTex;
 uniform uvec2 uResolution;
 uniform uvec2 uInputResolution;
 
-const int FILTER_RADIUS = 5;
+const int FILTER_RADIUS = 3;
 
 float DepthWeight(float centerDepth, float sampleDepth)
 {
@@ -56,6 +56,7 @@ void main()
     float centerConfidence = clamp(center.a, 0.0, 1.0);
     vec3 sum = vec3(0.0);
     float weightSum = 0.0;
+    float neighborWeightSum = 0.0;
     float confidenceSum = 0.0;
     if (centerConfidence > 1e-4 && SurfelLuminance(center.rgb) > 1e-5) {
         float centerWeight = mix(0.25, 1.15, centerConfidence);
@@ -88,7 +89,7 @@ void main()
             float colorWeight = centerConfidence > 1e-4
                 ? exp(-colorDelta * colorDelta * 0.18)
                 : 1.0;
-            float spatial = exp(-float(x * x + y * y) / 26.0);
+            float spatial = exp(-float(x * x + y * y) / 13.0);
             float w = spatial * DepthWeight(centerDepth, sampleDepth) * NormalWeight(centerNormal, sampleNormal) * sampleConfidence;
             w *= colorWeight;
             if (w <= 1e-5) {
@@ -97,6 +98,7 @@ void main()
 
             sum += max(sampleIndirect.rgb, vec3(0.0)) * w;
             weightSum += w;
+            neighborWeightSum += w;
             confidenceSum += sampleConfidence * w;
         }
     }
@@ -105,5 +107,11 @@ void main()
     float confidence = weightSum > 1e-5
         ? clamp(confidenceSum / max(weightSum, 1e-5), 0.0, 1.0)
         : 0.0;
+    float supportConfidence = smoothstep(0.18, 0.85, neighborWeightSum);
+    if (centerConfidence > 0.45) {
+        supportConfidence = max(supportConfidence, 0.65);
+    }
+    filtered *= supportConfidence;
+    confidence *= supportConfidence;
     imageStore(uOutIndirect, pixel, vec4(filtered, confidence));
 }

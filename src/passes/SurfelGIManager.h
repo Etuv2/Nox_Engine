@@ -50,7 +50,11 @@ enum class SurfelGIDebugView : uint32_t {
 	StoredSurfelTransformID = 27,
 	StoredSurfelFlags = 28,
 	DebugDrawPosition = 29,
-	StoredSurfelAlbedo = 30
+	StoredSurfelAlbedo = 30,
+	RadiusError = 31,
+	GridAxisRegion = 32,
+	GridOverflow = 33,
+	IrradianceConfidence = 34
 };
 
 struct SurfelGISettings {
@@ -81,7 +85,8 @@ struct SurfelGISettings {
 	float finalGatherNormalCos = 0.15f;
 	float radialDepthSigmaScale = 1.0f;
 	float indirectIntensity = 1.0f;
-	float skyMissRadianceMultiplier = 0.0f;
+	float cellAverageFallbackStrength = 0.35f;
+	float skyMissRadianceMultiplier = 1.0f;
 	float finalGatherResolutionScale = 1.0f;
 
 	bool useNonLinearGrid = true;
@@ -113,6 +118,12 @@ struct SurfelGIFrameStats {
 	uint32_t rejectedInvalidNormal = 0;
 	uint32_t rejectedInvalidRadius = 0;
 	uint32_t rejectedPoolFull = 0;
+	uint32_t overCoverageRecycled = 0;
+	uint32_t staleRecycled = 0;
+	uint32_t pressureRecycled = 0;
+	uint32_t underCoveredTileCount = 0;
+	uint32_t highPriorityTileCount = 0;
+	uint32_t coverageSpawnedTileCount = 0;
 	float updateTimeMs = 0.0f;
 	float traceTimeMs = 0.0f;
 	float applyTimeMs = 0.0f;

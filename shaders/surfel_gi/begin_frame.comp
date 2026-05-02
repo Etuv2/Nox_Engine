@@ -26,4 +26,12 @@ void main()
     counters.rejectedInvalidNormal = 0u;
     counters.rejectedInvalidRadius = 0u;
     counters.rejectedPoolFull = 0u;
+    counters.overCoverageRecycled = 0u;
+    counters.staleRecycled = 0u;
+    counters.pressureRecycled = 0u;
+    counters.underCoveredTileCount = 0u;
+    counters.highPriorityTileCount = 0u;
+    counters.coverageSpawnedTileCount = 0u;
+    counters.coverageVisibleTileCount = 0u;
+    counters.coverageInvalidTileCount = 0u;
 }

@@ -333,6 +333,18 @@ void SetUniformMat4(GLuint program, const char* name, const glm::mat4& value)
 	}
 }
 
+void SetSurfelGridUniforms(GLuint program,
+	const SurfelGridSettings& gridSettings,
+	const glm::vec3& gridMin,
+	const glm::vec3& gridMax)
+{
+	SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
+	SetUniform3fv(program, "uGridMin", gridMin);
+	SetUniform3fv(program, "uGridMax", gridMax);
+	SetUniform1ui(program, "uUseNonLinearGrid", gridSettings.useNonLinearGrid ? 1u : 0u);
+	SetUniform1f(program, "uGridFarExtent", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
+}
+
 void BindSurfelGIGBufferTextures(const RenderContext& context)
 {
 	if (!context.gbufferFBO) {
@@ -391,14 +403,16 @@ float MatrixMaxAbsDelta(const glm::mat4& a, const glm::mat4& b)
 
 uint32_t ComputeSpawnPassCount(const SurfelGISettings& settings,
 	uint32_t frameIndex,
-	uint32_t stationaryFrameCount)
+	uint32_t stationaryFrameCount,
+	bool cameraMoving)
 {
 	const uint32_t steadyPasses = std::clamp(settings.spawnPasses, 1u, 16u);
 	const uint32_t fastPasses = std::clamp(settings.fastFillSpawnPasses, steadyPasses, 16u);
 	const bool initialFill = frameIndex < settings.fastFillFrameCount;
 	const bool stationaryFill = stationaryFrameCount > 0u &&
 		stationaryFrameCount <= settings.stationaryFastFillFrames;
-	if (initialFill || stationaryFill) {
+	const bool cameraMotionBoost = cameraMoving ? true : false;
+	if (initialFill || stationaryFill || cameraMotionBoost) {
 		return fastPasses;
 	}
 	return steadyPasses;
@@ -433,6 +447,16 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 	SurfelGridSettings gridSettings{};
 	gridSettings.maxSurfelsPerCell = m_settings.maxSurfelsPerCell;
 	gridSettings.useNonLinearGrid = m_settings.useNonLinearGrid;
+	gridSettings.centralResolution = 32u;
+	gridSettings.axisLateralResolution = 32u;
+	gridSettings.axisSliceCount = 24u;
+	gridSettings.resolution = glm::uvec3(
+		gridSettings.centralResolution,
+		gridSettings.axisLateralResolution,
+		gridSettings.axisSliceCount);
+	gridSettings.centralHalfExtent = 12.0f;
+	gridSettings.worldExtent = glm::vec3(gridSettings.centralHalfExtent * 2.0f);
+	gridSettings.farScale = 140.0f;
 
 	const bool ok =
 		m_pool.Create(m_settings.maxSurfels) &&
@@ -473,6 +497,8 @@ void SurfelGIPipeline::Resize(RenderContext&, uint32_t width, uint32_t height)
 	if (m_settings.enabled && m_initialized) {
 		ReleaseIndirectTexture();
 		CreateIndirectTexture();
+		ReleaseAuxiliaryResources();
+		CreateAuxiliaryResources();
 	}
 }
 
@@ -634,6 +660,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 			SetUniform3fv(program, "uGridMin", gridMin);
 			SetUniform3fv(program, "uGridMax", gridMax);
+			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 			timedDispatch("build_grid", [&]() {
 				m_buildGridShader->Dispatch(groupsSurfels, 1u, 1u);
 				m_buildGridShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -701,6 +728,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uCameraPosition", cameraPosition);
 		SetUniform3fv(program, "uGridMin", gridMin);
 		SetUniform3fv(program, "uGridMax", gridMax);
+		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
+		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 		SetUniform1f(program, "uRecyclePressureStart", m_settings.recyclePressureStart);
 		SetUniform1f(program, "uMaxDistance", glm::length(gridSettings.worldExtent));
 		timedDispatch("recycle_surfels", [&]() {
@@ -715,7 +745,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		const GLuint tileSize = std::max(m_settings.spawnTileSize, 1u);
 		const GLuint tilesX = DivRoundUp(m_width, tileSize);
 		const GLuint tilesY = DivRoundUp(m_height, tileSize);
-		const GLuint spawnPassCount = ComputeSpawnPassCount(m_settings, m_frameIndex, m_stationaryFrameCount);
+		const GLuint spawnPassCount = ComputeSpawnPassCount(m_settings, m_frameIndex, m_stationaryFrameCount, cameraMoving);
+		const bool cameraMotionBoost = cameraMoving || m_frameIndex < m_settings.fastFillFrameCount;
 		m_lastSpawnPassCount = spawnPassCount;
 		const GLuint tileCount = tilesX * tilesY;
 		const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
@@ -738,6 +769,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 		SetUniform3fv(program, "uGridMin", gridMin);
 		SetUniform3fv(program, "uGridMax", gridMax);
+		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 		SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
 		SetUniformMat4(program, "uInvView", glm::inverse(context.view));
 		SetUniformMat4(program, "uView", context.view);
@@ -752,6 +784,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
 		SetUniform3fv(program, "uSkyRadiance", context.envColor * m_settings.skyMissRadianceMultiplier);
 		SetUniform1i(program, "uPlacementValidationMode", placementOnly ? 1 : 0);
+		SetUniform1ui(program, "uCameraMotionBoost", cameraMotionBoost ? 1u : 0u);
 
 		// Spawned surfels must be visible to same-frame ray tracing and final
 		// gather; otherwise the composited output can remain one frame behind
@@ -857,6 +890,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 		SetUniform3fv(program, "uGridMin", gridMin);
 		SetUniform3fv(program, "uGridMax", gridMax);
+		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 		SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
 		SetUniformMat4(program, "uInvView", glm::inverse(context.view));
 		SetUniformMat4(program, "uView", context.view);
@@ -973,6 +1007,12 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_stats.rejectedInvalidNormal = counters.rejectedInvalidNormal;
 		m_stats.rejectedInvalidRadius = counters.rejectedInvalidRadius;
 		m_stats.rejectedPoolFull = counters.rejectedPoolFull;
+		m_stats.overCoverageRecycled = counters.overCoverageRecycled;
+		m_stats.staleRecycled = counters.staleRecycled;
+		m_stats.pressureRecycled = counters.pressureRecycled;
+		m_stats.underCoveredTileCount = counters.underCoveredTileCount;
+		m_stats.highPriorityTileCount = counters.highPriorityTileCount;
+		m_stats.coverageSpawnedTileCount = counters.coverageSpawnedTileCount;
 	}
 	m_stats.ready = IsReady();
 }
@@ -1057,10 +1097,11 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 	SetUniform3fv(program, "uGridMin", gridMin);
 	SetUniform3fv(program, "uGridMax", gridMax);
+	SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 	SetUniform1f(program, "uNormalRejectCos", m_settings.finalGatherNormalCos);
 	SetUniform1i(program, "uUseRadialDepth", m_settings.useRadialDepth ? 1 : 0);
 	SetUniform1f(program, "uRadialDepthMinVariance", std::max(m_settings.radialDepthSigmaScale, 1.0e-6f));
-	SetUniform1f(program, "uFallbackStrength", 0.0f);
+	SetUniform1f(program, "uFallbackStrength", m_settings.cellAverageFallbackStrength);
 	SetUniform1ui(program, "uDebugView", applyDebugView);
 
 	timedDispatch("apply_indirect", [&]() {
@@ -1153,6 +1194,8 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context) const
 	SetUniform3ui(m_debugProgram, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 	SetUniform3fv(m_debugProgram, "uGridMin", gridMin);
 	SetUniform3fv(m_debugProgram, "uGridMax", gridMax);
+	SetSurfelGridUniforms(m_debugProgram, gridSettings, gridMin, gridMax);
+	SetUniform1f(m_debugProgram, "uTargetSurfelScreenRadiusPx", m_settings.targetSurfelScreenRadiusPx);
 
 	glBindVertexArray(m_debugVAO);
 	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(m_settings.maxSurfels));
@@ -1205,6 +1248,7 @@ bool SurfelGIPipeline::IsReady() const
 		m_resources.rayRequestBuffer != 0u &&
 		m_resources.rayBuffer != 0u &&
 		m_resources.rayHitBuffer != 0u &&
+		m_resources.coverageTileBuffer != 0u &&
 		m_resources.rawIndirectTexture != 0u &&
 		m_resources.indirectTexture != 0u;
 }
@@ -1214,6 +1258,11 @@ bool SurfelGIPipeline::CreateAuxiliaryResources()
 	GLsizeiptr radialBytes = 0;
 	GLsizeiptr guideMapBytes = 0;
 	GLsizeiptr guideScaleBytes = 0;
+	GLsizeiptr coverageTileBytes = 0;
+	const uint32_t tileSize = std::max(m_settings.spawnTileSize, 1u);
+	m_coverageTileCountX = DivRoundUp(std::max(m_width, 1u), tileSize);
+	m_coverageTileCountY = DivRoundUp(std::max(m_height, 1u), tileSize);
+	m_coverageTileCapacity = std::max(m_coverageTileCountX * m_coverageTileCountY, 1u);
 	if (!CheckedBytes(
 			static_cast<uint64_t>(m_settings.maxSurfels) * kRadialDepthTexelsPerSurfel,
 			sizeof(float) * 2u,
@@ -1222,7 +1271,8 @@ bool SurfelGIPipeline::CreateAuxiliaryResources()
 			static_cast<uint64_t>(m_settings.maxSurfels) * kGuideCellsPerSurfel,
 			sizeof(uint32_t),
 			guideMapBytes) ||
-		!CheckedBytes(m_settings.maxSurfels, sizeof(glm::vec4), guideScaleBytes)) {
+		!CheckedBytes(m_settings.maxSurfels, sizeof(glm::vec4), guideScaleBytes) ||
+		!CheckedBytes(m_coverageTileCapacity, sizeof(SurfelCoverageTile), coverageTileBytes)) {
 		std::cerr << "[SurfelGIPipeline] Auxiliary buffer size overflow.\n";
 		return false;
 	}
@@ -1230,7 +1280,8 @@ bool SurfelGIPipeline::CreateAuxiliaryResources()
 	const bool ok =
 		AllocateBuffer(m_resources.radialDepthBuffer, radialBytes, "SurfelGI.RadialDepth") &&
 		AllocateBuffer(m_resources.guideMapBuffer, guideMapBytes, "SurfelGI.GuideMap") &&
-		AllocateBuffer(m_resources.guideScaleBuffer, guideScaleBytes, "SurfelGI.GuideScale");
+		AllocateBuffer(m_resources.guideScaleBuffer, guideScaleBytes, "SurfelGI.GuideScale") &&
+		AllocateBuffer(m_resources.coverageTileBuffer, coverageTileBytes, "SurfelGI.CoverageTiles");
 
 	if (!ok) {
 		ReleaseAuxiliaryResources();
@@ -1239,6 +1290,7 @@ bool SurfelGIPipeline::CreateAuxiliaryResources()
 		ClearBufferUInt(m_resources.radialDepthBuffer, 0u);
 		ClearBufferUInt(m_resources.guideMapBuffer, 0u);
 		ClearBufferVec4(m_resources.guideScaleBuffer, glm::vec4(0.0f));
+		ClearBufferUInt(m_resources.coverageTileBuffer, 0u);
 	}
 	return ok;
 }
@@ -1248,6 +1300,10 @@ void SurfelGIPipeline::ReleaseAuxiliaryResources()
 	DeleteBuffer(m_resources.radialDepthBuffer);
 	DeleteBuffer(m_resources.guideMapBuffer);
 	DeleteBuffer(m_resources.guideScaleBuffer);
+	DeleteBuffer(m_resources.coverageTileBuffer);
+	m_coverageTileCountX = 0;
+	m_coverageTileCountY = 0;
+	m_coverageTileCapacity = 0;
 }
 
 bool SurfelGIPipeline::LoadShaders()
@@ -1349,5 +1405,6 @@ void SurfelGIPipeline::BindCoreResources(GLuint transformBuffer) const
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::RadialDepth), m_resources.radialDepthBuffer);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::GuideMap), m_resources.guideMapBuffer);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::GuideScale), m_resources.guideScaleBuffer);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::CoverageTiles), m_resources.coverageTileBuffer);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::Transforms), transformBuffer);
 }

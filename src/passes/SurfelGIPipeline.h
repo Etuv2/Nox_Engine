@@ -36,6 +36,7 @@ struct SurfelGIPipelineResources {
 	GLuint radialDepthBuffer = 0;
 	GLuint guideMapBuffer = 0;
 	GLuint guideScaleBuffer = 0;
+	GLuint coverageTileBuffer = 0;
 	GLuint rawIndirectTexture = 0;
 	GLuint indirectTexture = 0;
 };
@@ -116,6 +117,9 @@ private:
 	uint32_t m_height = 0;
 	uint32_t m_indirectWidth = 0;
 	uint32_t m_indirectHeight = 0;
+	uint32_t m_coverageTileCountX = 0;
+	uint32_t m_coverageTileCountY = 0;
+	uint32_t m_coverageTileCapacity = 0;
 	uint32_t m_frameIndex = 0;
 	uint32_t m_stationaryFrameCount = 0;
 	uint32_t m_lastTransformCount = 0;

@@ -1068,7 +1068,11 @@ void RenderingSettingsWindow::Render() {
 					{ 27, "Stored Transform ID" },
 					{ 28, "Stored Flags" },
 					{ 29, "Debug Draw Position" },
-					{ 30, "Stored Albedo" }
+					{ 30, "Stored Albedo" },
+					{ 31, "Radius Error" },
+					{ 32, "Grid Axis Region" },
+					{ 33, "Grid Overflow" },
+					{ 34, "Irradiance Confidence" }
 				};
 				if (DebugCombo("Surfel Debug View", &m_cleanSurfelGIDebugView, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Placement Validation Mode", &m_cleanSurfelGIPlacementValidation)) { SyncToRenderer(); }
@@ -1100,6 +1104,14 @@ void RenderingSettingsWindow::Render() {
 						stats->rejectedInvalidNormal,
 						stats->rejectedInvalidRadius,
 						stats->rejectedPoolFull);
+					ImGui::Text("Coverage under/high/spawned: %u / %u / %u",
+						stats->underCoveredTileCount,
+						stats->highPriorityTileCount,
+						stats->coverageSpawnedTileCount);
+					ImGui::Text("Recycle over/stale/pressure: %u / %u / %u",
+						stats->overCoverageRecycled,
+						stats->staleRecycled,
+						stats->pressureRecycled);
 				}
 			}
 			static const DebugComboEntry compositeDebugModes[] = {

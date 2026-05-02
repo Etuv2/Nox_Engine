@@ -25,6 +25,7 @@ uniform uint uFrameIndex;
 const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 4u;
 const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 4u;
 const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 2u;
+const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 4u;
 
 uint FrameDelta(uint newerFrame, uint olderFrame)
 {
@@ -45,7 +46,9 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     float signal = SurfelSaturate(SurfelLuminance(max(surfel.irradiance.rgb, surfel.shortMean.rgb)) * 2.0);
 
     uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
+    uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
     float visible = exp(-0.02 * float(framesSinceContribution));
+    float visibleUnresolved = framesSinceVisible <= 2u && confidence < 0.65 ? 1.0 : 0.0;
     bool dormantLowVariance = !isNew &&
         framesSinceContribution > 48u &&
         variance < 0.03 &&
@@ -68,7 +71,8 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         variance * 0.40 +
         visible * signal * 0.25 +
         (isNew ? 0.20 : 0.0) +
-        lowConfidence * 0.15;
+        lowConfidence * 0.15 +
+        visibleUnresolved * 0.30;
     importance *= mix(1.5, 1.0, ageScore);
 
     uint requested = uint(round(mix(1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL), SurfelSaturate(importance))));
@@ -77,6 +81,9 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     }
     if (confidence < 0.40) {
         requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
+    }
+    if (visibleUnresolved > 0.0) {
+        requested = max(requested, SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS);
     }
 
     if (!isNew && confidence > 0.92 && variance < 0.01 && signal < 0.02) {

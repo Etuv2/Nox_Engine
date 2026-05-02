@@ -25,6 +25,7 @@
 #define B_GRID_COUNTERS 29
 #define B_SURFEL_GI_SETTINGS 30
 #define B_SHADOW_MATRICES 31
+#define B_COVERAGE_TILES 32
 
 #define T_SURFEL_GBUFFER_NORMAL_RM 0
 #define T_SURFEL_GBUFFER_ALBEDO_AO 1
@@ -72,6 +73,25 @@ struct SurfelCounters {
     uint rejectedInvalidNormal;
     uint rejectedInvalidRadius;
     uint rejectedPoolFull;
+    uint overCoverageRecycled;
+    uint staleRecycled;
+    uint pressureRecycled;
+    uint underCoveredTileCount;
+    uint highPriorityTileCount;
+    uint coverageSpawnedTileCount;
+    uint coverageVisibleTileCount;
+    uint coverageInvalidTileCount;
+};
+
+#define SURFEL_COVERAGE_TILE_VISIBLE (1u << 0)
+#define SURFEL_COVERAGE_TILE_UNDER_COVERED (1u << 1)
+#define SURFEL_COVERAGE_TILE_HIGH_PRIORITY (1u << 2)
+#define SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY (1u << 3)
+
+struct SurfelCoverageTile {
+    vec4 lowestCoverage;
+    uvec4 state;
+    uvec4 pixel;
 };
 
 struct SurfelGISettingsGpu {

@@ -7,6 +7,7 @@ bool RequiresPipelineReset(const SurfelGISettings& oldSettings, const SurfelGISe
 {
 	return oldSettings.maxSurfels != newSettings.maxSurfels ||
 		oldSettings.maxRayBudget != newSettings.maxRayBudget ||
+		oldSettings.spawnTileSize != newSettings.spawnTileSize ||
 		oldSettings.maxSurfelsPerCell != newSettings.maxSurfelsPerCell ||
 		oldSettings.useNonLinearGrid != newSettings.useNonLinearGrid ||
 		oldSettings.placementValidationMode != newSettings.placementValidationMode;
@@ -35,6 +36,10 @@ bool IsSurfelOverlayDebugView(SurfelGIDebugView view)
 	case SurfelGIDebugView::StoredSurfelFlags:
 	case SurfelGIDebugView::DebugDrawPosition:
 	case SurfelGIDebugView::StoredSurfelAlbedo:
+	case SurfelGIDebugView::RadiusError:
+	case SurfelGIDebugView::GridAxisRegion:
+	case SurfelGIDebugView::GridOverflow:
+	case SurfelGIDebugView::IrradianceConfidence:
 		return true;
 	default:
 		return false;

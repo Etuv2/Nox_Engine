@@ -6,18 +6,33 @@
 #include <cstdint>
 
 struct SurfelGridSettings {
-    glm::uvec3 resolution{ 64u, 64u, 64u };
+    glm::uvec3 resolution{ 32u, 32u, 24u };
     uint32_t maxSurfelsPerCell = 64u;
     glm::vec3 worldExtent{ 24.0f };
     float nearScale = 1.0f;
     float farScale = 120.0f;
     bool useNonLinearGrid = true;
+    uint32_t centralResolution = 32u;
+    uint32_t axisLateralResolution = 32u;
+    uint32_t axisSliceCount = 24u;
+    float centralHalfExtent = 12.0f;
+    float sliceGrowth = 1.22f;
 
     uint64_t CellCount() const
     {
-        return static_cast<uint64_t>(resolution.x) *
-            static_cast<uint64_t>(resolution.y) *
-            static_cast<uint64_t>(resolution.z);
+        if (!useNonLinearGrid) {
+            return static_cast<uint64_t>(resolution.x) *
+                static_cast<uint64_t>(resolution.y) *
+                static_cast<uint64_t>(resolution.z);
+        }
+
+        const uint64_t central = static_cast<uint64_t>(centralResolution) *
+            static_cast<uint64_t>(centralResolution) *
+            static_cast<uint64_t>(centralResolution);
+        const uint64_t axisRegion = static_cast<uint64_t>(axisLateralResolution) *
+            static_cast<uint64_t>(axisLateralResolution) *
+            static_cast<uint64_t>(axisSliceCount);
+        return central + 6ull * axisRegion;
     }
 };
 
@@ -53,7 +68,8 @@ enum class SurfelGIBinding : GLuint {
     RayCounters = 28u,
     GridCounters = 29u,
     Settings = 30u,
-    ShadowMatrices = 31u
+    ShadowMatrices = 31u,
+    CoverageTiles = 32u
 };
 
 constexpr GLuint ToGLuint(SurfelGIBinding binding)
@@ -106,8 +122,30 @@ struct alignas(16) SurfelCounters {
     uint32_t rejectedInvalidNormal = 0u;
     uint32_t rejectedInvalidRadius = 0u;
     uint32_t rejectedPoolFull = 0u;
+    uint32_t overCoverageRecycled = 0u;
+    uint32_t staleRecycled = 0u;
+    uint32_t pressureRecycled = 0u;
+    uint32_t underCoveredTileCount = 0u;
+    uint32_t highPriorityTileCount = 0u;
+    uint32_t coverageSpawnedTileCount = 0u;
+    uint32_t coverageVisibleTileCount = 0u;
+    uint32_t coverageInvalidTileCount = 0u;
 };
-static_assert(sizeof(SurfelCounters) == 64, "SurfelCounters must match std430 GLSL layout.");
+static_assert(sizeof(SurfelCounters) == 96, "SurfelCounters must match std430 GLSL layout.");
+
+enum SurfelCoverageTileFlags : uint32_t {
+    SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,
+    SURFEL_COVERAGE_TILE_UNDER_COVERED = 1u << 1,
+    SURFEL_COVERAGE_TILE_HIGH_PRIORITY = 1u << 2,
+    SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY = 1u << 3
+};
+
+struct alignas(16) SurfelCoverageTile {
+    glm::vec4 lowestCoverage{ 1.0f, 0.0f, 0.0f, 0.0f };
+    glm::uvec4 state{ 0u };
+    glm::uvec4 pixel{ 0u };
+};
+static_assert(sizeof(SurfelCoverageTile) == 48, "SurfelCoverageTile must match std430 GLSL layout.");
 
 struct alignas(16) SurfelGISettingsGpu {
     glm::uvec4 budgets{ 0u };

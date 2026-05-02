@@ -70,14 +70,21 @@ def main() -> None:
     require("SURFEL_APPLY_GATHER_CELLS_RADIUS_1 = 27u" in apply_shader and
             "SURFEL_APPLY_GATHER_CELLS_RADIUS_2 = 125u" in apply_shader and
             "cellSampleBudget" in apply_shader and
-            "uFrameIndex ^ (cell * 747796405u)" not in apply_shader,
-            "final gather must sample a stable bounded set from every neighbor cell instead of burning the budget in the first timed cell")
-    require("SurfelCoverageSupportRadius" in common_shader and
-            "SurfelCoverageSupportRadius(radius, uGridMin, uGridMax, uGridResolution)" in build_grid_shader and
-            "SurfelCoverageWeight(worldPos, worldNormal, surfels[entry.surfelID], uNormalRejectCos, uGridMin, uGridMax, uGridResolution)" in spawn_shader,
+            "uFrameIndex ^ (cell * 747796405u)" not in apply_shader and
+            "gl_GlobalInvocationID.x) * 2891336453u" not in apply_shader,
+            "final gather must sample a stable spatially coherent bounded set from every neighbor cell")
+    require("SurfelCoverageSupportRadiusAt" in common_shader and
+            "SurfelCoverageSupportRadiusAt(" in build_grid_shader and
+            "SurfelCoverageWeightAt(" in spawn_shader,
             "spawn coverage and grid insertion must use the surfel cache support radius, not the tiny debug disk radius")
-    require("smoothstep(0.02, 0.30, sumWeight)" in apply_shader,
-            "final gather confidence must accept overlapping sparse surfels instead of dropping most pixels to black")
+    require("smoothstep(0.10, 1.20, sumWeight)" in apply_shader,
+            "final gather confidence must require enough overlapping surfel support before using unsmoothed direct samples")
+    require("directIrradiance * directBlend" in apply_shader and
+            "directBlend > 0.0 ? directIrradiance : vec3(0.0)" not in apply_shader,
+            "final gather must not let one isolated low-weight surfel produce a full-strength blotch")
+    require("maxLocalGatherLuminance" in apply_shader and
+            "fallbackConfidence > 1e-5" in apply_shader,
+            "final gather must clamp isolated bright surfel outliers against confidence-weighted cell fallback")
     require("DEBUG_FINAL_GATHER_WEIGHT" in apply_shader,
             "apply pass must expose a per-pixel final gather weight debug view")
     for token in ("DEBUG_GBUFFER_WORLD_POSITION", "DEBUG_GBUFFER_NORMAL",
@@ -90,8 +97,14 @@ def main() -> None:
         require(token in manager_h, f"SurfelGI debug enum must expose {token}")
     require("SetUniform1ui(program, \"uDebugView\", applyDebugView)" in pipeline_cpp,
             "pipeline must route fullscreen surfel debug views into the apply shader")
-    require("SetUniform1f(program, \"uFallbackStrength\", 0.0f)" in pipeline_cpp,
-            "surfel-only baseline must not hide missing GI with cell-average fallback")
+    require("SetUniform1f(program, \"uFallbackStrength\", m_settings.cellAverageFallbackStrength)" in pipeline_cpp and
+            "cellAverageFallbackStrength = 0.35f" in manager_h,
+            "surfel-only baseline must use a bounded confidence-weighted cell-average fallback")
+    require("skyMissRadianceMultiplier = 1.0f" in manager_h and
+            "initialSkyVisibility" in spawn_shader and
+            "initialDirectScale = 0.35" in spawn_shader and
+            "initialEnvironmentEstimate" in spawn_shader,
+            "new surfels and ray misses must use directional sky/environment estimates instead of staying black")
 
     require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CELL_ENTRIES") == 12,
             "default surfel fallback tracing must sample enough cell entries without blowing the real-time budget")
@@ -126,8 +139,8 @@ def main() -> None:
             "surfel.albedo_life.rgb" in debug_vert and
             '"Stored Albedo"' in ui_cpp and
             "case SurfelGIDebugView::StoredSurfelAlbedo:" in read("src/passes/SurfelGIManager.cpp") and
-            "std::clamp(m_context.cleanSurfelGIDebugView, 0, 30)" in modular_cpp and
-            "std::clamp(GetEnvVarInt(\"NOX_SURFEL_GI_DEBUG_VIEW\", static_cast<int>(settings.debugView)), 0, 30)" in modular_cpp,
+            "std::clamp(m_context.cleanSurfelGIDebugView, 0, 34)" in modular_cpp and
+            "std::clamp(GetEnvVarInt(\"NOX_SURFEL_GI_DEBUG_VIEW\", static_cast<int>(settings.debugView)), 0, 34)" in modular_cpp,
             "debug surfel draw must expose stored surfel albedo to validate material colour bleeding inputs")
     require("DEBUG_DISK_GRAZING_RADIUS_SCALE" in debug_vert and "smoothstep(0.12, 0.65, viewFacing)" in debug_vert,
             "primary surfel debug disks must clamp grazing-angle footprint so attached disks do not appear as screen-space streaks")
@@ -143,7 +156,7 @@ def main() -> None:
     require("ComputeCameraCenteredGridBounds" in pipeline_cpp and "const glm::vec3 gridMin = -halfExtent" not in pipeline_cpp,
             "active surfel grid must be camera-centered, not fixed at world origin")
 
-    require("if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell))" in spawn_shader,
+    require("SurfelWorldToGridAddress(" in spawn_shader and "rejectedOutsideGrid" in spawn_shader,
             "spawn shader must reject G-buffer samples outside the active surfel grid")
     require("SURFEL_SPAWN_TILE_CANDIDATES" in spawn_shader and "bestCoverage" in spawn_shader,
             "spawn candidate selection must test multiple tile samples and choose the lowest-coverage valid pixel")
@@ -193,7 +206,7 @@ def main() -> None:
             "sourceIndex == 2 ? indirectAO" not in deferred_shader and
             "float sourceScale = 1.0;" in deferred_shader,
             "indirect diffuse composite must preserve the linear irradiance contract without hidden global intensity boosts")
-    require("return { 12288u, 192u, 32u, 20u, 32u, 1u, 0.375f, false, false, 1u, 1u, 1u, 3u };" in modular_cpp,
+    require("return { 12288u, 192u, 32u, 20u, 32u, 1u, 0.25f, false, false, 1u, 1u, 1u, 3u };" in modular_cpp,
             "default Medium Clean Surfel GI preset must use a bounded sub-full-resolution gather only after grid artifacts are solved")
     require("settings.rayUpdateInterval = std::max(settings.rayUpdateInterval, caps.minRayUpdateInterval);" in modular_cpp and
             "settings.useRadialDepth = settings.useRadialDepth && caps.allowRadialDepth;" in modular_cpp and
@@ -288,14 +301,17 @@ def main() -> None:
             "real-time ray tracing may be cadenced, but startup must fast-fill and coverage/spawn must stay independent")
     require("outsideGridScore" in recycle_shader and "outsideGrid ? 1.0" not in recycle_shader and "outsideGrid ||" not in recycle_shader,
             "recycling must treat outside-grid surfels as heuristic candidates, not immediately discard persistent cached surfels on camera movement")
-    require("float radius = clamp(surfel.localPos_spawnRadius.w, minRadius, maxRadius);" in read("shaders/surfel_gi/update_surfels.comp"),
-            "surfel update must preserve spawned radius instead of changing coverage from current camera projection")
+    require("uTargetSurfelScreenRadiusPx * WorldUnitsPerPixel" in read("shaders/surfel_gi/update_surfels.comp") and
+            "targetRadiusError" in read("shaders/surfel_gi/update_surfels.comp"),
+            "surfel update must shrink/grow radius from current camera projection and expose target error")
     require("contributionAge > 720u" in recycle_shader and "confidence < 0.45" in recycle_shader,
             "stale recycling must be gradual and relevance-based, not a high-probability constant interval churn")
     require("SURFEL_CELL_OVERFLOWED" in build_grid_shader and "replaceHash" in build_grid_shader and "seenCount" in build_grid_shader,
             "overflowed grid cells must reservoir-replace entries instead of preserving only early surfel IDs")
-    require("const int FILTER_RADIUS = 5;" in spatial_filter_shader and
+    require("const int FILTER_RADIUS = 3;" in spatial_filter_shader and
             "centerConfidence > 1e-4" in spatial_filter_shader and
+            "neighborWeightSum" in spatial_filter_shader and
+            "supportConfidence" in spatial_filter_shader and
             "colorWeight" in spatial_filter_shader and
             "sampleConfidence * w" in spatial_filter_shader,
             "realtime spatial resolve must fill unsupported holes without smearing sparse cache errors into large blobs")

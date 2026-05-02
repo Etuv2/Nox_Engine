@@ -129,6 +129,8 @@ uniform uint uBVHNodeCount = 0u;
 uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
+uniform uint uUseNonLinearGrid;
+uniform float uGridFarExtent;
 uniform mat4 uInvProjection;
 uniform mat4 uInvView;
 uniform mat4 uView;
@@ -588,7 +590,7 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
     float radius = max(surfel.worldPos_radius.w, 0.001);
     vec3 delta = receiverPos - surfelPos;
     float dist = length(delta);
-    float supportRadius = SurfelCoverageSupportRadius(radius, uGridMin, uGridMax, uGridResolution);
+    float supportRadius = SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
     float normalizedDistance = dist / max(supportRadius, 1e-4);
     float distanceWeight = exp(-normalizedDistance * normalizedDistance * 1.10);
     if (distanceWeight <= 1e-5) {
@@ -610,8 +612,8 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
 
 vec3 TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelID, uint seed)
 {
-    uvec3 baseCell;
-    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell) ||
+    SurfelGridAddress baseAddress;
+    if (!SurfelWorldToGridAddress(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, baseAddress) ||
         uGridCellCount == 0u ||
         uMaxSurfelsPerCell == 0u) {
         return vec3(0.0);
@@ -627,12 +629,11 @@ vec3 TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
             break;
         }
 
-        ivec3 c = ivec3(baseCell) + SurfelCubeNeighborOffset(i);
-        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+        SurfelGridAddress address;
+        if (!SurfelWorldNeighborAddress(worldPos, i, 1u, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address)) {
             continue;
         }
-
-        uint cell = SurfelFlattenCell(uvec3(c), uGridResolution);
+        uint cell = address.cell;
         if (cell >= uGridCellCount) {
             continue;
         }
@@ -980,8 +981,8 @@ void TraceGatherAroundPoint(SurfelRay ray,
                             inout uint visitedCount,
                             inout TraceGather gather)
 {
-    uvec3 baseCell;
-    if (!SurfelWorldToGridCell(worldPos, uGridMin, uGridMax, uGridResolution, baseCell)) {
+    SurfelGridAddress baseAddress;
+    if (!SurfelWorldToGridAddress(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, baseAddress)) {
         return;
     }
 
@@ -991,12 +992,12 @@ void TraceGatherAroundPoint(SurfelRay ray,
             break;
         }
 
-        ivec3 c = ivec3(baseCell) + (SURFEL_TRACE_NEIGHBOR_RADIUS > 0u ? SurfelCubeNeighborOffset(i) : SurfelCrossNeighborOffset(i));
-        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(uGridResolution)))) {
+        uint neighborRadius = SURFEL_TRACE_NEIGHBOR_RADIUS > 0u ? 1u : 0u;
+        SurfelGridAddress address;
+        if (!SurfelWorldNeighborAddress(worldPos, i, neighborRadius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address)) {
             continue;
         }
-
-        uint cell = SurfelFlattenCell(uvec3(c), uGridResolution);
+        uint cell = address.cell;
         if (!TraceMarkVisitedCell(cell, visitedCells, visitedCount)) {
             continue;
         }

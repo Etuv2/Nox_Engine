@@ -30,10 +30,21 @@ uniform uint uMaxSurfelsPerCell;
 uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
+uniform uint uUseNonLinearGrid;
+uniform float uGridFarExtent;
 
-void InsertIntoCell(uint surfelID, uvec3 cellCoord)
+bool HasInsertedCell(uint cell, uint insertedCells[27], uint insertedCount)
 {
-    uint cell = SurfelFlattenCell(cellCoord, uGridResolution);
+    for (uint i = 0u; i < insertedCount; ++i) {
+        if (insertedCells[i] == cell) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void InsertIntoCell(uint surfelID, uint cell)
+{
     if (cell >= uGridCellCount) {
         return;
     }
@@ -73,31 +84,57 @@ void main()
         return;
     }
 
-    uvec3 cellCoord;
-    if (!SurfelWorldToGridCell(surfel.worldPos_radius.xyz, uGridMin, uGridMax, uGridResolution, cellCoord)) {
+    SurfelGridAddress baseAddress;
+    if (!SurfelWorldToGridAddress(
+            surfel.worldPos_radius.xyz,
+            uGridMin,
+            uGridMax,
+            uGridResolution,
+            uUseNonLinearGrid,
+            uGridFarExtent,
+            baseAddress)) {
         return;
     }
 
-    vec3 gridCellSize = (uGridMax - uGridMin) / vec3(max(uGridResolution, uvec3(1u)));
     float radius = max(surfel.worldPos_radius.w, 0.001);
-    float supportRadius = SurfelCoverageSupportRadius(radius, uGridMin, uGridMax, uGridResolution);
-    vec3 cellMin = uGridMin + vec3(cellCoord) * gridCellSize;
-    vec3 cellMax = cellMin + gridCellSize;
+    float supportRadius = SurfelCoverageSupportRadiusAt(
+        surfel.worldPos_radius.xyz,
+        radius,
+        uGridMin,
+        uGridMax,
+        uGridResolution,
+        uUseNonLinearGrid,
+        uGridFarExtent);
 
-    InsertIntoCell(surfelID, cellCoord);
+    uint insertedCells[27];
+    uint insertedCount = 0u;
+    insertedCells[insertedCount++] = baseAddress.cell;
+    InsertIntoCell(surfelID, baseAddress.cell);
 
     for (uint i = 1u; i < 27u; ++i) {
-        ivec3 neighbor = ivec3(cellCoord) + SurfelCubeNeighborOffset(i);
-        if (any(lessThan(neighbor, ivec3(0))) || any(greaterThanEqual(neighbor, ivec3(uGridResolution)))) {
+        ivec3 offset = SurfelCubeNeighborOffset(i);
+        vec3 samplePos = surfel.worldPos_radius.xyz + vec3(offset) * max(baseAddress.cellSize * 0.95, 0.001);
+        SurfelGridAddress neighborAddress;
+        if (!SurfelWorldToGridAddress(
+                samplePos,
+                uGridMin,
+                uGridMax,
+                uGridResolution,
+                uUseNonLinearGrid,
+                uGridFarExtent,
+                neighborAddress)) {
             continue;
         }
 
-        vec3 neighborMin = uGridMin + vec3(neighbor) * gridCellSize;
-        vec3 neighborMax = neighborMin + gridCellSize;
-        vec3 closest = clamp(surfel.worldPos_radius.xyz, neighborMin, neighborMax);
-        vec3 delta = closest - surfel.worldPos_radius.xyz;
-        if (dot(delta, delta) <= supportRadius * supportRadius) {
-            InsertIntoCell(surfelID, uvec3(neighbor));
+        if (HasInsertedCell(neighborAddress.cell, insertedCells, insertedCount)) {
+            continue;
+        }
+
+        vec3 delta = neighborAddress.center - surfel.worldPos_radius.xyz;
+        float inflatedRadius = supportRadius + neighborAddress.cellSize * 0.75;
+        if (dot(delta, delta) <= inflatedRadius * inflatedRadius) {
+            insertedCells[insertedCount++] = neighborAddress.cell;
+            InsertIntoCell(surfelID, neighborAddress.cell);
         }
     }
 }

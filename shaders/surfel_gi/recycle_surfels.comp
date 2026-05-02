@@ -19,11 +19,21 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
     SurfelCounters counters;
 };
 
+layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
 uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
 uniform vec3 uCameraPosition;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
+uniform uint uUseNonLinearGrid;
+uniform float uGridFarExtent;
+uniform uint uGridCellCount;
+uniform uint uMaxSurfelsPerCell;
+uniform uvec3 uGridResolution;
 uniform float uRecyclePressureStart;
 uniform float uMaxDistance;
 
@@ -69,6 +79,19 @@ void main()
     float radiusGrowth = surfel.localPos_spawnRadius.w > 0.0
         ? surfel.worldPos_radius.w / max(surfel.localPos_spawnRadius.w, 0.001)
         : 1.0;
+    SurfelGridAddress gridAddress;
+    bool hasGridAddress = SurfelWorldToGridAddress(
+        surfel.worldPos_radius.xyz,
+        uGridMin,
+        uGridMax,
+        uGridResolution,
+        uUseNonLinearGrid,
+        uGridFarExtent,
+        gridAddress);
+    float cellOccupancy01 = 0.0;
+    if (hasGridAddress && gridAddress.cell < uGridCellCount && uMaxSurfelsPerCell > 0u) {
+        cellOccupancy01 = SurfelSaturate(float(gridHeaders[gridAddress.cell].entryCount) / max(float(uMaxSurfelsPerCell), 1.0));
+    }
     vec3 gridMargin = vec3(max(surfel.worldPos_radius.w * 2.0, 0.25));
     vec3 outsideBelow = max((uGridMin - gridMargin) - surfel.worldPos_radius.xyz, vec3(0.0));
     vec3 outsideAbove = max(surfel.worldPos_radius.xyz - (uGridMax + gridMargin), vec3(0.0));
@@ -76,6 +99,9 @@ void main()
     bool outsideGrid = outsideDistance > 0.0;
     float outsideGridScore = SurfelSaturate(outsideDistance / max(maxDistance * 0.20, 1.0));
     float oversized01 = SurfelSaturate((radiusGrowth - 2.25) / 4.0);
+    float overCoverage01 = smoothstep(0.58, 1.0, cellOccupancy01) *
+        smoothstep(1.15, 2.75, radiusGrowth) *
+        smoothstep(0.20, 0.95, confidence);
     float pressure01 = smoothstep(clamp(uRecyclePressureStart, 0.0, 0.99), 1.0, pressure);
 
     float recycleScore =
@@ -87,6 +113,7 @@ void main()
             lowConfidence01 * 0.10 +
             lowVariance01 * 0.08 +
             oversized01 * 0.22 +
+            overCoverage01 * 0.32 +
             outsideGridScore * 0.20 +
             pressure01 * 0.30,
             updateStale01 * 0.65
@@ -110,6 +137,9 @@ void main()
         sampleAge > 240u &&
         confidence < 0.45 &&
         random < 0.015;
+    bool overCoverageCull = overCoverage01 > 0.0 &&
+        contributionAge > 16u &&
+        random < mix(0.0, 0.10, overCoverage01);
     bool oversizedCull = radiusGrowth > 6.0 && contributionAge > 120u && random < 0.05;
     bool pressureCull = pressure > clamp(uRecyclePressureStart, 0.0, 0.99) &&
         contributionAge > 64u &&
@@ -118,6 +148,7 @@ void main()
         surfel.albedo_life.a <= 0.0 ||
         outsideGridCull ||
         staleCull ||
+        overCoverageCull ||
         oversizedCull ||
         pressureCull ||
         tooFar;
@@ -138,4 +169,11 @@ void main()
 
     PushFreeIndex(surfelID);
     atomicAdd(counters.recycledThisFrame, 1u);
+    if (overCoverageCull || oversizedCull) {
+        atomicAdd(counters.overCoverageRecycled, 1u);
+    } else if (staleCull || outsideGridCull || tooFar) {
+        atomicAdd(counters.staleRecycled, 1u);
+    } else if (pressureCull) {
+        atomicAdd(counters.pressureRecycled, 1u);
+    }
 }

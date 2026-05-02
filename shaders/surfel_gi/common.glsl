@@ -24,6 +24,7 @@
 #define B_GRID_COUNTERS 29
 #define B_SURFEL_GI_SETTINGS 30
 #define B_SHADOW_MATRICES 31
+#define B_COVERAGE_TILES 32
 
 #define T_SURFEL_GBUFFER_NORMAL_RM 0
 #define T_SURFEL_GBUFFER_ALBEDO_AO 1
@@ -46,6 +47,18 @@
 
 #define SURFEL_CELL_HAS_AVERAGE 0x00000001u
 #define SURFEL_CELL_OVERFLOWED 0x00000002u
+#define SURFEL_GRID_REGION_CENTRAL 0u
+#define SURFEL_GRID_REGION_POS_X 1u
+#define SURFEL_GRID_REGION_NEG_X 2u
+#define SURFEL_GRID_REGION_POS_Y 3u
+#define SURFEL_GRID_REGION_NEG_Y 4u
+#define SURFEL_GRID_REGION_POS_Z 5u
+#define SURFEL_GRID_REGION_NEG_Z 6u
+
+#define SURFEL_COVERAGE_TILE_VISIBLE (1u << 0)
+#define SURFEL_COVERAGE_TILE_UNDER_COVERED (1u << 1)
+#define SURFEL_COVERAGE_TILE_HIGH_PRIORITY (1u << 2)
+#define SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY (1u << 3)
 
 const uint SURFEL_RADIAL_DEPTH_TEXELS = 16u;
 const uint SURFEL_GUIDE_CELLS = 36u;
@@ -87,6 +100,21 @@ struct SurfelCounters
     uint rejectedInvalidNormal;
     uint rejectedInvalidRadius;
     uint rejectedPoolFull;
+    uint overCoverageRecycled;
+    uint staleRecycled;
+    uint pressureRecycled;
+    uint underCoveredTileCount;
+    uint highPriorityTileCount;
+    uint coverageSpawnedTileCount;
+    uint coverageVisibleTileCount;
+    uint coverageInvalidTileCount;
+};
+
+struct SurfelCoverageTile
+{
+    vec4 lowestCoverage;
+    uvec4 state;
+    uvec4 pixel;
 };
 
 struct RadialDepthTexel
@@ -136,6 +164,15 @@ struct SurfelRayHit
     vec4 normal_hitKind;
     vec4 radiance_pdf;
     uvec4 ids;
+};
+
+struct SurfelGridAddress
+{
+    uint cell;
+    uint region;
+    uvec3 coord;
+    vec3 center;
+    float cellSize;
 };
 
 float SurfelSaturate(float value)
@@ -323,11 +360,255 @@ uint SurfelPackIrradiance(vec3 irradiance, float confidence)
     return packUnorm4x8(vec4(mapped, SurfelSaturate(confidence)));
 }
 
+uint SurfelCentralGridResolution(uvec3 gridResolution)
+{
+    return max(gridResolution.x, 1u);
+}
+
+uint SurfelAxisLateralResolution(uvec3 gridResolution)
+{
+    return max(gridResolution.y, 1u);
+}
+
+uint SurfelAxisSliceCount(uvec3 gridResolution)
+{
+    return max(gridResolution.z, 1u);
+}
+
+uint SurfelNonLinearCentralCellCount(uvec3 gridResolution)
+{
+    uint c = SurfelCentralGridResolution(gridResolution);
+    return c * c * c;
+}
+
+uint SurfelNonLinearAxisCellsPerRegion(uvec3 gridResolution)
+{
+    uint lateral = SurfelAxisLateralResolution(gridResolution);
+    return lateral * lateral * SurfelAxisSliceCount(gridResolution);
+}
+
+uint SurfelNonLinearGridCellCount(uvec3 gridResolution)
+{
+    return SurfelNonLinearCentralCellCount(gridResolution) +
+        6u * SurfelNonLinearAxisCellsPerRegion(gridResolution);
+}
+
 uint SurfelFlattenCell(uvec3 cell, uvec3 gridResolution)
 {
     uvec3 dims = max(gridResolution, uvec3(1u));
     uvec3 c = clamp(cell, uvec3(0u), dims - uvec3(1u));
     return (c.z * dims.y + c.y) * dims.x + c.x;
+}
+
+uint SurfelFlattenCentralCell(uvec3 cell, uint centralResolution)
+{
+    uint r = max(centralResolution, 1u);
+    uvec3 c = clamp(cell, uvec3(0u), uvec3(r - 1u));
+    return (c.z * r + c.y) * r + c.x;
+}
+
+uint SurfelAxisRegionIndex(uint axis, bool positive)
+{
+    if (axis == 0u) {
+        return positive ? SURFEL_GRID_REGION_POS_X : SURFEL_GRID_REGION_NEG_X;
+    }
+    if (axis == 1u) {
+        return positive ? SURFEL_GRID_REGION_POS_Y : SURFEL_GRID_REGION_NEG_Y;
+    }
+    return positive ? SURFEL_GRID_REGION_POS_Z : SURFEL_GRID_REGION_NEG_Z;
+}
+
+vec2 SurfelRemainingAxes(vec3 value, uint axis)
+{
+    if (axis == 0u) {
+        return value.yz;
+    }
+    if (axis == 1u) {
+        return value.xz;
+    }
+    return value.xy;
+}
+
+vec3 SurfelComposeAxisPosition(uint axis, float axisValue, vec2 lateral)
+{
+    if (axis == 0u) {
+        return vec3(axisValue, lateral.x, lateral.y);
+    }
+    if (axis == 1u) {
+        return vec3(lateral.x, axisValue, lateral.y);
+    }
+    return vec3(lateral.x, lateral.y, axisValue);
+}
+
+float SurfelGridCentralHalfExtent(vec3 gridMin, vec3 gridMax)
+{
+    vec3 halfExtent = abs(gridMax - gridMin) * 0.5;
+    return max(min(min(halfExtent.x, halfExtent.y), halfExtent.z), 0.001);
+}
+
+float SurfelGridBaseCellSize(vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
+{
+    return (2.0 * SurfelGridCentralHalfExtent(gridMin, gridMax)) /
+        float(SurfelCentralGridResolution(gridResolution));
+}
+
+float SurfelGridSliceGrowth()
+{
+    return 1.22;
+}
+
+float SurfelNonLinearSliceStart(float baseCellSize, float growth, uint slice)
+{
+    if (slice == 0u) {
+        return 0.0;
+    }
+    return baseCellSize * (pow(growth, float(slice)) - 1.0) / max(growth - 1.0, 1e-4);
+}
+
+float SurfelNonLinearSliceSize(float baseCellSize, float growth, uint slice)
+{
+    return baseCellSize * pow(growth, float(slice));
+}
+
+bool SurfelWorldToUniformGridAddress(vec3 worldPos,
+                                     vec3 gridMin,
+                                     vec3 gridMax,
+                                     uvec3 gridResolution,
+                                     out SurfelGridAddress address)
+{
+    address.cell = SURFEL_INVALID_INDEX;
+    address.region = SURFEL_GRID_REGION_CENTRAL;
+    address.coord = uvec3(0u);
+    address.center = vec3(0.0);
+    address.cellSize = 1.0;
+
+    if (any(equal(gridResolution, uvec3(0u)))) {
+        return false;
+    }
+
+    vec3 extent = max(gridMax - gridMin, vec3(0.0001));
+    vec3 uvw = (worldPos - gridMin) / extent;
+    if (any(lessThan(uvw, vec3(0.0))) || any(greaterThanEqual(uvw, vec3(1.0)))) {
+        return false;
+    }
+
+    address.coord = min(uvec3(floor(uvw * vec3(gridResolution))), gridResolution - uvec3(1u));
+    address.cell = SurfelFlattenCell(address.coord, gridResolution);
+    vec3 cellSize = extent / vec3(max(gridResolution, uvec3(1u)));
+    address.cellSize = max(max(cellSize.x, cellSize.y), cellSize.z);
+    address.center = gridMin + (vec3(address.coord) + vec3(0.5)) * cellSize;
+    return true;
+}
+
+bool SurfelWorldToGridAddress(vec3 worldPos,
+                              vec3 gridMin,
+                              vec3 gridMax,
+                              uvec3 gridResolution,
+                              uint useNonLinearGrid,
+                              float gridFarExtent,
+                              out SurfelGridAddress address)
+{
+    if (useNonLinearGrid == 0u) {
+        return SurfelWorldToUniformGridAddress(worldPos, gridMin, gridMax, gridResolution, address);
+    }
+
+    address.cell = SURFEL_INVALID_INDEX;
+    address.region = SURFEL_GRID_REGION_CENTRAL;
+    address.coord = uvec3(0u);
+    address.center = vec3(0.0);
+    address.cellSize = SurfelGridBaseCellSize(gridMin, gridMax, gridResolution);
+
+    uint centralResolution = SurfelCentralGridResolution(gridResolution);
+    uint lateralResolution = SurfelAxisLateralResolution(gridResolution);
+    uint sliceCount = SurfelAxisSliceCount(gridResolution);
+    vec3 gridCenter = (gridMin + gridMax) * 0.5;
+    vec3 p = worldPos - gridCenter;
+    float centerHalfExtent = SurfelGridCentralHalfExtent(gridMin, gridMax);
+    float maxAbs = max(max(abs(p.x), abs(p.y)), abs(p.z));
+    float baseCellSize = SurfelGridBaseCellSize(gridMin, gridMax, gridResolution);
+
+    if (maxAbs < centerHalfExtent) {
+        vec3 uvw = p / max(2.0 * centerHalfExtent, 1e-4) + vec3(0.5);
+        address.coord = min(uvec3(floor(uvw * float(centralResolution))), uvec3(centralResolution - 1u));
+        address.cell = SurfelFlattenCentralCell(address.coord, centralResolution);
+        address.region = SURFEL_GRID_REGION_CENTRAL;
+        address.cellSize = baseCellSize;
+        address.center = gridMin + (vec3(address.coord) + vec3(0.5)) * baseCellSize;
+        return true;
+    }
+
+    uint axis = 0u;
+    float dominantAbs = abs(p.x);
+    if (abs(p.y) > dominantAbs) {
+        axis = 1u;
+        dominantAbs = abs(p.y);
+    }
+    if (abs(p.z) > dominantAbs) {
+        axis = 2u;
+        dominantAbs = abs(p.z);
+    }
+
+    float farExtent = max(gridFarExtent, centerHalfExtent + baseCellSize);
+    float growth = SurfelGridSliceGrowth();
+    float maxSliceEnd = SurfelNonLinearSliceStart(baseCellSize, growth, sliceCount) +
+        SurfelNonLinearSliceSize(baseCellSize, growth, sliceCount - 1u);
+    farExtent = min(farExtent, centerHalfExtent + maxSliceEnd);
+    if (dominantAbs >= farExtent) {
+        return false;
+    }
+
+    float d = max(dominantAbs - centerHalfExtent, 0.0);
+    float sliceFloat = floor(log(max(1.0 + d * (growth - 1.0) / max(baseCellSize, 1e-4), 1.0)) /
+        log(growth));
+    uint slice = min(uint(max(sliceFloat, 0.0)), sliceCount - 1u);
+    float sliceStart = SurfelNonLinearSliceStart(baseCellSize, growth, slice);
+    float sliceSize = SurfelNonLinearSliceSize(baseCellSize, growth, slice);
+    float axisDepth = centerHalfExtent + sliceStart + sliceSize * 0.5;
+    bool positive = axis == 0u ? p.x >= 0.0 : (axis == 1u ? p.y >= 0.0 : p.z >= 0.0);
+    uint region = SurfelAxisRegionIndex(axis, positive);
+    vec2 lateral = SurfelRemainingAxes(p, axis);
+    vec2 lateralCoord = lateral / max(sliceSize, 1e-4) + vec2(float(lateralResolution) * 0.5);
+    if (any(lessThan(lateralCoord, vec2(0.0))) ||
+        any(greaterThanEqual(lateralCoord, vec2(float(lateralResolution))))) {
+        return false;
+    }
+
+    uvec2 uv = min(uvec2(floor(lateralCoord)), uvec2(lateralResolution - 1u));
+    address.coord = uvec3(uv, slice);
+    uint axisCells = SurfelNonLinearAxisCellsPerRegion(gridResolution);
+    uint centralCells = SurfelNonLinearCentralCellCount(gridResolution);
+    uint regionZeroBased = max(region, 1u) - 1u;
+    address.cell = centralCells + regionZeroBased * axisCells +
+        (slice * lateralResolution + uv.y) * lateralResolution + uv.x;
+    address.region = region;
+    address.cellSize = sliceSize;
+    vec2 lateralCenter = (vec2(uv) + vec2(0.5) - vec2(float(lateralResolution) * 0.5)) * sliceSize;
+    address.center = gridCenter + SurfelComposeAxisPosition(axis, positive ? axisDepth : -axisDepth, lateralCenter);
+    return true;
+}
+
+bool SurfelGridCellDebugBounds(vec3 worldPos,
+                               vec3 gridMin,
+                               vec3 gridMax,
+                               uvec3 gridResolution,
+                               uint useNonLinearGrid,
+                               float gridFarExtent,
+                               out vec3 center,
+                               out vec3 halfExtent,
+                               out uint region)
+{
+    SurfelGridAddress address;
+    if (!SurfelWorldToGridAddress(worldPos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent, address)) {
+        center = vec3(0.0);
+        halfExtent = vec3(0.0);
+        region = 0u;
+        return false;
+    }
+
+    center = address.center;
+    halfExtent = vec3(address.cellSize * 0.5);
+    region = address.region;
+    return true;
 }
 
 ivec3 SurfelCrossNeighborOffset(uint index)
@@ -377,18 +658,12 @@ bool SurfelWorldToGridCell(vec3 worldPos,
                            uvec3 gridResolution,
                            out uvec3 cell)
 {
-    cell = uvec3(0u);
-    if (any(equal(gridResolution, uvec3(0u)))) {
+    SurfelGridAddress address;
+    if (!SurfelWorldToUniformGridAddress(worldPos, gridMin, gridMax, gridResolution, address)) {
+        cell = uvec3(0u);
         return false;
     }
-
-    vec3 extent = max(gridMax - gridMin, vec3(0.0001));
-    vec3 uvw = (worldPos - gridMin) / extent;
-    if (any(lessThan(uvw, vec3(0.0))) || any(greaterThanEqual(uvw, vec3(1.0)))) {
-        return false;
-    }
-
-    cell = min(uvec3(floor(uvw * vec3(gridResolution))), gridResolution - uvec3(1u));
+    cell = address.coord;
     return true;
 }
 
@@ -402,6 +677,55 @@ float SurfelCoverageSupportRadius(float radius, vec3 gridMin, vec3 gridMax, uvec
 {
     float cellSize = SurfelMaxGridCellSize(gridMin, gridMax, gridResolution);
     return max(max(radius * 8.0, cellSize * 1.05), 0.32);
+}
+
+float SurfelGridCellSizeAtWorld(vec3 worldPos,
+                                vec3 gridMin,
+                                vec3 gridMax,
+                                uvec3 gridResolution,
+                                uint useNonLinearGrid,
+                                float gridFarExtent)
+{
+    SurfelGridAddress address;
+    if (!SurfelWorldToGridAddress(worldPos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent, address)) {
+        return SurfelMaxGridCellSize(gridMin, gridMax, max(gridResolution, uvec3(1u)));
+    }
+    return max(address.cellSize, 0.001);
+}
+
+float SurfelCoverageSupportRadiusAt(vec3 worldPos,
+                                    float radius,
+                                    vec3 gridMin,
+                                    vec3 gridMax,
+                                    uvec3 gridResolution,
+                                    uint useNonLinearGrid,
+                                    float gridFarExtent)
+{
+    float cellSize = SurfelGridCellSizeAtWorld(worldPos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent);
+    return max(max(radius * 3.0, cellSize * 1.25), 0.18);
+}
+
+bool SurfelWorldNeighborAddress(vec3 worldPos,
+                                uint neighborIndex,
+                                uint neighborRadius,
+                                vec3 gridMin,
+                                vec3 gridMax,
+                                uvec3 gridResolution,
+                                uint useNonLinearGrid,
+                                float gridFarExtent,
+                                out SurfelGridAddress address)
+{
+    SurfelGridAddress baseAddress;
+    if (!SurfelWorldToGridAddress(worldPos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent, baseAddress)) {
+        address = baseAddress;
+        return false;
+    }
+
+    ivec3 offset = neighborRadius == 0u
+        ? ivec3(0)
+        : (neighborRadius == 1u ? SurfelCubeNeighborOffset(neighborIndex) : SurfelCubeRadius2NeighborOffset(neighborIndex));
+    vec3 samplePos = worldPos + vec3(offset) * max(baseAddress.cellSize * 0.95, 0.001);
+    return SurfelWorldToGridAddress(samplePos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent, address);
 }
 
 float SurfelCoverageWeight(vec3 receiverPos,
@@ -420,6 +744,28 @@ float SurfelCoverageWeight(vec3 receiverPos,
     float disk = exp(-dot(delta, delta) / max(supportRadius * supportRadius, 1e-4));
     float normal = SurfelSaturate((dot(receiverNormal, surfelNormal) - normalRejectCos) / max(1.0 - normalRejectCos, 1e-4));
     float planeSigma = max(max(radius * 2.0, supportRadius * 0.18), 0.035);
+    float plane = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
+    return disk * normal * plane;
+}
+
+float SurfelCoverageWeightAt(vec3 receiverPos,
+                             vec3 receiverNormal,
+                             Surfel surfel,
+                             float normalRejectCos,
+                             vec3 gridMin,
+                             vec3 gridMax,
+                             uvec3 gridResolution,
+                             uint useNonLinearGrid,
+                             float gridFarExtent)
+{
+    vec3 surfelPos = surfel.worldPos_radius.xyz;
+    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    float supportRadius = SurfelCoverageSupportRadiusAt(surfelPos, radius, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent);
+    vec3 delta = receiverPos - surfelPos;
+    float disk = exp(-dot(delta, delta) / max(supportRadius * supportRadius, 1e-4));
+    float normal = SurfelSaturate((dot(receiverNormal, surfelNormal) - normalRejectCos) / max(1.0 - normalRejectCos, 1e-4));
+    float planeSigma = max(max(radius * 2.0, supportRadius * 0.20), 0.035);
     float plane = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
     return disk * normal * plane;
 }
