@@ -39,6 +39,7 @@ struct SurfelGIPipelineResources {
 	GLuint coverageTileBuffer = 0;
 	GLuint rawIndirectTexture = 0;
 	GLuint filteredIndirectTexture = 0;
+	GLuint temporalIndirectTexture = 0;
 	GLuint indirectTexture = 0;
 	GLuint historyIndirectTexture[2] = { 0, 0 };
 	GLuint historyGeometryTexture[2] = { 0, 0 };
@@ -127,6 +128,7 @@ private:
 	std::unique_ptr<ComputeShader> m_applyIndirectShader;
 	std::unique_ptr<ComputeShader> m_spatialFilterShader;
 	std::unique_ptr<ComputeShader> m_temporalFilterShader;
+	std::unique_ptr<ComputeShader> m_upscaleFilterShader;
 	GLuint m_debugProgram = 0;
 	GLuint m_debugPresentProgram = 0;
 	GLuint m_debugVAO = 0;

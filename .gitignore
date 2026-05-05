@@ -140,6 +140,7 @@ cmake-build-release*/
 .github/
 .agents/skills/
 validation_output/
+captures/
 
 # Python virtual env (if tools/scripts)
 venv/
@@ -193,3 +194,7 @@ local_test_data/
 # Visual Studio files that are not needed
 *.vsidx*
 *.opendb
+/captures
+/scripts
+/scripts
+/scripts

@@ -17,6 +17,7 @@ def main() -> None:
     generate_rays = read("shaders/surfel_gi/generate_rays.comp")
     sharing = read("shaders/surfel_gi/irradiance_sharing.comp")
     radial_depth = read("shaders/surfel_gi/radial_depth_update.comp")
+    pipeline = read("src/passes/SurfelGIPipeline.cpp")
 
     require("bool SurfelSelectGuideBin(" in generate_rays,
             "generate_rays.comp must select guide bins through an explicit helper")
@@ -37,8 +38,10 @@ def main() -> None:
     ):
         require(token in sharing,
                 f"irradiance_sharing.comp missing compatibility token: {token}")
-    require("if (normalDot < SURFEL_SHARING_MIN_NORMAL_DOT)" in sharing,
-            "sharing must hard-reject incompatible normals")
+    require("sameSurfaceCompatible" in sharing and
+            "crossSurfaceCompatible" in sharing and
+            "if (!sameSurfaceCompatible && !crossSurfaceCompatible)" in sharing,
+            "sharing must reject incompatible normals while allowing bounded perpendicular transfer")
     require("if (max(centerPlane, neighborPlane) > planeLimit)" in sharing,
             "sharing must hard-reject large plane separation")
     require("if (visibility < SURFEL_SHARING_MIN_RADIAL_VISIBILITY)" in sharing,
@@ -52,7 +55,8 @@ def main() -> None:
             "sharing must not masquerade as a ray contribution or it defeats stable-surface ray throttling")
     require("uSharingPhaseCount" in sharing and
             "uSharingPhaseIndex" in sharing and
-            "surfelID % sharingPhaseCount" in sharing,
+            "gl_GlobalInvocationID.x * sharingPhaseCount" in sharing and
+            "maxRayBudget <= 1024u ? 8u" in pipeline,
             "sharing must support phased execution so the real-time preset avoids full-field sharing spikes")
 
     require("minReliableDepth" in radial_depth and

@@ -740,6 +740,9 @@
     <None Include="shaders\surfel_gi\trace_rays.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
+    <None Include="shaders\surfel_gi\upscale_filter.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
     <None Include="shaders\surfel_gi\update_surfels.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>

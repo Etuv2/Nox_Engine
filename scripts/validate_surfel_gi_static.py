@@ -67,6 +67,7 @@ def main() -> None:
         "shaders/surfel_gi/integrate.comp",
         "shaders/surfel_gi/radial_depth_update.comp",
         "shaders/surfel_gi/temporal_filter.comp",
+        "shaders/surfel_gi/upscale_filter.comp",
     ]
     for relpath in replacement_files:
         require_exists(relpath)
@@ -158,6 +159,7 @@ def main() -> None:
         "final_gather",
         "composite_filter",
         "temporal_resolve",
+        "upscale_filter",
         "debug_overhead",
     ]
     for label in required_timing_labels:
@@ -175,8 +177,8 @@ def main() -> None:
     for token in realtime_budget_tokens:
         require(token in render_context_h, f"real-time clean Surfel GI default missing from RenderContext.h: {token}")
 
-    require("return { 32768u, 640u, 16u, 20u, 24u, 1u, 0.25f, true, true" in modular_cpp,
-            "Medium clean Surfel GI budget must use the real-time radius-1 low-resolution gather preset")
+    require("return { 98304u, 1024u, 8u, 64u, 32u, 1u, 0.25f, true, true" in modular_cpp,
+            "Medium clean Surfel GI budget must keep Ultra-like surfel density with bounded center-neighborhood support")
 
     manager_budget_tokens = [
         "uint32_t maxSurfels = 131072u",

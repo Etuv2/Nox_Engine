@@ -234,6 +234,30 @@ uint SurfelHash(uint value)
     return value;
 }
 
+const uint SURFEL_SPAWN_TILE_STRATA_X = 4u;
+const uint SURFEL_SPAWN_TILE_STRATA_Y = 2u;
+
+vec2 SurfelSpawnTileStratum(uint frameIndex,
+                            uint passIndex,
+                            uint passCount,
+                            uint sampleIndex)
+{
+    if (sampleIndex == 0u) {
+        return vec2(0.5);
+    }
+
+    uint stratumCount = SURFEL_SPAWN_TILE_STRATA_X * SURFEL_SPAWN_TILE_STRATA_Y;
+    uint rotated = (sampleIndex - 1u) +
+        passIndex * 3u +
+        (frameIndex & 1u) * 5u +
+        (passCount & 1u);
+    uint stratum = rotated % stratumCount;
+    uvec2 cell = uvec2(stratum % SURFEL_SPAWN_TILE_STRATA_X,
+                       stratum / SURFEL_SPAWN_TILE_STRATA_X);
+    return (vec2(cell) + vec2(0.5)) /
+        vec2(float(SURFEL_SPAWN_TILE_STRATA_X), float(SURFEL_SPAWN_TILE_STRATA_Y));
+}
+
 uvec2 SurfelSpawnTilePixel(uvec2 tile,
                            uvec2 tileExtent,
                            uint frameIndex,
@@ -241,14 +265,25 @@ uvec2 SurfelSpawnTilePixel(uvec2 tile,
                            uint passCount,
                            uint sampleIndex)
 {
-    uint pixelCount = max(tileExtent.x * tileExtent.y, 1u);
+    vec2 extent = max(vec2(tileExtent), vec2(1.0));
+    vec2 stratum = SurfelSpawnTileStratum(frameIndex, passIndex, passCount, sampleIndex);
     uint seed = tile.x * 0x8da6b343u ^
         tile.y * 0xd8163841u ^
         frameIndex * 0xcb1ab31fu ^
         (passIndex + passCount * 17u) * 0x165667b1u ^
         sampleIndex * 0x9e3779b9u;
-    uint pixelIndex = SurfelHash(seed) % pixelCount;
-    return uvec2(pixelIndex % tileExtent.x, pixelIndex / tileExtent.x);
+    vec2 stratumSize = extent / vec2(float(SURFEL_SPAWN_TILE_STRATA_X),
+                                     float(SURFEL_SPAWN_TILE_STRATA_Y));
+    vec2 jitter01 = vec2(
+        float(SurfelHash(seed) & 0x00ffffffu),
+        float(SurfelHash(seed ^ 0x68bc21ebu) & 0x00ffffffu)) / 16777215.0;
+    vec2 jitter = sampleIndex == 0u
+        ? vec2(0.0)
+        : (jitter01 - vec2(0.5)) * min(stratumSize, extent) * 0.42;
+    vec2 pixel = clamp(stratum * extent + jitter,
+                       vec2(0.0),
+                       max(extent - vec2(0.001), vec2(0.0)));
+    return min(uvec2(pixel), tileExtent - uvec2(1u));
 }
 
 vec3 SurfelReconstructWorldPosition(vec2 uv, float depth01, mat4 invProjection, mat4 invView)
@@ -636,7 +671,7 @@ ivec3 SurfelCrossNeighborOffset(uint index)
     return ivec3(0, 0, -1);
 }
 
-ivec3 SurfelCubeNeighborOffset(uint index)
+ivec3 SurfelRawCubeNeighborOffset(uint index)
 {
     uint clampedIndex = min(index, 26u);
     int x = int(clampedIndex % 3u) - 1;
@@ -645,13 +680,65 @@ ivec3 SurfelCubeNeighborOffset(uint index)
     return ivec3(x, y, z);
 }
 
-ivec3 SurfelCubeRadius2NeighborOffset(uint index)
+ivec3 SurfelOrderedCubeOffset(uint index)
+{
+    if (index == 0u) {
+        return ivec3(0, 0, 0);
+    }
+
+    uint target = min(index - 1u, 25u);
+    uint seen = 0u;
+    for (uint raw = 0u; raw < 27u; ++raw) {
+        ivec3 offset = SurfelRawCubeNeighborOffset(raw);
+        if (all(equal(offset, ivec3(0)))) {
+            continue;
+        }
+        if (seen == target) {
+            return offset;
+        }
+        ++seen;
+    }
+    return ivec3(1, 1, 1);
+}
+
+ivec3 SurfelCubeNeighborOffset(uint index)
+{
+    return SurfelOrderedCubeOffset(index);
+}
+
+ivec3 SurfelRawCubeRadius2NeighborOffset(uint index)
 {
     uint clampedIndex = min(index, 124u);
     int x = int(clampedIndex % 5u) - 2;
     int y = int((clampedIndex / 5u) % 5u) - 2;
     int z = int(clampedIndex / 25u) - 2;
     return ivec3(x, y, z);
+}
+
+ivec3 SurfelOrderedCubeRadius2Offset(uint index)
+{
+    if (index == 0u) {
+        return ivec3(0, 0, 0);
+    }
+
+    uint target = min(index - 1u, 123u);
+    uint seen = 0u;
+    for (uint raw = 0u; raw < 125u; ++raw) {
+        ivec3 offset = SurfelRawCubeRadius2NeighborOffset(raw);
+        if (all(equal(offset, ivec3(0)))) {
+            continue;
+        }
+        if (seen == target) {
+            return offset;
+        }
+        ++seen;
+    }
+    return ivec3(2, 2, 2);
+}
+
+ivec3 SurfelCubeRadius2NeighborOffset(uint index)
+{
+    return SurfelOrderedCubeRadius2Offset(index);
 }
 
 bool SurfelWorldToGridCell(vec3 worldPos,
@@ -678,7 +765,7 @@ float SurfelMaxGridCellSize(vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
 float SurfelCoverageSupportRadius(float radius, vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
 {
     float cellSize = SurfelMaxGridCellSize(gridMin, gridMax, gridResolution);
-    return max(max(radius * 8.0, cellSize * 1.05), 0.32);
+    return max(max(radius * 5.0, cellSize * 0.70), 0.22);
 }
 
 float SurfelGridCellSizeAtWorld(vec3 worldPos,
@@ -704,7 +791,7 @@ float SurfelCoverageSupportRadiusAt(vec3 worldPos,
                                     float gridFarExtent)
 {
     float cellSize = SurfelGridCellSizeAtWorld(worldPos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent);
-    return max(max(radius * 3.0, cellSize * 1.25), 0.18);
+    return max(max(radius * 3.75, cellSize * 0.68), 0.18);
 }
 
 bool SurfelWorldNeighborAddress(vec3 worldPos,

@@ -124,6 +124,7 @@ uniform samplerCube uSkyEnvironmentMap;
 uniform uint uActiveRayCount;
 uniform uint uMaxRays;
 uniform uint uMaxSurfels;
+uniform uint uFrameIndex;
 uniform uint uGridCellCount;
 uniform uint uMaxSurfelsPerCell;
 uniform uint uTriangleCount = 0u;
@@ -156,31 +157,36 @@ uniform float uPointLightBias = 0.002;
 uniform float uPointLightSlopeBias = 0.005;
 uniform float uPointLightNormalOffset = 0.01;
 
-const uint SURFEL_TRACE_STEPS = 16u;
+const uint SURFEL_TRACE_STEPS = 8u;
 const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
 const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
-const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 12u;
-const uint SURFEL_TRACE_MAX_CANDIDATES = 128u;
-const uint SURFEL_TRACE_MAX_VISITED_CELLS = 40u;
+const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 8u;
+const uint SURFEL_TRACE_MAX_CANDIDATES = 64u;
+const uint SURFEL_TRACE_MAX_VISITED_CELLS = 24u;
+const uint SURFEL_TRACE_BVH_FALLBACK_PHASE_COUNT = 4u;
 const uint SURFEL_TRACE_MAX_LIGHTS = 32u;
 const uint SURFEL_SCREEN_TRACE_STEPS = 32u;
-const uint SURFEL_TRACE_CACHE_MAX_CANDIDATES = 72u;
-const uint SURFEL_TRACE_CACHE_PER_CELL_BUDGET = 2u;
+const uint SURFEL_TRACE_CACHE_MAX_CANDIDATES = 128u;
+const uint SURFEL_TRACE_CACHE_PER_CELL_BUDGET = 4u;
 const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 2.0;
 const float SURFEL_TRACE_HIT_RADIUS_SCALE = 5.5;
 const float SURFEL_TRACE_MIN_HIT_RADIUS = 0.14;
 const float SURFEL_TRACE_MAX_HIT_RADIUS = 0.80;
-const float SURFEL_TRACE_CACHE_SUPPORT_SPREAD = 1.45;
+const float SURFEL_TRACE_CACHE_SUPPORT_SPREAD = 3.10;
 const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
 const float SURFEL_TRACE_HIT_KIND_SCREEN = 2.0;
 const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
+const float SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT = 5.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_TRACE_SCREEN_RELIABILITY = 0.18;
 const float SURFEL_TRACE_SKY_VISIBILITY_DISTANCE = 32.0;
 const float SURFEL_ENVIRONMENT_MISS_MIP = 5.0;
-const float SURFEL_ENVIRONMENT_MISS_SCALE = 0.58;
+const float SURFEL_ENVIRONMENT_MISS_SCALE = 0.70;
 const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 2.4;
+const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 1.10;
+const float SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF = 0.52;
+const float SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF = 10.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
 const int SURFEL_TRACE_BVH_STACK_SIZE = 64;
 
@@ -603,9 +609,9 @@ float SkyOcclusionVisibilityFromHitDistance(float hitDistance)
         return 0.0;
     }
 
-    float nearAccess = smoothstep(0.35, 8.0, hitDistance) * 0.72;
-    float farAccess = smoothstep(8.0, 32.0, hitDistance);
-    return clamp(max(nearAccess, farAccess), 0.0, 0.92);
+    float corridorLeak = smoothstep(5.0, 22.0, hitDistance) * 0.16;
+    float farLeak = smoothstep(22.0, SURFEL_TRACE_SKY_VISIBILITY_DISTANCE, hitDistance) * 0.34;
+    return clamp(max(corridorLeak, farLeak), 0.0, 0.34);
 }
 
 float DiffuseSkyHemisphereAccess(vec3 normal, vec3 skyDir)
@@ -674,6 +680,27 @@ vec3 EvaluateMissEnvironmentRadiance(vec3 rayDir)
     return skyRadiance * uSkyDiffuseScale * SURFEL_ENVIRONMENT_MISS_SCALE;
 }
 
+vec3 EvaluateSourceDirectBounce(Surfel sourceSurfel)
+{
+    if (!SurfelIsAlive(sourceSurfel)) {
+        return vec3(0.0);
+    }
+
+    vec3 sourcePos = sourceSurfel.worldPos_radius.xyz;
+    vec3 sourceNormal = SurfelSafeNormalize(sourceSurfel.worldNormal_age.xyz);
+    vec3 sourceAlbedo = clamp(sourceSurfel.albedo_life.rgb, vec3(0.0), vec3(1.0));
+    float albedoSignal = smoothstep(0.015, 0.08, max(max(sourceAlbedo.r, sourceAlbedo.g), sourceAlbedo.b));
+    if (albedoSignal <= 1e-5) {
+        return vec3(0.0);
+    }
+
+    vec3 directIrradiance = EvaluateHitDirectIrradiance(sourcePos, sourceNormal);
+    vec3 sourceBounce = sourceAlbedo * directIrradiance * SURFEL_SOURCE_DIRECT_BOUNCE_SCALE;
+
+    float ageRamp = smoothstep(0.0, 8.0, sourceSurfel.worldNormal_age.w);
+    return max(sourceBounce, vec3(0.0)) * mix(0.55, 1.0, ageRamp) * albedoSignal;
+}
+
 float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
 {
     vec3 surfelPos = surfel.worldPos_radius.xyz;
@@ -684,7 +711,7 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
     float supportRadius = SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent) *
         SURFEL_TRACE_CACHE_SUPPORT_SPREAD;
     float normalizedDistance = dist / max(supportRadius, 1e-4);
-    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.78);
+    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.58);
     if (distanceWeight <= 1e-5) {
         return 0.0;
     }
@@ -692,10 +719,10 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
     vec3 toReceiver = dist > 1e-5 ? delta / dist : receiverNormal;
     float emitterFacing = max(dot(surfelNormal, toReceiver), 0.0);
     float receiverFacing = max(dot(receiverNormal, -toReceiver), 0.0);
-    float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0)) * 0.56;
+    float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0)) * 0.72;
     float coplanarFacing = max(dot(receiverNormal, surfelNormal), 0.0) * 0.85;
     float normalWeight = smoothstep(max(uNormalRejectCos * 0.13, 0.016), 0.95, max(transferFacing, coplanarFacing));
-    float planeSigma = max(max(radius * 2.3, supportRadius * 0.22), 0.052);
+    float planeSigma = max(max(radius * 2.65, supportRadius * 0.26), 0.060);
     float coplanarPlane = exp(-(abs(dot(delta, surfelNormal)) + abs(dot(delta, receiverNormal))) / max(planeSigma, 1e-4));
     float planeWeight = mix(coplanarPlane, 1.0, transferFacing);
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
@@ -704,7 +731,7 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
         return 0.0;
     }
 
-    return distanceWeight * normalWeight * planeWeight * mix(0.30, 1.0, smoothstep(0.05, 0.65, confidence));
+    return distanceWeight * normalWeight * planeWeight * mix(0.22, 1.0, smoothstep(0.05, 0.65, confidence));
 }
 
 vec3 SurfelTraceSourceBounceTint(vec3 sourceTint)
@@ -713,10 +740,10 @@ vec3 SurfelTraceSourceBounceTint(vec3 sourceTint)
     float tintLum = SurfelLuminance(sourceTint);
     vec3 chroma = sourceTint - vec3(tintLum);
     float colorfulness = smoothstep(0.035, 0.24, length(chroma));
-    vec3 saturatedTint = max(sourceTint + chroma * (1.10 * colorfulness), vec3(0.0));
+    vec3 saturatedTint = max(sourceTint + chroma * (1.35 * colorfulness), vec3(0.0));
     float saturatedLum = SurfelLuminance(saturatedTint);
     vec3 lumaPreservingTint = saturatedTint / max(saturatedLum, 0.035);
-    vec3 boundedTint = mix(vec3(1.0), lumaPreservingTint, mix(0.28, 0.72, colorfulness));
+    vec3 boundedTint = mix(vec3(1.0), lumaPreservingTint, mix(0.40, 0.85, colorfulness));
     return clamp(boundedTint, vec3(0.30), vec3(2.05));
 }
 
@@ -761,7 +788,7 @@ vec3 TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
     const uint maxCandidates = SURFEL_TRACE_CACHE_MAX_CANDIDATES;
     const uint perCellBudget = SURFEL_TRACE_CACHE_PER_CELL_BUDGET;
     for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
-        if (candidates >= maxCandidates || sumWeight >= 24.0) {
+        if (candidates >= maxCandidates || sumWeight >= 32.0) {
             break;
         }
 
@@ -997,19 +1024,21 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
                                                             hit.normal,
                                                             visibleAlbedoConfidence);
     albedo = mix(albedo, visibleAlbedo, visibleAlbedoConfidence);
-    float cachedAlbedoConfidence = 0.0;
-    vec3 cachedAlbedo = TraceCachedAlbedoAtSurface(hit.position, hit.normal, ray.ids.x, cacheSeed, cachedAlbedoConfidence);
     float bvhAlbedoLum = SurfelLuminance(clamp(albedo, vec3(0.0), vec3(1.0)));
-    float cachedAlbedoLum = SurfelLuminance(clamp(cachedAlbedo, vec3(0.0), vec3(1.0)));
     float bvhColorfulness = length(clamp(albedo, vec3(0.0), vec3(1.0)) - vec3(bvhAlbedoLum));
-    float cachedColorfulness = length(clamp(cachedAlbedo, vec3(0.0), vec3(1.0)) - vec3(cachedAlbedoLum));
     float neutralBVH = 1.0 - smoothstep(0.025, 0.18, bvhColorfulness);
-    float coloredCache = smoothstep(0.025, 0.16, cachedColorfulness);
-    float cachedAlbedoBlend = clamp(cachedAlbedoConfidence * mix(1.0, 2.25, neutralBVH * coloredCache),
-                                    0.0,
-                                    0.98);
-    cachedAlbedoBlend *= 1.0 - visibleAlbedoConfidence * 0.65;
-    albedo = mix(albedo, cachedAlbedo, cachedAlbedoBlend);
+    if (visibleAlbedoConfidence < 0.88 && neutralBVH > 0.08) {
+        float cachedAlbedoConfidence = 0.0;
+        vec3 cachedAlbedo = TraceCachedAlbedoAtSurface(hit.position, hit.normal, ray.ids.x, cacheSeed, cachedAlbedoConfidence);
+        float cachedAlbedoLum = SurfelLuminance(clamp(cachedAlbedo, vec3(0.0), vec3(1.0)));
+        float cachedColorfulness = length(clamp(cachedAlbedo, vec3(0.0), vec3(1.0)) - vec3(cachedAlbedoLum));
+        float coloredCache = smoothstep(0.025, 0.16, cachedColorfulness);
+        float cachedAlbedoBlend = clamp(cachedAlbedoConfidence * mix(1.0, 2.25, neutralBVH * coloredCache),
+                                        0.0,
+                                        0.98);
+        cachedAlbedoBlend *= 1.0 - visibleAlbedoConfidence * 0.65;
+        albedo = mix(albedo, cachedAlbedo, cachedAlbedoBlend);
+    }
     vec3 emissive = max(hit.material.emissive * max(hit.material.emissiveStrength, 1.0), vec3(0.0));
     vec3 directIrradiance = EvaluateHitDirectIrradiance(hit.position, hit.normal);
     vec3 environmentIrradiance = EvaluateHitEnvironmentIrradiance(hit.position, hit.normal);
@@ -1160,12 +1189,19 @@ void TraceGatherSurfel(SurfelRay ray,
     }
 
     vec3 albedo = max(surfel.albedo_life.rgb, vec3(0.0));
-    vec3 directIrradiance = EvaluateHitDirectIrradiance(surfelPos, surfelNormal);
-    vec3 environmentIrradiance = EvaluateHitEnvironmentIrradiance(surfelPos, surfelNormal);
     bool emissiveSurfelHit = (SurfelFlags(surfel) & SURFEL_EMISSIVE) != 0u;
     vec3 emissiveRadiance = emissiveSurfelHit ? max(surfel.irradiance.rgb, vec3(0.0)) : vec3(0.0);
-    vec3 cachedIndirectIrradiance = emissiveSurfelHit ? vec3(0.0) : max(surfel.irradiance.rgb, vec3(0.0));
-    vec3 bounced = albedo * SURFEL_INV_PI * (directIrradiance + environmentIrradiance + cachedIndirectIrradiance) + emissiveRadiance;
+    vec3 cachedBounce = emissiveSurfelHit ? vec3(0.0) : max(surfel.irradiance.rgb, vec3(0.0));
+    bool needsLiveLighting = confidence < SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF ||
+        surfel.shortMean.a < SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF ||
+        SurfelIsNew(surfel);
+    vec3 bounced = cachedBounce + emissiveRadiance;
+    if (needsLiveLighting || SurfelLuminance(cachedBounce) <= 1e-5) {
+        vec3 directIrradiance = EvaluateHitDirectIrradiance(surfelPos, surfelNormal);
+        vec3 environmentIrradiance = EvaluateHitEnvironmentIrradiance(surfelPos, surfelNormal);
+        vec3 liveBounce = albedo * SURFEL_INV_PI * (directIrradiance + environmentIrradiance) + emissiveRadiance;
+        bounced = max(bounced, liveBounce);
+    }
     float clusterThickness = max(hitRadius * 0.40, 0.035);
     if (t < gather.closestT - clusterThickness) {
         gather.radiance = vec3(0.0);
@@ -1293,10 +1329,6 @@ TraceGather TraceSurfelGrid(SurfelRay ray)
     TraceGather gather;
     TraceGatherInit(gather, missPosition);
 
-    if (TraceSoftwareBVHRadiance(ray, gather)) {
-        return gather;
-    }
-
     if (uUseSurfelFallbackTrace != 0 &&
         uGridCellCount != 0u &&
         uMaxSurfelsPerCell != 0u &&
@@ -1331,6 +1363,11 @@ TraceGather TraceSurfelGrid(SurfelRay ray)
         }
     }
 
+    bool allowBVHFallback = ((SurfelHash(ray.ids.x ^ (uFrameIndex * 747796405u) ^ (ray.ids.z * 2891336453u)) % SURFEL_TRACE_BVH_FALLBACK_PHASE_COUNT) == 0u);
+    if (allowBVHFallback && TraceSoftwareBVHRadiance(ray, gather)) {
+        return gather;
+    }
+
     if (TraceScreenSpace(ray, gather)) {
         return gather;
     }
@@ -1356,8 +1393,57 @@ void main()
     }
 
     SurfelRay ray = rays[rayID];
-    TraceGather gather = TraceSurfelGrid(ray);
+    bool hasSourceSurfel = ray.ids.x < uMaxSurfels;
+    Surfel sourceSurfel;
+    vec3 sourceDirectBounce = vec3(0.0);
+    vec3 sourceNormal = vec3(0.0, 1.0, 0.0);
+    if (hasSourceSurfel) {
+        sourceSurfel = surfels[ray.ids.x];
+        sourceNormal = SurfelSafeNormalize(sourceSurfel.worldNormal_age.xyz);
+    }
+
+    bool sourceDirectRay = hasSourceSurfel && ray.ids.z == 0u;
+    bool sourceNeedsBootstrap = hasSourceSurfel &&
+        (SurfelIsNew(sourceSurfel) ||
+         sourceSurfel.irradiance.a < 0.46 ||
+         sourceSurfel.shortMean.a < 16.0);
+    if (sourceDirectRay) {
+        sourceDirectBounce = EvaluateSourceDirectBounce(sourceSurfel);
+    }
+    bool hasSourceDirect = SurfelLuminance(sourceDirectBounce) > 1e-5;
+    bool sourceDirectBootstrapOnly = hasSourceDirect && sourceNeedsBootstrap && sourceDirectRay;
+
+    TraceGather gather;
+    if (sourceDirectBootstrapOnly) {
+        TraceGatherInit(gather, sourceSurfel.worldPos_radius.xyz);
+        gather.normal = sourceNormal;
+        gather.position = sourceSurfel.worldPos_radius.xyz;
+        gather.weight = 1.0;
+        gather.closestT = 0.0;
+        gather.hitKind = SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT;
+        gather.hitSurfelID = SURFEL_INVALID_INDEX;
+    } else {
+        gather = TraceSurfelGrid(ray);
+    }
     bool hit = gather.weight > 1e-5;
+    if (hasSourceDirect) {
+        vec3 rayDir = SurfelSafeNormalize(ray.direction_tMax.xyz);
+        float sampleCos = max(dot(sourceNormal, rayDir), 0.025);
+        float samplePdf = max(ray.throughput.a, 1e-4);
+        float sourceDirectEstimatorScale = max(float(ray.ids.w), 1.0);
+        vec3 encodedSourceBounce = sourceDirectBounce * sourceDirectEstimatorScale * (samplePdf / sampleCos);
+        if (!hit) {
+            gather.radiance = vec3(0.0);
+            gather.normal = sourceNormal;
+            gather.position = sourceSurfel.worldPos_radius.xyz;
+            gather.weight = 1.0;
+            gather.closestT = 0.0;
+            gather.hitKind = SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT;
+            gather.hitSurfelID = SURFEL_INVALID_INDEX;
+            hit = true;
+        }
+        gather.radiance += encodedSourceBounce;
+    }
     if (!hit) {
         gather.radiance = vec3(0.0);
     }

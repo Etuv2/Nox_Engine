@@ -24,8 +24,6 @@ uniform uint uMaxRayBudget;
 uniform uint uFrameIndex;
 uniform uint uPriorityPass = 0u;
 
-const uint SURFEL_ALLOCATE_CAS_ATTEMPTS = 8u;
-
 uint FrameDelta(uint newerFrame, uint olderFrame)
 {
     return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
@@ -42,14 +40,18 @@ bool IsPriorityRaySurfel(Surfel surfel, uint requested)
     uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
     uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
     uint framesSinceUpdate = FrameDelta(uFrameIndex, surfel.frameInfo.z);
-    bool recentlyVisible = framesSinceVisible <= 3u || framesSinceContribution <= 3u;
-    bool unresolved = lowConfidence > 0.35 || surfel.shortMean.a < 12.0 || requested >= 6u;
+    bool recentlyVisible = framesSinceVisible <= 4u;
+    bool recentlyContributed = framesSinceContribution <= 3u;
+    bool unresolved = lowConfidence > 0.30 || surfel.shortMean.a < 12.0 || requested >= 4u;
+    bool visibleStarving = recentlyVisible && framesSinceContribution > 4u && confidence < 0.88;
     bool staleVisible = recentlyVisible && framesSinceUpdate > 8u;
     bool starving = framesSinceContribution > 12u && confidence < 0.85;
 
     return SurfelIsNew(surfel) ||
         surfel.worldNormal_age.w < 3.0 ||
+        visibleStarving ||
         (recentlyVisible && unresolved) ||
+        (recentlyContributed && unresolved && confidence < 0.70) ||
         staleVisible ||
         starving;
 }
@@ -75,21 +77,18 @@ uint ReserveRays(uint desired, uint budget, out uint firstRay)
         return 0u;
     }
 
-    for (uint attempt = 0u; attempt < SURFEL_ALLOCATE_CAS_ATTEMPTS; ++attempt) {
-        uint current = counters.allocatedRays;
-        if (current >= budget) {
-            return 0u;
-        }
-
-        uint granted = min(desired, budget - current);
-        uint original = atomicCompSwap(counters.allocatedRays, current, current + granted);
-        if (original == current) {
-            firstRay = current;
-            return granted;
-        }
+    uint start = atomicAdd(counters.allocatedRays, desired);
+    if (start >= budget) {
+        atomicMin(counters.allocatedRays, budget);
+        return 0u;
     }
 
-    return 0u;
+    uint granted = min(desired, budget - start);
+    if (granted < desired) {
+        atomicMin(counters.allocatedRays, budget);
+    }
+    firstRay = start;
+    return granted;
 }
 
 void main()
@@ -111,8 +110,19 @@ void main()
         }
 
         uint budget = min(uMaxRayBudget, counters.requestedRays);
+        float confidence = SurfelSaturate(surfel.irradiance.a);
+        uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
+        bool firstBootstrap = SurfelIsNew(surfel) && surfel.worldNormal_age.w < 4.0;
+        bool visibleUnresolved = framesSinceVisible <= 4u &&
+            (confidence < 0.70 || surfel.shortMean.a < 12.0 || requested >= 4u);
+        bool alternatingExtra = ((uFrameIndex + requestID) & 1u) == 0u;
+        uint priorityGrant = 1u;
+        if (firstBootstrap || (visibleUnresolved && alternatingExtra)) {
+            priorityGrant = 2u;
+        }
+        priorityGrant = min(priorityGrant, requested);
         uint firstRay = 0u;
-        uint allocated = ReserveRays(requested, budget, firstRay);
+        uint allocated = ReserveRays(priorityGrant, budget, firstRay);
         rayRequests[requestID].allocatedCount = allocated;
         rayRequests[requestID].firstRay = allocated > 0u ? firstRay : 0u;
         return;

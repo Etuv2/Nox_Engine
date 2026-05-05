@@ -94,6 +94,8 @@ def main() -> None:
     main_body = function_body(spawn, "main")
     require("StoreCoverageTile(tileIndex, bestCandidate.valid, bestCandidate, effectiveCoverageThreshold, spawned)" in main_body,
             "main must let StoreCoverageTile compute final high priority from current visibility, coverage, age, and motion")
+    require("bestCandidate.coverage = max(bestCandidate.coverage, uCoverageThreshold)" not in main_body,
+            "stationary tiles must continue measuring real coverage after initial seeding")
     require("previousUnresolvedAge >= 2u || uCameraMotionBoost != 0u" not in main_body,
             "priority must not be based only on previous age before current under-coverage is known")
 

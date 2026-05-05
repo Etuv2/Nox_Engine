@@ -48,6 +48,7 @@ const uint SURFEL_SHARING_MAX_NEIGHBORS = 48u;
 const float SURFEL_SHARING_MAX_BLEND = 0.32;
 const float SURFEL_SHARING_MIN_NORMAL_DOT = 0.72;
 const float SURFEL_SHARING_MAX_PLANE_SEPARATION = 0.18;
+const float SURFEL_SHARING_MIN_CROSS_TRANSFER = 0.10;
 const float SURFEL_SHARING_MIN_RADIAL_VISIBILITY = 0.18;
 
 vec3 SurfelClampSharedIrradiance(vec3 irradiance)
@@ -151,16 +152,23 @@ float SharingCompatibilityWeight(uint centerID,
             uGridFarExtent),
         0.24);
 
+    vec3 centerToNeighbor = distance > 1e-5 ? delta / distance : vec3(0.0, 1.0, 0.0);
     float normalDot = max(dot(centerNormal, neighborNormal), 0.0);
-    if (normalDot < SURFEL_SHARING_MIN_NORMAL_DOT) {
+    float emitterFacing = max(dot(neighborNormal, -centerToNeighbor), 0.0);
+    float receiverFacing = max(dot(centerNormal, centerToNeighbor), 0.0);
+    float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0));
+    bool sameSurfaceCompatible = normalDot >= SURFEL_SHARING_MIN_NORMAL_DOT;
+    bool crossSurfaceCompatible = !sameSurfaceCompatible && transferFacing >= SURFEL_SHARING_MIN_CROSS_TRANSFER;
+    if (!sameSurfaceCompatible && !crossSurfaceCompatible) {
         return 0.0;
     }
 
     float centerPlane = abs(dot(delta, centerNormal));
     float neighborPlane = abs(dot(delta, neighborNormal));
-    float planeLimit = min(
-        max(max(centerRadius, neighborRadius) * 2.2, supportRadius * 0.16),
-        SURFEL_SHARING_MAX_PLANE_SEPARATION);
+    float planeLimit = sameSurfaceCompatible
+        ? min(max(max(centerRadius, neighborRadius) * 2.2, supportRadius * 0.16),
+              SURFEL_SHARING_MAX_PLANE_SEPARATION)
+        : max(max(max(centerRadius, neighborRadius) * 3.5, supportRadius * 0.48), 0.12);
     planeLimit = max(planeLimit, 0.035);
     if (max(centerPlane, neighborPlane) > planeLimit) {
         return 0.0;
@@ -172,25 +180,37 @@ float SharingCompatibilityWeight(uint centerID,
         return 0.0;
     }
 
-    float connectedWeight = SharingConnectedSurfaceWeight(
-        delta,
-        distance,
-        supportRadius,
-        centerPlane,
-        neighborPlane,
-        planeLimit);
+    float connectedWeight = sameSurfaceCompatible
+        ? SharingConnectedSurfaceWeight(
+            delta,
+            distance,
+            supportRadius,
+            centerPlane,
+            neighborPlane,
+            planeLimit)
+        : (1.0 - smoothstep(supportRadius * 1.10, supportRadius * 1.85, distance)) *
+            exp(-(centerPlane + neighborPlane) / max(planeLimit, 1e-4)) *
+            transferFacing;
     if (connectedWeight <= 1e-5) {
         return 0.0;
     }
 
-    float distanceWeight = exp(-distSq / max(supportRadius * supportRadius, 1e-4));
-    float normalWeight = smoothstep(0.52, 0.96, normalDot);
-    float planeSigma = max(max(centerRadius + neighborRadius, supportRadius * 0.18), 0.045);
+    float distanceSigma = sameSurfaceCompatible ? supportRadius : supportRadius * 1.35;
+    float distanceWeight = exp(-distSq / max(distanceSigma * distanceSigma, 1e-4));
+    float normalWeight = sameSurfaceCompatible
+        ? smoothstep(0.52, 0.96, normalDot)
+        : smoothstep(SURFEL_SHARING_MIN_CROSS_TRANSFER, 0.55, transferFacing) * 0.62;
+    float planeSigma = sameSurfaceCompatible
+        ? max(max(centerRadius + neighborRadius, supportRadius * 0.18), 0.045)
+        : max(max(max(centerRadius, neighborRadius) * 3.2, supportRadius * 0.42), 0.075);
     float planeWeight = exp(-(centerPlane + neighborPlane) / max(planeSigma, 1e-4));
 
     vec3 albedoDelta = center.albedo_life.rgb - neighbor.albedo_life.rgb;
-    float colorWeight = exp(-dot(albedoDelta, albedoDelta) * 1.6);
-    float gradientWeight = SharingPreserveGradientWeight(centerIrradiance.rgb, neighborIrradiance.rgb);
+    float colorWeight = sameSurfaceCompatible ? exp(-dot(albedoDelta, albedoDelta) * 1.6) : 1.0;
+    float gradientWeight = sameSurfaceCompatible
+        ? SharingPreserveGradientWeight(centerIrradiance.rgb, neighborIrradiance.rgb)
+        : mix(0.55, 1.0, smoothstep(0.03, 0.28,
+            length(neighbor.albedo_life.rgb - vec3(SurfelLuminance(neighbor.albedo_life.rgb)))));
     return distanceWeight *
         normalWeight *
         planeWeight *
@@ -203,12 +223,8 @@ float SharingCompatibilityWeight(uint centerID,
 
 void main()
 {
-    uint surfelID = gl_GlobalInvocationID.x;
     uint sharingPhaseCount = max(uSharingPhaseCount, 1u);
-    if (sharingPhaseCount > 1u &&
-        (surfelID % sharingPhaseCount) != (uSharingPhaseIndex % sharingPhaseCount)) {
-        return;
-    }
+    uint surfelID = gl_GlobalInvocationID.x * sharingPhaseCount + (uSharingPhaseIndex % sharingPhaseCount);
 
     if (surfelID >= uMaxSurfels ||
         uGridCellCount == 0u ||

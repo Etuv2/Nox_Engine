@@ -33,6 +33,11 @@ def main() -> None:
             "colour bleed must be clamped so it cannot become a fake ambient flood")
     require("irradiance += colorBleed" in apply_shader,
             "final output must add bounded colour bleed after direct surfel irradiance is established")
+    sharing_shader = read("shaders/surfel_gi/irradiance_sharing.comp")
+    require("SURFEL_SHARING_MIN_CROSS_TRANSFER" in sharing_shader and
+            "crossSurfaceCompatible" in sharing_shader and
+            "transferFacing" in sharing_shader,
+            "irradiance sharing must exchange bounded colour between compatible perpendicular surfels")
 
 
 if __name__ == "__main__":

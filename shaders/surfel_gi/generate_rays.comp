@@ -213,7 +213,7 @@ void main()
 
         rays[rayID].origin_tMin = vec4(surfel.worldPos_radius.xyz + normal * max(surfel.worldPos_radius.w * 0.05, 0.001), max(uRayTMin, 0.0));
         rays[rayID].direction_tMax = vec4(direction, max(uRayTMax, 0.001));
-        rays[rayID].ids = uvec4(request.surfelID, directionBin, i, 0u);
+        rays[rayID].ids = uvec4(request.surfelID, directionBin, i, rayCount);
         rays[rayID].throughput = vec4(1.0, 1.0, 1.0, max(pdf, 1e-4));
         rayBins[rayID] = directionBin;
     }

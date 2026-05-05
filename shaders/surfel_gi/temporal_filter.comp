@@ -96,13 +96,13 @@ void main()
         return;
     }
 
-    if (uUseHistory == 0 || uUseVelocity == 0) {
+    if (uUseHistory == 0) {
         StoreResolved(pixel, current, depth, packedNormal);
         return;
     }
 
     vec2 inputUV = (vec2(inputPixel) + vec2(0.5)) / vec2(safeInputResolution);
-    vec2 velocity = textureLod(uVelocityTex, inputUV, 0.0).rg;
+    vec2 velocity = uUseVelocity != 0 ? textureLod(uVelocityTex, inputUV, 0.0).rg : vec2(0.0);
     vec2 prevUV = uv - velocity;
     vec2 margin = 0.5 / vec2(safeResolution);
     if (any(lessThan(prevUV, margin)) || any(greaterThan(prevUV, vec2(1.0) - margin))) {

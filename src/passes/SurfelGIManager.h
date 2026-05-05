@@ -74,7 +74,7 @@ struct SurfelGISettings {
 	uint32_t spawnPasses = 2u;
 	uint32_t fastFillSpawnPasses = 4u;
 	uint32_t fastFillFrameCount = 16u;
-	uint32_t stationaryFastFillFrames = 12u;
+	uint32_t stationaryFastFillFrames = 32u;
 
 	float targetSurfelScreenRadiusPx = 3.0f;
 	float minSurfelRadius = 0.03f;
@@ -86,7 +86,7 @@ struct SurfelGISettings {
 	float finalGatherNormalCos = 0.15f;
 	float radialDepthSigmaScale = 1.0f;
 	float indirectIntensity = 1.0f;
-	float cellAverageFallbackStrength = 0.20f;
+	float cellAverageFallbackStrength = 0.0f;
 	float skyMissRadianceMultiplier = 1.0f;
 	float finalGatherResolutionScale = 1.0f;
 

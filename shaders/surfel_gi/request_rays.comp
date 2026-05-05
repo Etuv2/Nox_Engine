@@ -22,10 +22,11 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
 
-const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 6u;
-const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 6u;
-const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 3u;
-const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 6u;
+const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 4u;
+const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 2u;
+const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 2u;
+const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 2u;
+const float SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS = 8.0;
 
 uint FrameDelta(uint newerFrame, uint olderFrame)
 {
@@ -38,18 +39,28 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         return 0u;
     }
 
-    bool isNew = SurfelIsNew(surfel) || surfel.worldNormal_age.w < 2.0 || surfel.shortMean.a < 1.0;
+    bool brandNew = SurfelIsNew(surfel) && surfel.worldNormal_age.w < 8.0;
+    bool needsBootstrap = surfel.worldNormal_age.w < 2.0 || surfel.shortMean.a < 1.0;
+    bool isNew = brandNew || needsBootstrap;
     float confidence = SurfelSaturate(surfel.irradiance.a);
     float lowConfidence = 1.0 - confidence;
     vec3 varianceRgb = max(surfel.shortM2.rgb, vec3(0.0));
     float variance = SurfelSaturate(max(max(varianceRgb.r, varianceRgb.g), varianceRgb.b) * 8.0);
     float signal = SurfelSaturate(SurfelLuminance(max(surfel.irradiance.rgb, surfel.shortMean.rgb)) * 2.0);
 
-    uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
     uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
-    float visible = exp(-0.02 * float(framesSinceContribution));
-    float visibleUnresolved = framesSinceVisible <= 2u && confidence < 0.65 ? 1.0 : 0.0;
-    bool dormantLowVariance = !isNew &&
+    uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
+    float visible = exp(-0.08 * float(framesSinceVisible));
+    bool recentlyVisible = framesSinceVisible <= 4u;
+    float visibleUnresolved = recentlyVisible &&
+        (confidence < 0.62 || surfel.shortMean.a < SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS || variance > 0.060)
+        ? 1.0
+        : 0.0;
+    float visibleRayDebt = recentlyVisible
+        ? smoothstep(2.0, 12.0, float(framesSinceContribution))
+        : 0.0;
+    bool dormantLowVariance = !recentlyVisible &&
+        !isNew &&
         framesSinceContribution > 48u &&
         variance < 0.03 &&
         confidence > 0.85;
@@ -58,26 +69,31 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         return signal > 0.10 ? 1u : 0u;
     }
 
-    bool stableLowVariance = !isNew &&
+    bool stableLowVariance = !recentlyVisible &&
+        !isNew &&
         framesSinceContribution > 8u &&
-        variance < 0.02 &&
-        confidence > 0.80;
+        variance < 0.025 &&
+        confidence > 0.72 &&
+        surfel.shortMean.a >= SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS;
     if (stableLowVariance && ((uFrameIndex + surfelID) & 3u) != 0u) {
         return 0u;
     }
 
     float ageScore = SurfelSaturate(surfel.worldNormal_age.w / 16.0);
     float importance =
-        variance * 0.40 +
-        visible * signal * 0.25 +
-        (isNew ? 0.20 : 0.0) +
-        lowConfidence * 0.15 +
-        visibleUnresolved * 0.30;
+        variance * 0.26 +
+        visible * signal * 0.24 +
+        (isNew ? 0.16 : 0.0) +
+        lowConfidence * 0.10 +
+        visibleUnresolved * 0.36 +
+        visibleRayDebt * 0.20;
     importance *= mix(1.5, 1.0, ageScore);
 
     uint requested = uint(round(mix(1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL), SurfelSaturate(importance))));
-    if (isNew) {
+    if (brandNew) {
         requested = max(requested, SURFEL_REQUEST_NEW_SURFEL_RAYS);
+    } else if (SurfelIsNew(surfel)) {
+        requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
     }
     if (confidence < 0.40) {
         requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
@@ -85,8 +101,11 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     if (visibleUnresolved > 0.0) {
         requested = max(requested, SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS);
     }
+    if (recentlyVisible && visibleRayDebt > 0.0 && confidence < 0.82) {
+        requested = max(requested, 2u);
+    }
 
-    if (!isNew && confidence > 0.92 && variance < 0.01 && signal < 0.02) {
+    if (!recentlyVisible && !isNew && confidence > 0.92 && variance < 0.01 && signal < 0.02) {
         requested = min(requested, 1u);
     }
 

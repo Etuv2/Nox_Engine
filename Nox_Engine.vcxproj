@@ -219,6 +219,7 @@
     <None Include="shaders\surfel_gi\spatial_filter.comp" />
     <None Include="shaders\surfel_gi\temporal_filter.comp" />
     <None Include="shaders\surfel_gi\trace_rays.comp" />
+    <None Include="shaders\surfel_gi\upscale_filter.comp" />
     <None Include="shaders\surfel_gi\update_surfels.comp" />
     <None Include="shaders\svgf_atrous_comp.glsl" />
     <None Include="shaders\svgf_temporal_comp.glsl" />

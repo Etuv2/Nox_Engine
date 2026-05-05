@@ -73,9 +73,9 @@ const float SURFEL_GATHER_MIN_SUPPORT_FRACTION = 1.05;
 const float SURFEL_GATHER_MIN_SUPPORT_WORLD = 0.46;
 const float SURFEL_APPLY_EARLY_WEIGHT = 64.0;
 const float SURFEL_GRID_FALLBACK_MAX_BLEND = 0.30;
-const float SURFEL_CROSS_SURFACE_BLEED_BOOST = 2.35;
-const float SURFEL_CROSS_SURFACE_MAX_LIFT = 0.70;
-const float SURFEL_CROSS_SURFACE_CHROMA_GAIN = 1.65;
+const float SURFEL_CROSS_SURFACE_BLEED_BOOST = 3.40;
+const float SURFEL_CROSS_SURFACE_MAX_LIFT = 1.05;
+const float SURFEL_CROSS_SURFACE_CHROMA_GAIN = 2.50;
 const uint DEBUG_SURFEL_GRID_CELLS = 6u;
 const uint DEBUG_FINAL_GATHER_WEIGHT = 18u;
 const uint DEBUG_GBUFFER_WORLD_POSITION = 19u;
@@ -178,8 +178,8 @@ float ReceiverSurfelColorBleedWeight(vec3 receiverPos, vec3 receiverNormal, Surf
     float maxCellSize = SurfelGridCellSizeAtWorld(surfelPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
     float supportRadius = max(SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent),
                               max(maxCellSize * SURFEL_GATHER_MIN_SUPPORT_FRACTION, SURFEL_GATHER_MIN_SUPPORT_WORLD));
-    float normalizedDistance = dist / max(supportRadius * 1.35, 1e-4);
-    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.58);
+    float normalizedDistance = dist / max(supportRadius * 2.20, 1e-4);
+    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.42);
     if (distanceWeight <= 1e-5) {
         return 0.0;
     }
@@ -193,13 +193,13 @@ float ReceiverSurfelColorBleedWeight(vec3 receiverPos, vec3 receiverNormal, Surf
     float emitterFacing = max(dot(surfelNormal, toReceiver), 0.0);
     float receiverFacing = max(dot(receiverNormal, -toReceiver), 0.0);
     float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0));
-    if (transferFacing <= 0.008) {
+    if (transferFacing <= 0.002) {
         return 0.0;
     }
 
     float surfelPlane = abs(dot(delta, surfelNormal));
     float receiverPlane = abs(dot(delta, receiverNormal));
-    float planeSigma = max(max(radius * 2.75, supportRadius * 0.32), 0.065);
+    float planeSigma = max(max(radius * 3.50, supportRadius * 0.45), 0.080);
     float planeWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
     float luminance = SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0)));
@@ -217,7 +217,7 @@ float ReceiverSurfelColorBleedWeight(vec3 receiverPos, vec3 receiverNormal, Surf
         crossSurface *
         transferFacing *
         mix(0.50, 1.0, colorWeight) *
-        mix(0.24, 1.0, smoothstep(0.05, 0.65, confidence)) *
+        mix(0.30, 1.0, smoothstep(0.05, 0.65, confidence)) *
         mix(0.62, 1.0, stableColorCache);
 }
 
@@ -233,12 +233,12 @@ vec3 SurfelColorBleedTint(vec3 sourceTint)
 
     vec3 saturatedTint = max(sourceTint + chroma * SURFEL_CROSS_SURFACE_CHROMA_GAIN, vec3(0.0));
     float saturatedLum = SurfelLuminance(saturatedTint);
-    float maxTintLum = max(tintLum * mix(1.15, 1.45, smoothstep(0.04, 0.28, colorfulness)), 0.025);
+    float maxTintLum = max(tintLum * mix(1.30, 1.90, smoothstep(0.04, 0.28, colorfulness)), 0.035);
     if (saturatedLum > maxTintLum) {
         saturatedTint *= maxTintLum / max(saturatedLum, 1e-5);
     }
 
-    return clamp(saturatedTint, vec3(0.0), vec3(1.35));
+    return clamp(saturatedTint, vec3(0.0), vec3(1.60));
 }
 
 vec3 SurfelColorBleedIrradianceForReceiver(Surfel surfel)
@@ -258,11 +258,15 @@ vec3 ClampColorBleedLift(vec3 baseIrradiance, vec3 colorBleed, float support)
         return vec3(0.0);
     }
 
-    float maxBleedLum = max(baseLum * SURFEL_CROSS_SURFACE_MAX_LIFT + 0.018, 0.025);
+    float maxBleedLum = max(baseLum * SURFEL_CROSS_SURFACE_MAX_LIFT + 0.032, 0.045);
     if (bleedLum > maxBleedLum) {
         colorBleed *= maxBleedLum / bleedLum;
     }
-    return max(colorBleed, vec3(0.0));
+
+    vec3 neutralBleed = vec3(SurfelLuminance(colorBleed));
+    float chromaSupport = smoothstep(0.008, 0.08, baseLum);
+    vec3 chromaOnlyBleed = max(colorBleed - neutralBleed * 0.38, vec3(0.0));
+    return mix(colorBleed * 0.45, chromaOnlyBleed, chromaSupport);
 }
 
 vec3 DebugGridIDColor(uint cellID)
@@ -460,9 +464,45 @@ vec3 ClampFallbackToDirectSupport(vec3 gridCandidate, vec3 directIrradiance, flo
     return max(gridCandidate, vec3(0.0));
 }
 
+uint ReceiverGatherSeed(ivec2 pixel, vec3 worldPos, uint transformID, uint materialID)
+{
+    uint sx = uint(pixel.x) * 0x8da6b343u;
+    uint sy = uint(pixel.y) * 0xd8163841u;
+    uint wx = floatBitsToUint(worldPos.x * 0.03125);
+    uint wy = floatBitsToUint(worldPos.y * 0.03125);
+    uint wz = floatBitsToUint(worldPos.z * 0.03125);
+    return SurfelHash(sx ^ sy ^ wx ^ (wy * 0x165667b1u) ^ (wz * 0x9e3779b9u) ^
+        (transformID * 0x85ebca6bu) ^ (materialID * 0xc2b2ae35u));
+}
+
+uint GatherCellSampleBudget(uint neighborIndex, uint neighborRadius, uint gatherBudget)
+{
+    gatherBudget = max(gatherBudget, 1u);
+    if (neighborRadius == 0u) {
+        return gatherBudget;
+    }
+
+    ivec3 offset = neighborRadius == 1u
+        ? SurfelCubeNeighborOffset(neighborIndex)
+        : SurfelCubeRadius2NeighborOffset(neighborIndex);
+    uvec3 absOffset = uvec3(abs(offset));
+    uint manhattan = absOffset.x + absOffset.y + absOffset.z;
+    if (manhattan == 0u) {
+        return min(gatherBudget, clamp(gatherBudget / 3u, 8u, 64u));
+    }
+    if (manhattan == 1u) {
+        return min(gatherBudget, clamp(gatherBudget / 12u, 3u, 16u));
+    }
+    if (manhattan == 2u) {
+        return min(gatherBudget, clamp(gatherBudget / 48u, 1u, 8u));
+    }
+    return min(gatherBudget, max(gatherBudget / 96u, 1u));
+}
+
 void AccumulateCell(uint cell,
                     vec3 worldPos,
                     vec3 normal,
+                    uint receiverSeed,
                     uint gatherBudget,
                     uint cellSampleBudget,
                     inout vec3 sumIrradiance,
@@ -484,15 +524,11 @@ void AccumulateCell(uint cell,
     }
 
     uint budget = min(min(storedCount, uMaxSurfelsPerCell), max(cellSampleBudget, 1u));
-    uint strideSeed = SurfelHash(cell * 747796405u + 2891336453u);
+    uint strideSeed = SurfelHash(receiverSeed ^ (cell * 747796405u) ^ 2891336453u);
     uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
     uint sampleStride = max(storedCount / max(budget, 1u), 1u);
 
     for (uint i = 0u; i < budget; ++i) {
-        if (sampleCount >= gatherBudget) {
-            break;
-        }
-
         uint sampleIndex = (storedCount <= budget)
             ? i
             : (startIndex + i * sampleStride) % storedCount;
@@ -513,6 +549,7 @@ void AccumulateCell(uint cell,
         if (weight <= 1e-5 && bleedWeight <= 1e-5) {
             continue;
         }
+        bool directBudgetAvailable = sampleCount < gatherBudget;
         if (uUseRadialDepth != 0) {
             vec3 surfelToReceiver = worldPos - surfel.worldPos_radius.xyz;
             uint radialIndex = SurfelRadialDepthIndex(entry.surfelID, surfelToReceiver, surfel.worldNormal_age.xyz);
@@ -523,12 +560,12 @@ void AccumulateCell(uint cell,
             );
             weight *= radialVisibility;
             bleedWeight *= radialVisibility;
-            if (weight <= 1e-5) {
+            if (weight <= 1e-5 || !directBudgetAvailable) {
                 weight = 0.0;
             }
         }
 
-        if (weight > 1e-5) {
+        if (directBudgetAvailable && weight > 1e-5) {
             sumIrradiance += SurfelGatheredIrradianceForReceiver(surfel, normal) * weight;
             sumWeight += weight;
             ++sampleCount;
@@ -633,15 +670,12 @@ void main()
     uint gatherCellCount = neighborRadius == 0u
         ? 1u
         : (neighborRadius == 1u ? SURFEL_APPLY_GATHER_CELLS_RADIUS_1 : SURFEL_APPLY_GATHER_CELLS_RADIUS_2);
-    uint minSamplesPerCell = gatherBudget >= 96u ? 2u : 1u;
-    uint cellSampleBudget = neighborRadius == 0u
-        ? gatherBudget
-        : clamp(gatherBudget / max(gatherCellCount, 1u), minSamplesPerCell, neighborRadius == 1u ? 8u : 4u);
     uint candidateCount = 0u;
     uint sampleCount = 0u;
+    uint receiverSeed = ReceiverGatherSeed(pixel, worldPos, transformID, materialID);
 
     for (uint i = 0u; i < gatherCellCount; ++i) {
-        if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || sampleCount >= gatherBudget) {
+        if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT) {
             break;
         }
 
@@ -659,9 +693,11 @@ void main()
             continue;
         }
 
+        uint cellSampleBudget = GatherCellSampleBudget(i, neighborRadius, gatherBudget);
         AccumulateCell(address.cell,
                        worldPos,
                        normal,
+                       receiverSeed,
                        gatherBudget,
                        cellSampleBudget,
                        sumIrradiance,

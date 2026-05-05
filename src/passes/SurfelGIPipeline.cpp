@@ -828,16 +828,17 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		m_stationaryFrameCount > m_settings.stationaryFastFillFrames;
 	const bool runCoverageSpawn =
 		!stationaryCoverageMaintenance ||
-		(m_frameIndex % 7u) == 0u;
+		(m_frameIndex % 3u) == 0u;
 	if (runCoverageSpawn && m_spawnShader && m_spawnShader->IsValid()) {
 		const GLuint tileSize = std::max(m_settings.spawnTileSize, 1u);
 		const GLuint tilesX = DivRoundUp(m_width, tileSize);
 		const GLuint tilesY = DivRoundUp(m_height, tileSize);
-		const GLuint spawnPassCount = ComputeSpawnPassCount(m_settings, m_frameIndex, m_stationaryFrameCount, cameraMoving);
 		const bool cameraMotionBoost = cameraMoving || m_frameIndex < m_settings.fastFillFrameCount;
 		const GLuint steadySpawnPasses = std::clamp(m_settings.spawnPasses, 1u, 16u);
-		const bool fastCoverageFill = cameraMotionBoost || spawnPassCount > steadySpawnPasses ||
+		const GLuint requestedSpawnPassCount = ComputeSpawnPassCount(m_settings, m_frameIndex, m_stationaryFrameCount, cameraMoving);
+		const bool fastCoverageFill = cameraMotionBoost || requestedSpawnPassCount > steadySpawnPasses ||
 			(m_stationaryFrameCount > 0u && m_stationaryFrameCount <= m_settings.stationaryFastFillFrames);
+		const GLuint spawnPassCount = fastCoverageFill ? 1u : requestedSpawnPassCount;
 		const GLuint spawnCandidateCount = fastCoverageFill ? 8u : 4u;
 		m_lastSpawnPassCount = spawnPassCount;
 		const GLuint tileCount = tilesX * tilesY;
@@ -878,6 +879,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uSkyRadiance", context.envColor * m_settings.skyMissRadianceMultiplier);
 		SetUniform1i(program, "uPlacementValidationMode", placementOnly ? 1 : 0);
 		SetUniform1ui(program, "uCameraMotionBoost", cameraMotionBoost ? 1u : 0u);
+		SetUniform1ui(program, "uBypassCoverageSearch", fastCoverageFill ? 1u : 0u);
 
 		// Spawned surfels must be visible to same-frame ray tracing and final
 		// gather; otherwise the composited output can remain one frame behind
@@ -889,8 +891,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 				m_spawnShader->Dispatch(DivRoundUp(tileCount, 64u), 1u, 1u);
 				m_spawnShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 			});
-			rebuildGridAndAverages(false);
-			glUseProgram(program);
+			if (spawnPass + 1u < spawnPassCount) {
+				rebuildGridAndAverages(false);
+				glUseProgram(program);
+			}
 		}
 
 		rebuildGridAndAverages(true);
@@ -1107,7 +1111,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		}
 		const GLuint program = m_irradianceSharingShader->GetProgramID();
 		glUseProgram(program);
-		const GLuint sharingPhaseCount = m_settings.maxRayBudget <= 1536u ? 4u : 1u;
+		const GLuint maxRayBudget = std::max(m_settings.maxRayBudget, 1u);
+		const GLuint sharingPhaseCount = maxRayBudget <= 1024u ? 8u : (maxRayBudget <= 4096u ? 4u : 1u);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
@@ -1117,8 +1122,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 		SetUniform1i(program, "uUseRadialDepth", m_settings.useRadialDepth ? 1 : 0);
 		SetUniform1f(program, "uRadialDepthMinVariance", std::max(m_settings.radialDepthSigmaScale, 1.0e-6f));
+		const GLuint sharingWorkItems = DivRoundUp(maxSurfels, sharingPhaseCount);
 		timedDispatch("irradiance_sharing", [&]() {
-			m_irradianceSharingShader->Dispatch(groupsSurfels, 1u, 1u);
+			m_irradianceSharingShader->Dispatch(DivRoundUp(sharingWorkItems, 64u), 1u, 1u);
 			m_irradianceSharingShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 		});
 	}
@@ -1143,8 +1149,10 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 {
 	if (!IsReady() || !m_applyIndirectShader || !m_applyIndirectShader->IsValid() ||
 		!m_temporalFilterShader || !m_temporalFilterShader->IsValid() ||
+		!m_upscaleFilterShader || !m_upscaleFilterShader->IsValid() ||
 		m_resources.indirectTexture == 0u || m_resources.rawIndirectTexture == 0u ||
-		m_resources.filteredIndirectTexture == 0u || !context.gbufferFBO) {
+		m_resources.filteredIndirectTexture == 0u || m_resources.temporalIndirectTexture == 0u ||
+		!context.gbufferFBO) {
 		m_stats.ready = IsReady();
 		return;
 	}
@@ -1171,13 +1179,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	glUseProgram(program);
 
 	BindSurfelGIGBufferTextures(context);
-	glBindImageTexture(0,
-		fullscreenDebug ? m_resources.indirectTexture : m_resources.rawIndirectTexture,
-		0,
-		GL_FALSE,
-		0,
-		GL_WRITE_ONLY,
-		GL_RGBA16F);
+	glBindImageTexture(0, m_resources.rawIndirectTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	SetSurfelGIGBufferSamplerUniforms(program);
 	SetUniform1i(program, "uUseMaterialIDReject", 1);
@@ -1212,6 +1214,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	});
 	glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
+	bool didSpatialFilter = false;
 	if (!fullscreenDebug && m_spatialFilterShader && m_spatialFilterShader->IsValid()) {
 		const GLuint filterProgram = m_spatialFilterShader->GetProgramID();
 		glUseProgram(filterProgram);
@@ -1232,8 +1235,10 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			m_spatialFilterShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 		});
 		glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		didSpatialFilter = true;
 	}
 
+	bool didTemporalResolve = false;
 	if (!fullscreenDebug && m_temporalFilterShader && m_temporalFilterShader->IsValid()) {
 		const GLuint historyReadIndex = m_historyReadIndex & 1u;
 		const GLuint historyWriteIndex = historyReadIndex ^ 1u;
@@ -1251,7 +1256,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(0));
 		glActiveTexture(GL_TEXTURE5);
 		glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetDepthTexture());
-		glBindImageTexture(0, m_resources.indirectTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+		glBindImageTexture(0, m_resources.temporalIndirectTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		glBindImageTexture(1, m_resources.historyIndirectTexture[historyWriteIndex], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		glBindImageTexture(2, m_resources.historyGeometryTexture[historyWriteIndex], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		SetUniform1i(temporalProgram, "uCurrentIndirectTex", 0);
@@ -1276,7 +1281,32 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		glBindImageTexture(2, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 		m_historyReadIndex = historyWriteIndex;
 		m_hasTemporalHistory = true;
+		didTemporalResolve = true;
 	}
+
+	const GLuint upscaleSourceTexture = didTemporalResolve
+		? m_resources.temporalIndirectTexture
+		: (didSpatialFilter ? m_resources.filteredIndirectTexture : m_resources.rawIndirectTexture);
+	const GLuint upscaleProgram = m_upscaleFilterShader->GetProgramID();
+	glUseProgram(upscaleProgram);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, upscaleSourceTexture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetColorAttachment(0));
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, context.gbufferFBO->GetDepthTexture());
+	glBindImageTexture(0, m_resources.indirectTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+	SetUniform1i(upscaleProgram, "uLowResIndirectTex", 0);
+	SetUniform1i(upscaleProgram, "uPackedNormalRMTex", 1);
+	SetUniform1i(upscaleProgram, "uDepthTex", 2);
+	SetUniform2ui(upscaleProgram, "uResolution", m_width, m_height);
+	SetUniform2ui(upscaleProgram, "uLowResolution", m_indirectWidth, m_indirectHeight);
+	SetUniform1ui(upscaleProgram, "uDebugView", applyDebugView);
+	timedDispatch("upscale_filter", [&]() {
+		m_upscaleFilterShader->Dispatch(DivRoundUp(m_width, 8u), DivRoundUp(m_height, 8u), 1u);
+		m_upscaleFilterShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+	});
+	glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	const std::string dumpDir = EnvString("NOX_SURFEL_GI_DUMP_DIR");
 	if (!dumpDir.empty()) {
@@ -1303,15 +1333,21 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 				m_indirectWidth,
 				m_indirectHeight,
 				directory / ("surfel_filtered_indirect" + frameSuffix + ".png"));
-			const bool finalOk = SaveSurfelDebugTexturePNG(
-				m_resources.indirectTexture,
+			const bool temporalLowOk = SaveSurfelDebugTexturePNG(
+				m_resources.temporalIndirectTexture,
 				m_indirectWidth,
 				m_indirectHeight,
+				directory / ("surfel_temporal_lowres_indirect" + frameSuffix + ".png"));
+			const bool finalOk = SaveSurfelDebugTexturePNG(
+				m_resources.indirectTexture,
+				m_width,
+				m_height,
 				directory / ("surfel_temporal_indirect" + frameSuffix + ".png"));
 			std::cout << "[SurfelGITextureDump] frame=" << m_frameIndex
 				<< " dir=" << directory.string()
 				<< " raw=" << rawOk
 				<< " filtered=" << filteredOk
+				<< " temporalLow=" << temporalLowOk
 				<< " temporal=" << finalOk
 				<< '\n';
 			m_lastTextureDumpFrame = m_frameIndex;
@@ -1331,6 +1367,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< " readbackDelayFrames=" << kGpuTimingReadbackFrameDelay
 			<< " pendingTimingQueries=" << m_pendingTimingQueries.size()
 			<< " indirectResolution=" << m_indirectWidth << "x" << m_indirectHeight
+			<< " outputResolution=" << m_width << "x" << m_height
 			<< " maxSurfels=" << m_settings.maxSurfels
 			<< " rayBudget=" << m_settings.maxRayBudget
 			<< " gatherBudget=" << m_settings.maxGatherSurfelsPerPixel
@@ -1339,6 +1376,18 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			std::cout << "[SurfelGISubpassMetrics]   "
 				<< timing.label << " gpuMs=" << timing.gpuMs << '\n';
 		}
+		std::cout << "[SurfelGIFrameCounters] frame=" << m_frameIndex
+			<< " liveSurfels=" << m_stats.liveSurfels
+			<< " spawned=" << m_stats.spawnedThisFrame
+			<< " recycled=" << m_stats.recycledThisFrame
+			<< " requestedRays=" << m_stats.requestedRays
+			<< " allocatedRays=" << m_stats.allocatedRays
+			<< " coverageVisibleTileCount=" << m_stats.coverageVisibleTileCount
+			<< " underCoveredTiles=" << m_stats.underCoveredTileCount
+			<< " highPriorityTiles=" << m_stats.highPriorityTileCount
+			<< " coverageSpawnedTiles=" << m_stats.coverageSpawnedTileCount
+			<< " coverageInvalidTiles=" << m_stats.coverageInvalidTileCount
+			<< '\n';
 	}
 	m_stats.ready = IsReady();
 }
@@ -1568,6 +1617,7 @@ bool SurfelGIPipeline::IsReady() const
 		m_resources.coverageTileBuffer != 0u &&
 		m_resources.rawIndirectTexture != 0u &&
 		m_resources.filteredIndirectTexture != 0u &&
+		m_resources.temporalIndirectTexture != 0u &&
 		m_resources.indirectTexture != 0u &&
 		m_resources.historyIndirectTexture[0] != 0u &&
 		m_resources.historyIndirectTexture[1] != 0u &&
@@ -1649,7 +1699,8 @@ bool SurfelGIPipeline::LoadShaders()
 		CreateCompute(m_irradianceSharingShader, "shaders/surfel_gi/irradiance_sharing.comp") &&
 		CreateCompute(m_applyIndirectShader, "shaders/surfel_gi/apply_indirect.comp") &&
 		CreateCompute(m_spatialFilterShader, "shaders/surfel_gi/spatial_filter.comp") &&
-		CreateCompute(m_temporalFilterShader, "shaders/surfel_gi/temporal_filter.comp");
+		CreateCompute(m_temporalFilterShader, "shaders/surfel_gi/temporal_filter.comp") &&
+		CreateCompute(m_upscaleFilterShader, "shaders/surfel_gi/upscale_filter.comp");
 
 	if (!computeOk) {
 		return false;
@@ -1699,6 +1750,7 @@ void SurfelGIPipeline::ReleaseShaders()
 	m_applyIndirectShader.reset();
 	m_spatialFilterShader.reset();
 	m_temporalFilterShader.reset();
+	m_upscaleFilterShader.reset();
 	if (m_debugProgram != 0u) {
 		glDeleteProgram(m_debugProgram);
 		m_debugProgram = 0u;
@@ -1720,7 +1772,8 @@ bool SurfelGIPipeline::CreateIndirectTexture()
 	const bool ok =
 		AllocateIndirectTexture(m_resources.rawIndirectTexture, m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.filteredIndirectTexture, m_indirectWidth, m_indirectHeight) &&
-		AllocateIndirectTexture(m_resources.indirectTexture, m_indirectWidth, m_indirectHeight) &&
+		AllocateIndirectTexture(m_resources.temporalIndirectTexture, m_indirectWidth, m_indirectHeight) &&
+		AllocateIndirectTexture(m_resources.indirectTexture, m_width, m_height) &&
 		AllocateIndirectTexture(m_resources.historyIndirectTexture[0], m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.historyIndirectTexture[1], m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.historyGeometryTexture[0], m_indirectWidth, m_indirectHeight) &&
@@ -1738,6 +1791,7 @@ void SurfelGIPipeline::ReleaseIndirectTexture()
 {
 	DeleteTexture(m_resources.rawIndirectTexture);
 	DeleteTexture(m_resources.filteredIndirectTexture);
+	DeleteTexture(m_resources.temporalIndirectTexture);
 	DeleteTexture(m_resources.indirectTexture);
 	DeleteTexture(m_resources.historyIndirectTexture[0]);
 	DeleteTexture(m_resources.historyIndirectTexture[1]);

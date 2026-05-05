@@ -90,18 +90,20 @@ uniform vec3 uDirectionalLightRadiance;
 uniform vec3 uSkyRadiance;
 uniform int uPlacementValidationMode = 0;
 uniform uint uCameraMotionBoost = 0u;
+uniform uint uBypassCoverageSearch = 0u;
 
-const uint SURFEL_SPAWN_FREE_POP_ATTEMPTS = 2048u;
 const uint SURFEL_PLACEMENT_VALIDATION_CANDIDATES = 2u;
 const uint SURFEL_PLACEMENT_VALIDATION_TILE_PHASES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELLS = 7u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES = 16u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 64u;
+const uint SURFEL_FAST_FILL_RESPAWN_COOLDOWN = 24u;
 const uint SURFEL_COVERAGE_PRIORITY_AGE = 2u;
 const uint SURFEL_COVERAGE_MOTION_BOOST_AGE = 1u;
 const float SURFEL_COVERAGE_IMMEDIATE_PRIORITY_FRACTION = 0.72;
 const float SURFEL_COVERAGE_PRIORITY_AGE_BOOST = 0.035;
 const float SURFEL_COVERAGE_PRIORITY_MAX_BOOST = 0.18;
+const float SURFEL_COVERAGE_GI_INVALID_BOOST = 0.26;
 const float SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT = 0.025;
 
 const uint SURFEL_SPAWN_REJECT_NONE = 0u;
@@ -146,27 +148,40 @@ bool IsReasonableWorldPosition(vec3 worldPos)
     return IsFiniteVec3(worldPos) && all(lessThan(abs(worldPos), vec3(100000.0)));
 }
 
+uint SpawnFrameDelta(uint newerFrame, uint olderFrame)
+{
+    return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
+}
+
+bool CoverageTileWasSeeded(SurfelCoverageTile tileState)
+{
+    return tileState.state.x != 0u ||
+        ((tileState.state.z & SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY) != 0u);
+}
+
+uint CoverageTileLastSpawnFrame(SurfelCoverageTile tileState)
+{
+    return tileState.state.x == 0u ? 0u : tileState.state.x - 1u;
+}
+
 bool PopFreeIndex(out uint surfelID)
 {
     surfelID = SURFEL_INVALID_INDEX;
-    for (uint attempt = 0u; attempt < SURFEL_SPAWN_FREE_POP_ATTEMPTS; ++attempt) {
-        uint oldTop = counters.freeTop;
-        if (oldTop == 0u) {
-            atomicAdd(counters.overflowSurfels, 1u);
-            atomicAdd(counters.rejectedPoolFull, 1u);
-            return false;
-        }
-
-        uint newTop = oldTop - 1u;
-        uint observed = atomicCompSwap(counters.freeTop, oldTop, newTop);
-        if (observed == oldTop) {
-            surfelID = freeIndices[newTop];
-            return surfelID < uMaxSurfels;
-        }
+    uint oldTop = atomicAdd(counters.freeTop, 0xffffffffu);
+    if (oldTop == 0u) {
+        atomicAdd(counters.freeTop, 1u);
+        atomicAdd(counters.overflowSurfels, 1u);
+        atomicAdd(counters.rejectedPoolFull, 1u);
+        return false;
     }
 
-    atomicAdd(counters.overflowSurfels, 1u);
-    return false;
+    surfelID = freeIndices[oldTop - 1u];
+    if (surfelID >= uMaxSurfels) {
+        atomicAdd(counters.overflowSurfels, 1u);
+        atomicAdd(counters.rejectedPoolFull, 1u);
+        return false;
+    }
+    return true;
 }
 
 float WorldUnitsPerPixel(vec3 worldPos)
@@ -182,6 +197,44 @@ float SpawnRadiusForWorldPosition(vec3 worldPos)
     float minRadius = max(uMinSurfelRadius, 0.001);
     float maxRadius = max(uMaxSurfelRadius, minRadius);
     return clamp(targetPixels * WorldUnitsPerPixel(worldPos), minRadius, maxRadius);
+}
+
+float SpawnCoverageSupportRadius(vec3 surfelPos, float radius)
+{
+    float cellSize = SurfelGridCellSizeAtWorld(
+        surfelPos,
+        uGridMin,
+        uGridMax,
+        uGridResolution,
+        uUseNonLinearGrid,
+        uGridFarExtent);
+    float screenFootprint = radius * 4.25;
+    float boundedCellSupport = min(cellSize * 0.42, 0.36);
+    return max(max(screenFootprint, boundedCellSupport), 0.11);
+}
+
+float SpawnCoverageWeightAt(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
+{
+    vec3 surfelPos = surfel.worldPos_radius.xyz;
+    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    float supportRadius = SpawnCoverageSupportRadius(surfelPos, radius);
+    vec3 delta = receiverPos - surfelPos;
+    float disk = exp(-dot(delta, delta) / max(supportRadius * supportRadius, 1e-4));
+    float normal = SurfelSaturate((dot(receiverNormal, surfelNormal) - uNormalRejectCos) / max(1.0 - uNormalRejectCos, 1e-4));
+    float planeSigma = max(max(radius * 2.15, supportRadius * 0.18), 0.030);
+    float plane = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
+    return disk * normal * plane;
+}
+
+float SurfelIrradianceCoverageQualification(Surfel surfel)
+{
+    float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
+    float signal = smoothstep(0.002, 0.035, SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0))));
+    uint framesSinceContribution = uFrameIndex >= surfel.frameInfo.y ? (uFrameIndex - surfel.frameInfo.y) : 255u;
+    float contributionFresh = 1.0 - smoothstep(24.0, 96.0, float(framesSinceContribution));
+    float qualified = smoothstep(0.10, 0.72, confidence) * mix(0.45, 1.0, signal) * contributionFresh;
+    return mix(0.36, 1.0, qualified);
 }
 
 float ComputeCandidateCoverage(vec3 worldPos,
@@ -251,16 +304,7 @@ float ComputeCandidateCoverage(vec3 worldPos,
                 continue;
             }
             ++nearbySurfelCount;
-            float weight = SurfelCoverageWeightAt(
-                worldPos,
-                worldNormal,
-                existing,
-                uNormalRejectCos,
-                uGridMin,
-                uGridMax,
-                uGridResolution,
-                uUseNonLinearGrid,
-                uGridFarExtent);
+            float weight = SpawnCoverageWeightAt(worldPos, worldNormal, existing);
             coverage += weight;
             float confidence = clamp(existing.irradiance.a, 0.0, 1.0);
             float irradianceSampleWeight = weight * confidence;
@@ -367,13 +411,20 @@ bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
     candidate.baseAddress = baseAddress;
     candidate.transformID = transformID;
     candidate.materialID = materialID;
-    candidate.coverage = ComputeCandidateCoverage(
-        worldPos,
-        worldNormal,
-        baseAddress,
-        candidate.nearbySurfelCount,
-        candidate.initialCellIrradiance,
-        candidate.initialCellConfidence);
+    if (uBypassCoverageSearch != 0u) {
+        candidate.coverage = 0.0;
+        candidate.nearbySurfelCount = 0u;
+        candidate.initialCellIrradiance = vec3(0.0);
+        candidate.initialCellConfidence = 0.0;
+    } else {
+        candidate.coverage = ComputeCandidateCoverage(
+            worldPos,
+            worldNormal,
+            baseAddress,
+            candidate.nearbySurfelCount,
+            candidate.initialCellIrradiance,
+            candidate.initialCellConfidence);
+    }
     return true;
 }
 
@@ -409,10 +460,10 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
     vec3 initialCellIrradiance = max(candidate.initialCellIrradiance, vec3(0.0));
     float directNdotL = max(dot(worldNormal, SurfelSafeNormalize(-uDirectionalLightDirection)), 0.0);
-    float initialDirectScale = 0.04;
+    float initialDirectScale = 0.018;
     float initialSkyVisibility = clamp(0.18 + 0.82 * smoothstep(-0.15, 0.85, worldNormal.y), 0.0, 1.0);
     vec3 initialDirectIrradiance = max(uDirectionalLightRadiance, vec3(0.0)) * directNdotL * initialDirectScale;
-    vec3 initialEnvironmentEstimate = max(uSkyRadiance, vec3(0.0)) * initialSkyVisibility * 0.03;
+    vec3 initialEnvironmentEstimate = max(uSkyRadiance, vec3(0.0)) * initialSkyVisibility * 0.010;
     vec3 initialIrradiance = max(emissive, max(initialCellIrradiance, initialDirectIrradiance + initialEnvironmentEstimate));
     float initialConfidence = SurfelLuminance(emissive) > 0.0
         ? 0.45
@@ -447,7 +498,7 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     }
     uint guideBase = surfelID * SURFEL_GUIDE_CELLS;
     for (uint bin = 0u; bin < SURFEL_GUIDE_CELLS; ++bin) {
-        guideMap[guideBase + bin].packedRadiance = SurfelPackIrradiance(vec3(0.02), 0.02);
+        guideMap[guideBase + bin].packedRadiance = 0u;
     }
 
     atomicAdd(counters.spawnedThisFrame, 1u);
@@ -484,22 +535,23 @@ bool CoverageTileHighPriority(bool visibleValid, float coverage, uint unresolved
     return immediateLowCoverage || agedUnresolved || motionBoosted;
 }
 
-float CoverageThresholdForPriority(bool highPriority, uint unresolvedAge)
+float CoverageThresholdForPriority(bool highPriority, uint unresolvedAge, bool missingFinalGI)
 {
-    if (!highPriority) {
+    if (!highPriority && !missingFinalGI) {
         return uCoverageThreshold;
     }
 
     float ageBoost = min(float(max(unresolvedAge, 1u)) * SURFEL_COVERAGE_PRIORITY_AGE_BOOST,
                          SURFEL_COVERAGE_PRIORITY_MAX_BOOST);
-    return min(uCoverageThreshold + ageBoost, 1.35);
+    float giBoost = missingFinalGI ? SURFEL_COVERAGE_GI_INVALID_BOOST : 0.0;
+    return min(uCoverageThreshold + ageBoost + giBoost, 1.35);
 }
 
-float EffectiveCoverageThresholdForCandidate(bool visibleValid, float coverage, uint previousUnresolvedAge)
+float EffectiveCoverageThresholdForCandidate(bool visibleValid, float coverage, uint previousUnresolvedAge, bool previousHadFinalGI)
 {
     uint unresolvedAge = PredictedCoverageUnresolvedAge(visibleValid, coverage, previousUnresolvedAge);
     bool highPriority = CoverageTileHighPriority(visibleValid, coverage, unresolvedAge);
-    return CoverageThresholdForPriority(highPriority, unresolvedAge);
+    return CoverageThresholdForPriority(highPriority, unresolvedAge, false);
 }
 
 void StoreCoverageTile(uint tileIndex,
@@ -547,7 +599,7 @@ void StoreCoverageTile(uint tileIndex,
 
     uint lastSpawnFrame = tileState.state.x;
     if (spawned) {
-        lastSpawnFrame = uFrameIndex;
+        lastSpawnFrame = uFrameIndex + 1u;
         tileState.state.x = lastSpawnFrame;
     }
 
@@ -653,16 +705,29 @@ void main()
 
     SurfelCoverageTile previousTileState = coverageTiles[tileIndex];
     uint previousUnresolvedAge = previousTileState.state.y;
+    bool previousHadFinalGI = (previousTileState.state.z & SURFEL_COVERAGE_TILE_FINAL_GI_VALID) != 0u;
+    bool tileWasSeeded = CoverageTileWasSeeded(previousTileState);
+    uint previousSpawnFrame = CoverageTileLastSpawnFrame(previousTileState);
+    bool hadRecentSpawn = tileWasSeeded &&
+        SpawnFrameDelta(uFrameIndex, previousSpawnFrame) <=
+            (uBypassCoverageSearch != 0u ? SURFEL_FAST_FILL_RESPAWN_COOLDOWN : 1u);
     float effectiveCoverageThreshold = EffectiveCoverageThresholdForCandidate(
         bestCandidate.valid,
         bestCoverage,
-        previousUnresolvedAge);
+        previousUnresolvedAge,
+        previousHadFinalGI);
     if (!bestCandidate.valid || bestCoverage >= effectiveCoverageThreshold) {
         StoreCoverageTile(tileIndex, bestCandidate.valid, bestCandidate, effectiveCoverageThreshold, false);
         return;
     }
 
     bool shouldSpawn = bestCandidate.valid && bestCoverage < effectiveCoverageThreshold;
+    if (uBypassCoverageSearch != 0u && tileWasSeeded && (uCameraMotionBoost == 0u || hadRecentSpawn)) {
+        shouldSpawn = false;
+    }
+    if (hadRecentSpawn) {
+        shouldSpawn = false;
+    }
     bool spawned = shouldSpawn && SpawnSurfelFromCandidate(bestCandidate, bestCoverage);
     StoreCoverageTile(tileIndex, bestCandidate.valid, bestCandidate, effectiveCoverageThreshold, spawned);
 }

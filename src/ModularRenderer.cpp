@@ -141,7 +141,7 @@ namespace {
 			return { 131072u, 32768u, 8u, 64u, 512u, 2u, 1.0f, true, true, true, 1.5f, 2u, 2u, 4u, 12u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 32768u, 640u, 16u, 20u, 24u, 1u, 0.25f, true, true, false, 1.0f, 1u, 1u, 3u, 8u };
+			return { 98304u, 1024u, 8u, 64u, 32u, 1u, 0.25f, true, true, false, 1.0f, 1u, 1u, 3u, 32u };
 		}
 	}
 
