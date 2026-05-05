@@ -62,6 +62,7 @@ void main()
     }
 
     vec3 normal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float minReliableDepth = max(surfel.worldPos_radius.w * 0.25, 0.03);
     uint rayCount = min(min(request.allocatedCount, SURFEL_RADIAL_MAX_RAYS_PER_SURFEL), uMaxRays - request.firstRay);
     for (uint i = 0u; i < rayCount; ++i) {
         uint rayID = request.firstRay + i;
@@ -73,7 +74,7 @@ void main()
 
         vec3 surfelToHit = hit.position_t.xyz - surfel.worldPos_radius.xyz;
         float hitDepth = length(surfelToHit);
-        if (hitDepth <= 0.0 ||
+        if (hitDepth <= minReliableDepth ||
             hitDepth > defaultDepth ||
             isnan(hitDepth) ||
             isinf(hitDepth) ||
@@ -84,6 +85,12 @@ void main()
 
         vec3 hemiDir = SurfelWorldToHemiDir(surfelToHit, normal);
         if (hemiDir.z <= 0.0) {
+            continue;
+        }
+
+        vec3 hitNormal = SurfelSafeNormalize(hit.normal_hitKind.xyz);
+        vec3 toHitDir = surfelToHit / max(hitDepth, 1e-5);
+        if (dot(hitNormal, -toHitDir) <= 0.02) {
             continue;
         }
 

@@ -1,0 +1,325 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
+layout(binding = B_IRRADIANCE_SNAPSHOT, std430) readonly buffer SurfelIrradianceSnapshotBuffer
+{
+    vec4 irradianceSnapshot[];
+};
+
+layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
+{
+    SurfelCellEntry gridEntries[];
+};
+
+layout(binding = B_RADIAL_DEPTH, std430) readonly buffer SurfelRadialDepthBuffer
+{
+    RadialDepthTexel radialDepth[];
+};
+
+uniform uint uMaxSurfels;
+uniform uint uFrameIndex;
+uniform uint uGridCellCount;
+uniform uint uMaxSurfelsPerCell;
+uniform uint uSharingPhaseCount = 1u;
+uniform uint uSharingPhaseIndex = 0u;
+uniform uvec3 uGridResolution;
+uniform vec3 uGridMin;
+uniform vec3 uGridMax;
+uniform uint uUseNonLinearGrid;
+uniform float uGridFarExtent;
+uniform int uUseRadialDepth = 0;
+uniform float uRadialDepthMinVariance = 1e-4;
+
+const uint SURFEL_SHARING_MAX_NEIGHBOR_CELLS = 27u;
+const uint SURFEL_SHARING_MAX_NEIGHBORS = 48u;
+const float SURFEL_SHARING_MAX_BLEND = 0.32;
+const float SURFEL_SHARING_MIN_NORMAL_DOT = 0.72;
+const float SURFEL_SHARING_MAX_PLANE_SEPARATION = 0.18;
+const float SURFEL_SHARING_MIN_RADIAL_VISIBILITY = 0.18;
+
+vec3 SurfelClampSharedIrradiance(vec3 irradiance)
+{
+    if (any(isnan(irradiance)) || any(isinf(irradiance))) {
+        return vec3(0.0);
+    }
+    return clamp(irradiance, vec3(0.0), vec3(64.0));
+}
+
+float SharingRadialVisibility(uint surfelID, Surfel surfel, vec3 surfelToReceiver)
+{
+    if (uUseRadialDepth == 0) {
+        return 1.0;
+    }
+
+    uint radialIndex = SurfelRadialDepthIndex(
+        surfelID,
+        surfelToReceiver,
+        surfel.worldNormal_age.xyz);
+    return SurfelRadialDepthVisibility(
+        radialDepth[radialIndex],
+        length(surfelToReceiver),
+        uRadialDepthMinVariance);
+}
+
+float SharingConnectedSurfaceWeight(vec3 delta,
+                                    float distance,
+                                    float supportRadius,
+                                    float centerPlane,
+                                    float neighborPlane,
+                                    float planeLimit)
+{
+    if (distance > supportRadius * 1.35 ||
+        max(centerPlane, neighborPlane) > planeLimit) {
+        return 0.0;
+    }
+
+    float tangentDistance = sqrt(max(distance * distance - centerPlane * centerPlane, 0.0));
+    float tangentWeight = 1.0 - smoothstep(supportRadius * 0.82, supportRadius * 1.35, tangentDistance);
+    float planeWeight = 1.0 - smoothstep(planeLimit * 0.55, planeLimit, max(centerPlane, neighborPlane));
+    return tangentWeight * planeWeight;
+}
+
+float SharingPreserveGradientWeight(vec3 centerIrradiance, vec3 neighborIrradiance)
+{
+    float centerLum = SurfelLuminance(max(centerIrradiance, vec3(0.0)));
+    float neighborLum = SurfelLuminance(max(neighborIrradiance, vec3(0.0)));
+    float maxLum = max(max(centerLum, neighborLum), 1e-4);
+    float minLum = min(centerLum, neighborLum);
+    float ratioWeight = smoothstep(0.04, 0.28, minLum / maxLum);
+    float darkLiftWeight = centerLum < 0.025 && neighborLum > 0.12 ? 0.0 : 1.0;
+    return mix(0.28, 1.0, ratioWeight) * darkLiftWeight;
+}
+
+float SharingDarknessPreservationBlend(vec3 centerIrradiance, vec3 sharedIrradiance, float requestedBlend)
+{
+    float centerLum = SurfelLuminance(max(centerIrradiance, vec3(0.0)));
+    float sharedLum = SurfelLuminance(max(sharedIrradiance, vec3(0.0)));
+    float allowedLift = max(centerLum * 1.75 + 0.055, 0.075);
+    float lift = max(sharedLum - centerLum, 0.0);
+    float liftWeight = lift <= allowedLift ? 1.0 : allowedLift / max(lift, 1e-4);
+    float darkCap = mix(0.10, 1.0, smoothstep(0.015, 0.10, centerLum));
+    return clamp(requestedBlend * liftWeight, 0.0, min(requestedBlend, darkCap));
+}
+
+float SharingCompatibilityWeight(uint centerID,
+                                 Surfel center,
+                                 vec4 centerIrradiance,
+                                 uint neighborID,
+                                 Surfel neighbor,
+                                 vec4 neighborIrradiance)
+{
+    if (neighborID == centerID || !SurfelIsAlive(neighbor)) {
+        return 0.0;
+    }
+
+    float neighborConfidence = clamp(neighborIrradiance.a, 0.0, 1.0);
+    if (neighborConfidence <= 0.03 &&
+        SurfelLuminance(max(neighborIrradiance.rgb, vec3(0.0))) <= 1e-5) {
+        return 0.0;
+    }
+
+    vec3 centerPos = center.worldPos_radius.xyz;
+    vec3 centerNormal = SurfelSafeNormalize(center.worldNormal_age.xyz);
+    vec3 neighborPos = neighbor.worldPos_radius.xyz;
+    vec3 neighborNormal = SurfelSafeNormalize(neighbor.worldNormal_age.xyz);
+    vec3 delta = neighborPos - centerPos;
+    float distSq = dot(delta, delta);
+    float distance = sqrt(max(distSq, 0.0));
+    float centerRadius = max(center.worldPos_radius.w, 0.001);
+    float neighborRadius = max(neighbor.worldPos_radius.w, 0.001);
+    float supportRadius = max(
+        SurfelCoverageSupportRadiusAt(
+            centerPos,
+            max(centerRadius, neighborRadius),
+            uGridMin,
+            uGridMax,
+            uGridResolution,
+            uUseNonLinearGrid,
+            uGridFarExtent),
+        0.24);
+
+    float normalDot = max(dot(centerNormal, neighborNormal), 0.0);
+    if (normalDot < SURFEL_SHARING_MIN_NORMAL_DOT) {
+        return 0.0;
+    }
+
+    float centerPlane = abs(dot(delta, centerNormal));
+    float neighborPlane = abs(dot(delta, neighborNormal));
+    float planeLimit = min(
+        max(max(centerRadius, neighborRadius) * 2.2, supportRadius * 0.16),
+        SURFEL_SHARING_MAX_PLANE_SEPARATION);
+    planeLimit = max(planeLimit, 0.035);
+    if (max(centerPlane, neighborPlane) > planeLimit) {
+        return 0.0;
+    }
+
+    float visibility = SharingRadialVisibility(centerID, center, delta) *
+        SharingRadialVisibility(neighborID, neighbor, -delta);
+    if (visibility < SURFEL_SHARING_MIN_RADIAL_VISIBILITY) {
+        return 0.0;
+    }
+
+    float connectedWeight = SharingConnectedSurfaceWeight(
+        delta,
+        distance,
+        supportRadius,
+        centerPlane,
+        neighborPlane,
+        planeLimit);
+    if (connectedWeight <= 1e-5) {
+        return 0.0;
+    }
+
+    float distanceWeight = exp(-distSq / max(supportRadius * supportRadius, 1e-4));
+    float normalWeight = smoothstep(0.52, 0.96, normalDot);
+    float planeSigma = max(max(centerRadius + neighborRadius, supportRadius * 0.18), 0.045);
+    float planeWeight = exp(-(centerPlane + neighborPlane) / max(planeSigma, 1e-4));
+
+    vec3 albedoDelta = center.albedo_life.rgb - neighbor.albedo_life.rgb;
+    float colorWeight = exp(-dot(albedoDelta, albedoDelta) * 1.6);
+    float gradientWeight = SharingPreserveGradientWeight(centerIrradiance.rgb, neighborIrradiance.rgb);
+    return distanceWeight *
+        normalWeight *
+        planeWeight *
+        connectedWeight *
+        colorWeight *
+        gradientWeight *
+        visibility *
+        mix(0.20, 1.0, smoothstep(0.04, 0.65, neighborConfidence));
+}
+
+void main()
+{
+    uint surfelID = gl_GlobalInvocationID.x;
+    uint sharingPhaseCount = max(uSharingPhaseCount, 1u);
+    if (sharingPhaseCount > 1u &&
+        (surfelID % sharingPhaseCount) != (uSharingPhaseIndex % sharingPhaseCount)) {
+        return;
+    }
+
+    if (surfelID >= uMaxSurfels ||
+        uGridCellCount == 0u ||
+        uMaxSurfelsPerCell == 0u) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    vec4 centerIrradiance = irradianceSnapshot[surfelID];
+    float confidence = clamp(centerIrradiance.a, 0.0, 1.0);
+    float varianceLum = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
+    float debugVariance = max(surfel.debug.x, varianceLum);
+    float lowConfidence = 1.0 - confidence;
+    float shareAmount = clamp(max(debugVariance * 1.35, lowConfidence * 0.18), 0.0, SURFEL_SHARING_MAX_BLEND);
+    if (shareAmount <= 1e-4) {
+        return;
+    }
+
+    vec3 sumIrradiance = vec3(0.0);
+    float sumWeight = 0.0;
+    uint testedNeighbors = 0u;
+    for (uint cellIndex = 0u; cellIndex < SURFEL_SHARING_MAX_NEIGHBOR_CELLS; ++cellIndex) {
+        if (testedNeighbors >= SURFEL_SHARING_MAX_NEIGHBORS) {
+            break;
+        }
+
+        SurfelGridAddress address;
+        if (!SurfelWorldNeighborAddress(
+                surfel.worldPos_radius.xyz,
+                cellIndex,
+                1u,
+                uGridMin,
+                uGridMax,
+                uGridResolution,
+                uUseNonLinearGrid,
+                uGridFarExtent,
+                address)) {
+            continue;
+        }
+        if (address.cell >= uGridCellCount) {
+            continue;
+        }
+
+        SurfelCellHeader header = gridHeaders[address.cell];
+        uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
+        if (storedCount == 0u) {
+            continue;
+        }
+
+        uint firstEntry = header.firstEntry;
+        if (firstEntry == 0u && address.cell != 0u) {
+            firstEntry = address.cell * uMaxSurfelsPerCell;
+        }
+        uint perCellBudget = min(storedCount, max(1u, SURFEL_SHARING_MAX_NEIGHBORS / SURFEL_SHARING_MAX_NEIGHBOR_CELLS));
+        uint strideSeed = SurfelHash(surfelID ^ (address.cell * 747796405u));
+        uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
+        uint sampleStride = max(storedCount / max(perCellBudget, 1u), 1u);
+
+        for (uint slot = 0u; slot < perCellBudget; ++slot) {
+            if (testedNeighbors >= SURFEL_SHARING_MAX_NEIGHBORS) {
+                break;
+            }
+
+            uint sampleIndex = (storedCount <= perCellBudget)
+                ? slot
+                : (startIndex + slot * sampleStride) % storedCount;
+            SurfelCellEntry entry = gridEntries[firstEntry + sampleIndex];
+            ++testedNeighbors;
+            if (entry.surfelID >= uMaxSurfels) {
+                continue;
+            }
+
+            Surfel neighbor = surfels[entry.surfelID];
+            vec4 neighborIrradiance = irradianceSnapshot[entry.surfelID];
+            float weight = SharingCompatibilityWeight(
+                surfelID,
+                surfel,
+                centerIrradiance,
+                entry.surfelID,
+                neighbor,
+                neighborIrradiance);
+            if (weight <= 1e-5) {
+                continue;
+            }
+
+            sumIrradiance += SurfelClampSharedIrradiance(neighborIrradiance.rgb) * weight;
+            sumWeight += weight;
+        }
+    }
+
+    if (sumWeight <= 1e-5) {
+        return;
+    }
+
+    vec3 sharedIrradiance = sumIrradiance / sumWeight;
+    float confidenceWeightedBlend = shareAmount * smoothstep(0.04, 1.2, sumWeight);
+    confidenceWeightedBlend = SharingDarknessPreservationBlend(
+        centerIrradiance.rgb,
+        sharedIrradiance,
+        confidenceWeightedBlend);
+    surfel.irradiance.rgb = SurfelClampSharedIrradiance(mix(
+        SurfelClampSharedIrradiance(centerIrradiance.rgb),
+        sharedIrradiance,
+        confidenceWeightedBlend));
+    surfel.shortMean.rgb = mix(surfel.shortMean.rgb, surfel.irradiance.rgb, confidenceWeightedBlend * 0.35);
+    surfel.shortM2.rgb = max(surfel.shortM2.rgb * (1.0 - confidenceWeightedBlend * 0.25), vec3(0.0));
+    surfel.irradiance.a = clamp(max(confidence, confidence + confidenceWeightedBlend * 0.08), 0.0, 1.0);
+    surfel.debug.x = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
+    surfels[surfelID] = surfel;
+}

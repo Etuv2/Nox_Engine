@@ -31,6 +31,11 @@ float WorldUnitsPerPixel(vec3 worldPos)
     return max(abs(viewPos.z), 0.05) / (max(uViewportSize.y, 1.0) * focalY);
 }
 
+bool IsFiniteVec3(vec3 value)
+{
+    return !any(isnan(value)) && !any(isinf(value));
+}
+
 void main()
 {
     uint surfelID = gl_GlobalInvocationID.x;
@@ -58,10 +63,27 @@ void main()
         surfels[surfelID] = surfel;
         return;
     }
+    bool generationMismatch = transform.metadata.z != surfel.ids.w;
+    if (generationMismatch) {
+        SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_INVALID);
+        surfel.debug.w = 1.0;
+        surfels[surfelID] = surfel;
+        return;
+    }
 
     vec4 worldPos = transform.world * vec4(surfel.localPos_spawnRadius.xyz, 1.0);
     mat3 normalMatrix = transpose(inverse(mat3(transform.world)));
     vec3 worldNormal = SurfelSafeNormalize(normalMatrix * surfel.localNormal_flags.xyz);
+    if (!IsFiniteVec3(worldPos.xyz) || !IsFiniteVec3(worldNormal)) {
+        SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_INVALID);
+        surfel.debug.w = 1.0;
+        surfels[surfelID] = surfel;
+        return;
+    }
+
+    vec3 previousWorldPos = (transform.prevWorld * vec4(surfel.localPos_spawnRadius.xyz, 1.0)).xyz;
+    mat3 previousNormalMatrix = transpose(inverse(mat3(transform.prevWorld)));
+    vec3 previousWorldNormal = SurfelSafeNormalize(previousNormalMatrix * surfel.localNormal_flags.xyz);
 
     float minRadius = max(uMinSurfelRadius, 0.001);
     float maxRadius = max(uMaxSurfelRadius, minRadius);
@@ -73,6 +95,17 @@ void main()
     float radius = clamp(mix(previousRadius, targetRadius, radiusResponse), minRadius, maxRadius);
     float targetRadiusError = abs(radius - targetRadius) / max(targetRadius, 1e-4);
     surfel.localPos_spawnRadius.w = mix(surfel.localPos_spawnRadius.w, targetRadius, 0.04);
+    float motionDistance = IsFiniteVec3(previousWorldPos) ? length(worldPos.xyz - previousWorldPos) : 0.0;
+    float normalDelta = IsFiniteVec3(previousWorldNormal) ? (1.0 - max(dot(worldNormal, previousWorldNormal), 0.0)) : 0.0;
+    float motionReactive = SurfelSaturate(motionDistance / max(radius * 2.0, 0.05) + normalDelta);
+    bool motionReset = motionReactive > 0.18;
+    if (motionReactive > 0.03) {
+        surfel.irradiance.a = SurfelSaturate(surfel.irradiance.a * mix(1.0, 0.55, motionReactive));
+        surfel.shortM2.rgb += vec3(motionReactive * 0.08);
+    }
+    if (motionReset) {
+        SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_NEW);
+    }
 
     surfel.worldPos_radius = vec4(worldPos.xyz, radius);
     surfel.worldNormal_age = vec4(worldNormal, surfel.worldNormal_age.w + 1.0);

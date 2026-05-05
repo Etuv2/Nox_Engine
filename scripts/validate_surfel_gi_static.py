@@ -66,6 +66,7 @@ def main() -> None:
         "shaders/surfel_gi/trace_rays.comp",
         "shaders/surfel_gi/integrate.comp",
         "shaders/surfel_gi/radial_depth_update.comp",
+        "shaders/surfel_gi/temporal_filter.comp",
     ]
     for relpath in replacement_files:
         require_exists(relpath)
@@ -134,8 +135,33 @@ def main() -> None:
 
     require("glGetBufferSubData" not in pipeline_cpp,
             "clean surfel pipeline must not use blocking counter readbacks")
+    require("glGetQueryObjectui64v(queries[" not in pipeline_cpp,
+            "Surfel GI GPU timing must not synchronously wait for timestamp query results")
     require("EnableTiming(" not in pipeline_cpp,
             "clean surfel pipeline must not use blocking ComputeShader timing")
+    require("m_pendingTimingQueries" in pipeline_cpp and "GL_QUERY_RESULT_AVAILABLE" in pipeline_cpp,
+            "Surfel GI GPU timings must use delayed timestamp query readback")
+
+    required_timing_labels = [
+        "transform_update",
+        "recycling",
+        "grid_clear",
+        "grid_build",
+        "cell_averages",
+        "coverage_spawn",
+        "ray_request",
+        "ray_allocation",
+        "ray_generation",
+        "tracing",
+        "temporal_integration",
+        "radial_depth",
+        "final_gather",
+        "composite_filter",
+        "temporal_resolve",
+        "debug_overhead",
+    ]
+    for label in required_timing_labels:
+        require(f'"{label}"' in pipeline_cpp, f"Surfel GI timing label is missing: {label}")
     require("IndirectDiffusePass" in modular_cpp and "indirect_diffuse_gather_comp.glsl" in read("src/passes/IndirectDiffusePass.cpp"),
             "SSGI comparison path must remain wired")
 
@@ -148,6 +174,9 @@ def main() -> None:
     ]
     for token in realtime_budget_tokens:
         require(token in render_context_h, f"real-time clean Surfel GI default missing from RenderContext.h: {token}")
+
+    require("return { 32768u, 640u, 16u, 20u, 24u, 1u, 0.25f, true, true" in modular_cpp,
+            "Medium clean Surfel GI budget must use the real-time radius-1 low-resolution gather preset")
 
     manager_budget_tokens = [
         "uint32_t maxSurfels = 131072u",

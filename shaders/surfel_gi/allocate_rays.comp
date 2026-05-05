@@ -4,6 +4,11 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
 
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
 layout(binding = B_RAY_REQUESTS, std430) buffer SurfelRayRequestBuffer
 {
     SurfelRayRequest rayRequests[];
@@ -17,8 +22,37 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 uniform uint uMaxSurfels;
 uniform uint uMaxRayBudget;
 uniform uint uFrameIndex;
+uniform uint uPriorityPass = 0u;
 
 const uint SURFEL_ALLOCATE_CAS_ATTEMPTS = 8u;
+
+uint FrameDelta(uint newerFrame, uint olderFrame)
+{
+    return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
+}
+
+bool IsPriorityRaySurfel(Surfel surfel, uint requested)
+{
+    if (requested == 0u || !SurfelIsAlive(surfel)) {
+        return false;
+    }
+
+    float confidence = SurfelSaturate(surfel.irradiance.a);
+    float lowConfidence = 1.0 - confidence;
+    uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
+    uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
+    uint framesSinceUpdate = FrameDelta(uFrameIndex, surfel.frameInfo.z);
+    bool recentlyVisible = framesSinceVisible <= 3u || framesSinceContribution <= 3u;
+    bool unresolved = lowConfidence > 0.35 || surfel.shortMean.a < 12.0 || requested >= 6u;
+    bool staleVisible = recentlyVisible && framesSinceUpdate > 8u;
+    bool starving = framesSinceContribution > 12u && confidence < 0.85;
+
+    return SurfelIsNew(surfel) ||
+        surfel.worldNormal_age.w < 3.0 ||
+        (recentlyVisible && unresolved) ||
+        staleVisible ||
+        starving;
+}
 
 uint ProportionalAllocation(uint requested, uint totalRequested, uint budget)
 {
@@ -69,6 +103,25 @@ void main()
     uint rotatedRequestID = (linearRequestID + rotation) % uMaxSurfels;
     uint requestID = rotatedRequestID;
     uint requested = rayRequests[requestID].requestedCount;
+    Surfel surfel = surfels[requestID];
+    bool prioritySurfel = IsPriorityRaySurfel(surfel, requested);
+    if (uPriorityPass != 0u) {
+        if (!prioritySurfel) {
+            return;
+        }
+
+        uint budget = min(uMaxRayBudget, counters.requestedRays);
+        uint firstRay = 0u;
+        uint allocated = ReserveRays(requested, budget, firstRay);
+        rayRequests[requestID].allocatedCount = allocated;
+        rayRequests[requestID].firstRay = allocated > 0u ? firstRay : 0u;
+        return;
+    }
+
+    if (prioritySurfel) {
+        return;
+    }
+
     uint budget = min(uMaxRayBudget, counters.requestedRays);
     uint allocated = ProportionalAllocation(requested, counters.requestedRays, budget);
     if (allocated == 0u) {

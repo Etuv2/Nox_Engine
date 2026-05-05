@@ -35,10 +35,13 @@ struct SurfelGIPipelineResources {
 	GLuint rayCountersBuffer = 0;
 	GLuint radialDepthBuffer = 0;
 	GLuint guideMapBuffer = 0;
-	GLuint guideScaleBuffer = 0;
+	GLuint irradianceSnapshotBuffer = 0;
 	GLuint coverageTileBuffer = 0;
 	GLuint rawIndirectTexture = 0;
+	GLuint filteredIndirectTexture = 0;
 	GLuint indirectTexture = 0;
+	GLuint historyIndirectTexture[2] = { 0, 0 };
+	GLuint historyGeometryTexture[2] = { 0, 0 };
 };
 
 class SurfelGIPipeline final {
@@ -62,7 +65,7 @@ public:
 		const std::shared_ptr<DirectionalLight>& dirLight,
 		const std::shared_ptr<Skybox>& skybox);
 	void ApplyIndirect(RenderContext& context, FrameBuffer& lightingBuffer);
-	void RenderDebug(RenderContext& context) const;
+	void RenderDebug(RenderContext& context);
 	bool ReloadShaders();
 	void SetSettings(const SurfelGISettings& settings);
 
@@ -77,6 +80,13 @@ private:
 		double gpuMs = 0.0;
 	};
 
+	struct PendingGpuTimingQuery {
+		std::string label;
+		GLuint beginQuery = 0;
+		GLuint endQuery = 0;
+		uint32_t issuedFrame = 0;
+	};
+
 	bool LoadShaders();
 	void ReleaseShaders();
 	bool CreateIndirectTexture();
@@ -84,11 +94,16 @@ private:
 	void ReleaseAuxiliaryResources();
 	bool CreateAuxiliaryResources();
 	void BindCoreResources(GLuint transformBuffer) const;
+	void BeginGpuTiming(const char* label, GLuint& beginQuery, GLuint& endQuery);
+	void EndGpuTiming(const char* label, GLuint beginQuery, GLuint endQuery);
+	void CollectReadyGpuTimings(bool forceDelete);
+	void ReleaseGpuTimingQueries();
 
 	SurfelGISettings m_settings{};
 	SurfelGIPipelineResources m_resources{};
 	SurfelGIFrameStats m_stats{};
 	std::vector<SubpassGpuTiming> m_subpassTimings;
+	std::vector<PendingGpuTimingQuery> m_pendingTimingQueries;
 	SurfelPool m_pool;
 	SurfelGrid m_grid;
 	SurfelRayQueue m_rayQueue;
@@ -107,9 +122,13 @@ private:
 	std::unique_ptr<ComputeShader> m_traceRaysShader;
 	std::unique_ptr<ComputeShader> m_integrateShader;
 	std::unique_ptr<ComputeShader> m_radialDepthShader;
+	std::unique_ptr<ComputeShader> m_irradianceSnapshotShader;
+	std::unique_ptr<ComputeShader> m_irradianceSharingShader;
 	std::unique_ptr<ComputeShader> m_applyIndirectShader;
 	std::unique_ptr<ComputeShader> m_spatialFilterShader;
+	std::unique_ptr<ComputeShader> m_temporalFilterShader;
 	GLuint m_debugProgram = 0;
+	GLuint m_debugPresentProgram = 0;
 	GLuint m_debugVAO = 0;
 	glm::vec3 m_lastCameraPosition{ 0.0f };
 	glm::mat4 m_lastView{ 1.0f };
@@ -125,7 +144,10 @@ private:
 	uint32_t m_lastTransformCount = 0;
 	uint32_t m_lastSpawnPassCount = 1;
 	uint32_t m_subpassMetricsInterval = 120;
+	uint32_t m_historyReadIndex = 0;
+	uint32_t m_lastTextureDumpFrame = 0;
 	bool m_hasLastCameraState = false;
+	bool m_hasTemporalHistory = false;
 	bool m_loggedGBufferBindings = false;
 	bool m_wasPlacementValidationMode = false;
 	bool m_logSubpassMetrics = false;

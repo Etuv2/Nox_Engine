@@ -59,6 +59,7 @@ enum class SurfelGIBinding : GLuint {
     RadialDepth = 19u,
     GuideMap = 20u,
     GuideScale = 21u,
+    IrradianceSnapshot = 21u,
     Transforms = 22u,
     Lights = 23u,
     BvhNodes = 24u,
@@ -137,7 +138,8 @@ enum SurfelCoverageTileFlags : uint32_t {
     SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,
     SURFEL_COVERAGE_TILE_UNDER_COVERED = 1u << 1,
     SURFEL_COVERAGE_TILE_HIGH_PRIORITY = 1u << 2,
-    SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY = 1u << 3
+    SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY = 1u << 3,
+    SURFEL_COVERAGE_TILE_FINAL_GI_VALID = 1u << 4
 };
 
 struct alignas(16) SurfelCoverageTile {

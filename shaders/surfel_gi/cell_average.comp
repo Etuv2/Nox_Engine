@@ -28,6 +28,17 @@ vec3 SurfelCachedIndirectIrradiance(Surfel surfel)
     return max(surfel.irradiance.rgb, vec3(0.0));
 }
 
+float CellAverageSupportConfidence(uint validCount)
+{
+    float supportTarget = clamp(max(float(uMaxSurfelsPerCell) * 0.125, 4.0), 4.0, 12.0);
+    return smoothstep(1.0, supportTarget, float(validCount));
+}
+
+float CellAverageSignalConfidence(vec3 irradiance)
+{
+    return smoothstep(1e-4, 0.03, SurfelLuminance(max(irradiance, vec3(0.0))));
+}
+
 void main()
 {
     uint cell = gl_GlobalInvocationID.x;
@@ -43,6 +54,8 @@ void main()
 
     vec3 sumIrradiance = vec3(0.0);
     float sumWeight = 0.0;
+    float sumConfidence = 0.0;
+    uint validCount = 0u;
     for (uint i = 0u; i < count; ++i) {
         uint surfelID = gridEntries[firstEntry + i].surfelID;
         if (surfelID >= uMaxSurfels) {
@@ -54,13 +67,32 @@ void main()
             continue;
         }
 
-        float weight = max(surfel.irradiance.a, 0.0);
+        vec3 irradiance = SurfelCachedIndirectIrradiance(surfel);
+        float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
+        if (confidence <= 0.02 && SurfelLuminance(irradiance) <= 1e-5) {
+            continue;
+        }
+
+        float weight = smoothstep(0.04, 0.45, confidence);
         sumIrradiance += SurfelCachedIndirectIrradiance(surfel) * weight;
         sumWeight += weight;
+        sumConfidence += confidence;
+        ++validCount;
     }
 
-    if (sumWeight > 0.0) {
-        gridHeaders[cell].averagePackedIrradiance = SurfelPackIrradiance(sumIrradiance / sumWeight, SurfelSaturate(sumWeight / max(float(count), 1.0)));
+    if (sumWeight > 0.0 && validCount > 0u) {
+        vec3 averageIrradiance = sumIrradiance / sumWeight;
+        float temporalConfidence = clamp(sumConfidence / max(float(validCount), 1.0), 0.0, 1.0);
+        float supportConfidence = CellAverageSupportConfidence(validCount);
+        float signalConfidence = CellAverageSignalConfidence(averageIrradiance);
+        float packedConfidence = temporalConfidence * supportConfidence * signalConfidence;
+        if (packedConfidence <= 1e-4) {
+            gridHeaders[cell].averagePackedIrradiance = 0u;
+            gridHeaders[cell].flags &= ~SURFEL_CELL_HAS_AVERAGE;
+            return;
+        }
+
+        gridHeaders[cell].averagePackedIrradiance = SurfelPackIrradiance(averageIrradiance, packedConfidence);
         gridHeaders[cell].flags |= SURFEL_CELL_HAS_AVERAGE;
     } else {
         gridHeaders[cell].averagePackedIrradiance = 0u;

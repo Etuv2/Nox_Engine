@@ -15,6 +15,7 @@
 #define B_RADIAL_DEPTH 19
 #define B_GUIDE_MAP 20
 #define B_GUIDE_SCALE 21
+#define B_IRRADIANCE_SNAPSHOT 21
 #define B_TRANSFORMS 22
 #define B_LIGHTS 23
 #define B_BVH_NODES 24
@@ -87,6 +88,7 @@ struct SurfelCounters {
 #define SURFEL_COVERAGE_TILE_UNDER_COVERED (1u << 1)
 #define SURFEL_COVERAGE_TILE_HIGH_PRIORITY (1u << 2)
 #define SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY (1u << 3)
+#define SURFEL_COVERAGE_TILE_FINAL_GI_VALID (1u << 4)
 
 struct SurfelCoverageTile {
     vec4 lowestCoverage;

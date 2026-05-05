@@ -1,0 +1,154 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "../includes/pbr_common.glsl"
+#include "common.glsl"
+
+layout(binding = 0, rgba16f) writeonly uniform image2D uOutIndirect;
+layout(binding = 1, rgba16f) writeonly uniform image2D uOutHistoryIndirect;
+layout(binding = 2, rgba16f) writeonly uniform image2D uOutHistoryGeometry;
+
+uniform sampler2D uCurrentIndirectTex;
+uniform sampler2D uPreviousIndirectTex;
+uniform sampler2D uPreviousGeometryTex;
+uniform sampler2D uVelocityTex;
+uniform sampler2D uPackedNormalRMTex;
+uniform sampler2D uDepthTex;
+
+uniform uvec2 uResolution;
+uniform uvec2 uInputResolution;
+uniform int uUseHistory = 0;
+uniform int uUseVelocity = 0;
+uniform float uDepthReject = 0.0025;
+uniform float uNormalRejectCos = 0.55;
+uniform float uMotionRejectPixels = 96.0;
+
+const float SURFEL_TEMPORAL_HISTORY_CLAMP_EXTENT = 1.35;
+const float SURFEL_TEMPORAL_STATIONARY_MIN_HISTORY = 0.88;
+const float SURFEL_TEMPORAL_MAX_HISTORY = 0.975;
+
+vec3 SurfelTemporalClampRadiance(vec3 radiance)
+{
+    return clamp(radiance, vec3(0.0), vec3(48.0));
+}
+
+vec4 ClampHistoryToCurrentNeighborhood(ivec2 pixel, vec4 historyValue, bool currentHasSignal)
+{
+    if (!currentHasSignal) {
+        return historyValue;
+    }
+
+    ivec2 maxPixel = ivec2(uResolution) - ivec2(1);
+    vec3 minColor = vec3(1e20);
+    vec3 maxColor = vec3(-1e20);
+    float minConfidence = 1.0;
+    float maxConfidence = 0.0;
+
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            vec4 sampleValue = texelFetch(uCurrentIndirectTex, clamp(pixel + ivec2(x, y), ivec2(0), maxPixel), 0);
+            vec3 sampleColor = max(sampleValue.rgb, vec3(0.0));
+            minColor = min(minColor, sampleColor);
+            maxColor = max(maxColor, sampleColor);
+            minConfidence = min(minConfidence, clamp(sampleValue.a, 0.0, 1.0));
+            maxConfidence = max(maxConfidence, clamp(sampleValue.a, 0.0, 1.0));
+        }
+    }
+
+    vec3 colorExtent = max((maxColor - minColor) * SURFEL_TEMPORAL_HISTORY_CLAMP_EXTENT, vec3(0.06));
+    float confidenceExtent = max((maxConfidence - minConfidence) * SURFEL_TEMPORAL_HISTORY_CLAMP_EXTENT, 0.08);
+    historyValue.rgb = clamp(historyValue.rgb, minColor - colorExtent, maxColor + colorExtent);
+    historyValue.a = clamp(historyValue.a, minConfidence - confidenceExtent, maxConfidence + confidenceExtent);
+    return historyValue;
+}
+
+void StoreResolved(ivec2 pixel, vec4 resolved, float depth, vec2 packedNormal)
+{
+    resolved.rgb = SurfelTemporalClampRadiance(max(resolved.rgb, vec3(0.0)));
+    resolved.a = clamp(resolved.a, 0.0, 1.0);
+    imageStore(uOutIndirect, pixel, resolved);
+    imageStore(uOutHistoryIndirect, pixel, resolved);
+    imageStore(uOutHistoryGeometry, pixel, vec4(depth, packedNormal, 1.0));
+}
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= int(uResolution.x) || pixel.y >= int(uResolution.y)) {
+        return;
+    }
+
+    uvec2 safeResolution = max(uResolution, uvec2(1u));
+    uvec2 safeInputResolution = max(uInputResolution, uvec2(1u));
+    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(safeResolution);
+    ivec2 inputPixel = ivec2(clamp(
+        floor((vec2(pixel) + vec2(0.5)) * vec2(safeInputResolution) / vec2(safeResolution)),
+        vec2(0.0),
+        vec2(safeInputResolution - uvec2(1u))));
+
+    float depth = texelFetch(uDepthTex, inputPixel, 0).r;
+    vec2 packedNormal = texelFetch(uPackedNormalRMTex, inputPixel, 0).rg;
+    vec4 current = texelFetch(uCurrentIndirectTex, pixel, 0);
+
+    if (depth <= 0.0 || depth >= 0.999999) {
+        StoreResolved(pixel, vec4(0.0), 0.0, packedNormal);
+        return;
+    }
+
+    if (uUseHistory == 0 || uUseVelocity == 0) {
+        StoreResolved(pixel, current, depth, packedNormal);
+        return;
+    }
+
+    vec2 inputUV = (vec2(inputPixel) + vec2(0.5)) / vec2(safeInputResolution);
+    vec2 velocity = textureLod(uVelocityTex, inputUV, 0.0).rg;
+    vec2 prevUV = uv - velocity;
+    vec2 margin = 0.5 / vec2(safeResolution);
+    if (any(lessThan(prevUV, margin)) || any(greaterThan(prevUV, vec2(1.0) - margin))) {
+        StoreResolved(pixel, current, depth, packedNormal);
+        return;
+    }
+
+    vec4 previous = textureLod(uPreviousIndirectTex, prevUV, 0.0);
+    vec4 previousGeometry = textureLod(uPreviousGeometryTex, prevUV, 0.0);
+    if (previousGeometry.a <= 0.0 || previousGeometry.x <= 0.0 || previousGeometry.x >= 0.999999) {
+        StoreResolved(pixel, current, depth, packedNormal);
+        return;
+    }
+
+    vec3 currentNormal = SurfelSafeNormalize(DecodeNormalOct(packedNormal));
+    vec3 previousNormal = SurfelSafeNormalize(DecodeNormalOct(previousGeometry.yz));
+    float normalSimilarity = max(dot(currentNormal, previousNormal), 0.0);
+    float normalConfidence = smoothstep(uNormalRejectCos, 1.0, normalSimilarity);
+
+    float depthDelta = abs(depth - previousGeometry.x);
+    float depthConfidence = exp(-depthDelta / max(uDepthReject, 1e-5));
+    float motionPixels = length(velocity * vec2(safeInputResolution));
+    float motionConfidence = exp(-motionPixels / max(uMotionRejectPixels, 1.0));
+    float historyConfidence = clamp(depthConfidence * normalConfidence * motionConfidence, 0.0, 1.0);
+
+    float currentSignal = clamp(current.a, 0.0, 1.0);
+    float previousSignal = clamp(previous.a, 0.0, 1.0);
+    if (historyConfidence < 0.04 || previousSignal <= 1e-4) {
+        StoreResolved(pixel, current, depth, packedNormal);
+        return;
+    }
+
+    bool currentHasSignal = currentSignal > 0.04 || SurfelLuminance(max(current.rgb, vec3(0.0))) > 1e-5;
+    previous = ClampHistoryToCurrentNeighborhood(pixel, previous, currentHasSignal);
+
+    float missingCurrentBoost = 1.0 - smoothstep(0.02, 0.25, currentSignal);
+    float currentLum = SurfelLuminance(max(current.rgb, vec3(0.0)));
+    float previousLum = SurfelLuminance(max(previous.rgb, vec3(0.0)));
+    float signalDisagreement = abs(currentLum - previousLum) / max(max(currentLum, previousLum), 0.08);
+    float noisyCurrent = smoothstep(0.18, 0.85, signalDisagreement) * currentSignal * previousSignal;
+    float historyWeight = historyConfidence * mix(0.86, 0.95, missingCurrentBoost);
+    historyWeight *= mix(0.78, 1.0, previousSignal);
+    historyWeight = max(historyWeight, historyConfidence * previousSignal * noisyCurrent * SURFEL_TEMPORAL_STATIONARY_MIN_HISTORY);
+    historyWeight = clamp(historyWeight, 0.0, SURFEL_TEMPORAL_MAX_HISTORY);
+
+    vec4 resolved = mix(current, previous, historyWeight);
+    resolved.a = max(currentSignal, mix(currentSignal, previousSignal, historyWeight));
+    StoreResolved(pixel, resolved, depth, packedNormal);
+}

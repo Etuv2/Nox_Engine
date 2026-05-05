@@ -41,6 +41,8 @@ bool IsSurfelOverlayDebugView(SurfelGIDebugView view)
 	case SurfelGIDebugView::GridOverflow:
 	case SurfelGIDebugView::IrradianceConfidence:
 		return true;
+	case SurfelGIDebugView::RawIndirectIrradiance:
+		return false;
 	default:
 		return false;
 	}
@@ -133,7 +135,7 @@ void SurfelGIManager::ApplyIndirect(RenderContext& context, FrameBuffer& lightin
 
 void SurfelGIManager::RenderDebug(RenderContext& context) const
 {
-	if (!HasReadyPipeline() || !IsSurfelOverlayDebugView(m_settings.debugView)) {
+	if (!HasReadyPipeline() || m_settings.debugView == SurfelGIDebugView::Off) {
 		return;
 	}
 

@@ -176,30 +176,28 @@ void RTSceneResources::EnsureIncrementalBuffers()
 
 std::size_t RTSceneResources::EstimateSceneTriangleCount(const std::shared_ptr<SceneGraph>& sceneGraph)
 {
-    if (!sceneGraph || !sceneGraph->GetRoot()) {
+    const ComponentManager* componentManager = sceneGraph ? sceneGraph->GetComponentManager() : nullptr;
+    if (!componentManager) {
         return 0;
     }
 
     std::size_t triangleCount = 0;
-    std::function<void(const std::shared_ptr<SceneNode>&)> visit;
-    visit = [&visit, &triangleCount](const std::shared_ptr<SceneNode>& node) {
-        if (!node) {
-            return;
+    const auto& renderablePool = componentManager->GetRenderablePool();
+    for (const auto& entry : renderablePool) {
+        const RenderableComponent& renderable = entry.component;
+        if (!renderable.model) {
+            continue;
         }
 
-        if (auto model = node->GetModel()) {
-            for (const auto& mesh : model->meshes) {
-                const std::size_t indexCount = !mesh.rawIndices.empty() ? mesh.rawIndices.size() : mesh.indexCount;
-                triangleCount += indexCount / 3;
+        ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+            const std::size_t indexCount = !mesh.rawIndices.empty() ? mesh.rawIndices.size() : mesh.indexCount;
+            if (indexCount < 3u || mesh.rawVertices.empty()) {
+                return;
             }
-        }
+            triangleCount += indexCount / 3u;
+        });
+    }
 
-        for (const auto& child : node->children) {
-            visit(child);
-        }
-    };
-
-    visit(sceneGraph->GetRoot());
     return triangleCount;
 }
 

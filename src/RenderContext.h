@@ -185,7 +185,7 @@ struct RenderContext {
 	int surfelGIMaxIrradianceRays = 4096;
 	int surfelGIMaxRayTracedSurfels = 8192;
 	int surfelGIMaxRaysPerSurfel = 8;
-	int surfelGIRTMaxTriangles = 250000; // 0 disables the Surfel GI preflight cap
+	int surfelGIRTMaxTriangles = 2000000; // 0 disables the Surfel GI preflight cap
 	float surfelGIRTBuildBudgetMs = 0.75f;
 	int surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	int surfelGIRTMaxResidentMB = 512;
@@ -250,7 +250,7 @@ struct RenderContext {
 	bool cleanSurfelGIUseRadialDepth = false;
 	bool cleanSurfelGIUseRayGuiding = false;
 	bool cleanSurfelGIUseRayBinning = true;
-	bool cleanSurfelGIUseScreenTrace = true;
+	bool cleanSurfelGIUseScreenTrace = false;
 	bool cleanSurfelGIUseSurfelFallbackTrace = true;
 	bool cleanSurfelGIPlacementValidation = false;
 

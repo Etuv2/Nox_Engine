@@ -62,6 +62,68 @@ float SurfelGuideCellWeight(uint surfelID, uint guideBin)
     return max(SurfelLuminance(radiance), 0.0) * max(confidence, 0.0);
 }
 
+float SurfelGuideTotalWeight(uint surfelID)
+{
+    float totalWeight = 0.0;
+    for (uint guideBin = 0u; guideBin < SURFEL_GUIDE_CELLS; ++guideBin) {
+        totalWeight += SurfelGuideCellWeight(surfelID, guideBin);
+    }
+    return totalWeight;
+}
+
+bool SurfelSelectGuideBin(uint surfelID,
+                          float selectionTarget,
+                          float totalWeight,
+                          out uint selectedBin,
+                          out float selectedWeight)
+{
+    selectedBin = 0u;
+    selectedWeight = 0.0;
+    if (!(totalWeight > 1e-6) || isnan(totalWeight) || isinf(totalWeight)) {
+        return false;
+    }
+
+    float target = clamp(selectionTarget, 0.0, 0.999999) * totalWeight;
+    float cumulative = 0.0;
+    for (uint guideBin = 0u; guideBin < SURFEL_GUIDE_CELLS; ++guideBin) {
+        float weight = SurfelGuideCellWeight(surfelID, guideBin);
+        if (!(weight > 0.0) || isnan(weight) || isinf(weight)) {
+            continue;
+        }
+
+        cumulative += weight;
+        if (cumulative >= target) {
+            selectedBin = guideBin;
+            selectedWeight = weight;
+            return true;
+        }
+    }
+
+    for (uint guideBin = 0u; guideBin < SURFEL_GUIDE_CELLS; ++guideBin) {
+        float weight = SurfelGuideCellWeight(surfelID, guideBin);
+        if (weight > selectedWeight && !isnan(weight) && !isinf(weight)) {
+            selectedBin = guideBin;
+            selectedWeight = weight;
+        }
+    }
+    return selectedWeight > 0.0;
+}
+
+float SurfelGuidePdf(uint surfelID, vec3 hemiDir, out bool hasGuide)
+{
+    float totalWeight = SurfelGuideTotalWeight(surfelID);
+    hasGuide = totalWeight > 1e-6 && !isnan(totalWeight) && !isinf(totalWeight);
+    if (!hasGuide) {
+        return 0.0;
+    }
+
+    uint guideBin = SurfelGuideBin(hemiDir);
+    float selectedWeight = SurfelGuideCellWeight(surfelID, guideBin);
+    return (selectedWeight / max(totalWeight, 1e-6)) *
+        SURFEL_GUIDE_CELL_DENSITY *
+        max(hemiDir.z, 0.0);
+}
+
 bool SurfelSampleGuideMap(uint surfelID, uint seed, out vec3 hemiDir, out float pdf)
 {
     if (uUseRayGuiding == 0) {
@@ -71,23 +133,15 @@ bool SurfelSampleGuideMap(uint surfelID, uint seed, out vec3 hemiDir, out float 
     }
 
     float totalWeight = 0.0;
-    float bestScore = 3.402823466e+38;
     float selectedWeight = 0.0;
     uint selectedBin = 0u;
+    float selectionTarget = SurfelHash01(seed ^ 0x61c88647u);
     for (uint guideBin = 0u; guideBin < SURFEL_GUIDE_CELLS; ++guideBin) {
         float weight = SurfelGuideCellWeight(surfelID, guideBin);
         totalWeight += weight;
-        if (weight > 0.0) {
-            float score = SurfelHash01(seed ^ (guideBin * 0x9e3779b9u)) / max(weight, 1e-6);
-            if (score < bestScore) {
-                bestScore = score;
-                selectedWeight = weight;
-                selectedBin = guideBin;
-            }
-        }
     }
 
-    if (!(totalWeight > 1e-6) || !(selectedWeight > 0.0) || isnan(totalWeight) || isinf(totalWeight)) {
+    if (!SurfelSelectGuideBin(surfelID, selectionTarget, totalWeight, selectedBin, selectedWeight)) {
         hemiDir = vec3(0.0, 0.0, 1.0);
         pdf = 1.0 / SURFEL_PI;
         return false;
@@ -146,7 +200,12 @@ void main()
         bool guided = tryGuided && SurfelSampleGuideMap(request.surfelID, seed, hemiDir, pdf);
         if (!guided) {
             hemiDir = SurfelCosineHemisphereSample(SurfelHash01(seed), SurfelHash01(seed ^ 0x9e3779b9u));
-            pdf = max(hemiDir.z, 0.0) / SURFEL_PI;
+            float cosinePdf = max(hemiDir.z, 0.0) / SURFEL_PI;
+            bool hasGuide;
+            float guidedPdf = uUseRayGuiding != 0 ? SurfelGuidePdf(request.surfelID, hemiDir, hasGuide) : 0.0;
+            pdf = hasGuide
+                ? max(mix(cosinePdf, guidedPdf, SURFEL_GUIDE_MIX_PROBABILITY), 1e-4)
+                : max(cosinePdf, 1e-4);
         }
 
         vec3 direction = SurfelHemiToWorld(hemiDir, normal);

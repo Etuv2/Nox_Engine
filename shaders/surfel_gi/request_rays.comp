@@ -22,10 +22,10 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
 
-const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 4u;
-const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 4u;
-const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 2u;
-const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 4u;
+const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 6u;
+const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 6u;
+const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 3u;
+const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 6u;
 
 uint FrameDelta(uint newerFrame, uint olderFrame)
 {

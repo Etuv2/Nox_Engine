@@ -113,7 +113,7 @@ void main()
 
     for (uint i = 1u; i < 27u; ++i) {
         ivec3 offset = SurfelCubeNeighborOffset(i);
-        vec3 samplePos = surfel.worldPos_radius.xyz + vec3(offset) * max(baseAddress.cellSize * 0.95, 0.001);
+        vec3 samplePos = baseAddress.center + vec3(offset) * max(baseAddress.cellSize, 0.001);
         SurfelGridAddress neighborAddress;
         if (!SurfelWorldToGridAddress(
                 samplePos,

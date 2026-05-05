@@ -210,10 +210,14 @@
     <None Include="shaders\surfel_gi\debug_surfels.vert" />
     <None Include="shaders\surfel_gi\generate_rays.comp" />
     <None Include="shaders\surfel_gi\integrate.comp" />
+    <None Include="shaders\surfel_gi\irradiance_snapshot.comp" />
+    <None Include="shaders\surfel_gi\irradiance_sharing.comp" />
     <None Include="shaders\surfel_gi\radial_depth_update.comp" />
     <None Include="shaders\surfel_gi\recycle_surfels.comp" />
     <None Include="shaders\surfel_gi\request_rays.comp" />
     <None Include="shaders\surfel_gi\spawn.comp" />
+    <None Include="shaders\surfel_gi\spatial_filter.comp" />
+    <None Include="shaders\surfel_gi\temporal_filter.comp" />
     <None Include="shaders\surfel_gi\trace_rays.comp" />
     <None Include="shaders\surfel_gi\update_surfels.comp" />
     <None Include="shaders\svgf_atrous_comp.glsl" />

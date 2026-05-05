@@ -1,0 +1,3265 @@
+[MainWindow] Initializing...
+[Core] Initializing engine subsystems...
+[Core] Initializing graphics...
+[ModularRenderer] Shared resources initialized.
+[ShadowPass] Initialized successfully.
+[LPVPass] Initializing Light Propagation Volume GI system...
+[LPVPass] Initialized successfully:
+  - Grid Resolution: 128^3
+  - Voxel Size: 0.5m
+  - RSM Resolution: 512x512
+  - VPL Sample Count: 32000
+  - Propagation Iterations: 5
+[GBufferPass] Initialized successfully.
+[ComputeShader] Compute shaders supported (OpenGL 4.6)
+[ComputeShader] Loading compute shader: shaders/transform_history_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 29)
+[RTPass] Initializing Ray Tracing Pass...
+[ComputeShader] Loading compute shader: shaders/rt_bidirectional_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 31)
+[ComputeShader] Loading compute shader: shaders/svgf_temporal_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 33)
+[ComputeShader] Loading compute shader: shaders/svgf_variance_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 35)
+[ComputeShader] Loading compute shader: shaders/svgf_atrous_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 37)
+[RTPass] Initialization complete
+[SSAOPass] Initialized successfully at 960x540 internal resolution.
+[ComputeShader] Loading compute shader: shaders/screen_space_shadows_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 45)
+[IndirectDiffusePass] Initializing visibility-bitmask indirect diffuse pipeline...
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_depth_prepare_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 50)
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_depth_pyramid_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 52)
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_full_normals_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 54)
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_radiance_downsample_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 56)
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_gather_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 58)
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_temporal_resolve_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 60)
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_denoise_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 62)
+[ComputeShader] Loading compute shader: shaders/indirect_diffuse_upsample_comp.glsl
+[ComputeShader] Successfully compiled and linked compute shader (ID: 64)
+[IndirectDiffusePass] Resize 1920x1080 (quarter: 480x270, depth mips: 9)
+[IndirectDiffusePass] Visibility-bitmask indirect diffuse initialization complete
+[LightingPass] Created fallback cubemap (ID: 75)
+[LightingPass] Created fallback BRDF LUT (ID: 76)
+[LightingPass] Initialized successfully.
+[BloomPass] Initialized successfully.
+[PostProcessPass] Initialized successfully.
+[GUIPass] Initialized successfully for 1920x1080 resolution
+[DebugBBoxPass] Initialized successfully with instanced batching
+[ModularRenderer] Initialized successfully with 1920x1080 resolution.
+[Core] ModularRenderer initialized successfully!
+[Core] Initializing lighting...
+[DirectionalLight] Legacy cascade system disabled - using unified LightManager shadows
+[DirectionalLight] DirectionalLight configured for unified shadow system:
+  - Shadow Size: 2048x2048
+  - PCSS enabled: Yes
+  - Using LightManager shadow array instead of separate FBO
+[Core] Initializing camera...
+[Core] Initializing physics...
+[Core] Initializing scene...
+[Core] NOX_FIRST_SCENE override resolved to: scenes\surfel_gi_cornell_validation.json
+[LightManager] Created with shadow configuration:
+  - Max directional lights: 2
+  - Directional cascades: 4
+  - Max spot lights: 4
+  - Max point lights: 4
+  - Base resolution: 1024
+[SceneLoader] Loading scene: scenes\surfel_gi_cornell_validation.json
+[Scene] Import summary for cornell_box.glb: nodes=10, meshes=8, primitives=8, importedNormals=8, generatedNormals=0, normalMapsSuppressed=0, texCoord1Primitives=0, uvSet1Materials=0, skins=0, joints=0, animations=0, jointPrimitives=0, weightPrimitives=0, weightedSkinPrimitives=0, runtimeSkinned=no
+[Scene] Model loaded as non-skinned geometry (runtime skinning disabled).
+[Scene] Promoted 16 mesh attachment(s) from identity wrapper nodes to transform-carrying ancestors.
+[Scene] Load diagnostics for cornell_box.glb: totalMs=0.8971, parseMs=0.4972, nodeBuildMs=0.0089, primitiveBuildMs=0.0795, materialSetupMs=0.0071, animationLoadMs=0.0001, materialCacheHits=0, materialCacheMisses=8, textureRefs=0, uniqueTextureLoads=0, totalVertices=64, totalIndices=96
+[DirectionalLight] Legacy cascade system disabled - using unified LightManager shadows
+[DirectionalLight] DirectionalLight configured for unified shadow system:
+  - Shadow Size: 2048x2048
+  - PCSS enabled: Yes
+  - Using LightManager shadow array instead of separate FBO
+[LightNode] Position set to (0,100,0)
+[SceneLoader] Successfully loaded directional light node 'CornellSun' at (0,3.5,2) with intensity 4, enabled: 1
+[SceneLoader] Loaded 2 root nodes with ECS entities
+[SceneLoader] Skybox disabled for scene 'surfel_gi_cornell_validation' because the skybox path is empty.
+[SceneLoader] Scene load summary: scene='surfel_gi_cornell_validation', path='scenes\surfel_gi_cornell_validation.json', authoredRootNodes=2, models=1, transforms=13, maxTransformID=14, renderables=1, lights=1, cameras=0, skyboxesLoaded=0, skyboxesDisabled=1
+[Core] Applied scene camera override from scenes\surfel_gi_cornell_validation.json position=(0, 1.25, 4.25) yaw=-90 pitch=-5 fov=55 near=0.05 far=50
+[LightManager] Initializing unified shadow system:
+  - Base resolution: 2048x2048
+- Total shadow layers: 36
+  - Directional lights: 2 x 4 cascades
+  - Spot lights: 4
+  - Point lights: 4 x 6 faces
+[LightManager] Creating shadow array texture with new Texture class...
+[LightManager] Shadow array texture created: ID=93
+[LightManager] Validating shadow array texture...
+  Texture ID: 93
+  Dimensions: 2048x2048x36
+  Internal Format: 0x81a6
+  Target: 0x8c1a
+[LightManager] Shadow array validated OK (validation #1)
+[LightManager] Shadow system initialized successfully:
+  - Shadow array texture ID: 93
+- Shadow FBO ID: 21
+  - PCSS enabled: No
+[LightManager] Registered DirectionalLight_1 (Type: 0, Enabled: 1, Casts Shadows: 1)
+[LightManager] Registered light node with light
+[LightManager] Lights total=1 enabled=1 shadowCasting=1
+[Core] Scene bounding box cached successfully.
+[Core] Initializing UI...
+[ImGuiWindowManager] Initialized window system (gizmo overlay mode)
+[ImGuiWindowManager] Window states loaded from imgui_layout.json
+[Core] PerformanceRecorder initialized
+[Core] RuntimeStateManager initialized
+[Core] State export callbacks configured
+[RenderingSettings] Synced to renderer - Exposure: 0.96, Gamma: 2.16, TM: 2, Bloom: ON, SSAO: ON
+[ImGuiWindowManager] Connected ModularRenderer to RenderingSettingsWindow
+[Core] Initializing input system...
+[InputManager] Controller events enabled
+[InputManager] === Initializing Gamepads ===
+[InputManager] Found 0 joystick device(s)
+[InputManager] === Gamepad Initialization Complete ===
+[InputManager] Total controllers connected: 0
+[InputManager] Initialized successfully
+[InputManager] Active gamepads: 0
+[InputManager] Created input context: global
+[InputManager] Created input context: camera
+[InputManager] Created input context: editor
+[InputIntegration] Setting up editor context...
+[InputIntegration] Editor context setup complete with gizmo bindings
+[InputManager] Created input context: lighting
+[InputManager] Created input context: animation
+[InputManager] Created input context: gamepad
+[InputIntegration] Setting up gamepad context...
+[InputIntegration] Gamepad context setup complete (look sensitivity: 100)
+[InputIntegration] Activating default contexts...
+[InputManager] Pushed context: global (stack size: 1)
+[InputManager] Pushed context: camera (stack size: 2)
+[InputManager] Pushed context: editor (stack size: 3)
+[InputManager] Pushed context: lighting (stack size: 4)
+[InputManager] Pushed context: animation (stack size: 5)
+[InputManager] Pushed context: gamepad (stack size: 6)
+[InputIntegration] All contexts activated
+[InputManager] Loaded configuration from: config/input_config.json
+[InputIntegration] Loaded input configuration
+[InputIntegration] Initialized successfully
+[InputIntegration] Mouse locked - Camera control
+[Core] Engine initialization complete!
+[MainWindow] Initialization complete!
+[MainWindow] Starting main loop...
+[MainWindow] Window restored/shown, resuming rendering
+[RTPass] Resizing to 1904x1041
+[RTPass] Accumulation reset
+[IndirectDiffusePass] Resize 1904x1041 (quarter: 476x260, depth mips: 9)
+[GUIPass] Resized to 1904x1041
+[ModularRenderer] Resized to 1904x1041
+[Core] Window resized to 1904x1041
+[MainWindow] Window resized to 1904x1041
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[Core] Building BVH for scene acceleration...
+[Core] BVH built successfully:
+  - Nodes: 1
+  - Leaves: 1
+  - Objects: 2
+  - Max Depth: 0
+[ShadowPass] Set shadow shader on LightManager.
+[DefaultTextures] Creating default textures (one-time initialization)...
+[DefaultTextures] All default textures created successfully!
+[DefaultTextures] White: 91, Black: 95, Normal: 96, AOWhite: 97, MR: 98
+[ComputeShader] Loading compute shader: shaders/surfel_gi/begin_frame.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 99)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/count_live_surfels.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 101)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/update_surfels.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 103)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/recycle_surfels.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 105)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/coverage.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 107)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/spawn.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 109)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/clear_grid.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 111)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/build_grid.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 113)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/cell_average.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 115)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/request_rays.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 117)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/allocate_rays.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 119)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/generate_rays.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 121)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/trace_rays.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 123)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/integrate.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 125)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/radial_depth_update.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 127)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/irradiance_snapshot.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 129)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/irradiance_sharing.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 131)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/apply_indirect.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 133)
+[ComputeShader] Loading compute shader: shaders/surfel_gi/spatial_filter.comp
+[ComputeShader] Successfully compiled and linked compute shader (ID: 135)
+[SurfelGIPipeline] G-buffer bindings: normalRM(unit 0)=1 albedoAO(unit 1)=2 materialID(unit 2)=4 emissive(unit 3)=5 transformID(unit 4)=6 depth(unit 5)=9
+[BVHBuilder] Building scene BVH for 64 triangles (world-space transformed)...
+[BVHBuilder] First triangle vertices (world-space):
+  v0: (-0.99, 1.04, 0)
+  v1: (1, 1.04, 0)
+  v2: (1, 1.04, 1.99)
+  center: (0.336667, 1.04, 0.663333)
+[BVHBuilder] Built scene BVH with 71 nodes, max depth 8
+[RTSceneResources] Shared BVH uploaded: 64 triangles, 71 nodes, max depth 8
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=120 totalGpuMs=10.9036 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.007168
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.047104
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.371712
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   spawn gpuMs=0.377856
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.006144
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.021504
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.62976
+[SurfelGISubpassMetrics]   integrate gpuMs=0.013312
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.029696
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.233472
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.04096
+[SurfelGISubpassMetrics]   count_live gpuMs=0.014336
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=8.0384
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.134144
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=240 totalGpuMs=9.93178 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.00512
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.04608
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.37376
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   spawn gpuMs=0.3072
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.006144
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.05632
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.022528
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.584704
+[SurfelGISubpassMetrics]   integrate gpuMs=0.012288
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.029696
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.018432
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.227328
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.04096
+[SurfelGISubpassMetrics]   count_live gpuMs=0.014336
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=7.19565
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.134144
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=360 totalGpuMs=9.84474 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.006144
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.047104
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.03072
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.349184
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   spawn gpuMs=0.374784
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.176128
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.021504
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.530432
+[SurfelGISubpassMetrics]   integrate gpuMs=0.013312
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.029696
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.02048
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.228352
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.04096
+[SurfelGISubpassMetrics]   count_live gpuMs=0.014336
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=7.10554
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.136192
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=480 totalGpuMs=10.8493 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.006144
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.04608
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.350208
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.009216
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   spawn gpuMs=0.361472
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.17408
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.05632
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.021504
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.574464
+[SurfelGISubpassMetrics]   integrate gpuMs=0.011264
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.028672
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.018432
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.2304
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   count_live gpuMs=0.013312
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=8.08038
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.13824
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=600 totalGpuMs=9.96045 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.006144
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.047104
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.352256
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   spawn gpuMs=0.36352
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.058368
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.022528
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.64
+[SurfelGISubpassMetrics]   integrate gpuMs=0.013312
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.028672
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.229376
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   count_live gpuMs=0.014336
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=7.12397
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.135168
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=720 totalGpuMs=9.09722 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.006144
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.047104
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.370688
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   spawn gpuMs=0.369664
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.006144
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.006144
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.021504
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.515072
+[SurfelGISubpassMetrics]   integrate gpuMs=0.012288
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.029696
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.229376
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   count_live gpuMs=0.013312
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=6.36416
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.136192
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=840 totalGpuMs=9.21907 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.006144
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.04608
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.377856
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.169984
+[SurfelGISubpassMetrics]   spawn gpuMs=0.345088
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.022528
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.641024
+[SurfelGISubpassMetrics]   integrate gpuMs=0.016384
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.028672
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.228352
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   count_live gpuMs=0.013312
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=6.37645
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.136192
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=960 totalGpuMs=11.9859 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.007168
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.04608
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.374784
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   spawn gpuMs=0.371712
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.006144
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.17408
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.021504
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.591872
+[SurfelGISubpassMetrics]   integrate gpuMs=0.012288
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.029696
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.236544
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   count_live gpuMs=0.014336
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=9.15763
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.137216
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=1080 totalGpuMs=9.96557 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.007168
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.047104
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.374784
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   spawn gpuMs=0.362496
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.173056
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.022528
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.584704
+[SurfelGISubpassMetrics]   integrate gpuMs=0.012288
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.03072
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.2304
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.04096
+[SurfelGISubpassMetrics]   count_live gpuMs=0.014336
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=7.15571
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.137216
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=1200 totalGpuMs=11.3162 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.006144
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.047104
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.032768
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.043008
+[SurfelGISubpassMetrics]   spawn gpuMs=0.396288
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.171008
+[SurfelGISubpassMetrics]   spawn gpuMs=0.360448
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.006144
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.037888
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.022528
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.5888
+[SurfelGISubpassMetrics]   integrate gpuMs=0.012288
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.028672
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.227328
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.043008
+[SurfelGISubpassMetrics]   count_live gpuMs=0.013312
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=8.48896
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.136192
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[SurfelGISubpassMetrics] frame=1320 totalGpuMs=11.1974 indirectResolution=1904x1041 maxSurfels=131072 rayBudget=32768 gatherBudget=512
+[SurfelGISubpassMetrics]   begin_frame gpuMs=0.006144
+[SurfelGISubpassMetrics]   update_surfels gpuMs=0.047104
+[SurfelGISubpassMetrics]   recycle_surfels gpuMs=0.031744
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   spawn gpuMs=0.37888
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.008192
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   spawn gpuMs=0.33792
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.172032
+[SurfelGISubpassMetrics]   clear_grid gpuMs=0.007168
+[SurfelGISubpassMetrics]   build_grid gpuMs=0.169984
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.038912
+[SurfelGISubpassMetrics]   request_rays gpuMs=0.038912
+[SurfelGISubpassMetrics]   allocate_rays gpuMs=0.057344
+[SurfelGISubpassMetrics]   generate_rays gpuMs=0.022528
+[SurfelGISubpassMetrics]   trace_rays gpuMs=0.649216
+[SurfelGISubpassMetrics]   integrate gpuMs=0.011264
+[SurfelGISubpassMetrics]   radial_depth gpuMs=0.028672
+[SurfelGISubpassMetrics]   irradiance_snapshot gpuMs=0.019456
+[SurfelGISubpassMetrics]   irradiance_sharing gpuMs=0.2304
+[SurfelGISubpassMetrics]   cell_average gpuMs=0.039936
+[SurfelGISubpassMetrics]   count_live gpuMs=0.013312
+[SurfelGISubpassMetrics]   apply_indirect gpuMs=8.35277
+[SurfelGISubpassMetrics]   spatial_filter gpuMs=0.136192
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0
+[InputManager] Set context 'camera' enabled: 1
+[InputManager] Set context 'editor' enabled: 0

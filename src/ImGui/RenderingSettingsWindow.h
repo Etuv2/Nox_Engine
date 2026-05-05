@@ -134,7 +134,7 @@ private:
 	int m_surfelGIMaxIrradianceRays = 4096;
 	int m_surfelGIMaxRayTracedSurfels = 8192;
 	int m_surfelGIMaxRaysPerSurfel = 8;
-	int m_surfelGIRTMaxTriangles = 250000;
+	int m_surfelGIRTMaxTriangles = 2000000;
 	float m_surfelGIRTBuildBudgetMs = 0.75f;
 	int m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	int m_surfelGIRTMaxResidentMB = 512;
@@ -175,7 +175,7 @@ private:
 	bool m_cleanSurfelGIUseRadialDepth = false;
 	bool m_cleanSurfelGIUseRayGuiding = false;
 	bool m_cleanSurfelGIUseRayBinning = true;
-	bool m_cleanSurfelGIUseScreenTrace = true;
+	bool m_cleanSurfelGIUseScreenTrace = false;
 	bool m_cleanSurfelGIUseSurfelFallbackTrace = true;
 	bool m_cleanSurfelGIPlacementValidation = false;
 

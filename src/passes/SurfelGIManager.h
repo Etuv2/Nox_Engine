@@ -54,7 +54,8 @@ enum class SurfelGIDebugView : uint32_t {
 	RadiusError = 31,
 	GridAxisRegion = 32,
 	GridOverflow = 33,
-	IrradianceConfidence = 34
+	IrradianceConfidence = 34,
+	RawIndirectIrradiance = 35
 };
 
 struct SurfelGISettings {
@@ -85,7 +86,7 @@ struct SurfelGISettings {
 	float finalGatherNormalCos = 0.15f;
 	float radialDepthSigmaScale = 1.0f;
 	float indirectIntensity = 1.0f;
-	float cellAverageFallbackStrength = 0.35f;
+	float cellAverageFallbackStrength = 0.20f;
 	float skyMissRadianceMultiplier = 1.0f;
 	float finalGatherResolutionScale = 1.0f;
 
@@ -94,7 +95,7 @@ struct SurfelGISettings {
 	bool useRayGuiding = false;
 	bool useRayBinning = true;
 	bool useIrradianceSharing = true;
-	bool useScreenSpaceTrace = true;
+	bool useScreenSpaceTrace = false;
 	bool useSoftwareBVHTrace = true;
 	bool useSurfelFallbackTrace = true;
 	bool placementValidationMode = false;
@@ -124,6 +125,8 @@ struct SurfelGIFrameStats {
 	uint32_t underCoveredTileCount = 0;
 	uint32_t highPriorityTileCount = 0;
 	uint32_t coverageSpawnedTileCount = 0;
+	uint32_t coverageVisibleTileCount = 0;
+	uint32_t coverageInvalidTileCount = 0;
 	float updateTimeMs = 0.0f;
 	float traceTimeMs = 0.0f;
 	float applyTimeMs = 0.0f;

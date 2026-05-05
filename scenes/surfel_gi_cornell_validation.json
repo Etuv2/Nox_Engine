@@ -29,7 +29,7 @@
       "light": {
         "type": "directional",
         "color": [1.0, 0.92, 0.78],
-        "intensity": 4.0,
+        "intensity": 1.5,
         "enabled": true,
         "castsShadows": true,
         "shadowSize": 2048,

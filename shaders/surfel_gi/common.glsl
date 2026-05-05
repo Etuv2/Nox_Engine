@@ -14,6 +14,7 @@
 #define B_RADIAL_DEPTH 19
 #define B_GUIDE_MAP 20
 #define B_GUIDE_SCALE 21
+#define B_IRRADIANCE_SNAPSHOT 21
 #define B_TRANSFORMS 22
 #define B_LIGHTS 23
 #define B_BVH_NODES 24
@@ -59,13 +60,14 @@
 #define SURFEL_COVERAGE_TILE_UNDER_COVERED (1u << 1)
 #define SURFEL_COVERAGE_TILE_HIGH_PRIORITY (1u << 2)
 #define SURFEL_COVERAGE_TILE_SPAWNED_RECENTLY (1u << 3)
+#define SURFEL_COVERAGE_TILE_FINAL_GI_VALID (1u << 4)
 
 const uint SURFEL_RADIAL_DEPTH_TEXELS = 16u;
 const uint SURFEL_GUIDE_CELLS = 36u;
 const uint SURFEL_INVALID_INDEX = 0xffffffffu;
 const uint SURFEL_SPAWN_TILE_CANDIDATES = 8u;
 const float SURFEL_PI = 3.14159265358979323846;
-const float SURFEL_RADIAL_DEPTH_MIN_VISIBILITY = 0.35;
+const float SURFEL_RADIAL_DEPTH_MIN_VISIBILITY = 0.05;
 
 struct Surfel
 {
@@ -724,7 +726,7 @@ bool SurfelWorldNeighborAddress(vec3 worldPos,
     ivec3 offset = neighborRadius == 0u
         ? ivec3(0)
         : (neighborRadius == 1u ? SurfelCubeNeighborOffset(neighborIndex) : SurfelCubeRadius2NeighborOffset(neighborIndex));
-    vec3 samplePos = worldPos + vec3(offset) * max(baseAddress.cellSize * 0.95, 0.001);
+    vec3 samplePos = baseAddress.center + vec3(offset) * max(baseAddress.cellSize, 0.001);
     return SurfelWorldToGridAddress(samplePos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent, address);
 }
 

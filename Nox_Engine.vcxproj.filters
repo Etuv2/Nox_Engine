@@ -713,6 +713,12 @@
     <None Include="shaders\surfel_gi\integrate.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
+    <None Include="shaders\surfel_gi\irradiance_snapshot.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\irradiance_sharing.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
     <None Include="shaders\surfel_gi\radial_depth_update.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
@@ -723,6 +729,12 @@
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
     <None Include="shaders\surfel_gi\spawn.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\spatial_filter.comp">
+      <Filter>Source Files\misc\shaders\global_illumination</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\temporal_filter.comp">
       <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
     <None Include="shaders\surfel_gi\trace_rays.comp">

@@ -3,8 +3,61 @@
 #include "Scene.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <queue>
 #include <iostream>
+
+namespace {
+	template <typename Fn>
+	void ForEachRenderableMesh(const RenderableComponent& renderable, Fn&& fn)
+	{
+		if (!renderable.model) {
+			return;
+		}
+
+		if (renderable.renderWholeModel) {
+			for (const auto& mesh : renderable.model->meshes) {
+				fn(mesh);
+			}
+			return;
+		}
+
+		for (uint32_t meshIndex : renderable.meshIndices) {
+			if (meshIndex < renderable.model->meshes.size()) {
+				fn(renderable.model->meshes[meshIndex]);
+			}
+		}
+	}
+
+	glm::mat4 ResolveRenderableMeshLocalTransform(const RenderableComponent& renderable, const MeshComponent& mesh)
+	{
+		if (!renderable.renderWholeModel || mesh.sourceNodeIndex < 0 || !renderable.model) {
+			return glm::mat4(1.0f);
+		}
+
+		const int referenceNodeIndex = renderable.nodeIndex;
+		if (referenceNodeIndex < 0 || referenceNodeIndex == mesh.sourceNodeIndex) {
+			return mesh.localTransform;
+		}
+
+		const auto& nodeWorldTransforms = renderable.model->GetNodeWorldTransforms();
+		if (referenceNodeIndex >= static_cast<int>(nodeWorldTransforms.size()) ||
+			mesh.sourceNodeIndex >= static_cast<int>(nodeWorldTransforms.size())) {
+			return mesh.localTransform;
+		}
+
+		const glm::mat4 referenceInverse = glm::inverse(nodeWorldTransforms[referenceNodeIndex]);
+		for (int column = 0; column < 4; ++column) {
+			for (int row = 0; row < 4; ++row) {
+				if (!std::isfinite(referenceInverse[column][row])) {
+					return mesh.localTransform;
+				}
+			}
+		}
+
+		return referenceInverse * mesh.localTransform;
+	}
+}
 
 RT::BVHData BVHBuilder::BuildFromMesh(
 	const MeshComponent& mesh,
@@ -41,40 +94,34 @@ RT::BVHData BVHBuilder::BuildFromScene(
 {
 	RT::BVHData bvhData;
 
-	if (!sceneGraph || !sceneGraph->GetRoot()) {
+	ComponentManager* componentManager = sceneGraph ? sceneGraph->GetComponentManager() : nullptr;
+	TransformSystem* transformSystem = sceneGraph ? sceneGraph->GetTransformSystem() : nullptr;
+	if (!sceneGraph || !componentManager || !transformSystem) {
 		std::cerr << "[BVHBuilder] Invalid scene graph" << std::endl;
 		return bvhData;
 	}
 
-	// Traverse scene graph and collect all mesh triangles with proper world transforms
-	std::function<void(const std::shared_ptr<SceneNode>&, const glm::mat4&)> collectTriangles;
-	collectTriangles = [&](const std::shared_ptr<SceneNode>& node, const glm::mat4& parentTransform) {
-		if (!node) return;
+	const auto& renderablePool = componentManager->GetRenderablePool();
+	for (const auto& entry : renderablePool) {
+		const RenderableComponent& renderable = entry.component;
+		if (!renderable.model) {
+			continue;
+		}
 
-		// Compute this node's world transform by combining with parent
-		// Use GetGlobalTransform which handles both base transform and animated transform
-		glm::mat4 worldTransform = node->GetGlobalTransform(parentTransform);
-
-		// Extract meshes if present
-		if (node->GetModel()) {
-			auto model = node->GetModel();
-			// Scene contains meshes
-			for (const auto& mesh : model->meshes) {
-				// Extract triangles with world-space transforms applied
-				auto meshTriangles = ExtractTriangles(mesh, worldTransform);
-				bvhData.triangles.insert(bvhData.triangles.end(),
-					meshTriangles.begin(), meshTriangles.end());
+		const glm::mat4 entityWorldTransform = transformSystem->GetWorldTransform(entry.entity);
+		ForEachRenderableMesh(renderable, [&](const MeshComponent& mesh) {
+			if (mesh.rawVertices.empty() || mesh.rawIndices.empty()) {
+				return;
 			}
-		}
 
-		// Recurse to children with accumulated world transform
-		for (const auto& child : node->children) {
-			collectTriangles(child, worldTransform);
-		}
-		};
-
-	// Start traversal from root with identity matrix
-	collectTriangles(sceneGraph->GetRoot(), glm::mat4(1.0f));
+			const glm::mat4 meshWorldTransform =
+				entityWorldTransform * ResolveRenderableMeshLocalTransform(renderable, mesh);
+			auto meshTriangles = ExtractTriangles(mesh, meshWorldTransform);
+			bvhData.triangles.insert(bvhData.triangles.end(),
+				meshTriangles.begin(),
+				meshTriangles.end());
+		});
+	}
 
 	if (bvhData.triangles.empty()) {
 		std::cerr << "[BVHBuilder] No triangles found in scene" << std::endl;

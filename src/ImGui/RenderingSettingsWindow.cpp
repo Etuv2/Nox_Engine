@@ -140,7 +140,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGIMaxIrradianceRays = 4096;
 	m_surfelGIMaxRayTracedSurfels = 8192;
 	m_surfelGIMaxRaysPerSurfel = 8;
-	m_surfelGIRTMaxTriangles = 250000;
+	m_surfelGIRTMaxTriangles = 2000000;
 	m_surfelGIRTBuildBudgetMs = 0.75f;
 	m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	m_surfelGIRTMaxResidentMB = 512;
@@ -180,7 +180,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_cleanSurfelGIUseRadialDepth = false;
 	m_cleanSurfelGIUseRayGuiding = false;
 	m_cleanSurfelGIUseRayBinning = true;
-	m_cleanSurfelGIUseScreenTrace = true;
+	m_cleanSurfelGIUseScreenTrace = false;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;
 	m_cleanSurfelGIPlacementValidation = false;
 
@@ -1072,7 +1072,8 @@ void RenderingSettingsWindow::Render() {
 					{ 31, "Radius Error" },
 					{ 32, "Grid Axis Region" },
 					{ 33, "Grid Overflow" },
-					{ 34, "Irradiance Confidence" }
+					{ 34, "Irradiance Confidence" },
+					{ 35, "Raw Irradiance" }
 				};
 				if (DebugCombo("Surfel Debug View", &m_cleanSurfelGIDebugView, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Placement Validation Mode", &m_cleanSurfelGIPlacementValidation)) { SyncToRenderer(); }
@@ -1108,6 +1109,9 @@ void RenderingSettingsWindow::Render() {
 						stats->underCoveredTileCount,
 						stats->highPriorityTileCount,
 						stats->coverageSpawnedTileCount);
+					ImGui::Text("Coverage visible/invalid: %u / %u",
+						stats->coverageVisibleTileCount,
+						stats->coverageInvalidTileCount);
 					ImGui::Text("Recycle over/stale/pressure: %u / %u / %u",
 						stats->overCoverageRecycled,
 						stats->staleRecycled,
@@ -1909,7 +1913,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGIMaxIrradianceRays = 4096;
 	m_surfelGIMaxRayTracedSurfels = 8192;
 	m_surfelGIMaxRaysPerSurfel = 8;
-	m_surfelGIRTMaxTriangles = 250000;
+	m_surfelGIRTMaxTriangles = 2000000;
 	m_surfelGIRTBuildBudgetMs = 0.75f;
 	m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	m_surfelGIRTMaxResidentMB = 512;
@@ -1949,7 +1953,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_cleanSurfelGIUseRadialDepth = false;
 	m_cleanSurfelGIUseRayGuiding = false;
 	m_cleanSurfelGIUseRayBinning = true;
-	m_cleanSurfelGIUseScreenTrace = true;
+	m_cleanSurfelGIUseScreenTrace = false;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;
 	m_cleanSurfelGIPlacementValidation = false;
 
