@@ -40,11 +40,11 @@ const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
 const float SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT = 5.0;
 const float SURFEL_SCREEN_SAMPLE_RELIABILITY = 0.18;
-const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.72;
+const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
-const float SURFEL_MAX_SAMPLE_IRRADIANCE = 24.0;
+const float SURFEL_MAX_SAMPLE_IRRADIANCE = 32.0;
 const float SURFEL_MAX_EMISSIVE_IRRADIANCE = 64.0;
-const float SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE = 0.14;
+const float SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE = 0.18;
 
 vec3 SurfelClampRadiance(vec3 radiance)
 {
@@ -235,7 +235,7 @@ void main()
     float alpha = mix(0.0015, alphaMax, consistentChange);
     alpha = max(alpha, (1.0 - temporalConfidence) * 0.010 * sampleStability);
     if (resetEstimator) {
-        float resetAlpha = brandNew ? 0.22 : 0.12;
+        float resetAlpha = brandNew ? 0.30 : 0.16;
         alpha = max(alpha, resetAlpha);
     }
     if (SurfelIsNew(surfel)) {
@@ -252,8 +252,8 @@ void main()
     float acceptedRatio = SurfelSaturate(acceptedWeight / max(float(request.allocatedCount), 1.0));
     float allocationRatio = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
     float schedulerSupport = mix(0.65, 1.0, allocationRatio);
-    float confidenceGain = mix(0.010, 0.030, sampleStability) * acceptedRatio * schedulerSupport;
-    confidenceGain += sourceDirectSupport * acceptedRatio * schedulerSupport * 0.035;
+    float confidenceGain = mix(0.006, 0.020, sampleStability) * acceptedRatio * schedulerSupport;
+    confidenceGain += sourceDirectSupport * acceptedRatio * schedulerSupport * 0.018;
     if (resetEstimator) {
         float bootstrapBase = mix(brandNew ? 0.03 : 0.02, brandNew ? 0.11 : 0.075, sourceDirectSupport);
         float bootstrapGain = mix(brandNew ? 0.20 : 0.11, brandNew ? 0.34 : 0.22, sourceDirectSupport);
@@ -266,6 +266,8 @@ void main()
     }
 
     surfel.frameInfo.y = uFrameIndex;
+    surfel.lifecycle.y = max(surfel.lifecycle.y, 1u);
+    surfel.lifecycle.z = 0u;
     surfel.debug.x = varLum;
     surfels[request.surfelID] = surfel;
 }

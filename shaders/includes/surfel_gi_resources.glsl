@@ -27,6 +27,8 @@
 #define B_SURFEL_GI_SETTINGS 30
 #define B_SHADOW_MATRICES 31
 #define B_COVERAGE_TILES 32
+#define B_RT_INSTANCES 33
+#define B_RT_INSTANCE_NODES 34
 
 #define T_SURFEL_GBUFFER_NORMAL_RM 0
 #define T_SURFEL_GBUFFER_ALBEDO_AO 1
@@ -54,6 +56,7 @@ struct Surfel {
     vec4 shortMean;
     vec4 shortM2;
     uvec4 frameInfo;
+    uvec4 lifecycle;
     vec4 debug;
 };
 
@@ -82,6 +85,14 @@ struct SurfelCounters {
     uint coverageSpawnedTileCount;
     uint coverageVisibleTileCount;
     uint coverageInvalidTileCount;
+    uint projectedSurfels;
+    uint coverageDepthRejected;
+    uint coverageNormalRejected;
+    uint coverageMaterialRejected;
+    uint coverageRadiusRejected;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
 };
 
 #define SURFEL_COVERAGE_TILE_VISIBLE (1u << 0)
@@ -94,6 +105,7 @@ struct SurfelCoverageTile {
     vec4 lowestCoverage;
     uvec4 state;
     uvec4 pixel;
+    uvec4 projection;
 };
 
 struct SurfelGISettingsGpu {

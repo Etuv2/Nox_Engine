@@ -22,7 +22,7 @@ void main()
         discard;
     }
 
-    if (uUseDepthReject != 0) {
+    if (uUseDepthReject != 0 && vStyle.w <= 0.5) {
         vec2 uv = gl_FragCoord.xy / max(vDisk2.zw, vec2(1.0));
         if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
             discard;

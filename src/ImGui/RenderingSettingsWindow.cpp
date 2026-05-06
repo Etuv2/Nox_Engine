@@ -168,12 +168,17 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_cleanSurfelGISpawnTileSize = 8;
 	m_cleanSurfelGIMaxSurfelsPerCell = 64;
 	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
-	m_cleanSurfelGITargetRadiusPixels = 3.0f;
+	m_cleanSurfelGIMaxSpawnsPerFrame = 96;
+	m_cleanSurfelGIMaxProjectedSurfelsPerFrame = 16384;
+	m_cleanSurfelGIMaxRecycleCountPerFrame = 2048;
+	m_cleanSurfelGITargetRadiusPixels = 8.0f;
 	m_cleanSurfelGIMinRadius = 0.03f;
 	m_cleanSurfelGIMaxRadius = 5.0f;
 	m_cleanSurfelGICoverageThreshold = 0.85f;
 	m_cleanSurfelGIRecyclePressure = 0.85f;
 	m_cleanSurfelGINormalReject = 0.25f;
+	m_cleanSurfelGICoverageNormalReject = 0.86f;
+	m_cleanSurfelGICoverageDepthTolerance = 0.0035f;
 	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	m_cleanSurfelGIIntensity = 1.0f;
@@ -363,12 +368,17 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_cleanSurfelGISpawnTileSize = ctx.cleanSurfelGISpawnTileSize;
 	m_cleanSurfelGIMaxSurfelsPerCell = ctx.cleanSurfelGIMaxSurfelsPerCell;
 	m_cleanSurfelGIMaxGatherSurfelsPerPixel = ctx.cleanSurfelGIMaxGatherSurfelsPerPixel;
+	m_cleanSurfelGIMaxSpawnsPerFrame = ctx.cleanSurfelGIMaxSpawnsPerFrame;
+	m_cleanSurfelGIMaxProjectedSurfelsPerFrame = ctx.cleanSurfelGIMaxProjectedSurfelsPerFrame;
+	m_cleanSurfelGIMaxRecycleCountPerFrame = ctx.cleanSurfelGIMaxRecycleCountPerFrame;
 	m_cleanSurfelGITargetRadiusPixels = ctx.cleanSurfelGITargetRadiusPixels;
 	m_cleanSurfelGIMinRadius = ctx.cleanSurfelGIMinRadius;
 	m_cleanSurfelGIMaxRadius = ctx.cleanSurfelGIMaxRadius;
 	m_cleanSurfelGICoverageThreshold = ctx.cleanSurfelGICoverageThreshold;
 	m_cleanSurfelGIRecyclePressure = ctx.cleanSurfelGIRecyclePressure;
 	m_cleanSurfelGINormalReject = ctx.cleanSurfelGINormalReject;
+	m_cleanSurfelGICoverageNormalReject = ctx.cleanSurfelGICoverageNormalReject;
+	m_cleanSurfelGICoverageDepthTolerance = ctx.cleanSurfelGICoverageDepthTolerance;
 	m_cleanSurfelGIFinalGatherNormalReject = ctx.cleanSurfelGIFinalGatherNormalReject;
 	m_cleanSurfelGIRadialDepthVariance = ctx.cleanSurfelGIRadialDepthVariance;
 	m_cleanSurfelGIIntensity = ctx.cleanSurfelGIIntensity;
@@ -595,12 +605,17 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.cleanSurfelGISpawnTileSize = m_cleanSurfelGISpawnTileSize;
 	ctx.cleanSurfelGIMaxSurfelsPerCell = m_cleanSurfelGIMaxSurfelsPerCell;
 	ctx.cleanSurfelGIMaxGatherSurfelsPerPixel = m_cleanSurfelGIMaxGatherSurfelsPerPixel;
+	ctx.cleanSurfelGIMaxSpawnsPerFrame = m_cleanSurfelGIMaxSpawnsPerFrame;
+	ctx.cleanSurfelGIMaxProjectedSurfelsPerFrame = m_cleanSurfelGIMaxProjectedSurfelsPerFrame;
+	ctx.cleanSurfelGIMaxRecycleCountPerFrame = m_cleanSurfelGIMaxRecycleCountPerFrame;
 	ctx.cleanSurfelGITargetRadiusPixels = m_cleanSurfelGITargetRadiusPixels;
 	ctx.cleanSurfelGIMinRadius = m_cleanSurfelGIMinRadius;
 	ctx.cleanSurfelGIMaxRadius = m_cleanSurfelGIMaxRadius;
 	ctx.cleanSurfelGICoverageThreshold = m_cleanSurfelGICoverageThreshold;
 	ctx.cleanSurfelGIRecyclePressure = m_cleanSurfelGIRecyclePressure;
 	ctx.cleanSurfelGINormalReject = m_cleanSurfelGINormalReject;
+	ctx.cleanSurfelGICoverageNormalReject = m_cleanSurfelGICoverageNormalReject;
+	ctx.cleanSurfelGICoverageDepthTolerance = m_cleanSurfelGICoverageDepthTolerance;
 	ctx.cleanSurfelGIFinalGatherNormalReject = m_cleanSurfelGIFinalGatherNormalReject;
 	ctx.cleanSurfelGIRadialDepthVariance = m_cleanSurfelGIRadialDepthVariance;
 	ctx.cleanSurfelGIIntensity = m_cleanSurfelGIIntensity;
@@ -1080,10 +1095,15 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderFloat("GI Intensity", &m_cleanSurfelGIIntensity, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Surfels", &m_cleanSurfelGIMaxSurfels, 4096, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Ray Budget", &m_cleanSurfelGIMaxRayBudget, 4096, 524288)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Spawn Tile", &m_cleanSurfelGISpawnTileSize, 4, 64)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Spawn Tile", &m_cleanSurfelGISpawnTileSize, 4, 16)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Gather Surfels", &m_cleanSurfelGIMaxGatherSurfelsPerPixel, 4, 2048)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Spawns/Frame", &m_cleanSurfelGIMaxSpawnsPerFrame, 1, 1024)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Projected Surfels/Frame", &m_cleanSurfelGIMaxProjectedSurfelsPerFrame, 1024, 131072)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Recycle Budget/Frame", &m_cleanSurfelGIMaxRecycleCountPerFrame, 1, 8192)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Coverage Threshold", &m_cleanSurfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_cleanSurfelGINormalReject, -0.2f, 0.95f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Coverage Normal", &m_cleanSurfelGICoverageNormalReject, 0.50f, 0.99f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Coverage Depth", &m_cleanSurfelGICoverageDepthTolerance, 0.0002f, 0.05f, "%.4f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Final Gather Normal Reject", &m_cleanSurfelGIFinalGatherNormalReject, -0.2f, 0.95f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Radial Depth Rejection", &m_cleanSurfelGIUseRadialDepth)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Ray Guiding", &m_cleanSurfelGIUseRayGuiding)) { SyncToRenderer(); }
@@ -1941,12 +1961,17 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_cleanSurfelGISpawnTileSize = 8;
 	m_cleanSurfelGIMaxSurfelsPerCell = 64;
 	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
-	m_cleanSurfelGITargetRadiusPixels = 3.0f;
+	m_cleanSurfelGIMaxSpawnsPerFrame = 96;
+	m_cleanSurfelGIMaxProjectedSurfelsPerFrame = 16384;
+	m_cleanSurfelGIMaxRecycleCountPerFrame = 2048;
+	m_cleanSurfelGITargetRadiusPixels = 8.0f;
 	m_cleanSurfelGIMinRadius = 0.03f;
 	m_cleanSurfelGIMaxRadius = 5.0f;
 	m_cleanSurfelGICoverageThreshold = 0.85f;
 	m_cleanSurfelGIRecyclePressure = 0.85f;
 	m_cleanSurfelGINormalReject = 0.25f;
+	m_cleanSurfelGICoverageNormalReject = 0.86f;
+	m_cleanSurfelGICoverageDepthTolerance = 0.0035f;
 	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	m_cleanSurfelGIIntensity = 1.0f;

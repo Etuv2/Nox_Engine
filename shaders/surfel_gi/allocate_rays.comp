@@ -103,26 +103,32 @@ void main()
     uint requestID = rotatedRequestID;
     uint requested = rayRequests[requestID].requestedCount;
     Surfel surfel = surfels[requestID];
+    if (!SurfelIsAlive(surfel)) {
+        rayRequests[requestID].allocatedCount = 0u;
+        rayRequests[requestID].firstRay = 0u;
+        return;
+    }
     bool prioritySurfel = IsPriorityRaySurfel(surfel, requested);
     if (uPriorityPass != 0u) {
         if (!prioritySurfel) {
             return;
         }
 
-        uint budget = min(uMaxRayBudget, counters.requestedRays);
+        uint budget = uMaxRayBudget;
         float confidence = SurfelSaturate(surfel.irradiance.a);
         uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
         bool firstBootstrap = SurfelIsNew(surfel) && surfel.worldNormal_age.w < 4.0;
         bool visibleUnresolved = framesSinceVisible <= 4u &&
             (confidence < 0.70 || surfel.shortMean.a < 12.0 || requested >= 4u);
         bool alternatingExtra = ((uFrameIndex + requestID) & 1u) == 0u;
-        uint priorityGrant = 1u;
-        if (firstBootstrap || (visibleUnresolved && alternatingExtra)) {
-            priorityGrant = 2u;
+        uint priorityGrant = requested;
+        if (!firstBootstrap && visibleUnresolved && !alternatingExtra) {
+            priorityGrant = requested;
         }
         priorityGrant = min(priorityGrant, requested);
+        requested = priorityGrant;
         uint firstRay = 0u;
-        uint allocated = ReserveRays(priorityGrant, budget, firstRay);
+        uint allocated = ReserveRays(requested, budget, firstRay);
         rayRequests[requestID].allocatedCount = allocated;
         rayRequests[requestID].firstRay = allocated > 0u ? firstRay : 0u;
         return;
@@ -132,8 +138,11 @@ void main()
         return;
     }
 
-    uint budget = min(uMaxRayBudget, counters.requestedRays);
-    uint allocated = ProportionalAllocation(requested, counters.requestedRays, budget);
+    uint budget = uMaxRayBudget;
+    uint totalRequested = max(counters.requestedRays, uMaxRayBudget);
+    uint allocated = counters.requestedRays == 0u
+        ? min(requested, budget)
+        : ProportionalAllocation(requested, totalRequested, budget);
     if (allocated == 0u) {
         rayRequests[requestID].allocatedCount = 0u;
         rayRequests[requestID].firstRay = 0u;

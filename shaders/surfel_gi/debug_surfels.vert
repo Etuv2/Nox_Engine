@@ -73,9 +73,9 @@ const uint DEBUG_GRID_AXIS_REGION = 32u;
 const uint DEBUG_GRID_OVERFLOW = 33u;
 const uint DEBUG_IRRADIANCE_CONFIDENCE = 34u;
 const float DEBUG_DISK_GRAZING_RADIUS_SCALE = 0.28;
-const float GIBS_PAPER_DISK_SCALE = 2.75;
-const float GIBS_PAPER_MIN_RADIUS_PX = 7.0;
-const float GIBS_PAPER_MAX_RADIUS_PX = 30.0;
+const float GIBS_PAPER_DISK_SCALE = 1.15;
+const float GIBS_PAPER_MIN_RADIUS_PX = 3.0;
+const float GIBS_PAPER_MAX_RADIUS_PX = 14.0;
 
 float Safe01(float value)
 {
@@ -463,8 +463,44 @@ void main()
     vDiskUV = corner;
 
     vec3 diskCenterWorld = surfel.worldPos_radius.xyz;
-    vec3 diskWorldPos = diskCenterWorld + (tangent * corner.x + bitangent * corner.y) * surfelRadius;
     vec4 diskCenterView4 = uView * vec4(diskCenterWorld, 1.0);
+    if (diskCenterView4.z >= -0.001) {
+        HidePoint();
+        return;
+    }
+
+    if (paperStyle) {
+        bool paperBillboard = true;
+        float viewDepth = -diskCenterView4.z;
+        float projectedRadiusPx = rawSurfelRadius * abs(uProjection[1][1]) * max(uViewportSize.y, 1.0) * 0.5 / max(viewDepth, 1e-4);
+        float targetRadiusPx = clamp(projectedRadiusPx * GIBS_PAPER_DISK_SCALE,
+                                     GIBS_PAPER_MIN_RADIUS_PX,
+                                     GIBS_PAPER_MAX_RADIUS_PX);
+        float screenRadiusToView = 2.0 * viewDepth /
+            max(abs(uProjection[1][1]) * max(uViewportSize.y, 1.0), 1e-4);
+        float screenRadiusToViewX = 2.0 * viewDepth /
+            max(abs(uProjection[0][0]) * max(uViewportSize.x, 1.0), 1e-4);
+        vec4 paperViewPos = vec4(
+            diskCenterView4.xyz + vec3(corner.x * targetRadiusPx * screenRadiusToViewX,
+                                       corner.y * targetRadiusPx * screenRadiusToView,
+                                       0.0),
+            1.0);
+        vec4 clip = uProjection * paperViewPos;
+        if (!paperBillboard || clip.w <= 0.0) {
+            HidePoint();
+            return;
+        }
+
+        gl_Position = clip;
+        gl_PointSize = 1.0;
+        vColor = DebugColor(surfelID, surfel, alive, recycleMarker);
+        vDisk0 = vec4(diskCenterView4.xyz, targetRadiusPx * max(screenRadiusToView, screenRadiusToViewX));
+        vDisk1 = vec4(normalView, targetRadiusPx);
+        vDisk2 = vec4(clip.xy / max(abs(clip.w), 1e-6), max(uViewportSize, vec2(1.0)));
+        return;
+    }
+
+    vec3 diskWorldPos = diskCenterWorld + (tangent * corner.x + bitangent * corner.y) * surfelRadius;
     vec4 centerView4 = uView * vec4(diskWorldPos, 1.0);
     vec4 clip = uProjection * centerView4;
     if (centerView4.z >= -0.001 || clip.w <= 0.0) {
@@ -474,21 +510,6 @@ void main()
 
     float viewDepth = -diskCenterView4.z;
     float projectedRadiusPx = surfelRadius * uProjection[1][1] * max(uViewportSize.y, 1.0) * 0.5 / max(viewDepth, 1e-4);
-    if (paperStyle) {
-        float targetRadiusPx = clamp(projectedRadiusPx * GIBS_PAPER_DISK_SCALE,
-                                     GIBS_PAPER_MIN_RADIUS_PX,
-                                     GIBS_PAPER_MAX_RADIUS_PX);
-        surfelRadius *= targetRadiusPx / max(projectedRadiusPx, 1e-4);
-        diskWorldPos = diskCenterWorld + (tangent * corner.x + bitangent * corner.y) * surfelRadius;
-        centerView4 = uView * vec4(diskWorldPos, 1.0);
-        clip = uProjection * centerView4;
-        if (centerView4.z >= -0.001 || clip.w <= 0.0) {
-            HidePoint();
-            return;
-        }
-        projectedRadiusPx = targetRadiusPx;
-    }
-
     gl_Position = clip;
     gl_PointSize = 1.0;
     vColor = DebugColor(surfelID, surfel, alive, recycleMarker);

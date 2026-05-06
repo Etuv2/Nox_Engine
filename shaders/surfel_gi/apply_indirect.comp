@@ -73,9 +73,10 @@ const float SURFEL_GATHER_MIN_SUPPORT_FRACTION = 1.05;
 const float SURFEL_GATHER_MIN_SUPPORT_WORLD = 0.46;
 const float SURFEL_APPLY_EARLY_WEIGHT = 64.0;
 const float SURFEL_GRID_FALLBACK_MAX_BLEND = 0.30;
-const float SURFEL_CROSS_SURFACE_BLEED_BOOST = 3.40;
-const float SURFEL_CROSS_SURFACE_MAX_LIFT = 1.05;
-const float SURFEL_CROSS_SURFACE_CHROMA_GAIN = 2.50;
+const float SURFEL_CROSS_SURFACE_BLEED_BOOST = 1.75;
+const float SURFEL_CROSS_SURFACE_MAX_LIFT = 0.78;
+const float SURFEL_CROSS_SURFACE_CHROMA_GAIN = 1.35;
+const float SURFEL_APPLY_BLEED_EARLY_WEIGHT = 10.0;
 const uint DEBUG_SURFEL_GRID_CELLS = 6u;
 const uint DEBUG_FINAL_GATHER_WEIGHT = 18u;
 const uint DEBUG_GBUFFER_WORLD_POSITION = 19u;
@@ -101,6 +102,8 @@ vec3 DecodePackedCellAverage(uint packedAverage, out float confidence)
     confidence = clamp(averageValue.a, 0.0, 1.0);
     return mapped / max(vec3(1.0) - mapped, vec3(1e-4));
 }
+
+vec3 SurfelColorBleedTint(vec3 sourceTint);
 
 float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
 {
@@ -151,6 +154,8 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
 
 vec3 SurfelCachedIndirectIrradiance(Surfel surfel)
 {
+    // The surfel cache stores incident diffuse irradiance. The deferred lighting
+    // pass converts it to outgoing receiver radiance with the material BRDF.
     return max(surfel.irradiance.rgb, vec3(0.0));
 }
 
@@ -160,7 +165,7 @@ vec3 SurfelGatheredIrradianceForReceiver(Surfel surfel, vec3 receiverNormal)
     vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
     float sameSurfaceBlend = smoothstep(0.45, 0.92, max(dot(receiverNormal, surfelNormal), 0.0));
     vec3 sourceTint = clamp(surfel.albedo_life.rgb, vec3(0.0), vec3(1.0));
-    vec3 transferTint = max(sourceTint * 1.25, vec3(0.025));
+    vec3 transferTint = SurfelColorBleedTint(sourceTint);
     vec3 transferIrradiance = cachedIrradiance * transferTint;
     return mix(transferIrradiance, cachedIrradiance, sameSurfaceBlend);
 }
@@ -233,12 +238,12 @@ vec3 SurfelColorBleedTint(vec3 sourceTint)
 
     vec3 saturatedTint = max(sourceTint + chroma * SURFEL_CROSS_SURFACE_CHROMA_GAIN, vec3(0.0));
     float saturatedLum = SurfelLuminance(saturatedTint);
-    float maxTintLum = max(tintLum * mix(1.30, 1.90, smoothstep(0.04, 0.28, colorfulness)), 0.035);
+    float maxTintLum = max(tintLum * mix(1.05, 1.35, smoothstep(0.04, 0.28, colorfulness)), 0.025);
     if (saturatedLum > maxTintLum) {
         saturatedTint *= maxTintLum / max(saturatedLum, 1e-5);
     }
 
-    return clamp(saturatedTint, vec3(0.0), vec3(1.60));
+    return clamp(saturatedTint, vec3(0.0), vec3(1.15));
 }
 
 vec3 SurfelColorBleedIrradianceForReceiver(Surfel surfel)
@@ -258,7 +263,7 @@ vec3 ClampColorBleedLift(vec3 baseIrradiance, vec3 colorBleed, float support)
         return vec3(0.0);
     }
 
-    float maxBleedLum = max(baseLum * SURFEL_CROSS_SURFACE_MAX_LIFT + 0.032, 0.045);
+    float maxBleedLum = max(baseLum * SURFEL_CROSS_SURFACE_MAX_LIFT + 0.012, 0.022);
     if (bleedLum > maxBleedLum) {
         colorBleed *= maxBleedLum / bleedLum;
     }
@@ -266,7 +271,7 @@ vec3 ClampColorBleedLift(vec3 baseIrradiance, vec3 colorBleed, float support)
     vec3 neutralBleed = vec3(SurfelLuminance(colorBleed));
     float chromaSupport = smoothstep(0.008, 0.08, baseLum);
     vec3 chromaOnlyBleed = max(colorBleed - neutralBleed * 0.38, vec3(0.0));
-    return mix(colorBleed * 0.45, chromaOnlyBleed, chromaSupport);
+    return mix(colorBleed * 0.55, chromaOnlyBleed, chromaSupport);
 }
 
 vec3 DebugGridIDColor(uint cellID)
@@ -675,7 +680,9 @@ void main()
     uint receiverSeed = ReceiverGatherSeed(pixel, worldPos, transformID, materialID);
 
     for (uint i = 0u; i < gatherCellCount; ++i) {
-        if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT) {
+        bool directGatherSaturated = sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || sampleCount >= gatherBudget;
+        bool bleedGatherSaturated = sumBleedWeight >= SURFEL_APPLY_BLEED_EARLY_WEIGHT;
+        if (directGatherSaturated && bleedGatherSaturated) {
             break;
         }
 
@@ -741,8 +748,11 @@ void main()
         imageStore(uOutIndirect, pixel, vec4(DebugGatherWeightColor(directBlend, fallbackBlend, sampleCount, candidateCount), 1.0));
         return;
     }
+    vec3 irradiance = preliminaryIrradiance;
+    irradiance += colorBleed;
+    float confidence = clamp(directBlend, 0.0, 1.0);
     if (uDebugView == DEBUG_RAW_INDIRECT_IRRADIANCE) {
-        imageStore(uOutIndirect, pixel, vec4(DebugHDRIrradianceColor(preliminaryIrradiance + colorBleed), sumWeight > 1e-5 ? 1.0 : 0.0));
+        imageStore(uOutIndirect, pixel, vec4(irradiance, confidence));
         return;
     }
 
@@ -751,10 +761,7 @@ void main()
         return;
     }
 
-    vec3 irradiance = preliminaryIrradiance;
-    irradiance += colorBleed;
-    float confidence = clamp(directBlend, 0.0, 1.0);
-    // Output contract: linear HDR irradiance only. Receiver albedo/BRDF response is
-    // applied later in deferred_lighting_frag.glsl to avoid double tinting.
+    // Output contract: linear HDR irradiance only. Receiver albedo/BRDF response
+    // is applied later in deferred_lighting_frag.glsl.
     imageStore(uOutIndirect, pixel, vec4(irradiance, confidence));
 }

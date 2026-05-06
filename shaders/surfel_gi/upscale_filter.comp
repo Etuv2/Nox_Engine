@@ -75,6 +75,11 @@ void main()
         return;
     }
 
+    if (uDebugView != 0u) {
+        imageStore(uOutIndirect, pixel, textureLod(uLowResIndirectTex, fullUV, 0.0));
+        return;
+    }
+
     vec3 centerNormal = SurfelSafeNormalize(DecodeNormalOct(texelFetch(uPackedNormalRMTex, pixel, 0).rg));
     vec2 lowTexel = 1.0 / vec2(safeLowResolution);
 

@@ -129,19 +129,22 @@ namespace {
 		uint32_t maxSpawnPasses = 2u;
 		uint32_t maxFastFillSpawnPasses = 4u;
 		uint32_t maxStationaryFastFillFrames = 12u;
+		uint32_t maxSpawnsPerFrame = 96u;
+		uint32_t maxProjectedSurfelsPerFrame = 16384u;
+		uint32_t maxRecycleCountPerFrame = 2048u;
 	};
 
 	static CleanSurfelGIBudgetCaps GetCleanSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 8192u, 256u, 40u, 16u, 32u, 1u, 0.375f, false, false, false, 1.0f, 4u, 1u, 1u, 3u };
+			return { 8192u, 256u, 40u, 16u, 32u, 1u, 0.375f, false, false, false, 4.0f, 4u, 1u, 1u, 3u, 16u, 4096u, 512u };
 		case SurfelGIQualityTier::High:
-			return { 65536u, 8192u, 16u, 48u, 128u, 1u, 0.60f, true, true, false, 1.25f, 2u, 2u, 3u, 8u };
+			return { 65536u, 8192u, 16u, 48u, 128u, 1u, 0.60f, true, true, false, 4.0f, 2u, 2u, 3u, 8u, 128u, 32768u, 2048u };
 		case SurfelGIQualityTier::Ultra:
-			return { 131072u, 32768u, 8u, 64u, 512u, 2u, 1.0f, true, true, true, 1.5f, 2u, 2u, 4u, 12u };
+			return { 131072u, 32768u, 8u, 64u, 512u, 2u, 1.0f, true, true, true, 4.0f, 2u, 2u, 4u, 12u, 192u, 65536u, 4096u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 98304u, 1024u, 8u, 64u, 32u, 1u, 0.25f, true, true, false, 1.0f, 1u, 1u, 3u, 32u };
+			return { 98304u, 4096u, 8u, 64u, 128u, 1u, 0.50f, true, true, false, 4.0f, 1u, 1u, 3u, 32u, 160u, 32768u, 2048u };
 		}
 	}
 
@@ -161,6 +164,9 @@ namespace {
 			settings.spawnPasses = std::min(settings.spawnPasses, caps.maxSpawnPasses);
 			settings.fastFillSpawnPasses = std::min(settings.fastFillSpawnPasses, caps.maxFastFillSpawnPasses);
 			settings.stationaryFastFillFrames = std::min(settings.stationaryFastFillFrames, caps.maxStationaryFastFillFrames);
+			settings.maxSpawnsPerFrame = std::min(settings.maxSpawnsPerFrame, caps.maxSpawnsPerFrame);
+			settings.maxProjectedSurfelsPerFrame = std::min(settings.maxProjectedSurfelsPerFrame, caps.maxProjectedSurfelsPerFrame);
+			settings.maxRecycleCountPerFrame = std::min(settings.maxRecycleCountPerFrame, caps.maxRecycleCountPerFrame);
 		}
 
 		settings.gatherNeighborRadius = captureMode ? std::max(caps.gatherNeighborRadius, 2u) : caps.gatherNeighborRadius;
@@ -523,15 +529,20 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 		std::clamp(m_context.cleanSurfelGIDebugView, 0, 35));
 	settings.maxSurfels = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxSurfels, 1024));
 	settings.maxRayBudget = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxRayBudget, 1024));
-	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGISpawnTileSize, 4, 64));
+	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGISpawnTileSize, 4, 16));
 	settings.maxSurfelsPerCell = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGIMaxSurfelsPerCell, 8, 256));
 	settings.maxGatherSurfelsPerPixel = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGIMaxGatherSurfelsPerPixel, 4, 2048));
+	settings.maxSpawnsPerFrame = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGIMaxSpawnsPerFrame, 1, 4096));
+	settings.maxProjectedSurfelsPerFrame = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGIMaxProjectedSurfelsPerFrame, 1024, 524288));
+	settings.maxRecycleCountPerFrame = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGIMaxRecycleCountPerFrame, 1, 65536));
 	settings.targetSurfelScreenRadiusPx = std::max(m_context.cleanSurfelGITargetRadiusPixels, 1.0f);
 	settings.minSurfelRadius = std::max(m_context.cleanSurfelGIMinRadius, 0.001f);
 	settings.maxSurfelRadius = std::max(m_context.cleanSurfelGIMaxRadius, settings.minSurfelRadius);
 	settings.spawnCoverageThreshold = std::clamp(m_context.cleanSurfelGICoverageThreshold, 0.05f, 2.0f);
 	settings.recyclePressureStart = std::clamp(m_context.cleanSurfelGIRecyclePressure, 0.1f, 0.99f);
 	settings.normalRejectCos = std::clamp(m_context.cleanSurfelGINormalReject, -0.2f, 0.95f);
+	settings.coverageNormalCos = std::clamp(m_context.cleanSurfelGICoverageNormalReject, 0.50f, 0.99f);
+	settings.coverageDepthTolerance = std::clamp(m_context.cleanSurfelGICoverageDepthTolerance, 0.0002f, 0.05f);
 	settings.finalGatherNormalCos = std::clamp(m_context.cleanSurfelGIFinalGatherNormalReject, -0.2f, 0.95f);
 	settings.radialDepthSigmaScale = std::max(m_context.cleanSurfelGIRadialDepthVariance, 1.0e-6f);
 	settings.indirectIntensity = std::max(m_context.cleanSurfelGIIntensity, 0.0f);
@@ -560,6 +571,12 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_SURFELS", static_cast<int>(settings.maxSurfels)), 1024));
 		settings.maxRayBudget = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_RAY_BUDGET", static_cast<int>(settings.maxRayBudget)), 1024));
+		settings.maxSpawnsPerFrame = static_cast<uint32_t>(
+			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_SPAWNS", static_cast<int>(settings.maxSpawnsPerFrame)), 1));
+		settings.maxProjectedSurfelsPerFrame = static_cast<uint32_t>(
+			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_PROJECTED_SURFELS", static_cast<int>(settings.maxProjectedSurfelsPerFrame)), 1024));
+		settings.maxRecycleCountPerFrame = static_cast<uint32_t>(
+			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_RECYCLES", static_cast<int>(settings.maxRecycleCountPerFrame)), 1));
 		settings.indirectIntensity = std::max(GetEnvVarFloat("NOX_SURFEL_GI_INTENSITY", settings.indirectIntensity), 0.0f);
 		applyEnvToggle("NOX_SURFEL_GI_SCREEN_TRACE", settings.useScreenSpaceTrace);
 		applyEnvToggle("NOX_SURFEL_GI_BVH_TRACE", settings.useSoftwareBVHTrace);
@@ -879,7 +896,9 @@ void ModularRenderer::BuildPassDescriptors(
 			m_lightingPass->SetSSAOTexture(m_namedResources[ResourceNames::SSAO]);
 			m_lightingPass->SetScreenSpaceShadowTexture(m_namedResources[ResourceNames::ScreenSpaceShadow]);
 			m_lightingPass->ClearIndirectDiffuseSources();
-			const bool surfelValidationActive = false;
+			const bool surfelValidationActive = m_surfelGIManager &&
+				m_surfelGIManager->GetSettings().enabled &&
+				m_surfelGIManager->GetSettings().placementValidationMode;
 			if (m_context.enableIndirectDiffuse && !surfelValidationActive) {
 				m_lightingPass->SetIndirectDiffuseSource(
 					0,
@@ -894,6 +913,7 @@ void ModularRenderer::BuildPassDescriptors(
 			}
 			if (m_surfelGIManager &&
 				m_surfelGIManager->GetSettings().enabled &&
+				!surfelValidationActive &&
 				m_namedResources[ResourceNames::SurfelGIIndirect] != 0u) {
 				m_lightingPass->SetIndirectDiffuseSource(
 					2,

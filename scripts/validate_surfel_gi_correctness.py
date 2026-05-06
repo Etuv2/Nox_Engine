@@ -30,6 +30,7 @@ def main() -> None:
     apply_shader = read("shaders/surfel_gi/apply_indirect.comp")
     trace_shader = read("shaders/surfel_gi/trace_rays.comp")
     spawn_shader = read("shaders/surfel_gi/spawn.comp")
+    coverage_shader = read("shaders/surfel_gi/coverage.comp")
     recycle_shader = read("shaders/surfel_gi/recycle_surfels.comp")
     build_grid_shader = read("shaders/surfel_gi/build_grid.comp")
     spatial_filter_shader = read("shaders/surfel_gi/spatial_filter.comp")
@@ -121,8 +122,8 @@ def main() -> None:
             "cellAverageFallbackStrength = 0.0f" in manager_h,
             "surfel-only baseline must not use cell-average fallback as fake indirect light")
     require("initialSkyVisibility" in spawn_shader and
-            "initialDirectScale = 0.018" in spawn_shader and
-            "initialEnvironmentEstimate = max(uSkyRadiance, vec3(0.0)) * initialSkyVisibility * 0.010" in spawn_shader,
+            "initialDirectScale = 0.04" in spawn_shader and
+            "initialEnvironmentEstimate = max(uSkyRadiance, vec3(0.0)) * initialSkyVisibility * 0.03" in spawn_shader,
             "new surfels may only receive a low-confidence directional/environment hint before real ray hits take over")
 
     require(uint_constant(trace_shader, "SURFEL_TRACE_MAX_CELL_ENTRIES") == 8,
@@ -163,12 +164,17 @@ def main() -> None:
             "debug surfel draw must expose stored surfel albedo to validate material colour bleeding inputs")
     require("DEBUG_DISK_GRAZING_RADIUS_SCALE" in debug_vert and "smoothstep(0.12, 0.65, viewFacing)" in debug_vert,
             "primary surfel debug disks must clamp grazing-angle footprint so attached disks do not appear as screen-space streaks")
+    require("paperBillboard" in debug_vert and
+            "screenRadiusToView" in debug_vert and
+            "vec4 paperViewPos" in debug_vert,
+            "primary Live Surfels debug view must use screen-facing paper discs so grazing surfaces do not render as strips")
     require("gl_PointCoord" not in debug_frag and "spriteR2" not in debug_frag,
             "surfel debug fragment shader must not fall back to billboard point-sprite disks")
     require("surfels[surfelID] =" not in apply_shader and "readonly buffer SurfelBuffer" in apply_shader,
             "final gather must not race by writing surfel records from per-pixel apply invocations")
-    require("uSceneDepthTex" in debug_frag and "gl_FragCoord.z" in debug_frag,
-            "surfel debug draw must depth-reject against the scene depth so hidden surfels do not appear detached")
+    require("uSceneDepthTex" in debug_frag and "gl_FragCoord.z" in debug_frag and
+            "uUseDepthReject != 0 && vStyle.w <= 0.5" in debug_frag,
+            "surfel diagnostic debug draw must depth-reject against scene depth while paper disks avoid one-sided clipping")
     require("context.gbufferFBO->GetDepthTexture()" in pipeline_cpp and
             "SetUniform1i(m_debugProgram, \"uSceneDepthTex\"" in pipeline_cpp,
             "surfel debug pass must bind G-buffer depth for trustworthy surface attachment validation")
@@ -210,7 +216,7 @@ def main() -> None:
     require("SurfelCachedIndirectIrradiance" in apply_shader and
             "SurfelGatheredIrradianceForReceiver(surfel, normal) * weight" in apply_shader and
             "surfel.albedo_life.rgb" not in apply_shader.split("vec3 SurfelCachedIndirectIrradiance")[1].split("}")[0],
-            "final gather must interpolate same-surface irradiance while using source-tinted transfer only for cross-surface bounce")
+            "final gather must interpolate same-surface irradiance while using bounded source tint only for cross-surface bounce")
     require("surfel.ids = uvec4(transformID, 0u, materialID, transform.metadata.z)" in spawn_shader and
             "SURFEL_EMISSIVE" in spawn_shader and
             ("SurfelPackIrradiance(vec3(0.02), 0.02)" in spawn_shader or
@@ -231,12 +237,13 @@ def main() -> None:
             "cell-average fallback must store irradiance, not source-tinted outgoing radiance")
     deferred_shader = read("shaders/deferred_lighting_frag.glsl")
     require("float indirectAttenuation = sourceIndex == 2 ? 1.0 : mix(0.35, 1.0, indirectAO);" in deferred_shader and
-            "float sourceScale = 1.0;" in deferred_shader,
+            "float sourceScale = 1.0;" in deferred_shader and
+            "return CompressIndirectContribution(indirectIrradiance * strength);" not in deferred_shader,
             "Clean Surfel GI alpha is confidence/debug data and must not attenuate linear irradiance in deferred lighting")
     require("return { 24576u, 1024u, 32u, 24u, 48u, 1u, 0.4375f, false, false, 1u, 1u, 2u, 6u };" not in modular_cpp,
             "legacy weak Medium Clean Surfel GI budget must not remain in place")
-    require("return { 98304u, 1024u, 8u, 64u, 32u, 1u, 0.25f, true, true, false, 1.0f, 1u, 1u, 3u, 32u };" in modular_cpp,
-            "default Medium Clean Surfel GI preset must keep Ultra-like 8px surfel density while bounding rays and reconstruction cost")
+    require("return { 98304u, 4096u, 8u, 64u, 128u, 1u, 0.50f, true, true, false, 4.0f, 1u, 1u, 3u, 32u, 160u, 32768u, 2048u };" in modular_cpp,
+            "default Medium Clean Surfel GI preset must keep dense surfels while providing enough rays, gather support, and resolution for coherent irradiance")
     require("NOX_SURFEL_GI_QUALITY_TIER" in modular_cpp,
             "validation runs must be able to force Low/Medium/High/Ultra quality tiers without relying on the ImGui combo")
     require("NOX_SURFEL_GI_IRRADIANCE_SHARING" in modular_cpp,
@@ -258,6 +265,20 @@ def main() -> None:
     require("atomicMax(surfels[entry.surfelID].frameInfo.x, uFrameIndex)" in spawn_shader and
             "SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT" in spawn_shader,
             "coverage gap detection must refresh lastVisible for existing surfels that cover current G-buffer candidates")
+    require("uvec4 lifecycle" in resources_h and
+            "uvec4 lifecycle;" in common_shader and
+            "SurfelLifecycleCounters" in common_shader and
+            "RecordProjectedValidation" in coverage_shader and
+            "RecordCoverageReuse" in spawn_shader,
+            "surfel records must persist validation/reuse lifecycle counters across coverage and spawn passes")
+    require("SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS = 6u" in recycle_shader and
+            "SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES = 48u" in recycle_shader and
+            "stableVisibleProtection" in recycle_shader and
+            "SURFEL_RECYCLE_STABLE_VISIBLE_SCORE_SCALE" in recycle_shader and
+            "duplicateEligible" in recycle_shader and
+            "overCoverageEligible" in recycle_shader and
+            "pressureEligible" in recycle_shader,
+            "recycling must be hysteretic and protect recently visible validated surfels from duplicate/pressure culls")
     require("bestCandidate.coverage = max(bestCandidate.coverage, uCoverageThreshold)" not in spawn_shader,
             "stationary coverage convergence must not mark a tile as covered merely because it was seeded once")
     require("uint strideSeed = SurfelHash((cell * 747796405u)" in spawn_shader and
@@ -267,8 +288,10 @@ def main() -> None:
             "spawn must not reject under-covered candidates just because the grid cell entry list is capped")
     integrate_shader = read("shaders/surfel_gi/integrate.comp")
     require("vec3 sampleMean = batchSum / max(acceptedWeight, 1e-5);" in integrate_shader and
+            "vec3 sampleSecondMoment = batchSumSq / max(acceptedWeight, 1e-5);" in integrate_shader and
+            "SurfelOutgoingDiffuseRadiance" not in integrate_shader and
             "directBaseline + batchMean" not in integrate_shader,
-            "surfel irradiance caches must store traced indirect irradiance, not the surfel's own direct lighting")
+            "surfel irradiance caches must store traced indirect irradiance, not outgoing source radiance")
     require("SurfelLuminance(sampleMean) <= 1e-5 && SurfelLuminance(priorIrradiance) > 1e-5" not in integrate_shader and
             "bool emissiveSurfel = (SurfelFlags(surfel) & SURFEL_EMISSIVE) != 0u;" in integrate_shader and
             "vec3 emissiveBaseline = emissiveSurfel ? SurfelClampEmissive(priorIrradiance) : vec3(0.0);" in integrate_shader,
@@ -286,7 +309,7 @@ def main() -> None:
             "float alphaMax = mix(0.044, 0.012, temporalConfidence);" in integrate_shader and
             "float alpha = mix(0.0015, alphaMax, consistentChange);" in integrate_shader and
             "bool lateBootstrap = SurfelIsNew(surfel) && !brandNew && surfel.shortMean.a <= 1.0 && surfel.irradiance.a <= 0.08;" in integrate_shader and
-            "float resetAlpha = brandNew ? 0.22 : 0.12;" in integrate_shader and
+            "float resetAlpha = brandNew ? 0.30 : 0.16;" in integrate_shader and
             "alpha = max(alpha, resetAlpha);" in integrate_shader and
             "TemporalClampIrradianceWithConfidence(previousIrradiance, integratedIrradiance, temporalConfidence)" in integrate_shader,
             "surfel integration must reliability-weight hit evidence, damp noisy swings as confidence rises, and bootstrap new surfels without flicker")
@@ -304,7 +327,8 @@ def main() -> None:
             "final gather must spend low budgets on the receiver cell first and use stable per-receiver surfel subsets")
     require("SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY" in integrate_shader and
             "return SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY;" in integrate_shader and
-            "SURFEL_ENVIRONMENT_MISS_SCALE = 0.70" in trace_shader,
+            "SURFEL_ENVIRONMENT_MISS_SCALE = 0.16" in trace_shader and
+            "SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 1.6" in trace_shader,
             "environment misses must remain valid but lower-confidence so they cannot replace real surfel hit evidence")
     require("sourceDirectBootstrapOnly" in trace_shader and
             "sourceSurfel.irradiance.a < 0.46" in trace_shader and
@@ -331,11 +355,15 @@ def main() -> None:
             "TraceSoftwareBVH(origin, skyDir" in trace_shader and
             "return hemisphereAccess * SkyOcclusionVisibilityFromHitDistance(skyHit.t);" in trace_shader,
             "screen/BVH ray hits must shade real hit radiance from direct lighting, distance-weighted visible skybox irradiance, emissive, and cached indirect without fake sky miss ambient")
+    source_direct_body = trace_shader.split("vec3 EvaluateSourceDirectBounce")[1].split("float TraceSurfaceCacheWeight")[0]
     require("EvaluateSourceDirectBounce" in trace_shader and
             "SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT" in trace_shader and
             "SURFEL_SOURCE_DIRECT_BOUNCE_SCALE" in trace_shader and
+            "sourceAlbedo * SURFEL_INV_PI * directIrradiance" not in source_direct_body and
+            "vec3 sourceDirectIrradiance = directIrradiance * SURFEL_SOURCE_DIRECT_BOUNCE_SCALE;" in source_direct_body and
+            "cachedBounce = albedo * SURFEL_INV_PI * cachedIrradiance" in trace_shader and
             "SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT" in integrate_shader,
-            "surfel rays must carry a shadow-aware direct source term so directly lit coloured surfels can emit first-bounce GI")
+            "surfel rays must keep source-direct injection in incident-irradiance units while cached irradiance is converted to outgoing radiance only at ray-hit shading")
     require("SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF" in trace_shader and
             "needsLiveLighting" in trace_shader and
             "if (needsLiveLighting || SurfelLuminance(cachedBounce) <= 1e-5)" in trace_shader,
@@ -399,13 +427,17 @@ def main() -> None:
             "screen-space surfel ray hits must be an explicit opt-in because fixed-step screen traces create cache striping/flicker")
     require("TraceSoftwareBVH" in trace_shader and
             "TraceSoftwareBVHRadiance" in trace_shader and
+            "TraceSoftwareTLAS" in trace_shader and
             "SURFEL_TRACE_HIT_KIND_BVH" in trace_shader and
             "layout(std140, binding = B_BVH_TRIANGLES)" in trace_shader and
             "layout(std140, binding = B_BVH_NODES)" in trace_shader and
-            "context.rtSceneResources->EnsureBuilt" in pipeline_cpp and
-            "context.rtSceneResources->BindForTracing" in pipeline_cpp and
+            "layout(std430, binding = B_RT_INSTANCES)" in trace_shader and
+            "layout(std430, binding = B_RT_INSTANCE_NODES)" in trace_shader and
+            "context.rtSceneResources->EnsureIncrementalBLAS" in pipeline_cpp and
+            "context.rtSceneResources->BindIncrementalForTracing" in pipeline_cpp and
+            "SetUniform1ui(program, \"uRTInstanceCount\"" in pipeline_cpp and
             "SetUniform1i(program, \"uUseSoftwareBVHTrace\"" in pipeline_cpp,
-            "trace pass must use the shared software BVH between screen-space and surfel-grid fallback")
+            "trace pass must use the shared incremental TLAS/BLAS between screen-space and surfel-grid fallback")
     allocate_shader = read("shaders/surfel_gi/allocate_rays.comp")
     require("uniform uint uFrameIndex;" in allocate_shader and
             "rotatedRequestID" in allocate_shader and
@@ -510,6 +542,9 @@ def main() -> None:
             "SurfelUpscaleConfidenceWeight" in upscale_filter_shader and
             "imageStore(uOutIndirect" in upscale_filter_shader,
             "full-resolution surfel upscaler must be confidence-weighted and geometry-aware, not a raw bilinear stretch")
+    require("if (uDebugView != 0u)" in upscale_filter_shader and
+            "textureLod(uLowResIndirectTex, fullUV, 0.0)" in upscale_filter_shader,
+            "fullscreen surfel debug views must bypass irradiance upsample filtering so raw diagnostics are not mistaken for lighting")
     require("bool cameraMoving" in pipeline_cpp and
             "productionPhase" not in spawn_shader,
             "camera/view movement must not depend on timed production tile phases for coverage refresh")
@@ -541,7 +576,7 @@ def main() -> None:
     require("SurfelIsAlive(surfels[surfelID])" in count_live_shader and "atomicAdd(counters.liveCount, 1u)" in count_live_shader,
             "live-count pass must count actual live surfel records")
     for field in ("worldPos_radius", "worldNormal_age", "localPos_spawnRadius", "localNormal_flags",
-                  "ids", "albedo_life", "irradiance", "shortMean", "shortM2", "frameInfo", "debug"):
+                  "ids", "albedo_life", "irradiance", "shortMean", "shortM2", "frameInfo", "lifecycle", "debug"):
         require(f"offsetof(Surfel, {field})" in resources_h,
                 f"C++ Surfel layout must static_assert offset for {field}")
 

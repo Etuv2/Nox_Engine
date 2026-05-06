@@ -45,6 +45,7 @@ constexpr GLuint kSurfelGIGBufferDepthUnit = 5u;
 constexpr GLuint kSurfelGIShadowArrayUnit = static_cast<GLuint>(TextureUnits::SHADOW_MAP_ARRAY);
 constexpr GLuint kSurfelGISkyIrradianceUnit = static_cast<GLuint>(TextureUnits::IRRADIANCE_MAP);
 constexpr GLuint kSurfelGISkyEnvironmentUnit = static_cast<GLuint>(TextureUnits::ENVIRONMENT_MAP);
+constexpr float kSurfelGISkyDiffuseMaxScale = 0.25f;
 
 bool EnvFlagEnabled(const char* name, bool fallback)
 {
@@ -199,6 +200,11 @@ void ReadSurfelCounters(GLuint countersBuffer, SurfelGIFrameStats& stats)
 	stats.coverageSpawnedTileCount = counters.coverageSpawnedTileCount;
 	stats.coverageVisibleTileCount = counters.coverageVisibleTileCount;
 	stats.coverageInvalidTileCount = counters.coverageInvalidTileCount;
+	stats.projectedSurfels = counters.projectedSurfels;
+	stats.coverageDepthRejected = counters.coverageDepthRejected;
+	stats.coverageNormalRejected = counters.coverageNormalRejected;
+	stats.coverageMaterialRejected = counters.coverageMaterialRejected;
+	stats.coverageRadiusRejected = counters.coverageRadiusRejected;
 }
 
 bool AllocateIndirectTexture(GLuint& texture, uint32_t width, uint32_t height)
@@ -812,6 +818,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uGridMax", gridMax);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
 		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+		SetUniform1ui(program, "uMaxRecycleCount", m_settings.maxRecycleCountPerFrame);
 		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 		SetUniform1f(program, "uRecyclePressureStart", m_settings.recyclePressureStart);
 		SetUniform1f(program, "uMaxDistance", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
@@ -822,6 +829,38 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	}
 
 	rebuildGridAndAverages(true);
+
+	if (!placementOnly && m_coverageShader && m_coverageShader->IsValid()) {
+		const GLuint program = m_coverageShader->GetProgramID();
+		const GLuint tileCount = std::max(m_coverageTileCapacity, 1u);
+		const GLuint projectedWorkItems = std::min(maxSurfels, std::max(m_settings.maxProjectedSurfelsPerFrame, 1u));
+		glUseProgram(program);
+		BindSurfelGIGBufferTextures(context);
+		SetSurfelGIGBufferSamplerUniforms(program);
+		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
+		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
+		SetUniform1ui(program, "uMaxProjectedSurfelsPerFrame", projectedWorkItems);
+		SetUniform2ui(program, "uResolution", m_width, m_height);
+		SetUniform2ui(program, "uCoverageTileCount", m_coverageTileCountX, m_coverageTileCountY);
+		SetUniform1ui(program, "uTileSize", std::max(m_settings.spawnTileSize, 1u));
+		SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
+		SetUniformMat4(program, "uInvView", glm::inverse(context.view));
+		SetUniformMat4(program, "uView", context.view);
+		SetUniformMat4(program, "uProjection", context.proj);
+		SetUniform2f(program, "uViewportSize", static_cast<float>(m_width), static_cast<float>(m_height));
+		SetUniform1f(program, "uCoverageNormalCos", m_settings.coverageNormalCos);
+		SetUniform1f(program, "uCoverageDepthTolerance", m_settings.coverageDepthTolerance);
+		SetUniform1ui(program, "uCoveragePassMode", 0u);
+		timedDispatch("coverage_reset", [&]() {
+			m_coverageShader->Dispatch(DivRoundUp(tileCount, 64u), 1u, 1u);
+			m_coverageShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
+		SetUniform1ui(program, "uCoveragePassMode", 1u);
+		timedDispatch("coverage_project", [&]() {
+			m_coverageShader->Dispatch(DivRoundUp(projectedWorkItems, 64u), 1u, 1u);
+			m_coverageShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
+		});
+	}
 
 	const bool stationaryCoverageMaintenance =
 		!cameraMoving &&
@@ -854,6 +893,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uTileSize", tileSize);
 		SetUniform1ui(program, "uSpawnPassCount", spawnPassCount);
 		SetUniform1ui(program, "uSpawnCandidateCount", spawnCandidateCount);
+		SetUniform1ui(program, "uMaxSpawnsPerFrame", m_settings.maxSpawnsPerFrame);
 		SetUniform2ui(program, "uResolution", m_width, m_height);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -879,7 +919,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uSkyRadiance", context.envColor * m_settings.skyMissRadianceMultiplier);
 		SetUniform1i(program, "uPlacementValidationMode", placementOnly ? 1 : 0);
 		SetUniform1ui(program, "uCameraMotionBoost", cameraMotionBoost ? 1u : 0u);
-		SetUniform1ui(program, "uBypassCoverageSearch", fastCoverageFill ? 1u : 0u);
+		SetUniform1ui(program, "uBypassCoverageSearch", 0u);
+		SetUniform3fv(program, "uCameraPosition", cameraPosition);
 
 		// Spawned surfels must be visible to same-frame ray tracing and final
 		// gather; otherwise the composited output can remain one frame behind
@@ -963,26 +1004,40 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetSurfelGIGBufferSamplerUniforms(program);
 		GLuint bvhTriangleCount = 0u;
 		GLuint bvhNodeCount = 0u;
+		GLuint bvhInstanceCount = 0u;
+		GLuint bvhInstanceNodeCount = 0u;
 		if (m_settings.useSoftwareBVHTrace && context.rtSceneResources && sceneGraph) {
-			const std::size_t maxTriangleCount = context.surfelGIRTMaxTriangles > 0
-				? static_cast<std::size_t>(context.surfelGIRTMaxTriangles)
-				: 0u;
-			context.rtSceneResources->EnsureBuilt(sceneGraph, false, maxTriangleCount);
-			if (context.rtSceneResources->IsReady()) {
-				context.rtSceneResources->BindForTracing(
+			RTSceneResources::IncrementalBuildSettings rtBuildSettings{};
+			rtBuildSettings.maxBuildMsPerFrame = std::max(static_cast<double>(context.surfelGIRTBuildBudgetMs), 0.05);
+			rtBuildSettings.maxBlasTrianglesPerFrame = static_cast<std::size_t>(std::max(context.surfelGIRTMaxBLASTrianglesPerFrame, 1));
+			rtBuildSettings.maxResidentBytes = static_cast<std::size_t>(std::max(context.surfelGIRTMaxResidentMB, 1)) * 1024ull * 1024ull;
+			rtBuildSettings.includeSkinnedMeshes = context.surfelGIRTIncludeSkinnedMeshes;
+			context.rtSceneResources->EnsureIncrementalBLAS(sceneGraph, rtBuildSettings);
+			if (context.rtSceneResources->IsIncrementalReady()) {
+				context.rtSceneResources->BindIncrementalForTracing(
 					ToGLuint(SurfelGIBinding::BvhTriangles),
-					ToGLuint(SurfelGIBinding::BvhNodes));
+					ToGLuint(SurfelGIBinding::BvhNodes),
+					ToGLuint(SurfelGIBinding::RtInstances),
+					ToGLuint(SurfelGIBinding::RtInstanceNodes));
 				bvhTriangleCount = static_cast<GLuint>(std::min<std::size_t>(
-					context.rtSceneResources->GetTriangleCount(),
+					context.rtSceneResources->GetIncrementalTriangleCount(),
 					std::numeric_limits<GLuint>::max()));
 				bvhNodeCount = static_cast<GLuint>(std::min<std::size_t>(
-					context.rtSceneResources->GetNodeCount(),
+					context.rtSceneResources->GetIncrementalNodeCount(),
+					std::numeric_limits<GLuint>::max()));
+				bvhInstanceCount = static_cast<GLuint>(std::min<std::size_t>(
+					context.rtSceneResources->GetIncrementalInstanceCount(),
+					std::numeric_limits<GLuint>::max()));
+				bvhInstanceNodeCount = static_cast<GLuint>(std::min<std::size_t>(
+					context.rtSceneResources->GetIncrementalInstanceNodeCount(),
 					std::numeric_limits<GLuint>::max()));
 			}
 		}
 		if (bvhTriangleCount == 0u || bvhNodeCount == 0u) {
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::BvhTriangles), 0u);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::BvhNodes), 0u);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::RtInstances), 0u);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ToGLuint(SurfelGIBinding::RtInstanceNodes), 0u);
 		}
 		SetUniform1ui(program, "uActiveRayCount", rayBudget);
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
@@ -991,6 +1046,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
 		SetUniform1ui(program, "uTriangleCount", bvhTriangleCount);
 		SetUniform1ui(program, "uBVHNodeCount", bvhNodeCount);
+		SetUniform1ui(program, "uRTInstanceCount", bvhInstanceCount);
+		SetUniform1ui(program, "uRTInstanceNodeCount", bvhInstanceNodeCount);
 		SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 		SetUniform3fv(program, "uGridMin", gridMin);
 		SetUniform3fv(program, "uGridMax", gridMax);
@@ -1014,10 +1071,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uSkyEnvironmentMap", static_cast<GLint>(kSurfelGISkyEnvironmentUnit));
 		SetUniform1i(program, "uUseSkyIrradianceMap", skyIrradianceMap != 0u ? 1 : 0);
 		SetUniform1i(program, "uUseSkyEnvironmentMap", skyEnvironmentMap != 0u ? 1 : 0);
-		const float skyboxBounceScale = skyIrradianceMap != 0u
-			? std::max(context.iblIntensity * context.diffuseIBLScale, context.skyboxExposure * 0.75f)
-			: context.iblIntensity * context.diffuseIBLScale;
-		SetUniform1f(program, "uSkyDiffuseScale", std::clamp(skyboxBounceScale, 0.0f, 1.25f));
+		const float skyboxBounceScale = context.iblIntensity * context.diffuseIBLScale;
+		SetUniform1f(program, "uSkyDiffuseScale", std::clamp(skyboxBounceScale, 0.0f, kSurfelGISkyDiffuseMaxScale));
 		GLuint lightCount = 0u;
 		GLuint shadowArray = 0u;
 		GLuint shadowMatrices = 0u;
@@ -1166,6 +1221,8 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		? static_cast<GLuint>(m_settings.debugView)
 		: 0u;
 	const bool fullscreenDebug = applyDebugView != 0u;
+	const bool denoiseFullscreenDebug =
+		applyDebugView == static_cast<GLuint>(SurfelGIDebugView::RawIndirectIrradiance);
 	BindCoreResources(0u);
 	auto timedDispatch = [&](const char* label, auto&& work) {
 		GLuint beginQuery = 0u;
@@ -1215,7 +1272,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
 	bool didSpatialFilter = false;
-	if (!fullscreenDebug && m_spatialFilterShader && m_spatialFilterShader->IsValid()) {
+	if ((!fullscreenDebug || denoiseFullscreenDebug) && m_spatialFilterShader && m_spatialFilterShader->IsValid()) {
 		const GLuint filterProgram = m_spatialFilterShader->GetProgramID();
 		glUseProgram(filterProgram);
 		glActiveTexture(GL_TEXTURE0);
@@ -1239,7 +1296,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	}
 
 	bool didTemporalResolve = false;
-	if (!fullscreenDebug && m_temporalFilterShader && m_temporalFilterShader->IsValid()) {
+	if ((!fullscreenDebug || denoiseFullscreenDebug) && m_temporalFilterShader && m_temporalFilterShader->IsValid()) {
 		const GLuint historyReadIndex = m_historyReadIndex & 1u;
 		const GLuint historyWriteIndex = historyReadIndex ^ 1u;
 		const GLuint temporalProgram = m_temporalFilterShader->GetProgramID();
@@ -1301,7 +1358,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1i(upscaleProgram, "uDepthTex", 2);
 	SetUniform2ui(upscaleProgram, "uResolution", m_width, m_height);
 	SetUniform2ui(upscaleProgram, "uLowResolution", m_indirectWidth, m_indirectHeight);
-	SetUniform1ui(upscaleProgram, "uDebugView", applyDebugView);
+	SetUniform1ui(upscaleProgram, "uDebugView", denoiseFullscreenDebug ? 0u : applyDebugView);
 	timedDispatch("upscale_filter", [&]() {
 		m_upscaleFilterShader->Dispatch(DivRoundUp(m_width, 8u), DivRoundUp(m_height, 8u), 1u);
 		m_upscaleFilterShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -1387,6 +1444,12 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< " highPriorityTiles=" << m_stats.highPriorityTileCount
 			<< " coverageSpawnedTiles=" << m_stats.coverageSpawnedTileCount
 			<< " coverageInvalidTiles=" << m_stats.coverageInvalidTileCount
+			<< " projectedSurfels=" << m_stats.projectedSurfels
+			<< " coverageRejectDepthNormalMaterialRadius="
+			<< m_stats.coverageDepthRejected << "/"
+			<< m_stats.coverageNormalRejected << "/"
+			<< m_stats.coverageMaterialRejected << "/"
+			<< m_stats.coverageRadiusRejected
 			<< '\n';
 	}
 	m_stats.ready = IsReady();
@@ -1420,6 +1483,9 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context)
 		glBindTexture(GL_TEXTURE_2D, m_resources.indirectTexture);
 		if (const GLint textureLoc = glGetUniformLocation(m_debugPresentProgram, "uTexture"); textureLoc >= 0) {
 			glUniform1i(textureLoc, 0);
+		}
+		if (const GLint toneMapLoc = glGetUniformLocation(m_debugPresentProgram, "uToneMap"); toneMapLoc >= 0) {
+			glUniform1i(toneMapLoc, m_settings.debugView == SurfelGIDebugView::RawIndirectIrradiance ? 1 : 0);
 		}
 		context.screenQuad->Render();
 		glBindTexture(GL_TEXTURE_2D, 0);
@@ -1497,10 +1563,15 @@ bool SurfelGIPipeline::ReloadShaders()
 
 void SurfelGIPipeline::SetSettings(const SurfelGISettings& settings)
 {
+	const SurfelGISettings oldSettings = m_settings;
 	const uint32_t oldIndirectWidth = m_indirectWidth;
 	const uint32_t oldIndirectHeight = m_indirectHeight;
 	m_settings = settings;
 	m_stats.configuredEnabled = settings.enabled;
+	if (oldSettings.debugView != settings.debugView) {
+		m_historyReadIndex = 0u;
+		m_hasTemporalHistory = false;
+	}
 	if (m_initialized && m_settings.enabled && m_width > 0u && m_height > 0u) {
 		m_indirectWidth = ScaledExtent(m_width, m_settings.finalGatherResolutionScale);
 		m_indirectHeight = ScaledExtent(m_height, m_settings.finalGatherResolutionScale);

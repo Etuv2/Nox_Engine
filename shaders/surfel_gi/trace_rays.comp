@@ -102,6 +102,21 @@ struct RTBVHNode {
     int tri3;
 };
 
+struct RTInstance {
+    vec4 boundsMin;
+    vec4 boundsMax;
+    mat4 worldFromLocal;
+    mat4 localFromWorld;
+    uvec4 metadata;
+};
+
+struct RTInstanceNode {
+    vec4 boundsMin;
+    vec4 boundsMax;
+    ivec4 children;
+    ivec4 instances;
+};
+
 layout(std140, binding = B_BVH_TRIANGLES) readonly buffer SurfelTraceTriangleBuffer
 {
     RTTriangle bvhTriangles[];
@@ -110,6 +125,16 @@ layout(std140, binding = B_BVH_TRIANGLES) readonly buffer SurfelTraceTriangleBuf
 layout(std140, binding = B_BVH_NODES) readonly buffer SurfelTraceBVHNodeBuffer
 {
     RTBVHNode bvhNodes[];
+};
+
+layout(std430, binding = B_RT_INSTANCES) readonly buffer SurfelTraceInstanceBuffer
+{
+    RTInstance rtInstances[];
+};
+
+layout(std430, binding = B_RT_INSTANCE_NODES) readonly buffer SurfelTraceInstanceNodeBuffer
+{
+    RTInstanceNode rtInstanceNodes[];
 };
 
 layout(binding = T_SURFEL_GBUFFER_NORMAL_RM) uniform sampler2D uPackedNormalRMTex;
@@ -129,6 +154,8 @@ uniform uint uGridCellCount;
 uniform uint uMaxSurfelsPerCell;
 uniform uint uTriangleCount = 0u;
 uniform uint uBVHNodeCount = 0u;
+uniform uint uRTInstanceCount = 0u;
+uniform uint uRTInstanceNodeCount = 0u;
 uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
@@ -181,10 +208,11 @@ const float SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT = 5.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_TRACE_SCREEN_RELIABILITY = 0.18;
 const float SURFEL_TRACE_SKY_VISIBILITY_DISTANCE = 32.0;
+const float SURFEL_SKY_OPEN_MISS_VISIBILITY = 0.45;
 const float SURFEL_ENVIRONMENT_MISS_MIP = 5.0;
-const float SURFEL_ENVIRONMENT_MISS_SCALE = 0.70;
-const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 2.4;
-const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 1.10;
+const float SURFEL_ENVIRONMENT_MISS_SCALE = 0.16;
+const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 1.6;
+const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 2.10;
 const float SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF = 0.52;
 const float SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF = 10.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
@@ -308,7 +336,7 @@ bool SurfelTraceAABB(vec3 origin, vec3 direction, vec3 minBounds, vec3 maxBounds
     return tNear <= tFar;
 }
 
-SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float tMax)
+SoftwareBVHHit TraceSoftwareBLAS(vec3 origin, vec3 direction, float tMin, float tMax, int rootNodeOffset, int triangleOffset)
 {
     SoftwareBVHHit hit;
     hit.hit = false;
@@ -316,7 +344,13 @@ SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float t
     hit.position = origin + direction * tMax;
     hit.normal = vec3(0.0, 1.0, 0.0);
 
-    if (uUseSoftwareBVHTrace == 0 || uBVHNodeCount == 0u || uTriangleCount == 0u) {
+    if (uUseSoftwareBVHTrace == 0 ||
+        uBVHNodeCount == 0u ||
+        uTriangleCount == 0u ||
+        rootNodeOffset < 0 ||
+        uint(rootNodeOffset) >= uBVHNodeCount ||
+        triangleOffset < 0 ||
+        uint(triangleOffset) >= uTriangleCount) {
         return hit;
     }
 
@@ -325,8 +359,9 @@ SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float t
     stack[stackPtr++] = 0;
 
     while (stackPtr > 0) {
-        int nodeIndex = stack[--stackPtr];
-        if (nodeIndex < 0 || uint(nodeIndex) >= uBVHNodeCount) {
+        int localNodeIndex = stack[--stackPtr];
+        int nodeIndex = rootNodeOffset + localNodeIndex;
+        if (localNodeIndex < 0 || nodeIndex < 0 || uint(nodeIndex) >= uBVHNodeCount) {
             continue;
         }
 
@@ -343,8 +378,12 @@ SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float t
                 if (triIndex < 0 || uint(triIndex) >= uTriangleCount) {
                     continue;
                 }
+                int packedTriIndex = triangleOffset + triIndex;
+                if (packedTriIndex < 0 || uint(packedTriIndex) >= uTriangleCount) {
+                    continue;
+                }
 
-                RTTriangle tri = bvhTriangles[triIndex];
+                RTTriangle tri = bvhTriangles[packedTriIndex];
                 if (tri.material.alphaMode != 0u && tri.material.alpha < tri.material.alphaCutoff) {
                     continue;
                 }
@@ -377,6 +416,103 @@ SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float t
     }
 
     return hit;
+}
+
+SoftwareBVHHit TraceSoftwareTLAS(vec3 origin, vec3 direction, float tMin, float tMax)
+{
+    SoftwareBVHHit bestHit;
+    bestHit.hit = false;
+    bestHit.t = tMax;
+    bestHit.position = origin + direction * tMax;
+    bestHit.normal = vec3(0.0, 1.0, 0.0);
+
+    if (uRTInstanceCount == 0u || uRTInstanceNodeCount == 0u) {
+        return bestHit;
+    }
+
+    int nodeStack[SURFEL_TRACE_BVH_STACK_SIZE];
+    int nodeStackPtr = 0;
+    nodeStack[nodeStackPtr++] = 0;
+
+    while (nodeStackPtr > 0) {
+        int nodeIndex = nodeStack[--nodeStackPtr];
+        if (nodeIndex < 0 || uint(nodeIndex) >= uRTInstanceNodeCount) {
+            continue;
+        }
+
+        RTInstanceNode node = rtInstanceNodes[nodeIndex];
+        if (!SurfelTraceAABB(origin, direction, node.boundsMin.xyz, node.boundsMax.xyz, tMin, bestHit.t)) {
+            continue;
+        }
+
+        if (node.children.x >= 0 || node.children.y >= 0) {
+            if (node.children.y >= 0 && nodeStackPtr < SURFEL_TRACE_BVH_STACK_SIZE) {
+                nodeStack[nodeStackPtr++] = node.children.y;
+            }
+            if (node.children.x >= 0 && nodeStackPtr < SURFEL_TRACE_BVH_STACK_SIZE) {
+                nodeStack[nodeStackPtr++] = node.children.x;
+            }
+            continue;
+        }
+
+        for (int leafSlot = 0; leafSlot < 4; ++leafSlot) {
+            int instanceIndex = node.instances[leafSlot];
+            if (instanceIndex < 0 || uint(instanceIndex) >= uRTInstanceCount) {
+                continue;
+            }
+
+            RTInstance instance = rtInstances[instanceIndex];
+            if (!SurfelTraceAABB(origin, direction, instance.boundsMin.xyz, instance.boundsMax.xyz, tMin, bestHit.t)) {
+                continue;
+            }
+
+            vec3 localOrigin = (instance.localFromWorld * vec4(origin, 1.0)).xyz;
+            vec3 localDirection = SurfelSafeNormalize((instance.localFromWorld * vec4(direction, 0.0)).xyz);
+            SoftwareBVHHit localHit = TraceSoftwareBLAS(
+                localOrigin,
+                localDirection,
+                tMin,
+                tMax,
+                int(instance.metadata.x),
+                int(instance.metadata.y));
+            if (!localHit.hit) {
+                continue;
+            }
+
+            vec3 worldPosition = (instance.worldFromLocal * vec4(localHit.position, 1.0)).xyz;
+            float worldT = length(worldPosition - origin);
+            if (worldT < tMin || worldT > bestHit.t || worldT > tMax) {
+                continue;
+            }
+
+            mat3 normalMatrix = transpose(mat3(instance.localFromWorld));
+            bestHit.hit = true;
+            bestHit.t = worldT;
+            bestHit.position = worldPosition;
+            bestHit.normal = SurfelSafeNormalize(normalMatrix * localHit.normal);
+            bestHit.material = localHit.material;
+        }
+    }
+
+    return bestHit;
+}
+
+SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float tMax)
+{
+    if (uUseSoftwareBVHTrace == 0 || uBVHNodeCount == 0u || uTriangleCount == 0u) {
+        SoftwareBVHHit miss;
+        miss.hit = false;
+        miss.t = tMax;
+        miss.position = origin + direction * tMax;
+        miss.normal = vec3(0.0, 1.0, 0.0);
+        return miss;
+    }
+
+    if (uRTInstanceCount > 0u && uRTInstanceNodeCount > 0u) {
+        return TraceSoftwareTLAS(origin, direction, tMin, tMax);
+    }
+
+    return TraceSoftwareBLAS(origin, direction, tMin, tMax, 0, 0);
 }
 
 bool ShadowInBounds(vec3 p)
@@ -635,7 +771,7 @@ float TraceSkyVisibilityDirection(vec3 worldPos, vec3 normal, vec3 skyDir)
         }
     }
 
-    return hemisphereAccess;
+    return hemisphereAccess * SURFEL_SKY_OPEN_MISS_VISIBILITY;
 }
 
 float TraceSkyVisibilityAtSurface(vec3 worldPos, vec3 normal)
@@ -695,10 +831,10 @@ vec3 EvaluateSourceDirectBounce(Surfel sourceSurfel)
     }
 
     vec3 directIrradiance = EvaluateHitDirectIrradiance(sourcePos, sourceNormal);
-    vec3 sourceBounce = sourceAlbedo * directIrradiance * SURFEL_SOURCE_DIRECT_BOUNCE_SCALE;
+    vec3 sourceDirectIrradiance = directIrradiance * SURFEL_SOURCE_DIRECT_BOUNCE_SCALE;
 
     float ageRamp = smoothstep(0.0, 8.0, sourceSurfel.worldNormal_age.w);
-    return max(sourceBounce, vec3(0.0)) * mix(0.55, 1.0, ageRamp) * albedoSignal;
+    return max(sourceDirectIrradiance, vec3(0.0)) * mix(0.55, 1.0, ageRamp) * albedoSignal;
 }
 
 float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
@@ -1191,7 +1327,8 @@ void TraceGatherSurfel(SurfelRay ray,
     vec3 albedo = max(surfel.albedo_life.rgb, vec3(0.0));
     bool emissiveSurfelHit = (SurfelFlags(surfel) & SURFEL_EMISSIVE) != 0u;
     vec3 emissiveRadiance = emissiveSurfelHit ? max(surfel.irradiance.rgb, vec3(0.0)) : vec3(0.0);
-    vec3 cachedBounce = emissiveSurfelHit ? vec3(0.0) : max(surfel.irradiance.rgb, vec3(0.0));
+    vec3 cachedIrradiance = emissiveSurfelHit ? vec3(0.0) : max(surfel.irradiance.rgb, vec3(0.0));
+    vec3 cachedBounce = albedo * SURFEL_INV_PI * cachedIrradiance;
     bool needsLiveLighting = confidence < SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF ||
         surfel.shortMean.a < SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF ||
         SurfelIsNew(surfel);
@@ -1387,7 +1524,7 @@ TraceGather TraceSurfelGrid(SurfelRay ray)
 void main()
 {
     uint rayID = gl_GlobalInvocationID.x;
-    uint activeRayLimit = min(min(uActiveRayCount, uMaxRays), counters.allocatedRays);
+    uint activeRayLimit = min(uActiveRayCount, uMaxRays);
     if (rayID >= activeRayLimit) {
         return;
     }

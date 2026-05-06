@@ -27,6 +27,9 @@ const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 2u;
 const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 2u;
 const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 2u;
 const float SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS = 8.0;
+const uint SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD = 8u;
+const uint SURFEL_REQUEST_DETAIL_MAINTENANCE_PERIOD = 4u;
+const uint SURFEL_REQUEST_CACHE_MAINTENANCE_PERIOD = 64u;
 
 uint FrameDelta(uint newerFrame, uint olderFrame)
 {
@@ -53,12 +56,21 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     float visible = exp(-0.08 * float(framesSinceVisible));
     bool recentlyVisible = framesSinceVisible <= 4u;
     float visibleUnresolved = recentlyVisible &&
-        (confidence < 0.62 || surfel.shortMean.a < SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS || variance > 0.060)
+        (confidence < 0.82 || surfel.shortMean.a < 32.0 || variance > 0.025)
         ? 1.0
         : 0.0;
     float visibleRayDebt = recentlyVisible
         ? smoothstep(2.0, 12.0, float(framesSinceContribution))
         : 0.0;
+    bool underCoveredAtSpawn = surfel.debug.z > 0.0 && surfel.debug.z < 0.72;
+    bool detailOrCreviceSurfel = surfel.worldPos_radius.w <= max(surfel.localPos_spawnRadius.w * 1.08, 0.001) ||
+        variance > 0.018 ||
+        underCoveredAtSpawn;
+    bool visibleMaintenancePhase = recentlyVisible &&
+        (((uFrameIndex + surfelID * 17u) % SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD) == 0u);
+    bool detailMaintenancePhase = recentlyVisible &&
+        detailOrCreviceSurfel &&
+        (((uFrameIndex + surfelID * 29u) % SURFEL_REQUEST_DETAIL_MAINTENANCE_PERIOD) == 0u);
     bool dormantLowVariance = !recentlyVisible &&
         !isNew &&
         framesSinceContribution > 48u &&
@@ -85,11 +97,12 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         visible * signal * 0.24 +
         (isNew ? 0.16 : 0.0) +
         lowConfidence * 0.10 +
-        visibleUnresolved * 0.36 +
+        visibleUnresolved * 0.48 +
         visibleRayDebt * 0.20;
     importance *= mix(1.5, 1.0, ageScore);
 
-    uint requested = uint(round(mix(1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL), SurfelSaturate(importance))));
+    uint requested = 1u;
+    requested = max(requested, uint(round(mix(1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL), SurfelSaturate(importance)))));
     if (brandNew) {
         requested = max(requested, SURFEL_REQUEST_NEW_SURFEL_RAYS);
     } else if (SurfelIsNew(surfel)) {
@@ -104,6 +117,12 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     if (recentlyVisible && visibleRayDebt > 0.0 && confidence < 0.82) {
         requested = max(requested, 2u);
     }
+    if (visibleMaintenancePhase) {
+        requested = max(requested, 1u);
+    }
+    if (detailMaintenancePhase && (confidence < 0.92 || framesSinceContribution > 3u || variance > 0.018)) {
+        requested = max(requested, 1u);
+    }
 
     if (!recentlyVisible && !isNew && confidence > 0.92 && variance < 0.01 && signal < 0.02) {
         requested = min(requested, 1u);
@@ -117,6 +136,9 @@ void main()
     uint surfelID = gl_GlobalInvocationID.x;
     if (surfelID >= uMaxSurfels) {
         return;
+    }
+    if (surfelID == 0u) {
+        atomicMax(counters.requestedRays, max(uMaxSurfels / SURFEL_REQUEST_CACHE_MAINTENANCE_PERIOD, 1u));
     }
     uint requested = ComputeRayRequest(surfelID, surfels[surfelID]);
     if (requested > 0u) {

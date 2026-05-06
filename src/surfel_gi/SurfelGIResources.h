@@ -70,7 +70,9 @@ enum class SurfelGIBinding : GLuint {
     GridCounters = 29u,
     Settings = 30u,
     ShadowMatrices = 31u,
-    CoverageTiles = 32u
+    CoverageTiles = 32u,
+    RtInstances = 33u,
+    RtInstanceNodes = 34u
 };
 
 constexpr GLuint ToGLuint(SurfelGIBinding binding)
@@ -91,9 +93,10 @@ struct alignas(16) Surfel {
     glm::vec4 shortMean{ 0.0f };
     glm::vec4 shortM2{ 0.0f };
     glm::uvec4 frameInfo{ 0u };
+    glm::uvec4 lifecycle{ 0u };
     glm::vec4 debug{ 0.0f };
 };
-static_assert(sizeof(Surfel) == 176, "Surfel must match std430 GLSL layout.");
+static_assert(sizeof(Surfel) == 192, "Surfel must match std430 GLSL layout.");
 static_assert(offsetof(Surfel, worldPos_radius) == 0, "Surfel.worldPos_radius offset mismatch.");
 static_assert(offsetof(Surfel, worldNormal_age) == 16, "Surfel.worldNormal_age offset mismatch.");
 static_assert(offsetof(Surfel, localPos_spawnRadius) == 32, "Surfel.localPos_spawnRadius offset mismatch.");
@@ -104,7 +107,8 @@ static_assert(offsetof(Surfel, irradiance) == 96, "Surfel.irradiance offset mism
 static_assert(offsetof(Surfel, shortMean) == 112, "Surfel.shortMean offset mismatch.");
 static_assert(offsetof(Surfel, shortM2) == 128, "Surfel.shortM2 offset mismatch.");
 static_assert(offsetof(Surfel, frameInfo) == 144, "Surfel.frameInfo offset mismatch.");
-static_assert(offsetof(Surfel, debug) == 160, "Surfel.debug offset mismatch.");
+static_assert(offsetof(Surfel, lifecycle) == 160, "Surfel.lifecycle offset mismatch.");
+static_assert(offsetof(Surfel, debug) == 176, "Surfel.debug offset mismatch.");
 
 struct alignas(16) SurfelCounters {
     uint32_t freeTop = 0u;
@@ -131,8 +135,16 @@ struct alignas(16) SurfelCounters {
     uint32_t coverageSpawnedTileCount = 0u;
     uint32_t coverageVisibleTileCount = 0u;
     uint32_t coverageInvalidTileCount = 0u;
+    uint32_t projectedSurfels = 0u;
+    uint32_t coverageDepthRejected = 0u;
+    uint32_t coverageNormalRejected = 0u;
+    uint32_t coverageMaterialRejected = 0u;
+    uint32_t coverageRadiusRejected = 0u;
+    uint32_t _pad0 = 0u;
+    uint32_t _pad1 = 0u;
+    uint32_t _pad2 = 0u;
 };
-static_assert(sizeof(SurfelCounters) == 96, "SurfelCounters must match std430 GLSL layout.");
+static_assert(sizeof(SurfelCounters) == 128, "SurfelCounters must match std430 GLSL layout.");
 
 enum SurfelCoverageTileFlags : uint32_t {
     SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,
@@ -146,8 +158,9 @@ struct alignas(16) SurfelCoverageTile {
     glm::vec4 lowestCoverage{ 1.0f, 0.0f, 0.0f, 0.0f };
     glm::uvec4 state{ 0u };
     glm::uvec4 pixel{ 0u };
+    glm::uvec4 projection{ 0u };
 };
-static_assert(sizeof(SurfelCoverageTile) == 48, "SurfelCoverageTile must match std430 GLSL layout.");
+static_assert(sizeof(SurfelCoverageTile) == 64, "SurfelCoverageTile must match std430 GLSL layout.");
 
 struct alignas(16) SurfelGISettingsGpu {
     glm::uvec4 budgets{ 0u };

@@ -34,4 +34,9 @@ void main()
     counters.coverageSpawnedTileCount = 0u;
     counters.coverageVisibleTileCount = 0u;
     counters.coverageInvalidTileCount = 0u;
+    counters.projectedSurfels = 0u;
+    counters.coverageDepthRejected = 0u;
+    counters.coverageNormalRejected = 0u;
+    counters.coverageMaterialRejected = 0u;
+    counters.coverageRadiusRejected = 0u;
 }

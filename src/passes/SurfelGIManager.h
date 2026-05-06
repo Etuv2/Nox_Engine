@@ -75,14 +75,19 @@ struct SurfelGISettings {
 	uint32_t fastFillSpawnPasses = 4u;
 	uint32_t fastFillFrameCount = 16u;
 	uint32_t stationaryFastFillFrames = 32u;
+	uint32_t maxSpawnsPerFrame = 96u;
+	uint32_t maxProjectedSurfelsPerFrame = 16384u;
+	uint32_t maxRecycleCountPerFrame = 2048u;
 
-	float targetSurfelScreenRadiusPx = 3.0f;
+	float targetSurfelScreenRadiusPx = 8.0f;
 	float minSurfelRadius = 0.03f;
 	float maxSurfelRadius = 5.0f;
 	float spawnCoverageThreshold = 0.85f;
 	float stationaryCameraEpsilon = 0.0025f;
 	float recyclePressureStart = 0.85f;
 	float normalRejectCos = 0.25f;
+	float coverageNormalCos = 0.86f;
+	float coverageDepthTolerance = 0.0035f;
 	float finalGatherNormalCos = 0.15f;
 	float radialDepthSigmaScale = 1.0f;
 	float indirectIntensity = 1.0f;
@@ -127,6 +132,11 @@ struct SurfelGIFrameStats {
 	uint32_t coverageSpawnedTileCount = 0;
 	uint32_t coverageVisibleTileCount = 0;
 	uint32_t coverageInvalidTileCount = 0;
+	uint32_t projectedSurfels = 0;
+	uint32_t coverageDepthRejected = 0;
+	uint32_t coverageNormalRejected = 0;
+	uint32_t coverageMaterialRejected = 0;
+	uint32_t coverageRadiusRejected = 0;
 	float updateTimeMs = 0.0f;
 	float traceTimeMs = 0.0f;
 	float applyTimeMs = 0.0f;

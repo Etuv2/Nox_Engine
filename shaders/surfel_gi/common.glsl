@@ -26,6 +26,8 @@
 #define B_SURFEL_GI_SETTINGS 30
 #define B_SHADOW_MATRICES 31
 #define B_COVERAGE_TILES 32
+#define B_RT_INSTANCES 33
+#define B_RT_INSTANCE_NODES 34
 
 #define T_SURFEL_GBUFFER_NORMAL_RM 0
 #define T_SURFEL_GBUFFER_ALBEDO_AO 1
@@ -81,6 +83,7 @@ struct Surfel
     vec4 shortMean;
     vec4 shortM2;
     uvec4 frameInfo;
+    uvec4 lifecycle;
     vec4 debug;
 };
 
@@ -110,6 +113,14 @@ struct SurfelCounters
     uint coverageSpawnedTileCount;
     uint coverageVisibleTileCount;
     uint coverageInvalidTileCount;
+    uint projectedSurfels;
+    uint coverageDepthRejected;
+    uint coverageNormalRejected;
+    uint coverageMaterialRejected;
+    uint coverageRadiusRejected;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
 };
 
 struct SurfelCoverageTile
@@ -117,6 +128,7 @@ struct SurfelCoverageTile
     vec4 lowestCoverage;
     uvec4 state;
     uvec4 pixel;
+    uvec4 projection;
 };
 
 struct RadialDepthTexel
@@ -212,6 +224,17 @@ bool SurfelIsNew(Surfel surfel)
     return (SurfelFlags(surfel) & SURFEL_NEW) != 0u;
 }
 
+uvec4 SurfelLifecycleCounters(uint failedValidationCount,
+                              uint successfulValidationCount,
+                              uint lowConfidenceFrameCount,
+                              uint recentReuseScore)
+{
+    return uvec4(failedValidationCount,
+                 successfulValidationCount,
+                 lowConfidenceFrameCount,
+                 recentReuseScore);
+}
+
 void SurfelMarkDead(inout Surfel surfel)
 {
     SurfelSetFlags(surfel, SURFEL_DEAD);
@@ -235,27 +258,31 @@ uint SurfelHash(uint value)
 }
 
 const uint SURFEL_SPAWN_TILE_STRATA_X = 4u;
-const uint SURFEL_SPAWN_TILE_STRATA_Y = 2u;
+const uint SURFEL_SPAWN_TILE_STRATA_Y = 4u;
+const vec2 SURFEL_SPAWN_TILE_R2_STEP = vec2(0.754877666, 0.569840296);
 
-vec2 SurfelSpawnTileStratum(uint frameIndex,
+vec2 SurfelSpawnTileStratum(uvec2 tile,
+                            uint frameIndex,
                             uint passIndex,
                             uint passCount,
                             uint sampleIndex)
 {
-    if (sampleIndex == 0u) {
-        return vec2(0.5);
-    }
-
-    uint stratumCount = SURFEL_SPAWN_TILE_STRATA_X * SURFEL_SPAWN_TILE_STRATA_Y;
-    uint rotated = (sampleIndex - 1u) +
-        passIndex * 3u +
-        (frameIndex & 1u) * 5u +
-        (passCount & 1u);
-    uint stratum = rotated % stratumCount;
-    uvec2 cell = uvec2(stratum % SURFEL_SPAWN_TILE_STRATA_X,
-                       stratum / SURFEL_SPAWN_TILE_STRATA_X);
-    return (vec2(cell) + vec2(0.5)) /
-        vec2(float(SURFEL_SPAWN_TILE_STRATA_X), float(SURFEL_SPAWN_TILE_STRATA_Y));
+    uint tileSeed = tile.x * 0x8da6b343u ^
+        tile.y * 0xd8163841u ^
+        (frameIndex & 31u) * 0xcb1ab31fu ^
+        passIndex * 0x165667b1u ^
+        passCount * 0x27d4eb2du;
+    // Cranley-Patterson rotate an R2 sequence per tile/frame/pass. This keeps
+    // candidates stable and well-spaced without locking them to repeated tile
+    // centers or a tiny set of horizontal/vertical sub-strata.
+    vec2 rotation = vec2(
+        float(SurfelHash(tileSeed) & 0x00ffffffu) / 16777215.0,
+        float(SurfelHash(tileSeed ^ 0x68bc21ebu) & 0x00ffffffu) / 16777215.0);
+    float sequenceIndex = float(sampleIndex) +
+        float((SurfelHash(tileSeed ^ 0x9e3779b9u) & 15u));
+    return clamp(fract(rotation + SURFEL_SPAWN_TILE_R2_STEP * sequenceIndex),
+                 vec2(0.035),
+                 vec2(0.965));
 }
 
 uvec2 SurfelSpawnTilePixel(uvec2 tile,
@@ -266,20 +293,16 @@ uvec2 SurfelSpawnTilePixel(uvec2 tile,
                            uint sampleIndex)
 {
     vec2 extent = max(vec2(tileExtent), vec2(1.0));
-    vec2 stratum = SurfelSpawnTileStratum(frameIndex, passIndex, passCount, sampleIndex);
+    vec2 stratum = SurfelSpawnTileStratum(tile, frameIndex, passIndex, passCount, sampleIndex);
     uint seed = tile.x * 0x8da6b343u ^
         tile.y * 0xd8163841u ^
         frameIndex * 0xcb1ab31fu ^
         (passIndex + passCount * 17u) * 0x165667b1u ^
         sampleIndex * 0x9e3779b9u;
-    vec2 stratumSize = extent / vec2(float(SURFEL_SPAWN_TILE_STRATA_X),
-                                     float(SURFEL_SPAWN_TILE_STRATA_Y));
     vec2 jitter01 = vec2(
         float(SurfelHash(seed) & 0x00ffffffu),
         float(SurfelHash(seed ^ 0x68bc21ebu) & 0x00ffffffu)) / 16777215.0;
-    vec2 jitter = sampleIndex == 0u
-        ? vec2(0.0)
-        : (jitter01 - vec2(0.5)) * min(stratumSize, extent) * 0.42;
+    vec2 jitter = (jitter01 - vec2(0.5)) * min(extent, vec2(2.0)) * 0.70;
     vec2 pixel = clamp(stratum * extent + jitter,
                        vec2(0.0),
                        max(extent - vec2(0.001), vec2(0.0)));
@@ -765,7 +788,7 @@ float SurfelMaxGridCellSize(vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
 float SurfelCoverageSupportRadius(float radius, vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
 {
     float cellSize = SurfelMaxGridCellSize(gridMin, gridMax, gridResolution);
-    return max(max(radius * 5.0, cellSize * 0.70), 0.22);
+    return max(max(radius * 5.75, cellSize * 0.78), 0.28);
 }
 
 float SurfelGridCellSizeAtWorld(vec3 worldPos,
@@ -791,7 +814,7 @@ float SurfelCoverageSupportRadiusAt(vec3 worldPos,
                                     float gridFarExtent)
 {
     float cellSize = SurfelGridCellSizeAtWorld(worldPos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent);
-    return max(max(radius * 3.75, cellSize * 0.68), 0.18);
+    return max(max(radius * 4.50, cellSize * 0.72), 0.24);
 }
 
 bool SurfelWorldNeighborAddress(vec3 worldPos,
@@ -832,7 +855,7 @@ float SurfelCoverageWeight(vec3 receiverPos,
     vec3 delta = receiverPos - surfelPos;
     float disk = exp(-dot(delta, delta) / max(supportRadius * supportRadius, 1e-4));
     float normal = SurfelSaturate((dot(receiverNormal, surfelNormal) - normalRejectCos) / max(1.0 - normalRejectCos, 1e-4));
-    float planeSigma = max(max(radius * 2.0, supportRadius * 0.18), 0.035);
+    float planeSigma = max(max(radius * 2.45, supportRadius * 0.22), 0.045);
     float plane = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
     return disk * normal * plane;
 }
@@ -854,7 +877,7 @@ float SurfelCoverageWeightAt(vec3 receiverPos,
     vec3 delta = receiverPos - surfelPos;
     float disk = exp(-dot(delta, delta) / max(supportRadius * supportRadius, 1e-4));
     float normal = SurfelSaturate((dot(receiverNormal, surfelNormal) - normalRejectCos) / max(1.0 - normalRejectCos, 1e-4));
-    float planeSigma = max(max(radius * 2.0, supportRadius * 0.20), 0.035);
+    float planeSigma = max(max(radius * 2.45, supportRadius * 0.23), 0.045);
     float plane = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
     return disk * normal * plane;
 }

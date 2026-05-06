@@ -91,10 +91,11 @@ void main()
     float previousRadius = surfel.worldPos_radius.w > 0.0
         ? clamp(surfel.worldPos_radius.w, minRadius, maxRadius)
         : clamp(surfel.localPos_spawnRadius.w, minRadius, maxRadius);
-    float radiusResponse = targetRadius < previousRadius ? 0.58 : 0.38;
-    float radius = clamp(mix(previousRadius, targetRadius, radiusResponse), minRadius, maxRadius);
+    // GIBS-style surfels adapt their support radius from the current projected
+    // footprint. Do this directly; slow interpolation leaves stale undersized
+    // disks after camera motion and weakens both coverage and gathering.
+    float radius = targetRadius;
     float targetRadiusError = abs(radius - targetRadius) / max(targetRadius, 1e-4);
-    surfel.localPos_spawnRadius.w = mix(surfel.localPos_spawnRadius.w, targetRadius, 0.04);
     float motionDistance = IsFiniteVec3(previousWorldPos) ? length(worldPos.xyz - previousWorldPos) : 0.0;
     float normalDelta = IsFiniteVec3(previousWorldNormal) ? (1.0 - max(dot(worldNormal, previousWorldNormal), 0.0)) : 0.0;
     float motionReactive = SurfelSaturate(motionDistance / max(radius * 2.0, 0.05) + normalDelta);
@@ -109,6 +110,10 @@ void main()
 
     surfel.worldPos_radius = vec4(worldPos.xyz, radius);
     surfel.worldNormal_age = vec4(worldNormal, surfel.worldNormal_age.w + 1.0);
+    surfel.localPos_spawnRadius.w = mix(
+        clamp(surfel.localPos_spawnRadius.w, minRadius, maxRadius),
+        radius,
+        motionReactive > 0.03 ? 0.22 : 0.06);
     surfel.frameInfo.z = uFrameIndex;
     surfel.debug.z = SurfelSaturate(targetRadiusError);
     surfels[surfelID] = surfel;

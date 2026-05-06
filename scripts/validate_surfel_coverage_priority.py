@@ -41,6 +41,14 @@ def main() -> None:
             "spawn shader must write persistent per-tile coverage diagnostics")
     require("SurfelCoverageTile" in common and "uvec4 state" in common and "uvec4 pixel" in common,
             "coverage tile struct must retain the existing shared diagnostic fields")
+    require("vec2 SurfelSpawnTileStratum(uvec2 tile" in common,
+            "spawn tile strata must be decorrelated per tile so flat surfaces do not seed repeated screen-tile centers")
+    require("sampleIndex == 0u" not in common,
+            "spawn candidate 0 must not be a special near-center sample that wins flat-surface ties into visible strips")
+    require("SURFEL_SPAWN_TILE_R2_STEP" in common and
+            "Cranley" in common and
+            "stratumSize" not in common.split("uvec2 SurfelSpawnTilePixel", 1)[1],
+            "spawn candidates must use full-tile low-discrepancy jitter, not a small fixed set of horizontal/vertical strata")
     require("SURFEL_COVERAGE_TILE_FINAL_GI_VALID" in common,
             "coverage tile flags must include final-gather GI validity")
     require("layout(binding = B_COVERAGE_TILES, std430) buffer SurfelCoverageTileBuffer" in apply and
@@ -53,8 +61,18 @@ def main() -> None:
             "clamp(uSpawnCandidateCount, 1u, SURFEL_SPAWN_TILE_CANDIDATES)" in spawn and
             "SetUniform1ui(program, \"uSpawnCandidateCount\"" in pipeline_cpp,
             "coverage scheduler must keep full candidate sweeps for fast fill while allowing cheaper stable maintenance")
-    require("side-effect free" in coverage,
-            "coverage.comp must remain a bounded placeholder unless the shared coverage pass is fully implemented")
+    require("uCoveragePassMode" in coverage and
+            "SURFEL_COVERAGE_PASS_RESET" in coverage and
+            "SURFEL_COVERAGE_PASS_PROJECT" in coverage,
+            "coverage.comp must implement explicit reset and surfel projection/classification modes")
+    require("ValidateProjectedSurfelCoverage" in coverage and
+            "depthConsistent" in coverage and
+            "normalCompatible" in coverage and
+            "materialCompatible" in coverage and
+            "radiusCompatible" in coverage,
+            "coverage projection must validate depth, normal, material, and radius compatibility")
+    require('"coverage_reset"' in pipeline_cpp and '"coverage_project"' in pipeline_cpp,
+            "pipeline must dispatch dedicated coverage reset and projected-surfel classification passes before spawning")
 
     evaluate_body = function_body(spawn, "EvaluateSpawnCandidate")
     require("candidate.rejectReason" in spawn and "candidate.nearbySurfelCount" in spawn,
@@ -92,8 +110,17 @@ def main() -> None:
             "tile diagnostics must record updated-this-frame for visible candidates")
 
     main_body = function_body(spawn, "main")
+    require("PermutedSpawnTileIndex" in spawn and
+            "SpawnTilePermutationStride" in spawn and
+            "uint workItem = gl_GlobalInvocationID.x" in main_body and
+            "uint tileIndex = PermutedSpawnTileIndex(workItem, totalTileCount, uFrameIndex, passIndex)" in main_body,
+            "spawn budget arbitration must visit screen tiles through a per-frame permutation instead of row-major order")
     require("StoreCoverageTile(tileIndex, bestCandidate.valid, bestCandidate, effectiveCoverageThreshold, spawned)" in main_body,
             "main must let StoreCoverageTile compute final high priority from current visibility, coverage, age, and motion")
+    require("SurfelCandidateSelectionPriority" in spawn and
+            "candidatePriority" in main_body and
+            "currentScore -= candidatePriority" in main_body,
+            "flat or near-flat tiles must use a deterministic per-candidate tie breaker instead of always keeping candidate 0")
     require("bestCandidate.coverage = max(bestCandidate.coverage, uCoverageThreshold)" not in main_body,
             "stationary tiles must continue measuring real coverage after initial seeding")
     require("previousUnresolvedAge >= 2u || uCameraMotionBoost != 0u" not in main_body,

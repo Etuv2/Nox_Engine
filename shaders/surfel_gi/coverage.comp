@@ -1,33 +1,263 @@
 #version 460 core
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
+#include "../includes/pbr_common.glsl"
 #include "common.glsl"
 
-layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
 {
     Surfel surfels[];
 };
 
-layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 {
-    SurfelCellHeader gridHeaders[];
+    SurfelCounters counters;
 };
 
-layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
+layout(binding = B_COVERAGE_TILES, std430) buffer SurfelCoverageTileBuffer
 {
-    SurfelCellEntry gridEntries[];
+    SurfelCoverageTile coverageTiles[];
 };
 
+layout(binding = T_SURFEL_GBUFFER_NORMAL_RM) uniform sampler2D uPackedNormalRMTex;
+layout(binding = T_SURFEL_GBUFFER_MATERIAL_ID) uniform usampler2D uMaterialIDTex;
+layout(binding = T_SURFEL_GBUFFER_TRANSFORM_ID) uniform usampler2D uTransformIDTex;
+layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
+
+uniform uint uCoveragePassMode = 0u;
+uniform uint uMaxSurfels;
+uniform uint uFrameIndex;
+uniform uint uMaxProjectedSurfelsPerFrame;
+uniform uvec2 uResolution;
 uniform uvec2 uCoverageTileCount;
+uniform uint uTileSize;
+uniform mat4 uInvProjection;
+uniform mat4 uInvView;
+uniform mat4 uView;
+uniform mat4 uProjection;
+uniform vec2 uViewportSize;
+uniform float uCoverageNormalCos;
+uniform float uCoverageDepthTolerance;
 
-void main()
+const uint SURFEL_COVERAGE_PASS_RESET = 0u;
+const uint SURFEL_COVERAGE_PASS_PROJECT = 1u;
+const uint SURFEL_COVERAGE_REJECT_DEPTH = 1u << 0;
+const uint SURFEL_COVERAGE_REJECT_NORMAL = 1u << 1;
+const uint SURFEL_COVERAGE_REJECT_MATERIAL = 1u << 2;
+const uint SURFEL_COVERAGE_REJECT_RADIUS = 1u << 3;
+
+bool CoverageDepthValid(float depth01)
 {
-    uvec2 tile = gl_GlobalInvocationID.xy;
-    if (tile.x >= uCoverageTileCount.x || tile.y >= uCoverageTileCount.y) {
+    return depth01 > 0.0 && depth01 < 0.999999 && !isnan(depth01) && !isinf(depth01);
+}
+
+bool ProjectSurfelToScreen(Surfel surfel, out vec2 uv, out float depth01, out float projectedRadiusPx)
+{
+    vec3 worldPos = surfel.worldPos_radius.xyz;
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    vec4 clip = uProjection * uView * vec4(worldPos, 1.0);
+    if (clip.w <= 1e-5) {
+        uv = vec2(0.0);
+        depth01 = 1.0;
+        projectedRadiusPx = 0.0;
+        return false;
+    }
+
+    vec3 ndc = clip.xyz / clip.w;
+    uv = ndc.xy * 0.5 + 0.5;
+    depth01 = ndc.z * 0.5 + 0.5;
+    vec3 viewPos = (uView * vec4(worldPos, 1.0)).xyz;
+    float focalY = max(abs(uProjection[1][1]), 0.0001);
+    projectedRadiusPx = radius * focalY * max(uViewportSize.y, 1.0) / max(abs(viewPos.z), 0.05);
+    return all(greaterThanEqual(uv, vec2(0.0))) &&
+        all(lessThanEqual(uv, vec2(1.0))) &&
+        depth01 >= 0.0 &&
+        depth01 <= 1.0 &&
+        projectedRadiusPx > 0.0;
+}
+
+bool ValidateProjectedSurfelCoverage(Surfel surfel,
+                                      uvec2 pixel,
+                                      float projectedDepth,
+                                      out float quality,
+                                      out uint rejectMask)
+{
+    quality = 0.0;
+    rejectMask = 0u;
+
+    ivec2 p = ivec2(min(pixel, uResolution - uvec2(1u)));
+    float sceneDepth = texelFetch(uDepthTex, p, 0).r;
+    if (!CoverageDepthValid(sceneDepth)) {
+        rejectMask |= SURFEL_COVERAGE_REJECT_DEPTH;
+        return false;
+    }
+
+    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(max(uResolution, uvec2(1u)));
+    vec3 sceneWorldPos = SurfelReconstructWorldPosition(uv, sceneDepth, uInvProjection, uInvView);
+    vec3 sceneNormal = SurfelSafeNormalize(DecodeNormalOct(texelFetch(uPackedNormalRMTex, p, 0).rg));
+    uint sceneMaterialID = texelFetch(uMaterialIDTex, p, 0).r;
+    uint sceneTransformID = texelFetch(uTransformIDTex, p, 0).r;
+
+    vec3 surfelPos = surfel.worldPos_radius.xyz;
+    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    float radius = max(surfel.worldPos_radius.w, 0.001);
+    vec3 delta = sceneWorldPos - surfelPos;
+    vec3 surfelView = (uView * vec4(surfelPos, 1.0)).xyz;
+    vec3 sceneView = (uView * vec4(sceneWorldPos, 1.0)).xyz;
+
+    bool materialCompatible = sceneMaterialID == surfel.ids.z && sceneTransformID == surfel.ids.x;
+    bool normalCompatible = dot(sceneNormal, surfelNormal) >= uCoverageNormalCos;
+    bool depthConsistent = abs(sceneDepth - projectedDepth) <= uCoverageDepthTolerance ||
+        abs(sceneView.z - surfelView.z) <= max(radius * 0.80, 0.035);
+    bool radiusCompatible = length(delta) <= max(radius * 1.55, 0.040);
+
+    if (!materialCompatible) {
+        rejectMask |= SURFEL_COVERAGE_REJECT_MATERIAL;
+    }
+    if (!normalCompatible) {
+        rejectMask |= SURFEL_COVERAGE_REJECT_NORMAL;
+    }
+    if (!depthConsistent) {
+        rejectMask |= SURFEL_COVERAGE_REJECT_DEPTH;
+    }
+    if (!radiusCompatible) {
+        rejectMask |= SURFEL_COVERAGE_REJECT_RADIUS;
+    }
+    if (rejectMask != 0u) {
+        return false;
+    }
+
+    float normalQuality = smoothstep(uCoverageNormalCos, 1.0, dot(sceneNormal, surfelNormal));
+    float radiusQuality = 1.0 - smoothstep(radius * 0.35, max(radius * 1.55, 0.041), length(delta));
+    float depthQuality = 1.0 - smoothstep(0.0, max(uCoverageDepthTolerance, 1e-5), abs(sceneDepth - projectedDepth));
+    quality = clamp(max(0.25, normalQuality) * max(0.25, radiusQuality) * max(0.25, depthQuality), 0.0, 1.0);
+    return true;
+}
+
+void RecordProjectedValidation(uint surfelID, bool valid, float quality, uint rejectMask)
+{
+    if (surfelID >= uMaxSurfels) {
         return;
     }
 
-    // First-pass placeholder: coverage tile storage is intentionally left to the
-    // C++ resource agent. This shader is bounded and side-effect free until then.
+    if (valid) {
+        atomicMax(surfels[surfelID].frameInfo.x, uFrameIndex);
+        atomicExchange(surfels[surfelID].lifecycle.x, 0u);
+        atomicAdd(surfels[surfelID].lifecycle.y, 1u);
+        atomicExchange(surfels[surfelID].lifecycle.z, 0u);
+        atomicMax(surfels[surfelID].lifecycle.w, uint(clamp(quality, 0.0, 1.0) * 65535.0));
+        return;
+    }
+
+    if (rejectMask != 0u) {
+        atomicAdd(surfels[surfelID].lifecycle.x, 1u);
+    }
+}
+
+void ResetCoverageTile(uint tileIndex)
+{
+    coverageTiles[tileIndex].projection = uvec4(0u);
+}
+
+uint SurfelIDForProjectedWorkItem(uint workItem)
+{
+    uint budget = max(uMaxProjectedSurfelsPerFrame, 1u);
+    if (budget >= uMaxSurfels) {
+        return workItem;
+    }
+
+    uint phaseCount = (uMaxSurfels + budget - 1u) / budget;
+    uint phase = uFrameIndex % max(phaseCount, 1u);
+    return workItem * phaseCount + phase;
+}
+
+void ProjectSurfelCoverage(uint workItem)
+{
+    uint budget = min(max(uMaxProjectedSurfelsPerFrame, 1u), max(uMaxSurfels, 1u));
+    if (workItem >= budget) {
+        return;
+    }
+
+    uint surfelID = SurfelIDForProjectedWorkItem(workItem);
+    if (surfelID >= uMaxSurfels) {
+        return;
+    }
+
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return;
+    }
+
+    vec2 uv;
+    float projectedDepth;
+    float projectedRadiusPx;
+    if (!ProjectSurfelToScreen(surfel, uv, projectedDepth, projectedRadiusPx)) {
+        return;
+    }
+
+    uvec2 centerPixel = min(uvec2(uv * vec2(uResolution)), uResolution - uvec2(1u));
+    float centerQuality;
+    uint centerRejectMask;
+    bool centerValid = ValidateProjectedSurfelCoverage(surfel, centerPixel, projectedDepth, centerQuality, centerRejectMask);
+    RecordProjectedValidation(surfelID, centerValid, centerQuality, centerRejectMask);
+
+    uvec2 centerTile = min(centerPixel / max(uTileSize, 1u), uCoverageTileCount - uvec2(1u));
+    uint tileRadius = min(uint(ceil(projectedRadiusPx / float(max(uTileSize, 1u)))), 2u);
+    int minX = max(int(centerTile.x) - int(tileRadius), 0);
+    int maxX = min(int(centerTile.x) + int(tileRadius), int(uCoverageTileCount.x) - 1);
+    int minY = max(int(centerTile.y) - int(tileRadius), 0);
+    int maxY = min(int(centerTile.y) + int(tileRadius), int(uCoverageTileCount.y) - 1);
+
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            uvec2 tile = uvec2(uint(x), uint(y));
+            uvec2 tileCenter = min(tile * uTileSize + uvec2(max(uTileSize, 1u) / 2u), uResolution - uvec2(1u));
+            float quality;
+            uint rejectMask;
+            bool valid = ValidateProjectedSurfelCoverage(surfel, tileCenter, projectedDepth, quality, rejectMask);
+            uint tileIndex = tile.x + tile.y * uCoverageTileCount.x;
+            if (valid) {
+                atomicAdd(coverageTiles[tileIndex].projection.x, 1u);
+                atomicMax(coverageTiles[tileIndex].projection.y, uint(clamp(quality, 0.0, 1.0) * 65535.0));
+                atomicExchange(coverageTiles[tileIndex].projection.z, surfelID);
+                atomicMax(surfels[surfelID].frameInfo.x, uFrameIndex);
+                atomicAdd(counters.projectedSurfels, 1u);
+            } else {
+                atomicOr(coverageTiles[tileIndex].projection.w, rejectMask);
+                if ((rejectMask & SURFEL_COVERAGE_REJECT_DEPTH) != 0u) {
+                    atomicAdd(counters.coverageDepthRejected, 1u);
+                }
+                if ((rejectMask & SURFEL_COVERAGE_REJECT_NORMAL) != 0u) {
+                    atomicAdd(counters.coverageNormalRejected, 1u);
+                }
+                if ((rejectMask & SURFEL_COVERAGE_REJECT_MATERIAL) != 0u) {
+                    atomicAdd(counters.coverageMaterialRejected, 1u);
+                }
+                if ((rejectMask & SURFEL_COVERAGE_REJECT_RADIUS) != 0u) {
+                    atomicAdd(counters.coverageRadiusRejected, 1u);
+                }
+            }
+        }
+    }
+}
+
+void main()
+{
+    uint workItem = gl_GlobalInvocationID.x;
+    uint tileCount = uCoverageTileCount.x * uCoverageTileCount.y;
+    if (uCoveragePassMode == SURFEL_COVERAGE_PASS_RESET) {
+        if (workItem < tileCount) {
+            ResetCoverageTile(workItem);
+        }
+        return;
+    }
+
+    if (uCoveragePassMode == SURFEL_COVERAGE_PASS_PROJECT &&
+        uMaxSurfels > 0u &&
+        uMaxProjectedSurfelsPerFrame > 0u &&
+        all(greaterThan(uResolution, uvec2(0u))) &&
+        all(greaterThan(uCoverageTileCount, uvec2(0u)))) {
+        ProjectSurfelCoverage(workItem);
+    }
 }
