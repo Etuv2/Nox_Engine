@@ -188,7 +188,6 @@ local_test_data/
 
 # Keep config & scripts (negation examples)
 !config/**
-!scripts/**
 
 # Existing exclusions below (retained)
 # Visual Studio files that are not needed
@@ -196,6 +195,4 @@ local_test_data/
 *.opendb
 /captures
 /scripts
-/scripts
-/scripts
-/scripts
+*.py

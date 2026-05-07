@@ -205,6 +205,22 @@ void ReadSurfelCounters(GLuint countersBuffer, SurfelGIFrameStats& stats)
 	stats.coverageNormalRejected = counters.coverageNormalRejected;
 	stats.coverageMaterialRejected = counters.coverageMaterialRejected;
 	stats.coverageRadiusRejected = counters.coverageRadiusRejected;
+	stats.rayHitGrid = counters.rayHitGrid;
+	stats.rayHitScreen = counters.rayHitScreen;
+	stats.rayHitBVH = counters.rayHitBVH;
+	stats.rayHitEnvironment = counters.rayHitEnvironment;
+	stats.rayHitSourceDirect = counters.rayHitSourceDirect;
+	stats.rayHitMiss = counters.rayHitMiss;
+	stats.acceptedRaySamples = counters.acceptedRaySamples;
+	stats.sourceDirectSamples = counters.sourceDirectSamples;
+	stats.temporalClampEvents = counters.temporalClampEvents;
+	stats.sharingAppliedSurfels = counters.sharingAppliedSurfels;
+	stats.sharingRejectedDarkLift = counters.sharingRejectedDarkLift;
+	stats.finalGatherDirectPixels = counters.finalGatherDirectPixels;
+	stats.finalGatherFallbackPixels = counters.finalGatherFallbackPixels;
+	stats.finalGatherBleedPixels = counters.finalGatherBleedPixels;
+	stats.finalGatherValidPixels = counters.finalGatherValidPixels;
+	stats.finalGatherEmptyPixels = counters.finalGatherEmptyPixels;
 }
 
 bool AllocateIndirectTexture(GLuint& texture, uint32_t width, uint32_t height)
@@ -286,6 +302,9 @@ bool IsSurfelFullscreenDebugView(SurfelGIDebugView view)
 {
 	return view == SurfelGIDebugView::SurfelGridCells ||
 		view == SurfelGIDebugView::GatherWeights ||
+		view == SurfelGIDebugView::FinalGatherFallback ||
+		view == SurfelGIDebugView::FinalGatherBleed ||
+		view == SurfelGIDebugView::FinalGatherComposite ||
 		view == SurfelGIDebugView::GBufferDepth ||
 		view == SurfelGIDebugView::GBufferWorldPosition ||
 		view == SurfelGIDebugView::GBufferNormal ||
@@ -382,6 +401,31 @@ std::string EnvString(const char* name)
 	const char* rawValue = std::getenv(name);
 	return rawValue ? std::string(rawValue) : std::string{};
 #endif
+}
+
+bool EnvFrameListContains(const std::string& frames, uint32_t frameIndex)
+{
+	const char* cursor = frames.c_str();
+	while (*cursor != '\0') {
+		while (*cursor == ',' || *cursor == ';' || *cursor == ' ' || *cursor == '\t' || *cursor == '\n' || *cursor == '\r') {
+			++cursor;
+		}
+		if (*cursor == '\0') {
+			break;
+		}
+
+		char* end = nullptr;
+		const unsigned long parsed = std::strtoul(cursor, &end, 10);
+		if (end == cursor) {
+			++cursor;
+			continue;
+		}
+		if (parsed == static_cast<unsigned long>(frameIndex)) {
+			return true;
+		}
+		cursor = end;
+	}
+	return false;
 }
 
 glm::vec3 DebugTonemapSurfelIrradiance(const glm::vec3& value)
@@ -1060,9 +1104,13 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
 		SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
 		SetUniform3fv(program, "uSkyRadiance", surfelSkyRadiance);
+		const GLuint bvhTraceStride = m_settings.maxRayBudget >= 8192u
+			? 1u
+			: (m_settings.maxRayBudget >= 2048u ? 2u : 4u);
 		SetUniform1i(program, "uUseScreenSpaceTrace", m_settings.useScreenSpaceTrace ? 1 : 0);
 		SetUniform1i(program, "uUseSoftwareBVHTrace", (m_settings.useSoftwareBVHTrace && bvhTriangleCount > 0u && bvhNodeCount > 0u) ? 1 : 0);
 		SetUniform1i(program, "uUseSurfelFallbackTrace", m_settings.useSurfelFallbackTrace ? 1 : 0);
+		SetUniform1ui(program, "uBVHTraceStride", bvhTraceStride);
 		const GLuint skyIrradianceMap = skybox && skybox->IsReady() ? skybox->GetIrradianceMap() : 0u;
 		const GLuint skyEnvironmentMap = skybox && skybox->IsReady() ? skybox->GetEnvironmentMap() : 0u;
 		glBindTextureUnit(kSurfelGISkyIrradianceUnit, skyIrradianceMap);
@@ -1167,7 +1215,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		const GLuint program = m_irradianceSharingShader->GetProgramID();
 		glUseProgram(program);
 		const GLuint maxRayBudget = std::max(m_settings.maxRayBudget, 1u);
-		const GLuint sharingPhaseCount = maxRayBudget <= 1024u ? 8u : (maxRayBudget <= 4096u ? 4u : 1u);
+		const GLuint sharingPhaseCount = maxRayBudget <= 1024u ? 4u : (maxRayBudget <= 4096u ? 2u : 1u);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
@@ -1367,17 +1415,19 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 
 	const std::string dumpDir = EnvString("NOX_SURFEL_GI_DUMP_DIR");
 	if (!dumpDir.empty()) {
+		const std::string explicitDumpFrames = EnvString("NOX_SURFEL_GI_DUMP_FRAMES");
 		const uint32_t dumpFrame = std::max(EnvUInt("NOX_SURFEL_GI_DUMP_FRAME", 240u), 1u);
 		const uint32_t dumpFrameCount = std::max(EnvUInt("NOX_SURFEL_GI_DUMP_FRAME_COUNT", 1u), 1u);
 		const uint32_t dumpFrameInterval = std::max(EnvUInt("NOX_SURFEL_GI_DUMP_FRAME_INTERVAL", 1u), 1u);
 		const uint32_t dumpDelta = m_frameIndex >= dumpFrame ? m_frameIndex - dumpFrame : std::numeric_limits<uint32_t>::max();
-		const bool dumpScheduledFrame =
-			m_frameIndex >= dumpFrame &&
-			(dumpDelta % dumpFrameInterval) == 0u &&
-			(dumpDelta / dumpFrameInterval) < dumpFrameCount;
+		const bool dumpScheduledFrame = !explicitDumpFrames.empty()
+			? EnvFrameListContains(explicitDumpFrames, m_frameIndex)
+			: (m_frameIndex >= dumpFrame &&
+				(dumpDelta % dumpFrameInterval) == 0u &&
+				(dumpDelta / dumpFrameInterval) < dumpFrameCount);
 		if (dumpScheduledFrame && m_lastTextureDumpFrame != m_frameIndex) {
 			const std::filesystem::path directory(dumpDir);
-			const std::string frameSuffix = dumpFrameCount > 1u
+			const std::string frameSuffix = (dumpFrameCount > 1u || !explicitDumpFrames.empty())
 				? ("_frame" + std::to_string(m_frameIndex))
 				: std::string{};
 			const bool rawOk = SaveSurfelDebugTexturePNG(
@@ -1412,9 +1462,15 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	}
 
 	glUseProgram(0);
-	if (m_logSubpassMetrics && !m_subpassTimings.empty() &&
+	const bool logSubpassMetrics = m_logSubpassMetrics && !m_subpassTimings.empty() &&
 		m_subpassMetricsInterval > 0u &&
-		(m_frameIndex % m_subpassMetricsInterval) == 0u) {
+		(m_frameIndex % m_subpassMetricsInterval) == 0u;
+	const bool periodicStatsReadback = m_frameIndex == 1u || (m_frameIndex % kSurfelStatsReadbackInterval) == 0u;
+	if ((m_settings.debugView != SurfelGIDebugView::Off || periodicStatsReadback || logSubpassMetrics) &&
+		m_resources.countersBuffer != 0u) {
+		ReadSurfelCounters(m_resources.countersBuffer, m_stats);
+	}
+	if (logSubpassMetrics) {
 		double totalGpuMs = 0.0;
 		for (const SubpassGpuTiming& timing : m_subpassTimings) {
 			totalGpuMs += timing.gpuMs;
@@ -1450,6 +1506,26 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< m_stats.coverageNormalRejected << "/"
 			<< m_stats.coverageMaterialRejected << "/"
 			<< m_stats.coverageRadiusRejected
+			<< " rayHitsGridScreenBVHEnvMiss="
+			<< m_stats.rayHitGrid << "/"
+			<< m_stats.rayHitScreen << "/"
+			<< m_stats.rayHitBVH << "/"
+			<< m_stats.rayHitEnvironment << "/"
+			<< m_stats.rayHitMiss
+			<< " raySupportAcceptedSourceDirect="
+			<< m_stats.acceptedRaySamples << "/"
+			<< m_stats.sourceDirectSamples
+			<< " sourceDirectHits=" << m_stats.rayHitSourceDirect
+			<< " temporalClamps=" << m_stats.temporalClampEvents
+			<< " sharingAppliedRejected="
+			<< m_stats.sharingAppliedSurfels << "/"
+			<< m_stats.sharingRejectedDarkLift
+			<< " gatherDirectFallbackBleedValidEmpty="
+			<< m_stats.finalGatherDirectPixels << "/"
+			<< m_stats.finalGatherFallbackPixels << "/"
+			<< m_stats.finalGatherBleedPixels << "/"
+			<< m_stats.finalGatherValidPixels << "/"
+			<< m_stats.finalGatherEmptyPixels
 			<< '\n';
 	}
 	m_stats.ready = IsReady();
@@ -1485,7 +1561,12 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context)
 			glUniform1i(textureLoc, 0);
 		}
 		if (const GLint toneMapLoc = glGetUniformLocation(m_debugPresentProgram, "uToneMap"); toneMapLoc >= 0) {
-			glUniform1i(toneMapLoc, m_settings.debugView == SurfelGIDebugView::RawIndirectIrradiance ? 1 : 0);
+			const bool toneMapDebug =
+				m_settings.debugView == SurfelGIDebugView::RawIndirectIrradiance ||
+				m_settings.debugView == SurfelGIDebugView::FinalGatherFallback ||
+				m_settings.debugView == SurfelGIDebugView::FinalGatherBleed ||
+				m_settings.debugView == SurfelGIDebugView::FinalGatherComposite;
+			glUniform1i(toneMapLoc, toneMapDebug ? 1 : 0);
 		}
 		context.screenQuad->Render();
 		glBindTexture(GL_TEXTURE_2D, 0);

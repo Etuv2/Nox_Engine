@@ -118,9 +118,22 @@ struct SurfelCounters
     uint coverageNormalRejected;
     uint coverageMaterialRejected;
     uint coverageRadiusRejected;
-    uint _pad0;
-    uint _pad1;
-    uint _pad2;
+    uint rayHitGrid;
+    uint rayHitScreen;
+    uint rayHitBVH;
+    uint rayHitEnvironment;
+    uint rayHitSourceDirect;
+    uint rayHitMiss;
+    uint acceptedRaySamples;
+    uint sourceDirectSamples;
+    uint temporalClampEvents;
+    uint sharingAppliedSurfels;
+    uint sharingRejectedDarkLift;
+    uint finalGatherDirectPixels;
+    uint finalGatherFallbackPixels;
+    uint finalGatherBleedPixels;
+    uint finalGatherValidPixels;
+    uint finalGatherEmptyPixels;
 };
 
 struct SurfelCoverageTile

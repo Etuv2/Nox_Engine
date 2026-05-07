@@ -177,8 +177,8 @@ def main() -> None:
     for token in realtime_budget_tokens:
         require(token in render_context_h, f"real-time clean Surfel GI default missing from RenderContext.h: {token}")
 
-    require("return { 98304u, 1024u, 8u, 64u, 32u, 1u, 0.25f, true, true" in modular_cpp,
-            "Medium clean Surfel GI budget must keep Ultra-like surfel density with bounded center-neighborhood support")
+    require("return { 24576u, 256u, 16u, 32u, 32u, 1u, 0.375f, 0.50f, true, true" in modular_cpp,
+            "Medium clean Surfel GI budget must keep dense surfels, useful amortized ray budget, fallback support, and bounded center-neighborhood support")
 
     manager_budget_tokens = [
         "uint32_t maxSurfels = 131072u",

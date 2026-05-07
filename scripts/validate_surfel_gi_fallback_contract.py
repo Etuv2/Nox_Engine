@@ -28,17 +28,17 @@ def main() -> None:
     require("float BoundedFallbackBlend(" in apply_shader,
             "final gather must use an explicit bounded fallback blend")
     require("vec3 ClampFallbackToDirectSupport(" in apply_shader,
-            "final gather must clamp fallback brightness to real direct surfel support")
-    require("if (sumWeight <= 1e-5) {\n        imageStore(uOutIndirect, pixel, vec4(0.0));" in apply_shader,
-            "final gather must output black when no real surfel support is gathered")
-    require("mix(directIrradiance, boundedGridIrradiance, fallbackBlend)" in apply_shader,
-            "cell-average fallback may only smooth from real direct surfel irradiance")
+            "final gather must clamp fallback brightness with confidence and coverage bounds")
+    require("if (sumWeight <= 1e-5) {\n        imageStore(uOutIndirect, pixel, vec4(0.0));" not in apply_shader,
+            "final gather fallback must be able to fill direct surfel gather holes")
+    require("directIrradiance * directBlend + boundedGridIrradiance * fallbackBlend" in apply_shader,
+            "cell-average fallback must contribute as a weighted irradiance source, not only smooth existing direct support")
     require("if (SurfelLuminance(boundedGridIrradiance) <= 1e-5) {\n        fallbackBlend = 0.0;" in apply_shader,
             "a clamped-to-black fallback must not darken direct surfel irradiance")
     require("fallbackIrradiance" not in apply_shader and "fallbackWeight" not in apply_shader,
             "per-cell fallback accumulation must not bypass the bounded grid fallback contract")
-    require("max(directBlend, fallbackConfidence)" not in apply_shader,
-            "fallback confidence must not hide missing surfel support in the output alpha")
+    require("max(max(directBlend, fallbackBlend), bleedSupport" in apply_shader,
+            "fallback and bleed support must be reflected in output confidence")
 
     require("if (centerConfidence <= 1e-4) {\n        imageStore(uOutIndirect, pixel, vec4(0.0));" in spatial_filter_shader,
             "spatial filter must not synthesize unsupported GI from neighboring pixels")

@@ -29,6 +29,11 @@ layout(binding = B_GUIDE_MAP, std430) buffer SurfelGuideMapBuffer
     GuideCell guideMap[];
 };
 
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
 uniform uint uMaxSurfels;
 uniform uint uMaxRays;
 uniform uint uFrameIndex;
@@ -44,7 +49,7 @@ const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
 const float SURFEL_MAX_SAMPLE_IRRADIANCE = 32.0;
 const float SURFEL_MAX_EMISSIVE_IRRADIANCE = 64.0;
-const float SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE = 0.18;
+const float SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE = 0.45;
 
 vec3 SurfelClampRadiance(vec3 radiance)
 {
@@ -94,8 +99,8 @@ vec3 TemporalClampIrradianceWithConfidence(vec3 previous, vec3 candidate, float 
     }
 
     float confident01 = smoothstep(0.18, 0.75, SurfelSaturate(confidence));
-    float liftLimit = mix(0.30, SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE, confident01);
-    float liftFloor = mix(0.070, 0.025, confident01);
+    float liftLimit = mix(0.55, SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE, confident01);
+    float liftFloor = mix(0.095, 0.040, confident01);
     float maxLum = max(previousLum * (1.0 + liftLimit) + liftFloor, 0.045);
     float minLum = previousLum * mix(0.58, 0.78, confident01);
     float clampedLum = clamp(candidateLum, minLum, maxLum);
@@ -162,7 +167,9 @@ void main()
         if (reliability <= 1e-5) {
             continue;
         }
-        bool sourceDirectHit = abs(hit.normal_hitKind.w - SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT) < 0.25;
+        bool sourceDirectHit =
+            abs(hit.normal_hitKind.w - SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT) < 0.25 ||
+            hit.ids.w != 0u;
 
         float samplePdf = max(hit.radiance_pdf.a, 1e-4);
         float sampleCos = max(dot(normal, SurfelSafeNormalize(rays[rayID].direction_tMax.xyz)), 0.0);
@@ -172,6 +179,10 @@ void main()
         batchSumSq += sampleIrradiance * sampleIrradiance * reliability;
         acceptedWeight += reliability;
         sourceDirectWeight += sourceDirectHit ? reliability : 0.0;
+        atomicAdd(counters.acceptedRaySamples, 1u);
+        if (sourceDirectHit) {
+            atomicAdd(counters.sourceDirectSamples, 1u);
+        }
         ++accepted;
     }
 
@@ -231,9 +242,14 @@ void main()
     float temporalConfidence = SurfelSaturate(surfel.irradiance.a);
     float confidenceDecay = consistentChange * 0.035;
     temporalConfidence = SurfelSaturate(temporalConfidence - confidenceDecay);
-    float alphaMax = mix(0.044, 0.012, temporalConfidence);
+    float acceptedRatio = SurfelSaturate(acceptedWeight / max(float(request.allocatedCount), 1.0));
+    float allocationRatio = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
+    float schedulerSupport = mix(0.65, 1.0, allocationRatio);
+    float alphaMax = mix(0.080, 0.024, temporalConfidence);
+    alphaMax = mix(alphaMax, max(alphaMax, 0.14), sourceDirectSupport * sampleStability);
     float alpha = mix(0.0015, alphaMax, consistentChange);
-    alpha = max(alpha, (1.0 - temporalConfidence) * 0.010 * sampleStability);
+    alpha = max(alpha, (1.0 - temporalConfidence) * 0.018 * sampleStability);
+    alpha = max(alpha, sourceDirectSupport * acceptedRatio * schedulerSupport * 0.055);
     if (resetEstimator) {
         float resetAlpha = brandNew ? 0.30 : 0.16;
         alpha = max(alpha, resetAlpha);
@@ -245,13 +261,15 @@ void main()
     vec3 integratedIrradiance = mix(previousIrradiance, surfel.shortMean.rgb, alpha);
     bool clampTemporalBootstrap = !resetEstimator || lateBootstrap;
     if (clampTemporalBootstrap) {
+        vec3 unclampedIrradiance = integratedIrradiance;
         integratedIrradiance = TemporalClampIrradianceWithConfidence(previousIrradiance, integratedIrradiance, temporalConfidence);
+        float clampDelta = SurfelLuminance(abs(unclampedIrradiance - integratedIrradiance));
+        if (clampDelta > 1e-4) {
+            atomicAdd(counters.temporalClampEvents, 1u);
+        }
     }
     surfel.irradiance.rgb = SurfelClampRadiance(max(integratedIrradiance, emissiveBaseline));
 
-    float acceptedRatio = SurfelSaturate(acceptedWeight / max(float(request.allocatedCount), 1.0));
-    float allocationRatio = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
-    float schedulerSupport = mix(0.65, 1.0, allocationRatio);
     float confidenceGain = mix(0.006, 0.020, sampleStability) * acceptedRatio * schedulerSupport;
     confidenceGain += sourceDirectSupport * acceptedRatio * schedulerSupport * 0.018;
     if (resetEstimator) {

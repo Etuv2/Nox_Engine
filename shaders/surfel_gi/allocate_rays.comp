@@ -114,7 +114,7 @@ void main()
             return;
         }
 
-        uint budget = uMaxRayBudget;
+        uint budget = max((uMaxRayBudget * 3u) / 4u, 1u);
         float confidence = SurfelSaturate(surfel.irradiance.a);
         uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
         bool firstBootstrap = SurfelIsNew(surfel) && surfel.worldNormal_age.w < 4.0;

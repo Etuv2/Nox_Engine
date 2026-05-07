@@ -39,4 +39,20 @@ void main()
     counters.coverageNormalRejected = 0u;
     counters.coverageMaterialRejected = 0u;
     counters.coverageRadiusRejected = 0u;
+    counters.rayHitGrid = 0u;
+    counters.rayHitScreen = 0u;
+    counters.rayHitBVH = 0u;
+    counters.rayHitEnvironment = 0u;
+    counters.rayHitSourceDirect = 0u;
+    counters.rayHitMiss = 0u;
+    counters.acceptedRaySamples = 0u;
+    counters.sourceDirectSamples = 0u;
+    counters.temporalClampEvents = 0u;
+    counters.sharingAppliedSurfels = 0u;
+    counters.sharingRejectedDarkLift = 0u;
+    counters.finalGatherDirectPixels = 0u;
+    counters.finalGatherFallbackPixels = 0u;
+    counters.finalGatherBleedPixels = 0u;
+    counters.finalGatherValidPixels = 0u;
+    counters.finalGatherEmptyPixels = 0u;
 }

@@ -25,6 +25,9 @@ def main() -> None:
             "NOX_SURFEL_GI_DUMP_FRAME_INTERVAL" in pipeline_cpp and
             "frameSuffix" in pipeline_cpp,
             "texture dump must support same-run consecutive-frame stability captures")
+    require("NOX_SURFEL_GI_DUMP_FRAMES" in pipeline_cpp and
+            "EnvFrameListContains" in pipeline_cpp,
+            "texture dump must support exact frame-list captures for runtime GI validation")
     require("SaveSurfelDebugTexturePNG" in pipeline_cpp,
             "Surfel GI texture dumps must write direct PNG evidence from GL textures")
     require("rawIndirectTexture" in pipeline_cpp and

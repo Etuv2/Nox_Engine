@@ -22,10 +22,10 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
 
-const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 4u;
-const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 2u;
-const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 2u;
-const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 2u;
+const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 8u;
+const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 4u;
+const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 4u;
+const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 4u;
 const float SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS = 8.0;
 const uint SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD = 8u;
 const uint SURFEL_REQUEST_DETAIL_MAINTENANCE_PERIOD = 4u;
@@ -115,7 +115,7 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         requested = max(requested, SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS);
     }
     if (recentlyVisible && visibleRayDebt > 0.0 && confidence < 0.82) {
-        requested = max(requested, 2u);
+        requested = max(requested, 4u);
     }
     if (visibleMaintenancePhase) {
         requested = max(requested, 1u);

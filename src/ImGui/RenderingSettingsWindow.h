@@ -177,8 +177,9 @@ private:
 	float m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	float m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	float m_cleanSurfelGIIntensity = 1.0f;
-	bool m_cleanSurfelGIUseRadialDepth = false;
-	bool m_cleanSurfelGIUseRayGuiding = false;
+	float m_cleanSurfelGICellAverageFallbackStrength = 0.45f;
+	bool m_cleanSurfelGIUseRadialDepth = true;
+	bool m_cleanSurfelGIUseRayGuiding = true;
 	bool m_cleanSurfelGIUseRayBinning = true;
 	bool m_cleanSurfelGIUseScreenTrace = false;
 	bool m_cleanSurfelGIUseSurfelFallbackTrace = true;

@@ -26,8 +26,8 @@ def main() -> None:
             "screen-space trace hits must enter the temporal cache as low-reliability samples")
     require("TraceSoftwareBVHRadiance(ray, gather)" in trace and
             "TraceScreenSpace(ray, gather)" in trace and
-            trace.find("TraceSoftwareBVHRadiance(ray, gather)") < trace.find("TraceScreenSpace(ray, gather)"),
-            "stable BVH/surfel evidence must be preferred over view-dependent screen-space hits")
+            trace.find("TraceScreenSpace(ray, gather)") < trace.find("TraceSoftwareBVHRadiance(ray, gather)"),
+            "screen-space hits should be tried first when explicitly enabled, with BVH still ahead of surfel fallback")
     require("HitKindReliability" in integrate and
             "TemporalClampIrradiance" in integrate and
             "SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE" in integrate,
@@ -39,8 +39,10 @@ def main() -> None:
             "SurfelLuminance(initialIrradiance) > 0.0 ? 0.04 : 0.02" in spawn,
             "new surfels may only receive a low-confidence seed; real bounce must come from ray integration")
     require("allowScreenTrace" in modular and
-            "settings.useScreenSpaceTrace = settings.useScreenSpaceTrace && caps.allowScreenTrace" in modular,
-            "screen-space trace must be disabled by the real-time preset unless a capture/diagnostic preset explicitly allows it")
+            "settings.useScreenSpaceTrace =" in modular and
+            "settings.qualityTier == SurfelGIQualityTier::Ultra" in modular and
+            "caps.allowScreenTrace" in modular,
+            "screen-space trace must stay tier-gated and only become default in Ultra/capture-style quality")
     require("ReadSurfelCounters" in pipeline and
             "m_frameIndex % kSurfelStatsReadbackInterval" in pipeline,
             "surfel UI counters must be refreshed periodically even when the debug overlay is off")

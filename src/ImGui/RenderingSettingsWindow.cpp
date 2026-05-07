@@ -182,8 +182,9 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	m_cleanSurfelGIIntensity = 1.0f;
-	m_cleanSurfelGIUseRadialDepth = false;
-	m_cleanSurfelGIUseRayGuiding = false;
+	m_cleanSurfelGICellAverageFallbackStrength = 0.45f;
+	m_cleanSurfelGIUseRadialDepth = true;
+	m_cleanSurfelGIUseRayGuiding = true;
 	m_cleanSurfelGIUseRayBinning = true;
 	m_cleanSurfelGIUseScreenTrace = false;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;
@@ -382,6 +383,7 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_cleanSurfelGIFinalGatherNormalReject = ctx.cleanSurfelGIFinalGatherNormalReject;
 	m_cleanSurfelGIRadialDepthVariance = ctx.cleanSurfelGIRadialDepthVariance;
 	m_cleanSurfelGIIntensity = ctx.cleanSurfelGIIntensity;
+	m_cleanSurfelGICellAverageFallbackStrength = ctx.cleanSurfelGICellAverageFallbackStrength;
 	m_cleanSurfelGIUseRadialDepth = ctx.cleanSurfelGIUseRadialDepth;
 	m_cleanSurfelGIUseRayGuiding = ctx.cleanSurfelGIUseRayGuiding;
 	m_cleanSurfelGIUseRayBinning = ctx.cleanSurfelGIUseRayBinning;
@@ -619,6 +621,7 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.cleanSurfelGIFinalGatherNormalReject = m_cleanSurfelGIFinalGatherNormalReject;
 	ctx.cleanSurfelGIRadialDepthVariance = m_cleanSurfelGIRadialDepthVariance;
 	ctx.cleanSurfelGIIntensity = m_cleanSurfelGIIntensity;
+	ctx.cleanSurfelGICellAverageFallbackStrength = m_cleanSurfelGICellAverageFallbackStrength;
 	ctx.cleanSurfelGIUseRadialDepth = m_cleanSurfelGIUseRadialDepth;
 	ctx.cleanSurfelGIUseRayGuiding = m_cleanSurfelGIUseRayGuiding;
 	ctx.cleanSurfelGIUseRayBinning = m_cleanSurfelGIUseRayBinning;
@@ -1088,11 +1091,15 @@ void RenderingSettingsWindow::Render() {
 					{ 32, "Grid Axis Region" },
 					{ 33, "Grid Overflow" },
 					{ 34, "Irradiance Confidence" },
-					{ 35, "Raw Irradiance" }
+					{ 35, "Raw Irradiance" },
+					{ 36, "Fallback Irradiance" },
+					{ 37, "Colour Bleed" },
+					{ 38, "Gather Composite" }
 				};
 				if (DebugCombo("Surfel Debug View", &m_cleanSurfelGIDebugView, surfelDebugModes, IM_ARRAYSIZE(surfelDebugModes))) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Placement Validation Mode", &m_cleanSurfelGIPlacementValidation)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("GI Intensity", &m_cleanSurfelGIIntensity, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Cell Average Fallback", &m_cleanSurfelGICellAverageFallbackStrength, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Surfels", &m_cleanSurfelGIMaxSurfels, 4096, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Ray Budget", &m_cleanSurfelGIMaxRayBudget, 4096, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Spawn Tile", &m_cleanSurfelGISpawnTileSize, 4, 16)) { SyncToRenderer(); }
@@ -1136,6 +1143,26 @@ void RenderingSettingsWindow::Render() {
 						stats->overCoverageRecycled,
 						stats->staleRecycled,
 						stats->pressureRecycled);
+					ImGui::Text("Ray hits grid/screen/bvh/env/src/miss: %u / %u / %u / %u / %u / %u",
+						stats->rayHitGrid,
+						stats->rayHitScreen,
+						stats->rayHitBVH,
+						stats->rayHitEnvironment,
+						stats->rayHitSourceDirect,
+						stats->rayHitMiss);
+					ImGui::Text("Ray accepted/source/clamped: %u / %u / %u",
+						stats->acceptedRaySamples,
+						stats->sourceDirectSamples,
+						stats->temporalClampEvents);
+					ImGui::Text("Sharing applied/dark-limited: %u / %u",
+						stats->sharingAppliedSurfels,
+						stats->sharingRejectedDarkLift);
+					ImGui::Text("Gather direct/fallback/bleed/valid/empty: %u / %u / %u / %u / %u",
+						stats->finalGatherDirectPixels,
+						stats->finalGatherFallbackPixels,
+						stats->finalGatherBleedPixels,
+						stats->finalGatherValidPixels,
+						stats->finalGatherEmptyPixels);
 				}
 			}
 			static const DebugComboEntry compositeDebugModes[] = {
@@ -1975,8 +2002,9 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	m_cleanSurfelGIIntensity = 1.0f;
-	m_cleanSurfelGIUseRadialDepth = false;
-	m_cleanSurfelGIUseRayGuiding = false;
+	m_cleanSurfelGICellAverageFallbackStrength = 0.45f;
+	m_cleanSurfelGIUseRadialDepth = true;
+	m_cleanSurfelGIUseRayGuiding = true;
 	m_cleanSurfelGIUseRayBinning = true;
 	m_cleanSurfelGIUseScreenTrace = false;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;

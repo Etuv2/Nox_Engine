@@ -56,8 +56,8 @@ def main() -> None:
     require("uSharingPhaseCount" in sharing and
             "uSharingPhaseIndex" in sharing and
             "gl_GlobalInvocationID.x * sharingPhaseCount" in sharing and
-            "maxRayBudget <= 1024u ? 8u" in pipeline,
-            "sharing must support phased execution so the real-time preset avoids full-field sharing spikes")
+            "maxRayBudget <= 1024u ? 4u" in pipeline,
+            "sharing must support phased execution while updating enough surfels for visible irradiance propagation")
 
     require("minReliableDepth" in radial_depth and
             "dot(hitNormal, -toHitDir) <= 0.02" in radial_depth,

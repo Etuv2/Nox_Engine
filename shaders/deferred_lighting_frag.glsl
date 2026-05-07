@@ -642,6 +642,25 @@ vec3 ComputeIndirectGIResponse(vec3 indirectIrradiance, vec3 N, vec3 V, Principl
 	return max(indirectIrradiance * materialResponse, vec3(0.0));
 }
 
+vec3 ComputeSurfelGIResponse(vec3 indirectIrradiance, float indirectConfidence, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+	float NdotV = Saturate(dot(N, V));
+
+	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
+	vec3 kD = clamp(vec3(1.0) - F, vec3(0.0), vec3(1.0));
+	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
+	vec3 diffuseAlbedo = surface.baseColor * (1.0 - surface.metallic) * (1.0 - transmissionWeight);
+	float diffuseTerm = mix(1.0, 1.0 + 0.35 * surface.perceptualRoughness, surface.subsurface);
+
+	// Clean Surfel GI is already a filtered, spatially shared diffuse field. Treat
+	// it as a preintegrated indirect diffuse response here; the legacy SSGI/LPV
+	// sources keep the stricter irradiance-to-BRDF conversion above.
+	float aoPolicy = mix(0.72, 1.0, clamp(diffuseAO, 0.0, 1.0));
+	float baseAttenuation = mix(1.0, ComputeBaseLayerAttenuation(surface, NdotV), 0.35);
+	float confidenceLift = mix(0.72, 1.0, smoothstep(0.04, 0.55, indirectConfidence));
+	vec3 materialResponse = kD * diffuseAlbedo * diffuseTerm * aoPolicy * baseAttenuation * confidenceLift;
+	return max(indirectIrradiance * materialResponse, vec3(0.0));
+}
+
 vec3 CompressIndirectContribution(vec3 indirectContribution) {
 	float luma = Luminance(indirectContribution);
 	if (luma <= 1e-5) {
@@ -663,7 +682,10 @@ vec3 EvaluateIndirectDiffuseMap(int sourceIndex, vec3 N, vec3 V, PrincipledSurfa
 	float indirectAO = clamp(indirectSample.a, 0.0, 1.0);
 	float indirectAttenuation = sourceIndex == 2 ? 1.0 : mix(0.35, 1.0, indirectAO);
 	float sourceScale = 1.0;
-	vec3 contribution = ComputeIndirectGIResponse(indirectIrradiance, N, V, surface, diffuseAO, specularAO) * strength * indirectAttenuation * sourceScale;
+	vec3 response = sourceIndex == 2
+		? ComputeSurfelGIResponse(indirectIrradiance, indirectAO, N, V, surface, diffuseAO, specularAO)
+		: ComputeIndirectGIResponse(indirectIrradiance, N, V, surface, diffuseAO, specularAO);
+	vec3 contribution = response * strength * indirectAttenuation * sourceScale;
 	return CompressIndirectContribution(contribution);
 }
 

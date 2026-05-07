@@ -14,6 +14,11 @@ layout(binding = B_IRRADIANCE_SNAPSHOT, std430) readonly buffer SurfelIrradiance
     vec4 irradianceSnapshot[];
 };
 
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
 layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
 {
     SurfelCellHeader gridHeaders[];
@@ -100,7 +105,8 @@ float SharingPreserveGradientWeight(vec3 centerIrradiance, vec3 neighborIrradian
     float maxLum = max(max(centerLum, neighborLum), 1e-4);
     float minLum = min(centerLum, neighborLum);
     float ratioWeight = smoothstep(0.04, 0.28, minLum / maxLum);
-    float darkLiftWeight = centerLum < 0.025 && neighborLum > 0.12 ? 0.0 : 1.0;
+    float neighborSupport = smoothstep(0.035, 0.22, neighborLum);
+    float darkLiftWeight = mix(0.42, 1.0, max(ratioWeight, neighborSupport * 0.80));
     return mix(0.28, 1.0, ratioWeight) * darkLiftWeight;
 }
 
@@ -108,10 +114,14 @@ float SharingDarknessPreservationBlend(vec3 centerIrradiance, vec3 sharedIrradia
 {
     float centerLum = SurfelLuminance(max(centerIrradiance, vec3(0.0)));
     float sharedLum = SurfelLuminance(max(sharedIrradiance, vec3(0.0)));
-    float allowedLift = max(centerLum * 1.75 + 0.055, 0.075);
+    float neighborSupport = smoothstep(0.035, 0.30, sharedLum);
+    float allowedLift = max(centerLum * mix(2.0, 3.4, neighborSupport) + mix(0.075, 0.22, neighborSupport), 0.090);
     float lift = max(sharedLum - centerLum, 0.0);
     float liftWeight = lift <= allowedLift ? 1.0 : allowedLift / max(lift, 1e-4);
-    float darkCap = mix(0.10, 1.0, smoothstep(0.015, 0.10, centerLum));
+    if (liftWeight < 0.999 && requestedBlend > 1e-4) {
+        atomicAdd(counters.sharingRejectedDarkLift, 1u);
+    }
+    float darkCap = mix(0.45, 1.0, max(smoothstep(0.012, 0.10, centerLum), neighborSupport * 0.72));
     return clamp(requestedBlend * liftWeight, 0.0, min(requestedBlend, darkCap));
 }
 
@@ -337,5 +347,8 @@ void main()
     surfel.shortM2.rgb = max(surfel.shortM2.rgb * (1.0 - confidenceWeightedBlend * 0.25), vec3(0.0));
     surfel.irradiance.a = clamp(max(confidence, confidence + confidenceWeightedBlend * 0.08), 0.0, 1.0);
     surfel.debug.x = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
+    if (confidenceWeightedBlend > 1e-4) {
+        atomicAdd(counters.sharingAppliedSurfels, 1u);
+    }
     surfels[surfelID] = surfel;
 }

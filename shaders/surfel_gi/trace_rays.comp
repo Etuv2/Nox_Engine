@@ -19,7 +19,7 @@ layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
     SurfelCellEntry gridEntries[];
 };
 
-layout(binding = B_SURFEL_COUNTERS, std430) readonly buffer SurfelCounterBuffer
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 {
     SurfelCounters counters;
 };
@@ -176,6 +176,7 @@ uniform float uSkyDiffuseScale = 0.0;
 uniform int uUseScreenSpaceTrace = 1;
 uniform int uUseSoftwareBVHTrace = 1;
 uniform int uUseSurfelFallbackTrace = 1;
+uniform uint uBVHTraceStride = 1u;
 uniform int uEnableShadows = 1;
 uniform vec4 uCascadeSplits = vec4(10.0, 30.0, 100.0, 500.0);
 uniform float uShadowBias = 0.0008;
@@ -190,7 +191,6 @@ const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
 const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 8u;
 const uint SURFEL_TRACE_MAX_CANDIDATES = 64u;
 const uint SURFEL_TRACE_MAX_VISITED_CELLS = 24u;
-const uint SURFEL_TRACE_BVH_FALLBACK_PHASE_COUNT = 4u;
 const uint SURFEL_TRACE_MAX_LIGHTS = 32u;
 const uint SURFEL_SCREEN_TRACE_STEPS = 32u;
 const uint SURFEL_TRACE_CACHE_MAX_CANDIDATES = 128u;
@@ -212,7 +212,7 @@ const float SURFEL_SKY_OPEN_MISS_VISIBILITY = 0.45;
 const float SURFEL_ENVIRONMENT_MISS_MIP = 5.0;
 const float SURFEL_ENVIRONMENT_MISS_SCALE = 0.16;
 const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 1.6;
-const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 2.10;
+const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 3.75;
 const float SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF = 0.52;
 const float SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF = 10.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
@@ -1456,7 +1456,30 @@ void TraceGatherAroundPoint(SurfelRay ray,
     }
 }
 
-TraceGather TraceSurfelGrid(SurfelRay ray)
+void RecordTraceHit(bool hit, float hitKind, bool hasSourceDirect)
+{
+    if (!hit) {
+        atomicAdd(counters.rayHitMiss, 1u);
+        return;
+    }
+
+    if (hasSourceDirect) {
+        atomicAdd(counters.rayHitSourceDirect, 1u);
+    }
+    if (abs(hitKind - SURFEL_TRACE_HIT_KIND_GRID) < 0.25) {
+        atomicAdd(counters.rayHitGrid, 1u);
+    } else if (abs(hitKind - SURFEL_TRACE_HIT_KIND_SCREEN) < 0.25) {
+        atomicAdd(counters.rayHitScreen, 1u);
+    } else if (abs(hitKind - SURFEL_TRACE_HIT_KIND_BVH) < 0.25) {
+        atomicAdd(counters.rayHitBVH, 1u);
+    } else if (abs(hitKind - SURFEL_TRACE_HIT_KIND_ENVIRONMENT) < 0.25) {
+        atomicAdd(counters.rayHitEnvironment, 1u);
+    } else if (!hasSourceDirect && abs(hitKind - SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT) < 0.25) {
+        atomicAdd(counters.rayHitSourceDirect, 1u);
+    }
+}
+
+TraceGather TraceSurfelGrid(SurfelRay ray, uint rayID)
 {
     vec3 direction = SurfelSafeNormalize(ray.direction_tMax.xyz);
     float tMin = max(ray.origin_tMin.w, 0.0);
@@ -1465,6 +1488,16 @@ TraceGather TraceSurfelGrid(SurfelRay ray)
 
     TraceGather gather;
     TraceGatherInit(gather, missPosition);
+
+    if (TraceScreenSpace(ray, gather)) {
+        return gather;
+    }
+
+    bool useBVHThisRay = uBVHTraceStride <= 1u ||
+        (((rayID + uFrameIndex) % max(uBVHTraceStride, 1u)) == 0u);
+    if (useBVHThisRay && TraceSoftwareBVHRadiance(ray, gather)) {
+        return gather;
+    }
 
     if (uUseSurfelFallbackTrace != 0 &&
         uGridCellCount != 0u &&
@@ -1500,14 +1533,6 @@ TraceGather TraceSurfelGrid(SurfelRay ray)
         }
     }
 
-    bool allowBVHFallback = ((SurfelHash(ray.ids.x ^ (uFrameIndex * 747796405u) ^ (ray.ids.z * 2891336453u)) % SURFEL_TRACE_BVH_FALLBACK_PHASE_COUNT) == 0u);
-    if (allowBVHFallback && TraceSoftwareBVHRadiance(ray, gather)) {
-        return gather;
-    }
-
-    if (TraceScreenSpace(ray, gather)) {
-        return gather;
-    }
     vec3 missRadiance = EvaluateMissEnvironmentRadiance(direction);
     if (SurfelLuminance(missRadiance) > 1e-5) {
         gather.radiance = missRadiance;
@@ -1524,7 +1549,7 @@ TraceGather TraceSurfelGrid(SurfelRay ray)
 void main()
 {
     uint rayID = gl_GlobalInvocationID.x;
-    uint activeRayLimit = min(uActiveRayCount, uMaxRays);
+    uint activeRayLimit = min(min(counters.allocatedRays, uActiveRayCount), uMaxRays);
     if (rayID >= activeRayLimit) {
         return;
     }
@@ -1560,7 +1585,7 @@ void main()
         gather.hitKind = SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT;
         gather.hitSurfelID = SURFEL_INVALID_INDEX;
     } else {
-        gather = TraceSurfelGrid(ray);
+        gather = TraceSurfelGrid(ray, rayID);
     }
     bool hit = gather.weight > 1e-5;
     if (hasSourceDirect) {
@@ -1585,8 +1610,9 @@ void main()
         gather.radiance = vec3(0.0);
     }
 
+    RecordTraceHit(hit, hit ? gather.hitKind : SURFEL_TRACE_MISS_KIND, hasSourceDirect);
     hits[rayID].position_t = vec4(gather.position, hit ? gather.closestT : -1.0);
     hits[rayID].normal_hitKind = vec4(gather.normal, hit ? gather.hitKind : SURFEL_TRACE_MISS_KIND);
     hits[rayID].radiance_pdf = vec4(gather.radiance * max(ray.throughput.rgb, vec3(0.0)), ray.throughput.a);
-    hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, 0u);
+    hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, hasSourceDirect ? 1u : 0u);
 }

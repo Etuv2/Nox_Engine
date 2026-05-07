@@ -252,8 +252,9 @@ struct RenderContext {
 	float cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	float cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	float cleanSurfelGIIntensity = 1.0f;
-	bool cleanSurfelGIUseRadialDepth = false;
-	bool cleanSurfelGIUseRayGuiding = false;
+	float cleanSurfelGICellAverageFallbackStrength = 0.45f;
+	bool cleanSurfelGIUseRadialDepth = true;
+	bool cleanSurfelGIUseRayGuiding = true;
 	bool cleanSurfelGIUseRayBinning = true;
 	bool cleanSurfelGIUseScreenTrace = false;
 	bool cleanSurfelGIUseSurfelFallbackTrace = true;

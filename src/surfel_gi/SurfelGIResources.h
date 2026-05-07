@@ -140,11 +140,24 @@ struct alignas(16) SurfelCounters {
     uint32_t coverageNormalRejected = 0u;
     uint32_t coverageMaterialRejected = 0u;
     uint32_t coverageRadiusRejected = 0u;
-    uint32_t _pad0 = 0u;
-    uint32_t _pad1 = 0u;
-    uint32_t _pad2 = 0u;
+    uint32_t rayHitGrid = 0u;
+    uint32_t rayHitScreen = 0u;
+    uint32_t rayHitBVH = 0u;
+    uint32_t rayHitEnvironment = 0u;
+    uint32_t rayHitSourceDirect = 0u;
+    uint32_t rayHitMiss = 0u;
+    uint32_t acceptedRaySamples = 0u;
+    uint32_t sourceDirectSamples = 0u;
+    uint32_t temporalClampEvents = 0u;
+    uint32_t sharingAppliedSurfels = 0u;
+    uint32_t sharingRejectedDarkLift = 0u;
+    uint32_t finalGatherDirectPixels = 0u;
+    uint32_t finalGatherFallbackPixels = 0u;
+    uint32_t finalGatherBleedPixels = 0u;
+    uint32_t finalGatherValidPixels = 0u;
+    uint32_t finalGatherEmptyPixels = 0u;
 };
-static_assert(sizeof(SurfelCounters) == 128, "SurfelCounters must match std430 GLSL layout.");
+static_assert(sizeof(SurfelCounters) == 192, "SurfelCounters must match std430 GLSL layout.");
 
 enum SurfelCoverageTileFlags : uint32_t {
     SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,

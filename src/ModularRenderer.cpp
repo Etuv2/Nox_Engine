@@ -62,6 +62,17 @@ namespace {
 	static constexpr std::size_t kProfilerFramesInFlight = 4;
 	static constexpr std::size_t kProfilerReadbackDelay = kProfilerFramesInFlight - 1;
 
+	static bool IsEnvValueEnabled(const char* value) {
+		if (value == nullptr || value[0] == '\0') {
+			return false;
+		}
+
+		const std::string text(value);
+		return !(text == "0" || text == "false" || text == "FALSE" ||
+			text == "False" || text == "no" || text == "NO" || text == "No" ||
+			text == "off" || text == "OFF" || text == "Off");
+	}
+
 	static bool IsEnvVarEnabled(const char* name) {
 #if defined(_MSC_VER)
 		char* value = nullptr;
@@ -69,11 +80,11 @@ namespace {
 		if (_dupenv_s(&value, &length, name) != 0) {
 			return false;
 		}
-		const bool enabled = value != nullptr;
+		const bool enabled = IsEnvValueEnabled(value);
 		std::free(value);
 		return enabled;
 #else
-		return std::getenv(name) != nullptr;
+		return IsEnvValueEnabled(std::getenv(name));
 #endif
 	}
 
@@ -121,9 +132,11 @@ namespace {
 		uint32_t maxGatherSurfelsPerPixel = 512u;
 		uint32_t gatherNeighborRadius = 0u;
 		float finalGatherResolutionScale = 1.0f;
+		float fallbackStrength = 0.45f;
 		bool allowRayGuiding = false;
 		bool allowRadialDepth = false;
 		bool allowScreenTrace = false;
+		bool allowSoftwareBVHTrace = false;
 		float maxIndirectIntensity = 1.0f;
 		uint32_t minRayUpdateInterval = 2u;
 		uint32_t maxSpawnPasses = 2u;
@@ -137,14 +150,14 @@ namespace {
 	static CleanSurfelGIBudgetCaps GetCleanSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 8192u, 256u, 40u, 16u, 32u, 1u, 0.375f, false, false, false, 4.0f, 4u, 1u, 1u, 3u, 16u, 4096u, 512u };
+			return { 8192u, 192u, 40u, 16u, 24u, 0u, 0.333f, 0.35f, false, false, false, false, 1.0f, 5u, 1u, 1u, 3u, 16u, 4096u, 512u };
 		case SurfelGIQualityTier::High:
-			return { 65536u, 8192u, 16u, 48u, 128u, 1u, 0.60f, true, true, false, 4.0f, 2u, 2u, 3u, 8u, 128u, 32768u, 2048u };
+			return { 24576u, 192u, 12u, 24u, 24u, 1u, 0.333f, 0.55f, true, true, false, false, 1.0f, 3u, 1u, 3u, 10u, 96u, 16384u, 1536u };
 		case SurfelGIQualityTier::Ultra:
-			return { 131072u, 32768u, 8u, 64u, 512u, 2u, 1.0f, true, true, true, 4.0f, 2u, 2u, 4u, 12u, 192u, 65536u, 4096u };
+			return { 32768u, 192u, 8u, 24u, 24u, 1u, 0.333f, 0.65f, true, true, false, false, 1.0f, 2u, 1u, 4u, 12u, 128u, 24576u, 2048u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 98304u, 4096u, 8u, 64u, 128u, 1u, 0.50f, true, true, false, 4.0f, 1u, 1u, 3u, 32u, 160u, 32768u, 2048u };
+			return { 24576u, 256u, 16u, 32u, 32u, 1u, 0.375f, 0.50f, true, true, false, false, 1.0f, 3u, 1u, 2u, 24u, 64u, 12288u, 1024u };
 		}
 	}
 
@@ -158,8 +171,12 @@ namespace {
 			settings.maxGatherSurfelsPerPixel = std::min(settings.maxGatherSurfelsPerPixel, caps.maxGatherSurfelsPerPixel);
 			settings.useRayGuiding = settings.useRayGuiding && caps.allowRayGuiding;
 			settings.useRadialDepth = settings.useRadialDepth && caps.allowRadialDepth;
-			settings.useScreenSpaceTrace = settings.useScreenSpaceTrace && caps.allowScreenTrace;
+			settings.useScreenSpaceTrace =
+				(settings.useScreenSpaceTrace || settings.qualityTier == SurfelGIQualityTier::Ultra) &&
+				caps.allowScreenTrace;
+			settings.useSoftwareBVHTrace = settings.useSoftwareBVHTrace && caps.allowSoftwareBVHTrace;
 			settings.indirectIntensity = std::min(settings.indirectIntensity, caps.maxIndirectIntensity);
+			settings.cellAverageFallbackStrength = caps.fallbackStrength;
 			settings.rayUpdateInterval = std::max(settings.rayUpdateInterval, caps.minRayUpdateInterval);
 			settings.spawnPasses = std::min(settings.spawnPasses, caps.maxSpawnPasses);
 			settings.fastFillSpawnPasses = std::min(settings.fastFillSpawnPasses, caps.maxFastFillSpawnPasses);
@@ -171,6 +188,7 @@ namespace {
 
 		settings.gatherNeighborRadius = captureMode ? std::max(caps.gatherNeighborRadius, 2u) : caps.gatherNeighborRadius;
 		settings.finalGatherResolutionScale = captureMode ? 1.0f : std::clamp(caps.finalGatherResolutionScale, 0.25f, 1.0f);
+		settings.cellAverageFallbackStrength = captureMode ? std::max(caps.fallbackStrength, 0.65f) : settings.cellAverageFallbackStrength;
 	}
 
 	struct PassQuerySlot {
@@ -526,7 +544,7 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 	settings.qualityTier = static_cast<SurfelGIQualityTier>(
 		std::clamp(GetEnvVarInt("NOX_SURFEL_GI_QUALITY_TIER", static_cast<int>(settings.qualityTier)), 0, 3));
 	settings.debugView = static_cast<SurfelGIDebugView>(
-		std::clamp(m_context.cleanSurfelGIDebugView, 0, 35));
+		std::clamp(m_context.cleanSurfelGIDebugView, 0, 38));
 	settings.maxSurfels = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxSurfels, 1024));
 	settings.maxRayBudget = static_cast<uint32_t>(std::max(m_context.cleanSurfelGIMaxRayBudget, 1024));
 	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.cleanSurfelGISpawnTileSize, 4, 16));
@@ -546,6 +564,7 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 	settings.finalGatherNormalCos = std::clamp(m_context.cleanSurfelGIFinalGatherNormalReject, -0.2f, 0.95f);
 	settings.radialDepthSigmaScale = std::max(m_context.cleanSurfelGIRadialDepthVariance, 1.0e-6f);
 	settings.indirectIntensity = std::max(m_context.cleanSurfelGIIntensity, 0.0f);
+	settings.cellAverageFallbackStrength = std::clamp(m_context.cleanSurfelGICellAverageFallbackStrength, 0.0f, 1.0f);
 	settings.useRadialDepth = m_context.cleanSurfelGIUseRadialDepth;
 	settings.useRayGuiding = m_context.cleanSurfelGIUseRayGuiding;
 	settings.useRayBinning = m_context.cleanSurfelGIUseRayBinning;
@@ -566,7 +585,7 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 		};
 
 		settings.debugView = static_cast<SurfelGIDebugView>(
-			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 35));
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 38));
 		settings.maxSurfels = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_SURFELS", static_cast<int>(settings.maxSurfels)), 1024));
 		settings.maxRayBudget = static_cast<uint32_t>(
@@ -578,6 +597,10 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 		settings.maxRecycleCountPerFrame = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_RECYCLES", static_cast<int>(settings.maxRecycleCountPerFrame)), 1));
 		settings.indirectIntensity = std::max(GetEnvVarFloat("NOX_SURFEL_GI_INTENSITY", settings.indirectIntensity), 0.0f);
+		settings.cellAverageFallbackStrength = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_FALLBACK_STRENGTH", settings.cellAverageFallbackStrength),
+			0.0f,
+			1.0f);
 		applyEnvToggle("NOX_SURFEL_GI_SCREEN_TRACE", settings.useScreenSpaceTrace);
 		applyEnvToggle("NOX_SURFEL_GI_BVH_TRACE", settings.useSoftwareBVHTrace);
 		applyEnvToggle("NOX_SURFEL_GI_SURFEL_FALLBACK_TRACE", settings.useSurfelFallbackTrace);
@@ -599,7 +622,18 @@ void ModularRenderer::SyncCleanSurfelGISettings()
 	const bool captureMode = IsEnvVarEnabled("NOX_SURFEL_GI_CAPTURE");
 	ApplyCleanSurfelGIRealtimeBudget(settings, captureMode);
 	m_context.cleanSurfelGIUseScreenTrace = settings.useScreenSpaceTrace;
+	m_context.cleanSurfelGIUseRadialDepth = settings.useRadialDepth;
+	m_context.cleanSurfelGIUseRayGuiding = settings.useRayGuiding;
 	m_context.cleanSurfelGIIntensity = settings.indirectIntensity;
+	m_context.cleanSurfelGICellAverageFallbackStrength = settings.cellAverageFallbackStrength;
+	m_context.cleanSurfelGIMaxSurfels = static_cast<int>(settings.maxSurfels);
+	m_context.cleanSurfelGIMaxRayBudget = static_cast<int>(settings.maxRayBudget);
+	m_context.cleanSurfelGISpawnTileSize = static_cast<int>(settings.spawnTileSize);
+	m_context.cleanSurfelGIMaxSurfelsPerCell = static_cast<int>(settings.maxSurfelsPerCell);
+	m_context.cleanSurfelGIMaxGatherSurfelsPerPixel = static_cast<int>(settings.maxGatherSurfelsPerPixel);
+	m_context.cleanSurfelGIMaxSpawnsPerFrame = static_cast<int>(settings.maxSpawnsPerFrame);
+	m_context.cleanSurfelGIMaxProjectedSurfelsPerFrame = static_cast<int>(settings.maxProjectedSurfelsPerFrame);
+	m_context.cleanSurfelGIMaxRecycleCountPerFrame = static_cast<int>(settings.maxRecycleCountPerFrame);
 
 	m_surfelGIManager->SetSettings(settings);
 }
