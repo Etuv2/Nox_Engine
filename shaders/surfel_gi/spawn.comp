@@ -5,6 +5,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "../includes/pbr_common.glsl"
 #include "../includes/material_common.glsl"
 #include "common.glsl"
+#include "msme.comp"
 
 layout(binding = B_SURFELS, std430) buffer SurfelBuffer
 {
@@ -85,6 +86,8 @@ uniform float uTargetSurfelScreenRadiusPx;
 uniform float uMinSurfelRadius;
 uniform float uMaxSurfelRadius;
 uniform float uCoverageThreshold;
+uniform float uPlacementThreshold;
+uniform float uRemovalThreshold;
 uniform float uNormalRejectCos;
 uniform vec3 uDirectionalLightDirection;
 uniform vec3 uDirectionalLightRadiance;
@@ -171,6 +174,31 @@ bool CoverageTileWasSeeded(SurfelCoverageTile tileState)
 uint CoverageTileLastSpawnFrame(SurfelCoverageTile tileState)
 {
     return tileState.state.x == 0u ? 0u : tileState.state.x - 1u;
+}
+
+float ReferencePlacementThreshold()
+{
+    return uPlacementThreshold > 0.0 ? uPlacementThreshold : uCoverageThreshold;
+}
+
+float ReferenceRemovalThreshold()
+{
+    float placement = ReferencePlacementThreshold();
+    return uRemovalThreshold > placement
+        ? uRemovalThreshold
+        : max(placement + 0.06, placement * 1.12);
+}
+
+bool ShouldPlaceForReferenceCoverage(float coverage)
+{
+    return coverage <= uPlacementThreshold ||
+        (uPlacementThreshold <= 0.0 && coverage <= uCoverageThreshold);
+}
+
+bool ReferenceCoverageSatisfied(float coverage)
+{
+    return coverage > uRemovalThreshold ||
+        (uRemovalThreshold <= 0.0 && coverage > ReferenceRemovalThreshold());
 }
 
 bool PopFreeIndex(out uint surfelID)
@@ -357,14 +385,28 @@ float SurfelIrradianceCoverageQualification(Surfel surfel)
     return mix(0.36, 1.0, qualified);
 }
 
+bool ReferenceCoverageForSurfel(uint surfelID, float reuseWeight);
+
 void RecordCoverageReuse(uint surfelID, float reuseWeight)
 {
     if (surfelID >= uMaxSurfels || reuseWeight <= SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT) {
         return;
     }
 
+    ReferenceCoverageForSurfel(surfelID, reuseWeight);
+}
+
+bool ReferenceCoverageForSurfel(uint surfelID, float reuseWeight)
+{
+    if (surfelID >= uMaxSurfels || reuseWeight <= SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT) {
+        return false;
+    }
+
     atomicMax(surfels[surfelID].frameInfo.x, uFrameIndex);
+    atomicExchange(surfels[surfelID].lifecycle.z, 1u);
+    atomicAdd(surfels[surfelID].lifecycle.y, 1u);
     atomicMax(surfels[surfelID].lifecycle.w, uint(clamp(reuseWeight, 0.0, 1.0) * 65535.0));
+    return true;
 }
 
 float ComputeCandidateCoverage(vec3 worldPos,
@@ -453,12 +495,9 @@ float ComputeCandidateCoverage(vec3 worldPos,
             irradianceWeight += irradianceSampleWeight;
             if (weight > SURFEL_COVERAGE_VISIBLE_TOUCH_WEIGHT) {
                 atomicMax(surfels[entry.surfelID].frameInfo.x, uFrameIndex);
-                atomicExchange(surfels[entry.surfelID].lifecycle.x, 0u);
-                atomicAdd(surfels[entry.surfelID].lifecycle.y, 1u);
-                atomicExchange(surfels[entry.surfelID].lifecycle.z, 0u);
-                RecordCoverageReuse(entry.surfelID, weight);
             }
-            if (coverage >= uCoverageThreshold) {
+            RecordCoverageReuse(entry.surfelID, weight);
+            if (ReferenceCoverageSatisfied(coverage)) {
                 initialCellIrradiance = irradianceWeight > 1e-5 ? irradianceSum / irradianceWeight : vec3(0.0);
                 initialCellConfidence = SurfelSaturate(irradianceWeight / max(float(max(coverageTests, 1u)), 1.0));
                 return coverage;
@@ -469,89 +508,6 @@ float ComputeCandidateCoverage(vec3 worldPos,
     initialCellIrradiance = irradianceWeight > 1e-5 ? irradianceSum / irradianceWeight : vec3(0.0);
     initialCellConfidence = SurfelSaturate(irradianceWeight / max(float(max(coverageTests, 1u)), 1.0));
     return coverage;
-}
-
-bool HasCompatibleDuplicateSurfel(vec3 worldPos,
-                                  vec3 worldNormal,
-                                  ivec2 candidatePixel,
-                                  SurfelGridAddress baseAddress,
-                                  uint materialID,
-                                  float candidateRadius,
-                                  out uint duplicateCount)
-{
-    duplicateCount = 0u;
-    uint tested = 0u;
-    float geometryVariance = GeometryVarianceAtPixel(candidatePixel, worldPos, worldNormal);
-    float spacingScale = mix(SURFEL_DUPLICATE_SPACING_SCALE, SURFEL_DETAIL_SPACING_SCALE, smoothstep(0.10, 0.65, geometryVariance));
-
-    for (uint n = 0u; n < SURFEL_SPAWN_DUPLICATE_CELLS; ++n) {
-        if (tested >= SURFEL_SPAWN_MAX_COVERAGE_TESTS) {
-            break;
-        }
-
-        SurfelGridAddress neighborAddress;
-        if (n == 0u) {
-            neighborAddress = baseAddress;
-        } else {
-            ivec3 offset = SurfelCubeNeighborOffset(n);
-            vec3 samplePos = baseAddress.center + vec3(offset) * max(baseAddress.cellSize, 0.001);
-            if (!SurfelWorldToGridAddress(
-                    samplePos,
-                    uGridMin,
-                    uGridMax,
-                    uGridResolution,
-                    uUseNonLinearGrid,
-                    uGridFarExtent,
-                    neighborAddress)) {
-                continue;
-            }
-        }
-
-        uint cell = neighborAddress.cell;
-        if (cell >= uGridCellCount) {
-            continue;
-        }
-
-        SurfelCellHeader header = gridHeaders[cell];
-        uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
-        uint budget = min(storedCount, SURFEL_SPAWN_DUPLICATE_CELL_ENTRIES);
-        uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
-
-        for (uint i = 0u; i < budget; ++i) {
-            SurfelCellEntry entry = gridEntries[firstEntry + i];
-            ++tested;
-            if (entry.surfelID >= uMaxSurfels) {
-                continue;
-            }
-
-            Surfel existing = surfels[entry.surfelID];
-            if (!SurfelIsAlive(existing) || existing.ids.z != materialID) {
-                continue;
-            }
-
-            vec3 existingNormal = SurfelSafeNormalize(existing.worldNormal_age.xyz);
-            float normalDot = dot(worldNormal, existingNormal);
-            if (normalDot < max(uNormalRejectCos, 0.50)) {
-                continue;
-            }
-
-            vec3 delta = worldPos - existing.worldPos_radius.xyz;
-            float existingRadius = max(existing.worldPos_radius.w, 0.001);
-            float planeDistance = abs(dot(delta, existingNormal));
-            float spacing = max(min(candidateRadius, existingRadius) * spacingScale,
-                                max(uMinSurfelRadius * 1.10, 0.018));
-            bool sameSurface = planeDistance <= max(min(candidateRadius, existingRadius) * 0.42, 0.018);
-            if (sameSurface && length(delta) < spacing) {
-                ++duplicateCount;
-                return true;
-            }
-        }
-    }
-
-    return false;
 }
 
 bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
@@ -695,19 +651,6 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
         return false;
     }
 
-    uint duplicateCount = 0u;
-    if (HasCompatibleDuplicateSurfel(
-            worldPos,
-            worldNormal,
-            pixel,
-            candidate.baseAddress,
-            materialID,
-            radius,
-            duplicateCount)) {
-        atomicAdd(counters.rejectedInvalidRadius, max(duplicateCount, 1u));
-        return false;
-    }
-
     if (!ReserveSpawnBudget()) {
         return false;
     }
@@ -744,11 +687,14 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     surfel.localNormal_flags = vec4(localNormal, uintBitsToFloat(flags));
     surfel.ids = uvec4(transformID, 0u, materialID, transform.metadata.z);
     surfel.albedo_life = vec4(albedo, 1.0);
-    surfel.irradiance = vec4(initialIrradiance, initialConfidence);
-    surfel.shortMean = vec4(initialIrradiance, 1.0);
-    surfel.shortM2 = vec4(0.0);
+    vec3 initialVariance = max(initialIrradiance * initialIrradiance * mix(0.35, 0.12, initialConfidence),
+                               vec3(mix(0.035, 0.010, initialConfidence)));
+    SurfelMSMEInitialize(surfel, initialIrradiance, initialVariance);
+    surfel.irradiance.a = initialConfidence;
+    surfel.shortMean.a = 1.0;
+    surfel.shortM2.a = 0.0;
     surfel.frameInfo = uvec4(uFrameIndex, uFrameIndex, uFrameIndex, uFrameIndex);
-    surfel.lifecycle = uvec4(0u, 1u, 0u, 0u);
+    surfel.lifecycle = uvec4(0u, 0u, 0u, 0u);
     surfel.debug = vec4((vec2(candidate.pixelU) + vec2(0.5)) / vec2(uResolution),
                         clamp(candidateCoverage / max(uCoverageThreshold, 1e-4), 0.0, 1.0),
                         0.0);
@@ -818,7 +764,7 @@ uint PermutedSpawnTileIndex(uint workItem, uint tileCount, uint frameIndex, uint
 
 uint PredictedCoverageUnresolvedAge(bool visibleValid, float coverage, uint previousUnresolvedAge)
 {
-    if (!visibleValid || coverage >= uCoverageThreshold) {
+    if (!visibleValid || coverage >= ReferencePlacementThreshold()) {
         return 0u;
     }
 
@@ -831,11 +777,11 @@ uint PredictedCoverageUnresolvedAge(bool visibleValid, float coverage, uint prev
 
 bool CoverageTileHighPriority(bool visibleValid, float coverage, uint unresolvedAge)
 {
-    if (!visibleValid || coverage >= uCoverageThreshold) {
+    if (!visibleValid || coverage >= ReferencePlacementThreshold()) {
         return false;
     }
 
-    bool immediateLowCoverage = coverage <= uCoverageThreshold * SURFEL_COVERAGE_IMMEDIATE_PRIORITY_FRACTION;
+    bool immediateLowCoverage = coverage <= ReferencePlacementThreshold() * SURFEL_COVERAGE_IMMEDIATE_PRIORITY_FRACTION;
     bool agedUnresolved = unresolvedAge >= SURFEL_COVERAGE_PRIORITY_AGE;
     bool motionBoosted = uCameraMotionBoost != 0u;
     return immediateLowCoverage || agedUnresolved || motionBoosted;
@@ -844,13 +790,13 @@ bool CoverageTileHighPriority(bool visibleValid, float coverage, uint unresolved
 float CoverageThresholdForPriority(bool highPriority, uint unresolvedAge, bool missingFinalGI)
 {
     if (!highPriority && !missingFinalGI) {
-        return uCoverageThreshold;
+        return ReferencePlacementThreshold();
     }
 
     float ageBoost = min(float(max(unresolvedAge, 1u)) * SURFEL_COVERAGE_PRIORITY_AGE_BOOST,
                          SURFEL_COVERAGE_PRIORITY_MAX_BOOST);
     float giBoost = missingFinalGI ? SURFEL_COVERAGE_GI_INVALID_BOOST : 0.0;
-    return min(uCoverageThreshold + ageBoost + giBoost, 1.35);
+    return min(ReferencePlacementThreshold() + ageBoost + giBoost, 1.35);
 }
 
 float EffectiveCoverageThresholdForCandidate(bool visibleValid, float coverage, uint previousUnresolvedAge, bool previousHadFinalGI)
@@ -871,9 +817,6 @@ void StoreCoverageTile(uint tileIndex,
     }
 
     SurfelCoverageTile tileState = coverageTiles[tileIndex];
-    float projectedCoverage = tileState.projection.x > 0u
-        ? clamp(float(tileState.projection.y) / 65535.0, 0.0, 1.0)
-        : 0.0;
     uint flags = 0u;
     if (visibleValid) {
         flags |= SURFEL_COVERAGE_TILE_VISIBLE;
@@ -890,7 +833,7 @@ void StoreCoverageTile(uint tileIndex,
         unresolvedAge = max(unresolvedAge, SURFEL_COVERAGE_MOTION_BOOST_AGE);
     }
     bool highPriority = underCovered &&
-        (candidate.coverage <= uCoverageThreshold * SURFEL_COVERAGE_IMMEDIATE_PRIORITY_FRACTION ||
+        (candidate.coverage <= ReferencePlacementThreshold() * SURFEL_COVERAGE_IMMEDIATE_PRIORITY_FRACTION ||
          unresolvedAge >= SURFEL_COVERAGE_PRIORITY_AGE ||
          uCameraMotionBoost != 0u);
     if (underCovered) {
@@ -916,7 +859,7 @@ void StoreCoverageTile(uint tileIndex,
     tileState.pixel.w = candidate.rejectReason;
 
     if (visibleValid) {
-        tileState.lowestCoverage.x = max(candidate.coverage, projectedCoverage);
+        tileState.lowestCoverage.x = candidate.coverage;
         tileState.lowestCoverage.y = float(candidate.nearbySurfelCount);
         tileState.lowestCoverage.z = candidate.initialCellConfidence;
         tileState.lowestCoverage.w = candidate.adaptiveRadius > 0.0
@@ -982,7 +925,8 @@ void main()
             uvec2 pixelU = min(tile * uTileSize + pixelOffset, uResolution - uvec2(1u));
 
             SpawnCandidate current;
-            if (!EvaluateSpawnCandidate(pixelU, current) || current.coverage >= uCoverageThreshold) {
+            if (!EvaluateSpawnCandidate(pixelU, current) ||
+                !ShouldPlaceForReferenceCoverage(current.coverage)) {
                 continue;
             }
 
@@ -1026,15 +970,6 @@ void main()
     }
 
     SurfelCoverageTile previousTileState = coverageTiles[tileIndex];
-    float projectedCoverage = previousTileState.projection.x > 0u
-        ? clamp(float(previousTileState.projection.y) / 65535.0, 0.0, 1.0)
-        : 0.0;
-    if (bestCandidate.valid && previousTileState.projection.x > 0u) {
-        bestCandidate.projectedCoverage = projectedCoverage;
-        bestCandidate.nearbySurfelCount += previousTileState.projection.x;
-        bestCoverage = max(bestCoverage, projectedCoverage);
-        bestCandidate.coverage = bestCoverage;
-    }
     uint previousUnresolvedAge = previousTileState.state.y;
     bool previousHadFinalGI = (previousTileState.state.z & SURFEL_COVERAGE_TILE_FINAL_GI_VALID) != 0u;
     bool tileWasSeeded = CoverageTileWasSeeded(previousTileState);
@@ -1047,12 +982,17 @@ void main()
         bestCoverage,
         previousUnresolvedAge,
         previousHadFinalGI);
-    if (!bestCandidate.valid || bestCoverage >= effectiveCoverageThreshold) {
+    if (!bestCandidate.valid ||
+        ReferenceCoverageSatisfied(bestCoverage) ||
+        bestCoverage >= effectiveCoverageThreshold) {
         StoreCoverageTile(tileIndex, bestCandidate.valid, bestCandidate, effectiveCoverageThreshold, false);
         return;
     }
 
-    bool shouldSpawn = bestCandidate.valid && bestCoverage < effectiveCoverageThreshold;
+    bool shouldSpawn = bestCandidate.valid &&
+        (ShouldPlaceForReferenceCoverage(bestCoverage) ||
+         (bestCoverage < effectiveCoverageThreshold &&
+          PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousUnresolvedAge) >= SURFEL_COVERAGE_PRIORITY_AGE));
     bool highPriority = CoverageTileHighPriority(
         bestCandidate.valid,
         bestCoverage,

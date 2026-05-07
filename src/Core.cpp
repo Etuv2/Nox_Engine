@@ -43,6 +43,7 @@
 #include "ShaderLoader.h"
 #include "Input/InputIntegration.h"
 #include "PerformanceRecorder.h"
+#include "stb_image_write.h"
 
 namespace {
 namespace fs = std::filesystem;
@@ -62,6 +63,98 @@ std::string GetEnvVarString(const char* name)
 	const char* value = std::getenv(name);
 	return value ? std::string(value) : std::string{};
 #endif
+}
+
+int GetEnvVarInt(const char* name, int fallback)
+{
+	const std::string value = GetEnvVarString(name);
+	if (value.empty()) {
+		return fallback;
+	}
+	char* end = nullptr;
+	const long parsed = std::strtol(value.c_str(), &end, 10);
+	return end != value.c_str() ? static_cast<int>(parsed) : fallback;
+}
+
+bool EnvFrameListContains(const std::string& frames, int frameIndex)
+{
+	const char* cursor = frames.c_str();
+	while (*cursor != '\0') {
+		while (*cursor == ',' || *cursor == ';' || *cursor == ' ' || *cursor == '\t' || *cursor == '\n' || *cursor == '\r') {
+			++cursor;
+		}
+		if (*cursor == '\0') {
+			break;
+		}
+
+		char* end = nullptr;
+		const long parsed = std::strtol(cursor, &end, 10);
+		if (end == cursor) {
+			++cursor;
+			continue;
+		}
+		if (parsed == frameIndex) {
+			return true;
+		}
+		cursor = end;
+	}
+	return false;
+}
+
+bool SaveBackbufferPNG(int width, int height, const fs::path& path)
+{
+	if (width <= 0 || height <= 0) {
+		return false;
+	}
+
+	std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u, 0u);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	glReadBuffer(GL_BACK);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+	std::vector<unsigned char> flipped(pixels.size(), 0u);
+	for (int y = 0; y < height; ++y) {
+		const std::size_t src = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) * 4u;
+		const std::size_t dst = static_cast<std::size_t>(height - 1 - y) * static_cast<std::size_t>(width) * 4u;
+		std::copy_n(pixels.data() + src, static_cast<std::size_t>(width) * 4u, flipped.data() + dst);
+	}
+
+	std::error_code ec;
+	fs::create_directories(path.parent_path(), ec);
+	return stbi_write_png(path.string().c_str(), width, height, 4, flipped.data(), width * 4) != 0;
+}
+
+void MaybeDumpSceneFramebuffer(int width, int height)
+{
+	static int frameIndex = 0;
+	static int lastDumpedFrame = -1;
+	++frameIndex;
+
+	const std::string dumpDir = GetEnvVarString("NOX_FRAMEBUFFER_DUMP_DIR");
+	if (dumpDir.empty()) {
+		return;
+	}
+
+	const std::string explicitFrames = GetEnvVarString("NOX_FRAMEBUFFER_DUMP_FRAMES");
+	const int dumpFrame = std::max(GetEnvVarInt("NOX_FRAMEBUFFER_DUMP_FRAME", 120), 1);
+	const bool shouldDump = !explicitFrames.empty()
+		? EnvFrameListContains(explicitFrames, frameIndex)
+		: frameIndex == dumpFrame;
+	if (!shouldDump || lastDumpedFrame == frameIndex) {
+		return;
+	}
+
+	const std::string suffix = !explicitFrames.empty()
+		? ("_frame" + std::to_string(frameIndex))
+		: std::string{};
+	const fs::path path = fs::path(dumpDir) / ("scene_framebuffer" + suffix + ".png");
+	const bool ok = SaveBackbufferPNG(width, height, path);
+	std::cout << "[FramebufferDump] frame=" << frameIndex
+		<< " path=" << path.string()
+		<< " ok=" << ok
+		<< '\n';
+	lastDumpedFrame = frameIndex;
 }
 
 std::string TrimScenePathValue(const std::string& value)
@@ -834,6 +927,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 			m_windowWidth,
 			m_windowHeight
 		);
+		MaybeDumpSceneFramebuffer(m_windowWidth, m_windowHeight);
 	}
 	else {
 		std::cerr << "[Core] ERROR: ModularRenderer is not initialized!" << std::endl;

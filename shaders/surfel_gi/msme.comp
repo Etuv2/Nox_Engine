@@ -1,0 +1,95 @@
+#ifndef NOX_SURFEL_GI_MSME_GLSL
+#define NOX_SURFEL_GI_MSME_GLSL
+
+struct SurfelMSMEData
+{
+    vec3 mean;
+    vec3 shortMean;
+    float vbbr;
+    vec3 variance;
+    float inconsistency;
+};
+
+SurfelMSMEData SurfelMSMELoad(Surfel surfel)
+{
+    SurfelMSMEData data;
+    data.mean = max(surfel.irradiance.rgb, vec3(0.0));
+    data.shortMean = max(surfel.shortMean.rgb, vec3(0.0));
+    data.vbbr = surfel.msme.x > 0.0 ? surfel.msme.x : 1.0;
+    data.variance = max(surfel.shortM2.rgb, vec3(0.0));
+    data.inconsistency = surfel.msme.y > 0.0 ? surfel.msme.y : 1.0;
+    return data;
+}
+
+void SurfelMSMEStore(inout Surfel surfel, SurfelMSMEData data)
+{
+    surfel.irradiance.rgb = max(data.mean, vec3(0.0));
+    surfel.shortMean.rgb = max(data.shortMean, vec3(0.0));
+    surfel.shortM2.rgb = max(data.variance, vec3(0.0));
+    surfel.msme = vec4(max(data.vbbr, 0.0),
+                       max(data.inconsistency, 0.0),
+                       SurfelLuminance(abs(data.mean - data.shortMean)),
+                       SurfelLuminance(max(data.variance, vec3(0.0))));
+}
+
+void SurfelMSMEInitialize(inout Surfel surfel, vec3 initialMean, vec3 initialVariance)
+{
+    vec3 safeMean = max(initialMean, vec3(0.0));
+    surfel.irradiance.rgb = safeMean;
+    surfel.shortMean.rgb = safeMean;
+    surfel.shortM2.rgb = max(initialVariance, vec3(0.0));
+    surfel.msme = vec4(1.0, 1.0, 0.0, SurfelLuminance(max(initialVariance, vec3(0.0))));
+}
+
+// Multiscale mean estimation for surfel irradiance. This is a more robust alternative to exponential moving average that maintains two means (one "short" mean with a faster response time and one "long" mean with a slower response time) and a variance estimate to determine how much the means should be blended together. The "vbbr" field is a user-configurable parameter that can be used to reduce the short mean's influence when the variance is very high, which can help prevent fireflies from polluting the estimate.
+// https://github.com/Apress/ray-tracing-gems/blob/master/Ch_25_Hybrid_Rendering_for_Real-Time_Ray_Tracing/MultiscaleMeanEstimator.hlsl
+vec3 SurfelMSME(vec3 y, inout SurfelMSMEData data, float shortWindowBlend)
+{
+    vec3 mean = data.mean;
+    vec3 shortMean = data.shortMean;
+    float vbbr = data.vbbr;
+    vec3 variance = data.variance;
+    float inconsistency = data.inconsistency;
+    float windowBlend = clamp(shortWindowBlend, 0.001, 1.0);
+
+    // Suppress fireflies before they can pollute either mean scale.
+    vec3 dev = sqrt(max(vec3(1e-5), variance));
+    vec3 highThreshold = vec3(0.1) + shortMean + dev * 8.0;
+    vec3 overflow = max(vec3(0.0), y - highThreshold);
+    y -= overflow;
+
+    vec3 delta = y - shortMean;
+    shortMean = mix(shortMean, y, windowBlend);
+    vec3 delta2 = y - shortMean;
+
+    float varianceBlend = windowBlend * 0.5;
+    variance = mix(variance, delta * delta2, varianceBlend);
+    dev = sqrt(max(vec3(1e-5), variance));
+
+    vec3 shortDiff = mean - shortMean;
+    float relativeDiff = dot(vec3(0.299, 0.587, 0.114), abs(shortDiff) / max(vec3(1e-5), dev));
+    inconsistency = mix(inconsistency, relativeDiff, 0.08);
+
+    float varianceBasedBlendReduction = clamp(
+        dot(vec3(0.299, 0.587, 0.114), 0.5 * shortMean / max(vec3(1e-5), dev)),
+        1.0 / 32.0,
+        1.0);
+
+    float catchUpBlend = clamp(
+        smoothstep(0.0, 1.0, relativeDiff * max(0.02, inconsistency - 0.2)),
+        1.0 / 256.0,
+        1.0);
+    catchUpBlend *= vbbr;
+
+    vbbr = mix(vbbr, varianceBasedBlendReduction, 0.1);
+    mean = mix(mean, y, clamp(catchUpBlend, 0.0, 1.0));
+
+    data.mean = mean;
+    data.shortMean = shortMean;
+    data.vbbr = vbbr;
+    data.variance = variance;
+    data.inconsistency = inconsistency;
+    return mean;
+}
+
+#endif

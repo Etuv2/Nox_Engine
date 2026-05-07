@@ -233,13 +233,13 @@ struct RenderContext {
 	bool enableCleanSurfelGI = false;
 	int cleanSurfelGIQualityTier = 1;
 	int cleanSurfelGIDebugView = 0;
-	int cleanSurfelGIMaxSurfels = 131072;
-	int cleanSurfelGIMaxRayBudget = 32768;
+	int cleanSurfelGIMaxSurfels = 65536;
+	int cleanSurfelGIMaxRayBudget = 4096;
 	int cleanSurfelGISpawnTileSize = 8;
-	int cleanSurfelGIMaxSurfelsPerCell = 64;
-	int cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
-	int cleanSurfelGIMaxSpawnsPerFrame = 96;
-	int cleanSurfelGIMaxProjectedSurfelsPerFrame = 16384;
+	int cleanSurfelGIMaxSurfelsPerCell = 128;
+	int cleanSurfelGIMaxGatherSurfelsPerPixel = 64;
+	int cleanSurfelGIMaxSpawnsPerFrame = 128;
+	int cleanSurfelGIMaxProjectedSurfelsPerFrame = 32768;
 	int cleanSurfelGIMaxRecycleCountPerFrame = 2048;
 	float cleanSurfelGITargetRadiusPixels = 8.0f;
 	float cleanSurfelGIMinRadius = 0.03f;
@@ -252,11 +252,11 @@ struct RenderContext {
 	float cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	float cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	float cleanSurfelGIIntensity = 1.0f;
-	float cleanSurfelGICellAverageFallbackStrength = 0.45f;
+	float cleanSurfelGICellAverageFallbackStrength = 0.20f;
 	bool cleanSurfelGIUseRadialDepth = true;
 	bool cleanSurfelGIUseRayGuiding = true;
 	bool cleanSurfelGIUseRayBinning = true;
-	bool cleanSurfelGIUseScreenTrace = false;
+	bool cleanSurfelGIUseScreenTrace = true;
 	bool cleanSurfelGIUseSurfelFallbackTrace = true;
 	bool cleanSurfelGIPlacementValidation = false;
 

@@ -92,11 +92,12 @@ struct alignas(16) Surfel {
     glm::vec4 irradiance{ 0.0f };
     glm::vec4 shortMean{ 0.0f };
     glm::vec4 shortM2{ 0.0f };
+    glm::vec4 msme{ 0.0f };
     glm::uvec4 frameInfo{ 0u };
     glm::uvec4 lifecycle{ 0u };
     glm::vec4 debug{ 0.0f };
 };
-static_assert(sizeof(Surfel) == 192, "Surfel must match std430 GLSL layout.");
+static_assert(sizeof(Surfel) == 208, "Surfel must match std430 GLSL layout.");
 static_assert(offsetof(Surfel, worldPos_radius) == 0, "Surfel.worldPos_radius offset mismatch.");
 static_assert(offsetof(Surfel, worldNormal_age) == 16, "Surfel.worldNormal_age offset mismatch.");
 static_assert(offsetof(Surfel, localPos_spawnRadius) == 32, "Surfel.localPos_spawnRadius offset mismatch.");
@@ -106,9 +107,10 @@ static_assert(offsetof(Surfel, albedo_life) == 80, "Surfel.albedo_life offset mi
 static_assert(offsetof(Surfel, irradiance) == 96, "Surfel.irradiance offset mismatch.");
 static_assert(offsetof(Surfel, shortMean) == 112, "Surfel.shortMean offset mismatch.");
 static_assert(offsetof(Surfel, shortM2) == 128, "Surfel.shortM2 offset mismatch.");
-static_assert(offsetof(Surfel, frameInfo) == 144, "Surfel.frameInfo offset mismatch.");
-static_assert(offsetof(Surfel, lifecycle) == 160, "Surfel.lifecycle offset mismatch.");
-static_assert(offsetof(Surfel, debug) == 176, "Surfel.debug offset mismatch.");
+static_assert(offsetof(Surfel, msme) == 144, "Surfel.msme offset mismatch.");
+static_assert(offsetof(Surfel, frameInfo) == 160, "Surfel.frameInfo offset mismatch.");
+static_assert(offsetof(Surfel, lifecycle) == 176, "Surfel.lifecycle offset mismatch.");
+static_assert(offsetof(Surfel, debug) == 192, "Surfel.debug offset mismatch.");
 
 struct alignas(16) SurfelCounters {
     uint32_t freeTop = 0u;

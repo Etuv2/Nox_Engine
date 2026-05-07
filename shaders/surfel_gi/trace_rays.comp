@@ -212,7 +212,7 @@ const float SURFEL_SKY_OPEN_MISS_VISIBILITY = 0.45;
 const float SURFEL_ENVIRONMENT_MISS_MIP = 5.0;
 const float SURFEL_ENVIRONMENT_MISS_SCALE = 0.16;
 const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 1.6;
-const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 3.75;
+const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 1.75;
 const float SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF = 0.52;
 const float SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF = 10.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
@@ -1565,19 +1565,16 @@ void main()
     }
 
     bool sourceDirectRay = hasSourceSurfel && ray.ids.z == 0u;
-    bool sourceNeedsBootstrap = hasSourceSurfel &&
-        (SurfelIsNew(sourceSurfel) ||
-         sourceSurfel.irradiance.a < 0.46 ||
-         sourceSurfel.shortMean.a < 16.0);
     if (sourceDirectRay) {
         sourceDirectBounce = EvaluateSourceDirectBounce(sourceSurfel);
     }
     bool hasSourceDirect = SurfelLuminance(sourceDirectBounce) > 1e-5;
-    bool sourceDirectBootstrapOnly = hasSourceDirect && sourceNeedsBootstrap && sourceDirectRay;
+    bool sourceDirectSample = hasSourceDirect && sourceDirectRay;
 
     TraceGather gather;
-    if (sourceDirectBootstrapOnly) {
+    if (sourceDirectSample) {
         TraceGatherInit(gather, sourceSurfel.worldPos_radius.xyz);
+        gather.radiance = sourceDirectBounce;
         gather.normal = sourceNormal;
         gather.position = sourceSurfel.worldPos_radius.xyz;
         gather.weight = 1.0;
@@ -1588,31 +1585,13 @@ void main()
         gather = TraceSurfelGrid(ray, rayID);
     }
     bool hit = gather.weight > 1e-5;
-    if (hasSourceDirect) {
-        vec3 rayDir = SurfelSafeNormalize(ray.direction_tMax.xyz);
-        float sampleCos = max(dot(sourceNormal, rayDir), 0.025);
-        float samplePdf = max(ray.throughput.a, 1e-4);
-        float sourceDirectEstimatorScale = max(float(ray.ids.w), 1.0);
-        vec3 encodedSourceBounce = sourceDirectBounce * sourceDirectEstimatorScale * (samplePdf / sampleCos);
-        if (!hit) {
-            gather.radiance = vec3(0.0);
-            gather.normal = sourceNormal;
-            gather.position = sourceSurfel.worldPos_radius.xyz;
-            gather.weight = 1.0;
-            gather.closestT = 0.0;
-            gather.hitKind = SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT;
-            gather.hitSurfelID = SURFEL_INVALID_INDEX;
-            hit = true;
-        }
-        gather.radiance += encodedSourceBounce;
-    }
     if (!hit) {
         gather.radiance = vec3(0.0);
     }
 
-    RecordTraceHit(hit, hit ? gather.hitKind : SURFEL_TRACE_MISS_KIND, hasSourceDirect);
+    RecordTraceHit(hit, hit ? gather.hitKind : SURFEL_TRACE_MISS_KIND, sourceDirectSample);
     hits[rayID].position_t = vec4(gather.position, hit ? gather.closestT : -1.0);
     hits[rayID].normal_hitKind = vec4(gather.normal, hit ? gather.hitKind : SURFEL_TRACE_MISS_KIND);
     hits[rayID].radiance_pdf = vec4(gather.radiance * max(ray.throughput.rgb, vec3(0.0)), ray.throughput.a);
-    hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, hasSourceDirect ? 1u : 0u);
+    hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, sourceDirectSample ? 1u : 0u);
 }

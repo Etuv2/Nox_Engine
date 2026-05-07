@@ -303,18 +303,21 @@ def main() -> None:
             "++accepted;" in integrate_shader,
             "surfel integration must accept real surface/environment samples only, including black hits, and reject invalid misses")
     require("HitKindReliability" in integrate_shader and
+            '#include "msme.comp"' in integrate_shader and
             "float temporalConfidence = SurfelSaturate(surfel.irradiance.a);" in integrate_shader and
+            "SurfelMSMELoad(surfel)" in integrate_shader and
+            "msmeData.variance = max(msmeData.variance, sampleVariance" in integrate_shader and
+            "float shortWindowBlend" in integrate_shader and
+            "vec3 integratedIrradiance = SurfelMSME(estimatorSample, msmeData, shortWindowBlend);" in integrate_shader and
+            "SurfelMSMEStore(surfel, msmeData);" in integrate_shader and
+            "preUpdateDeviation" in integrate_shader and
             "float sampleStability = 1.0 - smoothstep(0.06, 0.75, varLum);" in integrate_shader and
             "float consistentChange = smoothstep(0.16, 1.35, diffLum) * sampleStability;" in integrate_shader and
             "float confidenceDecay = consistentChange * 0.035;" in integrate_shader and
-            "float alphaMax = mix(0.080, 0.024, temporalConfidence);" in integrate_shader and
-            "sourceDirectSupport * sampleStability" in integrate_shader and
-            "float alpha = mix(0.0015, alphaMax, consistentChange);" in integrate_shader and
+            "sourceDirectSupport * acceptedRatio * schedulerSupport" in integrate_shader and
             "bool lateBootstrap = SurfelIsNew(surfel) && !brandNew && surfel.shortMean.a <= 1.0 && surfel.irradiance.a <= 0.08;" in integrate_shader and
-            "float resetAlpha = brandNew ? 0.30 : 0.16;" in integrate_shader and
-            "alpha = max(alpha, resetAlpha);" in integrate_shader and
-            "TemporalClampIrradianceWithConfidence(previousIrradiance, integratedIrradiance, temporalConfidence)" in integrate_shader,
-            "surfel integration must reliability-weight hit evidence, damp noisy swings as confidence rises, and bootstrap new surfels without flicker")
+            "TemporalClampIrradianceWithConfidence" not in integrate_shader,
+            "surfel integration must reliability-weight hit evidence, use MSME variance/change detection, and bootstrap new surfels without flicker")
     trace_shader = read("shaders/surfel_gi/trace_rays.comp")
     common_shader = read("shaders/surfel_gi/common.glsl")
     require("ivec3 SurfelOrderedCubeOffset" in common_shader and

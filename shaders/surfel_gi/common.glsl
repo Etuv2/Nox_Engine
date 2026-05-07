@@ -82,6 +82,7 @@ struct Surfel
     vec4 irradiance;
     vec4 shortMean;
     vec4 shortM2;
+    vec4 msme;
     uvec4 frameInfo;
     uvec4 lifecycle;
     vec4 debug;

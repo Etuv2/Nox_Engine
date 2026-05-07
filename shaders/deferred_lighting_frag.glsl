@@ -51,6 +51,7 @@ uniform sampler2D screenSpaceShadowMap;
 uniform float sssStrength = 0.6; // Contact shadow blend strength [0,1]
 
 const int MAX_INDIRECT_DIFFUSE_SOURCES = 4;
+const float SURFEL_GI_RESPONSE_FORM_FACTOR_COMPENSATION = 18.0;
 uniform sampler2D indirectDiffuseMaps[MAX_INDIRECT_DIFFUSE_SOURCES];
 uniform float indirectDiffuseStrengths[MAX_INDIRECT_DIFFUSE_SOURCES];
 uniform int indirectDiffuseSourceCount = 0;
@@ -650,14 +651,16 @@ vec3 ComputeSurfelGIResponse(vec3 indirectIrradiance, float indirectConfidence, 
 	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
 	vec3 diffuseAlbedo = surface.baseColor * (1.0 - surface.metallic) * (1.0 - transmissionWeight);
 	float diffuseTerm = mix(1.0, 1.0 + 0.35 * surface.perceptualRoughness, surface.subsurface);
+	float indirectLum = Luminance(indirectIrradiance);
+	float indirectChroma = length(indirectIrradiance - vec3(indirectLum));
+	float indirectChromaSignal = smoothstep(0.012, 0.18, indirectChroma / max(indirectLum, 0.06));
 
-	// Clean Surfel GI is already a filtered, spatially shared diffuse field. Treat
-	// it as a preintegrated indirect diffuse response here; the legacy SSGI/LPV
-	// sources keep the stricter irradiance-to-BRDF conversion above.
-	float aoPolicy = mix(0.72, 1.0, clamp(diffuseAO, 0.0, 1.0));
-	float baseAttenuation = mix(1.0, ComputeBaseLayerAttenuation(surface, NdotV), 0.35);
-	float confidenceLift = mix(0.72, 1.0, smoothstep(0.04, 0.55, indirectConfidence));
-	vec3 materialResponse = kD * diffuseAlbedo * diffuseTerm * aoPolicy * baseAttenuation * confidenceLift;
+	float aoPolicy = mix(0.55, 1.0, clamp(diffuseAO, 0.0, 1.0));
+	float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
+	float confidenceLift = smoothstep(0.025, 0.55, indirectConfidence);
+	float chromaVisibility = mix(0.92, 1.0, indirectChromaSignal * confidenceLift);
+	float energyCompensation = mix(1.0, SURFEL_GI_RESPONSE_FORM_FACTOR_COMPENSATION, confidenceLift);
+	vec3 materialResponse = kD * diffuseAlbedo * INV_PI * diffuseTerm * aoPolicy * baseAttenuation * confidenceLift * chromaVisibility * energyCompensation;
 	return max(indirectIrradiance * materialResponse, vec3(0.0));
 }
 

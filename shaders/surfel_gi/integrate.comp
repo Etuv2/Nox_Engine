@@ -3,6 +3,7 @@
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
+#include "msme.comp"
 
 layout(binding = B_SURFELS, std430) buffer SurfelBuffer
 {
@@ -49,7 +50,6 @@ const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
 const float SURFEL_MAX_SAMPLE_IRRADIANCE = 32.0;
 const float SURFEL_MAX_EMISSIVE_IRRADIANCE = 64.0;
-const float SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE = 0.45;
 
 vec3 SurfelClampRadiance(vec3 radiance)
 {
@@ -85,31 +85,6 @@ float HitKindReliability(float hitKind)
         return SURFEL_SCREEN_SAMPLE_RELIABILITY;
     }
     return 0.0;
-}
-
-vec3 TemporalClampIrradianceWithConfidence(vec3 previous, vec3 candidate, float confidence)
-{
-    previous = SurfelClampRadiance(max(previous, vec3(0.0)));
-    candidate = SurfelClampRadiance(max(candidate, vec3(0.0)));
-
-    float previousLum = max(SurfelLuminance(previous), 0.0);
-    float candidateLum = max(SurfelLuminance(candidate), 0.0);
-    if (candidateLum <= 1e-5 || previousLum <= 1e-5) {
-        return candidate;
-    }
-
-    float confident01 = smoothstep(0.18, 0.75, SurfelSaturate(confidence));
-    float liftLimit = mix(0.55, SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE, confident01);
-    float liftFloor = mix(0.095, 0.040, confident01);
-    float maxLum = max(previousLum * (1.0 + liftLimit) + liftFloor, 0.045);
-    float minLum = previousLum * mix(0.58, 0.78, confident01);
-    float clampedLum = clamp(candidateLum, minLum, maxLum);
-    return candidate * (clampedLum / max(candidateLum, 1e-5));
-}
-
-vec3 TemporalClampIrradiance(vec3 previous, vec3 candidate)
-{
-    return TemporalClampIrradianceWithConfidence(previous, candidate, 1.0);
 }
 
 void UpdateGuideCell(uint surfelID, uint rayID, vec3 normal, vec3 sampleRadiance)
@@ -173,8 +148,11 @@ void main()
 
         float samplePdf = max(hit.radiance_pdf.a, 1e-4);
         float sampleCos = max(dot(normal, SurfelSafeNormalize(rays[rayID].direction_tMax.xyz)), 0.0);
-        vec3 sampleIrradiance = SurfelClampRadiance(hit.radiance_pdf.rgb * (sampleCos / samplePdf));
-        UpdateGuideCell(request.surfelID, rayID, normal, SurfelClampRadiance(hit.radiance_pdf.rgb * sampleCos * reliability));
+        vec3 sampleIrradiance = sourceDirectHit ? SurfelClampRadiance(hit.radiance_pdf.rgb)
+            : SurfelClampRadiance(hit.radiance_pdf.rgb * (sampleCos / samplePdf));
+        if (!sourceDirectHit) {
+            UpdateGuideCell(request.surfelID, rayID, normal, SurfelClampRadiance(hit.radiance_pdf.rgb * sampleCos * reliability));
+        }
         batchSum += sampleIrradiance * reliability;
         batchSumSq += sampleIrradiance * sampleIrradiance * reliability;
         acceptedWeight += reliability;
@@ -192,11 +170,12 @@ void main()
 
     if (accepted == 0u || acceptedWeight <= 1e-5) {
         if (request.allocatedCount > 0u) {
-            surfel.irradiance.rgb = SurfelClampRadiance(mix(surfel.irradiance.rgb, vec3(0.0), 0.006));
-            surfel.shortMean.rgb = mix(surfel.shortMean.rgb, surfel.irradiance.rgb, 0.04);
-            surfel.irradiance.a = SurfelSaturate(surfel.irradiance.a * 0.985);
-            surfel.shortM2.rgb = max(surfel.shortM2.rgb, vec3(0.02));
-            surfel.debug.x = SurfelLuminance(surfel.shortM2.rgb);
+            SurfelMSMEData msmeData = SurfelMSMELoad(surfel);
+            msmeData.variance = max(msmeData.variance, vec3(0.02));
+            msmeData.inconsistency = max(msmeData.inconsistency, 1.0);
+            SurfelMSMEStore(surfel, msmeData);
+            surfel.irradiance.a = SurfelSaturate(surfel.irradiance.a * 0.992);
+            surfel.debug.x = SurfelLuminance(msmeData.variance);
             surfel.frameInfo.z = uFrameIndex;
         }
         surfels[request.surfelID] = surfel;
@@ -221,54 +200,47 @@ void main()
     bool lateBootstrap = SurfelIsNew(surfel) && !brandNew && surfel.shortMean.a <= 1.0 && surfel.irradiance.a <= 0.08;
     bool resetEstimator = brandNew || lateBootstrap || surfel.shortMean.a <= 0.0 || surfel.irradiance.a <= 0.0;
 
-    if (resetEstimator) {
-        surfel.shortMean.rgb = max(sampleMean, emissiveBaseline);
-        surfel.shortM2.rgb = sampleVariance;
-        surfel.shortMean.a = min(effectiveAccepted, SURFEL_SHORT_HISTORY_RAYS);
-    } else {
-        float shortAlpha = clamp(effectiveAccepted / SURFEL_SHORT_HISTORY_RAYS, 0.008, 0.045);
-        vec3 oldShort = surfel.shortMean.rgb;
-        vec3 shiftedVariance = sampleVariance + (sampleMean - oldShort) * (sampleMean - oldShort);
-        surfel.shortMean.rgb = mix(oldShort, sampleMean, shortAlpha);
-        surfel.shortM2.rgb = mix(max(surfel.shortM2.rgb, vec3(0.0)), max(shiftedVariance, vec3(0.0)), shortAlpha);
-        surfel.shortMean.a = min(surfel.shortMean.a + effectiveAccepted, SURFEL_SHORT_HISTORY_RAYS);
-    }
-
     vec3 previousIrradiance = resetEstimator ? max(priorIrradiance, emissiveBaseline) : priorIrradiance;
-    float varLum = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
-    float diffLum = SurfelLuminance(abs(surfel.shortMean.rgb - previousIrradiance));
-    float sampleStability = 1.0 - smoothstep(0.06, 0.75, varLum);
-    float consistentChange = smoothstep(0.16, 1.35, diffLum) * sampleStability;
     float temporalConfidence = SurfelSaturate(surfel.irradiance.a);
-    float confidenceDecay = consistentChange * 0.035;
-    temporalConfidence = SurfelSaturate(temporalConfidence - confidenceDecay);
     float acceptedRatio = SurfelSaturate(acceptedWeight / max(float(request.allocatedCount), 1.0));
     float allocationRatio = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
     float schedulerSupport = mix(0.65, 1.0, allocationRatio);
-    float alphaMax = mix(0.080, 0.024, temporalConfidence);
-    alphaMax = mix(alphaMax, max(alphaMax, 0.14), sourceDirectSupport * sampleStability);
-    float alpha = mix(0.0015, alphaMax, consistentChange);
-    alpha = max(alpha, (1.0 - temporalConfidence) * 0.018 * sampleStability);
-    alpha = max(alpha, sourceDirectSupport * acceptedRatio * schedulerSupport * 0.055);
+    vec3 estimatorSample = SurfelClampRadiance(max(sampleMean, emissiveBaseline));
+    vec3 initialVariance = max(sampleVariance, vec3(max(SurfelLuminance(estimatorSample) * 0.08, 0.012)));
+
     if (resetEstimator) {
-        float resetAlpha = brandNew ? 0.30 : 0.16;
-        alpha = max(alpha, resetAlpha);
+        SurfelMSMEInitialize(surfel, estimatorSample, initialVariance);
+        surfel.shortMean.a = min(effectiveAccepted, SURFEL_SHORT_HISTORY_RAYS);
     }
+
+    SurfelMSMEData msmeData = SurfelMSMELoad(surfel);
+    msmeData.variance = max(msmeData.variance, sampleVariance * mix(0.35, 0.75, sparseSample01));
+    vec3 preUpdateDeviation = max(
+        vec3(0.0),
+        estimatorSample - (msmeData.shortMean + sqrt(max(msmeData.variance, vec3(1e-5))) * 8.0 + vec3(0.1)));
+    if (SurfelLuminance(preUpdateDeviation) > 1e-4) {
+        atomicAdd(counters.temporalClampEvents, 1u);
+    }
+    float preUpdateVarLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));
+    float preUpdateStability = 1.0 - smoothstep(0.06, 0.95, preUpdateVarLum);
+    float shortWindowBlend = mix(0.018, 0.075, acceptedRatio * schedulerSupport * preUpdateStability);
+    shortWindowBlend = max(shortWindowBlend, sourceDirectSupport * acceptedRatio * schedulerSupport * 0.11);
+    shortWindowBlend = resetEstimator ? max(shortWindowBlend, brandNew ? 0.42 : 0.24) : shortWindowBlend;
+    vec3 integratedIrradiance = SurfelMSME(estimatorSample, msmeData, shortWindowBlend);
+
+    float varLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));
+    float diffLum = SurfelLuminance(abs(msmeData.shortMean - previousIrradiance));
+    float sampleStability = 1.0 - smoothstep(0.06, 0.75, varLum);
+    float consistentChange = smoothstep(0.16, 1.35, diffLum) * sampleStability;
+    float confidenceDecay = consistentChange * 0.035;
+    temporalConfidence = SurfelSaturate(temporalConfidence - confidenceDecay);
     if (SurfelIsNew(surfel)) {
         SurfelSetFlags(surfel, SurfelFlags(surfel) & ~SURFEL_NEW);
     }
 
-    vec3 integratedIrradiance = mix(previousIrradiance, surfel.shortMean.rgb, alpha);
-    bool clampTemporalBootstrap = !resetEstimator || lateBootstrap;
-    if (clampTemporalBootstrap) {
-        vec3 unclampedIrradiance = integratedIrradiance;
-        integratedIrradiance = TemporalClampIrradianceWithConfidence(previousIrradiance, integratedIrradiance, temporalConfidence);
-        float clampDelta = SurfelLuminance(abs(unclampedIrradiance - integratedIrradiance));
-        if (clampDelta > 1e-4) {
-            atomicAdd(counters.temporalClampEvents, 1u);
-        }
-    }
-    surfel.irradiance.rgb = SurfelClampRadiance(max(integratedIrradiance, emissiveBaseline));
+    msmeData.mean = SurfelClampRadiance(max(integratedIrradiance, emissiveBaseline));
+    SurfelMSMEStore(surfel, msmeData);
+    surfel.shortMean.a = min(surfel.shortMean.a + effectiveAccepted, SURFEL_SHORT_HISTORY_RAYS);
 
     float confidenceGain = mix(0.006, 0.020, sampleStability) * acceptedRatio * schedulerSupport;
     confidenceGain += sourceDirectSupport * acceptedRatio * schedulerSupport * 0.018;

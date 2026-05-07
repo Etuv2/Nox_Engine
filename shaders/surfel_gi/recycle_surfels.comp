@@ -60,6 +60,37 @@ const uint SURFEL_RECYCLE_STABLE_VISIBLE_FRAME_WINDOW = 8u;
 const uint SURFEL_RECYCLE_VALIDATED_SUCCESS_PROTECTION = 3u;
 const uint SURFEL_RECYCLE_YOUNG_SURFEL_PROTECTION_FRAMES = 24u;
 const float SURFEL_RECYCLE_STABLE_VISIBLE_SCORE_SCALE = 0.12;
+const uint SURFEL_REFERENCE_MAX_LIFE = 240u;
+const uint SURFEL_REFERENCE_SLEEPING_MAX_LIFE = SURFEL_REFERENCE_MAX_LIFE / 4u;
+const uint SURFEL_REFERENCE_REF_COUNT_THRESHOLD = 32u;
+const uint SURFEL_REFERENCE_SLEEPING_BIT = 0x80000000u;
+const uint SURFEL_REFERENCE_REUSE_MASK = 0x0000ffffu;
+
+uint SurfelReferenceLife(Surfel surfel)
+{
+    return min(surfel.lifecycle.x, SURFEL_REFERENCE_MAX_LIFE);
+}
+
+bool SurfelReferenceSleeping(Surfel surfel)
+{
+    return (surfel.lifecycle.w & SURFEL_REFERENCE_SLEEPING_BIT) != 0u;
+}
+
+void SurfelReferenceSetLife(inout Surfel surfel, uint life)
+{
+    surfel.lifecycle.x = min(life, SURFEL_REFERENCE_MAX_LIFE);
+}
+
+void SurfelReferenceSetSleeping(inout Surfel surfel, bool sleeping)
+{
+    uint reuse = surfel.lifecycle.w & SURFEL_REFERENCE_REUSE_MASK;
+    surfel.lifecycle.w = sleeping ? (reuse | SURFEL_REFERENCE_SLEEPING_BIT) : reuse;
+}
+
+uint SurfelReferenceReuseScore(Surfel surfel)
+{
+    return surfel.lifecycle.w & SURFEL_REFERENCE_REUSE_MASK;
+}
 
 void PushFreeIndex(uint surfelID)
 {
@@ -203,23 +234,44 @@ void main()
     float pressure = 1.0 - clamp(float(counters.freeTop) / max(float(uMaxSurfels), 1.0), 0.0, 1.0);
     float confidence = SurfelSaturate(surfel.irradiance.a);
     float variance = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
-    uint failedValidationCount = min(surfel.lifecycle.x, 65535u);
-    uint successfulValidationCount = min(surfel.lifecycle.y, 65535u);
-    uint lowConfidenceFrameCount = min(surfel.lifecycle.z, 65535u);
-    uint recentReuseScore = min(surfel.lifecycle.w, 65535u);
     bool recentlyVisible = sampleAge <= SURFEL_RECYCLE_STABLE_VISIBLE_FRAME_WINDOW;
     bool recentlyContributed = contributionAge <= 12u;
     bool youngSurfel = spawnAge <= SURFEL_RECYCLE_YOUNG_SURFEL_PROTECTION_FRAMES;
-    if (confidence < 0.24 && !recentlyVisible && contributionAge > 24u) {
-        lowConfidenceFrameCount = min(lowConfidenceFrameCount + 1u, 65535u);
-    } else if (recentlyVisible || recentlyContributed || confidence > 0.45) {
-        lowConfidenceFrameCount = 0u;
+    uint life = SurfelReferenceLife(surfel);
+    uint referenceCount = min(surfel.lifecycle.y, 65535u);
+    bool lastSeen = surfel.lifecycle.z != 0u;
+    bool referenceSleeping = SurfelReferenceSleeping(surfel);
+    bool hasEnoughRefCount = referenceCount >= SURFEL_REFERENCE_REF_COUNT_THRESHOLD;
+    if (lastSeen) {
+        life = SURFEL_REFERENCE_MAX_LIFE;
+        referenceSleeping = false;
+    } else if (youngSurfel && life == 0u) {
+        life = SURFEL_REFERENCE_MAX_LIFE;
+    } else if (life > 0u) {
+        --life;
     }
+    if (!lastSeen && referenceSleeping && life > SURFEL_REFERENCE_SLEEPING_MAX_LIFE) {
+        life = SURFEL_REFERENCE_SLEEPING_MAX_LIFE;
+    }
+    if (!lastSeen && life <= SURFEL_REFERENCE_SLEEPING_MAX_LIFE && hasEnoughRefCount && !recentlyVisible) {
+        referenceSleeping = true;
+    }
+    uint failedValidationCount = lastSeen
+        ? 0u
+        : min(SURFEL_REFERENCE_MAX_LIFE - life, 65535u);
+    uint successfulValidationCount = referenceCount;
+    uint lowConfidenceFrameCount = (confidence < 0.24 && !recentlyVisible && contributionAge > 24u)
+        ? min(SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES + failedValidationCount, 65535u)
+        : 0u;
     if (recentlyVisible && successfulValidationCount >= SURFEL_RECYCLE_VALIDATED_SUCCESS_PROTECTION) {
         failedValidationCount = min(failedValidationCount, SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS - 1u);
     }
-    recentReuseScore = uint(float(recentReuseScore) * 0.82);
-    surfel.lifecycle = uvec4(failedValidationCount, successfulValidationCount, lowConfidenceFrameCount, recentReuseScore);
+    uint recentReuseScore = uint(float(SurfelReferenceReuseScore(surfel)) * 0.82);
+    SurfelReferenceSetLife(surfel, life);
+    surfel.lifecycle.y = successfulValidationCount;
+    surfel.lifecycle.z = 0u;
+    surfel.lifecycle.w = recentReuseScore;
+    SurfelReferenceSetSleeping(surfel, referenceSleeping);
 
     float distanceToCamera = length(surfel.worldPos_radius.xyz - uCameraPosition);
     float maxDistance = max(uMaxDistance, 1.0);
@@ -313,6 +365,7 @@ void main()
         confidence < 0.45 &&
         lowConfidenceFrameCount >= SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES &&
         random < 0.015;
+    bool staleRemoval = life == 0u && !youngSurfel && !recentlyVisible;
     bool duplicateEligible = duplicateOfStableNeighbor &&
         !stableVisibleProtection &&
         contributionAge > 4u &&
@@ -330,8 +383,9 @@ void main()
          lowConfidenceFrameCount >= SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES ||
          sampleAge > 30u ||
          confidence < 0.22);
-    bool overCoverageCull = overCoverageEligible &&
+    bool overCoverageRemoval = overCoverageEligible &&
         random < mix(0.02, 0.22, max(overCoverage01, pressure01 * cellOccupancy01));
+    bool overCoverageCull = overCoverageRemoval;
     bool oversizedCull = !stableVisibleProtection && radiusGrowth > 6.0 && contributionAge > 120u && random < 0.05;
     bool pressureEligible = !stableVisibleProtection &&
         !youngSurfel &&
@@ -346,6 +400,7 @@ void main()
     bool shouldRecycle = invalidTransform ||
         surfel.albedo_life.a <= 0.0 ||
         outsideGridCull ||
+        staleRemoval ||
         staleCull ||
         duplicateCull ||
         overCoverageCull ||
@@ -370,6 +425,7 @@ void main()
     surfel.irradiance = vec4(0.0);
     surfel.shortMean = vec4(0.0);
     surfel.shortM2 = vec4(0.0);
+    surfel.msme = vec4(0.0);
     surfel.lifecycle = uvec4(0u);
     surfel.debug = vec4(0.0, 0.0, 0.0, 1.0);
     surfels[surfelID] = surfel;

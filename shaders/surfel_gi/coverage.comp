@@ -143,15 +143,10 @@ void RecordProjectedValidation(uint surfelID, bool valid, float quality, uint re
 
     if (valid) {
         atomicMax(surfels[surfelID].frameInfo.x, uFrameIndex);
-        atomicExchange(surfels[surfelID].lifecycle.x, 0u);
         atomicAdd(surfels[surfelID].lifecycle.y, 1u);
-        atomicExchange(surfels[surfelID].lifecycle.z, 0u);
+        atomicExchange(surfels[surfelID].lifecycle.z, 1u);
         atomicMax(surfels[surfelID].lifecycle.w, uint(clamp(quality, 0.0, 1.0) * 65535.0));
         return;
-    }
-
-    if (rejectMask != 0u) {
-        atomicAdd(surfels[surfelID].lifecycle.x, 1u);
     }
 }
 

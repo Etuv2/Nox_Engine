@@ -31,8 +31,13 @@ def main() -> None:
             "colour bleed must remain gated by radial-depth visibility")
     require("ClampColorBleedLift" in apply_shader,
             "colour bleed must be clamped so it cannot become a fake ambient flood")
-    require("irradiance += colorBleed" in apply_shader,
-            "final output must add bounded colour bleed after direct surfel irradiance is established")
+    require("PromoteColorBleedForFinalComposite" in apply_shader,
+            "colour bleed must be promoted enough to survive the final composite")
+    require("ComposeColorBleedWithIrradiance" in apply_shader and
+            "vec3 irradiance = ComposeColorBleedWithIrradiance(preliminaryIrradiance, colorBleed, bleedSupport);" in apply_shader,
+            "final output must preserve supported colour-bleed chroma when mixing with neutral irradiance")
+    require("irradiance += colorBleed" not in apply_shader,
+            "final output must not bury colour bleed with a plain add into neutral irradiance")
     sharing_shader = read("shaders/surfel_gi/irradiance_sharing.comp")
     require("SURFEL_SHARING_MIN_CROSS_TRANSFER" in sharing_shader and
             "crossSurfaceCompatible" in sharing_shader and

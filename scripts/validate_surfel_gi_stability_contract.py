@@ -29,9 +29,9 @@ def main() -> None:
             trace.find("TraceScreenSpace(ray, gather)") < trace.find("TraceSoftwareBVHRadiance(ray, gather)"),
             "screen-space hits should be tried first when explicitly enabled, with BVH still ahead of surfel fallback")
     require("HitKindReliability" in integrate and
-            "TemporalClampIrradiance" in integrate and
-            "SURFEL_MAX_TEMPORAL_LIFT_PER_UPDATE" in integrate,
-            "surfel temporal integration must reliability-weight hit kinds and clamp per-update luminance jumps")
+            "SurfelMSME(estimatorSample" in integrate and
+            "preUpdateDeviation" in integrate,
+            "surfel temporal integration must reliability-weight hit kinds and let MSME suppress outliers before history")
     require("mix(surfel.irradiance.rgb, vec3(0.0), 0.045)" not in integrate,
             "missed ray batches must not visibly decay cached irradiance in one or two frames")
     require("initialDirectScale = 0.04" in spawn and

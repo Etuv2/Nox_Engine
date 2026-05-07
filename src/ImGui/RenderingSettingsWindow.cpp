@@ -163,13 +163,13 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_enableCleanSurfelGI = false;
 	m_cleanSurfelGIQualityTier = 1;
 	m_cleanSurfelGIDebugView = 0;
-	m_cleanSurfelGIMaxSurfels = 131072;
-	m_cleanSurfelGIMaxRayBudget = 32768;
+	m_cleanSurfelGIMaxSurfels = 65536;
+	m_cleanSurfelGIMaxRayBudget = 4096;
 	m_cleanSurfelGISpawnTileSize = 8;
-	m_cleanSurfelGIMaxSurfelsPerCell = 64;
-	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
-	m_cleanSurfelGIMaxSpawnsPerFrame = 96;
-	m_cleanSurfelGIMaxProjectedSurfelsPerFrame = 16384;
+	m_cleanSurfelGIMaxSurfelsPerCell = 128;
+	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 64;
+	m_cleanSurfelGIMaxSpawnsPerFrame = 128;
+	m_cleanSurfelGIMaxProjectedSurfelsPerFrame = 32768;
 	m_cleanSurfelGIMaxRecycleCountPerFrame = 2048;
 	m_cleanSurfelGITargetRadiusPixels = 8.0f;
 	m_cleanSurfelGIMinRadius = 0.03f;
@@ -182,11 +182,11 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	m_cleanSurfelGIIntensity = 1.0f;
-	m_cleanSurfelGICellAverageFallbackStrength = 0.45f;
+	m_cleanSurfelGICellAverageFallbackStrength = 0.20f;
 	m_cleanSurfelGIUseRadialDepth = true;
 	m_cleanSurfelGIUseRayGuiding = true;
 	m_cleanSurfelGIUseRayBinning = true;
-	m_cleanSurfelGIUseScreenTrace = false;
+	m_cleanSurfelGIUseScreenTrace = true;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;
 	m_cleanSurfelGIPlacementValidation = false;
 
@@ -1104,9 +1104,9 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderInt("Ray Budget", &m_cleanSurfelGIMaxRayBudget, 4096, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Spawn Tile", &m_cleanSurfelGISpawnTileSize, 4, 16)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Gather Surfels", &m_cleanSurfelGIMaxGatherSurfelsPerPixel, 4, 2048)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Spawns/Frame", &m_cleanSurfelGIMaxSpawnsPerFrame, 1, 1024)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Projected Surfels/Frame", &m_cleanSurfelGIMaxProjectedSurfelsPerFrame, 1024, 131072)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Recycle Budget/Frame", &m_cleanSurfelGIMaxRecycleCountPerFrame, 1, 8192)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Spawns/Frame", &m_cleanSurfelGIMaxSpawnsPerFrame, 1, 4096)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Projected Surfels/Frame", &m_cleanSurfelGIMaxProjectedSurfelsPerFrame, 1024, 524288)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Recycle Budget/Frame", &m_cleanSurfelGIMaxRecycleCountPerFrame, 1, 65536)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Coverage Threshold", &m_cleanSurfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_cleanSurfelGINormalReject, -0.2f, 0.95f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Coverage Normal", &m_cleanSurfelGICoverageNormalReject, 0.50f, 0.99f, "%.2f")) { SyncToRenderer(); }
@@ -1983,13 +1983,13 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_enableCleanSurfelGI = false;
 	m_cleanSurfelGIQualityTier = 1;
 	m_cleanSurfelGIDebugView = 0;
-	m_cleanSurfelGIMaxSurfels = 131072;
-	m_cleanSurfelGIMaxRayBudget = 32768;
+	m_cleanSurfelGIMaxSurfels = 65536;
+	m_cleanSurfelGIMaxRayBudget = 4096;
 	m_cleanSurfelGISpawnTileSize = 8;
-	m_cleanSurfelGIMaxSurfelsPerCell = 64;
-	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 512;
-	m_cleanSurfelGIMaxSpawnsPerFrame = 96;
-	m_cleanSurfelGIMaxProjectedSurfelsPerFrame = 16384;
+	m_cleanSurfelGIMaxSurfelsPerCell = 128;
+	m_cleanSurfelGIMaxGatherSurfelsPerPixel = 64;
+	m_cleanSurfelGIMaxSpawnsPerFrame = 128;
+	m_cleanSurfelGIMaxProjectedSurfelsPerFrame = 32768;
 	m_cleanSurfelGIMaxRecycleCountPerFrame = 2048;
 	m_cleanSurfelGITargetRadiusPixels = 8.0f;
 	m_cleanSurfelGIMinRadius = 0.03f;
@@ -2002,11 +2002,11 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
 	m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
 	m_cleanSurfelGIIntensity = 1.0f;
-	m_cleanSurfelGICellAverageFallbackStrength = 0.45f;
+	m_cleanSurfelGICellAverageFallbackStrength = 0.20f;
 	m_cleanSurfelGIUseRadialDepth = true;
 	m_cleanSurfelGIUseRayGuiding = true;
 	m_cleanSurfelGIUseRayBinning = true;
-	m_cleanSurfelGIUseScreenTrace = false;
+	m_cleanSurfelGIUseScreenTrace = true;
 	m_cleanSurfelGIUseSurfelFallbackTrace = true;
 	m_cleanSurfelGIPlacementValidation = false;
 

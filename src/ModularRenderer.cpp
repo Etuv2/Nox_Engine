@@ -132,7 +132,7 @@ namespace {
 		uint32_t maxGatherSurfelsPerPixel = 512u;
 		uint32_t gatherNeighborRadius = 0u;
 		float finalGatherResolutionScale = 1.0f;
-		float fallbackStrength = 0.45f;
+		float fallbackStrength = 0.20f;
 		bool allowRayGuiding = false;
 		bool allowRadialDepth = false;
 		bool allowScreenTrace = false;
@@ -150,14 +150,14 @@ namespace {
 	static CleanSurfelGIBudgetCaps GetCleanSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 8192u, 192u, 40u, 16u, 24u, 0u, 0.333f, 0.35f, false, false, false, false, 1.0f, 5u, 1u, 1u, 3u, 16u, 4096u, 512u };
+			return { 24576u, 2048u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 1u, 2u, 8u, 96u, 24576u, 2048u };
 		case SurfelGIQualityTier::High:
-			return { 24576u, 192u, 12u, 24u, 24u, 1u, 0.333f, 0.55f, true, true, false, false, 1.0f, 3u, 1u, 3u, 10u, 96u, 16384u, 1536u };
+			return { 131072u, 32768u, 8u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 3u, 6u, 48u, 512u, 131072u, 8192u };
 		case SurfelGIQualityTier::Ultra:
-			return { 32768u, 192u, 8u, 24u, 24u, 1u, 0.333f, 0.65f, true, true, false, false, 1.0f, 2u, 1u, 4u, 12u, 128u, 24576u, 2048u };
+			return { 262144u, 65536u, 4u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 4u, 8u, 64u, 1024u, 262144u, 16384u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 24576u, 256u, 16u, 32u, 32u, 1u, 0.375f, 0.50f, true, true, false, false, 1.0f, 3u, 1u, 2u, 24u, 64u, 12288u, 1024u };
+			return { 65536u, 4096u, 8u, 64u, 64u, 1u, 0.55f, 0.20f, true, true, true, true, 1.0f, 1u, 2u, 4u, 24u, 128u, 32768u, 2048u };
 		}
 	}
 
@@ -188,7 +188,7 @@ namespace {
 
 		settings.gatherNeighborRadius = captureMode ? std::max(caps.gatherNeighborRadius, 2u) : caps.gatherNeighborRadius;
 		settings.finalGatherResolutionScale = captureMode ? 1.0f : std::clamp(caps.finalGatherResolutionScale, 0.25f, 1.0f);
-		settings.cellAverageFallbackStrength = captureMode ? std::max(caps.fallbackStrength, 0.65f) : settings.cellAverageFallbackStrength;
+		settings.cellAverageFallbackStrength = captureMode ? std::min(settings.cellAverageFallbackStrength, caps.fallbackStrength) : settings.cellAverageFallbackStrength;
 	}
 
 	struct PassQuerySlot {

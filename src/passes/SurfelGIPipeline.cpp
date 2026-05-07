@@ -957,6 +957,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uMinSurfelRadius", m_settings.minSurfelRadius);
 		SetUniform1f(program, "uMaxSurfelRadius", m_settings.maxSurfelRadius);
 		SetUniform1f(program, "uCoverageThreshold", m_settings.spawnCoverageThreshold);
+		SetUniform1f(program, "uPlacementThreshold", m_settings.spawnCoverageThreshold);
+		SetUniform1f(program, "uRemovalThreshold", m_settings.spawnCoverageThreshold * 1.12f + 0.04f);
 		SetUniform1f(program, "uNormalRejectCos", m_settings.normalRejectCos);
 		SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
 		SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);

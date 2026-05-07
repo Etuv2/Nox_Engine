@@ -4,6 +4,8 @@
 
 #include <fstream>
 #include <iostream>
+#include <algorithm>
+#include <cstdlib>
 
 #include <SDL/SDL.h>
 #include <SDL/SDL_ttf.h>
@@ -12,6 +14,32 @@
 #include <IMGUI/imgui.h>
 #include <IMGUI/imgui_impl_sdl2.h>
 #include <IMGUI/imgui_impl_opengl3.h>
+
+namespace {
+int GetEnvInt(const char* name, int fallback)
+{
+#if defined(_MSC_VER)
+    char* rawValue = nullptr;
+    size_t valueLength = 0;
+    if (_dupenv_s(&rawValue, &valueLength, name) != 0 || rawValue == nullptr) {
+        return fallback;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(rawValue, &end, 10);
+    const bool parsedAny = end != rawValue;
+    std::free(rawValue);
+    return parsedAny ? static_cast<int>(parsed) : fallback;
+#else
+    const char* value = std::getenv(name);
+    if (!value || *value == '\0') {
+        return fallback;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    return end != value ? static_cast<int>(parsed) : fallback;
+#endif
+}
+}
 
 MainWindow::MainWindow()
     : m_window(nullptr)
@@ -275,6 +303,8 @@ void MainWindow::HandleWindowEvent(const SDL_WindowEvent& windowEvent) {
 
 void MainWindow::Run() {
     std::cout << "[MainWindow] Starting main loop..." << std::endl;
+    const int exitAfterFrames = std::max(GetEnvInt("NOX_EXIT_AFTER_FRAMES", 0), 0);
+    int renderedFrames = 0;
     
     while (m_running) {
         // Calculate delta time
@@ -296,6 +326,10 @@ void MainWindow::Run() {
         if (m_core) {
             m_core->Update(deltaTime);
             m_core->Render(m_windowWidth, m_windowHeight);
+        }
+        ++renderedFrames;
+        if (exitAfterFrames > 0 && renderedFrames >= exitAfterFrames) {
+            m_running = false;
         }
 
         // Swap buffers (already checking visibility, so always swap here)

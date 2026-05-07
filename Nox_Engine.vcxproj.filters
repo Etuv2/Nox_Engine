@@ -154,6 +154,9 @@
     <Filter Include="Source Files\scripts\ECS">
       <UniqueIdentifier>{b097a689-e959-430a-887b-e292492972d4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\misc\shaders\global_illumination\surfel">
+      <UniqueIdentifier>{ec89664a-e4e3-4a81-8dc3-4b96b054ffd6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\IMGUI\imgui.cpp">
@@ -429,6 +432,9 @@
     <ClCompile Include="src\ImGui\AnimationWindow.cpp">
       <Filter>Source Files\scripts\Utils\ImGui</Filter>
     </ClCompile>
+    <ClCompile Include="src\passes\TransformHistoryPass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\shadow_frag.glsl">
@@ -674,77 +680,11 @@
     <None Include="shaders\includes\surfel_gi_resources.glsl">
       <Filter>Source Files\misc\shaders\common</Filter>
     </None>
-    <None Include="shaders\surfel_gi\allocate_rays.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\apply_indirect.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\begin_frame.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\build_grid.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\cell_average.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\clear_grid.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\common.glsl">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\count_live_surfels.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\coverage.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
     <None Include="shaders\surfel_gi\debug_surfels.frag">
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
     <None Include="shaders\surfel_gi\debug_surfels.vert">
       <Filter>Source Files\misc\shaders\debug</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\generate_rays.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\integrate.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\irradiance_snapshot.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\irradiance_sharing.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\radial_depth_update.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\recycle_surfels.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\request_rays.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\spawn.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\spatial_filter.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\temporal_filter.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\trace_rays.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\upscale_filter.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\update_surfels.comp">
-      <Filter>Source Files\misc\shaders\global_illumination</Filter>
     </None>
     <None Include="shaders\svgf_atrous_comp.glsl">
       <Filter>Source Files\misc\shaders\svgf</Filter>
@@ -773,6 +713,72 @@
     </None>
     <None Include="snapshots\scene_state.json">
       <Filter>Source Files\misc</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\allocate_rays.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\apply_indirect.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\begin_frame.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\build_grid.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\cell_average.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\clear_grid.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\common.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\count_live_surfels.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\coverage.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\generate_rays.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\integrate.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\irradiance_sharing.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\irradiance_snapshot.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\radial_depth_update.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\recycle_surfels.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\request_rays.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\spatial_filter.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\spawn.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\temporal_filter.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\trace_rays.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\update_surfels.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\upscale_filter.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
@@ -1069,5 +1075,3 @@
     </ClInclude>
   </ItemGroup>
 </Project>
-
-
