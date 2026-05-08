@@ -67,19 +67,19 @@ struct SurfelGISettings {
 	SurfelGIDebugView debugView = SurfelGIDebugView::Off;
 
 	uint32_t maxSurfels = 65536u;
-	uint32_t maxRayBudget = 4096u;
+	uint32_t maxRayBudget = 192u;
 	uint32_t spawnTileSize = 8u;
 	uint32_t maxSurfelsPerCell = 128u;
-	uint32_t maxGatherSurfelsPerPixel = 64u;
+	uint32_t maxGatherSurfelsPerPixel = 32u;
 	uint32_t gatherNeighborRadius = 1u;
 	uint32_t rayUpdateInterval = 1u;
 	uint32_t radialDepthUpdateInterval = 4u;
-	uint32_t spawnPasses = 2u;
+	uint32_t spawnPasses = 1u;
 	uint32_t fastFillSpawnPasses = 4u;
 	uint32_t fastFillFrameCount = 16u;
 	uint32_t stationaryFastFillFrames = 24u;
-	uint32_t maxSpawnsPerFrame = 128u;
-	uint32_t maxProjectedSurfelsPerFrame = 32768u;
+	uint32_t maxSpawnsPerFrame = 64u;
+	uint32_t maxProjectedSurfelsPerFrame = 24576u;
 	uint32_t maxRecycleCountPerFrame = 2048u;
 
 	float targetSurfelScreenRadiusPx = 8.0f;
@@ -96,7 +96,7 @@ struct SurfelGISettings {
 	float indirectIntensity = 1.0f;
 	float cellAverageFallbackStrength = 0.20f;
 	float skyMissRadianceMultiplier = 1.0f;
-	float finalGatherResolutionScale = 0.55f;
+	float finalGatherResolutionScale = 0.32f;
 
 	bool useNonLinearGrid = true;
 	bool useRadialDepth = true;
@@ -192,10 +192,6 @@ public:
 	const SurfelGISettings& GetSettings() const { return m_settings; }
 	const SurfelGIFrameStats& GetStats() const { return m_stats; }
 
-	GLuint GetSurfelBuffer() const;
-	GLuint GetCountersBuffer() const;
-	GLuint GetGridHeaderBuffer() const;
-	GLuint GetGridEntryBuffer() const;
 	GLuint GetIndirectTexture() const;
 
 private:

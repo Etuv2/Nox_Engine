@@ -21,11 +21,13 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 
 uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
+uniform float uLightingChangeFactor = 0.0;
 
 const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 8u;
 const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 4u;
 const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 4u;
 const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 4u;
+const uint SURFEL_REQUEST_LIGHTING_CHANGE_RAYS = 1u;
 const float SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS = 8.0;
 const uint SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD = 8u;
 const uint SURFEL_REQUEST_DETAIL_MAINTENANCE_PERIOD = 4u;
@@ -55,6 +57,7 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
     float visible = exp(-0.08 * float(framesSinceVisible));
     bool recentlyVisible = framesSinceVisible <= 4u;
+    bool lightingReactiveVisible = recentlyVisible && clamp(uLightingChangeFactor, 0.0, 1.0) > 0.03;
     float visibleUnresolved = recentlyVisible &&
         (confidence < 0.82 || surfel.shortMean.a < 32.0 || variance > 0.025)
         ? 1.0
@@ -87,7 +90,7 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         variance < 0.025 &&
         confidence > 0.72 &&
         surfel.shortMean.a >= SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS;
-    if (stableLowVariance && ((uFrameIndex + surfelID) & 3u) != 0u) {
+    if (stableLowVariance && !lightingReactiveVisible && ((uFrameIndex + surfelID) & 3u) != 0u) {
         return 0u;
     }
 
@@ -98,7 +101,8 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         (isNew ? 0.16 : 0.0) +
         lowConfidence * 0.10 +
         visibleUnresolved * 0.48 +
-        visibleRayDebt * 0.20;
+        visibleRayDebt * 0.20 +
+        (lightingReactiveVisible ? clamp(uLightingChangeFactor, 0.0, 1.0) * (0.55 + signal * 0.08 + lowConfidence * 0.18) : 0.0);
     importance *= mix(1.5, 1.0, ageScore);
 
     uint requested = 1u;
@@ -113,6 +117,9 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     }
     if (visibleUnresolved > 0.0) {
         requested = max(requested, SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS);
+    }
+    if (lightingReactiveVisible) {
+        requested = max(requested, SURFEL_REQUEST_LIGHTING_CHANGE_RAYS);
     }
     if (recentlyVisible && visibleRayDebt > 0.0 && confidence < 0.82) {
         requested = max(requested, 4u);

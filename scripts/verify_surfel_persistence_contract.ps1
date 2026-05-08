@@ -6,4 +6,4 @@ Set-Location $repoRoot
 python scripts\validate_surfel_gi_static.py
 python scripts\validate_surfel_gpu_resources_scaffold.py
 
-Write-Host 'Clean Surfel GI persistence contract verified.'
+Write-Host 'Surfel GI persistence contract verified.'

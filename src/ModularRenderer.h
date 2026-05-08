@@ -77,7 +77,7 @@ public:
 	// Access to context for UI tuning
 	RenderContext& GetContext() { return m_context; }
 	const RenderContext& GetContext() const { return m_context; }
-	const SurfelGIFrameStats* GetCleanSurfelGIStats() const;
+	const SurfelGIFrameStats* GetSurfelGIStats() const;
 	bool ExportIndirectDiffuseValidationStages(const std::string& directory) const;
 	bool ReadIndirectDiffuseProbe(int stage, int pixelX, int pixelY, IndirectDiffuseProbeSample& outSample) const;
 
@@ -112,7 +112,7 @@ private:
 		glm::vec3 envColor);
 
 	void CheckGLError(const std::string& passName);
-	void SyncCleanSurfelGISettings();
+	void SyncSurfelGISettings();
 
 	enum class FrameGraphMode {
 		DEFERRED = 0,

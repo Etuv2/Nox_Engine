@@ -23,6 +23,7 @@ uniform uint uMaxSurfels;
 uniform uint uMaxRayBudget;
 uniform uint uFrameIndex;
 uniform uint uPriorityPass = 0u;
+uniform float uLightingChangeFactor = 0.0;
 
 uint FrameDelta(uint newerFrame, uint olderFrame)
 {
@@ -46,9 +47,11 @@ bool IsPriorityRaySurfel(Surfel surfel, uint requested)
     bool visibleStarving = recentlyVisible && framesSinceContribution > 4u && confidence < 0.88;
     bool staleVisible = recentlyVisible && framesSinceUpdate > 8u;
     bool starving = framesSinceContribution > 12u && confidence < 0.85;
+    bool lightReactivePriority = clamp(uLightingChangeFactor, 0.0, 1.0) > 0.03 && recentlyVisible;
 
     return SurfelIsNew(surfel) ||
         surfel.worldNormal_age.w < 3.0 ||
+        lightReactivePriority ||
         visibleStarving ||
         (recentlyVisible && unresolved) ||
         (recentlyContributed && unresolved && confidence < 0.70) ||

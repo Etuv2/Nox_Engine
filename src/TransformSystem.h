@@ -102,8 +102,8 @@ private:
 	// Helper to find the highest dirty ancestor for on-demand recomputation
 	EntityID FindTopDirtyAncestor(EntityID entity) const;
 
-	// Helper to fetch a parent world transform when the parent is already clean
-	glm::mat4 GetCleanParentWorldTransform(EntityID entity) const;
+	// Helper to fetch the currently cached parent world transform
+	glm::mat4 GetCachedParentWorldTransform(EntityID entity) const;
 
 	// Hierarchy depth for stable dirty-root ordering
 	size_t GetHierarchyDepth(EntityID entity) const;

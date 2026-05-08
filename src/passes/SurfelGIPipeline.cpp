@@ -320,6 +320,122 @@ glm::vec3 CameraPositionFromView(const glm::mat4& view)
 	return glm::vec3(invView[3]);
 }
 
+glm::vec3 NormalizeOrFallback(const glm::vec3& value, const glm::vec3& fallback)
+{
+	const float lenSq = glm::dot(value, value);
+	if (lenSq <= 1.0e-8f) {
+		return fallback;
+	}
+	return value * (1.0f / std::sqrt(lenSq));
+}
+
+glm::vec3 LogCompressedRadiance(const glm::vec3& radiance)
+{
+	const glm::vec3 safe(
+		std::max(radiance.x, 0.0f),
+		std::max(radiance.y, 0.0f),
+		std::max(radiance.z, 0.0f));
+	return glm::vec3(
+		std::log1p(safe.x),
+		std::log1p(safe.y),
+		std::log1p(safe.z));
+}
+
+float SmoothStepFloat(float edge0, float edge1, float value)
+{
+	const float t = std::clamp((value - edge0) / std::max(edge1 - edge0, 1.0e-6f), 0.0f, 1.0f);
+	return t * t * (3.0f - 2.0f * t);
+}
+
+void AppendLightingSignature(std::vector<glm::vec4>& signature, const std::shared_ptr<BaseLight>& light)
+{
+	if (!light || !light->IsEnabled()) {
+		return;
+	}
+
+	const glm::vec3 position = light->GetPosition() * 0.16f;
+	const glm::vec3 direction = NormalizeOrFallback(light->GetDirection(), glm::vec3(0.0f, -1.0f, 0.0f));
+	const glm::vec3 radiance = LogCompressedRadiance(light->GetColor() * std::max(light->GetIntensity(), 0.0f));
+	const glm::vec3 attenuation = light->GetAttenuation() * 0.15f;
+	signature.emplace_back(position, static_cast<float>(light->GetLightType()));
+	signature.emplace_back(direction, light->GetRange() * 0.02f);
+	signature.emplace_back(radiance, light->CastsShadows() ? 1.0f : 0.0f);
+	signature.emplace_back(attenuation, light->IsEnabled() ? 1.0f : 0.0f);
+}
+
+std::shared_ptr<BaseLight> FindPrimaryDirectionalLight(const RenderContext& context)
+{
+	if (!context.lightManager) {
+		return nullptr;
+	}
+
+	std::shared_ptr<BaseLight> primary;
+	float bestIntensity = -1.0f;
+	const std::vector<std::shared_ptr<BaseLight>> enabledLights = context.lightManager->GetEnabledLights();
+	for (const std::shared_ptr<BaseLight>& light : enabledLights) {
+		if (!light ||
+			!light->IsEnabled() ||
+			light->GetLightType() != BaseLight::LightType::DIRECTIONAL) {
+			continue;
+		}
+
+		const float intensity = std::max(light->GetIntensity(), 0.0f);
+		if (!primary || intensity > bestIntensity) {
+			primary = light;
+			bestIntensity = intensity;
+		}
+	}
+	return primary;
+}
+
+std::vector<glm::vec4> BuildLightingSignature(const RenderContext& context,
+	const std::shared_ptr<DirectionalLight>& fallbackDirectionalLight)
+{
+	std::vector<glm::vec4> signature;
+	signature.reserve(128u);
+
+	if (context.lightManager) {
+		const std::vector<std::shared_ptr<BaseLight>> enabledLights = context.lightManager->GetEnabledLights();
+		const std::size_t maxLights = std::min<std::size_t>(enabledLights.size(), 32u);
+		for (std::size_t i = 0; i < maxLights; ++i) {
+			AppendLightingSignature(signature, enabledLights[i]);
+		}
+	}
+
+	if (signature.empty() && fallbackDirectionalLight) {
+		AppendLightingSignature(signature, fallbackDirectionalLight);
+	}
+
+	return signature;
+}
+
+float ComputeLightingChangeFactor(const std::vector<glm::vec4>& currentSignature,
+	const std::vector<glm::vec4>& previousSignature)
+{
+	if (currentSignature.empty() && previousSignature.empty()) {
+		return 0.0f;
+	}
+	if (previousSignature.empty()) {
+		return 0.0f;
+	}
+	if (currentSignature.size() != previousSignature.size()) {
+		return 1.0f;
+	}
+
+	float maxDelta = 0.0f;
+	float averageDelta = 0.0f;
+	for (std::size_t i = 0; i < currentSignature.size(); ++i) {
+		const float delta = glm::length(currentSignature[i] - previousSignature[i]);
+		maxDelta = std::max(maxDelta, delta);
+		averageDelta += delta;
+	}
+	averageDelta /= std::max(static_cast<float>(currentSignature.size()), 1.0f);
+
+	const float peakResponse = SmoothStepFloat(0.015f, 0.18f, maxDelta);
+	const float broadResponse = SmoothStepFloat(0.006f, 0.060f, averageDelta);
+	return std::clamp(std::max(peakResponse, broadResponse), 0.0f, 1.0f);
+}
+
 void ComputeCameraCenteredGridBounds(const SurfelGridSettings& gridSettings,
 	const glm::vec3& cameraPosition,
 	glm::vec3& gridMin,
@@ -708,6 +824,33 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	const GLuint groupsSurfels = DivRoundUp(maxSurfels, 64u);
 	const SurfelGridSettings& gridSettings = m_grid.GetSettings();
 	const glm::vec3 cameraPosition = camera ? camera->GetCameraPosition() : CameraPositionFromView(context.view);
+	const glm::vec3 fallbackDirection = glm::vec3(-0.35f, -1.0f, -0.25f);
+	const std::shared_ptr<BaseLight> primaryDirectionalLight = FindPrimaryDirectionalLight(context);
+	const glm::vec3 lightDirection = primaryDirectionalLight
+		? NormalizeOrFallback(primaryDirectionalLight->GetDirection(), fallbackDirection)
+		: (dirLight ? NormalizeOrFallback(dirLight->GetLightDirection(), fallbackDirection) : fallbackDirection);
+	const glm::vec3 lightRadiance = primaryDirectionalLight
+		? primaryDirectionalLight->GetColor() * std::max(primaryDirectionalLight->GetIntensity(), 0.0f)
+		: (dirLight ? dirLight->GetLightColor() * std::max(dirLight->GetIntensity(), 0.0f) : glm::vec3(1.0f));
+	const std::vector<glm::vec4> currentLightingSignature = BuildLightingSignature(context, dirLight);
+	const float detectedLightingChange = ComputeLightingChangeFactor(currentLightingSignature, m_lastLightingSignature);
+	if (detectedLightingChange > 0.01f) {
+		m_lightingChangeResponse = std::max(m_lightingChangeResponse, detectedLightingChange);
+		const uint32_t holdFrames = static_cast<uint32_t>(std::ceil(6.0f + detectedLightingChange * 18.0f));
+		m_lightingChangeHoldFrames = std::max(m_lightingChangeHoldFrames, holdFrames);
+	}
+	else if (m_lightingChangeHoldFrames > 0u) {
+		--m_lightingChangeHoldFrames;
+		m_lightingChangeResponse *= 0.86f;
+	}
+	else {
+		m_lightingChangeResponse *= 0.50f;
+	}
+	m_lightingChangeFactor = std::clamp(std::max(detectedLightingChange, m_lightingChangeResponse), 0.0f, 1.0f);
+	if (m_lightingChangeFactor < 0.005f) {
+		m_lightingChangeFactor = 0.0f;
+	}
+	m_lastLightingSignature = currentLightingSignature;
 	glm::vec3 gridMin(0.0f);
 	glm::vec3 gridMax(0.0f);
 	ComputeCameraCenteredGridBounds(gridSettings, cameraPosition, gridMin, gridMax);
@@ -846,6 +989,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uTargetSurfelScreenRadiusPx", m_settings.targetSurfelScreenRadiusPx);
 		SetUniform1f(program, "uMinSurfelRadius", m_settings.minSurfelRadius);
 		SetUniform1f(program, "uMaxSurfelRadius", m_settings.maxSurfelRadius);
+		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		timedDispatch("transform_update", [&]() {
 			m_updateShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_updateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -925,8 +1069,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		const GLuint spawnCandidateCount = fastCoverageFill ? 8u : 4u;
 		m_lastSpawnPassCount = spawnPassCount;
 		const GLuint tileCount = tilesX * tilesY;
-		const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
-		const glm::vec3 lightRadiance = dirLight ? dirLight->GetLightColor() * dirLight->GetIntensity() : glm::vec3(1.0f);
 		const GLuint program = m_spawnShader->GetProgramID();
 		glUseProgram(program);
 
@@ -1001,6 +1143,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		glUseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
+		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		timedDispatch("ray_request", [&]() {
 			m_requestRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_requestRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1013,6 +1156,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uMaxRayBudget", m_settings.maxRayBudget);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
+		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		timedDispatch("ray_allocation", [&]() {
 			SetUniform1ui(program, "uPriorityPass", 1u);
 			m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
@@ -1033,14 +1177,13 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uRayTMin", 0.01f);
 		const float localBounceRayLength = std::clamp(m_settings.maxSurfelRadius * 2.5f, 4.0f, 12.0f);
 		SetUniform1f(program, "uRayTMax", localBounceRayLength);
+		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		timedDispatch("ray_generation", [&]() {
 			m_generateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_generateRaysShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
 		});
 	}
 
-	const glm::vec3 lightDirection = dirLight ? dirLight->GetLightDirection() : glm::vec3(-0.35f, -1.0f, -0.25f);
-	const glm::vec3 lightRadiance = dirLight ? dirLight->GetLightColor() * dirLight->GetIntensity() : glm::vec3(1.0f);
 	const glm::vec3 surfelSkyRadiance = context.envColor * m_settings.skyMissRadianceMultiplier;
 	if (!placementOnly && updateRaysThisFrame && m_traceRaysShader && m_traceRaysShader->IsValid()) {
 		const GLuint rayBudget = std::max(m_settings.maxRayBudget, 1u);
@@ -1113,6 +1256,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uUseSoftwareBVHTrace", (m_settings.useSoftwareBVHTrace && bvhTriangleCount > 0u && bvhNodeCount > 0u) ? 1 : 0);
 		SetUniform1i(program, "uUseSurfelFallbackTrace", m_settings.useSurfelFallbackTrace ? 1 : 0);
 		SetUniform1ui(program, "uBVHTraceStride", bvhTraceStride);
+		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		const GLuint skyIrradianceMap = skybox && skybox->IsReady() ? skybox->GetIrradianceMap() : 0u;
 		const GLuint skyEnvironmentMap = skybox && skybox->IsReady() ? skybox->GetEnvironmentMap() : 0u;
 		glBindTextureUnit(kSurfelGISkyIrradianceUnit, skyIrradianceMap);
@@ -1184,6 +1328,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
+		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		timedDispatch("temporal_integration", [&]() {
 			m_integrateShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_integrateShader->WaitForCompletion(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1379,6 +1524,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		SetUniform1f(temporalProgram, "uDepthReject", 0.0025f);
 		SetUniform1f(temporalProgram, "uNormalRejectCos", 0.55f);
 		SetUniform1f(temporalProgram, "uMotionRejectPixels", 96.0f);
+		SetUniform1f(temporalProgram, "uLightingChangeFactor", m_lightingChangeFactor);
 		timedDispatch("temporal_resolve", [&]() {
 			m_temporalFilterShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
 			m_temporalFilterShader->WaitForCompletion(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);

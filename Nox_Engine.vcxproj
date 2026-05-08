@@ -139,7 +139,7 @@
     <None Include="scenes\rainbow_road.json" />
     <None Include="scenes\scene.json" />
     <None Include="scenes\scene2.json" />
-    <None Include="scenes\shibuya.json" />
+    <None Include="scenes\sponza.json" />
     <None Include="scenes\studio_lighting.json" />
     <None Include="shaders\bloom_extract.glsl" />
     <None Include="shaders\bloom_upsample.glsl" />
@@ -227,7 +227,7 @@
     <None Include="shaders\taa_resolve.glsl" />
     <None Include="shaders\velocity_frag.glsl" />
     <None Include="shaders\velocity_vert.glsl" />
-    <None Include="snapshots\scene_state.json" />
+    <None Include="snapshots\sponza_scene_state.json" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Animation.h" />

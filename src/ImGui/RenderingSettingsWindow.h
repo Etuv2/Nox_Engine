@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "BaseWindow.h"
 #include "../RenderContext.h"
@@ -113,77 +113,45 @@ private:
 	bool m_indirectDiffuseValidationDisableTemporal = false;
 	bool m_indirectDiffuseValidationDisableDenoise = false;
 
-	// Surfel GI surfelization infrastructure
+	// Surfel GI persistent irradiance cache
 	bool m_enableSurfelGI = false;
-	int m_surfelGITileSize = 16;
-	float m_surfelGITargetRadiusPixels = 12.0f;
-	float m_surfelGICoverageThreshold = 0.60f;
-	float m_surfelGINormalReject = 0.35f;
-	float m_surfelGIRecyclePressure = 0.65f;
-	float m_surfelGIFrameBudgetMs = 6.0f;
-	bool m_surfelGIAdaptiveBudget = true;
-	float m_surfelGIBudgetScale = 1.0f;
-	int m_surfelGIMaxTilesScanned = 640;
-	int m_surfelGIMaxSpawnCandidates = 256;
-	int m_surfelGIMaxSpawns = 64;
-	int m_surfelGIMaxRecycleDecisions = 2048;
-	int m_surfelGIMaxProjectedSurfels = 12288;
-	int m_surfelGIMaxLifecycleUpdates = 16384;
-	int m_surfelGIMaxIntegrationUpdates = 8192;
-	int m_surfelGIMaxCoarseCoverageSurfels = 12288;
-	int m_surfelGIMaxIrradianceRays = 4096;
-	int m_surfelGIMaxRayTracedSurfels = 8192;
-	int m_surfelGIMaxRaysPerSurfel = 8;
+	int m_surfelGIQualityTier = 1;
+	int m_surfelGIDebugView = 0;
+	int m_surfelGIMaxSurfels = 65536;
+	int m_surfelGIMaxRayBudget = 192;
+	int m_surfelGISpawnTileSize = 8;
+	int m_surfelGIMaxSurfelsPerCell = 128;
+	int m_surfelGIMaxGatherSurfelsPerPixel = 32;
+	int m_surfelGIMaxSpawnsPerFrame = 64;
+	int m_surfelGIMaxProjectedSurfelsPerFrame = 24576;
+	int m_surfelGIMaxRecycleCountPerFrame = 2048;
+	float m_surfelGITargetRadiusPixels = 8.0f;
+	float m_surfelGIMinRadius = 0.03f;
+	float m_surfelGIMaxRadius = 5.0f;
+	float m_surfelGICoverageThreshold = 0.85f;
+	float m_surfelGIRecyclePressure = 0.85f;
+	float m_surfelGINormalReject = 0.25f;
+	float m_surfelGICoverageNormalReject = 0.86f;
+	float m_surfelGICoverageDepthTolerance = 0.0035f;
+	float m_surfelGIFinalGatherNormalReject = 0.15f;
+	float m_surfelGIRadialDepthVariance = 1.0e-4f;
+	float m_surfelGIIntensity = 1.0f;
+	float m_surfelGICellAverageFallbackStrength = 0.20f;
+	bool m_surfelGIUseRadialDepth = true;
+	bool m_surfelGIUseRayGuiding = true;
+	bool m_surfelGIUseRayBinning = true;
+	bool m_surfelGIUseScreenTrace = true;
+	bool m_surfelGIUseSurfelFallbackTrace = true;
+	bool m_surfelGIPlacementValidation = false;
 	int m_surfelGIRTMaxTriangles = 2000000;
 	float m_surfelGIRTBuildBudgetMs = 0.75f;
 	int m_surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	int m_surfelGIRTMaxResidentMB = 512;
 	bool m_surfelGIRTIncludeSkinnedMeshes = false;
-	int m_surfelGIGridRebuildInterval = 1;
 	int m_surfelGITLASHeatmapColorLimit = 50;
 	bool m_surfelGITLASDisplayMultipleBVHLayers = false;
 	int m_surfelGITLASBVHLayerToDisplay = 0;
-	RenderContext::SurfelGIDebugSettings m_surfelGIDebugSettings;
-	int m_surfelGIDebugMode = 0;
-	bool m_enableSurfelIndirectDiffuse = false;
-	float m_surfelIndirectDiffuseStrength = 1.0f;
-	int m_surfelIndirectDiffuseDebugMode = 0;
-	int m_surfelIndirectDiffuseNeighborRadius = 1;
-	int m_surfelIndirectDiffuseMaxCandidates = 96;
-	int m_surfelIndirectDiffuseMaxAccepted = 24;
-	float m_surfelIndirectDiffuseFallbackStrength = 0.65f;
-	bool m_surfelUseLegacyFragmentGather = false;
 	int m_lightingCompositeDebugMode = 0;
-
-	bool m_enableCleanSurfelGI = false;
-	int m_cleanSurfelGIQualityTier = 1;
-	int m_cleanSurfelGIDebugView = 0;
-	int m_cleanSurfelGIMaxSurfels = 65536;
-	int m_cleanSurfelGIMaxRayBudget = 4096;
-	int m_cleanSurfelGISpawnTileSize = 8;
-	int m_cleanSurfelGIMaxSurfelsPerCell = 128;
-	int m_cleanSurfelGIMaxGatherSurfelsPerPixel = 64;
-	int m_cleanSurfelGIMaxSpawnsPerFrame = 128;
-	int m_cleanSurfelGIMaxProjectedSurfelsPerFrame = 32768;
-	int m_cleanSurfelGIMaxRecycleCountPerFrame = 2048;
-	float m_cleanSurfelGITargetRadiusPixels = 8.0f;
-	float m_cleanSurfelGIMinRadius = 0.03f;
-	float m_cleanSurfelGIMaxRadius = 5.0f;
-	float m_cleanSurfelGICoverageThreshold = 0.85f;
-	float m_cleanSurfelGIRecyclePressure = 0.85f;
-	float m_cleanSurfelGINormalReject = 0.25f;
-	float m_cleanSurfelGICoverageNormalReject = 0.86f;
-	float m_cleanSurfelGICoverageDepthTolerance = 0.0035f;
-	float m_cleanSurfelGIFinalGatherNormalReject = 0.15f;
-	float m_cleanSurfelGIRadialDepthVariance = 1.0e-4f;
-	float m_cleanSurfelGIIntensity = 1.0f;
-	float m_cleanSurfelGICellAverageFallbackStrength = 0.20f;
-	bool m_cleanSurfelGIUseRadialDepth = true;
-	bool m_cleanSurfelGIUseRayGuiding = true;
-	bool m_cleanSurfelGIUseRayBinning = true;
-	bool m_cleanSurfelGIUseScreenTrace = true;
-	bool m_cleanSurfelGIUseSurfelFallbackTrace = true;
-	bool m_cleanSurfelGIPlacementValidation = false;
 
 	// Screen-space contact shadow settings
 	float m_sssResolutionScale = 0.5f;

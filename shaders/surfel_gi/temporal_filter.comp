@@ -23,6 +23,7 @@ uniform int uUseVelocity = 0;
 uniform float uDepthReject = 0.0025;
 uniform float uNormalRejectCos = 0.55;
 uniform float uMotionRejectPixels = 96.0;
+uniform float uLightingChangeFactor = 0.0;
 
 const float SURFEL_TEMPORAL_HISTORY_CLAMP_EXTENT = 1.35;
 const float SURFEL_TEMPORAL_STATIONARY_MIN_HISTORY = 0.88;
@@ -127,6 +128,8 @@ void main()
     float motionPixels = length(velocity * vec2(safeInputResolution));
     float motionConfidence = exp(-motionPixels / max(uMotionRejectPixels, 1.0));
     float historyConfidence = clamp(depthConfidence * normalConfidence * motionConfidence, 0.0, 1.0);
+    float lightingChange = clamp(uLightingChangeFactor, 0.0, 1.0);
+    historyConfidence *= mix(1.0, 0.38, lightingChange);
 
     float currentSignal = clamp(current.a, 0.0, 1.0);
     float previousSignal = clamp(previous.a, 0.0, 1.0);
@@ -146,7 +149,8 @@ void main()
     float historyWeight = historyConfidence * mix(0.86, 0.95, missingCurrentBoost);
     historyWeight *= mix(0.78, 1.0, previousSignal);
     historyWeight = max(historyWeight, historyConfidence * previousSignal * noisyCurrent * SURFEL_TEMPORAL_STATIONARY_MIN_HISTORY);
-    historyWeight = clamp(historyWeight, 0.0, SURFEL_TEMPORAL_MAX_HISTORY);
+    float lightingHistoryCap = mix(SURFEL_TEMPORAL_MAX_HISTORY, 0.45, lightingChange);
+    historyWeight = clamp(historyWeight, 0.0, lightingHistoryCap);
 
     vec4 resolved = mix(current, previous, historyWeight);
     resolved.a = max(currentSignal, mix(currentSignal, previousSignal, historyWeight));

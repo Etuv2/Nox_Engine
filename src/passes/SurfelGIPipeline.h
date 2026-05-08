@@ -11,6 +11,7 @@
 #include <vector>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 class Camera;
 class DirectionalLight;
@@ -134,6 +135,10 @@ private:
 	GLuint m_debugVAO = 0;
 	glm::vec3 m_lastCameraPosition{ 0.0f };
 	glm::mat4 m_lastView{ 1.0f };
+	std::vector<glm::vec4> m_lastLightingSignature;
+	float m_lightingChangeFactor = 0.0f;
+	float m_lightingChangeResponse = 0.0f;
+	uint32_t m_lightingChangeHoldFrames = 0;
 	uint32_t m_width = 0;
 	uint32_t m_height = 0;
 	uint32_t m_indirectWidth = 0;

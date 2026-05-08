@@ -177,6 +177,7 @@ uniform int uUseScreenSpaceTrace = 1;
 uniform int uUseSoftwareBVHTrace = 1;
 uniform int uUseSurfelFallbackTrace = 1;
 uniform uint uBVHTraceStride = 1u;
+uniform float uLightingChangeFactor = 0.0;
 uniform int uEnableShadows = 1;
 uniform vec4 uCascadeSplits = vec4(10.0, 30.0, 100.0, 500.0);
 uniform float uShadowBias = 0.0008;
@@ -212,7 +213,7 @@ const float SURFEL_SKY_OPEN_MISS_VISIBILITY = 0.45;
 const float SURFEL_ENVIRONMENT_MISS_MIP = 5.0;
 const float SURFEL_ENVIRONMENT_MISS_SCALE = 0.16;
 const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 1.6;
-const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 1.75;
+const float SURFEL_SOURCE_DIRECT_BOUNCE_SCALE = 2.10;
 const float SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF = 0.52;
 const float SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF = 10.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
@@ -1337,7 +1338,11 @@ void TraceGatherSurfel(SurfelRay ray,
         vec3 directIrradiance = EvaluateHitDirectIrradiance(surfelPos, surfelNormal);
         vec3 environmentIrradiance = EvaluateHitEnvironmentIrradiance(surfelPos, surfelNormal);
         vec3 liveBounce = albedo * SURFEL_INV_PI * (directIrradiance + environmentIrradiance) + emissiveRadiance;
-        bounced = max(bounced, liveBounce);
+        float lightingChange = clamp(uLightingChangeFactor, 0.0, 1.0);
+        float cacheTrust = smoothstep(SURFEL_TRACE_LIVE_LIGHT_CONFIDENCE_CUTOFF, 0.92, confidence) *
+            smoothstep(SURFEL_TRACE_LIVE_LIGHT_HISTORY_CUTOFF, 48.0, surfel.shortMean.a) *
+            (1.0 - lightingChange);
+        bounced = mix(liveBounce, bounced, cacheTrust);
     }
     float clusterThickness = max(hitRadius * 0.40, 0.035);
     if (t < gather.closestT - clusterThickness) {

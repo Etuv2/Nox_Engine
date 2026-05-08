@@ -35,7 +35,7 @@ def main() -> None:
             "SurfelGIManager::RenderDebug must forward fullscreen diagnostics to the pipeline")
     require('"Raw Irradiance"' in ui_cpp,
             "rendering settings UI must expose the raw irradiance diagnostic")
-    require("std::clamp(m_context.cleanSurfelGIDebugView, 0, 38)" in modular_cpp and
+    require("std::clamp(m_context.surfelGIDebugView, 0, 38)" in modular_cpp and
             'NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 38)' in modular_cpp,
             "environment and UI debug view clamps must include raw irradiance")
     require("m_debugPresentProgram" in pipeline_h and

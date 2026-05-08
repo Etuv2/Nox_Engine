@@ -26,6 +26,7 @@ A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphi
 - **PBR Material System**: Physically-based rendering with metallic and roughness parameters
 - **HDR Rendering**: High dynamic range support with configurable tone mapping
 - **Light Propagation Volumes (LPV)**: Global illumination using reflective shadow maps
+- **Surfel-Based Global Illumination**: Real-time GI approximation using surfels
 - **Screen-Space Ambient Occlusion (SSAO)**: High-quality AO in screen space
 - **Screen-Space Global Illumination (SSGI)**: Indirect lighting approximation
 

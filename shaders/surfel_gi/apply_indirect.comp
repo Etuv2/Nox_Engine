@@ -78,12 +78,12 @@ const float SURFEL_GATHER_MIN_SUPPORT_FRACTION = 1.05;
 const float SURFEL_GATHER_MIN_SUPPORT_WORLD = 0.46;
 const float SURFEL_APPLY_EARLY_WEIGHT = 64.0;
 const float SURFEL_GRID_FALLBACK_MAX_BLEND = 0.80;
-const float SURFEL_CROSS_SURFACE_BLEED_BOOST = 0.86;
-const float SURFEL_CROSS_SURFACE_MAX_LIFT = 0.26;
-const float SURFEL_CROSS_SURFACE_CHROMA_GAIN = 1.35;
-const float SURFEL_FINAL_BLEED_VISIBILITY_BOOST = 1.25;
-const float SURFEL_FINAL_BLEED_CHROMA_BOOST = 0.55;
-const float SURFEL_FINAL_BLEED_MAX_LUMA_SCALE = 1.55;
+const float SURFEL_CROSS_SURFACE_BLEED_BOOST = 1.32;
+const float SURFEL_CROSS_SURFACE_MAX_LIFT = 0.36;
+const float SURFEL_CROSS_SURFACE_CHROMA_GAIN = 1.58;
+const float SURFEL_FINAL_BLEED_VISIBILITY_BOOST = 1.35;
+const float SURFEL_FINAL_BLEED_CHROMA_BOOST = 0.74;
+const float SURFEL_FINAL_BLEED_MAX_LUMA_SCALE = 1.65;
 const float SURFEL_APPLY_COPLANAR_SELF_TRANSFER_SCALE = 0.32;
 const float SURFEL_APPLY_BLEED_EARLY_WEIGHT = 10.0;
 const uint DEBUG_SURFEL_GRID_CELLS = 6u;
@@ -203,8 +203,8 @@ float ReceiverSurfelColorBleedWeight(vec3 receiverPos, vec3 receiverNormal, Surf
     float maxCellSize = SurfelGridCellSizeAtWorld(surfelPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
     float supportRadius = max(SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent),
                               max(maxCellSize * SURFEL_GATHER_MIN_SUPPORT_FRACTION, SURFEL_GATHER_MIN_SUPPORT_WORLD));
-    float normalizedDistance = dist / max(supportRadius * 1.28, 1e-4);
-    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.95);
+    float normalizedDistance = dist / max(supportRadius * 1.55, 1e-4);
+    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.70);
     if (distanceWeight <= 1e-5) {
         return 0.0;
     }
@@ -218,13 +218,13 @@ float ReceiverSurfelColorBleedWeight(vec3 receiverPos, vec3 receiverNormal, Surf
     float emitterFacing = max(dot(surfelNormal, toReceiver), 0.0);
     float receiverFacing = max(dot(receiverNormal, -toReceiver), 0.0);
     float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0));
-    if (transferFacing <= 0.002) {
+    if (transferFacing <= 0.0004) {
         return 0.0;
     }
 
     float surfelPlane = abs(dot(delta, surfelNormal));
     float receiverPlane = abs(dot(delta, receiverNormal));
-    float planeSigma = max(max(radius * 1.65, supportRadius * 0.22), 0.055);
+    float planeSigma = max(max(radius * 2.05, supportRadius * 0.30), 0.070);
     float planeWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
     float luminance = SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0)));
@@ -242,7 +242,7 @@ float ReceiverSurfelColorBleedWeight(vec3 receiverPos, vec3 receiverNormal, Surf
         crossSurface *
         transferFacing *
         mix(0.50, 1.0, colorWeight) *
-        mix(0.30, 1.0, smoothstep(0.05, 0.65, confidence)) *
+        mix(0.42, 1.0, smoothstep(0.05, 0.65, confidence)) *
         mix(0.62, 1.0, stableColorCache);
 }
 
@@ -258,7 +258,7 @@ vec3 SurfelColorBleedTint(vec3 sourceTint)
 
     vec3 saturatedTint = max(sourceTint + chroma * SURFEL_CROSS_SURFACE_CHROMA_GAIN, vec3(0.0));
     float saturatedLum = SurfelLuminance(saturatedTint);
-    float maxTintLum = max(tintLum * mix(1.05, 1.35, smoothstep(0.04, 0.28, colorfulness)), 0.025);
+    float maxTintLum = max(tintLum * mix(1.08, 1.52, smoothstep(0.04, 0.28, colorfulness)), 0.025);
     if (saturatedLum > maxTintLum) {
         saturatedTint *= maxTintLum / max(saturatedLum, 1e-5);
     }
@@ -285,7 +285,7 @@ vec3 ClampColorBleedLift(vec3 baseIrradiance, vec3 colorBleed, float support)
     }
 
     float supportLum = max(baseLum, bleedLum * smoothstep(0.035, 0.30, bleedLum));
-    float supportCap = mix(0.035, SURFEL_CROSS_SURFACE_MAX_LIFT, geometricSupport);
+    float supportCap = mix(0.050, SURFEL_CROSS_SURFACE_MAX_LIFT, geometricSupport);
     float maxBleedLum = max(max(supportLum * supportCap, baseLum * 0.45 + 0.018), 0.018 * geometricSupport);
     if (bleedLum > maxBleedLum) {
         colorBleed *= maxBleedLum / bleedLum;
@@ -840,8 +840,8 @@ void main()
     vec3 colorBleed = sumBleedWeight > 1e-5
         ? sumBleedIrradiance / sumBleedWeight
         : vec3(0.0);
-    float bleedSupport = smoothstep(0.006, 0.14, sumBleedWeight) *
-        mix(0.62, 1.0, max(directCoverage, fallbackBlend));
+    float bleedSupport = smoothstep(0.004, 0.10, sumBleedWeight) *
+        mix(0.68, 1.0, max(directCoverage, fallbackBlend));
     colorBleed = ClampColorBleedLift(preliminaryIrradiance, colorBleed, bleedSupport);
     colorBleed = PromoteColorBleedForFinalComposite(preliminaryIrradiance, colorBleed, bleedSupport);
 

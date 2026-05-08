@@ -452,7 +452,7 @@
     <None Include="scenes\rainbow_road.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
-    <None Include="scenes\shibuya.json">
+    <None Include="scenes\sponza.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
     <None Include="shaders\skybox_frag.glsl">
@@ -711,7 +711,7 @@
     <None Include="config\config.json">
       <Filter>Source Files\misc\configs</Filter>
     </None>
-    <None Include="snapshots\scene_state.json">
+    <None Include="snapshots\sponza_scene_state.json">
       <Filter>Source Files\misc</Filter>
     </None>
     <None Include="shaders\surfel_gi\allocate_rays.comp">

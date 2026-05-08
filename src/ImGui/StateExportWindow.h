@@ -69,8 +69,8 @@ private:
     bool m_captureRunning = false;
     
     // UI state
-    char m_saveStateFilepath[256] = "snapshots/scene_state.json";
-    char m_loadStateFilepath[256] = "snapshots/scene_state.json";
+    char m_saveStateFilepath[256] = "snapshots/sponza_scene_state.json";
+    char m_loadStateFilepath[256] = "snapshots/sponza_scene_state.json";
     char m_exportCSVFilepath[256] = "performance_data/performance_data.csv";
     char m_exportJSONFilepath[256] = "performance_data/performance_data.json";
     

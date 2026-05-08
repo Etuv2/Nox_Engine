@@ -35,11 +35,17 @@ uniform uint uFrameIndex;
 uniform int uUseRayGuiding = 0;
 uniform float uRayTMin;
 uniform float uRayTMax;
+uniform float uLightingChangeFactor = 0.0;
 
 const uint SURFEL_GUIDE_SIDE = 6u;
 const float SURFEL_GUIDE_CELL_DENSITY = 9.0;
 const uint SURFEL_GENERATE_MAX_RAYS_PER_SURFEL = 8u;
 const float SURFEL_GUIDE_MIX_PROBABILITY = 0.65;
+
+float SurfelGuideMixProbability()
+{
+    return mix(SURFEL_GUIDE_MIX_PROBABILITY, 0.18, clamp(uLightingChangeFactor, 0.0, 1.0));
+}
 
 vec3 SurfelUnpackGuideRadiance(uint packedRadiance, out float confidence)
 {
@@ -162,7 +168,7 @@ bool SurfelSampleGuideMap(uint surfelID, uint seed, out vec3 hemiDir, out float 
     hemiDir = vec3(xy, sqrt(max(1.0 - xyLenSq, 0.0)));
     float guidedPdf = (selectedWeight / totalWeight) * SURFEL_GUIDE_CELL_DENSITY * max(hemiDir.z, 0.0);
     float cosinePdf = max(hemiDir.z, 0.0) / SURFEL_PI;
-    pdf = max(mix(cosinePdf, guidedPdf, SURFEL_GUIDE_MIX_PROBABILITY), 1e-4);
+    pdf = max(mix(cosinePdf, guidedPdf, SurfelGuideMixProbability()), 1e-4);
     return true;
 }
 
@@ -195,8 +201,9 @@ void main()
         uint seed = SurfelHash(request.surfelID ^ (uFrameIndex * 747796405u) ^ (i * 2891336453u));
         vec3 hemiDir;
         float pdf;
+        float guideMixProbability = SurfelGuideMixProbability();
         bool tryGuided = uUseRayGuiding != 0 &&
-            SurfelHash01(seed ^ 0x4cf5ad43u) < SURFEL_GUIDE_MIX_PROBABILITY;
+            SurfelHash01(seed ^ 0x4cf5ad43u) < guideMixProbability;
         bool guided = tryGuided && SurfelSampleGuideMap(request.surfelID, seed, hemiDir, pdf);
         if (!guided) {
             hemiDir = SurfelCosineHemisphereSample(SurfelHash01(seed), SurfelHash01(seed ^ 0x9e3779b9u));
@@ -204,7 +211,7 @@ void main()
             bool hasGuide;
             float guidedPdf = uUseRayGuiding != 0 ? SurfelGuidePdf(request.surfelID, hemiDir, hasGuide) : 0.0;
             pdf = hasGuide
-                ? max(mix(cosinePdf, guidedPdf, SURFEL_GUIDE_MIX_PROBABILITY), 1e-4)
+                ? max(mix(cosinePdf, guidedPdf, guideMixProbability), 1e-4)
                 : max(cosinePdf, 1e-4);
         }
 

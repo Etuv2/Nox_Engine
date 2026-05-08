@@ -250,7 +250,7 @@ void TransformSystem::ComputeWorldTransform(EntityID entity) {
 	auto transform = m_componentManager->GetTransform(entity);
 	if (!transform) return;
 
-	const glm::mat4 parentWorld = GetCleanParentWorldTransform(entity);
+	const glm::mat4 parentWorld = GetCachedParentWorldTransform(entity);
 	ComputeSubtreeWorldTransforms(entity, parentWorld);
 }
 
@@ -497,7 +497,7 @@ EntityID TransformSystem::FindTopDirtyAncestor(EntityID entity) const {
 	return highestDirtyAncestor;
 }
 
-glm::mat4 TransformSystem::GetCleanParentWorldTransform(EntityID entity) const {
+glm::mat4 TransformSystem::GetCachedParentWorldTransform(EntityID entity) const {
 	auto transform = m_componentManager->GetTransform(entity);
 	if (!transform || transform->parentID == INVALID_ENTITY) {
 		return glm::mat4(1.0f);

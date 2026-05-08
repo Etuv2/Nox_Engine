@@ -192,26 +192,6 @@ void SurfelGIManager::SetSettings(const SurfelGISettings& settings)
 	}
 }
 
-GLuint SurfelGIManager::GetSurfelBuffer() const
-{
-	return m_pipeline ? m_pipeline->GetResources().surfelBuffer : 0u;
-}
-
-GLuint SurfelGIManager::GetCountersBuffer() const
-{
-	return m_pipeline ? m_pipeline->GetResources().countersBuffer : 0u;
-}
-
-GLuint SurfelGIManager::GetGridHeaderBuffer() const
-{
-	return m_pipeline ? m_pipeline->GetResources().gridHeaderBuffer : 0u;
-}
-
-GLuint SurfelGIManager::GetGridEntryBuffer() const
-{
-	return m_pipeline ? m_pipeline->GetResources().gridEntryBuffer : 0u;
-}
-
 GLuint SurfelGIManager::GetIndirectTexture() const
 {
 	return m_pipeline ? m_pipeline->GetResources().indirectTexture : 0u;

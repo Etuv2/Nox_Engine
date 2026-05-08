@@ -86,13 +86,13 @@ def main() -> None:
     apply_indirect = read("shaders/surfel_gi/apply_indirect.comp")
     trace_rays = read("shaders/surfel_gi/trace_rays.comp")
 
-    require("bool enabled = false" in manager_h, "clean Surfel GI must remain disabled by default")
+    require("bool enabled = false" in manager_h, "Surfel GI must remain disabled by default")
     require("std::unique_ptr<SurfelGIManager> m_surfelGIManager" in read("src/ModularRenderer.h"),
-            "ModularRenderer must own the clean SurfelGIManager")
+            "ModularRenderer must own the SurfelGIManager")
     require("SurfelGIUpdatePass" in modular_cpp and '"GBuffer", "TransformHistory"' in modular_cpp,
-            "clean Surfel GI must be staged after G-buffer and transform history")
-    require("QuarantineDeprecatedSurfelGI" in modular_cpp,
-            "deprecated RenderContext surfel controls must stay quarantined")
+            "Surfel GI must be staged after G-buffer and transform history")
+    require("QuarantineDeprecatedSurfelGI" not in modular_cpp,
+            "deprecated RenderContext surfel controls must be removed from the normal Surfel GI path")
 
     forbidden_legacy_tokens = [
         "SetSurfelIndirectDiffuseTexture",
@@ -115,9 +115,9 @@ def main() -> None:
         require(token in project, f"VS project must include replacement file: {token}")
 
     require("transform_tracking_contract.glsl" in common,
-            "clean surfel shaders must consume the engine transform contract")
+            "surfel shaders must consume the engine transform contract")
     for binding in ("#define B_SURFELS 10", "#define B_SURFEL_FREELIST 11", "#define B_TRANSFORMS 22"):
-        require(binding in common, f"clean surfel binding contract missing {binding}")
+        require(binding in common, f"surfel binding contract missing {binding}")
     require("PopFreeIndex" in spawn and "SurfelReconstructWorldPosition" in spawn and "GpuTransformRecord" in spawn,
             "spawn shader must allocate persistent surfels from G-buffer and transform IDs")
     require("uSpawnPassCount" in spawn and "SurfelSpawnTilePixel" in spawn,
@@ -128,18 +128,18 @@ def main() -> None:
     require("request_rays.comp" in pipeline_cpp and "trace_rays.comp" in pipeline_cpp and "integrate.comp" in pipeline_cpp,
             "pipeline must wire adaptive ray request, tracing, and temporal integration passes")
     require("SurfelGIIndirect" in modular_cpp and "SetIndirectDiffuseSource" in modular_cpp,
-            "renderer must feed clean surfel indirect output through the generic lighting path")
+            "renderer must feed surfel indirect output through the generic lighting path")
     require("NOX_DISABLE_SURFEL_GI" in modular_cpp,
-            "runtime validation must be able to force clean Surfel GI off despite saved UI state")
+            "runtime validation must be able to force Surfel GI off despite saved UI state")
     require("RenderDebug" in pipeline_cpp and "debug_surfels.vert" in pipeline_cpp,
-            "clean surfel pipeline must expose a debug draw path for spawned surfels")
+            "surfel pipeline must expose a debug draw path for spawned surfels")
 
     require("glGetBufferSubData" not in pipeline_cpp,
-            "clean surfel pipeline must not use blocking counter readbacks")
+            "surfel pipeline must not use blocking counter readbacks")
     require("glGetQueryObjectui64v(queries[" not in pipeline_cpp,
             "Surfel GI GPU timing must not synchronously wait for timestamp query results")
     require("EnableTiming(" not in pipeline_cpp,
-            "clean surfel pipeline must not use blocking ComputeShader timing")
+            "surfel pipeline must not use blocking ComputeShader timing")
     require("m_pendingTimingQueries" in pipeline_cpp and "GL_QUERY_RESULT_AVAILABLE" in pipeline_cpp,
             "Surfel GI GPU timings must use delayed timestamp query readback")
 
@@ -168,27 +168,27 @@ def main() -> None:
             "SSGI comparison path must remain wired")
 
     realtime_budget_tokens = [
-        "cleanSurfelGIMaxSurfels = 131072",
-        "cleanSurfelGIMaxRayBudget = 32768",
-        "cleanSurfelGIMaxSurfelsPerCell = 64",
-        "cleanSurfelGIMaxGatherSurfelsPerPixel = 512",
-        "cleanSurfelGISpawnTileSize = 8",
+        "surfelGIMaxSurfels = 65536",
+        "surfelGIMaxRayBudget = 192",
+        "surfelGIMaxSurfelsPerCell = 128",
+        "surfelGIMaxGatherSurfelsPerPixel = 32",
+        "surfelGISpawnTileSize = 8",
     ]
     for token in realtime_budget_tokens:
-        require(token in render_context_h, f"real-time clean Surfel GI default missing from RenderContext.h: {token}")
+        require(token in render_context_h, f"real-time Surfel GI default missing from RenderContext.h: {token}")
 
-    require("return { 24576u, 256u, 16u, 32u, 32u, 1u, 0.375f, 0.50f, true, true" in modular_cpp,
-            "Medium clean Surfel GI budget must keep dense surfels, useful amortized ray budget, fallback support, and bounded center-neighborhood support")
+    require("return { 65536u, 192u, 8u, 64u, 32u, 1u, 0.32f, 0.20f, true, true" in modular_cpp,
+            "Medium Surfel GI budget must keep dense surfels, bounded ray/gather cost, and low-confidence fallback support")
 
     manager_budget_tokens = [
-        "uint32_t maxSurfels = 131072u",
-        "uint32_t maxRayBudget = 32768u",
+        "uint32_t maxSurfels = 65536u",
+        "uint32_t maxRayBudget = 192u",
         "uint32_t spawnTileSize = 8u",
-        "uint32_t maxSurfelsPerCell = 64u",
-        "uint32_t maxGatherSurfelsPerPixel = 512u",
+        "uint32_t maxSurfelsPerCell = 128u",
+        "uint32_t maxGatherSurfelsPerPixel = 32u",
     ]
     for token in manager_budget_tokens:
-        require(token in manager_h, f"real-time clean Surfel GI default missing from SurfelGIManager.h: {token}")
+        require(token in manager_h, f"real-time Surfel GI default missing from SurfelGIManager.h: {token}")
 
     trace_steps = re.search(r"const\s+uint\s+SURFEL_TRACE_STEPS\s*=\s*(\d+)u\s*;", trace_rays)
     require(trace_steps is not None and int(trace_steps.group(1)) >= 8,

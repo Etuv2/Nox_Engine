@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -139,126 +139,45 @@ struct RenderContext {
 	bool indirectDiffuseValidationDisableTemporal = false;
 	bool indirectDiffuseValidationDisableDenoise = false;
 
-	// Surfel GI surfelization infrastructure. This builds a persistent
-	// world-space irradiance cache that deferred lighting consumes directly.
-	struct SurfelGIDebugSettings {
-		enum ValidationMode {
-			Production = 0,
-			BruteForceCorrectness = 1,
-			ConstantIrradianceInjection = 2,
-			SingleSurfelIsolate = 3
-		};
-
-		int validationMode = Production;
-		int surfelDebugView = 0;
-		int gatherDebugView = 0;
-		int compositeDebugView = 0;
-		int selectedSurfelID = 0;
-		int isolatedRayCount = 256;
-		bool forceRayBootstrap = false;
-		bool disableGuiding = false;
-		bool disableNeighbourSharing = false;
-		bool disableRadialDepthReject = false;
-		bool disableDormancy = false;
-		bool disableNormalReject = false;
-		bool disableConfidenceReject = false;
-		bool disableGatherFallback = false;
-	};
-
+	// Surfel GI persistent world-space irradiance cache consumed by deferred lighting.
 	bool enableSurfelGI = false;
-	int surfelGITileSize = 16;
-	float surfelGITargetRadiusPixels = 12.0f; // <=0 uses the accepted default projected radius
-	float surfelGICoverageThreshold = 0.60f;
-	float surfelGINormalReject = 0.35f;
-	float surfelGIRecyclePressure = 0.65f;
-	float surfelGIFrameBudgetMs = 6.0f;
-	bool surfelGIAdaptiveBudget = true;
-	float surfelGIBudgetScale = 1.0f;
-	int surfelGIMaxTilesScanned = 640;
-	int surfelGIMaxSpawnCandidates = 256;
-	int surfelGIMaxSpawns = 64;
-	int surfelGIMaxRecycleDecisions = 2048;
-	int surfelGIMaxProjectedSurfels = 12288;
-	int surfelGIMaxLifecycleUpdates = 16384;
-	int surfelGIMaxIntegrationUpdates = 8192;
-	int surfelGIMaxCoarseCoverageSurfels = 12288;
-	int surfelGIMaxIrradianceRays = 4096;
-	int surfelGIMaxRayTracedSurfels = 8192;
-	int surfelGIMaxRaysPerSurfel = 8;
+	int surfelGIQualityTier = 1;
+	int surfelGIDebugView = 0;
+	int surfelGIMaxSurfels = 65536;
+	int surfelGIMaxRayBudget = 192;
+	int surfelGISpawnTileSize = 8;
+	int surfelGIMaxSurfelsPerCell = 128;
+	int surfelGIMaxGatherSurfelsPerPixel = 32;
+	int surfelGIMaxSpawnsPerFrame = 64;
+	int surfelGIMaxProjectedSurfelsPerFrame = 24576;
+	int surfelGIMaxRecycleCountPerFrame = 2048;
+	float surfelGITargetRadiusPixels = 8.0f;
+	float surfelGIMinRadius = 0.03f;
+	float surfelGIMaxRadius = 5.0f;
+	float surfelGICoverageThreshold = 0.85f;
+	float surfelGIRecyclePressure = 0.85f;
+	float surfelGINormalReject = 0.25f;
+	float surfelGICoverageNormalReject = 0.86f;
+	float surfelGICoverageDepthTolerance = 0.0035f;
+	float surfelGIFinalGatherNormalReject = 0.15f;
+	float surfelGIRadialDepthVariance = 1.0e-4f;
+	float surfelGIIntensity = 1.0f;
+	float surfelGICellAverageFallbackStrength = 0.20f;
+	bool surfelGIUseRadialDepth = true;
+	bool surfelGIUseRayGuiding = true;
+	bool surfelGIUseRayBinning = true;
+	bool surfelGIUseScreenTrace = true;
+	bool surfelGIUseSurfelFallbackTrace = true;
+	bool surfelGIPlacementValidation = false;
 	int surfelGIRTMaxTriangles = 2000000; // 0 disables the Surfel GI preflight cap
 	float surfelGIRTBuildBudgetMs = 0.75f;
 	int surfelGIRTMaxBLASTrianglesPerFrame = 12000;
 	int surfelGIRTMaxResidentMB = 512;
 	bool surfelGIRTIncludeSkinnedMeshes = false;
-	int surfelGIGridRebuildInterval = 1;
 	int surfelGITLASHeatmapColorLimit = 50;
 	bool surfelGITLASDisplayMultipleBVHLayers = false;
 	int surfelGITLASBVHLayerToDisplay = 0;
-	// Surfel GI debug modes:
-	// 0=off, 1=discs, 2=normals, 3=projected radius, 4=coverage, 5=cell occupancy,
-	// 6=recent recycled/IDs, 7=transform follow, 8=lifecycle, 9=recycle pressure,
-	// 10=spawn/recycle reason, 11=last contributed, 12=distance, 13=persistence age,
-	// 14=last visible, 15=reused vs fresh, 16=surfel irradiance history, 17=depth moments,
-	// 18=raw projected support, 19=valid coverage, 20=screen-space deficit,
-	// 21=depth rejection, 22=normal rejection, 23=winner surfel ID,
-	// 24=TLAS BVH heatmap, 25=allocated rays, 26=current ray sample,
-	// 27=shared irradiance, 28=history confidence, 29=guiding strength,
-	// 30=lighting state.
-	// The TLAS overlay exposes its own color limit and layer controls from the settings window.
-	SurfelGIDebugSettings surfelGIDebug;
-	int surfelGIDebugMode = 0;
-	GLuint surfelGISurfelBuffer = 0;
-	GLuint surfelGIHeaderBuffer = 0;
-	GLuint surfelGIGridHeaderBuffer = 0;
-	GLuint surfelGIGridEntryBuffer = 0;
-	GLuint surfelGIGridAverageBuffer = 0;
-	GLuint surfelGIRadialDepthBinsBuffer = 0;
-	GLuint surfelGIIrradianceHeaderBuffer = 0;
-	GLuint surfelGIWinnerIDTexture = 0;
-	float surfelGIApplyStrength = 0.0f;
-	bool surfelGIGridReady = false;
-	bool enableSurfelIndirectDiffuse = false;
-	float surfelIndirectDiffuseStrength = 1.0f;
-	int surfelIndirectDiffuseDebugMode = 0;
-	int surfelIndirectDiffuseNeighborRadius = 1;
-	int surfelIndirectDiffuseMaxCandidates = 48;
-	int surfelIndirectDiffuseMaxAccepted = 12;
-	float surfelIndirectDiffuseFallbackStrength = 0.65f;
-	bool surfelIndirectDiffuseUseTemporal = true;
-	bool surfelUseLegacyFragmentGather = false;
 	int lightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
-
-	// Clean EA GIBS-style Surfel GI subsystem. This is separate from the
-	// quarantined legacy surfel controls above and remains disabled by default.
-	bool enableCleanSurfelGI = false;
-	int cleanSurfelGIQualityTier = 1;
-	int cleanSurfelGIDebugView = 0;
-	int cleanSurfelGIMaxSurfels = 65536;
-	int cleanSurfelGIMaxRayBudget = 4096;
-	int cleanSurfelGISpawnTileSize = 8;
-	int cleanSurfelGIMaxSurfelsPerCell = 128;
-	int cleanSurfelGIMaxGatherSurfelsPerPixel = 64;
-	int cleanSurfelGIMaxSpawnsPerFrame = 128;
-	int cleanSurfelGIMaxProjectedSurfelsPerFrame = 32768;
-	int cleanSurfelGIMaxRecycleCountPerFrame = 2048;
-	float cleanSurfelGITargetRadiusPixels = 8.0f;
-	float cleanSurfelGIMinRadius = 0.03f;
-	float cleanSurfelGIMaxRadius = 5.0f;
-	float cleanSurfelGICoverageThreshold = 0.85f;
-	float cleanSurfelGIRecyclePressure = 0.85f;
-	float cleanSurfelGINormalReject = 0.25f;
-	float cleanSurfelGICoverageNormalReject = 0.86f;
-	float cleanSurfelGICoverageDepthTolerance = 0.0035f;
-	float cleanSurfelGIFinalGatherNormalReject = 0.15f;
-	float cleanSurfelGIRadialDepthVariance = 1.0e-4f;
-	float cleanSurfelGIIntensity = 1.0f;
-	float cleanSurfelGICellAverageFallbackStrength = 0.20f;
-	bool cleanSurfelGIUseRadialDepth = true;
-	bool cleanSurfelGIUseRayGuiding = true;
-	bool cleanSurfelGIUseRayBinning = true;
-	bool cleanSurfelGIUseScreenTrace = true;
-	bool cleanSurfelGIUseSurfelFallbackTrace = true;
-	bool cleanSurfelGIPlacementValidation = false;
 
 
 	// Bloom settings

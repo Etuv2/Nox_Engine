@@ -39,6 +39,7 @@ uniform uint uMaxSurfels;
 uniform uint uMaxRays;
 uniform uint uFrameIndex;
 uniform int uUseRayGuiding;
+uniform float uLightingChangeFactor = 0.0;
 
 const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
 const float SURFEL_TRACE_HIT_KIND_SCREEN = 2.0;
@@ -99,9 +100,14 @@ void UpdateGuideCell(uint surfelID, uint rayID, vec3 normal, vec3 sampleRadiance
     vec3 oldMapped = clamp(oldPacked.rgb, vec3(0.0), vec3(0.999));
     vec3 oldRadiance = oldMapped / max(vec3(1.0) - oldMapped, vec3(1e-4));
     float oldConfidence = clamp(oldPacked.a, 0.0, 1.0);
+    float lightingChange = clamp(uLightingChangeFactor, 0.0, 1.0);
     float alpha = mix(0.35, 0.08, oldConfidence);
+    alpha = max(alpha, lightingChange * 0.42);
     vec3 learned = mix(oldRadiance, SurfelClampRadiance(sampleRadiance), alpha);
-    guideMap[guideIndex].packedRadiance = SurfelPackIrradiance(learned, SurfelSaturate(oldConfidence + 0.05));
+    float retainedConfidence = oldConfidence * mix(1.0, 0.42, lightingChange);
+    guideMap[guideIndex].packedRadiance = SurfelPackIrradiance(
+        learned,
+        SurfelSaturate(retainedConfidence + 0.05 + lightingChange * 0.08));
 }
 
 void main()
@@ -205,6 +211,7 @@ void main()
     float acceptedRatio = SurfelSaturate(acceptedWeight / max(float(request.allocatedCount), 1.0));
     float allocationRatio = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
     float schedulerSupport = mix(0.65, 1.0, allocationRatio);
+    float lightingChange = clamp(uLightingChangeFactor, 0.0, 1.0);
     vec3 estimatorSample = SurfelClampRadiance(max(sampleMean, emissiveBaseline));
     vec3 initialVariance = max(sampleVariance, vec3(max(SurfelLuminance(estimatorSample) * 0.08, 0.012)));
 
@@ -215,6 +222,13 @@ void main()
 
     SurfelMSMEData msmeData = SurfelMSMELoad(surfel);
     msmeData.variance = max(msmeData.variance, sampleVariance * mix(0.35, 0.75, sparseSample01));
+    if (lightingChange > 1e-4) {
+        vec3 lightingDelta = abs(estimatorSample - previousIrradiance);
+        float reactiveVariance = max(SurfelLuminance(lightingDelta) * 0.10, 0.015) * lightingChange;
+        msmeData.variance = max(msmeData.variance, lightingDelta * lightingDelta * (0.18 * lightingChange) + vec3(reactiveVariance));
+        msmeData.inconsistency = max(msmeData.inconsistency, 1.0 + lightingChange * 4.0);
+        msmeData.vbbr = max(msmeData.vbbr, mix(0.55, 1.0, lightingChange));
+    }
     vec3 preUpdateDeviation = max(
         vec3(0.0),
         estimatorSample - (msmeData.shortMean + sqrt(max(msmeData.variance, vec3(1e-5))) * 8.0 + vec3(0.1)));
@@ -225,6 +239,8 @@ void main()
     float preUpdateStability = 1.0 - smoothstep(0.06, 0.95, preUpdateVarLum);
     float shortWindowBlend = mix(0.018, 0.075, acceptedRatio * schedulerSupport * preUpdateStability);
     shortWindowBlend = max(shortWindowBlend, sourceDirectSupport * acceptedRatio * schedulerSupport * 0.11);
+    float lightingCatchUpBlend = lightingChange * acceptedRatio * schedulerSupport * mix(0.14, 0.42, sourceDirectSupport);
+    shortWindowBlend = max(shortWindowBlend, lightingCatchUpBlend);
     shortWindowBlend = resetEstimator ? max(shortWindowBlend, brandNew ? 0.42 : 0.24) : shortWindowBlend;
     vec3 integratedIrradiance = SurfelMSME(estimatorSample, msmeData, shortWindowBlend);
 
@@ -233,6 +249,7 @@ void main()
     float sampleStability = 1.0 - smoothstep(0.06, 0.75, varLum);
     float consistentChange = smoothstep(0.16, 1.35, diffLum) * sampleStability;
     float confidenceDecay = consistentChange * 0.035;
+    confidenceDecay = max(confidenceDecay, lightingChange * acceptedRatio * (1.0 - sourceDirectSupport * 0.35) * 0.08);
     temporalConfidence = SurfelSaturate(temporalConfidence - confidenceDecay);
     if (SurfelIsNew(surfel)) {
         SurfelSetFlags(surfel, SurfelFlags(surfel) & ~SURFEL_NEW);
@@ -244,6 +261,7 @@ void main()
 
     float confidenceGain = mix(0.006, 0.020, sampleStability) * acceptedRatio * schedulerSupport;
     confidenceGain += sourceDirectSupport * acceptedRatio * schedulerSupport * 0.018;
+    confidenceGain += lightingChange * acceptedRatio * schedulerSupport * mix(0.010, 0.048, sourceDirectSupport);
     if (resetEstimator) {
         float bootstrapBase = mix(brandNew ? 0.03 : 0.02, brandNew ? 0.11 : 0.075, sourceDirectSupport);
         float bootstrapGain = mix(brandNew ? 0.20 : 0.11, brandNew ? 0.34 : 0.22, sourceDirectSupport);

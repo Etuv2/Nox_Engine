@@ -51,7 +51,7 @@ uniform sampler2D screenSpaceShadowMap;
 uniform float sssStrength = 0.6; // Contact shadow blend strength [0,1]
 
 const int MAX_INDIRECT_DIFFUSE_SOURCES = 4;
-const float SURFEL_GI_RESPONSE_FORM_FACTOR_COMPENSATION = 18.0;
+const float SURFEL_GI_RESPONSE_FORM_FACTOR_COMPENSATION = 22.0;
 uniform sampler2D indirectDiffuseMaps[MAX_INDIRECT_DIFFUSE_SOURCES];
 uniform float indirectDiffuseStrengths[MAX_INDIRECT_DIFFUSE_SOURCES];
 uniform int indirectDiffuseSourceCount = 0;
@@ -661,7 +661,58 @@ vec3 ComputeSurfelGIResponse(vec3 indirectIrradiance, float indirectConfidence, 
 	float chromaVisibility = mix(0.92, 1.0, indirectChromaSignal * confidenceLift);
 	float energyCompensation = mix(1.0, SURFEL_GI_RESPONSE_FORM_FACTOR_COMPENSATION, confidenceLift);
 	vec3 materialResponse = kD * diffuseAlbedo * INV_PI * diffuseTerm * aoPolicy * baseAttenuation * confidenceLift * chromaVisibility * energyCompensation;
-	return max(indirectIrradiance * materialResponse, vec3(0.0));
+	vec3 standardResponse = indirectIrradiance * materialResponse;
+
+	float receiverAlbedoLum = Luminance(diffuseAlbedo);
+	float chromaResponseBlend = indirectChromaSignal * confidenceLift * smoothstep(0.006, 0.10, indirectLum);
+	vec3 receiverChromaResponseAlbedo = mix(
+		diffuseAlbedo,
+		max(diffuseAlbedo, vec3(max(receiverAlbedoLum * 0.90, 0.055))),
+		chromaResponseBlend * 0.46);
+	vec3 receiverChromaResponse = kD * receiverChromaResponseAlbedo * INV_PI * diffuseTerm * aoPolicy * baseAttenuation * confidenceLift * chromaVisibility * energyCompensation;
+	vec3 chromaPreservedResponse = indirectIrradiance * receiverChromaResponse;
+	vec3 response = mix(standardResponse, chromaPreservedResponse, chromaResponseBlend * 0.46);
+
+	float standardLum = Luminance(max(standardResponse, vec3(0.0)));
+	float responseLum = Luminance(max(response, vec3(0.0)));
+	float maxChromaPreservedLum = max(
+		standardLum * mix(1.06, 1.28, chromaResponseBlend),
+		standardLum + 0.024 * chromaResponseBlend);
+	if (responseLum > maxChromaPreservedLum) {
+		response *= maxChromaPreservedLum / max(responseLum, 1e-5);
+	}
+
+	return max(response, vec3(0.0));
+}
+
+vec3 PreserveSurfelBleedAgainstDirect(vec3 surfelContribution, vec3 directAndIBLContribution) {
+	vec3 safeSurfel = max(surfelContribution, vec3(0.0));
+	float surfelLum = Luminance(safeSurfel);
+	if (surfelLum <= 1e-5) {
+		return vec3(0.0);
+	}
+
+	float directLum = Luminance(max(directAndIBLContribution, vec3(0.0)));
+	vec3 neutralSurfel = vec3(surfelLum);
+	vec3 surfelChroma = safeSurfel - neutralSurfel;
+	float chromaRatio = length(surfelChroma) / max(surfelLum, 0.025);
+	float chromaSignal = smoothstep(0.08, 0.46, chromaRatio);
+	float directWashout = smoothstep(0.20, 1.40, directLum);
+	float protection = chromaSignal * directWashout;
+
+	vec3 positiveChroma = max(safeSurfel - neutralSurfel * 0.58, vec3(0.0));
+	vec3 protectedSurfel = safeSurfel * (1.0 + 0.18 * protection);
+	protectedSurfel += positiveChroma * (0.30 * protection);
+
+	float protectedLum = Luminance(protectedSurfel);
+	float maxProtectedLum = max(
+		surfelLum * mix(1.04, 1.22, protection),
+		surfelLum + 0.018 * protection);
+	if (protectedLum > maxProtectedLum) {
+		protectedSurfel *= maxProtectedLum / max(protectedLum, 1e-5);
+	}
+
+	return max(protectedSurfel, vec3(0.0));
 }
 
 vec3 CompressIndirectContribution(vec3 indirectContribution) {
@@ -780,6 +831,7 @@ void main() {
 			lpvContribution += sourceContribution;
 		}
 	}
+	vec3 fullSurfelContribution = PreserveSurfelBleedAgainstDirect(surfelContribution, directLighting + iblContribution);
 	vec3 color = (uLightingCompositeDebugMode == 0) ? emissive : vec3(0.0);
 	if (uLightingCompositeDebugMode == 1) {
 		color += directLighting;
@@ -795,11 +847,11 @@ void main() {
 		color += directLighting;
 		color += iblContribution;
 		if (indirectDiffuseCompositeMode == 1) {
-			vec3 legacyIndirectContribution = ssgiContribution + lpvContribution + surfelContribution;
-			color *= vec3(1.0) + legacyIndirectContribution;
+			vec3 modulativeIndirectContribution = ssgiContribution + lpvContribution + fullSurfelContribution;
+			color *= vec3(1.0) + modulativeIndirectContribution;
 		}
 		else {
-			color += ssgiContribution + lpvContribution + surfelContribution;
+			color += ssgiContribution + lpvContribution + fullSurfelContribution;
 		}
 	}
 

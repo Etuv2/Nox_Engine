@@ -10,7 +10,7 @@
   ],
   "environmentIntensity": 0.5,
   "environmentPath": "hdrs\\skybox.hdr",
-  "first_scene": "scenes\\shibuya.json",
+  "first_scene": "scenes\\sponza.json",
   "scene_folder": "scenes",
   "physics": {
     "gravity": [
@@ -25,70 +25,10 @@
   },
   "scenes": [
     {
-      "path": "scenes\\otters.json"
-    },
-    {
-      "path": "scenes\\scene.json"
-    },
-    {
-      "path": "scenes\\scene2.json"
-    },
-    {
-      "path": "scenes\\gundam.json"
-    },
-    {
-      "path": "scenes\\shibuya.json"
-    },
-    {
-      "path": "scenes\\car.json"
-    },
-    {
-      "path": "scenes\\halo.json"
-    },
-    {
-      "path": "scenes\\mat_test.json"
-    },
-    {
-      "path": "scenes\\lighting_demo.json"
-    },
-    {
-      "path": "scenes\\miku.json"
-    },
-    {
-      "path": "scenes\\graphics_test.json"
-    },
-    {
-      "path": "scenes\\copied_city.json"
-    },
-    {
-      "path": "scenes\\multi_light_demo.json"
-    },
-    {
-      "path": "scenes\\studio_lighting.json"
-    },
-    {
-      "path": "scenes\\light_test.json"
-    },
-    {
-      "path": "scenes\\light_test_2.json"
-    },
-    {
-      "path": "scenes\\gui_demo.json"
-    },
-    {
-      "path": "scenes\\animation_test.json"
-    },
-    {
-      "path": "scenes\\cornell_box.json"
+      "path": "scenes\\sponza.json"
     },
     {
       "path": "scenes\\surfel_gi_cornell_validation.json"
-    },
-    {
-      "path": "scenes\\surfel_gi_wall_leak_validation.json"
-    },
-    {
-      "path": "scenes\\surfel_gi_material_response_validation.json"
     }
   ],
   "text_font": "fonts\\arial.ttf",
@@ -107,11 +47,11 @@
     "yaw": -90.0,
     "pitch": 0.0,
     "pitch_constraint": 89.0,
-    "fov": 120,
+    "fov": 90.0,
     "near": 0.1,
     "far": 600.0,
-    "movement_speed": 30.0,
-    "mouse_sensitivity": 0.1
+    "movement_speed": 10.0,
+    "mouse_sensitivity": 0.3
   },
   "light": {
     "position": [

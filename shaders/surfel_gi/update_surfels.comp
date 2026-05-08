@@ -23,6 +23,7 @@ uniform mat4 uProjection;
 uniform float uTargetSurfelScreenRadiusPx;
 uniform float uMinSurfelRadius;
 uniform float uMaxSurfelRadius;
+uniform float uLightingChangeFactor = 0.0;
 
 float WorldUnitsPerPixel(vec3 worldPos)
 {
@@ -34,6 +35,11 @@ float WorldUnitsPerPixel(vec3 worldPos)
 bool IsFiniteVec3(vec3 value)
 {
     return !any(isnan(value)) && !any(isinf(value));
+}
+
+uint FrameDelta(uint newerFrame, uint olderFrame)
+{
+    return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
 }
 
 void main()
@@ -106,6 +112,20 @@ void main()
     }
     if (motionReset) {
         SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_NEW);
+    }
+
+    uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
+    float visibleRecency = exp(-0.18 * float(min(framesSinceVisible, 60u)));
+    float lightingReactive = clamp(uLightingChangeFactor, 0.0, 1.0) * mix(0.35, 1.0, visibleRecency);
+    if (lightingReactive > 1e-4) {
+        surfel.irradiance.a = SurfelSaturate(surfel.irradiance.a * mix(1.0, 0.46, lightingReactive));
+        float irradianceLum = SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0)));
+        surfel.shortM2.rgb += vec3(max(irradianceLum * 0.10, 0.018) * lightingReactive);
+        surfel.msme.y = max(surfel.msme.y, 1.0 + lightingReactive * 3.0);
+        surfel.msme.x = max(surfel.msme.x, mix(0.72, 1.0, lightingReactive));
+        if (lightingReactive > 0.55 && framesSinceVisible <= 8u) {
+            SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_NEW);
+        }
     }
 
     surfel.worldPos_radius = vec4(worldPos.xyz, radius);

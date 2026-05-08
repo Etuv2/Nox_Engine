@@ -1509,6 +1509,12 @@ void LightManager::UpdateLights(float dt)
 	bool dirty = false;
 	bool activeSetChanged = false;
 
+	for (auto& ln : m_lightNodes) {
+		if (ln) {
+			ln->UpdateLightFromTransform(true);
+		}
+	}
+
 	// Rebuild active light list every frame so UI/editor toggles are reflected immediately.
 	std::vector<std::shared_ptr<BaseLight>> refreshedActiveLights;
 	refreshedActiveLights.reserve(m_lights.size());
@@ -1563,12 +1569,6 @@ void LightManager::UpdateLights(float dt)
 				(std::abs(p.second->GetRange() - prevRange) > 1e-5f) ||
 				(p.second->IsEnabled() != prevEnabled) ||
 				(p.second->CastsShadows() != prevCastsShadows);
-		}
-	}
-
-	for (auto& ln : m_lightNodes) {
-		if (ln) {
-			ln->UpdateLightFromTransform();
 		}
 	}
 
