@@ -49,9 +49,14 @@ bool TransparentForwardPass::Initialize(RenderContext& context)
 	m_uniforms.specularIBLScale = glGetUniformLocation(m_shader, "specularIBLScale");
 	m_uniforms.numLights = glGetUniformLocation(m_shader, "numLights");
 	m_uniforms.multiLightShadowArray = glGetUniformLocation(m_shader, "multiLightShadowArray");
-	m_uniforms.keyLightDir = glGetUniformLocation(m_shader, "keyLightDir");
-	m_uniforms.keyLightColor = glGetUniformLocation(m_shader, "keyLightColor");
-	m_uniforms.keyLightIntensity = glGetUniformLocation(m_shader, "keyLightIntensity");
+	m_uniforms.enableShadows = glGetUniformLocation(m_shader, "enableShadows");
+	m_uniforms.shadowBias = glGetUniformLocation(m_shader, "shadowBias");
+	m_uniforms.cascadeSplits = glGetUniformLocation(m_shader, "cascadeSplits");
+	m_uniforms.cascadeBlendDistance = glGetUniformLocation(m_shader, "cascadeBlendDistance");
+	m_uniforms.cascadeBlendFactor = glGetUniformLocation(m_shader, "cascadeBlendFactor");
+	m_uniforms.shadowDarkness = glGetUniformLocation(m_shader, "shadowDarkness");
+	m_uniforms.shadowMinBrightness = glGetUniformLocation(m_shader, "shadowMinBrightness");
+	m_uniforms.shadowTransitionHardness = glGetUniformLocation(m_shader, "shadowTransitionHardness");
 
 	if constexpr (VerboseLogging) {
 		if (m_runtimeVerboseLogging) {
@@ -174,7 +179,14 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 		if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] WARNING: No valid IBL textures available" << std::endl; }
 	}
 
-	// Bind light data for transparent objects
+	// Transparent surfaces use the same light loop and shadowing as the deferred pass
+	// (shaders/includes/lighting_common.glsl), so they need the same light/shadow inputs.
+	// The shadow sampler must always point at its own unit: left at 0 it would alias the
+	// material's 2D samplers, which is an invalid draw.
+	if (m_uniforms.multiLightShadowArray >= 0) glUniform1i(m_uniforms.multiLightShadowArray,
+		TextureUnits::SHADOW_MAP_ARRAY);
+
+	bool shadowsAvailable = false;
 	if (ctx.lightManager && ctx.lightManager->GetActiveLightCount() > 0) {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ctx.lightManager->GetLightDataSSBO());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx.lightManager->GetShadowMatricesSSBO());
@@ -184,40 +196,30 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 		if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] Bound " << ctx.lightManager->GetActiveLightCount()
 			<< " active lights" << std::endl; }
 
-		// Bind shadow array for transparent shadows
 		GLuint shadowArray = ctx.lightManager->GetShadowArrayTexture();
 		if (shadowArray > 0 && glIsTexture(shadowArray)) {
 			glActiveTexture(GL_TEXTURE0 + TextureUnits::SHADOW_MAP_ARRAY);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, shadowArray);
-			if (m_uniforms.multiLightShadowArray >= 0) glUniform1i(m_uniforms.multiLightShadowArray,
-				TextureUnits::SHADOW_MAP_ARRAY);
+			shadowsAvailable = true;
 		}
+
+		const auto& shadowConfig = ctx.lightManager->shadowConfig;
+		const float nearPlane = std::max(ctx.shadowNear, camera->GetCameraNearPlane());
+		const float farPlane = std::max(nearPlane + 1.0f, std::min(ctx.shadowFar, camera->GetCameraFarPlane()));
+		const glm::vec4 cascadeSplits = ctx.lightManager->ComputeCascadeSplitVector(nearPlane, farPlane);
+		if (m_uniforms.cascadeSplits >= 0) glUniform4fv(m_uniforms.cascadeSplits, 1, glm::value_ptr(cascadeSplits));
+		if (m_uniforms.cascadeBlendDistance >= 0) glUniform1f(m_uniforms.cascadeBlendDistance, shadowConfig.cascadeBlendDistance);
+		if (m_uniforms.cascadeBlendFactor >= 0) glUniform1f(m_uniforms.cascadeBlendFactor, shadowConfig.cascadeBlendFactor);
+		if (m_uniforms.shadowBias >= 0) glUniform1f(m_uniforms.shadowBias, ctx.shadowBias);
+		if (m_uniforms.shadowDarkness >= 0) glUniform1f(m_uniforms.shadowDarkness, ctx.shadowDarkness);
+		if (m_uniforms.shadowMinBrightness >= 0) glUniform1f(m_uniforms.shadowMinBrightness, ctx.shadowMinBrightness);
+		if (m_uniforms.shadowTransitionHardness >= 0) glUniform1f(m_uniforms.shadowTransitionHardness, ctx.shadowTransitionHardness);
 	}
 	else {
 		if (m_uniforms.numLights >= 0) glUniform1i(m_uniforms.numLights, 0);
 		if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] No active lights available" << std::endl; }
 	}
-
-	if (m_uniforms.keyLightDir >= 0 || m_uniforms.keyLightColor >= 0 || m_uniforms.keyLightIntensity >= 0) {
-		glm::vec3 keyLightDir = glm::normalize(glm::vec3(-0.4f, -1.0f, -0.2f));
-		glm::vec3 keyLightColor = glm::vec3(1.0f);
-		float keyLightIntensity = 1.0f;
-
-		if (ctx.lightManager) {
-			for (const auto& light : ctx.lightManager->GetEnabledLights()) {
-				if (light && light->GetLightType() == BaseLight::LightType::DIRECTIONAL) {
-					keyLightDir = glm::normalize(light->GetDirection());
-					keyLightColor = light->GetEffectiveColor();
-					keyLightIntensity = light->GetIntensity();
-					break;
-				}
-			}
-		}
-
-		if (m_uniforms.keyLightDir >= 0) glUniform3fv(m_uniforms.keyLightDir, 1, glm::value_ptr(keyLightDir));
-		if (m_uniforms.keyLightColor >= 0) glUniform3fv(m_uniforms.keyLightColor, 1, glm::value_ptr(keyLightColor));
-		if (m_uniforms.keyLightIntensity >= 0) glUniform1f(m_uniforms.keyLightIntensity, keyLightIntensity);
-	}
+	if (m_uniforms.enableShadows >= 0) glUniform1i(m_uniforms.enableShadows, (ctx.enableShadows && shadowsAvailable) ? 1 : 0);
 
 	// NOTE: Material-specific transmission and IOR uniforms are now set per-mesh
 	// in Scene::Draw() rather than as pass-wide defaults here.

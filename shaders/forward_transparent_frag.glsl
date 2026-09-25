@@ -3,6 +3,7 @@
 // Include shared PBR functions
 #include "includes/pbr_common.glsl"
 #include "includes/material_common.glsl"
+#include "includes/lighting_common.glsl"
 
 out vec4 FragColor;
 
@@ -88,10 +89,6 @@ uniform float specularIBLScale = 0.45;
 // Camera
 uniform vec3 viewPos;
 
-// Enhanced lighting uniforms
-uniform vec3 keyLightDir = normalize(vec3(-0.4, -1.0, -0.2));
-uniform vec3 keyLightColor = vec3(1.0);
-uniform float keyLightIntensity = 1.0;
 
 vec3 getNormalFromMap() {
     // Start with geometric normal
@@ -242,15 +239,16 @@ void main() {
     }
     
     // === DIRECT LIGHTING ===
+    // Same light loop, attenuation and shadowing as the deferred pass (includes/lighting_common.glsl).
     vec3 directLighting = vec3(0.0);
-    
-    vec3 L = normalize(-keyLightDir);
-    float NdotL = max(dot(N, L), 0.0);
-    
-    if (NdotL > 0.0) {
-        vec3 directDiffuse, directSpecular;
-        EvaluatePrincipledBRDFSeparated(surface, N, V, L, directDiffuse, directSpecular);
-        directLighting = (directDiffuse + directSpecular) * keyLightColor * keyLightIntensity;
+    int lightCount = min(numLights, 64);
+    for (int i = 0; i < lightCount; ++i) {
+        vec3 lightDiffuse;
+        vec3 lightSpecular;
+        float lightVisibility;
+        if (EvaluateLightRadiance(i, fs_in.WorldPos, N, V, surface, lightDiffuse, lightSpecular, lightVisibility)) {
+            directLighting += (lightDiffuse + lightSpecular) * lightVisibility;
+        }
     }
     
     // === IBL ===
