@@ -124,7 +124,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGIQualityTier = 1;
 	m_surfelGIDebugView = 0;
 	m_surfelGIMaxSurfels = 65536;
-	m_surfelGIMaxRayBudget = 192;
+	m_surfelGIMaxRayBudget = 1024;
 	m_surfelGISpawnTileSize = 8;
 	m_surfelGIMaxSurfelsPerCell = 128;
 	m_surfelGIMaxGatherSurfelsPerPixel = 32;
@@ -984,7 +984,7 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderFloat("GI Intensity", &m_surfelGIIntensity, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Cell Average Fallback", &m_surfelGICellAverageFallbackStrength, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Surfels", &m_surfelGIMaxSurfels, 4096, 524288)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Ray Budget", &m_surfelGIMaxRayBudget, 64, 524288)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Ray Budget", &m_surfelGIMaxRayBudget, 1024, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Spawn Tile", &m_surfelGISpawnTileSize, 4, 16)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Gather Surfels", &m_surfelGIMaxGatherSurfelsPerPixel, 4, 2048)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Spawns/Frame", &m_surfelGIMaxSpawnsPerFrame, 1, 4096)) { SyncToRenderer(); }
@@ -1809,7 +1809,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGIQualityTier = 1;
 	m_surfelGIDebugView = 0;
 	m_surfelGIMaxSurfels = 65536;
-	m_surfelGIMaxRayBudget = 192;
+	m_surfelGIMaxRayBudget = 1024;
 	m_surfelGISpawnTileSize = 8;
 	m_surfelGIMaxSurfelsPerCell = 128;
 	m_surfelGIMaxGatherSurfelsPerPixel = 32;

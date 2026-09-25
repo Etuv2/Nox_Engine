@@ -4,6 +4,7 @@
 
 layout(local_size_x = 8, local_size_y = 8) in;
 
+// Spec: docs/ssgi_v2_visibility_bitmask_spec.md
 // Screen-space indirect diffuse with a visibility bitmask (Therrien et al. 2023, on top of the
 // GTAO slice parameterization of Jimenez et al. 2016).
 //

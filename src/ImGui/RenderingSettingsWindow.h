@@ -118,7 +118,7 @@ private:
 	int m_surfelGIQualityTier = 1;
 	int m_surfelGIDebugView = 0;
 	int m_surfelGIMaxSurfels = 65536;
-	int m_surfelGIMaxRayBudget = 192;
+	int m_surfelGIMaxRayBudget = 1024;
 	int m_surfelGISpawnTileSize = 8;
 	int m_surfelGIMaxSurfelsPerCell = 128;
 	int m_surfelGIMaxGatherSurfelsPerPixel = 32;

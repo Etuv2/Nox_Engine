@@ -188,7 +188,23 @@ Recommended canonical minimum:
    - Lifetime: transient until composite completes
    - Clear: `(0,0,0,0)`
 
-### 5.3 Reset behavior
+### 5.3 Radiometric contract
+
+- **Gather output (`SSGI_V2_RawGI_Current`)**: RGB is irradiance `E` in the units of the scene
+  lights; alpha is the cosine-weighted fraction of the hemisphere left open (no on-screen
+  occluder within the radius), `1` for a fully open hemisphere.
+- **Slices** are planes through the view vector (GTAO parameterization). Each of the 32 sectors
+  spans an equal angle of the normal hemisphere inside the slice and carries its exact weight
+  `|pn| * integral cos(theta - gamma) |sin(theta)| dtheta`, so a fully occluded hemisphere of
+  radiance `L` returns `E = pi * L` and a fully open one returns alpha `1`.
+- **Radiance source**: bounceable diffuse radiance of the lit scene. Optional multi-bounce
+  reinjection adds `albedo / pi * E_previous` (feedback in `[0, 1]`, `1` physically exact);
+  no shaping curves or gains.
+- **Composite**: outgoing radiance is `E * diffuseColor / pi` times the diffuse share left by the
+  specular layer (same lobe as diffuse IBL). Far-field GI sources and diffuse IBL only fill the
+  open fraction (alpha) of the hemisphere; SSGI itself is not re-attenuated by its own alpha.
+
+### 5.4 Reset behavior
 
 On camera cut / history reset event:
 - Clear both history GI targets and validity targets to contract clear values before next reprojection.
@@ -232,9 +248,12 @@ Debug outputs must be stable and machine-comparable where practical.
 Unless a platform/profile explicitly overrides, use:
 
 - **Slices:** `4`
-- **Steps:** `4`
-- **Radius:** `4.0`
-- **Thickness:** `0.5`
+- **Steps:** `32` per slice direction (both screen directions are marched). Gaps between
+  samples leave sectors open and bias irradiance low; on the Cornell validation scene 16 steps
+  reached 0.66 of the converged estimate, 32 steps 0.81, 64 steps 0.86, while the slice count
+  barely changes the mean (it only trades noise for the temporal filter to absorb).
+- **Radius:** `3.04` view-space units
+- **Thickness:** `0.10` view-space units
 - **Sectors:** `32`
 - **Jitter:** low-discrepancy sequence (e.g., R2/Hammersley class), deterministic per-frame index with wraparound.
 

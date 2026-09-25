@@ -4,6 +4,8 @@
 
 layout(local_size_x = 8, local_size_y = 8) in;
 
+// Spec: docs/ssgi_v2_visibility_bitmask_spec.md (5.3: bounceable radiance + albedo / pi reinjection)
+
 layout(binding = 0) uniform sampler2D bounceableDiffuseTex;
 layout(binding = 1) uniform sampler2D emissiveTex;
 layout(binding = 2) uniform sampler2D previousIndirectTex;
