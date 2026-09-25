@@ -139,34 +139,25 @@ void main()
             break;
         }
 
+        // Every resolved ray is one sample of E = integral L cos: radiance * cos / pdf, with equal
+        // weight. A ray that leaves the scene carries the sky radiance the tracer returned (zero
+        // without a sky) and counts too; weighting samples by how they were traced, or dropping
+        // true misses, would bias the estimate. Only rays the tracer could not resolve (kind 0,
+        // possible without the BVH) carry no information and are left out.
         SurfelRayHit hit = hits[rayID];
-        bool validSample = hit.normal_hitKind.w > 0.5;
-        if (!validSample) {
+        if (hit.normal_hitKind.w <= 0.5) {
             continue;
         }
-        float reliability = HitKindReliability(hit.normal_hitKind.w);
-        if (reliability <= 1e-5) {
-            continue;
-        }
-        bool sourceDirectHit =
-            abs(hit.normal_hitKind.w - SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT) < 0.25 ||
-            hit.ids.w != 0u;
-
         float samplePdf = max(hit.radiance_pdf.a, 1e-4);
         float sampleCos = max(dot(normal, SurfelSafeNormalize(rays[rayID].direction_tMax.xyz)), 0.0);
-        vec3 sampleIrradiance = sourceDirectHit ? SurfelClampRadiance(hit.radiance_pdf.rgb)
-            : SurfelClampRadiance(hit.radiance_pdf.rgb * (sampleCos / samplePdf));
-        if (!sourceDirectHit) {
-            UpdateGuideCell(request.surfelID, rayID, normal, SurfelClampRadiance(hit.radiance_pdf.rgb * sampleCos * reliability));
-        }
-        batchSum += sampleIrradiance * reliability;
-        batchSumSq += sampleIrradiance * sampleIrradiance * reliability;
-        acceptedWeight += reliability;
-        sourceDirectWeight += sourceDirectHit ? reliability : 0.0;
+        vec3 sampleIrradiance = SurfelClampRadiance(hit.radiance_pdf.rgb * (sampleCos / samplePdf));
+        // Ray guiding learns where light comes from, trusting exact hits more.
+        float reliability = HitKindReliability(hit.normal_hitKind.w);
+        UpdateGuideCell(request.surfelID, rayID, normal, SurfelClampRadiance(hit.radiance_pdf.rgb * sampleCos * reliability));
+        batchSum += sampleIrradiance;
+        batchSumSq += sampleIrradiance * sampleIrradiance;
+        acceptedWeight += 1.0;
         atomicAdd(counters.acceptedRaySamples, 1u);
-        if (sourceDirectHit) {
-            atomicAdd(counters.sourceDirectSamples, 1u);
-        }
         ++accepted;
     }
 
@@ -242,7 +233,11 @@ void main()
     float lightingCatchUpBlend = lightingChange * acceptedRatio * schedulerSupport * mix(0.14, 0.42, sourceDirectSupport);
     shortWindowBlend = max(shortWindowBlend, lightingCatchUpBlend);
     shortWindowBlend = resetEstimator ? max(shortWindowBlend, brandNew ? 0.42 : 0.24) : shortWindowBlend;
-    vec3 integratedIrradiance = SurfelMSME(estimatorSample, msmeData, shortWindowBlend);
+    // Running average over the rays integrated so far (a SURFEL_SHORT_HISTORY_RAYS window once
+    // saturated). MSME's catch-up logic can only make the long mean react faster than this.
+    float historyRays = resetEstimator ? 0.0 : surfel.shortMean.a;
+    float cumulativeBlend = effectiveAccepted / max(historyRays + effectiveAccepted, 1.0);
+    vec3 integratedIrradiance = SurfelMSME(estimatorSample, msmeData, shortWindowBlend, cumulativeBlend);
 
     float varLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));
     float diffLum = SurfelLuminance(abs(msmeData.shortMean - previousIrradiance));

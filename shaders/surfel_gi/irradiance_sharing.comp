@@ -167,9 +167,11 @@ float SharingCompatibilityWeight(uint centerID,
     float emitterFacing = max(dot(neighborNormal, -centerToNeighbor), 0.0);
     float receiverFacing = max(dot(centerNormal, centerToNeighbor), 0.0);
     float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0));
+    // Sharing denoises by averaging neighbours that see the same incident light, i.e. surfels on
+    // the same surface. Irradiance on a facing surface is a different quantity (light bounced
+    // from one to the other is already in both through their rays), so it is never mixed in.
     bool sameSurfaceCompatible = normalDot >= SURFEL_SHARING_MIN_NORMAL_DOT;
-    bool crossSurfaceCompatible = !sameSurfaceCompatible && transferFacing >= SURFEL_SHARING_MIN_CROSS_TRANSFER;
-    if (!sameSurfaceCompatible && !crossSurfaceCompatible) {
+    if (!sameSurfaceCompatible) {
         return 0.0;
     }
 

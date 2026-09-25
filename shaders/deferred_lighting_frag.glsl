@@ -276,8 +276,9 @@ vec3 ComputeIndirectDiffuseResponse(vec3 N, vec3 V, PrincipledSurface surface) {
 //   0 SSGI:   near field gathered from on-screen surfaces. Alpha is the cosine-weighted fraction
 //             of the hemisphere it left open (no on-screen occluder within its radius).
 //   1 LPV:    one-bounce far field from the light propagation volume. Alpha is 1.
-//   2 Surfel: multi-bounce far field from the world-space surfel cache. Alpha is the cache's
-//             coverage of this pixel (0 where no surfel has settled yet).
+//   2 Surfel: multi-bounce far field from the world-space surfel cache, including sky light
+//             when a skybox is bound. Alpha is the cache's coverage of this pixel (0 where no
+//             surfel has settled yet).
 // The estimators overlap, so they are layered rather than summed: the surfel cache is preferred
 // in the far field and the LPV fills pixels the cache does not cover yet; SSGI replaces the far
 // field (and the sky) for the part of the hemisphere it resolved on screen.
@@ -288,7 +289,8 @@ struct IndirectDiffuseInputs {
 	vec3 surfelIrradiance;
 	float surfelCoverage;
 	bool hasNear;
-	bool hasFar;
+	bool hasLpv;
+	bool hasSurfel;
 };
 
 IndirectDiffuseInputs SampleIndirectDiffuseSources() {
@@ -299,7 +301,8 @@ IndirectDiffuseInputs SampleIndirectDiffuseSources() {
 	gi.surfelIrradiance = vec3(0.0);
 	gi.surfelCoverage = 0.0;
 	gi.hasNear = false;
-	gi.hasFar = false;
+	gi.hasLpv = false;
+	gi.hasSurfel = false;
 
 	int sourceCount = clamp(indirectDiffuseSourceCount, 0, MAX_INDIRECT_DIFFUSE_SOURCES);
 	for (int i = 0; i < sourceCount; ++i) {
@@ -319,17 +322,20 @@ IndirectDiffuseInputs SampleIndirectDiffuseSources() {
 		} else if (i == 2) {
 			gi.surfelIrradiance = irradiance;
 			gi.surfelCoverage = clamp(value.a, 0.0, 1.0);
-			gi.hasFar = true;
+			gi.hasSurfel = true;
 		} else {
 			gi.lpvIrradiance += irradiance;
-			gi.hasFar = true;
+			gi.hasLpv = true;
 		}
 	}
 	return gi;
 }
 
 vec3 ResolveFarFieldIrradiance(IndirectDiffuseInputs gi) {
-	return gi.surfelIrradiance + (1.0 - gi.surfelCoverage) * gi.lpvIrradiance;
+	if (gi.hasSurfel && gi.hasLpv) {
+		return mix(gi.lpvIrradiance, gi.surfelIrradiance, gi.surfelCoverage);
+	}
+	return gi.hasSurfel ? gi.surfelIrradiance : gi.lpvIrradiance;
 }
 
 void main() {
@@ -405,7 +411,10 @@ void main() {
 		return;
 	}
 
-	vec3 iblContribution = ComputeIBL(N, V, surface, diffuseAO, specularAO);
+	// Where the surfel cache covers the pixel its irradiance already contains the sky, so the
+	// diffuse IBL only fills the uncovered part.
+	float diffuseIBLOcclusion = diffuseAO * (1.0 - gi.surfelCoverage);
+	vec3 iblContribution = ComputeIBL(N, V, surface, diffuseIBLOcclusion, specularAO);
 
 	// Near field already contains its own occlusion, so only material AO applies to it; the far
 	// field has no small-scale occlusion and takes the screen-space AO (which includes SSGI's

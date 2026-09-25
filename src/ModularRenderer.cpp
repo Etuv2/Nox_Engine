@@ -157,7 +157,10 @@ namespace {
 			return { 262144u, 65536u, 4u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 4u, 8u, 64u, 1024u, 262144u, 16384u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 65536u, 192u, 8u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, false, 1.0f, 1u, 1u, 3u, 20u, 64u, 24576u, 2048u };
+			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
+			// their light) and 4096 rays per frame, between Low and High: at the former 192 rays a
+			// surfel saw one ray every few frames and multi-bounce took hundreds of frames to settle.
+			return { 65536u, 4096u, 8u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 1u, 3u, 20u, 64u, 24576u, 2048u };
 		}
 	}
 

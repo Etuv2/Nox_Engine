@@ -43,7 +43,10 @@ void SurfelMSMEInitialize(inout Surfel surfel, vec3 initialMean, vec3 initialVar
 
 // Multiscale mean estimation for surfel irradiance. This is a more robust alternative to exponential moving average that maintains two means (one "short" mean with a faster response time and one "long" mean with a slower response time) and a variance estimate to determine how much the means should be blended together. The "vbbr" field is a user-configurable parameter that can be used to reduce the short mean's influence when the variance is very high, which can help prevent fireflies from polluting the estimate.
 // https://github.com/Apress/ray-tracing-gems/blob/master/Ch_25_Hybrid_Rendering_for_Real-Time_Ray_Tracing/MultiscaleMeanEstimator.hlsl
-vec3 SurfelMSME(vec3 y, inout SurfelMSMEData data, float shortWindowBlend)
+// minMeanBlend: the long mean moves at least this much toward the sample (the caller passes the
+// running-average weight of this batch, so the long mean is never slower than a plain average
+// of the rays integrated so far).
+vec3 SurfelMSME(vec3 y, inout SurfelMSMEData data, float shortWindowBlend, float minMeanBlend)
 {
     vec3 mean = data.mean;
     vec3 shortMean = data.shortMean;
@@ -52,15 +55,16 @@ vec3 SurfelMSME(vec3 y, inout SurfelMSMEData data, float shortWindowBlend)
     float inconsistency = data.inconsistency;
     float windowBlend = clamp(shortWindowBlend, 0.001, 1.0);
 
-    // Suppress fireflies before they can pollute either mean scale.
+    // Suppress fireflies in the short-window statistics that drive the adaptive blending. The
+    // long mean below averages the unclamped sample: clipping rare bright batches (light from a
+    // small lit patch) would bias the irradiance low. Samples are already bounded by the caller.
     vec3 dev = sqrt(max(vec3(1e-5), variance));
     vec3 highThreshold = vec3(0.1) + shortMean + dev * 8.0;
-    vec3 overflow = max(vec3(0.0), y - highThreshold);
-    y -= overflow;
+    vec3 yStatistics = y - max(vec3(0.0), y - highThreshold);
 
-    vec3 delta = y - shortMean;
-    shortMean = mix(shortMean, y, windowBlend);
-    vec3 delta2 = y - shortMean;
+    vec3 delta = yStatistics - shortMean;
+    shortMean = mix(shortMean, yStatistics, windowBlend);
+    vec3 delta2 = yStatistics - shortMean;
 
     float varianceBlend = windowBlend * 0.5;
     variance = mix(variance, delta * delta2, varianceBlend);
@@ -82,7 +86,7 @@ vec3 SurfelMSME(vec3 y, inout SurfelMSMEData data, float shortWindowBlend)
     catchUpBlend *= vbbr;
 
     vbbr = mix(vbbr, varianceBasedBlendReduction, 0.1);
-    mean = mix(mean, y, clamp(catchUpBlend, 0.0, 1.0));
+    mean = mix(mean, y, clamp(max(catchUpBlend, minMeanBlend), 0.0, 1.0));
 
     data.mean = mean;
     data.shortMean = shortMean;
