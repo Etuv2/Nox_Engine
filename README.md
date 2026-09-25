@@ -93,63 +93,61 @@ A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphi
 
 ### System Requirements
 - **OS**: Windows 10/11
-- **GPU**: OpenGL 4.5+ compatible graphics card
+- **GPU**: OpenGL 4.6 compatible graphics card
 - **RAM**: 8 GB minimum, 16 GB recommended
-- **Compiler**: Visual Studio 2019 or later (C++17)
+- **Compiler**: Visual Studio 2022 (v143 toolset, C++20)
 
 ### Dependencies
-- OpenGL 4.5+
+- OpenGL 4.6
 - GLEW 
-- SDL2
+- SDL2 (with SDL2_image, SDL2_ttf and SDL2_mixer)
 - GLM 
 - Dear ImGui 
 - ImGuizmo 
 - nlohmann JSON 
 - tinyglTF (glTF 2.0 loader)
+- Assimp
 
-<<<<<<< Updated upstream
 ### Building with CMake
 
-The project now supports a first-class CMake workflow.
+Windows x64 only: `CMakeLists.txt` stops on other platforms, and the runtime DLLs at the repository
+root and `lib/ASSIMP/assimp-vc143-mt.lib` are 64-bit.
 
-#### Windows (bundled prebuilt libraries)
+**Requirements**
+- Visual Studio 2022 with the v143 toolset (the project builds as C++20)
+- CMake 3.21 or newer (the copy bundled with Visual Studio works; use a *Developer PowerShell for VS 2022*
+  if `cmake` is not on your `PATH`)
 
-This repository already includes prebuilt SDL2/GLEW/Assimp libraries for Windows in `lib/` and runtime `.dll` files at the repository root.
+**Prebuilt import libraries**
 
-```bash
-cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
-cmake --build build --config Release
-```
+CMake links against these files and stops at configure time with
+`Required prebuilt library is missing` if one is absent:
 
-#### Linux/macOS (system packages)
+| Library | Path | In repository |
+| --- | --- | --- |
+| SDL2, SDL2main, SDL2_image, SDL2_ttf, SDL2_mixer | `lib/SDL/x64/*.lib` | no |
+| GLEW | `lib/GLEW/x64/glew32.lib` | no |
+| Assimp | `lib/ASSIMP/assimp-vc143-mt.lib` | yes |
 
-Install development packages for:
-- OpenGL
-- GLEW
-- SDL2
-- SDL2_image
-- SDL2_ttf
-- SDL2_mixer
-- assimp
+Only 32-bit SDL2/GLEW libraries are committed (`lib/SDL/x86`, `lib/GLEW/Win32`), so copy the x64 `.lib`
+files from the official Windows (VC) development packages into the folders above. Use the versions that
+match the DLLs in the repository root: SDL2 2.28.5, SDL2_image 2.6.3, SDL2_mixer 2.6.3, SDL2_ttf 2.20.2
+and GLEW 2.1.0.
 
-Then build:
-
-```bash
-cmake -S . -B build -G Ninja
-cmake --build build
-```
-=======
-### Building With CMake
-
-The repository now includes a top-level `CMakeLists.txt` and `CMakePresets.json` for Visual Studio 2022 builds on Windows.
+**Configure and build**
 
 ```powershell
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --preset vs2022-x64
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build --preset vs2022-x64-release --parallel
+cmake --preset vs2022-x64
+cmake --build --preset vs2022-x64-release --parallel   # or vs2022-x64-debug
 ```
 
-The generated executable is placed under `build/vs2022-x64/Release/`, and the required runtime DLLs are copied there automatically after the build completes.
->>>>>>> Stashed changes
+The executable is written to `build/vs2022-x64/<Config>/`. After each build the runtime DLLs are copied next
+to it; Release builds also copy the asset folders (`config`, `fonts`, `hdrs`, `images`, `scenes`, `shaders`, ...)
+that are missing there. `shaders` is refreshed on every Release build; the other folders are only copied
+once, so delete them from the output folder to pick up changes.
+
+When launched from Visual Studio the working directory is the repository root, so the engine reads assets
+straight from the source tree.
 
 
 ## Usage Guide
