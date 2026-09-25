@@ -848,9 +848,9 @@ void RenderingSettingsWindow::Render() {
 			if (ImGui::Checkbox("Enable Indirect Diffuse", &m_enableIndirectDiffuse)) { SyncToRenderer(); }
 			if (m_enableIndirectDiffuse) {
 				if (ImGui::SliderFloat("Indirect Strength", &m_indirectDiffuseStrength, 0.0f, 6.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Bounce Feedback", &m_indirectDiffuseBounceFeedback, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Bounce Feedback", &m_indirectDiffuseBounceFeedback, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Slice Count", &m_indirectDiffuseSliceCount, 1, 8)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 16)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 64)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 16.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Thickness VS", &m_indirectDiffuseThicknessVS, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Temporal Alpha", &m_indirectDiffuseTemporalAlpha, 0.02f, 0.35f, "%.2f")) { SyncToRenderer(); }

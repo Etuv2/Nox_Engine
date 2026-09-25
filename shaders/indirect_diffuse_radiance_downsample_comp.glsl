@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/pbr_common.glsl"
 #include "includes/screen_space_reconstruction.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
@@ -28,18 +29,6 @@ uniform float disocclusionReject;
 uniform float sourceNormalRejectCos;
 uniform float sourceAlbedoReject;
 uniform mat4 invProj;
-
-vec3 ShapeIndirectRadiance(vec3 radiance) {
-    radiance = max(radiance, vec3(0.0));
-    float luma = Luma(radiance);
-    if (luma <= 1e-5) {
-        return vec3(0.0);
-    }
-
-    float lowLift = mix(1.45, 1.0, smoothstep(0.04, 0.45, luma));
-    float softKnee = 1.0 / (1.0 + max(luma - 1.25, 0.0) * 0.55);
-    return radiance * (lowLift * softKnee);
-}
 
 bool TryLoadSourceDepthVS(ivec2 src, ivec2 srcSize, out float depthVS, out float depth01) {
     ivec2 clampedSrc = clamp(src, ivec2(0), srcSize - ivec2(1));
@@ -101,6 +90,7 @@ void main() {
     vec3 anchorAlbedo = max(texelFetch(gAlbedoAO, anchorSrc, 0).rgb, vec3(0.0));
 
     vec3 sourceRadiance = vec3(0.0);
+    vec3 sourceDiffuseAlbedo = vec3(0.0);
     float sourceWeight = 0.0;
     float acceptedSamples = 0.0;
     float depthWeightAccum = 0.0;
@@ -134,7 +124,8 @@ void main() {
 
             vec3 bounceable = texelFetch(bounceableDiffuseTex, src, 0).rgb;
             vec3 emissive = texelFetch(emissiveTex, src, 0).rgb;
-            vec3 source = ShapeIndirectRadiance(bounceable + emissive);
+            vec3 source = max(bounceable + emissive, vec3(0.0));
+            float sampleMetallic = clamp(texelFetch(gPackedNormalRM, src, 0).a, 0.0, 1.0);
             float depthW = exp(-depthRel / max(depthReject * 0.75, 1e-4));
             float normalW = smoothstep(sourceNormalRejectCos, 1.0, normalSim);
             float albedoW = exp(-albedoDelta / max(sourceAlbedoReject * 0.5, 1e-4));
@@ -143,6 +134,7 @@ void main() {
                 continue;
             }
             sourceRadiance += source * w;
+            sourceDiffuseAlbedo += sampleAlbedo * (1.0 - sampleMetallic) * w;
             sourceWeight += w;
             acceptedSamples += 1.0;
             depthWeightAccum += depthW;
@@ -153,7 +145,10 @@ void main() {
 
     vec3 currentRadiance = (sourceWeight > 1e-6)
         ? (sourceRadiance / sourceWeight)
-        : ShapeIndirectRadiance(texelFetch(bounceableDiffuseTex, anchorSrc, 0).rgb + texelFetch(emissiveTex, anchorSrc, 0).rgb);
+        : max(texelFetch(bounceableDiffuseTex, anchorSrc, 0).rgb + texelFetch(emissiveTex, anchorSrc, 0).rgb, vec3(0.0));
+    vec3 diffuseAlbedo = (sourceWeight > 1e-6)
+        ? (sourceDiffuseAlbedo / sourceWeight)
+        : anchorAlbedo * (1.0 - clamp(texelFetch(gPackedNormalRM, anchorSrc, 0).a, 0.0, 1.0));
     vec3 radiance = currentRadiance;
     float reinjectWeight = 0.0;
     vec3 reinjectionRadiance = vec3(0.0);
@@ -183,13 +178,13 @@ void main() {
                 float motionPixels = length(velocity * vec2(textureSize(linearDepthQuarter, 0)));
                 float motionW = exp(-motionPixels / 64.0);
 
-                float historySignal = Luma(max(prevIndirect.rgb, vec3(0.0)));
-                float historySignalWeight = 1.0 - exp(-historySignal * 0.75);
-                reinjectWeight = clamp(previousIndirectFeedback, 0.0, 2.0) * historySignalWeight;
+                // Multi-bounce: last frame's irradiance leaves this surface again as Lambertian
+                // radiance albedo / pi * E. A feedback of 1 is physically exact; history that fails
+                // the reprojection tests is dropped rather than smeared.
+                reinjectWeight = clamp(previousIndirectFeedback, 0.0, 1.0);
                 reinjectWeight *= depthW * normalW * motionW * (1.0 - disocclusion);
-                reinjectWeight = clamp(reinjectWeight, 0.0, 0.90);
 
-                reinjectionRadiance = max(prevIndirect.rgb, vec3(0.0)) * reinjectWeight;
+                reinjectionRadiance = diffuseAlbedo * INV_PI * max(prevIndirect.rgb, vec3(0.0)) * reinjectWeight;
                 radiance += reinjectionRadiance;
             }
         }

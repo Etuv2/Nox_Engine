@@ -65,38 +65,22 @@ vec3 DebugTonemap(vec3 hdr, float exposure) {
     return scaled / (vec3(1.0) + scaled);
 }
 
-vec3 ComputeIndirectBaseColorFloor(vec3 baseColor, float glossMask, float clearcoat) {
-    float baseLuma = Luminance(baseColor);
-    float darkMask = 1.0 - smoothstep(0.015, 0.18, baseLuma);
-    float materialMask = Saturate(max(glossMask, clearcoat));
-    float floorLuma = mix(0.0, 0.075, darkMask * materialMask);
-    vec3 hue = baseLuma > 1e-4 ? baseColor / baseLuma : vec3(1.0);
-    hue = mix(vec3(1.0), clamp(hue, vec3(0.25), vec3(4.0)), 0.65);
-    return max(baseColor, hue * floorLuma);
-}
-
-vec3 ComputeDebugIndirectMaterialResponse(vec2 uv, vec3 indirectIrradiance, vec3 fullNormalVS, float visibility) {
+// Mirrors the deferred composite (ComputeIndirectDiffuseResponse): outgoing radiance of the
+// diffuse lobe lit by the gathered irradiance.
+vec3 ComputeDebugIndirectMaterialResponse(vec2 uv, vec3 indirectIrradiance, vec3 fullNormalVS) {
     vec4 packedNormalRM = textureLod(normalFull, uv, 0.0);
     vec3 albedo = max(textureLod(gAlbedoAO, uv, 0.0).rgb, vec3(0.0));
     vec3 specularF0 = max(textureLod(gSpecularF0, uv, 0.0).rgb, vec3(0.0));
-    vec2 clearcoatData = textureLod(gClearCoat, uv, 0.0).rg;
 
     float roughness = ClampPerceptualRoughness(packedNormalRM.b);
     float metallic = clamp(packedNormalRM.a, 0.0, 1.0);
-    float clearcoat = clamp(clearcoatData.r, 0.0, 1.0);
-    float clearcoatRoughness = ClampPerceptualRoughness(clearcoatData.g);
-    float NdotV = clamp(abs(normalize(fullNormalVS).z), 0.08, 1.0);
+    float NdotV = clamp(abs(normalize(fullNormalVS).z), 0.0, 1.0);
 
-    vec3 F = FresnelSchlickRoughness(NdotV, specularF0, roughness);
-
-    float baseGloss = pow(1.0 - roughness, 2.0);
-    float clearcoatGloss = clearcoat * pow(1.0 - clearcoatRoughness, 2.0);
-    vec3 effectiveBase = ComputeIndirectBaseColorFloor(albedo, max(baseGloss, clearcoatGloss), clearcoat);
-    vec3 diffuseResponse = (vec3(1.0) - F) * (1.0 - metallic) * effectiveBase;
-    vec3 specularResponse = F * baseGloss * 0.35;
-
-    vec3 materialResponse = diffuseResponse + specularResponse;
-    return max(indirectIrradiance * materialResponse * visibility * indirectStrength * 2.5, vec3(0.0));
+    vec3 FssEss;
+    vec3 FmsEms;
+    ComputeIBLSpecularEnergy(specularF0, NdotV, EnvBRDFApprox(NdotV, roughness), FssEss, FmsEms);
+    vec3 kD = max(vec3(1.0) - (FssEss + FmsEms), vec3(0.0));
+    return max(indirectIrradiance * kD * albedo * (1.0 - metallic) * INV_PI * indirectStrength, vec3(0.0));
 }
 
 vec4 SampleQuarterResolved(vec2 uv, vec3 fullNormal, float fullDepthVS, float fullDepth01, float normalMip) {
@@ -241,8 +225,7 @@ vec3 SampleDebugMode(int mode, vec2 uv, vec3 fullNormal, vec4 upscaledOut) {
         return DebugTonemap(upscaledOut.rgb, 8.0);
     }
     if (mode == 16) {
-        float visibility = mix(0.35, 1.0, clamp(upscaledOut.a, 0.0, 1.0));
-        return DebugTonemap(ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, fullNormal, visibility), 8.0);
+        return DebugTonemap(ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, fullNormal), 8.0);
     }
     if (mode == 17) {
         return DebugTonemap(textureLod(radianceCurrentQuarter, uv, 0.0).rgb, 3.0);
@@ -294,8 +277,7 @@ void main() {
 
     vec4 upscaledOut = SampleQuarterResolved(uv, normalize(fullNormal), fullDepthVS, fullDepth01, QuarterNormalMip(normalFromDepthTex, depthLinearQuarter));
     vec3 debugRGB = SampleDebugMode(debugMode, uv, normalize(fullNormal), upscaledOut);
-    float visibility = mix(0.35, 1.0, clamp(upscaledOut.a, 0.0, 1.0));
-    vec3 finalIndirectOnly = ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, normalize(fullNormal), visibility);
+    vec3 finalIndirectOnly = ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, normalize(fullNormal));
 
     imageStore(outFull, id, vec4(max(upscaledOut.rgb, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
     imageStore(outDebug, id, vec4(max(debugRGB, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));

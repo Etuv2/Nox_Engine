@@ -470,6 +470,17 @@ vec2 SampleBRDFLUT(sampler2D brdfLUT, float NdotV, float perceptualRoughness) {
     return max(texture(brdfLUT, vec2(Saturate(NdotV), Saturate(perceptualRoughness))).rg, vec2(0.0));
 }
 
+// Analytic fit of the split-sum BRDF LUT (Karis 2014, "Physically Based Shading on Mobile").
+// Returns the same (scale, bias) pair as SampleBRDFLUT for passes that must not depend on the
+// LUT being bound (the renderer binds a flat fallback LUT when no environment is loaded).
+vec2 EnvBRDFApprox(float NdotV, float perceptualRoughness) {
+    const vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
+    const vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
+    vec4 r = Saturate(perceptualRoughness) * c0 + c1;
+    float a004 = min(r.x * r.x, exp2(-9.28 * Saturate(NdotV))) * r.x + r.y;
+    return max(vec2(-1.04, 1.04) * a004 + r.zw, vec2(0.0));
+}
+
 // Single + multiple scattering specular energy for image based lighting
 // (Fdez-Aguera 2019, "A Multiple-Scattering Microfacet Model for Real-Time IBL").
 //   FssEss: single-scattered energy, pairs with the prefiltered radiance

@@ -20,9 +20,9 @@ struct RenderContext {
 	struct IndirectDiffuseDefaults {
 		static constexpr bool Enable = true;
 		static constexpr float Strength = 1.0f;
-		static constexpr float BounceFeedback = 2.0f;
-		static constexpr int SliceCount = 8;
-		static constexpr int SamplesPerSlice = 16;
+		static constexpr float BounceFeedback = 1.0f; // 1 = physically exact multi-bounce
+		static constexpr int SliceCount = 4;
+		static constexpr int SamplesPerSlice = 32; // per slice direction; gaps between samples bias SSGI low
 		static constexpr float RadiusVS = 3.04f;
 		static constexpr float ThicknessVS = 0.10f;
 		static constexpr float TemporalAlpha = 0.35f;

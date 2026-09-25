@@ -50,7 +50,6 @@ uniform sampler2D screenSpaceShadowMap;
 uniform float sssStrength = 0.6; // Contact shadow blend strength [0,1]
 
 const int MAX_INDIRECT_DIFFUSE_SOURCES = 4;
-const float SURFEL_GI_RESPONSE_FORM_FACTOR_COMPENSATION = 22.0;
 uniform sampler2D indirectDiffuseMaps[MAX_INDIRECT_DIFFUSE_SOURCES];
 uniform float indirectDiffuseStrengths[MAX_INDIRECT_DIFFUSE_SOURCES];
 uniform int indirectDiffuseSourceCount = 0;
@@ -256,118 +255,81 @@ vec3 ComputeBounceableIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float
 	return max(source, vec3(0.0));
 }
 
-vec3 ComputeIndirectGIResponse(vec3 indirectIrradiance, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+// Outgoing radiance per unit irradiance for indirect diffuse light: the diffuse lobe of
+// EvaluatePrincipledIBL (whose irradiance map stores E / PI, hence INV_PI here), with the energy
+// the specular layer keeps and transmission removes. Uses the analytic environment BRDF so the
+// response does not depend on which BRDF LUT happens to be bound.
+vec3 ComputeIndirectDiffuseResponse(vec3 N, vec3 V, PrincipledSurface surface) {
 	float NdotV = Saturate(dot(N, V));
+	vec3 FssEss;
+	vec3 FmsEms;
+	ComputeIBLSpecularEnergy(surface.specularF0, NdotV, EnvBRDFApprox(NdotV, surface.perceptualRoughness), FssEss, FmsEms);
 
-	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
-	vec3 kD = clamp(vec3(1.0) - F, vec3(0.0), vec3(1.0));
 	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
-	vec3 diffuseAlbedo = surface.baseColor * (1.0 - surface.metallic) * (1.0 - transmissionWeight);
-	float diffuseTerm = mix(1.0, 1.0 + 0.35 * surface.perceptualRoughness, surface.subsurface);
-	float aoPolicy = mix(0.55, 1.0, clamp(diffuseAO, 0.0, 1.0));
-	float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
-	vec3 materialResponse = kD * diffuseAlbedo * INV_PI * diffuseTerm * aoPolicy * baseAttenuation;
-	return max(indirectIrradiance * materialResponse, vec3(0.0));
+	float diffuseTerm = mix(1.0, 1.0 + 0.5 * surface.perceptualRoughness, surface.subsurface);
+	vec3 kD = max(vec3(1.0) - (FssEss + FmsEms), vec3(0.0)) * (1.0 - transmissionWeight);
+	return kD * surface.diffuseColor * diffuseTerm * INV_PI * ComputeBaseLayerAttenuation(surface, NdotV);
 }
 
-vec3 ComputeSurfelGIResponse(vec3 indirectIrradiance, float indirectConfidence, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
-	float NdotV = Saturate(dot(N, V));
+// Indirect diffuse (global illumination) sources. Every map stores irradiance E in RGB, in the
+// same units as the lights: a white Lambertian surface lit by E reflects E / PI.
+//   0 SSGI:   near field gathered from on-screen surfaces. Alpha is the cosine-weighted fraction
+//             of the hemisphere it left open (no on-screen occluder within its radius).
+//   1 LPV:    one-bounce far field from the light propagation volume. Alpha is 1.
+//   2 Surfel: multi-bounce far field from the world-space surfel cache. Alpha is the cache's
+//             coverage of this pixel (0 where no surfel has settled yet).
+// The estimators overlap, so they are layered rather than summed: the surfel cache is preferred
+// in the far field and the LPV fills pixels the cache does not cover yet; SSGI replaces the far
+// field (and the sky) for the part of the hemisphere it resolved on screen.
+struct IndirectDiffuseInputs {
+	vec3 nearIrradiance;   // SSGI, already scaled by its strength
+	float nearVisibility;  // 1 when SSGI is off
+	vec3 lpvIrradiance;
+	vec3 surfelIrradiance;
+	float surfelCoverage;
+	bool hasNear;
+	bool hasFar;
+};
 
-	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
-	vec3 kD = clamp(vec3(1.0) - F, vec3(0.0), vec3(1.0));
-	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
-	vec3 diffuseAlbedo = surface.baseColor * (1.0 - surface.metallic) * (1.0 - transmissionWeight);
-	float diffuseTerm = mix(1.0, 1.0 + 0.35 * surface.perceptualRoughness, surface.subsurface);
-	float indirectLum = Luminance(indirectIrradiance);
-	float indirectChroma = length(indirectIrradiance - vec3(indirectLum));
-	float indirectChromaSignal = smoothstep(0.012, 0.18, indirectChroma / max(indirectLum, 0.06));
+IndirectDiffuseInputs SampleIndirectDiffuseSources() {
+	IndirectDiffuseInputs gi;
+	gi.nearIrradiance = vec3(0.0);
+	gi.nearVisibility = 1.0;
+	gi.lpvIrradiance = vec3(0.0);
+	gi.surfelIrradiance = vec3(0.0);
+	gi.surfelCoverage = 0.0;
+	gi.hasNear = false;
+	gi.hasFar = false;
 
-	float aoPolicy = mix(0.55, 1.0, clamp(diffuseAO, 0.0, 1.0));
-	float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
-	float confidenceLift = smoothstep(0.025, 0.55, indirectConfidence);
-	float chromaVisibility = mix(0.92, 1.0, indirectChromaSignal * confidenceLift);
-	float energyCompensation = mix(1.0, SURFEL_GI_RESPONSE_FORM_FACTOR_COMPENSATION, confidenceLift);
-	vec3 materialResponse = kD * diffuseAlbedo * INV_PI * diffuseTerm * aoPolicy * baseAttenuation * confidenceLift * chromaVisibility * energyCompensation;
-	vec3 standardResponse = indirectIrradiance * materialResponse;
-
-	float receiverAlbedoLum = Luminance(diffuseAlbedo);
-	float chromaResponseBlend = indirectChromaSignal * confidenceLift * smoothstep(0.006, 0.10, indirectLum);
-	vec3 receiverChromaResponseAlbedo = mix(
-		diffuseAlbedo,
-		max(diffuseAlbedo, vec3(max(receiverAlbedoLum * 0.90, 0.055))),
-		chromaResponseBlend * 0.46);
-	vec3 receiverChromaResponse = kD * receiverChromaResponseAlbedo * INV_PI * diffuseTerm * aoPolicy * baseAttenuation * confidenceLift * chromaVisibility * energyCompensation;
-	vec3 chromaPreservedResponse = indirectIrradiance * receiverChromaResponse;
-	vec3 response = mix(standardResponse, chromaPreservedResponse, chromaResponseBlend * 0.46);
-
-	float standardLum = Luminance(max(standardResponse, vec3(0.0)));
-	float responseLum = Luminance(max(response, vec3(0.0)));
-	float maxChromaPreservedLum = max(
-		standardLum * mix(1.06, 1.28, chromaResponseBlend),
-		standardLum + 0.024 * chromaResponseBlend);
-	if (responseLum > maxChromaPreservedLum) {
-		response *= maxChromaPreservedLum / max(responseLum, 1e-5);
+	int sourceCount = clamp(indirectDiffuseSourceCount, 0, MAX_INDIRECT_DIFFUSE_SOURCES);
+	for (int i = 0; i < sourceCount; ++i) {
+		float strength = indirectDiffuseStrengths[i];
+		if (strength <= 0.0001) {
+			continue;
+		}
+		vec4 value = texture(indirectDiffuseMaps[i], vTexCoord);
+		if (any(isnan(value)) || any(isinf(value))) {
+			continue;
+		}
+		vec3 irradiance = max(value.rgb, vec3(0.0)) * strength;
+		if (i == 0) {
+			gi.nearIrradiance = irradiance;
+			gi.nearVisibility = clamp(value.a, 0.0, 1.0);
+			gi.hasNear = true;
+		} else if (i == 2) {
+			gi.surfelIrradiance = irradiance;
+			gi.surfelCoverage = clamp(value.a, 0.0, 1.0);
+			gi.hasFar = true;
+		} else {
+			gi.lpvIrradiance += irradiance;
+			gi.hasFar = true;
+		}
 	}
-
-	return max(response, vec3(0.0));
+	return gi;
 }
 
-vec3 PreserveSurfelBleedAgainstDirect(vec3 surfelContribution, vec3 directAndIBLContribution) {
-	vec3 safeSurfel = max(surfelContribution, vec3(0.0));
-	float surfelLum = Luminance(safeSurfel);
-	if (surfelLum <= 1e-5) {
-		return vec3(0.0);
-	}
-
-	float directLum = Luminance(max(directAndIBLContribution, vec3(0.0)));
-	vec3 neutralSurfel = vec3(surfelLum);
-	vec3 surfelChroma = safeSurfel - neutralSurfel;
-	float chromaRatio = length(surfelChroma) / max(surfelLum, 0.025);
-	float chromaSignal = smoothstep(0.08, 0.46, chromaRatio);
-	float directWashout = smoothstep(0.20, 1.40, directLum);
-	float protection = chromaSignal * directWashout;
-
-	vec3 positiveChroma = max(safeSurfel - neutralSurfel * 0.58, vec3(0.0));
-	vec3 protectedSurfel = safeSurfel * (1.0 + 0.18 * protection);
-	protectedSurfel += positiveChroma * (0.30 * protection);
-
-	float protectedLum = Luminance(protectedSurfel);
-	float maxProtectedLum = max(
-		surfelLum * mix(1.04, 1.22, protection),
-		surfelLum + 0.018 * protection);
-	if (protectedLum > maxProtectedLum) {
-		protectedSurfel *= maxProtectedLum / max(protectedLum, 1e-5);
-	}
-
-	return max(protectedSurfel, vec3(0.0));
-}
-
-vec3 CompressIndirectContribution(vec3 indirectContribution) {
-	float luma = Luminance(indirectContribution);
-	if (luma <= 1e-5) {
-		return vec3(0.0);
-	}
-
-	float softKnee = 1.0 / (1.0 + max(luma - 2.2, 0.0) * 0.28);
-	return min(indirectContribution * softKnee, vec3(8.0));
-}
-
-vec3 EvaluateIndirectDiffuseMap(int sourceIndex, vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
-	float strength = indirectDiffuseStrengths[sourceIndex];
-	if (strength <= 0.0001) {
-		return vec3(0.0);
-	}
-
-	vec4 indirectSample = texture(indirectDiffuseMaps[sourceIndex], vTexCoord);
-	vec3 indirectIrradiance = max(indirectSample.rgb, vec3(0.0));
-	float indirectAO = clamp(indirectSample.a, 0.0, 1.0);
-	float indirectAttenuation = sourceIndex == 2 ? 1.0 : mix(0.35, 1.0, indirectAO);
-	float sourceScale = 1.0;
-	vec3 response = sourceIndex == 2
-		? ComputeSurfelGIResponse(indirectIrradiance, indirectAO, N, V, surface, diffuseAO, specularAO)
-		: ComputeIndirectGIResponse(indirectIrradiance, N, V, surface, diffuseAO, specularAO);
-	vec3 contribution = response * strength * indirectAttenuation * sourceScale;
-	return CompressIndirectContribution(contribution);
+vec3 ResolveFarFieldIrradiance(IndirectDiffuseInputs gi) {
+	return gi.surfelIrradiance + (1.0 - gi.surfelCoverage) * gi.lpvIrradiance;
 }
 
 void main() {
@@ -416,8 +378,11 @@ void main() {
 		}
 	}
 
-	// AO factors
-	float diffuseAO = mix(1.0, ssao, aoStrength) * aoTex;
+	// AO factors. SSGI's visibility is a cosine-weighted horizon AO computed from the same
+	// geometry as SSAO; taking the minimum keeps either from darkening the other twice.
+	IndirectDiffuseInputs gi = SampleIndirectDiffuseSources();
+	float screenAO = min(mix(1.0, ssao, aoStrength), gi.nearVisibility);
+	float diffuseAO = screenAO * aoTex;
 	float specularAO = SpecularOcclusion(NdotV, diffuseAO, surface.perceptualRoughness);
 
 	// Evaluate direct and indirect terms separately so indirect diffuse stays local and debuggable.
@@ -442,23 +407,15 @@ void main() {
 
 	vec3 iblContribution = ComputeIBL(N, V, surface, diffuseAO, specularAO);
 
-	vec3 ssgiContribution = vec3(0.0);
-	vec3 lpvContribution = vec3(0.0);
-	vec3 surfelContribution = vec3(0.0);
-	int indirectCount = clamp(indirectDiffuseSourceCount, 0, MAX_INDIRECT_DIFFUSE_SOURCES);
-	for (int i = 0; i < indirectCount; ++i) {
-		vec3 sourceContribution = EvaluateIndirectDiffuseMap(i, N, V, surface, diffuseAO, specularAO);
-		if (i == 0) {
-			ssgiContribution += sourceContribution;
-		} else if (i == 1) {
-			lpvContribution += sourceContribution;
-		} else if (i == 2) {
-			surfelContribution += sourceContribution;
-		} else {
-			lpvContribution += sourceContribution;
-		}
-	}
-	vec3 fullSurfelContribution = PreserveSurfelBleedAgainstDirect(surfelContribution, directLighting + iblContribution);
+	// Near field already contains its own occlusion, so only material AO applies to it; the far
+	// field has no small-scale occlusion and takes the screen-space AO (which includes SSGI's
+	// visibility, i.e. only the directions SSGI left open).
+	vec3 giResponse = ComputeIndirectDiffuseResponse(N, V, surface);
+	vec3 ssgiContribution = giResponse * gi.nearIrradiance * aoTex;
+	vec3 lpvContribution = giResponse * gi.lpvIrradiance * diffuseAO;
+	vec3 surfelContribution = giResponse * gi.surfelIrradiance * diffuseAO;
+	vec3 farFieldContribution = giResponse * ResolveFarFieldIrradiance(gi) * diffuseAO;
+
 	vec3 color = (uLightingCompositeDebugMode == 0) ? emissive : vec3(0.0);
 	if (uLightingCompositeDebugMode == 1) {
 		color += directLighting;
@@ -473,12 +430,12 @@ void main() {
 	} else {
 		color += directLighting;
 		color += iblContribution;
+		vec3 indirectContribution = ssgiContribution + farFieldContribution;
 		if (indirectDiffuseCompositeMode == 1) {
-			vec3 modulativeIndirectContribution = ssgiContribution + lpvContribution + fullSurfelContribution;
-			color *= vec3(1.0) + modulativeIndirectContribution;
+			color *= vec3(1.0) + indirectContribution;
 		}
 		else {
-			color += ssgiContribution + lpvContribution + fullSurfelContribution;
+			color += indirectContribution;
 		}
 	}
 
