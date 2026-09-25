@@ -13,7 +13,7 @@ uniform int u_gridResolution;
 uniform sampler3D u_lpvTextureR;
 uniform sampler3D u_lpvTextureG;
 uniform sampler3D u_lpvTextureB;
-uniform sampler3D u_geometryVolume;
+uniform usampler3D u_geometryVolume; // directional occlusion bits
 
 out vec4 v_color;
 
@@ -48,11 +48,11 @@ void main() {
     
     vec3 energy = vec3(totalR, totalG, totalB) * 5.0; // Boost for visibility
     
-    // Sample geometry volume
-    float occlusion = texture(u_geometryVolume, uvw).r;
-    
-    // Color: energy color if lit, red if occluded
-    if (occlusion > 0.5) {
+    // Any surface in the cell
+    bool hasGeometry = texelFetch(u_geometryVolume, voxelCoords, 0).r != 0u;
+
+    // Color: red for geometry, energy color if lit
+    if (hasGeometry) {
         v_color = vec4(1.0, 0.0, 0.0, 0.8); // Red for geometry
     } else if (length(energy) > 0.01) {
         v_color = vec4(energy, 0.7); // Energy color

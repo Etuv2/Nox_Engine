@@ -834,8 +834,6 @@ void ModularRenderer::BuildPassDescriptors(
 			m_lpvPass->config.rsmResolution = m_context.lpvRSMResolution;
 			m_lpvPass->config.vplSampleCount = m_context.lpvVPLSampleCount;
 			m_lpvPass->config.propagationIterations = m_context.lpvPropagationIterations;
-			m_lpvPass->config.propagationAttenuation = m_context.lpvPropagationAttenuation;
-			m_lpvPass->config.propagationBias = m_context.lpvPropagationBias;
 			m_lpvPass->config.enableOcclusion = m_context.lpvEnableOcclusion;
 			m_lpvPass->config.giStrength = m_context.lpvGIStrength;
 			m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;

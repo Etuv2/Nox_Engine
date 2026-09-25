@@ -5,8 +5,11 @@
 #include "../Camera.h"
 #include "../DirectionalLight.h"
 #include "../RenderContext.h"
+#include "../LightManager.h"
+#include "../BaseLight.h"
+#include <algorithm>
+#include <cmath>
 #include <iostream>
-#include <random>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -57,9 +60,9 @@ void LPVPass::Resize(RenderContext& context, int /*newWidth*/, int /*newHeight*/
 void LPVPass::DestroyLPVResourcesOnly() {
     for (int i = 0; i < 3; ++i) {
         if (m_lpvTextures[i]) { glDeleteTextures(1, &m_lpvTextures[i]); m_lpvTextures[i] = 0; }
-        if (m_lpvTexturesTemp[i]) { glDeleteTextures(1, &m_lpvTexturesTemp[i]); m_lpvTexturesTemp[i] = 0; }
         if (m_lpvSampleTextures[i]) { glDeleteTextures(1, &m_lpvSampleTextures[i]); m_lpvSampleTextures[i] = 0; }
         if (m_lpvSampleTexturesTemp[i]) { glDeleteTextures(1, &m_lpvSampleTexturesTemp[i]); m_lpvSampleTexturesTemp[i] = 0; }
+        if (m_lpvAccumTextures[i]) { glDeleteTextures(1, &m_lpvAccumTextures[i]); m_lpvAccumTextures[i] = 0; }
     }
     if (m_geometryVolume) { glDeleteTextures(1, &m_geometryVolume); m_geometryVolume = 0; }
 }
@@ -78,7 +81,7 @@ void LPVPass::Execute(RenderContext& ctx,
                       const std::shared_ptr<Camera>& camera,
                       const std::shared_ptr<DirectionalLight>& dirLight,
                       const std::shared_ptr<Skybox>& /*skybox*/) {
-    if (!config.enableLPV || !sceneGraph || !camera || !dirLight) return;
+    if (!config.enableLPV || !sceneGraph || !camera) return;
 
     // Recreate resources if grid/RSM res changed
     if (m_allocatedGridResolution != config.gridResolution) {
@@ -97,8 +100,15 @@ void LPVPass::Execute(RenderContext& ctx,
         m_allocatedRSMResolution = config.rsmResolution;
     }
 
-    // Follow camera for grid center by default
-    config.gridCenter = camera->GetCameraPosition();
+    // Follow the camera, shifted forward so most cells cover what is in view (the camera sits
+    // 15% of the extent from the back face) and snapped to whole cells so the lighting does not
+    // swim as it moves.
+    const float voxelSize = std::max(config.voxelSize, 1e-3f);
+    const float gridExtent = config.gridResolution * voxelSize;
+    glm::vec3 forward = camera->GetCameraFrontVector();
+    forward = glm::dot(forward, forward) > 1e-8f ? glm::normalize(forward) : glm::vec3(0.0f, 0.0f, -1.0f);
+    const glm::vec3 desiredCenter = camera->GetCameraPosition() + forward * (0.35f * gridExtent);
+    config.gridCenter = glm::floor(desiredCenter / voxelSize + 0.5f) * voxelSize;
     config.gridOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
     // Share parameters with lighting pass
@@ -112,49 +122,54 @@ void LPVPass::Execute(RenderContext& ctx,
         m_lastGridCenter = config.gridCenter;
     }
 
-    // Voxelize occluders if needed
-    if (m_geometryDirty && config.enableOcclusion) {
+    // Voxelize occluders every frame so moving objects block light where they are now
+    if (config.enableOcclusion) {
         VoxelizeGeometry(sceneGraph);
         m_geometryDirty = false;
     }
 
-    // Clear integer LPV volumes and temp
+    // Clear the injection accumulators
     for (int i = 0; i < 3; ++i) {
-        const GLuint zero = 0u;
-        glBindTexture(GL_TEXTURE_3D, m_lpvTextures[i]);
-        glClearTexImage(m_lpvTextures[i], 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
-        glBindTexture(GL_TEXTURE_3D, m_lpvTexturesTemp[i]);
-        glClearTexImage(m_lpvTexturesTemp[i], 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
+        const GLint zero = 0;
+        glClearTexImage(m_lpvTextures[i], 0, GL_RED_INTEGER, GL_INT, &zero);
     }
 
-    // Render RSM for current light configuration
-    RenderRSM(ctx, sceneGraph, dirLight);
+    glm::vec3 lightDirection(0.0f, -1.0f, 0.0f);
+    glm::vec3 lightIrradiance(0.0f);
+    const bool hasLight = FindInjectedLight(ctx, dirLight, lightDirection, lightIrradiance);
 
-    // Inject VPLs into integer LPV grid (atomic adds)
-    InjectVPLs();
+    if (hasLight) {
+        // Render RSM for current light configuration, then inject its texels as VPLs
+        RenderRSM(sceneGraph, lightDirection, lightIrradiance);
+        InjectVPLs(lightIrradiance);
+    }
 
     // Make sure injection writes are visible
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-    // Convert integer LPV to float RGBA16F sampling textures BEFORE propagation
+    // Convert the fixed-point accumulators into the first float wave
     if (m_convertShader != 0) {
         glUseProgram(m_convertShader);
-        GLint locRes = glGetUniformLocation(m_convertShader, "u_gridResolution");
-        if (locRes >= 0) glUniform1i(locRes, config.gridResolution);
-        // Inputs: integer (extended X)
-        glBindImageTexture(0, m_lpvTextures[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32UI);
-        glBindImageTexture(1, m_lpvTextures[1], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32UI);
-        glBindImageTexture(2, m_lpvTextures[2], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32UI);
-        // Outputs: float (per-voxel RGBA16F)
+        glUniform1i(glGetUniformLocation(m_convertShader, "u_gridResolution"), config.gridResolution);
+        glUniform1f(glGetUniformLocation(m_convertShader, "u_fixedPointScale"), m_fixedPointScale);
+        glBindImageTexture(0, m_lpvTextures[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32I);
+        glBindImageTexture(1, m_lpvTextures[1], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32I);
+        glBindImageTexture(2, m_lpvTextures[2], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32I);
         glBindImageTexture(3, m_lpvSampleTextures[0], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
         glBindImageTexture(4, m_lpvSampleTextures[1], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
         glBindImageTexture(5, m_lpvSampleTextures[2], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        int groups = (config.gridResolution + 7) / 8;
+        const int groups = (config.gridResolution + 7) / 8;
         glDispatchCompute(groups, groups, groups);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT);
+
+        // The injected light itself is the first term of the accumulated volume.
+        for (int i = 0; i < 3; ++i) {
+            glCopyImageSubData(m_lpvSampleTextures[i], GL_TEXTURE_3D, 0, 0, 0, 0,
+                               m_lpvAccumTextures[i], GL_TEXTURE_3D, 0, 0, 0, 0,
+                               config.gridResolution, config.gridResolution, config.gridResolution);
+        }
     }
 
-    // Now propagate in float domain using ping-pong between m_lpvSampleTextures and m_lpvSampleTexturesTemp
     PropagateLPV();
 
     // Resolve LPV's 3D SH representation into a generic full-screen indirect texture.
@@ -162,6 +177,39 @@ void LPVPass::Execute(RenderContext& ctx,
 
     // Ensure the final float volumes and resolved texture are visible to downstream passes
     glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+}
+
+bool LPVPass::FindInjectedLight(const RenderContext& ctx,
+                                const std::shared_ptr<DirectionalLight>& fallback,
+                                glm::vec3& direction,
+                                glm::vec3& irradiance) const {
+    // Inject the same directional light the deferred pass shades with, not the engine's default
+    // light object (which only exists as a fallback for scenes without lights).
+    std::shared_ptr<BaseLight> light;
+    if (ctx.lightManager) {
+        for (const auto& candidate : ctx.lightManager->GetEnabledLights()) {
+            if (candidate && candidate->GetLightType() == BaseLight::LightType::DIRECTIONAL) {
+                light = candidate;
+                break;
+            }
+        }
+    }
+    if (!light) {
+        light = fallback;
+    }
+    if (!light) {
+        return false;
+    }
+
+    const glm::vec3 dir = light->GetDirection();
+    if (glm::dot(dir, dir) < 1e-8f) {
+        return false;
+    }
+    direction = glm::normalize(dir);
+    // Same convention as lighting_common.glsl: a directional light delivers color * intensity to
+    // a surface facing it.
+    irradiance = glm::max(light->GetColor() * light->GetIntensity(), glm::vec3(0.0f));
+    return irradiance.x + irradiance.y + irradiance.z > 0.0f;
 }
 
 bool LPVPass::CreateShaders() {
@@ -193,57 +241,41 @@ bool LPVPass::CreateShaders() {
 }
 
 bool LPVPass::CreateLPVResources() {
-    int res = config.gridResolution;
-    int extendedResX = res * 4; // 4 SH bands along X for integer storage
+    const int res = config.gridResolution;
+    const int extendedResX = res * 4; // 4 SH coefficients along X for the integer accumulators
+
+    auto setVolumeParams = [](GLenum filter) {
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, filter);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, filter);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    };
 
     for (int i = 0; i < 3; ++i) {
         glGenTextures(1, &m_lpvTextures[i]);
         glBindTexture(GL_TEXTURE_3D, m_lpvTextures[i]);
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, extendedResX, res, res);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32I, extendedResX, res, res);
+        setVolumeParams(GL_NEAREST);
 
-        glGenTextures(1, &m_lpvTexturesTemp[i]);
-        glBindTexture(GL_TEXTURE_3D, m_lpvTexturesTemp[i]);
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, extendedResX, res, res);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-        // Float volumes used by propagation and for sampling in lighting pass
-        glGenTextures(1, &m_lpvSampleTextures[i]);
-        glBindTexture(GL_TEXTURE_3D, m_lpvSampleTextures[i]);
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA16F, res, res, res);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-        glGenTextures(1, &m_lpvSampleTexturesTemp[i]);
-        glBindTexture(GL_TEXTURE_3D, m_lpvSampleTexturesTemp[i]);
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA16F, res, res, res);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        GLuint* floatVolumes[3] = { &m_lpvSampleTextures[i], &m_lpvSampleTexturesTemp[i], &m_lpvAccumTextures[i] };
+        for (GLuint* volume : floatVolumes) {
+            glGenTextures(1, volume);
+            glBindTexture(GL_TEXTURE_3D, *volume);
+            glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA16F, res, res, res);
+            setVolumeParams(GL_LINEAR);
+            const float zero[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            glClearTexImage(*volume, 0, GL_RGBA, GL_FLOAT, zero);
+        }
     }
 
-    // Geometry occlusion volume
+    // Directional geometry volume for occlusion (6 bits per cell, see lpv_voxelize_frag.glsl)
     glGenTextures(1, &m_geometryVolume);
     glBindTexture(GL_TEXTURE_3D, m_geometryVolume);
-    glTexStorage3D(GL_TEXTURE_3D, 1, GL_R8, res, res, res);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, res, res, res);
+    setVolumeParams(GL_NEAREST);
+    const GLuint noGeometry = 0u;
+    glClearTexImage(m_geometryVolume, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &noGeometry);
 
     glBindTexture(GL_TEXTURE_3D, 0);
 
@@ -332,38 +364,44 @@ bool LPVPass::EnsureResolvedIndirectTexture(int width, int height) {
     return glGetError() == GL_NO_ERROR;
 }
 
-void LPVPass::RenderRSM(RenderContext& /*ctx*/,
-                        const std::shared_ptr<SceneGraph>& sceneGraph,
-                        const std::shared_ptr<DirectionalLight>& dirLight) {
+void LPVPass::RenderRSM(const std::shared_ptr<SceneGraph>& sceneGraph,
+                        const glm::vec3& lightDirection,
+                        const glm::vec3& lightIrradiance) {
     if (!m_rsmFBO) return;
 
     m_rsmFBO->Bind();
     glViewport(0, 0, config.rsmResolution, config.rsmResolution);
+    // Empty texels must carry zero flux.
+    GLfloat previousClearColor[4];
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearColor(previousClearColor[0], previousClearColor[1], previousClearColor[2], previousClearColor[3]);
 
-    glm::vec3 lightDir = glm::normalize(dirLight->GetDirection());
-    glm::vec3 lightPos = config.gridCenter - lightDir * 50.0f;
+    // Orthographic light view covering the whole grid.
+    const float halfExtent = config.gridResolution * config.voxelSize * 0.5f;
+    const float depthRange = halfExtent * 4.0f;
+    glm::vec3 lightPos = config.gridCenter - lightDirection * (depthRange * 0.5f);
     glm::vec3 up(0, 1, 0);
-    if (std::abs(glm::dot(lightDir, up)) > 0.99f) up = glm::vec3(1, 0, 0);
+    if (std::abs(glm::dot(lightDirection, up)) > 0.99f) up = glm::vec3(1, 0, 0);
     glm::mat4 lightView = glm::lookAt(lightPos, config.gridCenter, up);
-    float orthoSize = config.gridResolution * config.voxelSize * 0.5f;
-    glm::mat4 lightProj = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, 100.0f);
+    glm::mat4 lightProj = glm::ortho(-halfExtent, halfExtent, -halfExtent, halfExtent, 0.0f, depthRange);
     glm::mat4 lightViewProj = lightProj * lightView;
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDisable(GL_BLEND);
     glUseProgram(m_rsmShader);
+    glUniform3fv(glGetUniformLocation(m_rsmShader, "u_lightDirection"), 1, glm::value_ptr(lightDirection));
+    glUniform3fv(glGetUniformLocation(m_rsmShader, "u_lightIrradiance"), 1, glm::value_ptr(lightIrradiance));
 
-    GLint loc = glGetUniformLocation(m_rsmShader, "u_lightViewProj");
-    if (loc >= 0) glUniformMatrix4fv(loc, 1, GL_FALSE, &lightViewProj[0][0]);
-
-    sceneGraph->RenderGeometry(m_rsmShader);
+    // Cull against the light volume, not the camera: off-screen surfaces bounce light too.
+    sceneGraph->RenderShadowCascade(lightViewProj, m_rsmShader);
 
     FrameBuffer::Unbind();
 }
 
-void LPVPass::InjectVPLs() {
+void LPVPass::InjectVPLs(const glm::vec3& lightIrradiance) {
     glUseProgram(m_injectionShader);
 
     // RSM inputs
@@ -375,62 +413,70 @@ void LPVPass::InjectVPLs() {
     glUniform1i(glGetUniformLocation(m_injectionShader, "u_rsmFlux"), 2);
 
     // Integer LPV outputs (atomic add)
-    glBindImageTexture(0, m_lpvTextures[0], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
-    glBindImageTexture(1, m_lpvTextures[1], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
-    glBindImageTexture(2, m_lpvTextures[2], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
+    glBindImageTexture(0, m_lpvTextures[0], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32I);
+    glBindImageTexture(1, m_lpvTextures[1], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32I);
+    glBindImageTexture(2, m_lpvTextures[2], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32I);
 
-    // Grid params
+    // VPLs sample the RSM on a regular grid; each stands for the light-perpendicular area around it.
+    const int vplGridSize = std::clamp(static_cast<int>(std::ceil(std::sqrt(static_cast<float>(std::max(config.vplSampleCount, 1))))),
+                                       1, config.rsmResolution);
+    const float rsmExtent = config.gridResolution * config.voxelSize;
+    const float vplSpacing = rsmExtent / static_cast<float>(vplGridSize);
+    const float vplArea = vplSpacing * vplSpacing;
+
+    // Fixed-point scale from an upper bound of a cell's SH coefficients: the light can deliver at
+    // most E * (projected area of a cell <= sqrt(3) s^2) to a cell, whose intensity lobe then has
+    // L0 = flux / pi * 0.886. Keep 16x headroom below the int range for overlapping VPLs.
+    const float maxIrradiance = std::max(lightIrradiance.x, std::max(lightIrradiance.y, lightIrradiance.z));
+    const float maxCellCoefficient = std::max(maxIrradiance * 1.7320508f * config.voxelSize * config.voxelSize * 0.2820948f, 1e-12f);
+    m_fixedPointScale = 1.34217728e8f / maxCellCoefficient; // 2^27 / max
+
     glUniform3fv(glGetUniformLocation(m_injectionShader, "u_gridCenter"), 1, &config.gridCenter[0]);
     glUniform1f(glGetUniformLocation(m_injectionShader, "u_voxelSize"), config.voxelSize);
     glUniform1i(glGetUniformLocation(m_injectionShader, "u_gridResolution"), config.gridResolution);
-    glUniform1i(glGetUniformLocation(m_injectionShader, "u_rsmResolution"), config.rsmResolution);
-    glUniform1i(glGetUniformLocation(m_injectionShader, "u_sampleCount"), config.vplSampleCount);
+    glUniform1i(glGetUniformLocation(m_injectionShader, "u_vplGridSize"), vplGridSize);
+    glUniform1f(glGetUniformLocation(m_injectionShader, "u_vplArea"), vplArea);
+    glUniform1f(glGetUniformLocation(m_injectionShader, "u_fixedPointScale"), m_fixedPointScale);
     glm::vec4 q(config.gridOrientation.x, config.gridOrientation.y, config.gridOrientation.z, config.gridOrientation.w);
     glUniform4fv(glGetUniformLocation(m_injectionShader, "u_gridOrientation"), 1, &q[0]);
 
-    int groups = (config.vplSampleCount + 63) / 64;
-    glDispatchCompute(groups, 1, 1);
+    const int groups = (vplGridSize + 7) / 8;
+    glDispatchCompute(groups, groups, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 }
 
 void LPVPass::PropagateLPV() {
     glUseProgram(m_propagationShader);
 
-    // Common uniforms
     glUniform1i(glGetUniformLocation(m_propagationShader, "u_gridResolution"), config.gridResolution);
-    glUniform1f(glGetUniformLocation(m_propagationShader, "u_attenuation"), config.propagationAttenuation);
-    glUniform1f(glGetUniformLocation(m_propagationShader, "u_bias"), config.propagationBias);
     glUniform1i(glGetUniformLocation(m_propagationShader, "u_enableOcclusion"), config.enableOcclusion ? 1 : 0);
+    glUniform1i(glGetUniformLocation(m_propagationShader, "u_waveR"), 0);
+    glUniform1i(glGetUniformLocation(m_propagationShader, "u_waveG"), 1);
+    glUniform1i(glGetUniformLocation(m_propagationShader, "u_waveB"), 2);
+    glUniform1i(glGetUniformLocation(m_propagationShader, "u_geometryVolume"), 3);
+    glBindTextureUnit(3, m_geometryVolume);
 
-    // Occlusion sampler (binding via uniform sampler3D)
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_3D, m_geometryVolume);
-    glUniform1i(glGetUniformLocation(m_propagationShader, "u_geometryVolume"), 0);
-
-    // Work group dims
-    int groups = (config.gridResolution + 7) / 8;
+    const int groups = (config.gridResolution + 3) / 4;
+    const GLint iterationLoc = glGetUniformLocation(m_propagationShader, "u_iteration");
 
     for (int iter = 0; iter < config.propagationIterations; ++iter) {
-        // Ping-pong float volumes
+        // Ping-pong the waves; every new wave is added to the accumulated volume.
         GLuint* inVol = (iter % 2 == 0) ? m_lpvSampleTextures : m_lpvSampleTexturesTemp;
         GLuint* outVol = (iter % 2 == 0) ? m_lpvSampleTexturesTemp : m_lpvSampleTextures;
 
-        // Bind as images with RGBA16F (matching shader layout)
-        glBindImageTexture(0, inVol[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
-        glBindImageTexture(1, inVol[1], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
-        glBindImageTexture(2, inVol[2], 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA16F);
-
-        glBindImageTexture(3, outVol[0], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(4, outVol[1], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(5, outVol[2], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glBindTextureUnit(0, inVol[0]);
+        glBindTextureUnit(1, inVol[1]);
+        glBindTextureUnit(2, inVol[2]);
+        glBindImageTexture(0, outVol[0], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glBindImageTexture(1, outVol[1], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glBindImageTexture(2, outVol[2], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glBindImageTexture(3, m_lpvAccumTextures[0], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+        glBindImageTexture(4, m_lpvAccumTextures[1], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+        glBindImageTexture(5, m_lpvAccumTextures[2], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+        glUniform1i(iterationLoc, iter);
 
         glDispatchCompute(groups, groups, groups);
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-    }
-
-    // If iterations is odd, result already in m_lpvSampleTextures (last outVol)
-    if (config.propagationIterations % 2 == 1) {
-        // nothing to do; we wrote into m_lpvSampleTextures in the last iteration
     }
 }
 
@@ -439,9 +485,7 @@ void LPVPass::ResolveIndirect(RenderContext& ctx) {
         return;
     }
 
-    GLuint* finalVolumes = (config.propagationIterations % 2 == 0)
-        ? m_lpvSampleTextures
-        : m_lpvSampleTexturesTemp;
+    GLuint* finalVolumes = m_lpvAccumTextures;
 
     glUseProgram(m_resolveShader);
 
@@ -484,22 +528,33 @@ void LPVPass::ResolveIndirect(RenderContext& ctx) {
 
 void LPVPass::VoxelizeGeometry(const std::shared_ptr<SceneGraph>& sceneGraph) {
     // Clear geometry volume
-    glBindTexture(GL_TEXTURE_3D, m_geometryVolume);
-    glClearTexImage(m_geometryVolume, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    const GLuint noGeometry = 0u;
+    glClearTexImage(m_geometryVolume, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &noGeometry);
 
+    GLint previousViewport[4];
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    // One fragment per cell along the dominant axis (the geometry shader projects onto it).
+    glViewport(0, 0, config.gridResolution, config.gridResolution);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
     glUseProgram(m_voxelizeShader);
-    glBindImageTexture(0, m_geometryVolume, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R8);
+    glBindImageTexture(0, m_geometryVolume, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
     glUniform3fv(glGetUniformLocation(m_voxelizeShader, "u_gridCenter"), 1, &config.gridCenter[0]);
     glUniform1f(glGetUniformLocation(m_voxelizeShader, "u_voxelSize"), config.voxelSize);
     glUniform1i(glGetUniformLocation(m_voxelizeShader, "u_gridResolution"), config.gridResolution);
 
-    sceneGraph->RenderGeometry(m_voxelizeShader);
+    // Everything inside the grid, independent of the camera frustum.
+    const float halfExtent = config.gridResolution * config.voxelSize * 0.5f;
+    const glm::mat4 gridVolume =
+        glm::ortho(-halfExtent, halfExtent, -halfExtent, halfExtent, 0.0f, 2.0f * halfExtent) *
+        glm::lookAt(config.gridCenter + glm::vec3(0.0f, 0.0f, halfExtent), config.gridCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+    sceneGraph->RenderShadowCascade(gridVolume, m_voxelizeShader);
 
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 }
 
@@ -511,9 +566,9 @@ void LPVPass::RenderDebugVisualization(const glm::mat4& view, const glm::mat4& p
     glUniform1f(glGetUniformLocation(m_debugShader, "u_voxelSize"), config.voxelSize);
     glUniform1i(glGetUniformLocation(m_debugShader, "u_gridResolution"), config.gridResolution);
 
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_3D, m_lpvSampleTextures[0]);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_3D, m_lpvSampleTextures[1]);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_3D, m_lpvSampleTextures[2]);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_3D, m_lpvAccumTextures[0]);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_3D, m_lpvAccumTextures[1]);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_3D, m_lpvAccumTextures[2]);
     glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_3D, m_geometryVolume);
 
     glUniform1i(glGetUniformLocation(m_debugShader, "u_lpvTextureR"), 0);
@@ -539,9 +594,9 @@ void LPVPass::RenderDebugVisualization(const glm::mat4& view, const glm::mat4& p
 void LPVPass::CleanupResources() {
     for (int i = 0; i < 3; ++i) {
         if (m_lpvTextures[i]) glDeleteTextures(1, &m_lpvTextures[i]);
-        if (m_lpvTexturesTemp[i]) glDeleteTextures(1, &m_lpvTexturesTemp[i]);
         if (m_lpvSampleTextures[i]) glDeleteTextures(1, &m_lpvSampleTextures[i]);
         if (m_lpvSampleTexturesTemp[i]) glDeleteTextures(1, &m_lpvSampleTexturesTemp[i]);
+        if (m_lpvAccumTextures[i]) glDeleteTextures(1, &m_lpvAccumTextures[i]);
     }
     if (m_geometryVolume) glDeleteTextures(1, &m_geometryVolume);
     if (m_rsmPosition) glDeleteTextures(1, &m_rsmPosition);

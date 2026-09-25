@@ -265,10 +265,8 @@ struct RenderContext {
 	glm::quat lpvGridOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); // World-space orientation
 	int lpvRSMResolution = 512;
 	int lpvVPLSampleCount = 32000;
-	int lpvPropagationIterations = 5;
-	float lpvPropagationAttenuation = 0.9f;
-	float lpvPropagationBias = 0.1f;
-	bool lpvEnableOcclusion = false;
+	int lpvPropagationIterations = 8;
+	bool lpvEnableOcclusion = true; // directional geometry volume stops light leaking through walls
 	int lpvUpdateFrequency = 1;
 	bool lpvDebugVisualization = false; //Debug visualization toggle
 	float lpvDebugBoost = 1.0f;         //Temporary boost for debugging (default 1.0x, set to 5.0x for testing)

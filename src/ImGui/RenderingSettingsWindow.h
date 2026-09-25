@@ -165,8 +165,6 @@ private:
 	int m_lpvRSMResolution = 512;
 	int m_lpvVPLSampleCount = 32000;
 	int m_lpvPropagationIterations = 5;
-	float m_lpvPropagationAttenuation = 0.9f;
-	float m_lpvPropagationBias = 0.1f;
 	bool m_lpvEnableOcclusion = true;
 	int m_lpvUpdateFrequency = 1;
 	bool m_lpvDebugVisualization = false;  //Debug visualization toggle
