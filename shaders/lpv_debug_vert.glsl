@@ -16,7 +16,6 @@ uniform sampler3D u_lpvTextureB;
 uniform sampler3D u_geometryVolume;
 
 out vec4 v_color;
-out float v_size;
 
 void main() {
     // Convert vertex ID to 3D grid coordinates (subsampled)
@@ -61,7 +60,6 @@ void main() {
         v_color = vec4(0.1, 0.1, 0.1, 0.2); // Dark gray for empty
     }
     
-    // Point size based on energy
-    v_size = max(3.0, length(energy) * 20.0);
-    gl_PointSize = v_size;
+    // Point size based on energy (requires GL_PROGRAM_POINT_SIZE, enabled by LPVPass)
+    gl_PointSize = max(3.0, length(energy) * 20.0);
 }

@@ -527,8 +527,10 @@ void LPVPass::RenderDebugVisualization(const glm::mat4& view, const glm::mat4& p
 
     int sampleStep = 4;
     int count = (config.gridResolution / sampleStep);
-    glPointSize(5.0f);
+    // The vertex shader sizes each point by its LPV energy.
+    glEnable(GL_PROGRAM_POINT_SIZE);
     glDrawArrays(GL_POINTS, 0, count * count * count);
+    glDisable(GL_PROGRAM_POINT_SIZE);
 
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
