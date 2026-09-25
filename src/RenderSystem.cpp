@@ -770,7 +770,9 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 	const auto& uniforms = GetShaderUniformCache(transparentShader);
 	UploadMaterialSamplerUniforms(uniforms);
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// forward_transparent_frag.glsl writes premultiplied color plus a per-channel transmittance
+	// (dual-source): dst' = color + dst * transmittance.
+	glBlendFunc(GL_ONE, GL_SRC1_COLOR);
 	glDepthMask(GL_FALSE);
 
 	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));

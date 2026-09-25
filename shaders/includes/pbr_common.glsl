@@ -410,15 +410,18 @@ vec3 ComputeVolumeAbsorptionCoefficient(vec3 attenuationColor, float attenuation
     return -log(safeColor) / max(attenuationDistance, 1e-3);
 }
 
+// Tint of light transmitted through the material. KHR_materials_transmission tints transmitted
+// light by the base color even for thin (thickness 0) surfaces; volumes additionally absorb along
+// the path (Beer-Lambert, KHR_materials_volume). An infinite attenuationDistance means no absorption.
 vec3 ComputeVolumeTransmittance(vec3 baseTint, float thickness, float attenuationDistance, vec3 attenuationColor) {
+    vec3 tint = SaturateVec3(baseTint);
     float pathLength = max(thickness, 0.0);
     if (pathLength <= 0.0) {
-        return vec3(1.0);
+        return tint;
     }
 
     vec3 sigmaA = ComputeVolumeAbsorptionCoefficient(attenuationColor, attenuationDistance);
-    vec3 volumeTransmittance = exp(-sigmaA * pathLength);
-    return volumeTransmittance * SaturateVec3(baseTint);
+    return exp(-sigmaA * pathLength) * tint;
 }
 
 void EvaluatePrincipledBRDFSeparated(

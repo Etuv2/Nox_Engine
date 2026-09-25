@@ -123,12 +123,14 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 	glDepthFunc(GL_LESS);        // Test against existing depth
 	glDepthMask(GL_FALSE);       // Don't write to depth buffer (transparency layering)
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
+	// Dual-source blending: the shader outputs premultiplied color and a per-channel
+	// transmittance, so glass keeps full-strength reflections and tints what is behind it.
+	glBlendFunc(GL_ONE, GL_SRC1_COLOR);
 	glEnable(GL_CULL_FACE);      // Enable culling for proper transparent rendering
 	glCullFace(GL_BACK);         // Cull back faces
 
 	if constexpr (VerboseLogging) { if (m_runtimeVerboseLogging) std::cout << "[TransparentForwardPass] State: Depth test=ENABLED(LESS), Depth writes=DISABLED, "
-		<< "Blending=ENABLED(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)" << std::endl; }
+		<< "Blending=ENABLED(ONE, SRC1_COLOR)" << std::endl; }
 
 	glUseProgram(m_shader);
 
