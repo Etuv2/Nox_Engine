@@ -25,7 +25,6 @@ uniform sampler2D gDepth;           // depth buffer (non-linear 0..1)
 // Camera - these MUST match the exact matrices used when writing G-buffer
 uniform mat4 invProjection;    // Exact inverse of projection used in G-buffer pass
 uniform mat4 invView;          // Exact inverse of view used in G-buffer pass
-uniform mat4 view;             // View matrix for distance calculations
 uniform vec3 viewPos;
 
 // Normal space configuration
@@ -59,51 +58,10 @@ uniform int indirectDiffuseCompositeMode = 0; // 0 additive, 1 modulative
 uniform int lightingOutputMode = 0; // 0 full lighting, 1 bounceable radiance
 uniform int uLightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
 
-// Shadows
-uniform sampler2DArrayShadow multiLightShadowArray;
-uniform int   enableShadows = 1;
-uniform float shadowBias = 0.001;
-uniform float maxShadowBias = 0.01;
-uniform float normalOffsetScale = 0.01;  // Reduced from 0.1 to minimize floating shadows
-uniform float cascadeBiasScale = 1.0;
-
-// Cascade blend settings (set from LightManager)
-uniform float cascadeBlendDistance = 5.0;  // World-space blend distance
-uniform float cascadeBlendFactor = 0.15;   // Fraction of cascade range for blend
-
-// Point light shadow settings
-uniform float pointLightBias = 0.002;
-uniform float pointLightSlopeBias = 0.005;
-uniform float pointLightNormalOffset = 0.01;
-
-// Shadow darkness settings - control how dark shadows appear
-uniform float shadowDarkness = 1.0;           // Multiplier for shadow darkness [0.0=no shadows, 1.0=full darkness]
-uniform float shadowMinBrightness = 0.0;      // Minimum brightness in complete shadow (0.0 = physically dark direct shadows)
-uniform float shadowTransitionHardness = 1.0; // Softness of shadow boundaries [0.5=very soft, 2.0=sharp]
-
-// Cascade split depths for view-depth blending (set from LightManager)
-uniform vec4 cascadeSplits = vec4(10.0, 30.0, 100.0, 500.0);  // Far distances per cascade
-
 // Debug visualization
 uniform int shadowDebugVisualization = 0; // 0=off, 1=cascade index, 2=raw depth, 3=bias, 4=texel density, 5=shadow mask
 
-// Lights
-uniform int numLights = 0; // total active lights (any type)
-
-struct LightData {
-	vec4 position;    // xyz=pos or dir origin, w=type (0 dir,1 point,2 spot)
-	vec4 direction;   // xyz=direction (for spot/dir)
-	vec4 color;       // rgb=color, w=intensity
-	vec4 attenuation; // xyz=const,linear,quadratic, w=range
-	vec4 shadowData;  // x=startSlice, y=sliceCount, z=enabled, w=pcss flag
-	vec4 spotData;    // x=inner cos, y=outer cos
-	vec4 areaData;    // xyz=area light size (unused for point/spot/dir), w=reserved
-	vec4 sampling;    // x=PDF weight, y=solid angle, z,w=reserved
-};
-layout(std430, binding = 0) buffer LightDataBuffer { LightData lights[]; };
-layout(std430, binding = 1) buffer ShadowMatricesBuffer { mat4 shadowMatrices[]; };
-
-#include "includes/shadow_common.glsl"
+#include "includes/lighting_common.glsl"
 
 // Note: PI, INV_PI, DIELECTRIC_F0 are now defined in pbr_common.glsl
 // Note: DecodeNormalOct, DistributionGGX, GeometrySchlickGGX, GeometrySmith, 
@@ -121,271 +79,6 @@ vec3 getNormalInWorldSpace(vec3 decodedNormal) {
 	}
 }
 
-// Apply physically-plausible shadow visibility shaping.
-// Direct shadowing should be independent of material albedo/metalness/roughness.
-float ApplyRealisticShadow(float shadowVisibility) {
-	float visibility = clamp(shadowVisibility, 0.0, 1.0);
-	float transitionHardness = max(shadowTransitionHardness, 0.25);
-	float shapedVisibility = pow(visibility, transitionHardness);
-
-	// Keep only an explicit user floor instead of an AO-driven artificial lift.
-	float ambientFloor = clamp(shadowMinBrightness, 0.0, 1.0);
-	float result = mix(ambientFloor, 1.0, shapedVisibility);
-	result = mix(1.0, result, clamp(shadowDarkness, 0.0, 1.0));
-	return result;
-}
-// Cascaded shadow mapping with cascade selection and smooth blending
-float ComputeCascadedShadow(
-	int startSlice,
-	int sliceCount,
-	vec3 worldPos,
-	vec3 N,
-	vec3 lightDir,
-	out int cascadeIndex,
-	out vec3 projCoords,
-	out float cascadeBias,
-	out float cascadeCoverage,
-	out float viewDepth
-) {
-	vec3 viewSpacePos = (view * vec4(worldPos, 1.0)).xyz;
-	viewDepth = -viewSpacePos.z;
-	cascadeIndex = -1;
-	projCoords = vec3(0.0);
-	cascadeBias = 0.0;
-	cascadeCoverage = 1.0;
-
-	sliceCount = min(sliceCount, 4);
-	if (sliceCount <= 0) {
-		return 1.0;
-	}
-
-	float maxCascadeDepth = cascadeSplits[sliceCount - 1];
-	if (viewDepth > maxCascadeDepth) {
-		float fadeStart = maxCascadeDepth;
-		float fadeEnd = maxCascadeDepth * 1.1;
-		float fadeFactor = clamp((viewDepth - fadeStart) / (fadeEnd - fadeStart), 0.0, 1.0);
-		if (fadeFactor >= 1.0) {
-			return 1.0;
-		}
-	}
-
-	int primaryCascade = sliceCount - 1;
-	for (int i = 0; i < sliceCount; ++i) {
-		if (viewDepth <= cascadeSplits[i]) {
-			primaryCascade = i;
-			break;
-		}
-	}
-
-	int layer0 = startSlice + primaryCascade;
-	vec4 lsp0 = shadowMatrices[layer0] * vec4(worldPos, 1.0);
-	vec3 pc0 = lsp0.xyz / lsp0.w;
-	pc0 = pc0 * 0.5 + 0.5;
-	if (!InShadowBounds(pc0)) {
-		return 1.0;
-	}
-
-	cascadeIndex = primaryCascade;
-	projCoords = pc0;
-	cascadeBias = CalculateAdaptiveShadowBias(N, lightDir, primaryCascade, pc0.z, viewDepth);
-	float depthSoftness = clamp(viewDepth / max(maxCascadeDepth, 0.001), 0.0, 1.0);
-	float cascadeSoftness = float(primaryCascade) / float(max(sliceCount - 1, 1));
-	float primaryFilterScale = mix(0.65, 1.2, max(depthSoftness, cascadeSoftness));
-	float shadowValue = SampleShadowArrayEdgeSafe(layer0, pc0, cascadeBias, 0.05, primaryFilterScale);
-
-	float cascadeNear = (primaryCascade == 0) ? 0.0 : cascadeSplits[primaryCascade - 1];
-	float cascadeFar = cascadeSplits[primaryCascade];
-	float cascadeRange = max(cascadeFar - cascadeNear, 0.001);
-
-	if (primaryCascade < sliceCount - 1) {
-		float blendZoneSize = cascadeRange * cascadeBlendFactor;
-		blendZoneSize = min(blendZoneSize, cascadeBlendDistance);
-		blendZoneSize = max(blendZoneSize, cascadeRange * 0.05);
-		float blendStart = cascadeFar - blendZoneSize;
-
-		if (viewDepth > blendStart) {
-			int nextCascade = primaryCascade + 1;
-			int layer1 = startSlice + nextCascade;
-			vec4 lsp1 = shadowMatrices[layer1] * vec4(worldPos, 1.0);
-			vec3 pc1 = lsp1.xyz / lsp1.w;
-			pc1 = pc1 * 0.5 + 0.5;
-
-			if (InShadowBounds(pc1)) {
-				float bias1 = CalculateAdaptiveShadowBias(N, lightDir, nextCascade, pc1.z, viewDepth);
-				float nextCascadeSoftness = float(nextCascade) / float(max(sliceCount - 1, 1));
-				float nextFilterScale = mix(0.65, 1.2, max(depthSoftness, nextCascadeSoftness));
-				float shadow1 = SampleShadowArrayEdgeSafe(layer1, pc1, bias1, 0.05, nextFilterScale);
-				float blendFactor = smoothstep(blendStart, cascadeFar, viewDepth);
-				shadowValue = mix(shadowValue, shadow1, blendFactor);
-				cascadeCoverage = 1.0 - blendFactor;
-			}
-		}
-	}
-
-	if (viewDepth > maxCascadeDepth) {
-		float fadeStart = maxCascadeDepth;
-		float fadeEnd = maxCascadeDepth * 1.1;
-		float fadeFactor = clamp((viewDepth - fadeStart) / (fadeEnd - fadeStart), 0.0, 1.0);
-		shadowValue = mix(shadowValue, 1.0, fadeFactor);
-	}
-
-	return shadowValue;
-}
-
-float AxisComponent(vec3 v, int axis) {
-	if (axis == 0) return v.x;
-	if (axis == 1) return v.y;
-	return v.z;
-}
-
-int PointFaceFromAxisSign(int axis, float signedValue) {
-	if (axis == 0) return (signedValue >= 0.0) ? 0 : 1;
-	if (axis == 1) return (signedValue >= 0.0) ? 2 : 3;
-	return (signedValue >= 0.0) ? 4 : 5;
-}
-
-bool ProjectPointShadowToLayer(int layer, vec3 shadowPos, out vec3 projCoords) {
-	vec4 lsp = shadowMatrices[layer] * vec4(shadowPos, 1.0);
-	if (abs(lsp.w) < 1e-6) {
-		projCoords = vec3(0.0);
-		return false;
-	}
-
-	vec3 ndc = lsp.xyz / lsp.w;
-	projCoords = ndc * 0.5 + 0.5;
-	if (projCoords.z > 1.0) {
-		return false;
-	}
-
-	return projCoords.x >= 0.0 && projCoords.x <= 1.0 &&
-		projCoords.y >= 0.0 && projCoords.y <= 1.0;
-}
-
-float SamplePointShadowFace(int startSlice, int face, vec3 shadowPos, float bias, out bool valid) {
-	int layer = startSlice + face;
-	vec3 projCoords;
-	valid = ProjectPointShadowToLayer(layer, shadowPos, projCoords);
-	if (!valid) {
-		return 1.0;
-	}
-
-	vec3 sampleCoords = vec3(projCoords.xy, clamp(projCoords.z, 0.0, 1.0));
-	return SampleShadowArrayEdgeSafe(layer, sampleCoords, bias, 0.02, 1.1);
-}
-
-float ComputePointLightShadow(int startSlice, vec3 worldPos, vec3 N, vec3 lightPos) {
-	vec3 toSurface = worldPos - lightPos;
-	float distanceToLight = length(toSurface);
-	if (distanceToLight <= 1e-5) {
-		return 1.0;
-	}
-
-	vec3 lightToSurfaceDir = toSurface / distanceToLight;
-	vec3 surfaceToLightDir = -lightToSurfaceDir;
-
-	// Keep normal offset extremely conservative to avoid visible shadow detachment.
-	float receiverFacing = clamp(dot(N, surfaceToLightDir), 0.0, 1.0);
-	float normalOffset = pointLightNormalOffset * (1.0 - receiverFacing);
-	vec3 shadowPos = worldPos + N * normalOffset;
-
-	vec3 offsetToLight = shadowPos - lightPos;
-	vec3 absDir = abs(offsetToLight);
-
-	int primaryAxis;
-	int secondaryAxis;
-	if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
-		primaryAxis = 0;
-		secondaryAxis = (absDir.y >= absDir.z) ? 1 : 2;
-	} else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
-		primaryAxis = 1;
-		secondaryAxis = (absDir.x >= absDir.z) ? 0 : 2;
-	} else {
-		primaryAxis = 2;
-		secondaryAxis = (absDir.x >= absDir.y) ? 0 : 1;
-	}
-	int tertiaryAxis = 3 - primaryAxis - secondaryAxis;
-
-	int primaryFace = PointFaceFromAxisSign(primaryAxis, AxisComponent(offsetToLight, primaryAxis));
-	int secondaryFace = PointFaceFromAxisSign(secondaryAxis, AxisComponent(offsetToLight, secondaryAxis));
-	int tertiaryFace = PointFaceFromAxisSign(tertiaryAxis, AxisComponent(offsetToLight, tertiaryAxis));
-
-	float NdotL = max(dot(N, surfaceToLightDir), 0.0);
-	float slopeScale = sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.06);
-	slopeScale = clamp(slopeScale, 0.0, 2.0);
-	float bias = pointLightBias + pointLightSlopeBias * slopeScale;
-	bias = clamp(bias, pointLightBias * 0.5, pointLightBias * 3.0);
-
-	bool primaryValid = false;
-	float primaryShadow = SamplePointShadowFace(startSlice, primaryFace, shadowPos, bias, primaryValid);
-	if (!primaryValid) {
-		return 1.0;
-	}
-
-	float axisSum = max(absDir.x + absDir.y + absDir.z, 1e-5);
-	float primaryDominance = AxisComponent(absDir, primaryAxis) / axisSum;
-	float seamBlend = 1.0 - smoothstep(0.72, 0.90, primaryDominance);
-	if (seamBlend <= 1e-3) {
-		return primaryShadow;
-	}
-
-	bool secondaryValid = false;
-	bool tertiaryValid = false;
-	float secondaryShadow = SamplePointShadowFace(startSlice, secondaryFace, shadowPos, bias, secondaryValid);
-	float tertiaryShadow = SamplePointShadowFace(startSlice, tertiaryFace, shadowPos, bias, tertiaryValid);
-
-	float wPrimary = 1.0;
-	float wSecondary = seamBlend * (AxisComponent(absDir, secondaryAxis) / axisSum);
-	float wTertiary = seamBlend * (AxisComponent(absDir, tertiaryAxis) / axisSum);
-
-	if (!secondaryValid) {
-		wSecondary = 0.0;
-	}
-	if (!tertiaryValid) {
-		wTertiary = 0.0;
-	}
-
-	float weightSum = wPrimary + wSecondary + wTertiary;
-	if (weightSum <= 1e-5) {
-		return primaryShadow;
-	}
-
-	return (primaryShadow * wPrimary + secondaryShadow * wSecondary + tertiaryShadow * wTertiary) / weightSum;
-}
-// Compute shadowing for a given light source
-float ComputeShadowForLight(int lightType, int startSlice, int sliceCount, vec3 worldPos, vec3 N, vec3 lightDir, vec3 lightPos) {
-	if (sliceCount <= 0 || startSlice < 0) return 1.0;
-
-	if (lightType == 0 && sliceCount > 1) {
-		int cascadeIndex;
-		vec3 projCoords;
-		float cascadeBias;
-		float cascadeCoverage;
-		float viewDepth;
-		return ComputeCascadedShadow(startSlice, sliceCount, worldPos, N, lightDir, cascadeIndex, projCoords, cascadeBias, cascadeCoverage, viewDepth);
-	}
-	else if (lightType == 1) {
-		return ComputePointLightShadow(startSlice, worldPos, N, lightPos);
-	}
-	else {
-		vec3 toLight = lightPos - worldPos;
-		float distance = length(toLight);
-		vec3 spotDir = toLight / distance;
-		
-		vec3 shadowPos = worldPos;
-		
-		int layer = startSlice;
-		mat4 M = shadowMatrices[layer];
-		vec4 lsp = M * vec4(shadowPos, 1.0);
-		lsp.xyz /= lsp.w;
-		vec3 pc = lsp.xyz * 0.5 + 0.5;
-		if (!InShadowBounds(pc)) return 1.0;
-		
-		float bias = CalculateAdaptiveShadowBias(N, -spotDir, 0, pc.z, distance);
-		float spotFilterScale = mix(0.9, 1.3, clamp(distance / 40.0, 0.0, 1.0));
-		return SampleShadowArrayEdgeSafe(layer, pc, bias, 0.02, spotFilterScale);
-	}
-}
-
 vec3 EvaluateDirectionalShadowDebug(LightData Ld, vec3 worldPos, vec3 N) {
 	int startSlice = int(Ld.shadowData.x + 0.5);
 	int sliceCount = int(Ld.shadowData.y + 0.5);
@@ -393,7 +86,6 @@ vec3 EvaluateDirectionalShadowDebug(LightData Ld, vec3 worldPos, vec3 N) {
 
 	int cascadeIndex;
 	vec3 projCoords;
-	float cascadeBias;
 	float cascadeCoverage;
 	float viewDepth;
 	float shadow = ComputeCascadedShadow(
@@ -404,7 +96,6 @@ vec3 EvaluateDirectionalShadowDebug(LightData Ld, vec3 worldPos, vec3 N) {
 		lightDir,
 		cascadeIndex,
 		projCoords,
-		cascadeBias,
 		cascadeCoverage,
 		viewDepth
 	);
@@ -424,7 +115,13 @@ vec3 EvaluateDirectionalShadowDebug(LightData Ld, vec3 worldPos, vec3 N) {
 	}
 
 	if (shadowDebugVisualization == 3) {
-		float normalizedBias = clamp(cascadeBias / max(maxShadowBias, 0.0001), 0.0, 1.0);
+		// Receiver normal offset in cascade texels: green = none, red = 4+ texels.
+		int layer = startSlice + cascadeIndex;
+		ivec3 dims = textureSize(multiLightShadowArray, 0);
+		float texelWorld = NoxShadowTexelWorldSize(shadowMatrices[layer], worldPos, float(dims.x));
+		float filterRadius = ComputeAdaptiveFilterRadiusTexels(projCoords, dims, 0.05, 1.0);
+		float normalOffset = ComputeShadowNormalOffsetWorld(layer, worldPos, N, -lightDir, filterRadius);
+		float normalizedBias = clamp(normalOffset / max(texelWorld * 4.0, 1e-6), 0.0, 1.0);
 		return vec3(normalizedBias, 1.0 - normalizedBias, 0.15);
 	}
 
@@ -469,71 +166,13 @@ bool EvaluateShadowDebugView(vec3 worldPos, vec3 N, out vec3 debugColor) {
 // Shared direct-light evaluation so full lighting and bounceable radiance use the same
 // attenuation and shadowing, while still allowing diffuse-only GI source construction.
 void ComputeDirectLightSeparated(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurface surface, out vec3 diffuseOut, out vec3 specularOut) {
-	diffuseOut = vec3(0.0);
-	specularOut = vec3(0.0);
-
-	LightData Ld = lights[idx];
-	int type = int(Ld.position.w);
-	vec3 lightPos = Ld.position.xyz;
-	vec3 lightDir = normalize(Ld.direction.xyz);
-	vec3 L;
-	float attenuation = 1.0;
-	vec3 lightColor = Ld.color.rgb;
-	float intensity = Ld.color.w;
-	float range = Ld.attenuation.w;
-
-	if (type == 0) {
-		// Directional light
-		L = -lightDir;
-		attenuation = intensity;
-	} else {
-		// Point or spot light
-		vec3 diff = lightPos - worldPos;
-		float dist = length(diff);
-		if (dist > range) return;
-		L = diff / dist;
-		
-		vec3 att = Ld.attenuation.xyz;
-		float inv = 1.0 / (att.x + att.y * dist + att.z * dist * dist);
-		float rf = 1.0 - pow(dist / range, 4.0);
-		rf = max(rf, 0.0);
-		rf *= rf;
-		attenuation = inv * rf * intensity;
-		
-		if (type == 2) {
-			// Spot light
-			float theta = dot(L, -lightDir);
-			float innerCos = (Ld.spotData.x > 0.0) ? Ld.spotData.x : cos(radians(20.0));
-			float outerCos = (Ld.spotData.y > 0.0) ? Ld.spotData.y : cos(radians(30.0));
-			outerCos = min(outerCos, innerCos - 0.001);
-			if (theta < outerCos) return;
-			float eps = max(innerCos - outerCos, 0.001);
-			float cone = clamp((theta - outerCos) / eps, 0.0, 1.0);
-			cone = cone * cone * (3.0 - 2.0 * cone);
-			attenuation *= cone;
-		}
+	float shadowMapShadow;
+	if (!EvaluateLightRadiance(idx, worldPos, N, V, surface, diffuseOut, specularOut, shadowMapShadow)) {
+		return;
 	}
 
-	float NdotL = max(dot(N, L), 0.0);
-	if (NdotL <= 0.0) return;
-
-	vec3 diffuse, specular;
-	EvaluatePrincipledBRDFSeparated(surface, N, V, L, diffuse, specular);
-	
-	// Shadow calculation
-	int startSlice = int(Ld.shadowData.x + 0.5);
-	int sliceCount = int(Ld.shadowData.y + 0.5);
-	vec3 shadowLightDir = mix(normalize(lightPos - worldPos), lightDir, float(type == 0));
-	
-	float shadowMapShadow = ComputeShadowForLight(type, startSlice, sliceCount, worldPos, N, shadowLightDir, lightPos);
-	
-	// Apply realistic shadow darkening based on material properties
-	// This makes shadows darker while accounting for indirect lighting and material characteristics
-	float shadowEnableMask = float(enableShadows == 1) * float(Ld.shadowData.z > 0.5);
-	shadowMapShadow = mix(1.0, ApplyRealisticShadow(shadowMapShadow), shadowEnableMask);
-
 	float combinedShadow = shadowMapShadow;
-	if (type == 0 && sssStrength > 0.001) {
+	if (int(lights[idx].position.w) == 0 && sssStrength > 0.001) {
 		// Contact shadows are view-space directional refinements, so only blend for directional lights.
 		float contactShadowVisibility = texture(screenSpaceShadowMap, vTexCoord).r;
 		float viewDepth = length(worldPos - viewPos);
@@ -544,12 +183,9 @@ void ComputeDirectLightSeparated(int idx, vec3 worldPos, vec3 N, vec3 V, Princip
 		float contactShadow = mix(1.0, ApplyRealisticShadow(contactShadowVisibility), contactBlend);
 		combinedShadow = mix(shadowMapShadow, min(shadowMapShadow, contactShadow), contactBlend);
 	}
-	
-	// Final contribution
-	vec3 radiance = lightColor * attenuation;
 
-	diffuseOut = diffuse * radiance * combinedShadow;
-	specularOut = specular * radiance * combinedShadow;
+	diffuseOut *= combinedShadow;
+	specularOut *= combinedShadow;
 }
 
 // Proper PBR direct lighting with principled surface layering

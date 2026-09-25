@@ -95,6 +95,10 @@ public:
 
 	// Shadow system integration
 	void InitializeShadowSystem(int maxShadowCastingLights = 8, int baseResolution = 1024);
+	// Far view-space distance of each directional cascade for the shadow range [nearPlane, farPlane],
+	// packed for the lighting shaders' `cascadeSplits` uniform (unused entries are 0). Uses the same
+	// split distribution as RenderShadowMaps, so shader cascade selection matches the rendered maps.
+	glm::vec4 ComputeCascadeSplitVector(float nearPlane, float farPlane) const;
 	GLuint GetShadowArrayTexture() const;
 	ShadowConfig& GetShadowConfig() { return shadowConfig; }
 	const ShadowConfig& GetShadowConfig() const { return shadowConfig; }
@@ -136,8 +140,10 @@ public:
 		bool useRotatedPoissonPCF = true;
 		bool dynamicResolution = true;
 		bool stableTexelSnapping = true;
-		float directionalSplitLambda = 0.6f;
-		// Fixed fit FOV keeps directional cascade texel density stable across camera zoom.
+		// PSSM log/linear blend. Higher values give the nearest cascades more resolution.
+		float directionalSplitLambda = 0.85f;
+		// Cascades are fitted to the camera's vertical FOV; this is only the fallback when no
+		// camera is available.
 		float directionalShadowFitFov = 90.0f;
 		float cascadeBaseOverlap = 0.02f;
 		
@@ -147,6 +153,12 @@ public:
 		float directionalConstantBias = 0.0008f;
 		float directionalSlopeBias = 0.0045f;
 		float directionalNormalOffset = 0.01f;
+
+		// Rasterization-side slope-scaled depth offset applied to every shadow slice
+		// (glPolygonOffset factor/units). Receiver-side biasing happens in world space in
+		// shaders/includes/shadow_common.glsl.
+		float rasterSlopeBias = 1.0f;
+		float rasterConstantBias = 1.0f;
 		
 		// Point light shadow settings
 		float pointLightBias = 0.0008f;       // Base bias for point light shadows
@@ -229,8 +241,8 @@ private:
 	GLuint m_shadowMatricesSSBO = 0;
 	GLuint m_tileDataSSBO = 0;
 
-	// Shadow system using new Texture class
-	std::unique_ptr<class FrameBuffer> m_shadowFBO;
+	// Depth-only FBO; each shadow slice attaches one layer of m_shadowArrayTexture.
+	GLuint m_shadowFBO = 0;
 	TexturePtr m_shadowArrayTexture;  // Using new Texture class for shadow array
 	GLuint m_shadowShader = 0;
 	int m_shadowArrayLayers = 0;

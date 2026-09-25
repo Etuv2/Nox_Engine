@@ -8,7 +8,6 @@
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
 #include "../RenderContext.h"
-#include "../ShadowMapper.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <cmath>
@@ -123,9 +122,6 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.numSpotLights = glGetUniformLocation(m_shader, "numSpotLights");
 	m_uniforms.enableShadows = glGetUniformLocation(m_shader, "enableShadows");
 	m_uniforms.shadowBias = glGetUniformLocation(m_shader, "shadowBias");
-	m_uniforms.maxShadowBias = glGetUniformLocation(m_shader, "maxShadowBias");
-	m_uniforms.normalOffsetScale = glGetUniformLocation(m_shader, "normalOffsetScale");
-	m_uniforms.cascadeBiasScale = glGetUniformLocation(m_shader, "cascadeBiasScale");
 	m_uniforms.cascadeCount = glGetUniformLocation(m_shader, "cascadeCount");
 	
 	// Cascade blend settings
@@ -133,11 +129,6 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.cascadeBlendFactor = glGetUniformLocation(m_shader, "cascadeBlendFactor");
 	m_uniforms.cascadeSplits = glGetUniformLocation(m_shader, "cascadeSplits");
 	m_uniforms.shadowDebugVisualization = glGetUniformLocation(m_shader, "shadowDebugVisualization");
-	
-	// Point light shadow settings
-	m_uniforms.pointLightBias = glGetUniformLocation(m_shader, "pointLightBias");
-	m_uniforms.pointLightSlopeBias = glGetUniformLocation(m_shader, "pointLightSlopeBias");
-	m_uniforms.pointLightNormalOffset = glGetUniformLocation(m_shader, "pointLightNormalOffset");
 	
 	// Shadow darkness settings
 	m_uniforms.shadowDarkness = glGetUniformLocation(m_shader, "shadowDarkness");
@@ -403,9 +394,6 @@ void LightingPass::Execute(RenderContext& ctx,
 
 		// Shadow bias configuration
 		glUniform1f(m_uniforms.shadowBias, ctx.shadowBias);
-		glUniform1f(m_uniforms.maxShadowBias, ctx.shadowBias * 10.0f);
-		glUniform1f(m_uniforms.normalOffsetScale, 0.01f);  // Reduced from 0.1f to minimize floating shadows
-		glUniform1f(m_uniforms.cascadeBiasScale, 1.0f);
 
 		// Cascade blend settings from LightManager config
 		const auto& shadowConfig = ctx.lightManager->shadowConfig;
@@ -419,29 +407,14 @@ void LightingPass::Execute(RenderContext& ctx,
 		float farPlane = std::max(nearPlane + 1.0f,
 			std::min(ctx.shadowFar, camera ? camera->GetCameraFarPlane() : ctx.shadowFar));
 		
-		// Use ShadowMapper's cascade split function for consistency
 		const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
-		std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(
-			nearPlane,
-			farPlane,
-			cascadeCount,
-			shadowConfig.directionalSplitLambda
-		);
-		glm::vec4 cascadeSplits(0.0f);
-		for (int i = 0; i < std::min(4, static_cast<int>(splits.size())); ++i) {
-			cascadeSplits[i] = splits[i];
-		}
+		const glm::vec4 cascadeSplits = ctx.lightManager->ComputeCascadeSplitVector(nearPlane, farPlane);
 		glUniform4fv(m_uniforms.cascadeSplits, 1, glm::value_ptr(cascadeSplits));
 		const int shadowDebugVisualization =
 			ctx.debugMode == RenderContext::DebugMode::SHADOW_MAPS
 			? static_cast<int>(ctx.shadowDebugVisualization)
 			: 0;
 		glUniform1i(m_uniforms.shadowDebugVisualization, shadowDebugVisualization);
-		
-		// Point light shadow settings
-		glUniform1f(m_uniforms.pointLightBias, shadowConfig.pointLightBias);
-		glUniform1f(m_uniforms.pointLightSlopeBias, shadowConfig.pointLightSlopeBias);
-		glUniform1f(m_uniforms.pointLightNormalOffset, shadowConfig.pointLightNormalOffset);
 		
 		// Shadow darkness settings - realistic shadow rendering
 		glUniform1f(m_uniforms.shadowDarkness, ctx.shadowDarkness);

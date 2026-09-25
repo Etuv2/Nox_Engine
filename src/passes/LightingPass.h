@@ -106,9 +106,6 @@ private:
 		GLint numSpotLights = -1;
 		GLint enableShadows = -1;
 		GLint shadowBias = -1;
-		GLint maxShadowBias = -1;
-		GLint normalOffsetScale = -1;
-		GLint cascadeBiasScale = -1;
 		GLint cascadeCount = -1;
 		
 		// Cascade blend settings
@@ -118,9 +115,6 @@ private:
 		GLint shadowDebugVisualization = -1;
 		
 		// Point light shadow settings
-		GLint pointLightBias = -1;
-		GLint pointLightSlopeBias = -1;
-		GLint pointLightNormalOffset = -1;
 		
 		// Shadow darkness settings
 		GLint shadowDarkness = -1;

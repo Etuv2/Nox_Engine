@@ -1,5 +1,4 @@
 #include "ShadowMapper.h"
-#include "ShadowMapper.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 #include <limits>
@@ -55,112 +54,102 @@ namespace ShadowMapper {
         return baseOverlap * adaptiveMultiplier;
     }
 
-    // Helper: Get the 8 corners of the cascade frustum in world space.
-    static std::vector<glm::vec3> GetFrustumCorners(const glm::mat4& invViewProj) {
-        std::vector<glm::vec3> corners;
-        corners.reserve(8);
-        // NDC corners: each coordinate is either -1 or 1.
-        for (int x = -1; x <= 1; x += 2) {
-            for (int y = -1; y <= 1; y += 2) {
-                for (int z = -1; z <= 1; z += 2) {
-                    glm::vec4 corner = invViewProj * glm::vec4(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), 1.0f);
-                    corner /= corner.w;
-                    corners.push_back(glm::vec3(corner));
-                }
-            }
+    FrustumSliceSphere ComputeFrustumSliceSphere(float sliceNear, float sliceFar, float fovYDegrees, float aspect)
+    {
+        const float tanY = std::tan(glm::radians(fovYDegrees) * 0.5f);
+        const float tanX = tanY * aspect;
+        // Squared slope of the frustum's corner rays: a corner at view depth z sits z * sqrt(k2)
+        // away from the forward axis.
+        const float k2 = tanX * tanX + tanY * tanY;
+
+        // Center on the forward axis equidistant from the near and far corners.
+        const float center = 0.5f * (sliceFar + sliceNear) * (1.0f + k2);
+        if (center >= sliceFar) {
+            // Wide or thin slices: the far cap alone bounds the slice.
+            return { sliceFar, sliceFar * std::sqrt(k2) };
         }
-        return corners;
+
+        const float dz = sliceFar - center;
+        return { center, std::sqrt(dz * dz + sliceFar * sliceFar * k2) };
     }
 
-    // Enhanced cascade light space computation with stability improvements
     glm::mat4 ComputeCascadeLightSpace(
         float cascadeNear,
         float cascadeFar,
         const glm::mat4& view,
-        const glm::vec3& lightPos,
+        const glm::vec3& /*lightPos*/,
         const glm::vec3& lightDir,
         float windowAspect,
         float fitFov,
         int cascadeIndex,
         int shadowMapSize)
     {
-        // Add generous overlap to cascade bounds to ensure continuous coverage
-        // This is critical to prevent gaps at cascade boundaries
-        float cascadeRange = cascadeFar - cascadeNear;
-        float overlap = cascadeRange * 0.15f; // 15% overlap on each side (increased from 5%)
-        
-        // Extend near slightly back (except for first cascade)
-        float effectiveNear = (cascadeIndex > 0) ? glm::max(0.01f, cascadeNear - overlap) : cascadeNear;
-        // Extend far forward
-        float effectiveFar = cascadeFar + overlap;
-        
-        // Create cascade-specific projection matrix with overlap
-        glm::mat4 cascadeProj = glm::perspective(glm::radians(fitFov), windowAspect, effectiveNear, effectiveFar);
-        glm::mat4 invCascadeVP = glm::inverse(cascadeProj * view);
+        const float cascadeRange = std::max(cascadeFar - cascadeNear, 1e-3f);
+        const float sliceNear = (cascadeIndex > 0)
+            ? std::max(0.01f, cascadeNear - cascadeRange * kCascadeBlendOverlap)
+            : cascadeNear;
+        const FrustumSliceSphere sphere = ComputeFrustumSliceSphere(sliceNear, cascadeFar, fitFov, windowAspect);
 
-        // Get frustum corners in world space
-        std::vector<glm::vec3> frustumCorners = GetFrustumCorners(invCascadeVP);
+        const float resolution = static_cast<float>(std::max(shadowMapSize, 1));
+        // Keep the texel size on a fixed grid so float noise in the inputs can never nudge it.
+        const float radius = std::ceil(sphere.radius * 64.0f) / 64.0f;
+        const float texelWorld = (2.0f * radius) / resolution;
 
-        // Calculate frustum center for stable positioning
-        glm::vec3 center(0.0f);
-        for (const auto& corner : frustumCorners)
-            center += corner;
-        center /= static_cast<float>(frustumCorners.size());
+        const glm::mat4 invView = glm::inverse(view);
+        const glm::vec3 cameraPos = glm::vec3(invView[3]);
+        const glm::vec3 cameraForward = -glm::normalize(glm::vec3(invView[2]));
+        const glm::vec3 center = cameraPos + cameraForward * sphere.centerDistance;
 
-        // Calculate tight bounding sphere for the frustum
-        float radius = 0.0f;
-        for (const auto& corner : frustumCorners) {
-            float distance = glm::length(corner - center);
-            radius = glm::max(radius, distance);
+        // Rotation-only light basis: it does not move with the camera, so rounding the cascade
+        // center to whole texels in it pins the shadow texel grid to world space.
+        const glm::vec3 dir = glm::normalize(lightDir);
+        const glm::vec3 up = std::abs(dir.y) > 0.95f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+        const glm::mat4 lightRotation = glm::lookAt(glm::vec3(0.0f), dir, up);
+
+        glm::vec3 lightCenter = glm::vec3(lightRotation * glm::vec4(center, 1.0f));
+        lightCenter.x = std::round(lightCenter.x / texelWorld) * texelWorld;
+        lightCenter.y = std::round(lightCenter.y / texelWorld) * texelWorld;
+
+        // The light looks down -Z, so the sphere spans view depths [-z - r, -z + r].
+        const float depthNear = -lightCenter.z - radius;
+        const float depthFar = -lightCenter.z + radius;
+        const glm::mat4 lightProj = glm::ortho(
+            lightCenter.x - radius, lightCenter.x + radius,
+            lightCenter.y - radius, lightCenter.y + radius,
+            depthNear, depthFar);
+
+        return lightProj * lightRotation;
+    }
+
+    bool SphereIntersectsShadowCasterVolume(const glm::mat4& lightSpace, const glm::vec3& center, float radius)
+    {
+        // Gribb/Hartmann plane extraction; glm is column-major, so row i is (m[0][i], m[1][i], m[2][i], m[3][i]).
+        auto row = [&](int i) {
+            return glm::vec4(lightSpace[0][i], lightSpace[1][i], lightSpace[2][i], lightSpace[3][i]);
+        };
+        const glm::vec4 r0 = row(0);
+        const glm::vec4 r1 = row(1);
+        const glm::vec4 r2 = row(2);
+        const glm::vec4 r3 = row(3);
+        const glm::vec4 planes[5] = {
+            r3 + r0, // left
+            r3 - r0, // right
+            r3 + r1, // bottom
+            r3 - r1, // top
+            r3 - r2, // far
+        };
+
+        for (const glm::vec4& plane : planes) {
+            const float normalLength = glm::length(glm::vec3(plane));
+            if (normalLength <= 1e-12f) {
+                continue;
+            }
+            const float distance = (glm::dot(glm::vec3(plane), center) + plane.w) / normalLength;
+            if (distance < -radius) {
+                return false;
+            }
         }
-
-        // Add margin to radius to ensure full coverage (increased from 2% to 10%)
-        radius *= 1.10f;
-
-        // Enhanced texel snapping for rock-solid stability
-        float texelSize = (radius * 2.0f) / static_cast<float>(shadowMapSize);
-        
-        // Snap radius to texel boundaries for pixel-perfect stability
-        radius = std::ceil(radius / texelSize) * texelSize;
-
-        // Calculate optimal light camera position
-        glm::vec3 lightDirNorm = glm::normalize(lightDir);
-        
-        // Distance calculation - push light back far enough to capture all geometry
-        float lightDistance = radius * 4.0f; // Increased from 3x to 4x
-        
-        glm::vec3 shadowCamPos = center - lightDirNorm * lightDistance;
-        
-        // Enhanced up vector calculation to avoid gimbal lock
-        glm::vec3 up = glm::abs(glm::dot(lightDirNorm, glm::vec3(0, 1, 0))) > 0.95f ? 
-                       glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
-        
-        // Create light view matrix
-        glm::mat4 lightView = glm::lookAt(shadowCamPos, center, up);
-
-        // Ultra-precise texel alignment for maximum temporal stability
-        glm::vec4 centerLightSpace = lightView * glm::vec4(center, 1.0f);
-        
-        // Snap to texel grid in light space
-        centerLightSpace.x = std::round(centerLightSpace.x / texelSize) * texelSize;
-        centerLightSpace.y = std::round(centerLightSpace.y / texelSize) * texelSize;
-        
-        // Recompute light view with snapped center
-        glm::vec3 snappedCenter = glm::vec3(glm::inverse(lightView) * centerLightSpace);
-        shadowCamPos = snappedCenter - lightDirNorm * lightDistance;
-        lightView = glm::lookAt(shadowCamPos, snappedCenter, up);
-
-        // Create orthographic projection with very generous depth range
-        float orthoNear = 0.1f;
-        float orthoFar = lightDistance * 2.0f + radius * 3.0f; // More generous far plane
-        
-        glm::mat4 lightProj = glm::ortho(
-            -radius, radius,
-            -radius, radius,
-            orthoNear, orthoFar
-        );
-        
-        return lightProj * lightView;
+        return true;
     }
 
     // PCSS (Percentage Closer Soft Shadows) implementation helpers

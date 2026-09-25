@@ -8,7 +8,6 @@
 #include "TextureUnits.h"
 #include "Camera.h"
 #include "ShadowMapper.h"
-#include "FrameBuffer.h"
 #include "MDIBatch.h"
 #include <algorithm>
 #include <iostream>
@@ -122,7 +121,7 @@ LightManager::LightManager()
 	shadowConfig.useRotatedPoissonPCF = true;
 	shadowConfig.dynamicResolution = true;
 	shadowConfig.stableTexelSnapping = true;
-	shadowConfig.directionalSplitLambda = 0.6f;
+	shadowConfig.directionalSplitLambda = 0.85f;
 	shadowConfig.directionalShadowFitFov = 90.0f;
 	shadowConfig.cascadeBaseOverlap = 0.02f;
 	shadowConfig.directionalConstantBias = 0.0008f;
@@ -166,10 +165,13 @@ LightManager::~LightManager()
 		m_tileDataSSBO = 0;
 	}
 
+	if (m_shadowFBO) {
+		glDeleteFramebuffers(1, &m_shadowFBO);
+		m_shadowFBO = 0;
+	}
+
 	// Shadow array texture now managed by smart pointer (automatic cleanup)
 	m_shadowArrayTexture.reset();
-
-	// m_shadowFBO is a unique_ptr and will be cleaned up automatically
 
 	std::cout << "[LightManager] Cleanup completed" << std::endl;
 }
@@ -376,23 +378,6 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 	std::cout << "  - Spot lights: " << shadowConfig.maxSpotLights << std::endl;
 	std::cout << "  - Point lights: " << shadowConfig.maxPointLights << " x 6 faces" << std::endl;
 
-	// Create framebuffer for shadow rendering
-	m_shadowFBO = std::make_unique<FrameBuffer>(
-		baseResolution, baseResolution,
-		std::vector<GLenum>{},  // No color attachments
-		true,             // Use depth as texture
-		true,            // Use depth as texture array
-		totalLayers,            // Number of layers
-		false,       // No stencil
-		GL_DEPTH_COMPONENT24    // D24 for lower bandwidth
-	);
-
-	if (!m_shadowFBO->IsComplete()) {
-		std::cerr << "[LightManager] Shadow FBO incomplete!" << std::endl;
-		m_shadowFBO.reset();
-		return;
-	}
-
 	// Create shadow array texture using new Texture builder
 	std::cout << "[LightManager] Creating shadow array texture with new Texture class..." << std::endl;
 	m_shadowArrayTexture = Texture::Builder::TextureArray2D(baseResolution, baseResolution, totalLayers, GL_DEPTH_COMPONENT24)
@@ -411,6 +396,23 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 	}
 
 	std::cout << "[LightManager] Shadow array texture created: ID=" << m_shadowArrayTexture->ID() << std::endl;
+
+	// Depth-only FBO that renders straight into one layer of the shadow array at a time.
+	// (It must not own depth storage of its own: a second 36-layer array would be dead VRAM.)
+	glGenFramebuffers(1, &m_shadowFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFBO);
+	glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, m_shadowArrayTexture->ID(), 0, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+	const GLenum shadowFboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	if (shadowFboStatus != GL_FRAMEBUFFER_COMPLETE) {
+		std::cerr << "[LightManager] Shadow FBO incomplete (0x" << std::hex << shadowFboStatus << std::dec << ")" << std::endl;
+		glDeleteFramebuffers(1, &m_shadowFBO);
+		m_shadowFBO = 0;
+		m_shadowArrayTexture.reset();
+		return;
+	}
 
 	// Initialize shadow slice management
 	m_shadowSlices.resize(totalLayers);
@@ -459,8 +461,20 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 
 	std::cout << "[LightManager] Shadow system initialized successfully:" << std::endl;
 	std::cout << "  - Shadow array texture ID: " << m_shadowArrayTexture->ID() << std::endl;
-	std::cout << "- Shadow FBO ID: " << m_shadowFBO->GetFBO() << std::endl;
+	std::cout << "- Shadow FBO ID: " << m_shadowFBO << std::endl;
 	std::cout << "  - PCSS enabled: " << (shadowConfig.enablePCSS ? "Yes" : "No") << std::endl;
+}
+
+glm::vec4 LightManager::ComputeCascadeSplitVector(float nearPlane, float farPlane) const
+{
+	const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
+	const std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(
+		nearPlane, farPlane, cascadeCount, shadowConfig.directionalSplitLambda);
+	glm::vec4 packed(0.0f);
+	for (int i = 0; i < std::min(4, static_cast<int>(splits.size())); ++i) {
+		packed[i] = splits[i];
+	}
+	return packed;
 }
 
 /**
@@ -542,66 +556,6 @@ void LightManager::ValidateShadowArrayTexture() const
 }
 
 /**
- * @brief Conservative sphere vs frustum clip space test
- *
- * Tests if a sphere in world space intersects the light's frustum in clip space.
- * Uses a conservative approach with margins to avoid shadow popping.
- *
- * @param centerWorld World-space center of the sphere
- * @param radiusWorld World-space radius of the sphere
- * @param lightSpace Light's view-projection matrix
- * @return true if the sphere intersects the frustum, false otherwise
- */
-static bool SphereIntersectsLightClip(const glm::vec3& centerWorld,
-	float radiusWorld,
-	const glm::mat4& lightSpace)
-{
-	// Project center to clip -> NDC
-	glm::vec4 clip = lightSpace * glm::vec4(centerWorld, 1.0f);
-	if (clip.w == 0.0f) {
-		return true; // Avoid division issues, keep it
-	}
-
-	glm::vec3 ndc = glm::vec3(clip) / clip.w; // [-1,1]
-
-	// Simple conservative test: expand clip bounds by a generous margin based on radius
-	// Approximate projected radius by using depth-based dilation; larger depth => allow more slack
-	float depthFactor = 1.0f + std::abs(ndc.z) * 0.5f;
-	float margin = 0.2f * depthFactor; // Expand frustum a bit to avoid popping
-
-	if (ndc.x < -1.0f - margin) return false;
-	if (ndc.x > 1.0f + margin) return false;
-	if (ndc.y < -1.0f - margin) return false;
-	if (ndc.y > 1.0f + margin) return false;
-	if (ndc.z < -1.0f - margin) return false;
-	if (ndc.z > 1.0f + margin) return false;
-
-	return true;
-}
-
-/**
- * @brief Snap directional cascade to texel grid to minimize jitter
- *
- * Aligns the light space matrix translation to texel boundaries to reduce
- * shadow shimmering when the camera moves.
- *
- * @param lightSpace The original light space matrix
- * @param shadowMapSize The resolution of the shadow map
- * @return Snapped light space matrix
- */
-static glm::mat4 SnapCascadeToTexels(const glm::mat4& lightSpace, int shadowMapSize)
-{
-	// Assumes standard clip [-1,1]; snap translation (row 3) to texel-sized increments.
-	glm::mat4 snapped = lightSpace;
-	float texel = 2.0f / float(shadowMapSize);
-	glm::vec4 col3 = snapped[3];
-	col3.x = std::floor(col3.x / texel) * texel;
-	col3.y = std::floor(col3.y / texel) * texel;
-	snapped[3] = col3;
-	return snapped;
-}
-
-/**
  * @brief Build geometry signature from batch for change detection
  *
  * Computes a simple signature (centroid sum and object count) to detect
@@ -649,7 +603,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	float farPlane,
 	float aspect)
 {
-	if (!m_shadowSystemInitialized || !sceneGraph || m_shadowShader == 0) {
+	if (!m_shadowSystemInitialized || m_shadowFBO == 0 || !sceneGraph || m_shadowShader == 0) {
 		std::cout << "[LightManager] Shadow rendering skipped - system not ready" << std::endl;
 		return;
 	}
@@ -794,7 +748,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	}
 
 	// Prepare FBO state once
-	m_shadowFBO->Bind();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFBO);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
 	glDepthMask(GL_TRUE);
@@ -803,6 +757,14 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	glDisable(GL_BLEND);
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
+	// Casters between the light and a slice's near plane must still occlude: clamp their depth
+	// onto the near plane instead of clipping them away ("pancaking"). Directional cascades rely
+	// on this, since their depth range only spans the cascade's bounding sphere.
+	glEnable(GL_DEPTH_CLAMP);
+	// Same slope-scaled rasterization offset for every slice type; receiver-side biasing is done
+	// in world space by the lighting shaders.
+	glEnable(GL_POLYGON_OFFSET_FILL);
+	glPolygonOffset(shadowConfig.rasterSlopeBias, shadowConfig.rasterConstantBias);
 
 	// Lambda: Filter objects and build signature
 	auto filterAndSign = [&](const glm::mat4& ls) {
@@ -819,7 +781,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			const glm::vec3 worldCenter = glm::vec3(obj.boundingSphere);
 			const float worldRadius = obj.boundingSphere.w;
 
-			if (SphereIntersectsLightClip(worldCenter, worldRadius, ls)) {
+			if (ShadowMapper::SphereIntersectsShadowCasterVolume(ls, worldCenter, worldRadius)) {
 				filteredIndices.push_back(i);
 				// Build signature inline
 				sigC += worldCenter;
@@ -893,41 +855,30 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		BaseLight::LightType type,
 		int lightIdx,
 		int subIndex) {
-			// Skip rendering if batch is empty
-			if (filtered.GetObjects().empty()) {
-				return;
-			}
-
 			auto sliceStart = std::chrono::high_resolution_clock::now();
 
 			// Attach shadow array layer to framebuffer
 			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
 				m_shadowArrayTexture->ID(), 0, sliceIndex);
 			glViewport(0, 0, shadowConfig.baseResolution, shadowConfig.baseResolution);
+			// Always clear, even with no casters: the slice's matrix is about to change, and stale
+			// depth from the previous matrix would otherwise be sampled as phantom shadows.
 			glClear(GL_DEPTH_BUFFER_BIT);
 
-			if (locLS >= 0) {
-				glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
-			}
+			if (!filtered.GetObjects().empty()) {
+				if (locLS >= 0) {
+					glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
+				}
 
-			bool useOffset = (type == BaseLight::LightType::DIRECTIONAL && subIndex == 0);
-			if (useOffset) {
-				glEnable(GL_POLYGON_OFFSET_FILL);
-				glPolygonOffset(2.0f, 4.0f);
-			}
-
-			if (RenderSystem* renderSystem = sceneGraph->GetRenderSystem()) {
-				renderSystem->RenderShadowCascade(lightSpace, m_shadowShader);
-			}
-			else if (locObjectIndex < 0) {
-				filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
-			}
-			else {
-				filtered.RenderBatchedByVAOWithUniform(GL_TRIANGLES, GL_UNSIGNED_INT, locObjectIndex);
-			}
-
-			if (useOffset) {
-				glDisable(GL_POLYGON_OFFSET_FILL);
+				if (RenderSystem* renderSystem = sceneGraph->GetRenderSystem()) {
+					renderSystem->RenderShadowCascade(lightSpace, m_shadowShader);
+				}
+				else if (locObjectIndex < 0) {
+					filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
+				}
+				else {
+					filtered.RenderBatchedByVAOWithUniform(GL_TRIANGLES, GL_UNSIGNED_INT, locObjectIndex);
+				}
 			}
 
 			auto sliceEnd = std::chrono::high_resolution_clock::now();
@@ -948,12 +899,12 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 		};
 
 	int currentSlice = 0;
+	// Fit cascades to the frustum actually being rendered; a fixed FOV either leaves the screen
+	// edges without shadow coverage (camera FOV wider) or wastes resolution (narrower).
 	const float cascadeFitFov = glm::clamp(
-		shadowConfig.directionalShadowFitFov > 0.0f
-			? shadowConfig.directionalShadowFitFov
-			: (camera ? camera->GetCameraFov() : 90.0f),
-		35.0f,
-		120.0f);
+		camera ? camera->GetCameraFov() : shadowConfig.directionalShadowFitFov,
+		1.0f,
+		170.0f);
 
 	// Iterate through all active lights
 	for (size_t li = 0; li < m_activeLights.size() && currentSlice < m_shadowArrayLayers; ++li) {
@@ -994,9 +945,6 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 					cascadeFitFov,
 					cIdx,
 					shadowConfig.baseResolution);
-				if (shadowConfig.stableTexelSnapping) {
-					ls = SnapCascadeToTexels(ls, shadowConfig.baseResolution);
-				}
 
 				unsigned cadence = (cIdx == 0) ? 1u : (cIdx == 1) ? 2u : (cIdx == 2) ? 3u : 7u;
 
@@ -1269,7 +1217,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 	m_lightDataDirty = shadowAssignmentsChanged;
 
-	FrameBuffer::Unbind();
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_CLAMP);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	m_lastShadowScenePublication = scenePublication;
 	m_lastShadowView = view;
 	m_lastShadowNearPlane = nearPlane;

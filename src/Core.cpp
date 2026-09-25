@@ -265,7 +265,7 @@ Core::Core()
 	, m_shadowNear(0.1f)
 	, m_shadowFar(1000.0f)
 	, m_shadowSize(2048)
-	, m_splitLambda(0.95f)
+	, m_splitLambda(0.85f)
 	, m_exposure(1.0f)
 	, m_gamma(2.2f)
 	, m_sceneHasAudioNodes(false)
@@ -308,7 +308,7 @@ bool Core::LoadConfiguration() {
 			m_shadowNear = lightConfig.value("shadow_near", 0.1f);
 			m_shadowFar = lightConfig.value("shadow_far", 1000.0f);
 			m_shadowSize = lightConfig.value("shadow_size", 2048);
-			m_splitLambda = lightConfig.value("split_lambda", 0.95f);
+			m_splitLambda = glm::clamp(lightConfig.value("split_lambda", 0.85f), 0.0f, 1.0f);
 		}
 
 		if (m_config.contains("environmentColor") &&
@@ -598,6 +598,7 @@ bool Core::InitializeScene() {
 
 	auto lightManager = m_sceneGraph->GetLightManager();
 	if (lightManager) {
+		lightManager->GetShadowConfig().directionalSplitLambda = m_splitLambda;
 		lightManager->InitializeShadowSystem(8, m_shadowSize);
 		lightManager->CollectLightsFromScene(m_sceneGraph);
 		if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
@@ -1118,6 +1119,7 @@ void Core::SwapScene(const std::string& newSceneFile) {
 
 			auto lightManager = m_sceneGraph->GetLightManager();
 			if (lightManager) {
+				lightManager->GetShadowConfig().directionalSplitLambda = m_splitLambda;
 				lightManager->InitializeShadowSystem(8, m_shadowSize);
 				lightManager->CollectLightsFromScene(m_sceneGraph);
 				if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
@@ -1526,6 +1528,7 @@ bool Core::LoadSceneState(const std::string& filepath) {
 
 		auto lightManager = newGraph->GetLightManager();
 		if (lightManager) {
+			lightManager->GetShadowConfig().directionalSplitLambda = m_splitLambda;
 			lightManager->InitializeShadowSystem(8, m_shadowSize);
 			lightManager->CollectLightsFromScene(newGraph);
 			if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {

@@ -69,7 +69,7 @@
     "shadow_near": 0.1,
     "shadow_far": 300.0,
     "shadow_size": 2048,
-    "split_lambda": 0.6,
+    "split_lambda": 0.85,
     "max_shadow_bias": 0.02,
     "normal_offset_scale": 0.1,
     "cascade_bias_scale": 1.0,

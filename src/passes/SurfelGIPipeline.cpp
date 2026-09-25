@@ -1271,9 +1271,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		GLuint shadowArray = 0u;
 		GLuint shadowMatrices = 0u;
 		glm::vec4 cascadeSplits(10.0f, 30.0f, 100.0f, 500.0f);
-		float pointLightBias = 0.002f;
-		float pointLightSlopeBias = 0.005f;
-		float pointLightNormalOffset = 0.01f;
 		if (context.lightManager && context.lightManager->GetLightDataSSBO() != 0u) {
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
 				ToGLuint(SurfelGIBinding::Lights),
@@ -1282,9 +1279,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			shadowArray = context.lightManager->GetShadowArrayTexture();
 			shadowMatrices = context.lightManager->GetShadowMatricesSSBO();
 			const auto& shadowConfig = context.lightManager->shadowConfig;
-			pointLightBias = shadowConfig.pointLightBias;
-			pointLightSlopeBias = shadowConfig.pointLightSlopeBias;
-			pointLightNormalOffset = shadowConfig.pointLightNormalOffset;
 			const float nearPlane = std::max(context.shadowNear, camera ? camera->GetCameraNearPlane() : context.shadowNear);
 			const float farPlane = std::max(nearPlane + 1.0f,
 				std::min(context.shadowFar, camera ? camera->GetCameraFarPlane() : context.shadowFar));
@@ -1310,10 +1304,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uEnableShadows", (enableTraceShadows && context.enableShadows && shadowArray != 0u && shadowMatrices != 0u) ? 1 : 0);
 		SetUniform4fv(program, "uCascadeSplits", cascadeSplits);
 		SetUniform1f(program, "uShadowBias", context.shadowBias);
-		SetUniform1f(program, "uMaxShadowBias", context.shadowBias * 10.0f);
-		SetUniform1f(program, "uPointLightBias", pointLightBias);
-		SetUniform1f(program, "uPointLightSlopeBias", pointLightSlopeBias);
-		SetUniform1f(program, "uPointLightNormalOffset", pointLightNormalOffset);
 		SetUniform1ui(program, "uLightCount", lightCount);
 		timedDispatch("tracing", [&]() {
 			m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);
