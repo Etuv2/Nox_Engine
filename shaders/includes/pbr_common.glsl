@@ -310,9 +310,12 @@ vec3 CalculateDiffuseAlbedo(vec3 albedo, float metallic) {
     return albedo * (1.0 - metallic);
 }
 
-float SpecularOcclusion(float NdotV, float ao, float roughness) {
-    float aoInfluence = mix(0.0, 1.0, roughness * roughness);
-    return clamp(pow(NdotV + ao, aoInfluence) - 1.0 + ao, 0.0, 1.0);
+// Lagarde & de Rousiers 2014, "Moving Frostbite to PBR", listing 26.
+// Smooth lobes are occluded less than diffuse AO near normal incidence; rough lobes
+// converge to the diffuse AO. Takes perceptual roughness.
+float SpecularOcclusion(float NdotV, float ao, float perceptualRoughness) {
+    float alpha = perceptualRoughness * perceptualRoughness;
+    return Saturate(pow(max(NdotV + ao, 0.0), exp2(-16.0 * alpha - 1.0)) - 1.0 + ao);
 }
 
 // Principled lobe helpers
@@ -344,8 +347,10 @@ vec3 EvaluatePrincipledSpecularLobe(PrincipledSurface surface, PrincipledLobeCon
     return D * Vis * fresnelOut;
 }
 
+// KHR_materials_clearcoat: the coat lobe is weighted by the clearcoat factor itself.
+// (The 0.25 scale belongs to Disney's GTR1 coat, which this renderer does not use.)
 float ComputeClearcoatLayerWeight(PrincipledSurface surface) {
-    return 0.25 * surface.clearcoat;
+    return surface.clearcoat;
 }
 
 vec3 EvaluatePrincipledClearcoatLobe(PrincipledSurface surface, PrincipledLobeContext ctx) {
@@ -378,7 +383,8 @@ vec3 EvaluatePrincipledDiffuseLobe(
     float burleyDiffuse = DisneyDiffuseTerm(ctx, surface.perceptualRoughness);
     float subsurfaceDiffuse = DisneySubsurfaceDiffuseTerm(ctx, surface.perceptualRoughness);
     float diffuseTerm = mix(burleyDiffuse, subsurfaceDiffuse, surface.subsurface);
-    vec3 kD = (vec3(1.0) - fresnel) * (1.0 - surface.metallic) * (1.0 - transmissionWeight);
+    // diffuseColor already carries (1 - metallic); applying it again would square it.
+    vec3 kD = (vec3(1.0) - fresnel) * (1.0 - transmissionWeight);
     return kD * surface.diffuseColor * diffuseTerm * INV_PI;
 }
 
@@ -456,6 +462,26 @@ vec3 EvaluatePrincipledBRDF(
     return diffuse + specular;
 }
 
+// Split-sum LUT lookup: x = scale, y = bias of the directional albedo (Karis 2013).
+vec2 SampleBRDFLUT(sampler2D brdfLUT, float NdotV, float perceptualRoughness) {
+    return max(texture(brdfLUT, vec2(Saturate(NdotV), Saturate(perceptualRoughness))).rg, vec2(0.0));
+}
+
+// Single + multiple scattering specular energy for image based lighting
+// (Fdez-Aguera 2019, "A Multiple-Scattering Microfacet Model for Real-Time IBL").
+//   FssEss: single-scattered energy, pairs with the prefiltered radiance
+//   FmsEms: multiple-scattered energy, pairs with the (cosine-averaged) irradiance
+// Diffuse must be weighted by 1 - (FssEss + FmsEms) to stay energy conserving.
+// The LUT's bias term already integrates Schlick's (1 - VdotH)^5 over the lobe, so F0 is
+// used as-is; feeding a view-dependent Fresnel in here would count grazing Fresnel twice.
+void ComputeIBLSpecularEnergy(vec3 F0, float NdotV, vec2 brdf, out vec3 FssEss, out vec3 FmsEms) {
+    FssEss = F0 * brdf.x + brdf.y;
+    float Ess = brdf.x + brdf.y;
+    float Ems = Saturate(1.0 - Ess);
+    vec3 Favg = F0 + (vec3(1.0) - F0) * (1.0 / 21.0);
+    FmsEms = Ems * FssEss * Favg / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
+}
+
 vec3 EvaluatePrincipledIBL(
     PrincipledSurface surface,
     vec3 N,
@@ -473,25 +499,22 @@ vec3 EvaluatePrincipledIBL(
 ) {
     float NdotV = Saturate(dot(N, V));
 
+    // The irradiance map stores E / PI (see irradiance_convolution_frag.glsl), so a
+    // Lambertian lobe is simply diffuseColor * irradiance.
     vec3 irradiance = max(texture(irradianceMap, N).rgb, vec3(0.0));
     vec3 prefiltered = max(textureLod(prefilteredMap, R, surface.perceptualRoughness * prefilteredMaxLOD).rgb, vec3(0.0));
-    vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
+    vec2 brdf = SampleBRDFLUT(brdfLUT, NdotV, surface.perceptualRoughness);
 
-    vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
-
-    vec3 FssEss = F * brdf.x + brdf.y;
-    float Ess = brdf.x + brdf.y;
-    float Ems = 1.0 - Ess;
-    vec3 Favg = surface.specularF0 + (vec3(1.0) - surface.specularF0) * (1.0 / 21.0);
-    vec3 Fms = (FssEss * Favg) / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
-    vec3 kS = clamp(FssEss + Fms, vec3(0.0), vec3(0.98));
+    vec3 FssEss;
+    vec3 FmsEms;
+    ComputeIBLSpecularEnergy(surface.specularF0, NdotV, brdf, FssEss, FmsEms);
 
     float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
     float diffuseTerm = mix(1.0, 1.0 + 0.5 * surface.perceptualRoughness, surface.subsurface);
-    vec3 kD = max(vec3(0.0), (vec3(1.0) - kS) * (1.0 - surface.metallic) * (1.0 - transmissionWeight));
+    vec3 kD = max(vec3(1.0) - (FssEss + FmsEms), vec3(0.0)) * (1.0 - transmissionWeight);
     vec3 diffuse = kD * surface.diffuseColor * irradiance * diffuseAO * diffuseIBLScale * diffuseTerm;
 
-    vec3 specular = prefiltered * kS * specularAO * specularIBLScale;
+    vec3 specular = (FssEss * prefiltered + FmsEms * irradiance) * specularAO * specularIBLScale;
 
     vec3 ibl = diffuse + specular;
 
@@ -504,9 +527,10 @@ vec3 EvaluatePrincipledIBL(
 
     float clearcoatWeight = ComputeClearcoatLayerWeight(surface);
     if (clearcoatWeight > 0.0) {
-        vec3 ccF = FresnelSchlickRoughness(NdotV, DIELECTRIC_F0, surface.clearcoatRoughness);
+        // The coat has its own roughness, so it needs its own LUT lookup and prefiltered mip.
+        vec2 ccBrdf = SampleBRDFLUT(brdfLUT, NdotV, surface.clearcoatRoughness);
         vec3 ccPrefiltered = max(textureLod(prefilteredMap, R, surface.clearcoatRoughness * prefilteredMaxLOD).rgb, vec3(0.0));
-        vec3 ccSpecular = ccPrefiltered * (ccF * brdf.x + brdf.y) * specularAO * specularIBLScale;
+        vec3 ccSpecular = ccPrefiltered * (DIELECTRIC_F0 * ccBrdf.x + ccBrdf.y) * specularAO * specularIBLScale;
         float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
         ibl = ibl * baseAttenuation + clearcoatWeight * ccSpecular;
     }

@@ -586,19 +586,14 @@ vec3 ComputeDiffuseIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float di
 
 	float NdotV = Saturate(dot(N, V));
 	vec3 irradiance = max(texture(irradianceMap, N).rgb, vec3(0.0));
-	vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
-	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
-
-	vec3 FssEss = F * brdf.x + brdf.y;
-	float Ess = brdf.x + brdf.y;
-	float Ems = 1.0 - Ess;
-	vec3 Favg = surface.specularF0 + (vec3(1.0) - surface.specularF0) * (1.0 / 21.0);
-	vec3 Fms = (FssEss * Favg) / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
-	vec3 kS = clamp(FssEss + Fms, vec3(0.0), vec3(0.98));
+	vec2 brdf = SampleBRDFLUT(brdfLUT, NdotV, surface.perceptualRoughness);
+	vec3 FssEss;
+	vec3 FmsEms;
+	ComputeIBLSpecularEnergy(surface.specularF0, NdotV, brdf, FssEss, FmsEms);
 
 	float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
 	float diffuseTerm = mix(1.0, 1.0 + 0.5 * surface.perceptualRoughness, surface.subsurface);
-	vec3 kD = max(vec3(0.0), (vec3(1.0) - kS) * (1.0 - surface.metallic) * (1.0 - transmissionWeight));
+	vec3 kD = max(vec3(1.0) - (FssEss + FmsEms), vec3(0.0)) * (1.0 - transmissionWeight);
 	vec3 diffuse = kD * surface.diffuseColor * irradiance * diffuseAO * diffuseIBLScale * diffuseTerm;
 	return max(diffuse * iblIntensity, vec3(0.0));
 }
@@ -611,18 +606,14 @@ vec3 ComputeBounceableIBLSource(vec3 N, vec3 V, PrincipledSurface surface, float
 
 	float NdotV = Saturate(dot(N, V));
 	vec3 R = reflect(-V, N);
-	vec2 brdf = max(texture(brdfLUT, vec2(NdotV, surface.perceptualRoughness)).rg, vec2(0.0));
-	vec3 F = FresnelSchlickRoughness(NdotV, surface.specularF0, surface.perceptualRoughness);
-	vec3 FssEss = F * brdf.x + brdf.y;
-	float Ess = brdf.x + brdf.y;
-	float Ems = 1.0 - Ess;
-	vec3 Favg = surface.specularF0 + (vec3(1.0) - surface.specularF0) * (1.0 / 21.0);
-	vec3 Fms = (FssEss * Favg) / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
-	vec3 kS = clamp(FssEss + Fms, vec3(0.0), vec3(0.98));
+	vec2 brdf = SampleBRDFLUT(brdfLUT, NdotV, surface.perceptualRoughness);
+	vec3 FssEss;
+	vec3 FmsEms;
+	ComputeIBLSpecularEnergy(surface.specularF0, NdotV, brdf, FssEss, FmsEms);
 
 	float baseGloss = pow(1.0 - surface.perceptualRoughness, 2.0);
 	vec3 prefiltered = max(textureLod(prefilteredMap, R, surface.perceptualRoughness * prefilteredMaxLOD).rgb, vec3(0.0));
-	vec3 glossySource = prefiltered * kS * baseGloss * mix(specularAO, 1.0, 0.25) * specularIBLScale;
+	vec3 glossySource = prefiltered * (FssEss + FmsEms) * baseGloss * mix(specularAO, 1.0, 0.25) * specularIBLScale;
 
 	float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
 	vec3 source = diffuseSource + glossySource * baseAttenuation * iblIntensity * 0.35;
