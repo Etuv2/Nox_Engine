@@ -343,7 +343,7 @@ void IndirectDiffusePass::runRadiance(RenderContext& ctx) {
         (ctx.velocityTex != 0 && m_historyDepthQuarter && m_historyNormalFull && !ctx.indirectDiffuseHistoryReset) ? 1 : 0);
     const float reinjectionFeedback = ctx.indirectDiffuseValidationDisableReinjection
         ? 0.0f
-        : std::clamp(ctx.indirectDiffuseBounceFeedback, 0.0f, 2.0f);
+        : std::clamp(ctx.indirectDiffuseBounceFeedback, 0.0f, 1.0f);
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "previousIndirectFeedback"), reinjectionFeedback);
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "depthReject"), std::clamp(ctx.indirectDiffuseDepthReject, 0.01f, 0.35f));
     glUniform1f(glGetUniformLocation(m_csRadiance->GetProgramID(), "normalRejectCos"), std::clamp(1.0f - ctx.indirectDiffuseNormalReject, 0.55f, 0.99f));
@@ -374,7 +374,7 @@ void IndirectDiffusePass::runHorizonGather(RenderContext& ctx, const std::shared
     glBindImageTexture(6, m_sectorDebug->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
     const int sliceCount = std::clamp(ctx.indirectDiffuseSliceCount, 1, 8);
-    const int stepCount = std::clamp(ctx.indirectDiffuseSamplesPerSlice, 1, 16);
+    const int stepCount = std::clamp(ctx.indirectDiffuseSamplesPerSlice, 1, 64);
 
     glUniform2f(glGetUniformLocation(m_csHorizonGather->GetProgramID(), "invQuarterSize"),
         1.0f / float(m_qw), 1.0f / float(m_qh));

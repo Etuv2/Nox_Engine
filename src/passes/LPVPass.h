@@ -52,9 +52,7 @@ public:
         int vplSampleCount = 32000;         // Number of VPLs to inject
         
         // Propagation settings
-        int propagationIterations = 5;      // Number of light bounce iterations
-        float propagationAttenuation = 0.9f; // Energy loss per propagation step
-        float propagationBias = 0.1f;       // Directional bias along light direction
+        int propagationIterations = 8;      // Propagation steps; light travels one cell per step
         
         // Rendering settings
         float giStrength = 1.0f;            // GI contribution multiplier
@@ -69,10 +67,10 @@ public:
         int updateFrequency = 1;            // Update every N frames (1 = every frame)
     } config;
 
-    // Access to LPV textures for debug tooling and legacy inspectors.
-    GLuint GetLPVTextureR() const { return m_lpvSampleTextures[0]; }
-    GLuint GetLPVTextureG() const { return m_lpvSampleTextures[1]; }
-    GLuint GetLPVTextureB() const { return m_lpvSampleTextures[2]; }
+    // Accumulated LPV (radiant intensity SH per cell) for debug tooling and legacy inspectors.
+    GLuint GetLPVTextureR() const { return m_lpvAccumTextures[0]; }
+    GLuint GetLPVTextureG() const { return m_lpvAccumTextures[1]; }
+    GLuint GetLPVTextureB() const { return m_lpvAccumTextures[2]; }
     GLuint GetGeometryVolume() const { return m_geometryVolume; }
     GLuint GetResolvedIndirectTexture() const { return m_resolvedIndirectTexture; }
 
@@ -91,12 +89,18 @@ private:
     void DestroyRSMResourcesOnly();
     bool EnsureResolvedIndirectTexture(int width, int height);
 
+    // The directional light that direct lighting uses (first enabled one in the light manager).
+    bool FindInjectedLight(const RenderContext& ctx,
+                           const std::shared_ptr<DirectionalLight>& fallback,
+                           glm::vec3& direction,
+                           glm::vec3& irradiance) const;
+
     // Rendering stages
-    void RenderRSM(RenderContext& ctx,
-                   const std::shared_ptr<SceneGraph>& sceneGraph,
-                   const std::shared_ptr<DirectionalLight>& dirLight);
-    
-    void InjectVPLs();
+    void RenderRSM(const std::shared_ptr<SceneGraph>& sceneGraph,
+                   const glm::vec3& lightDirection,
+                   const glm::vec3& lightIrradiance);
+
+    void InjectVPLs(const glm::vec3& lightIrradiance);
     void PropagateLPV();
     void ResolveIndirect(RenderContext& ctx);
     void VoxelizeGeometry(const std::shared_ptr<SceneGraph>& sceneGraph);
@@ -105,22 +109,23 @@ private:
     glm::vec3 WorldToVoxel(const glm::vec3& worldPos) const;
     glm::vec3 VoxelToWorld(const glm::ivec3& voxelPos) const;
 
-    // LPV 3D textures (ping-pong for propagation, integer for atomics)
-    GLuint m_lpvTextures[3] = {0, 0, 0};        // R, G, B channels (SH coefficients) - R32UI extended X
-    GLuint m_lpvTexturesTemp[3] = {0, 0, 0};    // Temp textures for ping-pong - R32UI extended X
+    // Injection accumulators: signed fixed-point SH (R32I, 4x wider in X, one block per coefficient)
+    GLuint m_lpvTextures[3] = {0, 0, 0};
 
-    // Float sampling textures (what LightingPass samples) + ping-pong for propagation
-    GLuint m_lpvSampleTextures[3] = {0, 0, 0};      // R, G, B channels (RGBA16F per voxel)
-    GLuint m_lpvSampleTexturesTemp[3] = {0, 0, 0};  // Temp for propagation (RGBA16F)
+    // Propagation waves (ping-pong) and their running sum, RGBA16F = 4 SH coefficients per cell
+    GLuint m_lpvSampleTextures[3] = {0, 0, 0};
+    GLuint m_lpvSampleTexturesTemp[3] = {0, 0, 0};
+    GLuint m_lpvAccumTextures[3] = {0, 0, 0};
+    float m_fixedPointScale = 1.0f;
 
-    GLuint m_geometryVolume = 0;                 // Occlusion volume (R8)
+    GLuint m_geometryVolume = 0;                 // Directional occlusion bits (R32UI)
     GLuint m_resolvedIndirectTexture = 0;         // Full-screen RGBA16F irradiance + visibility
     
     // RSM framebuffer and textures
     std::unique_ptr<FrameBuffer> m_rsmFBO;
     GLuint m_rsmPosition = 0;       // World-space position (RGB16F)
     GLuint m_rsmNormal = 0;         // World-space normal (RGB16F)
-    GLuint m_rsmFlux = 0;           // Color * N·L * radiance (RGB16F)
+    GLuint m_rsmFlux = 0;           // Reflected flux per unit light-perpendicular area (RGB16F)
     GLuint m_rsmDepth = 0;          // Depth buffer
     
     // Shaders

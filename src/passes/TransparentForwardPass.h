@@ -43,9 +43,14 @@ private:
         GLint specularIBLScale = -1;
         GLint numLights = -1;
         GLint multiLightShadowArray = -1;
-        GLint keyLightDir = -1;
-        GLint keyLightColor = -1;
-        GLint keyLightIntensity = -1;
+        GLint enableShadows = -1;
+        GLint shadowBias = -1;
+        GLint cascadeSplits = -1;
+        GLint cascadeBlendDistance = -1;
+        GLint cascadeBlendFactor = -1;
+        GLint shadowDarkness = -1;
+        GLint shadowMinBrightness = -1;
+        GLint shadowTransitionHardness = -1;
     };
 
     struct TransparentCandidate {

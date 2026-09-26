@@ -1,29 +1,37 @@
 #version 460 core
 
-in vec3 gWorldPosition;
+// Directional geometry volume for LPV occlusion. Each cell keeps 6 bits: for every axis, whether
+// a surface facing that axis lies in the lower or the upper half of the cell along it. Light
+// propagating from cell q to its neighbour p along an axis crosses q's upper half and p's lower
+// half (for the + direction), so propagation can block exactly the surfaces it passes through
+// while light travelling along a surface (floor, wall) keeps going.
 
-// Geometry volume (write-only)
-layout(r8, binding = 0) uniform image3D u_geometryVolume;
+in vec3 gWorldPosition;
+flat in vec3 gNormal;
+
+layout(r32ui, binding = 0) uniform uimage3D u_geometryVolume;
 
 uniform vec3 u_gridCenter;
 uniform float u_voxelSize;
 uniform int u_gridResolution;
 
-ivec3 WorldToVoxel(vec3 worldPos) {
-    vec3 localPos = worldPos - u_gridCenter;
-    vec3 voxelPos = (localPos / u_voxelSize) + vec3(u_gridResolution * 0.5);
-    return ivec3(voxelPos);
-}
-
 void main() {
-    ivec3 voxelCoords = WorldToVoxel(gWorldPosition);
-    
-    // Check bounds
-    if (any(lessThan(voxelCoords, ivec3(0))) || 
-        any(greaterThanEqual(voxelCoords, ivec3(u_gridResolution)))) {
+    vec3 gridPos = (gWorldPosition - u_gridCenter) / u_voxelSize + vec3(float(u_gridResolution) * 0.5);
+    ivec3 cell = ivec3(floor(gridPos));
+    if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(u_gridResolution)))) {
         discard;
     }
-    
-    // Mark voxel as occupied (value = 1.0)
-    imageStore(u_geometryVolume, voxelCoords, vec4(1.0));
+
+    vec3 cellFraction = gridPos - vec3(cell);
+    vec3 facing = abs(gNormal);
+    uint bits = 0u;
+    for (int axis = 0; axis < 3; ++axis) {
+        // Surfaces tilted up to ~70 degrees away from an axis still block light along it.
+        if (facing[axis] > 0.35) {
+            bits |= 1u << uint(axis * 2 + (cellFraction[axis] >= 0.5 ? 1 : 0));
+        }
+    }
+    if (bits != 0u) {
+        imageAtomicOr(u_geometryVolume, cell, bits);
+    }
 }

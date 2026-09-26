@@ -78,14 +78,6 @@ const float SURFEL_GATHER_MIN_SUPPORT_FRACTION = 1.05;
 const float SURFEL_GATHER_MIN_SUPPORT_WORLD = 0.46;
 const float SURFEL_APPLY_EARLY_WEIGHT = 64.0;
 const float SURFEL_GRID_FALLBACK_MAX_BLEND = 0.80;
-const float SURFEL_CROSS_SURFACE_BLEED_BOOST = 1.32;
-const float SURFEL_CROSS_SURFACE_MAX_LIFT = 0.36;
-const float SURFEL_CROSS_SURFACE_CHROMA_GAIN = 1.58;
-const float SURFEL_FINAL_BLEED_VISIBILITY_BOOST = 1.35;
-const float SURFEL_FINAL_BLEED_CHROMA_BOOST = 0.74;
-const float SURFEL_FINAL_BLEED_MAX_LUMA_SCALE = 1.65;
-const float SURFEL_APPLY_COPLANAR_SELF_TRANSFER_SCALE = 0.32;
-const float SURFEL_APPLY_BLEED_EARLY_WEIGHT = 10.0;
 const uint DEBUG_SURFEL_GRID_CELLS = 6u;
 const uint DEBUG_FINAL_GATHER_WEIGHT = 18u;
 const uint DEBUG_GBUFFER_WORLD_POSITION = 19u;
@@ -115,8 +107,10 @@ vec3 DecodePackedCellAverage(uint packedAverage, out float confidence)
     return mapped / max(vec3(1.0) - mapped, vec3(1e-4));
 }
 
-vec3 SurfelColorBleedTint(vec3 sourceTint);
-
+// Weight of a surfel's irradiance for a receiving pixel. Surfels store the irradiance arriving
+// at their own surface, so only surfels on the receiver's surface (similar normal, close to
+// its plane) apply. Colour bleeding needs no special path: it is already in the irradiance of
+// surfels whose rays hit coloured surfaces.
 float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
 {
     if (!SurfelMaterialAllowsDiffuseGI(surfel.ids.z)) {
@@ -127,9 +121,7 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
     vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
     float radius = max(surfel.worldPos_radius.w, 0.001);
     vec3 delta = receiverPos - surfelPos;
-    float distSq = dot(delta, delta);
-    float dist = sqrt(max(distSq, 1e-8));
-    vec3 toReceiver = delta / dist;
+    float dist = sqrt(max(dot(delta, delta), 1e-8));
 
     float maxCellSize = SurfelGridCellSizeAtWorld(surfelPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
     float supportRadius = max(SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent),
@@ -140,20 +132,13 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
         return 0.0;
     }
 
-    // Diffuse transfer between perpendicular surfaces is valid color bleeding.
-    // Parallel-normal weighting alone rejects Cornell wall-to-floor bounce.
-    float emitterFacing = max(dot(surfelNormal, toReceiver), 0.0);
-    float receiverFacing = max(dot(receiverNormal, -toReceiver), 0.0);
-    float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0)) * 0.58;
-    float coplanarFacing = max(dot(receiverNormal, surfelNormal), 0.0) * SURFEL_APPLY_COPLANAR_SELF_TRANSFER_SCALE;
-    float normalWeight = max(transferFacing, coplanarFacing);
-    float relaxedReject = max(uNormalRejectCos * 0.18, 0.02);
-    normalWeight = SurfelSaturate((normalWeight - relaxedReject) / max(1.0 - relaxedReject, 1e-4));
+    float normalCos = dot(receiverNormal, surfelNormal);
+    float minNormalCos = clamp(max(uNormalRejectCos, 0.5), 0.0, 0.95);
+    float normalWeight = smoothstep(minNormalCos, mix(minNormalCos, 1.0, 0.85), normalCos);
     float surfelPlane = abs(dot(delta, surfelNormal));
     float receiverPlane = abs(dot(delta, receiverNormal));
     float planeSigma = max(max(radius * 2.0, supportRadius * 0.18), 0.04);
-    float coplanarWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
-    float planeWeight = mix(coplanarWeight, 1.0, transferFacing);
+    float planeWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
     float luminance = SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0)));
     if (confidence < 0.08 && luminance <= 1e-5) {
@@ -164,210 +149,11 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
     return distanceWeight * normalWeight * planeWeight * confidenceWeight;
 }
 
+// The surfel cache stores incident diffuse irradiance. The deferred lighting pass converts it
+// to outgoing receiver radiance with the material BRDF.
 vec3 SurfelCachedIndirectIrradiance(Surfel surfel)
 {
-    // The surfel cache stores incident diffuse irradiance. The deferred lighting
-    // pass converts it to outgoing receiver radiance with the material BRDF.
     return max(surfel.irradiance.rgb, vec3(0.0));
-}
-
-vec3 SurfelGatheredIrradianceForReceiver(Surfel surfel, vec3 receiverNormal)
-{
-    vec3 cachedIrradiance = SurfelCachedIndirectIrradiance(surfel);
-    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
-    float sameSurfaceBlend = smoothstep(0.50, 0.94, max(dot(receiverNormal, surfelNormal), 0.0));
-    vec3 sourceAlbedo = clamp(surfel.albedo_life.rgb, vec3(0.0), vec3(1.0));
-    vec3 sourceTint = SurfelColorBleedTint(sourceAlbedo);
-    vec3 sourceDiffuseBounce = cachedIrradiance * mix(sourceAlbedo, sourceTint, 0.35);
-    float cachedLum = SurfelLuminance(cachedIrradiance);
-    float sourceBounceLum = SurfelLuminance(sourceDiffuseBounce);
-    float maxSourceBounceLum = max(cachedLum * 0.95, 0.015);
-    if (sourceBounceLum > maxSourceBounceLum) {
-        sourceDiffuseBounce *= maxSourceBounceLum / max(sourceBounceLum, 1e-5);
-    }
-
-    float sameSurfaceAttenuation = mix(1.0, 0.54, sameSurfaceBlend);
-    return sourceDiffuseBounce * sameSurfaceAttenuation;
-}
-
-float ReceiverSurfelColorBleedWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
-{
-    vec3 surfelPos = surfel.worldPos_radius.xyz;
-    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
-    float radius = max(surfel.worldPos_radius.w, 0.001);
-    vec3 delta = receiverPos - surfelPos;
-    float distSq = dot(delta, delta);
-    float dist = sqrt(max(distSq, 1e-8));
-    vec3 toReceiver = delta / dist;
-
-    float maxCellSize = SurfelGridCellSizeAtWorld(surfelPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
-    float supportRadius = max(SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent),
-                              max(maxCellSize * SURFEL_GATHER_MIN_SUPPORT_FRACTION, SURFEL_GATHER_MIN_SUPPORT_WORLD));
-    float normalizedDistance = dist / max(supportRadius * 1.55, 1e-4);
-    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.70);
-    if (distanceWeight <= 1e-5) {
-        return 0.0;
-    }
-
-    float sameSurface = smoothstep(0.38, 0.82, max(dot(receiverNormal, surfelNormal), 0.0));
-    float crossSurface = 1.0 - sameSurface;
-    if (crossSurface <= 1e-4) {
-        return 0.0;
-    }
-
-    float emitterFacing = max(dot(surfelNormal, toReceiver), 0.0);
-    float receiverFacing = max(dot(receiverNormal, -toReceiver), 0.0);
-    float transferFacing = sqrt(max(emitterFacing * receiverFacing, 0.0));
-    if (transferFacing <= 0.0004) {
-        return 0.0;
-    }
-
-    float surfelPlane = abs(dot(delta, surfelNormal));
-    float receiverPlane = abs(dot(delta, receiverNormal));
-    float planeSigma = max(max(radius * 2.05, supportRadius * 0.30), 0.070);
-    float planeWeight = exp(-(surfelPlane + receiverPlane) / planeSigma);
-    float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
-    float luminance = SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0)));
-    if (confidence < 0.08 && luminance <= 1e-5) {
-        return 0.0;
-    }
-
-    float colorfulness = length(clamp(surfel.albedo_life.rgb, vec3(0.0), vec3(1.0)) -
-        vec3(SurfelLuminance(clamp(surfel.albedo_life.rgb, vec3(0.0), vec3(1.0)))));
-    float colorWeight = smoothstep(0.035, 0.22, colorfulness);
-    float varianceLum = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
-    float stableColorCache = 1.0 - smoothstep(0.10, 0.65, varianceLum);
-    return distanceWeight *
-        planeWeight *
-        crossSurface *
-        transferFacing *
-        mix(0.50, 1.0, colorWeight) *
-        mix(0.42, 1.0, smoothstep(0.05, 0.65, confidence)) *
-        mix(0.62, 1.0, stableColorCache);
-}
-
-vec3 SurfelColorBleedTint(vec3 sourceTint)
-{
-    sourceTint = clamp(sourceTint, vec3(0.0), vec3(1.0));
-    float tintLum = SurfelLuminance(sourceTint);
-    vec3 chroma = sourceTint - vec3(tintLum);
-    float colorfulness = length(chroma);
-    if (colorfulness <= 1e-5) {
-        return max(sourceTint, vec3(0.015));
-    }
-
-    vec3 saturatedTint = max(sourceTint + chroma * SURFEL_CROSS_SURFACE_CHROMA_GAIN, vec3(0.0));
-    float saturatedLum = SurfelLuminance(saturatedTint);
-    float maxTintLum = max(tintLum * mix(1.08, 1.52, smoothstep(0.04, 0.28, colorfulness)), 0.025);
-    if (saturatedLum > maxTintLum) {
-        saturatedTint *= maxTintLum / max(saturatedLum, 1e-5);
-    }
-
-    return clamp(saturatedTint, vec3(0.0), vec3(1.15));
-}
-
-vec3 SurfelColorBleedIrradianceForReceiver(Surfel surfel)
-{
-    vec3 cachedIrradiance = SurfelCachedIndirectIrradiance(surfel);
-    vec3 sourceTint = clamp(surfel.albedo_life.rgb, vec3(0.0), vec3(1.0));
-    vec3 saturatedTint = SurfelColorBleedTint(sourceTint);
-    return cachedIrradiance * saturatedTint * SURFEL_CROSS_SURFACE_BLEED_BOOST;
-}
-
-vec3 ClampColorBleedLift(vec3 baseIrradiance, vec3 colorBleed, float support)
-{
-    float geometricSupport = clamp(support, 0.0, 1.0);
-    colorBleed = max(colorBleed, vec3(0.0)) * geometricSupport;
-    float baseLum = SurfelLuminance(max(baseIrradiance, vec3(0.0)));
-    float bleedLum = SurfelLuminance(colorBleed);
-    if (bleedLum <= 1e-5) {
-        return vec3(0.0);
-    }
-
-    float supportLum = max(baseLum, bleedLum * smoothstep(0.035, 0.30, bleedLum));
-    float supportCap = mix(0.050, SURFEL_CROSS_SURFACE_MAX_LIFT, geometricSupport);
-    float maxBleedLum = max(max(supportLum * supportCap, baseLum * 0.45 + 0.018), 0.018 * geometricSupport);
-    if (bleedLum > maxBleedLum) {
-        colorBleed *= maxBleedLum / bleedLum;
-    }
-
-    vec3 neutralBleed = vec3(SurfelLuminance(colorBleed));
-    float chromaSupport = smoothstep(0.008, 0.12, max(baseLum, bleedLum)) * geometricSupport;
-    vec3 chromaOnlyBleed = max(colorBleed - neutralBleed * 0.22, vec3(0.0));
-    return mix(colorBleed * 0.82, chromaOnlyBleed, chromaSupport * 0.35);
-}
-
-vec3 PromoteColorBleedForFinalComposite(vec3 baseIrradiance, vec3 colorBleed, float support)
-{
-    colorBleed = max(colorBleed, vec3(0.0));
-    float bleedLum = SurfelLuminance(colorBleed);
-    if (bleedLum <= 1e-5) {
-        return vec3(0.0);
-    }
-
-    float geometricSupport = clamp(support, 0.0, 1.0);
-    float baseLum = SurfelLuminance(max(baseIrradiance, vec3(0.0)));
-    vec3 neutralBleed = vec3(bleedLum);
-    vec3 positiveChroma = max(colorBleed - neutralBleed * 0.64, vec3(0.0));
-    float chromaSignal = smoothstep(0.004, 0.12, length(colorBleed - neutralBleed));
-    float visibilityBoost = mix(
-        1.0,
-        SURFEL_FINAL_BLEED_VISIBILITY_BOOST,
-        geometricSupport * smoothstep(0.004, 0.095, bleedLum)
-    );
-
-    vec3 promoted = colorBleed * visibilityBoost;
-    promoted += positiveChroma * (SURFEL_FINAL_BLEED_CHROMA_BOOST * geometricSupport * chromaSignal);
-
-    float promotedLum = SurfelLuminance(promoted);
-    float supportLum = max(baseLum, bleedLum);
-    float maxPromotedLum = max(
-        supportLum * mix(0.35, SURFEL_FINAL_BLEED_MAX_LUMA_SCALE, geometricSupport),
-        baseLum * 0.55 + 0.025 * geometricSupport
-    );
-    if (promotedLum > maxPromotedLum) {
-        promoted *= maxPromotedLum / max(promotedLum, 1e-5);
-    }
-
-    return max(promoted, vec3(0.0));
-}
-
-vec3 ComposeColorBleedWithIrradiance(vec3 baseIrradiance, vec3 colorBleed, float support)
-{
-    vec3 safeBase = max(baseIrradiance, vec3(0.0));
-    vec3 safeBleed = max(colorBleed, vec3(0.0));
-    float bleedLum = SurfelLuminance(safeBleed);
-    if (bleedLum <= 1e-5) {
-        return safeBase;
-    }
-
-    float geometricSupport = clamp(support, 0.0, 1.0);
-    float baseLum = SurfelLuminance(safeBase);
-    vec3 neutralBleed = vec3(bleedLum);
-    vec3 bleedChroma = safeBleed - neutralBleed;
-    float chromaRatio = length(bleedChroma) / max(bleedLum, 0.035);
-    float chromaTransfer = geometricSupport *
-        smoothstep(0.006, 0.095, bleedLum) *
-        smoothstep(0.045, 0.38, chromaRatio);
-
-    vec3 bleedTint = safeBleed / max(bleedLum, 1e-5);
-    float tintBlend = clamp(chromaTransfer * mix(0.16, 0.52, geometricSupport), 0.0, 0.52);
-    vec3 tintedBase = mix(safeBase, bleedTint * baseLum, tintBlend);
-    float maxAddedBleedLum = max(
-        baseLum * mix(0.08, 0.34, geometricSupport),
-        0.018 * geometricSupport
-    );
-    float addedBleedLum = min(bleedLum, maxAddedBleedLum);
-    vec3 boundedBleed = bleedTint * (addedBleedLum * max(chromaTransfer, 0.16 * geometricSupport));
-    vec3 combined = tintedBase + boundedBleed;
-
-    float combinedLum = SurfelLuminance(combined);
-    float targetLum = max(baseLum + maxAddedBleedLum, baseLum * 1.08 + 0.016 * geometricSupport);
-    if (combinedLum > targetLum) {
-        combined *= targetLum / max(combinedLum, 1e-5);
-    }
-
-    return max(combined, vec3(0.0));
 }
 
 vec3 DebugGridIDColor(uint cellID)
@@ -613,8 +399,6 @@ void AccumulateCell(uint cell,
                     uint cellSampleBudget,
                     inout vec3 sumIrradiance,
                     inout float sumWeight,
-                    inout vec3 sumBleedIrradiance,
-                    inout float sumBleedWeight,
                     inout uint candidateCount,
                     inout uint sampleCount)
 {
@@ -650,9 +434,8 @@ void AccumulateCell(uint cell,
             continue;
         }
 
-        float bleedWeight = ReceiverSurfelColorBleedWeight(worldPos, normal, surfel);
         float weight = ReceiverSurfelGatherWeight(worldPos, normal, surfel);
-        if (weight <= 1e-5 && bleedWeight <= 1e-5) {
+        if (weight <= 1e-5) {
             continue;
         }
         bool directBudgetAvailable = sampleCount < gatherBudget;
@@ -665,20 +448,15 @@ void AccumulateCell(uint cell,
                 uRadialDepthMinVariance
             );
             weight *= radialVisibility;
-            bleedWeight *= radialVisibility;
             if (weight <= 1e-5 || !directBudgetAvailable) {
                 weight = 0.0;
             }
         }
 
         if (directBudgetAvailable && weight > 1e-5) {
-            sumIrradiance += SurfelGatheredIrradianceForReceiver(surfel, normal) * weight;
+            sumIrradiance += SurfelCachedIndirectIrradiance(surfel) * weight;
             sumWeight += weight;
             ++sampleCount;
-        }
-        if (bleedWeight > 1e-5) {
-            sumBleedIrradiance += SurfelColorBleedIrradianceForReceiver(surfel) * bleedWeight;
-            sumBleedWeight += bleedWeight;
         }
     }
 }
@@ -769,8 +547,6 @@ void main()
 
     vec3 sumIrradiance = vec3(0.0);
     float sumWeight = 0.0;
-    vec3 sumBleedIrradiance = vec3(0.0);
-    float sumBleedWeight = 0.0;
     uint gatherBudget = min(max(uMaxGatherSurfelsPerPixel, 1u), SURFEL_APPLY_MAX_GATHER_CANDIDATES);
     uint neighborRadius = min(uGatherNeighborRadius, 2u);
     uint gatherCellCount = neighborRadius == 0u
@@ -781,9 +557,7 @@ void main()
     uint receiverSeed = ReceiverGatherSeed(pixel, worldPos, transformID, materialID);
 
     for (uint i = 0u; i < gatherCellCount; ++i) {
-        bool directGatherSaturated = sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || sampleCount >= gatherBudget;
-        bool bleedGatherSaturated = sumBleedWeight >= SURFEL_APPLY_BLEED_EARLY_WEIGHT;
-        if (directGatherSaturated && bleedGatherSaturated) {
+        if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || sampleCount >= gatherBudget) {
             break;
         }
 
@@ -810,8 +584,6 @@ void main()
                        cellSampleBudget,
                        sumIrradiance,
                        sumWeight,
-                       sumBleedIrradiance,
-                       sumBleedWeight,
                        candidateCount,
                        sampleCount);
     }
@@ -836,25 +608,15 @@ void main()
         fallbackBlend = 0.0;
     }
     float combinedBlendWeight = max(directBlend + fallbackBlend, 1e-5);
-    vec3 preliminaryIrradiance = (directIrradiance * directBlend + boundedGridIrradiance * fallbackBlend) / combinedBlendWeight;
-    vec3 colorBleed = sumBleedWeight > 1e-5
-        ? sumBleedIrradiance / sumBleedWeight
-        : vec3(0.0);
-    float bleedSupport = smoothstep(0.004, 0.10, sumBleedWeight) *
-        mix(0.68, 1.0, max(directCoverage, fallbackBlend));
-    colorBleed = ClampColorBleedLift(preliminaryIrradiance, colorBleed, bleedSupport);
-    colorBleed = PromoteColorBleedForFinalComposite(preliminaryIrradiance, colorBleed, bleedSupport);
+    vec3 irradiance = (directIrradiance * directBlend + boundedGridIrradiance * fallbackBlend) / combinedBlendWeight;
 
-    bool finalGIValid = directBlend > 0.0 || fallbackBlend > 0.0 || bleedSupport > 0.0;
+    bool finalGIValid = directBlend > 0.0 || fallbackBlend > 0.0;
     MarkCoverageTileFinalGI(uvec2(inputPixel), finalGIValid);
     if (directBlend > 0.01) {
         atomicAdd(counters.finalGatherDirectPixels, 1u);
     }
     if (fallbackBlend > 0.01) {
         atomicAdd(counters.finalGatherFallbackPixels, 1u);
-    }
-    if (bleedSupport > 0.01) {
-        atomicAdd(counters.finalGatherBleedPixels, 1u);
     }
     if (finalGIValid) {
         atomicAdd(counters.finalGatherValidPixels, 1u);
@@ -864,14 +626,15 @@ void main()
         imageStore(uOutIndirect, pixel, vec4(DebugGatherWeightColor(directBlend, fallbackBlend, sampleCount, candidateCount), 1.0));
         return;
     }
-    vec3 irradiance = ComposeColorBleedWithIrradiance(preliminaryIrradiance, colorBleed, bleedSupport);
-    float confidence = clamp(max(max(directBlend, fallbackBlend), bleedSupport * 0.85), 0.0, 1.0);
+    // Coverage of this pixel by the cache: the composite fills the rest from other GI sources.
+    float confidence = clamp(max(directBlend, fallbackBlend), 0.0, 1.0);
     if (uDebugView == DEBUG_FINAL_GATHER_FALLBACK) {
         imageStore(uOutIndirect, pixel, vec4(boundedGridIrradiance * fallbackBlend, fallbackBlend));
         return;
     }
     if (uDebugView == DEBUG_FINAL_GATHER_BLEED) {
-        imageStore(uOutIndirect, pixel, vec4(colorBleed, bleedSupport));
+        // The separate colour-bleed gather is gone; bleeding lives in the irradiance itself.
+        imageStore(uOutIndirect, pixel, vec4(0.0));
         return;
     }
     if (uDebugView == DEBUG_FINAL_GATHER_COMPOSITE) {

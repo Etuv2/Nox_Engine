@@ -14,7 +14,7 @@ out VS_OUT {
 
 // Uniforms
 uniform mat4 model;
-uniform mat4 u_lightViewProj;
+uniform mat4 lightSpaceMatrix; // light view-projection (RenderShadowCascade contract)
 
 void main() {
     // Transform to world space
@@ -28,5 +28,5 @@ void main() {
     vs_out.texCoord = aTexCoord;
     
     // Transform to light space
-    gl_Position = u_lightViewProj * worldPos;
+    gl_Position = lightSpaceMatrix * worldPos;
 }

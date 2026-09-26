@@ -512,7 +512,8 @@ bool Skybox::GeneratePrefilteredMap()
 	glUseProgram(m_prefilterShader);
 	glUniform1i(glGetUniformLocation(m_prefilterShader, "environmentMap"), 0);
 	glUniformMatrix4fv(glGetUniformLocation(m_prefilterShader, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
-	glUniform1f(glGetUniformLocation(m_prefilterShader, "resolution"), 512.0f);
+	// Face size of the source cubemap (mip 0); drives the per-sample mip selection in the shader.
+	glUniform1f(glGetUniformLocation(m_prefilterShader, "resolution"), static_cast<float>(m_envCubemap->Width()));
 
 	// Bind environment map to unit 0
 	m_envCubemap->Bind(GL_TEXTURE0);
@@ -525,8 +526,9 @@ bool Skybox::GeneratePrefilteredMap()
 		unsigned int h = baseSize >> mip;
 		glViewport(0, 0, w, h);
 
+		// Perceptual roughness: the lighting shaders fetch mip = perceptualRoughness * maxLOD and
+		// ImportanceSampleGGX squares its input into alpha, so the mip ladder must be linear here.
 		float roughness = float(mip) / float(maxMipLevels - 1);
-		roughness *= roughness;
 		glUniform1f(glGetUniformLocation(m_prefilterShader, "roughness"), roughness);
 
 		std::cout << "[Skybox] Prefilter mip " << mip << " size=" << w << "x" << h

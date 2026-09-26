@@ -4,6 +4,7 @@
 #include "MeshComponent.h"
 #include "DefaultTextures.h"
 #include "TextureUnits.h"
+#include "ShadowMapper.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <chrono>
@@ -769,7 +770,9 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 	const auto& uniforms = GetShaderUniformCache(transparentShader);
 	UploadMaterialSamplerUniforms(uniforms);
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// forward_transparent_frag.glsl writes premultiplied color plus a per-channel transmittance
+	// (dual-source): dst' = color + dst * transmittance.
+	glBlendFunc(GL_ONE, GL_SRC1_COLOR);
 	glDepthMask(GL_FALSE);
 
 	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
@@ -1784,15 +1787,9 @@ void RenderSystem::PrepareShadowSubmissionCache(const glm::mat4& lightSpaceMatri
 			m_renderItemWorldCenterY[itemIndex],
 			m_renderItemWorldCenterZ[itemIndex]);
 		const float radius = m_renderItemWorldRadius[itemIndex];
-		const glm::vec4 clip = lightSpaceMatrix * glm::vec4(center, 1.0f);
-		bool visible = true;
-		if (clip.w != 0.0f) {
-			const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-			const float margin = 0.2f * (1.0f + std::abs(ndc.z) * 0.5f) + radius * 0.01f;
-			visible = ndc.x >= -1.0f - margin && ndc.x <= 1.0f + margin &&
-				ndc.y >= -1.0f - margin && ndc.y <= 1.0f + margin &&
-				ndc.z >= -1.0f - margin && ndc.z <= 1.0f + margin;
-		}
+		// World-space sphere vs light volume; casters in front of the near plane are kept because
+		// shadow slices are rendered with depth clamping.
+		const bool visible = ShadowMapper::SphereIntersectsShadowCasterVolume(lightSpaceMatrix, center, radius);
 
 		if (visible) {
 			m_submissionCache.shadowVisibleItems.items.push_back(itemIndex);

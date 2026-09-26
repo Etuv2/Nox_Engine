@@ -1,9 +1,9 @@
 # Transmission Completion Audit
 
 ## Current State
-- `src/passes/TransparentForwardPass.cpp` is still a back-to-front alpha-blend pass that treats transmission as a view-dependent tint layered over the existing PBR response.
-- `shaders/forward_transparent_frag.glsl` still assumes thin-surface behavior: refraction is sampled from the environment map only, alpha is remapped heuristically, and there is no thickness-aware absorption or transmittance model.
-- `shaders/includes/pbr_common.glsl` currently exposes transmission as a scalar energy term only; there is no shared medium model for Beer-Lambert absorption or thickness-dependent attenuation.
+- `src/passes/TransparentForwardPass.cpp` draws back to front with dual-source blending (`glBlendFunc(GL_ONE, GL_SRC1_COLOR)`), lit by the same light loop and shadows as the deferred pass (`shaders/includes/lighting_common.glsl`).
+- `shaders/forward_transparent_frag.glsl` now composites with dual-source blending: reflections are added at full strength and the actual scene behind the surface is transmitted, tinted per channel by base color and Beer-Lambert absorption (`ComputeVolumeTransmittance`). It still assumes thin-surface behavior along the view ray: there is no refraction offset (no screen-space refraction) and thickness is a scalar.
+- `shaders/includes/pbr_common.glsl` provides the transmission weight (`ComputeTransmissionWeight`) and a shared medium model (`ComputeVolumeTransmittance`: base-color tint plus Beer-Lambert absorption over `thicknessFactor`), used by the forward and RT paths.
 - `shaders/includes/material_common.glsl` only unpacks the canonical opaque/transmissive runtime fields currently available to the renderer and does not yet carry a volume/thickness contract.
 
 ## Safe Prep Made

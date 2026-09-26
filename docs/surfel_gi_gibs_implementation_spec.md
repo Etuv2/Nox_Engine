@@ -809,11 +809,17 @@ Cons: approximate, can miss thin geometry, can self-intersect if bias is wrong.
 ### Trace priority
 
 ```text
-1. Try screen-space trace for near hit.
-2. If no reliable hit, try software BVH trace if enabled.
-3. If no BVH hit or BVH unavailable, try surfel-grid fallback.
-4. If no hit, sample sky/environment.
+1. If the software BVH is available, trace every ray with it: its hit or miss is exact.
+   A miss samples the sky/environment (black without a skybox) and is a valid sample.
+2. Otherwise try the screen-space trace for a near hit,
+3. then the surfel-grid fallback.
+4. If neither resolves the ray, it counts as sky only when a sky is bound; otherwise it is
+   unresolved and the integrator skips it (it may have hit geometry the screen and grid
+   cannot see, so counting it as black would bias irradiance low).
 ```
+
+Every resolved ray has equal weight in the irradiance estimate. Hit-kind reliability may steer
+ray guiding, but weighting samples by how they were traced biases the mean.
 
 ### Hit bias
 

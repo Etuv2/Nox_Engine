@@ -3,8 +3,12 @@
 // Include shared PBR functions
 #include "includes/pbr_common.glsl"
 #include "includes/material_common.glsl"
+#include "includes/lighting_common.glsl"
 
-out vec4 FragColor;
+// Dual-source output, blended with glBlendFunc(GL_ONE, GL_SRC1_COLOR):
+//   dst' = FragColor.rgb + dst.rgb * FragTransmittance.rgb
+layout(location = 0, index = 0) out vec4 FragColor;
+layout(location = 0, index = 1) out vec4 FragTransmittance;
 
 in VS_OUT {
     vec3 WorldPos;
@@ -88,10 +92,6 @@ uniform float specularIBLScale = 0.45;
 // Camera
 uniform vec3 viewPos;
 
-// Enhanced lighting uniforms
-uniform vec3 keyLightDir = normalize(vec3(-0.4, -1.0, -0.2));
-uniform vec3 keyLightColor = vec3(1.0);
-uniform float keyLightIntensity = 1.0;
 
 vec3 getNormalFromMap() {
     // Start with geometric normal
@@ -138,24 +138,6 @@ vec3 getNormalFromMap() {
 // Note: DistributionGGX, GeometrySchlickGGX, GeometrySmith, FresnelSchlick, 
 // FresnelSchlickRoughness are now defined in pbr_common.glsl (included above)
 
-vec3 sampleEnvironmentReflection(vec3 viewDir, vec3 normal, float roughness) {
-    vec3 reflectionDir = reflect(-viewDir, normal);
-    float lod = roughness * prefilteredMaxLOD;
-    return textureLod(prefilteredMap, reflectionDir, lod).rgb;
-}
-
-vec3 sampleEnvironmentRefraction(
-    vec3 viewDir,
-    vec3 normal,
-    float roughness,
-    float materialIOR,
-    out bool totalInternalReflection
-) {
-    vec3 refractionDir = ComputeRefractionDirection(-viewDir, normal, materialIOR, totalInternalReflection);
-    float lod = roughness * prefilteredMaxLOD;
-    return textureLod(prefilteredMap, refractionDir, lod).rgb;
-}
-
 void main() {
     // Sample base color and alpha
     vec4 baseColorSample = hasBaseColorTexture ? texture(texture_diffuse, SelectUVSet(baseColorUVSet, fs_in.UV, fs_in.UV1)) : vec4(1.0);
@@ -192,6 +174,11 @@ void main() {
     
     // Calculate vectors
     vec3 N = getNormalFromMap();
+    // Back faces of double-sided surfaces shade with the reversed normal (glTF doubleSided);
+    // otherwise NdotV clamps to 0 and the back of a glass pane turns into an opaque mirror.
+    if (!gl_FrontFacing) {
+        N = -N;
+    }
     vec3 V = normalize(viewPos - fs_in.WorldPos);
     vec3 R = reflect(-V, N);
     
@@ -234,23 +221,17 @@ void main() {
         surface.attenuationColor
     );
 
-    bool totalInternalReflection = false;
-    vec3 reflectedEnv = sampleEnvironmentReflection(V, N, surface.perceptualRoughness);
-    vec3 refractedEnv = sampleEnvironmentRefraction(V, N, surface.perceptualRoughness, surface.ior, totalInternalReflection);
-    if (totalInternalReflection) {
-        refractedEnv = reflectedEnv;
-    }
-    
     // === DIRECT LIGHTING ===
+    // Same light loop, attenuation and shadowing as the deferred pass (includes/lighting_common.glsl).
     vec3 directLighting = vec3(0.0);
-    
-    vec3 L = normalize(-keyLightDir);
-    float NdotL = max(dot(N, L), 0.0);
-    
-    if (NdotL > 0.0) {
-        vec3 directDiffuse, directSpecular;
-        EvaluatePrincipledBRDFSeparated(surface, N, V, L, directDiffuse, directSpecular);
-        directLighting = (directDiffuse + directSpecular) * keyLightColor * keyLightIntensity;
+    int lightCount = min(numLights, 64);
+    for (int i = 0; i < lightCount; ++i) {
+        vec3 lightDiffuse;
+        vec3 lightSpecular;
+        float lightVisibility;
+        if (EvaluateLightRadiance(i, fs_in.WorldPos, N, V, surface, lightDiffuse, lightSpecular, lightVisibility)) {
+            directLighting += (lightDiffuse + lightSpecular) * lightVisibility;
+        }
     }
     
     // === IBL ===
@@ -263,23 +244,17 @@ void main() {
         prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale
     );
 
-    // Keep reflection/specular on the shared BRDF path and add a separate transmitted lobe.
-    vec3 reflectiveColor = pbrIBL + directLighting;
-    vec3 transmittedColor = refractedEnv * transmittance * transmissionWeight;
+    // Light leaving the surface towards the eye: reflection (specular, clearcoat, the diffuse
+    // part not lost to transmission) and emission.
+    vec3 surfaceColor = pbrIBL + directLighting + emissive * emissiveStrength;
 
-    // === COMBINE LIGHTING ===
-    vec3 finalColor = reflectiveColor + transmittedColor + emissive * emissiveStrength;
-    
-    // Medium opacity comes from Beer-Lambert attenuation and blends with surface alpha.
-    float mediumOpacity = 1.0 - dot(transmittance, vec3(0.3333333333));
-    float surfaceOpacity = alpha * (1.0 - transmissionWeight);
-    float transmissionOpacity = mediumOpacity * transmissionWeight;
-    float finalAlpha = surfaceOpacity + transmissionOpacity;
-    
-    // Ensure alpha stays in valid range
-    finalAlpha = clamp(finalAlpha, 0.0, 1.0);
-    
-    // === OUTPUT ===
-    // Output in linear color space - gamma correction happens in post-processing
-    FragColor = vec4(finalColor, finalAlpha);
+    // === COMPOSITE ===
+    // alpha is glTF coverage: the uncovered part shows the background unchanged. The covered part
+    // reflects at full strength (Fresnel reflections must not fade with alpha) and passes
+    // transmission * (1 - Fresnel) of the background, tinted by base color and volume absorption.
+    // Metals do not transmit. Refraction is not simulated: the background is seen along the view
+    // ray. For materials without transmission this is exactly classic alpha blending.
+    vec3 surfaceTransmittance = transmittance * (transmissionWeight * (1.0 - surface.metallic));
+    FragColor = vec4(alpha * surfaceColor, alpha * (1.0 - Average3(surfaceTransmittance)));
+    FragTransmittance = vec4(vec3(1.0 - alpha) + alpha * surfaceTransmittance, 1.0);
 }

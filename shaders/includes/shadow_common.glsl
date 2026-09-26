@@ -1,6 +1,13 @@
 #ifndef NOX_SHADOW_COMMON_GLSL
 #define NOX_SHADOW_COMMON_GLSL
 
+// Expects the including shader to declare:
+//   uniform sampler2DArrayShadow multiLightShadowArray;
+//   buffer ... { mat4 shadowMatrices[]; };
+//   uniform float shadowBias;   // RenderContext::shadowBias, used as a bias strength scale
+
+#include "shadow_bias_common.glsl"
+
 const vec2 NOX_SHADOW_POISSON_DISK_16[16] = vec2[](
 	vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
 	vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
@@ -20,27 +27,14 @@ vec3 GetCascadeDebugColor(int cascadeIndex) {
 	return vec3(1.0, 0.2, 1.0);
 }
 
+// No upper depth bound: a point beyond the far plane is farther from the light than everything
+// in the map, so comparing it at depth 1.0 (SampleShadowArrayFiltered clamps) is exact - it is
+// shadowed iff any caster was rendered at that texel. Directional cascades only span their
+// bounding sphere in depth, so this matters for lookups from outside the view frustum.
 bool InShadowBounds(vec3 p) {
 	return p.x >= 0.0 && p.x <= 1.0 &&
 	       p.y >= 0.0 && p.y <= 1.0 &&
-	       p.z >= -0.01 && p.z <= 1.01;
-}
-
-float CalculateSlopeBias(vec3 N, vec3 L, float baseBias) {
-	float NdotL = max(dot(N, L), 0.001);
-	float cosAngle = NdotL;
-	float sinAngle = sqrt(max(1.0 - cosAngle * cosAngle, 0.0));
-	float tanAngle = sinAngle / cosAngle;
-	float slopeFactor = clamp(tanAngle, 0.0, 10.0);
-	return baseBias * (1.0 + slopeFactor * 0.5);
-}
-
-float CalculateAdaptiveShadowBias(vec3 N, vec3 Ld, int cascadeIndex, float depthComp, float distance) {
-	float slopeBias = CalculateSlopeBias(N, -Ld, shadowBias);
-	float cascadeScale = 1.0 + float(cascadeIndex) * 0.1;
-	float depthBias = shadowBias * 0.0001 * distance;
-	float finalBias = slopeBias * cascadeScale + depthBias;
-	return clamp(finalBias, shadowBias * 0.25, maxShadowBias);
+	       p.z >= -0.01;
 }
 
 float ShadowHash12(vec2 p) {
@@ -119,6 +113,41 @@ float SampleShadowArrayEdgeSafe(int layer, vec3 projCoords, float bias, float ed
 
 float SampleShadowArrayEdgeSafe(int layer, vec3 projCoords, float bias, float edgeMargin) {
 	return SampleShadowArrayFiltered(layer, projCoords, bias, edgeMargin, 1.0);
+}
+
+// World-space receiver offset (in world units) that SampleShadowLayerBiased applies along the
+// normal for this layer; exposed for the shadow debug view.
+float ComputeShadowNormalOffsetWorld(int layer, vec3 worldPos, vec3 N, vec3 L, float filterRadiusTexels) {
+	float texelWorld = NoxShadowTexelWorldSize(shadowMatrices[layer], worldPos, float(textureSize(multiLightShadowArray, 0).x));
+	vec3 receiver = NoxShadowReceiverPosition(worldPos, N, L, texelWorld, filterRadiusTexels, NoxShadowBiasScale(shadowBias));
+	return dot(receiver - worldPos, N);
+}
+
+// Filtered visibility of one shadow layer (cascade, spot map or cube face) for a surface point.
+// L is the unit direction from the surface towards the light. All biasing happens in world space
+// (see shadow_bias_common.glsl), so the depth comparison itself is unbiased.
+// valid is false when the point does not project into this layer.
+float SampleShadowLayerBiased(int layer, vec3 worldPos, vec3 N, vec3 L, float edgeMargin, float radiusScale, out bool valid) {
+	mat4 lightSpace = shadowMatrices[layer];
+	vec3 surfaceCoords;
+	valid = NoxProjectToShadowMap(lightSpace, worldPos, surfaceCoords) && InShadowBounds(surfaceCoords);
+	if (!valid) {
+		return 1.0;
+	}
+
+	ivec3 dims = textureSize(multiLightShadowArray, 0);
+	float filterRadiusTexels = ComputeAdaptiveFilterRadiusTexels(surfaceCoords, dims, edgeMargin, radiusScale);
+	float texelWorld = NoxShadowTexelWorldSize(lightSpace, worldPos, float(dims.x));
+	vec3 receiver = NoxShadowReceiverPosition(worldPos, N, L, texelWorld, filterRadiusTexels, NoxShadowBiasScale(shadowBias));
+
+	vec3 receiverCoords;
+	if (!NoxProjectToShadowMap(lightSpace, receiver, receiverCoords)) {
+		return 1.0;
+	}
+	// The offset spans a few texels at most; keep the lookup inside the map when the surface point
+	// sits right on its border.
+	receiverCoords.xy = clamp(receiverCoords.xy, vec2(0.0), vec2(1.0));
+	return SampleShadowArrayFiltered(layer, receiverCoords, 0.0, edgeMargin, radiusScale);
 }
 
 float EstimateCascadeCoverage(vec3 projCoords) {

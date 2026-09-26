@@ -4,16 +4,34 @@
 
 layout(local_size_x = 8, local_size_y = 8) in;
 
+// Spec: docs/ssgi_v2_visibility_bitmask_spec.md
+// Screen-space indirect diffuse with a visibility bitmask (Therrien et al. 2023, on top of the
+// GTAO slice parameterization of Jimenez et al. 2016).
+//
+// Each slice is a plane through the view vector V. Inside a slice, directions are measured by
+// their angle theta from V; the receiver's normal projects to angle gamma with length |pn|.
+// Irradiance over the normal hemisphere is
+//     E = integral_0^pi dphi  integral L(theta) |pn| cos(theta - gamma) |sin(theta)| dtheta
+// so with slices spread uniformly over phi in [0, pi):  E ~= pi * mean_slices( |pn| * sum L * W ).
+// The hemisphere [gamma - pi/2, gamma + pi/2] of every slice is split into 32 sectors. Every
+// on-screen sample occludes the sectors between its front face and its front face pushed back by
+// the thickness; sectors hit for the first time receive that sample's outgoing radiance.
+// W is the exact cosine- and Jacobian-weighted size of each sector, so a fully occluded
+// hemisphere of radiance L returns E = pi * L, and the RGB output is irradiance (W/m^2 units of
+// the radiance texture), which the lighting pass turns into outgoing radiance with albedo / pi.
+// Sectors that stay open carry no screen-space light; their cosine-weighted share is written to
+// alpha as visibility so the far field (IBL, LPV, surfel GI) can fill them.
+
 // C++ binding footprint:
-// 0: quarter-res linear view-space depth, positive depth = -viewPos.z
-// 1: quarter-res canonical view-space normals, oct-encoded in RG
-// 2: quarter-res bounceable radiance
+// 0: quarter-res linear view-space depth (min-depth mip chain), positive depth = -viewPos.z
+// 1: quarter-res view-space normals, oct-encoded in RG
+// 2: quarter-res bounceable radiance (mip chain)
 layout(binding = 0) uniform sampler2D linearDepthQuarter;
 layout(binding = 1) uniform sampler2D normalFromDepthTex;
 layout(binding = 2) uniform sampler2D radianceTex;
 
-// 3: RGB indirect irradiance, A = scalar visibility / AO
-// 4: L00 + L1x/L1y/L1z luminance SH, packed as vec4(sh0, sh1x, sh1y, sh1z)
+// 3: RGB indirect irradiance, A = cosine-weighted visibility of the hemisphere
+// 4: L00 + L1x/L1y/L1z luminance SH of the gathered irradiance, packed as vec4(sh0, sh1x, sh1y, sh1z)
 // 5: coverage summary for debug-present routing
 // 6: interval / sector debug summary for debug-present routing
 layout(binding = 3, rgba16f) writeonly uniform image2D outIndirectRaw;
@@ -26,17 +44,14 @@ uniform vec2 fullResolution;
 uniform float projScaleX;
 uniform float projScaleY;
 uniform float rayLength;     // Gather radius in view-space units.
-uniform float thicknessVS;   // Constant thickness in view-space units.
-uniform int rayCount;        // Slice count. Default target: 4.
-uniform int stepCount;       // Samples per slice. Default target: 4.
+uniform float thicknessVS;   // Assumed thickness of on-screen surfaces in view-space units.
+uniform int rayCount;        // Slice count; every slice marches both screen directions.
+uniform int stepCount;       // Samples per slice direction.
 uniform int frameIndex;
 
-const float HALF_PI = 1.57079632679;
-const float INV_HALF_PI = 0.63661977237;
+const int SECTOR_COUNT = 32;
 const float SECTOR_COUNT_F = 32.0;
-const float INV_SECTOR_COUNT = 1.0 / 32.0;
-const float INV_SECTOR_ANGLE = SECTOR_COUNT_F / HALF_PI;
-const uint FULL_MASK_32 = 0xffffffffu;
+const float HALF_PI = 1.57079632679;
 
 vec3 SafeNormalizeStrict(vec3 v, vec3 fallback) {
     float len2 = dot(v, v);
@@ -47,26 +62,8 @@ vec3 SafeNormalizeStrict(vec3 v, vec3 fallback) {
 }
 
 float InterleavedGradientNoise(vec2 pixel, float frameSeed) {
-    float seed = dot(pixel, vec2(0.06711056, 0.00583715)) + frameSeed * 0.754877666;
-    return fract(52.9829189 * fract(seed));
-}
-
-vec3 BuildTangent(vec3 normal, vec3 cameraVec) {
-    vec3 projectedCamera = cameraVec - normal * dot(cameraVec, normal);
-    if (dot(projectedCamera, projectedCamera) > 1e-8) {
-        return normalize(projectedCamera);
-    }
-
-    vec3 axis = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
-    return normalize(cross(axis, normal));
-}
-
-vec3 BuildBitangent(vec3 normal, vec3 tangent) {
-    return normalize(cross(normal, tangent));
-}
-
-vec3 ProjectOntoPlane(vec3 v, vec3 planeNormal) {
-    return v - planeNormal * dot(v, planeNormal);
+    vec2 p = pixel + frameSeed * 5.588238;
+    return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
 vec4 SHBasisL1(vec3 dir) {
@@ -74,38 +71,49 @@ vec4 SHBasisL1(vec3 dir) {
     return vec4(0.282095, 0.488603 * dir.x, 0.488603 * dir.y, 0.488603 * dir.z);
 }
 
-vec3 ShapeGatherRadiance(vec3 radiance) {
-    radiance = max(radiance, vec3(0.0));
-    float luma = Luma(radiance);
-    if (luma <= 1e-5) {
-        return vec3(0.0);
-    }
-
-    float lowLift = mix(1.30, 1.0, smoothstep(0.035, 0.35, luma));
-    float softKnee = 1.0 / (1.0 + max(luma - 1.15, 0.0) * 0.45);
-    return radiance * (lowLift * softKnee);
+// H(theta) = integral_0^theta cos(t - gamma) |sin(t)| dt, valid for theta in (-pi, pi).
+float SliceWeightAntiderivative(float theta, float gamma, float cosGamma, float sinGamma) {
+    float value = 0.25 * (cosGamma - cos(2.0 * theta - gamma)) + 0.5 * theta * sinGamma;
+    return theta < 0.0 ? -value : value;
 }
 
-int ClampSectorIndex(float theta) {
-    return int(clamp(floor(theta * INV_SECTOR_ANGLE), 0.0, 31.0));
+// Sector i spans theta in [gamma - pi/2 + i*pi/32, gamma - pi/2 + (i+1)*pi/32].
+float SectorWeight(int sector, float gamma, float cosGamma, float sinGamma) {
+    float theta0 = gamma - HALF_PI + float(sector) * (PI / SECTOR_COUNT_F);
+    float theta1 = theta0 + PI / SECTOR_COUNT_F;
+    return max(SliceWeightAntiderivative(theta1, gamma, cosGamma, sinGamma)
+        - SliceWeightAntiderivative(theta0, gamma, cosGamma, sinGamma), 0.0);
 }
 
-uint SectorMaskInclusive(int startSector, int endSector) {
-    if (endSector < startSector) {
+float MaskWeight(uint mask, float gamma, float cosGamma, float sinGamma) {
+    float weight = 0.0;
+    while (mask != 0u) {
+        int sector = findLSB(mask);
+        weight += SectorWeight(sector, gamma, cosGamma, sinGamma);
+        mask &= mask - 1u;
+    }
+    return weight;
+}
+
+// Sectors covered by the normalized interval [t0, t1] of the hemisphere (0 = gamma - pi/2).
+uint SectorMaskFromInterval(float t0, float t1) {
+    t0 = clamp(t0, 0.0, 1.0);
+    t1 = clamp(t1, 0.0, 1.0);
+    if (t1 <= t0) {
         return 0u;
     }
+    int startSector = min(int(t0 * SECTOR_COUNT_F), SECTOR_COUNT - 1);
+    int endSector = clamp(int(ceil(t1 * SECTOR_COUNT_F)), startSector + 1, SECTOR_COUNT);
+    int count = endSector - startSector;
+    uint bits = count >= SECTOR_COUNT ? 0xffffffffu : ((1u << uint(count)) - 1u);
+    return bits << uint(startSector);
+}
 
-    int startClamped = clamp(startSector, 0, 31);
-    int endClamped = clamp(endSector, 0, 31);
-    if (endClamped < startClamped) {
-        return 0u;
-    }
-
-    uint count = uint(endClamped - startClamped + 1);
-    if (count >= 32u) {
-        return FULL_MASK_32;
-    }
-    return ((1u << count) - 1u) << uint(startClamped);
+void WriteEmpty(ivec2 id) {
+    imageStore(outIndirectRaw, id, vec4(0.0, 0.0, 0.0, 1.0));
+    imageStore(outDirectionalRaw, id, vec4(0.0));
+    imageStore(outHorizonDebug, id, vec4(0.0, 1.0, 0.0, 0.0));
+    imageStore(outSectorDebug, id, vec4(0.0));
 }
 
 void main() {
@@ -118,239 +126,180 @@ void main() {
     vec2 uv = (vec2(id) + 0.5) * invQuarterSize;
     float centerDepth = texelFetch(linearDepthQuarter, id, 0).r;
     if (!IsValidLinearDepth(centerDepth)) {
-        imageStore(outIndirectRaw, id, vec4(0.0));
-        imageStore(outDirectionalRaw, id, vec4(0.0));
-        imageStore(outHorizonDebug, id, vec4(0.0));
-        imageStore(outSectorDebug, id, vec4(0.0));
+        WriteEmpty(id);
         return;
     }
 
     vec3 centerPos = ViewPosFromLinearDepth(uv, centerDepth, projScaleX, projScaleY);
-    vec3 cameraVec = SafeNormalizeStrict(-centerPos, vec3(0.0, 0.0, 1.0));
+    vec3 viewVec = SafeNormalizeStrict(-centerPos, vec3(0.0, 0.0, 1.0));
 
-    vec3 centerNormal = DecodeOctNormal01(textureLod(normalFromDepthTex, uv, 0.0).rg);
-    centerNormal = SafeNormalizeStrict(centerNormal, vec3(0.0, 0.0, 1.0));
-    if (dot(centerNormal, cameraVec) < 0.0) {
+    vec3 centerNormal = SafeNormalizeStrict(DecodeOctNormal01(texelFetch(normalFromDepthTex, id, 0).rg), viewVec);
+    if (dot(centerNormal, viewVec) < 0.0) {
         centerNormal = -centerNormal;
     }
-
     if (any(isnan(centerNormal)) || any(isnan(centerPos))) {
-        imageStore(outIndirectRaw, id, vec4(0.0));
-        imageStore(outDirectionalRaw, id, vec4(0.0));
-        imageStore(outHorizonDebug, id, vec4(0.0));
-        imageStore(outSectorDebug, id, vec4(0.0));
+        WriteEmpty(id);
         return;
     }
 
     int sliceCount = max(rayCount, 1);
-    int samplesPerSlice = max(stepCount, 1);
+    int samplesPerSide = max(stepCount, 1);
     int depthMipMax = max(textureQueryLevels(linearDepthQuarter) - 1, 0);
     int radianceMipMax = max(textureQueryLevels(radianceTex) - 1, 0);
-    int normalMipMax = max(textureQueryLevels(normalFromDepthTex) - 1, 0);
+    vec2 quarterSize = vec2(outSize);
 
-    vec3 tangent = BuildTangent(centerNormal, cameraVec);
-    vec3 bitangent = BuildBitangent(centerNormal, tangent);
+    // Screen-space radius of the gather: rayLength at the receiver's depth.
+    float pixelsPerViewUnit = 0.5 * projScaleY * quarterSize.y / max(centerDepth, 1e-4);
+    float maxRadiusPx = clamp(max(rayLength, 0.05) * pixelsPerViewUnit, 2.0, length(quarterSize));
 
-    float pixelSeed = InterleavedGradientNoise(vec2(id), float(frameIndex));
-    float frameSeed = fract(float(frameIndex) * 0.754877666);
+    float sliceNoise = InterleavedGradientNoise(vec2(id), float(frameIndex));
+    float stepNoise = InterleavedGradientNoise(vec2(id) + vec2(37.0, 17.0), float(frameIndex));
+    float thickness = max(thicknessVS, 1e-3);
 
-    vec3 indirectAccum = vec3(0.0);
+    vec3 irradianceAccum = vec3(0.0);
     vec4 shAccum = vec4(0.0);
     float visibilityAccum = 0.0;
     float coverageAccum = 0.0;
-    float newSectorAccum = 0.0;
-    float intervalAccum = 0.0;
-
-    vec2 firstSliceInterval = vec2(0.0);
-    float firstSliceCoverage = 0.0;
-    float firstSliceNewSector = 0.0;
-    bool firstSliceCaptured = false;
-
-    float thicknessHalf = max(thicknessVS * 0.5, 1e-4);
-    float invSliceCount = 1.0 / float(sliceCount);
-    float invSamplesPerSlice = 1.0 / float(samplesPerSlice);
-    vec2 quarterSize = vec2(textureSize(linearDepthQuarter, 0));
-    float projectedPixelsPerViewUnit =
-        0.5 * max(projScaleX * quarterSize.x, projScaleY * quarterSize.y) / max(centerDepth, 1e-4);
-    float maxRadiusPx = clamp(
-        max(rayLength, 0.05) * projectedPixelsPerViewUnit,
-        2.0,
-        0.5 * max(quarterSize.x, quarterSize.y)
-    );
+    vec4 firstSliceDebug = vec4(0.0);
 
     for (int slice = 0; slice < sliceCount; ++slice) {
-        float sliceJitter = InterleavedGradientNoise(vec2(id) + vec2(float(slice), 3.0), float(frameIndex));
-        float sliceAngle = TAU * ((float(slice) + sliceJitter + pixelSeed) * invSliceCount);
+        float phi = (float(slice) + sliceNoise) * (PI / float(sliceCount));
+        vec2 dirScreen = vec2(cos(phi), sin(phi));
 
-        vec3 sliceDirVS = SafeNormalizeStrict(
-            tangent * cos(sliceAngle) + bitangent * sin(sliceAngle),
-            tangent
-        );
-        vec3 slicePlaneNormal = SafeNormalizeStrict(
-            cross(sliceDirVS, cameraVec),
-            cross(sliceDirVS, tangent)
-        );
-        vec3 slicePerpVS = SafeNormalizeStrict(cross(slicePlaneNormal, sliceDirVS), bitangent);
-        vec2 sliceDirUV = SafeNormalizeStrict(
-            vec3(sliceDirVS.x * projScaleX, sliceDirVS.y * projScaleY, 0.0),
-            vec3(1.0, 0.0, 0.0)
-        ).xy;
-        vec2 slicePerpUV = SafeNormalizeStrict(
-            vec3(slicePerpVS.x * projScaleX, slicePerpVS.y * projScaleY, 0.0),
-            vec3(0.0, 1.0, 0.0)
-        ).xy;
-        vec3 projectedNormal = SafeNormalizeStrict(
-            ProjectOntoPlane(centerNormal, slicePlaneNormal),
-            centerNormal
-        );
+        // Slice plane through V containing the screen direction.
+        vec3 dirVS = vec3(dirScreen, 0.0);
+        vec3 orthoDir = SafeNormalizeStrict(dirVS - viewVec * dot(dirVS, viewVec), vec3(1.0, 0.0, 0.0));
+        vec3 sliceAxis = SafeNormalizeStrict(cross(orthoDir, viewVec), vec3(0.0, 0.0, 1.0));
+        vec3 projectedNormal = centerNormal - sliceAxis * dot(centerNormal, sliceAxis);
+        float projectedNormalLen = length(projectedNormal);
+        if (projectedNormalLen < 1e-4) {
+            continue;
+        }
+        float cosN = clamp(dot(projectedNormal, viewVec) / projectedNormalLen, -1.0, 1.0);
+        float gamma = sign(dot(projectedNormal, orthoDir)) * acos(cosN);
+        float cosGamma = cos(gamma);
+        float sinGamma = sin(gamma);
 
-        uint coveredMask = 0u;
-        vec3 sliceIndirect = vec3(0.0);
+        // A view-space direction with z = 0 projects to the same pixel-space direction (the
+        // projection's aspect ratio cancels against the render target's), so the slice plane
+        // span(V, dirVS) is exactly the set of points on this screen line.
+        uint occludedMask = 0u;
+        vec3 sliceIrradiance = vec3(0.0);
         vec4 sliceSh = vec4(0.0);
-        int sliceNewSectorCount = 0;
-        int sliceIntervalCount = 0;
 
-        vec2 sliceIntervalBounds = vec2(1.0, 0.0);
+        for (int side = 0; side < 2; ++side) {
+            float sideSign = side == 0 ? 1.0 : -1.0;
+            bool hasPrevious = false;
+            vec3 previousPos = vec3(0.0);
+            vec3 previousNormal = vec3(0.0);
+            vec3 previousRadiance = vec3(0.0);
+            float previousThetaFront = 0.0;
 
-        for (int sampleIndex = 0; sampleIndex < samplesPerSlice; ++sampleIndex) {
-            float sampleJitter = InterleavedGradientNoise(
-                vec2(id) + vec2(float(slice) * 17.0, float(sampleIndex) * 7.0),
-                float(frameIndex) + 13.0 * frameSeed
-            );
+            for (int sampleIndex = 0; sampleIndex < samplesPerSide; ++sampleIndex) {
+                // Quadratic spacing: dense near the receiver where contact bounce dominates.
+                float t = (float(sampleIndex) + fract(stepNoise + 0.618034 * float(side))) / float(samplesPerSide);
+                float radiusPx = max(maxRadiusPx * t * t, float(sampleIndex) + 1.0);
+                if (radiusPx > maxRadiusPx) {
+                    break;
+                }
+                vec2 samplePx = vec2(id) + 0.5 + sideSign * dirScreen * radiusPx;
+                vec2 sampleUV = samplePx * invQuarterSize;
+                if (any(lessThan(sampleUV, vec2(0.0))) || any(greaterThanEqual(sampleUV, vec2(1.0)))) {
+                    break;
+                }
 
-            float sampleT = (float(sampleIndex) + 1.0 + sampleJitter) / float(samplesPerSlice + 1);
-            sampleT = sqrt(clamp(sampleT, 0.0, 1.0));
-            float sampleRadiusPx = maxRadiusPx * sampleT;
-            float laneJitter = (InterleavedGradientNoise(
-                vec2(id) + vec2(float(slice) * 31.0, float(sampleIndex) * 11.0),
-                float(frameIndex) + 5.0
-            ) - 0.5) * 2.0;
-            float crossOffsetPx = laneJitter * mix(0.35, 0.95, sampleT);
-            vec2 sampleUV = uv
-                + sliceDirUV * (sampleRadiusPx * invQuarterSize)
-                + slicePerpUV * (crossOffsetPx * invQuarterSize);
-            if (any(lessThan(sampleUV, vec2(0.0))) || any(greaterThan(sampleUV, vec2(1.0)))) {
-                break;
+                // Match the footprint of coarse samples to the spacing between them.
+                float lod = clamp(log2(max(radiusPx / float(samplesPerSide), 1.0)), 0.0, float(max(depthMipMax, radianceMipMax)));
+                int depthMip = min(int(lod), depthMipMax);
+                ivec2 depthSize = textureSize(linearDepthQuarter, depthMip);
+                ivec2 depthCoord = clamp(ivec2(sampleUV * vec2(depthSize)), ivec2(0), depthSize - ivec2(1));
+                float sampleDepth = texelFetch(linearDepthQuarter, depthCoord, depthMip).r;
+                if (!IsValidLinearDepth(sampleDepth)) {
+                    hasPrevious = false;
+                    continue;
+                }
+
+                vec3 samplePos = ViewPosFromLinearDepth(sampleUV, sampleDepth, projScaleX, projScaleY);
+                vec3 frontDelta = samplePos - centerPos;
+                vec3 backDelta = frontDelta - SafeNormalizeStrict(-samplePos, viewVec) * thickness;
+                if (dot(frontDelta, frontDelta) < 1e-10) {
+                    continue;
+                }
+                ivec2 normalCoord = clamp(ivec2(sampleUV * quarterSize), ivec2(0), ivec2(quarterSize) - ivec2(1));
+                vec3 sampleNormal = DecodeOctNormal01(texelFetch(normalFromDepthTex, normalCoord, 0).rg);
+                vec3 sampleRadiance = max(textureLod(radianceTex, sampleUV, min(lod, float(radianceMipMax))).rgb, vec3(0.0));
+
+                // Signed angles from V inside the slice plane.
+                float thetaFront = atan(dot(frontDelta, orthoDir), dot(frontDelta, viewVec));
+                float thetaBack = atan(dot(backDelta, orthoDir), dot(backDelta, viewVec));
+                float thetaLow = min(thetaFront, thetaBack);
+                float thetaHigh = max(thetaFront, thetaBack);
+
+                // A constant thickness only covers a sliver of a surface seen edge-on (a floor seen
+                // from a wall), leaving gaps between samples that would leak its light. When this
+                // sample and the previous one lie on the same plane, the surface continues between
+                // them, so it also occludes the directions in between.
+                vec3 segment = samplePos - previousPos;
+                bool continuesPrevious = hasPrevious &&
+                    dot(sampleNormal, previousNormal) > 0.9 &&
+                    abs(dot(segment, sampleNormal)) < 0.15 * length(segment) + 0.5 * thickness;
+                vec3 emittedRadiance = sampleRadiance;
+                if (continuesPrevious) {
+                    thetaLow = min(thetaLow, previousThetaFront);
+                    thetaHigh = max(thetaHigh, previousThetaFront);
+                    emittedRadiance = 0.5 * (sampleRadiance + previousRadiance);
+                }
+                hasPrevious = true;
+                previousPos = samplePos;
+                previousNormal = sampleNormal;
+                previousRadiance = sampleRadiance;
+                previousThetaFront = thetaFront;
+
+                uint sampleMask = SectorMaskFromInterval((thetaLow - gamma + HALF_PI) / PI, (thetaHigh - gamma + HALF_PI) / PI);
+                uint newMask = sampleMask & ~occludedMask;
+                occludedMask |= sampleMask;
+                if (newMask == 0u) {
+                    continue;
+                }
+
+                // Lambertian emitters only send light to the side their normal faces.
+                if (dot(sampleNormal, -frontDelta) <= 0.0) {
+                    continue;
+                }
+
+                float weight = MaskWeight(newMask, gamma, cosGamma, sinGamma);
+                sliceIrradiance += emittedRadiance * weight;
+                sliceSh += SHBasisL1(SafeNormalizeStrict(frontDelta, viewVec)) * (Luma(emittedRadiance) * weight);
             }
-
-            float baseLod = clamp(log2(sampleRadiusPx + 1.0) - 1.0, 0.0, float(max(max(depthMipMax, radianceMipMax), normalMipMax)));
-            float depthLod = clamp(baseLod, 0.0, float(depthMipMax));
-            float radianceLod = clamp(baseLod, 0.0, float(radianceMipMax));
-            float normalLod = clamp(baseLod, 0.0, float(normalMipMax));
-
-            int depthMip = int(clamp(floor(depthLod + 0.5), 0.0, float(depthMipMax)));
-            ivec2 depthSize = textureSize(linearDepthQuarter, depthMip);
-            ivec2 depthCoord = clamp(ivec2(sampleUV * vec2(depthSize)), ivec2(0), depthSize - ivec2(1));
-            float sampleDepth = texelFetch(linearDepthQuarter, depthCoord, depthMip).r;
-            if (!IsValidLinearDepth(sampleDepth)) {
-                continue;
-            }
-
-            vec3 samplePos = ViewPosFromLinearDepth(sampleUV, sampleDepth, projScaleX, projScaleY);
-            vec3 deltaVS = samplePos - centerPos;
-            float dist = length(deltaVS);
-            if (dist <= 1e-6) {
-                continue;
-            }
-
-            vec3 sampleDir = deltaVS / dist;
-            float planarDist = max(abs(dot(deltaVS, sliceDirVS)), 1e-5);
-            vec3 sampleDirPlane = SafeNormalizeStrict(
-                ProjectOntoPlane(sampleDir, slicePlaneNormal),
-                sampleDir
-            );
-            float sampleElevation = asin(clamp(dot(sampleDirPlane, projectedNormal), -1.0, 1.0));
-            float thicknessAngle = atan(thicknessHalf, planarDist);
-
-            float thetaMin = sampleElevation - thicknessAngle;
-            float thetaMax = sampleElevation + thicknessAngle;
-            thetaMin = clamp(thetaMin, 0.0, HALF_PI);
-            thetaMax = clamp(thetaMax, 0.0, HALF_PI);
-            if (thetaMax <= 0.0) {
-                continue;
-            }
-
-            int sectorMin = ClampSectorIndex(thetaMin);
-            int sectorMax = ClampSectorIndex(thetaMax);
-            uint sampleMask = SectorMaskInclusive(sectorMin, sectorMax);
-            if (sampleMask == 0u) {
-                continue;
-            }
-
-            uint newMask = sampleMask & ~coveredMask;
-            int newSectorCount = bitCount(newMask);
-            if (newSectorCount <= 0) {
-                coveredMask |= sampleMask;
-                continue;
-            }
-
-            coveredMask |= sampleMask;
-            sliceNewSectorCount += newSectorCount;
-            sliceIntervalCount += bitCount(sampleMask);
-            sliceIntervalBounds = vec2(
-                min(sliceIntervalBounds.x, thetaMin * INV_HALF_PI),
-                max(sliceIntervalBounds.y, thetaMax * INV_HALF_PI)
-            );
-
-            float sectorWeight = float(newSectorCount) * INV_SECTOR_COUNT;
-            float cosineWeight = max(dot(projectedNormal, sampleDirPlane), 0.0);
-            float normalizedDist = clamp(dist / max(rayLength, 0.25), 0.0, 4.0);
-            float distanceWeight = exp(-normalizedDist * 0.38);
-            float farFieldBoost = mix(0.90, 1.90, clamp(sampleT, 0.0, 1.0));
-            float transport = sectorWeight * mix(0.45, 1.0, cosineWeight) * distanceWeight * farFieldBoost * 3.15;
-            if (transport <= 1e-6) {
-                continue;
-            }
-
-            vec3 sampleNormal = DecodeOctNormal01(textureLod(normalFromDepthTex, sampleUV, normalLod).rg);
-            sampleNormal = SafeNormalizeStrict(sampleNormal, centerNormal);
-            if (dot(sampleNormal, -sampleDir) < 0.0) {
-                sampleNormal = -sampleNormal;
-            }
-
-            float surfaceFacing = max(dot(sampleNormal, -sampleDir), 0.0);
-            transport *= mix(0.50, 1.0, surfaceFacing);
-            if (transport <= 1e-6) {
-                continue;
-            }
-
-            vec3 sampleRadiance = ShapeGatherRadiance(textureLod(radianceTex, sampleUV, radianceLod).rgb);
-            float sampleLuma = Luma(sampleRadiance);
-
-            sliceIndirect += sampleRadiance * transport;
-            sliceSh += SHBasisL1(sampleDir) * (sampleLuma * transport);
         }
 
-        float sliceCoverage = clamp(float(bitCount(coveredMask)) * INV_SECTOR_COUNT, 0.0, 1.0);
-        float sliceVisibility = 1.0 - sliceCoverage;
-        float sliceNewRatio = clamp(float(sliceNewSectorCount) * INV_SECTOR_COUNT, 0.0, 1.0);
-        float sliceIntervalRatio = clamp(float(sliceIntervalCount) * INV_SECTOR_COUNT * invSamplesPerSlice, 0.0, 1.0);
-
-        indirectAccum += sliceIndirect;
-        shAccum += sliceSh;
-        visibilityAccum += sliceVisibility;
-        coverageAccum += sliceCoverage;
-        newSectorAccum += sliceNewRatio;
-        intervalAccum += sliceIntervalRatio;
-
-        if (!firstSliceCaptured) {
-            firstSliceInterval = sliceCoverage > 0.0 ? sliceIntervalBounds : vec2(0.0);
-            firstSliceCoverage = sliceCoverage;
-            firstSliceNewSector = sliceNewRatio;
-            firstSliceCaptured = true;
+        float openWeight = MaskWeight(~occludedMask, gamma, cosGamma, sinGamma);
+        irradianceAccum += sliceIrradiance * projectedNormalLen;
+        shAccum += sliceSh * projectedNormalLen;
+        visibilityAccum += openWeight * projectedNormalLen;
+        coverageAccum += float(bitCount(occludedMask)) / SECTOR_COUNT_F;
+        if (slice == 0) {
+            int lowest = occludedMask != 0u ? findLSB(occludedMask) : 0;
+            int highest = occludedMask != 0u ? findMSB(occludedMask) : 0;
+            firstSliceDebug = vec4(float(lowest) / SECTOR_COUNT_F, float(highest + 1) / SECTOR_COUNT_F,
+                float(bitCount(occludedMask)) / SECTOR_COUNT_F, projectedNormalLen);
         }
     }
 
-    float invSliceCountSafe = 1.0 / float(max(sliceCount, 1));
-    vec3 indirectRGB = indirectAccum * invSliceCountSafe;
-    vec4 shOut = shAccum * invSliceCountSafe;
-    float visibility = clamp(visibilityAccum * invSliceCountSafe, 0.0, 1.0);
-    float coverage = clamp(coverageAccum * invSliceCountSafe, 0.0, 1.0);
-    float newSector = clamp(newSectorAccum * invSliceCountSafe, 0.0, 1.0);
-    float intervalWidth = clamp(intervalAccum * invSliceCountSafe, 0.0, 1.0);
+    // mean over slices of (|pn| * sum W) is 1 for a fully open or fully occluded hemisphere.
+    float invSlices = 1.0 / float(sliceCount);
+    vec3 irradiance = PI * irradianceAccum * invSlices;
+    vec4 shOut = PI * shAccum * invSlices;
+    float visibility = clamp(visibilityAccum * invSlices, 0.0, 1.0);
+    float coverage = clamp(coverageAccum * invSlices, 0.0, 1.0);
 
-    imageStore(outIndirectRaw, id, vec4(indirectRGB, visibility));
+    if (any(isnan(irradiance)) || any(isinf(irradiance))) {
+        irradiance = vec3(0.0);
+        shOut = vec4(0.0);
+    }
+
+    imageStore(outIndirectRaw, id, vec4(min(irradiance, vec3(NOX_FP16_MAX)), visibility));
     imageStore(outDirectionalRaw, id, shOut);
-    imageStore(outHorizonDebug, id, vec4(coverage, visibility, newSector, intervalWidth));
-    imageStore(outSectorDebug, id, vec4(firstSliceInterval, firstSliceCoverage, firstSliceNewSector));
+    imageStore(outHorizonDebug, id, vec4(coverage, visibility, 1.0 - visibility, maxRadiusPx / max(0.5 * quarterSize.y, 1.0)));
+    imageStore(outSectorDebug, id, firstSliceDebug);
 }

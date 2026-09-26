@@ -69,7 +69,7 @@ Beer-Lambert attenuation:
 - T = exp(-sigma_a * pathLength)
 
 Practical contract for this engine:
-- Forward transparent path applies Beer-Lambert transmittance to refracted contribution.
+- Forward transparent path composites with dual-source blending (`dst = color + dst * transmittance`): the background seen along the view ray is attenuated per channel by coverage, `transmission * (1 - F)`, base color and Beer-Lambert absorption. Refraction offsets are not simulated.
 - RT path applies Beer-Lambert transmittance for refracted bounces when traversing medium thickness.
 - Reflection/specular remains on shared BRDF path; transmission is additive and Fresnel-weighted.
 

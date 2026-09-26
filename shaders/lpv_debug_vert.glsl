@@ -13,10 +13,9 @@ uniform int u_gridResolution;
 uniform sampler3D u_lpvTextureR;
 uniform sampler3D u_lpvTextureG;
 uniform sampler3D u_lpvTextureB;
-uniform sampler3D u_geometryVolume;
+uniform usampler3D u_geometryVolume; // directional occlusion bits
 
 out vec4 v_color;
-out float v_size;
 
 void main() {
     // Convert vertex ID to 3D grid coordinates (subsampled)
@@ -49,11 +48,11 @@ void main() {
     
     vec3 energy = vec3(totalR, totalG, totalB) * 5.0; // Boost for visibility
     
-    // Sample geometry volume
-    float occlusion = texture(u_geometryVolume, uvw).r;
-    
-    // Color: energy color if lit, red if occluded
-    if (occlusion > 0.5) {
+    // Any surface in the cell
+    bool hasGeometry = texelFetch(u_geometryVolume, voxelCoords, 0).r != 0u;
+
+    // Color: red for geometry, energy color if lit
+    if (hasGeometry) {
         v_color = vec4(1.0, 0.0, 0.0, 0.8); // Red for geometry
     } else if (length(energy) > 0.01) {
         v_color = vec4(energy, 0.7); // Energy color
@@ -61,7 +60,6 @@ void main() {
         v_color = vec4(0.1, 0.1, 0.1, 0.2); // Dark gray for empty
     }
     
-    // Point size based on energy
-    v_size = max(3.0, length(energy) * 20.0);
-    gl_PointSize = v_size;
+    // Point size based on energy (requires GL_PROGRAM_POINT_SIZE, enabled by LPVPass)
+    gl_PointSize = max(3.0, length(energy) * 20.0);
 }

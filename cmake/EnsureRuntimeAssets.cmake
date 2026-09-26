@@ -32,6 +32,12 @@ set(NOX_ENGINE_REQUIRED_ASSET_DIRS
     sounds
 )
 
+# Engine code rather than user data: always refreshed, so a Release build never runs stale shaders.
+# The other folders are only copied when missing so edits made in the output folder survive.
+set(NOX_ENGINE_ALWAYS_SYNC_ASSET_DIRS
+    shaders
+)
+
 set(NOX_ENGINE_REQUIRED_ASSET_FILES
     imgui.ini
     imgui_layout.json
@@ -46,8 +52,13 @@ foreach(asset_dir IN LISTS NOX_ENGINE_REQUIRED_ASSET_DIRS)
         continue()
     endif()
 
+    list(FIND NOX_ENGINE_ALWAYS_SYNC_ASSET_DIRS "${asset_dir}" always_sync_index)
+    set(output_existed FALSE)
     if(EXISTS "${output_dir}")
-        continue()
+        if(always_sync_index EQUAL -1)
+            continue()
+        endif()
+        set(output_existed TRUE)
     endif()
 
     file(MAKE_DIRECTORY "${output_dir}")
@@ -60,7 +71,11 @@ foreach(asset_dir IN LISTS NOX_ENGINE_REQUIRED_ASSET_DIRS)
         message(FATAL_ERROR "[NoxAssets] Failed to copy directory '${asset_dir}' to '${NOX_ENGINE_OUTPUT_DIR}'")
     endif()
 
-    message(STATUS "[NoxAssets] Copied missing directory: ${asset_dir}")
+    if(output_existed)
+        message(STATUS "[NoxAssets] Refreshed directory: ${asset_dir}")
+    else()
+        message(STATUS "[NoxAssets] Copied missing directory: ${asset_dir}")
+    endif()
 endforeach()
 
 foreach(asset_file IN LISTS NOX_ENGINE_REQUIRED_ASSET_FILES)

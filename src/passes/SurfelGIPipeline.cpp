@@ -31,6 +31,16 @@
 #include <glm/gtc/type_ptr.hpp>
 
 namespace {
+// Uniform sky radiance for rays that leave the scene when no environment map is bound. The
+// deferred pass shades without any sky IBL when there is no skybox, so the surfel cache must
+// not invent one either (envColor is the clear color, not a light source).
+glm::vec3 SurfelSkyRadiance(const RenderContext& context, const std::shared_ptr<Skybox>& skybox, const SurfelGISettings& settings) {
+	if (!skybox || !skybox->IsReady()) {
+		return glm::vec3(0.0f);
+	}
+	return context.envColor * settings.skyMissRadianceMultiplier;
+}
+
 constexpr uint32_t kRadialDepthTexelsPerSurfel = 16u;
 constexpr uint32_t kGuideCellsPerSurfel = 36u;
 constexpr uint32_t kGpuTimingReadbackFrameDelay = 3u;
@@ -1104,7 +1114,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uNormalRejectCos", m_settings.normalRejectCos);
 		SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
 		SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
-		SetUniform3fv(program, "uSkyRadiance", context.envColor * m_settings.skyMissRadianceMultiplier);
+		SetUniform3fv(program, "uSkyRadiance", SurfelSkyRadiance(context, skybox, m_settings));
 		SetUniform1i(program, "uPlacementValidationMode", placementOnly ? 1 : 0);
 		SetUniform1ui(program, "uCameraMotionBoost", cameraMotionBoost ? 1u : 0u);
 		SetUniform1ui(program, "uBypassCoverageSearch", 0u);
@@ -1184,7 +1194,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		});
 	}
 
-	const glm::vec3 surfelSkyRadiance = context.envColor * m_settings.skyMissRadianceMultiplier;
+	const glm::vec3 surfelSkyRadiance = SurfelSkyRadiance(context, skybox, m_settings);
 	if (!placementOnly && updateRaysThisFrame && m_traceRaysShader && m_traceRaysShader->IsValid()) {
 		const GLuint rayBudget = std::max(m_settings.maxRayBudget, 1u);
 		const GLuint program = m_traceRaysShader->GetProgramID();
@@ -1249,9 +1259,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
 		SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
 		SetUniform3fv(program, "uSkyRadiance", surfelSkyRadiance);
-		const GLuint bvhTraceStride = m_settings.maxRayBudget >= 8192u
-			? 1u
-			: (m_settings.maxRayBudget >= 2048u ? 2u : 4u);
+		// When the software BVH is available every ray uses it: it is exact, while the screen-space
+		// and surfel-grid traces miss geometry they cannot see (a false miss drops that ray's light).
+		const GLuint bvhTraceStride = 1u;
 		SetUniform1i(program, "uUseScreenSpaceTrace", m_settings.useScreenSpaceTrace ? 1 : 0);
 		SetUniform1i(program, "uUseSoftwareBVHTrace", (m_settings.useSoftwareBVHTrace && bvhTriangleCount > 0u && bvhNodeCount > 0u) ? 1 : 0);
 		SetUniform1i(program, "uUseSurfelFallbackTrace", m_settings.useSurfelFallbackTrace ? 1 : 0);
@@ -1271,9 +1281,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		GLuint shadowArray = 0u;
 		GLuint shadowMatrices = 0u;
 		glm::vec4 cascadeSplits(10.0f, 30.0f, 100.0f, 500.0f);
-		float pointLightBias = 0.002f;
-		float pointLightSlopeBias = 0.005f;
-		float pointLightNormalOffset = 0.01f;
 		if (context.lightManager && context.lightManager->GetLightDataSSBO() != 0u) {
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
 				ToGLuint(SurfelGIBinding::Lights),
@@ -1282,9 +1289,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			shadowArray = context.lightManager->GetShadowArrayTexture();
 			shadowMatrices = context.lightManager->GetShadowMatricesSSBO();
 			const auto& shadowConfig = context.lightManager->shadowConfig;
-			pointLightBias = shadowConfig.pointLightBias;
-			pointLightSlopeBias = shadowConfig.pointLightSlopeBias;
-			pointLightNormalOffset = shadowConfig.pointLightNormalOffset;
 			const float nearPlane = std::max(context.shadowNear, camera ? camera->GetCameraNearPlane() : context.shadowNear);
 			const float farPlane = std::max(nearPlane + 1.0f,
 				std::min(context.shadowFar, camera ? camera->GetCameraFarPlane() : context.shadowFar));
@@ -1310,10 +1314,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uEnableShadows", (enableTraceShadows && context.enableShadows && shadowArray != 0u && shadowMatrices != 0u) ? 1 : 0);
 		SetUniform4fv(program, "uCascadeSplits", cascadeSplits);
 		SetUniform1f(program, "uShadowBias", context.shadowBias);
-		SetUniform1f(program, "uMaxShadowBias", context.shadowBias * 10.0f);
-		SetUniform1f(program, "uPointLightBias", pointLightBias);
-		SetUniform1f(program, "uPointLightSlopeBias", pointLightSlopeBias);
-		SetUniform1f(program, "uPointLightNormalOffset", pointLightNormalOffset);
 		SetUniform1ui(program, "uLightCount", lightCount);
 		timedDispatch("tracing", [&]() {
 			m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);

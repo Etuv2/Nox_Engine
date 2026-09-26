@@ -20,9 +20,9 @@ struct RenderContext {
 	struct IndirectDiffuseDefaults {
 		static constexpr bool Enable = true;
 		static constexpr float Strength = 1.0f;
-		static constexpr float BounceFeedback = 2.0f;
-		static constexpr int SliceCount = 8;
-		static constexpr int SamplesPerSlice = 16;
+		static constexpr float BounceFeedback = 1.0f; // 1 = physically exact multi-bounce
+		static constexpr int SliceCount = 4;
+		static constexpr int SamplesPerSlice = 32; // per slice direction; gaps between samples bias SSGI low
 		static constexpr float RadiusVS = 3.04f;
 		static constexpr float ThicknessVS = 0.10f;
 		static constexpr float TemporalAlpha = 0.35f;
@@ -144,7 +144,7 @@ struct RenderContext {
 	int surfelGIQualityTier = 1;
 	int surfelGIDebugView = 0;
 	int surfelGIMaxSurfels = 65536;
-	int surfelGIMaxRayBudget = 192;
+	int surfelGIMaxRayBudget = 1024; // rays per frame; the renderer enforces at least 1024 and each quality tier caps it
 	int surfelGISpawnTileSize = 8;
 	int surfelGIMaxSurfelsPerCell = 128;
 	int surfelGIMaxGatherSurfelsPerPixel = 32;
@@ -265,10 +265,8 @@ struct RenderContext {
 	glm::quat lpvGridOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); // World-space orientation
 	int lpvRSMResolution = 512;
 	int lpvVPLSampleCount = 32000;
-	int lpvPropagationIterations = 5;
-	float lpvPropagationAttenuation = 0.9f;
-	float lpvPropagationBias = 0.1f;
-	bool lpvEnableOcclusion = false;
+	int lpvPropagationIterations = 8;
+	bool lpvEnableOcclusion = true; // directional geometry volume stops light leaking through walls
 	int lpvUpdateFrequency = 1;
 	bool lpvDebugVisualization = false; //Debug visualization toggle
 	float lpvDebugBoost = 1.0f;         //Temporary boost for debugging (default 1.0x, set to 5.0x for testing)

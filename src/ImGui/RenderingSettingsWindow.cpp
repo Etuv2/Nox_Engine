@@ -124,7 +124,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGIQualityTier = 1;
 	m_surfelGIDebugView = 0;
 	m_surfelGIMaxSurfels = 65536;
-	m_surfelGIMaxRayBudget = 192;
+	m_surfelGIMaxRayBudget = 1024;
 	m_surfelGISpawnTileSize = 8;
 	m_surfelGIMaxSurfelsPerCell = 128;
 	m_surfelGIMaxGatherSurfelsPerPixel = 32;
@@ -169,9 +169,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_lpvVoxelSize = 0.5f;
 	m_lpvRSMResolution = 512;
 	m_lpvVPLSampleCount = 32000;
-	m_lpvPropagationIterations = 5;
-	m_lpvPropagationAttenuation = 0.9f;
-	m_lpvPropagationBias = 0.1f;
+	m_lpvPropagationIterations = 8;
 	m_lpvEnableOcclusion = true;
 	m_lpvUpdateFrequency = 1;
 	m_lpvDebugVisualization = false;
@@ -338,8 +336,6 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_lpvRSMResolution = ctx.lpvRSMResolution;
 	m_lpvVPLSampleCount = ctx.lpvVPLSampleCount;
 	m_lpvPropagationIterations = ctx.lpvPropagationIterations;
-	m_lpvPropagationAttenuation = ctx.lpvPropagationAttenuation;
-	m_lpvPropagationBias = ctx.lpvPropagationBias;
 	m_lpvEnableOcclusion = ctx.lpvEnableOcclusion;
 	m_lpvUpdateFrequency = ctx.lpvUpdateFrequency;
 	m_lpvDebugVisualization = ctx.lpvDebugVisualization;
@@ -528,8 +524,6 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.lpvRSMResolution = m_lpvRSMResolution;
 	ctx.lpvVPLSampleCount = m_lpvVPLSampleCount;
 	ctx.lpvPropagationIterations = m_lpvPropagationIterations;
-	ctx.lpvPropagationAttenuation = m_lpvPropagationAttenuation;
-	ctx.lpvPropagationBias = m_lpvPropagationBias;
 	ctx.lpvEnableOcclusion = m_lpvEnableOcclusion;
 	ctx.lpvUpdateFrequency = m_lpvUpdateFrequency;
 	ctx.lpvDebugVisualization = m_lpvDebugVisualization;
@@ -848,9 +842,9 @@ void RenderingSettingsWindow::Render() {
 			if (ImGui::Checkbox("Enable Indirect Diffuse", &m_enableIndirectDiffuse)) { SyncToRenderer(); }
 			if (m_enableIndirectDiffuse) {
 				if (ImGui::SliderFloat("Indirect Strength", &m_indirectDiffuseStrength, 0.0f, 6.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Bounce Feedback", &m_indirectDiffuseBounceFeedback, 0.0f, 2.0f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Bounce Feedback", &m_indirectDiffuseBounceFeedback, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Slice Count", &m_indirectDiffuseSliceCount, 1, 8)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 16)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 64)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 16.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Thickness VS", &m_indirectDiffuseThicknessVS, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Temporal Alpha", &m_indirectDiffuseTemporalAlpha, 0.02f, 0.35f, "%.2f")) { SyncToRenderer(); }
@@ -990,7 +984,7 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderFloat("GI Intensity", &m_surfelGIIntensity, 0.0f, 4.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Cell Average Fallback", &m_surfelGICellAverageFallbackStrength, 0.0f, 1.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Surfels", &m_surfelGIMaxSurfels, 4096, 524288)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Ray Budget", &m_surfelGIMaxRayBudget, 64, 524288)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Ray Budget", &m_surfelGIMaxRayBudget, 1024, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Spawn Tile", &m_surfelGISpawnTileSize, 4, 16)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Gather Surfels", &m_surfelGIMaxGatherSurfelsPerPixel, 4, 2048)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Max Spawns/Frame", &m_surfelGIMaxSpawnsPerFrame, 1, 4096)) { SyncToRenderer(); }
@@ -1132,31 +1126,13 @@ void RenderingSettingsWindow::Render() {
 				ImGui::Separator();
 				ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Light Propagation:");
 
-				if (ImGui::SliderInt("Propagation Iterations", &m_lpvPropagationIterations, 1, 10)) {
+				if (ImGui::SliderInt("Propagation Iterations", &m_lpvPropagationIterations, 1, 32)) {
 					SyncToRenderer();
 				}
 				ImGui::SameLine();
 				if (ImGui::Button("?##lpv_prop_iter")) {}
 				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip("Number of light bounce iterations\n4-6 iterations recommended for realistic GI");
-				}
-
-				if (ImGui::SliderFloat("Attenuation", &m_lpvPropagationAttenuation, 0.5f, 1.0f, "%.2f")) {
-					SyncToRenderer();
-				}
-				ImGui::SameLine();
-				if (ImGui::Button("?##lpv_atten")) {}
-				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip("Energy preserved per propagation step\n0.9 = 10% loss per bounce");
-				}
-
-				if (ImGui::SliderFloat("Directional Bias", &m_lpvPropagationBias, 0.0f, 0.5f, "%.2f")) {
-					SyncToRenderer();
-				}
-				ImGui::SameLine();
-				if (ImGui::Button("?##lpv_bias")) {}
-				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip("Bias light propagation along initial light direction\n0.0 = omnidirectional, 0.5 = strong directional");
+					ImGui::SetTooltip("Propagation steps: light travels one cell per step\nReach = iterations x voxel size");
 				}
 
 				ImGui::Separator();
@@ -1209,7 +1185,7 @@ void RenderingSettingsWindow::Render() {
 					m_lpvVoxelSize = 1.0f;
 					m_lpvRSMResolution = 256;
 					m_lpvVPLSampleCount = 16000;
-					m_lpvPropagationIterations = 3;
+					m_lpvPropagationIterations = 4;
 					m_lpvUpdateFrequency = 3;
 					SyncToRenderer();
 				}
@@ -1219,7 +1195,7 @@ void RenderingSettingsWindow::Render() {
 					m_lpvVoxelSize = 0.5f;
 					m_lpvRSMResolution = 512;
 					m_lpvVPLSampleCount = 32000;
-					m_lpvPropagationIterations = 5;
+					m_lpvPropagationIterations = 8;
 					m_lpvUpdateFrequency = 1;
 					SyncToRenderer();
 				}
@@ -1229,7 +1205,7 @@ void RenderingSettingsWindow::Render() {
 					m_lpvVoxelSize = 0.25f;
 					m_lpvRSMResolution = 1024;
 					m_lpvVPLSampleCount = 64000;
-					m_lpvPropagationIterations = 8;
+					m_lpvPropagationIterations = 16;
 					m_lpvUpdateFrequency = 1;
 					SyncToRenderer();
 				}
@@ -1833,7 +1809,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGIQualityTier = 1;
 	m_surfelGIDebugView = 0;
 	m_surfelGIMaxSurfels = 65536;
-	m_surfelGIMaxRayBudget = 192;
+	m_surfelGIMaxRayBudget = 1024;
 	m_surfelGISpawnTileSize = 8;
 	m_surfelGIMaxSurfelsPerCell = 128;
 	m_surfelGIMaxGatherSurfelsPerPixel = 32;
@@ -1878,9 +1854,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_lpvVoxelSize = 0.5f;
 	m_lpvRSMResolution = 512;
 	m_lpvVPLSampleCount = 32000;
-	m_lpvPropagationIterations = 5;
-	m_lpvPropagationAttenuation = 0.9f;
-	m_lpvPropagationBias = 0.1f;
+	m_lpvPropagationIterations = 8;
 	m_lpvEnableOcclusion = true;
 	m_lpvUpdateFrequency = 1;
 	m_lpvDebugVisualization = false;

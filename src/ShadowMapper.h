@@ -11,7 +11,26 @@ namespace ShadowMapper {
     // Calculate adaptive overlap between cascades for smooth transitions
     float ComputeCascadeOverlap(int cascadeIndex, int totalCascades, float baseOverlap = 0.02f);
 
-    // Enhanced cascade light space matrix computation with stability improvements
+    // Fraction of a cascade's depth range that it also covers in front of its near split, so the
+    // lighting shader's cascade blend band (which samples the *next* cascade) always has data.
+    constexpr float kCascadeBlendOverlap = 0.15f;
+
+    // Minimal bounding sphere of the view-frustum slice [sliceNear, sliceFar].
+    // centerDistance is measured along the camera's forward axis. Depends only on projection
+    // parameters, so it is bit-identical from frame to frame while the camera moves.
+    struct FrustumSliceSphere {
+        float centerDistance = 0.0f;
+        float radius = 0.0f;
+    };
+    FrustumSliceSphere ComputeFrustumSliceSphere(float sliceNear, float sliceFar, float fovYDegrees, float aspect);
+
+    // Orthographic light-space (clip) matrix for one directional cascade.
+    // - Fits the cascade's bounding sphere, so the texel footprint is rotation invariant.
+    // - Snaps the ortho window to whole texels in a camera-independent light basis, so shadow
+    //   edges do not crawl when the camera translates.
+    // - Depth covers exactly the sphere. Casters between the light and the sphere fall in front
+    //   of the near plane; they MUST be rendered with GL_DEPTH_CLAMP so they pancake onto it.
+    // fitFov is the camera's vertical FOV in degrees; lightPos is unused for directional lights.
     glm::mat4 ComputeCascadeLightSpace(
         float cascadeNear,
         float cascadeFar,
@@ -23,6 +42,12 @@ namespace ShadowMapper {
         int cascadeIndex = 0,
         int shadowMapSize = 2048
     );
+
+    // Conservative shadow-caster culling against a light-space (clip) matrix, orthographic or
+    // perspective. Tests the four side planes and the far plane of the light volume. The near
+    // plane is deliberately ignored: shadow maps are rendered with depth clamping, so anything
+    // between the light and the near plane still occludes receivers.
+    bool SphereIntersectsShadowCasterVolume(const glm::mat4& lightSpace, const glm::vec3& center, float radius);
 
     // PCSS (Percentage Closer Soft Shadows) implementation
     namespace PCSS {

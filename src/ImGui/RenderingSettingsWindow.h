@@ -118,7 +118,7 @@ private:
 	int m_surfelGIQualityTier = 1;
 	int m_surfelGIDebugView = 0;
 	int m_surfelGIMaxSurfels = 65536;
-	int m_surfelGIMaxRayBudget = 192;
+	int m_surfelGIMaxRayBudget = 1024;
 	int m_surfelGISpawnTileSize = 8;
 	int m_surfelGIMaxSurfelsPerCell = 128;
 	int m_surfelGIMaxGatherSurfelsPerPixel = 32;
@@ -165,8 +165,6 @@ private:
 	int m_lpvRSMResolution = 512;
 	int m_lpvVPLSampleCount = 32000;
 	int m_lpvPropagationIterations = 5;
-	float m_lpvPropagationAttenuation = 0.9f;
-	float m_lpvPropagationBias = 0.1f;
 	bool m_lpvEnableOcclusion = true;
 	int m_lpvUpdateFrequency = 1;
 	bool m_lpvDebugVisualization = false;  //Debug visualization toggle

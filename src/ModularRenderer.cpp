@@ -157,7 +157,10 @@ namespace {
 			return { 262144u, 65536u, 4u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 4u, 8u, 64u, 1024u, 262144u, 16384u };
 		case SurfelGIQualityTier::Medium:
 		default:
-			return { 65536u, 192u, 8u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, false, 1.0f, 1u, 1u, 3u, 20u, 64u, 24576u, 2048u };
+			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
+			// their light) and 4096 rays per frame, between Low and High: at the former 192 rays a
+			// surfel saw one ray every few frames and multi-bounce took hundreds of frames to settle.
+			return { 65536u, 4096u, 8u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 1u, 3u, 20u, 64u, 24576u, 2048u };
 		}
 	}
 
@@ -834,8 +837,6 @@ void ModularRenderer::BuildPassDescriptors(
 			m_lpvPass->config.rsmResolution = m_context.lpvRSMResolution;
 			m_lpvPass->config.vplSampleCount = m_context.lpvVPLSampleCount;
 			m_lpvPass->config.propagationIterations = m_context.lpvPropagationIterations;
-			m_lpvPass->config.propagationAttenuation = m_context.lpvPropagationAttenuation;
-			m_lpvPass->config.propagationBias = m_context.lpvPropagationBias;
 			m_lpvPass->config.enableOcclusion = m_context.lpvEnableOcclusion;
 			m_lpvPass->config.giStrength = m_context.lpvGIStrength;
 			m_lpvPass->config.updateFrequency = m_context.lpvUpdateFrequency;
