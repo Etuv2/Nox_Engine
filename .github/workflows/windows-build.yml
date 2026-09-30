@@ -11,6 +11,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # lib/**/x64 is gitignored, so fetch the x64 import libs matching the DLLs committed at the repo root.
+      - name: Fetch x64 SDL2 and GLEW libs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = Join-Path $env:RUNNER_TEMP 'deps'
+          New-Item -ItemType Directory -Force $tmp, lib/SDL/x64, lib/GLEW/x64 | Out-Null
+          $sdl = @(
+            'https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-devel-2.28.5-VC.zip',
+            'https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-devel-2.6.3-VC.zip',
+            'https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-devel-2.20.2-VC.zip',
+            'https://github.com/libsdl-org/SDL_mixer/releases/download/release-2.6.3/SDL2_mixer-devel-2.6.3-VC.zip'
+          )
+          foreach ($url in $sdl) {
+            $zip = Join-Path $tmp (Split-Path $url -Leaf)
+            Invoke-WebRequest $url -OutFile $zip
+            $dir = $zip -replace '\.zip$', ''
+            Expand-Archive $zip $dir -Force
+            Get-ChildItem $dir -Recurse -Filter *.lib | Where-Object { $_.DirectoryName -like '*\lib\x64' } |
+              Copy-Item -Destination lib/SDL/x64
+          }
+          $glewZip = Join-Path $tmp 'glew.zip'
+          Invoke-WebRequest 'https://github.com/nigels-com/glew/releases/download/glew-2.1.0/glew-2.1.0-win32.zip' -OutFile $glewZip
+          Expand-Archive $glewZip (Join-Path $tmp 'glew') -Force
+          Copy-Item (Join-Path $tmp 'glew/glew-2.1.0/lib/Release/x64/glew32.lib') lib/GLEW/x64/
+          Get-ChildItem lib/SDL/x64, lib/GLEW/x64
+
       - name: Configure
         run: cmake --preset vs2022-x64
 
