@@ -28,6 +28,8 @@ class PerformanceRecorder;
 class RuntimeStateManager;
 class BenchmarkRunner;
 class DriveMode;
+class GameSession;
+class EditorWorkspace;
 class SceneNode;
 struct SimulationConfig;
 
@@ -225,6 +227,52 @@ public:
     glm::vec3 GetLightPosition() const { return m_lightPos; }
     glm::vec3 GetLightDirection() const { return m_lightDir; }
 
+
+    // Editor / game integration (docs/nfs2015/game.md)
+
+    enum class AppMode { Editor, Game };
+    struct LaunchOptions {
+        AppMode mode = AppMode::Editor;
+        std::string scene;     // empty = config first_scene
+        std::string quality;   // empty = scene default
+    };
+    void SetLaunchOptions(const LaunchOptions& options) { m_launch = options; }
+    AppMode GetAppMode() const { return m_launch.mode; }
+    GameSession* GetGame() { return m_game.get(); }
+    std::shared_ptr<ModularRenderer> GetRenderer() { return m_modularRenderer; }
+    SceneLoader* GetSceneLoader() { return m_sceneLoader.get(); }
+    const std::string& GetCurrentScenePath() const { return m_currentSceneFilePath; }
+    std::vector<std::string> GetSceneList() const;
+
+    // Play mode: Play starts from the authored scene, Stop restores the pre-play state.
+    void RequestPlay();
+    void RequestStop();
+    void TogglePause();
+    bool IsPlaying() const { return m_playing; }
+    bool IsPaused() const;
+    // Runtime tuning made during play becomes authored data (explicit action).
+    void ApplyRuntimeChangesToAuthored();
+
+    // Authoring state.
+    void MarkDirty() { m_dirty = true; }
+    bool IsDirty() const { return m_dirty; }
+    // Apply an edited "game" object at edit time (reconfigures the game session).
+    void ApplyGameJson(const json& game);
+    json GetAuthoredGameJson() const;
+    // Deferred scene switch (performed at the start of the next update).
+    void RequestSceneSwap(const std::string& scenePath) { m_pendingSceneSwap = scenePath; }
+    // Node picking in viewport-local pixel coordinates.
+    std::shared_ptr<SceneNode> PickNode(int x, int y, int width, int height);
+    std::shared_ptr<SceneNode> DuplicateNode(const std::shared_ptr<SceneNode>& node);
+    std::shared_ptr<SceneNode> AddModelNode(const std::string& modelPath, const glm::vec3& position);
+    bool DeleteNode(const std::shared_ptr<SceneNode>& node);
+    void InvalidateSceneCaches() { m_bvhDirty = true; m_boundingBoxCached = false; }
+    void ResetTemporalHistory();
+    void QuitApplication() { m_quitRequested = true; }
+    // Editor camera flight (right mouse in the Scene viewport) gates the legacy input contexts.
+    void SetEditorCameraActive(bool active);
+    bool IsEditorCameraActive() const { return m_editorCameraActive; }
+
 private:
 
     // Internal Initialization
@@ -360,7 +408,19 @@ private:
     std::unique_ptr<PerformanceRecorder> m_performanceRecorder;
     std::unique_ptr<RuntimeStateManager> m_stateManager;
     std::unique_ptr<BenchmarkRunner> m_benchmark; // NOX_BENCHMARK camera-path runner
-    std::unique_ptr<DriveMode> m_driveMode;       // F9 drive mode: car, chase camera, HUD (docs/nfs2015)
+    std::unique_ptr<GameSession> m_game;          // racing prototype: car, race, HUD (docs/nfs2015/game.md)
+    std::unique_ptr<EditorWorkspace> m_editor;    // docked editor (editor mode only)
+    LaunchOptions m_launch;
+    bool m_playing = false;
+    bool m_dirty = false;
+    bool m_editorCameraActive = false;
+    std::string m_pendingSceneSwap;
+    json m_authoredGame;                          // scene "game" object (authoring copy)
+    json m_prePlayGame;                           // restored on Stop
+    std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> m_prePlayTransforms;
+    json m_sceneRootJson;                         // last loaded scene file
+    void ConfigureGameFromScene(const std::string& scenePath);
+    void RenderSceneTo(unsigned int framebuffer, int width, int height, const std::shared_ptr<Camera>& camera);
     bool m_quitRequested = false;
     bool m_sceneHasRenderSettings = false; // scene file had "render_settings" (docs/nfs2015)
 

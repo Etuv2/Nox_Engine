@@ -1,0 +1,601 @@
+{
+  "camera": {
+    "far": 900.0,
+    "fov": 55.0,
+    "look_at": [
+      0.0,
+      1.0,
+      -20.0
+    ],
+    "movement_speed": 14.0,
+    "near": 0.05,
+    "position": [
+      -14.0,
+      9.0,
+      -62.0
+    ]
+  },
+  "exposure": 1.0,
+  "game": {
+    "body_node": "PlayerCarBody",
+    "camera": {
+      "distance": 5.4,
+      "fov": 41.0,
+      "fov_nitro": 6.0,
+      "fov_speed_gain": 12.0,
+      "heading_lag": 4.5,
+      "height": 1.399999976158142,
+      "look_ahead": 10.0,
+      "look_height": 2.3499999046325684,
+      "pull_back": 0.8999999761581421,
+      "stiffness": 10.0
+    },
+    "events": [
+      {
+        "checkpoints": [
+          {
+            "pos": [
+              -3.799999952316284,
+              120.0
+            ],
+            "width": 18.0
+          },
+          {
+            "pos": [
+              -3.799999952316284,
+              270.0
+            ],
+            "width": 18.0
+          },
+          {
+            "pos": [
+              75.0,
+              336.20001220703125
+            ],
+            "width": 18.0
+          },
+          {
+            "pos": [
+              146.1999969482422,
+              270.0
+            ],
+            "width": 18.0
+          },
+          {
+            "pos": [
+              146.1999969482422,
+              130.0
+            ],
+            "width": 18.0
+          },
+          {
+            "pos": [
+              75.0,
+              63.79999923706055
+            ],
+            "width": 18.0
+          }
+        ],
+        "countdown": 3.0,
+        "difficulty": "Hard",
+        "id": "sprint_legends_wheels",
+        "name": "A Legend's Wheels",
+        "start": [
+          -2.0,
+          12.0
+        ],
+        "start_heading_deg": 0.0,
+        "trigger_radius": 9.0,
+        "type": "SPRINT RACE"
+      }
+    ],
+    "handling": {
+      "acceleration": 10.5,
+      "braking": 17.0,
+      "drift_grip": 1.2000000476837158,
+      "drift_yaw_gain": 1.899999976158142,
+      "grip": 6.5,
+      "nitro_drain": 0.23999999463558197,
+      "nitro_recharge": 0.05999999865889549,
+      "nitro_recharge_delay": 1.5,
+      "nitro_thrust": 1.7000000476837158,
+      "nitro_top_speed": 1.1200000047683716,
+      "reverse_max_kmh": 40.0,
+      "rpm_idle": 900.0,
+      "rpm_limiter": 8200.0,
+      "rpm_redline": 7800.0,
+      "shift_time": 0.1599999964237213,
+      "steer_lock_high": 5.5,
+      "steer_lock_low": 34.0,
+      "steer_rate": 9.0,
+      "top_speed_kmh": 250.0
+    },
+    "hud": "config/hud.json",
+    "player_node": "PlayerCar",
+    "road_network": {
+      "edges": [
+        {
+          "a": "A0",
+          "b": "A1",
+          "name": "Ventura Ave"
+        },
+        {
+          "a": "B0",
+          "b": "B1",
+          "name": "Palm Blvd"
+        },
+        {
+          "a": "A1",
+          "b": "A2",
+          "name": "Ventura Ave"
+        },
+        {
+          "a": "B1",
+          "b": "B2",
+          "name": "Palm Blvd"
+        },
+        {
+          "a": "A2",
+          "b": "A3",
+          "name": "Ventura Ave"
+        },
+        {
+          "a": "B2",
+          "b": "B3",
+          "name": "Palm Blvd"
+        },
+        {
+          "a": "A0",
+          "b": "B0",
+          "name": "1st St"
+        },
+        {
+          "a": "A1",
+          "b": "B1",
+          "name": "2nd St"
+        },
+        {
+          "a": "A2",
+          "b": "B2",
+          "name": "3rd St"
+        },
+        {
+          "a": "A3",
+          "b": "B3",
+          "name": "4th St"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "A0",
+          "pos": [
+            0.0,
+            -80.0
+          ]
+        },
+        {
+          "id": "B0",
+          "pos": [
+            150.0,
+            -80.0
+          ]
+        },
+        {
+          "id": "A1",
+          "pos": [
+            0.0,
+            60.0
+          ]
+        },
+        {
+          "id": "B1",
+          "pos": [
+            150.0,
+            60.0
+          ]
+        },
+        {
+          "id": "A2",
+          "pos": [
+            0.0,
+            200.0
+          ]
+        },
+        {
+          "id": "B2",
+          "pos": [
+            150.0,
+            200.0
+          ]
+        },
+        {
+          "id": "A3",
+          "pos": [
+            0.0,
+            340.0
+          ]
+        },
+        {
+          "id": "B3",
+          "pos": [
+            150.0,
+            340.0
+          ]
+        }
+      ],
+      "road_half_width": 7.5,
+      "sidewalk_width": 4.25
+    },
+    "spawn": {
+      "heading_deg": 0.0,
+      "position": [
+        -2.0,
+        -40.0
+      ]
+    }
+  },
+  "gamma": 2.200000047683716,
+  "nodes": [
+    {
+      "name": "StreetKit",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "procedural": {
+        "generator": "district",
+        "params": {
+          "cross_streetlight_spacing": 26.0,
+          "max_reflection_probes": 46,
+          "output": "generated/nfs_district",
+          "seed": 2015,
+          "shadowed_streetlights": 2,
+          "streetlight_spacing": 24.0,
+          "texture_root": "textures/cc0"
+        }
+      },
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
+    },
+    {
+      "children": [
+        {
+          "exclude_from_reflection_capture": true,
+          "material_overrides": [
+            {
+              "match": "*",
+              "wetness_response": 0.5
+            },
+            {
+              "base_color": [
+                0.86,
+                0.15,
+                0.035
+              ],
+              "clearcoat": 1.0,
+              "clearcoat_roughness": 0.04,
+              "disable_textures": [
+                "base_color",
+                "metallic_roughness"
+              ],
+              "flake_intensity": 0.6,
+              "match": "PaintA",
+              "metallic": 0.12,
+              "rain_bead_response": 1.0,
+              "roughness": 0.3
+            },
+            {
+              "base_color": [
+                0.86,
+                0.15,
+                0.035
+              ],
+              "clearcoat": 1.0,
+              "clearcoat_roughness": 0.04,
+              "disable_textures": [
+                "base_color",
+                "metallic_roughness"
+              ],
+              "flake_intensity": 0.6,
+              "match": "Coloured",
+              "metallic": 0.12,
+              "rain_bead_response": 1.0,
+              "roughness": 0.3
+            },
+            {
+              "match": "Grille",
+              "metallic": 0.0
+            },
+            {
+              "match": "Interior",
+              "metallic": 0.0
+            },
+            {
+              "match": "Engine",
+              "metallic": 0.0
+            },
+            {
+              "clearcoat": 1.0,
+              "clearcoat_roughness": 0.05,
+              "match": "Carbon",
+              "metallic": 0.0,
+              "rain_bead_response": 1.0
+            },
+            {
+              "clearcoat": 1.0,
+              "clearcoat_roughness": 0.05,
+              "match": "CalliperGloss",
+              "metallic": 0.0
+            },
+            {
+              "match": "WindowA",
+              "rain_bead_response": 1.0,
+              "roughness": 0.02
+            },
+            {
+              "base_color": [
+                0.6,
+                0.0,
+                0.0,
+                0.6
+              ],
+              "emissive": [
+                1.0,
+                0.02,
+                0.01
+              ],
+              "emissive_strength": 70.0,
+              "match": "red_glass",
+              "roughness": 0.05
+            }
+          ],
+          "name": "PlayerCarBody",
+          "path": "models\\car.glb",
+          "position": [
+            0.0,
+            0.6800000071525574,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "scale": [
+            100.0,
+            100.0,
+            100.0
+          ],
+          "type": "model"
+        },
+        {
+          "light": {
+            "attenuation": [
+              9.999999747378752e-05,
+              0.0,
+              1.0
+            ],
+            "castsShadows": false,
+            "color": [
+              1.0,
+              0.05000000074505806,
+              0.019999999552965164
+            ],
+            "enabled": true,
+            "intensity": 9.549296379089355,
+            "range": 5.0,
+            "shadowResolution": 1024,
+            "source_radius": 0.30000001192092896,
+            "type": "point"
+          },
+          "name": "TailLight",
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "type": "light"
+        },
+        {
+          "light": {
+            "attenuation": [
+              9.999999747378752e-05,
+              0.0,
+              1.0
+            ],
+            "castsShadows": false,
+            "color": [
+              0.949999988079071,
+              0.9700000286102295,
+              1.0
+            ],
+            "cutOff": 14.0,
+            "enabled": true,
+            "intensity": 286.4788818359375,
+            "outerCutOff": 30.0,
+            "range": 45.0,
+            "shadowResolution": 1024,
+            "source_radius": 0.05000000074505806,
+            "type": "spot"
+          },
+          "name": "Headlight_L",
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            -3.9999778270721436,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "type": "light"
+        },
+        {
+          "light": {
+            "attenuation": [
+              9.999999747378752e-05,
+              0.0,
+              1.0
+            ],
+            "castsShadows": false,
+            "color": [
+              0.949999988079071,
+              0.9700000286102295,
+              1.0
+            ],
+            "cutOff": 14.0,
+            "enabled": true,
+            "intensity": 286.4788818359375,
+            "outerCutOff": 30.0,
+            "range": 45.0,
+            "shadowResolution": 1024,
+            "source_radius": 0.05000000074505806,
+            "type": "spot"
+          },
+          "name": "Headlight_R",
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            -3.9999778270721436,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "type": "light"
+        }
+      ],
+      "name": "PlayerCar",
+      "position": [
+        -2.0,
+        0.0,
+        -40.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "node"
+    }
+  ],
+  "physics_enabled": false,
+  "quality_tiers": {
+    "high": {
+      "motion_blur_samples": 6,
+      "rain_drop_count": 40000,
+      "ssao": false,
+      "ssr_max_steps": 32,
+      "ssr_resolve_samples": 4,
+      "volumetric_tile_size": 16
+    },
+    "ultra": {
+      "motion_blur_samples": 16,
+      "rain_drop_count": 80000,
+      "ssao": true,
+      "ssr_max_steps": 80,
+      "ssr_resolve_samples": 9,
+      "volumetric_tile_size": 8
+    }
+  },
+  "render_settings": {
+    "auto_exposure_max_ev100": 9.0,
+    "auto_exposure_min_ev100": -1.0,
+    "auto_exposure_speed_down": 1.0,
+    "auto_exposure_speed_up": 2.0,
+    "bloom": true,
+    "bloom_mode": "energy_conserving",
+    "bloom_strength": 0.06,
+    "chromatic_aberration": 1.0,
+    "clustered_lighting": true,
+    "contact_shadows": false,
+    "contrast": 1.08,
+    "diffuse_ibl_scale": 1.0,
+    "exposure_compensation": -0.55,
+    "exposure_ev100": 3.0,
+    "exposure_mode": "auto",
+    "film_grain": 0.02,
+    "fog_ambient": [
+      0.012,
+      0.014,
+      0.022
+    ],
+    "fog_anisotropy": 0.6,
+    "fog_density": 0.0075,
+    "fog_distant_density": 0.006,
+    "fog_height_falloff": 8.0,
+    "fog_noise_scale": 10.0,
+    "fog_noise_strength": 0.6,
+    "highlight_tint": [
+      0.08,
+      0.02,
+      -0.08
+    ],
+    "ibl_intensity": 1.0,
+    "motion_blur": true,
+    "motion_blur_exposure_time": 0.02,
+    "physical_camera": true,
+    "puddle_scale": 4.0,
+    "puddles": 0.45,
+    "quality_tier": "high",
+    "rain": 0.3,
+    "saturation": 1.05,
+    "shadow_tint": [
+      -0.12,
+      0.02,
+      0.18
+    ],
+    "skybox_exposure": 1.0,
+    "specular_ibl_scale": 1.0,
+    "split_tone_strength": 1.0,
+    "ssao": true,
+    "ssgi": false,
+    "ssr": true,
+    "taa": true,
+    "tonemap": "gt",
+    "vignette": 0.35,
+    "volumetric_far": 160.0,
+    "volumetric_fog": true,
+    "wetness": 0.85,
+    "white_balance_temperature": 5200.0
+  },
+  "scene_name": "NFS Sprint District",
+  "skybox": "hdrs\\cc0\\night_city.hdr"
+}

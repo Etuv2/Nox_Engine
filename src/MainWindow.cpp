@@ -61,6 +61,9 @@ int GetEnvInt(const char* name, int fallback)
 }
 }
 
+namespace { SDL_Window* g_noxMainWindow = nullptr; }
+SDL_Window* NoxMainWindow() { return g_noxMainWindow; }
+
 MainWindow::MainWindow()
     : m_window(nullptr)
     , m_glContext(nullptr)
@@ -95,6 +98,11 @@ bool MainWindow::LoadWindowConfiguration() {
         m_iconPath = m_config.value("iconPath", "");
         m_vsync = m_config.value("vsync", true);
         m_windowMode = m_config.value("windowMode", std::string("windowed"));
+        // Launch preset / command line.
+        if (!m_launch.window.empty()) m_windowMode = m_launch.window;
+        if (m_launch.width > 0) m_windowWidth = m_launch.width;
+        if (m_launch.height > 0) m_windowHeight = m_launch.height;
+        m_windowTitle = m_launch.mode == "game" ? "NOX Racing - Night Sprint" : "NOX Editor";
         // Overrides for scripted runs (e.g. native-resolution benchmarks).
         m_windowWidth = GetEnvInt("NOX_WINDOW_WIDTH", m_windowWidth);
         m_windowHeight = GetEnvInt("NOX_WINDOW_HEIGHT", m_windowHeight);
@@ -130,6 +138,7 @@ bool MainWindow::CreateWindow() {
         flags
     );
     
+    g_noxMainWindow = m_window;
     if (!m_window) {
         std::cerr << "[MainWindow] Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         return false;
@@ -227,11 +236,17 @@ bool MainWindow::Initialize() {
     // Set window icon
     SetWindowIcon();
 
-    // Set initial mouse mode
-    SDL_SetRelativeMouseMode(SDL_TRUE);
+    // Mouse mode is chosen by Core (free cursor in the editor, hidden cursor in the game).
 
     // Create and initialize engine Core
     m_core = std::make_unique<Core>();
+    {
+        Core::LaunchOptions options;
+        options.mode = m_launch.mode == "game" ? Core::AppMode::Game : Core::AppMode::Editor;
+        options.scene = m_launch.scene;
+        options.quality = m_launch.quality;
+        m_core->SetLaunchOptions(options);
+    }
     if (!m_core->Initialize(m_window, m_glContext, m_windowWidth, m_windowHeight)) {
         std::cerr << "[MainWindow] Failed to initialize engine Core" << std::endl;
         SDL_GL_DeleteContext(m_glContext);
@@ -257,15 +272,9 @@ void MainWindow::ProcessEvents() {
             handledByInput = m_core->ProcessInputEvent(event);
         }
 
-        // Allow ImGui to process events when mouse is unlocked
-        bool allowImGui = !handledByInput || (m_core && !m_core->IsMouseLocked());
-        if (allowImGui) {
+        // The editor UI always sees events (it routes focus itself) unless the fly camera consumed them.
+        if (!handledByInput || (m_core && m_core->GetAppMode() == Core::AppMode::Game)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
-        }
-
-        // Process ImGui keyboard input for window toggles
-        if (m_core && m_core->GetImGuiInterface()) {
-            m_core->GetImGuiInterface()->ProcessKeyboardInput();
         }
 
         // Handle system-level events
@@ -278,26 +287,8 @@ void MainWindow::ProcessEvents() {
             HandleWindowEvent(event.window);
             break;
             
-        case SDL_KEYDOWN:
-            if (event.key.keysym.sym == SDLK_ESCAPE) {
-                m_running = false;
-            }
-            break;
-            
-        case SDL_MOUSEBUTTONDOWN:
-            // Handle mouse picking when mouse is unlocked
-            if (!handledByInput && event.button.button == SDL_BUTTON_LEFT &&
-                m_core && !m_core->IsMouseLocked()) {
-                m_core->HandleMouseClick(event.button.x, event.button.y, m_windowWidth, m_windowHeight);
-            }
-            break;
-            
-        case SDL_MOUSEWHEEL:
-            if (m_core) {
-                m_core->HandleMouseScroll(static_cast<float>(event.wheel.y));
-            }
-            break;
-            
+        // Escape opens the pause menu in game mode; quitting uses menus or the close button.
+        // Picking and wheel dolly are handled per viewport by the editor workspace.
         default:
             break;
         }

@@ -1,4 +1,5 @@
 #include "SurfelGIPipeline.h"
+#include "../PresentTarget.h"
 
 #include "../ComputeShader.h"
 #include "../Camera.h"
@@ -1697,7 +1698,7 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context)
 		}
 
 		GLRenderStateGuard renderStateGuard;
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 		glViewport(0, 0, context.width, context.height);
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_BLEND);
@@ -1732,7 +1733,7 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context)
 	GLRenderStateGuard renderStateGuard;
 	BindCoreResources(0u);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 	glViewport(0, 0, context.width, context.height);
 	glEnable(GL_PROGRAM_POINT_SIZE);
 	glEnable(GL_BLEND);

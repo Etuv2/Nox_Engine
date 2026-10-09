@@ -8,6 +8,7 @@
 #include "SpotLight.h"
 #include "ModelManager.h"
 #include "ProceduralStreetKit.h"
+#include "RoadNetwork.h"
 #include "ShaderLoader.h"
 #include "Scene.h"
 #include "HierarchySystem.h"
@@ -508,6 +509,7 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	// Set the scenes exposure and gamma values if provided.
 	sceneGraph->m_exposure = sceneJson.value("exposure", 1.0f);
 	sceneGraph->m_gamma = sceneJson.value("gamma", 2.2f);
+	m_sceneGameJson = sceneJson.value("game", nlohmann::json::object());
 
 	if (sceneJson.contains("reflection_probes")) {
 		AddReflectionProbes(sceneJson["reflection_probes"]);
@@ -711,7 +713,9 @@ nlohmann::json SceneLoader::SerializeNodeRecursive(const std::shared_ptr<SceneNo
 		nlohmann::json childrenArray = nlohmann::json::array();
 
 		for (const auto& child : node->children) {
-			if (child && !child->IsGenerated()) {
+			// Generated nodes and nodes imported from the model file (glTF node index set) are
+			// rebuilt on load, so writing them would duplicate the model's hierarchy.
+			if (child && !child->IsGenerated() && child->nodeIndex < 0) {
 				nlohmann::json childJson = SerializeNodeRecursive(child);
 				if (!childJson.is_null()) {
 					childrenArray.push_back(childJson);
@@ -1355,9 +1359,27 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			const json& procedural = nodeJson["procedural"];
 			authoredExtras["procedural"] = procedural;
 			const std::string generator = procedural.value("generator", std::string("street_kit"));
-			if (generator == "street_kit") {
-				ProceduralStreetKit::Result generated =
-					ProceduralStreetKit::Generate(procedural.value("params", json::object()));
+			if (generator == "street_kit" || generator == "district") {
+				const json generatorParams = procedural.value("params", json::object());
+				ProceduralStreetKit::Result generated;
+				if (generator == "street_kit") {
+					generated = ProceduralStreetKit::Generate(generatorParams);
+				}
+				else {
+					// Road graph: node params override the scene's game.road_network; default grid otherwise.
+					RoadNetwork network;
+					bool networkLoaded = false;
+					if (generatorParams.contains("road_network")) {
+						networkLoaded = network.Load(generatorParams["road_network"]);
+					}
+					else if (m_sceneGameJson.contains("road_network")) {
+						networkLoaded = network.Load(m_sceneGameJson["road_network"]);
+					}
+					if (!networkLoaded) {
+						network.BuildDefaultDistrict();
+					}
+					generated = ProceduralStreetKit::GenerateDistrict(generatorParams, network);
+				}
 				if (generated.ok) {
 					modelPath = generated.gltfPath;
 					m_pendingGeneratedChildren = std::move(generated.lightNodes);
@@ -2524,4 +2546,30 @@ void SceneLoader::RestoreNodeState(const nlohmann::json& nodeJson,
 	if (nodeJson.contains("children") && nodeJson["children"].is_array()) {
 		RestoreNodeStates(nodeJson["children"], node->children, sceneGraph);
 	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Editor helpers (docs/nfs2015/game.md): duplicate / add nodes at runtime.
+// ---------------------------------------------------------------------------------------------
+nlohmann::json SceneLoader::SerializeNodeForEditor(const std::shared_ptr<SceneNode>& node)
+{
+	return node ? SerializeNodeRecursive(node) : nlohmann::json();
+}
+
+std::shared_ptr<SceneNode> SceneLoader::InstantiateNode(SceneGraph& graph, const nlohmann::json& nodeJson,
+	const std::shared_ptr<SceneNode>& parent, const std::string& sceneFilePath)
+{
+	if (!nodeJson.is_object() || !parent) {
+		return nullptr;
+	}
+	m_currentSceneGraph = &graph;
+	m_currentSceneDirectory = std::filesystem::path(sceneFilePath).parent_path().string();
+	m_missingCriticalAssetCount = 0;
+	auto node = ProcessNodeRecursive(nodeJson, parent->GetEntityID());
+	if (node) {
+		parent->AddChild(node);
+		graph.UpdateAllTransforms();
+	}
+	m_currentSceneGraph = nullptr;
+	return node;
 }

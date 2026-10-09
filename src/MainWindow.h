@@ -11,6 +11,16 @@ using json = nlohmann::json;
 // Forward declarations
 class Core;
 
+// Resolved launch settings (command line + config/launch_presets.json).
+struct LaunchConfig {
+    std::string mode = "editor";   // editor | game
+    std::string scene;             // empty = config first_scene
+    std::string quality;           // high | ultra | empty
+    std::string window;            // windowed | borderless | fullscreen | empty
+    int width = 0;
+    int height = 0;
+};
+
 /**
  * @brief MainWindow handles the OS window lifecycle and surface management.
  * 
@@ -33,6 +43,7 @@ public:
      * @return true if initialization succeeded
      */
     bool Initialize();
+    void SetLaunchConfig(const LaunchConfig& launch) { m_launch = launch; }
     
     /**
      * @brief Run the main application loop.
@@ -110,4 +121,5 @@ private:
 
     
     std::unique_ptr<Core> m_core;
+    LaunchConfig m_launch;
 };

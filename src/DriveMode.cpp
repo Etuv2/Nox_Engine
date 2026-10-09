@@ -1,22 +1,19 @@
 #include "DriveMode.h"
 
 #include "Camera.h"
+#include "RoadNetwork.h"
 #include "SceneGraph.h"
 #include "SceneNode.h"
 #include <SDL/SDL.h>
-#include <IMGUI/imgui.h>
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 #include <cmath>
 #include <fstream>
-#include <cstdlib>
 #include <iostream>
 
 using nlohmann::json;
 
 namespace {
-	ImFont* g_hudFontLarge = nullptr;
-	ImFont* g_hudFontSmall = nullptr;
 	constexpr float kPi = 3.14159265f;
 
 	std::shared_ptr<SceneNode> FindByName(const std::shared_ptr<SceneNode>& node, const std::string& name) {
@@ -28,38 +25,92 @@ namespace {
 		return nullptr;
 	}
 
+	// Frame-rate independent exponential approach; 'rate' is already multiplied by dt.
 	float Approach(float current, float target, float rate) {
 		return current + (target - current) * (1.0f - std::exp(-rate));
 	}
 
-	// Gear upper speeds (m/s) for a 6-speed box with a 78 m/s top speed; scaled to the actual top speed.
-	const float kGearTop[6] = { 0.20f, 0.36f, 0.52f, 0.68f, 0.84f, 1.0f };
+	float WrapAngle(float a) {
+		while (a > kPi) a -= 2.0f * kPi;
+		while (a < -kPi) a += 2.0f * kPi;
+		return a;
+	}
+
+	// Upper speed of each gear as a fraction of top speed (6-speed box).
+	const float kGearTop[6] = { 0.22f, 0.38f, 0.53f, 0.68f, 0.84f, 1.0f };
+	constexpr float kCarRadius = 0.95f;   // two circles along the body
+	constexpr float kCarCircleOffset = 1.25f;
 }
 
-void DriveMode::LoadFonts()
+void DriveMode::ReadHandling(const json& j, Handling& h)
 {
-	ImGuiIO& io = ImGui::GetIO();
-	if (io.Fonts->Fonts.Size == 0) {
-		io.Fonts->AddFontDefault(); // keep the editor's default font first
-	}
-	g_hudFontLarge = io.Fonts->AddFontFromFileTTF("fonts/arial.ttf", 96.0f);
-	g_hudFontSmall = io.Fonts->AddFontFromFileTTF("fonts/arial.ttf", 30.0f);
-	if (!g_hudFontLarge || !g_hudFontSmall) {
-		std::cerr << "[DriveMode] HUD fonts unavailable; using the default font" << std::endl;
-	}
+	if (!j.is_object()) return;
+	h.topSpeedKmh = j.value("top_speed_kmh", h.topSpeedKmh);
+	h.acceleration = j.value("acceleration", h.acceleration);
+	h.braking = j.value("braking", h.braking);
+	h.reverseMaxKmh = j.value("reverse_max_kmh", h.reverseMaxKmh);
+	h.steerLockLow = j.value("steer_lock_low", h.steerLockLow);
+	h.steerLockHigh = j.value("steer_lock_high", h.steerLockHigh);
+	h.steerRate = j.value("steer_rate", h.steerRate);
+	h.grip = j.value("grip", h.grip);
+	h.driftGrip = j.value("drift_grip", h.driftGrip);
+	h.driftYawGain = j.value("drift_yaw_gain", h.driftYawGain);
+	h.nitroThrust = j.value("nitro_thrust", h.nitroThrust);
+	h.nitroTopSpeed = j.value("nitro_top_speed", h.nitroTopSpeed);
+	h.nitroDrain = j.value("nitro_drain", h.nitroDrain);
+	h.nitroRecharge = j.value("nitro_recharge", h.nitroRecharge);
+	h.nitroRechargeDelay = j.value("nitro_recharge_delay", h.nitroRechargeDelay);
+	h.rpmIdle = j.value("rpm_idle", h.rpmIdle);
+	h.rpmRedline = j.value("rpm_redline", h.rpmRedline);
+	h.rpmLimiter = j.value("rpm_limiter", h.rpmLimiter);
+	h.shiftTime = j.value("shift_time", h.shiftTime);
 }
 
-void DriveMode::Configure(const std::string& sceneFilePath, SceneGraph& sceneGraph)
+void DriveMode::ReadCamera(const json& j, CameraRig& c)
+{
+	if (!j.is_object()) return;
+	c.distance = j.value("distance", c.distance);
+	c.height = j.value("height", c.height);
+	c.lookAhead = j.value("look_ahead", c.lookAhead);
+	c.lookHeight = j.value("look_height", c.lookHeight);
+	c.fov = j.value("fov", c.fov);
+	c.fovSpeedGain = j.value("fov_speed_gain", c.fovSpeedGain);
+	c.fovNitro = j.value("fov_nitro", c.fovNitro);
+	c.pullBack = j.value("pull_back", c.pullBack);
+	c.stiffness = j.value("stiffness", c.stiffness);
+	c.headingLag = j.value("heading_lag", c.headingLag);
+}
+
+json DriveMode::SaveTuning() const
+{
+	const Handling& h = m_handling;
+	const CameraRig& c = m_rig;
+	json out;
+	out["handling"] = {
+		{"top_speed_kmh", h.topSpeedKmh}, {"acceleration", h.acceleration}, {"braking", h.braking},
+		{"reverse_max_kmh", h.reverseMaxKmh}, {"steer_lock_low", h.steerLockLow}, {"steer_lock_high", h.steerLockHigh},
+		{"steer_rate", h.steerRate}, {"grip", h.grip}, {"drift_grip", h.driftGrip}, {"drift_yaw_gain", h.driftYawGain},
+		{"nitro_thrust", h.nitroThrust}, {"nitro_top_speed", h.nitroTopSpeed}, {"nitro_drain", h.nitroDrain},
+		{"nitro_recharge", h.nitroRecharge}, {"nitro_recharge_delay", h.nitroRechargeDelay},
+		{"rpm_idle", h.rpmIdle}, {"rpm_redline", h.rpmRedline}, {"rpm_limiter", h.rpmLimiter}, {"shift_time", h.shiftTime} };
+	out["camera"] = {
+		{"distance", c.distance}, {"height", c.height}, {"look_ahead", c.lookAhead}, {"look_height", c.lookHeight},
+		{"fov", c.fov}, {"fov_speed_gain", c.fovSpeedGain}, {"fov_nitro", c.fovNitro}, {"pull_back", c.pullBack},
+		{"stiffness", c.stiffness}, {"heading_lag", c.headingLag} };
+	return out;
+}
+
+void DriveMode::Configure(const json& g, SceneGraph& sceneGraph, const RoadNetwork* roads, const std::string& layoutPath)
 {
 	m_available = false;
 	m_active = false;
 	m_areas.clear();
-	std::ifstream in(sceneFilePath);
-	const json scene = in ? json::parse(in, nullptr, false) : json();
-	if (!scene.is_object() || !scene.contains("game") || !scene["game"].is_object()) {
-		return;
-	}
-	const json& g = scene["game"];
+	m_obstacles.clear();
+	m_roads = (roads && !roads->Empty()) ? roads : nullptr;
+	m_handling = Handling();
+	m_rig = CameraRig();
+	if (!g.is_object()) return;
+
 	auto root = sceneGraph.GetRoot();
 	auto player = FindByName(root, g.value("player_node", std::string("PlayerCar")));
 	if (!player) {
@@ -67,9 +118,12 @@ void DriveMode::Configure(const std::string& sceneFilePath, SceneGraph& sceneGra
 		return;
 	}
 	m_player = player;
+	m_playerY = player->GetPosition().y;
+	m_body.reset();
 	if (auto body = FindByName(root, g.value("body_node", std::string()))) {
 		m_body = body;
 		m_bodyBasePos = body->GetPosition();
+		m_bodyBaseRot = body->GetOrientation();
 		m_bodyScale = body->GetScale();
 	}
 	if (g.contains("drivable_areas") && g["drivable_areas"].is_array()) {
@@ -79,28 +133,103 @@ void DriveMode::Configure(const std::string& sceneFilePath, SceneGraph& sceneGra
 			}
 		}
 	}
-	m_topSpeed = std::max(g.value("top_speed_kmh", 280.0f), 40.0f) / 3.6f;
+	// Legacy key, now part of "handling".
+	m_handling.topSpeedKmh = g.value("top_speed_kmh", m_handling.topSpeedKmh);
+	ReadHandling(g.value("handling", json::object()), m_handling);
+	ReadCamera(g.value("camera", json::object()), m_rig);
+	LoadLayout(layoutPath);
+
 	const glm::vec3 p = player->GetPosition();
 	m_spawnPos = glm::vec2(p.x, p.z);
 	const glm::vec3 fwd = player->GetOrientation() * glm::vec3(0, 0, 1);
 	m_spawnHeading = std::atan2(fwd.x, fwd.z);
-	ResetToSpawn();
-	m_available = true;
-	if (g.value("start_in_drive_mode", false)) {
-		SetActive(true);
+	if (g.contains("spawn") && g["spawn"].is_object()) {
+		const json& s = g["spawn"];
+		if (s.contains("position") && s["position"].is_array() && s["position"].size() >= 2) {
+			m_spawnPos = glm::vec2(s["position"][0].get<float>(), s["position"][1].get<float>());
+		}
+		m_spawnHeading = glm::radians(s.value("heading_deg", glm::degrees(m_spawnHeading)));
 	}
-	std::cout << "[DriveMode] Ready (F9 toggles). Areas: " << m_areas.size() << std::endl;
+	ResetToSpawn();
+	ApplyTransforms();
+	m_available = true;
+	std::cout << "[DriveMode] Ready. Areas: " << m_areas.size() << " obstacles: " << m_obstacles.size()
+		<< (m_roads ? " (road network)" : "") << std::endl;
+}
+
+void DriveMode::LoadLayout(const std::string& path)
+{
+	if (path.empty()) return;
+	std::ifstream in(path);
+	if (!in) return;
+	const json layout = json::parse(in, nullptr, false);
+	if (!layout.is_object() || !layout.contains("obstacles") || !layout["obstacles"].is_array()) return;
+	for (const json& o : layout["obstacles"]) {
+		Obstacle ob;
+		const std::string type = o.value("type", std::string("circle"));
+		if (type == "box") {
+			ob.box = true;
+			const json c = o.value("center", json::array({ 0.0f, 0.0f }));
+			const json h = o.value("half", json::array({ 0.5f, 0.5f }));
+			ob.center = glm::vec2(c[0].get<float>(), c[1].get<float>());
+			ob.half = glm::vec2(h[0].get<float>(), h[1].get<float>());
+			ob.yaw = o.value("yaw", 0.0f);
+		}
+		else {
+			const json c = o.value("pos", json::array({ 0.0f, 0.0f }));
+			ob.center = glm::vec2(c[0].get<float>(), c[1].get<float>());
+			ob.radius = o.value("radius", 0.2f);
+		}
+		m_obstacles.push_back(ob);
+	}
+}
+
+float DriveMode::Speed01() const
+{
+	return std::clamp(std::abs(m_speed) / (m_handling.topSpeedKmh / 3.6f), 0.0f, 1.0f);
+}
+
+void DriveMode::Teleport(const glm::vec2& pos, float heading)
+{
+	m_pos = m_prevPos = pos;
+	m_heading = heading;
+	m_speed = m_lateral = m_steer = m_yawRate = 0.0f;
+	m_longAccel = m_latAccel = m_roll = m_pitch = 0.0f;
+	m_gear = 1;
+	m_rpm = m_handling.rpmIdle;
+	m_shiftTimer = 0.0f;
+	m_camInitialized = false;
+	m_teleported = true;
+	ApplyTransforms();
 }
 
 void DriveMode::ResetToSpawn()
 {
-	m_pos = m_spawnPos;
-	m_heading = m_spawnHeading;
-	m_speed = m_lateral = m_steer = m_yawRate = 0.0f;
+	Teleport(m_spawnPos, m_spawnHeading);
 	m_nitro = 1.0f;
-	m_gear = 1;
-	m_camInitialized = false;
-	m_teleported = true;
+	m_nitroCooldown = 0.0f;
+}
+
+void DriveMode::RecoverToRoad()
+{
+	if (!m_roads) {
+		ResetToSpawn();
+		return;
+	}
+	glm::vec2 closest;
+	int edge = -1;
+	m_roads->ClosestOnRoads(m_pos, &closest, &edge);
+	if (edge < 0) {
+		ResetToSpawn();
+		return;
+	}
+	const RoadNetwork::Edge& e = m_roads->Edges()[edge];
+	glm::vec2 dir = glm::normalize(m_roads->Nodes()[e.b].pos - m_roads->Nodes()[e.a].pos);
+	const glm::vec2 fwd(std::sin(m_heading), std::cos(m_heading));
+	if (glm::dot(dir, fwd) < 0.0f) dir = -dir;
+	// Right-hand lane: facing dir, the car's right is (dir.y, -dir.x).
+	const glm::vec2 right(dir.y, -dir.x);
+	Teleport(closest + right * (e.halfWidth * 0.5f), std::atan2(dir.x, dir.y));
 }
 
 void DriveMode::SetActive(bool active)
@@ -111,154 +240,216 @@ void DriveMode::SetActive(bool active)
 	}
 	m_active = active;
 	m_camInitialized = false;
-	if (active && !m_pad) {
-		for (int i = 0; i < SDL_NumJoysticks(); ++i) {
-			if (SDL_IsGameController(i)) {
-				m_pad = SDL_GameControllerOpen(i);
-				break;
+	if (active) {
+		if (auto player = m_player.lock()) {
+			const glm::vec3 p = player->GetPosition();
+			m_pos = m_prevPos = glm::vec2(p.x, p.z);
+		}
+	}
+}
+
+glm::vec2 DriveMode::ResolveCircle(glm::vec2& c, float radius) const
+{
+	glm::vec2 total(0.0f);
+	// Street band: building lines and block interiors are walls.
+	if (m_roads) {
+		glm::vec2 n;
+		const float clearance = m_roads->Clearance(c, &n);
+		if (clearance < radius) {
+			const glm::vec2 push = -n * (radius - clearance);
+			c += push;
+			total += push;
+		}
+	}
+	else if (!m_areas.empty()) {
+		bool inside = false;
+		for (const Area& a : m_areas) {
+			if (c.x >= a.min.x && c.x <= a.max.x && c.y >= a.min.y && c.y <= a.max.y) { inside = true; break; }
+		}
+		if (!inside) {
+			// Snap to the closest point of the closest area.
+			float best = 1e30f;
+			glm::vec2 bestP = c;
+			for (const Area& a : m_areas) {
+				const glm::vec2 q = glm::clamp(c, a.min, a.max);
+				const float d = glm::length(q - c);
+				if (d < best) { best = d; bestP = q; }
+			}
+			total += bestP - c;
+			c = bestP;
+		}
+	}
+	for (const Obstacle& o : m_obstacles) {
+		if (!o.box) {
+			const glm::vec2 d = c - o.center;
+			const float dist = glm::length(d);
+			const float minDist = o.radius + radius;
+			if (dist < minDist) {
+				const glm::vec2 n = dist > 1e-4f ? d / dist : glm::vec2(1, 0);
+				const glm::vec2 push = n * (minDist - dist);
+				c += push;
+				total += push;
+			}
+		}
+		else {
+			const float cs = std::cos(o.yaw), sn = std::sin(o.yaw);
+			const glm::vec2 d = c - o.center;
+			const glm::vec2 local(d.x * cs + d.y * sn, -d.x * sn + d.y * cs);
+			const glm::vec2 q = glm::clamp(local, -o.half, o.half);
+			glm::vec2 delta = local - q;
+			float dist = glm::length(delta);
+			if (dist < radius) {
+				glm::vec2 nLocal;
+				if (dist > 1e-4f) nLocal = delta / dist;
+				else {
+					// Centre inside the box: push out along the shallowest axis.
+					const glm::vec2 pen = o.half - glm::abs(local);
+					nLocal = pen.x < pen.y ? glm::vec2(local.x >= 0 ? 1.0f : -1.0f, 0.0f) : glm::vec2(0.0f, local.y >= 0 ? 1.0f : -1.0f);
+					dist = -std::min(pen.x, pen.y);
+				}
+				const glm::vec2 nWorld(nLocal.x * cs - nLocal.y * sn, nLocal.x * sn + nLocal.y * cs);
+				const glm::vec2 push = nWorld * (radius - dist);
+				c += push;
+				total += push;
 			}
 		}
 	}
-	if (active) {
-		// Continue from wherever a benchmark or the editor left the car.
-		if (auto player = m_player.lock()) {
-			const glm::vec3 p = player->GetPosition();
-			m_pos = glm::vec2(p.x, p.z);
+	return total;
+}
+
+void DriveMode::Collide(glm::vec2& pos, glm::vec2& vel)
+{
+	const glm::vec2 fwd(std::sin(m_heading), std::cos(m_heading));
+	for (int iter = 0; iter < 3; ++iter) {
+		glm::vec2 front = pos + fwd * kCarCircleOffset;
+		glm::vec2 rear = pos - fwd * kCarCircleOffset;
+		const glm::vec2 pf = ResolveCircle(front, kCarRadius);
+		const glm::vec2 pr = ResolveCircle(rear, kCarRadius);
+		if (glm::dot(pf, pf) < 1e-8f && glm::dot(pr, pr) < 1e-8f) break;
+		const glm::vec2 push = glm::dot(pf, pf) > glm::dot(pr, pr) ? pf : pr;
+		pos += (pf + pr) * 0.5f + push * 0.5f;
+		const glm::vec2 n = glm::normalize(push);
+		const float into = glm::dot(vel, n);
+		if (into < 0.0f) {
+			// Remove the velocity into the surface (slight bounce), scrape along it, and turn the car
+			// toward the wall direction so it slides instead of sticking.
+			vel -= n * into * 1.15f;
+			vel *= 0.985f;
+			m_impact = std::max(m_impact, -into);
+			const glm::vec2 tangent(-n.y, n.x);
+			const float side = glm::dot(fwd, tangent) >= 0.0f ? 1.0f : -1.0f;
+			const float wallHeading = std::atan2(tangent.x * side, tangent.y * side);
+			m_heading += WrapAngle(wallHeading - m_heading) * std::min(1.0f, std::abs(into) * 0.02f + 0.08f);
+			m_yawRate *= 0.6f;
 		}
 	}
-	std::cout << "[DriveMode] " << (active ? "Drive mode" : "Editor mode") << std::endl;
-}
-
-DriveMode::Input DriveMode::ReadInput()
-{
-	Input in;
-	// NOX_DRIVE_AUTOPILOT=1: scripted input for unattended validation captures (accelerate, weave,
-	// nitrous, then a handbrake drift).
-	static const bool autopilot = [] {
-		const char* v = std::getenv("NOX_DRIVE_AUTOPILOT");
-		return v && v[0] == '1';
-	}();
-	if (autopilot) {
-		// Lane keeping toward x = -1.6 (right lane; the car's right is -X when heading +Z).
-		float h = m_heading;
-		while (h > kPi) h -= 2.0f * kPi;
-		while (h < -kPi) h += 2.0f * kPi;
-		in.throttle = 1.0f;
-		in.steer = std::clamp((m_pos.x + 1.6f) * 0.25f + h * 2.5f + 0.15f * std::sin(m_time * 0.9f), -1.0f, 1.0f);
-		in.nitrous = m_time > 3.0f && m_time < 5.5f;
-		in.handbrake = m_time > 7.0f && m_time < 7.6f;
-		if (m_time > 7.0f && m_time < 8.2f) in.steer = -0.9f;
-		return in;
-	}
-	const Uint8* k = SDL_GetKeyboardState(nullptr);
-	in.throttle = (k[SDL_SCANCODE_W] || k[SDL_SCANCODE_UP]) ? 1.0f : 0.0f;
-	in.brake = (k[SDL_SCANCODE_S] || k[SDL_SCANCODE_DOWN]) ? 1.0f : 0.0f;
-	in.steer = ((k[SDL_SCANCODE_D] || k[SDL_SCANCODE_RIGHT]) ? 1.0f : 0.0f) - ((k[SDL_SCANCODE_A] || k[SDL_SCANCODE_LEFT]) ? 1.0f : 0.0f);
-	in.handbrake = k[SDL_SCANCODE_SPACE] != 0;
-	in.nitrous = (k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT]) != 0;
-	if (m_pad) {
-		const float rt = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.0f;
-		const float lt = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.0f;
-		float lx = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
-		lx = std::abs(lx) < 0.12f ? 0.0f : (lx - 0.12f * (lx > 0 ? 1.0f : -1.0f)) / 0.88f;
-		in.throttle = std::max(in.throttle, rt);
-		in.brake = std::max(in.brake, lt);
-		if (std::abs(lx) > std::abs(in.steer)) in.steer = lx;
-		in.handbrake = in.handbrake || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_B);
-		in.nitrous = in.nitrous || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_A);
-	}
-	return in;
-}
-
-bool DriveMode::InsideDrivable(const glm::vec2& p) const
-{
-	if (m_areas.empty()) return true;
-	for (const Area& a : m_areas) {
-		if (p.x >= a.min.x && p.x <= a.max.x && p.y >= a.min.y && p.y <= a.max.y) return true;
-	}
-	return false;
 }
 
 void DriveMode::Simulate(float dt, const Input& in)
 {
-	const float speed01 = std::clamp(std::abs(m_speed) / m_topSpeed, 0.0f, 1.0f);
-	m_steer = Approach(m_steer, in.steer, dt * (std::abs(in.steer) > std::abs(m_steer) ? 9.0f : 12.0f));
+	const Handling& h = m_handling;
+	const float topSpeed0 = h.topSpeedKmh / 3.6f;
+	const float speed01 = std::clamp(std::abs(m_speed) / topSpeed0, 0.0f, 1.0f);
+	m_steer = Approach(m_steer, in.steer, dt * (std::abs(in.steer) > std::abs(m_steer) ? h.steerRate : h.steerRate * 1.4f));
+	m_throttle = in.throttle;
 
-	// Longitudinal: engine force falls off toward top speed; nitrous adds thrust and top speed.
-	m_nitroActive = in.nitrous && m_nitro > 0.0f && in.throttle > 0.0f;
-	const float topSpeed = m_topSpeed * (m_nitroActive ? 1.12f : 1.0f);
+	// Nitrous: depletes while held with throttle, recharges after a delay.
+	m_nitroActive = in.nitrous && m_nitro > 0.0f && in.throttle > 0.05f && m_speed > 1.0f;
+	if (m_nitroActive) {
+		m_nitro = std::max(0.0f, m_nitro - h.nitroDrain * dt);
+		m_nitroCooldown = h.nitroRechargeDelay;
+	}
+	else {
+		m_nitroCooldown = std::max(0.0f, m_nitroCooldown - dt);
+		if (m_nitroCooldown <= 0.0f) m_nitro = std::min(1.0f, m_nitro + h.nitroRecharge * dt);
+	}
+
+	// Longitudinal.
+	const float topSpeed = topSpeed0 * (m_nitroActive ? h.nitroTopSpeed : 1.0f);
+	const bool shifting = m_shiftTimer > 0.0f;
+	m_shiftTimer = std::max(0.0f, m_shiftTimer - dt);
 	float accel = 0.0f;
 	if (in.throttle > 0.0f && m_speed >= -0.5f) {
 		const float s = std::clamp(m_speed / topSpeed, 0.0f, 1.0f);
-		accel += in.throttle * 11.0f * (1.0f - s * s) * (m_nitroActive ? 1.7f : 1.0f);
+		float drive = in.throttle * h.acceleration * (1.0f - s * s) * (m_nitroActive ? h.nitroThrust : 1.0f);
+		if (shifting) drive *= 0.15f;
+		if (m_limiter) drive *= 0.3f;
+		accel += drive;
 	}
 	if (in.brake > 0.0f) {
-		if (m_speed > 0.5f) accel -= in.brake * 16.0f;
-		else accel -= in.brake * 6.0f * (m_speed > -12.0f ? 1.0f : 0.0f); // reverse
+		if (m_speed > 0.5f) accel -= in.brake * h.braking;
+		else if (m_speed > -h.reverseMaxKmh / 3.6f) accel -= in.brake * 6.0f; // reverse
 	}
 	if (in.handbrake) accel -= std::copysign(std::min(std::abs(m_speed), 1.0f) * 7.0f, m_speed);
-	accel -= m_speed * (0.012f * std::abs(m_speed) + 0.08f); // aero + rolling drag
-	m_nitro = std::clamp(m_nitro + (m_nitroActive ? -0.22f : 0.04f) * dt, 0.0f, 1.0f);
+	accel -= m_speed * (0.0085f * std::abs(m_speed) + 0.06f); // aero + rolling drag
 	const float prevSpeed = m_speed;
 	m_speed += accel * dt;
-	if (in.throttle == 0.0f && in.brake == 0.0f && std::abs(m_speed) < 0.2f) m_speed = 0.0f;
+	if (in.throttle == 0.0f && in.brake == 0.0f && std::abs(m_speed) < 0.25f) m_speed = 0.0f;
+	if (prevSpeed > 0.0f && m_speed < 0.0f && in.brake > 0.0f && prevSpeed > 0.6f) m_speed = 0.0f; // stop before reversing
 
-	// Lateral: bicycle-model yaw from steering, reduced steering lock at speed; the handbrake breaks
-	// rear grip so the car rotates and slides (drift), with grip recovering afterwards.
-	const float maxLock = glm::radians(glm::mix(34.0f, 6.0f, speed01));
+	// Lateral: bicycle-model yaw from steering with reduced lock at speed; the handbrake breaks rear
+	// grip so the car rotates and slides.
+	const float maxLock = glm::radians(glm::mix(h.steerLockLow, h.steerLockHigh, std::sqrt(speed01)));
 	const float wheelbase = 2.6f;
 	// Heading increases toward +X, which is the car's left (right = -X when facing +Z).
 	float targetYaw = -m_speed / wheelbase * std::tan(m_steer * maxLock);
-	if (in.handbrake && std::abs(m_speed) > 8.0f) targetYaw *= 1.9f;
+	if (in.handbrake && std::abs(m_speed) > 8.0f) targetYaw *= h.driftYawGain;
 	m_yawRate = Approach(m_yawRate, targetYaw, dt * (in.handbrake ? 5.0f : 8.0f));
-	m_heading += m_yawRate * dt;
-	const float grip = in.handbrake ? 1.2f : 6.5f;
+	m_heading = WrapAngle(m_heading + m_yawRate * dt);
+	const float grip = in.handbrake ? h.driftGrip : h.grip;
 	m_lateral += (-m_yawRate * m_speed * (in.handbrake ? 0.35f : 0.12f)) * dt;
 	m_lateral *= std::exp(-grip * dt);
 
 	const glm::vec2 fwd(std::sin(m_heading), std::cos(m_heading));
 	const glm::vec2 right(fwd.y, -fwd.x);
-	const glm::vec2 velocity = fwd * m_speed + right * m_lateral;
+	glm::vec2 velocity = fwd * m_speed + right * m_lateral;
 	glm::vec2 next = m_pos + velocity * dt;
-	if (!InsideDrivable(next)) {
-		// Wall contact: keep the velocity component along the wall, lose the part into it, and turn
-		// the car parallel to the wall so it scrapes along instead of sticking.
-		const glm::vec2 alongX(next.x, m_pos.y);
-		const glm::vec2 alongZ(m_pos.x, next.y);
-		float wallHeading = m_heading;
-		if (InsideDrivable(alongZ)) {
-			next = alongZ;                                       // wall is perpendicular to X
-			wallHeading = std::cos(m_heading) >= 0.0f ? 0.0f : kPi;
-		}
-		else if (InsideDrivable(alongX)) {
-			next = alongX;                                       // wall is perpendicular to Z
-			wallHeading = std::sin(m_heading) >= 0.0f ? kPi * 0.5f : -kPi * 0.5f;
-		}
-		else {
-			next = m_pos;
-		}
-		float dh = wallHeading - m_heading;
-		while (dh > kPi) dh -= 2.0f * kPi;
-		while (dh < -kPi) dh += 2.0f * kPi;
-		const float alignment = std::abs(std::cos(dh));        // 1 = already parallel
-		m_heading += dh * (1.0f - std::exp(-dt * 6.0f));
-		m_speed *= 0.97f * glm::mix(0.6f, 1.0f, alignment);
-		m_lateral *= 0.3f;
-		m_yawRate *= 0.5f;
-	}
+	Collide(next, velocity);
+	m_speed = glm::dot(velocity, fwd);
+	m_lateral = glm::dot(velocity, right);
 	m_pos = next;
 
 	m_longAccel = Approach(m_longAccel, (m_speed - prevSpeed) / std::max(dt, 1e-4f), dt * 6.0f);
 	m_latAccel = Approach(m_latAccel, m_yawRate * m_speed, dt * 6.0f);
+	m_slip = std::clamp(std::abs(m_lateral) / 6.0f + (in.handbrake && std::abs(m_speed) > 5.0f ? 0.5f : 0.0f)
+		+ (in.throttle > 0.9f && m_gear == 1 && std::abs(m_speed) < 6.0f ? 0.35f : 0.0f), 0.0f, 1.0f);
 
-	// Gearbox / rpm for the HUD.
-	const float s = std::abs(m_speed) / m_topSpeed;
-	m_gear = 1;
-	while (m_gear < 6 && s > kGearTop[m_gear - 1]) ++m_gear;
-	const float gearLow = m_gear == 1 ? 0.0f : kGearTop[m_gear - 2];
-	const float gearT = std::clamp((s - gearLow) / std::max(kGearTop[m_gear - 1] - gearLow, 1e-3f), 0.0f, 1.0f);
-	m_rpm = Approach(m_rpm, 1100.0f + gearT * 6400.0f + (in.throttle > 0.0f ? 300.0f : 0.0f), dt * 10.0f);
-	if (m_speed < -0.5f) m_gear = 0; // reverse
+	// Gearbox: 6 speeds, upshift at the redline, downshift when the lower gear has room.
+	const float s = std::abs(m_speed) / topSpeed0;
+	auto rpmFor = [&](int gear) {
+		const float t = s / kGearTop[std::clamp(gear, 1, 6) - 1];
+		return h.rpmIdle + t * (h.rpmLimiter - h.rpmIdle);
+	};
+	if (m_speed < -0.5f) {
+		m_gear = -1;
+	}
+	else {
+		if (m_gear < 1) m_gear = 1;
+		if (!shifting) {
+			if (m_gear < 6 && rpmFor(m_gear) > h.rpmRedline + 150.0f && in.throttle > 0.1f) {
+				++m_gear;
+				m_shiftTimer = h.shiftTime;
+				m_shifted = true;
+			}
+			else if (m_gear > 1 && rpmFor(m_gear - 1) < h.rpmRedline * 0.82f) {
+				--m_gear;
+				m_shiftTimer = h.shiftTime * 0.6f;
+				m_shifted = true;
+			}
+		}
+	}
+	float rpmTarget;
+	if (m_gear == -1) rpmTarget = h.rpmIdle + std::abs(m_speed) / (h.reverseMaxKmh / 3.6f) * 4500.0f;
+	else rpmTarget = rpmFor(m_gear);
+	// Clutch slip at launch / free revving when stationary.
+	rpmTarget = std::max(rpmTarget, h.rpmIdle + in.throttle * 3200.0f * std::clamp(1.0f - s / (kGearTop[0] * 0.6f), 0.0f, 1.0f));
+	if (shifting) rpmTarget *= 0.82f;
+	m_limiter = rpmTarget >= h.rpmLimiter - 1.0f && in.throttle > 0.1f;
+	if (m_limiter) rpmTarget = h.rpmLimiter - (std::fmod(m_time * 22.0f, 1.0f) < 0.5f ? 0.0f : 380.0f);
+	m_rpm = Approach(m_rpm, std::min(rpmTarget, h.rpmLimiter), dt * (shifting ? 14.0f : 9.0f));
+	// Engine load (shown as BOOST): throttle x rpm with spool lag; no turbo is simulated.
+	const float rpm01 = std::clamp((m_rpm - h.rpmIdle) / (h.rpmLimiter - h.rpmIdle), 0.0f, 1.0f);
+	m_load = Approach(m_load, in.throttle * (0.25f + 0.75f * rpm01) * (shifting ? 0.3f : 1.0f), dt * (in.throttle > m_load ? 3.0f : 6.0f));
 
 	m_roll = Approach(m_roll, std::clamp(-m_latAccel * 0.0045f, -0.06f, 0.06f), dt * 5.0f);
 	m_pitch = Approach(m_pitch, std::clamp(-m_longAccel * 0.0035f, -0.04f, 0.04f), dt * 5.0f);
@@ -267,39 +458,34 @@ void DriveMode::Simulate(float dt, const Input& in)
 void DriveMode::ApplyTransforms()
 {
 	if (auto player = m_player.lock()) {
-		const glm::vec3 pos(m_pos.x, player->GetPosition().y, m_pos.y);
+		const glm::vec3 pos(m_pos.x, m_playerY, m_pos.y);
 		player->SetLocalTRS(pos, glm::angleAxis(m_heading, glm::vec3(0, 1, 0)), player->GetScale());
 	}
 	if (auto body = m_body.lock()) {
-		// Body roll/pitch about the car's local axes (suspension feel); the glTF node keeps its own
-		// orientation below this node.
+		// Body roll/pitch about the car's local axes (suspension feel).
 		const glm::quat q = glm::angleAxis(m_roll, glm::vec3(0, 0, 1)) * glm::angleAxis(m_pitch, glm::vec3(1, 0, 0));
-		body->SetLocalTRS(m_bodyBasePos, q, m_bodyScale);
+		body->SetLocalTRS(m_bodyBasePos, q * m_bodyBaseRot, m_bodyScale);
 	}
 }
 
-void DriveMode::UpdateCamera(float dt, Camera& camera)
+void DriveMode::UpdateCamera(float dt, Camera& camera, float aspect)
 {
-	const float speed01 = std::clamp(std::abs(m_speed) / m_topSpeed, 0.0f, 1.0f);
-	const glm::vec3 carPos(m_pos.x, 0.0f, m_pos.y);
-	if (!m_camInitialized) {
-		m_camHeading = m_heading;
-	}
-	// Heading lag: the camera trails the car's yaw, so drifts show the car's flank.
-	float dh = m_heading - m_camHeading;
-	while (dh > kPi) dh -= 2.0f * kPi;
-	while (dh < -kPi) dh += 2.0f * kPi;
-	m_camHeading += dh * (1.0f - std::exp(-dt * (m_cameraMode == 2 ? 30.0f : 4.5f)));
+	const CameraRig& rig = m_rig;
+	const float speed01 = Speed01();
+	const glm::vec3 carPos(m_pos.x, m_playerY, m_pos.y);
+	if (!m_camInitialized) m_camHeading = m_heading;
+	// Heading lag: the camera trails the car's yaw, so drifts show the car's flank. Reversing keeps
+	// the camera behind the car's nose direction (no flip).
+	m_camHeading = WrapAngle(m_camHeading + WrapAngle(m_heading - m_camHeading) * (1.0f - std::exp(-dt * (m_cameraMode == 2 ? 30.0f : rig.headingLag))));
 	const glm::vec3 camFwd(std::sin(m_camHeading), 0.0f, std::cos(m_camHeading));
 
-	float distance = 5.4f, height = 1.45f, lookAhead = 4.0f, lookHeight = 0.85f;
-	if (m_cameraMode == 1) { distance = 8.0f; height = 2.3f; lookAhead = 5.0f; lookHeight = 1.0f; }
-	// Pull back with speed and under hard acceleration (NFS-style speed sensation).
-	distance += speed01 * 1.2f + std::clamp(m_longAccel * 0.04f, -0.2f, 0.6f);
+	float distance = rig.distance, height = rig.height, lookAhead = rig.lookAhead, lookHeight = rig.lookHeight;
+	if (m_cameraMode == 1) { distance *= 1.6f; height *= 1.6f; lookAhead *= 1.2f; lookHeight *= 1.3f; }
+	distance += speed01 * rig.pullBack + std::clamp(m_longAccel * 0.03f, -0.15f, 0.45f);
 	glm::vec3 desired = carPos - camFwd * distance + glm::vec3(0.0f, height, 0.0f);
 	glm::vec3 target = carPos + camFwd * lookAhead + glm::vec3(0.0f, lookHeight, 0.0f);
+	const glm::vec3 fwd(std::sin(m_heading), 0.0f, std::cos(m_heading));
 	if (m_cameraMode == 2) {
-		const glm::vec3 fwd(std::sin(m_heading), 0.0f, std::cos(m_heading));
 		desired = carPos + fwd * 1.9f + glm::vec3(0.0f, 0.75f, 0.0f);
 		target = desired + fwd * 10.0f;
 	}
@@ -311,112 +497,65 @@ void DriveMode::UpdateCamera(float dt, Camera& camera)
 	}
 	else {
 		// Critically damped spring.
-		const float omega = 9.0f;
+		const float omega = rig.stiffness;
 		const glm::vec3 x = m_camPos - desired;
-		const float exp = std::exp(-omega * dt);
+		const float e = std::exp(-omega * dt);
 		const glm::vec3 temp = (m_camVel + omega * x) * dt;
-		m_camVel = (m_camVel - omega * temp) * exp;
-		m_camPos = desired + (x + temp) * exp;
+		m_camVel = (m_camVel - omega * temp) * e;
+		m_camPos = desired + (x + temp) * e;
+	}
+	// Keep the camera out of walls and obstacles: pull it toward the car until it is clear.
+	if (m_cameraMode != 2) {
+		glm::vec2 c(m_camPos.x, m_camPos.z);
+		const glm::vec2 car(m_pos.x, m_pos.y);
+		for (int i = 0; i < 6; ++i) {
+			glm::vec2 probe = c;
+			const glm::vec2 push = ResolveCircle(probe, 0.35f);
+			if (glm::dot(push, push) < 1e-6f) break;
+			c = glm::mix(c, car, 0.25f);
+		}
+		m_camPos.x = c.x;
+		m_camPos.z = c.y;
 	}
 	glm::vec3 eye = m_camPos;
 	if (speed01 > 0.55f) {
-		// Light high-speed shake.
-		const float a = (speed01 - 0.55f) * 0.03f;
+		const float a = (speed01 - 0.55f) * 0.025f;
 		eye += glm::vec3(std::sin(m_time * 37.0f), std::sin(m_time * 53.0f + 1.3f), 0.0f) * a;
 	}
-	const float targetFov = 55.0f + speed01 * 13.0f + (m_nitroActive ? 7.0f : 0.0f);
+	const float targetFov = rig.fov + speed01 * rig.fovSpeedGain + (m_nitroActive ? rig.fovNitro : 0.0f);
 	m_camFov = Approach(m_camFov, targetFov, dt * 3.0f);
 
-	glm::vec3 f = glm::normalize(target - eye);
+	const glm::vec3 f = glm::normalize(target - eye);
 	const float pitch = glm::degrees(std::asin(glm::clamp(f.y, -1.0f, 1.0f)));
 	const float yaw = glm::degrees(std::atan2(f.z, f.x));
 	camera.SetPose(eye, glm::vec3(0, 1, 0), yaw, pitch);
-	camera.SetPerspective(m_camFov, 1.0f, camera.GetCameraNearPlane(), camera.GetCameraFarPlane());
+	camera.SetPerspective(m_camFov, aspect, camera.GetCameraNearPlane(), camera.GetCameraFarPlane());
 }
 
-bool DriveMode::Update(float dt, Camera& camera)
-{
-	if (!m_active) return false;
-	dt = std::clamp(dt, 0.0f, 0.05f);
-	m_time += dt;
-	const Uint8* k = SDL_GetKeyboardState(nullptr);
-	if (k[SDL_SCANCODE_R]) ResetToSpawn();
-	Simulate(dt, ReadInput());
-	ApplyTransforms();
-	if (m_cameraMode == 3) return false; // free camera: the editor controls drive it
-	UpdateCamera(dt, camera);
-	return true;
-}
-
-void DriveMode::DrawHUD(int width, int height) const
+void DriveMode::Update(float dt, const Input& in, bool frozen, Camera* camera, float aspect)
 {
 	if (!m_active) return;
-	ImDrawList* dl = ImGui::GetForegroundDrawList();
-	const float scale = static_cast<float>(height) / 1440.0f;
-	const ImU32 white = IM_COL32(240, 244, 255, 235);
-	const ImU32 dim = IM_COL32(240, 244, 255, 70);
-	const ImU32 accent = IM_COL32(64, 214, 255, 235);
-	const ImU32 red = IM_COL32(255, 70, 60, 235);
-
-	// --- Speed, gear and rpm arc (bottom right).
-	const ImVec2 c(width - 260.0f * scale, height - 230.0f * scale);
-	const float r = 150.0f * scale;
-	const float a0 = kPi * 0.75f, a1 = kPi * 2.25f;
-	const int segments = 40;
-	const float rpm01 = std::clamp((m_rpm - 800.0f) / 7000.0f, 0.0f, 1.0f);
-	for (int i = 0; i < segments; ++i) {
-		const float t0 = static_cast<float>(i) / segments;
-		const float t1 = (i + 0.7f) / segments;
-		const float b0 = a0 + (a1 - a0) * t0, b1 = a0 + (a1 - a0) * t1;
-		const ImU32 col = t0 < rpm01 ? (t0 > 0.85f ? red : white) : dim;
-		dl->PathArcTo(c, r, b0, b1, 4);
-		dl->PathStroke(col, 0, 10.0f * scale);
+	dt = std::clamp(dt, 0.0f, 0.05f);
+	m_time += dt;
+	m_impact = std::max(0.0f, m_impact - dt * 40.0f);
+	m_prevPos = m_pos;
+	if (frozen) {
+		// Engine still revs (countdown launch control), but the car does not move.
+		Input held = in;
+		m_throttle = in.throttle;
+		const float target = m_handling.rpmIdle + held.throttle * 4200.0f;
+		m_rpm = Approach(m_rpm, target, dt * 8.0f);
+		m_limiter = false;
+		m_load = Approach(m_load, held.throttle * 0.6f, dt * 4.0f);
+		m_speed = m_lateral = m_yawRate = 0.0f;
+		m_nitroActive = false;
 	}
-	char speedText[16];
-	std::snprintf(speedText, sizeof(speedText), "%d", static_cast<int>(std::abs(m_speed) * 3.6f + 0.5f));
-	ImFont* big = g_hudFontLarge ? g_hudFontLarge : ImGui::GetFont();
-	ImFont* small = g_hudFontSmall ? g_hudFontSmall : ImGui::GetFont();
-	const float bigSize = 96.0f * scale, smallSize = 30.0f * scale;
-	ImVec2 ts = big->CalcTextSizeA(bigSize, FLT_MAX, 0.0f, speedText);
-	dl->AddText(big, bigSize, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.62f), white, speedText);
-	ts = small->CalcTextSizeA(smallSize, FLT_MAX, 0.0f, "KM/H");
-	dl->AddText(small, smallSize, ImVec2(c.x - ts.x * 0.5f, c.y + 34.0f * scale), dim, "KM/H");
-	char gearText[4];
-	std::snprintf(gearText, sizeof(gearText), "%s", m_gear == 0 ? "R" : std::to_string(m_gear).c_str());
-	ts = small->CalcTextSizeA(smallSize * 1.4f, FLT_MAX, 0.0f, gearText);
-	dl->AddText(small, smallSize * 1.4f, ImVec2(c.x - ts.x * 0.5f, c.y + 78.0f * scale), accent, gearText);
-
-	// Nitrous gauge.
-	const ImVec2 n0(c.x - r, c.y + r + 12.0f * scale);
-	const ImVec2 n1(c.x + r, n0.y + 10.0f * scale);
-	dl->AddRectFilled(n0, n1, dim, 3.0f * scale);
-	dl->AddRectFilled(n0, ImVec2(n0.x + (n1.x - n0.x) * m_nitro, n1.y), m_nitroActive ? IM_COL32(150, 240, 255, 255) : accent, 3.0f * scale);
-
-	// --- Rotating minimap (bottom left): drivable areas around the car, heading up.
-	const ImVec2 mc(220.0f * scale, height - 220.0f * scale);
-	const float mr = 150.0f * scale;
-	const float metresToPx = mr / 90.0f;
-	dl->AddCircleFilled(mc, mr, IM_COL32(8, 12, 20, 170), 64);
-	dl->AddCircle(mc, mr, IM_COL32(240, 244, 255, 90), 64, 2.0f * scale);
-	const float ch = std::cos(m_heading), sh = std::sin(m_heading);
-	auto toMap = [&](const glm::vec2& world) {
-		const glm::vec2 d = world - m_pos;
-		// Rotate so the car's forward (+Z rotated by heading) points up on screen.
-		const float x = d.x * ch - d.y * sh;
-		const float y = d.x * sh + d.y * ch;
-		return ImVec2(mc.x - x * metresToPx, mc.y - y * metresToPx);
-	};
-	dl->PushClipRect(ImVec2(mc.x - mr, mc.y - mr), ImVec2(mc.x + mr, mc.y + mr), true);
-	for (const Area& a : m_areas) {
-		const ImVec2 p0 = toMap(a.min), p1 = toMap(glm::vec2(a.max.x, a.min.y));
-		const ImVec2 p2 = toMap(a.max), p3 = toMap(glm::vec2(a.min.x, a.max.y));
-		dl->AddQuadFilled(p0, p1, p2, p3, IM_COL32(120, 150, 190, 120));
+	else {
+		// Sub-step at speed so thin obstacles and walls cannot be skipped.
+		const float travel = std::abs(m_speed) * dt;
+		const int steps = std::clamp(static_cast<int>(std::ceil(travel / 0.6f)), 1, 8);
+		for (int i = 0; i < steps; ++i) Simulate(dt / steps, in);
 	}
-	dl->PopClipRect();
-	const float tri = 12.0f * scale;
-	dl->AddTriangleFilled(ImVec2(mc.x, mc.y - tri * 1.4f), ImVec2(mc.x - tri, mc.y + tri), ImVec2(mc.x + tri, mc.y + tri), accent);
-
-	// Camera / controls hint (top left, fades into the frame like the game's small prompts).
-	const char* views[] = { "CHASE", "FAR CHASE", "BUMPER", "FREE" };
-	dl->AddText(small, smallSize * 0.8f, ImVec2(40.0f * scale, 36.0f * scale), dim, views[m_cameraMode]);
+	ApplyTransforms();
+	if (camera && m_cameraMode != 3) UpdateCamera(dt, *camera, aspect);
 }

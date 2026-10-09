@@ -201,3 +201,6 @@ performance_data/load_diagnostics.csv
 /textures/cc0/
 /hdrs/cc0/
 /generated/
+
+# Packaged builds (tools/Package.ps1)
+/Package/

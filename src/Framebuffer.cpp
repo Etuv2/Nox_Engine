@@ -1,5 +1,6 @@
 // FrameBuffer.cpp
 #include "FrameBuffer.h"
+#include "PresentTarget.h"
 #include <iostream>
 
 FrameBuffer::FrameBuffer(int width,
@@ -263,7 +264,7 @@ void FrameBuffer::Bind() const {
 	glBindFramebuffer(GL_FRAMEBUFFER, fboID);
 }
 void FrameBuffer::Unbind() {
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }
 bool FrameBuffer::IsComplete() const {
 	glBindFramebuffer(GL_FRAMEBUFFER, fboID);

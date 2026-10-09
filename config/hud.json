@@ -1,0 +1,105 @@
+{
+  "colors": {
+    "accent": [
+      0.35,
+      0.85,
+      1.0,
+      1.0
+    ],
+    "backing_alpha": 0.35,
+    "glow": 0.6,
+    "lavender": [
+      0.8,
+      0.62,
+      1.0,
+      1.0
+    ],
+    "needle": [
+      1.0,
+      0.15,
+      0.12,
+      1.0
+    ],
+    "redline": [
+      1.0,
+      0.12,
+      0.1,
+      1.0
+    ],
+    "speed": [
+      0.55,
+      0.8,
+      1.0,
+      1.0
+    ],
+    "text": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "fonts": {
+    "digital": "fonts/DSEG7Classic-Bold.ttf",
+    "fallback": "fonts/arial.ttf",
+    "label": "fonts/BarlowCondensed-SemiBold.ttf",
+    "text_scale": 1.0
+  },
+  "gauges": {
+    "boost_label": "BOOST",
+    "boost_max": 1.0,
+    "n2o_label": "N2O",
+    "redline": 8000.0,
+    "rpm_max": 10000.0,
+    "speed_units": "km/h"
+  },
+  "minimap": {
+    "opacity": 0.75,
+    "radius_m": 60.0,
+    "radius_px": 50.0,
+    "road_px": 2.2,
+    "zoom_with_speed": 0.15
+  },
+  "placement": {
+    "cluster": {
+      "anchor": "BR",
+      "offset": [
+        0.0,
+        0.0
+      ],
+      "scale": 1.0
+    },
+    "event": {
+      "anchor": "TC",
+      "offset": [
+        0.0,
+        0.0
+      ],
+      "scale": 1.0
+    },
+    "hint": {
+      "anchor": "TL",
+      "offset": [
+        0.0,
+        0.0
+      ],
+      "scale": 1.0
+    },
+    "minimap": {
+      "anchor": "BL",
+      "offset": [
+        0.0,
+        0.0
+      ],
+      "scale": 1.0
+    },
+    "panel": {
+      "anchor": "TR",
+      "offset": [
+        0.0,
+        0.0
+      ],
+      "scale": 1.0
+    }
+  }
+}

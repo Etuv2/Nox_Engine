@@ -1,4 +1,5 @@
 #include "VolumetricFogPass.h"
+#include "../PresentTarget.h"
 #include "LightClusterPass.h"
 #include "ExposurePass.h"
 #include "../ComputeShader.h"
@@ -215,5 +216,5 @@ void VolumetricFogPass::Apply(RenderContext& ctx)
 	glDisable(GL_BLEND);
 	glDepthMask(GL_TRUE);
 	glEnable(GL_DEPTH_TEST);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }

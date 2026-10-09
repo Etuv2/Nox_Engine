@@ -1,4 +1,5 @@
 #include "GUIPass.h"
+#include "../PresentTarget.h"
 #include "../GuiNode.h"
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
@@ -87,7 +88,7 @@ void GUIPass::UnregisterStandaloneGuiNode(const std::shared_ptr<GuiNode>& guiNod
 
 void GUIPass::RenderGuiNodes(RenderContext& ctx, const std::vector<std::shared_ptr<GuiNode>>& guiNodes) {
     // Ensure we're rendering to the default framebuffer (backbuffer)
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
     
     // Set viewport to full screen
     glViewport(0, 0, ctx.width, ctx.height);

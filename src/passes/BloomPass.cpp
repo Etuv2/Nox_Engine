@@ -1,4 +1,5 @@
 #include "BloomPass.h"
+#include "../PresentTarget.h"
 #include "PassLogging.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
@@ -113,7 +114,7 @@ void BloomPass::ExtractBrightPixels(RenderContext& ctx, GLuint sourceTex) {
 
 	ctx.screenQuad->Render();
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }
 
 void BloomPass::Downsample(RenderContext& ctx) {
@@ -146,7 +147,7 @@ void BloomPass::Downsample(RenderContext& ctx) {
 		srcTex = m_downsampleFBO[i]->GetColorAttachment(0);
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }
 
 void BloomPass::Upsample(RenderContext& ctx) {
@@ -181,5 +182,5 @@ void BloomPass::Upsample(RenderContext& ctx) {
 		srcTex = m_upsampleFBO[i]->GetColorAttachment(0);
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }

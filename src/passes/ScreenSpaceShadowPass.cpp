@@ -1,4 +1,5 @@
 #include "ScreenSpaceShadowPass.h"
+#include "../PresentTarget.h"
 #include "../RenderContext.h"
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
@@ -271,5 +272,5 @@ void ScreenSpaceShadowPass::resolveToFullResolution(RenderContext& ctx) {
         ctx.screenQuad->Render();
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }

@@ -1,4 +1,5 @@
 #include "LPVPass.h"
+#include "../PresentTarget.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
 #include "../SceneGraph.h"
@@ -330,7 +331,7 @@ bool LPVPass::CreateRSMResources() {
     GLenum bufs[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
     glDrawBuffers(3, bufs);
     bool complete = (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
     return complete;
 }
 

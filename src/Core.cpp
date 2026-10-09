@@ -2,6 +2,16 @@
 #include "BenchmarkRunner.h"
 #include "SceneRenderSettings.h"
 #include "DriveMode.h"
+#include "GameSession.h"
+#include "PresentTarget.h"
+#include "RacingHUD.h"
+#include "DriveAudio.h"
+#include "ImGui/EditorWorkspace.h"
+#include "ImGui/ConsoleLog.h"
+#include "editor/solace/SolaceUI.h"
+#include "RenderSystem.h"
+#include "TransformSystem.h"
+#include "ComponentManager.h"
 
 #include <fstream>
 #include <iostream>
@@ -111,8 +121,8 @@ bool SaveBackbufferPNG(int width, int height, const fs::path& path)
 	}
 
 	std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u, 0u);
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-	glReadBuffer(GL_BACK);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, PresentTarget::Get());
+	glReadBuffer(PresentTarget::Get() ? GL_COLOR_ATTACHMENT0 : GL_BACK);
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
@@ -400,6 +410,15 @@ bool Core::Initialize(SDL_Window* window, SDL_GLContext glContext, int windowWid
 		return false;
 	}
 
+	if (m_launch.mode == AppMode::Editor) {
+		// The editor starts with a free cursor; the fly camera locks it while the right button is held.
+		SetMouseLocked(false);
+	}
+	else {
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+		SDL_ShowCursor(SDL_DISABLE);
+	}
+
 	std::cout << "[Core] Engine initialization complete!" << std::endl;
 	return true;
 }
@@ -410,10 +429,24 @@ bool Core::InitializeGraphics() {
 	// Initialize ImGui
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		if (m_launch.mode == AppMode::Editor) {
+			// Docked editor (docs/nfs2015/game.md); layout persists next to the other editor settings.
+			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			io.IniFilename = "config/editor_layout.ini";
+		}
+		else {
+			io.IniFilename = nullptr;
+		}
+		io.ConfigWindowsMoveFromTitleBarOnly = true;
+	}
 	ImGui_ImplSDL2_InitForOpenGL(m_window, m_glContext);
 	ImGui_ImplOpenGL3_Init("#version 460 core");
-	SetStyle();
-	DriveMode::LoadFonts();
+	SetStyle(); // Solace theme (ImguiStyle.h)
+	solace::LoadFonts(15.0f, 1.0f);
+	RacingHUD::Get().LoadFonts();
+	DriveAudio::Get().Init();
 
 	// Compile shadow pass shader
 	m_shadowShader = CreateShaderProgram("shaders/shadow_vert.glsl", "shaders/shadow_frag.glsl");
@@ -571,6 +604,12 @@ bool Core::InitializeScene() {
 	std::cout << "[Core] Initializing scene..." << std::endl;
 
 	m_sceneToLoad = ResolveSceneFilePath(m_config.value("first_scene", "scenes/scene.json"));
+	if (!m_launch.scene.empty()) {
+		m_sceneToLoad = ResolveSceneFilePath(m_launch.scene);
+	}
+	if (!m_launch.quality.empty() && GetEnvVarString("NOX_QUALITY_TIER").empty()) {
+		_putenv_s("NOX_QUALITY_TIER", m_launch.quality.c_str());
+	}
 	const std::string forcedScene = GetEnvVarString("NOX_FIRST_SCENE");
 	if (!forcedScene.empty()) {
 		m_sceneToLoad = ResolveSceneFilePath(forcedScene);
@@ -618,10 +657,12 @@ bool Core::InitializeScene() {
 			m_modularRenderer->GetContext(), m_sceneToLoad, m_sceneHasRenderSettings);
 	}
 	m_benchmark = BenchmarkRunner::CreateFromEnvironment(m_sceneToLoad);
-	m_driveMode = std::make_unique<DriveMode>();
-	m_driveMode->Configure(m_sceneToLoad, *m_sceneGraph);
-	if (!m_benchmark && GetEnvVarString("NOX_DRIVE") == "1") {
-		m_driveMode->SetActive(true);
+	m_game = std::make_unique<GameSession>();
+	m_game->SetStandalone(m_launch.mode == AppMode::Game);
+	m_game->SetCameraTemplate(*m_camera);
+	ConfigureGameFromScene(m_sceneToLoad);
+	if (!m_benchmark && m_game->IsAvailable() && (m_launch.mode == AppMode::Game || GetEnvVarString("NOX_DRIVE") == "1")) {
+		RequestPlay();
 	}
 
 	return true;
@@ -703,6 +744,10 @@ bool Core::InitializeUI() {
 		m_imguiInterface->SetModularRenderer(m_modularRenderer);
 	}
 
+	if (m_launch.mode == AppMode::Editor && !m_benchmark) {
+		m_editor = std::make_unique<EditorWorkspace>(*this, *m_imguiInterface);
+	}
+
 	return true;
 }
 
@@ -779,9 +824,25 @@ void Core::Update(float deltaTime) {
 		m_inputIntegration->Update(deltaTime);
 	}
 
-	// Drive mode simulates the car and drives the chase camera (unless a benchmark is running).
-	if (!m_benchmark && m_driveMode && m_driveMode->IsActive() && m_camera) {
-		m_driveMode->Update(deltaTime, *m_camera);
+	// Deferred scene switch requested by the editor.
+	if (!m_pendingSceneSwap.empty()) {
+		const std::string next = m_pendingSceneSwap;
+		m_pendingSceneSwap.clear();
+		SwapScene(next);
+	}
+
+	// Game layer: car, race and chase camera (posed at spawn while editing).
+	if (!m_benchmark && m_game && m_game->IsAvailable()) {
+		bool inputEnabled = true;
+		float aspect = m_windowHeight > 0 ? static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight) : 16.0f / 9.0f;
+		if (m_editor) {
+			inputEnabled = m_editor->GameInputFocus();
+			const EditorWorkspace::Viewport& vp = m_editor->GetViewport(EditorWorkspace::Target::Game);
+			if (vp.size.x > 1.0f && vp.size.y > 1.0f) aspect = vp.size.x / vp.size.y;
+		}
+		if (m_game->Update(deltaTime, inputEnabled, aspect) == GameSession::MenuAction::ExitApplication) {
+			m_quitRequested = true;
+		}
 	}
 
 	// Scripted shots pose the camera and animated nodes after input so they always win.
@@ -834,7 +895,7 @@ void Core::Update(float deltaTime) {
 		auto transformSyncEnd = std::chrono::high_resolution_clock::now();
 		ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformSyncEnd - transformSyncStart).count();
 		// A camera cut teleports scripted objects: their motion this frame is not real motion.
-		if (m_driveMode && m_driveMode->ConsumeTeleport()) {
+		if (m_game && m_game->ConsumeTeleport()) {
 			cameraCut = true;
 			if (m_modularRenderer) {
 				m_modularRenderer->ResetTAA();
@@ -950,42 +1011,51 @@ void Core::Update(float deltaTime) {
 	}
 }
 
+void Core::RenderSceneTo(unsigned int framebuffer, int width, int height, const std::shared_ptr<Camera>& camera) {
+	if (!m_modularRenderer || !camera || width <= 0 || height <= 0) return;
+	const RenderContext& ctx = m_modularRenderer->GetContext();
+	if (ctx.width != width || ctx.height != height) {
+		m_modularRenderer->Resize(width, height);
+		m_modularRenderer->ResetTAA();
+	}
+	camera->SetPerspective(camera->GetCameraFov(), static_cast<float>(width) / static_cast<float>(height),
+		camera->GetCameraNearPlane(), camera->GetCameraFarPlane());
+	PresentTarget::Set(framebuffer);
+	if (RenderSystem* renderSystem = m_sceneGraph->GetRenderSystem()) {
+		renderSystem->BeginFrameDiagnostics();
+	}
+	m_modularRenderer->Render(
+		m_sceneGraph,
+		camera,
+		m_lighting,
+		m_frameTime * 0.001f,
+		m_exposure,
+		m_gamma,
+		m_shadowsEnabled,
+		m_shadowBias,
+		m_shadowNear,
+		m_shadowFar,
+		m_environmentColor,
+		width,
+		height
+	);
+	MaybeDumpSceneFramebuffer(width, height);
+	PresentTarget::Set(0);
+}
+
 void Core::Render(int windowWidth, int windowHeight) {
 	if (!m_sceneGraph) return;
 
 	m_windowWidth = windowWidth;
 	m_windowHeight = windowHeight;
-
-	// Use ModularRenderer for all rendering
-	if (m_modularRenderer) {
-		if (RenderSystem* renderSystem = m_sceneGraph->GetRenderSystem()) {
-			renderSystem->BeginFrameDiagnostics();
-		}
-
-		m_modularRenderer->Render(
-			m_sceneGraph,
-			m_camera,
-			m_lighting,
-			m_frameTime * 0.001f,
-			m_exposure,
-			m_gamma,
-			m_shadowsEnabled,
-			m_shadowBias,
-			m_shadowNear,
-			m_shadowFar,
-			m_environmentColor,
-			m_windowWidth,
-			m_windowHeight
-		);
-		MaybeDumpSceneFramebuffer(m_windowWidth, m_windowHeight);
-	}
-	else {
+	if (!m_modularRenderer) {
 		std::cerr << "[Core] ERROR: ModularRenderer is not initialized!" << std::endl;
 		return;
 	}
 
 	if (m_benchmark) {
 		// Benchmarks measure the game view only: the editor UI is not drawn.
+		RenderSceneTo(0, m_windowWidth, m_windowHeight, m_camera);
 		std::vector<BenchmarkRunner::PassSample> passes;
 		for (const auto& metric : m_modularRenderer->GetLastPassMetrics()) {
 			passes.push_back({ metric.name, metric.gpuTimeMs, metric.cpuTimeMs });
@@ -995,25 +1065,32 @@ void Core::Render(int windowWidth, int windowHeight) {
 		return;
 	}
 
-	const bool presentIndirectDiffuseDebug =
-		m_modularRenderer &&
-		m_modularRenderer->GetContext().enableIndirectDiffuse &&
-		m_modularRenderer->GetContext().indirectDiffuseDebugStage > 0;
-
-	// Start ImGui frame
-	ImGui_ImplOpenGL3_NewFrame();
-	ImGui_ImplSDL2_NewFrame();
-	ImGui::NewFrame();
-
-	// Drive mode replaces the editor UI with the racing HUD.
-	if (m_driveMode && m_driveMode->IsActive()) {
-		m_driveMode->DrawHUD(m_windowWidth, m_windowHeight);
+	const float dt = m_frameTime * 0.001f;
+	if (!m_editor) {
+		// Standalone game: full-window scene with the racing HUD composited on top.
+		const std::shared_ptr<Camera> camera = (m_game && m_game->IsAvailable()) ? m_game->GetCamera() : m_camera;
+		RenderSceneTo(0, m_windowWidth, m_windowHeight, camera);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(0, 0, m_windowWidth, m_windowHeight);
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplSDL2_NewFrame();
+		ImGui::NewFrame();
+		if (m_game) {
+			const ImVec2 size = ImGui::GetIO().DisplaySize;
+			m_game->DrawHUD(ImGui::GetForegroundDrawList(), glm::vec2(0.0f), glm::vec2(size.x, size.y), dt);
+		}
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		return;
 	}
 
-	// Set up ImGui interface data only if pointers have changed
+	// Editor: build the docked UI first (viewport rectangles), then render the scene into the
+	// chosen viewport texture, then draw the UI to the window.
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplSDL2_NewFrame();
+	ImGui::NewFrame();
+	ImGuizmo::BeginFrame();
+
 	if (m_cachedImGuiLighting != m_lighting) {
 		m_imguiInterface->SetLighting(m_lighting);
 		m_cachedImGuiLighting = m_lighting;
@@ -1027,44 +1104,57 @@ void Core::Render(int windowWidth, int windowHeight) {
 		m_cachedImGuiCamera = m_camera;
 	}
 	m_imguiInterface->SetFrameData(m_frameTimeBuffer.data(), m_frameTimeCount);
-
-	// Render ImGui windows
-	m_imguiInterface->Render(
-		m_windowWidth,
-		m_windowHeight,
-		m_fps,
-		m_sceneName,
-		m_lightPos,
-		m_lightDir
-	);
-
-	// Render gizmo overlay
-	if (!presentIndirectDiffuseDebug) {
-		m_imguiInterface->RenderGizmoOverlay(m_windowWidth, m_windowHeight);
+	m_editor->Draw(dt);
+	// Legacy panels (rendering, lighting, profiler, animation, ...) dock into the workspace.
+	m_imguiInterface->Render(m_windowWidth, m_windowHeight, m_fps, m_sceneName, m_lightPos, m_lightDir);
+	if (m_editor->WantsQuit()) {
+		m_quitRequested = true;
 	}
 
-	// Finally, render ImGui
+	static EditorWorkspace::Target lastTarget = EditorWorkspace::Target::None;
+	const EditorWorkspace::Target target = m_editor->RenderTarget();
+	if (target != EditorWorkspace::Target::None) {
+		EditorWorkspace::Viewport& vp = m_editor->GetViewport(target);
+		const bool gameView = target == EditorWorkspace::Target::Game && m_game && m_game->IsAvailable();
+		if (target != lastTarget) {
+			ResetTemporalHistory(); // different camera: history would ghost
+		}
+		RenderSceneTo(vp.fbo, vp.texWidth, vp.texHeight, gameView ? m_game->GetCamera() : m_camera);
+	}
+	lastTarget = target;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, m_windowWidth, m_windowHeight);
+	glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 bool Core::ProcessInputEvent(const SDL_Event& event) {
-	// Drive mode (docs/nfs2015): F9 toggles; while driving, keys belong to the car, not the editor.
-	if (m_driveMode && m_driveMode->IsAvailable() && event.type == SDL_KEYDOWN && !event.key.repeat) {
-		if (event.key.keysym.sym == SDLK_F9) {
-			m_driveMode->Toggle();
-			return true;
-		}
-		if (m_driveMode->IsActive() && event.key.keysym.sym == SDLK_c) {
-			m_driveMode->CycleCamera();
-			return true;
-		}
-	}
-	if (m_driveMode && m_driveMode->IsActive() && (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)) {
+	// The game polls keyboard/pad state itself (GameSession), gated by viewport focus.
+	if (m_launch.mode == AppMode::Game || m_benchmark || !m_inputIntegration) {
 		return true;
 	}
-	if (m_inputIntegration) {
-		return m_inputIntegration->ProcessEvent(event);
+	// Editor: the legacy fly-camera contexts only see input while the right mouse button is held
+	// in the Scene viewport, so typing in an inspector never moves the camera or toggles features.
+	const bool keyEvent = event.type == SDL_KEYDOWN || event.type == SDL_KEYUP;
+	if (m_editorCameraActive) {
+		if (event.type == SDL_MOUSEMOTION) {
+			m_inputIntegration->ProcessEvent(event);
+			return true;
+		}
+		if (keyEvent) {
+			const SDL_Keycode k = event.key.keysym.sym;
+			if (k == SDLK_w || k == SDLK_a || k == SDLK_s || k == SDLK_d || k == SDLK_q || k == SDLK_e) {
+				m_inputIntegration->ProcessEvent(event);
+				return true;
+			}
+		}
+		return false;
+	}
+	if (event.type == SDL_KEYUP) {
+		m_inputIntegration->ProcessEvent(event); // release keys held when flight ended
 	}
 	return false;
 }
@@ -1172,6 +1262,10 @@ void Core::OnWindowResize(int newWidth, int newHeight) {
 
 void Core::SwapScene(const std::string& newSceneFile) {
 	std::cout << "[Core] Swapping to scene: " << newSceneFile << std::endl;
+	if (m_playing && m_game) {
+		m_game->EndPlay();
+		m_playing = false;
+	}
 
 	const std::string resolvedSceneFile = ResolveSceneFilePath(newSceneFile);
 	m_sceneToLoad = resolvedSceneFile;
@@ -1214,8 +1308,10 @@ void Core::SwapScene(const std::string& newSceneFile) {
 				m_sceneHasRenderSettings = SceneRenderSettings::ApplyFromSceneFile(
 					m_modularRenderer->GetContext(), resolvedSceneFile, m_sceneHasRenderSettings);
 			}
-			if (m_driveMode) {
-				m_driveMode->Configure(resolvedSceneFile, *m_sceneGraph);
+			ConfigureGameFromScene(resolvedSceneFile);
+			m_dirty = false;
+			if (m_editor) {
+				m_editor->OnSceneLoaded();
 			}
 
 			if (m_imguiInterface) {
@@ -1252,10 +1348,28 @@ void Core::SaveCurrentScene() {
 		return;
 	}
 
+	if (m_playing) {
+		std::cerr << "[Core] Stop play mode before saving (runtime state is not authored data)" << std::endl;
+		return;
+	}
 	std::string saveFilePath = m_currentSceneFilePath.empty() ? m_sceneToLoad : m_currentSceneFilePath;
 	std::cout << "[Core] Saving scene to: " << saveFilePath << std::endl;
 
 	if (m_sceneLoader->SaveScene(m_sceneGraph, saveFilePath)) {
+		// Authoring data of the game layer (spawn, handling, camera, roads, events, HUD path).
+		if (m_game && m_game->IsAvailable()) {
+			m_authoredGame = m_game->SaveGameJson();
+			std::ifstream in(saveFilePath);
+			json root = in ? json::parse(in, nullptr, false) : json();
+			in.close();
+			if (root.is_object()) {
+				root["game"] = m_authoredGame;
+				std::ofstream out(saveFilePath);
+				out << root.dump(2);
+				m_sceneRootJson = root;
+			}
+		}
+		m_dirty = false;
 		std::cout << "[Core] Scene saved successfully!" << std::endl;
 	}
 	else {
@@ -1740,4 +1854,208 @@ void Core::StopPerformanceRecording() {
 
 	std::cout << "[Core] Stopped performance recording. Captured "
 		<< m_performanceRecorder->GetFrameCount() << " frames" << std::endl;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Editor / game integration (docs/nfs2015/game.md)
+// ---------------------------------------------------------------------------------------------
+std::vector<std::string> Core::GetSceneList() const
+{
+	std::vector<std::string> scenes;
+	auto add = [&](std::string p) {
+		std::replace(p.begin(), p.end(), '\\', '/');
+		if (std::find(scenes.begin(), scenes.end(), p) == scenes.end()) scenes.push_back(p);
+	};
+	std::error_code ec;
+	for (const auto& entry : fs::directory_iterator("scenes", ec)) {
+		if (entry.is_regular_file(ec) && entry.path().extension() == ".json") add(entry.path().generic_string());
+	}
+	std::sort(scenes.begin(), scenes.end());
+	return scenes;
+}
+
+void Core::ConfigureGameFromScene(const std::string& scenePath)
+{
+	std::ifstream in(scenePath);
+	m_sceneRootJson = in ? json::parse(in, nullptr, false) : json();
+	if (!m_sceneRootJson.is_object()) m_sceneRootJson = json::object();
+	m_authoredGame = m_sceneRootJson.value("game", json());
+	m_playing = false;
+	if (m_game && m_sceneGraph) {
+		m_game->Configure(m_authoredGame, m_sceneRootJson, *m_sceneGraph);
+	}
+}
+
+void Core::ApplyGameJson(const json& game)
+{
+	if (!m_game || !m_sceneGraph || m_playing) return;
+	m_authoredGame = game;
+	const int selected = m_game->SelectedEvent();
+	m_game->Configure(game, m_sceneRootJson, *m_sceneGraph);
+	m_game->SetSelectedEvent(selected);
+}
+
+json Core::GetAuthoredGameJson() const
+{
+	if (m_playing) return m_prePlayGame;
+	return m_game ? m_game->SaveGameJson() : m_authoredGame;
+}
+
+void Core::RequestPlay()
+{
+	if (m_playing || !m_game || !m_game->IsAvailable() || !m_sceneGraph) return;
+	m_prePlayGame = m_game->SaveGameJson();
+	m_prePlayTransforms.clear();
+	std::function<void(const std::shared_ptr<SceneNode>&)> snap = [&](const std::shared_ptr<SceneNode>& n) {
+		if (!n) return;
+		const glm::vec3 p = n->GetPosition();
+		const glm::quat q = n->GetOrientation();
+		const glm::vec3 sc = n->GetScale();
+		m_prePlayTransforms.push_back({ n, { p.x, p.y, p.z, q.w, q.x, q.y, q.z, sc.x, sc.y, sc.z } });
+		for (const auto& c : n->children) snap(c);
+	};
+	for (const auto& c : m_sceneGraph->GetRoot()->children) snap(c);
+	m_playing = true;
+	m_game->BeginPlay();
+	ResetTemporalHistory();
+	std::cout << "[Core] Play" << std::endl;
+}
+
+void Core::RequestStop()
+{
+	if (!m_playing || !m_game) return;
+	m_game->EndPlay();
+	for (const auto& [weak, t] : m_prePlayTransforms) {
+		if (auto n = weak.lock()) {
+			n->SetLocalTRS(glm::vec3(t[0], t[1], t[2]), glm::quat(t[3], t[4], t[5], t[6]), glm::vec3(t[7], t[8], t[9]));
+		}
+	}
+	m_prePlayTransforms.clear();
+	m_playing = false;
+	if (m_sceneGraph) {
+		m_sceneGraph->UpdateAllTransforms();
+		m_game->Configure(m_prePlayGame, m_sceneRootJson, *m_sceneGraph);
+	}
+	ResetTemporalHistory();
+	std::cout << "[Core] Stop (pre-play state restored)" << std::endl;
+}
+
+void Core::TogglePause()
+{
+	if (m_playing && m_game) m_game->SetPaused(!m_game->IsPaused());
+}
+
+bool Core::IsPaused() const
+{
+	return m_playing && m_game && m_game->IsPaused();
+}
+
+void Core::ApplyRuntimeChangesToAuthored()
+{
+	if (!m_playing || !m_game) return;
+	m_prePlayGame = m_game->SaveGameJson();
+	m_authoredGame = m_prePlayGame;
+	m_dirty = true;
+}
+
+void Core::ResetTemporalHistory()
+{
+	if (m_modularRenderer) m_modularRenderer->ResetTAA();
+	if (m_sceneGraph) {
+		if (TransformSystem* ts = m_sceneGraph->GetTransformSystem()) ts->SnapshotPreviousTransforms();
+	}
+}
+
+void Core::SetEditorCameraActive(bool active)
+{
+	if (m_editorCameraActive == active) return;
+	m_editorCameraActive = active;
+	SetMouseLocked(active);
+}
+
+std::shared_ptr<SceneNode> Core::PickNode(int x, int y, int width, int height)
+{
+	if (!m_camera || !m_sceneGraph || width <= 0 || height <= 0) return nullptr;
+	m_camera->SetPerspective(m_camera->GetCameraFov(), static_cast<float>(width) / static_cast<float>(height),
+		m_camera->GetCameraNearPlane(), m_camera->GetCameraFarPlane());
+	RayCast::Ray ray = RayCast::ScreenToWorldRay(x, y, m_camera, width, height);
+	if (glm::length(ray.direction) < 0.1f) return nullptr;
+	if (m_bvhDirty) RebuildSceneBVH();
+	return PerformRayQuery(ray);
+}
+
+namespace {
+	std::shared_ptr<SceneNode> FindParentNode(const std::shared_ptr<SceneNode>& root, const SceneNode* child) {
+		if (!root) return nullptr;
+		for (const auto& c : root->children) {
+			if (c.get() == child) return root;
+			if (auto p = FindParentNode(c, child)) return p;
+		}
+		return nullptr;
+	}
+}
+
+std::shared_ptr<SceneNode> Core::DuplicateNode(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || !m_sceneLoader || !m_sceneGraph || m_playing) return nullptr;
+	json j = m_sceneLoader->SerializeNodeForEditor(node);
+	if (!j.is_object()) return nullptr;
+	j["name"] = node->GetName() + "_copy";
+	if (j.contains("position") && j["position"].is_array() && j["position"].size() == 3) {
+		j["position"][0] = j["position"][0].get<float>() + 2.0f;
+	}
+	auto parent = FindParentNode(m_sceneGraph->GetRoot(), node.get());
+	if (!parent) parent = m_sceneGraph->GetRoot();
+	auto copy = m_sceneLoader->InstantiateNode(*m_sceneGraph, j, parent, m_currentSceneFilePath);
+	if (copy) {
+		if (auto lm = m_sceneGraph->GetLightManager()) {
+			std::function<void(const std::shared_ptr<SceneNode>&)> reg = [&](const std::shared_ptr<SceneNode>& n) {
+				if (auto ln = std::dynamic_pointer_cast<LightNode>(n)) lm->RegisterLightNode(ln);
+				for (const auto& c : n->children) reg(c);
+			};
+			reg(copy);
+		}
+		m_bvhDirty = true;
+		m_boundingBoxCached = false;
+		m_dirty = true;
+	}
+	return copy;
+}
+
+std::shared_ptr<SceneNode> Core::AddModelNode(const std::string& modelPath, const glm::vec3& position)
+{
+	if (!m_sceneLoader || !m_sceneGraph || m_playing) return nullptr;
+	json j = { {"type", "model"}, {"name", fs::path(modelPath).stem().string()}, {"path", modelPath},
+		{"position", { position.x, position.y, position.z }}, {"rotation", { 0.0f, 0.0f, 0.0f }}, {"scale", { 1.0f, 1.0f, 1.0f }} };
+	auto node = m_sceneLoader->InstantiateNode(*m_sceneGraph, j, m_sceneGraph->GetRoot(), m_currentSceneFilePath);
+	if (node) {
+		m_bvhDirty = true;
+		m_boundingBoxCached = false;
+		m_dirty = true;
+	}
+	return node;
+}
+
+bool Core::DeleteNode(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || !m_sceneGraph || m_playing) return false;
+	auto parent = FindParentNode(m_sceneGraph->GetRoot(), node.get());
+	if (!parent) return false;
+	auto lm = m_sceneGraph->GetLightManager();
+	ComponentManager* cm = m_sceneGraph->GetComponentManager();
+	std::function<void(const std::shared_ptr<SceneNode>&)> destroy = [&](const std::shared_ptr<SceneNode>& n) {
+		for (const auto& c : n->children) destroy(c);
+		if (auto ln = std::dynamic_pointer_cast<LightNode>(n)) {
+			if (lm && ln->GetLight()) lm->UnregisterLight(ln->GetLight());
+		}
+		if (cm && n->GetEntityID() != INVALID_ENTITY) cm->DestroyEntity(n->GetEntityID());
+	};
+	destroy(node);
+	auto& siblings = parent->children;
+	siblings.erase(std::remove(siblings.begin(), siblings.end(), node), siblings.end());
+	m_sceneGraph->UpdateAllTransforms();
+	m_bvhDirty = true;
+	m_boundingBoxCached = false;
+	m_dirty = true;
+	return true;
 }

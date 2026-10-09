@@ -2,6 +2,8 @@
 #include <string>
 #include "json.hpp"
 
+class RoadNetwork;
+
 /*
 * Procedural night-street kit (docs/nfs2015/README.md, milestone M0).
 *
@@ -21,6 +23,7 @@ namespace ProceduralStreetKit {
 	struct Result {
 		bool ok = false;
 		std::string gltfPath;          // Generated .gltf, relative to the working directory
+		std::string layoutPath;        // District only: "<output>_layout.json" (collision obstacles)
 		nlohmann::json lightNodes = nlohmann::json::array(); // Scene-schema "light" nodes
 		nlohmann::json reflectionProbes = nlohmann::json::array(); // scene "reflection_probes" entries
 		int triangleCount = 0;
@@ -32,4 +35,10 @@ namespace ProceduralStreetKit {
 	//   texture_root (default "textures/cc0"), streetlight_spacing (m),
 	//   neon_lights (bool), tunnel (bool), industrial (bool), shadowed_streetlights (int)
 	Result Generate(const nlohmann::json& params);
+
+	// Connected district built from a road graph (RoadNetwork). params (all optional):
+	//   seed, output (default "generated/nfs_district"), texture_root, streetlight_spacing (m, avenues),
+	//   cross_streetlight_spacing (m), shadowed_streetlights (int), max_reflection_probes (<= 48),
+	//   road_network (JSON, only read by the caller). Writes <output>.gltf/.bin and <output>_layout.json.
+	Result GenerateDistrict(const nlohmann::json& params, const RoadNetwork& network);
 }

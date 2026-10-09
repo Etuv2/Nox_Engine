@@ -85,93 +85,20 @@ void ImGuiWindowManager::Render(int windowWidth, int windowHeight, float fps,
 	m_lightingWindow->SetLightDirection(lightDir);
 	m_performanceWindow->SetFPS(fps);
 
-	// F-key hint window
-	ImGui::SetNextWindowPos(ImVec2(10, static_cast<float>(windowHeight) - 60), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(220, 50), ImGuiCond_Always);
-	if (ImGui::Begin("F-Key Status", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar)) {
-		ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "F-Keys Active");
-		ImGui::Text("F1-F9,F12: Windows | F8:Anim");
-	}
-	ImGui::End();
-
 	// Render windows
-	m_statusWindow->Render();
 	m_cameraWindow->Render();
 	m_lightingWindow->Render();
-	m_sceneHierarchyWindow->Render();
 	m_renderingSettingsWindow->Render();
 	m_performanceWindow->Render();
 	m_helpWindow->Render();
 	m_stateExportWindow->Render();
 	m_animationWindow->Render();
 
-	// Lightweight gizmo panel (not a BaseWindow, optional)
-	if (m_showGizmoPanel) {
-		ImGui::SetNextWindowBgAlpha(0.9f);
-		ImGui::SetNextWindowPos(ImVec2(windowWidth * 0.5f - 140.0f, 10.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(280, 155), ImGuiCond_Always);
-		if (ImGui::Begin("Gizmo Panel", &m_showGizmoPanel,
-			ImGuiWindowFlags_NoCollapse)) {
-			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "3D Gizmo");
-			if (m_selectedNode) {
-				ImGui::Checkbox("Visible", &m_gizmoVisible);
-				ImGui::SameLine();
-				if (ImGui::Button("Focus") && m_selectedNode) {
-					// Optional: could implement camera focus
-				}
-				ImGui::Separator();
-				if (ImGui::RadioButton("T", m_gizmoOperation == ImGuizmo::TRANSLATE)) m_gizmoOperation = ImGuizmo::TRANSLATE;
-				ImGui::SameLine();
-				if (ImGui::RadioButton("R", m_gizmoOperation == ImGuizmo::ROTATE)) m_gizmoOperation = ImGuizmo::ROTATE;
-				ImGui::SameLine();
-				if (ImGui::RadioButton("S", m_gizmoOperation == ImGuizmo::SCALE)) m_gizmoOperation = ImGuizmo::SCALE;
-				if (m_gizmoOperation != ImGuizmo::SCALE) {
-					if (ImGui::RadioButton("Local", m_gizmoMode == ImGuizmo::LOCAL)) m_gizmoMode = ImGuizmo::LOCAL;
-					ImGui::SameLine();
-					if (ImGui::RadioButton("World", m_gizmoMode == ImGuizmo::WORLD)) m_gizmoMode = ImGuizmo::WORLD;
-				}
-				ImGui::Separator();
-				ImGui::Checkbox("Snap", &m_snapEnabled);
-				if (m_snapEnabled) {
-					if (m_gizmoOperation == ImGuizmo::TRANSLATE)
-						ImGui::DragFloat("Move", &m_translateSnap, 0.1f, 0.01f, 50.0f, "%.2f");
-					else if (m_gizmoOperation == ImGuizmo::ROTATE)
-						ImGui::DragFloat("Rotate", &m_rotateSnap, 1.0f, 1.0f, 180.0f, "%.0f");
-					else if (m_gizmoOperation == ImGuizmo::SCALE)
-						ImGui::DragFloat("Scale", &m_scaleSnap, 0.01f, 0.01f, 10.0f, "%.2f");
-				}
-			}
-			else {
-				ImGui::TextDisabled("No selection");
-			}
-		}
-		ImGui::End();
-	}
 }
 
 void ImGuiWindowManager::ProcessKeyboardInput() {
-	ImGuiIO& io = ImGui::GetIO();
-
-	// Function keys always
-	if (ImGui::IsKeyPressed(ImGuiKey_F1)) ToggleWindow("Status");
-	if (ImGui::IsKeyPressed(ImGuiKey_F2)) ToggleWindow("Camera");
-	if (ImGui::IsKeyPressed(ImGuiKey_F3)) ToggleWindow("Lighting");
-	if (ImGui::IsKeyPressed(ImGuiKey_F4)) ToggleWindow("Hierarchy");
-	if (ImGui::IsKeyPressed(ImGuiKey_F5)) m_showGizmoPanel = !m_showGizmoPanel; // now toggles panel only
-	if (ImGui::IsKeyPressed(ImGuiKey_F6)) ToggleWindow("Rendering");
-	if (ImGui::IsKeyPressed(ImGuiKey_F7)) ToggleWindow("Performance");
-	if (ImGui::IsKeyPressed(ImGuiKey_F8)) ToggleWindow("Animation");
-	if (ImGui::IsKeyPressed(ImGuiKey_F9)) ToggleWindow("StateExport");
-	if (ImGui::IsKeyPressed(ImGuiKey_F12)) ToggleWindow("Help");
-
-	if (io.WantCaptureKeyboard) return; // avoid interfering with text inputs
-
-	if (m_selectedNode && m_gizmoVisible) {
-		if (ImGui::IsKeyPressed(ImGuiKey_Q)) m_gizmoOperation = ImGuizmo::TRANSLATE;
-		if (ImGui::IsKeyPressed(ImGuiKey_E)) m_gizmoOperation = ImGuizmo::ROTATE;
-		if (ImGui::IsKeyPressed(ImGuiKey_R)) m_gizmoOperation = ImGuizmo::SCALE;
-		if (ImGui::IsKeyPressed(ImGuiKey_G)) m_gizmoVisible = !m_gizmoVisible;
-	}
+	// Shortcuts live in the docked editor workspace (EditorWorkspace::HandleShortcuts); the old
+	// F-key window toggles are replaced by the Window menu.
 }
 
 // Data setters

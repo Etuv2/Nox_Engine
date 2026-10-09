@@ -3,27 +3,27 @@
     "visible": false
   },
   "Camera": {
-    "visible": true
+    "visible": false
   },
   "Help": {
     "visible": false
   },
   "Hierarchy": {
-    "visible": true
+    "visible": false
   },
   "Lighting": {
     "visible": true
   },
   "Performance": {
-    "visible": false
+    "visible": true
   },
   "Rendering": {
     "visible": true
   },
   "StateExport": {
-    "visible": true
+    "visible": false
   },
   "Status": {
-    "visible": true
+    "visible": false
   }
 }

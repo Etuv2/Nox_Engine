@@ -1,4 +1,5 @@
 #include "LightingPass.h"
+#include "../PresentTarget.h"
 #include "LightClusterPass.h"
 #include "ExposurePass.h"
 #include "ReflectionProbePass.h"
@@ -469,5 +470,5 @@ void LightingPass::Execute(RenderContext& ctx,
 		std::cerr << "[LightingPass] ERROR: ScreenQuad is null!" << std::endl;
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }

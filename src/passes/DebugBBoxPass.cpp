@@ -1,4 +1,5 @@
 #include "DebugBBoxPass.h"
+#include "../PresentTarget.h"
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
 #include "../Scene.h"
@@ -248,7 +249,7 @@ void DebugBBoxPass::Execute(RenderContext& ctx,
     UploadToGPU();
 
     // Setup OpenGL state for wireframe rendering
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);  // Render to backbuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());  // Render to backbuffer
     glViewport(0, 0, ctx.width, ctx.height);
     
     // Save only state this pass actually changes. GL_LINES does not need polygon mode or cull tweaks.

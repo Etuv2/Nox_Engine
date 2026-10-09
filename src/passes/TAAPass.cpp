@@ -1,4 +1,5 @@
 #include "TAAPass.h"
+#include "../PresentTarget.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
@@ -255,7 +256,7 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 	// Render scene for motion vectors
 	sceneGraph->RenderVelocity(ctx.view, currentVelocityProj, ctx.prevView, previousVelocityProj, m_velocityShader);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 
 	// Update context velocity texture each frame
 	ctx.velocityTex = m_velocityFBO->GetColorAttachment(0);
@@ -333,7 +334,7 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 
 	ctx.screenQuad->Render();
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 
 	glCopyImageSubData(m_currentFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
 		m_historyFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,

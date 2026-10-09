@@ -1,0 +1,23 @@
+{
+  "authoring_overlay": true,
+  "layout_built": true,
+  "panels": {
+    "animation": false,
+    "assets": true,
+    "build": true,
+    "camera": false,
+    "console": true,
+    "drive": true,
+    "hierarchy": true,
+    "hud": true,
+    "inspector": true,
+    "lighting": true,
+    "materials": true,
+    "performance": true,
+    "presets": false,
+    "race": true,
+    "rendering": true,
+    "state": false
+  },
+  "preset": "game"
+}

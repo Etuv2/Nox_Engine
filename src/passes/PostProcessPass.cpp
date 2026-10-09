@@ -1,4 +1,5 @@
 #include "PostProcessPass.h"
+#include "../PresentTarget.h"
 #include "PassLogging.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
@@ -99,7 +100,7 @@ void PostProcessPass::Execute(RenderContext& ctx,
                               const std::shared_ptr<DirectionalLight>& dirLight,
                               const std::shared_ptr<Skybox>& skybox) {
     // Output to backbuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
     glViewport(0, 0, ctx.width, ctx.height);
 
     // We handle output gamma in the shader, disable fixed-function SRGB conversion

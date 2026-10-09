@@ -41,6 +41,12 @@ public:
 	// Saves the current scene state back to a JSON file
 	bool SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sceneFilePath);
 
+	// Editor helpers: serialize one node subtree in the scene-file schema, and instantiate such a
+	// subtree into an existing graph under 'parent' (ECS entities, models and lights included).
+	nlohmann::json SerializeNodeForEditor(const std::shared_ptr<SceneNode>& node);
+	std::shared_ptr<SceneNode> InstantiateNode(SceneGraph& graph, const nlohmann::json& nodeJson,
+		const std::shared_ptr<SceneNode>& parent, const std::string& sceneFilePath);
+
 	// Runtime state management - captures full runtime state including camera and all node states
 	bool SaveRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph, 
 	                      const std::shared_ptr<class Camera>& camera,
@@ -87,6 +93,8 @@ private:
 	// Child nodes emitted by a procedural generator while processing the current node; consumed
 	// by ProcessNodeRecursive and attached as generated (non-serialized) children.
 	nlohmann::json m_pendingGeneratedChildren;
+	// Root "game" object of the scene being loaded (road_network for procedural districts).
+	nlohmann::json m_sceneGameJson = nlohmann::json::object();
 	void AddReflectionProbes(const nlohmann::json& probes);
 	size_t m_loadedSkyboxCount = 0;
 	size_t m_disabledSkyboxCount = 0;

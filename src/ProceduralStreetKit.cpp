@@ -1,4 +1,5 @@
 #include "ProceduralStreetKit.h"
+#include "RoadNetwork.h"
 #include "stb_image_write.h"
 #include "stb_image_write.h"
 
@@ -106,7 +107,7 @@ namespace {
 		// Planar quad. U,V span the face (half extents folded in); uvU/uvV are the texture axes.
 		void Quad(int mat, const glm::vec3& center, const glm::vec3& U, const glm::vec3& V,
 			const glm::vec3& N, const glm::vec3& texU, const glm::vec3& texV) {
-			MeshBuilder& b = Builder(mat, center.z);
+			MeshBuilder& b = Builder(mat, center);
 			glm::vec3 c[4] = { center - U - V, center + U - V, center + U + V, center - U + V };
 			if (glm::dot(glm::cross(U, V), N) < 0.0f) {
 				std::swap(c[1], c[3]);
@@ -129,7 +130,7 @@ namespace {
 		// V to its top.
 		void QuadUV(int mat, const glm::vec3& center, const glm::vec3& U, const glm::vec3& V,
 			const glm::vec3& N, const glm::vec2& uvMin, const glm::vec2& uvMax) {
-			MeshBuilder& b = Builder(mat, center.z);
+			MeshBuilder& b = Builder(mat, center);
 			glm::vec3 c[4] = { center - U - V, center + U - V, center + U + V, center - U + V };
 			glm::vec2 t[4] = { {uvMin.x, uvMax.y}, {uvMax.x, uvMax.y}, {uvMax.x, uvMin.y}, {uvMin.x, uvMin.y} };
 			if (glm::dot(glm::cross(U, V), N) < 0.0f) {
@@ -171,7 +172,7 @@ namespace {
 
 		// Vertical cylinder (no caps), used for poles.
 		void Cylinder(int mat, const glm::vec3& base, float height, float radius, int segments = 10) {
-			MeshBuilder& b = Builder(mat, base.z);
+			MeshBuilder& b = Builder(mat, base);
 			const float tile = std::max(m_materials[mat].tile, 0.01f);
 			const uint32_t start = static_cast<uint32_t>(b.pos.size());
 			for (int i = 0; i <= segments; ++i) {
@@ -195,15 +196,23 @@ namespace {
 
 		const std::map<std::pair<int, int>, MeshBuilder>& Builders() const { return m_builders; }
 
+		// false (default): 40 m chunks along Z only (street kit). true: 40 m XZ cells (district).
+		void SetChunkXZ(bool enable) { m_chunkXZ = enable; }
+
 	private:
-		MeshBuilder& Builder(int mat, float z) {
+		MeshBuilder& Builder(int mat, const glm::vec3& c) {
 			// 40 m chunks along the street so frustum and shadow culling stay effective.
-			const int chunk = static_cast<int>(std::floor(z / 40.0f));
+			int chunk = static_cast<int>(std::floor(c.z / 40.0f));
+			if (m_chunkXZ) {
+				const int cx = static_cast<int>(std::floor(c.x / 40.0f)) + 512;
+				chunk = cx * 1024 + (chunk + 512);
+			}
 			return m_builders[{ mat, chunk }];
 		}
 
 		const std::vector<MatDef>& m_materials;
 		std::map<std::pair<int, int>, MeshBuilder> m_builders;
+		bool m_chunkXZ = false;
 	};
 
 	// ------------------------------------------------------------------------------------------
@@ -867,3 +876,794 @@ namespace ProceduralStreetKit {
 		return result;
 	}
 }
+
+// ==============================================================================================
+// District generator: connected blocks, roads and clutter built from a RoadNetwork.
+// ==============================================================================================
+namespace {
+
+	enum DMat : int {
+		D_FAC_BRICK_RED = M_COUNT, D_FAC_BRICK_BROWN, D_FAC_CONCRETE, D_FAC_STUCCO_CREAM,
+		D_FAC_STUCCO_TAN, D_FAC_PAINT_BLUE, D_FAC_PAINT_GREEN,
+		D_SHUTTER, D_AWNING_RED, D_AWNING_GREEN, D_AWNING_CREAM, D_DOOR, D_ROOF_UNIT,
+		D_ROAD_CLEAN, D_PAINT_WORN, D_STORM_DRAIN,
+		D_WOOD, D_WIRE, D_PALM_TRUNK, D_PALM_FROND,
+		D_SIGNAL_HOUSING, D_SIGNAL_RED, D_SIGNAL_GREEN, D_SIGNAL_AMBER,
+		D_HYDRANT, D_BIN, D_CAR_WHITE, D_CAR_BLACK, D_CAR_SILVER, D_CAR_RED, D_CAR_BLUE,
+		D_CAR_GLASS, D_TAIL_LAMP, D_WHEEL, D_SKYLINE, D_SKYLINE_DARK, D_HILL, D_COUNT
+	};
+
+	MatDef DMatDef(const char* name, const char* set, float tile, glm::vec3 base, float rough, float metal = 0.0f,
+		glm::vec3 emissive = glm::vec3(0.0f), float emStrength = 0.0f, float wet = 0.3f, float puddle = 0.0f,
+		float rain = 0.0f, bool doubleSided = false) {
+		MatDef m;
+		m.name = name; m.texSet = set; m.tile = tile; m.baseColor = base; m.roughness = rough; m.metallic = metal;
+		m.emissive = emissive; m.emissiveStrength = emStrength; m.wetness = wet; m.puddle = puddle;
+		m.rainBeads = rain; m.doubleSided = doubleSided;
+		return m;
+	}
+
+	// Street-kit materials plus the district set. Emissive values are cd/m^2; the window and
+	// shopfront glow is deliberately low so most of the facade stays dark.
+	std::vector<MatDef> BuildDistrictMaterials() {
+		std::vector<MatDef> m = BuildMaterials();
+		m.resize(D_COUNT);
+		m[M_WINDOW_WARM].emissiveStrength = 4.5f;
+		m[M_WINDOW_COOL].emissiveStrength = 3.0f;
+		m[M_WINDOW_DIM].emissiveStrength = 1.8f;
+		m[M_SHOPFRONT].emissiveStrength = 2.2f;
+		m[M_SHOPFRONT].emissive = glm::vec3(1.0f, 0.82f, 0.62f);
+		const glm::vec3 none(0.0f);
+		m[D_FAC_BRICK_RED] = DMatDef("facade_brick_red", "brick_facade", 3.0f, glm::vec3(0.85f, 0.55f, 0.48f), 0.9f, 0.0f, none, 0.0f, 0.55f);
+		m[D_FAC_BRICK_BROWN] = DMatDef("facade_brick_brown", "brick_facade", 3.0f, glm::vec3(0.62f, 0.5f, 0.42f), 0.9f, 0.0f, none, 0.0f, 0.55f);
+		m[D_FAC_CONCRETE] = DMatDef("facade_concrete_grey", "concrete_wall", 2.3f, glm::vec3(0.6f, 0.6f, 0.62f), 0.95f, 0.0f, none, 0.0f, 0.5f);
+		m[D_FAC_STUCCO_CREAM] = DMatDef("facade_stucco_cream", "concrete_wall", 2.3f, glm::vec3(0.82f, 0.76f, 0.62f), 0.9f, 0.0f, none, 0.0f, 0.5f);
+		m[D_FAC_STUCCO_TAN] = DMatDef("facade_stucco_tan", "concrete_wall", 2.3f, glm::vec3(0.7f, 0.56f, 0.42f), 0.9f, 0.0f, none, 0.0f, 0.5f);
+		m[D_FAC_PAINT_BLUE] = DMatDef("facade_paint_blue", "concrete_wall", 2.3f, glm::vec3(0.25f, 0.36f, 0.5f), 0.8f, 0.0f, none, 0.0f, 0.5f);
+		m[D_FAC_PAINT_GREEN] = DMatDef("facade_paint_green", "concrete_wall", 2.3f, glm::vec3(0.22f, 0.38f, 0.3f), 0.8f, 0.0f, none, 0.0f, 0.5f);
+		m[D_SHUTTER] = DMatDef("roller_shutter", "", 1.0f, glm::vec3(0.22f, 0.22f, 0.23f), 0.55f, 0.6f, none, 0.0f, 0.4f);
+		m[D_AWNING_RED] = DMatDef("awning_red", "", 1.0f, glm::vec3(0.5f, 0.1f, 0.08f), 0.8f, 0.0f, none, 0.0f, 0.3f, 0.0f, 0.0f, true);
+		m[D_AWNING_GREEN] = DMatDef("awning_green", "", 1.0f, glm::vec3(0.1f, 0.3f, 0.18f), 0.8f, 0.0f, none, 0.0f, 0.3f, 0.0f, 0.0f, true);
+		m[D_AWNING_CREAM] = DMatDef("awning_cream", "", 1.0f, glm::vec3(0.3f, 0.26f, 0.2f), 0.8f, 0.0f, none, 0.0f, 0.3f, 0.0f, 0.0f, true);
+		m[D_DOOR] = DMatDef("door_dark", "", 1.0f, glm::vec3(0.07f, 0.06f, 0.05f), 0.5f, 0.0f, none, 0.0f, 0.5f);
+		m[D_ROOF_UNIT] = DMatDef("roof_unit", "", 1.0f, glm::vec3(0.25f, 0.26f, 0.27f), 0.6f, 0.5f, none, 0.0f, 0.5f);
+		m[D_ROAD_CLEAN] = DMatDef("road_clean", "asphalt_road", 2.5f, glm::vec3(0.55f), 1.0f, 0.0f, none, 0.0f, 1.0f, 0.8f);
+		m[D_PAINT_WORN] = DMatDef("paint_worn", "", 1.0f, glm::vec3(0.42f, 0.42f, 0.4f), 0.6f, 0.0f, none, 0.0f, 0.5f, 0.0f, 0.5f);
+		m[D_STORM_DRAIN] = DMatDef("storm_drain", "", 1.0f, glm::vec3(0.04f), 0.5f, 0.6f, none, 0.0f, 0.6f, 0.6f);
+		m[D_WOOD] = DMatDef("utility_pole_wood", "", 1.0f, glm::vec3(0.12f, 0.085f, 0.065f), 0.85f, 0.0f, none, 0.0f, 0.4f);
+		m[D_WIRE] = DMatDef("overhead_wire", "", 1.0f, glm::vec3(0.02f), 0.5f, 0.0f, none, 0.0f, 0.2f);
+		m[D_PALM_TRUNK] = DMatDef("palm_trunk", "", 1.0f, glm::vec3(0.22f, 0.17f, 0.11f), 0.85f, 0.0f, none, 0.0f, 0.3f);
+		m[D_PALM_FROND] = DMatDef("palm_frond", "", 1.0f, glm::vec3(0.07f, 0.16f, 0.06f), 0.5f, 0.0f, none, 0.0f, 0.4f, 0.0f, 0.0f, true);
+		m[D_SIGNAL_HOUSING] = DMatDef("signal_housing", "", 1.0f, glm::vec3(0.03f), 0.5f, 0.0f, none, 0.0f, 0.4f);
+		m[D_SIGNAL_RED] = DMatDef("signal_red", "", 1.0f, glm::vec3(0.12f, 0.02f, 0.02f), 0.3f, 0.0f, glm::vec3(1.0f, 0.06f, 0.03f), 2500.0f);
+		m[D_SIGNAL_GREEN] = DMatDef("signal_green", "", 1.0f, glm::vec3(0.02f, 0.12f, 0.04f), 0.3f, 0.0f, glm::vec3(0.1f, 1.0f, 0.35f), 2500.0f);
+		m[D_SIGNAL_AMBER] = DMatDef("signal_amber", "", 1.0f, glm::vec3(0.12f, 0.08f, 0.01f), 0.3f, 0.0f, glm::vec3(1.0f, 0.6f, 0.05f), 2500.0f);
+		m[D_HYDRANT] = DMatDef("hydrant_red", "", 1.0f, glm::vec3(0.6f, 0.08f, 0.04f), 0.5f, 0.0f, none, 0.0f, 0.4f);
+		m[D_BIN] = DMatDef("bin_green", "", 1.0f, glm::vec3(0.05f, 0.12f, 0.09f), 0.6f, 0.3f, none, 0.0f, 0.4f);
+		m[D_CAR_WHITE] = DMatDef("car_white", "", 1.0f, glm::vec3(0.75f, 0.75f, 0.74f), 0.3f, 0.2f, none, 0.0f, 0.8f, 0.0f, 0.8f);
+		m[D_CAR_BLACK] = DMatDef("car_black", "", 1.0f, glm::vec3(0.02f, 0.02f, 0.025f), 0.25f, 0.0f, none, 0.0f, 0.8f, 0.0f, 0.8f);
+		m[D_CAR_SILVER] = DMatDef("car_silver", "", 1.0f, glm::vec3(0.45f, 0.46f, 0.48f), 0.3f, 0.8f, none, 0.0f, 0.8f, 0.0f, 0.8f);
+		m[D_CAR_RED] = DMatDef("car_red", "", 1.0f, glm::vec3(0.4f, 0.04f, 0.03f), 0.3f, 0.0f, none, 0.0f, 0.8f, 0.0f, 0.8f);
+		m[D_CAR_BLUE] = DMatDef("car_blue", "", 1.0f, glm::vec3(0.05f, 0.1f, 0.22f), 0.3f, 0.0f, none, 0.0f, 0.8f, 0.0f, 0.8f);
+		m[D_CAR_GLASS] = DMatDef("car_glass", "", 1.0f, glm::vec3(0.01f, 0.012f, 0.014f), 0.05f, 0.0f, none, 0.0f, 0.8f);
+		m[D_TAIL_LAMP] = DMatDef("tail_lamp_red", "", 1.0f, glm::vec3(0.05f), 0.2f, 0.0f, glm::vec3(1.0f, 0.04f, 0.02f), 500.0f);
+		m[D_WHEEL] = DMatDef("tyre_black", "", 1.0f, glm::vec3(0.02f), 0.8f, 0.0f, none, 0.0f, 0.2f);
+		m[D_SKYLINE] = DMatDef("skyline_concrete", "concrete_wall", 6.0f, glm::vec3(0.2f, 0.2f, 0.22f), 1.0f, 0.0f, none, 0.0f, 0.2f);
+		m[D_SKYLINE_DARK] = DMatDef("skyline_dark", "", 1.0f, glm::vec3(0.05f, 0.05f, 0.06f), 1.0f, 0.0f, none, 0.0f, 0.1f);
+		m[D_HILL] = DMatDef("hill_silhouette", "", 1.0f, glm::vec3(0.04f, 0.06f, 0.04f), 1.0f, 0.0f, none, 0.0f, 0.1f);
+		return m;
+	}
+
+	// Oriented box whose horizontal axes are a (along) and n (across); vertical is +Y.
+	// Half extents: hA along a, hY up, hN along n. mask bits as in Kit::Box: 0 +a, 1 -a, 2 +Y, 3 -Y, 4 +n, 5 -n.
+	void OrientedBox(Kit& kit, int mat, const glm::vec3& c, const glm::vec3& a, const glm::vec3& n,
+		float hA, float hY, float hN, uint32_t mask = 0x37u) {
+		const glm::vec3 up(0.0f, 1.0f, 0.0f);
+		const glm::vec3 A = a * hA, Y = up * hY, N = n * hN;
+		if (mask & 1u)  kit.Quad(mat, c + A, N, Y, a, n, up);
+		if (mask & 2u)  kit.Quad(mat, c - A, N, Y, -a, -n, up);
+		if (mask & 4u)  kit.Quad(mat, c + Y, A, N, up, a, n);
+		if (mask & 8u)  kit.Quad(mat, c - Y, A, N, -up, a, n);
+		if (mask & 16u) kit.Quad(mat, c + N, A, Y, n, a, up);
+		if (mask & 32u) kit.Quad(mat, c - N, A, Y, -n, -a, up);
+	}
+
+	// Thin four-sided prism between two points (wires, crossarms of any direction).
+	void Stick(Kit& kit, int mat, const glm::vec3& A, const glm::vec3& B, float r) {
+		const glm::vec3 dv = B - A;
+		const float len = glm::length(dv);
+		if (len < 1e-3f) return;
+		const glm::vec3 dir = dv / len;
+		glm::vec3 side = glm::cross(dir, glm::vec3(0.0f, 1.0f, 0.0f));
+		if (glm::length(side) < 1e-4f) side = glm::vec3(1.0f, 0.0f, 0.0f);
+		side = glm::normalize(side);
+		const glm::vec3 up2 = glm::normalize(glm::cross(dir, side));
+		const glm::vec3 mid = (A + B) * 0.5f;
+		const glm::vec3 U = dir * (len * 0.5f);
+		const glm::vec3 faces[4] = { side, up2, -side, -up2 };
+		for (const glm::vec3& s : faces) {
+			const glm::vec3 t = glm::normalize(glm::cross(s, dir));
+			kit.Quad(mat, mid + s * r, U, t * r, s, dir, t);
+		}
+	}
+
+	// Axis-aligned box on a facade plane: u along A, depth along the outward normal N.
+	void FaceBox(Kit& kit, int mat, const glm::vec3& faceMid, const glm::vec3& A, const glm::vec3& N,
+		float uLo, float uHi, float yLo, float yHi, float depth) {
+		glm::vec3 mn(1e30f), mx(-1e30f);
+		for (float u : { uLo, uHi }) for (float dpt : { 0.0f, depth }) for (float y : { yLo, yHi }) {
+			const glm::vec3 p = faceMid + A * u + glm::vec3(0.0f, y, 0.0f) + N * dpt;
+			mn = glm::min(mn, p);
+			mx = glm::max(mx, p);
+		}
+		kit.Box(mat, mn, mx, 0x3Fu & ~8u);
+	}
+
+	struct DistrictNode { glm::vec2 p{ 0.0f }; float road = 0.0f; float outer = 0.0f; int degree = 0; };
+	struct DistrictEdge {
+		int a = 0, b = 0;
+		glm::vec3 P{ 0.0f }, Q{ 0.0f }, d{ 0.0f }, n{ 0.0f };
+		float L = 0.0f, hw = 7.5f;
+		bool avenue = false, ventura = false;
+	};
+
+	float SegmentDistance(const glm::vec2& p, const glm::vec2& a, const glm::vec2& b) {
+		const glm::vec2 ab = b - a;
+		const float t = std::clamp(glm::dot(p - a, ab) / std::max(glm::dot(ab, ab), 1e-6f), 0.0f, 1.0f);
+		return glm::length(p - (a + ab * t));
+	}
+
+} // namespace
+
+namespace ProceduralStreetKit {
+
+	Result GenerateDistrict(const json& params, const RoadNetwork& network) {
+		Result result;
+		if (network.Nodes().empty() || network.Edges().empty()) {
+			std::cerr << "[ProceduralStreetKit] district: road network is empty" << std::endl;
+			return result;
+		}
+		const uint32_t seed = params.value("seed", 2015u);
+		const std::string output = params.value("output", std::string("generated/nfs_district"));
+		const fs::path textureRoot = params.value("texture_root", std::string("textures/cc0"));
+		const float avenueLampSpacing = std::clamp(params.value("streetlight_spacing", 30.0f), 8.0f, 100.0f);
+		const float crossLampSpacing = std::clamp(params.value("cross_streetlight_spacing", 30.0f), 8.0f, 150.0f);
+		const int shadowedLamps = std::max(params.value("shadowed_streetlights", 2), 0);
+		const size_t maxProbes = static_cast<size_t>(std::clamp(params.value("max_reflection_probes", 46), 0, 48));
+
+		const float curbH = 0.15f;      // curb height (sidewalk top)
+		const float curbT = 0.15f;      // curb width
+		const float paintY = 0.004f;    // road paint lift over asphalt
+		const glm::vec3 up(0.0f, 1.0f, 0.0f);
+		const glm::vec2 spawn(-3.8f, -40.0f);  // player start: keep the start lane clear of parked cars
+		const float sidewalkW = network.SidewalkWidth();
+
+		std::vector<MatDef> materials = BuildDistrictMaterials();
+		{
+			std::error_code ec;
+			const fs::path outDir = fs::path(output).parent_path();
+			fs::create_directories(outDir, ec);
+			const std::string stem = fs::path(output).filename().string();
+			const fs::path atlasPath = outDir / (stem + "_window_atlas.png");
+			const fs::path shopPath = outDir / (stem + "_shop_interior.png");
+			if (WriteWindowAtlas(atlasPath, seed)) {
+				for (int m : { M_WINDOW_WARM, M_WINDOW_COOL, M_WINDOW_DIM }) {
+					materials[m].emissiveTexture = atlasPath.generic_string();
+					materials[m].emissive = glm::vec3(1.0f);
+				}
+			}
+			if (WriteShopInterior(shopPath, seed)) {
+				materials[M_SHOPFRONT].emissiveTexture = shopPath.generic_string();
+				materials[M_SHOPFRONT].emissive = glm::vec3(1.0f, 0.8f, 0.6f); // warm, restrained interiors
+			}
+		}
+		Kit kit(materials);
+		kit.SetChunkXZ(true);
+
+		std::mt19937 rng(seed ^ 0xA5F00Du);
+		auto uniform = [&rng](float a, float b) { return std::uniform_real_distribution<float>(a, b)(rng); };
+		auto chance = [&](float p) { return uniform(0.0f, 1.0f) < p; };
+		auto pickInt = [&rng](int n) { return static_cast<int>(rng() % static_cast<uint32_t>(std::max(n, 1))); };
+		auto W3 = [](const glm::vec2& p, float y) { return glm::vec3(p.x, y, p.y); };
+
+		// ---- Graph -> geometry records.
+		const auto& netNodes = network.Nodes();
+		std::vector<DistrictNode> nodes(netNodes.size());
+		for (size_t i = 0; i < netNodes.size(); ++i) nodes[i].p = netNodes[i].pos;
+		std::vector<DistrictEdge> edges;
+		for (const RoadNetwork::Edge& e : network.Edges()) {
+			const int nodeCount = static_cast<int>(netNodes.size());
+			if (e.a < 0 || e.b < 0 || e.a >= nodeCount || e.b >= nodeCount) continue;
+			DistrictEdge g;
+			g.a = e.a;
+			g.b = e.b;
+			g.hw = e.halfWidth;
+			g.P = W3(netNodes[e.a].pos, 0.0f);
+			g.Q = W3(netNodes[e.b].pos, 0.0f);
+			const glm::vec3 dv = g.Q - g.P;
+			g.L = glm::length(dv);
+			if (g.L < 2.0f) continue;
+			g.d = dv / g.L;
+			g.n = glm::vec3(-g.d.z, 0.0f, g.d.x);
+			g.ventura = e.name.find("Ventura") != std::string::npos;
+			g.avenue = g.ventura || e.name.find("Palm") != std::string::npos;
+			nodes[e.a].degree++;
+			nodes[e.b].degree++;
+			nodes[e.a].road = std::max(nodes[e.a].road, g.hw);
+			nodes[e.b].road = std::max(nodes[e.b].road, g.hw);
+			edges.push_back(g);
+		}
+		for (DistrictNode& nd : nodes) nd.outer = nd.road + curbT + sidewalkW;
+
+		// ---- Ground under everything.
+		glm::vec2 mn(1e9f), mx(-1e9f);
+		for (const DistrictNode& nd : nodes) { mn = glm::min(mn, nd.p); mx = glm::max(mx, nd.p); }
+		kit.Flat(M_GROUND, mn.x - 600.0f, mx.x + 600.0f, mn.y - 600.0f, mx.y + 600.0f, -0.02f);
+
+		// Horizontal strip from A to B over offsets [lo, hi] along n, at height y.
+		auto strip = [&](int mat, const glm::vec3& A, const glm::vec3& B, const glm::vec3& n, float lo, float hi, float y) {
+			const glm::vec3 dv = B - A;
+			const float len = glm::length(dv);
+			if (len < 0.05f || hi <= lo) return;
+			const glm::vec3 d = dv / len;
+			const glm::vec3 mid = (A + B) * 0.5f + n * ((lo + hi) * 0.5f) + glm::vec3(0.0f, y, 0.0f);
+			kit.Quad(mat, mid, d * (len * 0.5f), n * ((hi - lo) * 0.5f), up, d, n);
+		};
+		auto rectFlat = [&](int mat, float x0, float x1, float z0, float z1, float y) {
+			kit.Flat(mat, std::min(x0, x1), std::max(x0, x1), std::min(z0, z1), std::max(z0, z1), y);
+		};
+
+		// ---- Road surface, curbs, sidewalks.
+		for (const DistrictEdge& e : edges) {
+			const float rA = nodes[e.a].road, rB = nodes[e.b].road;
+			const float oA = nodes[e.a].outer, oB = nodes[e.b].outer;
+			strip(M_ROAD, e.P + e.d * rA, e.Q - e.d * rB, e.n, -e.hw, e.hw, 0.0f);
+			const glm::vec3 SA = e.P + e.d * oA, SB = e.Q - e.d * oB;
+			const float clen = glm::length(SB - SA);
+			for (float s : { -1.0f, 1.0f }) {
+				const float h0 = e.hw, h1 = e.hw + curbT, h2 = e.hw + curbT + sidewalkW;
+				// Curb face toward the road.
+				const glm::vec3 cm = (SA + SB) * 0.5f + e.n * (s * h0) + up * (curbH * 0.5f);
+				if (clen > 0.05f) kit.Quad(M_CURB, cm, e.d * (clen * 0.5f), up * (curbH * 0.5f), -e.n * s, e.d, up);
+				if (s > 0.0f) strip(M_SIDEWALK, SA, SB, e.n, h1, h2, curbH);
+				else strip(M_SIDEWALK, SA, SB, e.n, -h2, -h1, curbH);
+			}
+		}
+		// Intersections: clean asphalt square plus four sidewalk corners.
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].degree == 0) continue;
+			const glm::vec3 c = W3(nodes[i].p, 0.0f);
+			const float h = nodes[i].road, o = nodes[i].outer;
+			rectFlat(D_ROAD_CLEAN, c.x - h, c.x + h, c.z - h, c.z + h, 0.0f);
+			for (float sx : { -1.0f, 1.0f }) for (float sz : { -1.0f, 1.0f }) {
+				rectFlat(M_SIDEWALK, c.x + sx * h, c.x + sx * o, c.z + sz * h, c.z + sz * o, curbH);
+			}
+		}
+
+		// ---- Markings, patches and drains per edge; crosswalks and stop lines per approach.
+		for (const DistrictEdge& e : edges) {
+			const float rA = nodes[e.a].road, rB = nodes[e.b].road;
+			auto M = [&](float t) { return e.P + e.d * t; };
+			const float t0 = rA + 4.5f, t1 = e.L - rB - 4.5f;
+			if (t1 > t0 + 1.0f) {
+				strip(M_PAINT_YELLOW, M(t0), M(t1), e.n, -0.25f, -0.01f, paintY);
+				strip(M_PAINT_YELLOW, M(t0), M(t1), e.n, 0.01f, 0.25f, paintY);
+				// Lane dividers (dashed) and edge lines broken into faded runs.
+				for (float side : { -1.0f, 1.0f }) {
+					const float off = side * e.hw * 0.5f;
+					for (float t = t0; t < t1; t += 12.0f) {
+						const float te = std::min(t + 3.0f, t1);
+						if (chance(0.1f)) continue;
+						const int mat = chance(0.25f) ? static_cast<int>(D_PAINT_WORN) : static_cast<int>(M_PAINT_WHITE);
+						strip(mat, M(t), M(te), e.n, off - 0.07f, off + 0.07f, paintY);
+					}
+					const float edgeOff = side * (e.hw - 0.35f);
+					for (float t = t0; t < t1; t += 25.0f) {
+						if (chance(0.15f)) continue;
+						const float te = std::min(t + uniform(14.0f, 22.0f), t1);
+						const int mat = chance(0.3f) ? static_cast<int>(D_PAINT_WORN) : static_cast<int>(M_PAINT_WHITE);
+						strip(mat, M(t), M(te), e.n, edgeOff - 0.08f, edgeOff + 0.08f, paintY);
+					}
+				}
+			}
+			// Worn asphalt patches and storm drains at the curbs.
+			const int patches = std::max(1, static_cast<int>(e.L / 70.0f));
+			for (int k = 0; k < patches; ++k) {
+				const float ta = uniform(rA + 2.0f, std::max(rA + 2.5f, e.L - rB - 2.0f));
+				const glm::vec3 c = M(ta) + e.n * uniform(-e.hw + 1.2f, e.hw - 1.2f) + up * 0.003f;
+				kit.Quad(M_ROAD_WORN, c, e.d * uniform(1.5f, 4.0f), e.n * uniform(1.0f, 2.0f), up, e.d, e.n);
+			}
+			for (float t = t0 + 10.0f; t < t1 - 5.0f; t += 35.0f) {
+				for (float side : { -1.0f, 1.0f }) {
+					const glm::vec3 c = M(t) + e.n * (side * (e.hw - 0.75f)) + up * 0.0045f;
+					kit.Quad(D_STORM_DRAIN, c, e.d * 0.35f, e.n * 0.25f, up, e.d, e.n);
+				}
+			}
+		}
+		for (const DistrictEdge& e : edges) {
+			for (int endIdx = 0; endIdx < 2; ++endIdx) {
+				const bool atA = endIdx == 0;
+				const int node = atA ? e.a : e.b;
+				if (nodes[node].degree < 2) continue;
+				const float hN = nodes[node].road;
+				const glm::vec3 dirOut = atA ? e.d : -e.d;
+				const glm::vec3 base = atA ? e.P : e.Q;
+				auto at = [&](float s) { return base + dirOut * s; };
+				const float cwA = hN + 1.0f, cwB = hN + 3.4f;
+				for (float o = -e.hw + 0.5f; o < e.hw - 0.4f; o += 1.0f) {
+					const glm::vec3 c = at((cwA + cwB) * 0.5f) + e.n * (o + 0.25f) + up * paintY;
+					kit.Quad(M_PAINT_WHITE, c, dirOut * ((cwB - cwA) * 0.5f), e.n * 0.25f, up, dirOut, e.n);
+				}
+				const glm::vec3 sl = at(hN + 4.0f) + up * paintY;
+				kit.Quad(M_PAINT_WHITE, sl, e.n * (e.hw - 0.3f), dirOut * 0.2f, up, e.n, dirOut);
+			}
+		}
+
+		// ---- Block fill: 1 m raster of cells outside the drivable band, merged into lots.
+		const float bandOuterEdge = curbT + sidewalkW;
+		auto busyAt = [&](const glm::vec2& p) -> bool {
+			for (const DistrictEdge& e : edges) {
+				if (SegmentDistance(p, glm::vec2(e.P.x, e.P.z), glm::vec2(e.Q.x, e.Q.z)) < e.hw + bandOuterEdge + 0.5f) return true;
+			}
+			for (const DistrictNode& nd : nodes) {
+				if (nd.degree == 0) continue;
+				if (std::max(std::abs(p.x - nd.p.x), std::abs(p.y - nd.p.y)) < nd.outer + 0.5f) return true;
+			}
+			return false;
+		};
+		const float margin = 70.0f;
+		const int gx0 = static_cast<int>(std::floor(mn.x - margin));
+		const int gz0 = static_cast<int>(std::floor(mn.y - margin));
+		const int nx = static_cast<int>(std::ceil(mx.x + margin)) - gx0;
+		const int nz = static_cast<int>(std::ceil(mx.y + margin)) - gz0;
+		std::vector<uint8_t> busy(static_cast<size_t>(nx) * static_cast<size_t>(nz), 0);
+		for (int j = 0; j < nz; ++j) {
+			for (int i = 0; i < nx; ++i) {
+				busy[static_cast<size_t>(j) * nx + i] = busyAt(glm::vec2(gx0 + i + 0.5f, gz0 + j + 0.5f)) ? 1 : 0;
+			}
+		}
+		auto cellBusy = [&](int i, int j) -> bool {
+			if (i < 0 || j < 0 || i >= nx || j >= nz) return true;   // grid edge counts as street side
+			return busy[static_cast<size_t>(j) * nx + i] != 0;
+		};
+		std::vector<uint8_t> visited(busy.size(), 0);
+		auto freeCell = [&](int i, int j) -> bool {
+			if (i < 0 || j < 0 || i >= nx || j >= nz) return false;
+			const size_t k = static_cast<size_t>(j) * nx + i;
+			return busy[k] == 0 && visited[k] == 0;
+		};
+		struct Lot { float x0, x1, z0, z1; };
+		std::vector<Lot> lots;
+		auto splitLengths = [&](float total, float lo, float hi) {
+			std::vector<float> out;
+			float rem = total;
+			while (rem > hi + 1e-3f) {
+				float s = uniform(lo, hi);
+				if (rem - s < lo) s = rem;
+				out.push_back(s);
+				rem -= s;
+			}
+			if (rem > 0.5f) out.push_back(rem);
+			return out;
+		};
+		for (int j = 0; j < nz; ++j) {
+			for (int i = 0; i < nx; ++i) {
+				if (!freeCell(i, j)) continue;
+				int w = 1;
+				while (freeCell(i + w, j)) ++w;
+				int h = 1;
+				bool grow = true;
+				while (grow && j + h < nz) {
+					for (int k = 0; k < w; ++k) {
+						if (!freeCell(i + k, j + h)) { grow = false; break; }
+					}
+					if (grow) ++h;
+				}
+				for (int jj = j; jj < j + h; ++jj) {
+					for (int ii = i; ii < i + w; ++ii) visited[static_cast<size_t>(jj) * nx + ii] = 1;
+				}
+				if (w < 2 || h < 2) continue;
+				const float x0 = static_cast<float>(gx0 + i), z0 = static_cast<float>(gz0 + j);
+				const float rw = static_cast<float>(w), rh = static_cast<float>(h);
+				if (rw >= rh) {
+					float xa = x0;
+					for (float lw : splitLengths(rw, 9.0f, 20.0f)) {
+						const std::vector<float> rows = rh > 26.0f ? splitLengths(rh, 12.0f, 24.0f) : std::vector<float>{ rh };
+						float za = z0;
+						for (float lh : rows) { lots.push_back({ xa, xa + lw, za, za + lh }); za += lh; }
+						xa += lw;
+					}
+				}
+				else {
+					float za = z0;
+					for (float lh : splitLengths(rh, 9.0f, 20.0f)) {
+						const std::vector<float> cols = rw > 26.0f ? splitLengths(rw, 12.0f, 24.0f) : std::vector<float>{ rw };
+						float xa = x0;
+						for (float lw : cols) { lots.push_back({ xa, xa + lw, za, za + lh }); xa += lw; }
+						za += lh;
+					}
+				}
+			}
+		}
+
+		// ---- Buildings.
+		const int facadeMats[] = { D_FAC_BRICK_RED, D_FAC_BRICK_BROWN, D_FAC_CONCRETE, D_FAC_STUCCO_CREAM, D_FAC_STUCCO_TAN, D_FAC_PAINT_BLUE, D_FAC_PAINT_GREEN };
+		const float facadeWeights[] = { 0.2f, 0.16f, 0.16f, 0.16f, 0.12f, 0.1f, 0.1f };
+		const int awningMats[] = { D_AWNING_RED, D_AWNING_GREEN, D_AWNING_CREAM };
+		const int neonMats[] = { M_NEON_PINK, M_NEON_CYAN, M_NEON_RED, M_NEON_PURPLE, M_NEON_AMBER };
+		const glm::vec3 neonColor[] = { glm::vec3(1.0f, 0.12f, 0.55f), glm::vec3(0.1f, 0.85f, 1.0f), glm::vec3(1.0f, 0.08f, 0.04f), glm::vec3(0.55f, 0.2f, 1.0f), glm::vec3(1.0f, 0.55f, 0.08f) };
+		int neonFills = 0;
+		int buildingCount = 0;
+		for (const Lot& L : lots) {
+			const float x0 = L.x0 + 0.15f, x1 = L.x1 - 0.15f, z0 = L.z0 + 0.15f, z1 = L.z1 - 0.15f;
+			if (x1 - x0 < 2.0f || z1 - z0 < 2.0f) continue;
+			++buildingCount;
+			const glm::vec3 cc((x0 + x1) * 0.5f, 0.0f, (z0 + z1) * 0.5f);
+			const float dist = glm::length(glm::vec2(cc.x - spawn.x, cc.z - spawn.y));
+			int storeys = dist < 170.0f ? 1 + pickInt(3) : 2 + pickInt(4);
+			if (dist >= 170.0f && chance(0.12f)) storeys = 4 + pickInt(2);
+			const float H = std::min(storeys * 3.4f + 0.6f, 18.0f);
+
+			const float r0 = uniform(0.0f, 1.0f);
+			int fm = facadeMats[0];
+			{
+				float acc = 0.0f;
+				for (int k = 0; k < 7; ++k) {
+					acc += facadeWeights[k];
+					if (r0 <= acc) { fm = facadeMats[k]; break; }
+				}
+			}
+
+			// Street-facing side: the neighbour cell just outside a face is band (busy).
+			const int cgx = static_cast<int>(std::floor(cc.x)) - gx0;
+			const int cgz = static_cast<int>(std::floor(cc.z)) - gz0;
+			const int xl = static_cast<int>(std::floor(x0 - 0.6f)) - gx0;
+			const int xr = static_cast<int>(std::floor(x1 + 0.6f)) - gx0;
+			const int zl = static_cast<int>(std::floor(z0 - 0.6f)) - gz0;
+			const int zr = static_cast<int>(std::floor(z1 + 0.6f)) - gz0;
+			int street = -1;   // 0 -X, 1 +X, 2 -Z, 3 +Z
+			if (cellBusy(xl, cgz)) street = 0;
+			else if (cellBusy(xr, cgz)) street = 1;
+			else if (cellBusy(cgx, zl)) street = 2;
+			else if (cellBusy(cgx, zr)) street = 3;
+
+			// Walls on all four sides.
+			struct Face { glm::vec3 mid, A, N; float len; };
+			const Face faces[4] = {
+				{ glm::vec3(x0, 0.0f, (z0 + z1) * 0.5f), glm::vec3(0, 0, 1), glm::vec3(-1, 0, 0), z1 - z0 },
+				{ glm::vec3(x1, 0.0f, (z0 + z1) * 0.5f), glm::vec3(0, 0, -1), glm::vec3(1, 0, 0), z1 - z0 },
+				{ glm::vec3((x0 + x1) * 0.5f, 0.0f, z0), glm::vec3(1, 0, 0), glm::vec3(0, 0, -1), x1 - x0 },
+				{ glm::vec3((x0 + x1) * 0.5f, 0.0f, z1), glm::vec3(-1, 0, 0), glm::vec3(0, 0, 1), x1 - x0 },
+			};
+			for (int f = 0; f < 4; ++f) {
+				const Face& F = faces[f];
+				kit.Quad(fm, F.mid + up * (H * 0.5f), F.A * (F.len * 0.5f), up * (H * 0.5f), F.N, F.A, glm::vec3(0, -1, 0));
+				// Upper floor windows; most are dark, a few lit at low luminance.
+				for (float y0 = 3.5f; y0 + 2.2f < H - 0.4f; y0 += 3.4f) {
+					for (float u = -F.len * 0.5f + 1.6f; u + 1.6f < F.len * 0.5f - 0.6f; u += 3.2f) {
+						const glm::vec3 c = F.mid + F.A * u + up * (y0 + 1.0f) + F.N * 0.03f;
+						const float q = uniform(0.0f, 1.0f);
+						int wm = M_WINDOW_DARK;
+						if (q < 0.09f) wm = M_WINDOW_WARM;
+						else if (q < 0.13f) wm = M_WINDOW_COOL;
+						else if (q < 0.21f) wm = M_WINDOW_DIM;
+						if (wm == M_WINDOW_DARK) {
+							kit.Quad(wm, c, F.A * 0.8f, up * 1.0f, F.N, F.A, glm::vec3(0, -1, 0));
+						}
+						else {
+							const int tile = pickInt(16);
+							const glm::vec2 t0(static_cast<float>(tile % 4) * 0.25f + 0.004f, static_cast<float>(tile / 4) * 0.25f + 0.004f);
+							kit.QuadUV(wm, c, F.A * 0.8f, up * 1.0f, F.N, t0, t0 + glm::vec2(0.242f));
+						}
+					}
+				}
+			}
+
+			// Ground floor shopfronts on the street-facing side.
+			if (street >= 0) {
+				const Face& F = faces[street];
+				float u = -F.len * 0.5f + 0.2f;
+				while (u < F.len * 0.5f - 2.4f) {
+					const float bay = std::min(uniform(4.0f, 7.0f), F.len * 0.5f - u);
+					if (bay < 2.6f) break;
+					const float ua = u, ub = u + bay;
+					u = ub;
+					// Door at the bay start, glass for the rest.
+					const float doorU0 = ua + 0.25f, doorU1 = ua + 1.35f;
+					kit.Quad(D_DOOR, F.mid + F.A * ((doorU0 + doorU1) * 0.5f) + up * 1.15f + F.N * 0.02f,
+						F.A * 0.55f, up * 1.15f, F.N, F.A, glm::vec3(0, -1, 0));
+					const float gu0 = doorU1 + 0.25f, gu1 = ub - 0.25f;
+					if (gu1 - gu0 > 1.0f) {
+						const glm::vec3 gc = F.mid + F.A * ((gu0 + gu1) * 0.5f) + up * 1.5f + F.N * 0.03f;
+						const glm::vec3 gh = F.A * ((gu1 - gu0) * 0.5f);
+						if (chance(0.4f)) {
+							kit.QuadUV(M_SHOPFRONT, gc, gh, up * 1.1f, F.N, glm::vec2(uniform(0.0f, 0.4f), 0.0f), glm::vec2(uniform(0.5f, 0.9f), 1.0f));
+						}
+						else {
+							kit.Quad(M_WINDOW_DARK, gc, gh, up * 1.1f, F.N, F.A, glm::vec3(0, -1, 0));
+						}
+						if (chance(0.15f)) {
+							kit.Quad(D_SHUTTER, gc + F.N * 0.02f, gh, up * 1.1f, F.N, F.A, glm::vec3(0, -1, 0));
+						}
+					}
+					// Awning and signage.
+					if (chance(0.6f)) {
+						FaceBox(kit, awningMats[pickInt(3)], F.mid, F.A, F.N, ua - 0.05f, ub + 0.05f, 2.85f, 3.25f, 1.0f);
+					}
+					if (chance(0.35f)) {
+						FaceBox(kit, M_SIGN_BOX, F.mid, F.A, F.N, ua + 0.6f, ub - 0.6f, 3.35f, 3.85f, 0.22f);
+						if (chance(0.5f)) {
+							const int k = pickInt(5);
+							kit.Quad(neonMats[k], F.mid + F.A * ((ua + ub) * 0.5f) + up * 3.6f + F.N * 0.24f,
+								F.A * ((ub - ua) * 0.22f), up * 0.05f, F.N, F.A, up);
+							if (neonFills < 10 && chance(0.4f)) {
+								++neonFills;
+								result.lightNodes.push_back(MakeLight("district_neon_fill_" + std::to_string(neonFills), "point",
+									F.mid + F.A * ((ua + ub) * 0.5f) + up * 3.4f + F.N * 1.2f, glm::vec3(0.0f),
+									neonColor[k], 500.0f, 8.0f, 0.0f, 0.0f, false, 0.4f));
+							}
+						}
+					}
+					// Pillar between bays.
+					FaceBox(kit, fm, F.mid, F.A, F.N, ub - 0.15f, ub + 0.15f, 0.0f, 3.25f, 0.12f);
+				}
+			}
+
+			// Roof: parapet slab and a few rooftop units.
+			kit.Box(M_ROOF, glm::vec3(x0 - 0.1f, H, z0 - 0.1f), glm::vec3(x1 + 0.1f, H + 0.5f, z1 + 0.1f), 0x3Fu & ~8u);
+			const int units = pickInt(3);
+			for (int k = 0; k < units; ++k) {
+				const float ux = uniform(x0 + 1.0f, x1 - 2.2f), uz = uniform(z0 + 1.0f, z1 - 2.2f);
+				kit.Box(D_ROOF_UNIT, glm::vec3(ux, H + 0.5f, uz),
+					glm::vec3(ux + uniform(1.2f, 2.0f), H + uniform(1.2f, 1.8f), uz + uniform(1.0f, 1.8f)), 0x3Fu & ~8u);
+			}
+		}
+
+		// ---- Streetlights, junction signals, utility poles and wires, palms, clutter.
+		json obstacles = json::array();
+		auto circle = [&](const glm::vec3& p, float r) {
+			obstacles.push_back({ {"type", "circle"}, {"pos", { p.x, p.z }}, {"radius", r} });
+		};
+		auto boxObstacle = [&](const glm::vec3& c, const glm::vec3& d, float hA, float hN) {
+			obstacles.push_back({ {"type", "box"}, {"center", { c.x, c.z }}, {"half", { hA, hN }},
+				{"yaw", std::atan2(d.z, d.x)} });
+		};
+		int lampIndex = 0;
+		auto streetlight = [&](const DistrictEdge& e, float t, float s, bool led) {
+			const glm::vec3 base = e.P + e.d * t + e.n * (s * (e.hw + 0.9f)) + up * curbH;
+			const glm::vec3 rn = -e.n * s;     // toward the road
+			const float poleH = 8.5f;
+			kit.Cylinder(M_POLE, base, poleH, 0.11f);
+			OrientedBox(kit, M_POLE, base + up * (poleH - 0.12f) + rn * 1.45f, rn, e.d, 1.45f, 0.07f, 0.07f);
+			const glm::vec3 headC = base + up * (poleH - 0.3f) + rn * 2.9f;
+			OrientedBox(kit, M_POLE, headC, rn, e.d, 0.45f, 0.13f, 0.25f);
+			kit.Quad(led ? M_LAMP_LED : M_LAMP_SODIUM, headC - up * 0.135f, rn * 0.42f, e.d * 0.2f, -up, rn, e.d);
+			const float tilt = std::abs(e.d.z) > 0.5f ? 12.0f * rn.x : 0.0f;
+			const bool shadows = lampIndex < shadowedLamps;
+			result.lightNodes.push_back(MakeLight("streetlight_" + std::to_string(lampIndex), "spot", headC - up * 0.2f,
+				glm::vec3(-90.0f, 0.0f, tilt), led ? kLED4000 : kSodiumHPS, led ? 20000.0f : 30000.0f,
+				34.0f, 40.0f, 74.0f, shadows, 0.25f));
+			++lampIndex;
+		};
+		for (const DistrictEdge& e : edges) {
+			const float spacing = e.avenue ? avenueLampSpacing : crossLampSpacing;
+			const float t0 = nodes[e.a].outer + 2.0f, t1 = e.L - nodes[e.b].outer - 2.0f;
+			int k = 0;
+			for (float t = t0 + spacing * 0.5f; t <= t1; t += spacing, ++k) {
+				const float s = (k % 2 == 0) ? 1.0f : -1.0f;   // alternate sides for a staggered row
+				streetlight(e, t, s, chance(0.15f));
+				circle(e.P + e.d * t + e.n * (s * (e.hw + 0.9f)), 0.3f);
+			}
+		}
+
+		// Traffic signals on two diagonal corners of junctions with three or more approaches.
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].degree < 3) continue;
+			const glm::vec3 c = W3(nodes[i].p, 0.0f);
+			const float o = nodes[i].road + 0.6f;
+			for (float sx : { -1.0f, 1.0f }) {
+				const float sz = sx;   // one diagonal pair: (+,+) and (-,-)
+				const glm::vec3 p = c + glm::vec3(sx * o, 0.0f, sz * o) + up * curbH;
+				kit.Cylinder(D_SIGNAL_HOUSING, p, 5.4f, 0.12f, 8);
+				// Mast arm reaching over the junction; head hangs at its end.
+				const glm::vec3 armEnd = c + glm::vec3(-sx * 1.5f, 0.0f, -sz * 1.5f) + up * 5.1f;
+				Stick(kit, D_SIGNAL_HOUSING, p + up * 5.2f, armEnd, 0.07f);
+				const glm::vec3 headC = armEnd - up * 0.5f;
+				// Head faces the junction centre along the arm (x for the arm direction).
+				OrientedBox(kit, D_SIGNAL_HOUSING, headC, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f), 0.2f, 0.5f, 0.2f);
+				const glm::vec3 faceN(-sx, 0.0f, 0.0f);
+				const int active = pickInt(3);
+				const int lensMats[3] = { D_SIGNAL_RED, D_SIGNAL_AMBER, D_SIGNAL_GREEN };
+				for (int k = 0; k < 3; ++k) {
+					const int mat = (k == active) ? lensMats[k] : static_cast<int>(D_SIGNAL_HOUSING);
+					const glm::vec3 lc = headC + faceN * 0.21f + up * (0.35f - 0.35f * static_cast<float>(k));
+					kit.Quad(mat, lc, glm::vec3(0.0f, 0.0f, 0.15f), glm::vec3(0.0f, 0.1f, 0.0f), faceN, glm::vec3(0, 0, 1), up);
+				}
+				circle(p, 0.3f);
+			}
+		}
+
+		// Utility poles on both sides at a fixed spacing, with overhead wires along and across.
+		for (const DistrictEdge& e : edges) {
+			const float sp = 48.0f;
+			const float t0 = nodes[e.a].outer + 6.0f, t1 = e.L - nodes[e.b].outer - 6.0f;
+			glm::vec3 prevL(0.0f), prevR(0.0f);
+			bool hasPrev = false;
+			for (float t = t0 + 10.0f; t <= t1; t += sp) {
+				const glm::vec3 bl = e.P + e.d * t + e.n * (e.hw + 3.4f);
+				const glm::vec3 br = e.P + e.d * t - e.n * (e.hw + 3.4f);
+				for (const glm::vec3 bp : { bl, br }) {
+					const glm::vec3 base(bp.x, curbH, bp.z);
+					kit.Cylinder(D_WOOD, base, 10.5f, 0.14f, 8);
+					OrientedBox(kit, D_WOOD, base + up * 9.9f, e.n, e.d, 0.9f, 0.06f, 0.06f);
+					circle(base, 0.3f);
+				}
+				const glm::vec3 tl(bl.x, curbH + 9.0f, bl.z), tr(br.x, curbH + 9.0f, br.z);
+				auto sagged = [&](const glm::vec3& A, const glm::vec3& B, float sag) {
+					const int segs = 4;
+					auto pt = [&](float u) { return glm::mix(A, B, u) - up * (sag * 4.0f * u * (1.0f - u)); };
+					for (int q = 0; q < segs; ++q) {
+						const float u0 = static_cast<float>(q) / segs, u1 = static_cast<float>(q + 1) / segs;
+						Stick(kit, D_WIRE, pt(u0), pt(u1), 0.025f);
+					}
+				};
+				sagged(tl, tr, 0.3f);   // across the road
+				if (hasPrev) {
+					sagged(prevL, tl, 0.5f);
+					sagged(prevR, tr, 0.5f);
+					sagged(prevL + up * 0.25f, tl + up * 0.25f, 0.5f);
+				}
+				prevL = tl;
+				prevR = tr;
+				hasPrev = true;
+			}
+		}
+
+		// Palms: dense along Ventura, sparse on the other avenue and cross streets.
+		for (const DistrictEdge& e : edges) {
+			if (!e.avenue) continue;
+			const float sp = e.ventura ? 13.0f : 26.0f;
+			const float t0 = nodes[e.a].outer + 3.0f, t1 = e.L - nodes[e.b].outer - 3.0f;
+			for (float t = t0; t <= t1; t += sp) {
+				for (float s : { -1.0f, 1.0f }) {
+					if (!e.ventura && chance(0.5f)) continue;
+					const glm::vec3 base = e.P + e.d * (t + uniform(-1.0f, 1.0f)) + e.n * (s * (e.hw + 2.1f));
+					const glm::vec3 b0(base.x, curbH, base.z);
+					if (glm::length(glm::vec2(b0.x - spawn.x, b0.z - spawn.y)) < 3.0f) continue;
+					const float H = uniform(8.5f, 11.5f);
+					kit.Cylinder(D_PALM_TRUNK, b0, H, 0.16f, 8);
+					const glm::vec3 T = b0 + up * H;
+					const int fronds = 7;
+					const float a0 = uniform(0.0f, 6.2831f);
+					for (int q = 0; q < fronds; ++q) {
+						const float a = a0 + 6.2831853f * static_cast<float>(q) / fronds + uniform(-0.2f, 0.2f);
+						const glm::vec3 dir(std::cos(a), 0.0f, std::sin(a));
+						const glm::vec3 tip = T + dir * uniform(2.0f, 2.6f) - up * uniform(0.8f, 1.4f);
+						const glm::vec3 Uv = (tip - T) * 0.5f;
+						const glm::vec3 side2 = glm::normalize(glm::cross(Uv, up));
+						const glm::vec3 Vv = side2 * 0.4f;
+						kit.Quad(D_PALM_FROND, (T + tip) * 0.5f, Uv, Vv, glm::normalize(glm::cross(Uv, Vv)), glm::normalize(Uv), glm::normalize(Vv));
+					}
+					circle(b0, 0.35f);
+				}
+			}
+		}
+
+		// Hydrants and bins on the sidewalks; parked cars along the outer lanes.
+		for (const DistrictEdge& e : edges) {
+			const float t0 = nodes[e.a].outer + 4.0f, t1 = e.L - nodes[e.b].outer - 4.0f;
+			for (float t = t0; t <= t1; t += 40.0f) {
+				if (chance(0.35f)) {
+					const float s = chance(0.5f) ? 1.0f : -1.0f;
+					const glm::vec3 hb = e.P + e.d * t + e.n * (s * (e.hw + 1.4f)) + up * curbH;
+					kit.Cylinder(D_HYDRANT, hb, 0.7f, 0.12f, 8);
+					kit.Cylinder(D_HYDRANT, hb + up * 0.6f, 0.15f, 0.17f, 8);
+					circle(hb, 0.25f);
+				}
+				if (chance(0.25f)) {
+					const float s = chance(0.5f) ? 1.0f : -1.0f;
+					const glm::vec3 bc = e.P + e.d * (t + 8.0f) + e.n * (s * (e.hw + 3.4f)) + up * (curbH + 0.45f);
+					OrientedBox(kit, D_BIN, bc, e.d, e.n, 0.33f, 0.45f, 0.33f);
+					obstacles.push_back({ {"type", "box"}, {"center", { bc.x, bc.z }}, {"half", { 0.35f, 0.35f }}, {"yaw", 0.0f} });
+				}
+			}
+			const float carSpacing = 11.0f;
+			for (float t = t0 + 8.0f; t <= t1 - 4.0f; t += carSpacing) {
+				if (!chance(e.ventura ? 0.4f : 0.22f)) continue;
+				const float s = chance(0.5f) ? 1.0f : -1.0f;
+				const glm::vec3 c = e.P + e.d * t + e.n * (s * (e.hw - 1.2f));
+				if (glm::length(glm::vec2(c.x - spawn.x, c.z - spawn.y)) < 9.0f) continue;
+				const int paint[] = { D_CAR_WHITE, D_CAR_BLACK, D_CAR_SILVER, D_CAR_RED, D_CAR_BLUE };
+				const int body = paint[pickInt(5)];
+				OrientedBox(kit, body, c + up * 0.6f, e.d, e.n, 2.2f, 0.3f, 0.9f, 0x3Fu & ~8u);
+				OrientedBox(kit, D_CAR_GLASS, c + up * 1.2f, e.d, e.n, 1.2f, 0.3f, 0.82f, 0x33u);
+				OrientedBox(kit, body, c + up * 1.5f, e.d, e.n, 1.2f, 0.03f, 0.8f, 0x04u);
+				for (float sa : { -1.4f, 1.4f }) {
+					for (float sn : { -0.8f, 0.8f }) {
+						OrientedBox(kit, D_WHEEL, c + e.d * sa + e.n * sn + up * 0.16f, e.d, e.n, 0.32f, 0.16f, 0.12f);
+					}
+				}
+				for (float sn : { -0.6f, 0.6f }) {
+					kit.Quad(D_TAIL_LAMP, c - e.d * 2.21f + e.n * sn + up * 0.75f, e.n * 0.2f, up * 0.07f, -e.d, e.n, up);
+				}
+				boxObstacle(c, e.d, 2.25f, 0.95f);
+			}
+		}
+
+		// Distant skyline ring and hills; a few far lights for urban depth.
+		{
+			const glm::vec2 cen = (mn + mx) * 0.5f;
+			const glm::vec2 ext = (mx - mn) * 0.5f + glm::vec2(margin + 40.0f);
+			for (int k = 0; k < 40; ++k) {
+				const float a = 6.2831853f * static_cast<float>(k) / 40.0f + uniform(-0.05f, 0.05f);
+				const float R = uniform(1.0f, 1.25f);
+				const glm::vec2 p = cen + glm::vec2(std::cos(a) * ext.x * R, std::sin(a) * ext.y * R);
+				const float w = uniform(25.0f, 60.0f), dpt = uniform(25.0f, 60.0f), h = uniform(25.0f, 110.0f);
+				kit.Box(chance(0.7f) ? D_SKYLINE : D_SKYLINE_DARK, glm::vec3(p.x - w * 0.5f, 0.0f, p.y - dpt * 0.5f),
+					glm::vec3(p.x + w * 0.5f, h, p.y + dpt * 0.5f), 0x3Fu & ~8u);
+			}
+			for (int k = 0; k < 16; ++k) {
+				const float a = 6.2831853f * static_cast<float>(k) / 16.0f;
+				const glm::vec2 p = cen + glm::vec2(std::cos(a) * ext.x * 1.6f, std::sin(a) * ext.y * 1.6f);
+				const float w = uniform(160.0f, 260.0f), dpt = uniform(120.0f, 180.0f), h = uniform(25.0f, 60.0f);
+				kit.Box(D_HILL, glm::vec3(p.x - w * 0.5f, -1.0f, p.y - dpt * 0.5f), glm::vec3(p.x + w * 0.5f, h, p.y + dpt * 0.5f), 0x3Fu & ~8u);
+			}
+			for (int k = 0; k < 6; ++k) {
+				const float a = 6.2831853f * (static_cast<float>(k) + 0.5f) / 6.0f;
+				const glm::vec2 p = cen + glm::vec2(std::cos(a) * ext.x * 1.12f, std::sin(a) * ext.y * 1.12f);
+				result.lightNodes.push_back(MakeLight("district_far_light_" + std::to_string(k), "point",
+					glm::vec3(p.x, 22.0f, p.y), glm::vec3(0.0f), kSodiumHPS, 2500.0f, 120.0f, 0.0f, 0.0f, false, 1.0f));
+			}
+		}
+
+		// ---- Reflection probes: one per junction plus one per ~48 m of street, capped.
+		auto probe = [&](const glm::vec3& p, const glm::vec3& lo, const glm::vec3& hi, float blend) {
+			result.reflectionProbes.push_back({
+				{"position", { p.x, p.y, p.z }},
+				{"box_min", { lo.x, lo.y, lo.z }},
+				{"box_max", { hi.x, hi.y, hi.z }},
+				{"blend_distance", blend} });
+		};
+		size_t probeCount = 0;
+		for (size_t i = 0; i < nodes.size() && probeCount < maxProbes; ++i) {
+			if (nodes[i].degree < 2) continue;
+			const glm::vec3 c = W3(nodes[i].p, 1.6f);
+			const float o = nodes[i].outer + 1.0f;
+			probe(c, glm::vec3(c.x - o, -1.0f, c.z - o), glm::vec3(c.x + o, 30.0f, c.z + o), 4.0f);
+			++probeCount;
+		}
+		for (const DistrictEdge& e : edges) {
+			const int sections = std::max(1, static_cast<int>(std::ceil(e.L / 48.0f)));
+			const float step = e.L / static_cast<float>(sections);
+			for (int k = 0; k < sections && probeCount < maxProbes; ++k) {
+				const glm::vec3 A = e.P + e.d * (step * static_cast<float>(k));
+				const glm::vec3 B = e.P + e.d * (step * static_cast<float>(k + 1));
+				const glm::vec3 c = (A + B) * 0.5f + up * 1.6f;
+				const float o = e.hw + bandOuterEdge + 1.0f;
+				const glm::vec3 lo(std::min(A.x, B.x) - o, -1.0f, std::min(A.z, B.z) - o);
+				const glm::vec3 hi(std::max(A.x, B.x) + o, 30.0f, std::max(A.z, B.z) + o);
+				probe(c, lo, hi, 3.0f);
+				++probeCount;
+			}
+		}
+
+		// ---- glTF and layout output.
+		const fs::path gltfPath = fs::path(output + ".gltf");
+		result.ok = WriteGltf(gltfPath, materials, kit, textureRoot, result.triangleCount, result.primitiveCount);
+		result.gltfPath = gltfPath.generic_string();
+		const fs::path layoutPath = fs::path(output + "_layout.json");
+		{
+			json layout;
+			layout["obstacles"] = obstacles;
+			std::ofstream out(layoutPath);
+			if (out) out << layout.dump(1);
+			result.layoutPath = layoutPath.generic_string();
+		}
+		std::cout << "[ProceduralStreetKit] District " << result.gltfPath << " ok=" << result.ok
+			<< " lots=" << buildingCount << " primitives=" << result.primitiveCount
+			<< " triangles=" << result.triangleCount << " lights=" << result.lightNodes.size()
+			<< " probes=" << result.reflectionProbes.size() << " obstacles=" << obstacles.size() << std::endl;
+		return result;
+	}
+
+} // namespace ProceduralStreetKit

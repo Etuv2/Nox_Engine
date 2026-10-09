@@ -1,4 +1,5 @@
 #include "RainPass.h"
+#include "../PresentTarget.h"
 #include "VolumetricFogPass.h"
 #include "ExposurePass.h"
 #include "../ShaderLoader.h"
@@ -99,5 +100,5 @@ void RainPass::Execute(RenderContext& ctx,
 	glDisable(GL_BLEND);
 	glDepthMask(GL_TRUE);
 	glEnable(GL_CULL_FACE);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }

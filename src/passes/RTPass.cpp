@@ -1,4 +1,5 @@
 #include "RTPass.h"
+#include "../PresentTarget.h"
 #include "../RenderContext.h"
 #include "../FrameBuffer.h"
 #include "../ShaderLoader.h"
@@ -111,7 +112,7 @@ bool RTPass::Initialize(RenderContext& context)
 		return false;
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 
 	// Initialize SVGF buffers
 	glGenBuffers(1, &m_svgfBuffers.momentsSSBO);
@@ -167,7 +168,7 @@ void RTPass::Resize(RenderContext& context, int newWidth, int newHeight)
 	// Reattach resized texture to FBO
 	glBindFramebuffer(GL_FRAMEBUFFER, m_rtFBO_ID);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_rtTexture->ID(), 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 
 	// Resize SVGF buffers
 	size_t pixelCount = newWidth * newHeight;
@@ -584,7 +585,7 @@ void RTPass::copyToHDRBuffer(RenderContext& ctx)
 
 	// Unbind framebuffers
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, PresentTarget::Get());
 
 	std::cout << "[RTPass] Copied ray traced output to HDR buffer" << std::endl;
 }

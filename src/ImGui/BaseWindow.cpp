@@ -14,20 +14,10 @@ BaseWindow::BaseWindow(const std::string& name, const std::string& keyBinding)
 
 void BaseWindow::BeginWindow() {
     if (!m_visible) return;
-    
-    // Set window position and size on first frame
-    if (m_firstFrame) {
-        ImGui::SetNextWindowPos(m_position, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(m_size, ImGuiCond_FirstUseEver);
-        m_firstFrame = false;
-    }
-    
-    std::string windowTitle = m_name;
-    if (!m_keyBinding.empty()) {
-        windowTitle += " (" + m_keyBinding + ")";
-    }
-    
-    ImGui::Begin(windowTitle.c_str(), &m_visible, m_flags);
+    // Stable window names are the dock IDs; size/position come from the docked layout
+    // (config/editor_layout.ini). The first-use size only matters for floating windows.
+    ImGui::SetNextWindowSize(m_size, ImGuiCond_FirstUseEver);
+    ImGui::Begin(m_name.c_str(), &m_visible, m_flags);
 }
 
 void BaseWindow::EndWindow() {

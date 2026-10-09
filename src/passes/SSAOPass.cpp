@@ -1,4 +1,5 @@
 #include "SSAOPass.h"
+#include "../PresentTarget.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
@@ -196,7 +197,7 @@ void SSAOPass::RenderSSAO(RenderContext& ctx) {
     glUniform1i(glGetUniformLocation(m_ssaoShader, "historyValid"), m_historyValid ? 1 : 0);
 
     ctx.screenQuad->Render();
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }
 
 void SSAOPass::ResolveSSAO(RenderContext& ctx) {
@@ -229,5 +230,5 @@ void SSAOPass::ResolveSSAO(RenderContext& ctx) {
     glUniform1i(glGetUniformLocation(m_blurShader, "gPackedNormalRM"), 2);
 
     ctx.screenQuad->Render();
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }

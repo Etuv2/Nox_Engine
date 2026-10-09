@@ -10,7 +10,7 @@
   ],
   "environmentIntensity": 0.5,
   "environmentPath": "hdrs\\skybox.hdr",
-  "first_scene": "scenes\\sponza.json",
+  "first_scene": "scenes/nfs_sprint.json",
   "scene_folder": "scenes",
   "physics": {
     "gravity": [
@@ -24,6 +24,12 @@
     "restitution": 0.7
   },
   "scenes": [
+    {
+      "path": "scenes/nfs_sprint.json"
+    },
+    {
+      "path": "scenes/nfs_night_street.json"
+    },
     {
       "path": "scenes\\sponza.json"
     },

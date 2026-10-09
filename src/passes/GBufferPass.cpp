@@ -1,4 +1,5 @@
 #include "GBufferPass.h"
+#include "../PresentTarget.h"
 #include "PassLogging.h"
 #include "../ShaderLoader.h"
 #include "../SceneGraph.h"
@@ -117,5 +118,5 @@ void GBufferPass::Execute(RenderContext& ctx,
     }
 
     // Unbind FBO
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 }

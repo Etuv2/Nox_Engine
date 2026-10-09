@@ -1,0 +1,33 @@
+{
+  "default": "editor",
+  "presets": {
+    "editor": {
+      "mode": "editor",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "high",
+      "window": "windowed",
+      "width": 1920,
+      "height": 1080
+    },
+    "game": {
+      "mode": "game",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "high",
+      "window": "borderless"
+    },
+    "game_ultra": {
+      "mode": "game",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "ultra",
+      "window": "borderless"
+    },
+    "game_windowed": {
+      "mode": "game",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "high",
+      "window": "windowed",
+      "width": 1720,
+      "height": 720
+    }
+  }
+}

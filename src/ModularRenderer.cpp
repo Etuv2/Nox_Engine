@@ -1,4 +1,5 @@
 #include "ModularRenderer.h"
+#include "PresentTarget.h"
 #include "FrameBuffer.h"
 #include "ScreenQuad.h"
 #include "ShaderLoader.h"
@@ -1091,7 +1092,7 @@ void ModularRenderer::BuildPassDescriptors(
 			if (!m_indirectDiffuseDebugPresentShader || !m_context.screenQuad) {
 				return;
 			}
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 			glViewport(0, 0, m_context.width, m_context.height);
 			glDisable(GL_DEPTH_TEST);
 			glDisable(GL_BLEND);
@@ -1433,7 +1434,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 {
 	// Output debug visualization to backbuffer
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
 	glViewport(0, 0, ctx.width, ctx.height);
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
