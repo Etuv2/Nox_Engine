@@ -1,6 +1,7 @@
 #version 460 core
 #include "includes/pbr_common.glsl" // For normal encoding/decoding
 #include "includes/material_common.glsl"
+#include "includes/weather_common.glsl"
 in vec3 WorldPos;
 in vec3 WorldNormal;
 in vec2 TexCoords;
@@ -8,6 +9,8 @@ in vec2 TexCoords1;
 in mat3 TBN;
 in vec4 RawTangent;  // Receive tangent with handedness (w component)
 flat in uint TransformID;
+in vec3 ObjectPos;
+in vec3 ObjectNormal;
 
 // RT0: RGBA8  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
@@ -57,6 +60,11 @@ uniform float ior = 1.5;                      // index of refraction
 uniform float clearcoatFactor = 0.0;
 uniform float clearcoatRoughnessFactor = 0.0;
 uniform uint uMaterialID = 1u;
+
+// NOX surface extras (MaterialDesc / docs/nfs2015)
+uniform float wetnessResponse = 0.0;
+uniform float puddleResponse = 0.0;
+uniform float rainBeadResponse = 0.0;
 uniform int alphaMode = 0; // 0=OPAQUE, 1=MASK, 2=BLEND
 
 // Presence flags
@@ -79,8 +87,11 @@ uniform int specularUVSet = 0;
 uniform int specularColorUVSet = 0;
 uniform int transmissionUVSet = 0;
 
+uniform bool uSpecularAA = true;
+
 void main() {
     vec3 N = normalize(WorldNormal);
+    float normalMapVariance = 0.0; // Toksvig term from the mip-filtered normal length
     
     //  Normal mapping 
     if (hasNormalTexture) {
@@ -98,6 +109,10 @@ void main() {
         
         // Apply normal scale for intensity control
         tangentNormal.xy *= normalScale;
+        // A mip-filtered normal map averages diverging normals into a shorter vector: that lost
+        // length is sub-pixel normal variance (Toksvig 2005) that must become roughness.
+        float mappedLength = clamp(length(tangentNormal), 1e-3, 1.0);
+        normalMapVariance = (1.0 - mappedLength) / mappedLength;
         tangentNormal = normalize(tangentNormal);
     
         // Transform from tangent space to world space using orthonormal TBN
@@ -147,16 +162,53 @@ void main() {
         transmission *= texture(texture_transmission, SelectUVSet(transmissionUVSet, TexCoords, TexCoords1)).r;
     }
 
+    //  Occlusion (also the cavity term for puddle placement)
+    float ao = 1.0;
+    if (hasOcclusionTexture) {
+        ao = mix(1.0, texture(texture_occlusion, SelectUVSet(occlusionUVSet, TexCoords, TexCoords1)).r, occlusionStrength);
+    }
+
+    //  Weather: wet substrate, standing water, rain beads (includes/weather_common.glsl)
+    float surfaceIor = ior;
+    vec3 geoNormal = normalize(WorldNormal);
+    float cavity = hasOcclusionTexture ? (1.0 - ao) : 0.0;
+    NoxWetResult wetResult = NoxApplyWetness(WorldPos, geoNormal, cavity, wetnessResponse, puddleResponse,
+        metallic, albedo, roughness, N, surfaceIor);
+    float clearcoatRough = clearcoatRoughnessFactor;
+    if (rainBeadResponse > 0.0) {
+        float beads = NoxApplyRainBeads(ObjectPos, normalize(ObjectNormal), rainBeadResponse, N, roughness);
+        clearcoatRough = mix(clearcoatRough, 0.02, beads);
+        // A water film on the coat is smoother than the dry coat.
+        clearcoatRough = mix(clearcoatRough, min(clearcoatRough, 0.03), wetResult.wetness);
+    }
+
+    // Specular anti-aliasing (Tokuyoshi & Kaplanyan 2019 + Toksvig): widen GGX alpha by the
+    // screen-space variance of the final shading normal and the normal map's filtered variance, so
+    // sub-pixel normal detail (asphalt, droplets) reads as glossy breakup instead of sparkle.
+    if (uSpecularAA) {
+        vec3 dndu = dFdx(N);
+        vec3 dndv = dFdy(N);
+        float screenVariance = 0.25 * (dot(dndu, dndu) + dot(dndv, dndv));
+        // Wet surfaces flatten the normal map (weather_common.glsl), removing that share of variance.
+        float filteredVariance = normalMapVariance * 0.5 * (1.0 - 0.65 * wetResult.wetness);
+        float kernelAlpha2 = min(2.0 * screenVariance + filteredVariance, 0.18);
+        float alpha2 = roughness * roughness * roughness * roughness;
+        roughness = sqrt(sqrt(min(alpha2 + kernelAlpha2, 1.0)));
+        float coatAlpha2 = clearcoatRough * clearcoatRough * clearcoatRough * clearcoatRough;
+        clearcoatRough = sqrt(sqrt(min(coatAlpha2 + min(2.0 * screenVariance, 0.18), 1.0)));
+    }
+    roughness = ClampPerceptualRoughness(roughness);
+
     PrincipledSurface surface = BuildPrincipledSurface(
         albedo,
         metallic,
         roughness,
-        ior,
+        surfaceIor,
         specularFactor * specFactorSample,
         specularColorSample,
         transmission,
         clearcoatFactor,
-        clearcoatRoughnessFactor,
+        clearcoatRough,
         0.0,
         0.0,
         0.0,
@@ -172,11 +224,6 @@ void main() {
         emissive *= emissiveTexSample;
     }
 
-    //  Occlusion 
-    float ao = 1.0;
-    if (hasOcclusionTexture) {
-        ao = mix(1.0, texture(texture_occlusion, SelectUVSet(occlusionUVSet, TexCoords, TexCoords1)).r, occlusionStrength);
-    }
 
     // RT0: Oct normal (RG) + roughness (B) + metallic (A)
     gPackedNormalRM = vec4(EncodeNormalOct(N), roughness, metallic);
@@ -200,5 +247,6 @@ void main() {
     gClearCoat = vec2(surface.clearcoat, surface.clearcoatRoughness);
 
     // Preserve principled parameters that deferred/RT consumers cannot safely infer later.
-    gPrincipledParams = vec4(surface.transmission, surface.ior, 0.0, 0.0);
+    // B = standing water amount (SSR / reflection quality hint).
+    gPrincipledParams = vec4(surface.transmission, surface.ior, wetResult.puddle, 0.0);
 }

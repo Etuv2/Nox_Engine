@@ -80,6 +80,14 @@ public:
 	GLuint GetLightDataSSBO() const { return m_lightDataSSBO; }
 	GLuint GetShadowMatricesSSBO() const { return m_shadowMatricesSSBO; }
 	int GetActiveLightCount() const { return static_cast<int>(m_activeLights.size()); }
+	// Directional lights sort first in the active list (type order), so they occupy indices [0, n).
+	int GetActiveDirectionalLightCount() const {
+		int count = 0;
+		for (const auto& light : m_activeLights) {
+			if (light && light->GetLightType() == BaseLight::LightType::DIRECTIONAL) ++count;
+		}
+		return count;
+	}
 	bool IsLightDataDirty() const { return m_lightDataDirty; }
 
 	struct BufferUploadStats {

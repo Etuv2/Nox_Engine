@@ -1076,6 +1076,12 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		float attenuationDistance = std::numeric_limits<float>::infinity();
 		glm::vec3 attenuationColor = glm::vec3(1.0f);
 		float ior = 1.5f;
+		std::string name;
+		float wetnessResponse = 0.0f;
+		float puddleResponse = 0.0f;
+		float rainBeadResponse = 0.0f;
+		float flakeIntensity = 0.0f;
+		float flakeDensity = 4000.0f;
 		int diffuseTextureIndex = -1;
 		int normalTextureIndex = -1;
 		int roughnessTextureIndex = -1;
@@ -1258,6 +1264,23 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 
 		cached.metallicFactor = static_cast<float>(mat.pbrMetallicRoughness.metallicFactor);
 		cached.roughnessFactor = static_cast<float>(mat.pbrMetallicRoughness.roughnessFactor);
+		cached.name = mat.name;
+
+		// NOX surface extras: material.extras.nox = { wetnessResponse, puddleResponse, rainBeadResponse,
+		// flakeIntensity, flakeDensity }. Written by the procedural street kit; ignored by other tools.
+		if (mat.extras.IsObject() && mat.extras.Has("nox") && mat.extras.Get("nox").IsObject()) {
+			const auto& nox = mat.extras.Get("nox");
+			auto readNumber = [&nox](const char* key, float& target) {
+				if (nox.Has(key) && nox.Get(key).IsNumber()) {
+					target = static_cast<float>(nox.Get(key).GetNumberAsDouble());
+				}
+			};
+			readNumber("wetnessResponse", cached.wetnessResponse);
+			readNumber("puddleResponse", cached.puddleResponse);
+			readNumber("rainBeadResponse", cached.rainBeadResponse);
+			readNumber("flakeIntensity", cached.flakeIntensity);
+			readNumber("flakeDensity", cached.flakeDensity);
+		}
 		if (!mat.emissiveFactor.empty()) {
 			cached.emissiveFactor = glm::vec3(
 				static_cast<float>(mat.emissiveFactor[0]),
@@ -1548,6 +1571,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				mesh.attenuationDistance = cached.attenuationDistance;
 				mesh.attenuationColor = cached.attenuationColor;
 				mesh.ior = cached.ior;
+				mesh.materialName = cached.name;
 
 				baseColorFactor = cached.baseColorFactor;
 				metallicFactor = cached.metallicFactor;
@@ -1620,6 +1644,14 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			normalizedMaterial.specularTexCoord = specularTexCoord;
 			normalizedMaterial.specularColorTexCoord = specularColorTexCoord;
 			normalizedMaterial.transmissionTexCoord = transmissionTexCoord;
+			if (primitive.material >= 0 && primitive.material < static_cast<int>(materialCache.size())) {
+				const CachedMaterialData& cached = materialCache[primitive.material];
+				normalizedMaterial.wetnessResponse = cached.wetnessResponse;
+				normalizedMaterial.puddleResponse = cached.puddleResponse;
+				normalizedMaterial.rainBeadResponse = cached.rainBeadResponse;
+				normalizedMaterial.flakeIntensity = cached.flakeIntensity;
+				normalizedMaterial.flakeDensity = cached.flakeDensity;
+			}
 			normalizedMaterial.Normalize();
 			mesh.SetMaterialDesc(normalizedMaterial);
 

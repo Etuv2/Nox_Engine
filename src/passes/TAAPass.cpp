@@ -45,13 +45,14 @@ void TAAPass::RecreateHistoryValidationTextures(int width, int height) {
 
 	glGenTextures(1, &m_historyNormalTex);
 	glBindTexture(GL_TEXTURE_2D, m_historyNormalTex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	// Must match G-buffer RT0 (glCopyImageSubData requires compatible formats).
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16, width, height, 0, GL_RGBA, GL_UNSIGNED_SHORT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	const GLint clearNormal[4] = { 0, 0, 0, 0 };
-	glClearTexImage(m_historyNormalTex, 0, GL_RGBA, GL_INT, clearNormal);
+	const GLushort clearNormal[4] = { 0, 0, 0, 0 };
+	glClearTexImage(m_historyNormalTex, 0, GL_RGBA, GL_UNSIGNED_SHORT, clearNormal);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -231,8 +232,13 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 
 	glUseProgram(m_velocityShader);
 
-	const glm::mat4 currentVelocityProj = RemoveProjectionJitter(ctx.proj, m_jitter, ctx);
-	const glm::mat4 previousVelocityProj = RemoveProjectionJitter(ctx.prevProj, m_prevJitter, ctx);
+	// Remove exactly the jitter UpdateContext applied (zero when TAA was off that frame).
+	glm::mat4 currentVelocityProj = ctx.proj;
+	currentVelocityProj[2][0] -= ctx.jitterNdc.x;
+	currentVelocityProj[2][1] -= ctx.jitterNdc.y;
+	glm::mat4 previousVelocityProj = ctx.prevProj;
+	previousVelocityProj[2][0] -= ctx.prevJitterNdc.x;
+	previousVelocityProj[2][1] -= ctx.prevJitterNdc.y;
 
 	// Upload current and previous matrices
 	if (m_velocityUniforms.view >= 0) glUniformMatrix4fv(m_velocityUniforms.view,
@@ -261,6 +267,20 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glUseProgram(m_resolveShader);
+
+	// Camera-rotation reprojection for sky pixels (no rasterised velocity there).
+	{
+		glm::mat4 projU = ctx.proj;
+		projU[2][0] -= ctx.jitterNdc.x;
+		projU[2][1] -= ctx.jitterNdc.y;
+		glm::mat4 prevProjU = ctx.prevProj;
+		prevProjU[2][0] -= ctx.prevJitterNdc.x;
+		prevProjU[2][1] -= ctx.prevJitterNdc.y;
+		const glm::mat4 skyReprojection = prevProjU * glm::mat4(glm::mat3(ctx.prevView)) *
+			glm::inverse(glm::mat4(glm::mat3(ctx.view))) * glm::inverse(projU);
+		const GLint loc = glGetUniformLocation(m_resolveShader, "uSkyReprojection");
+		if (loc >= 0) glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(skyReprojection));
+	}
 
 	// Bind current frame (HDR output)
 	glActiveTexture(GL_TEXTURE0);

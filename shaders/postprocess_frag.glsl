@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/exposure_common.glsl"
 layout(location = 0) out vec4 FragColor;
 
 in vec2 TexCoord;
@@ -24,6 +25,29 @@ uniform float uTm7Blend;
 uniform float uTm7FadeStart;
 uniform float uTm7FadeEnd;
 uniform bool  uTm7UseJzazbz;   // switch UCS (currently unused)
+
+// Image formation (docs/nfs2015/README.md M3). Order of operations:
+//   exposure -> bloom -> chromatic aberration (sampling) -> vignette -> white balance ->
+//   contrast / saturation / split tone (scene-linear) -> tonemap -> lift/gamma/gain (display) ->
+//   film grain -> output transfer (sRGB OETF) -> dither.
+uniform int   uBloomMode;            // 0 additive (legacy), 1 energy-conserving mix
+uniform float uBloomStrength;
+uniform bool  uHasBloom;
+uniform mat3  uWhiteBalance;         // linear Rec.709 chromatic adaptation (identity = off)
+uniform float uContrast;
+uniform float uSaturation;
+uniform vec3  uShadowTint;
+uniform vec3  uHighlightTint;
+uniform float uSplitToneStrength;
+uniform vec3  uLift;
+uniform vec3  uGammaAdjust;
+uniform vec3  uGain;
+uniform float uVignette;
+uniform float uFilmGrain;
+uniform float uChromaticAberration;  // pixels at the image corner
+uniform bool  uDither;
+uniform uint  uFrameIndex;
+uniform vec2  uResolution;
 
 //GT Sport tonemap function : https://blog.selfshadow.com/publications/s2025-shading-course/pdi/s2025_pbs_pdi_slides_v1.1.pdf
 vec3 TonemapGT(vec3 x, float P, float a, float m, float l, float c, float b) {
@@ -96,13 +120,71 @@ vec3 TonemapACES(vec3 color) {
     return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
 }
 
+// sRGB OETF (IEC 61966-2-1), piecewise; replaces the former pure 2.2 power curve.
+vec3 LinearToSRGB(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    vec3 lo = c * 12.92;
+    vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+    return mix(hi, lo, vec3(lessThanEqual(c, vec3(0.0031308))));
+}
+
+float Hash12(vec2 p, float seed) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031 + seed * 0.1234);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float Luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
 void main()
 {
     vec2 vUV = TexCoord;
+    // Physical camera: the image is pre-exposed; apply the ratio to this frame's (possibly
+    // auto-adapted) exposure. Legacy scenes: ratio is 1 and `exposure` is the scene value.
+    float exposureScale = exposure * NoxExposureRatio();
 
-    vec3 hdr = texture(hdrBuffer, vUV).rgb * exposure;
-    vec3 bloom = texture(bloomBlur, vUV).rgb;
-    vec3 color = hdr + bloom;
+    vec3 hdr;
+    if (uChromaticAberration > 0.0) {
+        vec2 fromCenter = vUV - 0.5;
+        vec2 offset = fromCenter * (2.0 * uChromaticAberration / max(uResolution.x, 1.0));
+        hdr.r = texture(hdrBuffer, vUV - offset).r;
+        hdr.g = texture(hdrBuffer, vUV).g;
+        hdr.b = texture(hdrBuffer, vUV + offset).b;
+    } else {
+        hdr = texture(hdrBuffer, vUV).rgb;
+    }
+    vec3 color = hdr * exposureScale;
+
+    // The bloom chain is extracted from exposed values (bloom_extract.glsl), so it is in the
+    // same units as `color` here.
+    if (uHasBloom) {
+        vec3 bloom = texture(bloomBlur, vUV).rgb;
+        color = (uBloomMode == 1) ? mix(color, bloom, clamp(uBloomStrength, 0.0, 1.0))
+                                  : color + bloom * uBloomStrength;
+    }
+
+    // Natural lens falloff (approximately cos^4), aspect corrected.
+    if (uVignette > 0.0) {
+        vec2 d = (vUV - 0.5) * vec2(uResolution.x / max(uResolution.y, 1.0), 1.0);
+        float r2 = dot(d, d) * uVignette * 2.0;
+        color *= 1.0 / ((1.0 + r2) * (1.0 + r2));
+    }
+
+    color = max(uWhiteBalance * color, vec3(0.0));
+
+    // Scene-linear grade around middle grey.
+    const float midGrey = 0.18;
+    if (uContrast != 1.0) {
+        color = midGrey * pow(max(color, vec3(1e-6)) / midGrey, vec3(uContrast));
+    }
+    float lum = Luma(color);
+    color = max(vec3(lum) + (color - vec3(lum)) * uSaturation, vec3(0.0));
+    if (uSplitToneStrength > 0.0) {
+        float logLum = log2(max(lum, 1e-6) / midGrey);
+        float shadowW = 1.0 - smoothstep(-4.0, 0.5, logLum);
+        float highlightW = smoothstep(-0.5, 3.0, logLum);
+        color *= vec3(1.0) + (uShadowTint * shadowW + uHighlightTint * highlightW) * uSplitToneStrength;
+    }
 
     if (uTonemap == 3) {
         color = TonemapGT7(color, uTm7PeakNits, uTm7Blend, uTm7FadeStart, uTm7FadeEnd);
@@ -111,11 +193,26 @@ void main()
     } else if (uTonemap == 1) {
         color = TonemapACES(color);
     }
-
     color = clamp(color, 0.0, 1.0);
 
-    float outGamma = uOutputSRGB ? 2.2 : gamma;
-    vec3 mapped = pow(color, vec3(1.0 / outGamma));
+    // Display-referred lift / gamma / gain.
+    color = clamp(uGain * (color + uLift * (vec3(1.0) - color)), 0.0, 1.0);
+    color = pow(color, vec3(1.0) / max(uGammaAdjust, vec3(0.01)));
+
+    if (uFilmGrain > 0.0) {
+        float n = Hash12(gl_FragCoord.xy, float(uFrameIndex % 64u)) - 0.5;
+        float response = 1.0 - abs(Luma(color) * 2.0 - 1.0); // strongest in midtones
+        color = clamp(color + n * uFilmGrain * (0.35 + 0.65 * response), 0.0, 1.0);
+    }
+
+    vec3 mapped = uOutputSRGB ? LinearToSRGB(color) : pow(color, vec3(1.0 / gamma));
+
+    if (uDither) {
+        // Triangular dither of +-1 LSB breaks 8-bit banding in dark night gradients.
+        float d = Hash12(gl_FragCoord.xy, float(uFrameIndex % 64u) + 17.0) +
+                  Hash12(gl_FragCoord.yx, float(uFrameIndex % 64u) + 3.0) - 1.0;
+        mapped += d / 255.0;
+    }
 
     FragColor = vec4(mapped, 1.0);
 }

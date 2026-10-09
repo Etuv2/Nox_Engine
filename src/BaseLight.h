@@ -61,6 +61,11 @@ public:
     virtual float GetRange() const { return m_range; }
     virtual void SetRange(float range) { m_range = range; }
 
+    // Emitter radius in metres (sphere/disk approximation). Widens specular highlights so small
+    // sources do not collapse to pinpoints on smooth (e.g. wet) surfaces. 0 = punctual.
+    float GetSourceRadius() const { return m_sourceRadius; }
+    void SetSourceRadius(float radius) { m_sourceRadius = radius > 0.0f ? radius : 0.0f; }
+
     // Update function for dynamic lights
     virtual void Update(float deltaTime) {}
 
@@ -87,4 +92,5 @@ protected:
     float m_attenuationLinear = 0.09f;
     float m_attenuationQuadratic = 0.032f;
     float m_range = 10.0f;
+    float m_sourceRadius = 0.0f;
 };

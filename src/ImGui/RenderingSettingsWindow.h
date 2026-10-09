@@ -39,6 +39,10 @@ public:
 	glm::vec3 GetEnvColor() const { return m_envColor; }
 
 private:
+	// Night-street look development controls (docs/nfs2015/configuration.md). Edits the renderer
+	// context directly; scene "render_settings" provide the starting values.
+	void DrawNightStreetTab();
+
 	// Engine resolution
 	glm::ivec2 m_windowResolution = glm::ivec2(1920, 1080);
 	int m_resolutionPreset = 0;// 0=1920x1080,1=3840x1440

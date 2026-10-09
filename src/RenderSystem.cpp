@@ -289,6 +289,11 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.attenuationDistance = glGetUniformLocation(shader, "attenuationDistance");
 	uniforms.attenuationColor = glGetUniformLocation(shader, "attenuationColor");
 	uniforms.ior = glGetUniformLocation(shader, "ior");
+	uniforms.wetnessResponse = glGetUniformLocation(shader, "wetnessResponse");
+	uniforms.puddleResponse = glGetUniformLocation(shader, "puddleResponse");
+	uniforms.rainBeadResponse = glGetUniformLocation(shader, "rainBeadResponse");
+	uniforms.flakeIntensity = glGetUniformLocation(shader, "flakeIntensity");
+	uniforms.flakeDensity = glGetUniformLocation(shader, "flakeDensity");
 
 	uniforms.baseColorUVSet = glGetUniformLocation(shader, "baseColorUVSet");
 	uniforms.normalUVSet = glGetUniformLocation(shader, "normalUVSet");
@@ -343,6 +348,9 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 
 		const RenderItem& item = m_renderItems[itemIndex];
 		if (!item.mesh) {
+			continue;
+		}
+		if (m_reflectionCaptureActive && item.model && item.model->excludeFromReflectionCapture) {
 			continue;
 		}
 
@@ -954,6 +962,11 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.attenuationDistance >= 0) glUniform1f(uniforms.attenuationDistance, material.attenuationDistance);
 	if (uniforms.attenuationColor >= 0) glUniform3fv(uniforms.attenuationColor, 1, glm::value_ptr(material.attenuationColor));
 	if (uniforms.ior >= 0) glUniform1f(uniforms.ior, material.ior);
+	if (uniforms.wetnessResponse >= 0) glUniform1f(uniforms.wetnessResponse, material.wetnessResponse);
+	if (uniforms.puddleResponse >= 0) glUniform1f(uniforms.puddleResponse, material.puddleResponse);
+	if (uniforms.rainBeadResponse >= 0) glUniform1f(uniforms.rainBeadResponse, material.rainBeadResponse);
+	if (uniforms.flakeIntensity >= 0) glUniform1f(uniforms.flakeIntensity, material.flakeIntensity);
+	if (uniforms.flakeDensity >= 0) glUniform1f(uniforms.flakeDensity, material.flakeDensity);
 
 	auto clampUVSet = [](int uvSet) { return (uvSet == 1) ? 1 : 0; };
 	if (uniforms.baseColorUVSet >= 0) glUniform1i(uniforms.baseColorUVSet, clampUVSet(material.baseColorTexCoord));

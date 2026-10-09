@@ -37,6 +37,13 @@ class TransparentForwardPass;
 class PostProcessPass;
 class LPVPass;
 class IndirectDiffusePass;
+class LightClusterPass;
+class ExposurePass;
+class SSRPass;
+class ReflectionProbePass;
+class VolumetricFogPass;
+class MotionBlurPass;
+class RainPass;
 class SurfelGIManager;
 struct SurfelGIFrameStats;
 class GUIPass;
@@ -83,6 +90,7 @@ public:
 
 	// TAA controls
 	void ResetTAA();
+	void RequestReflectionProbeRecapture();
 	int GetTAAFrameIndex() const;
 
 
@@ -144,9 +152,15 @@ private:
 		bool enableScreenSpaceShadows = false;
 		bool enableLPV = false;
 		bool enableTAA = false;
+		bool enableVolumetricFog = false;
+		bool enableMotionBlur = false;
+		bool enableRain = false;
 
 		bool operator==(const PlanCacheKey& other) const {
 			return mode == other.mode &&
+				enableRain == other.enableRain &&
+				enableMotionBlur == other.enableMotionBlur &&
+				enableVolumetricFog == other.enableVolumetricFog &&
 				enableBloom == other.enableBloom &&
 				enableSSAO == other.enableSSAO &&
 				enableIndirectDiffuse == other.enableIndirectDiffuse &&
@@ -194,7 +208,15 @@ private:
 	std::unique_ptr<TransparentForwardPass> m_transparentPass;
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
 	std::unique_ptr<GUIPass> m_guiPass;  // Internal GUI rendering
-	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;  // Debug bounding box visualization
+	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;
+	std::unique_ptr<LightClusterPass> m_lightClusterPass; // clustered light lists (docs/nfs2015 M2)
+	std::unique_ptr<ExposurePass> m_exposurePass;         // physical camera exposure (docs/nfs2015 M3)
+	std::unique_ptr<SSRPass> m_ssrPass;                   // screen-space reflections (docs/nfs2015 M5)
+	std::unique_ptr<ReflectionProbePass> m_reflectionProbePass; // local reflection probes (docs/nfs2015 M5)
+	std::unique_ptr<VolumetricFogPass> m_volumetricFogPass;     // froxel fog (docs/nfs2015 M6)
+	std::unique_ptr<MotionBlurPass> m_motionBlurPass;           // motion blur (docs/nfs2015 M7)
+	std::unique_ptr<RainPass> m_rainPass;                       // rain streaks (docs/nfs2015 M6)
+	bool m_lastTAAEnabled = true;  // Debug bounding box visualization
 	GLuint m_debugViewShader = 0;
 	GLuint m_indirectDiffuseDebugPresentShader = 0;
 

@@ -27,5 +27,6 @@ public:
 private:
     GLuint m_shader = 0;
     GLuint m_bloomTexture = 0;
+    unsigned m_frameIndex = 0;
     bool m_runtimeVerboseLogging = false;
 };

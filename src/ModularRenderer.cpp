@@ -3,6 +3,7 @@
 #include "ScreenQuad.h"
 #include "ShaderLoader.h"
 #include "SceneGraph.h"
+#include "RenderSystem.h"
 #include "Camera.h"
 #include "DirectionalLight.h"
 #include "Skybox.h"
@@ -26,6 +27,13 @@
 #include "passes/PostProcessPass.h"
 #include "passes/GUIPass.h"  // Internal GUI rendering
 #include "passes/DebugBBoxPass.h"  // Debug bounding box visualization
+#include "passes/LightClusterPass.h"
+#include "passes/ExposurePass.h"
+#include "passes/SSRPass.h"
+#include "passes/ReflectionProbePass.h"
+#include "passes/VolumetricFogPass.h"
+#include "passes/MotionBlurPass.h"
+#include "passes/RainPass.h"
 #include <iostream>
 #include <chrono>
 #include <array>
@@ -407,6 +415,13 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_postProcessPass = std::make_unique<PostProcessPass>();
 	m_guiPass = std::make_unique<GUIPass>();
 	m_debugBBoxPass = std::make_unique<DebugBBoxPass>();  // Debug bounding box visualization
+	m_lightClusterPass = std::make_unique<LightClusterPass>();
+	m_exposurePass = std::make_unique<ExposurePass>();
+	m_ssrPass = std::make_unique<SSRPass>();
+	m_reflectionProbePass = std::make_unique<ReflectionProbePass>();
+	m_volumetricFogPass = std::make_unique<VolumetricFogPass>();
+	m_motionBlurPass = std::make_unique<MotionBlurPass>();
+	m_rainPass = std::make_unique<RainPass>();
 
 	bool success = true;
 	success &= m_shadowPass->Initialize(m_context);
@@ -425,6 +440,14 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_postProcessPass->Initialize(m_context);
 	success &= m_guiPass->Initialize(m_context);
 	success &= m_debugBBoxPass->Initialize(m_context);  // Initialize debug bounding box pass
+	success &= m_lightClusterPass->Initialize(m_context);
+	success &= m_exposurePass->Initialize(m_context);
+	success &= m_ssrPass->Initialize(m_context);
+	success &= m_reflectionProbePass->Initialize(m_context);
+	success &= m_volumetricFogPass->Initialize(m_context);
+	success &= m_motionBlurPass->Initialize(m_context);
+	success &= m_rainPass->Initialize(m_context);
+	m_rainPass->SetFogPass(m_volumetricFogPass.get());
 
 	m_debugViewShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/debug_view_frag.glsl");
 	if (!m_debugViewShader) {
@@ -463,6 +486,9 @@ std::size_t ModularRenderer::PlanCacheKeyHash::operator()(const PlanCacheKey& ke
 	hashCombine(key.enableScreenSpaceShadows);
 	hashCombine(key.enableLPV);
 	hashCombine(key.enableTAA);
+	hashCombine(key.enableVolumetricFog);
+	hashCombine(key.enableMotionBlur);
+	hashCombine(key.enableRain);
 	return seed;
 }
 
@@ -501,6 +527,9 @@ ModularRenderer::PlanCacheKey ModularRenderer::BuildPlanCacheKey() const
 	key.enableScreenSpaceShadows = m_context.enableScreenSpaceShadows;
 	key.enableLPV = m_context.enableLPV;
 	key.enableTAA = m_context.enableTAA;
+	key.enableVolumetricFog = m_context.enableVolumetricFog;
+	key.enableMotionBlur = m_context.enableMotionBlur;
+	key.enableRain = m_context.weatherRain > 0.0f;
 	return key;
 }
 
@@ -780,6 +809,11 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_shadowPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
+		"LightClusterPass", { "ShadowMap" }, { "LightClusters" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_lightClusterPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
 		"GBufferPass", {}, { "GBuffer" },
 		[this](const RenderContext& ctx) {
 			if (DetermineFrameGraphMode() == FrameGraphMode::DEFERRED) {
@@ -873,7 +907,17 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"BounceableRadiancePass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow }, { ResourceNames::BounceableRadiance },
+		"ReflectionProbePass", { "ShadowMap", "LightClusters" }, { "ReflectionProbes" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_reflectionProbePass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"SSRPass", { "GBuffer", "Velocity" }, { "SSR" },
+		[this](const RenderContext&) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_ssrPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"BounceableRadiancePass", { "GBuffer", "ShadowMap", "LightClusters", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow }, { ResourceNames::BounceableRadiance },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.enableIndirectDiffuse;
 		},
@@ -901,7 +945,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"LightingPass", { "GBuffer", "ShadowMap", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVIndirect, ResourceNames::SurfelGIIndirect }, { "HDRLit" },
+		"LightingPass", { "GBuffer", "ShadowMap", "LightClusters", "SSR", "ReflectionProbes", ResourceNames::SSAO, ResourceNames::ScreenSpaceShadow, ResourceNames::IndirectDiffuse, ResourceNames::LPVIndirect, ResourceNames::SurfelGIIndirect }, { "HDRLit" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -952,7 +996,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"TransparentForwardPass", { "HDRWithSkybox" }, { "HDRColor" },
+		"TransparentForwardPass", { "HDRWithSkybox", "LightClusters" }, { "HDRColor" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -960,7 +1004,28 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_transparentPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
-		"TAAResolvePass", { "HDRColor", "Velocity" }, { "TAAColor" },
+		"VolumetricFogPass", { "ShadowMap", "LightClusters" }, { "FogVolume" },
+		[this](const RenderContext& ctx) { return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.enableVolumetricFog; },
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_volumetricFogPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"RainPass", { "HDRColor", "FogVolume" }, { "HDRRain" },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.weatherRain > 0.0f &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_rainPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"VolumetricFogApplyPass", { "HDRColor", "HDRRain", "FogVolume" }, { "HDRFogged" },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.enableVolumetricFog &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this]() { m_volumetricFogPass->Apply(m_context); }
+		});
+	addPass({
+		"TAAResolvePass", { "HDRColor", "HDRRain", "HDRFogged", "Velocity" }, { "TAAColor" },
 		[](const RenderContext& ctx) {
 			return ctx.enableTAA && !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
 		},
@@ -971,7 +1036,23 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"BloomPass", { "HDRColor", "TAAColor" }, { ResourceNames::Bloom },
+		"MotionBlurPass", { "TAAColor", "HDRFogged", "Velocity" }, { "MotionBlurColor" },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.enableMotionBlur &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_motionBlurPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"AutoExposurePass", { "HDRColor", "HDRFogged", "TAAColor", "MotionBlurColor" }, { "ExposureAdapted" },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_exposurePass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"BloomPass", { "HDRColor", "HDRFogged", "TAAColor", "MotionBlurColor", "ExposureAdapted" }, { ResourceNames::Bloom },
 		[this](const RenderContext& ctx) {
 			return ctx.enableBloom &&
 				DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG &&
@@ -983,7 +1064,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"PostProcessPass", { "HDRColor", "TAAColor", ResourceNames::Bloom }, { "CompositedColor" },
+		"PostProcessPass", { "HDRColor", "HDRFogged", "TAAColor", "MotionBlurColor", "ExposureAdapted", ResourceNames::Bloom }, { "CompositedColor" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -1040,18 +1121,19 @@ bool ModularRenderer::InitializeSharedResources()
 	// This must be enabled before any cubemap is created or sampled
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
-	// RT0: RGBA8   - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
+	// RT0: RGBA16  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A). 16-bit UNORM: 8-bit oct
+	//                normals visibly step mirror reflections on puddles and clear coat (docs/nfs2015).
 	// RT1: RGBA16F - Albedo (RGB) + Occlusion (A)
 	// RT2: RGBA16F - Specular F0 (RGB) + Emissive strength (A)
 	// RT3: R32UI   - Material routing/debug ID
 	// RT4: RGBA16F - Emissive color (RGB) + unused (A)
 	// RT5: R32UI   - Stable TransformID for temporal/surfel workflows
 	// RT6: RG16F   - Clearcoat factor (R) + clearcoat roughness (G)
-	// RT7: RGBA16F - Principled extras: transmission (R), IOR (G), reserved (BA)
+	// RT7: RGBA16F - Principled extras: transmission (R), IOR (G), standing water (B), reserved (A)
 	m_context.gbufferFBO = std::make_unique<FrameBuffer>(
 		m_context.width, m_context.height,
 		std::vector<GLenum>{
-		GL_RGBA8,    // RT0: Oct normal + roughness/metallic
+		GL_RGBA16,   // RT0: Oct normal + roughness/metallic
 			GL_RGBA16F,  // RT1: Albedo + occlusion
 			GL_RGBA16F,  // RT2: Specular F0 (full RGB) + emissive strength
 			GL_R32UI,    // RT3: Material ID
@@ -1119,6 +1201,10 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_postProcessPass) m_postProcessPass->Resize(m_context, newWidth, newHeight);
 	if (m_guiPass) m_guiPass->Resize(m_context, newWidth, newHeight);
 	if (m_debugBBoxPass) m_debugBBoxPass->Resize(m_context, newWidth, newHeight);
+	if (m_lightClusterPass) m_lightClusterPass->Resize(m_context, newWidth, newHeight);
+	if (m_ssrPass) m_ssrPass->Resize(m_context, newWidth, newHeight);
+	if (m_volumetricFogPass) m_volumetricFogPass->Resize(m_context, newWidth, newHeight);
+	if (m_motionBlurPass) m_motionBlurPass->Resize(m_context, newWidth, newHeight);
 
 	std::cout << "[ModularRenderer] Resized to " << newWidth << "x" << newHeight << "\n";
 }
@@ -1145,6 +1231,11 @@ void ModularRenderer::UpdateContext(const std::shared_ptr<Camera>& camera,
 	if (m_context.enableTAA && m_taaPass) {
 		m_taaPass->PrepareJitter(m_context.taaJitterPattern);
 	}
+	// History accumulated before TAA was switched off is stale once it is switched back on.
+	if (m_context.enableTAA && !m_lastTAAEnabled && m_taaPass) {
+		m_taaPass->ResetHistory();
+	}
+	m_lastTAAEnabled = m_context.enableTAA;
 
 	// Store previous matrices for temporal reprojection
 	m_context.prevView = m_context.view;
@@ -1157,13 +1248,15 @@ void ModularRenderer::UpdateContext(const std::shared_ptr<Camera>& camera,
 		camera->GetCameraFarPlane()
 	);
 
-	// Apply TAA jitter if enabled
+	// Apply TAA jitter if enabled. Jitter is in pixels ([-0.5, 0.5]); one pixel spans 2/size in NDC.
+	m_context.prevJitterNdc = m_context.jitterNdc;
+	m_context.jitterNdc = glm::vec2(0.0f);
 	if (m_context.enableTAA && m_taaPass) {
-		glm::vec2 jitter = m_taaPass->GetCurrentJitter();
-		// Scale jitter to projection space
-		jitter *= (1.0f / glm::vec2(m_context.width, m_context.height));
+		const glm::vec2 jitter = m_taaPass->GetCurrentJitter() *
+			(2.0f / glm::vec2(m_context.width, m_context.height));
 		proj[2][0] += jitter.x;
 		proj[2][1] += jitter.y;
+		m_context.jitterNdc = jitter;
 	}
 
 	m_context.view = view;
@@ -1243,6 +1336,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 
 	// Deterministic per-frame light update location
 	m_context.deltaTime = deltaTime;
+	m_context.timeSeconds += deltaTime;
 	m_context.lightManager->ResetFrameUploadStats();
 	m_context.lightManager->UpdateLights(m_context.deltaTime);
 	if (m_context.lightManager->IsLightDataDirty()) {
@@ -1251,6 +1345,16 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 
 	// Update context with current frame parameters
 	UpdateContext(camera, exposure, gamma, enableShadows, shadowBias, shadow_near, shadow_far, envColor);
+
+	// Camera frustum culling for the frame's render-item submission (docs/nfs2015 M8).
+	if (RenderSystem* renderSystem = sceneGraph->GetRenderSystem()) {
+		if (m_context.enableFrustumCulling) {
+			renderSystem->SetFrustumPlanes(m_context.proj * m_context.view);
+		}
+		else if (renderSystem->HasValidFrustum()) {
+			renderSystem->ClearFrustum();
+		}
+	}
 
 	// Get skybox from scene
 	auto skybox = sceneGraph->GetSkybox();
@@ -1269,6 +1373,13 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		m_lastCpuWaitSyncMs += profiler.metrics.cpuWaitSyncMs;
 		m_lastPassMetrics.push_back(profiler.metrics);
 		};
+
+	m_context.postSourceFBO = nullptr;
+
+	// Exposure state must be valid before any lighting shader runs this frame.
+	if (m_exposurePass) {
+		m_profilePassFunc("ExposureBeginPass", [this]() { m_exposurePass->BeginFrame(m_context); });
+	}
 
 	m_namedResources.clear();
 	m_namedResources[ResourceNames::SSAO] = 0;
@@ -1418,6 +1529,22 @@ void ModularRenderer::ResetTAA()
 {
 	if (m_taaPass) {
 		m_taaPass->ResetHistory();
+	}
+	if (m_exposurePass) {
+		m_exposurePass->Reset();
+	}
+	if (m_ssrPass) {
+		m_ssrPass->ResetHistory();
+	}
+	if (m_volumetricFogPass) {
+		m_volumetricFogPass->ResetHistory();
+	}
+}
+
+void ModularRenderer::RequestReflectionProbeRecapture()
+{
+	if (m_reflectionProbePass) {
+		m_reflectionProbePass->RequestRecapture();
 	}
 }
 

@@ -196,3 +196,8 @@ local_test_data/
 /captures
 /scripts
 *.py
+performance_data/load_diagnostics.csv
+# NFS look-dev: downloaded CC0 assets and generated geometry (see docs/nfs2015)
+/textures/cc0/
+/hdrs/cc0/
+/generated/

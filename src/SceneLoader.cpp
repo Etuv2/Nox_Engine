@@ -7,6 +7,7 @@
 #include "PointLight.h"
 #include "SpotLight.h"
 #include "ModelManager.h"
+#include "ProceduralStreetKit.h"
 #include "ShaderLoader.h"
 #include "Scene.h"
 #include "HierarchySystem.h"
@@ -320,6 +321,119 @@ float ComputeRenderableBoundingRadius(const Scene& model, const std::vector<uint
 
 	return foundMesh ? radius : 1.0f;
 }
+
+// Scene-file material overrides for imported models (docs/nfs2015/configuration.md).
+// "material_overrides": [ { "match": "paint", ...fields } ]; match is a case-insensitive substring of
+// the glTF material name and "*" matches every material. Overrides mutate the shared model asset, so
+// every node using the same model file sees them.
+bool ReadOverrideVec(const json& j, const char* key, int components, glm::vec4& out)
+{
+	if (!j.contains(key) || !j[key].is_array() || static_cast<int>(j[key].size()) < components) {
+		return false;
+	}
+	for (int i = 0; i < components; ++i) {
+		out[i] = j[key][i].get<float>();
+	}
+	return true;
+}
+
+std::string ToLowerCopy(std::string text)
+{
+	std::transform(text.begin(), text.end(), text.begin(),
+		[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	return text;
+}
+
+int ApplyMaterialOverrides(Scene& model, const json& overrides, const std::string& nodeName)
+{
+	if (!overrides.is_array()) {
+		return 0;
+	}
+	int applied = 0;
+	for (const json& entry : overrides) {
+		if (!entry.is_object()) {
+			continue;
+		}
+		const std::string match = ToLowerCopy(entry.value("match", std::string("*")));
+		int hits = 0;
+		for (MeshComponent& mesh : model.meshes) {
+			if (match != "*" && ToLowerCopy(mesh.materialName).find(match) == std::string::npos) {
+				continue;
+			}
+			MaterialDesc d = mesh.GetMaterialDesc();
+			glm::vec4 v(0.0f);
+			if (ReadOverrideVec(entry, "base_color", 4, v)) d.baseColorFactor = v;
+			else if (ReadOverrideVec(entry, "base_color", 3, v)) d.baseColorFactor = glm::vec4(glm::vec3(v), d.baseColorFactor.a);
+			if (ReadOverrideVec(entry, "emissive", 3, v)) d.emissiveFactor = glm::vec3(v);
+			if (ReadOverrideVec(entry, "specular_color", 3, v)) d.specularColorFactor = glm::vec3(v);
+			if (ReadOverrideVec(entry, "attenuation_color", 3, v)) d.attenuationColor = glm::vec3(v);
+			d.metallicFactor = entry.value("metallic", d.metallicFactor);
+			d.roughnessFactor = entry.value("roughness", d.roughnessFactor);
+			d.specularFactor = entry.value("specular", d.specularFactor);
+			d.ior = entry.value("ior", d.ior);
+			d.clearcoatFactor = entry.value("clearcoat", d.clearcoatFactor);
+			d.clearcoatRoughnessFactor = entry.value("clearcoat_roughness", d.clearcoatRoughnessFactor);
+			d.emissiveStrength = entry.value("emissive_strength", d.emissiveStrength);
+			d.transmissionFactor = entry.value("transmission", d.transmissionFactor);
+			d.thicknessFactor = entry.value("thickness", d.thicknessFactor);
+			d.normalScale = entry.value("normal_scale", d.normalScale);
+			d.occlusionStrength = entry.value("occlusion_strength", d.occlusionStrength);
+			d.wetnessResponse = entry.value("wetness_response", d.wetnessResponse);
+			d.puddleResponse = entry.value("puddle_response", d.puddleResponse);
+			d.rainBeadResponse = entry.value("rain_bead_response", d.rainBeadResponse);
+			d.flakeIntensity = entry.value("flake_intensity", d.flakeIntensity);
+			d.flakeDensity = entry.value("flake_density", d.flakeDensity);
+			d.doubleSided = entry.value("double_sided", d.doubleSided);
+			if (entry.contains("alpha_mode") && entry["alpha_mode"].is_string()) {
+				const std::string mode = ToLowerCopy(entry["alpha_mode"].get<std::string>());
+				d.alphaMode = mode == "blend" ? MaterialDesc::AlphaMode::Blend
+					: (mode == "mask" ? MaterialDesc::AlphaMode::Mask : MaterialDesc::AlphaMode::Opaque);
+				d.hasAlpha = d.alphaMode == MaterialDesc::AlphaMode::Blend || d.transmissionFactor > 0.0f;
+			}
+			// Drop mis-authored maps (e.g. a metallic channel baked into a dielectric part).
+			if (entry.contains("disable_textures") && entry["disable_textures"].is_array()) {
+				for (const json& tex : entry["disable_textures"]) {
+					const std::string t = tex.is_string() ? ToLowerCopy(tex.get<std::string>()) : std::string();
+					if (t == "base_color") mesh.diffuseTexture.reset();
+					else if (t == "normal") mesh.normalTexture.reset();
+					else if (t == "metallic_roughness") mesh.roughnessTexture.reset();
+					else if (t == "emissive") mesh.emissiveTexture.reset();
+					else if (t == "occlusion") mesh.occlusionTexture.reset();
+					else if (t == "specular") mesh.specularTexture.reset();
+					else if (t == "specular_color") mesh.specularColorTexture.reset();
+					else if (t == "transmission") mesh.transmissionTexture.reset();
+				}
+			}
+			mesh.SetMaterialDesc(d);
+			++hits;
+		}
+		std::cout << "[SceneLoader] material_overrides '" << match << "' on node '" << nodeName
+			<< "' matched " << hits << " mesh(es)" << std::endl;
+		applied += hits;
+	}
+	return applied;
+}
+}
+
+void SceneLoader::AddReflectionProbes(const json& probes)
+{
+	if (!m_currentSceneGraph || !probes.is_array()) {
+		return;
+	}
+	auto vec3Of = [](const json& j, const char* key, const glm::vec3& fallback) {
+		if (!j.contains(key) || !j[key].is_array() || j[key].size() < 3) return fallback;
+		return glm::vec3(j[key][0].get<float>(), j[key][1].get<float>(), j[key][2].get<float>());
+	};
+	for (const json& p : probes) {
+		if (!p.is_object()) continue;
+		ReflectionProbeDesc desc;
+		desc.position = vec3Of(p, "position", desc.position);
+		desc.boxMin = vec3Of(p, "box_min", desc.position - glm::vec3(10.0f));
+		desc.boxMax = vec3Of(p, "box_max", desc.position + glm::vec3(10.0f));
+		desc.blendDistance = p.value("blend_distance", desc.blendDistance);
+		desc.intensity = p.value("intensity", desc.intensity);
+		m_currentSceneGraph->reflectionProbes.push_back(desc);
+	}
 }
 
 SceneLoader::SceneLoader(std::shared_ptr<ModelManager> modelManager, std::shared_ptr<PhysicsEngine> physicsEngine, int screenW, int screenH) :
@@ -394,6 +508,10 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	// Set the scenes exposure and gamma values if provided.
 	sceneGraph->m_exposure = sceneJson.value("exposure", 1.0f);
 	sceneGraph->m_gamma = sceneJson.value("gamma", 2.2f);
+
+	if (sceneJson.contains("reflection_probes")) {
+		AddReflectionProbes(sceneJson["reflection_probes"]);
+	}
 
 	// Look for a hierarchical "nodes" array.
 	if (sceneJson.contains("nodes") && sceneJson["nodes"].is_array()) {
@@ -541,6 +659,25 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 
 		sceneJson["nodes"] = nodesArray;
 
+		// Preserve authored top-level data the runtime does not model (render_settings, benchmark,
+		// camera, reflection_probes, the real skybox path) from the file being overwritten.
+		{
+			std::ifstream existingFile(sceneFilePath);
+			if (existingFile.is_open()) {
+				const json existing = json::parse(existingFile, nullptr, false);
+				if (existing.is_object()) {
+					for (auto it = existing.begin(); it != existing.end(); ++it) {
+						const std::string& key = it.key();
+						if (key == "nodes" || key == "scene_name" || key == "exposure" || key == "gamma" ||
+							key == "physics_enabled") {
+							continue;
+						}
+						sceneJson[key] = it.value();
+					}
+				}
+			}
+		}
+
 		// Write to file with pretty formatting
 		std::ofstream outFile(sceneFilePath);
 		if (!outFile.is_open()) {
@@ -574,7 +711,7 @@ nlohmann::json SceneLoader::SerializeNodeRecursive(const std::shared_ptr<SceneNo
 		nlohmann::json childrenArray = nlohmann::json::array();
 
 		for (const auto& child : node->children) {
-			if (child) {
+			if (child && !child->IsGenerated()) {
 				nlohmann::json childJson = SerializeNodeRecursive(child);
 				if (!childJson.is_null()) {
 					childrenArray.push_back(childJson);
@@ -657,6 +794,18 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 			else {
 				std::cout << "[SceneLoader] Warning: Could not find model path for node '"
 					<< nodeName << "'" << std::endl;
+			}
+		}
+		if (!node->GetAuthoredExtras().empty()) {
+			const json extras = json::parse(node->GetAuthoredExtras(), nullptr, false);
+			if (extras.is_object()) {
+				for (auto it = extras.begin(); it != extras.end(); ++it) {
+					nodeJson[it.key()] = it.value();
+				}
+				// Procedural nodes are regenerated from their params; the generated path is transient.
+				if (extras.contains("procedural")) {
+					nodeJson.erase("path");
+				}
 			}
 		}
 		break;
@@ -868,6 +1017,9 @@ nlohmann::json SceneLoader::SerializeLightProperties(const std::shared_ptr<Light
 	lightJson["color"] = { color.r, color.g, color.b };
 
 	lightJson["intensity"] = light->GetIntensity();
+	if (light->GetSourceRadius() > 0.0f) {
+		lightJson["source_radius"] = light->GetSourceRadius();
+	}
 	lightJson["enabled"] = light->IsEnabled();
 	lightJson["castsShadows"] = light->CastsShadows();
 
@@ -1093,6 +1245,8 @@ void SceneLoader::ProcessGuiElementProperties(std::shared_ptr<GuiNode> guiNode, 
 
 std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJson, EntityID parentEntityID) {
 	auto node = ProcessNode(nodeJson);
+	json generatedChildren = std::move(m_pendingGeneratedChildren);
+	m_pendingGeneratedChildren = json();
 	if (!node) return nullptr;
 
 	// Create ECS entity for this node
@@ -1109,6 +1263,15 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJso
 		for (auto& childJson : nodeJson["children"]) {
 			auto childNode = ProcessNodeRecursive(childJson, myEntityID);
 			if (childNode) {
+				node->AddChild(childNode);
+			}
+		}
+	}
+	if (generatedChildren.is_array()) {
+		for (const json& childJson : generatedChildren) {
+			auto childNode = ProcessNodeRecursive(childJson, myEntityID);
+			if (childNode) {
+				childNode->SetGenerated(true);
 				node->AddChild(childNode);
 			}
 		}
@@ -1187,6 +1350,36 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 	switch (type) {
 	case NodeType::MODEL: { // ModelNode
 		std::string modelPath = nodeJson.value("path", "");
+		json authoredExtras = json::object();
+		if (nodeJson.contains("procedural") && nodeJson["procedural"].is_object()) {
+			const json& procedural = nodeJson["procedural"];
+			authoredExtras["procedural"] = procedural;
+			const std::string generator = procedural.value("generator", std::string("street_kit"));
+			if (generator == "street_kit") {
+				ProceduralStreetKit::Result generated =
+					ProceduralStreetKit::Generate(procedural.value("params", json::object()));
+				if (generated.ok) {
+					modelPath = generated.gltfPath;
+					m_pendingGeneratedChildren = std::move(generated.lightNodes);
+					AddReflectionProbes(generated.reflectionProbes);
+				}
+				else {
+					std::cerr << "[SceneLoader] ERROR: procedural generator failed for node '" << nodeDebugName << "'" << std::endl;
+				}
+			}
+			else {
+				std::cerr << "[SceneLoader] ERROR: unknown procedural generator '" << generator << "'" << std::endl;
+			}
+		}
+		if (nodeJson.contains("material_overrides")) {
+			authoredExtras["material_overrides"] = nodeJson["material_overrides"];
+		}
+		if (nodeJson.contains("exclude_from_reflection_capture")) {
+			authoredExtras["exclude_from_reflection_capture"] = nodeJson["exclude_from_reflection_capture"];
+		}
+		if (!authoredExtras.empty()) {
+			node->SetAuthoredExtras(authoredExtras.dump());
+		}
 		bool modelResolved = false;
 		modelPath = ResolveReadableAssetPath(
 			modelPath,
@@ -1204,6 +1397,12 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			auto model = m_modelManager->LoadModel(modelPath); // Load the model using the ModelManager
 			if (model) {
 				++m_loadedModelCount;
+				if (nodeJson.value("exclude_from_reflection_capture", false)) {
+					model->excludeFromReflectionCapture = true;
+				}
+				if (nodeJson.contains("material_overrides")) {
+					ApplyMaterialOverrides(*model, nodeJson["material_overrides"], nodeDebugName);
+				}
 				node->SetModel(model); // Set the model to the node
 				if (model->hasSkin) {
 					node->BuildSkeleton(*model);
@@ -1316,6 +1515,24 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 				}
 				if (lightJson.contains("attenuation") && lightJson["attenuation"].is_array() && lightJson["attenuation"].size() == 3) {
 					light->SetAttenuation(lightJson["attenuation"][0], lightJson["attenuation"][1], lightJson["attenuation"][2]);
+				}
+				// Photometric units (Frostbite PBR 3.0, docs/nfs2015/configuration.md): punctual lights
+				// specify luminous power in lumens and are stored as luminous intensity in candela
+				// (point: lm / 4pi, spot: lm / pi so the cone angle does not change brightness), with
+				// inverse-square falloff (min distance 1 cm) and the existing smooth range window.
+				// Directional lights specify illuminance in lux. Rendering is pre-exposed, see
+				// RenderContext::physicalCamera.
+				if (lightJson.contains("luminous_power") && lightJson["luminous_power"].is_number()) {
+					const float lumens = std::max(lightJson["luminous_power"].get<float>(), 0.0f);
+					const float pi = 3.14159265f;
+					light->SetIntensity(lightType == "spot" ? lumens / pi : lumens / (4.0f * pi));
+					light->SetAttenuation(1.0e-4f, 0.0f, 1.0f);
+				}
+				else if (lightJson.contains("illuminance") && lightJson["illuminance"].is_number()) {
+					light->SetIntensity(std::max(lightJson["illuminance"].get<float>(), 0.0f));
+				}
+				if (lightJson.contains("source_radius") && lightJson["source_radius"].is_number()) {
+					light->SetSourceRadius(lightJson["source_radius"].get<float>());
 				}
 
 				// Set the light and force transform update

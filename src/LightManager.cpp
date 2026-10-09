@@ -1316,7 +1316,7 @@ void LightManager::UpdateGPUBuffers()
 		}
 
 		// Initialize ray tracing fields (for RT compatibility)
-		d.areaData = glm::vec4(0.0f);  // Reserved for area lights
+		d.areaData = glm::vec4(light->GetSourceRadius(), 0.0f, 0.0f, 0.0f);  // x = emitter radius (m)
 		d.sampling = glm::vec4(0.0f);  // Reserved for importance sampling
 
 		arr.push_back(d);
@@ -1540,7 +1540,7 @@ void LightManager::UpdateLights(float dt)
 				packed.color = glm::vec4(light->GetColor(), light->GetIntensity());
 				packed.attenuation = glm::vec4(light->GetAttenuation(), light->GetRange());
 				packed.spotData = glm::vec4(0.0f);
-				packed.areaData = glm::vec4(0.0f);
+				packed.areaData = glm::vec4(light->GetSourceRadius(), 0.0f, 0.0f, 0.0f);
 				packed.sampling = glm::vec4(0.0f);
 
 				auto shadowIt = m_lightShadowInfo.find(light.get());

@@ -345,6 +345,39 @@
     <ClCompile Include="src\passes\TAAPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
+    <ClCompile Include="src\passes\LightClusterPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ExposurePass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\SSRPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ReflectionProbePass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\VolumetricFogPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\MotionBlurPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\RainPass.cpp">
+      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ProceduralStreetKit.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BenchmarkRunner.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneRenderSettings.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DriveMode.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
     <ClCompile Include="src\passes\TransparentForwardPass.cpp">
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
@@ -961,6 +994,42 @@
     </ClInclude>
     <ClInclude Include="src\passes\TAAPass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LightClusterPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ExposurePass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SSRPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ReflectionProbePass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\VolumetricFogPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\MotionBlurPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\RainPass.h">
+      <Filter>Header Files\Engine\Renderer\Passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ProceduralStreetKit.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\BenchmarkRunner.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneRenderSettings.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DriveMode.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ReflectionProbe.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\TransparentForwardPass.h">
       <Filter>Header Files\Engine\Renderer\Passes</Filter>

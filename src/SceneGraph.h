@@ -13,6 +13,8 @@
 #include "AnimationSystem.h"
 #include "HierarchySystem.h"
 #include "SceneRuntimeData.h"
+#include "ReflectionProbe.h"
+#include <vector>
 
 // Forward declarations
 class LightManager;
@@ -31,6 +33,9 @@ class SceneGraph {
 public:
     SceneGraph();
     virtual ~SceneGraph();
+
+    // Local reflection probes (scene "reflection_probes" + procedural generators), docs/nfs2015 M5.
+    std::vector<ReflectionProbeDesc> reflectionProbes;
 
     std::shared_ptr<SceneNode> GetRoot();
     // const variant for read-only traversals

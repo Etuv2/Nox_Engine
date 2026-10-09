@@ -18,6 +18,8 @@ out VS_OUT {
     vec2 UV;
     vec2 UV1;
     vec4 TangentWS; // Tangent in world space (w = handedness)
+    vec3 ObjectPos;
+    vec3 ObjectNormal;
 } vs_out;
 
 void main() {
@@ -47,6 +49,12 @@ void main() {
     vs_out.TangentWS = vec4(T, aTangent.w);
     
     vs_out.UV = aUV;
+
+    // Object-local position/normal with rotation and translation removed but scale kept, so
+    // procedural detail (rain beads) sticks to moving objects at a world-metre scale.
+    mat3 objectRotation = mat3(normalize(model[0].xyz), normalize(model[1].xyz), normalize(model[2].xyz));
+    vs_out.ObjectPos = transpose(objectRotation) * (worldPos.xyz - model[3].xyz);
+    vs_out.ObjectNormal = transpose(objectRotation) * N;
     vs_out.UV1 = aUV1;
     
     gl_Position = projection * view * worldPos;

@@ -156,6 +156,8 @@ float EstimateCascadeCoverage(vec3 projCoords) {
 	return clamp(minEdgeDist / 0.5, 0.0, 1.0);
 }
 
+// Debug view only; uses screen-space derivatives, so it is unavailable in compute shaders.
+#ifndef NOX_COMPUTE_STAGE
 float EstimateCascadeTexelDensity(int layer, vec3 worldPos) {
 	ivec3 dims = textureSize(multiLightShadowArray, 0);
 	float shadowTexels = float(max(dims.x, dims.y));
@@ -168,5 +170,6 @@ float EstimateCascadeTexelDensity(int layer, vec3 worldPos) {
 	float texelsPerPixel = pixelFootprint * shadowTexels;
 	return clamp(texelsPerPixel / 8.0, 0.0, 1.0);
 }
+#endif
 
 #endif

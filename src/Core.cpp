@@ -1,4 +1,7 @@
 #include "Core.h"
+#include "BenchmarkRunner.h"
+#include "SceneRenderSettings.h"
+#include "DriveMode.h"
 
 #include <fstream>
 #include <iostream>
@@ -410,6 +413,7 @@ bool Core::InitializeGraphics() {
 	ImGui_ImplSDL2_InitForOpenGL(m_window, m_glContext);
 	ImGui_ImplOpenGL3_Init("#version 460 core");
 	SetStyle();
+	DriveMode::LoadFonts();
 
 	// Compile shadow pass shader
 	m_shadowShader = CreateShaderProgram("shaders/shadow_vert.glsl", "shaders/shadow_frag.glsl");
@@ -609,6 +613,17 @@ bool Core::InitializeScene() {
 
 	ComputeSceneBoundingBox();
 
+	if (m_modularRenderer) {
+		m_sceneHasRenderSettings = SceneRenderSettings::ApplyFromSceneFile(
+			m_modularRenderer->GetContext(), m_sceneToLoad, m_sceneHasRenderSettings);
+	}
+	m_benchmark = BenchmarkRunner::CreateFromEnvironment(m_sceneToLoad);
+	m_driveMode = std::make_unique<DriveMode>();
+	m_driveMode->Configure(m_sceneToLoad, *m_sceneGraph);
+	if (!m_benchmark && GetEnvVarString("NOX_DRIVE") == "1") {
+		m_driveMode->SetActive(true);
+	}
+
 	return true;
 }
 
@@ -754,9 +769,31 @@ void Core::Shutdown() {
 void Core::Update(float deltaTime) {
 	PerformanceRecorder::ECSMetrics ecsMetrics{};
 
+	// Benchmark runs use a fixed simulation step so camera paths and captures are repeatable.
+	if (m_benchmark) {
+		deltaTime = m_benchmark->FixedDeltaTime();
+	}
+
 	// Update input system
 	if (m_inputIntegration) {
 		m_inputIntegration->Update(deltaTime);
+	}
+
+	// Drive mode simulates the car and drives the chase camera (unless a benchmark is running).
+	if (!m_benchmark && m_driveMode && m_driveMode->IsActive() && m_camera) {
+		m_driveMode->Update(deltaTime, *m_camera);
+	}
+
+	// Scripted shots pose the camera and animated nodes after input so they always win.
+	bool cameraCut = false;
+	if (m_benchmark && m_camera && m_sceneGraph) {
+		m_benchmark->Update(*m_camera, *m_sceneGraph);
+		if (m_benchmark->ConsumeCameraCut()) {
+			cameraCut = true;
+			if (m_modularRenderer) {
+				m_modularRenderer->ResetTAA();
+			}
+		}
 	}
 
 	// Handle deferred physics toggle
@@ -796,6 +833,18 @@ void Core::Update(float deltaTime) {
 		m_sceneGraph->UpdateAllTransforms();
 		auto transformSyncEnd = std::chrono::high_resolution_clock::now();
 		ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformSyncEnd - transformSyncStart).count();
+		// A camera cut teleports scripted objects: their motion this frame is not real motion.
+		if (m_driveMode && m_driveMode->ConsumeTeleport()) {
+			cameraCut = true;
+			if (m_modularRenderer) {
+				m_modularRenderer->ResetTAA();
+			}
+		}
+		if (cameraCut) {
+			if (TransformSystem* transformSystem = m_sceneGraph->GetTransformSystem()) {
+				transformSystem->SnapshotPreviousTransforms();
+			}
+		}
 
 		// Stage 2: physics
 		if (m_physicsEngine && m_physicsEnabledForScene) {
@@ -935,6 +984,17 @@ void Core::Render(int windowWidth, int windowHeight) {
 		return;
 	}
 
+	if (m_benchmark) {
+		// Benchmarks measure the game view only: the editor UI is not drawn.
+		std::vector<BenchmarkRunner::PassSample> passes;
+		for (const auto& metric : m_modularRenderer->GetLastPassMetrics()) {
+			passes.push_back({ metric.name, metric.gpuTimeMs, metric.cpuTimeMs });
+		}
+		m_benchmark->OnFrameRendered(m_windowWidth, m_windowHeight, passes);
+		m_quitRequested = m_benchmark->IsFinished();
+		return;
+	}
+
 	const bool presentIndirectDiffuseDebug =
 		m_modularRenderer &&
 		m_modularRenderer->GetContext().enableIndirectDiffuse &&
@@ -944,6 +1004,14 @@ void Core::Render(int windowWidth, int windowHeight) {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
 	ImGui::NewFrame();
+
+	// Drive mode replaces the editor UI with the racing HUD.
+	if (m_driveMode && m_driveMode->IsActive()) {
+		m_driveMode->DrawHUD(m_windowWidth, m_windowHeight);
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		return;
+	}
 
 	// Set up ImGui interface data only if pointers have changed
 	if (m_cachedImGuiLighting != m_lighting) {
@@ -981,6 +1049,20 @@ void Core::Render(int windowWidth, int windowHeight) {
 }
 
 bool Core::ProcessInputEvent(const SDL_Event& event) {
+	// Drive mode (docs/nfs2015): F9 toggles; while driving, keys belong to the car, not the editor.
+	if (m_driveMode && m_driveMode->IsAvailable() && event.type == SDL_KEYDOWN && !event.key.repeat) {
+		if (event.key.keysym.sym == SDLK_F9) {
+			m_driveMode->Toggle();
+			return true;
+		}
+		if (m_driveMode->IsActive() && event.key.keysym.sym == SDLK_c) {
+			m_driveMode->CycleCamera();
+			return true;
+		}
+	}
+	if (m_driveMode && m_driveMode->IsActive() && (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)) {
+		return true;
+	}
 	if (m_inputIntegration) {
 		return m_inputIntegration->ProcessEvent(event);
 	}
@@ -1128,8 +1210,18 @@ void Core::SwapScene(const std::string& newSceneFile) {
 				lightManager->PrintLightInfo();
 			}
 
+			if (m_modularRenderer) {
+				m_sceneHasRenderSettings = SceneRenderSettings::ApplyFromSceneFile(
+					m_modularRenderer->GetContext(), resolvedSceneFile, m_sceneHasRenderSettings);
+			}
+			if (m_driveMode) {
+				m_driveMode->Configure(resolvedSceneFile, *m_sceneGraph);
+			}
+
 			if (m_imguiInterface) {
 				m_imguiInterface->SetSceneGraph(m_sceneGraph);
+				// Re-read renderer settings into the editor so it does not push stale values back.
+				m_imguiInterface->SetModularRenderer(m_modularRenderer);
 			}
 
 			if (m_inputIntegration) {

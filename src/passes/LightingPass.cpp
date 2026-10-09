@@ -1,4 +1,7 @@
 #include "LightingPass.h"
+#include "LightClusterPass.h"
+#include "ExposurePass.h"
+#include "ReflectionProbePass.h"
 #include "../ShaderLoader.h"
 #include "../SceneGraph.h"
 #include "../Camera.h"
@@ -302,6 +305,26 @@ void LightingPass::Execute(RenderContext& ctx,
 		glBindTexture(GL_TEXTURE_2D, m_sssTexture);
 	}
 
+	// Local reflection probes (ReflectionProbePass, docs/nfs2015 M5).
+	ReflectionProbePass::BindForShading(ctx);
+	SET_UNIFORM_TEXTURE_UNIT(m_shader, "reflectionProbes", TextureUnits::REFLECTION_PROBES);
+	if (const GLint loc = glGetUniformLocation(m_shader, "reflectionProbeCount"); loc >= 0) {
+		glUniform1i(loc, m_outputMode == OutputMode::FullLighting ? ctx.reflectionProbeCount : 0);
+	}
+	if (const GLint loc = glGetUniformLocation(m_shader, "reflectionProbeMaxLOD"); loc >= 0) {
+		glUniform1f(loc, ctx.reflectionProbeMaxLOD);
+	}
+
+	// Screen-space reflections (SSRPass, docs/nfs2015 M5); the bounce-radiance mode does not use them.
+	{
+		const bool hasSSR = ctx.ssrTexture != 0 && m_outputMode == OutputMode::FullLighting;
+		glActiveTexture(GL_TEXTURE0 + TextureUnits::SSR_REFLECTION);
+		glBindTexture(GL_TEXTURE_2D, hasSSR ? ctx.ssrTexture : 0);
+		SET_UNIFORM_TEXTURE_UNIT(m_shader, "ssrReflection", TextureUnits::SSR_REFLECTION);
+		const GLint hasSSRLoc = glGetUniformLocation(m_shader, "hasSSR");
+		if (hasSSRLoc >= 0) glUniform1i(hasSSRLoc, hasSSR ? 1 : 0);
+	}
+
 	for (int i = 0; i < MaxIndirectDiffuseSources; ++i) {
 		glActiveTexture(GL_TEXTURE0 + TextureUnits::INDIRECT_DIFFUSE_SOURCE_BASE + i);
 		glBindTexture(GL_TEXTURE_2D, m_indirectDiffuseTextures[static_cast<size_t>(i)]);
@@ -368,6 +391,10 @@ void LightingPass::Execute(RenderContext& ctx,
 	if (m_uniforms.lightingCompositeDebugMode >= 0) {
 		glUniform1i(m_uniforms.lightingCompositeDebugMode, std::clamp(ctx.lightingCompositeDebugMode, 0, 5));
 	}
+
+	// Clustered light lists and exposure state (docs/nfs2015 M2/M3).
+	LightClusterPass::BindForShading(ctx);
+	ExposurePass::Bind(ctx);
 
 	// Bind LightManager data
 	if (ctx.lightManager) {

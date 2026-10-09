@@ -23,6 +23,13 @@ uniform float normalThreshold = 0.1;
 uniform float edgeThreshold = 0.05;
 uniform float reactiveMaskStrength = 0.8;
 
+// Sky pixels have no rasterised velocity; reproject their view direction with the camera rotation
+// (current unjittered clip -> previous unjittered clip, translation removed).
+uniform mat4 uSkyReprojection;
+// Resolve in a luminance-compressed space c / (1 + luma(c)) (Karis 2014) so very bright HDR
+// texels (lamp glints on wet asphalt) cannot dominate the neighbourhood statistics and flicker.
+uniform bool uTonemappedResolve = true;
+
 layout(location = 0) out vec3 taaResult;
 
 vec3 RGBToYCoCg(vec3 rgb) {
@@ -42,6 +49,9 @@ vec3 YCoCgToRGB(vec3 ycocg) {
 float ComputeLuma(vec3 c) {
     return Luma(c);
 }
+
+vec3 CompressHDR(vec3 c) { return uTonemappedResolve ? c / (1.0 + Luma(c)) : c; }
+vec3 DecompressHDR(vec3 c) { return uTonemappedResolve ? c / max(1.0 - Luma(c), 1e-4) : c; }
 
 vec3 SampleHistoryCatmullRom(vec2 uv) {
     vec2 texSize = vec2(textureSize(historyFrame, 0));
@@ -92,7 +102,7 @@ void AnalyzeNeighborhood(
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
             vec2 sampleUV = clamp(uv + vec2(float(x), float(y)) / screenSize, vec2(0.0), vec2(1.0));
-            vec3 color = texture(currentFrame, sampleUV).rgb;
+            vec3 color = CompressHDR(texture(currentFrame, sampleUV).rgb);
             if (useYCoCg) {
                 color = RGBToYCoCg(color);
             }
@@ -148,7 +158,26 @@ void main() {
         return;
     }
 
-    vec2 velocity = texture(velocityBuffer, uv).rg;
+    // Velocity of the closest surface in a 3x3 cross so silhouettes of moving objects carry their
+    // motion onto the background pixels next to them (reduces trailing at speed).
+    vec2 texel = 1.0 / screenSize;
+    vec2 closestUV = uv;
+    float closestDepth = texture(depthBuffer, uv).r;
+    const vec2 crossOffsets[4] = vec2[](vec2(1, 0), vec2(-1, 0), vec2(0, 1), vec2(0, -1));
+    for (int i = 0; i < 4; ++i) {
+        vec2 sampleUV = uv + crossOffsets[i] * texel;
+        float d = texture(depthBuffer, sampleUV).r;
+        if (d < closestDepth) {
+            closestDepth = d;
+            closestUV = sampleUV;
+        }
+    }
+    vec2 velocity = texture(velocityBuffer, closestUV).rg;
+    if (closestDepth >= 0.999999) {
+        vec4 prevClip = uSkyReprojection * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+        vec2 prevUV = (prevClip.xy / max(abs(prevClip.w), 1e-6) * sign(prevClip.w)) * 0.5 + 0.5;
+        velocity = uv - prevUV;
+    }
     vec2 historyUV = uv - velocity;
 
     vec2 historyMargin = vec2(1.0) / screenSize;
@@ -157,7 +186,8 @@ void main() {
         return;
     }
 
-    vec3 historyColor = SampleHistoryCatmullRom(historyUV);
+    vec3 historyColor = CompressHDR(SampleHistoryCatmullRom(historyUV));
+    currentColor = CompressHDR(currentColor);
 
     float currentDepth = texture(depthBuffer, uv).r;
     float historyDepth = texture(historyDepthBuffer, historyUV).r;
@@ -172,7 +202,7 @@ void main() {
     float historyConfidence = depthConfidence * normalConfidence * mix(0.55, 1.0, motionConfidence);
 
     if (depthConfidence * normalConfidence < 0.08 || historyConfidence < 0.04) {
-        taaResult = currentColor;
+        taaResult = DecompressHDR(currentColor);
         return;
     }
 
@@ -203,5 +233,5 @@ void main() {
         result = YCoCgToRGB(result);
     }
 
-    taaResult = max(vec3(0.0), result);
+    taaResult = max(vec3(0.0), DecompressHDR(max(result, vec3(0.0))));
 }

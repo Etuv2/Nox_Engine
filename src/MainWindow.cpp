@@ -14,8 +14,28 @@
 #include <IMGUI/imgui.h>
 #include <IMGUI/imgui_impl_sdl2.h>
 #include <IMGUI/imgui_impl_opengl3.h>
+#include "stb_image_write.h"
+#include <filesystem>
+#include <vector>
 
 namespace {
+std::string GetEnvString(const char* name)
+{
+#if defined(_MSC_VER)
+    char* rawValue = nullptr;
+    size_t valueLength = 0;
+    if (_dupenv_s(&rawValue, &valueLength, name) != 0 || rawValue == nullptr) {
+        return {};
+    }
+    std::string result(rawValue);
+    std::free(rawValue);
+    return result;
+#else
+    const char* value = std::getenv(name);
+    return value ? std::string(value) : std::string{};
+#endif
+}
+
 int GetEnvInt(const char* name, int fallback)
 {
 #if defined(_MSC_VER)
@@ -74,6 +94,13 @@ bool MainWindow::LoadWindowConfiguration() {
         m_windowTitle = m_config.value("windowTitle", "NOX Engine");
         m_iconPath = m_config.value("iconPath", "");
         m_vsync = m_config.value("vsync", true);
+        m_windowMode = m_config.value("windowMode", std::string("windowed"));
+        // Overrides for scripted runs (e.g. native-resolution benchmarks).
+        m_windowWidth = GetEnvInt("NOX_WINDOW_WIDTH", m_windowWidth);
+        m_windowHeight = GetEnvInt("NOX_WINDOW_HEIGHT", m_windowHeight);
+        if (const std::string mode = GetEnvString("NOX_WINDOW_MODE"); !mode.empty()) {
+            m_windowMode = mode;
+        }
     }
     catch (const std::exception& e) {
         std::cerr << "[MainWindow] Exception loading config.json: " << e.what() << std::endl;
@@ -83,18 +110,33 @@ bool MainWindow::LoadWindowConfiguration() {
 }
 
 bool MainWindow::CreateWindow() {
+    Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
+    if (m_windowMode == "borderless") {
+        // Desktop-resolution borderless fullscreen: the window takes the native display size.
+        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+    }
+    else if (m_windowMode == "fullscreen") {
+        flags |= SDL_WINDOW_FULLSCREEN;
+    }
+    else {
+        flags |= SDL_WINDOW_RESIZABLE;
+    }
     m_window = SDL_CreateWindow(
         m_windowTitle.c_str(),
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         m_windowWidth,
         m_windowHeight,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+        flags
     );
     
     if (!m_window) {
         std::cerr << "[MainWindow] Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         return false;
+    }
+    if (m_windowMode != "windowed") {
+        SDL_GetWindowSize(m_window, &m_windowWidth, &m_windowHeight);
+        std::cout << "[MainWindow] " << m_windowMode << " window " << m_windowWidth << "x" << m_windowHeight << std::endl;
     }
     
     return true;
@@ -144,6 +186,11 @@ bool MainWindow::Initialize() {
     }
 
     // Initialize SDL
+    // Fullscreen modes render at true pixel resolution on scaled (e.g. 125%) Windows desktops.
+    // Windowed mode keeps the system-scaled editor unless "dpiAware" is set in config.json.
+    if (m_windowMode != "windowed" || m_config.value("dpiAware", false)) {
+        SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    }
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0) {
         std::cerr << "[MainWindow] SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
         return false;
@@ -330,6 +377,29 @@ void MainWindow::Run() {
         ++renderedFrames;
         if (exitAfterFrames > 0 && renderedFrames >= exitAfterFrames) {
             m_running = false;
+        }
+        if (m_core && m_core->IsQuitRequested()) {
+            m_running = false;
+        }
+
+        // NOX_FINAL_DUMP_DIR + NOX_FINAL_DUMP_FRAMES (comma list): save the final backbuffer,
+        // including UI/HUD, for validation captures.
+        static const std::string finalDumpDir = GetEnvString("NOX_FINAL_DUMP_DIR");
+        if (!finalDumpDir.empty()) {
+            static const std::string frames = "," + GetEnvString("NOX_FINAL_DUMP_FRAMES") + ",";
+            if (frames.find("," + std::to_string(renderedFrames) + ",") != std::string::npos) {
+                std::vector<unsigned char> pixels(static_cast<size_t>(m_windowWidth) * m_windowHeight * 3);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+                glReadBuffer(GL_BACK);
+                glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                glReadPixels(0, 0, m_windowWidth, m_windowHeight, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+                std::error_code ec;
+                std::filesystem::create_directories(finalDumpDir, ec);
+                const std::string path = finalDumpDir + "/final_" + std::to_string(renderedFrames) + ".png";
+                stbi_flip_vertically_on_write(1);
+                stbi_write_png(path.c_str(), m_windowWidth, m_windowHeight, 3, pixels.data(), m_windowWidth * 3);
+                stbi_flip_vertically_on_write(0);
+            }
         }
 
         // Swap buffers (already checking visibility, so always swap here)

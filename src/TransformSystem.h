@@ -32,6 +32,8 @@ public:
 	TransformSystem(ComponentManager* componentManager, SceneRuntimeData* runtimeScene = nullptr);
 	void SetRuntimeScene(SceneRuntimeData* runtimeScene);
 	void BeginFrameDiagnostics();
+	// previous = current for every transform (frame start, and after teleports / camera cuts).
+	void SnapshotPreviousTransforms();
 	const Diagnostics& GetDiagnostics() const { return m_diagnostics; }
 
 	// Update all dirty transforms in the scene

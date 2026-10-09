@@ -84,6 +84,16 @@ void GBufferPass::Execute(RenderContext& ctx,
         glUniformMatrix4fv(m_locProjection, 1, GL_FALSE, glm::value_ptr(ctx.proj));
     }
 
+    // Weather state (shaders/includes/weather_common.glsl)
+    {
+        auto setWeather = [&](const char* name, float v) { const GLint loc = glGetUniformLocation(m_shader, name); if (loc >= 0) glUniform1f(loc, v); };
+        setWeather("uWeatherWetness", ctx.weatherWetness);
+        setWeather("uWeatherPuddles", ctx.weatherPuddles);
+        setWeather("uWeatherRain", ctx.weatherRain);
+        setWeather("uWeatherPuddleScale", ctx.weatherPuddleScale);
+        setWeather("uWeatherTime", ctx.timeSeconds);
+    }
+
     // Render scene geometry to G-buffer
     if (auto* renderSystem = sceneGraph->GetRenderSystem()) {
         renderSystem->RenderGeometryBatchedGBuffer(m_shader);

@@ -45,6 +45,9 @@ public:
     const glm::mat4& GetWorldTransform(EntityID entity) const;
     const glm::mat4& GetWorldTransformByIndex(uint32_t index) const;
     const glm::mat4& GetPreviousWorldTransformByIndex(uint32_t index) const;
+    // Start of frame: previous = current for every node, so nodes that do not move this frame
+    // report zero motion (otherwise their last delta would persist forever).
+    void SnapshotPreviousWorldTransforms() { m_prevWorldTransforms = m_worldTransforms; }
     const glm::mat4& GetLocalTransformByIndex(uint32_t index) const;
 
     const std::vector<RuntimeTransformNode>& GetNodes() const { return m_nodes; }

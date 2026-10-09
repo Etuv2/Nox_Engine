@@ -26,6 +26,8 @@ class PhysicsEngine;
 class InputIntegration;
 class PerformanceRecorder;
 class RuntimeStateManager;
+class BenchmarkRunner;
+class DriveMode;
 class SceneNode;
 struct SimulationConfig;
 
@@ -100,6 +102,9 @@ public:
      * @param windowHeight Current window height
      */
     void Render(int windowWidth, int windowHeight);
+
+    // True when a scripted benchmark run has finished and the application should exit.
+    bool IsQuitRequested() const { return m_quitRequested; }
 
 
     // Event Handling
@@ -354,6 +359,10 @@ private:
     static constexpr float FPS_UPDATE_INTERVAL = 0.5f;
     std::unique_ptr<PerformanceRecorder> m_performanceRecorder;
     std::unique_ptr<RuntimeStateManager> m_stateManager;
+    std::unique_ptr<BenchmarkRunner> m_benchmark; // NOX_BENCHMARK camera-path runner
+    std::unique_ptr<DriveMode> m_driveMode;       // F9 drive mode: car, chase camera, HUD (docs/nfs2015)
+    bool m_quitRequested = false;
+    bool m_sceneHasRenderSettings = false; // scene file had "render_settings" (docs/nfs2015)
 
 
     // Scene Bounds Caching

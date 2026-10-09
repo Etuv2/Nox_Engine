@@ -84,6 +84,10 @@ private:
 	std::string m_currentSceneDirectory;
 	size_t m_loadedModelCount = 0;
 	size_t m_missingCriticalAssetCount = 0;
+	// Child nodes emitted by a procedural generator while processing the current node; consumed
+	// by ProcessNodeRecursive and attached as generated (non-serialized) children.
+	nlohmann::json m_pendingGeneratedChildren;
+	void AddReflectionProbes(const nlohmann::json& probes);
 	size_t m_loadedSkyboxCount = 0;
 	size_t m_disabledSkyboxCount = 0;
 	

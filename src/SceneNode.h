@@ -115,6 +115,15 @@ public:
     // BOUNDING BOX
     std::string GetName();
     void SetName(const std::string& name) { m_name = name; }
+
+    // Authored scene-file keys that have no runtime representation (e.g. material_overrides,
+    // procedural generator params). Stored as serialized JSON and written back on save.
+    void SetAuthoredExtras(const std::string& json) { m_authoredExtras = json; }
+    const std::string& GetAuthoredExtras() const { return m_authoredExtras; }
+    // Nodes created by a generator (e.g. procedural street lights) are rebuilt on load and
+    // therefore skipped when the scene is saved.
+    void SetGenerated(bool generated) { m_generated = generated; }
+    bool IsGenerated() const { return m_generated; }
     std::pair<glm::vec3, glm::vec3> GetBoundingBox();
 
     // NODE TYPE
@@ -194,6 +203,8 @@ private:
     // Model and rendering
     std::shared_ptr<Scene> m_model;
     std::string m_name;
+    std::string m_authoredExtras;
+    bool m_generated = false;
     unsigned int m_shader = 0;
     CullingOverride m_cullingOverride = CULLING_INHERIT;
     NODE_TYPE m_nodeType = NODE;

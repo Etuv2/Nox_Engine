@@ -47,6 +47,8 @@ namespace TextureUnits {
     constexpr int GBUFFER_TRANSFORM_ID = 30;    // gTransformID (R32UI - stable surface identity)
     constexpr int GBUFFER_CLEARCOAT = 31;       // gClearCoat (RG16F - factor + roughness)
     constexpr int GBUFFER_PRINCIPLED = 32;      // gPrincipledParams (RGBA16F - transmission/ior + reserved principled slots)
+    constexpr int SSR_REFLECTION = 33;          // ssrReflection (RGBA16F radiance + confidence, docs/nfs2015 M5)
+    constexpr int REFLECTION_PROBES = 34;       // reflectionProbes (cubemap array, docs/nfs2015 M5)
     
     // ======================================
     // RESOLVED INDIRECT DIFFUSE SOURCES

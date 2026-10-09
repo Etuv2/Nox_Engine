@@ -496,7 +496,12 @@ void ComputeIBLSpecularEnergy(vec3 F0, float NdotV, vec2 brdf, out vec3 FssEss, 
     FmsEms = Ems * FssEss * Favg / max(vec3(1.0) - Ems * Favg, vec3(1e-4));
 }
 
-vec3 EvaluatePrincipledIBL(
+// Split-sum IBL with optional traced reflections (docs/nfs2015 M5). baseReflection / coatReflection
+// carry radiance (rgb) and confidence (a) from screen-space reflections or reflection probes; they
+// replace the environment's prefiltered radiance for that lobe (never added), so reflected energy
+// is not counted twice. Traced radiance already contains occlusion, so specular occlusion and the
+// artistic IBL scales apply only to the environment part.
+vec3 EvaluatePrincipledIBLEx(
     PrincipledSurface surface,
     vec3 N,
     vec3 V,
@@ -509,7 +514,9 @@ vec3 EvaluatePrincipledIBL(
     float prefilteredMaxLOD,
     float iblIntensity,
     float diffuseIBLScale,
-    float specularIBLScale
+    float specularIBLScale,
+    vec4 baseReflection,
+    vec4 coatReflection
 ) {
     float NdotV = Saturate(dot(N, V));
 
@@ -526,9 +533,11 @@ vec3 EvaluatePrincipledIBL(
     float transmissionWeight = ComputeTransmissionWeight(surface.transmission, NdotV, surface.specularF0);
     float diffuseTerm = mix(1.0, 1.0 + 0.5 * surface.perceptualRoughness, surface.subsurface);
     vec3 kD = max(vec3(1.0) - (FssEss + FmsEms), vec3(0.0)) * (1.0 - transmissionWeight);
-    vec3 diffuse = kD * surface.diffuseColor * irradiance * diffuseAO * diffuseIBLScale * diffuseTerm;
+    vec3 diffuse = kD * surface.diffuseColor * irradiance * diffuseAO * diffuseIBLScale * diffuseTerm * iblIntensity;
 
-    vec3 specular = (FssEss * prefiltered + FmsEms * irradiance) * specularAO * specularIBLScale;
+    vec3 envSpecular = prefiltered * specularAO * specularIBLScale * iblIntensity;
+    vec3 specularRadiance = mix(envSpecular, max(baseReflection.rgb, vec3(0.0)), clamp(baseReflection.a, 0.0, 1.0));
+    vec3 specular = FssEss * specularRadiance + FmsEms * irradiance * specularAO * specularIBLScale * iblIntensity;
 
     vec3 ibl = diffuse + specular;
 
@@ -536,7 +545,7 @@ vec3 EvaluatePrincipledIBL(
         float lum = max(Luminance(surface.baseColor), 1e-4);
         vec3 tint = surface.baseColor / lum;
         vec3 sheenColor = mix(vec3(1.0), tint, surface.sheenTint);
-        ibl += irradiance * sheenColor * surface.sheen * Pow5(1.0 - NdotV) * diffuseAO * diffuseIBLScale * (1.0 - surface.metallic) * (1.0 - transmissionWeight);
+        ibl += irradiance * sheenColor * surface.sheen * Pow5(1.0 - NdotV) * diffuseAO * diffuseIBLScale * (1.0 - surface.metallic) * (1.0 - transmissionWeight) * iblIntensity;
     }
 
     float clearcoatWeight = ComputeClearcoatLayerWeight(surface);
@@ -544,12 +553,33 @@ vec3 EvaluatePrincipledIBL(
         // The coat has its own roughness, so it needs its own LUT lookup and prefiltered mip.
         vec2 ccBrdf = SampleBRDFLUT(brdfLUT, NdotV, surface.clearcoatRoughness);
         vec3 ccPrefiltered = max(textureLod(prefilteredMap, R, surface.clearcoatRoughness * prefilteredMaxLOD).rgb, vec3(0.0));
-        vec3 ccSpecular = ccPrefiltered * (DIELECTRIC_F0 * ccBrdf.x + ccBrdf.y) * specularAO * specularIBLScale;
+        vec3 ccEnv = ccPrefiltered * specularAO * specularIBLScale * iblIntensity;
+        vec3 ccRadiance = mix(ccEnv, max(coatReflection.rgb, vec3(0.0)), clamp(coatReflection.a, 0.0, 1.0));
+        vec3 ccSpecular = ccRadiance * (DIELECTRIC_F0 * ccBrdf.x + ccBrdf.y);
         float baseAttenuation = ComputeBaseLayerAttenuation(surface, NdotV);
         ibl = ibl * baseAttenuation + clearcoatWeight * ccSpecular;
     }
 
-    return ibl * iblIntensity;
+    return ibl;
+}
+
+vec3 EvaluatePrincipledIBL(
+    PrincipledSurface surface,
+    vec3 N,
+    vec3 V,
+    vec3 R,
+    float diffuseAO,
+    float specularAO,
+    samplerCube irradianceMap,
+    samplerCube prefilteredMap,
+    sampler2D brdfLUT,
+    float prefilteredMaxLOD,
+    float iblIntensity,
+    float diffuseIBLScale,
+    float specularIBLScale
+) {
+    return EvaluatePrincipledIBLEx(surface, N, V, R, diffuseAO, specularAO, irradianceMap, prefilteredMap,
+        brdfLUT, prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale, vec4(0.0), vec4(0.0));
 }
 
 // Backwards-compatible canonical wrappers

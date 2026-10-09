@@ -1,4 +1,5 @@
 #version 460 core
+#include "includes/exposure_common.glsl"
 out vec4 FragColor;
 in vec3 TexCoords;
 
@@ -12,7 +13,8 @@ void main()
     
     // Apply exposure control to skybox background
     // This allows independent control of skybox brightness vs IBL lighting
-    envColor *= skyboxExposure;
+    // Physical camera scenes write pre-exposed radiance (preExposure = 1 for legacy scenes).
+    envColor *= skyboxExposure * NoxPreExposure();
     
     // Since we're rendering into the HDR buffer, keep values linear
     // Remove tone mapping and gamma correction - these happen in post-processing

@@ -73,7 +73,8 @@ void BloomPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<DirectionalLight>& dirLight,
 	const std::shared_ptr<Skybox>& skybox) {
 	// Prefer temporally resolved HDR when TAA is active.
-	FrameBuffer* sourceFBO = (ctx.enableTAA && ctx.taaFBO) ? ctx.taaFBO : ctx.hdrFBO.get();
+	FrameBuffer* sourceFBO = ctx.postSourceFBO ? ctx.postSourceFBO
+		: ((ctx.enableTAA && ctx.taaFBO) ? ctx.taaFBO : ctx.hdrFBO.get());
 	GLuint sourceTex = sourceFBO ? sourceFBO->GetColorAttachment(0) : 0;
 	if (!sourceTex) {
 		PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[BloomPass] Missing source texture, skipping bloom.");
@@ -106,7 +107,9 @@ void BloomPass::ExtractBrightPixels(RenderContext& ctx, GLuint sourceTex) {
 
 	glUniform1f(glGetUniformLocation(m_extractShader, "threshold"), ctx.bloomThreshold);
 	glUniform1f(glGetUniformLocation(m_extractShader, "knee"), ctx.bloomKnee);
-	glUniform1f(glGetUniformLocation(m_extractShader, "bloomStrength"), ctx.bloomStrength);
+	glUniform1f(glGetUniformLocation(m_extractShader, "uExposure"), ctx.exposure);
+	glUniform1i(glGetUniformLocation(m_extractShader, "uBloomMode"), ctx.bloomMode);
+	glUniform1f(glGetUniformLocation(m_extractShader, "uMaxValue"), ctx.bloomMode == 1 ? 256.0f : 64.0f);
 
 	ctx.screenQuad->Render();
 
@@ -161,6 +164,7 @@ void BloomPass::Upsample(RenderContext& ctx) {
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		glUseProgram(m_upsampleShader);
+		glUniform1i(glGetUniformLocation(m_upsampleShader, "uNormalize"), ctx.bloomMode == 1 ? 1 : 0);
 
 		// Low-res input (previous upsample)
 		glActiveTexture(GL_TEXTURE0);

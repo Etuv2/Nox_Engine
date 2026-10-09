@@ -130,8 +130,12 @@ public:
                            const glm::mat4& projection,
                            GLuint transparentShader);
 
+    // Reflection probe capture: RenderForward skips models flagged excludeFromReflectionCapture.
+    void SetReflectionCaptureActive(bool active) { m_reflectionCaptureActive = active; }
+
     // Culling
     void SetFrustumPlanes(const glm::mat4& viewProjection);
+    void ClearFrustum() { m_frustumValid = false; ++m_frustumSerial; }
     bool IsSphereVisible(const glm::vec3& center, float radius) const;
     bool HasValidFrustum() const { return m_frustumValid; }
 
@@ -221,6 +225,11 @@ private:
         GLint attenuationDistance = -1;
         GLint attenuationColor = -1;
         GLint ior = -1;
+        GLint wetnessResponse = -1;
+        GLint puddleResponse = -1;
+        GLint rainBeadResponse = -1;
+        GLint flakeIntensity = -1;
+        GLint flakeDensity = -1;
 
         GLint baseColorUVSet = -1;
         GLint normalUVSet = -1;
@@ -357,4 +366,5 @@ private:
     uint64_t m_frustumSerial = 0;
     glm::mat4 m_lastShadowLightSpace{ 1.0f };
     Diagnostics m_diagnostics;
+    bool m_reflectionCaptureActive = false;
 };

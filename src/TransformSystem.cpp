@@ -30,6 +30,24 @@ void TransformSystem::SetRuntimeScene(SceneRuntimeData* runtimeScene)
 void TransformSystem::BeginFrameDiagnostics()
 {
 	m_diagnostics = Diagnostics{};
+
+	// Called once per frame before any transform update: previous = current for every transform.
+	// prevWorldTransform used to be refreshed only when a node was recomputed, so a node that stopped
+	// moving (or never moved after load, where it starts as identity) kept a stale previous matrix
+	// and reported constant motion to TAA, SSR, fog reprojection and motion blur.
+	SnapshotPreviousTransforms();
+}
+
+void TransformSystem::SnapshotPreviousTransforms()
+{
+	if (m_componentManager) {
+		for (auto& entry : m_componentManager->GetTransformPool()) {
+			entry.component.prevWorldTransform = entry.component.worldTransform;
+		}
+	}
+	if (m_runtimeScene) {
+		m_runtimeScene->SnapshotPreviousWorldTransforms();
+	}
 }
 
 void TransformSystem::UpdateTransforms() {

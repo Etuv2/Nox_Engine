@@ -1,4 +1,6 @@
 #include "TransparentForwardPass.h"
+#include "LightClusterPass.h"
+#include "ExposurePass.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
@@ -134,6 +136,16 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 
 	glUseProgram(m_shader);
 
+	// Weather state (rain beads on glass, shaders/includes/weather_common.glsl)
+	{
+		auto setWeather = [&](const char* name, float v) { const GLint loc = glGetUniformLocation(m_shader, name); if (loc >= 0) glUniform1f(loc, v); };
+		setWeather("uWeatherWetness", ctx.weatherWetness);
+		setWeather("uWeatherPuddles", ctx.weatherPuddles);
+		setWeather("uWeatherRain", ctx.weatherRain);
+		setWeather("uWeatherPuddleScale", ctx.weatherPuddleScale);
+		setWeather("uWeatherTime", ctx.timeSeconds);
+	}
+
 	// Upload camera and matrices
 	if (m_uniforms.view >= 0) glUniformMatrix4fv(m_uniforms.view,
 		1, GL_FALSE, glm::value_ptr(ctx.view));
@@ -187,6 +199,9 @@ void TransparentForwardPass::Execute(RenderContext& ctx,
 	// material's 2D samplers, which is an invalid draw.
 	if (m_uniforms.multiLightShadowArray >= 0) glUniform1i(m_uniforms.multiLightShadowArray,
 		TextureUnits::SHADOW_MAP_ARRAY);
+
+	LightClusterPass::BindForShading(ctx);
+	ExposurePass::Bind(ctx);
 
 	bool shadowsAvailable = false;
 	if (ctx.lightManager && ctx.lightManager->GetActiveLightCount() > 0) {

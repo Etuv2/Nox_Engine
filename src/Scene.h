@@ -31,6 +31,8 @@ class Scene {
 public:
     // Mesh data from the glTF file
     std::vector<MeshComponent> meshes;
+    // Dynamic objects (e.g. the player car) are left out of static reflection-probe captures.
+    bool excludeFromReflectionCapture = false;
     // Name of the model (file name)
     std::string m_model_name;
     // Animations loaded from glTF

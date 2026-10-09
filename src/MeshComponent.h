@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
 
 /**
  * Canonical CPU-side material contract shared by import, renderer uploads, and RT packing.
@@ -48,6 +49,14 @@ struct MaterialDesc {
 	float occlusionStrength = 1.0f;
 	float normalScale = 1.0f;
 
+	// NOX surface extras (glTF material extras "nox" or scene material_overrides).
+	// All default to 0 so imported content is unaffected unless opted in.
+	float wetnessResponse = 0.0f;   // How strongly the scene wetness darkens/smooths this surface [0,1]
+	float puddleResponse = 0.0f;    // Whether standing water may form here (roads, sidewalks) [0,1]
+	float rainBeadResponse = 0.0f;  // Rain droplets on smooth coated surfaces (car paint, glass) [0,1]
+	float flakeIntensity = 0.0f;    // Metallic paint flake sparkle strength [0,1]
+	float flakeDensity = 4000.0f;   // Flake cells per object-space metre
+
 	int baseColorTexCoord = 0;
 	int normalTexCoord = 0;
 	int metallicRoughnessTexCoord = 0;
@@ -79,6 +88,11 @@ struct MaterialDesc {
 		ior = std::max(ior, 1.0f);
 		occlusionStrength = std::clamp(occlusionStrength, 0.0f, 1.0f);
 		normalScale = std::max(normalScale, 0.0f);
+		wetnessResponse = std::clamp(wetnessResponse, 0.0f, 1.0f);
+		puddleResponse = std::clamp(puddleResponse, 0.0f, 1.0f);
+		rainBeadResponse = std::clamp(rainBeadResponse, 0.0f, 1.0f);
+		flakeIntensity = std::clamp(flakeIntensity, 0.0f, 1.0f);
+		flakeDensity = std::clamp(flakeDensity, 10.0f, 100000.0f);
 
 		auto clampSupportedUVSet = [](int uvSet) { return uvSet == 1 ? 1 : 0; };
 		baseColorTexCoord = clampSupportedUVSet(baseColorTexCoord);
@@ -120,6 +134,7 @@ public:
 
 	// Canonical normalized material state used by import, raster uploads, and RT packing.
 	MaterialDesc material;
+	std::string materialName; // Source material name (glTF), used by scene material_overrides
 
 	// Material properties
 	bool hasAlpha;                // Requires alpha blending
@@ -209,6 +224,7 @@ public:
 		, specularColorTexture(std::move(other.specularColorTexture))
 		, transmissionTexture(std::move(other.transmissionTexture))
 		, material(other.material)
+		, materialName(std::move(other.materialName))
 		, hasAlpha(other.hasAlpha)
 		, doubleSided(other.doubleSided)
 		, morphBuffers(std::move(other.morphBuffers))
@@ -263,6 +279,7 @@ public:
 			specularColorTexture = std::move(other.specularColorTexture);
 			transmissionTexture = std::move(other.transmissionTexture);
 			material = other.material;
+			materialName = std::move(other.materialName);
 			hasAlpha = other.hasAlpha;
 			doubleSided = other.doubleSided;
 			morphBuffers = std::move(other.morphBuffers);

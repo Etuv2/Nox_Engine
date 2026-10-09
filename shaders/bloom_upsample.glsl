@@ -1,10 +1,11 @@
-﻿#version 460 core
+#version 460 core
 
 in vec2 TexCoord;
 layout(location = 0) out vec4 FragColor;
 
 uniform sampler2D lowResTex;
 uniform sampler2D highResTex;
+uniform bool uNormalize; // energy-conserving bloom keeps the chain a weighted average
 
 // Implement proper tent filter (9-tap) for smooth upsampling
 vec3 UpsampleTent9(sampler2D tex, vec2 uv, vec2 texelSize) {
@@ -47,5 +48,6 @@ void main()
     
     // Additive blend with slight bias toward upsampled low-res
     // This creates smooth, continuous bloom
-    FragColor = vec4(low * 1.0 + high * 0.85, 1.0);
+    vec3 sum = low * 1.0 + high * 0.85;
+    FragColor = vec4(uNormalize ? sum / 1.85 : sum, 1.0);
 }

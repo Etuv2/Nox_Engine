@@ -29,6 +29,11 @@ uniform vec4 cascadeSplits = vec4(10.0, 30.0, 100.0, 500.0);  // Far distances p
 // Lights
 uniform int numLights = 0; // total active lights (any type)
 
+// Normal used for shadow-map receiver bias. Callers set it to the geometric (unperturbed) normal
+// before evaluating lights: biasing along a normal-mapped shading normal pushes bumpy receivers
+// (e.g. asphalt) in and out of the depth test and produces acne rings. Zero = use the shading normal.
+vec3 gShadowBiasNormal = vec3(0.0);
+
 struct LightData {
 	vec4 position;    // xyz=pos or dir origin, w=type (0 dir,1 point,2 spot)
 	vec4 direction;   // xyz=direction (for spot/dir)
@@ -36,7 +41,7 @@ struct LightData {
 	vec4 attenuation; // xyz=const,linear,quadratic, w=range
 	vec4 shadowData;  // x=startSlice, y=sliceCount, z=enabled, w=pcss flag
 	vec4 spotData;    // x=inner cos, y=outer cos
-	vec4 areaData;    // xyz=area light size (unused for point/spot/dir), w=reserved
+	vec4 areaData;    // x=emitter radius in metres (point/spot), yzw=reserved
 	vec4 sampling;    // x=PDF weight, y=solid angle, z,w=reserved
 };
 layout(std430, binding = 0) buffer LightDataBuffer { LightData lights[]; };
@@ -265,6 +270,7 @@ bool EvaluateLightRadiance(
 	vec3 lightColor = Ld.color.rgb;
 	float intensity = Ld.color.w;
 	float range = Ld.attenuation.w;
+	float dist = 0.0;
 
 	if (type == 0) {
 		// Directional light
@@ -273,7 +279,7 @@ bool EvaluateLightRadiance(
 	} else {
 		// Point or spot light
 		vec3 diff = lightPos - worldPos;
-		float dist = length(diff);
+		dist = length(diff);
 		if (dist > range) return false;
 		L = diff / dist;
 		
@@ -301,14 +307,27 @@ bool EvaluateLightRadiance(
 	float NdotL = max(dot(N, L), 0.0);
 	if (NdotL <= 0.0) return false;
 
+	// Emitter size: widen the specular lobes by the source's angular radius so small lights read as
+	// soft glints instead of pinpoints on smooth/wet surfaces (roughness modification, energy is
+	// preserved by the GGX normalisation). In half-vector space the spread is half the subtended angle.
+	PrincipledSurface lobeSurface = surface;
+	float sourceRadius = Ld.areaData.x;
+	if (type != 0 && sourceRadius > 0.0) {
+		float spread = 0.5 * sourceRadius / max(dist, 1e-3);
+		lobeSurface.alphaRoughness = min(surface.alphaRoughness + spread, 1.0);
+		float coatAlpha = surface.clearcoatRoughness * surface.clearcoatRoughness;
+		lobeSurface.clearcoatRoughness = sqrt(min(coatAlpha + spread, 1.0));
+	}
+
 	vec3 diffuse, specular;
-	EvaluatePrincipledBRDFSeparated(surface, N, V, L, diffuse, specular);
+	EvaluatePrincipledBRDFSeparated(lobeSurface, N, V, L, diffuse, specular);
 
 	if (enableShadows == 1 && Ld.shadowData.z > 0.5) {
 		int startSlice = int(Ld.shadowData.x + 0.5);
 		int sliceCount = int(Ld.shadowData.y + 0.5);
 		shadowVisibility = ApplyRealisticShadow(
-			ComputeShadowForLight(type, startSlice, sliceCount, worldPos, N, lightDir, lightPos));
+			ComputeShadowForLight(type, startSlice, sliceCount, worldPos,
+				dot(gShadowBiasNormal, gShadowBiasNormal) > 0.5 ? gShadowBiasNormal : N, lightDir, lightPos));
 	}
 
 	vec3 radiance = lightColor * attenuation;

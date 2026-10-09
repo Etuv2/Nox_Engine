@@ -93,6 +93,7 @@ private:
     std::string m_windowTitle;
     std::string m_iconPath;
     bool m_vsync;
+    std::string m_windowMode = "windowed"; // windowed | borderless | fullscreen
     bool m_fullscreen;
     
 

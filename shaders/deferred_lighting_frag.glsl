@@ -1,4 +1,4 @@
-﻿#version 460 core
+#version 460 core
 
 // Include shared PBR functions
 #include "includes/pbr_common.glsl"
@@ -41,6 +41,10 @@ uniform float iblIntensity = 0.1;        // Overall IBL multiplier
 uniform float diffuseIBLScale = 0.3;    // Diffuse irradiance scale
 uniform float specularIBLScale = 0.45;   // Specular prefiltered scale
 
+// Screen-space reflections (SSRPass): rgb = radiance at this frame's pre-exposure, a = confidence
+uniform sampler2D ssrReflection;
+uniform int hasSSR = 0;
+
 // SSAO
 uniform sampler2D ssaoMap;
 uniform float aoStrength = 0.9;
@@ -61,6 +65,9 @@ uniform int uLightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI,
 uniform int shadowDebugVisualization = 0; // 0=off, 1=cascade index, 2=raw depth, 3=bias, 4=texel density, 5=shadow mask
 
 #include "includes/lighting_common.glsl"
+#include "includes/clustered_lighting.glsl"
+#include "includes/exposure_common.glsl"
+#include "includes/reflection_probes.glsl"
 
 // Note: PI, INV_PI, DIELECTRIC_F0 are now defined in pbr_common.glsl
 // Note: DecodeNormalOct, DistributionGGX, GeometrySchlickGGX, GeometrySmith, 
@@ -195,16 +202,46 @@ vec3 ComputeDirectLight(int idx, vec3 worldPos, vec3 N, vec3 V, PrincipledSurfac
 	return diffuse + specular;
 }
 
-vec3 ComputeIBL(vec3 N, vec3 V, PrincipledSurface surface, float diffuseAO, float specularAO) {
+vec3 ComputeIBL(vec3 N, vec3 V, vec3 worldPos, PrincipledSurface surface, float diffuseAO, float specularAO) {
 	if (iblIntensity <= 0.0001 || (diffuseIBLScale <= 0.0001 && specularIBLScale <= 0.0001)) {
 		return vec3(0.0);
 	}
 
-	vec3 iblResult = EvaluatePrincipledIBL(
-		surface, N, V, reflect(-V, N),
+	// Traced reflections replace the environment radiance of the lobe they were traced for: the
+	// clear coat on coated materials, the base lobe otherwise (ssr_trace_comp.glsl). The lighting
+	// result is multiplied by the pre-exposure afterwards, so undo it here.
+	// Reflection chain (Frostbite PBR 3.0 / NFS 2015): SSR, then local probes, then the sky.
+	// Probes lack pixel-scale occlusion, so specular occlusion applies to them (not to SSR).
+	vec3 R = reflect(-V, N);
+	vec4 ssr = vec4(0.0);
+	if (hasSSR == 1) {
+		ssr = texture(ssrReflection, vTexCoord);
+		ssr.rgb /= max(NoxPreExposure(), 1e-12);
+	}
+	float tracedRoughness = surface.clearcoat > 0.5 ? surface.clearcoatRoughness : surface.perceptualRoughness;
+	vec4 probe = (reflectionProbeCount > 0) ? NoxSampleReflectionProbes(worldPos, R, tracedRoughness) : vec4(0.0);
+	probe.rgb *= specularAO;
+	float combinedAlpha = ssr.a + (1.0 - ssr.a) * probe.a;
+	vec3 combined = ssr.rgb * ssr.a + probe.rgb * probe.a * (1.0 - ssr.a);
+	vec4 traced = combinedAlpha > 1e-4 ? vec4(combined / combinedAlpha, combinedAlpha) : vec4(0.0);
+	vec4 baseReflection = vec4(0.0);
+	vec4 coatReflection = vec4(0.0);
+	if (surface.clearcoat > 0.5) {
+		coatReflection = traced;
+		// The rough base lobe under the coat still sees the local probe instead of the sky.
+		if (reflectionProbeCount > 0) {
+			vec4 baseProbe = NoxSampleReflectionProbes(worldPos, R, surface.perceptualRoughness);
+			baseReflection = vec4(baseProbe.rgb * specularAO, baseProbe.a);
+		}
+	} else {
+		baseReflection = traced;
+	}
+	vec3 iblResult = EvaluatePrincipledIBLEx(
+		surface, N, V, R,
 		diffuseAO, specularAO,
 		irradianceMap, prefilteredMap, brdfLUT,
-		prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale
+		prefilteredMaxLOD, iblIntensity, diffuseIBLScale, specularIBLScale,
+		baseReflection, coatReflection
 	);
 	
 	if (any(isnan(iblResult)) || any(isinf(iblResult))) {
@@ -374,6 +411,14 @@ void main() {
 	
 	vec3 worldPos = worldPosFromDepth(uv, depth);
 	vec3 V = normalize(viewPos - worldPos);
+
+	// Geometric normal from position derivatives for shadow bias; falls back to the shading normal
+	// at depth discontinuities (where the derivative normal is unreliable).
+	vec3 geoNormal = cross(dFdx(worldPos), dFdy(worldPos));
+	float geoLen = length(geoNormal);
+	geoNormal = geoLen > 1e-8 ? geoNormal / geoLen : N;
+	if (dot(geoNormal, V) < 0.0) geoNormal = -geoNormal;
+	gShadowBiasNormal = dot(geoNormal, N) > 0.3 ? geoNormal : N;
 	float NdotV = max(dot(N, V), 0.0);
 
 	if (shadowDebugVisualization > 0) {
@@ -392,40 +437,72 @@ void main() {
 	float specularAO = SpecularOcclusion(NdotV, diffuseAO, surface.perceptualRoughness);
 
 	// Evaluate direct and indirect terms separately so indirect diffuse stays local and debuggable.
+	// Lights come from the clustered lists (LightClusterPass): directional lights first, then the
+	// point/spot lights binned into this pixel's cluster. Without clustering every light is looped.
 	vec3 directLighting = vec3(0.0);
 	vec3 directDiffuseLighting = vec3(0.0);
 	if (numLights > 0) {
-		int maxLights = min(numLights, 64);
-		for (int i = 0; i < maxLights; ++i) {
-			vec3 diffuseLight;
-			vec3 specularLight;
-			ComputeDirectLightSeparated(i, worldPos, N, V, surface, diffuseLight, specularLight);
-			directDiffuseLighting += diffuseLight;
-			directLighting += diffuseLight + specularLight;
+		if (NoxClusteringEnabled()) {
+			int directionalCount = int(clusterLights.y);
+			for (int i = 0; i < directionalCount; ++i) {
+				vec3 diffuseLight;
+				vec3 specularLight;
+				ComputeDirectLightSeparated(i, worldPos, N, V, surface, diffuseLight, specularLight);
+				directDiffuseLighting += diffuseLight;
+				directLighting += diffuseLight + specularLight;
+			}
+			float viewDepth = -(view * vec4(worldPos, 1.0)).z;
+			uint cluster = NoxClusterIndex(gl_FragCoord.xy, viewDepth);
+			uint clusterCount = min(clusterLightCount[cluster], NOX_CLUSTER_MAX_LIGHTS);
+			uint clusterBase = cluster * NOX_CLUSTER_MAX_LIGHTS;
+			for (uint k = 0u; k < clusterCount; ++k) {
+				vec3 diffuseLight;
+				vec3 specularLight;
+				ComputeDirectLightSeparated(int(clusterLightIndex[clusterBase + k]), worldPos, N, V, surface, diffuseLight, specularLight);
+				directDiffuseLighting += diffuseLight;
+				directLighting += diffuseLight + specularLight;
+			}
+		}
+		else {
+			for (int i = 0; i < numLights; ++i) {
+				vec3 diffuseLight;
+				vec3 specularLight;
+				ComputeDirectLightSeparated(i, worldPos, N, V, surface, diffuseLight, specularLight);
+				directDiffuseLighting += diffuseLight;
+				directLighting += diffuseLight + specularLight;
+			}
 		}
 	}
 
+	// Physical camera: everything evaluated from scene units is pre-exposed here. Screen-space GI
+	// (SSGI) is gathered from the already pre-exposed bounce buffer and is not scaled again.
+	float preExposure = NoxPreExposure();
+
 	if (lightingOutputMode == 1) {
 		vec3 bounceableIBL = ComputeBounceableIBLSource(N, V, surface, diffuseAO, specularAO);
-		FragColor = vec4(max(directDiffuseLighting + bounceableIBL, vec3(0.0)), 1.0);
+		// Emissive surfaces are not bounce sources here: scenes often pair an emissive panel with a
+		// real light for the same lamp, which would double count.
+		FragColor = vec4(max(directDiffuseLighting + bounceableIBL, vec3(0.0)) * preExposure, 1.0);
 		return;
 	}
 
 	// Where the surfel cache covers the pixel its irradiance already contains the sky, so the
 	// diffuse IBL only fills the uncovered part.
 	float diffuseIBLOcclusion = diffuseAO * (1.0 - gi.surfelCoverage);
-	vec3 iblContribution = ComputeIBL(N, V, surface, diffuseIBLOcclusion, specularAO);
+	vec3 iblContribution = ComputeIBL(N, V, worldPos, surface, diffuseIBLOcclusion, specularAO);
 
 	// Near field already contains its own occlusion, so only material AO applies to it; the far
 	// field has no small-scale occlusion and takes the screen-space AO (which includes SSGI's
 	// visibility, i.e. only the directions SSGI left open).
 	vec3 giResponse = ComputeIndirectDiffuseResponse(N, V, surface);
 	vec3 ssgiContribution = giResponse * gi.nearIrradiance * aoTex;
-	vec3 lpvContribution = giResponse * gi.lpvIrradiance * diffuseAO;
-	vec3 surfelContribution = giResponse * gi.surfelIrradiance * diffuseAO;
-	vec3 farFieldContribution = giResponse * ResolveFarFieldIrradiance(gi) * diffuseAO;
+	vec3 lpvContribution = giResponse * gi.lpvIrradiance * diffuseAO * preExposure;
+	vec3 surfelContribution = giResponse * gi.surfelIrradiance * diffuseAO * preExposure;
+	vec3 farFieldContribution = giResponse * ResolveFarFieldIrradiance(gi) * diffuseAO * preExposure;
+	directLighting *= preExposure;
+	iblContribution *= preExposure;
 
-	vec3 color = (uLightingCompositeDebugMode == 0) ? emissive : vec3(0.0);
+	vec3 color = (uLightingCompositeDebugMode == 0) ? emissive * preExposure : vec3(0.0);
 	if (uLightingCompositeDebugMode == 1) {
 		color += directLighting;
 	} else if (uLightingCompositeDebugMode == 2) {

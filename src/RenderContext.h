@@ -46,6 +46,9 @@ struct RenderContext {
 	std::unique_ptr<FrameBuffer> gbufferFBO; // Extended G-Buffer
 	std::unique_ptr<FrameBuffer> hdrFBO; // HDR target
 	FrameBuffer* taaFBO = nullptr; // TAA output for post/bloom source selection - raw pointer to avoid ownership
+	// Image fed to bloom / auto exposure / tone mapping when a pass after TAA (motion blur) produced
+	// one this frame; null otherwise (fall back to taaFBO / hdrFBO). Reset every frame.
+	FrameBuffer* postSourceFBO = nullptr;
 
 
 	// Screen quad
@@ -65,6 +68,10 @@ struct RenderContext {
 	// Previous frame matrices for TAA
 	glm::mat4 prevView{ 1.0f };
 	glm::mat4 prevProj{ 1.0f };
+
+	// Sub-pixel jitter actually applied to proj / prevProj, in NDC (zero when TAA is off).
+	glm::vec2 jitterNdc{ 0.0f };
+	glm::vec2 prevJitterNdc{ 0.0f };
 
 	// Renderer mode toggle
 	enum class RendererMode {
@@ -301,5 +308,106 @@ struct RenderContext {
 
 	// Rendering overrides
 	bool forceBackfaceCulling = false;  // Force backface culling on all meshes regardless of material settings
+
+	// ---------------------------------------------------------------------------------------
+	// Night-street look development (docs/nfs2015). Defaults keep legacy scenes unchanged;
+	// scenes opt in through "render_settings" (see docs/nfs2015/configuration.md).
+	// ---------------------------------------------------------------------------------------
+
+	// Camera frustum culling of render items (G-buffer, velocity and forward passes; shadows cull
+	// against their own light volumes).
+	bool enableFrustumCulling = true;
+
+	// Clustered light culling (LightClusterPass). Buffers are owned by the pass.
+	bool enableClusteredLighting = true;
+	GLuint clusterParamsUBO = 0;
+	GLuint clusterCountSSBO = 0;
+	GLuint clusterIndexSSBO = 0;
+
+	// Physical camera. When enabled, light/emissive/sky values are photometric (cd, cd/m^2, lux)
+	// and every lighting shader writes pre-exposed radiance (value * preExposure) so RGB16F keeps
+	// precision; post applies exposure / preExposure. Exposure state lives in exposureSSBO
+	// (binding 42, ExposurePass) so auto exposure never needs a CPU readback.
+	bool physicalCamera = false;
+	int exposureMode = 0;                    // 0 = manual EV100, 1 = auto (histogram)
+	float exposureEV100 = 4.0f;              // manual exposure value at ISO 100
+	float exposureCompensationEV = 0.0f;     // applied in both modes (+1 = brighter)
+	float autoExposureMinEV100 = -2.0f;
+	float autoExposureMaxEV100 = 12.0f;
+	float autoExposureSpeedUp = 2.5f;        // adaptation rate toward brighter scenes (1/s)
+	float autoExposureSpeedDown = 1.2f;      // adaptation rate toward darker scenes (1/s)
+	float autoExposureLowPercentile = 0.55f; // histogram range averaged for metering
+	float autoExposureHighPercentile = 0.95f;
+	GLuint exposureSSBO = 0;
+
+	// Image formation (PostProcessPass). Order: exposure -> bloom -> vignette -> white balance ->
+	// grade (contrast/saturation/split tone) -> tonemap -> lift/gamma/gain -> grain -> OETF -> dither.
+	int bloomMode = 0;                       // 0 = additive with threshold (legacy), 1 = energy-conserving mix
+	float whiteBalanceTemperature = 6500.0f; // Kelvin of the "white" illuminant to neutralise
+	float whiteBalanceTint = 0.0f;           // green (-) / magenta (+)
+	float gradeContrast = 1.0f;              // log-space contrast around middle grey
+	float gradeSaturation = 1.0f;
+	glm::vec3 gradeShadowTint{ 0.0f };       // additive split-tone colour for shadows (linear)
+	glm::vec3 gradeHighlightTint{ 0.0f };    // additive split-tone colour for highlights (linear)
+	float gradeSplitToneStrength = 0.0f;
+	glm::vec3 gradeLift{ 0.0f };             // display-space lift/gamma/gain after tonemapping
+	glm::vec3 gradeGamma{ 1.0f };
+	glm::vec3 gradeGain{ 1.0f };
+	float vignetteIntensity = 0.0f;          // 0 = off; ~0.3 = natural lens falloff
+	float filmGrainIntensity = 0.0f;
+	float chromaticAberration = 0.0f;        // lateral CA in pixels at the image corner
+	bool enableOutputDither = true;          // breaks 8-bit banding in dark gradients
+
+	// Weather (shaders/includes/weather_common.glsl). Materials opt in via wetness/puddle/bead response.
+	float weatherWetness = 0.0f;             // [0,1] substrate wetness
+	float weatherPuddles = 0.0f;             // [0,1] standing-water coverage
+	float weatherRain = 0.0f;                // [0,1] rain intensity (ripples, beads, particles)
+	float weatherPuddleScale = 4.0f;         // metres per puddle noise cell
+	float timeSeconds = 0.0f;                // accumulated scene time (animated weather)
+
+	// Screen-space reflections (SSRPass). Requires TAA (traces last frame's resolved colour).
+	bool enableSSR = false;
+	float ssrMaxRoughness = 0.6f;            // perceptual roughness cut-off
+	float ssrMaxDistance = 80.0f;            // metres
+	int ssrMaxSteps = 64;
+	float ssrThickness = 0.25f;              // metres (grows with distance)
+	float ssrTemporalBlend = 0.12f;          // weight of the current frame
+	int ssrResolveSamples = 9;               // reused half-res rays per pixel (4 = High, 9 = Ultra)
+	GLuint ssrTexture = 0;                   // output of this frame (0 = none)
+
+	// Local reflection probes (ReflectionProbePass), captured once per scene load.
+	bool enableReflectionProbes = true;
+	GLuint reflectionProbeArray = 0;
+	GLuint reflectionProbeSSBO = 0;
+	int reflectionProbeCount = 0;
+	float reflectionProbeMaxLOD = 6.0f;
+
+	// Volumetric fog (VolumetricFogPass, froxels after Hillaire 2015). Extinction in 1/m.
+	bool enableVolumetricFog = false;
+	int volumetricTileSize = 16;             // pixels per froxel column (8 = Ultra)
+	int volumetricSlices = 64;
+	float volumetricFar = 200.0f;            // metres covered by the froxel grid
+	float fogDensity = 0.01f;                // extinction at the base height
+	float fogBaseHeight = 0.0f;
+	float fogHeightFalloff = 12.0f;          // metres per e-fold above the base height
+	glm::vec3 fogAlbedo{ 0.9f, 0.92f, 0.95f };
+	float fogAnisotropy = 0.55f;             // Henyey-Greenstein g (forward scattering halos)
+	float fogNoiseStrength = 0.5f;
+	float fogNoiseScale = 12.0f;             // metres per noise cell
+	glm::vec3 fogWind{ 0.6f, 0.05f, 0.4f };  // m/s
+	glm::vec3 fogAmbientRadiance{ 0.02f, 0.025f, 0.035f }; // sky light in the medium (cd/m^2)
+	float fogTemporalBlend = 0.1f;
+	float fogDistantDensity = 0.004f;        // analytic extinction beyond volumetricFar
+	float fogDistantGlow = 1.0f;
+
+	// Motion blur (MotionBlurPass, McGuire 2012 reconstruction) with a physical shutter.
+	bool enableMotionBlur = false;
+	float motionBlurExposureTime = 1.0f / 60.0f; // seconds the virtual shutter is open
+	float motionBlurMaxPixels = 48.0f;           // at 1440p, scaled with resolution
+	int motionBlurSamples = 12;
+
+	// Rain streaks (RainPass); drawn when weatherRain > 0, lit from the fog volume when enabled.
+	int rainDropCount = 60000;
+	float rainBrightness = 0.6f;
 
 };

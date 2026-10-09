@@ -20,6 +20,8 @@ out vec2 TexCoords1;
 out mat3 TBN;
 out vec4 RawTangent; 
 flat out uint TransformID;
+out vec3 ObjectPos;
+out vec3 ObjectNormal;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -64,6 +66,12 @@ void main()
     TBN = mat3(T, B, N);
     RawTangent = aTangent;
     TransformID = resolvedTransformID;
+
+    // Object-local position/normal with rotation and translation removed but scale kept, so
+    // procedural detail (rain beads) sticks to moving objects at a world-metre scale.
+    mat3 objectRotation = mat3(normalize(resolvedModel[0].xyz), normalize(resolvedModel[1].xyz), normalize(resolvedModel[2].xyz));
+    ObjectPos = transpose(objectRotation) * (worldPos.xyz - resolvedModel[3].xyz);
+    ObjectNormal = transpose(objectRotation) * N;
 
     gl_Position = projection * view * worldPos;
 }

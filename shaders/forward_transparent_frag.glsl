@@ -3,7 +3,10 @@
 // Include shared PBR functions
 #include "includes/pbr_common.glsl"
 #include "includes/material_common.glsl"
+#include "includes/weather_common.glsl"
 #include "includes/lighting_common.glsl"
+#include "includes/clustered_lighting.glsl"
+#include "includes/exposure_common.glsl"
 
 // Dual-source output, blended with glBlendFunc(GL_ONE, GL_SRC1_COLOR):
 //   dst' = FragColor.rgb + dst.rgb * FragTransmittance.rgb
@@ -16,7 +19,13 @@ in VS_OUT {
     vec2 UV;
     vec2 UV1;
     vec4 TangentWS; // Tangent in world space (w = handedness)
+    vec3 ObjectPos;
+    vec3 ObjectNormal;
 } fs_in;
+
+uniform float rainBeadResponse = 0.0;
+uniform float wetnessResponse = 0.0;
+uniform float puddleResponse = 0.0;
 
 //G-BUFFER LAYOUT (for depth reads only - transparent pass reads scene depth)
 uniform sampler2D gDepth;
@@ -96,6 +105,7 @@ uniform vec3 viewPos;
 vec3 getNormalFromMap() {
     // Start with geometric normal
     vec3 N = normalize(fs_in.Normal);
+    gShadowBiasNormal = N; // interpolated vertex normal, before normal mapping
     
     // If no normal texture, return geometric normal
     if (!hasNormalTexture) {
@@ -179,6 +189,18 @@ void main() {
     if (!gl_FrontFacing) {
         N = -N;
     }
+    // Weather (includes/weather_common.glsl): the deferred path applies the same wet-substrate and
+    // puddle model, so reflection-probe captures (which use this shader) see wet streets too.
+    float forwardIor = ior;
+    if (wetnessResponse > 0.0) {
+        float cavity = hasOcclusionTexture ? (1.0 - ao) : 0.0;
+        NoxApplyWetness(fs_in.WorldPos, normalize(fs_in.Normal), cavity, wetnessResponse, puddleResponse,
+            metallic, baseColor.rgb, roughness, N, forwardIor);
+    }
+    // Rain beads on glass.
+    if (rainBeadResponse > 0.0) {
+        NoxApplyRainBeads(fs_in.ObjectPos, normalize(fs_in.ObjectNormal), rainBeadResponse, N, roughness);
+    }
     vec3 V = normalize(viewPos - fs_in.WorldPos);
     vec3 R = reflect(-V, N);
     
@@ -198,7 +220,7 @@ void main() {
         albedo,
         metallic,
         roughness,
-        ior,
+        forwardIor,
         specularFactor * specFactorSample,
         specularColor,
         transmission,
@@ -224,13 +246,37 @@ void main() {
     // === DIRECT LIGHTING ===
     // Same light loop, attenuation and shadowing as the deferred pass (includes/lighting_common.glsl).
     vec3 directLighting = vec3(0.0);
-    int lightCount = min(numLights, 64);
-    for (int i = 0; i < lightCount; ++i) {
-        vec3 lightDiffuse;
-        vec3 lightSpecular;
-        float lightVisibility;
-        if (EvaluateLightRadiance(i, fs_in.WorldPos, N, V, surface, lightDiffuse, lightSpecular, lightVisibility)) {
-            directLighting += (lightDiffuse + lightSpecular) * lightVisibility;
+    if (NoxClusteringEnabled()) {
+        int directionalCount = int(clusterLights.y);
+        for (int i = 0; i < directionalCount; ++i) {
+            vec3 lightDiffuse;
+            vec3 lightSpecular;
+            float lightVisibility;
+            if (EvaluateLightRadiance(i, fs_in.WorldPos, N, V, surface, lightDiffuse, lightSpecular, lightVisibility)) {
+                directLighting += (lightDiffuse + lightSpecular) * lightVisibility;
+            }
+        }
+        float viewDepth = -(view * vec4(fs_in.WorldPos, 1.0)).z;
+        uint cluster = NoxClusterIndex(gl_FragCoord.xy, viewDepth);
+        uint clusterCount = min(clusterLightCount[cluster], NOX_CLUSTER_MAX_LIGHTS);
+        uint clusterBase = cluster * NOX_CLUSTER_MAX_LIGHTS;
+        for (uint k = 0u; k < clusterCount; ++k) {
+            vec3 lightDiffuse;
+            vec3 lightSpecular;
+            float lightVisibility;
+            if (EvaluateLightRadiance(int(clusterLightIndex[clusterBase + k]), fs_in.WorldPos, N, V, surface, lightDiffuse, lightSpecular, lightVisibility)) {
+                directLighting += (lightDiffuse + lightSpecular) * lightVisibility;
+            }
+        }
+    }
+    else {
+        for (int i = 0; i < numLights; ++i) {
+            vec3 lightDiffuse;
+            vec3 lightSpecular;
+            float lightVisibility;
+            if (EvaluateLightRadiance(i, fs_in.WorldPos, N, V, surface, lightDiffuse, lightSpecular, lightVisibility)) {
+                directLighting += (lightDiffuse + lightSpecular) * lightVisibility;
+            }
         }
     }
     
@@ -246,7 +292,8 @@ void main() {
 
     // Light leaving the surface towards the eye: reflection (specular, clearcoat, the diffuse
     // part not lost to transmission) and emission.
-    vec3 surfaceColor = pbrIBL + directLighting + emissive * emissiveStrength;
+    // Physical camera: radiance is written pre-exposed like the deferred pass (1.0 for legacy scenes).
+    vec3 surfaceColor = (pbrIBL + directLighting + emissive * emissiveStrength) * NoxPreExposure();
 
     // === COMPOSITE ===
     // alpha is glTF coverage: the uncovered part shows the background unchanged. The covered part

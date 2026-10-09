@@ -1,4 +1,5 @@
-﻿#version 460 core
+#version 460 core
+#include "includes/exposure_common.glsl"
 
 in vec2 TexCoord;
 layout(location = 0) out vec4 FragColor;
@@ -6,11 +7,19 @@ layout(location = 0) out vec4 FragColor;
 uniform sampler2D hdrBuffer;
 uniform float threshold;
 uniform float knee;
-uniform float bloomStrength;
+uniform float uExposure;  // scene/user exposure multiplier (post applies the same value)
+uniform int uBloomMode;   // 0 thresholded (additive in post), 1 full image (energy-conserving mix)
+uniform float uMaxValue;  // firefly clamp in exposed units
 
 void main()
 {
-    vec3 color = texture(hdrBuffer, TexCoord).rgb;
+    // Threshold in exposed units so bloom follows exposure (pre-exposed physical scenes and legacy
+    // scenes alike). Strength is applied in post-processing.
+    vec3 color = texture(hdrBuffer, TexCoord).rgb * uExposure * NoxExposureRatio();
+    if (uBloomMode == 1) {
+        FragColor = vec4(clamp(color, 0.0, uMaxValue), 1.0);
+        return;
+    }
     
     // luminance calculation 
     float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -33,11 +42,7 @@ void main()
         weight = t * t * (3.0 - 2.0 * t); // smoothstep
     }
 
-    // Apply weight and strength
-    vec3 bloom = color * weight * bloomStrength;
-    
-    // Clamp to prevent extreme values
-    bloom = clamp(bloom, 0.0, 64.0);
+    vec3 bloom = clamp(color * weight, 0.0, uMaxValue);
     
     FragColor = vec4(bloom, 1.0);
 }
