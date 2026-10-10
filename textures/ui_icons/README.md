@@ -1,7 +1,8 @@
 # NOX racing UI icons
 
-105 individual ImageGen icons for the existing cyan/lavender night-racing HUD
-and a broader racing-game interface. The pack covers current gameplay plus
+105 UI icon roles: 104 independently generated ImageGen symbols and one
+close/cancel alias using the back arrow. The pack matches the existing
+cyan/lavender night-racing HUD and covers current gameplay plus
 garage, tuning, event, menu, settings and control needs. Future mechanics may
 require additional symbols; this inventory does not imply those features exist.
 
@@ -36,6 +37,11 @@ Controller face-button symbols identify their position on a generic controller.
 Render platform-specific labels alongside them with the game's fonts. Other
 key names and countdown numbers should also remain live text.
 
+ImageGen rejected the X close glyph twice. `menus/close` therefore uses the
+same approved generated arrow as `menus/back`; `alias_of` records this in the
+plan and manifest. The alias files are identical copies rather than a newly
+generated design.
+
 ## Using the icons
 
 Start with the 128 px atlas for ordinary 24-48 px HUD or menu icons. Use the
@@ -68,7 +74,7 @@ or atlas PNG. CMake's existing Release synchronization already includes the
 
 ## Provenance and rebuild
 
-Created with the built-in `image_gen.imagegen` tool. Each icon was generated
+Created with the built-in `image_gen.imagegen` tool. Each original symbol was generated
 separately.
 The subjects come from the game documentation and current HUD conventions.
 The user approved Python processing for smaller PNG exports and atlas packing.
@@ -85,7 +91,7 @@ python tools/ui_icons.py --check
 ```
 
 Validation checks inventory completeness, unique IDs, original/export/atlas
-hashes, RGBA dimensions, transparent padding, fully white export RGB, opaque
+hashes, source/export RGBA dimensions and alpha, transparent padding, fully white export RGB, opaque
 symbol cores, and byte-exact atlas cells. The contact sheet supports visual
 review of every symbol and its small-size tints. Repository text files are
 ASCII-compatible UTF-8 without BOM.

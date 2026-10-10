@@ -1,12 +1,12 @@
 {
   "generator": "Built-in image_gen.imagegen",
+  "use_case": "stylized-concept",
   "assets": [
     {
       "index": 0,
       "group": "hud",
       "id": "nitrous",
       "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A vertical nitrous oxide bottle with a simple valve cap and one large lightning bolt cut out of its body.",
-      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-994b69d5-12e2-4503-b8e6-470646240ffe.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
       "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-994b69d5-12e2-4503-b8e6-470646240ffe.png",
       "file": "textures/ui_icons/hud/nitrous.png"
     },
@@ -15,7 +15,6 @@
       "group": "hud",
       "id": "boost",
       "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple side profile turbocharger snail housing with one curved intake pipe and central circular opening.",
-      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-56060d8f-ac4f-4bf9-974b-147b59d0e7e0.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
       "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-56060d8f-ac4f-4bf9-974b-147b59d0e7e0.png",
       "file": "textures/ui_icons/hud/boost.png"
     },
@@ -24,7 +23,6 @@
       "group": "hud",
       "id": "speedometer",
       "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A three-quarter circular speedometer dial with three broad ticks and a single diagonal needle pointing upper right.",
-      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3c202635-d942-4a49-9c8b-ae744d481b64.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
       "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3c202635-d942-4a49-9c8b-ae744d481b64.png",
       "file": "textures/ui_icons/hud/speedometer.png"
     },
@@ -33,9 +31,818 @@
       "group": "hud",
       "id": "engine",
       "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A familiar dashboard engine-block silhouette with short top cap and side outlet.",
-      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f3ee4dce-1e29-4e4a-8e1b-5fe96dc6e77c.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
       "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f3ee4dce-1e29-4e4a-8e1b-5fe96dc6e77c.png",
       "file": "textures/ui_icons/hud/engine.png"
+    },
+    {
+      "index": 4,
+      "group": "hud",
+      "id": "gearbox",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A manual H-pattern gear shifter diagram with three vertical channels joined by a horizontal bar and a round knob at upper right, no numbers.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-a664d3c2-ef28-4d08-b588-f2a1b3c4a66e.png",
+      "file": "textures/ui_icons/hud/gearbox.png"
+    },
+    {
+      "index": 5,
+      "group": "hud",
+      "id": "handbrake",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A car parking-brake symbol: circle containing one vertical lever stroke with a round top, bracket arcs at left and right; no letter.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-71353028-0dae-4478-be66-0fba0b061fbf.png",
+      "file": "textures/ui_icons/hud/handbrake.png"
+    },
+    {
+      "index": 6,
+      "group": "hud",
+      "id": "headlights",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A side-facing headlamp outline on the right with three horizontal light rays extending to the left.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-25c2da0e-6fe4-4057-a814-f51293563c0a.png",
+      "file": "textures/ui_icons/hud/headlights.png"
+    },
+    {
+      "index": 7,
+      "group": "hud",
+      "id": "damage",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A front-facing sports car silhouette with one bold zigzag crack diagonally crossing its hood.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-02076370-a083-48b5-ba2b-80ed849fa0b1.png",
+      "file": "textures/ui_icons/hud/damage.png"
+    },
+    {
+      "index": 8,
+      "group": "hud",
+      "id": "traction",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Rear view car with two broad S-shaped skid tracks descending below the wheels.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-2e18746b-ee01-4851-bf1a-b751b4e8f449.png",
+      "file": "textures/ui_icons/hud/traction.png"
+    },
+    {
+      "index": 9,
+      "group": "hud",
+      "id": "warning",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A hollow upright warning triangle with a single bold exclamation mark inside.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-707d680b-9e9e-4a45-b63c-ac68b7f7fa10.png",
+      "file": "textures/ui_icons/hud/warning.png"
+    },
+    {
+      "index": 10,
+      "group": "hud",
+      "id": "wrong_way",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A circular prohibitory sign containing a thick horizontal minus bar.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3747b177-9d89-417c-a9c9-283eac6f3cee.png",
+      "file": "textures/ui_icons/hud/wrong_way.png"
+    },
+    {
+      "index": 11,
+      "group": "hud",
+      "id": "missed_checkpoint",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A checkpoint gate with two upright posts and a top bar, with one small bold X beneath its center.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-84da9ac9-c6d4-4702-9a3d-0a281a0ae270.png",
+      "file": "textures/ui_icons/hud/missed_checkpoint.png"
+    },
+    {
+      "index": 12,
+      "group": "navigation",
+      "id": "player",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One sharp upward-pointing navigation arrowhead with a deep V-shaped cutout at its bottom.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-2e2fb6c3-da32-4d83-a440-388c0b434a6d.png",
+      "file": "textures/ui_icons/navigation/player.png"
+    },
+    {
+      "index": 13,
+      "group": "navigation",
+      "id": "waypoint",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple teardrop map-location pin with a large circular hole.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-7218217f-f9fd-4d18-808f-36589453a421.png",
+      "file": "textures/ui_icons/navigation/waypoint.png"
+    },
+    {
+      "index": 14,
+      "group": "navigation",
+      "id": "checkpoint",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A checkpoint gate with two vertical posts and one horizontal overhead bar, with a small downward-pointing chevron above it.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-32227e44-c601-42a7-9437-d5037844b2b2.png",
+      "file": "textures/ui_icons/navigation/checkpoint.png"
+    },
+    {
+      "index": 15,
+      "group": "navigation",
+      "id": "start",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A single flagpole with a solid triangular flag pointing to the right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-8d7f7d13-7eb5-4a08-b674-4ed9362c0da8.png",
+      "file": "textures/ui_icons/navigation/start.png"
+    },
+    {
+      "index": 16,
+      "group": "navigation",
+      "id": "finish",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A waving rectangular checkered race flag on one short pole; four broad contrasting checker holes.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-35285e5f-867d-4de5-aeff-8a7d20a9ac5e.png",
+      "file": "textures/ui_icons/navigation/finish.png"
+    },
+    {
+      "index": 17,
+      "group": "navigation",
+      "id": "parking",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A standard parking-area pictogram: exactly one large bold uppercase letter P inside a square outline with gently rounded corners. The P has one large transparent counter. No car, no building, no roof, no arrows or extra symbols..",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c98a669e-0eac-4576-99e6-548667bddfb0.png",
+      "file": "textures/ui_icons/navigation/parking.png"
+    },
+    {
+      "index": 18,
+      "group": "navigation",
+      "id": "meet",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Two simple sports car front-view silhouettes side by side, one slightly behind the other.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-760d1538-50ad-4489-ad70-23fd0c69af81.png",
+      "file": "textures/ui_icons/navigation/meet.png"
+    },
+    {
+      "index": 19,
+      "group": "navigation",
+      "id": "photo_spot",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simplified camera outline containing a circular aperture with a small four-point sparkle above its upper right corner.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-de5c80fc-7c6e-45ae-bd74-83ff1321ed31.png",
+      "file": "textures/ui_icons/navigation/photo_spot.png"
+    },
+    {
+      "index": 20,
+      "group": "navigation",
+      "id": "rest",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A takeaway coffee cup side silhouette with one handle and two simple steam strokes above.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-ed4ce41a-5b51-4182-918e-02f8b17bcb78.png",
+      "file": "textures/ui_icons/navigation/rest.png"
+    },
+    {
+      "index": 21,
+      "group": "navigation",
+      "id": "garage",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple garage building front with pitched roof, wide open door and one tiny front-view car inside.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-fa78b42f-178a-4480-a9ba-b95bb4c0127c.png",
+      "file": "textures/ui_icons/navigation/garage.png"
+    },
+    {
+      "index": 22,
+      "group": "navigation",
+      "id": "map",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A three-panel folded paper map with two fold lines and one broad path curving across it.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-77bad5c6-154f-49df-8a9e-398e50b965ac.png",
+      "file": "textures/ui_icons/navigation/map.png"
+    },
+    {
+      "index": 23,
+      "group": "navigation",
+      "id": "route",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A smooth S-bend path joining two small round endpoint markers with one arrowhead on the upper endpoint.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-43dcaf3d-13bd-40ed-9fe6-bf677eec6bf5.png",
+      "file": "textures/ui_icons/navigation/route.png"
+    },
+    {
+      "index": 24,
+      "group": "navigation",
+      "id": "recenter",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Four separate L-shaped corner brackets around a small central navigation arrowhead.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-7fef01ef-1191-48e7-85f9-2e27880621f7.png",
+      "file": "textures/ui_icons/navigation/recenter.png"
+    },
+    {
+      "index": 25,
+      "group": "navigation",
+      "id": "level_up",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Two horizontal deck lines, upper one short, with an upward arrow beside them.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-5c3b47c4-9c2d-4d06-8093-de1e1aeddf65.png",
+      "file": "textures/ui_icons/navigation/level_up.png"
+    },
+    {
+      "index": 26,
+      "group": "navigation",
+      "id": "level_down",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Two horizontal deck lines, lower one short, with a downward arrow beside them.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c698bcdb-dfc2-4036-a67b-fc73b59ca03f.png",
+      "file": "textures/ui_icons/navigation/level_down.png"
+    },
+    {
+      "index": 27,
+      "group": "navigation",
+      "id": "junction",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One main road line forking into two diagonal branches with three arrowhead endpoints.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-7e302a9f-db34-49ee-9bce-1f3a8ba77d2c.png",
+      "file": "textures/ui_icons/navigation/junction.png"
+    },
+    {
+      "index": 28,
+      "group": "events",
+      "id": "sprint",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A sharp rightward arrow with two broad horizontal speed streaks trailing from its left.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-bdad903f-1325-4cd7-91b2-72e78985831b.png",
+      "file": "textures/ui_icons/events/sprint.png"
+    },
+    {
+      "index": 29,
+      "group": "events",
+      "id": "circuit",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A thick oval racing loop with one integrated clockwise arrowhead at the top right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c323e420-9f32-4970-9210-1748bdf9830b.png",
+      "file": "textures/ui_icons/events/circuit.png"
+    },
+    {
+      "index": 30,
+      "group": "events",
+      "id": "drift",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A top-view car rotated slightly diagonally with two short curved skid trails behind its rear wheels.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-7ca1f69d-cec6-4382-b6b4-6d7c27b60a64.png",
+      "file": "textures/ui_icons/events/drift.png"
+    },
+    {
+      "index": 31,
+      "group": "events",
+      "id": "time_trial",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A stopwatch silhouette with one top button and one diagonal needle.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-8b4d4913-82df-4a64-8a16-efa41d060656.png",
+      "file": "textures/ui_icons/events/time_trial.png"
+    },
+    {
+      "index": 32,
+      "group": "events",
+      "id": "drag",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Two parallel upright lanes with a small horizontal finish line across the top and upward arrow in each lane.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-819abc41-6b59-4b05-911a-156f300bcc68.png",
+      "file": "textures/ui_icons/events/drag.png"
+    },
+    {
+      "index": 33,
+      "group": "events",
+      "id": "speed_trap",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A front-facing roadside radar camera on a short stand with two broad outward radar arcs on its right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-a5bcb5a8-282c-4dcb-8772-67efa46b5e70.png",
+      "file": "textures/ui_icons/events/speed_trap.png"
+    },
+    {
+      "index": 34,
+      "group": "events",
+      "id": "trophy",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A broad winner's trophy cup with two handles and a short pedestal.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-75ee00de-c27c-4bfd-be96-915f3873d824.png",
+      "file": "textures/ui_icons/events/trophy.png"
+    },
+    {
+      "index": 35,
+      "group": "events",
+      "id": "record",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A stopwatch with a small five-point star inset in its center instead of clock hands.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-9d9ab9a9-9737-4962-90a1-057ba4543071.png",
+      "file": "textures/ui_icons/events/record.png"
+    },
+    {
+      "index": 36,
+      "group": "events",
+      "id": "leaderboard",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Three ascending podium blocks with the middle block tallest and a small crown above it, no numbers.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-8547aaac-31dd-4f23-b537-63bd61db4bb2.png",
+      "file": "textures/ui_icons/events/leaderboard.png"
+    },
+    {
+      "index": 37,
+      "group": "events",
+      "id": "medal",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One circular medal with a five-point star cutout and two simple ribbon straps extending upward.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-9b5f1ae0-b140-44f1-be09-f82a2293d52b.png",
+      "file": "textures/ui_icons/events/medal.png"
+    },
+    {
+      "index": 38,
+      "group": "events",
+      "id": "locked",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A closed padlock with a broad rectangular body and rounded shackle.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-10274a7c-d804-4746-b97b-9dd08f43136e.png",
+      "file": "textures/ui_icons/events/locked.png"
+    },
+    {
+      "index": 39,
+      "group": "events",
+      "id": "unlocked",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: An open padlock with a broad rectangular body and raised shackle open on the right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f7aa1c3c-1fd8-4607-a459-206cc4c37a53.png",
+      "file": "textures/ui_icons/events/unlocked.png"
+    },
+    {
+      "index": 40,
+      "group": "garage",
+      "id": "car",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple low Japanese sports coupe side profile facing right, broad wheels, no marque details.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-b66e9ae4-0c59-4881-adf1-dabaf24b6066.png",
+      "file": "textures/ui_icons/garage/car.png"
+    },
+    {
+      "index": 41,
+      "group": "garage",
+      "id": "wheel",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A front-on wheel rim with five thick spokes and broad outer tyre ring.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-1bc44eb9-63e3-4ac1-bbb2-b7eeca335d82.png",
+      "file": "textures/ui_icons/garage/wheel.png"
+    },
+    {
+      "index": 42,
+      "group": "garage",
+      "id": "tyres",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A tyre viewed slightly from the side as two overlapping bold rings with three simple tread notches.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-0b6f860c-f0b2-4d53-9d16-0848d645e236.png",
+      "file": "textures/ui_icons/garage/tyres.png"
+    },
+    {
+      "index": 43,
+      "group": "garage",
+      "id": "brakes",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A circular brake disc with a large solid caliper at its right, three broad inner vent holes.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-1b2d203d-42f7-4bd7-9249-7196e95f77e1.png",
+      "file": "textures/ui_icons/garage/brakes.png"
+    },
+    {
+      "index": 44,
+      "group": "garage",
+      "id": "suspension",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: An upright coilover shock absorber with a piston shaft and four broad zigzag spring turns.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f7faa449-4e2e-4573-a84b-3916088f7833.png",
+      "file": "textures/ui_icons/garage/suspension.png"
+    },
+    {
+      "index": 45,
+      "group": "garage",
+      "id": "exhaust",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A diagonal side-view exhaust muffler with a short bent inlet and one flared tailpipe opening.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c29addc3-c967-4e16-8b45-7da3ccfcb3ef.png",
+      "file": "textures/ui_icons/garage/exhaust.png"
+    },
+    {
+      "index": 46,
+      "group": "garage",
+      "id": "intake",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A cone-shaped performance air filter with three broad transverse ribs and one short inlet neck.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-27fae6a4-9e81-42f3-b311-aff136cdcb01.png",
+      "file": "textures/ui_icons/garage/intake.png"
+    },
+    {
+      "index": 47,
+      "group": "garage",
+      "id": "ecu",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A rectangular microchip with three broad pins on each side and one small centered lightning bolt cutout.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-e4fa7ace-a94f-4557-852e-2319f129d23f.png",
+      "file": "textures/ui_icons/garage/ecu.png"
+    },
+    {
+      "index": 48,
+      "group": "garage",
+      "id": "differential",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A differential housing with a rounded center bulge and short horizontal axle tubes on both sides.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-cc3941c1-9068-4704-8d80-de46853cabd2.png",
+      "file": "textures/ui_icons/garage/differential.png"
+    },
+    {
+      "index": 49,
+      "group": "garage",
+      "id": "aero",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A rear spoiler wing viewed front-on: one long wing bar supported by two angled struts.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-1874e207-3394-4653-bbe7-edce88f33076.png",
+      "file": "textures/ui_icons/garage/aero.png"
+    },
+    {
+      "index": 50,
+      "group": "garage",
+      "id": "bodykit",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Front-facing sports car bumper with a broad center intake and two angular side skirts.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-21084929-d1a2-46e6-83a8-379641c06923.png",
+      "file": "textures/ui_icons/garage/bodykit.png"
+    },
+    {
+      "index": 51,
+      "group": "garage",
+      "id": "paint",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A tilted spray paint gun silhouette with a top reservoir and three short paint spray strokes.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-78495367-d001-4c79-ba57-6221a50224f6.png",
+      "file": "textures/ui_icons/garage/paint.png"
+    },
+    {
+      "index": 52,
+      "group": "garage",
+      "id": "livery",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple rectangular car door panel with two bold diagonal racing stripe cutouts.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-06ae48e8-c838-462b-a5ce-49aea0f692e1.png",
+      "file": "textures/ui_icons/garage/livery.png"
+    },
+    {
+      "index": 53,
+      "group": "garage",
+      "id": "repair",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One open-ended mechanic wrench pointing diagonally upper right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-0940ca52-790b-4373-8190-7d847258a4f7.png",
+      "file": "textures/ui_icons/garage/repair.png"
+    },
+    {
+      "index": 54,
+      "group": "garage",
+      "id": "upgrade",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A bold upward arrow rising above two short stacked horizontal bars.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f7519672-31d4-4371-a736-2c76b90c992d.png",
+      "file": "textures/ui_icons/garage/upgrade.png"
+    },
+    {
+      "index": 55,
+      "group": "garage",
+      "id": "credits",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Two overlapping round coins, front coin containing a small diamond-shaped cutout; no letters or currency glyphs.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-5a4a2f17-e8bb-4315-bf83-af2475ff9dc5.png",
+      "file": "textures/ui_icons/garage/credits.png"
+    },
+    {
+      "index": 56,
+      "group": "garage",
+      "id": "purchase",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A compact shopping basket with one handle and two broad diagonal bars.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-a972f117-ae5a-4729-98ad-7dda3f65c93b.png",
+      "file": "textures/ui_icons/garage/purchase.png"
+    },
+    {
+      "index": 57,
+      "group": "garage",
+      "id": "equipped",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A large clean checkmark inside a thin hexagonal outline.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-b63eba68-a3b4-4534-86d3-884e06a9c1d1.png",
+      "file": "textures/ui_icons/garage/equipped.png"
+    },
+    {
+      "index": 58,
+      "group": "menus",
+      "id": "home",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple pitched-roof house silhouette with a doorway cutout.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-882f04b5-d455-4417-a053-185743ab7265.png",
+      "file": "textures/ui_icons/menus/home.png"
+    },
+    {
+      "index": 59,
+      "group": "menus",
+      "id": "play",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One large equilateral play triangle pointing right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-97806244-475a-4f6a-a088-0afbbb5b76c6.png",
+      "file": "textures/ui_icons/menus/play.png"
+    },
+    {
+      "index": 60,
+      "group": "menus",
+      "id": "pause",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Two parallel upright broad bars.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-1e7d480f-e5ef-40a2-9f36-7d394bda9b7b.png",
+      "file": "textures/ui_icons/menus/pause.png"
+    },
+    {
+      "index": 61,
+      "group": "menus",
+      "id": "retry",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A nearly complete clockwise circular arrow with a broad arrowhead at upper right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f22c8016-1125-427d-8017-9241ab06b15a.png",
+      "file": "textures/ui_icons/menus/retry.png"
+    },
+    {
+      "index": 62,
+      "group": "menus",
+      "id": "reset_car",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A side-view car beneath one broad clockwise curved arrow arching over its roof.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-b6566f58-1992-4bf0-95d7-76c42eb11aef.png",
+      "file": "textures/ui_icons/menus/reset_car.png"
+    },
+    {
+      "index": 63,
+      "group": "menus",
+      "id": "free_roam",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A two-lane road bending gently toward the upper right with two center dash cutouts.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-06988675-126b-4f65-b62b-d6726cb336e4.png",
+      "file": "textures/ui_icons/menus/free_roam.png"
+    },
+    {
+      "index": 64,
+      "group": "menus",
+      "id": "exit",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple open door frame with one rightward arrow emerging through it.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-730b1b57-6a71-4475-a441-49979102f52b.png",
+      "file": "textures/ui_icons/menus/exit.png"
+    },
+    {
+      "index": 65,
+      "group": "menus",
+      "id": "settings",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A precise eight-tooth cog with a round central opening.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c795a20c-99c6-435f-b64c-3c9a71bc039f.png",
+      "file": "textures/ui_icons/menus/settings.png"
+    },
+    {
+      "index": 66,
+      "group": "menus",
+      "id": "back",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One broad leftward arrow with horizontal shaft.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-ac65228a-196c-4313-bcd8-e34139216a7a.png",
+      "file": "textures/ui_icons/menus/back.png"
+    },
+    {
+      "index": 67,
+      "group": "menus",
+      "id": "close",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One broad leftward arrow with horizontal shaft.",
+      "source": "C:\\Users\\desti\\Documents\\GithubStuff\\Nox_Engine\\textures\\ui_icons\\menus\\back.png",
+      "file": "textures/ui_icons/menus/close.png",
+      "alias_of": "menus/back",
+      "note": "ImageGen rejected the X close glyph twice. Close/cancel uses the approved generated back arrow."
+    },
+    {
+      "index": 68,
+      "group": "menus",
+      "id": "confirm",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One clean broad checkmark angled upward to the right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f45098fe-8962-468d-81c7-513d05f0aef7.png",
+      "file": "textures/ui_icons/menus/confirm.png"
+    },
+    {
+      "index": 69,
+      "group": "menus",
+      "id": "info",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A hollow circle enclosing a lowercase information i formed by one round dot and upright stem.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-61ff19b4-56f7-42e4-b8a1-e970e1e13f4e.png",
+      "file": "textures/ui_icons/menus/info.png"
+    },
+    {
+      "index": 70,
+      "group": "menus",
+      "id": "save",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple floppy disk silhouette with a rectangular top shutter cutout and square bottom label cutout.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-1fe5dac3-b27c-462f-8922-ade3c15e15b3.png",
+      "file": "textures/ui_icons/menus/save.png"
+    },
+    {
+      "index": 71,
+      "group": "menus",
+      "id": "delete",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple waste-bin outline with removable lid and two vertical internal bars.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3b63d7fe-370b-454d-92db-b030eba62e4a.png",
+      "file": "textures/ui_icons/menus/delete.png"
+    },
+    {
+      "index": 72,
+      "group": "menus",
+      "id": "search",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A circular magnifier with one diagonal lower-right handle.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c0ffbc0c-b208-4a9e-9c8b-647f2392696f.png",
+      "file": "textures/ui_icons/menus/search.png"
+    },
+    {
+      "index": 73,
+      "group": "menus",
+      "id": "filter",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A funnel silhouette tapering to one short narrow vertical stem.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3cc65e3d-12e0-4a76-b9ac-d7cdf161b077.png",
+      "file": "textures/ui_icons/menus/filter.png"
+    },
+    {
+      "index": 74,
+      "group": "menus",
+      "id": "favorite",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One simple five-point hollow star.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-2f07f88d-699f-4055-ad66-8040645d1391.png",
+      "file": "textures/ui_icons/menus/favorite.png"
+    },
+    {
+      "index": 75,
+      "group": "menus",
+      "id": "help",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A hollow circle containing one broad question mark.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-4ad2a672-0e38-45f3-b85c-435a59e38a69.png",
+      "file": "textures/ui_icons/menus/help.png"
+    },
+    {
+      "index": 76,
+      "group": "settings",
+      "id": "audio",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A right-facing speaker cone with two broad curved sound waves at its right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-4203dea6-9aee-4990-af77-695fc11d3b58.png",
+      "file": "textures/ui_icons/settings/audio.png"
+    },
+    {
+      "index": 77,
+      "group": "settings",
+      "id": "mute",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A right-facing speaker cone with one bold X at its right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c7860c76-5db2-4cee-8b2a-7944d9281ffc.png",
+      "file": "textures/ui_icons/settings/mute.png"
+    },
+    {
+      "index": 78,
+      "group": "settings",
+      "id": "music",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One connected pair of musical eighth notes with two broad circular note heads.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-bac2ff11-acb3-44a2-aa5c-09cb35d48216.png",
+      "file": "textures/ui_icons/settings/music.png"
+    },
+    {
+      "index": 79,
+      "group": "settings",
+      "id": "display",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A widescreen monitor outline with a simple central stand.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-6b428624-fd37-4ba6-9670-f9aa9e3555d7.png",
+      "file": "textures/ui_icons/settings/display.png"
+    },
+    {
+      "index": 80,
+      "group": "settings",
+      "id": "graphics",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple horizontal graphics card silhouette with one large fan circle and short connector edge.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3499393d-4982-4e5f-a93c-ba376c102f78.png",
+      "file": "textures/ui_icons/settings/graphics.png"
+    },
+    {
+      "index": 81,
+      "group": "settings",
+      "id": "controls",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A front-view generic game controller with a plus-shaped D-pad on the left and two simple round buttons on the right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-5bc96cab-1a30-4856-8e73-101d75d77460.png",
+      "file": "textures/ui_icons/settings/controls.png"
+    },
+    {
+      "index": 82,
+      "group": "settings",
+      "id": "accessibility",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A head circle above a human figure with outstretched arms and separated legs enclosed in a broad thin circle.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-5cab7ee4-824a-4e98-bdda-f394dc21ba44.png",
+      "file": "textures/ui_icons/settings/accessibility.png"
+    },
+    {
+      "index": 83,
+      "group": "settings",
+      "id": "language",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A globe formed by outer circle, central vertical ellipse and two horizontal latitude arcs.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-789f10a9-0ba9-4f55-8819-53dc64d44751.png",
+      "file": "textures/ui_icons/settings/language.png"
+    },
+    {
+      "index": 84,
+      "group": "settings",
+      "id": "camera",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A compact camera outline with a large circular lens and one small top shutter bump.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-a64eaf36-69d0-4b07-994a-8878969da795.png",
+      "file": "textures/ui_icons/settings/camera.png"
+    },
+    {
+      "index": 85,
+      "group": "controls",
+      "id": "keyboard",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A wide keyboard silhouette with six broad key cutouts and one long spacebar cutout, no letters.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3f685d68-da5c-4679-abdf-cfb4ec44a639.png",
+      "file": "textures/ui_icons/controls/keyboard.png"
+    },
+    {
+      "index": 86,
+      "group": "controls",
+      "id": "mouse",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: An upright computer mouse outline with a central scroll wheel and a vertical top-button divider.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-e1ca4d09-1cad-4354-8b41-17ec926c45a3.png",
+      "file": "textures/ui_icons/controls/mouse.png"
+    },
+    {
+      "index": 87,
+      "group": "controls",
+      "id": "steering",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A circular steering wheel with two diagonal spokes and a short bottom spoke.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-ed5ea319-dd7e-4263-a216-d2b21e3ffe07.png",
+      "file": "textures/ui_icons/controls/steering.png"
+    },
+    {
+      "index": 88,
+      "group": "controls",
+      "id": "throttle",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A tall accelerator pedal viewed front-on with three broad horizontal grip grooves.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-a4e6ec76-f143-4a47-ba26-bb57e547e27a.png",
+      "file": "textures/ui_icons/controls/throttle.png"
+    },
+    {
+      "index": 89,
+      "group": "controls",
+      "id": "brake",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A broad rectangular brake pedal viewed front-on with two horizontal grip grooves.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-11f06cd4-8fbd-4d82-873f-3dd41392902a.png",
+      "file": "textures/ui_icons/controls/brake.png"
+    },
+    {
+      "index": 90,
+      "group": "controls",
+      "id": "dpad",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One broad plus-shaped directional pad with a small diamond cutout in its center.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-b4f8d7a5-e8fb-41b0-b44e-a1fd6a543ce7.png",
+      "file": "textures/ui_icons/controls/dpad.png"
+    },
+    {
+      "index": 91,
+      "group": "controls",
+      "id": "stick",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One short joystick with a broad circular knob on a slim upright shaft and an oval base.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-8eb11379-c27b-403f-b6ee-cec6b5e1582b.png",
+      "file": "textures/ui_icons/controls/stick.png"
+    },
+    {
+      "index": 92,
+      "group": "controls",
+      "id": "trigger",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A generic controller shoulder trigger in simple side profile, curved hook shape with one inner ridge.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-6b84b44d-78d7-4be0-a53e-a8f2f8ae3315.png",
+      "file": "textures/ui_icons/controls/trigger.png"
+    },
+    {
+      "index": 93,
+      "group": "controls",
+      "id": "enter",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A bent return-key arrow travelling downward then pointing left with a broad arrowhead.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-d07df9f5-b96d-4721-b218-de05dda74615.png",
+      "file": "textures/ui_icons/controls/enter.png"
+    },
+    {
+      "index": 94,
+      "group": "controls",
+      "id": "shift",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A thick upward-pointing arrow with a hollow shaft, standard Shift-key symbol.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-dbb7a7ef-4f27-48cc-9ee8-597d448f4d9a.png",
+      "file": "textures/ui_icons/controls/shift.png"
+    },
+    {
+      "index": 95,
+      "group": "controls",
+      "id": "arrow_up",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One short bold arrow pointing straight up.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-5de378be-61a0-4b60-ab48-346fedefc13b.png",
+      "file": "textures/ui_icons/controls/arrow_up.png"
+    },
+    {
+      "index": 96,
+      "group": "controls",
+      "id": "arrow_down",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One short bold arrow pointing straight down.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-9d75176c-e90a-4cf3-a44a-c486fc1b2452.png",
+      "file": "textures/ui_icons/controls/arrow_down.png"
+    },
+    {
+      "index": 97,
+      "group": "controls",
+      "id": "arrow_left",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One short bold arrow pointing straight left.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-4f404cc4-ad74-4cdc-8250-814cb3cbe6df.png",
+      "file": "textures/ui_icons/controls/arrow_left.png"
+    },
+    {
+      "index": 98,
+      "group": "controls",
+      "id": "arrow_right",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: One short bold arrow pointing straight right.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-4dabca56-d055-47bb-97e2-f8cee4ce104a.png",
+      "file": "textures/ui_icons/controls/arrow_right.png"
+    },
+    {
+      "index": 99,
+      "group": "controls",
+      "id": "button_south",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A generic four-face-button diamond cluster with only the bottom button filled solid and the other three hollow.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-c5d1abd1-31e2-46d9-8f27-562c854283b3.png",
+      "file": "textures/ui_icons/controls/button_south.png"
+    },
+    {
+      "index": 100,
+      "group": "controls",
+      "id": "button_east",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A generic four-face-button diamond cluster with only the right button filled solid and the other three hollow.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-5687fa90-a8c0-461f-92cf-6d287cd03962.png",
+      "file": "textures/ui_icons/controls/button_east.png"
+    },
+    {
+      "index": 101,
+      "group": "controls",
+      "id": "button_west",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A generic four-face-button diamond cluster with only the left button filled solid and the other three hollow.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-d977a9f9-6e96-4421-b4a3-c8287da4c1ff.png",
+      "file": "textures/ui_icons/controls/button_west.png"
+    },
+    {
+      "index": 102,
+      "group": "controls",
+      "id": "button_north",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A generic four-face-button diamond cluster with only the top button filled solid and the other three hollow.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-d44a0ae2-067e-4709-ba45-2238570e970e.png",
+      "file": "textures/ui_icons/controls/button_north.png"
+    },
+    {
+      "index": 103,
+      "group": "controls",
+      "id": "menu",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Three parallel short horizontal bars of equal length.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-8bd3a3e4-0b72-4ed2-a8a1-cfbdbdf016a1.png",
+      "file": "textures/ui_icons/controls/menu.png"
+    },
+    {
+      "index": 104,
+      "group": "controls",
+      "id": "view",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: Two slightly offset overlapping thin rectangular outlines.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f1d008e5-af53-48d7-9a5d-4b824bd960cb.png",
+      "file": "textures/ui_icons/controls/view.png"
     }
   ]
 }

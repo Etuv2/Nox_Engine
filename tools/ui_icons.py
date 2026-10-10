@@ -38,7 +38,7 @@ def build():
     manifest = {"generator": "Built-in image_gen.imagegen", "alpha": "straight", "foreground": "white", "sizes": list(SIZES), "gutter_px": GUTTER, "assets": [], "atlases": {}}
     preview = Image.new("RGB", (columns * 168, rows * 164 + 52), (18, 22, 30))
     draw = ImageDraw.Draw(preview)
-    draw.text((18, 14), "NOX / 105 UI ICONS / WHITE, CYAN AND LAVENDER RUNTIME TINT", fill="white")
+    draw.text((18, 14), "NOX / 105 UI ROLES / 104 GENERATED SYMBOLS + 1 ALIAS / WHITE, CYAN AND LAVENDER", fill="white")
     for position, item in enumerate(assets):
         group, icon_id = item["group"], item["id"]
         source = PACK / group / (icon_id + ".png")
@@ -55,6 +55,8 @@ def build():
             raise RuntimeError("Empty generated icon: " + icon_id)
         mask = mask.crop(bounds)
         entry = {"id": group + "/" + icon_id, "group": group, "usage": item["usage"], "source": source.relative_to(ROOT).as_posix(), "source_dimensions": list(image.size), "source_sha256": digest(source), "prompt": record["prompt"], "exports": {}, "atlas_rects": {}}
+        if "alias_of" in item:
+            entry["alias_of"] = item["alias_of"]
         for size in SIZES:
             footprint = int(size * 0.75)
             scale = footprint / max(mask.size)
@@ -97,6 +99,11 @@ def check():
     manifest = json.loads((PACK / "manifest.json").read_text(encoding="utf-8"))
     assert len(manifest["assets"]) == 105
     assert len({a["id"] for a in manifest["assets"]}) == 105
+    by_id = {entry["id"]: entry for entry in manifest["assets"]}
+    assert len({entry["source_sha256"] for entry in manifest["assets"]}) == 104
+    aliases = [entry for entry in manifest["assets"] if "alias_of" in entry]
+    assert len(aliases) == 1 and aliases[0]["id"] == "menus/close"
+    assert aliases[0]["source_sha256"] == by_id[aliases[0]["alias_of"]]["source_sha256"]
     atlases = {}
     for size, entry in manifest["atlases"].items():
         path = ROOT / entry["file"]
@@ -105,7 +112,11 @@ def check():
         assert atlas.mode == "RGBA" and list(atlas.size) == entry["dimensions"], path
         atlases[size] = atlas
     for entry in manifest["assets"]:
-        assert digest(ROOT / entry["source"]) == entry["source_sha256"], entry["id"]
+        source = ROOT / entry["source"]
+        assert digest(source) == entry["source_sha256"], entry["id"]
+        original = Image.open(source)
+        assert original.mode == "RGBA" and list(original.size) == entry["source_dimensions"], source
+        assert original.getchannel("A").getextrema() == (0, 255), source
         for size, exported in entry["exports"].items():
             path = ROOT / exported["file"]
             assert digest(path) == exported["sha256"], path
@@ -122,7 +133,7 @@ def check():
         raw = path.read_bytes()
         assert not raw.startswith(b"\xef\xbb\xbf"), path
         assert raw.decode("utf-8").isascii(), path
-    print("Validated 105 preserved originals, 315 white RGBA exports and 3 exact atlases.")
+    print("Validated 105 icon roles (104 generated symbols and one alias), 315 white RGBA exports and 3 exact atlases.")
 
 
 if __name__ == "__main__":

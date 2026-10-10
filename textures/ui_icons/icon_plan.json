@@ -475,7 +475,8 @@
       "index": 67,
       "group": "menus",
       "id": "close",
-      "subject": "One balanced bold diagonal X",
+      "subject": "Use the approved generated menus/back arrow for close/cancel. ImageGen rejected the X glyph twice.",
+      "alias_of": "menus/back",
       "usage": "Close and cancel"
     },
     {
