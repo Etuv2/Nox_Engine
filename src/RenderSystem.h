@@ -4,13 +4,13 @@
 #include "SceneRuntimeData.h"
 #include "SimdKernels.h"
 #include "MDIBatch.h"
-#include "GLBuffer.h"
+#include "GpuBuffer.h"
 #include "Vertex.h"
 #include <glm/glm.hpp>
-#include <GL/glew.h>
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <array>
 #include <limits>
@@ -105,22 +105,22 @@ public:
     // Forward rendering pass
     void RenderForward(const glm::mat4& view, 
                        const glm::mat4& projection,
-                       GLuint defaultShader);
+                       rhi::ProgramHandle defaultShader);
 
     // Deferred geometry pass (G-buffer fill)
-    void RenderGeometry(GLuint geometryShader);
-    void RenderGeometryBatchedGBuffer(GLuint geometryShader);
+    void RenderGeometry(rhi::ProgramHandle geometryShader);
+    void RenderGeometryBatchedGBuffer(rhi::ProgramHandle geometryShader);
 
     // Shadow cascade pass
     void RenderShadowCascade(const glm::mat4& lightSpaceMatrix,
-                             GLuint shadowShader);
+                             rhi::ProgramHandle shadowShader);
 
     // Velocity pass for TAA
     void RenderVelocity(const glm::mat4& view,
                         const glm::mat4& projection,
                         const glm::mat4& prevView,
                         const glm::mat4& prevProjection,
-                        GLuint velocityShader);
+                        rhi::ProgramHandle velocityShader);
 
     // Collect renderable objects for MDI batching
     void CollectRenderables(MDIBatch& batch);
@@ -128,7 +128,7 @@ public:
     // Render transparent objects (forward pass after deferred)
     void RenderTransparent(const glm::mat4& view,
                            const glm::mat4& projection,
-                           GLuint transparentShader);
+                           rhi::ProgramHandle transparentShader);
 
     // Reflection probe capture: RenderForward skips models flagged excludeFromReflectionCapture.
     void SetReflectionCaptureActive(bool active) { m_reflectionCaptureActive = active; }
@@ -143,7 +143,7 @@ public:
     size_t GetVisibleEntityCount() const { return m_visibleCount; }
     size_t GetTotalEntityCount() const { return m_totalCount; }
     size_t GetCulledEntityCount() const { return m_totalCount - m_visibleCount; }
-    GLuint GetTransformBufferID() const { return m_transformBuffer ? m_transformBuffer->GetID() : 0; }
+    rhi::BufferHandle GetTransformBufferID() const { return m_transformBuffer ? m_transformBuffer->GetID() : rhi::BufferHandle{}; }
     size_t GetTransformRecordCount() const { return m_gpuTransformRecords.size(); }
     size_t GetTransformUploadCount() const { return m_transformUploadCount; }
     const FrameSubmissionCache& GetFrameSubmissionCache() const { return m_submissionCache; }
@@ -173,82 +173,84 @@ private:
     // Internal helpers
 
     struct ShaderUniformCache {
-        GLint view = -1;
-        GLint projection = -1;
-        GLint model = -1;
-        GLint normalMatrix = -1;
-        GLint prevView = -1;
-        GLint prevProjection = -1;
-        GLint prevModel = -1;
-        GLint transformID = -1;
-        GLint useVertexTransformID = -1;
-        GLint useModelMatrixUniform = -1;
-        GLint materialID = -1;
-        GLint lightSpaceMatrix = -1;
-        GLint uEnableSkinning = -1;
-        GLint uBoneMatrices = -1;
-        GLint bones = -1;
+        rhi::UniformLocation view = -1;
+        rhi::UniformLocation projection = -1;
+        rhi::UniformLocation model = -1;
+        rhi::UniformLocation normalMatrix = -1;
+        rhi::UniformLocation prevView = -1;
+        rhi::UniformLocation prevProjection = -1;
+        rhi::UniformLocation prevModel = -1;
+        rhi::UniformLocation transformID = -1;
+        rhi::UniformLocation useVertexTransformID = -1;
+        rhi::UniformLocation useModelMatrixUniform = -1;
+        rhi::UniformLocation materialID = -1;
+        rhi::UniformLocation lightSpaceMatrix = -1;
+        rhi::UniformLocation uEnableSkinning = -1;
+        rhi::UniformLocation uBoneMatrices = -1;
+        rhi::UniformLocation bones = -1;
 
-        GLint textureDiffuse = -1;
-        GLint textureNormal = -1;
-        GLint textureMetallicRoughness = -1;
-        GLint textureEmissive = -1;
-        GLint textureOcclusion = -1;
-        GLint textureSpecular = -1;
-        GLint textureSpecularColor = -1;
-        GLint textureTransmission = -1;
+        rhi::UniformLocation textureDiffuse = -1;
+        rhi::UniformLocation textureNormal = -1;
+        rhi::UniformLocation textureMetallicRoughness = -1;
+        rhi::UniformLocation textureEmissive = -1;
+        rhi::UniformLocation textureOcclusion = -1;
+        rhi::UniformLocation textureSpecular = -1;
+        rhi::UniformLocation textureSpecularColor = -1;
+        rhi::UniformLocation textureTransmission = -1;
 
-        GLint hasBaseColorTexture = -1;
-        GLint hasNormalTexture = -1;
-        GLint hasMetallicRoughnessTexture = -1;
-        GLint hasEmissiveTexture = -1;
-        GLint hasOcclusionTexture = -1;
-        GLint hasSpecularTexture = -1;
-        GLint hasSpecularColorTexture = -1;
-        GLint hasTransmissionTexture = -1;
+        rhi::UniformLocation hasBaseColorTexture = -1;
+        rhi::UniformLocation hasNormalTexture = -1;
+        rhi::UniformLocation hasMetallicRoughnessTexture = -1;
+        rhi::UniformLocation hasEmissiveTexture = -1;
+        rhi::UniformLocation hasOcclusionTexture = -1;
+        rhi::UniformLocation hasSpecularTexture = -1;
+        rhi::UniformLocation hasSpecularColorTexture = -1;
+        rhi::UniformLocation hasTransmissionTexture = -1;
 
-        GLint baseColorFactor = -1;
-        GLint metallicFactor = -1;
-        GLint roughnessFactor = -1;
-        GLint emissiveFactor = -1;
-        GLint emissiveStrength = -1;
-        GLint occlusionStrength = -1;
-        GLint normalScale = -1;
-        GLint alphaCutoff = -1;
-        GLint alphaMode = -1;
-        GLint specularFactor = -1;
-        GLint specularColorFactor = -1;
-        GLint clearcoatFactor = -1;
-        GLint clearcoatRoughnessFactor = -1;
-        GLint transmissionFactor = -1;
-        GLint thicknessFactor = -1;
-        GLint attenuationDistance = -1;
-        GLint attenuationColor = -1;
-        GLint ior = -1;
-        GLint wetnessResponse = -1;
-        GLint puddleResponse = -1;
-        GLint rainBeadResponse = -1;
-        GLint flakeIntensity = -1;
-        GLint flakeDensity = -1;
-        GLint interiorMapping = -1;
-        GLint interiorDepth = -1;
-        GLint interiorStrength = -1;
-        GLint interiorSeed = -1;
-        GLint interiorLighting = -1;
-        GLint interiorBlinds = -1;
-        GLint interiorStyle = -1;
+        rhi::UniformLocation baseColorFactor = -1;
+        rhi::UniformLocation metallicFactor = -1;
+        rhi::UniformLocation roughnessFactor = -1;
+        rhi::UniformLocation emissiveFactor = -1;
+        rhi::UniformLocation emissiveStrength = -1;
+        rhi::UniformLocation occlusionStrength = -1;
+        rhi::UniformLocation normalScale = -1;
+        rhi::UniformLocation alphaCutoff = -1;
+        rhi::UniformLocation alphaMode = -1;
+        rhi::UniformLocation specularFactor = -1;
+        rhi::UniformLocation specularColorFactor = -1;
+        rhi::UniformLocation clearcoatFactor = -1;
+        rhi::UniformLocation clearcoatRoughnessFactor = -1;
+        rhi::UniformLocation transmissionFactor = -1;
+        rhi::UniformLocation thicknessFactor = -1;
+        rhi::UniformLocation attenuationDistance = -1;
+        rhi::UniformLocation attenuationColor = -1;
+        rhi::UniformLocation ior = -1;
+        rhi::UniformLocation wetnessResponse = -1;
+        rhi::UniformLocation puddleResponse = -1;
+        rhi::UniformLocation rainBeadResponse = -1;
+        rhi::UniformLocation flakeIntensity = -1;
+        rhi::UniformLocation flakeDensity = -1;
+        rhi::UniformLocation interiorMapping = -1;
+        rhi::UniformLocation interiorDepth = -1;
+        rhi::UniformLocation interiorStrength = -1;
+        rhi::UniformLocation interiorSeed = -1;
+        rhi::UniformLocation interiorLighting = -1;
+        rhi::UniformLocation interiorBlinds = -1;
+        rhi::UniformLocation interiorStyle = -1;
+        rhi::UniformLocation interiorPane = -1;
+        rhi::UniformLocation interiorSill = -1;
 
-        GLint baseColorUVSet = -1;
-        GLint normalUVSet = -1;
-        GLint metallicRoughnessUVSet = -1;
-        GLint emissiveUVSet = -1;
-        GLint occlusionUVSet = -1;
-        GLint specularUVSet = -1;
-        GLint specularColorUVSet = -1;
-        GLint transmissionUVSet = -1;
+        rhi::UniformLocation baseColorUVSet = -1;
+        rhi::UniformLocation normalUVSet = -1;
+        rhi::UniformLocation metallicRoughnessUVSet = -1;
+        rhi::UniformLocation emissiveUVSet = -1;
+        rhi::UniformLocation occlusionUVSet = -1;
+        rhi::UniformLocation specularUVSet = -1;
+        rhi::UniformLocation specularColorUVSet = -1;
+        rhi::UniformLocation transmissionUVSet = -1;
     };
 
-    const ShaderUniformCache& GetShaderUniformCache(GLuint shader);
+    const ShaderUniformCache& GetShaderUniformCache(rhi::ProgramHandle shader);
 
     static constexpr bool VerboseLogging = false;
     bool m_runtimeVerboseLogging = false;
@@ -259,7 +261,7 @@ private:
                                  const glm::mat4& modelTransform,
                                  const ShaderUniformCache& uniforms);
     void ApplyCullingState(const MeshComponent& mesh, CullingOverride override, const glm::mat4& modelTransform);
-    void ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, GLenum frontFace);
+    void ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, rhi::FrontFace frontFace);
     void UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms);
     void UpdateGpuTransformBuffer(bool forceFullTransformUpload = false);
     void EnsureTransformBuffer();
@@ -269,7 +271,7 @@ private:
     void UpdateAllRenderItemBounds();
     void PrepareCameraSubmissionCache();
     void PrepareShadowSubmissionCache(const glm::mat4& lightSpaceMatrix);
-    void RenderGeometryPrepared(GLuint geometryShader);
+    void RenderGeometryPrepared(rhi::ProgramHandle geometryShader);
     
     // Batch processing helpers
     struct RenderBatch {
@@ -288,24 +290,24 @@ private:
     
     // Instanced rendering support
     struct InstanceGroup {
-        GLuint vao;
-        GLuint shaderID;
+        rhi::VertexInputHandle vao;
+        rhi::ProgramHandle shaderID;
         size_t indexCount;
         std::vector<glm::mat4> transforms;
         std::vector<EntityID> entities;
     };
     std::unordered_map<uint64_t, InstanceGroup> m_instanceGroups;
-    std::unordered_map<GLuint, ShaderUniformCache> m_shaderUniformCaches;
+    std::map<rhi::ProgramHandle, ShaderUniformCache> m_shaderUniformCaches;
     
     void BuildInstanceGroups();
-    void RenderInstancedGroup(const InstanceGroup& group, GLuint shader);
-    uint64_t ComputeMeshKey(GLuint vao, GLuint shaderID) const;
+    void RenderInstancedGroup(const InstanceGroup& group, rhi::ProgramHandle shader);
+    uint64_t ComputeMeshKey(rhi::VertexInputHandle vao, rhi::ProgramHandle shaderID) const;
     
     // Instance buffer for GPU
-    GLuint m_instanceVBO = 0;
+    rhi::BufferHandle m_instanceVBO;
     size_t m_instanceBufferCapacity = 0;
     void EnsureInstanceBuffer(size_t requiredSize);
-    void ResetMaterialStateCache(GLuint shader);
+    void ResetMaterialStateCache(rhi::ProgramHandle shader);
 
     struct BakedGBufferVertex {
         Vertex vertex;
@@ -314,36 +316,36 @@ private:
     };
 
     struct BakedGBufferBatch {
-        GLuint vao = 0;
-        GLBufferPtr vertexBuffer;
-        GLBufferPtr indexBuffer;
+        rhi::VertexInputHandle vao;
+        GpuBufferPtr vertexBuffer;
+        GpuBufferPtr indexBuffer;
         size_t indexCount = 0;
         const MeshComponent* materialMesh = nullptr;
         CullingOverride cullingOverride = CullingOverride::CULLING_INHERIT;
-        GLenum frontFace = GL_CCW;
+        rhi::FrontFace frontFace = rhi::FrontFace::CounterClockwise;
     };
 
     void RebuildBakedGBufferBatches();
     void UpdateBakedGBufferTransformBuffer();
     void ClearBakedGBufferBatches();
     bool ShouldUseBakedGBufferPath() const;
-    uint64_t ComputeBakedBatchKey(const MeshComponent& mesh, CullingOverride override, GLenum frontFace) const;
+    uint64_t ComputeBakedBatchKey(const MeshComponent& mesh, CullingOverride override, rhi::FrontFace frontFace) const;
     std::vector<BakedGBufferBatch> m_bakedGBufferBatches;
-    GLBufferPtr m_bakedGBufferTransformBuffer;
+    GpuBufferPtr m_bakedGBufferTransformBuffer;
     std::vector<GpuTransformRecord> m_bakedGBufferTransformRecords;
     uint64_t m_bakedGBufferRenderableRevision = 0;
     uint64_t m_bakedGBufferTransformPublication = 0;
 
-    GLBufferPtr m_transformBuffer;
+    GpuBufferPtr m_transformBuffer;
     std::vector<GpuTransformRecord> m_gpuTransformRecords;
     size_t m_transformUploadCount = 0;
     uint64_t m_lastPreparedTransformRevision = 0;
-    std::array<GLuint, 8> m_boundMaterialTextures{};
-    GLuint m_cachedMaterialShader = 0;
+    std::array<rhi::TextureHandle, 8> m_boundMaterialTextures{};
+    rhi::ProgramHandle m_cachedMaterialShader;
     uint32_t m_cachedMaterialID = std::numeric_limits<uint32_t>::max();
-    GLenum m_cachedFrontFace = GL_CCW;
+    rhi::FrontFace m_cachedFrontFace = rhi::FrontFace::CounterClockwise;
     bool m_cachedFrontFaceValid = false;
-    GLenum m_cachedCullFace = GL_BACK;
+    rhi::CullFace m_cachedCullFace = rhi::CullFace::Back;
     bool m_cachedCullFaceValid = false;
     bool m_cachedCullEnabled = false;
     bool m_cachedCullEnabledValid = false;

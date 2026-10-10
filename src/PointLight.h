@@ -15,11 +15,11 @@ public:
     virtual ~PointLight();
 
     // Shadow mapping for point lights (cubemap shadows)
-    bool InitializeShadowMap(GLuint shadowResolution);
+    bool InitializeShadowMap(uint32_t shadowResolution);
     void BindShadowFBO();
     void UnbindFBO();
-    GLuint GetDepthMap() const { return depthMap; }
-    GLuint GetShadowMapID() const override { return depthMap; }
+    rhi::TextureHandle GetDepthMap() const { return depthMap; }
+    rhi::TextureHandle GetShadowMapID() const override { return depthMap; }
 
     // Point light specific properties
     void SetRadius(float radius) { m_radius = radius; }
@@ -54,7 +54,7 @@ private:
     float m_radius = 10.0f;  // Visual radius for light influence
     
     // Shadow mapping
-    GLuint depthFBO = 0;
-    GLuint depthMap = 0;
+    rhi::FramebufferHandle depthFBO;
+    rhi::TextureHandle depthMap;
     int m_shadowResolution = 1024;
 };

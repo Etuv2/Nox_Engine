@@ -15,15 +15,29 @@ namespace {
 		uint32_t lights[4];
 		float screen[4];
 	};
+
+	// Buffer-data semantics: allocates the buffer on first use, then reallocates the same handle.
+	void SetBufferData(rhi::BufferHandle& buffer, size_t size, rhi::BufferUsage usage) {
+		rhi::Device& gpu = rhi::Gpu();
+		if (buffer) {
+			gpu.ReallocateBuffer(buffer, size, nullptr, usage);
+		}
+		else {
+			rhi::BufferDesc desc;
+			desc.size = size;
+			desc.usage = usage;
+			buffer = gpu.CreateBuffer(desc);
+		}
+	}
 }
 
 LightClusterPass::LightClusterPass() = default;
 
 LightClusterPass::~LightClusterPass()
 {
-	if (m_paramsUBO) glDeleteBuffers(1, &m_paramsUBO);
-	if (m_countSSBO) glDeleteBuffers(1, &m_countSSBO);
-	if (m_indexSSBO) glDeleteBuffers(1, &m_indexSSBO);
+	if (m_paramsUBO && rhi::HasGpu()) rhi::Gpu().DestroyBuffer(m_paramsUBO);
+	if (m_countSSBO && rhi::HasGpu()) rhi::Gpu().DestroyBuffer(m_countSSBO);
+	if (m_indexSSBO && rhi::HasGpu()) rhi::Gpu().DestroyBuffer(m_indexSSBO);
 }
 
 bool LightClusterPass::Initialize(RenderContext& context)
@@ -33,10 +47,7 @@ bool LightClusterPass::Initialize(RenderContext& context)
 		std::cerr << "[LightClusterPass] Failed to compile light_cluster_build_comp.glsl" << std::endl;
 		return false;
 	}
-	glGenBuffers(1, &m_paramsUBO);
-	glBindBuffer(GL_UNIFORM_BUFFER, m_paramsUBO);
-	glBufferData(GL_UNIFORM_BUFFER, sizeof(ClusterParamsStd140), nullptr, GL_DYNAMIC_DRAW);
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	SetBufferData(m_paramsUBO, sizeof(ClusterParamsStd140), rhi::BufferUsage::DynamicDraw);
 	AllocateBuffers(context.width, context.height);
 	context.clusterParamsUBO = m_paramsUBO;
 	context.clusterCountSSBO = m_countSSBO;
@@ -49,13 +60,8 @@ void LightClusterPass::AllocateBuffers(int width, int height)
 	m_gridX = (static_cast<unsigned>(std::max(width, 1)) + kTileSize - 1u) / kTileSize;
 	m_gridY = (static_cast<unsigned>(std::max(height, 1)) + kTileSize - 1u) / kTileSize;
 	const size_t clusters = static_cast<size_t>(m_gridX) * m_gridY * kSlices;
-	if (!m_countSSBO) glGenBuffers(1, &m_countSSBO);
-	if (!m_indexSSBO) glGenBuffers(1, &m_indexSSBO);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_countSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, clusters * sizeof(uint32_t), nullptr, GL_DYNAMIC_COPY);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_indexSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, clusters * kMaxLightsPerCluster * sizeof(uint32_t), nullptr, GL_DYNAMIC_COPY);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	SetBufferData(m_countSSBO, clusters * sizeof(uint32_t), rhi::BufferUsage::DynamicCopy);
+	SetBufferData(m_indexSSBO, clusters * kMaxLightsPerCluster * sizeof(uint32_t), rhi::BufferUsage::DynamicCopy);
 }
 
 void LightClusterPass::Resize(RenderContext& context, int newWidth, int newHeight)
@@ -94,9 +100,7 @@ void LightClusterPass::Execute(RenderContext& ctx,
 	params.lights[2] = ctx.enableClusteredLighting ? 1u : 0u;
 	params.screen[0] = static_cast<float>(ctx.width);
 	params.screen[1] = static_cast<float>(ctx.height);
-	glBindBuffer(GL_UNIFORM_BUFFER, m_paramsUBO);
-	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(params), &params);
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	rhi::Gpu().UpdateBuffer(m_paramsUBO, 0, sizeof(params), &params);
 	ctx.clusterParamsUBO = m_paramsUBO;
 	ctx.clusterCountSSBO = m_countSSBO;
 	ctx.clusterIndexSSBO = m_indexSSBO;
@@ -105,25 +109,27 @@ void LightClusterPass::Execute(RenderContext& ctx,
 		return;
 	}
 
-	const GLuint program = m_buildShader->GetProgramID();
-	glUseProgram(program);
-	glBindBufferBase(GL_UNIFORM_BUFFER, kParamsBinding, m_paramsUBO);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ctx.lightManager->GetLightDataSSBO());
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kCountBinding, m_countSSBO);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kIndexBinding, m_indexSSBO);
+	rhi::Device& gpu = rhi::Gpu();
+	const rhi::ProgramHandle program = m_buildShader->GetProgramID();
+	gpu.UseProgram(program);
+	gpu.BindUniformBuffer(kParamsBinding, m_paramsUBO);
+	gpu.BindStorageBuffer(0, ctx.lightManager->GetLightDataSSBO());
+	gpu.BindStorageBuffer(kCountBinding, m_countSSBO);
+	gpu.BindStorageBuffer(kIndexBinding, m_indexSSBO);
 	// The cluster grid uses the unjittered frustum; jitter is sub-pixel and covered by the
 	// conservative bounds.
 	const glm::vec2 tanHalfFov(1.0f / ctx.proj[0][0], 1.0f / ctx.proj[1][1]);
-	glUniformMatrix4fv(glGetUniformLocation(program, "uView"), 1, GL_FALSE, glm::value_ptr(ctx.view));
-	glUniform2fv(glGetUniformLocation(program, "uTanHalfFov"), 1, glm::value_ptr(tanHalfFov));
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uView"), ctx.view);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uTanHalfFov"), tanHalfFov);
 	const unsigned clusters = m_gridX * m_gridY * kSlices;
-	glDispatchCompute((clusters + 63u) / 64u, 1, 1);
-	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+	gpu.Dispatch((clusters + 63u) / 64u, 1, 1);
+	gpu.PipelineBarrier(rhi::BarrierStorage);
 }
 
 void LightClusterPass::BindForShading(const RenderContext& ctx)
 {
-	if (ctx.clusterParamsUBO) glBindBufferBase(GL_UNIFORM_BUFFER, kParamsBinding, ctx.clusterParamsUBO);
-	if (ctx.clusterCountSSBO) glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kCountBinding, ctx.clusterCountSSBO);
-	if (ctx.clusterIndexSSBO) glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kIndexBinding, ctx.clusterIndexSSBO);
+	rhi::Device& gpu = rhi::Gpu();
+	if (ctx.clusterParamsUBO) gpu.BindUniformBuffer(kParamsBinding, ctx.clusterParamsUBO);
+	if (ctx.clusterCountSSBO) gpu.BindStorageBuffer(kCountBinding, ctx.clusterCountSSBO);
+	if (ctx.clusterIndexSSBO) gpu.BindStorageBuffer(kIndexBinding, ctx.clusterIndexSSBO);
 }

@@ -149,9 +149,9 @@ bool ComputeDebugLocalBounds(const SceneNode& node, glm::vec3& minBounds, glm::v
 DebugBBoxPass::DebugBBoxPass() {}
 
 DebugBBoxPass::~DebugBBoxPass() {
-    if (m_cubeVAO) glDeleteVertexArrays(1, &m_cubeVAO);
-    if (m_shaderProgram) glDeleteProgram(m_shaderProgram);
-    // GLBuffer smart pointers auto-cleanup
+    if (m_cubeInput && rhi::HasGpu()) rhi::Gpu().DestroyVertexInput(m_cubeInput);
+    if (m_shaderProgram && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_shaderProgram);
+    // GpuBuffer smart pointers auto-cleanup
 }
 
 bool DebugBBoxPass::Initialize(RenderContext& context) {
@@ -160,31 +160,26 @@ bool DebugBBoxPass::Initialize(RenderContext& context) {
         "shaders/debug_bbox_vert.glsl",
         "shaders/debug_bbox_frag.glsl"
     );
-    
+
     if (!m_shaderProgram) {
         std::cerr << "[DebugBBoxPass] Failed to create shader program\n";
         return false;
     }
 
     // Cache uniform locations
-    m_locViewProjection = glGetUniformLocation(m_shaderProgram, "u_ViewProjection");
+    m_locViewProjection = rhi::Gpu().GetUniformLocation(m_shaderProgram, "u_ViewProjection");
 
-    // Create VAO
-    glGenVertexArrays(1, &m_cubeVAO);
-    glBindVertexArray(m_cubeVAO);
-
-    // Create vertex buffer using GLBuffer wrapper
-    m_vertexBuffer = std::make_unique<GLBuffer>(
-        BufferType::Vertex, 
-        sizeof(s_cubeVertices), 
+    // Create vertex buffer using GpuBuffer wrapper
+    m_vertexBuffer = std::make_unique<GpuBuffer>(
+        BufferType::Vertex,
+        sizeof(s_cubeVertices),
         s_cubeVertices,
         BufferUsage::StaticDraw
     );
     m_vertexBuffer->SetLabel("DebugBBox_VertexBuffer");
-    
-    // Create index buffer using GLBuffer wrapper
-    // IMPORTANT: EBO must be bound while VAO is active to be captured by VAO state
-    m_indexBuffer = std::make_unique<GLBuffer>(
+
+    // Create index buffer using GpuBuffer wrapper
+    m_indexBuffer = std::make_unique<GpuBuffer>(
         BufferType::Index,
         sizeof(s_cubeIndices),
         s_cubeIndices,
@@ -192,17 +187,15 @@ bool DebugBBoxPass::Initialize(RenderContext& context) {
     );
     m_indexBuffer->SetLabel("DebugBBox_IndexBuffer");
 
-    // Position attribute (location = 0)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+    // Vertex input: position attribute (location = 0) from the vertex buffer; the index buffer is the
+    // element buffer of the input (the index buffer is part of the input state, as the VAO was)
+    rhi::VertexInputDesc inputDesc;
+    inputDesc.buffers.push_back({ m_vertexBuffer->GetID(), 3 * sizeof(float) });
+    inputDesc.attributes.push_back({ 0, 0, 3, rhi::ScalarType::Float, false, false, 0 });
+    inputDesc.indexBuffer = m_indexBuffer->GetID();
+    m_cubeInput = rhi::Gpu().CreateVertexInput(inputDesc);
 
-    // Unbind VAO first (keeps EBO binding in VAO state)
-    glBindVertexArray(0);
-    
-    // Now safe to unbind VBO (not part of VAO state after glVertexAttribPointer)
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    m_instanceSSBO = std::make_unique<GLBuffer>(
+    m_instanceSSBO = std::make_unique<GpuBuffer>(
         BufferType::ShaderStorage,
         BufferUsage::DynamicDraw
     );
@@ -225,7 +218,7 @@ void DebugBBoxPass::Execute(RenderContext& ctx,
                             const std::shared_ptr<Camera>& camera,
                             const std::shared_ptr<DirectionalLight>& dirLight,
                             const std::shared_ptr<Skybox>& skybox) {
-    
+
     // Only execute if debug bounding boxes are enabled
     if (!ctx.showBoundingBoxes) {
         return;
@@ -248,49 +241,50 @@ void DebugBBoxPass::Execute(RenderContext& ctx,
     // Upload to GPU
     UploadToGPU();
 
-    // Setup OpenGL state for wireframe rendering
-    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());  // Render to backbuffer
-    glViewport(0, 0, ctx.width, ctx.height);
-    
-    // Save only state this pass actually changes. GL_LINES does not need polygon mode or cull tweaks.
-    GLboolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-    GLint oldDepthFunc;
-    glGetIntegerv(GL_DEPTH_FUNC, &oldDepthFunc);
-    
-    GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
-    GLint oldBlendSrc, oldBlendDst;
-    glGetIntegerv(GL_BLEND_SRC, &oldBlendSrc);
-    glGetIntegerv(GL_BLEND_DST, &oldBlendDst);
+    rhi::Device& gpu = rhi::Gpu();
+
+    // Setup render state for wireframe rendering
+    gpu.BindFramebuffer(PresentTarget::Get());  // Render to backbuffer
+    gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
+
+    // Save only state this pass actually changes. Lines do not need polygon mode or cull tweaks.
+    const bool depthTestWasEnabled = gpu.IsDepthTestEnabled();
+    const rhi::CompareOp oldDepthFunc = gpu.CaptureState().depthFunc;
+
+    const bool blendWasEnabled = gpu.IsBlendEnabled();
+    const rhi::StateSnapshot blendState = gpu.CaptureState();
+    const rhi::BlendFactor oldBlendSrc = blendState.blend.srcColor;
+    const rhi::BlendFactor oldBlendDst = blendState.blend.dstColor;
 
     // Configure state for debug box rendering
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);  // Allow drawing on same depth
-    glLineWidth(2.0f);
-    
+    gpu.SetDepthTest(true);
+    gpu.SetDepthFunc(rhi::CompareOp::LessEqual);  // Allow drawing on same depth
+    gpu.SetLineWidth(2.0f);
+
     // Enable blending for semi-transparent boxes
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gpu.SetBlendEnabled(true);
+    gpu.SetBlendFunc(rhi::BlendFactor::SrcAlpha, rhi::BlendFactor::OneMinusSrcAlpha);
 
     // Render using one instanced draw
     glm::mat4 viewProj = ctx.proj * ctx.view;
     RenderInstanced(viewProj);
 
-    // Restore OpenGL state precisely
-    glLineWidth(1.0f);
-    glDepthFunc(oldDepthFunc);
-    if (!depthTestWasEnabled) glDisable(GL_DEPTH_TEST);
+    // Restore render state precisely
+    gpu.SetLineWidth(1.0f);
+    gpu.SetDepthFunc(oldDepthFunc);
+    if (!depthTestWasEnabled) gpu.SetDepthTest(false);
     if (blendWasEnabled) {
-        glEnable(GL_BLEND);
-        glBlendFunc(oldBlendSrc, oldBlendDst);
+        gpu.SetBlendEnabled(true);
+        gpu.SetBlendFunc(oldBlendSrc, oldBlendDst);
     } else {
-        glDisable(GL_BLEND);
+        gpu.SetBlendEnabled(false);
     }
 }
 
 void DebugBBoxPass::CollectNodesRecursive(
     const std::shared_ptr<SceneNode>& node,
     const glm::mat4& parentTransform) {
-    
+
     if (!node) return;
 
     // Compute world transform for this node
@@ -301,7 +295,7 @@ void DebugBBoxPass::CollectNodesRecursive(
     if (!ComputeDebugLocalBounds(*node, minBounds, maxBounds)) {
         return;
     }
-    
+
     // Skip nodes with invalid/empty bounding boxes (check for non-zero size)
     glm::vec3 size = maxBounds - minBounds;
     if (glm::length(size) > 0.0001f) {
@@ -311,7 +305,7 @@ void DebugBBoxPass::CollectNodesRecursive(
         instance.color = GetColorForNodeType(node->GetNodeType());
         instance.boundsMin = glm::vec4(minBounds, 0.0f);
         instance.boundsMax = glm::vec4(maxBounds, 0.0f);
-        
+
         m_instances.push_back(instance);
     }
 
@@ -334,57 +328,54 @@ void DebugBBoxPass::UploadToGPU() {
     }
 
     m_instanceSSBO->SubData(0, instanceDataSize, m_instances.data());
-    
+
     m_lastInstanceCount = m_instances.size();
 }
 
 void DebugBBoxPass::RenderInstanced(const glm::mat4& viewProj) {
+    rhi::Device& gpu = rhi::Gpu();
+
     // Use shader
-    glUseProgram(m_shaderProgram);
+    gpu.UseProgram(m_shaderProgram);
 
     // Set view-projection matrix
-    glUniformMatrix4fv(m_locViewProjection, 1, GL_FALSE, glm::value_ptr(viewProj));
+    gpu.SetUniform(m_locViewProjection, viewProj);
 
     // Bind instance SSBO at binding point
     m_instanceSSBO->BindBase(INSTANCE_SSBO_BINDING);
 
-    // Bind VAO (contains VBO and EBO)
-    glBindVertexArray(m_cubeVAO);
+    // Bind vertex input (vertex buffer and index buffer)
+    gpu.BindVertexInput(m_cubeInput);
 
     // Issue one draw for all bounding boxes. This avoids one indirect command per box.
-    glDrawElementsInstanced(
-        GL_LINES,
-        24,
-        GL_UNSIGNED_INT,
-        nullptr,
-        static_cast<GLsizei>(m_instances.size())
-    );
+    gpu.DrawIndexed(rhi::Topology::Lines, 24, rhi::IndexType::UInt32, 0,
+        static_cast<uint32_t>(m_instances.size()));
 
     // Cleanup state
-    glBindVertexArray(0);
-    glUseProgram(0);
+    gpu.BindVertexInput({});
+    gpu.UseProgram({});
 }
 
 glm::vec4 DebugBBoxPass::GetColorForNodeType(SceneNode::NODE_TYPE nodeType) const {
     switch (nodeType) {
         case SceneNode::NODE_TYPE::MODEL:
             return glm::vec4(0.2f, 1.0f, 0.2f, 0.8f);  // Green for meshes
-        
+
         case SceneNode::NODE_TYPE::LIGHT:
             return glm::vec4(1.0f, 1.0f, 0.2f, 0.8f);  // Yellow for lights
-        
+
         case SceneNode::NODE_TYPE::CAMERA:
             return glm::vec4(0.2f, 0.5f, 1.0f, 0.8f);  // Blue for cameras
-        
+
         case SceneNode::NODE_TYPE::AUDIO:
             return glm::vec4(0.2f, 1.0f, 1.0f, 0.8f);  // Cyan for audio
-        
+
         case SceneNode::NODE_TYPE::LPV_VOLUME:
             return glm::vec4(1.0f, 0.2f, 1.0f, 0.8f);  // Magenta for LPV volumes
-        
+
         case SceneNode::NODE_TYPE::GUI:
             return glm::vec4(1.0f, 0.5f, 0.0f, 0.8f);  // Orange for GUI
-        
+
         case SceneNode::NODE_TYPE::NODE:
         default:
             return glm::vec4(1.0f, 1.0f, 1.0f, 0.6f);  // White for generic nodes

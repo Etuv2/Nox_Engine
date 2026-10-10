@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <memory>
 
 class ComputeShader;
@@ -33,8 +33,8 @@ private:
 	std::unique_ptr<ComputeShader> m_tileShader;
 	std::unique_ptr<ComputeShader> m_gatherShader;
 	std::unique_ptr<FrameBuffer> m_output;  // RGBA16F, sampled by bloom/post as postSourceFBO
-	GLuint m_tileMax = 0;
-	GLuint m_neighborMax = 0;
+	rhi::TextureHandle m_tileMax;
+	rhi::TextureHandle m_neighborMax;
 	int m_tileW = 0, m_tileH = 0;
 	unsigned m_frame = 0;
 	static constexpr int kTileSize = 16;

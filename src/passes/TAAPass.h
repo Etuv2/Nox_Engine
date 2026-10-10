@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <glm/glm.hpp>
 
 class FrameBuffer;
@@ -34,7 +34,7 @@ public:
     void ResetHistory() { m_historyValid = false; m_frameIndex = 0; }
     int GetFrameIndex() const { return m_frameIndex; }
     glm::vec2 GetCurrentJitter() const { return m_jitter; }
-    
+
     // Expose current FBO for SSGI to use as history source
     FrameBuffer* GetCurrentFBO() const { return m_currentFBO.get(); }
 
@@ -45,35 +45,35 @@ private:
     glm::vec2 GetJitter(int frameIndex, int pattern);
     glm::mat4 RemoveProjectionJitter(const glm::mat4& projection, const glm::vec2& jitterPixels, const RenderContext& ctx) const;
 
-    GLuint m_velocityShader = 0;
-    GLuint m_resolveShader = 0;
+    rhi::ProgramHandle m_velocityShader;
+    rhi::ProgramHandle m_resolveShader;
 
 
     struct VelocityUniforms {
-        GLint view = -1;
-        GLint projection = -1;
-        GLint prevView = -1;
-        GLint prevProjection = -1;
+        rhi::UniformLocation view = -1;
+        rhi::UniformLocation projection = -1;
+        rhi::UniformLocation prevView = -1;
+        rhi::UniformLocation prevProjection = -1;
     };
 
     struct ResolveUniforms {
-        GLint currentFrame = -1;
-        GLint historyFrame = -1;
-        GLint velocityBuffer = -1;
-        GLint depthBuffer = -1;
-        GLint normalBuffer = -1;
-        GLint historyDepthBuffer = -1;
-        GLint historyNormalBuffer = -1;
-        GLint blendFactor = -1;
-        GLint varianceThreshold = -1;
-        GLint lumaWeight = -1;
-        GLint useYCoCg = -1;
-        GLint historyValid = -1;
-        GLint screenSize = -1;
-        GLint depthThreshold = -1;
-        GLint normalThreshold = -1;
-        GLint edgeThreshold = -1;
-        GLint reactiveMaskStrength = -1;
+        rhi::UniformLocation currentFrame = -1;
+        rhi::UniformLocation historyFrame = -1;
+        rhi::UniformLocation velocityBuffer = -1;
+        rhi::UniformLocation depthBuffer = -1;
+        rhi::UniformLocation normalBuffer = -1;
+        rhi::UniformLocation historyDepthBuffer = -1;
+        rhi::UniformLocation historyNormalBuffer = -1;
+        rhi::UniformLocation blendFactor = -1;
+        rhi::UniformLocation varianceThreshold = -1;
+        rhi::UniformLocation lumaWeight = -1;
+        rhi::UniformLocation useYCoCg = -1;
+        rhi::UniformLocation historyValid = -1;
+        rhi::UniformLocation screenSize = -1;
+        rhi::UniformLocation depthThreshold = -1;
+        rhi::UniformLocation normalThreshold = -1;
+        rhi::UniformLocation edgeThreshold = -1;
+        rhi::UniformLocation reactiveMaskStrength = -1;
     };
 
     VelocityUniforms m_velocityUniforms;
@@ -85,8 +85,8 @@ private:
     std::unique_ptr<FrameBuffer> m_velocityFBO;
     std::unique_ptr<FrameBuffer> m_currentFBO;
     std::unique_ptr<FrameBuffer> m_historyFBO;
-    GLuint m_historyDepthTex = 0;
-    GLuint m_historyNormalTex = 0;
+    rhi::TextureHandle m_historyDepthTex;
+    rhi::TextureHandle m_historyNormalTex;
 
     glm::vec2 m_jitter{0.0f};
     glm::vec2 m_prevJitter{0.0f};

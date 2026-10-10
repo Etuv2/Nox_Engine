@@ -36,6 +36,8 @@
 #include "passes/MotionBlurPass.h"
 #include "passes/RainPass.h"
 #include "passes/VehicleFXPass.h"
+#include "passes/DecalPass.h"
+#include "passes/LensFlarePass.h"
 #include "VehicleFX.h"
 #include <iostream>
 #include <chrono>
@@ -54,12 +56,12 @@ ModularRenderer::ModularRenderer()
 ModularRenderer::~ModularRenderer()
 {
 	if (m_debugViewShader) {
-		glDeleteProgram(m_debugViewShader);
-		m_debugViewShader = 0;
+		rhi::Gpu().DestroyProgram(m_debugViewShader);
+		m_debugViewShader = rhi::ProgramHandle{};
 	}
 	if (m_indirectDiffuseDebugPresentShader) {
-		glDeleteProgram(m_indirectDiffuseDebugPresentShader);
-		m_indirectDiffuseDebugPresentShader = 0;
+		rhi::Gpu().DestroyProgram(m_indirectDiffuseDebugPresentShader);
+		m_indirectDiffuseDebugPresentShader = rhi::ProgramHandle{};
 	}
 }
 
@@ -206,8 +208,8 @@ namespace {
 	}
 
 	struct PassQuerySlot {
-		std::array<GLuint, 2> timestampQueries{ 0, 0 };
-		std::array<GLuint, 2> statsQueries{ 0, 0 };
+		std::array<rhi::QueryHandle, 2> timestampQueries{};
+		std::array<rhi::QueryHandle, 2> statsQueries{};
 		bool timerIssued = false;
 		bool statsIssued = false;
 	};
@@ -251,12 +253,10 @@ namespace {
 			return it->second;
 		}
 
-		static bool AreQueryResultsReady(const std::array<GLuint, 2>& queries) {
-			GLint availableA = GL_FALSE;
-			GLint availableB = GL_FALSE;
-			glGetQueryObjectiv(queries[0], GL_QUERY_RESULT_AVAILABLE, &availableA);
-			glGetQueryObjectiv(queries[1], GL_QUERY_RESULT_AVAILABLE, &availableB);
-			return availableA == GL_TRUE && availableB == GL_TRUE;
+		static bool AreQueryResultsReady(const std::array<rhi::QueryHandle, 2>& queries) {
+			const bool availableA = rhi::Gpu().IsQueryResultAvailable(queries[0]);
+			const bool availableB = rhi::Gpu().IsQueryResultAvailable(queries[1]);
+			return availableA && availableB;
 		}
 
 		void ResolvePassMetrics(const std::string& passName, ModularRenderer::PassTimingMetrics& metrics) {
@@ -268,15 +268,12 @@ namespace {
 			PassQuerySlot& readbackSlot = it->second.slots[ReadbackSlotIndex()];
 
 			if (readbackSlot.statsIssued) {
-#ifdef GLEW_ARB_pipeline_statistics_query
-				if (GLEW_ARB_pipeline_statistics_query) {
+				if (rhi::Gpu().Limits().pipelineStatisticsQueries) {
 					const bool ready = strictTiming || AreQueryResultsReady(readbackSlot.statsQueries);
 					if (ready) {
 						auto waitStart = Clock::now();
-						GLuint64 primitives = 0;
-						GLuint64 computeInvocations = 0;
-						glGetQueryObjectui64v(readbackSlot.statsQueries[0], GL_QUERY_RESULT, &primitives);
-						glGetQueryObjectui64v(readbackSlot.statsQueries[1], GL_QUERY_RESULT, &computeInvocations);
+						uint64_t primitives = rhi::Gpu().GetQueryResult(readbackSlot.statsQueries[0]);
+						uint64_t computeInvocations = rhi::Gpu().GetQueryResult(readbackSlot.statsQueries[1]);
 						auto waitEnd = Clock::now();
 						metrics.cpuWaitSyncMs += std::chrono::duration<float, std::milli>(waitEnd - waitStart).count();
 						metrics.drawCalls = primitives > 0 ? 1 : 0;
@@ -284,17 +281,14 @@ namespace {
 						readbackSlot.statsIssued = false;
 					}
 				}
-#endif
 			}
 
-			if (readbackSlot.timerIssued && GLEW_ARB_timer_query) {
+			if (readbackSlot.timerIssued) {
 				const bool ready = strictTiming || AreQueryResultsReady(readbackSlot.timestampQueries);
 				if (ready) {
 					auto waitStart = Clock::now();
-					GLuint64 beginNs = 0;
-					GLuint64 endNs = 0;
-					glGetQueryObjectui64v(readbackSlot.timestampQueries[0], GL_QUERY_RESULT, &beginNs);
-					glGetQueryObjectui64v(readbackSlot.timestampQueries[1], GL_QUERY_RESULT, &endNs);
+					uint64_t beginNs = rhi::Gpu().GetQueryResult(readbackSlot.timestampQueries[0]);
+					uint64_t endNs = rhi::Gpu().GetQueryResult(readbackSlot.timestampQueries[1]);
 					auto waitEnd = Clock::now();
 					metrics.cpuWaitSyncMs += std::chrono::duration<float, std::milli>(waitEnd - waitStart).count();
 					if (endNs >= beginNs) {
@@ -308,14 +302,14 @@ namespace {
 	private:
 		static void InitializePassState(PassQueryState& state) {
 			for (auto& slot : state.slots) {
-				if (GLEW_ARB_timer_query) {
-					glGenQueries(2, slot.timestampQueries.data());
+				// Timer queries are core in the OpenGL 4.6 backend.
+				for (auto& query : slot.timestampQueries) {
+					query = rhi::Gpu().CreateQuery(rhi::QueryType::Timestamp);
 				}
-#ifdef GLEW_ARB_pipeline_statistics_query
-				if (GLEW_ARB_pipeline_statistics_query) {
-					glGenQueries(2, slot.statsQueries.data());
+				if (rhi::Gpu().Limits().pipelineStatisticsQueries) {
+					slot.statsQueries[0] = rhi::Gpu().CreateQuery(rhi::QueryType::PrimitivesSubmitted);
+					slot.statsQueries[1] = rhi::Gpu().CreateQuery(rhi::QueryType::ComputeInvocations);
 				}
-#endif
 			}
 			state.initialized = true;
 		}
@@ -338,16 +332,12 @@ namespace {
 			activeSlot->timerIssued = false;
 			activeSlot->statsIssued = false;
 
-			if (GLEW_ARB_timer_query) {
-				glQueryCounter(activeSlot->timestampQueries[0], GL_TIMESTAMP);
-			}
+			rhi::Gpu().WriteTimestamp(activeSlot->timestampQueries[0]);
 
-#ifdef GLEW_ARB_pipeline_statistics_query
-			if (GLEW_ARB_pipeline_statistics_query) {
-				glBeginQuery(GL_PRIMITIVES_SUBMITTED_ARB, activeSlot->statsQueries[0]);
-				glBeginQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB, activeSlot->statsQueries[1]);
+			if (rhi::Gpu().Limits().pipelineStatisticsQueries) {
+				rhi::Gpu().BeginQuery(activeSlot->statsQueries[0]);
+				rhi::Gpu().BeginQuery(activeSlot->statsQueries[1]);
 			}
-#endif
 		}
 
 		void Finish() {
@@ -358,18 +348,14 @@ namespace {
 				return;
 			}
 
-			if (GLEW_ARB_timer_query) {
-				glQueryCounter(activeSlot->timestampQueries[1], GL_TIMESTAMP);
-				activeSlot->timerIssued = true;
-			}
+			rhi::Gpu().WriteTimestamp(activeSlot->timestampQueries[1]);
+			activeSlot->timerIssued = true;
 
-#ifdef GLEW_ARB_pipeline_statistics_query
-			if (GLEW_ARB_pipeline_statistics_query) {
-				glEndQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB);
-				glEndQuery(GL_PRIMITIVES_SUBMITTED_ARB);
+			if (rhi::Gpu().Limits().pipelineStatisticsQueries) {
+				rhi::Gpu().EndQuery(activeSlot->statsQueries[1]);
+				rhi::Gpu().EndQuery(activeSlot->statsQueries[0]);
 				activeSlot->statsIssued = true;
 			}
-#endif
 		}
 	};
 
@@ -426,6 +412,8 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_motionBlurPass = std::make_unique<MotionBlurPass>();
 	m_rainPass = std::make_unique<RainPass>();
 	m_vehicleFXPass = std::make_unique<VehicleFXPass>();
+	m_decalPass = std::make_unique<DecalPass>();
+	m_lensFlarePass = std::make_unique<LensFlarePass>();
 
 	bool success = true;
 	success &= m_shadowPass->Initialize(m_context);
@@ -454,6 +442,8 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_rainPass->SetFogPass(m_volumetricFogPass.get());
 	success &= m_vehicleFXPass->Initialize(m_context);
 	m_vehicleFXPass->SetFogPass(m_volumetricFogPass.get());
+	success &= m_decalPass->Initialize(m_context);
+	success &= m_lensFlarePass->Initialize(m_context);
 
 	m_debugViewShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/debug_view_frag.glsl");
 	if (!m_debugViewShader) {
@@ -820,7 +810,7 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_lightClusterPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
-		"GBufferPass", {}, { "GBuffer" },
+		"GBufferPass", {}, { "GBufferBase" },
 		[this](const RenderContext& ctx) {
 			if (DetermineFrameGraphMode() == FrameGraphMode::DEFERRED) {
 				return true;
@@ -831,6 +821,21 @@ void ModularRenderer::BuildPassDescriptors(
 			return ctx.debugMode != RenderContext::DebugMode::SHADOW_MAPS;
 		},
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_gbufferPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		// Same predicate as GBufferPass: every "GBuffer" consumer depends on this pass. It returns
+		// early when the scene has no decals.
+		"DecalPass", { "GBufferBase" }, { "GBuffer" },
+		[this](const RenderContext& ctx) {
+			if (DetermineFrameGraphMode() == FrameGraphMode::DEFERRED) {
+				return true;
+			}
+			if (DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG) {
+				return false;
+			}
+			return ctx.debugMode != RenderContext::DebugMode::SHADOW_MAPS;
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_decalPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
 		"TransformHistoryPass", { "GBuffer" }, { "TransformHistory" },
@@ -978,7 +983,7 @@ void ModularRenderer::BuildPassDescriptors(
 			if (m_surfelGIManager &&
 				m_surfelGIManager->GetSettings().enabled &&
 				!surfelValidationActive &&
-				m_namedResources[ResourceNames::SurfelGIIndirect] != 0u) {
+				m_namedResources[ResourceNames::SurfelGIIndirect].IsValid()) {
 				m_lightingPass->SetIndirectDiffuseSource(
 					2,
 					m_namedResources[ResourceNames::SurfelGIIndirect],
@@ -1080,7 +1085,17 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"PostProcessPass", { "HDRColor", "HDRFogged", "HDRVehicleFX", "TAAColor", "MotionBlurColor", "ExposureAdapted", ResourceNames::Bloom }, { "CompositedColor" },
+		// After bloom (glare is not bloomed twice) and auto exposure (glare is not metered), before
+		// tone mapping. Always scheduled in deferred mode; returns early without flare sources.
+		"LensFlarePass", { "HDRFogged", "HDRVehicleFX", "TAAColor", "MotionBlurColor", "ExposureAdapted", ResourceNames::Bloom }, { "LensFlareColor" },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_lensFlarePass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"PostProcessPass", { "HDRColor", "HDRFogged", "HDRVehicleFX", "TAAColor", "MotionBlurColor", "ExposureAdapted", ResourceNames::Bloom, "LensFlareColor" }, { "CompositedColor" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -1107,21 +1122,20 @@ void ModularRenderer::BuildPassDescriptors(
 			if (!m_indirectDiffuseDebugPresentShader || !m_context.screenQuad) {
 				return;
 			}
-			glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
-			glViewport(0, 0, m_context.width, m_context.height);
-			glDisable(GL_DEPTH_TEST);
-			glDisable(GL_BLEND);
-			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-			glClear(GL_COLOR_BUFFER_BIT);
-			glUseProgram(m_indirectDiffuseDebugPresentShader);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, m_namedResources[ResourceNames::IndirectDiffuseDebug]);
-			if (const GLint textureLoc = glGetUniformLocation(m_indirectDiffuseDebugPresentShader, "uTexture"); textureLoc >= 0) {
-				glUniform1i(textureLoc, 0);
+			rhi::Gpu().BindFramebuffer(PresentTarget::Get());
+			rhi::Gpu().SetViewport({ 0, 0, m_context.width, m_context.height });
+			rhi::Gpu().SetDepthTest(false);
+			rhi::Gpu().SetBlendEnabled(false);
+			rhi::Gpu().SetClearColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+			rhi::Gpu().Clear(rhi::ClearColor);
+			rhi::Gpu().UseProgram(m_indirectDiffuseDebugPresentShader);
+			rhi::Gpu().BindTexture(0, m_namedResources[ResourceNames::IndirectDiffuseDebug]);
+			if (const rhi::UniformLocation textureLoc = rhi::Gpu().GetUniformLocation(m_indirectDiffuseDebugPresentShader, "uTexture"); textureLoc >= 0) {
+				rhi::Gpu().SetUniform(textureLoc, 0);
 			}
 			m_context.screenQuad->Render();
-			glEnable(GL_DEPTH_TEST);
-			glEnable(GL_BLEND);
+			rhi::Gpu().SetDepthTest(true);
+			rhi::Gpu().SetBlendEnabled(true);
 		}
 		});
 	addPass({
@@ -1135,7 +1149,7 @@ bool ModularRenderer::InitializeSharedResources()
 {
 	// Enable seamless cubemap sampling for IBL
 	// This must be enabled before any cubemap is created or sampled
-	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+	rhi::Gpu().SetFeature(rhi::Feature::SeamlessCubemaps, true);
 
 	// RT0: RGBA16  - Oct-encoded normal (RG) + Roughness (B) + Metallic (A). 16-bit UNORM: 8-bit oct
 	//                normals visibly step mirror reflections on puddles and clear coat (docs/nfs2015).
@@ -1148,15 +1162,15 @@ bool ModularRenderer::InitializeSharedResources()
 	// RT7: RGBA16F - Principled extras: transmission (R), IOR (G), standing water (B), reserved (A)
 	m_context.gbufferFBO = std::make_unique<FrameBuffer>(
 		m_context.width, m_context.height,
-		std::vector<GLenum>{
-		GL_RGBA16,   // RT0: Oct normal + roughness/metallic
-			GL_RGBA16F,  // RT1: Albedo + occlusion
-			GL_RGBA16F,  // RT2: Specular F0 (full RGB) + emissive strength
-			GL_R32UI,    // RT3: Material ID
-			GL_RGBA16F,  // RT4: Emissive color (RGB)
-			GL_R32UI,    // RT5: Transform ID
-			GL_RG16F,    // RT6: Clearcoat
-			GL_RGBA16F   // RT7: Principled extras
+		std::vector<rhi::Format>{
+		rhi::Format::RGBA16,   // RT0: Oct normal + roughness/metallic
+			rhi::Format::RGBA16F,  // RT1: Albedo + occlusion
+			rhi::Format::RGBA16F,  // RT2: Specular F0 (full RGB) + emissive strength
+			rhi::Format::R32UI,    // RT3: Material ID
+			rhi::Format::RGBA16F,  // RT4: Emissive color (RGB)
+			rhi::Format::R32UI,    // RT5: Transform ID
+			rhi::Format::RG16F,    // RT6: Clearcoat
+			rhi::Format::RGBA16F   // RT7: Principled extras
 	},
 		true,  // useDepthAsTexture
 		false  // useDepthAsTextureArray
@@ -1170,8 +1184,8 @@ bool ModularRenderer::InitializeSharedResources()
 	// Create HDR FBO
 	m_context.hdrFBO = std::make_unique<FrameBuffer>(
 		m_context.width, m_context.height,
-		std::vector<GLenum>{ GL_RGB16F },
-		false, false, 1, false, GL_DEPTH24_STENCIL8
+		std::vector<rhi::Format>{ rhi::Format::RGB16F },
+		false, false, 1, false, rhi::Format::D24S8
 	);
 
 	if (!m_context.hdrFBO->IsComplete()) {
@@ -1221,6 +1235,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_ssrPass) m_ssrPass->Resize(m_context, newWidth, newHeight);
 	if (m_volumetricFogPass) m_volumetricFogPass->Resize(m_context, newWidth, newHeight);
 	if (m_motionBlurPass) m_motionBlurPass->Resize(m_context, newWidth, newHeight);
+	if (m_lensFlarePass) m_lensFlarePass->Resize(m_context, newWidth, newHeight);
 
 	std::cout << "[ModularRenderer] Resized to " << newWidth << "x" << newHeight << "\n";
 }
@@ -1285,33 +1300,9 @@ void ModularRenderer::CheckGLError(const std::string& passName)
 {
 	if constexpr (!DebugErrorChecking) return;
 
-	GLenum error = glGetError();
-	if (error != GL_NO_ERROR) {
-		std::cerr << "[ModularRenderer] ERROR after " << passName << ": 0x"
-			<< std::hex << error << std::dec;
-
-		// Decode common error codes
-		switch (error) {
-		case GL_INVALID_ENUM:
-			std::cerr << " (GL_INVALID_ENUM)";
-			break;
-		case GL_INVALID_VALUE:
-			std::cerr << " (GL_INVALID_VALUE)";
-			break;
-		case GL_INVALID_OPERATION:
-			std::cerr << " (GL_INVALID_OPERATION)";
-			break;
-		case GL_INVALID_FRAMEBUFFER_OPERATION:
-			std::cerr << " (GL_INVALID_FRAMEBUFFER_OPERATION)";
-			break;
-		case GL_OUT_OF_MEMORY:
-			std::cerr << " (GL_OUT_OF_MEMORY)";
-			break;
-		default:
-			std::cerr << " (Unknown error)";
-			break;
-		}
-		std::cerr << std::endl;
+	const char* error = rhi::Gpu().PollError();
+	if (error != nullptr) {
+		std::cerr << "[ModularRenderer] ERROR after " << passName << ": " << error << std::endl;
 	}
 }
 
@@ -1335,7 +1326,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	profilerPool.BeginFrame();
 	// Clear any stale GL errors from previous frames (only in debug mode)
 	if constexpr (DebugErrorChecking) {
-		while (glGetError() != GL_NO_ERROR) {}
+		while (rhi::Gpu().PollError() != nullptr) {}
 	}
 
 	if (!sceneGraph || !camera) {
@@ -1398,14 +1389,14 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	}
 
 	m_namedResources.clear();
-	m_namedResources[ResourceNames::SSAO] = 0;
-	m_namedResources[ResourceNames::ScreenSpaceShadow] = 0;
-	m_namedResources[ResourceNames::BounceableRadiance] = 0;
-	m_namedResources[ResourceNames::IndirectDiffuse] = 0;
-	m_namedResources[ResourceNames::IndirectDiffuseDebug] = 0;
-	m_namedResources[ResourceNames::SurfelGIIndirect] = 0;
-	m_namedResources[ResourceNames::Bloom] = 0;
-	m_namedResources[ResourceNames::LPVIndirect] = 0;
+	m_namedResources[ResourceNames::SSAO] = rhi::TextureHandle{};
+	m_namedResources[ResourceNames::ScreenSpaceShadow] = rhi::TextureHandle{};
+	m_namedResources[ResourceNames::BounceableRadiance] = rhi::TextureHandle{};
+	m_namedResources[ResourceNames::IndirectDiffuse] = rhi::TextureHandle{};
+	m_namedResources[ResourceNames::IndirectDiffuseDebug] = rhi::TextureHandle{};
+	m_namedResources[ResourceNames::SurfelGIIndirect] = rhi::TextureHandle{};
+	m_namedResources[ResourceNames::Bloom] = rhi::TextureHandle{};
+	m_namedResources[ResourceNames::LPVIndirect] = rhi::TextureHandle{};
 
 	BuildPassDescriptors(sceneGraph, camera, lighting, skybox);
 	const PlanCacheKey key = BuildPlanCacheKey();
@@ -1449,23 +1440,23 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 {
 	// Output debug visualization to backbuffer
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
-	glViewport(0, 0, ctx.width, ctx.height);
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
+	rhi::Gpu().BindFramebuffer(PresentTarget::Get());
+	rhi::Gpu().SetViewport({ 0, 0, ctx.width, ctx.height });
+	rhi::Gpu().SetDepthTest(false);
+	rhi::Gpu().SetBlendEnabled(false);
 
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
+	rhi::Gpu().SetClearColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+	rhi::Gpu().Clear(rhi::ClearColor);
 
 	if (!ctx.gbufferFBO || !ctx.screenQuad) {
 		std::cerr << "[ModularRenderer] Missing G-buffer or screen quad for debug viz" << std::endl;
 		// Restore state before returning
-		glEnable(GL_DEPTH_TEST);
+		rhi::Gpu().SetDepthTest(true);
 		return;
 	}
 
 	if (!m_debugViewShader) {
-		glEnable(GL_DEPTH_TEST);
+		rhi::Gpu().SetDepthTest(true);
 		return;
 	}
 
@@ -1490,52 +1481,46 @@ void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 		mode = 6;
 		break;
 	default:
-		glEnable(GL_DEPTH_TEST);
+		rhi::Gpu().SetDepthTest(true);
 		return;
 	}
 
-	glUseProgram(m_debugViewShader);
+	rhi::Gpu().UseProgram(m_debugViewShader);
 
-	const GLint locMode = glGetUniformLocation(m_debugViewShader, "uMode");
-	const GLint locShadowLayer = glGetUniformLocation(m_debugViewShader, "uShadowLayer");
-	if (locMode >= 0) glUniform1i(locMode, mode);
-	if (locShadowLayer >= 0) glUniform1i(locShadowLayer, 0);
+	const rhi::UniformLocation locMode = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uMode");
+	const rhi::UniformLocation locShadowLayer = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uShadowLayer");
+	if (locMode >= 0) rhi::Gpu().SetUniform(locMode, mode);
+	if (locShadowLayer >= 0) rhi::Gpu().SetUniform(locShadowLayer, 0);
 
-	glActiveTexture(GL_TEXTURE0 + 0);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));
-	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uAlbedo"); loc >= 0) glUniform1i(loc, 0);
+	rhi::Gpu().BindTexture(0, ctx.gbufferFBO->GetColorAttachment(1));
+	if (rhi::UniformLocation loc = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uAlbedo"); loc >= 0) rhi::Gpu().SetUniform(loc, 0);
 
-	glActiveTexture(GL_TEXTURE0 + 1);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uNormalPacked"); loc >= 0) glUniform1i(loc, 1);
+	rhi::Gpu().BindTexture(1, ctx.gbufferFBO->GetColorAttachment(0));
+	if (rhi::UniformLocation loc = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uNormalPacked"); loc >= 0) rhi::Gpu().SetUniform(loc, 1);
 
-	glActiveTexture(GL_TEXTURE0 + 2);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(3));
-	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uMaterialID"); loc >= 0) glUniform1i(loc, 2);
+	rhi::Gpu().BindTexture(2, ctx.gbufferFBO->GetColorAttachment(3));
+	if (rhi::UniformLocation loc = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uMaterialID"); loc >= 0) rhi::Gpu().SetUniform(loc, 2);
 
-	glActiveTexture(GL_TEXTURE0 + 3);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(5));
-	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uTransformID"); loc >= 0) glUniform1i(loc, 3);
+	rhi::Gpu().BindTexture(3, ctx.gbufferFBO->GetColorAttachment(5));
+	if (rhi::UniformLocation loc = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uTransformID"); loc >= 0) rhi::Gpu().SetUniform(loc, 3);
 
-	glActiveTexture(GL_TEXTURE0 + 4);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uDepth"); loc >= 0) glUniform1i(loc, 4);
+	rhi::Gpu().BindTexture(4, ctx.gbufferFBO->GetDepthTexture());
+	if (rhi::UniformLocation loc = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uDepth"); loc >= 0) rhi::Gpu().SetUniform(loc, 4);
 
-	glActiveTexture(GL_TEXTURE0 + 5);
-	GLuint shadowArray = (ctx.lightManager ? ctx.lightManager->GetShadowArrayTexture() : 0);
-	if (shadowArray > 0 && glIsTexture(shadowArray)) {
-		glBindTexture(GL_TEXTURE_2D_ARRAY, shadowArray);
+	rhi::TextureHandle shadowArray = (ctx.lightManager ? ctx.lightManager->GetShadowArrayTexture() : rhi::TextureHandle{});
+	if (shadowArray.IsValid() && rhi::Gpu().IsTexture(shadowArray)) {
+		rhi::Gpu().BindTexture(5, shadowArray);
 	}
 	else {
-		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+		rhi::Gpu().BindTexture(5, rhi::TextureHandle{});
 	}
-	if (GLint loc = glGetUniformLocation(m_debugViewShader, "uShadowArray"); loc >= 0) glUniform1i(loc, 5);
+	if (rhi::UniformLocation loc = rhi::Gpu().GetUniformLocation(m_debugViewShader, "uShadowArray"); loc >= 0) rhi::Gpu().SetUniform(loc, 5);
 
 	ctx.screenQuad->Render();
 
 	// Restore render state
-	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
+	rhi::Gpu().SetDepthTest(true);
+	rhi::Gpu().SetBlendEnabled(true);
 
 	std::cout << "[ModularRenderer] Visualized debug mode: " << static_cast<int>(ctx.debugMode) << std::endl;
 }

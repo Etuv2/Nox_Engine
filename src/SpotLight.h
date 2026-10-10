@@ -1,7 +1,6 @@
 #pragma once
 #include "BaseLight.h"
 #include "json.hpp"
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 
 /**
@@ -15,9 +14,9 @@ public:
     ~SpotLight();
 
     // Initialize the depth map for spotlight shadow mapping.
-    bool InitializeShadowMap(GLuint shadowResolution);
-    GLuint GetDepthMap() const;
-    GLuint GetShadowMapID() const override { return GetDepthMap(); }
+    bool InitializeShadowMap(uint32_t shadowResolution);
+    rhi::TextureHandle GetDepthMap() const;
+    rhi::TextureHandle GetShadowMapID() const override { return GetDepthMap(); }
 
     // Legacy compatibility
     void SetLightPosition(const glm::vec3& pos) { SetPosition(pos); }
@@ -51,8 +50,8 @@ public:
     std::string GetDebugInfo() const override;
 
 private:
-    GLuint depthFBO = 0;
-    GLuint depthMap = 0;
+    rhi::FramebufferHandle depthFBO;
+    rhi::TextureHandle depthMap;
     int m_shadowResolution = 1024;
     
     // Spot light cone parameters

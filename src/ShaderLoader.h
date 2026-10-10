@@ -1,7 +1,7 @@
 // ShaderLoader.h
 #pragma once
 
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -167,169 +167,85 @@ inline bool LoadFileWithIncludes(const char* path, std::string& out)
     return LoadShaderSourceWithIncludes(std::string(path), out);
 }
 
-// Compile a single shader from source strings
-inline GLuint CompileShaderFromStrings(const std::vector<const char*>& srcs, GLenum type)
+// === Program creation (rhi::Device) ===
+// Sources are loaded here (with #include resolution); compilation and linking happen in the backend.
+// Every helper returns an invalid handle (and logs) when a file is missing or the program fails.
+
+inline rhi::ProgramHandle CreateProgramFromSources(std::vector<rhi::ShaderSource> stages, const std::string& name)
 {
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, (GLsizei)srcs.size(), srcs.data(), nullptr);
-    glCompileShader(shader);
-
-    GLint success = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        char infoLog[2048];
-        glGetShaderInfoLog(shader, 2048, nullptr, infoLog);
-        std::cerr << "ERROR::SHADER::COMPILATION_FAILED\n" << infoLog << "\n";
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
+    rhi::ProgramDesc desc;
+    desc.stages = std::move(stages);
+    desc.debugName = name;
+    return rhi::Gpu().CreateProgram(desc);
 }
 
-// Load shader with include support
-inline GLuint LoadShader(const char* filePath, GLenum shaderType) {
-    std::string code;
-    if (!LoadFileWithIncludes(filePath, code))
-        return 0;
-    const char* src = code.c_str();
-    return CompileShaderFromStrings({ src }, shaderType);
+inline bool LoadStage(const char* path, rhi::ShaderStage stage, std::vector<rhi::ShaderSource>& out)
+{
+    rhi::ShaderSource src;
+    src.stage = stage;
+    src.debugPath = path;
+    if (!LoadFileWithIncludes(path, src.source)) return false;
+    out.push_back(std::move(src));
+    return true;
 }
 
-inline GLuint CreateShaderProgram(const char* vertexShaderPath,
+inline rhi::ProgramHandle CreateShaderProgram(const char* vertexShaderPath,
     const char* fragmentShaderPath)
 {
-    GLuint vs = LoadShader(vertexShaderPath, GL_VERTEX_SHADER);
-    GLuint fs = LoadShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
-    if (!vs || !fs) {
+    std::vector<rhi::ShaderSource> stages;
+    if (!LoadStage(vertexShaderPath, rhi::ShaderStage::Vertex, stages) ||
+        !LoadStage(fragmentShaderPath, rhi::ShaderStage::Fragment, stages)) {
         std::cerr << "ERROR::SHADER::PROGRAM_CREATION_FAILED (load)\n";
-        return 0;
+        return {};
     }
-    GLuint prog = glCreateProgram();
-    glAttachShader(prog, vs);
-    glAttachShader(prog, fs);
-    glLinkProgram(prog);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    return prog;
+    return CreateProgramFromSources(std::move(stages), std::string(vertexShaderPath) + " + " + fragmentShaderPath);
 }
 
-//inject defines *after* the #version line in the fragment shader
-inline GLuint CreateShaderProgram(const char* vertexShaderPath,
+// Injects defines *after* the #version line of the fragment shader (fragment loaded without includes).
+inline rhi::ProgramHandle CreateShaderProgram(const char* vertexShaderPath,
     const char* fragmentShaderPath,
     const std::vector<std::string>& definesAfterVersion)
 {
-    // 1) Vertex: normal load
-    GLuint vs = LoadShader(vertexShaderPath, GL_VERTEX_SHADER);
-    if (!vs) return 0;
+    std::vector<rhi::ShaderSource> stages;
+    if (!LoadStage(vertexShaderPath, rhi::ShaderStage::Vertex, stages)) return {};
 
-    // 2) Fragment: load, then insert defines
     std::string fragCode;
-    if (!LoadFileToString(fragmentShaderPath, fragCode)) {
-        glDeleteShader(vs);
-        return 0;
-    }
+    if (!LoadFileToString(fragmentShaderPath, fragCode)) return {};
+    const size_t pos = fragCode.find('\n');
+    std::string combined = fragCode.substr(0, pos + 1);
+    for (const auto& d : definesAfterVersion) combined += d + "\n";
+    combined += fragCode.substr(pos + 1);
 
-    // Find end of first line (#version ...)
-    size_t pos = fragCode.find('\n');
-    std::string header = fragCode.substr(0, pos + 1);
-    std::string rest = fragCode.substr(pos + 1);
-
-    // Build final source array: header, each define, rest
-    std::vector<std::string> allSrc;
-    allSrc.push_back(header);
-    for (auto& d : definesAfterVersion)
-        allSrc.push_back(d + "\n");
-    allSrc.push_back(rest);
-
-    // Prepare const char* array
-    std::vector<const char*> srcPtrs;
-    for (auto& s : allSrc)
-        srcPtrs.push_back(s.c_str());
-
-    GLuint fs = CompileShaderFromStrings(srcPtrs, GL_FRAGMENT_SHADER);
-    if (!fs) {
-        glDeleteShader(vs);
-        return 0;
-    }
-
-    // 3) Link program
-    GLuint prog = glCreateProgram();
-    glAttachShader(prog, vs);
-    glAttachShader(prog, fs);
-    glLinkProgram(prog);
-
-    // cleanup
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    return prog;
+    rhi::ShaderSource fs;
+    fs.stage = rhi::ShaderStage::Fragment;
+    fs.source = std::move(combined);
+    fs.debugPath = fragmentShaderPath;
+    stages.push_back(std::move(fs));
+    return CreateProgramFromSources(std::move(stages), std::string(vertexShaderPath) + " + " + fragmentShaderPath);
 }
 
-//Create compute shader program
-inline GLuint CreateComputeShader(const char* computeShaderPath)
+// Create compute shader program
+inline rhi::ProgramHandle CreateComputeShader(const char* computeShaderPath)
 {
-    GLuint cs = LoadShader(computeShaderPath, GL_COMPUTE_SHADER);
-    if (!cs) {
+    std::vector<rhi::ShaderSource> stages;
+    if (!LoadStage(computeShaderPath, rhi::ShaderStage::Compute, stages)) {
         std::cerr << "ERROR::COMPUTE_SHADER::LOAD_FAILED: " << computeShaderPath << "\n";
-        return 0;
+        return {};
     }
-
-    GLuint prog = glCreateProgram();
-    glAttachShader(prog, cs);
-    glLinkProgram(prog);
-
-    GLint success = 0;
-    glGetProgramiv(prog, GL_LINK_STATUS, &success);
-    if (!success) {
-        char infoLog[1024];
-        glGetProgramInfoLog(prog, 1024, nullptr, infoLog);
-        std::cerr << "ERROR::COMPUTE_SHADER::LINK_FAILED\n" << infoLog << "\n";
-        glDeleteShader(cs);
-        glDeleteProgram(prog);
-        return 0;
-    }
-
-    glDeleteShader(cs);
-    return prog;
+    return CreateProgramFromSources(std::move(stages), computeShaderPath);
 }
 
-//Create shader program with geometry shader
-inline GLuint CreateShaderProgramWithGeometry(const char* vertexShaderPath,
-                                              const char* geometryShaderPath,
-                                              const char* fragmentShaderPath)
+// Create shader program with geometry shader
+inline rhi::ProgramHandle CreateShaderProgramWithGeometry(const char* vertexShaderPath,
+                                                         const char* geometryShaderPath,
+                                                         const char* fragmentShaderPath)
 {
-    GLuint vs = LoadShader(vertexShaderPath, GL_VERTEX_SHADER);
-    GLuint gs = LoadShader(geometryShaderPath, GL_GEOMETRY_SHADER);
-    GLuint fs = LoadShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
-
-    if (!vs || !gs || !fs) {
+    std::vector<rhi::ShaderSource> stages;
+    if (!LoadStage(vertexShaderPath, rhi::ShaderStage::Vertex, stages) ||
+        !LoadStage(geometryShaderPath, rhi::ShaderStage::Geometry, stages) ||
+        !LoadStage(fragmentShaderPath, rhi::ShaderStage::Fragment, stages)) {
         std::cerr << "ERROR::SHADER::GEOMETRY_PROGRAM_CREATION_FAILED\n";
-        if (vs) glDeleteShader(vs);
-        if (gs) glDeleteShader(gs);
-        if (fs) glDeleteShader(fs);
-        return 0;
+        return {};
     }
-
-    GLuint prog = glCreateProgram();
-    glAttachShader(prog, vs);
-    glAttachShader(prog, gs);
-    glAttachShader(prog, fs);
-    glLinkProgram(prog);
-
-    GLint success = 0;
-    glGetProgramiv(prog, GL_LINK_STATUS, &success);
-    if (!success) {
-        char infoLog[1024];
-        glGetProgramInfoLog(prog, 1024, nullptr, infoLog);
-        std::cerr << "ERROR::SHADER::GEOMETRY_PROGRAM_LINK_FAILED\n" << infoLog << "\n";
-        glDeleteShader(vs);
-        glDeleteShader(gs);
-        glDeleteShader(fs);
-        glDeleteProgram(prog);
-        return 0;
-    }
-
-    glDeleteShader(vs);
-    glDeleteShader(gs);
-    glDeleteShader(fs);
-    return prog;
+    return CreateProgramFromSources(std::move(stages), std::string(vertexShaderPath) + " + " + geometryShaderPath + " + " + fragmentShaderPath);
 }

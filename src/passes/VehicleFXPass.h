@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <glm/glm.hpp>
 
 class VolumetricFogPass;
@@ -28,10 +28,10 @@ public:
 	void SetFogPass(const VolumetricFogPass* fog) { m_fog = fog; }
 
 private:
-	GLuint m_shader = 0;
-	GLuint m_vao = 0;
-	GLuint m_cornerVbo = 0;
-	GLuint m_instanceVbo = 0;
+	rhi::ProgramHandle m_shader;
+	rhi::VertexInputHandle m_vao;
+	rhi::BufferHandle m_cornerVbo;
+	rhi::BufferHandle m_instanceVbo;
 	size_t m_instanceCapacity = 0; // particles the instance buffer can hold
 	const VolumetricFogPass* m_fog = nullptr;
 };

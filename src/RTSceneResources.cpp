@@ -92,8 +92,7 @@ glm::mat4 ResolveRenderableMeshLocalTransform(const RenderableComponent& rendera
 }
 
 template <typename T>
-void UploadPackedBuffer(GLuint buffer,
-    GLenum target,
+void UploadPackedBuffer(rhi::BufferHandle buffer,
     std::size_t& capacityBytes,
     std::vector<T>& packedData,
     std::size_t& uploadedCount)
@@ -102,11 +101,9 @@ void UploadPackedBuffer(GLuint buffer,
     const std::size_t requiredBytes = elementCount * sizeof(T);
     const std::size_t uploadedBytes = uploadedCount * sizeof(T);
 
-    glBindBuffer(target, buffer);
-
     if (requiredBytes == 0) {
         if (capacityBytes != 0) {
-            glBufferData(target, 0, nullptr, GL_DYNAMIC_DRAW);
+            rhi::Gpu().ReallocateBuffer(buffer, 0, nullptr, rhi::BufferUsage::DynamicDraw);
         }
         capacityBytes = 0;
         uploadedCount = 0;
@@ -119,13 +116,13 @@ void UploadPackedBuffer(GLuint buffer,
             newCapacity = std::max(newCapacity * 2, requiredBytes);
         }
 
-        glBufferData(target,
-            static_cast<GLsizeiptr>(newCapacity),
+        rhi::Gpu().ReallocateBuffer(buffer,
+            newCapacity,
             nullptr,
-            GL_DYNAMIC_DRAW);
-        glBufferSubData(target,
+            rhi::BufferUsage::DynamicDraw);
+        rhi::Gpu().UpdateBuffer(buffer,
             0,
-            static_cast<GLsizeiptr>(requiredBytes),
+            requiredBytes,
             packedData.data());
 
         capacityBytes = newCapacity;
@@ -134,9 +131,9 @@ void UploadPackedBuffer(GLuint buffer,
     }
 
     if (requiredBytes > uploadedBytes) {
-        glBufferSubData(target,
-            static_cast<GLintptr>(uploadedBytes),
-            static_cast<GLsizeiptr>(requiredBytes - uploadedBytes),
+        rhi::Gpu().UpdateBuffer(buffer,
+            uploadedBytes,
+            requiredBytes - uploadedBytes,
             packedData.data() + uploadedCount);
         uploadedCount = elementCount;
     }
@@ -150,27 +147,27 @@ RTSceneResources::~RTSceneResources()
 
 void RTSceneResources::EnsureBuffers()
 {
-    if (m_triangleSSBO == 0) {
-        glGenBuffers(1, &m_triangleSSBO);
+    if (!m_triangleSSBO) {
+        m_triangleSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
     }
-    if (m_bvhSSBO == 0) {
-        glGenBuffers(1, &m_bvhSSBO);
+    if (!m_bvhSSBO) {
+        m_bvhSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
     }
 }
 
 void RTSceneResources::EnsureIncrementalBuffers()
 {
-    if (m_incrementalTriangleSSBO == 0) {
-        glGenBuffers(1, &m_incrementalTriangleSSBO);
+    if (!m_incrementalTriangleSSBO) {
+        m_incrementalTriangleSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
     }
-    if (m_incrementalBVHSSBO == 0) {
-        glGenBuffers(1, &m_incrementalBVHSSBO);
+    if (!m_incrementalBVHSSBO) {
+        m_incrementalBVHSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
     }
-    if (m_instanceSSBO == 0) {
-        glGenBuffers(1, &m_instanceSSBO);
+    if (!m_instanceSSBO) {
+        m_instanceSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
     }
-    if (m_instanceNodeSSBO == 0) {
-        glGenBuffers(1, &m_instanceNodeSSBO);
+    if (!m_instanceNodeSSBO) {
+        m_instanceNodeSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
     }
 }
 
@@ -248,12 +245,15 @@ bool RTSceneResources::EnsureBuilt(const std::shared_ptr<SceneGraph>& sceneGraph
     m_triangleCount = bvhData.triangles.size();
     m_nodeCount = bvhData.nodes.size();
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_triangleSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, bvhData.GetTriangleBufferSize(), bvhData.triangles.data(), GL_STATIC_DRAW);
+    rhi::Gpu().ReallocateBuffer(m_triangleSSBO,
+        bvhData.GetTriangleBufferSize(),
+        bvhData.triangles.data(),
+        rhi::BufferUsage::StaticDraw);
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_bvhSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, bvhData.GetNodeBufferSize(), bvhData.nodes.data(), GL_STATIC_DRAW);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    rhi::Gpu().ReallocateBuffer(m_bvhSSBO,
+        bvhData.GetNodeBufferSize(),
+        bvhData.nodes.data(),
+        rhi::BufferUsage::StaticDraw);
 
     m_hasBuiltScene = true;
     m_loggedOversizedScene = false;
@@ -627,13 +627,11 @@ void RTSceneResources::UploadIncrementalScene()
 
             UploadPackedBuffer(
                 m_incrementalTriangleSSBO,
-                GL_SHADER_STORAGE_BUFFER,
                 m_incrementalTriangleBufferCapacityBytes,
                 m_incrementalPackedTriangles,
                 m_incrementalUploadedTriangleCount);
             UploadPackedBuffer(
                 m_incrementalBVHSSBO,
-                GL_SHADER_STORAGE_BUFFER,
                 m_incrementalNodeBufferCapacityBytes,
                 m_incrementalPackedNodes,
                 m_incrementalUploadedNodeCount);
@@ -671,24 +669,21 @@ void RTSceneResources::UploadIncrementalScene()
         (instances.empty() && m_incrementalInstanceNodeCount != 0);
     m_incrementalInstanceCount = instances.size();
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_instanceSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER,
+    rhi::Gpu().ReallocateBuffer(m_instanceSSBO,
         instances.empty() ? 0 : instances.size() * sizeof(RT::Instance),
         instances.empty() ? nullptr : instances.data(),
-        GL_DYNAMIC_DRAW);
+        rhi::BufferUsage::DynamicDraw);
 
     if (topologyDirty || readyInstanceSetChanged || m_incrementalInstanceNodeCount == 0) {
         std::vector<RT::InstanceNode> instanceNodes;
         BuildInstanceTLAS(instances, instanceNodes);
         m_incrementalInstanceNodeCount = instanceNodes.size();
 
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_instanceNodeSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER,
-            instanceNodes.empty() ? 0 : instanceNodes.size() * sizeof(RT::InstanceNode),
-            instanceNodes.empty() ? nullptr : instanceNodes.data(),
-            GL_DYNAMIC_DRAW);
+        rhi::Gpu().ReallocateBuffer(m_instanceNodeSSBO,
+        instanceNodes.empty() ? 0 : instanceNodes.size() * sizeof(RT::InstanceNode),
+        instanceNodes.empty() ? nullptr : instanceNodes.data(),
+        rhi::BufferUsage::DynamicDraw);
     }
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
     m_incrementalUploadDirty = false;
     m_incrementalInstanceTopologyDirty = false;
@@ -773,7 +768,7 @@ bool RTSceneResources::EnsureIncrementalBLAS(
 void RTSceneResources::UpdateLights(const std::shared_ptr<LightManager>& lightManager)
 {
     if (!lightManager) {
-        m_lightSSBO = 0;
+        m_lightSSBO = rhi::BufferHandle{};
         m_lightCount = 0;
         return;
     }
@@ -782,52 +777,46 @@ void RTSceneResources::UpdateLights(const std::shared_ptr<LightManager>& lightMa
     m_lightCount = lightManager->GetEnabledLights().size();
 }
 
-void RTSceneResources::BindForTracing(GLuint triangleBinding, GLuint bvhBinding) const
+void RTSceneResources::BindForTracing(uint32_t triangleBinding, uint32_t bvhBinding) const
 {
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, triangleBinding, m_triangleSSBO);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bvhBinding, m_bvhSSBO);
+    rhi::Gpu().BindStorageBuffer(triangleBinding, m_triangleSSBO);
+    rhi::Gpu().BindStorageBuffer(bvhBinding, m_bvhSSBO);
 }
 
-void RTSceneResources::BindIncrementalForTracing(GLuint triangleBinding, GLuint bvhBinding, GLuint instanceBinding, GLuint instanceNodeBinding) const
+void RTSceneResources::BindIncrementalForTracing(uint32_t triangleBinding, uint32_t bvhBinding, uint32_t instanceBinding, uint32_t instanceNodeBinding) const
 {
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, triangleBinding, m_incrementalTriangleSSBO);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bvhBinding, m_incrementalBVHSSBO);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, instanceBinding, m_instanceSSBO);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, instanceNodeBinding, m_instanceNodeSSBO);
+    rhi::Gpu().BindStorageBuffer(triangleBinding, m_incrementalTriangleSSBO);
+    rhi::Gpu().BindStorageBuffer(bvhBinding, m_incrementalBVHSSBO);
+    rhi::Gpu().BindStorageBuffer(instanceBinding, m_instanceSSBO);
+    rhi::Gpu().BindStorageBuffer(instanceNodeBinding, m_instanceNodeSSBO);
 }
 
-void RTSceneResources::BindLights(GLuint lightBinding) const
+void RTSceneResources::BindLights(uint32_t lightBinding) const
 {
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, lightBinding, m_lightSSBO);
+    rhi::Gpu().BindStorageBuffer(lightBinding, m_lightSSBO);
 }
 
 void RTSceneResources::Release()
 {
-    if (m_triangleSSBO != 0) {
-        glDeleteBuffers(1, &m_triangleSSBO);
-        m_triangleSSBO = 0;
+    if (m_triangleSSBO) {
+        rhi::Gpu().DestroyBuffer(m_triangleSSBO);
     }
-    if (m_bvhSSBO != 0) {
-        glDeleteBuffers(1, &m_bvhSSBO);
-        m_bvhSSBO = 0;
+    if (m_bvhSSBO) {
+        rhi::Gpu().DestroyBuffer(m_bvhSSBO);
     }
-    if (m_incrementalTriangleSSBO != 0) {
-        glDeleteBuffers(1, &m_incrementalTriangleSSBO);
-        m_incrementalTriangleSSBO = 0;
+    if (m_incrementalTriangleSSBO) {
+        rhi::Gpu().DestroyBuffer(m_incrementalTriangleSSBO);
     }
-    if (m_incrementalBVHSSBO != 0) {
-        glDeleteBuffers(1, &m_incrementalBVHSSBO);
-        m_incrementalBVHSSBO = 0;
+    if (m_incrementalBVHSSBO) {
+        rhi::Gpu().DestroyBuffer(m_incrementalBVHSSBO);
     }
-    if (m_instanceSSBO != 0) {
-        glDeleteBuffers(1, &m_instanceSSBO);
-        m_instanceSSBO = 0;
+    if (m_instanceSSBO) {
+        rhi::Gpu().DestroyBuffer(m_instanceSSBO);
     }
-    if (m_instanceNodeSSBO != 0) {
-        glDeleteBuffers(1, &m_instanceNodeSSBO);
-        m_instanceNodeSSBO = 0;
+    if (m_instanceNodeSSBO) {
+        rhi::Gpu().DestroyBuffer(m_instanceNodeSSBO);
     }
-    m_lightSSBO = 0;
+    m_lightSSBO = rhi::BufferHandle{};
     m_triangleCount = 0;
     m_nodeCount = 0;
     m_lightCount = 0;

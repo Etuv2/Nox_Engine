@@ -75,7 +75,7 @@ namespace {
 PostProcessPass::PostProcessPass() {}
 
 PostProcessPass::~PostProcessPass() {
-    if (m_shader) glDeleteProgram(m_shader);
+    if (m_shader && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_shader);
 }
 
 bool PostProcessPass::Initialize(RenderContext& context) {
@@ -100,28 +100,27 @@ void PostProcessPass::Execute(RenderContext& ctx,
                               const std::shared_ptr<DirectionalLight>& dirLight,
                               const std::shared_ptr<Skybox>& skybox) {
     // Output to backbuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
-    glViewport(0, 0, ctx.width, ctx.height);
+    rhi::Device& gpu = rhi::Gpu();
+    gpu.BindFramebuffer(PresentTarget::Get());
+    gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
 
     // We handle output gamma in the shader, disable fixed-function SRGB conversion
-#ifdef GL_FRAMEBUFFER_SRGB
-    glDisable(GL_FRAMEBUFFER_SRGB);
-#endif
+    gpu.SetFeature(rhi::Feature::FramebufferSRGB, false);
     
     // Disable depth/blend for fullscreen quad
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
+    gpu.SetDepthTest(false);
+    gpu.SetBlendEnabled(false);
     
     // Clear with environment color
-    glClearColor(ctx.envColor.r, ctx.envColor.g, ctx.envColor.b, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    gpu.SetClearColor(glm::vec4(ctx.envColor.r, ctx.envColor.g, ctx.envColor.b, 1.0f));
+    gpu.Clear(rhi::ClearColor | rhi::ClearDepth);
 
     PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Using shader: " << m_shader);
-    glUseProgram(m_shader);
+    gpu.UseProgram(m_shader);
 
     // Helper to set uniform only if present
-    auto set1f = [&](const char* name, float v){ GLint loc = glGetUniformLocation(m_shader, name); if (loc >= 0) glUniform1f(loc, v); };
-    auto set1i = [&](const char* name, int v){ GLint loc = glGetUniformLocation(m_shader, name); if (loc >= 0) glUniform1i(loc, v); };
+    auto set1f = [&](const char* name, float v){ rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, name); if (loc >= 0) gpu.SetUniform(loc, v); };
+    auto set1i = [&](const char* name, int v){ rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, name); if (loc >= 0) gpu.SetUniform(loc, v); };
 
     set1f("exposure", ctx.exposure);
     set1f("gamma", ctx.gamma);
@@ -144,13 +143,13 @@ void PostProcessPass::Execute(RenderContext& ctx,
     set1i("uTm7UseJzazbz", ctx.tm7_useJzazbz ? 1 : 0);
 
     // Image formation (docs/nfs2015 M3)
-    auto set3f = [&](const char* name, const glm::vec3& v){ GLint loc = glGetUniformLocation(m_shader, name); if (loc >= 0) glUniform3fv(loc, 1, glm::value_ptr(v)); };
+    auto set3f = [&](const char* name, const glm::vec3& v){ rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, name); if (loc >= 0) gpu.SetUniform(loc, v); };
     set1i("uBloomMode", ctx.bloomMode);
     set1f("uBloomStrength", ctx.bloomStrength);
-    set1i("uHasBloom", (ctx.enableBloom && m_bloomTexture > 0) ? 1 : 0);
+    set1i("uHasBloom", (ctx.enableBloom && m_bloomTexture.IsValid()) ? 1 : 0);
     const glm::mat3 whiteBalance = WhiteBalanceMatrix(ctx.whiteBalanceTemperature, ctx.whiteBalanceTint);
-    if (GLint loc = glGetUniformLocation(m_shader, "uWhiteBalance"); loc >= 0) {
-        glUniformMatrix3fv(loc, 1, GL_FALSE, glm::value_ptr(whiteBalance));
+    if (rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "uWhiteBalance"); loc >= 0) {
+        gpu.SetUniform(loc, whiteBalance);
     }
     set1f("uContrast", ctx.gradeContrast);
     set1f("uSaturation", ctx.gradeSaturation);
@@ -164,20 +163,19 @@ void PostProcessPass::Execute(RenderContext& ctx,
     set1f("uFilmGrain", ctx.filmGrainIntensity);
     set1f("uChromaticAberration", ctx.chromaticAberration);
     set1i("uDither", ctx.enableOutputDither ? 1 : 0);
-    if (GLint loc = glGetUniformLocation(m_shader, "uFrameIndex"); loc >= 0) glUniform1ui(loc, m_frameIndex++);
-    if (GLint loc = glGetUniformLocation(m_shader, "uResolution"); loc >= 0) glUniform2f(loc, static_cast<float>(ctx.width), static_cast<float>(ctx.height));
+    if (rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "uFrameIndex"); loc >= 0) gpu.SetUniform(loc, m_frameIndex++);
+    if (rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "uResolution"); loc >= 0) gpu.SetUniform(loc, glm::vec2(static_cast<float>(ctx.width), static_cast<float>(ctx.height)));
 
     FrameBuffer* sourceFBO = ctx.postSourceFBO ? ctx.postSourceFBO
     	: ((ctx.enableTAA && ctx.taaFBO) ? ctx.taaFBO : ctx.hdrFBO.get());
-    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Source FBO: " << (sourceFBO ? sourceFBO->GetFBO() : 0));
-    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Source texture: " << (sourceFBO ? sourceFBO->GetColorAttachment(0) : 0));
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Source FBO: " << (sourceFBO ? sourceFBO->GetFBO() : rhi::FramebufferHandle{}));
+    PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Source texture: " << (sourceFBO ? sourceFBO->GetColorAttachment(0) : rhi::TextureHandle{}));
     
     // Bind HDR scene (or TAA-resolved output if TAA is enabled)
-    glActiveTexture(GL_TEXTURE0);
     if (sourceFBO) {
-        GLuint hdrTex = sourceFBO->GetColorAttachment(0);
-        if (glIsTexture(hdrTex)) {
-            glBindTexture(GL_TEXTURE_2D, hdrTex);
+        rhi::TextureHandle hdrTex = sourceFBO->GetColorAttachment(0);
+        if (gpu.IsTexture(hdrTex)) {
+            gpu.BindTexture(0, hdrTex);
             PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bound source texture successfully");
         } else {
             std::cerr << "[PostProcessPass] ERROR: Invalid source texture!" << std::endl;
@@ -189,14 +187,13 @@ void PostProcessPass::Execute(RenderContext& ctx,
 
     PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bloom texture: " << m_bloomTexture);
     // Bind bloom result
-    glActiveTexture(GL_TEXTURE1);
-    if (m_bloomTexture > 0 && glIsTexture(m_bloomTexture)) {
-        glBindTexture(GL_TEXTURE_2D, m_bloomTexture);
+    if (m_bloomTexture.IsValid() && gpu.IsTexture(m_bloomTexture)) {
+        gpu.BindTexture(1, m_bloomTexture);
         PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Bound bloom texture successfully");
     } else {
         PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] No valid bloom texture, using black");
         // Optionally bind 0
-        glBindTexture(GL_TEXTURE_2D, 0);
+        gpu.BindTexture(1, rhi::TextureHandle{});
     }
     set1i("bloomBlur", 1);
 

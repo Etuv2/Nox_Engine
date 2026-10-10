@@ -7,18 +7,18 @@
 #include <vector>
 
 namespace {
-bool CheckedBufferSize(uint64_t elementCount, uint64_t elementSize, GLsizeiptr& outSize)
+bool CheckedBufferSize(uint64_t elementCount, uint64_t elementSize, std::ptrdiff_t& outSize)
 {
     if (elementCount == 0 || elementSize == 0) {
         return false;
     }
 
-    const uint64_t maxGLSize = static_cast<uint64_t>(std::numeric_limits<GLsizeiptr>::max());
+    const uint64_t maxGLSize = static_cast<uint64_t>(std::numeric_limits<std::ptrdiff_t>::max());
     if (elementCount > maxGLSize / elementSize) {
         return false;
     }
 
-    outSize = static_cast<GLsizeiptr>(elementCount * elementSize);
+    outSize = static_cast<std::ptrdiff_t>(elementCount * elementSize);
     return true;
 }
 
@@ -36,46 +36,50 @@ bool CheckedElementCount(uint64_t a, uint64_t b, uint64_t& outCount)
     return true;
 }
 
-void LabelBuffer(GLuint buffer, const char* label)
+void LabelBuffer(rhi::BufferHandle buffer, const char* label)
 {
-    if (buffer != 0 && label != nullptr && GLEW_KHR_debug) {
-        glObjectLabel(GL_BUFFER, buffer, static_cast<GLsizei>(std::char_traits<char>::length(label)), label);
+    if (buffer.IsValid() && label != nullptr) {
+        rhi::Gpu().SetDebugName(buffer, label);
     }
 }
 
-void DeleteBuffer(GLuint& buffer)
+void DeleteBuffer(rhi::BufferHandle& buffer)
 {
-    if (buffer != 0) {
-        glDeleteBuffers(1, &buffer);
-        buffer = 0;
+    if (buffer.IsValid()) {
+        rhi::Gpu().DestroyBuffer(buffer);
+        buffer = {};
     }
 }
 
-bool AllocateSSBO(GLuint& buffer, GLsizeiptr sizeBytes, const void* data, const char* label)
+bool AllocateSSBO(rhi::BufferHandle& buffer, std::ptrdiff_t sizeBytes, const void* data, const char* label)
 {
     if (sizeBytes <= 0) {
         return false;
     }
 
-    if (buffer == 0) {
-        glGenBuffers(1, &buffer);
-        if (buffer == 0) {
+    rhi::Device& gpu = rhi::Gpu();
+    while (gpu.PollError() != nullptr) {
+    }
+
+    if (!buffer.IsValid()) {
+        rhi::BufferDesc desc{};
+        desc.size = static_cast<size_t>(sizeBytes);
+        desc.initialData = data;
+        desc.usage = rhi::BufferUsage::DynamicDraw;
+        buffer = gpu.CreateBuffer(desc);
+        if (!buffer.IsValid()) {
             std::cerr << "[SurfelGIResources] Failed to generate SSBO for " << label << ".\n";
             return false;
         }
     }
-
-    while (glGetError() != GL_NO_ERROR) {
+    else {
+        gpu.ReallocateBuffer(buffer, static_cast<size_t>(sizeBytes), data, rhi::BufferUsage::DynamicDraw);
     }
+    const char* error = gpu.PollError();
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeBytes, data, GL_DYNAMIC_DRAW);
-    const GLenum error = glGetError();
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-    if (error != GL_NO_ERROR) {
+    if (error != nullptr) {
         std::cerr << "[SurfelGIResources] glBufferData failed for " << label
-            << " (" << sizeBytes << " bytes, error 0x" << std::hex << error << std::dec << ").\n";
+            << " (" << sizeBytes << " bytes, " << error << ").\n";
         DeleteBuffer(buffer);
         return false;
     }
@@ -84,32 +88,28 @@ bool AllocateSSBO(GLuint& buffer, GLsizeiptr sizeBytes, const void* data, const 
     return true;
 }
 
-void UploadBuffer(GLuint buffer, GLsizeiptr sizeBytes, const void* data)
+void UploadBuffer(rhi::BufferHandle buffer, std::ptrdiff_t sizeBytes, const void* data)
 {
-    if (buffer == 0 || sizeBytes <= 0 || data == nullptr) {
+    if (!buffer.IsValid() || sizeBytes <= 0 || data == nullptr) {
         return;
     }
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
-    glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeBytes, data);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    rhi::Gpu().UpdateBuffer(buffer, 0, static_cast<size_t>(sizeBytes), data);
 }
 
 template <typename T>
-void UploadStruct(GLuint buffer, const T& value)
+void UploadStruct(rhi::BufferHandle buffer, const T& value)
 {
-    UploadBuffer(buffer, static_cast<GLsizeiptr>(sizeof(T)), &value);
+    UploadBuffer(buffer, static_cast<std::ptrdiff_t>(sizeof(T)), &value);
 }
 
-void ClearBufferUInt(GLuint buffer, uint32_t value)
+void ClearBufferUInt(rhi::BufferHandle buffer, uint32_t value)
 {
-    if (buffer == 0) {
+    if (!buffer.IsValid()) {
         return;
     }
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
-    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &value);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    rhi::Gpu().ClearBuffer(buffer, rhi::Format::R32UI, rhi::PixelFormat::RInt, rhi::PixelType::UInt, &value);
 }
 }
 
@@ -129,9 +129,9 @@ bool SurfelPool::ResizeReset(uint32_t maxSurfels)
 {
     Destroy();
 
-    GLsizeiptr surfelBytes = 0;
-    GLsizeiptr freeListBytes = 0;
-    GLsizeiptr counterBytes = 0;
+    std::ptrdiff_t surfelBytes = 0;
+    std::ptrdiff_t freeListBytes = 0;
+    std::ptrdiff_t counterBytes = 0;
     if (!CheckedBufferSize(maxSurfels, sizeof(Surfel), surfelBytes) ||
         !CheckedBufferSize(maxSurfels, sizeof(uint32_t), freeListBytes) ||
         !CheckedBufferSize(1u, sizeof(SurfelCounters), counterBytes)) {
@@ -176,7 +176,7 @@ void SurfelPool::ResetFreeList()
     }
     UploadBuffer(
         m_freeListBuffer,
-        static_cast<GLsizeiptr>(freeIndices.size() * sizeof(uint32_t)),
+        static_cast<std::ptrdiff_t>(freeIndices.size() * sizeof(uint32_t)),
         freeIndices.data());
 
     SurfelCounters counters{};
@@ -212,10 +212,10 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
         return false;
     }
 
-    GLsizeiptr headerBytes = 0;
-    GLsizeiptr entryBytes = 0;
-    GLsizeiptr averageBytes = 0;
-    GLsizeiptr counterBytes = 0;
+    std::ptrdiff_t headerBytes = 0;
+    std::ptrdiff_t entryBytes = 0;
+    std::ptrdiff_t averageBytes = 0;
+    std::ptrdiff_t counterBytes = 0;
     if (!CheckedBufferSize(cellCount64, sizeof(SurfelCellHeader), headerBytes) ||
         !CheckedBufferSize(entryCount64, sizeof(SurfelCellEntry), entryBytes) ||
         !CheckedBufferSize(cellCount64, sizeof(SurfelGridCellAverage), averageBytes) ||
@@ -270,7 +270,7 @@ void SurfelGrid::Clear()
     UploadStruct(m_countersBuffer, counters);
 }
 
-void SurfelGrid::Build(GLuint surfelBuffer, uint32_t maxSurfels)
+void SurfelGrid::Build(rhi::BufferHandle surfelBuffer, uint32_t maxSurfels)
 {
     (void)surfelBuffer;
     (void)maxSurfels;
@@ -296,11 +296,11 @@ bool SurfelRayQueue::ResizeReset(uint32_t maxRays, uint32_t maxSurfels)
 {
     Destroy();
 
-    GLsizeiptr requestBytes = 0;
-    GLsizeiptr rayBytes = 0;
-    GLsizeiptr hitBytes = 0;
-    GLsizeiptr binBytes = 0;
-    GLsizeiptr counterBytes = 0;
+    std::ptrdiff_t requestBytes = 0;
+    std::ptrdiff_t rayBytes = 0;
+    std::ptrdiff_t hitBytes = 0;
+    std::ptrdiff_t binBytes = 0;
+    std::ptrdiff_t counterBytes = 0;
     if (!CheckedBufferSize(maxSurfels, sizeof(SurfelRayRequest), requestBytes) ||
         !CheckedBufferSize(maxRays, sizeof(SurfelRay), rayBytes) ||
         !CheckedBufferSize(maxRays, sizeof(SurfelRayHit), hitBytes) ||
@@ -361,12 +361,12 @@ void SurfelRayQueue::Clear()
     UploadStruct(m_countersBuffer, counters);
 }
 
-void SurfelRayQueue::RequestRays(GLuint surfelBuffer)
+void SurfelRayQueue::RequestRays(rhi::BufferHandle surfelBuffer)
 {
     (void)surfelBuffer;
 }
 
-void SurfelRayQueue::AllocateRays(GLuint surfelBuffer, uint32_t globalBudget)
+void SurfelRayQueue::AllocateRays(rhi::BufferHandle surfelBuffer, uint32_t globalBudget)
 {
     (void)surfelBuffer;
 
@@ -381,7 +381,7 @@ void SurfelRayQueue::AllocateRays(GLuint surfelBuffer, uint32_t globalBudget)
     UploadStruct(m_countersBuffer, counters);
 }
 
-void SurfelRayQueue::GenerateRays(GLuint surfelBuffer, GLuint gridBuffer)
+void SurfelRayQueue::GenerateRays(rhi::BufferHandle surfelBuffer, rhi::BufferHandle gridBuffer)
 {
     (void)surfelBuffer;
     (void)gridBuffer;
@@ -396,7 +396,7 @@ void SurfelRayQueue::TraceRays(const TraceResources& traceResources)
     (void)traceResources;
 }
 
-void SurfelRayQueue::IntegrateHits(GLuint surfelBuffer)
+void SurfelRayQueue::IntegrateHits(rhi::BufferHandle surfelBuffer)
 {
     (void)surfelBuffer;
 }

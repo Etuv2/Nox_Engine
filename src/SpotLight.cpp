@@ -4,7 +4,7 @@
 
 SpotLight::SpotLight()
     : BaseLight(LightType::SPOT)
-    , depthFBO(0), depthMap(0)
+    , depthFBO(), depthMap()
     , m_shadowResolution(2048) // Increased default for better quality
     , m_cutOff(12.5f), m_outerCutOff(17.5f)
     , m_nearPlane(1.0f), m_farPlane(25.0f)
@@ -16,11 +16,11 @@ SpotLight::SpotLight()
 }
 
 SpotLight::~SpotLight() {
-    if (depthFBO) glDeleteFramebuffers(1, &depthFBO);
-    if (depthMap) glDeleteTextures(1, &depthMap);
+    if (depthFBO) rhi::Gpu().DestroyFramebuffer(depthFBO);
+    if (depthMap) rhi::Gpu().DestroyTexture(depthMap);
 }
 
-bool SpotLight::InitializeShadowMap(GLuint shadowResolution) {
+bool SpotLight::InitializeShadowMap(uint32_t shadowResolution) {
     // Disable legacy shadow system to prevent conflicts with LightManager
     std::cout << "[SpotLight] Legacy shadow system disabled - using unified LightManager shadows" << std::endl;
     
@@ -38,7 +38,7 @@ bool SpotLight::InitializeShadowMap(GLuint shadowResolution) {
     return true;
 }
 
-GLuint SpotLight::GetDepthMap() const {
+rhi::TextureHandle SpotLight::GetDepthMap() const {
     return depthMap;
 }
 

@@ -22,7 +22,6 @@ namespace {
 	constexpr float kStep = 1.0f / 240.0f;       // physics sub-step
 	constexpr float kCarRadius = 0.95f;          // two collision circles along the body
 	constexpr float kCarCircleOffset = 1.25f;
-	const float kRatios[6] = { 3.40f, 2.20f, 1.60f, 1.25f, 1.00f, 0.82f };
 	const char* kWheelNames[4] = { "Wheel_FL", "Wheel_FR", "Wheel_RL", "Wheel_RR" };
 
 	std::shared_ptr<SceneNode> FindByName(const std::shared_ptr<SceneNode>& node, const std::string& name) {
@@ -90,6 +89,16 @@ void DriveMode::ReadHandling(const json& j, Handling& h)
 	h.rpmRedline = j.value("rpm_redline", h.rpmRedline);
 	h.rpmLimiter = j.value("rpm_limiter", h.rpmLimiter);
 	h.shiftTime = j.value("shift_time", h.shiftTime);
+	h.reverseEngageDelay = j.value("reverse_engage_delay", h.reverseEngageDelay);
+	if (j.contains("gear_ratios") && j["gear_ratios"].is_array()) {
+		std::vector<float> ratios;
+		for (const json& r : j["gear_ratios"]) {
+			if (r.is_number() && r.get<float>() > 0.05f) ratios.push_back(r.get<float>());
+		}
+		// Ratios must fall from first to top gear; anything else keeps the defaults.
+		const bool descending = std::is_sorted(ratios.rbegin(), ratios.rend());
+		if (ratios.size() >= 2 && ratios.size() <= 8 && descending) h.gearRatios = ratios;
+	}
 	h.suspensionFreq = j.value("suspension_freq", h.suspensionFreq);
 	h.suspensionDamping = j.value("suspension_damping", h.suspensionDamping);
 	h.bumpAmplitude = j.value("bump_amplitude", h.bumpAmplitude);
@@ -128,6 +137,7 @@ json DriveMode::SaveTuning() const
 		{"nitro_thrust", h.nitroThrust}, {"nitro_top_speed", h.nitroTopSpeed}, {"nitro_drain", h.nitroDrain},
 		{"nitro_recharge", h.nitroRecharge}, {"nitro_recharge_delay", h.nitroRechargeDelay},
 		{"rpm_idle", h.rpmIdle}, {"rpm_redline", h.rpmRedline}, {"rpm_limiter", h.rpmLimiter}, {"shift_time", h.shiftTime},
+		{"gear_ratios", h.gearRatios}, {"reverse_engage_delay", h.reverseEngageDelay},
 		{"suspension_freq", h.suspensionFreq}, {"suspension_damping", h.suspensionDamping}, {"bump_amplitude", h.bumpAmplitude} };
 	out["camera"] = {
 		{"version", 2}, {"distance", c.distance}, {"height", c.height}, {"look_ahead", c.lookAhead}, {"look_height", c.lookHeight},
@@ -289,6 +299,8 @@ void DriveMode::Teleport(const glm::vec2& pos, float heading)
 	m_gear = 1;
 	m_rpm = m_handling.rpmIdle;
 	m_shiftTimer = 0.0f;
+	m_shiftCooldown = 0.0f;
+	m_directionHold = 0.0f;
 	m_camInitialized = false;
 	m_teleported = true;
 	m_teleportFx = true;
@@ -453,33 +465,79 @@ void DriveMode::Collide(glm::vec2& pos, glm::vec2& vel)
 // ---------------------------------------------------------------------------------------------
 // Dynamics
 // ---------------------------------------------------------------------------------------------
+float DriveMode::GearRatio(int gear) const
+{
+	const std::vector<float>& r = m_handling.gearRatios;
+	return r[static_cast<size_t>(std::clamp(gear, 1, static_cast<int>(r.size())) - 1)];
+}
+
+// Pedal-driven direction (NFS style): hold brake at a standstill to engage reverse; in reverse the
+// brake pedal drives backwards and the throttle brakes, held at a standstill it selects first again.
+// Only a deliberate hold at (near) zero speed changes direction, so a crash bounce or a brake held
+// through a stop never flips the car into reverse on its own.
+void DriveMode::SelectDirection(float h, const Input& in)
+{
+	const bool stopped = std::abs(m_vx) < 1.0f;
+	const bool wantReverse = m_gear >= 1 && in.brake > 0.1f && in.throttle < 0.1f;
+	const bool wantForward = m_gear == -1 && in.throttle > 0.1f && in.brake < 0.1f;
+	if (stopped && (wantReverse || wantForward)) {
+		m_directionHold += h;
+		if (m_directionHold >= m_handling.reverseEngageDelay) {
+			m_gear = wantReverse ? -1 : 1;
+			m_directionHold = 0.0f;
+			m_shiftCooldown = 0.3f;
+			m_shifted = true;
+		}
+	}
+	else {
+		m_directionHold = 0.0f;
+	}
+	// Rolling forward under its own speed while in reverse (or after a teleport): back to a forward gear.
+	if (m_gear == -1 && m_vx > 3.0f) m_gear = 1;
+	if (m_gear == 0 || m_gear > GearCount()) m_gear = std::clamp(m_gear, 1, GearCount());
+	// At a standstill a forward gear is always first (e.g. after stopping hard against a wall).
+	if (m_gear > 1 && stopped && m_shiftTimer <= 0.0f) m_gear = 1;
+}
+
 void DriveMode::UpdateGearbox(float h, const Input& in, float wheelSpeed)
 {
 	const Handling& hd = m_handling;
 	const float topSpeed = hd.topSpeedKmh / 3.6f;
-	// Final drive: sixth gear reaches the limiter slightly above top speed.
-	const float finalDrive = hd.rpmLimiter * 2.0f * kPi / 60.0f * m_wheelRadius[2] / (topSpeed * 1.04f * kRatios[5]);
+	const int gears = GearCount();
+	// Final drive: the top gear reaches the limiter slightly above top speed.
+	const float finalDrive = hd.rpmLimiter * 2.0f * kPi / 60.0f * m_wheelRadius[2] / (topSpeed * 1.04f * GearRatio(gears));
 	auto rpmFor = [&](int gear, float v) {
-		return std::abs(v) / m_wheelRadius[2] * 60.0f / (2.0f * kPi) * kRatios[std::clamp(gear, 1, 6) - 1] * finalDrive;
+		return std::abs(v) / m_wheelRadius[2] * 60.0f / (2.0f * kPi) * GearRatio(gear) * finalDrive;
 	};
+	auto engineRpm = [&](int gear) { return hd.rpmIdle + rpmFor(gear, wheelSpeed); };
 	const bool shifting = m_shiftTimer > 0.0f;
 	m_shiftTimer = std::max(0.0f, m_shiftTimer - h);
-	if (m_vx < -0.5f && in.brake > 0.1f && in.throttle < 0.1f) {
-		m_gear = -1;
-	}
-	else if (m_gear < 1 && m_vx > -0.3f) {
-		m_gear = 1;
-	}
-	if (m_gear >= 1 && !shifting) {
-		const float rpmNow = std::max(rpmFor(m_gear, wheelSpeed), m_limiter ? hd.rpmLimiter : 0.0f);
-		if (m_gear < 6 && rpmNow > hd.rpmRedline + 120.0f && in.throttle > 0.1f && m_rearSpin < 0.5f && std::abs(m_vx) > 3.0f) {
+	m_shiftCooldown = std::max(0.0f, m_shiftCooldown - h);
+
+	// Automatic shifting (forward gears only):
+	//   up        at the redline under throttle (not while the rear tyres are spinning up)
+	//   kickdown  floored throttle while the lower gear still has room below ~80% of the redline
+	//   braking   step down as speed falls, keeping the engine in its band for the exit
+	//   lugging   part throttle / coasting below ~2600 rpm
+	// A short lockout after every shift prevents hunting between two gears.
+	if (m_gear >= 1 && !shifting && m_shiftCooldown <= 0.0f) {
+		const float rpmNow = engineRpm(m_gear);
+		const float lowerRpm = m_gear > 1 ? engineRpm(m_gear - 1) : 1e9f;
+		const bool up = m_gear < gears && in.throttle > 0.1f && m_vx > 3.0f && m_rearSpin < 0.5f &&
+			(rpmNow >= hd.rpmRedline || m_limiter);
+		const bool kickdown = in.throttle > 0.9f && lowerRpm < hd.rpmRedline * 0.8f;
+		const bool braking = in.brake > 0.1f && m_vx > 0.3f && lowerRpm < hd.rpmRedline * 0.7f;
+		const bool lugging = in.throttle < 0.9f && rpmNow < 2600.0f && lowerRpm < hd.rpmRedline * 0.75f;
+		if (up) {
 			++m_gear;
 			m_shiftTimer = hd.shiftTime;
+			m_shiftCooldown = 0.35f;
 			m_shifted = true;
 		}
-		else if (m_gear > 1 && rpmFor(m_gear - 1, wheelSpeed) < hd.rpmRedline * 0.8f) {
+		else if (m_gear > 1 && (kickdown || braking || lugging)) {
 			--m_gear;
 			m_shiftTimer = hd.shiftTime * 0.6f;
+			m_shiftCooldown = 0.3f;
 			m_shifted = true;
 		}
 	}
@@ -566,14 +624,16 @@ void DriveMode::Step(float h, const Input& in)
 	FzR = std::max(FzR, Fz * 0.15f);
 	const float latTransfer = m * m_ay * hd.cgHeight / std::max(m_track, 0.5f);
 
-	// --- Longitudinal forces.
+	// --- Longitudinal forces. Direction first, so a reverse/forward selection acts this step.
+	SelectDirection(h, in);
+	const float ratio1 = GearRatio(1);
 	const float finalDriveForce = hd.acceleration * m; // first-gear drive capacity
 	const float curve = TorqueCurve(m_rpm, hd.rpmIdle, hd.rpmLimiter);
 	float driveForce = 0.0f;
 	const bool shifting = m_shiftTimer > 0.0f;
 	const bool burnout = in.throttle > 0.5f && in.brake > 0.5f && std::abs(m_vx) < 3.0f;
 	if (m_gear >= 1 && in.throttle > 0.0f) {
-		driveForce = in.throttle * finalDriveForce * curve * kRatios[m_gear - 1] / kRatios[0];
+		driveForce = in.throttle * finalDriveForce * curve * GearRatio(m_gear) / ratio1;
 		if (m_nitroActive) driveForce *= hd.nitroThrust;
 		if (shifting) driveForce *= 0.12f;
 		if (m_limiter) driveForce *= 0.25f;
@@ -588,9 +648,11 @@ void DriveMode::Step(float h, const Input& in)
 		spinTarget = std::clamp((std::abs(driveForce) - tractionR) / tractionR * 1.6f, 0.0f, 1.0f);
 		FxR = std::copysign(tractionR * 0.9f, driveForce);
 	}
+	// Brake pedal: S in forward gears, W in reverse. Brakes always oppose the motion.
+	const float brakePedal = m_gear == -1 ? in.throttle : in.brake;
 	float brakeF = 0.0f, brakeR = 0.0f;
-	if (in.brake > 0.0f && (m_vx > 0.3f || burnout) && m_gear != -1) {
-		const float total = std::min(in.brake * hd.braking * m, hd.tireGripLong * (FzF + FzR));
+	if (brakePedal > 0.0f && (std::abs(m_vx) > 0.3f || burnout)) {
+		const float total = std::min(brakePedal * hd.braking * m, hd.tireGripLong * (FzF + FzR));
 		brakeF = total * 0.68f;
 		brakeR = burnout ? 0.0f : total * 0.32f;
 	}
@@ -607,7 +669,7 @@ void DriveMode::Step(float h, const Input& in)
 	const float sgnVx = m_vx >= 0.0f ? 1.0f : -1.0f;
 	const float FxF = -sgnVx * brakeF;
 	FxR += -sgnVx * brakeR;
-	const float drag = (topSpeed > 1.0f ? (finalDriveForce * 0.92f * kRatios[5] / kRatios[0] - 220.0f) / (topSpeed * topSpeed) : 0.4f)
+	const float drag = (topSpeed > 1.0f ? (finalDriveForce * 0.92f * GearRatio(GearCount()) / ratio1 - 220.0f) / (topSpeed * topSpeed) : 0.4f)
 		* (m_nitroActive ? 1.0f / (hd.nitroTopSpeed * hd.nitroTopSpeed) : 1.0f);
 	const float resist = drag * m_vx * std::abs(m_vx) + (std::abs(m_vx) > 0.1f ? sgnVx * 220.0f : 0.0f);
 
@@ -653,7 +715,8 @@ void DriveMode::Step(float h, const Input& in)
 	m_vx += ax * h;
 	m_vy += ay * h;
 	m_yawRate += yawAcc * h;
-	if (in.throttle == 0.0f && in.brake == 0.0f && speed < 0.3f) { m_vx = 0.0f; m_vy = 0.0f; }
+	// Settle at rest: no pedals, or the brake pedal held (the car holds still instead of creeping).
+	if (speed < 0.3f && ((in.throttle == 0.0f && in.brake == 0.0f) || (brakePedal > 0.1f && std::abs(driveForce) < 1.0f))) { m_vx = 0.0f; m_vy = 0.0f; }
 	if (burnout) m_vx = Approach(m_vx, 0.0f, h * 8.0f);
 
 	// Arcade drift turn (NFS 2015): while drifting, the velocity swings toward the nose at a fixed

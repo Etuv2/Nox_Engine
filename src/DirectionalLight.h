@@ -20,7 +20,7 @@ public:
     ~DirectionalLight();
 
     // Enhanced cascade initialization with PCSS support
-    bool InitializeCascades(GLuint shadowSize, float splitLambda);
+    bool InitializeCascades(uint32_t shadowSize, float splitLambda);
 
     // Enhanced cascade updates with improved stability and quality
     void UpdateCascades(const glm::mat4& view,
@@ -65,12 +65,12 @@ public:
     int GetShadowSize() const { return m_shadowSize; }
 
     // Enhanced shadow map access
-    GLuint GetDepthArrayID() const;
-    GLuint GetShadowMapID() const override { return GetDepthArrayID(); }
+    rhi::TextureHandle GetDepthArrayID() const;
+    rhi::TextureHandle GetShadowMapID() const override { return GetDepthArrayID(); }
 
     // Access the shadow shader ID
-    GLuint GetShadowShaderID() const;
-    void SetShadowShaderID(GLuint shaderID);
+    rhi::ProgramHandle GetShadowShaderID() const;
+    void SetShadowShaderID(rhi::ProgramHandle shaderID);
 
     // Enhanced serialization with PCSS support
     void Serialize(nlohmann::json& json) const override;
@@ -82,7 +82,7 @@ public:
 private:
     int m_shadowSize; // Size of each shadow map
     float m_splitLambda = 0.6f; // Optimized blend factor between uniform and logarithmic splits
-    GLuint m_shadowShaderID = 0; // Shader ID for shadow pass
+    rhi::ProgramHandle m_shadowShaderID; // Shader ID for shadow pass
     float m_shadowNearPlane = 0.1f;
     float m_shadowFarPlane = 100.0f;
     

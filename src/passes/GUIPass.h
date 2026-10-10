@@ -4,7 +4,6 @@
 #include <memory>
 #include <vector>
 #include <algorithm>
-#include <GL/glew.h>
 
 class GuiNode;
 class SceneGraph;

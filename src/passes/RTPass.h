@@ -2,7 +2,7 @@
 #include "../RenderPass.h"
 #include "../Texture.h"
 #include <memory>
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 
 // Forward declarations
 class FrameBuffer;
@@ -38,7 +38,7 @@ private:
 	std::unique_ptr<ComputeShader> m_rtShader;
 
 	// Framebuffer for ray traced output
-	GLuint m_rtFBO_ID = 0;  // Manual FBO for blitting
+	rhi::FramebufferHandle m_rtFBO_ID;  // Manual FBO for blitting
 
 	// Ray traced output texture
 	TexturePtr m_rtTexture;
@@ -62,14 +62,14 @@ private:
 	
 	//Light data for ray tracing
 	struct LightBuffers {
-		GLuint lightSSBO = 0;       // Light data SSBO (from LightManager)
+		rhi::BufferHandle lightSSBO;       // Light data SSBO (from LightManager)
 		size_t lightCount = 0;
 	} m_lightBuffers;
 	
 	// SVGF Denoising buffers
 	struct SVGFBuffers {
-		GLuint momentsSSBO = 0;           // Temporal variance accumulation (mean + variance)
-		GLuint historyLengthSSBO = 0;     // Per-pixel history length for variance calculation
+		rhi::BufferHandle momentsSSBO;           // Temporal variance accumulation (mean + variance)
+		rhi::BufferHandle historyLengthSSBO;     // Per-pixel history length for variance calculation
 		size_t pixelCount = 0;
 	} m_svgfBuffers;
 
@@ -117,7 +117,7 @@ private:
 	/*
 	* Get the output texture for display
 	*/
-	GLuint GetOutputTexture() const;
+	rhi::TextureHandle GetOutputTexture() const;
 
 
 };

@@ -1,6 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <vector>
 #include <limits>
 

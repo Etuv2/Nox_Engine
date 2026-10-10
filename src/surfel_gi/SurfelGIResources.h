@@ -1,6 +1,6 @@
 #pragma once
 
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <glm/glm.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -46,7 +46,7 @@ enum SurfelFlags : uint32_t {
 	SURFEL_INVALID = 1u << 31
 };
 
-enum class SurfelGIBinding : GLuint {
+enum class SurfelGIBinding : uint32_t {
 	Surfels = 10u,
 	SurfelFreeList = 11u,
 	SurfelCounters = 12u,
@@ -75,9 +75,9 @@ enum class SurfelGIBinding : GLuint {
 	RtInstanceNodes = 34u
 };
 
-constexpr GLuint ToGLuint(SurfelGIBinding binding)
+constexpr uint32_t ToGLuint(SurfelGIBinding binding)
 {
-	return static_cast<GLuint>(binding);
+	return static_cast<uint32_t>(binding);
 }
 
 static constexpr uint32_t kInvalidIndex = 0xffffffffu;
@@ -251,10 +251,10 @@ struct alignas(16) SurfelRayCounters {
 static_assert(sizeof(SurfelRayCounters) == 32, "SurfelRayCounters must match std430 GLSL layout.");
 
 struct TraceResources {
-	GLuint bvhNodeBuffer = 0;
-	GLuint bvhTriangleBuffer = 0;
-	GLuint lightBuffer = 0;
-	GLuint transformBuffer = 0;
+	rhi::BufferHandle bvhNodeBuffer;
+	rhi::BufferHandle bvhTriangleBuffer;
+	rhi::BufferHandle lightBuffer;
+	rhi::BufferHandle transformBuffer;
 };
 
 class SurfelPool {
@@ -270,16 +270,16 @@ public:
 	void Destroy();
 	void ResetFreeList();
 
-	GLuint GetSurfelBuffer() const { return m_surfelBuffer; }
-	GLuint GetFreeListBuffer() const { return m_freeListBuffer; }
-	GLuint GetCountersBuffer() const { return m_countersBuffer; }
+	rhi::BufferHandle GetSurfelBuffer() const { return m_surfelBuffer; }
+	rhi::BufferHandle GetFreeListBuffer() const { return m_freeListBuffer; }
+	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
 	uint32_t GetMaxSurfels() const { return m_maxSurfels; }
-	bool IsCreated() const { return m_surfelBuffer != 0 && m_freeListBuffer != 0 && m_countersBuffer != 0; }
+	bool IsCreated() const { return m_surfelBuffer.IsValid() && m_freeListBuffer.IsValid() && m_countersBuffer.IsValid(); }
 
 private:
-	GLuint m_surfelBuffer = 0;
-	GLuint m_freeListBuffer = 0;
-	GLuint m_countersBuffer = 0;
+	rhi::BufferHandle m_surfelBuffer;
+	rhi::BufferHandle m_freeListBuffer;
+	rhi::BufferHandle m_countersBuffer;
 	uint32_t m_maxSurfels = 0;
 };
 
@@ -295,23 +295,23 @@ public:
 	bool ResizeReset(const SurfelGridSettings& settings);
 	void Destroy();
 	void Clear();
-	void Build(GLuint surfelBuffer, uint32_t maxSurfels);
+	void Build(rhi::BufferHandle surfelBuffer, uint32_t maxSurfels);
 	void BuildCellAverages();
 
-	GLuint GetCellHeaderBuffer() const { return m_cellHeaderBuffer; }
-	GLuint GetCellEntryBuffer() const { return m_cellEntryBuffer; }
-	GLuint GetCellAverageBuffer() const { return m_cellAverageBuffer; }
-	GLuint GetCountersBuffer() const { return m_countersBuffer; }
+	rhi::BufferHandle GetCellHeaderBuffer() const { return m_cellHeaderBuffer; }
+	rhi::BufferHandle GetCellEntryBuffer() const { return m_cellEntryBuffer; }
+	rhi::BufferHandle GetCellAverageBuffer() const { return m_cellAverageBuffer; }
+	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
 	uint32_t GetCellCount() const { return m_cellCount; }
 	uint32_t GetEntryCapacity() const { return m_entryCapacity; }
 	const SurfelGridSettings& GetSettings() const { return m_settings; }
-	bool IsCreated() const { return m_cellHeaderBuffer != 0 && m_cellEntryBuffer != 0 && m_countersBuffer != 0; }
+	bool IsCreated() const { return m_cellHeaderBuffer.IsValid() && m_cellEntryBuffer.IsValid() && m_countersBuffer.IsValid(); }
 
 private:
-	GLuint m_cellHeaderBuffer = 0;
-	GLuint m_cellEntryBuffer = 0;
-	GLuint m_cellAverageBuffer = 0;
-	GLuint m_countersBuffer = 0;
+	rhi::BufferHandle m_cellHeaderBuffer;
+	rhi::BufferHandle m_cellEntryBuffer;
+	rhi::BufferHandle m_cellAverageBuffer;
+	rhi::BufferHandle m_countersBuffer;
 	uint32_t m_cellCount = 0;
 	uint32_t m_entryCapacity = 0;
 	SurfelGridSettings m_settings{};
@@ -329,30 +329,30 @@ public:
 	bool ResizeReset(uint32_t maxRays, uint32_t maxSurfels);
 	void Destroy();
 	void Clear();
-	void RequestRays(GLuint surfelBuffer);
-	void AllocateRays(GLuint surfelBuffer, uint32_t globalBudget);
-	void GenerateRays(GLuint surfelBuffer, GLuint gridBuffer);
+	void RequestRays(rhi::BufferHandle surfelBuffer);
+	void AllocateRays(rhi::BufferHandle surfelBuffer, uint32_t globalBudget);
+	void GenerateRays(rhi::BufferHandle surfelBuffer, rhi::BufferHandle gridBuffer);
 	void BinAndSortRays();
 	void TraceRays(const TraceResources& traceResources);
-	void IntegrateHits(GLuint surfelBuffer);
+	void IntegrateHits(rhi::BufferHandle surfelBuffer);
 
-	GLuint GetRequestBuffer() const { return m_requestBuffer; }
-	GLuint GetRayBuffer() const { return m_rayBuffer; }
-	GLuint GetSortedRayBuffer() const { return m_sortedRayBuffer; }
-	GLuint GetRayHitBuffer() const { return m_rayHitBuffer; }
-	GLuint GetRayBinBuffer() const { return m_rayBinBuffer; }
-	GLuint GetCountersBuffer() const { return m_countersBuffer; }
+	rhi::BufferHandle GetRequestBuffer() const { return m_requestBuffer; }
+	rhi::BufferHandle GetRayBuffer() const { return m_rayBuffer; }
+	rhi::BufferHandle GetSortedRayBuffer() const { return m_sortedRayBuffer; }
+	rhi::BufferHandle GetRayHitBuffer() const { return m_rayHitBuffer; }
+	rhi::BufferHandle GetRayBinBuffer() const { return m_rayBinBuffer; }
+	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
 	uint32_t GetMaxRays() const { return m_maxRays; }
 	uint32_t GetMaxSurfels() const { return m_maxSurfels; }
-	bool IsCreated() const { return m_requestBuffer != 0 && m_rayBuffer != 0 && m_rayHitBuffer != 0 && m_countersBuffer != 0; }
+	bool IsCreated() const { return m_requestBuffer.IsValid() && m_rayBuffer.IsValid() && m_rayHitBuffer.IsValid() && m_countersBuffer.IsValid(); }
 
 private:
-	GLuint m_requestBuffer = 0;
-	GLuint m_rayBuffer = 0;
-	GLuint m_sortedRayBuffer = 0;
-	GLuint m_rayHitBuffer = 0;
-	GLuint m_rayBinBuffer = 0;
-	GLuint m_countersBuffer = 0;
+	rhi::BufferHandle m_requestBuffer;
+	rhi::BufferHandle m_rayBuffer;
+	rhi::BufferHandle m_sortedRayBuffer;
+	rhi::BufferHandle m_rayHitBuffer;
+	rhi::BufferHandle m_rayBinBuffer;
+	rhi::BufferHandle m_countersBuffer;
 	uint32_t m_maxRays = 0;
 	uint32_t m_maxSurfels = 0;
 };

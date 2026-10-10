@@ -1,6 +1,6 @@
 #pragma once
 
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <cstddef>
 #include <deque>
 #include <functional>
@@ -49,19 +49,19 @@ public:
     bool EnsureBuilt(const std::shared_ptr<SceneGraph>& sceneGraph, bool forceRebuild = false, std::size_t maxTriangleCount = 0);
     bool EnsureIncrementalBLAS(const std::shared_ptr<SceneGraph>& sceneGraph, const IncrementalBuildSettings& settings);
     void UpdateLights(const std::shared_ptr<LightManager>& lightManager);
-    void BindForTracing(GLuint triangleBinding, GLuint bvhBinding) const;
-    void BindIncrementalForTracing(GLuint triangleBinding, GLuint bvhBinding, GLuint instanceBinding, GLuint instanceNodeBinding) const;
-    void BindLights(GLuint lightBinding) const;
+    void BindForTracing(uint32_t triangleBinding, uint32_t bvhBinding) const;
+    void BindIncrementalForTracing(uint32_t triangleBinding, uint32_t bvhBinding, uint32_t instanceBinding, uint32_t instanceNodeBinding) const;
+    void BindLights(uint32_t lightBinding) const;
     void Release();
 
-    GLuint GetTriangleSSBO() const { return m_triangleSSBO; }
-    GLuint GetBVHSSBO() const { return m_bvhSSBO; }
-    GLuint GetLightSSBO() const { return m_lightSSBO; }
+    rhi::BufferHandle GetTriangleSSBO() const { return m_triangleSSBO; }
+    rhi::BufferHandle GetBVHSSBO() const { return m_bvhSSBO; }
+    rhi::BufferHandle GetLightSSBO() const { return m_lightSSBO; }
     std::size_t GetTriangleCount() const { return m_triangleCount; }
     std::size_t GetNodeCount() const { return m_nodeCount; }
     std::size_t GetLightCount() const { return m_lightCount; }
-    bool IsReady() const { return m_triangleSSBO != 0 && m_bvhSSBO != 0 && m_triangleCount > 0 && m_nodeCount > 0; }
-    bool IsIncrementalReady() const { return m_incrementalTriangleSSBO != 0 && m_incrementalBVHSSBO != 0 && m_instanceSSBO != 0 && m_instanceNodeSSBO != 0 && m_incrementalTriangleCount > 0 && m_incrementalNodeCount > 0 && m_incrementalInstanceCount > 0 && m_incrementalInstanceNodeCount > 0; }
+    bool IsReady() const { return m_triangleSSBO.IsValid() && m_bvhSSBO.IsValid() && m_triangleCount > 0 && m_nodeCount > 0; }
+    bool IsIncrementalReady() const { return m_incrementalTriangleSSBO.IsValid() && m_incrementalBVHSSBO.IsValid() && m_instanceSSBO.IsValid() && m_instanceNodeSSBO.IsValid() && m_incrementalTriangleCount > 0 && m_incrementalNodeCount > 0 && m_incrementalInstanceCount > 0 && m_incrementalInstanceNodeCount > 0; }
     std::size_t GetLastEstimatedTriangleCount() const { return m_lastEstimatedTriangleCount; }
     std::size_t GetIncrementalTriangleCount() const { return m_incrementalTriangleCount; }
     std::size_t GetIncrementalNodeCount() const { return m_incrementalNodeCount; }
@@ -131,13 +131,13 @@ private:
     static void TransformBounds(const glm::vec3& localMin, const glm::vec3& localMax, const glm::mat4& transform, glm::vec3& worldMin, glm::vec3& worldMax);
     void RefreshIncrementalDiagnostics(double buildMsThisFrame, std::size_t trianglesBuiltThisFrame);
 
-    GLuint m_triangleSSBO = 0;
-    GLuint m_bvhSSBO = 0;
-    GLuint m_incrementalTriangleSSBO = 0;
-    GLuint m_incrementalBVHSSBO = 0;
-    GLuint m_instanceSSBO = 0;
-    GLuint m_instanceNodeSSBO = 0;
-    GLuint m_lightSSBO = 0;
+    rhi::BufferHandle m_triangleSSBO;
+    rhi::BufferHandle m_bvhSSBO;
+    rhi::BufferHandle m_incrementalTriangleSSBO;
+    rhi::BufferHandle m_incrementalBVHSSBO;
+    rhi::BufferHandle m_instanceSSBO;
+    rhi::BufferHandle m_instanceNodeSSBO;
+    rhi::BufferHandle m_lightSSBO;
     std::size_t m_triangleCount = 0;
     std::size_t m_nodeCount = 0;
     std::size_t m_lightCount = 0;

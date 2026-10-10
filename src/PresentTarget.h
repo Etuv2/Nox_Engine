@@ -1,11 +1,11 @@
 #pragma once
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 
-// Final output framebuffer of the renderer. 0 = the window back buffer (standalone game); the
+// Final output framebuffer of the renderer. kBackBuffer = the window back buffer (standalone game); the
 // editor points it at the active viewport's offscreen target so the frame graph renders into a
-// texture shown inside a docked panel. Passes bind this wherever they previously bound 0.
+// texture shown inside a docked panel. Passes bind this wherever they would bind the back buffer.
 namespace PresentTarget {
-	inline GLuint g_framebuffer = 0;
-	inline GLuint Get() { return g_framebuffer; }
-	inline void Set(GLuint framebuffer) { g_framebuffer = framebuffer; }
+	inline rhi::FramebufferHandle g_framebuffer = rhi::kBackBuffer;
+	inline rhi::FramebufferHandle Get() { return g_framebuffer; }
+	inline void Set(rhi::FramebufferHandle framebuffer) { g_framebuffer = framebuffer; }
 }

@@ -1,9 +1,9 @@
 #pragma once
 #include <vector>
 #include <unordered_map>
-#include <GL/glew.h>
 #include <glm/glm.hpp>
-#include "GLBuffer.h"
+#include "rhi/RHI.h"
+#include "GpuBuffer.h"
 /*
 * Multi-Draw Indirect (MDI) Batch for rendering multiple objects with a single draw call.
 * Each object has its own model matrix and draw parameters.
@@ -11,22 +11,23 @@
 */
 // Standalone MDI batch used by SceneNode/SceneGraph/LightManager to avoid circular deps
 struct MDI_RenderableObject {
-	GLuint count = 0;
-	GLuint firstIndex = 0;
-	GLuint baseVertex = 0;
+	uint32_t count = 0;
+	uint32_t firstIndex = 0;
+	uint32_t baseVertex = 0;
 	glm::mat4 modelMatrix{ 1.0f };
 	uint32_t transformID = 0;
 	glm::vec4 boundingSphere{ 0.0f }; // x, y, z, radius (optional)
-	// VAO that encapsulates VBO/EBO for this draw
-	GLuint vao = 0;
+	// Vertex input (vertex + index buffers) for this draw
+	rhi::VertexInputHandle vao;
 };
 
+// Indirect indexed draw arguments (DrawElementsIndirectCommand layout).
 struct MDI_DrawCommand {
-	GLuint count = 0;
-	GLuint instanceCount = 1;
-	GLuint firstIndex = 0;
-	GLuint baseVertex = 0;
-	GLuint baseInstance = 0;
+	uint32_t count = 0;
+	uint32_t instanceCount = 1;
+	uint32_t firstIndex = 0;
+	uint32_t baseVertex = 0;
+	uint32_t baseInstance = 0;
 };
 
 class MDIBatch {
@@ -95,13 +96,13 @@ public:
 			cmd.instanceCount = 1;
 			cmd.firstIndex = m_objects[i].firstIndex;
 			cmd.baseVertex = m_objects[i].baseVertex;
-			cmd.baseInstance = static_cast<GLuint>(i); // index into model matrix array
+			cmd.baseInstance = static_cast<uint32_t>(i); // index into model matrix array
 			m_tempCommands.push_back(cmd);
 		}
 
 		// Create indirect buffer if needed or if previous buffer became invalid
 		if (!m_indirectBuffer || !m_indirectBuffer->IsValid()) {
-			m_indirectBuffer = std::make_unique<GLBuffer>(
+			m_indirectBuffer = std::make_unique<GpuBuffer>(
 				BufferType::DrawIndirect,
 				BufferUsage::DynamicDraw
 			);
@@ -109,7 +110,7 @@ public:
 		}
 		if (!m_indirectBuffer->SetData(m_tempCommands)) {
 			// Buffer allocation failed - recreate the buffer
-			m_indirectBuffer = std::make_unique<GLBuffer>(
+			m_indirectBuffer = std::make_unique<GpuBuffer>(
 				BufferType::DrawIndirect,
 				BufferUsage::DynamicDraw
 			);
@@ -124,7 +125,7 @@ public:
 
 		// Create SSBO if needed or if previous buffer became invalid
 		if (!m_modelMatrixSSBO || !m_modelMatrixSSBO->IsValid()) {
-			m_modelMatrixSSBO = std::make_unique<GLBuffer>(
+			m_modelMatrixSSBO = std::make_unique<GpuBuffer>(
 				BufferType::ShaderStorage,
 				BufferUsage::DynamicDraw
 			);
@@ -132,7 +133,7 @@ public:
 		}
 		if (!m_modelMatrixSSBO->SetData(m_tempModelMats)) {
 			// Buffer allocation failed - recreate the buffer
-			m_modelMatrixSSBO = std::make_unique<GLBuffer>(
+			m_modelMatrixSSBO = std::make_unique<GpuBuffer>(
 				BufferType::ShaderStorage,
 				BufferUsage::DynamicDraw
 			);
@@ -145,15 +146,14 @@ public:
 	}
 
 	void Bind() const {
-		if (m_indirectBuffer) m_indirectBuffer->Bind();
 		// Bind model matrices SSBO at binding=3 (shader must match)
 		if (m_modelMatrixSSBO) m_modelMatrixSSBO->BindBase(3);
 	}
 
-	GLsizei GetCommandCount() const { return static_cast<GLsizei>(m_objects.size()); }
+	int GetCommandCount() const { return static_cast<int>(m_objects.size()); }
 
-	// Render MDI draws grouped by VAO so the correct EBO/VBO are bound
-	void RenderBatchedByVAO(GLenum mode = GL_TRIANGLES, GLenum indexType = GL_UNSIGNED_INT) {
+	// Render MDI draws grouped by vertex input so the correct vertex/index buffers are used
+	void RenderBatchedByVAO(rhi::Topology mode = rhi::Topology::Triangles, rhi::IndexType indexType = rhi::IndexType::UInt32) {
 		if (m_objects.empty()) return;
 
 		// Ensure buffers exist and are bound - only upload if dirty
@@ -170,16 +170,15 @@ public:
 		m_tempCommands.reserve(m_objects.size());
 
 		if (!m_indirectBuffer) {
-			m_indirectBuffer = std::make_unique<GLBuffer>(
+			m_indirectBuffer = std::make_unique<GpuBuffer>(
 				BufferType::DrawIndirect,
 				BufferUsage::DynamicDraw
 			);
 		}
-		m_indirectBuffer->Bind();
 
 		// Build complete command buffer with proper offsets
 		struct DrawGroup {
-			GLuint vao;
+			rhi::VertexInputHandle vao;
 			size_t offset;
 			size_t count;
 		};
@@ -187,9 +186,9 @@ public:
 		drawGroups.reserve(m_groupCache.size());
 
 		for (const auto& kv : m_groupCache) {
-			GLuint vao = kv.first;
+			const rhi::VertexInputHandle vao(kv.first);
 			const auto& indices = kv.second;
-			if (vao == 0 || indices.empty()) continue;
+			if (!vao || indices.empty()) continue;
 
 			DrawGroup group;
 			group.vao = vao;
@@ -203,7 +202,7 @@ public:
 				cmd.instanceCount = 1;
 				cmd.firstIndex = obj.firstIndex;
 				cmd.baseVertex = obj.baseVertex;
-				cmd.baseInstance = static_cast<GLuint>(idx);
+				cmd.baseInstance = static_cast<uint32_t>(idx);
 				m_tempCommands.push_back(cmd);
 			}
 
@@ -215,21 +214,19 @@ public:
 			m_indirectBuffer->SetData(m_tempCommands);
 		}
 
-		// Issue draws for each VAO group using offsets into the single buffer
+		// Issue draws for each group using offsets into the single buffer
+		rhi::Device& gpu = rhi::Gpu();
 		for (const auto& group : drawGroups) {
-			glBindVertexArray(group.vao);
-			const void* offset = (const void*)(group.offset * sizeof(MDI_DrawCommand));
-			glMultiDrawElementsIndirect(mode, indexType, offset, static_cast<GLsizei>(group.count), sizeof(MDI_DrawCommand));
-			glBindVertexArray(0);
+			gpu.BindVertexInput(group.vao);
+			gpu.DrawIndexedIndirect(mode, indexType, m_indirectBuffer->GetID(), group.offset * sizeof(MDI_DrawCommand),
+				static_cast<uint32_t>(group.count), sizeof(MDI_DrawCommand));
+			gpu.BindVertexInput({});
 		}
-
-		// Unbind buffers to avoid state leaks
-		m_indirectBuffer->Unbind();
 	}
 
-	// Compatibility path: set a per-draw uniform uObjectIndex and issue glDrawElementsIndirect per command
+	// Compatibility path: set a per-draw uniform uObjectIndex and issue one indirect draw per command
 	// Requires the current shader program to have a uniform int uObjectIndex
-	void RenderBatchedByVAOWithUniform(GLenum mode, GLenum indexType, GLint locObjectIndex) {
+	void RenderBatchedByVAOWithUniform(rhi::Topology mode, rhi::IndexType indexType, rhi::UniformLocation locObjectIndex) {
 		if (m_objects.empty()) return;
 		UploadToGPU();
 		if (m_modelMatrixSSBO) m_modelMatrixSSBO->BindBase(3);
@@ -240,17 +237,17 @@ public:
 		}
 
 		if (!m_indirectBuffer) {
-			m_indirectBuffer = std::make_unique<GLBuffer>(
+			m_indirectBuffer = std::make_unique<GpuBuffer>(
 				BufferType::DrawIndirect,
 				BufferUsage::DynamicDraw
 			);
 		}
-		m_indirectBuffer->Bind();
 
+		rhi::Device& gpu = rhi::Gpu();
 		for (const auto& kv : m_groupCache) {
-			GLuint vao = kv.first;
+			const rhi::VertexInputHandle vao(kv.first);
 			const auto& indices = kv.second;
-			if (vao == 0 || indices.empty()) continue;
+			if (!vao || indices.empty()) continue;
 
 			m_tempCommands.clear();
 			m_tempCommands.reserve(indices.size());
@@ -261,24 +258,21 @@ public:
 				cmd.instanceCount = 1;
 				cmd.firstIndex = obj.firstIndex;
 				cmd.baseVertex = obj.baseVertex;
-				cmd.baseInstance = static_cast<GLuint>(idx);
+				cmd.baseInstance = static_cast<uint32_t>(idx);
 				m_tempCommands.push_back(cmd);
 			}
 
 			// Upload commands for this VAO
 			m_indirectBuffer->SetData(m_tempCommands);
-			glBindVertexArray(vao);
+			gpu.BindVertexInput(vao);
 
-			for (GLsizei i = 0; i < (GLsizei)m_tempCommands.size(); ++i) {
-				if (locObjectIndex >= 0) glUniform1i(locObjectIndex, (GLint)m_tempCommands[i].baseInstance);
-				const void* offset = (const void*)(i * sizeof(MDI_DrawCommand));
-				glDrawElementsIndirect(mode, indexType, offset);
+			for (size_t i = 0; i < m_tempCommands.size(); ++i) {
+				if (locObjectIndex >= 0) gpu.SetUniform(locObjectIndex, static_cast<int>(m_tempCommands[i].baseInstance));
+				gpu.DrawIndexedIndirect(mode, indexType, m_indirectBuffer->GetID(), i * sizeof(MDI_DrawCommand), 1, sizeof(MDI_DrawCommand));
 			}
 
-			glBindVertexArray(0);
+			gpu.BindVertexInput({});
 		}
-
-		m_indirectBuffer->Unbind();
 	}
 
 private:
@@ -286,16 +280,16 @@ private:
 		m_groupCache.clear();
 		m_groupCache.reserve(m_objects.size() / 4); // Estimate
 		for (size_t i = 0; i < m_objects.size(); ++i) {
-			m_groupCache[m_objects[i].vao].push_back(i);
+			m_groupCache[m_objects[i].vao.id].push_back(i);
 		}
 	}
 
 	std::vector<MDI_RenderableObject> m_objects;
-	mutable GLBufferPtr m_indirectBuffer;     // GL_DRAW_INDIRECT_BUFFER
-	mutable GLBufferPtr m_modelMatrixSSBO;    // GL_SHADER_STORAGE_BUFFER (binding=3) with mat4 modelMatrices[]
+	mutable GpuBufferPtr m_indirectBuffer;     // indirect draw arguments
+	mutable GpuBufferPtr m_modelMatrixSSBO;    // storage buffer (binding=3) with mat4 modelMatrices[]
 
 	// Performance optimizations: cached data and reusable buffers
-	mutable std::unordered_map<GLuint, std::vector<size_t>> m_groupCache;
+	mutable std::unordered_map<uint32_t, std::vector<size_t>> m_groupCache;   // vertex input id -> objects
 	mutable std::vector<MDI_DrawCommand> m_tempCommands;
 	mutable std::vector<glm::mat4> m_tempModelMats;
 	bool m_isDirty = true;

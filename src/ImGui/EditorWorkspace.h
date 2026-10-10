@@ -6,6 +6,7 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include <IMGUI/imgui.h>
+#include "rhi/RHI.h"
 #include "../json.hpp"
 
 class Core;
@@ -31,7 +32,9 @@ class EditorWorkspace {
 public:
 	struct Viewport {
 		const char* name = "";
-		unsigned int fbo = 0, color = 0, depth = 0;
+		rhi::FramebufferHandle fbo;
+		rhi::TextureHandle color;
+		rhi::TextureHandle depth;   // depth-stencil target (D24S8)
 		int texWidth = 0, texHeight = 0;     // framebuffer pixels
 		ImVec2 pos{ 0, 0 }, size{ 0, 0 };     // content rect in ImGui coordinates
 		bool visible = false, hovered = false, focused = false;

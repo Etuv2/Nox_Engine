@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "json.hpp"
+#include "SceneRenderExtras.h"
 
 class RoadNetwork;
 
@@ -27,6 +28,7 @@ namespace ProceduralStreetKit {
 		nlohmann::json lightNodes = nlohmann::json::array(); // Scene-schema "light" nodes
 		nlohmann::json propNodes = nlohmann::json::array();  // Scene-schema "model" nodes (CC0 prop instances, district only)
 		nlohmann::json reflectionProbes = nlohmann::json::array(); // scene "reflection_probes" entries
+		SceneRenderExtras renderExtras; // decals, lens flares and interior atlas from the texture packs (NightStreetPacks)
 		int triangleCount = 0;
 		int primitiveCount = 0;
 	};
@@ -34,7 +36,10 @@ namespace ProceduralStreetKit {
 	// params (all optional):
 	//   seed (int), length (m), output (path stem, default "generated/nfs_street"),
 	//   texture_root (default "textures/cc0"), streetlight_spacing (m),
-	//   neon_lights (bool), tunnel (bool), industrial (bool), shadowed_streetlights (int)
+	//   neon_lights (bool), tunnel (bool), industrial (bool), shadowed_streetlights (int),
+	//   decal_root (default "textures/road_decals"), lens_flare_root (default "textures/lens_flares"),
+	//   window_room_root (default "textures/window_rooms"), lens_flare_gain (float). An empty or missing
+	//   pack falls back to geometry paint / procedural rooms / no flares.
 	Result Generate(const nlohmann::json& params);
 
 	// Connected district built from a road graph (RoadNetwork). params (all optional):

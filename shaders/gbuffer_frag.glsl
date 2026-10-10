@@ -98,6 +98,8 @@ uniform float interiorSeed = 0.0;
 uniform float interiorLighting = 0.5;
 uniform float interiorBlinds = 0.5;
 uniform float interiorStyle = 0.0;
+uniform vec2 interiorPane = vec2(0.8, 1.0); // pane half extents (m)
+uniform float interiorSill = 0.8;            // room floor below the pane's bottom edge (m)
 uniform mat4 view;   // camera view matrix (eye position for interior parallax)
 
 void main() {
@@ -231,11 +233,11 @@ void main() {
     //  Emissive 
     vec3 emissive = emissiveFactor;
     if (interiorMapping > 0.5) {
-        // The room behind the pane replaces the emissive texture (atlas no longer sampled).
+        // The room behind the pane (interior atlas or procedural fallback) replaces the emissive texture.
         vec3 camPos = -(transpose(mat3(view)) * view[3].xyz);
         float footprint = max(length(dFdx(WorldPos)), length(dFdy(WorldPos)));
         vec3 room = NoxInteriorWindow(WorldPos, geoNormal, TBN[0], RawTangent.w, TexCoords, camPos,
-            interiorDepth, interiorLighting, interiorBlinds, interiorStyle, interiorSeed, footprint, uWeatherTime);
+            interiorPane, interiorSill, interiorDepth, interiorLighting, interiorBlinds, interiorStyle, interiorSeed, footprint, uWeatherTime);
         emissive = emissiveFactor * room * interiorStrength;
     }
     else if (hasEmissiveTexture) {

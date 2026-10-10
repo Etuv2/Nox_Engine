@@ -11,9 +11,9 @@
 BloomPass::BloomPass() {}
 
 BloomPass::~BloomPass() {
-	if (m_extractShader) glDeleteProgram(m_extractShader);
-	if (m_kawaseShader) glDeleteProgram(m_kawaseShader);
-	if (m_upsampleShader) glDeleteProgram(m_upsampleShader);
+	if (m_extractShader && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_extractShader);
+	if (m_kawaseShader && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_kawaseShader);
+	if (m_upsampleShader && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_upsampleShader);
 }
 
 bool BloomPass::Initialize(RenderContext& context) {
@@ -32,7 +32,7 @@ bool BloomPass::Initialize(RenderContext& context) {
 	// Create framebuffers
 	m_extractFBO = std::make_unique<FrameBuffer>(
 		context.width, context.height,
-		std::vector<GLenum>{ GL_RGB16F },
+		std::vector<rhi::Format>{ rhi::Format::RGB16F },
 		false, false
 	);
 
@@ -40,12 +40,12 @@ bool BloomPass::Initialize(RenderContext& context) {
 		int scale = 1 << i; // 1, 2, 4, 8
 		m_downsampleFBO[i] = std::make_unique<FrameBuffer>(
 			context.width / scale, context.height / scale,
-			std::vector<GLenum>{ GL_RGB16F },
+			std::vector<rhi::Format>{ rhi::Format::RGB16F },
 			false, false
 		);
 		m_upsampleFBO[i] = std::make_unique<FrameBuffer>(
 			context.width / scale, context.height / scale,
-			std::vector<GLenum>{ GL_RGB16F },
+			std::vector<rhi::Format>{ rhi::Format::RGB16F },
 			false, false
 		);
 	}
@@ -64,8 +64,8 @@ void BloomPass::Resize(RenderContext& context, int newWidth, int newHeight) {
 	}
 }
 
-GLuint BloomPass::GetBloomResult() const {
-	return m_upsampleFBO[0] ? m_upsampleFBO[0]->GetColorAttachment(0) : 0;
+rhi::TextureHandle BloomPass::GetBloomResult() const {
+	return m_upsampleFBO[0] ? m_upsampleFBO[0]->GetColorAttachment(0) : rhi::TextureHandle{};
 }
 
 void BloomPass::Execute(RenderContext& ctx,
@@ -76,7 +76,7 @@ void BloomPass::Execute(RenderContext& ctx,
 	// Prefer temporally resolved HDR when TAA is active.
 	FrameBuffer* sourceFBO = ctx.postSourceFBO ? ctx.postSourceFBO
 		: ((ctx.enableTAA && ctx.taaFBO) ? ctx.taaFBO : ctx.hdrFBO.get());
-	GLuint sourceTex = sourceFBO ? sourceFBO->GetColorAttachment(0) : 0;
+	rhi::TextureHandle sourceTex = sourceFBO ? sourceFBO->GetColorAttachment(0) : rhi::TextureHandle{};
 	if (!sourceTex) {
 		PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[BloomPass] Missing source texture, skipping bloom.");
 		return;
@@ -90,97 +90,95 @@ void BloomPass::Execute(RenderContext& ctx,
 	PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[BloomPass] Bloom result texture: " << GetBloomResult());
 }
 
-void BloomPass::ExtractBrightPixels(RenderContext& ctx, GLuint sourceTex) {
+void BloomPass::ExtractBrightPixels(RenderContext& ctx, rhi::TextureHandle sourceTex) {
+	rhi::Device& gpu = rhi::Gpu();
 	m_extractFBO->Bind();
-	glViewport(0, 0, ctx.width, ctx.height);
+	gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
 
 	//Disable depth test and blending for fullscreen quad
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
+	gpu.SetDepthTest(false);
+	gpu.SetBlendEnabled(false);
 
-	glClear(GL_COLOR_BUFFER_BIT);
+	gpu.Clear(rhi::ClearColor);
 
-	glUseProgram(m_extractShader);
+	gpu.UseProgram(m_extractShader);
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, sourceTex);
-	glUniform1i(glGetUniformLocation(m_extractShader, "hdrBuffer"), 0);
+	gpu.BindTexture(0, sourceTex);
+	gpu.SetUniform(gpu.GetUniformLocation(m_extractShader, "hdrBuffer"), 0);
 
-	glUniform1f(glGetUniformLocation(m_extractShader, "threshold"), ctx.bloomThreshold);
-	glUniform1f(glGetUniformLocation(m_extractShader, "knee"), ctx.bloomKnee);
-	glUniform1f(glGetUniformLocation(m_extractShader, "uExposure"), ctx.exposure);
-	glUniform1i(glGetUniformLocation(m_extractShader, "uBloomMode"), ctx.bloomMode);
-	glUniform1f(glGetUniformLocation(m_extractShader, "uMaxValue"), ctx.bloomMode == 1 ? 256.0f : 64.0f);
+	gpu.SetUniform(gpu.GetUniformLocation(m_extractShader, "threshold"), ctx.bloomThreshold);
+	gpu.SetUniform(gpu.GetUniformLocation(m_extractShader, "knee"), ctx.bloomKnee);
+	gpu.SetUniform(gpu.GetUniformLocation(m_extractShader, "uExposure"), ctx.exposure);
+	gpu.SetUniform(gpu.GetUniformLocation(m_extractShader, "uBloomMode"), ctx.bloomMode);
+	gpu.SetUniform(gpu.GetUniformLocation(m_extractShader, "uMaxValue"), ctx.bloomMode == 1 ? 256.0f : 64.0f);
 
 	ctx.screenQuad->Render();
 
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+	gpu.BindFramebuffer(PresentTarget::Get());
 }
 
 void BloomPass::Downsample(RenderContext& ctx) {
+	rhi::Device& gpu = rhi::Gpu();
 	//Disable depth test and blending for fullscreen quad
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
+	gpu.SetDepthTest(false);
+	gpu.SetBlendEnabled(false);
 
-	GLuint srcTex = m_extractFBO->GetColorAttachment(0);
+	rhi::TextureHandle srcTex = m_extractFBO->GetColorAttachment(0);
 
 	for (int i = 0; i < 4; ++i) {
 		m_downsampleFBO[i]->Bind();
 		int w = m_downsampleFBO[i]->GetWidth();
 		int h = m_downsampleFBO[i]->GetHeight();
-		glViewport(0, 0, w, h);
-		glClear(GL_COLOR_BUFFER_BIT);
+		gpu.SetViewport({ 0, 0, w, h });
+		gpu.Clear(rhi::ClearColor);
 
-		glUseProgram(m_kawaseShader);
-		glUniform1i(glGetUniformLocation(m_kawaseShader, "pass"), i);
+		gpu.UseProgram(m_kawaseShader);
+		gpu.SetUniform(gpu.GetUniformLocation(m_kawaseShader, "pass"), i);
 
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, srcTex);
-		glUniform1i(glGetUniformLocation(m_kawaseShader, "image"), 0);
+		gpu.BindTexture(0, srcTex);
+		gpu.SetUniform(gpu.GetUniformLocation(m_kawaseShader, "image"), 0);
 
 		glm::vec2 texelSize(1.0f / w, 1.0f / h);
-		glUniform2fv(glGetUniformLocation(m_kawaseShader, "texelSize"),
-			1, glm::value_ptr(texelSize));
+		gpu.SetUniform(gpu.GetUniformLocation(m_kawaseShader, "texelSize"), texelSize);
 
 		ctx.screenQuad->Render();
 
 		srcTex = m_downsampleFBO[i]->GetColorAttachment(0);
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+	gpu.BindFramebuffer(PresentTarget::Get());
 }
 
 void BloomPass::Upsample(RenderContext& ctx) {
+	rhi::Device& gpu = rhi::Gpu();
 	//Disable depth test and blending for fullscreen quad
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
+	gpu.SetDepthTest(false);
+	gpu.SetBlendEnabled(false);
 
-	GLuint srcTex = m_downsampleFBO[3]->GetColorAttachment(0); // Smallest
+	rhi::TextureHandle srcTex = m_downsampleFBO[3]->GetColorAttachment(0); // Smallest
 
 	for (int i = 2; i >= 0; --i) {
 		m_upsampleFBO[i]->Bind();
 		int w = m_upsampleFBO[i]->GetWidth();
 		int h = m_upsampleFBO[i]->GetHeight();
-		glViewport(0, 0, w, h);
-		glClear(GL_COLOR_BUFFER_BIT);
+		gpu.SetViewport({ 0, 0, w, h });
+		gpu.Clear(rhi::ClearColor);
 
-		glUseProgram(m_upsampleShader);
-		glUniform1i(glGetUniformLocation(m_upsampleShader, "uNormalize"), ctx.bloomMode == 1 ? 1 : 0);
+		gpu.UseProgram(m_upsampleShader);
+		gpu.SetUniform(gpu.GetUniformLocation(m_upsampleShader, "uNormalize"), ctx.bloomMode == 1 ? 1 : 0);
 
 		// Low-res input (previous upsample)
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, srcTex);
-		glUniform1i(glGetUniformLocation(m_upsampleShader, "lowResTex"), 0);
+		gpu.BindTexture(0, srcTex);
+		gpu.SetUniform(gpu.GetUniformLocation(m_upsampleShader, "lowResTex"), 0);
 
 		// High-res input (current downsample level)
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, m_downsampleFBO[i]->GetColorAttachment(0));
-		glUniform1i(glGetUniformLocation(m_upsampleShader, "highResTex"), 1);
+		gpu.BindTexture(1, m_downsampleFBO[i]->GetColorAttachment(0));
+		gpu.SetUniform(gpu.GetUniformLocation(m_upsampleShader, "highResTex"), 1);
 
 		ctx.screenQuad->Render();
 
 		srcTex = m_upsampleFBO[i]->GetColorAttachment(0);
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+	gpu.BindFramebuffer(PresentTarget::Get());
 }

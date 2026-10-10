@@ -9,7 +9,7 @@
 #include <SDL/SDL.h>
 #include <SDL/SDL_ttf.h>
 #include <SDL/SDL_image.h>
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <SDL/SDL.h>
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <memory>
 #include <string>
 
@@ -26,7 +26,7 @@ struct LaunchConfig {
  * 
  * This class is responsible for:
  * - SDL window creation and destruction
- * - OpenGL context creation and management
+ * - Render device creation and management (rhi::Device)
  * - Event polling and routing to Core
  * - Window resize/fullscreen handling
  * - Swap chain management
@@ -60,7 +60,6 @@ public:
 
     
     SDL_Window* GetWindow() { return m_window; }
-    SDL_GLContext GetGLContext() { return m_glContext; }
     int GetWindowWidth() const { return m_windowWidth; }
     int GetWindowHeight() const { return m_windowHeight; }
     bool IsRunning() const { return m_running; }
@@ -88,11 +87,11 @@ private:
     void HandleWindowEvent(const SDL_WindowEvent& windowEvent);
 
 
-    // SDL/OpenGL Resources (owned by MainWindow)
+    // SDL/Render Resources (owned by MainWindow)
 
-    
+
     SDL_Window* m_window;
-    SDL_GLContext m_glContext;
+    std::unique_ptr<rhi::Device> m_device;
     
 
     // Window Configuration

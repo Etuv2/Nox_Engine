@@ -279,9 +279,6 @@
     <ClCompile Include="src\LightManager.cpp">
       <Filter>Source Files\scripts\Lighting</Filter>
     </ClCompile>
-    <ClCompile Include="src\GLState.cpp">
-      <Filter>Source Files\scripts\Utils</Filter>
-    </ClCompile>
     <ClCompile Include="src\ImGui\BaseWindow.cpp">
       <Filter>Source Files\scripts\Utils\ImGui</Filter>
     </ClCompile>
@@ -367,6 +364,27 @@
       <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
     </ClCompile>
     <ClCompile Include="src\ProceduralStreetKit.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\NightStreetPacks.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TextureArrayBuilder.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GpuBuffer.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\rhi\RHI.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\rhi\gl\GLDevice.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\DecalPass.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\LensFlarePass.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\BenchmarkRunner.cpp">
@@ -456,9 +474,6 @@
     <ClCompile Include="src\RenderSystem.cpp">
       <Filter>Source Files\scripts\ECS</Filter>
     </ClCompile>
-    <ClCompile Include="src\GLBuffer.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer</Filter>
-    </ClCompile>
     <ClCompile Include="src\ImGui\StateExportWindow.cpp">
       <Filter>Source Files\scripts\Utils\ImGui</Filter>
     </ClCompile>
@@ -469,6 +484,9 @@
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\GuiAnimation.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CrashHandler.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\Core.cpp">
@@ -1004,9 +1022,6 @@
     <ClInclude Include="src\ImGui\BaseWindow.h">
       <Filter>Header Files\Utils\ImGui</Filter>
     </ClInclude>
-    <ClInclude Include="src\GLState.h">
-      <Filter>Header Files\Utils</Filter>
-    </ClInclude>
     <ClInclude Include="src\Input\InputActions.h">
       <Filter>Header Files\Input</Filter>
     </ClInclude>
@@ -1056,6 +1071,30 @@
       <Filter>Header Files\Engine\Renderer\Passes</Filter>
     </ClInclude>
     <ClInclude Include="src\ProceduralStreetKit.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\NightStreetPacks.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TextureArrayBuilder.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GpuBuffer.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\rhi\RHI.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\rhi\gl\GLDevice.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneRenderExtras.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\DecalPass.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LensFlarePass.h">
       <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\BenchmarkRunner.h">
@@ -1178,10 +1217,10 @@
     <ClInclude Include="src\SimulationConfig.h">
       <Filter>Header Files\Physics</Filter>
     </ClInclude>
-    <ClInclude Include="src\Core.h">
+    <ClInclude Include="src\CrashHandler.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
-    <ClInclude Include="src\GLBuffer.h">
+    <ClInclude Include="src\Core.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
     <ClInclude Include="src\GuiAnimation.h">

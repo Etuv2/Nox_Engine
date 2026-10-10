@@ -348,6 +348,37 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 			std::fflush(stdout);
 		}
 	}
+	// NOX_DRIVE_SCRIPT=gearbox: full-throttle run up Ventura Ave (gear changes), stop, hold brake at rest
+	// (reverse must engage and back up), then throttle (stop and drive forward again). Logs telemetry.
+	static const bool gearboxTest = [] { const char* v = std::getenv("NOX_DRIVE_SCRIPT"); return v && std::string(v) == "gearbox"; }();
+	if (gearboxTest && m_playing) {
+		m_scriptTime += m_hudDt;
+		m_phaseTime += m_hudDt;
+		in = DriveMode::Input();
+		now = Buttons();
+		const glm::vec2 p = m_drive.Position();
+		const float kmh = m_drive.SpeedKmh();
+		const float head = m_drive.Heading();
+		auto wrapA = [](float x) { while (x > kPi) x -= 2.0f * kPi; while (x < -kPi) x += 2.0f * kPi; return x; };
+		const float keep = std::clamp(-wrapA(std::clamp((-3.8f - p.x) * 0.12f, -0.3f, 0.3f) - head) * 2.6f / (1.0f + kmh / 140.0f), -1.0f, 1.0f);
+		auto next = [&](int phase) { m_scriptPhase = phase; m_phaseTime = 0.0f; };
+		switch (m_scriptPhase) {
+		case 0: if (m_phaseTime > 0.5f) next(1); break;
+		case 1: in.throttle = 1.0f; in.steer = keep; if (p.y > 250.0f || m_phaseTime > 30.0f) next(2); break;   // full throttle
+		case 2: in.brake = 1.0f; in.steer = keep; if (kmh < 0.5f && m_phaseTime > 0.5f) next(3); break;          // stop
+		case 3: in.brake = 1.0f; if (m_phaseTime > 4.0f) next(4); break;                                        // hold S at rest: reverse
+		case 4: in.throttle = 1.0f; if (m_phaseTime > 4.0f) next(5); break;                                     // W: stop, drive forward
+		default: in.brake = 1.0f; break;
+		}
+		static float logTimer = 0.0f;
+		logTimer += m_hudDt;
+		if (logTimer >= 0.25f) {
+			logTimer = 0.0f;
+			std::printf("[Gearbox] ph=%d t=%5.2f thr=%.1f brk=%.1f v=%6.1f km/h vx=%6.2f gear=%d rpm=%5.0f y=%.1f\n", m_scriptPhase, m_scriptTime,
+				in.throttle, in.brake, kmh, m_drive.SpeedMs(), m_drive.Gear(), m_drive.Rpm(), p.y);
+			std::fflush(stdout);
+		}
+	}
 	static const bool autopilot = [] { const char* v = std::getenv("NOX_DRIVE_AUTOPILOT"); return v && v[0] == '1'; }();
 	if (autopilot && m_playing) {
 		now = Buttons();

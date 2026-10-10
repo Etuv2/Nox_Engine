@@ -1,4 +1,5 @@
 #pragma once
+#include "rhi/RHI.h"
 
 /**
  * @file TextureUnits.h
@@ -49,6 +50,7 @@ namespace TextureUnits {
     constexpr int GBUFFER_PRINCIPLED = 32;      // gPrincipledParams (RGBA16F - transmission/ior + reserved principled slots)
     constexpr int SSR_REFLECTION = 33;          // ssrReflection (RGBA16F radiance + confidence, docs/nfs2015 M5)
     constexpr int REFLECTION_PROBES = 34;       // reflectionProbes (cubemap array, docs/nfs2015 M5)
+    constexpr int INTERIOR_ATLAS = 35;          // uInteriorAtlas (G-buffer pass, interior mapping room faces)
     
     // ======================================
     // RESOLVED INDIRECT DIFFUSE SOURCES
@@ -81,7 +83,8 @@ namespace TextureUnits {
     static_assert(BRDF_LUT < KEY_LIGHT_SHADOW, "IBL texture units must not overlap with studio lighting units");
 }
 
-#define BIND_TEXTURE_2D(unit, texture) do { glActiveTexture(GL_TEXTURE0 + (unit)); glBindTexture(GL_TEXTURE_2D, (texture)); } while(0)
-#define BIND_TEXTURE_CUBE(unit, texture) do { glActiveTexture(GL_TEXTURE0 + (unit)); glBindTexture(GL_TEXTURE_CUBE_MAP, (texture)); } while(0)
-#define BIND_TEXTURE_ARRAY(unit, texture) do { glActiveTexture(GL_TEXTURE0 + (unit)); glBindTexture(GL_TEXTURE_2D_ARRAY, (texture)); } while(0)
-#define SET_UNIFORM_TEXTURE_UNIT(shader, uniform_name, unit) do { GLint loc = glGetUniformLocation((shader), (uniform_name)); if (loc >= 0) glUniform1i(loc, (unit)); } while(0)
+// Binding helpers (texture units are backend-neutral slots; see rhi::Device::BindTexture).
+#define BIND_TEXTURE_2D(unit, texture) rhi::Gpu().BindTexture(static_cast<uint32_t>(unit), (texture))
+#define BIND_TEXTURE_CUBE(unit, texture) rhi::Gpu().BindTexture(static_cast<uint32_t>(unit), (texture))
+#define BIND_TEXTURE_ARRAY(unit, texture) rhi::Gpu().BindTexture(static_cast<uint32_t>(unit), (texture))
+#define SET_UNIFORM_TEXTURE_UNIT(shader, uniform_name, unit) do { const rhi::UniformLocation loc_ = rhi::Gpu().GetUniformLocation((shader), (uniform_name)); if (loc_ >= 0) rhi::Gpu().SetUniform(loc_, static_cast<int>(unit)); } while(0)

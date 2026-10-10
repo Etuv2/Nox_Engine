@@ -8,6 +8,7 @@
 * resolved from the executable's location, not the working directory.
 */
 #include "MainWindow.h"
+#include "CrashHandler.h"
 #include "ImGui/ConsoleLog.h"
 #include "json.hpp"
 #include <cstdio>
@@ -111,6 +112,7 @@ namespace {
 
 int main(int argc, char* argv[])
 {
+	CrashHandler::Install();
 	SetAssetRoot();
 	ConsoleLog::Get().Install();
 	const LaunchConfig launch = ParseLaunch(argc, argv);

@@ -23,8 +23,8 @@ private:
     void ResetVisibleListHeader();
 
     std::unique_ptr<ComputeShader> m_shader;
-    GLuint m_historySSBO = 0;
-    GLuint m_visibleListSSBO = 0;
+    rhi::BufferHandle m_historySSBO;
+    rhi::BufferHandle m_visibleListSSBO;
     size_t m_historyCapacity = 0;
     size_t m_visibleCapacity = 0;
     uint32_t m_frameIndex = 0;

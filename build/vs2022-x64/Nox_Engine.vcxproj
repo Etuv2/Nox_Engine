@@ -662,16 +662,16 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ComputeShader.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Contact.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Core.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\CrashHandler.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DefaultTextures.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DirectionalLight.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DriveAudio.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DriveMode.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Framebuffer.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\FrustumCulling.cpp" />
-    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GLBuffer.cpp" />
-    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GLState.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameSession.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GizmoRayCast.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GpuBuffer.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GuiAnimation.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GuiNode.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\HierarchySystem.cpp" />
@@ -696,6 +696,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\MainWindow.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ModelManager.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ModularRenderer.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\NightStreetPacks.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PerformanceRecorder.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PhysicsBVH.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PhysicsCollision.cpp" />
@@ -721,6 +722,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SpotLight.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\StudioLighting.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Texture.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\TextureArrayBuilder.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\TransformSystem.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\VehicleFX.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\editor\ProcessRunner.cpp" />
@@ -734,11 +736,13 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\main.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\BloomPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\DebugBBoxPass.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\DecalPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\ExposurePass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\GBufferPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\GUIPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\IndirectDiffusePass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\LPVPass.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\LensFlarePass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\LightClusterPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\LightingPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\MotionBlurPass.cpp" />
@@ -757,6 +761,8 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\TransparentForwardPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\VehicleFXPass.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\VolumetricFogPass.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\rhi\RHI.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\rhi\gl\GLDevice.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\surfel_gi\SurfelGIResources.cpp" />
   </ItemGroup>
   <ItemGroup />

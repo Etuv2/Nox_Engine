@@ -5,7 +5,7 @@
 #include "SceneNode.h"
 #include "stb_image_write.h"
 
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 #include <cmath>
@@ -72,10 +72,8 @@ namespace {
 
 	bool SavePNG(int width, int height, const fs::path& path) {
 		std::vector<unsigned char> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 3u);
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-		glReadBuffer(GL_BACK);
-		glPixelStorei(GL_PACK_ALIGNMENT, 1);
-		glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+		rhi::Gpu().BindReadFramebuffer(rhi::kBackBuffer);
+		rhi::Gpu().ReadPixels(rhi::kBackBuffer, 0, { 0, 0, width, height }, rhi::PixelFormat::RGB, rhi::PixelType::UByte, pixels.data(), 1);
 		std::error_code ec;
 		fs::create_directories(path.parent_path(), ec);
 		stbi_flip_vertically_on_write(1);

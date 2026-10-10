@@ -67,6 +67,9 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Core.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\CrashHandler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DefaultTextures.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -85,16 +88,13 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\FrustumCulling.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GLBuffer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GLState.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameSession.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GizmoRayCast.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GpuBuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GuiAnimation.cpp">
@@ -167,6 +167,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ModularRenderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\NightStreetPacks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PerformanceRecorder.cpp">
@@ -244,6 +247,9 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Texture.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\TextureArrayBuilder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\TransformSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -283,6 +289,9 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\DebugBBoxPass.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\DecalPass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\ExposurePass.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -296,6 +305,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\LPVPass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\LensFlarePass.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\LightClusterPass.cpp">
@@ -350,6 +362,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\passes\VolumetricFogPass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\rhi\RHI.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\rhi\gl\GLDevice.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\surfel_gi\SurfelGIResources.cpp">

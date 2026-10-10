@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 #include <map>
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include "SceneNode.h"
 #include "Skybox.h"
 #include "MDIBatch.h"
@@ -14,6 +14,7 @@
 #include "HierarchySystem.h"
 #include "SceneRuntimeData.h"
 #include "ReflectionProbe.h"
+#include "SceneRenderExtras.h"
 #include <vector>
 
 // Forward declarations
@@ -37,6 +38,10 @@ public:
     // Local reflection probes (scene "reflection_probes" + procedural generators), docs/nfs2015 M5.
     std::vector<ReflectionProbeDesc> reflectionProbes;
 
+    // Optional decals, lens flares and interior atlas for this scene (SceneRenderExtras.h; consumed
+    // by DecalPass, LensFlarePass and the G-buffer interior mapping).
+    SceneRenderExtras renderExtras;
+
     std::shared_ptr<SceneNode> GetRoot();
     // const variant for read-only traversals
     std::shared_ptr<SceneNode> GetRoot() const { return m_root; }
@@ -46,19 +51,19 @@ public:
 
     // Legacy compatibility shims (tooling/import paths only; not for frame loop).
     [[deprecated("Compatibility shim only. Use RenderForward() in runtime code")]]
-    void Draw(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram);
+    void Draw(const glm::mat4& view, const glm::mat4& projection, rhi::ProgramHandle shaderProgram);
 
     // Shadow pass draw (legacy)
     [[deprecated("Compatibility shim only. Use RenderShadowCascade() in runtime code")]]
-    void DrawCascade(const glm::mat4& lightSpace, GLuint shadowShader);
+    void DrawCascade(const glm::mat4& lightSpace, rhi::ProgramHandle shadowShader);
 
     // Deferred geometry pass (legacy)
     [[deprecated("Compatibility shim only. Use RenderGeometry() in runtime code")]]
-    void DrawGeometry(GLuint geometryShader);
+    void DrawGeometry(rhi::ProgramHandle geometryShader);
 
     // Motion vector pass for TAA (legacy)
     [[deprecated("Compatibility shim only. Use RenderVelocity() in runtime code")]]
-    void DrawVelocity(GLuint velocityShader);
+    void DrawVelocity(rhi::ProgramHandle velocityShader);
 
     // MDI collection (legacy)
     [[deprecated("Compatibility shim only. Use CollectRenderables() in runtime code")]]
@@ -67,21 +72,21 @@ public:
     //  NEW ECS-BASED RENDERING API 
     
     // Forward rendering pass (ECS-based)
-    void RenderForward(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram);
+    void RenderForward(const glm::mat4& view, const glm::mat4& projection, rhi::ProgramHandle shaderProgram);
     
     // Shadow cascade pass (ECS-based)
-    void RenderShadowCascade(const glm::mat4& lightSpace, GLuint shadowShader);
+    void RenderShadowCascade(const glm::mat4& lightSpace, rhi::ProgramHandle shadowShader);
     
     // Deferred geometry pass (ECS-based)
-    void RenderGeometry(GLuint geometryShader);
+    void RenderGeometry(rhi::ProgramHandle geometryShader);
     
     // Velocity pass for TAA (ECS-based)
     void RenderVelocity(const glm::mat4& view, const glm::mat4& projection,
                         const glm::mat4& prevView, const glm::mat4& prevProjection,
-                        GLuint velocityShader);
+                        rhi::ProgramHandle velocityShader);
     
     // Transparent objects pass (ECS-based)
-    void RenderTransparent(const glm::mat4& view, const glm::mat4& projection, GLuint shader);
+    void RenderTransparent(const glm::mat4& view, const glm::mat4& projection, rhi::ProgramHandle shader);
     
     // MDI collection (ECS-based)
     void CollectRenderables(MDIBatch& batch);

@@ -23,17 +23,17 @@ namespace DefaultTextures {
 		std::cout << "[DefaultTextures] Creating default textures (one-time initialization)..." << std::endl;
 
 		// REFACTORED: Use TextureFactory for clean, declarative 1x1 texture creation
-		g_white = TextureFactory::CreateSolidColor(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), GL_RGBA8);
-		g_black = TextureFactory::CreateSolidColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), GL_RGBA8);
+		g_white = TextureFactory::CreateSolidColor(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), rhi::Format::RGBA8);
+		g_black = TextureFactory::CreateSolidColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), rhi::Format::RGBA8);
 
 		// Standard normal map (0,0,1) encoded as (128,128,255)
-		g_normal = TextureFactory::CreateSolidColor(glm::vec4(128.0f / 255.0f, 128.0f / 255.0f, 1.0f, 1.0f), GL_RGB8);
+		g_normal = TextureFactory::CreateSolidColor(glm::vec4(128.0f / 255.0f, 128.0f / 255.0f, 1.0f, 1.0f), rhi::Format::RGB8);
 
 		// White AO (no occlusion)
-		g_aowhite = TextureFactory::CreateSolidColor(glm::vec4(1.0f), GL_RGBA8);
+		g_aowhite = TextureFactory::CreateSolidColor(glm::vec4(1.0f), rhi::Format::RGBA8);
 
 		// Default metallic-roughness: R unused (white), G roughness ~0.8, B metallic 0
-		g_mrDefault = TextureFactory::CreateSolidColor(glm::vec4(1.0f, 204.0f / 255.0f, 0.0f, 1.0f), GL_RGBA8);
+		g_mrDefault = TextureFactory::CreateSolidColor(glm::vec4(1.0f, 204.0f / 255.0f, 0.0f, 1.0f), rhi::Format::RGBA8);
 
 		// Validate all textures were created successfully
 		if (!g_white || !g_white->IsValid() ||
@@ -52,12 +52,12 @@ namespace DefaultTextures {
 			<< ", MR: " << g_mrDefault->ID() << std::endl;
 	}
 
-	// Backward-compatible GLuint accessors
-	GLuint White() { EnsureCreated(); return g_white ? g_white->ID() : 0; }
-	GLuint Black() { EnsureCreated(); return g_black ? g_black->ID() : 0; }
-	GLuint Normal() { EnsureCreated(); return g_normal ? g_normal->ID() : 0; }
-	GLuint AOWhite() { EnsureCreated(); return g_aowhite ? g_aowhite->ID() : 0; }
-	GLuint MetallicRoughnessDefault() { EnsureCreated(); return g_mrDefault ? g_mrDefault->ID() : 0; }
+	// Handle accessors
+	rhi::TextureHandle White() { EnsureCreated(); return g_white ? g_white->ID() : rhi::TextureHandle{}; }
+	rhi::TextureHandle Black() { EnsureCreated(); return g_black ? g_black->ID() : rhi::TextureHandle{}; }
+	rhi::TextureHandle Normal() { EnsureCreated(); return g_normal ? g_normal->ID() : rhi::TextureHandle{}; }
+	rhi::TextureHandle AOWhite() { EnsureCreated(); return g_aowhite ? g_aowhite->ID() : rhi::TextureHandle{}; }
+	rhi::TextureHandle MetallicRoughnessDefault() { EnsureCreated(); return g_mrDefault ? g_mrDefault->ID() : rhi::TextureHandle{}; }
 
 	// Modern TexturePtr accessors for new code
 	TexturePtr GetWhiteTexture() { EnsureCreated(); return g_white; }

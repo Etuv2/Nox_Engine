@@ -192,9 +192,9 @@ void SurfelGIManager::SetSettings(const SurfelGISettings& settings)
 	}
 }
 
-GLuint SurfelGIManager::GetIndirectTexture() const
+rhi::TextureHandle SurfelGIManager::GetIndirectTexture() const
 {
-	return m_pipeline ? m_pipeline->GetResources().indirectTexture : 0u;
+	return m_pipeline ? m_pipeline->GetResources().indirectTexture : rhi::TextureHandle{};
 }
 
 bool SurfelGIManager::HasReadyPipeline() const

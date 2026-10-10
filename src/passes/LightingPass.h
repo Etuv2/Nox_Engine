@@ -1,7 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
 #include "../Texture.h"
-#include <GL/glew.h>
 #include <array>
 #include <memory>
 
@@ -31,13 +30,13 @@ public:
 		const std::shared_ptr<Skybox>& skybox) override;
 
 	//Allow SSAOPass to provide its output texture
-	void SetSSAOTexture(GLuint ssaoTex) { m_ssaoTexture = ssaoTex; }
+	void SetSSAOTexture(rhi::TextureHandle ssaoTex) { m_ssaoTexture = ssaoTex; }
 
 	//Allow ScreenSpaceShadowPass to provide its output texture
-	void SetScreenSpaceShadowTexture(GLuint sssTex) { m_sssTexture = sssTex; }
+	void SetScreenSpaceShadowTexture(rhi::TextureHandle sssTex) { m_sssTexture = sssTex; }
 
 	void ClearIndirectDiffuseSources();
-	void SetIndirectDiffuseSource(int index, GLuint indirectDiffuseTex, float strength = 1.0f);
+	void SetIndirectDiffuseSource(int index, rhi::TextureHandle indirectDiffuseTex, float strength = 1.0f);
 	void SetOutputMode(OutputMode mode) { m_outputMode = mode; }
 
 	// Enable/disable verbose logging (disabled by default for performance)
@@ -49,77 +48,77 @@ private:
 	void CacheUniformLocations();
 	void UploadStaticSamplerUniforms();
 
-	GLuint m_shader = 0;
+	rhi::ProgramHandle m_shader;
 	TexturePtr m_fallbackCubemap;
 	TexturePtr m_fallbackBRDF;
-	GLuint m_ssaoTexture = 0;
-	GLuint m_sssTexture = 0;
-	std::array<GLuint, MaxIndirectDiffuseSources> m_indirectDiffuseTextures{};
+	rhi::TextureHandle m_ssaoTexture;
+	rhi::TextureHandle m_sssTexture;
+	std::array<rhi::TextureHandle, MaxIndirectDiffuseSources> m_indirectDiffuseTextures{};
 	std::array<float, MaxIndirectDiffuseSources> m_indirectDiffuseStrengths{};
 	int m_indirectDiffuseSourceCount = 0;
 	OutputMode m_outputMode = OutputMode::FullLighting;
 
-	// Cached uniform locations to avoid per-frame glGetUniformLocation calls
+	// Cached uniform locations to avoid per-frame GetUniformLocation calls
 	struct UniformLocations {
 		// Sampler uniforms
-		GLint gPackedNormalRM = -1;
-		GLint gAlbedoAO = -1;
-		GLint gSpecularF0 = -1;  // Changed from gEmissiveSpec
-		GLint gMaterialID = -1;
-		GLint gEmissive = -1;    // Separate emissive texture
-		GLint gClearCoat = -1;
-		GLint gPrincipledParams = -1;
-		GLint gDepth = -1;
-		GLint ssaoMap = -1;
-		GLint screenSpaceShadowMap = -1;
-		GLint indirectDiffuseMaps = -1;
-		GLint irradianceMap = -1;
-		GLint prefilteredMap = -1;
-		GLint brdfLUT = -1;
-		GLint multiLightShadowArray = -1;
+		rhi::UniformLocation gPackedNormalRM = -1;
+		rhi::UniformLocation gAlbedoAO = -1;
+		rhi::UniformLocation gSpecularF0 = -1;  // Changed from gEmissiveSpec
+		rhi::UniformLocation gMaterialID = -1;
+		rhi::UniformLocation gEmissive = -1;    // Separate emissive texture
+		rhi::UniformLocation gClearCoat = -1;
+		rhi::UniformLocation gPrincipledParams = -1;
+		rhi::UniformLocation gDepth = -1;
+		rhi::UniformLocation ssaoMap = -1;
+		rhi::UniformLocation screenSpaceShadowMap = -1;
+		rhi::UniformLocation indirectDiffuseMaps = -1;
+		rhi::UniformLocation irradianceMap = -1;
+		rhi::UniformLocation prefilteredMap = -1;
+		rhi::UniformLocation brdfLUT = -1;
+		rhi::UniformLocation multiLightShadowArray = -1;
 
 		// Matrix uniforms
-		GLint invProjection = -1;
-		GLint invView = -1;
-		GLint view = -1;
-		GLint viewPos = -1;
+		rhi::UniformLocation invProjection = -1;
+		rhi::UniformLocation invView = -1;
+		rhi::UniformLocation view = -1;
+		rhi::UniformLocation viewPos = -1;
 
 		// IBL uniforms
-		GLint prefilteredMaxLOD = -1;
-		GLint iblIntensity = -1;
-		GLint diffuseIBLScale = -1;
-		GLint specularIBLScale = -1;
+		rhi::UniformLocation prefilteredMaxLOD = -1;
+		rhi::UniformLocation iblIntensity = -1;
+		rhi::UniformLocation diffuseIBLScale = -1;
+		rhi::UniformLocation specularIBLScale = -1;
 
 		// Effect strength uniforms
-		GLint aoStrength = -1;
-		GLint sssStrength = -1;
-		GLint indirectDiffuseStrengths = -1;
-		GLint indirectDiffuseSourceCount = -1;
-		GLint indirectDiffuseCompositeMode = -1;
-		GLint lightingOutputMode = -1;
-		GLint lightingCompositeDebugMode = -1;
+		rhi::UniformLocation aoStrength = -1;
+		rhi::UniformLocation sssStrength = -1;
+		rhi::UniformLocation indirectDiffuseStrengths = -1;
+		rhi::UniformLocation indirectDiffuseSourceCount = -1;
+		rhi::UniformLocation indirectDiffuseCompositeMode = -1;
+		rhi::UniformLocation lightingOutputMode = -1;
+		rhi::UniformLocation lightingCompositeDebugMode = -1;
 
 		// Light uniforms
-		GLint numLights = -1;
-		GLint numDirectionalLights = -1;
-		GLint numPointLights = -1;
-		GLint numSpotLights = -1;
-		GLint enableShadows = -1;
-		GLint shadowBias = -1;
-		GLint cascadeCount = -1;
+		rhi::UniformLocation numLights = -1;
+		rhi::UniformLocation numDirectionalLights = -1;
+		rhi::UniformLocation numPointLights = -1;
+		rhi::UniformLocation numSpotLights = -1;
+		rhi::UniformLocation enableShadows = -1;
+		rhi::UniformLocation shadowBias = -1;
+		rhi::UniformLocation cascadeCount = -1;
 		
 		// Cascade blend settings
-		GLint cascadeBlendDistance = -1;
-		GLint cascadeBlendFactor = -1;
-		GLint cascadeSplits = -1;
-		GLint shadowDebugVisualization = -1;
+		rhi::UniformLocation cascadeBlendDistance = -1;
+		rhi::UniformLocation cascadeBlendFactor = -1;
+		rhi::UniformLocation cascadeSplits = -1;
+		rhi::UniformLocation shadowDebugVisualization = -1;
 		
 		// Point light shadow settings
 		
 		// Shadow darkness settings
-		GLint shadowDarkness = -1;
-		GLint shadowMinBrightness = -1;
-		GLint shadowTransitionHardness = -1;
+		rhi::UniformLocation shadowDarkness = -1;
+		rhi::UniformLocation shadowMinBrightness = -1;
+		rhi::UniformLocation shadowTransitionHardness = -1;
 	} m_uniforms;
 
 	bool m_uniformsCached = false;

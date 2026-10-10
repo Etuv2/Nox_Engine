@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
+#include "rhi/RHI.h"
 #include "RenderContext.h"
 #include "RenderPass.h"
 
@@ -45,6 +46,8 @@ class VolumetricFogPass;
 class MotionBlurPass;
 class RainPass;
 class VehicleFXPass;
+class DecalPass;
+class LensFlarePass;
 class SurfelGIManager;
 struct SurfelGIFrameStats;
 class GUIPass;
@@ -218,13 +221,15 @@ private:
 	std::unique_ptr<MotionBlurPass> m_motionBlurPass;           // motion blur (docs/nfs2015 M7)
 	std::unique_ptr<RainPass> m_rainPass;                       // rain streaks (docs/nfs2015 M6)
 	std::unique_ptr<VehicleFXPass> m_vehicleFXPass;             // tyre smoke and wet-road spray (src/VehicleFX.h)
+	std::unique_ptr<DecalPass> m_decalPass;                     // surface decals blended into the G-buffer
+	std::unique_ptr<LensFlarePass> m_lensFlarePass;             // occlusion-tested glare sprites on bright sources
 	bool m_lastTAAEnabled = true;  // Debug bounding box visualization
-	GLuint m_debugViewShader = 0;
-	GLuint m_indirectDiffuseDebugPresentShader = 0;
+	rhi::ProgramHandle m_debugViewShader;
+	rhi::ProgramHandle m_indirectDiffuseDebugPresentShader;
 
 	std::vector<PassDescriptor> m_passDescriptors;
 	std::unordered_map<PlanCacheKey, FramePlan, PlanCacheKeyHash> m_planCache;
-	std::unordered_map<ResourceHandle, GLuint> m_namedResources;
+	std::unordered_map<ResourceHandle, rhi::TextureHandle> m_namedResources;
 	std::function<void(const char*, const std::function<void()>&)> m_profilePassFunc;
 
 	std::vector<PassTimingMetrics> m_lastPassMetrics;

@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 
 /**
  * PostProcessPass performs final tone-mapping and output to backbuffer:
@@ -22,11 +22,11 @@ public:
                  const std::shared_ptr<DirectionalLight>& dirLight,
                  const std::shared_ptr<Skybox>& skybox) override;
 
-    void SetBloomTexture(GLuint bloomTex) { m_bloomTexture = bloomTex; }
+    void SetBloomTexture(rhi::TextureHandle bloomTex) { m_bloomTexture = bloomTex; }
 
 private:
-    GLuint m_shader = 0;
-    GLuint m_bloomTexture = 0;
+    rhi::ProgramHandle m_shader;
+    rhi::TextureHandle m_bloomTexture;
     unsigned m_frameIndex = 0;
     bool m_runtimeVerboseLogging = false;
 };

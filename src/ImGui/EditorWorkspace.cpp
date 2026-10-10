@@ -15,7 +15,7 @@
 #include "../editor/ProcessRunner.h"
 #include "../editor/solace/SolaceUI.h"
 
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <SDL/SDL.h>
 #include <IMGUI/imgui.h>
 #include <IMGUI/imgui_internal.h>
@@ -170,9 +170,9 @@ EditorWorkspace::~EditorWorkspace()
 {
 	SaveSettings();
 	for (Viewport* vp : { &m_scene, &m_game }) {
-		if (vp->fbo) glDeleteFramebuffers(1, &vp->fbo);
-		if (vp->color) glDeleteTextures(1, &vp->color);
-		if (vp->depth) glDeleteRenderbuffers(1, &vp->depth);
+		if (vp->fbo) rhi::Gpu().DestroyFramebuffer(vp->fbo);
+		if (vp->color) rhi::Gpu().DestroyTexture(vp->color);
+		if (vp->depth) rhi::Gpu().DestroyTexture(vp->depth);
 	}
 }
 
@@ -517,25 +517,25 @@ void EditorWorkspace::EnsureTarget(Viewport& vp, int width, int height)
 	width = std::max(width, 16);
 	height = std::max(height, 16);
 	if (vp.fbo && vp.texWidth == width && vp.texHeight == height) return;
+	rhi::Device& gpu = rhi::Gpu();
 	if (!vp.fbo) {
-		glGenFramebuffers(1, &vp.fbo);
-		glGenTextures(1, &vp.color);
-		glGenRenderbuffers(1, &vp.depth);
+		vp.fbo = gpu.CreateFramebuffer(rhi::FramebufferDesc{});
+		vp.color = gpu.CreateTexture(rhi::TextureDesc{});
+		rhi::TextureDesc depthDesc;
+		depthDesc.format = rhi::Format::D24S8;
+		vp.depth = gpu.CreateTexture(depthDesc);
 	}
-	glBindTexture(GL_TEXTURE_2D, vp.color);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glBindRenderbuffer(GL_RENDERBUFFER, vp.depth);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-	glBindFramebuffer(GL_FRAMEBUFFER, vp.fbo);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, vp.color, 0);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, vp.depth);
-	glClearColor(0.02f, 0.02f, 0.03f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	gpu.ResizeTexture(vp.color, width, height, 1, 1);
+	gpu.SetTextureFilter(vp.color, rhi::Filter::Linear, rhi::Filter::Linear);
+	gpu.SetTextureWrapAxis(vp.color, 0, rhi::Wrap::ClampToEdge);
+	gpu.SetTextureWrapAxis(vp.color, 1, rhi::Wrap::ClampToEdge);
+	gpu.ResizeTexture(vp.depth, width, height, 1, 1);
+	gpu.BindFramebuffer(vp.fbo);
+	gpu.SetAttachment(vp.fbo, rhi::AttachmentPoint::Color0, rhi::Attachment{ vp.color, 0, rhi::kAllLayers });
+	gpu.SetAttachment(vp.fbo, rhi::AttachmentPoint::DepthStencil, rhi::Attachment{ vp.depth });
+	gpu.SetClearColor(glm::vec4(0.02f, 0.02f, 0.03f, 1.0f));
+	gpu.Clear(rhi::ClearColor | rhi::ClearDepth);
+	gpu.BindFramebuffer(rhi::kBackBuffer);
 	vp.texWidth = width;
 	vp.texHeight = height;
 	vp.rendered = false;
@@ -549,7 +549,7 @@ void EditorWorkspace::DrawViewportImage(Viewport& vp)
 	const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
 	EnsureTarget(vp, static_cast<int>(vp.size.x * scale.x), static_cast<int>(vp.size.y * scale.y));
 	if (vp.rendered) {
-		ImGui::Image(static_cast<ImTextureID>(vp.color), vp.size, ImVec2(0, 1), ImVec2(1, 0));
+		ImGui::Image((ImTextureID)rhi::Gpu().ImGuiTextureId(vp.color), vp.size, ImVec2(0, 1), ImVec2(1, 0));
 	}
 	else {
 		ImGui::Dummy(vp.size);

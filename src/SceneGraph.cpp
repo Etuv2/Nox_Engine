@@ -4,7 +4,6 @@
 #include "LightManager.h"
 #include "LightNode.h"
 #include <glm/gtc/type_ptr.hpp>
-#include <GL/glew.h>
 #include <iostream>
 
 SceneGraph::SceneGraph()
@@ -137,7 +136,7 @@ void SceneGraph::UpdateLightManager() {
 void SceneGraph::Draw(
 	const glm::mat4& view,
 	const glm::mat4& projection,
-	GLuint shaderProgram)
+	rhi::ProgramHandle shaderProgram)
 {
 	// Delegate to authoritative ECS API
 	m_renderSystem.RenderForward(view, projection, shaderProgram);
@@ -145,7 +144,7 @@ void SceneGraph::Draw(
 
 void SceneGraph::DrawCascade(
 	const glm::mat4& lightSpace,
-	GLuint shadowShader)
+	rhi::ProgramHandle shadowShader)
 {
 	// Delegate to authoritative ECS API
 	m_renderSystem.RenderShadowCascade(lightSpace, shadowShader);
@@ -164,14 +163,14 @@ size_t SceneGraph::EstimateRenderableObjectCount() const
 }
 
 //Deferred geometry pass
-void SceneGraph::DrawGeometry(GLuint geometryShader)
+void SceneGraph::DrawGeometry(rhi::ProgramHandle geometryShader)
 {
 	// Delegate to authoritative ECS API
 	m_renderSystem.RenderGeometry(geometryShader);
 }
 
 //Motion vector pass for TAA
-void SceneGraph::DrawVelocity(GLuint velocityShader)
+void SceneGraph::DrawVelocity(rhi::ProgramHandle velocityShader)
 {
 	// Delegate to authoritative ECS API with identity matrices for legacy compatibility
 	m_renderSystem.RenderVelocity(glm::mat4(1.0f), glm::mat4(1.0f), glm::mat4(1.0f), glm::mat4(1.0f), velocityShader);
@@ -319,25 +318,25 @@ void SceneGraph::SyncSceneNodeToComponents(std::shared_ptr<SceneNode> node, Enti
 
 // NEW ECS-BASED RENDERING METHODS
 
-void SceneGraph::RenderForward(const glm::mat4& view, const glm::mat4& projection, GLuint shaderProgram) {
+void SceneGraph::RenderForward(const glm::mat4& view, const glm::mat4& projection, rhi::ProgramHandle shaderProgram) {
 	m_renderSystem.RenderForward(view, projection, shaderProgram);
 }
 
-void SceneGraph::RenderShadowCascade(const glm::mat4& lightSpace, GLuint shadowShader) {
+void SceneGraph::RenderShadowCascade(const glm::mat4& lightSpace, rhi::ProgramHandle shadowShader) {
 	m_renderSystem.RenderShadowCascade(lightSpace, shadowShader);
 }
 
-void SceneGraph::RenderGeometry(GLuint geometryShader) {
+void SceneGraph::RenderGeometry(rhi::ProgramHandle geometryShader) {
 	m_renderSystem.RenderGeometry(geometryShader);
 }
 
 void SceneGraph::RenderVelocity(const glm::mat4& view, const glm::mat4& projection,
                                  const glm::mat4& prevView, const glm::mat4& prevProjection,
-                                 GLuint velocityShader) {
+                                 rhi::ProgramHandle velocityShader) {
 	m_renderSystem.RenderVelocity(view, projection, prevView, prevProjection, velocityShader);
 }
 
-void SceneGraph::RenderTransparent(const glm::mat4& view, const glm::mat4& projection, GLuint shader) {
+void SceneGraph::RenderTransparent(const glm::mat4& view, const glm::mat4& projection, rhi::ProgramHandle shader) {
 	m_renderSystem.RenderTransparent(view, projection, shader);
 }
 

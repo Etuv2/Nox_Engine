@@ -1,13 +1,12 @@
 ﻿#pragma once
 #include <string>
 #include <memory>
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "Framebuffer.h"
 #include "TextureUnits.h"
 #include "Texture.h"  // Use new refactored Texture class
-#include "GLBuffer.h"
+#include "GpuBuffer.h"
 
 //Skybox class for loading HDR images, converting to cubemap, and rendering as background.
 
@@ -35,12 +34,12 @@ public:
 	const std::string& GetHDRPath() const { return m_hdrPath; }
 
 	// Retrieve the environment cubemap texture ID so other code (e.g., PBR shaders)
-	GLuint GetEnvironmentMap() const { return m_envCubemap ? m_envCubemap->ID() : 0; }
+	rhi::TextureHandle GetEnvironmentMap() const { return m_envCubemap ? m_envCubemap->ID() : rhi::TextureHandle{}; }
 	
 	// IBL Resources for physically based lighting
-	GLuint GetIrradianceMap() const { return m_irradianceMap ? m_irradianceMap->ID() : 0; }
-	GLuint GetPrefilteredMap() const { return m_prefilteredMap ? m_prefilteredMap->ID() : 0; }
-	GLuint GetBRDFLUT() const { return m_brdfLUT ? m_brdfLUT->ID() : 0; }
+	rhi::TextureHandle GetIrradianceMap() const { return m_irradianceMap ? m_irradianceMap->ID() : rhi::TextureHandle{}; }
+	rhi::TextureHandle GetPrefilteredMap() const { return m_prefilteredMap ? m_prefilteredMap->ID() : rhi::TextureHandle{}; }
+	rhi::TextureHandle GetBRDFLUT() const { return m_brdfLUT ? m_brdfLUT->ID() : rhi::TextureHandle{}; }
 	float GetPrefilteredMaxLOD() const { return m_prefilteredMaxLOD; }
 
 	// IBL intensity controls to prevent over-bright lighting
@@ -95,16 +94,16 @@ private:
 	TexturePtr m_envCubemap;
 
 	// VAO/VBO for drawing a unit cube.
-	GLuint m_skyboxVAO = 0;
-	GLBufferPtr m_skyboxVBO;  // Use GLBuffer wrapper
+	rhi::VertexInputHandle m_skyboxVAO;
+	GpuBufferPtr m_skyboxVBO;  // Use GpuBuffer wrapper
 
 	// Shader programs.
-	GLuint m_equiRectToCubeShader = 0;  // equirectangular-to-cubemap converter
-	GLuint m_skyboxShader = 0;      // shader for final skybox rendering
+	rhi::ProgramHandle m_equiRectToCubeShader;  // equirectangular-to-cubemap converter
+	rhi::ProgramHandle m_skyboxShader;      // shader for final skybox rendering
 	
 	// Dedicated FBO/RBO for IBL capture to avoid abstraction
-	GLuint m_captureFBO = 0;
-	GLuint m_captureRBO = 0;
+	rhi::FramebufferHandle m_captureFBO;
+	rhi::TextureHandle m_captureRBO;
 
 	// IBL Resources (using new Texture class)
 	TexturePtr m_irradianceMap;         // Diffuse irradiance cubemap (32x32)
@@ -113,9 +112,9 @@ private:
 	float m_prefilteredMaxLOD = 4.0f;   // Maximum mip level for prefiltered map
 	
 	// IBL shader programs
-	GLuint m_irradianceShader = 0;      // Convolution shader for irradiance
-	GLuint m_prefilterShader = 0;  // Prefilter shader for specular
-	GLuint m_brdfShader = 0;  // BRDF integration shader
+	rhi::ProgramHandle m_irradianceShader;      // Convolution shader for irradiance
+	rhi::ProgramHandle m_prefilterShader;  // Prefilter shader for specular
+	rhi::ProgramHandle m_brdfShader;  // BRDF integration shader
 
 	// IBL intensity controls to prevent over-bright results
 	float m_iblIntensity = 0.1f;  // Overall IBL multiplier

@@ -1,11 +1,10 @@
 #include "PointLight.h"
-#include <GL/glew.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 
 PointLight::PointLight()
     : BaseLight(LightType::POINT)
-    , depthFBO(0), depthMap(0)
+    , depthFBO(), depthMap()
     , position(0.0f), direction(0.0f, -1.0f, 0.0f)
     , nearPlane(1.0f), farPlane(100.0f)
     , m_shadowResolution(2048) // Increased default for better quality
@@ -16,11 +15,11 @@ PointLight::PointLight()
 }
 
 PointLight::~PointLight() {
-    if (depthFBO) glDeleteFramebuffers(1, &depthFBO);
-    if (depthMap) glDeleteTextures(1, &depthMap);
+    if (depthFBO) rhi::Gpu().DestroyFramebuffer(depthFBO);
+    if (depthMap) rhi::Gpu().DestroyTexture(depthMap);
 }
 
-bool PointLight::InitializeShadowMap(GLuint shadowResolution) {
+bool PointLight::InitializeShadowMap(uint32_t shadowResolution) {
     // Disable legacy shadow system to prevent conflicts with LightManager
     std::cout << "[PointLight] Legacy shadow system disabled - using unified LightManager shadows" << std::endl;
     
@@ -39,12 +38,12 @@ bool PointLight::InitializeShadowMap(GLuint shadowResolution) {
 }
 
 void PointLight::BindShadowFBO() {
-    glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
-    glViewport(0, 0, m_shadowResolution, m_shadowResolution);
+    rhi::Gpu().BindFramebuffer(depthFBO);
+    rhi::Gpu().SetViewport({ 0, 0, m_shadowResolution, m_shadowResolution });
 }
 
 void PointLight::UnbindFBO() {
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    rhi::Gpu().BindFramebuffer(rhi::kBackBuffer);
 }
 
 float PointLight::CalculateAttenuation(float distance) const {

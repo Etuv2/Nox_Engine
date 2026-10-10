@@ -10,10 +10,8 @@
 #include <SDL/SDL.h>
 #include <SDL/SDL_ttf.h>
 #include <SDL/SDL_image.h>
-#include <GL/glew.h>
 #include <IMGUI/imgui.h>
 #include <IMGUI/imgui_impl_sdl2.h>
-#include <IMGUI/imgui_impl_opengl3.h>
 #include "stb_image_write.h"
 #include <filesystem>
 #include <vector>
@@ -66,7 +64,6 @@ SDL_Window* NoxMainWindow() { return g_noxMainWindow; }
 
 MainWindow::MainWindow()
     : m_window(nullptr)
-    , m_glContext(nullptr)
     , m_windowWidth(1920)
     , m_windowHeight(1080)
     , m_windowTitle("NOX Engine")
@@ -118,7 +115,7 @@ bool MainWindow::LoadWindowConfiguration() {
 }
 
 bool MainWindow::CreateWindow() {
-    Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
+    Uint32 flags = SDL_WINDOW_SHOWN | rhi::PrepareWindow(rhi::Backend::OpenGL, false);
     if (m_windowMode == "borderless") {
         // Desktop-resolution borderless fullscreen: the window takes the native display size.
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -152,24 +149,14 @@ bool MainWindow::CreateWindow() {
 }
 
 bool MainWindow::CreateGLContext() {
-    m_glContext = SDL_GL_CreateContext(m_window);
-    if (!m_glContext) {
+    // Creates the backend context, vsync and loader state, and makes the device the engine's device.
+    m_device = rhi::CreateDevice({ rhi::Backend::OpenGL, m_window, false, m_vsync });
+    if (!m_device) {
         std::cerr << "[MainWindow] OpenGL context could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         return false;
     }
-    
-    // Set vsync
-    SDL_GL_SetSwapInterval(m_vsync ? 1 : 0);
-    
-    // Initialize GLEW
-    glewExperimental = GL_TRUE;
-    GLenum glewError = glewInit();
-    glGetError(); // Clear any spurious errors
-    if (glewError != GLEW_OK) {
-        std::cerr << "[MainWindow] Error initializing GLEW! " << glewGetErrorString(glewError) << std::endl;
-        return false;
-    }
-    
+    rhi::SetGpu(m_device.get());
+
     return true;
 }
 
@@ -211,21 +198,14 @@ bool MainWindow::Initialize() {
         return false;
     }
     
-    // Set OpenGL attributes before window creation
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-
-    // Create window
+    // Create window (rhi::PrepareWindow supplies the backend window flags and attributes)
     if (!CreateWindow()) {
         TTF_Quit();
         SDL_Quit();
         return false;
     }
 
-    // Create OpenGL context
+    // Create render device (OpenGL context)
     if (!CreateGLContext()) {
         SDL_DestroyWindow(m_window);
         TTF_Quit();
@@ -247,9 +227,10 @@ bool MainWindow::Initialize() {
         options.quality = m_launch.quality;
         m_core->SetLaunchOptions(options);
     }
-    if (!m_core->Initialize(m_window, m_glContext, m_windowWidth, m_windowHeight)) {
+    if (!m_core->Initialize(m_window, m_windowWidth, m_windowHeight)) {
         std::cerr << "[MainWindow] Failed to initialize engine Core" << std::endl;
-        SDL_GL_DeleteContext(m_glContext);
+        rhi::SetGpu(nullptr);
+        m_device.reset();
         SDL_DestroyWindow(m_window);
         TTF_Quit();
         SDL_Quit();
@@ -309,7 +290,7 @@ void MainWindow::HandleWindowEvent(const SDL_WindowEvent& windowEvent) {
             m_windowHeight = newHeight;
 
             // Update OpenGL viewport
-            glViewport(0, 0, m_windowWidth, m_windowHeight);
+            rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
 
             // Notify Core of the resize
             if (m_core) {
@@ -384,10 +365,8 @@ void MainWindow::Run() {
             const bool sequence = every > 0 && renderedFrames >= start && (renderedFrames - start) % every == 0;
             if (sequence || frames.find("," + std::to_string(renderedFrames) + ",") != std::string::npos) {
                 std::vector<unsigned char> pixels(static_cast<size_t>(m_windowWidth) * m_windowHeight * 3);
-                glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-                glReadBuffer(GL_BACK);
-                glPixelStorei(GL_PACK_ALIGNMENT, 1);
-                glReadPixels(0, 0, m_windowWidth, m_windowHeight, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+                rhi::Gpu().BindReadFramebuffer(rhi::kBackBuffer);
+                rhi::Gpu().ReadPixels(rhi::kBackBuffer, 0, { 0, 0, m_windowWidth, m_windowHeight }, rhi::PixelFormat::RGB, rhi::PixelType::UByte, pixels.data(), 1);
                 std::error_code ec;
                 std::filesystem::create_directories(finalDumpDir, ec);
                 char name[32];
@@ -400,7 +379,7 @@ void MainWindow::Run() {
         }
 
         // Swap buffers (already checking visibility, so always swap here)
-        SDL_GL_SwapWindow(m_window);
+        rhi::Gpu().Present();
     }
     
     std::cout << "[MainWindow] Main loop ended" << std::endl;
@@ -426,22 +405,23 @@ void MainWindow::Cleanup() {
     if (ImGui::GetCurrentContext()) {
         ImGuiIO& io = ImGui::GetIO();
         
-        // Check if OpenGL backend is initialized before shutting it down
+        // Check if the renderer backend is initialized before shutting it down (also shuts down SDL)
         if (io.BackendRendererUserData != nullptr) {
-            ImGui_ImplOpenGL3_Shutdown();
+            rhi::Gpu().ImGuiShutdown();
         }
-        
-        // Shutdown SDL backend (safer, less likely to crash)
-        ImGui_ImplSDL2_Shutdown();
-        
+        else {
+            // Shutdown SDL backend (safer, less likely to crash)
+            ImGui_ImplSDL2_Shutdown();
+        }
+
         // Destroy ImGui context
         ImGui::DestroyContext();
     }
 
-    // Cleanup OpenGL context
-    if (m_glContext) {
-        SDL_GL_DeleteContext(m_glContext);
-        m_glContext = nullptr;
+    // Release the render device (after all GPU resources are gone)
+    if (m_device) {
+        rhi::SetGpu(nullptr);
+        m_device.reset();
     }
 
     // Cleanup window

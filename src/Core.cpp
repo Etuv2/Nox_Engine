@@ -25,7 +25,6 @@
 #include <filesystem>
 #include <vector>
 
-#include <GL/glew.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -34,8 +33,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <IMGUI/imgui.h>
 #include <IMGUI/imgui_impl_sdl2.h>
-#include <IMGUI/imgui_impl_opengl3.h>
 #include <IMGUI/ImGuizmo.h>
+#include "rhi/RHI.h"
 
 #include "Camera.h"
 #include "SceneGraph.h"
@@ -121,10 +120,8 @@ bool SaveBackbufferPNG(int width, int height, const fs::path& path)
 	}
 
 	std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u, 0u);
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, PresentTarget::Get());
-	glReadBuffer(PresentTarget::Get() ? GL_COLOR_ATTACHMENT0 : GL_BACK);
-	glPixelStorei(GL_PACK_ALIGNMENT, 1);
-	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+	rhi::Gpu().BindReadFramebuffer(PresentTarget::Get());
+	rhi::Gpu().ReadPixels(PresentTarget::Get(), 0, { 0, 0, width, height }, rhi::PixelFormat::RGBA, rhi::PixelType::UByte, pixels.data(), 1);
 
 	std::vector<unsigned char> flipped(pixels.size(), 0u);
 	for (int y = 0; y < height; ++y) {
@@ -262,14 +259,13 @@ bool ReadSceneCameraVec3(const json& object, const char* key, glm::vec3& outValu
 
 Core::Core()
 	: m_window(nullptr)
-	, m_glContext(nullptr)
 	, m_windowWidth(1920)
 	, m_windowHeight(1080)
 	, m_modelPath("model.gltf")
 	, m_fontPath("arial.ttf")
 	, m_vsync(true)
-	, m_shaderProgram(0)
-	, m_shadowShader(0)
+	, m_shaderProgram()
+	, m_shadowShader()
 	, m_environmentColor(0.3f, 0.3f, 0.3f)
 	, m_lightPos(1.2f, 1.0f, 2.0f)
 	, m_lightDir(0.0f, -1.0f, 0.0f)
@@ -362,9 +358,8 @@ bool Core::LoadConfiguration() {
 	return true;
 }
 
-bool Core::Initialize(SDL_Window* window, SDL_GLContext glContext, int windowWidth, int windowHeight) {
+bool Core::Initialize(SDL_Window* window, int windowWidth, int windowHeight) {
 	m_window = window;
-	m_glContext = glContext;
 	m_windowWidth = windowWidth;
 	m_windowHeight = windowHeight;
 
@@ -441,8 +436,7 @@ bool Core::InitializeGraphics() {
 		}
 		io.ConfigWindowsMoveFromTitleBarOnly = true;
 	}
-	ImGui_ImplSDL2_InitForOpenGL(m_window, m_glContext);
-	ImGui_ImplOpenGL3_Init("#version 460 core");
+	rhi::Gpu().ImGuiInit();
 	SetStyle(); // Solace theme (ImguiStyle.h)
 	solace::LoadFonts(15.0f, 1.0f);
 	RacingHUD::Get().LoadFonts();
@@ -829,6 +823,21 @@ void Core::Update(float deltaTime) {
 		m_inputIntegration->Update(deltaTime);
 	}
 
+	// NOX_SWAP_SCENE=<frame>:<scene.json>: request a scene switch at that frame, like the editor does
+	// (test hook for scene-change regressions such as IBL/skybox regeneration).
+	{
+		static const std::string swapSpec = GetEnvVarString("NOX_SWAP_SCENE");
+		static int swapFrame = -1;
+		static int frame = 0;
+		if (swapFrame < 0 && !swapSpec.empty()) {
+			const size_t colon = swapSpec.find(':');
+			swapFrame = colon == std::string::npos ? 0 : std::atoi(swapSpec.substr(0, colon).c_str());
+		}
+		if (!swapSpec.empty() && ++frame == swapFrame) {
+			RequestSceneSwap(swapSpec.substr(swapSpec.find(':') + 1));
+		}
+	}
+
 	// Deferred scene switch requested by the editor.
 	if (!m_pendingSceneSwap.empty()) {
 		const std::string next = m_pendingSceneSwap;
@@ -1016,7 +1025,7 @@ void Core::Update(float deltaTime) {
 	}
 }
 
-void Core::RenderSceneTo(unsigned int framebuffer, int width, int height, const std::shared_ptr<Camera>& camera) {
+void Core::RenderSceneTo(rhi::FramebufferHandle framebuffer, int width, int height, const std::shared_ptr<Camera>& camera) {
 	if (!m_modularRenderer || !camera || width <= 0 || height <= 0) return;
 	const RenderContext& ctx = m_modularRenderer->GetContext();
 	if (ctx.width != width || ctx.height != height) {
@@ -1045,7 +1054,7 @@ void Core::RenderSceneTo(unsigned int framebuffer, int width, int height, const 
 		height
 	);
 	MaybeDumpSceneFramebuffer(width, height);
-	PresentTarget::Set(0);
+	PresentTarget::Set(rhi::kBackBuffer);
 }
 
 void Core::Render(int windowWidth, int windowHeight) {
@@ -1060,7 +1069,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 
 	if (m_benchmark) {
 		// Benchmarks measure the game view only: the editor UI is not drawn.
-		RenderSceneTo(0, m_windowWidth, m_windowHeight, m_camera);
+		RenderSceneTo(rhi::kBackBuffer, m_windowWidth, m_windowHeight, m_camera);
 		std::vector<BenchmarkRunner::PassSample> passes;
 		for (const auto& metric : m_modularRenderer->GetLastPassMetrics()) {
 			passes.push_back({ metric.name, metric.gpuTimeMs, metric.cpuTimeMs });
@@ -1074,25 +1083,23 @@ void Core::Render(int windowWidth, int windowHeight) {
 	if (!m_editor) {
 		// Standalone game: full-window scene with the racing HUD composited on top.
 		const std::shared_ptr<Camera> camera = (m_game && m_game->IsAvailable()) ? m_game->GetCamera() : m_camera;
-		RenderSceneTo(0, m_windowWidth, m_windowHeight, camera);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, m_windowWidth, m_windowHeight);
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplSDL2_NewFrame();
+		RenderSceneTo(rhi::kBackBuffer, m_windowWidth, m_windowHeight, camera);
+		rhi::Gpu().BindFramebuffer(rhi::kBackBuffer);
+		rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
+		rhi::Gpu().ImGuiNewFrame();
 		ImGui::NewFrame();
 		if (m_game) {
 			const ImVec2 size = ImGui::GetIO().DisplaySize;
 			m_game->DrawHUD(ImGui::GetForegroundDrawList(), glm::vec2(0.0f), glm::vec2(size.x, size.y), dt);
 		}
 		ImGui::Render();
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
 		return;
 	}
 
 	// Editor: build the docked UI first (viewport rectangles), then render the scene into the
 	// chosen viewport texture, then draw the UI to the window.
-	ImGui_ImplOpenGL3_NewFrame();
-	ImGui_ImplSDL2_NewFrame();
+	rhi::Gpu().ImGuiNewFrame();
 	ImGui::NewFrame();
 	ImGuizmo::BeginFrame();
 
@@ -1128,12 +1135,12 @@ void Core::Render(int windowWidth, int windowHeight) {
 	}
 	lastTarget = target;
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, m_windowWidth, m_windowHeight);
-	glClearColor(0.05f, 0.05f, 0.06f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	rhi::Gpu().BindFramebuffer(rhi::kBackBuffer);
+	rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
+	rhi::Gpu().SetClearColor(glm::vec4(0.05f, 0.05f, 0.06f, 1.0f));
+	rhi::Gpu().Clear(rhi::ClearColor | rhi::ClearDepth);
 	ImGui::Render();
-	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
 }
 
 bool Core::ProcessInputEvent(const SDL_Event& event) {
@@ -1244,7 +1251,7 @@ void Core::OnWindowResize(int newWidth, int newHeight) {
 	m_windowHeight = newHeight;
 
 	// Update OpenGL viewport
-	glViewport(0, 0, m_windowWidth, m_windowHeight);
+	rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
 
 	// Update camera aspect ratio
 	if (m_camera) {

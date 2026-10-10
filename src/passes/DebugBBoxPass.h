@@ -2,10 +2,10 @@
 
 #include "../RenderPass.h"
 #include "../SceneNode.h"
-#include "../GLBuffer.h"
+#include "../GpuBuffer.h"
+#include "../rhi/RHI.h"
 #include <memory>
 #include <vector>
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 
 class SceneGraph;
@@ -42,7 +42,7 @@ struct DebugBBoxInstance {
  * 
  * Rendering Pipeline Position:
  * - Executes after lighting pass, renders over the scene
- * - Uses depth testing (GL_LEQUAL) to respect scene geometry
+ * - Uses depth testing (LessEqual) to respect scene geometry
  * - Renders as wireframe lines
  * 
  * Instancing Optimization:
@@ -92,21 +92,21 @@ private:
     void RenderInstanced(const glm::mat4& viewProj);
 
     // Shader program
-    GLuint m_shaderProgram = 0;
+    rhi::ProgramHandle m_shaderProgram;
 
-    // VAO and geometry buffers (using GLBuffer wrapper)
-    GLuint m_cubeVAO = 0;
-    GLBufferPtr m_vertexBuffer;      // Cube vertices
-    GLBufferPtr m_indexBuffer;       // Cube edge indices
+    // Vertex input and geometry buffers (using GpuBuffer wrapper)
+    rhi::VertexInputHandle m_cubeInput;
+    GpuBufferPtr m_vertexBuffer;      // Cube vertices
+    GpuBufferPtr m_indexBuffer;       // Cube edge indices
 
     // Per-frame instance data
-    GLBufferPtr m_instanceSSBO;      // Per-instance data (transforms, colors, bounds)
+    GpuBufferPtr m_instanceSSBO;      // Per-instance data (transforms, colors, bounds)
 
     // Collected instance data (CPU side)
     std::vector<DebugBBoxInstance> m_instances;
 
     // Uniform locations
-    GLint m_locViewProjection = -1;
+    rhi::UniformLocation m_locViewProjection = -1;
 
     // State
     bool m_initialized = false;
@@ -114,5 +114,5 @@ private:
     size_t m_instanceCapacity = 0;
 
     // SSBO binding point
-    static constexpr GLuint INSTANCE_SSBO_BINDING = 4;
+    static constexpr uint32_t INSTANCE_SSBO_BINDING = 4;
 };

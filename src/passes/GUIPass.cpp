@@ -88,15 +88,15 @@ void GUIPass::UnregisterStandaloneGuiNode(const std::shared_ptr<GuiNode>& guiNod
 
 void GUIPass::RenderGuiNodes(RenderContext& ctx, const std::vector<std::shared_ptr<GuiNode>>& guiNodes) {
     // Ensure we're rendering to the default framebuffer (backbuffer)
-    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
-    
+    rhi::Gpu().BindFramebuffer(PresentTarget::Get());
+
     // Set viewport to full screen
-    glViewport(0, 0, ctx.width, ctx.height);
-    
+    rhi::Gpu().SetViewport({ 0, 0, ctx.width, ctx.height });
+
     // Configure OpenGL state for 2D GUI rendering
-    glDisable(GL_DEPTH_TEST);  // GUI is always on top
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    rhi::Gpu().SetDepthTest(false);  // GUI is always on top
+    rhi::Gpu().SetBlendEnabled(true);
+    rhi::Gpu().SetBlendFunc(rhi::BlendFactor::SrcAlpha, rhi::BlendFactor::OneMinusSrcAlpha);
     
     // Update and render each GUI node
     for (auto& guiNode : guiNodes) {
@@ -113,8 +113,8 @@ void GUIPass::RenderGuiNodes(RenderContext& ctx, const std::vector<std::shared_p
     }
     
     // Restore OpenGL state
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
+    rhi::Gpu().SetBlendEnabled(false);
+    rhi::Gpu().SetDepthTest(true);
 }
 
 std::vector<std::shared_ptr<GuiNode>> GUIPass::CollectGuiNodes(const std::shared_ptr<SceneGraph>& sceneGraph) {

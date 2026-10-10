@@ -2,7 +2,7 @@
 #include "../RenderPass.h"
 #include "../ComputeShader.h"
 #include "../Texture.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <glm/glm.hpp>
 #include <memory>
 
@@ -38,17 +38,17 @@ public:
         const std::shared_ptr<DirectionalLight>& dirLight,
         const std::shared_ptr<Skybox>& skybox) override;
 
-    GLuint GetShadowTexture() const;
+    rhi::TextureHandle GetShadowTexture() const;
     void SetConfig(const Config& c) { m_cfg = c; }
     const Config& GetConfig() const { return m_cfg; }
 
 private:
     std::unique_ptr<ComputeShader> m_cs;
-    GLuint m_resolveShader = 0;
+    rhi::ProgramHandle m_resolveShader;
     std::unique_ptr<FrameBuffer> m_resolveFBO;
     TexturePtr m_traceTex;
     TexturePtr m_historyTex;
-    GLuint m_paramsUBO = 0;
+    rhi::BufferHandle m_paramsUBO;
 
     int m_width = 0;
     int m_height = 0;

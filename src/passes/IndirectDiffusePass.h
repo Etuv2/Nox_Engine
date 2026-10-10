@@ -66,9 +66,9 @@ public:
         const std::shared_ptr<DirectionalLight>& dirLight,
         const std::shared_ptr<Skybox>& skybox) override;
 
-    GLuint GetIndirectDiffuseTexture() const { return m_indirectDiffuseTex ? m_indirectDiffuseTex->ID() : 0; }
-    GLuint GetDebugTexture() const { return m_debugOutput ? m_debugOutput->ID() : 0; }
-    void SetBounceableRadianceTexture(GLuint texture) { m_bounceableRadianceFull = texture; }
+    rhi::TextureHandle GetIndirectDiffuseTexture() const { return m_indirectDiffuseTex ? m_indirectDiffuseTex->ID() : rhi::TextureHandle{}; }
+    rhi::TextureHandle GetDebugTexture() const { return m_debugOutput ? m_debugOutput->ID() : rhi::TextureHandle{}; }
+    void SetBounceableRadianceTexture(rhi::TextureHandle texture) { m_bounceableRadianceFull = texture; }
     void SetConfig(const Config& config) { m_config = config; }
     const Config& GetConfig() const { return m_config; }
     static const char* GetDebugStageLabel(int stage);
@@ -122,7 +122,7 @@ private:
     TexturePtr m_historyDirectional;
     TexturePtr m_historyDepthQuarter;
     TexturePtr m_historyNormalFull;
-    GLuint m_bounceableRadianceFull = 0;
+    rhi::TextureHandle m_bounceableRadianceFull;
     int m_w = 0;
     int m_h = 0;
     int m_qw = 0;
@@ -138,7 +138,7 @@ private:
     void runTemporal(RenderContext& ctx);
     void runBilateral(RenderContext& ctx);
     void runFinalUpsample(RenderContext& ctx);
-    GLuint getTextureForDebugStage(int stage, bool& outFullRes) const;
-    bool exportTexture(GLuint texture, bool fullRes, bool hdrColor, const std::string& filepath) const;
-    bool readTextureProbe(GLuint texture, bool fullRes, ProbeSample& outSample, int pixelX, int pixelY) const;
+    rhi::TextureHandle getTextureForDebugStage(int stage, bool& outFullRes) const;
+    bool exportTexture(rhi::TextureHandle texture, bool fullRes, bool hdrColor, const std::string& filepath) const;
+    bool readTextureProbe(rhi::TextureHandle texture, bool fullRes, ProbeSample& outSample, int pixelX, int pixelY) const;
 };

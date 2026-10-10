@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 
 /**
  * ShadowPass uses LightManager to render all lights' shadows into unified shadow array.
@@ -20,7 +20,7 @@ public:
                  const std::shared_ptr<Skybox>& skybox) override;
 
 private:
-    GLuint m_shadowShader = 0;
+    rhi::ProgramHandle m_shadowShader;
     float m_shadowNear = 0.1f;
     float m_shadowFar = 100.0f;
 };

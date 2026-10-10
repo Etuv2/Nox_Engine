@@ -99,6 +99,14 @@
       "drift_assist": 0.6499999761581421,
       "drift_grip_scale": 0.5799999833106995,
       "drive_accel": 9.0,
+      "gear_ratios": [
+        3.680000066757202,
+        2.4200000762939453,
+        1.809999942779541,
+        1.4199999570846558,
+        1.1200000047683716,
+        0.8199999928474426
+      ],
       "mass": 1380.0,
       "max_drift_angle": 40.0,
       "nitro_drain": 0.23999999463558197,
@@ -106,6 +114,7 @@
       "nitro_recharge_delay": 1.5,
       "nitro_thrust": 1.4500000476837158,
       "nitro_top_speed": 1.100000023841858,
+      "reverse_engage_delay": 0.20000000298023224,
       "reverse_max_kmh": 40.0,
       "rpm_idle": 900.0,
       "rpm_limiter": 8200.0,
@@ -258,12 +267,16 @@
         "generator": "district",
         "params": {
           "cross_streetlight_spacing": 26.0,
+          "decal_root": "textures/road_decals",
+          "lens_flare_gain": 1.0,
+          "lens_flare_root": "textures/lens_flares",
           "max_reflection_probes": 46,
           "output": "generated/nfs_district",
           "seed": 2015,
           "shadowed_streetlights": 2,
           "streetlight_spacing": 24.0,
-          "texture_root": "textures/cc0"
+          "texture_root": "textures/cc0",
+          "window_room_root": "textures/window_rooms"
         }
       },
       "rotation": [

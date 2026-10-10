@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <glm/glm.hpp>
 
 class VolumetricFogPass;
@@ -27,9 +27,9 @@ public:
 	void SetFogPass(const VolumetricFogPass* fog) { m_fog = fog; }
 
 private:
-	GLuint m_shader = 0;
-	GLuint m_vao = 0;
-	GLuint m_vbo = 0;
+	rhi::ProgramHandle m_shader;
+	rhi::VertexInputHandle m_vao;
+	rhi::BufferHandle m_vbo;
 	const VolumetricFogPass* m_fog = nullptr;
 	glm::vec3 m_prevCameraPos{ 0.0f };
 	bool m_havePrev = false;

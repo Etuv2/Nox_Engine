@@ -1,5 +1,5 @@
 ﻿#include "Scene.h"
-#include "GLBuffer.h"
+#include "GpuBuffer.h"
 #include "TextureUnits.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -739,52 +739,37 @@ static MeshComponent CreateMesh(const std::vector<Vertex>& vertices,
 	mesh.occlusionTexture = nullptr;
 	mesh.specularTexture = nullptr;
 
-	glGenVertexArrays(1, &mesh.VAO);
-	glBindVertexArray(mesh.VAO);
-
-	// Create vertex buffer using GLBuffer wrapper
-	mesh.vertexBuffer = std::make_unique<GLBuffer>(
+	// Create vertex buffer using GpuBuffer wrapper
+	mesh.vertexBuffer = std::make_unique<GpuBuffer>(
 		BufferType::Vertex,
 		vertices.size() * sizeof(Vertex),
 		vertices.data(),
 		BufferUsage::StaticDraw
 	);
 
-	// Create index buffer using GLBuffer wrapper
-	mesh.indexBuffer = std::make_unique<GLBuffer>(
+	// Create index buffer using GpuBuffer wrapper
+	mesh.indexBuffer = std::make_unique<GpuBuffer>(
 		BufferType::Index,
 		indices.size() * sizeof(unsigned int),
 		indices.data(),
 		BufferUsage::StaticDraw
 	);
 
-	// Vertex attribute pointers
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-		(void*)offsetof(Vertex, position));
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-		(void*)offsetof(Vertex, normal));
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-		(void*)offsetof(Vertex, texCoord));
-	glEnableVertexAttribArray(2);
-	glVertexAttribPointer(10, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-		(void*)offsetof(Vertex, texCoord1));
-	glEnableVertexAttribArray(10);
+	// Vertex input: attributes of Vertex plus the index buffer
+	rhi::VertexInputDesc inputDesc;
+	inputDesc.buffers.push_back({ mesh.vertexBuffer->GetID(), sizeof(Vertex) });
+	inputDesc.indexBuffer = mesh.indexBuffer->GetID();
+	inputDesc.attributes.push_back({ 0, 0, 3, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, position)) });
+	inputDesc.attributes.push_back({ 1, 0, 3, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, normal)) });
+	inputDesc.attributes.push_back({ 2, 0, 2, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, texCoord)) });
+	inputDesc.attributes.push_back({ 10, 0, 2, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, texCoord1)) });
 	// **Tangent with 4 components (XYZ + handedness):**
-	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-		(void*)offsetof(Vertex, tangent));
-	glEnableVertexAttribArray(3);
+	inputDesc.attributes.push_back({ 3, 0, 4, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, tangent)) });
 	// Bone IDs (integer attributes for skinning)
-	glVertexAttribIPointer(4, 4, GL_INT, sizeof(Vertex),
-		(void*)offsetof(Vertex, boneIDs));
-	glEnableVertexAttribArray(4);
+	inputDesc.attributes.push_back({ 4, 0, 4, rhi::ScalarType::Int, false, true, static_cast<uint32_t>(offsetof(Vertex, boneIDs)) });
 	// Bone weights
-	glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-		(void*)offsetof(Vertex, boneWeights));
-	glEnableVertexAttribArray(5);
-
-	glBindVertexArray(0);
+	inputDesc.attributes.push_back({ 5, 0, 4, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, boneWeights)) });
+	mesh.VAO = rhi::Gpu().CreateVertexInput(inputDesc);
 	return mesh;
 }
 
@@ -813,41 +798,41 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 	}
 
 	// Determine format based on channels
-	GLenum format = GL_RGB;
-	GLenum internalFormat = GL_RGB8;
+	rhi::PixelFormat format = rhi::PixelFormat::RGB;
+	rhi::Format internalFormat = rhi::Format::RGB8;
 	if (image.component == 1) {
-		format = GL_RED;
-		internalFormat = GL_R8;
+		format = rhi::PixelFormat::R;
+		internalFormat = rhi::Format::R8;
 	}
 	else if (image.component == 2) {
-		format = GL_RG;
-		internalFormat = GL_RG8;
+		format = rhi::PixelFormat::RG;
+		internalFormat = rhi::Format::RG8;
 	}
 	else if (image.component == 3) {
-		format = GL_RGB;
-		internalFormat = useSRGB ? GL_SRGB8 : GL_RGB8;
+		format = rhi::PixelFormat::RGB;
+		internalFormat = useSRGB ? rhi::Format::SRGB8 : rhi::Format::RGB8;
 	}
 	else if (image.component == 4) {
-		format = GL_RGBA;
-		internalFormat = useSRGB ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+		format = rhi::PixelFormat::RGBA;
+		internalFormat = useSRGB ? rhi::Format::SRGB8_A8 : rhi::Format::RGBA8;
 	}
 
 	// Get sampler settings from glTF if available
-	GLenum wrapS = GL_REPEAT;
-	GLenum wrapT = GL_REPEAT;
-	GLenum minFilter = GL_LINEAR_MIPMAP_LINEAR;
-	GLenum magFilter = GL_LINEAR;
+	rhi::Wrap wrapS = rhi::Wrap::Repeat;
+	rhi::Wrap wrapT = rhi::Wrap::Repeat;
+	rhi::Filter minFilter = rhi::Filter::LinearMipLinear;
+	rhi::Filter magFilter = rhi::Filter::Linear;
 
 	if (gltfTex.sampler >= 0 && gltfTex.sampler < (int)model.samplers.size()) {
 		const tinygltf::Sampler& sampler = model.samplers[gltfTex.sampler];
 
 		// Map glTF wrap modes to OpenGL
-		auto mapWrap = [](int gltfWrap) -> GLenum {
+		auto mapWrap = [](int gltfWrap) -> rhi::Wrap {
 			switch (gltfWrap) {
-			case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE: return GL_CLAMP_TO_EDGE;
-			case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT: return GL_MIRRORED_REPEAT;
+			case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE: return rhi::Wrap::ClampToEdge;
+			case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT: return rhi::Wrap::MirroredRepeat;
 			case TINYGLTF_TEXTURE_WRAP_REPEAT:
-			default: return GL_REPEAT;
+			default: return rhi::Wrap::Repeat;
 			}
 			};
 
@@ -857,21 +842,21 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 		// Map glTF filter modes to OpenGL
 		if (sampler.minFilter != -1) {
 			switch (sampler.minFilter) {
-			case TINYGLTF_TEXTURE_FILTER_NEAREST: minFilter = GL_NEAREST; break;
-			case TINYGLTF_TEXTURE_FILTER_LINEAR: minFilter = GL_LINEAR; break;
-			case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST: minFilter = GL_NEAREST_MIPMAP_NEAREST; break;
-			case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST: minFilter = GL_LINEAR_MIPMAP_NEAREST; break;
-			case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR: minFilter = GL_NEAREST_MIPMAP_LINEAR; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST: minFilter = rhi::Filter::Nearest; break;
+			case TINYGLTF_TEXTURE_FILTER_LINEAR: minFilter = rhi::Filter::Linear; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST: minFilter = rhi::Filter::NearestMipNearest; break;
+			case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST: minFilter = rhi::Filter::LinearMipNearest; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR: minFilter = rhi::Filter::NearestMipLinear; break;
 			case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
-			default: minFilter = GL_LINEAR_MIPMAP_LINEAR; break;
+			default: minFilter = rhi::Filter::LinearMipLinear; break;
 			}
 		}
 
 		if (sampler.magFilter != -1) {
 			switch (sampler.magFilter) {
-			case TINYGLTF_TEXTURE_FILTER_NEAREST: magFilter = GL_NEAREST; break;
+			case TINYGLTF_TEXTURE_FILTER_NEAREST: magFilter = rhi::Filter::Nearest; break;
 			case TINYGLTF_TEXTURE_FILTER_LINEAR:
-			default: magFilter = GL_LINEAR; break;
+			default: magFilter = rhi::Filter::Linear; break;
 			}
 		}
 	}
@@ -879,11 +864,11 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 	// Create texture using builder pattern
 	auto texture = Texture::Builder::Texture2D(image.width, image.height, internalFormat)
 		.Format(format)
-		.DataType(GL_UNSIGNED_BYTE)
+		.DataType(rhi::PixelType::UByte)
 		.Data(image.image.data())
 		.GenerateMipmaps(true)
 		.FilterMode(minFilter, magFilter)
-		.WrapMode(wrapS, wrapT)
+		.WrapMode(wrapS, wrapT, rhi::Wrap::Repeat)
 		.Build();
 
 	return texture;
@@ -1089,6 +1074,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		float interiorLighting = 0.5f;
 		float interiorBlinds = 0.5f;
 		float interiorStyle = 0.0f;
+		glm::vec2 interiorPane = glm::vec2(0.8f, 1.0f);
+		float interiorSill = 0.8f;
 		int diffuseTextureIndex = -1;
 		int normalTextureIndex = -1;
 		int roughnessTextureIndex = -1;
@@ -1303,6 +1290,14 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				readInterior("lighting", cached.interiorLighting);
 				readInterior("blinds", cached.interiorBlinds);
 				readInterior("style", cached.interiorStyle);
+				readInterior("sill", cached.interiorSill);
+				// pane = [half width, half height] in metres; default 0.8 x 1.0 (1.6 x 2.0 m windows).
+				if (in.Has("pane") && in.Get("pane").IsArray() && in.Get("pane").ArrayLen() >= 2 &&
+					in.Get("pane").Get(0).IsNumber() && in.Get("pane").Get(1).IsNumber()) {
+					cached.interiorPane = glm::vec2(
+						static_cast<float>(in.Get("pane").Get(0).GetNumberAsDouble()),
+						static_cast<float>(in.Get("pane").Get(1).GetNumberAsDouble()));
+				}
 			}
 		}
 		if (!mat.emissiveFactor.empty()) {
@@ -1682,6 +1677,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				normalizedMaterial.interiorLighting = cached.interiorLighting;
 				normalizedMaterial.interiorBlinds = cached.interiorBlinds;
 				normalizedMaterial.interiorStyle = cached.interiorStyle;
+				normalizedMaterial.interiorPane = cached.interiorPane;
+				normalizedMaterial.interiorSill = cached.interiorSill;
 			}
 			normalizedMaterial.Normalize();
 			mesh.SetMaterialDesc(normalizedMaterial);
@@ -1951,186 +1948,185 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 }
 
 void Scene::Draw() {
-	GLint currentProgram = 0;
-	glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+	rhi::ProgramHandle currentProgram = rhi::Gpu().CurrentProgram();
 
 	// Get uniform locations for material factors
-	GLint locBaseColor = glGetUniformLocation(currentProgram, "baseColorFactor");
-	GLint locMetallic = glGetUniformLocation(currentProgram, "metallicFactor");
-	GLint locRoughness = glGetUniformLocation(currentProgram, "roughnessFactor");
-	GLint locEmissive = glGetUniformLocation(currentProgram, "emissiveFactor");
-	GLint locEmissiveStrength = glGetUniformLocation(currentProgram, "emissiveStrength");
-	GLint locOcclusionStrength = glGetUniformLocation(currentProgram, "occlusionStrength");
-	GLint locNormalScale = glGetUniformLocation(currentProgram, "normalScale");
-	GLint locAlphaCutoff = glGetUniformLocation(currentProgram, "alphaCutoff");
-	GLint locAlphaMode = glGetUniformLocation(currentProgram, "alphaMode");
+	rhi::UniformLocation locBaseColor = rhi::Gpu().GetUniformLocation(currentProgram, "baseColorFactor");
+	rhi::UniformLocation locMetallic = rhi::Gpu().GetUniformLocation(currentProgram, "metallicFactor");
+	rhi::UniformLocation locRoughness = rhi::Gpu().GetUniformLocation(currentProgram, "roughnessFactor");
+	rhi::UniformLocation locEmissive = rhi::Gpu().GetUniformLocation(currentProgram, "emissiveFactor");
+	rhi::UniformLocation locEmissiveStrength = rhi::Gpu().GetUniformLocation(currentProgram, "emissiveStrength");
+	rhi::UniformLocation locOcclusionStrength = rhi::Gpu().GetUniformLocation(currentProgram, "occlusionStrength");
+	rhi::UniformLocation locNormalScale = rhi::Gpu().GetUniformLocation(currentProgram, "normalScale");
+	rhi::UniformLocation locAlphaCutoff = rhi::Gpu().GetUniformLocation(currentProgram, "alphaCutoff");
+	rhi::UniformLocation locAlphaMode = rhi::Gpu().GetUniformLocation(currentProgram, "alphaMode");
 
 	// KHR_materials_specular extension
-	GLint locSpecularFactor = glGetUniformLocation(currentProgram, "specularFactor");
-	GLint locSpecularColorFactor = glGetUniformLocation(currentProgram, "specularColorFactor");
-	GLint locClearcoat = glGetUniformLocation(currentProgram, "clearcoatFactor");
-	GLint locClearcoatRoughness = glGetUniformLocation(currentProgram, "clearcoatRoughnessFactor");
+	rhi::UniformLocation locSpecularFactor = rhi::Gpu().GetUniformLocation(currentProgram, "specularFactor");
+	rhi::UniformLocation locSpecularColorFactor = rhi::Gpu().GetUniformLocation(currentProgram, "specularColorFactor");
+	rhi::UniformLocation locClearcoat = rhi::Gpu().GetUniformLocation(currentProgram, "clearcoatFactor");
+	rhi::UniformLocation locClearcoatRoughness = rhi::Gpu().GetUniformLocation(currentProgram, "clearcoatRoughnessFactor");
 
 	// KHR_materials_transmission extension
-	GLint locTransmission = glGetUniformLocation(currentProgram, "transmissionFactor");
-	GLint locThickness = glGetUniformLocation(currentProgram, "thicknessFactor");
-	GLint locAttenuationDistance = glGetUniformLocation(currentProgram, "attenuationDistance");
-	GLint locAttenuationColor = glGetUniformLocation(currentProgram, "attenuationColor");
+	rhi::UniformLocation locTransmission = rhi::Gpu().GetUniformLocation(currentProgram, "transmissionFactor");
+	rhi::UniformLocation locThickness = rhi::Gpu().GetUniformLocation(currentProgram, "thicknessFactor");
+	rhi::UniformLocation locAttenuationDistance = rhi::Gpu().GetUniformLocation(currentProgram, "attenuationDistance");
+	rhi::UniformLocation locAttenuationColor = rhi::Gpu().GetUniformLocation(currentProgram, "attenuationColor");
 
 	// KHR_materials_ior extension
-	GLint locIOR = glGetUniformLocation(currentProgram, "ior");
+	rhi::UniformLocation locIOR = rhi::Gpu().GetUniformLocation(currentProgram, "ior");
 
 	// Texture presence flags
-	GLint locHasBaseColor = glGetUniformLocation(currentProgram, "hasBaseColorTexture");
-	GLint locHasNormal = glGetUniformLocation(currentProgram, "hasNormalTexture");
-	GLint locHasMR = glGetUniformLocation(currentProgram, "hasMetallicRoughnessTexture");
-	GLint locHasEmissive = glGetUniformLocation(currentProgram, "hasEmissiveTexture");
-	GLint locHasOcclusion = glGetUniformLocation(currentProgram, "hasOcclusionTexture");
-	GLint locHasSpecular = glGetUniformLocation(currentProgram, "hasSpecularTexture");
-	GLint locHasSpecularColor = glGetUniformLocation(currentProgram, "hasSpecularColorTexture");
-	GLint locHasTransmission = glGetUniformLocation(currentProgram, "hasTransmissionTexture");
+	rhi::UniformLocation locHasBaseColor = rhi::Gpu().GetUniformLocation(currentProgram, "hasBaseColorTexture");
+	rhi::UniformLocation locHasNormal = rhi::Gpu().GetUniformLocation(currentProgram, "hasNormalTexture");
+	rhi::UniformLocation locHasMR = rhi::Gpu().GetUniformLocation(currentProgram, "hasMetallicRoughnessTexture");
+	rhi::UniformLocation locHasEmissive = rhi::Gpu().GetUniformLocation(currentProgram, "hasEmissiveTexture");
+	rhi::UniformLocation locHasOcclusion = rhi::Gpu().GetUniformLocation(currentProgram, "hasOcclusionTexture");
+	rhi::UniformLocation locHasSpecular = rhi::Gpu().GetUniformLocation(currentProgram, "hasSpecularTexture");
+	rhi::UniformLocation locHasSpecularColor = rhi::Gpu().GetUniformLocation(currentProgram, "hasSpecularColorTexture");
+	rhi::UniformLocation locHasTransmission = rhi::Gpu().GetUniformLocation(currentProgram, "hasTransmissionTexture");
 
 	// Get texture sampler locations
-	GLint locDiffuse = glGetUniformLocation(currentProgram, "texture_diffuse");
-	GLint locNormal = glGetUniformLocation(currentProgram, "texture_normal");
-	GLint locMetallicRoughness = glGetUniformLocation(currentProgram, "texture_metallic_roughness");
-	GLint locEmissiveTex = glGetUniformLocation(currentProgram, "texture_emissive");
-	GLint locOcclusion = glGetUniformLocation(currentProgram, "texture_occlusion");
-	GLint locSpecularTex = glGetUniformLocation(currentProgram, "texture_specular");
-	GLint locSpecularColorTex = glGetUniformLocation(currentProgram, "texture_specular_color");
-	GLint locTransmissionTex = glGetUniformLocation(currentProgram, "texture_transmission");
+	rhi::UniformLocation locDiffuse = rhi::Gpu().GetUniformLocation(currentProgram, "texture_diffuse");
+	rhi::UniformLocation locNormal = rhi::Gpu().GetUniformLocation(currentProgram, "texture_normal");
+	rhi::UniformLocation locMetallicRoughness = rhi::Gpu().GetUniformLocation(currentProgram, "texture_metallic_roughness");
+	rhi::UniformLocation locEmissiveTex = rhi::Gpu().GetUniformLocation(currentProgram, "texture_emissive");
+	rhi::UniformLocation locOcclusion = rhi::Gpu().GetUniformLocation(currentProgram, "texture_occlusion");
+	rhi::UniformLocation locSpecularTex = rhi::Gpu().GetUniformLocation(currentProgram, "texture_specular");
+	rhi::UniformLocation locSpecularColorTex = rhi::Gpu().GetUniformLocation(currentProgram, "texture_specular_color");
+	rhi::UniformLocation locTransmissionTex = rhi::Gpu().GetUniformLocation(currentProgram, "texture_transmission");
 
 	// Set texture samplers once
-	if (locDiffuse != -1) glUniform1i(locDiffuse, 0);
-	if (locNormal != -1) glUniform1i(locNormal, 1);
-	if (locMetallicRoughness != -1) glUniform1i(locMetallicRoughness, 2);
-	if (locEmissiveTex != -1) glUniform1i(locEmissiveTex, 3);
-	if (locOcclusion != -1) glUniform1i(locOcclusion, 4);
-	if (locSpecularTex != -1) glUniform1i(locSpecularTex, 5);
-	if (locSpecularColorTex != -1) glUniform1i(locSpecularColorTex, 6);
-	if (locTransmissionTex != -1) glUniform1i(locTransmissionTex, 7);
+	if (locDiffuse != -1) rhi::Gpu().SetUniform(locDiffuse, 0);
+	if (locNormal != -1) rhi::Gpu().SetUniform(locNormal, 1);
+	if (locMetallicRoughness != -1) rhi::Gpu().SetUniform(locMetallicRoughness, 2);
+	if (locEmissiveTex != -1) rhi::Gpu().SetUniform(locEmissiveTex, 3);
+	if (locOcclusion != -1) rhi::Gpu().SetUniform(locOcclusion, 4);
+	if (locSpecularTex != -1) rhi::Gpu().SetUniform(locSpecularTex, 5);
+	if (locSpecularColorTex != -1) rhi::Gpu().SetUniform(locSpecularColorTex, 6);
+	if (locTransmissionTex != -1) rhi::Gpu().SetUniform(locTransmissionTex, 7);
 
 	for (auto& mesh : meshes) {
 		const MaterialDesc material = mesh.GetMaterialDesc();
 
 		// Upload material factor uniforms
 		if (locBaseColor != -1)
-			glUniform4fv(locBaseColor, 1, glm::value_ptr(material.baseColorFactor));
+			rhi::Gpu().SetUniform(locBaseColor, material.baseColorFactor);
 		if (locMetallic != -1)
-			glUniform1f(locMetallic, material.metallicFactor);
+			rhi::Gpu().SetUniform(locMetallic, material.metallicFactor);
 		if (locRoughness != -1)
-			glUniform1f(locRoughness, material.roughnessFactor);
+			rhi::Gpu().SetUniform(locRoughness, material.roughnessFactor);
 		if (locEmissive != -1)
-			glUniform3fv(locEmissive, 1, glm::value_ptr(material.emissiveFactor));
+			rhi::Gpu().SetUniform(locEmissive, material.emissiveFactor);
 		if (locEmissiveStrength != -1)
-			glUniform1f(locEmissiveStrength, material.emissiveStrength);
+			rhi::Gpu().SetUniform(locEmissiveStrength, material.emissiveStrength);
 		if (locOcclusionStrength != -1)
-			glUniform1f(locOcclusionStrength, material.occlusionStrength);
+			rhi::Gpu().SetUniform(locOcclusionStrength, material.occlusionStrength);
 		if (locNormalScale != -1)
-			glUniform1f(locNormalScale, material.normalScale);
+			rhi::Gpu().SetUniform(locNormalScale, material.normalScale);
 		if (locAlphaCutoff != -1)
-			glUniform1f(locAlphaCutoff, material.alphaCutoff);
+			rhi::Gpu().SetUniform(locAlphaCutoff, material.alphaCutoff);
 		if (locAlphaMode != -1)
-			glUniform1i(locAlphaMode, static_cast<int>(material.alphaMode));
+			rhi::Gpu().SetUniform(locAlphaMode, static_cast<int>(material.alphaMode));
 
 		// KHR_materials_specular
 		if (locSpecularFactor != -1)
-			glUniform1f(locSpecularFactor, material.specularFactor);
+			rhi::Gpu().SetUniform(locSpecularFactor, material.specularFactor);
 		if (locSpecularColorFactor != -1)
-			glUniform3fv(locSpecularColorFactor, 1, glm::value_ptr(material.specularColorFactor));
+			rhi::Gpu().SetUniform(locSpecularColorFactor, material.specularColorFactor);
 		if (locClearcoat != -1)
-			glUniform1f(locClearcoat, material.clearcoatFactor);
+			rhi::Gpu().SetUniform(locClearcoat, material.clearcoatFactor);
 		if (locClearcoatRoughness != -1)
-			glUniform1f(locClearcoatRoughness, material.clearcoatRoughnessFactor);
+			rhi::Gpu().SetUniform(locClearcoatRoughness, material.clearcoatRoughnessFactor);
 
 		// KHR_materials_transmission
 		if (locTransmission != -1)
-			glUniform1f(locTransmission, material.transmissionFactor);
+			rhi::Gpu().SetUniform(locTransmission, material.transmissionFactor);
 		if (locThickness != -1)
-			glUniform1f(locThickness, material.thicknessFactor);
+			rhi::Gpu().SetUniform(locThickness, material.thicknessFactor);
 		if (locAttenuationDistance != -1)
-			glUniform1f(locAttenuationDistance, material.attenuationDistance);
+			rhi::Gpu().SetUniform(locAttenuationDistance, material.attenuationDistance);
 		if (locAttenuationColor != -1)
-			glUniform3fv(locAttenuationColor, 1, glm::value_ptr(material.attenuationColor));
+			rhi::Gpu().SetUniform(locAttenuationColor, material.attenuationColor);
 
 		// KHR_materials_ior
 		if (locIOR != -1)
-			glUniform1f(locIOR, material.ior);
+			rhi::Gpu().SetUniform(locIOR, material.ior);
 
 		// Set texture presence flags
 		if (locHasBaseColor != -1)
-			glUniform1i(locHasBaseColor, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasBaseColor, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
 		if (locHasNormal != -1)
-			glUniform1i(locHasNormal, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasNormal, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
 		if (locHasMR != -1)
-			glUniform1i(locHasMR, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasMR, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
 		if (locHasEmissive != -1)
-			glUniform1i(locHasEmissive, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasEmissive, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
 		if (locHasOcclusion != -1)
-			glUniform1i(locHasOcclusion, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasOcclusion, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
 		if (locHasSpecular != -1)
-			glUniform1i(locHasSpecular, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasSpecular, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
 		if (locHasSpecularColor != -1)
-			glUniform1i(locHasSpecularColor, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasSpecularColor, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
 		if (locHasTransmission != -1)
-			glUniform1i(locHasTransmission, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
+			rhi::Gpu().SetUniform(locHasTransmission, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
 
 		// Set render states
-		glEnable(GL_DEPTH_TEST);
+		rhi::Gpu().SetDepthTest(true);
 		if (mesh.hasAlpha) {
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			rhi::Gpu().SetBlendEnabled(true);
+			rhi::Gpu().SetBlendFunc(rhi::BlendFactor::SrcAlpha, rhi::BlendFactor::OneMinusSrcAlpha);
 		}
 		else {
-			glDisable(GL_BLEND);
+			rhi::Gpu().SetBlendEnabled(false);
 		}
 		if (mesh.doubleSided) {
-			glDisable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(false);
 		}
 		else {
-			glEnable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(true);
 		}
 
 		// Bind textures to specific units for glTF PBR using new Texture API
 		if (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) {
-			mesh.diffuseTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_BASE_COLOR);
+			mesh.diffuseTexture->Bind(TextureUnits::MATERIAL_BASE_COLOR);
 		}
 
 		if (mesh.normalTexture && mesh.normalTexture->IsValid()) {
-			mesh.normalTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_NORMAL);
+			mesh.normalTexture->Bind(TextureUnits::MATERIAL_NORMAL);
 		}
 
 		if (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) {
-			mesh.roughnessTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_METALLIC_ROUGHNESS);
+			mesh.roughnessTexture->Bind(TextureUnits::MATERIAL_METALLIC_ROUGHNESS);
 		}
 
 		if (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) {
-			mesh.emissiveTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_EMISSIVE);
+			mesh.emissiveTexture->Bind(TextureUnits::MATERIAL_EMISSIVE);
 		}
 
 		if (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) {
-			mesh.occlusionTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_OCCLUSION);
+			mesh.occlusionTexture->Bind(TextureUnits::MATERIAL_OCCLUSION);
 		}
 
 		if (mesh.specularTexture && mesh.specularTexture->IsValid()) {
-			mesh.specularTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_SPECULAR);
+			mesh.specularTexture->Bind(TextureUnits::MATERIAL_SPECULAR);
 		}
 
 		if (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) {
-			mesh.specularColorTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_SPECULAR_COLOR);
+			mesh.specularColorTexture->Bind(TextureUnits::MATERIAL_SPECULAR_COLOR);
 		}
 
 		if (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) {
-			mesh.transmissionTexture->Bind(GL_TEXTURE0 + TextureUnits::MATERIAL_TRANSMISSION);
+			mesh.transmissionTexture->Bind(TextureUnits::MATERIAL_TRANSMISSION);
 		}
 
-		glBindVertexArray(mesh.VAO);
-		glDrawElements(GL_TRIANGLES, (GLsizei)mesh.indexCount, GL_UNSIGNED_INT, 0);
-		glBindVertexArray(0);
+		rhi::Gpu().BindVertexInput(mesh.VAO);
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(mesh.indexCount), rhi::IndexType::UInt32, 0);
+		rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 
 		// Reset cull face state
 		if (mesh.doubleSided) {
-			glEnable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(true);
 		}
 	}
 }

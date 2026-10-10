@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <memory>
 
 class ComputeShader;
@@ -17,9 +17,9 @@ class ComputeShader;
 */
 class LightClusterPass : public RenderPass {
 public:
-	static constexpr GLuint kParamsBinding = 8;
-	static constexpr GLuint kCountBinding = 40;
-	static constexpr GLuint kIndexBinding = 41;
+	static constexpr uint32_t kParamsBinding = 8;
+	static constexpr uint32_t kCountBinding = 40;
+	static constexpr uint32_t kIndexBinding = 41;
 	static constexpr unsigned kMaxLightsPerCluster = 128u; // matches NOX_CLUSTER_MAX_LIGHTS
 	static constexpr unsigned kTileSize = 64u;
 	static constexpr unsigned kSlices = 32u;
@@ -43,8 +43,8 @@ private:
 	void AllocateBuffers(int width, int height);
 
 	std::unique_ptr<ComputeShader> m_buildShader;
-	GLuint m_paramsUBO = 0;
-	GLuint m_countSSBO = 0;
-	GLuint m_indexSSBO = 0;
+	rhi::BufferHandle m_paramsUBO;
+	rhi::BufferHandle m_countSSBO;
+	rhi::BufferHandle m_indexSSBO;
 	unsigned m_gridX = 0, m_gridY = 0;
 };

@@ -15,30 +15,35 @@
 #include <glm/gtc/type_ptr.hpp>
 
 namespace {
-	GLuint MakeVolume(int x, int y, int z) {
-		GLuint tex = 0;
-		glCreateTextures(GL_TEXTURE_3D, 1, &tex);
-		glTextureStorage3D(tex, 1, GL_RGBA16F, std::max(x, 1), std::max(y, 1), std::max(z, 1));
-		glTextureParameteri(tex, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTextureParameteri(tex, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTextureParameteri(tex, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(tex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(tex, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+	rhi::TextureHandle MakeVolume(int x, int y, int z) {
+		rhi::Device& gpu = rhi::Gpu();
+		rhi::TextureDesc desc;
+		desc.type = rhi::TextureType::Tex3D;
+		desc.format = rhi::Format::RGBA16F;
+		desc.width = std::max(x, 1);
+		desc.height = std::max(y, 1);
+		desc.depth = std::max(z, 1);
+		desc.mipLevels = 1;
+		desc.immutable = true;
+		const rhi::TextureHandle tex = gpu.CreateTexture(desc);
+		gpu.SetTextureFilter(tex, rhi::Filter::Linear, rhi::Filter::Linear);
+		gpu.SetTextureWrap(tex, rhi::Wrap::ClampToEdge, rhi::Wrap::ClampToEdge, rhi::Wrap::ClampToEdge);
 		return tex;
 	}
 
-	void Set1f(GLuint p, const char* n, float v) { const GLint l = glGetUniformLocation(p, n); if (l >= 0) glUniform1f(l, v); }
-	void Set1i(GLuint p, const char* n, int v) { const GLint l = glGetUniformLocation(p, n); if (l >= 0) glUniform1i(l, v); }
-	void Set3f(GLuint p, const char* n, const glm::vec3& v) { const GLint l = glGetUniformLocation(p, n); if (l >= 0) glUniform3fv(l, 1, glm::value_ptr(v)); }
-	void SetM4(GLuint p, const char* n, const glm::mat4& m) { const GLint l = glGetUniformLocation(p, n); if (l >= 0) glUniformMatrix4fv(l, 1, GL_FALSE, glm::value_ptr(m)); }
+	void Set1f(rhi::ProgramHandle p, const char* n, float v) { const rhi::UniformLocation l = rhi::Gpu().GetUniformLocation(p, n); if (l >= 0) rhi::Gpu().SetUniform(l, v); }
+	void Set1i(rhi::ProgramHandle p, const char* n, int v) { const rhi::UniformLocation l = rhi::Gpu().GetUniformLocation(p, n); if (l >= 0) rhi::Gpu().SetUniform(l, v); }
+	void Set3f(rhi::ProgramHandle p, const char* n, const glm::vec3& v) { const rhi::UniformLocation l = rhi::Gpu().GetUniformLocation(p, n); if (l >= 0) rhi::Gpu().SetUniform(l, v); }
+	void SetM4(rhi::ProgramHandle p, const char* n, const glm::mat4& m) { const rhi::UniformLocation l = rhi::Gpu().GetUniformLocation(p, n); if (l >= 0) rhi::Gpu().SetUniform(l, m); }
 }
 
 VolumetricFogPass::VolumetricFogPass() = default;
 
 VolumetricFogPass::~VolumetricFogPass()
 {
+	if (!rhi::HasGpu()) return;
 	DestroyVolumes();
-	if (m_applyShader) glDeleteProgram(m_applyShader);
+	if (m_applyShader) rhi::Gpu().DestroyProgram(m_applyShader);
 }
 
 bool VolumetricFogPass::Initialize(RenderContext& context)
@@ -61,9 +66,10 @@ bool VolumetricFogPass::Initialize(RenderContext& context)
 
 void VolumetricFogPass::DestroyVolumes()
 {
-	GLuint t[] = { m_scattering[0], m_scattering[1], m_integrated };
-	for (GLuint tex : t) if (tex) glDeleteTextures(1, &tex);
-	m_scattering[0] = m_scattering[1] = m_integrated = 0;
+	rhi::Device& gpu = rhi::Gpu();
+	rhi::TextureHandle t[] = { m_scattering[0], m_scattering[1], m_integrated };
+	for (rhi::TextureHandle& tex : t) if (tex) gpu.DestroyTexture(tex);
+	m_scattering[0] = m_scattering[1] = m_integrated = {};
 }
 
 void VolumetricFogPass::CreateVolumes(int width, int height, int tileSize, int slices)
@@ -100,6 +106,7 @@ void VolumetricFogPass::Execute(RenderContext& ctx,
 		CreateVolumes(ctx.width, ctx.height, ctx.volumetricTileSize, ctx.volumetricSlices);
 	}
 
+	rhi::Device& gpu = rhi::Gpu();
 	glm::mat4 projU = ctx.proj;
 	projU[2][0] -= ctx.jitterNdc.x;
 	projU[2][1] -= ctx.jitterNdc.y;
@@ -117,18 +124,17 @@ void VolumetricFogPass::Execute(RenderContext& ctx,
 	const int current = 1 - m_current;
 
 	// 1. Inject.
-	GLuint p = m_injectShader->GetProgramID();
-	glUseProgram(p);
+	rhi::ProgramHandle p = m_injectShader->GetProgramID();
+	gpu.UseProgram(p);
 	LightClusterPass::BindForShading(ctx);
 	ExposurePass::Bind(ctx);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ctx.lightManager->GetLightDataSSBO());
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ctx.lightManager->GetShadowMatricesSSBO());
+	gpu.BindStorageBuffer(0, ctx.lightManager->GetLightDataSSBO());
+	gpu.BindStorageBuffer(1, ctx.lightManager->GetShadowMatricesSSBO());
 	Set1i(p, "numLights", ctx.lightManager->GetActiveLightCount());
-	const GLuint shadowArray = ctx.lightManager->GetShadowArrayTexture();
-	const bool shadows = ctx.enableShadows && shadowArray > 0 && glIsTexture(shadowArray);
+	const rhi::TextureHandle shadowArray = ctx.lightManager->GetShadowArrayTexture();
+	const bool shadows = ctx.enableShadows && shadowArray.IsValid() && gpu.IsTexture(shadowArray);
 	if (shadows) {
-		glActiveTexture(GL_TEXTURE0 + TextureUnits::SHADOW_MAP_ARRAY);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, shadowArray);
+		gpu.BindTexture(TextureUnits::SHADOW_MAP_ARRAY, shadowArray);
 	}
 	Set1i(p, "multiLightShadowArray", TextureUnits::SHADOW_MAP_ARRAY);
 	Set1i(p, "enableShadows", shadows ? 1 : 0);
@@ -137,16 +143,16 @@ void VolumetricFogPass::Execute(RenderContext& ctx,
 		const float nearPlane = std::max(ctx.shadowNear, camera->GetCameraNearPlane());
 		const float farPlane = std::max(nearPlane + 1.0f, std::min(ctx.shadowFar, camera->GetCameraFarPlane()));
 		const glm::vec4 splits = ctx.lightManager->ComputeCascadeSplitVector(nearPlane, farPlane);
-		const GLint loc = glGetUniformLocation(p, "cascadeSplits");
-		if (loc >= 0) glUniform4fv(loc, 1, glm::value_ptr(splits));
+		const rhi::UniformLocation loc = gpu.GetUniformLocation(p, "cascadeSplits");
+		if (loc >= 0) gpu.SetUniform(loc, splits);
 	}
 	SetM4(p, "view", ctx.view);
 	SetM4(p, "uInvViewProj", invViewProj);
 	SetM4(p, "uPrevViewProj", prevViewProj);
 	Set3f(p, "uCameraPos", camera->GetCameraPosition());
-	glUniform2f(glGetUniformLocation(p, "uScreenSize"), static_cast<float>(ctx.width), static_cast<float>(ctx.height));
-	glUniform1ui(glGetUniformLocation(p, "uFrame"), m_frame);
-	glUniform3i(glGetUniformLocation(p, "uVolumeSize"), m_sizeX, m_sizeY, m_sizeZ);
+	gpu.SetUniform(gpu.GetUniformLocation(p, "uScreenSize"), glm::vec2(static_cast<float>(ctx.width), static_cast<float>(ctx.height)));
+	gpu.SetUniform(gpu.GetUniformLocation(p, "uFrame"), m_frame);
+	gpu.SetUniform(gpu.GetUniformLocation(p, "uVolumeSize"), glm::ivec3(m_sizeX, m_sizeY, m_sizeZ));
 	Set1f(p, "uVolumeNear", volumeNear);
 	Set1f(p, "uVolumeFar", volumeFar);
 	Set1f(p, "uFogDensity", ctx.fogDensity);
@@ -161,24 +167,24 @@ void VolumetricFogPass::Execute(RenderContext& ctx,
 	Set3f(p, "uAmbientRadiance", ctx.fogAmbientRadiance);
 	Set1f(p, "uTemporalBlend", std::clamp(ctx.fogTemporalBlend, 0.02f, 1.0f));
 	Set1i(p, "uHistoryValid", m_historyValid ? 1 : 0);
-	glBindTextureUnit(0, m_scattering[previous]);
+	gpu.BindTexture(0, m_scattering[previous]);
 	Set1i(p, "uHistoryVolume", 0);
-	glBindImageTexture(0, m_scattering[current], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-	glDispatchCompute((m_sizeX + 7) / 8, (m_sizeY + 7) / 8, m_sizeZ);
-	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	gpu.BindImage(0, m_scattering[current], 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.Dispatch((m_sizeX + 7) / 8, (m_sizeY + 7) / 8, m_sizeZ);
+	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
 
 	// 2. Integrate.
 	p = m_integrateShader->GetProgramID();
-	glUseProgram(p);
-	glUniform3i(glGetUniformLocation(p, "uVolumeSize"), m_sizeX, m_sizeY, m_sizeZ);
+	gpu.UseProgram(p);
+	gpu.SetUniform(gpu.GetUniformLocation(p, "uVolumeSize"), glm::ivec3(m_sizeX, m_sizeY, m_sizeZ));
 	Set1f(p, "uVolumeNear", volumeNear);
 	Set1f(p, "uVolumeFar", volumeFar);
-	glBindTextureUnit(0, m_scattering[current]);
+	gpu.BindTexture(0, m_scattering[current]);
 	Set1i(p, "uScattering", 0);
-	glBindImageTexture(0, m_integrated, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-	glDispatchCompute((m_sizeX + 7) / 8, (m_sizeY + 7) / 8, 1);
-	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	glBindTextureUnit(0, 0);
+	gpu.BindImage(0, m_integrated, 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.Dispatch((m_sizeX + 7) / 8, (m_sizeY + 7) / 8, 1);
+	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
+	gpu.BindTexture(0, rhi::TextureHandle());
 
 	m_current = current;
 	m_historyValid = true;
@@ -191,30 +197,29 @@ void VolumetricFogPass::Apply(RenderContext& ctx)
 	if (!m_executedThisFrame || !ctx.hdrFBO || !ctx.gbufferFBO || !ctx.screenQuad) {
 		return;
 	}
+	rhi::Device& gpu = rhi::Gpu();
 	ctx.hdrFBO->Bind();
-	glViewport(0, 0, ctx.width, ctx.height);
-	glDisable(GL_DEPTH_TEST);
-	glDepthMask(GL_FALSE);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_SRC_ALPHA); // dst' = inScatter + dst * transmittance
-	glUseProgram(m_applyShader);
+	gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
+	gpu.SetDepthTest(false);
+	gpu.SetDepthWrite(false);
+	gpu.SetBlendEnabled(true);
+	gpu.SetBlendFunc(rhi::BlendFactor::One, rhi::BlendFactor::SrcAlpha); // dst' = inScatter + dst * transmittance
+	gpu.UseProgram(m_applyShader);
 	ExposurePass::Bind(ctx);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_3D, m_integrated);
+	gpu.BindTexture(0, m_integrated);
 	Set1i(m_applyShader, "uIntegrated", 0);
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+	gpu.BindTexture(1, ctx.gbufferFBO->GetDepthTexture());
 	Set1i(m_applyShader, "uDepth", 1);
 	SetM4(m_applyShader, "uProj", ctx.proj);
-	glUniform3i(glGetUniformLocation(m_applyShader, "uVolumeSize"), m_sizeX, m_sizeY, m_sizeZ);
+	gpu.SetUniform(gpu.GetUniformLocation(m_applyShader, "uVolumeSize"), glm::ivec3(m_sizeX, m_sizeY, m_sizeZ));
 	Set1f(m_applyShader, "uVolumeNear", m_volumeNear);
 	Set1f(m_applyShader, "uVolumeFar", m_volumeFar);
 	Set1f(m_applyShader, "uDistantExtinction", ctx.fogDistantDensity);
 	// Distant haze glows with the ambient sky light (the shader applies the pre-exposure).
 	Set3f(m_applyShader, "uDistantInScatter", ctx.fogAmbientRadiance * ctx.fogAlbedo * ctx.fogDistantGlow);
 	ctx.screenQuad->Render();
-	glDisable(GL_BLEND);
-	glDepthMask(GL_TRUE);
-	glEnable(GL_DEPTH_TEST);
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+	gpu.SetBlendEnabled(false);
+	gpu.SetDepthWrite(true);
+	gpu.SetDepthTest(true);
+	gpu.BindFramebuffer(PresentTarget::Get());
 }

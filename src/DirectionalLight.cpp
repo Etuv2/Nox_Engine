@@ -6,7 +6,7 @@
 DirectionalLight::DirectionalLight()
     : BaseLight(LightType::DIRECTIONAL)
     , m_shadowSize(2048), m_splitLambda(0.6f)  // Optimized lambda for better balance
-    , m_shadowShaderID(0)
+    , m_shadowShaderID()
     , m_shadowNearPlane(0.0f), m_shadowFarPlane(0.0f)
     , m_pcssConfig() 
     , m_useEnhancedFiltering(true)
@@ -31,7 +31,7 @@ DirectionalLight::~DirectionalLight() {
     // FrameBuffer cleans up automatically (RAII)
 }
 
-bool DirectionalLight::InitializeCascades(GLuint shadowSize, float splitLambda) {
+bool DirectionalLight::InitializeCascades(uint32_t shadowSize, float splitLambda) {
     SetSplitLambda(splitLambda);
     
     // Disable legacy shadow system to prevent conflicts with LightManager
@@ -157,20 +157,15 @@ void DirectionalLight::EnableEnhancedFiltering(bool enable) {
     m_useEnhancedFiltering = enable;
     
     if (m_shadowFBO) {
-        GLuint depthArrayId = m_shadowFBO->GetDepthArray();
-        glBindTexture(GL_TEXTURE_2D_ARRAY, depthArrayId);
+        rhi::TextureHandle depthArrayId = m_shadowFBO->GetDepthArray();
         
         if (enable) {
             // Enhanced filtering for PCSS
-            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            rhi::Gpu().SetTextureFilter(depthArrayId, rhi::Filter::Linear, rhi::Filter::Linear);
         } else {
             // Basic filtering
-            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            rhi::Gpu().SetTextureFilter(depthArrayId, rhi::Filter::Nearest, rhi::Filter::Nearest);
         }
-        
-        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
     }
 }
 
@@ -190,15 +185,15 @@ float DirectionalLight::GetCascadeQuality(int cascadeIndex) const {
     return glm::clamp(texelDensity / 100.0f, 0.0f, 1.0f);
 }
 
-GLuint DirectionalLight::GetDepthArrayID() const {
+rhi::TextureHandle DirectionalLight::GetDepthArrayID() const {
     return m_shadowFBO->GetDepthArray();
 }
 
-GLuint DirectionalLight::GetShadowShaderID() const {
+rhi::ProgramHandle DirectionalLight::GetShadowShaderID() const {
     return m_shadowShaderID;
 }
 
-void DirectionalLight::SetShadowShaderID(GLuint shaderID) {
+void DirectionalLight::SetShadowShaderID(rhi::ProgramHandle shaderID) {
     m_shadowShaderID = shaderID;
 }
 

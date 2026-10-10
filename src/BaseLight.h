@@ -2,7 +2,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include "json.hpp"
 
 /**
@@ -45,7 +45,7 @@ public:
     // Shadow mapping support
     virtual bool CastsShadows() const { return m_castsShadows; }
     virtual void SetCastsShadows(bool casts) { m_castsShadows = casts; }
-    virtual GLuint GetShadowMapID() const { return 0; } // Override in derived classes
+    virtual rhi::TextureHandle GetShadowMapID() const { return {}; } // Override in derived classes
 
     // Attenuation (for point/spot lights)
     virtual void SetAttenuation(float constant, float linear, float quadratic) {

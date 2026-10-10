@@ -1,6 +1,8 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "rhi/RHI.h"
+
+struct InteriorAtlas;
 
 /**
  * GBufferPass writes extended G-Buffer attachments:
@@ -26,8 +28,10 @@ public:
                  const std::shared_ptr<Skybox>& skybox) override;
 
 private:
-    GLuint m_shader = 0;
-    GLint m_locView = -1;
-    GLint m_locProjection = -1;
+    void UploadInteriorAtlas(const InteriorAtlas& atlas);
+
+    rhi::ProgramHandle m_shader;
+    rhi::UniformLocation m_locView = -1;
+    rhi::UniformLocation m_locProjection = -1;
     bool m_runtimeVerboseLogging = false;
 };

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include "rhi/RHI.h"
 
 // Forward declarations
 class Scene;
@@ -100,7 +101,7 @@ struct alignas(16) TransformComponent {
  */
 struct RenderableComponent {
 	std::shared_ptr<Scene> model;
-	uint32_t shaderID;
+	rhi::ProgramHandle shaderID;
 	float boundingRadius;
 	bool isSkinned;
 	bool hasAlpha;
@@ -114,7 +115,7 @@ struct RenderableComponent {
 	int nodeIndex;  // glTF node index for skinning
 
 	RenderableComponent()
-		: shaderID(0)
+		: shaderID()
 		, boundingRadius(1.0f)
 		, isSkinned(false)
 		, hasAlpha(false)

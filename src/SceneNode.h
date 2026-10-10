@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <glm/glm.hpp>
+#include "rhi/RHI.h"
 #include <glm/gtc/quaternion.hpp>
 #include "RigidBody.h"
 #include "MeshComponent.h"
@@ -106,8 +107,8 @@ public:
     // MODEL/RENDERING
     void SetModel(const std::shared_ptr<Scene>& model);
     std::shared_ptr<Scene> GetModel() const { return m_model; }
-    void SetShader(unsigned int shader) { m_shader = shader; }
-    unsigned int GetShader() const { return m_shader; }
+    void SetShader(rhi::ProgramHandle shader) { m_shader = shader; }
+    rhi::ProgramHandle GetShader() const { return m_shader; }
     
     void SetCullingOverride(CullingOverride override) { m_cullingOverride = override; }
     CullingOverride GetCullingOverride() const { return m_cullingOverride; }
@@ -205,7 +206,7 @@ private:
     std::string m_name;
     std::string m_authoredExtras;
     bool m_generated = false;
-    unsigned int m_shader = 0;
+    rhi::ProgramHandle m_shader;
     CullingOverride m_cullingOverride = CULLING_INHERIT;
     NODE_TYPE m_nodeType = NODE;
     

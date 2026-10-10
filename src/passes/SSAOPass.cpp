@@ -12,9 +12,11 @@
 SSAOPass::SSAOPass() {}
 
 SSAOPass::~SSAOPass() {
-    if (m_ssaoShader) glDeleteProgram(m_ssaoShader);
-    if (m_blurShader) glDeleteProgram(m_blurShader);
-    if (m_noiseTex) glDeleteTextures(1, &m_noiseTex);
+    if (!rhi::HasGpu()) return;
+    rhi::Device& gpu = rhi::Gpu();
+    if (m_ssaoShader) gpu.DestroyProgram(m_ssaoShader);
+    if (m_blurShader) gpu.DestroyProgram(m_blurShader);
+    if (m_noiseTex) gpu.DestroyTexture(m_noiseTex);
 }
 
 bool SSAOPass::Initialize(RenderContext& context) {
@@ -83,13 +85,17 @@ void SSAOPass::GenerateNoise() {
         ));
     }
 
-    glGenTextures(1, &m_noiseTex);
-    glBindTexture(GL_TEXTURE_2D, m_noiseTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, noise.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    rhi::Device& gpu = rhi::Gpu();
+    rhi::TextureDesc desc;
+    desc.type = rhi::TextureType::Tex2D;
+    desc.format = rhi::Format::RGB16F;
+    desc.width = 4;
+    desc.height = 4;
+    m_noiseTex = gpu.CreateTexture(desc);
+    gpu.UpdateTexture(m_noiseTex, {}, rhi::PixelFormat::RGB, rhi::PixelType::Float, noise.data());
+    gpu.SetTextureFilter(m_noiseTex, rhi::Filter::Nearest, rhi::Filter::Nearest);
+    gpu.SetTextureWrapAxis(m_noiseTex, 0, rhi::Wrap::Repeat);
+    gpu.SetTextureWrapAxis(m_noiseTex, 1, rhi::Wrap::Repeat);
 }
 
 void SSAOPass::Resize(RenderContext&, int newWidth, int newHeight) {
@@ -98,27 +104,27 @@ void SSAOPass::Resize(RenderContext&, int newWidth, int newHeight) {
 
     m_ssaoFBO = std::make_unique<FrameBuffer>(
         m_renderWidth, m_renderHeight,
-        std::vector<GLenum>{ GL_R8 },
-        false, false, 1, false, GL_DEPTH24_STENCIL8
+        std::vector<rhi::Format>{ rhi::Format::R8 },
+        false, false, 1, false, rhi::Format::D24S8
     );
 
     m_historyFBO = std::make_unique<FrameBuffer>(
         m_renderWidth, m_renderHeight,
-        std::vector<GLenum>{ GL_R8 },
+        std::vector<rhi::Format>{ rhi::Format::R8 },
         false, false
     );
 
     m_resolveFBO = std::make_unique<FrameBuffer>(
         newWidth, newHeight,
-        std::vector<GLenum>{ GL_R8 },
+        std::vector<rhi::Format>{ rhi::Format::R8 },
         false, false
     );
 
     m_historyValid = false;
 }
 
-GLuint SSAOPass::GetSSAOTexture() const {
-    return m_resolveFBO ? m_resolveFBO->GetColorAttachment(0) : 0;
+rhi::TextureHandle SSAOPass::GetSSAOTexture() const {
+    return m_resolveFBO ? m_resolveFBO->GetColorAttachment(0) : rhi::TextureHandle{};
 }
 
 void SSAOPass::Execute(RenderContext& ctx,
@@ -134,101 +140,96 @@ void SSAOPass::Execute(RenderContext& ctx,
     ResolveSSAO(ctx);
 
     if (m_historyFBO) {
-        glCopyImageSubData(m_ssaoFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
-                           m_historyFBO->GetColorAttachment(0), GL_TEXTURE_2D, 0, 0, 0, 0,
-                           m_renderWidth, m_renderHeight, 1);
+        rhi::TextureRegion srcRegion;
+        srcRegion.extent = glm::ivec3(m_renderWidth, m_renderHeight, 1);
+        rhi::Gpu().CopyTexture(m_ssaoFBO->GetColorAttachment(0), srcRegion,
+                               m_historyFBO->GetColorAttachment(0), 0, glm::ivec3(0));
         m_historyValid = true;
     }
 }
 
 void SSAOPass::RenderSSAO(RenderContext& ctx) {
+    rhi::Device& gpu = rhi::Gpu();
+
     m_ssaoFBO->Bind();
-    glViewport(0, 0, m_renderWidth, m_renderHeight);
-    glDisable(GL_DEPTH_TEST);
-    glClear(GL_COLOR_BUFFER_BIT);
+    gpu.SetViewport({ 0, 0, m_renderWidth, m_renderHeight });
+    gpu.SetDepthTest(false);
+    gpu.Clear(rhi::ClearColor);
 
-    glUseProgram(m_ssaoShader);
+    gpu.UseProgram(m_ssaoShader);
 
-    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "proj"),
-                       1, GL_FALSE, glm::value_ptr(ctx.proj));
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "proj"), ctx.proj);
 
     glm::mat4 invProj = glm::inverse(ctx.proj);
-    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "invProj"),
-                       1, GL_FALSE, glm::value_ptr(invProj));
-    glUniformMatrix4fv(glGetUniformLocation(m_ssaoShader, "view"),
-                       1, GL_FALSE, glm::value_ptr(ctx.view));
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "invProj"), invProj);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "view"), ctx.view);
 
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "normalsInWorldSpace"), 1);
-    glUniform2f(glGetUniformLocation(m_ssaoShader, "screenSize"),
-                static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight));
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "normalsInWorldSpace"), 1);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "screenSize"),
+                   glm::vec2(static_cast<float>(m_renderWidth), static_cast<float>(m_renderHeight)));
 
     const int kernelSamples = std::clamp(
         m_config.sampleCount,
         1,
         std::min(64, static_cast<int>(m_kernel.size()))
     );
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "sampleCount"), kernelSamples);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "sampleCount"), kernelSamples);
     for (int i = 0; i < kernelSamples; ++i) {
         std::string name = "samples[" + std::to_string(i) + "]";
-        glUniform3fv(glGetUniformLocation(m_ssaoShader, name.c_str()),
-                     1, glm::value_ptr(m_kernel[i]));
+        gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, name.c_str()), m_kernel[i]);
     }
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "gDepth"), 0);
+    gpu.BindTexture(0, ctx.gbufferFBO->GetDepthTexture());
+    // Depth is sampled without comparison; the compare func is the GL default (LessEqual).
+    gpu.SetTextureCompare(ctx.gbufferFBO->GetDepthTexture(), false, rhi::CompareOp::LessEqual);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "gDepth"), 0);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "gPackedNormalRM"), 1);
+    gpu.BindTexture(1, ctx.gbufferFBO->GetColorAttachment(0));
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "gPackedNormalRM"), 1);
 
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, m_noiseTex);
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "noiseTex"), 2);
+    gpu.BindTexture(2, m_noiseTex);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "noiseTex"), 2);
 
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, m_historyFBO ? m_historyFBO->GetColorAttachment(0) : 0);
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "historyAO"), 3);
+    gpu.BindTexture(3, m_historyFBO ? m_historyFBO->GetColorAttachment(0) : rhi::TextureHandle{});
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "historyAO"), 3);
 
-    glUniform1f(glGetUniformLocation(m_ssaoShader, "radius"), ctx.ssaoRadius);
-    glUniform1f(glGetUniformLocation(m_ssaoShader, "bias"), ctx.ssaoBias);
-    glUniform1f(glGetUniformLocation(m_ssaoShader, "temporalBlend"), m_config.temporalBlend);
-    glUniform1i(glGetUniformLocation(m_ssaoShader, "historyValid"), m_historyValid ? 1 : 0);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "radius"), ctx.ssaoRadius);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "bias"), ctx.ssaoBias);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "temporalBlend"), m_config.temporalBlend);
+    gpu.SetUniform(gpu.GetUniformLocation(m_ssaoShader, "historyValid"), m_historyValid ? 1 : 0);
 
     ctx.screenQuad->Render();
-    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+    gpu.BindFramebuffer(PresentTarget::Get());
 }
 
 void SSAOPass::ResolveSSAO(RenderContext& ctx) {
-    m_resolveFBO->Bind();
-    glViewport(0, 0, ctx.width, ctx.height);
-    glDisable(GL_DEPTH_TEST);
-    glClear(GL_COLOR_BUFFER_BIT);
+    rhi::Device& gpu = rhi::Gpu();
 
-    glUseProgram(m_blurShader);
+    m_resolveFBO->Bind();
+    gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
+    gpu.SetDepthTest(false);
+    gpu.Clear(rhi::ClearColor);
+
+    gpu.UseProgram(m_blurShader);
 
     glm::vec2 inputTexelSize(1.0f / static_cast<float>(m_renderWidth),
                              1.0f / static_cast<float>(m_renderHeight));
     glm::vec2 fullResTexelSize(1.0f / static_cast<float>(ctx.width),
                                1.0f / static_cast<float>(ctx.height));
-    glUniform2fv(glGetUniformLocation(m_blurShader, "inputTexelSize"), 1, glm::value_ptr(inputTexelSize));
-    glUniform2fv(glGetUniformLocation(m_blurShader, "fullResTexelSize"), 1, glm::value_ptr(fullResTexelSize));
-    glUniform1f(glGetUniformLocation(m_blurShader, "depthThreshold"), std::max(0.001f, ctx.ssaoBlurDepthThreshold));
-    glUniform1f(glGetUniformLocation(m_blurShader, "normalThreshold"), m_config.normalThreshold);
+    gpu.SetUniform(gpu.GetUniformLocation(m_blurShader, "inputTexelSize"), inputTexelSize);
+    gpu.SetUniform(gpu.GetUniformLocation(m_blurShader, "fullResTexelSize"), fullResTexelSize);
+    gpu.SetUniform(gpu.GetUniformLocation(m_blurShader, "depthThreshold"), std::max(0.001f, ctx.ssaoBlurDepthThreshold));
+    gpu.SetUniform(gpu.GetUniformLocation(m_blurShader, "normalThreshold"), m_config.normalThreshold);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_ssaoFBO->GetColorAttachment(0));
-    glUniform1i(glGetUniformLocation(m_blurShader, "ssaoInput"), 0);
+    gpu.BindTexture(0, m_ssaoFBO->GetColorAttachment(0));
+    gpu.SetUniform(gpu.GetUniformLocation(m_blurShader, "ssaoInput"), 0);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-    glUniform1i(glGetUniformLocation(m_blurShader, "gDepth"), 1);
+    gpu.BindTexture(1, ctx.gbufferFBO->GetDepthTexture());
+    gpu.SetUniform(gpu.GetUniformLocation(m_blurShader, "gDepth"), 1);
 
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-    glUniform1i(glGetUniformLocation(m_blurShader, "gPackedNormalRM"), 2);
+    gpu.BindTexture(2, ctx.gbufferFBO->GetColorAttachment(0));
+    gpu.SetUniform(gpu.GetUniformLocation(m_blurShader, "gPackedNormalRM"), 2);
 
     ctx.screenQuad->Render();
-    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+    gpu.BindFramebuffer(PresentTarget::Get());
 }

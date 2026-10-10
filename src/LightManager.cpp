@@ -151,23 +151,19 @@ LightManager::~LightManager()
 
 	// Cleanup GPU buffers
 	if (m_lightDataSSBO) {
-		glDeleteBuffers(1, &m_lightDataSSBO);
-		m_lightDataSSBO = 0;
+		rhi::Gpu().DestroyBuffer(m_lightDataSSBO);
 	}
 
 	if (m_shadowMatricesSSBO) {
-		glDeleteBuffers(1, &m_shadowMatricesSSBO);
-		m_shadowMatricesSSBO = 0;
+		rhi::Gpu().DestroyBuffer(m_shadowMatricesSSBO);
 	}
 
 	if (m_tileDataSSBO) {
-		glDeleteBuffers(1, &m_tileDataSSBO);
-		m_tileDataSSBO = 0;
+		rhi::Gpu().DestroyBuffer(m_tileDataSSBO);
 	}
 
 	if (m_shadowFBO) {
-		glDeleteFramebuffers(1, &m_shadowFBO);
-		m_shadowFBO = 0;
+		rhi::Gpu().DestroyFramebuffer(m_shadowFBO);
 	}
 
 	// Shadow array texture now managed by smart pointer (automatic cleanup)
@@ -380,13 +376,13 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 
 	// Create shadow array texture using new Texture builder
 	std::cout << "[LightManager] Creating shadow array texture with new Texture class..." << std::endl;
-	m_shadowArrayTexture = Texture::Builder::TextureArray2D(baseResolution, baseResolution, totalLayers, GL_DEPTH_COMPONENT24)
-		.Format(GL_DEPTH_COMPONENT)
-		.DataType(GL_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_BORDER)
+	m_shadowArrayTexture = Texture::Builder::TextureArray2D(baseResolution, baseResolution, totalLayers, rhi::Format::D24)
+		.Format(rhi::PixelFormat::Depth)
+		.DataType(rhi::PixelType::Float)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToBorder)
 		.BorderColor(glm::vec4(1.0f))
-		.CompareMode(GL_COMPARE_REF_TO_TEXTURE, GL_LEQUAL)
+		.CompareMode(true, rhi::CompareOp::LessEqual)
 		.TextureType(TextureType::Shadow)
 		.Build();
 
@@ -399,17 +395,16 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 
 	// Depth-only FBO that renders straight into one layer of the shadow array at a time.
 	// (It must not own depth storage of its own: a second 36-layer array would be dead VRAM.)
-	glGenFramebuffers(1, &m_shadowFBO);
-	glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFBO);
-	glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, m_shadowArrayTexture->ID(), 0, 0);
-	glDrawBuffer(GL_NONE);
-	glReadBuffer(GL_NONE);
-	const GLenum shadowFboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	if (shadowFboStatus != GL_FRAMEBUFFER_COMPLETE) {
-		std::cerr << "[LightManager] Shadow FBO incomplete (0x" << std::hex << shadowFboStatus << std::dec << ")" << std::endl;
-		glDeleteFramebuffers(1, &m_shadowFBO);
-		m_shadowFBO = 0;
+	rhi::FramebufferDesc shadowFboDesc;
+	shadowFboDesc.depth = { m_shadowArrayTexture->ID(), 0, 0 };
+	m_shadowFBO = rhi::Gpu().CreateFramebuffer(shadowFboDesc);
+	rhi::Gpu().SetDrawBuffers(m_shadowFBO, nullptr, 0);
+	rhi::Gpu().SetReadBuffer(m_shadowFBO, -1);
+	std::string shadowFboReason;
+	const bool shadowFboComplete = rhi::Gpu().IsFramebufferComplete(m_shadowFBO, &shadowFboReason);
+	if (!shadowFboComplete) {
+		std::cerr << "[LightManager] Shadow FBO incomplete (" << shadowFboReason << ")" << std::endl;
+		rhi::Gpu().DestroyFramebuffer(m_shadowFBO);
 		m_shadowArrayTexture.reset();
 		return;
 	}
@@ -440,17 +435,15 @@ void LightManager::InitializeShadowSystem(int maxShadowCastingLights, int baseRe
 	}
 
 	// Initialize GPU buffers for light data and shadow matrices
-	glGenBuffers(1, &m_lightDataSSBO);
-	glGenBuffers(1, &m_shadowMatricesSSBO);
-	glGenBuffers(1, &m_tileDataSSBO);
+	m_lightDataSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
+	m_shadowMatricesSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
+	m_tileDataSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
 
 	// Pre-allocate shadow matrices buffer with identity matrices
 	std::vector<glm::mat4> identityMatrices(totalLayers, glm::mat4(1.0f));
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_shadowMatricesSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER,
+	rhi::Gpu().ReallocateBuffer(m_shadowMatricesSSBO,
 		totalLayers * sizeof(glm::mat4),
-		identityMatrices.data(), GL_DYNAMIC_DRAW);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		identityMatrices.data(), rhi::BufferUsage::DynamicDraw);
 	m_shadowMatricesInitialized = true;
 
 	m_shadowSystemInitialized = true;
@@ -480,11 +473,11 @@ glm::vec4 LightManager::ComputeCascadeSplitVector(float nearPlane, float farPlan
 /**
  * @brief Get the shadow array texture ID
  *
- * @return GLuint The OpenGL texture ID for the shadow array
+ * @return rhi::TextureHandle The texture handle for the shadow array
  */
-GLuint LightManager::GetShadowArrayTexture() const
+rhi::TextureHandle LightManager::GetShadowArrayTexture() const
 {
-	return m_shadowArrayTexture ? m_shadowArrayTexture->ID() : 0;
+	return m_shadowArrayTexture ? m_shadowArrayTexture->ID() : rhi::TextureHandle{};
 }
 
 /**
@@ -501,17 +494,17 @@ void LightManager::ValidateShadowArrayTexture() const
 		return;
 	}
 
-	while (glGetError() != GL_NO_ERROR) {}
+	while (rhi::Gpu().PollError() != nullptr) {}
 
 	// Use Texture class methods to validate
-	GLuint shadowTexID = m_shadowArrayTexture->ID();
+	rhi::TextureHandle shadowTexID = m_shadowArrayTexture->ID();
 
 	std::cout << "[LightManager] Validating shadow array texture..." << std::endl;
 	std::cout << "  Texture ID: " << shadowTexID << std::endl;
 	std::cout << "  Dimensions: " << m_shadowArrayTexture->Width() << "x"
 		<< m_shadowArrayTexture->Height() << "x" << m_shadowArrayTexture->Depth() << std::endl;
-	std::cout << "  Internal Format: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
-	std::cout << "  Target: 0x" << std::hex << static_cast<GLenum>(m_shadowArrayTexture->Target()) << std::dec << std::endl;
+	std::cout << "  Internal Format: " << rhi::FormatName(m_shadowArrayTexture->InternalFormat()) << std::endl;
+	std::cout << "  Target: " << static_cast<int>(m_shadowArrayTexture->Target()) << std::endl;
 
 	// Validate dimensions and format
 	bool hasErrors = false;
@@ -527,10 +520,10 @@ void LightManager::ValidateShadowArrayTexture() const
 		hasErrors = true;
 	}
 
-	if (m_shadowArrayTexture->InternalFormat() != GL_DEPTH_COMPONENT24) {
+	if (m_shadowArrayTexture->InternalFormat() != rhi::Format::D24) {
 		std::cerr << "[LightManager] WARNING: Shadow array format incorrect!" << std::endl;
-		std::cerr << "  Expected: GL_DEPTH_COMPONENT24 (0x" << std::hex << GL_DEPTH_COMPONENT24 << ")" << std::dec << std::endl;
-		std::cerr << "  Actual: 0x" << std::hex << m_shadowArrayTexture->InternalFormat() << std::dec << std::endl;
+		std::cerr << "  Expected: D24 (" << rhi::FormatName(rhi::Format::D24) << ")" << std::endl;
+		std::cerr << "  Actual: " << rhi::FormatName(m_shadowArrayTexture->InternalFormat()) << std::endl;
 		hasErrors = true;
 	}
 
@@ -548,10 +541,9 @@ void LightManager::ValidateShadowArrayTexture() const
 	}
 
 	// Check OpenGL errors
-	GLenum error = glGetError();
-	if (error != GL_NO_ERROR) {
-		std::cerr << "[LightManager] OpenGL error during shadow validation: 0x"
-			<< std::hex << error << std::dec << std::endl;
+	if (const char* error = rhi::Gpu().PollError()) {
+		std::cerr << "[LightManager] OpenGL error during shadow validation: "
+			<< error << std::endl;
 	}
 }
 
@@ -603,7 +595,7 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	float farPlane,
 	float aspect)
 {
-	if (!m_shadowSystemInitialized || m_shadowFBO == 0 || !sceneGraph || m_shadowShader == 0) {
+	if (!m_shadowSystemInitialized || !m_shadowFBO.IsValid() || !sceneGraph || !m_shadowShader.IsValid()) {
 		std::cout << "[LightManager] Shadow rendering skipped - system not ready" << std::endl;
 		return;
 	}
@@ -714,11 +706,11 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	MDIBatch fullBatch;
 	sceneGraph->CollectRenderables(fullBatch);
 
-	glUseProgram(m_shadowShader);
+	rhi::Gpu().UseProgram(m_shadowShader);
 	
 	// Cache uniform locations to avoid expensive driver calls each frame
-	GLint locObjectIndex = m_cachedLocObjectIndex;
-	GLint locLS = m_cachedLocLS;
+	rhi::UniformLocation locObjectIndex = m_cachedLocObjectIndex;
+	rhi::UniformLocation locLS = m_cachedLocLS;
 	
 	// Invalidate cache if shader changed
 	if (m_lastShadowShader != m_shadowShader) {
@@ -729,11 +721,11 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	
 	// Query locations only if not cached yet
 	if (m_cachedLocObjectIndex == -2) {
-		m_cachedLocObjectIndex = glGetUniformLocation(m_shadowShader, "uObjectIndex");
+		m_cachedLocObjectIndex = rhi::Gpu().GetUniformLocation(m_shadowShader, "uObjectIndex");
 		locObjectIndex = m_cachedLocObjectIndex;
 	}
 	if (m_cachedLocLS == -2) {
-		m_cachedLocLS = glGetUniformLocation(m_shadowShader, "lightSpaceMatrix");
+		m_cachedLocLS = rhi::Gpu().GetUniformLocation(m_shadowShader, "lightSpaceMatrix");
 		locLS = m_cachedLocLS;
 	}
 
@@ -748,23 +740,23 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	}
 
 	// Prepare FBO state once
-	glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFBO);
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS);
-	glDepthMask(GL_TRUE);
-	glEnable(GL_CULL_FACE);
-	glCullFace(GL_BACK);
-	glDisable(GL_BLEND);
-	glDrawBuffer(GL_NONE);
-	glReadBuffer(GL_NONE);
+	rhi::Gpu().BindFramebuffer(m_shadowFBO);
+	rhi::Gpu().SetDepthTest(true);
+	rhi::Gpu().SetDepthFunc(rhi::CompareOp::Less);
+	rhi::Gpu().SetDepthWrite(true);
+	rhi::Gpu().SetCullEnabled(true);
+	rhi::Gpu().SetCullFace(rhi::CullFace::Back);
+	rhi::Gpu().SetBlendEnabled(false);
+	rhi::Gpu().SetDrawBuffers(m_shadowFBO, nullptr, 0);
+	rhi::Gpu().SetReadBuffer(m_shadowFBO, -1);
 	// Casters between the light and a slice's near plane must still occlude: clamp their depth
 	// onto the near plane instead of clipping them away ("pancaking"). Directional cascades rely
 	// on this, since their depth range only spans the cascade's bounding sphere.
-	glEnable(GL_DEPTH_CLAMP);
+	rhi::Gpu().SetFeature(rhi::Feature::DepthClamp, true);
 	// Same slope-scaled rasterization offset for every slice type; receiver-side biasing is done
 	// in world space by the lighting shaders.
-	glEnable(GL_POLYGON_OFFSET_FILL);
-	glPolygonOffset(shadowConfig.rasterSlopeBias, shadowConfig.rasterConstantBias);
+	rhi::Gpu().SetPolygonOffsetEnabled(true);
+	rhi::Gpu().SetPolygonOffsetFactors(shadowConfig.rasterSlopeBias, shadowConfig.rasterConstantBias);
 
 	// Lambda: Filter objects and build signature
 	auto filterAndSign = [&](const glm::mat4& ls) {
@@ -858,26 +850,26 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			auto sliceStart = std::chrono::high_resolution_clock::now();
 
 			// Attach shadow array layer to framebuffer
-			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-				m_shadowArrayTexture->ID(), 0, sliceIndex);
-			glViewport(0, 0, shadowConfig.baseResolution, shadowConfig.baseResolution);
+			rhi::Gpu().SetAttachment(m_shadowFBO, rhi::AttachmentPoint::Depth,
+				{ m_shadowArrayTexture->ID(), 0, sliceIndex });
+			rhi::Gpu().SetViewport({ 0, 0, shadowConfig.baseResolution, shadowConfig.baseResolution });
 			// Always clear, even with no casters: the slice's matrix is about to change, and stale
 			// depth from the previous matrix would otherwise be sampled as phantom shadows.
-			glClear(GL_DEPTH_BUFFER_BIT);
+			rhi::Gpu().Clear(rhi::ClearDepth);
 
 			if (!filtered.GetObjects().empty()) {
 				if (locLS >= 0) {
-					glUniformMatrix4fv(locLS, 1, GL_FALSE, glm::value_ptr(lightSpace));
+					rhi::Gpu().SetUniform(locLS, lightSpace);
 				}
 
 				if (RenderSystem* renderSystem = sceneGraph->GetRenderSystem()) {
 					renderSystem->RenderShadowCascade(lightSpace, m_shadowShader);
 				}
 				else if (locObjectIndex < 0) {
-					filtered.RenderBatchedByVAO(GL_TRIANGLES, GL_UNSIGNED_INT);
+					filtered.RenderBatchedByVAO(rhi::Topology::Triangles, rhi::IndexType::UInt32);
 				}
 				else {
-					filtered.RenderBatchedByVAOWithUniform(GL_TRIANGLES, GL_UNSIGNED_INT, locObjectIndex);
+					filtered.RenderBatchedByVAOWithUniform(rhi::Topology::Triangles, rhi::IndexType::UInt32, locObjectIndex);
 				}
 			}
 
@@ -1150,18 +1142,15 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 	}
 
 	if (!m_shadowMatricesInitialized) {
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_shadowMatricesSSBO);
-		glBufferData(GL_SHADER_STORAGE_BUFFER,
+		rhi::Gpu().ReallocateBuffer(m_shadowMatricesSSBO,
 			matrices.size() * sizeof(glm::mat4),
 			matrices.data(),
-			GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			rhi::BufferUsage::DynamicDraw);
 		m_shadowMatricesInitialized = true;
 		m_lastBufferUploadStats.shadowMatrixUploadCount += 1;
 		m_lastBufferUploadStats.shadowMatrixUploadBytes += static_cast<uint64_t>(matrices.size()) * sizeof(glm::mat4);
 	}
 	else if (!dirtyMatrixIndices.empty()) {
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_shadowMatricesSSBO);
 		size_t segmentStart = static_cast<size_t>(dirtyMatrixIndices.front());
 		size_t segmentLen = 1;
 		for (size_t n = 1; n < dirtyMatrixIndices.size(); ++n) {
@@ -1171,9 +1160,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 				continue;
 			}
 
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER,
-				static_cast<GLintptr>(segmentStart * sizeof(glm::mat4)),
-				static_cast<GLsizeiptr>(segmentLen * sizeof(glm::mat4)),
+			rhi::Gpu().UpdateBuffer(m_shadowMatricesSSBO,
+				segmentStart * sizeof(glm::mat4),
+				segmentLen * sizeof(glm::mat4),
 				matrices.data() + segmentStart);
 			m_lastBufferUploadStats.shadowMatrixUploadCount += 1;
 			m_lastBufferUploadStats.shadowMatrixUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(glm::mat4);
@@ -1181,13 +1170,12 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 			segmentLen = 1;
 		}
 
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER,
-			static_cast<GLintptr>(segmentStart * sizeof(glm::mat4)),
-			static_cast<GLsizeiptr>(segmentLen * sizeof(glm::mat4)),
+		rhi::Gpu().UpdateBuffer(m_shadowMatricesSSBO,
+			segmentStart * sizeof(glm::mat4),
+			segmentLen * sizeof(glm::mat4),
 			matrices.data() + segmentStart);
 		m_lastBufferUploadStats.shadowMatrixUploadCount += 1;
 		m_lastBufferUploadStats.shadowMatrixUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(glm::mat4);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
 	m_totalBufferUploadStats.shadowMatrixUploadCount += m_lastBufferUploadStats.shadowMatrixUploadCount;
@@ -1217,9 +1205,9 @@ void LightManager::RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGrap
 
 	m_lightDataDirty = shadowAssignmentsChanged;
 
-	glDisable(GL_POLYGON_OFFSET_FILL);
-	glDisable(GL_DEPTH_CLAMP);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	rhi::Gpu().SetPolygonOffsetEnabled(false);
+	rhi::Gpu().SetFeature(rhi::Feature::DepthClamp, false);
+	rhi::Gpu().BindFramebuffer(rhi::kBackBuffer);
 	m_lastShadowScenePublication = scenePublication;
 	m_lastShadowView = view;
 	m_lastShadowNearPlane = nearPlane;
@@ -1335,12 +1323,11 @@ void LightManager::UpdateGPUBuffers()
 	}
 
 	if (forceFullUpload || (!arr.empty() && !dirtyIndices.empty())) {
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_lightDataSSBO);
 		if (forceFullUpload) {
-			glBufferData(GL_SHADER_STORAGE_BUFFER,
+			rhi::Gpu().ReallocateBuffer(m_lightDataSSBO,
 				arr.size() * sizeof(LightData),
 				arr.data(),
-				GL_DYNAMIC_DRAW);
+				rhi::BufferUsage::DynamicDraw);
 			m_lastBufferUploadStats.lightUploadCount += 1;
 			m_lastBufferUploadStats.lightUploadBytes += static_cast<uint64_t>(arr.size()) * sizeof(LightData);
 		}
@@ -1354,9 +1341,9 @@ void LightManager::UpdateGPUBuffers()
 					continue;
 				}
 
-				glBufferSubData(GL_SHADER_STORAGE_BUFFER,
-					static_cast<GLintptr>(segmentStart * sizeof(LightData)),
-					static_cast<GLsizeiptr>(segmentLen * sizeof(LightData)),
+				rhi::Gpu().UpdateBuffer(m_lightDataSSBO,
+					segmentStart * sizeof(LightData),
+					segmentLen * sizeof(LightData),
 					arr.data() + segmentStart);
 				m_lastBufferUploadStats.lightUploadCount += 1;
 				m_lastBufferUploadStats.lightUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(LightData);
@@ -1364,14 +1351,13 @@ void LightManager::UpdateGPUBuffers()
 				segmentLen = 1;
 			}
 
-			glBufferSubData(GL_SHADER_STORAGE_BUFFER,
-				static_cast<GLintptr>(segmentStart * sizeof(LightData)),
-				static_cast<GLsizeiptr>(segmentLen * sizeof(LightData)),
+			rhi::Gpu().UpdateBuffer(m_lightDataSSBO,
+				segmentStart * sizeof(LightData),
+				segmentLen * sizeof(LightData),
 				arr.data() + segmentStart);
 			m_lastBufferUploadStats.lightUploadCount += 1;
 			m_lastBufferUploadStats.lightUploadBytes += static_cast<uint64_t>(segmentLen) * sizeof(LightData);
 		}
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
 	m_totalBufferUploadStats.lightUploadCount += m_lastBufferUploadStats.lightUploadCount;
@@ -1765,12 +1751,10 @@ void LightManager::PerformLightCulling(const glm::mat4&,
 	}
 
 	if (m_tileDataSSBO && !m_tiles.empty()) {
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_tileDataSSBO);
-		glBufferData(GL_SHADER_STORAGE_BUFFER,
+		rhi::Gpu().ReallocateBuffer(m_tileDataSSBO,
 			m_tiles.size() * sizeof(CullingTile),
 			m_tiles.data(),
-			GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			rhi::BufferUsage::DynamicDraw);
 	}
 
 	auto end = std::chrono::high_resolution_clock::now();

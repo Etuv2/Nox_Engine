@@ -1,26 +1,49 @@
 #include "Texture.h"
 #include <iostream>
 #include <algorithm>
+#include <vector>
 #include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
+
+rhi::TextureType ToRhi(TextureTarget target) {
+	switch (target) {
+	case TextureTarget::Texture1D: return rhi::TextureType::Tex1D;
+	case TextureTarget::Texture2D: return rhi::TextureType::Tex2D;
+	case TextureTarget::Texture3D: return rhi::TextureType::Tex3D;
+	case TextureTarget::Texture1DArray: return rhi::TextureType::Tex1DArray;
+	case TextureTarget::Texture2DArray: return rhi::TextureType::Tex2DArray;
+	case TextureTarget::TextureCubeMap: return rhi::TextureType::Cube;
+	case TextureTarget::TextureCubeMapArray: return rhi::TextureType::CubeArray;
+	case TextureTarget::Texture2DMultisample: return rhi::TextureType::Tex2DMS;
+	case TextureTarget::Texture2DMultisampleArray: return rhi::TextureType::Tex2DMSArray;
+	case TextureTarget::TextureRectangle: return rhi::TextureType::Rectangle;
+	}
+	return rhi::TextureType::Tex2D;
+}
+
+namespace {
+	bool IsMultisample(TextureTarget t) {
+		return t == TextureTarget::Texture2DMultisample || t == TextureTarget::Texture2DMultisampleArray;
+	}
+}
 
 // ===== Texture Class Implementation =====
 
-Texture::Texture()
-	: id_(0), target_(TextureTarget::Texture2D), width_(0), height_(0), depth_(1),
-	type_(TextureType::Custom), internalFormat_(GL_RGBA), format_(GL_RGBA),
-	dataType_(GL_UNSIGNED_BYTE), hasMipmaps_(false)
-{
-	glGenTextures(1, &id_);
+Texture::Texture() = default;
+
+void Texture::Allocate() {
+	rhi::TextureDesc desc;
+	desc.type = ToRhi(target_);
+	desc.format = internalFormat_;
+	desc.width = width_;
+	desc.height = height_;
+	desc.depth = depth_;
+	desc.mipLevels = 1;
+	id_ = rhi::Gpu().CreateTexture(desc);
 }
 
 Texture::Texture(const std::string& filepath, TextureType type, bool generateMipmaps, bool srgb)
 	: type_(type), target_(TextureTarget::Texture2D), depth_(1), hasMipmaps_(generateMipmaps)
 {
-	id_ = 0;
-	glGenTextures(1, &id_);
-	glBindTexture(GL_TEXTURE_2D, id_);
-
 	int channels;
 	unsigned char* data = stbi_load(filepath.c_str(), &width_, &height_, &channels, 0);
 	if (!data) {
@@ -32,74 +55,66 @@ Texture::Texture(const std::string& filepath, TextureType type, bool generateMip
 	// Determine formats based on channels
 	switch (channels) {
 	case 1:
-		internalFormat_ = format_ = GL_RED;
+		internalFormat_ = rhi::Format::R8;
+		format_ = rhi::PixelFormat::R;
 		break;
 	case 2:
-		internalFormat_ = format_ = GL_RG;
+		internalFormat_ = rhi::Format::RG8;
+		format_ = rhi::PixelFormat::RG;
 		break;
 	case 3:
-		format_ = GL_RGB;
-		internalFormat_ = srgb ? GL_SRGB8 : GL_RGB8;
-		break;
-	case 4:
-		format_ = GL_RGBA;
-		internalFormat_ = srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+		format_ = rhi::PixelFormat::RGB;
+		internalFormat_ = srgb ? rhi::Format::SRGB8 : rhi::Format::RGB8;
 		break;
 	default:
-		internalFormat_ = format_ = GL_RGBA;
+		format_ = rhi::PixelFormat::RGBA;
+		internalFormat_ = srgb ? rhi::Format::SRGB8_A8 : rhi::Format::RGBA8;
+		break;
 	}
+	dataType_ = rhi::PixelType::UByte;
 
-	dataType_ = GL_UNSIGNED_BYTE;
-
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat_, width_, height_, 0, format_, dataType_, data);
-
+	Allocate();
+	rhi::Gpu().UpdateTexture(id_, {}, format_, dataType_, data);
 	if (generateMipmaps) {
-		glGenerateMipmap(GL_TEXTURE_2D);
+		rhi::Gpu().GenerateMipmaps(id_);
 	}
-
 	SetParametersForType(generateMipmaps);
-
 	stbi_image_free(data);
-	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-Texture::Texture(int width, int height, GLenum internalFormat, GLenum format,
-	GLenum dataType, const void* data, bool generateMipmaps)
+Texture::Texture(int width, int height, rhi::Format internalFormat, rhi::PixelFormat format,
+	rhi::PixelType dataType, const void* data, bool generateMipmaps)
 	: width_(width), height_(height), depth_(1), internalFormat_(internalFormat),
 	format_(format), dataType_(dataType), type_(TextureType::Custom),
 	target_(TextureTarget::Texture2D), hasMipmaps_(generateMipmaps)
 {
-	id_ = 0;
-	glGenTextures(1, &id_);
-	glBindTexture(GL_TEXTURE_2D, id_);
-
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat_, width_, height_, 0, format_, dataType_, data);
-
-	if (generateMipmaps) {
-		glGenerateMipmap(GL_TEXTURE_2D);
+	Allocate();
+	if (data) {
+		rhi::Gpu().UpdateTexture(id_, {}, format_, dataType_, data);
 	}
-
+	if (generateMipmaps) {
+		rhi::Gpu().GenerateMipmaps(id_);
+	}
 	SetParametersForType(generateMipmaps);
-	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 Texture::~Texture() {
-	if (id_) {
-		glDeleteTextures(1, &id_);
+	if (id_ && rhi::HasGpu()) {
+		rhi::Gpu().DestroyTexture(id_);
 	}
 }
 
 Texture::Texture(Texture&& other) noexcept
 	: id_(other.id_), target_(other.target_), width_(other.width_), height_(other.height_),
 	depth_(other.depth_), type_(other.type_), internalFormat_(other.internalFormat_),
-	format_(other.format_), dataType_(other.dataType_), hasMipmaps_(other.hasMipmaps_)
+	format_(other.format_), dataType_(other.dataType_), hasMipmaps_(other.hasMipmaps_), wrapR_(other.wrapR_)
 {
-	other.id_ = 0;
+	other.id_ = {};
 }
 
 Texture& Texture::operator=(Texture&& other) noexcept {
 	if (this != &other) {
-		if (id_) glDeleteTextures(1, &id_);
+		if (id_) rhi::Gpu().DestroyTexture(id_);
 
 		id_ = other.id_;
 		target_ = other.target_;
@@ -111,96 +126,75 @@ Texture& Texture::operator=(Texture&& other) noexcept {
 		format_ = other.format_;
 		dataType_ = other.dataType_;
 		hasMipmaps_ = other.hasMipmaps_;
+		wrapR_ = other.wrapR_;
 
-		other.id_ = 0;
+		other.id_ = {};
 	}
 	return *this;
 }
 
-void Texture::Bind(GLenum unit) const {
-	glActiveTexture(unit);
-	BindToTarget();
+void Texture::Bind(uint32_t unit) const {
+	rhi::Gpu().BindTexture(unit, id_);
 }
 
-void Texture::Unbind() const {
-	glBindTexture(static_cast<GLenum>(target_), 0);
+void Texture::SetParameters(rhi::Wrap wrapS, rhi::Wrap wrapT, rhi::Filter minFilter, rhi::Filter magFilter) {
+	if (IsMultisample(target_)) return;
+	rhi::Gpu().SetTextureWrap(id_, wrapS, wrapT, wrapR_);   // R unchanged
+	rhi::Gpu().SetTextureFilter(id_, minFilter, magFilter);
 }
 
-void Texture::SetParameters(GLint wrapS, GLint wrapT, GLint minFilter, GLint magFilter) {
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
-	glTexParameteri(target, GL_TEXTURE_WRAP_S, wrapS);
-	glTexParameteri(target, GL_TEXTURE_WRAP_T, wrapT);
-	glTexParameteri(target, GL_TEXTURE_MIN_FILTER, minFilter);
-	glTexParameteri(target, GL_TEXTURE_MAG_FILTER, magFilter);
-	Unbind();
+void Texture::SetWrapMode(rhi::Wrap wrapS, rhi::Wrap wrapT, rhi::Wrap wrapR) {
+	if (IsMultisample(target_)) return;
+	// Only volume and cube textures sample with R; the others keep the default (Repeat).
+	const bool usesR = target_ == TextureTarget::Texture3D || target_ == TextureTarget::TextureCubeMap;
+	if (usesR) wrapR_ = wrapR;
+	rhi::Gpu().SetTextureWrap(id_, wrapS, target_ == TextureTarget::Texture1D ? rhi::Wrap::Repeat : wrapT, wrapR_);
 }
 
-void Texture::SetWrapMode(GLint wrapS, GLint wrapT, GLint wrapR) {
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
-	glTexParameteri(target, GL_TEXTURE_WRAP_S, wrapS);
-	if (target_ != TextureTarget::Texture1D) {
-		glTexParameteri(target, GL_TEXTURE_WRAP_T, wrapT);
-	}
-	if (target_ == TextureTarget::Texture3D || target_ == TextureTarget::TextureCubeMap) {
-		glTexParameteri(target, GL_TEXTURE_WRAP_R, wrapR);
-	}
-	Unbind();
-}
-
-void Texture::SetFilterMode(GLint minFilter, GLint magFilter) {
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
-	glTexParameteri(target, GL_TEXTURE_MIN_FILTER, minFilter);
-	glTexParameteri(target, GL_TEXTURE_MAG_FILTER, magFilter);
-	Unbind();
+void Texture::SetFilterMode(rhi::Filter minFilter, rhi::Filter magFilter) {
+	if (IsMultisample(target_)) return;
+	rhi::Gpu().SetTextureFilter(id_, minFilter, magFilter);
 }
 
 void Texture::SetBorderColor(const glm::vec4& color) {
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
-	glTexParameterfv(target, GL_TEXTURE_BORDER_COLOR, glm::value_ptr(color));
-	Unbind();
+	if (IsMultisample(target_)) return;
+	rhi::Gpu().SetTextureBorderColor(id_, color);
 }
 
-void Texture::SetCompareMode(GLenum mode, GLenum func) {
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
-	glTexParameteri(target, GL_TEXTURE_COMPARE_MODE, mode);
-	glTexParameteri(target, GL_TEXTURE_COMPARE_FUNC, func);
-	Unbind();
+void Texture::SetCompareMode(bool enabled, rhi::CompareOp op) {
+	if (IsMultisample(target_)) return;
+	rhi::Gpu().SetTextureCompare(id_, enabled, op);
 }
 
 void Texture::GenerateMipmaps() {
-	BindToTarget();
-	glGenerateMipmap(static_cast<GLenum>(target_));
+	rhi::Gpu().GenerateMipmaps(id_);
 	hasMipmaps_ = true;
-	Unbind();
 }
 
-void Texture::SetMipmapRange(GLint baseLevel, GLint maxLevel) {
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
-	glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, baseLevel);
-	glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
-	Unbind();
+void Texture::SetMipmapRange(int baseLevel, int maxLevel) {
+	rhi::Gpu().SetTextureMipRange(id_, baseLevel, maxLevel);
 }
 
-void Texture::Upload2D(GLint level, GLint xoffset, GLint yoffset,
-	GLsizei width, GLsizei height, GLenum format, GLenum type, const void* data) {
-	BindToTarget();
-	glTexSubImage2D(static_cast<GLenum>(target_), level, xoffset, yoffset,
-		width, height, format, type, data);
-	Unbind();
+void Texture::Upload2D(int level, int xoffset, int yoffset, int width, int height,
+	rhi::PixelFormat format, rhi::PixelType type, const void* data) {
+	rhi::TextureRegion region;
+	region.level = level;
+	region.offset = glm::ivec3(xoffset, yoffset, 0);
+	region.extent = glm::ivec3(width, height, 1);
+	rhi::Gpu().UpdateTexture(id_, region, format, type, data);
 }
 
-void Texture::Upload3D(GLint level, GLint xoffset, GLint yoffset, GLint zoffset,
-	GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void* data) {
-	BindToTarget();
-	glTexSubImage3D(static_cast<GLenum>(target_), level, xoffset, yoffset, zoffset,
-		width, height, depth, format, type, data);
-	Unbind();
+void Texture::Upload3D(int level, int xoffset, int yoffset, int zoffset,
+	int width, int height, int depth, rhi::PixelFormat format, rhi::PixelType type, const void* data) {
+	rhi::TextureRegion region;
+	region.level = level;
+	region.offset = glm::ivec3(xoffset, yoffset, zoffset);
+	region.extent = glm::ivec3(width, height, depth);
+	rhi::Gpu().UpdateTexture(id_, region, format, type, data);
+}
+
+bool Texture::IsValid() const {
+	return id_ && rhi::Gpu().IsTexture(id_);
 }
 
 void Texture::Resize(int width, int height, int depth) {
@@ -208,76 +202,63 @@ void Texture::Resize(int width, int height, int depth) {
 	height_ = height;
 	depth_ = depth;
 
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
-
 	switch (target_) {
 	case TextureTarget::Texture1D:
-		glTexImage1D(target, 0, internalFormat_, width_, 0, format_, dataType_, nullptr);
-		break;
 	case TextureTarget::Texture2D:
-		glTexImage2D(target, 0, internalFormat_, width_, height_, 0, format_, dataType_, nullptr);
-		break;
 	case TextureTarget::Texture3D:
-		glTexImage3D(target, 0, internalFormat_, width_, height_, depth_, 0, format_, dataType_, nullptr);
+		rhi::Gpu().ResizeTexture(id_, width_, height_, depth_, 1);
 		break;
 	default:
 		std::cerr << "[Texture] Resize not supported for this texture target" << std::endl;
+		return;
 	}
 
 	if (hasMipmaps_) {
-		glGenerateMipmap(target);
+		rhi::Gpu().GenerateMipmaps(id_);
 	}
-
-	Unbind();
 }
 
 void Texture::Clear(const glm::vec4& color) {
 	if (!IsValid()) return;
 
-	// Create temporary buffer filled with color
-	size_t pixelCount = width_ * height_ * depth_;
+	// Temporary buffer filled with the colour (float RGBA upload).
+	const size_t pixelCount = static_cast<size_t>(width_) * height_ * depth_;
 	std::vector<glm::vec4> clearData(pixelCount, color);
-
-	BindToTarget();
-	GLenum target = static_cast<GLenum>(target_);
 
 	switch (target_) {
 	case TextureTarget::Texture2D:
-		glTexSubImage2D(target, 0, 0, 0, width_, height_, GL_RGBA, GL_FLOAT, clearData.data());
+		Upload2D(0, 0, 0, width_, height_, rhi::PixelFormat::RGBA, rhi::PixelType::Float, clearData.data());
 		break;
 	case TextureTarget::Texture3D:
-		glTexSubImage3D(target, 0, 0, 0, 0, width_, height_, depth_, GL_RGBA, GL_FLOAT, clearData.data());
+		Upload3D(0, 0, 0, 0, width_, height_, depth_, rhi::PixelFormat::RGBA, rhi::PixelType::Float, clearData.data());
 		break;
 	default:
 		std::cerr << "[Texture] Clear not implemented for this texture target" << std::endl;
 	}
-
-	Unbind();
 }
 
 void Texture::SetParametersForType(bool generateMipmaps) {
-	GLint wrapS = GL_REPEAT, wrapT = GL_REPEAT;
-	GLint minFilter = generateMipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
-	GLint magFilter = GL_LINEAR;
+	rhi::Wrap wrapS = rhi::Wrap::Repeat, wrapT = rhi::Wrap::Repeat;
+	rhi::Filter minFilter = generateMipmaps ? rhi::Filter::LinearMipLinear : rhi::Filter::Linear;
+	rhi::Filter magFilter = rhi::Filter::Linear;
 
 	switch (type_) {
 	case TextureType::Normal:
 	case TextureType::MetallicRoughness:
 	case TextureType::Occlusion:
-		minFilter = generateMipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
-		magFilter = GL_LINEAR;
+		minFilter = generateMipmaps ? rhi::Filter::LinearMipLinear : rhi::Filter::Linear;
+		magFilter = rhi::Filter::Linear;
 		break;
 	case TextureType::Depth:
 	case TextureType::Shadow:
-		wrapS = wrapT = GL_CLAMP_TO_EDGE;
-		minFilter = GL_NEAREST;
-		magFilter = GL_NEAREST;
+		wrapS = wrapT = rhi::Wrap::ClampToEdge;
+		minFilter = rhi::Filter::Nearest;
+		magFilter = rhi::Filter::Nearest;
 		break;
 	case TextureType::HDR:
 	case TextureType::Cubemap:
-		wrapS = wrapT = GL_CLAMP_TO_EDGE;
-		minFilter = generateMipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
+		wrapS = wrapT = rhi::Wrap::ClampToEdge;
+		minFilter = generateMipmaps ? rhi::Filter::LinearMipLinear : rhi::Filter::Linear;
 		break;
 	default:
 		// Diffuse, emissive, custom: use linear filtering
@@ -287,27 +268,20 @@ void Texture::SetParametersForType(bool generateMipmaps) {
 	SetParameters(wrapS, wrapT, minFilter, magFilter);
 }
 
-void Texture::BindToTarget() const {
-	glBindTexture(static_cast<GLenum>(target_), id_);
-}
-
 // ===== Builder Implementation =====
 
 Texture::Builder::Builder()
 	: target_(TextureTarget::Texture2D), width_(1), height_(1), depth_(1),
-	internalFormat_(GL_RGBA8), format_(GL_RGBA), dataType_(GL_UNSIGNED_BYTE),
-	data_(nullptr), minFilter_(GL_LINEAR), magFilter_(GL_LINEAR),
-	wrapS_(GL_REPEAT), wrapT_(GL_REPEAT), wrapR_(GL_REPEAT),
-	borderColor_(0.0f), compareMode_(GL_NONE), compareFunc_(GL_LEQUAL),
+	internalFormat_(rhi::Format::RGBA8), format_(rhi::PixelFormat::RGBA), dataType_(rhi::PixelType::UByte),
+	data_(nullptr), minFilter_(rhi::Filter::Linear), magFilter_(rhi::Filter::Linear),
+	wrapS_(rhi::Wrap::Repeat), wrapT_(rhi::Wrap::Repeat), wrapR_(rhi::Wrap::Repeat),
+	borderColor_(0.0f), compareEnabled_(false), compareOp_(rhi::CompareOp::LessEqual),
 	generateMipmaps_(false), type_(TextureType::Custom), samples_(0),
 	fixedSampleLocations_(true), hasBorderColor_(false), hasCompareMode_(false)
 {
 }
 
-Texture::Builder& Texture::Builder::Target(TextureTarget target) {
-	target_ = target;
-	return *this;
-}
+Texture::Builder& Texture::Builder::Target(TextureTarget target) { target_ = target; return *this; }
 
 Texture::Builder& Texture::Builder::Dimensions(int width, int height, int depth) {
 	width_ = width;
@@ -316,37 +290,31 @@ Texture::Builder& Texture::Builder::Dimensions(int width, int height, int depth)
 	return *this;
 }
 
-Texture::Builder& Texture::Builder::InternalFormat(GLenum format) {
+Texture::Builder& Texture::Builder::InternalFormat(rhi::Format format) {
 	internalFormat_ = format;
 	DeriveFormats();
 	return *this;
 }
 
-Texture::Builder& Texture::Builder::Format(GLenum format) {
-	format_ = format;
-	return *this;
-}
+Texture::Builder& Texture::Builder::Format(rhi::PixelFormat format) { format_ = format; return *this; }
+Texture::Builder& Texture::Builder::DataType(rhi::PixelType type) { dataType_ = type; return *this; }
+Texture::Builder& Texture::Builder::Data(const void* data) { data_ = data; return *this; }
 
-Texture::Builder& Texture::Builder::DataType(GLenum type) {
-	dataType_ = type;
-	return *this;
-}
-
-Texture::Builder& Texture::Builder::Data(const void* data) {
-	data_ = data;
-	return *this;
-}
-
-Texture::Builder& Texture::Builder::FilterMode(GLint min, GLint mag) {
+Texture::Builder& Texture::Builder::FilterMode(rhi::Filter min, rhi::Filter mag) {
 	minFilter_ = min;
 	magFilter_ = mag;
 	return *this;
 }
 
-Texture::Builder& Texture::Builder::WrapMode(GLint s, GLint t, GLint r) {
+Texture::Builder& Texture::Builder::WrapMode(rhi::Wrap all) {
+	wrapS_ = wrapT_ = wrapR_ = all;
+	return *this;
+}
+
+Texture::Builder& Texture::Builder::WrapMode(rhi::Wrap s, rhi::Wrap t, rhi::Wrap r) {
 	wrapS_ = s;
-	wrapT_ = (t == -1) ? s : t;
-	wrapR_ = (r == -1) ? s : r;
+	wrapT_ = t;
+	wrapR_ = r;
 	return *this;
 }
 
@@ -356,77 +324,50 @@ Texture::Builder& Texture::Builder::BorderColor(const glm::vec4& color) {
 	return *this;
 }
 
-Texture::Builder& Texture::Builder::CompareMode(GLenum mode, GLenum func) {
-	compareMode_ = mode;
-	compareFunc_ = func;
+Texture::Builder& Texture::Builder::CompareMode(bool enabled, rhi::CompareOp op) {
+	compareEnabled_ = enabled;
+	compareOp_ = op;
 	hasCompareMode_ = true;
 	return *this;
 }
 
-Texture::Builder& Texture::Builder::GenerateMipmaps(bool generate) {
-	generateMipmaps_ = generate;
-	return *this;
-}
-
-Texture::Builder& Texture::Builder::TextureType(enum TextureType type) {
-	type_ = type;
-	return *this;
-}
-
-Texture::Builder& Texture::Builder::Samples(int samples) {
-	samples_ = samples;
-	return *this;
-}
-
-Texture::Builder& Texture::Builder::FixedSampleLocations(bool fixed) {
-	fixedSampleLocations_ = fixed;
-	return *this;
-}
+Texture::Builder& Texture::Builder::GenerateMipmaps(bool generate) { generateMipmaps_ = generate; return *this; }
+Texture::Builder& Texture::Builder::TextureType(enum TextureType type) { type_ = type; return *this; }
+Texture::Builder& Texture::Builder::Samples(int samples) { samples_ = samples; return *this; }
+Texture::Builder& Texture::Builder::FixedSampleLocations(bool fixed) { fixedSampleLocations_ = fixed; return *this; }
 
 // Static builder helpers
-Texture::Builder Texture::Builder::Texture2D(int width, int height, GLenum internalFormat) {
-	return Builder()
-		.Target(TextureTarget::Texture2D)
-		.Dimensions(width, height)
-		.InternalFormat(internalFormat);
+Texture::Builder Texture::Builder::Texture2D(int width, int height, rhi::Format internalFormat) {
+	return Builder().Target(TextureTarget::Texture2D).Dimensions(width, height).InternalFormat(internalFormat);
 }
 
-Texture::Builder Texture::Builder::Texture3D(int width, int height, int depth, GLenum internalFormat) {
-	return Builder()
-		.Target(TextureTarget::Texture3D)
-		.Dimensions(width, height, depth)
-		.InternalFormat(internalFormat);
+Texture::Builder Texture::Builder::Texture3D(int width, int height, int depth, rhi::Format internalFormat) {
+	return Builder().Target(TextureTarget::Texture3D).Dimensions(width, height, depth).InternalFormat(internalFormat);
 }
 
-Texture::Builder Texture::Builder::TextureArray2D(int width, int height, int layers, GLenum internalFormat) {
-	return Builder()
-		.Target(TextureTarget::Texture2DArray)
-		.Dimensions(width, height, layers)
-		.InternalFormat(internalFormat);
+Texture::Builder Texture::Builder::TextureArray2D(int width, int height, int layers, rhi::Format internalFormat) {
+	return Builder().Target(TextureTarget::Texture2DArray).Dimensions(width, height, layers).InternalFormat(internalFormat);
 }
 
-Texture::Builder Texture::Builder::TextureCube(int size, GLenum internalFormat) {
-	return Builder()
-		.Target(TextureTarget::TextureCubeMap)
-		.Dimensions(size, size)
-		.InternalFormat(internalFormat)
-		.WrapMode(GL_CLAMP_TO_EDGE);
+Texture::Builder Texture::Builder::TextureCube(int size, rhi::Format internalFormat) {
+	return Builder().Target(TextureTarget::TextureCubeMap).Dimensions(size, size).InternalFormat(internalFormat)
+		.WrapMode(rhi::Wrap::ClampToEdge);
 }
 
 Texture::Builder Texture::Builder::DepthTexture(int width, int height, bool shadow) {
 	auto builder = Builder()
 		.Target(TextureTarget::Texture2D)
 		.Dimensions(width, height)
-		.InternalFormat(GL_DEPTH_COMPONENT24)
-		.Format(GL_DEPTH_COMPONENT)
-		.DataType(GL_FLOAT)
-		.FilterMode(GL_NEAREST, GL_NEAREST)
-		.WrapMode(GL_CLAMP_TO_BORDER)
+		.InternalFormat(rhi::Format::D24)
+		.Format(rhi::PixelFormat::Depth)
+		.DataType(rhi::PixelType::Float)
+		.FilterMode(rhi::Filter::Nearest, rhi::Filter::Nearest)
+		.WrapMode(rhi::Wrap::ClampToBorder)
 		.BorderColor(glm::vec4(1.0f))
 		.TextureType(TextureType::Depth);
 
 	if (shadow) {
-		builder.CompareMode(GL_COMPARE_REF_TO_TEXTURE, GL_LEQUAL);
+		builder.CompareMode(true, rhi::CompareOp::LessEqual);
 	}
 
 	return builder;
@@ -436,20 +377,16 @@ Texture::Builder Texture::Builder::HDRTexture(int width, int height) {
 	return Builder()
 		.Target(TextureTarget::Texture2D)
 		.Dimensions(width, height)
-		.InternalFormat(GL_RGBA16F)
-		.Format(GL_RGBA)
-		.DataType(GL_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+		.InternalFormat(rhi::Format::RGBA16F)
+		.Format(rhi::PixelFormat::RGBA)
+		.DataType(rhi::PixelType::Float)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.TextureType(TextureType::HDR);
 }
 
-Texture::Builder Texture::Builder::MultisampleTexture(int width, int height, int samples, GLenum internalFormat) {
-	return Builder()
-		.Target(TextureTarget::Texture2DMultisample)
-		.Dimensions(width, height)
-		.InternalFormat(internalFormat)
-		.Samples(samples);
+Texture::Builder Texture::Builder::MultisampleTexture(int width, int height, int samples, rhi::Format internalFormat) {
+	return Builder().Target(TextureTarget::Texture2DMultisample).Dimensions(width, height).InternalFormat(internalFormat).Samples(samples);
 }
 
 std::shared_ptr<Texture> Texture::Builder::Build() {
@@ -464,131 +401,70 @@ std::shared_ptr<Texture> Texture::Builder::Build() {
 	texture->type_ = type_;
 	texture->hasMipmaps_ = generateMipmaps_;
 
-	GLenum target = static_cast<GLenum>(target_);
-	glBindTexture(target, texture->id_);
+	rhi::Device& gpu = rhi::Gpu();
+	rhi::TextureDesc desc;
+	desc.type = ToRhi(target_);
+	desc.format = internalFormat_;
+	desc.width = width_;
+	desc.height = target_ == TextureTarget::Texture1D ? 1 : height_;
+	desc.depth = (target_ == TextureTarget::Texture3D || target_ == TextureTarget::Texture2DArray ||
+		target_ == TextureTarget::Texture2DMultisampleArray) ? depth_ : 1;
+	desc.mipLevels = 1;   // base level; GenerateMipmaps adds the chain
+	desc.samples = std::max(samples_, 1);
+	desc.fixedSampleLocations = fixedSampleLocations_;
+	texture->id_ = gpu.CreateTexture(desc);
+	if (!texture->id_) {
+		std::cerr << "[Texture::Builder] Texture creation failed" << std::endl;
+		return texture;
+	}
 
-	// Create texture storage based on target
-	switch (target_) {
-	case TextureTarget::Texture1D:
-		glTexImage1D(target, 0, internalFormat_, width_, 0, format_, dataType_, data_);
-		break;
-
-	case TextureTarget::Texture2D:
-		glTexImage2D(target, 0, internalFormat_, width_, height_, 0, format_, dataType_, data_);
-		break;
-
-	case TextureTarget::Texture3D:
-	case TextureTarget::Texture2DArray:
-		glTexImage3D(target, 0, internalFormat_, width_, height_, depth_, 0, format_, dataType_, data_);
-		break;
-
-	case TextureTarget::TextureCubeMap:
-		for (int i = 0; i < 6; ++i) {
-			glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, internalFormat_,
-				width_, height_, 0, format_, dataType_, nullptr);
-		}
-		break;
-
-	case TextureTarget::Texture2DMultisample:
-		glTexImage2DMultisample(target, samples_, internalFormat_, width_, height_, fixedSampleLocations_);
-		break;
-
-	case TextureTarget::Texture2DMultisampleArray:
-		glTexImage3DMultisample(target, samples_, internalFormat_, width_, height_, depth_, fixedSampleLocations_);
-		break;
-
-	default:
-		std::cerr << "[Texture::Builder] Unsupported texture target" << std::endl;
+	// Initial data (cube maps are created empty).
+	if (data_ && target_ != TextureTarget::TextureCubeMap && !IsMultisample(target_)) {
+		gpu.UpdateTexture(texture->id_, {}, format_, dataType_, data_);
 	}
 
 	// Set texture parameters (skip for multisample)
-	if (target_ != TextureTarget::Texture2DMultisample &&
-		target_ != TextureTarget::Texture2DMultisampleArray) {
-
-		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, minFilter_);
-		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, magFilter_);
-		glTexParameteri(target, GL_TEXTURE_WRAP_S, wrapS_);
-
-		if (target_ != TextureTarget::Texture1D) {
-			glTexParameteri(target, GL_TEXTURE_WRAP_T, wrapT_);
-		}
-
-		if (target_ == TextureTarget::Texture3D || target_ == TextureTarget::TextureCubeMap) {
-			glTexParameteri(target, GL_TEXTURE_WRAP_R, wrapR_);
-		}
+	if (!IsMultisample(target_)) {
+		gpu.SetTextureFilter(texture->id_, minFilter_, magFilter_);
+		const bool usesT = target_ != TextureTarget::Texture1D;
+		const bool usesR = target_ == TextureTarget::Texture3D || target_ == TextureTarget::TextureCubeMap;
+		texture->wrapR_ = usesR ? wrapR_ : rhi::Wrap::Repeat;
+		gpu.SetTextureWrap(texture->id_, wrapS_, usesT ? wrapT_ : rhi::Wrap::Repeat, texture->wrapR_);
 
 		if (hasBorderColor_) {
-			glTexParameterfv(target, GL_TEXTURE_BORDER_COLOR, glm::value_ptr(borderColor_));
+			gpu.SetTextureBorderColor(texture->id_, borderColor_);
 		}
 
 		if (hasCompareMode_) {
-			glTexParameteri(target, GL_TEXTURE_COMPARE_MODE, compareMode_);
-			glTexParameteri(target, GL_TEXTURE_COMPARE_FUNC, compareFunc_);
+			gpu.SetTextureCompare(texture->id_, compareEnabled_, compareOp_);
 		}
 
 		if (generateMipmaps_) {
-			glGenerateMipmap(target);
+			gpu.GenerateMipmaps(texture->id_);
 		}
 	}
-
-	glBindTexture(target, 0);
 
 	return texture;
 }
 
 void Texture::Builder::DeriveFormats() {
-	// Auto-derive format and data type from internal format
+	using F = rhi::Format;
+	using PF = rhi::PixelFormat;
+	using PT = rhi::PixelType;
+	// Auto-derive transfer format and data type from the internal format
 	switch (internalFormat_) {
-		// Depth formats
-	case GL_DEPTH_COMPONENT16:
-	case GL_DEPTH_COMPONENT24:
-	case GL_DEPTH_COMPONENT32F:
-		format_ = GL_DEPTH_COMPONENT;
-		dataType_ = GL_FLOAT;
-		break;
-
-	case GL_DEPTH24_STENCIL8:
-	case GL_DEPTH32F_STENCIL8:
-		format_ = GL_DEPTH_STENCIL;
-		dataType_ = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
-		break;
-
-		// Single channel
-	case GL_R8:
-	case GL_R16:
-	case GL_R16F:
-	case GL_R32F:
-		format_ = GL_RED;
-		dataType_ = (internalFormat_ == GL_R8) ? GL_UNSIGNED_BYTE : GL_FLOAT;
-		break;
-
-		// Two channel
-	case GL_RG8:
-	case GL_RG16:
-	case GL_RG16F:
-	case GL_RG32F:
-		format_ = GL_RG;
-		dataType_ = (internalFormat_ == GL_RG8) ? GL_UNSIGNED_BYTE : GL_FLOAT;
-		break;
-
-		// RGB
-	case GL_RGB8:
-	case GL_RGB16F:
-	case GL_RGB32F:
-	case GL_SRGB8:
-		format_ = GL_RGB;
-		dataType_ = (internalFormat_ == GL_RGB8 || internalFormat_ == GL_SRGB8) ? GL_UNSIGNED_BYTE : GL_FLOAT;
-		break;
-
-		// RGBA
-	case GL_RGBA8:
-	case GL_RGBA16F:
-	case GL_RGBA32F:
-	case GL_SRGB8_ALPHA8:
-		format_ = GL_RGBA;
-		dataType_ = (internalFormat_ == GL_RGBA8 || internalFormat_ == GL_SRGB8_ALPHA8) ? GL_UNSIGNED_BYTE : GL_FLOAT;
-		break;
-
+	case F::D16: case F::D24: case F::D32F:
+		format_ = PF::Depth; dataType_ = PT::Float; break;
+	case F::D24S8: case F::D32FS8:
+		format_ = PF::DepthStencil; dataType_ = PT::Float32_UInt24_8; break;
+	case F::R8: case F::R16: case F::R16F: case F::R32F:
+		format_ = PF::R; dataType_ = internalFormat_ == F::R8 ? PT::UByte : PT::Float; break;
+	case F::RG8: case F::RG16: case F::RG16F: case F::RG32F:
+		format_ = PF::RG; dataType_ = internalFormat_ == F::RG8 ? PT::UByte : PT::Float; break;
+	case F::RGB8: case F::RGB16F: case F::RGB32F: case F::SRGB8:
+		format_ = PF::RGB; dataType_ = (internalFormat_ == F::RGB8 || internalFormat_ == F::SRGB8) ? PT::UByte : PT::Float; break;
+	case F::RGBA8: case F::RGBA16F: case F::RGBA32F: case F::SRGB8_A8:
+		format_ = PF::RGBA; dataType_ = (internalFormat_ == F::RGBA8 || internalFormat_ == F::SRGB8_A8) ? PT::UByte : PT::Float; break;
 	default:
 		// Keep current format/type
 		break;
@@ -602,32 +478,20 @@ namespace TextureFactory {
 		return std::make_shared<Texture>(path, TextureType::Custom, mipmaps, srgb);
 	}
 
-	TexturePtr Create2D(int width, int height, GLenum internalFormat, GLenum format, GLenum type) {
-		return Texture::Builder::Texture2D(width, height, internalFormat)
-			.Format(format)
-			.DataType(type)
-			.Build();
+	TexturePtr Create2D(int width, int height, rhi::Format internalFormat, rhi::PixelFormat format, rhi::PixelType type) {
+		return Texture::Builder::Texture2D(width, height, internalFormat).Format(format).DataType(type).Build();
 	}
 
-	TexturePtr Create3D(int width, int height, int depth, GLenum internalFormat, GLenum format, GLenum type) {
-		return Texture::Builder::Texture3D(width, height, depth, internalFormat)
-			.Format(format)
-			.DataType(type)
-			.Build();
+	TexturePtr Create3D(int width, int height, int depth, rhi::Format internalFormat, rhi::PixelFormat format, rhi::PixelType type) {
+		return Texture::Builder::Texture3D(width, height, depth, internalFormat).Format(format).DataType(type).Build();
 	}
 
-	TexturePtr CreateArray2D(int width, int height, int layers, GLenum internalFormat, GLenum format, GLenum type) {
-		return Texture::Builder::TextureArray2D(width, height, layers, internalFormat)
-			.Format(format)
-			.DataType(type)
-			.Build();
+	TexturePtr CreateArray2D(int width, int height, int layers, rhi::Format internalFormat, rhi::PixelFormat format, rhi::PixelType type) {
+		return Texture::Builder::TextureArray2D(width, height, layers, internalFormat).Format(format).DataType(type).Build();
 	}
 
-	TexturePtr CreateCubemap(int size, GLenum internalFormat, GLenum format, GLenum type) {
-		return Texture::Builder::TextureCube(size, internalFormat)
-			.Format(format)
-			.DataType(type)
-			.Build();
+	TexturePtr CreateCubemap(int size, rhi::Format internalFormat, rhi::PixelFormat format, rhi::PixelType type) {
+		return Texture::Builder::TextureCube(size, internalFormat).Format(format).DataType(type).Build();
 	}
 
 	TexturePtr CreateDepth(int width, int height, bool shadow) {
@@ -638,22 +502,24 @@ namespace TextureFactory {
 		return Texture::Builder::HDRTexture(width, height).Build();
 	}
 
-	TexturePtr CreateMultisample(int width, int height, int samples, GLenum internalFormat) {
+	TexturePtr CreateMultisample(int width, int height, int samples, rhi::Format internalFormat) {
 		return Texture::Builder::MultisampleTexture(width, height, samples, internalFormat).Build();
 	}
 
-	TexturePtr CreateSolidColor(const glm::vec4& color, GLenum internalFormat) {
-		// Convert color to appropriate format
+	TexturePtr CreateSolidColor(const glm::vec4& color, rhi::Format internalFormat) {
+		// 8-bit RGBA source data (the same bytes for RGB8 targets: only RGB is read).
 		std::array<uint8_t, 4> pixelData = {
-		 static_cast<uint8_t>(color.r * 255.0f),
+			static_cast<uint8_t>(color.r * 255.0f),
 			static_cast<uint8_t>(color.g * 255.0f),
-	   static_cast<uint8_t>(color.b * 255.0f),
+			static_cast<uint8_t>(color.b * 255.0f),
 			static_cast<uint8_t>(color.a * 255.0f)
 		};
 
 		return Texture::Builder::Texture2D(1, 1, internalFormat)
+			.Format(rhi::PixelFormat::RGBA)
+			.DataType(rhi::PixelType::UByte)
 			.Data(pixelData.data())
-			.FilterMode(GL_NEAREST, GL_NEAREST)
+			.FilterMode(rhi::Filter::Nearest, rhi::Filter::Nearest)
 			.Build();
 	}
 }

@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <memory>
 
 class ComputeShader;
@@ -36,16 +36,16 @@ public:
 private:
 	void CreateTextures(int width, int height);
 	void DestroyTextures();
-	void SetCommonUniforms(GLuint program, const RenderContext& ctx);
+	void SetCommonUniforms(rhi::ProgramHandle program, const RenderContext& ctx);
 
 	std::unique_ptr<ComputeShader> m_traceShader;
 	std::unique_ptr<ComputeShader> m_resolveShader;
 	std::unique_ptr<ComputeShader> m_temporalShader;
-	GLuint m_traceTex = 0;      // half res RGBA32F
-	GLuint m_resolveTex = 0;    // full res RGBA16F
-	GLuint m_hitDistTex = 0;    // full res R16F
-	GLuint m_historyTex[2] = { 0, 0 };
-	GLuint m_prevColorTex = 0;  // full res RGB16F, mipmapped
+	rhi::TextureHandle m_traceTex;      // half res RGBA32F
+	rhi::TextureHandle m_resolveTex;    // full res RGBA16F
+	rhi::TextureHandle m_hitDistTex;    // full res R16F
+	rhi::TextureHandle m_historyTex[2];
+	rhi::TextureHandle m_prevColorTex;  // full res RGB16F, mipmapped
 	int m_prevColorMips = 1;
 	int m_width = 0, m_height = 0;
 	int m_historyIndex = 0;

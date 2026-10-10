@@ -12,8 +12,8 @@ ShadowPass::ShadowPass() {}
 
 ShadowPass::~ShadowPass() {
     if (m_shadowShader) {
-        glDeleteProgram(m_shadowShader);
-        m_shadowShader = 0;
+        rhi::Gpu().DestroyProgram(m_shadowShader);
+        m_shadowShader = {};
     }
 }
 
@@ -58,14 +58,14 @@ void ShadowPass::Execute(RenderContext& ctx,
     shadowConfig.stableTexelSnapping = true;
 
     // Ensure shadow shader is set on LightManager
-    if (m_shadowShader > 0 && lightManager->GetShadowShader() == 0) {
+    if (m_shadowShader.IsValid() && !lightManager->GetShadowShader().IsValid()) {
         lightManager->SetShadowShader(m_shadowShader);
         std::cout << "[ShadowPass] Set shadow shader on LightManager.\n";
     }
 
     // Validate shadow array exists
-    GLuint shadowArray = lightManager->GetShadowArrayTexture();
-    if (shadowArray == 0) {
+    rhi::TextureHandle shadowArray = lightManager->GetShadowArrayTexture();
+    if (!shadowArray.IsValid()) {
         std::cerr << "[ShadowPass] Shadow array not initialized - reinitializing...\n";
         lightManager->InitializeShadowSystem(12, shadowConfig.baseResolution);
     }

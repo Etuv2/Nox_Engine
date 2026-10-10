@@ -14,13 +14,13 @@
 RTPass::~RTPass()
 {
 	if (m_rtFBO_ID) {
-		glDeleteFramebuffers(1, &m_rtFBO_ID);
+		rhi::Gpu().DestroyFramebuffer(m_rtFBO_ID);
 	}
 	if (m_svgfBuffers.momentsSSBO) {
-		glDeleteBuffers(1, &m_svgfBuffers.momentsSSBO);
+		rhi::Gpu().DestroyBuffer(m_svgfBuffers.momentsSSBO);
 	}
 	if (m_svgfBuffers.historyLengthSSBO) {
-		glDeleteBuffers(1, &m_svgfBuffers.historyLengthSSBO);
+		rhi::Gpu().DestroyBuffer(m_svgfBuffers.historyLengthSSBO);
 	}
 }
 
@@ -55,82 +55,86 @@ bool RTPass::Initialize(RenderContext& context)
 	}
 
 	// Allocate render target texture
-	m_rtTexture = Texture::Builder::Texture2D(context.width, context.height, GL_RGBA16F)
-		.Format(GL_RGBA).DataType(GL_HALF_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+	m_rtTexture = Texture::Builder::Texture2D(context.width, context.height, rhi::Format::RGBA16F)
+		.Format(rhi::PixelFormat::RGBA).DataType(rhi::PixelType::HalfFloat)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
 
 	// Allocate accumulation texture
-	m_accumulationTexture = Texture::Builder::Texture2D(context.width, context.height, GL_RGBA32F)
-		.Format(GL_RGBA).DataType(GL_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+	m_accumulationTexture = Texture::Builder::Texture2D(context.width, context.height, rhi::Format::RGBA32F)
+		.Format(rhi::PixelFormat::RGBA).DataType(rhi::PixelType::Float)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
 
 	// Allocate variance texture
-	m_varianceTexture = Texture::Builder::Texture2D(context.width, context.height, GL_RG16F)
-		.Format(GL_RG).DataType(GL_HALF_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+	m_varianceTexture = Texture::Builder::Texture2D(context.width, context.height, rhi::Format::RG16F)
+		.Format(rhi::PixelFormat::RG).DataType(rhi::PixelType::HalfFloat)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
 
 	// SVGF denoising textures
-	m_prevRadianceTexture = Texture::Builder::Texture2D(context.width, context.height, GL_RGBA16F)
-		.Format(GL_RGBA).DataType(GL_HALF_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+	m_prevRadianceTexture = Texture::Builder::Texture2D(context.width, context.height, rhi::Format::RGBA16F)
+		.Format(rhi::PixelFormat::RGBA).DataType(rhi::PixelType::HalfFloat)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
 
-	m_momentsTexture = Texture::Builder::Texture2D(context.width, context.height, GL_RG32F)
-		.Format(GL_RG).DataType(GL_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+	m_momentsTexture = Texture::Builder::Texture2D(context.width, context.height, rhi::Format::RG32F)
+		.Format(rhi::PixelFormat::RG).DataType(rhi::PixelType::Float)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
 
-	m_historyLengthTexture = Texture::Builder::Texture2D(context.width, context.height, GL_R16F)
-		.Format(GL_RED).DataType(GL_HALF_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+	m_historyLengthTexture = Texture::Builder::Texture2D(context.width, context.height, rhi::Format::R16F)
+		.Format(rhi::PixelFormat::R).DataType(rhi::PixelType::HalfFloat)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
 
-	m_denoisedTexture = Texture::Builder::Texture2D(context.width, context.height, GL_RGBA16F)
-		.Format(GL_RGBA).DataType(GL_HALF_FLOAT)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+	m_denoisedTexture = Texture::Builder::Texture2D(context.width, context.height, rhi::Format::RGBA16F)
+		.Format(rhi::PixelFormat::RGBA).DataType(rhi::PixelType::HalfFloat)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
+
+	rhi::Device& gpu = rhi::Gpu();
 
 	// Create framebuffer to hold ray traced output (for blitting to HDR)
 	// We'll manually attach our compute shader output texture
-	glGenFramebuffers(1, &m_rtFBO_ID);
-	glBindFramebuffer(GL_FRAMEBUFFER, m_rtFBO_ID);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_rtTexture->ID(), 0);
+	rhi::FramebufferDesc rtFramebufferDesc;
+	rtFramebufferDesc.colors.push_back(rhi::Attachment{ m_rtTexture->ID() });
+	m_rtFBO_ID = gpu.CreateFramebuffer(rtFramebufferDesc);
+	gpu.BindFramebuffer(m_rtFBO_ID);
 
 	// Check framebuffer completeness
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+	if (!gpu.IsFramebufferComplete(m_rtFBO_ID)) {
 		std::cerr << "[RTPass] RT Framebuffer is not complete!" << std::endl;
 		return false;
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+	gpu.BindFramebuffer(PresentTarget::Get());
 
 	// Initialize SVGF buffers
-	glGenBuffers(1, &m_svgfBuffers.momentsSSBO);
-	glGenBuffers(1, &m_svgfBuffers.historyLengthSSBO);
-	
 	size_t pixelCount = context.width * context.height;
 	m_svgfBuffers.pixelCount = pixelCount;
 
 	// Allocate SVGF buffers (zero-initialized)
 	std::vector<char> emptyData(pixelCount * 8, 0); // 8 bytes per pixel for RG32F moments
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_svgfBuffers.momentsSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, emptyData.size(), emptyData.data(), GL_DYNAMIC_COPY);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	rhi::BufferDesc momentsDesc;
+	momentsDesc.size = emptyData.size();
+	momentsDesc.initialData = emptyData.data();
+	momentsDesc.usage = rhi::BufferUsage::DynamicCopy;
+	m_svgfBuffers.momentsSSBO = gpu.CreateBuffer(momentsDesc);
 
 	std::vector<char> emptyHistoryData(pixelCount * 2, 0); // 2 bytes per pixel for R16F
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_svgfBuffers.historyLengthSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, emptyHistoryData.size(), emptyHistoryData.data(), GL_DYNAMIC_COPY);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	rhi::BufferDesc historyDesc;
+	historyDesc.size = emptyHistoryData.size();
+	historyDesc.initialData = emptyHistoryData.data();
+	historyDesc.usage = rhi::BufferUsage::DynamicCopy;
+	m_svgfBuffers.historyLengthSSBO = gpu.CreateBuffer(historyDesc);
 
 
 	// Removed ReSTIR reservoir buffers
@@ -165,24 +169,22 @@ void RTPass::Resize(RenderContext& context, int newWidth, int newHeight)
 	m_historyLengthTexture->Resize(newWidth, newHeight);
 	m_denoisedTexture->Resize(newWidth, newHeight);
 
+	rhi::Device& gpu = rhi::Gpu();
+
 	// Reattach resized texture to FBO
-	glBindFramebuffer(GL_FRAMEBUFFER, m_rtFBO_ID);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_rtTexture->ID(), 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+	gpu.BindFramebuffer(m_rtFBO_ID);
+	gpu.SetAttachment(m_rtFBO_ID, rhi::AttachmentPoint::Color0, rhi::Attachment{ m_rtTexture->ID() });
+	gpu.BindFramebuffer(PresentTarget::Get());
 
 	// Resize SVGF buffers
 	size_t pixelCount = newWidth * newHeight;
 	m_svgfBuffers.pixelCount = pixelCount;
-	
+
 	std::vector<char> emptyData(pixelCount * 8, 0);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_svgfBuffers.momentsSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, emptyData.size(), emptyData.data(), GL_DYNAMIC_COPY);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	gpu.ReallocateBuffer(m_svgfBuffers.momentsSSBO, emptyData.size(), emptyData.data(), rhi::BufferUsage::DynamicCopy);
 
 	std::vector<char> emptyHistoryData(pixelCount * 2, 0);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_svgfBuffers.historyLengthSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, emptyHistoryData.size(), emptyHistoryData.data(), GL_DYNAMIC_COPY);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	gpu.ReallocateBuffer(m_svgfBuffers.historyLengthSSBO, emptyHistoryData.size(), emptyHistoryData.data(), rhi::BufferUsage::DynamicCopy);
 
 	// Reset accumulation on resize
 	resetAccumulation();
@@ -201,7 +203,7 @@ void RTPass::Execute(RenderContext& ctx,
 
 	// Detect BVH debug mode toggle and reset accumulation
 	if (m_prevBVHDebugState != ctx.rtDisplayBVH) {
-		std::cout << "[RTPass] BVH debug mode " << (ctx.rtDisplayBVH ? "ENABLED" : "DISABLED") 
+		std::cout << "[RTPass] BVH debug mode " << (ctx.rtDisplayBVH ? "ENABLED" : "DISABLED")
 		          << " - resetting accumulation" << std::endl;
 		resetAccumulation();
 		m_prevBVHDebugState = ctx.rtDisplayBVH;
@@ -248,7 +250,7 @@ void RTPass::Execute(RenderContext& ctx,
 	if (ctx.rtDenoise) {
 		runSVGFTemporal(ctx, camera);
 		runSVGFVariance(ctx);
-		
+
 		// Run multiple à-trous iterations for progressive filtering
 		for (int i = 0; i < ctx.svgfAtrousIterations; i++) {
 			runSVGFAtrous(ctx, i);
@@ -272,25 +274,26 @@ void RTPass::runRayTracing(RenderContext& ctx,
 		return;
 	}
 
+	rhi::Device& gpu = rhi::Gpu();
+
 	// Upload light data from LightManager
 	ctx.rtSceneResources->UpdateLights(ctx.lightManager);
 	m_lightBuffers.lightCount = ctx.rtSceneResources->GetLightCount();
 	m_lightBuffers.lightSSBO = ctx.rtSceneResources->GetLightSSBO();
 	// Activate compute shader
-	glUseProgram(m_rtShader->GetProgramID());
+	gpu.UseProgram(m_rtShader->GetProgramID());
 
 	// Bind BVH buffers
 	ctx.rtSceneResources->BindForTracing(0u, 1u);
 
 	// Bind light buffer (from LightManager)
-	if (m_lightBuffers.lightSSBO != 0) {
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, m_lightBuffers.lightSSBO);
+	if (m_lightBuffers.lightSSBO) {
+		gpu.BindStorageBuffer(2, m_lightBuffers.lightSSBO);
 		std::cout << "[RTPass] Bound light SSBO to binding point 2" << std::endl;
 
 		// Verify binding
-		GLint boundBuffer = 0;
-		glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, 2, &boundBuffer);
-		std::cout << "[RTPass] Verified bound buffer at point 2: " << boundBuffer << std::endl;
+		// RHI-TODO: the GL build read back the indexed SSBO binding (glGetIntegeri_v) for a debug log line;
+		// rhi::Device has no query for indexed storage bindings, so the readback is not ported.
 	}
 	else {
 		std::cout << "[RTPass] WARNING: Light SSBO is 0, not binding!" << std::endl;
@@ -299,40 +302,32 @@ void RTPass::runRayTracing(RenderContext& ctx,
 	// Bind G-buffer textures for input (CORRECTED LAYOUT)
 	if (ctx.gbufferFBO) {
 		// RT0: Oct normal (RG) + Roughness (B) + Metallic (A)
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+		gpu.BindTexture(0, ctx.gbufferFBO->GetColorAttachment(0));
 
 		// RT1: Albedo (RGB) + Occlusion (A)
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(1));
+		gpu.BindTexture(1, ctx.gbufferFBO->GetColorAttachment(1));
 
 		// RT2: Specular F0 (RGB) + Emissive strength (A)
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(2));
+		gpu.BindTexture(2, ctx.gbufferFBO->GetColorAttachment(2));
 
 		// Depth buffer (for position reconstruction)
-		glActiveTexture(GL_TEXTURE3);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+		gpu.BindTexture(3, ctx.gbufferFBO->GetDepthTexture());
 
 		// RT3: Material ID (R32UI)
-		glActiveTexture(GL_TEXTURE8);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(3));
+		gpu.BindTexture(8, ctx.gbufferFBO->GetColorAttachment(3));
 
 		// RT4: Emissive color (RGB)
-		glActiveTexture(GL_TEXTURE9);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(4));
+		gpu.BindTexture(9, ctx.gbufferFBO->GetColorAttachment(4));
 
 		// RT6: Clearcoat factor + roughness
-		glActiveTexture(GL_TEXTURE10);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(6));
+		gpu.BindTexture(10, ctx.gbufferFBO->GetColorAttachment(6));
 
 		// RT7: Principled extras (transmission, IOR, reserved)
-		glActiveTexture(GL_TEXTURE11);
-		glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(7));
+		gpu.BindTexture(11, ctx.gbufferFBO->GetColorAttachment(7));
 	}
 
 	// Bind output texture
-	m_rtShader->BindTextureWrite(m_rtTexture->ID(), 5, 0, GL_RGBA16F);
+	m_rtShader->BindTextureWrite(m_rtTexture->ID(), 5, 0, rhi::Format::RGBA16F);
 
 	// Set uniforms
 	m_rtShader->SetUniform("u_frameIndex", m_frameIndex);
@@ -361,14 +356,9 @@ void RTPass::runRayTracing(RenderContext& ctx,
 
 	// Bind IBL cubemaps if available
 	if (ctx.rtEnableIBL && skybox && skybox->IsReady()) {
-		glActiveTexture(GL_TEXTURE4);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->GetEnvironmentMap());
-
-		glActiveTexture(GL_TEXTURE6);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->GetIrradianceMap());
-
-		glActiveTexture(GL_TEXTURE7);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->GetPrefilteredMap());
+		gpu.BindTexture(4, skybox->GetEnvironmentMap());
+		gpu.BindTexture(6, skybox->GetIrradianceMap());
+		gpu.BindTexture(7, skybox->GetPrefilteredMap());
 
 		std::cout << "[RTPass] IBL textures bound: Environment=" << skybox->GetEnvironmentMap()
 			<< " Irradiance=" << skybox->GetIrradianceMap()
@@ -401,10 +391,10 @@ void RTPass::runRayTracing(RenderContext& ctx,
 	m_rtShader->Dispatch(groupsX, groupsY, 1);
 
 	// Memory barrier
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+	gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierStorage);
 
 	// Cleanup
-	glUseProgram(0);
+	gpu.UseProgram(rhi::ProgramHandle{});
 }
 
 void RTPass::accumulateFrame(RenderContext& ctx)
@@ -421,29 +411,23 @@ void RTPass::runSVGFTemporal(RenderContext& ctx, const std::shared_ptr<Camera>& 
 {
 	if (!m_svgfTemporalShader) return;
 
-	glUseProgram(m_svgfTemporalShader->GetProgramID());
+	rhi::Device& gpu = rhi::Gpu();
+
+	gpu.UseProgram(m_svgfTemporalShader->GetProgramID());
 
 	// Bind input textures
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, m_rtTexture->ID());
-
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, m_prevRadianceTexture->ID());
-
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+	gpu.BindTexture(0, m_rtTexture->ID());
+	gpu.BindTexture(1, m_prevRadianceTexture->ID());
+	gpu.BindTexture(2, ctx.gbufferFBO->GetDepthTexture());
+	gpu.BindTexture(3, ctx.gbufferFBO->GetColorAttachment(0));
 
 	// Previous frame depth (use current for now, will be improved with proper history)
-	glActiveTexture(GL_TEXTURE4);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+	gpu.BindTexture(4, ctx.gbufferFBO->GetDepthTexture());
 
 	// Bind output images
-	m_svgfTemporalShader->BindTextureWrite(m_denoisedTexture->ID(), 5, 0, GL_RGBA16F);
-	m_svgfTemporalShader->BindTextureWrite(m_momentsTexture->ID(), 6, 0, GL_RG32F);
-	m_svgfTemporalShader->BindTextureWrite(m_historyLengthTexture->ID(), 7, 0, GL_R16F);
+	m_svgfTemporalShader->BindTextureWrite(m_denoisedTexture->ID(), 5, 0, rhi::Format::RGBA16F);
+	m_svgfTemporalShader->BindTextureWrite(m_momentsTexture->ID(), 6, 0, rhi::Format::RG32F);
+	m_svgfTemporalShader->BindTextureWrite(m_historyLengthTexture->ID(), 7, 0, rhi::Format::R16F);
 
 	// Set uniforms
 	m_svgfTemporalShader->SetUniform("u_resolution", glm::vec2(m_w, m_h));
@@ -463,14 +447,13 @@ void RTPass::runSVGFTemporal(RenderContext& ctx, const std::shared_ptr<Camera>& 
 	int groupsY = (m_h + 7) / 8;
 	m_svgfTemporalShader->Dispatch(groupsX, groupsY, 1);
 
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	glUseProgram(0);
+	gpu.PipelineBarrier(rhi::BarrierImageAccess);
+	gpu.UseProgram(rhi::ProgramHandle{});
 
 	// Copy current radiance to prev radiance for next frame
-	glCopyImageSubData(
-		m_rtTexture->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-		m_prevRadianceTexture->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-		m_w, m_h, 1
+	gpu.CopyTexture(
+		m_rtTexture->ID(), rhi::TextureRegion{ 0, glm::ivec3(0), glm::ivec3(m_w, m_h, 1) },
+		m_prevRadianceTexture->ID(), 0, glm::ivec3(0)
 	);
 }
 
@@ -478,17 +461,16 @@ void RTPass::runSVGFVariance(RenderContext& ctx)
 {
 	if (!m_svgfVarianceShader) return;
 
-	glUseProgram(m_svgfVarianceShader->GetProgramID());
+	rhi::Device& gpu = rhi::Gpu();
+
+	gpu.UseProgram(m_svgfVarianceShader->GetProgramID());
 
 	// Bind input textures
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, m_momentsTexture->ID());
-
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, m_historyLengthTexture->ID());
+	gpu.BindTexture(0, m_momentsTexture->ID());
+	gpu.BindTexture(1, m_historyLengthTexture->ID());
 
 	// Bind output image (reuse variance texture)
-	m_svgfVarianceShader->BindTextureWrite(m_varianceTexture->ID(), 2, 0, GL_R16F);
+	m_svgfVarianceShader->BindTextureWrite(m_varianceTexture->ID(), 2, 0, rhi::Format::R16F);
 
 	// Set uniforms
 	m_svgfVarianceShader->SetUniform("u_resolution", glm::vec2(m_w, m_h));
@@ -498,35 +480,30 @@ void RTPass::runSVGFVariance(RenderContext& ctx)
 	int groupsY = (m_h + 7) / 8;
 	m_svgfVarianceShader->Dispatch(groupsX, groupsY, 1);
 
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	glUseProgram(0);
+	gpu.PipelineBarrier(rhi::BarrierImageAccess);
+	gpu.UseProgram(rhi::ProgramHandle{});
 }
 
 void RTPass::runSVGFAtrous(RenderContext& ctx, int iteration)
 {
 	if (!m_svgfAtrousShader) return;
 
-	glUseProgram(m_svgfAtrousShader->GetProgramID());
+	rhi::Device& gpu = rhi::Gpu();
+
+	gpu.UseProgram(m_svgfAtrousShader->GetProgramID());
 
 	// Ping-pong between denoised texture and rt texture
-	GLuint inputTex = (iteration == 0) ? m_denoisedTexture->ID() : m_rtTexture->ID();
-	GLuint outputTex = m_rtTexture->ID();
+	rhi::TextureHandle inputTex = (iteration == 0) ? m_denoisedTexture->ID() : m_rtTexture->ID();
+	rhi::TextureHandle outputTex = m_rtTexture->ID();
 
 	// Bind input textures
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, inputTex);
-
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, m_varianceTexture->ID());
-
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
+	gpu.BindTexture(0, inputTex);
+	gpu.BindTexture(1, m_varianceTexture->ID());
+	gpu.BindTexture(2, ctx.gbufferFBO->GetDepthTexture());
+	gpu.BindTexture(3, ctx.gbufferFBO->GetColorAttachment(0));
 
 	// Bind output image
-	m_svgfAtrousShader->BindTextureWrite(outputTex, 4, 0, GL_RGBA16F);
+	m_svgfAtrousShader->BindTextureWrite(outputTex, 4, 0, rhi::Format::RGBA16F);
 
 	// Set uniforms
 	m_svgfAtrousShader->SetUniform("u_resolution", glm::vec2(m_w, m_h));
@@ -540,18 +517,17 @@ void RTPass::runSVGFAtrous(RenderContext& ctx, int iteration)
 	int groupsY = (m_h + 7) / 8;
 	m_svgfAtrousShader->Dispatch(groupsX, groupsY, 1);
 
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	gpu.PipelineBarrier(rhi::BarrierImageAccess);
 
 	// Copy output back to denoised texture for next iteration
 	if (iteration < ctx.svgfAtrousIterations - 1) {
-		glCopyImageSubData(
-			m_rtTexture->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-			m_denoisedTexture->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-			m_w, m_h, 1
+		gpu.CopyTexture(
+			m_rtTexture->ID(), rhi::TextureRegion{ 0, glm::ivec3(0), glm::ivec3(m_w, m_h, 1) },
+			m_denoisedTexture->ID(), 0, glm::ivec3(0)
 		);
 	}
 
-	glUseProgram(0);
+	gpu.UseProgram(rhi::ProgramHandle{});
 }
 
 void RTPass::resetAccumulation()
@@ -567,32 +543,32 @@ void RTPass::copyToHDRBuffer(RenderContext& ctx)
 		return;
 	}
 
+	rhi::Device& gpu = rhi::Gpu();
+
 	// Disable depth test and blending for blit
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
+	gpu.SetDepthTest(false);
+	gpu.SetBlendEnabled(false);
 
 	// Bind RT FBO to read framebuffer
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, m_rtFBO_ID);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx.hdrFBO->GetFBO());
+	gpu.BindReadFramebuffer(m_rtFBO_ID);
+	gpu.BindDrawFramebuffer(ctx.hdrFBO->GetFBO());
 
 	// Blit from RT output to HDR buffer
-	glBlitFramebuffer(
-		0, 0, m_w, m_h,    // src rect
-		0, 0, ctx.width, ctx.height,       // dst rect
-		GL_COLOR_BUFFER_BIT,
-		GL_LINEAR
+	gpu.BlitFramebuffer(
+		m_rtFBO_ID, 0, rhi::Rect{ 0, 0, m_w, m_h },    // src rect
+		ctx.hdrFBO->GetFBO(), rhi::Rect{ 0, 0, ctx.width, ctx.height },       // dst rect
+		rhi::ClearColor,
+		rhi::BlitFilter::Linear
 	);
 
 	// Unbind framebuffers
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, PresentTarget::Get());
+	gpu.BindReadFramebuffer(rhi::kBackBuffer);
+	gpu.BindDrawFramebuffer(PresentTarget::Get());
 
 	std::cout << "[RTPass] Copied ray traced output to HDR buffer" << std::endl;
 }
 
-GLuint RTPass::GetOutputTexture() const
+rhi::TextureHandle RTPass::GetOutputTexture() const
 {
-	return m_rtTexture ? m_rtTexture->ID() : 0;
+	return m_rtTexture ? m_rtTexture->ID() : rhi::TextureHandle{};
 }
-
-

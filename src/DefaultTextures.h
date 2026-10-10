@@ -1,6 +1,5 @@
 #pragma once
 
-#include <GL/glew.h>
 #include "Texture.h"
 #include <memory>
 
@@ -12,13 +11,13 @@ namespace DefaultTextures {
 // Ensure default textures are created (lazy initialization)
     void EnsureCreated();
     
-    // REFACTORED: Return raw GLuint for backward compatibility
-    // but internally use TexturePtr for resource management
-    GLuint White();
-    GLuint Black();
-    GLuint Normal();
-    GLuint AOWhite();
-    GLuint MetallicRoughnessDefault();
+    // Texture handles for direct binding
+    // (the textures are owned by TexturePtrs below)
+    rhi::TextureHandle White();
+    rhi::TextureHandle Black();
+    rhi::TextureHandle Normal();
+    rhi::TextureHandle AOWhite();
+    rhi::TextureHandle MetallicRoughnessDefault();
     
     //Access underlying TexturePtr
     TexturePtr GetWhiteTexture();

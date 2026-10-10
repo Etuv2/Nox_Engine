@@ -2,12 +2,12 @@
 
 #include "SceneNode.h"
 #include "GuiAnimation.h"
-#include "GLBuffer.h"
+#include "GpuBuffer.h"
+#include "rhi/RHI.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <SDL/SDL_ttf.h>
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 
 class GuiNode : public SceneNode {
@@ -46,7 +46,7 @@ public:
         std::string content;
         float x, y, width, height;
         SDL_Color color;
-        GLuint textureID = 0;
+        rhi::TextureHandle textureID;
         
         // Rectangle-specific properties
         GradientStyle gradient;
@@ -140,7 +140,7 @@ private:
     void RenderRect(const GuiElement& e) const; // Unified rectangle rendering
     void RenderProgressBar(const GuiElement& e) const; // Progress bar rendering
     
-    void drawQuad(GLuint tex, float x, float y, float w, float h, const glm::vec4& tint) const;
+    void drawQuad(rhi::TextureHandle tex, float x, float y, float w, float h, const glm::vec4& tint) const;
     void drawRect(float x, float y, float w, float h, const GuiElement& element) const; // Unified rect drawing
     
     // Helper methods
@@ -153,34 +153,34 @@ private:
     void CacheUniformLocations();
 
     TTF_Font* m_font;
-    GLuint m_quadVAO;
-    GLBufferPtr m_quadVBO;  // Using GLBuffer instead of raw GLuint
-    GLuint m_textureShader;     // For text and images
-    GLuint m_unifiedRectShader; // Unified shader for all rectangle types
+    rhi::VertexInputHandle m_quadVAO;
+    GpuBufferPtr m_quadVBO;  // Using GpuBuffer instead of a raw buffer handle
+    rhi::ProgramHandle m_textureShader;     // For text and images
+    rhi::ProgramHandle m_unifiedRectShader; // Unified shader for all rectangle types
     int m_screenW, m_screenH;
     std::vector<GuiElement> m_elements;
     
     // Cached uniform locations for texture shader
     struct TextureShaderUniforms {
-        GLint mvp = -1;
-        GLint tintColor = -1;
-        GLint tex = -1;
+        rhi::UniformLocation mvp = -1;
+        rhi::UniformLocation tintColor = -1;
+        rhi::UniformLocation tex = -1;
     } m_texUniforms;
     
     // Cached uniform locations for unified rect shader
     struct RectShaderUniforms {
-        GLint mvp = -1;
-        GLint rectSize = -1;
-        GLint renderMode = -1;
-        GLint baseColor = -1;
-        GLint gradientType = -1;
-        GLint startColor = -1;
-        GLint endColor = -1;
-        GLint gradientCenter = -1;
-        GLint gradientRadius = -1;
-        GLint highlightColor = -1;
-        GLint shadowColor = -1;
-        GLint cornerRadius = -1;
-        GLint bevelSize = -1;
+        rhi::UniformLocation mvp = -1;
+        rhi::UniformLocation rectSize = -1;
+        rhi::UniformLocation renderMode = -1;
+        rhi::UniformLocation baseColor = -1;
+        rhi::UniformLocation gradientType = -1;
+        rhi::UniformLocation startColor = -1;
+        rhi::UniformLocation endColor = -1;
+        rhi::UniformLocation gradientCenter = -1;
+        rhi::UniformLocation gradientRadius = -1;
+        rhi::UniformLocation highlightColor = -1;
+        rhi::UniformLocation shadowColor = -1;
+        rhi::UniformLocation cornerRadius = -1;
+        rhi::UniformLocation bevelSize = -1;
     } m_rectUniforms;
 };

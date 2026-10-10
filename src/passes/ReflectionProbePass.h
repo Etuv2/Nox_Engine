@@ -1,7 +1,8 @@
 #pragma once
 #include "../RenderPass.h"
 #include "../ReflectionProbe.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <glm/glm.hpp>
@@ -18,7 +19,7 @@
 */
 class ReflectionProbePass : public RenderPass {
 public:
-	static constexpr GLuint kProbeBinding = 44;
+	static constexpr uint32_t kProbeBinding = 44;
 	static constexpr int kMaxProbes = 48;
 	static constexpr int kFaceSize = 256;
 	static constexpr int kMipLevels = 7; // 256 .. 4
@@ -46,17 +47,17 @@ private:
 	// null) and returns how many were uploaded. Array layers are preserved in position.w.
 	int UploadProbeData(const std::vector<ReflectionProbeDesc>& probes, const glm::mat4* viewProj);
 
-	GLuint m_forwardShader = 0;
-	GLuint m_prefilterShader = 0;
-	GLuint m_captureFBO = 0;
-	GLuint m_captureDepth = 0;
-	GLuint m_captureCube = 0;     // temporary capture target with mips
-	GLuint m_probeArray = 0;      // GL_TEXTURE_CUBE_MAP_ARRAY, RGBA16F
-	GLuint m_probeSSBO = 0;
-	GLuint m_cubeVAO = 0;
-	GLuint m_cubeVBO = 0;
-	GLuint m_captureExposureSSBO = 0; // pre-exposure 1 during capture
-	GLuint m_disabledClusterUBO = 0;  // clustering off during capture
+	rhi::ProgramHandle m_forwardShader;
+	rhi::ProgramHandle m_prefilterShader;
+	rhi::FramebufferHandle m_captureFBO;
+	rhi::TextureHandle m_captureDepth;      // face-sized D32F depth target (was a renderbuffer)
+	rhi::TextureHandle m_captureCube;       // temporary capture target with mips
+	rhi::TextureHandle m_probeArray;        // cube array, RGBA16F
+	rhi::BufferHandle m_probeSSBO;
+	rhi::VertexInputHandle m_cubeVAO;
+	rhi::BufferHandle m_cubeVBO;
+	rhi::BufferHandle m_captureExposureSSBO; // pre-exposure 1 during capture
+	rhi::BufferHandle m_disabledClusterUBO;  // clustering off during capture
 	int m_capacity = 0;
 	const void* m_lastScene = nullptr;
 	int m_framesUntilCapture = -1;

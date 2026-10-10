@@ -1396,6 +1396,12 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 					}
 					m_pendingGeneratedChildren = std::move(generatedChildren);
 					AddReflectionProbes(generated.reflectionProbes);
+					if (m_currentSceneGraph) {
+						// Unique per load so the passes re-upload their instance buffers.
+						static uint64_t s_extrasRevision = 0;
+						m_currentSceneGraph->renderExtras = std::move(generated.renderExtras);
+						m_currentSceneGraph->renderExtras.revision = ++s_extrasRevision;
+					}
 				}
 				else {
 					std::cerr << "[SceneLoader] ERROR: procedural generator failed for node '" << nodeDebugName << "'" << std::endl;
@@ -1456,8 +1462,8 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			std::string vsPath = nodeJson.value("vertex_shader", "");
 			std::string fsPath = nodeJson.value("fragment_shader", "");
 			if (!vsPath.empty() && !fsPath.empty()) {
-				GLuint customShader = CreateShaderProgram(vsPath.c_str(), fsPath.c_str());
-				if (customShader != 0)
+				rhi::ProgramHandle customShader = CreateShaderProgram(vsPath.c_str(), fsPath.c_str());
+				if (customShader.IsValid())
 					node->SetShader(customShader);
 				else
 					std::cerr << "[ERROR] Custom shader compilation failed for node ("

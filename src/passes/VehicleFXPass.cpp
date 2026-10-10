@@ -15,17 +15,19 @@
 namespace {
 // Corner attribute for a triangle strip: x across [-1,1], y along [-1,1].
 const float kCorners[] = { -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
-constexpr GLuint kCornerLocation = 0;
-constexpr GLuint kInstanceLocation = 1; // three consecutive vec4 attributes: 1, 2, 3
+constexpr uint32_t kCornerLocation = 0;
+constexpr uint32_t kInstanceLocation = 1; // three consecutive vec4 attributes: 1, 2, 3
 static_assert(sizeof(VehicleFX::RenderParticle) == 3 * sizeof(glm::vec4), "instance layout");
 }
 
 VehicleFXPass::~VehicleFXPass()
 {
-	if (m_shader) glDeleteProgram(m_shader);
-	if (m_instanceVbo) glDeleteBuffers(1, &m_instanceVbo);
-	if (m_cornerVbo) glDeleteBuffers(1, &m_cornerVbo);
-	if (m_vao) glDeleteVertexArrays(1, &m_vao);
+	if (!rhi::HasGpu()) return;
+	rhi::Device& gpu = rhi::Gpu();
+	if (m_shader) gpu.DestroyProgram(m_shader);
+	if (m_instanceVbo) gpu.DestroyBuffer(m_instanceVbo);
+	if (m_cornerVbo) gpu.DestroyBuffer(m_cornerVbo);
+	if (m_vao) gpu.DestroyVertexInput(m_vao);
 }
 
 bool VehicleFXPass::Initialize(RenderContext&)
@@ -35,25 +37,47 @@ bool VehicleFXPass::Initialize(RenderContext&)
 		std::cerr << "[VehicleFXPass] Failed to create vehicle FX shader" << std::endl;
 		return false;
 	}
-	glGenVertexArrays(1, &m_vao);
-	glGenBuffers(1, &m_cornerVbo);
-	glGenBuffers(1, &m_instanceVbo);
+	rhi::Device& gpu = rhi::Gpu();
 
-	glBindVertexArray(m_vao);
-	glBindBuffer(GL_ARRAY_BUFFER, m_cornerVbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(kCorners), kCorners, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(kCornerLocation);
-	glVertexAttribPointer(kCornerLocation, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+	rhi::BufferDesc cornerDesc;
+	cornerDesc.size = sizeof(kCorners);
+	cornerDesc.initialData = kCorners;
+	cornerDesc.usage = rhi::BufferUsage::StaticDraw;
+	m_cornerVbo = gpu.CreateBuffer(cornerDesc);
+	// Instance store starts empty; Execute orphans and refills it every frame.
+	rhi::BufferDesc instanceDesc;
+	instanceDesc.size = 0;
+	instanceDesc.usage = rhi::BufferUsage::StreamDraw;
+	m_instanceVbo = gpu.CreateBuffer(instanceDesc);
 
-	glBindBuffer(GL_ARRAY_BUFFER, m_instanceVbo);
-	for (GLuint i = 0; i < 3; ++i) {
-		const GLuint loc = kInstanceLocation + i;
-		glEnableVertexAttribArray(loc);
-		glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE, sizeof(VehicleFX::RenderParticle),
-			reinterpret_cast<const void*>(i * sizeof(glm::vec4)));
-		glVertexAttribDivisor(loc, 1);
+	rhi::VertexInputDesc vaoDesc;
+	rhi::VertexBufferBinding cornerBinding;
+	cornerBinding.buffer = m_cornerVbo;
+	cornerBinding.stride = 2 * sizeof(float);
+	vaoDesc.buffers.push_back(cornerBinding);
+	rhi::VertexBufferBinding instanceBinding;
+	instanceBinding.buffer = m_instanceVbo;
+	instanceBinding.stride = sizeof(VehicleFX::RenderParticle);
+	instanceBinding.instanceDivisor = 1;
+	vaoDesc.buffers.push_back(instanceBinding);
+
+	rhi::VertexAttribute corner;
+	corner.location = kCornerLocation;
+	corner.bufferIndex = 0;
+	corner.components = 2;
+	corner.type = rhi::ScalarType::Float;
+	corner.offset = 0;
+	vaoDesc.attributes.push_back(corner);
+	for (uint32_t i = 0; i < 3; ++i) {
+		rhi::VertexAttribute row;
+		row.location = kInstanceLocation + i;
+		row.bufferIndex = 1;
+		row.components = 4;
+		row.type = rhi::ScalarType::Float;
+		row.offset = static_cast<uint32_t>(i * sizeof(glm::vec4));
+		vaoDesc.attributes.push_back(row);
 	}
-	glBindVertexArray(0);
+	m_vao = gpu.CreateVertexInput(vaoDesc);
 	return true;
 }
 
@@ -69,33 +93,34 @@ void VehicleFXPass::Execute(RenderContext& ctx,
 		return;
 	}
 
+	rhi::Device& gpu = rhi::Gpu();
+
 	// Stream the instance list: orphan the store every frame so the upload never stalls on the GPU.
 	const size_t count = particles.size();
 	if (count > m_instanceCapacity) {
 		m_instanceCapacity = std::max(count, m_instanceCapacity * 2);
 	}
-	glBindBuffer(GL_ARRAY_BUFFER, m_instanceVbo);
-	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_instanceCapacity * sizeof(VehicleFX::RenderParticle)), nullptr, GL_STREAM_DRAW);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(count * sizeof(VehicleFX::RenderParticle)), particles.data());
+	gpu.ReallocateBuffer(m_instanceVbo, m_instanceCapacity * sizeof(VehicleFX::RenderParticle), nullptr, rhi::BufferUsage::StreamDraw);
+	gpu.UpdateBuffer(m_instanceVbo, 0, count * sizeof(VehicleFX::RenderParticle), particles.data());
 
 	const glm::vec3 camPos = glm::vec3(glm::inverse(ctx.view)[3]);
 	const glm::mat4 viewProj = ctx.proj * ctx.view;
 
 	ctx.hdrFBO->Bind();
-	glViewport(0, 0, ctx.width, ctx.height);
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS);
-	glDepthMask(GL_FALSE);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // premultiplied
-	glDisable(GL_CULL_FACE);
+	gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
+	gpu.SetDepthTest(true);
+	gpu.SetDepthFunc(rhi::CompareOp::Less);
+	gpu.SetDepthWrite(false);
+	gpu.SetBlendEnabled(true);
+	gpu.SetBlendFunc(rhi::BlendFactor::One, rhi::BlendFactor::OneMinusSrcAlpha); // premultiplied
+	gpu.SetCullEnabled(false);
 
-	glUseProgram(m_shader);
+	gpu.UseProgram(m_shader);
 	ExposurePass::Bind(ctx);
 
-	auto set1f = [&](const char* n, float v) { const GLint l = glGetUniformLocation(m_shader, n); if (l >= 0) glUniform1f(l, v); };
-	auto set3f = [&](const char* n, const glm::vec3& v) { const GLint l = glGetUniformLocation(m_shader, n); if (l >= 0) glUniform3fv(l, 1, glm::value_ptr(v)); };
-	auto setM4 = [&](const char* n, const glm::mat4& m) { const GLint l = glGetUniformLocation(m_shader, n); if (l >= 0) glUniformMatrix4fv(l, 1, GL_FALSE, glm::value_ptr(m)); };
+	auto set1f = [&](const char* n, float v) { const rhi::UniformLocation l = gpu.GetUniformLocation(m_shader, n); if (l >= 0) gpu.SetUniform(l, v); };
+	auto set3f = [&](const char* n, const glm::vec3& v) { const rhi::UniformLocation l = gpu.GetUniformLocation(m_shader, n); if (l >= 0) gpu.SetUniform(l, v); };
+	auto setM4 = [&](const char* n, const glm::mat4& m) { const rhi::UniformLocation l = gpu.GetUniformLocation(m_shader, n); if (l >= 0) gpu.SetUniform(l, m); };
 
 	setM4("uViewProj", viewProj);
 	setM4("uView", ctx.view);
@@ -109,36 +134,33 @@ void VehicleFXPass::Execute(RenderContext& ctx,
 	set3f("uFogAlbedo", ctx.fogAlbedo);
 	set3f("uAmbient", ctx.fogAmbientRadiance);
 	{
-		const GLint l = glGetUniformLocation(m_shader, "uScreenSize");
-		if (l >= 0) glUniform2f(l, static_cast<float>(ctx.width), static_cast<float>(ctx.height));
+		const rhi::UniformLocation l = gpu.GetUniformLocation(m_shader, "uScreenSize");
+		if (l >= 0) gpu.SetUniform(l, glm::vec2(static_cast<float>(ctx.width), static_cast<float>(ctx.height)));
 	}
 
 	// Scene depth (G-buffer) for the soft-particle fade.
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-	glUniform1i(glGetUniformLocation(m_shader, "uSceneDepth"), 1);
+	gpu.BindTexture(1, ctx.gbufferFBO->GetDepthTexture());
+	gpu.SetUniform(gpu.GetUniformLocation(m_shader, "uSceneDepth"), 1);
 
 	// Froxel scattering volume for lamp and headlight light.
-	const bool hasVolume = m_fog && ctx.enableVolumetricFog && m_fog->GetScatteringVolume() != 0;
-	glUniform1i(glGetUniformLocation(m_shader, "uHasVolume"), hasVolume ? 1 : 0);
+	const bool hasVolume = m_fog && ctx.enableVolumetricFog && m_fog->GetScatteringVolume().IsValid();
+	gpu.SetUniform(gpu.GetUniformLocation(m_shader, "uHasVolume"), hasVolume ? 1 : 0);
 	if (hasVolume) {
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_3D, m_fog->GetScatteringVolume());
-		glUniform1i(glGetUniformLocation(m_shader, "uScattering"), 0);
+		gpu.BindTexture(0, m_fog->GetScatteringVolume());
+		gpu.SetUniform(gpu.GetUniformLocation(m_shader, "uScattering"), 0);
 		const glm::ivec3 size = m_fog->GetVolumeSize();
-		glUniform3i(glGetUniformLocation(m_shader, "uVolumeSize"), size.x, size.y, size.z);
+		gpu.SetUniform(gpu.GetUniformLocation(m_shader, "uVolumeSize"), size);
 		set1f("uVolumeNear", m_fog->GetVolumeNear());
 		set1f("uVolumeFar", m_fog->GetVolumeFar());
 	}
 
-	glBindVertexArray(m_vao);
-	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(count));
-	glBindVertexArray(0);
+	gpu.BindVertexInput(m_vao);
+	gpu.Draw(rhi::Topology::TriangleStrip, 0, 4, static_cast<uint32_t>(count));
+	gpu.BindVertexInput(rhi::VertexInputHandle());
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glDisable(GL_BLEND);
-	glDepthMask(GL_TRUE);
-	glEnable(GL_CULL_FACE);
-	glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+	gpu.BindTexture(0, rhi::TextureHandle());
+	gpu.SetBlendEnabled(false);
+	gpu.SetDepthWrite(true);
+	gpu.SetCullEnabled(true);
+	gpu.BindFramebuffer(PresentTarget::Get());
 }

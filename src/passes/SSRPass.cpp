@@ -9,21 +9,28 @@
 #include <glm/gtc/type_ptr.hpp>
 
 namespace {
-	GLuint MakeTexture(GLenum internalFormat, int width, int height, int levels = 1) {
-		GLuint tex = 0;
-		glCreateTextures(GL_TEXTURE_2D, 1, &tex);
-		glTextureStorage2D(tex, levels, internalFormat, std::max(width, 1), std::max(height, 1));
-		glTextureParameteri(tex, GL_TEXTURE_MIN_FILTER, levels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-		glTextureParameteri(tex, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTextureParameteri(tex, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(tex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	rhi::TextureHandle MakeTexture(rhi::Format format, int width, int height, int levels = 1) {
+		rhi::Device& gpu = rhi::Gpu();
+		rhi::TextureDesc desc;
+		desc.type = rhi::TextureType::Tex2D;
+		desc.format = format;
+		desc.width = std::max(width, 1);
+		desc.height = std::max(height, 1);
+		desc.mipLevels = levels;
+		desc.immutable = true;
+		const rhi::TextureHandle tex = gpu.CreateTexture(desc);
+		gpu.SetTextureMinFilter(tex, levels > 1 ? rhi::Filter::LinearMipLinear : rhi::Filter::Linear);
+		gpu.SetTextureMagFilter(tex, rhi::Filter::Linear);
+		gpu.SetTextureWrapAxis(tex, 0, rhi::Wrap::ClampToEdge);
+		gpu.SetTextureWrapAxis(tex, 1, rhi::Wrap::ClampToEdge);
 		return tex;
 	}
 
-	void BindSampler(GLuint program, const char* name, int unit, GLuint texture) {
-		glBindTextureUnit(static_cast<GLuint>(unit), texture);
-		const GLint loc = glGetUniformLocation(program, name);
-		if (loc >= 0) glUniform1i(loc, unit);
+	void BindSampler(rhi::ProgramHandle program, const char* name, int unit, rhi::TextureHandle texture) {
+		rhi::Device& gpu = rhi::Gpu();
+		gpu.BindTexture(static_cast<uint32_t>(unit), texture);
+		const rhi::UniformLocation loc = gpu.GetUniformLocation(program, name);
+		if (loc >= 0) gpu.SetUniform(loc, unit);
 	}
 }
 
@@ -51,12 +58,12 @@ bool SSRPass::Initialize(RenderContext& context)
 
 void SSRPass::DestroyTextures()
 {
-	GLuint textures[] = { m_traceTex, m_resolveTex, m_hitDistTex, m_historyTex[0], m_historyTex[1], m_prevColorTex };
-	for (GLuint& t : textures) {
-		if (t) glDeleteTextures(1, &t);
+	rhi::TextureHandle textures[] = { m_traceTex, m_resolveTex, m_hitDistTex, m_historyTex[0], m_historyTex[1], m_prevColorTex };
+	for (rhi::TextureHandle& t : textures) {
+		if (t && rhi::HasGpu()) rhi::Gpu().DestroyTexture(t);
 	}
-	m_traceTex = m_resolveTex = m_hitDistTex = m_prevColorTex = 0;
-	m_historyTex[0] = m_historyTex[1] = 0;
+	m_traceTex = m_resolveTex = m_hitDistTex = m_prevColorTex = rhi::TextureHandle{};
+	m_historyTex[0] = m_historyTex[1] = rhi::TextureHandle{};
 }
 
 void SSRPass::CreateTextures(int width, int height)
@@ -66,36 +73,38 @@ void SSRPass::CreateTextures(int width, int height)
 	m_height = std::max(height, 1);
 	m_prevColorMips = 1 + static_cast<int>(std::floor(std::log2(static_cast<float>(std::max(m_width, m_height)))));
 	m_prevColorMips = std::min(m_prevColorMips, 7);
-	m_traceTex = MakeTexture(GL_RGBA32F, (m_width + 1) / 2, (m_height + 1) / 2);
-	glTextureParameteri(m_traceTex, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTextureParameteri(m_traceTex, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	m_resolveTex = MakeTexture(GL_RGBA16F, m_width, m_height);
-	m_hitDistTex = MakeTexture(GL_R16F, m_width, m_height);
-	m_historyTex[0] = MakeTexture(GL_RGBA16F, m_width, m_height);
-	m_historyTex[1] = MakeTexture(GL_RGBA16F, m_width, m_height);
-	m_prevColorTex = MakeTexture(GL_RGB16F, m_width, m_height, m_prevColorMips);
+	rhi::Device& gpu = rhi::Gpu();
+	m_traceTex = MakeTexture(rhi::Format::RGBA32F, (m_width + 1) / 2, (m_height + 1) / 2);
+	gpu.SetTextureMinFilter(m_traceTex, rhi::Filter::Nearest);
+	gpu.SetTextureMagFilter(m_traceTex, rhi::Filter::Nearest);
+	m_resolveTex = MakeTexture(rhi::Format::RGBA16F, m_width, m_height);
+	m_hitDistTex = MakeTexture(rhi::Format::R16F, m_width, m_height);
+	m_historyTex[0] = MakeTexture(rhi::Format::RGBA16F, m_width, m_height);
+	m_historyTex[1] = MakeTexture(rhi::Format::RGBA16F, m_width, m_height);
+	m_prevColorTex = MakeTexture(rhi::Format::RGB16F, m_width, m_height, m_prevColorMips);
 	const float zero[4] = { 0, 0, 0, 0 };
-	glClearTexImage(m_historyTex[0], 0, GL_RGBA, GL_FLOAT, zero);
-	glClearTexImage(m_historyTex[1], 0, GL_RGBA, GL_FLOAT, zero);
+	gpu.ClearTexture(m_historyTex[0], 0, rhi::PixelFormat::RGBA, rhi::PixelType::Float, zero);
+	gpu.ClearTexture(m_historyTex[1], 0, rhi::PixelFormat::RGBA, rhi::PixelType::Float, zero);
 	m_historyValid = false;
 }
 
 void SSRPass::Resize(RenderContext& context, int newWidth, int newHeight)
 {
 	CreateTextures(newWidth, newHeight);
-	context.ssrTexture = 0;
+	context.ssrTexture = rhi::TextureHandle{};
 }
 
-void SSRPass::SetCommonUniforms(GLuint program, const RenderContext& ctx)
+void SSRPass::SetCommonUniforms(rhi::ProgramHandle program, const RenderContext& ctx)
 {
+	rhi::Device& gpu = rhi::Gpu();
 	const glm::mat4 invProj = glm::inverse(ctx.proj);
 	const glm::mat4 invView = glm::inverse(ctx.view);
-	glUniformMatrix4fv(glGetUniformLocation(program, "uProj"), 1, GL_FALSE, glm::value_ptr(ctx.proj));
-	glUniformMatrix4fv(glGetUniformLocation(program, "uInvProj"), 1, GL_FALSE, glm::value_ptr(invProj));
-	glUniformMatrix4fv(glGetUniformLocation(program, "uView"), 1, GL_FALSE, glm::value_ptr(ctx.view));
-	glUniformMatrix4fv(glGetUniformLocation(program, "uInvView"), 1, GL_FALSE, glm::value_ptr(invView));
-	glUniform2f(glGetUniformLocation(program, "uFullSize"), static_cast<float>(m_width), static_cast<float>(m_height));
-	glUniform1f(glGetUniformLocation(program, "uMaxRoughness"), std::clamp(ctx.ssrMaxRoughness, 0.05f, 1.0f));
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uProj"), ctx.proj);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uInvProj"), invProj);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uView"), ctx.view);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uInvView"), invView);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uFullSize"), glm::vec2(static_cast<float>(m_width), static_cast<float>(m_height)));
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uMaxRoughness"), std::clamp(ctx.ssrMaxRoughness, 0.05f, 1.0f));
 }
 
 void SSRPass::Execute(RenderContext& ctx,
@@ -104,7 +113,7 @@ void SSRPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<DirectionalLight>&,
 	const std::shared_ptr<Skybox>&)
 {
-	ctx.ssrTexture = 0;
+	ctx.ssrTexture = rhi::TextureHandle{};
 	if (!ctx.enableSSR || !ctx.enableTAA || !ctx.taaFBO || !ctx.gbufferFBO || !ctx.velocityTex) {
 		m_historyValid = false;
 		return;
@@ -112,40 +121,44 @@ void SSRPass::Execute(RenderContext& ctx,
 	if (ctx.width != m_width || ctx.height != m_height) {
 		CreateTextures(ctx.width, ctx.height);
 	}
-	const GLuint prevSource = ctx.taaFBO->GetColorAttachment(0);
+	const rhi::TextureHandle prevSource = ctx.taaFBO->GetColorAttachment(0);
 	if (!prevSource || ctx.taaFBO->GetWidth() != m_width || ctx.taaFBO->GetHeight() != m_height) {
 		return;
 	}
-	const GLuint depthTex = ctx.gbufferFBO->GetDepthTexture();
-	const GLuint normalTex = ctx.gbufferFBO->GetColorAttachment(0);
-	const GLuint clearcoatTex = ctx.gbufferFBO->GetColorAttachment(6);
+	const rhi::TextureHandle depthTex = ctx.gbufferFBO->GetDepthTexture();
+	const rhi::TextureHandle normalTex = ctx.gbufferFBO->GetColorAttachment(0);
+	const rhi::TextureHandle clearcoatTex = ctx.gbufferFBO->GetColorAttachment(6);
 	ExposurePass::Bind(ctx);
 
+	rhi::Device& gpu = rhi::Gpu();
+
 	// 1. Last frame's resolved colour with a mip chain for cone-filtered (rough) reflections.
-	glCopyImageSubData(prevSource, GL_TEXTURE_2D, 0, 0, 0, 0, m_prevColorTex, GL_TEXTURE_2D, 0, 0, 0, 0, m_width, m_height, 1);
-	glGenerateTextureMipmap(m_prevColorTex);
+	rhi::TextureRegion copyRegion;
+	copyRegion.extent = glm::ivec3(m_width, m_height, 1);
+	gpu.CopyTexture(prevSource, copyRegion, m_prevColorTex, 0, glm::ivec3(0));
+	gpu.GenerateMipmaps(m_prevColorTex);
 
 	const int halfW = (m_width + 1) / 2;
 	const int halfH = (m_height + 1) / 2;
 
 	// 2. Trace.
-	GLuint program = m_traceShader->GetProgramID();
-	glUseProgram(program);
+	rhi::ProgramHandle program = m_traceShader->GetProgramID();
+	gpu.UseProgram(program);
 	SetCommonUniforms(program, ctx);
 	BindSampler(program, "uDepth", 0, depthTex);
 	BindSampler(program, "uNormalRough", 1, normalTex);
 	BindSampler(program, "uClearCoat", 2, clearcoatTex);
-	glUniform1ui(glGetUniformLocation(program, "uFrame"), m_frame);
-	glUniform1f(glGetUniformLocation(program, "uMaxDistance"), ctx.ssrMaxDistance);
-	glUniform1i(glGetUniformLocation(program, "uMaxSteps"), ctx.ssrMaxSteps);
-	glUniform1f(glGetUniformLocation(program, "uThickness"), ctx.ssrThickness);
-	glBindImageTexture(0, m_traceTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-	glDispatchCompute((halfW + 7) / 8, (halfH + 7) / 8, 1);
-	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uFrame"), m_frame);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uMaxDistance"), ctx.ssrMaxDistance);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uMaxSteps"), ctx.ssrMaxSteps);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uThickness"), ctx.ssrThickness);
+	gpu.BindImage(0, m_traceTex, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA32F);
+	gpu.Dispatch((halfW + 7) / 8, (halfH + 7) / 8, 1);
+	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
 
 	// 3. Resolve.
 	program = m_resolveShader->GetProgramID();
-	glUseProgram(program);
+	gpu.UseProgram(program);
 	SetCommonUniforms(program, ctx);
 	BindSampler(program, "uTrace", 0, m_traceTex);
 	BindSampler(program, "uDepth", 1, depthTex);
@@ -153,13 +166,13 @@ void SSRPass::Execute(RenderContext& ctx,
 	BindSampler(program, "uClearCoat", 3, clearcoatTex);
 	BindSampler(program, "uPrevColor", 4, m_prevColorTex);
 	BindSampler(program, "uVelocity", 5, ctx.velocityTex);
-	glUniform1f(glGetUniformLocation(program, "uPrevColorMaxMip"), static_cast<float>(m_prevColorMips - 1));
-	glUniform1i(glGetUniformLocation(program, "uResolveSamples"), ctx.ssrResolveSamples);
-	glUniform1ui(glGetUniformLocation(program, "uFrame"), m_frame);
-	glBindImageTexture(0, m_resolveTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-	glBindImageTexture(1, m_hitDistTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
-	glDispatchCompute((m_width + 7) / 8, (m_height + 7) / 8, 1);
-	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uPrevColorMaxMip"), static_cast<float>(m_prevColorMips - 1));
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uResolveSamples"), ctx.ssrResolveSamples);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uFrame"), m_frame);
+	gpu.BindImage(0, m_resolveTex, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.BindImage(1, m_hitDistTex, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::R16F);
+	gpu.Dispatch((m_width + 7) / 8, (m_height + 7) / 8, 1);
+	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
 
 	// 4. Temporal.
 	const int previous = m_historyIndex;
@@ -169,7 +182,7 @@ void SSRPass::Execute(RenderContext& ctx,
 	prevProjU[2][1] -= ctx.prevJitterNdc.y;
 	const glm::mat4 prevViewProj = prevProjU * ctx.prevView;
 	program = m_temporalShader->GetProgramID();
-	glUseProgram(program);
+	gpu.UseProgram(program);
 	SetCommonUniforms(program, ctx);
 	BindSampler(program, "uCurrent", 0, m_resolveTex);
 	BindSampler(program, "uHitDist", 1, m_hitDistTex);
@@ -178,14 +191,14 @@ void SSRPass::Execute(RenderContext& ctx,
 	BindSampler(program, "uVelocity", 4, ctx.velocityTex);
 	BindSampler(program, "uNormalRough", 5, normalTex);
 	BindSampler(program, "uClearCoat", 6, clearcoatTex);
-	glUniformMatrix4fv(glGetUniformLocation(program, "uPrevViewProj"), 1, GL_FALSE, glm::value_ptr(prevViewProj));
-	glUniform1i(glGetUniformLocation(program, "uHistoryValid"), m_historyValid ? 1 : 0);
-	glUniform1f(glGetUniformLocation(program, "uBlend"), std::clamp(ctx.ssrTemporalBlend, 0.02f, 1.0f));
-	glBindImageTexture(0, m_historyTex[current], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-	glDispatchCompute((m_width + 7) / 8, (m_height + 7) / 8, 1);
-	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uPrevViewProj"), prevViewProj);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uHistoryValid"), m_historyValid ? 1 : 0);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uBlend"), std::clamp(ctx.ssrTemporalBlend, 0.02f, 1.0f));
+	gpu.BindImage(0, m_historyTex[current], 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.Dispatch((m_width + 7) / 8, (m_height + 7) / 8, 1);
+	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
 
-	for (GLuint unit = 0; unit < 7; ++unit) glBindTextureUnit(unit, 0);
+	for (uint32_t unit = 0; unit < 7; ++unit) gpu.BindTexture(unit, rhi::TextureHandle{});
 	m_historyIndex = current;
 	m_historyValid = true;
 	++m_frame;

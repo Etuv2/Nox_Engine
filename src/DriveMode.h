@@ -62,6 +62,11 @@ public:
 		float rpmRedline = 7800.0f;
 		float rpmLimiter = 8200.0f;
 		float shiftTime = 0.16f;
+		// Gear ratios, first to top gear (2..8 gears). Only the relative spacing matters: the final
+		// drive is derived so the top gear reaches the limiter just above topSpeedKmh. The default
+		// spacing is arcade-close so city straights reach 4th/5th and the top gear at top speed.
+		std::vector<float> gearRatios = { 3.68f, 2.42f, 1.81f, 1.42f, 1.12f, 0.82f };
+		float reverseEngageDelay = 0.2f; // s of brake held at standstill before reverse engages (and throttle to leave it)
 		float suspensionFreq = 1.6f;    // Hz (body on springs)
 		float suspensionDamping = 0.55f;// damping ratio
 		float bumpAmplitude = 0.012f;   // m procedural road roughness
@@ -122,7 +127,8 @@ public:
 	float SpeedMs() const { return m_vx; }                 // signed forward speed
 	float Speed01() const;
 	float Rpm() const { return m_rpm; }
-	int Gear() const { return m_gear; }                   // -1 = R, 1..6
+	int Gear() const { return m_gear; }                   // -1 = R, 1..GearCount()
+	int GearCount() const { return static_cast<int>(m_handling.gearRatios.size()); }
 	float Nitro() const { return m_nitro; }
 	bool NitroActive() const { return m_nitroActive; }
 	bool NitroRecharging() const { return !m_nitroActive && m_nitro < 1.0f && m_nitroCooldown <= 0.0f; }
@@ -162,7 +168,9 @@ private:
 	};
 
 	void Step(float h, const Input& in);
+	void SelectDirection(float h, const Input& in);       // forward / reverse from the pedals at standstill
 	void UpdateGearbox(float h, const Input& in, float wheelRpm);
+	float GearRatio(int gear) const;                      // 1-based, clamped
 	void UpdateSuspension(float h);
 	void Collide(glm::vec2& pos, glm::vec2& vel);
 	glm::vec2 ResolveCircle(glm::vec2& c, float radius) const;
@@ -215,6 +223,8 @@ private:
 	bool m_nitroActive = false;
 	int m_gear = 1;
 	float m_shiftTimer = 0.0f;
+	float m_shiftCooldown = 0.0f;        // minimum time between automatic shifts (no gear hunting)
+	float m_directionHold = 0.0f;        // time the direction-change pedal has been held at standstill
 	bool m_shifted = false;
 	float m_rpm = 900.0f;
 	bool m_limiter = false;

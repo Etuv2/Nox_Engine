@@ -45,17 +45,15 @@ namespace {
 ScreenSpaceShadowPass::ScreenSpaceShadowPass() {}
 
 ScreenSpaceShadowPass::~ScreenSpaceShadowPass() {
-    if (m_resolveShader) {
-        glDeleteProgram(m_resolveShader);
-        m_resolveShader = 0;
+    if (rhi::HasGpu() && m_resolveShader) {
+        rhi::Gpu().DestroyProgram(m_resolveShader);
     }
 
     m_traceTex.reset();
     m_historyTex.reset();
 
-    if (m_paramsUBO) {
-        glDeleteBuffers(1, &m_paramsUBO);
-        m_paramsUBO = 0;
+    if (rhi::HasGpu() && m_paramsUBO) {
+        rhi::Gpu().DestroyBuffer(m_paramsUBO);
     }
 }
 
@@ -82,8 +80,8 @@ void ScreenSpaceShadowPass::Resize(RenderContext&, int w, int h) {
     createOutput(w, h);
 }
 
-GLuint ScreenSpaceShadowPass::GetShadowTexture() const {
-    return m_resolveFBO ? m_resolveFBO->GetColorAttachment(0) : 0;
+rhi::TextureHandle ScreenSpaceShadowPass::GetShadowTexture() const {
+    return m_resolveFBO ? m_resolveFBO->GetColorAttachment(0) : rhi::TextureHandle{};
 }
 
 void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
@@ -133,31 +131,33 @@ void ScreenSpaceShadowPass::Execute(RenderContext& ctx,
 
     updateUBO(surfaceToLightVS, ctx.proj);
 
-    glUseProgram(m_cs->GetProgramID());
-    glBindTextureUnit(0, ctx.gbufferFBO->GetDepthTexture());
-    glBindTextureUnit(1, m_historyTex->ID());
-    glBindImageTexture(2, m_traceTex->ID(), 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 3, m_paramsUBO);
+    rhi::Device& gpu = rhi::Gpu();
 
-    GLuint gx = (m_traceWidth + 7) / 8;
-    GLuint gy = (m_traceHeight + 7) / 8;
-    glDispatchCompute(gx, gy, 1);
+    gpu.UseProgram(m_cs->GetProgramID());
+    gpu.BindTexture(0, ctx.gbufferFBO->GetDepthTexture());
+    gpu.BindTexture(1, m_historyTex->ID());
+    gpu.BindImage(2, m_traceTex->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::R8);
+    gpu.BindUniformBuffer(3, m_paramsUBO);
 
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    uint32_t gx = (m_traceWidth + 7) / 8;
+    uint32_t gy = (m_traceHeight + 7) / 8;
+    gpu.Dispatch(gx, gy, 1);
 
-    glBindBufferBase(GL_UNIFORM_BUFFER, 3, 0);
-    glBindImageTexture(2, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R8);
-    glUseProgram(0);
+    gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
+
+    gpu.BindUniformBuffer(3, {});
+    gpu.BindImage(2, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::R8);
+    gpu.UseProgram({});
 
     resolveToFullResolution(ctx);
 
     bool copiedHistory = false;
-    if (m_traceTex && m_historyTex && m_traceTex->ID() != 0 && m_historyTex->ID() != 0 &&
+    if (m_traceTex && m_historyTex && m_traceTex->ID().IsValid() && m_historyTex->ID().IsValid() &&
         m_traceTex->Width() == m_historyTex->Width() &&
         m_traceTex->Height() == m_historyTex->Height()) {
-        glCopyImageSubData(m_traceTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-                           m_historyTex->ID(), GL_TEXTURE_2D, 0, 0, 0, 0,
-                           m_traceWidth, m_traceHeight, 1);
+        rhi::TextureRegion srcRegion;
+        srcRegion.extent = glm::ivec3(m_traceWidth, m_traceHeight, 1);
+        gpu.CopyTexture(m_traceTex->ID(), srcRegion, m_historyTex->ID(), 0, glm::ivec3(0));
         copiedHistory = true;
     }
 
@@ -171,34 +171,34 @@ void ScreenSpaceShadowPass::createOutput(int w, int h) {
     m_traceWidth = std::max(1, static_cast<int>(w * m_cfg.resolutionScale));
     m_traceHeight = std::max(1, static_cast<int>(h * m_cfg.resolutionScale));
 
-    m_traceTex = Texture::Builder::Texture2D(m_traceWidth, m_traceHeight, GL_R8)
-        .Format(GL_RED)
-        .DataType(GL_UNSIGNED_BYTE)
-        .FilterMode(GL_LINEAR, GL_LINEAR)
-        .WrapMode(GL_CLAMP_TO_EDGE)
+    m_traceTex = Texture::Builder::Texture2D(m_traceWidth, m_traceHeight, rhi::Format::R8)
+        .Format(rhi::PixelFormat::R)
+        .DataType(rhi::PixelType::UByte)
+        .FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+        .WrapMode(rhi::Wrap::ClampToEdge)
         .TextureType(TextureType::Custom)
         .Build();
 
-    m_historyTex = Texture::Builder::Texture2D(m_traceWidth, m_traceHeight, GL_R8)
-        .Format(GL_RED)
-        .DataType(GL_UNSIGNED_BYTE)
-        .FilterMode(GL_LINEAR, GL_LINEAR)
-        .WrapMode(GL_CLAMP_TO_EDGE)
+    m_historyTex = Texture::Builder::Texture2D(m_traceWidth, m_traceHeight, rhi::Format::R8)
+        .Format(rhi::PixelFormat::R)
+        .DataType(rhi::PixelType::UByte)
+        .FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+        .WrapMode(rhi::Wrap::ClampToEdge)
         .TextureType(TextureType::Custom)
         .Build();
 
     m_resolveFBO = std::make_unique<FrameBuffer>(
         w, h,
-        std::vector<GLenum>{ GL_R8 },
+        std::vector<rhi::Format>{ rhi::Format::R8 },
         false, false
     );
 
     std::vector<uint8_t> fullyLit(static_cast<size_t>(m_traceWidth) * static_cast<size_t>(m_traceHeight), 255);
     if (m_traceTex) {
-        m_traceTex->Upload2D(0, 0, 0, m_traceWidth, m_traceHeight, GL_RED, GL_UNSIGNED_BYTE, fullyLit.data());
+        m_traceTex->Upload2D(0, 0, 0, m_traceWidth, m_traceHeight, rhi::PixelFormat::R, rhi::PixelType::UByte, fullyLit.data());
     }
     if (m_historyTex) {
-        m_historyTex->Upload2D(0, 0, 0, m_traceWidth, m_traceHeight, GL_RED, GL_UNSIGNED_BYTE, fullyLit.data());
+        m_historyTex->Upload2D(0, 0, 0, m_traceWidth, m_traceHeight, rhi::PixelFormat::R, rhi::PixelType::UByte, fullyLit.data());
     }
 
     m_historyValid = false;
@@ -206,11 +206,13 @@ void ScreenSpaceShadowPass::createOutput(int w, int h) {
 }
 
 void ScreenSpaceShadowPass::createUBO() {
-    if (m_paramsUBO) glDeleteBuffers(1, &m_paramsUBO);
-    glGenBuffers(1, &m_paramsUBO);
-    glBindBuffer(GL_UNIFORM_BUFFER, m_paramsUBO);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(SSSParamsStd140), nullptr, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    rhi::Device& gpu = rhi::Gpu();
+    if (m_paramsUBO) gpu.DestroyBuffer(m_paramsUBO);
+    rhi::BufferDesc desc;
+    desc.size = sizeof(SSSParamsStd140);
+    desc.initialData = nullptr;
+    desc.usage = rhi::BufferUsage::DynamicDraw;
+    m_paramsUBO = gpu.CreateBuffer(desc);
 }
 
 void ScreenSpaceShadowPass::updateUBO(const glm::vec3& lightDirVS, const glm::mat4& projection) {
@@ -235,42 +237,39 @@ void ScreenSpaceShadowPass::updateUBO(const glm::vec3& lightDirVS, const glm::ma
     p.blurRadius = glm::clamp(m_cfg.blurRadius, 1, 2);
     p.depthSensitivity = std::max(0.001f, m_cfg.depthSensitivity);
 
-    glBindBuffer(GL_UNIFORM_BUFFER, m_paramsUBO);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(SSSParamsStd140), &p);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    rhi::Gpu().UpdateBuffer(m_paramsUBO, 0, sizeof(SSSParamsStd140), &p);
 }
 
 void ScreenSpaceShadowPass::resolveToFullResolution(RenderContext& ctx) {
+    rhi::Device& gpu = rhi::Gpu();
+
     m_resolveFBO->Bind();
-    glViewport(0, 0, ctx.width, ctx.height);
-    glDisable(GL_DEPTH_TEST);
-    glClear(GL_COLOR_BUFFER_BIT);
+    gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
+    gpu.SetDepthTest(false);
+    gpu.Clear(rhi::ClearColor);
 
-    glUseProgram(m_resolveShader);
-    glUniform2f(glGetUniformLocation(m_resolveShader, "inputTexelSize"),
-                1.0f / static_cast<float>(m_traceWidth),
-                1.0f / static_cast<float>(m_traceHeight));
-    glUniform2f(glGetUniformLocation(m_resolveShader, "fullResTexelSize"),
-                1.0f / static_cast<float>(ctx.width),
-                1.0f / static_cast<float>(ctx.height));
-    glUniform1f(glGetUniformLocation(m_resolveShader, "depthThreshold"), std::max(0.001f, m_cfg.depthSensitivity));
-    glUniform1f(glGetUniformLocation(m_resolveShader, "normalThreshold"), 0.15f);
+    gpu.UseProgram(m_resolveShader);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "inputTexelSize"),
+        glm::vec2(1.0f / static_cast<float>(m_traceWidth),
+                  1.0f / static_cast<float>(m_traceHeight)));
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "fullResTexelSize"),
+        glm::vec2(1.0f / static_cast<float>(ctx.width),
+                  1.0f / static_cast<float>(ctx.height)));
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "depthThreshold"), std::max(0.001f, m_cfg.depthSensitivity));
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "normalThreshold"), 0.15f);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_traceTex->ID());
-    glUniform1i(glGetUniformLocation(m_resolveShader, "ssaoInput"), 0);
+    gpu.BindTexture(0, m_traceTex->ID());
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "ssaoInput"), 0);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
-    glUniform1i(glGetUniformLocation(m_resolveShader, "gDepth"), 1);
+    gpu.BindTexture(1, ctx.gbufferFBO->GetDepthTexture());
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "gDepth"), 1);
 
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-    glUniform1i(glGetUniformLocation(m_resolveShader, "gPackedNormalRM"), 2);
+    gpu.BindTexture(2, ctx.gbufferFBO->GetColorAttachment(0));
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "gPackedNormalRM"), 2);
 
     if (ctx.screenQuad) {
         ctx.screenQuad->Render();
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+    gpu.BindFramebuffer(PresentTarget::Get());
 }

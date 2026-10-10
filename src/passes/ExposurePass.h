@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <memory>
 
 class ComputeShader;
@@ -21,8 +21,8 @@ class ComputeShader;
 */
 class ExposurePass : public RenderPass {
 public:
-	static constexpr GLuint kStateBinding = 42;
-	static constexpr GLuint kHistogramBinding = 43;
+	static constexpr uint32_t kStateBinding = 42;
+	static constexpr uint32_t kHistogramBinding = 43;
 
 	ExposurePass();
 	~ExposurePass() override;
@@ -47,8 +47,8 @@ private:
 
 	std::unique_ptr<ComputeShader> m_histogramShader;
 	std::unique_ptr<ComputeShader> m_reduceShader;
-	GLuint m_stateSSBO = 0;
-	GLuint m_histogramSSBO = 0;
+	rhi::BufferHandle m_stateSSBO;
+	rhi::BufferHandle m_histogramSSBO;
 	bool m_resetPending = true;
 	bool m_snapNext = true;
 	int m_lastMode = -1; // -1 legacy, 0 manual, 1 auto

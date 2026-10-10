@@ -12,6 +12,7 @@
 #include "json.hpp"
 #include "RayCast.h"
 #include "BVH.h"
+#include "rhi/RHI.h"
 
 // Forward declarations
 class Camera;
@@ -61,12 +62,11 @@ public:
     /**
      * @brief Initialize all engine subsystems.
      * @param window SDL window handle (owned by MainWindow)
-     * @param glContext OpenGL context handle (owned by MainWindow)
      * @param windowWidth Initial window width
      * @param windowHeight Initial window height
      * @return true if initialization succeeded
      */
-    bool Initialize(SDL_Window* window, SDL_GLContext glContext, int windowWidth, int windowHeight);
+    bool Initialize(SDL_Window* window, int windowWidth, int windowHeight);
     
     /**
      * @brief Shutdown all engine subsystems and release resources.
@@ -312,7 +312,6 @@ private:
 
     
     SDL_Window* m_window;
-    SDL_GLContext m_glContext;
     int m_windowWidth;
     int m_windowHeight;
 
@@ -331,8 +330,8 @@ private:
 
     
     std::shared_ptr<ModularRenderer> m_modularRenderer;
-    unsigned int m_shaderProgram;
-    unsigned int m_shadowShader;
+    rhi::ProgramHandle m_shaderProgram;
+    rhi::ProgramHandle m_shadowShader;
     glm::vec3 m_environmentColor;
 
 
@@ -420,7 +419,7 @@ private:
     std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> m_prePlayTransforms;
     json m_sceneRootJson;                         // last loaded scene file
     void ConfigureGameFromScene(const std::string& scenePath);
-    void RenderSceneTo(unsigned int framebuffer, int width, int height, const std::shared_ptr<Camera>& camera);
+    void RenderSceneTo(rhi::FramebufferHandle framebuffer, int width, int height, const std::shared_ptr<Camera>& camera);
     bool m_quitRequested = false;
     bool m_sceneHasRenderSettings = false; // scene file had "render_settings" (docs/nfs2015)
 

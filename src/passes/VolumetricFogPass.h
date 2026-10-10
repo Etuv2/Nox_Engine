@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <memory>
 #include <glm/glm.hpp>
 
@@ -34,7 +34,7 @@ public:
 	void ResetHistory() { m_historyValid = false; }
 
 	// This frame's scattering/extinction volume (0 when the pass did not run), used to light rain.
-	GLuint GetScatteringVolume() const { return m_executedThisFrame ? m_scattering[m_current] : 0; }
+	rhi::TextureHandle GetScatteringVolume() const { return m_executedThisFrame ? m_scattering[m_current] : rhi::TextureHandle(); }
 	glm::ivec3 GetVolumeSize() const { return glm::ivec3(m_sizeX, m_sizeY, m_sizeZ); }
 	float GetVolumeNear() const { return m_volumeNear; }
 	float GetVolumeFar() const { return m_volumeFar; }
@@ -45,9 +45,9 @@ private:
 
 	std::unique_ptr<ComputeShader> m_injectShader;
 	std::unique_ptr<ComputeShader> m_integrateShader;
-	GLuint m_applyShader = 0;
-	GLuint m_scattering[2] = { 0, 0 };
-	GLuint m_integrated = 0;
+	rhi::ProgramHandle m_applyShader;
+	rhi::TextureHandle m_scattering[2];
+	rhi::TextureHandle m_integrated;
 	int m_sizeX = 0, m_sizeY = 0, m_sizeZ = 0;
 	int m_tileSize = 0;
 	int m_current = 0;

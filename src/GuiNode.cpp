@@ -1,5 +1,5 @@
 #include "GuiNode.h"
-#include "GLBuffer.h"
+#include "GpuBuffer.h"
 #include "ShaderLoader.h"
 #include <SDL/SDL_image.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -8,7 +8,7 @@
 #include <algorithm>
 
 GuiNode::GuiNode(int screenW, int screenH)
-    : m_font(nullptr), m_quadVAO(0), m_screenW(screenW), m_screenH(screenH)
+    : m_font(nullptr), m_quadVAO(), m_screenW(screenW), m_screenH(screenH)
 {
     // Create quad vertex data
     float quad[] = {
@@ -18,31 +18,41 @@ GuiNode::GuiNode(int screenW, int screenH)
         1, 0, 1, 1
     };
     
-    // Create VAO
-    glGenVertexArrays(1, &m_quadVAO);
-    glBindVertexArray(m_quadVAO);
-    
-    // Create VBO using GLBuffer
+    // Create VBO using GpuBuffer
     m_quadVBO = MakeBuffer(BufferType::Vertex, BufferUsage::StaticDraw);
     m_quadVBO->SetData(quad, 16); // 16 floats
     m_quadVBO->SetLabel("GuiNode_QuadVBO");
     
-    // Set up vertex attributes (VBO is already bound by SetData)
-    m_quadVBO->Bind();
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glBindVertexArray(0);
+    // Set up vertex attributes (position xy, texcoord uv) on the quad VBO
+    rhi::VertexBufferBinding binding;
+    binding.buffer = m_quadVBO->GetID();
+    binding.stride = static_cast<uint32_t>(4 * sizeof(float));
+    rhi::VertexInputDesc vaoDesc;
+    vaoDesc.buffers.push_back(binding);
+    rhi::VertexAttribute positionAttrib;
+    positionAttrib.location = 0;
+    positionAttrib.bufferIndex = 0;
+    positionAttrib.components = 2;
+    positionAttrib.type = rhi::ScalarType::Float;
+    positionAttrib.offset = 0;
+    vaoDesc.attributes.push_back(positionAttrib);
+    rhi::VertexAttribute texcoordAttrib;
+    texcoordAttrib.location = 1;
+    texcoordAttrib.bufferIndex = 0;
+    texcoordAttrib.components = 2;
+    texcoordAttrib.type = rhi::ScalarType::Float;
+    texcoordAttrib.offset = static_cast<uint32_t>(2 * sizeof(float));
+    vaoDesc.attributes.push_back(texcoordAttrib);
+    m_quadVAO = rhi::Gpu().CreateVertexInput(vaoDesc);
 
     InitializeShaders();
 }
 
 GuiNode::~GuiNode() {
-    // GLBuffer cleans itself up via RAII (m_quadVBO is unique_ptr)
-    if (m_quadVAO) glDeleteVertexArrays(1, &m_quadVAO);
-    if (m_textureShader) glDeleteProgram(m_textureShader);
-    if (m_unifiedRectShader) glDeleteProgram(m_unifiedRectShader);
+    // GpuBuffer cleans itself up via RAII (m_quadVBO is unique_ptr)
+    if (m_quadVAO) rhi::Gpu().DestroyVertexInput(m_quadVAO);
+    if (m_textureShader) rhi::Gpu().DestroyProgram(m_textureShader);
+    if (m_unifiedRectShader) rhi::Gpu().DestroyProgram(m_unifiedRectShader);
 }
 
 void GuiNode::InitializeShaders() {
@@ -63,26 +73,26 @@ void GuiNode::InitializeShaders() {
 void GuiNode::CacheUniformLocations() {
     // Cache texture shader uniforms
     if (m_textureShader) {
-        m_texUniforms.mvp = glGetUniformLocation(m_textureShader, "mvp");
-        m_texUniforms.tintColor = glGetUniformLocation(m_textureShader, "tintColor");
-        m_texUniforms.tex = glGetUniformLocation(m_textureShader, "tex");
+        m_texUniforms.mvp = rhi::Gpu().GetUniformLocation(m_textureShader, "mvp");
+        m_texUniforms.tintColor = rhi::Gpu().GetUniformLocation(m_textureShader, "tintColor");
+        m_texUniforms.tex = rhi::Gpu().GetUniformLocation(m_textureShader, "tex");
     }
     
     // Cache unified rect shader uniforms
     if (m_unifiedRectShader) {
-        m_rectUniforms.mvp = glGetUniformLocation(m_unifiedRectShader, "mvp");
-        m_rectUniforms.rectSize = glGetUniformLocation(m_unifiedRectShader, "rectSize");
-        m_rectUniforms.renderMode = glGetUniformLocation(m_unifiedRectShader, "renderMode");
-        m_rectUniforms.baseColor = glGetUniformLocation(m_unifiedRectShader, "baseColor");
-        m_rectUniforms.gradientType = glGetUniformLocation(m_unifiedRectShader, "gradientType");
-        m_rectUniforms.startColor = glGetUniformLocation(m_unifiedRectShader, "startColor");
-        m_rectUniforms.endColor = glGetUniformLocation(m_unifiedRectShader, "endColor");
-        m_rectUniforms.gradientCenter = glGetUniformLocation(m_unifiedRectShader, "gradientCenter");
-        m_rectUniforms.gradientRadius = glGetUniformLocation(m_unifiedRectShader, "gradientRadius");
-        m_rectUniforms.highlightColor = glGetUniformLocation(m_unifiedRectShader, "highlightColor");
-        m_rectUniforms.shadowColor = glGetUniformLocation(m_unifiedRectShader, "shadowColor");
-        m_rectUniforms.cornerRadius = glGetUniformLocation(m_unifiedRectShader, "cornerRadius");
-        m_rectUniforms.bevelSize = glGetUniformLocation(m_unifiedRectShader, "bevelSize");
+        m_rectUniforms.mvp = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "mvp");
+        m_rectUniforms.rectSize = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "rectSize");
+        m_rectUniforms.renderMode = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "renderMode");
+        m_rectUniforms.baseColor = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "baseColor");
+        m_rectUniforms.gradientType = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "gradientType");
+        m_rectUniforms.startColor = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "startColor");
+        m_rectUniforms.endColor = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "endColor");
+        m_rectUniforms.gradientCenter = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "gradientCenter");
+        m_rectUniforms.gradientRadius = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "gradientRadius");
+        m_rectUniforms.highlightColor = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "highlightColor");
+        m_rectUniforms.shadowColor = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "shadowColor");
+        m_rectUniforms.cornerRadius = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "cornerRadius");
+        m_rectUniforms.bevelSize = rhi::Gpu().GetUniformLocation(m_unifiedRectShader, "bevelSize");
     }
 }
 
@@ -111,15 +121,17 @@ void GuiNode::AddImage(const std::string& path, float x, float y, float w, float
         return;
     }
 
-    GLuint texID = 0;
-    glGenTextures(1, &texID);
-    glBindTexture(GL_TEXTURE_2D, texID);
-    GLenum format = (image->format->BytesPerPixel == 4) ? GL_RGBA : GL_RGB;
-    glTexImage2D(GL_TEXTURE_2D, 0, format, image->w, image->h, 0, format, GL_UNSIGNED_BYTE, image->pixels);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    rhi::Device& gpu = rhi::Gpu();
+    rhi::TextureDesc texDesc;
+    texDesc.format = (image->format->BytesPerPixel == 4) ? rhi::Format::RGBA8 : rhi::Format::RGB8;
+    texDesc.width = image->w;
+    texDesc.height = image->h;
+    rhi::TextureHandle texID = gpu.CreateTexture(texDesc);
+    const rhi::PixelFormat format = (image->format->BytesPerPixel == 4) ? rhi::PixelFormat::RGBA : rhi::PixelFormat::RGB;
+    gpu.UpdateTexture(texID, rhi::TextureRegion{}, format, rhi::PixelType::UByte, image->pixels);
+    gpu.SetTextureFilter(texID, rhi::Filter::Linear, rhi::Filter::Linear);
+    gpu.SetTextureWrapAxis(texID, 0, rhi::Wrap::ClampToEdge);
+    gpu.SetTextureWrapAxis(texID, 1, rhi::Wrap::ClampToEdge);
     SDL_FreeSurface(image);
 
     GuiElement element;
@@ -361,8 +373,8 @@ void GuiNode::RefreshElementPositions() {
 void GuiNode::RemoveElement(int elementIndex) {
     if (elementIndex >= 0 && elementIndex < static_cast<int>(m_elements.size())) {
         // Clean up texture if it's an image
-        if (m_elements[elementIndex].type == GuiType::IMAGE && m_elements[elementIndex].textureID != 0) {
-            glDeleteTextures(1, &m_elements[elementIndex].textureID);
+        if (m_elements[elementIndex].type == GuiType::IMAGE && m_elements[elementIndex].textureID.IsValid()) {
+            rhi::Gpu().DestroyTexture(m_elements[elementIndex].textureID);
         }
         m_elements.erase(m_elements.begin() + elementIndex);
     }
@@ -371,21 +383,22 @@ void GuiNode::RemoveElement(int elementIndex) {
 void GuiNode::ClearAllElements() {
     // Clean up textures
     for (const auto& element : m_elements) {
-        if (element.type == GuiType::IMAGE && element.textureID != 0) {
-            glDeleteTextures(1, &element.textureID);
+        if (element.type == GuiType::IMAGE && element.textureID.IsValid()) {
+            rhi::TextureHandle texture = element.textureID;
+            rhi::Gpu().DestroyTexture(texture);
         }
     }
     m_elements.clear();
 }
 
 void GuiNode::RenderHUD() const {
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    rhi::Gpu().SetDepthTest(false);
+    rhi::Gpu().SetBlendEnabled(true);
+    rhi::Gpu().SetBlendFunc(rhi::BlendFactor::SrcAlpha, rhi::BlendFactor::OneMinusSrcAlpha);
 
     // Group elements by type to minimize shader switches
     // First render all rectangles and progress bars with unified shader
-    glUseProgram(m_unifiedRectShader);
+    rhi::Gpu().UseProgram(m_unifiedRectShader);
     for (const auto& e : m_elements) {
         if (e.type == GuiType::RECT_SOLID || e.type == GuiType::RECT_GRADIENT || e.type == GuiType::RECT_BEVEL) {
             // Apply animation effects
@@ -402,7 +415,7 @@ void GuiNode::RenderHUD() const {
     }
 
     // Then render text and images with texture shader
-    glUseProgram(m_textureShader);
+    rhi::Gpu().UseProgram(m_textureShader);
     for (const auto& e : m_elements) {
         if (e.type == GuiType::TEXT) {
             RenderText(e);
@@ -411,8 +424,8 @@ void GuiNode::RenderHUD() const {
         }
     }
 
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
+    rhi::Gpu().SetBlendEnabled(false);
+    rhi::Gpu().SetDepthTest(true);
 }
 
 void GuiNode::RenderText(const GuiElement& e) const {
@@ -426,14 +439,15 @@ void GuiNode::RenderText(const GuiElement& e) const {
     SDL_FreeSurface(surf);
     if (!converted) return;
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, converted->w, converted->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, converted->pixels);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    rhi::Device& gpu = rhi::Gpu();
+    rhi::TextureDesc texDesc;
+    texDesc.width = converted->w;
+    texDesc.height = converted->h;
+    rhi::TextureHandle tex = gpu.CreateTexture(texDesc);
+    gpu.UpdateTexture(tex, rhi::TextureRegion{}, rhi::PixelFormat::RGBA, rhi::PixelType::UByte, converted->pixels);
+    gpu.SetTextureFilter(tex, rhi::Filter::Linear, rhi::Filter::Linear);
+    gpu.SetTextureWrapAxis(tex, 0, rhi::Wrap::ClampToEdge);
+    gpu.SetTextureWrapAxis(tex, 1, rhi::Wrap::ClampToEdge);
 
     glm::vec4 tint = glm::vec4(
         e.color.r / 255.0f,
@@ -443,7 +457,7 @@ void GuiNode::RenderText(const GuiElement& e) const {
     );
     drawQuad(tex, e.x, e.y, static_cast<float>(converted->w), static_cast<float>(converted->h), tint);
 
-    glDeleteTextures(1, &tex);
+    rhi::Gpu().DestroyTexture(tex);
     SDL_FreeSurface(converted);
 }
 
@@ -484,12 +498,13 @@ void GuiNode::RenderProgressBar(const GuiElement& e) const {
             SDL_Surface* converted = SDL_ConvertSurfaceFormat(surf, SDL_PIXELFORMAT_ABGR8888, 0);
             SDL_FreeSurface(surf);
             if (converted) {
-                GLuint tex = 0;
-                glGenTextures(1, &tex);
-                glBindTexture(GL_TEXTURE_2D, tex);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, converted->w, converted->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, converted->pixels);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                rhi::Device& gpu = rhi::Gpu();
+                rhi::TextureDesc texDesc;
+                texDesc.width = converted->w;
+                texDesc.height = converted->h;
+                rhi::TextureHandle tex = gpu.CreateTexture(texDesc);
+                gpu.UpdateTexture(tex, rhi::TextureRegion{}, rhi::PixelFormat::RGBA, rhi::PixelType::UByte, converted->pixels);
+                gpu.SetTextureFilter(tex, rhi::Filter::Linear, rhi::Filter::Linear);
                 
                 float labelX = e.x + (e.width - converted->w) * 0.5f;
                 float labelY = e.y + (e.height - converted->h) * 0.5f;
@@ -497,29 +512,28 @@ void GuiNode::RenderProgressBar(const GuiElement& e) const {
                 glm::vec4 tint(1.0f, 1.0f, 1.0f, 1.0f);
                 drawQuad(tex, labelX, labelY, static_cast<float>(converted->w), static_cast<float>(converted->h), tint);
                 
-                glDeleteTextures(1, &tex);
+                rhi::Gpu().DestroyTexture(tex);
                 SDL_FreeSurface(converted);
             }
         }
     }
 }
 
-void GuiNode::drawQuad(GLuint tex, float x, float y, float w, float h, const glm::vec4& tint) const {
+void GuiNode::drawQuad(rhi::TextureHandle tex, float x, float y, float w, float h, const glm::vec4& tint) const {
     glm::mat4 proj = glm::ortho(0.0f, float(m_screenW), 0.0f, float(m_screenH));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(x, y, 0.0f));
     model = glm::scale(model, glm::vec3(w, h, 1.0f));
     glm::mat4 mvp = proj * model;
 
-    glUniformMatrix4fv(m_texUniforms.mvp, 1, GL_FALSE, glm::value_ptr(mvp));
-    glUniform4fv(m_texUniforms.tintColor, 1, glm::value_ptr(tint));
+    rhi::Gpu().SetUniform(m_texUniforms.mvp, mvp);
+    rhi::Gpu().SetUniform(m_texUniforms.tintColor, tint);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glUniform1i(m_texUniforms.tex, 0);
+    rhi::Gpu().BindTexture(0, tex);
+    rhi::Gpu().SetUniform(m_texUniforms.tex, 0);
 
-    glBindVertexArray(m_quadVAO);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
+    rhi::Gpu().BindVertexInput(m_quadVAO);
+    rhi::Gpu().Draw(rhi::Topology::TriangleStrip, 0, 4);
+    rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 }
 
 void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& element) const {
@@ -529,10 +543,10 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
     glm::mat4 mvp = proj * model;
 
     // Set transform matrix
-    glUniformMatrix4fv(m_rectUniforms.mvp, 1, GL_FALSE, glm::value_ptr(mvp));
+    rhi::Gpu().SetUniform(m_rectUniforms.mvp, mvp);
     
     // Set rectangle size for SDF calculations
-    glUniform2f(m_rectUniforms.rectSize, w, h);
+    rhi::Gpu().SetUniform(m_rectUniforms.rectSize, glm::vec2(w, h));
     
     // Set render mode based on element type
     int renderMode = 0; // Default to solid
@@ -543,7 +557,7 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
     } else if (element.type == GuiType::RECT_BEVEL) {
         renderMode = 2;
     }
-    glUniform1i(m_rectUniforms.renderMode, renderMode);
+    rhi::Gpu().SetUniform(m_rectUniforms.renderMode, renderMode);
     
     // Set base color
     glm::vec4 baseColorVec = glm::vec4(
@@ -552,12 +566,12 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
         element.color.b / 255.0f,
         element.color.a / 255.0f
     );
-    glUniform4fv(m_rectUniforms.baseColor, 1, glm::value_ptr(baseColorVec));
+    rhi::Gpu().SetUniform(m_rectUniforms.baseColor, baseColorVec);
     
     // Set type-specific uniforms
     if (element.type == GuiType::RECT_GRADIENT) {
         // Gradient uniforms
-        glUniform1i(m_rectUniforms.gradientType, static_cast<int>(element.gradient.type));
+        rhi::Gpu().SetUniform(m_rectUniforms.gradientType, static_cast<int>(element.gradient.type));
         
         glm::vec4 startColor = glm::vec4(
             element.gradient.startColor.r / 255.0f,
@@ -572,10 +586,10 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
             element.gradient.endColor.a / 255.0f
         );
         
-        glUniform4fv(m_rectUniforms.startColor, 1, glm::value_ptr(startColor));
-        glUniform4fv(m_rectUniforms.endColor, 1, glm::value_ptr(endColor));
-        glUniform2fv(m_rectUniforms.gradientCenter, 1, glm::value_ptr(element.gradient.center));
-        glUniform1f(m_rectUniforms.gradientRadius, element.gradient.radius);
+        rhi::Gpu().SetUniform(m_rectUniforms.startColor, startColor);
+        rhi::Gpu().SetUniform(m_rectUniforms.endColor, endColor);
+        rhi::Gpu().SetUniform(m_rectUniforms.gradientCenter, element.gradient.center);
+        rhi::Gpu().SetUniform(m_rectUniforms.gradientRadius, element.gradient.radius);
     } 
     else if (element.type == GuiType::RECT_BEVEL) {
         // Bevel uniforms
@@ -592,15 +606,15 @@ void GuiNode::drawRect(float x, float y, float w, float h, const GuiElement& ele
             element.bevel.shadowColor.a / 255.0f
         );
         
-        glUniform4fv(m_rectUniforms.highlightColor, 1, glm::value_ptr(highlightColorVec));
-        glUniform4fv(m_rectUniforms.shadowColor, 1, glm::value_ptr(shadowColorVec));
-        glUniform1f(m_rectUniforms.cornerRadius, element.bevel.radius);
-        glUniform1f(m_rectUniforms.bevelSize, element.bevel.bevelSize);
+        rhi::Gpu().SetUniform(m_rectUniforms.highlightColor, highlightColorVec);
+        rhi::Gpu().SetUniform(m_rectUniforms.shadowColor, shadowColorVec);
+        rhi::Gpu().SetUniform(m_rectUniforms.cornerRadius, element.bevel.radius);
+        rhi::Gpu().SetUniform(m_rectUniforms.bevelSize, element.bevel.bevelSize);
     }
 
-    glBindVertexArray(m_quadVAO);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
+    rhi::Gpu().BindVertexInput(m_quadVAO);
+    rhi::Gpu().Draw(rhi::Topology::TriangleStrip, 0, 4);
+    rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 }
 
 glm::vec2 GuiNode::CalculateAbsolutePosition(const GuiElement& element) const {

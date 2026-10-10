@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <memory>
@@ -68,11 +68,11 @@ public:
     } config;
 
     // Accumulated LPV (radiant intensity SH per cell) for debug tooling and legacy inspectors.
-    GLuint GetLPVTextureR() const { return m_lpvAccumTextures[0]; }
-    GLuint GetLPVTextureG() const { return m_lpvAccumTextures[1]; }
-    GLuint GetLPVTextureB() const { return m_lpvAccumTextures[2]; }
-    GLuint GetGeometryVolume() const { return m_geometryVolume; }
-    GLuint GetResolvedIndirectTexture() const { return m_resolvedIndirectTexture; }
+    rhi::TextureHandle GetLPVTextureR() const { return m_lpvAccumTextures[0]; }
+    rhi::TextureHandle GetLPVTextureG() const { return m_lpvAccumTextures[1]; }
+    rhi::TextureHandle GetLPVTextureB() const { return m_lpvAccumTextures[2]; }
+    rhi::TextureHandle GetGeometryVolume() const { return m_geometryVolume; }
+    rhi::TextureHandle GetResolvedIndirectTexture() const { return m_resolvedIndirectTexture; }
 
     // Debug visualization
     void RenderDebugVisualization(const glm::mat4& view, const glm::mat4& projection);
@@ -110,32 +110,32 @@ private:
     glm::vec3 VoxelToWorld(const glm::ivec3& voxelPos) const;
 
     // Injection accumulators: signed fixed-point SH (R32I, 4x wider in X, one block per coefficient)
-    GLuint m_lpvTextures[3] = {0, 0, 0};
+    rhi::TextureHandle m_lpvTextures[3];
 
     // Propagation waves (ping-pong) and their running sum, RGBA16F = 4 SH coefficients per cell
-    GLuint m_lpvSampleTextures[3] = {0, 0, 0};
-    GLuint m_lpvSampleTexturesTemp[3] = {0, 0, 0};
-    GLuint m_lpvAccumTextures[3] = {0, 0, 0};
+    rhi::TextureHandle m_lpvSampleTextures[3];
+    rhi::TextureHandle m_lpvSampleTexturesTemp[3];
+    rhi::TextureHandle m_lpvAccumTextures[3];
     float m_fixedPointScale = 1.0f;
 
-    GLuint m_geometryVolume = 0;                 // Directional occlusion bits (R32UI)
-    GLuint m_resolvedIndirectTexture = 0;         // Full-screen RGBA16F irradiance + visibility
+    rhi::TextureHandle m_geometryVolume;                 // Directional occlusion bits (R32UI)
+    rhi::TextureHandle m_resolvedIndirectTexture;         // Full-screen RGBA16F irradiance + visibility
     
     // RSM framebuffer and textures
     std::unique_ptr<FrameBuffer> m_rsmFBO;
-    GLuint m_rsmPosition = 0;       // World-space position (RGB16F)
-    GLuint m_rsmNormal = 0;         // World-space normal (RGB16F)
-    GLuint m_rsmFlux = 0;           // Reflected flux per unit light-perpendicular area (RGB16F)
-    GLuint m_rsmDepth = 0;          // Depth buffer
+    rhi::TextureHandle m_rsmPosition;       // World-space position (RGB16F)
+    rhi::TextureHandle m_rsmNormal;         // World-space normal (RGB16F)
+    rhi::TextureHandle m_rsmFlux;           // Reflected flux per unit light-perpendicular area (RGB16F)
+    rhi::TextureHandle m_rsmDepth;          // Depth buffer
     
     // Shaders
-    GLuint m_rsmShader = 0;          // RSM generation shader
-    GLuint m_injectionShader = 0;    // VPL injection compute shader
-    GLuint m_propagationShader = 0;  // Light propagation compute shader
-    GLuint m_convertShader = 0;      // Convert R32UI extended grid -> RGBA16F per-voxel textures
-    GLuint m_resolveShader = 0;      // Resolve LPV SH volumes into generic screen-space indirect
-    GLuint m_voxelizeShader = 0;     // Geometry voxelization shader
-    GLuint m_debugShader = 0;        // Debug visualization shader
+    rhi::ProgramHandle m_rsmShader;          // RSM generation shader
+    rhi::ProgramHandle m_injectionShader;    // VPL injection compute shader
+    rhi::ProgramHandle m_propagationShader;  // Light propagation compute shader
+    rhi::ProgramHandle m_convertShader;      // Convert R32UI extended grid -> RGBA16F per-voxel textures
+    rhi::ProgramHandle m_resolveShader;      // Resolve LPV SH volumes into generic screen-space indirect
+    rhi::ProgramHandle m_voxelizeShader;     // Geometry voxelization shader
+    rhi::ProgramHandle m_debugShader;        // Debug visualization shader
     
     // State tracking
     int m_frameCounter = 0;

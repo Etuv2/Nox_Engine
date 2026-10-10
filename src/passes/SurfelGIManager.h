@@ -1,6 +1,6 @@
 #pragma once
 
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <cstdint>
 #include <memory>
 
@@ -192,7 +192,7 @@ public:
 	const SurfelGISettings& GetSettings() const { return m_settings; }
 	const SurfelGIFrameStats& GetStats() const { return m_stats; }
 
-	GLuint GetIndirectTexture() const;
+	rhi::TextureHandle GetIndirectTexture() const;
 
 private:
 	bool EnsurePipeline(RenderContext& context);

@@ -1,5 +1,6 @@
 #include "ProceduralStreetKit.h"
 #include "RoadNetwork.h"
+#include "NightStreetPacks.h"
 #include "stb_image_write.h"
 #include "stb_image_write.h"
 
@@ -247,6 +248,159 @@ namespace {
 	const glm::vec3 kSodiumHPS(1.0f, 0.56f, 0.2f);   // ~2000 K high-pressure sodium
 	const glm::vec3 kLED4000(1.0f, 0.86f, 0.72f);    // ~4000 K LED
 	const glm::vec3 kMetalHalide(0.9f, 0.95f, 1.0f); // cool floodlight
+
+	// ------------------------------------------------------------------------------------------
+	// Texture packs (NightStreetPacks): road paint decals, lens flare sources, window room atlas.
+	// The generators fill the engine's generic SceneRenderExtras.
+	// ------------------------------------------------------------------------------------------
+	using NightStreetPacks::RoadDecal;
+
+	struct PackSetup {
+		std::string decalRoot;   // empty = no decal pack (geometry paint fallback)
+		bool flares = false;
+		bool rooms = false;
+	};
+
+	// Resolves the packs named by the generator params and installs their descriptors (textures,
+	// materials, styles, room weights). A pack is used only when it is complete.
+	PackSetup SetupPacks(const json& params, SceneRenderExtras& extras) {
+		PackSetup setup;
+		const std::string decals = params.value("decal_root", std::string("textures/road_decals"));
+		DecalSet paint;
+		if (NightStreetPacks::BuildRoadDecalSet(decals, paint)) {
+			extras.decalSets.push_back(std::move(paint));
+			setup.decalRoot = decals;
+		}
+		setup.flares = NightStreetPacks::BuildLensFlareSet(params.value("lens_flare_root", std::string("textures/lens_flares")), extras.lensFlares);
+		extras.lensFlares.gain = std::max(params.value("lens_flare_gain", 1.0f), 0.0f);
+		setup.rooms = NightStreetPacks::BuildInteriorAtlas(params.value("window_room_root", std::string("textures/window_rooms")), extras.interiorAtlas);
+		return setup;
+	}
+
+	size_t DecalCount(const SceneRenderExtras& extras) {
+		size_t n = 0;
+		for (const DecalSet& set : extras.decalSets) n += set.instances.size();
+		return n;
+	}
+
+	// Lens flare source at a lamp lens. The pivot sits just in front of the emitting face so the lens
+	// surface itself never occludes it in the depth test.
+	void AddFlare(SceneRenderExtras& extras, NightStreetPacks::FlareStyle style, const glm::vec3& lensCentre,
+		const glm::vec3& facing, float luminance, float size, const glm::vec3& tint = glm::vec3(1.0f)) {
+		if (extras.lensFlares.styles.empty()) return;
+		LensFlareSource s;
+		s.position = lensCentre + facing * 0.05f;
+		s.style = style;
+		s.facing = facing;
+		s.luminance = luminance;
+		s.size = size;
+		s.tint = tint;
+		extras.lensFlares.sources.push_back(s);
+	}
+
+	// Road paint as decals (textures/road_decals/README.md). Image "up" follows dir, image right is
+	// cross(dir, +Y) (the driver's right when travelling along dir). Paint bounds come from the pack's
+	// generation_prompts.json, so sizes refer to the painted area, not the padded canvas.
+	class DecalWriter {
+	public:
+		DecalWriter(const PackSetup& packs, SceneRenderExtras& extras, uint32_t seed)
+			: m_info(NightStreetPacks::LoadDecalPaintInfo(packs.decalRoot)),
+			m_out(m_info && !extras.decalSets.empty() ? &extras.decalSets.back().instances : nullptr),
+			m_rng(seed ^ 0xDECA15u) {}
+
+		bool Active() const { return m_info != nullptr && m_out != nullptr; }
+
+		static glm::vec3 RightOf(const glm::vec3& dir) { return glm::normalize(glm::cross(dir, glm::vec3(0.0f, 1.0f, 0.0f))); }
+
+		// Whole image, scaled so its paint bounds measure paintL along dir and paintW across, with the
+		// painted centre (or the arrow tail when anchorTail) on c.
+		void Painted(RoadDecal layer, const glm::vec3& c, const glm::vec3& dir, float paintL, float paintW, bool anchorTail = false) {
+			if (!m_info) return;
+			const int i = static_cast<int>(layer);
+			const glm::vec4 b = m_info->bounds[i];
+			const glm::vec3 right = RightOf(dir);
+			const float fullW = paintW / std::max(b.z - b.x, 1e-3f);
+			const float fullL = paintL / std::max(b.w - b.y, 1e-3f);
+			const float u0 = anchorTail ? m_info->tailU[i] : (b.x + b.z) * 0.5f;
+			const float vMid = (b.y + b.w) * 0.5f;
+			DecalInstance dcl;
+			dcl.center = c - right * ((u0 - 0.5f) * fullW) + dir * ((vMid - 0.5f) * fullL);
+			dcl.axisU = right * (fullW * 0.5f);
+			dcl.axisV = dir * (fullL * 0.5f);
+			dcl.layer = i;
+			Wear(dcl);
+			m_out->push_back(dcl);
+		}
+
+		// Arrow of paintL metres with its tail on the lane centre c; width keeps the image aspect.
+		void Arrow(RoadDecal layer, const glm::vec3& c, const glm::vec3& dir, float paintL) {
+			if (!m_info) return;
+			const glm::vec4 b = m_info->bounds[static_cast<int>(layer)];
+			Painted(layer, c, dir, paintL, paintL * (b.z - b.x) / std::max(b.w - b.y, 1e-3f), true);
+		}
+
+		// Continuous line from A to B. The segment textures are not seamless tiles: every piece maps a
+		// different longitudinal window from inside the painted segment (padded ends excluded), and
+		// consecutive pieces overlap slightly so the alpha-blended joins have no gaps.
+		void Line(RoadDecal layer, const glm::vec3& A, const glm::vec3& B, float paintW) {
+			if (!m_info) return;
+			const glm::vec3 dv = B - A;
+			const float L = glm::length(dv);
+			if (L < 0.2f) return;
+			const glm::vec3 dir = dv / L;
+			const glm::vec3 right = RightOf(dir);
+			const glm::vec4 b = m_info->bounds[static_cast<int>(layer)];
+			const float margin = 0.08f * (b.w - b.y);
+			const float vIn0 = b.y + margin, vIn1 = b.w - margin;
+			const float pad = 0.3f * (b.z - b.x);
+			const float quadW = paintW * (b.z - b.x + 2.0f * pad) / std::max(b.z - b.x, 1e-3f);
+			const float overlap = 0.12f;
+			float t = 0.0f;
+			while (t < L - 0.05f) {
+				const float seg = Uniform(2.2f, 3.4f);
+				const float t0 = std::max(t - (t > 0.0f ? overlap : 0.0f), 0.0f);
+				const float t1 = std::min(t + seg, L);
+				// Same stretch for a short final piece: sample a proportionally shorter window.
+				const float frac = Uniform(0.55f, 0.8f) * std::min((t1 - t0) / seg, 1.0f);
+				const float span = frac * (vIn1 - vIn0);
+				const float va = vIn0 + Uniform(0.0f, 1.0f) * (vIn1 - vIn0 - span);
+				DecalInstance dcl;
+				dcl.center = A + dir * ((t0 + t1) * 0.5f);
+				dcl.axisU = right * (quadW * 0.5f);
+				dcl.axisV = dir * ((t1 - t0) * 0.5f);
+				dcl.uvRect = glm::vec4(b.x - pad, va, b.z + pad, va + span);
+				dcl.layer = static_cast<int>(layer);
+				Wear(dcl);
+				m_out->push_back(dcl);
+				t = t1;
+			}
+		}
+
+		// Crossing across a road of `width` (across = cross(dir, +Y)), bars `length` long along dir.
+		// Wider roads repeat the six-bar decal instead of stretching its bars: each copy holds six
+		// bars and six gaps, bar width stays near 0.5 m.
+		void Crosswalk(const glm::vec3& c, const glm::vec3& dir, float width, float length) {
+			if (!m_info || width < 1.0f) return;
+			const glm::vec3 right = RightOf(dir);
+			const int copies = std::max(1, static_cast<int>(std::lround(width / 6.0f)));
+			const float copyW = width / static_cast<float>(copies);
+			for (int k = 0; k < copies; ++k) {
+				const glm::vec3 cc = c + right * ((static_cast<float>(k) + 0.5f) * copyW - width * 0.5f);
+				Painted(RoadDecal::CrosswalkWhite, cc, dir, length, copyW * 11.0f / 12.0f);
+			}
+		}
+
+	private:
+		float Uniform(float a, float b) { return std::uniform_real_distribution<float>(a, b)(m_rng); }
+		void Wear(DecalInstance& d) {
+			const float coverage = Uniform(0.82f, 1.0f);
+			d.tint = glm::vec4(glm::vec3(Uniform(0.78f, 1.0f)), coverage);
+		}
+
+		const NightStreetPacks::DecalPaintInfo* m_info;
+		std::vector<DecalInstance>* m_out;
+		std::mt19937 m_rng;   // separate stream: the layout RNG sequence is unchanged by decals
+	};
 
 	// ------------------------------------------------------------------------------------------
 	// glTF writer
@@ -568,6 +722,19 @@ namespace ProceduralStreetKit {
 				materials[M_SHOPFRONT].emissive = glm::vec3(1.0f);
 			}
 		}
+		SceneRenderExtras& extras = result.renderExtras;
+		const PackSetup packs = SetupPacks(params, extras);
+		if (packs.rooms) {
+			// Parallax rooms from textures/window_rooms behind the lit panes. The atlases carry their own
+			// lighting and colour, so the emissive colour is near-neutral (brightness classes only).
+			materials[M_WINDOW_WARM].interior = json{ {"depth", 4.5}, {"lighting", 0.85}, {"blinds", 0.45} };
+			materials[M_WINDOW_COOL].interior = json{ {"depth", 4.5}, {"lighting", 0.8}, {"blinds", 0.5}, {"seed", 1.0}, {"style", NightStreetPacks::RoomOffice} };
+			materials[M_WINDOW_DIM].interior = json{ {"depth", 4.0}, {"lighting", 0.6}, {"blinds", 0.6}, {"seed", 2.0} };
+			materials[M_WINDOW_WARM].emissive = glm::vec3(1.0f, 0.95f, 0.88f);
+			materials[M_WINDOW_COOL].emissive = glm::vec3(0.93f, 0.97f, 1.0f);
+			materials[M_WINDOW_DIM].emissive = glm::vec3(1.0f, 0.93f, 0.85f);
+		}
+		DecalWriter decals(packs, extras, seed);
 		Kit kit(materials);
 
 		// Layout (metres). Road |x| < 6, curb 6..6.25 (0.15 high), sidewalk 6.25..10.5.
@@ -606,14 +773,50 @@ namespace ProceduralStreetKit {
 			paintRun(M_PAINT_WHITE, -roadHalf + 0.3f, 0.15f, z0, z1, 1e6f, 0.0f);
 			paintRun(M_PAINT_WHITE, roadHalf - 0.3f, 0.15f, z0, z1, 1e6f, 0.0f);
 		};
-		markingsFor(zStart, crossZ0 - 4.0f);
-		markingsFor(crossZ1 + 4.0f, zEnd);
-		// Stop lines and crosswalks.
-		kit.Flat(M_PAINT_WHITE, -roadHalf + 0.3f, 0.0f, crossZ0 - 3.6f, crossZ0 - 3.2f, paintY);
-		kit.Flat(M_PAINT_WHITE, 0.0f, roadHalf - 0.3f, crossZ1 + 3.2f, crossZ1 + 3.6f, paintY);
-		for (float x = -roadHalf + 0.5f; x < roadHalf - 0.5f; x += 1.0f) {
-			kit.Flat(M_PAINT_WHITE, x, x + 0.5f, crossZ0 - 3.0f, crossZ0 - 0.4f, paintY);
-			kit.Flat(M_PAINT_WHITE, x, x + 0.5f, crossZ1 + 0.4f, crossZ1 + 3.0f, paintY);
+		// Decal version of the same layout (textures/road_decals): one double-yellow footprint over both
+		// centre stripes, explicitly spaced lane dashes, edge lines, stop bars on the approach lanes,
+		// tiled crossings and lane arrows ahead of the junction.
+		const float decalY = 0.005f;
+		auto decalMarkingsFor = [&](float z0, float z1) {
+			const glm::vec3 fwd(0.0f, 0.0f, 1.0f);
+			decals.Line(RoadDecal::LineDoubleYellow, glm::vec3(0.0f, decalY, z0), glm::vec3(0.0f, decalY, z1), 0.36f);
+			for (float x : { -3.0f, 3.0f }) {
+				for (float z = z0; z + 3.0f <= z1; z += 12.0f) {
+					decals.Painted(RoadDecal::LaneDashWhite, glm::vec3(x, decalY, z + 1.5f), fwd, 3.0f, 0.13f);
+				}
+			}
+			for (float x : { -roadHalf + 0.3f, roadHalf - 0.3f }) {
+				decals.Line(RoadDecal::LineSingleWhite, glm::vec3(x, decalY, z0), glm::vec3(x, decalY, z1), 0.15f);
+			}
+		};
+		if (decals.Active()) {
+			decalMarkingsFor(zStart, crossZ0 - 4.0f);
+			decalMarkingsFor(crossZ1 + 4.0f, zEnd);
+			// Approach from -Z (travel +Z, lanes at x < 0) and from +Z (travel -Z, lanes at x > 0).
+			for (float s : { 1.0f, -1.0f }) {
+				const glm::vec3 dir(0.0f, 0.0f, s);
+				const float zStop = s > 0.0f ? crossZ0 - 3.4f : crossZ1 + 3.4f;
+				const float laneSign = -s;   // driver's right side is -X when travelling +Z
+				decals.Painted(RoadDecal::StopBarWhite, glm::vec3(laneSign * (roadHalf * 0.5f), decalY, zStop), dir, 0.4f, roadHalf - 0.45f);
+				const float zArrow = zStop - s * 6.5f;
+				decals.Arrow(RoadDecal::ArrowStraightLeft, glm::vec3(laneSign * 1.5f, decalY, zArrow), dir, 3.6f);
+				decals.Arrow(RoadDecal::ArrowStraightRight, glm::vec3(laneSign * 4.5f, decalY, zArrow), dir, 3.6f);
+				decals.Arrow(RoadDecal::ArrowStraight, glm::vec3(laneSign * 1.5f, decalY, zArrow - s * 30.0f), dir, 3.6f);
+				decals.Arrow(RoadDecal::ArrowStraight, glm::vec3(laneSign * 4.5f, decalY, zArrow - s * 30.0f), dir, 3.6f);
+			}
+			decals.Crosswalk(glm::vec3(0.0f, decalY, crossZ0 - 1.7f), glm::vec3(0.0f, 0.0f, 1.0f), 2.0f * roadHalf - 1.0f, 2.6f);
+			decals.Crosswalk(glm::vec3(0.0f, decalY, crossZ1 + 1.7f), glm::vec3(0.0f, 0.0f, 1.0f), 2.0f * roadHalf - 1.0f, 2.6f);
+		}
+		else {
+			markingsFor(zStart, crossZ0 - 4.0f);
+			markingsFor(crossZ1 + 4.0f, zEnd);
+			// Stop lines and crosswalks.
+			kit.Flat(M_PAINT_WHITE, -roadHalf + 0.3f, 0.0f, crossZ0 - 3.6f, crossZ0 - 3.2f, paintY);
+			kit.Flat(M_PAINT_WHITE, 0.0f, roadHalf - 0.3f, crossZ1 + 3.2f, crossZ1 + 3.6f, paintY);
+			for (float x = -roadHalf + 0.5f; x < roadHalf - 0.5f; x += 1.0f) {
+				kit.Flat(M_PAINT_WHITE, x, x + 0.5f, crossZ0 - 3.0f, crossZ0 - 0.4f, paintY);
+				kit.Flat(M_PAINT_WHITE, x, x + 0.5f, crossZ1 + 0.4f, crossZ1 + 3.0f, paintY);
+			}
 		}
 
 		// --- Curbs and sidewalks.
@@ -671,14 +874,15 @@ namespace ProceduralStreetKit {
 					else if (r < 0.2f) mat = M_WINDOW_COOL;
 					else if (r < 0.32f) mat = M_WINDOW_DIM;
 					if (mat == M_WINDOW_DARK) {
-						kit.Quad(mat, glm::vec3(faceX, y + 1.0f, z + 0.75f), glm::vec3(0, 0, 0.75f), glm::vec3(0, 1.0f, 0),
+						kit.Quad(mat, glm::vec3(faceX, y + 1.0f, z + 0.8f), glm::vec3(0, 0, 0.8f), glm::vec3(0, 1.0f, 0),
 							N, texU, glm::vec3(0, -1, 0));
 					}
 					else {
+						// 1.6 x 2.0 m pane: the interior-mapping pane contract (interior_mapping.glsl).
 						// Random atlas tile, inset slightly to avoid mip bleeding between tiles.
 						const int tile = static_cast<int>(rng() % 16u);
 						const glm::vec2 t0(static_cast<float>(tile % 4) * 0.25f + 0.004f, static_cast<float>(tile / 4) * 0.25f + 0.004f);
-						kit.QuadUV(mat, glm::vec3(faceX, y + 1.0f, z + 0.75f), texU * 0.75f, glm::vec3(0, 1.0f, 0), N,
+						kit.QuadUV(mat, glm::vec3(faceX, y + 1.0f, z + 0.8f), texU * 0.8f, glm::vec3(0, 1.0f, 0), N,
 							t0, t0 + glm::vec2(0.242f));
 					}
 				}
@@ -750,6 +954,8 @@ namespace ProceduralStreetKit {
 				glm::vec3(std::max(headX0, headX1), headY + 0.25f, z + 0.28f));
 			kit.Flat(led ? M_LAMP_LED : M_LAMP_SODIUM, std::min(headX0, headX1) + 0.05f, std::max(headX0, headX1) - 0.05f,
 				z - 0.22f, z + 0.22f, headY - 0.01f, true);
+			AddFlare(extras, led ? NightStreetPacks::FlareLED : NightStreetPacks::FlareSodium, glm::vec3((headX0 + headX1) * 0.5f, headY - 0.01f, z),
+				glm::vec3(0.0f, -1.0f, 0.0f), materials[led ? M_LAMP_LED : M_LAMP_SODIUM].emissiveStrength, 1.0f);
 			// Spot aimed down and slightly toward the road centre (-Z forward rotated by pitch/roll).
 			const glm::vec3 lightPos((headX0 + headX1) * 0.5f, headY - 0.05f, z);
 			const glm::vec3 rot(-90.0f, 0.0f, side * -12.0f);
@@ -795,6 +1001,8 @@ namespace ProceduralStreetKit {
 					const float x = static_cast<float>(side) * 4.6f;
 					kit.Box(M_POLE, glm::vec3(x - 0.2f, ceilY - 0.12f, z - 0.7f), glm::vec3(x + 0.2f, ceilY, z + 0.7f), 0x3Fu & ~4u);
 					kit.Flat(M_TUNNEL_STRIP, x - 0.15f, x + 0.15f, z - 0.62f, z + 0.62f, ceilY - 0.125f, true);
+					AddFlare(extras, NightStreetPacks::FlareSodium, glm::vec3(x, ceilY - 0.125f, z), glm::vec3(0.0f, -1.0f, 0.0f),
+						materials[M_TUNNEL_STRIP].emissiveStrength, 0.6f);
 					result.lightNodes.push_back(MakeLight("tunnel_light_" + std::to_string(t++), "spot",
 						glm::vec3(x, ceilY - 0.2f, z), glm::vec3(-90.0f, 0.0f, static_cast<float>(side) * -20.0f),
 						kSodiumHPS, 6500.0f, 14.0f, 35.0f, 55.0f, false, 0.3f));
@@ -830,6 +1038,8 @@ namespace ProceduralStreetKit {
 					kit.Cylinder(M_POLE, glm::vec3(x, 0.0f, z), 14.0f, 0.18f);
 					kit.Box(M_POLE, glm::vec3(x - 0.6f, 14.0f, z - 0.4f), glm::vec3(x + 0.6f, 14.5f, z + 0.4f));
 					kit.Flat(M_LAMP_LED, x - 0.5f, x + 0.5f, z - 0.3f, z + 0.3f, 13.99f, true);
+					AddFlare(extras, NightStreetPacks::FlareFlood, glm::vec3(x, 13.99f, z), glm::vec3(0.0f, -1.0f, 0.0f),
+						materials[M_LAMP_LED].emissiveStrength, 1.4f, kMetalHalide);
 					result.lightNodes.push_back(MakeLight("floodlight_" + std::to_string(flood++), "spot",
 						glm::vec3(x, 13.9f, z), glm::vec3(-90.0f, 0.0f, s * -25.0f), kMetalHalide, 40000.0f, 45.0f, 30.0f, 60.0f,
 						flood == 1, 0.35f));
@@ -874,6 +1084,7 @@ namespace ProceduralStreetKit {
 		result.gltfPath = gltfPath.generic_string();
 		std::cout << "[ProceduralStreetKit] Generated " << result.gltfPath << " ok=" << result.ok
 			<< " primitives=" << result.primitiveCount << " triangles=" << result.triangleCount
+			<< " decals=" << DecalCount(extras) << " flares=" << extras.lensFlares.sources.size()
 			<< " lights=" << result.lightNodes.size() << " probes=" << result.reflectionProbes.size() << std::endl;
 		return result;
 	}
@@ -892,7 +1103,8 @@ namespace {
 		D_WOOD, D_WIRE, D_PALM_TRUNK, D_PALM_FROND,
 		D_SIGNAL_HOUSING, D_SIGNAL_RED, D_SIGNAL_GREEN, D_SIGNAL_AMBER,
 		D_HYDRANT, D_BIN, D_CAR_WHITE, D_CAR_BLACK, D_CAR_SILVER, D_CAR_RED, D_CAR_BLUE,
-		D_CAR_GLASS, D_TAIL_LAMP, D_WHEEL, D_SKYLINE, D_SKYLINE_DARK, D_HILL, D_WINDOW_ROOM_DARK, D_COUNT
+		D_CAR_GLASS, D_TAIL_LAMP, D_WHEEL, D_SKYLINE, D_SKYLINE_DARK, D_HILL, D_WINDOW_ROOM_DARK,
+		D_SHOP_ROOM_24, D_SHOP_ROOM_32, D_SHOP_ROOM_40, D_SHOP_ROOM_48, D_COUNT
 	};
 
 	MatDef DMatDef(const char* name, const char* set, float tile, glm::vec3 base, float rough, float metal = 0.0f,
@@ -961,6 +1173,16 @@ namespace {
 		m[D_SKYLINE] = DMatDef("skyline_concrete", "concrete_wall", 6.0f, glm::vec3(0.2f, 0.2f, 0.22f), 1.0f, 0.0f, none, 0.0f, 0.2f);
 		m[D_SKYLINE_DARK] = DMatDef("skyline_dark", "", 1.0f, glm::vec3(0.05f, 0.05f, 0.06f), 1.0f, 0.0f, none, 0.0f, 0.1f);
 		m[D_HILL] = DMatDef("hill_silhouette", "", 1.0f, glm::vec3(0.04f, 0.06f, 0.04f), 1.0f, 0.0f, none, 0.0f, 0.1f);
+		// Shopfront glazing with a parallax shop/cafe room (window_rooms pack). One material per glass
+		// width: the interior shader needs the pane size, and every bay is one pane (one room per shop).
+		const char* shopNames[4] = { "shop_room_2_4m", "shop_room_3_2m", "shop_room_4_0m", "shop_room_4_8m" };
+		for (int k = 0; k < 4; ++k) {
+			const float halfW = 1.2f + 0.4f * static_cast<float>(k);
+			m[D_SHOP_ROOM_24 + k] = DMatDef(shopNames[k], "", 1.0f, glm::vec3(0.03f), 0.08f, 0.0f,
+				glm::vec3(1.0f, 0.96f, 0.9f), 3.2f, 0.3f, 0.0f, 0.6f);
+			m[D_SHOP_ROOM_24 + k].interior = json{ {"depth", 6.0}, {"lighting", 0.75}, {"blinds", 0.08}, {"style", NightStreetPacks::RoomShop},
+				{"seed", 4.0 + k}, {"pane", json::array({ halfW, 1.1f })}, {"sill", 0.35} };
+		}
 		return m;
 	}
 
@@ -1044,6 +1266,7 @@ namespace ProceduralStreetKit {
 		const float curbH = 0.15f;      // curb height (sidewalk top)
 		const float curbT = 0.15f;      // curb width
 		const float paintY = 0.004f;    // road paint lift over asphalt
+		const float decalY = 0.005f;    // decal overlay lift (DecalPass also applies a depth offset)
 		const glm::vec3 up(0.0f, 1.0f, 0.0f);
 		const glm::vec2 spawn(-3.8f, -40.0f);  // player start: keep the start lane clear of parked cars
 		const float sidewalkW = network.SidewalkWidth();
@@ -1066,8 +1289,22 @@ namespace ProceduralStreetKit {
 			if (WriteShopInterior(shopPath, seed)) {
 				materials[M_SHOPFRONT].emissiveTexture = shopPath.generic_string();
 				materials[M_SHOPFRONT].emissive = glm::vec3(1.0f, 0.8f, 0.6f); // warm, restrained interiors
+				for (int k = D_SHOP_ROOM_24; k <= D_SHOP_ROOM_48; ++k) materials[k].emissiveTexture = shopPath.generic_string();
 			}
 		}
+		SceneRenderExtras& extras = result.renderExtras;
+		const PackSetup packs = SetupPacks(params, extras);
+		const bool roomAtlas = packs.rooms;
+		if (roomAtlas) {
+			// The atlases already carry warm/cool room light: keep the emissive colours near-neutral so the
+			// tint is not applied twice; offices get the office-weighted variant set (style 2).
+			materials[M_WINDOW_WARM].emissive = glm::vec3(1.0f, 0.95f, 0.88f);
+			materials[M_WINDOW_COOL].emissive = glm::vec3(0.93f, 0.97f, 1.0f);
+			materials[M_WINDOW_DIM].emissive = glm::vec3(1.0f, 0.93f, 0.85f);
+			materials[D_WINDOW_ROOM_DARK].emissive = glm::vec3(1.0f, 0.96f, 0.92f);
+			materials[M_WINDOW_COOL].interior["style"] = NightStreetPacks::RoomOffice;
+		}
+		DecalWriter decals(packs, extras, seed);
 		Kit kit(materials);
 		kit.SetChunkXZ(true);
 
@@ -1203,8 +1440,15 @@ namespace ProceduralStreetKit {
 			auto M = [&](float t) { return e.P + e.d * t; };
 			const float t0 = rA + 4.5f, t1 = e.L - rB - 4.5f;
 			if (t1 > t0 + 1.0f) {
-				strip(M_PAINT_YELLOW, M(t0), M(t1), e.n, -0.25f, -0.01f, paintY);
-				strip(M_PAINT_YELLOW, M(t0), M(t1), e.n, 0.01f, 0.25f, paintY);
+				// Decals (road_decals pack) replace the flat paint strips; the layout RNG calls stay the same.
+				const glm::vec3 lift = up * decalY;
+				if (decals.Active()) {
+					decals.Line(RoadDecal::LineDoubleYellow, M(t0) + lift, M(t1) + lift, 0.42f);
+				}
+				else {
+					strip(M_PAINT_YELLOW, M(t0), M(t1), e.n, -0.25f, -0.01f, paintY);
+					strip(M_PAINT_YELLOW, M(t0), M(t1), e.n, 0.01f, 0.25f, paintY);
+				}
 				// Lane dividers (dashed) and edge lines broken into faded runs.
 				for (float side : { -1.0f, 1.0f }) {
 					const float off = side * e.hw * 0.5f;
@@ -1212,14 +1456,16 @@ namespace ProceduralStreetKit {
 						const float te = std::min(t + 3.0f, t1);
 						if (chance(0.1f)) continue;
 						const int mat = chance(0.25f) ? static_cast<int>(D_PAINT_WORN) : static_cast<int>(M_PAINT_WHITE);
-						strip(mat, M(t), M(te), e.n, off - 0.07f, off + 0.07f, paintY);
+						if (!decals.Active()) strip(mat, M(t), M(te), e.n, off - 0.07f, off + 0.07f, paintY);
+						else if (te - t > 1.0f) decals.Painted(RoadDecal::LaneDashWhite, M((t + te) * 0.5f) + e.n * off + lift, e.d, te - t, 0.14f);
 					}
 					const float edgeOff = side * (e.hw - 0.35f);
 					for (float t = t0; t < t1; t += 25.0f) {
 						if (chance(0.15f)) continue;
 						const float te = std::min(t + uniform(14.0f, 22.0f), t1);
 						const int mat = chance(0.3f) ? static_cast<int>(D_PAINT_WORN) : static_cast<int>(M_PAINT_WHITE);
-						strip(mat, M(t), M(te), e.n, edgeOff - 0.08f, edgeOff + 0.08f, paintY);
+						if (!decals.Active()) strip(mat, M(t), M(te), e.n, edgeOff - 0.08f, edgeOff + 0.08f, paintY);
+						else decals.Line(RoadDecal::LineSingleWhite, M(t) + e.n * edgeOff + lift, M(te) + e.n * edgeOff + lift, 0.16f);
 					}
 				}
 			}
@@ -1247,12 +1493,38 @@ namespace ProceduralStreetKit {
 				const glm::vec3 base = atA ? e.P : e.Q;
 				auto at = [&](float s) { return base + dirOut * s; };
 				const float cwA = hN + 1.0f, cwB = hN + 3.4f;
-				for (float o = -e.hw + 0.5f; o < e.hw - 0.4f; o += 1.0f) {
-					const glm::vec3 c = at((cwA + cwB) * 0.5f) + e.n * (o + 0.25f) + up * paintY;
-					kit.Quad(M_PAINT_WHITE, c, dirOut * ((cwB - cwA) * 0.5f), e.n * 0.25f, up, dirOut, e.n);
+				if (!decals.Active()) {
+					for (float o = -e.hw + 0.5f; o < e.hw - 0.4f; o += 1.0f) {
+						const glm::vec3 c = at((cwA + cwB) * 0.5f) + e.n * (o + 0.25f) + up * paintY;
+						kit.Quad(M_PAINT_WHITE, c, dirOut * ((cwB - cwA) * 0.5f), e.n * 0.25f, up, dirOut, e.n);
+					}
+					const glm::vec3 sl = at(hN + 4.0f) + up * paintY;
+					kit.Quad(M_PAINT_WHITE, sl, e.n * (e.hw - 0.3f), dirOut * 0.2f, up, e.n, dirOut);
+					continue;
 				}
-				const glm::vec3 sl = at(hN + 4.0f) + up * paintY;
-				kit.Quad(M_PAINT_WHITE, sl, e.n * (e.hw - 0.3f), dirOut * 0.2f, up, e.n, dirOut);
+				// Decals: crossing over the full width, stop bar and lane arrows on the approach lanes only
+				// (right-hand traffic: arriving traffic travels -dirOut, its lanes lie on its right).
+				const glm::vec3 lift = up * decalY;
+				decals.Crosswalk(at((cwA + cwB) * 0.5f) + lift, dirOut, 2.0f * e.hw - 0.9f, cwB - cwA);
+				const glm::vec3 travel = -dirOut;
+				const glm::vec3 right = DecalWriter::RightOf(travel);
+				decals.Painted(RoadDecal::StopBarWhite, at(hN + 4.0f) + right * ((e.hw - 0.15f) * 0.5f) + lift, travel, 0.4f, e.hw - 0.45f);
+				const float arrowAt = hN + 7.2f;
+				if (nodes[node].degree < 3 || arrowAt + 2.5f > e.L * 0.5f) continue;
+				bool left = false, straight = false, rightTurn = false;
+				for (const DistrictEdge& g : edges) {
+					if (&g == &e || (g.a != node && g.b != node)) continue;
+					const glm::vec3 o = g.a == node ? g.d : -g.d;
+					if (glm::dot(o, travel) > 0.7f) straight = true;
+					else if (glm::dot(o, right) > 0.5f) rightTurn = true;
+					else if (glm::dot(o, right) < -0.5f) left = true;
+				}
+				const RoadDecal inner = left ? (straight ? RoadDecal::ArrowStraightLeft : RoadDecal::ArrowLeft)
+					: (straight ? RoadDecal::ArrowStraight : RoadDecal::ArrowRight);
+				const RoadDecal outer = rightTurn ? (straight ? RoadDecal::ArrowStraightRight : RoadDecal::ArrowRight)
+					: (straight ? RoadDecal::ArrowStraight : RoadDecal::ArrowLeft);
+				decals.Arrow(inner, at(arrowAt) + right * (e.hw * 0.25f) + lift, travel, 3.6f);
+				decals.Arrow(outer, at(arrowAt) + right * (e.hw * 0.75f) + lift, travel, 3.6f);
 			}
 		}
 
@@ -1359,7 +1631,12 @@ namespace ProceduralStreetKit {
 			if (x1 - x0 > 14.0f && z1 - z0 > 14.0f && chance(0.1f)) {
 				kit.Flat(D_ROAD_CLEAN, x0 + 0.3f, x1 - 0.3f, z0 + 0.3f, z1 - 0.3f, 0.004f);
 				for (float x = x0 + 1.5f; x < x1 - 1.0f; x += 2.6f) {
-					kit.Flat(M_PAINT_WHITE, x, x + 0.1f, z0 + 1.0f, z1 - 1.0f, 0.008f);
+					if (decals.Active()) {
+						decals.Line(RoadDecal::LineSingleWhite, glm::vec3(x + 0.05f, 0.009f, z0 + 1.0f), glm::vec3(x + 0.05f, 0.009f, z1 - 1.0f), 0.1f);
+					}
+					else {
+						kit.Flat(M_PAINT_WHITE, x, x + 0.1f, z0 + 1.0f, z1 - 1.0f, 0.008f);
+					}
 				}
 				for (float x = x0 + 1.5f; x + 2.6f < x1 - 0.5f; x += 2.6f) {
 					if (!chance(0.45f)) continue;
@@ -1462,7 +1739,12 @@ namespace ProceduralStreetKit {
 				const Face& F = faces[street];
 				float u = -F.len * 0.5f + 0.2f;
 				while (u < F.len * 0.5f - 2.4f) {
-					const float bay = std::min(uniform(4.0f, 7.0f), F.len * 0.5f - u);
+					// With room atlases the glass is snapped to one of the shop-room pane widths
+					// (2.4 / 3.2 / 4.0 / 4.8 m, door strip 1.85 m) so every bay is exactly one pane.
+					const float bayDraw = uniform(4.0f, 7.0f);
+					const int shopSize = std::clamp(static_cast<int>((bayDraw - 4.0f) / 3.0f * 4.0f), 0, 3);
+					const float shopGlass = 2.4f + 0.8f * static_cast<float>(shopSize);
+					const float bay = std::min(roomAtlas ? shopGlass + 1.85f : bayDraw, F.len * 0.5f - u);
 					if (bay < 2.6f) break;
 					const float ua = u, ub = u + bay;
 					u = ub;
@@ -1475,7 +1757,14 @@ namespace ProceduralStreetKit {
 						const glm::vec3 gc = F.mid + F.A * ((gu0 + gu1) * 0.5f) + up * 1.5f + F.N * 0.03f;
 						const glm::vec3 gh = F.A * ((gu1 - gu0) * 0.5f);
 						if (chance(0.4f)) {
-							kit.QuadUV(M_SHOPFRONT, gc, gh, up * 1.1f, F.N, glm::vec2(uniform(0.0f, 0.4f), 0.0f), glm::vec2(uniform(0.5f, 0.9f), 1.0f));
+							const glm::vec2 shopUv0(uniform(0.0f, 0.4f), 0.0f), shopUv1(uniform(0.5f, 0.9f), 1.0f);
+							if (roomAtlas && std::abs((gu1 - gu0) - shopGlass) < 0.01f) {
+								// Shop/cafe room behind the glass (interior-mapping tile UV contract).
+								kit.QuadUV(D_SHOP_ROOM_24 + shopSize, gc, gh, up * 1.1f, F.N, glm::vec2(0.004f), glm::vec2(0.246f));
+							}
+							else {
+								kit.QuadUV(M_SHOPFRONT, gc, gh, up * 1.1f, F.N, shopUv0, shopUv1);
+							}
 						}
 						else {
 							kit.Quad(M_WINDOW_DARK, gc, gh, up * 1.1f, F.N, F.A, glm::vec3(0, -1, 0));
@@ -1559,6 +1848,8 @@ namespace ProceduralStreetKit {
 			const glm::vec3 headC = base + up * (poleH - 0.3f) + rn * 2.9f;
 			OrientedBox(kit, M_POLE, headC, rn, e.d, 0.45f, 0.13f, 0.25f);
 			kit.Quad(led ? M_LAMP_LED : M_LAMP_SODIUM, headC - up * 0.135f, rn * 0.42f, e.d * 0.2f, -up, rn, e.d);
+			AddFlare(extras, led ? NightStreetPacks::FlareLED : NightStreetPacks::FlareSodium, headC - up * 0.135f, -up,
+				materials[led ? M_LAMP_LED : M_LAMP_SODIUM].emissiveStrength, 0.9f);
 			const float tilt = std::abs(e.d.z) > 0.5f ? 12.0f * rn.x : 0.0f;
 			const bool shadows = lampIndex < shadowedLamps;
 			result.lightNodes.push_back(MakeLight("streetlight_" + std::to_string(lampIndex), "spot", headC - up * 0.2f,
@@ -1599,6 +1890,7 @@ namespace ProceduralStreetKit {
 					const int mat = (k == active) ? lensMats[k] : static_cast<int>(D_SIGNAL_HOUSING);
 					const glm::vec3 lc = headC + faceN * 0.21f + up * (0.35f - 0.35f * static_cast<float>(k));
 					kit.Quad(mat, lc, glm::vec3(0.0f, 0.0f, 0.15f), glm::vec3(0.0f, 0.1f, 0.0f), faceN, glm::vec3(0, 0, 1), up);
+					if (k == active) AddFlare(extras, NightStreetPacks::FlareSignal, lc, faceN, materials[mat].emissiveStrength, 0.35f, materials[mat].emissive);
 				}
 				circle(p, 0.3f);
 			}
@@ -1617,6 +1909,8 @@ namespace ProceduralStreetKit {
 				OrientedBox(kit, D_SIGNAL_HOUSING, mid - up * 0.45f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 0.25f, 0.45f, 0.2f);
 				kit.Quad(D_SIGNAL_RED, mid - up * 0.45f + glm::vec3(0.0f, 0.0f, 0.21f), glm::vec3(0.15f, 0.0f, 0.0f), glm::vec3(0.0f, 0.1f, 0.0f),
 					glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f), up);
+				AddFlare(extras, NightStreetPacks::FlareSignal, mid - up * 0.45f + glm::vec3(0.0f, 0.0f, 0.21f), glm::vec3(0.0f, 0.0f, 1.0f),
+					materials[D_SIGNAL_RED].emissiveStrength, 0.35f, materials[D_SIGNAL_RED].emissive);
 			}
 			for (float sx : { -1.0f, 1.0f }) {
 				const float sz = -sx;   // the two diagonal corners without a signal pole
@@ -1838,7 +2132,8 @@ namespace ProceduralStreetKit {
 		std::cout << "[ProceduralStreetKit] District " << result.gltfPath << " ok=" << result.ok
 			<< " lots=" << buildingCount << " primitives=" << result.primitiveCount
 			<< " triangles=" << result.triangleCount << " lights=" << result.lightNodes.size()
-			<< " probes=" << result.reflectionProbes.size() << " obstacles=" << obstacles.size() << std::endl;
+			<< " probes=" << result.reflectionProbes.size() << " obstacles=" << obstacles.size()
+			<< " decals=" << DecalCount(extras) << " flares=" << extras.lensFlares.sources.size() << std::endl;
 		return result;
 	}
 

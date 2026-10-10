@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 #include <glm/glm.hpp>
 #include <vector>
 
@@ -27,7 +27,7 @@ public:
                  const std::shared_ptr<DirectionalLight>& dirLight,
                  const std::shared_ptr<Skybox>& skybox) override;
 
-    GLuint GetSSAOTexture() const;
+    rhi::TextureHandle GetSSAOTexture() const;
     void SetConfig(const Config& config) { m_config = config; }
     const Config& GetConfig() const { return m_config; }
 
@@ -37,9 +37,9 @@ private:
     void RenderSSAO(RenderContext& ctx);
     void ResolveSSAO(RenderContext& ctx);
 
-    GLuint m_ssaoShader = 0;
-    GLuint m_blurShader = 0;
-    GLuint m_noiseTex = 0;
+    rhi::ProgramHandle m_ssaoShader;
+    rhi::ProgramHandle m_blurShader;
+    rhi::TextureHandle m_noiseTex;
     std::vector<glm::vec3> m_kernel;
 
     Config m_config{};

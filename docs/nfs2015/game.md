@@ -120,6 +120,12 @@ The Blender scripts are under `nox_ext/blender`, outside the repo; to rebuild, r
 **Dynamics** (`DriveMode.cpp`, 240 Hz sub-steps):
 - Two-axle tyre model with a friction ellipse, plus longitudinal and lateral load transfer.
 - Rear-wheel drive through 6 gears. Drive force is traction-limited, so excess torque becomes wheelspin.
+- Automatic gearbox with closer arcade ratios (`gear_ratios` in the handling JSON, 2-8 gears). Upshifts happen at the
+  redline (about 45 / 72 / 97 / 125 / 160 km/h with the defaults). Downshifts happen on kickdown (floored throttle),
+  while braking, or when lugging. A short lockout between shifts prevents gear hunting. A stopped car is always in 1st.
+- Reverse: hold S at a standstill for `reverse_engage_delay` (0.2 s) to select R; S then drives backwards and W
+  brakes. Hold W at a standstill to return to 1st. Brakes always oppose the motion, so a crash bounce never
+  flips the car into reverse.
 - Burnout: hold throttle and brake while stopped.
 - Arcade aids: grip-mode stability, slip-rate damping, countersteer assist and a spin-out guard.
 
@@ -162,6 +168,7 @@ The Blender scripts are under `nox_ext/blender`, outside the repo; to rebuild, r
 | Variable | Effect |
 | --- | --- |
 | `NOX_DRIVE_SCRIPT=maneuvers` | Burnout, launch, brake, weave, two drifts; prints telemetry |
+| `NOX_DRIVE_SCRIPT=gearbox` | Full-throttle run (upshifts), stop (downshifts), hold S (reverse), W (stop, forward); prints `[Gearbox]` telemetry |
 | `NOX_DRIVE_AUTOPILOT=1` | Drives the race |
 | `NOX_FIXED_DT=<s>` | Fixed timestep |
 | `NOX_FINAL_DUMP_EVERY=N` | Frame sequences |

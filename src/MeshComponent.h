@@ -1,8 +1,8 @@
 #pragma once
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include "Vertex.h"
 #include "Texture.h"
-#include "GLBuffer.h"
+#include "GpuBuffer.h"
 #include <vector>
 #include <memory>
 #include <cstdint>
@@ -65,7 +65,9 @@ struct MaterialDesc {
 	float interiorSeed = 0.0f;      // Per-material variation seed mixed into the per-window hash
 	float interiorLighting = 0.5f;  // Occupancy bias: 0 = mostly dark rooms, 1 = mostly lit rooms [0,1]
 	float interiorBlinds = 0.5f;    // Probability a window has blinds or curtains [0,1]
-	float interiorStyle = 0.0f;     // 0 = apartment/office, 1 = shop interior (deeper, shelves)
+	float interiorStyle = 0.0f;     // Interior atlas variant weight row [0,3]; procedural rooms: 1 = shelf racks
+	glm::vec2 interiorPane = glm::vec2(0.8f, 1.0f); // pane half extents in metres (window quad tile contract)
+	float interiorSill = 0.8f;      // room floor distance below the pane's bottom edge in metres (atlas rooms)
 
 	int baseColorTexCoord = 0;
 	int normalTexCoord = 0;
@@ -108,7 +110,9 @@ struct MaterialDesc {
 		interiorStrength = std::max(interiorStrength, 0.0f);
 		interiorLighting = std::clamp(interiorLighting, 0.0f, 1.0f);
 		interiorBlinds = std::clamp(interiorBlinds, 0.0f, 1.0f);
-		interiorStyle = interiorStyle > 0.5f ? 1.0f : 0.0f;
+		interiorStyle = std::clamp(std::round(interiorStyle), 0.0f, 3.0f);
+		interiorPane = glm::clamp(interiorPane, glm::vec2(0.2f), glm::vec2(5.0f));
+		interiorSill = std::clamp(interiorSill, 0.0f, 3.0f);
 
 		auto clampSupportedUVSet = [](int uvSet) { return uvSet == 1 ? 1 : 0; };
 		baseColorTexCoord = clampSupportedUVSet(baseColorTexCoord);
@@ -126,17 +130,17 @@ struct MaterialDesc {
 
 class MeshComponent {
 public:
-	GLuint VAO;
-	GLBufferPtr vertexBuffer;   // Replaces raw VBO
-	GLBufferPtr indexBuffer;    // Replaces raw EBO
+	rhi::VertexInputHandle VAO;   // vertex + index buffer bindings
+	GpuBufferPtr vertexBuffer;
+	GpuBufferPtr indexBuffer;
 	size_t indexCount;
 
 	// Legacy accessors for compatibility
-	GLuint GetVBO() const { return vertexBuffer ? vertexBuffer->GetID() : 0; }
-	GLuint GetEBO() const { return indexBuffer ? indexBuffer->GetID() : 0; }
+	rhi::BufferHandle GetVBO() const { return vertexBuffer ? vertexBuffer->GetID() : rhi::BufferHandle{}; }
+	rhi::BufferHandle GetEBO() const { return indexBuffer ? indexBuffer->GetID() : rhi::BufferHandle{}; }
 	// Legacy property accessors (for code that directly accessed VBO/EBO)
-	GLuint VBO() const { return GetVBO(); }
-	GLuint EBO() const { return GetEBO(); }
+	rhi::BufferHandle VBO() const { return GetVBO(); }
+	rhi::BufferHandle EBO() const { return GetEBO(); }
 
 	// glTF 2.0 standard texture assignments (using new Texture system)
 	std::shared_ptr<Texture> diffuseTexture;        // Base color (albedo) texture
@@ -157,7 +161,7 @@ public:
 	bool doubleSided;             // Disable backface culling (from glTF material)
 
 	// Animation and morphing
-	std::vector<GLBufferPtr> morphBuffers; // One buffer per morph target (replaces morphVBOs)
+	std::vector<GpuBufferPtr> morphBuffers; // One buffer per morph target (replaces morphVBOs)
 	int morphTargetCount = 0;  // Number of morph targets
 
 	// glTF 2.0 standard material factors
@@ -216,7 +220,7 @@ public:
 	int sourceNodeIndex = -1;
 
 	MeshComponent()
-		: VAO(0),
+		: VAO(),
 		indexCount(0),
 		diffuseTexture(nullptr), normalTexture(nullptr),
 		roughnessTexture(nullptr), emissiveTexture(nullptr),
@@ -274,7 +278,7 @@ public:
 		, localTransform(other.localTransform)
 		, sourceNodeIndex(other.sourceNodeIndex)
 	{
-		other.VAO = 0;
+		other.VAO = {};
 		other.indexCount = 0;
 	}
 
@@ -326,7 +330,7 @@ public:
 			boundingVolumeValid = other.boundingVolumeValid;
 			localTransform = other.localTransform;
 			sourceNodeIndex = other.sourceNodeIndex;
-			other.VAO = 0;
+			other.VAO = {};
 			other.indexCount = 0;
 		}
 		return *this;
@@ -443,9 +447,9 @@ public:
 	}
 
 	void Cleanup() {
-		if (VAO) glDeleteVertexArrays(1, &VAO);
+		if (VAO && rhi::HasGpu()) rhi::Gpu().DestroyVertexInput(VAO);
 		
-		// GLBuffer smart pointers handle cleanup automatically
+		// GpuBuffer smart pointers handle cleanup automatically
 		vertexBuffer.reset();
 		indexBuffer.reset();
 		morphBuffers.clear();
@@ -461,6 +465,6 @@ public:
 		transmissionTexture.reset();
 
 		// Reset VAO handle
-		VAO = 0;
+		VAO = {};
 	}
 };

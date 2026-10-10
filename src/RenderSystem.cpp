@@ -16,7 +16,7 @@
 #include <limits>
 
 namespace {
-	constexpr GLuint kGlobalTransformBufferBinding = 6;
+	constexpr uint32_t kGlobalTransformBufferBinding = 6;
 	constexpr uint32_t kTransformFlagRenderable = 1u << 0;
 	constexpr uint32_t kTransformFlagSkinned = 1u << 1;
 	constexpr uint32_t kTransformFlagInvalid = 1u << 31;
@@ -179,9 +179,8 @@ RenderSystem::RenderSystem(ComponentManager* componentManager, TransformSystem* 
 RenderSystem::~RenderSystem()
 {
 	ClearBakedGBufferBatches();
-	if (m_instanceVBO != 0) {
-		glDeleteBuffers(1, &m_instanceVBO);
-		m_instanceVBO = 0;
+	if (m_instanceVBO) {
+		rhi::Gpu().DestroyBuffer(m_instanceVBO);
 	}
 }
 
@@ -231,7 +230,7 @@ void RenderSystem::PrepareFrameTransforms()
 	UpdateChangedRenderItemBounds();
 }
 
-const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLuint shader)
+const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(rhi::ProgramHandle shader)
 {
 	auto it = m_shaderUniformCaches.find(shader);
 	if (it != m_shaderUniformCaches.end()) {
@@ -239,79 +238,81 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	}
 
 	ShaderUniformCache uniforms{};
-	uniforms.view = glGetUniformLocation(shader, "view");
-	uniforms.projection = glGetUniformLocation(shader, "projection");
-	uniforms.model = glGetUniformLocation(shader, "model");
-	uniforms.normalMatrix = glGetUniformLocation(shader, "normalMatrix");
-	uniforms.prevView = glGetUniformLocation(shader, "prevView");
-	uniforms.prevProjection = glGetUniformLocation(shader, "prevProjection");
-	uniforms.prevModel = glGetUniformLocation(shader, "prevModel");
-	uniforms.transformID = glGetUniformLocation(shader, "uTransformID");
-	uniforms.useVertexTransformID = glGetUniformLocation(shader, "uUseVertexTransformID");
-	uniforms.useModelMatrixUniform = glGetUniformLocation(shader, "uUseModelMatrixUniform");
-	uniforms.materialID = glGetUniformLocation(shader, "uMaterialID");
-	uniforms.lightSpaceMatrix = glGetUniformLocation(shader, "lightSpaceMatrix");
-	uniforms.uEnableSkinning = glGetUniformLocation(shader, "u_enableSkinning");
-	uniforms.uBoneMatrices = glGetUniformLocation(shader, "u_boneMatrices");
-	uniforms.bones = glGetUniformLocation(shader, "bones");
+	uniforms.view = rhi::Gpu().GetUniformLocation(shader, "view");
+	uniforms.projection = rhi::Gpu().GetUniformLocation(shader, "projection");
+	uniforms.model = rhi::Gpu().GetUniformLocation(shader, "model");
+	uniforms.normalMatrix = rhi::Gpu().GetUniformLocation(shader, "normalMatrix");
+	uniforms.prevView = rhi::Gpu().GetUniformLocation(shader, "prevView");
+	uniforms.prevProjection = rhi::Gpu().GetUniformLocation(shader, "prevProjection");
+	uniforms.prevModel = rhi::Gpu().GetUniformLocation(shader, "prevModel");
+	uniforms.transformID = rhi::Gpu().GetUniformLocation(shader, "uTransformID");
+	uniforms.useVertexTransformID = rhi::Gpu().GetUniformLocation(shader, "uUseVertexTransformID");
+	uniforms.useModelMatrixUniform = rhi::Gpu().GetUniformLocation(shader, "uUseModelMatrixUniform");
+	uniforms.materialID = rhi::Gpu().GetUniformLocation(shader, "uMaterialID");
+	uniforms.lightSpaceMatrix = rhi::Gpu().GetUniformLocation(shader, "lightSpaceMatrix");
+	uniforms.uEnableSkinning = rhi::Gpu().GetUniformLocation(shader, "u_enableSkinning");
+	uniforms.uBoneMatrices = rhi::Gpu().GetUniformLocation(shader, "u_boneMatrices");
+	uniforms.bones = rhi::Gpu().GetUniformLocation(shader, "bones");
 
-	uniforms.textureDiffuse = glGetUniformLocation(shader, "texture_diffuse");
-	uniforms.textureNormal = glGetUniformLocation(shader, "texture_normal");
-	uniforms.textureMetallicRoughness = glGetUniformLocation(shader, "texture_metallic_roughness");
-	uniforms.textureEmissive = glGetUniformLocation(shader, "texture_emissive");
-	uniforms.textureOcclusion = glGetUniformLocation(shader, "texture_occlusion");
-	uniforms.textureSpecular = glGetUniformLocation(shader, "texture_specular");
-	uniforms.textureSpecularColor = glGetUniformLocation(shader, "texture_specular_color");
-	uniforms.textureTransmission = glGetUniformLocation(shader, "texture_transmission");
+	uniforms.textureDiffuse = rhi::Gpu().GetUniformLocation(shader, "texture_diffuse");
+	uniforms.textureNormal = rhi::Gpu().GetUniformLocation(shader, "texture_normal");
+	uniforms.textureMetallicRoughness = rhi::Gpu().GetUniformLocation(shader, "texture_metallic_roughness");
+	uniforms.textureEmissive = rhi::Gpu().GetUniformLocation(shader, "texture_emissive");
+	uniforms.textureOcclusion = rhi::Gpu().GetUniformLocation(shader, "texture_occlusion");
+	uniforms.textureSpecular = rhi::Gpu().GetUniformLocation(shader, "texture_specular");
+	uniforms.textureSpecularColor = rhi::Gpu().GetUniformLocation(shader, "texture_specular_color");
+	uniforms.textureTransmission = rhi::Gpu().GetUniformLocation(shader, "texture_transmission");
 
-	uniforms.hasBaseColorTexture = glGetUniformLocation(shader, "hasBaseColorTexture");
-	uniforms.hasNormalTexture = glGetUniformLocation(shader, "hasNormalTexture");
-	uniforms.hasMetallicRoughnessTexture = glGetUniformLocation(shader, "hasMetallicRoughnessTexture");
-	uniforms.hasEmissiveTexture = glGetUniformLocation(shader, "hasEmissiveTexture");
-	uniforms.hasOcclusionTexture = glGetUniformLocation(shader, "hasOcclusionTexture");
-	uniforms.hasSpecularTexture = glGetUniformLocation(shader, "hasSpecularTexture");
-	uniforms.hasSpecularColorTexture = glGetUniformLocation(shader, "hasSpecularColorTexture");
-	uniforms.hasTransmissionTexture = glGetUniformLocation(shader, "hasTransmissionTexture");
+	uniforms.hasBaseColorTexture = rhi::Gpu().GetUniformLocation(shader, "hasBaseColorTexture");
+	uniforms.hasNormalTexture = rhi::Gpu().GetUniformLocation(shader, "hasNormalTexture");
+	uniforms.hasMetallicRoughnessTexture = rhi::Gpu().GetUniformLocation(shader, "hasMetallicRoughnessTexture");
+	uniforms.hasEmissiveTexture = rhi::Gpu().GetUniformLocation(shader, "hasEmissiveTexture");
+	uniforms.hasOcclusionTexture = rhi::Gpu().GetUniformLocation(shader, "hasOcclusionTexture");
+	uniforms.hasSpecularTexture = rhi::Gpu().GetUniformLocation(shader, "hasSpecularTexture");
+	uniforms.hasSpecularColorTexture = rhi::Gpu().GetUniformLocation(shader, "hasSpecularColorTexture");
+	uniforms.hasTransmissionTexture = rhi::Gpu().GetUniformLocation(shader, "hasTransmissionTexture");
 
-	uniforms.baseColorFactor = glGetUniformLocation(shader, "baseColorFactor");
-	uniforms.metallicFactor = glGetUniformLocation(shader, "metallicFactor");
-	uniforms.roughnessFactor = glGetUniformLocation(shader, "roughnessFactor");
-	uniforms.emissiveFactor = glGetUniformLocation(shader, "emissiveFactor");
-	uniforms.emissiveStrength = glGetUniformLocation(shader, "emissiveStrength");
-	uniforms.occlusionStrength = glGetUniformLocation(shader, "occlusionStrength");
-	uniforms.normalScale = glGetUniformLocation(shader, "normalScale");
-	uniforms.alphaCutoff = glGetUniformLocation(shader, "alphaCutoff");
-	uniforms.alphaMode = glGetUniformLocation(shader, "alphaMode");
-	uniforms.specularFactor = glGetUniformLocation(shader, "specularFactor");
-	uniforms.specularColorFactor = glGetUniformLocation(shader, "specularColorFactor");
-	uniforms.clearcoatFactor = glGetUniformLocation(shader, "clearcoatFactor");
-	uniforms.clearcoatRoughnessFactor = glGetUniformLocation(shader, "clearcoatRoughnessFactor");
-	uniforms.transmissionFactor = glGetUniformLocation(shader, "transmissionFactor");
-	uniforms.thicknessFactor = glGetUniformLocation(shader, "thicknessFactor");
-	uniforms.attenuationDistance = glGetUniformLocation(shader, "attenuationDistance");
-	uniforms.attenuationColor = glGetUniformLocation(shader, "attenuationColor");
-	uniforms.ior = glGetUniformLocation(shader, "ior");
-	uniforms.wetnessResponse = glGetUniformLocation(shader, "wetnessResponse");
-	uniforms.puddleResponse = glGetUniformLocation(shader, "puddleResponse");
-	uniforms.rainBeadResponse = glGetUniformLocation(shader, "rainBeadResponse");
-	uniforms.flakeIntensity = glGetUniformLocation(shader, "flakeIntensity");
-	uniforms.flakeDensity = glGetUniformLocation(shader, "flakeDensity");
-	uniforms.interiorMapping = glGetUniformLocation(shader, "interiorMapping");
-	uniforms.interiorDepth = glGetUniformLocation(shader, "interiorDepth");
-	uniforms.interiorStrength = glGetUniformLocation(shader, "interiorStrength");
-	uniforms.interiorSeed = glGetUniformLocation(shader, "interiorSeed");
-	uniforms.interiorLighting = glGetUniformLocation(shader, "interiorLighting");
-	uniforms.interiorBlinds = glGetUniformLocation(shader, "interiorBlinds");
-	uniforms.interiorStyle = glGetUniformLocation(shader, "interiorStyle");
+	uniforms.baseColorFactor = rhi::Gpu().GetUniformLocation(shader, "baseColorFactor");
+	uniforms.metallicFactor = rhi::Gpu().GetUniformLocation(shader, "metallicFactor");
+	uniforms.roughnessFactor = rhi::Gpu().GetUniformLocation(shader, "roughnessFactor");
+	uniforms.emissiveFactor = rhi::Gpu().GetUniformLocation(shader, "emissiveFactor");
+	uniforms.emissiveStrength = rhi::Gpu().GetUniformLocation(shader, "emissiveStrength");
+	uniforms.occlusionStrength = rhi::Gpu().GetUniformLocation(shader, "occlusionStrength");
+	uniforms.normalScale = rhi::Gpu().GetUniformLocation(shader, "normalScale");
+	uniforms.alphaCutoff = rhi::Gpu().GetUniformLocation(shader, "alphaCutoff");
+	uniforms.alphaMode = rhi::Gpu().GetUniformLocation(shader, "alphaMode");
+	uniforms.specularFactor = rhi::Gpu().GetUniformLocation(shader, "specularFactor");
+	uniforms.specularColorFactor = rhi::Gpu().GetUniformLocation(shader, "specularColorFactor");
+	uniforms.clearcoatFactor = rhi::Gpu().GetUniformLocation(shader, "clearcoatFactor");
+	uniforms.clearcoatRoughnessFactor = rhi::Gpu().GetUniformLocation(shader, "clearcoatRoughnessFactor");
+	uniforms.transmissionFactor = rhi::Gpu().GetUniformLocation(shader, "transmissionFactor");
+	uniforms.thicknessFactor = rhi::Gpu().GetUniformLocation(shader, "thicknessFactor");
+	uniforms.attenuationDistance = rhi::Gpu().GetUniformLocation(shader, "attenuationDistance");
+	uniforms.attenuationColor = rhi::Gpu().GetUniformLocation(shader, "attenuationColor");
+	uniforms.ior = rhi::Gpu().GetUniformLocation(shader, "ior");
+	uniforms.wetnessResponse = rhi::Gpu().GetUniformLocation(shader, "wetnessResponse");
+	uniforms.puddleResponse = rhi::Gpu().GetUniformLocation(shader, "puddleResponse");
+	uniforms.rainBeadResponse = rhi::Gpu().GetUniformLocation(shader, "rainBeadResponse");
+	uniforms.flakeIntensity = rhi::Gpu().GetUniformLocation(shader, "flakeIntensity");
+	uniforms.flakeDensity = rhi::Gpu().GetUniformLocation(shader, "flakeDensity");
+	uniforms.interiorMapping = rhi::Gpu().GetUniformLocation(shader, "interiorMapping");
+	uniforms.interiorDepth = rhi::Gpu().GetUniformLocation(shader, "interiorDepth");
+	uniforms.interiorStrength = rhi::Gpu().GetUniformLocation(shader, "interiorStrength");
+	uniforms.interiorSeed = rhi::Gpu().GetUniformLocation(shader, "interiorSeed");
+	uniforms.interiorLighting = rhi::Gpu().GetUniformLocation(shader, "interiorLighting");
+	uniforms.interiorBlinds = rhi::Gpu().GetUniformLocation(shader, "interiorBlinds");
+	uniforms.interiorStyle = rhi::Gpu().GetUniformLocation(shader, "interiorStyle");
+	uniforms.interiorPane = rhi::Gpu().GetUniformLocation(shader, "interiorPane");
+	uniforms.interiorSill = rhi::Gpu().GetUniformLocation(shader, "interiorSill");
 
-	uniforms.baseColorUVSet = glGetUniformLocation(shader, "baseColorUVSet");
-	uniforms.normalUVSet = glGetUniformLocation(shader, "normalUVSet");
-	uniforms.metallicRoughnessUVSet = glGetUniformLocation(shader, "metallicRoughnessUVSet");
-	uniforms.emissiveUVSet = glGetUniformLocation(shader, "emissiveUVSet");
-	uniforms.occlusionUVSet = glGetUniformLocation(shader, "occlusionUVSet");
-	uniforms.specularUVSet = glGetUniformLocation(shader, "specularUVSet");
-	uniforms.specularColorUVSet = glGetUniformLocation(shader, "specularColorUVSet");
-	uniforms.transmissionUVSet = glGetUniformLocation(shader, "transmissionUVSet");
+	uniforms.baseColorUVSet = rhi::Gpu().GetUniformLocation(shader, "baseColorUVSet");
+	uniforms.normalUVSet = rhi::Gpu().GetUniformLocation(shader, "normalUVSet");
+	uniforms.metallicRoughnessUVSet = rhi::Gpu().GetUniformLocation(shader, "metallicRoughnessUVSet");
+	uniforms.emissiveUVSet = rhi::Gpu().GetUniformLocation(shader, "emissiveUVSet");
+	uniforms.occlusionUVSet = rhi::Gpu().GetUniformLocation(shader, "occlusionUVSet");
+	uniforms.specularUVSet = rhi::Gpu().GetUniformLocation(shader, "specularUVSet");
+	uniforms.specularColorUVSet = rhi::Gpu().GetUniformLocation(shader, "specularColorUVSet");
+	uniforms.transmissionUVSet = rhi::Gpu().GetUniformLocation(shader, "transmissionUVSet");
 
 	auto [insertedIt, _] = m_shaderUniformCaches.emplace(shader, uniforms);
 	return insertedIt->second;
@@ -319,7 +320,7 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 
 void RenderSystem::RenderForward(const glm::mat4& view,
 	const glm::mat4& projection,
-	GLuint defaultShader)
+	rhi::ProgramHandle defaultShader)
 {
 	if (!m_componentManager || !m_transformSystem) return;
 
@@ -327,7 +328,7 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 	PrepareCameraSubmissionCache();
 	m_cachedBoneMatrices.clear();
 
-	glUseProgram(defaultShader);
+	rhi::Gpu().UseProgram(defaultShader);
 	ResetMaterialStateCache(defaultShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
@@ -336,15 +337,15 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 
 	// Upload view and projection matrices once
 	const auto& uniforms = GetShaderUniformCache(defaultShader);
-	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
-	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
+	if (uniforms.view != -1) rhi::Gpu().SetUniform(uniforms.view, view);
+	if (uniforms.projection != -1) rhi::Gpu().SetUniform(uniforms.projection, projection);
 	UploadMaterialSamplerUniforms(uniforms);
 	int skinningState = -1;
-		GLuint currentVAO = 0;
+		rhi::VertexInputHandle currentVAO;
 		bool blendEnabled = false;
 		bool depthWriteEnabled = true;
-		glDisable(GL_BLEND);
-		glDepthMask(GL_TRUE);
+		rhi::Gpu().SetBlendEnabled(false);
+		rhi::Gpu().SetDepthWrite(true);
 
 	m_visibleCount = 0;
 	m_totalCount = m_renderItems.size();
@@ -372,12 +373,12 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 		if (item.skinned) {
 			UploadBoneMatrices(item.entity, worldTransform, uniforms);
 			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
-				glUniform1i(uniforms.uEnableSkinning, 1);
+				rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 1);
 				skinningState = 1;
 			}
 		}
 		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
-			glUniform1i(uniforms.uEnableSkinning, 0);
+			rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 0);
 			skinningState = 0;
 		}
 
@@ -385,16 +386,16 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 
 		if (item.transparent != blendEnabled) {
 			if (item.transparent) {
-				glEnable(GL_BLEND);
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				rhi::Gpu().SetBlendEnabled(true);
+				rhi::Gpu().SetBlendFunc(rhi::BlendFactor::SrcAlpha, rhi::BlendFactor::OneMinusSrcAlpha);
 			}
 			else {
-				glDisable(GL_BLEND);
+				rhi::Gpu().SetBlendEnabled(false);
 			}
 			blendEnabled = item.transparent;
 		}
 		if (item.transparent == depthWriteEnabled) {
-			glDepthMask(item.transparent ? GL_FALSE : GL_TRUE);
+			rhi::Gpu().SetDepthWrite(!item.transparent);
 			depthWriteEnabled = !item.transparent;
 		}
 
@@ -402,25 +403,25 @@ void RenderSystem::RenderForward(const glm::mat4& view,
 		UploadMaterialUniforms(*item.mesh, uniforms);
 
 		if (currentVAO != item.mesh->VAO) {
-			glBindVertexArray(item.mesh->VAO);
+			rhi::Gpu().BindVertexInput(item.mesh->VAO);
 			currentVAO = item.mesh->VAO;
 		}
-		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(item.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(item.mesh->indexCount), rhi::IndexType::UInt32, 0);
 		++m_diagnostics.forwardDrawCalls;
 	}
 
-	if (currentVAO != 0) {
-		glBindVertexArray(0);
+	if (currentVAO.IsValid()) {
+		rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 	}
 	if (blendEnabled) {
-		glDisable(GL_BLEND);
+		rhi::Gpu().SetBlendEnabled(false);
 	}
 	if (!depthWriteEnabled) {
-		glDepthMask(GL_TRUE);
+		rhi::Gpu().SetDepthWrite(true);
 	}
 }
 
-void RenderSystem::RenderGeometry(GLuint geometryShader)
+void RenderSystem::RenderGeometry(rhi::ProgramHandle geometryShader)
 {
 	if (!m_componentManager || !m_transformSystem) {
 		std::cerr << "[RenderSystem] ERROR: Missing component manager or transform system!" << std::endl;
@@ -432,10 +433,10 @@ void RenderSystem::RenderGeometry(GLuint geometryShader)
 	RenderGeometryPrepared(geometryShader);
 }
 
-void RenderSystem::RenderGeometryPrepared(GLuint geometryShader)
+void RenderSystem::RenderGeometryPrepared(rhi::ProgramHandle geometryShader)
 {
 	m_cachedBoneMatrices.clear();
-	glUseProgram(geometryShader);
+	rhi::Gpu().UseProgram(geometryShader);
 	ResetMaterialStateCache(geometryShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
@@ -444,7 +445,7 @@ void RenderSystem::RenderGeometryPrepared(GLuint geometryShader)
 	const auto& uniforms = GetShaderUniformCache(geometryShader);
 	UploadMaterialSamplerUniforms(uniforms);
 	if (uniforms.useVertexTransformID != -1) {
-		glUniform1i(uniforms.useVertexTransformID, 0);
+		rhi::Gpu().SetUniform(uniforms.useVertexTransformID, 0);
 	}
 
 	m_visibleCount = 0;
@@ -452,7 +453,7 @@ void RenderSystem::RenderGeometryPrepared(GLuint geometryShader)
 	m_totalCount = m_renderItems.size();
 	m_visibleCount = m_submissionCache.visibleOpaqueItems.items.size();
 
-	GLuint currentVAO = 0;
+	rhi::VertexInputHandle currentVAO;
 	int skinningState = -1;
 	for (uint32_t itemIndex : m_submissionCache.sortedOpaqueItems.items) {
 		if (itemIndex >= m_renderItems.size()) {
@@ -473,12 +474,12 @@ void RenderSystem::RenderGeometryPrepared(GLuint geometryShader)
 		if (item.skinned) {
 			UploadBoneMatrices(item.entity, worldTransform, uniforms);
 			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
-				glUniform1i(uniforms.uEnableSkinning, 1);
+				rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 1);
 				skinningState = 1;
 			}
 		}
 		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
-			glUniform1i(uniforms.uEnableSkinning, 0);
+			rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 0);
 			skinningState = 0;
 		}
 
@@ -487,19 +488,19 @@ void RenderSystem::RenderGeometryPrepared(GLuint geometryShader)
 		UploadMaterialUniforms(mesh, uniforms);
 
 		if (currentVAO != mesh.VAO) {
-			glBindVertexArray(mesh.VAO);
+			rhi::Gpu().BindVertexInput(mesh.VAO);
 			currentVAO = mesh.VAO;
 		}
-		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, nullptr);
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(mesh.indexCount), rhi::IndexType::UInt32, 0);
 		++m_diagnostics.geometryDrawCalls;
 	}
 
-	if (currentVAO != 0) {
-		glBindVertexArray(0);
+	if (currentVAO.IsValid()) {
+		rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 	}
 }
 
-void RenderSystem::RenderGeometryBatchedGBuffer(GLuint geometryShader)
+void RenderSystem::RenderGeometryBatchedGBuffer(rhi::ProgramHandle geometryShader)
 {
 	if (!m_componentManager || !m_transformSystem) {
 		std::cerr << "[RenderSystem] ERROR: Missing component manager or transform system!" << std::endl;
@@ -526,7 +527,7 @@ void RenderSystem::RenderGeometryBatchedGBuffer(GLuint geometryShader)
 	}
 
 	m_cachedBoneMatrices.clear();
-	glUseProgram(geometryShader);
+	rhi::Gpu().UseProgram(geometryShader);
 	ResetMaterialStateCache(geometryShader);
 	m_bakedGBufferTransformBuffer->BindBase(kGlobalTransformBufferBinding);
 	const auto& uniforms = GetShaderUniformCache(geometryShader);
@@ -535,23 +536,23 @@ void RenderSystem::RenderGeometryBatchedGBuffer(GLuint geometryShader)
 	const glm::mat4 identity(1.0f);
 	const glm::mat3 identityNormal(1.0f);
 	if (uniforms.model != -1) {
-		glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(identity));
+		rhi::Gpu().SetUniform(uniforms.model, identity);
 	}
 	if (uniforms.normalMatrix != -1) {
-		glUniformMatrix3fv(uniforms.normalMatrix, 1, GL_FALSE, glm::value_ptr(identityNormal));
+		rhi::Gpu().SetUniform(uniforms.normalMatrix, identityNormal);
 	}
 	if (uniforms.uEnableSkinning != -1) {
-		glUniform1i(uniforms.uEnableSkinning, 0);
+		rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 0);
 	}
 	if (uniforms.useVertexTransformID != -1) {
-		glUniform1i(uniforms.useVertexTransformID, 1);
+		rhi::Gpu().SetUniform(uniforms.useVertexTransformID, 1);
 	}
 
 	m_totalCount = m_renderItems.size();
 	m_visibleCount = m_submissionCache.visibleOpaqueItems.items.size();
 
 	for (const BakedGBufferBatch& batch : m_bakedGBufferBatches) {
-		if (!batch.materialMesh || batch.vao == 0 || batch.indexCount == 0) {
+		if (!batch.materialMesh || !batch.vao.IsValid() || batch.indexCount == 0) {
 			continue;
 		}
 
@@ -559,25 +560,25 @@ void RenderSystem::RenderGeometryBatchedGBuffer(GLuint geometryShader)
 		BindMaterialTextures(*batch.materialMesh, uniforms);
 		UploadMaterialUniforms(*batch.materialMesh, uniforms);
 
-		glBindVertexArray(batch.vao);
-		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(batch.indexCount), GL_UNSIGNED_INT, nullptr);
+		rhi::Gpu().BindVertexInput(batch.vao);
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(batch.indexCount), rhi::IndexType::UInt32, 0);
 		++m_diagnostics.geometryDrawCalls;
 	}
 
-	glBindVertexArray(0);
+	rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 	if (uniforms.useVertexTransformID != -1) {
-		glUniform1i(uniforms.useVertexTransformID, 0);
+		rhi::Gpu().SetUniform(uniforms.useVertexTransformID, 0);
 	}
 }
 
-void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint shadowShader)
+void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, rhi::ProgramHandle shadowShader)
 {
 	if (!m_componentManager || !m_transformSystem) return;
 
 	PrepareFrameTransforms();
 	PrepareShadowSubmissionCache(lightSpaceMatrix);
 	m_cachedBoneMatrices.clear();
-	glUseProgram(shadowShader);
+	rhi::Gpu().UseProgram(shadowShader);
 	ResetMaterialStateCache(shadowShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
@@ -587,13 +588,13 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 	UploadMaterialSamplerUniforms(uniforms);
 
 	if (uniforms.lightSpaceMatrix != -1) {
-		glUniformMatrix4fv(uniforms.lightSpaceMatrix, 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
+		rhi::Gpu().SetUniform(uniforms.lightSpaceMatrix, lightSpaceMatrix);
 	}
 	if (uniforms.useModelMatrixUniform != -1) {
-		glUniform1i(uniforms.useModelMatrixUniform, 1);
+		rhi::Gpu().SetUniform(uniforms.useModelMatrixUniform, 1);
 	}
 
-	GLuint currentVAO = 0;
+	rhi::VertexInputHandle currentVAO;
 	int skinningState = -1;
 	for (uint32_t itemIndex : m_submissionCache.shadowVisibleItems.items) {
 		if (itemIndex >= m_renderItems.size()) {
@@ -609,12 +610,12 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 		if (item.skinned) {
 			UploadBoneMatrices(item.entity, worldTransform, uniforms);
 			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
-				glUniform1i(uniforms.uEnableSkinning, 1);
+				rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 1);
 				skinningState = 1;
 			}
 		}
 		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
-			glUniform1i(uniforms.uEnableSkinning, 0);
+			rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 0);
 			skinningState = 0;
 		}
 
@@ -622,17 +623,17 @@ void RenderSystem::RenderShadowCascade(const glm::mat4& lightSpaceMatrix, GLuint
 		BindMaterialTextures(*item.mesh, uniforms);
 		UploadMaterialUniforms(*item.mesh, uniforms);
 		if (currentVAO != item.mesh->VAO) {
-			glBindVertexArray(item.mesh->VAO);
+			rhi::Gpu().BindVertexInput(item.mesh->VAO);
 			currentVAO = item.mesh->VAO;
 		}
-		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(item.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(item.mesh->indexCount), rhi::IndexType::UInt32, 0);
 		++m_diagnostics.shadowDrawCalls;
 	}
-	if (currentVAO != 0) {
-		glBindVertexArray(0);
+	if (currentVAO.IsValid()) {
+		rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 	}
 	if (uniforms.useModelMatrixUniform != -1) {
-		glUniform1i(uniforms.useModelMatrixUniform, 0);
+		rhi::Gpu().SetUniform(uniforms.useModelMatrixUniform, 0);
 	}
 }
 
@@ -640,14 +641,14 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 	const glm::mat4& projection,
 	const glm::mat4& prevView,
 	const glm::mat4& prevProjection,
-	GLuint velocityShader)
+	rhi::ProgramHandle velocityShader)
 {
 	if (!m_componentManager || !m_transformSystem) return;
 
 	PrepareFrameTransforms();
 	PrepareCameraSubmissionCache();
 	m_cachedBoneMatrices.clear();
-	glUseProgram(velocityShader);
+	rhi::Gpu().UseProgram(velocityShader);
 	ResetMaterialStateCache(velocityShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
@@ -656,12 +657,12 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 	const auto& uniforms = GetShaderUniformCache(velocityShader);
 	UploadMaterialSamplerUniforms(uniforms);
 
-	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
-	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
-	if (uniforms.prevView != -1) glUniformMatrix4fv(uniforms.prevView, 1, GL_FALSE, glm::value_ptr(prevView));
-	if (uniforms.prevProjection != -1) glUniformMatrix4fv(uniforms.prevProjection, 1, GL_FALSE, glm::value_ptr(prevProjection));
+	if (uniforms.view != -1) rhi::Gpu().SetUniform(uniforms.view, view);
+	if (uniforms.projection != -1) rhi::Gpu().SetUniform(uniforms.projection, projection);
+	if (uniforms.prevView != -1) rhi::Gpu().SetUniform(uniforms.prevView, prevView);
+	if (uniforms.prevProjection != -1) rhi::Gpu().SetUniform(uniforms.prevProjection, prevProjection);
 	int skinningState = -1;
-	GLuint currentVAO = 0;
+	rhi::VertexInputHandle currentVAO;
 
 	for (uint32_t itemIndex : m_submissionCache.velocityItems.items) {
 		if (itemIndex >= m_renderItems.size()) {
@@ -678,26 +679,26 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 		if (item.skinned) {
 			UploadBoneMatrices(item.entity, worldTransform, uniforms);
 			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
-				glUniform1i(uniforms.uEnableSkinning, 1);
+				rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 1);
 				skinningState = 1;
 			}
 		}
 		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
-			glUniform1i(uniforms.uEnableSkinning, 0);
+			rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 0);
 			skinningState = 0;
 		}
 
 		ApplyCullingState(*item.mesh, item.cullingOverride, worldTransform);
 		if (currentVAO != item.mesh->VAO) {
-			glBindVertexArray(item.mesh->VAO);
+			rhi::Gpu().BindVertexInput(item.mesh->VAO);
 			currentVAO = item.mesh->VAO;
 		}
-		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(item.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(item.mesh->indexCount), rhi::IndexType::UInt32, 0);
 		++m_diagnostics.velocityDrawCalls;
 	}
 
-	if (currentVAO != 0) {
-		glBindVertexArray(0);
+	if (currentVAO.IsValid()) {
+		rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 	}
 }
 
@@ -715,7 +716,7 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 		}
 
 		MDI_RenderableObject obj{};
-		obj.count = static_cast<GLuint>(item.mesh->indexCount);
+		obj.count = static_cast<uint32_t>(item.mesh->indexCount);
 		obj.firstIndex = 0;
 		obj.baseVertex = 0;
 		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
@@ -736,7 +737,7 @@ void RenderSystem::CollectRenderables(MDIBatch& batch)
 
 void RenderSystem::RenderTransparent(const glm::mat4& view,
 	const glm::mat4& projection,
-	GLuint transparentShader)
+	rhi::ProgramHandle transparentShader)
 {
 	if (!m_componentManager || !m_transformSystem) return;
 	PrepareFrameTransforms();
@@ -778,7 +779,7 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 	m_diagnostics.transparentSortMs += std::chrono::duration<float, std::milli>(sortEnd - sortStart).count();
 
 	// Render
-	glUseProgram(transparentShader);
+	rhi::Gpu().UseProgram(transparentShader);
 	ResetMaterialStateCache(transparentShader);
 	EnsureTransformBuffer();
 	if (m_transformBuffer) {
@@ -786,16 +787,16 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 	}
 	const auto& uniforms = GetShaderUniformCache(transparentShader);
 	UploadMaterialSamplerUniforms(uniforms);
-	glEnable(GL_BLEND);
+	rhi::Gpu().SetBlendEnabled(true);
 	// forward_transparent_frag.glsl writes premultiplied color plus a per-channel transmittance
 	// (dual-source): dst' = color + dst * transmittance.
-	glBlendFunc(GL_ONE, GL_SRC1_COLOR);
-	glDepthMask(GL_FALSE);
+	rhi::Gpu().SetBlendFunc(rhi::BlendFactor::One, rhi::BlendFactor::Src1Color);
+	rhi::Gpu().SetDepthWrite(false);
 
-	if (uniforms.view != -1) glUniformMatrix4fv(uniforms.view, 1, GL_FALSE, glm::value_ptr(view));
-	if (uniforms.projection != -1) glUniformMatrix4fv(uniforms.projection, 1, GL_FALSE, glm::value_ptr(projection));
+	if (uniforms.view != -1) rhi::Gpu().SetUniform(uniforms.view, view);
+	if (uniforms.projection != -1) rhi::Gpu().SetUniform(uniforms.projection, projection);
 
-	GLuint currentVAO = 0;
+	rhi::VertexInputHandle currentVAO;
 	int skinningState = -1;
 	for (const auto& batch : m_renderQueue) {
 		if (!batch.mesh) {
@@ -811,12 +812,12 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 		if (batch.skinned) {
 			UploadBoneMatrices(batch.entity, worldTransform, uniforms);
 			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
-				glUniform1i(uniforms.uEnableSkinning, 1);
+				rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 1);
 				skinningState = 1;
 			}
 		}
 		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
-			glUniform1i(uniforms.uEnableSkinning, 0);
+			rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 0);
 			skinningState = 0;
 		}
 
@@ -825,19 +826,19 @@ void RenderSystem::RenderTransparent(const glm::mat4& view,
 		UploadMaterialUniforms(*batch.mesh, uniforms);
 
 		if (currentVAO != batch.mesh->VAO) {
-			glBindVertexArray(batch.mesh->VAO);
+			rhi::Gpu().BindVertexInput(batch.mesh->VAO);
 			currentVAO = batch.mesh->VAO;
 		}
-		glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(batch.mesh->indexCount), GL_UNSIGNED_INT, nullptr);
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(batch.mesh->indexCount), rhi::IndexType::UInt32, 0);
 		++m_diagnostics.transparentDrawCalls;
 	}
 
-	if (currentVAO != 0) {
-		glBindVertexArray(0);
+	if (currentVAO.IsValid()) {
+		rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 	}
 
-	glDepthMask(GL_TRUE);
-	glDisable(GL_BLEND);
+	rhi::Gpu().SetDepthWrite(true);
+	rhi::Gpu().SetBlendEnabled(false);
 }
 
 void RenderSystem::SetFrustumPlanes(const glm::mat4& viewProjection)
@@ -911,11 +912,10 @@ bool RenderSystem::IsSphereVisible(const glm::vec3& center, float radius) const
 
 void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
-	auto bindTexture = [this](GLuint unit, const std::shared_ptr<Texture>& tex, GLuint fallback) {
-		const GLuint desiredTexture = (tex && tex->IsValid()) ? tex->ID() : fallback;
+	auto bindTexture = [this](uint32_t unit, const std::shared_ptr<Texture>& tex, rhi::TextureHandle fallback) {
+		const rhi::TextureHandle desiredTexture = (tex && tex->IsValid()) ? tex->ID() : fallback;
 		if (m_boundMaterialTextures[unit] != desiredTexture) {
-			glActiveTexture(GL_TEXTURE0 + unit);
-			glBindTexture(GL_TEXTURE_2D, desiredTexture);
+			BIND_TEXTURE_2D(unit, desiredTexture);
 			m_boundMaterialTextures[unit] = desiredTexture;
 			++m_diagnostics.textureBindCount;
 		}
@@ -933,14 +933,14 @@ void RenderSystem::BindMaterialTextures(const MeshComponent& mesh, const ShaderU
 
 void RenderSystem::UploadMaterialSamplerUniforms(const ShaderUniformCache& uniforms)
 {
-	if (uniforms.textureDiffuse >= 0) glUniform1i(uniforms.textureDiffuse, TextureUnits::MATERIAL_BASE_COLOR);
-	if (uniforms.textureNormal >= 0) glUniform1i(uniforms.textureNormal, TextureUnits::MATERIAL_NORMAL);
-	if (uniforms.textureMetallicRoughness >= 0) glUniform1i(uniforms.textureMetallicRoughness, TextureUnits::MATERIAL_METALLIC_ROUGHNESS);
-	if (uniforms.textureEmissive >= 0) glUniform1i(uniforms.textureEmissive, TextureUnits::MATERIAL_EMISSIVE);
-	if (uniforms.textureOcclusion >= 0) glUniform1i(uniforms.textureOcclusion, TextureUnits::MATERIAL_OCCLUSION);
-	if (uniforms.textureSpecular >= 0) glUniform1i(uniforms.textureSpecular, TextureUnits::MATERIAL_SPECULAR);
-	if (uniforms.textureSpecularColor >= 0) glUniform1i(uniforms.textureSpecularColor, TextureUnits::MATERIAL_SPECULAR_COLOR);
-	if (uniforms.textureTransmission >= 0) glUniform1i(uniforms.textureTransmission, TextureUnits::MATERIAL_TRANSMISSION);
+	if (uniforms.textureDiffuse >= 0) rhi::Gpu().SetUniform(uniforms.textureDiffuse, TextureUnits::MATERIAL_BASE_COLOR);
+	if (uniforms.textureNormal >= 0) rhi::Gpu().SetUniform(uniforms.textureNormal, TextureUnits::MATERIAL_NORMAL);
+	if (uniforms.textureMetallicRoughness >= 0) rhi::Gpu().SetUniform(uniforms.textureMetallicRoughness, TextureUnits::MATERIAL_METALLIC_ROUGHNESS);
+	if (uniforms.textureEmissive >= 0) rhi::Gpu().SetUniform(uniforms.textureEmissive, TextureUnits::MATERIAL_EMISSIVE);
+	if (uniforms.textureOcclusion >= 0) rhi::Gpu().SetUniform(uniforms.textureOcclusion, TextureUnits::MATERIAL_OCCLUSION);
+	if (uniforms.textureSpecular >= 0) rhi::Gpu().SetUniform(uniforms.textureSpecular, TextureUnits::MATERIAL_SPECULAR);
+	if (uniforms.textureSpecularColor >= 0) rhi::Gpu().SetUniform(uniforms.textureSpecularColor, TextureUnits::MATERIAL_SPECULAR_COLOR);
+	if (uniforms.textureTransmission >= 0) rhi::Gpu().SetUniform(uniforms.textureTransmission, TextureUnits::MATERIAL_TRANSMISSION);
 }
 
 void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
@@ -952,56 +952,58 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	}
 	++m_diagnostics.materialUploadCount;
 
-	if (uniforms.materialID >= 0) glUniform1ui(uniforms.materialID, material.stableMaterialID);
-	if (uniforms.baseColorFactor >= 0) glUniform4fv(uniforms.baseColorFactor, 1, glm::value_ptr(material.baseColorFactor));
-	if (uniforms.metallicFactor >= 0) glUniform1f(uniforms.metallicFactor, material.metallicFactor);
-	if (uniforms.roughnessFactor >= 0) glUniform1f(uniforms.roughnessFactor, material.roughnessFactor);
-	if (uniforms.emissiveFactor >= 0) glUniform3fv(uniforms.emissiveFactor, 1, glm::value_ptr(material.emissiveFactor));
-	if (uniforms.emissiveStrength >= 0) glUniform1f(uniforms.emissiveStrength, material.emissiveStrength);
-	if (uniforms.occlusionStrength >= 0) glUniform1f(uniforms.occlusionStrength, material.occlusionStrength);
-	if (uniforms.normalScale >= 0) glUniform1f(uniforms.normalScale, material.normalScale);
-	if (uniforms.alphaCutoff >= 0) glUniform1f(uniforms.alphaCutoff, material.alphaCutoff);
-	if (uniforms.alphaMode >= 0) glUniform1i(uniforms.alphaMode, static_cast<int>(material.alphaMode));
-	if (uniforms.specularFactor >= 0) glUniform1f(uniforms.specularFactor, material.specularFactor);
-	if (uniforms.specularColorFactor >= 0) glUniform3fv(uniforms.specularColorFactor, 1, glm::value_ptr(material.specularColorFactor));
-	if (uniforms.clearcoatFactor >= 0) glUniform1f(uniforms.clearcoatFactor, material.clearcoatFactor);
-	if (uniforms.clearcoatRoughnessFactor >= 0) glUniform1f(uniforms.clearcoatRoughnessFactor, material.clearcoatRoughnessFactor);
-	if (uniforms.transmissionFactor >= 0) glUniform1f(uniforms.transmissionFactor, material.transmissionFactor);
-	if (uniforms.thicknessFactor >= 0) glUniform1f(uniforms.thicknessFactor, material.thicknessFactor);
-	if (uniforms.attenuationDistance >= 0) glUniform1f(uniforms.attenuationDistance, material.attenuationDistance);
-	if (uniforms.attenuationColor >= 0) glUniform3fv(uniforms.attenuationColor, 1, glm::value_ptr(material.attenuationColor));
-	if (uniforms.ior >= 0) glUniform1f(uniforms.ior, material.ior);
-	if (uniforms.wetnessResponse >= 0) glUniform1f(uniforms.wetnessResponse, material.wetnessResponse);
-	if (uniforms.puddleResponse >= 0) glUniform1f(uniforms.puddleResponse, material.puddleResponse);
-	if (uniforms.rainBeadResponse >= 0) glUniform1f(uniforms.rainBeadResponse, material.rainBeadResponse);
-	if (uniforms.flakeIntensity >= 0) glUniform1f(uniforms.flakeIntensity, material.flakeIntensity);
-	if (uniforms.flakeDensity >= 0) glUniform1f(uniforms.flakeDensity, material.flakeDensity);
-	if (uniforms.interiorMapping >= 0) glUniform1f(uniforms.interiorMapping, material.interiorMapping);
-	if (uniforms.interiorDepth >= 0) glUniform1f(uniforms.interiorDepth, material.interiorDepth);
-	if (uniforms.interiorStrength >= 0) glUniform1f(uniforms.interiorStrength, material.interiorStrength);
-	if (uniforms.interiorSeed >= 0) glUniform1f(uniforms.interiorSeed, material.interiorSeed);
-	if (uniforms.interiorLighting >= 0) glUniform1f(uniforms.interiorLighting, material.interiorLighting);
-	if (uniforms.interiorBlinds >= 0) glUniform1f(uniforms.interiorBlinds, material.interiorBlinds);
-	if (uniforms.interiorStyle >= 0) glUniform1f(uniforms.interiorStyle, material.interiorStyle);
+	if (uniforms.materialID >= 0) rhi::Gpu().SetUniform(uniforms.materialID, material.stableMaterialID);
+	if (uniforms.baseColorFactor >= 0) rhi::Gpu().SetUniform(uniforms.baseColorFactor, material.baseColorFactor);
+	if (uniforms.metallicFactor >= 0) rhi::Gpu().SetUniform(uniforms.metallicFactor, material.metallicFactor);
+	if (uniforms.roughnessFactor >= 0) rhi::Gpu().SetUniform(uniforms.roughnessFactor, material.roughnessFactor);
+	if (uniforms.emissiveFactor >= 0) rhi::Gpu().SetUniform(uniforms.emissiveFactor, material.emissiveFactor);
+	if (uniforms.emissiveStrength >= 0) rhi::Gpu().SetUniform(uniforms.emissiveStrength, material.emissiveStrength);
+	if (uniforms.occlusionStrength >= 0) rhi::Gpu().SetUniform(uniforms.occlusionStrength, material.occlusionStrength);
+	if (uniforms.normalScale >= 0) rhi::Gpu().SetUniform(uniforms.normalScale, material.normalScale);
+	if (uniforms.alphaCutoff >= 0) rhi::Gpu().SetUniform(uniforms.alphaCutoff, material.alphaCutoff);
+	if (uniforms.alphaMode >= 0) rhi::Gpu().SetUniform(uniforms.alphaMode, static_cast<int>(material.alphaMode));
+	if (uniforms.specularFactor >= 0) rhi::Gpu().SetUniform(uniforms.specularFactor, material.specularFactor);
+	if (uniforms.specularColorFactor >= 0) rhi::Gpu().SetUniform(uniforms.specularColorFactor, material.specularColorFactor);
+	if (uniforms.clearcoatFactor >= 0) rhi::Gpu().SetUniform(uniforms.clearcoatFactor, material.clearcoatFactor);
+	if (uniforms.clearcoatRoughnessFactor >= 0) rhi::Gpu().SetUniform(uniforms.clearcoatRoughnessFactor, material.clearcoatRoughnessFactor);
+	if (uniforms.transmissionFactor >= 0) rhi::Gpu().SetUniform(uniforms.transmissionFactor, material.transmissionFactor);
+	if (uniforms.thicknessFactor >= 0) rhi::Gpu().SetUniform(uniforms.thicknessFactor, material.thicknessFactor);
+	if (uniforms.attenuationDistance >= 0) rhi::Gpu().SetUniform(uniforms.attenuationDistance, material.attenuationDistance);
+	if (uniforms.attenuationColor >= 0) rhi::Gpu().SetUniform(uniforms.attenuationColor, material.attenuationColor);
+	if (uniforms.ior >= 0) rhi::Gpu().SetUniform(uniforms.ior, material.ior);
+	if (uniforms.wetnessResponse >= 0) rhi::Gpu().SetUniform(uniforms.wetnessResponse, material.wetnessResponse);
+	if (uniforms.puddleResponse >= 0) rhi::Gpu().SetUniform(uniforms.puddleResponse, material.puddleResponse);
+	if (uniforms.rainBeadResponse >= 0) rhi::Gpu().SetUniform(uniforms.rainBeadResponse, material.rainBeadResponse);
+	if (uniforms.flakeIntensity >= 0) rhi::Gpu().SetUniform(uniforms.flakeIntensity, material.flakeIntensity);
+	if (uniforms.flakeDensity >= 0) rhi::Gpu().SetUniform(uniforms.flakeDensity, material.flakeDensity);
+	if (uniforms.interiorMapping >= 0) rhi::Gpu().SetUniform(uniforms.interiorMapping, material.interiorMapping);
+	if (uniforms.interiorDepth >= 0) rhi::Gpu().SetUniform(uniforms.interiorDepth, material.interiorDepth);
+	if (uniforms.interiorStrength >= 0) rhi::Gpu().SetUniform(uniforms.interiorStrength, material.interiorStrength);
+	if (uniforms.interiorSeed >= 0) rhi::Gpu().SetUniform(uniforms.interiorSeed, material.interiorSeed);
+	if (uniforms.interiorLighting >= 0) rhi::Gpu().SetUniform(uniforms.interiorLighting, material.interiorLighting);
+	if (uniforms.interiorBlinds >= 0) rhi::Gpu().SetUniform(uniforms.interiorBlinds, material.interiorBlinds);
+	if (uniforms.interiorStyle >= 0) rhi::Gpu().SetUniform(uniforms.interiorStyle, material.interiorStyle);
+	if (uniforms.interiorPane >= 0) rhi::Gpu().SetUniform(uniforms.interiorPane, material.interiorPane);
+	if (uniforms.interiorSill >= 0) rhi::Gpu().SetUniform(uniforms.interiorSill, material.interiorSill);
 
 	auto clampUVSet = [](int uvSet) { return (uvSet == 1) ? 1 : 0; };
-	if (uniforms.baseColorUVSet >= 0) glUniform1i(uniforms.baseColorUVSet, clampUVSet(material.baseColorTexCoord));
-	if (uniforms.normalUVSet >= 0) glUniform1i(uniforms.normalUVSet, clampUVSet(material.normalTexCoord));
-	if (uniforms.metallicRoughnessUVSet >= 0) glUniform1i(uniforms.metallicRoughnessUVSet, clampUVSet(material.metallicRoughnessTexCoord));
-	if (uniforms.emissiveUVSet >= 0) glUniform1i(uniforms.emissiveUVSet, clampUVSet(material.emissiveTexCoord));
-	if (uniforms.occlusionUVSet >= 0) glUniform1i(uniforms.occlusionUVSet, clampUVSet(material.occlusionTexCoord));
-	if (uniforms.specularUVSet >= 0) glUniform1i(uniforms.specularUVSet, clampUVSet(material.specularTexCoord));
-	if (uniforms.specularColorUVSet >= 0) glUniform1i(uniforms.specularColorUVSet, clampUVSet(material.specularColorTexCoord));
-	if (uniforms.transmissionUVSet >= 0) glUniform1i(uniforms.transmissionUVSet, clampUVSet(material.transmissionTexCoord));
+	if (uniforms.baseColorUVSet >= 0) rhi::Gpu().SetUniform(uniforms.baseColorUVSet, clampUVSet(material.baseColorTexCoord));
+	if (uniforms.normalUVSet >= 0) rhi::Gpu().SetUniform(uniforms.normalUVSet, clampUVSet(material.normalTexCoord));
+	if (uniforms.metallicRoughnessUVSet >= 0) rhi::Gpu().SetUniform(uniforms.metallicRoughnessUVSet, clampUVSet(material.metallicRoughnessTexCoord));
+	if (uniforms.emissiveUVSet >= 0) rhi::Gpu().SetUniform(uniforms.emissiveUVSet, clampUVSet(material.emissiveTexCoord));
+	if (uniforms.occlusionUVSet >= 0) rhi::Gpu().SetUniform(uniforms.occlusionUVSet, clampUVSet(material.occlusionTexCoord));
+	if (uniforms.specularUVSet >= 0) rhi::Gpu().SetUniform(uniforms.specularUVSet, clampUVSet(material.specularTexCoord));
+	if (uniforms.specularColorUVSet >= 0) rhi::Gpu().SetUniform(uniforms.specularColorUVSet, clampUVSet(material.specularColorTexCoord));
+	if (uniforms.transmissionUVSet >= 0) rhi::Gpu().SetUniform(uniforms.transmissionUVSet, clampUVSet(material.transmissionTexCoord));
 
-	if (uniforms.hasBaseColorTexture >= 0) glUniform1i(uniforms.hasBaseColorTexture, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasNormalTexture >= 0) glUniform1i(uniforms.hasNormalTexture, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasMetallicRoughnessTexture >= 0) glUniform1i(uniforms.hasMetallicRoughnessTexture, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasEmissiveTexture >= 0) glUniform1i(uniforms.hasEmissiveTexture, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasOcclusionTexture >= 0) glUniform1i(uniforms.hasOcclusionTexture, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasSpecularTexture >= 0) glUniform1i(uniforms.hasSpecularTexture, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasSpecularColorTexture >= 0) glUniform1i(uniforms.hasSpecularColorTexture, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
-	if (uniforms.hasTransmissionTexture >= 0) glUniform1i(uniforms.hasTransmissionTexture, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasBaseColorTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasBaseColorTexture, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasNormalTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasNormalTexture, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasMetallicRoughnessTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasMetallicRoughnessTexture, (mesh.roughnessTexture && mesh.roughnessTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasEmissiveTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasEmissiveTexture, (mesh.emissiveTexture && mesh.emissiveTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasOcclusionTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasOcclusionTexture, (mesh.occlusionTexture && mesh.occlusionTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasSpecularTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasSpecularTexture, (mesh.specularTexture && mesh.specularTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasSpecularColorTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasSpecularColorTexture, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
+	if (uniforms.hasTransmissionTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasTransmissionTexture, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
 
 	m_cachedMaterialID = material.stableMaterialID;
 }
@@ -1011,11 +1013,11 @@ void RenderSystem::UploadTransformUniforms(EntityID entity,
 	const ShaderUniformCache& uniforms)
 {
 	if (uniforms.model != -1) {
-		glUniformMatrix4fv(uniforms.model, 1, GL_FALSE, glm::value_ptr(modelTransform));
+		rhi::Gpu().SetUniform(uniforms.model, modelTransform);
 	}
 	if (uniforms.normalMatrix != -1) {
 		const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelTransform)));
-		glUniformMatrix3fv(uniforms.normalMatrix, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+		rhi::Gpu().SetUniform(uniforms.normalMatrix, normalMatrix);
 	}
 
 	const TransformComponent* transform = m_componentManager ? m_componentManager->GetTransform(entity) : nullptr;
@@ -1043,24 +1045,24 @@ void RenderSystem::UploadTransformUniforms(EntityID entity,
 	}
 
 	if (uniforms.prevModel != -1) {
-		glUniformMatrix4fv(uniforms.prevModel, 1, GL_FALSE, glm::value_ptr(prevModelTransform));
+		rhi::Gpu().SetUniform(uniforms.prevModel, prevModelTransform);
 	}
 
 	if (uniforms.transformID != -1) {
-		const GLuint transformID = transform ? transform->transformID : INVALID_TRANSFORM_ID;
-		glUniform1ui(uniforms.transformID, transformID);
+		const uint32_t transformID = transform ? transform->transformID : INVALID_TRANSFORM_ID;
+		rhi::Gpu().SetUniform(uniforms.transformID, transformID);
 	}
 }
 
 void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride override, const glm::mat4& modelTransform)
 {
-	GLenum frontFace = GL_CCW;
+	rhi::FrontFace frontFace = rhi::FrontFace::CounterClockwise;
 	const float determinant = glm::determinant(glm::mat3(modelTransform));
 	if (std::isfinite(determinant) && determinant < 0.0f) {
-		frontFace = GL_CW;
+		frontFace = rhi::FrontFace::Clockwise;
 	}
 	if (!m_cachedFrontFaceValid || m_cachedFrontFace != frontFace) {
-		glFrontFace(frontFace);
+		rhi::Gpu().SetFrontFace(frontFace);
 		m_cachedFrontFace = frontFace;
 		m_cachedFrontFaceValid = true;
 	}
@@ -1068,32 +1070,32 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 	// If force backface culling is enabled globally, always cull back faces
 	if (m_forceBackfaceCulling) {
 		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
-			glEnable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(true);
 			m_cachedCullEnabled = true;
 			m_cachedCullEnabledValid = true;
 		}
-		if (!m_cachedCullFaceValid || m_cachedCullFace != GL_BACK) {
-			glCullFace(GL_BACK);
-			m_cachedCullFace = GL_BACK;
+		if (!m_cachedCullFaceValid || m_cachedCullFace != rhi::CullFace::Back) {
+			rhi::Gpu().SetCullFace(rhi::CullFace::Back);
+			m_cachedCullFace = rhi::CullFace::Back;
 			m_cachedCullFaceValid = true;
 		}
 		return;
 	}
 
 	bool enableCulling = true;
-	GLenum cullFace = GL_BACK;
+	rhi::CullFace cullFace = rhi::CullFace::Back;
 
 	switch (override) {
 	case CullingOverride::CULLING_FORCE_ENABLE:
 		enableCulling = true;
-		cullFace = GL_BACK;
+		cullFace = rhi::CullFace::Back;
 		break;
 	case CullingOverride::CULLING_FORCE_DISABLE:
 		enableCulling = false;
 		break;
 	case CullingOverride::CULLING_FORCE_FRONT:
 		enableCulling = true;
-		cullFace = GL_FRONT;
+		cullFace = rhi::CullFace::Front;
 		break;
 	case CullingOverride::CULLING_INHERIT:
 	default:
@@ -1101,11 +1103,11 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 		switch (meshCulling) {
 		case MeshComponent::CULL_BACK:
 			enableCulling = true;
-			cullFace = GL_BACK;
+			cullFace = rhi::CullFace::Back;
 			break;
 		case MeshComponent::CULL_FRONT:
 			enableCulling = true;
-			cullFace = GL_FRONT;
+			cullFace = rhi::CullFace::Front;
 			break;
 		case MeshComponent::CULL_NONE:
 			enableCulling = false;
@@ -1118,71 +1120,71 @@ void RenderSystem::ApplyCullingState(const MeshComponent& mesh, CullingOverride 
 
 	if (enableCulling) {
 		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
-			glEnable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(true);
 			m_cachedCullEnabled = true;
 			m_cachedCullEnabledValid = true;
 		}
 		if (!m_cachedCullFaceValid || m_cachedCullFace != cullFace) {
-			glCullFace(cullFace);
+			rhi::Gpu().SetCullFace(cullFace);
 			m_cachedCullFace = cullFace;
 			m_cachedCullFaceValid = true;
 		}
 	}
 	else {
 		if (!m_cachedCullEnabledValid || m_cachedCullEnabled) {
-			glDisable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(false);
 			m_cachedCullEnabled = false;
 			m_cachedCullEnabledValid = true;
 		}
 	}
 }
 
-void RenderSystem::ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, GLenum frontFace)
+void RenderSystem::ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, rhi::FrontFace frontFace)
 {
 	if (!m_cachedFrontFaceValid || m_cachedFrontFace != frontFace) {
-		glFrontFace(frontFace);
+		rhi::Gpu().SetFrontFace(frontFace);
 		m_cachedFrontFace = frontFace;
 		m_cachedFrontFaceValid = true;
 	}
 
 	if (m_forceBackfaceCulling) {
 		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
-			glEnable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(true);
 			m_cachedCullEnabled = true;
 			m_cachedCullEnabledValid = true;
 		}
-		if (!m_cachedCullFaceValid || m_cachedCullFace != GL_BACK) {
-			glCullFace(GL_BACK);
-			m_cachedCullFace = GL_BACK;
+		if (!m_cachedCullFaceValid || m_cachedCullFace != rhi::CullFace::Back) {
+			rhi::Gpu().SetCullFace(rhi::CullFace::Back);
+			m_cachedCullFace = rhi::CullFace::Back;
 			m_cachedCullFaceValid = true;
 		}
 		return;
 	}
 
 	bool enableCulling = true;
-	GLenum cullFace = GL_BACK;
+	rhi::CullFace cullFace = rhi::CullFace::Back;
 	switch (override) {
 	case CullingOverride::CULLING_FORCE_ENABLE:
 		enableCulling = true;
-		cullFace = GL_BACK;
+		cullFace = rhi::CullFace::Back;
 		break;
 	case CullingOverride::CULLING_FORCE_DISABLE:
 		enableCulling = false;
 		break;
 	case CullingOverride::CULLING_FORCE_FRONT:
 		enableCulling = true;
-		cullFace = GL_FRONT;
+		cullFace = rhi::CullFace::Front;
 		break;
 	case CullingOverride::CULLING_INHERIT:
 	default:
 		switch (mesh.GetEffectiveCullingMode()) {
 		case MeshComponent::CULL_BACK:
 			enableCulling = true;
-			cullFace = GL_BACK;
+			cullFace = rhi::CullFace::Back;
 			break;
 		case MeshComponent::CULL_FRONT:
 			enableCulling = true;
-			cullFace = GL_FRONT;
+			cullFace = rhi::CullFace::Front;
 			break;
 		case MeshComponent::CULL_NONE:
 			enableCulling = false;
@@ -1195,18 +1197,18 @@ void RenderSystem::ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOver
 
 	if (enableCulling) {
 		if (!m_cachedCullEnabledValid || !m_cachedCullEnabled) {
-			glEnable(GL_CULL_FACE);
+			rhi::Gpu().SetCullEnabled(true);
 			m_cachedCullEnabled = true;
 			m_cachedCullEnabledValid = true;
 		}
 		if (!m_cachedCullFaceValid || m_cachedCullFace != cullFace) {
-			glCullFace(cullFace);
+			rhi::Gpu().SetCullFace(cullFace);
 			m_cachedCullFace = cullFace;
 			m_cachedCullFaceValid = true;
 		}
 	}
 	else if (!m_cachedCullEnabledValid || m_cachedCullEnabled) {
-		glDisable(GL_CULL_FACE);
+		rhi::Gpu().SetCullEnabled(false);
 		m_cachedCullEnabled = false;
 		m_cachedCullEnabledValid = true;
 	}
@@ -1318,12 +1320,11 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorl
 		cacheIt = m_cachedBoneMatrices.find(entity);
 	}
 
-	GLint locBones = uniforms.uBoneMatrices != -1 ? uniforms.uBoneMatrices : uniforms.bones;
+	rhi::UniformLocation locBones = uniforms.uBoneMatrices != -1 ? uniforms.uBoneMatrices : uniforms.bones;
 	if (locBones != -1 && cacheIt != m_cachedBoneMatrices.end() && !cacheIt->second.empty()) {
-		glUniformMatrix4fv(locBones,
-			static_cast<GLsizei>(cacheIt->second.size()),
-			GL_FALSE,
-			glm::value_ptr(cacheIt->second[0]));
+		rhi::Gpu().SetUniformArray(locBones,
+			cacheIt->second.data(),
+			static_cast<int>(cacheIt->second.size()));
 	}
 }
 
@@ -1333,7 +1334,7 @@ void RenderSystem::EnsureTransformBuffer()
 		return;
 	}
 
-	m_transformBuffer = std::make_unique<GLBuffer>(
+	m_transformBuffer = std::make_unique<GpuBuffer>(
 		BufferType::ShaderStorage,
 		BufferUsage::DynamicDraw
 	);
@@ -1446,7 +1447,7 @@ void RenderSystem::UpdateGpuTransformBuffer(bool forceFullTransformUpload)
 
 	if (forceFullUpload) {
 		if (!m_transformBuffer->SetData(m_gpuTransformRecords)) {
-			m_transformBuffer = std::make_unique<GLBuffer>(
+			m_transformBuffer = std::make_unique<GpuBuffer>(
 				BufferType::ShaderStorage,
 				BufferUsage::DynamicDraw
 			);
@@ -1550,7 +1551,7 @@ void RenderSystem::RebuildRenderItemsIfNeeded()
 			item.meshIndex = meshIndex++;
 			const MaterialDesc material = mesh.GetMaterialDesc();
 			item.materialKey = material.stableMaterialID;
-			item.sortKey = (static_cast<uint64_t>(material.stableMaterialID) << 32u) | static_cast<uint64_t>(mesh.VAO);
+			item.sortKey = (static_cast<uint64_t>(material.stableMaterialID) << 32u) | static_cast<uint64_t>(mesh.VAO.id);
 			item.cullingOverride = renderable.cullingOverride;
 			item.transparent = mesh.RequiresAlphaBlending();
 			item.skinned = renderable.isSkinned;
@@ -1848,11 +1849,11 @@ void RenderSystem::SortRenderQueue(const glm::vec3& cameraPos)
 		});
 }
 
-void RenderSystem::ResetMaterialStateCache(GLuint shader)
+void RenderSystem::ResetMaterialStateCache(rhi::ProgramHandle shader)
 {
 	m_cachedMaterialShader = shader;
 	m_cachedMaterialID = std::numeric_limits<uint32_t>::max();
-	m_boundMaterialTextures.fill(std::numeric_limits<GLuint>::max());
+	m_boundMaterialTextures.fill(rhi::TextureHandle(std::numeric_limits<uint32_t>::max()));
 	m_cachedFrontFaceValid = false;
 	m_cachedCullFaceValid = false;
 	m_cachedCullEnabledValid = false;
@@ -1895,58 +1896,46 @@ void RenderSystem::BuildInstanceGroups()
 	}
 }
 
-void RenderSystem::RenderInstancedGroup(const InstanceGroup& group, GLuint shader)
+void RenderSystem::RenderInstancedGroup(const InstanceGroup& group, rhi::ProgramHandle shader)
 {
 	if (group.transforms.empty()) return;
 
 	// Update instance buffer
 	EnsureInstanceBuffer(group.transforms.size());
 
-	glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
-	glBufferSubData(GL_ARRAY_BUFFER, 0,
+	rhi::Gpu().UpdateBuffer(m_instanceVBO, 0,
 		group.transforms.size() * sizeof(glm::mat4),
 		group.transforms.data());
 
 	// Bind VAO
-	glBindVertexArray(group.vao);
+	rhi::Gpu().BindVertexInput(group.vao);
 
-	// Set up instanced matrix attribute (uses locations 6-9 for mat4)
-	for (int i = 0; i < 4; ++i) {
-		GLuint loc = 6 + i;
-		glEnableVertexAttribArray(loc);
-		glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE,
-			sizeof(glm::mat4),
-			(void*)(sizeof(glm::vec4) * i));
-		glVertexAttribDivisor(loc, 1); // One per instance
-	}
+	// RHI-TODO: the per-instance mat4 attributes (locations 6-9, read from m_instanceVBO with divisor 1)
+	// were set as vertex attribute pointers with a divisor on the group VAO at draw time. RHI attributes
+	// are fixed at CreateVertexInput, so this needs a VertexInputDesc that includes the instance buffer.
+	// Dead path: BuildInstanceGroups/RenderInstancedGroup have no callers.
 
 	// Draw instanced
-	glDrawElementsInstanced(GL_TRIANGLES,
-		static_cast<GLsizei>(group.indexCount),
-		GL_UNSIGNED_INT,
-		nullptr,
-		static_cast<GLsizei>(group.transforms.size()));
+	rhi::Gpu().DrawIndexed(rhi::Topology::Triangles,
+		static_cast<uint32_t>(group.indexCount),
+		rhi::IndexType::UInt32,
+		0,
+		static_cast<uint32_t>(group.transforms.size()));
 
-	// Reset vertex attrib divisors
-	for (int i = 0; i < 4; ++i) {
-		glVertexAttribDivisor(6 + i, 0);
-		glDisableVertexAttribArray(6 + i);
-	}
-
-	glBindVertexArray(0);
+	rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
 }
 
-uint64_t RenderSystem::ComputeMeshKey(GLuint vao, GLuint shaderID) const
+uint64_t RenderSystem::ComputeMeshKey(rhi::VertexInputHandle vao, rhi::ProgramHandle shaderID) const
 {
-	return (static_cast<uint64_t>(vao) << 32) | static_cast<uint64_t>(shaderID);
+	return (static_cast<uint64_t>(vao.id) << 32) | static_cast<uint64_t>(shaderID.id);
 }
 
 void RenderSystem::EnsureInstanceBuffer(size_t requiredSize)
 {
 	size_t requiredBytes = requiredSize * sizeof(glm::mat4);
 
-	if (m_instanceVBO == 0) {
-		glGenBuffers(1, &m_instanceVBO);
+	if (!m_instanceVBO) {
+		m_instanceVBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
 		m_instanceBufferCapacity = 0;
 	}
 
@@ -1954,9 +1943,7 @@ void RenderSystem::EnsureInstanceBuffer(size_t requiredSize)
 		// Grow buffer with some headroom
 		size_t newCapacity = std::max(requiredBytes * 2, size_t(256 * sizeof(glm::mat4)));
 
-		glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
-		glBufferData(GL_ARRAY_BUFFER, newCapacity, nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		rhi::Gpu().ReallocateBuffer(m_instanceVBO, newCapacity, nullptr, rhi::BufferUsage::DynamicDraw);
 
 		m_instanceBufferCapacity = newCapacity;
 	}
@@ -1977,11 +1964,11 @@ bool RenderSystem::ShouldUseBakedGBufferPath() const
 	return visibleOpaque * 100 >= total * 65;
 }
 
-uint64_t RenderSystem::ComputeBakedBatchKey(const MeshComponent& mesh, CullingOverride override, GLenum frontFace) const
+uint64_t RenderSystem::ComputeBakedBatchKey(const MeshComponent& mesh, CullingOverride override, rhi::FrontFace frontFace) const
 {
 	const MaterialDesc material = mesh.GetMaterialDesc();
-	auto textureID = [](const std::shared_ptr<Texture>& texture, GLuint fallback) {
-		return (texture && texture->IsValid()) ? texture->ID() : fallback;
+	auto textureID = [](const std::shared_ptr<Texture>& texture, rhi::TextureHandle fallback) {
+		return static_cast<uint64_t>(((texture && texture->IsValid()) ? texture->ID() : fallback).id);
 	};
 	auto mix = [](uint64_t seed, uint64_t value) {
 		return seed ^ (value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2));
@@ -1990,7 +1977,8 @@ uint64_t RenderSystem::ComputeBakedBatchKey(const MeshComponent& mesh, CullingOv
 	uint64_t key = material.stableMaterialID;
 	key = mix(key, static_cast<uint64_t>(override));
 	key = mix(key, static_cast<uint64_t>(mesh.GetEffectiveCullingMode()));
-	key = mix(key, static_cast<uint64_t>(frontFace));
+	// Hash the legacy winding codes (CCW 0x0901, CW 0x0900) so batch iteration order is unchanged.
+	key = mix(key, frontFace == rhi::FrontFace::Clockwise ? 0x0900ull : 0x0901ull);
 	key = mix(key, textureID(mesh.diffuseTexture, DefaultTextures::White()));
 	key = mix(key, textureID(mesh.normalTexture, DefaultTextures::Normal()));
 	key = mix(key, textureID(mesh.roughnessTexture, DefaultTextures::MetallicRoughnessDefault()));
@@ -2005,9 +1993,8 @@ uint64_t RenderSystem::ComputeBakedBatchKey(const MeshComponent& mesh, CullingOv
 void RenderSystem::ClearBakedGBufferBatches()
 {
 	for (BakedGBufferBatch& batch : m_bakedGBufferBatches) {
-		if (batch.vao != 0) {
-			glDeleteVertexArrays(1, &batch.vao);
-			batch.vao = 0;
+		if (batch.vao) {
+			rhi::Gpu().DestroyVertexInput(batch.vao);
 		}
 	}
 	m_bakedGBufferBatches.clear();
@@ -2045,7 +2032,7 @@ void RenderSystem::UpdateBakedGBufferTransformBuffer()
 
 	const size_t requiredBytes = m_bakedGBufferTransformRecords.size() * sizeof(GpuTransformRecord);
 	if (!m_bakedGBufferTransformBuffer || !m_bakedGBufferTransformBuffer->IsValid()) {
-		m_bakedGBufferTransformBuffer = std::make_unique<GLBuffer>(
+		m_bakedGBufferTransformBuffer = std::make_unique<GpuBuffer>(
 			BufferType::ShaderStorage,
 			requiredBytes,
 			m_bakedGBufferTransformRecords.data(),
@@ -2077,7 +2064,7 @@ void RenderSystem::RebuildBakedGBufferBatches()
 		std::vector<uint32_t> indices;
 		const MeshComponent* materialMesh = nullptr;
 		CullingOverride cullingOverride = CullingOverride::CULLING_INHERIT;
-		GLenum frontFace = GL_CCW;
+		rhi::FrontFace frontFace = rhi::FrontFace::CounterClockwise;
 	};
 
 	std::unordered_map<uint64_t, BuildBatch> buildBatches;
@@ -2101,7 +2088,7 @@ void RenderSystem::RebuildBakedGBufferBatches()
 
 		const glm::mat4& localTransform = item.localTransform;
 		const float determinant = glm::determinant(glm::mat3(localTransform));
-		const GLenum frontFace = (std::isfinite(determinant) && determinant < 0.0f) ? GL_CW : GL_CCW;
+		const rhi::FrontFace frontFace = (std::isfinite(determinant) && determinant < 0.0f) ? rhi::FrontFace::Clockwise : rhi::FrontFace::CounterClockwise;
 		const uint64_t key = ComputeBakedBatchKey(mesh, item.cullingOverride, frontFace);
 		BuildBatch& batch = buildBatches[key];
 		if (!batch.materialMesh) {
@@ -2143,49 +2130,41 @@ void RenderSystem::RebuildBakedGBufferBatches()
 		batch.cullingOverride = buildBatch.cullingOverride;
 		batch.frontFace = buildBatch.frontFace;
 
-		glGenVertexArrays(1, &batch.vao);
-		glBindVertexArray(batch.vao);
-
-		batch.vertexBuffer = std::make_unique<GLBuffer>(
+		batch.vertexBuffer = std::make_unique<GpuBuffer>(
 			BufferType::Vertex,
 			buildBatch.vertices.size() * sizeof(BakedGBufferVertex),
 			buildBatch.vertices.data(),
 			BufferUsage::StaticDraw);
-		batch.indexBuffer = std::make_unique<GLBuffer>(
+		batch.indexBuffer = std::make_unique<GpuBuffer>(
 			BufferType::Index,
 			buildBatch.indices.size() * sizeof(uint32_t),
 			buildBatch.indices.data(),
 			BufferUsage::StaticDraw);
 
-		const GLsizei stride = sizeof(BakedGBufferVertex);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, position)));
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, normal)));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, texCoord)));
-		glEnableVertexAttribArray(2);
-		glVertexAttribPointer(10, 2, GL_FLOAT, GL_FALSE, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, texCoord1)));
-		glEnableVertexAttribArray(10);
-		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, tangent)));
-		glEnableVertexAttribArray(3);
-		glVertexAttribIPointer(4, 4, GL_INT, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneIDs)));
-		glEnableVertexAttribArray(4);
-		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneWeights)));
-		glEnableVertexAttribArray(5);
-		glVertexAttribIPointer(11, 1, GL_UNSIGNED_INT, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, runtimeTransformIndex)));
-		glEnableVertexAttribArray(11);
-		glVertexAttribIPointer(12, 1, GL_UNSIGNED_INT, stride,
-			reinterpret_cast<void*>(offsetof(BakedGBufferVertex, stableTransformID)));
-		glEnableVertexAttribArray(12);
-		glBindVertexArray(0);
+		// Vertex layout of BakedGBufferVertex: the Vertex attributes followed by the per-vertex transform indices.
+		const uint32_t stride = sizeof(BakedGBufferVertex);
+		rhi::VertexInputDesc inputDesc;
+		inputDesc.buffers.push_back({ batch.vertexBuffer->GetID(), stride });
+		inputDesc.indexBuffer = batch.indexBuffer->GetID();
+		inputDesc.attributes.push_back({ 0, 0, 3, rhi::ScalarType::Float, false, false,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, position)) });
+		inputDesc.attributes.push_back({ 1, 0, 3, rhi::ScalarType::Float, false, false,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, normal)) });
+		inputDesc.attributes.push_back({ 2, 0, 2, rhi::ScalarType::Float, false, false,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, texCoord)) });
+		inputDesc.attributes.push_back({ 10, 0, 2, rhi::ScalarType::Float, false, false,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, texCoord1)) });
+		inputDesc.attributes.push_back({ 3, 0, 4, rhi::ScalarType::Float, false, false,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, tangent)) });
+		inputDesc.attributes.push_back({ 4, 0, 4, rhi::ScalarType::Int, false, true,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneIDs)) });
+		inputDesc.attributes.push_back({ 5, 0, 4, rhi::ScalarType::Float, false, false,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneWeights)) });
+		inputDesc.attributes.push_back({ 11, 0, 1, rhi::ScalarType::UInt, false, true,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, runtimeTransformIndex)) });
+		inputDesc.attributes.push_back({ 12, 0, 1, rhi::ScalarType::UInt, false, true,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, stableTransformID)) });
+		batch.vao = rhi::Gpu().CreateVertexInput(inputDesc);
 		m_bakedGBufferBatches.push_back(std::move(batch));
 	}
 

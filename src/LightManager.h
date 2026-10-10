@@ -4,7 +4,6 @@
 #include <map>
 #include <string>
 #include <unordered_map>
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include "BaseLight.h"
 #include "ShadowMapper.h"
@@ -77,8 +76,8 @@ public:
 
 	// GPU buffer management for deferred rendering
 	void UpdateGPUBuffers();
-	GLuint GetLightDataSSBO() const { return m_lightDataSSBO; }
-	GLuint GetShadowMatricesSSBO() const { return m_shadowMatricesSSBO; }
+	rhi::BufferHandle GetLightDataSSBO() const { return m_lightDataSSBO; }
+	rhi::BufferHandle GetShadowMatricesSSBO() const { return m_shadowMatricesSSBO; }
 	int GetActiveLightCount() const { return static_cast<int>(m_activeLights.size()); }
 	// Directional lights sort first in the active list (type order), so they occupy indices [0, n).
 	int GetActiveDirectionalLightCount() const {
@@ -107,13 +106,13 @@ public:
 	// packed for the lighting shaders' `cascadeSplits` uniform (unused entries are 0). Uses the same
 	// split distribution as RenderShadowMaps, so shader cascade selection matches the rendered maps.
 	glm::vec4 ComputeCascadeSplitVector(float nearPlane, float farPlane) const;
-	GLuint GetShadowArrayTexture() const;
+	rhi::TextureHandle GetShadowArrayTexture() const;
 	ShadowConfig& GetShadowConfig() { return shadowConfig; }
 	const ShadowConfig& GetShadowConfig() const { return shadowConfig; }
 
 	// Shadow shader management
-	void SetShadowShader(GLuint shadowShader) { m_shadowShader = shadowShader; }
-	GLuint GetShadowShader() const { return m_shadowShader; }
+	void SetShadowShader(rhi::ProgramHandle shadowShader) { m_shadowShader = shadowShader; }
+	rhi::ProgramHandle GetShadowShader() const { return m_shadowShader; }
 
 	// Shadow rendering method
 	void RenderShadowMaps(const std::shared_ptr<SceneGraph>& sceneGraph,
@@ -182,7 +181,7 @@ public:
 
 	void PerformLightCulling(const glm::mat4& view, const glm::mat4& projection,
 		int screenWidth, int screenHeight, int tileSize = 16);
-	GLuint GetTileDataSSBO() const { return m_tileDataSSBO; }
+	rhi::BufferHandle GetTileDataSSBO() const { return m_tileDataSSBO; }
 	glm::ivec2 GetTileCount() const { return m_tileCount; }
 
 	// Light management
@@ -245,14 +244,14 @@ private:
 	std::vector<std::shared_ptr<BaseLight>> m_activeLights;
 
 	// GPU buffer objects for deferred rendering
-	GLuint m_lightDataSSBO = 0;
-	GLuint m_shadowMatricesSSBO = 0;
-	GLuint m_tileDataSSBO = 0;
+	rhi::BufferHandle m_lightDataSSBO;
+	rhi::BufferHandle m_shadowMatricesSSBO;
+	rhi::BufferHandle m_tileDataSSBO;
 
 	// Depth-only FBO; each shadow slice attaches one layer of m_shadowArrayTexture.
-	GLuint m_shadowFBO = 0;
+	rhi::FramebufferHandle m_shadowFBO;
 	TexturePtr m_shadowArrayTexture;  // Using new Texture class for shadow array
-	GLuint m_shadowShader = 0;
+	rhi::ProgramHandle m_shadowShader;
 	int m_shadowArrayLayers = 0;
 
 	// Per-light shadow slice mapping
@@ -339,7 +338,7 @@ private:
 	bool m_shadowMatricesInitialized = false;
 
 	// Cached uniform locations for shadow rendering
-	mutable GLint m_cachedLocObjectIndex = -2;  // -2 = not queried yet, -1 = not found
-	mutable GLint m_cachedLocLS = -2;           // -2 = not queried yet, -1 = not found
-	mutable GLuint m_lastShadowShader = 0;      // Track if shader changed
+	mutable rhi::UniformLocation m_cachedLocObjectIndex = -2;  // -2 = not queried yet, -1 = not found
+	mutable rhi::UniformLocation m_cachedLocLS = -2;           // -2 = not queried yet, -1 = not found
+	mutable rhi::ProgramHandle m_lastShadowShader;             // Track if shader changed
 };

@@ -16,6 +16,21 @@
 
 #pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
 
+namespace {
+// Immutable storage of a single mip level (glTexStorage*).
+rhi::TextureDesc MakeImmutableDesc(rhi::TextureType type, rhi::Format format, int width, int height, int depth) {
+    rhi::TextureDesc desc;
+    desc.type = type;
+    desc.format = format;
+    desc.width = width;
+    desc.height = height;
+    desc.depth = depth;
+    desc.mipLevels = 1;
+    desc.immutable = true;
+    return desc;
+}
+}
+
 LPVPass::LPVPass() {}
 
 LPVPass::~LPVPass() {
@@ -59,21 +74,23 @@ void LPVPass::Resize(RenderContext& context, int /*newWidth*/, int /*newHeight*/
 }
 
 void LPVPass::DestroyLPVResourcesOnly() {
+    rhi::Device& gpu = rhi::Gpu();
     for (int i = 0; i < 3; ++i) {
-        if (m_lpvTextures[i]) { glDeleteTextures(1, &m_lpvTextures[i]); m_lpvTextures[i] = 0; }
-        if (m_lpvSampleTextures[i]) { glDeleteTextures(1, &m_lpvSampleTextures[i]); m_lpvSampleTextures[i] = 0; }
-        if (m_lpvSampleTexturesTemp[i]) { glDeleteTextures(1, &m_lpvSampleTexturesTemp[i]); m_lpvSampleTexturesTemp[i] = 0; }
-        if (m_lpvAccumTextures[i]) { glDeleteTextures(1, &m_lpvAccumTextures[i]); m_lpvAccumTextures[i] = 0; }
+        if (m_lpvTextures[i]) { gpu.DestroyTexture(m_lpvTextures[i]); }
+        if (m_lpvSampleTextures[i]) { gpu.DestroyTexture(m_lpvSampleTextures[i]); }
+        if (m_lpvSampleTexturesTemp[i]) { gpu.DestroyTexture(m_lpvSampleTexturesTemp[i]); }
+        if (m_lpvAccumTextures[i]) { gpu.DestroyTexture(m_lpvAccumTextures[i]); }
     }
-    if (m_geometryVolume) { glDeleteTextures(1, &m_geometryVolume); m_geometryVolume = 0; }
+    if (m_geometryVolume) { gpu.DestroyTexture(m_geometryVolume); }
 }
 
 void LPVPass::DestroyRSMResourcesOnly() {
-    if (m_rsmPosition) { glDeleteTextures(1, &m_rsmPosition); m_rsmPosition = 0; }
-    if (m_rsmNormal)   { glDeleteTextures(1, &m_rsmNormal);   m_rsmNormal = 0; }
-    if (m_rsmFlux)     { glDeleteTextures(1, &m_rsmFlux);     m_rsmFlux = 0; }
-    if (m_rsmDepth)    { glDeleteTextures(1, &m_rsmDepth);    m_rsmDepth = 0; }
-    if (m_resolvedIndirectTexture) { glDeleteTextures(1, &m_resolvedIndirectTexture); m_resolvedIndirectTexture = 0; }
+    rhi::Device& gpu = rhi::Gpu();
+    if (m_rsmPosition) { gpu.DestroyTexture(m_rsmPosition); }
+    if (m_rsmNormal)   { gpu.DestroyTexture(m_rsmNormal); }
+    if (m_rsmFlux)     { gpu.DestroyTexture(m_rsmFlux); }
+    if (m_rsmDepth)    { gpu.DestroyTexture(m_rsmDepth); }
+    if (m_resolvedIndirectTexture) { gpu.DestroyTexture(m_resolvedIndirectTexture); }
     m_rsmFBO.reset();
 }
 
@@ -83,6 +100,8 @@ void LPVPass::Execute(RenderContext& ctx,
                       const std::shared_ptr<DirectionalLight>& dirLight,
                       const std::shared_ptr<Skybox>& /*skybox*/) {
     if (!config.enableLPV || !sceneGraph || !camera) return;
+
+    rhi::Device& gpu = rhi::Gpu();
 
     // Recreate resources if grid/RSM res changed
     if (m_allocatedGridResolution != config.gridResolution) {
@@ -131,8 +150,8 @@ void LPVPass::Execute(RenderContext& ctx,
 
     // Clear the injection accumulators
     for (int i = 0; i < 3; ++i) {
-        const GLint zero = 0;
-        glClearTexImage(m_lpvTextures[i], 0, GL_RED_INTEGER, GL_INT, &zero);
+        const int zero = 0;
+        gpu.ClearTexture(m_lpvTextures[i], 0, rhi::PixelFormat::RInt, rhi::PixelType::Int, &zero);
     }
 
     glm::vec3 lightDirection(0.0f, -1.0f, 0.0f);
@@ -146,28 +165,28 @@ void LPVPass::Execute(RenderContext& ctx,
     }
 
     // Make sure injection writes are visible
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 
     // Convert the fixed-point accumulators into the first float wave
-    if (m_convertShader != 0) {
-        glUseProgram(m_convertShader);
-        glUniform1i(glGetUniformLocation(m_convertShader, "u_gridResolution"), config.gridResolution);
-        glUniform1f(glGetUniformLocation(m_convertShader, "u_fixedPointScale"), m_fixedPointScale);
-        glBindImageTexture(0, m_lpvTextures[0], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32I);
-        glBindImageTexture(1, m_lpvTextures[1], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32I);
-        glBindImageTexture(2, m_lpvTextures[2], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32I);
-        glBindImageTexture(3, m_lpvSampleTextures[0], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(4, m_lpvSampleTextures[1], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(5, m_lpvSampleTextures[2], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    if (m_convertShader) {
+        gpu.UseProgram(m_convertShader);
+        gpu.SetUniform(gpu.GetUniformLocation(m_convertShader, "u_gridResolution"), config.gridResolution);
+        gpu.SetUniform(gpu.GetUniformLocation(m_convertShader, "u_fixedPointScale"), m_fixedPointScale);
+        gpu.BindImage(0, m_lpvTextures[0], 0, true, 0, rhi::ImageAccess::ReadOnly, rhi::Format::R32I);
+        gpu.BindImage(1, m_lpvTextures[1], 0, true, 0, rhi::ImageAccess::ReadOnly, rhi::Format::R32I);
+        gpu.BindImage(2, m_lpvTextures[2], 0, true, 0, rhi::ImageAccess::ReadOnly, rhi::Format::R32I);
+        gpu.BindImage(3, m_lpvSampleTextures[0], 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+        gpu.BindImage(4, m_lpvSampleTextures[1], 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+        gpu.BindImage(5, m_lpvSampleTextures[2], 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
         const int groups = (config.gridResolution + 7) / 8;
-        glDispatchCompute(groups, groups, groups);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT);
+        gpu.Dispatch(groups, groups, groups);
+        gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch | rhi::BarrierTextureUpdate);
 
         // The injected light itself is the first term of the accumulated volume.
         for (int i = 0; i < 3; ++i) {
-            glCopyImageSubData(m_lpvSampleTextures[i], GL_TEXTURE_3D, 0, 0, 0, 0,
-                               m_lpvAccumTextures[i], GL_TEXTURE_3D, 0, 0, 0, 0,
-                               config.gridResolution, config.gridResolution, config.gridResolution);
+            gpu.CopyTexture(m_lpvSampleTextures[i],
+                            rhi::TextureRegion{ 0, glm::ivec3(0), glm::ivec3(config.gridResolution) },
+                            m_lpvAccumTextures[i], 0, glm::ivec3(0));
         }
     }
 
@@ -177,7 +196,7 @@ void LPVPass::Execute(RenderContext& ctx,
     ResolveIndirect(ctx);
 
     // Ensure the final float volumes and resolved texture are visible to downstream passes
-    glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
 }
 
 bool LPVPass::FindInjectedLight(const RenderContext& ctx,
@@ -242,96 +261,75 @@ bool LPVPass::CreateShaders() {
 }
 
 bool LPVPass::CreateLPVResources() {
+    rhi::Device& gpu = rhi::Gpu();
     const int res = config.gridResolution;
     const int extendedResX = res * 4; // 4 SH coefficients along X for the integer accumulators
 
-    auto setVolumeParams = [](GLenum filter) {
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, filter);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, filter);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    auto setVolumeParams = [&gpu](rhi::TextureHandle texture, rhi::Filter filter) {
+        gpu.SetTextureFilter(texture, filter, filter);
+        gpu.SetTextureWrapAxis(texture, 0, rhi::Wrap::ClampToEdge);
+        gpu.SetTextureWrapAxis(texture, 1, rhi::Wrap::ClampToEdge);
+        gpu.SetTextureWrapAxis(texture, 2, rhi::Wrap::ClampToEdge);
     };
 
     for (int i = 0; i < 3; ++i) {
-        glGenTextures(1, &m_lpvTextures[i]);
-        glBindTexture(GL_TEXTURE_3D, m_lpvTextures[i]);
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32I, extendedResX, res, res);
-        setVolumeParams(GL_NEAREST);
+        m_lpvTextures[i] = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex3D, rhi::Format::R32I, extendedResX, res, res));
+        setVolumeParams(m_lpvTextures[i], rhi::Filter::Nearest);
 
-        GLuint* floatVolumes[3] = { &m_lpvSampleTextures[i], &m_lpvSampleTexturesTemp[i], &m_lpvAccumTextures[i] };
-        for (GLuint* volume : floatVolumes) {
-            glGenTextures(1, volume);
-            glBindTexture(GL_TEXTURE_3D, *volume);
-            glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA16F, res, res, res);
-            setVolumeParams(GL_LINEAR);
+        rhi::TextureHandle* floatVolumes[3] = { &m_lpvSampleTextures[i], &m_lpvSampleTexturesTemp[i], &m_lpvAccumTextures[i] };
+        for (rhi::TextureHandle* volume : floatVolumes) {
+            *volume = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex3D, rhi::Format::RGBA16F, res, res, res));
+            setVolumeParams(*volume, rhi::Filter::Linear);
             const float zero[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-            glClearTexImage(*volume, 0, GL_RGBA, GL_FLOAT, zero);
+            gpu.ClearTexture(*volume, 0, rhi::PixelFormat::RGBA, rhi::PixelType::Float, zero);
         }
     }
 
     // Directional geometry volume for occlusion (6 bits per cell, see lpv_voxelize_frag.glsl)
-    glGenTextures(1, &m_geometryVolume);
-    glBindTexture(GL_TEXTURE_3D, m_geometryVolume);
-    glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, res, res, res);
-    setVolumeParams(GL_NEAREST);
-    const GLuint noGeometry = 0u;
-    glClearTexImage(m_geometryVolume, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &noGeometry);
+    m_geometryVolume = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex3D, rhi::Format::R32UI, res, res, res));
+    setVolumeParams(m_geometryVolume, rhi::Filter::Nearest);
+    const uint32_t noGeometry = 0u;
+    gpu.ClearTexture(m_geometryVolume, 0, rhi::PixelFormat::RInt, rhi::PixelType::UInt, &noGeometry);
 
-    glBindTexture(GL_TEXTURE_3D, 0);
-
-    return glGetError() == GL_NO_ERROR;
+    return gpu.PollError() == nullptr;
 }
 
 bool LPVPass::CreateRSMResources() {
+    rhi::Device& gpu = rhi::Gpu();
     int res = config.rsmResolution;
 
-    glGenTextures(1, &m_rsmPosition);
-    glBindTexture(GL_TEXTURE_2D, m_rsmPosition);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB16F, res, res);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    auto setRSMParams = [&gpu](rhi::TextureHandle texture) {
+        gpu.SetTextureFilter(texture, rhi::Filter::Nearest, rhi::Filter::Nearest);
+        gpu.SetTextureWrapAxis(texture, 0, rhi::Wrap::ClampToEdge);
+        gpu.SetTextureWrapAxis(texture, 1, rhi::Wrap::ClampToEdge);
+    };
 
-    glGenTextures(1, &m_rsmNormal);
-    glBindTexture(GL_TEXTURE_2D, m_rsmNormal);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB16F, res, res);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    m_rsmPosition = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex2D, rhi::Format::RGB16F, res, res, 1));
+    setRSMParams(m_rsmPosition);
 
-    glGenTextures(1, &m_rsmFlux);
-    glBindTexture(GL_TEXTURE_2D, m_rsmFlux);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB16F, res, res);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    m_rsmNormal = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex2D, rhi::Format::RGB16F, res, res, 1));
+    setRSMParams(m_rsmNormal);
 
-    glGenTextures(1, &m_rsmDepth);
-    glBindTexture(GL_TEXTURE_2D, m_rsmDepth);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT24, res, res);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    m_rsmFlux = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex2D, rhi::Format::RGB16F, res, res, 1));
+    setRSMParams(m_rsmFlux);
+
+    m_rsmDepth = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex2D, rhi::Format::D24, res, res, 1));
+    setRSMParams(m_rsmDepth);
 
     // Use existing FrameBuffer abstraction; we attach our textures after creation
-    m_rsmFBO = std::make_unique<FrameBuffer>(res, res, std::vector<GLenum>{GL_RGB16F, GL_RGB16F, GL_RGB16F}, true);
+    m_rsmFBO = std::make_unique<FrameBuffer>(res, res, std::vector<rhi::Format>{rhi::Format::RGB16F, rhi::Format::RGB16F, rhi::Format::RGB16F}, true);
     if (!m_rsmFBO->IsComplete()) return false;
 
-    GLuint fbo = m_rsmFBO->GetFBO();
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_rsmPosition, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, m_rsmNormal, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, m_rsmFlux, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_rsmDepth, 0);
-    GLenum bufs[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
-    glDrawBuffers(3, bufs);
-    bool complete = (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
-    glBindFramebuffer(GL_FRAMEBUFFER, PresentTarget::Get());
+    rhi::FramebufferHandle fbo = m_rsmFBO->GetFBO();
+    gpu.BindFramebuffer(fbo);
+    gpu.SetAttachment(fbo, rhi::AttachmentPoint::Color0, rhi::Attachment{ m_rsmPosition });
+    gpu.SetAttachment(fbo, rhi::AttachmentPoint::Color1, rhi::Attachment{ m_rsmNormal });
+    gpu.SetAttachment(fbo, rhi::AttachmentPoint::Color2, rhi::Attachment{ m_rsmFlux });
+    gpu.SetAttachment(fbo, rhi::AttachmentPoint::Depth, rhi::Attachment{ m_rsmDepth });
+    const int bufs[3] = { 0, 1, 2 };
+    gpu.SetDrawBuffers(fbo, bufs, 3);
+    bool complete = gpu.IsFramebufferComplete(fbo);
+    gpu.BindFramebuffer(PresentTarget::Get());
     return complete;
 }
 
@@ -340,29 +338,25 @@ bool LPVPass::EnsureResolvedIndirectTexture(int width, int height) {
         return false;
     }
 
-    if (m_resolvedIndirectTexture != 0 &&
+    if (m_resolvedIndirectTexture &&
         m_resolvedIndirectWidth == width &&
         m_resolvedIndirectHeight == height) {
         return true;
     }
 
-    if (m_resolvedIndirectTexture != 0) {
-        glDeleteTextures(1, &m_resolvedIndirectTexture);
-        m_resolvedIndirectTexture = 0;
+    rhi::Device& gpu = rhi::Gpu();
+    if (m_resolvedIndirectTexture) {
+        gpu.DestroyTexture(m_resolvedIndirectTexture);
     }
 
-    glGenTextures(1, &m_resolvedIndirectTexture);
-    glBindTexture(GL_TEXTURE_2D, m_resolvedIndirectTexture);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA16F, width, height);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    m_resolvedIndirectTexture = gpu.CreateTexture(MakeImmutableDesc(rhi::TextureType::Tex2D, rhi::Format::RGBA16F, width, height, 1));
+    gpu.SetTextureFilter(m_resolvedIndirectTexture, rhi::Filter::Linear, rhi::Filter::Linear);
+    gpu.SetTextureWrapAxis(m_resolvedIndirectTexture, 0, rhi::Wrap::ClampToEdge);
+    gpu.SetTextureWrapAxis(m_resolvedIndirectTexture, 1, rhi::Wrap::ClampToEdge);
 
     m_resolvedIndirectWidth = width;
     m_resolvedIndirectHeight = height;
-    return glGetError() == GL_NO_ERROR;
+    return gpu.PollError() == nullptr;
 }
 
 void LPVPass::RenderRSM(const std::shared_ptr<SceneGraph>& sceneGraph,
@@ -370,14 +364,15 @@ void LPVPass::RenderRSM(const std::shared_ptr<SceneGraph>& sceneGraph,
                         const glm::vec3& lightIrradiance) {
     if (!m_rsmFBO) return;
 
+    rhi::Device& gpu = rhi::Gpu();
+
     m_rsmFBO->Bind();
-    glViewport(0, 0, config.rsmResolution, config.rsmResolution);
+    gpu.SetViewport(rhi::Rect{ 0, 0, config.rsmResolution, config.rsmResolution });
     // Empty texels must carry zero flux.
-    GLfloat previousClearColor[4];
-    glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor);
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClearColor(previousClearColor[0], previousClearColor[1], previousClearColor[2], previousClearColor[3]);
+    const glm::vec4 previousClearColor = gpu.CaptureState().clearColor;
+    gpu.SetClearColor(glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    gpu.Clear(rhi::ClearColor | rhi::ClearDepth);
+    gpu.SetClearColor(previousClearColor);
 
     // Orthographic light view covering the whole grid.
     const float halfExtent = config.gridResolution * config.voxelSize * 0.5f;
@@ -389,12 +384,12 @@ void LPVPass::RenderRSM(const std::shared_ptr<SceneGraph>& sceneGraph,
     glm::mat4 lightProj = glm::ortho(-halfExtent, halfExtent, -halfExtent, halfExtent, 0.0f, depthRange);
     glm::mat4 lightViewProj = lightProj * lightView;
 
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
-    glDisable(GL_BLEND);
-    glUseProgram(m_rsmShader);
-    glUniform3fv(glGetUniformLocation(m_rsmShader, "u_lightDirection"), 1, glm::value_ptr(lightDirection));
-    glUniform3fv(glGetUniformLocation(m_rsmShader, "u_lightIrradiance"), 1, glm::value_ptr(lightIrradiance));
+    gpu.SetDepthTest(true);
+    gpu.SetDepthFunc(rhi::CompareOp::Less);
+    gpu.SetBlendEnabled(false);
+    gpu.UseProgram(m_rsmShader);
+    gpu.SetUniform(gpu.GetUniformLocation(m_rsmShader, "u_lightDirection"), lightDirection);
+    gpu.SetUniform(gpu.GetUniformLocation(m_rsmShader, "u_lightIrradiance"), lightIrradiance);
 
     // Cull against the light volume, not the camera: off-screen surfaces bounce light too.
     sceneGraph->RenderShadowCascade(lightViewProj, m_rsmShader);
@@ -403,20 +398,21 @@ void LPVPass::RenderRSM(const std::shared_ptr<SceneGraph>& sceneGraph,
 }
 
 void LPVPass::InjectVPLs(const glm::vec3& lightIrradiance) {
-    glUseProgram(m_injectionShader);
+    rhi::Device& gpu = rhi::Gpu();
+    gpu.UseProgram(m_injectionShader);
 
     // RSM inputs
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, m_rsmPosition);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, m_rsmNormal);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, m_rsmFlux);
-    glUniform1i(glGetUniformLocation(m_injectionShader, "u_rsmPosition"), 0);
-    glUniform1i(glGetUniformLocation(m_injectionShader, "u_rsmNormal"), 1);
-    glUniform1i(glGetUniformLocation(m_injectionShader, "u_rsmFlux"), 2);
+    gpu.BindTexture(0, m_rsmPosition);
+    gpu.BindTexture(1, m_rsmNormal);
+    gpu.BindTexture(2, m_rsmFlux);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_rsmPosition"), 0);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_rsmNormal"), 1);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_rsmFlux"), 2);
 
     // Integer LPV outputs (atomic add)
-    glBindImageTexture(0, m_lpvTextures[0], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32I);
-    glBindImageTexture(1, m_lpvTextures[1], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32I);
-    glBindImageTexture(2, m_lpvTextures[2], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32I);
+    gpu.BindImage(0, m_lpvTextures[0], 0, true, 0, rhi::ImageAccess::ReadWrite, rhi::Format::R32I);
+    gpu.BindImage(1, m_lpvTextures[1], 0, true, 0, rhi::ImageAccess::ReadWrite, rhi::Format::R32I);
+    gpu.BindImage(2, m_lpvTextures[2], 0, true, 0, rhi::ImageAccess::ReadWrite, rhi::Format::R32I);
 
     // VPLs sample the RSM on a regular grid; each stands for the light-perpendicular area around it.
     const int vplGridSize = std::clamp(static_cast<int>(std::ceil(std::sqrt(static_cast<float>(std::max(config.vplSampleCount, 1))))),
@@ -432,119 +428,117 @@ void LPVPass::InjectVPLs(const glm::vec3& lightIrradiance) {
     const float maxCellCoefficient = std::max(maxIrradiance * 1.7320508f * config.voxelSize * config.voxelSize * 0.2820948f, 1e-12f);
     m_fixedPointScale = 1.34217728e8f / maxCellCoefficient; // 2^27 / max
 
-    glUniform3fv(glGetUniformLocation(m_injectionShader, "u_gridCenter"), 1, &config.gridCenter[0]);
-    glUniform1f(glGetUniformLocation(m_injectionShader, "u_voxelSize"), config.voxelSize);
-    glUniform1i(glGetUniformLocation(m_injectionShader, "u_gridResolution"), config.gridResolution);
-    glUniform1i(glGetUniformLocation(m_injectionShader, "u_vplGridSize"), vplGridSize);
-    glUniform1f(glGetUniformLocation(m_injectionShader, "u_vplArea"), vplArea);
-    glUniform1f(glGetUniformLocation(m_injectionShader, "u_fixedPointScale"), m_fixedPointScale);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_gridCenter"), config.gridCenter);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_voxelSize"), config.voxelSize);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_gridResolution"), config.gridResolution);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_vplGridSize"), vplGridSize);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_vplArea"), vplArea);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_fixedPointScale"), m_fixedPointScale);
     glm::vec4 q(config.gridOrientation.x, config.gridOrientation.y, config.gridOrientation.z, config.gridOrientation.w);
-    glUniform4fv(glGetUniformLocation(m_injectionShader, "u_gridOrientation"), 1, &q[0]);
+    gpu.SetUniform(gpu.GetUniformLocation(m_injectionShader, "u_gridOrientation"), q);
 
     const int groups = (vplGridSize + 7) / 8;
-    glDispatchCompute(groups, groups, 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    gpu.Dispatch(groups, groups, 1);
+    gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 }
 
 void LPVPass::PropagateLPV() {
-    glUseProgram(m_propagationShader);
+    rhi::Device& gpu = rhi::Gpu();
+    gpu.UseProgram(m_propagationShader);
 
-    glUniform1i(glGetUniformLocation(m_propagationShader, "u_gridResolution"), config.gridResolution);
-    glUniform1i(glGetUniformLocation(m_propagationShader, "u_enableOcclusion"), config.enableOcclusion ? 1 : 0);
-    glUniform1i(glGetUniformLocation(m_propagationShader, "u_waveR"), 0);
-    glUniform1i(glGetUniformLocation(m_propagationShader, "u_waveG"), 1);
-    glUniform1i(glGetUniformLocation(m_propagationShader, "u_waveB"), 2);
-    glUniform1i(glGetUniformLocation(m_propagationShader, "u_geometryVolume"), 3);
-    glBindTextureUnit(3, m_geometryVolume);
+    gpu.SetUniform(gpu.GetUniformLocation(m_propagationShader, "u_gridResolution"), config.gridResolution);
+    gpu.SetUniform(gpu.GetUniformLocation(m_propagationShader, "u_enableOcclusion"), config.enableOcclusion ? 1 : 0);
+    gpu.SetUniform(gpu.GetUniformLocation(m_propagationShader, "u_waveR"), 0);
+    gpu.SetUniform(gpu.GetUniformLocation(m_propagationShader, "u_waveG"), 1);
+    gpu.SetUniform(gpu.GetUniformLocation(m_propagationShader, "u_waveB"), 2);
+    gpu.SetUniform(gpu.GetUniformLocation(m_propagationShader, "u_geometryVolume"), 3);
+    gpu.BindTexture(3, m_geometryVolume);
 
     const int groups = (config.gridResolution + 3) / 4;
-    const GLint iterationLoc = glGetUniformLocation(m_propagationShader, "u_iteration");
+    const rhi::UniformLocation iterationLoc = gpu.GetUniformLocation(m_propagationShader, "u_iteration");
 
     for (int iter = 0; iter < config.propagationIterations; ++iter) {
         // Ping-pong the waves; every new wave is added to the accumulated volume.
-        GLuint* inVol = (iter % 2 == 0) ? m_lpvSampleTextures : m_lpvSampleTexturesTemp;
-        GLuint* outVol = (iter % 2 == 0) ? m_lpvSampleTexturesTemp : m_lpvSampleTextures;
+        rhi::TextureHandle* inVol = (iter % 2 == 0) ? m_lpvSampleTextures : m_lpvSampleTexturesTemp;
+        rhi::TextureHandle* outVol = (iter % 2 == 0) ? m_lpvSampleTexturesTemp : m_lpvSampleTextures;
 
-        glBindTextureUnit(0, inVol[0]);
-        glBindTextureUnit(1, inVol[1]);
-        glBindTextureUnit(2, inVol[2]);
-        glBindImageTexture(0, outVol[0], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(1, outVol[1], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(2, outVol[2], 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-        glBindImageTexture(3, m_lpvAccumTextures[0], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-        glBindImageTexture(4, m_lpvAccumTextures[1], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-        glBindImageTexture(5, m_lpvAccumTextures[2], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-        glUniform1i(iterationLoc, iter);
+        gpu.BindTexture(0, inVol[0]);
+        gpu.BindTexture(1, inVol[1]);
+        gpu.BindTexture(2, inVol[2]);
+        gpu.BindImage(0, outVol[0], 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+        gpu.BindImage(1, outVol[1], 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+        gpu.BindImage(2, outVol[2], 0, true, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+        gpu.BindImage(3, m_lpvAccumTextures[0], 0, true, 0, rhi::ImageAccess::ReadWrite, rhi::Format::RGBA16F);
+        gpu.BindImage(4, m_lpvAccumTextures[1], 0, true, 0, rhi::ImageAccess::ReadWrite, rhi::Format::RGBA16F);
+        gpu.BindImage(5, m_lpvAccumTextures[2], 0, true, 0, rhi::ImageAccess::ReadWrite, rhi::Format::RGBA16F);
+        gpu.SetUniform(iterationLoc, iter);
 
-        glDispatchCompute(groups, groups, groups);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        gpu.Dispatch(groups, groups, groups);
+        gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
     }
 }
 
 void LPVPass::ResolveIndirect(RenderContext& ctx) {
-    if (m_resolveShader == 0 || !ctx.gbufferFBO || !EnsureResolvedIndirectTexture(ctx.width, ctx.height)) {
+    if (!m_resolveShader || !ctx.gbufferFBO || !EnsureResolvedIndirectTexture(ctx.width, ctx.height)) {
         return;
     }
 
-    GLuint* finalVolumes = m_lpvAccumTextures;
+    rhi::Device& gpu = rhi::Gpu();
+    rhi::TextureHandle* finalVolumes = m_lpvAccumTextures;
 
-    glUseProgram(m_resolveShader);
+    gpu.UseProgram(m_resolveShader);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_3D, finalVolumes[0]);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_3D, finalVolumes[1]);
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_3D, finalVolumes[2]);
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetColorAttachment(0));
-    glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, ctx.gbufferFBO->GetDepthTexture());
+    gpu.BindTexture(0, finalVolumes[0]);
+    gpu.BindTexture(1, finalVolumes[1]);
+    gpu.BindTexture(2, finalVolumes[2]);
+    gpu.BindTexture(3, ctx.gbufferFBO->GetColorAttachment(0));
+    gpu.BindTexture(4, ctx.gbufferFBO->GetDepthTexture());
 
-    glUniform1i(glGetUniformLocation(m_resolveShader, "u_lpvTextureR"), 0);
-    glUniform1i(glGetUniformLocation(m_resolveShader, "u_lpvTextureG"), 1);
-    glUniform1i(glGetUniformLocation(m_resolveShader, "u_lpvTextureB"), 2);
-    glUniform1i(glGetUniformLocation(m_resolveShader, "u_packedNormalRM"), 3);
-    glUniform1i(glGetUniformLocation(m_resolveShader, "u_depth"), 4);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_lpvTextureR"), 0);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_lpvTextureG"), 1);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_lpvTextureB"), 2);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_packedNormalRM"), 3);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_depth"), 4);
 
     const glm::mat4 invProjection = glm::inverse(ctx.proj);
     const glm::mat4 invView = glm::inverse(ctx.view);
-    glUniformMatrix4fv(glGetUniformLocation(m_resolveShader, "u_invProjection"), 1, GL_FALSE, glm::value_ptr(invProjection));
-    glUniformMatrix4fv(glGetUniformLocation(m_resolveShader, "u_invView"), 1, GL_FALSE, glm::value_ptr(invView));
-    glUniform3fv(glGetUniformLocation(m_resolveShader, "u_gridCenter"), 1, glm::value_ptr(config.gridCenter));
-    glUniform1f(glGetUniformLocation(m_resolveShader, "u_voxelSize"), config.voxelSize);
-    glUniform1i(glGetUniformLocation(m_resolveShader, "u_gridResolution"), config.gridResolution);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_invProjection"), invProjection);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_invView"), invView);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_gridCenter"), config.gridCenter);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_voxelSize"), config.voxelSize);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_gridResolution"), config.gridResolution);
 
     glm::vec4 orientation(config.gridOrientation.x, config.gridOrientation.y, config.gridOrientation.z, config.gridOrientation.w);
-    glUniform4fv(glGetUniformLocation(m_resolveShader, "u_gridOrientation"), 1, glm::value_ptr(orientation));
-    glUniform1f(glGetUniformLocation(m_resolveShader, "u_giStrength"), config.giStrength);
-    glUniform1i(glGetUniformLocation(m_resolveShader, "u_normalsInWorldSpace"), 1);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_gridOrientation"), orientation);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_giStrength"), config.giStrength);
+    gpu.SetUniform(gpu.GetUniformLocation(m_resolveShader, "u_normalsInWorldSpace"), 1);
 
-    glBindImageTexture(0, m_resolvedIndirectTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    gpu.BindImage(0, m_resolvedIndirectTexture, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
     const int groupsX = (ctx.width + 7) / 8;
     const int groupsY = (ctx.height + 7) / 8;
-    glDispatchCompute(groupsX, groupsY, 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    gpu.Dispatch(groupsX, groupsY, 1);
+    gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 }
 
 void LPVPass::VoxelizeGeometry(const std::shared_ptr<SceneGraph>& sceneGraph) {
+    rhi::Device& gpu = rhi::Gpu();
+
     // Clear geometry volume
-    const GLuint noGeometry = 0u;
-    glClearTexImage(m_geometryVolume, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &noGeometry);
+    const uint32_t noGeometry = 0u;
+    gpu.ClearTexture(m_geometryVolume, 0, rhi::PixelFormat::RInt, rhi::PixelType::UInt, &noGeometry);
 
-    GLint previousViewport[4];
-    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    const rhi::Rect previousViewport = gpu.GetViewport();
     // One fragment per cell along the dominant axis (the geometry shader projects onto it).
-    glViewport(0, 0, config.gridResolution, config.gridResolution);
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    gpu.SetViewport(rhi::Rect{ 0, 0, config.gridResolution, config.gridResolution });
+    gpu.SetDepthTest(false);
+    gpu.SetCullEnabled(false);
+    gpu.SetColorMask(false, false, false, false);
 
-    glUseProgram(m_voxelizeShader);
-    glBindImageTexture(0, m_geometryVolume, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
-    glUniform3fv(glGetUniformLocation(m_voxelizeShader, "u_gridCenter"), 1, &config.gridCenter[0]);
-    glUniform1f(glGetUniformLocation(m_voxelizeShader, "u_voxelSize"), config.voxelSize);
-    glUniform1i(glGetUniformLocation(m_voxelizeShader, "u_gridResolution"), config.gridResolution);
+    gpu.UseProgram(m_voxelizeShader);
+    gpu.BindImage(0, m_geometryVolume, 0, true, 0, rhi::ImageAccess::ReadWrite, rhi::Format::R32UI);
+    gpu.SetUniform(gpu.GetUniformLocation(m_voxelizeShader, "u_gridCenter"), config.gridCenter);
+    gpu.SetUniform(gpu.GetUniformLocation(m_voxelizeShader, "u_voxelSize"), config.voxelSize);
+    gpu.SetUniform(gpu.GetUniformLocation(m_voxelizeShader, "u_gridResolution"), config.gridResolution);
 
     // Everything inside the grid, independent of the camera frustum.
     const float halfExtent = config.gridResolution * config.voxelSize * 0.5f;
@@ -553,65 +547,69 @@ void LPVPass::VoxelizeGeometry(const std::shared_ptr<SceneGraph>& sceneGraph) {
         glm::lookAt(config.gridCenter + glm::vec3(0.0f, 0.0f, halfExtent), config.gridCenter, glm::vec3(0.0f, 1.0f, 0.0f));
     sceneGraph->RenderShadowCascade(gridVolume, m_voxelizeShader);
 
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glEnable(GL_DEPTH_TEST);
-    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    gpu.SetColorMask(true, true, true, true);
+    gpu.SetDepthTest(true);
+    gpu.SetViewport(previousViewport);
+    gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 }
 
 void LPVPass::RenderDebugVisualization(const glm::mat4& view, const glm::mat4& projection) {
-    glUseProgram(m_debugShader);
-    glUniformMatrix4fv(glGetUniformLocation(m_debugShader, "u_view"), 1, GL_FALSE, &view[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(m_debugShader, "u_projection"), 1, GL_FALSE, &projection[0][0]);
-    glUniform3fv(glGetUniformLocation(m_debugShader, "u_gridCenter"), 1, &config.gridCenter[0]);
-    glUniform1f(glGetUniformLocation(m_debugShader, "u_voxelSize"), config.voxelSize);
-    glUniform1i(glGetUniformLocation(m_debugShader, "u_gridResolution"), config.gridResolution);
+    rhi::Device& gpu = rhi::Gpu();
 
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_3D, m_lpvAccumTextures[0]);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_3D, m_lpvAccumTextures[1]);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_3D, m_lpvAccumTextures[2]);
-    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_3D, m_geometryVolume);
+    gpu.UseProgram(m_debugShader);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_view"), view);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_projection"), projection);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_gridCenter"), config.gridCenter);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_voxelSize"), config.voxelSize);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_gridResolution"), config.gridResolution);
 
-    glUniform1i(glGetUniformLocation(m_debugShader, "u_lpvTextureR"), 0);
-    glUniform1i(glGetUniformLocation(m_debugShader, "u_lpvTextureG"), 1);
-    glUniform1i(glGetUniformLocation(m_debugShader, "u_lpvTextureB"), 2);
-    glUniform1i(glGetUniformLocation(m_debugShader, "u_geometryVolume"), 3);
+    gpu.BindTexture(0, m_lpvAccumTextures[0]);
+    gpu.BindTexture(1, m_lpvAccumTextures[1]);
+    gpu.BindTexture(2, m_lpvAccumTextures[2]);
+    gpu.BindTexture(3, m_geometryVolume);
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_DEPTH_TEST);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_lpvTextureR"), 0);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_lpvTextureG"), 1);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_lpvTextureB"), 2);
+    gpu.SetUniform(gpu.GetUniformLocation(m_debugShader, "u_geometryVolume"), 3);
+
+    gpu.SetBlendEnabled(true);
+    gpu.SetBlendFunc(rhi::BlendFactor::SrcAlpha, rhi::BlendFactor::OneMinusSrcAlpha);
+    gpu.SetDepthTest(false);
 
     int sampleStep = 4;
     int count = (config.gridResolution / sampleStep);
     // The vertex shader sizes each point by its LPV energy.
-    glEnable(GL_PROGRAM_POINT_SIZE);
-    glDrawArrays(GL_POINTS, 0, count * count * count);
-    glDisable(GL_PROGRAM_POINT_SIZE);
+    gpu.SetFeature(rhi::Feature::ProgramPointSize, true);
+    gpu.BindVertexInput({});
+    gpu.Draw(rhi::Topology::Points, 0, count * count * count);
+    gpu.SetFeature(rhi::Feature::ProgramPointSize, false);
 
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
+    gpu.SetBlendEnabled(false);
+    gpu.SetDepthTest(true);
 }
 
 void LPVPass::CleanupResources() {
+    rhi::Device& gpu = rhi::Gpu();
     for (int i = 0; i < 3; ++i) {
-        if (m_lpvTextures[i]) glDeleteTextures(1, &m_lpvTextures[i]);
-        if (m_lpvSampleTextures[i]) glDeleteTextures(1, &m_lpvSampleTextures[i]);
-        if (m_lpvSampleTexturesTemp[i]) glDeleteTextures(1, &m_lpvSampleTexturesTemp[i]);
-        if (m_lpvAccumTextures[i]) glDeleteTextures(1, &m_lpvAccumTextures[i]);
+        if (m_lpvTextures[i]) gpu.DestroyTexture(m_lpvTextures[i]);
+        if (m_lpvSampleTextures[i]) gpu.DestroyTexture(m_lpvSampleTextures[i]);
+        if (m_lpvSampleTexturesTemp[i]) gpu.DestroyTexture(m_lpvSampleTexturesTemp[i]);
+        if (m_lpvAccumTextures[i]) gpu.DestroyTexture(m_lpvAccumTextures[i]);
     }
-    if (m_geometryVolume) glDeleteTextures(1, &m_geometryVolume);
-    if (m_rsmPosition) glDeleteTextures(1, &m_rsmPosition);
-    if (m_rsmNormal) glDeleteTextures(1, &m_rsmNormal);
-    if (m_rsmFlux) glDeleteTextures(1, &m_rsmFlux);
-    if (m_rsmDepth) glDeleteTextures(1, &m_rsmDepth);
-    if (m_resolvedIndirectTexture) glDeleteTextures(1, &m_resolvedIndirectTexture);
-    if (m_rsmShader) glDeleteProgram(m_rsmShader);
-    if (m_injectionShader) glDeleteProgram(m_injectionShader);
-    if (m_propagationShader) glDeleteProgram(m_propagationShader);
-    if (m_convertShader) glDeleteProgram(m_convertShader);
-    if (m_resolveShader) glDeleteProgram(m_resolveShader);
-    if (m_voxelizeShader) glDeleteProgram(m_voxelizeShader);
-    if (m_debugShader) glDeleteProgram(m_debugShader);
+    if (m_geometryVolume) gpu.DestroyTexture(m_geometryVolume);
+    if (m_rsmPosition) gpu.DestroyTexture(m_rsmPosition);
+    if (m_rsmNormal) gpu.DestroyTexture(m_rsmNormal);
+    if (m_rsmFlux) gpu.DestroyTexture(m_rsmFlux);
+    if (m_rsmDepth) gpu.DestroyTexture(m_rsmDepth);
+    if (m_resolvedIndirectTexture) gpu.DestroyTexture(m_resolvedIndirectTexture);
+    if (m_rsmShader) gpu.DestroyProgram(m_rsmShader);
+    if (m_injectionShader) gpu.DestroyProgram(m_injectionShader);
+    if (m_propagationShader) gpu.DestroyProgram(m_propagationShader);
+    if (m_convertShader) gpu.DestroyProgram(m_convertShader);
+    if (m_resolveShader) gpu.DestroyProgram(m_resolveShader);
+    if (m_voxelizeShader) gpu.DestroyProgram(m_voxelizeShader);
+    if (m_debugShader) gpu.DestroyProgram(m_debugShader);
     m_rsmFBO.reset();
 }
 

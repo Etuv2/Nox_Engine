@@ -13,13 +13,10 @@ bool ComputeShader::s_supportChecked = false;
 bool ComputeShader::s_isSupported = false;
 
 ComputeShader::ComputeShader()
-	: m_programID(0)
-	, m_isValid(false)
+	: m_isValid(false)
 	, m_timingEnabled(false)
 	, m_lastExecutionTime(0.0f)
 {
-	m_timeQueries[0] = 0;
-	m_timeQueries[1] = 0;
 
 	// Set default dispatch configuration
 	m_dispatchConfig.numGroupsX = 1;
@@ -66,17 +63,16 @@ bool ComputeShader::CreateFromSource(const std::string& source,
 }
 
 bool ComputeShader::IsValid() const {
-	return m_isValid && glIsProgram(m_programID);
+	return m_isValid && rhi::Gpu().IsProgram(m_programID);
 }
 
-GLuint ComputeShader::GetProgramID() const {
+rhi::ProgramHandle ComputeShader::GetProgramID() const {
 	return m_programID;
 }
 
 void ComputeShader::Cleanup() {
-	if (m_programID != 0) {
-		glDeleteProgram(m_programID);
-		m_programID = 0;
+	if (m_programID && rhi::HasGpu()) {
+		rhi::Gpu().DestroyProgram(m_programID);
 	}
 
 	CleanupTiming();
@@ -113,30 +109,30 @@ void ComputeShader::Dispatch() {
 	}
 
 	// Start timing if enabled
+	rhi::Device& gpu = rhi::Gpu();
 	if (m_timingEnabled) {
-		glQueryCounter(m_timeQueries[0], GL_TIMESTAMP);
+		gpu.WriteTimestamp(m_timeQueries[0]);
 	}
 
 	// Use the program and dispatch
-	glUseProgram(m_programID);
-	glDispatchCompute(m_dispatchConfig.numGroupsX,
+	gpu.UseProgram(m_programID);
+	gpu.Dispatch(m_dispatchConfig.numGroupsX,
 		m_dispatchConfig.numGroupsY,
 		m_dispatchConfig.numGroupsZ);
 
 	// End timing if enabled
 	if (m_timingEnabled) {
-		glQueryCounter(m_timeQueries[1], GL_TIMESTAMP);
+		gpu.WriteTimestamp(m_timeQueries[1]);
 
 		// Get timing results (this will block until GPU is done)
-		GLuint64 startTime, endTime;
-		glGetQueryObjectui64v(m_timeQueries[0], GL_QUERY_RESULT, &startTime);
-		glGetQueryObjectui64v(m_timeQueries[1], GL_QUERY_RESULT, &endTime);
+		const uint64_t startTime = gpu.GetQueryResult(m_timeQueries[0]);
+		const uint64_t endTime = gpu.GetQueryResult(m_timeQueries[1]);
 
 		m_lastExecutionTime = (endTime - startTime) / 1000000.0f; // Convert to milliseconds
 	}
 }
 
-void ComputeShader::Dispatch(GLuint numGroupsX, GLuint numGroupsY, GLuint numGroupsZ) {
+void ComputeShader::Dispatch(uint32_t numGroupsX, uint32_t numGroupsY, uint32_t numGroupsZ) {
 	m_dispatchConfig.numGroupsX = numGroupsX;
 	m_dispatchConfig.numGroupsY = numGroupsY;
 	m_dispatchConfig.numGroupsZ = numGroupsZ;
@@ -145,12 +141,12 @@ void ComputeShader::Dispatch(GLuint numGroupsX, GLuint numGroupsY, GLuint numGro
 	Dispatch();
 }
 
-void ComputeShader::WaitForCompletion(GLbitfield barriers) {
-	glMemoryBarrier(barriers);
+void ComputeShader::WaitForCompletion(uint32_t barriers) {
+	rhi::Gpu().PipelineBarrier(barriers);
 }
 
-void ComputeShader::BindBuffer(GLuint buffer, GLuint bindingPoint, GLenum access) {
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bindingPoint, buffer);
+void ComputeShader::BindBuffer(rhi::BufferHandle buffer, uint32_t bindingPoint) {
+	rhi::Gpu().BindStorageBuffer(bindingPoint, buffer);
 
 	// Track bound buffers for cleanup
 	if (std::find(m_boundBuffers.begin(), m_boundBuffers.end(), bindingPoint) == m_boundBuffers.end()) {
@@ -158,10 +154,10 @@ void ComputeShader::BindBuffer(GLuint buffer, GLuint bindingPoint, GLenum access
 	}
 }
 
-void ComputeShader::BindTexture(GLuint texture, GLuint unit, GLint level,
-	GLboolean layered, GLint layer,
-	GLenum access, GLenum format) {
-	glBindImageTexture(unit, texture, level, layered, layer, access, format);
+void ComputeShader::BindTexture(rhi::TextureHandle texture, uint32_t unit, int level,
+	bool layered, int layer,
+	rhi::ImageAccess access, rhi::Format format) {
+	rhi::Gpu().BindImage(unit, texture, level, layered, layer, access, format);
 
 	// Track bound textures for cleanup
 	if (std::find(m_boundTextures.begin(), m_boundTextures.end(), unit) == m_boundTextures.end()) {
@@ -169,23 +165,19 @@ void ComputeShader::BindTexture(GLuint texture, GLuint unit, GLint level,
 	}
 }
 
-void ComputeShader::BindTextureRead(GLuint texture, GLuint unit, GLint level) {
-	// For read-only access, we need to determine the format
-	glActiveTexture(GL_TEXTURE0 + unit);
-	glBindTexture(GL_TEXTURE_2D, texture);
-
-	GLint internalFormat;
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_INTERNAL_FORMAT, &internalFormat);
-
-	BindTexture(texture, unit, level, GL_FALSE, 0, GL_READ_ONLY, internalFormat);
+void ComputeShader::BindTextureRead(rhi::TextureHandle texture, uint32_t unit, int level) {
+	// Sampled on `unit`, and bound read-only as an image in its own format.
+	rhi::Gpu().BindTexture(unit, texture);
+	const rhi::Format format = rhi::Gpu().GetTextureInfo(texture).format;
+	BindTexture(texture, unit, level, false, 0, rhi::ImageAccess::ReadOnly, format);
 }
 
-void ComputeShader::BindTextureWrite(GLuint texture, GLuint unit, GLint level, GLenum format) {
-	BindTexture(texture, unit, level, GL_FALSE, 0, GL_WRITE_ONLY, format);
+void ComputeShader::BindTextureWrite(rhi::TextureHandle texture, uint32_t unit, int level, rhi::Format format) {
+	BindTexture(texture, unit, level, false, 0, rhi::ImageAccess::WriteOnly, format);
 }
 
-void ComputeShader::UnbindBuffer(GLuint bindingPoint) {
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bindingPoint, 0);
+void ComputeShader::UnbindBuffer(uint32_t bindingPoint) {
+	rhi::Gpu().BindStorageBuffer(bindingPoint, {});
 
 	// Remove from tracking
 	auto it = std::find(m_boundBuffers.begin(), m_boundBuffers.end(), bindingPoint);
@@ -194,8 +186,8 @@ void ComputeShader::UnbindBuffer(GLuint bindingPoint) {
 	}
 }
 
-void ComputeShader::UnbindTexture(GLuint unit) {
-	glBindImageTexture(unit, 0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
+void ComputeShader::UnbindTexture(uint32_t unit) {
+	rhi::Gpu().BindImage(unit, {}, 0, false, 0, rhi::ImageAccess::ReadOnly, rhi::Format::RGBA8);
 
 	// Remove from tracking
 	auto it = std::find(m_boundTextures.begin(), m_boundTextures.end(), unit);
@@ -205,66 +197,66 @@ void ComputeShader::UnbindTexture(GLuint unit) {
 }
 
 void ComputeShader::SetUniform(const std::string& name, int value) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1) {
-		glUseProgram(m_programID);
-		glUniform1i(location, value);
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniform(location, value);
 	}
 }
 
 void ComputeShader::SetUniform(const std::string& name, float value) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1) {
-		glUseProgram(m_programID);
-		glUniform1f(location, value);
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniform(location, value);
 	}
 }
 
 void ComputeShader::SetUniform(const std::string& name, const glm::vec2& value) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1) {
-		glUseProgram(m_programID);
-		glUniform2fv(location, 1, glm::value_ptr(value));
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniform(location, value);
 	}
 }
 
 void ComputeShader::SetUniform(const std::string& name, const glm::vec3& value) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1) {
-		glUseProgram(m_programID);
-		glUniform3fv(location, 1, glm::value_ptr(value));
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniform(location, value);
 	}
 }
 
 void ComputeShader::SetUniform(const std::string& name, const glm::vec4& value) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1) {
-		glUseProgram(m_programID);
-		glUniform4fv(location, 1, glm::value_ptr(value));
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniform(location, value);
 	}
 }
 
 void ComputeShader::SetUniform(const std::string& name, const glm::mat4& value) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1) {
-		glUseProgram(m_programID);
-		glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniform(location, value);
 	}
 }
 
 void ComputeShader::SetUniform(const std::string& name, const std::vector<float>& values) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1 && !values.empty()) {
-		glUseProgram(m_programID);
-		glUniform1fv(location, static_cast<GLsizei>(values.size()), values.data());
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniformArray(location, values.data(), static_cast<int>(values.size()));
 	}
 }
 
 void ComputeShader::SetUniform(const std::string& name, const std::vector<glm::vec3>& values) {
-	GLint location = GetUniformLocation(name);
+	const rhi::UniformLocation location = GetUniformLocation(name);
 	if (location != -1 && !values.empty()) {
-		glUseProgram(m_programID);
-		glUniform3fv(location, static_cast<GLsizei>(values.size()), glm::value_ptr(values[0]));
+		rhi::Gpu().UseProgram(m_programID);
+		rhi::Gpu().SetUniformArray(location, values.data(), static_cast<int>(values.size()));
 	}
 }
 
@@ -284,25 +276,22 @@ float ComputeShader::GetLastExecutionTime() const {
 
 ComputeShader::WorkGroupInfo ComputeShader::GetWorkGroupLimits() {
 	WorkGroupInfo info;
-
-	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &info.maxWorkGroupSizeX);
-	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &info.maxWorkGroupSizeY);
-	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &info.maxWorkGroupSizeZ);
-
-	glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &info.maxWorkGroupInvocations);
-
-	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &info.maxComputeWorkGroupCount[0]);
-	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1, &info.maxComputeWorkGroupCount[1]);
-	glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 2, &info.maxComputeWorkGroupCount[2]);
-
-	glGetIntegerv(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE, &info.maxSharedMemorySize);
+	const rhi::DeviceLimits& l = rhi::Gpu().Limits();
+	info.maxWorkGroupSizeX = l.maxComputeWorkGroupSize.x;
+	info.maxWorkGroupSizeY = l.maxComputeWorkGroupSize.y;
+	info.maxWorkGroupSizeZ = l.maxComputeWorkGroupSize.z;
+	info.maxWorkGroupInvocations = l.maxComputeWorkGroupInvocations;
+	info.maxComputeWorkGroupCount[0] = l.maxComputeWorkGroupCount.x;
+	info.maxComputeWorkGroupCount[1] = l.maxComputeWorkGroupCount.y;
+	info.maxComputeWorkGroupCount[2] = l.maxComputeWorkGroupCount.z;
+	info.maxSharedMemorySize = l.maxComputeSharedMemory;
 
 	return info;
 }
 
 void ComputeShader::PrintDebugInfo() const {
 	std::cout << "[ComputeShader] Debug Information:" << std::endl;
-	std::cout << "  Program ID: " << m_programID << std::endl;
+	std::cout << "  Program ID: " << m_programID.id << std::endl;
 	std::cout << "  Valid: " << (m_isValid ? "Yes" : "No") << std::endl;
 	std::cout << "  Timing Enabled: " << (m_timingEnabled ? "Yes" : "No") << std::endl;
 	std::cout << "  Last Execution Time: " << m_lastExecutionTime << " ms" << std::endl;
@@ -327,58 +316,45 @@ void ComputeShader::PrintDebugInfo() const {
 bool ComputeShader::IsSupported() {
 	if (!s_supportChecked) {
 		s_supportChecked = true;
-
-		// Check OpenGL version (compute shaders require OpenGL 4.3+)
-		GLint majorVersion, minorVersion;
-		glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
-		glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
-
-		if (majorVersion > 4 || (majorVersion == 4 && minorVersion >= 3)) {
-			// Check for compute shader support
-			s_isSupported = (glDispatchCompute != nullptr);
-
-			if (s_isSupported) {
-				std::cout << "[ComputeShader] Compute shaders supported (OpenGL "
-					<< majorVersion << "." << minorVersion << ")" << std::endl;
-			}
-			else {
-				std::cout << "[ComputeShader] Compute shaders not supported (missing functions)" << std::endl;
-			}
+		// Compute requires OpenGL 4.3+ on the GL backend (always available on explicit APIs).
+		const rhi::DeviceInfo& info = rhi::Gpu().Info();
+		const bool gl = info.backend.rfind("OpenGL", 0) == 0;
+		s_isSupported = !gl || info.apiMajor > 4 || (info.apiMajor == 4 && info.apiMinor >= 3);
+		if (s_isSupported) {
+			std::cout << "[ComputeShader] Compute shaders supported (" << info.backend << ")" << std::endl;
 		}
 		else {
 			std::cout << "[ComputeShader] Compute shaders not supported (requires OpenGL 4.3+, got "
-				<< majorVersion << "." << minorVersion << ")" << std::endl;
-			s_isSupported = false;
+				<< info.backend << ")" << std::endl;
 		}
 	}
 
 	return s_isSupported;
 }
 
-GLuint ComputeShader::CalculateWorkGroups(GLuint problemSize, GLuint localWorkGroupSize) {
+uint32_t ComputeShader::CalculateWorkGroups(uint32_t problemSize, uint32_t localWorkGroupSize) {
 	return (problemSize + localWorkGroupSize - 1) / localWorkGroupSize;
 }
 
-GLuint ComputeShader::CreateComputeBuffer(GLsizeiptr size, const void* data, GLenum usage) {
-	GLuint buffer;
-	glGenBuffers(1, &buffer);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, size, data, usage);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+rhi::BufferHandle ComputeShader::CreateComputeBuffer(size_t size, const void* data, rhi::BufferUsage usage) {
+	rhi::BufferDesc desc;
+	desc.size = size;
+	desc.initialData = data;
+	desc.usage = usage;
+	const rhi::BufferHandle buffer = rhi::Gpu().CreateBuffer(desc);
 
-	std::cout << "[ComputeShader] Created compute buffer: " << buffer
+	std::cout << "[ComputeShader] Created compute buffer: " << buffer.id
 		<< " (size: " << size << " bytes)" << std::endl;
 
 	return buffer;
 }
 
-TexturePtr ComputeShader::CreateComputeTexture2D(GLuint width, GLuint height,
-	GLenum format, const void* data) {
-	//Using Texture::Builder for cleaner, more maintainable code
-	auto texture = Texture::Builder::Texture2D(width, height, format)
+TexturePtr ComputeShader::CreateComputeTexture2D(uint32_t width, uint32_t height,
+	rhi::Format format, const void* data) {
+	auto texture = Texture::Builder::Texture2D(static_cast<int>(width), static_cast<int>(height), format)
 		.Data(data)
-		.FilterMode(GL_LINEAR, GL_LINEAR)
-		.WrapMode(GL_CLAMP_TO_EDGE)
+		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+		.WrapMode(rhi::Wrap::ClampToEdge)
 		.Build();
 
 	if (!texture || !texture->IsValid()) {
@@ -386,21 +362,21 @@ TexturePtr ComputeShader::CreateComputeTexture2D(GLuint width, GLuint height,
 		return nullptr;
 	}
 
-	std::cout << "[ComputeShader] Created compute texture: " << texture->ID()
-		<< " (" << width << "x" << height << ", format: 0x" << std::hex << format << std::dec << ")" << std::endl;
+	std::cout << "[ComputeShader] Created compute texture: " << texture->ID().id
+		<< " (" << width << "x" << height << ", format: " << rhi::FormatName(format) << ")" << std::endl;
 
 	return texture;
 }
 
 // === Private Methods ===
 
-GLint ComputeShader::GetUniformLocation(const std::string& name) {
+rhi::UniformLocation ComputeShader::GetUniformLocation(const std::string& name) {
 	auto it = m_uniformLocations.find(name);
 	if (it != m_uniformLocations.end()) {
 		return it->second;
 	}
 
-	GLint location = glGetUniformLocation(m_programID, name.c_str());
+	const rhi::UniformLocation location = rhi::Gpu().GetUniformLocation(m_programID, name.c_str());
 	m_uniformLocations[name] = location;
 
 	if (location == -1) {
@@ -417,42 +393,15 @@ bool ComputeShader::CompileShader(const std::string& source, const std::vector<s
 	// Inject preprocessor defines
 	std::string finalSource = InjectDefines(source, defines);
 
-	// Create and compile compute shader
-	GLuint computeShader = glCreateShader(GL_COMPUTE_SHADER);
-	const char* sourcePtr = finalSource.c_str();
-	glShaderSource(computeShader, 1, &sourcePtr, nullptr);
-	glCompileShader(computeShader);
-
-	// Check compilation status
-	GLint success;
-	glGetShaderiv(computeShader, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		char infoLog[1024];
-		glGetShaderInfoLog(computeShader, 1024, nullptr, infoLog);
-		std::cerr << "[ComputeShader] Compilation failed:" << std::endl << infoLog << std::endl;
-		glDeleteShader(computeShader);
+	// Compile and link through the device (logs the compiler output on failure).
+	rhi::ProgramDesc desc;
+	desc.stages.push_back({ rhi::ShaderStage::Compute, finalSource, "compute" });
+	desc.debugName = "compute";
+	m_programID = rhi::Gpu().CreateProgram(desc);
+	if (!m_programID) {
+		std::cerr << "[ComputeShader] Compute shader compilation/link failed" << std::endl;
 		return false;
 	}
-
-	// Create program and attach shader
-	m_programID = glCreateProgram();
-	glAttachShader(m_programID, computeShader);
-	glLinkProgram(m_programID);
-
-	// Check linking status
-	glGetProgramiv(m_programID, GL_LINK_STATUS, &success);
-	if (!success) {
-		char infoLog[1024];
-		glGetProgramInfoLog(m_programID, 1024, nullptr, infoLog);
-		std::cerr << "[ComputeShader] Linking failed:" << std::endl << infoLog << std::endl;
-		glDeleteShader(computeShader);
-		glDeleteProgram(m_programID);
-		m_programID = 0;
-		return false;
-	}
-
-	// Clean up shader object (no longer needed after linking)
-	glDeleteShader(computeShader);
 
 	m_isValid = true;
 
@@ -462,22 +411,22 @@ bool ComputeShader::CompileShader(const std::string& source, const std::vector<s
 	}
 
 	std::cout << "[ComputeShader] Successfully compiled and linked compute shader (ID: "
-		<< m_programID << ")" << std::endl;
+		<< m_programID.id << ")" << std::endl;
 
 	return true;
 }
 
 void ComputeShader::SetupTiming() {
-	if (m_timeQueries[0] == 0) {
-		glGenQueries(2, m_timeQueries);
+	if (!m_timeQueries[0]) {
+		m_timeQueries[0] = rhi::Gpu().CreateQuery(rhi::QueryType::Timestamp);
+		m_timeQueries[1] = rhi::Gpu().CreateQuery(rhi::QueryType::Timestamp);
 	}
 }
 
 void ComputeShader::CleanupTiming() {
-	if (m_timeQueries[0] != 0) {
-		glDeleteQueries(2, m_timeQueries);
-		m_timeQueries[0] = 0;
-		m_timeQueries[1] = 0;
+	if (m_timeQueries[0] && rhi::HasGpu()) {
+		rhi::Gpu().DestroyQuery(m_timeQueries[0]);
+		rhi::Gpu().DestroyQuery(m_timeQueries[1]);
 	}
 	m_lastExecutionTime = 0.0f;
 }

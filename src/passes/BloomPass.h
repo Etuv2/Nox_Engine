@@ -1,6 +1,6 @@
 #pragma once
 #include "../RenderPass.h"
-#include <GL/glew.h>
+#include "../rhi/RHI.h"
 
 // Forward declarations
 class FrameBuffer;
@@ -25,16 +25,16 @@ public:
                  const std::shared_ptr<DirectionalLight>& dirLight,
                  const std::shared_ptr<Skybox>& skybox) override;
 
-    GLuint GetBloomResult() const;
+    rhi::TextureHandle GetBloomResult() const;
 
 private:
-    void ExtractBrightPixels(RenderContext& ctx, GLuint sourceTex);
+    void ExtractBrightPixels(RenderContext& ctx, rhi::TextureHandle sourceTex);
     void Downsample(RenderContext& ctx);
     void Upsample(RenderContext& ctx);
 
-    GLuint m_extractShader = 0;
-    GLuint m_kawaseShader = 0;
-    GLuint m_upsampleShader = 0;
+    rhi::ProgramHandle m_extractShader;
+    rhi::ProgramHandle m_kawaseShader;
+    rhi::ProgramHandle m_upsampleShader;
 
     std::unique_ptr<FrameBuffer> m_extractFBO;
     std::unique_ptr<FrameBuffer> m_downsampleFBO[4];

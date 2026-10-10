@@ -4,7 +4,7 @@
 #include "../ComputeShader.h"
 #include "../surfel_gi/SurfelGIResources.h"
 
-#include <GL/glew.h>
+#include "rhi/RHI.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -21,29 +21,29 @@ class Skybox;
 struct RenderContext;
 
 struct SurfelGIPipelineResources {
-	GLuint surfelBuffer = 0;
-	GLuint freeListBuffer = 0;
-	GLuint countersBuffer = 0;
-	GLuint gridHeaderBuffer = 0;
-	GLuint gridEntryBuffer = 0;
-	GLuint gridAverageBuffer = 0;
-	GLuint gridCountersBuffer = 0;
-	GLuint rayRequestBuffer = 0;
-	GLuint rayBuffer = 0;
-	GLuint sortedRayBuffer = 0;
-	GLuint rayHitBuffer = 0;
-	GLuint rayBinBuffer = 0;
-	GLuint rayCountersBuffer = 0;
-	GLuint radialDepthBuffer = 0;
-	GLuint guideMapBuffer = 0;
-	GLuint irradianceSnapshotBuffer = 0;
-	GLuint coverageTileBuffer = 0;
-	GLuint rawIndirectTexture = 0;
-	GLuint filteredIndirectTexture = 0;
-	GLuint temporalIndirectTexture = 0;
-	GLuint indirectTexture = 0;
-	GLuint historyIndirectTexture[2] = { 0, 0 };
-	GLuint historyGeometryTexture[2] = { 0, 0 };
+	rhi::BufferHandle surfelBuffer;
+	rhi::BufferHandle freeListBuffer;
+	rhi::BufferHandle countersBuffer;
+	rhi::BufferHandle gridHeaderBuffer;
+	rhi::BufferHandle gridEntryBuffer;
+	rhi::BufferHandle gridAverageBuffer;
+	rhi::BufferHandle gridCountersBuffer;
+	rhi::BufferHandle rayRequestBuffer;
+	rhi::BufferHandle rayBuffer;
+	rhi::BufferHandle sortedRayBuffer;
+	rhi::BufferHandle rayHitBuffer;
+	rhi::BufferHandle rayBinBuffer;
+	rhi::BufferHandle rayCountersBuffer;
+	rhi::BufferHandle radialDepthBuffer;
+	rhi::BufferHandle guideMapBuffer;
+	rhi::BufferHandle irradianceSnapshotBuffer;
+	rhi::BufferHandle coverageTileBuffer;
+	rhi::TextureHandle rawIndirectTexture;
+	rhi::TextureHandle filteredIndirectTexture;
+	rhi::TextureHandle temporalIndirectTexture;
+	rhi::TextureHandle indirectTexture;
+	rhi::TextureHandle historyIndirectTexture[2];
+	rhi::TextureHandle historyGeometryTexture[2];
 };
 
 class SurfelGIPipeline final {
@@ -84,8 +84,8 @@ private:
 
 	struct PendingGpuTimingQuery {
 		std::string label;
-		GLuint beginQuery = 0;
-		GLuint endQuery = 0;
+		rhi::QueryHandle beginQuery;
+		rhi::QueryHandle endQuery;
 		uint32_t issuedFrame = 0;
 	};
 
@@ -95,9 +95,9 @@ private:
 	void ReleaseIndirectTexture();
 	void ReleaseAuxiliaryResources();
 	bool CreateAuxiliaryResources();
-	void BindCoreResources(GLuint transformBuffer) const;
-	void BeginGpuTiming(const char* label, GLuint& beginQuery, GLuint& endQuery);
-	void EndGpuTiming(const char* label, GLuint beginQuery, GLuint endQuery);
+	void BindCoreResources(rhi::BufferHandle transformBuffer) const;
+	void BeginGpuTiming(const char* label, rhi::QueryHandle& beginQuery, rhi::QueryHandle& endQuery);
+	void EndGpuTiming(const char* label, rhi::QueryHandle beginQuery, rhi::QueryHandle endQuery);
 	void CollectReadyGpuTimings(bool forceDelete);
 	void ReleaseGpuTimingQueries();
 
@@ -130,9 +130,9 @@ private:
 	std::unique_ptr<ComputeShader> m_spatialFilterShader;
 	std::unique_ptr<ComputeShader> m_temporalFilterShader;
 	std::unique_ptr<ComputeShader> m_upscaleFilterShader;
-	GLuint m_debugProgram = 0;
-	GLuint m_debugPresentProgram = 0;
-	GLuint m_debugVAO = 0;
+	rhi::ProgramHandle m_debugProgram;
+	rhi::ProgramHandle m_debugPresentProgram;
+	rhi::VertexInputHandle m_debugVAO;
 	glm::vec3 m_lastCameraPosition{ 0.0f };
 	glm::mat4 m_lastView{ 1.0f };
 	std::vector<glm::vec4> m_lastLightingSignature;
