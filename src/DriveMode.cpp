@@ -1,6 +1,7 @@
 #include "DriveMode.h"
 
 #include "Camera.h"
+#include "CollisionWorld.h"
 #include "RoadNetwork.h"
 #include "SceneGraph.h"
 #include "SceneNode.h"
@@ -149,13 +150,19 @@ json DriveMode::SaveTuning() const
 // ---------------------------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------------------------
-void DriveMode::Configure(const json& g, SceneGraph& sceneGraph, const RoadNetwork* roads, const std::string& layoutPath)
+void DriveMode::Configure(const json& g, SceneGraph& sceneGraph, const RoadNetwork* roads, const std::string& layoutPath,
+	const CollisionWorld* collision)
 {
 	m_available = false;
 	m_active = false;
 	m_areas.clear();
 	m_obstacles.clear();
 	m_roads = (roads && !roads->Empty()) ? roads : nullptr;
+	m_collision = (collision && !collision->Empty()) ? collision : nullptr;
+	m_y = 0.0f;
+	m_vyUp = 0.0f;
+	m_airborne = false;
+	m_groundPitch = m_groundRoll = 0.0f;
 	m_handling = Handling();
 	m_rig = CameraRig();
 	m_rigWheels = false;
@@ -230,11 +237,18 @@ void DriveMode::Configure(const json& g, SceneGraph& sceneGraph, const RoadNetwo
 
 	const glm::vec3 p = player->GetPosition();
 	m_spawnPos = glm::vec2(p.x, p.z);
+	// Surface mode: the player node height is the ride offset above the ground; a spawn without a
+	// height lands on the highest surface.
+	m_spawnY = 1e4f;
 	const glm::vec3 fwd = player->GetOrientation() * glm::vec3(0, 0, 1);
 	m_spawnHeading = std::atan2(fwd.x, fwd.z);
 	if (g.contains("spawn") && g["spawn"].is_object()) {
 		const json& s = g["spawn"];
-		if (s.contains("position") && s["position"].is_array() && s["position"].size() >= 2) {
+		if (s.contains("position") && s["position"].is_array() && s["position"].size() >= 3) {
+			m_spawnPos = glm::vec2(s["position"][0].get<float>(), s["position"][2].get<float>());
+			m_spawnY = s["position"][1].get<float>();
+		}
+		else if (s.contains("position") && s["position"].is_array() && s["position"].size() >= 2) {
 			m_spawnPos = glm::vec2(s["position"][0].get<float>(), s["position"][1].get<float>());
 		}
 		m_spawnHeading = glm::radians(s.value("heading_deg", glm::degrees(m_spawnHeading)));
@@ -244,7 +258,7 @@ void DriveMode::Configure(const json& g, SceneGraph& sceneGraph, const RoadNetwo
 	m_available = true;
 	std::cout << "[DriveMode] Ready. " << (m_rigWheels ? "Wheel rig" : "Single-mesh body") << " a=" << m_a << " b=" << m_b
 		<< " track=" << m_track << " areas=" << m_areas.size() << " obstacles=" << m_obstacles.size()
-		<< (m_roads ? " (road network)" : "") << std::endl;
+		<< (m_roads ? " (road network)" : "") << (m_collision ? " (collision surface)" : "") << std::endl;
 }
 
 void DriveMode::LoadLayout(const std::string& path)
@@ -285,8 +299,29 @@ float DriveMode::DriftAngleDeg() const
 	return glm::degrees(std::atan2(m_vy, std::abs(m_vx)));
 }
 
+void DriveMode::Teleport(const glm::vec3& pos, float heading)
+{
+	if (m_collision) {
+		float y = pos.y;
+		const glm::vec2 p(pos.x, pos.z);
+		if (!SurfaceHeight(p, pos.y + 2.5f, 40.0f, y) && !SurfaceHeight(p, 1e4f, 2e4f, y)) y = pos.y;
+		m_y = y;
+		m_vyUp = 0.0f;
+		m_airborne = false;
+		m_airTime = 0.0f;
+	}
+	Teleport(glm::vec2(pos.x, pos.z), heading);
+}
+
 void DriveMode::Teleport(const glm::vec2& pos, float heading)
 {
+	if (m_collision) {
+		// Keep the current deck when one exists under the new position.
+		float y;
+		if (SurfaceHeight(pos, m_y + 2.5f, 40.0f, y) || SurfaceHeight(pos, 1e4f, 2e4f, y)) m_y = y;
+		m_vyUp = 0.0f;
+		m_airborne = false;
+	}
 	m_pos = m_prevPos = pos;
 	m_heading = heading;
 	m_vel = glm::vec2(0.0f);
@@ -304,12 +339,15 @@ void DriveMode::Teleport(const glm::vec2& pos, float heading)
 	m_camInitialized = false;
 	m_teleported = true;
 	m_teleportFx = true;
+	SampleWheels();
+	if (m_collision) UpdateVertical(0.0f);
 	ApplyTransforms();
 }
 
 void DriveMode::ResetToSpawn()
 {
-	Teleport(m_spawnPos, m_spawnHeading);
+	if (m_collision) Teleport(glm::vec3(m_spawnPos.x, m_spawnY, m_spawnPos.y), m_spawnHeading);
+	else Teleport(m_spawnPos, m_spawnHeading);
 	m_nitro = 1.0f;
 	m_nitroCooldown = 0.0f;
 }
@@ -317,6 +355,29 @@ void DriveMode::ResetToSpawn()
 void DriveMode::RecoverToRoad()
 {
 	if (!m_roads) {
+		ResetToSpawn();
+		return;
+	}
+	if (m_collision) {
+		// Stay on the current level: nearest carriageway within a deck height whose lane has
+		// collision ground under it (generated sections cover only part of the network). After a
+		// fall the current height is meaningless, so fall back to the last safe grounded pose.
+		int edge = -1;
+		float t = 0.0f;
+		if (!m_airborne) m_roads->ClosestOnRoads3D(Position3(), 4.0f, nullptr, &edge, &t);
+		if (edge >= 0) {
+			float heading = m_heading;
+			const glm::vec3 lane = m_roads->LanePosition(edge, t, m_heading, -1, heading);
+			float y;
+			if (SurfaceHeight(glm::vec2(lane.x, lane.z), lane.y + 2.5f, 6.0f, y)) {
+				Teleport(lane, heading);
+				return;
+			}
+		}
+		if (m_hasSafePose) {
+			Teleport(m_safePos, m_safeHeading);
+			return;
+		}
 		ResetToSpawn();
 		return;
 	}
@@ -331,9 +392,9 @@ void DriveMode::RecoverToRoad()
 	glm::vec2 dir = glm::normalize(m_roads->Nodes()[e.b].pos - m_roads->Nodes()[e.a].pos);
 	const glm::vec2 fwd(std::sin(m_heading), std::cos(m_heading));
 	if (glm::dot(dir, fwd) < 0.0f) dir = -dir;
-	// Right-hand lane: facing dir, the car's right is (-dir.y, dir.x).
+	// Driving-side lane: facing dir, the car's right is (-dir.y, dir.x).
 	const glm::vec2 right(-dir.y, dir.x);
-	Teleport(closest + right * (e.halfWidth * 0.3f), std::atan2(dir.x, dir.y));
+	Teleport(closest + right * (e.halfWidth * 0.3f * (m_roads->LeftHandTraffic() ? -1.0f : 1.0f)), std::atan2(dir.x, dir.y));
 }
 
 void DriveMode::SetActive(bool active)
@@ -369,10 +430,139 @@ float DriveMode::GroundHeight(const glm::vec2& p) const
 	return a * (low + mid) + a;
 }
 
+bool DriveMode::SurfaceHeight(const glm::vec2& p, float fromY, float maxDrop, float& outY, glm::vec3* outNormal) const
+{
+	if (!m_collision) return false;
+	CollisionWorld::Hit hit;
+	if (!m_collision->GroundBelow(glm::vec3(p.x, fromY, p.y), maxDrop, hit)) return false;
+	outY = hit.position.y;
+	if (outNormal) *outNormal = hit.normal;
+	return true;
+}
+
+void DriveMode::SampleWheels()
+{
+	const glm::vec2 fwd(std::sin(m_heading), std::cos(m_heading));
+	const glm::vec2 left(std::cos(m_heading), -std::sin(m_heading));
+	for (int i = 0; i < 4; ++i) {
+		const glm::vec2 wp = m_pos + left * m_wheelRest[i].x + fwd * m_wheelRest[i].z;
+		WheelState& w = m_wheels[i];
+		if (!m_collision) {
+			w.contact = glm::vec3(wp.x, GroundHeight(wp), wp.y);
+			m_wheelHit[i] = true;
+			continue;
+		}
+		// From just above the current deck (decks above are >= ~5 m higher), down past a crest drop.
+		float y;
+		m_wheelHit[i] = SurfaceHeight(wp, m_y + 1.5f, 1.5f + (m_airborne ? 60.0f : 4.0f), y);
+		if (!m_wheelHit[i]) y = m_y;
+		// Fine roughness on top of the authored surface (same as the planar mode bumps).
+		const float a = m_handling.bumpAmplitude;
+		const float bump = a * (std::sin(wp.x * 0.37f + 1.3f) * std::sin(wp.y * 0.29f + 0.4f) +
+			0.5f * std::sin(wp.x * 1.9f + wp.y * 0.7f) * std::sin(wp.y * 1.3f - wp.x * 0.4f));
+		w.contact = glm::vec3(wp.x, y + bump, wp.y);
+	}
+	if (!m_collision) {
+		for (int i = 0; i < 4; ++i) m_wheelRel[i] = m_wheels[i].contact.y;
+	}
+}
+
+// Surface mode: fit the ground plane under the wheels, follow it while grounded (with a little
+// extra stickiness over crests), otherwise fly ballistically and land. Updates the ground pitch and
+// bank used for the body orientation and slope gravity, and the per-wheel residual for the springs.
+void DriveMode::UpdateVertical(float h)
+{
+	int hits = 0;
+	for (int i = 0; i < 4; ++i) hits += m_wheelHit[i] ? 1 : 0;
+	const float L = std::max(m_a + m_b, 0.5f);
+	const float T = std::max(m_track, 0.5f);
+	float groundY = m_y;
+	float pitch = m_groundPitch, roll = m_groundRoll;
+	if (hits >= 3) {
+		float g[4];
+		for (int i = 0; i < 4; ++i) g[i] = m_wheelHit[i] ? m_wheels[i].contact.y : 0.0f;
+		// A missing wheel takes the plane through the other three.
+		if (!m_wheelHit[0]) g[0] = g[1] + g[2] - g[3];
+		if (!m_wheelHit[1]) g[1] = g[0] + g[3] - g[2];
+		if (!m_wheelHit[2]) g[2] = g[0] + g[3] - g[1];
+		if (!m_wheelHit[3]) g[3] = g[1] + g[2] - g[0];
+		const float front = 0.5f * (g[0] + g[1]), rear = 0.5f * (g[2] + g[3]);
+		groundY = (front * m_b + rear * m_a) / L; // height at the CG
+		pitch = std::atan2(front - rear, L);
+		roll = std::atan2(0.5f * (g[0] + g[2]) - 0.5f * (g[1] + g[3]), T);
+	}
+	if (h <= 0.0f) {
+		// Placement: snap to the ground.
+		if (hits >= 3) { m_y = groundY; m_groundPitch = pitch; m_groundRoll = roll; }
+	}
+	else if (hits >= 3 && (!m_airborne || m_y <= groundY + 0.02f)) {
+		// Grounded. Ground that falls away faster than gravity (x 2.5 stickiness) launches the car.
+		const float follow = (groundY - m_y) / h;
+		const float maxDropSpeed = m_vyUp - 2.5f * kG * h;
+		if (!m_airborne && follow < maxDropSpeed && groundY < m_y - 0.05f) {
+			m_airborne = true;
+			m_airTime = 0.0f;
+		}
+		else {
+			if (m_airborne) m_impact = std::max(m_impact, std::max(0.0f, -m_vyUp) * 0.5f); // landing
+			m_airborne = false;
+			m_vyUp = std::clamp(follow, -40.0f, 40.0f);
+			m_y = groundY;
+			// Orientation follows the road quickly but not instantly (no jitter at seams).
+			const float k = 1.0f - std::exp(-h * 30.0f);
+			m_groundPitch += (pitch - m_groundPitch) * k;
+			m_groundRoll += (roll - m_groundRoll) * k;
+		}
+	}
+	else {
+		m_airborne = true;
+	}
+	if (m_airborne && h > 0.0f) {
+		m_airTime += h;
+		// Fell out of the world (off the end of a section, through a gap): back onto the road.
+		if (m_airTime > 3.0f) {
+			std::cout << "[DriveMode] No ground for 3 s at (" << m_pos.x << ", " << m_y << ", " << m_pos.y << "): recovering" << std::endl;
+			m_airTime = 0.0f;
+			m_recoverRequested = true;
+		}
+		m_vyUp -= kG * h;
+		m_y += m_vyUp * h;
+		// Level out slowly in the air.
+		m_groundPitch *= 1.0f - std::min(1.0f, h * 0.8f);
+		m_groundRoll *= 1.0f - std::min(1.0f, h * 0.8f);
+		if (hits >= 3 && m_y <= groundY) {
+			m_impact = std::max(m_impact, -m_vyUp * 0.5f);
+			m_y = groundY;
+			m_vyUp = 0.0f;
+			m_airborne = false;
+		}
+	}
+	// Last safe pose for recovery: grounded on all wheels, moving, level-ish, for a while.
+	if (h > 0.0f) {
+		const bool safe = !m_airborne && hits == 4 && std::abs(m_groundRoll) < 0.1f;
+		m_safeTimer = safe ? m_safeTimer + h : 0.0f;
+		if (m_safeTimer > 0.5f) {
+			m_safeTimer = 0.0f;
+			m_safePos = glm::vec3(m_pos.x, m_y, m_pos.y);
+			m_safeHeading = m_heading;
+			m_hasSafePose = true;
+		}
+	}
+	// Residual road height under each wheel relative to the car's ground plane (springs).
+	const glm::vec2 fwd(std::sin(m_heading), std::cos(m_heading));
+	for (int i = 0; i < 4; ++i) {
+		const float plane = m_y + std::tan(m_groundPitch) * m_wheelRest[i].z + std::tan(m_groundRoll) * m_wheelRest[i].x;
+		m_wheelRel[i] = m_wheelHit[i] && !m_airborne ? std::clamp(m_wheels[i].contact.y - plane, -0.15f, 0.15f) : -0.08f;
+		m_wheels[i].contact.y = m_wheelHit[i] ? m_wheels[i].contact.y : m_y;
+	}
+	(void)fwd;
+}
+
 glm::vec2 DriveMode::ResolveCircle(glm::vec2& c, float radius) const
 {
 	glm::vec2 total(0.0f);
-	if (m_roads) {
+	// Surface mode: the collision mesh is authoritative (planar street bands would merge stacked decks).
+	if (m_roads && !m_collision) {
 		glm::vec2 n;
 		const float clearance = m_roads->Clearance(c, &n);
 		if (clearance < radius) {
@@ -397,6 +587,14 @@ glm::vec2 DriveMode::ResolveCircle(glm::vec2& c, float radius) const
 			total += bestP - c;
 			c = bestP;
 		}
+	}
+	if (m_collision) {
+		// Wall triangles at body height (above curbs, below a tunnel ceiling).
+		glm::vec3 centre(c.x, m_y + radius + 0.25f, c.y);
+		const glm::vec3 push3 = m_collision->ResolveSphere(centre, radius, CollisionWorld::Wall);
+		const glm::vec2 push(push3.x, push3.z);
+		c += push;
+		total += push;
 	}
 	for (const Obstacle& o : m_obstacles) {
 		if (!o.box) {
@@ -688,6 +886,18 @@ void DriveMode::Step(float h, const Input& in)
 	float ay = (FyF * cd + FxF * sd + FyR) / m - m_vx * m_yawRate;
 	float yawAcc = (m_a * (FyF * cd + FxF * sd) - m_b * FyR) / Iz;
 
+	// Surface mode: gravity along the road (grade) and across it (bank). No traction in the air.
+	if (m_collision) {
+		if (!m_airborne) {
+			ax -= kG * std::sin(m_groundPitch);
+			ay -= kG * std::sin(m_groundRoll);
+		}
+		else {
+			ax = -resist / m + m_vy * m_yawRate;
+			ay = -m_vx * m_yawRate;
+			yawAcc = 0.0f;
+		}
+	}
 	// Drift assist: hold the drift angle selected by the steering, keep speed through the drift.
 	if (m_drift > 0.01f && speed > 6.0f) {
 		const float toward = std::clamp(-in.steer * -driftDir, -1.0f, 1.0f); // + = steering into the drift
@@ -761,7 +971,7 @@ void DriveMode::Step(float h, const Input& in)
 		const glm::vec3& r = m_wheelRest[i];
 		const glm::vec2 offset = left2 * r.x + fwd2 * r.z;
 		const glm::vec2 wp = m_pos + offset;
-		w.contact = glm::vec3(wp.x, GroundHeight(wp), wp.y);
+		w.contact = glm::vec3(wp.x, w.contact.y, wp.y);
 		const glm::vec2 rotVel = m_yawRate * (left2 * r.z - fwd2 * r.x); // d(offset)/dt for yaw toward +X
 		w.velocity = glm::vec3(m_vel.x + rotVel.x, 0.0f, m_vel.y + rotVel.y);
 		const bool rear = i >= 2;
@@ -775,6 +985,14 @@ void DriveMode::Step(float h, const Input& in)
 		w.spinAngle = std::fmod(w.spinAngle + rollSpeed / m_wheelRadius[i] * h, 2.0f * kPi);
 	}
 	m_slip = std::clamp(std::max({ m_wheels[2].slip, m_wheels[3].slip, slipF * 0.6f }), 0.0f, 1.0f);
+	SampleWheels();
+	if (m_collision) {
+		UpdateVertical(h);
+		for (int i = 0; i < 4; ++i) {
+			m_wheels[i].grounded = !m_airborne && m_wheelHit[i];
+			if (m_airborne) m_wheels[i].slip = 0.0f;
+		}
+	}
 
 	// Engine load (shown as BOOST): throttle x rpm with spool lag; no turbo is simulated.
 	const float rpm01 = std::clamp((m_rpm - hd.rpmIdle) / (hd.rpmLimiter - hd.rpmIdle), 0.0f, 1.0f);
@@ -786,7 +1004,7 @@ void DriveMode::UpdateSuspension(float h)
 	const Handling& hd = m_handling;
 	// Road under each wheel drives heave/pitch/roll targets together with the load transfer.
 	float g[4];
-	for (int i = 0; i < 4; ++i) g[i] = m_wheels[i].contact.y;
+	for (int i = 0; i < 4; ++i) g[i] = m_wheelRel[i];
 	const float L = m_a + m_b;
 	const float front = 0.5f * (g[0] + g[1]), rear = 0.5f * (g[2] + g[3]);
 	const float leftH = 0.5f * (g[0] + g[2]), rightH = 0.5f * (g[1] + g[3]);
@@ -807,15 +1025,18 @@ void DriveMode::UpdateSuspension(float h)
 		const glm::vec3& r = m_wheelRest[i];
 		const float bodyHub = r.y + m_heave + std::sin(m_pitch) * r.z + std::sin(m_roll) * r.x;
 		m_wheels[i].suspension = bodyHub - (g[i] + m_wheelRadius[i]);
-		m_wheels[i].grounded = m_wheels[i].suspension < 0.12f;
+		m_wheels[i].grounded = m_wheels[i].suspension < 0.12f && m_wheelHit[i] && !m_airborne;
 	}
 }
 
 void DriveMode::ApplyTransforms()
 {
 	if (auto player = m_player.lock()) {
-		const glm::vec3 pos(m_pos.x, m_playerY, m_pos.y);
-		player->SetLocalTRS(pos, glm::angleAxis(m_heading, glm::vec3(0, 1, 0)), player->GetScale());
+		const glm::vec3 pos(m_pos.x, BaseY() + m_playerY, m_pos.y);
+		glm::quat q = glm::angleAxis(m_heading, glm::vec3(0, 1, 0));
+		// Surface mode: the whole car follows the road grade and bank (same axes as the body below).
+		if (m_collision) q = q * glm::angleAxis(m_groundRoll, glm::vec3(0, 0, 1)) * glm::angleAxis(-m_groundPitch, glm::vec3(1, 0, 0));
+		player->SetLocalTRS(pos, q, player->GetScale());
 	}
 	// Body: pitch about X (nose up = negative rotation, +Z forward), roll about Z (right side down).
 	const glm::quat bodyQ = glm::angleAxis(m_roll, glm::vec3(0, 0, 1)) * glm::angleAxis(-m_pitch, glm::vec3(1, 0, 0));
@@ -834,7 +1055,8 @@ void DriveMode::ApplyTransforms()
 			// Hub on the road (clamped to suspension travel relative to the sprung body), low-passed so
 			// road noise does not make the wheels jitter.
 			const float bodyHub = m_wheelRest[i].y + m_heave + std::sin(m_pitch) * m_wheelRest[i].z + std::sin(m_roll) * m_wheelRest[i].x;
-			const float hubTarget = std::clamp(w.contact.y + m_wheelRadius[i], bodyHub - 0.09f, bodyHub + 0.09f);
+			const float hubTarget = std::clamp(m_wheelRel[i] + m_wheelRadius[i], bodyHub - 0.09f, bodyHub + 0.09f);
+			(void)w;
 			if (m_teleported || !m_visInit) m_visHub[i] = hubTarget;
 			m_visHub[i] += (hubTarget - m_visHub[i]) * (1.0f - std::exp(-m_visDt * 25.0f));
 			const float hubY = m_visHub[i];
@@ -869,7 +1091,7 @@ void DriveMode::UpdateCamera(float dt, Camera& camera, float aspect)
 	const CameraRig& rig = m_rig;
 	const float speed = glm::length(m_vel);
 	const float speed01 = Speed01();
-	const glm::vec3 carPos(m_pos.x, m_playerY, m_pos.y);
+	const glm::vec3 carPos(m_pos.x, BaseY() + m_playerY, m_pos.y);
 	// Follow direction: the heading blended with the velocity direction, so drifts show the car's
 	// flank like NFS 2015 while straight driving stays locked behind the car. Reversing keeps the
 	// camera behind the nose (no flip).
@@ -883,7 +1105,10 @@ void DriveMode::UpdateCamera(float dt, Camera& camera, float aspect)
 	followHeading += orbit;
 	if (!m_camInitialized) m_camHeading = followHeading;
 	m_camHeading = WrapAngle(m_camHeading + WrapAngle(followHeading - m_camHeading) * (1.0f - std::exp(-dt * (m_cameraMode == 2 ? 30.0f : rig.headingLag))));
-	const glm::vec3 camFwd(std::sin(m_camHeading), 0.0f, std::cos(m_camHeading));
+	glm::vec3 camFwd(std::sin(m_camHeading), 0.0f, std::cos(m_camHeading));
+	// Surface mode: the rig follows the road grade (the camera stays above the road behind the car
+	// on climbs and descents).
+	if (m_collision) camFwd = glm::normalize(camFwd + glm::vec3(0.0f, std::tan(std::clamp(m_groundPitch, -0.3f, 0.3f)), 0.0f));
 
 	float distance = rig.distance, height = rig.height, lookAhead = rig.lookAhead, lookHeight = rig.lookHeight;
 	if (m_cameraMode == 1) { distance *= 1.5f; height *= 1.45f; lookAhead *= 1.1f; lookHeight *= 1.4f; }
@@ -918,7 +1143,17 @@ void DriveMode::UpdateCamera(float dt, Camera& camera, float aspect)
 	}
 	m_camCarPrev = carPos;
 	// Keep the camera out of walls and obstacles: pull it toward the car until it is clear.
-	if (m_cameraMode != 2) {
+	if (m_cameraMode != 2 && m_collision) {
+		// Ray from above the car to the camera against all geometry (walls, decks, tunnel ceilings).
+		const glm::vec3 pivot = carPos + glm::vec3(0.0f, 1.2f, 0.0f);
+		const glm::vec3 d = m_camPos - pivot;
+		const float len = glm::length(d);
+		CollisionWorld::Hit hit;
+		if (len > 0.1f && m_collision->Raycast(pivot, d / len, len + 0.3f, CollisionWorld::Any, hit)) {
+			m_camPos = pivot + d / len * std::max(0.3f, hit.t - 0.3f);
+		}
+	}
+	else if (m_cameraMode != 2) {
 		glm::vec2 c(m_camPos.x, m_camPos.z);
 		const glm::vec2 car(m_pos.x, m_pos.y);
 		for (int i = 0; i < 6; ++i) {
@@ -974,10 +1209,9 @@ void DriveMode::Update(float dt, const Input& in, bool frozen, Camera* camera, f
 		m_vx = m_vy = m_yawRate = 0.0f;
 		m_nitroActive = false;
 		m_rearSpin = 0.0f;
+		SampleWheels();
+		if (m_collision) UpdateVertical(0.0f);
 		for (int i = 0; i < 4; ++i) {
-			const glm::vec2 fwd(std::sin(m_heading), std::cos(m_heading)), left(std::cos(m_heading), -std::sin(m_heading));
-			const glm::vec2 wp = m_pos + left * m_wheelRest[i].x + fwd * m_wheelRest[i].z;
-			m_wheels[i].contact = glm::vec3(wp.x, GroundHeight(wp), wp.y);
 			m_wheels[i].velocity = glm::vec3(0.0f);
 			m_wheels[i].slip = m_wheels[i].wheelspin = 0.0f;
 		}
@@ -989,6 +1223,10 @@ void DriveMode::Update(float dt, const Input& in, bool frozen, Camera* camera, f
 			Step(kStep, in);
 			UpdateSuspension(kStep);
 			m_accum -= kStep;
+		}
+		if (m_recoverRequested) {
+			m_recoverRequested = false;
+			RecoverToRoad();
 		}
 	}
 	m_visDt = dt;

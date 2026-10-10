@@ -1,0 +1,10 @@
+{
+ "variables": 79147,
+ "coupled_pairs": 6795,
+ "crossing_pairs": 795,
+ "grade_violations": 0,
+ "clearance_violations": 127,
+ "coupling_over_0_25m": 208,
+ "max_change_m": 24.915,
+ "nox_nodes_updated": 79147
+}

@@ -396,6 +396,9 @@
     <ClCompile Include="src\RoadNetwork.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
+    <ClCompile Include="src\CollisionWorld.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
     <ClCompile Include="src\GameSession.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
@@ -1104,6 +1107,9 @@
       <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\RoadNetwork.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CollisionWorld.h">
       <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\GameSession.h">

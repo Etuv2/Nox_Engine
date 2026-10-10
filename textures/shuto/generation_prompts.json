@@ -1,0 +1,126 @@
+{
+  "generator": "built-in image_gen",
+  "selected_assets": [
+    {
+      "id": "asphalt_fine",
+      "file": "asphalt_fine.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat dark charcoal fine-grain Japanese expressway asphalt surface. Tiny gray aggregate and subdued random wear, uniform average density across image. No lane paint, no road lines, no large cracks, no drains. Make all four opposite edges match for tiling; no vignette. Suggested physical tile size 4x4 meters."
+    },
+    {
+      "id": "concrete_cast",
+      "file": "concrete_cast.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat neutral light-gray cast reinforced concrete surface used on elevated highway barriers and piers. Subtle cement mottling, faint formwork grain and restrained scattered pores. No bolts, no seams or grids, no large cracks, no stains concentrated at edges. Opposite edges match for tiling; no vignette. Physical tile 3x3 meters."
+    },
+    {
+      "id": "concrete_weathered",
+      "file": "concrete_weathered.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat medium-gray weathered concrete surface for expressway understructures and retaining walls. Restrained gray-brown water staining, fine pores, faint hairline cracks and subtle aging evenly distributed. No fixed vertical gradient, no graffiti, no plant growth, no big structural seams. Opposite edges match for tiling. Physical tile 3x3 meters."
+    },
+    {
+      "id": "tunnel_tiles",
+      "file": "tunnel_tiles-v2.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat orthographic Japanese road-tunnel wall tile surface. Pale warm ivory glazed rectangular ceramic tiles in a tidy horizontal running-bond pattern, thin cool gray grout, restrained diffuse grime. Tile proportions approximately 3:1. Rows aligned exactly to image edges, complete periodic layout. No ceiling, road, lamp, signs, perspective, gloss highlights. Opposite edges match. Physical tile 2x2 meters.",
+      "edit_prompt": "Edit this game texture only to make its tile grid repeat continuously when the whole image is repeated horizontally and vertically. Preserve flat orthographic ivory ceramic tile material, neutral colors and subdued albedo wear. Correct the partial tile rows at top and bottom: exactly EIGHT complete equal-height running-bond rows from top to bottom, FOUR complete equal-width tiles in each unshifted row, alternate rows offset half a tile. The image boundary runs through the CENTER of a thin gray horizontal grout line at both top and bottom, so the edges meet. Left and right tiles wrap with identical grid phase. No perspective, illumination, depth shadows, frame, captions or extra objects. Keep the same square dimensions. Seamless periodic grid is the priority."
+    },
+    {
+      "id": "galvanized_steel",
+      "file": "galvanized_steel.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat pale cool-gray galvanized steel surface with delicate small zinc spangle pattern, restrained variation and light wear. For highway gantries, guardrails and utility structures. No rivets, seams, bars, rust holes, reflections or brushed-metal streaks. Opposite edges match. Physical tile 1x1 meter."
+    },
+    {
+      "id": "corrugated_metal",
+      "file": "corrugated_metal.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat orthographic pale gray painted corrugated-metal cladding surface for Tokyo waterfront warehouses. Regular narrow vertical ribs with diffuse paint-color differences only, very restrained scratches and weathering. No baked rib lighting, shadows or metallic shine. Ribs repeat exactly at left/right boundary, top/bottom continuous. Physical tile 2x2 meters."
+    },
+    {
+      "id": "rooftop_membrane",
+      "file": "rooftop_membrane.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat neutral charcoal-gray flat bituminous rooftop waterproofing membrane. Fine granular texture, subdued irregular weathering and faint small wear. No HVAC units, vents, objects, standing water, bright seams, directional lighting. Opposite edges match, no vignette. Physical tile 4x4 meters."
+    },
+    {
+      "id": "ground_gravel",
+      "file": "ground_gravel.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat gray-brown compacted fine gravel and dusty ground, understated scattered small stones for highway embankments, industrial lots and undeveloped verges. No plants, large rocks, tire tracks or scene. Uniform diffuse appearance, all opposite edges match. Physical tile 3x3 meters."
+    },
+    {
+      "id": "noise_barrier",
+      "file": "noise_barrier.png",
+      "kind": "surface",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. One continuous seamless-repeat orthographic acoustic expressway noise-barrier panel face. Muted sage-gray painted metal with tiny regularly spaced perforations and light diffuse weathering. Face only, no frames, joints, borders, bolts, labels, perspective or lighting. Perforation grid repeats cleanly at every edge. Physical tile 1x1 meter."
+    },
+    {
+      "id": "facades_apartment",
+      "file": "facades_apartment.png",
+      "kind": "atlas",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. Create one square facade UV texture atlas, exactly four equally sized square panels in a strict 2-column 2-row grid with no gutters or separator lines. Each panel is a fully flat front elevation of a different ordinary Japanese apartment facade filling its quadrant. TOP LEFT: warm beige small square ceramic cladding with dark aluminum windows and balcony doors. TOP RIGHT: pale gray concrete mid-rise with compact rows of dark windows and balcony rails. BOTTOM LEFT: muted tan older apartment facade with shallow balcony rails and service panels. BOTTOM RIGHT: light ivory modern apartment with a clean dark window grid. No roof, no street, no building silhouette, no perspective, no people, no writing. All windows dark neutral, no baked illumination. Clean regular proportions, subtle albedo detail. Not seamless; each quadrant is an independent UV patch."
+    },
+    {
+      "id": "facades_commercial",
+      "file": "facades_commercial.png",
+      "kind": "atlas",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. Create one square facade UV texture atlas, exactly four equal square panels in a strict 2x2 grid, no gutters or separators. Fully flat ordinary Tokyo commercial facade elevations filling their panels. TOP LEFT: gray mid-rise office with uniform dark blue-gray curtain-wall glazing and thin metal mullions. TOP RIGHT: warm ivory small retail building with compact dark windows, tiled cladding and blank wide sign bands. BOTTOM LEFT: older off-white office facade with narrow vertical dark window strips. BOTTOM RIGHT: muted gray-brown commercial facade with regular dark windows and restrained metal utility panels. No building outlines, roofs, roads, readable lettering, people, illumination, reflective scenery or perspective. Windows are neutral dark albedo, sign bands are empty. Not seamless, independent quadrant patches."
+    },
+    {
+      "id": "facades_industrial",
+      "file": "facades_industrial.png",
+      "kind": "atlas",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. Create one square facade UV texture atlas, exactly four equal square panels in a strict 2x2 grid, no gutter or separator. Flat Japanese waterfront industrial building elevations filling panels. TOP LEFT: pale blue-gray corrugated warehouse wall with a broad closed roller door. TOP RIGHT: weathered ivory concrete industrial wall with dark clerestory windows. BOTTOM LEFT: muted brick-red shipping-container side with regular vertical flutes, no brand or ID. BOTTOM RIGHT: faded teal shipping-container side with regular flutes, no brand or ID. No building silhouettes, roofs, perspective, cast shadows, objects, vehicles, words or numbers. Neutral albedo; quadrant patches not seamless."
+    },
+    {
+      "id": "sign_panel_blanks",
+      "file": "sign_panel_blanks.png",
+      "kind": "atlas",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. Create one square UV material atlas of exactly four equal square panel substrates in a strict 2x2 grid, no gutters, no frame. Each quadrant filled edge-to-edge with one restrained uniform diffuse surface. TOP LEFT: deep Japanese highway-sign green retroreflective sheeting, subtle microtexture, completely blank. TOP RIGHT: pale ivory-white retroreflective safety-sign sheeting, completely blank. BOTTOM LEFT: deep muted navy-blue parking and services sign sheeting, completely blank. BOTTOM RIGHT: near-black subtly textured electronic variable-message-board face, completely blank unlit. No lettering, arrows, symbols, route numbers, borders, rivets, sign silhouettes, lighting or glow. These are empty substrates for precise text later. Not seamless atlas; independent UV patches."
+    },
+    {
+      "id": "billboards_art",
+      "file": "billboards_art.png",
+      "kind": "atlas",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. Create one square artwork UV atlas, exactly four equal square advertisement panels in strict 2x2 grid with no gutters. Original fictional Japanese city billboard artwork with NO text and NO logos. TOP LEFT: restrained blue/cream geometric mountain and sun travel motif. TOP RIGHT: warm red/cream graphic bowl of noodles with simple steam lines. BOTTOM LEFT: muted teal/ivory flat wave pattern with an abstract drink bottle silhouette, blank label. BOTTOM RIGHT: yellow/charcoal elegant geometric automotive wheel motif. Flat print artwork filling each cell, polished understated poster graphics, no paper perspective, shadows, weathering, border or typography. For adding separate fictional brand text later, no copyrighted brands. Independent UV patches, not seamless."
+    },
+    {
+      "id": "roadside_props",
+      "file": "roadside_props.png",
+      "kind": "atlas",
+      "transparent_background": false,
+      "initial_prompt": "Use case: stylized-concept. Asset type: production game-environment base-color texture for a Japanese Shuto Expressway map in NOX Engine. Restrained realistic material detail compatible with low-poly architectural geometry. Output one square high-resolution texture, preferably 2048x2048. Flat orthographic surface capture, no perspective, no scene, no horizon, no frame, no labels, no watermark. Neutral diffuse albedo only: no directional illumination, cast shadows, ambient-occlusion shading, bloom, specular highlights, wet reflections, or night lighting. Do not produce a texture-map contact sheet or normal-map visualization. Create one square UV material atlas, four equal square cells in strict 2x2 layout, no gutters or separators. TOP LEFT: flat alternating muted yellow/black diagonal painted hazard stripes, slight wear, no perspective. TOP RIGHT: flat alternating faded red/white diagonal painted warning stripes, slight wear. BOTTOM LEFT: evenly spaced round amber reflector lenses over a medium neutral-gray backing, no highlights or emission. BOTTOM RIGHT: flat red-brown Japanese utility access hatch face with simple regular stamped metal pattern and no text. Every cell fills its quadrant, no silhouettes or extra objects, neutral albedo. Independent UV patches, not seamless; barriers and markings made with geometry."
+    },
+    {
+      "id": "foliage_cutouts",
+      "file": "foliage_cutouts.png",
+      "kind": "alpha_atlas",
+      "transparent_background": true,
+      "initial_prompt": "Use case: stylized-concept. Asset type: one transparent game foliage sprite atlas for a low-poly Japanese expressway environment. Square image preferably 2048x2048, strict 2x2 layout of four cutouts, one centered fully visible in each quadrant, generous transparent margins so none touch boundaries. TOP LEFT: compact dark-green broadleaf shrub clump, side view. TOP RIGHT: narrow ornamental grass tuft, side view. BOTTOM LEFT: upright leafy roadside weed clump, side view. BOTTOM RIGHT: rounded olive-green low hedge clump, side view. Restrained believable diffuse leaf colors and clean readable silhouettes; no scenery, ground plane, pots, shadows, glow, text or border. True transparent alpha background, no checkerboard. Neutral soft nondirectional illumination, no bright directional highlights. Cutouts only, compatible with low-poly roadside cards."
+    },
+    {
+      "id": "surface_wear_decals",
+      "file": "surface_wear_decals-v2.png",
+      "kind": "alpha_atlas",
+      "transparent_background": true,
+      "initial_prompt": "Use case: stylized-concept. Asset type: one transparent diffuse surface-wear decal atlas for Japanese highway structures. Square image preferably 2048x2048, four equal conceptual cells in strict 2x2 layout with one complete isolated pattern centered in each quadrant and generous transparent margins. TOP LEFT: subtle gray-brown vertical rain runoff streaks. TOP RIGHT: restrained dark thin branching hairline concrete crack. BOTTOM LEFT: small irregular ochre-brown light rust stains with feathered edges. BOTTOM RIGHT: restrained dark-gray oil stain with soft irregular outline. Flat surface patterns, neutral muted colors, all surroundings truly transparent, no checkerboard, backing plate, scene, writing, shadow, reflections or perspective. Patterns do not touch or cross cell boundaries.",
+      "edit_prompt": "Edit this transparent surface-decal atlas. Preserve square format, true alpha background and 2x2 organization. Replace each oversized dimensional damage patch with a subtle flat diffuse pattern with generously transparent margins: top-left only faint gray-brown thin rain streaks; top-right only very thin dark-gray hairline crack lines; bottom-left only faint muted brown rust stains; bottom-right only one faint soft dark-gray oil stain. Remove every red, yellow, neon-colored fringe, chunks, broken concrete, slabs, relief, rivets, thickness, directional shadows and backing surfaces. Restrict RGB to neutral gray and subdued brown, never saturated colors. Flat low-opacity discoloration only, no objects or 3D appearance. No text. All four patterns remain isolated well within their respective quadrants."
+    }
+  ]
+}

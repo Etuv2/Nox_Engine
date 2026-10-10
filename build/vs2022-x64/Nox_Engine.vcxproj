@@ -658,6 +658,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\BaseLight.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\BenchmarkRunner.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Camera.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\CollisionWorld.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ComponentManager.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ComputeShader.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Contact.cpp" />

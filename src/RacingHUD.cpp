@@ -430,10 +430,21 @@ struct RacingHUD::Impl {
 		// Roads: thin light lines, width scaled by the road half-width.
 		if (s.roads && !s.roads->Empty()) {
 			const auto& nodes = s.roads->Nodes();
+			const float reach = std::max(5.0f, mapRadius) * 1.5f;
 			for (const auto& e : s.roads->Edges()) {
 				if (e.a < 0 || e.b < 0 || e.a >= (int)nodes.size() || e.b >= (int)nodes.size()) continue;
+				// Cull edges whose bounds are outside the map disc (large expressway networks).
+				const glm::vec2 mn = glm::min(nodes[e.a].pos, nodes[e.b].pos) - glm::vec2(reach);
+				const glm::vec2 mx = glm::max(nodes[e.a].pos, nodes[e.b].pos) + glm::vec2(reach);
+				if (s.carPos.x < mn.x || s.carPos.x > mx.x || s.carPos.y < mn.y || s.carPos.y > mx.y) continue;
 				const float wpx = x.L(cfg.mapRoadPx) * ClampF(e.halfWidth / 7.5f, 0.5f, 2.0f);
-				clipLine(toMap(nodes[e.a].pos), toMap(nodes[e.b].pos), glm::vec4(0.82f, 0.90f, 1.0f, 1.0f), wpx, 0.0f, 0.62f * op);
+				// Stacked roads: other levels are drawn fainter than the car's own level.
+				float level = 1.0f;
+				if (s.layered) {
+					const float y = 0.5f * (nodes[e.a].y + nodes[e.b].y);
+					level = std::abs(y - s.carY) > 4.0f ? 0.35f : 1.0f;
+				}
+				clipLine(toMap(nodes[e.a].pos), toMap(nodes[e.b].pos), glm::vec4(0.82f, 0.90f, 1.0f, 1.0f), wpx, 0.0f, 0.62f * op * level);
 			}
 		}
 
@@ -473,6 +484,10 @@ struct RacingHUD::Impl {
 				break;
 			case HudMapMarker::Kind::Start:
 				dl->AddCircleFilled(p, r * 0.8f, ColA(0.45f, 1.0f, 0.55f, 0.95f * alpha));
+				break;
+			case HudMapMarker::Kind::Place: // parking area / meeting spot: blue square with a "P"
+				dl->AddRectFilled(Add(p, ImVec2(-r, -r)), Add(p, ImVec2(r, r)), ColA(0.2f, 0.45f, 0.95f, 0.9f * alpha), x.L(1.2f));
+				dl->AddText(Add(p, ImVec2(-r * 0.45f, -r * 0.8f)), ColA(1, 1, 1, alpha), "P");
 				break;
 			}
 		}

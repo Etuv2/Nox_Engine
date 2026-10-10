@@ -1,0 +1,985 @@
+{
+  "generator": "built-in image_gen",
+  "generated_date": "2026-10-10",
+  "uv_origin": "image_top_left",
+  "rect_right_bottom": "exclusive",
+  "atlas_gutters_present": false,
+  "atlas_sample_inset_pixels": 2,
+  "engine_integrated": false,
+  "validation": "PNG decode, hashes, alpha coverage, visually inspected images and atlas layout; no Blender/NOX runtime validation",
+  "assets": [
+    {
+      "id": "asphalt_fine",
+      "file": "asphalt_fine.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "0f188aa72da4c80ff8c9801151f986b787355da4ae37aef75a777b98eb2353ee",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        4,
+        4
+      ],
+      "roughness": 0.88,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        21.609,
+        21.049
+      ]
+    },
+    {
+      "id": "concrete_cast",
+      "file": "concrete_cast.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "70e8024128594451e8acf734d036f4260b22d2be44a3b0d33a7b6aa69f5a6fce",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        3,
+        3
+      ],
+      "roughness": 0.85,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        10.971,
+        12.022
+      ]
+    },
+    {
+      "id": "concrete_weathered",
+      "file": "concrete_weathered.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "4eaec6d9dc67f10eadd0cff61b1cbc5701ac1cef63f89e80c82b4d2167599682",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        3,
+        3
+      ],
+      "roughness": 0.92,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        12.422,
+        14.029
+      ]
+    },
+    {
+      "id": "tunnel_tiles",
+      "file": "tunnel_tiles-v2.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "7cf1fb7026e08664f3af682e9754844d06fa82b076069868db1a59abff867ebe",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        2,
+        2
+      ],
+      "roughness": 0.45,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        3.936,
+        10.028
+      ]
+    },
+    {
+      "id": "galvanized_steel",
+      "file": "galvanized_steel.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "d6a25547dce4a44c45402e3a176d6beee0382d326b84e42c3642062ccf79794c",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        1,
+        1
+      ],
+      "roughness": 0.5,
+      "metallic": 1,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        10.092,
+        10.412
+      ]
+    },
+    {
+      "id": "corrugated_metal",
+      "file": "corrugated_metal.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "2656ebc944ad8bde9f44736fcd91bcb36aeba988a7b863883ecb99f963a7882f",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        2,
+        2
+      ],
+      "roughness": 0.7,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        2.204,
+        2.793
+      ]
+    },
+    {
+      "id": "rooftop_membrane",
+      "file": "rooftop_membrane.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "246335b09960f61c0c2370fa2e40732069749754cf9b56a987c0a6db762f80a9",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        4,
+        4
+      ],
+      "roughness": 0.9,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        16.43,
+        14.648
+      ]
+    },
+    {
+      "id": "ground_gravel",
+      "file": "ground_gravel.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "4f556e7ba7e4af06ee2621ffa98e154461348fd6dcd4cae9efbac35e301c0c6d",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        3,
+        3
+      ],
+      "roughness": 0.96,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        25.017,
+        23.71
+      ]
+    },
+    {
+      "id": "noise_barrier",
+      "file": "noise_barrier.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "fdc0bc83b28f294a319ba8ff5c64f124d4e4891f1e664c975e83ec8ff00447b4",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "surface",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "suggested_tile_meters": [
+        1,
+        1
+      ],
+      "roughness": 0.75,
+      "metallic": 0,
+      "wrap": "repeat_candidate",
+      "seamless_certified": false,
+      "opposite_edge_mae_rgb_0_255": [
+        3.367,
+        3.211
+      ]
+    },
+    {
+      "id": "facades_apartment",
+      "file": "facades_apartment.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "50ce986b8161a97a3f84a2175d8e8d2a4a20948025f78e5e2c8af6903d56d97e",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "atlas",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "beige_tiled",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "gray_concrete",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "tan_older",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ]
+        },
+        {
+          "id": "ivory_modern",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ]
+        }
+      ]
+    },
+    {
+      "id": "facades_commercial",
+      "file": "facades_commercial.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "bfe51b0ec42d36f7f42c6f3cd79c66ede63a3d8858507503c1d0c8794816fede",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "atlas",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "curtain_wall",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "retail_blank_signs",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "vertical_windows",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ]
+        },
+        {
+          "id": "gray_brown_office",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ]
+        }
+      ]
+    },
+    {
+      "id": "facades_industrial",
+      "file": "facades_industrial.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "2ebc429ed92efec578863f56556bf55907c94b1a35f0dd37b6c648fd6f9feecc",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "atlas",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "warehouse_roller_door",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "concrete_clerestory",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "red_container",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ]
+        },
+        {
+          "id": "teal_container",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sign_panel_blanks",
+      "file": "sign_panel_blanks.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "d894489523a610b88ff773e0a13f323b5f417da5ddaf49fc041e1d8266d119d8",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "atlas",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "highway_green",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "safety_white",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "services_blue",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ]
+        },
+        {
+          "id": "message_board_unlit",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ]
+        }
+      ]
+    },
+    {
+      "id": "billboards_art",
+      "file": "billboards_art.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "ce26fbe29f77473114c8135f9b60d1b96dffbe53128a551068efe057917ead58",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "atlas",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "travel_mountain",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "noodles",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "drink_waves",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ]
+        },
+        {
+          "id": "automotive",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ]
+        }
+      ]
+    },
+    {
+      "id": "roadside_props",
+      "file": "roadside_props.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "sha256": "d75a0babef63109ce053baff27da9fe0c847309ae5374e549e87cfde62a07d40",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "atlas",
+      "maps_provided": [
+        "base_color"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "yellow_black_hazard",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "red_white_warning",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ]
+        },
+        {
+          "id": "amber_reflector_grid",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ]
+        },
+        {
+          "id": "utility_hatch",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ]
+        }
+      ]
+    },
+    {
+      "id": "foliage_cutouts",
+      "file": "foliage_cutouts.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "sha256": "3417036bf5f3ea89d6ff8a143f26de5289f826506fdf99fa826f80100dd45ae7",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "alpha_atlas",
+      "maps_provided": [
+        "base_color",
+        "coverage_alpha"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "shrub",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ],
+          "alpha_bounds_threshold_16": [
+            28,
+            127,
+            627,
+            597
+          ]
+        },
+        {
+          "id": "grass",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ],
+          "alpha_bounds_threshold_16": [
+            627,
+            58,
+            1227,
+            604
+          ]
+        },
+        {
+          "id": "weed",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ],
+          "alpha_bounds_threshold_16": [
+            25,
+            654,
+            608,
+            1227
+          ]
+        },
+        {
+          "id": "hedge",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ],
+          "alpha_bounds_threshold_16": [
+            644,
+            811,
+            1227,
+            1201
+          ]
+        }
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_pixel_fraction": 0.4862,
+      "alpha_mean_0_255": 88.252,
+      "alpha_handling": "straight-alpha source; premultiply before filtering; inspect low-alpha RGB fringes"
+    },
+    {
+      "id": "surface_wear_decals",
+      "file": "surface_wear_decals-v2.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "sha256": "cd7273c37f84408724e7072e36767b1cd18c05288e6b30e74661e0ac0f95be1d",
+      "color_space": "sRGB",
+      "alpha_space": "linear",
+      "kind": "alpha_atlas",
+      "maps_provided": [
+        "base_color",
+        "coverage_alpha"
+      ],
+      "roughness_metallic_are_starting_values": true,
+      "wrap": "clamp_to_edge_with_cell_uv_clamp",
+      "seamless_certified": false,
+      "roughness": 0.8,
+      "metallic": 0,
+      "cells": [
+        {
+          "id": "runoff",
+          "pixel_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.001993620414673046,
+            0.49800637958532695,
+            0.49800637958532695
+          ],
+          "alpha_bounds_threshold_16": [
+            158,
+            39,
+            558,
+            611
+          ]
+        },
+        {
+          "id": "crack",
+          "pixel_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.001993620414673046,
+            0.998006379585327,
+            0.49800637958532695
+          ],
+          "alpha_bounds_threshold_16": [
+            775,
+            50,
+            1139,
+            622
+          ]
+        },
+        {
+          "id": "rust",
+          "pixel_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.001993620414673046,
+            0.501993620414673,
+            0.49800637958532695,
+            0.998006379585327
+          ],
+          "alpha_bounds_threshold_16": [
+            140,
+            661,
+            527,
+            1234
+          ]
+        },
+        {
+          "id": "oil",
+          "pixel_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "sample_uv_rect": [
+            0.501993620414673,
+            0.501993620414673,
+            0.998006379585327,
+            0.998006379585327
+          ],
+          "alpha_bounds_threshold_16": [
+            737,
+            732,
+            1164,
+            1205
+          ]
+        }
+      ],
+      "alpha_extrema": [
+        0,
+        253
+      ],
+      "transparent_pixel_fraction": 0.6324,
+      "alpha_mean_0_255": 25.33,
+      "alpha_handling": "straight-alpha source; premultiply before filtering; inspect low-alpha RGB fringes"
+    }
+  ],
+  "reuse_existing": [
+    "textures/road_decals/README.md",
+    "textures/window_rooms/README.md",
+    "hdrs/"
+  ],
+  "not_provided": [
+    "normal maps",
+    "roughness maps",
+    "metallic maps",
+    "height maps",
+    "AO maps",
+    "window emission masks",
+    "route-specific sign lettering"
+  ],
+  "unselected_first_pass_files": [
+    "tunnel_tiles.png",
+    "surface_wear_decals.png"
+  ]
+}

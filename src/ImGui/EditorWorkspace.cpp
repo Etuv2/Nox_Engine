@@ -737,7 +737,9 @@ void EditorWorkspace::DrawAuthoringOverlay(const Viewport& vp)
 	m_handles.clear();
 	const ImU32 roadCol = IM_COL32(120, 170, 255, 110);
 	const RoadNetwork& roads = game->Roads();
-	for (const auto& e : roads.Edges()) {
+	// Large generated networks (file-backed) are not drawn or edited as handles.
+	static const std::vector<RoadNetwork::Edge> kNoEdges;
+	for (const auto& e : roads.IsExternal() ? kNoEdges : roads.Edges()) {
 		const glm::vec2 a = roads.Nodes()[e.a].pos, b = roads.Nodes()[e.b].pos;
 		// Draw in short pieces so lines behind the camera are clipped correctly.
 		const int pieces = std::max(1, static_cast<int>(glm::length(b - a) / 10.0f));
@@ -747,7 +749,7 @@ void EditorWorkspace::DrawAuthoringOverlay(const Viewport& vp)
 			if (ProjectToViewport(vp, glm::vec3(p0.x, 0.05f, p0.y), s0) && ProjectToViewport(vp, glm::vec3(p1.x, 0.05f, p1.y), s1)) dl->AddLine(s0, s1, roadCol, 1.5f);
 		}
 	}
-	for (size_t i = 0; i < roads.Nodes().size(); ++i) {
+	for (size_t i = 0; i < roads.Nodes().size() && !roads.IsExternal(); ++i) {
 		const glm::vec2 p = roads.Nodes()[i].pos;
 		m_handles.push_back({ Handle::Kind::RoadNode, static_cast<int>(i), -1, glm::vec3(p.x, 0.05f, p.y), roadCol });
 	}
@@ -1477,7 +1479,10 @@ void EditorWorkspace::DrawRaceTools()
 		ui::Label("Road half width"); if (ImGui::DragFloat("##hw", &hw, 0.05f, 2.0f, 15.0f, "%.2f m")) roads.SetDefaultHalfWidth(hw);
 		ui::Label("Sidewalk width"); if (ImGui::DragFloat("##sw", &sw, 0.05f, 0.0f, 10.0f, "%.2f m")) roads.SetSidewalkWidth(sw);
 		ui::EndGrid();
-		for (size_t i = 0; i < roads.Nodes().size(); ++i) {
+		if (roads.IsExternal()) {
+			ImGui::TextDisabled("Generated network: %s (read-only)", roads.SourceFile().c_str());
+		}
+		for (size_t i = 0; i < roads.Nodes().size() && !roads.IsExternal(); ++i) {
 			auto& n = roads.MutableNodes()[i];
 			ImGui::PushID(static_cast<int>(i));
 			ImGui::SetNextItemWidth(220);

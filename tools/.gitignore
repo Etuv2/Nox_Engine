@@ -1,0 +1,3 @@
+# Keep the UI icon export/validation tool despite the root *.py exclusion.
+!ui_icons.py
+__pycache__/

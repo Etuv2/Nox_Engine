@@ -1,0 +1,29 @@
+# Shuto world map UI mockup - NFS 2015 style revision
+
+Generated with the built-in ImageGen tool. References: the simplified v2 mockup, the user's actual NOX gameplay screenshot, and the user's NFS 2015 map screenshot.
+
+Image: shuto-world-map-ui-v3-nfs-style.png
+
+Preserves the simple map scope and changes the art direction to orange and cream roads, cyan navigation, lavender race accents, condensed text, a textured backdrop, and floating information.
+
+This is a visual concept, not a validated rendering of the road network.
+
+## Generation prompt
+
+Use case: ui-mockup
+Asset type: revised fullscreen Shuto world map UI concept for the NOX racing game.
+Input images and roles:
+Image 1 is the previous simplified Shuto world map mockup. Preserve its modest scope, approximate road-network shape, selected Ginza-to-Daiba route, three marker types and compact amount of information. Its clean navigation-app styling is the problem to replace.
+Image 2 is the actual NOX gameplay screenshot. This is the primary game-style reference: deep blacks, atmospheric night street racing, narrow condensed white type, powder blue/cyan HUD, lavender event heading, restrained glow, sparse floating information.
+Image 3 is the NFS 2015 world map reference. This is the primary map-presentation reference: warm orange arterial roads, pale off-white roads, cyan selected navigation, muted charcoal/teal cartographic background with a fine faint grid, subtle grungy image texture, condensed white lettering and floating text over a soft dark scrim. Reproduce that art direction for the Shuto concept, with MUCH LESS map detail and information. Do not copy its fictional geography, user profile, money, missions or daily challenges.
+Primary request: a single high-fidelity image of the SAME SIMPLE SHUTO WORLD MAP but visually at home in the supplied gameplay screenshot and NFS 2015 inspiration. A small practical racing project, not a premium map dashboard. Keep it straightforward to implement using existing road network polylines, a single low-detail baked map backdrop, text and small icons. One ultrawide landscape screenshot approximately 3440:1440.
+Composition: map fills screen behind all information, no separate sidebar container or borders. Small upper-left heading "WORLD MAP" with "SHUTO EXPRESSWAY" beneath it, in narrow bold white condensed sans-serif similar to the game's Barlow Condensed. Small upper-center filter label "ALL". A single small floating event detail text group at the right over a feathered dark overlay, vertically aligned near middle, taking less than 18 percent of width. Bottom-right compact white keyboard hints. Bottom-left tiny unobtrusive legend. No cards, no large buttons, no panel outlines.
+Map background: simplified Tokyo coastline surrounding Tokyo Bay, dark desaturated blue-green water, muted grey-purple land. Very faint thin map grid and gently mottled/grainy texture recalling the NFS reference. Only a few broad abstract industrial land patches and minimal vague city texture, kept subordinate to the roads; NO detailed satellite city, NO thousands of buildings, NO photorealistic aerial image, NO rendered 3D bridges or thumbnail. Background reads like a low-detail baked overview, with faded edges and subtle vignette.
+Road network: modest connected schematic Shuto expressway network, about 12-18 gently curved main road polylines. C1 loop upper-left-center with a few outward branches. Route 1 south along the west coast of the bay, Route 11 east across the bay to Daiba. Expressway spines warm orange like reference image 3, a few pale cream connector roads; selected navigation path bright sky cyan from small player arrow near Ginza south via Shibaura then east to Daiba. Crisp readable road strokes, very restrained soft emission. Never a full dense urban street mesh. Roads remain simple polylines, no individual lanes, intricate junctions or elaborate ramps.
+Labels: white narrow condensed text for "Ginza", "Shibaura", "Daiba", a larger but still modest muted white "Tokyo Bay" over water. Plain tiny route tags "C1", "1", "11". Soft slight text shadow for legibility, not boxed badges. Labels resemble the reference's floating district labels.
+Markers: one small white triangular player with cyan outline at Ginza; one lavender circular race marker with a simple white checkered-flag symbol at Daiba, with a modest selection halo; one white parking symbol "P" in a small muted blue circle at Shibaura. Only three map markers. The bottom-left legend "Player", "Race", "Parking" is small and directly on backdrop.
+Right floating event details, exact text: lavender bold condensed "SPRINT RACE", white smaller "Bay Run", muted white "Ginza to Daiba". Beneath it a small keyboard key hint "[ENTER] Set waypoint". This is plain white text with a tiny outlined keycap, not a cyan rectangular CTA. No invented race statistics, no money, reputation, missions, multiplayer, daily challenges, photographic inserts or profile info.
+Footer exact text: "[WASD] Pan   [SCROLL] Zoom   [F] Center   [ESC] Back". Small white condensed typography directly over backdrop. Generous spacing and low visual weight.
+Critical styling: looks like an atmospheric 2015-era street-racing pause menu, not a modern website or GIS viewer. Match references in palette, typography and understated gritty finish. Keep the game's lavender/cyan event language while using the NFS reference's orange/cream map roads. Avoid large clean cyan UI blocks, sci-fi decoration, bright uniform blue land, sharply outlined cards, glossy interface bevels, excessive bloom or neon cyberpunk. Simplicity must remain close to image 1; only the visual styling and low-detail backdrop change.
+Output constraints: one complete coherent game UI screenshot, no device frame, no browser chrome, no collage, no implementation notes, no existing NFS/EA logos. Generated geography is concept-only; no full western C2 loop or modern Tokyo Gate Bridge.
+

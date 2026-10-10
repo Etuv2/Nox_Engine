@@ -20,9 +20,18 @@ namespace {
 	constexpr float kPi = 3.14159265f;
 	const char* kBestTimesPath = "config/speedwall.json";
 
+	// [x, z] or [x, y, z].
 	glm::vec2 ReadXZ(const json& j, const glm::vec2& fallback) {
+		if (j.is_array() && j.size() >= 3 && j[0].is_number() && j[2].is_number()) return glm::vec2(j[0].get<float>(), j[2].get<float>());
 		if (j.is_array() && j.size() >= 2 && j[0].is_number() && j[1].is_number()) return glm::vec2(j[0].get<float>(), j[1].get<float>());
 		return fallback;
+	}
+	bool ReadY(const json& j, float& y) {
+		if (j.is_array() && j.size() >= 3 && j[1].is_number()) { y = j[1].get<float>(); return true; }
+		return false;
+	}
+	json WritePos(const glm::vec2& p, bool hasY, float y) {
+		return hasY ? json{ p.x, y, p.y } : json{ p.x, p.y };
 	}
 
 	// Segment-segment intersection (p0->p1 against q0->q1).
@@ -74,6 +83,20 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 	m_menuItems.clear();
 	m_route.clear();
 
+	// Static collision (stacked roads, tunnels, barriers): enables DriveMode's surface mode.
+	m_collision.Clear();
+	m_heightTolerance = 4.0f;
+	if (m_game.contains("collision") && m_game["collision"].is_object()) {
+		const json& c = m_game["collision"];
+		m_heightTolerance = c.value("height_tolerance", m_heightTolerance);
+		if (c.contains("files") && c["files"].is_array()) {
+			for (const json& f : c["files"]) {
+				if (f.is_string()) m_collision.LoadGLTF(f.get<std::string>());
+			}
+		}
+		std::cout << "[GameSession] Collision: " << m_collision.MeshCount() << " meshes, " << m_collision.TriangleCount() << " triangles" << std::endl;
+	}
+
 	// Road network: authored, else derived from legacy drivable rectangles, else none.
 	m_roads.Clear();
 	if (!m_roads.Load(m_game.value("road_network", json()))) {
@@ -114,15 +137,17 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 			ev.name = e.value("name", ev.name);
 			ev.difficulty = e.value("difficulty", ev.difficulty);
 			ev.start = ReadXZ(e.value("start", json()), ev.start);
+			ev.hasStartY = ReadY(e.value("start", json()), ev.startY);
 			ev.startHeadingDeg = e.value("start_heading_deg", ev.startHeadingDeg);
 			ev.triggerRadius = e.value("trigger_radius", ev.triggerRadius);
 			ev.countdown = e.value("countdown", ev.countdown);
 			if (e.contains("checkpoints") && e["checkpoints"].is_array()) {
 				for (const json& c : e["checkpoints"]) {
 					Checkpoint cp;
-					if (c.is_array()) cp.pos = ReadXZ(c, cp.pos);
+					if (c.is_array()) { cp.pos = ReadXZ(c, cp.pos); cp.hasY = ReadY(c, cp.y); }
 					else if (c.is_object()) {
 						cp.pos = ReadXZ(c.value("pos", json()), cp.pos);
+						cp.hasY = ReadY(c.value("pos", json()), cp.y);
 						cp.width = c.value("width", cp.width);
 						if (c.contains("heading_deg")) {
 							cp.headingDeg = c["heading_deg"].get<float>();
@@ -137,7 +162,24 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 	}
 	m_selectedEvent = std::clamp(m_selectedEvent, 0, std::max(0, static_cast<int>(m_events.size()) - 1));
 
-	m_drive.Configure(m_game, sceneGraph, &m_roads, LayoutPathFromScene(sceneRoot));
+	m_places.clear();
+	m_atPlace = -1;
+	if (m_game.contains("places") && m_game["places"].is_array()) {
+		for (const json& p : m_game["places"]) {
+			if (!p.is_object()) continue;
+			Place pl;
+			pl.id = p.value("id", std::string());
+			pl.type = p.value("type", pl.type);
+			pl.name = p.value("name", std::string());
+			pl.nameJa = p.value("name_ja", std::string());
+			pl.pos = ReadXZ(p.value("pos", json()), pl.pos);
+			pl.hasY = ReadY(p.value("pos", json()), pl.y);
+			pl.radius = p.value("radius", pl.radius);
+			m_places.push_back(pl);
+		}
+	}
+
+	m_drive.Configure(m_game, sceneGraph, &m_roads, LayoutPathFromScene(sceneRoot), &m_collision);
 	if (m_drive.IsAvailable()) m_drive.SetActive(true);
 
 	const std::string hudPath = m_game.value("hud", std::string("config/hud.json"));
@@ -161,16 +203,17 @@ json GameSession::SaveGameJson() const
 	g["camera"] = tuning["camera"];
 	g.erase("top_speed_kmh");
 	const glm::vec2 sp = m_drive.SpawnPosition();
-	g["spawn"] = { {"position", { sp.x, sp.y }}, {"heading_deg", glm::degrees(m_drive.SpawnHeading())} };
+	const glm::vec3 sp3 = m_drive.SpawnPosition3();
+	g["spawn"] = { {"position", WritePos(sp, m_drive.HasSurface() && sp3.y < 1e4f, sp3.y)}, {"heading_deg", glm::degrees(m_drive.SpawnHeading())} };
 	if (!m_roads.Empty() && !g.contains("drivable_areas")) g["road_network"] = m_roads.Save();
 	json events = json::array();
 	for (const RaceEvent& e : m_events) {
 		json je = { {"id", e.id}, {"type", e.type}, {"name", e.name}, {"difficulty", e.difficulty},
-			{"start", { e.start.x, e.start.y }}, {"start_heading_deg", e.startHeadingDeg},
+			{"start", WritePos(e.start, e.hasStartY, e.startY)}, {"start_heading_deg", e.startHeadingDeg},
 			{"trigger_radius", e.triggerRadius}, {"countdown", e.countdown} };
 		json cps = json::array();
 		for (const Checkpoint& c : e.checkpoints) {
-			json jc = { {"pos", { c.pos.x, c.pos.y }}, {"width", c.width} };
+			json jc = { {"pos", WritePos(c.pos, c.hasY, c.y)}, {"width", c.width} };
 			if (!c.autoHeading) jc["heading_deg"] = c.headingDeg;
 			cps.push_back(jc);
 		}
@@ -206,6 +249,13 @@ void GameSession::BeginPlay()
 	m_phase = Phase::FreeRoam;
 	m_menuTitle.clear();
 	m_drive.ResetToSpawn();
+	// NOX_AUTOPILOT_EVENT=<index>: scripted traversal starts directly at that event (validation).
+	static const int autoEvent = [] { const char* v = std::getenv("NOX_AUTOPILOT_EVENT"); return v ? std::atoi(v) : -1; }();
+	if (autoEvent >= 0 && autoEvent < static_cast<int>(m_events.size())) {
+		m_selectedEvent = autoEvent;
+		std::cout << "[Traversal] Event " << autoEvent << " '" << m_events[autoEvent].name << "'" << std::endl;
+		StartEvent(autoEvent);
+	}
 }
 
 void GameSession::EndPlay()
@@ -402,9 +452,47 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 		while (diff < -kPi) diff += 2.0f * kPi;
 		in.steer = std::clamp(-diff * 2.5f, -1.0f, 1.0f); // heading grows toward +X = the car's left
 		const float kmh = m_drive.SpeedKmh();
+		// Traversal diagnostics: report and recover when stuck or after falling off a level.
+		if (m_phase == Phase::Racing) {
+			m_apStuck = kmh < 3.0f ? m_apStuck + m_hudDt : 0.0f;
+			const float y = m_drive.Position3().y;
+			m_apFallTimer += m_hudDt;
+			if (m_apFallTimer > 1.0f) {
+				if (m_apLastY - y > 4.0f) {
+					std::printf("[Traversal] FELL from y=%.2f to y=%.2f at (%.1f,%.1f)\n", m_apLastY, y, pos.x, pos.y);
+					++m_apIncidents;
+				}
+				m_apLastY = y;
+				m_apFallTimer = 0.0f;
+			}
+			if (m_apStuck > 3.0f) {
+				std::printf("[Traversal] STUCK at (%.1f,%.2f,%.1f) heading %.1f\n", pos.x, y, pos.y, glm::degrees(m_drive.Heading()));
+				++m_apIncidents;
+				m_apStuck = 0.0f;
+				// Skip ~40 m ahead along the route (same level) so one run reports every problem spot.
+				glm::vec2 target = pos;
+				float want = 40.0f;
+				for (size_t i = 1; i < m_route.size(); ++i) {
+					const float seg = glm::length(m_route[i] - m_route[i - 1]);
+					target = m_route[i];
+					if (want <= seg) { target = m_route[i - 1] + (m_route[i] - m_route[i - 1]) * (want / std::max(seg, 1e-3f)); break; }
+					want -= seg;
+				}
+				int edge = -1;
+				float t = 0.0f;
+				m_roads.ClosestOnRoads3D(glm::vec3(target.x, y, target.y), 12.0f, nullptr, &edge, &t);
+				if (edge >= 0) {
+					float heading = m_drive.Heading();
+					m_drive.Teleport(m_roads.LanePosition(edge, t, heading, -1, heading), heading);
+				}
+				else {
+					ResetCar();
+				}
+			}
+		}
 		static float apLog = 0.0f;
 		apLog += m_hudDt;
-		if (apLog > 2.0f) { apLog = 0.0f; std::printf("[Autopilot] pos=(%.1f,%.1f) v=%.0f near=%d phase=%d route=%d\n", pos.x, pos.y, kmh, m_nearEvent, static_cast<int>(m_phase), static_cast<int>(m_route.size())); std::fflush(stdout); }
+		if (apLog > 2.0f) { apLog = 0.0f; std::printf("[Autopilot] pos=(%.1f,%.1f) y=%.2f air=%d v=%.0f near=%d phase=%d route=%d\n", pos.x, pos.y, m_drive.Position3().y, m_drive.Airborne() ? 1 : 0, kmh, m_nearEvent, static_cast<int>(m_phase), static_cast<int>(m_route.size())); std::fflush(stdout); }
 		in.throttle = std::abs(diff) < 0.35f ? 1.0f : 0.35f;
 		if (std::abs(diff) > 0.5f && kmh > 70.0f) { in.throttle = 0.0f; in.brake = 1.0f; }
 		in.nitrous = std::abs(diff) < 0.1f && kmh > 60.0f;
@@ -416,9 +504,44 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 		}
 		// Brake before sharp route corners in races.
 		if (m_phase == Phase::Racing && std::abs(diff) > 0.25f && kmh > 75.0f) { in.throttle = 0.0f; in.brake = 0.7f; }
-		if (m_route.size() > 2) {
-			const float toCorner = glm::length(m_route[1] - pos);
+		if (m_route.size() >= 2) {
+			// Distance to the first real corner (> ~25 deg turn) along the route; dense polylines
+			// (expressway curves sampled every few metres) have no single-vertex corners.
+			float toCorner = 1e9f, along = glm::length(m_route[1] - pos);
+			for (size_t i = 1; i + 1 < m_route.size() && along < 200.0f; ++i) {
+				const glm::vec2 d0 = m_route[i] - m_route[i - 1], d1 = m_route[i + 1] - m_route[i];
+				if (glm::length(d0) > 1e-3f && glm::length(d1) > 1e-3f && glm::dot(glm::normalize(d0), glm::normalize(d1)) < 0.9f) { toCorner = along; break; }
+				along += glm::length(d1);
+			}
+			// The turn after the current gate counts as a corner at the route end.
+			if (m_phase == Phase::Racing && m_activeEvent >= 0) {
+				const RaceEvent& ev = m_events[m_activeEvent];
+				if (m_nextCheckpoint + 1 < static_cast<int>(ev.checkpoints.size())) {
+					const glm::vec2 gate = ev.checkpoints[m_nextCheckpoint].pos, after = ev.checkpoints[m_nextCheckpoint + 1].pos;
+					const glm::vec2 in2 = m_route.back() - m_route[m_route.size() - 2];
+					const glm::vec2 out2 = after - gate;
+					if (glm::length(in2) > 1e-3f && glm::length(out2) > 1e-3f &&
+						glm::dot(glm::normalize(in2), glm::normalize(out2)) < 0.85f) {
+						float toEnd = 0.0f;
+						for (size_t i = 1; i < m_route.size(); ++i) toEnd += glm::length(m_route[i] - m_route[i - 1]);
+						toCorner = std::min(toCorner, toEnd);
+					}
+				}
+			}
 			if (toCorner < 45.0f && kmh > 30.0f + toCorner * 1.1f) { in.throttle = 0.0f; in.brake = 1.0f; in.nitrous = false; }
+			// Gentle curves and diverges: limit speed by the route's total turn over the next ~80 m.
+			float turn = 0.0f, dist = 0.0f;
+			for (size_t i = 1; i + 1 < m_route.size() && dist < 80.0f; ++i) {
+				const glm::vec2 d0 = m_route[i] - m_route[i - 1], d1 = m_route[i + 1] - m_route[i];
+				if (glm::length(d0) < 1e-3f || glm::length(d1) < 1e-3f) continue;
+				turn += std::acos(std::clamp(glm::dot(glm::normalize(d0), glm::normalize(d1)), -1.0f, 1.0f));
+				dist += glm::length(d1);
+			}
+			// NOX_AUTOPILOT_MAXKMH: speed cap for coverage runs (takes the routed branch at diverges).
+			static const float capKmh = [] { const char* v = std::getenv("NOX_AUTOPILOT_MAXKMH"); return v ? static_cast<float>(std::atof(v)) : 150.0f; }();
+			const float vmax = std::clamp(150.0f - glm::degrees(turn) * 2.2f, 45.0f, capKmh);
+			if (kmh > vmax + 5.0f) { in.throttle = 0.0f; in.brake = 0.6f; in.nitrous = false; }
+			else if (kmh > vmax) { in.throttle = 0.0f; in.nitrous = false; }
 		}
 		if (m_phase == Phase::FreeRoam && m_nearEvent >= 0 && m_autoRuns < 2) {
 			in.throttle = 0.0f; in.brake = kmh > 3.0f ? 1.0f : 0.0f; // holding the brake at rest would engage reverse
@@ -466,8 +589,12 @@ void GameSession::StartEvent(int index)
 	m_wrongWayTimer = 0.0f;
 	m_menuTitle.clear();
 	m_paused = false;
-	m_drive.Teleport(e.start, glm::radians(e.startHeadingDeg));
+	if (e.hasStartY) m_drive.Teleport(glm::vec3(e.start.x, e.startY, e.start.y), glm::radians(e.startHeadingDeg));
+	else m_drive.Teleport(e.start, glm::radians(e.startHeadingDeg));
 	DriveAudio::Get().Play(UiSound::Select);
+	m_apLastY = m_drive.Position3().y;
+	m_apFallTimer = 0.0f;
+	m_apStuck = 0.0f;
 	std::cout << "[Race] Event '" << e.name << "' countdown" << std::endl;
 }
 
@@ -487,7 +614,10 @@ void GameSession::ResetCar()
 		const RaceEvent& e = m_events[m_activeEvent];
 		const glm::vec2 from = m_nextCheckpoint == 0 ? e.start : e.checkpoints[m_nextCheckpoint - 1].pos;
 		const float heading = m_nextCheckpoint == 0 ? glm::radians(e.startHeadingDeg) : GateHeading(e, m_nextCheckpoint - 1);
-		m_drive.Teleport(from, heading);
+		const bool hasY = m_nextCheckpoint == 0 ? e.hasStartY : e.checkpoints[m_nextCheckpoint - 1].hasY;
+		const float y = m_nextCheckpoint == 0 ? e.startY : e.checkpoints[m_nextCheckpoint - 1].y;
+		if (hasY) m_drive.Teleport(glm::vec3(from.x, y, from.y), heading);
+		else m_drive.Teleport(from, heading);
 	}
 	else {
 		m_drive.RecoverToRoad();
@@ -520,6 +650,26 @@ glm::vec2 GameSession::RouteTarget() const
 	return m_drive.Position();
 }
 
+glm::vec3 GameSession::RouteTarget3() const
+{
+	const glm::vec2 t = RouteTarget();
+	float y = m_drive.Position3().y;
+	if (m_activeEvent >= 0 && (m_phase == Phase::Racing || m_phase == Phase::Countdown)) {
+		const RaceEvent& e = m_events[m_activeEvent];
+		const Checkpoint& c = e.checkpoints[std::min(m_nextCheckpoint, static_cast<int>(e.checkpoints.size()) - 1)];
+		if (c.hasY) y = c.y;
+	}
+	else if (m_selectedEvent >= 0 && m_selectedEvent < static_cast<int>(m_events.size()) && m_events[m_selectedEvent].hasStartY) {
+		y = m_events[m_selectedEvent].startY;
+	}
+	return glm::vec3(t.x, y, t.y);
+}
+
+bool GameSession::AtHeight(bool hasY, float y) const
+{
+	return !hasY || !m_drive.HasSurface() || std::abs(m_drive.Position3().y - y) <= m_heightTolerance;
+}
+
 void GameSession::UpdateRace(float dt)
 {
 	const glm::vec2 pos = m_drive.Position();
@@ -527,9 +677,27 @@ void GameSession::UpdateRace(float dt)
 	m_messageTimer = std::max(0.0f, m_messageTimer - dt);
 
 	if (m_phase == Phase::FreeRoam) {
+		// Places: arrival (slow, on the place's level) shows the place and rests the car.
+		int at = -1;
+		for (size_t i = 0; i < m_places.size(); ++i) {
+			const Place& pl = m_places[i];
+			if (glm::length(pos - pl.pos) < pl.radius && AtHeight(pl.hasY, pl.y)) { at = static_cast<int>(i); break; }
+		}
+		if (at != m_atPlace) {
+			m_atPlace = at;
+			if (at >= 0 && m_drive.SpeedKmh() < 80.0f) {
+				const Place& pl = m_places[at];
+				int nearby = 0;
+				for (const RaceEvent& e : m_events) nearby += glm::length(e.start - pl.pos) < 1500.0f ? 1 : 0;
+				ShowMessage(pl.name + " " + pl.type + " - REST / MEET / PHOTO" + (nearby ? " - " + std::to_string(nearby) + " EVENT(S) NEARBY" : std::string()), 3.5f);
+				m_drive.Refuel();
+				std::cout << "[Place] Arrived at " << pl.name << " (" << pl.id << ")" << std::endl;
+			}
+		}
 		m_nearEvent = -1;
 		for (size_t i = 0; i < m_events.size(); ++i) {
-			if (glm::length(pos - m_events[i].start) < m_events[i].triggerRadius && m_drive.SpeedKmh() < 60.0f) {
+			if (glm::length(pos - m_events[i].start) < m_events[i].triggerRadius && m_drive.SpeedKmh() < 60.0f &&
+				AtHeight(m_events[i].hasStartY, m_events[i].startY)) {
 				m_nearEvent = static_cast<int>(i);
 				m_selectedEvent = static_cast<int>(i);
 				break;
@@ -562,6 +730,7 @@ void GameSession::UpdateRace(float dt)
 			const glm::vec2 side(dir.y, -dir.x);
 			const glm::vec2 g0 = c.pos - side * c.width * 0.5f, g1 = c.pos + side * c.width * 0.5f;
 			if (!SegmentsIntersect(prev, pos, g0, g1)) continue;
+			if (!AtHeight(c.hasY, c.y)) continue; // a gate on another deck
 			if (glm::dot(pos - prev, dir) <= 0.0f) continue; // crossing backwards does not count
 			if (i == m_nextCheckpoint) {
 				m_splits.push_back(m_raceTime);
@@ -569,6 +738,7 @@ void GameSession::UpdateRace(float dt)
 				std::cout << "[Race] Checkpoint " << m_nextCheckpoint << "/" << count << " at " << m_raceTime << " s" << std::endl;
 				if (m_nextCheckpoint >= count) {
 					m_phase = Phase::Finished;
+					m_exitAfterFinish = std::getenv("NOX_EXIT_ON_FINISH") != nullptr;
 					m_lastTime = m_raceTime;
 					const float best = BestTime(e.id);
 					m_newRecord = best < 0.0f || m_raceTime < best;
@@ -608,7 +778,8 @@ void GameSession::UpdateRace(float dt)
 	m_routeTimer -= dt;
 	if (m_routeTimer <= 0.0f) {
 		m_routeTimer = 0.2f;
-		m_route = m_phase == Phase::Finished ? std::vector<glm::vec2>() : m_roads.FindRoute(pos, RouteTarget());
+		m_route = m_phase == Phase::Finished ? std::vector<glm::vec2>()
+			: (m_drive.HasSurface() ? m_roads.FindRoute(m_drive.Position3(), RouteTarget3(), m_heightTolerance) : m_roads.FindRoute(pos, RouteTarget()));
 	}
 }
 
@@ -618,11 +789,16 @@ GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float a
 	m_aspect = aspect;
 	m_hudDt = dt;
 	if (!m_drive.IsAvailable()) return action;
+	if (m_exitAfterFinish) {
+		std::cout << "[Traversal] Finished; incidents=" << m_apIncidents << std::endl;
+		return MenuAction::ExitApplication;
+	}
 	if (!m_playing) {
 		// Editing: the car rests at spawn and the camera frames the reference composition.
 		DriveMode::Input none;
 		m_drive.Update(dt, none, true, m_camera.get(), aspect);
-		m_route = m_roads.FindRoute(m_drive.Position(), RouteTarget());
+		m_route = m_drive.HasSurface() ? m_roads.FindRoute(m_drive.Position3(), RouteTarget3(), m_heightTolerance)
+			: m_roads.FindRoute(m_drive.Position(), RouteTarget());
 		BuildHudState(dt);
 		return action;
 	}
@@ -699,6 +875,8 @@ void GameSession::BuildHudState(float dt)
 	h.redline = m_drive.AtRedline();
 	h.limiter = m_drive.LimiterHit();
 	h.carPos = m_drive.Position();
+	h.carY = m_drive.Position3().y;
+	h.layered = m_drive.HasSurface();
 	h.carHeading = m_drive.Heading();
 	h.roads = &m_roads;
 	h.route = m_route;
@@ -710,6 +888,7 @@ void GameSession::BuildHudState(float dt)
 
 	if (m_phase == Phase::FreeRoam) {
 		for (const RaceEvent& e : m_events) h.markers.push_back({ e.start, HudMapMarker::Kind::Event });
+		for (const Place& p : m_places) h.markers.push_back({ p.pos, HudMapMarker::Kind::Place });
 	}
 	else if (m_activeEvent >= 0) {
 		const RaceEvent& e = m_events[m_activeEvent];
@@ -759,13 +938,15 @@ void GameSession::BuildHudState(float dt)
 	h.eventMarkerVisible = false;
 	h.checkpointMarkerVisible = false;
 	if (m_phase == Phase::FreeRoam && shown) {
-		h.eventMarkerVisible = Project(glm::vec3(shown->start.x, 10.5f, shown->start.y), h.eventMarkerNdc, h.eventMarkerDistance);
+		const float baseY = shown->hasStartY ? shown->startY : 0.0f;
+		h.eventMarkerVisible = Project(glm::vec3(shown->start.x, baseY + 10.5f, shown->start.y), h.eventMarkerNdc, h.eventMarkerDistance);
 	}
 	else if ((m_phase == Phase::Racing || m_phase == Phase::Countdown) && m_activeEvent >= 0) {
 		const RaceEvent& e = m_events[m_activeEvent];
 		if (m_nextCheckpoint < static_cast<int>(e.checkpoints.size())) {
-			const glm::vec2 c = e.checkpoints[m_nextCheckpoint].pos;
-			h.checkpointMarkerVisible = Project(glm::vec3(c.x, 2.5f, c.y), h.checkpointMarkerNdc, h.checkpointMarkerDistance);
+			const Checkpoint& cp = e.checkpoints[m_nextCheckpoint];
+			const glm::vec2 c = cp.pos;
+			h.checkpointMarkerVisible = Project(glm::vec3(c.x, (cp.hasY ? cp.y : 0.0f) + 2.5f, c.y), h.checkpointMarkerNdc, h.checkpointMarkerDistance);
 		}
 	}
 	(void)dt;

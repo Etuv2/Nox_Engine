@@ -467,10 +467,10 @@
               1.0
             ],
             "cutOff": 14.0,
-            "enabled": true,
-            "intensity": 286.4788818359375,
+            "enabled": false,
+            "intensity": 288.66900634765625,
             "outerCutOff": 30.0,
-            "range": 45.0,
+            "range": 81.30000305175781,
             "shadowResolution": 1024,
             "source_radius": 0.05000000074505806,
             "type": "spot"
@@ -482,14 +482,14 @@
             0.0
           ],
           "rotation": [
-            -3.9999778270721436,
-            0.0,
-            0.0
+            176.00003051757813,
+            15.12841510772705,
+            150.53294372558594
           ],
           "scale": [
+            1.000000238418579,
             1.0,
-            1.0,
-            1.0
+            1.000000238418579
           ],
           "type": "light"
         },
@@ -507,7 +507,7 @@
               1.0
             ],
             "cutOff": 14.0,
-            "enabled": true,
+            "enabled": false,
             "intensity": 286.4788818359375,
             "outerCutOff": 30.0,
             "range": 45.0,

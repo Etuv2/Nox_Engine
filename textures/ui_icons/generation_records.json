@@ -1,0 +1,41 @@
+{
+  "generator": "Built-in image_gen.imagegen",
+  "assets": [
+    {
+      "index": 0,
+      "group": "hud",
+      "id": "nitrous",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A vertical nitrous oxide bottle with a simple valve cap and one large lightning bolt cut out of its body.",
+      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-994b69d5-12e2-4503-b8e6-470646240ffe.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-994b69d5-12e2-4503-b8e6-470646240ffe.png",
+      "file": "textures/ui_icons/hud/nitrous.png"
+    },
+    {
+      "index": 1,
+      "group": "hud",
+      "id": "boost",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A simple side profile turbocharger snail housing with one curved intake pipe and central circular opening.",
+      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-56060d8f-ac4f-4bf9-974b-147b59d0e7e0.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-56060d8f-ac4f-4bf9-974b-147b59d0e7e0.png",
+      "file": "textures/ui_icons/hud/boost.png"
+    },
+    {
+      "index": 2,
+      "group": "hud",
+      "id": "speedometer",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A three-quarter circular speedometer dial with three broad ticks and a single diagonal needle pointing upper right.",
+      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3c202635-d942-4a49-9c8b-ae744d481b64.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-3c202635-d942-4a49-9c8b-ae744d481b64.png",
+      "file": "textures/ui_icons/hud/speedometer.png"
+    },
+    {
+      "index": 3,
+      "group": "hud",
+      "id": "engine",
+      "prompt": "Generate exactly ONE clean flat white UI pictogram, not an illustration. This is a crisp professional game HUD icon for a Japanese night-racing game. White opaque geometric symbol on a genuinely transparent background. Smooth precision-cut silhouette and clean bold contours. Simplify the subject aggressively into a few broad shapes. No fine detail. Balanced flat 2D front view, no shading, no black strokes or dark fill, no texture, no distress or scratches, no grain, no glow, no shadows, no branding or labels. The white solid areas must be completely continuous with flawless smooth edges; interior negative space must be transparent and sharply defined. Square canvas. Center the one icon inside the middle 70% of the image with at least 15% empty transparent margin around all sides. It must work as a legible automotive instrument pictogram when scaled down to 32 pixels. NO sheet, no layout, no multiple icons. Subject: A familiar dashboard engine-block silhouette with short top cap and side outlet.",
+      "output_hint": "Generated images are saved to C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039 as C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f3ee4dce-1e29-4e4a-8e1b-5fe96dc6e77c.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+      "source": "C:\\Users\\desti\\.codex\\generated_images\\01a12774-9b7f-7832-bc02-78b77f6c5039\\exec-f3ee4dce-1e29-4e4a-8e1b-5fe96dc6e77c.png",
+      "file": "textures/ui_icons/hud/engine.png"
+    }
+  ]
+}

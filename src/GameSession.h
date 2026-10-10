@@ -4,6 +4,7 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include "json.hpp"
+#include "CollisionWorld.h"
 #include "DriveMode.h"
 #include "RoadNetwork.h"
 #include "RacingHUD.h"
@@ -24,22 +25,35 @@ typedef struct _SDL_GameController SDL_GameController;
 * in config/speedwall.json.
 *
 * Authoring data lives in the scene's "game" object: player/body nodes, spawn, handling, camera,
-* road_network, events[{id, type, name, difficulty, start:[x,z], start_heading_deg, trigger_radius,
-* countdown, checkpoints:[{pos:[x,z], width, heading_deg?}]}], hud (config path).
+* road_network, events[{id, type, name, difficulty, start:[x,z] or [x,y,z], start_heading_deg,
+* trigger_radius, countdown, checkpoints:[{pos:[x,z] or [x,y,z], width, heading_deg?}]}], hud (config
+* path), collision {files:[...glb]} (docs/shuto: stacked roads; positions with a height only count
+* within height_tolerance of the car, so a gate on an upper deck ignores the road below).
 */
 class GameSession {
 public:
-	struct Checkpoint { glm::vec2 pos{ 0.0f }; float width = 18.0f; float headingDeg = 0.0f; bool autoHeading = true; };
+	struct Checkpoint { glm::vec2 pos{ 0.0f }; float width = 18.0f; float headingDeg = 0.0f; bool autoHeading = true; float y = 0.0f; bool hasY = false; };
 	struct RaceEvent {
 		std::string id = "sprint_01";
 		std::string type = "SPRINT RACE";
 		std::string name = "A Legend's Wheels";
 		std::string difficulty = "Hard";
 		glm::vec2 start{ 0.0f };
+		float startY = 0.0f;
+		bool hasStartY = false;
 		float startHeadingDeg = 0.0f;
 		float triggerRadius = 9.0f;
 		float countdown = 3.0f;
 		std::vector<Checkpoint> checkpoints; // last = finish
+	};
+	// Free-roam places (docs/shuto): parking areas used as rest, meeting and photo spots. Arriving
+	// slowly shows the place, refills nitrous (rest) and lists the events that start nearby.
+	struct Place {
+		std::string id, type = "PARKING AREA", name, nameJa;
+		glm::vec2 pos{ 0.0f };
+		float y = 0.0f;
+		bool hasY = false;
+		float radius = 40.0f;
 	};
 	enum class Phase { FreeRoam, Countdown, Racing, Finished };
 	enum class MenuAction { None, ExitApplication };
@@ -69,7 +83,9 @@ public:
 	// Authoring access (editor panels).
 	DriveMode& Drive() { return m_drive; }
 	RoadNetwork& Roads() { return m_roads; }
+	const CollisionWorld& Collision() const { return m_collision; }
 	std::vector<RaceEvent>& Events() { return m_events; }
+	const std::vector<Place>& Places() const { return m_places; }
 	int SelectedEvent() const { return m_selectedEvent; }
 	void SetSelectedEvent(int i) { m_selectedEvent = i; }
 	Phase GetPhase() const { return m_phase; }
@@ -98,11 +114,24 @@ private:
 	void LoadBestTimes();
 	void SaveBestTimes() const;
 	glm::vec2 RouteTarget() const;
+	glm::vec3 RouteTarget3() const;
+	// Height gate for stacked roads: true when no height is authored or the car is within tolerance.
+	bool AtHeight(bool hasY, float y) const;
 	bool Project(const glm::vec3& world, glm::vec2& ndc, float& distance) const;
 
 	DriveMode m_drive;
 	RoadNetwork m_roads;
+	CollisionWorld m_collision;
+	float m_heightTolerance = 4.0f;
 	std::vector<RaceEvent> m_events;
+	std::vector<Place> m_places;
+	int m_atPlace = -1;
+	// Autopilot traversal diagnostics (NOX_DRIVE_AUTOPILOT): stuck / fall detection with recovery.
+	float m_apStuck = 0.0f;
+	float m_apLastY = 0.0f;
+	float m_apFallTimer = 0.0f;
+	int m_apIncidents = 0;
+	bool m_exitAfterFinish = false;     // NOX_EXIT_ON_FINISH: validation runs quit after one finish
 	nlohmann::json m_game;               // last configured authoring JSON (unknown keys preserved)
 	std::shared_ptr<Camera> m_camera;
 	SDL_GameController* m_pad = nullptr;

@@ -1,0 +1,1102 @@
+{
+ "bbox": [
+  -2600.0,
+  1500.0,
+  0.0,
+  6000.0
+ ],
+ "signs": [
+  {
+   "id": "rep_section.N000003.gore",
+   "kind": "gore",
+   "node": "N000003",
+   "carriageway": "1-Haneda.OUT.003",
+   "s": 38.93,
+   "pos": [
+    -1470.864,
+    15.445,
+    3935.757
+   ],
+   "heading_deg": -22.68,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000003_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "11.OUT.001",
+     "side": "ahead",
+     "text_ja": [
+      "11号台場線"
+     ],
+     "text_en": [
+      "Route 11 Daiba"
+     ]
+    },
+    {
+     "carriageway": "1-Haneda.OUT.004",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000004.advance",
+   "kind": "advance",
+   "node": "N000004",
+   "carriageway": "11.OUT.001",
+   "s": 1666.06,
+   "pos": [
+    -995.188,
+    58.4,
+    5302.579
+   ],
+   "heading_deg": 68.85,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000004_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "11.OUT.002",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    },
+    {
+     "carriageway": "11.OUT.003",
+     "side": "ahead",
+     "text_ja": [
+      "11号台場線"
+     ],
+     "text_en": [
+      "Route 11 Daiba"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000004.gore",
+   "kind": "gore",
+   "node": "N000004",
+   "carriageway": "11.OUT.001",
+   "s": 2126.06,
+   "pos": [
+    -565.403,
+    56.303,
+    5466.486
+   ],
+   "heading_deg": 71.31,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000004_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "11.OUT.002",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    },
+    {
+     "carriageway": "11.OUT.003",
+     "side": "ahead",
+     "text_ja": [
+      "11号台場線"
+     ],
+     "text_en": [
+      "Route 11 Daiba"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000005.advance",
+   "kind": "advance",
+   "node": "N000005",
+   "carriageway": "11.IN.004",
+   "s": 1048.96,
+   "pos": [
+    -1486.145,
+    58.4,
+    5078.172
+   ],
+   "heading_deg": -146.41,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000005_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "11.IN.002",
+     "side": "ahead",
+     "text_ja": [
+      "11号台場線"
+     ],
+     "text_en": [
+      "Route 11 Daiba"
+     ]
+    },
+    {
+     "carriageway": "11.IN.003",
+     "side": "ahead",
+     "text_ja": [
+      "11号台場線"
+     ],
+     "text_en": [
+      "Route 11 Daiba"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000005.gore",
+   "kind": "gore",
+   "node": "N000005",
+   "carriageway": "11.IN.004",
+   "s": 1508.96,
+   "pos": [
+    -1519.778,
+    37.243,
+    4624.072
+   ],
+   "heading_deg": -179.7,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000005_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "11.IN.002",
+     "side": "ahead",
+     "text_ja": [
+      "11号台場線"
+     ],
+     "text_en": [
+      "Route 11 Daiba"
+     ]
+    },
+    {
+     "carriageway": "11.IN.003",
+     "side": "ahead",
+     "text_ja": [
+      "11号台場線"
+     ],
+     "text_en": [
+      "Route 11 Daiba"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000013.advance",
+   "kind": "advance",
+   "node": "N000013",
+   "carriageway": "1-Haneda.IN.005",
+   "s": 1353.2,
+   "pos": [
+    -2173.721,
+    24.779,
+    5723.187
+   ],
+   "heading_deg": 176.16,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000013_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "1-Haneda.IN.003",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    },
+    {
+     "carriageway": "1-Haneda.IN.004",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000013.gore",
+   "kind": "gore",
+   "node": "N000013",
+   "carriageway": "1-Haneda.IN.005",
+   "s": 1813.2,
+   "pos": [
+    -2041.145,
+    25.902,
+    5286.622
+   ],
+   "heading_deg": 157.22,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000013_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "1-Haneda.IN.003",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    },
+    {
+     "carriageway": "1-Haneda.IN.004",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000016.advance",
+   "kind": "advance",
+   "node": "N000016",
+   "carriageway": "C1.CCW.025",
+   "s": 20.0,
+   "pos": [
+    -1930.124,
+    33.22,
+    3435.56
+   ],
+   "heading_deg": 78.43,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000016_advance.png",
+   "distance_shown_m": 350,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.022",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    },
+    {
+     "carriageway": "1-Haneda.OUT.002",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000016.gore",
+   "kind": "gore",
+   "node": "N000016",
+   "carriageway": "C1.CCW.025",
+   "s": 365.09,
+   "pos": [
+    -1588.382,
+    35.072,
+    3481.847
+   ],
+   "heading_deg": 84.18,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000016_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.022",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    },
+    {
+     "carriageway": "1-Haneda.OUT.002",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000020.gore",
+   "kind": "gore",
+   "node": "N000020",
+   "carriageway": "C1.CW.010",
+   "s": 53.16,
+   "pos": [
+    -251.137,
+    6.011,
+    1466.875
+   ],
+   "heading_deg": -23.88,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000020_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CW.012",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    },
+    {
+     "carriageway": "C1.CW.011",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000022.advance",
+   "kind": "advance",
+   "node": "N000022",
+   "carriageway": "1-Haneda.OUT.004",
+   "s": 345.88,
+   "pos": [
+    -1617.155,
+    27.642,
+    4291.103
+   ],
+   "heading_deg": -21.96,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000022_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "1-Haneda.OUT.006",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    },
+    {
+     "carriageway": "1-Haneda.OUT.005",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000022.gore",
+   "kind": "gore",
+   "node": "N000022",
+   "carriageway": "1-Haneda.OUT.004",
+   "s": 805.88,
+   "pos": [
+    -1789.346,
+    19.662,
+    4717.596
+   ],
+   "heading_deg": -23.14,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000022_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "1-Haneda.OUT.006",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    },
+    {
+     "carriageway": "1-Haneda.OUT.005",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000029.advance",
+   "kind": "advance",
+   "node": "N000029",
+   "carriageway": "C1.CCW.024",
+   "s": 523.96,
+   "pos": [
+    -981.598,
+    5.469,
+    2280.801
+   ],
+   "heading_deg": 108.62,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000029_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.017",
+     "side": "left",
+     "text_ja": [
+      "銀座"
+     ],
+     "text_en": [
+      "Ginza"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.018",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000029.gore",
+   "kind": "gore",
+   "node": "N000029",
+   "carriageway": "C1.CCW.024",
+   "s": 983.96,
+   "pos": [
+    -653.198,
+    1.193,
+    1968.425
+   ],
+   "heading_deg": 137.74,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000029_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.017",
+     "side": "left",
+     "text_ja": [
+      "銀座"
+     ],
+     "text_en": [
+      "Ginza"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.018",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000031.advance",
+   "kind": "advance",
+   "node": "N000031",
+   "carriageway": "C1.CCW.018",
+   "s": 20.0,
+   "pos": [
+    -632.816,
+    4.595,
+    1913.15
+   ],
+   "heading_deg": 172.38,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000031_advance.png",
+   "distance_shown_m": 450,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.015",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.014",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000031.gore",
+   "kind": "gore",
+   "node": "N000031",
+   "carriageway": "C1.CCW.018",
+   "s": 467.1,
+   "pos": [
+    -353.939,
+    7.208,
+    1574.657
+   ],
+   "heading_deg": 134.86,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000031_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.015",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.014",
+     "side": "ahead",
+     "text_ja": [],
+     "text_en": []
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000033.gore",
+   "kind": "gore",
+   "node": "N000033",
+   "carriageway": "C1.CW.012",
+   "s": 50.5,
+   "pos": [
+    -303.694,
+    7.279,
+    1540.386
+   ],
+   "heading_deg": -38.7,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000033_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CW.014",
+     "side": "ahead",
+     "text_ja": [
+      "銀座"
+     ],
+     "text_en": []
+    },
+    {
+     "carriageway": "C1.CW.013",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000049.advance",
+   "kind": "advance",
+   "node": "N000049",
+   "carriageway": "C1.CW.020",
+   "s": 173.39,
+   "pos": [
+    -1742.092,
+    22.928,
+    3473.973
+   ],
+   "heading_deg": -96.3,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000049_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "C1.CW.023",
+     "side": "ahead",
+     "text_ja": [
+      "芝公園"
+     ],
+     "text_en": []
+    },
+    {
+     "carriageway": "C1.CW.024",
+     "side": "right",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000049.gore",
+   "kind": "gore",
+   "node": "N000049",
+   "carriageway": "C1.CW.020",
+   "s": 633.39,
+   "pos": [
+    -2191.14,
+    26.605,
+    3434.058
+   ],
+   "heading_deg": -61.26,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000049_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CW.023",
+     "side": "ahead",
+     "text_ja": [
+      "芝公園"
+     ],
+     "text_en": []
+    },
+    {
+     "carriageway": "C1.CW.024",
+     "side": "right",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000051.advance",
+   "kind": "advance",
+   "node": "N000051",
+   "carriageway": "C1.CCW.031",
+   "s": 39.35,
+   "pos": [
+    -3073.867,
+    27.472,
+    3205.305
+   ],
+   "heading_deg": 74.96,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000051_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.029",
+     "side": "ahead",
+     "text_ja": [
+      "芝公園"
+     ],
+     "text_en": [
+      "Shibakoen"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.030",
+     "side": "right",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000051.gore",
+   "kind": "gore",
+   "node": "N000051",
+   "carriageway": "C1.CCW.031",
+   "s": 499.35,
+   "pos": [
+    -2623.497,
+    19.736,
+    3288.19
+   ],
+   "heading_deg": 70.3,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000051_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.029",
+     "side": "ahead",
+     "text_ja": [
+      "芝公園"
+     ],
+     "text_en": [
+      "Shibakoen"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.030",
+     "side": "right",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000185.advance",
+   "kind": "advance",
+   "node": "N000185",
+   "carriageway": "C1.CW.022",
+   "s": 87.65,
+   "pos": [
+    -1341.252,
+    28.287,
+    2760.272
+   ],
+   "heading_deg": -25.23,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000185_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "1-Haneda.OUT.001",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    },
+    {
+     "carriageway": "C1.CW.019",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000185.gore",
+   "kind": "gore",
+   "node": "N000185",
+   "carriageway": "C1.CW.022",
+   "s": 547.65,
+   "pos": [
+    -1292.574,
+    29.363,
+    3207.076
+   ],
+   "heading_deg": -0.05,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000185_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "1-Haneda.OUT.001",
+     "side": "ahead",
+     "text_ja": [
+      "1号羽田線"
+     ],
+     "text_en": [
+      "Route 1 Haneda"
+     ]
+    },
+    {
+     "carriageway": "C1.CW.019",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000230.advance",
+   "kind": "advance",
+   "node": "N000230",
+   "carriageway": "C1.CCW.021",
+   "s": 95.08,
+   "pos": [
+    -1304.642,
+    20.599,
+    3151.465
+   ],
+   "heading_deg": 179.86,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000230_advance.png",
+   "distance_shown_m": 500,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.023",
+     "side": "ahead",
+     "text_ja": [
+      "汐留"
+     ],
+     "text_en": []
+    },
+    {
+     "carriageway": "C1.CCW.024",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000230.gore",
+   "kind": "gore",
+   "node": "N000230",
+   "carriageway": "C1.CCW.021",
+   "s": 555.08,
+   "pos": [
+    -1327.559,
+    27.834,
+    2712.659
+   ],
+   "heading_deg": 146.66,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000230_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CCW.023",
+     "side": "ahead",
+     "text_ja": [
+      "汐留"
+     ],
+     "text_en": []
+    },
+    {
+     "carriageway": "C1.CCW.024",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000902.advance",
+   "kind": "advance",
+   "node": "N000902",
+   "carriageway": "C1.CCW.020",
+   "s": 20.0,
+   "pos": [
+    -1441.801,
+    23.571,
+    3833.069
+   ],
+   "heading_deg": 157.64,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000902_advance.png",
+   "distance_shown_m": 150,
+   "branches": [
+    {
+     "carriageway": "C1.CW.017",
+     "side": "left",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.019",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "rep_section.N000902.gore",
+   "kind": "gore",
+   "node": "N000902",
+   "carriageway": "C1.CCW.020",
+   "s": 178.91,
+   "pos": [
+    -1381.357,
+    20.976,
+    3686.106
+   ],
+   "heading_deg": 157.64,
+   "size_m": [
+    6.4,
+    2.2
+   ],
+   "texture": "textures/shuto/signs/rep_section/N000902_gore.png",
+   "distance_shown_m": 0,
+   "branches": [
+    {
+     "carriageway": "C1.CW.017",
+     "side": "left",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    },
+    {
+     "carriageway": "C1.CCW.019",
+     "side": "ahead",
+     "text_ja": [
+      "都心環状線"
+     ],
+     "text_en": [
+      "Inner Circular Route"
+     ]
+    }
+   ]
+  }
+ ],
+ "gaps": [
+  {
+   "node": "N000004",
+   "branch": "11.OUT.002",
+   "reason": "no verified destination name"
+  },
+  {
+   "node": "N000013",
+   "branch": "1-Haneda.IN.004",
+   "reason": "no verified destination name"
+  },
+  {
+   "node": "N000022",
+   "branch": "1-Haneda.OUT.005",
+   "reason": "no verified destination name"
+  },
+  {
+   "node": "N000031",
+   "branch": "C1.CCW.014",
+   "reason": "no verified destination name"
+  }
+ ],
+ "glb": "models/shuto/rep_section/signs.glb",
+ "fonts": [
+  "Noto Sans JP Bold/Medium (SIL OFL 1.1)"
+ ],
+ "substrate": "textures/shuto/derived/sign_panel_blanks_highway_green.png"
+}

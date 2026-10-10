@@ -1,0 +1,3304 @@
+{
+  "reference_date": "2002-12-31",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://en.wikipedia.org/wiki/Shuto_Expressway",
+      "title": "Shuto Expressway - Wikipedia (English)",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S2",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E9%81%93%E8%B7%AF",
+      "title": "Wikipedia (Japanese) 首都高速道路 overview and history (ASCII title; URL is the Japanese article)",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S3",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E9%83%BD%E5%BF%83%E7%92%B0%E7%8A%B6%E7%B7%9A",
+      "title": "Wikipedia (Japanese) Inner Circular Route (Tokyo Expressway C1) history tables",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S4",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E4%B8%AD%E5%A4%AE%E7%92%B0%E7%8A%B6%E7%B7%9A",
+      "title": "Wikipedia (Japanese) Central Circular Route (C2) history tables",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S5",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F1%E5%8F%B7%E7%BE%BD%E7%94%B0%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 1 Haneda Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S6",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F1%E5%8F%B7%E4%B8%8A%E9%87%8E%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 1 Ueno Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S7",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F2%E5%8F%B7%E7%9B%AE%E9%BB%92%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 2 Meguro Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S8",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F3%E5%8F%B7%E6%B8%8B%E8%B0%B7%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 3 Shibuya Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S9",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F4%E5%8F%B7%E6%96%B0%E5%AE%BF%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 4 Shinjuku Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S10",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F5%E5%8F%B7%E6%B1%A0%E8%A2%8B%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 5 Ikebukuro Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S11",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F6%E5%8F%B7%E5%90%91%E5%B3%B6%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 6 Mukojima Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S12",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F6%E5%8F%B7%E4%B8%89%E9%83%B7%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 6 Misato Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S13",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F7%E5%8F%B7%E5%B0%8F%E6%9D%BE%E5%B7%9D%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 7 Komatsugawa Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S14",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F9%E5%8F%B7%E6%B7%B1%E5%B7%9D%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 9 Fukagawa Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S15",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F11%E5%8F%B7%E5%8F%B0%E5%A0%B4%E7%B7%9A",
+      "title": "Wikipedia (Japanese) 11 Daiba Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S16",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E6%B9%BE%E5%B2%B8%E7%B7%9A",
+      "title": "Wikipedia (Japanese) Wangan Route (B)",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S17",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E7%A5%9E%E5%A5%88%E5%B7%9D1%E5%8F%B7%E6%A8%AA%E7%BE%BD%E7%B7%9A",
+      "title": "Wikipedia (Japanese) Kanagawa 1 Yokohane Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S18",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E7%A5%9E%E5%A5%88%E5%B7%9D5%E5%8F%B7%E5%A4%A7%E9%BB%92%E7%B7%9A",
+      "title": "Wikipedia (Japanese) Kanagawa 5 Daikoku Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S19",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E5%B7%9D%E5%8F%A3%E7%B7%9A",
+      "title": "Wikipedia (Japanese) S1 Kawaguchi Route",
+      "accessed": "2026-10-10"
+    },
+    {
+      "id": "S20",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E5%A4%A7%E5%AE%AE%E7%B7%9A",
+      "title": "Wikipedia (Japanese) S5 Omiya Route - HTTP 404, data NOT obtained",
+      "accessed": null
+    },
+    {
+      "id": "S21",
+      "url": "https://ja.wikipedia.org/wiki/%E9%A6%96%E9%83%BD%E9%AB%98%E9%80%9F%E5%B7%9D%E5%B4%8E%E7%B7%9A",
+      "title": "Wikipedia (Japanese) Kanagawa Kawasaki Route - HTTP 404, data NOT obtained",
+      "accessed": null
+    },
+    {
+      "id": "S22",
+      "url": "https://www.shutoko.jp/driving/route/",
+      "title": "Metropolitan Expressway official route page - HTTP 429 twice, NOT used",
+      "accessed": null
+    },
+    {
+      "id": "S23",
+      "url": "https://www.shutoko.jp/driving/navi-map/",
+      "title": "Metropolitan Expressway official navi-map page - not fetched",
+      "accessed": null
+    }
+  ],
+  "routes": [
+    {
+      "id": "C1",
+      "name_en": "Inner Circular Route",
+      "name_ja": "首都高速都心環状線",
+      "type": "loop",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "C1-1",
+          "from": "Edobashi JCT",
+          "to": "Kandabashi exit",
+          "opened": "1963-12-21",
+          "status_at_reference": "open",
+          "length_km": 0.6,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Source S2 gives Gofukubashi exit-Edobashi JCT 0.6 km; S3 lists the 1963-12-21 date. Confirm endpoint."
+        },
+        {
+          "id": "C1-2",
+          "from": "Gofukubashi exit",
+          "to": "Kandabashi exit",
+          "opened": "1964-08-02",
+          "status_at_reference": "open",
+          "length_km": 0.4,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 summary."
+        },
+        {
+          "id": "C1-3",
+          "from": "Miyakezaka JCT",
+          "to": "Kasumigaseki exit",
+          "opened": "1964-09-21",
+          "status_at_reference": "open",
+          "length_km": 1.4,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 summary and S3 table agree on date."
+        },
+        {
+          "id": "C1-4",
+          "from": "Hamazakibashi JCT",
+          "to": "Shibakoen exit",
+          "opened": "1964-10-01",
+          "status_at_reference": "open",
+          "length_km": 1.4,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 summary; S3 table agrees."
+        },
+        {
+          "id": "C1-5",
+          "from": "Shibakoen exit",
+          "to": "Kasumigaseki exit",
+          "opened": "1967-07-04",
+          "status_at_reference": "open",
+          "length_km": 3.7,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Loop completed. S2 and S3 both give this date."
+        },
+        {
+          "id": "C1-6",
+          "from": "Kyobashi JCT",
+          "to": "Hakuobashi transfer",
+          "opened": "1966-07-02",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Source S3 lists the 1966-07-02 Kyobashi JCT / Hakuobashi entry; length not stated. S2 says this JCT was new when route 8 was completed."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Miyakezaka JCT (transliteration)",
+          "name_ja": "三宅坂JCT",
+          "connects": [
+            "C1",
+            "4"
+          ],
+          "notes": "Source S2/S9."
+        },
+        {
+          "name_en": "Takebashi JCT (transliteration)",
+          "name_ja": "竹橋JCT",
+          "connects": [
+            "C1",
+            "5"
+          ],
+          "notes": "Source S2/S10."
+        },
+        {
+          "name_en": "Kyobashi JCT (transliteration)",
+          "name_ja": "京橋JCT",
+          "connects": [
+            "C1"
+          ],
+          "notes": "Source S3 (1966-07-02 new). Associated with the now-unused route 8 designation; see verification notes."
+        },
+        {
+          "name_en": "Edobashi JCT (transliteration)",
+          "name_ja": "江戸橋JCT",
+          "connects": [
+            "C1",
+            "1-Ueno",
+            "6-Mukojima",
+            "Y"
+          ],
+          "notes": "Source S2/S6/S11."
+        },
+        {
+          "name_en": "Ichinohashi JCT (transliteration)",
+          "name_ja": "一ノ橋JCT",
+          "connects": [
+            "C1",
+            "2"
+          ],
+          "notes": "Source S7."
+        },
+        {
+          "name_en": "Tanimachi JCT (transliteration)",
+          "name_ja": "谷町JCT",
+          "connects": [
+            "C1",
+            "3"
+          ],
+          "notes": "Source S8."
+        },
+        {
+          "name_en": "Hamazakibashi JCT (transliteration)",
+          "name_ja": "浜崎橋JCT",
+          "connects": [
+            "C1",
+            "1-Haneda"
+          ],
+          "notes": "Source S3/S5."
+        },
+        {
+          "name_en": "Kandabashi JCT (transliteration)",
+          "name_ja": "神田橋JCT",
+          "connects": [
+            "C1",
+            "Y"
+          ],
+          "notes": "Source S3."
+        },
+        {
+          "name_en": "Shiodome JCT (transliteration)",
+          "name_ja": "汐留JCT",
+          "connects": [
+            "C1",
+            "Y"
+          ],
+          "notes": "Source S3."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Kyobashi exit (transliteration)",
+          "name_ja": "京橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "Source S2 lists under 1962 unnumbered section."
+        },
+        {
+          "name_en": "Gofukubashi exit (transliteration)",
+          "name_ja": "呉服橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "Open at reference; closed 2021-05-10 for Nihonbashi underground project (S2, S3)."
+        },
+        {
+          "name_en": "Edobashi exit (transliteration)",
+          "name_ja": "江戸橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "Closed 2021-05-10 (S2)."
+        },
+        {
+          "name_en": "Kasumigaseki exit (transliteration)",
+          "name_ja": "霞が関出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S3."
+        },
+        {
+          "name_en": "Shibakoen exit (transliteration)",
+          "name_ja": "芝公園出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S3."
+        },
+        {
+          "name_en": "Kandabashi exit (transliteration)",
+          "name_ja": "神田橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S3."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "C2",
+      "name_en": "Central Circular Route",
+      "name_ja": "首都高速中央環状線",
+      "type": "loop",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "C2-1",
+          "from": "Senju-shinbashi exit",
+          "to": "Horikiri JCT",
+          "opened": "1982-03-30",
+          "status_at_reference": "open",
+          "length_km": 3.4,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Length is an estimate in S4 derived from km markers; S4 says approximately 3.4 km. Also agrees with S11 (route 6 completion 1982-03-30)."
+        },
+        {
+          "id": "C2-2",
+          "from": "Horikiri JCT",
+          "to": "Yotsugi exit",
+          "opened": "1983-11-30",
+          "status_at_reference": "open",
+          "length_km": 1.4,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 gives 1.4 km; S4 estimate 0.9 km. Conflict, see verification notes."
+        },
+        {
+          "id": "C2-3",
+          "from": "Kohoku JCT",
+          "to": "Senju-shinbashi exit",
+          "opened": "1987-09-09",
+          "status_at_reference": "open",
+          "length_km": 3.5,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S4 estimate 3.5 km."
+        },
+        {
+          "id": "C2-4",
+          "from": "Yotsugi exit",
+          "to": "Kasai JCT",
+          "opened": "1987-09-09",
+          "status_at_reference": "open",
+          "length_km": 11.2,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 and S4 both give this 1987 date."
+        },
+        {
+          "id": "C2-5",
+          "from": "Seishincho exit",
+          "to": "(exit opened)",
+          "opened": "2002-03-29",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "Interchange opening only, per S4."
+        },
+        {
+          "id": "C2-6",
+          "from": "Itabashi JCT",
+          "to": "Kohoku JCT",
+          "opened": "2002-12-25",
+          "status_at_reference": "open",
+          "length_km": 7.1,
+          "features": [
+            "elevated"
+          ],
+          "notes": "This is the Chuo Loop Oji line. S2 gives 7.1 km; S4 estimate 6.5 km. Opens 6 days before reference date; counted as open. Also S3 (route 5) lists the same date."
+        },
+        {
+          "id": "C2-7",
+          "from": "Nishi-Shinjuku JCT",
+          "to": "Kumanocho JCT",
+          "opened": "2007-12-22",
+          "status_at_reference": "not_yet_open",
+          "length_km": 6.7,
+          "features": [
+            "tunnel"
+          ],
+          "notes": "Excluded by reference date."
+        },
+        {
+          "id": "C2-8",
+          "from": "Ohashi JCT",
+          "to": "Nishi-Shinjuku JCT",
+          "opened": "2010-03-28",
+          "status_at_reference": "not_yet_open",
+          "length_km": 4.3,
+          "features": [
+            "tunnel"
+          ],
+          "notes": "Excluded by reference date."
+        },
+        {
+          "id": "C2-9",
+          "from": "Oi JCT",
+          "to": "Ohashi JCT",
+          "opened": "2015-03-07",
+          "status_at_reference": "not_yet_open",
+          "length_km": 9.4,
+          "features": [
+            "tunnel"
+          ],
+          "notes": "This is the Yamate Tunnel / C2 western section. Excluded by reference date, and it completed C2."
+        },
+        {
+          "id": "C2-10",
+          "from": "Oji-Minami exit",
+          "to": "(exit opened)",
+          "opened": "2015-03-29",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S4)."
+        },
+        {
+          "id": "C2-11",
+          "from": "Komatsugawa Chuo entrance/JCT",
+          "to": "(JCT opened)",
+          "opened": "2019-12-01",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Komatsugawa JCT, excluded by reference date (S13, S4)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Itabashi JCT (transliteration)",
+          "name_ja": "板橋JCT",
+          "connects": [
+            "C2",
+            "5"
+          ],
+          "notes": "Opened 2002-12-25 (S10, S4). Counted as open at reference."
+        },
+        {
+          "name_en": "Kohoku JCT (transliteration)",
+          "name_ja": "江北JCT",
+          "connects": [
+            "C2",
+            "S1"
+          ],
+          "notes": "S4 lists in 2002 state. S19 says S1 connects to C2 at Kohoku JCT."
+        },
+        {
+          "name_en": "Kosuge JCT (transliteration)",
+          "name_ja": "小菅JCT",
+          "connects": [
+            "C2",
+            "6-Misato"
+          ],
+          "notes": "S4 lists in 2002 state. S12 says 6-Misato starts at Kosuge JCT, opened 1985-01-24."
+        },
+        {
+          "name_en": "Horikiri JCT (transliteration)",
+          "name_ja": "堀切JCT",
+          "connects": [
+            "C2",
+            "6-Mukojima"
+          ],
+          "notes": "S4 lists in 2002 state; S11 says 6-Mukojima reaches Horikiri JCT 1982-03-30."
+        },
+        {
+          "name_en": "Kasai JCT (transliteration)",
+          "name_ja": "葛西JCT",
+          "connects": [
+            "C2"
+          ],
+          "notes": "S4 lists in 2002 state. Connection to Wangan (B) not verified in sources."
+        },
+        {
+          "name_en": "Kumanocho JCT (transliteration)",
+          "name_ja": "熊野町JCT",
+          "connects": [
+            "C2",
+            "5"
+          ],
+          "notes": "Opened 2007-12-22; not in era (S10). Route 5 section existed earlier as a 1977 section, but the JCT connection to C2 is post-era."
+        },
+        {
+          "name_en": "Nishi-Shinjuku JCT (transliteration)",
+          "name_ja": "西新宿JCT",
+          "connects": [
+            "C2",
+            "4"
+          ],
+          "notes": "Partial 2007-12-22, full 2010-03-28 (S4, S9). Not in era."
+        },
+        {
+          "name_en": "Ohashi JCT (transliteration)",
+          "name_ja": "大橋JCT",
+          "connects": [
+            "C2",
+            "3"
+          ],
+          "notes": "Opened 2010-03-28 (S8); connection to C2 Central Loop Shinagawa line 2015-03-07. Not in era."
+        },
+        {
+          "name_en": "Oi JCT (transliteration)",
+          "name_ja": "大井JCT",
+          "connects": [
+            "C2",
+            "B"
+          ],
+          "notes": "C2 side opened 2015-03-07 (S4). Wangan side newly built 1989-12-16 (S16). Not in era for C2 link."
+        },
+        {
+          "name_en": "Komatsugawa JCT (transliteration)",
+          "name_ja": "小松川JCT",
+          "connects": [
+            "C2",
+            "7"
+          ],
+          "notes": "Opened 2019-12-01 (S13). Not in era."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Senju-shinbashi exit (transliteration)",
+          "name_ja": "千住新橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "Listed in S4 2002 state."
+        },
+        {
+          "name_en": "Ogibashi exit (transliteration)",
+          "name_ja": "扇大橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S4 2002 state."
+        },
+        {
+          "name_en": "Kosuge exit (transliteration)",
+          "name_ja": "小菅出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S4 2002 state."
+        },
+        {
+          "name_en": "Yotsugi exit (transliteration)",
+          "name_ja": "四つ木出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S4 2002 state."
+        },
+        {
+          "name_en": "Hiraido-bashi exit (transliteration)",
+          "name_ja": "平井大橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S4 2002 state."
+        },
+        {
+          "name_en": "Funabori-bashi exit (transliteration)",
+          "name_ja": "船堀橋出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S4 2002 state."
+        },
+        {
+          "name_en": "Seishincho exit (transliteration)",
+          "name_ja": "清新町出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "Opened 2002-03-29 (S4)."
+        },
+        {
+          "name_en": "Shin-Itabashi exit (transliteration)",
+          "name_ja": "新板橋出口",
+          "code": null,
+          "directions": "outbound",
+          "notes": "S4 2002 state; exit only."
+        },
+        {
+          "name_en": "Takinogawa entrance (transliteration)",
+          "name_ja": "滝野川入口",
+          "code": null,
+          "directions": "inbound",
+          "notes": "S4 2002 state; entrance only."
+        },
+        {
+          "name_en": "Oji-Kita exit (transliteration)",
+          "name_ja": "王子北出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S4 2002 state."
+        },
+        {
+          "name_en": "Oji-Minami exit (transliteration)",
+          "name_ja": "王子南出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "Opened 2015-03-29, not in era (S4)."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Kasai JCT area",
+          "connects_to_operator_road": "None (internal Shuto connection to B route not verified)",
+          "notes": "Connection to B route not verified in fetched sources."
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name_en": "Bayshore Route",
+      "name_ja": "首都高速湾岸線",
+      "type": "bayshore",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "B-1",
+          "from": "Oi IC",
+          "to": "13-go-chi IC (Rinkai-Fukutoshin IC from 2007)",
+          "opened": "1976-08-12",
+          "status_at_reference": "open",
+          "length_km": 2.8,
+          "features": [
+            "tunnel"
+          ],
+          "notes": "Tokyo Port Tunnel. S16 and S3 agree on date; length 2.8 km from S16."
+        },
+        {
+          "id": "B-2",
+          "from": "Shinkiba IC",
+          "to": "Urayasu IC",
+          "opened": "1978-01-20",
+          "status_at_reference": "open",
+          "length_km": 6.0,
+          "features": [],
+          "notes": "S16 date; S2 length 6.0."
+        },
+        {
+          "id": "B-3",
+          "from": "Tatsumi JCT",
+          "to": "Shinkiba IC",
+          "opened": "1980-02-05",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "S16 date; S14 agrees on 9-route opening date."
+        },
+        {
+          "id": "B-4",
+          "from": "Ariake IC",
+          "to": "Tatsumi JCT exit",
+          "opened": "1981-05-19",
+          "status_at_reference": "open",
+          "length_km": 1.7,
+          "features": [],
+          "notes": "S16 date; length from S2."
+        },
+        {
+          "id": "B-5",
+          "from": "Urayasu IC",
+          "to": "Takaya JCT (Higashi-Kanto Expressway connection)",
+          "opened": "1982-04-27",
+          "status_at_reference": "open",
+          "length_km": 6.9,
+          "features": [],
+          "notes": "S16 date; length from S2."
+        },
+        {
+          "id": "B-6",
+          "from": "Tokai JCT",
+          "to": "Oi IC",
+          "opened": "1983-02-24",
+          "status_at_reference": "open",
+          "length_km": 5.1,
+          "features": [],
+          "notes": "S16 date; length from S2."
+        },
+        {
+          "id": "B-7",
+          "from": "13-go-chi IC",
+          "to": "Ariake IC",
+          "opened": "1984-12-12",
+          "status_at_reference": "open",
+          "length_km": 1.8,
+          "features": [],
+          "notes": "S16 date; length from S2."
+        },
+        {
+          "id": "B-8",
+          "from": "Honmoku Futo IC",
+          "to": "Daikoku JCT",
+          "opened": "1989-09-27",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [
+            "bridge"
+          ],
+          "notes": "Yokohama Bay Bridge era. S16 date; also the K5 full-route date (S18)."
+        },
+        {
+          "id": "B-9",
+          "from": "Ariake JCT",
+          "to": "(JCT new)",
+          "opened": "1993-08-26",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "S16 and S15 both give 1993-08-26 for the 11-Daiba route / Ariake JCT; S16 calls Ariake JCT newly built."
+        },
+        {
+          "id": "B-10",
+          "from": "Kuko-Chuo IC",
+          "to": "Tokai JCT",
+          "opened": "1993-09-27",
+          "status_at_reference": "open",
+          "length_km": 4.2,
+          "features": [],
+          "notes": "S16 date; length from S2."
+        },
+        {
+          "id": "B-11",
+          "from": "Daikoku JCT",
+          "to": "Kuko-Chuo IC",
+          "opened": "1994-12-21",
+          "status_at_reference": "open",
+          "length_km": 16.4,
+          "features": [
+            "bridge"
+          ],
+          "notes": "Tsurumi Tsubasa Bridge era. Length from S2 (16.4 km). S16 date."
+        },
+        {
+          "id": "B-12",
+          "from": "Ukishima IC",
+          "to": "(IC opened)",
+          "opened": "1997-12-12",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "S16 date."
+        },
+        {
+          "id": "B-13",
+          "from": "Tokyo Bay Aqua-Line connection",
+          "to": "(connection)",
+          "opened": "1997-12-18",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "S16 date."
+        },
+        {
+          "id": "B-14",
+          "from": "Namiki/Koura IC",
+          "to": "Sugita IC",
+          "opened": "1999-07-15",
+          "status_at_reference": "open",
+          "length_km": 4.1,
+          "features": [],
+          "notes": "S16 date; temporary Sankeien IC to Honmoku Futo IC also opened the same day (length 4.1 km per S2 summary)."
+        },
+        {
+          "id": "B-15",
+          "from": "Maihama entrance",
+          "to": "(entrance opened)",
+          "opened": "2001-08-29",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "S16 date."
+        },
+        {
+          "id": "B-16",
+          "from": "Sugita IC",
+          "to": "Sankeien IC",
+          "opened": "2001-10-22",
+          "status_at_reference": "open",
+          "length_km": 7.0,
+          "features": [],
+          "notes": "Completed Wangan Route. S16 and S2 agree."
+        },
+        {
+          "id": "B-17",
+          "from": "Honmoku JCT",
+          "to": "(improved)",
+          "opened": "2004-12-22",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S16)."
+        },
+        {
+          "id": "B-18",
+          "from": "Shinonome JCT",
+          "to": "(JCT newly built)",
+          "opened": "2009-02-11",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S16)."
+        },
+        {
+          "id": "B-19",
+          "from": "Minami-Honmoku Futo IC",
+          "to": "(IC opened)",
+          "opened": "2017-03-04",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S16)."
+        },
+        {
+          "id": "B-20",
+          "from": "Takaya JCT",
+          "to": "Tokyo Outer Ring Road connection",
+          "opened": "2018-06-02",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S16)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Tokai JCT (transliteration)",
+          "name_ja": "東海JCT",
+          "connects": [
+            "B",
+            "Wangan Branch"
+          ],
+          "notes": "Segments 1983 and 1993 (S16)."
+        },
+        {
+          "name_en": "Oi JCT (transliteration)",
+          "name_ja": "大井JCT",
+          "connects": [
+            "B",
+            "C2",
+            "1-Haneda"
+          ],
+          "notes": "Newly built 1989-12-16 (S16). C2 link is post-era (2015)."
+        },
+        {
+          "name_en": "Tatsumi JCT (transliteration)",
+          "name_ja": "辰巳JCT",
+          "connects": [
+            "B",
+            "9"
+          ],
+          "notes": "1980 (S16, S14)."
+        },
+        {
+          "name_en": "Ariake JCT (transliteration)",
+          "name_ja": "有明JCT",
+          "connects": [
+            "B",
+            "11"
+          ],
+          "notes": "Newly built 1993-08-26 (S16, S15)."
+        },
+        {
+          "name_en": "Shinonome JCT (transliteration)",
+          "name_ja": "東雲JCT",
+          "connects": [
+            "B",
+            "10"
+          ],
+          "notes": "Newly built 2009-02-11 (not in era)."
+        },
+        {
+          "name_en": "Takaya JCT (transliteration)",
+          "name_ja": "高谷JCT",
+          "connects": [
+            "B",
+            "Higashi-Kanto Expressway"
+          ],
+          "notes": "1982 connection; Tokyo Outer Ring Road connection 2018 (not in era)."
+        },
+        {
+          "name_en": "Daikoku JCT (transliteration)",
+          "name_ja": "大黒JCT",
+          "connects": [
+            "B",
+            "K5"
+          ],
+          "notes": "1989 (S16, S18)."
+        },
+        {
+          "name_en": "Kawasaki-Ukishima JCT (transliteration)",
+          "name_ja": "川崎浮島JCT",
+          "connects": [
+            "B",
+            "K6"
+          ],
+          "notes": "Connection year not verified; Aqua-Line connection 1997-12-18 (S16)."
+        },
+        {
+          "name_en": "Honmoku JCT (transliteration)",
+          "name_ja": "本牧JCT",
+          "connects": [
+            "B",
+            "K3"
+          ],
+          "notes": "Improved 2004-12-22 for K3 connection; not in era."
+        },
+        {
+          "name_en": "Showajima JCT (transliteration)",
+          "name_ja": "昭和島JCT",
+          "connects": [
+            "B"
+          ],
+          "notes": "Year not stated."
+        },
+        {
+          "name_en": "Kasai JCT (transliteration)",
+          "name_ja": "葛西JCT",
+          "connects": [
+            "B",
+            "C2"
+          ],
+          "notes": "Year not stated. C2 link not verified."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Koura IC (transliteration)",
+          "name_ja": "幸浦出入口",
+          "code": "B01",
+          "directions": "both",
+          "notes": "1999 (segment)."
+        },
+        {
+          "name_en": "Sugita IC (transliteration)",
+          "name_ja": "杉田出入口",
+          "code": "B02",
+          "directions": "both",
+          "notes": "1999 (segment)."
+        },
+        {
+          "name_en": "Isogo IC (transliteration)",
+          "name_ja": "磯子出入口",
+          "code": "B05",
+          "directions": "both",
+          "notes": "2001 completion; date not stated."
+        },
+        {
+          "name_en": "Sankeien IC (transliteration)",
+          "name_ja": "三渓園出入口",
+          "code": "B06",
+          "directions": "both",
+          "notes": "1999 temporary, 2001 full."
+        },
+        {
+          "name_en": "Minami-Honmoku Futo IC (transliteration)",
+          "name_ja": "南本牧ふ頭出入口",
+          "code": "B07A",
+          "directions": "both",
+          "notes": "Opened 2017 - not in era."
+        },
+        {
+          "name_en": "Honmoku Futo IC (transliteration)",
+          "name_ja": "本牧ふ頭出入口",
+          "code": "B07B",
+          "directions": "both",
+          "notes": "1989 (segment)."
+        },
+        {
+          "name_en": "Daikoku Futo IC (transliteration)",
+          "name_ja": "大黒ふ頭出入口",
+          "code": "B08",
+          "directions": "both",
+          "notes": "Year not stated."
+        },
+        {
+          "name_en": "Higashi-Ogishima IC (transliteration)",
+          "name_ja": "東扇島出入口",
+          "code": "B10",
+          "directions": "both",
+          "notes": "Year not stated."
+        },
+        {
+          "name_en": "Ukishima IC (transliteration)",
+          "name_ja": "浮島出入口",
+          "code": "B12",
+          "directions": "both",
+          "notes": "1997-12-12."
+        },
+        {
+          "name_en": "Wangan-Kanpachi IC (transliteration)",
+          "name_ja": "湾岸環八出入口",
+          "code": "B14",
+          "directions": "both",
+          "notes": "Year not stated."
+        },
+        {
+          "name_en": "Kuko-Chuo IC (transliteration)",
+          "name_ja": "空港中央出入口",
+          "code": "B16",
+          "directions": "both",
+          "notes": "1993 (segment)."
+        },
+        {
+          "name_en": "Oi-Minami IC (transliteration)",
+          "name_ja": "大井南出入口",
+          "code": "B18",
+          "directions": "both",
+          "notes": "Year not stated; relocated 2012 (S16)."
+        },
+        {
+          "name_en": "Oi IC (transliteration)",
+          "name_ja": "大井出入口",
+          "code": "B21",
+          "directions": "both",
+          "notes": "1976 (segment)."
+        },
+        {
+          "name_en": "Rinkai-Fukutoshin IC (transliteration)",
+          "name_ja": "臨海副都心出入口",
+          "code": "B22",
+          "directions": "both",
+          "notes": "Named 13-go-chi IC until renamed 2007 (S16)."
+        },
+        {
+          "name_en": "Ariake IC (transliteration)",
+          "name_ja": "有明出入口",
+          "code": "B23",
+          "directions": "both",
+          "notes": "1981 and 1984 (segments)."
+        },
+        {
+          "name_en": "Shinkiba IC (transliteration)",
+          "name_ja": "新木場出入口",
+          "code": "B24",
+          "directions": "both",
+          "notes": "1978/1980 (segments)."
+        },
+        {
+          "name_en": "Kasai IC (transliteration)",
+          "name_ja": "葛西出入口",
+          "code": "B26",
+          "directions": "both",
+          "notes": "Year not stated."
+        },
+        {
+          "name_en": "Maihama entrance (transliteration)",
+          "name_ja": "舞浜入口",
+          "code": "B28",
+          "directions": "inbound",
+          "notes": "2001-08-29."
+        },
+        {
+          "name_en": "Urayasu IC (transliteration)",
+          "name_ja": "浦安出入口",
+          "code": "B30",
+          "directions": "both",
+          "notes": "1978 (segment)."
+        },
+        {
+          "name_en": "Chidoricho IC (transliteration)",
+          "name_ja": "千鳥町出入口",
+          "code": "B32",
+          "directions": "both",
+          "notes": "Year not stated."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Daikoku PA (transliteration)",
+          "name_ja": "大黒PA",
+          "direction": "both",
+          "notes": "Year not stated (S18 mentions it)."
+        },
+        {
+          "name_en": "Oi PA (transliteration)",
+          "name_ja": "大井PA",
+          "direction": "both",
+          "notes": "Relocated 2012; original opening year not stated (S16)."
+        },
+        {
+          "name_en": "Ichikawa PA (transliteration)",
+          "name_ja": "市川PA",
+          "direction": "both",
+          "notes": "Year not stated."
+        }
+      ],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Takaya JCT",
+          "connects_to_operator_road": "Higashi-Kanto Expressway (NEXCO East)",
+          "notes": "Connection 1982-04-27 (S16). Operator name from general knowledge, not verified in sources."
+        },
+        {
+          "at": "Sugita IC / Kanazawa branch",
+          "connects_to_operator_road": "Yokohama Yokosuka Road (not in fetched sources to verify operator)",
+          "notes": "1999 connection (S16)."
+        },
+        {
+          "at": "Tokai JCT",
+          "connects_to_operator_road": "Tomei/Tokai area roads - not verified",
+          "notes": "Interchange with other roads not verified in fetched sources."
+        }
+      ]
+    },
+    {
+      "id": "1-Haneda",
+      "name_en": "Haneda Route",
+      "name_ja": "首都高速1号羽田線",
+      "type": "radial",
+      "length_km_total_current": 13.8,
+      "segments": [
+        {
+          "id": "1H-1",
+          "from": "Hamazakibashi JCT",
+          "to": "Shibaura exit",
+          "opened": "1962-12-20",
+          "status_at_reference": "open",
+          "length_km": 1.7,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S5 gives 1.7 km (derived from km markers). S6 says 1962-12-20 Kyobashi-Shibaura 4.5 km (unnumbered). Length conflict."
+        },
+        {
+          "id": "1H-2",
+          "from": "Shibaura exit",
+          "to": "Suzugamori exit",
+          "opened": "1963-12-21",
+          "status_at_reference": "open",
+          "length_km": 6.4,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 gives 6.4 km; S5 derived 5.8 km."
+        },
+        {
+          "id": "1H-3",
+          "from": "Suzugamori exit",
+          "to": "Kuko-Nishi exit",
+          "opened": "1964-08-02",
+          "status_at_reference": "open",
+          "length_km": 4.6,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 gives 4.6 km; S5 derived 3.8 km."
+        },
+        {
+          "id": "1H-4",
+          "from": "Kuko-Nishi exit",
+          "to": "Haneda exit",
+          "opened": "1966-12-21",
+          "status_at_reference": "open",
+          "length_km": 0.9,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 gives 0.9 km; S5 derived 1.2 km."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Hamazakibashi JCT (transliteration)",
+          "name_ja": "浜崎橋JCT",
+          "connects": [
+            "1-Haneda",
+            "C1"
+          ],
+          "notes": "Route start (S5)."
+        },
+        {
+          "name_en": "Shibaura JCT (transliteration)",
+          "name_ja": "芝浦JCT",
+          "connects": [
+            "1-Haneda",
+            "11"
+          ],
+          "notes": "Within 1962 section (S5)."
+        },
+        {
+          "name_en": "Showajima JCT (transliteration)",
+          "name_ja": "昭和島JCT",
+          "connects": [
+            "1-Haneda",
+            "B"
+          ],
+          "notes": "Year within 1964 section (S5)."
+        },
+        {
+          "name_en": "Oi JCT (transliteration)",
+          "name_ja": "大井JCT",
+          "connects": [
+            "1-Haneda",
+            "B",
+            "C2"
+          ],
+          "notes": "Newly built 1989-12-16 (S5)."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Shibaura exit (transliteration)",
+          "name_ja": "芝浦出入口",
+          "code": "101/102",
+          "directions": "both",
+          "notes": "1962 (S5)."
+        },
+        {
+          "name_en": "Katsushima exit (transliteration)",
+          "name_ja": "勝島出入口",
+          "code": "103",
+          "directions": "both",
+          "notes": "Code conflicts between S5 table and infobox (104). Year not stated."
+        },
+        {
+          "name_en": "Suzugamori exit (transliteration)",
+          "name_ja": "鈴ヶ森出入口",
+          "code": "104",
+          "directions": "both",
+          "notes": "1963 (S5)."
+        },
+        {
+          "name_en": "Heiwajima exit (transliteration)",
+          "name_ja": "平和島出入口",
+          "code": "105/106",
+          "directions": "both",
+          "notes": "Year not stated. Closed 2019-11-30 to 2019-12-22 for toll plaza demolition (S5 mentions PA)."
+        },
+        {
+          "name_en": "Kuko-Nishi exit (transliteration)",
+          "name_ja": "空港西出入口",
+          "code": "107",
+          "directions": "both",
+          "notes": "1964 (S5)."
+        },
+        {
+          "name_en": "Haneda exit (transliteration)",
+          "name_ja": "羽田出入口",
+          "code": "109",
+          "directions": "both",
+          "notes": "1966 (S5)."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Heiwajima PA (transliteration)",
+          "name_ja": "平和島PA",
+          "direction": "both",
+          "notes": "Opening year not stated; temporarily closed 2019 (S5)."
+        }
+      ],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "1-Ueno",
+      "name_en": "Ueno Route",
+      "name_ja": "首都高速1号上野線",
+      "type": "radial",
+      "length_km_total_current": 4.4,
+      "segments": [
+        {
+          "id": "1U-1",
+          "from": "Edobashi JCT",
+          "to": "Honmachi exit",
+          "opened": "1963-12-21",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S6 chronology; length not stated. Note S2 does not list this date."
+        },
+        {
+          "id": "1U-2",
+          "from": "Honmachi exit",
+          "to": "Iriya exit",
+          "opened": "1969-05-31",
+          "status_at_reference": "open",
+          "length_km": 3.6,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Route completed. S2 gives 3.6 km; S6 says length not stated."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Edobashi JCT (transliteration)",
+          "name_ja": "江戸橋JCT",
+          "connects": [
+            "1-Ueno",
+            "C1"
+          ],
+          "notes": "Start point."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Honmachi exit (transliteration)",
+          "name_ja": "本町出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S6."
+        },
+        {
+          "name_en": "Ueno exit (transliteration)",
+          "name_ja": "上野出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S6."
+        },
+        {
+          "name_en": "Iriya exit (transliteration)",
+          "name_ja": "入谷出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "End point (S6)."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [
+        {
+          "name_en": "Kita-Ueno toll booth (transliteration)",
+          "name_ja": "北上野TB",
+          "notes": "S6."
+        }
+      ],
+      "boundaries": []
+    },
+    {
+      "id": "2",
+      "name_en": "Meguro Route",
+      "name_ja": "首都高速2号目黒線",
+      "type": "radial",
+      "length_km_total_current": 5.9,
+      "segments": [
+        {
+          "id": "2-1",
+          "from": "Ichinohashi JCT",
+          "to": "Togoshi exit",
+          "opened": "1967-09-30",
+          "status_at_reference": "open",
+          "length_km": 5.9,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Full route opened (S7). Construction began 1959-02-26 under the earlier Japan Highway Public Corporation plan (S7)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Ichinohashi JCT (transliteration)",
+          "name_ja": "一ノ橋JCT",
+          "connects": [
+            "2",
+            "C1"
+          ],
+          "notes": "Route start."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Tengenji exit (transliteration)",
+          "name_ja": "天現寺出入口",
+          "code": "201",
+          "directions": "both",
+          "notes": "Ginza/Kita-Ikebukuro entrance is ETC-only (S7)."
+        },
+        {
+          "name_en": "Meguro exit (transliteration)",
+          "name_ja": "目黒出入口",
+          "code": "203",
+          "directions": "both",
+          "notes": "S7."
+        },
+        {
+          "name_en": "Ebara exit (transliteration)",
+          "name_ja": "荏原出入口",
+          "code": "207",
+          "directions": "both",
+          "notes": "S7."
+        },
+        {
+          "name_en": "Togoshi exit (transliteration)",
+          "name_ja": "戸越出入口",
+          "code": "205",
+          "directions": "both",
+          "notes": "End point (S7)."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [
+        {
+          "name_en": "Shirokane TB (transliteration)",
+          "name_ja": "白金TB",
+          "notes": "S7."
+        }
+      ],
+      "boundaries": []
+    },
+    {
+      "id": "3",
+      "name_en": "Shibuya Route",
+      "name_ja": "首都高速3号渋谷線",
+      "type": "radial",
+      "length_km_total_current": 11.7,
+      "segments": [
+        {
+          "id": "3-1",
+          "from": "Shibuya temporary entrance (Shibuya 4-chome)",
+          "to": "Shibuya exit",
+          "opened": "1964-10-01",
+          "status_at_reference": "open",
+          "length_km": 1.3,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S8 says first section opened 1964-10-01. Overview S2 also lists 1964 Shibuya entry; date conflicts with the C1 table's same day for a different section, so verify."
+        },
+        {
+          "id": "3-2",
+          "from": "Tanimachi JCT",
+          "to": "Shibuya 4-chome temporary entrance",
+          "opened": "1967-09-02",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S8 and S2 agree on date."
+        },
+        {
+          "id": "3-3",
+          "from": "Shibuya exit",
+          "to": "Yoga (Tomei connection)",
+          "opened": "1971-12-21",
+          "status_at_reference": "open",
+          "length_km": 7.9,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Completes route; connects to Tomei Expressway. S2 gives 7.9 km; S8 gives total 11.7 km."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Tanimachi JCT (transliteration)",
+          "name_ja": "谷町JCT",
+          "connects": [
+            "3",
+            "C1"
+          ],
+          "notes": "S8."
+        },
+        {
+          "name_en": "Oohashi JCT (transliteration)",
+          "name_ja": "大橋JCT",
+          "connects": [
+            "3",
+            "C2"
+          ],
+          "notes": "Opened 2010-03-28 (S8); C2 link not in era."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Takagicho exit (transliteration)",
+          "name_ja": "高樹町出入口",
+          "code": "301",
+          "directions": "both",
+          "notes": "Year not stated; ETC-only entrance from Tanimachi direction (S8)."
+        },
+        {
+          "name_en": "Shibuya exit (transliteration)",
+          "name_ja": "渋谷出入口",
+          "code": "302/303",
+          "directions": "both",
+          "notes": "1964 section (S8)."
+        },
+        {
+          "name_en": "Ikejiri exit (transliteration)",
+          "name_ja": "池尻出入口",
+          "code": "304",
+          "directions": "both",
+          "notes": "Year not stated."
+        },
+        {
+          "name_en": "Sangenjaya exit (transliteration)",
+          "name_ja": "三軒茶屋出入口",
+          "code": "305",
+          "directions": "both",
+          "notes": "Year not stated."
+        },
+        {
+          "name_en": "Yoga exit (transliteration)",
+          "name_ja": "用賀出入口",
+          "code": "307",
+          "directions": "both",
+          "notes": "Connects to Tomei (S8)."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Yoga PA (transliteration)",
+          "name_ja": "用賀PA",
+          "direction": "both",
+          "notes": "Year not stated (S8)."
+        }
+      ],
+      "toll_barriers": [
+        {
+          "name_en": "Yoga toll plaza (transliteration)",
+          "name_ja": "用賀TB",
+          "notes": "Listed as toll plaza, not PA, in S8."
+        }
+      ],
+      "boundaries": [
+        {
+          "at": "Yoga",
+          "connects_to_operator_road": "Tomei Expressway (NEXCO Central)",
+          "notes": "Connection 1971-12-21 (S8, S2). Operator name from general knowledge, not verified in sources."
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "name_en": "Shinjuku Route",
+      "name_ja": "首都高速4号新宿線",
+      "type": "radial",
+      "length_km_total_current": 13.5,
+      "segments": [
+        {
+          "id": "4-1",
+          "from": "Miyakezaka JCT",
+          "to": "Hatsudai temporary exit",
+          "opened": "1964-08-02",
+          "status_at_reference": "open",
+          "length_km": 9.8,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S9 gives date; S2 gives 9.8 km for Kandabashi-Hatsudai. Endpoint conflict between S2 (Kandabashi) and S9 (Miyakezaka); verify."
+        },
+        {
+          "id": "4-2",
+          "from": "Eifuku exit",
+          "to": "Takaido exit",
+          "opened": "1973-08-15",
+          "status_at_reference": "open",
+          "length_km": 2.5,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 gives 2.5 km."
+        },
+        {
+          "id": "4-3",
+          "from": "Hatsudai exit",
+          "to": "Eifuku exit",
+          "opened": "1973-10-27",
+          "status_at_reference": "open",
+          "length_km": 4.0,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 gives 4.0 km."
+        },
+        {
+          "id": "4-4",
+          "from": "Takaido exit",
+          "to": "Chuo Expressway connection",
+          "opened": "1976-05-18",
+          "status_at_reference": "open",
+          "length_km": 0.7,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Route completed; connects to Chuo Expressway (S2, S9)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Miyakezaka JCT (transliteration)",
+          "name_ja": "三宅坂JCT",
+          "connects": [
+            "4",
+            "C1"
+          ],
+          "notes": "Route start (S9)."
+        },
+        {
+          "name_en": "Nishi-Shinjuku JCT (transliteration)",
+          "name_ja": "西新宿JCT",
+          "connects": [
+            "4",
+            "C2"
+          ],
+          "notes": "Partial 2007-12-22, full 2010-03-28 (not in era)."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Gaien exit (transliteration)",
+          "name_ja": "外苑出入口",
+          "code": "401/402",
+          "directions": "both",
+          "notes": "S9."
+        },
+        {
+          "name_en": "Yoyogi exit (transliteration)",
+          "name_ja": "代々木出入口",
+          "code": "403",
+          "directions": "both",
+          "notes": "S9."
+        },
+        {
+          "name_en": "Shinjuku exit (transliteration)",
+          "name_ja": "新宿出入口",
+          "code": "404/405",
+          "directions": "both",
+          "notes": "S9."
+        },
+        {
+          "name_en": "Hatsudai exit (transliteration)",
+          "name_ja": "初台出入口",
+          "code": "406",
+          "directions": "both",
+          "notes": "S9."
+        },
+        {
+          "name_en": "Hatagaya exit (transliteration)",
+          "name_ja": "幡ヶ谷出入口",
+          "code": "407",
+          "directions": "both",
+          "notes": "S9."
+        },
+        {
+          "name_en": "Eifuku exit (transliteration)",
+          "name_ja": "永福出入口",
+          "code": "408/409",
+          "directions": "both",
+          "notes": "S9."
+        },
+        {
+          "name_en": "Takaido exit (transliteration)",
+          "name_ja": "高井戸出入口",
+          "code": "411",
+          "directions": "both",
+          "notes": "S9."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Yoyogi PA (transliteration)",
+          "name_ja": "代々木PA",
+          "direction": "both",
+          "notes": "Year not stated (S9)."
+        },
+        {
+          "name_en": "Eifuku PA (transliteration)",
+          "name_ja": "永福PA",
+          "direction": "both",
+          "notes": "Year not stated (S9)."
+        }
+      ],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Takaido",
+          "connects_to_operator_road": "Chuo Expressway (NEXCO Central)",
+          "notes": "Connection 1976-05-18 (S9)."
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "name_en": "Ikebukuro Route",
+      "name_ja": "首都高速5号池袋線",
+      "type": "radial",
+      "length_km_total_current": 21.5,
+      "segments": [
+        {
+          "id": "5-1",
+          "from": "Kanda-Nishi (Takebashi JCT area)",
+          "to": "Nishi-Kanda exit",
+          "opened": "1967-03-30",
+          "status_at_reference": "open",
+          "length_km": 1.2,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S10 chronology; S2 also gives 1967-03-30 for Takebashi JCT-Nishi-Kanda. S10 gives construction start 1964-11-09."
+        },
+        {
+          "id": "5-2",
+          "from": "Nishi-Kanda exit",
+          "to": "Gokokuji exit",
+          "opened": "1969-06-27",
+          "status_at_reference": "open",
+          "length_km": 3.9,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S10 and S2 agree on date and length."
+        },
+        {
+          "id": "5-3",
+          "from": "Gokokuji exit",
+          "to": "Kita-Ikebukuro exit",
+          "opened": "1969-12-19",
+          "status_at_reference": "open",
+          "length_km": 3.0,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S10 and S2 agree on date and length."
+        },
+        {
+          "id": "5-4",
+          "from": "Kita-Ikebukuro exit",
+          "to": "Takashimadaira exit",
+          "opened": "1977-08-19",
+          "status_at_reference": "open",
+          "length_km": 10.5,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S10 gives approximately 10.5 km; S2 gives 8.6 km. Conflict, see verification notes."
+        },
+        {
+          "id": "5-5",
+          "from": "Takashimadaira exit",
+          "to": "Toda-minami exit",
+          "opened": "1990-11-27",
+          "status_at_reference": "open",
+          "length_km": 0.8,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S10 gives approximately 0.8 km; S2 gives 2.6 km. Conflict."
+        },
+        {
+          "id": "5-6",
+          "from": "Toda-minami exit",
+          "to": "Bijogi JCT",
+          "opened": "1993-10-26",
+          "status_at_reference": "open",
+          "length_km": 2.2,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Route completed (S10, S2). Continues as S5."
+        },
+        {
+          "id": "5-7",
+          "from": "Chuo Loop Itabashi JCT area (Itabashi JCT connection)",
+          "to": "(connection)",
+          "opened": "2002-12-25",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "Itabashi JCT opened as C2 link 2002-12-25 (S10). Listed for route context."
+        },
+        {
+          "id": "5-8",
+          "from": "Kumanocho JCT",
+          "to": "(JCT opened)",
+          "opened": "2007-12-22",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S10). Takamatsu exit (upbound) abolished at this date."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Takebashi JCT (transliteration)",
+          "name_ja": "竹橋JCT",
+          "connects": [
+            "5",
+            "C1"
+          ],
+          "notes": "Route start (S10)."
+        },
+        {
+          "name_en": "Itabashi JCT (transliteration)",
+          "name_ja": "板橋JCT",
+          "connects": [
+            "5",
+            "C2"
+          ],
+          "notes": "Opened 2002-12-25 (S10)."
+        },
+        {
+          "name_en": "Kumanocho JCT (transliteration)",
+          "name_ja": "熊野町JCT",
+          "connects": [
+            "5",
+            "C2"
+          ],
+          "notes": "C2 link opened 2007-12-22 (not in era) (S10)."
+        },
+        {
+          "name_en": "Bijogi JCT (transliteration)",
+          "name_ja": "美女木JCT",
+          "connects": [
+            "5",
+            "S5",
+            "Tokyo Gaikan Expressway"
+          ],
+          "notes": "Connects to S5 (Omiya) and external Tokyo outer road (S10, S5 wording)."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Ichigaya exit (transliteration)",
+          "name_ja": "一ツ橋出入口",
+          "code": "27",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Nishi-Kanda exit (transliteration)",
+          "name_ja": "西神田出入口",
+          "code": "501",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Iidabashi exit (transliteration)",
+          "name_ja": "飯田橋出入口",
+          "code": "502",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Waseda exit (transliteration)",
+          "name_ja": "早稲田出口",
+          "code": "503",
+          "directions": "outbound",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Gokokuji exit (transliteration)",
+          "name_ja": "護国寺出入口",
+          "code": "505",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Higashi-Ikebukuro exit (transliteration)",
+          "name_ja": "東池袋出入口",
+          "code": "507/508",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Kita-Ikebukuro exit (transliteration)",
+          "name_ja": "北池袋出入口",
+          "code": "509",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Itabashi-Honmachi exit (transliteration)",
+          "name_ja": "板橋本町出入口",
+          "code": "511/512",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Nakadai exit (transliteration)",
+          "name_ja": "中台出入口",
+          "code": "513",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Takashimadaira exit (transliteration)",
+          "name_ja": "高島平出入口",
+          "code": "515",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Toda-minami exit (transliteration)",
+          "name_ja": "戸田南出入口",
+          "code": "517",
+          "directions": "both",
+          "notes": "S10."
+        },
+        {
+          "name_en": "Toda exit (transliteration)",
+          "name_ja": "戸田出入口",
+          "code": "518",
+          "directions": "both",
+          "notes": "S10."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Minami-Ikebukuro PA (transliteration)",
+          "name_ja": "南池袋PA",
+          "direction": "both",
+          "notes": "Year not stated (S10)."
+        },
+        {
+          "name_en": "Shimura PA (transliteration)",
+          "name_ja": "志村PA",
+          "direction": "both",
+          "notes": "Year not stated (S10)."
+        }
+      ],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Bijogi JCT",
+          "connects_to_operator_road": "Tokyo Gaikan Expressway / Saitama Omiya route (S5)",
+          "notes": "Operator not verified in sources."
+        }
+      ]
+    },
+    {
+      "id": "6-Mukojima",
+      "name_en": "Mukojima Route",
+      "name_ja": "首都高速6号向島線",
+      "type": "radial",
+      "length_km_total_current": 6.24,
+      "segments": [
+        {
+          "id": "6M-1",
+          "from": "Edobashi JCT",
+          "to": "Mukojima exit",
+          "opened": "1971-03-21",
+          "status_at_reference": "open",
+          "length_km": 7.9,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S11 and S2 agree on date; length from S2 (7.9). S11 planned length 6.24 km; S11 section 1971-03-01 construction 7.7 km. Length conflict."
+        },
+        {
+          "id": "6M-2",
+          "from": "Mukojima exit",
+          "to": "Horikiri JCT",
+          "opened": "1982-03-30",
+          "status_at_reference": "open",
+          "length_km": 5.2,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Completed route (S11). Length from S2; S11 states Mukojima-Senju-shinbashi 5.2."
+        },
+        {
+          "id": "6M-3",
+          "from": "Hakozaki JCT",
+          "to": "(JCT opened)",
+          "opened": "1980-02-05",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "Connection to 9-Fukagawa (S11, S14)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Edobashi JCT (transliteration)",
+          "name_ja": "江戸橋JCT",
+          "connects": [
+            "6-Mukojima",
+            "C1"
+          ],
+          "notes": "Route start (S11)."
+        },
+        {
+          "name_en": "Hakozaki JCT (transliteration)",
+          "name_ja": "箱崎JCT",
+          "connects": [
+            "6-Mukojima",
+            "9"
+          ],
+          "notes": "Opened 1980-02-05 (S11, S14)."
+        },
+        {
+          "name_en": "Ryogoku JCT (transliteration)",
+          "name_ja": "両国JCT",
+          "connects": [
+            "6-Mukojima",
+            "7"
+          ],
+          "notes": "Year not stated; opened for 7-Komatsugawa 1971-03-21 (S11, S13)."
+        },
+        {
+          "name_en": "Horikiri JCT (transliteration)",
+          "name_ja": "堀切JCT",
+          "connects": [
+            "6-Mukojima",
+            "C2"
+          ],
+          "notes": "1982-03-30 (S11)."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Hakozaki exit (transliteration)",
+          "name_ja": "箱崎出入口",
+          "code": "601/602",
+          "directions": "both",
+          "notes": "Serves Tokyo City Air Terminal and Hakozaki rotary (S14)."
+        },
+        {
+          "name_en": "Hamacho exit (transliteration)",
+          "name_ja": "浜町出入口",
+          "code": "604",
+          "directions": "both",
+          "notes": "S11 says some entrances ETC-only."
+        },
+        {
+          "name_en": "Kiyosubashi exit (transliteration)",
+          "name_ja": "清洲橋出口",
+          "code": "603",
+          "directions": "outbound",
+          "notes": "Exit only (S11, S14)."
+        },
+        {
+          "name_en": "Komagata exit (transliteration)",
+          "name_ja": "駒形出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S11 position 4.0 km."
+        },
+        {
+          "name_en": "Mukojima exit (transliteration)",
+          "name_ja": "向島出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S11 position 6.2 km."
+        },
+        {
+          "name_en": "Tsutsumi-dori exit (transliteration)",
+          "name_ja": "堤通出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "S11 positions 7.5/8.5 km."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Hakozaki PA (transliteration)",
+          "name_ja": "箱崎PA",
+          "direction": "both",
+          "notes": "Year not stated (S11)."
+        },
+        {
+          "name_en": "Komagata PA (transliteration)",
+          "name_ja": "駒形PA",
+          "direction": "both",
+          "notes": "Year not stated (S11)."
+        }
+      ],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "6-Misato",
+      "name_en": "Misato Route",
+      "name_ja": "首都高速6号三郷線",
+      "type": "radial",
+      "length_km_total_current": 10.6,
+      "segments": [
+        {
+          "id": "6S-1",
+          "from": "Kosuge JCT",
+          "to": "Misato JCT",
+          "opened": "1985-01-24",
+          "status_at_reference": "open",
+          "length_km": 10.6,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Full route opened (S12). Length from infobox."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Kosuge JCT (transliteration)",
+          "name_ja": "小菅JCT",
+          "connects": [
+            "6-Misato",
+            "C2"
+          ],
+          "notes": "Start point (S12)."
+        },
+        {
+          "name_en": "Misato JCT (transliteration)",
+          "name_ja": "三郷JCT",
+          "connects": [
+            "6-Misato",
+            "C3 (Tokyo Gaikan Expressway)",
+            "E6 (Joban Expressway)"
+          ],
+          "notes": "Connections as stated in S12. Operator and road names are from the source, not separately verified."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Kahei exit (transliteration)",
+          "name_ja": "加平出入口",
+          "code": "651-654",
+          "directions": "both",
+          "notes": "S12."
+        },
+        {
+          "name_en": "Yashio-minami exit (transliteration)",
+          "name_ja": "八潮南出入口",
+          "code": "655/656",
+          "directions": "both",
+          "notes": "S12; 5.2 km from start."
+        },
+        {
+          "name_en": "Yashio exit (transliteration)",
+          "name_ja": "八潮出入口",
+          "code": "657",
+          "directions": "both",
+          "notes": "S12; 7.1 km."
+        },
+        {
+          "name_en": "Misato exit (transliteration)",
+          "name_ja": "三郷出入口",
+          "code": "661",
+          "directions": "both",
+          "notes": "S12; 10.2 km."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Misato JCT",
+          "connects_to_operator_road": "Tokyo Gaikan Expressway (C3) and Joban Expressway (E6)",
+          "notes": "From S12. Operator names not verified in fetched sources."
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "name_en": "Komatsugawa Route",
+      "name_ja": "首都高速7号小松川線",
+      "type": "radial",
+      "length_km_total_current": 10.4,
+      "segments": [
+        {
+          "id": "7-1",
+          "from": "Ryogoku JCT",
+          "to": "Keiyo Road connection (Tanigawa-machi)",
+          "opened": "1971-03-21",
+          "status_at_reference": "open",
+          "length_km": 10.4,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Full route opened together with 6-Mukojima (S13, S2). Length from infobox."
+        },
+        {
+          "id": "7-2",
+          "from": "Komatsugawa JCT",
+          "to": "(JCT opened)",
+          "opened": "2019-12-01",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S13)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Ryogoku JCT (transliteration)",
+          "name_ja": "両国JCT",
+          "connects": [
+            "7",
+            "6-Mukojima"
+          ],
+          "notes": "Start point (S13)."
+        },
+        {
+          "name_en": "Komatsugawa JCT (transliteration)",
+          "name_ja": "小松川JCT",
+          "connects": [
+            "7",
+            "C2"
+          ],
+          "notes": "Opened 2019-12-01; not in era (S13)."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Kinshicho exit (transliteration)",
+          "name_ja": "錦糸町出入口",
+          "code": "701/702",
+          "directions": "both",
+          "notes": "Year not stated (S13)."
+        },
+        {
+          "name_en": "Komatsugawa exit (transliteration)",
+          "name_ja": "小松川出入口",
+          "code": "703",
+          "directions": "both",
+          "notes": "Year not stated (S13)."
+        },
+        {
+          "name_en": "Ichinoe exit (transliteration)",
+          "name_ja": "一之江出入口",
+          "code": "705",
+          "directions": "both",
+          "notes": "Year not stated (S13)."
+        },
+        {
+          "name_en": "Shinozaki IC (transliteration)",
+          "name_ja": "篠崎IC",
+          "code": "1",
+          "directions": "both",
+          "notes": "Connects to Keiyo Road (S13 navigation box)."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Tanigawa-machi (Edogawa-ku)",
+          "connects_to_operator_road": "Keiyo Road (not Shuto)",
+          "notes": "Connection 1971-03-21 (S13)."
+        }
+      ]
+    },
+    {
+      "id": "9",
+      "name_en": "Fukagawa Route",
+      "name_ja": "首都高速9号深川線",
+      "type": "radial",
+      "length_km_total_current": 5.3,
+      "segments": [
+        {
+          "id": "9-1",
+          "from": "Hakozaki JCT",
+          "to": "Tatsumi JCT",
+          "opened": "1980-02-05",
+          "status_at_reference": "open",
+          "length_km": 5.3,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Full route (S14 infobox 5.3 km). S2 overview gives 7.0 km for Hakozaki-Shinkiba. Conflict."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Hakozaki JCT (transliteration)",
+          "name_ja": "箱崎JCT",
+          "connects": [
+            "9",
+            "6-Mukojima"
+          ],
+          "notes": "S14."
+        },
+        {
+          "name_en": "Tatsumi JCT (transliteration)",
+          "name_ja": "辰巳JCT",
+          "connects": [
+            "9",
+            "B"
+          ],
+          "notes": "S14."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Fukuzumi exit (transliteration)",
+          "name_ja": "福住出入口",
+          "code": "902",
+          "directions": "both",
+          "notes": "S14."
+        },
+        {
+          "name_en": "Kiba exit (transliteration)",
+          "name_ja": "木場出入口",
+          "code": "903",
+          "directions": "both",
+          "notes": "S14."
+        },
+        {
+          "name_en": "Shiohama entrance (transliteration)",
+          "name_ja": "塩浜入口",
+          "code": "904",
+          "directions": "inbound",
+          "notes": "S14."
+        },
+        {
+          "name_en": "Edagawa exit (transliteration)",
+          "name_ja": "枝川出口",
+          "code": "906",
+          "directions": "outbound",
+          "notes": "S14."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "11",
+      "name_en": "Daiba Route",
+      "name_ja": "首都高速11号台場線",
+      "type": "radial",
+      "length_km_total_current": 5.0,
+      "segments": [
+        {
+          "id": "11-1",
+          "from": "Shibaura JCT",
+          "to": "Ariake JCT",
+          "opened": "1993-08-26",
+          "status_at_reference": "open",
+          "length_km": 5.0,
+          "features": [
+            "bridge"
+          ],
+          "notes": "Includes Rainbow Bridge (opened 1993). S15 and S2 agree on date and length."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Shibaura JCT (transliteration)",
+          "name_ja": "芝浦JCT",
+          "connects": [
+            "11",
+            "1-Haneda"
+          ],
+          "notes": "S15."
+        },
+        {
+          "name_en": "Ariake JCT (transliteration)",
+          "name_ja": "有明JCT",
+          "connects": [
+            "11",
+            "B"
+          ],
+          "notes": "S15."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Daiba exit (transliteration)",
+          "name_ja": "台場出入口",
+          "code": "1101",
+          "directions": "both",
+          "notes": "About 2.3 km from start; serves Shinjuku/Ginza direction (S15)."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "10",
+      "name_en": "Harumi Route",
+      "name_ja": "首都高速10号晴海線",
+      "type": "connector",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "10-1",
+          "from": "Toyosu",
+          "to": "Shinonome JCT",
+          "opened": "2009-02-11",
+          "status_at_reference": "not_yet_open",
+          "length_km": 1.5,
+          "features": [],
+          "notes": "Excluded by reference date (S2)."
+        },
+        {
+          "id": "10-2",
+          "from": "Harumi",
+          "to": "Toyosu",
+          "opened": "2018-03-10",
+          "status_at_reference": "not_yet_open",
+          "length_km": 1.2,
+          "features": [],
+          "notes": "Excluded by reference date (S2)."
+        }
+      ],
+      "junctions": [],
+      "interchanges": [],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "Y",
+      "name_en": "Yaesu Route",
+      "name_ja": "首都高速八重洲線",
+      "type": "connector",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "Y-1",
+          "from": "Shiodome JCT",
+          "to": "Shimbashi",
+          "opened": "1964-08-02",
+          "status_at_reference": "open",
+          "length_km": 0.3,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2."
+        },
+        {
+          "id": "Y-2",
+          "from": "Nishi-Ginza JCT",
+          "to": "Kandabashi JCT",
+          "opened": "1973-02-15",
+          "status_at_reference": "closed_later",
+          "length_km": 1.6,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Open at reference; closed to traffic 2025-04-05 for about 10 years of underground works (S2). Kandabashi link closed long-term, planned through FY2035 (S3)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Shiodome JCT (transliteration)",
+          "name_ja": "汐留JCT",
+          "connects": [
+            "Y",
+            "C1"
+          ],
+          "notes": "S2 and S3."
+        },
+        {
+          "name_en": "Nishi-Ginza JCT (transliteration)",
+          "name_ja": "西銀座JCT",
+          "connects": [
+            "Y"
+          ],
+          "notes": "S2."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Higashi-Ginza exit (transliteration)",
+          "name_ja": "東銀座出入口",
+          "code": null,
+          "directions": "both",
+          "notes": "Remains open per S3 wording on Tokyo Expressway link."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [
+        {
+          "name_en": "Hakuobashi toll and transfer station (transliteration)",
+          "name_ja": "白魚橋料金所・乗継所",
+          "notes": "Ticketing ended 2025 (S3). Relevant to C1 branch."
+        }
+      ],
+      "boundaries": []
+    },
+    {
+      "id": "K1",
+      "name_en": "Yokohane Route",
+      "name_ja": "首都高速神奈川1号横羽線",
+      "type": "radial",
+      "length_km_total_current": 19.7,
+      "segments": [
+        {
+          "id": "K1-1",
+          "from": "Asada exit",
+          "to": "Higashi-Kanagawa exit",
+          "opened": "1968-07-19",
+          "status_at_reference": "open",
+          "length_km": 6.8,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S17 date; S2 gives 6.8 km. S17 also lists 1968-11-28 Haneda-Asada."
+        },
+        {
+          "id": "K1-2",
+          "from": "Haneda exit",
+          "to": "Asada exit",
+          "opened": "1968-11-28",
+          "status_at_reference": "open",
+          "length_km": 6.9,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S17 and S2 agree on date."
+        },
+        {
+          "id": "K1-3",
+          "from": "Higashi-Kanagawa exit",
+          "to": "Kinko JCT",
+          "opened": "1972-08-07",
+          "status_at_reference": "open",
+          "length_km": 2.2,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S17 date; S2 lists Higashi-Kanagawa-Yokohama Station West 2.2 km."
+        },
+        {
+          "id": "K1-4",
+          "from": "Kinko JCT",
+          "to": "Yokohama Koen exit",
+          "opened": "1978-03-07",
+          "status_at_reference": "open",
+          "length_km": 4.0,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S17 date. The overview S2 assigns this to K2 Mitsuzawa; see verification notes."
+        },
+        {
+          "id": "K1-5",
+          "from": "Yokohama Koen exit",
+          "to": "Ishikawacho JCT",
+          "opened": "1984-02-02",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Completes route (S17, S2)."
+        },
+        {
+          "id": "K1-6",
+          "from": "Daishi exit (Yokohama direction)",
+          "to": "(IC opened)",
+          "opened": "2009-03-29",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S17)."
+        },
+        {
+          "id": "K1-7",
+          "from": "Daishi JCT",
+          "to": "(JCT opened)",
+          "opened": "2010-10-20",
+          "status_at_reference": "not_yet_open",
+          "length_km": null,
+          "features": [],
+          "notes": "Excluded by reference date (S17)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Kinko JCT (transliteration)",
+          "name_ja": "金港JCT",
+          "connects": [
+            "K1",
+            "K2"
+          ],
+          "notes": "1972 (S17)."
+        },
+        {
+          "name_en": "Ishikawacho JCT (transliteration)",
+          "name_ja": "石川町JCT",
+          "connects": [
+            "K1",
+            "K3"
+          ],
+          "notes": "1984 (S17); K3 link 1990-03-20."
+        },
+        {
+          "name_en": "Namamugi JCT (transliteration)",
+          "name_ja": "生麦JCT",
+          "connects": [
+            "K1",
+            "K5",
+            "K7"
+          ],
+          "notes": "Year not stated; K7 post-era."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Haneda exit (transliteration)",
+          "name_ja": "羽田出入口",
+          "code": "150",
+          "directions": "both",
+          "notes": "1968 (S17)."
+        },
+        {
+          "name_en": "Asada exit (transliteration)",
+          "name_ja": "浅田出入口",
+          "code": "152",
+          "directions": "both",
+          "notes": "1968 (S17)."
+        },
+        {
+          "name_en": "Higashi-Kanagawa exit (transliteration)",
+          "name_ja": "東神奈川出入口",
+          "code": "161/162",
+          "directions": "both",
+          "notes": "1968 (S17)."
+        },
+        {
+          "name_en": "Koyasu exit (transliteration)",
+          "name_ja": "子安出入口",
+          "code": "159/160",
+          "directions": "both",
+          "notes": "Year not stated (S17)."
+        },
+        {
+          "name_en": "Namamugi exit (transliteration)",
+          "name_ja": "生麦出入口",
+          "code": "154",
+          "directions": "both",
+          "notes": "Year not stated (S17)."
+        },
+        {
+          "name_en": "Shioiri exit (transliteration)",
+          "name_ja": "汐入出入口",
+          "code": "155",
+          "directions": "both",
+          "notes": "Year not stated (S17)."
+        },
+        {
+          "name_en": "Moriyamachi exit (transliteration)",
+          "name_ja": "守屋町出口",
+          "code": "157",
+          "directions": "outbound",
+          "notes": "Year not stated (S17)."
+        },
+        {
+          "name_en": "Hamakawasaki exit (transliteration)",
+          "name_ja": "浜川崎出入口",
+          "code": "153",
+          "directions": "both",
+          "notes": "Year not stated (S17)."
+        },
+        {
+          "name_en": "Yokohama Station East exit (transliteration)",
+          "name_ja": "横浜駅東口出入口",
+          "code": "164",
+          "directions": "both",
+          "notes": "Year not stated (S17)."
+        },
+        {
+          "name_en": "Minatomirai exit (transliteration)",
+          "name_ja": "みなとみらい出入口",
+          "code": "165/166",
+          "directions": "both",
+          "notes": "Year not stated (S17)."
+        },
+        {
+          "name_en": "Yokohama Koen exit (transliteration)",
+          "name_ja": "横浜公園出入口",
+          "code": "167/168",
+          "directions": "both",
+          "notes": "Opened 1978; exit opened 2007-11-21 (S17)."
+        },
+        {
+          "name_en": "Daishi exit (transliteration)",
+          "name_ja": "大師出入口",
+          "code": "151/152A",
+          "directions": "both",
+          "notes": "Yokohama direction opened 2009-03-29, not in era (S17)."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Daishi PA (transliteration)",
+          "name_ja": "大師PA",
+          "direction": "both",
+          "notes": "Year not stated; long-term closure until end of fiscal 2027 (S17)."
+        }
+      ],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Ishikawacho JCT",
+          "connects_to_operator_road": "Yokohama-Yokosuka Road (not verified in sources)",
+          "notes": "K3 connection 1990-03-20 (S17)."
+        }
+      ]
+    },
+    {
+      "id": "K2",
+      "name_en": "Mitsuzawa Route",
+      "name_ja": "首都高速神奈川2号三ツ沢線",
+      "type": "radial",
+      "length_km_total_current": null,
+      "segments": [],
+      "junctions": [],
+      "interchanges": [],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": [],
+      "notes": "No verified section data. The overview S2 lists K2 sections dated 1978-03-07 (Yokohama West exit-Daisan Keihin connection, 1.8 km) and 1978 (Yokohama Koen-Kinko JCT, 4.0 km), but S17 assigns the 1978-03-07 and Kinko-Yokohama Koen dates to K1. Treated as unverified; segments left empty."
+    },
+    {
+      "id": "K3",
+      "name_en": "Kariba Route",
+      "name_ja": "首都高速神奈川3号狩場線",
+      "type": "radial",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "K3-1",
+          "from": "Shinyamashita",
+          "to": "Yokohama Koen",
+          "opened": "1984-02-02",
+          "status_at_reference": "open",
+          "length_km": 1.8,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 overview; not verified against a per-route page."
+        },
+        {
+          "id": "K3-2",
+          "from": "Ishikawacho JCT",
+          "to": "Yokohama-Yokosuka Road connection",
+          "opened": "1990-03-20",
+          "status_at_reference": "open",
+          "length_km": 7.7,
+          "features": [],
+          "notes": "Completed route (S2 overview). Per-route page not verified."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Honmoku JCT (transliteration)",
+          "name_ja": "本牧JCT",
+          "connects": [
+            "K3",
+            "B"
+          ],
+          "notes": "Improved 2004 (not in era, S16)."
+        }
+      ],
+      "interchanges": [],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Yokohama-Yokosuka Road connection",
+          "connects_to_operator_road": "Yokohama-Yokosuka Road",
+          "notes": "Operator not verified."
+        }
+      ]
+    },
+    {
+      "id": "K5",
+      "name_en": "Daikoku Route",
+      "name_ja": "首都高速神奈川5号大黒線",
+      "type": "radial",
+      "length_km_total_current": 4.6,
+      "segments": [
+        {
+          "id": "K5-1",
+          "from": "Daikoku JCT",
+          "to": "Namamugi JCT",
+          "opened": "1989-09-27",
+          "status_at_reference": "open",
+          "length_km": 4.6,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Full route opened (S18). S2 overview gives a different section (Namamugi-Shinyamashita 8.8 km, same date); conflict."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Daikoku JCT (transliteration)",
+          "name_ja": "大黒JCT",
+          "connects": [
+            "K5",
+            "B"
+          ],
+          "notes": "S18."
+        },
+        {
+          "name_en": "Namamugi JCT (transliteration)",
+          "name_ja": "生麦JCT",
+          "connects": [
+            "K5",
+            "K1",
+            "K7"
+          ],
+          "notes": "S18."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Daikoku Futo exit (transliteration)",
+          "name_ja": "大黒ふ頭出入口",
+          "code": "551",
+          "directions": "both",
+          "notes": "Coincides with Daikoku JCT (S18)."
+        }
+      ],
+      "parking_areas": [
+        {
+          "name_en": "Daikoku PA (transliteration)",
+          "name_ja": "大黒PA",
+          "direction": "both",
+          "notes": "Year not stated (S18)."
+        }
+      ],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "K6",
+      "name_en": "Kawasaki Route",
+      "name_ja": "首都高速神奈川6号川崎線",
+      "type": "radial",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "K6-1",
+          "from": "Kawasaki-Ukishima JCT",
+          "to": "Tonomachi",
+          "opened": "2002-04-30",
+          "status_at_reference": "open",
+          "length_km": 3.5,
+          "features": [],
+          "notes": "S2 overview. Open at reference, but the section is listed only in the overview; not confirmed against per-route page."
+        },
+        {
+          "id": "K6-2",
+          "from": "Daishi JCT",
+          "to": "Tonomachi",
+          "opened": "2010-10-20",
+          "status_at_reference": "not_yet_open",
+          "length_km": 2.0,
+          "features": [],
+          "notes": "Excluded by reference date (S2)."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Kawasaki-Ukishima JCT (transliteration)",
+          "name_ja": "川崎浮島JCT",
+          "connects": [
+            "K6",
+            "B"
+          ],
+          "notes": "S2."
+        },
+        {
+          "name_en": "Daishi JCT (transliteration)",
+          "name_ja": "大師JCT",
+          "connects": [
+            "K6",
+            "K1"
+          ],
+          "notes": "Opened 2010-10-20 (S17). Not in era."
+        }
+      ],
+      "interchanges": [],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "K7",
+      "name_en": "Yokohama North Route",
+      "name_ja": "首都高速神奈川7号横浜北線",
+      "type": "radial",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "K7-1",
+          "from": "Namamugi JCT",
+          "to": "Yokohama-Kohoku JCT",
+          "opened": "2017-03-18",
+          "status_at_reference": "not_yet_open",
+          "length_km": 8.2,
+          "features": [],
+          "notes": "Excluded by reference date (S2)."
+        },
+        {
+          "id": "K7-2",
+          "from": "Yokohama-Kohoku JCT",
+          "to": "Yokohama-Aoba JCT",
+          "opened": "2020-03-22",
+          "status_at_reference": "not_yet_open",
+          "length_km": 7.1,
+          "features": [],
+          "notes": "Excluded by reference date (S2)."
+        }
+      ],
+      "junctions": [],
+      "interchanges": [],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "S1",
+      "name_en": "Kawaguchi Route",
+      "name_ja": "首都高速埼玉1号川口線",
+      "type": "radial",
+      "length_km_total_current": 12.3,
+      "segments": [
+        {
+          "id": "S1-1",
+          "from": "Kohoku JCT",
+          "to": "Kawaguchi JCT",
+          "opened": "1987-09-09",
+          "status_at_reference": "open",
+          "length_km": 12.3,
+          "features": [
+            "elevated"
+          ],
+          "notes": "Full route (S19). S2 overview gives 16.5 km starting at Senju-shinbashi; start-point conflict."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Kohoku JCT (transliteration)",
+          "name_ja": "江北JCT",
+          "connects": [
+            "S1",
+            "C2"
+          ],
+          "notes": "S19."
+        },
+        {
+          "name_en": "Kawaguchi JCT (transliteration)",
+          "name_ja": "川口JCT",
+          "connects": [
+            "S1"
+          ],
+          "notes": "Connects to Gaikan and Tohoku (S19 wording)."
+        }
+      ],
+      "interchanges": [
+        {
+          "name_en": "Shikahashi exit (transliteration)",
+          "name_ja": "鹿浜橋出入口",
+          "code": "S01",
+          "directions": "both",
+          "notes": "S19."
+        },
+        {
+          "name_en": "Shikahashi entrance (transliteration)",
+          "name_ja": "鹿浜橋入口",
+          "code": "S02",
+          "directions": "inbound",
+          "notes": "S19."
+        },
+        {
+          "name_en": "Higashi-Ryoke exit (transliteration)",
+          "name_ja": "東領家出口",
+          "code": "S04",
+          "directions": "outbound",
+          "notes": "S19."
+        },
+        {
+          "name_en": "Kaga exit (transliteration)",
+          "name_ja": "加賀出入口",
+          "code": "S05",
+          "directions": "both",
+          "notes": "S19."
+        },
+        {
+          "name_en": "Adachi-Iriya exit (transliteration)",
+          "name_ja": "足立入谷出入口",
+          "code": "S06",
+          "directions": "both",
+          "notes": "S19."
+        },
+        {
+          "name_en": "Shingo exit (transliteration)",
+          "name_ja": "新郷出入口",
+          "code": "S07",
+          "directions": "both",
+          "notes": "S19."
+        },
+        {
+          "name_en": "Anhoku exit (transliteration)",
+          "name_ja": "安行出入口",
+          "code": "S09",
+          "directions": "both",
+          "notes": "S19."
+        },
+        {
+          "name_en": "Araijuku exit (transliteration)",
+          "name_ja": "新井宿出入口",
+          "code": "S11",
+          "directions": "both",
+          "notes": "S19."
+        }
+      ],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Kawaguchi JCT",
+          "connects_to_operator_road": "Gaikan and Tohoku Expressway (S19 wording; operators not verified)",
+          "notes": "From S19."
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "name_en": "Saitama Shintoshin Route",
+      "name_ja": "首都高速埼玉2号新都心線",
+      "type": "radial",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "S2-1",
+          "from": "Shintoshin-nishi entrance",
+          "to": "(entrance opened)",
+          "opened": "2000-04-17",
+          "status_at_reference": "open",
+          "length_km": null,
+          "features": [],
+          "notes": "Interchange opening only (S2). Main route sections are not in era."
+        },
+        {
+          "id": "S2-2",
+          "from": "Yono",
+          "to": "Shintoshin",
+          "opened": "2004-05-26",
+          "status_at_reference": "not_yet_open",
+          "length_km": 2.3,
+          "features": [],
+          "notes": "Excluded by reference date (S2)."
+        },
+        {
+          "id": "S2-3",
+          "from": "Shintoshin",
+          "to": "Saitama-Minuma",
+          "opened": "2006-08-04",
+          "status_at_reference": "not_yet_open",
+          "length_km": 3.5,
+          "features": [],
+          "notes": "Excluded by reference date (S2)."
+        }
+      ],
+      "junctions": [],
+      "interchanges": [],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": []
+    },
+    {
+      "id": "S5",
+      "name_en": "Omiya Route",
+      "name_ja": "首都高速埼玉5号大宮線",
+      "type": "radial",
+      "length_km_total_current": null,
+      "segments": [
+        {
+          "id": "S5-1",
+          "from": "Bijogi JCT",
+          "to": "Yono",
+          "opened": "1998-05-18",
+          "status_at_reference": "open",
+          "length_km": 8.0,
+          "features": [
+            "elevated"
+          ],
+          "notes": "S2 overview. Per-route page fetch returned HTTP 404; not verified."
+        }
+      ],
+      "junctions": [
+        {
+          "name_en": "Bijogi JCT (transliteration)",
+          "name_ja": "美女木JCT",
+          "connects": [
+            "S5",
+            "5"
+          ],
+          "notes": "S2/S10."
+        }
+      ],
+      "interchanges": [],
+      "parking_areas": [],
+      "toll_barriers": [],
+      "boundaries": [
+        {
+          "at": "Bijogi JCT",
+          "connects_to_operator_road": "Tokyo Gaikan Expressway (S10 wording)",
+          "notes": "Not verified."
+        }
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "name": "Rainbow Bridge (Tokyo Bay)",
+      "route": "11-Daiba",
+      "notes": "Route 11 opened 1993-08-26 (S15). Rainbow Bridge itself not separately verified in fetched text."
+    },
+    {
+      "name": "Yokohama Bay Bridge",
+      "route": "B-Wangan",
+      "notes": "Opened with Honmoku Futo-Daikoku section 1989-09-27 (S16). In era."
+    },
+    {
+      "name": "Tsurumi Tsubasa Bridge",
+      "route": "B-Wangan",
+      "notes": "Opened with Daikoku-Kuko-Chuo section 1994-12-21 (S16). In era."
+    },
+    {
+      "name": "Haneda Tunnel",
+      "route": "unverified",
+      "notes": "Not verified in any fetched source; do not assume route assignment."
+    },
+    {
+      "name": "Tokyo Port Tunnel",
+      "route": "B-Wangan",
+      "notes": "Opened with Oi IC-13-go-chi section 1976-08-12 (S16). In era."
+    },
+    {
+      "name": "Tatsumi PA / Tatsumi JCT",
+      "route": "B-Wangan / 9-Fukagawa",
+      "notes": "Tatsumi JCT 1980 (S14, S16). Tatsumi PA not verified."
+    },
+    {
+      "name": "Daikoku PA",
+      "route": "B-Wangan / K5",
+      "notes": "Existence verified (S16, S18); opening year not stated."
+    },
+    {
+      "name": "Shibaura PA",
+      "route": "unverified",
+      "notes": "Not verified in fetched sources. Shibaura exit (1-Haneda) and Shibaura JCT (11) are verified."
+    },
+    {
+      "name": "Hakozaki rotary (Hakozaki JCT)",
+      "route": "6-Mukojima / 9-Fukagawa",
+      "notes": "Hakozaki JCT opened 1980-02-05 (S11, S14). Rotary reference not separately verified."
+    },
+    {
+      "name": "Edobashi JCT",
+      "route": "C1 / 1-Ueno / 6-Mukojima / Y",
+      "notes": "In era (S2, S6, S11)."
+    },
+    {
+      "name": "Yamate Tunnel (C2 west, Oi-Ohashi section)",
+      "route": "C2",
+      "notes": "NOT in era. Opened 2015-03-07 (S4). Mark excluded."
+    },
+    {
+      "name": "Tokyo Gate Bridge",
+      "route": "B-Wangan / 11-Daiba area",
+      "notes": "NOT in era; general knowledge says it opened 2012 but this was not verified in fetched sources."
+    },
+    {
+      "name": "Kanagawa Bay area Daikoku JCT",
+      "route": "B-Wangan / K5",
+      "notes": "Daikoku JCT 1989 (S16, S18); placeholder landmark for K5 start."
+    }
+  ],
+  "closed_or_historical": [
+    {
+      "name": "Yaesu Route (Y) closure",
+      "route": "Y",
+      "date": "2025-04-05",
+      "notes": "Closed for long-term underground works, about 10 years (S2); open at reference."
+    },
+    {
+      "name": "Tokyo Expressway link at Shiodome JCT and Kyobashi JCT",
+      "route": "C1",
+      "date": "2025-04-05",
+      "notes": "Closed 2025-04-05 (S3); open at reference."
+    },
+    {
+      "name": "Gofukubashi and Edobashi exits",
+      "route": "C1",
+      "date": "2021-05-10",
+      "notes": "Closed for Nihonbashi underground project (S2, S3); open at reference."
+    },
+    {
+      "name": "Hakuobashi toll and transfer station",
+      "route": "C1 / Y",
+      "date": "2025",
+      "notes": "Ticketing ended 2025 (S3)."
+    },
+    {
+      "name": "Takamatsu exit (upbound) on 5-Ikebukuro",
+      "route": "5",
+      "date": "2007-12-22",
+      "notes": "Abolished at C2 Kumanocho link opening (S10). Open at reference."
+    },
+    {
+      "name": "Heiwajima PA and toll plaza demolition",
+      "route": "1-Haneda",
+      "date": "2019-11-30",
+      "notes": "Temporarily closed until 2019-12-22 (S5)."
+    },
+    {
+      "name": "Daishi mainline toll gate",
+      "route": "K1",
+      "date": "2026-05-11",
+      "notes": "Abolished (S17). After reference date; still in service at reference."
+    },
+    {
+      "name": "Daishi PA",
+      "route": "K1",
+      "date": null,
+      "notes": "Long-term closure until end of fiscal 2027 (S17)."
+    },
+    {
+      "name": "Wangan Branch Line (Showajima JCT-Tokai JCT) temporary closure",
+      "route": "B",
+      "date": "2023-05-27",
+      "notes": "Temporary bridge replacement closure until 2023-06-10 (S16). Post-reference."
+    },
+    {
+      "name": "Tokyo Expressway (Yaesu route) Kandabashi link",
+      "route": "Y",
+      "date": null,
+      "notes": "Long-term closure, planned through FY2035 (S3)."
+    }
+  ],
+  "verification_notes": [
+    "Route count in era (open at 2002-12-31, per fetched sources): C1, C2 (partial), B, 1-Haneda, 1-Ueno, 2, 3, 4, 5, 6-Mukojima, 6-Misato, 7, 9, 11, Y, K1, K3, K5, K6 (partial, 2002-04-30 section), S1, S5 (1998 section), S2 (entrance only, 2000). K2 has no verified section data.",
+    "Routes not open at reference: 10 (Harumi, 2009/2018), K7 (Yokohama North, 2017/2020), S2 main sections (2004/2006), C2 western half (2007/2010/2015, incl. Yamate Tunnel, excluded).",
+    "There is no route 8 in the list. S2 says the 8 route designation is vacant and that the 1966-07-02 Kyobashi JCT was built when route 8 was completed. Treated as not a separate route.",
+    "Route list: the Japanese wiki overview S2 names routes C1, C2, B, Y, 1 Ueno, 1 Haneda, 2, 3, 4, 5, 6 Mukojima, 6 Misato, 7, 9, 10, 11, K1, K2, K3, K5, K6, K7, S1, S2, S5. The English wiki S1 page gave a similar list; route-level detail was not in the English article.",
+    "Official shutoko.jp route page (S22) returned HTTP 429 twice. The official navi-map (S23) was not fetched. Official opening-date data therefore comes only from Wikipedia-derived fetches and must be checked against shutoko.jp before use.",
+    "Two per-route Japanese Wikipedia pages (S20 Omiya, S21 Kawasaki) returned HTTP 404 for the titles used; S5 Omiya data comes only from the S2 overview and S6/K6 data comes only from the S2 overview. The S19 Kawaguchi page was fetched successfully.",
+    "Fetched text was summarized by a small model and contains internal inconsistencies. Specific conflicts: 1-Haneda length by section (S2 vs S5); 5-Ikebukuro 1977 section (10.5 km S10 vs 8.6 km S2) and 1990 section (0.8 km S10 vs 2.6 km S2); 9-Fukagawa total length (5.3 km S14 vs 7.0 km S2); 6-Mukojima 1971 section (7.9 km S2 vs 6.24 planned S11); K1/K2 assignment of the 1978 Kinko-Yokohama Koen section (S17 vs S2); K5 1989 section (4.6 km S18 vs 8.8 km S2); S1 start point (Senju-shinbashi 16.5 km S2 vs Kohoku JCT 12.3 km S19); C2 Yotsugi section (1.4 km S2 vs 0.9 km S4) and 2002 Itabashi-Kohoku section (7.1 km S2 vs 6.5 km S4).",
+    "Opening dates were cross-checked where two or more sources agreed (for example 1-Haneda 1963/1964/1966, 2 1967-09-30, 3 1971-12-21, 4 1976-05-18, 5 1993-10-26, 6-Mukojima 1971/1982, 7 1971-03-21, 9 1980-02-05, 11 1993-08-26, B 1976-2001, K1 1968-1984, K5 1989-09-27, C2 2002-12-25, 6-Misato 1985-01-24). Single-source dates are flagged in segment notes.",
+    "name_en values are transliterations generated for this manifest. The sources did not supply official English names for junctions or interchanges. Treat them as placeholders, not official names.",
+    "length_km values are null where no source stated them. Lengths marked as derived were computed from km markers in S3/S4/S5 tables and are approximate.",
+    "length_km_total_current is null for most routes. Only infobox values fetched from per-route pages were entered (1-Haneda 13.8, 1-Ueno 4.4, 2 5.9, 3 11.7, 4 13.5, 5 21.5, 6-Mukojima 6.24, 6-Misato 10.6, 7 10.4, 9 5.3, 11 5.0, K1 19.7, K5 4.6, S1 12.3). Network total 337.8 km (2025) is from S2; not per route and not era-specific.",
+    "Status enum: 'closed_later' is used for sections open at reference that were closed afterward (Y-2). Sections opened after 2002-12-31 use 'not_yet_open'.",
+    "Yamate Tunnel: part of C2 Oi-Ohashi section, opened 2015-03-07 (S4). Excluded as not in era.",
+    "Several interchange and junction opening years are not stated in any fetched source. These are left null or 'year not stated' in notes rather than inferred.",
+    "Not verified: directional restrictions (directions field) were taken from source wording where given; otherwise 'both' is a default assumption, not a source fact.",
+    "Not verified: operator names for external connections (Tomei, Chuo, Higashi-Kanto, Joban, Tokyo Gaikan, Keiyo, Yokohama-Yokosuka) are from general knowledge and labelled as such in notes where relevant."
+  ]
+}

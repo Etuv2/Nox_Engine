@@ -11,6 +11,7 @@ class Camera;
 class SceneGraph;
 class SceneNode;
 class RoadNetwork;
+class CollisionWorld;
 
 /*
 * Drive mode (docs/nfs2015/game.md): arcade vehicle + chase camera for the racing prototype.
@@ -28,6 +29,12 @@ class RoadNetwork;
 *     with the front axle and follow the road height. Older models fall back to body roll only.
 *   * Collision: RoadNetwork street band (building lines are walls) + layout obstacles; the car is
 *     two circles, collisions are resolved per sub-step.
+*   * Surface mode (a CollisionWorld is supplied, docs/shuto): the car has a real height. Each wheel
+*     raycasts down from just above the current deck, so stacked carriageways, tunnels and ramps
+*     resolve to the deck the car is on; the body follows the road pitch/bank, slopes add gravity
+*     along the road, the car can leave the ground (ballistic, landing) and walls are the collision
+*     mesh's wall triangles (barriers, tunnel walls, piers) tested at body height. The chase camera
+*     is kept out of geometry with a ray from the car.
 *   * Chase camera: matched to the NFS 2015 reference framing (height ~1.65 m, ~5 m behind the car
 *     centre, ~3.5 deg down, 55 deg vertical FOV at rest), critically damped follow that blends the
 *     car heading with the velocity direction (drift framing) and restrained speed effects.
@@ -104,7 +111,7 @@ public:
 	};
 
 	void Configure(const nlohmann::json& game, SceneGraph& sceneGraph, const RoadNetwork* roads,
-		const std::string& layoutPath);
+		const std::string& layoutPath, const CollisionWorld* collision = nullptr);
 	bool IsAvailable() const { return m_available; }
 	bool IsActive() const { return m_active; }
 	void SetActive(bool active);
@@ -112,7 +119,11 @@ public:
 	int CameraMode() const { return m_cameraMode; }
 	void ResetToSpawn();
 	void Teleport(const glm::vec2& pos, float heading);
+	// Surface mode: places the car on the ground found below pos + 2.5 m (falls back to the highest
+	// ground at pos). Legacy mode ignores the height.
+	void Teleport(const glm::vec3& pos, float heading);
 	void RecoverToRoad();
+	void Refuel() { m_nitro = 1.0f; m_nitroCooldown = 0.0f; }
 	bool ConsumeTeleport() { const bool t = m_teleported; m_teleported = false; return t; }
 	bool ConsumeTeleportForEffects() { const bool t = m_teleportFx; m_teleportFx = false; return t; }
 
@@ -121,6 +132,9 @@ public:
 
 	// State for HUD / race / audio / effects.
 	glm::vec2 Position() const { return m_pos; }
+	glm::vec3 Position3() const { return glm::vec3(m_pos.x, BaseY(), m_pos.y); }  // ground point under the car
+	bool HasSurface() const { return m_collision != nullptr; }
+	bool Airborne() const { return m_airborne; }
 	glm::vec2 PreviousPosition() const { return m_prevPos; }
 	float Heading() const { return m_heading; }
 	float SpeedKmh() const { return glm::length(m_vel) * 3.6f; }
@@ -147,6 +161,7 @@ public:
 	Handling& MutableHandling() { return m_handling; }
 	CameraRig& MutableCamera() { return m_rig; }
 	glm::vec2 SpawnPosition() const { return m_spawnPos; }
+	glm::vec3 SpawnPosition3() const { return glm::vec3(m_spawnPos.x, m_spawnY, m_spawnPos.y); }
 	float SpawnHeading() const { return m_spawnHeading; }
 	void SetSpawn(const glm::vec2& p, float heading) { m_spawnPos = p; m_spawnHeading = heading; }
 	nlohmann::json SaveTuning() const; // "handling" + "camera" objects
@@ -154,8 +169,10 @@ public:
 	static void ReadHandling(const nlohmann::json& j, Handling& h);
 	static void ReadCamera(const nlohmann::json& j, CameraRig& c);
 
-	// Road surface height (procedural bumps on asphalt, curbs/sidewalks).
+	// Road surface height (procedural bumps on asphalt, curbs/sidewalks). Legacy planar mode.
 	float GroundHeight(const glm::vec2& p) const;
+	// Surface mode: ground under p searched downward from 'fromY'. Returns false over a gap.
+	bool SurfaceHeight(const glm::vec2& p, float fromY, float maxDrop, float& outY, glm::vec3* outNormal = nullptr) const;
 
 private:
 	struct Area { glm::vec2 min, max; };
@@ -174,6 +191,9 @@ private:
 	void UpdateSuspension(float h);
 	void Collide(glm::vec2& pos, glm::vec2& vel);
 	glm::vec2 ResolveCircle(glm::vec2& c, float radius) const;
+	void SampleWheels();                                  // per-wheel contact + suspension input
+	void UpdateVertical(float h);                         // surface mode: ground following / airborne
+	float BaseY() const { return m_collision ? m_y : 0.0f; }
 	void ApplyTransforms();
 	void UpdateCamera(float dt, Camera& camera, float aspect);
 	void LoadLayout(const std::string& path);
@@ -191,6 +211,22 @@ private:
 	std::vector<Area> m_areas;
 	std::vector<Obstacle> m_obstacles;
 	const RoadNetwork* m_roads = nullptr;
+	const CollisionWorld* m_collision = nullptr;
+	// Surface mode vertical state: m_y = ground height under the car centre.
+	float m_y = 0.0f;
+	float m_vyUp = 0.0f;
+	bool m_airborne = false;
+	float m_airTime = 0.0f;
+	bool m_recoverRequested = false;
+	bool m_hasSafePose = false;          // surface mode: last pose with all wheels on the ground
+	glm::vec3 m_safePos{ 0.0f };
+	float m_safeHeading = 0.0f;
+	float m_safeTimer = 0.0f;
+	float m_groundPitch = 0.0f;          // rad, nose up +
+	float m_groundRoll = 0.0f;           // rad, right side down +
+	float m_spawnY = 0.0f;
+	bool m_wheelHit[4] = { true, true, true, true };
+	float m_wheelRel[4] = {};            // road height under each wheel relative to the car's ground plane
 	Handling m_handling;
 	CameraRig m_rig;
 

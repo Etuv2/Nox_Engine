@@ -1,0 +1,1519 @@
+{
+  "generator": "tools/shuto/extract_patches.py",
+  "padding_px": 8,
+  "fringe_alpha_threshold": 32,
+  "content_alpha_threshold": 16,
+  "seam_notable_rule": {
+    "ratio_gt": 1.5,
+    "mae_gt": 2.5
+  },
+  "suggested_tile_meters_note": "from source manifest; roughness/metallic are starting scalars",
+  "assets": [
+    {
+      "id": "asphalt_fine",
+      "source_file": "asphalt_fine.png",
+      "source_sha256": "0f188aa72da4c80ff8c9801151f986b787355da4ae37aef75a777b98eb2353ee",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.88,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        4,
+        4
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "asphalt_fine.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 21.609,
+          "interior_median_mae": 17.332,
+          "ratio": 1.247
+        },
+        "y": {
+          "opposite_edge_mae": 21.049,
+          "interior_median_mae": 18.614,
+          "ratio": 1.131
+        }
+      },
+      "seam_notable": false
+    },
+    {
+      "id": "concrete_cast",
+      "source_file": "concrete_cast.png",
+      "source_sha256": "70e8024128594451e8acf734d036f4260b22d2be44a3b0d33a7b6aa69f5a6fce",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.85,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        3,
+        3
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "concrete_cast.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 10.971,
+          "interior_median_mae": 10.224,
+          "ratio": 1.073
+        },
+        "y": {
+          "opposite_edge_mae": 12.022,
+          "interior_median_mae": 10.745,
+          "ratio": 1.119
+        }
+      },
+      "seam_notable": false
+    },
+    {
+      "id": "concrete_weathered",
+      "source_file": "concrete_weathered.png",
+      "source_sha256": "4eaec6d9dc67f10eadd0cff61b1cbc5701ac1cef63f89e80c82b4d2167599682",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.92,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        3,
+        3
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "concrete_weathered.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 12.422,
+          "interior_median_mae": 11.521,
+          "ratio": 1.078
+        },
+        "y": {
+          "opposite_edge_mae": 14.029,
+          "interior_median_mae": 11.438,
+          "ratio": 1.227
+        }
+      },
+      "seam_notable": false
+    },
+    {
+      "id": "tunnel_tiles",
+      "source_file": "tunnel_tiles-v2.png",
+      "source_sha256": "7cf1fb7026e08664f3af682e9754844d06fa82b076069868db1a59abff867ebe",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.45,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        2,
+        2
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "tunnel_tiles.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 3.936,
+          "interior_median_mae": 2.554,
+          "ratio": 1.541
+        },
+        "y": {
+          "opposite_edge_mae": 10.028,
+          "interior_median_mae": 2.521,
+          "ratio": 3.977
+        }
+      },
+      "seam_notable": true,
+      "seamless_file": "tunnel_tiles_seamless.png",
+      "metrics_seamless": {
+        "x": {
+          "opposite_edge_mae": 2.965,
+          "interior_median_mae": 2.299,
+          "ratio": 1.29
+        },
+        "y": {
+          "opposite_edge_mae": 2.994,
+          "interior_median_mae": 2.252,
+          "ratio": 1.329
+        }
+      }
+    },
+    {
+      "id": "galvanized_steel",
+      "source_file": "galvanized_steel.png",
+      "source_sha256": "d6a25547dce4a44c45402e3a176d6beee0382d326b84e42c3642062ccf79794c",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.5,
+      "metallic": 1,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        1,
+        1
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "galvanized_steel.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 10.092,
+          "interior_median_mae": 6.629,
+          "ratio": 1.522
+        },
+        "y": {
+          "opposite_edge_mae": 10.412,
+          "interior_median_mae": 6.439,
+          "ratio": 1.617
+        }
+      },
+      "seam_notable": true,
+      "seamless_file": "galvanized_steel_seamless.png",
+      "metrics_seamless": {
+        "x": {
+          "opposite_edge_mae": 7.486,
+          "interior_median_mae": 5.883,
+          "ratio": 1.273
+        },
+        "y": {
+          "opposite_edge_mae": 5.817,
+          "interior_median_mae": 5.72,
+          "ratio": 1.017
+        }
+      }
+    },
+    {
+      "id": "corrugated_metal",
+      "source_file": "corrugated_metal.png",
+      "source_sha256": "2656ebc944ad8bde9f44736fcd91bcb36aeba988a7b863883ecb99f963a7882f",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.7,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        2,
+        2
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "corrugated_metal.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 2.204,
+          "interior_median_mae": 1.881,
+          "ratio": 1.171
+        },
+        "y": {
+          "opposite_edge_mae": 2.793,
+          "interior_median_mae": 1.162,
+          "ratio": 2.404
+        }
+      },
+      "seam_notable": true,
+      "seamless_file": "corrugated_metal_seamless.png",
+      "metrics_seamless": {
+        "x": {
+          "opposite_edge_mae": 1.083,
+          "interior_median_mae": 1.837,
+          "ratio": 0.59
+        },
+        "y": {
+          "opposite_edge_mae": 1.185,
+          "interior_median_mae": 1.042,
+          "ratio": 1.138
+        }
+      }
+    },
+    {
+      "id": "rooftop_membrane",
+      "source_file": "rooftop_membrane.png",
+      "source_sha256": "246335b09960f61c0c2370fa2e40732069749754cf9b56a987c0a6db762f80a9",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.9,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        4,
+        4
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "rooftop_membrane.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 16.43,
+          "interior_median_mae": 13.13,
+          "ratio": 1.251
+        },
+        "y": {
+          "opposite_edge_mae": 14.648,
+          "interior_median_mae": 14.432,
+          "ratio": 1.015
+        }
+      },
+      "seam_notable": false
+    },
+    {
+      "id": "ground_gravel",
+      "source_file": "ground_gravel.png",
+      "source_sha256": "4f556e7ba7e4af06ee2621ffa98e154461348fd6dcd4cae9efbac35e301c0c6d",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.96,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        3,
+        3
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "ground_gravel.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 25.017,
+          "interior_median_mae": 20.539,
+          "ratio": 1.218
+        },
+        "y": {
+          "opposite_edge_mae": 23.71,
+          "interior_median_mae": 21.947,
+          "ratio": 1.08
+        }
+      },
+      "seam_notable": false
+    },
+    {
+      "id": "noise_barrier",
+      "source_file": "noise_barrier.png",
+      "source_sha256": "fdc0bc83b28f294a319ba8ff5c64f124d4e4891f1e664c975e83ec8ff00447b4",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.75,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "surface",
+      "padding": 0,
+      "suggested_tile_meters": [
+        1,
+        1
+      ],
+      "wrap": "repeat",
+      "mip_note": "padding 0; repeat textures rely on REPEAT wrap",
+      "file": "noise_barrier.png",
+      "metrics_source": {
+        "x": {
+          "opposite_edge_mae": 3.367,
+          "interior_median_mae": 2.848,
+          "ratio": 1.182
+        },
+        "y": {
+          "opposite_edge_mae": 3.211,
+          "interior_median_mae": 3.121,
+          "ratio": 1.029
+        }
+      },
+      "seam_notable": false
+    },
+    {
+      "id": "facades_apartment",
+      "source_file": "facades_apartment.png",
+      "source_sha256": "50ce986b8161a97a3f84a2175d8e8d2a4a20948025f78e5e2c8af6903d56d97e",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "beige_tiled",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_apartment_beige_tiled.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "gray_concrete",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_apartment_gray_concrete.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "tan_older",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_apartment_tan_older.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "ivory_modern",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_apartment_ivory_modern.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    },
+    {
+      "id": "facades_commercial",
+      "source_file": "facades_commercial.png",
+      "source_sha256": "bfe51b0ec42d36f7f42c6f3cd79c66ede63a3d8858507503c1d0c8794816fede",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "curtain_wall",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_commercial_curtain_wall.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "retail_blank_signs",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_commercial_retail_blank_signs.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "vertical_windows",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_commercial_vertical_windows.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "gray_brown_office",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_commercial_gray_brown_office.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    },
+    {
+      "id": "facades_industrial",
+      "source_file": "facades_industrial.png",
+      "source_sha256": "2ebc429ed92efec578863f56556bf55907c94b1a35f0dd37b6c648fd6f9feecc",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "warehouse_roller_door",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_industrial_warehouse_roller_door.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "concrete_clerestory",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_industrial_concrete_clerestory.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "red_container",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_industrial_red_container.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "teal_container",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "facades_industrial_teal_container.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    },
+    {
+      "id": "sign_panel_blanks",
+      "source_file": "sign_panel_blanks.png",
+      "source_sha256": "d894489523a610b88ff773e0a13f323b5f417da5ddaf49fc041e1d8266d119d8",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "highway_green",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "sign_panel_blanks_highway_green.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "safety_white",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "sign_panel_blanks_safety_white.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "services_blue",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "sign_panel_blanks_services_blue.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "message_board_unlit",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "sign_panel_blanks_message_board_unlit.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    },
+    {
+      "id": "billboards_art",
+      "source_file": "billboards_art.png",
+      "source_sha256": "ce26fbe29f77473114c8135f9b60d1b96dffbe53128a551068efe057917ead58",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "travel_mountain",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "billboards_art_travel_mountain.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "noodles",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "billboards_art_noodles.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "drink_waves",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "billboards_art_drink_waves.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "automotive",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "billboards_art_automotive.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    },
+    {
+      "id": "roadside_props",
+      "source_file": "roadside_props.png",
+      "source_sha256": "d75a0babef63109ce053baff27da9fe0c847309ae5374e549e87cfde62a07d40",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "yellow_black_hazard",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "roadside_props_yellow_black_hazard.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "red_white_warning",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "fringe_fraction": 0.0,
+          "file": "roadside_props_red_white_warning.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "amber_reflector_grid",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "roadside_props_amber_reflector_grid.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "utility_hatch",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "fringe_fraction": 0.0,
+          "file": "roadside_props_utility_hatch.png",
+          "size": [
+            643,
+            643
+          ],
+          "padding": 8,
+          "alpha_atlas": false,
+          "sample_uv_rect_in_patch": [
+            0.012441679626749611,
+            0.012441679626749611,
+            0.9875583203732504,
+            0.9875583203732504
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    },
+    {
+      "id": "foliage_cutouts",
+      "source_file": "foliage_cutouts.png",
+      "source_sha256": "3417036bf5f3ea89d6ff8a143f26de5289f826506fdf99fa826f80100dd45ae7",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "alpha_atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "shrub",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            28,
+            127,
+            627,
+            597
+          ],
+          "manifest_content_rect_atlas": [
+            28,
+            127,
+            627,
+            597
+          ],
+          "fringe_pixels_replaced": 103341,
+          "fringe_fraction": 0.3671,
+          "file": "foliage_cutouts_shrub.png",
+          "size": [
+            615,
+            486
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.013008130081300813,
+            0.01646090534979424,
+            0.9869918699186991,
+            0.9835390946502057
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "grass",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            627,
+            58,
+            1227,
+            604
+          ],
+          "manifest_content_rect_atlas": [
+            627,
+            58,
+            1227,
+            604
+          ],
+          "fringe_pixels_replaced": 230360,
+          "fringe_fraction": 0.7032,
+          "file": "foliage_cutouts_grass.png",
+          "size": [
+            616,
+            562
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.012987012987012988,
+            0.014234875444839857,
+            0.987012987012987,
+            0.9857651245551602
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "weed",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            25,
+            654,
+            608,
+            1227
+          ],
+          "manifest_content_rect_atlas": [
+            25,
+            654,
+            608,
+            1227
+          ],
+          "fringe_pixels_replaced": 178386,
+          "fringe_fraction": 0.534,
+          "file": "foliage_cutouts_weed.png",
+          "size": [
+            599,
+            589
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.01335559265442404,
+            0.013582342954159592,
+            0.986644407345576,
+            0.9864176570458404
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "hedge",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            644,
+            811,
+            1227,
+            1201
+          ],
+          "manifest_content_rect_atlas": [
+            644,
+            811,
+            1227,
+            1201
+          ],
+          "fringe_pixels_replaced": 64037,
+          "fringe_fraction": 0.2816,
+          "file": "foliage_cutouts_hedge.png",
+          "size": [
+            599,
+            406
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.01335559265442404,
+            0.019704433497536946,
+            0.986644407345576,
+            0.9802955665024631
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    },
+    {
+      "id": "surface_wear_decals",
+      "source_file": "surface_wear_decals-v2.png",
+      "source_sha256": "cd7273c37f84408724e7072e36767b1cd18c05288e6b30e74661e0ac0f95be1d",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "roughness": 0.8,
+      "metallic": 0,
+      "roughness_metallic_are_starting_values": true,
+      "color_space": "sRGB",
+      "kind": "alpha_atlas",
+      "wrap": "clamp_to_edge_per_patch",
+      "cells": [
+        {
+          "cell": "runoff",
+          "atlas_source_rect": [
+            0,
+            0,
+            627,
+            627
+          ],
+          "content_rect_atlas": [
+            158,
+            39,
+            558,
+            611
+          ],
+          "manifest_content_rect_atlas": [
+            158,
+            39,
+            558,
+            611
+          ],
+          "fringe_pixels_replaced": 162950,
+          "fringe_fraction": 0.7122,
+          "file": "surface_wear_decals_runoff.png",
+          "size": [
+            416,
+            588
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.019230769230769232,
+            0.013605442176870748,
+            0.9807692307692307,
+            0.9863945578231292
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "crack",
+          "atlas_source_rect": [
+            627,
+            0,
+            1254,
+            627
+          ],
+          "content_rect_atlas": [
+            775,
+            50,
+            1139,
+            622
+          ],
+          "manifest_content_rect_atlas": [
+            775,
+            50,
+            1139,
+            622
+          ],
+          "fringe_pixels_replaced": 202096,
+          "fringe_fraction": 0.9706,
+          "file": "surface_wear_decals_crack.png",
+          "size": [
+            380,
+            588
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.021052631578947368,
+            0.013605442176870748,
+            0.9789473684210527,
+            0.9863945578231292
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "rust",
+          "atlas_source_rect": [
+            0,
+            627,
+            627,
+            1254
+          ],
+          "content_rect_atlas": [
+            140,
+            661,
+            527,
+            1234
+          ],
+          "manifest_content_rect_atlas": [
+            140,
+            661,
+            527,
+            1234
+          ],
+          "fringe_pixels_replaced": 145246,
+          "fringe_fraction": 0.655,
+          "file": "surface_wear_decals_rust.png",
+          "size": [
+            403,
+            589
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.019851116625310174,
+            0.013582342954159592,
+            0.9801488833746899,
+            0.9864176570458404
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        },
+        {
+          "cell": "oil",
+          "atlas_source_rect": [
+            627,
+            627,
+            1254,
+            1254
+          ],
+          "content_rect_atlas": [
+            737,
+            732,
+            1164,
+            1205
+          ],
+          "manifest_content_rect_atlas": [
+            737,
+            732,
+            1164,
+            1205
+          ],
+          "fringe_pixels_replaced": 100983,
+          "fringe_fraction": 0.5,
+          "file": "surface_wear_decals_oil.png",
+          "size": [
+            443,
+            489
+          ],
+          "padding": 8,
+          "alpha_atlas": true,
+          "sample_uv_rect_in_patch": [
+            0.01805869074492099,
+            0.016359918200409,
+            0.981941309255079,
+            0.983640081799591
+          ],
+          "max_safe_mip_note": "padding 8 px keeps bleed under one texel to about mip 2-3"
+        }
+      ]
+    }
+  ]
+}

@@ -23,7 +23,7 @@ class RoadNetwork;
 * a point of the target rectangle ("TL","TC","TR","ML","MC","MR","BL","BC","BR").
 */
 struct HudMapMarker {
-	enum class Kind { Event, Checkpoint, NextCheckpoint, Finish, Start };
+	enum class Kind { Event, Checkpoint, NextCheckpoint, Finish, Start, Place };
 	glm::vec2 pos{ 0.0f }; // world (x, z)
 	Kind kind = Kind::Checkpoint;
 };
@@ -43,6 +43,8 @@ struct HudState {
 
 	// Map / navigation.
 	glm::vec2 carPos{ 0.0f };    // world (x, z)
+	float carY = 0.0f;                  // ground height under the car (stacked roads)
+	bool layered = false;               // roads on other levels are drawn dimmed
 	float carHeading = 0.0f;     // radians; 0 = +Z, increases toward +X
 	const RoadNetwork* roads = nullptr;
 	std::vector<glm::vec2> route;            // world polyline to the current target

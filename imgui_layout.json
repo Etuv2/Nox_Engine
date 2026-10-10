@@ -3,7 +3,7 @@
     "visible": true
   },
   "Camera": {
-    "visible": false
+    "visible": true
   },
   "Help": {
     "visible": false

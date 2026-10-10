@@ -5,7 +5,7 @@
     "animation": true,
     "assets": true,
     "build": true,
-    "camera": false,
+    "camera": true,
     "console": true,
     "drive": true,
     "hierarchy": true,

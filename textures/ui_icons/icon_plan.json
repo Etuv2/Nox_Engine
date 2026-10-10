@@ -1,0 +1,741 @@
+{
+  "generator": "Built-in image_gen.imagegen",
+  "style": "Crisp monochrome white transparent pictograms, tinted at runtime using the current HUD palette.",
+  "assets": [
+    {
+      "index": 0,
+      "group": "hud",
+      "id": "nitrous",
+      "subject": "A vertical nitrous oxide bottle with a simple valve cap and one large lightning bolt cut out of its body",
+      "usage": "Nitrous tank and refill"
+    },
+    {
+      "index": 1,
+      "group": "hud",
+      "id": "boost",
+      "subject": "A simple side profile turbocharger snail housing with one curved intake pipe and central circular opening",
+      "usage": "Engine load / boost"
+    },
+    {
+      "index": 2,
+      "group": "hud",
+      "id": "speedometer",
+      "subject": "A three-quarter circular speedometer dial with three broad ticks and a single diagonal needle pointing upper right",
+      "usage": "Speed and performance"
+    },
+    {
+      "index": 3,
+      "group": "hud",
+      "id": "engine",
+      "subject": "A familiar dashboard engine-block silhouette with short top cap and side outlet",
+      "usage": "Engine and power"
+    },
+    {
+      "index": 4,
+      "group": "hud",
+      "id": "gearbox",
+      "subject": "A manual H-pattern gear shifter diagram with three vertical channels joined by a horizontal bar and a round knob at upper right, no numbers",
+      "usage": "Transmission and gear"
+    },
+    {
+      "index": 5,
+      "group": "hud",
+      "id": "handbrake",
+      "subject": "A car parking-brake symbol: circle containing one vertical lever stroke with a round top, bracket arcs at left and right; no letter",
+      "usage": "Handbrake"
+    },
+    {
+      "index": 6,
+      "group": "hud",
+      "id": "headlights",
+      "subject": "A side-facing headlamp outline on the right with three horizontal light rays extending to the left",
+      "usage": "Headlights"
+    },
+    {
+      "index": 7,
+      "group": "hud",
+      "id": "damage",
+      "subject": "A front-facing sports car silhouette with one bold zigzag crack diagonally crossing its hood",
+      "usage": "Vehicle damage"
+    },
+    {
+      "index": 8,
+      "group": "hud",
+      "id": "traction",
+      "subject": "Rear view car with two broad S-shaped skid tracks descending below the wheels",
+      "usage": "Traction and sliding"
+    },
+    {
+      "index": 9,
+      "group": "hud",
+      "id": "warning",
+      "subject": "A hollow upright warning triangle with a single bold exclamation mark inside",
+      "usage": "General warning"
+    },
+    {
+      "index": 10,
+      "group": "hud",
+      "id": "wrong_way",
+      "subject": "A circular prohibitory sign containing a thick horizontal minus bar",
+      "usage": "Wrong-way warning"
+    },
+    {
+      "index": 11,
+      "group": "hud",
+      "id": "missed_checkpoint",
+      "subject": "A checkpoint gate with two upright posts and a top bar, with one small bold X beneath its center",
+      "usage": "Missed checkpoint"
+    },
+    {
+      "index": 12,
+      "group": "navigation",
+      "id": "player",
+      "subject": "One sharp upward-pointing navigation arrowhead with a deep V-shaped cutout at its bottom",
+      "usage": "Player position"
+    },
+    {
+      "index": 13,
+      "group": "navigation",
+      "id": "waypoint",
+      "subject": "A simple teardrop map-location pin with a large circular hole",
+      "usage": "Selected destination"
+    },
+    {
+      "index": 14,
+      "group": "navigation",
+      "id": "checkpoint",
+      "subject": "A checkpoint gate with two vertical posts and one horizontal overhead bar, with a small downward-pointing chevron above it",
+      "usage": "Checkpoint target"
+    },
+    {
+      "index": 15,
+      "group": "navigation",
+      "id": "start",
+      "subject": "A single flagpole with a solid triangular flag pointing to the right",
+      "usage": "Event start"
+    },
+    {
+      "index": 16,
+      "group": "navigation",
+      "id": "finish",
+      "subject": "A waving rectangular checkered race flag on one short pole; four broad contrasting checker holes",
+      "usage": "Finish line"
+    },
+    {
+      "index": 17,
+      "group": "navigation",
+      "id": "parking",
+      "subject": "A standard parking-area pictogram: exactly one large bold uppercase letter P inside a square outline with gently rounded corners. The P has one large transparent counter. No car, no building, no roof, no arrows or extra symbols.",
+      "usage": "Parking area"
+    },
+    {
+      "index": 18,
+      "group": "navigation",
+      "id": "meet",
+      "subject": "Two simple sports car front-view silhouettes side by side, one slightly behind the other",
+      "usage": "Car meet"
+    },
+    {
+      "index": 19,
+      "group": "navigation",
+      "id": "photo_spot",
+      "subject": "A simplified camera outline containing a circular aperture with a small four-point sparkle above its upper right corner",
+      "usage": "Photo location"
+    },
+    {
+      "index": 20,
+      "group": "navigation",
+      "id": "rest",
+      "subject": "A takeaway coffee cup side silhouette with one handle and two simple steam strokes above",
+      "usage": "Rest stop"
+    },
+    {
+      "index": 21,
+      "group": "navigation",
+      "id": "garage",
+      "subject": "A simple garage building front with pitched roof, wide open door and one tiny front-view car inside",
+      "usage": "Garage destination"
+    },
+    {
+      "index": 22,
+      "group": "navigation",
+      "id": "map",
+      "subject": "A three-panel folded paper map with two fold lines and one broad path curving across it",
+      "usage": "World map"
+    },
+    {
+      "index": 23,
+      "group": "navigation",
+      "id": "route",
+      "subject": "A smooth S-bend path joining two small round endpoint markers with one arrowhead on the upper endpoint",
+      "usage": "Route guidance"
+    },
+    {
+      "index": 24,
+      "group": "navigation",
+      "id": "recenter",
+      "subject": "Four separate L-shaped corner brackets around a small central navigation arrowhead",
+      "usage": "Recenter map"
+    },
+    {
+      "index": 25,
+      "group": "navigation",
+      "id": "level_up",
+      "subject": "Two horizontal deck lines, upper one short, with an upward arrow beside them",
+      "usage": "Upper road level"
+    },
+    {
+      "index": 26,
+      "group": "navigation",
+      "id": "level_down",
+      "subject": "Two horizontal deck lines, lower one short, with a downward arrow beside them",
+      "usage": "Lower road level"
+    },
+    {
+      "index": 27,
+      "group": "navigation",
+      "id": "junction",
+      "subject": "One main road line forking into two diagonal branches with three arrowhead endpoints",
+      "usage": "Junction"
+    },
+    {
+      "index": 28,
+      "group": "events",
+      "id": "sprint",
+      "subject": "A sharp rightward arrow with two broad horizontal speed streaks trailing from its left",
+      "usage": "Sprint event"
+    },
+    {
+      "index": 29,
+      "group": "events",
+      "id": "circuit",
+      "subject": "A thick oval racing loop with one integrated clockwise arrowhead at the top right",
+      "usage": "Circuit event"
+    },
+    {
+      "index": 30,
+      "group": "events",
+      "id": "drift",
+      "subject": "A top-view car rotated slightly diagonally with two short curved skid trails behind its rear wheels",
+      "usage": "Drift event"
+    },
+    {
+      "index": 31,
+      "group": "events",
+      "id": "time_trial",
+      "subject": "A stopwatch silhouette with one top button and one diagonal needle",
+      "usage": "Time trial"
+    },
+    {
+      "index": 32,
+      "group": "events",
+      "id": "drag",
+      "subject": "Two parallel upright lanes with a small horizontal finish line across the top and upward arrow in each lane",
+      "usage": "Drag event"
+    },
+    {
+      "index": 33,
+      "group": "events",
+      "id": "speed_trap",
+      "subject": "A front-facing roadside radar camera on a short stand with two broad outward radar arcs on its right",
+      "usage": "Speed trap"
+    },
+    {
+      "index": 34,
+      "group": "events",
+      "id": "trophy",
+      "subject": "A broad winner's trophy cup with two handles and a short pedestal",
+      "usage": "Race result and achievement"
+    },
+    {
+      "index": 35,
+      "group": "events",
+      "id": "record",
+      "subject": "A stopwatch with a small five-point star inset in its center instead of clock hands",
+      "usage": "Personal best"
+    },
+    {
+      "index": 36,
+      "group": "events",
+      "id": "leaderboard",
+      "subject": "Three ascending podium blocks with the middle block tallest and a small crown above it, no numbers",
+      "usage": "Speedwall and standings"
+    },
+    {
+      "index": 37,
+      "group": "events",
+      "id": "medal",
+      "subject": "One circular medal with a five-point star cutout and two simple ribbon straps extending upward",
+      "usage": "Award"
+    },
+    {
+      "index": 38,
+      "group": "events",
+      "id": "locked",
+      "subject": "A closed padlock with a broad rectangular body and rounded shackle",
+      "usage": "Locked event or item"
+    },
+    {
+      "index": 39,
+      "group": "events",
+      "id": "unlocked",
+      "subject": "An open padlock with a broad rectangular body and raised shackle open on the right",
+      "usage": "Unlocked event or item"
+    },
+    {
+      "index": 40,
+      "group": "garage",
+      "id": "car",
+      "subject": "A simple low Japanese sports coupe side profile facing right, broad wheels, no marque details",
+      "usage": "Vehicle selection"
+    },
+    {
+      "index": 41,
+      "group": "garage",
+      "id": "wheel",
+      "subject": "A front-on wheel rim with five thick spokes and broad outer tyre ring",
+      "usage": "Wheels"
+    },
+    {
+      "index": 42,
+      "group": "garage",
+      "id": "tyres",
+      "subject": "A tyre viewed slightly from the side as two overlapping bold rings with three simple tread notches",
+      "usage": "Tyres and grip"
+    },
+    {
+      "index": 43,
+      "group": "garage",
+      "id": "brakes",
+      "subject": "A circular brake disc with a large solid caliper at its right, three broad inner vent holes",
+      "usage": "Brakes"
+    },
+    {
+      "index": 44,
+      "group": "garage",
+      "id": "suspension",
+      "subject": "An upright coilover shock absorber with a piston shaft and four broad zigzag spring turns",
+      "usage": "Suspension"
+    },
+    {
+      "index": 45,
+      "group": "garage",
+      "id": "exhaust",
+      "subject": "A diagonal side-view exhaust muffler with a short bent inlet and one flared tailpipe opening",
+      "usage": "Exhaust"
+    },
+    {
+      "index": 46,
+      "group": "garage",
+      "id": "intake",
+      "subject": "A cone-shaped performance air filter with three broad transverse ribs and one short inlet neck",
+      "usage": "Air intake"
+    },
+    {
+      "index": 47,
+      "group": "garage",
+      "id": "ecu",
+      "subject": "A rectangular microchip with three broad pins on each side and one small centered lightning bolt cutout",
+      "usage": "ECU tuning"
+    },
+    {
+      "index": 48,
+      "group": "garage",
+      "id": "differential",
+      "subject": "A differential housing with a rounded center bulge and short horizontal axle tubes on both sides",
+      "usage": "Differential"
+    },
+    {
+      "index": 49,
+      "group": "garage",
+      "id": "aero",
+      "subject": "A rear spoiler wing viewed front-on: one long wing bar supported by two angled struts",
+      "usage": "Aerodynamics"
+    },
+    {
+      "index": 50,
+      "group": "garage",
+      "id": "bodykit",
+      "subject": "Front-facing sports car bumper with a broad center intake and two angular side skirts",
+      "usage": "Body kit"
+    },
+    {
+      "index": 51,
+      "group": "garage",
+      "id": "paint",
+      "subject": "A tilted spray paint gun silhouette with a top reservoir and three short paint spray strokes",
+      "usage": "Paint and customization"
+    },
+    {
+      "index": 52,
+      "group": "garage",
+      "id": "livery",
+      "subject": "A simple rectangular car door panel with two bold diagonal racing stripe cutouts",
+      "usage": "Livery"
+    },
+    {
+      "index": 53,
+      "group": "garage",
+      "id": "repair",
+      "subject": "One open-ended mechanic wrench pointing diagonally upper right",
+      "usage": "Repair and service"
+    },
+    {
+      "index": 54,
+      "group": "garage",
+      "id": "upgrade",
+      "subject": "A bold upward arrow rising above two short stacked horizontal bars",
+      "usage": "Upgrade"
+    },
+    {
+      "index": 55,
+      "group": "garage",
+      "id": "credits",
+      "subject": "Two overlapping round coins, front coin containing a small diamond-shaped cutout; no letters or currency glyphs",
+      "usage": "Credits"
+    },
+    {
+      "index": 56,
+      "group": "garage",
+      "id": "purchase",
+      "subject": "A compact shopping basket with one handle and two broad diagonal bars",
+      "usage": "Purchase"
+    },
+    {
+      "index": 57,
+      "group": "garage",
+      "id": "equipped",
+      "subject": "A large clean checkmark inside a thin hexagonal outline",
+      "usage": "Equipped item"
+    },
+    {
+      "index": 58,
+      "group": "menus",
+      "id": "home",
+      "subject": "A simple pitched-roof house silhouette with a doorway cutout",
+      "usage": "Main menu"
+    },
+    {
+      "index": 59,
+      "group": "menus",
+      "id": "play",
+      "subject": "One large equilateral play triangle pointing right",
+      "usage": "Play and resume"
+    },
+    {
+      "index": 60,
+      "group": "menus",
+      "id": "pause",
+      "subject": "Two parallel upright broad bars",
+      "usage": "Pause"
+    },
+    {
+      "index": 61,
+      "group": "menus",
+      "id": "retry",
+      "subject": "A nearly complete clockwise circular arrow with a broad arrowhead at upper right",
+      "usage": "Retry and restart"
+    },
+    {
+      "index": 62,
+      "group": "menus",
+      "id": "reset_car",
+      "subject": "A side-view car beneath one broad clockwise curved arrow arching over its roof",
+      "usage": "Reset vehicle"
+    },
+    {
+      "index": 63,
+      "group": "menus",
+      "id": "free_roam",
+      "subject": "A two-lane road bending gently toward the upper right with two center dash cutouts",
+      "usage": "Free roam"
+    },
+    {
+      "index": 64,
+      "group": "menus",
+      "id": "exit",
+      "subject": "A simple open door frame with one rightward arrow emerging through it",
+      "usage": "Quit or leave"
+    },
+    {
+      "index": 65,
+      "group": "menus",
+      "id": "settings",
+      "subject": "A precise eight-tooth cog with a round central opening",
+      "usage": "Settings"
+    },
+    {
+      "index": 66,
+      "group": "menus",
+      "id": "back",
+      "subject": "One broad leftward arrow with horizontal shaft",
+      "usage": "Back"
+    },
+    {
+      "index": 67,
+      "group": "menus",
+      "id": "close",
+      "subject": "One balanced bold diagonal X",
+      "usage": "Close and cancel"
+    },
+    {
+      "index": 68,
+      "group": "menus",
+      "id": "confirm",
+      "subject": "One clean broad checkmark angled upward to the right",
+      "usage": "Confirm"
+    },
+    {
+      "index": 69,
+      "group": "menus",
+      "id": "info",
+      "subject": "A hollow circle enclosing a lowercase information i formed by one round dot and upright stem",
+      "usage": "Information"
+    },
+    {
+      "index": 70,
+      "group": "menus",
+      "id": "save",
+      "subject": "A simple floppy disk silhouette with a rectangular top shutter cutout and square bottom label cutout",
+      "usage": "Save"
+    },
+    {
+      "index": 71,
+      "group": "menus",
+      "id": "delete",
+      "subject": "A simple waste-bin outline with removable lid and two vertical internal bars",
+      "usage": "Delete"
+    },
+    {
+      "index": 72,
+      "group": "menus",
+      "id": "search",
+      "subject": "A circular magnifier with one diagonal lower-right handle",
+      "usage": "Search"
+    },
+    {
+      "index": 73,
+      "group": "menus",
+      "id": "filter",
+      "subject": "A funnel silhouette tapering to one short narrow vertical stem",
+      "usage": "Filter"
+    },
+    {
+      "index": 74,
+      "group": "menus",
+      "id": "favorite",
+      "subject": "One simple five-point hollow star",
+      "usage": "Favorite"
+    },
+    {
+      "index": 75,
+      "group": "menus",
+      "id": "help",
+      "subject": "A hollow circle containing one broad question mark",
+      "usage": "Help"
+    },
+    {
+      "index": 76,
+      "group": "settings",
+      "id": "audio",
+      "subject": "A right-facing speaker cone with two broad curved sound waves at its right",
+      "usage": "Audio volume"
+    },
+    {
+      "index": 77,
+      "group": "settings",
+      "id": "mute",
+      "subject": "A right-facing speaker cone with one bold X at its right",
+      "usage": "Mute"
+    },
+    {
+      "index": 78,
+      "group": "settings",
+      "id": "music",
+      "subject": "One connected pair of musical eighth notes with two broad circular note heads",
+      "usage": "Music"
+    },
+    {
+      "index": 79,
+      "group": "settings",
+      "id": "display",
+      "subject": "A widescreen monitor outline with a simple central stand",
+      "usage": "Display"
+    },
+    {
+      "index": 80,
+      "group": "settings",
+      "id": "graphics",
+      "subject": "A simple horizontal graphics card silhouette with one large fan circle and short connector edge",
+      "usage": "Graphics settings"
+    },
+    {
+      "index": 81,
+      "group": "settings",
+      "id": "controls",
+      "subject": "A front-view generic game controller with a plus-shaped D-pad on the left and two simple round buttons on the right",
+      "usage": "Controls settings"
+    },
+    {
+      "index": 82,
+      "group": "settings",
+      "id": "accessibility",
+      "subject": "A head circle above a human figure with outstretched arms and separated legs enclosed in a broad thin circle",
+      "usage": "Accessibility"
+    },
+    {
+      "index": 83,
+      "group": "settings",
+      "id": "language",
+      "subject": "A globe formed by outer circle, central vertical ellipse and two horizontal latitude arcs",
+      "usage": "Language"
+    },
+    {
+      "index": 84,
+      "group": "settings",
+      "id": "camera",
+      "subject": "A compact camera outline with a large circular lens and one small top shutter bump",
+      "usage": "Camera view"
+    },
+    {
+      "index": 85,
+      "group": "controls",
+      "id": "keyboard",
+      "subject": "A wide keyboard silhouette with six broad key cutouts and one long spacebar cutout, no letters",
+      "usage": "Keyboard prompts"
+    },
+    {
+      "index": 86,
+      "group": "controls",
+      "id": "mouse",
+      "subject": "An upright computer mouse outline with a central scroll wheel and a vertical top-button divider",
+      "usage": "Mouse prompts"
+    },
+    {
+      "index": 87,
+      "group": "controls",
+      "id": "steering",
+      "subject": "A circular steering wheel with two diagonal spokes and a short bottom spoke",
+      "usage": "Steering"
+    },
+    {
+      "index": 88,
+      "group": "controls",
+      "id": "throttle",
+      "subject": "A tall accelerator pedal viewed front-on with three broad horizontal grip grooves",
+      "usage": "Throttle"
+    },
+    {
+      "index": 89,
+      "group": "controls",
+      "id": "brake",
+      "subject": "A broad rectangular brake pedal viewed front-on with two horizontal grip grooves",
+      "usage": "Brake"
+    },
+    {
+      "index": 90,
+      "group": "controls",
+      "id": "dpad",
+      "subject": "One broad plus-shaped directional pad with a small diamond cutout in its center",
+      "usage": "Directional navigation"
+    },
+    {
+      "index": 91,
+      "group": "controls",
+      "id": "stick",
+      "subject": "One short joystick with a broad circular knob on a slim upright shaft and an oval base",
+      "usage": "Analog stick"
+    },
+    {
+      "index": 92,
+      "group": "controls",
+      "id": "trigger",
+      "subject": "A generic controller shoulder trigger in simple side profile, curved hook shape with one inner ridge",
+      "usage": "Controller trigger"
+    },
+    {
+      "index": 93,
+      "group": "controls",
+      "id": "enter",
+      "subject": "A bent return-key arrow travelling downward then pointing left with a broad arrowhead",
+      "usage": "Confirm key"
+    },
+    {
+      "index": 94,
+      "group": "controls",
+      "id": "shift",
+      "subject": "A thick upward-pointing arrow with a hollow shaft, standard Shift-key symbol",
+      "usage": "Nitrous key"
+    },
+    {
+      "index": 95,
+      "group": "controls",
+      "id": "arrow_up",
+      "subject": "One short bold arrow pointing straight up",
+      "usage": "Up input"
+    },
+    {
+      "index": 96,
+      "group": "controls",
+      "id": "arrow_down",
+      "subject": "One short bold arrow pointing straight down",
+      "usage": "Down input"
+    },
+    {
+      "index": 97,
+      "group": "controls",
+      "id": "arrow_left",
+      "subject": "One short bold arrow pointing straight left",
+      "usage": "Left input"
+    },
+    {
+      "index": 98,
+      "group": "controls",
+      "id": "arrow_right",
+      "subject": "One short bold arrow pointing straight right",
+      "usage": "Right input"
+    },
+    {
+      "index": 99,
+      "group": "controls",
+      "id": "button_south",
+      "subject": "A generic four-face-button diamond cluster with only the bottom button filled solid and the other three hollow",
+      "usage": "Controller south button"
+    },
+    {
+      "index": 100,
+      "group": "controls",
+      "id": "button_east",
+      "subject": "A generic four-face-button diamond cluster with only the right button filled solid and the other three hollow",
+      "usage": "Controller east button"
+    },
+    {
+      "index": 101,
+      "group": "controls",
+      "id": "button_west",
+      "subject": "A generic four-face-button diamond cluster with only the left button filled solid and the other three hollow",
+      "usage": "Controller west button"
+    },
+    {
+      "index": 102,
+      "group": "controls",
+      "id": "button_north",
+      "subject": "A generic four-face-button diamond cluster with only the top button filled solid and the other three hollow",
+      "usage": "Controller north button"
+    },
+    {
+      "index": 103,
+      "group": "controls",
+      "id": "menu",
+      "subject": "Three parallel short horizontal bars of equal length",
+      "usage": "Controller menu button"
+    },
+    {
+      "index": 104,
+      "group": "controls",
+      "id": "view",
+      "subject": "Two slightly offset overlapping thin rectangular outlines",
+      "usage": "Controller view button"
+    }
+  ]
+}

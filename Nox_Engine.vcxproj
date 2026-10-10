@@ -105,6 +105,7 @@
     <ClCompile Include="src\SceneRenderSettings.cpp" />
     <ClCompile Include="src\DriveMode.cpp" />
     <ClCompile Include="src\RoadNetwork.cpp" />
+    <ClCompile Include="src\CollisionWorld.cpp" />
     <ClCompile Include="src\GameSession.cpp" />
     <ClCompile Include="src\DriveAudio.cpp" />
     <ClCompile Include="src\RacingHUD.cpp" />
@@ -347,6 +348,7 @@
     <ClInclude Include="src\SceneRenderSettings.h" />
     <ClInclude Include="src\DriveMode.h" />
     <ClInclude Include="src\RoadNetwork.h" />
+    <ClInclude Include="src\CollisionWorld.h" />
     <ClInclude Include="src\GameSession.h" />
     <ClInclude Include="src\DriveAudio.h" />
     <ClInclude Include="src\RacingHUD.h" />

@@ -1,0 +1,80 @@
+{
+  "scene_name": "shuto_roundtrip",
+  "exposure": 1.0,
+  "gamma": 1.6,
+  "skybox": "hdrs\\skybox_2.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models/shuto/kit/roundtrip_test.glb",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "type": "light",
+      "name": "Sun",
+      "position": [
+        0,
+        20,
+        0
+      ],
+      "rotation": [
+        -45,
+        30,
+        0
+      ],
+      "light": {
+        "type": "directional",
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "intensity": 2.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.85
+      }
+    }
+  ],
+  "camera": {
+    "position": [
+      0.0,
+      5.0,
+      -4.0
+    ],
+    "look_at": [
+      0.0,
+      1.5,
+      -20.0
+    ],
+    "fov": 55.0,
+    "near": 0.1,
+    "far": 500.0,
+    "movement_speed": 10.0
+  }
+}

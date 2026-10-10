@@ -21,9 +21,12 @@ LightNode::LightNode(std::shared_ptr<BaseLight> light)
 
 void LightNode::SetLight(std::shared_ptr<BaseLight> light) 
 { 
-    m_light = light; 
+    m_light = light;
     if (m_light) {
-        UpdateTransformFromLight();
+        // The node transform is authoritative once it is set (the loader applies the authored
+        // position/rotation before attaching the light). Pulling the new light's default position
+        // back into the node here would reset every light node to the origin.
+        UpdateLightFromTransform(true);
         UpdateSelectionProxy();
         m_lightDirty = false;
         m_transformDirty = true;
