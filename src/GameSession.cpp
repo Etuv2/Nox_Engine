@@ -2,6 +2,7 @@
 
 #include "Camera.h"
 #include "DriveAudio.h"
+#include "VehicleFX.h"
 #include "SceneGraph.h"
 #include <SDL/SDL.h>
 #include <IMGUI/imgui.h>
@@ -284,6 +285,69 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 	}
 	// NOX_DRIVE_AUTOPILOT=1: scripted driver for unattended validation (follows the route, starts the
 	// event, retries once from the results menu, then returns to free roam).
+	// NOX_DRIVE_SCRIPT=maneuvers: timed handling test (burnout, launch, hard brake, weave, handbrake
+	// drift, brake-tap drift) on the straight ahead of the spawn; used for validation recordings.
+	static const bool maneuvers = [] { const char* v = std::getenv("NOX_DRIVE_SCRIPT"); return v && std::string(v) == "maneuvers"; }();
+	if (maneuvers && m_playing) {
+		m_scriptTime += m_hudDt;
+		const float t = m_scriptTime;
+		in = DriveMode::Input();
+		now = Buttons();
+		// Position-driven test driver: burnout, launch, hard brake, weave, handbrake drift left into
+		// 3rd St (z = 200), brake-tap drift right onto Palm Blvd (x = 150), stop.
+		const glm::vec2 p = m_drive.Position();
+		const float head = m_drive.Heading();
+		const float kmh = m_drive.SpeedKmh();
+		auto wrap = [](float x) { while (x > kPi) x -= 2.0f * kPi; while (x < -kPi) x += 2.0f * kPi; return x; };
+		// Lane keeping toward a target heading/lateral offset (heading grows toward +X = the car's left).
+		auto holdLine = [&](float desiredHeading, float lateralError) {
+			const float want = desiredHeading + std::clamp(lateralError * 0.12f, -0.4f, 0.4f);
+			return std::clamp(-wrap(want - head) * 2.6f / (1.0f + kmh / 140.0f), -1.0f, 1.0f);
+		};
+		// Blocked against something (wall, pole): reverse out briefly, then resume the phase.
+		if (m_scriptPhase >= 2 && m_scriptPhase < 12 && kmh < 2.0f && m_scriptPhase != 3) m_stuckTime += m_hudDt; else if (kmh > 6.0f) m_stuckTime = 0.0f;
+		if (m_stuckTime > 1.0f) {
+			in.brake = 1.0f; in.throttle = 0.0f; in.steer = 0.8f;
+			if (m_stuckTime > 2.4f) m_stuckTime = 0.0f;
+		}
+		else switch (m_scriptPhase) {
+		case 0: if (t > 0.5f) m_scriptPhase = 1; break;
+		case 1: in.throttle = 1.0f; in.brake = 1.0f; if (t > 2.5f) m_scriptPhase = 2; break;           // burnout
+		case 2: in.throttle = 1.0f; in.steer = holdLine(0.0f, -2.0f - p.x); if (p.y > 15.0f) m_scriptPhase = 3; break; // launch
+		case 3: in.brake = 1.0f; in.steer = holdLine(0.0f, -2.0f - p.x); if (kmh < 30.0f) m_scriptPhase = 4; break;   // hard brake
+		case 4: {                                                                                       // weave
+			in.throttle = 0.65f;
+			const float targetX = -2.0f - 2.4f * std::sin(std::max(p.y - 45.0f, 0.0f) / 11.0f);
+			in.steer = holdLine(0.0f, targetX - p.x);
+			if (p.y > 130.0f) m_scriptPhase = 5;
+			break; }
+		case 5: in.throttle = kmh < 72.0f ? 1.0f : 0.0f; in.brake = kmh > 82.0f ? 0.6f : 0.0f; in.steer = holdLine(0.0f, -2.0f - p.x); if (p.y > 176.0f) m_scriptPhase = 6; m_phaseTime = 0.0f; break;
+		case 6: in.throttle = 0.6f; in.steer = -1.0f; in.handbrake = true; m_phaseTime += m_hudDt;      // handbrake entry (left)
+			if (m_phaseTime > 0.35f) { m_scriptPhase = 7; m_phaseTime = 0.0f; } break;
+		case 7: in.throttle = 1.0f; m_phaseTime += m_hudDt;                                              // hold the drift
+			in.steer = wrap(kPi * 0.5f - head) > 0.6f ? -0.6f : 0.0f;
+			if (wrap(kPi * 0.5f - head) < 0.15f || m_phaseTime > 3.5f) m_scriptPhase = 8; break;
+		case 8: in.throttle = kmh < (p.x > 80.0f ? 74.0f : 100.0f) ? 0.9f : 0.0f; in.brake = kmh > (p.x > 80.0f ? 84.0f : 120.0f) ? 0.7f : 0.0f;
+			in.steer = holdLine(kPi * 0.5f, p.y - 202.0f);
+			if (p.x > 129.0f) { m_scriptPhase = 9; m_phaseTime = 0.0f; } break;
+		case 9: in.brake = 1.0f; in.steer = -0.8f; m_phaseTime += m_hudDt;                                // brake tap
+			if (m_phaseTime > 0.25f) { m_scriptPhase = 10; m_phaseTime = 0.0f; } break;
+		case 10: in.throttle = 1.0f; m_phaseTime += m_hudDt;                                             // brake-tap drift left onto Palm Blvd
+			in.steer = wrap(kPi - head) > 0.3f ? -0.8f : holdLine(kPi, p.x - 146.0f);
+			if (std::abs(wrap(kPi - head)) < 0.3f || m_phaseTime > 3.5f) m_scriptPhase = 11; break;
+		case 11: in.throttle = 0.7f; in.steer = holdLine(kPi, p.x - 146.0f); m_phaseTime += m_hudDt; if (m_phaseTime > 3.0f) m_scriptPhase = 12; break;
+		default: in.brake = 1.0f; break;
+		}
+		static float logTimer = 0.0f;
+		logTimer += m_hudDt;
+		if (logTimer >= 0.25f) {
+			logTimer = 0.0f;
+			std::printf("[Telemetry] ph=%d t=%5.2f v=%6.1f km/h gear=%d rpm=%5.0f drift=%d beta=%5.1f spin=%.2f slip=%.2f pos=(%.1f,%.1f) head=%.1f fx=%d\n",
+				m_scriptPhase, t, m_drive.SpeedKmh(), m_drive.Gear(), m_drive.Rpm(), m_drive.Drifting() ? 1 : 0, m_drive.DriftAngleDeg(),
+				m_drive.Wheel(2).wheelspin, m_drive.Slip01(), m_drive.Position().x, m_drive.Position().y, glm::degrees(m_drive.Heading()), static_cast<int>(VehicleFX::ParticleCount()));
+			std::fflush(stdout);
+		}
+	}
 	static const bool autopilot = [] { const char* v = std::getenv("NOX_DRIVE_AUTOPILOT"); return v && v[0] == '1'; }();
 	if (autopilot && m_playing) {
 		now = Buttons();
@@ -307,11 +371,26 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 		while (diff < -kPi) diff += 2.0f * kPi;
 		in.steer = std::clamp(-diff * 2.5f, -1.0f, 1.0f); // heading grows toward +X = the car's left
 		const float kmh = m_drive.SpeedKmh();
+		static float apLog = 0.0f;
+		apLog += m_hudDt;
+		if (apLog > 2.0f) { apLog = 0.0f; std::printf("[Autopilot] pos=(%.1f,%.1f) v=%.0f near=%d phase=%d route=%d\n", pos.x, pos.y, kmh, m_nearEvent, static_cast<int>(m_phase), static_cast<int>(m_route.size())); std::fflush(stdout); }
 		in.throttle = std::abs(diff) < 0.35f ? 1.0f : 0.35f;
 		if (std::abs(diff) > 0.5f && kmh > 70.0f) { in.throttle = 0.0f; in.brake = 1.0f; }
 		in.nitrous = std::abs(diff) < 0.1f && kmh > 60.0f;
+		// Approach the free-roam event marker slowly enough to trigger the start prompt.
+		if (m_phase == Phase::FreeRoam && m_selectedEvent >= 0 && m_selectedEvent < static_cast<int>(m_events.size())) {
+			const float dist = glm::length(m_events[m_selectedEvent].start - pos);
+			const float limit = 12.0f + dist * 1.2f;
+			if (kmh > limit) { in.throttle = 0.0f; in.brake = 0.8f; in.nitrous = false; }
+		}
+		// Brake before sharp route corners in races.
+		if (m_phase == Phase::Racing && std::abs(diff) > 0.25f && kmh > 75.0f) { in.throttle = 0.0f; in.brake = 0.7f; }
+		if (m_route.size() > 2) {
+			const float toCorner = glm::length(m_route[1] - pos);
+			if (toCorner < 45.0f && kmh > 30.0f + toCorner * 1.1f) { in.throttle = 0.0f; in.brake = 1.0f; in.nitrous = false; }
+		}
 		if (m_phase == Phase::FreeRoam && m_nearEvent >= 0 && m_autoRuns < 2) {
-			in.throttle = 0.0f; in.brake = 1.0f;
+			in.throttle = 0.0f; in.brake = kmh > 3.0f ? 1.0f : 0.0f; // holding the brake at rest would engage reverse
 			now.start = kmh < 5.0f && std::fmod(m_autoTimer, 0.5f) < 0.25f;
 			if (now.start && !m_prevButtons.start && m_autoRuns == 0) ++m_autoRuns;
 		}
@@ -541,6 +620,7 @@ GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float a
 		DriveMode::Input drive = in;
 		if (m_phase == Phase::Finished) { drive = DriveMode::Input(); drive.brake = 0.6f; }
 		m_drive.Update(dt, drive, frozen, m_camera.get(), aspect);
+		EmitTyreEffects(dt);
 		UpdateRace(dt);
 	}
 
@@ -690,4 +770,34 @@ void GameSession::SaveBestTimes() const
 {
 	std::ofstream out(kBestTimesPath);
 	if (out) out << m_bestTimes.dump(2);
+}
+
+// Tyre smoke (burnouts, wheelspin, drifting, locked wheels) and wet-road spray, tied to wheel contact
+// and slip (docs/nfs2015/game.md).
+void GameSession::EmitTyreEffects(float dt)
+{
+	if (m_drive.ConsumeTeleportForEffects()) VehicleFX::Clear();
+	const float speed = m_drive.SpeedKmh();
+	for (int i = 0; i < 4; ++i) {
+		const DriveMode::WheelState& w = m_drive.Wheel(i);
+		if (!w.grounded) continue;
+		const bool rear = i >= 2;
+		// Smoke needs real slip energy: wheelspin, a sliding rear in a drift, or locked wheels.
+		const float slipSmoke = std::clamp((w.slip - 0.45f) / 0.55f, 0.0f, 1.0f) * std::clamp(speed / 25.0f + w.wheelspin, 0.0f, 1.0f);
+		const float smoke = std::max(w.wheelspin, slipSmoke) * (rear ? 1.0f : 0.35f);
+		if (smoke > 0.03f) {
+			// Spinning tyres fling smoke rearward; sliding tyres leave it behind along the path.
+			const float h = m_drive.Heading();
+			const glm::vec3 fwd(std::sin(h), 0.0f, std::cos(h));
+			const glm::vec3 p = w.contact + glm::vec3(0.0f, 0.18f, 0.0f) - fwd * 0.45f;
+			const glm::vec3 v = w.velocity * 0.3f - fwd * (w.wheelspin * 1.8f + 0.3f) + glm::vec3(0.0f, 0.3f, 0.0f);
+			VehicleFX::EmitSmoke(p, v, smoke, dt);
+		}
+		// Spray from the wet surface behind the tyres, growing with speed.
+		const float spray = std::clamp((speed - 20.0f) / 90.0f, 0.0f, 1.0f) * (rear ? 1.0f : 0.45f);
+		if (spray > 0.02f) {
+			VehicleFX::EmitSpray(w.contact + glm::vec3(0.0f, 0.05f, 0.0f), w.velocity * 0.75f, spray, dt);
+		}
+	}
+	VehicleFX::Update(dt);
 }

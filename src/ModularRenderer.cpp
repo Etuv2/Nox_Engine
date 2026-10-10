@@ -35,6 +35,8 @@
 #include "passes/VolumetricFogPass.h"
 #include "passes/MotionBlurPass.h"
 #include "passes/RainPass.h"
+#include "passes/VehicleFXPass.h"
+#include "VehicleFX.h"
 #include <iostream>
 #include <chrono>
 #include <array>
@@ -423,6 +425,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_volumetricFogPass = std::make_unique<VolumetricFogPass>();
 	m_motionBlurPass = std::make_unique<MotionBlurPass>();
 	m_rainPass = std::make_unique<RainPass>();
+	m_vehicleFXPass = std::make_unique<VehicleFXPass>();
 
 	bool success = true;
 	success &= m_shadowPass->Initialize(m_context);
@@ -449,6 +452,8 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_motionBlurPass->Initialize(m_context);
 	success &= m_rainPass->Initialize(m_context);
 	m_rainPass->SetFogPass(m_volumetricFogPass.get());
+	success &= m_vehicleFXPass->Initialize(m_context);
+	m_vehicleFXPass->SetFogPass(m_volumetricFogPass.get());
 
 	m_debugViewShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/debug_view_frag.glsl");
 	if (!m_debugViewShader) {
@@ -1026,7 +1031,17 @@ void ModularRenderer::BuildPassDescriptors(
 		[this]() { m_volumetricFogPass->Apply(m_context); }
 		});
 	addPass({
-		"TAAResolvePass", { "HDRColor", "HDRRain", "HDRFogged", "Velocity" }, { "TAAColor" },
+		"VehicleFXPass", { "HDRColor", "HDRRain", "HDRFogged" }, { "HDRVehicleFX" },
+		[this](const RenderContext& ctx) {
+			// Always scheduled in deferred mode: the frame plan is cached, so a particle-count
+			// predicate would be frozen at startup. The pass returns early when nothing is alive.
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_vehicleFXPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
+		"TAAResolvePass", { "HDRColor", "HDRRain", "HDRFogged", "HDRVehicleFX", "Velocity" }, { "TAAColor" },
 		[](const RenderContext& ctx) {
 			return ctx.enableTAA && !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
 		},
@@ -1037,7 +1052,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"MotionBlurPass", { "TAAColor", "HDRFogged", "Velocity" }, { "MotionBlurColor" },
+		"MotionBlurPass", { "TAAColor", "HDRFogged", "HDRVehicleFX", "Velocity" }, { "MotionBlurColor" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.enableMotionBlur &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -1045,7 +1060,7 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_motionBlurPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
-		"AutoExposurePass", { "HDRColor", "HDRFogged", "TAAColor", "MotionBlurColor" }, { "ExposureAdapted" },
+		"AutoExposurePass", { "HDRColor", "HDRFogged", "HDRVehicleFX", "TAAColor", "MotionBlurColor" }, { "ExposureAdapted" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
@@ -1053,7 +1068,7 @@ void ModularRenderer::BuildPassDescriptors(
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_exposurePass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
 	addPass({
-		"BloomPass", { "HDRColor", "HDRFogged", "TAAColor", "MotionBlurColor", "ExposureAdapted" }, { ResourceNames::Bloom },
+		"BloomPass", { "HDRColor", "HDRFogged", "HDRVehicleFX", "TAAColor", "MotionBlurColor", "ExposureAdapted" }, { ResourceNames::Bloom },
 		[this](const RenderContext& ctx) {
 			return ctx.enableBloom &&
 				DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG &&
@@ -1065,7 +1080,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"PostProcessPass", { "HDRColor", "HDRFogged", "TAAColor", "MotionBlurColor", "ExposureAdapted", ResourceNames::Bloom }, { "CompositedColor" },
+		"PostProcessPass", { "HDRColor", "HDRFogged", "HDRVehicleFX", "TAAColor", "MotionBlurColor", "ExposureAdapted", ResourceNames::Bloom }, { "CompositedColor" },
 		[this](const RenderContext& ctx) {
 			return DetermineFrameGraphMode() != FrameGraphMode::DEFERRED_DEBUG &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);

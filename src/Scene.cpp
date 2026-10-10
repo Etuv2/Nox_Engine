@@ -1082,6 +1082,13 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		float rainBeadResponse = 0.0f;
 		float flakeIntensity = 0.0f;
 		float flakeDensity = 4000.0f;
+		float interiorMapping = 0.0f;
+		float interiorDepth = 4.0f;
+		float interiorStrength = 1.0f;
+		float interiorSeed = 0.0f;
+		float interiorLighting = 0.5f;
+		float interiorBlinds = 0.5f;
+		float interiorStyle = 0.0f;
 		int diffuseTextureIndex = -1;
 		int normalTextureIndex = -1;
 		int roughnessTextureIndex = -1;
@@ -1280,6 +1287,23 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			readNumber("rainBeadResponse", cached.rainBeadResponse);
 			readNumber("flakeIntensity", cached.flakeIntensity);
 			readNumber("flakeDensity", cached.flakeDensity);
+			// Window interior mapping: nox.interior = { depth, strength, seed, lighting, blinds, style }.
+			// Presence of the object enables the effect.
+			if (nox.Has("interior") && nox.Get("interior").IsObject()) {
+				const auto& in = nox.Get("interior");
+				cached.interiorMapping = 1.0f;
+				auto readInterior = [&in](const char* key, float& target) {
+					if (in.Has(key) && in.Get(key).IsNumber()) {
+						target = static_cast<float>(in.Get(key).GetNumberAsDouble());
+					}
+				};
+				readInterior("depth", cached.interiorDepth);
+				readInterior("strength", cached.interiorStrength);
+				readInterior("seed", cached.interiorSeed);
+				readInterior("lighting", cached.interiorLighting);
+				readInterior("blinds", cached.interiorBlinds);
+				readInterior("style", cached.interiorStyle);
+			}
 		}
 		if (!mat.emissiveFactor.empty()) {
 			cached.emissiveFactor = glm::vec3(
@@ -1651,6 +1675,13 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				normalizedMaterial.rainBeadResponse = cached.rainBeadResponse;
 				normalizedMaterial.flakeIntensity = cached.flakeIntensity;
 				normalizedMaterial.flakeDensity = cached.flakeDensity;
+				normalizedMaterial.interiorMapping = cached.interiorMapping;
+				normalizedMaterial.interiorDepth = cached.interiorDepth;
+				normalizedMaterial.interiorStrength = cached.interiorStrength;
+				normalizedMaterial.interiorSeed = cached.interiorSeed;
+				normalizedMaterial.interiorLighting = cached.interiorLighting;
+				normalizedMaterial.interiorBlinds = cached.interiorBlinds;
+				normalizedMaterial.interiorStyle = cached.interiorStyle;
 			}
 			normalizedMaterial.Normalize();
 			mesh.SetMaterialDesc(normalizedMaterial);

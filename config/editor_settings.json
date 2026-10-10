@@ -2,7 +2,7 @@
   "authoring_overlay": true,
   "layout_built": true,
   "panels": {
-    "animation": false,
+    "animation": true,
     "assets": true,
     "build": true,
     "camera": false,

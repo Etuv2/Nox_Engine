@@ -57,6 +57,16 @@ struct MaterialDesc {
 	float flakeIntensity = 0.0f;    // Metallic paint flake sparkle strength [0,1]
 	float flakeDensity = 4000.0f;   // Flake cells per object-space metre
 
+	// Window interior mapping (shaders/includes/interior_mapping.glsl). Appended; 0 = off.
+	// Only meaningful on window-quad materials whose quads carry an atlas tile UV (QuadUV).
+	float interiorMapping = 0.0f;   // 1 = shade the window as a parallax room behind the glass
+	float interiorDepth = 4.0f;     // Room depth behind the glass in metres [1,20]
+	float interiorStrength = 1.0f;  // Room radiance multiplier applied on top of emissiveFactor*emissiveStrength
+	float interiorSeed = 0.0f;      // Per-material variation seed mixed into the per-window hash
+	float interiorLighting = 0.5f;  // Occupancy bias: 0 = mostly dark rooms, 1 = mostly lit rooms [0,1]
+	float interiorBlinds = 0.5f;    // Probability a window has blinds or curtains [0,1]
+	float interiorStyle = 0.0f;     // 0 = apartment/office, 1 = shop interior (deeper, shelves)
+
 	int baseColorTexCoord = 0;
 	int normalTexCoord = 0;
 	int metallicRoughnessTexCoord = 0;
@@ -93,6 +103,12 @@ struct MaterialDesc {
 		rainBeadResponse = std::clamp(rainBeadResponse, 0.0f, 1.0f);
 		flakeIntensity = std::clamp(flakeIntensity, 0.0f, 1.0f);
 		flakeDensity = std::clamp(flakeDensity, 10.0f, 100000.0f);
+		interiorMapping = interiorMapping > 0.5f ? 1.0f : 0.0f;
+		interiorDepth = std::clamp(interiorDepth, 1.0f, 20.0f);
+		interiorStrength = std::max(interiorStrength, 0.0f);
+		interiorLighting = std::clamp(interiorLighting, 0.0f, 1.0f);
+		interiorBlinds = std::clamp(interiorBlinds, 0.0f, 1.0f);
+		interiorStyle = interiorStyle > 0.5f ? 1.0f : 0.0f;
 
 		auto clampSupportedUVSet = [](int uvSet) { return uvSet == 1 ? 1 : 0; };
 		baseColorTexCoord = clampSupportedUVSet(baseColorTexCoord);

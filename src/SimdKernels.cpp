@@ -162,9 +162,21 @@ void UpdateWorldBoundsSSE2(const std::vector<glm::mat4>& worldTransforms,
     }
 
     if (n < itemIndexCount) {
-        UpdateWorldBoundsScalar(worldTransforms, runtimeIndices, localCenterX, localCenterY, localCenterZ,
-                                localRadius, itemCount, itemIndices ? itemIndices + n : nullptr,
-                                itemIndexCount - n, outCenterX, outCenterY, outCenterZ, outRadius);
+        if (itemIndices) {
+            UpdateWorldBoundsScalar(worldTransforms, runtimeIndices, localCenterX, localCenterY, localCenterZ,
+                                    localRadius, itemCount, itemIndices + n,
+                                    itemIndexCount - n, outCenterX, outCenterY, outCenterZ, outRadius);
+        }
+        else {
+            // Dense mode: the remainder items are [n, itemIndexCount); an explicit index list keeps
+            // the scalar path from restarting at item 0 (the tail used to keep stale bounds).
+            std::vector<uint32_t> tail;
+            tail.reserve(itemIndexCount - n);
+            for (size_t i = n; i < itemIndexCount; ++i) tail.push_back(static_cast<uint32_t>(i));
+            UpdateWorldBoundsScalar(worldTransforms, runtimeIndices, localCenterX, localCenterY, localCenterZ,
+                                    localRadius, itemCount, tail.data(), tail.size(),
+                                    outCenterX, outCenterY, outCenterZ, outRadius);
+        }
     }
 }
 
@@ -299,9 +311,20 @@ void UpdateWorldBoundsAVX2(const std::vector<glm::mat4>& worldTransforms,
     }
 
     if (n < itemIndexCount) {
-        UpdateWorldBoundsSSE2(worldTransforms, runtimeIndices, localCenterX, localCenterY, localCenterZ,
-                              localRadius, itemCount, itemIndices ? itemIndices + n : nullptr,
-                              itemIndexCount - n, outCenterX, outCenterY, outCenterZ, outRadius);
+        if (itemIndices) {
+            UpdateWorldBoundsSSE2(worldTransforms, runtimeIndices, localCenterX, localCenterY, localCenterZ,
+                                  localRadius, itemCount, itemIndices + n,
+                                  itemIndexCount - n, outCenterX, outCenterY, outCenterZ, outRadius);
+        }
+        else {
+            // Dense mode tail: explicit indices so the remainder does not restart at item 0.
+            std::vector<uint32_t> tail;
+            tail.reserve(itemIndexCount - n);
+            for (size_t i = n; i < itemIndexCount; ++i) tail.push_back(static_cast<uint32_t>(i));
+            UpdateWorldBoundsSSE2(worldTransforms, runtimeIndices, localCenterX, localCenterY, localCenterZ,
+                                  localRadius, itemCount, tail.data(), tail.size(),
+                                  outCenterX, outCenterY, outCenterZ, outRadius);
+        }
     }
 #else
     UpdateWorldBoundsSSE2(worldTransforms, runtimeIndices, localCenterX, localCenterY, localCenterZ,

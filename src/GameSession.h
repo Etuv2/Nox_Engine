@@ -94,6 +94,7 @@ private:
 	void UpdateMenus(const Buttons& b, MenuAction& action);
 	void BuildHudState(float dt);
 	void ShowMessage(const std::string& text, float seconds = 2.0f);
+	void EmitTyreEffects(float dt);
 	void LoadBestTimes();
 	void SaveBestTimes() const;
 	glm::vec2 RouteTarget() const;
@@ -141,4 +142,8 @@ private:
 	std::string m_hudPath;
 	float m_autoTimer = 0.0f;
 	int m_autoRuns = 0;
+	float m_scriptTime = 0.0f;
+	int m_scriptPhase = 0;
+	float m_phaseTime = 0.0f;
+	float m_stuckTime = 0.0f;
 };

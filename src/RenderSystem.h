@@ -230,6 +230,13 @@ private:
         GLint rainBeadResponse = -1;
         GLint flakeIntensity = -1;
         GLint flakeDensity = -1;
+        GLint interiorMapping = -1;
+        GLint interiorDepth = -1;
+        GLint interiorStrength = -1;
+        GLint interiorSeed = -1;
+        GLint interiorLighting = -1;
+        GLint interiorBlinds = -1;
+        GLint interiorStyle = -1;
 
         GLint baseColorUVSet = -1;
         GLint normalUVSet = -1;

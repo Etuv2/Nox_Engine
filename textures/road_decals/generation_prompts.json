@@ -1,0 +1,193 @@
+{
+  "generator": "Built-in image_gen.imagegen",
+  "reference_images": [
+    {
+      "name": "user_reference_1",
+      "role": "Paint wear and warm double-yellow street markings; style reference only"
+    },
+    {
+      "name": "user_reference_2",
+      "role": "Paint wear and white direction arrows; style reference only"
+    }
+  ],
+  "output": "Base color with straight alpha, no baked wet reflections",
+  "assets": [
+    {
+      "file": "arrow_straight_white.png",
+      "kind": "arrow",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE worn white straight-ahead road direction arrow. Its tail begins near the bottom and a long straight centered vertical shaft leads to a single broad triangular arrowhead pointing directly toward the top edge. Standard elongated lane arrow proportions. Entire arrow inside the central 80 percent of the canvas height and central 36 percent of the width, ample transparent padding. No other branches or arrowheads.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.324561,
+        0.062998,
+        0.669856,
+        0.944179
+      ],
+      "sha256": "c3acadffed705118da82dc4dade86396ab90f1e876cac11d4dd0ca9d50f90bd7"
+    },
+    {
+      "file": "arrow_left_white.png",
+      "kind": "arrow",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE worn white left-turn road direction arrow. An elongated vertical stem starts at the bottom center, travels upward, then bends through a simple rounded 90-degree elbow toward the LEFT at the upper end. ONE broad triangular arrowhead points directly LEFT. It must read as a driving lane left-turn stencil rather than an up arrow or a curved U-turn. Entire marking contained in central 80 percent of canvas height and central 66 percent of width, transparent padding. No forward arrowhead, no right branch, no detached pieces.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.136364,
+        0.082935,
+        0.754386,
+        0.942584
+      ],
+      "sha256": "dffef4e074211e1e7eda72c75d3a6a8e5e98e464bffd431abaf72841dfcaa244"
+    },
+    {
+      "file": "arrow_right_white.png",
+      "kind": "arrow",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE worn white right-turn road direction arrow. An elongated vertical stem starts at the bottom center, travels upward, then bends through a simple rounded 90-degree elbow toward the RIGHT at the upper end. ONE broad triangular arrowhead points directly RIGHT. It must read as a driving lane right-turn stencil rather than an up arrow or a curved U-turn. Entire marking contained in central 80 percent of canvas height and central 66 percent of width, transparent padding. No forward arrowhead, no left branch, no detached pieces.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.226475,
+        0.036683,
+        0.907496,
+        0.964912
+      ],
+      "sha256": "611146d08b03268b04471d977c3c6d195bb1a0d7c888f10231770b20b49361f5"
+    },
+    {
+      "file": "arrow_straight_left_white.png",
+      "kind": "arrow",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE worn white combined straight-ahead OR left-turn lane arrow. A SINGLE shared elongated vertical tail from the lower center splits into two connected branches in the upper half: one continues straight UP with a triangular arrowhead, the other bends at 90 degrees toward the LEFT with a triangular arrowhead pointing LEFT. Exactly TWO arrowheads total, one up and one left. No right branch. Standard clear US lane stencil. Entire marking inside central 80 percent of height and central 72 percent of width with transparent padding. Both branches connect to one shared stem, not two separate arrows.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.164274,
+        0.046252,
+        0.783892,
+        0.958533
+      ],
+      "sha256": "fbca1c1ac0e263ca5d9218a9370dead5ecc0a31c1b2c70da67b1b75a00cba408"
+    },
+    {
+      "file": "arrow_straight_right_white.png",
+      "kind": "arrow",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE worn white combined straight-ahead OR right-turn lane arrow. A SINGLE shared elongated vertical tail from the lower center splits into two connected branches in the upper half: one continues straight UP with a triangular arrowhead, the other bends at 90 degrees toward the RIGHT with a triangular arrowhead pointing RIGHT. Exactly TWO arrowheads total, one up and one right. No left branch. Standard clear US lane stencil. Entire marking inside central 80 percent of height and central 72 percent of width with transparent padding. Both branches connect to one shared stem, not two separate arrows.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.26236,
+        0.032695,
+        0.852472,
+        0.969697
+      ],
+      "sha256": "f63605145fd1dec5fdcacc0419cf094585da853307c67b7abbfdc2ab78c4845d"
+    },
+    {
+      "file": "line_double_yellow.png",
+      "kind": "line_segment",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly TWO straight parallel solid aged traffic-YELLOW center-line paint stripes. Warm muted golden traffic yellow, not orange or fluorescent. Both stripes are long vertical rectangular line SEGMENTS from 10 percent to 90 percent of canvas height, with square-cut ends and irregular tiny wear chips. Each stripe has a constant width of 9 percent of canvas, with an equally wide transparent gap of 9 percent between them, symmetrically centered as a pair. Entire background and central gap are genuinely transparent. No white paint, no arrows, no extra lines. Fine cracks and traffic wear, but both stripes remain continuous overall. This is a finite decal segment with transparent end padding, not a seamless tile.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.383573,
+        0.035088,
+        0.61882,
+        0.964912
+      ],
+      "sha256": "167658598420879e68bde496569eb050387a5022fa350c7d364e2286fdea4453"
+    },
+    {
+      "file": "line_single_yellow.png",
+      "kind": "line_segment",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE solid aged traffic-YELLOW line paint stripe. Warm muted golden traffic yellow, not orange or fluorescent. A long centered vertical rectangular line SEGMENT from 10 percent to 90 percent of canvas height, 9 percent of canvas width, with square-cut ends, parallel sides, fine hairline cracks and tiny scattered transparent wear chips. It remains continuous overall. Everything outside the paint is genuinely transparent. No white paint, no arrows, no extra lines. Finite decal segment with transparent end padding, not a seamless tile.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.446571,
+        0.052632,
+        0.557416,
+        0.947368
+      ],
+      "sha256": "deb78a0abd1c6e1bf54ef836ec189c9a04433ee822312cd9d9c20b3a9506627b"
+    },
+    {
+      "file": "lane_dash_white.png",
+      "kind": "line_segment",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE worn white lane separator DASH. A long narrow centered vertical rectangle of off-white painted marking, from 16 percent to 84 percent of canvas height and only 7 percent of canvas width. Mostly straight sides and square-cut ends slightly worn at the corners. Fine paint granularity and chipped wear, but clearly a single narrow solid lane dash. Fully transparent outside the paint. No multiple dashes, no yellow paint, no arrows. Finite segment with transparent padding.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.443381,
+        0.076555,
+        0.557416,
+        0.922648
+      ],
+      "sha256": "08589a1e1c80b38da05ece0f7eb149c6e4cb576486b9e258039b8476f0dfb8f7"
+    },
+    {
+      "file": "line_single_white.png",
+      "kind": "line_segment",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE solid worn WHITE road-edge line paint stripe. A long centered vertical rectangular line SEGMENT from 10 percent to 90 percent of canvas height, 9 percent of canvas width, with square-cut ends, parallel sides, fine hairline cracks and tiny scattered transparent wear chips. Neutral warm off-white with muted gray grain. It remains continuous overall. Everything outside the paint is genuinely transparent. No yellow paint, no arrows, no extra lines. Finite decal segment with transparent end padding, not a seamless tile.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.448166,
+        0.068581,
+        0.554226,
+        0.934609
+      ],
+      "sha256": "dad8d2938c7adb173a0a345d1db01fb6461dd0e80abdf0a5fa2d1ee6e29f3ac3"
+    },
+    {
+      "file": "stop_bar_white.png",
+      "kind": "bar",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: exactly ONE worn WHITE stop-line bar, a wide HORIZONTAL rectangle from 10 percent to 90 percent of canvas width and 44 percent to 56 percent of canvas height. It has square ends, nearly parallel sides, realistic worn edges, small chips, hairline cracks, and faint traffic abrasion without baked asphalt. It is considerably thicker than a lane separator but remains a rectangular bar, not a direction arrow. Entire surroundings transparent. No text, no STOP lettering, no other stripes.",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "paint_bounds_uv_top_left": [
+        0.052632,
+        0.41339,
+        0.947368,
+        0.632306
+      ],
+      "sha256": "391fedccec869f76ed8bd820b5ec7d49d17809ae74d3b96f995cf55b88cc1c1d"
+    },
+    {
+      "file": "crosswalk_white.png",
+      "kind": "crosswalk",
+      "prompt": "Use case: photorealistic-natural\nAsset type: isolated road-paint base-color and alpha decal texture for a real-time 3D night-driving game.\nInput images: Image 1 and Image 2 are visual STYLE REFERENCES ONLY for aged US street marking paint. Do not edit or recreate either screenshot.\nCreate a NEW standalone material decal viewed perfectly straight down in orthographic top-down projection. Square high-resolution RGBA PNG with genuinely transparent background. Show ONLY the specified painted road marking, with fine natural surface grain, chipped perimeter, small transparent chips and hairline cracks within the paint, moderate uneven traffic wear. Paint retains roughly 80-90 percent coverage and clearly readable geometry. Color is neutral warm off-white for white paint, with subtle gray mottling, unless yellow is specified. Opaque main paint, antialiased edges, small fully transparent worn-out holes revealing the engine road beneath. All marks lie flat in the image plane, no extrusion, no perspective foreshortening.\nLighting: flat unlit material albedo, no baked scene lighting, no shadows, no reflections, no specular highlights, no puddles.\nConstraints: no asphalt/background pavement at all, no black rectangle, no checkerboard, no road scene, no vehicle, no road furniture, no extra symbols, no text or words, no logos, no watermark, no border, no sheet or atlas. Keep paint natural and photographic rather than vector-perfect, but keep the marking silhouette precise and legible.\nPrimary request: ONE small crossing decal consisting of exactly SIX evenly spaced parallel white zebra-crossing bars in a single row across the canvas. Each bar is a tall vertical rectangle running from 23 percent to 77 percent of canvas height. Arrange the SIX bars at equal spacing across the central 80 percent of canvas width, each bar width about 7 percent of canvas, with consistent fully transparent gaps. All bars have square ends and the same length. Worn white road paint, fine cracks, chipped perimeter and transparent tiny worn spots, readable and restrained. Everything outside the six painted rectangles is transparent, no asphalt, no bounding border, no extra end bars, no arrows, no text. Perfect orthographic top-down, no perspective.",
+      "refinement_prompt": "Use case: precise-object-edit\nAsset type: RGBA road-paint decal.\nImage 1 is the EDIT TARGET, the generated six-bar crosswalk decal.\nClean only the stray detached white and gray paint flecks OUTSIDE the six rectangular painted stripes, particularly in the gaps between them and around their perimeter. Make those gaps and surroundings completely transparent, without white blobs or fog.\nKeep exactly the same SIX vertical bars, their positions, scale, off-white worn road-paint color, fine cracks and moderate chips INSIDE each bar. Preserve each stripe's naturally chipped edge, but remove all disconnected exterior splatter. Keep top-down orthographic perspective, no lighting, no shadow, no asphalt, no black background, no text. Preserve transparent background. The result must be six clearly separated painted bars on true transparency.",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "paint_bounds_uv_top_left": [
+        0.062998,
+        0.230463,
+        0.940191,
+        0.795853
+      ],
+      "sha256": "fcbe7b3d8029e2f12a123f2fe5f7c0e2841276956c696f3857e36994b1af7447"
+    }
+  ]
+}

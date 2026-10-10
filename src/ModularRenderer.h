@@ -44,6 +44,7 @@ class ReflectionProbePass;
 class VolumetricFogPass;
 class MotionBlurPass;
 class RainPass;
+class VehicleFXPass;
 class SurfelGIManager;
 struct SurfelGIFrameStats;
 class GUIPass;
@@ -216,6 +217,7 @@ private:
 	std::unique_ptr<VolumetricFogPass> m_volumetricFogPass;     // froxel fog (docs/nfs2015 M6)
 	std::unique_ptr<MotionBlurPass> m_motionBlurPass;           // motion blur (docs/nfs2015 M7)
 	std::unique_ptr<RainPass> m_rainPass;                       // rain streaks (docs/nfs2015 M6)
+	std::unique_ptr<VehicleFXPass> m_vehicleFXPass;             // tyre smoke and wet-road spray (src/VehicleFX.h)
 	bool m_lastTAAEnabled = true;  // Debug bounding box visualization
 	GLuint m_debugViewShader = 0;
 	GLuint m_indirectDiffuseDebugPresentShader = 0;

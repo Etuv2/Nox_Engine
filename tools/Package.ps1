@@ -182,6 +182,13 @@ if (Test-Path -LiteralPath (Join-Path $repo 'textures/cc0')) {
 else {
     $script:Problems.Add("textures/cc0/ is missing. It is git-ignored CC0 content; see textures/cc0/SOURCES.md for the sources.")
 }
+# CC0 props placed by the district generator (not referenced by the scene JSON itself).
+if (Test-Path -LiteralPath (Join-Path $repo 'models/cc0')) {
+    $script:DirsToSync['models/cc0'] = $true
+}
+else {
+    $script:Problems.Add("models/cc0/ is missing. It is git-ignored CC0 content; see docs/nfs2015/assets.md for the sources.")
+}
 if (Test-Path -LiteralPath (Join-Path $repo 'images/logo.png')) {
     $script:FilesToCopy['images/logo.png'] = $true
 }

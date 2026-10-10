@@ -25,6 +25,7 @@ namespace ProceduralStreetKit {
 		std::string gltfPath;          // Generated .gltf, relative to the working directory
 		std::string layoutPath;        // District only: "<output>_layout.json" (collision obstacles)
 		nlohmann::json lightNodes = nlohmann::json::array(); // Scene-schema "light" nodes
+		nlohmann::json propNodes = nlohmann::json::array();  // Scene-schema "model" nodes (CC0 prop instances, district only)
 		nlohmann::json reflectionProbes = nlohmann::json::array(); // scene "reflection_probes" entries
 		int triangleCount = 0;
 		int primitiveCount = 0;

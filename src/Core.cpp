@@ -818,6 +818,11 @@ void Core::Update(float deltaTime) {
 	if (m_benchmark) {
 		deltaTime = m_benchmark->FixedDeltaTime();
 	}
+	// NOX_FIXED_DT=<seconds>: fixed simulation step so per-frame dumps form a real-time video.
+	static const float fixedDt = [] { const std::string v = GetEnvVarString("NOX_FIXED_DT"); return v.empty() ? 0.0f : static_cast<float>(std::atof(v.c_str())); }();
+	if (fixedDt > 0.0f) {
+		deltaTime = fixedDt;
+	}
 
 	// Update input system
 	if (m_inputIntegration) {

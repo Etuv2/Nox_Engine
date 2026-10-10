@@ -19,16 +19,18 @@
   "game": {
     "body_node": "PlayerCarBody",
     "camera": {
-      "distance": 5.4,
-      "fov": 41.0,
-      "fov_nitro": 6.0,
-      "fov_speed_gain": 12.0,
-      "heading_lag": 4.5,
-      "height": 1.399999976158142,
+      "distance": 4.800000190734863,
+      "fov": 54.0,
+      "fov_nitro": 4.0,
+      "fov_speed_gain": 5.0,
+      "heading_lag": 5.0,
+      "height": 1.7200000286102295,
       "look_ahead": 10.0,
-      "look_height": 2.3499999046325684,
-      "pull_back": 0.8999999761581421,
-      "stiffness": 10.0
+      "look_height": 0.44999998807907104,
+      "pull_back": 0.6000000238418579,
+      "stiffness": 9.0,
+      "velocity_follow": 0.44999998807907104,
+      "version": 2
     },
     "events": [
       {
@@ -90,25 +92,34 @@
       }
     ],
     "handling": {
-      "acceleration": 10.5,
-      "braking": 17.0,
-      "drift_grip": 1.2000000476837158,
-      "drift_yaw_gain": 1.899999976158142,
-      "grip": 6.5,
+      "brake_decel": 12.5,
+      "bump_amplitude": 0.012000000104308128,
+      "cg_height": 0.47999998927116394,
+      "countersteer_assist": 0.5,
+      "drift_assist": 0.6499999761581421,
+      "drift_grip_scale": 0.5799999833106995,
+      "drive_accel": 9.0,
+      "mass": 1380.0,
+      "max_drift_angle": 40.0,
       "nitro_drain": 0.23999999463558197,
       "nitro_recharge": 0.05999999865889549,
       "nitro_recharge_delay": 1.5,
-      "nitro_thrust": 1.7000000476837158,
-      "nitro_top_speed": 1.1200000047683716,
+      "nitro_thrust": 1.4500000476837158,
+      "nitro_top_speed": 1.100000023841858,
       "reverse_max_kmh": 40.0,
       "rpm_idle": 900.0,
       "rpm_limiter": 8200.0,
       "rpm_redline": 7800.0,
       "shift_time": 0.1599999964237213,
-      "steer_lock_high": 5.5,
-      "steer_lock_low": 34.0,
-      "steer_rate": 9.0,
-      "top_speed_kmh": 250.0
+      "steer_lock_high": 4.5,
+      "steer_lock_low": 28.0,
+      "steer_rate_hz": 6.0,
+      "suspension_damping": 0.550000011920929,
+      "suspension_freq": 1.600000023841858,
+      "tire_grip": 1.2000000476837158,
+      "tire_grip_long": 1.25,
+      "top_speed_kmh": 250.0,
+      "yaw_damping": 0.6000000238418579
     },
     "hud": "config/hud.json",
     "player_node": "PlayerCar",
@@ -357,13 +368,26 @@
               "emissive_strength": 70.0,
               "match": "red_glass",
               "roughness": 0.05
+            },
+            {
+              "alpha_mode": "blend",
+              "base_color": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "match": "contact_shadow",
+              "metallic": 0.0,
+              "roughness": 1.0,
+              "wetness_response": 0.0
             }
           ],
           "name": "PlayerCarBody",
-          "path": "models\\car.glb",
+          "path": "models\\car_r33_rig.glb",
           "position": [
             0.0,
-            0.6800000071525574,
+            0.0,
             0.0
           ],
           "rotation": [
@@ -372,9 +396,9 @@
             0.0
           ],
           "scale": [
-            100.0,
-            100.0,
-            100.0
+            1.0,
+            1.0,
+            1.0
           ],
           "type": "model"
         },

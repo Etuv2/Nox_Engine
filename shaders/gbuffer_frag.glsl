@@ -2,6 +2,7 @@
 #include "includes/pbr_common.glsl" // For normal encoding/decoding
 #include "includes/material_common.glsl"
 #include "includes/weather_common.glsl"
+#include "includes/interior_mapping.glsl"
 in vec3 WorldPos;
 in vec3 WorldNormal;
 in vec2 TexCoords;
@@ -88,6 +89,16 @@ uniform int specularColorUVSet = 0;
 uniform int transmissionUVSet = 0;
 
 uniform bool uSpecularAA = true;
+
+// Window interior mapping (includes/interior_mapping.glsl). 0 = off, so other materials are unchanged.
+uniform float interiorMapping = 0.0;
+uniform float interiorDepth = 4.0;
+uniform float interiorStrength = 1.0;
+uniform float interiorSeed = 0.0;
+uniform float interiorLighting = 0.5;
+uniform float interiorBlinds = 0.5;
+uniform float interiorStyle = 0.0;
+uniform mat4 view;   // camera view matrix (eye position for interior parallax)
 
 void main() {
     vec3 N = normalize(WorldNormal);
@@ -219,7 +230,15 @@ void main() {
     
     //  Emissive 
     vec3 emissive = emissiveFactor;
-    if (hasEmissiveTexture) {
+    if (interiorMapping > 0.5) {
+        // The room behind the pane replaces the emissive texture (atlas no longer sampled).
+        vec3 camPos = -(transpose(mat3(view)) * view[3].xyz);
+        float footprint = max(length(dFdx(WorldPos)), length(dFdy(WorldPos)));
+        vec3 room = NoxInteriorWindow(WorldPos, geoNormal, TBN[0], RawTangent.w, TexCoords, camPos,
+            interiorDepth, interiorLighting, interiorBlinds, interiorStyle, interiorSeed, footprint, uWeatherTime);
+        emissive = emissiveFactor * room * interiorStrength;
+    }
+    else if (hasEmissiveTexture) {
         vec3 emissiveTexSample = texture(texture_emissive, SelectUVSet(emissiveUVSet, TexCoords, TexCoords1)).rgb;
         emissive *= emissiveTexSample;
     }

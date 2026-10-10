@@ -378,7 +378,11 @@ void MainWindow::Run() {
         static const std::string finalDumpDir = GetEnvString("NOX_FINAL_DUMP_DIR");
         if (!finalDumpDir.empty()) {
             static const std::string frames = "," + GetEnvString("NOX_FINAL_DUMP_FRAMES") + ",";
-            if (frames.find("," + std::to_string(renderedFrames) + ",") != std::string::npos) {
+            // NOX_FINAL_DUMP_EVERY=N (+ optional NOX_FINAL_DUMP_START): sequence dumps for recordings.
+            static const int every = GetEnvInt("NOX_FINAL_DUMP_EVERY", 0);
+            static const int start = GetEnvInt("NOX_FINAL_DUMP_START", 1);
+            const bool sequence = every > 0 && renderedFrames >= start && (renderedFrames - start) % every == 0;
+            if (sequence || frames.find("," + std::to_string(renderedFrames) + ",") != std::string::npos) {
                 std::vector<unsigned char> pixels(static_cast<size_t>(m_windowWidth) * m_windowHeight * 3);
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
                 glReadBuffer(GL_BACK);
@@ -386,7 +390,9 @@ void MainWindow::Run() {
                 glReadPixels(0, 0, m_windowWidth, m_windowHeight, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
                 std::error_code ec;
                 std::filesystem::create_directories(finalDumpDir, ec);
-                const std::string path = finalDumpDir + "/final_" + std::to_string(renderedFrames) + ".png";
+                char name[32];
+                std::snprintf(name, sizeof(name), "/final_%05d.png", renderedFrames);
+                const std::string path = finalDumpDir + name;
                 stbi_flip_vertically_on_write(1);
                 stbi_write_png(path.c_str(), m_windowWidth, m_windowHeight, 3, pixels.data(), m_windowWidth * 3);
                 stbi_flip_vertically_on_write(0);

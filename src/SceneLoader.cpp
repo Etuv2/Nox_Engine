@@ -384,6 +384,13 @@ int ApplyMaterialOverrides(Scene& model, const json& overrides, const std::strin
 			d.rainBeadResponse = entry.value("rain_bead_response", d.rainBeadResponse);
 			d.flakeIntensity = entry.value("flake_intensity", d.flakeIntensity);
 			d.flakeDensity = entry.value("flake_density", d.flakeDensity);
+			d.interiorMapping = entry.value("interior_mapping", d.interiorMapping);
+			d.interiorDepth = entry.value("interior_depth", d.interiorDepth);
+			d.interiorStrength = entry.value("interior_strength", d.interiorStrength);
+			d.interiorSeed = entry.value("interior_seed", d.interiorSeed);
+			d.interiorLighting = entry.value("interior_lighting", d.interiorLighting);
+			d.interiorBlinds = entry.value("interior_blinds", d.interiorBlinds);
+			d.interiorStyle = entry.value("interior_style", d.interiorStyle);
 			d.doubleSided = entry.value("double_sided", d.doubleSided);
 			if (entry.contains("alpha_mode") && entry["alpha_mode"].is_string()) {
 				const std::string mode = ToLowerCopy(entry["alpha_mode"].get<std::string>());
@@ -1382,7 +1389,12 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 				}
 				if (generated.ok) {
 					modelPath = generated.gltfPath;
-					m_pendingGeneratedChildren = std::move(generated.lightNodes);
+					// Generated children: light nodes first, then CC0 prop model instances (district).
+					json generatedChildren = std::move(generated.lightNodes);
+					for (const json& propJson : generated.propNodes) {
+						generatedChildren.push_back(propJson);
+					}
+					m_pendingGeneratedChildren = std::move(generatedChildren);
 					AddReflectionProbes(generated.reflectionProbes);
 				}
 				else {

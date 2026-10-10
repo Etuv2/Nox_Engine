@@ -38,6 +38,7 @@ namespace {
 		float rainBeads = 0.0f;
 		bool doubleSided = false;
 		std::string emissiveTexture;  // generated image (path relative to the working directory)
+		json interior;                // nox.interior extras (window interior mapping); null = off
 	};
 
 	enum Mat : int {
@@ -346,6 +347,7 @@ namespace {
 				{"puddleResponse", m.puddle},
 				{"rainBeadResponse", m.rainBeads}
 			};
+			if (!m.interior.is_null()) mat["extras"]["nox"]["interior"] = m.interior;
 			gltfMaterials.push_back(mat);
 		}
 
@@ -558,7 +560,7 @@ namespace ProceduralStreetKit {
 			if (WriteWindowAtlas(atlasPath, seed)) {
 				for (int m : { M_WINDOW_WARM, M_WINDOW_COOL, M_WINDOW_DIM }) {
 					materials[m].emissiveTexture = atlasPath.generic_string();
-					materials[m].emissive = glm::vec3(1.0f);
+					if (materials[m].interior.is_null()) materials[m].emissive = glm::vec3(1.0f);
 				}
 			}
 			if (WriteShopInterior(shopPath, seed)) {
@@ -890,7 +892,7 @@ namespace {
 		D_WOOD, D_WIRE, D_PALM_TRUNK, D_PALM_FROND,
 		D_SIGNAL_HOUSING, D_SIGNAL_RED, D_SIGNAL_GREEN, D_SIGNAL_AMBER,
 		D_HYDRANT, D_BIN, D_CAR_WHITE, D_CAR_BLACK, D_CAR_SILVER, D_CAR_RED, D_CAR_BLUE,
-		D_CAR_GLASS, D_TAIL_LAMP, D_WHEEL, D_SKYLINE, D_SKYLINE_DARK, D_HILL, D_COUNT
+		D_CAR_GLASS, D_TAIL_LAMP, D_WHEEL, D_SKYLINE, D_SKYLINE_DARK, D_HILL, D_WINDOW_ROOM_DARK, D_COUNT
 	};
 
 	MatDef DMatDef(const char* name, const char* set, float tile, glm::vec3 base, float rough, float metal = 0.0f,
@@ -913,6 +915,14 @@ namespace {
 		m[M_WINDOW_DIM].emissiveStrength = 1.8f;
 		m[M_SHOPFRONT].emissiveStrength = 2.2f;
 		m[M_SHOPFRONT].emissive = glm::vec3(1.0f, 0.82f, 0.62f);
+		// Window interiors (shaders/includes/interior_mapping.glsl): parallax rooms behind the glass.
+		// lighting = occupancy bias (0 dark, 1 lit); blinds = chance of blinds or curtains.
+		m[M_WINDOW_WARM].interior = json{ {"depth", 4.5}, {"lighting", 0.8}, {"blinds", 0.5} };
+		m[M_WINDOW_COOL].interior = json{ {"depth", 4.0}, {"lighting", 0.7}, {"blinds", 0.6}, {"seed", 1.0} };
+		m[M_WINDOW_DIM].interior = json{ {"depth", 4.0}, {"lighting", 0.55}, {"blinds", 0.6}, {"seed", 2.0} };
+		m[D_WINDOW_ROOM_DARK] = DMatDef("window_dark_room", "", 1.0f, glm::vec3(0.02f, 0.025f, 0.03f), 0.06f, 0.0f,
+			glm::vec3(0.9f, 0.85f, 0.75f), 2.0f, 0.3f, 0.0f, 0.6f);
+		m[D_WINDOW_ROOM_DARK].interior = json{ {"depth", 3.5}, {"lighting", 0.2}, {"blinds", 0.6}, {"seed", 3.0} };
 		const glm::vec3 none(0.0f);
 		m[D_FAC_BRICK_RED] = DMatDef("facade_brick_red", "brick_facade", 3.0f, glm::vec3(0.85f, 0.55f, 0.48f), 0.9f, 0.0f, none, 0.0f, 0.55f);
 		m[D_FAC_BRICK_BROWN] = DMatDef("facade_brick_brown", "brick_facade", 3.0f, glm::vec3(0.62f, 0.5f, 0.42f), 0.9f, 0.0f, none, 0.0f, 0.55f);
@@ -1037,6 +1047,7 @@ namespace ProceduralStreetKit {
 		const glm::vec3 up(0.0f, 1.0f, 0.0f);
 		const glm::vec2 spawn(-3.8f, -40.0f);  // player start: keep the start lane clear of parked cars
 		const float sidewalkW = network.SidewalkWidth();
+		const bool placeProps = params.value("props", true);   // CC0 prop instances (models/cc0)
 
 		std::vector<MatDef> materials = BuildDistrictMaterials();
 		{
@@ -1049,7 +1060,7 @@ namespace ProceduralStreetKit {
 			if (WriteWindowAtlas(atlasPath, seed)) {
 				for (int m : { M_WINDOW_WARM, M_WINDOW_COOL, M_WINDOW_DIM }) {
 					materials[m].emissiveTexture = atlasPath.generic_string();
-					materials[m].emissive = glm::vec3(1.0f);
+					if (materials[m].interior.is_null()) materials[m].emissive = glm::vec3(1.0f);
 				}
 			}
 			if (WriteShopInterior(shopPath, seed)) {
@@ -1065,6 +1076,52 @@ namespace ProceduralStreetKit {
 		auto chance = [&](float p) { return uniform(0.0f, 1.0f) < p; };
 		auto pickInt = [&rng](int n) { return static_cast<int>(rng() % static_cast<uint32_t>(std::max(n, 1))); };
 		auto W3 = [](const glm::vec2& p, float y) { return glm::vec3(p.x, y, p.y); };
+
+		// ---- Obstacles, CC0 prop instances and helpers shared by the blocks below.
+		json obstacles = json::array();
+		auto circle = [&](const glm::vec3& p, float r) {
+			obstacles.push_back({ {"type", "circle"}, {"pos", { p.x, p.z }}, {"radius", r} });
+		};
+		auto boxObstacle = [&](const glm::vec3& c, const glm::vec3& d, float hA, float hN) {
+			obstacles.push_back({ {"type", "box"}, {"center", { c.x, c.z }}, {"half", { hA, hN }},
+				{"yaw", std::atan2(d.z, d.x)} });
+		};
+		// Yaw (radians) that turns model +X onto the horizontal direction d (rotation about +Y).
+		auto yawAlong = [](const glm::vec3& d) { return std::atan2(-d.z, d.x); };
+		// Scene "model" node for a CC0 prop (models/cc0 is git-ignored; nothing is placed when the file is missing).
+		int propIndex = 0;
+		auto prop = [&](const char* model, const char* tag, const glm::vec3& base, float yaw) -> bool {
+			if (!placeProps) return false;
+			const std::string rel = std::string("models/cc0/") + model + ".glb";
+			if (!fs::exists(rel)) return false;
+			json n;
+			n["type"] = "model";
+			n["name"] = std::string(tag) + "_" + std::to_string(propIndex++);
+			n["path"] = rel;
+			n["position"] = { base.x, base.y, base.z };
+			n["rotation"] = { 0.0f, glm::degrees(yaw), 0.0f };
+			n["scale"] = { 1.0f, 1.0f, 1.0f };
+			n["material_overrides"] = json::array({ json{ {"match", "*"}, {"wetness_response", 0.5f} } });
+			result.propNodes.push_back(n);
+			return true;
+		};
+		// Parked car: d = length axis (4.4 m), n = width axis (1.8 m), c = ground-contact centre.
+		auto parkedCar = [&](const glm::vec3& c, const glm::vec3& d, const glm::vec3& n) {
+			const int paint[] = { D_CAR_WHITE, D_CAR_BLACK, D_CAR_SILVER, D_CAR_RED, D_CAR_BLUE };
+			const int body = paint[pickInt(5)];
+			OrientedBox(kit, body, c + up * 0.6f, d, n, 2.2f, 0.3f, 0.9f, 0x3Fu & ~8u);
+			OrientedBox(kit, D_CAR_GLASS, c + up * 1.2f, d, n, 1.2f, 0.3f, 0.82f, 0x33u);
+			OrientedBox(kit, body, c + up * 1.5f, d, n, 1.2f, 0.03f, 0.8f, 0x04u);
+			for (float sa : { -1.4f, 1.4f }) {
+				for (float sn : { -0.8f, 0.8f }) {
+					OrientedBox(kit, D_WHEEL, c + d * sa + n * sn + up * 0.16f, d, n, 0.32f, 0.16f, 0.12f);
+				}
+			}
+			for (float sn : { -0.6f, 0.6f }) {
+				kit.Quad(D_TAIL_LAMP, c - d * 2.21f + n * sn + up * 0.75f, n * 0.2f, up * 0.07f, -d, n, up);
+			}
+			boxObstacle(c, d, 2.25f, 0.95f);
+		};
 
 		// ---- Graph -> geometry records.
 		const auto& netNodes = network.Nodes();
@@ -1295,9 +1352,27 @@ namespace ProceduralStreetKit {
 		int neonFills = 0;
 		int buildingCount = 0;
 		for (const Lot& L : lots) {
-			const float x0 = L.x0 + 0.15f, x1 = L.x1 - 0.15f, z0 = L.z0 + 0.15f, z1 = L.z1 - 0.15f;
+			const float x0 = L.x0 + 0.15f, z0 = L.z0 + 0.15f, z1 = L.z1 - 0.15f;
+			float x1 = L.x1 - 0.15f;
 			if (x1 - x0 < 2.0f || z1 - z0 < 2.0f) continue;
+			// Surface parking lot instead of a building: asphalt, stall lines and a few parked cars.
+			if (x1 - x0 > 14.0f && z1 - z0 > 14.0f && chance(0.1f)) {
+				kit.Flat(D_ROAD_CLEAN, x0 + 0.3f, x1 - 0.3f, z0 + 0.3f, z1 - 0.3f, 0.004f);
+				for (float x = x0 + 1.5f; x < x1 - 1.0f; x += 2.6f) {
+					kit.Flat(M_PAINT_WHITE, x, x + 0.1f, z0 + 1.0f, z1 - 1.0f, 0.008f);
+				}
+				for (float x = x0 + 1.5f; x + 2.6f < x1 - 0.5f; x += 2.6f) {
+					if (!chance(0.45f)) continue;
+					const glm::vec3 c(x + 1.3f, 0.0f, z0 + 3.4f);
+					if (glm::length(glm::vec2(c.x - spawn.x, c.z - spawn.y)) < 9.0f) continue;
+					parkedCar(c, glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+				}
+				continue;
+			}
 			++buildingCount;
+			// Narrow service lane on the +X side of some lots (dumpster, pipes, fire escape).
+			const bool alley = x1 - x0 > 12.0f && chance(0.3f);
+			if (alley) x1 -= 2.8f;
 			const glm::vec3 cc((x0 + x1) * 0.5f, 0.0f, (z0 + z1) * 0.5f);
 			const float dist = glm::length(glm::vec2(cc.x - spawn.x, cc.z - spawn.y));
 			int storeys = dist < 170.0f ? 1 + pickInt(3) : 2 + pickInt(4);
@@ -1329,17 +1404,18 @@ namespace ProceduralStreetKit {
 
 			// Walls on all four sides.
 			struct Face { glm::vec3 mid, A, N; float len; };
-			const Face faces[4] = {
-				{ glm::vec3(x0, 0.0f, (z0 + z1) * 0.5f), glm::vec3(0, 0, 1), glm::vec3(-1, 0, 0), z1 - z0 },
-				{ glm::vec3(x1, 0.0f, (z0 + z1) * 0.5f), glm::vec3(0, 0, -1), glm::vec3(1, 0, 0), z1 - z0 },
-				{ glm::vec3((x0 + x1) * 0.5f, 0.0f, z0), glm::vec3(1, 0, 0), glm::vec3(0, 0, -1), x1 - x0 },
-				{ glm::vec3((x0 + x1) * 0.5f, 0.0f, z1), glm::vec3(-1, 0, 0), glm::vec3(0, 0, 1), x1 - x0 },
+			auto faceSet = [](float fx0, float fx1, float fz0, float fz1) {
+				return std::vector<Face>{
+					{ glm::vec3(fx0, 0.0f, (fz0 + fz1) * 0.5f), glm::vec3(0, 0, 1), glm::vec3(-1, 0, 0), fz1 - fz0 },
+					{ glm::vec3(fx1, 0.0f, (fz0 + fz1) * 0.5f), glm::vec3(0, 0, -1), glm::vec3(1, 0, 0), fz1 - fz0 },
+					{ glm::vec3((fx0 + fx1) * 0.5f, 0.0f, fz0), glm::vec3(1, 0, 0), glm::vec3(0, 0, -1), fx1 - fx0 },
+					{ glm::vec3((fx0 + fx1) * 0.5f, 0.0f, fz1), glm::vec3(-1, 0, 0), glm::vec3(0, 0, 1), fx1 - fx0 },
+				};
 			};
-			for (int f = 0; f < 4; ++f) {
-				const Face& F = faces[f];
-				kit.Quad(fm, F.mid + up * (H * 0.5f), F.A * (F.len * 0.5f), up * (H * 0.5f), F.N, F.A, glm::vec3(0, -1, 0));
-				// Upper floor windows; most are dark, a few lit at low luminance.
-				for (float y0 = 3.5f; y0 + 2.2f < H - 0.4f; y0 += 3.4f) {
+			const std::vector<Face> faces = faceSet(x0, x1, z0, z1);
+			// Window grid on one face between yFrom and yTo; most are dark, a few lit at low luminance.
+			auto windowRows = [&](const Face& F, float yFrom, float yTo) {
+				for (float y0 = yFrom; y0 + 2.2f < yTo - 0.4f; y0 += 3.4f) {
 					for (float u = -F.len * 0.5f + 1.6f; u + 1.6f < F.len * 0.5f - 0.6f; u += 3.2f) {
 						const glm::vec3 c = F.mid + F.A * u + up * (y0 + 1.0f) + F.N * 0.03f;
 						const float q = uniform(0.0f, 1.0f);
@@ -1348,7 +1424,10 @@ namespace ProceduralStreetKit {
 						else if (q < 0.13f) wm = M_WINDOW_COOL;
 						else if (q < 0.21f) wm = M_WINDOW_DIM;
 						if (wm == M_WINDOW_DARK) {
-							kit.Quad(wm, c, F.A * 0.8f, up * 1.0f, F.N, F.A, glm::vec3(0, -1, 0));
+							// Dark panes are rooms too (faint). Tile from position, not rng, so the layout stream is unchanged.
+							const int dTile = static_cast<int>(std::fmod(std::fabs(c.x * 0.37f + c.y * 0.71f + c.z * 1.13f) * 16.0f, 16.0f));
+							const glm::vec2 d0(static_cast<float>(dTile % 4) * 0.25f + 0.004f, static_cast<float>(dTile / 4) * 0.25f + 0.004f);
+							kit.QuadUV(D_WINDOW_ROOM_DARK, c, F.A * 0.8f, up * 1.0f, F.N, d0, d0 + glm::vec2(0.242f));
 						}
 						else {
 							const int tile = pickInt(16);
@@ -1357,6 +1436,25 @@ namespace ProceduralStreetKit {
 						}
 					}
 				}
+			};
+			for (int f = 0; f < 4; ++f) {
+				const Face& F = faces[f];
+				kit.Quad(fm, F.mid + up * (H * 0.5f), F.A * (F.len * 0.5f), up * (H * 0.5f), F.N, F.A, glm::vec3(0, -1, 0));
+				windowRows(F, 3.5f, H);
+			}
+
+			// Setback tower on part of the lot: a taller inset mass with its own window grid.
+			float topH = H;
+			float ax0 = x0, ax1 = x1, az0 = z0, az1 = z1;
+			const bool tower = x1 - x0 > 12.0f && z1 - z0 > 12.0f && storeys >= 2 && chance(0.3f);
+			if (tower) {
+				ax0 = x0 + (x1 - x0) * uniform(0.0f, 0.3f);
+				ax1 = x1 - (x1 - x0) * uniform(0.0f, 0.3f);
+				az0 = z0 + (z1 - z0) * uniform(0.0f, 0.3f);
+				az1 = z1 - (z1 - z0) * uniform(0.0f, 0.3f);
+				topH = std::min(H + uniform(6.0f, 12.0f), 30.0f);
+				kit.Box(fm, glm::vec3(ax0, H, az0), glm::vec3(ax1, topH, az1), 0x3Fu & ~8u);
+				for (const Face& F : faceSet(ax0, ax1, az0, az1)) windowRows(F, H + 1.0f, topH);
 			}
 
 			// Ground floor shopfronts on the street-facing side.
@@ -1409,25 +1507,48 @@ namespace ProceduralStreetKit {
 				}
 			}
 
-			// Roof: parapet slab and a few rooftop units.
+			// Service lane on the +X side: dumpster, wall pipes.
+			if (alley) {
+				const float ax = x1 + 1.45f, zc = (z0 + z1) * 0.5f;
+				if (z1 - z0 > 6.0f && chance(0.7f)) {
+					kit.Box(D_BIN, glm::vec3(ax - 0.55f, 0.0f, zc - 1.0f), glm::vec3(ax + 0.55f, 1.2f, zc + 1.0f), 0x3Fu & ~8u);
+					boxObstacle(glm::vec3(ax, 0.0f, zc), glm::vec3(0.0f, 0.0f, 1.0f), 1.0f, 0.55f);
+				}
+				for (float z = z0 + 2.0f; z < z1 - 2.0f; z += 9.0f) {
+					if (chance(0.5f)) kit.Cylinder(M_POLE, glm::vec3(x1 + 0.1f, 0.0f, z), H, 0.06f, 6);
+				}
+			}
+			// Fire escape on the alley wall, or on the back face opposite the street.
+			{
+				const int fe = alley ? 1 : (street >= 0 ? (street ^ 1) : pickInt(4));
+				if (H > 7.0f && (alley || chance(0.3f))) {
+					const Face& F = faces[fe];
+					for (float y = 3.4f; y + 1.0f < H; y += 3.4f) {
+						FaceBox(kit, M_POLE, F.mid, F.A, F.N, -1.6f, 1.6f, y, y + 0.08f, 0.9f);
+						Stick(kit, M_POLE, F.mid + F.A * -1.6f + F.N * 0.9f + up * (y + 0.95f),
+							F.mid + F.A * 1.6f + F.N * 0.9f + up * (y + 0.95f), 0.025f);
+						Stick(kit, M_POLE, F.mid + F.A * 1.2f + up * y, F.mid + F.A * 1.2f + up * (y + 3.4f), 0.03f);
+					}
+				}
+			}
+
+			// Roof: parapet slab; rooftop units on the setback tower when present.
 			kit.Box(M_ROOF, glm::vec3(x0 - 0.1f, H, z0 - 0.1f), glm::vec3(x1 + 0.1f, H + 0.5f, z1 + 0.1f), 0x3Fu & ~8u);
-			const int units = pickInt(3);
+			if (tower) {
+				kit.Box(M_ROOF, glm::vec3(ax0 - 0.1f, topH, az0 - 0.1f), glm::vec3(ax1 + 0.1f, topH + 0.5f, az1 + 0.1f), 0x3Fu & ~8u);
+			}
+			const float rx0 = tower ? ax0 : x0, rx1 = tower ? ax1 : x1;
+			const float rz0 = tower ? az0 : z0, rz1 = tower ? az1 : z1;
+			const int units = (rx1 - rx0 > 3.5f && rz1 - rz0 > 3.5f) ? pickInt(3) : 0;
 			for (int k = 0; k < units; ++k) {
-				const float ux = uniform(x0 + 1.0f, x1 - 2.2f), uz = uniform(z0 + 1.0f, z1 - 2.2f);
-				kit.Box(D_ROOF_UNIT, glm::vec3(ux, H + 0.5f, uz),
-					glm::vec3(ux + uniform(1.2f, 2.0f), H + uniform(1.2f, 1.8f), uz + uniform(1.0f, 1.8f)), 0x3Fu & ~8u);
+				const float ux = uniform(rx0 + 1.0f, rx1 - 2.2f), uz = uniform(rz0 + 1.0f, rz1 - 2.2f);
+				if (chance(0.35f) && prop("exterior_aircon_unit", "aircon", glm::vec3(ux + 0.9f, topH + 0.5f, uz + 0.46f), pickInt(2) * 1.5707963f)) continue;
+				kit.Box(D_ROOF_UNIT, glm::vec3(ux, topH + 0.5f, uz),
+					glm::vec3(ux + uniform(1.2f, 2.0f), topH + uniform(1.2f, 1.8f), uz + uniform(1.0f, 1.8f)), 0x3Fu & ~8u);
 			}
 		}
 
 		// ---- Streetlights, junction signals, utility poles and wires, palms, clutter.
-		json obstacles = json::array();
-		auto circle = [&](const glm::vec3& p, float r) {
-			obstacles.push_back({ {"type", "circle"}, {"pos", { p.x, p.z }}, {"radius", r} });
-		};
-		auto boxObstacle = [&](const glm::vec3& c, const glm::vec3& d, float hA, float hN) {
-			obstacles.push_back({ {"type", "box"}, {"center", { c.x, c.z }}, {"half", { hA, hN }},
-				{"yaw", std::atan2(d.z, d.x)} });
-		};
 		int lampIndex = 0;
 		auto streetlight = [&](const DistrictEdge& e, float t, float s, bool led) {
 			const glm::vec3 base = e.P + e.d * t + e.n * (s * (e.hw + 0.9f)) + up * curbH;
@@ -1483,6 +1604,29 @@ namespace ProceduralStreetKit {
 			}
 		}
 
+		// Span gantries over four-way junctions (on the diagonal signal poles) and corner street-name signs.
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].degree < 3) continue;
+			const glm::vec3 c = W3(nodes[i].p, 0.0f);
+			const float o = nodes[i].road + 0.6f;
+			if (nodes[i].degree >= 4) {
+				const glm::vec3 A = c + glm::vec3(o, 0.0f, o) + up * 5.9f;
+				const glm::vec3 B = c + glm::vec3(-o, 0.0f, -o) + up * 5.9f;
+				Stick(kit, D_SIGNAL_HOUSING, A, B, 0.07f);
+				const glm::vec3 mid = (A + B) * 0.5f;
+				OrientedBox(kit, D_SIGNAL_HOUSING, mid - up * 0.45f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 0.25f, 0.45f, 0.2f);
+				kit.Quad(D_SIGNAL_RED, mid - up * 0.45f + glm::vec3(0.0f, 0.0f, 0.21f), glm::vec3(0.15f, 0.0f, 0.0f), glm::vec3(0.0f, 0.1f, 0.0f),
+					glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f), up);
+			}
+			for (float sx : { -1.0f, 1.0f }) {
+				const float sz = -sx;   // the two diagonal corners without a signal pole
+				const glm::vec3 p = c + glm::vec3(sx * o, 0.0f, sz * o) + up * curbH;
+				kit.Cylinder(M_POLE, p, 3.4f, 0.06f, 6);
+				OrientedBox(kit, M_SIGN_BOX, p + up * 3.1f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 0.5f, 0.2f, 0.03f);
+				circle(p, 0.15f);
+			}
+		}
+
 		// Utility poles on both sides at a fixed spacing, with overhead wires along and across.
 		for (const DistrictEdge& e : edges) {
 			const float sp = 48.0f;
@@ -1497,6 +1641,8 @@ namespace ProceduralStreetKit {
 					kit.Cylinder(D_WOOD, base, 10.5f, 0.14f, 8);
 					OrientedBox(kit, D_WOOD, base + up * 9.9f, e.n, e.d, 0.9f, 0.06f, 0.06f);
 					circle(base, 0.3f);
+					// Pole-mounted transformer on roughly one pole in three.
+					if (chance(0.33f)) kit.Cylinder(D_ROOF_UNIT, base + up * 6.9f, 1.6f, 0.28f, 10);
 				}
 				const glm::vec3 tl(bl.x, curbH + 9.0f, bl.z), tr(br.x, curbH + 9.0f, br.z);
 				auto sagged = [&](const glm::vec3& A, const glm::vec3& B, float sag) {
@@ -1549,44 +1695,74 @@ namespace ProceduralStreetKit {
 			}
 		}
 
-		// Hydrants and bins on the sidewalks; parked cars along the outer lanes.
+		// Sidewalk clutter: CC0 hydrants, bins, planters, potted plants, shrubs, benches and utility boxes
+		// (procedural fallbacks where a model is absent); parked cars along the outer lanes.
 		for (const DistrictEdge& e : edges) {
 			const float t0 = nodes[e.a].outer + 4.0f, t1 = e.L - nodes[e.b].outer - 4.0f;
+			const float yawD = yawAlong(e.d);
+			auto sideOf = [&]() { return chance(0.5f) ? 1.0f : -1.0f; };
 			for (float t = t0; t <= t1; t += 40.0f) {
 				if (chance(0.35f)) {
-					const float s = chance(0.5f) ? 1.0f : -1.0f;
+					const float s = sideOf();
 					const glm::vec3 hb = e.P + e.d * t + e.n * (s * (e.hw + 1.4f)) + up * curbH;
-					kit.Cylinder(D_HYDRANT, hb, 0.7f, 0.12f, 8);
-					kit.Cylinder(D_HYDRANT, hb + up * 0.6f, 0.15f, 0.17f, 8);
+					if (!prop("fire_hydrant", "hydrant", hb, uniform(0.0f, 6.2831853f))) {
+						kit.Cylinder(D_HYDRANT, hb, 0.7f, 0.12f, 8);
+						kit.Cylinder(D_HYDRANT, hb + up * 0.6f, 0.15f, 0.17f, 8);
+					}
 					circle(hb, 0.25f);
 				}
 				if (chance(0.25f)) {
-					const float s = chance(0.5f) ? 1.0f : -1.0f;
+					const float s = sideOf();
 					const glm::vec3 bc = e.P + e.d * (t + 8.0f) + e.n * (s * (e.hw + 3.4f)) + up * (curbH + 0.45f);
-					OrientedBox(kit, D_BIN, bc, e.d, e.n, 0.33f, 0.45f, 0.33f);
-					obstacles.push_back({ {"type", "box"}, {"center", { bc.x, bc.z }}, {"half", { 0.35f, 0.35f }}, {"yaw", 0.0f} });
+					const glm::vec3 base(bc.x, curbH, bc.z);
+					if (prop("metal_trash_can", "bin", base, yawD)) {
+						boxObstacle(base, e.d, 0.9f, 0.3f);
+					}
+					else {
+						OrientedBox(kit, D_BIN, bc, e.d, e.n, 0.33f, 0.45f, 0.33f);
+						obstacles.push_back({ {"type", "box"}, {"center", { bc.x, bc.z }}, {"half", { 0.35f, 0.35f }}, {"yaw", 0.0f} });
+					}
+				}
+				// Planters sit between the lamp row and the shopfronts; offsets keep clear of hydrants and bins.
+				if (chance(0.3f)) {
+					const float s = sideOf();
+					const glm::vec3 pc = e.P + e.d * (t + 11.0f) + e.n * (s * (e.hw + curbT + 1.2f));
+					const glm::vec3 base(pc.x, curbH, pc.z);
+					if (prop("planter_box_01", "planter", base, yawD)) boxObstacle(base, e.d, 0.46f, 0.22f);
+				}
+				if (chance(0.4f)) {
+					const float s = sideOf();
+					const glm::vec3 pp = e.P + e.d * (t + 19.0f) + e.n * (s * (e.hw + curbT + sidewalkW - 0.7f));
+					const glm::vec3 base(pp.x, curbH, pp.z);
+					if (prop("potted_plant_01", "pot", base, uniform(0.0f, 6.2831853f))) circle(base, 0.35f);
+				}
+				if (chance(0.2f)) {
+					const float s = sideOf();
+					const glm::vec3 sc = e.P + e.d * (t + 27.0f) + e.n * (s * (e.hw + curbT + sidewalkW - 0.3f));
+					const glm::vec3 base(sc.x, curbH, sc.z);
+					if (prop("shrub_01", "shrub", base, yawD)) boxObstacle(base, e.d, 1.3f, 0.2f);
+				}
+				if (chance(0.2f)) {
+					const float s = sideOf();
+					const glm::vec3 bp = e.P + e.d * (t + 33.0f) + e.n * (s * (e.hw + curbT + 2.2f));
+					const glm::vec3 base(bp.x, curbH, bp.z);
+					if (prop("modular_street_seating", "bench", base, yawD)) boxObstacle(base, e.d, 2.17f, 0.4f);
+				}
+				if (chance(0.12f)) {
+					const float s = sideOf();
+					const glm::vec3 pb = e.P + e.d * (t + 14.0f) + e.n * (s * (e.hw + curbT + sidewalkW - 0.6f));
+					const glm::vec3 base(pb.x, curbH, pb.z);
+					const bool utility = chance(0.5f);
+					if (prop(utility ? "utility_box_01" : "power_box_01", "utilbox", base, yawD)) boxObstacle(base, e.d, 0.3f, 0.3f);
 				}
 			}
 			const float carSpacing = 11.0f;
 			for (float t = t0 + 8.0f; t <= t1 - 4.0f; t += carSpacing) {
 				if (!chance(e.ventura ? 0.4f : 0.22f)) continue;
-				const float s = chance(0.5f) ? 1.0f : -1.0f;
+				const float s = sideOf();
 				const glm::vec3 c = e.P + e.d * t + e.n * (s * (e.hw - 1.2f));
 				if (glm::length(glm::vec2(c.x - spawn.x, c.z - spawn.y)) < 9.0f) continue;
-				const int paint[] = { D_CAR_WHITE, D_CAR_BLACK, D_CAR_SILVER, D_CAR_RED, D_CAR_BLUE };
-				const int body = paint[pickInt(5)];
-				OrientedBox(kit, body, c + up * 0.6f, e.d, e.n, 2.2f, 0.3f, 0.9f, 0x3Fu & ~8u);
-				OrientedBox(kit, D_CAR_GLASS, c + up * 1.2f, e.d, e.n, 1.2f, 0.3f, 0.82f, 0x33u);
-				OrientedBox(kit, body, c + up * 1.5f, e.d, e.n, 1.2f, 0.03f, 0.8f, 0x04u);
-				for (float sa : { -1.4f, 1.4f }) {
-					for (float sn : { -0.8f, 0.8f }) {
-						OrientedBox(kit, D_WHEEL, c + e.d * sa + e.n * sn + up * 0.16f, e.d, e.n, 0.32f, 0.16f, 0.12f);
-					}
-				}
-				for (float sn : { -0.6f, 0.6f }) {
-					kit.Quad(D_TAIL_LAMP, c - e.d * 2.21f + e.n * sn + up * 0.75f, e.n * 0.2f, up * 0.07f, -e.d, e.n, up);
-				}
-				boxObstacle(c, e.d, 2.25f, 0.95f);
+				parkedCar(c, e.d, e.n);
 			}
 		}
 

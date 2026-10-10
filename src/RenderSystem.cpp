@@ -7,6 +7,8 @@
 #include "ShadowMapper.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
+#include <set>
+#include <iostream>
 #include <chrono>
 #include <iostream>
 #include <cmath>
@@ -294,6 +296,13 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(GLui
 	uniforms.rainBeadResponse = glGetUniformLocation(shader, "rainBeadResponse");
 	uniforms.flakeIntensity = glGetUniformLocation(shader, "flakeIntensity");
 	uniforms.flakeDensity = glGetUniformLocation(shader, "flakeDensity");
+	uniforms.interiorMapping = glGetUniformLocation(shader, "interiorMapping");
+	uniforms.interiorDepth = glGetUniformLocation(shader, "interiorDepth");
+	uniforms.interiorStrength = glGetUniformLocation(shader, "interiorStrength");
+	uniforms.interiorSeed = glGetUniformLocation(shader, "interiorSeed");
+	uniforms.interiorLighting = glGetUniformLocation(shader, "interiorLighting");
+	uniforms.interiorBlinds = glGetUniformLocation(shader, "interiorBlinds");
+	uniforms.interiorStyle = glGetUniformLocation(shader, "interiorStyle");
 
 	uniforms.baseColorUVSet = glGetUniformLocation(shader, "baseColorUVSet");
 	uniforms.normalUVSet = glGetUniformLocation(shader, "normalUVSet");
@@ -967,6 +976,13 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.rainBeadResponse >= 0) glUniform1f(uniforms.rainBeadResponse, material.rainBeadResponse);
 	if (uniforms.flakeIntensity >= 0) glUniform1f(uniforms.flakeIntensity, material.flakeIntensity);
 	if (uniforms.flakeDensity >= 0) glUniform1f(uniforms.flakeDensity, material.flakeDensity);
+	if (uniforms.interiorMapping >= 0) glUniform1f(uniforms.interiorMapping, material.interiorMapping);
+	if (uniforms.interiorDepth >= 0) glUniform1f(uniforms.interiorDepth, material.interiorDepth);
+	if (uniforms.interiorStrength >= 0) glUniform1f(uniforms.interiorStrength, material.interiorStrength);
+	if (uniforms.interiorSeed >= 0) glUniform1f(uniforms.interiorSeed, material.interiorSeed);
+	if (uniforms.interiorLighting >= 0) glUniform1f(uniforms.interiorLighting, material.interiorLighting);
+	if (uniforms.interiorBlinds >= 0) glUniform1f(uniforms.interiorBlinds, material.interiorBlinds);
+	if (uniforms.interiorStyle >= 0) glUniform1f(uniforms.interiorStyle, material.interiorStyle);
 
 	auto clampUVSet = [](int uvSet) { return (uvSet == 1) ? 1 : 0; };
 	if (uniforms.baseColorUVSet >= 0) glUniform1i(uniforms.baseColorUVSet, clampUVSet(material.baseColorTexCoord));
@@ -1677,6 +1693,7 @@ void RenderSystem::UpdateAllRenderItemBounds()
 
 	m_lastBoundsUpdatePublication = m_transformSystem ? m_transformSystem->GetWorldPublicationGeneration() : 0;
 }
+
 
 void RenderSystem::PrepareCameraSubmissionCache()
 {
