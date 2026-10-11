@@ -63,6 +63,17 @@ SHIODOME_CAP = 250.0 # m, cap inside the Shiodome cluster (OSM heights used up t
 NEAR_M = 350.0        # full facades within this distance of an expressway
 RENDER_BUDGET = 1300000  # render triangles reserved for buildings/water/props (bbox total <= 1.5M)
 KIT_MAX = 120
+# District anchors (NOX frame). Ginza = sprint start (-425, 1657); Shiodome = tower cluster;
+# Daiba = Rainbow Bridge landing (checkpoint near (-527, 5477)); Hamamatsucho/Shibaura is the rest.
+# Approximate regions for scenery character only, not administrative boundaries.
+GINZA_C, GINZA_R = (-425.0, 1657.0), 700.0
+DAIBA_C, DAIBA_R = (-700.0, 5300.0), 900.0
+ZONE_STOREYS = {"ginza": (8, 12), "shiodome": (14, 26), "hamamatsucho": (6, 13),
+                "waterfront": (2, 4), "daiba": (6, 16)}
+STREET_W = {"primary": 14.0, "secondary": 11.0, "tertiary": 9.0, "residential": 7.0}
+SIDEWALK_W = {"primary": 3.0, "secondary": 2.5, "tertiary": 2.2, "residential": 1.8}
+STREET_LAMP_STEP = 30.0
+TREE_STEP = 14.0
 
 
 def log(msg):
@@ -121,6 +132,7 @@ KINDS = {
     "water": ['way["natural"="water"]{b};', 'relation["natural"="water"]["type"="multipolygon"]{b};',
               'way["waterway"="riverbank"]{b};', 'relation["waterway"="riverbank"]{b};',
               'way["natural"="coastline"]{b};', 'way["waterway"~"^(river|canal)$"]{b};'],
+    "streets": ['way["highway"~"^(primary|secondary|tertiary|residential)$"]{b};'],
     "landuse": ['way["leisure"="park"]{b};', 'relation["leisure"="park"]{b};',
                 'way["landuse"~"^(industrial|recreation_ground|port)$"]{b};',
                 'relation["landuse"~"^(industrial|recreation_ground|port)$"]{b};'],
@@ -652,6 +664,97 @@ def tri_counts(ring, h, family, lod):
     return walls + roof
 
 
+def pick_style(zone, fam, h, r):
+    """Facade style (names in textures/shuto/derived/facade_styles) by district, family and height."""
+    if zone == "ginza":
+        if fam == "commercial":
+            return r.choice(["spandrel_midrise", "office_ribbon", "tile_older"])
+        return r.choice(["tile_older", "apartment_concrete"])
+    if zone == "shiodome":
+        if h >= 60.0:
+            return r.choice(["curtain_mullion", "curtain_bronze"])
+        return r.choice(["office_ribbon", "ivory_modern", "spandrel_midrise"])
+    if zone == "waterfront":
+        return r.choice(["warehouse_clerestory", "warehouse_roller"])
+    if zone == "daiba":
+        return r.choice(["apartment_balcony", "ivory_modern", "spandrel_midrise"])
+    if fam == "apartment":
+        return r.choice(["apartment_balcony", "apartment_concrete", "tile_older"])
+    return r.choice(["office_ribbon", "dark_office", "spandrel_midrise"])
+
+
+def zone_of(c, near_water):
+    if math.dist(c, SHIODOME_C) < SHIODOME_R:
+        return "shiodome"
+    if near_water and c[1] > 3000:
+        return "waterfront"
+    if math.dist(c, GINZA_C) < GINZA_R and c[1] < 2300:
+        return "ginza"
+    if c[1] > 4800 and math.dist(c, DAIBA_C) < DAIBA_R:
+        return "daiba"
+    return "hamamatsucho"
+
+
+def seg_street_hit(x, z, segs, cells, cell_m=50.0):
+    """True if (x, z) lies within the clearance of a street segment (bucketed lookup)."""
+    for sid in cells.get((int(math.floor(x / cell_m)), int(math.floor(z / cell_m))), ()):
+        ax, az, bx, bz, clear = segs[sid]
+        if seg_dist2(x, z, ax, az, bx, bz) < clear * clear:
+            return True
+    return False
+
+
+def add_seg_cells(segs, cells, cell_m=50.0):
+    for sid, (ax, az, bx, bz, _c) in enumerate(segs):
+        L = math.dist((ax, az), (bx, bz))
+        n = max(1, int(L / 20.0))
+        for k in range(n + 1):
+            t = k / n
+            x = ax + (bx - ax) * t
+            z = az + (bz - az) * t
+            key = (int(math.floor(x / cell_m)), int(math.floor(z / cell_m)))
+            cells.setdefault(key, set()).add(sid)
+
+
+def plan_streets(street_ways, roads, grid, water):
+    """City street polylines, split where they meet an expressway band or water."""
+    pieces = []
+    for tags, pts in street_ways:
+        cls = tags["highway"]
+        w = STREET_W[cls]
+        sw = SIDEWALK_W[cls]
+        run = []
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            L = math.dist(a, b)
+            if L < 1.0:
+                continue
+            mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            ok = in_bbox(mid[0], mid[1])
+            if ok:
+                gi = grid.idx(mid[0], mid[1])
+                ok = not (gi >= 0 and water[gi])
+            if ok:
+                ux, uz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+                nx, nz = -uz, ux
+                e = w / 2 + sw + 0.8
+                ring = [(a[0] - ux + nx * e, a[1] - uz + nz * e), (b[0] + ux + nx * e, b[1] + uz + nz * e),
+                        (b[0] + ux - nx * e, b[1] + uz - nz * e), (a[0] - ux - nx * e, a[1] - uz - nz * e)]
+                ok = not roads.footprint_conflict(ring)
+            if ok:
+                if not run:
+                    run = [a]
+                run.append(b)
+            else:
+                if len(run) >= 2:
+                    pieces.append({"cls": cls, "w": w, "sw": sw,
+                                   "pts": [[round(p[0], 2), round(p[1], 2)] for p in run]})
+                run = []
+        if len(run) >= 2:
+            pieces.append({"cls": cls, "w": w, "sw": sw, "pts": [[round(p[0], 2), round(p[1], 2)] for p in run]})
+    return pieces
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--refresh", action="store_true")
@@ -665,6 +768,7 @@ def main():
     log("road samples: %d (band hw max %.2f)" % (len(roads.samples), roads.hw_max))
 
     buildings, coast_lines, water_polys, canal_lines, parks, industrial = [], [], [], [], [], []
+    street_ways = []
     for el in elements:
         tags = el.get("tags", {})
         etype = el["type"]
@@ -681,6 +785,9 @@ def main():
                 if m.get("role") in ("outer", "") and m.get("geometry") and m.get("type", "way") == "way":
                     rings.append([project(p["lat"], p["lon"]) for p in m["geometry"]])
         if not rings:
+            continue
+        if etype == "way" and tags.get("highway") in STREET_W:
+            street_ways.append((tags, rings[0]))
             continue
         if "building" in tags:
             for r in rings:
@@ -712,6 +819,14 @@ def main():
     log("water rectangles: %d (after chunk split)" % len(water_out))
 
     dist_at = expressway_distance(roads)
+    streets = plan_streets(street_ways, roads, grid, water)
+    seg_list, seg_cells = [], {}
+    for pc in streets:
+        cl = pc["w"] / 2 + pc["sw"] + 0.3
+        for a, b in zip(pc["pts"], pc["pts"][1:]):
+            seg_list.append((a[0], a[1], b[0], b[1], cl))
+    add_seg_cells(seg_list, seg_cells)
+    log("street pieces %d, segments %d" % (len(streets), len(seg_list)))
 
     # Buildings: keep centroid in bbox, drop road-corridor and water conflicts.
     kept = []
@@ -738,12 +853,51 @@ def main():
         if roads.footprint_conflict(ring):
             dropped["road_band"] += 1
             continue
+        if any(seg_street_hit(p[0], p[1], seg_list, seg_cells) for p in ring):
+            dropped["street"] += 1
+            continue
         h_tag = parse_height(tags)
         fam = family_of(tags, h_tag, cz)
-        h = h_tag if h_tag is not None else default_height(fam)
+        near_water = False
+        for dx, dz in ((60, 0), (-60, 0), (0, 60), (0, -60)):
+            gi = grid.idx(cx + dx, cz + dz)
+            if gi >= 0 and water[gi]:
+                near_water = True
+        zone = zone_of((cx, cz), near_water)
+        area = abs(area2(ring)) / 2.0
+        rng_b = random.Random(oid)
+        untagged = tags.get("building", "yes") in ("yes", "")
+        if untagged and h_tag is None:
+            if zone == "waterfront":
+                fam = "industrial"
+            elif zone in ("ginza", "shiodome"):
+                fam = "commercial"
+            elif zone == "daiba":
+                fam = "commercial" if area > 400 else "apartment"
+            else:
+                fam = "apartment" if area < 350 else "commercial"
+        if h_tag is None and zone == "waterfront" and fam == "industrial":
+            h = rng_b.uniform(8.0, 13.0) if area > 500 else rng_b.uniform(5.0, 9.0)
+        elif h_tag is None and zone in ZONE_STOREYS:
+            lo, hi = ZONE_STOREYS[zone]
+            h = rng_b.randint(lo, hi) * STOREY
+        else:
+            h = h_tag if h_tag is not None else default_height(fam)
         h = max(3.0, min(h, 300.0))
+        flags = {
+            "sign": zone == "ginza" and fam == "commercial" and rng_b.random() < 0.5,
+            "tank": h >= 12.0 and rng_b.random() < 0.35,
+            "stair": h >= 18.0 and rng_b.random() < 0.25,
+            "ac": rng_b.randint(0, 4),
+            "setback": h >= 60.0,
+            "corrugated": fam == "industrial" and zone == "waterfront",
+        }
+        style = pick_style(zone, fam, h, rng_b)
+        style_tint = rng_b.randrange(3)
+        style_off = [rng_b.randrange(16), rng_b.randrange(12)]
         kept.append({"osm": oid, "ring": ring, "h": h, "h_tag": h_tag, "family": fam,
-                     "tags": tags.get("building", "yes"), "c": (cx, cz),
+                     "style": style, "tint": style_tint, "off": style_off,
+                     "tags": tags.get("building", "yes"), "c": (cx, cz), "zone": zone, "flags": flags,
                      "near_m": round(dist_at(cx, cz), 1)})
     log("buildings kept %d, dropped %s" % (len(kept), dict(dropped)))
 
@@ -771,11 +925,23 @@ def main():
         h = min(b["h"], SHIODOME_CAP if near_shio else LANDMARK_CAP)
         pool = [k for k in kit_list if k["name"] not in used] or kit_list
         best = min(pool, key=lambda k: abs(k["height_m"] - h))
+        # True scale only: one uniform factor from the footprint fit. Reject if the footprint
+        # ratios disagree (the kit would be stretched) or the resulting height is too short.
+        kx, ky = best["footprint_m"]
+        r = [o["w"] / max(kx, 1e-3), o["d"] / max(ky, 1e-3)]
+        if max(r) / max(min(r), 1e-3) > 1.35:
+            dropped_landmark["aspect_mismatch"] += 1
+            continue
+        scale = min(r)
+        h = best["height_m"] * scale
+        if h < 0.6 * b["h"] or scale < 0.3:
+            dropped_landmark["height_or_scale"] += 1
+            continue
         used.add(best["name"])
         landmarks.append({"kit": best["name"], "source": best["source"], "license": best["license"],
                           "author": best["author"], "kit_h": best["height_m"],
                           "kit_footprint": best["footprint_m"], "osm": b["osm"], "obb": o,
-                          "h": round(h, 2), "h_osm": round(b["h"], 2),
+                          "h": round(h, 2), "h_osm": round(b["h"], 2), "scale": round(scale, 5),
                           "c": [round(b["c"][0], 2), round(b["c"][1], 2)]})
         b["landmark"] = True
     kept = [b for b in kept if not b.get("landmark")]
@@ -784,7 +950,7 @@ def main():
     # Level-of-detail: full textured facades for the nearest buildings within budget.
     base = 0
     for b in kept:
-        b["lod"] = "plain"
+        b["lod"] = "far"
         base += tri_counts(b["ring"], b["h"], b["family"], "plain")
     base += 2 * len(water_out) + 3000 * 4  # water + trees (estimate)
     base += sum(4 * 12 * 2 for _ in landmarks)  # landmarks estimate
@@ -853,6 +1019,44 @@ def main():
     log("trees %d" % len(trees))
 
     # Plan output.
+    street_trees, street_lamps = [], []
+    for pc in streets:
+        if pc["cls"] == "residential":
+            continue
+        sw_off = pc["w"] / 2 + pc["sw"] * 0.5
+        acc_t, acc_l, side = 0.0, 0.0, 1
+        for a, b in zip(pc["pts"], pc["pts"][1:]):
+            L = math.dist(a, b)
+            if L < 1e-6:
+                continue
+            ux, uz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+            nx, nz = -uz, ux
+            t = 0.0
+            while t < L:
+                x = a[0] + ux * t
+                z = a[1] + uz * t
+                if acc_t <= 0.0:
+                    side = -side
+                    px, pz = x + nx * sw_off * side, z + nz * sw_off * side
+                    street_trees.append({"pos": [round(px, 2), round(pz, 2)],
+                                         "size": round(4.0 + random.random() * 2.5, 2),
+                                         "cell": random.choice(["shrub", "hedge", "grass"]),
+                                         "yaw": round(random.uniform(0, 180), 1), "street": True})
+                    acc_t = TREE_STEP
+                if acc_l <= 0.0 and pc["cls"] in ("primary", "secondary"):
+                    lx = x + nx * (pc["w"] / 2 + 0.6)
+                    lz = z + nz * (pc["w"] / 2 + 0.6)
+                    street_lamps.append({"pos": [round(lx, 2), round(lz, 2)],
+                                         "u": [round(ux, 4), round(uz, 4)]})
+                    acc_l = STREET_LAMP_STEP
+                step = min(acc_t, acc_l if acc_l > 0 else acc_t, L - t)
+                step = max(step, 0.5)
+                t += step
+                acc_t -= step
+                acc_l -= step
+    log("street trees %d, street lamps %d" % (len(street_trees), len(street_lamps)))
+    trees = trees + street_trees
+
     out_b = []
     for b in kept:
         cx, cz = chunk_of(b["c"][0], b["c"][1])
@@ -860,6 +1064,8 @@ def main():
         out_b.append({"id": "osm_%d" % b["osm"], "osm": b["osm"], "cx": cx, "cz": cz,
                       "ring": ring, "h": round(b["h"], 2), "h_tag": b["h_tag"],
                       "family": b["family"], "lod": b["lod"], "near_m": b["near_m"],
+                      "zone": b["zone"], "flags": b["flags"],
+                      "style": b["style"], "tint": b["tint"], "off": b["off"],
                       "obb": obb(b["ring"]), "pick": random.randrange(4),
                       "lit_seed": random.randrange(1 << 30)})
     out_k = []
@@ -887,13 +1093,16 @@ def main():
                     "extract": "Overpass API, bbox %s" % (latlon_bbox(),), "raw": "data/shuto/raw/overpass_scenery_*.json"},
         },
         "counts": {"buildings": len(out_b), "full": full_n, "landmarks": len(out_k),
-                   "containers": len(out_c), "trees": len(out_t), "water_rects": len(water_out)},
+                   "containers": len(out_c), "trees": len(out_t), "water_rects": len(water_out),
+                   "streets": len(streets), "street_lamps": len(street_lamps)},
         "dropped": dict(dropped),
         "water_rects": water_out,
         "buildings": out_b,
         "landmarks": out_k,
         "containers": out_c,
         "trees": out_t,
+        "streets": streets,
+        "street_lamps": street_lamps,
     }
     PLAN.parent.mkdir(parents=True, exist_ok=True)
     PLAN.write_text(json.dumps(plan, separators=(",", ":")), encoding="utf-8")

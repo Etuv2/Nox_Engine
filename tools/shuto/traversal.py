@@ -148,9 +148,22 @@ def make(section):
           f'({sum(e["length_m"] for e in events) / 1000:.1f} km) -> {out}')
 
 
-def run(section, only):
+def roads_only_scene(section):
+    """Private copy of the traversal scene without scenery meshes or scenery collision (road geometry
+    and signs only), so road validation is not affected by scenery rebuilds."""
+    src = os.path.join(ROOT, 'scenes', f'_shuto_traversal_{section}.json')
+    scene = json.load(open(src, encoding='utf-8'))
+    scene['nodes'] = [n for n in scene.get('nodes', []) if '/scenery/' not in n.get('path', '') and not n.get('name', '').endswith('_scenery')]
+    game = scene.get('game', {})
+    game['collision'] = dict(game.get('collision', {}), files=[f for f in game.get('collision', {}).get('files', []) if 'scenery' not in f])
+    out = os.path.join(ROOT, 'scenes', f'_shuto_traversal_roads_{section}.json')
+    json.dump(scene, open(out, 'w', encoding='utf-8', newline=chr(10)), indent=1)
+    return os.path.relpath(out, ROOT).replace(chr(92), '/')
+
+
+def run(section, only, roads=False):
     doc = json.load(open(os.path.join(ROOT, 'data', 'shuto', f'traversal_{section}.json'), encoding='utf-8'))
-    scene = os.path.join('scenes', f'_shuto_traversal_{section}.json')
+    scene = roads_only_scene(section) if roads else os.path.join('scenes', f'_shuto_traversal_{section}.json')
     os.makedirs(os.path.join(ROOT, 'logs', 'traversal'), exist_ok=True)
     results = []
     for i, ev in enumerate(doc['events']):
@@ -183,7 +196,7 @@ def run(section, only):
         flag = 'PASS' if r['finished'] and not r['stuck'] and not r['fell'] and not r['no_ground_recoveries'] else 'FAIL'
         print(f"{flag} event {i:3d} {ev['length_m']:7.0f} m  cps {cps}/{len(ev['checkpoints'])}  stuck {len(r['stuck'])} "
               f"fell {len(r['fell'])} recov {r['no_ground_recoveries']} missed {r['missed']} {code}", flush=True)
-    out = os.path.join(ROOT, 'data', 'shuto', f'traversal_{section}_results.json')
+    out = os.path.join(ROOT, 'data', 'shuto', f'traversal_{section}_roads_results.json' if roads else f'traversal_{section}_results.json')
     prev = []
     if only and os.path.exists(out):
         prev = [r for r in json.load(open(out, encoding='utf-8'))['results'] if r['event'] not in only]
@@ -199,12 +212,13 @@ def main():
     ap.add_argument('cmd', choices=['make', 'run'])
     ap.add_argument('--section', default='rep_section')
     ap.add_argument('--only', default='')
+    ap.add_argument('--roads-only', action='store_true', help='run on the roads-only scene (no scenery)')
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding='utf-8')
     if a.cmd == 'make':
         make(a.section)
     else:
-        run(a.section, {int(v) for v in a.only.split(',') if v})
+        run(a.section, {int(v) for v in a.only.split(',') if v}, roads=a.roads_only)
 
 
 if __name__ == '__main__':

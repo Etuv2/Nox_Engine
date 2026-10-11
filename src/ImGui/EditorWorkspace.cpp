@@ -9,6 +9,7 @@
 #include "../BaseLight.h"
 #include "../ModularRenderer.h"
 #include "../RacingHUD.h"
+#include "../UiIconAtlas.h"
 #include "../Scene.h"
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
@@ -52,6 +53,40 @@ namespace ui {
 	bool Btn(const char* label, bool primary) { return solace::Button(label, primary ? solace::ButtonKind::Primary : solace::ButtonKind::Secondary); }
 	bool Tool(const char* id, solace::Icon icon, const char* label, bool active, bool enabled, const char* tip) {
 		return solace::ToolbarButton(id, icon, label, active, enabled, tip);
+	}
+	// Same toolbar button with a UI icon-atlas picture (hud.json icons.roles) in place of the
+	// vector glyph; falls back to Tool() when the atlas or the icon is unavailable.
+	bool ToolIcon(const char* id, const std::string& atlasId, solace::Icon fallback, const char* label, bool active,
+		bool enabled, const char* tip) {
+		if (!UiIconAtlas::Get().Has(atlasId)) return Tool(id, fallback, label, active, enabled, tip);
+		ImGui::PushID(id);
+		const ImGuiStyle& st = ImGui::GetStyle();
+		const float h = ImGui::GetFrameHeight();
+		const float icon = h * 0.5f;
+		const float pad = st.FramePadding.x + 2.0f;
+		const float gap = 6.0f;
+		const bool hasText = label && *label;
+		const ImVec2 text = hasText ? ImGui::CalcTextSize(label) : ImVec2(0.0f, 0.0f);
+		const float w = pad + icon + (hasText ? gap + text.x : 0.0f) + pad;
+		const ImVec2 min = ImGui::GetCursorScreenPos();
+		const ImVec2 max(min.x + w, min.y + h);
+		ImGui::BeginDisabled(!enabled);
+		const bool clicked = ImGui::InvisibleButton("##tool_icon", ImVec2(w, h));
+		ImGui::EndDisabled();
+		const bool hovered = enabled && ImGui::IsItemHovered();
+		if (tip && hovered) ImGui::SetTooltip("%s", tip);
+		ImDrawList* dl = ImGui::GetWindowDrawList();
+		if (active || hovered) {
+			dl->AddRectFilled(min, max, ImGui::GetColorU32(active ? ImGuiCol_HeaderActive : ImGuiCol_HeaderHovered), st.FrameRounding);
+		}
+		ImVec4 fg = st.Colors[ImGuiCol_Text];
+		if (!(active || hovered)) fg.w *= 0.7f;
+		fg.w *= enabled ? 1.0f : 0.4f;
+		const ImU32 fgCol = ImGui::GetColorU32(fg);
+		UiIconAtlas::Get().DrawCentered(dl, atlasId, ImVec2(min.x + pad + icon * 0.5f, min.y + h * 0.5f), icon, fgCol);
+		if (hasText) dl->AddText(ImVec2(min.x + pad + icon + gap, min.y + (h - text.y) * 0.5f), fgCol, label);
+		ImGui::PopID();
+		return clicked && enabled;
 	}
 	bool Section(const char* title, bool defaultOpen) {
 		static std::map<std::string, bool> open;
@@ -467,7 +502,7 @@ void EditorWorkspace::DrawToolbar()
 		ImGui::EndCombo();
 	}
 	ImGui::SameLine();
-	if (ui::Tool("##save", solace::Icon::Save, "Save", false, !m_core.IsPlaying(), "Save scene (Ctrl+S)")) {
+	if (ui::ToolIcon("##save", RacingHUD::Get().IconId("editor/save"), solace::Icon::Save, "Save", false, !m_core.IsPlaying(), "Save scene (Ctrl+S)")) {
 		m_core.SaveCurrentScene();
 		ui::Toast("Scene saved", ui::ToastKind::Success);
 	}
@@ -480,12 +515,12 @@ void EditorWorkspace::DrawToolbar()
 	const float playW = 3 * (ImGui::GetFrameHeight() + 8.0f);
 	ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 20.0f, (ImGui::GetWindowWidth() - playW) * 0.5f));
 	const bool playing = m_core.IsPlaying();
-	if (ui::Tool("##play", solace::Icon::Play, nullptr, playing, !playing, "Play (F5)")) {
+	if (ui::ToolIcon("##play", RacingHUD::Get().IconId("editor/play"), solace::Icon::Play, nullptr, playing, !playing, "Play (F5)")) {
 		m_core.RequestPlay();
 		FocusGame();
 	}
 	ImGui::SameLine();
-	if (ui::Tool("##pause", solace::Icon::Pause, nullptr, m_core.IsPaused(), playing, "Pause (F6)")) m_core.TogglePause();
+	if (ui::ToolIcon("##pause", RacingHUD::Get().IconId("editor/pause"), solace::Icon::Pause, nullptr, m_core.IsPaused(), playing, "Pause (F6)")) m_core.TogglePause();
 	ImGui::SameLine();
 	if (ui::Tool("##stop", solace::Icon::Stop, nullptr, false, playing, "Stop (Shift+F5) - restores the pre-play state")) m_core.RequestStop();
 

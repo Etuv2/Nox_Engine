@@ -1,0 +1,20 @@
+{
+  "image": "textures/shuto/map/worldmap_base.png",
+  "tokyo_bay": [
+    6956.4,
+    12275.6
+  ],
+  "size": [
+    1800,
+    3050
+  ],
+  "bounds": [
+    -19000.0,
+    -23500.0,
+    17000.0,
+    37500.0
+  ],
+  "metres_per_texel": 20.0,
+  "frame": "NOX: x east, z south, metres; row 0 = north (min z)",
+  "attribution": "Map data (c) OpenStreetMap contributors (ODbL)"
+}

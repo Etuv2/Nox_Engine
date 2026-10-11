@@ -725,7 +725,9 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Texture.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\TextureArrayBuilder.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\TransformSystem.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\UiIconAtlas.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\VehicleFX.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\WorldMapUI.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\editor\ProcessRunner.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\editor\solace\SolaceControls.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\editor\solace\SolaceCore.cpp" />

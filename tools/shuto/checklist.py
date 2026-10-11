@@ -50,7 +50,7 @@ def main():
         has = {
             'geometry': bool(glob.glob(os.path.join(sec, 'render', '*.glb'))),
             'collision': bool(glob.glob(os.path.join(sec, 'collision', '*_col.glb'))),
-            'scenery': bool(glob.glob(os.path.join(sec, 'scenery', '*.glb'))),
+            'scenery': bool(glob.glob(os.path.join(sec, 'scenery', '*.glb')) or glob.glob(os.path.join(sec, 'scenery', '*.gltf'))),
             'signs': os.path.exists(os.path.join(sec, 'signs.glb')),
         }
         for c in net['carriageways']:

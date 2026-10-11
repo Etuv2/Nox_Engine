@@ -1,0 +1,2345 @@
+{
+ "generator": "tools/shuto/make_facade_units.py",
+ "padding_px": 8,
+ "content_px": 627,
+ "storey_m": 3.3,
+ "bay_m": {
+  "apartment": 3.5,
+  "commercial": 4.0,
+  "industrial": 6.0
+ },
+ "atlas_columns": 6,
+ "families": {
+  "apartment": {
+   "atlas": "facades_apartment_units.png",
+   "lit": "facades_apartment_units_lit.png",
+   "size_px": [
+    1206,
+    1140
+   ],
+   "albedo_mean_srgb_before": 0.427,
+   "albedo_factor": 0.9373,
+   "cells": [
+    {
+     "cell": "beige_tiled",
+     "storey_px": 163,
+     "bay_px": 173,
+     "px_per_m": 49.394,
+     "storey_autocorr": 0.64,
+     "glass_fraction": 0.49,
+     "otsu": 0.447,
+     "phase_px": 8,
+     "rows": 3
+    },
+    {
+     "cell": "gray_concrete",
+     "storey_px": 163,
+     "bay_px": 173,
+     "px_per_m": 49.394,
+     "storey_autocorr": 0.723,
+     "glass_fraction": 0.367,
+     "otsu": 0.455,
+     "phase_px": 0,
+     "rows": 3
+    },
+    {
+     "cell": "tan_older",
+     "storey_px": 174,
+     "bay_px": 185,
+     "px_per_m": 52.727,
+     "storey_autocorr": 0.667,
+     "glass_fraction": 0.41,
+     "otsu": 0.389,
+     "phase_px": 0,
+     "rows": 3
+    },
+    {
+     "cell": "ivory_modern",
+     "storey_px": 164,
+     "bay_px": 174,
+     "px_per_m": 49.697,
+     "storey_autocorr": 0.724,
+     "glass_fraction": 0.514,
+     "otsu": 0.537,
+     "phase_px": 3,
+     "rows": 3
+    }
+   ],
+   "units": [
+    {
+     "index": 0,
+     "cell": "beige_tiled",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      8,
+      173,
+      171
+     ],
+     "rect_px": [
+      8,
+      8,
+      181,
+      171
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 1,
+     "cell": "beige_tiled",
+     "ground": false,
+     "src_rect_px": [
+      173,
+      8,
+      346,
+      171
+     ],
+     "rect_px": [
+      209,
+      8,
+      382,
+      171
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 2,
+     "cell": "beige_tiled",
+     "ground": false,
+     "src_rect_px": [
+      346,
+      8,
+      519,
+      171
+     ],
+     "rect_px": [
+      410,
+      8,
+      583,
+      171
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 3,
+     "cell": "beige_tiled",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      171,
+      173,
+      334
+     ],
+     "rect_px": [
+      611,
+      8,
+      784,
+      171
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 4,
+     "cell": "beige_tiled",
+     "ground": false,
+     "src_rect_px": [
+      173,
+      171,
+      346,
+      334
+     ],
+     "rect_px": [
+      812,
+      8,
+      985,
+      171
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 5,
+     "cell": "beige_tiled",
+     "ground": false,
+     "src_rect_px": [
+      346,
+      171,
+      519,
+      334
+     ],
+     "rect_px": [
+      1013,
+      8,
+      1186,
+      171
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 6,
+     "cell": "beige_tiled",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      334,
+      173,
+      497
+     ],
+     "rect_px": [
+      8,
+      198,
+      181,
+      361
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 7,
+     "cell": "beige_tiled",
+     "ground": true,
+     "src_rect_px": [
+      173,
+      334,
+      346,
+      497
+     ],
+     "rect_px": [
+      209,
+      198,
+      382,
+      361
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 8,
+     "cell": "beige_tiled",
+     "ground": true,
+     "src_rect_px": [
+      346,
+      334,
+      519,
+      497
+     ],
+     "rect_px": [
+      410,
+      198,
+      583,
+      361
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 9,
+     "cell": "gray_concrete",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      0,
+      173,
+      163
+     ],
+     "rect_px": [
+      611,
+      198,
+      784,
+      361
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 10,
+     "cell": "gray_concrete",
+     "ground": false,
+     "src_rect_px": [
+      173,
+      0,
+      346,
+      163
+     ],
+     "rect_px": [
+      812,
+      198,
+      985,
+      361
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 11,
+     "cell": "gray_concrete",
+     "ground": false,
+     "src_rect_px": [
+      346,
+      0,
+      519,
+      163
+     ],
+     "rect_px": [
+      1013,
+      198,
+      1186,
+      361
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 12,
+     "cell": "gray_concrete",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      163,
+      173,
+      326
+     ],
+     "rect_px": [
+      8,
+      388,
+      181,
+      551
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 13,
+     "cell": "gray_concrete",
+     "ground": false,
+     "src_rect_px": [
+      173,
+      163,
+      346,
+      326
+     ],
+     "rect_px": [
+      209,
+      388,
+      382,
+      551
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 14,
+     "cell": "gray_concrete",
+     "ground": false,
+     "src_rect_px": [
+      346,
+      163,
+      519,
+      326
+     ],
+     "rect_px": [
+      410,
+      388,
+      583,
+      551
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 15,
+     "cell": "gray_concrete",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      326,
+      173,
+      489
+     ],
+     "rect_px": [
+      611,
+      388,
+      784,
+      551
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 16,
+     "cell": "gray_concrete",
+     "ground": true,
+     "src_rect_px": [
+      173,
+      326,
+      346,
+      489
+     ],
+     "rect_px": [
+      812,
+      388,
+      985,
+      551
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 17,
+     "cell": "gray_concrete",
+     "ground": true,
+     "src_rect_px": [
+      346,
+      326,
+      519,
+      489
+     ],
+     "rect_px": [
+      1013,
+      388,
+      1186,
+      551
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 18,
+     "cell": "tan_older",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      0,
+      185,
+      174
+     ],
+     "rect_px": [
+      8,
+      578,
+      193,
+      752
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 19,
+     "cell": "tan_older",
+     "ground": false,
+     "src_rect_px": [
+      185,
+      0,
+      370,
+      174
+     ],
+     "rect_px": [
+      209,
+      578,
+      394,
+      752
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 20,
+     "cell": "tan_older",
+     "ground": false,
+     "src_rect_px": [
+      370,
+      0,
+      555,
+      174
+     ],
+     "rect_px": [
+      410,
+      578,
+      595,
+      752
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 21,
+     "cell": "tan_older",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      174,
+      185,
+      348
+     ],
+     "rect_px": [
+      611,
+      578,
+      796,
+      752
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 22,
+     "cell": "tan_older",
+     "ground": false,
+     "src_rect_px": [
+      185,
+      174,
+      370,
+      348
+     ],
+     "rect_px": [
+      812,
+      578,
+      997,
+      752
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 23,
+     "cell": "tan_older",
+     "ground": false,
+     "src_rect_px": [
+      370,
+      174,
+      555,
+      348
+     ],
+     "rect_px": [
+      1013,
+      578,
+      1198,
+      752
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 24,
+     "cell": "tan_older",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      348,
+      185,
+      522
+     ],
+     "rect_px": [
+      8,
+      768,
+      193,
+      942
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 25,
+     "cell": "tan_older",
+     "ground": true,
+     "src_rect_px": [
+      185,
+      348,
+      370,
+      522
+     ],
+     "rect_px": [
+      209,
+      768,
+      394,
+      942
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 26,
+     "cell": "tan_older",
+     "ground": true,
+     "src_rect_px": [
+      370,
+      348,
+      555,
+      522
+     ],
+     "rect_px": [
+      410,
+      768,
+      595,
+      942
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 27,
+     "cell": "ivory_modern",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      3,
+      174,
+      167
+     ],
+     "rect_px": [
+      611,
+      768,
+      785,
+      932
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 28,
+     "cell": "ivory_modern",
+     "ground": false,
+     "src_rect_px": [
+      174,
+      3,
+      348,
+      167
+     ],
+     "rect_px": [
+      812,
+      768,
+      986,
+      932
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 29,
+     "cell": "ivory_modern",
+     "ground": false,
+     "src_rect_px": [
+      348,
+      3,
+      522,
+      167
+     ],
+     "rect_px": [
+      1013,
+      768,
+      1187,
+      932
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 30,
+     "cell": "ivory_modern",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      167,
+      174,
+      331
+     ],
+     "rect_px": [
+      8,
+      958,
+      182,
+      1122
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 31,
+     "cell": "ivory_modern",
+     "ground": false,
+     "src_rect_px": [
+      174,
+      167,
+      348,
+      331
+     ],
+     "rect_px": [
+      209,
+      958,
+      383,
+      1122
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 32,
+     "cell": "ivory_modern",
+     "ground": false,
+     "src_rect_px": [
+      348,
+      167,
+      522,
+      331
+     ],
+     "rect_px": [
+      410,
+      958,
+      584,
+      1122
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 33,
+     "cell": "ivory_modern",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      331,
+      174,
+      495
+     ],
+     "rect_px": [
+      611,
+      958,
+      785,
+      1122
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 34,
+     "cell": "ivory_modern",
+     "ground": true,
+     "src_rect_px": [
+      174,
+      331,
+      348,
+      495
+     ],
+     "rect_px": [
+      812,
+      958,
+      986,
+      1122
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "index": 35,
+     "cell": "ivory_modern",
+     "ground": true,
+     "src_rect_px": [
+      348,
+      331,
+      522,
+      495
+     ],
+     "rect_px": [
+      1013,
+      958,
+      1187,
+      1122
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    }
+   ],
+   "far": [
+    {
+     "base": "facades_apartment_far0.png",
+     "lit": "facades_apartment_far0_lit.png",
+     "cell": "beige_tiled",
+     "src_rect_px": [
+      0,
+      8,
+      173,
+      171
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "base": "facades_apartment_far1.png",
+     "lit": "facades_apartment_far1_lit.png",
+     "cell": "gray_concrete",
+     "src_rect_px": [
+      346,
+      0,
+      519,
+      163
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    },
+    {
+     "base": "facades_apartment_far2.png",
+     "lit": "facades_apartment_far2_lit.png",
+     "cell": "tan_older",
+     "src_rect_px": [
+      185,
+      174,
+      370,
+      348
+     ],
+     "metres": [
+      3.5,
+      3.3
+     ]
+    }
+   ]
+  },
+  "commercial": {
+   "atlas": "facades_commercial_units.png",
+   "lit": "facades_commercial_units_lit.png",
+   "size_px": [
+    1236,
+    1038
+   ],
+   "albedo_mean_srgb_before": 0.363,
+   "albedo_factor": 1.0,
+   "cells": [
+    {
+     "cell": "curtain_wall",
+     "storey_px": 123,
+     "bay_px": 149,
+     "px_per_m": 37.273,
+     "storey_autocorr": 0.729,
+     "glass_fraction": 0.465,
+     "otsu": 0.412,
+     "phase_px": 33,
+     "rows": 4
+    },
+    {
+     "cell": "retail_blank_signs",
+     "storey_px": 132,
+     "bay_px": 160,
+     "px_per_m": 40.0,
+     "storey_autocorr": 0.122,
+     "glass_fraction": 0.291,
+     "otsu": 0.51,
+     "phase_px": 85,
+     "rows": 4
+    },
+    {
+     "cell": "vertical_windows",
+     "storey_px": 132,
+     "bay_px": 160,
+     "px_per_m": 40.0,
+     "storey_autocorr": 0.054,
+     "glass_fraction": 0.293,
+     "otsu": 0.494,
+     "phase_px": 17,
+     "rows": 4
+    },
+    {
+     "cell": "gray_brown_office",
+     "storey_px": 157,
+     "bay_px": 190,
+     "px_per_m": 47.576,
+     "storey_autocorr": 0.743,
+     "glass_fraction": 0.279,
+     "otsu": 0.326,
+     "phase_px": 38,
+     "rows": 3
+    }
+   ],
+   "units": [
+    {
+     "index": 0,
+     "cell": "curtain_wall",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      156,
+      149,
+      279
+     ],
+     "rect_px": [
+      8,
+      8,
+      157,
+      131
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 1,
+     "cell": "curtain_wall",
+     "ground": false,
+     "src_rect_px": [
+      149,
+      156,
+      298,
+      279
+     ],
+     "rect_px": [
+      214,
+      8,
+      363,
+      131
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 2,
+     "cell": "curtain_wall",
+     "ground": false,
+     "src_rect_px": [
+      298,
+      156,
+      447,
+      279
+     ],
+     "rect_px": [
+      420,
+      8,
+      569,
+      131
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 3,
+     "cell": "curtain_wall",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      279,
+      149,
+      402
+     ],
+     "rect_px": [
+      626,
+      8,
+      775,
+      131
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 4,
+     "cell": "curtain_wall",
+     "ground": false,
+     "src_rect_px": [
+      149,
+      279,
+      298,
+      402
+     ],
+     "rect_px": [
+      832,
+      8,
+      981,
+      131
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 5,
+     "cell": "curtain_wall",
+     "ground": false,
+     "src_rect_px": [
+      298,
+      279,
+      447,
+      402
+     ],
+     "rect_px": [
+      1038,
+      8,
+      1187,
+      131
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 6,
+     "cell": "curtain_wall",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      402,
+      149,
+      525
+     ],
+     "rect_px": [
+      8,
+      181,
+      157,
+      304
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 7,
+     "cell": "curtain_wall",
+     "ground": true,
+     "src_rect_px": [
+      149,
+      402,
+      298,
+      525
+     ],
+     "rect_px": [
+      214,
+      181,
+      363,
+      304
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 8,
+     "cell": "curtain_wall",
+     "ground": true,
+     "src_rect_px": [
+      298,
+      402,
+      447,
+      525
+     ],
+     "rect_px": [
+      420,
+      181,
+      569,
+      304
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 9,
+     "cell": "retail_blank_signs",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      217,
+      160,
+      349
+     ],
+     "rect_px": [
+      626,
+      181,
+      786,
+      313
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 10,
+     "cell": "retail_blank_signs",
+     "ground": false,
+     "src_rect_px": [
+      160,
+      217,
+      320,
+      349
+     ],
+     "rect_px": [
+      832,
+      181,
+      992,
+      313
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 11,
+     "cell": "retail_blank_signs",
+     "ground": false,
+     "src_rect_px": [
+      320,
+      217,
+      480,
+      349
+     ],
+     "rect_px": [
+      1038,
+      181,
+      1198,
+      313
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 12,
+     "cell": "retail_blank_signs",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      349,
+      160,
+      481
+     ],
+     "rect_px": [
+      8,
+      354,
+      168,
+      486
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 13,
+     "cell": "retail_blank_signs",
+     "ground": false,
+     "src_rect_px": [
+      160,
+      349,
+      320,
+      481
+     ],
+     "rect_px": [
+      214,
+      354,
+      374,
+      486
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 14,
+     "cell": "retail_blank_signs",
+     "ground": false,
+     "src_rect_px": [
+      320,
+      349,
+      480,
+      481
+     ],
+     "rect_px": [
+      420,
+      354,
+      580,
+      486
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 15,
+     "cell": "retail_blank_signs",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      481,
+      160,
+      613
+     ],
+     "rect_px": [
+      626,
+      354,
+      786,
+      486
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 16,
+     "cell": "retail_blank_signs",
+     "ground": true,
+     "src_rect_px": [
+      160,
+      481,
+      320,
+      613
+     ],
+     "rect_px": [
+      832,
+      354,
+      992,
+      486
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 17,
+     "cell": "retail_blank_signs",
+     "ground": true,
+     "src_rect_px": [
+      320,
+      481,
+      480,
+      613
+     ],
+     "rect_px": [
+      1038,
+      354,
+      1198,
+      486
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 18,
+     "cell": "vertical_windows",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      149,
+      160,
+      281
+     ],
+     "rect_px": [
+      8,
+      527,
+      168,
+      659
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 19,
+     "cell": "vertical_windows",
+     "ground": false,
+     "src_rect_px": [
+      160,
+      149,
+      320,
+      281
+     ],
+     "rect_px": [
+      214,
+      527,
+      374,
+      659
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 20,
+     "cell": "vertical_windows",
+     "ground": false,
+     "src_rect_px": [
+      320,
+      149,
+      480,
+      281
+     ],
+     "rect_px": [
+      420,
+      527,
+      580,
+      659
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 21,
+     "cell": "vertical_windows",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      281,
+      160,
+      413
+     ],
+     "rect_px": [
+      626,
+      527,
+      786,
+      659
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 22,
+     "cell": "vertical_windows",
+     "ground": false,
+     "src_rect_px": [
+      160,
+      281,
+      320,
+      413
+     ],
+     "rect_px": [
+      832,
+      527,
+      992,
+      659
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 23,
+     "cell": "vertical_windows",
+     "ground": false,
+     "src_rect_px": [
+      320,
+      281,
+      480,
+      413
+     ],
+     "rect_px": [
+      1038,
+      527,
+      1198,
+      659
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 24,
+     "cell": "vertical_windows",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      413,
+      160,
+      545
+     ],
+     "rect_px": [
+      8,
+      700,
+      168,
+      832
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 25,
+     "cell": "vertical_windows",
+     "ground": true,
+     "src_rect_px": [
+      160,
+      413,
+      320,
+      545
+     ],
+     "rect_px": [
+      214,
+      700,
+      374,
+      832
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 26,
+     "cell": "vertical_windows",
+     "ground": true,
+     "src_rect_px": [
+      320,
+      413,
+      480,
+      545
+     ],
+     "rect_px": [
+      420,
+      700,
+      580,
+      832
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 27,
+     "cell": "gray_brown_office",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      38,
+      190,
+      195
+     ],
+     "rect_px": [
+      626,
+      700,
+      816,
+      857
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 28,
+     "cell": "gray_brown_office",
+     "ground": false,
+     "src_rect_px": [
+      190,
+      38,
+      380,
+      195
+     ],
+     "rect_px": [
+      832,
+      700,
+      1022,
+      857
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 29,
+     "cell": "gray_brown_office",
+     "ground": false,
+     "src_rect_px": [
+      380,
+      38,
+      570,
+      195
+     ],
+     "rect_px": [
+      1038,
+      700,
+      1228,
+      857
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 30,
+     "cell": "gray_brown_office",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      195,
+      190,
+      352
+     ],
+     "rect_px": [
+      8,
+      873,
+      198,
+      1030
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 31,
+     "cell": "gray_brown_office",
+     "ground": false,
+     "src_rect_px": [
+      190,
+      195,
+      380,
+      352
+     ],
+     "rect_px": [
+      214,
+      873,
+      404,
+      1030
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 32,
+     "cell": "gray_brown_office",
+     "ground": false,
+     "src_rect_px": [
+      380,
+      195,
+      570,
+      352
+     ],
+     "rect_px": [
+      420,
+      873,
+      610,
+      1030
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 33,
+     "cell": "gray_brown_office",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      352,
+      190,
+      509
+     ],
+     "rect_px": [
+      626,
+      873,
+      816,
+      1030
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 34,
+     "cell": "gray_brown_office",
+     "ground": true,
+     "src_rect_px": [
+      190,
+      352,
+      380,
+      509
+     ],
+     "rect_px": [
+      832,
+      873,
+      1022,
+      1030
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "index": 35,
+     "cell": "gray_brown_office",
+     "ground": true,
+     "src_rect_px": [
+      380,
+      352,
+      570,
+      509
+     ],
+     "rect_px": [
+      1038,
+      873,
+      1228,
+      1030
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    }
+   ],
+   "far": [
+    {
+     "base": "facades_commercial_far0.png",
+     "lit": "facades_commercial_far0_lit.png",
+     "cell": "curtain_wall",
+     "src_rect_px": [
+      0,
+      156,
+      149,
+      279
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "base": "facades_commercial_far1.png",
+     "lit": "facades_commercial_far1_lit.png",
+     "cell": "retail_blank_signs",
+     "src_rect_px": [
+      320,
+      217,
+      480,
+      349
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    },
+    {
+     "base": "facades_commercial_far2.png",
+     "lit": "facades_commercial_far2_lit.png",
+     "cell": "vertical_windows",
+     "src_rect_px": [
+      160,
+      281,
+      320,
+      413
+     ],
+     "metres": [
+      4.0,
+      3.3
+     ]
+    }
+   ]
+  },
+  "industrial": {
+   "atlas": "facades_industrial_units.png",
+   "lit": "facades_industrial_units_lit.png",
+   "size_px": [
+    1536,
+    592
+   ],
+   "albedo_mean_srgb_before": 0.49,
+   "albedo_factor": 0.8164,
+   "cells": [
+    {
+     "cell": "warehouse_roller_door",
+     "storey_px": 132,
+     "bay_px": 240,
+     "px_per_m": 40.0,
+     "storey_autocorr": -0.015,
+     "glass_fraction": 0.047,
+     "otsu": 0.439,
+     "phase_px": 15,
+     "rows": 4
+    },
+    {
+     "cell": "concrete_clerestory",
+     "storey_px": 132,
+     "bay_px": 240,
+     "px_per_m": 40.0,
+     "storey_autocorr": 0.13,
+     "glass_fraction": 0.143,
+     "otsu": 0.521,
+     "phase_px": 45,
+     "rows": 4
+    },
+    {
+     "cell": "red_container",
+     "storey_px": 132,
+     "bay_px": 240,
+     "px_per_m": 40.0,
+     "storey_autocorr": -0.001,
+     "glass_fraction": 0.434,
+     "otsu": 0.346,
+     "phase_px": 0,
+     "rows": 4
+    },
+    {
+     "cell": "teal_container",
+     "storey_px": 132,
+     "bay_px": 240,
+     "px_per_m": 40.0,
+     "storey_autocorr": 0.018,
+     "glass_fraction": 0.417,
+     "otsu": 0.404,
+     "phase_px": 103,
+     "rows": 3
+    }
+   ],
+   "units": [
+    {
+     "index": 0,
+     "cell": "warehouse_roller_door",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      147,
+      240,
+      279
+     ],
+     "rect_px": [
+      8,
+      8,
+      248,
+      140
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 1,
+     "cell": "warehouse_roller_door",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      147,
+      480,
+      279
+     ],
+     "rect_px": [
+      264,
+      8,
+      504,
+      140
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 2,
+     "cell": "warehouse_roller_door",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      279,
+      240,
+      411
+     ],
+     "rect_px": [
+      520,
+      8,
+      760,
+      140
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 3,
+     "cell": "warehouse_roller_door",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      279,
+      480,
+      411
+     ],
+     "rect_px": [
+      776,
+      8,
+      1016,
+      140
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 4,
+     "cell": "warehouse_roller_door",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      411,
+      240,
+      543
+     ],
+     "rect_px": [
+      1032,
+      8,
+      1272,
+      140
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 5,
+     "cell": "warehouse_roller_door",
+     "ground": true,
+     "src_rect_px": [
+      240,
+      411,
+      480,
+      543
+     ],
+     "rect_px": [
+      1288,
+      8,
+      1528,
+      140
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 6,
+     "cell": "concrete_clerestory",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      177,
+      240,
+      309
+     ],
+     "rect_px": [
+      8,
+      156,
+      248,
+      288
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 7,
+     "cell": "concrete_clerestory",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      177,
+      480,
+      309
+     ],
+     "rect_px": [
+      264,
+      156,
+      504,
+      288
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 8,
+     "cell": "concrete_clerestory",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      309,
+      240,
+      441
+     ],
+     "rect_px": [
+      520,
+      156,
+      760,
+      288
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 9,
+     "cell": "concrete_clerestory",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      309,
+      480,
+      441
+     ],
+     "rect_px": [
+      776,
+      156,
+      1016,
+      288
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 10,
+     "cell": "concrete_clerestory",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      441,
+      240,
+      573
+     ],
+     "rect_px": [
+      1032,
+      156,
+      1272,
+      288
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 11,
+     "cell": "concrete_clerestory",
+     "ground": true,
+     "src_rect_px": [
+      240,
+      441,
+      480,
+      573
+     ],
+     "rect_px": [
+      1288,
+      156,
+      1528,
+      288
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 12,
+     "cell": "red_container",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      132,
+      240,
+      264
+     ],
+     "rect_px": [
+      8,
+      304,
+      248,
+      436
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 13,
+     "cell": "red_container",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      132,
+      480,
+      264
+     ],
+     "rect_px": [
+      264,
+      304,
+      504,
+      436
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 14,
+     "cell": "red_container",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      264,
+      240,
+      396
+     ],
+     "rect_px": [
+      520,
+      304,
+      760,
+      436
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 15,
+     "cell": "red_container",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      264,
+      480,
+      396
+     ],
+     "rect_px": [
+      776,
+      304,
+      1016,
+      436
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 16,
+     "cell": "red_container",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      396,
+      240,
+      528
+     ],
+     "rect_px": [
+      1032,
+      304,
+      1272,
+      436
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 17,
+     "cell": "red_container",
+     "ground": true,
+     "src_rect_px": [
+      240,
+      396,
+      480,
+      528
+     ],
+     "rect_px": [
+      1288,
+      304,
+      1528,
+      436
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 18,
+     "cell": "teal_container",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      103,
+      240,
+      235
+     ],
+     "rect_px": [
+      8,
+      452,
+      248,
+      584
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 19,
+     "cell": "teal_container",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      103,
+      480,
+      235
+     ],
+     "rect_px": [
+      264,
+      452,
+      504,
+      584
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 20,
+     "cell": "teal_container",
+     "ground": false,
+     "src_rect_px": [
+      0,
+      235,
+      240,
+      367
+     ],
+     "rect_px": [
+      520,
+      452,
+      760,
+      584
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 21,
+     "cell": "teal_container",
+     "ground": false,
+     "src_rect_px": [
+      240,
+      235,
+      480,
+      367
+     ],
+     "rect_px": [
+      776,
+      452,
+      1016,
+      584
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 22,
+     "cell": "teal_container",
+     "ground": true,
+     "src_rect_px": [
+      0,
+      367,
+      240,
+      499
+     ],
+     "rect_px": [
+      1032,
+      452,
+      1272,
+      584
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "index": 23,
+     "cell": "teal_container",
+     "ground": true,
+     "src_rect_px": [
+      240,
+      367,
+      480,
+      499
+     ],
+     "rect_px": [
+      1288,
+      452,
+      1528,
+      584
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    }
+   ],
+   "far": [
+    {
+     "base": "facades_industrial_far0.png",
+     "lit": "facades_industrial_far0_lit.png",
+     "cell": "warehouse_roller_door",
+     "src_rect_px": [
+      0,
+      147,
+      240,
+      279
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "base": "facades_industrial_far1.png",
+     "lit": "facades_industrial_far1_lit.png",
+     "cell": "concrete_clerestory",
+     "src_rect_px": [
+      240,
+      177,
+      480,
+      309
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    },
+    {
+     "base": "facades_industrial_far2.png",
+     "lit": "facades_industrial_far2_lit.png",
+     "cell": "red_container",
+     "src_rect_px": [
+      0,
+      264,
+      240,
+      396
+     ],
+     "metres": [
+      6.0,
+      3.3
+     ]
+    }
+   ]
+  }
+ }
+}

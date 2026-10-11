@@ -256,7 +256,13 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\TransformSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\UiIconAtlas.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\VehicleFX.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\WorldMapUI.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\editor\ProcessRunner.cpp">

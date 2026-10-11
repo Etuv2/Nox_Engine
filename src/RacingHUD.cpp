@@ -1,5 +1,6 @@
 #include "RacingHUD.h"
 #include "RoadNetwork.h"
+#include "UiIconAtlas.h"
 
 #include <algorithm>
 #include <cctype>
@@ -274,6 +275,32 @@ struct RacingHUD::Impl {
 		mapRadius = Damp(mapRadius, targetRadius, 2.5f, dt);
 	}
 
+	// ---- Icon helpers (UiIconAtlas; every call falls back to the vector/text drawing) -----
+	std::string Role(const std::string& key) const {
+		auto it = cfg.iconRoles.find(key);
+		return it == cfg.iconRoles.end() ? std::string() : it->second;
+	}
+	// Warning icon for a centre message whose text starts with a configured "warning/<text>" key.
+	std::string MessageRole(const std::string& msg) const {
+		for (const auto& kv : cfg.iconRoles) {
+			if (kv.first.rfind("warning/", 0) != 0) continue;
+			const std::string key = kv.first.substr(8);
+			if (!key.empty() && msg.rfind(key, 0) == 0) return kv.second;
+		}
+		return std::string();
+	}
+	bool Icon(const std::string& id, ImVec2 c, float size, const glm::vec4& col, float alpha) {
+		return UiIconAtlas::Get().DrawCentered(dl, id, c, size, Col(col, alpha));
+	}
+	// Icon whose right edge sits a small gap left of leftX (the text itself is not moved).
+	bool IconLeftOf(const std::string& id, float leftX, float y, float size, const glm::vec4& col, float alpha) {
+		const float gap = size * 0.3f;
+		return Icon(id, ImVec2(leftX - gap - size * 0.5f, y), size, col, alpha);
+	}
+	static float TextW(ImFont* f, float px, const char* s) {
+		return (f && s && *s) ? f->CalcTextSizeA(px, FLT_MAX, 0.0f, s).x : 0.0f;
+	}
+
 	// ---- Companion gauge (boost / N2O): arc, value arc and needle --------------------------
 	void DrawCompanionGauge(const Xf& x, ImVec2 c, float R, float value, const glm::vec4& fillCol, float needleValue) {
 		const float r = x.L(R);
@@ -370,6 +397,11 @@ struct RacingHUD::Impl {
 		DrawCompanionGauge(x, x.P(481, 277), 21.0f, needleBoost, cfg.accent, needleBoost);
 		const float blpx = x.L(6.5f);
 		TxtGlow(dl, LabelFont(blpx), blpx, x.P(481, 288), cfg.accent, cfg.boostLabel.c_str(), 1, glow * 0.4f, 0.9f);
+		{
+			const ImVec2 c = x.P(481, 288);
+			IconLeftOf(Role("gauge/boost"), c.x - TextW(LabelFont(blpx), blpx, cfg.boostLabel.c_str()) * 0.5f, c.y,
+				x.L(8.0f), cfg.accent, 0.9f);
+		}
 
 		{
 			const ImVec2 nc = x.P(481, 324);
@@ -393,6 +425,11 @@ struct RacingHUD::Impl {
 		}
 		const float nlpx = x.L(6.5f);
 		TxtGlow(dl, LabelFont(nlpx), nlpx, x.P(481, 334), cfg.text, cfg.n2oLabel.c_str(), 1, glow * 0.4f, 0.9f);
+		{
+			const ImVec2 c = x.P(481, 334);
+			IconLeftOf(Role("gauge/n2o"), c.x - TextW(LabelFont(nlpx), nlpx, cfg.n2oLabel.c_str()) * 0.5f, c.y,
+				x.L(8.0f), cfg.text, 0.9f);
+		}
 	}
 
 	// ---- Minimap -------------------------------------------------------------------------
@@ -460,34 +497,51 @@ struct RacingHUD::Impl {
 			const float dist = std::sqrt(Dot(u, u));
 			float alpha = op;
 			const float lim = Rpx - x.L(5.0f);
+			bool clamped = false;
 			if (dist > lim) {
 				if (dist < 1e-4f) continue;
 				p = Add(c, Mul(u, lim / dist));
 				alpha *= 0.55f;
+				clamped = true;
 			}
 			const float r = x.L(4.2f);
+			// Off-map markers pile up on the rim: only the next gate, the finish and events keep their
+			// icon there; other checkpoints become a small rim dot (no overlapping icon clusters).
+			if (clamped && m.kind == HudMapMarker::Kind::Checkpoint) {
+				dl->AddCircleFilled(p, r * 0.45f, Col(cfg.accent, 0.7f * alpha), 10);
+				continue;
+			}
 			switch (m.kind) {
 			case HudMapMarker::Kind::Event:
-				dl->AddCircleFilled(p, r, Col(cfg.lavender, 0.9f * alpha));
-				dl->AddCircleFilled(p, r * 0.4f, ColA(1, 1, 1, alpha));
+				if (!Icon(Role("event/" + m.label), p, r * 2.4f, cfg.lavender, 0.95f * alpha)) {
+					dl->AddCircleFilled(p, r, Col(cfg.lavender, 0.9f * alpha));
+					dl->AddCircleFilled(p, r * 0.4f, ColA(1, 1, 1, alpha));
+				}
 				break;
 			case HudMapMarker::Kind::Checkpoint:
-				dl->AddCircle(p, r, Col(cfg.accent, alpha), 20, x.L(1.1f));
+				if (!Icon(Role("map/checkpoint"), p, r * 2.6f, cfg.accent, alpha)) dl->AddCircle(p, r, Col(cfg.accent, alpha), 20, x.L(1.1f));
 				break;
 			case HudMapMarker::Kind::NextCheckpoint:
 				dl->AddCircleFilled(p, r * 1.2f, Col(cfg.accent, 0.25f * alpha), 20);
 				dl->AddCircle(p, r * 1.2f, Col(cfg.text, alpha), 20, x.L(1.4f));
+				Icon(Role("map/next_checkpoint"), p, r * 2.4f, cfg.text, alpha);
 				break;
 			case HudMapMarker::Kind::Finish:
-				dl->AddRectFilled(Add(p, ImVec2(-r, -r)), Add(p, ImVec2(r, r)), ColA(1, 1, 1, 0.9f * alpha), x.L(1.0f));
-				dl->AddRectFilled(Add(p, ImVec2(-r * 0.5f, -r * 0.5f)), Add(p, ImVec2(r * 0.5f, r * 0.5f)), ColA(0, 0, 0, 0.9f * alpha));
+				if (!Icon(Role("map/finish"), p, r * 2.6f, cfg.text, 0.95f * alpha)) {
+					dl->AddRectFilled(Add(p, ImVec2(-r, -r)), Add(p, ImVec2(r, r)), ColA(1, 1, 1, 0.9f * alpha), x.L(1.0f));
+					dl->AddRectFilled(Add(p, ImVec2(-r * 0.5f, -r * 0.5f)), Add(p, ImVec2(r * 0.5f, r * 0.5f)), ColA(0, 0, 0, 0.9f * alpha));
+				}
 				break;
 			case HudMapMarker::Kind::Start:
-				dl->AddCircleFilled(p, r * 0.8f, ColA(0.45f, 1.0f, 0.55f, 0.95f * alpha));
+				if (!Icon(Role("map/start"), p, r * 2.6f, glm::vec4(0.45f, 1.0f, 0.55f, 1.0f), 0.95f * alpha)) {
+					dl->AddCircleFilled(p, r * 0.8f, ColA(0.45f, 1.0f, 0.55f, 0.95f * alpha));
+				}
 				break;
-			case HudMapMarker::Kind::Place: // parking area / meeting spot: blue square with a "P"
+			case HudMapMarker::Kind::Place: // parking area / meeting spot: blue square with a parking icon (or "P")
 				dl->AddRectFilled(Add(p, ImVec2(-r, -r)), Add(p, ImVec2(r, r)), ColA(0.2f, 0.45f, 0.95f, 0.9f * alpha), x.L(1.2f));
-				dl->AddText(Add(p, ImVec2(-r * 0.45f, -r * 0.8f)), ColA(1, 1, 1, alpha), "P");
+				if (!Icon(Role("map/place"), p, r * 1.6f, glm::vec4(1, 1, 1, 1), alpha)) {
+					dl->AddText(Add(p, ImVec2(-r * 0.45f, -r * 0.8f)), ColA(1, 1, 1, alpha), "P");
+				}
 				break;
 			}
 		}
@@ -522,7 +576,9 @@ struct RacingHUD::Impl {
 		// Flag: pole and pennant.
 		Seg(dl, x.P(0, 8), x.P(0, -9), cfg.text, x.L(0.9f), cfg.glow * 0.4f, alpha);
 		const ImVec2 f0 = x.P(0, -9), f1 = x.P(11, -6), f2 = x.P(0, -3);
-		dl->AddTriangleFilled(f0, f1, f2, Col(cfg.lavender, alpha));
+		if (!Icon(Role("event/" + s.eventType), x.P(6, -8), x.L(14.0f), cfg.lavender, alpha)) {
+			dl->AddTriangleFilled(f0, f1, f2, Col(cfg.lavender, alpha));
+		}
 		// Titles.
 		LabelAt(x, 16.0f, x.P(0, 17), cfg.lavender, s.eventType.c_str(), alpha, 1);
 		std::string sub = s.eventName;
@@ -550,8 +606,10 @@ struct RacingHUD::Impl {
 		Seg(dl, x.P(-9, 6), x.P(-9, -7), cfg.accent, x.L(1.2f), cfg.glow, alpha);
 		Seg(dl, x.P(9, 6), x.P(9, -7), cfg.accent, x.L(1.2f), cfg.glow, alpha);
 		Seg(dl, x.P(-9, -7), x.P(9, -7), cfg.accent, x.L(1.2f), cfg.glow, alpha);
-		Seg(dl, x.P(-5, -13), x.P(0, -17), cfg.text, x.L(0.9f), 0.0f, 0.8f * alpha);
-		Seg(dl, x.P(5, -13), x.P(0, -17), cfg.text, x.L(0.9f), 0.0f, 0.8f * alpha);
+		if (!Icon(Role("map/checkpoint"), x.P(0, -14), x.L(11.0f), cfg.text, 0.9f * alpha)) {
+			Seg(dl, x.P(-5, -13), x.P(0, -17), cfg.text, x.L(0.9f), 0.0f, 0.8f * alpha);
+			Seg(dl, x.P(5, -13), x.P(0, -17), cfg.text, x.L(0.9f), 0.0f, 0.8f * alpha);
+		}
 		char dist[32];
 		std::snprintf(dist, sizeof(dist), "%d m", (int)std::lround(d));
 		LabelAt(x, 8.5f, x.P(0, 16), cfg.text, dist, alpha * 0.9f, 1);
@@ -567,6 +625,10 @@ struct RacingHUD::Impl {
 		if (s.phase == HudState::Phase::NearEvent) {
 			const float kpx = x.L(9.0f);
 			Txt(dl, LabelFont(kpx), kpx, x.P(552, 75.5f), Col(cfg.text), "START EVENT", 2);
+			{
+				const ImVec2 c = x.P(552, 75.5f);
+				IconLeftOf(Role("key/" + s.startKey), c.x - TextW(LabelFont(kpx), kpx, "START EVENT"), c.y, x.L(9.0f), cfg.text, 1.0f);
+			}
 			dl->AddRectFilled(x.P(559, 70), x.P(600, 81), Col(cfg.text, 0.95f), x.L(1.5f), ImDrawFlags_RoundCornersAll);
 			const float kkpx = x.L(7.5f);
 			Txt(dl, LabelFont(kkpx), kkpx, x.P(579.5f, 75.5f), ColA(0.05f, 0.05f, 0.08f, 1.0f), s.startKey.c_str(), 1);
@@ -633,6 +695,8 @@ struct RacingHUD::Impl {
 		if (s.phase == HudState::Phase::Finished) {
 			const float hpx = x.L(14.0f);
 			TxtGlow(dl, LabelFont(hpx), hpx, cp(0, -84), cfg.lavender, "FINISHED", 1, glow * 0.5f);
+			IconLeftOf(Role("result/finished"), cp(0, -84).x - TextW(LabelFont(hpx), hpx, "FINISHED") * 0.5f, cp(0, -84).y,
+				x.L(16.0f), cfg.lavender, 1.0f);
 			const std::string t = FormatTime(s.lastTime >= 0.0f ? s.lastTime : s.raceTime);
 			const float dpx = x.L(22.0f);
 			Txt(dl, DigitFont(dpx), dpx, cp(0, -60), Col(cfg.speed), t.c_str(), 1);
@@ -643,6 +707,8 @@ struct RacingHUD::Impl {
 				const float p = 0.6f + 0.4f * std::sin(time * 6.0f);
 				const float rpx = x.L(11.0f);
 				TxtGlow(dl, LabelFont(rpx), rpx, cp(0, -28), cfg.accent, "NEW RECORD", 1, glow, p);
+				IconLeftOf(Role("result/record"), cp(0, -28).x - TextW(LabelFont(rpx), rpx, "NEW RECORD") * 0.5f, cp(0, -28).y,
+					x.L(12.0f), cfg.accent, p);
 			}
 		}
 
@@ -650,6 +716,8 @@ struct RacingHUD::Impl {
 			const float top = (s.phase == HudState::Phase::Finished) ? 0.0f : -44.0f;
 			const float mpx = x.L(14.0f);
 			TxtGlow(dl, LabelFont(mpx), mpx, cp(0, top), cfg.lavender, s.menuTitle.c_str(), 1, glow * 0.4f);
+			IconLeftOf(Role("menu/" + s.menuTitle), cp(0, top).x - TextW(LabelFont(mpx), mpx, s.menuTitle.c_str()) * 0.5f,
+				cp(0, top).y, x.L(15.0f), cfg.lavender, 0.9f);
 			for (size_t i = 0; i < s.menuItems.size(); ++i) {
 				const float y = top + 18.0f + (float)i * 15.0f;
 				const bool sel = (int)i == s.menuSelected;
@@ -659,12 +727,17 @@ struct RacingHUD::Impl {
 				}
 				const float ipx = x.L(11.0f);
 				Txt(dl, LabelFont(ipx), ipx, cp(0, y), sel ? Col(cfg.text) : ColA(0.85f, 0.85f, 0.9f, 0.7f), s.menuItems[i].c_str(), 1);
+				IconLeftOf(Role("menu/" + s.menuItems[i]), cp(0, y).x - TextW(LabelFont(ipx), ipx, s.menuItems[i].c_str()) * 0.5f,
+					cp(0, y).y, x.L(11.0f), sel ? cfg.text : glm::vec4(0.85f, 0.85f, 0.9f, 1.0f), sel ? 1.0f : 0.7f);
 			}
 		}
 
 		if (!s.message.empty() && s.messageAlpha > 0.001f) {
 			const float px = x.L(14.0f);
-			TxtGlow(dl, LabelFont(px), px, cp(0, -78), cfg.text, s.message.c_str(), 1, glow, ClampF(s.messageAlpha, 0.0f, 1.0f));
+			const float ma = ClampF(s.messageAlpha, 0.0f, 1.0f);
+			TxtGlow(dl, LabelFont(px), px, cp(0, -78), cfg.text, s.message.c_str(), 1, glow, ma);
+			IconLeftOf(MessageRole(s.message), cp(0, -78).x - TextW(LabelFont(px), px, s.message.c_str()) * 0.5f, cp(0, -78).y,
+				x.L(15.0f), cfg.redline, ma);
 		}
 	}
 
@@ -683,6 +756,16 @@ RacingHUD& RacingHUD::Get() {
 	static RacingHUD instance;
 	return instance;
 }
+
+void RacingHUD::LoadIcons() {
+	Impl& m = *m_impl;
+	if (!m.cfgLoaded) LoadConfig(m_configPath);
+	if (m.cfg.iconManifest.empty()) return;
+	// Cached inside UiIconAtlas: a repeat call with the same paths is a no-op.
+	UiIconAtlas::Get().Load(m.cfg.iconManifest, m.cfg.iconSize, m.cfg.iconAtlas);
+}
+
+std::string RacingHUD::IconId(const std::string& role) const { return m_impl->Role(role); }
 
 RacingHUD::RacingHUD() : m_impl(std::make_unique<Impl>()) {}
 RacingHUD::~RacingHUD() = default;
@@ -712,6 +795,19 @@ bool RacingHUD::LoadConfig(const std::string& path) {
 		ReadPlacement(j, "event", c.event);
 		ReadPlacement(j, "panel", c.panel);
 		ReadPlacement(j, "hint", c.hint);
+
+		c.iconRoles.clear();
+		if (j.contains("icons") && j["icons"].is_object()) {
+			const nlohmann::json& ic = j["icons"];
+			c.iconManifest = ic.value("manifest", std::string());
+			c.iconAtlas = ic.value("atlas", std::string());
+			c.iconSize = ic.value("size", 128);
+			if (ic.contains("roles") && ic["roles"].is_object()) {
+				for (auto it = ic["roles"].begin(); it != ic["roles"].end(); ++it) {
+					if (it.value().is_string()) c.iconRoles[it.key()] = it.value().get<std::string>();
+				}
+			}
+		}
 
 		ReadVec(j, "colors", "accent", c.accent);
 		ReadVec(j, "colors", "needle", c.needle);
@@ -853,6 +949,7 @@ void RacingHUD::LoadFonts() {
 void RacingHUD::Draw(ImDrawList* dl, const ImVec2& origin, const ImVec2& size, const HudState& state, float dt) {
 	if (!dl || size.x <= 1.0f || size.y <= 1.0f) return;
 	Impl& m = *m_impl;
+	LoadIcons();
 	dl->PushClipRect(origin, ImVec2(origin.x + size.x, origin.y + size.y), true);
 	try {
 		m.dl = dl;

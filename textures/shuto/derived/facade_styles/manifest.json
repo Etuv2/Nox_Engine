@@ -1,0 +1,177 @@
+{
+ "generator": "tools/shuto/make_facade_styles.py",
+ "size_px": 2048,
+ "bays": 16,
+ "storeys": 12,
+ "wall_source_note": "clean window-free crops, mirror-seamless; windows drawn procedurally",
+ "styles": [
+  {
+   "name": "spandrel_midrise",
+   "kind": "spandrel",
+   "bay_m": 4.0,
+   "storey_m": 3.6,
+   "base": "spandrel_midrise_base.jpg",
+   "emit": "spandrel_midrise_emit.jpg",
+   "wall_source": [
+    "facades_commercial",
+    "gray_brown_office"
+   ],
+   "lit_probability": 0.25,
+   "emissive_area_fraction": 0.0887
+  },
+  {
+   "name": "office_ribbon",
+   "kind": "ribbon",
+   "bay_m": 4.0,
+   "storey_m": 3.4,
+   "base": "office_ribbon_base.jpg",
+   "emit": "office_ribbon_emit.jpg",
+   "wall_source": [
+    "facades_commercial",
+    "vertical_windows"
+   ],
+   "lit_probability": 0.25,
+   "emissive_area_fraction": 0.0937
+  },
+  {
+   "name": "curtain_mullion",
+   "kind": "curtain",
+   "bay_m": 3.0,
+   "storey_m": 3.6,
+   "base": "curtain_mullion_base.jpg",
+   "emit": "curtain_mullion_emit.jpg",
+   "wall_source": [
+    "concrete_cast",
+    null
+   ],
+   "lit_probability": 0.22,
+   "emissive_area_fraction": 0.1261
+  },
+  {
+   "name": "curtain_bronze",
+   "kind": "curtain",
+   "bay_m": 3.2,
+   "storey_m": 3.6,
+   "base": "curtain_bronze_base.jpg",
+   "emit": "curtain_bronze_emit.jpg",
+   "wall_source": [
+    "concrete_cast",
+    null
+   ],
+   "lit_probability": 0.22,
+   "emissive_area_fraction": 0.1775
+  },
+  {
+   "name": "apartment_balcony",
+   "kind": "balcony",
+   "bay_m": 3.5,
+   "storey_m": 3.2,
+   "base": "apartment_balcony_base.jpg",
+   "emit": "apartment_balcony_emit.jpg",
+   "wall_source": [
+    "facades_apartment",
+    "beige_tiled"
+   ],
+   "lit_probability": 0.26,
+   "emissive_area_fraction": 0.0505
+  },
+  {
+   "name": "apartment_concrete",
+   "kind": "punched",
+   "bay_m": 3.5,
+   "storey_m": 3.2,
+   "base": "apartment_concrete_base.jpg",
+   "emit": "apartment_concrete_emit.jpg",
+   "wall_source": [
+    "facades_apartment",
+    "gray_concrete"
+   ],
+   "lit_probability": 0.24,
+   "emissive_area_fraction": 0.0514
+  },
+  {
+   "name": "tile_older",
+   "kind": "punched",
+   "bay_m": 3.0,
+   "storey_m": 3.3,
+   "base": "tile_older_base.jpg",
+   "emit": "tile_older_emit.jpg",
+   "wall_source": [
+    "facades_apartment",
+    "tan_older"
+   ],
+   "lit_probability": 0.22,
+   "emissive_area_fraction": 0.0516
+  },
+  {
+   "name": "ivory_modern",
+   "kind": "ribbon",
+   "bay_m": 3.5,
+   "storey_m": 3.3,
+   "base": "ivory_modern_base.jpg",
+   "emit": "ivory_modern_emit.jpg",
+   "wall_source": [
+    "facades_apartment",
+    "ivory_modern"
+   ],
+   "lit_probability": 0.24,
+   "emissive_area_fraction": 0.098
+  },
+  {
+   "name": "warehouse_clerestory",
+   "kind": "clerestory",
+   "bay_m": 4.0,
+   "storey_m": 3.6,
+   "base": "warehouse_clerestory_base.jpg",
+   "emit": "warehouse_clerestory_emit.jpg",
+   "wall_source": [
+    "corrugated",
+    null
+   ],
+   "lit_probability": 0.2,
+   "emissive_area_fraction": 0.0364
+  },
+  {
+   "name": "warehouse_roller",
+   "kind": "roller",
+   "bay_m": 4.0,
+   "storey_m": 3.6,
+   "base": "warehouse_roller_base.jpg",
+   "emit": "warehouse_roller_emit.jpg",
+   "wall_source": [
+    "concrete_weathered",
+    null
+   ],
+   "lit_probability": 0.2,
+   "emissive_area_fraction": 0.0456
+  },
+  {
+   "name": "shopfront_retail",
+   "kind": "shopfront",
+   "bay_m": 4.0,
+   "storey_m": 3.6,
+   "base": "shopfront_retail_base.jpg",
+   "emit": "shopfront_retail_emit.jpg",
+   "wall_source": [
+    "facades_commercial",
+    "retail_blank_signs"
+   ],
+   "lit_probability": 0.6,
+   "emissive_area_fraction": 0.3555
+  },
+  {
+   "name": "dark_office",
+   "kind": "ribbon",
+   "bay_m": 3.6,
+   "storey_m": 3.4,
+   "base": "dark_office_base.jpg",
+   "emit": "dark_office_emit.jpg",
+   "wall_source": [
+    "concrete_weathered",
+    null
+   ],
+   "lit_probability": 0.25,
+   "emissive_area_fraction": 0.0873
+  }
+ ]
+}

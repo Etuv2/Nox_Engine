@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ struct HudMapMarker {
 	enum class Kind { Event, Checkpoint, NextCheckpoint, Finish, Start, Place };
 	glm::vec2 pos{ 0.0f }; // world (x, z)
 	Kind kind = Kind::Checkpoint;
+	std::string label;     // Event markers: event type (selects the icon from hud.json "icons")
 };
 
 struct HudState {
@@ -123,6 +125,13 @@ struct HudConfig {
 	std::string n2oLabel = "N2O";
 	std::string speedUnits = "km/h";         // "km/h" or "mph"
 
+	// UI icon atlas (hud.json "icons"): manifest and atlas paths, atlas size, and role -> icon id
+	// maps keyed "<section>/<key>" (see RacingHUD::IconId). Empty manifest = no icons (text only).
+	std::string iconManifest;
+	std::string iconAtlas;
+	int iconSize = 128;
+	std::map<std::string, std::string> iconRoles;
+
 	float mapRadiusM = 60.0f;                // visible radius in metres at rest
 	float mapZoomWithSpeed = 0.15f;          // extra metres of radius per km/h
 	float mapOpacity = 0.75f;
@@ -146,6 +155,13 @@ public:
 	const std::string& ConfigPath() const { return m_configPath; }
 	const HudConfig& Config() const;
 	HudConfig& MutableConfig();
+
+	// Loads (once, cached) the UI icon atlas named by the config. Safe to call every frame; the
+	// editor calls it at startup so its toolbar can use icons before the HUD first draws.
+	void LoadIcons();
+	// Icon id for a role ("gauge/boost", "menu/Resume", "event/SPRINT RACE", ...), or "" when the
+	// config does not map it. Callers still check UiIconAtlas::Get().Has() before drawing.
+	std::string IconId(const std::string& role) const;
 
 	// Draw into [origin, origin + size] on the given draw list (clipped to that rectangle).
 	void Draw(ImDrawList* dl, const ImVec2& origin, const ImVec2& size, const HudState& state, float dt);

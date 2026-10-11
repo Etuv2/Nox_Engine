@@ -112,8 +112,8 @@ def xform(M, p):
             M[2][0] * x + M[2][1] * y + M[2][2] * z + M[2][3])
 
 
-def glb_triangles(path):
-    """Returns a list of triangles ((x,y,z) x3) in world space."""
+def glb_triangles(path, with_material=False):
+    """Returns a list of triangles ((x,y,z) x3) in world space; with_material adds the material name."""
     js, binc = read_glb(path)
     tris = []
     ident = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
@@ -137,8 +137,14 @@ def glb_triangles(path):
                 for p in pos:
                     q = tuple(float(v) for v in p[:3])
                     pts.append(xform(M, q))
+                mat = None
+                if with_material and "material" in prim:
+                    mat = js["materials"][prim["material"]].get("name")
                 for k in range(0, len(ind) - 2, 3):
-                    tris.append((pts[ind[k]], pts[ind[k + 1]], pts[ind[k + 2]]))
+                    if with_material:
+                        tris.append((pts[ind[k]], pts[ind[k + 1]], pts[ind[k + 2]], mat))
+                    else:
+                        tris.append((pts[ind[k]], pts[ind[k + 1]], pts[ind[k + 2]]))
         for c in node.get("children", []):
             visit(c, M)
 
@@ -356,9 +362,12 @@ def main():
             sc = sampled[ri]
             lx, lz = sc.TZ[si], -sc.TX[si]
             lat = (x - sc.X[si]) * lx + (z - sc.Z[si]) * lz
-            if lat < -sc.half_r or lat > sc.half_l:
+            # Paved gores (build_roads GORE_FILL = 1.5 m): a same-level neighbour within 1.5 m of the
+            # deck edge is joined by gore paving, so no barrier is expected there either.
+            gore = 1.6 if abs(sc.top_y(si, 0.0) - y) < 0.3 else 0.0
+            if lat < -sc.half_r - gore or lat > sc.half_l + gore:
                 continue
-            if abs(sc.top_y(si, lat) - y) < 1.5:
+            if abs(sc.top_y(si, max(-sc.half_r, min(sc.half_l, lat))) - y) < 1.5:
                 return True
         return False
 
@@ -415,8 +424,18 @@ def main():
                     t = walls[ti]
                     if x < t.minx - 0.6 or x > t.maxx + 0.6 or z < t.minz - 0.6 or z > t.maxz + 0.6:
                         continue
-                    if max(t.a[1], t.b[1], t.c[1]) < y + 0.25 or min(t.a[1], t.b[1], t.c[1]) > y + 2.2:
+                    # Same band as the car (DriveMode): wall sphere bottom +0.25 m, contacts up to +1.6 m;
+                    # slivers under 0.15 m tall are not walls (CollisionWorld::minWallHeight).
+                    if max(t.a[1], t.b[1], t.c[1]) < y + 0.25 or min(t.a[1], t.b[1], t.c[1]) > y + 1.6:
                         continue
+                    if max(t.a[1], t.b[1], t.c[1]) - min(t.a[1], t.b[1], t.c[1]) < 0.15:
+                        continue
+                    e1 = [t.b[k] - t.a[k] for k in range(3)]
+                    e2 = [t.c[k] - t.a[k] for k in range(3)]
+                    cr = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]
+                    longest = max(math.dist(t.a, t.b), math.dist(t.a, t.c), math.dist(t.b, t.c))
+                    if longest > 1e-6 and math.sqrt(sum(v * v for v in cr)) / longest < 0.05:
+                        continue  # needle sliver (CollisionWorld ignores it too)
                     if seg_dist_xz(x, z, t) <= 0.5:
                         lane_walls.append((sc.id, s, round(x, 1), round(y, 2), round(z, 1)))
                         break
@@ -450,7 +469,8 @@ def main():
                 # carriageways overlap): search from the nominal edge in to the lane edge.
                 lane_edge = sc.lanes * sc.lw * 0.5
                 found_inward = False
-                u = abs(ue)
+                # Gore-filled decks (build_roads GORE_FILL) move the barrier outward by up to ~0.8 m.
+                u = abs(ue) + 0.8
                 while u >= lane_edge - 1e-6 and not found_inward:
                     xx, zz = sc.pos(i, u if ue > 0 else -u)
                     for ti in hash_w.query(xx, zz):
@@ -543,10 +563,85 @@ def main():
     print("seams: shared ground edges=%d  max step=%.4f m at %s  edges with step>0.05=%d"
           % (n_shared, max_step, max_at, n_step_gt))
 
-    hard_fail = fail + missing + shadow_bad + len(bad_gaps) + len(spots)
-    print("RESULT: %s (height-mismatch=%d missing=%d shadow-elsewhere=%d gaps>0.3=%d lane-wall-spots=%d)"
-          % ("PASS" if hard_fail == 0 else "FAIL", fail, missing, shadow_bad, len(bad_gaps), len(spots)))
+    # Render-layer checks: deck z-fighting and lamp pole support (build root = parent of collision/).
+    build_root = os.path.dirname(os.path.normpath(cdir))
+    rdir = os.path.join(build_root, "render")
+    zfight, floating = 0, []
+    if os.path.isdir(rdir):
+        zfight, zf_examples, floating, n_lamps, n_sup = render_checks(
+            rdir, os.path.join(build_root, "lamps.json"))
+        print("render z-fight pairs (asphalt 3 mm-0.15 m apart): %d %s" % (zfight, zf_examples))
+        print("lamp supports checked: %d of %d, floating: %d %s" % (n_sup, n_lamps, len(floating), floating[:8]))
+
+    hard_fail = fail + missing + shadow_bad + len(bad_gaps) + len(spots) + zfight + len(floating)
+    print("RESULT: %s (height-mismatch=%d missing=%d shadow-elsewhere=%d gaps>0.3=%d lane-wall-spots=%d zfight=%d floating-lamps=%d)"
+          % ("PASS" if hard_fail == 0 else "FAIL", fail, missing, shadow_bad, len(bad_gaps), len(spots), zfight, len(floating)))
     return 0 if hard_fail == 0 else 1
+
+
+def render_checks(render_dir, lamps_path):
+    """Render-layer checks (added for the v2 roads pass).
+
+    1. Z-fight: upward asphalt faces (decks) of different surfaces at the same plan position whose
+       heights differ by 3-10 mm. Adjacent triangles of one surface are coplanar and ignored.
+    2. Lamp support: each pole base (lamps.json "base", ground or parapet support) must sit on the
+       highest upward surface below it within 0.12 m. Floating poles fail.
+    Returns (zfight_pairs, zfight_examples, floating_lamps, lamp_count, support_checked).
+    """
+    files = sorted(glob.glob(os.path.join(render_dir, "*.glb")))
+    decks = []
+    support = []  # render upward surfaces: decks, parapet caps (render only), gravel
+    for path in files:
+        for a, b, c, mat in glb_triangles(path, with_material=True):
+            n = tri_normal(a, b, c)
+            if n is None or n[1] < 0.6:
+                continue
+            if mat in ("asphalt", "concrete_cast", "ground_gravel"):
+                support.append(Tri2D(a, b, c, n))
+            if mat == "asphalt" and n[1] >= 0.9:
+                decks.append(Tri2D(a, b, c, n))
+    hash_d = Hash2D(decks, 10.0)
+    hash_s = Hash2D(support, 10.0)
+    pairs = set()
+    examples = []
+    for t in decks:
+        cx = (t.a[0] + t.b[0] + t.c[0]) / 3.0
+        cz = (t.a[2] + t.b[2] + t.c[2]) / 3.0
+        h1 = t.height(cx, cz)
+        if h1 is None:
+            continue
+        for j in hash_d.query(cx, cz):
+            u = decks[j]
+            if u is t:
+                continue
+            h2 = u.height(cx, cz)
+            if h2 is None:
+                continue
+            dy = abs(h2 - h1)
+            if 0.003 < dy < 0.010:  # real depth fight; 10-150 mm pairs are the render lift (Z_LIFT_RENDER)
+
+                key = (min(id(t), id(u)), max(id(t), id(u)))
+                if key not in pairs:
+                    pairs.add(key)
+                    if len(examples) < 5:
+                        examples.append((round(cx, 1), round(cz, 1), round(h1, 3), round(h2, 3)))
+    floating = []
+    n_lamps = 0
+    checked = 0
+    if lamps_path and os.path.exists(lamps_path):
+        with open(lamps_path, "r", encoding="utf-8") as f:
+            lamps = json.load(f)["lamps"]
+        for lp in lamps:
+            n_lamps += 1
+            if "base" not in lp:
+                continue
+            checked += 1
+            bx, by, bz = lp["base"]
+            hit = ray_ground(support, hash_s, bx, bz, by + 0.5)
+            if hit is None or abs(hit[0] - by) > 0.12:
+                floating.append((lp.get("id"), round(bx, 1), round(by, 2), round(bz, 1),
+                                 None if hit is None else round(hit[0], 2)))
+    return len(pairs), examples, floating, n_lamps, checked
 
 
 def height_plane(t, x, z):

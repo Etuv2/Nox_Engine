@@ -179,6 +179,12 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 		}
 	}
 
+	// World map (scene "game".world_map): base image, labels, carriageway metadata.
+	m_worldMap.Configure(m_game.value("world_map", json()), m_roads);
+	m_worldMap.Close();
+	m_hasWaypoint = false;
+	m_previewIndex = -2;
+
 	m_drive.Configure(m_game, sceneGraph, &m_roads, LayoutPathFromScene(sceneRoot), &m_collision);
 	if (m_drive.IsAvailable()) m_drive.SetActive(true);
 
@@ -310,6 +316,8 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 		now.pause = k[SDL_SCANCODE_ESCAPE] || k[SDL_SCANCODE_P];
 		now.reset = k[SDL_SCANCODE_R] != 0;
 		now.camera = k[SDL_SCANCODE_C] != 0;
+		now.map = k[SDL_SCANCODE_M] != 0;
+		now.recenter = k[SDL_SCANCODE_F] != 0;
 		now.up = k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_W];
 		now.down = k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
 		if (m_pad && SDL_GameControllerGetAttached(m_pad)) {
@@ -327,7 +335,18 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 			now.start = now.start || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_X);
 			now.back = now.back || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_B);
 			now.pause = now.pause || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_START);
-			now.reset = now.reset || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_BACK);
+			// View/Back: a tap (released before 0.5 s) toggles the world map; a hold resets the car.
+			const bool backDown = SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_BACK) != 0;
+			if (backDown) {
+				m_padBackHold += m_hudDt;
+				if (!m_padBackHoldDone && m_padBackHold >= 0.5f) { now.reset = true; m_padBackHoldDone = true; }
+			}
+			else {
+				if (m_padBackDown && !m_padBackHoldDone) now.map = true;
+				m_padBackHold = 0.0f;
+				m_padBackHoldDone = false;
+			}
+			m_padBackDown = backDown;
 			now.camera = now.camera || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_Y);
 			now.up = now.up || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_DPAD_UP) || ly < -0.6f;
 			now.down = now.down || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN) || ly > 0.6f;
@@ -481,9 +500,12 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 				int edge = -1;
 				float t = 0.0f;
 				m_roads.ClosestOnRoads3D(glm::vec3(target.x, y, target.y), 12.0f, nullptr, &edge, &t);
-				if (edge >= 0) {
-					float heading = m_drive.Heading();
-					m_drive.Teleport(m_roads.LanePosition(edge, t, heading, -1, heading), heading);
+				// Only skip to a spot that has ground (never past the end of a generated section).
+				CollisionWorld::Hit ground;
+				float heading = m_drive.Heading();
+				const glm::vec3 lane = edge >= 0 ? m_roads.LanePosition(edge, t, heading, -1, heading) : glm::vec3(0.0f);
+				if (edge >= 0 && (!m_drive.HasSurface() || m_collision.GroundBelow(lane + glm::vec3(0.0f, 2.5f, 0.0f), 6.0f, ground))) {
+					m_drive.Teleport(lane, heading);
 				}
 				else {
 					ResetCar();
@@ -548,7 +570,10 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 			now.start = kmh < 5.0f && std::fmod(m_autoTimer, 0.5f) < 0.25f;
 			if (now.start && !m_prevButtons.start && m_autoRuns == 0) ++m_autoRuns;
 		}
-		if (m_phase == Phase::Finished && !m_menuTitle.empty()) {
+		// Results: the scripted driver reads the results screen for 3 s before choosing (captures).
+		static float resultsFor = 0.0f;
+		resultsFor = (m_phase == Phase::Finished && !m_menuTitle.empty()) ? resultsFor + m_hudDt : 0.0f;
+		if (m_phase == Phase::Finished && !m_menuTitle.empty() && resultsFor > 3.0f) {
 			const bool tick = std::fmod(m_autoTimer, 1.0f) < 0.5f;
 			if (m_autoRuns >= 2 && m_menuSelected == 0) now.down = tick;
 			else {
@@ -563,6 +588,8 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 	pressed.pause = now.pause && !m_prevButtons.pause;
 	pressed.reset = now.reset && !m_prevButtons.reset;
 	pressed.camera = now.camera && !m_prevButtons.camera;
+	pressed.map = now.map && !m_prevButtons.map;
+	pressed.recenter = now.recenter && !m_prevButtons.recenter;
 	pressed.up = now.up && !m_prevButtons.up;
 	pressed.down = now.down && !m_prevButtons.down;
 	m_prevButtons = now;
@@ -642,6 +669,7 @@ void GameSession::UpdateMenus(const Buttons& b, MenuAction& action)
 
 glm::vec2 GameSession::RouteTarget() const
 {
+	if (m_hasWaypoint && m_phase == Phase::FreeRoam) return m_waypoint;
 	if (m_activeEvent >= 0 && (m_phase == Phase::Racing || m_phase == Phase::Countdown)) {
 		const RaceEvent& e = m_events[m_activeEvent];
 		return e.checkpoints[std::min(m_nextCheckpoint, static_cast<int>(e.checkpoints.size()) - 1)].pos;
@@ -652,6 +680,7 @@ glm::vec2 GameSession::RouteTarget() const
 
 glm::vec3 GameSession::RouteTarget3() const
 {
+	if (m_hasWaypoint && m_phase == Phase::FreeRoam) return glm::vec3(m_waypoint.x, m_drive.Position3().y, m_waypoint.y);
 	const glm::vec2 t = RouteTarget();
 	float y = m_drive.Position3().y;
 	if (m_activeEvent >= 0 && (m_phase == Phase::Racing || m_phase == Phase::Countdown)) {
@@ -677,6 +706,11 @@ void GameSession::UpdateRace(float dt)
 	m_messageTimer = std::max(0.0f, m_messageTimer - dt);
 
 	if (m_phase == Phase::FreeRoam) {
+		// Waypoint reached: guidance returns to the selected event.
+		if (m_hasWaypoint && glm::length(pos - m_waypoint) < 30.0f) {
+			m_hasWaypoint = false;
+			ShowMessage("WAYPOINT REACHED", 2.5f);
+		}
 		// Places: arrival (slow, on the place's level) shows the place and rests the car.
 		int at = -1;
 		for (size_t i = 0; i < m_places.size(); ++i) {
@@ -778,8 +812,39 @@ void GameSession::UpdateRace(float dt)
 	m_routeTimer -= dt;
 	if (m_routeTimer <= 0.0f) {
 		m_routeTimer = 0.2f;
-		m_route = m_phase == Phase::Finished ? std::vector<glm::vec2>()
-			: (m_drive.HasSurface() ? m_roads.FindRoute(m_drive.Position3(), RouteTarget3(), m_heightTolerance) : m_roads.FindRoute(pos, RouteTarget()));
+		// Hysteresis: while the car is still on the current route line (within 4 m) toward the same
+		// target, trim it instead of re-projecting onto the nearest edge. In merge/diverge zones the
+		// nearest edge can be the other branch, which would flip the guidance to the wrong road.
+		bool kept = false;
+		const glm::vec2 target = RouteTarget();
+		if (m_phase != Phase::Finished && m_route.size() >= 2 && glm::length(m_route.back() - target) < 1.0f && m_routeKeep < 10) {
+			float best = 1e30f;
+			size_t seg = 0;
+			glm::vec2 closest = m_route[0];
+			for (size_t i = 0; i + 1 < m_route.size(); ++i) {
+				const glm::vec2 a = m_route[i], b = m_route[i + 1];
+				const glm::vec2 ab = b - a;
+				const float t = glm::dot(ab, ab) > 1e-6f ? std::clamp(glm::dot(pos - a, ab) / glm::dot(ab, ab), 0.0f, 1.0f) : 0.0f;
+				const glm::vec2 c = a + ab * t;
+				const float d = glm::length(pos - c);
+				if (d < best) { best = d; seg = i; closest = c; }
+			}
+			if (best < 4.0f) {
+				std::vector<glm::vec2> trimmed;
+				trimmed.push_back(closest);
+				trimmed.insert(trimmed.end(), m_route.begin() + static_cast<std::ptrdiff_t>(seg) + 1, m_route.end());
+				if (trimmed.size() >= 2) {
+					m_route = std::move(trimmed);
+					kept = true;
+					++m_routeKeep;   // a full recompute at least every ~2 s
+				}
+			}
+		}
+		if (!kept) {
+			m_routeKeep = 0;
+			m_route = m_phase == Phase::Finished ? std::vector<glm::vec2>()
+				: (m_drive.HasSurface() ? m_roads.FindRoute(m_drive.Position3(), RouteTarget3(), m_heightTolerance) : m_roads.FindRoute(pos, RouteTarget()));
+		}
 	}
 }
 
@@ -789,6 +854,10 @@ GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float a
 	m_aspect = aspect;
 	m_hudDt = dt;
 	if (!m_drive.IsAvailable()) return action;
+	// NOX_TEST_PAUSE_AT_FRAME=<n>: opens the pause menu after n driving frames (capture/test hook).
+	static const int pauseAtFrame = [] { const char* v = std::getenv("NOX_TEST_PAUSE_AT_FRAME"); return v ? std::atoi(v) : 0; }();
+	static int playFrames = 0;
+	if (pauseAtFrame > 0 && m_playing && !m_paused && playFrames >= 0 && ++playFrames == pauseAtFrame) SetPaused(true);
 	if (m_exitAfterFinish) {
 		std::cout << "[Traversal] Finished; incidents=" << m_apIncidents << std::endl;
 		return MenuAction::ExitApplication;
@@ -805,7 +874,28 @@ GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float a
 
 	DriveMode::Input in;
 	Buttons b;
+	++m_updateFrame;
 	ReadInput(inputEnabled, in, b);
+	// NOX_TEST_OPEN_MAP_AT_FRAME=<n>, NOX_TEST_MAP_ENTER_AT_FRAME=<n>, NOX_TEST_MAP_CLOSE_AT_FRAME=<n>:
+	// scripted world-map open / ENTER (waypoint) / close for capture and validation runs.
+	static const unsigned openMapAt = [] { const char* v = std::getenv("NOX_TEST_OPEN_MAP_AT_FRAME"); return v ? static_cast<unsigned>(std::atoi(v)) : 0u; }();
+	static const unsigned enterMapAt = [] { const char* v = std::getenv("NOX_TEST_MAP_ENTER_AT_FRAME"); return v ? static_cast<unsigned>(std::atoi(v)) : 0u; }();
+	static const unsigned closeMapAt = [] { const char* v = std::getenv("NOX_TEST_MAP_CLOSE_AT_FRAME"); return v ? static_cast<unsigned>(std::atoi(v)) : 0u; }();
+	if (openMapAt && m_updateFrame == openMapAt) b.map = true;
+	if (enterMapAt && m_updateFrame == enterMapAt && m_worldMap.IsOpen()) b.confirm = true;
+	if (closeMapAt && m_updateFrame == closeMapAt && m_worldMap.IsOpen()) b.map = true;
+	// World map: M / pad View opens it; while open it owns the input and freezes the car.
+	const bool mapWasOpen = m_worldMap.IsOpen();
+	if (!mapWasOpen && b.map) OpenWorldMap();
+	else if (mapWasOpen) UpdateWorldMap(b, inputEnabled, dt);
+	if (mapWasOpen || m_worldMap.IsOpen()) {
+		DriveMode::Input none;
+		m_drive.Update(0.0f, none, true, m_camera.get(), aspect);
+		DriveAudioState silent;
+		DriveAudio::Get().Update(silent);
+		BuildHudState(dt);
+		return action;
+	}
 	if (b.pause) {
 		if (m_paused) SetPaused(false);
 		else if (m_menuTitle.empty()) SetPaused(true);
@@ -887,7 +977,7 @@ void GameSession::BuildHudState(float dt)
 	else if (m_selectedEvent >= 0 && m_selectedEvent < static_cast<int>(m_events.size())) shown = &m_events[m_selectedEvent];
 
 	if (m_phase == Phase::FreeRoam) {
-		for (const RaceEvent& e : m_events) h.markers.push_back({ e.start, HudMapMarker::Kind::Event });
+		for (const RaceEvent& e : m_events) h.markers.push_back({ e.start, HudMapMarker::Kind::Event, e.type });
 		for (const Place& p : m_places) h.markers.push_back({ p.pos, HudMapMarker::Kind::Place });
 	}
 	else if (m_activeEvent >= 0) {
@@ -952,9 +1042,141 @@ void GameSession::BuildHudState(float dt)
 	(void)dt;
 }
 
+WorldMapContext GameSession::BuildWorldMapContext() const
+{
+	WorldMapContext c;
+	for (const RaceEvent& e : m_events) {
+		WorldMapMarker mk;
+		mk.pos = e.start;
+		mk.title = e.name;
+		mk.type = e.type;
+		if (!e.checkpoints.empty()) { mk.end = e.checkpoints.back().pos; mk.hasEnd = true; }
+		c.events.push_back(mk);
+	}
+	for (const Place& p : m_places) c.places.push_back(p.pos);
+	c.player = m_drive.Position();
+	c.playerHeading = m_drive.Heading();
+	c.route = &m_route;
+	c.previewRoute = &m_mapPreview;
+	c.hasWaypoint = m_hasWaypoint;
+	c.waypoint = m_waypoint;
+	c.selectedEvent = m_selectedEvent;
+	c.padConnected = m_pad && SDL_GameControllerGetAttached(m_pad);
+	return c;
+}
+
+void GameSession::OpenWorldMap()
+{
+	if (!m_drive.IsAvailable()) return;
+	m_previewIndex = -2;
+	m_worldMap.Open(BuildWorldMapContext());
+	UpdateMapPreview(m_worldMap.DisplayedEvent());
+	DriveAudio::Get().Play(UiSound::Select);
+}
+
+void GameSession::RefreshRoute()
+{
+	m_routeTimer = 0.0f;
+	m_route = m_drive.HasSurface() ? m_roads.FindRoute(m_drive.Position3(), RouteTarget3(), m_heightTolerance)
+		: m_roads.FindRoute(m_drive.Position(), RouteTarget());
+}
+
+void GameSession::SetWaypoint(const glm::vec2& p)
+{
+	m_waypoint = p;
+	m_hasWaypoint = true;
+	RefreshRoute();
+}
+
+void GameSession::ClearWaypoint()
+{
+	m_hasWaypoint = false;
+	RefreshRoute();
+}
+
+// Route preview: start -> checkpoints -> finish, each leg routed through the road graph. Cached per
+// event index, so the Dijkstra runs only when the hovered/selected event changes.
+void GameSession::UpdateMapPreview(int index)
+{
+	if (index == m_previewIndex) return;
+	m_previewIndex = index;
+	m_mapPreview.clear();
+	if (index < 0 || index >= static_cast<int>(m_events.size()) || m_roads.Empty()) return;
+	const RaceEvent& e = m_events[index];
+	glm::vec2 from = e.start;
+	m_mapPreview.push_back(from);
+	std::vector<glm::vec2> stops;
+	for (const Checkpoint& c : e.checkpoints) stops.push_back(c.pos);
+	for (const glm::vec2& to : stops) {
+		const std::vector<glm::vec2> leg = m_roads.FindRoute(from, to);
+		if (leg.size() >= 2) m_mapPreview.insert(m_mapPreview.end(), leg.begin() + 1, leg.end());
+		from = to;
+	}
+}
+
+void GameSession::UpdateWorldMap(const Buttons& b, bool inputEnabled, float dt)
+{
+	WorldMapInput in;
+	in.confirm = b.confirm;
+	in.recenter = b.recenter || b.camera;   // F, C, pad Y
+	in.close = b.pause || b.back || b.map;  // ESC, Backspace, pad B, M, pad View
+	if (inputEnabled) {
+		static Uint8 none[SDL_NUM_SCANCODES] = {};
+		const Uint8* k = SDL_GetKeyboardFocus() ? SDL_GetKeyboardState(nullptr) : none;
+		in.pan.x = ((k[SDL_SCANCODE_D] || k[SDL_SCANCODE_RIGHT]) ? 1.0f : 0.0f) - ((k[SDL_SCANCODE_A] || k[SDL_SCANCODE_LEFT]) ? 1.0f : 0.0f);
+		in.pan.y = ((k[SDL_SCANCODE_S] || k[SDL_SCANCODE_DOWN]) ? 1.0f : 0.0f) - ((k[SDL_SCANCODE_W] || k[SDL_SCANCODE_UP]) ? 1.0f : 0.0f);
+		// Q / E step through the events (edge-triggered).
+		static bool prevQ = false, prevE = false;
+		const bool q = k[SDL_SCANCODE_Q] != 0, e = k[SDL_SCANCODE_E] != 0;
+		if (q && !prevQ) in.cycle = -1;
+		if (e && !prevE) in.cycle = 1;
+		prevQ = q;
+		prevE = e;
+		const ImGuiIO& io = ImGui::GetIO();
+		in.zoomSteps = io.MouseWheel;
+		in.mouse = glm::vec2(io.MousePos.x, io.MousePos.y);
+		in.mouseDown = io.MouseDown[0];
+		if (m_pad && SDL_GameControllerGetAttached(m_pad)) {
+			float lx = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
+			float ly = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
+			lx = std::abs(lx) < 0.12f ? 0.0f : lx;
+			ly = std::abs(ly) < 0.12f ? 0.0f : ly;
+			in.pan += glm::vec2(lx, ly);
+			const float rt = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.0f;
+			const float lt = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.0f;
+			in.zoomRate = rt - lt;
+			if (SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT)) in.cycle = -1;
+			if (SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) in.cycle = 1;
+		}
+	}
+	// NOX_TEST_MAP_ZOOM=<steps>: one-off zoom after opening (capture of the zoomed-in view).
+	static const float testZoom = [] { const char* v = std::getenv("NOX_TEST_MAP_ZOOM"); return v ? static_cast<float>(std::atof(v)) : 0.0f; }();
+	static bool testZoomDone = false;
+	if (testZoom != 0.0f && !testZoomDone) { in.zoomSteps += testZoom; testZoomDone = true; }
+	UpdateMapPreview(m_worldMap.DisplayedEvent());
+	const WorldMapAction act = m_worldMap.Update(in, BuildWorldMapContext(), dt);
+	if (act.toggleWaypoint && act.eventIndex >= 0 && act.eventIndex < static_cast<int>(m_events.size())) {
+		const RaceEvent& ev = m_events[act.eventIndex];
+		if (m_hasWaypoint && glm::length(m_waypoint - ev.start) < 1.0f) {
+			ClearWaypoint();
+			ShowMessage("WAYPOINT CLEARED", 2.0f);
+		}
+		else {
+			SetWaypoint(ev.start);
+			ShowMessage("WAYPOINT SET - " + ev.name, 2.5f);
+		}
+		DriveAudio::Get().Play(UiSound::Select);
+	}
+	if (act.close) DriveAudio::Get().Play(UiSound::Back);
+}
+
 void GameSession::DrawHUD(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& size, float dt)
 {
 	if (!m_drive.IsAvailable() || !dl) return;
+	if (m_worldMap.IsOpen()) {
+		m_worldMap.Draw(dl, origin, size, BuildWorldMapContext(), dt);
+		return;
+	}
 	RacingHUD::Get().Draw(dl, ImVec2(origin.x, origin.y), ImVec2(size.x, size.y), m_hud, dt);
 }
 

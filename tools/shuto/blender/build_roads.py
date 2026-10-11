@@ -53,7 +53,9 @@ PIER_SPACING = 30.0
 PIER_HALF = 0.9
 JOINT_SPACING = 40.0
 POLE_SPACING = 35.0
+POLE_H = 9.6
 CELL = 20.0
+GORE_FILL = 1.5   # m: same-level diverge/merge gaps narrower than this are paved (gore)
 TUNNEL_TYPES = ("cut", "tunnel", "underground")   # trench: retaining walls up to ground level
 ROOF_TYPES = ("tunnel", "underground")             # covered: ceiling, lighting; "cut" is an open trench
 ELEVATED_TYPES = ("elevated", "bridge")
@@ -84,6 +86,25 @@ def clamp(v, lo, hi):
 # ----------------------------------------------------------------------------------------------
 # Road samples
 # ----------------------------------------------------------------------------------------------
+def run_ranges(flags, S):
+    """Per sample: (s0, s1) of the contiguous run of True flags containing it, else None."""
+    n = len(flags)
+    out = [None] * n
+    i = 0
+    while i < n:
+        if not flags[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and flags[j + 1]:
+            j += 1
+        s1 = S[j + 1] if j + 1 < n else S[j]
+        for k in range(i, j + 1):
+            out[k] = (S[i], s1)
+        i = j + 1
+    return out
+
+
 class Road:
     """One carriageway resampled to ~1 m with per-sample frame, banking and structure type."""
 
@@ -143,14 +164,30 @@ class Road:
             self.TZ.append(dz)
             self.LX.append(dz)
             self.LZ.append(-dx)
-        # Structure type per sample.
-        self.ST = [self.type_at(s) for s in self.S]
+        # Effective structure type per sample. The contract's tunnel/cut ranges are checked against the
+        # solved profile: a "tunnel" whose deck is above street level is an embankment (fill, no
+        # tunnel walls or roof); a roofed tunnel needs 5 m of clearance under the cover, else it is an
+        # open cut (retaining walls, no roof).
+        self.ST = []
+        for i, s in enumerate(self.S):
+            t = self.type_at(s)
+            if t in TUNNEL_TYPES:
+                if self.Y[i] + self.eps > GROUND_Y + 1.0:
+                    t = "embankment"
+                elif t in ROOF_TYPES and self.Y[i] + 5.0 > GROUND_Y:
+                    t = "cut"
+            elif t not in ELEVATED_TYPES and self.Y[i] + self.eps < GROUND_Y - 0.5:
+                # Tagged at grade/embankment but the solved deck is below street level (ramps
+                # descending into a trench): open cut, so the street ground is removed above it and
+                # retaining walls are built instead of the car meeting the ground plane.
+                t = "cut"
+            self.ST.append(t)
         self.COV = [t in TUNNEL_TYPES for t in self.ST]
         self.ROOF = [t in ROOF_TYPES for t in self.ST]
         self.ELEV = [t in ELEVATED_TYPES for t in self.ST]
         self.EMB = [t == "embankment" for t in self.ST]
-        self.cov_range = [self.covered_range(s) if c else None for s, c in zip(self.S, self.COV)]
-        self.cov_roof = [self.covered_range(s, ROOF_TYPES) if c else None for s, c in zip(self.S, self.ROOF)]
+        self.cov_range = run_ranges(self.COV, self.S)
+        self.cov_roof = run_ranges(self.ROOF, self.S)
 
     def type_at(self, s):
         for r in self.structure:
@@ -213,6 +250,7 @@ class Context:
         the midline, where emit_barriers then places the median barrier. Same-direction overlaps
         (merges/diverges) are left alone; the footprint rule opens those barriers."""
         clipped = 0
+        widened = 0
         for road in self.roads:
             for i in range(road.N):
                 for ri, si in self.grid.near(road.X[i], road.Z[i], 14.0):
@@ -231,6 +269,25 @@ class Context:
                     # left to the footprint rule, never clipped.
                     # Same level: median. Split level: only for (nearly) antiparallel decks; a
                     # shallow-angle crossing at a different level is a crossing, not a pair.
+                    if dot > 0.7 and dy < 0.3:
+                        # Diverging/merging same-level carriageways: where the gap between the two
+                        # decks is narrower than GORE_FILL the gore is paved (both decks widen to meet),
+                        # so the barrier nose starts only once the roadways have really separated
+                        # (no blunt barrier end in a sliver next to live lanes).
+                        lat, lon = road.lateral(i, r.X[si], r.Z[si])
+                        if abs(lon) > 1.0:
+                            continue
+                        if lat > 0.0:
+                            gap = lat - road.half_l - r.half_r
+                            if 0.0 < gap < GORE_FILL:
+                                road.HL[i] = max(road.HL[i], road.half_l + gap * 0.5 + 0.05)
+                                widened += 1
+                        else:
+                            gap = -lat - road.half_r - r.half_l
+                            if 0.0 < gap < GORE_FILL:
+                                road.HR[i] = max(road.HR[i], road.half_r + gap * 0.5 + 0.05)
+                                widened += 1
+                        continue
                     if not (opposite and (dy <= 2.0 or (dy < 7.0 and dot < -0.985))):
                         continue
                     lat, lon = road.lateral(i, r.X[si], r.Z[si])
@@ -246,7 +303,7 @@ class Context:
                         if -lat * 0.5 < road.HR[i]:
                             road.HR[i] = max(-lat * 0.5, 1.0)
                             clipped += 1
-        log("median clipping: %d samples" % clipped)
+        log("median clipping: %d samples, gore fill: %d samples" % (clipped, widened))
 
     def footprints(self, x, z, margin, exclude=None):
         """Other roads whose lateral band (plus margin) contains (x, z), using their nearest sample."""
@@ -271,8 +328,10 @@ class Context:
             # Longitudinal bound: the nearest sample only represents the road up to half a sample
             # spacing either side, and nothing beyond its first/last sample (otherwise a ramp's
             # extended axis would "cover" the barrier of the road it leaves, opening a long gap).
-            prev_gap = r.S[si] - r.S[si - 1] if si > 0 else 0.0
-            next_gap = r.S[si + 1] - r.S[si] if si + 1 < r.N else 0.0
+            # At a carriageway's first/last sample (node joins), cover 2 m beyond the end so the last
+            # barrier stubs of the roads meeting at that node are opened inside the joined deck.
+            prev_gap = r.S[si] - r.S[si - 1] if si > 0 else 4.0
+            next_gap = r.S[si + 1] - r.S[si] if si + 1 < r.N else 4.0
             if lon < -(prev_gap * 0.5 + margin) or lon > next_gap * 0.5 + margin:
                 continue
             out.append((r, si, lat, r.top_y(si, lat)))
@@ -286,12 +345,26 @@ class Context:
 
     def pier_conflict(self, road, x, z, ylo, yhi):
         for r, si, lat, ytop in self.footprints(x, z, PIER_HALF + 1.0, exclude=road):
-            if ytop - DECK_SLAB < yhi and ytop > ylo:
+            # Any other deck between a little below the pier foot (at-grade/ramp roads can sit just
+            # under the street ground) and the pier top blocks the pier.
+            if ytop - DECK_SLAB < yhi and ytop > ylo - 1.5:
                 return True
         return False
 
     def cell_covered(self, x, z):
-        """None (normal ground), "roof" (tunnel below: render-only roof) or "open" (open trench: no ground)."""
+        """None (normal ground), "roof" (tunnel below: render-only roof) or "open" (open trench, or an
+        at-grade deck at street level: no ground plane there, the road deck itself is the surface)."""
+        # At-grade decks near street level (ramp ends meeting the city streets): the ground plane must
+        # not cover the asphalt (it would sit a few cm above it and turn the road's own parapets into
+        # obstacles for a car riding on the ground).
+        for ri, si in self.grid.near(x, z, 12.0):
+            r = self.roads[ri]
+            if r.ELEV[si] or r.COV[si] or abs(r.Y[si] - GROUND_Y) > 0.6:
+                continue
+            lat, along = r.lateral(si, x, z)
+            gap = r.S[si + 1] - r.S[si] if si + 1 < r.N else 1.0
+            if -r.HR[si] - 0.3 <= lat <= r.HL[si] + 0.3 and abs(along) <= gap:
+                return "open"
         best = None
         for ri, si in self.cgrid.near(x, z, 12.0):
             r = self.roads[ri]
@@ -374,7 +447,26 @@ def add_v(a, b, s=1.0):
 # ----------------------------------------------------------------------------------------------
 # Per-road emitters
 # ----------------------------------------------------------------------------------------------
-def emit_deck(out, road):
+DECK_RANK = {"main": 0, "jct": 0, "pa": 0, "toll": 0, "ramp_on": 1, "ramp_off": 1}
+Z_LIFT_RENDER = 0.015  # render-only lift for a deck lying over another same-level deck (no z-fighting)
+
+
+def deck_overlapped(ctx, road, i):
+    """True when another carriageway's deck lies over this sample at the same level (within 5 cm) and
+    this deck is the lower-priority one (ramp under main; equal rank: the higher id). Collision is never
+    changed by this: the overlapped deck keeps its full collision and only its render surface is lifted."""
+    x, z = road.X[i], road.Z[i]
+    y = road.top_y(i, 0.0)
+    for r, si, lat, ytop in ctx.footprints(x, z, 0.0, exclude=road):
+        if abs(ytop - y) >= 0.05:
+            continue
+        rr, rs = DECK_RANK.get(r.kind, 0), DECK_RANK.get(road.kind, 0)
+        if rr < rs or (rr == rs and r.id < road.id):
+            return True
+    return False
+
+
+def emit_deck(out, road, ctx):
     tile = TILE["asphalt"]
     for i in range(road.N - 1):
         l0 = road.top(i, road.HL[i])
@@ -383,28 +475,104 @@ def emit_deck(out, road):
         r1 = road.top(i + 1, -road.HR[i + 1])
         s0 = road.S[i] / tile
         s1 = road.S[i + 1] / tile
-        out.add_quad(LAYERS_BOTH, "asphalt", l0, r0, r1, l1,
-                     (road.HL[i] / tile, s0), (-road.HR[i] / tile, s0), (-road.HR[i + 1] / tile, s1), (road.HL[i + 1] / tile, s1), UP)
+        uv = [(road.HL[i] / tile, s0), (-road.HR[i] / tile, s0), (-road.HR[i + 1] / tile, s1), (road.HL[i + 1] / tile, s1)]
+        if deck_overlapped(ctx, road, i):
+            lift = (0.0, Z_LIFT_RENDER, 0.0)
+            out.add_quad(("render",), "asphalt", add_v(l0, lift), add_v(r0, lift), add_v(r1, lift), add_v(l1, lift),
+                         uv[0], uv[1], uv[2], uv[3], UP)
+            out.add_quad(("col",), "asphalt", l0, r0, r1, l1, uv[0], uv[1], uv[2], uv[3], UP)
+        else:
+            out.add_quad(LAYERS_BOTH, "asphalt", l0, r0, r1, l1, uv[0], uv[1], uv[2], uv[3], UP)
 
 
-def emit_markings(out, road):
+KIND_RANK = {"main": 3, "jct": 2, "ramp_on": 1, "ramp_off": 1, "pa": 0, "toll": 0}
+
+
+def marking_priority(road):
+    """Which carriageway owns the markings where two decks overlap (merges/diverges): main lines
+    over junction connectors over ramps, then more lanes, then a stable id order."""
+    return (KIND_RANK.get(road.kind, 1), road.lanes, road.id)
+
+
+def deck_owner_above(ctx, road, x, y, z):
+    """The higher-priority carriageway whose same-level driving area contains (x, z), or None."""
+    mine = marking_priority(road)
+    best = None
+    for r, si, lat, ytop in ctx.footprints(x, z, 0.0, exclude=road):
+        if abs(ytop - y) < 1.5 and marking_priority(r) > mine:
+            if best is None or marking_priority(r) > marking_priority(best):
+                best = r
+    return best
+
+
+def lower_deck_alongside(ctx, road, x, y, z):
+    """True when a lower-priority same-level deck covers (x, z): a lane joining or leaving here."""
+    mine = marking_priority(road)
+    for r, si, lat, ytop in ctx.footprints(x, z, 0.0, exclude=road):
+        if abs(ytop - y) < 1.5 and marking_priority(r) < mine:
+            return True
+    return False
+
+
+def emit_markings(out, road, ctx):
+    """Japanese expressway markings (white):
+      * lane dividers: 8 m dash / 12 m gap, 0.15 m;
+      * edge lines: solid 0.15 m; where a lower-priority carriageway joins or leaves alongside (merge
+        or diverge taper), the edge line becomes the thick dashed lane-addition line (0.45 m, 6/6 m);
+      * a carriageway's markings are dropped inside a higher-priority deck at the same level, so the
+        main line's markings run continuously through merges and diverges and the joining ramp's
+        lines end where its lane becomes part of the main line;
+      * paved gores (deck widened by GORE_FILL) get diagonal hatching.
+    """
     half_edge = road.lanes * road.lw * 0.5
     dividers = [-(road.lanes / 2.0 - k) * road.lw for k in range(1, road.lanes)]
-    lines = [(u, True) for u in dividers] + [(half_edge - 0.25, False), (-(half_edge - 0.25), False)]
-    width = 0.15
-    for u, dashed in lines:
+    lift = (0.0, 0.01, 0.0)
+
+    def strip(i, u0, u1, ua=None, ub=None):
+        a0 = road.top(i, u0 if ua is None else ua[0])
+        a1 = road.top(i, u1 if ua is None else ua[1])
+        b0 = road.top(i + 1, u0 if ub is None else ub[0])
+        b1 = road.top(i + 1, u1 if ub is None else ub[1])
+        out.add_quad(LAYERS_BOTH[:1], "paint", add_v(a0, lift), add_v(a1, lift), add_v(b1, lift),
+                     add_v(b0, lift), (0, 0), (1, 0), (1, 1), (0, 1), UP)
+
+    def owned_by_other(i, u):
+        ca = road.top(i, u)
+        cb = road.top(i + 1, u)
+        mx, my, mz = 0.5 * (ca[0] + cb[0]), 0.5 * (ca[1] + cb[1]), 0.5 * (ca[2] + cb[2])
+        return deck_owner_above(ctx, road, mx, my, mz) is not None
+
+    # Lane dividers.
+    for u in dividers:
         for i in range(road.N - 1):
-            if dashed:
-                phase = road.S[i] % 20.0
-                if phase >= 8.0:
+            if road.S[i] % 20.0 >= 8.0 or owned_by_other(i, u):
+                continue
+            strip(i, u - 0.075, u + 0.075)
+    # Edge lines (solid, or thick dashed along a joining/leaving lane).
+    for sgn in (1.0, -1.0):
+        u = sgn * (half_edge - 0.25)
+        for i in range(road.N - 1):
+            if owned_by_other(i, u):
+                continue
+            # Probe just outside the edge line: a lower-priority deck there means a lane is joining.
+            probe = road.top(i, sgn * (half_edge + 1.0))
+            if lower_deck_alongside(ctx, road, probe[0], probe[1], probe[2]):
+                if road.S[i] % 12.0 >= 6.0:
                     continue
-            a0 = road.top(i, u - width * 0.5)
-            a1 = road.top(i, u + width * 0.5)
-            b0 = road.top(i + 1, u - width * 0.5)
-            b1 = road.top(i + 1, u + width * 0.5)
-            lift = (0.0, 0.01, 0.0)
-            out.add_quad(LAYERS_BOTH[:1], "paint", add_v(a0, lift), add_v(a1, lift), add_v(b1, lift),
-                         add_v(b0, lift), (0, 0), (1, 0), (1, 1), (0, 1), UP)
+                strip(i, u - 0.225, u + 0.225)
+            else:
+                strip(i, u - 0.075, u + 0.075)
+    # Gore hatching inside the paved fill band (outside the edge line).
+    for sgn, H, half in ((1.0, road.HL, road.half_l), (-1.0, road.HR, road.half_r)):
+        for i in range(road.N - 1):
+            if H[i] < half + 0.3 or H[i + 1] < half + 0.3:
+                continue
+            if road.S[i] % 4.0 >= 1.0:
+                continue
+            inner = half_edge - 0.25 + 0.3
+            outer_i, outer_n = H[i] - 0.15, H[i + 1] - 0.15
+            # Diagonal stripe: from the edge line at sample i to the deck edge at sample i+1.
+            strip(i, 0.0, 0.0, ua=(sgn * inner, sgn * (inner + 0.45)), ub=(sgn * (outer_n - 0.45), sgn * outer_n))
 
 
 def emit_barriers(out, road, ctx):
@@ -482,14 +650,30 @@ def emit_tunnel(out, road, ctx):
         out.add_quad(LAYERS_BOTH, "tunnel_tiles", cz0, cz1, cz2, cz3,
                      (-WALL_HALF / tile, road.S[i] / tile), (WALL_HALF / tile, road.S[i] / tile),
                      (WALL_HALF / tile, road.S[i + 1] / tile), (-WALL_HALF / tile, road.S[i + 1] / tile), (0, -1, 0))
-        # Emissive lighting strip under the ceiling (render only).
-        l0 = [road.X[i] + u * road.LX[i] for u in (-1.0, 1.0)]
-        zz0 = [road.Z[i] + u * road.LZ[i] for u in (-1.0, 1.0)]
-        l1 = [road.X[i + 1] + u * road.LX[i + 1] for u in (-1.0, 1.0)]
-        zz1 = [road.Z[i + 1] + u * road.LZ[i + 1] for u in (-1.0, 1.0)]
-        y = GROUND_Y - 0.03
-        out.add_quad(("render",), "tunnel_light", (l0[0], y, zz0[0]), (l0[1], y, zz0[1]),
-                     (l1[1], y, zz1[1]), (l1[0], y, zz1[0]), (0, 0), (1, 0), (1, 1), (0, 1), (0, -1, 0))
+
+
+def emit_portals(out, road):
+    """Portal face at each end of a roofed tunnel: a lintel from 5 m above the deck up to the cover
+    (ground) level, across the carriageway and its walls. The ground continues over the roof."""
+    tile = TILE["tunnel_tiles"]
+    for i in range(road.N - 1):
+        start = road.ROOF[i] and (i == 0 or not road.ROOF[i - 1])
+        end = road.ROOF[i] and (i + 1 >= road.N or not road.ROOF[i + 1])
+        if not (start or end):
+            continue
+        ul, ur = road.HL[i] + 0.3, -(road.HR[i] + 0.3)
+        b_l = road.top_y(i, ul) + 5.0
+        b_r = road.top_y(i, ur) + 5.0
+        if min(b_l, b_r) >= GROUND_Y - 0.2:
+            continue
+        pl = (road.X[i] + ul * road.LX[i], b_l, road.Z[i] + ul * road.LZ[i])
+        pr = (road.X[i] + ur * road.LX[i], b_r, road.Z[i] + ur * road.LZ[i])
+        tl = (pl[0], GROUND_Y, pl[2])
+        tr = (pr[0], GROUND_Y, pr[2])
+        sgn = -1.0 if start else 1.0          # the face looks back toward the approaching car
+        want = (sgn * road.TX[i], 0.0, sgn * road.TZ[i])
+        out.add_quad(("render", "col"), "tunnel_tiles", pl, pr, tr, tl,
+                     (0, 0), (WALL_HALF / tile, 0), (WALL_HALF / tile, 1), (0, 1), want)
 
 
 def emit_slabs(out, road):
@@ -575,12 +759,16 @@ def emit_joints(out, road):
         k += 1
         if i + 1 >= road.N or not road.ELEV[i]:
             continue
-        a = road.top(i, road.half_l)
-        b = road.top(i, -road.half_r)
-        c = road.top(i + 1, -road.half_r)
-        d = road.top(i + 1, road.half_l)
+        # 0.25 m wide strip (samples are 1 m apart), across the effective deck width.
+        def at(t, u):
+            p0, p1 = road.top(i, u), road.top(i + 1, u)
+            return tuple(p0[k] + (p1[k] - p0[k]) * t for k in range(3))
+        a = at(0.0, road.HL[i])
+        b = at(0.0, -road.HR[i])
+        c = at(0.25, -road.HR[i])
+        d = at(0.25, road.HL[i])
         lift = (0.0, 0.006, 0.0)
-        out.add_quad(("render",), "galvanized", add_v(a, lift), add_v(b, lift), add_v(c, lift), add_v(d, lift),
+        out.add_quad(("render",), "joint", add_v(a, lift), add_v(b, lift), add_v(c, lift), add_v(d, lift),
                      (0, 0), (0, 1), (1, 1), (1, 0), UP)
 
 
@@ -630,8 +818,10 @@ def emit_section_ends(out, road, bbox):
                      (0, 0), (1, 0), (1, 1), (0, 1), fwd)
 
 
-def emit_tunnel_lights(road, lamps, spacing=20.0):
-    """Light entries along tunnel ceilings (the emissive strip is the visible fitting)."""
+def emit_tunnel_fixtures(out, road, lamps, spacing=20.0):
+    """Tunnel light fixtures: one rectangular housing per lane hung from the ceiling every 20 m, with
+    an emissive lens on its underside. The lamp entry is the lens centre (luminaire position)."""
+    tile_lens = (0.6, 0.15)
     k = 0
     while True:
         i = int(round(spacing * (k + 0.5)))
@@ -640,91 +830,211 @@ def emit_tunnel_lights(road, lamps, spacing=20.0):
             break
         if not road.ROOF[i]:
             continue
-        lamps.append({
-            "carriageway": road.id, "kind": "tunnel",
-            "pos": [round(road.X[i], 3), round(GROUND_Y - 0.25, 3), round(road.Z[i], 3)],
-            "dir": [0.0, -1.0, 0.0], "color": [1.0, 0.62, 0.3], "intensity": 8.0, "range": 14.0,
-        })
+        # keep fixtures 6 m clear of the tunnel ends (the portal lintels and ceiling edges)
+        lo = road.cov_roof[i][0]
+        hi = road.cov_roof[i][1]
+        if road.S[i] - lo < 6.0 or hi - road.S[i] < 6.0:
+            continue
+        axes = [(road.TX[i], 0.0, road.TZ[i]), (0.0, 1.0, 0.0), (road.LX[i], 0.0, road.LZ[i])]
+        for lane in range(road.lanes):
+            u = -(road.lanes / 2.0 - lane - 0.5) * road.lw
+            cx, cz = road.X[i] + u * road.LX[i], road.Z[i] + u * road.LZ[i]
+            # housing: 1.2 m x 0.3 m x 0.1 m, underside at 0.1 m below the ceiling
+            out.add_box(("render",), "galvanized", (cx, GROUND_Y - 0.05, cz), axes, (0.6, 0.05, 0.15))
+            lens_y = GROUND_Y - 0.1 - 0.004
+            l0 = (cx - 0.6 * road.TX[i] - tile_lens[1] * road.LX[i], lens_y, cz - 0.6 * road.TZ[i] - tile_lens[1] * road.LZ[i])
+            l1 = (cx + 0.6 * road.TX[i] - tile_lens[1] * road.LX[i], lens_y, cz + 0.6 * road.TZ[i] - tile_lens[1] * road.LZ[i])
+            l2 = (cx + 0.6 * road.TX[i] + tile_lens[1] * road.LX[i], lens_y, cz + 0.6 * road.TZ[i] + tile_lens[1] * road.LZ[i])
+            l3 = (cx - 0.6 * road.TX[i] + tile_lens[1] * road.LX[i], lens_y, cz - 0.6 * road.TZ[i] + tile_lens[1] * road.LZ[i])
+            out.add_quad(("render",), "tunnel_light", l0, l1, l2, l3, (0, 0), (1, 0), (1, 1), (0, 1), (0, -1, 0))
+            lamps.append({
+                "carriageway": road.id, "kind": "tunnel",
+                "pos": [round(cx, 3), round(lens_y, 3), round(cz, 3)],
+                "dir": [0.0, -1.0, 0.0], "color": [0.85, 0.95, 1.0], "intensity": 8.0, "range": 14.0,
+            })
 
 
-def emit_poles(out, road, lamps):
-    """Light poles every 35 m on the left edge, lamp heads emissive; json entries for the light system."""
+def add_prism(out, mat, a, b, r0, r1, sides=8):
+    """Tapered prism (closed, with caps) from point a (radius r0) to b (radius r1), render only."""
+    dx, dy, dz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+    ln = math.sqrt(dx * dx + dy * dy + dz * dz)
+    if ln < 1e-6:
+        return
+    d = (dx / ln, dy / ln, dz / ln)
+    ref = (1.0, 0.0, 0.0) if abs(d[0]) < 0.9 else (0.0, 0.0, 1.0)
+    u = (d[1] * ref[2] - d[2] * ref[1], d[2] * ref[0] - d[0] * ref[2], d[0] * ref[1] - d[1] * ref[0])
+    ul = math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2])
+    u = (u[0] / ul, u[1] / ul, u[2] / ul)
+    v = (d[1] * u[2] - d[2] * u[1], d[2] * u[0] - d[0] * u[2], d[0] * u[1] - d[1] * u[0])
+    ring_a, ring_b, dirs = [], [], []
+    for k in range(sides):
+        t = 2.0 * math.pi * k / sides
+        c, s = math.cos(t), math.sin(t)
+        n = (c * u[0] + s * v[0], c * u[1] + s * v[1], c * u[2] + s * v[2])
+        dirs.append(n)
+        ring_a.append(add_v(a, n, r0))
+        ring_b.append(add_v(b, n, r1))
+    tile = TILE.get("galvanized", 1.0)
+    for k in range(sides):
+        k1 = (k + 1) % sides
+        mid = (dirs[k][0] + dirs[k1][0], dirs[k][1] + dirs[k1][1], dirs[k][2] + dirs[k1][2])
+        out.add_quad(("render",), mat, ring_a[k], ring_b[k], ring_b[k1], ring_a[k1],
+                     (k / sides, 0.0), (k / sides, ln / tile), (k1 / sides, ln / tile), (k1 / sides, 0.0), mid)
+    out.add_tri(("render",), mat, (ring_b[0], ring_b[1], b), ((0, 0), (1, 0), (0.5, 1)), d)
+    out.add_tri(("render",), mat, (ring_a[0], ring_a[1], a), ((0, 0), (1, 0), (0.5, 1)),
+                (-d[0], -d[1], -d[2]))
+
+
+def barrier_omitted(road, ctx, i, sgn):
+    """True when emit_barriers leaves this sample's parapet out (footprint opening)."""
+    edge = road.HL if sgn > 0 else [-v for v in road.HR]
+    ex, ey, ez = road.top(i, edge[i])
+    fx, fy, fz = road.top(i + 1, edge[i + 1])
+    return (ctx.blocked(road, ex, ey, ez) or ctx.blocked(road, fx, fy, fz) or
+            ctx.blocked(road, 0.5 * (ex + fx), 0.5 * (ey + fy), 0.5 * (ez + fz)))
+
+
+def pole_site(road, i, ctx, bbox):
+    """Support for a lamp pole at sample i on the left edge, or None. Poles stand on the parapet cap of
+    an elevated deck, on the ground beyond the toe of an embankment, or on the ground beside an
+    at-grade road. Never on a gap (omitted parapet, clipped median edge, roof, section end) and never
+    inside another carriageway's footprint."""
+    if i <= 0 or i >= road.N - 2 or road.ROOF[i] or road.COV[i] and not road.EMB[i]:
+        return None
+    if road.HL[i] < road.half_l - 0.05:
+        return None  # clipped median edge
+    if bbox is not None:
+        x0, z0, x1, z1 = bbox
+        if not (x0 + 15.0 <= road.X[i] <= x1 - 15.0 and z0 + 15.0 <= road.Z[i] <= z1 - 15.0):
+            return None
+    gy = GROUND_Y - 0.05
+    if road.ELEV[i]:
+        if barrier_omitted(road, ctx, i, 1.0):
+            return None
+        u = road.half_l + 0.1
+        x, y, z = road.top(i, u)
+        if ctx.footprints(x, z, 0.5, exclude=road):
+            return None
+        return (i, "parapet", (x, y + PARAPET_H, z), u)
+    deck = road.top_y(i, 0.0)
+    if road.EMB[i]:
+        h = road.top_y(i, road.half_l) - gy
+        if h > 14.0:
+            return None
+        u = road.half_l + h + 1.0
+    elif deck - gy < 1.0:
+        # Beyond the street-level hole cut around at-grade decks (HL + 0.3 m plus up to one
+        # ground-quadtree leaf), so the pole stands on ground.
+        u = road.half_l + 2.0
+    else:
+        return None
+    x = road.X[i] + u * road.LX[i]
+    z = road.Z[i] + u * road.LZ[i]
+    if ctx.footprints(x, z, 0.5, exclude=road) or ctx.cell_covered(x, z) is not None:
+        return None
+    return (i, "ground", (x, gy, z), u)
+
+
+def emit_poles(out, road, ctx, lamps, bbox):
+    """Street lamps every 35 m on the left edge: base plate, tapered 9.6 m shaft, curved arm over the
+    carriageway and a rectangular housing with an emissive sodium lens. The lamp entry is the lens."""
     k = 0
     while True:
-        i = int(round(POLE_SPACING / 2.0 + POLE_SPACING * k))
+        i0 = int(round(POLE_SPACING / 2.0 + POLE_SPACING * k))
         k += 1
-        if i >= road.N:
+        if i0 >= road.N:
             break
-        if road.ROOF[i]:
+        site = None
+        for off in (0, 3, -3, 6, -6, 9, -9):
+            if 0 <= i0 + off < road.N:
+                site = pole_site(road, i0 + off, ctx, bbox)
+                if site is not None:
+                    break
+        if site is None:
             continue
-        if road.ELEV[i]:
-            u_base = road.half_l + 0.1
-            base = road.top(i, u_base)
-            base_y = base[1] + PARAPET_H
-            height = 6.0
-        else:
-            u_base = road.half_l + 0.6
-            base = road.top(i, u_base)
-            base_y = base[1]
-            height = 8.0
-        px, pz = base[0], base[2]
+        i, kind, base, u_pole = site
+        px, py, pz = base
         axes = [(road.TX[i], 0.0, road.TZ[i]), (0.0, 1.0, 0.0), (road.LX[i], 0.0, road.LZ[i])]
-        out.add_box(("render",), "galvanized", (px, base_y + height * 0.5, pz), axes,
-                    (0.125, height * 0.5, 0.125))
-        u_end = road.half_l - 3.0
-        arm_y = base_y + height - 0.3
-        um = 0.5 * (u_base + u_end)
-        ax, az = road.X[i] + um * road.LX[i], road.Z[i] + um * road.LZ[i]
-        out.add_box(("render",), "galvanized", (ax, arm_y, az), axes,
-                    (0.09, 0.09, abs(u_base - u_end) * 0.5))
-        hx, hz = road.X[i] + u_end * road.LX[i], road.Z[i] + u_end * road.LZ[i]
-        head_y = arm_y - 0.2
-        out.add_box(("render",), "lamp", (hx, head_y, hz), axes, (0.3, 0.12, 0.2))
+        out.add_box(("render",), "galvanized", (px, py + 0.03, pz), axes, (0.3, 0.03, 0.3))
+        top = py + POLE_H
+        add_prism(out, "galvanized", (px, py + 0.06, pz), (px, top, pz), 0.16, 0.08, sides=8)
+        # curved arm: five tube segments from the pole top toward the carriageway
+        u_end = road.half_l - 1.2
+        pts = []
+        for t in [j / 4.0 for j in range(5)]:
+            uu = u_pole + (u_end - u_pole) * t
+            pts.append((road.X[i] + uu * road.LX[i], top - 0.35 * t * t, road.Z[i] + uu * road.LZ[i]))
+        for a, b in zip(pts[:-1], pts[1:]):
+            add_prism(out, "galvanized", a, b, 0.07, 0.06, sides=6)
+        ex, ey, ez = pts[-1]
+        housing_top = ey - 0.14
+        add_prism(out, "galvanized", (ex, ey, ez), (ex, housing_top, ez), 0.05, 0.05, sides=6)
+        out.add_box(("render",), "galvanized", (ex, housing_top - 0.06, ez), axes, (0.4, 0.06, 0.2))
+        lens_y = housing_top - 0.12 - 0.003
+        lens = [(ex + sx * 0.36 * road.TX[i] + sz * 0.15 * road.LX[i], lens_y, ez + sx * 0.36 * road.TZ[i] + sz * 0.15 * road.LZ[i])
+                for sx, sz in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        out.add_quad(("render",), "lamp", lens[0], lens[1], lens[2], lens[3], (0, 0), (1, 0), (1, 1), (0, 1), (0, -1, 0))
         dx, dz = -road.LX[i] * 0.3, -road.LZ[i] * 0.3
         dl = math.sqrt(dx * dx + 1.0 + dz * dz)
         lamps.append({
-            "carriageway": road.id,
-            "pos": [round(hx, 3), round(head_y - 0.12, 3), round(hz, 3)],
+            "carriageway": road.id, "kind": "road", "support": kind,
+            "base": [round(px, 3), round(py, 3), round(pz, 3)],
+            "pos": [round(ex, 3), round(lens_y, 3), round(ez, 3)],
             "dir": [round(dx / dl, 4), round(-1.0 / dl, 4), round(dz / dl, 4)],
-            "color": [1.0, 0.85, 0.55],
+            "color": [1.0, 0.56, 0.2],
             "intensity": 12.0,
             "range": 30.0,
         })
 
 
 def emit_ground(out, ctx, bbox_cells, gy):
+    """Street-level ground plane with holes over open trenches and render-only roofs over tunnels.
+
+    Cells are refined quadtree-style (CELL down to ~1.25 m) wherever a 3x3 sample grid is not
+    uniformly clear, and a leaf is only kept as walkable ground when none of its samples is over a
+    trench: ground never overhangs a cut, so a car on a ramp descending below street level cannot
+    snap up onto (or drop off) street-level ground cells.
+    """
     tile = TILE["ground_gravel"]
     x0, z0, x1, z1 = bbox_cells
-    cells = 0
-    roof = 0
+    counts = {"cells": 0, "roof": 0}
+    MIN_SIZE = CELL / 16.0
+
+    def quad(ix, iz, size, y, layers):
+        p0 = (ix, y, iz)
+        p1 = (ix, y, iz + size)
+        p2 = (ix + size, y, iz + size)
+        p3 = (ix + size, y, iz)
+        out.add_quad(layers, "ground_gravel", p0, p1, p2, p3,
+                     (ix / tile, iz / tile), (ix / tile, (iz + size) / tile),
+                     ((ix + size) / tile, (iz + size) / tile), ((ix + size) / tile, iz / tile), UP)
+
+    def visit(ix, iz, size):
+        samples = [ctx.cell_covered(ix + size * fx, iz + size * fz) for fx in (0.0, 0.5, 1.0) for fz in (0.0, 0.5, 1.0)]
+        if all(c is None for c in samples):
+            quad(ix, iz, size, gy, LAYERS_BOTH)
+            counts["cells"] += 1
+            return
+        if size > MIN_SIZE + 1e-6 and len(set(samples)) > 1:
+            h = size * 0.5
+            for ox in (0.0, h):
+                for oz in (0.0, h):
+                    visit(ix + ox, iz + oz, h)
+            return
+        if "open" in samples:
+            return  # over (or at the edge of) an open trench: no ground
+        if all(c == "roof" for c in samples) or size <= MIN_SIZE + 1e-6:
+            quad(ix, iz, size, GROUND_Y, ("render",))  # roof over a covered tunnel (render only)
+            counts["roof"] += 1
+
     ix = x0
     while ix < x1:
         iz = z0
         while iz < z1:
-            cx = ix + CELL * 0.5
-            cz = iz + CELL * 0.5
-            cover = ctx.cell_covered(cx, cz)
-            if cover == "open":
-                iz += CELL
-                continue
-            if cover == "roof":
-                y = GROUND_Y
-                layers = ("render",)
-                roof += 1
-            else:
-                y = gy
-                layers = LAYERS_BOTH
-                cells += 1
-            p0 = (ix, y, iz)
-            p1 = (ix, y, iz + CELL)
-            p2 = (ix + CELL, y, iz + CELL)
-            p3 = (ix + CELL, y, iz)
-            out.add_quad(layers, "ground_gravel", p0, p1, p2, p3,
-                         (ix / tile, iz / tile), (ix / tile, (iz + CELL) / tile),
-                         ((ix + CELL) / tile, (iz + CELL) / tile), ((ix + CELL) / tile, iz / tile), UP)
+            visit(ix, iz, CELL)
             iz += CELL
         ix += CELL
-    return cells, roof
+    return counts["cells"], counts["roof"]
 
 
 # ----------------------------------------------------------------------------------------------
@@ -758,8 +1068,10 @@ def make_materials(info):
         path = os.path.join(TEX_DIR, fname)
         mats[key] = make_material(key, path, float(a["roughness"]), float(a["metallic"]))
     mats["paint"] = make_material("paint", None, 0.6, 0.0, color=(0.95, 0.95, 0.92, 1.0))
+    # Expansion joint: dark worn steel finger plate (reads as a thin dark line, not a stop bar).
+    mats["joint"] = make_material("joint", None, 0.45, 0.85, color=(0.16, 0.16, 0.17, 1.0))
     mats["lamp"] = make_material("lamp", None, 0.4, 0.0, color=(0.1, 0.1, 0.1, 1.0),
-                                 emit=(1.0, 0.85, 0.55, 1.0), emit_strength=12.0)
+                                 emit=(1.0, 0.6, 0.25, 1.0), emit_strength=12.0)
     mats["tunnel_light"] = make_material("tunnel_light", None, 0.4, 0.0, color=(0.1, 0.1, 0.1, 1.0),
                                          emit=(0.85, 0.95, 1.0, 1.0), emit_strength=4.0)
     return mats
@@ -876,16 +1188,17 @@ def main():
 
     log("emitting %d roads" % len(roads))
     for r in roads:
-        emit_deck(out, r)
-        emit_markings(out, r)
+        emit_deck(out, r, ctx)
+        emit_markings(out, r, ctx)
         emit_barriers(out, r, ctx)
         emit_tunnel(out, r, ctx)
         emit_slabs(out, r)
         emit_fill(out, r)
         emit_piers(out, r, ctx)
         emit_joints(out, r)
-        emit_poles(out, r, lamps)
-        emit_tunnel_lights(r, lamps)
+        emit_portals(out, r)
+        emit_poles(out, r, ctx, lamps, bbox)
+        emit_tunnel_fixtures(out, r, lamps)
         emit_section_ends(out, r, bbox)
         if args.noise_barriers:
             emit_noise(out, r)

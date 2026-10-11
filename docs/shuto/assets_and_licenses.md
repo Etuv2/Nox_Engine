@@ -40,6 +40,12 @@ texture pack in textures/shuto/, and the derived files built from them.
 - Licence: project-internal. No external attribution required.
 - Derived from it: `textures/shuto/derived/` (padded atlas patches, seamless surface derivatives, `derived_manifest.json`). Metrics are in that manifest.
 
+## Street lamps (rep_section)
+
+- Considered: Poly Haven `street_lamp_01` and `street_lamp_02` (CC0 per the Poly Haven catalogue; author Josh Dean). Both were rejected: they are 3.9 m and 1.7 m tall, far below the 9.6 m expressway pole, and scaling them would distort the proportions.
+- Used: procedural lamp in `tools/shuto/blender/build_roads.py` (`emit_poles`, `emit_tunnel_fixtures`). Tapered octagonal galvanized shaft, base plate, five-segment curved arm, rectangular housing with a sodium emissive lens (material `lamp`), tunnel fixtures with a cool emissive lens (material `tunnel_light`). Project-authored, no external asset.
+- Baked per chunk (no GPU instancing in the engine yet).
+
 ## Derived project files
 
 - `models/shuto/kit/roundtrip_test.glb`: generated in Blender (procedural geometry, procedural normal map, concrete_cast.png from the texture pack). No external assets.

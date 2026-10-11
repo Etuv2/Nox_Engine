@@ -8,6 +8,7 @@
 #include "DriveMode.h"
 #include "RoadNetwork.h"
 #include "RacingHUD.h"
+#include "WorldMapUI.h"
 
 class Camera;
 class SceneGraph;
@@ -76,6 +77,15 @@ public:
 	// inputEnabled: the game view has focus and no text field is active.
 	MenuAction Update(float dt, bool inputEnabled, float aspect);
 	void DrawHUD(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& size, float dt);
+	// Full-screen world map (M / pad View): freezes driving and replaces the HUD while open.
+	bool IsWorldMapOpen() const { return m_worldMap.IsOpen(); }
+	void OpenWorldMap();
+	void CloseWorldMap() { m_worldMap.Close(); }
+	// Route waypoint (free roam): guidance routes to it until reached or toggled off with ENTER.
+	void SetWaypoint(const glm::vec2& p);
+	void ClearWaypoint();
+	bool HasWaypoint() const { return m_hasWaypoint; }
+	glm::vec2 Waypoint() const { return m_waypoint; }
 	bool ConsumeTeleport() { return m_drive.ConsumeTeleport(); }
 	std::shared_ptr<Camera> GetCamera() const { return m_camera; }
 	void SetCameraTemplate(const Camera& editorCamera);
@@ -104,7 +114,12 @@ public:
 private:
 	struct Buttons {
 		bool confirm = false, back = false, pause = false, reset = false, camera = false, up = false, down = false, start = false;
+		bool map = false, recenter = false;   // M key / pad View (tap); F key
 	};
+	WorldMapContext BuildWorldMapContext() const;
+	void UpdateWorldMap(const Buttons& b, bool inputEnabled, float dt);
+	void RefreshRoute();
+	void UpdateMapPreview(int eventIndex);   // routed checkpoints of an event (cached per index)
 	void ReadInput(bool enabled, DriveMode::Input& drive, Buttons& pressed);
 	void UpdateRace(float dt);
 	void UpdateMenus(const Buttons& b, MenuAction& action);
@@ -140,6 +155,16 @@ private:
 	bool m_paused = false;
 	bool m_standalone = false;
 	int m_selectedEvent = 0;
+	WorldMapUI m_worldMap;
+	int m_previewIndex = -2;                 // event whose route is in m_mapPreview (-2 = none)
+	std::vector<glm::vec2> m_mapPreview;
+	bool m_hasWaypoint = false;
+	glm::vec2 m_waypoint{ 0.0f };
+	// Pad View/Back: a tap (released within 0.5 s) toggles the map, a hold resets the car.
+	bool m_padBackDown = false;
+	bool m_padBackHoldDone = false;
+	float m_padBackHold = 0.0f;
+	unsigned m_updateFrame = 0;     // NOX_TEST_* hooks count Update calls
 
 	// Race state.
 	Phase m_phase = Phase::FreeRoam;
@@ -157,6 +182,7 @@ private:
 	float m_messageTimer = 0.0f;
 	std::vector<glm::vec2> m_route;
 	float m_routeTimer = 0.0f;
+	int m_routeKeep = 0;                 // consecutive refreshes that only trimmed the route (hysteresis)
 	nlohmann::json m_bestTimes = nlohmann::json::object();
 
 	// Menus.

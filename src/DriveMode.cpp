@@ -590,8 +590,10 @@ glm::vec2 DriveMode::ResolveCircle(glm::vec2& c, float radius) const
 	}
 	if (m_collision) {
 		// Wall triangles at body height (above curbs, below a tunnel ceiling).
+		// Contacts only up to the roof line (~1.6 m): overhead structure (a ramp parapet passing over
+		// the road) must not catch the wider-than-tall sphere.
 		glm::vec3 centre(c.x, m_y + radius + 0.25f, c.y);
-		const glm::vec3 push3 = m_collision->ResolveSphere(centre, radius, CollisionWorld::Wall);
+		const glm::vec3 push3 = m_collision->ResolveSphere(centre, radius, CollisionWorld::Wall, nullptr, 2, m_y + 1.6f);
 		const glm::vec2 push(push3.x, push3.z);
 		c += push;
 		total += push;

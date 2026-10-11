@@ -149,6 +149,14 @@ int CollisionWorld::AddMesh(const std::string& name, const std::vector<glm::vec3
 		if (len < 1e-8f) continue; // degenerate
 		t.n = c / len;
 		t.cls = t.n.y >= groundMinNormalY ? Ground : (t.n.y <= -groundMinNormalY ? Ceiling : Wall);
+		if (t.cls == Wall) {
+			const glm::vec3 b = t.a + t.e1, c = t.a + t.e2;
+			const float extent = std::max({ t.a.y, b.y, c.y }) - std::min({ t.a.y, b.y, c.y });
+			if (extent < minWallHeight) continue; // sliver between surfaces: neither ground nor wall
+			// Needle triangles (minimum altitude < 5 cm) are tessellation slivers, not walls.
+			const float longest = std::max({ glm::length(t.e1), glm::length(t.e2), glm::length(t.e2 - t.e1) });
+			if (longest > 1e-6f && len / longest < 0.05f) continue;
+		}
 		m.tris.push_back(t);
 	}
 	if (m.tris.empty()) {
@@ -299,7 +307,8 @@ bool CollisionWorld::GroundBelow(const glm::vec3& top, float maxDrop, Hit& out) 
 	return true;
 }
 
-glm::vec3 CollisionWorld::ResolveSphere(glm::vec3& center, float radius, uint8_t classMask, glm::vec3* outNormal, int iterations) const
+glm::vec3 CollisionWorld::ResolveSphere(glm::vec3& center, float radius, uint8_t classMask, glm::vec3* outNormal, int iterations,
+	float contactMaxY) const
 {
 	glm::vec3 total(0.0f);
 	for (int iter = 0; iter < iterations; ++iter) {
@@ -311,6 +320,7 @@ glm::vec3 CollisionWorld::ResolveSphere(glm::vec3& center, float radius, uint8_t
 			Visit(m, mn, mx, [&](const Tri& t) {
 				if (!(t.cls & classMask)) return;
 				const glm::vec3 q = ClosestOnTriangle(center, t.a, t.a + t.e1, t.a + t.e2);
+				if (q.y > contactMaxY) return;
 				const glm::vec3 d = center - q;
 				const float dist2 = glm::dot(d, d);
 				if (dist2 >= radius * radius) return;

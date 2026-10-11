@@ -1,0 +1,96 @@
+{
+  "format": "nox-shuto-map-labels",
+  "version": 1,
+  "labels": [
+    {
+      "text": "GINZA",
+      "kind": "district",
+      "pos": [
+        -474.4,
+        1664.1
+      ],
+      "source": "6 facilities"
+    },
+    {
+      "text": "SHIBAURA",
+      "kind": "district",
+      "pos": [
+        -1608.9,
+        4395.1
+      ],
+      "source": "3 facilities"
+    },
+    {
+      "text": "DAIBA",
+      "kind": "district",
+      "pos": [
+        -526.9,
+        5477.1
+      ],
+      "source": "1 facilities"
+    },
+    {
+      "text": "SHINJUKU",
+      "kind": "district",
+      "pos": [
+        -7737.8,
+        303.5
+      ],
+      "source": "3 facilities"
+    },
+    {
+      "text": "SHIBUYA",
+      "kind": "district",
+      "pos": [
+        -6760.4,
+        3040.7
+      ],
+      "source": "3 facilities"
+    },
+    {
+      "text": "IKEBUKURO",
+      "kind": "district",
+      "pos": [
+        -5154.5,
+        -4953.5
+      ],
+      "source": "3 facilities"
+    },
+    {
+      "text": "HANEDA",
+      "kind": "district",
+      "pos": [
+        749.5,
+        14400.7
+      ],
+      "source": "2 facilities"
+    },
+    {
+      "text": "KASUMIGASEKI",
+      "kind": "district",
+      "pos": [
+        -2470.8,
+        1115.6
+      ],
+      "source": "2 facilities"
+    },
+    {
+      "text": "YOKOHAMA",
+      "kind": "district",
+      "pos": [
+        -13683.5,
+        24741.6
+      ],
+      "source": "1 facilities"
+    },
+    {
+      "text": "TOKYO BAY",
+      "kind": "water",
+      "pos": [
+        6956.4,
+        12275.6
+      ],
+      "source": "pole of inaccessibility of the bay sea mask (worldmap_base.json)"
+    }
+  ]
+}

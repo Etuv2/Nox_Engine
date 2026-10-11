@@ -1323,10 +1323,42 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			return it->second;
 		}
 
+		// Process-wide sharing for external images (relative-URI textures referenced by many glTF
+		// files, e.g. world chunks sharing one texture set): one GPU texture per resolved file, sRGB
+		// flag and sampler. Weak references, so textures are released with their last user.
+		static std::unordered_map<std::string, std::weak_ptr<Texture>> s_sharedImages;
+		std::string sharedKey;
+		{
+			const tinygltf::Texture& t = model.textures[texIndex];
+			if (t.source >= 0 && t.source < static_cast<int>(model.images.size())) {
+				const std::string& uri = model.images[t.source].uri;
+				if (!uri.empty() && uri.rfind("data:", 0) != 0) {
+					std::error_code ec;
+					const std::filesystem::path joined = std::filesystem::path(path).parent_path() / std::filesystem::u8path(uri);
+					const std::filesystem::path resolved = std::filesystem::weakly_canonical(joined, ec);
+					sharedKey = (ec ? joined : resolved).generic_string();
+					sharedKey += useSRGB ? "|srgb" : "|linear";
+					if (t.sampler >= 0 && t.sampler < static_cast<int>(model.samplers.size())) {
+						const tinygltf::Sampler& sm = model.samplers[t.sampler];
+						sharedKey += "|" + std::to_string(sm.wrapS) + "," + std::to_string(sm.wrapT) + "," +
+							std::to_string(sm.minFilter) + "," + std::to_string(sm.magFilter);
+					}
+					auto shared = s_sharedImages.find(sharedKey);
+					if (shared != s_sharedImages.end()) {
+						if (std::shared_ptr<Texture> existing = shared->second.lock()) {
+							textureCache.emplace(cacheKey, existing);
+							return existing;
+						}
+					}
+				}
+			}
+		}
+
 		std::shared_ptr<Texture> loadedTexture = LoadTextureFromGLTF(model, texIndex, useSRGB);
 		textureCache.emplace(cacheKey, loadedTexture);
 		if (loadedTexture) {
 			++uniqueTextureLoads;
+			if (!sharedKey.empty()) s_sharedImages[sharedKey] = loadedTexture;
 		}
 		return loadedTexture;
 	};

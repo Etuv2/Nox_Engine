@@ -399,6 +399,9 @@
     <ClCompile Include="src\CollisionWorld.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
+    <ClCompile Include="src\UiIconAtlas.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
     <ClCompile Include="src\GameSession.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
@@ -406,6 +409,9 @@
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\RacingHUD.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\WorldMapUI.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\ImGui\EditorWorkspace.cpp">
@@ -1112,6 +1118,9 @@
     <ClInclude Include="src\CollisionWorld.h">
       <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="src\UiIconAtlas.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="src\GameSession.h">
       <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
@@ -1119,6 +1128,9 @@
       <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\RacingHUD.h">
+      <Filter>Header Files\Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\WorldMapUI.h">
       <Filter>Header Files\Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\PresentTarget.h">

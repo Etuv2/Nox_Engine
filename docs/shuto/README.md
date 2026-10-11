@@ -28,7 +28,7 @@ OSM (ODbL) + route manifest
   -> tools/shuto/build_network.py   data/shuto/network.json (carriageways, nodes, facilities, ids)
   -> tools/shuto/refine_heights.py  global height solve (grades, merges, clearances)
   -> tools/shuto/blender/build_roads.py   render + collision GLB chunks, lamps (per section bbox)
-  -> tools/shuto/scenery_plan.py + blender/build_scenery.py   city, water, trees (OSM footprints + kit)
+  -> tools/shuto/make_facade_units.py + scenery_plan.py + blender/build_scenery.py   city, water, trees (OSM footprints + kit; facade units from textures/shuto/derived/facade_units)
   -> tools/shuto/compose_signs.py   navigation signs from the graph (Noto Sans JP, sign blanks)
   -> tools/shuto/make_activities.py events + parking-area places from the graph
   -> tools/shuto/build_scene.py     scenes/shuto_<section>.json
@@ -103,7 +103,7 @@ Full record: [assets_and_licenses.md](assets_and_licenses.md).
 - **Texture kit:** `textures/shuto` is AI-generated base colour and artwork, used as delivered. Atlas cells are extracted with 8 px padding and fringe dilation (`tools/shuto/extract_patches.py`). Seamless derivatives exist for the tunnel, galvanised steel and corrugated metal. Billboard art is used for scenery only.
 - **Fonts:** Noto Sans JP Bold and Medium, SIL OFL 1.1 (`fonts/noto/`).
 
-## Validation (representative section, 2026-10-10)
+## Validation (representative section, 2026-10-11)
 
 **Round trip** (Blender to NOX, `scenes/shuto_roundtrip.json`) is verified for:
 - axes (+X east, text not mirrored);
@@ -111,48 +111,50 @@ Full record: [assets_and_licenses.md](assets_and_licenses.md).
 - texture tiling via UVs (NOX has no `KHR_texture_transform`);
 - normal map and emissive.
 
-**Offline collision check** (`check_collision.py`, section bbox):
-- 21,779 lane-centre rays hit their own deck, with 0 missing.
+**Offline collision check** (`check_collision.py --bbox=-2600,1500,0,6000`):
+- 22,192 lane-centre rays hit their own deck, with 0 missing and 6 height mismatches.
+- 81 "shadowed" samples (an overlapping deck within 1.5 m above, in merge tapers).
+- 1 lane-wall spot (`11.IN.001` at the Shibaura loop, a data overlap).
+- 9 short barrier gaps of 2-5 m where gore paving starts and ends.
+- 2 of 549 lamps not resolved to a support.
+- 606 render z-fight candidate pairs: same-level overlapping decks, lifted 1.5 cm render-only.
 - Deck seams are below 1 mm.
-- Barrier gaps over 0.3 m: 0.
-- Remaining:
-  - 6 height mismatches;
-  - 430 "shadowed" samples (an overlapping deck within 1.5 m above, in merge tapers beyond the 25 m zone);
-  - 5 lane-wall spots (Gaps 3).
 
 **Scenery check** (`check_scenery.py`): 0 wall triangles inside any carriageway band.
 
-**In-engine scripted traversal** (`traversal.py`): 22 events covering 49 of 50 carriageways in
-the box, about 58 km, both directions, every junction connector and ramp. Results:
-**20 of 22 events pass**, about 57 km with all checkpoints and
-no stuck, fall or recovery incidents (`data/shuto/traversal_rep_section_results.json`). Both failures stop at
-lane-wall spots near street level: event 11 (`1-Haneda.OUT.007` street-level on-ramp start) and event 18
-(`C1.CW.012`/`014`, at the cut/at-grade transition near (-1093, 2375)). `C1.CCW.016` is not covered
-(it has too little length inside the box). Coverage runs use a 100 km/h autopilot cap
-(`NOX_AUTOPILOT_MAXKMH`) so that the validation driver takes the routed branch at diverges.
+**In-engine scripted traversal** (`traversal.py run`, full scene with scenery, final build):
+**22 of 22 events pass.** They cover 49 of 50 carriageways in the box, about 58 km, both
+directions, every junction connector and ramp. All checkpoints are hit, with 0 stuck, fall or
+recovery incidents (`data/shuto/traversal_rep_section_results.json`). Coverage runs use a 100 km/h
+autopilot cap (`NOX_AUTOPILOT_MAXKMH`). `C1.CCW.016` is not covered because too little of it lies
+inside the box.
 
-**Main sprint** (Ginza to Rainbow Bridge, 4.9 km, full speed, final build): finishes in 166.9 s.
-Height goes from -13 m (tunnel) to 52 m (bridge deck), with stacked checkpoints. It logs **3
-stuck incidents** at the Shiodome tunnel exit (`C1.CW.018`, s = 350-440, around (-1100, 5, 2390)).
-There the car ends up beside the median barrier next to the opposite carriageway, and the
-autopilot skip-ahead recovers it. In this stretch the data marks `tunnel` while the solved profile
-already climbs above street level. On the previous height solve the sprint ran with 0 incidents.
-The traversal events over the same carriageway (9 and 19) pass at 100 km/h. Open: Gaps 3.
+**Main sprint** (Ginza to Rainbow Bridge, 4.9 km, full speed): finishes in 151.7 s with 0 incidents.
+Height goes from -13 m (tunnel) to 52 m (bridge deck), with stacked checkpoints.
 
-**Performance** (3440x1440 borderless, High, RTX 3080 / 5800X, autopilot drive):
-- GPU frame median 4.99 ms, p95 6.53 ms; the 165 Hz budget is 6.06 ms.
-- Largest passes: G-buffer 1.6 ms, lighting 0.68, SSR 0.51, TAA 0.48.
-- 474 sodium spot lights, clustered.
+**NFS street regression:** `nfs_sprint` autopilot finishes with 0 incidents. Editor smoke test:
+all PASS. `tools/CheckNoRawGL.ps1`: pass.
 
-**Load and memory:** scene load about 13 s; peak working set about 2.0 GB.
+**Performance** (3440x1440, High, RTX 3080 / 5800X, autopilot drive, summed pass GPU time):
+- Median 5.43 ms, p95 6.87 ms; the 165 Hz budget is 6.06 ms.
+- Largest passes: G-buffer 1.81 ms, lighting 0.83, SSR 0.51, TAA 0.48, bloom 0.46.
+- 549 sodium spot lights, clustered.
+- Note: `--window borderless` snaps to the native display size, so measure at full size with
+  `--window windowed --width 3440 --height 1440`.
 
-- **Scene content:** 110 GLBs and about 1.2M render triangles (roads 0.67M, scenery 0.54M). Collision: 221k road and 77k scenery triangles.
-- **Precision:** the section lies within 6 km of the origin, so there is no measurable float jitter. Far radials (up to about 35 km) will need origin rebasing (Gaps 9).
+**World map:** `WorldMapUI::Draw` CPU averages 0.18-0.25 ms (max 1.1 ms) at 720p-3440.
+
+**Load and memory:** load plus 300 frames takes about 27 s; peak working set is about 2.7 GB.
+- **Scene content:** roads 0.69M render triangles and 224k collision triangles; scenery 1.05M render triangles and 55k collision triangles. Scenery textures are external, so each is stored and uploaded once (engine-wide shared-image cache in `Scene.cpp`).
+- **Precision:** the section lies within 6 km of the origin. Far radials (up to about 35 km) will need origin rebasing.
 
 Captures:
-- `captures/shuto/rep_v3/` (drive)
-- `captures/shuto/rep_v2/aerial2.png` (skyline)
-- `captures/shuto/lightfix/` (light bug before and after)
+- `captures/shuto/roads_v3/` (merge, diverge, junction)
+- `captures/shuto/city_v6/` (street, facade 40 m, expressway, aerial)
+- `captures/worldmap/` (1280, 1920, 3440, zoom)
+- `captures/ui_icons/final/` (HUD 720/1920/3440, results, editor)
+- `captures/ui_icons/` (pause menu, fallback)
+- `captures/shuto/lightfix/` (punctual light bug before and after)
 - `captures/shuto/roundtrip/`
 
 ## Activities
@@ -163,6 +165,10 @@ Implemented:
 - one point-to-point sprint (Ginza to Rainbow Bridge), generated from waypoint positions resolved on the graph, with stable 3D checkpoints, timing, results, retry, return to free roam and saved best time (`config/speedwall.json`).
 
 Traversal events are validation-only (`scenes/_shuto_traversal_rep_section.json`).
+
+UI:
+- **World map** (M or pad View; `src/WorldMapUI.*`, baked base `tools/shuto/make_worldmap.py`). It shows glowing expressways with route shields, Tokyo Bay and rivers, district labels, the player, event and parking markers, and a cyan event route preview. Controls: pan, zoom, recentre, and select an event. Enter sets a GPS waypoint, which routes on the minimap.
+- **UI icon pack** (`textures/ui_icons`, 128 px atlas via `src/UiIconAtlas.*`, configured in `config/hud.json`). Icons appear on HUD gauges and warnings, minimap and world markers, the pause and results menus, prompts, and the editor toolbar. The previous glyphs and text remain as fallbacks.
 
 Not implemented yet:
 - loop time trials;
@@ -186,37 +192,40 @@ Precise, as of this milestone:
    - 11 C1/C2 direction-label conflicts remain.
    - Ramps are sometimes unnamed.
    - Lane counts come from OSM tags.
-   - There are no lane-level connections; merges are carriageway-level.
+   - There are no lane-level connections.
    - Bank is from curvature only.
-   - `refine_heights.py` now guarantees 0 grade violations network-wide (6 % main, 8 % ramps). 127 crossing pairs remain below 7 m deck-to-deck, and 208 overlapping merge samples differ by more than 0.25 m (see `refine_report.json`). Vertical-curve abruptness is smoothed but not proven within 2 % per 10 m.
-   - Elevation is inferred from OSM layers plus pins (Rainbow Bridge 52 m, Bay Bridge 55 m), not surveyed.
-   - Tsurumi Tsubasa height is unverified.
-   - There is no terrain DEM; ground is flat at TP+3 m.
+   - `refine_heights.py` guarantees 0 grade violations network-wide. 127 crossing pairs remain below 7 m deck-to-deck and 208 merge samples differ by more than 0.25 m, almost all outside the section.
+   - Elevation is inferred from OSM layers plus pins, not surveyed. There is no DEM; ground is flat at TP+3 m.
 3. **Geometry.**
-   - Shiodome tunnel exit (`C1.CW.018`): structure ranges say tunnel while the refined profile is above ground, and the median clipping beside `C1.CCW.024` lets a fast car end up beside the barrier (see Validation).
-   - 5 lane-wall spots remain in the section (`check_collision.py`): at street-level ramp starts and cut/at-grade transitions (`1-Haneda.OUT.007`, `C1.CW.015`, `C1.CW.018`) and at the Shibaura loop (`1-Haneda.IN.001`, `11.IN.001`). Two of them stop the traversal driver.
-   - PA lot roads are not connected to the graph, so they are not generated. Shibaura PA is a place marker, not a drivable lot yet.
-   - Structure detail is modular and simple: decks, parapets, piers, joints, open cuts, covered tunnels and lamps. There are no tunnel portals, toll booths, noise screens (optional flag), gantry variety or landmark bridge superstructures (Rainbow Bridge towers and cables are not modelled).
+   - 1 lane-wall spot (`11.IN.001`, Shibaura loop data overlap).
+   - 606 render z-fight candidates between same-level overlapping decks (render-only 1.5 cm lift).
+   - 2 lamps whose support the checker cannot resolve.
+   - PA lot roads are not connected to the graph and not generated; Shibaura PA is a place marker.
+   - There are no toll booths, landmark bridge superstructures (Rainbow Bridge towers and cables) or noise screens (optional flag).
+   - Gore paving fills gaps under 1.5 m. Wider gores show a barrier nose without a crash cushion.
 4. **Signs.**
-   - 27 panels are composed deterministically in the section, with 4 branches lacking a verified destination name.
+   - 27 panels are composed deterministically, with 4 branches lacking a verified destination name.
    - English text is used only where OSM has `name:en`.
-   - The era-appropriate (pre-2017) route marker shield shapes are an approximation.
-   - Distances come from the graph, not from real sign inventories.
-5. **Traffic.** Not implemented: no AI traffic, lane following or density control.
+   - Pre-2017 route shields are approximated.
+   - Distances come from the graph.
+5. **Traffic.** Not implemented.
 6. **Streaming / LOD.**
-   - The whole section loads at once (about 13 s).
-   - There is no chunk streaming, collision activation by distance, `_lod1`, or hardware instancing.
-   - The p95 frame time exceeds the 165 Hz budget.
+   - The whole section loads at once (about 27 s, 2.7 GB).
+   - No chunk streaming, collision activation by distance or hardware instancing.
+   - The p95 frame time (6.87 ms) exceeds the 165 Hz budget.
 7. **Lighting and weather.**
-   - Sodium lamps are thinned to about 470 lights. There are no lamp shadows, sign illumination is only a flat emissive, and lamp heads are simple.
-   - No weather or time-of-day behaviour is specific to Shuto (the engine's rain and wetness are available but untuned here).
-8. **Scenery.**
-   - 89 % of OSM buildings lack heights, so the skyline is coarse.
-   - Water edges are stair-stepped at 4 m.
-   - Window lighting is block-based.
-   - No street-level road network is built besides ramp ends. Street driving is not supported.
-9. **Large world.** No origin rebasing yet. It is needed beyond about 10 km from Nihonbashi (Yokohama, Saitama).
+   - No lamp shadows. Sign illumination is a flat emissive.
+   - No Shuto-specific weather or time of day.
+8. **Scenery** (see [scenery.md](scenery.md)).
+   - 12 generated facade styles (wall materials cropped from the supplied patches, window_rooms in lit panes), district zoning, near-range shopfronts, balconies and rooftop detail, OSM city streets with sidewalks, street trees and lamps.
+   - Open:
+     - most OSM buildings lack heights;
+     - water edges are stair-stepped;
+     - 37 kit landmarks remain after the aspect filter;
+     - lit panes are emissive, not engine interior mapping (that needs a generic engine change);
+     - street-level driving is not validated.
+9. **Large world.** No origin rebasing yet. It is needed beyond about 10 km from Nihonbashi.
 10. **Verification.**
-    - Route dates are not checked against official dated Shutoko maps.
-    - Driving footage was not used.
-    - Manual driving was not done in this milestone; only scripted traversal and captures.
+    - Route dates are not checked against official Shutoko maps.
+    - No driving footage was used.
+    - No manual driving; only scripted traversal and captures.

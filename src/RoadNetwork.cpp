@@ -369,7 +369,30 @@ std::vector<glm::vec2> RoadNetwork::FindRoute(const glm::vec3& from, const glm::
 	if (eFrom < 0) ClosestOnRoads3D(from, std::numeric_limits<float>::max(), nullptr, &eFrom, &tFrom);
 	ClosestOnRoads3D(to, maxDy, nullptr, &eTo, &tTo);
 	if (eTo < 0) ClosestOnRoads3D(to, std::numeric_limits<float>::max(), nullptr, &eTo, &tTo);
-	return RouteBetween(eFrom, tFrom, eTo, tTo);
+	std::vector<glm::vec2> route = RouteBetween(eFrom, tFrom, eTo, tTo);
+	if (!route.empty() || eFrom < 0) return route;
+	// Where one-way carriageways overlap (diverge/merge zones) the nearest edge can be a branch that
+	// cannot reach the target although the car is still on the shared deck: try the other edges
+	// whose centre lines lie within a deck width, nearest first.
+	const glm::vec2 p(from.x, from.z);
+	const float best = glm::length(glm::vec2(EdgePoint(eFrom, tFrom).x, EdgePoint(eFrom, tFrom).z) - p);
+	std::vector<std::pair<float, std::pair<int, float>>> candidates;
+	ForEdgesNear(p, best + 8.0f, [&](int i) {
+		if (i == eFrom) return;
+		const Edge& e = m_edges[i];
+		float t;
+		glm::vec2 c;
+		const float d = SegmentDistance(p, m_nodes[e.a].pos, m_nodes[e.b].pos, t, c);
+		if (d > best + 6.0f) return;
+		if (std::abs(glm::mix(m_nodes[e.a].y, m_nodes[e.b].y, t) - from.y) > maxDy) return;
+		candidates.push_back({ d, { i, t } });
+	});
+	std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+	for (size_t k = 0; k < candidates.size() && k < 6; ++k) {
+		route = RouteBetween(candidates[k].second.first, candidates[k].second.second, eTo, tTo);
+		if (!route.empty()) return route;
+	}
+	return route;
 }
 
 std::vector<glm::vec2> RoadNetwork::RouteBetween(int eFrom, float tFrom, int eTo, float tTo) const

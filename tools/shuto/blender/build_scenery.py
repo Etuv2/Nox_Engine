@@ -46,6 +46,10 @@ TEX_SRC = os.path.join(ROOT, "textures", "shuto")
 DERIVED = os.path.join(TEX_SRC, "derived")
 KIT_GLB = os.path.join(ROOT, "models", "shuto", "kit", "buildings_asian_themed.glb")
 KIT_INDEX = os.path.join(ROOT, "models", "shuto", "kit", "kit_index.json")
+FACADE_UNITS_DIR = os.path.join(DERIVED, "facade_units")
+FACADE_UNITS_MANIFEST = os.path.join(FACADE_UNITS_DIR, "manifest.json")
+FACADE_STYLES_DIR = os.path.join(DERIVED, "facade_styles")
+FACADE_STYLES_MANIFEST = os.path.join(FACADE_STYLES_DIR, "manifest.json")
 
 STOREY = 3.3
 BAY = {"apartment": 3.5, "commercial": 4.0, "industrial": 6.0}
@@ -53,13 +57,10 @@ BASE_TARGET_SRGB = 0.40   # mean sRGB albedo of facade/roof atlases (about 0.13 
 ROOF_TARGET_SRGB = 0.26  # rooftop membrane, mean sRGB
 BASE_Y = 2.9       # buildings start just under the ground gravel (ground_y - 0.1)
 WATER_Y = 3.05     # above the gravel (ground_y - 0.05 = 2.95) and the deck slab at ground_y
-EMIT_STRENGTH = 12.0  # x3 of the first pass (4.0), so lit panes read at 200-800 m
+EMIT_STRENGTH = 2.5  # room-painted panes at EV100 3: 2 to 3 (see docs/shuto/scenery.md)
 TEX_SIZE = 1024
 FACADE_TEX_SIZE = 768  # facade base and lit atlases (kept small: chunks embed them)
 INSET_PX = 4.0
-LIT_BLOCK = 16     # px in the 1024 atlas per window-cell candidate
-LIT_FRACTION = 0.28
-COOL_FRACTION = 0.30  # share of lit panes that are cool white instead of warm
 CONTAINER_H = 2.59
 CONTAINER_L = 12.19
 CONTAINER_W = 2.44
@@ -187,28 +188,25 @@ def outward_normal(a, b, centre):
     return (-nx, 0.0, -nz)
 
 
-def emit_building_walls(bk, key, ring, h, family, lod, pick, cells, base_y):
-    """Walls with the facade atlas. lod 'full' = one quad per bay x storey (patch UV per quad);
-    'plain' = one quad per edge, same patch UV over the full edge (same triangle count as the
-    old untextured masses)."""
+def unit_pick(pick, si, bi, n):
+    """Deterministic unit index for (building, storey, bay); ground floor uses ground units."""
+    return (pick * 7919 + si * 104729 + bi * 1299709) % n
+
+
+def emit_building_walls(bk, key, ring, h, family, lod, pick, units, base_y):
+    """Walls from storey x bay units (facade_units atlas). Each quad is one storey high (h / n,
+    close to STOREY) and one bay wide (edge / round(edge / BAY)), and takes exactly one unit, so the
+    window rows keep real storey heights. Bottom storey = ground units (shopfronts).
+    'plain' (far masses, > 350 m from expressways): one quad per edge per storey, the unit stretched
+    horizontally along the edge."""
     centre = (sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring))
     top = base_y + h
-    if lod == "plain":
-        u_lo, v_lo, u_hi, v_hi = cells[pick % len(cells)]
-        for a, b, L in wall_edges(ring):
-            want = outward_normal(a, b, centre)
-            p00 = (a[0], base_y, a[1])
-            p10 = (b[0], base_y, b[1])
-            p11 = (b[0], top, b[1])
-            p01 = (a[0], top, a[1])
-            quad_nox(bk, key, p00, p10, p11, p01, (u_lo, v_lo), (u_hi, v_lo), (u_hi, v_hi), (u_lo, v_hi), want)
-        return
-    storeys = max(1, int(math.ceil(h / STOREY)))
+    upper, ground = units["upper"], units["ground"]
+    storeys = 1 if lod == "collision" else max(1, int(round(h / STOREY)))
     band = h / storeys
-    u_lo, v_lo, u_hi, v_hi = cells[pick % len(cells)]
     for a, b, L in wall_edges(ring):
         want = outward_normal(a, b, centre)
-        bays = max(1, int(round(L / BAY[family])))
+        bays = 1 if lod in ("plain", "collision") else max(1, int(round(L / BAY[family])))
         for bi in range(bays):
             t0 = bi / bays
             t1 = (bi + 1) / bays
@@ -219,12 +217,364 @@ def emit_building_walls(bk, key, ring, h, family, lod, pick, cells, base_y):
             for si in range(storeys):
                 y0 = base_y + si * band
                 y1 = y0 + band
+                pool = ground if si == 0 else upper
+                u_lo, v_lo, u_hi, v_hi = pool[unit_pick(pick, si, bi, len(pool))]
                 p00 = (xa, y0, za)
                 p10 = (xb, y0, zb)
                 p11 = (xb, y1, zb)
                 p01 = (xa, y1, za)
                 quad_nox(bk, key, p00, p10, p11, p01,
                          (u_lo, v_lo), (u_hi, v_lo), (u_hi, v_hi), (u_lo, v_hi), want)
+
+
+SIDEWALK_Y = 3.15
+ROAD_Y = 3.03
+PAINT_Y = 3.035
+CHUNK_M = 500.0
+ROOF_TOP_ALL = None
+
+
+def scale_ring(ring, k):
+    """Ring scaled about its centroid (used for setback upper volumes; stays inside the footprint)."""
+    cx = sum(p[0] for p in ring) / len(ring)
+    cz = sum(p[1] for p in ring) / len(ring)
+    return [(cx + (p[0] - cx) * k, cz + (p[1] - cz) * k) for p in ring]
+
+
+def point_in_ring2(x, z, ring):
+    inside = False
+    n = len(ring)
+    j = n - 1
+    for i in range(n):
+        xi, zi = ring[i]
+        xj, zj = ring[j]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi + 1e-12) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def interior_point(ring):
+    """Centroid if inside, else the first inside point on a 6x6 grid over the bbox."""
+    cx = sum(p[0] for p in ring) / len(ring)
+    cz = sum(p[1] for p in ring) / len(ring)
+    if point_in_ring2(cx, cz, ring):
+        return cx, cz
+    xs = [p[0] for p in ring]
+    zs = [p[1] for p in ring]
+    for i in range(1, 6):
+        for j in range(1, 6):
+            x = min(xs) + (max(xs) - min(xs)) * i / 6.0
+            z = min(zs) + (max(zs) - min(zs)) * j / 6.0
+            if point_in_ring2(x, z, ring):
+                return x, z
+    return cx, cz
+
+
+STYLE_BY_NAME = {}
+TINTS = [(1.0, 1.0, 1.0), (0.90, 0.94, 1.0), (1.06, 0.97, 0.86)]
+NEAR_M = 250.0
+
+
+def styled_quad_uv(u0, u1, v0, v1):
+    return (u0, v0), (u1, v0), (u1, v1), (u0, v1)
+
+
+def emit_styled_walls(bk, cx, cz, ring, h, style, tint, off, base_y, near, shop_style=None):
+    """One quad per wall edge (per storey band when a ground shopfront is used). The style texture
+    repeats; bays and storeys are whole texture cells, so the facade starts and ends on whole bays
+    and every wall of a building shares one storey grid. Near buildings get a shopfront ground floor."""
+    sd = STYLE_BY_NAME[style]
+    NB, NS = STYLE_BY_NAME["_grid"]
+    bay_m, storey_m = sd["bay_m"], sd["storey_m"]
+    centre = (sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring))
+    storeys = max(1, int(round(h / storey_m)))
+    shop = bool(near and shop_style is not None and storeys >= 2)
+    g = h / storeys if shop else 0.0
+    ov = off[1] % NS
+    ou = off[0] % NB
+    for a, b, L in wall_edges(ring):
+        want = outward_normal(a, b, centre)
+        bays = max(1, int(round(L / bay_m)))
+        u0 = ou / NB
+        u1 = u0 + bays / NB
+        if shop:
+            sh = shop_style
+            sg = STYLE_BY_NAME[sh]
+            key_g = (cx, cz, "style_%s_t%d" % (sh, tint))
+            p00 = (a[0], base_y, a[1])
+            p10 = (b[0], base_y, b[1])
+            p11 = (b[0], base_y + g, b[1])
+            p01 = (a[0], base_y + g, a[1])
+            gb = max(1, int(round(L / sg["bay_m"])))
+            quad_nox(bk, key_g, p00, p10, p11, p01, (0.0, 0.0), (gb / NB, 0.0), (gb / NB, 1.0 / NS), (0.0, 1.0 / NS), want)
+            vu0 = ((ov + 1) % NS) / NS
+            vu1 = vu0 + (storeys - 1) / NS
+            key = (cx, cz, "style_%s_t%d" % (style, tint))
+            p00 = (a[0], base_y + g, a[1])
+            p10 = (b[0], base_y + g, b[1])
+            p11 = (b[0], base_y + h, b[1])
+            p01 = (a[0], base_y + h, a[1])
+            quad_nox(bk, key, p00, p10, p11, p01, (u0, vu0), (u1, vu0), (u1, vu1), (u0, vu1), want)
+        else:
+            key = (cx, cz, "style_%s_t%d" % (style, tint))
+            v0 = ov / NS
+            v1 = v0 + storeys / NS
+            p00 = (a[0], base_y, a[1])
+            p10 = (b[0], base_y, b[1])
+            p11 = (b[0], base_y + h, b[1])
+            p01 = (a[0], base_y + h, a[1])
+            quad_nox(bk, key, p00, p10, p11, p01, (u0, v0), (u1, v0), (u1, v1), (u0, v1), want)
+    return storeys, shop
+
+
+def emit_slab(bk, key, p0, p1, n, depth, y0, thick):
+    """Closed box slab from wall segment p0-p1 (XZ), projecting `depth` along unit normal n, from y0 up
+    `thick`. All six faces, outward normals (quad_nox orients each face)."""
+    ux, uz = (p1[0] - p0[0]), (p1[1] - p0[1])
+    L = math.hypot(ux, uz)
+    ux, uz = ux / L, uz / L
+    o0 = (p0[0], p0[1])
+    o1 = (p1[0], p1[1])
+    f0 = (o0[0] + n[0] * depth, o0[1] + n[1] * depth)
+    f1 = (o1[0] + n[0] * depth, o1[1] + n[1] * depth)
+    uv = ((0, 0), (1, 0), (1, 1), (0, 1))
+    yt = y0 + thick
+    # top, bottom, front, two ends
+    quad_nox(bk, key, (o0[0], yt, o0[1]), (o1[0], yt, o1[1]), (f1[0], yt, f1[1]), (f0[0], yt, f0[1]), *uv,
+             (0.0, 1.0, 0.0))
+    quad_nox(bk, key, (o0[0], y0, o0[1]), (f0[0], y0, f0[1]), (f1[0], y0, f1[1]), (o1[0], y0, o1[1]), *uv,
+             (0.0, -1.0, 0.0))
+    quad_nox(bk, key, (f0[0], y0, f0[1]), (f1[0], y0, f1[1]), (f1[0], yt, f1[1]), (f0[0], yt, f0[1]), *uv,
+             (n[0], 0.0, n[1]))
+    quad_nox(bk, key, (o0[0], y0, o0[1]), (f0[0], y0, f0[1]), (f0[0], yt, f0[1]), (o0[0], yt, o0[1]), *uv,
+             (-ux, 0.0, -uz))
+    quad_nox(bk, key, (o1[0], y0, o1[1]), (f1[0], y0, f1[1]), (f1[0], yt, f1[1]), (o1[0], yt, o1[1]), *uv,
+             (ux, 0.0, uz))
+
+
+def emit_rail(bk, key, p0, p1, n, depth, y0, height, thick=0.05):
+    """Solid light railing panel along the outer edge of a balcony (no alpha)."""
+    fx0 = p0[0] + n[0] * (depth - 0.05)
+    fz0 = p0[1] + n[1] * (depth - 0.05)
+    fx1 = p1[0] + n[0] * (depth - 0.05)
+    fz1 = p1[1] + n[1] * (depth - 0.05)
+    ux, uz = (fx1 - fx0), (fz1 - fz0)
+    L = math.hypot(ux, uz)
+    ux, uz = ux / L, uz / L
+    ox, oz = -uz, ux  # offset across the panel thickness
+    t = thick / 2
+    a0 = (fx0 + n[0] * t, fz0 + n[1] * t)
+    a1 = (fx1 + n[0] * t, fz1 + n[1] * t)
+    b0 = (fx0 - n[0] * t, fz0 - n[1] * t)
+    b1 = (fx1 - n[0] * t, fz1 - n[1] * t)
+    yt = y0 + height
+    uv = ((0, 0), (1, 0), (1, 1), (0, 1))
+    quad_nox(bk, key, (a0[0], y0, a0[1]), (a1[0], y0, a1[1]), (a1[0], yt, a1[1]), (a0[0], yt, a0[1]), *uv,
+             (n[0], 0.0, n[1]))
+    quad_nox(bk, key, (b0[0], y0, b0[1]), (b1[0], y0, b1[1]), (b1[0], yt, b1[1]), (b0[0], yt, b0[1]), *uv,
+             (-n[0], 0.0, -n[1]))
+    quad_nox(bk, key, (a0[0], yt, a0[1]), (a1[0], yt, a1[1]), (b1[0], yt, b1[1]), (b0[0], yt, b0[1]), *uv,
+             (0.0, 1.0, 0.0))
+
+
+def emit_balconies(bk, cx, cz, ring, h, storey_m, base_y):
+    """Balcony units for apartment styles (near only): per storey and per bay, a 0.18 m concrete
+    slab projecting 1.2 m under the window zone, with a 0.7 m solid railing on its outer edge.
+    Party walls: 0.35 m gap each side of every bay unit. Only the wall-edge and floor-line
+    geometry is emitted (no glazing covered: the slab sits at the sill line)."""
+    centre = (sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring))
+    storeys = max(1, int(round(h / storey_m)))
+    sh = h / storeys
+    gap = 0.35
+    depth = 1.2
+    for a, b, L in wall_edges(ring):
+        if L < 6.0:
+            continue
+        want = outward_normal(a, b, centre)
+        n = (want[0], want[2])
+        bays = max(1, int(round(L / BAY["apartment"])))
+        bw = L / bays
+        ux, uz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+        for bi in range(bays):
+            s0 = bi * bw + gap
+            s1 = (bi + 1) * bw - gap
+            if s1 - s0 < 2.0:
+                continue
+            p0 = (a[0] + ux * s0, a[1] + uz * s0)
+            p1 = (a[0] + ux * s1, a[1] + uz * s1)
+            for k in range(1, storeys):
+                y0 = base_y + k * sh - 0.18
+                emit_slab(bk, (cx, cz, "balcony_slab"), p0, p1, n, depth, y0, 0.18)
+                emit_rail(bk, (cx, cz, "balcony_rail"), p0, p1, n, depth, y0 + 0.18, 0.7)
+
+
+def emit_far_walls(bk, cx, cz, ring, h, fam, pick, units, base_y, far_names):
+    """Far LOD: ground quad from the ground units, then one quad per bay for the upper storeys
+    with v REPEATing a single-storey far tile (no stretching: v is in storeys, u spans one bay)."""
+    centre = (sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring))
+    top = base_y + h
+    g = min(h, STOREY)
+    for a, b, L in wall_edges(ring):
+        want = outward_normal(a, b, centre)
+        bays = max(1, int(round(L / BAY[fam])))
+        for bi in range(bays):
+            t0 = bi / bays
+            t1 = (bi + 1) / bays
+            xa = a[0] + (b[0] - a[0]) * t0
+            za = a[1] + (b[1] - a[1]) * t0
+            xb = a[0] + (b[0] - a[0]) * t1
+            zb = a[1] + (b[1] - a[1]) * t1
+            pool = units["ground"]
+            u_lo, v_lo, u_hi, v_hi = pool[unit_pick(pick, 0, bi, len(pool))]
+            quad_nox(bk, (cx, cz, "facade_" + fam), (xa, base_y, za), (xb, base_y, zb),
+                     (xb, base_y + g, zb), (xa, base_y + g, za),
+                     (u_lo, v_lo), (u_hi, v_lo), (u_hi, v_hi), (u_lo, v_hi), want)
+            if h - g > 0.5:
+                name = far_names[(pick + bi) % len(far_names)]
+                vspan = (h - g) / STOREY
+                quad_nox(bk, (cx, cz, name), (xa, base_y + g, za), (xb, base_y + g, zb),
+                         (xb, top, zb), (xa, top, za), (0.0, 0.0), (1.0, 0.0), (1.0, vspan), (0.0, vspan), want)
+
+
+def emit_cornice(bk, key, ring, top):
+    """Parapet lip: a band of vertical quads 0.45 m proud of the top edge, 0.8 m high."""
+    centre = (sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring))
+    for a, b, L in wall_edges(ring):
+        want = outward_normal(a, b, centre)
+        ox, oz = want[0] * 0.45, want[2] * 0.45
+        p00 = (a[0] + ox, top - 0.8, a[1] + oz)
+        p10 = (b[0] + ox, top - 0.8, b[1] + oz)
+        p11 = (b[0] + ox, top, b[1] + oz)
+        p01 = (a[0] + ox, top, a[1] + oz)
+        quad_nox(bk, key, p00, p10, p11, p01, (0, 0), (1, 0), (1, 1), (0, 1), want)
+
+
+def emit_roof_features(bk, cx, cz, ring, top, flags, roof_key):
+    """Simple rooftop geometry: AC units, a water tank, a stair tower (boxes)."""
+    ip = interior_point(ring)
+    uv = (0.0, 0.0, 1.0, 1.0)
+    if flags.get("stair"):
+        emit_box(bk, roof_key, (ip[0] - 3.0, ip[1] - 3.0), (1.0, 0.0), 1.6, 1.6, top, 3.4, uv, roof_key)
+    if flags.get("tank"):
+        emit_box(bk, roof_key, (ip[0] + 3.0, ip[1] + 2.5), (1.0, 0.0), 1.2, 1.2, top, 2.6, uv, roof_key)
+    for i in range(int(flags.get("ac", 0))):
+        ox = -4.0 + 2.2 * i
+        emit_box(bk, roof_key, (ip[0] + ox, ip[1] - 1.0), (1.0, 0.0), 0.6, 0.5, top, 0.9, uv, roof_key)
+
+
+def emit_full_building(bk, cx, cz, ring, h, fam, pick, units, flags, roof_mat, base_y):
+    """Textured storey x bay walls, roof, cornice, rooftop detail; towers get a setback."""
+    roof_key = (cx, cz, roof_mat)
+    key = (cx, cz, "facade_" + fam)
+    if flags.get("setback") and h >= 60.0:
+        h1 = h * 0.7
+        emit_building_walls(bk, key, ring, h1, fam, "full", pick, units, base_y)
+        emit_roof(bk, roof_key, ring, base_y + h1, 4.0)
+        inner = scale_ring(ring, 0.72)
+        emit_building_walls(bk, key, inner, h - h1, fam, "full", pick + 1, units, base_y + h1)
+        emit_roof(bk, roof_key, inner, base_y + h, 4.0)
+        emit_cornice(bk, (cx, cz, "roof_membrane"), inner, base_y + h)
+        emit_roof_features(bk, cx, cz, inner, base_y + h, flags, (cx, cz, "roof_membrane"))
+    else:
+        emit_building_walls(bk, key, ring, h, fam, "full", pick, units, base_y)
+        emit_roof(bk, roof_key, ring, base_y + h, 4.0)
+        emit_cornice(bk, (cx, cz, "roof_membrane"), ring, base_y + h)
+        emit_roof_features(bk, cx, cz, ring, base_y + h, flags, (cx, cz, "roof_membrane"))
+
+
+def emit_sign(bk, cx, cz, ring, h, base_y, pick, bill_uv):
+    """Billboard-art sign on the longest facade edge, above the shopfronts (scenery only)."""
+    best = None
+    for a, b, L in wall_edges(ring):
+        if best is None or L > best[2]:
+            best = (a, b, L)
+    if best is None or best[2] < 8.0 or h < 12.0:
+        return
+    a, b, L = best
+    centre = (sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring))
+    want = outward_normal(a, b, centre)
+    w = min(L * 0.6, 8.0)
+    ux, uz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+    mx, mz = (a[0] + b[0]) / 2 + want[0] * 0.3, (a[1] + b[1]) / 2 + want[2] * 0.3
+    y0, y1 = base_y + 4.2, base_y + 4.2 + 2.4
+    p00 = (mx - ux * w / 2, y0, mz - uz * w / 2)
+    p10 = (mx + ux * w / 2, y0, mz + uz * w / 2)
+    p11 = (mx + ux * w / 2, y1, mz + uz * w / 2)
+    p01 = (mx - ux * w / 2, y1, mz - uz * w / 2)
+    u_lo, v_lo, u_hi, v_hi = bill_uv[pick % len(bill_uv)]
+    quad_nox(bk, (cx, cz, "billboard"), p00, p10, p11, p01,
+             (u_lo, v_lo), (u_hi, v_lo), (u_hi, v_hi), (u_lo, v_hi), want)
+
+
+def emit_street_pieces(bk, pieces):
+    """City streets at grade: asphalt, raised sidewalks and kerbs, lane paint."""
+    n_seg = 0
+    for pc in pieces:
+        w, sw, cls = pc["w"], pc["sw"], pc["cls"]
+        pts = pc["pts"]
+        for a, b in zip(pts, pts[1:]):
+            L = math.dist(a, b)
+            if L < 1e-6:
+                continue
+            ux, uz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+            nx, nz = -uz, ux
+            ck = (int(math.floor((a[0] + b[0]) / 2 / CHUNK_M)), int(math.floor((a[1] + b[1]) / 2 / CHUNK_M)))
+            n_seg += 1
+
+            def P(t, off, y):
+                return (a[0] + ux * t + nx * off, y, a[1] + uz * t + nz * off)
+
+            # asphalt (metres/4 UV, repeat tile)
+            hw = w / 2
+            quad_nox(bk, (ck[0], ck[1], "street_asphalt"),
+                     P(0, -hw, ROAD_Y), P(L, -hw, ROAD_Y), P(L, hw, ROAD_Y), P(0, hw, ROAD_Y),
+                     (0.0, -hw / 4), (L / 4, -hw / 4), (L / 4, hw / 4), (0.0, hw / 4), (0.0, 1.0, 0.0))
+            for side in (1, -1):
+                o0, o1 = side * hw, side * (hw + sw)
+                quad_nox(bk, (ck[0], ck[1], "sidewalk"),
+                         P(0, o0, SIDEWALK_Y), P(L, o0, SIDEWALK_Y), P(L, o1, SIDEWALK_Y), P(0, o1, SIDEWALK_Y),
+                         (0.0, o0 / 3), (L / 3, o0 / 3), (L / 3, o1 / 3), (0.0, o1 / 3), (0.0, 1.0, 0.0))
+                want = (-side * nx, 0.0, -side * nz)
+                quad_nox(bk, (ck[0], ck[1], "sidewalk"),
+                         P(0, o0, ROAD_Y), P(L, o0, ROAD_Y), P(L, o0, SIDEWALK_Y), P(0, o0, SIDEWALK_Y),
+                         (0, 0), (L / 3, 0), (L / 3, 0.15 / 3), (0, 0.15 / 3), want)
+            # lane paint on arterials: yellow double centre line, white edge lines, white dashed centre
+            # on secondary streets (decal texture spans the stripe width).
+            if cls in ("primary", "secondary"):
+                for side in (1, -1):
+                    eo = side * (hw - 0.45)
+                    quad_nox(bk, (ck[0], ck[1], "paint_white"),
+                             P(0, eo - 0.08, PAINT_Y), P(L, eo - 0.08, PAINT_Y),
+                             P(L, eo + 0.08, PAINT_Y), P(0, eo + 0.08, PAINT_Y),
+                             (0, 0), (1, 0), (1, 1), (0, 1), (0.0, 1.0, 0.0))
+                if cls == "primary":
+                    for side in (1, -1):
+                        co = side * 0.2
+                        quad_nox(bk, (ck[0], ck[1], "paint_yellow"),
+                                 P(0, co - 0.12, PAINT_Y), P(L, co - 0.12, PAINT_Y),
+                                 P(L, co + 0.12, PAINT_Y), P(0, co + 0.12, PAINT_Y),
+                                 (0, 0), (1, 0), (1, 1), (0, 1), (0.0, 1.0, 0.0))
+                else:
+                    t = 0.0
+                    while t + 3.0 <= L:
+                        quad_nox(bk, (ck[0], ck[1], "paint_white"),
+                                 P(t, -0.12, PAINT_Y), P(t + 3.0, -0.12, PAINT_Y),
+                                 P(t + 3.0, 0.12, PAINT_Y), P(t, 0.12, PAINT_Y),
+                                 (0, 0), (1, 0), (1, 1), (0, 1), (0.0, 1.0, 0.0))
+                        t += 9.0
+    log("street segments emitted: %d" % n_seg)
+
+
+def emit_street_lamps(bk, lamps):
+    """Simple street lamps: a metal pole with an emissive head (boxes)."""
+    uv = (0.0, 0.0, 1.0, 1.0)
+    for lm in lamps:
+        x, z = lm["pos"]
+        ck = (int(math.floor(x / CHUNK_M)), int(math.floor(z / CHUNK_M)))
+        u = tuple(lm["u"])
+        emit_box(bk, (ck[0], ck[1], "street_metal"), (x, z), (1.0, 0.0), 0.12, 0.12, SIDEWALK_Y, 7.5, uv)
+        emit_box(bk, (ck[0], ck[1], "lamp_head"), (x, z), u, 0.45, 0.14, SIDEWALK_Y + 7.3, 0.25, uv)
 
 
 def emit_roof(bk, key, ring, top, uv_scale):
@@ -305,37 +655,6 @@ def save_scaled(img, path, fmt, size=TEX_SIZE):
     return path
 
 
-def make_lit_emissive(src_img, seed):
-    """Lit-window emissive atlas: dark/blue-grey glass blocks, ~28% lit at random, warm light."""
-    W, H = src_img.size
-    px = np.array(src_img.pixels[:], dtype=np.float32).reshape(H, W, 4)
-    rgb = px[..., :3]
-    lum = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
-    mask = ((lum < 0.34) & (rgb[..., 2] >= rgb[..., 0] * 0.95)).astype(np.float32)
-    bs = 24
-    hb, wb = H // bs, W // bs
-    frac = mask[:hb * bs, :wb * bs].reshape(hb, bs, wb, bs).mean(axis=(1, 3))
-    rng = np.random.default_rng(seed)
-    cand = frac > 0.35
-    lit = cand & (rng.random((hb, wb)) < LIT_FRACTION)
-    is_cool = rng.random((hb, wb)) < COOL_FRACTION
-    log("lit atlas %d: candidate cells %d, lit %.1f%% of candidates, cool %.1f%% of lit"
-        % (seed, int(cand.sum()), 100.0 * lit.sum() / max(1, cand.sum()),
-           100.0 * (is_cool & lit).sum() / max(1, lit.sum())))
-    lit_px = np.kron(lit.astype(np.float32), np.ones((bs, bs), dtype=np.float32))
-    warm = np.array([1.0, 0.80, 0.52], dtype=np.float32)
-    cool = np.array([0.72, 0.86, 1.0], dtype=np.float32)
-    col_blk = np.where(is_cool[..., None], cool, warm).astype(np.float32)
-    col_px = np.kron(col_blk, np.ones((bs, bs, 1), dtype=np.float32))
-    emit = np.zeros((H, W, 3), dtype=np.float32)
-    emit[:hb * bs, :wb * bs] = (lit_px * mask[:hb * bs, :wb * bs])[..., None] * col_px * 0.75
-    out = np.ones((H, W, 4), dtype=np.float32)
-    out[..., :3] = emit
-    img = bpy.data.images.new("emit_tmp_%d" % seed, width=W, height=H, alpha=False)
-    img.pixels.foreach_set(out.ravel().tolist())
-    return img
-
-
 def darken_to_target(img, target):
     """Scale RGB so the mean sRGB value of the image is at most target. Returns the factor used."""
     px = np.array(img.pixels[:], dtype=np.float32).reshape(-1, 4)
@@ -349,18 +668,35 @@ def darken_to_target(img, target):
 def make_textures(tex_dir, cells_all):
     os.makedirs(tex_dir, exist_ok=True)
     out = {}
-    for fam in ("apartment", "commercial", "industrial"):
-        src_path = os.path.join(TEX_SRC, "facades_%s.png" % fam)
-        src = load_image_file(src_path)
-        base_path = os.path.join(tex_dir, "facades_%s_base.jpg" % fam)
-        emit_path = os.path.join(tex_dir, "facades_%s_lit.jpg" % fam)
-        emit_img = make_lit_emissive(src, seed=sum(ord(c) for c in fam))
-        save_scaled(emit_img, emit_path, "JPEG", FACADE_TEX_SIZE)
-        k, m0 = darken_to_target(src, BASE_TARGET_SRGB)
-        log("facade %s albedo: mean sRGB %.3f -> %.3f (factor %.3f)" % (fam, m0, m0 * k, k))
-        save_scaled(src, base_path, "JPEG", FACADE_TEX_SIZE)
-        bpy.data.images.remove(emit_img)
-        out[fam] = {"base": base_path, "lit": emit_path}
+    style_man = json.load(open(FACADE_STYLES_MANIFEST, "r", encoding="utf-8"))
+    out["styles"] = {}
+    for st in style_man["styles"]:
+        out["styles"][st["name"]] = {"base": os.path.join(FACADE_STYLES_DIR, st["base"]),
+                                     "emit": os.path.join(FACADE_STYLES_DIR, st["emit"]),
+                                     "bay_m": st["bay_m"], "storey_m": st["storey_m"], "kind": st["kind"]}
+    out["_grid"] = (style_man["bays"], style_man["storeys"])
+    # Containers keep the original industrial atlas (their cell rectangles are in its pixel space).
+    cont_src = load_image_file(os.path.join(TEX_SRC, "facades_industrial.png"))
+    darken_to_target(cont_src, BASE_TARGET_SRGB)
+    cont_path = os.path.join(tex_dir, "containers_industrial.jpg")
+    save_scaled(cont_src, cont_path, "JPEG", 1024)
+    bpy.data.images.remove(cont_src)
+    out["container"] = cont_path
+    for key, src in (("asphalt", os.path.join(DERIVED, "asphalt_fine.png")),
+                     ("sidewalk", os.path.join(DERIVED, "concrete_cast.png")),
+                     ("corrugated", os.path.join(DERIVED, "corrugated_metal_seamless.png"))):
+        img = load_image_file(src)
+        path = os.path.join(tex_dir, "street_%s.jpg" % key)
+        save_scaled(img, path, "JPEG", 512)
+        bpy.data.images.remove(img)
+        out[key] = path
+    out["paint_white"] = os.path.join(TEX_SRC, "..", "road_decals", "line_single_white.png")
+    out["paint_yellow"] = os.path.join(TEX_SRC, "..", "road_decals", "line_double_yellow.png")
+    bill = load_image_file(os.path.join(TEX_SRC, "billboards_art.png"))
+    bill_path = os.path.join(tex_dir, "billboards_art.jpg")
+    save_scaled(bill, bill_path, "JPEG", 1024)
+    bpy.data.images.remove(bill)
+    out["billboards"] = bill_path
     roof_src = load_image_file(os.path.join(DERIVED, "rooftop_membrane.png"))
     k, m0 = darken_to_target(roof_src, ROOF_TARGET_SRGB)
     log("roof albedo: mean sRGB %.3f -> %.3f" % (m0, m0 * k))
@@ -375,7 +711,7 @@ def make_textures(tex_dir, cells_all):
 
 
 def make_material(name, base_img=None, base_rgb=(0.8, 0.8, 0.8), rough=0.8, metal=0.0,
-                  emit_img=None, emit_strength=0.0, alpha_mask=False, double_sided=False):
+                  emit_img=None, emit_strength=0.0, alpha_mask=False, double_sided=False, tint=None):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
@@ -385,7 +721,15 @@ def make_material(name, base_img=None, base_rgb=(0.8, 0.8, 0.8), rough=0.8, meta
     if base_img is not None:
         tn = nt.nodes.new("ShaderNodeTexImage")
         tn.image = base_img
-        nt.links.new(tn.outputs["Color"], bsdf.inputs["Base Color"])
+        if tint is not None and tint != (1.0, 1.0, 1.0):
+            mix = nt.nodes.new("ShaderNodeMixRGB")
+            mix.blend_type = "MULTIPLY"
+            mix.inputs["Fac"].default_value = 1.0
+            mix.inputs["Color2"].default_value = (tint[0], tint[1], tint[2], 1.0)
+            nt.links.new(tn.outputs["Color"], mix.inputs["Color1"])
+            nt.links.new(mix.outputs["Color"], bsdf.inputs["Base Color"])
+        else:
+            nt.links.new(tn.outputs["Color"], bsdf.inputs["Base Color"])
         if alpha_mask:
             nt.links.new(tn.outputs["Alpha"], bsdf.inputs["Alpha"])
     else:
@@ -408,14 +752,33 @@ def make_material(name, base_img=None, base_rgb=(0.8, 0.8, 0.8), rough=0.8, meta
 
 def make_materials(tex, kit_cells):
     mats = {}
-    for fam in ("apartment", "commercial", "industrial"):
-        base = load_image_file(tex[fam]["base"])
-        lit = load_image_file(tex[fam]["lit"])
-        mats["facade_" + fam] = make_material("facade_" + fam, base_img=base, rough=0.8,
-                                              emit_img=lit, emit_strength=EMIT_STRENGTH)
-        if fam == "industrial":
-            mats["container"] = make_material("container", base_img=base, rough=0.6)
+    mats["container"] = make_material("container", base_img=load_image_file(tex["container"]), rough=0.6)
     mats["roof_membrane"] = make_material("roof_membrane", base_img=load_image_file(tex["roof"]), rough=0.9)
+    corr = load_image_file(tex["corrugated"])
+    darken_to_target(corr, ROOF_TARGET_SRGB)
+    mats["roof_corrugated"] = make_material("roof_corrugated", base_img=corr, rough=0.6, metal=0.2)
+    for sname, info in tex["styles"].items():
+        base_img = load_image_file(info["base"])
+        emit_img = load_image_file(info["emit"])
+        for t, tint in enumerate(TINTS):
+            mats["style_%s_t%d" % (sname, t)] = make_material(
+                "style_%s_t%d" % (sname, t), base_img=base_img, rough=0.75,
+                emit_img=emit_img, emit_strength=EMIT_STRENGTH, tint=tint)
+    mats["street_asphalt"] = make_material("street_asphalt", base_img=load_image_file(tex["asphalt"]), rough=0.85)
+    mats["sidewalk"] = make_material("sidewalk", base_img=load_image_file(tex["sidewalk"]), rough=0.9)
+    mats["paint_white"] = make_material("paint_white", base_img=load_image_file(tex["paint_white"]),
+                                        rough=0.6, alpha_mask=True, double_sided=True)
+    mats["paint_yellow"] = make_material("paint_yellow", base_img=load_image_file(tex["paint_yellow"]),
+                                         rough=0.6, alpha_mask=True, double_sided=True)
+    bill = load_image_file(tex["billboards"])
+    mats["billboard"] = make_material("billboard", base_img=bill, rough=0.6,
+                                      emit_img=bill, emit_strength=1.2)
+    mats["balcony_slab"] = make_material("balcony_slab", base_img=load_image_file(tex["sidewalk"]), rough=0.85)
+    mats["balcony_rail"] = make_material("balcony_rail", base_rgb=(0.72, 0.72, 0.70), rough=0.6, metal=0.3)
+    mats["street_metal"] = make_material("street_metal", base_rgb=(0.22, 0.24, 0.27), rough=0.45, metal=0.7)
+    mats["lamp_head"] = make_material("lamp_head", base_rgb=(1.0, 0.85, 0.6), rough=0.3)
+    mats["lamp_head"].node_tree.nodes["Principled BSDF"].inputs["Emission Color"].default_value = (1.0, 0.82, 0.55, 1.0)
+    mats["lamp_head"].node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 10.0
     mats["foliage"] = make_material("foliage", base_img=load_image_file(tex["foliage"]), rough=0.8,
                                     alpha_mask=True, double_sided=True)
     mats["water"] = make_material("water", base_rgb=(0.05, 0.09, 0.12), rough=0.05, metal=0.0)
@@ -477,9 +840,10 @@ def landmark_matrix(lm, dims):
     w, d = lm["obb"]["w"], lm["obb"]["d"]
     H = lm["h"]
     cx, cz = lm["obb"]["c"]
-    sx = w / max(dims.x, 1e-3)
-    sy = d / max(dims.y, 1e-3)
-    sz = H / max(dims.z, 1e-3)
+    k = lm.get("scale")
+    if k is None:
+        k = min(w / max(dims.x, 1e-3), d / max(dims.y, 1e-3))
+    sx = sy = sz = k  # uniform: a kit building is never stretched
     M = Matrix.Identity(4)
     M.col[0] = Vector((ux * sx, -uz * sx, 0.0, 0.0))
     M.col[1] = Vector((vx * sy, -vz * sy, 0.0, 0.0))
@@ -523,12 +887,16 @@ def new_object(name, pos_flat, uv_flat, mat, scene_objs):
 
 
 def export_objects(objs, path):
+    """Render chunks export as .gltf with EXTERNAL textures (GLTF_SEPARATE): each image is written
+    once into the scenery folder and every chunk refers to it by a relative URI. Collision stays GLB."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.select_set(True)
     bpy.context.view_layer.objects.active = objs[0]
-    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True,
+    external = path.endswith(".gltf")
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLTF_SEPARATE" if external else "GLB",
+                              use_selection=True, export_yup=True,
                               export_image_format="AUTO", export_cameras=False, export_lights=False,
                               export_animations=False)
     set_glb_alpha_mask(path, "foliage", 0.5)
@@ -538,6 +906,19 @@ def set_glb_alpha_mask(path, mat_name, cutoff):
     """Blender 4.3 exports alpha-clipped materials as BLEND (its blend_method setter is ignored),
     so the glTF JSON chunk is rewritten to alphaMode MASK for the named material."""
     import struct
+    if path.endswith(".gltf"):
+        with open(path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        hit = False
+        for m in doc.get("materials", []):
+            if m.get("name") == mat_name:
+                m["alphaMode"] = "MASK"
+                m["alphaCutoff"] = cutoff
+                hit = True
+        if hit:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(doc, f, separators=(",", ":"))
+        return
     with open(path, "rb") as f:
         data = f.read()
     if len(data) < 20:
@@ -583,10 +964,18 @@ def main():
     bpy.ops.object.delete()
 
     cells_all = manifest_cells()
-    fam_cells = {}
+    units_man = json.load(open(FACADE_UNITS_MANIFEST, "r", encoding="utf-8"))
+    bill_size, bill_cells = cells_all["billboards_art"]
+    fam_units = {}
     for fam in ("apartment", "commercial", "industrial"):
-        size, cells = cells_all["facades_" + fam]
-        fam_cells[fam] = [rect_uv(c["atlas_source_rect"], size) for c in cells]
+        fm = units_man["families"][fam]
+        W, H = fm["size_px"]
+        up, gr = [], []
+        for u in fm["units"]:
+            x0, y0, x1, y1 = u["rect_px"]
+            uv = (x0 / W, 1.0 - y1 / H, x1 / W, 1.0 - y0 / H)   # content rect, no inset (padded)
+            (gr if u["ground"] else up).append(uv)
+        fam_units[fam] = {"upper": up, "ground": gr or up}
     fol_size, fol_cells = cells_all["foliage_cutouts"]
     fol_name_uv = {c["cell"]: rect_uv(c["atlas_source_rect"], fol_size) for c in fol_cells}
     cont_size, cont_cells = cells_all["facades_industrial"]
@@ -613,25 +1002,56 @@ def main():
         quad_nox(bk, key, a, b, c, d, (0, 0), (1, 0), (1, 1), (0, 1), (0.0, 1.0, 0.0))
     log("water rects emitted: %d" % len(plan["water_rects"]))
 
-    # Buildings.
-    lod_full = 0
+    # Buildings: one styled quad per wall (window grid from the style texture). Near buildings (within
+    # NEAR_M of an expressway) add shopfront ground floors, balconies, cornice and rooftop units.
+    STYLE_BY_NAME.clear()
+    for sname, info in tex["styles"].items():
+        STYLE_BY_NAME[sname] = info
+    STYLE_BY_NAME["_grid"] = tex["_grid"]
+    bill_uv = [rect_uv(c["atlas_source_rect"], bill_size) for c in bill_cells]
+    near_n = 0
     for b in plan["buildings"]:
         fam = b["family"]
         ring = [(p[0], p[1]) for p in b["ring"]]
         h = b["h"]
-        if b["lod"] == "full":
-            lod_full += 1
-            key = (b["cx"], b["cz"], "facade_" + fam)
-            emit_building_walls(bk, key, ring, h, fam, "full", b["pick"], fam_cells[fam], BASE_Y)
-            roof_key = (b["cx"], b["cz"], "roof_membrane")
-            emit_roof(bk, roof_key, ring, BASE_Y + h, 4.0)
+        flags = b.get("flags") or {}
+        near = b.get("near_m", 1e9) <= NEAR_M
+        near_n += 1 if near else 0
+        style = b.get("style") or "ivory_modern"
+        tint = int(b.get("tint", 0))
+        off = b.get("off") or [0, 0]
+        roof_mat = "roof_corrugated" if flags.get("corrugated") else "roof_membrane"
+        shop = "shopfront_retail" if near and fam != "industrial" else None
+        if b["lod"] == "full" and flags.get("setback") and h >= 60.0:
+            h1 = h * 0.7
+            emit_styled_walls(bk, b["cx"], b["cz"], ring, h1, style, tint, off, BASE_Y, near, shop)
+            emit_roof(bk, (b["cx"], b["cz"], roof_mat), ring, BASE_Y + h1, 4.0)
+            inner = scale_ring(ring, 0.72)
+            emit_styled_walls(bk, b["cx"], b["cz"], inner, h - h1, style, tint, [off[0] + 1, off[1]],
+                              BASE_Y + h1, False, None)
+            emit_roof(bk, (b["cx"], b["cz"], roof_mat), inner, BASE_Y + h, 4.0)
+            top_ring = inner
+            top = BASE_Y + h
         else:
-            key = (b["cx"], b["cz"], "facade_" + fam)
-            emit_building_walls(bk, key, ring, h, fam, "plain", b["pick"], fam_cells[fam], BASE_Y)
-            emit_roof(bk, (b["cx"], b["cz"], "roof_membrane"), ring, BASE_Y + h, 4.0)
+            emit_styled_walls(bk, b["cx"], b["cz"], ring, h, style, tint, off, BASE_Y, near, shop)
+            emit_roof(bk, (b["cx"], b["cz"], roof_mat), ring, BASE_Y + h, 4.0)
+            top_ring = ring
+            top = BASE_Y + h
+        if near:
+            emit_cornice(bk, (b["cx"], b["cz"], "roof_membrane"), top_ring, top)
+            emit_roof_features(bk, b["cx"], b["cz"], top_ring, top, flags, (b["cx"], b["cz"], "roof_membrane"))
+            if style.startswith("apartment"):
+                emit_balconies(bk, b["cx"], b["cz"], ring, h, STYLE_BY_NAME[style]["storey_m"], BASE_Y)
+            if flags.get("sign") and style.startswith(("spandrel", "office", "ivory")):
+                emit_sign(bk, b["cx"], b["cz"], ring, h, BASE_Y, b["pick"], bill_uv)
         ckey = (b["cx"], b["cz"], "col")
-        emit_building_walls(collision, ckey, ring, h, fam, "plain", 0, [(0, 0, 1, 1)], BASE_Y)
-    log("buildings emitted: %d (full %d)" % (len(plan["buildings"]), lod_full))
+        emit_building_walls(collision, ckey, ring, h, fam, "collision", 0,
+                            {"upper": [(0, 0, 1, 1)], "ground": [(0, 0, 1, 1)]}, BASE_Y)
+    log("buildings emitted: %d (near %d)" % (len(plan["buildings"]), near_n))
+
+    # City streets at grade and street lamps.
+    emit_street_pieces(bk, plan.get("streets", []))
+    emit_street_lamps(bk, plan.get("street_lamps", []))
 
     # Landmarks: kit mesh instances (transformed copies) plus OBB collision.
     placements = []
@@ -696,6 +1116,13 @@ def main():
                      (0.0, 0.0, 1.0))
     log("trees emitted: %d" % len(plan["trees"]))
 
+    # Remove stale scenery chunks (GLB from earlier passes, and the previous GLTF set).
+    scen_dir = os.path.join(out_dir, "scenery")
+    if os.path.isdir(scen_dir):
+        for fn in os.listdir(scen_dir):
+            if fn.endswith((".glb", ".gltf", ".bin", ".png", ".jpg")):
+                os.remove(os.path.join(scen_dir, fn))
+
     # Build render objects per (chunk, material) and collision objects per chunk.
     chunk_tris = defaultdict(int)
     render_objs = defaultdict(list)
@@ -720,7 +1147,7 @@ def main():
 
     chunks_meta = []
     for (cx, cz) in sorted(set(render_objs) | set(col_objs)):
-        rel_r = os.path.join("scenery", "%d_%d.glb" % (cx, cz))
+        rel_r = os.path.join("scenery", "%d_%d.gltf" % (cx, cz))
         rel_c = os.path.join("scenery_collision", "%d_%d_col.glb" % (cx, cz))
         rs = render_objs.get((cx, cz), [])
         cs = col_objs.get((cx, cz), [])
@@ -763,7 +1190,7 @@ def main():
         "textures": {k: os.path.relpath(v, ROOT).replace(os.sep, "/") if isinstance(v, str) else None
                      for k, v in tex.items() if isinstance(v, str)},
         "totals": {"render_tris": total_render, "collision_tris": total_col,
-                   "buildings": len(plan["buildings"]), "full_lod": lod_full,
+                   "buildings": len(plan["buildings"]), "near_buildings": near_n,
                    "landmarks": len(lm_objs), "containers": len(plan["containers"]),
                    "trees": len(plan["trees"]), "water_rects": len(plan["water_rects"])},
         "chunks": chunks_meta,

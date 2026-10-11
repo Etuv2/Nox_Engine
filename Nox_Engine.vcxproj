@@ -106,9 +106,11 @@
     <ClCompile Include="src\DriveMode.cpp" />
     <ClCompile Include="src\RoadNetwork.cpp" />
     <ClCompile Include="src\CollisionWorld.cpp" />
+    <ClCompile Include="src\UiIconAtlas.cpp" />
     <ClCompile Include="src\GameSession.cpp" />
     <ClCompile Include="src\DriveAudio.cpp" />
     <ClCompile Include="src\RacingHUD.cpp" />
+    <ClCompile Include="src\WorldMapUI.cpp" />
     <ClCompile Include="src\VehicleFX.cpp" />
     <ClCompile Include="src\ImGui\EditorWorkspace.cpp" />
     <ClCompile Include="src\ImGui\ConsoleLog.cpp" />
@@ -349,9 +351,11 @@
     <ClInclude Include="src\DriveMode.h" />
     <ClInclude Include="src\RoadNetwork.h" />
     <ClInclude Include="src\CollisionWorld.h" />
+    <ClInclude Include="src\UiIconAtlas.h" />
     <ClInclude Include="src\GameSession.h" />
     <ClInclude Include="src\DriveAudio.h" />
     <ClInclude Include="src\RacingHUD.h" />
+    <ClInclude Include="src\WorldMapUI.h" />
     <ClInclude Include="src\VehicleFX.h" />
     <ClInclude Include="src\PresentTarget.h" />
     <ClInclude Include="src\ImGui\EditorWorkspace.h" />

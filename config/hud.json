@@ -101,5 +101,43 @@
       ],
       "scale": 1.0
     }
+  },
+  "icons": {
+    "manifest": "textures/ui_icons/manifest.json",
+    "atlas": "textures/ui_icons/atlas/ui_icons_128.png",
+    "size": 128,
+    "roles": {
+      "menu/PAUSED": "menus/pause",
+      "menu/RESULTS": "events/trophy",
+      "gauge/boost": "hud/boost",
+      "gauge/n2o": "hud/nitrous",
+      "warning/WRONG WAY": "hud/wrong_way",
+      "warning/MISSED CHECKPOINT": "hud/missed_checkpoint",
+      "map/checkpoint": "navigation/checkpoint",
+      "map/next_checkpoint": "navigation/checkpoint",
+      "map/finish": "navigation/finish",
+      "map/start": "navigation/start",
+      "map/place": "navigation/parking",
+      "event/SPRINT RACE": "events/sprint",
+      "event/CIRCUIT": "events/circuit",
+      "event/DRIFT": "events/drift",
+      "event/TIME TRIAL": "events/time_trial",
+      "event/DRAG": "events/drag",
+      "event/SPEED TRAP": "events/speed_trap",
+      "result/finished": "events/trophy",
+      "result/record": "events/record",
+      "menu/Resume": "menus/play",
+      "menu/Restart Event": "menus/retry",
+      "menu/Retry": "menus/retry",
+      "menu/Quit Event": "menus/free_roam",
+      "menu/Free Roam": "menus/free_roam",
+      "menu/Reset Car": "menus/reset_car",
+      "menu/Exit Game": "menus/exit",
+      "key/Enter": "controls/enter",
+      "key/X": "controls/button_south",
+      "editor/save": "menus/save",
+      "editor/play": "menus/play",
+      "editor/pause": "menus/pause"
+    }
   }
 }

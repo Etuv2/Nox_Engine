@@ -98,3 +98,21 @@ ASCII-compatible UTF-8 without BOM.
 
 In-engine texture upload, HUD placement, runtime tinting and packaged-game
 rendering still need checking when the icons are integrated.
+
+## Engine integration
+
+`config/hud.json` has an `icons` block that drives the atlas: `manifest`
+(`textures/ui_icons/manifest.json`), `atlas` (`atlas/ui_icons_128.png`) and
+`size` (128). `UiIconAtlas` (`src/UiIconAtlas.*`) loads that atlas once, via the
+existing `Texture` class with mipmaps disabled, clamp-to-edge and linear
+filtering, and resolves manifest rectangles and `alias_of` entries. Icons are
+drawn with ImGui vertex tints (straight-alpha blending), so the cyan, lavender and
+red colours come from the config colours. `icons.roles` maps HUD roles to icon
+ids, keyed `<section>/<key>`: `gauge/*`, `warning/<message prefix>`, `map/*`,
+`event/<event type>`, `result/*`, `menu/<menu label or title>`, `key/<start key>`
+and `editor/*` (the editor toolbar). Missing icons, a missing manifest or a failed
+atlas upload keep the previous vector glyphs and text.
+
+Packaging: `tools/Package.ps1` ships the atlas PNG and manifest because
+`config/hud.json` references them. Only the 128 px atlas is shipped. The 64 px and
+256 px atlases are not referenced by the engine.

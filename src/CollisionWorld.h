@@ -52,7 +52,12 @@ public:
 	bool GroundBelow(const glm::vec3& top, float maxDrop, Hit& out) const;
 	// Pushes a sphere out of all triangles of the given classes. Returns the total displacement; the
 	// accumulated contact normal (normalised) is written to outNormal when there was contact.
-	glm::vec3 ResolveSphere(glm::vec3& center, float radius, uint8_t classMask, glm::vec3* outNormal = nullptr, int iterations = 2) const;
+	// Contacts whose closest point lies above contactMaxY are ignored (e.g. a vehicle's roof line:
+	// a sphere is wider than tall bodies, so overhead geometry would otherwise catch it).
+	glm::vec3 ResolveSphere(glm::vec3& center, float radius, uint8_t classMask, glm::vec3* outNormal = nullptr, int iterations = 2,
+		float contactMaxY = 1e30f) const;
+	// Wall triangles shorter than this (vertical extent) are slivers between ground surfaces, not walls.
+	float minWallHeight = 0.15f;
 
 private:
 	struct Tri { glm::vec3 a, e1, e2, n; uint8_t cls; };

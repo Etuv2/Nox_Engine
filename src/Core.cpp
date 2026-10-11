@@ -440,6 +440,7 @@ bool Core::InitializeGraphics() {
 	SetStyle(); // Solace theme (ImguiStyle.h)
 	solace::LoadFonts(15.0f, 1.0f);
 	RacingHUD::Get().LoadFonts();
+	RacingHUD::Get().LoadIcons(); // UI icon atlas (cached; used by the HUD and the editor toolbar)
 	DriveAudio::Get().Init();
 
 	// Compile shadow pass shader

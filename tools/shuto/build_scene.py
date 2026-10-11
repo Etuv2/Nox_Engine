@@ -2,7 +2,7 @@
 
 Inputs (all generated, never hand-edited):
   models/shuto/<section>/render/*.glb, collision/*_col.glb, lamps.json   (build_roads.py)
-  models/shuto/<section>/scenery/*.glb, scenery_collision/*_col.glb       (build_scenery.py, optional)
+  models/shuto/<section>/scenery/*.gltf, scenery_collision/*_col.glb       (build_scenery.py, optional)
   models/shuto/<section>/signs.glb                                       (compose_signs.py, optional)
   data/shuto/nox_road_network.json, data/shuto/network.json              (build_network.py)
   data/shuto/activities_<section>.json                                    (events / places, optional)
@@ -58,7 +58,7 @@ def main():
     scene['scene_name'] = 'shuto_' + args.section
     scene['render_settings'] = dict(scene.get('render_settings', {}), **RENDER_OVERRIDES)
     nodes = []
-    for path in chunk_files(os.path.join(sec, 'render', '*.glb')) + chunk_files(os.path.join(sec, 'scenery', '*.glb')):
+    for path in chunk_files(os.path.join(sec, 'render', '*.glb')) + chunk_files(os.path.join(sec, 'scenery', '*.gltf')):
         name = 'Shuto_' + os.path.splitext(os.path.basename(path))[0] + ('_scenery' if '/scenery/' in path else '_road')
         nodes.append({'type': 'model', 'name': name, 'path': path, 'position': [0, 0, 0], 'rotation': [0, 0, 0], 'scale': [1, 1, 1]})
     if os.path.exists(os.path.join(ROOT, sec, 'signs.glb')):
@@ -94,6 +94,10 @@ def main():
 
     game = {k: v for k, v in tg.items() if k not in ('road_network', 'events', 'spawn', 'drivable_areas')}
     game['road_network'] = {'file': 'data/shuto/nox_road_network.json'}
+    # World map screen (src/WorldMapUI): baked base image (tools/shuto/make_worldmap.py), labels, metadata.
+    game['world_map'] = {'image': 'textures/shuto/map/worldmap_base.png', 'bounds': [-19000, -23500, 17000, 37500],
+                         'labels': 'data/shuto/map_labels.json', 'network': 'data/shuto/network.json',
+                         'attribution': 'Map data (c) OpenStreetMap contributors (ODbL)'}
     game['collision'] = {'files': chunk_files(os.path.join(sec, 'collision', '*_col.glb')) +
                          chunk_files(os.path.join(sec, 'scenery_collision', '*_col.glb')), 'height_tolerance': 4.0}
     acts_path = os.path.join(ROOT, 'data', 'shuto', f'activities_{args.section}.json')

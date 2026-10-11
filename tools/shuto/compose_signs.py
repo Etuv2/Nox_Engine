@@ -380,8 +380,16 @@ def main():
             mb.quad(A, B, C, D, n, [[0, 1], [1, 1], [1, 0], [0, 0]])
             mb.quad(B, A, D, C, fwd, [[0.02, 0.02], [0.02, 0.02], [0.02, 0.02], [0.02, 0.02]])
             glb.mesh('sign_' + sid, mb.pos, mb.nrm, mb.uv, mb.idx, mat)
-            # Gantry: two posts outside the shoulders and a beam above the panel.
-            if steel_mat is not None:
+            # Gantry: two posts outside the shoulders and a beam above the panel. Posts are only built
+            # where the carriageway is at grade (base on the ground, not in the air beside an elevated
+            # or bridge deck, and not in a cut or tunnel). Elevated panels have no gantry (documented gap).
+            s_here = L_up - back
+            stype = 'at_grade'
+            for rng in upc.get('structure', []):
+                if rng['s0'] <= s_here < rng['s1']:
+                    stype = rng['type']
+            on_grade = stype == 'at_grade' and abs(pos[1] - float(net.get('ground_y', 3.0))) <= 1.5
+            if steel_mat is not None and on_grade:
                 for sgn in (-1.0, 1.0):
                     base = [pos[0] + R3[0] * span * 0.5 * sgn, pos[1], pos[2] + R3[2] * span * 0.5 * sgn]
                     steel_mesh.box([base[0], base[1] + (clear + hh) * 0.5, base[2]], list(R3), [0, 1, 0], list(fwd), 0.18, (clear + hh) * 0.5, 0.18)

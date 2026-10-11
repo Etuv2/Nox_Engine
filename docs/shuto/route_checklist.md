@@ -6,10 +6,10 @@ Columns: **net km** = carriageway km in the dataset (IN/CW + OUT/CCW incl. ramps
 
 | Route | Name | Era status | net km | graph | geometry | collision | scenery | signs | driven | activities | traffic |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| C1 | Inner Circular Route | open | 40.0 | yes | 29 % | 29 % | 29 % | 29 % | 27 % | 5 % | 0 % |
+| C1 | Inner Circular Route | open | 40.0 | yes | 29 % | 29 % | 29 % | 29 % | 28 % | 5 % | 0 % |
 | C2 | Central Circular Route | not_yet_open, open | 71.7 | yes | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % |
 | B | Bayshore Route | not_yet_open, open | 168.2 | yes | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % |
-| 1-Haneda | Haneda Route | open | 30.4 | yes | 23 % | 23 % | 23 % | 23 % | 22 % | 3 % | 0 % |
+| 1-Haneda | Haneda Route | open | 30.4 | yes | 23 % | 23 % | 23 % | 23 % | 23 % | 3 % | 0 % |
 | 1-Ueno | Ueno Route | open | 10.6 | yes | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % |
 | 2 | Meguro Route | open | 14.8 | yes | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % |
 | 3 | Shibuya Route | open | 29.9 | yes | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % |
@@ -32,7 +32,7 @@ Columns: **net km** = carriageway km in the dataset (IN/CW + OUT/CCW incl. ramps
 | S2 | Saitama Shintoshin Route | not_yet_open, open | 0.0 | - | - | - | - | - | - | - | 0 % |
 | S5 | Omiya Route | open | 17.1 | yes | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % |
 
-**Whole network:** geometry 3.3 %, collision 3.3 %, scenery 3.3 %, signs 3.3 %, driven 3.1 %, activities 0.6 %, traffic 0 %.
+**Whole network:** geometry 3.3 %, collision 3.3 %, scenery 3.3 %, signs 3.3 %, driven 3.2 %, activities 0.6 %, traffic 0 %.
 
 Carriageways: 1215; main connected component: 1170; other components: 45 (PA lot roads and unassigned ramps, see build_report.json).
 
