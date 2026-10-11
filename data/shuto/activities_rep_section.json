@@ -131,11 +131,11 @@
    "name": "Shibaura parking area",
    "name_ja": "芝浦PA (上り)",
    "pos": [
-    -1535.39,
-    37.1,
-    4458.27
+    -1534.4,
+    22.9,
+    4474.85
    ],
-   "radius": 40.0,
+   "radius": 30.0,
    "activities": [
     "rest",
     "meet",

@@ -121,6 +121,9 @@ public:
                         const glm::mat4& prevView,
                         const glm::mat4& prevProjection,
                         rhi::ProgramHandle velocityShader);
+    // When set, RenderVelocity draws only items whose world transform changed since the previous
+    // frame (or that are skinned); the caller supplies static/camera motion separately.
+    void SetVelocityMovingItemsOnly(bool movingOnly) { m_velocityMovingItemsOnly = movingOnly; }
 
     // Collect renderable objects for MDI batching
     void CollectRenderables(MDIBatch& batch);
@@ -165,6 +168,7 @@ private:
     
     // Rendering overrides
     bool m_forceBackfaceCulling = false;
+    bool m_velocityMovingItemsOnly = false;
 
     // Statistics
     size_t m_visibleCount = 0;
@@ -239,6 +243,8 @@ private:
         rhi::UniformLocation interiorStyle = -1;
         rhi::UniformLocation interiorPane = -1;
         rhi::UniformLocation interiorSill = -1;
+        rhi::UniformLocation interiorPaneUV = -1;
+        rhi::UniformLocation interiorFarDistance = -1;
 
         rhi::UniformLocation baseColorUVSet = -1;
         rhi::UniformLocation normalUVSet = -1;

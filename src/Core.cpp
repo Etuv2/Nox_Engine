@@ -1,11 +1,9 @@
 #include "Core.h"
 #include "BenchmarkRunner.h"
 #include "SceneRenderSettings.h"
-#include "DriveMode.h"
-#include "GameSession.h"
+#include "GameModule.h"
+#include "FrameProfiler.h"
 #include "PresentTarget.h"
-#include "RacingHUD.h"
-#include "DriveAudio.h"
 #include "ImGui/EditorWorkspace.h"
 #include "ImGui/ConsoleLog.h"
 #include "editor/solace/SolaceUI.h"
@@ -54,6 +52,7 @@
 #include "GizmoRayCast.h"
 #include "ShaderLoader.h"
 #include "Input/InputIntegration.h"
+#include "ui/Pointer.h"
 #include "PerformanceRecorder.h"
 #include "stb_image_write.h"
 
@@ -410,8 +409,12 @@ bool Core::Initialize(SDL_Window* window, int windowWidth, int windowHeight) {
 		SetMouseLocked(false);
 	}
 	else {
-		SDL_SetRelativeMouseMode(SDL_FALSE);
-		SDL_ShowCursor(SDL_DISABLE);
+		// Game: the pointer layer owns cursor visibility/capture (the game module requests a mode per
+		// frame: hidden while driving, visible in menus). ImGui must not reset the OS cursor each frame.
+		SetMouseLocked(false);
+		ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+		ui::Pointer::Get().SetCursorManaged(true);
+		ui::Pointer::Get().SetCursorMode(ui::CursorMode::Hidden);
 	}
 
 	std::cout << "[Core] Engine initialization complete!" << std::endl;
@@ -439,9 +442,9 @@ bool Core::InitializeGraphics() {
 	rhi::Gpu().ImGuiInit();
 	SetStyle(); // Solace theme (ImguiStyle.h)
 	solace::LoadFonts(15.0f, 1.0f);
-	RacingHUD::Get().LoadFonts();
-	RacingHUD::Get().LoadIcons(); // UI icon atlas (cached; used by the HUD and the editor toolbar)
-	DriveAudio::Get().Init();
+	// Optional game layer: created once; its fonts/atlases/audio need the device and ImGui.
+	if (!m_game) m_game = GameModules::Create();
+	if (m_game) m_game->InitializeResources();
 
 	// Compile shadow pass shader
 	m_shadowShader = CreateShaderProgram("shaders/shadow_vert.glsl", "shaders/shadow_frag.glsl");
@@ -652,11 +655,13 @@ bool Core::InitializeScene() {
 			m_modularRenderer->GetContext(), m_sceneToLoad, m_sceneHasRenderSettings);
 	}
 	m_benchmark = BenchmarkRunner::CreateFromEnvironment(m_sceneToLoad);
-	m_game = std::make_unique<GameSession>();
-	m_game->SetStandalone(m_launch.mode == AppMode::Game);
-	m_game->SetCameraTemplate(*m_camera);
+	if (!m_game) m_game = GameModules::Create();
+	if (m_game) {
+		m_game->SetStandalone(m_launch.mode == AppMode::Game);
+		m_game->SetCameraTemplate(*m_camera);
+	}
 	ConfigureGameFromScene(m_sceneToLoad);
-	if (!m_benchmark && m_game->IsAvailable() && (m_launch.mode == AppMode::Game || GetEnvVarString("NOX_DRIVE") == "1")) {
+	if (!m_benchmark && m_game && m_game->IsAvailable() && (m_launch.mode == AppMode::Game || m_game->WantsAutoPlay())) {
 		RequestPlay();
 	}
 
@@ -807,6 +812,7 @@ void Core::Shutdown() {
 }
 
 void Core::Update(float deltaTime) {
+	m_frameCpuStart = std::chrono::steady_clock::now();
 	PerformanceRecorder::ECSMetrics ecsMetrics{};
 
 	// Benchmark runs use a fixed simulation step so camera paths and captures are repeatable.
@@ -823,6 +829,7 @@ void Core::Update(float deltaTime) {
 	if (m_inputIntegration) {
 		m_inputIntegration->Update(deltaTime);
 	}
+	FrameProfiler::Mark("input");
 
 	// NOX_SWAP_SCENE=<frame>:<scene.json>: request a scene switch at that frame, like the editor does
 	// (test hook for scene-change regressions such as IBL/skybox regeneration).
@@ -855,11 +862,12 @@ void Core::Update(float deltaTime) {
 			const EditorWorkspace::Viewport& vp = m_editor->GetViewport(EditorWorkspace::Target::Game);
 			if (vp.size.x > 1.0f && vp.size.y > 1.0f) aspect = vp.size.x / vp.size.y;
 		}
-		if (m_game->Update(deltaTime, inputEnabled, aspect) == GameSession::MenuAction::ExitApplication) {
+		if (m_game->Update(deltaTime, inputEnabled, aspect) == IGameModule::UpdateResult::ExitApplication) {
 			m_quitRequested = true;
 		}
 	}
 
+	FrameProfiler::Mark("game");
 	// Scripted shots pose the camera and animated nodes after input so they always win.
 	bool cameraCut = false;
 	if (m_benchmark && m_camera && m_sceneGraph) {
@@ -899,6 +907,7 @@ void Core::Update(float deltaTime) {
 			transformSystem->BeginFrameDiagnostics();
 		}
 
+		FrameProfiler::Mark("benchmark_misc");
 		// Stage 1: ECS animation/transform
 		auto animationStart = std::chrono::high_resolution_clock::now();
 		m_sceneGraph->UpdateAnimations(deltaTime);
@@ -909,6 +918,7 @@ void Core::Update(float deltaTime) {
 		m_sceneGraph->UpdateAllTransforms();
 		auto transformSyncEnd = std::chrono::high_resolution_clock::now();
 		ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(transformSyncEnd - transformSyncStart).count();
+		FrameProfiler::Mark("transforms");
 		// A camera cut teleports scripted objects: their motion this frame is not real motion.
 		if (m_game && m_game->ConsumeTeleport()) {
 			cameraCut = true;
@@ -937,6 +947,7 @@ void Core::Update(float deltaTime) {
 			ecsMetrics.transformSystemMs += std::chrono::duration<float, std::milli>(postPhysicsTransformSyncEnd - postPhysicsTransformSyncStart).count();
 		}
 
+		FrameProfiler::Mark("physics");
 		// Stage 3: audio
 		if (m_sceneHasAudioNodes) {
 			glm::vec3 listenerPos = m_camera->GetCameraPosition();
@@ -1039,6 +1050,7 @@ void Core::RenderSceneTo(rhi::FramebufferHandle framebuffer, int width, int heig
 	if (RenderSystem* renderSystem = m_sceneGraph->GetRenderSystem()) {
 		renderSystem->BeginFrameDiagnostics();
 	}
+	FrameProfiler::Mark("update_tail");
 	m_modularRenderer->Render(
 		m_sceneGraph,
 		camera,
@@ -1075,26 +1087,44 @@ void Core::Render(int windowWidth, int windowHeight) {
 		for (const auto& metric : m_modularRenderer->GetLastPassMetrics()) {
 			passes.push_back({ metric.name, metric.gpuTimeMs, metric.cpuTimeMs });
 		}
-		m_benchmark->OnFrameRendered(m_windowWidth, m_windowHeight, passes);
+		FrameProfiler::Mark("render");
+		const float cpuMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - m_frameCpuStart).count();
+		m_benchmark->OnFrameRendered(m_windowWidth, m_windowHeight, passes, cpuMs);
 		m_quitRequested = m_benchmark->IsFinished();
 		return;
 	}
 
 	const float dt = m_frameTime * 0.001f;
 	if (!m_editor) {
-		// Standalone game: full-window scene with the racing HUD composited on top.
+		// Standalone game: full-window scene with the game's overlay composited on top.
 		const std::shared_ptr<Camera> camera = (m_game && m_game->IsAvailable()) ? m_game->GetCamera() : m_camera;
 		RenderSceneTo(rhi::kBackBuffer, m_windowWidth, m_windowHeight, camera);
+		FrameProfiler::Mark("render_scene");
+		if (FrameProfiler::Enabled()) {
+			static int diagFrame = 0;
+			const RenderSystem* rs = m_sceneGraph->GetRenderSystem();
+			if (rs && ++diagFrame % 600 == 0) {
+				const RenderSystem::Diagnostics& d = rs->GetDiagnostics();
+				std::cout << "[RenderDiag] items=" << d.renderItemCount << " visibleOpaque=" << d.visibleOpaqueCount
+					<< " visibleTransparent=" << d.visibleTransparentCount << " culled=" << d.frustumCulledCount
+					<< " gbufferDraws=" << d.geometryDrawCalls << " velocityDraws=" << d.velocityDrawCalls
+					<< " forwardDraws=" << d.forwardDrawCalls << " materialUploads=" << d.materialUploadCount
+					<< " materialCacheHits=" << d.materialCacheHitCount << " textureBinds=" << d.textureBindCount
+					<< " cameraCacheMs=" << d.cameraCacheBuildMs << std::endl;
+			}
+		}
 		rhi::Gpu().BindFramebuffer(rhi::kBackBuffer);
 		rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
 		rhi::Gpu().ImGuiNewFrame();
 		ImGui::NewFrame();
 		if (m_game) {
 			const ImVec2 size = ImGui::GetIO().DisplaySize;
-			m_game->DrawHUD(ImGui::GetForegroundDrawList(), glm::vec2(0.0f), glm::vec2(size.x, size.y), dt);
+			m_game->DrawOverlay(ImGui::GetForegroundDrawList(), glm::vec2(0.0f), glm::vec2(size.x, size.y), dt);
 		}
+		FrameProfiler::Mark("overlay");
 		ImGui::Render();
 		rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
+		FrameProfiler::Mark("imgui");
 		return;
 	}
 
@@ -1145,7 +1175,12 @@ void Core::Render(int windowWidth, int windowHeight) {
 }
 
 bool Core::ProcessInputEvent(const SDL_Event& event) {
-	// The game polls keyboard/pad state itself (GameSession), gated by viewport focus.
+	// Focus loss: key/button releases may never arrive; drop held input and end the fly camera.
+	if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST && m_inputIntegration) {
+		m_inputIntegration->OnFocusLost();
+		m_editorCameraActive = false;
+	}
+	// The game module polls keyboard/pad state itself, gated by viewport focus.
 	if (m_launch.mode == AppMode::Game || m_benchmark || !m_inputIntegration) {
 		return true;
 	}
@@ -1903,9 +1938,7 @@ void Core::ApplyGameJson(const json& game)
 {
 	if (!m_game || !m_sceneGraph || m_playing) return;
 	m_authoredGame = game;
-	const int selected = m_game->SelectedEvent();
-	m_game->Configure(game, m_sceneRootJson, *m_sceneGraph);
-	m_game->SetSelectedEvent(selected);
+	m_game->Reconfigure(game, m_sceneRootJson, *m_sceneGraph);
 }
 
 json Core::GetAuthoredGameJson() const

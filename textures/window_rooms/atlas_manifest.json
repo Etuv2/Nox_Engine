@@ -714,5 +714,77 @@
       },
       "sha256": "59a4455bb7e9bf0dccc85dfdf4eb3fed127d7fe494b9d85f42c40963df683d9b"
     }
-  ]
+  ],
+  "nox_interior": {
+    "description": "NOX engine interior atlas descriptor (README.md, Engine integration). Rooms are the assets in order; face slots follow face_order.",
+    "face_order": [
+      "back",
+      "left",
+      "right",
+      "ceiling",
+      "floor"
+    ],
+    "face_size": 512,
+    "styles": [
+      {
+        "name": "apartment",
+        "weights": {
+          "living_room_warm.png": 0.34,
+          "bedroom_warm.png": 0.3,
+          "office_cool.png": 0.1,
+          "cafe_warm.png": 0.06,
+          "living_room_tv_dim.png": 0.2
+        }
+      },
+      {
+        "name": "shop",
+        "weights": {
+          "shop_warm.png": 0.55,
+          "cafe_warm.png": 0.45
+        }
+      },
+      {
+        "name": "office",
+        "weights": {
+          "living_room_warm.png": 0.12,
+          "bedroom_warm.png": 0.08,
+          "office_cool.png": 0.7,
+          "living_room_tv_dim.png": 0.1
+        }
+      }
+    ],
+    "room_light_default": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "room_light": {
+      "living_room_tv_dim.png": [
+        0.5,
+        0.35,
+        0.5
+      ]
+    },
+    "room_shape": {
+      "side_margin": [
+        1.0,
+        1.4
+      ],
+      "height": [
+        3.4,
+        3.8
+      ],
+      "depth_jitter": 0.1,
+      "sill_scale": [
+        0.95,
+        1.08
+      ]
+    },
+    "pane_uv": [
+      4,
+      0.004,
+      0.242
+    ],
+    "far_distance": 80
+  }
 }

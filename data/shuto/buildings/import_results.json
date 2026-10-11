@@ -1,0 +1,224 @@
+{
+  "asset_import_status": "PASS",
+  "section": {
+    "status": "PASS",
+    "model_nodes_loaded": 169,
+    "model_nodes_expected": 169,
+    "room_atlas": {
+      "rooms": 6,
+      "faces": 30
+    },
+    "captures": [
+      {
+        "path": "captures/shuto/buildings/section_capture/dentsu/t2.50.png",
+        "dimensions": [
+          3440,
+          1440
+        ]
+      },
+      {
+        "path": "captures/shuto/buildings/section_capture/fuji/t2.50.png",
+        "dimensions": [
+          3440,
+          1440
+        ]
+      },
+      {
+        "path": "captures/shuto/buildings/section_capture/ginza_frontage/t2.50.png",
+        "dimensions": [
+          3440,
+          1440
+        ]
+      },
+      {
+        "path": "captures/shuto/buildings/section_capture/shibaura_residential/t2.50.png",
+        "dimensions": [
+          3440,
+          1440
+        ]
+      }
+    ],
+    "collision": {
+      "meshes": 108,
+      "triangles": 312065
+    },
+    "stderr": "Unknown node type: node",
+    "log": "logs/building_section_capture.log"
+  },
+  "standalone_kit_sources_and_edited_export": {
+    "status": "PASS",
+    "model_nodes_loaded": 233,
+    "model_nodes_expected": 233,
+    "room_atlas": {
+      "rooms": 6,
+      "faces": 30
+    },
+    "captures": [
+      {
+        "path": "captures/shuto/buildings/kit_import/landmark_fuji_tv/t0.80.png",
+        "dimensions": [
+          1600,
+          1000
+        ]
+      },
+      {
+        "path": "captures/shuto/buildings/kit_import/residential_balcony/t0.80.png",
+        "dimensions": [
+          1600,
+          1000
+        ]
+      },
+      {
+        "path": "captures/shuto/buildings/kit_import/retail_corner/t0.80.png",
+        "dimensions": [
+          1600,
+          1000
+        ]
+      },
+      {
+        "path": "captures/shuto/buildings/kit_import/source_japanese_01/t0.80.png",
+        "dimensions": [
+          1600,
+          1000
+        ]
+      },
+      {
+        "path": "captures/shuto/buildings/kit_import/warehouse_large/t0.80.png",
+        "dimensions": [
+          1600,
+          1000
+        ]
+      }
+    ],
+    "collision": null,
+    "stderr": "[DriveMode] player_node not found",
+    "log": "logs/building_kit_capture.log"
+  },
+  "static_glb_files_checked": 401,
+  "originals": [
+    {
+      "file": "asian_themed_low_poly_night_city_buildings.glb",
+      "sha256": "beec9e85e7ae0364e2738ef6706e15aea28c5d971f605b901d1fe1cb428ffb50",
+      "unchanged": true
+    },
+    {
+      "file": "japanese_building__cc0.glb",
+      "sha256": "9fd3099415c308e3a235176eef6bebb26cd94ef314ca4f3476efa11ace29ec5a",
+      "unchanged": true
+    },
+    {
+      "file": "low-poly_city_buildings.glb",
+      "sha256": "a21c70cd21d635a6c2968fbec2d32fd45a7893743eff6a06958e73ded22ba2fd",
+      "unchanged": true
+    }
+  ],
+  "performance": {
+    "hardware": "RTX 3080 / Ryzen 7 5800X",
+    "quality": "High",
+    "resolution": [
+      3440,
+      1440
+    ],
+    "target_hz": 165,
+    "target_ms": 6.0606060606060606,
+    "target_met": false,
+    "overall": {
+      "frame_ms": {
+        "median": 11.252750396728516,
+        "p95": 13.601755142211914,
+        "p99": 14.38530445098877
+      },
+      "gpu_ms": {
+        "median": 6.446591377258301,
+        "p95": 8.698162078857422,
+        "p99": 9.279088973999023
+      }
+    },
+    "repeat": 3,
+    "samples": 2172,
+    "shots": [
+      {
+        "name": "dentsu",
+        "frame_ms": {
+          "max": 14.184900283813477,
+          "median": 10.604000091552734,
+          "p95": 12.295038223266602,
+          "p99": 12.703780174255371
+        },
+        "gpu_ms": {
+          "median": 5.873663902282715,
+          "p95": 7.531213283538818,
+          "p99": 8.090091705322266
+        }
+      },
+      {
+        "name": "fuji",
+        "frame_ms": {
+          "max": 15.605799674987793,
+          "median": 9.009699821472168,
+          "p95": 10.48169994354248,
+          "p99": 11.364559173583984
+        },
+        "gpu_ms": {
+          "median": 5.01145601272583,
+          "p95": 6.620057106018066,
+          "p99": 6.950481414794922
+        }
+      },
+      {
+        "name": "ginza_frontage",
+        "frame_ms": {
+          "max": 14.587800025939941,
+          "median": 12.182600021362305,
+          "p95": 13.791199684143066,
+          "p99": 14.269403457641602
+        },
+        "gpu_ms": {
+          "median": 7.539710998535156,
+          "p95": 9.002494812011719,
+          "p99": 9.502740859985352
+        }
+      },
+      {
+        "name": "shibaura_residential",
+        "frame_ms": {
+          "max": 16.252500534057617,
+          "median": 12.383000373840332,
+          "p95": 14.17763900756836,
+          "p99": 15.185141563415527
+        },
+        "gpu_ms": {
+          "median": 7.195647716522217,
+          "p95": 8.8550386428833,
+          "p99": 9.273836135864258
+        }
+      }
+    ],
+    "interpretation": "Frame wall time includes CPU and GPU scheduling; GPU pass sums are not end-to-end FPS",
+    "road_only_comparison": {
+      "overall": {
+        "frame_ms": {
+          "median": 8.853300094604492,
+          "p95": 10.972404479980469,
+          "p99": 11.93034553527832
+        },
+        "gpu_ms": {
+          "median": 4.770815849304199,
+          "p95": 6.699468612670898,
+          "p99": 7.46073055267334
+        }
+      },
+      "target_met": false,
+      "method": "Same scene settings, roads, lights, player and camera shots; all building/context render and collision chunks removed",
+      "samples": 2172
+    }
+  },
+  "not_validated": [
+    "Full-course driving, collision response and traversal regression",
+    "Every placement's visual appearance; four district views and five standalone views inspected",
+    "Standalone lower LOD appearance at every transition; files imported, no runtime LOD switch implemented",
+    "Historical accuracy of undated current OSM footprints and inferred heights",
+    "Remaining road-graph-only network has no buildings placed"
+  ],
+  "licensing_limit": "Japanese source is locally editable and imported but excluded from public standalone archive: embedded Sketchfab Standard"
+}

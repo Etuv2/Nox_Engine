@@ -28,6 +28,7 @@ struct Particle {
 	float roll = 0.0f;
 	float rollRate = 0.0f;
 	float seed = 0.0f;
+	float floorY = -1e30f;  // ground under the emitter
 	Kind kind = Kind::Smoke;
 	bool alive = false;
 };
@@ -94,7 +95,7 @@ Particle& AllocateSlot()
 	return g_particles[idx];
 }
 
-void SpawnSmoke(const glm::vec3& pos, const glm::vec3& baseVel, float intensity, float dt)
+void SpawnSmoke(const glm::vec3& pos, const glm::vec3& baseVel, float intensity, float dt, float floorY)
 {
 	const int count = StochasticCount(kSmokeRate * intensity * dt);
 	for (int i = 0; i < count; ++i) {
@@ -112,12 +113,13 @@ void SpawnSmoke(const glm::vec3& pos, const glm::vec3& baseVel, float intensity,
 		p.roll = RandRange(0.0f, kTwoPi);
 		p.rollRate = RandRange(-0.6f, 0.6f);
 		p.seed = Rand01();
+		p.floorY = floorY;
 		p.kind = Kind::Smoke;
 		p.alive = true;
 	}
 }
 
-void SpawnSpray(const glm::vec3& pos, const glm::vec3& baseVel, float intensity, float dt)
+void SpawnSpray(const glm::vec3& pos, const glm::vec3& baseVel, float intensity, float dt, float floorY)
 {
 	const int count = StochasticCount(kSprayRate * intensity * dt);
 	for (int i = 0; i < count; ++i) {
@@ -130,6 +132,7 @@ void SpawnSpray(const glm::vec3& pos, const glm::vec3& baseVel, float intensity,
 		p.roll = RandRange(0.0f, kTwoPi);
 		p.rollRate = RandRange(-4.0f, 4.0f);
 		p.seed = Rand01();
+		p.floorY = floorY;
 		if (Rand01() < kMistShare) {
 			p.kind = Kind::Mist;
 			p.life = RandRange(1.0f, 1.6f);
@@ -171,12 +174,12 @@ void Integrate(Particle& p, float dt)
 	}
 	p.pos += p.vel * dt;
 	p.roll += p.rollRate * dt;
-	// Droplets that fall back onto the road are gone; mist and smoke never sink below it.
-	if (p.kind == Kind::Droplet && p.pos.y < 0.0f) {
+	// Droplets that fall back onto the ground are gone; mist and smoke never sink below it.
+	if (p.kind == Kind::Droplet && p.pos.y < p.floorY) {
 		p.alive = false;
 		return;
 	}
-	p.pos.y = std::max(p.pos.y, 0.0f);
+	p.pos.y = std::max(p.pos.y, p.floorY);
 }
 
 void BuildRenderList()
@@ -221,35 +224,43 @@ void BuildRenderList()
 	}
 }
 
-// Test harness: fixed sources near the scenes/nfs_sprint.json spawn (x=-2, z=-40, road at y=0).
+// Test harness: the sources supplied by the game module (SetTestEmitters).
+std::vector<TestEmitter> g_testEmitters;
+
 void RunTestEmitters(float dt)
 {
 	const float wobble = 0.5f + 0.5f * std::sin(g_time * 1.7f);
-	EmitSmoke(glm::vec3(-2.9f, 0.3f, -41.0f), glm::vec3(0.0f), 1.0f, dt);             // burnout, left rear
-	EmitSmoke(glm::vec3(-1.1f, 0.3f, -41.0f), glm::vec3(0.0f), 0.5f + 0.4f * wobble, dt); // wheelspin, right rear
-	EmitSpray(glm::vec3(-2.0f, 0.02f, -44.0f), glm::vec3(0.0f, 0.0f, -6.0f), 0.9f, dt);  // wet-road spray
+	for (const TestEmitter& e : g_testEmitters) {
+		const float intensity = e.intensity + e.wobble * wobble;
+		if (e.spray) {
+			EmitSpray(e.pos, e.velocity, intensity, dt, e.floorY);
+		}
+		else {
+			EmitSmoke(e.pos, e.velocity, intensity, dt, e.floorY);
+		}
+	}
 }
 
 } // namespace
 
-void EmitSmoke(const glm::vec3& pos, const glm::vec3& baseVelocity, float intensity, float dt)
+void EmitSmoke(const glm::vec3& pos, const glm::vec3& baseVelocity, float intensity, float dt, float floorY)
 {
 	if (!g_enabled) {
 		return;
 	}
 	intensity = std::clamp(intensity, 0.0f, 1.0f);
 	dt = std::clamp(dt, 0.0f, kMaxStep);
-	SpawnSmoke(pos, baseVelocity, intensity, dt);
+	SpawnSmoke(pos, baseVelocity, intensity, dt, floorY);
 }
 
-void EmitSpray(const glm::vec3& pos, const glm::vec3& baseVelocity, float intensity, float dt)
+void EmitSpray(const glm::vec3& pos, const glm::vec3& baseVelocity, float intensity, float dt, float floorY)
 {
 	if (!g_enabled) {
 		return;
 	}
 	intensity = std::clamp(intensity, 0.0f, 1.0f);
 	dt = std::clamp(dt, 0.0f, kMaxStep);
-	SpawnSpray(pos, baseVelocity, intensity, dt);
+	SpawnSpray(pos, baseVelocity, intensity, dt, floorY);
 }
 
 void Update(float dt)
@@ -298,6 +309,11 @@ size_t ParticleCount()
 const std::vector<RenderParticle>& GetRenderParticles()
 {
 	return g_render;
+}
+
+void SetTestEmitters(const std::vector<TestEmitter>& emitters)
+{
+	g_testEmitters = emitters;
 }
 
 bool TestHarnessActive()

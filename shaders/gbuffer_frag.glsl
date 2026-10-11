@@ -90,16 +90,19 @@ uniform int transmissionUVSet = 0;
 
 uniform bool uSpecularAA = true;
 
-// Window interior mapping (includes/interior_mapping.glsl). 0 = off, so other materials are unchanged.
+// Window interior mapping (includes/interior_mapping.glsl). 0 = off, 1 = parallax room, 2 = flat
+// mean radiance; other materials are unchanged.
 uniform float interiorMapping = 0.0;
 uniform float interiorDepth = 4.0;
 uniform float interiorStrength = 1.0;
 uniform float interiorSeed = 0.0;
 uniform float interiorLighting = 0.5;
-uniform float interiorBlinds = 0.5;
+uniform float interiorBlinds = 0.0;
 uniform float interiorStyle = 0.0;
-uniform vec2 interiorPane = vec2(0.8, 1.0); // pane half extents (m)
+uniform vec2 interiorPane = vec2(0.0);       // pane half extents (m), <= 0 = from UV derivatives
+uniform vec3 interiorPaneUV = vec3(0.0);     // pane UV layout (grid, inset, extent), grid <= 0 = atlas default
 uniform float interiorSill = 0.8;            // room floor below the pane's bottom edge (m)
+uniform float interiorFarDistance = -1.0;    // flat beyond this distance (m); < 0 = atlas default, 0 = never
 uniform mat4 view;   // camera view matrix (eye position for interior parallax)
 
 void main() {
@@ -233,11 +236,12 @@ void main() {
     //  Emissive 
     vec3 emissive = emissiveFactor;
     if (interiorMapping > 0.5) {
-        // The room behind the pane (interior atlas or procedural fallback) replaces the emissive texture.
+        // The room behind the pane (interior atlas or neutral room) replaces the emissive texture.
         vec3 camPos = -(transpose(mat3(view)) * view[3].xyz);
         float footprint = max(length(dFdx(WorldPos)), length(dFdy(WorldPos)));
         vec3 room = NoxInteriorWindow(WorldPos, geoNormal, TBN[0], RawTangent.w, TexCoords, camPos,
-            interiorPane, interiorSill, interiorDepth, interiorLighting, interiorBlinds, interiorStyle, interiorSeed, footprint, uWeatherTime);
+            interiorPane, interiorPaneUV, interiorSill, interiorDepth, interiorLighting, interiorBlinds, interiorStyle,
+            interiorSeed, interiorMapping, interiorFarDistance, footprint);
         emissive = emissiveFactor * room * interiorStrength;
     }
     else if (hasEmissiveTexture) {

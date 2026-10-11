@@ -674,5 +674,5 @@
     "white_balance_temperature": 5200.0
   },
   "scene_name": "Shuto Test Site",
-  "skybox": "hdrs\\cc0\\night_city.hdr"
+  "skybox": {"path": "hdrs/cc0/kloppenheim_07_4k.hdr", "fallback": "hdrs/cc0/night_clear.hdr", "rotation_deg": 0.0, "intensity": 1.0, "max_radiance": 8.0, "ground": {"color": [0.06, 0.05, 0.04], "blend_start_deg": 5.0, "blend_end_deg": -2.0}}
 }

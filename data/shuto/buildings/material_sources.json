@@ -1,0 +1,320 @@
+[
+  {
+    "file": "concrete_cast.png",
+    "source": "concrete_cast.png",
+    "source_sha256": "70e8024128594451e8acf734d036f4260b22d2be44a3b0d33a7b6aa69f5a6fce",
+    "processing": "mirror tile, 512 px; inspect mirrored repetition in close views",
+    "edge_mae": [
+      0.0,
+      0.0
+    ],
+    "roughness": 0.85,
+    "metallic": 0
+  },
+  {
+    "file": "concrete_weathered.png",
+    "source": "concrete_weathered.png",
+    "source_sha256": "4eaec6d9dc67f10eadd0cff61b1cbc5701ac1cef63f89e80c82b4d2167599682",
+    "processing": "mirror tile, 512 px; inspect mirrored repetition in close views",
+    "edge_mae": [
+      0.0,
+      0.0
+    ],
+    "roughness": 0.92,
+    "metallic": 0
+  },
+  {
+    "file": "corrugated_metal.png",
+    "source": "corrugated_metal.png",
+    "source_sha256": "2656ebc944ad8bde9f44736fcd91bcb36aeba988a7b863883ecb99f963a7882f",
+    "processing": "mirror tile, 512 px; inspect mirrored repetition in close views",
+    "edge_mae": [
+      0.0,
+      0.0
+    ],
+    "roughness": 0.7,
+    "metallic": 0
+  },
+  {
+    "file": "galvanized_steel.png",
+    "source": "galvanized_steel.png",
+    "source_sha256": "d6a25547dce4a44c45402e3a176d6beee0382d326b84e42c3642062ccf79794c",
+    "processing": "mirror tile, 512 px; inspect mirrored repetition in close views",
+    "edge_mae": [
+      0.0,
+      0.0
+    ],
+    "roughness": 0.5,
+    "metallic": 1
+  },
+  {
+    "file": "rooftop_membrane.png",
+    "source": "rooftop_membrane.png",
+    "source_sha256": "246335b09960f61c0c2370fa2e40732069749754cf9b56a987c0a6db762f80a9",
+    "processing": "mirror tile, 512 px; inspect mirrored repetition in close views",
+    "edge_mae": [
+      0.0,
+      0.0
+    ],
+    "roughness": 0.9,
+    "metallic": 0
+  },
+  {
+    "file": "patch_apartment_0.png",
+    "source": "facades_apartment.png",
+    "source_rect": [
+      0,
+      0,
+      627,
+      627
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_apartment_1.png",
+    "source": "facades_apartment.png",
+    "source_rect": [
+      627,
+      0,
+      1254,
+      627
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_apartment_2.png",
+    "source": "facades_apartment.png",
+    "source_rect": [
+      0,
+      627,
+      627,
+      1254
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_apartment_3.png",
+    "source": "facades_apartment.png",
+    "source_rect": [
+      627,
+      627,
+      1254,
+      1254
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_commercial_0.png",
+    "source": "facades_commercial.png",
+    "source_rect": [
+      0,
+      0,
+      627,
+      627
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_commercial_1.png",
+    "source": "facades_commercial.png",
+    "source_rect": [
+      627,
+      0,
+      1254,
+      627
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_commercial_2.png",
+    "source": "facades_commercial.png",
+    "source_rect": [
+      0,
+      627,
+      627,
+      1254
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_commercial_3.png",
+    "source": "facades_commercial.png",
+    "source_rect": [
+      627,
+      627,
+      1254,
+      1254
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_industrial_0.png",
+    "source": "facades_industrial.png",
+    "source_rect": [
+      0,
+      0,
+      627,
+      627
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_industrial_1.png",
+    "source": "facades_industrial.png",
+    "source_rect": [
+      627,
+      0,
+      1254,
+      627
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_industrial_2.png",
+    "source": "facades_industrial.png",
+    "source_rect": [
+      0,
+      627,
+      627,
+      1254
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "patch_industrial_3.png",
+    "source": "facades_industrial.png",
+    "source_rect": [
+      627,
+      627,
+      1254,
+      1254
+    ],
+    "uv_blender_bottom_left": [
+      0.015625,
+      0.015625,
+      0.984375,
+      0.984375
+    ],
+    "use": "single middle/far facade patch; never repeat whole source atlas"
+  },
+  {
+    "file": "sign_minato_coffee.png",
+    "japanese": "\u55ab\u8336 \u6e2f",
+    "english": "MINATO COFFEE",
+    "fonts": [
+      "Noto Sans JP Bold",
+      "Barlow Condensed SemiBold"
+    ],
+    "font_license": "SIL-OFL-1.1",
+    "source": [
+      "sign_panel_blanks.png",
+      "billboards_art.png"
+    ],
+    "fictional_scenery": true
+  },
+  {
+    "file": "sign_aoba_store.png",
+    "japanese": "\u9752\u8449\u5546\u5e97",
+    "english": "AOBA STORE",
+    "fonts": [
+      "Noto Sans JP Bold",
+      "Barlow Condensed SemiBold"
+    ],
+    "font_license": "SIL-OFL-1.1",
+    "source": [
+      "sign_panel_blanks.png",
+      "billboards_art.png"
+    ],
+    "fictional_scenery": true
+  },
+  {
+    "file": "sign_shibaura_storage.png",
+    "japanese": "\u829d\u6d66\u5009\u5eab",
+    "english": "SHIBAURA STORAGE",
+    "fonts": [
+      "Noto Sans JP Bold",
+      "Barlow Condensed SemiBold"
+    ],
+    "font_license": "SIL-OFL-1.1",
+    "source": [
+      "sign_panel_blanks.png",
+      "billboards_art.png"
+    ],
+    "fictional_scenery": true
+  },
+  {
+    "file": "sign_atlas.png",
+    "rows_top_to_bottom": [
+      "minato_coffee",
+      "aoba_store",
+      "shibaura_storage"
+    ],
+    "use": "placed chunks: one sign material per chunk; same lettering as the single sign images"
+  }
+]

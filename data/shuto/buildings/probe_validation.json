@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "checks": [
+    {
+      "path": "models/shuto/buildings/probe/apartment_06.glb",
+      "triangles": 2362,
+      "parallax_panes": 84,
+      "bounds": [
+        [
+          -7.199999809265137,
+          0.0,
+          -6.5
+        ],
+        [
+          8.300000190734863,
+          22.0,
+          5.400000095367432
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 360892
+    }
+  ]
+}

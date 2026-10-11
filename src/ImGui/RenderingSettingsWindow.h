@@ -41,7 +41,6 @@ public:
 private:
 	// Night-street look development controls (docs/nfs2015/configuration.md). Edits the renderer
 	// context directly; scene "render_settings" provide the starting values.
-	void DrawNightStreetTab();
 
 	// Engine resolution
 	glm::ivec2 m_windowResolution = glm::ivec2(1920, 1080);

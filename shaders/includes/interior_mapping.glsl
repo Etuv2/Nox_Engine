@@ -3,43 +3,53 @@
 
 // Window interior mapping: a parallax room box behind each window pane.
 //
-// Geometry contract (window quads): the pane spans 2 * paneHalf metres (material interiorPane,
-// default 0.8 x 1.0 = 1.6 x 2.0 m) along the tangent (image right) and the bitangent (image up). Its UV
-// spans one 0.242 tile of a 4x4 grid starting at (tile * 0.25 + 0.004). The tile origin is recovered
-// with floor(uv * 4), which gives the pane-local coordinates. The pane centre follows from the world
-// position, so each window gets a stable id without extra vertex data.
+// Pane contract (all per material, with per-atlas defaults; nothing here assumes a pane size):
+//   * The pane spans 2 * paneHalf metres along the tangent (image right) and the derived bitangent
+//     cross(N, T) * tangent.w (image up). paneHalf <= 0 derives the size from the UV derivatives.
+//   * Pane UV layout (grid, inset, extent): the pane occupies [cell/grid + inset, + extent] of a
+//     grid x grid tiling of TEXCOORD_0, v growing downwards (glTF). grid <= 0 on the material uses
+//     the atlas default (uInteriorPaneUV); grid <= 0 there too infers the layout, assuming the pane
+//     is centred in its cell (a pane spanning the whole 0..1 UV square is grid 1).
+//   The pane centre follows from the world position, so each window gets a stable id without
+//   extra vertex data.
 //
 // Room source:
-//   * Interior atlas (SceneRenderExtras::interiorAtlas, bound by GBufferPass): N baked five-face rooms,
-//     one texture-array layer per face, so trilinear/LOD sampling never bleeds between faces. Baked rooms
-//     carry their own lighting and furniture: no procedural light, furniture or figures are added.
-//     The variant is chosen per window from the stable id with the scene's per-style weights; the
-//     material's interiorStyle selects the weight row.
-//   * Fallback (no atlas): the procedural room below.
-// Blinds, curtains, the sash frame and the mullion stay in the foreground for both sources.
+//   * Interior atlas (SceneRenderExtras::interiorAtlas, bound by GBufferPass): N rooms of F face
+//     layers each (F and the face roles come from the atlas data). One texture-array layer per face,
+//     so mip sampling never bleeds between faces. Baked rooms carry their own lighting.
+//     uInteriorRoomData holds per-room light, the per-room mean radiance and one cumulative variant
+//     weight row per style; the material style selects the row (clamped to the atlas row count).
+//   * No atlas: a plain, neutral lit box (no furniture, no figures, no animation).
+// Blinds, curtains, the sash frame and the mullion stay in the foreground for both sources and
+// are controlled by the material's blinds probability (0 = none).
+//
+// Cheap path: interiorMode 2 (material "flat") or camera distance beyond the far distance shades
+// the pane with the room's mean radiance (no ray-box, no atlas sample).
 //
 // Output is relative room radiance (about 0..1 for a fully lit room). The caller multiplies it by
 // emissiveFactor and interiorStrength; the material emissiveStrength (cd/m^2) is applied by lighting.
 // The glass itself is left to the material as a smooth dielectric.
 
-const float NOX_IM_TILE = 0.242;   // atlas UV span of one pane
+// Face roles (InteriorAtlas::FaceRole).
+const int NOX_ROLE_BACK = 0;
+const int NOX_ROLE_LEFT = 1;
+const int NOX_ROLE_RIGHT = 2;
+const int NOX_ROLE_CEILING = 3;
+const int NOX_ROLE_FLOOR = 4;
+const int NOX_ROLE_COUNT = 5;
 
-// Interior atlas (GBufferPass binds it from SceneRenderExtras::interiorAtlas).
-const int NOX_ROOM_FACES = 5;      // layer = room * 5 + face
-const int NOX_FACE_BACK = 0;
-const int NOX_FACE_LEFT = 1;
-const int NOX_FACE_RIGHT = 2;
-const int NOX_FACE_CEILING = 3;
-const int NOX_FACE_FLOOR = 4;
-const int NOX_ROOMS_MAX = 8;       // InteriorAtlas::kMaxRooms
-const int NOX_STYLES_MAX = 4;      // InteriorAtlas::kMaxStyles
 uniform sampler2DArray uInteriorAtlas;
+uniform sampler2D uInteriorRoomData;   // RGBA32F, x = room: row 0 light, row 1 mean radiance (rgb) + back-wall luminance (a), row 2+s style s CDF (r)
 uniform bool uInteriorAtlasReady = false;
 uniform int uInteriorRoomCount = 0;
-uniform float uInteriorFaceSize = 512.0;                       // texels per face layer edge
-uniform vec3 uInteriorFaceMean[NOX_ROOMS_MAX * NOX_ROOM_FACES];  // mean radiance per face (distant fallback)
-uniform vec3 uInteriorRoomLight[NOX_ROOMS_MAX];                // occupied brightness, chance on when unoccupied, that brightness
-uniform float uInteriorStyleWeights[NOX_STYLES_MAX * NOX_ROOMS_MAX]; // [style * NOX_ROOMS_MAX + room]
+uniform int uInteriorStyleCount = 1;
+uniform int uInteriorFacesPerRoom = 0;
+uniform int uInteriorRoleSlot[NOX_ROLE_COUNT];               // face slot per role, -1 = not in the atlas
+uniform float uInteriorFaceSize = 512.0;                     // texels per face layer edge
+uniform vec4 uInteriorRoomShape = vec4(1.0, 1.4, 2.8, 3.2);  // side margin min/max, floor-to-ceiling min/max (m)
+uniform vec3 uInteriorRoomJitter = vec3(0.1, 1.0, 1.0);      // depth jitter (fraction), sill scale min/max
+uniform vec3 uInteriorPaneUV = vec3(0.0);                    // default pane UV layout: grid, inset, extent (grid 0 = infer)
+uniform float uInteriorFarDistance = 0.0;                    // default flat-path distance (m), 0 = never
 
 float NoxIMHash(vec3 p) {
     p = fract(p * 0.1031);
@@ -51,18 +61,6 @@ float NoxIMRand(vec3 id, float k) {
     return NoxIMHash(id + vec3(k, k * 0.731, k * 1.913));
 }
 
-// Slab test for an axis-aligned box. Returns the entry distance, or -1 on a miss.
-float NoxIMBox(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax, out float tExit) {
-    vec3 inv = 1.0 / rd;
-    vec3 t0 = (bmin - ro) * inv;
-    vec3 t1 = (bmax - ro) * inv;
-    vec3 tmin = min(t0, t1);
-    vec3 tmax = max(t0, t1);
-    float tEnter = max(max(tmin.x, tmin.y), tmin.z);
-    tExit = min(min(tmax.x, tmax.y), tmax.z);
-    return (tExit >= max(tEnter, 0.0)) ? tEnter : -1.0;
-}
-
 // What the foreground layers need from either room source.
 struct NoxIMRoomSample {
     vec3 color;      // room radiance through the pane
@@ -71,279 +69,246 @@ struct NoxIMRoomSample {
     float curtLit;   // light level on curtains
 };
 
+// Ray-box exit of the room seen through the pane.
+struct NoxIMHit {
+    int role;        // NOX_ROLE_*
+    vec2 fuv;        // face UV, textures/window_rooms/README.md "Room-space mapping"
+    float tHit;      // distance behind the glass along the ray
+    float faceSize;  // metres covered by the face's longer edge
+    float cosI;      // incidence cosine on the face
+    float depth01;   // 0 at the glass, 1 at the back wall
+};
+
+// Room box in pane space: x in [-W, W], y in [floorY, ceilY], z in [-D, 0].
+NoxIMHit NoxIMTraceRoom(vec3 id, vec2 w, vec3 rd, vec2 paneHalf, float sill, float depthBase) {
+    float W = paneHalf.x + mix(uInteriorRoomShape.x, uInteriorRoomShape.y, NoxIMRand(id, 5.0));
+    float floorY = -(paneHalf.y + sill * mix(uInteriorRoomJitter.y, uInteriorRoomJitter.z, NoxIMRand(id, 6.0)));
+    float ceilY = floorY + mix(uInteriorRoomShape.z, uInteriorRoomShape.w, NoxIMRand(id, 8.0));
+    float D = depthBase * (1.0 + uInteriorRoomJitter.x * (2.0 * NoxIMRand(id, 7.0) - 1.0));
+
+    float tx = (rd.x > 0.0 ? (W - w.x) : (-W - w.x)) / rd.x;
+    float ty = (rd.y > 0.0 ? (ceilY - w.y) : (floorY - w.y)) / rd.y;
+    float tz = -D / rd.z;
+    NoxIMHit h;
+    h.tHit = min(tz, min(tx, ty));
+    vec3 hp = vec3(w, 0.0) + rd * h.tHit;
+
+    float X = (hp.x + W) / (2.0 * W);             // left to right
+    float Y = (ceilY - hp.y) / (ceilY - floorY);  // ceiling to floor
+    float T = -hp.z / D;                          // front to back
+    float H = ceilY - floorY;
+    h.depth01 = clamp(T, 0.0, 1.0);
+    if (tz <= min(tx, ty)) {
+        h.role = NOX_ROLE_BACK;  h.fuv = vec2(X, Y); h.faceSize = max(2.0 * W, H); h.cosI = abs(rd.z);
+    } else if (tx <= ty) {
+        if (rd.x < 0.0) { h.role = NOX_ROLE_LEFT;  h.fuv = vec2(T, Y); }
+        else            { h.role = NOX_ROLE_RIGHT; h.fuv = vec2(1.0 - T, Y); }
+        h.faceSize = max(D, H); h.cosI = abs(rd.x);
+    } else {
+        if (rd.y > 0.0) { h.role = NOX_ROLE_CEILING; h.fuv = vec2(X, T); }
+        else            { h.role = NOX_ROLE_FLOOR;   h.fuv = vec2(X, 1.0 - T); }
+        h.faceSize = max(2.0 * W, D); h.cosI = abs(rd.y);
+    }
+    return h;
+}
+
 // ------------------------------------------------------------------------------------------------
 // Atlas rooms
 // ------------------------------------------------------------------------------------------------
 
-// Weighted variant choice from the material style's weight row (stable per window id).
+// Weighted variant choice: first room whose cumulative weight exceeds a stable per-window random.
 int NoxIMPickRoom(vec3 id, float style) {
-    int row = clamp(int(style + 0.5), 0, NOX_STYLES_MAX - 1) * NOX_ROOMS_MAX;
-    int count = clamp(uInteriorRoomCount, 1, NOX_ROOMS_MAX);
-    float total = 0.0;
-    for (int i = 0; i < count; ++i) total += max(uInteriorStyleWeights[row + i], 0.0);
-    if (total <= 0.0) {
-        return int(NoxIMRand(id, 40.0) * float(count)) % count;
+    int count = max(uInteriorRoomCount, 1);
+    int row = 2 + clamp(int(style + 0.5), 0, max(uInteriorStyleCount, 1) - 1);
+    float r = NoxIMRand(id, 40.0);
+    int lo = 0;
+    int hi = count - 1;
+    for (int k = 0; k < 10 && lo < hi; ++k) {   // 2^10 > InteriorAtlas::kMaxRooms
+        int mid = (lo + hi) / 2;
+        if (r < texelFetch(uInteriorRoomData, ivec2(mid, row), 0).r) hi = mid; else lo = mid + 1;
     }
-    float r = NoxIMRand(id, 40.0) * total;
-    for (int i = 0; i < count; ++i) {
-        r -= max(uInteriorStyleWeights[row + i], 0.0);
-        if (r < 0.0) return i;
-    }
-    return count - 1;
+    return lo;
+}
+
+// Brightness of the room: the bake is the room's radiance; scale it once. Unoccupied rooms stay
+// nearly dark unless the room's light data says it is often on anyway (e.g. a TV-lit room).
+float NoxIMAtlasBrightness(vec3 id, int room, float lit) {
+    vec3 roomLight = texelFetch(uInteriorRoomData, ivec2(room, 0), 0).rgb;
+    return lit > 0.5 ? roomLight.x * mix(0.75, 1.0, NoxIMRand(id, 41.0))
+                     : (NoxIMRand(id, 42.0) < roomLight.y ? roomLight.z : 0.03);
+}
+
+// Mean radiance and blind lighting only (flat path).
+NoxIMRoomSample NoxIMAtlasRoomFlat(vec3 id, float lit, float style) {
+    int room = NoxIMPickRoom(id, style);
+    float bright = NoxIMAtlasBrightness(id, room, lit);
+    vec4 mean = texelFetch(uInteriorRoomData, ivec2(room, 1), 0);
+    NoxIMRoomSample S;
+    S.average = mean.rgb * bright;
+    S.color = S.average;
+    S.blindLit = mean.a * bright * 2.5;
+    S.curtLit = 0.08 + 0.45 * min(S.blindLit, 1.5);
+    return S;
 }
 
 // w: pane-local hit (m), rd: pane-space ray (z < 0 into the building), lit: occupancy (0/1),
 // sill: floor distance below the pane's bottom edge (m).
 NoxIMRoomSample NoxIMAtlasRoom(vec3 id, vec2 w, vec3 rd, vec2 paneHalf, float sill, float depthBase, float lit,
                                float style, float footprint, float camDist) {
-    NoxIMRoomSample S;
     int room = NoxIMPickRoom(id, style);
+    float bright = NoxIMAtlasBrightness(id, room, lit);
+    vec4 mean = texelFetch(uInteriorRoomData, ivec2(room, 1), 0);
+    NoxIMHit h = NoxIMTraceRoom(id, w, rd, paneHalf, sill, depthBase);
 
-    // Room box in pane space: x in [-W, W], y in [floorY, ceilY], z in [-D, 0]. Proportions stay
-    // close to square walls so baked furniture is not visibly stretched.
-    float W = paneHalf.x + mix(1.0, 1.4, NoxIMRand(id, 5.0));
-    float floorY = -(paneHalf.y + sill * mix(0.95, 1.08, NoxIMRand(id, 6.0)));
-    float ceilY = floorY + mix(3.4, 3.8, NoxIMRand(id, 8.0));
-    float D = depthBase * (0.9 + 0.2 * NoxIMRand(id, 7.0));
-
-    float tx = (rd.x > 0.0 ? (W - w.x) : (-W - w.x)) / rd.x;
-    float ty = (rd.y > 0.0 ? (ceilY - w.y) : (floorY - w.y)) / rd.y;
-    float tz = -D / rd.z;
-    float tHit = min(tz, min(tx, ty));
-    vec3 hp = vec3(w, 0.0) + rd * tHit;
-
-    // Normalised room coordinates (textures/window_rooms/README.md, "Room-space mapping").
-    float X = (hp.x + W) / (2.0 * W);          // left to right
-    float Y = (ceilY - hp.y) / (ceilY - floorY); // ceiling to floor
-    float Tz = -hp.z / D;                      // front to back
-    float H = ceilY - floorY;
-
-    int face;
-    vec2 fuv;
-    float faceSize;
-    float cosI;
-    if (tz <= min(tx, ty)) {
-        face = NOX_FACE_BACK;  fuv = vec2(X, Y);           faceSize = max(2.0 * W, H); cosI = abs(rd.z);
-    } else if (tx <= ty) {
-        if (rd.x < 0.0) { face = NOX_FACE_LEFT;  fuv = vec2(Tz, Y); }
-        else            { face = NOX_FACE_RIGHT; fuv = vec2(1.0 - Tz, Y); }
-        faceSize = max(D, H); cosI = abs(rd.x);
-    } else {
-        if (rd.y > 0.0) { face = NOX_FACE_CEILING; fuv = vec2(X, Tz); }
-        else            { face = NOX_FACE_FLOOR;   fuv = vec2(X, 1.0 - Tz); }
-        faceSize = max(2.0 * W, D); cosI = abs(rd.y);
+    vec3 c = mean.rgb;   // roles the atlas does not provide show the room's mean radiance
+    int slot = uInteriorRoleSlot[h.role];
+    if (slot >= 0) {
+        float texel = 0.5 / uInteriorFaceSize;
+        vec2 fuv = clamp(h.fuv, vec2(texel), vec2(1.0 - texel));
+        // Explicit LOD: screen derivatives jump at face seams, so the footprint is propagated instead.
+        // The pane footprint grows with the distance travelled behind the glass and the incidence angle.
+        float fp = footprint * (camDist + h.tHit) / max(camDist, 1e-3) / max(h.cosI, 0.15);
+        float lod = log2(max(fp * uInteriorFaceSize / h.faceSize, 1e-4));
+        int layer = room * uInteriorFacesPerRoom + slot;
+        c = textureLod(uInteriorAtlas, vec3(fuv, float(layer)), lod).rgb;
     }
-    float texel = 0.5 / uInteriorFaceSize;
-    fuv = clamp(fuv, vec2(texel), vec2(1.0 - texel));
 
-    // Explicit LOD: screen derivatives jump at face seams, so the footprint is propagated instead.
-    // The pane footprint grows with the distance travelled behind the glass and the incidence angle.
-    float fp = footprint * (camDist + tHit) / max(camDist, 1e-3) / max(cosI, 0.15);
-    float lod = log2(max(fp * uInteriorFaceSize / faceSize, 1e-4));
-    int layer = room * NOX_ROOM_FACES + face;
-    vec3 c = textureLod(uInteriorAtlas, vec3(fuv, float(layer)), lod).rgb;
-
-    // Brightness: the bake is the room's radiance; scale it once. Unoccupied rooms stay nearly dark
-    // unless the room's light data says it is often on anyway (e.g. a TV-lit room).
-    vec3 roomLight = uInteriorRoomLight[room];
-    float bright = lit > 0.5 ? roomLight.x * mix(0.75, 1.0, NoxIMRand(id, 41.0))
-                             : (NoxIMRand(id, 42.0) < roomLight.y ? roomLight.z : 0.03);
-
-    int base = room * NOX_ROOM_FACES;
-    vec3 mean = uInteriorFaceMean[base + NOX_FACE_BACK] * 0.4
-        + (uInteriorFaceMean[base + NOX_FACE_LEFT] + uInteriorFaceMean[base + NOX_FACE_RIGHT]) * 0.15
-        + (uInteriorFaceMean[base + NOX_FACE_CEILING] + uInteriorFaceMean[base + NOX_FACE_FLOOR]) * 0.15;
-    float light = dot(uInteriorFaceMean[base + NOX_FACE_BACK], vec3(0.2126, 0.7152, 0.0722)) * bright * 2.5;
-
-    S.color = c * bright;
-    S.average = mean * bright;
-    S.blindLit = light;
-    S.curtLit = 0.08 + 0.45 * min(light, 1.5);
-    return S;
-}
-
-// ------------------------------------------------------------------------------------------------
-// Procedural rooms (fallback when the atlas pack is not available)
-// ------------------------------------------------------------------------------------------------
-
-struct NoxIMRoom {
-    vec3 lampPos;   // ceiling lamp position (room space)
-    float lampGain; // lamp-pool peak (0 when the room has no lamp)
-    float lampR2;   // squared falloff radius of the lamp pool
-    float fluor;    // flat overhead light level (offices)
-    float ambient;  // faint wall glow (dark rooms still read as rooms)
-    float tvGain;   // TV glow strength (0 when no TV)
-    vec2 tvPos;     // TV centre on the back wall
-    float depth;    // room depth (m)
-};
-
-float NoxIMLight(NoxIMRoom R, vec3 p) {
-    vec3 q = p - R.lampPos;
-    float pool = R.lampGain / (1.0 + dot(q, q) / R.lampR2);
-    vec3 tq = p - vec3(R.tvPos, -R.depth);
-    float tv = R.tvGain * exp(-dot(tq, tq) * 1.8);
-    return R.ambient + pool + R.fluor + tv;
-}
-
-NoxIMRoomSample NoxIMProceduralRoom(vec3 id, vec2 w, vec3 rd, vec2 paneHalf, float depthBase, float lit,
-                                    float style, float footprint, float timeS) {
     NoxIMRoomSample S;
-    float shop = step(0.5, style) * (1.0 - step(1.5, style));
-    float detail = 1.0 - smoothstep(0.012, 0.04, footprint);
-
-    // Room layout (half extents about the pane centre; floor sits near the sill).
-    float roomW = 1.6 + 1.2 * NoxIMRand(id, 5.0);
-    float roomH = 1.7 + 0.2 * NoxIMRand(id, 6.0);
-    float roomD = depthBase * (0.75 + 0.5 * NoxIMRand(id, 7.0));
-
-    float kind = NoxIMRand(id, 4.0);
-    float poolOn = lit * (1.0 - step(0.55, kind));                 // table/floor lamp pool
-    float fluorOn = lit * step(0.55, kind) * (1.0 - step(0.8, kind)); // flat office light
-
-    NoxIMRoom R;
-    R.lampPos = vec3((NoxIMRand(id, 8.0) - 0.5) * roomW, roomH * 0.8, -roomD * (0.3 + 0.3 * NoxIMRand(id, 9.0)));
-    R.lampR2 = max(0.25 * roomD * roomD, 0.5);
-    R.lampGain = poolOn * mix(0.5, 1.0, NoxIMRand(id, 2.0)) * 1.2;
-    R.fluor = fluorOn * mix(0.35, 0.55, NoxIMRand(id, 2.5));
-    R.ambient = mix(0.03, 0.09, NoxIMRand(id, 3.0)) + lit * 0.10;
-    float tvOn = step(NoxIMRand(id, 12.0), 0.25 + 0.35 * lit);
-    R.tvGain = tvOn * mix(0.25, 0.5, NoxIMRand(id, 13.0));
-    R.tvPos = vec2((NoxIMRand(id, 14.0) - 0.5) * roomW * 0.8, -0.1);
-    R.depth = roomD;
-
-    float warm = step(0.5, NoxIMRand(id, 10.0));
-    vec3 wallAlb = mix(vec3(0.6, 0.53, 0.44), vec3(0.48, 0.52, 0.58), warm) * mix(0.55, 0.9, NoxIMRand(id, 11.0));
-    vec3 floorAlb = mix(vec3(0.3, 0.19, 0.12), vec3(0.27, 0.27, 0.29), step(0.5, NoxIMRand(id, 15.0)));
-    float flick = 0.8 + 0.2 * NoxIMHash(vec3(floor(timeS * 9.0), id.x, id.y));
-    vec3 tvCol = vec3(0.55, 0.7, 1.0) * flick * 0.8;
-
-    // Furniture block (sofa, bed or desk) standing on the floor.
-    float fHave = step(0.25, NoxIMRand(id, 16.0));
-    float fx = (NoxIMRand(id, 17.0) - 0.5) * roomW * 1.1;
-    float fz = -roomD * (0.45 + 0.3 * NoxIMRand(id, 18.0));
-    vec3 fMin = vec3(fx - 0.75, -roomH, fz - 0.3);
-    vec3 fMax = vec3(fx + 0.75, -roomH + mix(0.5, 0.9, NoxIMRand(id, 19.0)), fz + 0.3);
-    vec3 furnAlb = mix(vec3(0.16, 0.1, 0.07), vec3(0.3, 0.3, 0.32), NoxIMRand(id, 20.0));
-    float tBoxExit;
-    float tBox = NoxIMBox(vec3(w, 0.0), rd, fMin, fMax, tBoxExit);
-    tBox = (fHave > 0.5 && tBox > 0.0) ? tBox : 1e9;
-
-    // Person silhouette standing in lit rooms (dropped at distance, where it would only alias).
-    float pHave = lit * step(0.55, NoxIMRand(id, 21.0)) * detail;
-    float px = (NoxIMRand(id, 22.0) - 0.5) * roomW * 0.8;
-    float pz = -roomD * (0.35 + 0.3 * NoxIMRand(id, 23.0));
-    float ph = mix(1.55, 1.75, NoxIMRand(id, 24.0));
-    float tp = pz / rd.z;
-    vec2 pxy = w + rd.xy * tp;
-    float body = step(abs(pxy.x - px), 0.22) * step(pxy.y, -roomH + 1.25) * step(-roomH, pxy.y);
-    float head = step(length(pxy - vec2(px, -roomH + ph - 0.13)), 0.13);
-    float personHit = pHave * max(body, head) * step(tp, 1e8);
-
-    // Exit point of the room box: back wall, side wall, floor or ceiling.
-    float tx = (rd.x > 0.0 ? (roomW - w.x) : (-roomW - w.x)) / rd.x;
-    float ty = (rd.y > 0.0 ? (roomH - w.y) : (-roomH - w.y)) / rd.y;
-    float tz = -roomD / rd.z;
-    float tHit = min(tz, min(tx, ty));
-    vec3 hp = vec3(w, 0.0) + rd * tHit;
-
-    vec3 col;
-    if (tz <= min(tx, ty)) {
-        // Back wall: optional shop shelf rack, TV screen.
-        vec3 alb = wallAlb;
-        float rack = shop * step(0.45, fract(hp.y * 2.5)) * step(hp.y, 0.7);
-        float items = step(0.5, fract(hp.x * 7.0 + floor(hp.y * 2.5) * 0.37));
-        alb *= mix(1.0, 0.45 + 0.55 * items, rack * detail);
-        float tvRect = tvOn * step(abs(hp.x - R.tvPos.x), 0.42) * step(abs(hp.y - R.tvPos.y), 0.26);
-        col = mix(alb * NoxIMLight(R, hp), tvCol, tvRect);
-    }
-    else if (tx <= ty) {
-        col = wallAlb * 0.92 * NoxIMLight(R, hp);
-    }
-    else {
-        vec3 alb = (rd.y < 0.0) ? floorAlb : wallAlb * 1.05;
-        col = alb * NoxIMLight(R, hp);
-    }
-
-    // Furniture in front of the back wall.
-    if (tBox < tHit) {
-        vec3 hb = vec3(w, 0.0) + rd * tBox;
-        col = furnAlb * NoxIMLight(R, hb) * 0.7;
-    }
-
-    // Person silhouette (a near-black figure against the lit room).
-    if (personHit > 0.5 && tp < min(tHit, tBox)) {
-        col = vec3(0.012);
-    }
-
-    float tbz = -0.08 / rd.z;
-    vec2 wb = w + rd.xy * tbz;
-    S.color = col;
-    S.average = vec3(0.5, 0.45, 0.4) * (0.04 + 0.3 * lit);
-    S.blindLit = NoxIMLight(R, vec3(wb, -0.3));
-    S.curtLit = 0.08 + 0.45 * min(NoxIMLight(R, vec3(wb, -0.2)), 1.5);
+    S.color = c * bright;
+    S.average = mean.rgb * bright;
+    S.blindLit = mean.a * bright * 2.5;
+    S.curtLit = 0.08 + 0.45 * min(S.blindLit, 1.5);
     return S;
 }
 
 // ------------------------------------------------------------------------------------------------
+// Neutral room (no atlas bound): plain lit box, one light level per face.
+// ------------------------------------------------------------------------------------------------
+
+NoxIMRoomSample NoxIMPlainRoom(vec3 id, vec2 w, vec3 rd, vec2 paneHalf, float sill, float depthBase, float lit,
+                               bool flatOnly) {
+    float bright = lit > 0.5 ? mix(0.75, 1.0, NoxIMRand(id, 41.0)) : 0.03;
+    NoxIMRoomSample S;
+    S.average = vec3(0.42) * bright;
+    S.color = S.average;
+    S.blindLit = 0.5 * bright;
+    S.curtLit = 0.08 + 0.45 * min(S.blindLit, 1.5);
+    if (flatOnly) return S;
+    NoxIMHit h = NoxIMTraceRoom(id, w, rd, paneHalf, sill, depthBase);
+    float shade = h.role == NOX_ROLE_BACK ? 0.5 : (h.role == NOX_ROLE_CEILING ? 0.62 : (h.role == NOX_ROLE_FLOOR ? 0.26 : 0.42));
+    S.color = vec3(shade * mix(1.0, 0.75, h.depth01) * bright);
+    return S;
+}
+
+// ------------------------------------------------------------------------------------------------
+
+// Metres per unit of UV along u and v (planar quads with an affine UV mapping).
+vec2 NoxIMMetresPerUV(vec3 worldPos, vec2 uv) {
+    vec3 dpx = dFdx(worldPos);
+    vec3 dpy = dFdy(worldPos);
+    vec2 dux = dFdx(uv);
+    vec2 duy = dFdy(uv);
+    float det = dux.x * duy.y - dux.y * duy.x;
+    if (abs(det) < 1e-14) return vec2(1.0);
+    vec3 dPdu = (dpx * duy.y - dpy * dux.y) / det;
+    vec3 dPdv = (dpy * dux.x - dpx * duy.x) / det;
+    return vec2(length(dPdu), length(dPdv));
+}
 
 // Radiance seen through one window pane.
-//   worldPos   point on the pane (world)
-//   geoN       pane normal (world, outward)
-//   tangentW   pane tangent (world, image right); tangentSign is the glTF handedness
-//   uv         TEXCOORD_0 of the window quad (atlas tile UV)
-//   camPos     eye position (world)
-//   paneHalf   pane half extents in metres (material interiorPane)
-//   sill       floor distance below the pane's bottom edge in metres (material interiorSill)
-//   depthBase  room depth in metres (material interiorDepth)
-//   lightBias  occupancy bias, 0 = mostly dark rooms, 1 = mostly lit rooms
-//   blindBias  probability of blinds and curtains
-//   style      atlas variant weight row (scene data); procedural rooms draw shelf racks for style 1
-//   seed       per-material variation
-//   footprint  world size of one pixel (m); fine detail fades out beyond a few cm
-//   timeS      seconds, for TV flicker (procedural rooms)
+//   worldPos     point on the pane (world)
+//   geoN         pane normal (world, outward)
+//   tangentW     pane tangent (world, image right); tangentSign is the glTF handedness
+//   uv           TEXCOORD_0 of the window quad
+//   camPos       eye position (world)
+//   paneHalf     pane half extents in metres (<= 0: derived from the UV derivatives)
+//   paneUV       pane UV layout (grid, inset, extent); grid <= 0: atlas default; atlas grid <= 0:
+//                inferred (pane centred in its cell, cell count from the pane's UV extent)
+//   sill         floor distance below the pane's bottom edge in metres
+//   depthBase    room depth in metres
+//   lightBias    occupancy bias, 0 = mostly dark rooms, 1 = mostly lit rooms
+//   blindBias    probability of blinds and curtains (0 = none)
+//   style        atlas variant weight row
+//   seed         per-material variation
+//   mode         1 = parallax room, 2 = flat mean radiance only
+//   farDistance  beyond this camera distance use the flat path (< 0: atlas default, 0: never)
+//   footprint    world size of one pixel (m); fine detail fades out beyond a few cm
+// Call in uniform control flow (UV derivatives).
 vec3 NoxInteriorWindow(vec3 worldPos, vec3 geoN, vec3 tangentW, float tangentSign, vec2 uv,
-                       vec3 camPos, vec2 paneHalf, float sill, float depthBase, float lightBias, float blindBias,
-                       float style, float seed, float footprint, float timeS) {
+                       vec3 camPos, vec2 paneHalf, vec3 paneUV, float sill, float depthBase, float lightBias,
+                       float blindBias, float style, float seed, float mode, float farDistance, float footprint) {
+    // Both branches depend on uniforms only, so the derivatives stay in uniform control flow.
+    vec3 paneLayout = paneUV.x > 0.0 ? paneUV : uInteriorPaneUV;
+    bool paneKnown = paneHalf.x > 0.0 && paneHalf.y > 0.0;
+    if (paneLayout.x <= 0.0 || !paneKnown) {
+        vec2 metresPerUV = NoxIMMetresPerUV(worldPos, uv);
+        if (paneLayout.x <= 0.0) {
+            float ext = paneKnown ? 2.0 * paneHalf.x / max(metresPerUV.x, 1e-6) : 1.0;
+            float g = max(floor(1.0 / max(ext, 1e-3) + 0.5), 1.0);
+            ext = min(ext, 1.0 / g);
+            paneLayout = vec3(g, 0.5 * (1.0 / g - ext), ext);
+        }
+        if (!paneKnown) paneHalf = 0.5 * paneLayout.z * metresPerUV;
+    }
+    float grid = max(paneLayout.x, 1.0);
+    float extent = max(paneLayout.z, 1e-4);
+
     vec3 N = normalize(geoN);
     vec3 T = normalize(tangentW - dot(tangentW, N) * N);
     vec3 B = normalize(cross(N, T) * tangentSign);
 
-    // Pane-local coordinates: x right (-paneHalf.x..paneHalf.x), y up, metres.
-    vec2 tileMin = floor(uv * 4.0) * 0.25 + vec2(0.004);
-    vec2 local01 = vec2((uv.x - tileMin.x) / NOX_IM_TILE,
-                        (tileMin.y + NOX_IM_TILE - uv.y) / NOX_IM_TILE);
+    // Pane-local coordinates: x right (-paneHalf.x..paneHalf.x), y up, metres. A single-cell layout
+    // never repeats, so its pane edges (uv 0 and 1) cannot flip to a neighbouring cell.
+    vec2 tileMin = (grid > 1.0 ? floor(uv * grid) / grid : vec2(0.0)) + vec2(paneLayout.y);
+    vec2 local01 = vec2((uv.x - tileMin.x) / extent, (tileMin.y + extent - uv.y) / extent);
     local01 = clamp(local01, vec2(0.0), vec2(1.0));
     vec2 w = (local01 - 0.5) * 2.0 * paneHalf;
 
-    // Stable per-window id from the pane centre. Panes are >= 3 m apart, so 1 m cells (offset away
-    // from the 0.1 m layout grid) give every window its own cell and keep the id stable frame to frame.
+    // Stable per-window id from the pane centre. 1 m cells (offset away from round coordinates)
+    // keep the id stable across the pane and frame to frame.
     vec3 paneCentre = worldPos - T * w.x - B * w.y;
     vec3 id = floor(paneCentre + 0.37) + vec3(seed * 7.31, seed * 3.17, seed * 5.53);
 
-    // Ray into the room in pane space: x along T, y along B, z along the outward normal.
-    // Viewed from the front, rd.z < 0 means the ray travels into the building.
+    // The room is built right-handed: x = cross(B, N), image right seen from outside. A mirrored UV
+    // frame (tangent.w < 0, so T = -cross(B, N)) would otherwise show a mirrored room.
+    float mirror = tangentSign < 0.0 ? -1.0 : 1.0;
+    w.x *= mirror;
+
     vec3 toPane = worldPos - camPos;
     float camDist = length(toPane);
+    float lit = step(NoxIMRand(id, 1.0), mix(0.08, 0.7, lightBias));
+    bool atlas = uInteriorAtlasReady && uInteriorRoomCount > 0;
+
+    // Blinds coverage (shared by both paths).
+    float blindOn = step(NoxIMRand(id, 25.0), blindBias);
+    float cover = mix(0.25, 1.0, NoxIMRand(id, 26.0));
+
+    // Flat path: the material asks for it, or the pane is beyond the far distance.
+    float far = farDistance >= 0.0 ? farDistance : uInteriorFarDistance;
+    float flatMix = mode > 1.5 ? 1.0 : (far > 0.0 ? smoothstep(0.85 * far, far, camDist) : 0.0);
+    if (flatMix >= 1.0) {
+        NoxIMRoomSample F = atlas ? NoxIMAtlasRoomFlat(id, lit, style)
+                                  : NoxIMPlainRoom(id, w, vec3(0.0, 0.0, -1.0), paneHalf, sill, depthBase, lit, true);
+        return max(F.average * (1.0 - 0.6 * blindOn * cover), vec3(0.0));
+    }
+
+    // Ray into the room in pane space: x along T, y along B, z along the outward normal.
+    // Viewed from the front, rd.z < 0 means the ray travels into the building.
     vec3 dir = toPane / max(camDist, 1e-4);
-    vec3 rd = vec3(dot(dir, T), dot(dir, B), dot(dir, N));
+    vec3 rd = vec3(dot(dir, T) * mirror, dot(dir, B), dot(dir, N));
     rd.z = min(rd.z, -1e-3);
     if (abs(rd.x) < 1e-4) rd.x = (rd.x < 0.0) ? -1e-4 : 1e-4;
     if (abs(rd.y) < 1e-4) rd.y = (rd.y < 0.0) ? -1e-4 : 1e-4;
 
     float detail = 1.0 - smoothstep(0.012, 0.04, footprint);
-    // Occupancy: lit rooms are a minority unless lightBias is high.
-    float lit = step(NoxIMRand(id, 1.0), mix(0.08, 0.7, lightBias));
-
-    NoxIMRoomSample S = (uInteriorAtlasReady && uInteriorRoomCount > 0)
+    NoxIMRoomSample S = atlas
         ? NoxIMAtlasRoom(id, w, rd, paneHalf, sill, depthBase, lit, style, footprint, camDist)
-        : NoxIMProceduralRoom(id, w, rd, paneHalf, depthBase, lit, style, footprint, timeS);
+        : NoxIMPlainRoom(id, w, rd, paneHalf, sill, depthBase, lit, false);
     vec3 col = S.color;
 
     // Blinds: a plane just behind the glass, drawn down from the top, with slats.
     float tbz = -0.08 / rd.z;
     vec2 wb = w + rd.xy * tbz;
-    float blindOn = step(NoxIMRand(id, 25.0), blindBias);
-    float cover = mix(0.25, 1.0, NoxIMRand(id, 26.0));
     float covered = step(paneHalf.y - 2.0 * paneHalf.y * cover, wb.y);
     float slat = fract(wb.y / 0.09);
     float gap = mix(0.15, 0.4, NoxIMRand(id, 27.0));
@@ -354,7 +319,7 @@ vec3 NoxInteriorWindow(vec3 worldPos, vec3 geoN, vec3 tangentW, float tangentSig
     col = mix(col, blindCol, blindMask);
 
     // Curtains: fabric at one or both pane edges, partly drawn back (open middle).
-    float curtOn = step(NoxIMRand(id, 29.0), 0.2 + 0.6 * blindBias);
+    float curtOn = blindBias > 0.0 ? step(NoxIMRand(id, 29.0), 0.2 + 0.6 * blindBias) : 0.0;
     float cw = mix(0.16, 0.42, NoxIMRand(id, 30.0));
     float cutL = step(wb.x, -paneHalf.x + cw) * step(0.35, NoxIMRand(id, 31.0));
     float cutR = step(paneHalf.x - cw, wb.x) * step(0.35, NoxIMRand(id, 32.0));
@@ -371,6 +336,7 @@ vec3 NoxInteriorWindow(vec3 worldPos, vec3 geoN, vec3 tangentW, float tangentSig
 
     // Far away the room averages out to a soft glow instead of aliasing.
     col = mix(S.average, col, 0.4 + 0.6 * detail);
+    col = mix(col, S.average * (1.0 - 0.6 * blindOn * cover), flatMix);
 
     return max(col, vec3(0.0));
 }

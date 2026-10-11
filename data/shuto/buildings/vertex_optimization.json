@@ -1,0 +1,3229 @@
+{
+  "policy": "Exact byte-identical vertex attributes within each material primitive; UV/normal/tangent seams retained",
+  "files": [
+    {
+      "path": "models/shuto/buildings/collision/-1_11_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 24,
+      "bytes_before": 3196,
+      "bytes_after": 1812,
+      "planar_collision_faces_normalized": 4
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_12_col.glb",
+      "vertices_before": 684,
+      "vertices_after": 360,
+      "bytes_before": 35616,
+      "bytes_after": 11188,
+      "planar_collision_faces_normalized": 108
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_3_col.glb",
+      "vertices_before": 15432,
+      "vertices_after": 10062,
+      "bytes_before": 773044,
+      "bytes_after": 273552,
+      "planar_collision_faces_normalized": 1846
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_4_col.glb",
+      "vertices_before": 8424,
+      "vertices_after": 5430,
+      "bytes_before": 422624,
+      "bytes_after": 148348,
+      "planar_collision_faces_normalized": 1032
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_5_col.glb",
+      "vertices_before": 2808,
+      "vertices_after": 1708,
+      "bytes_before": 141816,
+      "bytes_after": 47784,
+      "planar_collision_faces_normalized": 370
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_6_col.glb",
+      "vertices_before": 2004,
+      "vertices_after": 1224,
+      "bytes_before": 101628,
+      "bytes_after": 34572,
+      "planar_collision_faces_normalized": 264
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_7_col.glb",
+      "vertices_before": 528,
+      "vertices_after": 336,
+      "bytes_before": 27808,
+      "bytes_after": 10288,
+      "planar_collision_faces_normalized": 66
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_8_col.glb",
+      "vertices_before": 360,
+      "vertices_after": 226,
+      "bytes_before": 19416,
+      "bytes_after": 7324,
+      "planar_collision_faces_normalized": 50
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_3_col.glb",
+      "vertices_before": 16452,
+      "vertices_after": 10727,
+      "bytes_before": 824044,
+      "bytes_after": 291552,
+      "planar_collision_faces_normalized": 2024
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_4_col.glb",
+      "vertices_before": 5364,
+      "vertices_after": 3416,
+      "bytes_before": 269636,
+      "bytes_after": 93904,
+      "planar_collision_faces_normalized": 672
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_5_col.glb",
+      "vertices_before": 252,
+      "vertices_after": 174,
+      "bytes_before": 13996,
+      "bytes_after": 5840,
+      "planar_collision_faces_normalized": 28
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_6_col.glb",
+      "vertices_before": 252,
+      "vertices_after": 156,
+      "bytes_before": 14000,
+      "bytes_after": 5412,
+      "planar_collision_faces_normalized": 32
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_7_col.glb",
+      "vertices_before": 432,
+      "vertices_after": 226,
+      "bytes_before": 23004,
+      "bytes_after": 7452,
+      "planar_collision_faces_normalized": 66
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_10_col.glb",
+      "vertices_before": 276,
+      "vertices_after": 198,
+      "bytes_before": 15212,
+      "bytes_after": 6480,
+      "planar_collision_faces_normalized": 32
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_11_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 24,
+      "bytes_before": 3192,
+      "bytes_after": 1808,
+      "planar_collision_faces_normalized": 4
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_3_col.glb",
+      "vertices_before": 19512,
+      "vertices_after": 13008,
+      "bytes_before": 977044,
+      "bytes_after": 352416,
+      "planar_collision_faces_normalized": 2426
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_4_col.glb",
+      "vertices_before": 5016,
+      "vertices_after": 3287,
+      "bytes_before": 252228,
+      "bytes_after": 90108,
+      "planar_collision_faces_normalized": 638
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_5_col.glb",
+      "vertices_before": 2124,
+      "vertices_after": 1346,
+      "bytes_before": 107632,
+      "bytes_after": 37744,
+      "planar_collision_faces_normalized": 282
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_6_col.glb",
+      "vertices_before": 4824,
+      "vertices_after": 3154,
+      "bytes_before": 242632,
+      "bytes_after": 86532,
+      "planar_collision_faces_normalized": 584
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_7_col.glb",
+      "vertices_before": 2280,
+      "vertices_after": 1494,
+      "bytes_before": 115428,
+      "bytes_after": 41604,
+      "planar_collision_faces_normalized": 284
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_8_col.glb",
+      "vertices_before": 1032,
+      "vertices_after": 678,
+      "bytes_before": 53020,
+      "bytes_after": 19512,
+      "planar_collision_faces_normalized": 124
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_9_col.glb",
+      "vertices_before": 228,
+      "vertices_after": 148,
+      "bytes_before": 12812,
+      "bytes_after": 5184,
+      "planar_collision_faces_normalized": 28
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_10_col.glb",
+      "vertices_before": 2604,
+      "vertices_after": 1694,
+      "bytes_before": 131612,
+      "bytes_after": 47036,
+      "planar_collision_faces_normalized": 334
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_11_col.glb",
+      "vertices_before": 384,
+      "vertices_after": 216,
+      "bytes_before": 20604,
+      "bytes_after": 7120,
+      "planar_collision_faces_normalized": 56
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_3_col.glb",
+      "vertices_before": 14232,
+      "vertices_after": 9699,
+      "bytes_before": 713040,
+      "bytes_after": 262436,
+      "planar_collision_faces_normalized": 1698
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_4_col.glb",
+      "vertices_before": 19752,
+      "vertices_after": 13709,
+      "bytes_before": 989048,
+      "bytes_after": 369724,
+      "planar_collision_faces_normalized": 2332
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_5_col.glb",
+      "vertices_before": 20016,
+      "vertices_after": 13316,
+      "bytes_before": 1002240,
+      "bytes_after": 360812,
+      "planar_collision_faces_normalized": 2462
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_6_col.glb",
+      "vertices_before": 19086,
+      "vertices_after": 12663,
+      "bytes_before": 955740,
+      "bytes_after": 343280,
+      "planar_collision_faces_normalized": 2372
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_7_col.glb",
+      "vertices_before": 8472,
+      "vertices_after": 5506,
+      "bytes_before": 425036,
+      "bytes_after": 150280,
+      "planar_collision_faces_normalized": 1102
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_8_col.glb",
+      "vertices_before": 6684,
+      "vertices_after": 4422,
+      "bytes_before": 335632,
+      "bytes_after": 120688,
+      "planar_collision_faces_normalized": 832
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_9_col.glb",
+      "vertices_before": 5448,
+      "vertices_after": 3508,
+      "bytes_before": 273832,
+      "bytes_after": 96276,
+      "planar_collision_faces_normalized": 698
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_10_col.glb",
+      "vertices_before": 2412,
+      "vertices_after": 1597,
+      "bytes_before": 122032,
+      "bytes_after": 44344,
+      "planar_collision_faces_normalized": 308
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_11_col.glb",
+      "vertices_before": 6156,
+      "vertices_after": 3960,
+      "bytes_before": 309232,
+      "bytes_after": 108544,
+      "planar_collision_faces_normalized": 826
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_3_col.glb",
+      "vertices_before": 8382,
+      "vertices_after": 5795,
+      "bytes_before": 420536,
+      "bytes_after": 157036,
+      "planar_collision_faces_normalized": 1022
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_4_col.glb",
+      "vertices_before": 9744,
+      "vertices_after": 6562,
+      "bytes_before": 488624,
+      "bytes_after": 178156,
+      "planar_collision_faces_normalized": 1252
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_5_col.glb",
+      "vertices_before": 6444,
+      "vertices_after": 4186,
+      "bytes_before": 323632,
+      "bytes_after": 114544,
+      "planar_collision_faces_normalized": 866
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_6_col.glb",
+      "vertices_before": 7536,
+      "vertices_after": 4791,
+      "bytes_before": 378224,
+      "bytes_after": 131240,
+      "planar_collision_faces_normalized": 1018
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_7_col.glb",
+      "vertices_before": 15576,
+      "vertices_after": 10357,
+      "bytes_before": 780240,
+      "bytes_after": 280916,
+      "planar_collision_faces_normalized": 2006
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_8_col.glb",
+      "vertices_before": 4512,
+      "vertices_after": 2925,
+      "bytes_before": 227024,
+      "bytes_after": 80408,
+      "planar_collision_faces_normalized": 610
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_9_col.glb",
+      "vertices_before": 7500,
+      "vertices_after": 4942,
+      "bytes_before": 376428,
+      "bytes_after": 134796,
+      "planar_collision_faces_normalized": 996
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_10_col.glb",
+      "vertices_before": 444,
+      "vertices_after": 292,
+      "bytes_before": 23592,
+      "bytes_after": 9052,
+      "planar_collision_faces_normalized": 58
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_11_col.glb",
+      "vertices_before": 264,
+      "vertices_after": 176,
+      "bytes_before": 14612,
+      "bytes_after": 5928,
+      "planar_collision_faces_normalized": 32
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_3_col.glb",
+      "vertices_before": 504,
+      "vertices_after": 328,
+      "bytes_before": 26616,
+      "bytes_after": 10060,
+      "planar_collision_faces_normalized": 70
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_4_col.glb",
+      "vertices_before": 2160,
+      "vertices_after": 1504,
+      "bytes_before": 109424,
+      "bytes_after": 41600,
+      "planar_collision_faces_normalized": 270
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_5_col.glb",
+      "vertices_before": 1488,
+      "vertices_after": 975,
+      "bytes_before": 75824,
+      "bytes_after": 27560,
+      "planar_collision_faces_normalized": 200
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_6_col.glb",
+      "vertices_before": 852,
+      "vertices_after": 540,
+      "bytes_before": 44024,
+      "bytes_after": 15848,
+      "planar_collision_faces_normalized": 112
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_7_col.glb",
+      "vertices_before": 6192,
+      "vertices_after": 4288,
+      "bytes_before": 311032,
+      "bytes_after": 116488,
+      "planar_collision_faces_normalized": 744
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_8_col.glb",
+      "vertices_before": 3132,
+      "vertices_after": 2124,
+      "bytes_before": 158020,
+      "bytes_after": 58420,
+      "planar_collision_faces_normalized": 400
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_9_col.glb",
+      "vertices_before": 1092,
+      "vertices_after": 682,
+      "bytes_before": 56024,
+      "bytes_after": 19732,
+      "planar_collision_faces_normalized": 158
+    },
+    {
+      "path": "models/shuto/buildings/collision/0_12_col.glb",
+      "vertices_before": 132,
+      "vertices_after": 78,
+      "bytes_before": 8012,
+      "bytes_after": 3308,
+      "planar_collision_faces_normalized": 18
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_10.glb",
+      "vertices_before": 336,
+      "vertices_after": 224,
+      "bytes_before": 19408,
+      "bytes_after": 14104,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_11.glb",
+      "vertices_before": 1554,
+      "vertices_after": 1040,
+      "bytes_before": 80344,
+      "bytes_after": 55752,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_2.glb",
+      "vertices_before": 72,
+      "vertices_after": 50,
+      "bytes_before": 7256,
+      "bytes_after": 6656,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_3.glb",
+      "vertices_before": 13434,
+      "vertices_after": 9249,
+      "bytes_before": 678672,
+      "bytes_after": 481248,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_4.glb",
+      "vertices_before": 9180,
+      "vertices_after": 6393,
+      "bytes_before": 465980,
+      "bytes_after": 335628,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_5.glb",
+      "vertices_before": 5496,
+      "vertices_after": 3776,
+      "bytes_before": 283528,
+      "bytes_after": 202620,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_6.glb",
+      "vertices_before": 6360,
+      "vertices_after": 4336,
+      "bytes_before": 326988,
+      "bytes_after": 231216,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_7.glb",
+      "vertices_before": 4770,
+      "vertices_after": 3256,
+      "bytes_before": 248068,
+      "bytes_after": 176168,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_8.glb",
+      "vertices_before": 1620,
+      "vertices_after": 1098,
+      "bytes_before": 86096,
+      "bytes_after": 61164,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_9.glb",
+      "vertices_before": 12,
+      "vertices_after": 8,
+      "bytes_before": 1908,
+      "bytes_after": 1768,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_10.glb",
+      "vertices_before": 396,
+      "vertices_after": 264,
+      "bytes_before": 21132,
+      "bytes_after": 14856,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_11.glb",
+      "vertices_before": 750,
+      "vertices_after": 500,
+      "bytes_before": 38836,
+      "bytes_after": 26896,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_2.glb",
+      "vertices_before": 120,
+      "vertices_after": 82,
+      "bytes_before": 9796,
+      "bytes_after": 8296,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_3.glb",
+      "vertices_before": 13698,
+      "vertices_after": 9716,
+      "bytes_before": 687116,
+      "bytes_after": 503084,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_4.glb",
+      "vertices_before": 14052,
+      "vertices_after": 10059,
+      "bytes_before": 708472,
+      "bytes_after": 521380,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_5.glb",
+      "vertices_before": 6144,
+      "vertices_after": 4291,
+      "bytes_before": 315940,
+      "bytes_after": 228636,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_6.glb",
+      "vertices_before": 2712,
+      "vertices_after": 1886,
+      "bytes_before": 140728,
+      "bytes_after": 101196,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_7.glb",
+      "vertices_before": 1974,
+      "vertices_after": 1340,
+      "bytes_before": 103804,
+      "bytes_after": 73488,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_8.glb",
+      "vertices_before": 402,
+      "vertices_after": 268,
+      "bytes_before": 21428,
+      "bytes_after": 15056,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_9.glb",
+      "vertices_before": 12,
+      "vertices_after": 8,
+      "bytes_before": 1912,
+      "bytes_after": 1772,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_10.glb",
+      "vertices_before": 726,
+      "vertices_after": 500,
+      "bytes_before": 43864,
+      "bytes_after": 33172,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_11.glb",
+      "vertices_before": 774,
+      "vertices_after": 520,
+      "bytes_before": 42588,
+      "bytes_after": 30500,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_3.glb",
+      "vertices_before": 16170,
+      "vertices_after": 11650,
+      "bytes_before": 813932,
+      "bytes_after": 601976,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_4.glb",
+      "vertices_before": 25752,
+      "vertices_after": 18515,
+      "bytes_before": 1290172,
+      "bytes_after": 950672,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_5.glb",
+      "vertices_before": 8838,
+      "vertices_after": 6410,
+      "bytes_before": 448668,
+      "bytes_after": 334492,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_6.glb",
+      "vertices_before": 9942,
+      "vertices_after": 7204,
+      "bytes_before": 504020,
+      "bytes_after": 374792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_7.glb",
+      "vertices_before": 5010,
+      "vertices_after": 3626,
+      "bytes_before": 257612,
+      "bytes_after": 193164,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_8.glb",
+      "vertices_before": 2628,
+      "vertices_after": 1882,
+      "bytes_before": 141824,
+      "bytes_after": 107172,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_9.glb",
+      "vertices_before": 600,
+      "vertices_after": 408,
+      "bytes_before": 33872,
+      "bytes_after": 24748,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_10.glb",
+      "vertices_before": 3522,
+      "vertices_after": 2500,
+      "bytes_before": 181244,
+      "bytes_after": 132300,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_11.glb",
+      "vertices_before": 5556,
+      "vertices_after": 4018,
+      "bytes_before": 287988,
+      "bytes_after": 215616,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_12.glb",
+      "vertices_before": 12,
+      "vertices_after": 8,
+      "bytes_before": 2140,
+      "bytes_after": 2000,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_2.glb",
+      "vertices_before": 84,
+      "vertices_after": 64,
+      "bytes_before": 8036,
+      "bytes_after": 7352,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_3.glb",
+      "vertices_before": 15378,
+      "vertices_after": 11109,
+      "bytes_before": 772756,
+      "bytes_after": 572036,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_4.glb",
+      "vertices_before": 22230,
+      "vertices_after": 16012,
+      "bytes_before": 1114636,
+      "bytes_after": 821084,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_5.glb",
+      "vertices_before": 4488,
+      "vertices_after": 3206,
+      "bytes_before": 228436,
+      "bytes_after": 167008,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_6.glb",
+      "vertices_before": 4680,
+      "vertices_after": 3326,
+      "bytes_before": 239152,
+      "bytes_after": 174280,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_7.glb",
+      "vertices_before": 7080,
+      "vertices_after": 5036,
+      "bytes_before": 359156,
+      "bytes_after": 261164,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_8.glb",
+      "vertices_before": 5382,
+      "vertices_after": 3870,
+      "bytes_before": 274252,
+      "bytes_after": 201800,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_9.glb",
+      "vertices_before": 6258,
+      "vertices_after": 4502,
+      "bytes_before": 322124,
+      "bytes_after": 238980,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_10.glb",
+      "vertices_before": 3474,
+      "vertices_after": 2549,
+      "bytes_before": 183048,
+      "bytes_after": 139632,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_11.glb",
+      "vertices_before": 6186,
+      "vertices_after": 4644,
+      "bytes_before": 316504,
+      "bytes_after": 244392,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_12.glb",
+      "vertices_before": 60,
+      "vertices_after": 48,
+      "bytes_before": 4544,
+      "bytes_after": 4028,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_3.glb",
+      "vertices_before": 19008,
+      "vertices_after": 13984,
+      "bytes_before": 954256,
+      "bytes_after": 718564,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_4.glb",
+      "vertices_before": 12870,
+      "vertices_after": 9441,
+      "bytes_before": 650216,
+      "bytes_after": 489324,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_5.glb",
+      "vertices_before": 15594,
+      "vertices_after": 11565,
+      "bytes_before": 776556,
+      "bytes_after": 595624,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_6.glb",
+      "vertices_before": 8142,
+      "vertices_after": 6084,
+      "bytes_before": 415240,
+      "bytes_after": 318716,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_7.glb",
+      "vertices_before": 10704,
+      "vertices_after": 7887,
+      "bytes_before": 541264,
+      "bytes_after": 407976,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_8.glb",
+      "vertices_before": 7248,
+      "vertices_after": 5430,
+      "bytes_before": 370884,
+      "bytes_after": 284224,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_9.glb",
+      "vertices_before": 12216,
+      "vertices_after": 9119,
+      "bytes_before": 618092,
+      "bytes_after": 472560,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_10.glb",
+      "vertices_before": 3066,
+      "vertices_after": 2286,
+      "bytes_before": 160540,
+      "bytes_after": 126192,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_11.glb",
+      "vertices_before": 1200,
+      "vertices_after": 899,
+      "bytes_before": 69436,
+      "bytes_after": 55824,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_3.glb",
+      "vertices_before": 4314,
+      "vertices_after": 3179,
+      "bytes_before": 222520,
+      "bytes_after": 169196,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_4.glb",
+      "vertices_before": 1764,
+      "vertices_after": 1310,
+      "bytes_before": 92224,
+      "bytes_after": 70528,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_5.glb",
+      "vertices_before": 1830,
+      "vertices_after": 1366,
+      "bytes_before": 99832,
+      "bytes_after": 78412,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_6.glb",
+      "vertices_before": 4704,
+      "vertices_after": 3440,
+      "bytes_before": 243052,
+      "bytes_after": 184888,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_7.glb",
+      "vertices_before": 924,
+      "vertices_after": 650,
+      "bytes_before": 50196,
+      "bytes_after": 37144,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_8.glb",
+      "vertices_before": 258,
+      "vertices_after": 186,
+      "bytes_before": 16876,
+      "bytes_after": 13504,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_9.glb",
+      "vertices_before": 1830,
+      "vertices_after": 1365,
+      "bytes_before": 99916,
+      "bytes_after": 78196,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/0_3.glb",
+      "vertices_before": 108,
+      "vertices_after": 72,
+      "bytes_before": 9184,
+      "bytes_after": 7772,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/0_4.glb",
+      "vertices_before": 24,
+      "vertices_after": 16,
+      "bytes_before": 2744,
+      "bytes_after": 2420,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/0_5.glb",
+      "vertices_before": 48,
+      "vertices_after": 32,
+      "bytes_before": 3932,
+      "bytes_after": 3224,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/0_6.glb",
+      "vertices_before": 60,
+      "vertices_after": 40,
+      "bytes_before": 6824,
+      "bytes_after": 6136,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context/0_7.glb",
+      "vertices_before": 84,
+      "vertices_after": 56,
+      "bytes_before": 8028,
+      "bytes_after": 6964,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_10_col.glb",
+      "vertices_before": 180,
+      "vertices_after": 120,
+      "bytes_before": 10408,
+      "bytes_after": 4428,
+      "planar_collision_faces_normalized": 20
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_11_col.glb",
+      "vertices_before": 216,
+      "vertices_after": 144,
+      "bytes_before": 12212,
+      "bytes_after": 5076,
+      "planar_collision_faces_normalized": 24
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_8_col.glb",
+      "vertices_before": 216,
+      "vertices_after": 144,
+      "bytes_before": 12212,
+      "bytes_after": 5076,
+      "planar_collision_faces_normalized": 24
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_9_col.glb",
+      "vertices_before": 504,
+      "vertices_after": 336,
+      "bytes_before": 26604,
+      "bytes_after": 10252,
+      "planar_collision_faces_normalized": 56
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-4_11_col.glb",
+      "vertices_before": 540,
+      "vertices_after": 360,
+      "bytes_before": 28416,
+      "bytes_after": 10912,
+      "planar_collision_faces_normalized": 60
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD0.glb",
+      "vertices_before": 19518,
+      "vertices_after": 13038,
+      "bytes_before": 984644,
+      "bytes_after": 673748,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD1.glb",
+      "vertices_before": 3468,
+      "vertices_after": 2336,
+      "bytes_before": 179176,
+      "bytes_after": 127916,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4744,
+      "bytes_after": 4332,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3192,
+      "bytes_after": 2760,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD0.glb",
+      "vertices_before": 13566,
+      "vertices_after": 9050,
+      "bytes_before": 688096,
+      "bytes_after": 471640,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD1.glb",
+      "vertices_before": 2286,
+      "vertices_after": 1528,
+      "bytes_before": 122844,
+      "bytes_after": 86580,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4708,
+      "bytes_after": 4296,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3180,
+      "bytes_after": 2748,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_rooftop_ac.glb",
+      "vertices_before": 66,
+      "vertices_after": 46,
+      "bytes_before": 6008,
+      "bytes_after": 5116,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_shop_sign.glb",
+      "vertices_before": 6,
+      "vertices_after": 4,
+      "bytes_before": 1900,
+      "bytes_after": 1852,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_water_tank.glb",
+      "vertices_before": 108,
+      "vertices_after": 84,
+      "bytes_before": 6948,
+      "bytes_after": 5840,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_window_bay.glb",
+      "vertices_before": 216,
+      "vertices_after": 146,
+      "bytes_before": 16152,
+      "bytes_after": 12888,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD0.glb",
+      "vertices_before": 1086,
+      "vertices_after": 744,
+      "bytes_before": 60984,
+      "bytes_after": 44840,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD1.glb",
+      "vertices_before": 390,
+      "vertices_after": 278,
+      "bytes_before": 24952,
+      "bytes_after": 19676,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4792,
+      "bytes_after": 4376,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3200,
+      "bytes_after": 2768,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD0.glb",
+      "vertices_before": 7251,
+      "vertices_after": 5675,
+      "bytes_before": 367172,
+      "bytes_after": 291608,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD1.glb",
+      "vertices_before": 7251,
+      "vertices_after": 5675,
+      "bytes_before": 367172,
+      "bytes_after": 291608,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD2.glb",
+      "vertices_before": 165,
+      "vertices_after": 95,
+      "bytes_before": 11560,
+      "bytes_after": 8260,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3184,
+      "bytes_after": 2752,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD0.glb",
+      "vertices_before": 141414,
+      "vertices_after": 96353,
+      "bytes_before": 7224920,
+      "bytes_after": 4915776,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD1.glb",
+      "vertices_before": 86790,
+      "vertices_after": 59176,
+      "bytes_before": 4347308,
+      "bytes_after": 3022000,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD2.glb",
+      "vertices_before": 10044,
+      "vertices_after": 7086,
+      "bytes_before": 508580,
+      "bytes_after": 366728,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3152,
+      "bytes_after": 2720,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD0.glb",
+      "vertices_before": 17478,
+      "vertices_after": 11658,
+      "bytes_before": 885232,
+      "bytes_after": 606204,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD1.glb",
+      "vertices_before": 2958,
+      "vertices_after": 1976,
+      "bytes_before": 157984,
+      "bytes_after": 110988,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4700,
+      "bytes_after": 4284,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3188,
+      "bytes_after": 2756,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD0.glb",
+      "vertices_before": 6318,
+      "vertices_after": 4232,
+      "bytes_before": 325556,
+      "bytes_after": 225724,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD1.glb",
+      "vertices_before": 1230,
+      "vertices_after": 838,
+      "bytes_before": 69900,
+      "bytes_after": 51232,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4688,
+      "bytes_after": 4276,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3184,
+      "bytes_after": 2752,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD0.glb",
+      "vertices_before": 24210,
+      "vertices_after": 16154,
+      "bytes_before": 1221896,
+      "bytes_after": 835396,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD1.glb",
+      "vertices_before": 4290,
+      "vertices_after": 2872,
+      "bytes_before": 224508,
+      "bytes_after": 156612,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4636,
+      "bytes_after": 4220,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3160,
+      "bytes_after": 2728,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD0.glb",
+      "vertices_before": 7428,
+      "vertices_after": 4982,
+      "bytes_before": 378476,
+      "bytes_after": 261196,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD1.glb",
+      "vertices_before": 1518,
+      "vertices_after": 1040,
+      "bytes_before": 81804,
+      "bytes_after": 60136,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4812,
+      "bytes_after": 4400,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD0.glb",
+      "vertices_before": 2268,
+      "vertices_after": 1522,
+      "bytes_before": 120472,
+      "bytes_after": 84784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD1.glb",
+      "vertices_before": 510,
+      "vertices_after": 348,
+      "bytes_before": 32116,
+      "bytes_after": 24880,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4748,
+      "bytes_after": 4332,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3184,
+      "bytes_after": 2752,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD0.glb",
+      "vertices_before": 17376,
+      "vertices_after": 11604,
+      "bytes_before": 875912,
+      "bytes_after": 598988,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD1.glb",
+      "vertices_before": 2958,
+      "vertices_after": 1990,
+      "bytes_before": 152360,
+      "bytes_after": 108632,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4800,
+      "bytes_after": 4384,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3212,
+      "bytes_after": 2780,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD0.glb",
+      "vertices_before": 6894,
+      "vertices_after": 4602,
+      "bytes_before": 354336,
+      "bytes_after": 244624,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD1.glb",
+      "vertices_before": 1206,
+      "vertices_after": 808,
+      "bytes_before": 68664,
+      "bytes_after": 49704,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4632,
+      "bytes_after": 4216,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3156,
+      "bytes_after": 2724,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD0.glb",
+      "vertices_before": 3486,
+      "vertices_after": 2344,
+      "bytes_before": 183920,
+      "bytes_after": 129408,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD1.glb",
+      "vertices_before": 774,
+      "vertices_after": 534,
+      "bytes_before": 46780,
+      "bytes_after": 35700,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4628,
+      "bytes_after": 4212,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3144,
+      "bytes_after": 2712,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD0.glb",
+      "vertices_before": 3726,
+      "vertices_after": 2490,
+      "bytes_before": 192872,
+      "bytes_after": 133816,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD1.glb",
+      "vertices_before": 702,
+      "vertices_after": 472,
+      "bytes_before": 40412,
+      "bytes_after": 29480,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4648,
+      "bytes_after": 4236,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3132,
+      "bytes_after": 2700,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD0.glb",
+      "vertices_before": 1374,
+      "vertices_after": 936,
+      "bytes_before": 75220,
+      "bytes_after": 54468,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD1.glb",
+      "vertices_before": 438,
+      "vertices_after": 310,
+      "bytes_before": 27184,
+      "bytes_after": 21148,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4644,
+      "bytes_after": 4228,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3128,
+      "bytes_after": 2696,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD0.glb",
+      "vertices_before": 4638,
+      "vertices_after": 3098,
+      "bytes_before": 238532,
+      "bytes_after": 164876,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD1.glb",
+      "vertices_before": 846,
+      "vertices_after": 568,
+      "bytes_before": 47652,
+      "bytes_after": 34416,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD2.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4672,
+      "bytes_after": 4260,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3140,
+      "bytes_after": 2708,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/probe/apartment_06.glb",
+      "vertices_before": 7086,
+      "vertices_after": 4724,
+      "bytes_before": 360892,
+      "bytes_after": 247656,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/probe/edited_compact.glb",
+      "vertices_before": 1522,
+      "vertices_after": 1522,
+      "bytes_before": 84648,
+      "bytes_after": 84784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_11.glb",
+      "vertices_before": 54,
+      "vertices_after": 38,
+      "bytes_before": 6836,
+      "bytes_after": 6336,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_12.glb",
+      "vertices_before": 88260,
+      "vertices_after": 64841,
+      "bytes_before": 4425904,
+      "bytes_after": 3302040,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_3.glb",
+      "vertices_before": 223743,
+      "vertices_after": 167897,
+      "bytes_before": 11382704,
+      "bytes_after": 8702484,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_4.glb",
+      "vertices_before": 8202,
+      "vertices_after": 5582,
+      "bytes_before": 428272,
+      "bytes_after": 302784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_5.glb",
+      "vertices_before": 2433,
+      "vertices_after": 1507,
+      "bytes_before": 130880,
+      "bytes_after": 86572,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_6.glb",
+      "vertices_before": 1668,
+      "vertices_after": 1086,
+      "bytes_before": 100596,
+      "bytes_after": 73272,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_7.glb",
+      "vertices_before": 591,
+      "vertices_after": 406,
+      "bytes_before": 42936,
+      "bytes_after": 35220,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_8.glb",
+      "vertices_before": 309,
+      "vertices_after": 199,
+      "bytes_before": 22768,
+      "bytes_after": 17604,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_3.glb",
+      "vertices_before": 318252,
+      "vertices_after": 254272,
+      "bytes_before": 16199484,
+      "bytes_after": 13128868,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_4.glb",
+      "vertices_before": 176730,
+      "vertices_after": 142241,
+      "bytes_before": 9009528,
+      "bytes_after": 7208260,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_5.glb",
+      "vertices_before": 462,
+      "vertices_after": 348,
+      "bytes_before": 34380,
+      "bytes_after": 30068,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_6.glb",
+      "vertices_before": 468,
+      "vertices_after": 345,
+      "bytes_before": 35580,
+      "bytes_after": 30100,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_7.glb",
+      "vertices_before": 333,
+      "vertices_after": 216,
+      "bytes_before": 22804,
+      "bytes_after": 17284,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_10.glb",
+      "vertices_before": 11742,
+      "vertices_after": 8192,
+      "bytes_before": 601776,
+      "bytes_after": 431956,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_11.glb",
+      "vertices_before": 30,
+      "vertices_after": 20,
+      "bytes_before": 4556,
+      "bytes_after": 4140,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_3.glb",
+      "vertices_before": 16503,
+      "vertices_after": 11414,
+      "bytes_before": 840740,
+      "bytes_after": 597068,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_4.glb",
+      "vertices_before": 28347,
+      "vertices_after": 23088,
+      "bytes_before": 1444024,
+      "bytes_after": 1191988,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_5.glb",
+      "vertices_before": 140223,
+      "vertices_after": 112128,
+      "bytes_before": 7037852,
+      "bytes_after": 5689724,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_6.glb",
+      "vertices_before": 85290,
+      "vertices_after": 67432,
+      "bytes_before": 4292512,
+      "bytes_after": 3435780,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_7.glb",
+      "vertices_before": 133242,
+      "vertices_after": 108081,
+      "bytes_before": 6688360,
+      "bytes_after": 5481320,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_8.glb",
+      "vertices_before": 30090,
+      "vertices_after": 24630,
+      "bytes_before": 1530796,
+      "bytes_after": 1270612,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_9.glb",
+      "vertices_before": 57792,
+      "vertices_after": 45483,
+      "bytes_before": 2910936,
+      "bytes_after": 2320784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_10.glb",
+      "vertices_before": 99987,
+      "vertices_after": 81236,
+      "bytes_before": 5027308,
+      "bytes_after": 4127708,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_11.glb",
+      "vertices_before": 360,
+      "vertices_after": 218,
+      "bytes_before": 25408,
+      "bytes_after": 18708,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_3.glb",
+      "vertices_before": 12411,
+      "vertices_after": 8793,
+      "bytes_before": 635760,
+      "bytes_after": 462724,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_4.glb",
+      "vertices_before": 16326,
+      "vertices_after": 11724,
+      "bytes_before": 828400,
+      "bytes_after": 607712,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_5.glb",
+      "vertices_before": 26505,
+      "vertices_after": 19354,
+      "bytes_before": 1342068,
+      "bytes_after": 999096,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_6.glb",
+      "vertices_before": 119286,
+      "vertices_after": 94092,
+      "bytes_before": 5992456,
+      "bytes_after": 4783596,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_7.glb",
+      "vertices_before": 40551,
+      "vertices_after": 31830,
+      "bytes_before": 2050528,
+      "bytes_after": 1637388,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_8.glb",
+      "vertices_before": 111234,
+      "vertices_after": 86462,
+      "bytes_before": 5589692,
+      "bytes_after": 4401092,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_9.glb",
+      "vertices_before": 384933,
+      "vertices_after": 291459,
+      "bytes_before": 19588608,
+      "bytes_after": 15102268,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_10.glb",
+      "vertices_before": 38628,
+      "vertices_after": 30980,
+      "bytes_before": 1959096,
+      "bytes_after": 1592616,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_11.glb",
+      "vertices_before": 145281,
+      "vertices_after": 113619,
+      "bytes_before": 7292072,
+      "bytes_after": 5772760,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_3.glb",
+      "vertices_before": 7203,
+      "vertices_after": 5233,
+      "bytes_before": 374376,
+      "bytes_after": 280300,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_4.glb",
+      "vertices_before": 7866,
+      "vertices_after": 5673,
+      "bytes_before": 406868,
+      "bytes_after": 301824,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_5.glb",
+      "vertices_before": 5145,
+      "vertices_after": 3640,
+      "bytes_before": 268096,
+      "bytes_after": 196012,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_6.glb",
+      "vertices_before": 110847,
+      "vertices_after": 88918,
+      "bytes_before": 5570360,
+      "bytes_after": 4518216,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_7.glb",
+      "vertices_before": 96273,
+      "vertices_after": 77509,
+      "bytes_before": 4823872,
+      "bytes_after": 3942348,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_8.glb",
+      "vertices_before": 3777,
+      "vertices_after": 2762,
+      "bytes_before": 208292,
+      "bytes_after": 160308,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_9.glb",
+      "vertices_before": 7842,
+      "vertices_after": 5866,
+      "bytes_before": 409884,
+      "bytes_after": 318688,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_10.glb",
+      "vertices_before": 405,
+      "vertices_after": 285,
+      "bytes_before": 31940,
+      "bytes_after": 26536,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_11.glb",
+      "vertices_before": 582,
+      "vertices_after": 429,
+      "bytes_before": 40964,
+      "bytes_after": 34776,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_3.glb",
+      "vertices_before": 495,
+      "vertices_after": 330,
+      "bytes_before": 32416,
+      "bytes_after": 24616,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_4.glb",
+      "vertices_before": 1953,
+      "vertices_after": 1380,
+      "bytes_before": 108384,
+      "bytes_after": 81056,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_5.glb",
+      "vertices_before": 1308,
+      "vertices_after": 905,
+      "bytes_before": 74632,
+      "bytes_after": 55444,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_6.glb",
+      "vertices_before": 7254,
+      "vertices_after": 6027,
+      "bytes_before": 388068,
+      "bytes_after": 330456,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_7.glb",
+      "vertices_before": 16896,
+      "vertices_after": 12938,
+      "bytes_before": 863900,
+      "bytes_after": 674232,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_8.glb",
+      "vertices_before": 2808,
+      "vertices_after": 1986,
+      "bytes_before": 155432,
+      "bytes_after": 116196,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_9.glb",
+      "vertices_before": 939,
+      "vertices_after": 665,
+      "bytes_before": 58756,
+      "bytes_after": 45964,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/render/0_12.glb",
+      "vertices_before": 861,
+      "vertices_after": 595,
+      "bytes_before": 51208,
+      "bytes_after": 38576,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD0.glb",
+      "vertices_before": 27557,
+      "vertices_after": 26969,
+      "bytes_before": 2132744,
+      "bytes_after": 2090596,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD1.glb",
+      "vertices_before": 21622,
+      "vertices_after": 21009,
+      "bytes_before": 1647648,
+      "bytes_after": 1603700,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD0.glb",
+      "vertices_before": 388,
+      "vertices_after": 388,
+      "bytes_before": 29616,
+      "bytes_after": 29668,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD1.glb",
+      "vertices_before": 311,
+      "vertices_after": 311,
+      "bytes_before": 24056,
+      "bytes_after": 24104,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD0.glb",
+      "vertices_before": 627,
+      "vertices_after": 623,
+      "bytes_before": 45408,
+      "bytes_after": 45200,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD1.glb",
+      "vertices_before": 556,
+      "vertices_after": 553,
+      "bytes_before": 40644,
+      "bytes_after": 40500,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD0.glb",
+      "vertices_before": 855,
+      "vertices_after": 852,
+      "bytes_before": 61212,
+      "bytes_after": 61068,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD1.glb",
+      "vertices_before": 698,
+      "vertices_after": 696,
+      "bytes_before": 50356,
+      "bytes_after": 50280,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD0.glb",
+      "vertices_before": 72,
+      "vertices_after": 72,
+      "bytes_before": 8084,
+      "bytes_after": 8132,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD1.glb",
+      "vertices_before": 71,
+      "vertices_after": 71,
+      "bytes_before": 8020,
+      "bytes_after": 8068,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD0.glb",
+      "vertices_before": 3177,
+      "vertices_after": 3165,
+      "bytes_before": 215896,
+      "bytes_after": 215180,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD1.glb",
+      "vertices_before": 3102,
+      "vertices_after": 3090,
+      "bytes_before": 210700,
+      "bytes_after": 209984,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD0.glb",
+      "vertices_before": 435,
+      "vertices_after": 435,
+      "bytes_before": 32872,
+      "bytes_after": 32920,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD1.glb",
+      "vertices_before": 339,
+      "vertices_after": 339,
+      "bytes_before": 26160,
+      "bytes_after": 26208,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD0.glb",
+      "vertices_before": 328,
+      "vertices_after": 328,
+      "bytes_before": 25336,
+      "bytes_after": 25388,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD1.glb",
+      "vertices_before": 291,
+      "vertices_after": 291,
+      "bytes_before": 22820,
+      "bytes_after": 22872,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD0.glb",
+      "vertices_before": 78,
+      "vertices_after": 78,
+      "bytes_before": 8500,
+      "bytes_after": 8548,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD1.glb",
+      "vertices_before": 78,
+      "vertices_after": 78,
+      "bytes_before": 8508,
+      "bytes_after": 8560,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD0.glb",
+      "vertices_before": 270,
+      "vertices_after": 270,
+      "bytes_before": 21464,
+      "bytes_after": 21516,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD1.glb",
+      "vertices_before": 239,
+      "vertices_after": 239,
+      "bytes_before": 19344,
+      "bytes_after": 19396,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD0.glb",
+      "vertices_before": 20,
+      "vertices_after": 20,
+      "bytes_before": 4568,
+      "bytes_after": 4616,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD1.glb",
+      "vertices_before": 20,
+      "vertices_after": 20,
+      "bytes_before": 4576,
+      "bytes_after": 4624,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD0.glb",
+      "vertices_before": 584,
+      "vertices_after": 584,
+      "bytes_before": 42248,
+      "bytes_after": 42300,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD1.glb",
+      "vertices_before": 533,
+      "vertices_after": 533,
+      "bytes_before": 38832,
+      "bytes_after": 38884,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD0.glb",
+      "vertices_before": 1594,
+      "vertices_after": 1594,
+      "bytes_before": 110268,
+      "bytes_after": 110320,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD1.glb",
+      "vertices_before": 1541,
+      "vertices_after": 1541,
+      "bytes_before": 106620,
+      "bytes_after": 106672,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD0.glb",
+      "vertices_before": 402,
+      "vertices_after": 402,
+      "bytes_before": 30396,
+      "bytes_after": 30448,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD1.glb",
+      "vertices_before": 324,
+      "vertices_after": 324,
+      "bytes_before": 25028,
+      "bytes_after": 25080,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD0.glb",
+      "vertices_before": 514,
+      "vertices_after": 508,
+      "bytes_before": 38056,
+      "bytes_after": 37724,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD1.glb",
+      "vertices_before": 377,
+      "vertices_after": 375,
+      "bytes_before": 28600,
+      "bytes_after": 28524,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD0.glb",
+      "vertices_before": 227,
+      "vertices_after": 227,
+      "bytes_before": 18436,
+      "bytes_after": 18484,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD1.glb",
+      "vertices_before": 229,
+      "vertices_after": 229,
+      "bytes_before": 18536,
+      "bytes_after": 18588,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD0.glb",
+      "vertices_before": 40,
+      "vertices_after": 40,
+      "bytes_before": 5916,
+      "bytes_after": 5968,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD1.glb",
+      "vertices_before": 40,
+      "vertices_after": 40,
+      "bytes_before": 5928,
+      "bytes_after": 5976,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD0.glb",
+      "vertices_before": 88,
+      "vertices_after": 86,
+      "bytes_before": 9180,
+      "bytes_after": 9104,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD1.glb",
+      "vertices_before": 76,
+      "vertices_after": 75,
+      "bytes_before": 8348,
+      "bytes_after": 8332,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD0.glb",
+      "vertices_before": 497,
+      "vertices_after": 497,
+      "bytes_before": 36608,
+      "bytes_after": 36660,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD1.glb",
+      "vertices_before": 435,
+      "vertices_after": 435,
+      "bytes_before": 32580,
+      "bytes_after": 32628,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3212,
+      "bytes_after": 2780,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3216,
+      "bytes_after": 2784,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD0.glb",
+      "vertices_before": 1581,
+      "vertices_after": 1581,
+      "bytes_before": 108932,
+      "bytes_after": 108984,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD1.glb",
+      "vertices_before": 1578,
+      "vertices_after": 1578,
+      "bytes_before": 108728,
+      "bytes_after": 108780,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD0.glb",
+      "vertices_before": 1795,
+      "vertices_after": 1697,
+      "bytes_before": 137692,
+      "bytes_after": 130688,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD1.glb",
+      "vertices_before": 1738,
+      "vertices_after": 1639,
+      "bytes_before": 133464,
+      "bytes_after": 126388,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD0.glb",
+      "vertices_before": 900,
+      "vertices_after": 848,
+      "bytes_before": 70616,
+      "bytes_after": 66924,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD1.glb",
+      "vertices_before": 900,
+      "vertices_after": 848,
+      "bytes_before": 70628,
+      "bytes_after": 66932,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD0.glb",
+      "vertices_before": 814,
+      "vertices_after": 750,
+      "bytes_before": 64108,
+      "bytes_after": 59552,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD1.glb",
+      "vertices_before": 816,
+      "vertices_after": 753,
+      "bytes_before": 64260,
+      "bytes_after": 59776,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD0.glb",
+      "vertices_before": 564,
+      "vertices_after": 512,
+      "bytes_before": 45316,
+      "bytes_after": 41620,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD1.glb",
+      "vertices_before": 564,
+      "vertices_after": 512,
+      "bytes_before": 45324,
+      "bytes_after": 41632,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3232,
+      "bytes_after": 2800,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD0.glb",
+      "vertices_before": 800,
+      "vertices_after": 759,
+      "bytes_before": 63216,
+      "bytes_after": 60316,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD1.glb",
+      "vertices_before": 667,
+      "vertices_after": 623,
+      "bytes_before": 52936,
+      "bytes_after": 49820,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD0.glb",
+      "vertices_before": 751,
+      "vertices_after": 676,
+      "bytes_before": 59336,
+      "bytes_after": 53984,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD1.glb",
+      "vertices_before": 737,
+      "vertices_after": 662,
+      "bytes_before": 58264,
+      "bytes_after": 52912,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3232,
+      "bytes_after": 2800,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD0.glb",
+      "vertices_before": 342,
+      "vertices_after": 305,
+      "bytes_before": 28632,
+      "bytes_after": 26016,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD1.glb",
+      "vertices_before": 328,
+      "vertices_after": 288,
+      "bytes_before": 27584,
+      "bytes_after": 24752,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD0.glb",
+      "vertices_before": 1049,
+      "vertices_after": 983,
+      "bytes_before": 81732,
+      "bytes_after": 77024,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD1.glb",
+      "vertices_before": 1073,
+      "vertices_after": 1001,
+      "bytes_before": 83468,
+      "bytes_after": 78336,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD0.glb",
+      "vertices_before": 704,
+      "vertices_after": 622,
+      "bytes_before": 56116,
+      "bytes_after": 50260,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD1.glb",
+      "vertices_before": 608,
+      "vertices_after": 531,
+      "bytes_before": 48636,
+      "bytes_after": 43140,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD0.glb",
+      "vertices_before": 428,
+      "vertices_after": 416,
+      "bytes_before": 35200,
+      "bytes_after": 34384,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD1.glb",
+      "vertices_before": 428,
+      "vertices_after": 416,
+      "bytes_before": 35208,
+      "bytes_after": 34392,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3232,
+      "bytes_after": 2800,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD0.glb",
+      "vertices_before": 410,
+      "vertices_after": 360,
+      "bytes_before": 33720,
+      "bytes_after": 30172,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD1.glb",
+      "vertices_before": 410,
+      "vertices_after": 360,
+      "bytes_before": 33732,
+      "bytes_after": 30180,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3232,
+      "bytes_after": 2800,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD0.glb",
+      "vertices_before": 326,
+      "vertices_after": 274,
+      "bytes_before": 27468,
+      "bytes_after": 23772,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD1.glb",
+      "vertices_before": 316,
+      "vertices_after": 264,
+      "bytes_before": 26696,
+      "bytes_after": 23000,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD0.glb",
+      "vertices_before": 394,
+      "vertices_after": 386,
+      "bytes_before": 32712,
+      "bytes_after": 32188,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD1.glb",
+      "vertices_before": 360,
+      "vertices_after": 352,
+      "bytes_before": 30068,
+      "bytes_after": 29544,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD0.glb",
+      "vertices_before": 394,
+      "vertices_after": 386,
+      "bytes_before": 32716,
+      "bytes_after": 32188,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD1.glb",
+      "vertices_before": 360,
+      "vertices_after": 352,
+      "bytes_before": 30072,
+      "bytes_after": 29548,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD0.glb",
+      "vertices_before": 656,
+      "vertices_after": 618,
+      "bytes_before": 53096,
+      "bytes_after": 50408,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD1.glb",
+      "vertices_before": 654,
+      "vertices_after": 616,
+      "bytes_before": 52960,
+      "bytes_after": 50272,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD0.glb",
+      "vertices_before": 484,
+      "vertices_after": 432,
+      "bytes_before": 39288,
+      "bytes_after": 35596,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD1.glb",
+      "vertices_before": 484,
+      "vertices_after": 432,
+      "bytes_before": 39300,
+      "bytes_after": 35604,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD0.glb",
+      "vertices_before": 484,
+      "vertices_after": 432,
+      "bytes_before": 39292,
+      "bytes_after": 35596,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD1.glb",
+      "vertices_before": 484,
+      "vertices_after": 432,
+      "bytes_before": 39300,
+      "bytes_after": 35608,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD0.glb",
+      "vertices_before": 451,
+      "vertices_after": 397,
+      "bytes_before": 36964,
+      "bytes_after": 33124,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD1.glb",
+      "vertices_before": 414,
+      "vertices_after": 365,
+      "bytes_before": 34080,
+      "bytes_after": 30604,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3232,
+      "bytes_after": 2800,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD0.glb",
+      "vertices_before": 450,
+      "vertices_after": 398,
+      "bytes_before": 36892,
+      "bytes_after": 33200,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD1.glb",
+      "vertices_before": 412,
+      "vertices_after": 363,
+      "bytes_before": 33936,
+      "bytes_after": 30460,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD0.glb",
+      "vertices_before": 417,
+      "vertices_after": 377,
+      "bytes_before": 34276,
+      "bytes_after": 31448,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD1.glb",
+      "vertices_before": 419,
+      "vertices_after": 379,
+      "bytes_before": 34432,
+      "bytes_after": 31600,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3224,
+      "bytes_after": 2792,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3232,
+      "bytes_after": 2800,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD0.glb",
+      "vertices_before": 576,
+      "vertices_after": 529,
+      "bytes_before": 46180,
+      "bytes_after": 42848,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD1.glb",
+      "vertices_before": 574,
+      "vertices_after": 530,
+      "bytes_before": 46008,
+      "bytes_after": 42892,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD2.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3220,
+      "bytes_after": 2788,
+      "planar_collision_faces_normalized": 0
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_col.glb",
+      "vertices_before": 36,
+      "vertices_after": 26,
+      "bytes_before": 3228,
+      "bytes_after": 2796,
+      "planar_collision_faces_normalized": 0
+    }
+  ]
+}

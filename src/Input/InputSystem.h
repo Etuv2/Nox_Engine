@@ -160,6 +160,8 @@ public:
     
     // Event processing - call this with SDL events
     bool ProcessEvent(const SDL_Event& event);
+    // Drops every held key/button and mouse delta (window focus loss: releases may never arrive).
+    void ResetHeldState();
     
     // Direct input queries (for immediate input checking)
     bool IsKeyPressed(SDL_Keycode key) const;

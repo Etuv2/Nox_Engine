@@ -8,6 +8,10 @@ per-route coverage table is generated: [route_checklist.md](route_checklist.md).
 
 Brief: [../shuto_environment_prompt.md](../shuto_environment_prompt.md).
 
+The editable architecture kit, geographic building scene, parallax-window
+integration, source license audit and measured import results are documented in
+[buildings.md](buildings.md). Use `scenes/shuto_buildings.json` for this delivery.
+
 ## Agreed requirements (2026-10-10)
 
 | Topic | Decision |

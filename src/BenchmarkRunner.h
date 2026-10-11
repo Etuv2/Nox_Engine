@@ -24,6 +24,10 @@ class SceneNode;
 *   NOX_BENCHMARK_OUT=dir                output directory (default captures/benchmark)
 *   NOX_BENCHMARK_REPEAT=n               repeat the shot list n times (timing stability)
 *
+* Timing definitions: frame_ms = wall time between consecutive rendered frames (what the player
+* sees, includes the swap); cpu_ms = main-thread update + render submission of the frame; gpu_ms =
+* sum of the per-pass GPU timestamp durations (queries read back a few frames late).
+*
 * Outputs: frames.csv (one row per frame), summary.json and summary.md (median/p95/p99/max of
 * frame and GPU time per shot plus per-pass GPU medians), PNGs in capture mode.
 */
@@ -46,8 +50,10 @@ public:
 	void Update(Camera& camera, SceneGraph& sceneGraph);
 	// True once when a shot begins (temporal history should be reset).
 	bool ConsumeCameraCut();
-	// Call after the scene is rendered (before UI) with the latest per-pass metrics.
-	void OnFrameRendered(int width, int height, const std::vector<PassSample>& passes);
+	// Call after the scene is rendered (before UI) with the latest per-pass metrics. cpuMs is the
+	// main-thread time of this frame from the start of the update until the render was submitted
+	// (excludes the buffer swap, where the CPU waits for the GPU or the display).
+	void OnFrameRendered(int width, int height, const std::vector<PassSample>& passes, float cpuMs);
 
 private:
 	struct Key {
@@ -88,6 +94,7 @@ private:
 		int frame = 0;
 		float simTime = 0.0f;
 		float wallMs = 0.0f;
+		float cpuMs = 0.0f;
 		float gpuMs = 0.0f;
 		std::string passes;
 	};
@@ -124,5 +131,6 @@ private:
 	std::chrono::steady_clock::time_point m_createdAt{};
 	float m_firstFrameMs = -1.0f;
 	std::vector<FrameRecord> m_records;
+	unsigned long long m_firstFrameFileTime = 0; // FILETIME (100 ns) of the first measured frame
 	std::vector<float> m_warmupWallMs;
 };

@@ -3,11 +3,12 @@
 *
 * Command line (docs/nfs2015/game.md, "Launching"):
 *   Nox_Engine.exe [--preset <name>] [--game | --editor] [--scene <path>] [--quality high|ultra]
-*                  [--window windowed|borderless|fullscreen] [--width N --height N]
+*                  [--window windowed|borderless|fullscreen] [--width N --height N] [--no-game]
 * Presets come from config/launch_presets.json ("default" is used without arguments). Assets are
 * resolved from the executable's location, not the working directory.
 */
 #include "MainWindow.h"
+#include "NoxRacingGame.h"
 #include "CrashHandler.h"
 #include "ImGui/ConsoleLog.h"
 #include "json.hpp"
@@ -116,6 +117,10 @@ int main(int argc, char* argv[])
 	SetAssetRoot();
 	ConsoleLog::Get().Install();
 	const LaunchConfig launch = ParseLaunch(argc, argv);
+	// The racing game is an optional module; --no-game runs the bare engine (viewer/editor).
+	bool withGame = true;
+	for (int i = 1; i < argc; ++i) if (std::string(argv[i]) == "--no-game") withGame = false;
+	if (withGame) RegisterNoxRacingGame();
 
 	// Create and initialize the main application window
 	MainWindow mainWindow;

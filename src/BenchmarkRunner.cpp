@@ -6,6 +6,10 @@
 #include "stb_image_write.h"
 
 #include "rhi/RHI.h"
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <psapi.h>
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 #include <cmath>
@@ -311,7 +315,7 @@ void BenchmarkRunner::Update(Camera& camera, SceneGraph& sceneGraph) {
 	camera.SetPerspective(glm::clamp(fov, 10.0f, 120.0f), 1.0f, camera.GetCameraNearPlane(), camera.GetCameraFarPlane());
 }
 
-void BenchmarkRunner::OnFrameRendered(int width, int height, const std::vector<PassSample>& passes) {
+void BenchmarkRunner::OnFrameRendered(int width, int height, const std::vector<PassSample>& passes, float cpuMs) {
 	if (m_finished || m_currentShot < 0) return;
 	const auto now = std::chrono::steady_clock::now();
 	const float wallMs = m_haveLastFrameEnd
@@ -319,6 +323,9 @@ void BenchmarkRunner::OnFrameRendered(int width, int height, const std::vector<P
 		: 0.0f;
 	if (m_firstFrameMs < 0.0f) {
 		m_firstFrameMs = std::chrono::duration<float, std::milli>(now - m_createdAt).count();
+		FILETIME ft{};
+		GetSystemTimeAsFileTime(&ft);
+		m_firstFrameFileTime = (static_cast<unsigned long long>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
 	}
 	m_lastFrameEnd = now;
 	m_haveLastFrameEnd = true;
@@ -338,7 +345,7 @@ void BenchmarkRunner::OnFrameRendered(int width, int height, const std::vector<P
 		gpuMs += p.gpuMs;
 		passText << p.name << ':' << std::fixed << std::setprecision(3) << p.gpuMs << '|';
 	}
-	m_records.push_back({ m_currentShot, m_shotFrame, m_shotTime, wallMs, gpuMs, passText.str() });
+	m_records.push_back({ m_currentShot, m_shotFrame, m_shotTime, wallMs, cpuMs, gpuMs, passText.str() });
 
 	if (m_captureMode) {
 		const fs::path dir = fs::path(m_outDir) / shot.name;
@@ -377,9 +384,9 @@ void BenchmarkRunner::WriteResults() {
 	fs::create_directories(m_outDir, ec);
 	{
 		std::ofstream csv(fs::path(m_outDir) / "frames.csv");
-		csv << "shot,frame,sim_time_s,frame_ms,gpu_ms,passes\n";
+		csv << "shot,frame,sim_time_s,frame_ms,cpu_ms,gpu_ms,passes\n";
 		for (const FrameRecord& r : m_records) {
-			csv << m_shots[r.shot].name << ',' << r.frame << ',' << r.simTime << ',' << r.wallMs << ',' << r.gpuMs
+			csv << m_shots[r.shot].name << ',' << r.frame << ',' << r.simTime << ',' << r.wallMs << ',' << r.cpuMs << ',' << r.gpuMs
 				<< ",\"" << r.passes << "\"\n";
 		}
 	}
@@ -390,6 +397,19 @@ void BenchmarkRunner::WriteResults() {
 	summary["fixed_dt"] = m_fixedDt;
 	summary["repeat"] = m_repeat;
 	summary["cold_start_first_frame_ms"] = m_firstFrameMs;
+	{
+		// Load time from process creation and peak memory of the whole run.
+		FILETIME created{}, exited{}, kernel{}, user{};
+		if (GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) {
+			const auto toMs = [](const FILETIME& f) { return (static_cast<double>(f.dwHighDateTime) * 4294967296.0 + f.dwLowDateTime) / 10000.0; };
+			summary["process_start_to_first_frame_ms"] = static_cast<double>(m_firstFrameFileTime) / 10000.0 - toMs(created);
+		}
+		PROCESS_MEMORY_COUNTERS pmc{};
+		if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+			summary["peak_working_set_mb"] = pmc.PeakWorkingSetSize / (1024.0 * 1024.0);
+			summary["peak_commit_mb"] = pmc.PeakPagefileUsage / (1024.0 * 1024.0);
+		}
+	}
 	summary["warmup"] = {
 		{"frames", m_warmupWallMs.size()},
 		{"max_ms", m_warmupWallMs.empty() ? 0.0f : *std::max_element(m_warmupWallMs.begin(), m_warmupWallMs.end())},
@@ -399,19 +419,26 @@ void BenchmarkRunner::WriteResults() {
 	md << "# Benchmark: " << m_sceneName << " (" << (m_captureMode ? "capture" : "timing") << ")\n\n";
 	md << "Cold start to first frame: " << std::fixed << std::setprecision(1) << m_firstFrameMs << " ms; warmup median "
 		<< Percentile(m_warmupWallMs, 0.5f) << " ms, max " << summary["warmup"]["max_ms"].get<float>() << " ms\n\n";
-	md << "| Shot | Frames | Frame median | p95 | p99 | max | GPU median | GPU p95 | GPU p99 |\n";
-	md << "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n";
+	if (summary.contains("process_start_to_first_frame_ms")) {
+		md << "Process start to first measured frame: " << summary["process_start_to_first_frame_ms"].get<double>() / 1000.0
+			<< " s; peak working set " << summary.value("peak_working_set_mb", 0.0) << " MB, peak commit "
+			<< summary.value("peak_commit_mb", 0.0) << " MB\n\n";
+	}
+	md << "frame = wall time per frame; CPU = main-thread update + submit; GPU = sum of pass timestamps (ms)\n\n";
+	md << "| Shot | Frames | Frame median | p95 | p99 | max | CPU median | CPU p95 | CPU p99 | GPU median | GPU p95 | GPU p99 |\n";
+	md << "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n";
 
-	std::vector<float> allWall, allGpu;
+	std::vector<float> allWall, allGpu, allCpu;
 	json shots = json::array();
 	for (size_t s = 0; s < m_shots.size(); ++s) {
-		std::vector<float> wall, gpu;
+		std::vector<float> wall, gpu, cpu;
 		std::map<std::string, std::vector<float>> perPass;
 		for (const FrameRecord& r : m_records) {
 			if (r.shot != static_cast<int>(s)) continue;
 			// The first frame of a shot follows a cut; it is kept (cuts are part of gameplay).
 			wall.push_back(r.wallMs);
 			gpu.push_back(r.gpuMs);
+			cpu.push_back(r.cpuMs);
 			std::stringstream ps(r.passes);
 			std::string item;
 			while (std::getline(ps, item, '|')) {
@@ -423,12 +450,14 @@ void BenchmarkRunner::WriteResults() {
 		}
 		allWall.insert(allWall.end(), wall.begin(), wall.end());
 		allGpu.insert(allGpu.end(), gpu.begin(), gpu.end());
+		allCpu.insert(allCpu.end(), cpu.begin(), cpu.end());
 		json js;
 		js["name"] = m_shots[s].name;
 		js["frames"] = wall.size();
 		js["frame_ms"] = { {"median", Percentile(wall, 0.5f)}, {"p95", Percentile(wall, 0.95f)}, {"p99", Percentile(wall, 0.99f)},
 			{"max", wall.empty() ? 0.0f : *std::max_element(wall.begin(), wall.end())} };
 		js["gpu_ms"] = { {"median", Percentile(gpu, 0.5f)}, {"p95", Percentile(gpu, 0.95f)}, {"p99", Percentile(gpu, 0.99f)} };
+		js["cpu_ms"] = { {"median", Percentile(cpu, 0.5f)}, {"p95", Percentile(cpu, 0.95f)}, {"p99", Percentile(cpu, 0.99f)} };
 		json passesJson;
 		for (const auto& [name, values] : perPass) {
 			passesJson[name] = Percentile(values, 0.5f);
@@ -437,16 +466,19 @@ void BenchmarkRunner::WriteResults() {
 		shots.push_back(js);
 		md << "| " << m_shots[s].name << " | " << wall.size() << " | " << std::setprecision(2)
 			<< Percentile(wall, 0.5f) << " | " << Percentile(wall, 0.95f) << " | " << Percentile(wall, 0.99f) << " | "
-			<< js["frame_ms"]["max"].get<float>() << " | " << Percentile(gpu, 0.5f) << " | " << Percentile(gpu, 0.95f)
+			<< js["frame_ms"]["max"].get<float>() << " | " << Percentile(cpu, 0.5f) << " | " << Percentile(cpu, 0.95f) << " | "
+			<< Percentile(cpu, 0.99f) << " | " << Percentile(gpu, 0.5f) << " | " << Percentile(gpu, 0.95f)
 			<< " | " << Percentile(gpu, 0.99f) << " |\n";
 	}
 	summary["shots"] = shots;
 	summary["overall"] = {
 		{"frame_ms", { {"median", Percentile(allWall, 0.5f)}, {"p95", Percentile(allWall, 0.95f)}, {"p99", Percentile(allWall, 0.99f)} }},
-		{"gpu_ms", { {"median", Percentile(allGpu, 0.5f)}, {"p95", Percentile(allGpu, 0.95f)}, {"p99", Percentile(allGpu, 0.99f)} }}
+		{"gpu_ms", { {"median", Percentile(allGpu, 0.5f)}, {"p95", Percentile(allGpu, 0.95f)}, {"p99", Percentile(allGpu, 0.99f)} }},
+		{"cpu_ms", { {"median", Percentile(allCpu, 0.5f)}, {"p95", Percentile(allCpu, 0.95f)}, {"p99", Percentile(allCpu, 0.99f)} }}
 	};
 	md << "| **all** | " << allWall.size() << " | " << Percentile(allWall, 0.5f) << " | " << Percentile(allWall, 0.95f) << " | "
-		<< Percentile(allWall, 0.99f) << " | - | " << Percentile(allGpu, 0.5f) << " | " << Percentile(allGpu, 0.95f) << " | "
+		<< Percentile(allWall, 0.99f) << " | - | " << Percentile(allCpu, 0.5f) << " | " << Percentile(allCpu, 0.95f) << " | "
+		<< Percentile(allCpu, 0.99f) << " | " << Percentile(allGpu, 0.5f) << " | " << Percentile(allGpu, 0.95f) << " | "
 		<< Percentile(allGpu, 0.99f) << " |\n\n";
 
 	// Per-pass medians across all shots, largest first.

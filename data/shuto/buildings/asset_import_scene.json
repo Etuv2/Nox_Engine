@@ -1,0 +1,4852 @@
+{
+  "scene_name": "shuto_building_kit_check",
+  "exposure": 1.0,
+  "gamma": 1.6,
+  "skybox": "hdrs\\skybox_2.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "light",
+      "name": "Sun",
+      "position": [
+        0,
+        20,
+        0
+      ],
+      "rotation": [
+        -45,
+        30,
+        0
+      ],
+      "light": {
+        "type": "directional",
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "intensity": 2.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.85
+      }
+    },
+    {
+      "type": "model",
+      "name": "residential_compact_LOD0",
+      "path": "models/shuto/buildings/kit/residential_compact_LOD0.glb",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_compact_LOD1",
+      "path": "models/shuto/buildings/kit/residential_compact_LOD1.glb",
+      "position": [
+        15000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_compact_LOD2",
+      "path": "models/shuto/buildings/kit/residential_compact_LOD2.glb",
+      "position": [
+        15000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_compact_proxy",
+      "path": "models/shuto/buildings/kit/residential_compact_col.glb",
+      "position": [
+        15000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_balcony_LOD0",
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD0.glb",
+      "position": [
+        320,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_balcony_LOD1",
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD1.glb",
+      "position": [
+        15250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_balcony_LOD2",
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD2.glb",
+      "position": [
+        15250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_balcony_proxy",
+      "path": "models/shuto/buildings/kit/residential_balcony_col.glb",
+      "position": [
+        15250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_slab_LOD0",
+      "path": "models/shuto/buildings/kit/residential_slab_LOD0.glb",
+      "position": [
+        640,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_slab_LOD1",
+      "path": "models/shuto/buildings/kit/residential_slab_LOD1.glb",
+      "position": [
+        15500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_slab_LOD2",
+      "path": "models/shuto/buildings/kit/residential_slab_LOD2.glb",
+      "position": [
+        15500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "residential_slab_proxy",
+      "path": "models/shuto/buildings/kit/residential_slab_col.glb",
+      "position": [
+        15500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "apartment_tower_LOD0",
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD0.glb",
+      "position": [
+        960,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "apartment_tower_LOD1",
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD1.glb",
+      "position": [
+        15750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "apartment_tower_LOD2",
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD2.glb",
+      "position": [
+        15750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "apartment_tower_proxy",
+      "path": "models/shuto/buildings/kit/apartment_tower_col.glb",
+      "position": [
+        15750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_small_LOD0",
+      "path": "models/shuto/buildings/kit/office_small_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_small_LOD1",
+      "path": "models/shuto/buildings/kit/office_small_LOD1.glb",
+      "position": [
+        16000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_small_LOD2",
+      "path": "models/shuto/buildings/kit/office_small_LOD2.glb",
+      "position": [
+        16000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_small_proxy",
+      "path": "models/shuto/buildings/kit/office_small_col.glb",
+      "position": [
+        16000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_ribbon_LOD0",
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_ribbon_LOD1",
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD1.glb",
+      "position": [
+        16250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_ribbon_LOD2",
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD2.glb",
+      "position": [
+        16250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_ribbon_proxy",
+      "path": "models/shuto/buildings/kit/office_ribbon_col.glb",
+      "position": [
+        16250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_tower_LOD0",
+      "path": "models/shuto/buildings/kit/office_tower_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -320
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_tower_LOD1",
+      "path": "models/shuto/buildings/kit/office_tower_LOD1.glb",
+      "position": [
+        16500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_tower_LOD2",
+      "path": "models/shuto/buildings/kit/office_tower_LOD2.glb",
+      "position": [
+        16500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "office_tower_proxy",
+      "path": "models/shuto/buildings/kit/office_tower_col.glb",
+      "position": [
+        16500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_frontage_LOD0",
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -320
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_frontage_LOD1",
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD1.glb",
+      "position": [
+        16750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_frontage_LOD2",
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD2.glb",
+      "position": [
+        16750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_frontage_proxy",
+      "path": "models/shuto/buildings/kit/retail_frontage_col.glb",
+      "position": [
+        16750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_corner_LOD0",
+      "path": "models/shuto/buildings/kit/retail_corner_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -320
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_corner_LOD1",
+      "path": "models/shuto/buildings/kit/retail_corner_LOD1.glb",
+      "position": [
+        17000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_corner_LOD2",
+      "path": "models/shuto/buildings/kit/retail_corner_LOD2.glb",
+      "position": [
+        17000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "retail_corner_proxy",
+      "path": "models/shuto/buildings/kit/retail_corner_col.glb",
+      "position": [
+        17000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "commercial_midrise_LOD0",
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -320
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "commercial_midrise_LOD1",
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD1.glb",
+      "position": [
+        17250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "commercial_midrise_LOD2",
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD2.glb",
+      "position": [
+        17250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "commercial_midrise_proxy",
+      "path": "models/shuto/buildings/kit/commercial_midrise_col.glb",
+      "position": [
+        17250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_small_LOD0",
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -320
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_small_LOD1",
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD1.glb",
+      "position": [
+        17500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_small_LOD2",
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD2.glb",
+      "position": [
+        17500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_small_proxy",
+      "path": "models/shuto/buildings/kit/warehouse_small_col.glb",
+      "position": [
+        17500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_large_LOD0",
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -320
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_large_LOD1",
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD1.glb",
+      "position": [
+        17750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_large_LOD2",
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD2.glb",
+      "position": [
+        17750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "warehouse_large_proxy",
+      "path": "models/shuto/buildings/kit/warehouse_large_col.glb",
+      "position": [
+        17750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "waterfront_facility_LOD0",
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -640
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "waterfront_facility_LOD1",
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD1.glb",
+      "position": [
+        18000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "waterfront_facility_LOD2",
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD2.glb",
+      "position": [
+        18000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "waterfront_facility_proxy",
+      "path": "models/shuto/buildings/kit/waterfront_facility_col.glb",
+      "position": [
+        18000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "industrial_workshop_LOD0",
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -640
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "industrial_workshop_LOD1",
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD1.glb",
+      "position": [
+        18250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "industrial_workshop_LOD2",
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD2.glb",
+      "position": [
+        18250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "industrial_workshop_proxy",
+      "path": "models/shuto/buildings/kit/industrial_workshop_col.glb",
+      "position": [
+        18250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_dentsu_LOD0",
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -640
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_dentsu_LOD1",
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD1.glb",
+      "position": [
+        18500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_dentsu_LOD2",
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD2.glb",
+      "position": [
+        18500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_dentsu_proxy",
+      "path": "models/shuto/buildings/kit/landmark_dentsu_col.glb",
+      "position": [
+        18500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_fuji_tv_LOD0",
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -640
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_fuji_tv_LOD1",
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD1.glb",
+      "position": [
+        18750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_fuji_tv_LOD2",
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD2.glb",
+      "position": [
+        18750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "landmark_fuji_tv_proxy",
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_col.glb",
+      "position": [
+        18750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_01_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -640
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_01_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD1.glb",
+      "position": [
+        19000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_01_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD2.glb",
+      "position": [
+        19000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_01_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_01_col.glb",
+      "position": [
+        19000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_02_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -640
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_02_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD1.glb",
+      "position": [
+        19250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_02_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD2.glb",
+      "position": [
+        19250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_02_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_02_col.glb",
+      "position": [
+        19250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_03_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -960
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_03_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD1.glb",
+      "position": [
+        19500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_03_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD2.glb",
+      "position": [
+        19500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_03_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_03_col.glb",
+      "position": [
+        19500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_04_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -960
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_04_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD1.glb",
+      "position": [
+        19750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_04_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD2.glb",
+      "position": [
+        19750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_04_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_04_col.glb",
+      "position": [
+        19750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_05_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -960
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_05_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD1.glb",
+      "position": [
+        20000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_05_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD2.glb",
+      "position": [
+        20000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_05_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_05_col.glb",
+      "position": [
+        20000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_06_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -960
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_06_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD1.glb",
+      "position": [
+        20250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_06_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD2.glb",
+      "position": [
+        20250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_06_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_06_col.glb",
+      "position": [
+        20250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_07_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -960
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_07_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD1.glb",
+      "position": [
+        20500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_07_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD2.glb",
+      "position": [
+        20500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_07_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_07_col.glb",
+      "position": [
+        20500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_08_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -960
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_08_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD1.glb",
+      "position": [
+        20750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_08_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD2.glb",
+      "position": [
+        20750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_08_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_08_col.glb",
+      "position": [
+        20750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_09_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -1280
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_09_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD1.glb",
+      "position": [
+        21000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_09_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD2.glb",
+      "position": [
+        21000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_09_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_09_col.glb",
+      "position": [
+        21000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_10_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -1280
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_10_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD1.glb",
+      "position": [
+        21250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_10_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD2.glb",
+      "position": [
+        21250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_10_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_10_col.glb",
+      "position": [
+        21250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_11_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -1280
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_11_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD1.glb",
+      "position": [
+        21500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_11_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD2.glb",
+      "position": [
+        21500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_11_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_11_col.glb",
+      "position": [
+        21500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_12_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -1280
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_12_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD1.glb",
+      "position": [
+        21750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_12_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD2.glb",
+      "position": [
+        21750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_12_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_12_col.glb",
+      "position": [
+        21750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_13_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -1280
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_13_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD1.glb",
+      "position": [
+        22000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_13_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD2.glb",
+      "position": [
+        22000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_13_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_13_col.glb",
+      "position": [
+        22000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_14_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -1280
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_14_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD1.glb",
+      "position": [
+        22250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_14_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD2.glb",
+      "position": [
+        22250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_14_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_14_col.glb",
+      "position": [
+        22250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_15_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -1600
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_15_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD1.glb",
+      "position": [
+        22500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_15_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD2.glb",
+      "position": [
+        22500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_15_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_15_col.glb",
+      "position": [
+        22500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_16_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -1600
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_16_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD1.glb",
+      "position": [
+        22750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_16_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD2.glb",
+      "position": [
+        22750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_16_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_16_col.glb",
+      "position": [
+        22750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_17_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -1600
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_17_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD1.glb",
+      "position": [
+        23000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_17_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD2.glb",
+      "position": [
+        23000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_17_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_17_col.glb",
+      "position": [
+        23000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_18_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -1600
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_18_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD1.glb",
+      "position": [
+        23250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_18_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD2.glb",
+      "position": [
+        23250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_18_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_18_col.glb",
+      "position": [
+        23250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_19_LOD0",
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -1600
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_19_LOD1",
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD1.glb",
+      "position": [
+        23500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_19_LOD2",
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD2.glb",
+      "position": [
+        23500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_asian_19_proxy",
+      "path": "models/shuto/buildings/sources/source_asian_19_col.glb",
+      "position": [
+        23500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_japanese_01_LOD0",
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -1600
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_japanese_01_LOD1",
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD1.glb",
+      "position": [
+        23750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_japanese_01_LOD2",
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD2.glb",
+      "position": [
+        23750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_japanese_01_proxy",
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_col.glb",
+      "position": [
+        23750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_01_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -1920
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_01_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD1.glb",
+      "position": [
+        24000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_01_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD2.glb",
+      "position": [
+        24000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_01_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_col.glb",
+      "position": [
+        24000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_02_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -1920
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_02_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD1.glb",
+      "position": [
+        24250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_02_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD2.glb",
+      "position": [
+        24250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_02_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_col.glb",
+      "position": [
+        24250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_03_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -1920
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_03_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD1.glb",
+      "position": [
+        24500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_03_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD2.glb",
+      "position": [
+        24500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_03_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_col.glb",
+      "position": [
+        24500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_04_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -1920
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_04_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD1.glb",
+      "position": [
+        24750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_04_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD2.glb",
+      "position": [
+        24750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_04_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_col.glb",
+      "position": [
+        24750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_05_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -1920
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_05_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD1.glb",
+      "position": [
+        25000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_05_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD2.glb",
+      "position": [
+        25000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_05_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_col.glb",
+      "position": [
+        25000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_06_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -1920
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_06_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD1.glb",
+      "position": [
+        25250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_06_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD2.glb",
+      "position": [
+        25250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_06_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_col.glb",
+      "position": [
+        25250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_07_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -2240
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_07_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD1.glb",
+      "position": [
+        25500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_07_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD2.glb",
+      "position": [
+        25500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_07_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_col.glb",
+      "position": [
+        25500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_08_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -2240
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_08_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD1.glb",
+      "position": [
+        25750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_08_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD2.glb",
+      "position": [
+        25750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_08_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_col.glb",
+      "position": [
+        25750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_09_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -2240
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_09_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD1.glb",
+      "position": [
+        26000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_09_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD2.glb",
+      "position": [
+        26000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_09_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_col.glb",
+      "position": [
+        26000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_10_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -2240
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_10_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD1.glb",
+      "position": [
+        26250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_10_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD2.glb",
+      "position": [
+        26250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_10_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_col.glb",
+      "position": [
+        26250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_11_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -2240
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_11_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD1.glb",
+      "position": [
+        26500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_11_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD2.glb",
+      "position": [
+        26500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_11_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_col.glb",
+      "position": [
+        26500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_12_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -2240
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_12_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD1.glb",
+      "position": [
+        26750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_12_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD2.glb",
+      "position": [
+        26750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_12_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_col.glb",
+      "position": [
+        26750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_13_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -2560
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_13_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD1.glb",
+      "position": [
+        27000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_13_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD2.glb",
+      "position": [
+        27000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_13_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_col.glb",
+      "position": [
+        27000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_14_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -2560
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_14_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD1.glb",
+      "position": [
+        27250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_14_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD2.glb",
+      "position": [
+        27250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_14_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_col.glb",
+      "position": [
+        27250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_15_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -2560
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_15_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD1.glb",
+      "position": [
+        27500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_15_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD2.glb",
+      "position": [
+        27500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_15_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_col.glb",
+      "position": [
+        27500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_16_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD0.glb",
+      "position": [
+        960,
+        0,
+        -2560
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_16_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD1.glb",
+      "position": [
+        27750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_16_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD2.glb",
+      "position": [
+        27750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_16_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_col.glb",
+      "position": [
+        27750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_17_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD0.glb",
+      "position": [
+        1280,
+        0,
+        -2560
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_17_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD1.glb",
+      "position": [
+        28000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_17_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD2.glb",
+      "position": [
+        28000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_17_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_col.glb",
+      "position": [
+        28000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_18_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD0.glb",
+      "position": [
+        1600,
+        0,
+        -2560
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_18_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD1.glb",
+      "position": [
+        28250,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_18_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD2.glb",
+      "position": [
+        28250,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_18_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_col.glb",
+      "position": [
+        28250,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_19_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD0.glb",
+      "position": [
+        0,
+        0,
+        -2880
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_19_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD1.glb",
+      "position": [
+        28500,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_19_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD2.glb",
+      "position": [
+        28500,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_19_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_col.glb",
+      "position": [
+        28500,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_20_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD0.glb",
+      "position": [
+        320,
+        0,
+        -2880
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_20_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD1.glb",
+      "position": [
+        28750,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_20_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD2.glb",
+      "position": [
+        28750,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_20_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_col.glb",
+      "position": [
+        28750,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_21_LOD0",
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD0.glb",
+      "position": [
+        640,
+        0,
+        -2880
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_21_LOD1",
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD1.glb",
+      "position": [
+        29000,
+        0,
+        1000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_21_LOD2",
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD2.glb",
+      "position": [
+        29000,
+        0,
+        2000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "source_lowpoly_21_proxy",
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_col.glb",
+      "position": [
+        29000,
+        0,
+        3000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "rooftop_ac",
+      "path": "models/shuto/buildings/kit/component_rooftop_ac.glb",
+      "position": [
+        12000,
+        0,
+        5000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "water_tank",
+      "path": "models/shuto/buildings/kit/component_water_tank.glb",
+      "position": [
+        12010,
+        0,
+        5000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "shop_sign",
+      "path": "models/shuto/buildings/kit/component_shop_sign.glb",
+      "position": [
+        12020,
+        0,
+        5000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "window_bay",
+      "path": "models/shuto/buildings/kit/component_window_bay.glb",
+      "position": [
+        12030,
+        0,
+        5000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "model",
+      "name": "edited_collection_export_check",
+      "path": "models/shuto/buildings/probe/edited_compact.glb",
+      "position": [
+        18000,
+        0,
+        5000
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "camera": {
+    "position": [
+      18,
+      9,
+      26
+    ],
+    "look_at": [
+      0,
+      8,
+      0
+    ],
+    "fov": 55,
+    "near": 0.1,
+    "far": 12000
+  },
+  "window_room_root": "textures/window_rooms",
+  "benchmark": {
+    "warmup_frames": 60,
+    "fixed_hz": 60,
+    "shots": [
+      {
+        "name": "residential_balcony",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                325.049,
+                12.87,
+                33.66
+              ],
+              "look_at": [
+                320,
+                9.899999999999999,
+                0
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      },
+      {
+        "name": "retail_corner",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                644.59,
+                11.700000000000001,
+                -289.4
+              ],
+              "look_at": [
+                640,
+                9.0,
+                -320
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      },
+      {
+        "name": "warehouse_large",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                1610.08,
+                6.5,
+                -252.8
+              ],
+              "look_at": [
+                1600,
+                5.0,
+                -320
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      },
+      {
+        "name": "landmark_fuji_tv",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                1023.84,
+                80.2425,
+                -214.40000000000003
+              ],
+              "look_at": [
+                960,
+                61.725,
+                -640
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      },
+      {
+        "name": "source_japanese_01",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                1607.927236,
+                20.20668,
+                -1547.15176
+              ],
+              "look_at": [
+                1600,
+                15.5436,
+                -1600
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

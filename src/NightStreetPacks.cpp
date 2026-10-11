@@ -25,12 +25,10 @@ namespace {
 	const char* kFlareFiles[TexCount] = {
 		"glow_sodium.png", "glow_led.png", "starburst_4.png", "starburst_6.png", "streak_horizontal.png", "halo_ring.png" };
 
-	// Rooms of the window pack, in atlas order.
-	enum Room : int { RoomLivingWarm = 0, RoomBedroomWarm, RoomOfficeCool, RoomShopWarm, RoomCafeWarm, RoomLivingTvDim, RoomCount };
-	const char* kRoomFiles[RoomCount] = {
-		"living_room_warm.png", "bedroom_warm.png", "office_cool.png", "shop_warm.png", "cafe_warm.png", "living_room_tv_dim.png" };
-	// Engine face order (InteriorAtlas): back, left, right, ceiling, floor.
-	const char* kFaceNames[5] = { "back", "left", "right", "ceiling", "floor" };
+	// Window room pack: everything (rooms, face slots, style weights, room light and shape) comes from
+	// atlas_manifest.json ("assets" and the "nox_interior" block); see textures/window_rooms/README.md.
+	// Style rows in the manifest, in the order of NightStreetPacks::RoomStyle.
+	const char* kRoomStyleNames[] = { "apartment", "shop", "office" };
 
 	bool ReadJson(const fs::path& path, json& out) {
 		std::ifstream in(path);
@@ -157,55 +155,123 @@ namespace NightStreetPacks {
 	}
 
 	bool BuildInteriorAtlas(const std::string& root, InteriorAtlas& out) {
-		std::error_code ec;
-		if (root.empty() || !AllFilesExist(root, kRoomFiles, RoomCount)) return false;
+		const char* tag = "[NightStreetPacks] window rooms: ";
 		json manifest;
-		if (!ReadJson(fs::path(root) / "atlas_manifest.json", manifest) || !manifest.contains("assets")) {
-			std::cerr << "[NightStreetPacks] window rooms: cannot read atlas_manifest.json under '" << root << "'" << std::endl;
+		if (root.empty() || !ReadJson(fs::path(root) / "atlas_manifest.json", manifest) ||
+			!manifest.contains("assets") || !manifest["assets"].is_array() || manifest["assets"].empty()) {
+			std::cerr << tag << "cannot read atlas_manifest.json under '" << root << "'" << std::endl;
 			return false;
 		}
+		const json nox = manifest.value("nox_interior", json::object());
+		auto readVec2 = [](const json& j, const char* key, glm::vec2& v) {
+			if (j.contains(key) && j[key].is_array() && j[key].size() >= 2) v = glm::vec2(j[key][0].get<float>(), j[key][1].get<float>());
+		};
+		auto readVec3 = [](const json& j, glm::vec3& v) {
+			if (j.is_array() && j.size() >= 3) v = glm::vec3(j[0].get<float>(), j[1].get<float>(), j[2].get<float>());
+		};
+
 		InteriorAtlas atlas;
-		for (int r = 0; r < RoomCount; ++r) {
-			const json* asset = nullptr;
-			for (const json& a : manifest["assets"]) {
-				if (a.value("file", std::string()) == kRoomFiles[r]) asset = &a;
-			}
-			if (!asset || !asset->contains("faces")) {
-				std::cerr << "[NightStreetPacks] window rooms: manifest has no entry for " << kRoomFiles[r] << std::endl;
+		// Face slots: nox_interior.face_order, else the manifest's face names.
+		std::vector<std::string> faceNames;
+		if (nox.contains("face_order") && nox["face_order"].is_array()) {
+			for (const json& f : nox["face_order"]) if (f.is_string()) faceNames.push_back(f.get<std::string>());
+		}
+		else if (manifest.contains("faces") && manifest["faces"].is_object()) {
+			for (auto it = manifest["faces"].begin(); it != manifest["faces"].end(); ++it) faceNames.push_back(it.key());
+		}
+		for (const std::string& name : faceNames) {
+			InteriorAtlas::FaceRole role;
+			if (!InteriorAtlas::FaceRoleFromName(name, role)) {
+				std::cerr << tag << "unknown face '" << name << "'" << std::endl;
 				return false;
 			}
-			const json& faces = (*asset)["faces"];
-			for (const char* faceName : kFaceNames) {
+			atlas.faceRoles.push_back(role);
+		}
+		if (atlas.faceRoles.empty()) {
+			std::cerr << tag << "no faces listed" << std::endl;
+			return false;
+		}
+
+		std::error_code ec;
+		std::vector<std::string> roomFiles;
+		for (const json& asset : manifest["assets"]) {
+			const std::string file = asset.value("file", std::string());
+			if (file.empty() || !fs::exists(fs::path(root) / file, ec) || !asset.contains("faces")) {
+				std::cerr << tag << "asset '" << file << "' is missing" << std::endl;
+				return false;
+			}
+			const json& faces = asset["faces"];
+			for (const std::string& faceName : faceNames) {
 				if (!faces.contains(faceName) || !faces[faceName].contains("sample_uv_rect") || faces[faceName]["sample_uv_rect"].size() < 4) {
-					std::cerr << "[NightStreetPacks] window rooms: " << kRoomFiles[r] << " lacks face " << faceName << std::endl;
+					std::cerr << tag << file << " lacks face " << faceName << std::endl;
 					return false;
 				}
 				const json& face = faces[faceName];
 				// sample_uv_rect: pixel-centre bounds with a 2-pixel inset, image top-left origin.
 				const json& uv = face["sample_uv_rect"];
-				atlas.faceLayers.push_back({ (fs::path(root) / kRoomFiles[r]).generic_string(),
+				atlas.faceLayers.push_back({ (fs::path(root) / file).generic_string(),
 					glm::vec4(uv[0].get<float>(), uv[1].get<float>(), uv[2].get<float>(), uv[3].get<float>()) });
 				glm::vec3 mean(0.1f);
-				if (face.contains("mean_linear_rgb") && face["mean_linear_rgb"].size() >= 3) {
-					const json& m = face["mean_linear_rgb"];
-					mean = glm::vec3(m[0].get<float>(), m[1].get<float>(), m[2].get<float>());
-				}
+				if (face.contains("mean_linear_rgb")) readVec3(face["mean_linear_rgb"], mean);
 				atlas.faceMean.push_back(mean);
 			}
+			roomFiles.push_back(file);
 		}
-		atlas.textureOptions.size = 512;
+		const int rooms = static_cast<int>(roomFiles.size());
+		auto roomIndex = [&](const std::string& file) {
+			for (int r = 0; r < rooms; ++r) if (roomFiles[r] == file) return r;
+			return -1;
+		};
+
+		atlas.textureOptions.size = nox.value("face_size", 512);
 		atlas.textureOptions.premultiply = false;   // opaque RGB rooms
 		atlas.textureOptions.debugName = "window rooms";
 
-		// Occupied brightness; the dim TV room is also often on in otherwise dark flats (pack README).
-		atlas.roomLight.assign(RoomCount, glm::vec3(1.0f, 0.0f, 0.0f));
-		atlas.roomLight[RoomLivingTvDim] = glm::vec3(0.5f, 0.35f, 0.5f);
-		// Variant weights per material style:   living bedroom office shop  cafe  tv
-		atlas.styleWeights = {
-			{ 0.34f, 0.30f, 0.10f, 0.00f, 0.06f, 0.20f },   // RoomApartment
-			{ 0.00f, 0.00f, 0.00f, 0.55f, 0.45f, 0.00f },   // RoomShop
-			{ 0.12f, 0.08f, 0.70f, 0.00f, 0.00f, 0.10f },   // RoomOffice
-		};
+		// Room light: (occupied brightness, chance on when unoccupied, that brightness).
+		glm::vec3 lightDefault(1.0f, 0.0f, 0.0f);
+		if (nox.contains("room_light_default")) readVec3(nox["room_light_default"], lightDefault);
+		atlas.roomLight.assign(rooms, lightDefault);
+		if (nox.contains("room_light") && nox["room_light"].is_object()) {
+			for (auto it = nox["room_light"].begin(); it != nox["room_light"].end(); ++it) {
+				const int r = roomIndex(it.key());
+				if (r < 0) { std::cerr << tag << "room_light names unknown room " << it.key() << std::endl; continue; }
+				readVec3(it.value(), atlas.roomLight[r]);
+			}
+		}
+
+		// Variant weights per material style; the game's RoomStyle indices must match the row order.
+		if (nox.contains("styles") && nox["styles"].is_array()) {
+			for (const json& style : nox["styles"]) {
+				std::vector<float> row(rooms, 0.0f);
+				if (style.contains("weights") && style["weights"].is_object()) {
+					for (auto it = style["weights"].begin(); it != style["weights"].end(); ++it) {
+						const int r = roomIndex(it.key());
+						if (r < 0) { std::cerr << tag << "style weights name unknown room " << it.key() << std::endl; continue; }
+						row[r] = it.value().get<float>();
+					}
+				}
+				const size_t index = atlas.styleWeights.size();
+				const std::string name = style.value("name", std::string());
+				if (index < std::size(kRoomStyleNames) && name != kRoomStyleNames[index]) {
+					std::cerr << tag << "style row " << index << " is '" << name << "', expected '" << kRoomStyleNames[index] << "'" << std::endl;
+				}
+				atlas.styleWeights.push_back(std::move(row));
+			}
+		}
+
+		if (nox.contains("room_shape") && nox["room_shape"].is_object()) {
+			const json& shape = nox["room_shape"];
+			readVec2(shape, "side_margin", atlas.roomShape.sideMargin);
+			readVec2(shape, "height", atlas.roomShape.height);
+			readVec2(shape, "sill_scale", atlas.roomShape.sillScale);
+			atlas.roomShape.depthJitter = shape.value("depth_jitter", atlas.roomShape.depthJitter);
+		}
+		if (nox.contains("pane_uv") && nox["pane_uv"].is_array() && nox["pane_uv"].size() >= 3) {
+			atlas.paneUV.grid = nox["pane_uv"][0].get<float>();
+			atlas.paneUV.inset = nox["pane_uv"][1].get<float>();
+			atlas.paneUV.extent = nox["pane_uv"][2].get<float>();
+		}
+		atlas.farDistance = nox.value("far_distance", atlas.farDistance);
 		out = std::move(atlas);
 		return true;
 	}

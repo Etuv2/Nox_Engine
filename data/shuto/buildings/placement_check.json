@@ -1,0 +1,411 @@
+{
+ "placements": 5556,
+ "base_y": 2.9,
+ "counts": {
+  "nested_tower": 5,
+  "void_skirted": 75
+ },
+ "hard_failures": 0,
+ "notes": "void = no exported ground under a corner (outside the built ground section); void_skirted = same, with a base skirt to y -1.5; under_deck = an elevated deck passes more than 2 m above the roof (informational); shoreline = some corners on water; nested_tower = tower footprint inset inside its podium; buried = ground > 1 m above base",
+ "issues": {
+  "nested_tower": [
+   {
+    "id": "osm_1548226521",
+    "podium": "osm_207667673"
+   },
+   {
+    "id": "osm_497184145",
+    "podium": "osm_87510456"
+   },
+   {
+    "id": "osm_497184150",
+    "podium": "osm_87510456"
+   },
+   {
+    "id": "osm_497184149",
+    "podium": "osm_87510456"
+   },
+   {
+    "id": "osm_887447549",
+    "podium": "osm_887447548"
+   }
+  ],
+  "void_skirted": [
+   {
+    "id": "osm_1035874727",
+    "detail": "far",
+    "h": 10.3
+   },
+   {
+    "id": "osm_1042893437",
+    "detail": "far",
+    "h": 39.6
+   },
+   {
+    "id": "osm_1158709834",
+    "detail": "far",
+    "h": 5.0
+   },
+   {
+    "id": "osm_1181400348",
+    "detail": "far",
+    "h": 39.6
+   },
+   {
+    "id": "osm_119590450",
+    "detail": "far",
+    "h": 26.4
+   },
+   {
+    "id": "osm_119909739",
+    "detail": "far",
+    "h": 29.7
+   },
+   {
+    "id": "osm_128572264",
+    "detail": "far",
+    "h": 19.8
+   },
+   {
+    "id": "osm_1301450695",
+    "detail": "far",
+    "h": 10.75
+   },
+   {
+    "id": "osm_1375153697",
+    "detail": "far",
+    "h": 23.1
+   },
+   {
+    "id": "osm_1416532523",
+    "detail": "far",
+    "h": 23.1
+   },
+   {
+    "id": "osm_1416532527",
+    "detail": "far",
+    "h": 42.9
+   },
+   {
+    "id": "osm_1416539688",
+    "detail": "far",
+    "h": 6.6
+   },
+   {
+    "id": "osm_145403165",
+    "detail": "far",
+    "h": 26.4
+   },
+   {
+    "id": "osm_145403181",
+    "detail": "far",
+    "h": 99.0
+   },
+   {
+    "id": "osm_145660817",
+    "detail": "far",
+    "h": 74.78
+   },
+   {
+    "id": "osm_145660854",
+    "detail": "far",
+    "h": 36.3
+   },
+   {
+    "id": "osm_149169042",
+    "detail": "far",
+    "h": 42.9
+   },
+   {
+    "id": "osm_149169045",
+    "detail": "far",
+    "h": 39.6
+   },
+   {
+    "id": "osm_149314629",
+    "detail": "far",
+    "h": 26.4
+   },
+   {
+    "id": "osm_149314639",
+    "detail": "far",
+    "h": 23.1
+   },
+   {
+    "id": "osm_149316142",
+    "detail": "far",
+    "h": 39.6
+   },
+   {
+    "id": "osm_149316152",
+    "detail": "far",
+    "h": 19.8
+   },
+   {
+    "id": "osm_149316166",
+    "detail": "far",
+    "h": 6.6
+   },
+   {
+    "id": "osm_149316649",
+    "detail": "far",
+    "h": 29.7
+   },
+   {
+    "id": "osm_149379762",
+    "detail": "far",
+    "h": 33.0
+   },
+   {
+    "id": "osm_149379799",
+    "detail": "far",
+    "h": 36.3
+   },
+   {
+    "id": "osm_149718546",
+    "detail": "far",
+    "h": 5.0
+   },
+   {
+    "id": "osm_150858329",
+    "detail": "far",
+    "h": 6.6
+   },
+   {
+    "id": "osm_150858334",
+    "detail": "far",
+    "h": 19.8
+   },
+   {
+    "id": "osm_150858337",
+    "detail": "far",
+    "h": 42.9
+   },
+   {
+    "id": "osm_150858355",
+    "detail": "far",
+    "h": 29.7
+   },
+   {
+    "id": "osm_155012525",
+    "detail": "mid",
+    "h": 79.2
+   },
+   {
+    "id": "osm_1557330036",
+    "detail": "near",
+    "h": 3.7
+   },
+   {
+    "id": "osm_157568811",
+    "detail": "far",
+    "h": 23.1
+   },
+   {
+    "id": "osm_157568915",
+    "detail": "far",
+    "h": 7.07
+   },
+   {
+    "id": "osm_157568922",
+    "detail": "far",
+    "h": 39.6
+   },
+   {
+    "id": "osm_157573133",
+    "detail": "far",
+    "h": 23.1
+   },
+   {
+    "id": "osm_162946603",
+    "detail": "far",
+    "h": 29.7
+   },
+   {
+    "id": "osm_178898709",
+    "detail": "far",
+    "h": 26.4
+   },
+   {
+    "id": "osm_195551651",
+    "detail": "far",
+    "h": 33.0
+   },
+   {
+    "id": "osm_195551667",
+    "detail": "far",
+    "h": 26.4
+   },
+   {
+    "id": "osm_198113245",
+    "detail": "far",
+    "h": 42.9
+   },
+   {
+    "id": "osm_2018147",
+    "detail": "far",
+    "h": 23.1
+   },
+   {
+    "id": "osm_205187630",
+    "detail": "far",
+    "h": 6.6
+   },
+   {
+    "id": "osm_205187631",
+    "detail": "far",
+    "h": 42.9
+   },
+   {
+    "id": "osm_205187642",
+    "detail": "far",
+    "h": 36.3
+   },
+   {
+    "id": "osm_206612071",
+    "detail": "mid",
+    "h": 36.3
+   },
+   {
+    "id": "osm_206612119",
+    "detail": "mid",
+    "h": 33.0
+   },
+   {
+    "id": "osm_220569899",
+    "detail": "mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_220569993",
+    "detail": "mid",
+    "h": 26.4
+   },
+   {
+    "id": "osm_220570012",
+    "detail": "mid",
+    "h": 29.7
+   },
+   {
+    "id": "osm_220570112",
+    "detail": "mid",
+    "h": 23.1
+   },
+   {
+    "id": "osm_220570117",
+    "detail": "far",
+    "h": 26.4
+   },
+   {
+    "id": "osm_220570121",
+    "detail": "mid",
+    "h": 33.0
+   },
+   {
+    "id": "osm_220570144",
+    "detail": "mid",
+    "h": 42.9
+   },
+   {
+    "id": "osm_227789559",
+    "detail": "far",
+    "h": 29.7
+   },
+   {
+    "id": "osm_297868233",
+    "detail": "window_mid",
+    "h": 19.8
+   },
+   {
+    "id": "osm_297868484",
+    "detail": "near",
+    "h": 39.6
+   },
+   {
+    "id": "osm_297882288",
+    "detail": "near",
+    "h": 36.3
+   },
+   {
+    "id": "osm_297882327",
+    "detail": "mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_297882336",
+    "detail": "mid",
+    "h": 39.6
+   },
+   {
+    "id": "osm_297882380",
+    "detail": "mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_297882402",
+    "detail": "mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_297882410",
+    "detail": "mid",
+    "h": 26.4
+   },
+   {
+    "id": "osm_297882498",
+    "detail": "far",
+    "h": 42.9
+   },
+   {
+    "id": "osm_309519427",
+    "detail": "mid",
+    "h": 26.4
+   },
+   {
+    "id": "osm_34287874",
+    "detail": "far",
+    "h": 29.7
+   },
+   {
+    "id": "osm_387486216",
+    "detail": "far",
+    "h": 39.6
+   },
+   {
+    "id": "osm_438913559",
+    "detail": "far",
+    "h": 6.6
+   },
+   {
+    "id": "osm_438913572",
+    "detail": "far",
+    "h": 36.3
+   },
+   {
+    "id": "osm_438913615",
+    "detail": "far",
+    "h": 36.3
+   },
+   {
+    "id": "osm_681291792",
+    "detail": "mid",
+    "h": 36.3
+   },
+   {
+    "id": "osm_681291793",
+    "detail": "mid",
+    "h": 33.0
+   },
+   {
+    "id": "osm_736597311",
+    "detail": "far",
+    "h": 39.6
+   },
+   {
+    "id": "osm_775661892",
+    "detail": "far",
+    "h": 26.4
+   }
+  ]
+ }
+}

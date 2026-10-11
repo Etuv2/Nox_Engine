@@ -1,9 +1,12 @@
 #include "GameSession.h"
+#include "FrameProfiler.h"
 
 #include "Camera.h"
 #include "DriveAudio.h"
 #include "VehicleFX.h"
+#include "ProceduralStreetKit.h"
 #include "SceneGraph.h"
+#include "ui/Pointer.h"
 #include <SDL/SDL.h>
 #include <IMGUI/imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -72,6 +75,35 @@ void GameSession::SetCameraTemplate(const Camera& c)
 	m_camera->SetProjectionType(Camera::ProjectionType::Perspective);
 }
 
+// VehicleFX test harness (NOX_VFX_TEST=1): scene game.vfx_test_emitters, else the nfs_sprint spawn layout
+// (x=-2, z=-40, road at y=0). The engine keeps no positions of its own.
+static void ApplyVfxTestEmitters(const json& game)
+{
+	if (!VehicleFX::TestHarnessActive()) return;
+	std::vector<VehicleFX::TestEmitter> emitters;
+	if (game.contains("vfx_test_emitters") && game["vfx_test_emitters"].is_array()) {
+		for (const json& e : game["vfx_test_emitters"]) {
+			if (!e.is_object() || !e.contains("pos") || !e["pos"].is_array() || e["pos"].size() != 3) continue;
+			VehicleFX::TestEmitter t;
+			t.spray = e.value("type", std::string("smoke")) == "spray";
+			t.pos = glm::vec3(e["pos"][0].get<float>(), e["pos"][1].get<float>(), e["pos"][2].get<float>());
+			t.floorY = e.value("floor_y", 0.0f);
+			if (e.contains("velocity") && e["velocity"].is_array() && e["velocity"].size() == 3) {
+				t.velocity = glm::vec3(e["velocity"][0].get<float>(), e["velocity"][1].get<float>(), e["velocity"][2].get<float>());
+			}
+			t.intensity = e.value("intensity", t.intensity);
+			t.wobble = e.value("wobble", t.wobble);
+			emitters.push_back(t);
+		}
+	}
+	else {
+		emitters.push_back({ false, glm::vec3(-2.9f, 0.3f, -41.0f), glm::vec3(0.0f), 1.0f, 0.0f, 0.0f });   // burnout, left rear
+		emitters.push_back({ false, glm::vec3(-1.1f, 0.3f, -41.0f), glm::vec3(0.0f), 0.5f, 0.4f, 0.0f });   // wheelspin, right rear
+		emitters.push_back({ true, glm::vec3(-2.0f, 0.02f, -44.0f), glm::vec3(0.0f, 0.0f, -6.0f), 0.9f, 0.0f, 0.0f }); // wet-road spray
+	}
+	VehicleFX::SetTestEmitters(emitters);
+}
+
 void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph& sceneGraph)
 {
 	m_game = game.is_object() ? game : json::object();
@@ -89,6 +121,12 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 	if (m_game.contains("collision") && m_game["collision"].is_object()) {
 		const json& c = m_game["collision"];
 		m_heightTolerance = c.value("height_tolerance", m_heightTolerance);
+		// Wall sliver rules for this game's collision set (engine defaults are neutral).
+		CollisionWorld::TriangleFilter filter;
+		filter.groundMinNormalY = c.value("ground_min_normal_y", filter.groundMinNormalY);
+		filter.minWallHeight = c.value("wall_min_height", 0.15f);
+		filter.minWallAspect = c.value("wall_min_aspect", 0.05f);
+		m_collision.filter = filter;
 		if (c.contains("files") && c["files"].is_array()) {
 			for (const json& f : c["files"]) {
 				if (f.is_string()) m_collision.LoadGLTF(f.get<std::string>());
@@ -97,11 +135,13 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 		std::cout << "[GameSession] Collision: " << m_collision.MeshCount() << " meshes, " << m_collision.TriangleCount() << " triangles" << std::endl;
 	}
 
+	ApplyVfxTestEmitters(m_game);
+
 	// Road network: authored, else derived from legacy drivable rectangles, else none.
 	m_roads.Clear();
 	if (!m_roads.Load(m_game.value("road_network", json()))) {
 		if (m_game.value("default_district", false)) {
-			m_roads.BuildDefaultDistrict();
+			ProceduralStreetKit::BuildDefaultDistrictNetwork(m_roads);
 		}
 		else if (m_game.contains("drivable_areas") && m_game["drivable_areas"].is_array()) {
 			json net = { {"road_half_width", 6.0f}, {"sidewalk_width", 0.0f}, {"nodes", json::array()}, {"edges", json::array()} };
@@ -183,6 +223,12 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 	m_worldMap.Configure(m_game.value("world_map", json()), m_roads);
 	m_worldMap.Close();
 	m_hasWaypoint = false;
+	m_waypointHasY = false;
+	// Standalone: losing window focus while driving opens the pause menu (never in unattended runs,
+	// where other windows take the focus).
+	m_pauseOnFocusLoss = m_game.value("pause_on_focus_loss", true);
+	if (const char* v = std::getenv("NOX_PAUSE_ON_FOCUS_LOSS")) m_pauseOnFocusLoss = v[0] == '1';
+	else if (std::getenv("NOX_DRIVE_AUTOPILOT") || std::getenv("NOX_DRIVE_SCRIPT") || std::getenv("NOX_TEST_POINTER_SCRIPT")) m_pauseOnFocusLoss = false;
 	m_previewIndex = -2;
 
 	m_drive.Configure(m_game, sceneGraph, &m_roads, LayoutPathFromScene(sceneRoot), &m_collision);
@@ -238,6 +284,10 @@ float GameSession::GateHeading(const RaceEvent& e, int i) const
 	// Direction of travel into the gate: from the previous gate (or the start) to this one, snapped
 	// to the road direction at the gate when a network exists.
 	const glm::vec2 prev = i == 0 ? e.start : e.checkpoints[i - 1].pos;
+	// A road route per gate is expensive on a large network and the gate tests run every frame:
+	// cache by the two gate positions (edits that move a gate simply miss the cache).
+	const GateKey key{ prev.x, prev.y, c.pos.x, c.pos.y };
+	if (const auto it = m_gateHeadingCache.find(key); it != m_gateHeadingCache.end()) return it->second;
 	glm::vec2 dir = c.pos - prev;
 	if (!m_roads.Empty()) {
 		std::vector<glm::vec2> path = m_roads.FindRoute(prev, c.pos);
@@ -245,7 +295,10 @@ float GameSession::GateHeading(const RaceEvent& e, int i) const
 		if (glm::length(dir) < 1e-3f) dir = c.pos - prev;
 	}
 	if (glm::length(dir) < 1e-3f) dir = glm::vec2(0, 1);
-	return std::atan2(dir.x, dir.y);
+	const float heading = std::atan2(dir.x, dir.y);
+	if (m_gateHeadingCache.size() > 4096) m_gateHeadingCache.clear();
+	m_gateHeadingCache.emplace(key, heading);
+	return heading;
 }
 
 void GameSession::BeginPlay()
@@ -658,7 +711,13 @@ void GameSession::UpdateMenus(const Buttons& b, MenuAction& action)
 	if (b.down) { m_menuSelected = (m_menuSelected + 1) % static_cast<int>(m_menuItems.size()); DriveAudio::Get().Play(UiSound::Select); }
 	if (m_menuTitle == "PAUSED" && b.back) { SetPaused(false); return; }
 	if (!b.confirm) return;
-	const std::string item = m_menuItems[m_menuSelected];
+	ActivateMenuItem(m_menuSelected, action);
+}
+
+void GameSession::ActivateMenuItem(int index, MenuAction& action)
+{
+	if (index < 0 || index >= static_cast<int>(m_menuItems.size())) return;
+	const std::string item = m_menuItems[index];
 	DriveAudio::Get().Play(UiSound::Select);
 	if (item == "Resume") SetPaused(false);
 	else if (item == "Restart Event" || item == "Retry") { const int e = m_activeEvent; m_paused = false; StartEvent(e); }
@@ -680,7 +739,7 @@ glm::vec2 GameSession::RouteTarget() const
 
 glm::vec3 GameSession::RouteTarget3() const
 {
-	if (m_hasWaypoint && m_phase == Phase::FreeRoam) return glm::vec3(m_waypoint.x, m_drive.Position3().y, m_waypoint.y);
+	if (m_hasWaypoint && m_phase == Phase::FreeRoam) return glm::vec3(m_waypoint.x, m_waypointHasY ? m_waypointY : m_drive.Position3().y, m_waypoint.y);
 	const glm::vec2 t = RouteTarget();
 	float y = m_drive.Position3().y;
 	if (m_activeEvent >= 0 && (m_phase == Phase::Racing || m_phase == Phase::Countdown)) {
@@ -808,6 +867,7 @@ void GameSession::UpdateRace(float dt)
 		}
 	}
 
+	FrameProfiler::Mark("g_racelogic");
 	// Route guidance, refreshed a few times per second.
 	m_routeTimer -= dt;
 	if (m_routeTimer <= 0.0f) {
@@ -848,7 +908,359 @@ void GameSession::UpdateRace(float dt)
 	}
 }
 
-GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float aspect)
+void GameSession::InitializeResources()
+{
+	RacingHUD::Get().LoadFonts();
+	RacingHUD::Get().LoadIcons(); // UI icon atlas (cached; used by the HUD and the editor toolbar)
+	DriveAudio::Get().Init();
+}
+
+bool GameSession::WantsAutoPlay() const
+{
+	const char* drive = std::getenv("NOX_DRIVE");
+	return drive && std::string(drive) == "1";
+}
+
+void GameSession::Reconfigure(const nlohmann::json& game, const nlohmann::json& sceneRoot, SceneGraph& sceneGraph)
+{
+	const int selected = m_selectedEvent;
+	Configure(game, sceneRoot, sceneGraph);
+	m_selectedEvent = selected;
+}
+
+IGameModule::UpdateResult GameSession::Update(float dt, bool inputEnabled, float aspect)
+{
+	// Window focus lost while driving (standalone): pause. Focus regain never resumes by itself.
+	if (ui::Pointer::Get().FocusLost()) {
+		m_padBackDown = m_padBackHoldDone = false;
+		m_padBackHold = 0.0f;
+		const bool driving = m_playing && !m_paused && m_menuTitle.empty() && !m_worldMap.IsOpen();
+		if (m_standalone && driving && m_pauseOnFocusLoss) {
+			SetPaused(true);
+			std::cout << "[GameSession] Window focus lost: paused" << std::endl;
+		}
+	}
+	const MenuAction action = Tick(dt, inputEnabled, aspect);
+	UpdateCursorPolicy(dt);
+	return action == MenuAction::ExitApplication ? UpdateResult::ExitApplication : UpdateResult::Continue;
+}
+
+bool GameSession::WantsPointer() const
+{
+	return !m_playing || m_paused || !m_menuTitle.empty() || m_worldMap.IsOpen();
+}
+
+void GameSession::UpdateCursorPolicy(float dt)
+{
+	const ui::Pointer& ptr = ui::Pointer::Get();
+	// At the START EVENT prompt, moving the mouse shows the cursor for a few seconds (clickable).
+	if (m_playing && m_phase == Phase::FreeRoam && m_nearEvent >= 0 && m_menuTitle.empty() && !m_worldMap.IsOpen()) {
+		m_cursorReveal = ptr.Moved() ? 3.0f : std::max(0.0f, m_cursorReveal - dt);
+	}
+	else {
+		m_cursorReveal = 0.0f;
+	}
+	if (!m_standalone) return;   // the editor owns its cursor
+	// DriveMode reads keys/pad only, so driving hides the cursor but never captures the mouse.
+	ui::Pointer::Get().SetCursorMode(WantsPointer() || m_cursorReveal > 0.0f ? ui::CursorMode::Visible : ui::CursorMode::Hidden);
+}
+
+void GameSession::UpdateMenuPointer(MenuAction& action, bool& startEvent)
+{
+	m_hud.menuHovered = m_hud.menuPressed = -1;
+	m_hud.startHovered = m_hud.startPressed = false;
+	if (!m_pointerOn) return;
+	const ui::Pointer& ptr = ui::Pointer::Get();
+	if (!m_menuTitle.empty()) {
+		const int n = static_cast<int>(m_menuItems.size());
+		int clicked = -1;
+		for (int i = 0; i < n; ++i) {
+			const ui::PointerId id = ui::HashId(HudRegion::kMenuItem, i);
+			if (ptr.IsHovered(id)) {
+				m_hud.menuHovered = i;
+				// Moving over an item selects it; keys/pad continue from there.
+				if ((ptr.Moved() || ptr.Pressed(ui::PointerButton::Left)) && m_menuSelected != i) {
+					m_menuSelected = i;
+					DriveAudio::Get().Play(UiSound::Select);
+				}
+				if (ptr.IsActive(id) && ptr.Down(ui::PointerButton::Left)) m_hud.menuPressed = i;
+			}
+			if (ptr.IsClicked(id)) clicked = i;
+		}
+		// Wheel anywhere over the menu screen steps the selection (the lists never overflow).
+		const float wheel = ptr.WheelFor(ui::HashId(HudRegion::kModal));
+		if (wheel != 0.0f && n > 0) {
+			m_menuSelected = (m_menuSelected + (wheel > 0.0f ? n - 1 : 1)) % n;
+			DriveAudio::Get().Play(UiSound::Select);
+		}
+		if (clicked >= 0) {
+			m_menuSelected = clicked;
+			ActivateMenuItem(clicked, action);
+		}
+		return;
+	}
+	if (m_phase == Phase::FreeRoam && m_nearEvent >= 0) {
+		const ui::PointerId id = ui::HashId(HudRegion::kStart);
+		m_hud.startHovered = ptr.IsHovered(id);
+		m_hud.startPressed = m_hud.startHovered && ptr.IsActive(id) && ptr.Down(ui::PointerButton::Left);
+		startEvent = ptr.IsClicked(id);
+	}
+}
+
+namespace {
+	// Pointer test helpers: "cmd:args" split and "x,y" / "a,b,c,d,e" float lists.
+	void SplitStep(const std::string& step, std::string& cmd, std::string& arg) {
+		const size_t c = step.find(':');
+		cmd = step.substr(0, c);
+		arg = c == std::string::npos ? std::string() : step.substr(c + 1);
+	}
+	std::vector<float> Floats(const std::string& s) {
+		std::vector<float> out;
+		size_t i = 0;
+		while (i < s.size()) {
+			const size_t j = s.find(',', i);
+			out.push_back(static_cast<float>(std::atof(s.substr(i, j == std::string::npos ? std::string::npos : j - i).c_str())));
+			if (j == std::string::npos) break;
+			i = j + 1;
+		}
+		return out;
+	}
+	ui::PointerButton ButtonArg(const std::string& a) {
+		return a == "r" || a == "right" ? ui::PointerButton::Right : (a == "m" || a == "middle" ? ui::PointerButton::Middle : ui::PointerButton::Left);
+	}
+}
+
+// NOX_TEST_POINTER_SCRIPT="step;step;..." (or "@file"). Steps run in order, one Update apart unless
+// a wait says otherwise; injected pointer events reach the game on the next frame (as real input):
+//   wait:N            next step N frames later
+//   until:COND        wait for results|paused|map|near|countdown|racing|freeroam (FAIL after 20000)
+//   pause | map | closemap     open the pause menu / world map, close the map
+//   move:X,Y          pointer to normalized coordinates of the game view
+//   move:@NAME[#I]    pointer to the centre of the region ui::HashId(NAME, I) of the last draw
+//   down[:l|r|m] up[:...] click[:...]    buttons (click = down, next frame up)
+//   wheel:N           wheel notches (+ = zoom in / previous item)
+//   drag:X0,Y0,X1,Y1[,FRAMES]   press at 0, move to 1 over FRAMES, release
+//   mark              remember the map view and the world point under the pointer
+//   expect:WHAT       [PointerTest] PASS/FAIL: menu_hover=I, paused=0|1, phase=NAME, map_open=0|1,
+//                     map_selected=I, map_drag=DX,DY (normalized), map_still, zoom_anchor, waypoint=0|1,
+//                     cursor=visible|hidden
+//   resize:W,H        resize the window      log:TEXT      exit
+bool GameSession::RunPointerScript()
+{
+	static const std::string script = [] {
+		const char* v = std::getenv("NOX_TEST_POINTER_SCRIPT");
+		std::string s = v ? v : "";
+		if (!s.empty() && s[0] == '@') {
+			std::ifstream f(s.substr(1));
+			s.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+		}
+		return s;
+	}();
+	if (script.empty()) return false;
+	PointerTest& T = m_ptest;
+	ui::Pointer& ptr = ui::Pointer::Get();
+	static bool parsed = false;
+	if (!parsed) {
+		parsed = true;
+		std::string tok;
+		auto flush = [&] {
+			size_t a = tok.find_first_not_of(" \t\r\n"), b = tok.find_last_not_of(" \t\r\n");
+			const std::string step = a == std::string::npos ? std::string() : tok.substr(a, b - a + 1);
+			tok.clear();
+			if (step.empty() || step[0] == '#') return;
+			std::string cmd, arg;
+			SplitStep(step, cmd, arg);
+			if (cmd == "click") {
+				T.steps.push_back("down:" + arg);
+				T.steps.push_back("wait:1");
+				T.steps.push_back("up:" + arg);
+			}
+			else if (cmd == "drag") {
+				const std::vector<float> f = Floats(arg);
+				if (f.size() < 4) { T.steps.push_back("log:bad drag " + arg); return; }
+				const int frames = f.size() >= 5 ? std::max(1, static_cast<int>(f[4])) : 8;
+				char buf[96];
+				std::snprintf(buf, sizeof(buf), "move:%g,%g", f[0], f[1]);
+				T.steps.push_back(buf);
+				T.steps.push_back("wait:1");
+				T.steps.push_back("down");
+				T.steps.push_back("wait:1");
+				for (int k = 1; k <= frames; ++k) {
+					const float t = static_cast<float>(k) / frames;
+					std::snprintf(buf, sizeof(buf), "move:%g,%g", f[0] + (f[2] - f[0]) * t, f[1] + (f[3] - f[1]) * t);
+					T.steps.push_back(buf);
+					T.steps.push_back("wait:1");
+				}
+				T.steps.push_back("up");
+			}
+			else T.steps.push_back(step);
+		};
+		for (char ch : script) {
+			if (ch == ';' || ch == '\n') flush(); else tok += ch;
+		}
+		flush();
+		ptr.SetInjectionOnly(true);   // the real mouse cannot disturb the test
+		std::cout << "[PointerTest] Script: " << T.steps.size() << " steps" << std::endl;
+	}
+	if (T.wait > 0 && --T.wait > 0) return false;
+	while (T.next < T.steps.size()) {
+		const std::string step = T.steps[T.next];
+		std::string cmd, arg;
+		SplitStep(step, cmd, arg);
+		if (cmd == "wait") {
+			T.wait = std::max(1, std::atoi(arg.c_str()));
+			++T.next;
+			return false;
+		}
+		if (cmd == "until") {
+			bool ok = false;
+			if (arg == "results") ok = m_phase == Phase::Finished && m_menuTitle == "RESULTS";
+			else if (arg == "paused") ok = m_paused;
+			else if (arg == "map") ok = m_worldMap.IsOpen();
+			else if (arg == "near") ok = m_phase == Phase::FreeRoam && m_nearEvent >= 0;
+			else if (arg == "countdown") ok = m_phase == Phase::Countdown;
+			else if (arg == "racing") ok = m_phase == Phase::Racing;
+			else if (arg == "freeroam") ok = m_phase == Phase::FreeRoam;
+			if (!ok) {
+				if (++T.untilFrames <= 20000) return false;
+				std::cout << "[PointerTest] FAIL until:" << arg << " (timeout)" << std::endl;
+				++T.fail;
+			}
+			T.untilFrames = 0;
+			std::cout << "[PointerTest] f=" << m_updateFrame << " reached " << arg << std::endl;
+			++T.next;
+			continue;
+		}
+		++T.next;
+		std::cout << "[PointerTest] f=" << m_updateFrame << " " << step << std::endl;
+		if (cmd == "pause") { if (!m_paused) SetPaused(true); }
+		else if (cmd == "map") { if (!m_worldMap.IsOpen()) OpenWorldMap(); }
+		else if (cmd == "closemap") { CloseWorldMap(); }
+		else if (cmd == "move") {
+			glm::vec2 p(0.0f);
+			if (!arg.empty() && arg[0] == '@') {
+				const size_t hash = arg.find('#');
+				const std::string name = arg.substr(1, hash == std::string::npos ? std::string::npos : hash - 1);
+				const int index = hash == std::string::npos ? 0 : std::atoi(arg.c_str() + hash + 1);
+				if (!ptr.RegionCentre(ui::HashId(name.c_str(), index), p)) {
+					std::cout << "[PointerTest] FAIL move: region " << arg.substr(1) << " not drawn" << std::endl;
+					++T.fail;
+					continue;
+				}
+			}
+			else {
+				const std::vector<float> f = Floats(arg);
+				if (f.size() < 2) continue;
+				p = m_overlayOrigin + glm::vec2(f[0], f[1]) * m_overlaySize;
+			}
+			ptr.InjectMove(p);
+		}
+		else if (cmd == "down") ptr.InjectButton(ButtonArg(arg), true);
+		else if (cmd == "up") ptr.InjectButton(ButtonArg(arg), false);
+		else if (cmd == "wheel") ptr.InjectWheel(static_cast<float>(std::atof(arg.c_str())));
+		else if (cmd == "mark") {
+			T.markCentre = m_worldMap.ViewCentre();
+			T.markPpm = m_worldMap.PixelsPerMetre();
+			T.markPos = ptr.Position();
+			T.markWorld = m_worldMap.WorldAt(T.markPos);
+		}
+		else if (cmd == "expect") {
+			if (PointerTestExpect(arg)) ++T.pass; else ++T.fail;
+		}
+		else if (cmd == "resize") {
+			const std::vector<float> f = Floats(arg);
+			if (f.size() >= 2 && ptr.Window()) SDL_SetWindowSize(ptr.Window(), static_cast<int>(f[0]), static_cast<int>(f[1]));
+		}
+		else if (cmd == "log") { /* printed above */ }
+		else if (cmd == "exit") {
+			std::cout << "[PointerTest] DONE pass=" << T.pass << " fail=" << T.fail << std::endl;
+			return true;
+		}
+		else {
+			std::cout << "[PointerTest] FAIL unknown step '" << step << "'" << std::endl;
+			++T.fail;
+		}
+	}
+	return false;
+}
+
+bool GameSession::PointerTestExpect(const std::string& what)
+{
+	const ui::Pointer& ptr = ui::Pointer::Get();
+	const size_t eq = what.find('=');
+	const std::string key = what.substr(0, eq);
+	const std::string val = eq == std::string::npos ? std::string() : what.substr(eq + 1);
+	const int iv = std::atoi(val.c_str());
+	bool ok = false;
+	char detail[256] = "";
+	if (key == "menu_hover") {
+		ok = m_hud.menuHovered == iv && m_menuSelected == iv && ptr.IsHovered(ui::HashId(HudRegion::kMenuItem, iv));
+		std::snprintf(detail, sizeof(detail), "hovered=%d selected=%d item='%s'", m_hud.menuHovered, m_menuSelected,
+			m_menuSelected >= 0 && m_menuSelected < static_cast<int>(m_menuItems.size()) ? m_menuItems[m_menuSelected].c_str() : "");
+	}
+	else if (key == "paused") {
+		ok = m_paused == (iv != 0);
+		std::snprintf(detail, sizeof(detail), "paused=%d menu='%s'", m_paused ? 1 : 0, m_menuTitle.c_str());
+	}
+	else if (key == "phase") {
+		const char* names[] = { "freeroam", "countdown", "racing", "finished" };
+		const char* now = names[static_cast<int>(m_phase)];
+		ok = val == now;
+		std::snprintf(detail, sizeof(detail), "phase=%s menu='%s'", now, m_menuTitle.c_str());
+	}
+	else if (key == "map_open") {
+		ok = m_worldMap.IsOpen() == (iv != 0);
+		std::snprintf(detail, sizeof(detail), "open=%d", m_worldMap.IsOpen() ? 1 : 0);
+	}
+	else if (key == "map_selected") {
+		ok = m_mapClickEvent == iv && m_worldMap.SelectedEvent() == iv && m_worldMap.DisplayedEvent() == iv && m_previewIndex == iv &&
+			m_mapPreview.size() >= 2;
+		std::snprintf(detail, sizeof(detail), "clicked=%d selected=%d displayed=%d preview=%d (%d points)", m_mapClickEvent,
+			m_worldMap.SelectedEvent(), m_worldMap.DisplayedEvent(), m_previewIndex, static_cast<int>(m_mapPreview.size()));
+	}
+	else if (key == "map_drag") {
+		const std::vector<float> f = Floats(val);
+		const glm::vec2 px = f.size() >= 2 ? glm::vec2(f[0], f[1]) * m_overlaySize : glm::vec2(0.0f);
+		const glm::vec2 expect = m_ptest.markCentre - px / m_ptest.markPpm;
+		const float errPx = glm::length(m_worldMap.ViewCentre() - expect) * m_worldMap.PixelsPerMetre();
+		ok = errPx < 1.5f && glm::length(px) > 1.0f && std::abs(m_worldMap.PixelsPerMetre() - m_ptest.markPpm) < 1e-6f;
+		std::snprintf(detail, sizeof(detail), "centre (%.1f,%.1f) -> (%.1f,%.1f), drag %.0fx%.0f px, error %.2f px",
+			m_ptest.markCentre.x, m_ptest.markCentre.y, m_worldMap.ViewCentre().x, m_worldMap.ViewCentre().y, px.x, px.y, errPx);
+	}
+	else if (key == "map_still") {
+		const float movePx = glm::length(m_worldMap.ViewCentre() - m_ptest.markCentre) * m_worldMap.PixelsPerMetre();
+		ok = movePx < 0.01f && std::abs(m_worldMap.PixelsPerMetre() - m_ptest.markPpm) < 1e-6f;
+		std::snprintf(detail, sizeof(detail), "view moved %.2f px", movePx);
+	}
+	else if (key == "zoom_anchor") {
+		const float ratio = m_worldMap.PixelsPerMetre() / std::max(m_ptest.markPpm, 1e-9f);
+		const glm::vec2 now = m_worldMap.WorldAt(m_ptest.markPos);
+		const float errPx = glm::length(now - m_ptest.markWorld) * m_worldMap.PixelsPerMetre();
+		ok = std::abs(ratio - 1.0f) > 0.05f && errPx < 1.0f && glm::length(ptr.Position() - m_ptest.markPos) < 0.5f;
+		std::snprintf(detail, sizeof(detail), "zoom x%.3f, world under cursor (%.1f,%.1f) drift %.3f px", ratio, now.x, now.y, errPx);
+	}
+	else if (key == "waypoint") {
+		float length = 0.0f;
+		for (size_t i = 1; i < m_route.size(); ++i) length += glm::length(m_route[i] - m_route[i - 1]);
+		ok = (iv != 0) == m_hasWaypoint && (!m_hasWaypoint || m_route.size() >= 2);
+		std::snprintf(detail, sizeof(detail), "waypoint=%d at (%.1f,%.1f) y=%.1f, route %d points %.0f m", m_hasWaypoint ? 1 : 0,
+			m_waypoint.x, m_waypoint.y, m_waypointY, static_cast<int>(m_route.size()), length);
+	}
+	else if (key == "cursor") {
+		const ui::CursorMode m = ptr.RequestedCursorMode();
+		const char* now = m == ui::CursorMode::Visible ? "visible" : (m == ui::CursorMode::Hidden ? "hidden" : "captured");
+		ok = val == now;
+		std::snprintf(detail, sizeof(detail), "cursor=%s", now);
+	}
+	else {
+		std::snprintf(detail, sizeof(detail), "unknown expectation");
+	}
+	std::cout << "[PointerTest] " << (ok ? "PASS " : "FAIL ") << what << " (" << detail << ", window "
+		<< static_cast<int>(m_overlaySize.x) << "x" << static_cast<int>(m_overlaySize.y) << ")" << std::endl;
+	return ok;
+}
+
+GameSession::MenuAction GameSession::Tick(float dt, bool inputEnabled, float aspect)
 {
 	MenuAction action = MenuAction::None;
 	m_aspect = aspect;
@@ -876,6 +1288,11 @@ GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float a
 	Buttons b;
 	++m_updateFrame;
 	ReadInput(inputEnabled, in, b);
+	FrameProfiler::Mark("g_input");
+	// Game UI takes the mouse only while the game view is focused and under the pointer, and (in
+	// the standalone game) while the cursor is shown.
+	m_pointerOn = inputEnabled && m_overlayHovered && (!m_standalone || WantsPointer() || m_cursorReveal > 0.0f);
+	if (RunPointerScript()) return MenuAction::ExitApplication;
 	// NOX_TEST_OPEN_MAP_AT_FRAME=<n>, NOX_TEST_MAP_ENTER_AT_FRAME=<n>, NOX_TEST_MAP_CLOSE_AT_FRAME=<n>:
 	// scripted world-map open / ENTER (waypoint) / close for capture and validation runs.
 	static const unsigned openMapAt = [] { const char* v = std::getenv("NOX_TEST_OPEN_MAP_AT_FRAME"); return v ? static_cast<unsigned>(std::atoi(v)) : 0u; }();
@@ -901,11 +1318,13 @@ GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float a
 		else if (m_menuTitle.empty()) SetPaused(true);
 	}
 	const bool menuOpen = !m_menuTitle.empty();
+	bool pointerStart = false;
 	if (menuOpen) UpdateMenus(b, action);
-	else {
+	UpdateMenuPointer(action, pointerStart);
+	if (!menuOpen) {
 		if (b.camera) m_drive.CycleCamera();
 		if (b.reset) ResetCar();
-		if (b.start && m_phase == Phase::FreeRoam && m_nearEvent >= 0) StartEvent(m_nearEvent);
+		if ((b.start || pointerStart) && m_phase == Phase::FreeRoam && m_nearEvent >= 0) StartEvent(m_nearEvent);
 	}
 
 	const bool frozen = m_paused || m_phase == Phase::Countdown || (!m_menuTitle.empty() && m_phase != Phase::Finished);
@@ -916,9 +1335,13 @@ GameSession::MenuAction GameSession::Update(float dt, bool inputEnabled, float a
 	else {
 		DriveMode::Input drive = in;
 		if (m_phase == Phase::Finished) { drive = DriveMode::Input(); drive.brake = 0.6f; }
+		FrameProfiler::Mark("g_menus");
 		m_drive.Update(dt, drive, frozen, m_camera.get(), aspect);
+		FrameProfiler::Mark("g_drive");
 		EmitTyreEffects(dt);
+		FrameProfiler::Mark("g_tyrefx");
 		UpdateRace(dt);
+		FrameProfiler::Mark("g_race");
 	}
 
 	DriveAudioState audio;
@@ -1085,6 +1508,16 @@ void GameSession::SetWaypoint(const glm::vec2& p)
 {
 	m_waypoint = p;
 	m_hasWaypoint = true;
+	m_waypointHasY = false;
+	RefreshRoute();
+}
+
+void GameSession::SetWaypoint(const glm::vec2& p, float y)
+{
+	m_waypoint = p;
+	m_waypointY = y;
+	m_hasWaypoint = true;
+	m_waypointHasY = true;
 	RefreshRoute();
 }
 
@@ -1132,10 +1565,6 @@ void GameSession::UpdateWorldMap(const Buttons& b, bool inputEnabled, float dt)
 		if (e && !prevE) in.cycle = 1;
 		prevQ = q;
 		prevE = e;
-		const ImGuiIO& io = ImGui::GetIO();
-		in.zoomSteps = io.MouseWheel;
-		in.mouse = glm::vec2(io.MousePos.x, io.MousePos.y);
-		in.mouseDown = io.MouseDown[0];
 		if (m_pad && SDL_GameControllerGetAttached(m_pad)) {
 			float lx = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
 			float ly = SDL_GameControllerGetAxis(m_pad, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
@@ -1153,8 +1582,14 @@ void GameSession::UpdateWorldMap(const Buttons& b, bool inputEnabled, float dt)
 	static const float testZoom = [] { const char* v = std::getenv("NOX_TEST_MAP_ZOOM"); return v ? static_cast<float>(std::atof(v)) : 0.0f; }();
 	static bool testZoomDone = false;
 	if (testZoom != 0.0f && !testZoomDone) { in.zoomSteps += testZoom; testZoomDone = true; }
+	in.pointer = m_pointerOn;   // mouse: engine pointer layer (regions from the map's last draw)
 	UpdateMapPreview(m_worldMap.DisplayedEvent());
 	const WorldMapAction act = m_worldMap.Update(in, BuildWorldMapContext(), dt);
+	if (act.selectedByClick) {
+		m_mapClickEvent = m_worldMap.SelectedEvent();
+		DriveAudio::Get().Play(UiSound::Select);
+		std::cout << "[WorldMap] Event " << m_mapClickEvent << " selected by click" << std::endl;
+	}
 	if (act.toggleWaypoint && act.eventIndex >= 0 && act.eventIndex < static_cast<int>(m_events.size())) {
 		const RaceEvent& ev = m_events[act.eventIndex];
 		if (m_hasWaypoint && glm::length(m_waypoint - ev.start) < 1.0f) {
@@ -1162,10 +1597,38 @@ void GameSession::UpdateWorldMap(const Buttons& b, bool inputEnabled, float dt)
 			ShowMessage("WAYPOINT CLEARED", 2.0f);
 		}
 		else {
-			SetWaypoint(ev.start);
+			if (ev.hasStartY) SetWaypoint(ev.start, ev.startY);
+			else SetWaypoint(ev.start);
 			ShowMessage("WAYPOINT SET - " + ev.name, 2.5f);
 		}
 		DriveAudio::Get().Play(UiSound::Select);
+	}
+	// Click on the map: waypoint at the nearest road point (within the snap radius of the click).
+	if (act.placeWaypoint && !m_roads.Empty()) {
+		glm::vec2 c(0.0f);
+		int edge = -1;
+		float t = 0.0f;
+		const float d = m_roads.ClosestOnRoads(act.worldPos, &c, &edge, &t);
+		if (edge >= 0 && d <= act.snapRadius) {
+			SetWaypoint(c, m_roads.EdgePoint(edge, t).y);
+			float length = 0.0f;
+			for (size_t i = 1; i < m_route.size(); ++i) length += glm::length(m_route[i] - m_route[i - 1]);
+			ShowMessage("WAYPOINT SET", 2.5f);
+			DriveAudio::Get().Play(UiSound::Select);
+			std::printf("[WorldMap] Waypoint (%.1f, %.1f) y=%.1f on a road %.1f m from the click; route %d points, %.0f m\n",
+				c.x, c.y, m_waypointY, d, static_cast<int>(m_route.size()), length);
+		}
+		else {
+			DriveAudio::Get().Play(UiSound::Back);
+			std::printf("[WorldMap] No road within %.0f m of (%.1f, %.1f)\n", act.snapRadius, act.worldPos.x, act.worldPos.y);
+		}
+		std::fflush(stdout);
+	}
+	if (act.clearWaypoint && m_hasWaypoint) {
+		ClearWaypoint();
+		ShowMessage("WAYPOINT CLEARED", 2.0f);
+		DriveAudio::Get().Play(UiSound::Back);
+		std::cout << "[WorldMap] Waypoint cleared" << std::endl;
 	}
 	if (act.close) DriveAudio::Get().Play(UiSound::Back);
 }
@@ -1173,6 +1636,11 @@ void GameSession::UpdateWorldMap(const Buttons& b, bool inputEnabled, float dt)
 void GameSession::DrawHUD(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& size, float dt)
 {
 	if (!m_drive.IsAvailable() || !dl) return;
+	// Pointer gating: standalone, the overlay is the whole window; in the editor the Game window
+	// must be under the pointer (not covered by another window or a popup).
+	m_overlayOrigin = origin;
+	m_overlaySize = size;
+	m_overlayHovered = m_standalone || ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
 	if (m_worldMap.IsOpen()) {
 		m_worldMap.Draw(dl, origin, size, BuildWorldMapContext(), dt);
 		return;
@@ -1225,12 +1693,12 @@ void GameSession::EmitTyreEffects(float dt)
 			const glm::vec3 fwd(std::sin(h), 0.0f, std::cos(h));
 			const glm::vec3 p = w.contact + glm::vec3(0.0f, 0.18f, 0.0f) - fwd * 0.45f;
 			const glm::vec3 v = w.velocity * 0.3f - fwd * (w.wheelspin * 1.8f + 0.3f) + glm::vec3(0.0f, 0.3f, 0.0f);
-			VehicleFX::EmitSmoke(p, v, smoke, dt);
+			VehicleFX::EmitSmoke(p, v, smoke, dt, w.contact.y);
 		}
 		// Spray from the wet surface behind the tyres, growing with speed.
 		const float spray = std::clamp((speed - 20.0f) / 90.0f, 0.0f, 1.0f) * (rear ? 1.0f : 0.45f);
 		if (spray > 0.02f) {
-			VehicleFX::EmitSpray(w.contact + glm::vec3(0.0f, 0.05f, 0.0f), w.velocity * 0.75f, spray, dt);
+			VehicleFX::EmitSpray(w.contact + glm::vec3(0.0f, 0.05f, 0.0f), w.velocity * 0.75f, spray, dt, w.contact.y);
 		}
 	}
 	VehicleFX::Update(dt);

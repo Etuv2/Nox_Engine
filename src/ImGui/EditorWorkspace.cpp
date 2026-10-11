@@ -3,12 +3,11 @@
 #include "ConsoleLog.h"
 #include "../Core.h"
 #include "../Camera.h"
-#include "../GameSession.h"
+#include "../GameModule.h"
 #include "../ImGuiInterface.h"
 #include "../LightNode.h"
 #include "../BaseLight.h"
 #include "../ModularRenderer.h"
-#include "../RacingHUD.h"
 #include "../UiIconAtlas.h"
 #include "../Scene.h"
 #include "../SceneGraph.h"
@@ -38,78 +37,6 @@
 namespace fs = std::filesystem;
 using nlohmann::json;
 
-// Thin adapters over the Solace kit (src/editor/solace/SolaceUI.h).
-namespace ui {
-	enum class ToastKind { Info, Success, Warning, Error };
-	bool g_gridOpen = false;
-	void Grid(const char* id) { g_gridOpen = solace::BeginPropertyGrid(id); }
-	void Label(const char* label) {
-		if (g_gridOpen) { solace::PropertyLabel(label); return; }
-		ImGui::TextUnformatted(label);
-		ImGui::SameLine(140.0f);
-		ImGui::SetNextItemWidth(-1);
-	}
-	void EndGrid() { if (g_gridOpen) solace::EndPropertyGrid(); g_gridOpen = false; }
-	bool Btn(const char* label, bool primary) { return solace::Button(label, primary ? solace::ButtonKind::Primary : solace::ButtonKind::Secondary); }
-	bool Tool(const char* id, solace::Icon icon, const char* label, bool active, bool enabled, const char* tip) {
-		return solace::ToolbarButton(id, icon, label, active, enabled, tip);
-	}
-	// Same toolbar button with a UI icon-atlas picture (hud.json icons.roles) in place of the
-	// vector glyph; falls back to Tool() when the atlas or the icon is unavailable.
-	bool ToolIcon(const char* id, const std::string& atlasId, solace::Icon fallback, const char* label, bool active,
-		bool enabled, const char* tip) {
-		if (!UiIconAtlas::Get().Has(atlasId)) return Tool(id, fallback, label, active, enabled, tip);
-		ImGui::PushID(id);
-		const ImGuiStyle& st = ImGui::GetStyle();
-		const float h = ImGui::GetFrameHeight();
-		const float icon = h * 0.5f;
-		const float pad = st.FramePadding.x + 2.0f;
-		const float gap = 6.0f;
-		const bool hasText = label && *label;
-		const ImVec2 text = hasText ? ImGui::CalcTextSize(label) : ImVec2(0.0f, 0.0f);
-		const float w = pad + icon + (hasText ? gap + text.x : 0.0f) + pad;
-		const ImVec2 min = ImGui::GetCursorScreenPos();
-		const ImVec2 max(min.x + w, min.y + h);
-		ImGui::BeginDisabled(!enabled);
-		const bool clicked = ImGui::InvisibleButton("##tool_icon", ImVec2(w, h));
-		ImGui::EndDisabled();
-		const bool hovered = enabled && ImGui::IsItemHovered();
-		if (tip && hovered) ImGui::SetTooltip("%s", tip);
-		ImDrawList* dl = ImGui::GetWindowDrawList();
-		if (active || hovered) {
-			dl->AddRectFilled(min, max, ImGui::GetColorU32(active ? ImGuiCol_HeaderActive : ImGuiCol_HeaderHovered), st.FrameRounding);
-		}
-		ImVec4 fg = st.Colors[ImGuiCol_Text];
-		if (!(active || hovered)) fg.w *= 0.7f;
-		fg.w *= enabled ? 1.0f : 0.4f;
-		const ImU32 fgCol = ImGui::GetColorU32(fg);
-		UiIconAtlas::Get().DrawCentered(dl, atlasId, ImVec2(min.x + pad + icon * 0.5f, min.y + h * 0.5f), icon, fgCol);
-		if (hasText) dl->AddText(ImVec2(min.x + pad + icon + gap, min.y + (h - text.y) * 0.5f), fgCol, label);
-		ImGui::PopID();
-		return clicked && enabled;
-	}
-	bool Section(const char* title, bool defaultOpen) {
-		static std::map<std::string, bool> open;
-		auto it = open.find(title);
-		if (it == open.end()) it = open.emplace(title, defaultOpen).first;
-		return solace::SectionHeader((std::string("##sec_") + title).c_str(), title, &it->second);
-	}
-	bool Seg(const char* id, int* value, std::initializer_list<std::pair<const char*, int>> items) {
-		std::vector<const char*> labels;
-		int current = 0, i = 0;
-		for (const auto& it : items) { labels.push_back(it.first); if (it.second == *value) current = i; ++i; }
-		const int next = solace::SegmentedControl(id, labels.data(), static_cast<int>(labels.size()), current);
-		if (next != current && next >= 0 && next < static_cast<int>(labels.size())) { *value = (items.begin() + next)->second; return true; }
-		return false;
-	}
-	void Toast(const std::string& text, ToastKind kind) {
-		const solace::Status st = kind == ToastKind::Success ? solace::Status::Success : kind == ToastKind::Warning ? solace::Status::Warning :
-			kind == ToastKind::Error ? solace::Status::Error : solace::Status::Info;
-		solace::PushToast(text.c_str(), nullptr, st);
-	}
-	void Progress(float p, float width) { if (p < 0.0f) solace::IndeterminateProgressBar(width); else solace::ProgressBar(p, width); }
-}
-
 namespace {
 	const char* kSettingsPath = "config/editor_settings.json";
 	const char* kPresetsPath = "config/launch_presets.json";
@@ -123,9 +50,6 @@ namespace {
 	const char* kWinMaterials = "Materials";
 	const char* kWinConsole = "Console";
 	const char* kWinBuild = "Build Output";
-	const char* kWinRace = "Race & Routes";
-	const char* kWinDrive = "Drive";
-	const char* kWinHud = "HUD";
 	const char* kWinPresets = "Launch Presets";
 	// Legacy panels (BaseWindow names).
 	const char* kWinRendering = "Rendering Settings";
@@ -187,10 +111,12 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		auto rd = [&](const char* key, bool& v) { v = p.value(key, v); };
 		rd("hierarchy", m_showHierarchy); rd("assets", m_showAssets); rd("inspector", m_showInspector);
 		rd("materials", m_showMaterials); rd("console", m_showConsole); rd("build", m_showBuild);
-		rd("race", m_showRace); rd("drive", m_showDrive); rd("hud", m_showHud); rd("rendering", m_showLegacyRendering);
+		rd("rendering", m_showLegacyRendering);
 		rd("lighting", m_showLegacyLighting); rd("performance", m_showLegacyPerformance); rd("animation", m_showLegacyAnimation);
 		rd("state", m_showLegacyState); rd("camera", m_showLegacyCamera); rd("presets", m_showPresets);
 		m_showAuthoring = s.value("authoring_overlay", m_showAuthoring);
+		m_extSaved = s.value("extension_panels", json::object());
+		if (!m_extSaved.is_object()) m_extSaved = json::object();
 		m_layoutBuilt = s.value("layout_built", false);
 		m_selectedPreset = s.value("preset", m_selectedPreset);
 	}
@@ -216,9 +142,12 @@ void EditorWorkspace::SaveSettings() const
 	json s;
 	s["panels"] = {
 		{"hierarchy", m_showHierarchy}, {"assets", m_showAssets}, {"inspector", m_showInspector}, {"materials", m_showMaterials},
-		{"console", m_showConsole}, {"build", m_showBuild}, {"race", m_showRace}, {"drive", m_showDrive}, {"hud", m_showHud},
+		{"console", m_showConsole}, {"build", m_showBuild},
 		{"rendering", m_showLegacyRendering}, {"lighting", m_showLegacyLighting}, {"performance", m_showLegacyPerformance},
 		{"animation", m_showLegacyAnimation}, {"state", m_showLegacyState}, {"camera", m_showLegacyCamera}, {"presets", m_showPresets} };
+	json ext = json::object();
+	for (const auto& [id, open] : m_extOpen) ext[id] = open;
+	s["extension_panels"] = ext;
 	s["authoring_overlay"] = m_showAuthoring;
 	s["layout_built"] = m_layoutBuilt;
 	s["preset"] = m_selectedPreset;
@@ -232,8 +161,6 @@ void EditorWorkspace::OnSceneLoaded()
 	m_redo.clear();
 	m_handles.clear();
 	m_dragHandle = -1;
-	m_selectedCheckpoint = -1;
-	m_selectedRoadNode = -1;
 	m_gameEditActive = false;
 	m_transformEditActive = false;
 	m_scene.rendered = m_game.rendered = false;
@@ -327,9 +254,13 @@ void EditorWorkspace::Draw(float dt)
 	if (m_showMaterials) DrawMaterials();
 	if (m_showConsole) DrawConsole();
 	if (m_showBuild) DrawBuildOutput();
-	if (m_showRace) DrawRaceTools();
-	if (m_showDrive) DrawDriveTools();
-	if (m_showHud) DrawHudTools();
+	// Application panels (EditorExtensions): each is a dockable window with its own open state.
+	for (const EditorPanel& panel : EditorExtensions::Panels()) {
+		bool& open = PanelOpen(panel);
+		if (!open) continue;
+		if (ImGui::Begin(panel.title.c_str(), &open) && panel.draw) panel.draw(*this);
+		ImGui::End();
+	}
 	if (m_showPresets) DrawLaunchPresets();
 	if (m_showDemo) ImGui::ShowDemoWindow(&m_showDemo);
 	DrawModals();
@@ -371,9 +302,7 @@ void EditorWorkspace::BuildDefaultLayout(unsigned int dockspaceId)
 	ImGui::DockBuilderDockWindow(kWinConsole, bottom);
 	ImGui::DockBuilderDockWindow(kWinBuild, bottom);
 	ImGui::DockBuilderDockWindow(kWinPerformance, bottom);
-	ImGui::DockBuilderDockWindow(kWinRace, bottom);
-	ImGui::DockBuilderDockWindow(kWinDrive, bottom);
-	ImGui::DockBuilderDockWindow(kWinHud, bottom);
+	for (const EditorPanel& panel : EditorExtensions::Panels()) ImGui::DockBuilderDockWindow(panel.title.c_str(), bottom);
 	ImGui::DockBuilderDockWindow(kWinAnimation, bottom);
 	ImGui::DockBuilderDockWindow(kWinState, bottom);
 	ImGui::DockBuilderDockWindow(kWinPresets, bottom);
@@ -445,9 +374,7 @@ void EditorWorkspace::DrawMenuBar()
 		ImGui::MenuItem(kWinConsole, nullptr, &m_showConsole);
 		ImGui::MenuItem(kWinBuild, nullptr, &m_showBuild);
 		ImGui::MenuItem("Profiler", nullptr, &m_showLegacyPerformance);
-		ImGui::MenuItem(kWinRace, nullptr, &m_showRace);
-		ImGui::MenuItem(kWinDrive, nullptr, &m_showDrive);
-		ImGui::MenuItem(kWinHud, nullptr, &m_showHud);
+		for (const EditorPanel& panel : EditorExtensions::Panels()) ImGui::MenuItem(panel.title.c_str(), nullptr, &PanelOpen(panel));
 		ImGui::MenuItem("Animation", nullptr, &m_showLegacyAnimation);
 		ImGui::MenuItem("State & Export", nullptr, &m_showLegacyState);
 		ImGui::MenuItem(kWinPresets, nullptr, &m_showPresets);
@@ -456,7 +383,8 @@ void EditorWorkspace::DrawMenuBar()
 		if (ImGui::MenuItem("Reset Layout")) {
 			m_resetLayout = true;
 			m_showHierarchy = m_showAssets = m_showInspector = m_showMaterials = m_showConsole = m_showBuild = true;
-			m_showRace = m_showDrive = m_showHud = m_showLegacyRendering = m_showLegacyLighting = m_showLegacyPerformance = true;
+			for (const EditorPanel& panel : EditorExtensions::Panels()) PanelOpen(panel) = panel.openByDefault;
+			m_showLegacyRendering = m_showLegacyLighting = m_showLegacyPerformance = true;
 		}
 		ImGui::MenuItem("ImGui Demo", nullptr, &m_showDemo);
 		ImGui::EndMenu();
@@ -502,7 +430,7 @@ void EditorWorkspace::DrawToolbar()
 		ImGui::EndCombo();
 	}
 	ImGui::SameLine();
-	if (ui::ToolIcon("##save", RacingHUD::Get().IconId("editor/save"), solace::Icon::Save, "Save", false, !m_core.IsPlaying(), "Save scene (Ctrl+S)")) {
+	if (ui::ToolIcon("##save", EditorExtensions::ResolveToolbarIcon("editor/save"), solace::Icon::Save, "Save", false, !m_core.IsPlaying(), "Save scene (Ctrl+S)")) {
 		m_core.SaveCurrentScene();
 		ui::Toast("Scene saved", ui::ToastKind::Success);
 	}
@@ -515,12 +443,12 @@ void EditorWorkspace::DrawToolbar()
 	const float playW = 3 * (ImGui::GetFrameHeight() + 8.0f);
 	ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 20.0f, (ImGui::GetWindowWidth() - playW) * 0.5f));
 	const bool playing = m_core.IsPlaying();
-	if (ui::ToolIcon("##play", RacingHUD::Get().IconId("editor/play"), solace::Icon::Play, nullptr, playing, !playing, "Play (F5)")) {
+	if (ui::ToolIcon("##play", EditorExtensions::ResolveToolbarIcon("editor/play"), solace::Icon::Play, nullptr, playing, !playing, "Play (F5)")) {
 		m_core.RequestPlay();
 		FocusGame();
 	}
 	ImGui::SameLine();
-	if (ui::ToolIcon("##pause", RacingHUD::Get().IconId("editor/pause"), solace::Icon::Pause, nullptr, m_core.IsPaused(), playing, "Pause (F6)")) m_core.TogglePause();
+	if (ui::ToolIcon("##pause", EditorExtensions::ResolveToolbarIcon("editor/pause"), solace::Icon::Pause, nullptr, m_core.IsPaused(), playing, "Pause (F6)")) m_core.TogglePause();
 	ImGui::SameLine();
 	if (ui::Tool("##stop", solace::Icon::Stop, nullptr, false, playing, "Stop (Shift+F5) - restores the pre-play state")) m_core.RequestStop();
 
@@ -606,10 +534,10 @@ void EditorWorkspace::DrawGameViewport()
 	if (m_game.visible) {
 		DrawViewportImage(m_game);
 		if (m_game.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) ImGui::SetWindowFocus();
-		if (GameSession* game = m_core.GetGame()) {
+		if (IGameModule* game = m_core.GetGameModule()) {
 			ImDrawList* dl = ImGui::GetWindowDrawList();
 			dl->PushClipRect(m_game.pos, ImVec2(m_game.pos.x + m_game.size.x, m_game.pos.y + m_game.size.y), true);
-			game->DrawHUD(dl, glm::vec2(m_game.pos.x, m_game.pos.y), glm::vec2(m_game.size.x, m_game.size.y), m_dt);
+			game->DrawOverlay(dl, glm::vec2(m_game.pos.x, m_game.pos.y), glm::vec2(m_game.size.x, m_game.size.y), m_dt);
 			if (m_core.IsPlaying() && !m_game.focused) {
 				const char* hint = "Click to drive";
 				const ImVec2 ts = ImGui::CalcTextSize(hint);
@@ -682,14 +610,15 @@ void EditorWorkspace::DrawSceneViewport()
 
 	ImDrawList* dl = ImGui::GetWindowDrawList();
 	dl->PushClipRect(m_scene.pos, ImVec2(m_scene.pos.x + m_scene.size.x, m_scene.pos.y + m_scene.size.y), true);
-	if (m_showAuthoring) DrawAuthoringOverlay(m_scene);
+	if (m_showAuthoring) DrawAuthoringOverlay(dl);
+	else m_handles.clear();
 	DrawGizmo(m_scene);
 
 	// Click selection (not on gizmo or authoring handles).
 	if (m_scene.hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver() &&
 		m_dragHandle < 0 && ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x == 0.0f && !m_core.IsEditorCameraActive()) {
 		bool handleHit = false;
-		for (const Handle& h : m_handles) {
+		for (const ViewportHandle& h : m_handles) {
 			ImVec2 p;
 			if (ProjectToViewport(m_scene, h.world, p) && std::hypot(p.x - io.MousePos.x, p.y - io.MousePos.y) < 10.0f) { handleHit = true; break; }
 		}
@@ -763,117 +692,39 @@ void EditorWorkspace::DrawGizmo(const Viewport& vp)
 	m_wasUsingGizmo = using_;
 }
 
-void EditorWorkspace::DrawAuthoringOverlay(const Viewport& vp)
+void EditorWorkspace::DrawAuthoringOverlay(ImDrawList* dl)
 {
-	GameSession* game = m_core.GetGame();
-	if (!game || !game->IsAvailable()) return;
-	ImDrawList* dl = ImGui::GetWindowDrawList();
-	ImGuiIO& io = ImGui::GetIO();
 	m_handles.clear();
-	const ImU32 roadCol = IM_COL32(120, 170, 255, 110);
-	const RoadNetwork& roads = game->Roads();
-	// Large generated networks (file-backed) are not drawn or edited as handles.
-	static const std::vector<RoadNetwork::Edge> kNoEdges;
-	for (const auto& e : roads.IsExternal() ? kNoEdges : roads.Edges()) {
-		const glm::vec2 a = roads.Nodes()[e.a].pos, b = roads.Nodes()[e.b].pos;
-		// Draw in short pieces so lines behind the camera are clipped correctly.
-		const int pieces = std::max(1, static_cast<int>(glm::length(b - a) / 10.0f));
-		for (int i = 0; i < pieces; ++i) {
-			const glm::vec2 p0 = glm::mix(a, b, static_cast<float>(i) / pieces), p1 = glm::mix(a, b, static_cast<float>(i + 1) / pieces);
-			ImVec2 s0, s1;
-			if (ProjectToViewport(vp, glm::vec3(p0.x, 0.05f, p0.y), s0) && ProjectToViewport(vp, glm::vec3(p1.x, 0.05f, p1.y), s1)) dl->AddLine(s0, s1, roadCol, 1.5f);
-		}
-	}
-	for (size_t i = 0; i < roads.Nodes().size() && !roads.IsExternal(); ++i) {
-		const glm::vec2 p = roads.Nodes()[i].pos;
-		m_handles.push_back({ Handle::Kind::RoadNode, static_cast<int>(i), -1, glm::vec3(p.x, 0.05f, p.y), roadCol });
-	}
-	// Spawn.
-	const glm::vec2 sp = game->Drive().SpawnPosition();
-	m_handles.push_back({ Handle::Kind::Spawn, -1, -1, glm::vec3(sp.x, 0.1f, sp.y), IM_COL32(90, 255, 140, 255) });
-	{
-		const float h = game->Drive().SpawnHeading();
-		ImVec2 a, b;
-		if (ProjectToViewport(vp, glm::vec3(sp.x, 0.1f, sp.y), a) && ProjectToViewport(vp, glm::vec3(sp.x + std::sin(h) * 4.0f, 0.1f, sp.y + std::cos(h) * 4.0f), b))
-			dl->AddLine(a, b, IM_COL32(90, 255, 140, 255), 2.5f);
-	}
-	// Events, checkpoints and the route between them.
-	auto& events = game->Events();
-	for (size_t ei = 0; ei < events.size(); ++ei) {
-		const auto& e = events[ei];
-		const bool selected = static_cast<int>(ei) == game->SelectedEvent();
-		const ImU32 evCol = IM_COL32(205, 160, 255, selected ? 255 : 150);
-		m_handles.push_back({ Handle::Kind::EventStart, static_cast<int>(ei), -1, glm::vec3(e.start.x, 0.1f, e.start.y), evCol });
-		ImVec2 s;
-		if (ProjectToViewport(vp, glm::vec3(e.start.x, 0.1f, e.start.y), s)) dl->AddText(ImVec2(s.x + 8, s.y - 18), evCol, e.name.c_str());
-		glm::vec2 prev = e.start;
-		for (size_t ci = 0; ci < e.checkpoints.size(); ++ci) {
-			const auto& c = e.checkpoints[ci];
-			const bool last = ci + 1 == e.checkpoints.size();
-			const ImU32 col = last ? IM_COL32(255, 230, 90, selected ? 255 : 140) : IM_COL32(80, 220, 255, selected ? 255 : 140);
-			m_handles.push_back({ Handle::Kind::Checkpoint, static_cast<int>(ei), static_cast<int>(ci), glm::vec3(c.pos.x, 0.1f, c.pos.y), col });
-			if (selected) {
-				const float hd = game->GateHeading(e, static_cast<int>(ci));
-				const glm::vec2 side(std::cos(hd), -std::sin(hd));
-				ImVec2 g0, g1, g0t, g1t;
-				const glm::vec2 a = c.pos - side * c.width * 0.5f, b = c.pos + side * c.width * 0.5f;
-				if (ProjectToViewport(vp, glm::vec3(a.x, 0.1f, a.y), g0) && ProjectToViewport(vp, glm::vec3(b.x, 0.1f, b.y), g1) &&
-					ProjectToViewport(vp, glm::vec3(a.x, 3.0f, a.y), g0t) && ProjectToViewport(vp, glm::vec3(b.x, 3.0f, b.y), g1t)) {
-					dl->AddLine(g0, g1, col, 2.0f);
-					dl->AddLine(g0, g0t, col, 2.0f);
-					dl->AddLine(g1, g1t, col, 2.0f);
-					dl->AddLine(g0t, g1t, col, 1.0f);
-					char num[16];
-					std::snprintf(num, sizeof(num), last ? "FINISH" : "CP %d", static_cast<int>(ci) + 1);
-					dl->AddText(ImVec2((g0t.x + g1t.x) * 0.5f - 12, (g0t.y + g1t.y) * 0.5f - 16), col, num);
-				}
-				const std::vector<glm::vec2> route = roads.FindRoute(prev, c.pos);
-				for (size_t k = 1; k < route.size(); ++k) {
-					const int pieces = std::max(1, static_cast<int>(glm::length(route[k] - route[k - 1]) / 8.0f));
-					for (int i = 0; i < pieces; ++i) {
-						const glm::vec2 p0 = glm::mix(route[k - 1], route[k], static_cast<float>(i) / pieces), p1 = glm::mix(route[k - 1], route[k], static_cast<float>(i + 1) / pieces);
-						ImVec2 s0, s1;
-						if (ProjectToViewport(vp, glm::vec3(p0.x, 0.3f, p0.y), s0) && ProjectToViewport(vp, glm::vec3(p1.x, 0.3f, p1.y), s1)) dl->AddLine(s0, s1, IM_COL32(205, 160, 255, 200), 3.0f);
-					}
-				}
-			}
-			prev = c.pos;
-		}
-	}
+	const EditorExtensions::ViewportOverlay& overlay = EditorExtensions::GetViewportOverlay();
+	if (!overlay) return;
+	overlay(*this, dl);
+
 	// Handles: draw, hover, drag on the ground plane (undoable as one game edit).
+	const Viewport& vp = m_scene;
+	ImGuiIO& io = ImGui::GetIO();
 	int hovered = -1;
 	for (size_t i = 0; i < m_handles.size(); ++i) {
 		ImVec2 s;
 		if (!ProjectToViewport(vp, m_handles[i].world, s)) continue;
 		const bool isHover = vp.hovered && std::hypot(s.x - io.MousePos.x, s.y - io.MousePos.y) < 10.0f;
 		if (isHover && hovered < 0) hovered = static_cast<int>(i);
-		const float r = m_handles[i].kind == Handle::Kind::RoadNode ? 5.0f : 7.0f;
+		const float r = m_handles[i].radius;
 		dl->AddCircleFilled(s, r + (isHover || static_cast<int>(i) == m_dragHandle ? 2.0f : 0.0f), m_handles[i].color);
 		dl->AddCircle(s, r + 2.0f, IM_COL32(0, 0, 0, 160), 0, 1.5f);
 	}
-	if (hovered >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGuizmo::IsOver() && !m_core.IsPlaying()) {
+	if (hovered >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGuizmo::IsOver() && !IsPlaying()) {
 		m_dragHandle = hovered;
-		m_dragBefore = game->SaveGameJson();
-		const Handle& h = m_handles[hovered];
-		if (h.kind == Handle::Kind::EventStart || h.kind == Handle::Kind::Checkpoint) game->SetSelectedEvent(h.a);
-		m_selectedCheckpoint = h.kind == Handle::Kind::Checkpoint ? h.b : -1;
-		m_selectedRoadNode = h.kind == Handle::Kind::RoadNode ? h.a : -1;
-		m_showRace = true;
+		m_dragBefore = GetAuthoredGameJson();
+		if (m_handles[hovered].onPress) m_handles[hovered].onPress();
 	}
 	if (m_dragHandle >= 0 && m_dragHandle < static_cast<int>(m_handles.size())) {
-		const Handle h = m_handles[m_dragHandle];
+		const ViewportHandle& h = m_handles[m_dragHandle];
 		glm::vec3 ground;
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 2.0f) && ViewportRayToGround(vp, io.MousePos, ground)) {
-			const glm::vec2 p(ground.x, ground.z);
-			switch (h.kind) {
-			case Handle::Kind::Spawn: game->Drive().SetSpawn(p, game->Drive().SpawnHeading()); game->Drive().ResetToSpawn(); break;
-			case Handle::Kind::EventStart: game->Events()[h.a].start = p; break;
-			case Handle::Kind::Checkpoint: game->Events()[h.a].checkpoints[h.b].pos = p; break;
-			case Handle::Kind::RoadNode: game->Roads().MutableNodes()[h.a].pos = p; break;
-			}
+			if (h.onDrag) h.onDrag(glm::vec2(ground.x, ground.z));
 		}
 		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-			const json before = m_dragBefore, after = game->SaveGameJson();
+			const json before = m_dragBefore, after = GetAuthoredGameJson();
 			if (before != after) {
 				Push("Move handle", [this, before] { m_core.ApplyGameJson(before); }, [this, after] { m_core.ApplyGameJson(after); });
 				m_core.ApplyGameJson(after);
@@ -882,6 +733,67 @@ void EditorWorkspace::DrawAuthoringOverlay(const Viewport& vp)
 			m_dragHandle = -1;
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Application extensions (EditorHost)
+// ---------------------------------------------------------------------------------------------
+void EditorWorkspace::RequestPlay()
+{
+	m_core.RequestPlay();
+	FocusGame();
+}
+
+bool EditorWorkspace::IsPlaying() const { return m_core.IsPlaying(); }
+void EditorWorkspace::MarkDirty() { m_core.MarkDirty(); }
+void EditorWorkspace::ApplyGameJson(const json& game) { m_core.ApplyGameJson(game); }
+void EditorWorkspace::ApplyRuntimeChangesToAuthored() { m_core.ApplyRuntimeChangesToAuthored(); }
+IGameModule* EditorWorkspace::Game() { return m_core.GetGameModule(); }
+SceneGraph* EditorWorkspace::GetSceneGraph() { return m_core.GetSceneGraph().get(); }
+ModularRenderer* EditorWorkspace::GetRenderer() { return m_core.GetRenderer().get(); }
+
+void EditorWorkspace::PushUndo(const std::string& label, std::function<void()> undo, std::function<void()> redo)
+{
+	Push(label, std::move(undo), std::move(redo));
+}
+
+bool EditorWorkspace::ProjectToViewport(const glm::vec3& world, ImVec2& out) const
+{
+	return ProjectToViewport(m_scene, world, out);
+}
+
+void EditorWorkspace::ShowPanel(const std::string& id)
+{
+	m_extOpen[id] = true;
+}
+
+json EditorWorkspace::GetAuthoredGameJson() const
+{
+	IGameModule* game = m_core.GetGameModule();
+	return game ? game->SaveGameJson() : json::object();
+}
+
+bool& EditorWorkspace::PanelOpen(const EditorPanel& panel)
+{
+	auto it = m_extOpen.find(panel.id);
+	if (it == m_extOpen.end()) {
+		const bool saved = m_extSaved.is_object() && m_extSaved.contains(panel.id) && m_extSaved[panel.id].is_boolean()
+			? m_extSaved[panel.id].get<bool>() : panel.openByDefault;
+		it = m_extOpen.emplace(panel.id, saved).first;
+	}
+	return it->second;
+}
+
+void EditorWorkspace::CommitGameEdit(const std::string& label)
+{
+	IGameModule* game = m_core.GetGameModule();
+	if (!game) return;
+	const json before = m_gameSnapshot, after = game->SaveGameJson();
+	if (before.is_null() || before == after) return;
+	Push(label, [this, before] { m_core.ApplyGameJson(before); }, [this, after] { m_core.ApplyGameJson(after); });
+	m_core.ApplyGameJson(after);
+	m_gameSnapshot = after;
+	m_core.MarkDirty();
 }
 
 void EditorWorkspace::ChooseRenderTarget()
@@ -1364,281 +1276,6 @@ void EditorWorkspace::DrawLaunchPresets()
 	if (ui::Btn("Run selected", false)) RunStandalone();
 	ImGui::End();
 }
-
-// ---------------------------------------------------------------------------------------------
-// Game authoring panels
-// ---------------------------------------------------------------------------------------------
-void EditorWorkspace::DrawRaceTools()
-{
-	if (!ImGui::Begin(kWinRace, &m_showRace)) { ImGui::End(); return; }
-	GameSession* game = m_core.GetGame();
-	if (!game || !game->IsAvailable()) {
-		ImGui::TextDisabled("This scene has no \"game\" section (player car).");
-		ImGui::End();
-		return;
-	}
-	auto& events = game->Events();
-	const bool editable = !m_core.IsPlaying();
-	ImGui::BeginChild("##eventlist", ImVec2(220, 0), true);
-	ImGui::TextDisabled("EVENTS");
-	for (int i = 0; i < static_cast<int>(events.size()); ++i) {
-		ImGui::PushID(i);
-		if (ImGui::Selectable(events[i].name.c_str(), game->SelectedEvent() == i)) game->SetSelectedEvent(i);
-		ImGui::PopID();
-	}
-	ImGui::BeginDisabled(!editable);
-	if (ui::Btn("+ Event", false)) {
-		GameSession::RaceEvent e;
-		e.id = "event_" + std::to_string(events.size() + 1);
-		e.name = "New Sprint";
-		e.start = game->Drive().Position() + glm::vec2(std::sin(game->Drive().Heading()), std::cos(game->Drive().Heading())) * 20.0f;
-		e.startHeadingDeg = glm::degrees(game->Drive().Heading());
-		e.checkpoints.push_back({ e.start + glm::vec2(std::sin(game->Drive().Heading()), std::cos(game->Drive().Heading())) * 120.0f });
-		events.push_back(e);
-		game->SetSelectedEvent(static_cast<int>(events.size()) - 1);
-		CommitGameEdit("Add event");
-	}
-	ImGui::SameLine();
-	if (ui::Btn("Duplicate", false) && !events.empty()) {
-		GameSession::RaceEvent e = events[game->SelectedEvent()];
-		e.id += "_copy";
-		e.name += " (copy)";
-		e.start += glm::vec2(6.0f, 0.0f);
-		events.push_back(e);
-		game->SetSelectedEvent(static_cast<int>(events.size()) - 1);
-		CommitGameEdit("Duplicate event");
-	}
-	ImGui::EndDisabled();
-	ImGui::Spacing();
-	ImGui::TextDisabled("SPEEDWALL");
-	for (const auto& e : events) ImGui::Text("%s  %s", e.id.c_str(), FormatTime(game->BestTime(e.id)).c_str());
-	if (ImGui::SmallButton("Clear best times")) game->ClearBestTimes();
-	ImGui::EndChild();
-	ImGui::SameLine();
-
-	ImGui::BeginChild("##eventprops", ImVec2(0, 0), false);
-	if (!events.empty()) {
-		auto& e = events[std::clamp(game->SelectedEvent(), 0, static_cast<int>(events.size()) - 1)];
-		ImGui::BeginDisabled(!editable);
-		auto text = [&](const char* label, std::string& s) {
-			char buf[128];
-			std::snprintf(buf, sizeof(buf), "%s", s.c_str());
-			ui::Label(label);
-			if (ImGui::InputText((std::string("##") + label).c_str(), buf, sizeof(buf))) s = buf;
-		};
-		ui::Grid("##ev");
-		text("Id", e.id);
-		text("Type", e.type);
-		text("Name", e.name);
-		text("Difficulty", e.difficulty);
-		ui::Label("Start (x, z)"); ImGui::DragFloat2("##st", &e.start.x, 0.25f);
-		ui::Label("Start heading"); ImGui::DragFloat("##sh", &e.startHeadingDeg, 1.0f, -180.0f, 180.0f, "%.0f deg");
-		ui::Label("Trigger radius"); ImGui::DragFloat("##tr", &e.triggerRadius, 0.1f, 2.0f, 40.0f, "%.1f m");
-		ui::Label("Countdown"); ImGui::DragFloat("##cd", &e.countdown, 0.1f, 1.0f, 10.0f, "%.1f s");
-		ui::EndGrid();
-		if (ui::Btn("Start = car position", false)) {
-			e.start = game->Drive().Position();
-			e.startHeadingDeg = glm::degrees(game->Drive().Heading());
-			CommitGameEdit("Set event start");
-		}
-		ImGui::SameLine();
-		if (ui::Btn("Delete event", false)) {
-			events.erase(events.begin() + game->SelectedEvent());
-			game->SetSelectedEvent(0);
-			CommitGameEdit("Delete event");
-			ImGui::EndDisabled();
-			ImGui::EndChild();
-			ImGui::End();
-			return;
-		}
-		ImGui::Separator();
-		ImGui::TextDisabled("CHECKPOINTS (ordered; the last one is the finish)");
-		if (ImGui::BeginTable("##cps", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-			ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 28);
-			ImGui::TableSetupColumn("Position (x, z)");
-			ImGui::TableSetupColumn("Width");
-			ImGui::TableSetupColumn("Heading");
-			ImGui::TableSetupColumn("Order", ImGuiTableColumnFlags_WidthFixed, 56);
-			ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 70);
-			ImGui::TableHeadersRow();
-			int remove = -1, moveUp = -1, moveDown = -1, dup = -1;
-			for (int i = 0; i < static_cast<int>(e.checkpoints.size()); ++i) {
-				auto& c = e.checkpoints[i];
-				ImGui::PushID(i);
-				ImGui::TableNextRow();
-				ImGui::TableNextColumn();
-				if (ImGui::Selectable(std::to_string(i + 1).c_str(), m_selectedCheckpoint == i)) m_selectedCheckpoint = i;
-				ImGui::TableNextColumn(); ImGui::SetNextItemWidth(-1); ImGui::DragFloat2("##p", &c.pos.x, 0.25f);
-				ImGui::TableNextColumn(); ImGui::SetNextItemWidth(-1); ImGui::DragFloat("##w", &c.width, 0.1f, 4.0f, 60.0f, "%.1f m");
-				ImGui::TableNextColumn();
-				ImGui::Checkbox("auto", &c.autoHeading);
-				if (!c.autoHeading) { ImGui::SameLine(); ImGui::SetNextItemWidth(-1); ImGui::DragFloat("##h", &c.headingDeg, 1.0f, -180.0f, 180.0f, "%.0f"); }
-				ImGui::TableNextColumn();
-				if (ImGui::ArrowButton("##up", ImGuiDir_Up)) moveUp = i;
-				ImGui::SameLine();
-				if (ImGui::ArrowButton("##dn", ImGuiDir_Down)) moveDown = i;
-				ImGui::TableNextColumn();
-				if (ImGui::SmallButton("dup")) dup = i;
-				ImGui::SameLine();
-				if (ImGui::SmallButton("del")) remove = i;
-				ImGui::PopID();
-			}
-			ImGui::EndTable();
-			if (moveUp > 0) { std::swap(e.checkpoints[moveUp], e.checkpoints[moveUp - 1]); CommitGameEdit("Reorder checkpoint"); }
-			if (moveDown >= 0 && moveDown + 1 < static_cast<int>(e.checkpoints.size())) { std::swap(e.checkpoints[moveDown], e.checkpoints[moveDown + 1]); CommitGameEdit("Reorder checkpoint"); }
-			if (dup >= 0) { auto c = e.checkpoints[dup]; c.pos += glm::vec2(0, 10); e.checkpoints.insert(e.checkpoints.begin() + dup + 1, c); CommitGameEdit("Duplicate checkpoint"); }
-			if (remove >= 0 && e.checkpoints.size() > 1) { e.checkpoints.erase(e.checkpoints.begin() + remove); CommitGameEdit("Delete checkpoint"); }
-		}
-		if (ui::Btn("+ Checkpoint at car", false)) {
-			e.checkpoints.push_back({ game->Drive().Position() });
-			CommitGameEdit("Add checkpoint");
-		}
-		ImGui::EndDisabled();
-		ImGui::Separator();
-		ImGui::TextDisabled("TEST");
-		if (ui::Btn(m_core.IsPlaying() ? "Restart event" : "Play this event", true)) {
-			if (!m_core.IsPlaying()) { m_core.RequestPlay(); FocusGame(); }
-			game->StartEvent(game->SelectedEvent());
-		}
-		ImGui::SameLine();
-		ImGui::TextDisabled("Phase: %s  time %s  next CP %d", game->GetPhase() == GameSession::Phase::Racing ? "racing" :
-			game->GetPhase() == GameSession::Phase::Countdown ? "countdown" : game->GetPhase() == GameSession::Phase::Finished ? "finished" : "free roam",
-			FormatTime(game->RaceTime()).c_str(), game->NextCheckpoint() + 1);
-	}
-	ImGui::Separator();
-	if (ui::Section("Road network", false)) {
-		RoadNetwork& roads = game->Roads();
-		ImGui::BeginDisabled(!editable);
-		float hw = roads.DefaultHalfWidth(), sw = roads.SidewalkWidth();
-		ui::Grid("##roads");
-		ui::Label("Road half width"); if (ImGui::DragFloat("##hw", &hw, 0.05f, 2.0f, 15.0f, "%.2f m")) roads.SetDefaultHalfWidth(hw);
-		ui::Label("Sidewalk width"); if (ImGui::DragFloat("##sw", &sw, 0.05f, 0.0f, 10.0f, "%.2f m")) roads.SetSidewalkWidth(sw);
-		ui::EndGrid();
-		if (roads.IsExternal()) {
-			ImGui::TextDisabled("Generated network: %s (read-only)", roads.SourceFile().c_str());
-		}
-		for (size_t i = 0; i < roads.Nodes().size() && !roads.IsExternal(); ++i) {
-			auto& n = roads.MutableNodes()[i];
-			ImGui::PushID(static_cast<int>(i));
-			ImGui::SetNextItemWidth(220);
-			ImGui::DragFloat2(n.id.c_str(), &n.pos.x, 0.5f);
-			ImGui::PopID();
-		}
-		ImGui::TextDisabled("%d streets. Moving nodes updates routes, minimap and collision immediately;", static_cast<int>(roads.Edges().size()));
-		ImGui::TextDisabled("Save + reopen the scene to regenerate the district geometry.");
-		ImGui::EndDisabled();
-	}
-	ImGui::EndChild();
-	ImGui::End();
-}
-
-void EditorWorkspace::DrawDriveTools()
-{
-	if (!ImGui::Begin(kWinDrive, &m_showDrive)) { ImGui::End(); return; }
-	GameSession* game = m_core.GetGame();
-	if (!game || !game->IsAvailable()) {
-		ImGui::TextDisabled("No drivable car in this scene.");
-		ImGui::End();
-		return;
-	}
-	DriveMode& d = game->Drive();
-	if (m_core.IsPlaying()) {
-		solace::Badge("RUNTIME", solace::Status::Warning);
-		ImGui::SameLine();
-		ImGui::TextDisabled("Changes made while playing are discarded on Stop unless applied.");
-		ImGui::SameLine();
-		if (ui::Btn("Apply to authored", true)) {
-			m_core.ApplyRuntimeChangesToAuthored();
-			ui::Toast("Runtime tuning applied to the scene (save to keep)", ui::ToastKind::Success);
-		}
-	}
-	ImGui::Columns(3, "##drivecols", false);
-	DriveMode::Handling& h = d.MutableHandling();
-	ImGui::TextDisabled("HANDLING");
-	ui::Grid("##hand");
-	ui::Label("Top speed"); ImGui::DragFloat("##ts", &h.topSpeedKmh, 1.0f, 60.0f, 400.0f, "%.0f km/h");
-	ui::Label("Acceleration"); ImGui::DragFloat("##ac", &h.acceleration, 0.1f, 2.0f, 30.0f, "%.1f m/s2");
-	ui::Label("Braking"); ImGui::DragFloat("##br", &h.braking, 0.1f, 4.0f, 40.0f, "%.1f m/s2");
-	ui::Label("Steer lock low"); ImGui::DragFloat("##sl", &h.steerLockLow, 0.2f, 10.0f, 50.0f, "%.1f deg");
-	ui::Label("Steer lock high"); ImGui::DragFloat("##sh", &h.steerLockHigh, 0.1f, 1.0f, 20.0f, "%.1f deg");
-	ui::Label("Steer rate"); ImGui::DragFloat("##sr", &h.steerRate, 0.1f, 1.0f, 30.0f);
-	ui::Label("Grip"); ImGui::DragFloat("##gr", &h.grip, 0.05f, 0.5f, 20.0f);
-	ui::Label("Drift grip"); ImGui::DragFloat("##dg", &h.driftGrip, 0.05f, 0.1f, 10.0f);
-	ui::Label("Drift yaw gain"); ImGui::DragFloat("##dy", &h.driftYawGain, 0.02f, 1.0f, 4.0f);
-	ui::Label("Redline"); ImGui::DragFloat("##rl", &h.rpmRedline, 10.0f, 4000.0f, 9800.0f, "%.0f rpm");
-	ui::Label("Limiter"); ImGui::DragFloat("##lm", &h.rpmLimiter, 10.0f, 4500.0f, 10000.0f, "%.0f rpm");
-	ui::EndGrid();
-	ImGui::NextColumn();
-	ImGui::TextDisabled("NITROUS");
-	ui::Grid("##nos");
-	ui::Label("Thrust x"); ImGui::DragFloat("##nt", &h.nitroThrust, 0.01f, 1.0f, 3.0f);
-	ui::Label("Top speed x"); ImGui::DragFloat("##nv", &h.nitroTopSpeed, 0.01f, 1.0f, 1.5f);
-	ui::Label("Drain /s"); ImGui::DragFloat("##nd", &h.nitroDrain, 0.005f, 0.02f, 1.0f);
-	ui::Label("Recharge /s"); ImGui::DragFloat("##nr", &h.nitroRecharge, 0.005f, 0.0f, 1.0f);
-	ui::Label("Recharge delay"); ImGui::DragFloat("##ny", &h.nitroRechargeDelay, 0.05f, 0.0f, 10.0f, "%.2f s");
-	ui::EndGrid();
-	ImGui::TextDisabled("SPAWN");
-	glm::vec2 sp = d.SpawnPosition();
-	float sh = glm::degrees(d.SpawnHeading());
-	ui::Grid("##spawn");
-	ui::Label("Position (x, z)");
-	bool spawnChanged = ImGui::DragFloat2("##sp", &sp.x, 0.1f);
-	ui::Label("Heading"); spawnChanged |= ImGui::DragFloat("##sph", &sh, 1.0f, -180.0f, 180.0f, "%.0f deg");
-	ui::EndGrid();
-	if (spawnChanged) { d.SetSpawn(sp, glm::radians(sh)); if (!m_core.IsPlaying()) d.ResetToSpawn(); }
-	if (ui::Btn("Spawn = car", false)) { d.SetSpawn(d.Position(), d.Heading()); CommitGameEdit("Set spawn"); }
-	ImGui::NextColumn();
-	ImGui::TextDisabled("CHASE CAMERA");
-	DriveMode::CameraRig& c = d.MutableCamera();
-	ui::Grid("##cam");
-	ui::Label("Distance"); ImGui::DragFloat("##cdist", &c.distance, 0.02f, 2.0f, 12.0f, "%.2f m");
-	ui::Label("Height"); ImGui::DragFloat("##chei", &c.height, 0.01f, 0.4f, 5.0f, "%.2f m");
-	ui::Label("Look ahead"); ImGui::DragFloat("##cla", &c.lookAhead, 0.05f, 0.0f, 20.0f, "%.2f m");
-	ui::Label("Look height"); ImGui::DragFloat("##clh", &c.lookHeight, 0.01f, 0.0f, 3.0f, "%.2f m");
-	ui::Label("FOV (vertical)"); ImGui::DragFloat("##cfov", &c.fov, 0.1f, 25.0f, 90.0f, "%.1f deg");
-	ui::Label("FOV speed gain"); ImGui::DragFloat("##cfs", &c.fovSpeedGain, 0.1f, 0.0f, 30.0f);
-	ui::Label("FOV nitrous"); ImGui::DragFloat("##cfn", &c.fovNitro, 0.1f, 0.0f, 20.0f);
-	ui::Label("Pull back"); ImGui::DragFloat("##cpb", &c.pullBack, 0.01f, 0.0f, 4.0f, "%.2f m");
-	ui::Label("Stiffness"); ImGui::DragFloat("##cst", &c.stiffness, 0.1f, 1.0f, 30.0f);
-	ui::Label("Heading lag"); ImGui::DragFloat("##chl", &c.headingLag, 0.05f, 0.5f, 20.0f);
-	ui::EndGrid();
-	ImGui::TextDisabled("HEADLIGHTS");
-	if (auto graph = m_core.GetSceneGraph()) {
-		for (const char* n : { "Headlight_L", "Headlight_R" }) {
-			std::function<std::shared_ptr<SceneNode>(const std::shared_ptr<SceneNode>&)> find = [&](const std::shared_ptr<SceneNode>& s) -> std::shared_ptr<SceneNode> {
-				if (!s) return nullptr;
-				if (s->GetName() == n) return s;
-				for (const auto& ch : s->children) if (auto f = find(ch)) return f;
-				return nullptr;
-			};
-			if (auto ln = std::dynamic_pointer_cast<LightNode>(find(graph->GetRoot()))) {
-				if (auto light = ln->GetLight()) {
-					bool on = light->IsEnabled();
-					float in = light->GetIntensity();
-					ImGui::PushID(n);
-					if (ImGui::Checkbox(n, &on)) { light->SetEnabled(on); m_core.MarkDirty(); }
-					ImGui::SameLine();
-					ImGui::SetNextItemWidth(-1);
-					if (ImGui::DragFloat("##int", &in, 0.01f, 0.0f, 10.0f, "x%.2f")) { light->SetIntensity(in); m_core.MarkDirty(); }
-					ImGui::PopID();
-				}
-			}
-		}
-	}
-	ImGui::Columns(1);
-	ImGui::Separator();
-	ImGui::Text("Live: %.0f km/h  gear %d  %.0f rpm  load %.2f  N2O %.0f%%", d.SpeedKmh(), d.Gear(), d.Rpm(), d.Load(), d.Nitro() * 100.0f);
-	ImGui::End();
-}
-
-void EditorWorkspace::DrawHudTools()
-{
-	if (!ImGui::Begin(kWinHud, &m_showHud)) { ImGui::End(); return; }
-	ImGui::TextDisabled("Racing HUD and minimap (%s). Edits apply live in the Game view.", RacingHUD::Get().ConfigPath().c_str());
-	RacingHUD::Get().DrawEditorPanel();
-	ImGui::End();
-}
-
 // ---------------------------------------------------------------------------------------------
 // Modals, shortcuts, undo
 // ---------------------------------------------------------------------------------------------
@@ -1724,29 +1361,16 @@ void EditorWorkspace::Redo()
 	ui::Toast("Redo " + a.label, ui::ToastKind::Info);
 }
 
-void EditorWorkspace::CommitGameEdit(const std::string& label)
-{
-	GameSession* game = m_core.GetGame();
-	if (!game) return;
-	const json before = m_gameSnapshot, after = game->SaveGameJson();
-	if (before.is_null() || before == after) return;
-	Push(label, [this, before] { m_core.ApplyGameJson(before); }, [this, after] { m_core.ApplyGameJson(after); });
-	m_core.ApplyGameJson(after);
-	m_gameSnapshot = after;
-	m_core.MarkDirty();
-}
-
 void EditorWorkspace::TrackGameEdits()
 {
 	// Widgets edit the live game data; an edit becomes one undo step when the widget is released.
-	GameSession* game = m_core.GetGame();
-	if (!game || m_core.IsPlaying()) { m_gameSnapshot = json(); return; }
+	if (!m_core.GetGameModule() || m_core.IsPlaying()) { m_gameSnapshot = json(); return; }
 	const bool active = ImGui::IsAnyItemActive();
 	if (!active && m_gameEditActive) {
 		CommitGameEdit("Edit game data");
 	}
 	if (!active || m_gameSnapshot.is_null()) {
-		if (!active) m_gameSnapshot = game->SaveGameJson();
+		if (!active) m_gameSnapshot = GetAuthoredGameJson();
 	}
 	m_gameEditActive = active;
 }
@@ -1783,13 +1407,16 @@ void EditorWorkspace::RunSmokeScript()
 	static std::shared_ptr<SceneNode> car;
 	static glm::vec3 original(0.0f);
 	static int texW0 = 0;
+	static bool hasPlayer = false;
+	static glm::vec3 playerBefore(0.0f);
 	++frame;
 	auto check = [](bool ok, const char* what) { std::cout << "[Smoke] " << (ok ? "PASS " : "FAIL ") << what << std::endl; };
 	auto graph = m_core.GetSceneGraph();
 	if (frame == 60 && graph) {
+		// First named, authored node below the root (any scene content will do).
 		std::function<std::shared_ptr<SceneNode>(const std::shared_ptr<SceneNode>&)> find = [&](const std::shared_ptr<SceneNode>& n) -> std::shared_ptr<SceneNode> {
 			if (!n) return nullptr;
-			if (n->GetName() == "StreetKit") return n;
+			if (n != graph->GetRoot() && !n->IsGenerated() && !n->GetName().empty()) return n;
 			for (const auto& c : n->children) if (auto f = find(c)) return f;
 			return nullptr;
 		};
@@ -1817,9 +1444,11 @@ void EditorWorkspace::RunSmokeScript()
 	}
 	if (frame == 90) {
 		texW0 = m_game.texWidth;
-		m_core.RequestPlay();
+		IGameModule* game = m_core.GetGameModule();
+		hasPlayer = game && game->GetPlayerPose(playerBefore);
+		m_core.RequestPlay();   // Play needs a game module (Core::RequestPlay)
 		FocusGame();
-		check(m_core.IsPlaying(), "play");
+		if (m_core.GetGameModule()) check(m_core.IsPlaying(), "play");
 	}
 	if (frame == 120) {
 		extern SDL_Window* NoxMainWindow();
@@ -1827,26 +1456,38 @@ void EditorWorkspace::RunSmokeScript()
 	}
 	if (frame == 300) {
 		check(m_game.texWidth != texW0 && m_game.texWidth > 0, "viewport framebuffer follows window resize");
-		GameSession* game = m_core.GetGame();
-		const glm::vec2 moved = game ? game->Drive().Position() : glm::vec2(0.0f);
+		glm::vec3 playerDuring(0.0f);
+		IGameModule* game = m_core.GetGameModule();
+		const bool playerRunning = game && game->GetPlayerPose(playerDuring);
 		m_core.RequestStop();
 		check(!m_core.IsPlaying(), "stop");
-		if (game) {
-			check(glm::length(game->Drive().Position() - game->Drive().SpawnPosition()) < 0.01f, "stop restores car to spawn");
-			std::cout << "[Smoke] car travelled to (" << moved.x << ", " << moved.y << ") during play" << std::endl;
+		if (hasPlayer && playerRunning) {
+			glm::vec3 playerAfter(0.0f);
+			check(game->GetPlayerPose(playerAfter) && glm::length(playerAfter - playerBefore) < 0.01f, "stop restores player pose");
+			std::cout << "[Smoke] player travelled to (" << playerDuring.x << ", " << playerDuring.z << ") during play" << std::endl;
 		}
 	}
 	if (frame == 330) {
+		// Exercises the real save path, then restores the file byte-for-byte: a test must not
+		// rewrite authored scenes (runtime poses would otherwise leak into them).
 		const std::string path = m_core.GetCurrentScenePath();
-		std::ifstream in(path);
-		const json before = json::parse(in, nullptr, false);
+		std::ifstream in(path, std::ios::binary);
+		const std::string original((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 		in.close();
+		const json before = json::parse(original, nullptr, false);
 		m_core.SaveCurrentScene();
 		std::ifstream in2(path);
 		const json after = json::parse(in2, nullptr, false);
-		check(after.is_object() && after.contains("game") && after.contains("nodes"), "save writes a valid scene");
-		check(before.is_object() && after["game"]["events"].size() == before["game"]["events"].size(), "save keeps events");
+		in2.close();
+		check(after.is_object() && after.contains("nodes"), "save writes a valid scene");
+		if (m_core.GetGameModule()) {
+			check(before.is_object() && after["game"]["events"].size() == before["game"]["events"].size(), "save keeps game events");
+		}
 		check(!m_core.IsDirty(), "clean after save");
+		if (!original.empty()) {
+			std::ofstream restore(path, std::ios::binary | std::ios::trunc);
+			restore << original;
+		}
 	}
 	if (frame == 360) m_quit = true;
 }

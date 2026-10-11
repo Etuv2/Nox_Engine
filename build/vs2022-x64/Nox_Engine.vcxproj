@@ -668,8 +668,13 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DirectionalLight.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DriveAudio.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DriveMode.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\EditorExtensions.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\EnvironmentMap.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\FrameProfiler.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Framebuffer.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\FrustumCulling.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameEditorPanels.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameModule.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameSession.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GizmoRayCast.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GpuBuffer.cpp" />
@@ -698,6 +703,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ModelManager.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ModularRenderer.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\NightStreetPacks.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\NoxRacingGame.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PerformanceRecorder.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PhysicsBVH.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PhysicsCollision.cpp" />
@@ -712,6 +718,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\RoadNetwork.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\RuntimeStateManager.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Scene.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneExtensions.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneGraph.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneLoader.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneNode.cpp" />
@@ -767,6 +774,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\rhi\RHI.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\rhi\gl\GLDevice.cpp" />
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\surfel_gi\SurfelGIResources.cpp" />
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ui\Pointer.cpp" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

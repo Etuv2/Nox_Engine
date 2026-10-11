@@ -77,6 +77,7 @@ public:
 		float suspensionFreq = 1.6f;    // Hz (body on springs)
 		float suspensionDamping = 0.55f;// damping ratio
 		float bumpAmplitude = 0.012f;   // m procedural road roughness
+		float roofHeight = 1.6f;        // m above the body base: overhead geometry above this is ignored by wall contacts
 		// Legacy editor fields (pre-rework handling model); unused by the dynamics.
 		float grip = 0.0f, driftGrip = 0.0f, driftYawGain = 0.0f;
 	};
@@ -194,6 +195,9 @@ private:
 	void SampleWheels();                                  // per-wheel contact + suspension input
 	void UpdateVertical(float h);                         // surface mode: ground following / airborne
 	float BaseY() const { return m_collision ? m_y : 0.0f; }
+	// Authored player-root height. Only a planar-mode offset: in surface mode the car is placed on the
+	// collision surface absolutely, and a saved world pose must not lift it off the road again.
+	float PlayerYOffset() const { return m_collision ? 0.0f : m_playerY; }
 	void ApplyTransforms();
 	void UpdateCamera(float dt, Camera& camera, float aspect);
 	void LoadLayout(const std::string& path);

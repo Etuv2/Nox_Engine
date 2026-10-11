@@ -58,16 +58,18 @@ struct MaterialDesc {
 	float flakeDensity = 4000.0f;   // Flake cells per object-space metre
 
 	// Window interior mapping (shaders/includes/interior_mapping.glsl). Appended; 0 = off.
-	// Only meaningful on window-quad materials whose quads carry an atlas tile UV (QuadUV).
-	float interiorMapping = 0.0f;   // 1 = shade the window as a parallax room behind the glass
+	// Only meaningful on pane quads with a tangent frame (TEXCOORD_0 + tangent).
+	float interiorMapping = 0.0f;   // 0 = off, 1 = parallax room behind the glass, 2 = flat room mean (cheap)
 	float interiorDepth = 4.0f;     // Room depth behind the glass in metres [1,20]
 	float interiorStrength = 1.0f;  // Room radiance multiplier applied on top of emissiveFactor*emissiveStrength
 	float interiorSeed = 0.0f;      // Per-material variation seed mixed into the per-window hash
 	float interiorLighting = 0.5f;  // Occupancy bias: 0 = mostly dark rooms, 1 = mostly lit rooms [0,1]
-	float interiorBlinds = 0.5f;    // Probability a window has blinds or curtains [0,1]
-	float interiorStyle = 0.0f;     // Interior atlas variant weight row [0,3]; procedural rooms: 1 = shelf racks
-	glm::vec2 interiorPane = glm::vec2(0.8f, 1.0f); // pane half extents in metres (window quad tile contract)
-	float interiorSill = 0.8f;      // room floor distance below the pane's bottom edge in metres (atlas rooms)
+	float interiorBlinds = 0.0f;    // Probability a window has blinds or curtains [0,1]
+	float interiorStyle = 0.0f;     // Interior atlas variant weight row (clamped to the atlas's rows)
+	glm::vec2 interiorPane = glm::vec2(0.0f);   // pane half extents in metres; 0 = from the UV derivatives
+	glm::vec3 interiorPaneUV = glm::vec3(0.0f); // pane UV layout (grid, inset, extent); grid 0 = atlas default
+	float interiorSill = 0.8f;      // room floor distance below the pane's bottom edge in metres
+	float interiorFarDistance = -1.0f; // flat room mean beyond this camera distance (m); < 0 = atlas default, 0 = never
 
 	int baseColorTexCoord = 0;
 	int normalTexCoord = 0;
@@ -105,14 +107,24 @@ struct MaterialDesc {
 		rainBeadResponse = std::clamp(rainBeadResponse, 0.0f, 1.0f);
 		flakeIntensity = std::clamp(flakeIntensity, 0.0f, 1.0f);
 		flakeDensity = std::clamp(flakeDensity, 10.0f, 100000.0f);
-		interiorMapping = interiorMapping > 0.5f ? 1.0f : 0.0f;
+		interiorMapping = std::clamp(std::round(interiorMapping), 0.0f, 2.0f);
 		interiorDepth = std::clamp(interiorDepth, 1.0f, 20.0f);
 		interiorStrength = std::max(interiorStrength, 0.0f);
 		interiorLighting = std::clamp(interiorLighting, 0.0f, 1.0f);
 		interiorBlinds = std::clamp(interiorBlinds, 0.0f, 1.0f);
-		interiorStyle = std::clamp(std::round(interiorStyle), 0.0f, 3.0f);
-		interiorPane = glm::clamp(interiorPane, glm::vec2(0.2f), glm::vec2(5.0f));
-		interiorSill = std::clamp(interiorSill, 0.0f, 3.0f);
+		interiorStyle = std::max(std::round(interiorStyle), 0.0f);
+		interiorPane = (interiorPane.x > 0.0f && interiorPane.y > 0.0f)
+			? glm::clamp(interiorPane, glm::vec2(0.05f), glm::vec2(50.0f)) : glm::vec2(0.0f);
+		if (interiorPaneUV.x > 0.0f) {
+			interiorPaneUV.x = std::clamp(std::round(interiorPaneUV.x), 1.0f, 64.0f);
+			interiorPaneUV.y = std::clamp(interiorPaneUV.y, 0.0f, 1.0f / interiorPaneUV.x);
+			interiorPaneUV.z = std::clamp(interiorPaneUV.z, 1e-4f, 1.0f / interiorPaneUV.x - interiorPaneUV.y);
+		}
+		else {
+			interiorPaneUV = glm::vec3(0.0f);
+		}
+		interiorSill = std::clamp(interiorSill, 0.0f, 10.0f);
+		interiorFarDistance = interiorFarDistance < 0.0f ? -1.0f : interiorFarDistance;
 
 		auto clampSupportedUVSet = [](int uvSet) { return uvSet == 1 ? 1 : 0; };
 		baseColorTexCoord = clampSupportedUVSet(baseColorTexCoord);

@@ -2137,4 +2137,33 @@ namespace ProceduralStreetKit {
 		return result;
 	}
 
+	void BuildDefaultDistrictNetwork(RoadNetwork& network) {
+		// Two avenues (x = 0 and x = 150) joined by four cross streets: three city blocks per side,
+		// several 4-way intersections, a long loop and two dead-end-free turnarounds.
+		network.Clear();
+		network.SetDefaultHalfWidth(7.5f);
+		network.SetSidewalkWidth(4.25f);
+		const float halfWidth = network.DefaultHalfWidth();
+		const float rows[] = { -80.0f, 60.0f, 200.0f, 340.0f };
+		for (int r = 0; r < 4; ++r) {
+			network.AddNode({ "A" + std::to_string(r), glm::vec2(0.0f, rows[r]) });
+			network.AddNode({ "B" + std::to_string(r), glm::vec2(150.0f, rows[r]) });
+		}
+		auto add = [&](const std::string& a, const std::string& b, const std::string& name) {
+			RoadNetwork::Edge e;
+			e.a = network.FindNode(a);
+			e.b = network.FindNode(b);
+			e.halfWidth = halfWidth;
+			e.name = name;
+			network.AddEdge(e);
+		};
+		for (int r = 0; r < 3; ++r) {
+			add("A" + std::to_string(r), "A" + std::to_string(r + 1), "Ventura Ave");
+			add("B" + std::to_string(r), "B" + std::to_string(r + 1), "Palm Blvd");
+		}
+		const char* cross[] = { "1st St", "2nd St", "3rd St", "4th St" };
+		for (int r = 0; r < 4; ++r) add("A" + std::to_string(r), "B" + std::to_string(r), cross[r]);
+		network.Reindex();
+	}
+
 } // namespace ProceduralStreetKit

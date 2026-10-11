@@ -84,10 +84,24 @@ struct HudState {
 	std::string menuTitle;
 	std::vector<std::string> menuItems;
 	int menuSelected = 0;
+	// Pointer feedback (-1 = none): item under the cursor and item held down by the mouse.
+	int menuHovered = -1;
+	int menuPressed = -1;
+	bool startHovered = false;   // START EVENT prompt under the cursor / held down
+	bool startPressed = false;
 
 	// Small top-left hint (camera view etc.).
 	std::string hint;
 };
+
+// Pointer regions the HUD registers while drawing (ids: ui::HashId(name, index)); the game reads
+// hover/click on the same ids, so hit tests always match what was drawn.
+namespace HudRegion {
+	constexpr const char* kMenuItem = "hud.menu";    // index = menu item
+	constexpr const char* kModal = "hud.modal";      // whole target while a menu is open (wheel, blocks clicks)
+	constexpr const char* kStart = "hud.start";      // START EVENT prompt
+	constexpr int kZStart = 5, kZModal = 10, kZMenuItem = 20;
+}
 
 // Placement of one HUD element: anchor code, offset in reference px, scale multiplier.
 struct HudPlacement {

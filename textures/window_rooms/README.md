@@ -4,11 +4,13 @@ Six complete five-face room-box atlases for the night-street window interiors.
 Each contains a back wall, left wall, right wall, ceiling, and floor. They are
 opaque RGB PNGs, 1254 x 1254, with baked indoor lighting encoded as sRGB.
 
-The current `shaders/includes/interior_mapping.glsl` draws rooms procedurally,
-and `shaders/gbuffer_frag.glsl` bypasses the emissive texture while interior
-mapping is enabled. These files therefore need a texture-sampling integration;
-copying them into the project does not make them appear in existing windows.
-This pass creates assets and mapping metadata, without modifying renderer code.
+NOX loads these faces through `NightStreetPacks::BuildInteriorAtlas` and samples
+the resulting texture array in `shaders/includes/interior_mapping.glsl`.
+Imported scenes opt in with `"window_room_root": "textures/window_rooms"` at
+the scene root. Window materials also require `extras.nox.interior`, correct
+pane dimensions and UV/tangent mapping. Copying images beside a GLB is insufficient.
+The Shuto building probe validates this import path; see
+`docs/shuto/buildings.md` for the exact material and pane contract.
 
 ## Rooms
 
@@ -101,10 +103,84 @@ their existing foreground treatment rather than baking them into these maps.
 
 Assign room variants with a stable per-window seed; do not change variants every
 frame. Keep the dim TV-lit variant at a lower brightness and leave many windows
-unoccupied or dark. Existing procedural furniture/person intersections should
-be disabled or deliberately matched to an atlas, otherwise they can cover the
-painted furnishings with unrelated shapes. Texture furniture will not gain
+unoccupied or dark. The engine adds no procedural furniture or figures, so the
+painted furnishings are the only room content. Texture furniture will not gain
 independent parallax unless separate depth layers or geometry are added later.
+
+## Engine integration
+
+Interior mapping is a generic engine feature: the engine knows nothing about
+this pack. The game (`NightStreetPacks::BuildInteriorAtlas`, invoked by the
+game-registered scene key `"window_room_root"` in `src/NoxRacingGame.cpp`)
+reads this manifest and fills the engine descriptor `InteriorAtlas` in
+`src/SceneRenderExtras.h`. `GBufferPass` uploads it; the shader is
+`shaders/includes/interior_mapping.glsl`.
+
+### Descriptor (`InteriorAtlas`)
+
+| Field | Meaning | Engine default |
+| --- | --- | --- |
+| `faceRoles` | One role per face slot (`back`, `left`, `right`, `ceiling`, `floor`); its size is the faces per room | empty = no atlas |
+| `faceLayers` | `room * faceRoles.size() + slot`, one texture-array layer each (source file + UV rect) | |
+| `faceMean` | Mean linear radiance per layer (distant/flat path, blind lighting) | 0.1 |
+| `roomLight[room]` | (occupied brightness, chance on when unoccupied, that brightness) | (1, 0, 0) |
+| `styleWeights[style][room]` | Variant weights; the material style picks the row (clamped to the row count) | uniform |
+| `roomShape` | Side margin [min,max] m, floor-to-ceiling [min,max] m, depth jitter, sill scale [min,max] | [1,1.4], [2.8,3.2], 0.1, [1,1] |
+| `paneUV` | Default pane UV layout (grid, inset, extent) for materials without one | grid 0 = inferred (pane centred in its UV cell) |
+| `farDistance` | Default distance beyond which panes use the flat room mean | 0 = never |
+| `textureOptions.size` | Face layer edge in texels | |
+
+Room count, faces per room and style rows are data. The uploader clamps
+anything beyond the engine limits (512 rooms, 8 faces per room, 64 style rows)
+and logs a warning; it never truncates silently. A role without a face slot
+shows the room's mean radiance. Per-room tables are an RGBA32F texture
+(`uInteriorRoomData`: room light, room mean, cumulative style weights), so no
+shader array is sized at compile time.
+
+### Manifest block (`nox_interior`)
+
+The game builds the descriptor from `assets` (rooms, in file order) and this
+block of `atlas_manifest.json`:
+
+```json
+"nox_interior": {
+  "face_order": ["back", "left", "right", "ceiling", "floor"],
+  "face_size": 512,
+  "styles": [ { "name": "apartment", "weights": { "living_room_warm.png": 0.34 } } ],
+  "room_light_default": [1.0, 0.0, 0.0],
+  "room_light": { "living_room_tv_dim.png": [0.5, 0.35, 0.5] },
+  "room_shape": { "side_margin": [1.0, 1.4], "height": [3.4, 3.8], "depth_jitter": 0.1, "sill_scale": [0.95, 1.08] },
+  "pane_uv": [4, 0.004, 0.242],
+  "far_distance": 0
+}
+```
+
+`face_order` defaults to the keys of the top-level `faces` object. Style rows
+are referenced by index from materials; the game's `NightStreetPacks::RoomStyle`
+(apartment 0, shop 1, office 2) must match the row order, and the loader warns
+when a row name does not. Weights and room light are keyed by asset file name.
+`pane_uv` is the game's window-quad convention (one pane per cell of a 4x4 UV
+grid, 0.004 inset, 0.242 extent), used by materials that do not state their own.
+
+### Material (`extras.nox.interior`)
+
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `depth` | Room depth behind the glass, m | 4 |
+| `pane` | Pane half extents [w, h], m | derived from the UV derivatives |
+| `pane_uv` | Pane UV layout [grid, inset, extent] | atlas `paneUV` |
+| `sill` | Room floor below the pane's bottom edge, m | 0.8 |
+| `style` | Style row | 0 |
+| `seed`, `lighting`, `blinds`, `strength` | Variation seed, occupancy bias, blind/curtain probability, radiance scale | 0, 0.5, 0, 1 |
+| `far_distance` | Flat room mean beyond this camera distance, m (0 = never) | atlas `farDistance` |
+| `flat` | `true`: always the flat room mean (cheap distant materials) | false |
+
+The pane's image right is the glTF tangent and image up is
+`cross(N, T) * tangent.w`; UV v grows downwards. The per-window seed comes from
+the pane centre, so a wrong tangent sign moves the centre and changes the room
+per pixel. Without a bound atlas the engine shows a plain, neutral lit box (no
+furniture, figures or animation). Walls never receive interior emission; only
+materials with `extras.nox.interior` do.
 
 ## Provenance and validation
 

@@ -108,6 +108,15 @@ void InputIntegration::SetMouseLocked(bool locked) {
               << " - " << (locked ? "Camera control" : "Gizmo interaction") << std::endl;
 }
 
+void InputIntegration::OnFocusLost() {
+    if (m_inputManager) {
+        m_inputManager->ResetHeldState();
+    }
+    if (m_mouseLocked) {
+        SetMouseLocked(false);
+    }
+}
+
 bool InputIntegration::LoadConfiguration(const std::string& configPath) {
     m_configPath = configPath;
     

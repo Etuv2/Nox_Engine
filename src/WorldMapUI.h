@@ -17,6 +17,10 @@ class Texture;
 * district labels and the waypoint. Opened with M (pad View/Back tap); pans and zooms with WASD /
 * stick, wheel / triggers and drag; F or Y recentres; ENTER / A toggles a waypoint on the selected
 * event; ESC / B / M closes.
+* Mouse (engine pointer layer, ui::Pointer): drag pans (only when the press starts on the map),
+* the wheel zooms about the cursor, clicking a race marker selects it (route preview), clicking
+* elsewhere places a waypoint on the nearest road, right-click clears it; the waypoint row of the
+* event panel and the control hints (Center, Back, Clear) are clickable buttons.
 *
 * Data (scene "game" object, "world_map"): { "image": "textures/.../worldmap_base.png", "bounds":
 * [x0, z0, x1, z1] (NOX metres, row 0 = north), "labels": "data/shuto/map_labels.json", "network":
@@ -50,13 +54,13 @@ struct WorldMapContext {
 	bool padConnected = false;
 };
 
-// One frame of map input (filled by GameSession from SDL keyboard/pad and ImGui mouse state).
+// One frame of map input (filled by GameSession from SDL keyboard/pad; the mouse is read from the
+// engine pointer layer when 'pointer' is set).
 struct WorldMapInput {
 	glm::vec2 pan{ 0.0f };           // -1..1 (x east, y south): keys or left stick
-	float zoomSteps = 0.0f;          // wheel notches this frame (+ = in)
+	float zoomSteps = 0.0f;          // extra zoom notches this frame (+ = in), about the map centre
 	float zoomRate = 0.0f;           // -1..1 continuous (triggers), + = in
-	glm::vec2 mouse{ 0.0f };         // window pixels
-	bool mouseDown = false;          // left button held
+	bool pointer = false;            // the map may use the mouse (game view focused and hovered)
 	bool confirm = false;            // ENTER / pad A (pressed this frame)
 	bool recenter = false;           // F / pad Y (pressed this frame)
 	bool close = false;              // ESC / Backspace / pad B / M / pad View (pressed this frame)
@@ -65,9 +69,22 @@ struct WorldMapInput {
 
 struct WorldMapAction {
 	bool close = false;
-	bool toggleWaypoint = false;     // ENTER on the selected event
+	bool toggleWaypoint = false;     // ENTER (or the panel button) on the selected event
 	int eventIndex = -1;
+	bool placeWaypoint = false;      // click on the map: waypoint at the nearest road to worldPos
+	glm::vec2 worldPos{ 0.0f };
+	float snapRadius = 0.0f;         // metres: the road must be this close to the click
+	bool clearWaypoint = false;      // right-click / Clear button
+	bool selectedByClick = false;    // a marker click changed the selection
 };
+
+// Pointer regions registered by the map while drawing (ids: ui::HashId(name, index)).
+namespace WorldMapRegion {
+	constexpr const char* kView = "map.view";        // whole map (drag, wheel, click = waypoint)
+	constexpr const char* kEvent = "map.event";      // index = event marker
+	constexpr const char* kButton = "map.btn";       // index = WorldMapButton
+}
+enum WorldMapButton { MapBtnWaypoint = 0, MapBtnCenter = 1, MapBtnBack = 2, MapBtnClear = 3, MapBtnCount = 4 };
 
 class WorldMapUI {
 public:
@@ -88,6 +105,11 @@ public:
 	void Draw(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& size, const WorldMapContext& ctx, float dt);
 
 	int SelectedEvent() const { return m_selected; }
+	// View state (tests, tools): centre in world metres, zoom in pixels per metre, and the world
+	// point under a window position for the last drawn rectangle.
+	glm::vec2 ViewCentre() const { return m_centre; }
+	float PixelsPerMetre() const { return m_ppm; }
+	glm::vec2 WorldAt(const glm::vec2& windowPos) const { return ScreenToWorld(windowPos, m_origin, m_size); }
 	// Event shown in the panel and previewed on the map: hovered, else selected (-1 when none).
 	int DisplayedEvent() const { return m_hovered >= 0 ? m_hovered : m_selected; }
 
@@ -127,10 +149,8 @@ private:
 	bool m_viewInit = false;
 	int m_selected = 0;
 	int m_hovered = -1;
-	bool m_pressed = false;
 	bool m_dragging = false;
-	glm::vec2 m_pressStart{ 0.0f };
-	glm::vec2 m_lastMouse{ 0.0f };
+	int m_hoverButton = -1, m_pressButton = -1;   // pointer feedback on the map buttons
 	ImVec2 m_origin{ 0, 0 }, m_size{ 0, 0 };
 	float m_time = 0.0f;
 

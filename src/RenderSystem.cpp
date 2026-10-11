@@ -304,6 +304,8 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(rhi:
 	uniforms.interiorStyle = rhi::Gpu().GetUniformLocation(shader, "interiorStyle");
 	uniforms.interiorPane = rhi::Gpu().GetUniformLocation(shader, "interiorPane");
 	uniforms.interiorSill = rhi::Gpu().GetUniformLocation(shader, "interiorSill");
+	uniforms.interiorPaneUV = rhi::Gpu().GetUniformLocation(shader, "interiorPaneUV");
+	uniforms.interiorFarDistance = rhi::Gpu().GetUniformLocation(shader, "interiorFarDistance");
 
 	uniforms.baseColorUVSet = rhi::Gpu().GetUniformLocation(shader, "baseColorUVSet");
 	uniforms.normalUVSet = rhi::Gpu().GetUniformLocation(shader, "normalUVSet");
@@ -670,6 +672,14 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 		}
 
 		const RenderItem& item = m_renderItems[itemIndex];
+		if (m_velocityMovingItemsOnly && !item.skinned) {
+			// prevModel == model whenever the entity's world transform did not change (see
+			// UploadTransformUniforms), so the item has camera motion only.
+			const TransformComponent* transform = m_componentManager->GetTransform(item.entity);
+			if (!transform || MatricesMatchExact(transform->prevWorldTransform, transform->worldTransform)) {
+				continue;
+			}
+		}
 		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
 			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
 			: m_transformSystem->GetWorldTransform(item.entity);
@@ -943,16 +953,51 @@ void RenderSystem::UploadMaterialSamplerUniforms(const ShaderUniformCache& unifo
 	if (uniforms.textureTransmission >= 0) rhi::Gpu().SetUniform(uniforms.textureTransmission, TextureUnits::MATERIAL_TRANSMISSION);
 }
 
+namespace {
+// Identity of what a material uploads and binds (all factors, extras, UV sets and texture objects),
+// independent of the file/primitive it came from. Primitives with identical materials across many
+// imported files then share material state, sort together and merge into the same baked batch.
+uint32_t MaterialContentKey(const MeshComponent& mesh)
+{
+	const MaterialDesc m = mesh.GetMaterialDesc();
+	uint64_t h = 1469598103934665603ull;
+	auto bytes = [&h](const void* data, size_t size) {
+		const unsigned char* p = static_cast<const unsigned char*>(data);
+		for (size_t i = 0; i < size; ++i) { h ^= p[i]; h *= 1099511628211ull; }
+	};
+	auto f = [&](float v) { if (v == 0.0f) v = 0.0f; bytes(&v, sizeof(v)); };
+	auto v2 = [&](const glm::vec2& v) { f(v.x); f(v.y); };
+	auto v3 = [&](const glm::vec3& v) { f(v.x); f(v.y); f(v.z); };
+	auto v4 = [&](const glm::vec4& v) { f(v.x); f(v.y); f(v.z); f(v.w); };
+	auto i32 = [&](int v) { bytes(&v, sizeof(v)); };
+	auto tex = [&](const std::shared_ptr<Texture>& t) { const uint32_t id = (t && t->IsValid()) ? t->ID().id : 0u; bytes(&id, sizeof(id)); };
+	i32(static_cast<int>(m.alphaMode)); i32(m.doubleSided ? 1 : 0); i32(m.hasAlpha ? 1 : 0);
+	v4(m.baseColorFactor); f(m.metallicFactor); f(m.roughnessFactor); f(m.alphaCutoff); v3(m.emissiveFactor); f(m.emissiveStrength);
+	f(m.specularFactor); v3(m.specularColorFactor); f(m.clearcoatFactor); f(m.clearcoatRoughnessFactor); f(m.transmissionFactor);
+	f(m.thicknessFactor); f(m.attenuationDistance); v3(m.attenuationColor); f(m.ior); f(m.occlusionStrength); f(m.normalScale);
+	f(m.wetnessResponse); f(m.puddleResponse); f(m.rainBeadResponse); f(m.flakeIntensity); f(m.flakeDensity);
+	f(m.interiorMapping); f(m.interiorDepth); f(m.interiorStrength); f(m.interiorSeed); f(m.interiorLighting); f(m.interiorBlinds);
+	f(m.interiorStyle); v2(m.interiorPane); v3(m.interiorPaneUV); f(m.interiorSill); f(m.interiorFarDistance);
+	i32(m.baseColorTexCoord); i32(m.normalTexCoord); i32(m.metallicRoughnessTexCoord); i32(m.emissiveTexCoord);
+	i32(m.occlusionTexCoord); i32(m.specularTexCoord); i32(m.specularColorTexCoord); i32(m.transmissionTexCoord);
+	tex(mesh.diffuseTexture); tex(mesh.normalTexture); tex(mesh.roughnessTexture); tex(mesh.emissiveTexture);
+	tex(mesh.occlusionTexture); tex(mesh.specularTexture); tex(mesh.specularColorTexture); tex(mesh.transmissionTexture);
+	const uint32_t key = static_cast<uint32_t>(h ^ (h >> 32));
+	return key == std::numeric_limits<uint32_t>::max() ? 1u : key;   // max = "no cached material"
+}
+}
+
 void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const ShaderUniformCache& uniforms)
 {
 	const MaterialDesc material = mesh.GetMaterialDesc();
-	if (m_cachedMaterialID == material.stableMaterialID) {
+	const uint32_t contentKey = MaterialContentKey(mesh);
+	if (m_cachedMaterialID == contentKey) {
 		++m_diagnostics.materialCacheHitCount;
 		return;
 	}
 	++m_diagnostics.materialUploadCount;
 
-	if (uniforms.materialID >= 0) rhi::Gpu().SetUniform(uniforms.materialID, material.stableMaterialID);
+	if (uniforms.materialID >= 0) rhi::Gpu().SetUniform(uniforms.materialID, contentKey);
 	if (uniforms.baseColorFactor >= 0) rhi::Gpu().SetUniform(uniforms.baseColorFactor, material.baseColorFactor);
 	if (uniforms.metallicFactor >= 0) rhi::Gpu().SetUniform(uniforms.metallicFactor, material.metallicFactor);
 	if (uniforms.roughnessFactor >= 0) rhi::Gpu().SetUniform(uniforms.roughnessFactor, material.roughnessFactor);
@@ -985,6 +1030,8 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.interiorStyle >= 0) rhi::Gpu().SetUniform(uniforms.interiorStyle, material.interiorStyle);
 	if (uniforms.interiorPane >= 0) rhi::Gpu().SetUniform(uniforms.interiorPane, material.interiorPane);
 	if (uniforms.interiorSill >= 0) rhi::Gpu().SetUniform(uniforms.interiorSill, material.interiorSill);
+	if (uniforms.interiorPaneUV >= 0) rhi::Gpu().SetUniform(uniforms.interiorPaneUV, material.interiorPaneUV);
+	if (uniforms.interiorFarDistance >= 0) rhi::Gpu().SetUniform(uniforms.interiorFarDistance, material.interiorFarDistance);
 
 	auto clampUVSet = [](int uvSet) { return (uvSet == 1) ? 1 : 0; };
 	if (uniforms.baseColorUVSet >= 0) rhi::Gpu().SetUniform(uniforms.baseColorUVSet, clampUVSet(material.baseColorTexCoord));
@@ -1005,7 +1052,7 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.hasSpecularColorTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasSpecularColorTexture, (mesh.specularColorTexture && mesh.specularColorTexture->IsValid()) ? 1 : 0);
 	if (uniforms.hasTransmissionTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasTransmissionTexture, (mesh.transmissionTexture && mesh.transmissionTexture->IsValid()) ? 1 : 0);
 
-	m_cachedMaterialID = material.stableMaterialID;
+	m_cachedMaterialID = contentKey;
 }
 
 void RenderSystem::UploadTransformUniforms(EntityID entity,
@@ -1550,8 +1597,9 @@ void RenderSystem::RebuildRenderItemsIfNeeded()
 			item.localTransform = ResolveRenderableMeshLocalTransform(renderable, mesh);
 			item.meshIndex = meshIndex++;
 			const MaterialDesc material = mesh.GetMaterialDesc();
-			item.materialKey = material.stableMaterialID;
-			item.sortKey = (static_cast<uint64_t>(material.stableMaterialID) << 32u) | static_cast<uint64_t>(mesh.VAO.id);
+			(void)material;
+			item.materialKey = MaterialContentKey(mesh);
+			item.sortKey = (static_cast<uint64_t>(item.materialKey) << 32u) | static_cast<uint64_t>(mesh.VAO.id);
 			item.cullingOverride = renderable.cullingOverride;
 			item.transparent = mesh.RequiresAlphaBlending();
 			item.skinned = renderable.isSkinned;
@@ -1974,7 +2022,8 @@ uint64_t RenderSystem::ComputeBakedBatchKey(const MeshComponent& mesh, CullingOv
 		return seed ^ (value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2));
 	};
 
-	uint64_t key = material.stableMaterialID;
+	(void)material;
+	uint64_t key = MaterialContentKey(mesh);
 	key = mix(key, static_cast<uint64_t>(override));
 	key = mix(key, static_cast<uint64_t>(mesh.GetEffectiveCullingMode()));
 	// Hash the legacy winding codes (CCW 0x0901, CW 0x0900) so batch iteration order is unchanged.

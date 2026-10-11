@@ -1074,8 +1074,10 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		float interiorLighting = 0.5f;
 		float interiorBlinds = 0.5f;
 		float interiorStyle = 0.0f;
-		glm::vec2 interiorPane = glm::vec2(0.8f, 1.0f);
+		glm::vec2 interiorPane = glm::vec2(0.0f);
+		glm::vec3 interiorPaneUV = glm::vec3(0.0f);
 		float interiorSill = 0.8f;
+		float interiorFarDistance = -1.0f;
 		int diffuseTextureIndex = -1;
 		int normalTextureIndex = -1;
 		int roughnessTextureIndex = -1;
@@ -1274,11 +1276,15 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			readNumber("rainBeadResponse", cached.rainBeadResponse);
 			readNumber("flakeIntensity", cached.flakeIntensity);
 			readNumber("flakeDensity", cached.flakeDensity);
-			// Window interior mapping: nox.interior = { depth, strength, seed, lighting, blinds, style }.
-			// Presence of the object enables the effect.
+			// Window interior mapping: nox.interior = { depth, strength, seed, lighting, blinds, style,
+			// sill, pane: [half w, half h], pane_uv: [grid, inset, extent], far_distance, flat }.
+			// Presence of the object enables the effect (textures/window_rooms/README.md).
 			if (nox.Has("interior") && nox.Get("interior").IsObject()) {
 				const auto& in = nox.Get("interior");
 				cached.interiorMapping = 1.0f;
+				if (in.Has("flat") && in.Get("flat").IsBool() && in.Get("flat").Get<bool>()) {
+					cached.interiorMapping = 2.0f;
+				}
 				auto readInterior = [&in](const char* key, float& target) {
 					if (in.Has(key) && in.Get(key).IsNumber()) {
 						target = static_cast<float>(in.Get(key).GetNumberAsDouble());
@@ -1291,7 +1297,15 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				readInterior("blinds", cached.interiorBlinds);
 				readInterior("style", cached.interiorStyle);
 				readInterior("sill", cached.interiorSill);
-				// pane = [half width, half height] in metres; default 0.8 x 1.0 (1.6 x 2.0 m windows).
+				readInterior("far_distance", cached.interiorFarDistance);
+				if (in.Has("pane_uv") && in.Get("pane_uv").IsArray() && in.Get("pane_uv").ArrayLen() >= 3 &&
+					in.Get("pane_uv").Get(0).IsNumber() && in.Get("pane_uv").Get(1).IsNumber() && in.Get("pane_uv").Get(2).IsNumber()) {
+					cached.interiorPaneUV = glm::vec3(
+						static_cast<float>(in.Get("pane_uv").Get(0).GetNumberAsDouble()),
+						static_cast<float>(in.Get("pane_uv").Get(1).GetNumberAsDouble()),
+						static_cast<float>(in.Get("pane_uv").Get(2).GetNumberAsDouble()));
+				}
+				// pane = [half width, half height] in metres; absent = derived from the UV derivatives.
 				if (in.Has("pane") && in.Get("pane").IsArray() && in.Get("pane").ArrayLen() >= 2 &&
 					in.Get("pane").Get(0).IsNumber() && in.Get("pane").Get(1).IsNumber()) {
 					cached.interiorPane = glm::vec2(
@@ -1711,6 +1725,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				normalizedMaterial.interiorStyle = cached.interiorStyle;
 				normalizedMaterial.interiorPane = cached.interiorPane;
 				normalizedMaterial.interiorSill = cached.interiorSill;
+				normalizedMaterial.interiorPaneUV = cached.interiorPaneUV;
+				normalizedMaterial.interiorFarDistance = cached.interiorFarDistance;
 			}
 			normalizedMaterial.Normalize();
 			mesh.SetMaterialDesc(normalizedMaterial);

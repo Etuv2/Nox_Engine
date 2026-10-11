@@ -30,6 +30,16 @@ uniform mat4 uSkyReprojection;
 // texels (lamp glints on wet asphalt) cannot dominate the neighbourhood statistics and flicker.
 uniform bool uTonemappedResolve = true;
 
+// 0 = legacy rejection (raw-depth/normal difference, edge-reactive). 1 = disocclusion test against
+// the camera-reprojected linear depth with a 2x2 history footprint (no rejection at jittered
+// silhouettes or on surfaces moving toward the camera), no edge-reactive term.
+uniform int uTaaMode = 0;
+uniform mat4 uInvViewProj;             // unjittered current clip -> world
+uniform mat4 uPrevViewProj;            // unjittered previous world -> clip
+uniform vec2 uPrevDepthParams;         // prevProj[2][2], prevProj[3][2] (linearises previous depth)
+uniform float uDisocclusionTolerance = 0.03; // relative linear-depth tolerance
+uniform float uMotionCurrentWeight = 0.6;    // max current-frame weight added by fast motion
+
 layout(location = 0) out vec3 taaResult;
 
 vec3 RGBToYCoCg(vec3 rgb) {
@@ -140,12 +150,45 @@ vec3 ClampHistoryToNeighborhood(
     return clamp(historyColor, statMin, statMax);
 }
 
+float PrevLinearDepth(float d) {
+    // glm perspective: view depth = P32 / (ndc + P22), both terms negative.
+    return uPrevDepthParams.y / min(d * 2.0 - 1.0 + uPrevDepthParams.x, -1e-7);
+}
+
+// Mode 1 history confidence. Static surfaces: the expected previous view depth (camera reprojection
+// of this pixel) must lie inside the depth range of the history texels around historyUV. The
+// footprint covers both sides of a jittered silhouette, so edges keep their history; a real
+// disocclusion (expected depth far from every texel) is rejected. Pixels whose motion vector differs
+// from the camera-only reprojection belong to moving objects: their depth change is unknown, so
+// only the neighbourhood clamp applies.
+float DisocclusionConfidence(vec2 uv, float depth, vec2 historyUV) {
+    vec4 world = uInvViewProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 prevClip = uPrevViewProj * vec4(world.xyz / world.w, 1.0);
+    if (prevClip.w <= 1e-4) return 0.0;
+    vec2 cameraPrevUV = prevClip.xy / prevClip.w * 0.5 + 0.5;
+    if (length((cameraPrevUV - historyUV) * screenSize) > 1.0) return 1.0;
+    // Two diagonal 2x2 gathers cover the 3x3 history texels around historyUV (minus two corners),
+    // so both sides of a silhouette are in the footprint whichever side the jitter lands on.
+    vec2 halfTexel = 0.5 / screenSize;
+    vec4 ha = textureGather(historyDepthBuffer, historyUV - halfTexel, 0);
+    vec4 hb = textureGather(historyDepthBuffer, historyUV + halfTexel, 0);
+    float dMin = min(min(min(ha.x, ha.y), min(ha.z, ha.w)), min(min(hb.x, hb.y), min(hb.z, hb.w)));
+    float dMax = max(max(max(ha.x, ha.y), max(ha.z, ha.w)), max(max(hb.x, hb.y), max(hb.z, hb.w)));
+    float zMin = PrevLinearDepth(dMin);
+    float zMax = PrevLinearDepth(dMax);
+    float expected = prevClip.w;
+    float outside = max(zMin - expected, expected - zMax) / max(expected, 1e-4);
+    return 1.0 - smoothstep(uDisocclusionTolerance, 2.0 * uDisocclusionTolerance, outside);
+}
+
 float ComputeReactiveMask(vec3 currentColor, vec3 historyColor, float edgeMask) {
     float currentLuma = useYCoCg ? currentColor.x : ComputeLuma(currentColor);
     float historyLuma = useYCoCg ? historyColor.x : ComputeLuma(historyColor);
     float lumaDelta = abs(currentLuma - historyLuma);
     float reactive = clamp(lumaDelta * max(lumaWeight, 0.0), 0.0, 1.0);
-    reactive = max(reactive, edgeMask * 0.5);
+    if (uTaaMode == 0) {
+        reactive = max(reactive, edgeMask * 0.5);
+    }
     return clamp(reactive * reactiveMaskStrength, 0.0, 1.0);
 }
 
@@ -189,21 +232,30 @@ void main() {
     vec3 historyColor = CompressHDR(SampleHistoryCatmullRom(historyUV));
     currentColor = CompressHDR(currentColor);
 
-    float currentDepth = texture(depthBuffer, uv).r;
-    float historyDepth = texture(historyDepthBuffer, historyUV).r;
-    vec3 currentNormal = DecodeOctNormal01(texture(normalBuffer, uv).rg);
-    vec3 historyNormal = DecodeOctNormal01(texture(historyNormalBuffer, historyUV).rg);
-
-    float depthConfidence = exp(-abs(currentDepth - historyDepth) / max(depthThreshold, 1e-5));
-    float normalSimilarity = max(dot(currentNormal, historyNormal), 0.0);
-    float normalConfidence = smoothstep(normalThreshold, 1.0, normalSimilarity);
     float velocityPixels = length(velocity * screenSize);
-    float motionConfidence = exp(-velocityPixels * 0.045);
-    float historyConfidence = depthConfidence * normalConfidence * mix(0.55, 1.0, motionConfidence);
+    float historyConfidence;
+    if (uTaaMode == 1) {
+        historyConfidence = DisocclusionConfidence(uv, texture(depthBuffer, uv).r, historyUV);
+        if (historyConfidence < 0.04) {
+            taaResult = DecompressHDR(currentColor);
+            return;
+        }
+    } else {
+        float currentDepth = texture(depthBuffer, uv).r;
+        float historyDepth = texture(historyDepthBuffer, historyUV).r;
+        vec3 currentNormal = DecodeOctNormal01(texture(normalBuffer, uv).rg);
+        vec3 historyNormal = DecodeOctNormal01(texture(historyNormalBuffer, historyUV).rg);
 
-    if (depthConfidence * normalConfidence < 0.08 || historyConfidence < 0.04) {
-        taaResult = DecompressHDR(currentColor);
-        return;
+        float depthConfidence = exp(-abs(currentDepth - historyDepth) / max(depthThreshold, 1e-5));
+        float normalSimilarity = max(dot(currentNormal, historyNormal), 0.0);
+        float normalConfidence = smoothstep(normalThreshold, 1.0, normalSimilarity);
+        float motionConfidence = exp(-velocityPixels * 0.045);
+        historyConfidence = depthConfidence * normalConfidence * mix(0.55, 1.0, motionConfidence);
+
+        if (depthConfidence * normalConfidence < 0.08 || historyConfidence < 0.04) {
+            taaResult = DecompressHDR(currentColor);
+            return;
+        }
     }
 
     if (useYCoCg) {
@@ -221,7 +273,7 @@ void main() {
     vec3 clampedHistory = ClampHistoryToNeighborhood(historyColor, minColor, maxColor, meanColor, variance);
     float reactiveMask = ComputeReactiveMask(currentColor, clampedHistory, edgeMask);
 
-    float motionResponsiveWeight = clamp(velocityPixels / 42.0, 0.0, 0.60);
+    float motionResponsiveWeight = clamp(velocityPixels / 42.0, 0.0, uTaaMode == 1 ? uMotionCurrentWeight : 0.60);
     float currentWeight = mix(blendFactor, 0.90, 1.0 - historyConfidence);
     currentWeight = max(currentWeight, motionResponsiveWeight);
     currentWeight = mix(currentWeight, 1.0, reactiveMask);

@@ -7,6 +7,7 @@
 #include "TextureUnits.h"
 #include "Texture.h"  // Use new refactored Texture class
 #include "GpuBuffer.h"
+#include "EnvironmentMap.h"
 
 //Skybox class for loading HDR images, converting to cubemap, and rendering as background.
 
@@ -23,7 +24,8 @@ public:
 		const std::string& skyboxVertShader,
 		const std::string& skyboxFragShader,
 		int windowWidth,
-		int windowHeight);
+		int windowHeight,
+		const EnvironmentMapOptions& envOptions = EnvironmentMapOptions{});
 
 	void Draw(const glm::mat4& view, const glm::mat4& projection);
 
@@ -71,7 +73,7 @@ public:
 
 protected:
 	// Loads the HDR file into a floating-point 2D texture.
-	TexturePtr loadHDRTexture(const std::string& hdrPath);
+	TexturePtr loadHDRTexture(const std::string& hdrPath, const EnvironmentMapOptions& envOptions);
 
 	// Builds the cube geometry (VAO/VBO) for rendering the skybox.
 	void buildSkyboxCube();

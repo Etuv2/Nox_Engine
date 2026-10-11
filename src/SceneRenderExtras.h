@@ -12,7 +12,7 @@
 *   decalSets    -> DecalPass: textured quads blended into the G-buffer (albedo + roughness)
 *   lensFlares   -> LensFlarePass: occlusion-tested, camera-facing glare sprites on bright sources
 *   interiorAtlas-> G-buffer interior mapping (shaders/includes/interior_mapping.glsl): baked
-*                   five-face rooms behind window panes
+*                   room boxes behind window panes
 *
 * Texture sources are file lists (TextureArrayBuilder); passes build and cache the GL arrays lazily.
 */
@@ -99,19 +99,59 @@ struct LensFlareSet {
 // Interior mapping atlas
 // ------------------------------------------------------------------------------------------------
 
-// Rooms of five faces each; faceLayers are ordered room * 5 + face with faces back, left, right,
-// ceiling, floor (orientation as in interior_mapping.glsl). Variant choice per window is driven by
-// styleWeights[materialStyle][room]; roomLight[room] = (brightness when occupied, chance of being
-// on while the window is otherwise unoccupied, brightness when on that way).
+// Rooms behind window panes (interior mapping). Every room has the same face slots; faceRoles[slot]
+// says which side of the room box a slot shows, so faces per room and their order come from data.
+// faceLayers are ordered room * FacesPerRoom() + slot (one texture-array layer per face); a box side
+// without a slot shows the room's mean radiance. faceMean[layer] = mean linear radiance of a face.
+// Variant choice per window: styleWeights[material style][room] (rows need not be normalised; the
+// material style is clamped to the row count). roomLight[room] = (brightness when occupied, chance
+// of being on while the window is otherwise unoccupied, brightness when on that way).
+// Data beyond the engine limits is clamped with a warning by the uploader (GBufferPass).
 struct InteriorAtlas {
-	static constexpr int kMaxRooms = 8;
-	static constexpr int kMaxStyles = 4;
+	static constexpr int kMaxRooms = 512;          // shader room search is bounded by 2^10
+	static constexpr int kMaxFacesPerRoom = 8;
+	static constexpr int kMaxStyles = 64;
+
+	enum class FaceRole : int { Back = 0, Left, Right, Ceiling, Floor, Count };
+	// "back", "left", "right", "ceiling", "floor" (case-sensitive).
+	static bool FaceRoleFromName(const std::string& name, FaceRole& out) {
+		static const char* kNames[] = { "back", "left", "right", "ceiling", "floor" };
+		for (int i = 0; i < static_cast<int>(FaceRole::Count); ++i) {
+			if (name == kNames[i]) { out = static_cast<FaceRole>(i); return true; }
+		}
+		return false;
+	}
+
+	// Room box proportions around a pane (metres): width = pane width + 2 * sideMargin, randomised
+	// per window within [min, max]; floor-to-ceiling height in [min, max]; depth = material depth
+	// * (1 +- depthJitter); floor below the pane = material sill * [sillScale min, max].
+	struct RoomShape {
+		glm::vec2 sideMargin{ 1.0f, 1.4f };
+		glm::vec2 height{ 2.8f, 3.2f };
+		float depthJitter = 0.1f;
+		glm::vec2 sillScale{ 1.0f, 1.0f };
+	};
+	// Default UV layout of window panes for materials that do not state one: the pane occupies
+	// [cell / grid + inset, + extent] of a grid x grid tiling of TEXCOORD_0 (v down). grid 0 (default)
+	// infers the layout per pane, assuming the pane is centred in its cell.
+	struct PaneUV {
+		float grid = 0.0f;
+		float inset = 0.0f;
+		float extent = 1.0f;
+	};
+
+	std::vector<FaceRole> faceRoles;                   // per face slot; size = faces per room
 	std::vector<TextureArrayBuilder::Layer> faceLayers;
 	TextureArrayBuilder::Options textureOptions;
-	std::vector<glm::vec3> faceMean;                   // mean linear radiance per face layer
+	std::vector<glm::vec3> faceMean;                   // per face layer
 	std::vector<glm::vec3> roomLight;                  // per room, see above
-	std::vector<std::vector<float>> styleWeights;      // [style][room], need not be normalised
-	int RoomCount() const { return static_cast<int>(faceLayers.size()) / 5; }
+	std::vector<std::vector<float>> styleWeights;      // [style][room]
+	RoomShape roomShape;
+	PaneUV paneUV;
+	float farDistance = 0.0f;   // default distance (m) beyond which panes use the flat mean (0 = never)
+
+	int FacesPerRoom() const { return static_cast<int>(faceRoles.size()); }
+	int RoomCount() const { return faceRoles.empty() ? 0 : static_cast<int>(faceLayers.size() / faceRoles.size()); }
 };
 
 struct SceneRenderExtras {

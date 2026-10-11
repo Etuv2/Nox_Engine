@@ -234,6 +234,9 @@
     <ClCompile Include="src\Skybox.cpp">
       <Filter>Source Files\scripts\Nodes</Filter>
     </ClCompile>
+    <ClCompile Include="src\EnvironmentMap.cpp">
+      <Filter>Source Files\scripts\Nodes</Filter>
+    </ClCompile>
     <ClCompile Include="src\FrameBuffer.cpp">
       <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
@@ -533,6 +536,27 @@
     </ClCompile>
     <ClCompile Include="src\passes\TransformHistoryPass.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GameModule.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneExtensions.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\NoxRacingGame.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FrameProfiler.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\Pointer.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\EditorExtensions.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GameEditorPanels.cpp">
+      <Filter>Source Files\scripts\Engine</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -956,6 +980,9 @@
     <ClInclude Include="src\Skybox.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="src\EnvironmentMap.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
     <ClInclude Include="src\FrameBuffer.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
@@ -1267,6 +1294,27 @@
     </ClInclude>
     <ClInclude Include="src\ComponentTypes.h">
       <Filter>Header Files\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GameModule.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneExtensions.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\NoxRacingGame.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\FrameProfiler.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\Pointer.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\EditorExtensions.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GameEditorPanels.h">
+      <Filter>Header Files\Engine</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

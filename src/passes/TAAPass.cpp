@@ -7,6 +7,7 @@
 #include "../Camera.h"
 #include "../RenderContext.h"
 #include <glm/gtc/type_ptr.hpp>
+#include <algorithm>
 #include <iostream>
 
 #pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
@@ -234,6 +235,8 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 	m_velocityFBO->Bind();
 	gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
 	gpu.SetDepthTest(true);
+	// Pixels without geometry (sky) must read zero motion; the clear colour is shared GPU state.
+	gpu.SetClearColor(glm::vec4(0.0f));
 	gpu.Clear(rhi::ClearColor | rhi::ClearDepth);
 
 	gpu.UseProgram(m_velocityShader);
@@ -283,6 +286,19 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 			glm::inverse(glm::mat4(glm::mat3(ctx.view))) * glm::inverse(projU);
 		const rhi::UniformLocation loc = gpu.GetUniformLocation(m_resolveShader, "uSkyReprojection");
 		if (loc >= 0) gpu.SetUniform(loc, skyReprojection);
+
+		// History rejection (taa_resolve.glsl uTaaMode): camera-only current NDC -> previous clip, and
+		// the previous projection terms that linearise the previous depth buffer.
+		auto setUniform = [&](const char* name, const auto& value) {
+			const rhi::UniformLocation l = gpu.GetUniformLocation(m_resolveShader, name);
+			if (l >= 0) gpu.SetUniform(l, value);
+		};
+		setUniform("uTaaMode", ctx.taaRejectionMode);
+		setUniform("uInvViewProj", glm::inverse(projU * ctx.view));
+		setUniform("uPrevViewProj", prevProjU * ctx.prevView);
+		setUniform("uPrevDepthParams", glm::vec2(ctx.prevProj[2][2], ctx.prevProj[3][2]));
+		setUniform("uDisocclusionTolerance", std::max(ctx.taaDisocclusionTolerance, 1e-4f));
+		setUniform("uMotionCurrentWeight", std::clamp(ctx.taaMotionCurrentWeight, 0.0f, 1.0f));
 	}
 
 	// Bind current frame (HDR output)
@@ -339,8 +355,11 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 	gpu.CopyTexture(ctx.gbufferFBO->GetDepthTexture(), fullRegion,
 		m_historyDepthTex, 0, glm::ivec3(0));
 
-	gpu.CopyTexture(ctx.gbufferFBO->GetColorAttachment(0), fullRegion,
-		m_historyNormalTex, 0, glm::ivec3(0));
+	// Only the legacy rejection mode reads the previous normals.
+	if (ctx.taaRejectionMode == 0) {
+		gpu.CopyTexture(ctx.gbufferFBO->GetColorAttachment(0), fullRegion,
+			m_historyNormalTex, 0, glm::ivec3(0));
+	}
 
 	m_historyValid = true;
 	ctx.taaFBO = m_currentFBO.get();

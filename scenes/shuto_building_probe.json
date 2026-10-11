@@ -1,0 +1,186 @@
+{
+  "scene_name": "shuto_building_probe",
+  "exposure": 1.0,
+  "gamma": 1.6,
+  "skybox": "hdrs\\skybox_2.hdr",
+  "main_shaders": {
+    "normal_pass": {
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
+    },
+    "shadow_pass": {
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    }
+  },
+  "nodes": [
+    {
+      "type": "model",
+      "path": "models/shuto/buildings/probe/apartment_06.glb",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "type": "light",
+      "name": "Sun",
+      "position": [
+        0,
+        20,
+        0
+      ],
+      "rotation": [
+        -45,
+        30,
+        0
+      ],
+      "light": {
+        "type": "directional",
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "intensity": 2.0,
+        "enabled": true,
+        "castsShadows": true,
+        "shadowSize": 2048,
+        "splitLambda": 0.85
+      }
+    }
+  ],
+  "camera": {
+    "position": [
+      18,
+      9,
+      26
+    ],
+    "look_at": [
+      0,
+      8,
+      0
+    ],
+    "fov": 55,
+    "near": 0.1,
+    "far": 1000
+  },
+  "window_room_root": "textures/window_rooms",
+  "benchmark": {
+    "warmup_frames": 30,
+    "fixed_hz": 60,
+    "shots": [
+      {
+        "name": "front",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                18,
+                9,
+                26
+              ],
+              "look_at": [
+                0,
+                8,
+                0
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      },
+      {
+        "name": "grazing",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                12,
+                6,
+                9
+              ],
+              "look_at": [
+                0,
+                6,
+                4.9
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      },
+      {
+        "name": "room_left",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                -3,
+                6.3,
+                9
+              ],
+              "look_at": [
+                0,
+                5.6,
+                5.25
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      },
+      {
+        "name": "room_right",
+        "duration": 1,
+        "capture_times": [
+          0.8
+        ],
+        "camera": {
+          "keys": [
+            {
+              "t": 0,
+              "position": [
+                3,
+                6.3,
+                9
+              ],
+              "look_at": [
+                0,
+                5.6,
+                5.25
+              ],
+              "fov": 55
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

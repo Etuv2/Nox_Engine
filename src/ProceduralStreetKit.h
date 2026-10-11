@@ -47,4 +47,8 @@ namespace ProceduralStreetKit {
 	//   cross_streetlight_spacing (m), shadowed_streetlights (int), max_reflection_probes (<= 48),
 	//   road_network (JSON, only read by the caller). Writes <output>.gltf/.bin and <output>_layout.json.
 	Result GenerateDistrict(const nlohmann::json& params, const RoadNetwork& network);
+
+	// Default district road graph (used when a scene does not author road_network): two avenues joined
+	// by four cross streets. Clears 'network' and fills it through its public graph API.
+	void BuildDefaultDistrictNetwork(RoadNetwork& network);
 }

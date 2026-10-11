@@ -1,0 +1,73 @@
+{
+  "units": "metres",
+  "reference_date": "2002-12-31",
+  "project_building_prototypes": 16,
+  "components": 4,
+  "normalized_source_buildings": 41,
+  "redistributable_source_buildings": 40,
+  "placed_building_parts": 5227,
+  "detail_tiers": {
+    "window_mid": 377,
+    "far": 3164,
+    "near": 233,
+    "mid": 1453
+  },
+  "building_render_triangles": 1034820,
+  "building_collision_triangles": 87536,
+  "chunk_material_groups": 630,
+  "source_linked_instances": 2,
+  "exported_files_by_folder": {
+    "collision": {
+      "files": 49,
+      "triangles": 87536,
+      "parallax_panes": 0,
+      "bytes": 4726124
+    },
+    "context": {
+      "files": 64,
+      "triangles": 114640,
+      "parallax_panes": 0,
+      "bytes": 13020732
+    },
+    "context_collision": {
+      "files": 5,
+      "triangles": 552,
+      "parallax_panes": 0,
+      "bytes": 35744
+    },
+    "kit": {
+      "files": 68,
+      "triangles": 138705,
+      "parallax_panes": 3002,
+      "bytes": 14782492
+    },
+    "probe": {
+      "files": 2,
+      "triangles": 3118,
+      "parallax_panes": 108,
+      "bytes": 332440
+    },
+    "render": {
+      "files": 49,
+      "triangles": 1034820,
+      "parallax_panes": 69096,
+      "bytes": 124179916
+    },
+    "restricted_local": {
+      "files": 4,
+      "triangles": 35643,
+      "parallax_panes": 0,
+      "bytes": 3699884
+    },
+    "sources": {
+      "files": 160,
+      "triangles": 26553,
+      "parallax_panes": 0,
+      "bytes": 3792272
+    }
+  },
+  "total_city_scenery_render_triangles": 1149460,
+  "geometry_budget_triangles": 1300000,
+  "lods": 3,
+  "lod_policy": "Placed proximity tiers baked into chunks; standalone files have no automatic runtime switch"
+}

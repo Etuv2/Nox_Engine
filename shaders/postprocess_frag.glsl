@@ -29,7 +29,7 @@ uniform bool  uTm7UseJzazbz;   // switch UCS (currently unused)
 // Image formation (docs/nfs2015/README.md M3). Order of operations:
 //   exposure -> bloom -> chromatic aberration (sampling) -> vignette -> white balance ->
 //   contrast / saturation / split tone (scene-linear) -> tonemap -> lift/gamma/gain (display) ->
-//   film grain -> output transfer (sRGB OETF) -> dither.
+//   output transfer (sRGB OETF) -> film grain -> dither.
 uniform int   uBloomMode;            // 0 additive (legacy), 1 energy-conserving mix
 uniform float uBloomStrength;
 uniform bool  uHasBloom;
@@ -48,6 +48,10 @@ uniform float uChromaticAberration;  // pixels at the image corner
 uniform bool  uDither;
 uniform uint  uFrameIndex;
 uniform vec2  uResolution;
+// Inspection of intermediate images (RenderContext::postDebugView); 0 = normal output.
+uniform int   uDebugView = 0;
+uniform sampler2D uDebugTex;
+uniform sampler2D uDebugTex2;
 
 //GT Sport tonemap function : https://blog.selfshadow.com/publications/s2025-shading-course/pdi/s2025_pbs_pdi_slides_v1.1.pdf
 vec3 TonemapGT(vec3 x, float P, float a, float m, float l, float c, float b) {
@@ -153,11 +157,31 @@ void main()
     } else {
         hdr = texture(hdrBuffer, vUV).rgb;
     }
+    bool hasBloom = uHasBloom;
+    bool grain = uFilmGrain > 0.0;
+    bool dither = uDither;
+    if (uDebugView != 0) {
+        hasBloom = false;
+        if (uDebugView < 0) {
+            FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+            return;
+        }
+        if (uDebugView == 5) {
+            vec2 v = texture(uDebugTex, vUV).rg * uResolution; // pixels per frame
+            // Signed, 0.5 = still, +-32 px per frame across the range (readable from 8-bit captures).
+            FragColor = vec4(clamp(0.5 + v / 64.0, 0.0, 1.0), length(v) > 0.25 ? 0.25 : 0.0, 1.0);
+            return;
+        }
+        hdr = texture(uDebugTex, vUV).rgb;
+        if (uDebugView == 6) hdr = abs(hdr - texture(uDebugTex2, vUV).rgb) * 8.0;
+        grain = uDebugView != 7 && grain;
+        dither = uDebugView != 7 && dither;
+    }
     vec3 color = hdr * exposureScale;
 
     // The bloom chain is extracted from exposed values (bloom_extract.glsl), so it is in the
     // same units as `color` here.
-    if (uHasBloom) {
+    if (hasBloom) {
         vec3 bloom = texture(bloomBlur, vUV).rgb;
         color = (uBloomMode == 1) ? mix(color, bloom, clamp(uBloomStrength, 0.0, 1.0))
                                   : color + bloom * uBloomStrength;
@@ -199,15 +223,17 @@ void main()
     color = clamp(uGain * (color + uLift * (vec3(1.0) - color)), 0.0, 1.0);
     color = pow(color, vec3(1.0) / max(uGammaAdjust, vec3(0.01)));
 
-    if (uFilmGrain > 0.0) {
-        float n = Hash12(gl_FragCoord.xy, float(uFrameIndex % 64u)) - 0.5;
-        float response = 1.0 - abs(Luma(color) * 2.0 - 1.0); // strongest in midtones
-        color = clamp(color + n * uFilmGrain * (0.35 + 0.65 * response), 0.0, 1.0);
-    }
-
     vec3 mapped = uOutputSRGB ? LinearToSRGB(color) : pow(color, vec3(1.0 / gamma));
 
-    if (uDither) {
+    // Film grain in the display encoding: added before the OETF, the curve's steep toe amplified it
+    // several times in near-black areas (night sky), the opposite of the intended midtone response.
+    if (grain) {
+        float n = Hash12(gl_FragCoord.xy, float(uFrameIndex % 64u)) - 0.5;
+        float response = 1.0 - abs(Luma(mapped) * 2.0 - 1.0); // strongest in midtones
+        mapped = clamp(mapped + n * uFilmGrain * (0.35 + 0.65 * response), 0.0, 1.0);
+    }
+
+    if (dither) {
         // Triangular dither of +-1 LSB breaks 8-bit banding in dark night gradients.
         float d = Hash12(gl_FragCoord.xy, float(uFrameIndex % 64u) + 17.0) +
                   Hash12(gl_FragCoord.yx, float(uFrameIndex % 64u) + 3.0) - 1.0;

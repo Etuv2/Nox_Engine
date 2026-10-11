@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "policy": "U increases toward screen-right when viewing the outward sign normal",
+  "migrated_glbs": [
+    "models/shuto/buildings/render/-2_3.glb",
+    "models/shuto/buildings/render/-2_4.glb",
+    "models/shuto/buildings/render/-3_10.glb",
+    "models/shuto/buildings/render/-3_6.glb",
+    "models/shuto/buildings/render/-4_8.glb",
+    "models/shuto/buildings/render/-5_11.glb",
+    "models/shuto/buildings/render/-5_6.glb"
+  ]
+}

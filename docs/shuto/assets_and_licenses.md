@@ -54,6 +54,12 @@ texture pack in textures/shuto/, and the derived files built from them.
 
 ## Shipping rules
 
+The current architectural delivery is documented in [buildings.md](buildings.md).
+Its source audit confirms the embedded Sketchfab Standard declaration for the
+Japanese asset despite its CC0 filename. The normalized derivative remains local
+and is excluded from `output/shuto_building_kit.zip`. The two CC BY sources retain
+author/source credits in the delivery metadata and documentation.
+
 - CC BY sources (asian_themed, lowpoly): may ship with the attribution above in the game credits or documentation.
-- japanese: blocked until licence verified. The kit index marks its entries as not shippable.
+- japanese: embedded Sketchfab Standard confirmed. Keep the standalone derivative local; the delivery archive excludes it. The legacy kit index still marks its entries as not shippable.
 - `models/` is git-ignored; the sources and kit GLBs are local build products unless a shipping step copies them.

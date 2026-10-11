@@ -1,4 +1,6 @@
+#include "FrameProfiler.h"
 #include "MainWindow.h"
+#include "ui/Pointer.h"
 #include "Core.h"
 #include "ImGuiInterface.h"
 
@@ -144,6 +146,15 @@ bool MainWindow::CreateWindow() {
         SDL_GetWindowSize(m_window, &m_windowWidth, &m_windowHeight);
         std::cout << "[MainWindow] " << m_windowMode << " window " << m_windowWidth << "x" << m_windowHeight << std::endl;
     }
+    // Pointer layer: window coordinates are the UI/draw-list space; log the pixel size so a DPI
+    // mismatch (drawable != window size) is visible in validation logs.
+    ui::Pointer::Get().SetWindow(m_window);
+    {
+        int pw = 0, ph = 0;
+        SDL_GetWindowSizeInPixels(m_window, &pw, &ph);
+        std::cout << "[MainWindow] Window " << m_windowWidth << "x" << m_windowHeight << " (pixels " << pw << "x" << ph
+                  << ", display scale " << ui::Pointer::Get().DpiScale() << ")" << std::endl;
+    }
     
     return true;
 }
@@ -229,11 +240,9 @@ bool MainWindow::Initialize() {
     }
     if (!m_core->Initialize(m_window, m_windowWidth, m_windowHeight)) {
         std::cerr << "[MainWindow] Failed to initialize engine Core" << std::endl;
-        rhi::SetGpu(nullptr);
-        m_device.reset();
-        SDL_DestroyWindow(m_window);
-        TTF_Quit();
-        SDL_Quit();
+        // Partially initialized engine objects still own GPU resources: the ordered cleanup shuts
+        // them down (and ImGui) while the device exists, then releases the device and SDL.
+        Cleanup();
         return false;
     }
 
@@ -247,6 +256,9 @@ bool MainWindow::Initialize() {
 void MainWindow::ProcessEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        // Engine pointer layer sees every mouse/window event (UI hit regions, focus, capture).
+        ui::Pointer::Get().ProcessEvent(event);
+
         // Let Core's input system process the event first
         bool handledByInput = false;
         if (m_core) {
@@ -317,6 +329,14 @@ void MainWindow::HandleWindowEvent(const SDL_WindowEvent& windowEvent) {
         m_isVisible = false;
         std::cout << "[MainWindow] Window hidden, pausing rendering" << std::endl;
         break;
+
+    // Focus: the pointer layer releases capture and drops held buttons; Core resets held keys.
+    case SDL_WINDOWEVENT_FOCUS_LOST:
+        std::cout << "[MainWindow] Focus lost" << std::endl;
+        break;
+    case SDL_WINDOWEVENT_FOCUS_GAINED:
+        std::cout << "[MainWindow] Focus gained" << std::endl;
+        break;
     }
 }
 
@@ -331,8 +351,10 @@ void MainWindow::Run() {
         float deltaTime = (currentTime - m_lastTime) / 1000.0f;
         m_lastTime = currentTime;
 
+        FrameProfiler::BeginFrame();
         // Always process window events
         ProcessEvents();
+        FrameProfiler::Mark("events");
         
         // Skip rendering and update when window is not visible
         if (!m_isVisible) {
@@ -341,11 +363,14 @@ void MainWindow::Run() {
             continue;
         }
         
-        // Update and render through Core only when visible
+        // Update and render through Core only when visible. Pointer frame: input latched before the
+        // update, UI hit regions drawn this frame become the hit set of the next one.
+        ui::Pointer::Get().BeginFrame(deltaTime);
         if (m_core) {
             m_core->Update(deltaTime);
             m_core->Render(m_windowWidth, m_windowHeight);
         }
+        ui::Pointer::Get().EndFrame();
         ++renderedFrames;
         if (exitAfterFrames > 0 && renderedFrames >= exitAfterFrames) {
             m_running = false;
@@ -378,8 +403,11 @@ void MainWindow::Run() {
             }
         }
 
+        FrameProfiler::Mark("capture");
         // Swap buffers (already checking visibility, so always swap here)
         rhi::Gpu().Present();
+        FrameProfiler::Mark("present");
+        FrameProfiler::EndFrame();
     }
     
     std::cout << "[MainWindow] Main loop ended" << std::endl;

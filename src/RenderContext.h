@@ -207,6 +207,11 @@ struct RenderContext {
 	float taaEdgeThreshold = 0.08f;
 	float taaReactiveMaskStrength = 0.6f;
 	float taaBloomPreservationStrength = 0.7f;
+	// History rejection: 0 = legacy (raw depth / normal difference, edges forced reactive),
+	// 1 = disocclusion test on camera-reprojected linear depth over the 2x2 history footprint.
+	int taaRejectionMode = 1;
+	float taaDisocclusionTolerance = 0.03f; // relative linear-depth error accepted as the same surface
+	float taaMotionCurrentWeight = 0.6f;    // max current-frame weight added for fast-moving pixels
 
 	//velocity texture for TAA
 	rhi::TextureHandle velocityTex;
@@ -301,6 +306,10 @@ struct RenderContext {
 	};
 	DebugMode debugMode = DebugMode::NONE;
 	ShadowDebugVisualization shadowDebugVisualization = ShadowDebugVisualization::NONE;
+	// Final-output inspection of intermediate images (PostProcessPass), independent of debugMode:
+	// 0 off, 1 lit HDR before TAA, 2 TAA output, 3 SSR, 4 bloom, 5 motion vectors,
+	// 6 |motion blur - TAA output| x8, 7 TAA output with grain/dither off.
+	int postDebugView = 0;
 	bool wireframeMode = false;
 	bool showBoundingBoxes = false;
 	bool showBBoxLegend = true;  // Show color legend when bounding boxes are enabled
@@ -341,7 +350,7 @@ struct RenderContext {
 	rhi::BufferHandle exposureSSBO;
 
 	// Image formation (PostProcessPass). Order: exposure -> bloom -> vignette -> white balance ->
-	// grade (contrast/saturation/split tone) -> tonemap -> lift/gamma/gain -> grain -> OETF -> dither.
+	// grade (contrast/saturation/split tone) -> tonemap -> lift/gamma/gain -> OETF -> grain -> dither.
 	int bloomMode = 0;                       // 0 = additive with threshold (legacy), 1 = energy-conserving mix
 	float whiteBalanceTemperature = 6500.0f; // Kelvin of the "white" illuminant to neutralise
 	float whiteBalanceTint = 0.0f;           // green (-) / magenta (+)

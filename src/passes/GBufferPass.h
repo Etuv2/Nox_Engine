@@ -28,7 +28,20 @@ public:
                  const std::shared_ptr<Skybox>& skybox) override;
 
 private:
-    void UploadInteriorAtlas(const InteriorAtlas& atlas);
+    void UploadInteriorAtlas(const InteriorAtlas& atlas, uint64_t revision);
+
+    // Interior atlas GPU state, rebuilt when the scene's render extras change.
+    struct InteriorGpu {
+        const InteriorAtlas* source = nullptr;
+        uint64_t revision = ~0ull;
+        size_t layerCount = 0;
+        rhi::TextureHandle faces;      // cached by TextureArrayBuilder (not owned)
+        rhi::TextureHandle roomData;   // owned: RGBA32F per-room tables
+        int rooms = 0;
+        int styles = 1;
+        int facesPerRoom = 0;
+        int roleSlot[5] = { -1, -1, -1, -1, -1 };
+    } m_interior;
 
     rhi::ProgramHandle m_shader;
     rhi::UniformLocation m_locView = -1;

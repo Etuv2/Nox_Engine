@@ -6,8 +6,10 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include <IMGUI/imgui.h>
+#include <map>
 #include "rhi/RHI.h"
 #include "../json.hpp"
+#include "../EditorExtensions.h"
 
 class Core;
 class SceneNode;
@@ -28,7 +30,7 @@ class ProcessRunner;
 * the camera aspect, picking, gizmos, authoring handles and the racing HUD (which is clipped to the
 * Game viewport).
 */
-class EditorWorkspace {
+class EditorWorkspace : public EditorHost {
 public:
 	struct Viewport {
 		const char* name = "";
@@ -55,15 +57,26 @@ public:
 	void OnSceneLoaded();
 	void SaveSettings() const;
 
+	// EditorHost (panels and overlays of the registered application extensions).
+	bool IsPlaying() const override;
+	void RequestPlay() override;
+	void MarkDirty() override;
+	void PushUndo(const std::string& label, std::function<void()> undo, std::function<void()> redo) override;
+	void ApplyGameJson(const nlohmann::json& game) override;
+	nlohmann::json GetAuthoredGameJson() const override;
+	void CommitGameEdit(const std::string& label) override;
+	void ApplyRuntimeChangesToAuthored() override;
+	IGameModule* Game() override;
+	SceneGraph* GetSceneGraph() override;
+	ModularRenderer* GetRenderer() override;
+	bool ProjectToViewport(const glm::vec3& world, ImVec2& out) const override;   // scene viewport
+	void AddViewportHandle(const ViewportHandle& handle) override { m_handles.push_back(handle); }
+	void ShowPanel(const std::string& id) override;
+
 private:
 	struct UndoAction { std::string label; std::function<void()> undo, redo; };
-	struct Handle {
-		enum class Kind { Spawn, EventStart, Checkpoint, RoadNode } kind;
-		int a = -1, b = -1;
-		glm::vec3 world{ 0.0f };
-		ImU32 color = 0;
-	};
 
+	bool& PanelOpen(const EditorPanel& panel);
 	void BuildDefaultLayout(unsigned int dockspaceId);
 	void DrawMenuBar();
 	void DrawToolbar();
@@ -77,12 +90,9 @@ private:
 	void DrawMaterials();
 	void DrawConsole();
 	void DrawBuildOutput();
-	void DrawRaceTools();
-	void DrawDriveTools();
-	void DrawHudTools();
 	void DrawLaunchPresets();
 	void DrawModals();
-	void DrawAuthoringOverlay(const Viewport& vp);
+	void DrawAuthoringOverlay(ImDrawList* dl);   // registered viewport overlay + its handles
 	void DrawGizmo(const Viewport& vp);
 	void HandleShortcuts();
 	void EnsureTarget(Viewport& vp, int width, int height);
@@ -95,13 +105,12 @@ private:
 	void Redo();
 	void TrackGameEdits();               // snapshot game JSON around widget edits
 	void TrackTransformEdits();
-	void CommitGameEdit(const std::string& label);
 
 	// Build / run / package.
 	void StartTool(const std::string& title, const std::string& script, const std::string& args);
 	void RunStandalone();
 
-	bool ProjectToViewport(const Viewport& vp, const glm::vec3& world, ImVec2& out) const;
+	bool ProjectToViewport(const Viewport& vp, const glm::vec3& world, ImVec2& out) const;   // scene viewport: see EditorHost
 	bool ViewportRayToGround(const Viewport& vp, const ImVec2& mouse, glm::vec3& out) const;
 	void SelectNode(const std::shared_ptr<SceneNode>& node);
 	void RequestScene(const std::string& path);
@@ -120,7 +129,10 @@ private:
 	// Panels.
 	struct PanelToggle { const char* name; bool* open; };
 	bool m_showHierarchy = true, m_showAssets = true, m_showInspector = true, m_showMaterials = true;
-	bool m_showConsole = true, m_showBuild = true, m_showRace = true, m_showDrive = true, m_showHud = true;
+	bool m_showConsole = true, m_showBuild = true;
+	// Extension panels: open state by panel id (persisted under "extension_panels").
+	std::map<std::string, bool> m_extOpen;
+	nlohmann::json m_extSaved = nlohmann::json::object();
 	bool m_showPresets = false, m_showHelp = false, m_showLegacyRendering = true, m_showLegacyLighting = true;
 	bool m_showLegacyPerformance = true, m_showLegacyAnimation = false, m_showLegacyState = false, m_showLegacyCamera = false;
 	bool m_showDemo = false;
@@ -142,10 +154,8 @@ private:
 	// Authoring overlay / handles.
 	bool m_showAuthoring = true;
 	int m_dragHandle = -1;
-	std::vector<Handle> m_handles;
+	std::vector<ViewportHandle> m_handles;
 	nlohmann::json m_dragBefore;
-	int m_selectedCheckpoint = -1;
-	int m_selectedRoadNode = -1;
 
 	// Gizmo.
 	int m_gizmoOp = 7;   // ImGuizmo::TRANSLATE

@@ -1,4 +1,5 @@
 #include "ModularRenderer.h"
+#include "FrameProfiler.h"
 #include "PresentTarget.h"
 #include "FrameBuffer.h"
 #include "ScreenQuad.h"
@@ -1349,6 +1350,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	if (m_context.lightManager->IsLightDataDirty()) {
 		m_context.lightManager->UpdateGPUBuffers();
 	}
+	FrameProfiler::Mark("r_lights");
 
 	// Update context with current frame parameters
 	UpdateContext(camera, exposure, gamma, enableShadows, shadowBias, shadow_near, shadow_far, envColor);
@@ -1398,6 +1400,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	m_namedResources[ResourceNames::Bloom] = rhi::TextureHandle{};
 	m_namedResources[ResourceNames::LPVIndirect] = rhi::TextureHandle{};
 
+	FrameProfiler::Mark("r_setup");
 	BuildPassDescriptors(sceneGraph, camera, lighting, skybox);
 	const PlanCacheKey key = BuildPlanCacheKey();
 	auto planIt = m_planCache.find(key);
@@ -1405,7 +1408,9 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		FramePlan compiledPlan = CompileFramePlan(key);
 		planIt = m_planCache.emplace(key, std::move(compiledPlan)).first;
 	}
+	FrameProfiler::Mark("r_plan");
 	ExecuteFramePlan(planIt->second);
+	FrameProfiler::Mark("r_passes");
 
 	if (m_surfelGIManager &&
 		m_surfelGIManager->GetSettings().enabled &&

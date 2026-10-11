@@ -71,6 +71,11 @@ namespace {
 		ctx.indirectDiffuseStrength = d.indirectDiffuseStrength;
 		ctx.enableScreenSpaceShadows = d.enableScreenSpaceShadows;
 		ctx.enableTAA = d.enableTAA;
+		ctx.taaBlendFactor = d.taaBlendFactor;
+		ctx.taaRejectionMode = d.taaRejectionMode;
+		ctx.taaDisocclusionTolerance = d.taaDisocclusionTolerance;
+		ctx.taaMotionCurrentWeight = d.taaMotionCurrentWeight;
+		ctx.postDebugView = d.postDebugView;
 		ctx.enableClusteredLighting = d.enableClusteredLighting;
 		ctx.enableFrustumCulling = d.enableFrustumCulling;
 		ctx.ssrResolveSamples = d.ssrResolveSamples;
@@ -181,6 +186,17 @@ namespace SceneRenderSettings {
 		Read(s, "ssgi_strength", ctx.indirectDiffuseStrength);
 		Read(s, "contact_shadows", ctx.enableScreenSpaceShadows);
 		Read(s, "taa", ctx.enableTAA);
+		Read(s, "taa_blend", ctx.taaBlendFactor);
+		Read(s, "taa_rejection_mode", ctx.taaRejectionMode);
+		Read(s, "taa_disocclusion_tolerance", ctx.taaDisocclusionTolerance);
+		Read(s, "taa_motion_weight", ctx.taaMotionCurrentWeight);
+		if (s.contains("debug_view") && s["debug_view"].is_string()) {
+			static const char* kViews[] = { "none", "pre_taa", "taa", "ssr", "bloom", "velocity", "motion_blur", "taa_clean" };
+			const std::string v = s["debug_view"].get<std::string>();
+			for (int i = 0; i < 8; ++i) {
+				if (v == kViews[i]) ctx.postDebugView = i;
+			}
+		}
 		Read(s, "clustered_lighting", ctx.enableClusteredLighting);
 		Read(s, "frustum_culling", ctx.enableFrustumCulling);
 		Read(s, "ssr_resolve_samples", ctx.ssrResolveSamples);

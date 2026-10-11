@@ -28,8 +28,7 @@ class InputIntegration;
 class PerformanceRecorder;
 class RuntimeStateManager;
 class BenchmarkRunner;
-class DriveMode;
-class GameSession;
+class IGameModule;
 class EditorWorkspace;
 class SceneNode;
 struct SimulationConfig;
@@ -238,7 +237,7 @@ public:
     };
     void SetLaunchOptions(const LaunchOptions& options) { m_launch = options; }
     AppMode GetAppMode() const { return m_launch.mode; }
-    GameSession* GetGame() { return m_game.get(); }
+    IGameModule* GetGameModule() { return m_game.get(); }
     std::shared_ptr<ModularRenderer> GetRenderer() { return m_modularRenderer; }
     SceneLoader* GetSceneLoader() { return m_sceneLoader.get(); }
     const std::string& GetCurrentScenePath() const { return m_currentSceneFilePath; }
@@ -407,7 +406,8 @@ private:
     std::unique_ptr<PerformanceRecorder> m_performanceRecorder;
     std::unique_ptr<RuntimeStateManager> m_stateManager;
     std::unique_ptr<BenchmarkRunner> m_benchmark; // NOX_BENCHMARK camera-path runner
-    std::unique_ptr<GameSession> m_game;          // racing prototype: car, race, HUD (docs/nfs2015/game.md)
+    std::chrono::steady_clock::time_point m_frameCpuStart{}; // start of this frame's Update (CPU timing)
+    std::unique_ptr<IGameModule> m_game;          // optional game layer (GameModule.h), registered by the application
     std::unique_ptr<EditorWorkspace> m_editor;    // docked editor (editor mode only)
     LaunchOptions m_launch;
     bool m_playing = false;

@@ -38,6 +38,8 @@ public:
     void EnableContext(const std::string& contextName, bool enabled = true);
     void DisableContext(const std::string& contextName);
     void SetMouseLocked(bool locked);
+    // Window focus lost: drop held keys/buttons and release the mouse lock.
+    void OnFocusLost();
     bool IsMouseLocked() const { return m_mouseLocked; }
     
     // Component setters (called by Core during initialization)

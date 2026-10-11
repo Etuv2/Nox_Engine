@@ -30,7 +30,7 @@ except ImportError:  # numpy is optional; the GLB reader then uses plain lists
     np = None
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-EPS_BY_KIND = {"main": 0.0, "jct": 0.0, "pa": 0.0, "toll": 0.0, "ramp_on": 0.01, "ramp_off": 0.02}
+EPS_BY_KIND = {"main": 0.0, "jct": 0.0, "pa": 0.0, "toll": 0.0, "ramp_on": 0.0, "ramp_off": 0.0}  # as build_roads.py
 TUNNEL_TYPES = ("cut", "tunnel", "underground")
 
 
@@ -260,12 +260,22 @@ class Sampled:
             self.Z.append(a[2] + (b[2] - a[2]) * f)
             self.B.append(banks[seg] + (banks[seg + 1] - banks[seg]) * f)
         self.N = n
-        self.TX, self.TZ = [], []
+        # Same window-averaged tangents as build_roads.py (smoothed_frames, +-4 samples).
+        rx, rz = [], []
         for i in range(n):
             a = max(0, i - 1)
             b = min(n - 1, i + 1)
             dx, dz = self.X[b] - self.X[a], self.Z[b] - self.Z[a]
             ln = math.hypot(dx, dz) or 1.0
+            rx.append(dx / ln)
+            rz.append(dz / ln)
+        self.TX, self.TZ = [], []
+        for i in range(n):
+            a, b = max(0, i - 4), min(n, i + 5)
+            dx, dz = sum(rx[a:b]), sum(rz[a:b])
+            ln = math.hypot(dx, dz)
+            if ln < 1e-9:
+                dx, dz, ln = rx[i], rz[i], 1.0
             self.TX.append(dx / ln)
             self.TZ.append(dz / ln)
 
@@ -293,6 +303,8 @@ def main():
     ap.add_argument("--chunks", default=None, help="chunks.json (optional; default: all *_col.glb in dir)")
     ap.add_argument("--step", type=float, default=2.0)
     ap.add_argument("--bbox", default=None, help="xmin,zmin,xmax,zmax: only check samples inside (shrunk by 40 m)")
+    ap.add_argument("--render-dir", default=None, help="render GLB dir (default: <collision-dir>/../render)")
+    ap.add_argument("--json-out", default=None, help="write the metrics as JSON (before/after comparisons)")
     args = ap.parse_args()
 
     cdir = args.collision_dir if os.path.isabs(args.collision_dir) else os.path.join(ROOT, args.collision_dir)
@@ -326,6 +338,27 @@ def main():
     hash_w = Hash2D(walls, 5.0)
 
     sampled = [Sampled(cw) for cw in net["carriageways"] if cw.get("route") != "PA"]
+    # Deck profile conformance applied by build_roads.py (same-level overlaps): expected heights follow it.
+    off_path = os.path.join(os.path.dirname(os.path.normpath(cdir)), "deck_offsets.json")
+    lot_of = {}
+    closed_end = {}
+    if os.path.exists(off_path):
+        offdoc = json.load(open(off_path, encoding="utf-8"))
+        closed_end = {}
+        for cid, i in offdoc.get("closed_ends", []):
+            closed_end.setdefault(cid, []).append(i)
+        offs = offdoc.get("offsets", {})
+        lot_of = {l["carriageway"]: l for l in offdoc.get("lots", [])}
+        n_off = 0
+        for sc in sampled:
+            for rec in offs.get(sc.id, ()):
+                i, dy = rec[0], rec[1]
+                if i < sc.N:
+                    sc.Y[i] += dy
+                    if len(rec) > 2:
+                        sc.B[i] = math.asin(max(-0.2, min(0.2, math.sin(sc.B[i]) + rec[2])))
+                    n_off += 1
+        print("deck offsets applied: %d carriageways, %d samples" % (len(offs), n_off))
     if args.bbox:
         bx0, bz0, bx1, bz1 = [float(v) for v in args.bbox.split(",")]
         bx0, bz0, bx1, bz1 = bx0 + 40.0, bz0 + 40.0, bx1 - 40.0, bz1 - 40.0
@@ -377,13 +410,18 @@ def main():
     shadow_list = []
     for sc in sampled:
         for u in sc.lane_centres():
-            s_list = [k * args.step for k in range(int(sc.S[-1] // args.step) + 1)]
+            # Sample positions avoid the exact carriageway ends: a point exactly on the shared end line of
+            # two meshes is a degenerate ray (on an edge of both), not a gap.
+            s_list = [min(max(k * args.step, 0.25), sc.S[-1] - 0.25) for k in range(int(sc.S[-1] // args.step) + 1)]
             for s in s_list:
-                i = min(sc.N - 1, int(round(s)))
-                x, z = sc.pos(i, u)
+                i = min(sc.N - 2, int(math.floor(s)))
+                f = s - sc.S[i]
+                x0, z0 = sc.pos(i, u)
+                x1, z1 = sc.pos(i + 1, u)
+                x, z = x0 + (x1 - x0) * f, z0 + (z1 - z0) * f
                 if not in_box(x, z):
                     continue
-                y_exp = sc.top_y(i, u)
+                y_exp = sc.top_y(i, u) + (sc.top_y(i + 1, u) - sc.top_y(i, u)) * f
                 best = ray_ground(ground, hash_g, x, z, y_exp + 1.5)
                 if best is None:
                     missing += 1
@@ -436,6 +474,8 @@ def main():
                     longest = max(math.dist(t.a, t.b), math.dist(t.a, t.c), math.dist(t.b, t.c))
                     if longest > 1e-6 and math.sqrt(sum(v * v for v in cr)) / longest < 0.05:
                         continue  # needle sliver (CollisionWorld ignores it too)
+                    if any(abs(i - ce) <= 2 for ce in closed_end.get(sc.id, ())):
+                        continue   # the wall closing an unbuilt ramp end (build_roads emit_ramp_end_walls)
                     if seg_dist_xz(x, z, t) <= 0.5:
                         lane_walls.append((sc.id, s, round(x, 1), round(y, 2), round(z, 1)))
                         break
@@ -451,8 +491,22 @@ def main():
     # 2. Barrier continuity along both inner faces.
     checked = opened = covered_n = 0
     gaps = []
+    def lot_width(sc, side, s):
+        """Parking apron widening (build_roads apply_lots) of this carriageway side at s."""
+        lot = lot_of.get(sc.id)
+        if lot is None or lot["side"] != side:
+            return 0.0
+        s0, s1, tp, W = lot["s0"], lot["s1"], lot["taper"], lot["width"]
+        if s0 <= s <= s1:
+            return W
+        if s0 - tp < s < s0:
+            return W * (s - (s0 - tp)) / tp
+        if s1 < s < s1 + tp:
+            return W * ((s1 + tp) - s) / tp
+        return 0.0
+
     for own, sc in enumerate(sampled):
-        for side, ue in (("L", sc.half_l), ("R", -sc.half_r)):
+        for side, ue0 in (("L", sc.half_l), ("R", -sc.half_r)):
             run_start = None
             run_len = 0.0
             step_s = 0.25
@@ -460,6 +514,7 @@ def main():
             for k in range(m + 1):
                 s = k * step_s
                 i = min(sc.N - 1, int(round(s)))
+                ue = ue0 + (lot_width(sc, side, s) if ue0 > 0 else -lot_width(sc, side, s))
                 x, z = sc.pos(i, ue)
                 y = sc.top_y(i, ue)
                 if not in_box(x, z):
@@ -565,15 +620,50 @@ def main():
 
     # Render-layer checks: deck z-fighting and lamp pole support (build root = parent of collision/).
     build_root = os.path.dirname(os.path.normpath(cdir))
-    rdir = os.path.join(build_root, "render")
-    zfight, floating = 0, []
+    rdir = args.render_dir or os.path.join(build_root, "render")
+    if not os.path.isabs(rdir):
+        rdir = os.path.join(ROOT, rdir)
+    zfight, legacy, floating = 0, 0, []
+    metrics = {"height_mismatch": fail, "missing": missing, "shadow_merge_zone": shadow_ok,
+               "shadow_elsewhere": shadow_bad, "lane_wall_spots": len(spots), "barrier_gaps": len(bad_gaps),
+               "barrier_gap_list": [list(g) for g in bad_gaps], "lane_wall_list": [list(w) for w in spots],
+               "shadow_list": [list(s) for s in shadow_list[:200]]}
     if os.path.isdir(rdir):
-        zfight, zf_examples, floating, n_lamps, n_sup = render_checks(
+        legacy, zf_examples, floating, n_lamps, n_sup = render_checks(
             rdir, os.path.join(build_root, "lamps.json"))
-        print("render z-fight pairs (asphalt 3 mm-0.15 m apart): %d %s" % (zfight, zf_examples))
+        print("render z-fight pairs, legacy metric (asphalt only, 3-10 mm apart): %d %s" % (legacy, zf_examples))
         print("lamp supports checked: %d of %d, floating: %d %s" % (n_sup, n_lamps, len(floating), floating[:8]))
+        metrics.update({"zfight_legacy": legacy, "floating_lamps": len(floating), "lamps": n_lamps})
+        rb = None if args.bbox is None else (bx0, bz0, bx1, bz1)
+        v2 = render_overlap_checks(rdir, rb)
+        if v2 is not None:
+            res, ex = v2
+            zfight = res["zfight_total"]
+            print("render overlaps (all upward render surfaces incl. markings; triangles affected): "
+                  "deck-overlap(<%.2f m)=%d [fight<%d mm: %d, %.1f m2]  decal-under=%d (paint %d, joint %d)  "
+                  "decal-fight=%d  ground-fight=%d  paint-paint(same colour, info)=%d  -> z-fight total=%d"
+                  % (OVERLAP_BAND, res["deck_overlap"], FIGHT_DY * 1000, res["deck_fight"], res["deck_overlap_area_m2"],
+                     res["decal_under"], res["paint_under"], res["joint_under"], res["decal_fight"],
+                     res["ground_fight"], res["paint_paint"], zfight))
+            for k, v in ex.items():
+                if v:
+                    print("   %s at:" % k, v[:6])
+            metrics.update(res)
+        else:
+            zfight = legacy
+        cons = render_collision_consistency(rdir, sampled, ground, hash_g, in_box)
+        if cons is not None:
+            print("render vs collision (lane centres every 4 m): compared=%d  car-above-visible-deck(>3 cm)=%d  "
+                  "car-below(>3 cm)=%d %s" % (cons["compared"], cons["car_above_visible"], cons["car_below_visible"],
+                                              cons["examples"][:4]))
+            metrics["render_collision"] = cons
 
     hard_fail = fail + missing + shadow_bad + len(bad_gaps) + len(spots) + zfight + len(floating)
+    metrics["zfight"] = zfight
+    metrics["result"] = "PASS" if hard_fail == 0 else "FAIL"
+    if args.json_out:
+        with open(args.json_out, "w", encoding="ascii", newline="\n") as f:
+            json.dump(metrics, f, indent=1)
     print("RESULT: %s (height-mismatch=%d missing=%d shadow-elsewhere=%d gaps>0.3=%d lane-wall-spots=%d zfight=%d floating-lamps=%d)"
           % ("PASS" if hard_fail == 0 else "FAIL", fail, missing, shadow_bad, len(bad_gaps), len(spots), zfight, len(floating)))
     return 0 if hard_fail == 0 else 1
@@ -642,6 +732,207 @@ def render_checks(render_dir, lamps_path):
                 floating.append((lp.get("id"), round(bx, 1), round(by, 2), round(bz, 1),
                                  None if hit is None else round(hit[0], 2)))
     return len(pairs), examples, floating, n_lamps, checked
+
+
+# ----------------------------------------------------------------------------------------------
+# Render overlap check v2 (numpy): every upward render surface, markings included
+# ----------------------------------------------------------------------------------------------
+OVERLAP_BAND = 0.15   # m: two upward surfaces closer than this in height at one plan point overlap
+DECAL_CLEAR = 0.004   # m: a marking / joint must sit at least this far above any deck it lies on
+FIGHT_DY = 0.010      # m: below this, two opaque surfaces depth-fight at driving distances
+
+
+def render_tris_np(render_dir):
+    """{material: (N, 3, 3) float64 world triangles} for all render GLBs (numpy required)."""
+    out = defaultdict(list)
+    for path in sorted(glob.glob(os.path.join(render_dir, "*.glb"))):
+        js, binc = read_glb(path)
+        ident = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+        scene_nodes = js.get("scenes", [{}])[js.get("scene", 0)].get("nodes", list(range(len(js.get("nodes", [])))))
+
+        def visit(ni, parent):
+            node = js["nodes"][ni]
+            M = matmul(parent, node_matrix(node))
+            if "mesh" in node:
+                for prim in js["meshes"][node["mesh"]]["primitives"]:
+                    if prim.get("mode", 4) != 4:
+                        continue
+                    mat = js["materials"][prim["material"]].get("name") if "material" in prim else None
+                    pos = np.asarray(accessor_array(js, binc, prim["attributes"]["POSITION"]), dtype=np.float64)[:, :3]
+                    Mn = np.asarray(M, dtype=np.float64)
+                    pos = pos @ Mn[:3, :3].T + Mn[:3, 3]
+                    if "indices" in prim:
+                        ind = np.asarray(accessor_array(js, binc, prim["indices"])).reshape(-1).astype(np.int64)
+                    else:
+                        ind = np.arange(len(pos))
+                    ind = ind[: len(ind) // 3 * 3].reshape(-1, 3)
+                    out[mat].append(pos[ind])
+            for c in node.get("children", []):
+                visit(c, M)
+
+        for ni in scene_nodes:
+            visit(ni, ident)
+    return {k: np.concatenate(v, axis=0) for k, v in out.items() if v}
+
+
+def _upward(tris, min_ny):
+    e1 = tris[:, 1] - tris[:, 0]
+    e2 = tris[:, 2] - tris[:, 0]
+    n = np.cross(e1, e2)
+    ln = np.linalg.norm(n, axis=1)
+    ok = ln > 1e-9
+    ny = np.zeros(len(tris))
+    ny[ok] = np.abs(n[ok, 1]) / ln[ok]
+    return tris[ok & (ny >= min_ny)]
+
+
+def _contain_pairs(P, T, cell=4.0):
+    """Candidate (point index, triangle index, triangle height at the point) for points P (M, 2: x, z)
+    lying inside the plan projection of triangles T (N, 3, 3)."""
+    if len(P) == 0 or len(T) == 0:
+        return np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0)
+    tx, tz = T[:, :, 0], T[:, :, 2]
+    i0 = np.floor(tx.min(1) / cell).astype(np.int64)
+    i1 = np.floor(tx.max(1) / cell).astype(np.int64)
+    k0 = np.floor(tz.min(1) / cell).astype(np.int64)
+    k1 = np.floor(tz.max(1) / cell).astype(np.int64)
+    ni, nk = i1 - i0 + 1, k1 - k0 + 1
+    cnt = ni * nk
+    tri_of = np.repeat(np.arange(len(T)), cnt)
+    off = np.arange(cnt.sum()) - np.repeat(np.cumsum(cnt) - cnt, cnt)
+    ci = np.repeat(i0, cnt) + off % np.repeat(ni, cnt)
+    ck = np.repeat(k0, cnt) + off // np.repeat(ni, cnt)
+    key = ci * 1000003 + ck
+    order = np.argsort(key, kind="stable")
+    key, tri_of = key[order], tri_of[order]
+    pkey = np.floor(P[:, 0] / cell).astype(np.int64) * 1000003 + np.floor(P[:, 1] / cell).astype(np.int64)
+    lo = np.searchsorted(key, pkey, "left")
+    hi = np.searchsorted(key, pkey, "right")
+    m = hi - lo
+    pi = np.repeat(np.arange(len(P)), m)
+    ti = tri_of[np.repeat(lo, m) + (np.arange(m.sum()) - np.repeat(np.cumsum(m) - m, m))]
+    a, b, c = T[ti, 0], T[ti, 1], T[ti, 2]
+    x, z = P[pi, 0], P[pi, 1]
+    den = (b[:, 2] - c[:, 2]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 2] - c[:, 2])
+    ok = np.abs(den) > 1e-12
+    den = np.where(ok, den, 1.0)
+    l1 = ((b[:, 2] - c[:, 2]) * (x - c[:, 0]) + (c[:, 0] - b[:, 0]) * (z - c[:, 2])) / den
+    l2 = ((c[:, 2] - a[:, 2]) * (x - c[:, 0]) + (a[:, 0] - c[:, 0]) * (z - c[:, 2])) / den
+    l3 = 1.0 - l1 - l2
+    inside = ok & (l1 > 1e-6) & (l2 > 1e-6) & (l3 > 1e-6)
+    h = l1 * a[:, 1] + l2 * b[:, 1] + l3 * c[:, 1]
+    return pi[inside], ti[inside], h[inside]
+
+
+def render_overlap_checks(render_dir, bbox=None):
+    """Plan overlaps between upward render surfaces, sampled at triangle centroids.
+
+    deck-overlap:  two asphalt (deck) surfaces within OVERLAP_BAND in height at one point (duplicated
+                   drivable surfaces in the render mesh; 0 when lower-priority decks are clipped).
+    deck-fight:    the subset closer than FIGHT_DY (visible depth fighting).
+    decal-under:   a marking (paint) or joint triangle not at least DECAL_CLEAR above every deck within
+                   OVERLAP_BAND below/above it (hidden or flickering marking).
+    decal-fight:   paint over a joint (or joint over paint) closer than DECAL_CLEAR.
+    paint-paint:   overlapping paint of different strips (same colour; reported only).
+    ground-fight:  street ground/roof cells within FIGHT_DY of a deck.
+    Counts are triangles whose centroid is affected (one per triangle, not per pair)."""
+    if np is None:
+        return None
+    mats = render_tris_np(render_dir)
+    asph = _upward(mats.get("asphalt", np.zeros((0, 3, 3))), 0.9)
+    paint = _upward(mats.get("paint", np.zeros((0, 3, 3))), 0.9)
+    joint = _upward(mats.get("joint", np.zeros((0, 3, 3))), 0.9)
+    ground = _upward(mats.get("ground_gravel", np.zeros((0, 3, 3))), 0.99)
+
+    def cen(T):
+        c = T.mean(axis=1)
+        keep = np.ones(len(T), bool)
+        if bbox is not None:
+            x0, z0, x1, z1 = bbox
+            keep = (c[:, 0] >= x0) & (c[:, 0] <= x1) & (c[:, 2] >= z0) & (c[:, 2] <= z1)
+        return c, keep
+
+    res = {"tris": {"asphalt": len(asph), "paint": len(paint), "joint": len(joint), "ground": len(ground)}}
+    ex = {}
+    # Deck vs deck.
+    c, keep = cen(asph)
+    pi, ti, h = _contain_pairs(c[:, [0, 2]], asph)
+    sel = (pi != ti) & keep[pi]
+    dy = np.abs(h - c[pi, 1])
+    ov = sel & (dy < OVERLAP_BAND)
+    fi = sel & (dy < FIGHT_DY)
+    res["deck_overlap"] = int(len(np.unique(pi[ov])))
+    res["deck_fight"] = int(len(np.unique(pi[fi])))
+    uo = np.unique(pi[ov])
+    e1 = asph[uo, 1] - asph[uo, 0]
+    e2 = asph[uo, 2] - asph[uo, 0]
+    res["deck_overlap_area_m2"] = round(float(np.sum(0.5 * np.abs(e1[:, 0] * e2[:, 2] - e1[:, 2] * e2[:, 0]))), 1)
+    ex["deck_overlap"] = [tuple(round(float(v), 2) for v in c[k]) for k in np.unique(pi[ov])[:8]]
+    # Decals (paint, joints) vs decks.
+    for name, T in (("paint", paint), ("joint", joint)):
+        c, keep = cen(T)
+        pi, ti, h = _contain_pairs(c[:, [0, 2]], asph)
+        d = c[pi, 1] - h          # decal height above the deck at the decal centroid
+        bad = keep[pi] & (d < DECAL_CLEAR) & (d > -OVERLAP_BAND)
+        res[name + "_under"] = int(len(np.unique(pi[bad])))
+        ex[name + "_under"] = [tuple(round(float(v), 2) for v in c[k]) for k in np.unique(pi[bad])[:8]]
+    res["decal_under"] = res["paint_under"] + res["joint_under"]
+    # Paint vs joint, paint vs paint.
+    c, keep = cen(paint)
+    pi, ti, h = _contain_pairs(c[:, [0, 2]], joint)
+    bad = keep[pi] & (np.abs(c[pi, 1] - h) < DECAL_CLEAR)
+    res["decal_fight"] = int(len(np.unique(pi[bad])))
+    ex["decal_fight"] = [tuple(round(float(v), 2) for v in c[k]) for k in np.unique(pi[bad])[:8]]
+    pi, ti, h = _contain_pairs(c[:, [0, 2]], paint)
+    d = np.abs(c[pi, 1] - h)
+    bad = keep[pi] & (pi != ti) & (d > 0.0005) & (d < OVERLAP_BAND)
+    res["paint_paint"] = int(len(np.unique(pi[bad])))
+    # Ground vs deck.
+    c, keep = cen(ground)
+    pi, ti, h = _contain_pairs(c[:, [0, 2]], asph)
+    bad = keep[pi] & (np.abs(c[pi, 1] - h) < FIGHT_DY)
+    res["ground_fight"] = int(len(np.unique(pi[bad])))
+    res["zfight_total"] = res["deck_overlap"] + res["decal_under"] + res["decal_fight"] + res["ground_fight"]
+    return res, ex
+
+
+def render_collision_consistency(render_dir, sampled, ground, hash_g, in_box, step=4.0):
+    """Lane-centre samples: top render deck (asphalt) vs top collision ground below the expected deck
+    + 1.5 m. A car rides on collision; the visible deck must be within 3 cm of it."""
+    if np is None:
+        return None
+    mats = render_tris_np(render_dir)
+    asph = _upward(mats.get("asphalt", np.zeros((0, 3, 3))), 0.6)
+    pts, ys = [], []
+    for sc in sampled:
+        for u in sc.lane_centres():
+            for k in range(int(sc.S[-1] // step) + 1):
+                i = min(sc.N - 2, max(1, int(round(k * step))))
+                x, z = sc.pos(i, u)
+                if in_box(x, z):
+                    pts.append((x, z))
+                    ys.append(sc.top_y(i, u))
+    P = np.asarray(pts)
+    Y = np.asarray(ys)
+    pi, ti, h = _contain_pairs(P, asph)
+    ok = h <= Y[pi] + 1.5
+    top_r = np.full(len(P), -1e9)
+    np.maximum.at(top_r, pi[ok], h[ok])
+    worst = []
+    n_float = n_sink = n_cmp = 0
+    for k in range(len(P)):
+        hit = ray_ground(ground, hash_g, P[k, 0], P[k, 1], Y[k] + 1.5)
+        if hit is None or top_r[k] < -1e8:
+            continue
+        n_cmp += 1
+        d = hit[0] - top_r[k]
+        if d > 0.03:
+            n_float += 1
+        elif d < -0.03:
+            n_sink += 1
+        if abs(d) > 0.03 and len(worst) < 8:
+            worst.append((round(float(P[k, 0]), 1), round(float(P[k, 1]), 1), round(float(top_r[k]), 3), round(float(hit[0]), 3)))
+    return {"compared": n_cmp, "car_above_visible": n_float, "car_below_visible": n_sink, "examples": worst}
 
 
 def height_plane(t, x, z):

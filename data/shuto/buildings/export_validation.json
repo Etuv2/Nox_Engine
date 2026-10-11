@@ -1,0 +1,7662 @@
+{
+  "status": "PASS",
+  "checks": [
+    {
+      "path": "models/shuto/buildings/collision/-1_11_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -79.98999786376953,
+          2.9000000953674316,
+          5513.83984375
+        ],
+        [
+          -74.86000061035156,
+          8.279999732971191,
+          5519.009765625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 1812
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_12_col.glb",
+      "triangles": 228,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -445.72601318359375,
+          2.9000000953674316,
+          6162.576171875
+        ],
+        [
+          125.39019775390625,
+          126.3499984741211,
+          6512.8330078125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 11188
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_3_col.glb",
+      "triangles": 5144,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -512.7999877929688,
+          2.9000000953674316,
+          1490.6199951171875
+        ],
+        [
+          10.449999809265137,
+          78.80000305175781,
+          2020.260009765625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 273552
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_4_col.glb",
+      "triangles": 2808,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -500.29998779296875,
+          2.9000000953674316,
+          1988.489990234375
+        ],
+        [
+          6.449999809265137,
+          42.5,
+          2370.5400390625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 148348
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_5_col.glb",
+      "triangles": 936,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -490.010009765625,
+          2.9000000953674316,
+          2448.75
+        ],
+        [
+          4.670000076293945,
+          78.80000305175781,
+          3019.81005859375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 47784
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_6_col.glb",
+      "triangles": 668,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -521.1900024414062,
+          2.9000000953674316,
+          2963.1201171875
+        ],
+        [
+          14.279999732971191,
+          88.69999694824219,
+          3512.659912109375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 34572
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_7_col.glb",
+      "triangles": 176,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -496.5,
+          2.9000000953674316,
+          3481.840087890625
+        ],
+        [
+          -3.5999999046325684,
+          68.9000015258789,
+          3961.530029296875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 10288
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_8_col.glb",
+      "triangles": 120,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -217.75999450683594,
+          2.9000000953674316,
+          4002.159912109375
+        ],
+        [
+          3.0399999618530273,
+          29.299999237060547,
+          4227.06982421875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 7324
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_3_col.glb",
+      "triangles": 5484,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1010.6199951171875,
+          2.9000000953674316,
+          1477.47998046875
+        ],
+        [
+          -491.1499938964844,
+          45.79999923706055,
+          2020.8499755859375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 291552
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_4_col.glb",
+      "triangles": 1788,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1006.239990234375,
+          2.9000000953674316,
+          1992.9200439453125
+        ],
+        [
+          -518.6799926757812,
+          62.29999923706055,
+          2503.429931640625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 93904
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_5_col.glb",
+      "triangles": 84,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -999.260009765625,
+          2.9000000953674316,
+          2574.6298828125
+        ],
+        [
+          -796.4000244140625,
+          9.5,
+          2787.9599609375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 5840
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_6_col.glb",
+      "triangles": 84,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1010.780029296875,
+          2.9000000953674316,
+          3014.820068359375
+        ],
+        [
+          -824.0,
+          68.9000015258789,
+          3266.81005859375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 5412
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_7_col.glb",
+      "triangles": 144,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -601.4099731445312,
+          2.9000000953674316,
+          3478.1201171875
+        ],
+        [
+          -490.1499938964844,
+          42.5,
+          3637.659912109375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 7452
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_10_col.glb",
+      "triangles": 92,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1477.27001953125,
+          2.9000000953674316,
+          5051.66015625
+        ],
+        [
+          -1380.800048828125,
+          52.400001525878906,
+          5218.4599609375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 6480
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_11_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1513.75,
+          2.9000000953674316,
+          5650.22998046875
+        ],
+        [
+          -1427.4000244140625,
+          45.79999923706055,
+          5880.22021484375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 1808
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_3_col.glb",
+      "triangles": 6504,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1510.6500244140625,
+          2.9000000953674316,
+          1366.5400390625
+        ],
+        [
+          -975.3300170898438,
+          59.900001525878906,
+          2013.4100341796875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 352416
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_4_col.glb",
+      "triangles": 1672,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1519.969970703125,
+          2.9000000953674316,
+          1987.18994140625
+        ],
+        [
+          -993.760009765625,
+          212.99000549316406,
+          2503.955078125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 90108
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_5_col.glb",
+      "triangles": 708,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1508.8900146484375,
+          2.9000000953674316,
+          2485.239990234375
+        ],
+        [
+          -997.280029296875,
+          167.89999389648438,
+          3006.31005859375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 37744
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_6_col.glb",
+      "triangles": 1608,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1529.9100341796875,
+          2.9000000953674316,
+          2979.719970703125
+        ],
+        [
+          -987.1318359375,
+          119.05000305175781,
+          3502.987060546875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 86532
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_7_col.glb",
+      "triangles": 760,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1501.3800048828125,
+          2.9000000953674316,
+          3455.3798828125
+        ],
+        [
+          -1064.7900390625,
+          91.58999633789062,
+          4006.989990234375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 41604
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_8_col.glb",
+      "triangles": 344,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1506.625,
+          2.9000000953674316,
+          3970.489990234375
+        ],
+        [
+          -1309.3900146484375,
+          49.099998474121094,
+          4561.7001953125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 19512
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_9_col.glb",
+      "triangles": 76,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1493.8299560546875,
+          2.9000000953674316,
+          4503.130859375
+        ],
+        [
+          -1301.43994140625,
+          52.400001525878906,
+          4980.7099609375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 5184
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_10_col.glb",
+      "triangles": 868,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2014.469970703125,
+          2.9000000953674316,
+          4972.18017578125
+        ],
+        [
+          -1531.0400390625,
+          59.0,
+          5445.60009765625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 47036
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_11_col.glb",
+      "triangles": 128,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1763.449951171875,
+          2.9000000953674316,
+          5801.27978515625
+        ],
+        [
+          -1554.1400146484375,
+          42.5,
+          6014.93017578125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 7120
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_3_col.glb",
+      "triangles": 4744,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2013.7099609375,
+          2.9000000953674316,
+          1489.3399658203125
+        ],
+        [
+          -1487.1800537109375,
+          105.19999694824219,
+          2048.919921875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 262436
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_4_col.glb",
+      "triangles": 6584,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2014.0899658203125,
+          2.9000000953674316,
+          1988.0814208984375
+        ],
+        [
+          -1497.0899658203125,
+          62.88999938964844,
+          2514.159912109375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 369724
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_5_col.glb",
+      "triangles": 6672,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2019.4599609375,
+          2.9000000953674316,
+          2489.360107421875
+        ],
+        [
+          -1480.52001953125,
+          82.0999984741211,
+          3005.030029296875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 360812
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_6_col.glb",
+      "triangles": 6362,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2008.719970703125,
+          2.9000000953674316,
+          2987.14990234375
+        ],
+        [
+          -1492.199951171875,
+          93.9000015258789,
+          3501.02001953125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 343280
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_7_col.glb",
+      "triangles": 2824,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2009.550048828125,
+          2.9000000953674316,
+          3498.81005859375
+        ],
+        [
+          -1472.56005859375,
+          168.8000030517578,
+          4014.909912109375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 150280
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_8_col.glb",
+      "triangles": 2228,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2032.0799560546875,
+          2.9000000953674316,
+          3995.27392578125
+        ],
+        [
+          -1498.425048828125,
+          45.79999923706055,
+          4520.2099609375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 120688
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_9_col.glb",
+      "triangles": 1816,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2015.02001953125,
+          2.9000000953674316,
+          4488.10009765625
+        ],
+        [
+          -1530.31005859375,
+          113.55999755859375,
+          5025.18017578125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 96276
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_10_col.glb",
+      "triangles": 804,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2506.18994140625,
+          2.9000000953674316,
+          4982.06982421875
+        ],
+        [
+          -1993.8890380859375,
+          101.9000015258789,
+          5507.52001953125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 44344
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_11_col.glb",
+      "triangles": 2052,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2474.1298828125,
+          2.9000000953674316,
+          5467.68017578125
+        ],
+        [
+          -1999.3399658203125,
+          131.60000610351562,
+          6026.68994140625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 108544
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_3_col.glb",
+      "triangles": 2794,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2506.969970703125,
+          2.9000000953674316,
+          1498.4000244140625
+        ],
+        [
+          -1996.27001953125,
+          118.0999984741211,
+          2004.239990234375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 157036
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_4_col.glb",
+      "triangles": 3248,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2506.56005859375,
+          2.9000000953674316,
+          1980.219970703125
+        ],
+        [
+          -1990.6500244140625,
+          141.5,
+          2514.760009765625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 178156
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_5_col.glb",
+      "triangles": 2148,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2504.02001953125,
+          2.9000000953674316,
+          2486.159912109375
+        ],
+        [
+          -1987.68994140625,
+          45.79999923706055,
+          3014.840087890625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 114544
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_6_col.glb",
+      "triangles": 2512,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2482.1259765625,
+          2.9000000953674316,
+          2996.25
+        ],
+        [
+          -1988.760009765625,
+          62.849998474121094,
+          3529.860107421875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 131240
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_7_col.glb",
+      "triangles": 5192,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2508.989990234375,
+          2.9000000953674316,
+          3473.719970703125
+        ],
+        [
+          -1988.2900390625,
+          134.89999389648438,
+          4043.8701171875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 280916
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_8_col.glb",
+      "triangles": 1504,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2537.1298828125,
+          2.9000000953674316,
+          3955.5400390625
+        ],
+        [
+          -1993.280029296875,
+          55.70000076293945,
+          4517.740234375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 80408
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_9_col.glb",
+      "triangles": 2500,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2516.31005859375,
+          2.9000000953674316,
+          4481.64990234375
+        ],
+        [
+          -1991.5899658203125,
+          73.9000015258789,
+          5042.990234375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 134796
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_10_col.glb",
+      "triangles": 148,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2619.739990234375,
+          2.9000000953674316,
+          5004.64013671875
+        ],
+        [
+          -2485.8798828125,
+          42.5,
+          5431.25
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 9052
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_11_col.glb",
+      "triangles": 88,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2625.77001953125,
+          2.9000000953674316,
+          5535.93017578125
+        ],
+        [
+          -2493.7099609375,
+          85.4000015258789,
+          5910.27978515625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 5928
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_3_col.glb",
+      "triangles": 168,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2619.590087890625,
+          2.9000000953674316,
+          1483.7900390625
+        ],
+        [
+          -2459.840087890625,
+          77.68000030517578,
+          2012.010009765625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 10060
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_4_col.glb",
+      "triangles": 720,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2612.669921875,
+          2.9000000953674316,
+          1992.2900390625
+        ],
+        [
+          -2481.360107421875,
+          45.79999923706055,
+          2515.989990234375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 41600
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_5_col.glb",
+      "triangles": 496,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2609.02001953125,
+          2.9000000953674316,
+          2495.949951171875
+        ],
+        [
+          -2493.320068359375,
+          45.79999923706055,
+          2926.2900390625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 27560
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_6_col.glb",
+      "triangles": 284,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2596.260009765625,
+          2.9000000953674316,
+          2991.510009765625
+        ],
+        [
+          -2493.840087890625,
+          39.20000076293945,
+          3490.989990234375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 15848
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_7_col.glb",
+      "triangles": 2064,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2606.070068359375,
+          2.9000000953674316,
+          3510.739990234375
+        ],
+        [
+          -2497.659912109375,
+          45.79999923706055,
+          4001.280029296875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 116488
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_8_col.glb",
+      "triangles": 1044,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2617.0400390625,
+          2.9000000953674316,
+          3993.7099609375
+        ],
+        [
+          -2485.7099609375,
+          45.79999923706055,
+          4518.91015625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 58420
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_9_col.glb",
+      "triangles": 364,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2610.590087890625,
+          2.9000000953674316,
+          4460.72021484375
+        ],
+        [
+          -2480.85009765625,
+          45.79999923706055,
+          5014.240234375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 19732
+    },
+    {
+      "path": "models/shuto/buildings/collision/0_12_col.glb",
+      "triangles": 44,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          22.827232360839844,
+          2.9000000953674316,
+          6038.68505859375
+        ],
+        [
+          230.30935668945312,
+          115.9000015258789,
+          6306.47998046875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 3308
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_10.glb",
+      "triangles": 112,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -500.0,
+          2.9000000953674316,
+          5000.0
+        ],
+        [
+          0.0,
+          7.5,
+          5500.0
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 14104
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_11.glb",
+      "triangles": 518,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -500.0,
+          2.9000000953674316,
+          5499.25390625
+        ],
+        [
+          0.0,
+          8.84000015258789,
+          6000.0
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 55752
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_2.glb",
+      "triangles": 24,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -404.7603454589844,
+          2.9000000953674316,
+          1493.3197021484375
+        ],
+        [
+          -63.82410430908203,
+          10.699999809265137,
+          1500.1959228515625
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 6656
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_3.glb",
+      "triangles": 4478,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -520.01220703125,
+          2.9000000953674316,
+          1487.994384765625
+        ],
+        [
+          19.165861129760742,
+          10.699999809265137,
+          2018.5758056640625
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 481248
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_4.glb",
+      "triangles": 3060,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -517.6673583984375,
+          2.9000000953674316,
+          1967.5057373046875
+        ],
+        [
+          20.21187400817871,
+          10.699999809265137,
+          2500.0
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 335628
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_5.glb",
+      "triangles": 1832,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -512.3802490234375,
+          2.9000000953674316,
+          2500.0
+        ],
+        [
+          23.975791931152344,
+          10.699999809265137,
+          3022.592529296875
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 202620
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_6.glb",
+      "triangles": 2120,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -519.3075561523438,
+          2.9000000953674316,
+          2948.78271484375
+        ],
+        [
+          8.423605918884277,
+          10.699999809265137,
+          3529.5
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 231216
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_7.glb",
+      "triangles": 1590,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -500.0,
+          2.9000000953674316,
+          3487.71826171875
+        ],
+        [
+          12.439029693603516,
+          10.699999809265137,
+          4032.34619140625
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 176168
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_8.glb",
+      "triangles": 540,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -500.0,
+          2.9000000953674316,
+          3971.5087890625
+        ],
+        [
+          0.0,
+          9.399999618530273,
+          4500.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 61164
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_9.glb",
+      "triangles": 4,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -500.0,
+          3.049999952316284,
+          4500.0
+        ],
+        [
+          0.0,
+          3.049999952316284,
+          5000.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 1768
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_10.glb",
+      "triangles": 132,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1000.0,
+          3.049999952316284,
+          5000.0
+        ],
+        [
+          -500.0,
+          3.049999952316284,
+          5500.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 14856
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_11.glb",
+      "triangles": 250,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1000.0,
+          3.049999952316284,
+          5500.0
+        ],
+        [
+          -500.0,
+          3.049999952316284,
+          6000.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 26896
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_2.glb",
+      "triangles": 40,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -808.8618774414062,
+          2.9000000953674316,
+          1482.531982421875
+        ],
+        [
+          -596.7506713867188,
+          10.699999809265137,
+          1498.9493408203125
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 8296
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_3.glb",
+      "triangles": 4566,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1024.1888427734375,
+          2.9000000953674316,
+          1484.5159912109375
+        ],
+        [
+          -474.1255798339844,
+          10.699999809265137,
+          2015.4376220703125
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 503084
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_4.glb",
+      "triangles": 4684,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1008.8798217773438,
+          2.9000000953674316,
+          1982.7098388671875
+        ],
+        [
+          -482.3226318359375,
+          10.699999809265137,
+          2512.570068359375
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 521380
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_5.glb",
+      "triangles": 2048,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1000.0,
+          2.9000000953674316,
+          2491.009765625
+        ],
+        [
+          -482.30401611328125,
+          10.699999809265137,
+          3000.0
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 228636
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_6.glb",
+      "triangles": 904,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1002.5462646484375,
+          2.9000000953674316,
+          3000.0
+        ],
+        [
+          -470.85760498046875,
+          9.390000343322754,
+          3531.392333984375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 101196
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_7.glb",
+      "triangles": 658,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1000.0,
+          2.9000000953674316,
+          3461.1611328125
+        ],
+        [
+          -469.309326171875,
+          9.34000015258789,
+          4000.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 73488
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_8.glb",
+      "triangles": 134,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1000.0,
+          3.049999952316284,
+          4000.0
+        ],
+        [
+          -500.0,
+          3.049999952316284,
+          4500.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 15056
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_9.glb",
+      "triangles": 4,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1000.0,
+          3.049999952316284,
+          4500.0
+        ],
+        [
+          -500.0,
+          3.049999952316284,
+          5000.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 1772
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_10.glb",
+      "triangles": 242,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1501.1922607421875,
+          2.9000000953674316,
+          5000.0
+        ],
+        [
+          -1000.0,
+          8.729999542236328,
+          5500.0
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 33172
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_11.glb",
+      "triangles": 258,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1500.0,
+          2.9000000953674316,
+          5500.0
+        ],
+        [
+          -1000.0,
+          8.079999923706055,
+          6000.9736328125
+        ]
+      ],
+      "external_images": 2,
+      "bytes": 30500
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_3.glb",
+      "triangles": 5390,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1530.413330078125,
+          2.9000000953674316,
+          1476.3763427734375
+        ],
+        [
+          -994.1993408203125,
+          10.699999809265137,
+          2026.2471923828125
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 601976
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_4.glb",
+      "triangles": 8584,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1510.5953369140625,
+          2.9000000953674316,
+          1996.2630615234375
+        ],
+        [
+          -988.9706420898438,
+          10.699999809265137,
+          2506.890625
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 950672
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_5.glb",
+      "triangles": 2946,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1499.7659912109375,
+          2.9000000953674316,
+          2493.9814453125
+        ],
+        [
+          -999.5729370117188,
+          10.699999809265137,
+          3028.114013671875
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 334492
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_6.glb",
+      "triangles": 3314,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1502.711181640625,
+          2.9000000953674316,
+          2958.668212890625
+        ],
+        [
+          -984.8037719726562,
+          10.699999809265137,
+          3518.804931640625
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 374792
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_7.glb",
+      "triangles": 1670,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1509.559814453125,
+          2.9000000953674316,
+          3499.658447265625
+        ],
+        [
+          -1000.0,
+          10.699999809265137,
+          4094.211181640625
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 193164
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_8.glb",
+      "triangles": 876,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1505.0574951171875,
+          2.9000000953674316,
+          3937.031494140625
+        ],
+        [
+          -1000.0,
+          10.699999809265137,
+          4500.0
+        ]
+      ],
+      "external_images": 6,
+      "bytes": 107172
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_9.glb",
+      "triangles": 200,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1479.9595947265625,
+          2.9000000953674316,
+          4500.0
+        ],
+        [
+          -1000.0,
+          8.079999923706055,
+          5000.0
+        ]
+      ],
+      "external_images": 2,
+      "bytes": 24748
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_10.glb",
+      "triangles": 1174,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2011.131591796875,
+          2.9000000953674316,
+          4972.048828125
+        ],
+        [
+          -1494.3948974609375,
+          9.329999923706055,
+          5500.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 132300
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_11.glb",
+      "triangles": 1852,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2045.6165771484375,
+          2.9000000953674316,
+          5500.0
+        ],
+        [
+          -1500.0,
+          10.699999809265137,
+          6003.46875
+        ]
+      ],
+      "external_images": 6,
+      "bytes": 215616
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_12.glb",
+      "triangles": 4,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1707.693115234375,
+          2.9000000953674316,
+          6001.01708984375
+        ],
+        [
+          -1703.5869140625,
+          7.949999809265137,
+          6005.123046875
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 2000
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_2.glb",
+      "triangles": 28,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1665.57958984375,
+          2.9000000953674316,
+          1487.1939697265625
+        ],
+        [
+          -1637.6328125,
+          10.699999809265137,
+          1502.825439453125
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 7352
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_3.glb",
+      "triangles": 5126,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2063.2900390625,
+          2.9000000953674316,
+          1486.8284912109375
+        ],
+        [
+          -1498.5369873046875,
+          10.699999809265137,
+          2011.5771484375
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 572036
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_4.glb",
+      "triangles": 7410,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2053.808349609375,
+          2.9000000953674316,
+          1968.63671875
+        ],
+        [
+          -1491.976806640625,
+          10.699999809265137,
+          2510.0595703125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 821084
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_5.glb",
+      "triangles": 1496,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2006.608154296875,
+          2.9000000953674316,
+          2489.9501953125
+        ],
+        [
+          -1494.8602294921875,
+          9.359999656677246,
+          3003.9619140625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 167008
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_6.glb",
+      "triangles": 1560,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2017.3953857421875,
+          2.9000000953674316,
+          2995.678955078125
+        ],
+        [
+          -1491.4764404296875,
+          9.390000343322754,
+          3507.23681640625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 174280
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_7.glb",
+      "triangles": 2360,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2028.176513671875,
+          2.9000000953674316,
+          3493.925048828125
+        ],
+        [
+          -1500.0,
+          9.380000114440918,
+          4008.113037109375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 261164
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_8.glb",
+      "triangles": 1794,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2037.0809326171875,
+          2.9000000953674316,
+          3988.3388671875
+        ],
+        [
+          -1500.0,
+          9.399999618530273,
+          4525.91845703125
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 201800
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_9.glb",
+      "triangles": 2086,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2038.6956787109375,
+          2.9000000953674316,
+          4477.451171875
+        ],
+        [
+          -1536.5379638671875,
+          10.699999809265137,
+          5008.8935546875
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 238980
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_10.glb",
+      "triangles": 1158,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2519.314453125,
+          2.9000000953674316,
+          4979.42138671875
+        ],
+        [
+          -1998.1925048828125,
+          10.699999809265137,
+          5500.0
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 139632
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_11.glb",
+      "triangles": 2062,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2501.4150390625,
+          2.9000000953674316,
+          5495.09619140625
+        ],
+        [
+          -2000.0,
+          10.699999809265137,
+          6043.30615234375
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 244392
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_12.glb",
+      "triangles": 20,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2490.453857421875,
+          2.9000000953674316,
+          5998.7783203125
+        ],
+        [
+          -2334.92822265625,
+          9.34000015258789,
+          6045.61962890625
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 4028
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_3.glb",
+      "triangles": 6336,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2511.629150390625,
+          2.9000000953674316,
+          1488.513427734375
+        ],
+        [
+          -1985.4468994140625,
+          10.699999809265137,
+          2013.78662109375
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 718564
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_4.glb",
+      "triangles": 4290,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2504.57763671875,
+          2.9000000953674316,
+          1983.227783203125
+        ],
+        [
+          -1992.7528076171875,
+          10.699999809265137,
+          2512.653076171875
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 489324
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_5.glb",
+      "triangles": 5198,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2509.080810546875,
+          2.9000000953674316,
+          2462.2822265625
+        ],
+        [
+          -1980.818359375,
+          10.699999809265137,
+          3004.83447265625
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 595624
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_6.glb",
+      "triangles": 2714,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2506.261474609375,
+          2.9000000953674316,
+          2995.728271484375
+        ],
+        [
+          -1998.20458984375,
+          10.699999809265137,
+          3510.051025390625
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 318716
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_7.glb",
+      "triangles": 3568,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2507.03369140625,
+          2.9000000953674316,
+          3488.5556640625
+        ],
+        [
+          -1997.9202880859375,
+          10.699999809265137,
+          4001.495849609375
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 407976
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_8.glb",
+      "triangles": 2416,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2504.82177734375,
+          2.9000000953674316,
+          3968.14111328125
+        ],
+        [
+          -1936.0535888671875,
+          10.699999809265137,
+          4521.451171875
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 284224
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_9.glb",
+      "triangles": 4072,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2575.6650390625,
+          2.9000000953674316,
+          4491.21044921875
+        ],
+        [
+          -1976.4014892578125,
+          10.699999809265137,
+          5021.44873046875
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 472560
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_10.glb",
+      "triangles": 1022,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2600.233642578125,
+          2.9000000953674316,
+          5097.9013671875
+        ],
+        [
+          -2472.265625,
+          10.699999809265137,
+          5498.6689453125
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 126192
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_11.glb",
+      "triangles": 400,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2626.568359375,
+          2.9000000953674316,
+          5442.27294921875
+        ],
+        [
+          -2490.828125,
+          10.699999809265137,
+          6000.0
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 55824
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_3.glb",
+      "triangles": 1438,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2616.57958984375,
+          2.9000000953674316,
+          1522.8306884765625
+        ],
+        [
+          -2481.5361328125,
+          10.699999809265137,
+          2029.731689453125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 169196
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_4.glb",
+      "triangles": 588,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2616.500244140625,
+          2.9000000953674316,
+          1991.2177734375
+        ],
+        [
+          -2482.987060546875,
+          9.380000114440918,
+          2471.163330078125
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 70528
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_5.glb",
+      "triangles": 610,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2614.482177734375,
+          2.9000000953674316,
+          2524.838623046875
+        ],
+        [
+          -2484.78759765625,
+          10.699999809265137,
+          3016.79541015625
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 78412
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_6.glb",
+      "triangles": 1568,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2610.301025390625,
+          2.9000000953674316,
+          2998.033203125
+        ],
+        [
+          -2490.63916015625,
+          10.699999809265137,
+          3495.9775390625
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 184888
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_7.glb",
+      "triangles": 308,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2614.22900390625,
+          2.9000000953674316,
+          3493.69189453125
+        ],
+        [
+          -2493.415771484375,
+          9.039999961853027,
+          3986.468505859375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 37144
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_8.glb",
+      "triangles": 86,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2624.040771484375,
+          2.9000000953674316,
+          4105.6220703125
+        ],
+        [
+          -2489.57275390625,
+          8.859999656677246,
+          4162.70458984375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 13504
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_9.glb",
+      "triangles": 610,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2630.61962890625,
+          2.9000000953674316,
+          4543.072265625
+        ],
+        [
+          -2471.98046875,
+          10.699999809265137,
+          4985.8388671875
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 78196
+    },
+    {
+      "path": "models/shuto/buildings/context/0_3.glb",
+      "triangles": 36,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          0.5276169776916504,
+          2.9000000953674316,
+          1587.9281005859375
+        ],
+        [
+          5.104455471038818,
+          10.699999809265137,
+          1622.564453125
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 7772
+    },
+    {
+      "path": "models/shuto/buildings/context/0_4.glb",
+      "triangles": 8,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -0.873469352722168,
+          2.9000000953674316,
+          2030.748779296875
+        ],
+        [
+          21.951202392578125,
+          8.180000305175781,
+          2036.2034912109375
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 2420
+    },
+    {
+      "path": "models/shuto/buildings/context/0_5.glb",
+      "triangles": 16,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          0.74966961145401,
+          2.9000000953674316,
+          2675.015625
+        ],
+        [
+          16.4244384765625,
+          9.229999542236328,
+          2831.693359375
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 3224
+    },
+    {
+      "path": "models/shuto/buildings/context/0_6.glb",
+      "triangles": 20,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          0.6370487809181213,
+          2.9000000953674316,
+          3151.797119140625
+        ],
+        [
+          4.282951354980469,
+          10.699999809265137,
+          3164.994384765625
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 6136
+    },
+    {
+      "path": "models/shuto/buildings/context/0_7.glb",
+      "triangles": 28,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1.7749301195144653,
+          2.9000000953674316,
+          3546.71533203125
+        ],
+        [
+          14.154776573181152,
+          10.699999809265137,
+          3768.038330078125
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 6964
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_10_col.glb",
+      "triangles": 60,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1448.7796630859375,
+          2.9000000953674316,
+          5007.619140625
+        ],
+        [
+          -1300.83349609375,
+          8.079999923706055,
+          5082.78662109375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 4428
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_11_col.glb",
+      "triangles": 72,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1483.9393310546875,
+          2.9000000953674316,
+          5647.82958984375
+        ],
+        [
+          -1397.2974853515625,
+          8.079999923706055,
+          6000.9736328125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 5076
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_8_col.glb",
+      "triangles": 72,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1448.7796630859375,
+          2.9000000953674316,
+          4396.09912109375
+        ],
+        [
+          -1300.83349609375,
+          8.079999923706055,
+          4499.03662109375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 5076
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_9_col.glb",
+      "triangles": 168,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1479.9595947265625,
+          2.9000000953674316,
+          4520.50927734375
+        ],
+        [
+          -1300.83349609375,
+          8.079999923706055,
+          4946.70703125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 10252
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-4_11_col.glb",
+      "triangles": 180,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1771.2093505859375,
+          2.9000000953674316,
+          5647.85986328125
+        ],
+        [
+          -1570.4674072265625,
+          8.079999923706055,
+          5986.4736328125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 10912
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.800000190734863,
+          0.0,
+          -9.600000381469727
+        ],
+        [
+          12.800000190734863,
+          66.0,
+          9.600000381469727
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2760
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD0.glb",
+      "triangles": 6506,
+      "parallax_panes": 234,
+      "bounds": [
+        [
+          -12.800000190734863,
+          0.0,
+          -9.600000381469727
+        ],
+        [
+          12.800000190734863,
+          68.5999984741211,
+          10.699999809265137
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 673748
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD1.glb",
+      "triangles": 1156,
+      "parallax_panes": 234,
+      "bounds": [
+        [
+          -12.845000267028809,
+          0.0,
+          -9.645000457763672
+        ],
+        [
+          12.845000267028809,
+          68.5999984741211,
+          10.699999809265137
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 127916
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.800000190734863,
+          0.0,
+          -9.600000381469727
+        ],
+        [
+          12.800000190734863,
+          66.0,
+          9.600000381469727
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4332
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -9.600000381469727,
+          0.0,
+          -8.0
+        ],
+        [
+          9.600000381469727,
+          32.400001525878906,
+          8.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2748
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD0.glb",
+      "triangles": 4522,
+      "parallax_panes": 180,
+      "bounds": [
+        [
+          -9.600000381469727,
+          0.0,
+          -8.0
+        ],
+        [
+          9.600000381469727,
+          34.599998474121094,
+          9.100000381469727
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 471640
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD1.glb",
+      "triangles": 762,
+      "parallax_panes": 180,
+      "bounds": [
+        [
+          -9.645000457763672,
+          0.0,
+          -8.045000076293945
+        ],
+        [
+          9.645000457763672,
+          34.599998474121094,
+          8.045000076293945
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 86580
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -9.600000381469727,
+          0.0,
+          -8.0
+        ],
+        [
+          9.600000381469727,
+          32.400001525878906,
+          8.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4296
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_rooftop_ac.glb",
+      "triangles": 22,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -0.699999988079071,
+          0.0,
+          -0.4000000059604645
+        ],
+        [
+          0.699999988079071,
+          0.6499999761581421,
+          0.4099999964237213
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 5116
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_shop_sign.glb",
+      "triangles": 2,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1.899999976158142,
+          0.0,
+          -0.0
+        ],
+        [
+          1.899999976158142,
+          0.949999988079071,
+          -0.0
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 1852
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_water_tank.glb",
+      "triangles": 36,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -0.6499999761581421,
+          0.0,
+          -0.6499999761581421
+        ],
+        [
+          0.6499999761581421,
+          1.600000023841858,
+          0.6499999761581421
+        ]
+      ],
+      "external_images": 1,
+      "bytes": 5840
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_window_bay.glb",
+      "triangles": 72,
+      "parallax_panes": 2,
+      "bounds": [
+        [
+          -1.600000023841858,
+          0.0,
+          -2.0999999046325684
+        ],
+        [
+          1.600000023841858,
+          3.299999952316284,
+          1.0
+        ]
+      ],
+      "external_images": 2,
+      "bytes": 12888
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -9.600000381469727,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          9.600000381469727,
+          5.0,
+          6.400000095367432
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2768
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD0.glb",
+      "triangles": 362,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -9.600000381469727,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          9.600000381469727,
+          7.400000095367432,
+          7.5
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 44840
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD1.glb",
+      "triangles": 130,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -9.645000457763672,
+          0.0,
+          -6.445000171661377
+        ],
+        [
+          9.645000457763672,
+          7.400000095367432,
+          6.445000171661377
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 19676
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -9.600000381469727,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          9.600000381469727,
+          5.0,
+          6.400000095367432
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4376
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -63.95000076293945,
+          0.0,
+          -28.625
+        ],
+        [
+          63.95000076293945,
+          210.08999633789062,
+          28.625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2752
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD0.glb",
+      "triangles": 2417,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -63.98215866088867,
+          0.0,
+          -28.647964477539062
+        ],
+        [
+          63.98802185058594,
+          210.08999633789062,
+          28.658491134643555
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 291608
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD1.glb",
+      "triangles": 2417,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -63.98215866088867,
+          0.0,
+          -28.647964477539062
+        ],
+        [
+          63.98802185058594,
+          210.08999633789062,
+          28.658491134643555
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 291608
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD2.glb",
+      "triangles": 55,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -63.96758270263672,
+          0.0,
+          -28.621917724609375
+        ],
+        [
+          63.95986557006836,
+          210.08999633789062,
+          28.631315231323242
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 8260
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -152.0,
+          0.0,
+          -52.0
+        ],
+        [
+          152.0,
+          123.44999694824219,
+          52.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2720
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD0.glb",
+      "triangles": 47138,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -149.89999389648438,
+          0.0,
+          -48.5
+        ],
+        [
+          149.89999389648438,
+          123.30000305175781,
+          47.5
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 4915776
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD1.glb",
+      "triangles": 28930,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -149.89999389648438,
+          0.0,
+          -48.5
+        ],
+        [
+          149.89999389648438,
+          123.30000305175781,
+          47.5
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 3022000
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD2.glb",
+      "triangles": 3348,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -149.89999389648438,
+          0.0,
+          -48.5
+        ],
+        [
+          149.89999389648438,
+          122.0,
+          47.5
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 366728
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.800000190734863,
+          0.0,
+          -9.600000381469727
+        ],
+        [
+          12.800000190734863,
+          36.0,
+          9.600000381469727
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2756
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD0.glb",
+      "triangles": 5826,
+      "parallax_panes": 234,
+      "bounds": [
+        [
+          -12.800000190734863,
+          0.0,
+          -9.600000381469727
+        ],
+        [
+          12.800000190734863,
+          38.20000076293945,
+          10.699999809265137
+        ]
+      ],
+      "external_images": 6,
+      "bytes": 606204
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD1.glb",
+      "triangles": 986,
+      "parallax_panes": 234,
+      "bounds": [
+        [
+          -12.845000267028809,
+          0.0,
+          -9.645000457763672
+        ],
+        [
+          12.845000267028809,
+          38.20000076293945,
+          9.645000457763672
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 110988
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.800000190734863,
+          0.0,
+          -9.600000381469727
+        ],
+        [
+          12.800000190734863,
+          36.0,
+          9.600000381469727
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4284
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.400000095367432,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          6.400000095367432,
+          18.0,
+          6.400000095367432
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2752
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD0.glb",
+      "triangles": 2106,
+      "parallax_panes": 80,
+      "bounds": [
+        [
+          -6.400000095367432,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          6.400000095367432,
+          20.399999618530273,
+          7.5
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 225724
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD1.glb",
+      "triangles": 410,
+      "parallax_panes": 80,
+      "bounds": [
+        [
+          -6.445000171661377,
+          0.0,
+          -6.445000171661377
+        ],
+        [
+          6.445000171661377,
+          20.399999618530273,
+          6.445000171661377
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 51232
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.400000095367432,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          6.400000095367432,
+          18.0,
+          6.400000095367432
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4276
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -16.0,
+          0.0,
+          -12.800000190734863
+        ],
+        [
+          16.0,
+          108.0,
+          12.800000190734863
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2728
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD0.glb",
+      "triangles": 8070,
+      "parallax_panes": 324,
+      "bounds": [
+        [
+          -16.0,
+          0.0,
+          -12.800000190734863
+        ],
+        [
+          16.0,
+          110.5999984741211,
+          13.899999618530273
+        ]
+      ],
+      "external_images": 6,
+      "bytes": 835396
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD1.glb",
+      "triangles": 1430,
+      "parallax_panes": 324,
+      "bounds": [
+        [
+          -16.045000076293945,
+          0.0,
+          -12.845000267028809
+        ],
+        [
+          16.045000076293945,
+          110.5999984741211,
+          12.845000267028809
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 156612
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -16.0,
+          0.0,
+          -12.800000190734863
+        ],
+        [
+          16.0,
+          108.0,
+          12.800000190734863
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4220
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -7.199999809265137,
+          0.0,
+          -5.400000095367432
+        ],
+        [
+          7.199999809265137,
+          19.799999237060547,
+          5.400000095367432
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD0.glb",
+      "triangles": 2476,
+      "parallax_panes": 84,
+      "bounds": [
+        [
+          -7.199999809265137,
+          0.0,
+          -5.400000095367432
+        ],
+        [
+          7.199999809265137,
+          22.200000762939453,
+          6.5
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 261196
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD1.glb",
+      "triangles": 506,
+      "parallax_panes": 84,
+      "bounds": [
+        [
+          -7.244999885559082,
+          0.0,
+          -5.445000171661377
+        ],
+        [
+          7.244999885559082,
+          22.200000762939453,
+          6.5
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 60136
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -7.199999809265137,
+          0.0,
+          -5.400000095367432
+        ],
+        [
+          7.199999809265137,
+          19.799999237060547,
+          5.400000095367432
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4400
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -4.800000190734863,
+          0.0,
+          -4.0
+        ],
+        [
+          4.800000190734863,
+          9.899999618530273,
+          4.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2752
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD0.glb",
+      "triangles": 756,
+      "parallax_panes": 24,
+      "bounds": [
+        [
+          -4.800000190734863,
+          0.0,
+          -4.0
+        ],
+        [
+          4.800000190734863,
+          12.100000381469727,
+          5.099999904632568
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 84784
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD1.glb",
+      "triangles": 170,
+      "parallax_panes": 24,
+      "bounds": [
+        [
+          -4.84499979019165,
+          0.0,
+          -4.045000076293945
+        ],
+        [
+          4.84499979019165,
+          12.100000381469727,
+          5.099999904632568
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 24880
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -4.800000190734863,
+          0.0,
+          -4.0
+        ],
+        [
+          4.800000190734863,
+          9.899999618530273,
+          4.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4332
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -14.399999618530273,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          14.399999618530273,
+          26.399999618530273,
+          6.400000095367432
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2780
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD0.glb",
+      "triangles": 5792,
+      "parallax_panes": 208,
+      "bounds": [
+        [
+          -14.399999618530273,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          14.399999618530273,
+          28.600000381469727,
+          7.5
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 598988
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD1.glb",
+      "triangles": 986,
+      "parallax_panes": 208,
+      "bounds": [
+        [
+          -14.444999694824219,
+          0.0,
+          -6.445000171661377
+        ],
+        [
+          14.444999694824219,
+          28.600000381469727,
+          7.5
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 108632
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -14.399999618530273,
+          0.0,
+          -6.400000095367432
+        ],
+        [
+          14.399999618530273,
+          26.399999618530273,
+          6.400000095367432
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4384
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.400000095367432,
+          0.0,
+          -8.0
+        ],
+        [
+          6.400000095367432,
+          18.0,
+          8.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2724
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD0.glb",
+      "triangles": 2298,
+      "parallax_panes": 90,
+      "bounds": [
+        [
+          -6.400000095367432,
+          0.0,
+          -8.0
+        ],
+        [
+          6.400000095367432,
+          20.200000762939453,
+          9.100000381469727
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 244624
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD1.glb",
+      "triangles": 402,
+      "parallax_panes": 90,
+      "bounds": [
+        [
+          -6.445000171661377,
+          0.0,
+          -8.045000076293945
+        ],
+        [
+          6.445000171661377,
+          20.200000762939453,
+          8.045000076293945
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 49704
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.400000095367432,
+          0.0,
+          -8.0
+        ],
+        [
+          6.400000095367432,
+          18.0,
+          8.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4216
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -8.0,
+          0.0,
+          -4.0
+        ],
+        [
+          8.0,
+          10.800000190734863,
+          4.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2712
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD0.glb",
+      "triangles": 1162,
+      "parallax_panes": 42,
+      "bounds": [
+        [
+          -8.0,
+          0.0,
+          -4.0
+        ],
+        [
+          8.0,
+          13.199999809265137,
+          5.099999904632568
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 129408
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD1.glb",
+      "triangles": 258,
+      "parallax_panes": 42,
+      "bounds": [
+        [
+          -8.045000076293945,
+          0.0,
+          -4.045000076293945
+        ],
+        [
+          8.045000076293945,
+          13.199999809265137,
+          4.045000076293945
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 35700
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -8.0,
+          0.0,
+          -4.0
+        ],
+        [
+          8.0,
+          10.800000190734863,
+          4.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4212
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.0,
+          0.0,
+          -12.0
+        ],
+        [
+          24.0,
+          10.0,
+          12.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2700
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD0.glb",
+      "triangles": 1242,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.0,
+          0.0,
+          -12.0
+        ],
+        [
+          24.0,
+          12.199999809265137,
+          13.100000381469727
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 133816
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD1.glb",
+      "triangles": 234,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.045000076293945,
+          0.0,
+          -12.045000076293945
+        ],
+        [
+          24.045000076293945,
+          12.199999809265137,
+          12.045000076293945
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 29480
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.0,
+          0.0,
+          -12.0
+        ],
+        [
+          24.0,
+          10.0,
+          12.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4236
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.0,
+          0.0,
+          -9.0
+        ],
+        [
+          12.0,
+          5.0,
+          9.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2696
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD0.glb",
+      "triangles": 458,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.0,
+          0.0,
+          -9.0
+        ],
+        [
+          12.0,
+          7.400000095367432,
+          10.100000381469727
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 54468
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD1.glb",
+      "triangles": 146,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.045000076293945,
+          0.0,
+          -9.045000076293945
+        ],
+        [
+          12.045000076293945,
+          7.400000095367432,
+          9.045000076293945
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 21148
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -12.0,
+          0.0,
+          -9.0
+        ],
+        [
+          12.0,
+          5.0,
+          9.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4228
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.0,
+          0.0,
+          -12.0
+        ],
+        [
+          18.0,
+          15.0,
+          12.0
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2708
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD0.glb",
+      "triangles": 1546,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.0,
+          0.0,
+          -12.0
+        ],
+        [
+          18.0,
+          17.200000762939453,
+          13.100000381469727
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 164876
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD1.glb",
+      "triangles": 282,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.045000076293945,
+          0.0,
+          -12.045000076293945
+        ],
+        [
+          18.045000076293945,
+          17.200000762939453,
+          12.045000076293945
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 34416
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD2.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.0,
+          0.0,
+          -12.0
+        ],
+        [
+          18.0,
+          15.0,
+          12.0
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4260
+    },
+    {
+      "path": "models/shuto/buildings/probe/apartment_06.glb",
+      "triangles": 2362,
+      "parallax_panes": 84,
+      "bounds": [
+        [
+          -7.199999809265137,
+          0.0,
+          -6.5
+        ],
+        [
+          8.300000190734863,
+          22.0,
+          5.400000095367432
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 247656
+    },
+    {
+      "path": "models/shuto/buildings/probe/edited_compact.glb",
+      "triangles": 756,
+      "parallax_panes": 24,
+      "bounds": [
+        [
+          -4.800000190734863,
+          0.0,
+          -4.0
+        ],
+        [
+          4.800000190734863,
+          12.100000381469727,
+          5.099999904632568
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 84784
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_11.glb",
+      "triangles": 18,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -79.98999786376953,
+          2.9000000953674316,
+          5513.83984375
+        ],
+        [
+          -74.86000061035156,
+          8.729999542236328,
+          5519.009765625
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 6336
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_12.glb",
+      "triangles": 29420,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -461.47900390625,
+          -1.5,
+          6149.82421875
+        ],
+        [
+          131.78799438476562,
+          126.19999694824219,
+          6544.63818359375
+        ]
+      ],
+      "external_images": 5,
+      "bytes": 3302040
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_3.glb",
+      "triangles": 74581,
+      "parallax_panes": 6416,
+      "bounds": [
+        [
+          -512.7999877929688,
+          -1.5,
+          1490.6199951171875
+        ],
+        [
+          10.449999809265137,
+          81.19999694824219,
+          2020.260009765625
+        ]
+      ],
+      "external_images": 19,
+      "bytes": 8702484
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_4.glb",
+      "triangles": 2734,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -500.29998779296875,
+          -1.5,
+          1988.489990234375
+        ],
+        [
+          6.449999809265137,
+          44.70000076293945,
+          2370.5400390625
+        ]
+      ],
+      "external_images": 18,
+      "bytes": 302784
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_5.glb",
+      "triangles": 811,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -490.010009765625,
+          -1.5,
+          2448.75
+        ],
+        [
+          4.670000076293945,
+          78.80000305175781,
+          3019.81005859375
+        ]
+      ],
+      "external_images": 11,
+      "bytes": 86572
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_6.glb",
+      "triangles": 556,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -521.1900024414062,
+          -1.5,
+          2963.1201171875
+        ],
+        [
+          14.279999732971191,
+          78.82367706298828,
+          3512.659912109375
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 73272
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_7.glb",
+      "triangles": 197,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -496.5,
+          2.9000000953674316,
+          3481.840087890625
+        ],
+        [
+          -3.6000003814697266,
+          71.5,
+          3961.530029296875
+        ]
+      ],
+      "external_images": 16,
+      "bytes": 35220
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_8.glb",
+      "triangles": 103,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -217.75999450683594,
+          -1.5,
+          4002.159912109375
+        ],
+        [
+          3.0400002002716064,
+          29.299999237060547,
+          4227.06982421875
+        ]
+      ],
+      "external_images": 8,
+      "bytes": 17604
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_3.glb",
+      "triangles": 106084,
+      "parallax_panes": 6850,
+      "bounds": [
+        [
+          -1010.6199951171875,
+          -1.5,
+          1477.47998046875
+        ],
+        [
+          -491.1499938964844,
+          45.79999923706055,
+          2020.8499755859375
+        ]
+      ],
+      "external_images": 19,
+      "bytes": 13128868
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_4.glb",
+      "triangles": 58910,
+      "parallax_panes": 5992,
+      "bounds": [
+        [
+          -1006.239990234375,
+          2.9000000953674316,
+          1992.9200439453125
+        ],
+        [
+          -518.6799926757812,
+          64.9000015258789,
+          2503.429931640625
+        ]
+      ],
+      "external_images": 21,
+      "bytes": 7208260
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_5.glb",
+      "triangles": 154,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -999.260009765625,
+          2.9000000953674316,
+          2574.6298828125
+        ],
+        [
+          -796.4000244140625,
+          10.25,
+          2787.9599609375
+        ]
+      ],
+      "external_images": 11,
+      "bytes": 30068
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_6.glb",
+      "triangles": 156,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1010.780029296875,
+          2.9000000953674316,
+          3014.820068359375
+        ],
+        [
+          -824.0,
+          71.0999984741211,
+          3266.81005859375
+        ]
+      ],
+      "external_images": 12,
+      "bytes": 30100
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_7.glb",
+      "triangles": 111,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -601.4099731445312,
+          2.9000000953674316,
+          3478.1201171875
+        ],
+        [
+          -490.1499938964844,
+          42.5,
+          3637.659912109375
+        ]
+      ],
+      "external_images": 7,
+      "bytes": 17284
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_10.glb",
+      "triangles": 3914,
+      "parallax_panes": 126,
+      "bounds": [
+        [
+          -1477.27001953125,
+          2.9000000953674316,
+          5051.66015625
+        ],
+        [
+          -1380.800048828125,
+          54.79999923706055,
+          5218.4599609375
+        ]
+      ],
+      "external_images": 12,
+      "bytes": 431956
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_11.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1513.75,
+          2.9000000953674316,
+          5650.22998046875
+        ],
+        [
+          -1427.4000244140625,
+          45.79999923706055,
+          5880.22021484375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 4140
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_3.glb",
+      "triangles": 5501,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1510.6500244140625,
+          -1.5,
+          1366.5400390625
+        ],
+        [
+          -975.3300170898438,
+          59.900001525878906,
+          2013.4100341796875
+        ]
+      ],
+      "external_images": 17,
+      "bytes": 597068
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_4.glb",
+      "triangles": 9449,
+      "parallax_panes": 781,
+      "bounds": [
+        [
+          -1519.969970703125,
+          2.9000000953674316,
+          1987.18994140625
+        ],
+        [
+          -993.760009765625,
+          212.99000549316406,
+          2503.955078125
+        ]
+      ],
+      "external_images": 21,
+      "bytes": 1191988
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_5.glb",
+      "triangles": 46741,
+      "parallax_panes": 2665,
+      "bounds": [
+        [
+          -1508.8900146484375,
+          2.9000000953674316,
+          2485.239990234375
+        ],
+        [
+          -997.280029296875,
+          170.5,
+          3006.31005859375
+        ]
+      ],
+      "external_images": 21,
+      "bytes": 5689724
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_6.glb",
+      "triangles": 28430,
+      "parallax_panes": 2500,
+      "bounds": [
+        [
+          -1529.9100341796875,
+          2.9000000953674316,
+          2979.719970703125
+        ],
+        [
+          -987.1318359375,
+          121.6500015258789,
+          3502.987060546875
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 3435780
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_7.glb",
+      "triangles": 44414,
+      "parallax_panes": 1590,
+      "bounds": [
+        [
+          -1501.3800048828125,
+          2.9000000953674316,
+          3455.3798828125
+        ],
+        [
+          -1064.7900390625,
+          94.19000244140625,
+          4006.989990234375
+        ]
+      ],
+      "external_images": 20,
+      "bytes": 5481320
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_8.glb",
+      "triangles": 10030,
+      "parallax_panes": 902,
+      "bounds": [
+        [
+          -1506.625,
+          2.9000000953674316,
+          3970.489990234375
+        ],
+        [
+          -1309.3900146484375,
+          51.29999923706055,
+          4561.7001953125
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 1270612
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_9.glb",
+      "triangles": 19264,
+      "parallax_panes": 798,
+      "bounds": [
+        [
+          -1493.872314453125,
+          2.9000000953674316,
+          4503.130859375
+        ],
+        [
+          -1301.43994140625,
+          54.599998474121094,
+          4980.7099609375
+        ]
+      ],
+      "external_images": 14,
+      "bytes": 2320784
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_10.glb",
+      "triangles": 33329,
+      "parallax_panes": 3023,
+      "bounds": [
+        [
+          -2014.469970703125,
+          2.9000000953674316,
+          4972.18017578125
+        ],
+        [
+          -1531.0400390625,
+          61.20000076293945,
+          5445.60009765625
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 4127708
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_11.glb",
+      "triangles": 120,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -1763.449951171875,
+          -1.5,
+          5801.27978515625
+        ],
+        [
+          -1554.1400146484375,
+          42.5,
+          6014.93017578125
+        ]
+      ],
+      "external_images": 8,
+      "bytes": 18708
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_3.glb",
+      "triangles": 4137,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2013.7099609375,
+          -1.5,
+          1489.3399658203125
+        ],
+        [
+          -1487.1800537109375,
+          107.80000305175781,
+          2048.919921875
+        ]
+      ],
+      "external_images": 15,
+      "bytes": 462724
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_4.glb",
+      "triangles": 5442,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2014.0899658203125,
+          2.9000000953674316,
+          1988.0814208984375
+        ],
+        [
+          -1497.0899658203125,
+          62.88999938964844,
+          2514.159912109375
+        ]
+      ],
+      "external_images": 14,
+      "bytes": 607712
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_5.glb",
+      "triangles": 8835,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2019.4599609375,
+          2.9000000953674316,
+          2489.360107421875
+        ],
+        [
+          -1480.52001953125,
+          84.69999694824219,
+          3005.030029296875
+        ]
+      ],
+      "external_images": 16,
+      "bytes": 999096
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_6.glb",
+      "triangles": 39762,
+      "parallax_panes": 3124,
+      "bounds": [
+        [
+          -2008.719970703125,
+          2.9000000953674316,
+          2987.14990234375
+        ],
+        [
+          -1492.199951171875,
+          96.0999984741211,
+          3501.02001953125
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 4783596
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_7.glb",
+      "triangles": 13517,
+      "parallax_panes": 1309,
+      "bounds": [
+        [
+          -2009.550048828125,
+          2.9000000953674316,
+          3498.81005859375
+        ],
+        [
+          -1472.56005859375,
+          171.0,
+          4014.909912109375
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 1637388
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_8.glb",
+      "triangles": 37078,
+      "parallax_panes": 1023,
+      "bounds": [
+        [
+          -2032.0799560546875,
+          2.9000000953674316,
+          3995.27392578125
+        ],
+        [
+          -1498.425048828125,
+          48.400001525878906,
+          4520.2099609375
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 4401092
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_9.glb",
+      "triangles": 128311,
+      "parallax_panes": 7582,
+      "bounds": [
+        [
+          -2015.02001953125,
+          2.9000000953674316,
+          4488.10009765625
+        ],
+        [
+          -1529.310546875,
+          116.16000366210938,
+          5025.18017578125
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 15102268
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_10.glb",
+      "triangles": 12876,
+      "parallax_panes": 282,
+      "bounds": [
+        [
+          -2506.18994140625,
+          2.9000000953674316,
+          4982.06982421875
+        ],
+        [
+          -1993.8890380859375,
+          101.9000015258789,
+          5507.52001953125
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 1592616
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_11.glb",
+      "triangles": 48427,
+      "parallax_panes": 4727,
+      "bounds": [
+        [
+          -2474.1298828125,
+          -1.5,
+          5467.13818359375
+        ],
+        [
+          -1999.3399658203125,
+          134.1999969482422,
+          6026.68994140625
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 5772760
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_3.glb",
+      "triangles": 2401,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2506.969970703125,
+          -1.5,
+          1498.4000244140625
+        ],
+        [
+          -1996.27001953125,
+          118.0999984741211,
+          2004.239990234375
+        ]
+      ],
+      "external_images": 16,
+      "bytes": 280300
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_4.glb",
+      "triangles": 2622,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2506.56005859375,
+          2.9000000953674316,
+          1980.219970703125
+        ],
+        [
+          -1990.6500244140625,
+          141.5,
+          2514.760009765625
+        ]
+      ],
+      "external_images": 16,
+      "bytes": 301824
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_5.glb",
+      "triangles": 1715,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2504.02001953125,
+          2.9000000953674316,
+          2486.159912109375
+        ],
+        [
+          -1987.68994140625,
+          45.79999923706055,
+          3014.840087890625
+        ]
+      ],
+      "external_images": 13,
+      "bytes": 196012
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_6.glb",
+      "triangles": 36949,
+      "parallax_panes": 2125,
+      "bounds": [
+        [
+          -2482.1259765625,
+          2.9000000953674316,
+          2996.25
+        ],
+        [
+          -1988.760009765625,
+          65.25,
+          3529.860107421875
+        ]
+      ],
+      "external_images": 22,
+      "bytes": 4518216
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_7.glb",
+      "triangles": 32091,
+      "parallax_panes": 3775,
+      "bounds": [
+        [
+          -2508.989990234375,
+          2.9000000953674316,
+          3473.719970703125
+        ],
+        [
+          -1988.2900390625,
+          124.64913940429688,
+          4043.8701171875
+        ]
+      ],
+      "external_images": 24,
+      "bytes": 3942348
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_8.glb",
+      "triangles": 1259,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2537.1298828125,
+          2.9000000953674316,
+          3955.5400390625
+        ],
+        [
+          -1993.280029296875,
+          55.70000076293945,
+          4517.740234375
+        ]
+      ],
+      "external_images": 21,
+      "bytes": 160308
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_9.glb",
+      "triangles": 2614,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2516.31005859375,
+          2.9000000953674316,
+          4481.64990234375
+        ],
+        [
+          -1991.5899658203125,
+          75.0,
+          5042.990234375
+        ]
+      ],
+      "external_images": 21,
+      "bytes": 318688
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_10.glb",
+      "triangles": 135,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2619.739990234375,
+          -1.5,
+          5004.64013671875
+        ],
+        [
+          -2485.8798828125,
+          42.5,
+          5431.25
+        ]
+      ],
+      "external_images": 14,
+      "bytes": 26536
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_11.glb",
+      "triangles": 194,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2625.77001953125,
+          -1.5,
+          5535.93017578125
+        ],
+        [
+          -2493.7099609375,
+          88.0,
+          5910.27978515625
+        ]
+      ],
+      "external_images": 14,
+      "bytes": 34776
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_3.glb",
+      "triangles": 165,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2619.590087890625,
+          -1.5,
+          1483.7900390625
+        ],
+        [
+          -2459.840087890625,
+          77.68000030517578,
+          2012.010009765625
+        ]
+      ],
+      "external_images": 9,
+      "bytes": 24616
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_4.glb",
+      "triangles": 651,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2612.669921875,
+          -1.5,
+          1992.2900390625
+        ],
+        [
+          -2481.360107421875,
+          45.79999923706055,
+          2515.989990234375
+        ]
+      ],
+      "external_images": 13,
+      "bytes": 81056
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_5.glb",
+      "triangles": 436,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2609.02001953125,
+          -1.5,
+          2495.949951171875
+        ],
+        [
+          -2493.320068359375,
+          45.79999923706055,
+          2926.2900390625
+        ]
+      ],
+      "external_images": 11,
+      "bytes": 55444
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_6.glb",
+      "triangles": 2418,
+      "parallax_panes": 125,
+      "bounds": [
+        [
+          -2596.260009765625,
+          2.9000000953674316,
+          2991.510009765625
+        ],
+        [
+          -2493.840087890625,
+          41.400001525878906,
+          3490.989990234375
+        ]
+      ],
+      "external_images": 20,
+      "bytes": 330456
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_7.glb",
+      "triangles": 5632,
+      "parallax_panes": 300,
+      "bounds": [
+        [
+          -2606.070068359375,
+          -1.5,
+          3510.739990234375
+        ],
+        [
+          -2497.659912109375,
+          48.400001525878906,
+          4001.280029296875
+        ]
+      ],
+      "external_images": 12,
+      "bytes": 674232
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_8.glb",
+      "triangles": 936,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2617.0400390625,
+          -1.5,
+          3993.7099609375
+        ],
+        [
+          -2485.7099609375,
+          45.79999923706055,
+          4518.91015625
+        ]
+      ],
+      "external_images": 18,
+      "bytes": 116196
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_9.glb",
+      "triangles": 313,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -2610.590087890625,
+          -1.5,
+          4460.72021484375
+        ],
+        [
+          -2480.85009765625,
+          45.79999923706055,
+          5014.240234375
+        ]
+      ],
+      "external_images": 14,
+      "bytes": 45964
+    },
+    {
+      "path": "models/shuto/buildings/render/0_12.glb",
+      "triangles": 287,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          8.032999992370605,
+          -1.5,
+          6025.05078125
+        ],
+        [
+          247.52699279785156,
+          118.5,
+          6317.64990234375
+        ]
+      ],
+      "external_images": 7,
+      "bytes": 38576
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.476693630218506,
+          0.0,
+          -8.422372817993164
+        ],
+        [
+          6.476693630218506,
+          31.087244033813477,
+          8.422372817993164
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD0.glb",
+      "triangles": 22624,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.476693630218506,
+          0.0,
+          -8.422372817993164
+        ],
+        [
+          6.476693630218506,
+          31.087244033813477,
+          8.422372817993164
+        ]
+      ],
+      "external_images": 2,
+      "bytes": 2090596
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD1.glb",
+      "triangles": 12995,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.476693630218506,
+          0.0,
+          -8.422372817993164
+        ],
+        [
+          6.476693630218506,
+          31.087244033813477,
+          8.422372817993164
+        ]
+      ],
+      "external_images": 2,
+      "bytes": 1603700
+    },
+    {
+      "path": "models/shuto/buildings/restricted_local/source_japanese_01_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -6.476693630218506,
+          0.0,
+          -8.422372817993164
+        ],
+        [
+          6.476693630218506,
+          31.087244033813477,
+          8.422372817993164
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.7562255859375,
+          0.0,
+          -23.266647338867188
+        ],
+        [
+          30.7562255859375,
+          300.5096740722656,
+          23.266647338867188
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD0.glb",
+      "triangles": 256,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.7562255859375,
+          0.0,
+          -23.266647338867188
+        ],
+        [
+          30.7562255859375,
+          300.5096740722656,
+          23.266647338867188
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 29668
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD1.glb",
+      "triangles": 149,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.7562255859375,
+          0.0,
+          -23.266647338867188
+        ],
+        [
+          30.7562255859375,
+          300.5096740722656,
+          23.266647338867188
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 24104
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.7562255859375,
+          0.0,
+          -23.266647338867188
+        ],
+        [
+          30.7562255859375,
+          300.5096740722656,
+          23.266647338867188
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.395431518554688,
+          0.0,
+          -21.415618896484375
+        ],
+        [
+          21.395431518554688,
+          260.2049865722656,
+          21.415618896484375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD0.glb",
+      "triangles": 337,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.395431518554688,
+          0.0,
+          -21.415618896484375
+        ],
+        [
+          21.395431518554688,
+          260.2049865722656,
+          21.415618896484375
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 45200
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD1.glb",
+      "triangles": 299,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.395431518554688,
+          0.0,
+          -21.415618896484375
+        ],
+        [
+          21.395431518554688,
+          260.2049865722656,
+          21.415618896484375
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 40500
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.395431518554688,
+          0.0,
+          -21.415618896484375
+        ],
+        [
+          21.395431518554688,
+          260.2049865722656,
+          21.415618896484375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.47575378417969,
+          0.0,
+          -46.302711486816406
+        ],
+        [
+          32.47575378417969,
+          235.6424560546875,
+          46.302711486816406
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD0.glb",
+      "triangles": 539,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.47575378417969,
+          0.0,
+          -46.30270767211914
+        ],
+        [
+          32.47575378417969,
+          235.6424560546875,
+          46.302711486816406
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 61068
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD1.glb",
+      "triangles": 404,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.47575378417969,
+          0.0,
+          -46.30270767211914
+        ],
+        [
+          32.47575378417969,
+          235.6424560546875,
+          46.302711486816406
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 50280
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.47575378417969,
+          0.0,
+          -46.302711486816406
+        ],
+        [
+          32.47575378417969,
+          235.6424560546875,
+          46.302711486816406
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -28.040313720703125,
+          0.0,
+          -26.0328369140625
+        ],
+        [
+          28.040313720703125,
+          192.5156707763672,
+          26.0328369140625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD0.glb",
+      "triangles": 39,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -28.040313720703125,
+          0.0,
+          -26.0328369140625
+        ],
+        [
+          28.040313720703125,
+          192.5156707763672,
+          26.0328369140625
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 8132
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD1.glb",
+      "triangles": 38,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -28.040313720703125,
+          0.0,
+          -26.0328369140625
+        ],
+        [
+          28.040313720703125,
+          192.5156707763672,
+          26.0328369140625
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 8068
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -28.040313720703125,
+          0.0,
+          -26.0328369140625
+        ],
+        [
+          28.040313720703125,
+          192.5156707763672,
+          26.0328369140625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -44.9515380859375,
+          0.0,
+          -18.850467681884766
+        ],
+        [
+          44.9515380859375,
+          182.36123657226562,
+          18.850467681884766
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD0.glb",
+      "triangles": 1551,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -44.9515380859375,
+          0.0,
+          -18.850467681884766
+        ],
+        [
+          44.9515380859375,
+          182.36123657226562,
+          18.850467681884766
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 215180
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD1.glb",
+      "triangles": 1484,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -44.9515380859375,
+          0.0,
+          -18.850467681884766
+        ],
+        [
+          44.9515380859375,
+          182.36123657226562,
+          18.850467681884766
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 209984
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -44.9515380859375,
+          0.0,
+          -18.850467681884766
+        ],
+        [
+          44.9515380859375,
+          182.36123657226562,
+          18.850467681884766
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.456451416015625,
+          0.0,
+          -22.41549301147461
+        ],
+        [
+          22.456451416015625,
+          180.5556640625,
+          22.41549301147461
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD0.glb",
+      "triangles": 295,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.456451416015625,
+          0.0,
+          -22.415496826171875
+        ],
+        [
+          22.456451416015625,
+          180.5556640625,
+          22.415489196777344
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 32920
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD1.glb",
+      "triangles": 199,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.456451416015625,
+          0.0,
+          -22.415496826171875
+        ],
+        [
+          22.456451416015625,
+          180.5556640625,
+          22.415443420410156
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 26208
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.456451416015625,
+          0.0,
+          -22.41549301147461
+        ],
+        [
+          22.456451416015625,
+          180.5556640625,
+          22.41549301147461
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.282501220703125,
+          0.0,
+          -13.698204040527344
+        ],
+        [
+          18.282501220703125,
+          163.25186157226562,
+          13.698204040527344
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD0.glb",
+      "triangles": 182,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.282501220703125,
+          0.0,
+          -13.698196411132812
+        ],
+        [
+          18.282501220703125,
+          163.25186157226562,
+          13.698211669921875
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 25388
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD1.glb",
+      "triangles": 156,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.282501220703125,
+          0.0,
+          -13.698196411132812
+        ],
+        [
+          18.282501220703125,
+          163.25186157226562,
+          13.698211669921875
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 22872
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.282501220703125,
+          0.0,
+          -13.698204040527344
+        ],
+        [
+          18.282501220703125,
+          163.25186157226562,
+          13.698204040527344
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.98846435546875,
+          0.0,
+          -22.20708465576172
+        ],
+        [
+          27.98846435546875,
+          150.48626708984375,
+          22.20708465576172
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD0.glb",
+      "triangles": 46,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.98846435546875,
+          0.0,
+          -22.207077026367188
+        ],
+        [
+          27.98846435546875,
+          150.48626708984375,
+          22.20709228515625
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 8548
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD1.glb",
+      "triangles": 46,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.98846435546875,
+          0.0,
+          -22.207077026367188
+        ],
+        [
+          27.98846435546875,
+          150.48626708984375,
+          22.20709228515625
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 8560
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.98846435546875,
+          0.0,
+          -22.20708465576172
+        ],
+        [
+          27.98846435546875,
+          150.48626708984375,
+          22.20708465576172
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.18524169921875,
+          0.0,
+          -19.034942626953125
+        ],
+        [
+          19.18524169921875,
+          132.57217407226562,
+          19.034942626953125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD0.glb",
+      "triangles": 156,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.18524169921875,
+          0.0,
+          -19.034942626953125
+        ],
+        [
+          19.18524169921875,
+          132.57217407226562,
+          19.034942626953125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 21516
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD1.glb",
+      "triangles": 132,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.18524169921875,
+          0.0,
+          -19.034942626953125
+        ],
+        [
+          19.18524169921875,
+          132.57217407226562,
+          19.034942626953125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 19396
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.18524169921875,
+          0.0,
+          -19.034942626953125
+        ],
+        [
+          19.18524169921875,
+          132.57217407226562,
+          19.034942626953125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.85906982421875,
+          0.0,
+          -24.85427474975586
+        ],
+        [
+          24.85906982421875,
+          127.86905670166016,
+          24.85427474975586
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD0.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.85906982421875,
+          0.0,
+          -24.854270935058594
+        ],
+        [
+          24.85906982421875,
+          127.86905670166016,
+          24.854278564453125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 4616
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD1.glb",
+      "triangles": 10,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.85906982421875,
+          0.0,
+          -24.854270935058594
+        ],
+        [
+          24.85906982421875,
+          127.86905670166016,
+          24.854278564453125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 4624
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -24.85906982421875,
+          0.0,
+          -24.85427474975586
+        ],
+        [
+          24.85906982421875,
+          127.86905670166016,
+          24.85427474975586
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.87799072265625,
+          0.0,
+          -12.772418975830078
+        ],
+        [
+          31.87799072265625,
+          123.72657775878906,
+          12.772418975830078
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD0.glb",
+      "triangles": 270,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.87799072265625,
+          0.0,
+          -12.772415161132812
+        ],
+        [
+          31.87799072265625,
+          123.72657775878906,
+          12.772422790527344
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 42300
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD1.glb",
+      "triangles": 243,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.87799072265625,
+          0.0,
+          -12.772415161132812
+        ],
+        [
+          31.87799072265625,
+          123.72657775878906,
+          12.772422790527344
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 38884
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.87799072265625,
+          0.0,
+          -12.772418975830078
+        ],
+        [
+          31.87799072265625,
+          123.72657775878906,
+          12.772418975830078
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.2574462890625,
+          0.0,
+          -25.65850830078125
+        ],
+        [
+          21.2574462890625,
+          103.41197204589844,
+          25.65850830078125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD0.glb",
+      "triangles": 830,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.2574462890625,
+          0.0,
+          -25.65850830078125
+        ],
+        [
+          21.2574462890625,
+          103.41197204589844,
+          25.65850830078125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 110320
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD1.glb",
+      "triangles": 786,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.2574462890625,
+          0.0,
+          -25.65850830078125
+        ],
+        [
+          21.2574462890625,
+          103.41197204589844,
+          25.65850830078125
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 106672
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -21.2574462890625,
+          0.0,
+          -25.65850830078125
+        ],
+        [
+          21.2574462890625,
+          103.41197204589844,
+          25.65850830078125
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.322784423828125,
+          0.0,
+          -19.024490356445312
+        ],
+        [
+          22.322784423828125,
+          97.41594696044922,
+          19.024490356445312
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD0.glb",
+      "triangles": 236,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.322784423828125,
+          0.0,
+          -19.024490356445312
+        ],
+        [
+          22.322784423828125,
+          97.41594696044922,
+          19.024490356445312
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 30448
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD1.glb",
+      "triangles": 172,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.322784423828125,
+          0.0,
+          -19.024490356445312
+        ],
+        [
+          22.322784423828125,
+          97.41594696044922,
+          19.024490356445312
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 25080
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -22.322784423828125,
+          0.0,
+          -19.024490356445312
+        ],
+        [
+          22.322784423828125,
+          97.41594696044922,
+          19.024490356445312
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.2701416015625,
+          0.0,
+          -12.681045532226562
+        ],
+        [
+          37.2701416015625,
+          95.00001525878906,
+          12.681045532226562
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD0.glb",
+      "triangles": 317,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.2701416015625,
+          0.0,
+          -12.681045532226562
+        ],
+        [
+          37.2701416015625,
+          95.00001525878906,
+          12.681045532226562
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 37724
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD1.glb",
+      "triangles": 201,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.2701416015625,
+          0.0,
+          -12.681045532226562
+        ],
+        [
+          37.2701416015625,
+          95.00001525878906,
+          12.681045532226562
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 28524
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.2701416015625,
+          0.0,
+          -12.681045532226562
+        ],
+        [
+          37.2701416015625,
+          95.00001525878906,
+          12.681045532226562
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -13.61627197265625,
+          0.0,
+          -14.784499168395996
+        ],
+        [
+          13.61627197265625,
+          90.07217407226562,
+          14.784499168395996
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD0.glb",
+      "triangles": 110,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -13.61627197265625,
+          0.0,
+          -14.784499168395996
+        ],
+        [
+          13.61627197265625,
+          90.07217407226562,
+          14.784499168395996
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 18484
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD1.glb",
+      "triangles": 104,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -13.61627197265625,
+          0.0,
+          -14.784499168395996
+        ],
+        [
+          13.61627197265625,
+          90.07217407226562,
+          14.784499168395996
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 18588
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -13.61627197265625,
+          0.0,
+          -14.784499168395996
+        ],
+        [
+          13.61627197265625,
+          90.07217407226562,
+          14.784499168395996
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.32757568359375,
+          0.0,
+          -10.356334686279297
+        ],
+        [
+          19.32757568359375,
+          75.92367553710938,
+          10.356334686279297
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD0.glb",
+      "triangles": 20,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.32757568359375,
+          0.0,
+          -10.356330871582031
+        ],
+        [
+          19.32757568359375,
+          75.92367553710938,
+          10.356338500976562
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 5968
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD1.glb",
+      "triangles": 20,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.32757568359375,
+          0.0,
+          -10.356330871582031
+        ],
+        [
+          19.32757568359375,
+          75.92367553710938,
+          10.356338500976562
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 5976
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.32757568359375,
+          0.0,
+          -10.356334686279297
+        ],
+        [
+          19.32757568359375,
+          75.92367553710938,
+          10.356334686279297
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -40.264408111572266,
+          0.0,
+          -12.625740051269531
+        ],
+        [
+          40.264408111572266,
+          71.9471664428711,
+          12.625740051269531
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD0.glb",
+      "triangles": 52,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -40.26441192626953,
+          0.0,
+          -12.625732421875
+        ],
+        [
+          40.264404296875,
+          71.9471664428711,
+          12.625747680664062
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 9104
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD1.glb",
+      "triangles": 40,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -40.26441192626953,
+          0.0,
+          -12.625732421875
+        ],
+        [
+          40.264404296875,
+          71.9471664428711,
+          12.625747680664062
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 8332
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -40.264408111572266,
+          0.0,
+          -12.625740051269531
+        ],
+        [
+          40.264408111572266,
+          71.9471664428711,
+          12.625740051269531
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.005615234375,
+          0.0,
+          -39.01984405517578
+        ],
+        [
+          19.005615234375,
+          66.33002471923828,
+          39.01984405517578
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2784
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD0.glb",
+      "triangles": 258,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.005615234375,
+          0.0,
+          -39.01984405517578
+        ],
+        [
+          19.005615234375,
+          66.33002471923828,
+          39.01984405517578
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 36660
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD1.glb",
+      "triangles": 246,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.005615234375,
+          0.0,
+          -39.01984405517578
+        ],
+        [
+          19.005615234375,
+          66.33002471923828,
+          39.01984405517578
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 32628
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.005615234375,
+          0.0,
+          -39.01984405517578
+        ],
+        [
+          19.005615234375,
+          66.33002471923828,
+          39.01984405517578
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2780
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.855232238769531,
+          0.0,
+          -13.847604751586914
+        ],
+        [
+          11.855232238769531,
+          55.668094635009766,
+          13.847604751586914
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD0.glb",
+      "triangles": 745,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.855239868164062,
+          0.0,
+          -13.847602844238281
+        ],
+        [
+          11.855224609375,
+          55.668094635009766,
+          13.847606658935547
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 108984
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD1.glb",
+      "triangles": 742,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.855239868164062,
+          0.0,
+          -13.847602844238281
+        ],
+        [
+          11.855224609375,
+          55.668094635009766,
+          13.847606658935547
+        ]
+      ],
+      "external_images": 4,
+      "bytes": 108780
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.855232238769531,
+          0.0,
+          -13.847604751586914
+        ],
+        [
+          11.855232238769531,
+          55.668094635009766,
+          13.847604751586914
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -42.321617126464844,
+          0.0,
+          -37.69548034667969
+        ],
+        [
+          42.321617126464844,
+          429.79559326171875,
+          37.69548034667969
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD0.glb",
+      "triangles": 913,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -42.32161331176758,
+          0.0,
+          -37.69548034667969
+        ],
+        [
+          42.321617126464844,
+          429.79559326171875,
+          37.69548034667969
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 130688
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD1.glb",
+      "triangles": 891,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -42.32161331176758,
+          0.0,
+          -37.69548034667969
+        ],
+        [
+          42.321617126464844,
+          429.79559326171875,
+          37.69548034667969
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 126388
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -42.321617126464844,
+          0.0,
+          -37.69548034667969
+        ],
+        [
+          42.321617126464844,
+          429.79559326171875,
+          37.69548034667969
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.043807983398438,
+          0.0,
+          -30.0438175201416
+        ],
+        [
+          30.043807983398438,
+          288.01129150390625,
+          30.0438175201416
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD0.glb",
+      "triangles": 476,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.043807983398438,
+          0.0,
+          -30.043819427490234
+        ],
+        [
+          30.043807983398438,
+          288.01129150390625,
+          30.04381561279297
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 66924
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD1.glb",
+      "triangles": 476,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.043807983398438,
+          0.0,
+          -30.043819427490234
+        ],
+        [
+          30.043807983398438,
+          288.01129150390625,
+          30.04381561279297
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 66932
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.043807983398438,
+          0.0,
+          -30.0438175201416
+        ],
+        [
+          30.043807983398438,
+          288.01129150390625,
+          30.0438175201416
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -34.769439697265625,
+          0.0,
+          -19.11298370361328
+        ],
+        [
+          34.769439697265625,
+          265.93170166015625,
+          19.11298370361328
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD0.glb",
+      "triangles": 424,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -34.769439697265625,
+          0.0,
+          -19.11298370361328
+        ],
+        [
+          34.769439697265625,
+          265.93170166015625,
+          19.11298370361328
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 59552
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD1.glb",
+      "triangles": 424,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -34.769439697265625,
+          0.0,
+          -19.11298370361328
+        ],
+        [
+          34.769439697265625,
+          265.93170166015625,
+          19.11298370361328
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 59776
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -34.769439697265625,
+          0.0,
+          -19.11298370361328
+        ],
+        [
+          34.769439697265625,
+          265.93170166015625,
+          19.11298370361328
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.545413970947266,
+          0.0,
+          -19.982200622558594
+        ],
+        [
+          37.545413970947266,
+          233.67584228515625,
+          19.982200622558594
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2800
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD0.glb",
+      "triangles": 292,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.545413970947266,
+          0.0,
+          -19.982200622558594
+        ],
+        [
+          37.545413970947266,
+          233.67584228515625,
+          19.982200622558594
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 41620
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD1.glb",
+      "triangles": 292,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.545413970947266,
+          0.0,
+          -19.982200622558594
+        ],
+        [
+          37.545413970947266,
+          233.67584228515625,
+          19.982200622558594
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 41632
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -37.545413970947266,
+          0.0,
+          -19.982200622558594
+        ],
+        [
+          37.545413970947266,
+          233.67584228515625,
+          19.982200622558594
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.02412414550781,
+          0.0,
+          -23.104000091552734
+        ],
+        [
+          32.02412414550781,
+          227.77342224121094,
+          23.104000091552734
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD0.glb",
+      "triangles": 444,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.02410888671875,
+          0.0,
+          -23.10399627685547
+        ],
+        [
+          32.024139404296875,
+          227.77342224121094,
+          23.10400390625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 60316
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD1.glb",
+      "triangles": 325,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.02410888671875,
+          0.0,
+          -23.10399627685547
+        ],
+        [
+          32.024139404296875,
+          227.77342224121094,
+          23.10400390625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 49820
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -32.02412414550781,
+          0.0,
+          -23.104000091552734
+        ],
+        [
+          32.02412414550781,
+          227.77342224121094,
+          23.104000091552734
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.753273010253906,
+          0.0,
+          -26.334075927734375
+        ],
+        [
+          30.753273010253906,
+          203.65455627441406,
+          26.334075927734375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2800
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD0.glb",
+      "triangles": 384,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.753273010253906,
+          0.0,
+          -26.334075927734375
+        ],
+        [
+          30.753273010253906,
+          203.65455627441406,
+          26.334075927734375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 53984
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD1.glb",
+      "triangles": 372,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.753273010253906,
+          0.0,
+          -26.334075927734375
+        ],
+        [
+          30.753273010253906,
+          203.65455627441406,
+          26.334075927734375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 52912
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -30.753273010253906,
+          0.0,
+          -26.334075927734375
+        ],
+        [
+          30.753273010253906,
+          203.65455627441406,
+          26.334075927734375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -26.24126434326172,
+          0.0,
+          -26.24127197265625
+        ],
+        [
+          26.24126434326172,
+          169.5797882080078,
+          26.24127197265625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD0.glb",
+      "triangles": 176,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -26.24126434326172,
+          0.0,
+          -26.24127197265625
+        ],
+        [
+          26.24126434326172,
+          169.5797882080078,
+          26.24127197265625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 26016
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD1.glb",
+      "triangles": 168,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -26.24126434326172,
+          0.0,
+          -26.24127197265625
+        ],
+        [
+          26.24126434326172,
+          169.5797882080078,
+          26.24127197265625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 24752
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -26.24126434326172,
+          0.0,
+          -26.24127197265625
+        ],
+        [
+          26.24126434326172,
+          169.5797882080078,
+          26.24127197265625
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -35.430625915527344,
+          0.0,
+          -18.9320068359375
+        ],
+        [
+          35.430625915527344,
+          145.44244384765625,
+          18.9320068359375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD0.glb",
+      "triangles": 540,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -35.43061828613281,
+          0.0,
+          -18.9320068359375
+        ],
+        [
+          35.430633544921875,
+          145.44244384765625,
+          18.9320068359375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 77024
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD1.glb",
+      "triangles": 540,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -35.43061828613281,
+          0.0,
+          -18.9320068359375
+        ],
+        [
+          35.430633544921875,
+          145.44244384765625,
+          18.9320068359375
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 78336
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -35.430625915527344,
+          0.0,
+          -18.9320068359375
+        ],
+        [
+          35.430625915527344,
+          145.44244384765625,
+          18.9320068359375
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.215991973876953,
+          0.0,
+          -17.3465518951416
+        ],
+        [
+          31.215991973876953,
+          135.43275451660156,
+          17.3465518951416
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD0.glb",
+      "triangles": 412,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.21599006652832,
+          0.0,
+          -17.346553802490234
+        ],
+        [
+          31.215991973876953,
+          135.43275451660156,
+          17.34654998779297
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 50260
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD1.glb",
+      "triangles": 316,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.21599006652832,
+          0.0,
+          -17.346553802490234
+        ],
+        [
+          31.215991973876953,
+          135.43275451660156,
+          17.34654998779297
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 43140
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -31.215991973876953,
+          0.0,
+          -17.3465518951416
+        ],
+        [
+          31.215991973876953,
+          135.43275451660156,
+          17.3465518951416
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.833450317382812,
+          0.0,
+          -17.645790100097656
+        ],
+        [
+          27.833450317382812,
+          121.74913787841797,
+          17.645790100097656
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2800
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD0.glb",
+      "triangles": 238,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.833450317382812,
+          0.0,
+          -17.645790100097656
+        ],
+        [
+          27.833450317382812,
+          121.74913787841797,
+          17.64579200744629
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 34384
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD1.glb",
+      "triangles": 238,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.833450317382812,
+          0.0,
+          -17.645790100097656
+        ],
+        [
+          27.833450317382812,
+          121.74913787841797,
+          17.64579200744629
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 34392
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -27.833450317382812,
+          0.0,
+          -17.645790100097656
+        ],
+        [
+          27.833450317382812,
+          121.74913787841797,
+          17.645790100097656
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -14.124374389648438,
+          0.0,
+          -17.931522369384766
+        ],
+        [
+          14.124374389648438,
+          5.1703033447265625,
+          17.931522369384766
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2800
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD0.glb",
+      "triangles": 208,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -14.124374389648438,
+          0.0,
+          -17.93152618408203
+        ],
+        [
+          14.124374389648438,
+          5.1703033447265625,
+          17.9315185546875
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 30172
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD1.glb",
+      "triangles": 208,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -14.124374389648438,
+          0.0,
+          -17.93152618408203
+        ],
+        [
+          14.124374389648438,
+          5.1703033447265625,
+          17.9315185546875
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 30180
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -14.124374389648438,
+          0.0,
+          -17.931522369384766
+        ],
+        [
+          14.124374389648438,
+          5.1703033447265625,
+          17.931522369384766
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -15.363048553466797,
+          0.0,
+          -25.89405059814453
+        ],
+        [
+          15.363048553466797,
+          117.48207092285156,
+          25.89405059814453
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD0.glb",
+      "triangles": 174,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -15.363048553466797,
+          0.0,
+          -25.89404296875
+        ],
+        [
+          15.363048553466797,
+          117.48207092285156,
+          25.894058227539062
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 23772
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD1.glb",
+      "triangles": 164,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -15.363048553466797,
+          0.0,
+          -25.89404296875
+        ],
+        [
+          15.363048553466797,
+          117.48207092285156,
+          25.894058227539062
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 23000
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -15.363048553466797,
+          0.0,
+          -25.89405059814453
+        ],
+        [
+          15.363048553466797,
+          117.48207092285156,
+          25.89405059814453
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446807861328,
+          0.0,
+          -20.134477615356445
+        ],
+        [
+          20.13446807861328,
+          102.23987579345703,
+          20.134477615356445
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD0.glb",
+      "triangles": 232,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446807861328,
+          0.0,
+          -20.134477615356445
+        ],
+        [
+          20.13446807861328,
+          102.23987579345703,
+          20.134477615356445
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 32188
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD1.glb",
+      "triangles": 198,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446807861328,
+          0.0,
+          -20.134477615356445
+        ],
+        [
+          20.13446807861328,
+          102.23987579345703,
+          20.134477615356445
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 29544
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446807861328,
+          0.0,
+          -20.134477615356445
+        ],
+        [
+          20.13446807861328,
+          102.23987579345703,
+          20.134477615356445
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446807861328,
+          0.0,
+          -20.134475708007812
+        ],
+        [
+          20.13446807861328,
+          102.23987579345703,
+          20.134475708007812
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD0.glb",
+      "triangles": 232,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446044921875,
+          0.0,
+          -20.134475708007812
+        ],
+        [
+          20.134475708007812,
+          102.23987579345703,
+          20.134475708007812
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 32188
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD1.glb",
+      "triangles": 198,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446044921875,
+          0.0,
+          -20.134475708007812
+        ],
+        [
+          20.134475708007812,
+          102.23987579345703,
+          20.134475708007812
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 29548
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.13446807861328,
+          0.0,
+          -20.134475708007812
+        ],
+        [
+          20.13446807861328,
+          102.23987579345703,
+          20.134475708007812
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.86184310913086,
+          0.0,
+          -28.036029815673828
+        ],
+        [
+          18.86184310913086,
+          79.89884948730469,
+          28.036029815673828
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD0.glb",
+      "triangles": 484,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.861839294433594,
+          0.0,
+          -28.036033630371094
+        ],
+        [
+          18.861846923828125,
+          79.89884948730469,
+          28.036026000976562
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 50408
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD1.glb",
+      "triangles": 484,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.861839294433594,
+          0.0,
+          -28.036033630371094
+        ],
+        [
+          18.861846923828125,
+          79.89884948730469,
+          28.036026000976562
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 50272
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.86184310913086,
+          0.0,
+          -28.036029815673828
+        ],
+        [
+          18.86184310913086,
+          79.89884948730469,
+          28.036029815673828
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.455333709716797,
+          0.0,
+          -23.17791748046875
+        ],
+        [
+          20.455333709716797,
+          72.61276245117188,
+          23.17791748046875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD0.glb",
+      "triangles": 248,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.45532989501953,
+          0.0,
+          -23.17791748046875
+        ],
+        [
+          20.455337524414062,
+          72.61276245117188,
+          23.17791748046875
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 35596
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD1.glb",
+      "triangles": 248,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.45532989501953,
+          0.0,
+          -23.17791748046875
+        ],
+        [
+          20.455337524414062,
+          72.61276245117188,
+          23.17791748046875
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 35604
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -20.455333709716797,
+          0.0,
+          -23.17791748046875
+        ],
+        [
+          20.455333709716797,
+          72.61276245117188,
+          23.17791748046875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -23.17790985107422,
+          0.0,
+          -20.455337524414062
+        ],
+        [
+          23.17790985107422,
+          72.61276245117188,
+          20.455337524414062
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD0.glb",
+      "triangles": 248,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -23.17791748046875,
+          0.0,
+          -20.455337524414062
+        ],
+        [
+          23.177902221679688,
+          72.61276245117188,
+          20.455337524414062
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 35596
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD1.glb",
+      "triangles": 248,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -23.17791748046875,
+          0.0,
+          -20.455337524414062
+        ],
+        [
+          23.177902221679688,
+          72.61276245117188,
+          20.455337524414062
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 35608
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -23.17790985107422,
+          0.0,
+          -20.455337524414062
+        ],
+        [
+          23.17790985107422,
+          72.61276245117188,
+          20.455337524414062
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156341552734375,
+          0.0,
+          -11.970382690429688
+        ],
+        [
+          19.156341552734375,
+          63.845550537109375,
+          11.970382690429688
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2800
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD0.glb",
+      "triangles": 256,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156341552734375,
+          0.0,
+          -11.970382690429688
+        ],
+        [
+          19.156341552734375,
+          63.845550537109375,
+          11.970382690429688
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 33124
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD1.glb",
+      "triangles": 218,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156341552734375,
+          0.0,
+          -11.970382690429688
+        ],
+        [
+          19.156341552734375,
+          63.845550537109375,
+          11.970382690429688
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 30604
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156341552734375,
+          0.0,
+          -11.970382690429688
+        ],
+        [
+          19.156341552734375,
+          63.845550537109375,
+          11.970382690429688
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156349182128906,
+          0.0,
+          -11.97038459777832
+        ],
+        [
+          19.156349182128906,
+          63.845550537109375,
+          11.97038459777832
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD0.glb",
+      "triangles": 256,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156356811523438,
+          0.0,
+          -11.970386505126953
+        ],
+        [
+          19.156341552734375,
+          63.845550537109375,
+          11.970382690429688
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 33200
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD1.glb",
+      "triangles": 218,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156356811523438,
+          0.0,
+          -11.970386505126953
+        ],
+        [
+          19.156341552734375,
+          63.845550537109375,
+          11.970382690429688
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 30460
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -19.156349182128906,
+          0.0,
+          -11.97038459777832
+        ],
+        [
+          19.156349182128906,
+          63.845550537109375,
+          11.97038459777832
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.580427169799805,
+          0.0,
+          -24.501922607421875
+        ],
+        [
+          11.580427169799805,
+          60.438575744628906,
+          24.501922607421875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2800
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD0.glb",
+      "triangles": 216,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.580427169799805,
+          0.0,
+          -24.501922607421875
+        ],
+        [
+          11.580426216125488,
+          60.438575744628906,
+          24.501922607421875
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 31448
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD1.glb",
+      "triangles": 216,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.580427169799805,
+          0.0,
+          -24.501922607421875
+        ],
+        [
+          11.580426216125488,
+          60.438575744628906,
+          24.501922607421875
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 31600
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -11.580427169799805,
+          0.0,
+          -24.501922607421875
+        ],
+        [
+          11.580427169799805,
+          60.438575744628906,
+          24.501922607421875
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2792
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_col.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.043617248535156,
+          0.0,
+          -18.17031478881836
+        ],
+        [
+          18.043617248535156,
+          32.82087326049805,
+          18.17031478881836
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2796
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD0.glb",
+      "triangles": 292,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.043609619140625,
+          0.0,
+          -18.170310974121094
+        ],
+        [
+          18.043624877929688,
+          32.82087326049805,
+          18.170318603515625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 42848
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD1.glb",
+      "triangles": 286,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.043609619140625,
+          0.0,
+          -18.170310974121094
+        ],
+        [
+          18.043624877929688,
+          32.82087326049805,
+          18.170318603515625
+        ]
+      ],
+      "external_images": 3,
+      "bytes": 42892
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD2.glb",
+      "triangles": 12,
+      "parallax_panes": 0,
+      "bounds": [
+        [
+          -18.043617248535156,
+          0.0,
+          -18.17031478881836
+        ],
+        [
+          18.043617248535156,
+          32.82087326049805,
+          18.17031478881836
+        ]
+      ],
+      "external_images": 0,
+      "bytes": 2788
+    }
+  ]
+}

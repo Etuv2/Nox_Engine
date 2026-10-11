@@ -27,7 +27,8 @@ namespace NightStreetPacks {
 		FlareStyleCount
 	};
 
-	// Interior atlas weight rows (material interior "style").
+	// Interior atlas weight rows (material interior "style"): the order of atlas_manifest.json
+	// nox_interior.styles (textures/window_rooms/README.md).
 	enum RoomStyle : int { RoomApartment = 0, RoomShop = 1, RoomOffice = 2 };
 
 	// Measured paint footprint of every decal (normalised top-left image coordinates).

@@ -11,8 +11,8 @@
 * exported separately from the render meshes). Each mesh keeps its triangles in world space with a
 * bounding-volume hierarchy, so queries stay logarithmic in the triangle count.
 *
-* Triangles are classified once by their normal: ground (walkable, normal.y >= groundMinNormalY),
-* ceiling (normal.y <= -groundMinNormalY) and wall (everything else). Queries take a class mask so
+* Triangles are classified once by their normal: ground (walkable, normal.y >= filter.groundMinNormalY),
+* ceiling (normal.y <= -filter.groundMinNormalY) and wall (everything else). Queries take a class mask so
 * vehicles can raycast for the surface under a wheel and push against walls separately, which is
 * what makes stacked decks, tunnels and ramps work without any planar road assumptions.
 *
@@ -30,12 +30,20 @@ public:
 		int mesh = -1;
 	};
 
-	float groundMinNormalY = 0.6f;
+	// Classification and sliver rules applied to each triangle when a mesh is added (see AddMesh).
+	// Set 'filter' before loading; meshes already in the world keep the rules they were built with.
+	// The defaults are neutral: no sliver filtering. A game sets its own thresholds per collision set.
+	struct TriangleFilter {
+		float groundMinNormalY = 0.6f; // |normal.y| at or above this is ground / ceiling, below is wall
+		float minWallHeight = 0.0f;    // m; wall triangles with a vertical extent below this are dropped (0 = off)
+		float minWallAspect = 0.0f;    // wall triangles with altitude / longest edge below this are dropped (0 = off)
+	};
+	TriangleFilter filter;
 
 	// Loads every mesh primitive of a .glb/.gltf (node transforms applied, scaled by 'transform').
 	// Returns the mesh index or -1. Nodes whose name contains "NOCOLLIDE" are skipped.
 	int LoadGLTF(const std::string& path, const glm::mat4& transform = glm::mat4(1.0f));
-	// Adds an indexed triangle list already in world space.
+	// Adds an indexed triangle list already in world space (classified with the current 'filter').
 	int AddMesh(const std::string& name, const std::vector<glm::vec3>& positions, const std::vector<uint32_t>& indices);
 	void Clear() { m_meshes.clear(); }
 	bool Empty() const { return m_meshes.empty(); }
@@ -56,9 +64,6 @@ public:
 	// a sphere is wider than tall bodies, so overhead geometry would otherwise catch it).
 	glm::vec3 ResolveSphere(glm::vec3& center, float radius, uint8_t classMask, glm::vec3* outNormal = nullptr, int iterations = 2,
 		float contactMaxY = 1e30f) const;
-	// Wall triangles shorter than this (vertical extent) are slivers between ground surfaces, not walls.
-	float minWallHeight = 0.15f;
-
 private:
 	struct Tri { glm::vec3 a, e1, e2, n; uint8_t cls; };
 	struct Node { glm::vec3 mn, mx; int left = -1, right = -1; int first = 0, count = 0; };

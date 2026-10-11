@@ -103,6 +103,7 @@ void DriveMode::ReadHandling(const json& j, Handling& h)
 	h.suspensionFreq = j.value("suspension_freq", h.suspensionFreq);
 	h.suspensionDamping = j.value("suspension_damping", h.suspensionDamping);
 	h.bumpAmplitude = j.value("bump_amplitude", h.bumpAmplitude);
+	h.roofHeight = j.value("roof_height", h.roofHeight);
 }
 
 void DriveMode::ReadCamera(const json& j, CameraRig& c)
@@ -139,7 +140,7 @@ json DriveMode::SaveTuning() const
 		{"nitro_recharge", h.nitroRecharge}, {"nitro_recharge_delay", h.nitroRechargeDelay},
 		{"rpm_idle", h.rpmIdle}, {"rpm_redline", h.rpmRedline}, {"rpm_limiter", h.rpmLimiter}, {"shift_time", h.shiftTime},
 		{"gear_ratios", h.gearRatios}, {"reverse_engage_delay", h.reverseEngageDelay},
-		{"suspension_freq", h.suspensionFreq}, {"suspension_damping", h.suspensionDamping}, {"bump_amplitude", h.bumpAmplitude} };
+		{"suspension_freq", h.suspensionFreq}, {"suspension_damping", h.suspensionDamping}, {"bump_amplitude", h.bumpAmplitude}, {"roof_height", h.roofHeight} };
 	out["camera"] = {
 		{"version", 2}, {"distance", c.distance}, {"height", c.height}, {"look_ahead", c.lookAhead}, {"look_height", c.lookHeight},
 		{"fov", c.fov}, {"fov_speed_gain", c.fovSpeedGain}, {"fov_nitro", c.fovNitro}, {"pull_back", c.pullBack},
@@ -593,7 +594,7 @@ glm::vec2 DriveMode::ResolveCircle(glm::vec2& c, float radius) const
 		// Contacts only up to the roof line (~1.6 m): overhead structure (a ramp parapet passing over
 		// the road) must not catch the wider-than-tall sphere.
 		glm::vec3 centre(c.x, m_y + radius + 0.25f, c.y);
-		const glm::vec3 push3 = m_collision->ResolveSphere(centre, radius, CollisionWorld::Wall, nullptr, 2, m_y + 1.6f);
+		const glm::vec3 push3 = m_collision->ResolveSphere(centre, radius, CollisionWorld::Wall, nullptr, 2, m_y + m_handling.roofHeight);
 		const glm::vec2 push(push3.x, push3.z);
 		c += push;
 		total += push;
@@ -1034,7 +1035,7 @@ void DriveMode::UpdateSuspension(float h)
 void DriveMode::ApplyTransforms()
 {
 	if (auto player = m_player.lock()) {
-		const glm::vec3 pos(m_pos.x, BaseY() + m_playerY, m_pos.y);
+		const glm::vec3 pos(m_pos.x, BaseY() + PlayerYOffset(), m_pos.y);
 		glm::quat q = glm::angleAxis(m_heading, glm::vec3(0, 1, 0));
 		// Surface mode: the whole car follows the road grade and bank (same axes as the body below).
 		if (m_collision) q = q * glm::angleAxis(m_groundRoll, glm::vec3(0, 0, 1)) * glm::angleAxis(-m_groundPitch, glm::vec3(1, 0, 0));
@@ -1093,7 +1094,7 @@ void DriveMode::UpdateCamera(float dt, Camera& camera, float aspect)
 	const CameraRig& rig = m_rig;
 	const float speed = glm::length(m_vel);
 	const float speed01 = Speed01();
-	const glm::vec3 carPos(m_pos.x, BaseY() + m_playerY, m_pos.y);
+	const glm::vec3 carPos(m_pos.x, BaseY() + PlayerYOffset(), m_pos.y);
 	// Follow direction: the heading blended with the velocity direction, so drifts show the car's
 	// flank like NFS 2015 while straight driving stays locked behind the car. Reversing keeps the
 	// camera behind the nose (no flip).

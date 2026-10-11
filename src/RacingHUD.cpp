@@ -1,6 +1,7 @@
 #include "RacingHUD.h"
 #include "RoadNetwork.h"
 #include "UiIconAtlas.h"
+#include "ui/Pointer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -565,7 +566,7 @@ struct RacingHUD::Impl {
 
 	void DrawEventMarker() {
 		const HudState& s = *st;
-		if (!s.eventMarkerVisible) return;
+		if (!s.eventMarkerVisible || !s.menuTitle.empty()) return;   // menus own the centre of the screen
 		const float d = std::max(0.0f, s.eventMarkerDistance);
 		const float f = ClampF(1.15f - d / 700.0f, 0.55f, 1.15f);
 		const float alpha = ClampF(1.25f - d / 900.0f, 0.35f, 1.0f);
@@ -628,6 +629,17 @@ struct RacingHUD::Impl {
 			{
 				const ImVec2 c = x.P(552, 75.5f);
 				IconLeftOf(Role("key/" + s.startKey), c.x - TextW(LabelFont(kpx), kpx, "START EVENT"), c.y, x.L(9.0f), cfg.text, 1.0f);
+			}
+			// Clickable prompt (pointer region in the same coordinates as the drawing).
+			{
+				const ImVec2 c = x.P(552, 75.5f);
+				const float w = TextW(LabelFont(kpx), kpx, "START EVENT") + x.L(14.0f);
+				const ImVec2 a(c.x - w, x.P(0, 68).y), b = x.P(602, 83);
+				ui::Pointer::Get().AddRect(ui::HashId(HudRegion::kStart), glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), HudRegion::kZStart, ui::RegionClick);
+				if (s.startHovered || s.startPressed) {
+					dl->AddRectFilled(a, b, Col(cfg.lavender, s.startPressed ? 0.45f : 0.22f), x.L(2.0f), ImDrawFlags_RoundCornersAll);
+					dl->AddRect(a, b, Col(cfg.lavender, 0.9f), x.L(2.0f), ImDrawFlags_RoundCornersAll, x.L(0.7f));
+				}
 			}
 			dl->AddRectFilled(x.P(559, 70), x.P(600, 81), Col(cfg.text, 0.95f), x.L(1.5f), ImDrawFlags_RoundCornersAll);
 			const float kkpx = x.L(7.5f);
@@ -718,12 +730,24 @@ struct RacingHUD::Impl {
 			TxtGlow(dl, LabelFont(mpx), mpx, cp(0, top), cfg.lavender, s.menuTitle.c_str(), 1, glow * 0.4f);
 			IconLeftOf(Role("menu/" + s.menuTitle), cp(0, top).x - TextW(LabelFont(mpx), mpx, s.menuTitle.c_str()) * 0.5f,
 				cp(0, top).y, x.L(15.0f), cfg.lavender, 0.9f);
+			// Modal: the whole target blocks clicks below and takes the wheel (steps the selection).
+			ui::Pointer::Get().AddRect(ui::HashId(HudRegion::kModal), glm::vec2(origin.x, origin.y),
+				glm::vec2(origin.x + size.x, origin.y + size.y), HudRegion::kZModal, ui::RegionWheel);
 			for (size_t i = 0; i < s.menuItems.size(); ++i) {
 				const float y = top + 18.0f + (float)i * 15.0f;
 				const bool sel = (int)i == s.menuSelected;
-				if (sel) {
-					dl->AddRectFilled(cp(-70, y - 7), cp(70, y + 7), Col(cfg.lavender, 0.30f), x.L(2.0f), ImDrawFlags_RoundCornersAll);
-					dl->AddRect(cp(-70, y - 7), cp(70, y + 7), Col(cfg.lavender, 0.8f), x.L(2.0f), ImDrawFlags_RoundCornersAll, x.L(0.7f));
+				const bool hov = (int)i == s.menuHovered;
+				const bool prs = (int)i == s.menuPressed;
+				const ImVec2 r0 = cp(-70, y - 7), r1 = cp(70, y + 7);
+				ui::Pointer::Get().AddRect(ui::HashId(HudRegion::kMenuItem, (int)i), glm::vec2(r0.x, r0.y), glm::vec2(r1.x, r1.y),
+					HudRegion::kZMenuItem, ui::RegionClick);
+				if (sel || hov || prs) {
+					// Selected: lavender fill; hovered: brighter outline; held: stronger fill, inset.
+					const float inset = prs ? x.L(0.8f) : 0.0f;
+					const ImVec2 a(r0.x + inset, r0.y + inset), b(r1.x - inset, r1.y - inset);
+					dl->AddRectFilled(a, b, Col(cfg.lavender, prs ? 0.55f : (sel ? 0.30f : 0.14f)), x.L(2.0f), ImDrawFlags_RoundCornersAll);
+					dl->AddRect(a, b, Col(hov ? cfg.text : cfg.lavender, hov ? 0.95f : 0.8f), x.L(2.0f), ImDrawFlags_RoundCornersAll,
+						x.L(hov ? 1.0f : 0.7f));
 				}
 				const float ipx = x.L(11.0f);
 				Txt(dl, LabelFont(ipx), ipx, cp(0, y), sel ? Col(cfg.text) : ColA(0.85f, 0.85f, 0.9f, 0.7f), s.menuItems[i].c_str(), 1);

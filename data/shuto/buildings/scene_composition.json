@@ -1,0 +1,108 @@
+{
+  "scene": "scenes/shuto_buildings.json",
+  "model_nodes": 169,
+  "collision_files": 109,
+  "shots": [
+    {
+      "name": "dentsu",
+      "duration": 3,
+      "capture_times": [
+        2.5
+      ],
+      "camera": {
+        "keys": [
+          {
+            "t": 0,
+            "position": [
+              -1050.783,
+              6.431,
+              2312.291
+            ],
+            "look_at": [
+              -1106.46,
+              96.6414,
+              2224.53
+            ],
+            "fov": 65
+          }
+        ]
+      }
+    },
+    {
+      "name": "fuji",
+      "duration": 3,
+      "capture_times": [
+        2.5
+      ],
+      "camera": {
+        "keys": [
+          {
+            "t": 0,
+            "position": [
+              -252.10179999999997,
+              72,
+              6035.895399999999
+            ],
+            "look_at": [
+              -21.4,
+              65,
+              6386.86
+            ],
+            "fov": 48
+          }
+        ]
+      }
+    },
+    {
+      "name": "ginza_frontage",
+      "duration": 3,
+      "capture_times": [
+        2.5
+      ],
+      "camera": {
+        "keys": [
+          {
+            "t": 0,
+            "position": [
+              -523.231,
+              4.824,
+              1742.695
+            ],
+            "look_at": [
+              -546.77,
+              5.824,
+              1716.41
+            ],
+            "fov": 65
+          }
+        ]
+      }
+    },
+    {
+      "name": "shibaura_residential",
+      "duration": 3,
+      "capture_times": [
+        2.5
+      ],
+      "camera": {
+        "keys": [
+          {
+            "t": 0,
+            "position": [
+              -1651.843,
+              24.048,
+              4377.146
+            ],
+            "look_at": [
+              -1621.19,
+              25.048,
+              4393.85
+            ],
+            "fov": 65
+          }
+        ]
+      }
+    }
+  ],
+  "base_scene": "scenes/shuto_rep_section.json"
+}

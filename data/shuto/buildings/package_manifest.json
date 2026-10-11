@@ -1,0 +1,2757 @@
+{
+  "format": "nox-shuto-buildings-delivery",
+  "reference_date": "2002-12-31",
+  "requires": "Existing NOX repository road assets, source originals and texture pack for regeneration",
+  "excluded": [
+    "source_japanese.blend",
+    "restricted_local/",
+    "source_japanese image resources"
+  ],
+  "files": [
+    {
+      "path": "captures/shuto/buildings/blender_probe.png",
+      "bytes": 1149115,
+      "sha256": "787f366425ff9412ca38e903f8baf3e0bc4473d6e99f84766480e3cfb469e68d"
+    },
+    {
+      "path": "captures/shuto/buildings/fuji_front.png",
+      "bytes": 1063477,
+      "sha256": "696a9fc16c2e87972750bce6baac3fd1250fec2acc112439ab1181a276c7503a"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_import/frames.csv",
+      "bytes": 161764,
+      "sha256": "c00e9eb568876aefbe2decadd7cab6e80d16b0e47f656909768c933485bfcb06"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_import/landmark_fuji_tv/t0.80.png",
+      "bytes": 2178986,
+      "sha256": "ce800052695813119caef3ffdcd28548af4ad00eb9fc3557c77680bf270e4b1a"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_import/residential_balcony/t0.80.png",
+      "bytes": 2213625,
+      "sha256": "901202bebfed192f2b456a364e98e557bf37caf3813014e249a188cc5fde898b"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_import/retail_corner/t0.80.png",
+      "bytes": 2276457,
+      "sha256": "3a8b0402d3cfb48b2acd493f80f7c237c0860d66b3178cdcdd83ddcde8946d0e"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_import/source_japanese_01/t0.80.png",
+      "bytes": 2011766,
+      "sha256": "7f690b7113ec0b5b8a05a251039d574e835d9b363118b3cff85fd296ae737cec"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_import/summary.json",
+      "bytes": 8244,
+      "sha256": "bfadafa8156fba6122366a7ace219ec4a638197712ca45ae251edecbe492c754"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_import/warehouse_large/t0.80.png",
+      "bytes": 2074503,
+      "sha256": "5555ff79f6831c838edbc2df59daf52b7a855b9152cfff84d3fbd204b84626b0"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_landmark_fuji_tv.png",
+      "bytes": 1088932,
+      "sha256": "6e4ef5abca4e9c7f023885c495d1cbd88bd0a7f4cdbe089397bbc605c5e0fed8"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_residential_balcony.png",
+      "bytes": 941254,
+      "sha256": "acb3eaec162fc169cf376a87b9137ac23b082c6213843c4fd2e18600c4d2e939"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_retail_corner.png",
+      "bytes": 930009,
+      "sha256": "86bee61dbea26063773499c528abfa05b2a719de0d3b1d7e9aa63613554dc1ec"
+    },
+    {
+      "path": "captures/shuto/buildings/kit_warehouse_large.png",
+      "bytes": 1082120,
+      "sha256": "94cb75187c0d640d2886ae58386070436aa388c659c8520602fe27683bacf0d2"
+    },
+    {
+      "path": "captures/shuto/buildings/probe_nox/frames.csv",
+      "bytes": 127389,
+      "sha256": "566ff35686fa3f1660873535e50693bcd1158b5a208d7b7ce0387e528bff6c2e"
+    },
+    {
+      "path": "captures/shuto/buildings/probe_nox/front/t0.80.png",
+      "bytes": 1851999,
+      "sha256": "d1a80ed39b8a382065523b91eb152dc51d0100bd15bf7e06c74c698e2bc52587"
+    },
+    {
+      "path": "captures/shuto/buildings/probe_nox/grazing/t0.80.png",
+      "bytes": 1978705,
+      "sha256": "9e8aafe722bbfd96d5bea9ec1119b69e84319b1eeebc31d00a7e917d9b187268"
+    },
+    {
+      "path": "captures/shuto/buildings/probe_nox/room_left/t0.80.png",
+      "bytes": 2284393,
+      "sha256": "fb135c3e98db037f2192e05b3a1a1bcfe1d19e5218b82e13cdd0ea657e7d3220"
+    },
+    {
+      "path": "captures/shuto/buildings/probe_nox/room_right/t0.80.png",
+      "bytes": 2398136,
+      "sha256": "bb48ed1f45561688c8a8d280083614e3dec9b84d951e82c46054d59dc6c6b3d2"
+    },
+    {
+      "path": "captures/shuto/buildings/probe_nox/summary.json",
+      "bytes": 6672,
+      "sha256": "217548ea6ec654990d01393f453b8866cae2698f4178a589b36c6829f45748bf"
+    },
+    {
+      "path": "captures/shuto/buildings/road_baseline/frames.csv",
+      "bytes": 1121550,
+      "sha256": "29461ef1ebe51ab720b384787540b1f28f46eb7dc1dc937e0bb80602fed97d2c"
+    },
+    {
+      "path": "captures/shuto/buildings/road_baseline/summary.json",
+      "bytes": 6637,
+      "sha256": "c4e969131625f7a4b5b343ad7e43b01290b2a3c8aa01dcc775ce5a264a5350de"
+    },
+    {
+      "path": "captures/shuto/buildings/section_capture/dentsu/t2.50.png",
+      "bytes": 12429078,
+      "sha256": "431ba325f403a370f6b766c471be01d6f9ca06c364f57fda60a32d2e48f02dc1"
+    },
+    {
+      "path": "captures/shuto/buildings/section_capture/frames.csv",
+      "bytes": 374235,
+      "sha256": "a2770577d7483182463fb68aa4325557ce8b46b4914595b9e573ee0e110ff1b9"
+    },
+    {
+      "path": "captures/shuto/buildings/section_capture/fuji/t2.50.png",
+      "bytes": 10973401,
+      "sha256": "79f7858d634c96ea96db6c7c0b21ec20407279acf296961a6b9ae949a3be9dce"
+    },
+    {
+      "path": "captures/shuto/buildings/section_capture/ginza_frontage/t2.50.png",
+      "bytes": 11514132,
+      "sha256": "32c7da5e933f0275f897df1def0902e3840b4fa803dda599b60c97b52dfe6efd"
+    },
+    {
+      "path": "captures/shuto/buildings/section_capture/shibaura_residential/t2.50.png",
+      "bytes": 9883269,
+      "sha256": "ad5bfb5eccfd5c205519cd21f0331a439f9667d5339ace04246dd9c32b9fa178"
+    },
+    {
+      "path": "captures/shuto/buildings/section_capture/summary.json",
+      "bytes": 6604,
+      "sha256": "025ea8b63cceacbe5f1d4a807cad3de07e672817c28b834b1f88191161e8d577"
+    },
+    {
+      "path": "captures/shuto/buildings/section_timing/frames.csv",
+      "bytes": 1122731,
+      "sha256": "48efa9f241731dbbbc819f54243bf4f3ccd105e94d51560122f73733ac7cabbb"
+    },
+    {
+      "path": "captures/shuto/buildings/section_timing/summary.json",
+      "bytes": 6624,
+      "sha256": "b89e84bd97760591f02158939181adcacf97e0e0e679abf136c7de069735711f"
+    },
+    {
+      "path": "captures/shuto/buildings/sources/asian_themed_low_poly_night_city_buildings.png",
+      "bytes": 757170,
+      "sha256": "5a5e1639afe8cf19ac654de84f3859793b29eaef442b74111da5e74826e72fc5"
+    },
+    {
+      "path": "captures/shuto/buildings/sources/japanese_building__cc0.png",
+      "bytes": 808427,
+      "sha256": "056bf43830a2968d21833a9c65626d1866bafc963cc8bd7f6739ab98f5634486"
+    },
+    {
+      "path": "captures/shuto/buildings/sources/low-poly_city_buildings.png",
+      "bytes": 943291,
+      "sha256": "e9f64b24254f1c0f81c16fe6a40aefb5e3bd619b0299af8cfccb6c6a6604d50f"
+    },
+    {
+      "path": "data/shuto/buildings/editable_topology.json",
+      "bytes": 1024,
+      "sha256": "0389576afdfc4faed77b6060b5c8c5d3ff66969ce5f364116ee4e2ed3c2f2a18"
+    },
+    {
+      "path": "data/shuto/buildings/encoding_validation.json",
+      "bytes": 243,
+      "sha256": "79be474a4b85d2a07ce174da653cc1619dcd79d2ac6a27a0fd2df8ed894f323c"
+    },
+    {
+      "path": "data/shuto/buildings/export_validation.json",
+      "bytes": 171521,
+      "sha256": "8271ca0fbdc909cd7dc024026dc3c8fbca39b5cf3f0e82900f25137cf30e8242"
+    },
+    {
+      "path": "data/shuto/buildings/geometry_statistics.json",
+      "bytes": 1767,
+      "sha256": "b6ba3f4e9933f7416efda95b6a3d95cbd98de6f714b8ba9cd082e19380518c33"
+    },
+    {
+      "path": "data/shuto/buildings/import_results.json",
+      "bytes": 6301,
+      "sha256": "fe0d629f4276f6a0f535dc30b5399b2c0960c4fb3f6d734d42e3821f51692617"
+    },
+    {
+      "path": "data/shuto/buildings/material_optimization.json",
+      "bytes": 242,
+      "sha256": "382fa3340dc9e89b0a3b68a20baf28dc176374ce7d0f4f2d8ea483c8bd4854f9"
+    },
+    {
+      "path": "data/shuto/buildings/material_sources.json",
+      "bytes": 7104,
+      "sha256": "d4d1dcaec0555a3b318d507d7d9fc43453a09299879048744490d7bb1abf1cef"
+    },
+    {
+      "path": "data/shuto/buildings/placements.json",
+      "bytes": 7321625,
+      "sha256": "29f81aef49b788ff70a69472f3f08a69b0f9a098d7c17a2071ccdafff9f875c3"
+    },
+    {
+      "path": "data/shuto/buildings/probe_expected.json",
+      "bytes": 216,
+      "sha256": "3da3373044914b487d475c5a71957520c9bfa19efcd95fd8efb1904f98de6264"
+    },
+    {
+      "path": "data/shuto/buildings/probe_validation.json",
+      "bytes": 445,
+      "sha256": "108c8b66d5d8403b3e55d781bd3a293eb3037543f0bad8af99fbf388266a5684"
+    },
+    {
+      "path": "data/shuto/buildings/road_baseline_scene.json",
+      "bytes": 351346,
+      "sha256": "3c08a246cdaf68405bdaca8b6dc011999daf34aa7cd39b37f57f7b9dc21fe613"
+    },
+    {
+      "path": "data/shuto/buildings/scene_composition.json",
+      "bytes": 2063,
+      "sha256": "8b014db49cb193f0f9ece59523a78683fac41d9ff7e7b37547a7d9c504728926"
+    },
+    {
+      "path": "data/shuto/buildings/sign_orientation.json",
+      "bytes": 469,
+      "sha256": "84a190507a3545cac8c96f031ccfe8cf379ea080a78d61c7e2cfb42fd3aae65a"
+    },
+    {
+      "path": "data/shuto/buildings/source_audit.json",
+      "bytes": 417598,
+      "sha256": "0229eab60630af568f064105fd80a182ec09116c702fc8334afe71cf9be07093"
+    },
+    {
+      "path": "data/shuto/buildings/vertex_optimization.json",
+      "bytes": 100239,
+      "sha256": "8a86586254c28eb1c6a175f6d54493581c14f2ecee73ba4d64a66f5afe0a1416"
+    },
+    {
+      "path": "docs/shuto/assets_and_licenses.md",
+      "bytes": 5289,
+      "sha256": "6b23070e1aa54fa2f2f7167be35908c1b127ef33f668c68f010ca2d58a0dc170"
+    },
+    {
+      "path": "docs/shuto/buildings.md",
+      "bytes": 19194,
+      "sha256": "70b0e30576ac9116762964d7ae7f9cbacd0ac1bb84098b06bfd6365687455337"
+    },
+    {
+      "path": "docs/shuto/README.md",
+      "bytes": 14991,
+      "sha256": "c8965d557215699d5fb5f466dfbfca90e9a93b5f91b6d005fb20a3dfed36c0fd"
+    },
+    {
+      "path": "fonts/BarlowCondensed-SemiBold.ttf",
+      "bytes": 109428,
+      "sha256": "7b619d14bc2327509a9ef32b0890f709626f7ecc9ff61191c2a4314c5499d2d9"
+    },
+    {
+      "path": "fonts/licenses/Barlow-OFL.txt",
+      "bytes": 4377,
+      "sha256": "186d750eb496a4c17a76385f82be6aea2ac1cf2de074a811d63786cf374ea73f"
+    },
+    {
+      "path": "fonts/noto/NotoSansJP-Bold.otf",
+      "bytes": 4656448,
+      "sha256": "1b0edfb500b73a4fa8a4fcaae1bbbd403994e08e73e3e0da37e70d3853f42c5f"
+    },
+    {
+      "path": "fonts/noto/OFL-NotoSansCJK.txt",
+      "bytes": 4301,
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "path": "logs/building_baseline_timing.err",
+      "bytes": 25,
+      "sha256": "ae03e0a4ae63c145caa2c1d98472393c7f93cce7255f8a3896071a8c18a8bcb6"
+    },
+    {
+      "path": "logs/building_baseline_timing.log",
+      "bytes": 422271,
+      "sha256": "1f98c4b769e74a117eeccd1070d106249916304bbd1c46e8590e1a30698da11e"
+    },
+    {
+      "path": "logs/building_clearances.log",
+      "bytes": 179,
+      "sha256": "d127c875fcfcc4613145668df183ea5b23538949be7239eed9122b02150f0826"
+    },
+    {
+      "path": "logs/building_context_clearances.log",
+      "bytes": 176,
+      "sha256": "b3524e0a25db609c321053895232166479a1d456c44c2e7ae418f9e38db3b518"
+    },
+    {
+      "path": "logs/building_kit_capture.err",
+      "bytes": 35,
+      "sha256": "67971e710bc86052e28b1df949ae6ce6f5974a432af86cc2a444a06d2e763009"
+    },
+    {
+      "path": "logs/building_kit_capture.log",
+      "bytes": 208651,
+      "sha256": "9f9a4bb413b15260ce767eb5e2749929d609b9748a9d7122aeed7318fb98b5e0"
+    },
+    {
+      "path": "logs/building_section_capture.err",
+      "bytes": 25,
+      "sha256": "ae03e0a4ae63c145caa2c1d98472393c7f93cce7255f8a3896071a8c18a8bcb6"
+    },
+    {
+      "path": "logs/building_section_capture.log",
+      "bytes": 361958,
+      "sha256": "dc0f044523b3196a06f3d0579969588054d4785c1ad1686f1b902bcc9d2f8459"
+    },
+    {
+      "path": "logs/building_section_timing.err",
+      "bytes": 25,
+      "sha256": "ae03e0a4ae63c145caa2c1d98472393c7f93cce7255f8a3896071a8c18a8bcb6"
+    },
+    {
+      "path": "logs/building_section_timing.log",
+      "bytes": 501273,
+      "sha256": "68ed05c672ec1a29c0719037f27728374606c9942ee856573d59f4d103bba9d8"
+    },
+    {
+      "path": "logs/buildings_engine_build.log",
+      "bytes": 1190,
+      "sha256": "8d7de5786ab1e35816aea99e60a2ea6e1c9d3d1012266ef0c636eee543a4f9c0"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_11_col.glb",
+      "bytes": 1812,
+      "sha256": "87c7e673c6a6f20ab3c1f7d2e6528cbbc6e419212d36049141a4baead7f93895"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_12_col.glb",
+      "bytes": 1816,
+      "sha256": "0afdf8a52157ac2f72db63ccd3ea26f657f51b59df6647f76e865b19457baec7"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_3_col.glb",
+      "bytes": 252120,
+      "sha256": "d0de3c07ddb3e18b7b2d2427d3c57bdee451738858902f075daba78b83a57918"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_4_col.glb",
+      "bytes": 149128,
+      "sha256": "f5ffb030b3bd92f7cbde9848ebf640bbfa4f2cd69310b4cee342cd247e054a31"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_5_col.glb",
+      "bytes": 47784,
+      "sha256": "45a5457f1ed50d395e01bf85e8cec83f27754d1c2839281cc3a55a183d63a91e"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_6_col.glb",
+      "bytes": 37260,
+      "sha256": "c30b5689df7c5306c8a56fabe516d1a9881611090dba8588eae8a153e6e3926b"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_7_col.glb",
+      "bytes": 54964,
+      "sha256": "c04bbaecb2d5e4ecb96fc1baec1b75870b68f7f350bbbace458fbc6f96a995a1"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-1_8_col.glb",
+      "bytes": 7324,
+      "sha256": "533276aba0aa459afc16103f92d60497fff9d3741d9d0b56afb0db660ec5176d"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_3_col.glb",
+      "bytes": 281832,
+      "sha256": "06ab95ecea93d1ce355fd184067cc3fa4c76e5b9970e0a7bcf451217353e42ca"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_4_col.glb",
+      "bytes": 75088,
+      "sha256": "8d6a8d8cec20d0a820af08e6525599a9edcc098587189ed40860c13de22527b6"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_5_col.glb",
+      "bytes": 7320,
+      "sha256": "d4e1b58ddd7b58b8daf0807711514ee19dc928994fa091cae56724b25f9c1f87"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_6_col.glb",
+      "bytes": 5412,
+      "sha256": "bb10d346de76276c0b0134bedd872a6d85e23b28a8035bb6d8280e44a474ab7a"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-2_7_col.glb",
+      "bytes": 7452,
+      "sha256": "b313c7e4fb95324cc478a7f61a33b642695e1d8b6fea6d7479800d2b58ee438f"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_10_col.glb",
+      "bytes": 6480,
+      "sha256": "c7ac8f6c617b0e399585e3382d42ec2975f4ae795c5b2e2606c2d6d20cbfd0cb"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_11_col.glb",
+      "bytes": 1808,
+      "sha256": "edf9bcde8fdb385029074e7e77201efcf0427539892a3a546bd8666bdb179695"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_3_col.glb",
+      "bytes": 352896,
+      "sha256": "12e12129f763d222874a74236b501669eee44d222d5881cc438732ccc897af53"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_4_col.glb",
+      "bytes": 93324,
+      "sha256": "86e7eecf6863524a71f353e22803d52ab84518f9c87f1ccc4043170156b3d6a5"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_5_col.glb",
+      "bytes": 33976,
+      "sha256": "777892459a73e58dcdcd5c6f5074700d8ea08ba13f177210b9e918fb97fcfcac"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_6_col.glb",
+      "bytes": 37788,
+      "sha256": "ff7b75188019df8f5645c0350eb180aadcd34dd50c25e1cfdb021a8133945dae"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_7_col.glb",
+      "bytes": 31404,
+      "sha256": "ab3462cad2276f504e922fd400c7c899a019cb1101e7cd98dd4f39874d7a690f"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_8_col.glb",
+      "bytes": 9508,
+      "sha256": "15853e4cd61c2ee80d715b653fe803e038bd3e8a7d97195981d0b033677feb56"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-3_9_col.glb",
+      "bytes": 3788,
+      "sha256": "85bded000fbf0a2a5c6a1c410c89d4bb37e80852f2938fd8eef6ce13882fe48e"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_10_col.glb",
+      "bytes": 29972,
+      "sha256": "3ae34da894cfdb0399f1ed00b92eee0ce2fc821b783ffeb2ae4818b1cde23b70"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_11_col.glb",
+      "bytes": 7120,
+      "sha256": "f6d3068a055715904226abd6ab15412c0349336ff4847896003bca9e0b91edee"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_3_col.glb",
+      "bytes": 268436,
+      "sha256": "d21d3d6eb0bca1e18a1ca0027439bd21a88ec4ce54769c91378716af5d862797"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_4_col.glb",
+      "bytes": 374716,
+      "sha256": "20286f1d04fef7a4035cb1db6268fadc46b9cd20ce76e6d557321c30e6110f55"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_5_col.glb",
+      "bytes": 365612,
+      "sha256": "8c7f3c6f6590b878ad4c6160c6887ede613431e6bd3bb668b2a4238b1d6e6750"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_6_col.glb",
+      "bytes": 332532,
+      "sha256": "a3a5a3ebfb16767286f02136d51530d03c7cbca4b33f8ee0fd0f755fc0f79e9c"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_7_col.glb",
+      "bytes": 141952,
+      "sha256": "9b79a468f868a7dc820a3bb6277956d93c97713fcdc1919739f92d7d0c8c9152"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_8_col.glb",
+      "bytes": 95076,
+      "sha256": "2060e3f2d8e2c8dfd9538222f2800ebb196f26f178e35d9674ce12dd2c542aa8"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-4_9_col.glb",
+      "bytes": 82644,
+      "sha256": "d985c83dffb6b595ea1c6a9402e7b86aa22cbc9f64a54136238c8d7e20f0fa9e"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_10_col.glb",
+      "bytes": 37788,
+      "sha256": "7b78b0af5126cc75c6adaf9f6760a515645a9e379bbb156381b58a1cfbdbae5f"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_11_col.glb",
+      "bytes": 94720,
+      "sha256": "91f1393a65eb336173d6cc00477c7b701b4480aa4f9d42060e59d9a8c82ec7e1"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_3_col.glb",
+      "bytes": 158768,
+      "sha256": "9e19527aa88e2ce8d4f45658670f68089740703f8ad3212e9ffa7bfcf4377fe1"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_4_col.glb",
+      "bytes": 180820,
+      "sha256": "c4e4692bf7c234fcc674b850d0e0e1159cadd8d54fb8f5809bec01a1745ad9a0"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_5_col.glb",
+      "bytes": 117112,
+      "sha256": "7ea0db83a045c9ae79650db0cb5af7b5b848177755a6d03f5e8ef6750569a561"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_6_col.glb",
+      "bytes": 126152,
+      "sha256": "26d5fbba94445622e32149dfb23e2a71f1b64bb4b73ce9770424dc6dfe12b8fc"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_7_col.glb",
+      "bytes": 283892,
+      "sha256": "7f8791b9fd0af9d6a4e9a025ef85211d5fcda7d8a754472617c0da3016710d63"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_8_col.glb",
+      "bytes": 86264,
+      "sha256": "db8fd45b2dfc6d7cd4f24d12db9a812da72a580c30c1ea641507793cafb7ed0b"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-5_9_col.glb",
+      "bytes": 136216,
+      "sha256": "a1d0ddcfc3341de300451162f473f2f1d1f2157a1eb0c3afc89938f46fd388ec"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_10_col.glb",
+      "bytes": 9052,
+      "sha256": "df9f05c3b5c2c00bb8ad521b4919e3d08b611e75828ae372543aced205a70d39"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_11_col.glb",
+      "bytes": 5880,
+      "sha256": "f7d2c07c2c9cdddbe44f3a97b48d04fcf8a9a651859c34e302dfa443058a5725"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_3_col.glb",
+      "bytes": 10060,
+      "sha256": "6c93f9dab4a2302f8b448056cea32a018b5de75ee92a632d46ef6b61bc6dabd9"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_4_col.glb",
+      "bytes": 41600,
+      "sha256": "49627ee3b8e7171cd05725c5a631630ed03ba7a75c0033e289b1e9560c52c161"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_5_col.glb",
+      "bytes": 28860,
+      "sha256": "9562cfaea8feff73cb46d6c5e71aded7b7f5d3d4c07661c2b13d289c93e72ffe"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_6_col.glb",
+      "bytes": 13196,
+      "sha256": "07eb1cac143916b7b5c2c1ff0ee41f711cae252cf8d3a37aec11ed6e1d5bc0a8"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_7_col.glb",
+      "bytes": 118264,
+      "sha256": "f2909920e4cbdeaaefdcb196b489401d7de02bce35359ee60b0a9f3d6df7ab2c"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_8_col.glb",
+      "bytes": 58420,
+      "sha256": "aba75bc1fbc1b4d77facd9f24a14490ef5fc8042fa3905e6f198d031ed3bdb8d"
+    },
+    {
+      "path": "models/shuto/buildings/collision/-6_9_col.glb",
+      "bytes": 20716,
+      "sha256": "48ae29edd53134f2fb6b26ca4008732d8ec30e0b022c498885e70bf7a8a88bf8"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_10.glb",
+      "bytes": 14104,
+      "sha256": "43288b25c106938372122bc615aa4c69c681f9ea70f80500e9c125d1c861e6f7"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_11.glb",
+      "bytes": 55752,
+      "sha256": "156c3687bca1d9d675f203e1a91beed06f804edd1367ab9afff1bd85d54b6bc6"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_2.glb",
+      "bytes": 6656,
+      "sha256": "d91e8b71079b437afbec2556bddf661bcda4a787facdb078d6e055178379cbb5"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_3.glb",
+      "bytes": 481248,
+      "sha256": "eb96430c31199233fc7259d1726fc22de70db28c7b4f91560de821198e96451f"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_4.glb",
+      "bytes": 335628,
+      "sha256": "e239c190403534ba8734ca1503ef2d6e616c2f461fa6da4aff8c10a243e7db8e"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_5.glb",
+      "bytes": 202620,
+      "sha256": "1ecdd1ac7fd36464c3b5c4b6cd97fe70c221cf3fe34e34830a304d2afd44660a"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_6.glb",
+      "bytes": 231216,
+      "sha256": "b65369a74c5992f90bd88b2bb7c40197d011c04670005a0d3d2e2cfce546d0e7"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_7.glb",
+      "bytes": 176168,
+      "sha256": "25c6b4b679f926d40f406b9a58adef9974480b274d77dbcc5e44ca1e030d5808"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_8.glb",
+      "bytes": 61164,
+      "sha256": "0679abca3d5ffac96179c45081c19aa7f276954a50bcc1607bda22d3f551db88"
+    },
+    {
+      "path": "models/shuto/buildings/context/-1_9.glb",
+      "bytes": 1768,
+      "sha256": "44c4adf545b0f1288bebb88fe43f528338bdbc17ebb7d8ede45f42b485844222"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_10.glb",
+      "bytes": 14856,
+      "sha256": "bfc01088a958195861eb0f14397d6ba4aeb3d88f2fd79cf142f42b4ed856dfa8"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_11.glb",
+      "bytes": 26896,
+      "sha256": "83d8fee479efbb863887f474d6a1c0a9fdada84632b72065e2243cb2b86058e5"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_2.glb",
+      "bytes": 8296,
+      "sha256": "19a82bcc784e3b1dfb843c0a980e71ab550791ab31ce280168bcc976db8a487a"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_3.glb",
+      "bytes": 503084,
+      "sha256": "c77e3daf9259ba39a17ab35f00aafb2a06205d2b606b31e2c4fd6f255e3b1661"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_4.glb",
+      "bytes": 521380,
+      "sha256": "455a48cf4ad9cb6f89e053d4e8b536d7aa89b7c15454115e766ee94688375d77"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_5.glb",
+      "bytes": 228636,
+      "sha256": "ef773ee9dbb400c405d09c21b93a34b3c7713c9a8b5dd0e12d123916f16be432"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_6.glb",
+      "bytes": 101196,
+      "sha256": "24bf0c8227c7994813203998b0b1267e91d865d0997c848b6b68ad890bc2e35a"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_7.glb",
+      "bytes": 73488,
+      "sha256": "8f6982d9e05b611e8daafb6e33f51597654c18ae5a4f6847457ee86cb9597489"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_8.glb",
+      "bytes": 15056,
+      "sha256": "6f7df9d112c0f02374e8db40764c7c4f958a4e1a989ed9662a7baad7e8f2610b"
+    },
+    {
+      "path": "models/shuto/buildings/context/-2_9.glb",
+      "bytes": 1772,
+      "sha256": "c07a4d5b95cb3ebe04ac255f7b60b10ce3780840f33709c87555f97135d33a88"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_10.glb",
+      "bytes": 33172,
+      "sha256": "6f4103e10cbed2d15a2dcf09a9673365fefa379cb9607b73953f3e61903878d0"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_11.glb",
+      "bytes": 30500,
+      "sha256": "bbd241f6dcfa72d9323935a17d4ec6629f246ac1757e9bc2bd0c35f3bdc9df6e"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_3.glb",
+      "bytes": 601976,
+      "sha256": "f3e9f7d141a2c4b960c677ea9ce5b83d8de38bdf592de685036688709e293d91"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_4.glb",
+      "bytes": 950672,
+      "sha256": "6be3739be00a57a9cb456c92cdbf2615e106539d43c9b7a1cb84050fb6424a01"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_5.glb",
+      "bytes": 334492,
+      "sha256": "0273f9d381a6b6dbb86cd5c825c12bea83a440e71f5272e36a41fdb78b2f4c79"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_6.glb",
+      "bytes": 374792,
+      "sha256": "d17033ff1ba3a8694daa96a3c7e7b10ad9131ca45df17f0c4ebf81cfd54aac8b"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_7.glb",
+      "bytes": 193164,
+      "sha256": "c25a42de44d5aae9864cf6a35d8f2db78914a00632e08fe07766f2358492e990"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_8.glb",
+      "bytes": 107172,
+      "sha256": "41dbbf194e4d291cd74ae3d6c388f631d344b81f801a68082ffeedfa2e63a97c"
+    },
+    {
+      "path": "models/shuto/buildings/context/-3_9.glb",
+      "bytes": 24748,
+      "sha256": "4c203998839390a6538489e6fac2b941f68e70e28c958e7183fec04497163900"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_10.glb",
+      "bytes": 132300,
+      "sha256": "7620bafb6628b7ce62d324ec9540e18864546a9934d568f05e169885d5589351"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_11.glb",
+      "bytes": 215616,
+      "sha256": "203fa121cdeb4faabc8e28e6f3498633f7a33f310a0f921a3760a9417df781bb"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_12.glb",
+      "bytes": 2000,
+      "sha256": "6b92914c7c131824ff900dbaba5f1a7b004d4747d4b760fc1c0f6cad7b302e8b"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_2.glb",
+      "bytes": 7352,
+      "sha256": "6919176966d85033ed9900494dbd891d9b7a812614615ff8b806caf7d4bd6920"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_3.glb",
+      "bytes": 572036,
+      "sha256": "300064283e932a0f8e022daafc5f9778e94373d357e01d6eaf5cd2e5dab98b74"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_4.glb",
+      "bytes": 821084,
+      "sha256": "debfb6601e30e2604f895b657fb782d4018600cef33f5b84ddfe542018faf837"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_5.glb",
+      "bytes": 167008,
+      "sha256": "edb45ab2fab9b3196bd56a67f5510d89acfbed95917da075e6d3a1ea00e2ae86"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_6.glb",
+      "bytes": 174280,
+      "sha256": "157f545549fa299fbeba898ebf172909be4f614bbf5c607d9cc081ed4f760068"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_7.glb",
+      "bytes": 261164,
+      "sha256": "704579f29f243f1b3db81c76dd225b99ce15c391f6239f27cf259c0638bc41e7"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_8.glb",
+      "bytes": 201800,
+      "sha256": "252b6318a3a10a2c59726ec2f44fde0887bd5fa10bf1e61009e5734fa8c77964"
+    },
+    {
+      "path": "models/shuto/buildings/context/-4_9.glb",
+      "bytes": 238980,
+      "sha256": "1846d16cb172701c869d3c1adde90698078fb875281b8c5b21af33b6ae5722fc"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_10.glb",
+      "bytes": 139632,
+      "sha256": "4346e1e301e941fdbc3eb572f62e412d7f373ef55a0d01f6aee84ec6858c2a75"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_11.glb",
+      "bytes": 244392,
+      "sha256": "26a4c345e1814bf00a699fa0c05401f09150144212bbedbfb5ef4ecde3a982ac"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_12.glb",
+      "bytes": 4028,
+      "sha256": "a81e0aef12286725951dfaedb5e4fdf031336ef855b0b886c6701b54cdedac7e"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_3.glb",
+      "bytes": 718564,
+      "sha256": "190b5888a27475bfcc4c41dc0e0677407a6e8bb7e03b049134ed8ddba9462c93"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_4.glb",
+      "bytes": 489324,
+      "sha256": "4e0c225b5bd9c5503a5c80cb3e434189a4f9c9b6add7a30dc1f6591328655f67"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_5.glb",
+      "bytes": 595624,
+      "sha256": "e66976cb012625ce01f7c9af9600eb51f22b96e8e705e4fa76609443ca378e36"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_6.glb",
+      "bytes": 318716,
+      "sha256": "936b4a17d824324b185e6e15cc93935647b896748476f84f7d45256ece86cdd5"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_7.glb",
+      "bytes": 407976,
+      "sha256": "ac19bbdcc565d9881ddbd3933dfc8f9ae70bc47139945c722d5940b372871a8c"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_8.glb",
+      "bytes": 284224,
+      "sha256": "c98481b12ef41253d318e42884a17786d6a2e68098855af45c70fc49decbc661"
+    },
+    {
+      "path": "models/shuto/buildings/context/-5_9.glb",
+      "bytes": 472560,
+      "sha256": "0aa49c2d2ea4fa6726816df60e80156ff3e9bbf04339bc2fedb78d6521fe8b6b"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_10.glb",
+      "bytes": 126192,
+      "sha256": "fe494e38133984f09e36b72b6e6635ef6e858d8e863532710582e33c528a0af6"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_11.glb",
+      "bytes": 55824,
+      "sha256": "ad165cef034d2fe0f090e90989bcd38a29aa7537f136834433454032a61270fd"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_3.glb",
+      "bytes": 169196,
+      "sha256": "dbbcadce867c7358fc160a129eb81c61917f74d9b091de7c428624d349cbb310"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_4.glb",
+      "bytes": 70528,
+      "sha256": "b77a00cc38320482ab09d2f8b18551c24313e8b67d85760c17a76321b28f5994"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_5.glb",
+      "bytes": 78412,
+      "sha256": "d95679b6fcc074060d547c89b097085e4dffae67c189c5ef08bb06cf90e73e98"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_6.glb",
+      "bytes": 184888,
+      "sha256": "4e74c87cde787a3257eb9405d855f8f1618fc5a3c99a819e39f70bd435e1858f"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_7.glb",
+      "bytes": 37144,
+      "sha256": "b830906998f7cf4d8cb22cda9b954744e556fa383a48d120e0377fb64bb4ff42"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_8.glb",
+      "bytes": 13504,
+      "sha256": "a7fc196e338108b0b968411a8e26b2616ef6d43fe043c8dd10cf715aaddb9d5d"
+    },
+    {
+      "path": "models/shuto/buildings/context/-6_9.glb",
+      "bytes": 78196,
+      "sha256": "031e34108550a428df998b64edc0364494b0500f1c8534e0d1d6e05e20ca8469"
+    },
+    {
+      "path": "models/shuto/buildings/context/0_3.glb",
+      "bytes": 7772,
+      "sha256": "8d29da120be6b39960c207fe9064524f5bb8a69612df84adc7bcc4f13284e2a7"
+    },
+    {
+      "path": "models/shuto/buildings/context/0_4.glb",
+      "bytes": 2420,
+      "sha256": "035ad0d0d4a0a2e7f32efbae3dbffa4355615575bc0efc8b037f26cecbc0858d"
+    },
+    {
+      "path": "models/shuto/buildings/context/0_5.glb",
+      "bytes": 3224,
+      "sha256": "9e87a6bd4b5d2375c26c5b1ed45b4584212a47ef7ad2afd35df8bca1f5fe9132"
+    },
+    {
+      "path": "models/shuto/buildings/context/0_6.glb",
+      "bytes": 6136,
+      "sha256": "4eb9619505856f802ed9b837197c4ce8cee92aece89b6229782534c084439779"
+    },
+    {
+      "path": "models/shuto/buildings/context/0_7.glb",
+      "bytes": 6964,
+      "sha256": "64ee1e0c8cfaf146c9d5cf51fdcff03690b652c424506fc0d767d281896162e6"
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_10_col.glb",
+      "bytes": 4428,
+      "sha256": "88de0fa7046802d44930205c9020d19400a7379ee5c183fd9e381b95e8c41c41"
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_11_col.glb",
+      "bytes": 5076,
+      "sha256": "7d27a739bca28b9fd2e6505a828e0633c28b943c5fb9444e80e351527e32b09d"
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_8_col.glb",
+      "bytes": 5076,
+      "sha256": "785bbc01650a740c64bd83447411f0b27c1bcef0f858aad648792606a201d7e5"
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-3_9_col.glb",
+      "bytes": 10252,
+      "sha256": "f9d8b5039ed8250b9de9c290dc6d5871ab048e87e454d91a190344a87d87a2a5"
+    },
+    {
+      "path": "models/shuto/buildings/context_collision/-4_11_col.glb",
+      "bytes": 10912,
+      "sha256": "8cea41041b4ae522ea3acf241d145be164c055083f72ca5206e8d0c1e8630fec"
+    },
+    {
+      "path": "models/shuto/buildings/japanese_architecture_kit.blend",
+      "bytes": 7455858,
+      "sha256": "adadfbaef6f540af90cc6854eb22463e9c1f937cb2d2a0337e2dc3f21ff4c3b0"
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_col.glb",
+      "bytes": 2760,
+      "sha256": "eeb241aba4f91c81396a412d15e42b5814df4cd143e8ee5d05f0c11880b953d5"
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD0.glb",
+      "bytes": 674772,
+      "sha256": "ed67dda95337bffdb69d976f7d7d606e7bc5350b2708fbf1592de02027882577"
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD1.glb",
+      "bytes": 129956,
+      "sha256": "9d6a9fb1058e1fbe1a63c286938176eae41772b9e88274d82afe3dcee9a888b5"
+    },
+    {
+      "path": "models/shuto/buildings/kit/apartment_tower_LOD2.glb",
+      "bytes": 4332,
+      "sha256": "97fa7243bd89cf3ff7867e98d440bbfb29edbefd15b1f0c9ff76349a23ad6d22"
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_col.glb",
+      "bytes": 2748,
+      "sha256": "40cdcae1bc3ea1aee3bc76a6c11c8fe8df79d0312d72f14dd9241d0a197dee3d"
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD0.glb",
+      "bytes": 471664,
+      "sha256": "0f15ddb8bad5e46895c03c7b7f673c8f6579ea93212407bf3fb66c7935245a9a"
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD1.glb",
+      "bytes": 87596,
+      "sha256": "e0d529e4306289bb11edb0ffcad0ad4d5c0c13bf4f1fd9c4338387c1a36224f5"
+    },
+    {
+      "path": "models/shuto/buildings/kit/commercial_midrise_LOD2.glb",
+      "bytes": 4296,
+      "sha256": "f2028f173bf94073a1cb8a5ded375393c58d9763468e83fad4913e7f38c667e0"
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_rooftop_ac.glb",
+      "bytes": 5124,
+      "sha256": "79d78d54bfe5383a7fbfd3de1da8fa53e500a63d72a20d20c0bda627d7830708"
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_shop_sign.glb",
+      "bytes": 1892,
+      "sha256": "9ced93d22314cc4beb14c5f5667aef88acffae1f0d2622b9e0a141b45e9ee28a"
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_water_tank.glb",
+      "bytes": 5840,
+      "sha256": "205eac5d6a182dadcff9a6d52489cdd73679dcbd14a5e53953463cfa4583b750"
+    },
+    {
+      "path": "models/shuto/buildings/kit/component_window_bay.glb",
+      "bytes": 12888,
+      "sha256": "86eb873852a10bff891c9a563c306d7d1fab999733380799b78cc4b409ea4ad6"
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_col.glb",
+      "bytes": 2768,
+      "sha256": "f19e206c1bea768a0c1d3822ca12a3869fd692feb99119e241f4d9bce769237b"
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD0.glb",
+      "bytes": 64464,
+      "sha256": "32f633c2862cf0240d84ff1cfbdb47a97da2de90d11947ae9336c6622ead4ec6"
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD1.glb",
+      "bytes": 16400,
+      "sha256": "70de26b0ee163a01eb793d8fbe510fe6b4ccd79e9532bc63d65a2d56e449df21"
+    },
+    {
+      "path": "models/shuto/buildings/kit/industrial_workshop_LOD2.glb",
+      "bytes": 4376,
+      "sha256": "a4a4b2ef1642635b6ba9d4e0d85181845392c34b19335636e9a97197dc368d84"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_col.glb",
+      "bytes": 2752,
+      "sha256": "37a495d9cfbb7a967afbcf45b0fb19cbe12a4f20aa20c3aa1904b5fbfdd8a4fa"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD0.glb",
+      "bytes": 291608,
+      "sha256": "d1afefbe6a773c141802561121a0d2f6d54108fd622bf56acd2c94c093b8390c"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD1.glb",
+      "bytes": 291608,
+      "sha256": "284f67f4e292f9cad28646ab4ff8601a4ec5a2b048b9ab45ff308b791ea8eda6"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_dentsu_LOD2.glb",
+      "bytes": 8260,
+      "sha256": "240ba343fc7aaaed975a0937afa4c3ab7231b31b824b942c83416286fbc18a4f"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_col.glb",
+      "bytes": 2720,
+      "sha256": "d6bd388b3edd0fa91f0a8c309e621e03805652da6abf3e2f9f81f5072f9f51e9"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD0.glb",
+      "bytes": 4951588,
+      "sha256": "79a7cec0b7f9583369039b1b3638adddf2c80675da31da1758da2314e78e3e8b"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD1.glb",
+      "bytes": 3044732,
+      "sha256": "9f1219e28a7cae1be77217cf5d871c394571dc6c2f8b4345fb1c4e7e2267e73d"
+    },
+    {
+      "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD2.glb",
+      "bytes": 362012,
+      "sha256": "b53f8aa6bd0baadaecbc9c23ca12ad39badd26089a6d9253171a7fdb947ed79f"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_col.glb",
+      "bytes": 2756,
+      "sha256": "059edf9a3c7507d0d52ce7aaba55c0e778c7bd3bd754bfb37c9ec266c1fef383"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD0.glb",
+      "bytes": 606228,
+      "sha256": "478298f9d651e356bc1dbe438bdd331f43615457e0354cd5d003110abfb1efd8"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD1.glb",
+      "bytes": 112008,
+      "sha256": "3f67854f4082e76561cb68c168de19d86de83ddb9bb2542ff2fa8cea4f4575fa"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_ribbon_LOD2.glb",
+      "bytes": 4284,
+      "sha256": "26b8211dfe7f5f33963c94abec8d138761f189eaed519ddf2e3a3546f6d360c6"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_col.glb",
+      "bytes": 2752,
+      "sha256": "8de93defe16d018249c3151ba6b71b944428cd2e5ffb89e78ebd482b09e42471"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD0.glb",
+      "bytes": 224456,
+      "sha256": "7044f62c2b6ed7146f3164d085b4ad0e1740247820567ba404f167e59a68cd9c"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD1.glb",
+      "bytes": 46684,
+      "sha256": "d07834cc94f0780bcc8d04d196f22d69c0df8510d262a04f83ee28701b86856b"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_small_LOD2.glb",
+      "bytes": 4276,
+      "sha256": "6d7bf34574121bd01162ea90edf9dbedba7555db071cd84c187cd86c2f051fc5"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_col.glb",
+      "bytes": 2728,
+      "sha256": "f3847047126c11790a3f2020abffc909a4c64bf4b4f94b1064405ea51d10a78a"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD0.glb",
+      "bytes": 837476,
+      "sha256": "1561776a98836ea7b418f27ad022ac965da97bde326a6c64f96ecd918e6a847d"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD1.glb",
+      "bytes": 159672,
+      "sha256": "74c01e19be8cfb3dd9c3a4449807bdc38e86db92d37a9b17f79f47a3090dfd49"
+    },
+    {
+      "path": "models/shuto/buildings/kit/office_tower_LOD2.glb",
+      "bytes": 4220,
+      "sha256": "eba2328e61c6e586ebc741f9f7b7bfc4b38ffe42c3445ff534249338512536d7"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_col.glb",
+      "bytes": 2784,
+      "sha256": "eeacf0ea339758d8d19f003f7a2999c778b8efdb283d3f58c83f0a8232e6bfad"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD0.glb",
+      "bytes": 259876,
+      "sha256": "615ac7e2dd405744f372f815ce85c686eb6d085c3b92f5a83eb269399c266b41"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD1.glb",
+      "bytes": 55580,
+      "sha256": "07d1f83e0db2dc564aedfe7ba97f30a458c7eb549b0522f2abed4b816244147a"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_balcony_LOD2.glb",
+      "bytes": 4400,
+      "sha256": "a7fdf0b1603afa0f515476f085c1a2f9b8ff3780230fea5706492e3167597f07"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_col.glb",
+      "bytes": 2752,
+      "sha256": "6330df5a52e65c135768326dd4466f30776aca6c15b54110c50add0052f1abbc"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD0.glb",
+      "bytes": 84784,
+      "sha256": "af1282d4fffb0f6d46cbd98a8894e2e67cdd38093c0417a4f3d19d5bf94db47c"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD1.glb",
+      "bytes": 25908,
+      "sha256": "c35386e03ee5824a1a1f196dab9a3bc95597d44205142ad0256ce5ad56e8b13b"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_compact_LOD2.glb",
+      "bytes": 4332,
+      "sha256": "763a04b8d3364385b8a2e1d72941025fc671bff67a6b0977448da4c8b8c925fb"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_col.glb",
+      "bytes": 2780,
+      "sha256": "00550436f78b425fe4bf62797007088248333849642241a8b49f1d76cb40cf14"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD0.glb",
+      "bytes": 598988,
+      "sha256": "be10db362acc70681e7e86355fbc2c7c7d80774446c4a54befd6a408541cc9ae"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD1.glb",
+      "bytes": 109656,
+      "sha256": "f5ba976b1ef2347b0d67b3748bc2471bb7bdfe236ffc306a410e89cfb267c562"
+    },
+    {
+      "path": "models/shuto/buildings/kit/residential_slab_LOD2.glb",
+      "bytes": 4384,
+      "sha256": "56f590fde1d4a44f86f55cee002d098b214a43142560f5fdd10d841e9cb1e969"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_col.glb",
+      "bytes": 2724,
+      "sha256": "e06207c6345791d400c9ca8c1b2ea03ea55702e2a2394a1825fcafef133cd154"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD0.glb",
+      "bytes": 244664,
+      "sha256": "5f154e2d8a7eaa9dee6e1bc35df204d71c74776fd469055bec220b12838801be"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD1.glb",
+      "bytes": 50720,
+      "sha256": "ba6fbc8382ad444266344b9f3010bf6a6f66efbdc9086b246ef161a701972b6d"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_corner_LOD2.glb",
+      "bytes": 4216,
+      "sha256": "6892fe554a0639842bf9112003b6bbbb9e7cd807c3ad16a48299c799beed51b4"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_col.glb",
+      "bytes": 2712,
+      "sha256": "2c434ef076864fb2077582ebc5ab99dadb64acd33c6f92029ea7961def006829"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD0.glb",
+      "bytes": 128128,
+      "sha256": "7d39e95fe240fef18ebcefd66bb532a8893eeb66115c8a0d65e721dca9d675e3"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD1.glb",
+      "bytes": 31152,
+      "sha256": "7d26b81da148a89266bff09698396c06ecb295a5d6399c597c7498c10e9b126b"
+    },
+    {
+      "path": "models/shuto/buildings/kit/retail_frontage_LOD2.glb",
+      "bytes": 4212,
+      "sha256": "e177fb52aba15a9109eb105c535a61dd8b27bbd104e5a5e09274789a6eebc93b"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_col.glb",
+      "bytes": 2700,
+      "sha256": "d66a197f4147796552a2c51baa2608d0a659493a6f9b013eedee1e31a99a9121"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD0.glb",
+      "bytes": 233096,
+      "sha256": "7daeed6579cf57c70053bf59bbc45fe5342d35c7efd70b2e46a1bbdecbdd3886"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD1.glb",
+      "bytes": 31788,
+      "sha256": "f047bdabc5f7819d9e657320483f973a4ef2ecfcf7971d497194b07c58295341"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_large_LOD2.glb",
+      "bytes": 4236,
+      "sha256": "514add73059aea508cd3742bc766e88a120c4c8b818d6aa301e4aa3d1381e144"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_col.glb",
+      "bytes": 2696,
+      "sha256": "665b59fef7e855acf3f9ec5b7b41362b366d9e96d1496c43ada13cc64617a6fd"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD0.glb",
+      "bytes": 78980,
+      "sha256": "9a158b67746dcf6bedecca0f819b2a4d4da15dd725add071d0727e2f00389b08"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD1.glb",
+      "bytes": 17860,
+      "sha256": "c5e1842070fec92f59edc560d1de3e06c68b69e58522b5c3a32d8cc419ec9159"
+    },
+    {
+      "path": "models/shuto/buildings/kit/warehouse_small_LOD2.glb",
+      "bytes": 4228,
+      "sha256": "96cf906335ad07b551131c4fb899f86d9d445b91a7e411738c848aaf3fcff94b"
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_col.glb",
+      "bytes": 2708,
+      "sha256": "b29b4cb2723d5173e23cb5a89b12f8dd37f2eadd26d6fdad060c62f03838518d"
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD0.glb",
+      "bytes": 283756,
+      "sha256": "e438e0eca0574bb63f14e7f92d49764681110716b9b1832ae20be23a0f5aee35"
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD1.glb",
+      "bytes": 36736,
+      "sha256": "47ae85ce2b0289bd964bfd70b28c2944221cd3d6929dddbc1ade7d0adba87d51"
+    },
+    {
+      "path": "models/shuto/buildings/kit/waterfront_facility_LOD2.glb",
+      "bytes": 4260,
+      "sha256": "8e405f0d61af32f821fdf72ce733dd75c0030803f681cc1d8a2b7e8f8afef827"
+    },
+    {
+      "path": "models/shuto/buildings/kit_index.json",
+      "bytes": 15359,
+      "sha256": "dca51bb0a1cc716d83f3167ed256aec398d2525d483960870a7704898e0c2888"
+    },
+    {
+      "path": "models/shuto/buildings/placed_buildings.blend",
+      "bytes": 62843242,
+      "sha256": "04919914d0e7c903ad4e23d766a0dddefe22cd3c2d32547d37409492dd23ca97"
+    },
+    {
+      "path": "models/shuto/buildings/probe/apartment_06.blend",
+      "bytes": 143874,
+      "sha256": "8e6a2e54eab850ea27abb31b214db7d5e0087e98f69d8087d3300d4910db8d25"
+    },
+    {
+      "path": "models/shuto/buildings/probe/apartment_06.glb",
+      "bytes": 247656,
+      "sha256": "50735929391522dba12c6d43867f58cdb526788a40a8c3d0919caaccdc855b0d"
+    },
+    {
+      "path": "models/shuto/buildings/probe/edited_compact.glb",
+      "bytes": 84784,
+      "sha256": "4eeff3d5f890b63e37b3a5a9713b7a7449534f35edfe822ffe421c4567900b04"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_11.glb",
+      "bytes": 6432,
+      "sha256": "47243f9cbb7b8f9e29d4eddebb518e0bd4650025aad4e2a011e38d69aed1d681"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_12.glb",
+      "bytes": 3294740,
+      "sha256": "84508122189f3276692c6ac240106f5b49e7f07ef58963fd11508d9c6309c377"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_3.glb",
+      "bytes": 10734556,
+      "sha256": "7d16355f2d2901241da756e766a5f18f17d263e0f516c9d26645ecdb6742ab05"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_4.glb",
+      "bytes": 301916,
+      "sha256": "8918651099ccd4dd5ae1faee1a206d405152e565da53d8e759fc69d7f97c7c66"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_5.glb",
+      "bytes": 84808,
+      "sha256": "8932dbd7816d367de62127a8b5ced9f0921bb6700e6ef7f96c7b8dc6ddca187e"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_6.glb",
+      "bytes": 102836,
+      "sha256": "413b619a4c7aa45612e4aa767ad915ff7b3560a2de97476caca62dbeb1755496"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_7.glb",
+      "bytes": 139132,
+      "sha256": "513d3cb43d23f4fef7ffeb38ff732f3ba250791c936d8f68deab3c05d754eb74"
+    },
+    {
+      "path": "models/shuto/buildings/render/-1_8.glb",
+      "bytes": 21348,
+      "sha256": "fa3db280d2e3d01de4f43a6e0f426aa06afc841c0520c3490386453e485a6260"
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_3.glb",
+      "bytes": 13318520,
+      "sha256": "396a33d0c93e12a496a4f5db96572c6de64bb57c0bbee4ae2ac2e7f942cec74b"
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_4.glb",
+      "bytes": 11147012,
+      "sha256": "9e6ed43c6853c51cb1536146d260ddc00dadc8fa4f8d28da32f6c0dd91a444b1"
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_5.glb",
+      "bytes": 47204,
+      "sha256": "d011c9ecca799b1acd3f96d5a49a18258efd46c42900f4090aa2ae956cb5b6f8"
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_6.glb",
+      "bytes": 28044,
+      "sha256": "a4c6ad0b4ce282879dadce618b08221294320472c9ba3821e5d27d84029130dc"
+    },
+    {
+      "path": "models/shuto/buildings/render/-2_7.glb",
+      "bytes": 15768,
+      "sha256": "a913bd59cb9e5eeadc29ad988c58d317637e301ed41869d063e8da42969073a8"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_10.glb",
+      "bytes": 465332,
+      "sha256": "dd515df9602ccb30dc3c090cc12ba9f8aecb455d3404ede0168cdb036c49e648"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_11.glb",
+      "bytes": 4140,
+      "sha256": "6b8eb935b0b8d97eb414275b0a183c19f300e907010894a861059ce8a63cff8d"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_3.glb",
+      "bytes": 591796,
+      "sha256": "39cee58e9dae55503afaca6dcb451267dc9659b158c9561394d066dbc0fbbc86"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_4.glb",
+      "bytes": 1390240,
+      "sha256": "e582c7c8ef35d5c206411089c178f4da477ff6e87ff36531099e85f83d224dcd"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_5.glb",
+      "bytes": 7326640,
+      "sha256": "568412c46a1f44860ba0d5a349c06d6b36da0cc5376f0c099f74860ceebf150d"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_6.glb",
+      "bytes": 4423320,
+      "sha256": "0ef94fe10b5bd4b41e0c9b6a680f685212e0f3c6cd7f6b49e6f00356e582a8d6"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_7.glb",
+      "bytes": 7227496,
+      "sha256": "bae47d518ef083d3144856668fc49335bcc103323c1d12a96ff725ba59ac0d33"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_8.glb",
+      "bytes": 1775820,
+      "sha256": "4d9a6574e12058ed04ccff83c5af11b01ec5665520b8f37defadf9e65b684a55"
+    },
+    {
+      "path": "models/shuto/buildings/render/-3_9.glb",
+      "bytes": 2471892,
+      "sha256": "ee1f1154a3447ea5485b27a32ce46bf0bccd27c7728290105756ea05b50dce3d"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_10.glb",
+      "bytes": 4459980,
+      "sha256": "0665770c3542d11a5bb60fdc16e9864b4de73304af5c36f5a7b5a4ed45f56e13"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_11.glb",
+      "bytes": 15568,
+      "sha256": "beff21b6ab6b9083f6947088c4a84d38bb573c1af45da8db8e1132bf5fe3cb24"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_3.glb",
+      "bytes": 473168,
+      "sha256": "a15641a969ccd9a53ff498f67aaa3eacbc9ae3723564d461c9754c4841833668"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_4.glb",
+      "bytes": 620960,
+      "sha256": "abf28e1cc1243a40a205700a33a17315695d5113436ec30cc2a3eee9d4cdbe03"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_5.glb",
+      "bytes": 1071360,
+      "sha256": "40942f9fdd909ea3b77dbe55388ca41b7bdb75219d124a969b489d9342dc9d05"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_6.glb",
+      "bytes": 6090616,
+      "sha256": "bc0198ce3b6c8d540c4fced799774dde375c14052c38bc9fa483d679c27e8f5d"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_7.glb",
+      "bytes": 1625820,
+      "sha256": "e40d9aa35b51d0e7ce615106b77c57c64ac1b5e7d1553ef4434cbed976ba12e4"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_8.glb",
+      "bytes": 5016784,
+      "sha256": "2c9f8dcbeafee9eaf3a4af098c0649a7ad2637cd09537e9f01d6ed37a2d44a09"
+    },
+    {
+      "path": "models/shuto/buildings/render/-4_9.glb",
+      "bytes": 18071148,
+      "sha256": "f16e60e864045fb7efca8e712fe4e4a5d512eeaba0d366f95815e23c48b37696"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_10.glb",
+      "bytes": 2445452,
+      "sha256": "c87665335072c3d1f27f0accb413eddaed2afde15a858ac6e46461187e38a654"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_11.glb",
+      "bytes": 7117864,
+      "sha256": "8bb4448768a79407a63f03d42293879f88f9ca64b8b871b84a45151b177c37e4"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_3.glb",
+      "bytes": 281436,
+      "sha256": "fdc9472233e96bb477818b8d9aab769080ead2e25dc15aac81ee8592ac427ba8"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_4.glb",
+      "bytes": 304348,
+      "sha256": "d740d9cbb204c17964b935117805117db3d187cc4835bbf96ac6d6a72775c7d7"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_5.glb",
+      "bytes": 200308,
+      "sha256": "96f651e1f92a141864e8353efd7be132cb2e7806edcacd140d0a339b07eeaa55"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_6.glb",
+      "bytes": 4845556,
+      "sha256": "d0bfa65e0618ee032b788612abfeb34199d252df146e9a838b1e96c2be494a4b"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_7.glb",
+      "bytes": 4585208,
+      "sha256": "d83c1230bcbc2d5ba360d70cd6a64ff8952bc414a822b1ad18313dde59414e13"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_8.glb",
+      "bytes": 189668,
+      "sha256": "47dc2c0f92799756c5b687d589cb2c3c7c98ac6964ae4e57733f24c4b55c6d50"
+    },
+    {
+      "path": "models/shuto/buildings/render/-5_9.glb",
+      "bytes": 326800,
+      "sha256": "5d104408dabcf4981ed9eaf640d9f7a34d9a2a4c40a50aa41ed85be5060f2e0a"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_10.glb",
+      "bytes": 23860,
+      "sha256": "1612bd8f69d3f27d52522dd77cb6571fdb20cc6556b7c855d5fe82eb7bc8b1bd"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_11.glb",
+      "bytes": 29080,
+      "sha256": "3deec2fd529bcdff97bee33421a18c8a9d26292efff52f9005f41325b9e4fa09"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_3.glb",
+      "bytes": 22312,
+      "sha256": "46c0a0c6fc1ab1dcff654cd5dc4ebdb61e088bbbe0e6194c48d7b5ee670fa8a7"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_4.glb",
+      "bytes": 76364,
+      "sha256": "b6e2c4f0ed60eb8f3e1f4c3381036281ee050835795a1e1b5530bc5c3b8ef6ae"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_5.glb",
+      "bytes": 54872,
+      "sha256": "82a93f3bf92eb5e4aa0954cabab084d2c4e300fa7c6f552f9c47f9039d6311f1"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_6.glb",
+      "bytes": 372744,
+      "sha256": "73cfdd2ae8d6d7fbb8e7dce14bdc11e4c1d0653fba631850b15c7f601507a2aa"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_7.glb",
+      "bytes": 787412,
+      "sha256": "04800061bbe11eff557660ad8c6a39c8fcfeb30b412c467cfd37f3e985e54741"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_8.glb",
+      "bytes": 106568,
+      "sha256": "de0d3be361925a918ae19ed16472dffe8eff8be1ee58dcfa51852f56bf3856bf"
+    },
+    {
+      "path": "models/shuto/buildings/render/-6_9.glb",
+      "bytes": 45668,
+      "sha256": "fa61e7511e702b5aa63e5467df4a18fed9d25fb9c22bad6120ac79e93ea986a8"
+    },
+    {
+      "path": "models/shuto/buildings/section_index.json",
+      "bytes": 1484451,
+      "sha256": "1fc23d93583c8df157c059af54efba5cb7e187aaef0540c3429f264dc59bced8"
+    },
+    {
+      "path": "models/shuto/buildings/source_asian.blend",
+      "bytes": 29948845,
+      "sha256": "bb067d6d8ed962b2ee177dfc5b193a97fd072fde1a262b3b71e38a31be8ad8b3"
+    },
+    {
+      "path": "models/shuto/buildings/source_kit_index.json",
+      "bytes": 46491,
+      "sha256": "20d36b9d239e9a130c9dc89c23ac5a5deb5658d874fc5620689186c35015354a"
+    },
+    {
+      "path": "models/shuto/buildings/source_lowpoly.blend",
+      "bytes": 11900826,
+      "sha256": "3c77acb3dd273854d2c8bf381587eaae8fb572ac65fc6b5f0de25524bb1bd1a9"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_col.glb",
+      "bytes": 2788,
+      "sha256": "631e924c37a9241129085054ac53e03e4042ea08578a915bd17fd8483fab4173"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD0.glb",
+      "bytes": 29668,
+      "sha256": "d1c1fc61005feb827da28355e6e72e63b8f6d8150b4cb33b5578e82d78d39000"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD1.glb",
+      "bytes": 24104,
+      "sha256": "52d310651107ef8a2d3ef2574da9ade1a8e06e9ba58586af1d6c38d760284c41"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_01_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "79fea2c32f9e1b15574ea1652c518c142801f324f3ead5c3f7269cdf3280d346"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_col.glb",
+      "bytes": 2792,
+      "sha256": "d30606712c11078b0fe2fb94fa5cd36127b061b2be88838d7c2992353404ea67"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD0.glb",
+      "bytes": 45200,
+      "sha256": "2275fd2b938990d108f2ce19cacaa4861623c7a40f54856c55aa80c9e643afb5"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD1.glb",
+      "bytes": 40500,
+      "sha256": "fe2c22d4eeba5731f3548a038fb48894d529dc31cf10ca22e2fd3cff1b1313e0"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_02_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "56aa987a850a522e1089fc5e46c4f5545ddc8e89b0d112f12b718d01bae3698d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_col.glb",
+      "bytes": 2792,
+      "sha256": "8bc638a5e0eb209d5dcf2053e9836098cd1ef98b3e38fc530b6f88a1ce297e4a"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD0.glb",
+      "bytes": 61068,
+      "sha256": "3a7a61a03c7be3789f58fd6802a0e50f6fb5ec884b5de07ee19bcb2325a28cfb"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD1.glb",
+      "bytes": 50280,
+      "sha256": "9b5a39ccba1949893b531114ebfff89611dc0e7f46cbf234319af5c17f2d2e64"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_03_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "7bf58042268b95a9f0d387bab1a4b0479cc5ccb1fea2f5a06cf46b58225e50df"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_col.glb",
+      "bytes": 2788,
+      "sha256": "4ea7eeb427e0f99307032b4575d374ef0961695b2d78b97cc6b45685c84a0b57"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD0.glb",
+      "bytes": 8132,
+      "sha256": "14d57f4faed4db86eb2015fe86ccd5c346fd107c86210a08c119e43b521694e7"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD1.glb",
+      "bytes": 8068,
+      "sha256": "ed62b8f869714c69c69504c662da3829fbe0a818d7eb2c1b83a7d841b46f7805"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_04_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "e5bb8e529b3179e2ed1c370c03d12995923dec1e450995cf8ca3e8a524cd13ad"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_col.glb",
+      "bytes": 2792,
+      "sha256": "8d0599fcd1e58115897a1cb8a37383c8630a7f2472c5c08b8a86c98ff65ec83c"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD0.glb",
+      "bytes": 215180,
+      "sha256": "4527f7918ceeafd60bb94023e595bd53ace73fd362d09edf92ef244e7821224e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD1.glb",
+      "bytes": 209984,
+      "sha256": "4e2601bc40fd35b3cef984581ccef52f3ef03a93aad654f3703d189c048a3f80"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_05_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "40f0df90e88ea79200f4517cfaa905205e2935418b7d0f3477ea8bd2548e2c0e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_col.glb",
+      "bytes": 2788,
+      "sha256": "023b1d16e87cfaf3fdf734686e9af0e21a804a2bcb8885b0f88ad367187213fb"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD0.glb",
+      "bytes": 32920,
+      "sha256": "03ce96d841d3c86a295f1d66569254955ecc04298403a0068ce645dc4d8193dc"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD1.glb",
+      "bytes": 26208,
+      "sha256": "4f344634e7f9e2cca2c6167be8753276dea3d5aa6239a10606ed2d6a7ecb581a"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_06_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "92d9b6d16b759eee99a8f6bde91ace491d8faca8d89d5ed008d57cb484411b89"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_col.glb",
+      "bytes": 2796,
+      "sha256": "20b0448436869a3e3f3b5a47f2938476c45079e8da238e5ff2f9fe3730c0d21d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD0.glb",
+      "bytes": 25388,
+      "sha256": "c4d0520bf067ddee1a12cd9b950dce17c78f081723bcf05dc09bf8c33ba59908"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD1.glb",
+      "bytes": 22872,
+      "sha256": "f90bba4761b92b2c76d349bb221f1c00d178f5a078b583a7103c0d62644ea7aa"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_07_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "6bd453abab882f7afcb58594001b9145e45b42c3d309f2d0b39da0ccaa8ad9d8"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_col.glb",
+      "bytes": 2792,
+      "sha256": "d12a3f9ad6b9113d2272c28205a18d1b36a7a6d6485595794df00747f9c0fb25"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD0.glb",
+      "bytes": 8548,
+      "sha256": "55411a8cdcecd069af3d494abb3e23776f3d538be2f32faa45e6dcfbbe72ec87"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD1.glb",
+      "bytes": 8560,
+      "sha256": "acc7609c982ce5d2e24c35bf12b76ac066ae291f4f0902a7c3bcd0d3be60c4c4"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_08_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "184112feeb3ed383d3888d0e10ca11843b83c59c0cbfcf82cb8b370ab7b34a30"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_col.glb",
+      "bytes": 2792,
+      "sha256": "9c939750c53469d5884430f7ae8cce1bb9aa2f112cf1d34423756a73ff7e6bb1"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD0.glb",
+      "bytes": 21516,
+      "sha256": "04d5513ea0407fd3e7e84d12d40f6d14438e4b437d1cb3419376c8e701f72613"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD1.glb",
+      "bytes": 19396,
+      "sha256": "1a26222fe072bea2d0166ca86220475edd3050346e1a252e3cc2d5bd66142c29"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_09_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "de2fb4c58334982aa93bb21b5feee39d6b2ce4c6579a851afa1c4c122b6122e5"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_col.glb",
+      "bytes": 2792,
+      "sha256": "a3d9ff1ebc792f9a916821d9769b677d4c9036abd7a0d2124a016a75b37a6ec9"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD0.glb",
+      "bytes": 4616,
+      "sha256": "57cfad749478bf54477aa836c153a9e07a5423c628ce892328772c05dc0a7ed2"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD1.glb",
+      "bytes": 4624,
+      "sha256": "f05bee7994cc5944fce1cc0f9004a3ed6b8fe2ad551899b77dbc72e5b1500e88"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_10_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "74236351d027cbe420e09c3bc2463ce525fb93bbf2a86330af5c950a6ce6229c"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_col.glb",
+      "bytes": 2792,
+      "sha256": "92c812096e1efc6e3b2c4f8de62a42920bc6891db16c2670f32d6edb12d3a8b0"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD0.glb",
+      "bytes": 42300,
+      "sha256": "ab7caea0aa24c4255aa9f12bdf5d6ed826228eeaa04d5fe99fd5811d338f6bd2"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD1.glb",
+      "bytes": 38884,
+      "sha256": "6f5c36ab91c1b64b9bda1115ae0963a145241150714f151de121637abcb55d59"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_11_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "d442998f99208488582029adf46d5a5bdc1cf9ea8f2aeba4f4a60ee3a8769610"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_col.glb",
+      "bytes": 2788,
+      "sha256": "d3a481cb6368573e1b0c504e9f86a994cb00f41d029413d0a360a322ae95f6f1"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD0.glb",
+      "bytes": 110320,
+      "sha256": "4e357b311ee381a5c2bf592f243ef557dea75da57a2fec1e4469e668f7a02c55"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD1.glb",
+      "bytes": 106672,
+      "sha256": "52dd9278b7617ba7a709999340a867e54d2d252f5cfe6cd874162a79837b392e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_12_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "a012f1bb0386b2d45fdd32fb3aa17dc8648b2c434453094bdeffffd8644987de"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_col.glb",
+      "bytes": 2792,
+      "sha256": "259a11d09e76467696f90760828043eace0d48daf70e40e59345fc0494721273"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD0.glb",
+      "bytes": 30448,
+      "sha256": "27302aa7eb4f52fb7ee627374c981c045529163379f99f1a994aab1eea9b74c1"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD1.glb",
+      "bytes": 25080,
+      "sha256": "0eba7d7d7534f3881e88b778d6e4fe5e5d7b973de6c0b47f52d19acfff0aac87"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_13_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "090965493bdc29683077ad86863b2b1730983f3704947ffe0fb52f296fb7fc60"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_col.glb",
+      "bytes": 2788,
+      "sha256": "4f122395388a5cc587feea37932ba721bbd7d12362429e050de8e972bd590024"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD0.glb",
+      "bytes": 37724,
+      "sha256": "cfe9c7c3112285fc9d7648a7928643883eca07a8e2b466540e274dba149bdcd7"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD1.glb",
+      "bytes": 28524,
+      "sha256": "c778e71600f9fbbf991f164db006c574b8b5b254e45d40b9fc150bc52a25ac28"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_14_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "cbc95dd2adf8c8ed6e783ee9e47f90dd6785a093fca5f2ebbf1fa3ff95ecd363"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_col.glb",
+      "bytes": 2792,
+      "sha256": "99caabac67022f8f9fed183a0edcfcc35dedf77d76f297fc5a3041adcaefd007"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD0.glb",
+      "bytes": 18484,
+      "sha256": "56af61253816116ff05229a95aff982832eb855d926b0eccf8f653a526393ee4"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD1.glb",
+      "bytes": 18588,
+      "sha256": "f41d40788cc2c39c796ff95183ab9cd273e59ba3b90e896fe2d205cdc286d504"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_15_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "1d6acd6c03e296e0da4112cf692ee659ea14794c460eb351b16f662a8b83d406"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_col.glb",
+      "bytes": 2792,
+      "sha256": "4aae84e512b1b934206c361a37fd459b3efd7c236860e7074eaa3fe20c64abd9"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD0.glb",
+      "bytes": 5968,
+      "sha256": "4524a34a1e5016cd1ba2fa4f10a434a8ab68250feb7adc410f215f5da5e0e9d2"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD1.glb",
+      "bytes": 5976,
+      "sha256": "9a7c8a43717e367002f6524fc14df6297d7ae9e213e703a6fd70b3a258ac2d49"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_16_LOD2.glb",
+      "bytes": 2784,
+      "sha256": "91293b1b6fe556b3265c38f80b91c4189b4a7b36202fca22a94bb0c828cb99c1"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_col.glb",
+      "bytes": 2792,
+      "sha256": "0601f9d07aac65fdb4ec44bd3b88e3a920276e331fc028dd3efb065562042dbb"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD0.glb",
+      "bytes": 9104,
+      "sha256": "9cec52f8362466625d89575e90a6fa8326be03bcc62514379a99a00a33d3a17d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD1.glb",
+      "bytes": 8332,
+      "sha256": "ee1d92c961692e7266eaecef306ccfc4a264de7a795b82a18899c817d7f8513d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_17_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "090a5dc33b2e27dd5f0cb5e61c78ef1fe5ff4f625d5254cded551f441ef4af61"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_col.glb",
+      "bytes": 2784,
+      "sha256": "866f37ab80faeebfdd2aa2591c7d6ff4248c1e194d6be435adfdb9c5b7556721"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD0.glb",
+      "bytes": 36660,
+      "sha256": "1bec0e3810c53af67ec5e1ef2a89b9733239ca7a2a63b34f9a68ee43d06048f3"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD1.glb",
+      "bytes": 32628,
+      "sha256": "41e44989fd906d19ad95f27ac7586995e3d5b79c574e0183af725b772c53c281"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_18_LOD2.glb",
+      "bytes": 2780,
+      "sha256": "66df9a34fcaaec173577c003e79b3d4b1230d630ad4e3ba916858e7826ebcfe8"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_col.glb",
+      "bytes": 2796,
+      "sha256": "322372b37c7245f90d2e2ebfd6f6da7ba220991afdba0b1c55bb955674d8afd0"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD0.glb",
+      "bytes": 108984,
+      "sha256": "8314324b3ea39aa7ee96bea76feb30afd721e01cf0bc2be7213f1298a967c819"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD1.glb",
+      "bytes": 108780,
+      "sha256": "baab0973a97ee78ca6000315eee061dddadafdc96587cf6f220f7d981682b012"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_asian_19_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "b255c1a0cc35cc75a55baf5c3d5f9e93e74f475449b86bfc74e5ff9a3ccff660"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_col.glb",
+      "bytes": 2796,
+      "sha256": "bf953248d240627e41651be4072be47b9fd58d89f5e113137cf3bbd53f421d78"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD0.glb",
+      "bytes": 130688,
+      "sha256": "993c7548e243f7ec77469bc1a6ebd1ad65a65d787048b7471846babcd3526576"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD1.glb",
+      "bytes": 126388,
+      "sha256": "05475577163528bc02518fea718afbec5e7f9779990ef45033da8294c9b5bd2b"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_01_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "1d5dd774b464e6b9feffabe876ea7c40ef594c6a9eb2bee571804f6933c17e97"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_col.glb",
+      "bytes": 2796,
+      "sha256": "a88d1c5a129477cf374aeb801ba649c47b0cc1159d180ec203565f1dddfc4ba7"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD0.glb",
+      "bytes": 66924,
+      "sha256": "9fd606b0cbf82b8091159df733a9b8f1d685d3eea6791d0f3562953878225bc0"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD1.glb",
+      "bytes": 66932,
+      "sha256": "dec034eed3b83a2004f710fe0e6183abeaac2231e498218b78ea9e2e54f4922b"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_02_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "43b7921ad0e67d3e68f1da00dea890fe4054958a5307a80594a53dc13a24bf17"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_col.glb",
+      "bytes": 2796,
+      "sha256": "9eae1fdd9d1ccc5713f9e68a48a85c99953227987a4765c491a380ec15f6db3f"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD0.glb",
+      "bytes": 59552,
+      "sha256": "e9e09b1fa0c4e085a4422f8e8e10467a45075ac023da6bc2b611b7d10170d0ca"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD1.glb",
+      "bytes": 59776,
+      "sha256": "051da8da9bb8407209d18e9289e0bb7b22d433f5f92f39a6990250a2c294e130"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_03_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "99615ff9d354d9ee30ba4d38ac2d115140d2b5758028c34983e0c55ddde2e8a8"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_col.glb",
+      "bytes": 2800,
+      "sha256": "2eab944e328e4ed905a4a0a375ec3214eea6fbc37eedc54c4a6a4b3e1aaf2f44"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD0.glb",
+      "bytes": 41620,
+      "sha256": "a55a39f5185f6bb1aaae03ec4e32d525198acd44d95edffa2bece7db24183389"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD1.glb",
+      "bytes": 41632,
+      "sha256": "4b13d189149cb944f2d1d0f9fdfb9573bfb6e7379de194e3af2bf0ad8b5fa26b"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_04_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "5d8c01d799385dd05b7efe5f6ce06b6182cfbeacf23edce374cbb52f70fd0af9"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_col.glb",
+      "bytes": 2796,
+      "sha256": "747494acba49e96f170326c203372d4cd98cc427289d3094a2263e353a52bd5e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD0.glb",
+      "bytes": 60316,
+      "sha256": "ccf5f68441ee4059b9c8f8083561b2a57db1283e74b9a5e9cb55c59eff99a658"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD1.glb",
+      "bytes": 49820,
+      "sha256": "dc885b90cfad8a226d7f4a418eb81322aefc4b398a32eeffb491e1886b77fe4d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_05_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "db82a26f7f08a4aa9442e45ad8b76d39e573a51f61adf6cb16569f7ad498d6cb"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_col.glb",
+      "bytes": 2800,
+      "sha256": "05751dd8fffde528a8b52739bc43c7a23ec377950f0e51a092f00b9d103ef9e3"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD0.glb",
+      "bytes": 53984,
+      "sha256": "67379d8213014b1276653c684d77e32738c167ca6820786a3d44b7b77d9dd8b7"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD1.glb",
+      "bytes": 52912,
+      "sha256": "f19d5b4d424edb1e7a651a729e50baf074fe1b18a0b5558a745f146dc881351e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_06_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "7e5f6d4d27f76c24068835aa3e8e6d51aa666cf630cdd1d8de46ceed33d59bc7"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_col.glb",
+      "bytes": 2792,
+      "sha256": "111e6657b04c67baee890a66cd659fa8a32448a0e448c62791214377bdc71b4e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD0.glb",
+      "bytes": 26016,
+      "sha256": "d1e961511ce680a9d2a1627ba4d3b086d5ac03a36a0065c8fe0f3e29a0fddeff"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD1.glb",
+      "bytes": 24752,
+      "sha256": "88de12b1418e431549b5b486117249b78409b5f92d95fefe7697daf968fdbfcf"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_07_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "69faa9abf49b5f17d0d308fdbeb5f6a937f523a09d3e8133e75002f6565e349f"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_col.glb",
+      "bytes": 2796,
+      "sha256": "1e22f987e43422e4e23d232a994f7418c559bf69224212a1f05caa8556d49de4"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD0.glb",
+      "bytes": 77024,
+      "sha256": "b48899f06879760d51b876d4e5bb3d8e768790c7c2fd09640705ff287e829106"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD1.glb",
+      "bytes": 78336,
+      "sha256": "04b84023a9e92ec01ce7dff065814473f30b82fb1642252a987a3cbbb3b8b7a6"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_08_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "23df234172973bb13db2d6389a4b0bb1727946b809140744369c666bc0766bc9"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_col.glb",
+      "bytes": 2796,
+      "sha256": "5fce2fc12abab8d8b94cbb3afa7831bd3debb16f4bf88e74bcb3aec84059c1e1"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD0.glb",
+      "bytes": 50260,
+      "sha256": "1dc0e76454b90472b3577c9a48d036a22b8ddc9d7ee94744faf97c48e401ea90"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD1.glb",
+      "bytes": 43140,
+      "sha256": "2ca7c47a34807cacf5d498269d239f32a7dfb27253697782fa13c4c5670f3028"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_09_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "485f9fe184aa93b746ca77222f7abafc5a0c642ff6414d99937f88a940deb394"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_col.glb",
+      "bytes": 2800,
+      "sha256": "d55253bff4cd86036db803cc30dd5ce6a00f79e415bc29d5efb2adf165cc15fc"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD0.glb",
+      "bytes": 34384,
+      "sha256": "25895a437df00f43faa7999e57fcf1df8c43dedc175410a69648caf62556a826"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD1.glb",
+      "bytes": 34392,
+      "sha256": "2c055557a6da9bbd206f93510794b6ca74ab5b8394018a15e6500dba1120ee61"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_10_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "823f57161b81986a693294ca94cb5c0bdb7570fd7b1c1d12dc48015d03ba569a"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_col.glb",
+      "bytes": 2800,
+      "sha256": "3fd3cac0bac2cfd8bae0971c1faefd41ef95440fd09c4cdfe6581d214a107650"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD0.glb",
+      "bytes": 30172,
+      "sha256": "646318434ebe67f00b6d2f18b7ccf153e4594d69fb79f52acc7eeec27d7fc421"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD1.glb",
+      "bytes": 30180,
+      "sha256": "f3a8701cd2b75960b28d7ff96c385b1ddb5f93e30a25fa1a4c61acab5108ef4f"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_11_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "532c7335e892872d02b34af6db6e336e16f576b4eb1a43f5b0ed37a325902e80"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_col.glb",
+      "bytes": 2796,
+      "sha256": "251b9d343c0ca9fc9d0dd58acba9e839573d1fdb8713021bb415ee37b0f267db"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD0.glb",
+      "bytes": 23772,
+      "sha256": "5acce5f6cd394df275fd05b88015e7657f925c6a0d5317f1d4890aedc20b8189"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD1.glb",
+      "bytes": 23000,
+      "sha256": "31148d71fd813728f197d3aa2f30e7d36913252156f98020591e3bccc2d3efcd"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_12_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "5fc088c3e0a95258b471b0b4b70bddaaa4a0617c16ff8f34597b78c048a153c7"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_col.glb",
+      "bytes": 2796,
+      "sha256": "fd18ceb38451f4f494253c17897b2b77f4a2d0eb84f7b993717f82365e0e777f"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD0.glb",
+      "bytes": 32188,
+      "sha256": "b1f7e689a31e5f4442c3aee57aecb4aac1cd21dd2ef4cfdb33122f53807eecd1"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD1.glb",
+      "bytes": 29544,
+      "sha256": "6ef2281efb001b34e12a4de773fef0f71f4750652930792d9a98074cafee1229"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_13_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "06d85e7d7815bb1fd633629c090e2280b85ad7f10b4e12ad4f0d071098e2c256"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_col.glb",
+      "bytes": 2796,
+      "sha256": "445acaa3eaf2ba9b0d71d7fb1c9c8b1ef80e016534c711ae3ab26a9f19ddb362"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD0.glb",
+      "bytes": 32188,
+      "sha256": "35332aa6bc1d676c54ff6207e30fcbb1717af7e05d45601cfffc328ae2ad61ae"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD1.glb",
+      "bytes": 29548,
+      "sha256": "f5d6c9b69090878689216365a0a2605db94065d3cde2f545adb84c3a90bb9552"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_14_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "fe088061b6f71de56784b5b32d511fd6a031cf41db997719849e2362dece6f1d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_col.glb",
+      "bytes": 2796,
+      "sha256": "e20b7712b11c7142c04bdb229f1da3b092373fee4ddf009b91c4828f638447aa"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD0.glb",
+      "bytes": 50408,
+      "sha256": "9f0e07fea12a9185a16a188c471382ddd6088bb787849e8a284cc034bea4bcdb"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD1.glb",
+      "bytes": 50272,
+      "sha256": "be99d908747af5806331f430aaeed17e17599f9ba7d8cd23d939d6dafe1f2eb0"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_15_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "c21daeee26e83df61d608b8538853f5870fb65ab1fd168fef4ea3f4139d14c40"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_col.glb",
+      "bytes": 2796,
+      "sha256": "4c73c43d3ed08cdd318dfaafc0cafdaad71c2ffda6421c17054112fb3a77b915"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD0.glb",
+      "bytes": 35596,
+      "sha256": "7b6327653048768c6ab12efc337c8f4663813ac6d7672a209ed778410ca11fb6"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD1.glb",
+      "bytes": 35604,
+      "sha256": "a516e800068cf50fc7fafdf61b10bc54545dc44d13c0092149b4a34a9b305ae8"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_16_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "710a7d0a1045f70ec0eb7c7109f7ad481be102f3938ae608beb6b4a0619fdcdb"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_col.glb",
+      "bytes": 2796,
+      "sha256": "ed1a7c4dc022d8aa901a22ced6cc667883014784cfa11e5963efefe7a5d46ef4"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD0.glb",
+      "bytes": 35596,
+      "sha256": "d9c71f6117a9ddbb94fdd80f2ff08dafb2340611030c9d5cc1f61908bdcc0acb"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD1.glb",
+      "bytes": 35608,
+      "sha256": "3c20466753fb907faa2922c9e3158bdb7c9a886a7faf71f88e9d9b3de3ee8ba7"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_17_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "1252e4d051f362adc6d17f52cd44cc2f00f3dfe29018235362f515eebad8ef3e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_col.glb",
+      "bytes": 2800,
+      "sha256": "97a4f18f5e2f3c2cdf4aee0267eb3c440b80a36e179c8e83d76ed91e0c8c7d09"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD0.glb",
+      "bytes": 33124,
+      "sha256": "ea3d6685554c0710a8044d4fff20b854b49c501f1965248dd8e9172d2b1dde4d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD1.glb",
+      "bytes": 30604,
+      "sha256": "b49525926b50fedd09eb86cee3343ea568afe3d9cc49d74b95a0ac628a2c6d87"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_18_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "0c069f1711919de8ad4cb0e0b9dc2148e995b45510744369e158f440318000a3"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_col.glb",
+      "bytes": 2796,
+      "sha256": "3e9cd82a555363af61b3f8a17a3b90b2b8a625616786d927f2d92f4e49846cf9"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD0.glb",
+      "bytes": 33200,
+      "sha256": "3294b99c470479ab15354e42ec2fe0a234bd230e4affd38554d6e359191ab4c8"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD1.glb",
+      "bytes": 30460,
+      "sha256": "b31198d818ff30ee1d2985a13d0f1bbf8146fc76e10cab3ec8fd489d862faeea"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_19_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "f76b1045082e8065aff747820a6073ef379a6f715fef453c0a34e9c98b2f23f4"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_col.glb",
+      "bytes": 2800,
+      "sha256": "4a752096e448b288c2796082de9ab05c3bff60e15cee57472433186e1123743a"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD0.glb",
+      "bytes": 31448,
+      "sha256": "648d5b1b3b0c407ef38effb5815c7aa357be5680e811099e5d5c3cfaa855ff40"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD1.glb",
+      "bytes": 31600,
+      "sha256": "87f197605a5d3e52ae3057ba61d8b7ed8ebb070c634e02e88c2412c0dd6c1bf9"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_20_LOD2.glb",
+      "bytes": 2792,
+      "sha256": "a9f19dd01ff76038f406a06cc7e6ccbe58b35d0b00906efe72e5a0df76a5f6af"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_col.glb",
+      "bytes": 2796,
+      "sha256": "aacf45ebac5a5e597e3f8f718a8dc6249a6889004ef032556c660004398dbe2d"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD0.glb",
+      "bytes": 42848,
+      "sha256": "2183bbdc4cd2ab879c1d99e49ef4d1e75d49933bc5cdc22c01985dee2844b96e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD1.glb",
+      "bytes": 42892,
+      "sha256": "a28554156ffd32eb61f64e5fd6f0d03938ccd0a4cf4e01857465aca8da12276e"
+    },
+    {
+      "path": "models/shuto/buildings/sources/source_lowpoly_21_LOD2.glb",
+      "bytes": 2788,
+      "sha256": "e636a81b529e412dbb3b604e0b43e7a428ea6adc0e059a1fb5d491be745c93aa"
+    },
+    {
+      "path": "models/shuto/buildings/textures/apartment_balcony_base.jpg",
+      "bytes": 941241,
+      "sha256": "8454a5f866a422ca26fd6745116821ef890c1b63c6350583f44754b077260fae"
+    },
+    {
+      "path": "models/shuto/buildings/textures/apartment_balcony_emit.jpg",
+      "bytes": 129825,
+      "sha256": "daf851ddf333956e10ccc87a0d82acd51f91b278a34c701d462da593ca9989a0"
+    },
+    {
+      "path": "models/shuto/buildings/textures/apartment_concrete_base.jpg",
+      "bytes": 653806,
+      "sha256": "e8210f2efd087ae9fa4c6e54e7c837fff1a985d4455a21181283db5e2214c159"
+    },
+    {
+      "path": "models/shuto/buildings/textures/apartment_concrete_emit.jpg",
+      "bytes": 141111,
+      "sha256": "e44640a647691ed5793019b190b4e67512074d5f7ab2ee2be881c2ee197fbe3b"
+    },
+    {
+      "path": "models/shuto/buildings/textures/concrete_cast.png",
+      "bytes": 434227,
+      "sha256": "1c2d5805b4b3a227c054cfbb5909c71944623262555b0b5367281519b6f8897b"
+    },
+    {
+      "path": "models/shuto/buildings/textures/concrete_weathered.png",
+      "bytes": 457789,
+      "sha256": "288efa2bab50ab67e9bd42cfff9044e70e00aff077628dccd9faf81797ef0389"
+    },
+    {
+      "path": "models/shuto/buildings/textures/containers_industrial.jpg",
+      "bytes": 244555,
+      "sha256": "472d79d30815d8efaa64282a22d93e07fe8972c3c0d70d608a9f6720a6ec79fc"
+    },
+    {
+      "path": "models/shuto/buildings/textures/corrugated_metal.png",
+      "bytes": 261743,
+      "sha256": "20b0643a65eb960b0dba3b950735ca744c2d35c6186f02a6d1c43d1cf0e2d3be"
+    },
+    {
+      "path": "models/shuto/buildings/textures/curtain_bronze_base.jpg",
+      "bytes": 435773,
+      "sha256": "73beda544ff156d6b89e7e862fcf71990dd99389367862241a3965b180112e83"
+    },
+    {
+      "path": "models/shuto/buildings/textures/curtain_bronze_emit.jpg",
+      "bytes": 223848,
+      "sha256": "0dbcba546e825d37cad3aa996b1c222eb7f975f78b44b0506688c9cefc36314e"
+    },
+    {
+      "path": "models/shuto/buildings/textures/curtain_mullion_base.jpg",
+      "bytes": 427235,
+      "sha256": "03d27d02d715f0bacd5841dd0beda018583ac5ac7b91ceb541895fed4f8cb11e"
+    },
+    {
+      "path": "models/shuto/buildings/textures/curtain_mullion_emit.jpg",
+      "bytes": 193341,
+      "sha256": "02989be8d1f8ff7c8dbbba707a8b373ac89ddefa8294690ead87ad8a69009237"
+    },
+    {
+      "path": "models/shuto/buildings/textures/dark_office_base.jpg",
+      "bytes": 964575,
+      "sha256": "3a067cabfdb032659fee2a6996218449bb3f6c0d0a9500c910e5b03da6475e34"
+    },
+    {
+      "path": "models/shuto/buildings/textures/dark_office_emit.jpg",
+      "bytes": 174516,
+      "sha256": "078021819dfe41de0f4e91d551ecd9f702c4d44fedadd8dc39313a5ae8982e9d"
+    },
+    {
+      "path": "models/shuto/buildings/textures/foliage_cutouts.png",
+      "bytes": 109716,
+      "sha256": "a02b2b275fc49430f2303154a9832075bfaea91a9462bf1c8c29fc6e136ed66d"
+    },
+    {
+      "path": "models/shuto/buildings/textures/galvanized_steel.png",
+      "bytes": 458216,
+      "sha256": "29e8aa85ba6910691828795cc41c109eefb8cad10aaed0b18164c5b11bde98f5"
+    },
+    {
+      "path": "models/shuto/buildings/textures/ivory_modern_base.jpg",
+      "bytes": 571187,
+      "sha256": "291dd56d2a00d5b6f09af2a742989dae792f84cba1fcb4002faf1be2228bf367"
+    },
+    {
+      "path": "models/shuto/buildings/textures/ivory_modern_emit.jpg",
+      "bytes": 187849,
+      "sha256": "645d31250b91ae91b1985ba05608b48c74de6f36f66d62a3941da0f6341dca4e"
+    },
+    {
+      "path": "models/shuto/buildings/textures/line_double_yellow.png",
+      "bytes": 788870,
+      "sha256": "167658598420879e68bde496569eb050387a5022fa350c7d364e2286fdea4453"
+    },
+    {
+      "path": "models/shuto/buildings/textures/line_single_white.png",
+      "bytes": 500855,
+      "sha256": "dad8d2938c7adb173a0a345d1db01fb6461dd0e80abdf0a5fa2d1ee6e29f3ac3"
+    },
+    {
+      "path": "models/shuto/buildings/textures/office_ribbon_base.jpg",
+      "bytes": 710895,
+      "sha256": "b726b5167a1e59abbf8e937d7f4ad7c35f45b741d3f0dc734607860328b5ed9b"
+    },
+    {
+      "path": "models/shuto/buildings/textures/office_ribbon_emit.jpg",
+      "bytes": 183742,
+      "sha256": "e31931c36e2bb33885f3004cfabe450b24078d5bd4c432edcc184bc7863b5c3c"
+    },
+    {
+      "path": "models/shuto/buildings/textures/rooftop_membrane.jpg",
+      "bytes": 44647,
+      "sha256": "4957ad059b68692fdc9e784e88f02467a08179010a3f2437bbade9358c80c25e"
+    },
+    {
+      "path": "models/shuto/buildings/textures/rooftop_membrane.png",
+      "bytes": 453576,
+      "sha256": "81ae3497ee6e37eaa47ebd79d6cd3c2291088cd1b8dcae058ff79442c5f0f661"
+    },
+    {
+      "path": "models/shuto/buildings/textures/sign_aoba_store.png",
+      "bytes": 125804,
+      "sha256": "b178f3b75263e4c71bd24499d1986d0a225e7ca2533e2551fafaac061d647575"
+    },
+    {
+      "path": "models/shuto/buildings/textures/sign_minato_coffee.png",
+      "bytes": 120054,
+      "sha256": "5ed4bc0e6b94bb503e84a129b93607dfb2d8927ef1523876a6d344f88a0a215f"
+    },
+    {
+      "path": "models/shuto/buildings/textures/sign_shibaura_storage.png",
+      "bytes": 132013,
+      "sha256": "248ed8fab371e56b489d251575b4f031ad8ce06c283511d8d08c61d57c87d633"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source_.png",
+      "bytes": 2167431,
+      "sha256": "bbd68dcb9c3ff984be85252077a572542391b6e2683ed80e6a84c03d29e7d968"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source__001.png",
+      "bytes": 3908468,
+      "sha256": "c57851b26f287cd22736243743308e1f746b93c453a8a04f5528d40702e16cb5"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source__002.png",
+      "bytes": 2839852,
+      "sha256": "c2b4f0991df7ced93a2139c588c0e47a9fd050ee1c7ba2496dff201fd798422d"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source__003.png",
+      "bytes": 3739292,
+      "sha256": "42bda8bdbd5d33ce4de2b91cc8c8d6b1981b7673e6ae664cf6604f38dbdd1bf2"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source__004.png",
+      "bytes": 2166059,
+      "sha256": "e613068ab32d213575308c261e6847f97ba3f114b678ef955c64c5f9fe5c6b7e"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source__009.png",
+      "bytes": 6502818,
+      "sha256": "aaf76a6fa9bd0a199f2cc18d177475588608f902b7c7fa7fcce96d454f492963"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source__010.png",
+      "bytes": 2840836,
+      "sha256": "82b0aae6bb070a48c674ea30a6f0ddc03ce34e17cbcaefddcc338e3d7febec45"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_asian_source_asian_source_asian_source_asian_source_asia.png",
+      "bytes": 5300734,
+      "sha256": "c76c2557dc2f8ad9cfaf12e32b06cd378e6678cafd4311d06795fcec85f1a6f2"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_lowpoly_source_lowpoly_source_lowpoly_source_lowpoly.png",
+      "bytes": 2841745,
+      "sha256": "c41f7f7333c656d3778586296c4fd4a34d63cf16abbf8880e2f3a6f980a9599f"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_lowpoly_source_lowpoly_source_lowpoly_source_lowpoly_002.png",
+      "bytes": 4717335,
+      "sha256": "2330b90d56ef5d284ec86ebfd7e40c5a831ab523ca4e451fd022da05ca0e7f6d"
+    },
+    {
+      "path": "models/shuto/buildings/textures/source_lowpoly_source_lowpoly_source_lowpoly_source_lowpoly_sou.png",
+      "bytes": 3970325,
+      "sha256": "8200917633ae0bee094b8e922ff0de323e2be4395f5adea4be69b71daff1a662"
+    },
+    {
+      "path": "models/shuto/buildings/textures/spandrel_midrise_base.jpg",
+      "bytes": 681309,
+      "sha256": "9a249c04dd1ea200f42cf72919ad71872d9b3faf048b8a7eeb3e820d40af4128"
+    },
+    {
+      "path": "models/shuto/buildings/textures/spandrel_midrise_emit.jpg",
+      "bytes": 181137,
+      "sha256": "02ca60ddfd396275ea2f96b0d048d9edac9814a081b7ac39ba48f2538ca856aa"
+    },
+    {
+      "path": "models/shuto/buildings/textures/street_asphalt.jpg",
+      "bytes": 132444,
+      "sha256": "3a1084f327888269349ce34f6d6fdd43536ee10c2ec1e0b572e6291394ac082a"
+    },
+    {
+      "path": "models/shuto/buildings/textures/street_sidewalk.jpg",
+      "bytes": 89171,
+      "sha256": "f3c5cc245a75dec981867aaf6118b5c87819b1de461753e08deefe8b2c62b009"
+    },
+    {
+      "path": "models/shuto/buildings/textures/tile_older_base.jpg",
+      "bytes": 861335,
+      "sha256": "d5409dbf2e7af71897592be259d92ce70dc5953df436e2da4c5a66c42b863182"
+    },
+    {
+      "path": "models/shuto/buildings/textures/tile_older_emit.jpg",
+      "bytes": 134377,
+      "sha256": "54c5f2ccda38a5e4f8b7b4b9566f51d6d5fb13a0b2e1ee294bd4be53c3b75d63"
+    },
+    {
+      "path": "models/shuto/buildings/textures/warehouse_clerestory_base.jpg",
+      "bytes": 285585,
+      "sha256": "92b6888dc2db07b2e99c05f1e0a24d999d6ab8e8c8fd3b23052405312fb2ede5"
+    },
+    {
+      "path": "models/shuto/buildings/textures/warehouse_clerestory_emit.jpg",
+      "bytes": 118441,
+      "sha256": "11f034007e8b9d2bb9d7111aef4ffdb920ab593a491f7aff4884fd7ef3e6b4b4"
+    },
+    {
+      "path": "models/shuto/buildings/textures/warehouse_roller_base.jpg",
+      "bytes": 1016932,
+      "sha256": "f16affa410c3940fe34ae31881eda7c4c451b07437082f3371786f9f191cab68"
+    },
+    {
+      "path": "models/shuto/buildings/textures/warehouse_roller_emit.jpg",
+      "bytes": 127305,
+      "sha256": "ed299aa70ff0f32bd16571b9b48a8aa0b6b48b1782ad34b81c93b6ee85123e8c"
+    },
+    {
+      "path": "scenes/shuto_building_probe.json",
+      "bytes": 3528,
+      "sha256": "82266db85280e1dc43e99ffd8687f5f22c66252e86a60126280097fb0094f20b"
+    },
+    {
+      "path": "scenes/shuto_buildings.json",
+      "bytes": 392307,
+      "sha256": "06d04d15fdabd94f35350f1cc5d53e0a9b88b12ce2fe83b8b53ca15ffc345bcd"
+    },
+    {
+      "path": "src/SceneLoader.cpp",
+      "bytes": 90970,
+      "sha256": "006721fd7d3fc2f53d8ccd5df17af4df4b43f446bc08ac72d1810e2bbab8675e"
+    },
+    {
+      "path": "textures/window_rooms/atlas_manifest.json",
+      "bytes": 15714,
+      "sha256": "ed204704f4e790f0f1c781534f217016fc9848749c60a5264140a3daaebe2dd2"
+    },
+    {
+      "path": "textures/window_rooms/bedroom_warm.png",
+      "bytes": 1428173,
+      "sha256": "368508d8f3b60c7e09d9228ee3c84f89250588564b533d7a939763ad90eb99a7"
+    },
+    {
+      "path": "textures/window_rooms/cafe_warm.png",
+      "bytes": 1498156,
+      "sha256": "cdea0c5ab986deee45239777b5122810de5d1e03f29036bc82b37f28cb6f0a1b"
+    },
+    {
+      "path": "textures/window_rooms/living_room_tv_dim.png",
+      "bytes": 1251637,
+      "sha256": "59a4455bb7e9bf0dccc85dfdf4eb3fed127d7fe494b9d85f42c40963df683d9b"
+    },
+    {
+      "path": "textures/window_rooms/living_room_warm.png",
+      "bytes": 1533143,
+      "sha256": "8a8593e2f7c2d47ddeff17756a1e0db2916406b793ff437e2565eea13fd8ceb7"
+    },
+    {
+      "path": "textures/window_rooms/office_cool.png",
+      "bytes": 1593728,
+      "sha256": "f5404a7a1c4ed2f50faaff852465151bff85c852afcb030b5a5212abe39506dd"
+    },
+    {
+      "path": "textures/window_rooms/README.md",
+      "bytes": 6839,
+      "sha256": "7eb6a45947718a17f966bc1ad2493933a690eee74ffb4b8fa6ea18ca4d364989"
+    },
+    {
+      "path": "textures/window_rooms/shop_warm.png",
+      "bytes": 1592269,
+      "sha256": "d99e324552034f16129b7f6243d9ef21a9123d6811c053841b398cccb57def46"
+    },
+    {
+      "path": "tools/shuto/benchmark_buildings.ps1",
+      "bytes": 1453,
+      "sha256": "67fe9c1a461877e3a71fb971df00aa495f9222f8f738ec100a8f792a5b58d69c"
+    },
+    {
+      "path": "tools/shuto/blender/adapt_building_sources.py",
+      "bytes": 8371,
+      "sha256": "f741036d8f16f53967bcdb1f721734640c5332ef648575965d1e73e650c22894"
+    },
+    {
+      "path": "tools/shuto/blender/audit_building_sources.py",
+      "bytes": 6843,
+      "sha256": "5b6048d85064335c73fbf24d07cca0daeecd9ae317aa81853e623b883a6b2f41"
+    },
+    {
+      "path": "tools/shuto/blender/build_architecture.py",
+      "bytes": 44032,
+      "sha256": "82c4e38bc698fda430403bf0aaa2146e33831c4364ab5aadb51163dcc0e5ee07"
+    },
+    {
+      "path": "tools/shuto/blender/build_scenery.py",
+      "bytes": 56752,
+      "sha256": "0c5cc021708b4e8bac6bfb18f9880d4754a76ab74de2c63e8f48ef68d841fd9f"
+    },
+    {
+      "path": "tools/shuto/blender/export_edited_building.py",
+      "bytes": 1484,
+      "sha256": "d3201d7ca199f88599e299b0389af0004169e12a609e4f3e7bbcc3a03e2b27b3"
+    },
+    {
+      "path": "tools/shuto/blender/finish_building_blends.py",
+      "bytes": 4279,
+      "sha256": "4313bbc0bcea5c3bd639dab3ef6fb039be3ff92e42b33308a57646211c0d3b59"
+    },
+    {
+      "path": "tools/shuto/blender/fix_building_signs.py",
+      "bytes": 4329,
+      "sha256": "1649272f1f8ee56da97a083bd58e65a77f759edb226a56c1723e0577d477e1fd"
+    },
+    {
+      "path": "tools/shuto/blender/fuji_tv.py",
+      "bytes": 10959,
+      "sha256": "f9a90548dc6dcadb3787086bd0bc1a7634f77f40ab141f18d228c454d0aff702"
+    },
+    {
+      "path": "tools/shuto/blender/normalize_placed_origins.py",
+      "bytes": 938,
+      "sha256": "073d838ccac7502d60af636994573211b60558ac9dcbb0eaa49314dc207f8656"
+    },
+    {
+      "path": "tools/shuto/blender/optimize_placed_buildings.py",
+      "bytes": 4375,
+      "sha256": "3408bb3f63912742ffe4e68847ba013e63c992c8ac971d08e297ab6b21863f69"
+    },
+    {
+      "path": "tools/shuto/compose_building_baseline.py",
+      "bytes": 850,
+      "sha256": "f2be7cc07408caf73606a01b33a5d94c8a389787d8eca52a94a761aa317c3530"
+    },
+    {
+      "path": "tools/shuto/compose_building_kit_check.py",
+      "bytes": 3006,
+      "sha256": "7b8c8512e31abafc33f62873c02a25a2d90dc13944af6791f88c63d113deff51"
+    },
+    {
+      "path": "tools/shuto/compose_building_scene.py",
+      "bytes": 4554,
+      "sha256": "78b6638ee0f4c9c6f804d5864e68bd84aa3c41e5838bc0f98d869521b7e0e88e"
+    },
+    {
+      "path": "tools/shuto/optimize_building_glbs.py",
+      "bytes": 5179,
+      "sha256": "fb4a13b6d66927d103bd0909faf65e1d342e3908d9950e453e0631e2fe754378"
+    },
+    {
+      "path": "tools/shuto/package_buildings.py",
+      "bytes": 5124,
+      "sha256": "1ea86cf7d5ed862dff2c04282f184058e2ae84e0940689752dde59e33de81d96"
+    },
+    {
+      "path": "tools/shuto/prepare_buildings.py",
+      "bytes": 11830,
+      "sha256": "88a87b6ab32fdf744c1f14078fdd32f11b869b5d537ae97262c7bf43e9abd1d4"
+    },
+    {
+      "path": "tools/shuto/report_buildings.py",
+      "bytes": 8050,
+      "sha256": "43d67ba7614be4a0d06e3b1c2fa59ae9d0e840cde77cc2d89adeee5c97e68428"
+    },
+    {
+      "path": "tools/shuto/validate_building_text.py",
+      "bytes": 2556,
+      "sha256": "e4e2ad49abdfaff393a3b0ccdff29c82d85f7dbe6e6492c29e91e5f835082ae7"
+    },
+    {
+      "path": "tools/shuto/validate_buildings.py",
+      "bytes": 6639,
+      "sha256": "e09de548dfce1e80205fa07ea0317320b54d67597dd085397cae2936eb089db0"
+    }
+  ]
+}

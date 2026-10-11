@@ -85,10 +85,25 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\DriveMode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\EditorExtensions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\EnvironmentMap.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\FrameProfiler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Framebuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\FrustumCulling.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameEditorPanels.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameModule.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\GameSession.cpp">
@@ -175,6 +190,9 @@
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\NightStreetPacks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\NoxRacingGame.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\PerformanceRecorder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -215,6 +233,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\Scene.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneExtensions.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\SceneGraph.cpp">
@@ -380,6 +401,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\surfel_gi\SurfelGIResources.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\desti\Documents\GithubStuff\Nox_Engine\src\ui\Pointer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

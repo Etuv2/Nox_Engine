@@ -1,0 +1,32 @@
+[
+  {
+    "file": "japanese_architecture_kit.blend",
+    "vertices_before": 199177,
+    "vertices_after": 199177,
+    "uv_policy": "Per-corner UV discontinuities preserved when coincident vertices are welded"
+  },
+  {
+    "file": "placed_buildings.blend",
+    "vertices_before": 1500540,
+    "vertices_after": 1500540,
+    "uv_policy": "Per-corner UV discontinuities preserved when coincident vertices are welded"
+  },
+  {
+    "file": "source_asian.blend",
+    "vertices_before": 0,
+    "vertices_after": 0,
+    "uv_policy": "Per-corner UV discontinuities preserved when coincident vertices are welded"
+  },
+  {
+    "file": "source_lowpoly.blend",
+    "vertices_before": 0,
+    "vertices_after": 0,
+    "uv_policy": "Per-corner UV discontinuities preserved when coincident vertices are welded"
+  },
+  {
+    "file": "source_japanese.blend",
+    "vertices_before": 0,
+    "vertices_after": 0,
+    "uv_policy": "Per-corner UV discontinuities preserved when coincident vertices are welded"
+  }
+]

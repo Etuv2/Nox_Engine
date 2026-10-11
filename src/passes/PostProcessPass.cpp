@@ -197,6 +197,30 @@ void PostProcessPass::Execute(RenderContext& ctx,
     }
     set1i("bloomBlur", 1);
 
+    // Inspection of intermediate images (RenderContext::postDebugView).
+    int debugView = ctx.postDebugView;
+    rhi::TextureHandle debugTex;
+    rhi::TextureHandle debugTex2;
+    FrameBuffer* taaOut = (ctx.enableTAA && ctx.taaFBO) ? ctx.taaFBO : nullptr;
+    switch (debugView) {
+    case 1: debugTex = ctx.hdrFBO ? ctx.hdrFBO->GetColorAttachment(0) : rhi::TextureHandle{}; break;
+    case 2: case 7: debugTex = taaOut ? taaOut->GetColorAttachment(0) : rhi::TextureHandle{}; break;
+    case 3: debugTex = ctx.ssrTexture; break;
+    case 4: debugTex = m_bloomTexture; break;
+    case 5: debugTex = ctx.velocityTex; break;
+    case 6:
+        debugTex = sourceFBO ? sourceFBO->GetColorAttachment(0) : rhi::TextureHandle{};
+        debugTex2 = taaOut ? taaOut->GetColorAttachment(0) : rhi::TextureHandle{};
+        break;
+    default: break;
+    }
+    if (debugView != 0 && !debugTex.IsValid()) debugView = -1; // requested image not produced: black
+    set1i("uDebugView", debugView);
+    gpu.BindTexture(2, debugTex);
+    set1i("uDebugTex", 2);
+    gpu.BindTexture(3, debugTex2.IsValid() ? debugTex2 : debugTex);
+    set1i("uDebugTex2", 3);
+
     PASS_VERBOSE_LOG(m_runtimeVerboseLogging, "[PostProcessPass] Rendering fullscreen quad...");
     // Render fullscreen quad
     if (ctx.screenQuad) {

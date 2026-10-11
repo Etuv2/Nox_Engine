@@ -28,6 +28,12 @@ CAR_LIGHTS = {   # car-local transforms (models/car_r33_rig.glb), as in scenes/n
     'TailLight': ([0.0, 0.8, -2.35], [0.0, 0.0, 0.0], {'type': 'point', 'color': [1.0, 0.05, 0.02], 'luminous_power': 120.0,
                   'intensity': 1.0, 'range': 5.0, 'source_radius': 0.3, 'castsShadows': False, 'enabled': True}),
 }
+# Night sky (docs/shuto/environment.md): Poly Haven "Kloppenheim 07" (CC0), an overcast night whose
+# cloud base is lit from below. Its rural ground and tree line are replaced by a dark light-polluted
+# ground below the horizon and the horizon lamps are clamped, so no foreign skyline or field shows.
+SKYBOX = {'path': 'hdrs/cc0/kloppenheim_07_4k.hdr', 'fallback': 'hdrs/cc0/night_clear.hdr', 'rotation_deg': 0.0,
+          'intensity': 1.0, 'max_radiance': 8.0,
+          'ground': {'color': [0.06, 0.05, 0.04], 'blend_start_deg': 5.0, 'blend_end_deg': -2.0}}
 RENDER_OVERRIDES = {
     'fog_density': 0.0025,
     'fog_distant_density': 0.00045,
@@ -57,6 +63,7 @@ def main():
     scene = {k: v for k, v in tpl.items() if k not in ('nodes', 'game', 'camera')}
     scene['scene_name'] = 'shuto_' + args.section
     scene['render_settings'] = dict(scene.get('render_settings', {}), **RENDER_OVERRIDES)
+    scene['skybox'] = SKYBOX
     nodes = []
     for path in chunk_files(os.path.join(sec, 'render', '*.glb')) + chunk_files(os.path.join(sec, 'scenery', '*.gltf')):
         name = 'Shuto_' + os.path.splitext(os.path.basename(path))[0] + ('_scenery' if '/scenery/' in path else '_road')

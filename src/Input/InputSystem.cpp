@@ -519,6 +519,16 @@ void InputManager::UpdateGamepadStates() {
     // We could add periodic polling here if needed
 }
 
+void InputManager::ResetHeldState() {
+    for (auto& keyState : m_keyStates) {
+        keyState.second = KeyState();
+    }
+    for (int i = 0; i < 5; ++i) {
+        m_mouseState.pressed[i] = m_mouseState.held[i] = m_mouseState.released[i] = false;
+    }
+    m_mouseState.deltaX = m_mouseState.deltaY = 0.0f;
+}
+
 void InputManager::ClearFrameStates() {
     // Clear pressed/released states for next frame
     for (auto& keyState : m_keyStates) {

@@ -42,9 +42,12 @@ public:
 	// Returns false (and leaves the network empty) when the JSON has no usable nodes/edges.
 	bool Load(const nlohmann::json& j);
 	nlohmann::json Save() const;
-	// Compact grid district used when a scene does not author its own network.
-	void BuildDefaultDistrict();
 	void Clear();
+	// Generic graph construction (procedural generators build networks through these). AddNode and
+	// AddEdge do not index the edges; call Reindex() once the graph is complete.
+	int AddNode(const Node& node) { m_nodes.push_back(node); return static_cast<int>(m_nodes.size()) - 1; }
+	int AddEdge(const Edge& edge) { m_edges.push_back(edge); return static_cast<int>(m_edges.size()) - 1; }
+	void Reindex() { BuildIndex(); }
 	bool Empty() const { return m_edges.empty(); }
 	// Loaded from an external file (large generated networks): read-only in the editor.
 	bool IsExternal() const { return !m_file.empty(); }

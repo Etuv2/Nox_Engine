@@ -4,6 +4,7 @@
 #include "Texture.h"
 #include "UiIconAtlas.h"
 #include "rhi/RHI.h"
+#include "ui/Pointer.h"
 #include "stb_image.h"
 #include <algorithm>
 #include <chrono>
@@ -11,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
@@ -308,8 +310,8 @@ void WorldMapUI::Open(const WorldMapContext& ctx)
 	m_open = true;
 	m_selected = std::clamp(ctx.selectedEvent, 0, std::max(0, static_cast<int>(ctx.events.size()) - 1));
 	m_hovered = -1;
-	m_pressed = false;
 	m_dragging = false;
+	m_hoverButton = m_pressButton = -1;
 	m_viewInit = false;
 	m_centre = ctx.player;
 	m_cacheValid = false;
@@ -402,59 +404,82 @@ WorldMapAction WorldMapUI::Update(const WorldMapInput& in, const WorldMapContext
 		m_centre += p * (0.9f * m_size.y / m_ppm) * dt;
 	}
 
-	// Zoom about the cursor when it is over the map, else about the centre.
-	const float steps = in.zoomSteps + in.zoomRate * dt * 2.5f;
-	if (std::fabs(steps) > 1e-6f) {
-		const glm::vec2 mouse = in.mouse;
-		const glm::vec2 centre(m_origin.x + m_size.x * 0.5f, m_origin.y + m_size.y * 0.5f);
-		const bool inside = mouse.x >= m_origin.x && mouse.x <= m_origin.x + m_size.x &&
-			mouse.y >= m_origin.y && mouse.y <= m_origin.y + m_size.y;
-		const glm::vec2 offset = inside ? (mouse - centre) : glm::vec2(0.0f);
+	// Zoom (pad triggers, scripted steps) about the centre; the wheel zooms about the cursor.
+	auto zoomAbout = [&](float steps, const glm::vec2& offset) {
 		const glm::vec2 anchor = m_centre + offset / m_ppm;
 		m_ppm = std::clamp(m_ppm * std::pow(1.2f, steps), std::min(minPpm, fitPpm), maxPpm);
 		m_centre = anchor - offset / m_ppm;
-	}
+	};
+	const float steps = in.zoomSteps + in.zoomRate * dt * 2.5f;
+	if (std::fabs(steps) > 1e-6f) zoomAbout(steps, glm::vec2(0.0f));
 
-	if (in.recenter) m_centre = ctx.player;
+	bool recenter = in.recenter;
+	bool close = in.close;
+	bool toggleWaypoint = in.confirm;
+	const int n = static_cast<int>(ctx.events.size());
 
-	// Drag to pan; a press that does not move is a click (select the marker under the cursor).
+	// Mouse (engine pointer layer). Regions come from the previous Draw, so hits match the picture.
 	m_hovered = -1;
-	const bool overMap = in.mouse.x >= m_origin.x && in.mouse.x <= m_origin.x + m_size.x &&
-		in.mouse.y >= m_origin.y && in.mouse.y <= m_origin.y + m_size.y;
-	if (in.mouseDown) {
-		if (!m_pressed) {
-			m_pressed = true;
-			m_dragging = false;
-			m_pressStart = in.mouse;
-			m_lastMouse = in.mouse;
+	m_hoverButton = m_pressButton = -1;
+	if (in.pointer) {
+		const ui::Pointer& ptr = ui::Pointer::Get();
+		const ui::PointerId viewId = ui::HashId(WorldMapRegion::kView);
+		const glm::vec2 mouse = ptr.Position();
+		const glm::vec2 centre(m_origin.x + m_size.x * 0.5f, m_origin.y + m_size.y * 0.5f);
+		const float wheel = ptr.WheelFor(viewId);
+		if (wheel != 0.0f) zoomAbout(wheel, mouse - centre);
+
+		// Which map element took the press: the view itself or one of the markers (a drag that
+		// starts on a marker still pans). Presses outside the map never pan it.
+		const ui::PointerId active = ptr.Active(ui::PointerButton::Left);
+		int activeMarker = -1;
+		for (int i = 0; i < n && active != 0; ++i) {
+			if (active == ui::HashId(WorldMapRegion::kEvent, i)) { activeMarker = i; break; }
+		}
+		const bool ownPress = active != 0 && (active == viewId || activeMarker >= 0);
+		if (ownPress && ptr.Dragging(ui::PointerButton::Left)) {
+			// First drag frame: catch up the movement below the drag threshold, then follow deltas.
+			m_centre -= (m_dragging ? ptr.Delta() : ptr.DragDelta(ui::PointerButton::Left)) / m_ppm;
+			m_dragging = true;
 		}
 		else {
-			if (!m_dragging && glm::length(in.mouse - m_pressStart) > 4.0f) m_dragging = true;
-			if (m_dragging) m_centre -= (in.mouse - m_lastMouse) / m_ppm;
-			m_lastMouse = in.mouse;
+			m_dragging = false;
 		}
-	}
-	else if (m_pressed) {
-		if (!m_dragging && overMap) {
-			const int hit = NearestEvent(ctx, m_pressStart, 18.0f * std::clamp(m_size.y / kRefHeight, 0.6f, 2.2f));
-			if (hit >= 0) m_selected = hit;
+
+		for (int i = 0; i < n; ++i) {
+			const ui::PointerId id = ui::HashId(WorldMapRegion::kEvent, i);
+			if (!m_dragging && ptr.IsHovered(id)) m_hovered = i;
+			if (ptr.IsClicked(id)) { m_selected = i; act.selectedByClick = true; }
+			if (ptr.IsClicked(id, ui::PointerButton::Right)) act.clearWaypoint = true;
 		}
-		m_pressed = false;
-		m_dragging = false;
-	}
-	if (overMap && !m_dragging) {
-		m_hovered = NearestEvent(ctx, in.mouse, 16.0f * std::clamp(m_size.y / kRefHeight, 0.6f, 2.2f));
+		if (ptr.IsClicked(viewId)) {
+			act.placeWaypoint = true;
+			act.worldPos = ScreenToWorld(mouse, m_origin, m_size);
+			act.snapRadius = 40.0f * std::clamp(m_size.y / kRefHeight, 0.6f, 2.2f) / m_ppm;
+		}
+		if (ptr.IsClicked(viewId, ui::PointerButton::Right)) act.clearWaypoint = true;
+		for (int k = 0; k < MapBtnCount; ++k) {
+			const ui::PointerId id = ui::HashId(WorldMapRegion::kButton, k);
+			if (ptr.IsHovered(id)) m_hoverButton = k;
+			if (ptr.IsActive(id) && ptr.Down(ui::PointerButton::Left)) m_pressButton = k;
+			if (!ptr.IsClicked(id)) continue;
+			if (k == MapBtnWaypoint) toggleWaypoint = true;
+			else if (k == MapBtnCenter) recenter = true;
+			else if (k == MapBtnBack) close = true;
+			else if (k == MapBtnClear) act.clearWaypoint = true;
+		}
 	}
 
-	const int n = static_cast<int>(ctx.events.size());
+	if (recenter) m_centre = ctx.player;
+
 	if (n > 0 && in.cycle != 0) m_selected = (m_selected + in.cycle % n + n) % n;
 	m_selected = std::clamp(m_selected, 0, std::max(0, n - 1));
 
-	if (in.confirm && n > 0) {
+	if (toggleWaypoint && n > 0) {
 		act.toggleWaypoint = true;
 		act.eventIndex = m_selected;
 	}
-	if (in.close) {
+	if (close) {
 		m_open = false;
 		act.close = true;
 	}
@@ -608,6 +633,16 @@ void WorldMapUI::Draw(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& 
 
 	dl->PushClipRect(o, ImVec2(o.x + sz.x, o.y + sz.y), true);
 	dl->AddRectFilled(o, ImVec2(o.x + sz.x, o.y + sz.y), C(21, 25, 31, 255));
+	// Pointer regions use the drawn geometry: the view (z 0), markers (z 2), buttons (z 3).
+	ui::Pointer& pointer = ui::Pointer::Get();
+	pointer.AddRect(ui::HashId(WorldMapRegion::kView), glm::vec2(o.x, o.y), glm::vec2(o.x + sz.x, o.y + sz.y), 0, ui::RegionAll);
+	// Button backdrop: hover/pressed feedback shared by the panel row and the control hints.
+	auto button = [&](int id, const ImVec2& a, const ImVec2& b) {
+		pointer.AddRect(ui::HashId(WorldMapRegion::kButton, id), glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), 3, ui::RegionClick);
+		if (id == m_pressButton) dl->AddRectFilled(a, b, C(206, 160, 255, 120), 4.0f * s);
+		else if (id == m_hoverButton) dl->AddRectFilled(a, b, C(206, 160, 255, 56), 4.0f * s);
+		if (id == m_hoverButton || id == m_pressButton) dl->AddRect(a, b, C(230, 210, 255, 220), 4.0f * s, 0, 1.2f * s);
+	};
 
 	// Base image: placed by its world bounds (north-up), so roads and markers line up with it.
 	if (m_base) {
@@ -803,6 +838,9 @@ void WorldMapUI::Draw(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& 
 	for (int i = 0; i < static_cast<int>(ctx.events.size()); ++i) {
 		const glm::vec2 q = WorldToScreen(ctx.events[i].pos, o, sz);
 		m_markerScreen.push_back(ImVec2(q.x, q.y));
+		if (q.x >= o.x && q.x <= o.x + sz.x && q.y >= o.y && q.y <= o.y + sz.y) {
+			pointer.AddCircle(ui::HashId(WorldMapRegion::kEvent, i), q, 18.0f * s, 2, ui::RegionClick);
+		}
 		DrawEventMarker(dl, ImVec2(q.x, q.y), s, i == m_selected, i == m_hovered);
 	}
 	{
@@ -847,10 +885,17 @@ void WorldMapUI::Draw(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& 
 		}
 		py += 40.0f * s;
 		const bool isWp = ctx.hasWaypoint && glm::length(ctx.waypoint - ev.pos) < 1.0f;
+		const char* key = ctx.padConnected ? "A" : "ENTER";
+		const char* label = isWp ? "Clear waypoint" : "Set waypoint";
+		{
+			// Clickable row (same action as ENTER / A on the selected event).
+			const float keyW = std::max(body->CalcTextSizeA(15.0f * s, FLT_MAX, 0.0f, key).x + 14.0f * s, 15.0f * s * 1.55f);
+			const float labelW = body->CalcTextSizeA(17.0f * s, FLT_MAX, 0.0f, label).x + 0.2f * s * std::strlen(label);
+			button(MapBtnWaypoint, ImVec2(px - 6.0f * s, py - 5.0f * s), ImVec2(px + keyW + 12.0f * s + labelW + 8.0f * s, py + 15.0f * s * 1.55f + 5.0f * s));
+		}
 		float kw = 0.0f;
-		DrawKeyCap(dl, body, 15.0f * s, ImVec2(px, py), ctx.padConnected ? "A" : "ENTER", C(246, 248, 252, 255), s, &kw);
-		DrawSpacedText(dl, body, 17.0f * s, ImVec2(px + kw + 12.0f * s, py + 3.0f * s), C(240, 244, 248, 245),
-			isWp ? "Clear waypoint" : "Set waypoint", 0.2f * s, false);
+		DrawKeyCap(dl, body, 15.0f * s, ImVec2(px, py), key, C(246, 248, 252, 255), s, &kw);
+		DrawSpacedText(dl, body, 17.0f * s, ImVec2(px + kw + 12.0f * s, py + 3.0f * s), C(240, 244, 248, 245), label, 0.2f * s, false);
 	}
 
 	// Legend (bottom-left).
@@ -873,10 +918,12 @@ void WorldMapUI::Draw(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& 
 
 	// Controls (bottom-right): key names are live text in key caps.
 	{
-		struct Hint { const char* key; const char* label; };
-		const std::vector<Hint> hints = ctx.padConnected
-			? std::vector<Hint>{ {"LS", "Pan"}, {"LT/RT", "Zoom"}, {"Y", "Center"}, {"B", "Back"} }
-			: std::vector<Hint>{ {"WASD", "Pan"}, {"SCROLL", "Zoom"}, {"F", "Center"}, {"ESC", "Back"} };
+		struct Hint { const char* key; const char* label; int button; };
+		std::vector<Hint> hints = ctx.padConnected
+			? std::vector<Hint>{ {"LS", "Pan", -1}, {"LT/RT", "Zoom", -1}, {"Y", "Center", MapBtnCenter}, {"B", "Back", MapBtnBack} }
+			: std::vector<Hint>{ {"WASD", "Pan", -1}, {"SCROLL", "Zoom", -1}, {"F", "Center", MapBtnCenter}, {"ESC", "Back", MapBtnBack} };
+		// Custom waypoint (map click): clear with the right button or this button.
+		if (ctx.hasWaypoint) hints.insert(hints.begin() + 2, Hint{ "RMB", "Clear", MapBtnClear });
 		const float gap = 28.0f * s;
 		float total = 0.0f;
 		for (const Hint& h : hints) {
@@ -887,6 +934,11 @@ void WorldMapUI::Draw(ImDrawList* dl, const glm::vec2& origin, const glm::vec2& 
 		float x = o.x + sz.x - 40.0f * s - total;
 		const float y = o.y + sz.y - 40.0f * s;
 		for (const Hint& h : hints) {
+			if (h.button >= 0) {
+				const float keyW = std::max(body->CalcTextSizeA(15.0f * s, FLT_MAX, 0.0f, h.key).x + 14.0f * s, 15.0f * s * 1.55f);
+				const float labelW = body->CalcTextSizeA(17.0f * s, FLT_MAX, 0.0f, h.label).x;
+				button(h.button, ImVec2(x - 6.0f * s, y - 17.0f * s), ImVec2(x + keyW + 8.0f * s + labelW + 6.0f * s, y - 12.0f * s + 15.0f * s * 1.55f + 5.0f * s));
+			}
 			float kw = 0.0f;
 			DrawKeyCap(dl, body, 15.0f * s, ImVec2(x, y - 12.0f * s), h.key, C(235, 240, 246, 240), s, &kw);
 			x += kw + 8.0f * s;

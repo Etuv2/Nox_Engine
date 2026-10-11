@@ -1,0 +1,56 @@
+{
+ "repairs": [
+  {
+   "op": "separate",
+   "id": "C1.CW.021",
+   "ref": "C1.CW.018",
+   "points_moved": 24,
+   "max_shift_m": 8.76,
+   "why": "Shiodome entrance drawn over C1 (crosses the main line 1-9 m above its lanes, then runs on its left lane): it runs alongside on the left, as an added lane up to its merge taper"
+  },
+  {
+   "op": "profile",
+   "id": "C1.CW.021",
+   "points_changed": 12,
+   "max_grade_pct": 5.96,
+   "why": "entrance starts at street level (the solver had lifted it 7 m over the main line it crossed)"
+  },
+  {
+   "op": "separate",
+   "id": "C1.CCW.023",
+   "ref": "C1.CCW.024",
+   "points_moved": 23,
+   "max_shift_m": 4.7,
+   "why": "Shiodome exit drawn back over the C1 lanes after its diverge: kept alongside until it leaves"
+  },
+  {
+   "op": "profile",
+   "id": "C1.CCW.023",
+   "points_changed": 15,
+   "max_grade_pct": 5.27,
+   "why": "exit ends at street level (it ended 2.7 m above the street)"
+  },
+  {
+   "op": "separate",
+   "id": "11.IN.002",
+   "ref": "11.IN.003",
+   "points_moved": 20,
+   "max_shift_m": 1.66,
+   "why": "Shibaura PA lane: a 2 m median with parapets from the inbound main line (the PA runs at its own grade)"
+  },
+  {
+   "op": "profile",
+   "id": "11.IN.002",
+   "points_changed": 19,
+   "max_grade_pct": 8.06,
+   "why": "Shibaura PA: 7-8 % entry and exit ramps and a 2 % parking section (was 5.9 % throughout)"
+  },
+  {
+   "op": "lot",
+   "facility": "PA.w585884541",
+   "carriageway": "11.IN.002",
+   "why": "Shibaura PA parking apron on the PA lane (bays, walkway, rest building)"
+  }
+ ],
+ "nox_nodes_updated": 69
+}

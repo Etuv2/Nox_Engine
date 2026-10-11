@@ -140,12 +140,20 @@
     <ClCompile Include="src\SceneNode.cpp" />
     <ClCompile Include="src\ShadowMapper.cpp" />
     <ClCompile Include="src\Skybox.cpp" />
+    <ClCompile Include="src\EnvironmentMap.cpp" />
     <ClCompile Include="src\SpotLight.cpp" />
     <ClCompile Include="src\StudioLighting.cpp" />
     <ClCompile Include="src\Texture.cpp" />
     <ClCompile Include="src\SimdKernels.cpp" />
     <ClCompile Include="src\surfel_gi\SurfelGIResources.cpp" />
     <ClCompile Include="src\TransformSystem.cpp" />
+    <ClCompile Include="src\GameModule.cpp" />
+    <ClCompile Include="src\SceneExtensions.cpp" />
+    <ClCompile Include="src\NoxRacingGame.cpp" />
+    <ClCompile Include="src\FrameProfiler.cpp" />
+    <ClCompile Include="src\ui\Pointer.cpp" />
+    <ClCompile Include="src\EditorExtensions.cpp" />
+    <ClCompile Include="src\GameEditorPanels.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".gitattributes" />
@@ -387,6 +395,7 @@
     <ClInclude Include="src\ShadowMapper.h" />
     <ClInclude Include="src\SimulationConfig.h" />
     <ClInclude Include="src\Skybox.h" />
+    <ClInclude Include="src\EnvironmentMap.h" />
     <ClInclude Include="src\SpotLight.h" />
     <ClInclude Include="src\stb_image.h" />
     <ClInclude Include="src\stb_image_write.h" />
@@ -396,6 +405,13 @@
     <ClInclude Include="src\tiny_gltf.h" />
     <ClInclude Include="src\TransformSystem.h" />
     <ClInclude Include="src\Vertex.h" />
+    <ClInclude Include="src\GameModule.h" />
+    <ClInclude Include="src\SceneExtensions.h" />
+    <ClInclude Include="src\NoxRacingGame.h" />
+    <ClInclude Include="src\FrameProfiler.h" />
+    <ClInclude Include="src\ui\Pointer.h" />
+    <ClInclude Include="src\EditorExtensions.h" />
+    <ClInclude Include="src\GameEditorPanels.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

@@ -46,17 +46,21 @@ void main() {
 	vec2 vc = PixelVelocity(pixel);
 	float vcLen = max(length(vc), 0.5);
 	float zc = LinearDepth(texelFetch(uDepth, pixel, 0).r);
-	// Per-pixel jitter breaks up sample banding; TAA has already run, so keep it mild.
-	float jitter = fract(sin(dot(vec2(pixel) + float(uFrame % 8u), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	// Per-pixel sample offset breaks up banding. This pass runs after TAA, so nothing filters the
+	// offset over time: a per-frame random value showed up as speckle on bright blurred edges.
+	// Interleaved gradient noise (Jimenez 2014), constant over time, interleaves the samples of
+	// neighbouring pixels without flicker (a 2x2 ordered offset left visible stripes).
+	float jitter = fract(52.9829189 * fract(dot(vec2(pixel), vec2(0.06711056, 0.00583715)))) - 0.5;
 
 	float weight = 1.0 / vcLen;
 	vec3 sum = centerColor * weight;
 	int n = max(uSampleCount, 2);
 	for (int i = 0; i < n; ++i) {
-		if (i == (n - 1) / 2) continue;
-		float t = mix(-1.0, 1.0, (float(i) + jitter + 1.0) / float(n + 1));
+		// n samples strictly inside (-1, 1); the centre is already counted above.
+		float t = mix(-1.0, 1.0, (float(i) + 0.5 + jitter) / float(n));
 		vec2 offset = vn * t * 0.5;
-		ivec2 sp = clamp(ivec2(vec2(pixel) + offset + 0.5), ivec2(0), ivec2(uFullSize) - 1);
+		vec2 samplePos = clamp(vec2(pixel) + 0.5 + offset, vec2(0.5), uFullSize - 0.5);
+		ivec2 sp = ivec2(samplePos);
 		float dist = length(offset);
 		float zs = LinearDepth(texelFetch(uDepth, sp, 0).r);
 		vec2 vs = PixelVelocity(sp);
@@ -64,7 +68,8 @@ void main() {
 		float f = SoftDepthCompare(zc, zs);  // sample in front of the centre
 		float b = SoftDepthCompare(zs, zc);  // sample behind the centre
 		float w = f * Cone(dist, vsLen) + b * Cone(dist, vcLen) + Cylinder(dist, vsLen) * Cylinder(dist, vcLen) * 2.0;
-		sum += texelFetch(uColor, sp, 0).rgb * w;
+		// Bilinear colour fetch: sub-pixel sample positions avoid stair-stepped copies of thin lights.
+		sum += textureLod(uColor, samplePos / uFullSize, 0.0).rgb * w;
 		weight += w;
 	}
 	imageStore(uOut, pixel, vec4(sum / max(weight, 1e-4), 1.0));

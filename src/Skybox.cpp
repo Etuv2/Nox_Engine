@@ -74,14 +74,24 @@ void Skybox::ResizeCaptureRBO(int width, int height)
 	rhi::Gpu().ResizeTexture(m_captureRBO, width, height, 1, 1);
 }
 
-TexturePtr Skybox::loadHDRTexture(const std::string& hdrPath)
+TexturePtr Skybox::loadHDRTexture(const std::string& hdrPath, const EnvironmentMapOptions& envOptions)
 {
 	int width, height, nComponents;
+	stbi_set_flip_vertically_on_load_thread(0); // equirect2cube expects the zenith row first
 	float* data = stbi_loadf(hdrPath.c_str(), &width, &height, &nComponents, 0);
 	if (!data) {
 		std::cerr << "[Skybox] Failed to load HDR file: " << hdrPath << std::endl;
 		return nullptr;
 	}
+
+	// Linear float data: rotation / intensity / clamp / ground blend are applied here, before upload,
+	// so the cubemap, irradiance and prefilter all derive from the processed radiance.
+	const EnvironmentProcessStats envStats = ProcessEquirectRadiance(data, width, height, nComponents, envOptions);
+	std::cout << "[Skybox] path=" << hdrPath << " size=" << width << "x" << height
+		<< " rotation=" << envOptions.rotationDeg << "deg"
+		<< " intensity=" << envOptions.intensity
+		<< " max_radiance=" << envOptions.maxRadiance << " clamped=" << envStats.clampedTexels
+		<< " ground=" << (envOptions.groundEnabled ? "on" : "off") << std::endl;
 
 	// Use the new Texture builder for HDR loading
 	rhi::PixelFormat format = (nComponents >= 4) ? rhi::PixelFormat::RGBA : rhi::PixelFormat::RGB;
@@ -155,7 +165,8 @@ bool Skybox::Init(const std::string& hdrPath,
 	const std::string& skyboxVertShader,
 	const std::string& skyboxFragShader,
 	int windowWidth,
-	int windowHeight)
+	int windowHeight,
+	const EnvironmentMapOptions& envOptions)
 {
 	std::cout << "[Skybox] Initializing skybox with IBL support..." << std::endl;
 	std::cout << "[Skybox] HDR file: " << hdrPath << std::endl;
@@ -181,7 +192,7 @@ bool Skybox::Init(const std::string& hdrPath,
 	}
 
 	// Load HDR using new Texture class
-	auto hdrTexture = loadHDRTexture(hdrPath);
+	auto hdrTexture = loadHDRTexture(hdrPath, envOptions);
 	if (!hdrTexture) {
 		std::cerr << "[Skybox] ERROR: HDR load failed" << std::endl;
 		return false;

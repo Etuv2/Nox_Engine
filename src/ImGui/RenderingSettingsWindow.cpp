@@ -6,8 +6,12 @@
 #include "../passes/IndirectDiffusePass.h"
 #include <IMGUI/imgui.h>
 #include <algorithm>
+#include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <string>
+#include <vector>
+#include "../json.hpp"
 
 namespace {
 	struct DebugComboEntry {
@@ -39,6 +43,43 @@ namespace {
 			ImGui::EndCombo();
 		}
 		return changed;
+	}
+}
+
+namespace {
+	struct ResolutionChoice {
+		std::string label;
+		int width = 0;
+		int height = 0;
+	};
+
+	// Resolution combo entries: the current window size (unless listed already), then the
+	// "resolutions" of config/render_presets.json. The file is read once.
+	std::vector<ResolutionChoice> ResolutionChoices(const glm::ivec2& windowSize)
+	{
+		static const std::vector<ResolutionChoice> fileChoices = [] {
+			std::vector<ResolutionChoice> out;
+			std::ifstream in("config/render_presets.json");
+			const nlohmann::json doc = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+			if (doc.is_object() && doc.contains("resolutions") && doc["resolutions"].is_array()) {
+				for (const nlohmann::json& r : doc["resolutions"]) {
+					const int w = r.value("width", 0), h = r.value("height", 0);
+					if (w <= 0 || h <= 0) continue;
+					std::string label = r.value("label", std::string());
+					if (label.empty()) label = std::to_string(w) + "x" + std::to_string(h);
+					out.push_back({ label, w, h });
+				}
+			}
+			return out;
+		}();
+		std::vector<ResolutionChoice> out;
+		const bool windowListed = std::any_of(fileChoices.begin(), fileChoices.end(),
+			[&](const ResolutionChoice& c) { return c.width == windowSize.x && c.height == windowSize.y; });
+		if (!windowListed && windowSize.x > 0 && windowSize.y > 0) {
+			out.push_back({ std::to_string(windowSize.x) + "x" + std::to_string(windowSize.y) + " (window)", windowSize.x, windowSize.y });
+		}
+		out.insert(out.end(), fileChoices.begin(), fileChoices.end());
+		return out;
 	}
 }
 
@@ -392,18 +433,6 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	if (!m_modularRenderer) return;
 
 	auto& ctx = m_modularRenderer->GetContext();
-	// Resolution adjustment based on current resolution preset
-	switch (m_resolutionPreset) {
-	case 0: // 1920x1080
-		ctx.height = 1080;
-		ctx.width = 1920;
-		break;
-	case 1: // 3840x1440
-		ctx.height = 1440;
-		ctx.width = 3840;
-		break;
-	};
-
 	// Post-processing settings
 	ctx.exposure = m_exposure;
 	ctx.gamma = m_gamma;
@@ -596,11 +625,16 @@ void RenderingSettingsWindow::Render() {
 		//General Settings Tab
 		if (ImGui::BeginTabItem("General")) {
 			// Future general settings can be added here
+			const glm::ivec2 windowSize = m_modularRenderer
+				? glm::ivec2(m_modularRenderer->GetContext().width, m_modularRenderer->GetContext().height) : m_windowResolution;
 			ImGui::Text("Engine Resolution:");
-			ImGui::Text("%d x %d", m_windowResolution.x, m_windowResolution.y);
-			//show multiple predefined resolutions
-			const char* resolutions[] = { "1920x1080","3840x1440" };
-			if (ImGui::Combo("Resolution", &m_resolutionPreset, resolutions, IM_ARRAYSIZE(resolutions))) {
+			ImGui::Text("%d x %d", windowSize.x, windowSize.y);
+			const std::vector<ResolutionChoice> choices = ResolutionChoices(windowSize);
+			std::vector<const char*> labels;
+			for (const ResolutionChoice& choice : choices) labels.push_back(choice.label.c_str());
+			m_resolutionPreset = std::clamp(m_resolutionPreset, 0, static_cast<int>(choices.size()) - 1);
+			if (ImGui::Combo("Resolution", &m_resolutionPreset, labels.data(), static_cast<int>(labels.size()))) {
+				// The render size follows the viewport (Core::RenderSceneTo); the preset is a label only.
 				SyncToRenderer();
 			}
 			ImGui::EndTabItem();
@@ -1561,12 +1595,6 @@ void RenderingSettingsWindow::Render() {
 			ImGui::EndTabItem();
 		}
 
-		// Night-street look development (docs/nfs2015)
-		if (ImGui::BeginTabItem("Night Street")) {
-			DrawNightStreetTab();
-			ImGui::EndTabItem();
-		}
-
 		// Debug Tab
 		if (ImGui::BeginTabItem("Debug")) {
 			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Debug Visualization:");
@@ -1901,78 +1929,3 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	std::cout << "[RenderingSettings] Reset all settings to RenderContext defaults (including LPV)" << std::endl;
 }
 
-void RenderingSettingsWindow::DrawNightStreetTab() {
-	if (!m_modularRenderer) {
-		ImGui::TextDisabled("Renderer not connected");
-		return;
-	}
-	RenderContext& ctx = m_modularRenderer->GetContext();
-	ImGui::TextWrapped("Night-street look (docs/nfs2015). Values start from the scene's render_settings "
-		"and the selected quality tier; changes here are live and not saved.");
-	ImGui::Separator();
-
-	if (ImGui::CollapsingHeader("Camera / Exposure", ImGuiTreeNodeFlags_DefaultOpen)) {
-		ImGui::Checkbox("Physical camera (photometric units)", &ctx.physicalCamera);
-		ImGui::Combo("Exposure mode", &ctx.exposureMode, "Manual EV100\0Auto (histogram)\0");
-		ImGui::SliderFloat("EV100 (manual / reset)", &ctx.exposureEV100, -4.0f, 16.0f, "%.2f");
-		ImGui::SliderFloat("Compensation (EV)", &ctx.exposureCompensationEV, -4.0f, 4.0f, "%.2f");
-		ImGui::DragFloatRange2("Auto EV range", &ctx.autoExposureMinEV100, &ctx.autoExposureMaxEV100, 0.1f, -6.0f, 18.0f);
-		ImGui::SliderFloat("Adapt to brighter (1/s)", &ctx.autoExposureSpeedUp, 0.1f, 10.0f);
-		ImGui::SliderFloat("Adapt to darker (1/s)", &ctx.autoExposureSpeedDown, 0.1f, 10.0f);
-	}
-	if (ImGui::CollapsingHeader("Weather")) {
-		ImGui::SliderFloat("Wetness", &ctx.weatherWetness, 0.0f, 1.0f);
-		ImGui::SliderFloat("Puddles", &ctx.weatherPuddles, 0.0f, 1.0f);
-		ImGui::SliderFloat("Rain", &ctx.weatherRain, 0.0f, 1.0f);
-		ImGui::SliderFloat("Puddle scale (m)", &ctx.weatherPuddleScale, 0.5f, 20.0f);
-		ImGui::SliderInt("Rain drops", &ctx.rainDropCount, 0, 200000);
-		ImGui::SliderFloat("Rain brightness", &ctx.rainBrightness, 0.0f, 4.0f);
-	}
-	if (ImGui::CollapsingHeader("Reflections")) {
-		ImGui::Checkbox("Screen-space reflections", &ctx.enableSSR);
-		ImGui::SliderFloat("SSR max roughness", &ctx.ssrMaxRoughness, 0.05f, 1.0f);
-		ImGui::SliderInt("SSR steps", &ctx.ssrMaxSteps, 8, 128);
-		ImGui::SliderInt("SSR resolve rays (4/9)", &ctx.ssrResolveSamples, 4, 9);
-		ImGui::SliderFloat("SSR temporal blend", &ctx.ssrTemporalBlend, 0.02f, 1.0f);
-		ImGui::Checkbox("Reflection probes", &ctx.enableReflectionProbes);
-		ImGui::SameLine();
-		if (ImGui::Button("Recapture")) {
-			m_modularRenderer->RequestReflectionProbeRecapture();
-		}
-		ImGui::Text("Visible probes: %d", ctx.reflectionProbeCount);
-	}
-	if (ImGui::CollapsingHeader("Atmosphere")) {
-		ImGui::Checkbox("Volumetric fog", &ctx.enableVolumetricFog);
-		ImGui::SliderFloat("Density (1/m)", &ctx.fogDensity, 0.0f, 0.1f, "%.4f");
-		ImGui::SliderFloat("Height falloff (m)", &ctx.fogHeightFalloff, 0.5f, 100.0f);
-		ImGui::SliderFloat("Anisotropy g", &ctx.fogAnisotropy, -0.9f, 0.95f);
-		ImGui::SliderFloat("Noise", &ctx.fogNoiseStrength, 0.0f, 1.0f);
-		ImGui::ColorEdit3("Ambient (cd/m2)", &ctx.fogAmbientRadiance.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-		ImGui::SliderFloat("Distant density (1/m)", &ctx.fogDistantDensity, 0.0f, 0.05f, "%.4f");
-	}
-	if (ImGui::CollapsingHeader("Image Formation")) {
-		ImGui::Combo("Bloom mode", &ctx.bloomMode, "Additive (threshold)\0Energy conserving\0");
-		ImGui::SliderFloat("Bloom strength", &ctx.bloomStrength, 0.0f, 1.0f);
-		ImGui::SliderFloat("White balance (K)", &ctx.whiteBalanceTemperature, 1500.0f, 12000.0f, "%.0f");
-		ImGui::SliderFloat("Tint", &ctx.whiteBalanceTint, -1.0f, 1.0f);
-		ImGui::SliderFloat("Contrast", &ctx.gradeContrast, 0.5f, 1.8f);
-		ImGui::SliderFloat("Saturation", &ctx.gradeSaturation, 0.0f, 2.0f);
-		ImGui::DragFloat3("Shadow tint", &ctx.gradeShadowTint.x, 0.01f, -1.0f, 1.0f);
-		ImGui::DragFloat3("Highlight tint", &ctx.gradeHighlightTint.x, 0.01f, -1.0f, 1.0f);
-		ImGui::SliderFloat("Split tone", &ctx.gradeSplitToneStrength, 0.0f, 2.0f);
-		ImGui::SliderFloat("Vignette", &ctx.vignetteIntensity, 0.0f, 1.5f);
-		ImGui::SliderFloat("Film grain", &ctx.filmGrainIntensity, 0.0f, 0.15f);
-		ImGui::SliderFloat("Chromatic aberration (px)", &ctx.chromaticAberration, 0.0f, 6.0f);
-		ImGui::Checkbox("Output dither", &ctx.enableOutputDither);
-	}
-	if (ImGui::CollapsingHeader("Motion")) {
-		ImGui::Checkbox("Motion blur", &ctx.enableMotionBlur);
-		ImGui::SliderFloat("Shutter (s)", &ctx.motionBlurExposureTime, 0.0f, 0.05f, "%.4f");
-		ImGui::SliderFloat("Max blur (px @1440p)", &ctx.motionBlurMaxPixels, 4.0f, 96.0f);
-		ImGui::SliderInt("Samples", &ctx.motionBlurSamples, 4, 32);
-	}
-	if (ImGui::CollapsingHeader("Lighting / Culling")) {
-		ImGui::Checkbox("Clustered lighting", &ctx.enableClusteredLighting);
-		ImGui::Checkbox("Frustum culling", &ctx.enableFrustumCulling);
-	}
-}

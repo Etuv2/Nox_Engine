@@ -7,8 +7,7 @@
 #include "PointLight.h"
 #include "SpotLight.h"
 #include "ModelManager.h"
-#include "ProceduralStreetKit.h"
-#include "RoadNetwork.h"
+#include "SceneExtensions.h"
 #include "ShaderLoader.h"
 #include "Scene.h"
 #include "HierarchySystem.h"
@@ -37,6 +36,12 @@ constexpr float kImportedTransformTolerance = 1e-3f;
 constexpr float kMinimumSceneScale = 1e-5f;
 
 namespace fs = std::filesystem;
+
+uint64_t NextRenderExtrasRevision()
+{
+	static uint64_t revision = 0;
+	return ++revision;
+}
 
 std::string TrimPathValue(const std::string& value)
 {
@@ -548,6 +553,27 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 		return nullptr;
 	}
 
+	// Registered top-level keys (application content such as an authored interior atlas). They run
+	// after the nodes so a procedural generator cannot overwrite what the scene states explicitly.
+	for (const auto& [key, handler] : SceneExtensions::SceneKeys()) {
+		if (!sceneJson.contains(key)) continue;
+		SceneKeyInput input{ sceneJson[key],
+			[this](const std::string& path) {
+				bool resolved = false;
+				const std::string full = ResolveReadableAssetPath(TrimPathValue(path), m_currentSceneDirectory,
+					"scene extension asset", false, &resolved);
+				return resolved ? full : std::string();
+			},
+			sceneGraph->renderExtras };
+		if (handler(input)) {
+			sceneGraph->renderExtras.revision = NextRenderExtrasRevision();
+		}
+		else {
+			++m_missingCriticalAssetCount;
+			std::cerr << "[SceneLoader] Scene key '" << key << "' failed to load its content" << std::endl;
+		}
+	}
+
 	if (m_missingCriticalAssetCount > 0) {
 		std::cerr << "[SceneLoader] Aborting scene load for '" << resolvedScenePath
 			<< "' due to " << m_missingCriticalAssetCount
@@ -557,10 +583,27 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 		return nullptr;
 	}
 
-	// Initialize the skybox if provided.
+	// Initialize the skybox if provided. Either a path string, or an object:
+	// { "path", "fallback", "rotation_deg", "intensity", "max_radiance", "ground": { "color", "blend_start_deg", "blend_end_deg" } }
 	if (sceneJson.contains("skybox")) {
-		std::string hdrPath = TrimPathValue(sceneJson.value("skybox", ""));
-		if (hdrPath.empty()) {
+		const bool skyboxIsObject = sceneJson["skybox"].is_object();
+		const nlohmann::json skyboxNode = skyboxIsObject ? sceneJson["skybox"] : nlohmann::json::object();
+		EnvironmentMapOptions envOptions;
+		if (skyboxIsObject) {
+			std::string envWarnings;
+			envOptions = ParseEnvironmentMapOptions(skyboxNode, &envWarnings);
+			if (!envWarnings.empty()) {
+				std::cout << "[SceneLoader] Skybox options adjusted for scene '" << sceneName << "':" << envWarnings << std::endl;
+			}
+		}
+		const std::string hdrPath = TrimPathValue(skyboxIsObject
+			? (skyboxNode.contains("path") && skyboxNode["path"].is_string() ? skyboxNode["path"].get<std::string>() : std::string{})
+			: sceneJson.value("skybox", ""));
+		const std::string fallbackPath = (skyboxIsObject && skyboxNode.contains("fallback") && skyboxNode["fallback"].is_string())
+			? TrimPathValue(skyboxNode["fallback"].get<std::string>())
+			: std::string{};
+
+		if (hdrPath.empty() && fallbackPath.empty()) {
 			++m_disabledSkyboxCount;
 			std::cout << "[SceneLoader] Skybox disabled for scene '" << sceneName
 				<< "' because the skybox path is empty." << std::endl;
@@ -574,26 +617,55 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 				false,
 				&skyboxResolved);
 
-			if (!skyboxResolved) {
+			bool fallbackResolved = false;
+			std::string resolvedFallbackPath;
+			if (!skyboxResolved && !fallbackPath.empty()) {
+				resolvedFallbackPath = ResolveReadableAssetPath(
+					fallbackPath,
+					m_currentSceneDirectory,
+					"skybox fallback",
+					false,
+					&fallbackResolved);
+				if (fallbackResolved) {
+					std::cout << "[SceneLoader] Skybox '" << hdrPath << "' unavailable, using fallback '"
+						<< resolvedFallbackPath << "'" << std::endl;
+				}
+			}
+
+			if (!skyboxResolved && !fallbackResolved) {
 				++m_disabledSkyboxCount;
 				std::cout << "[SceneLoader] Skybox disabled for scene '" << sceneName
 					<< "' because the HDR asset could not be resolved: " << hdrPath << std::endl;
 			}
 			else {
-				auto sb = std::make_shared<Skybox>();
-				if (!sb->Init(resolvedHdrPath,
-					"shaders/equirect2cube_vert.glsl",
-					"shaders/equirect2cube_frag.glsl",
-					"shaders/skybox_vert.glsl",
-					"shaders/skybox_frag.glsl",
-					m_screenW,
-					m_screenH)) {
+				const std::string primaryPath = skyboxResolved ? resolvedHdrPath : resolvedFallbackPath;
+				auto initSkybox = [&](const std::string& path) -> std::shared_ptr<Skybox> {
+					auto candidate = std::make_shared<Skybox>();
+					if (!candidate->Init(path,
+						"shaders/equirect2cube_vert.glsl",
+						"shaders/equirect2cube_frag.glsl",
+						"shaders/skybox_vert.glsl",
+						"shaders/skybox_frag.glsl",
+						m_screenW,
+						m_screenH,
+						envOptions)) {
+						std::cerr << "[SceneLoader] Failed to load skybox: " << path << "\n";
+						return nullptr;
+					}
+					return candidate;
+				};
+
+				std::shared_ptr<Skybox> sb = initSkybox(primaryPath);
+				if (!sb && skyboxResolved && fallbackResolved && resolvedFallbackPath != resolvedHdrPath) {
+					std::cout << "[SceneLoader] Retrying skybox with fallback '" << resolvedFallbackPath << "'" << std::endl;
+					sb = initSkybox(resolvedFallbackPath);
+				}
+				if (!sb) {
 					++m_disabledSkyboxCount;
-					std::cerr << "[SceneLoader] Failed to load skybox: " << resolvedHdrPath << "\n";
 				}
 				else {
 					++m_loadedSkyboxCount;
-					std::cout << "[SceneLoader] Loading skybox: " << resolvedHdrPath << std::endl;
+					std::cout << "[SceneLoader] Loading skybox: " << primaryPath << std::endl;
 					sceneGraph->SetSkybox(sb);
 				}
 			}
@@ -1365,42 +1437,18 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		if (nodeJson.contains("procedural") && nodeJson["procedural"].is_object()) {
 			const json& procedural = nodeJson["procedural"];
 			authoredExtras["procedural"] = procedural;
-			const std::string generator = procedural.value("generator", std::string("street_kit"));
-			if (generator == "street_kit" || generator == "district") {
+			const std::string generator = procedural.value("generator", SceneExtensions::DefaultGenerator());
+			if (const ProceduralGenerator* generate = SceneExtensions::FindGenerator(generator)) {
 				const json generatorParams = procedural.value("params", json::object());
-				ProceduralStreetKit::Result generated;
-				if (generator == "street_kit") {
-					generated = ProceduralStreetKit::Generate(generatorParams);
-				}
-				else {
-					// Road graph: node params override the scene's game.road_network; default grid otherwise.
-					RoadNetwork network;
-					bool networkLoaded = false;
-					if (generatorParams.contains("road_network")) {
-						networkLoaded = network.Load(generatorParams["road_network"]);
-					}
-					else if (m_sceneGameJson.contains("road_network")) {
-						networkLoaded = network.Load(m_sceneGameJson["road_network"]);
-					}
-					if (!networkLoaded) {
-						network.BuildDefaultDistrict();
-					}
-					generated = ProceduralStreetKit::GenerateDistrict(generatorParams, network);
-				}
+				ProceduralGeneratorResult generated = (*generate)(ProceduralGeneratorInput{ generatorParams, m_sceneGameJson });
 				if (generated.ok) {
 					modelPath = generated.gltfPath;
-					// Generated children: light nodes first, then CC0 prop model instances (district).
-					json generatedChildren = std::move(generated.lightNodes);
-					for (const json& propJson : generated.propNodes) {
-						generatedChildren.push_back(propJson);
-					}
-					m_pendingGeneratedChildren = std::move(generatedChildren);
+					m_pendingGeneratedChildren = std::move(generated.childNodes);
 					AddReflectionProbes(generated.reflectionProbes);
-					if (m_currentSceneGraph) {
+					if (m_currentSceneGraph && generated.hasRenderExtras) {
 						// Unique per load so the passes re-upload their instance buffers.
-						static uint64_t s_extrasRevision = 0;
 						m_currentSceneGraph->renderExtras = std::move(generated.renderExtras);
-						m_currentSceneGraph->renderExtras.revision = ++s_extrasRevision;
+						m_currentSceneGraph->renderExtras.revision = NextRenderExtrasRevision();
 					}
 				}
 				else {

@@ -148,14 +148,14 @@ int CollisionWorld::AddMesh(const std::string& name, const std::vector<glm::vec3
 		const float len = glm::length(c);
 		if (len < 1e-8f) continue; // degenerate
 		t.n = c / len;
-		t.cls = t.n.y >= groundMinNormalY ? Ground : (t.n.y <= -groundMinNormalY ? Ceiling : Wall);
+		t.cls = t.n.y >= filter.groundMinNormalY ? Ground : (t.n.y <= -filter.groundMinNormalY ? Ceiling : Wall);
 		if (t.cls == Wall) {
 			const glm::vec3 b = t.a + t.e1, c = t.a + t.e2;
 			const float extent = std::max({ t.a.y, b.y, c.y }) - std::min({ t.a.y, b.y, c.y });
-			if (extent < minWallHeight) continue; // sliver between surfaces: neither ground nor wall
-			// Needle triangles (minimum altitude < 5 cm) are tessellation slivers, not walls.
+			if (filter.minWallHeight > 0.0f && extent < filter.minWallHeight) continue; // sliver between surfaces: neither ground nor wall
+			// Needle triangles (altitude below minWallAspect of the longest edge) are tessellation slivers, not walls.
 			const float longest = std::max({ glm::length(t.e1), glm::length(t.e2), glm::length(t.e2 - t.e1) });
-			if (longest > 1e-6f && len / longest < 0.05f) continue;
+			if (filter.minWallAspect > 0.0f && longest > 1e-6f && len / longest < filter.minWallAspect) continue;
 		}
 		m.tris.push_back(t);
 	}

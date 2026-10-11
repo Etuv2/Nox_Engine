@@ -24,7 +24,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.dirname(__file__))
 from make_activities import SECTIONS, plan_len, walk  # noqa: E402
 
-EXE = os.path.join(ROOT, 'build', 'vs2022-x64', 'Release', 'Nox_Engine.exe')
+EXE = os.environ.get('NOX_EXE') or os.path.join(ROOT, 'build', 'vs2022-x64', 'Release', 'Nox_Engine.exe')
 MAX_EVENT_M = 3500.0
 EDGE_MARGIN = 60.0
 
@@ -136,6 +136,53 @@ def make(section):
                        'countdown': 1.0, 'checkpoints': [{'pos': [round(v, 2) for v in q], 'width': 18.0} for _, q in merged],
                        'route_carriageways': path, 'length_m': round(L, 1)})
         uncovered -= set(path)
+    # Explicit validation routes (make_activities SECTIONS 'validation_routes'): driven end to end.
+    lots = {}
+    off_path = os.path.join(ROOT, 'models', 'shuto', section, 'deck_offsets.json')
+    if os.path.exists(off_path):
+        lots = {l['carriageway']: l for l in json.load(open(off_path, encoding='utf-8')).get('lots', [])}
+    for vr in SECTIONS[section].get('validation_routes', []):
+        path = [c for c in vr['path'] if c in cw]
+        pts = []
+        for i, cid in enumerate(path):
+            P = cw[cid]['points']
+            pts += P if i == 0 else P[1:]
+        ins = [k for k, p in enumerate(pts) if inside(p, box)]
+        pts = pts[ins[0]:ins[-1] + 1]
+        L = plan_len(pts)
+        start, start_h = walk(pts, 25.0)
+        cps = []
+        acc = 0.0
+        for cid in path:
+            P = [p for p in cw[cid]['points'] if inside(p, box)]
+            if len(P) >= 2 and plan_len(P) > 30.0:
+                cps.append(walk(P, plan_len(P) * 0.5)[0])
+        for cid in path:
+            if 'lot' in vr.get('extra_checkpoints', []) and cid in lots:
+                cps.append(lots[cid]['pos'])
+        cps.append(walk(pts, L - 5.0)[0])
+
+        def s_of2(q):
+            best, acc2, sbest = 1e18, 0.0, 0.0
+            for a, b in zip(pts, pts[1:]):
+                d = math.hypot(b[0] - a[0], b[2] - a[2])
+                for t in (0.0, 0.25, 0.5, 0.75, 1.0):
+                    x, z = a[0] + (b[0] - a[0]) * t, a[2] + (b[2] - a[2]) * t
+                    e = (x - q[0]) ** 2 + (z - q[2]) ** 2
+                    if e < best:
+                        best, sbest = e, acc2 + d * t
+                acc2 += d
+            return sbest
+        cps = sorted(((s_of2(q), q) for q in cps), key=lambda v: v[0])
+        idx = len(events)
+        # the lot checkpoint is on the bays, 5 m beside the PA lane centre: inside the 18 m gate
+        events.append({'id': f"validate_{vr['id']}", 'type': 'SPRINT RACE', 'name': vr['name'], 'difficulty': 'Test',
+                       'start': [round(v, 2) for v in start], 'start_heading_deg': round(start_h, 2), 'trigger_radius': 10.0,
+                       'countdown': 1.0,
+                       'checkpoints': [{'pos': [round(v, 2) for v in q], 'width': 18.0}
+                                       for s, q in cps if s > 40.0],
+                       'route_carriageways': path, 'length_m': round(L, 1)})
+        print(f"validation route {vr['id']}: event {idx}, {L:.0f} m, {len(events[-1]['checkpoints'])} checkpoints")
     covered = sorted({c for e in events for c in e['route_carriageways']} & set(todo))
     doc = {'section': section, 'box_shrunk_by_m': EDGE_MARGIN, 'required': todo, 'covered': covered,
            'missing': sorted(set(todo) - set(covered)), 'events': events}
