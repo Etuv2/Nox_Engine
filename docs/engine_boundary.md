@@ -24,6 +24,13 @@ name game content (places, paths, IDs, vehicles, night-look values or a hardware
 The application wires the game in `src/main.cpp` with `RegisterNoxRacingGame()` (`src/NoxRacingGame.cpp`).
 `--no-game` skips the registration and runs the bare engine.
 
+The [Lua gameplay scripting proposal](lua_scripting_research.md) builds on this contract so
+project rules and component schemas can load as content. It documents ECS lifetime, Play/Stop,
+reload, and packaging prerequisites; Lua is not integrated into the engine yet.
+Its [NFS car migration](lua_scripting_research.md#nfs-car-migration-into-project-scripts) explicitly
+moves driving policies/presentation to project Lua while extracting reusable native vehicle
+calculations. A Lua wrapper around the current compiled DriveMode is an intermediate step.
+
 ## What moved out of the engine this round
 
 - **Core:** owned `GameSession` and initialised the HUD fonts, icons and drive audio. Core now

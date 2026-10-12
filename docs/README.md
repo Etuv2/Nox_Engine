@@ -4,6 +4,15 @@ Start with [building and validation](building.md), [packaging](packaging.md), an
 [repository maintenance](repository_maintenance.md). The root README describes engine features
 and usage; these pages own the development and distribution workflows.
 
+The [asset pack/VFS research and measured proposal](pak_vfs_research.md) covers the next
+engine storage stage, including loader integration, compression results and cook-cache design.
+
+The [Lua gameplay scripting research](lua_scripting_research.md) covers project-defined systems,
+safe ECS access, state-preserving reloads, packaging, and a standalone compatibility probe.
+
+The [agent implementation prompt](engine_implementation_prompt.md) consolidates the research
+into coordinated implementation work with ownership and acceptance criteria.
+
 ## Engine contracts
 
 - [Engine/game boundary](engine_boundary.md)

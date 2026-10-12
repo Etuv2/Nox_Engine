@@ -10,6 +10,8 @@ The current workflows are [building](../docs/building.md), [packaging](../docs/p
 | `run.cmd` / `Run.ps1` | Launch a build/package with a named preset |
 | `package.cmd` / `Package.ps1` | Plan/stage a standalone distribution from a profile |
 | `MeasureRepository.ps1` | Read-only storage report |
+| `benchmark_pack_compression.py` | Read-only archive payload/codec research benchmark |
+| `research/lua_reload_probe.cpp` | Standalone Lua compatibility/reload fixture; see the [research report](../docs/lua_scripting_research.md) for build instructions |
 | `Clean.ps1` | Preview or apply verified duplicate/cache cleanup |
 | `CheckCompile.ps1` | MSVC syntax check of selected source files |
 | `CheckNoRawGL.ps1` | Check the rendering API boundary |

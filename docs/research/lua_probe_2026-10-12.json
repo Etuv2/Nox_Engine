@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-12",
+  "scope": "Standalone mock-world Lua C API probe; no NOX runtime integration or performance benchmark",
+  "lua_headers": "5.4.2",
+  "dll_machine_hex": "0x8664",
+  "available_msvc_versions": [
+    "14.44.35207"
+  ],
+  "compiler_flags": "/W4 /WX /EHsc /MD /std:c++20 /O2 /DLUA_BUILD_AS_DLL",
+  "archive_sha256": "dd4127e66ccb32514d605a417e106f050141e904a78be7257a7fd6f51c73d232",
+  "dll_sha256": "f2925c3d83ccbd5302638cf0677261c7917f85ed30771ec78ec966d427874725",
+  "dll_bytes": 354816,
+  "probe_source_sha256": "8bb8600664cc771cee129982a2325186affb0bbe1d4a3728b42a26ab381039e0",
+  "probe_exe_bytes": 46080,
+  "probe_exe_sha256_before_and_after_script_edit": "d275d920e9b846f6c92c3d5dd9ac87e69d5e99d6ea7ddbe320bec3ee58762429",
+  "script_edit_runs": [
+    {
+      "lua_step": 1,
+      "stdout": "count=1 position=1",
+      "exit_code": 0
+    },
+    {
+      "lua_step": 10,
+      "stdout": "count=10 position=10",
+      "exit_code": 0
+    }
+  ],
+  "self_test_exit_code": 0,
+  "self_test_output": [
+    "Rejected: scripts/probe.lua:1: unexpected symbol near <eof>",
+    "Rejected: Missing update function",
+    "Rejected: State count must be an integer",
+    "Rejected: scripts/probe.lua:2: migration failed",
+    "Rejected: scripts/probe.lua:1: World writes forbidden during reload staging",
+    "Rejected: scripts/probe.lua:2: World writes forbidden during reload staging",
+    "PASS: protected loads/updates, export/schema validation, declared state migration, failed reload retention, non-string error containment, staging guard, command discard, entity generation/world epoch checks, 1000 updates and 100 reload cycles. Lua 5.4.2"
+  ],
+  "limitations": [
+    "Declared state fixture contains one integer only",
+    "World and handles are simulated, not NOX ECS",
+    "Native command discard is tested; arbitrary Lua state rollback after an update error is not provided",
+    "Allocator exhaustion, watchdog, physics synchronization, VFS, editor, packaging and production Lua version are not tested",
+    "Production tracebacks are not implemented in the fixture"
+  ],
+  "compiler_file_version": "19.44.35225.0"
+}

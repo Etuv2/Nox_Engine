@@ -81,3 +81,6 @@ Proceed in this order so storage gains can be measured against the current manif
 
 No pack/cooking format is introduced in this pass. The reviewed profile and dependency manifest
 are the input contract for that next stage.
+
+See the [pack/VFS research](pak_vfs_research.md) for the measured archive comparison and the
+proposed runtime integration. It is research only; the current engine still needs loose assets.

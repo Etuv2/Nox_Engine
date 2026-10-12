@@ -1,0 +1,1250 @@
+{
+  "block_bytes": 262144,
+  "codecs": {
+    "lz4_python": "4.4.5",
+    "zlib": "1.3.1",
+    "zstandard_python": "0.25.0",
+    "zstd_library": [
+      1,
+      5,
+      7
+    ]
+  },
+  "cpu": "AMD Ryzen 7 5800X 8-Core Processor",
+  "date": "2026-10-12",
+  "method": "Per-file median in-memory encode/decode times, summed. No disk I/O, asset parsing or GPU uploads in timings. Store when savings are below max(64 bytes, 1%). Runtime assets only; mutable editor settings, DLLs, executable, licenses and generated files absent from manifest are excluded.",
+  "packages": [
+    {
+      "asset_files": 216,
+      "by_extension": {
+        ".comp": {
+          "bytes": 232950,
+          "files": 22
+        },
+        ".frag": {
+          "bytes": 2078,
+          "files": 1
+        },
+        ".glb": {
+          "bytes": 43260572,
+          "files": 11
+        },
+        ".glsl": {
+          "bytes": 459975,
+          "files": 103
+        },
+        ".hdr": {
+          "bytes": 30088378,
+          "files": 3
+        },
+        ".jpg": {
+          "bytes": 74180032,
+          "files": 28
+        },
+        ".json": {
+          "bytes": 524123,
+          "files": 14
+        },
+        ".png": {
+          "bytes": 24668337,
+          "files": 27
+        },
+        ".ttf": {
+          "bytes": 1266640,
+          "files": 6
+        },
+        ".vert": {
+          "bytes": 18763,
+          "files": 1
+        }
+      },
+      "changed_since_manifest": [],
+      "configuration": "Release",
+      "duplicate_paths": [
+        "shaders/prefilter_vert.glsl"
+      ],
+      "identical_file_savings_bytes": 227,
+      "modes": {
+        "deflate-6": {
+          "block_count": 216,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 56989,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 736,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 30929241,
+              "raw_bytes": 43260572
+            },
+            ".glsl": {
+              "payload_bytes": 151067,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 20691835,
+              "raw_bytes": 30088378
+            },
+            ".jpg": {
+              "payload_bytes": 74032635,
+              "raw_bytes": 74180032
+            },
+            ".json": {
+              "payload_bytes": 38116,
+              "raw_bytes": 524123
+            },
+            ".png": {
+              "payload_bytes": 22458976,
+              "raw_bytes": 24668337
+            },
+            ".ttf": {
+              "payload_bytes": 678440,
+              "raw_bytes": 1266640
+            },
+            ".vert": {
+              "payload_bytes": 4479,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 5.667751299915835,
+          "compressed_blocks": 188,
+          "decode_seconds": 0.345512999832863,
+          "illustrative_index_bytes": 21116,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 6827043
+            },
+            {
+              "path": "models/car_r33_rig.glb",
+              "saved_bytes": 6036699
+            },
+            {
+              "path": "models/car.glb",
+              "saved_bytes": 5837674
+            },
+            {
+              "path": "hdrs/cc0/dawn.hdr",
+              "saved_bytes": 1409062
+            },
+            {
+              "path": "hdrs/cc0/night_city.hdr",
+              "saved_bytes": 1160438
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 406633
+            },
+            {
+              "path": "textures/ui_icons/manifest.json",
+              "saved_bytes": 348290
+            },
+            {
+              "path": "textures/lens_flares/glow_led.png",
+              "saved_bytes": 315734
+            },
+            {
+              "path": "textures/lens_flares/halo_ring.png",
+              "saved_bytes": 233408
+            },
+            {
+              "path": "textures/lens_flares/glow_sodium.png",
+              "saved_bytes": 195995
+            }
+          ],
+          "payload_bytes": 149042514,
+          "saved_percent": 14.68750004293028,
+          "stored_blocks": 28,
+          "unique_payload_bytes": 149042363,
+          "zip_container_bytes": 149073408
+        },
+        "lz4-fast": {
+          "block_count": 216,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 93599,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 1130,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 33538165,
+              "raw_bytes": 43260572
+            },
+            ".glsl": {
+              "payload_bytes": 236523,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 27874794,
+              "raw_bytes": 30088378
+            },
+            ".jpg": {
+              "payload_bytes": 74180032,
+              "raw_bytes": 74180032
+            },
+            ".json": {
+              "payload_bytes": 55102,
+              "raw_bytes": 524123
+            },
+            ".png": {
+              "payload_bytes": 23895814,
+              "raw_bytes": 24668337
+            },
+            ".ttf": {
+              "payload_bytes": 900065,
+              "raw_bytes": 1266640
+            },
+            ".vert": {
+              "payload_bytes": 7582,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.19952689987258054,
+          "compressed_blocks": 166,
+          "decode_seconds": 0.06586170016089454,
+          "illustrative_index_bytes": 21116,
+          "largest_savings": [
+            {
+              "path": "models/car_r33_rig.glb",
+              "saved_bytes": 4786144
+            },
+            {
+              "path": "models/car.glb",
+              "saved_bytes": 4690564
+            },
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 1734965
+            },
+            {
+              "path": "textures/ui_icons/manifest.json",
+              "saved_bytes": 346142
+            },
+            {
+              "path": "hdrs/cc0/dawn.hdr",
+              "saved_bytes": 338492
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 245438
+            },
+            {
+              "path": "hdrs/cc0/night_city.hdr",
+              "saved_bytes": 140127
+            },
+            {
+              "path": "textures/lens_flares/glow_led.png",
+              "saved_bytes": 116335
+            },
+            {
+              "path": "models/cc0/modular_street_seating.glb",
+              "saved_bytes": 95512
+            },
+            {
+              "path": "textures/lens_flares/halo_ring.png",
+              "saved_bytes": 83095
+            }
+          ],
+          "payload_bytes": 160782806,
+          "saved_percent": 7.967312400725146,
+          "stored_blocks": 50,
+          "unique_payload_bytes": 160782579
+        },
+        "lz4-fast-256k": {
+          "block_count": 847,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 93599,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 1130,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 33591345,
+              "raw_bytes": 43260572
+            },
+            ".glsl": {
+              "payload_bytes": 236523,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 27924462,
+              "raw_bytes": 30088378
+            },
+            ".jpg": {
+              "payload_bytes": 74180032,
+              "raw_bytes": 74180032
+            },
+            ".json": {
+              "payload_bytes": 56018,
+              "raw_bytes": 524123
+            },
+            ".png": {
+              "payload_bytes": 23840756,
+              "raw_bytes": 24668337
+            },
+            ".ttf": {
+              "payload_bytes": 901010,
+              "raw_bytes": 1266640
+            },
+            ".vert": {
+              "payload_bytes": 7582,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.14441560005070642,
+          "compressed_blocks": 403,
+          "decode_seconds": 0.07056089994148351,
+          "illustrative_index_bytes": 48220,
+          "largest_savings": [
+            {
+              "path": "models/car_r33_rig.glb",
+              "saved_bytes": 4756238
+            },
+            {
+              "path": "models/car.glb",
+              "saved_bytes": 4663661
+            },
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 1707867
+            },
+            {
+              "path": "textures/ui_icons/manifest.json",
+              "saved_bytes": 345226
+            },
+            {
+              "path": "hdrs/cc0/dawn.hdr",
+              "saved_bytes": 327867
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 244493
+            },
+            {
+              "path": "hdrs/cc0/night_city.hdr",
+              "saved_bytes": 128182
+            },
+            {
+              "path": "textures/lens_flares/glow_led.png",
+              "saved_bytes": 113922
+            },
+            {
+              "path": "models/cc0/modular_street_seating.glb",
+              "saved_bytes": 91832
+            },
+            {
+              "path": "textures/lens_flares/halo_ring.png",
+              "saved_bytes": 81456
+            }
+          ],
+          "payload_bytes": 160832457,
+          "saved_percent": 7.938891980123763,
+          "stored_blocks": 444,
+          "unique_payload_bytes": 160832230
+        },
+        "zstd-3": {
+          "block_count": 216,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 62913,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 794,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 30487880,
+              "raw_bytes": 43260572
+            },
+            ".glsl": {
+              "payload_bytes": 161721,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 21639928,
+              "raw_bytes": 30088378
+            },
+            ".jpg": {
+              "payload_bytes": 74057806,
+              "raw_bytes": 74180032
+            },
+            ".json": {
+              "payload_bytes": 34946,
+              "raw_bytes": 524123
+            },
+            ".png": {
+              "payload_bytes": 22843383,
+              "raw_bytes": 24668337
+            },
+            ".ttf": {
+              "payload_bytes": 686571,
+              "raw_bytes": 1266640
+            },
+            ".vert": {
+              "payload_bytes": 4985,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.8292281002213713,
+          "compressed_blocks": 186,
+          "decode_seconds": 0.13537000023643486,
+          "illustrative_index_bytes": 21116,
+          "largest_savings": [
+            {
+              "path": "models/car_r33_rig.glb",
+              "saved_bytes": 6288837
+            },
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 6260145
+            },
+            {
+              "path": "models/car.glb",
+              "saved_bytes": 6032229
+            },
+            {
+              "path": "hdrs/cc0/dawn.hdr",
+              "saved_bytes": 1314115
+            },
+            {
+              "path": "hdrs/cc0/night_city.hdr",
+              "saved_bytes": 874190
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 402979
+            },
+            {
+              "path": "textures/ui_icons/manifest.json",
+              "saved_bytes": 353181
+            },
+            {
+              "path": "textures/lens_flares/glow_led.png",
+              "saved_bytes": 300691
+            },
+            {
+              "path": "textures/lens_flares/halo_ring.png",
+              "saved_bytes": 208109
+            },
+            {
+              "path": "textures/lens_flares/glow_sodium.png",
+              "saved_bytes": 182333
+            }
+          ],
+          "payload_bytes": 149980927,
+          "saved_percent": 14.150348884689535,
+          "stored_blocks": 30,
+          "unique_payload_bytes": 149980764
+        },
+        "zstd-3-256k": {
+          "block_count": 847,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 62913,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 794,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 31414802,
+              "raw_bytes": 43260572
+            },
+            ".glsl": {
+              "payload_bytes": 161721,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 21272246,
+              "raw_bytes": 30088378
+            },
+            ".jpg": {
+              "payload_bytes": 74041374,
+              "raw_bytes": 74180032
+            },
+            ".json": {
+              "payload_bytes": 35866,
+              "raw_bytes": 524123
+            },
+            ".png": {
+              "payload_bytes": 22747305,
+              "raw_bytes": 24668337
+            },
+            ".ttf": {
+              "payload_bytes": 691840,
+              "raw_bytes": 1266640
+            },
+            ".vert": {
+              "payload_bytes": 4985,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.6582068998541217,
+          "compressed_blocks": 473,
+          "decode_seconds": 0.1585191000776831,
+          "illustrative_index_bytes": 48220,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 6375476
+            },
+            {
+              "path": "models/car_r33_rig.glb",
+              "saved_bytes": 5823175
+            },
+            {
+              "path": "models/car.glb",
+              "saved_bytes": 5686445
+            },
+            {
+              "path": "hdrs/cc0/dawn.hdr",
+              "saved_bytes": 1356110
+            },
+            {
+              "path": "hdrs/cc0/night_city.hdr",
+              "saved_bytes": 1084546
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 397710
+            },
+            {
+              "path": "textures/ui_icons/manifest.json",
+              "saved_bytes": 352261
+            },
+            {
+              "path": "textures/lens_flares/glow_led.png",
+              "saved_bytes": 304211
+            },
+            {
+              "path": "textures/lens_flares/halo_ring.png",
+              "saved_bytes": 219398
+            },
+            {
+              "path": "textures/lens_flares/glow_sodium.png",
+              "saved_bytes": 186826
+            }
+          ],
+          "payload_bytes": 150433846,
+          "saved_percent": 13.891096332306685,
+          "stored_blocks": 374,
+          "unique_payload_bytes": 150433683
+        },
+        "zstd-9": {
+          "block_count": 216,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 57303,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 767,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 30295469,
+              "raw_bytes": 43260572
+            },
+            ".glsl": {
+              "payload_bytes": 153278,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 19010988,
+              "raw_bytes": 30088378
+            },
+            ".jpg": {
+              "payload_bytes": 74044939,
+              "raw_bytes": 74180032
+            },
+            ".json": {
+              "payload_bytes": 32079,
+              "raw_bytes": 524123
+            },
+            ".png": {
+              "payload_bytes": 22404726,
+              "raw_bytes": 24668337
+            },
+            ".ttf": {
+              "payload_bytes": 660618,
+              "raw_bytes": 1266640
+            },
+            ".vert": {
+              "payload_bytes": 4491,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 2.11235109998961,
+          "compressed_blocks": 185,
+          "decode_seconds": 0.15799650002736598,
+          "illustrative_index_bytes": 21116,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 8123931
+            },
+            {
+              "path": "models/car_r33_rig.glb",
+              "saved_bytes": 6431367
+            },
+            {
+              "path": "models/car.glb",
+              "saved_bytes": 6154899
+            },
+            {
+              "path": "hdrs/cc0/dawn.hdr",
+              "saved_bytes": 1579764
+            },
+            {
+              "path": "hdrs/cc0/night_city.hdr",
+              "saved_bytes": 1373695
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 421440
+            },
+            {
+              "path": "textures/lens_flares/glow_led.png",
+              "saved_bytes": 382300
+            },
+            {
+              "path": "textures/ui_icons/manifest.json",
+              "saved_bytes": 353800
+            },
+            {
+              "path": "textures/lens_flares/halo_ring.png",
+              "saved_bytes": 284139
+            },
+            {
+              "path": "textures/lens_flares/glow_sodium.png",
+              "saved_bytes": 243120
+            }
+          ],
+          "payload_bytes": 146664658,
+          "saved_percent": 16.048593830558676,
+          "stored_blocks": 31,
+          "unique_payload_bytes": 146664498
+        }
+      },
+      "profile": "NOX_Racing",
+      "raw_bytes": 174701848,
+      "snapshot_sha256": "47817f3c9098d8c33f124b86de80da42396686933efc97844a8c4efd2a0ff136",
+      "unique_raw_bytes": 174701621
+    },
+    {
+      "asset_files": 139,
+      "by_extension": {
+        ".comp": {
+          "bytes": 232950,
+          "files": 22
+        },
+        ".frag": {
+          "bytes": 2078,
+          "files": 1
+        },
+        ".glb": {
+          "bytes": 7804,
+          "files": 1
+        },
+        ".glsl": {
+          "bytes": 459975,
+          "files": 103
+        },
+        ".hdr": {
+          "bytes": 16984221,
+          "files": 1
+        },
+        ".json": {
+          "bytes": 10458,
+          "files": 5
+        },
+        ".png": {
+          "bytes": 87363,
+          "files": 1
+        },
+        ".ttf": {
+          "bytes": 1134172,
+          "files": 4
+        },
+        ".vert": {
+          "bytes": 18763,
+          "files": 1
+        }
+      },
+      "changed_since_manifest": [],
+      "configuration": "Release",
+      "duplicate_paths": [
+        "shaders/prefilter_vert.glsl"
+      ],
+      "identical_file_savings_bytes": 227,
+      "modes": {
+        "deflate-6": {
+          "block_count": 139,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 56989,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 736,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 1826,
+              "raw_bytes": 7804
+            },
+            ".glsl": {
+              "payload_bytes": 151067,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 10157178,
+              "raw_bytes": 16984221
+            },
+            ".json": {
+              "payload_bytes": 2201,
+              "raw_bytes": 10458
+            },
+            ".png": {
+              "payload_bytes": 60333,
+              "raw_bytes": 87363
+            },
+            ".ttf": {
+              "payload_bytes": 619772,
+              "raw_bytes": 1134172
+            },
+            ".vert": {
+              "payload_bytes": 4479,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.9257319998578168,
+          "compressed_blocks": 137,
+          "decode_seconds": 0.07712099989294074,
+          "illustrative_index_bytes": 13451,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 6827043
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 406633
+            },
+            {
+              "path": "shaders/surfel_gi/trace_rays.comp",
+              "saved_bytes": 43364
+            },
+            {
+              "path": "fonts/solace/Geist-Regular.ttf",
+              "saved_bytes": 36367
+            },
+            {
+              "path": "fonts/solace/Geist-Medium.ttf",
+              "saved_bytes": 35751
+            },
+            {
+              "path": "fonts/solace/Geist-SemiBold.ttf",
+              "saved_bytes": 35649
+            },
+            {
+              "path": "shaders/surfel_gi/spawn.comp",
+              "saved_bytes": 30590
+            },
+            {
+              "path": "shaders/rt_bidirectional_comp.glsl",
+              "saved_bytes": 29868
+            },
+            {
+              "path": "images/logo.png",
+              "saved_bytes": 27030
+            },
+            {
+              "path": "shaders/surfel_gi/common.glsl",
+              "saved_bytes": 23047
+            }
+          ],
+          "payload_bytes": 11054581,
+          "saved_percent": 41.62685032208626,
+          "stored_blocks": 2,
+          "unique_payload_bytes": 11054430,
+          "zip_container_bytes": 11074149
+        },
+        "lz4-fast": {
+          "block_count": 139,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 93599,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 1130,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 2751,
+              "raw_bytes": 7804
+            },
+            ".glsl": {
+              "payload_bytes": 236523,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 15249256,
+              "raw_bytes": 16984221
+            },
+            ".json": {
+              "payload_bytes": 3444,
+              "raw_bytes": 10458
+            },
+            ".png": {
+              "payload_bytes": 70106,
+              "raw_bytes": 87363
+            },
+            ".ttf": {
+              "payload_bytes": 817495,
+              "raw_bytes": 1134172
+            },
+            ".vert": {
+              "payload_bytes": 7582,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.045086000027367845,
+          "compressed_blocks": 125,
+          "decode_seconds": 0.024989400058984756,
+          "illustrative_index_bytes": 13451,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 1734965
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 245438
+            },
+            {
+              "path": "shaders/surfel_gi/trace_rays.comp",
+              "saved_bytes": 35185
+            },
+            {
+              "path": "shaders/surfel_gi/spawn.comp",
+              "saved_bytes": 24599
+            },
+            {
+              "path": "fonts/solace/Geist-Regular.ttf",
+              "saved_bytes": 24254
+            },
+            {
+              "path": "fonts/solace/Geist-SemiBold.ttf",
+              "saved_bytes": 23507
+            },
+            {
+              "path": "fonts/solace/Geist-Medium.ttf",
+              "saved_bytes": 23478
+            },
+            {
+              "path": "shaders/rt_bidirectional_comp.glsl",
+              "saved_bytes": 22906
+            },
+            {
+              "path": "shaders/surfel_gi/common.glsl",
+              "saved_bytes": 18393
+            },
+            {
+              "path": "images/logo.png",
+              "saved_bytes": 17257
+            }
+          ],
+          "payload_bytes": 16481886,
+          "saved_percent": 12.968243802970825,
+          "stored_blocks": 14,
+          "unique_payload_bytes": 16481659
+        },
+        "lz4-fast-256k": {
+          "block_count": 206,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 93599,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 1130,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 2751,
+              "raw_bytes": 7804
+            },
+            ".glsl": {
+              "payload_bytes": 236523,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 15276354,
+              "raw_bytes": 16984221
+            },
+            ".json": {
+              "payload_bytes": 3444,
+              "raw_bytes": 10458
+            },
+            ".png": {
+              "payload_bytes": 70106,
+              "raw_bytes": 87363
+            },
+            ".ttf": {
+              "payload_bytes": 818440,
+              "raw_bytes": 1134172
+            },
+            ".vert": {
+              "payload_bytes": 7582,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.035569800093071535,
+          "compressed_blocks": 192,
+          "decode_seconds": 0.015952800022205338,
+          "illustrative_index_bytes": 20043,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 1707867
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 244493
+            },
+            {
+              "path": "shaders/surfel_gi/trace_rays.comp",
+              "saved_bytes": 35185
+            },
+            {
+              "path": "shaders/surfel_gi/spawn.comp",
+              "saved_bytes": 24599
+            },
+            {
+              "path": "fonts/solace/Geist-Regular.ttf",
+              "saved_bytes": 24254
+            },
+            {
+              "path": "fonts/solace/Geist-SemiBold.ttf",
+              "saved_bytes": 23507
+            },
+            {
+              "path": "fonts/solace/Geist-Medium.ttf",
+              "saved_bytes": 23478
+            },
+            {
+              "path": "shaders/rt_bidirectional_comp.glsl",
+              "saved_bytes": 22906
+            },
+            {
+              "path": "shaders/surfel_gi/common.glsl",
+              "saved_bytes": 18393
+            },
+            {
+              "path": "images/logo.png",
+              "saved_bytes": 17257
+            }
+          ],
+          "payload_bytes": 16509929,
+          "saved_percent": 12.8201641754917,
+          "stored_blocks": 14,
+          "unique_payload_bytes": 16509702
+        },
+        "zstd-3": {
+          "block_count": 139,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 62913,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 794,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 1897,
+              "raw_bytes": 7804
+            },
+            ".glsl": {
+              "payload_bytes": 161721,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 10724076,
+              "raw_bytes": 16984221
+            },
+            ".json": {
+              "payload_bytes": 2475,
+              "raw_bytes": 10458
+            },
+            ".png": {
+              "payload_bytes": 67796,
+              "raw_bytes": 87363
+            },
+            ".ttf": {
+              "payload_bytes": 626660,
+              "raw_bytes": 1134172
+            },
+            ".vert": {
+              "payload_bytes": 4985,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.16786379957920872,
+          "compressed_blocks": 135,
+          "decode_seconds": 0.037792400253238156,
+          "illustrative_index_bytes": 13451,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 6260145
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 402979
+            },
+            {
+              "path": "shaders/surfel_gi/trace_rays.comp",
+              "saved_bytes": 42050
+            },
+            {
+              "path": "fonts/solace/Geist-Regular.ttf",
+              "saved_bytes": 35299
+            },
+            {
+              "path": "fonts/solace/Geist-Medium.ttf",
+              "saved_bytes": 34641
+            },
+            {
+              "path": "fonts/solace/Geist-SemiBold.ttf",
+              "saved_bytes": 34593
+            },
+            {
+              "path": "shaders/surfel_gi/spawn.comp",
+              "saved_bytes": 29525
+            },
+            {
+              "path": "shaders/rt_bidirectional_comp.glsl",
+              "saved_bytes": 29061
+            },
+            {
+              "path": "shaders/surfel_gi/common.glsl",
+              "saved_bytes": 22286
+            },
+            {
+              "path": "shaders/includes/pbr_common.glsl",
+              "saved_bytes": 20474
+            }
+          ],
+          "payload_bytes": 11653317,
+          "saved_percent": 38.46525549134999,
+          "stored_blocks": 4,
+          "unique_payload_bytes": 11653154
+        },
+        "zstd-3-256k": {
+          "block_count": 206,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 62913,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 794,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 1897,
+              "raw_bytes": 7804
+            },
+            ".glsl": {
+              "payload_bytes": 161721,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 10608745,
+              "raw_bytes": 16984221
+            },
+            ".json": {
+              "payload_bytes": 2475,
+              "raw_bytes": 10458
+            },
+            ".png": {
+              "payload_bytes": 67796,
+              "raw_bytes": 87363
+            },
+            ".ttf": {
+              "payload_bytes": 631929,
+              "raw_bytes": 1134172
+            },
+            ".vert": {
+              "payload_bytes": 4985,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.15361949990619905,
+          "compressed_blocks": 202,
+          "decode_seconds": 0.0417142998194322,
+          "illustrative_index_bytes": 20043,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 6375476
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 397710
+            },
+            {
+              "path": "shaders/surfel_gi/trace_rays.comp",
+              "saved_bytes": 42050
+            },
+            {
+              "path": "fonts/solace/Geist-Regular.ttf",
+              "saved_bytes": 35299
+            },
+            {
+              "path": "fonts/solace/Geist-Medium.ttf",
+              "saved_bytes": 34641
+            },
+            {
+              "path": "fonts/solace/Geist-SemiBold.ttf",
+              "saved_bytes": 34593
+            },
+            {
+              "path": "shaders/surfel_gi/spawn.comp",
+              "saved_bytes": 29525
+            },
+            {
+              "path": "shaders/rt_bidirectional_comp.glsl",
+              "saved_bytes": 29061
+            },
+            {
+              "path": "shaders/surfel_gi/common.glsl",
+              "saved_bytes": 22286
+            },
+            {
+              "path": "shaders/includes/pbr_common.glsl",
+              "saved_bytes": 20474
+            }
+          ],
+          "payload_bytes": 11543255,
+          "saved_percent": 39.04643225416448,
+          "stored_blocks": 4,
+          "unique_payload_bytes": 11543092
+        },
+        "zstd-9": {
+          "block_count": 139,
+          "by_extension": {
+            ".comp": {
+              "payload_bytes": 57303,
+              "raw_bytes": 232950
+            },
+            ".frag": {
+              "payload_bytes": 767,
+              "raw_bytes": 2078
+            },
+            ".glb": {
+              "payload_bytes": 1791,
+              "raw_bytes": 7804
+            },
+            ".glsl": {
+              "payload_bytes": 153278,
+              "raw_bytes": 459975
+            },
+            ".hdr": {
+              "payload_bytes": 8860290,
+              "raw_bytes": 16984221
+            },
+            ".json": {
+              "payload_bytes": 2290,
+              "raw_bytes": 10458
+            },
+            ".png": {
+              "payload_bytes": 62252,
+              "raw_bytes": 87363
+            },
+            ".ttf": {
+              "payload_bytes": 603439,
+              "raw_bytes": 1134172
+            },
+            ".vert": {
+              "payload_bytes": 4491,
+              "raw_bytes": 18763
+            }
+          },
+          "compress_seconds": 0.6189567999972496,
+          "compressed_blocks": 135,
+          "decode_seconds": 0.042955600074492395,
+          "illustrative_index_bytes": 13451,
+          "largest_savings": [
+            {
+              "path": "hdrs/skybox.hdr",
+              "saved_bytes": 8123931
+            },
+            {
+              "path": "fonts/arial.ttf",
+              "saved_bytes": 421440
+            },
+            {
+              "path": "shaders/surfel_gi/trace_rays.comp",
+              "saved_bytes": 43547
+            },
+            {
+              "path": "fonts/solace/Geist-Regular.ttf",
+              "saved_bytes": 36909
+            },
+            {
+              "path": "fonts/solace/Geist-Medium.ttf",
+              "saved_bytes": 36230
+            },
+            {
+              "path": "fonts/solace/Geist-SemiBold.ttf",
+              "saved_bytes": 36154
+            },
+            {
+              "path": "shaders/surfel_gi/spawn.comp",
+              "saved_bytes": 30620
+            },
+            {
+              "path": "shaders/rt_bidirectional_comp.glsl",
+              "saved_bytes": 29992
+            },
+            {
+              "path": "images/logo.png",
+              "saved_bytes": 25111
+            },
+            {
+              "path": "shaders/surfel_gi/common.glsl",
+              "saved_bytes": 23074
+            }
+          ],
+          "payload_bytes": 9745901,
+          "saved_percent": 48.53726814077085,
+          "stored_blocks": 4,
+          "unique_payload_bytes": 9745741
+        }
+      },
+      "profile": "NOX_Engine",
+      "raw_bytes": 18937784,
+      "snapshot_sha256": "1cab416a8cf2aa793521bc234ec238b9b144c460ead67db39f2250cb2effbef8",
+      "unique_raw_bytes": 18937557
+    }
+  ],
+  "platform": "Windows-10-10.0.26300-SP0",
+  "python": "3.11.9",
+  "repeats_per_file": 3,
+  "scope": "Research-only payload estimates. No native VFS, archive reader, pack writer, cooking pipeline, or runtime changes are implemented."
+}
