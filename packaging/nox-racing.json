@@ -1,0 +1,40 @@
+{
+  "name": "NOX_Racing",
+  "game": true,
+  "scenes": [
+    "scenes/nfs_sprint.json",
+    "scenes/nfs_night_street.json",
+    "scenes/nfs_night_rain.json",
+    "scenes/nfs_dawn_street.json"
+  ],
+  "include": [
+    "shaders",
+    "config/config.json",
+    "config/input_config.json",
+    "config/render_presets.json",
+    "config/launch_presets.json",
+    "config/editor_settings.json",
+    "config/editor_layout.ini",
+    "fonts/solace",
+    "images/logo.png",
+    "textures/cc0",
+    "models/cc0/exterior_aircon_unit.glb",
+    "models/cc0/fire_hydrant.glb",
+    "models/cc0/metal_trash_can.glb",
+    "models/cc0/modular_street_seating.glb",
+    "models/cc0/planter_box_01.glb",
+    "models/cc0/potted_plant_01.glb",
+    "models/cc0/power_box_01.glb",
+    "models/cc0/shrub_01.glb",
+    "models/cc0/utility_box_01.glb"
+  ],
+  "licenses": [
+    "include/IMGUI/LICENSE.txt",
+    "src/editor/solace/THIRD_PARTY.md",
+    "fonts/licenses/Barlow-OFL.txt",
+    "fonts/licenses/DSEG-LICENSE.txt",
+    "fonts/solace/OFL-Geist.txt",
+    "textures/cc0/SOURCES.md",
+    "models/cc0/SOURCES.md"
+  ]
+}

@@ -78,15 +78,32 @@ function Copy-NoxFileIfChanged {
     return $true
 }
 
-# Mirrors a directory with robocopy (refreshes changed files, removes files that no longer exist
-# in the source). Throws on robocopy failure.
-function Sync-NoxDirectory {
-    param([string]$Source, [string]$Destination)
+function Test-NoxPathWithin {
+    param([string]$Path, [string]$Directory)
+    $full = [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    $parent = [IO.Path]::GetFullPath($Directory).TrimEnd('\', '/')
+    return $full.StartsWith($parent + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
+}
 
-    & robocopy.exe $Source $Destination /MIR /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
-    # robocopy exit codes 0-7 are success (bit flags for copied/extra/mismatched files).
-    if ($LASTEXITCODE -ge 8) {
-        throw "robocopy failed (exit code $LASTEXITCODE) while syncing '$Source' to '$Destination'."
+# Reject junctions/symlinks before copying or deleting through a path.
+function Assert-NoxNoReparsePoint {
+    param([string]$Path)
+    $current = [IO.Path]::GetFullPath($Path)
+    while ($current) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "Refusing to follow a junction or symbolic link: $current"
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ($parent -eq $current) { break }
+        $current = $parent
     }
+}
+
+function Write-NoxUtf8 {
+    param([string]$Path, [string]$Text)
+    [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding($false)))
 }
 

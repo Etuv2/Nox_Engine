@@ -1,0 +1,29 @@
+name: Packaging checks
+
+on:
+  push:
+    paths:
+      - "tools/*.ps1"
+      - "packaging/**"
+      - "tests/PackagingTests.ps1"
+      - "CMakeLists.txt"
+      - ".github/workflows/packaging.yml"
+  pull_request:
+    paths:
+      - "tools/*.ps1"
+      - "packaging/**"
+      - "tests/PackagingTests.ps1"
+      - "CMakeLists.txt"
+      - ".github/workflows/packaging.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  packaging:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test dependency packaging and cleanup
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/PackagingTests.ps1

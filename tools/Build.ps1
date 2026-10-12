@@ -5,7 +5,7 @@ Configures (if needed) and builds Nox_Engine with the vs2022-x64 CMake presets.
 .DESCRIPTION
 Runs "cmake --preset vs2022-x64" when build/vs2022-x64 has no CMakeCache.txt yet (or when
 -Reconfigure is given), then "cmake --build --preset vs2022-x64-<config>". The POST_BUILD step in
-CMake copies the runtime assets next to the exe.
+CMake copies only runtime DLLs next to the exe. Development binaries use assets in the source tree.
 
 .PARAMETER Configuration
 Release (default) or Debug.

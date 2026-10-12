@@ -1,4 +1,4 @@
-﻿# NOX Engine
+# NOX Engine
 
 ![NOX Engine](images/logo.png)
 
@@ -141,13 +141,16 @@ cmake --preset vs2022-x64
 cmake --build --preset vs2022-x64-release --parallel   # or vs2022-x64-debug
 ```
 
-The executable is written to `build/vs2022-x64/<Config>/`. After each build the runtime DLLs are copied next
-to it; Release builds also copy the asset folders (`config`, `fonts`, `hdrs`, `images`, `scenes`, `shaders`, ...)
-that are missing there. `shaders` is refreshed on every Release build; the other folders are only copied
-once, so delete them from the output folder to pick up changes.
+The executable is written to `build/vs2022-x64/<Config>/`. Only runtime DLLs are copied next to it.
+Development builds read the shared source asset tree, so Release and Debug do not duplicate models,
+textures or data. Use `tools/package.cmd` to stage a standalone distribution containing the selected
+game's runtime dependencies, or `tools/package.cmd -Profile engine` for the bare engine.
 
 When launched from Visual Studio the working directory is the repository root, so the engine reads assets
 straight from the source tree.
+
+See [building and validation](docs/building.md), [packaging profiles and future content packs](docs/packaging.md),
+and [storage maintenance](docs/repository_maintenance.md) for the complete workflows.
 
 
 ## Usage Guide
@@ -221,7 +224,7 @@ Create a JSON scene file in the `scenes/` directory:
 
 ### Configuring the Engine
 
-Edit `config.json` to customize engine settings:
+Edit `config/config.json` to customize engine settings:
 
 ```json
 {
@@ -445,7 +448,7 @@ NOX Engine features a high-performance path tracing renderer with BVH accelerati
 
 ## Physics Configuration
 
-### Simulation Parameters (config.json)
+### Simulation Parameters (config/config.json)
 
 ```json
 "physics": {
@@ -575,6 +578,8 @@ inputSystem->RegisterAction(Input::Actions::CUSTOM_ACTION,
 ---
 
 ## Documentation
+
+Start with the [documentation index](docs/README.md) and [project commands](tools/README.md).
 
 - **Help Window**: Press F12 in-engine for comprehensive help
 - **Code Comments**: Extensive documentation in source code

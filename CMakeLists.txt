@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.21)
 
 project(Nox_Engine VERSION 1.0.0 LANGUAGES CXX)
 
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+    message(FATAL_ERROR "Use an out-of-source build: cmake --preset vs2022-x64")
+endif()
+
 if(NOT WIN32)
     message(FATAL_ERROR "Nox_Engine currently supports Windows builds only.")
 endif()
@@ -85,26 +89,13 @@ set_target_properties(${NOX_ENGINE_TARGET} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${NOX_ENGINE_ROOT}"
 )
 
-set(NOX_ENGINE_RUNTIME_ASSET_CHECK_SCRIPT "${NOX_ENGINE_ROOT}/cmake/EnsureRuntimeAssets.cmake")
-
-if(EXISTS "${NOX_ENGINE_RUNTIME_ASSET_CHECK_SCRIPT}")
-    add_custom_command(TARGET ${NOX_ENGINE_TARGET} POST_BUILD
-        COMMAND ${CMAKE_COMMAND}
-            -DNOX_ENGINE_ROOT="${NOX_ENGINE_ROOT}"
-            -DNOX_ENGINE_OUTPUT_DIR="$<TARGET_FILE_DIR:${NOX_ENGINE_TARGET}>"
-            -DNOX_ENGINE_BUILD_CONFIG="$<CONFIG>"
-            -P "${NOX_ENGINE_RUNTIME_ASSET_CHECK_SCRIPT}"
-        VERBATIM
-    )
-else()
-    message(WARNING "Runtime asset check script missing: ${NOX_ENGINE_RUNTIME_ASSET_CHECK_SCRIPT}")
-endif()
+# Development binaries resolve the source asset tree in main.cpp. Only explicit
+# packaging (tools/Package.ps1) stages content; ordinary builds copy no assets.
 
 set(NOX_ENGINE_RUNTIME_DLLS
     "${NOX_ENGINE_ROOT}/SDL2.dll"
     "${NOX_ENGINE_ROOT}/SDL2_image.dll"
     "${NOX_ENGINE_ROOT}/SDL2_mixer.dll"
-    "${NOX_ENGINE_ROOT}/SDL2_net.dll"
     "${NOX_ENGINE_ROOT}/SDL2_ttf.dll"
     "${NOX_ENGINE_ROOT}/glew32.dll"
     "${NOX_ENGINE_ROOT}/assimp-vc143-mt.dll"

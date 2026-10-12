@@ -68,7 +68,7 @@ build/
 # Generated project/solution backups
 *.sln.docstates
 
-# (Optional) Project definitions � comment out to track if needed
+# Project definitions may be tracked; generated projects stay under build/.
 # *.sln
 # *.vcxproj
 # *.vcxproj.filters
@@ -84,7 +84,7 @@ Makefile
 cmake_install.cmake
 install_manifest.txt
 _compile_commands.json
-# (Leave compile_commands.json if you want tooling � comment next line out if so)
+# Uncomment this exclusion if compile_commands.json should be tracked.
 compile_commands.json
 
 # Ninja
@@ -137,13 +137,16 @@ cmake-build-release*/
 
 # VSCode
 .vscode/
-.github/
 .agents/skills/
 validation_output/
 captures/
 
 # Python virtual env (if tools/scripts)
 venv/
+.venv/
+.dotnet_cli/
+__pycache__/
+*.pyc
 .env/
 
 # Node (if any tooling)
@@ -194,9 +197,13 @@ local_test_data/
 *.vsidx*
 *.opendb
 /captures
-/scripts
-*.py
-performance_data/load_diagnostics.csv
+# Source validation scripts and workflows are intentionally trackable.
+/performance_data/
+/performance_data.csv
+/EvaluationCaptures/
+/output/
+/snapshots/
+/Nox_Engine/
 # NFS look-dev: downloaded CC0 assets and generated geometry (see docs/nfs2015)
 /textures/cc0/
 /hdrs/cc0/

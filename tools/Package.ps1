@@ -1,312 +1,177 @@
 <#
 .SYNOPSIS
-Creates a self-contained, playable NOX Racing folder (Nox_Engine.exe, DLLs, shaders, fonts,
-config, the game scenes and only the assets they reference, licenses, Play.cmd and Editor.cmd).
-
+Stages a standalone package from a profile and its transitive runtime dependencies.
 .DESCRIPTION
-Builds first unless -SkipBuild is given. Asset references are read from the packaged scenes and from
-config/*.json (every string that points at an existing file or folder under the repo). Missing
-assets that a scene needs are errors; missing config references are warnings. Re-running refreshes
-changed content: folders are mirrored with robocopy /MIR, single files are copied when their size
-or timestamp differs. Nothing is deleted outside the output folder.
-
-.PARAMETER Configuration
-Release (default) or Debug. The exe is taken from build/vs2022-x64/<Configuration>/.
-
-.PARAMETER Output
-Output folder. Relative paths are relative to the repo root. Default: Package/NOX_Racing.
-
-.PARAMETER SkipBuild
-Do not run Build.ps1 first; package the exe that is already built.
-
+Development builds share source assets. This explicit step copies only selected content,
+filters authoring files, writes a size/hash manifest and removes files managed by the previous
+manifest that are no longer needed. Unmanaged files and runtime saves are preserved.
 .EXAMPLE
-tools\package.cmd
-tools\package.cmd -SkipBuild -Output "$env:TEMP\nox_pkg_test"
+tools\package.cmd -SkipBuild
+tools\package.cmd -Profile engine -SkipBuild
+tools\package.cmd -GameScene scenes/my_game.json -Plan
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('Release', 'Debug')]
     [string]$Configuration = 'Release',
-    [string]$Output = 'Package/NOX_Racing',
+    [string]$Output = '',
+    [string]$Profile = 'nox-racing',
     [switch]$SkipBuild,
-    [string]$GameScene = 'scenes/nfs_sprint.json'
+    [string]$GameScene = '',
+    [switch]$Plan
 )
 
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'Common.ps1')
-
+. (Join-Path $PSScriptRoot 'AssetPackaging.ps1')
 $repo = Get-NoxRepoRoot
-$outRaw = if ([IO.Path]::IsPathRooted($Output)) { $Output } else { Join-Path $repo $Output }
-$outDir = [IO.Path]::GetFullPath($outRaw).TrimEnd('\', '/')
-if ($outDir -eq [IO.Path]::GetFullPath($repo).TrimEnd('\', '/') -or $outDir.Length -lt 10) {
-    Stop-Nox "Refusing to package into '$outDir'. Choose a dedicated output folder."
-}
 
-# Scenes shipped with the game. -GameScene is the main game scene (default nfs_sprint.json).
-$gameScene = $GameScene.replace('\', '/')
-$packagedScenes = @(
-    $gameScene,
-    'scenes/nfs_night_street.json',
-    'scenes/nfs_night_rain.json',
-    'scenes/nfs_dawn_street.json'
-) | Select-Object -Unique
-$assetExtensions = @('.glb', '.gltf', '.bin', '.fbx', '.obj', '.hdr', '.png', '.jpg', '.jpeg', '.ttf', '.otf',
-    '.wav', '.ogg', '.mp3', '.json')
-
-Write-NoxProgress 0.0
-
-if (-not $SkipBuild) {
-    Write-NoxStep "Building $Configuration first (use -SkipBuild to package the existing exe)"
-    & (Join-Path $PSScriptRoot 'Build.ps1') -Configuration $Configuration
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Nox "Build failed, package not created."
+try {
+    $profilePath = if (Test-Path -LiteralPath $Profile -PathType Leaf) { [IO.Path]::GetFullPath($Profile) } else {
+        Join-Path $repo "packaging/$Profile.json"
     }
-}
-
-$buildOut = Join-Path $repo "build/vs2022-x64/$Configuration"
-$exeSrc = Join-Path $buildOut 'Nox_Engine.exe'
-if (-not (Test-Path -LiteralPath $exeSrc)) {
-    Stop-Nox "Nox_Engine.exe not found at '$exeSrc'. Build first (tools\build.cmd -Configuration $Configuration) or drop -SkipBuild."
-}
-
-# ---------------------------------------------------------------------------
-# Asset discovery
-# ---------------------------------------------------------------------------
-$script:FilesToCopy = @{}      # repo-relative path (forward slashes) -> $true
-$script:DirsToSync = @{}       # repo-relative folder -> $true
-$script:Problems = New-Object System.Collections.Generic.List[string]
-$script:Warnings = New-Object System.Collections.Generic.List[string]
-
-function Get-NoxJsonStrings {
-    param($Root)
-    $found = New-Object System.Collections.Generic.List[string]
-    $stack = New-Object System.Collections.Stack
-    $stack.Push($Root)
-    while ($stack.Count -gt 0) {
-        $node = $stack.Pop()
-        if ($null -eq $node) { continue }
-        if ($node -is [string]) { $found.Add($node); continue }
-        if ($node -is [System.Management.Automation.PSCustomObject]) {
-            foreach ($prop in $node.PSObject.Properties) { $stack.Push($prop.Value) }
-            continue
-        }
-        if ($node -is [System.Collections.IEnumerable]) {
-            foreach ($item in $node) { $stack.Push($item) }
+    $profileData = Read-NoxAssetJson $profilePath
+    $scenes = @($profileData.scenes)
+    if ($GameScene) { $scenes = @($GameScene.Replace('\', '/')) }
+    if (-not $scenes.Count -or $scenes[0] -notmatch '^scenes/.+\.json$') { throw 'Profile needs a main scene under scenes/.' }
+    if (-not $Output) { $Output = 'Package/' + $profileData.name }
+    $outDir = if ([IO.Path]::IsPathRooted($Output)) { [IO.Path]::GetFullPath($Output) } else {
+        [IO.Path]::GetFullPath((Join-Path $repo $Output))
+    }
+    Assert-NoxNoReparsePoint $outDir
+    if ($outDir.TrimEnd('\', '/') -eq $repo.TrimEnd('\', '/') -or (Test-NoxPathWithin $repo $outDir)) {
+        throw "Refusing to package into repository/ancestor '$outDir'."
+    }
+    if ((Test-NoxPathWithin $outDir $repo) -and -not (Test-NoxPathWithin $outDir (Join-Path $repo 'Package'))) {
+        throw 'In-repository packages must use a dedicated folder under Package/.'
+    }
+    foreach ($protected in @($script:NoxAssetRoots) + @('src', 'include', 'lib', 'tools', 'scripts', 'tests', 'docs', 'packaging', '.git', '.agents', 'build')) {
+        $path = Join-Path $repo $protected
+        if ($outDir.TrimEnd('\', '/') -eq $path -or (Test-NoxPathWithin $outDir $path)) {
+            throw "Package output overlaps protected directory '$protected'."
         }
     }
-    return , $found
-}
 
-function Add-NoxReference {
-    param([string]$Raw, [string]$FromFile, [bool]$Required)
+    # Keep source configs intact; standalone menus/presets name only packaged scenes.
+    $overrides = @{}
+    $config = Read-NoxAssetJson (Join-Path $repo 'config/config.json')
+    $config.first_scene = $scenes[0]
+    $config.scenes = @($scenes | ForEach-Object { [pscustomobject]@{ path = $_ } })
+    $overrides['config/config.json'] = $config
+    $launch = Read-NoxAssetJson (Join-Path $repo 'config/launch_presets.json')
+    foreach ($preset in $launch.presets.PSObject.Properties) { $preset.Value.scene = $scenes[0] }
+    $launch.default = if ($profileData.game) { 'game' } else { 'editor' }
+    $overrides['config/launch_presets.json'] = $launch
 
-    $rel = [regex]::Replace($Raw.Replace('\', '/'), '/+', '/')
-    if ($rel -eq '' -or $rel -match '^(/|[A-Za-z]:|https?:)' -or $rel -match '(^|/)\.\.(/|$)') { return }
-    if ($rel.StartsWith('./')) { $rel = $rel.Substring(2) }
-
-    $full = Join-Path $repo $rel
-    if (Test-Path -LiteralPath $full -PathType Container) {
-        # The scenes folder is not mirrored: only the packaged scenes ship.
-        if ($rel -ne 'scenes') { $script:DirsToSync[$rel] = $true }
-        return
-    }
-
-    # Scenes other than the packaged set are not shipped (config/config.json lists them all).
-    if ($rel.StartsWith('scenes/') -and ($packagedScenes -notcontains $rel)) { return }
-
-    $ext = [IO.Path]::GetExtension($rel).ToLowerInvariant()
-    if (-not ($assetExtensions -contains $ext -or $rel.StartsWith('scenes/'))) { return }
-
-    if (Test-Path -LiteralPath $full -PathType Leaf) {
-        $script:FilesToCopy[$rel] = $true
-        return
-    }
-    # Missing packaged scenes are reported by the scene loop, not once per reference.
-    if ($rel.StartsWith('scenes/')) { return }
-    $message = "Missing asset '$rel' (referenced by $FromFile)."
-    if ($Required) { $script:Problems.Add($message) } else { $script:Warnings.Add($message) }
-}
-
-function Read-NoxJson {
-    param([string]$RelPath)
-    $full = Join-Path $repo $RelPath
-    try {
-        return Get-Content -LiteralPath $full -Raw | ConvertFrom-Json
-    }
-    catch {
-        $script:Problems.Add("Could not parse JSON '$RelPath': $($_.Exception.Message)")
-        return $null
-    }
-}
-
-foreach ($scene in $packagedScenes) {
-    if (-not (Test-Path -LiteralPath (Join-Path $repo $scene))) {
-        if ($scene -eq $gameScene) {
-            $script:Problems.Add("Game scene '$gameScene' does not exist yet. It is required for the package.")
-        }
-        else {
-            $script:Warnings.Add("Scene '$scene' not found, skipped.")
-        }
-        continue
-    }
-    $script:FilesToCopy[$scene] = $true
-    $json = Read-NoxJson $scene
-    if ($null -eq $json) { continue }
-    foreach ($text in (Get-NoxJsonStrings $json)) {
-        Add-NoxReference -Raw $text -FromFile $scene -Required $true
-    }
-}
-
-foreach ($configFile in Get-ChildItem -LiteralPath (Join-Path $repo 'config') -Filter '*.json' -File) {
-    $rel = 'config/' + $configFile.Name
-    $json = Read-NoxJson $rel
-    if ($null -eq $json) { continue }
-    foreach ($text in (Get-NoxJsonStrings $json)) {
-        Add-NoxReference -Raw $text -FromFile $rel -Required $false
-    }
-}
-
-# Always shipped content.
-foreach ($dir in @('shaders', 'fonts', 'config')) {
-    if (Test-Path -LiteralPath (Join-Path $repo $dir)) {
-        $script:DirsToSync[$dir] = $true
-    }
-    else {
-        $script:Problems.Add("Required folder '$dir/' is missing from the repo.")
-    }
-}
-# CC0 kit (git-ignored): the procedural street kit and the HDRIs read from here.
-if (Test-Path -LiteralPath (Join-Path $repo 'textures/cc0')) {
-    $script:DirsToSync['textures/cc0'] = $true
-}
-else {
-    $script:Problems.Add("textures/cc0/ is missing. It is git-ignored CC0 content; see textures/cc0/SOURCES.md for the sources.")
-}
-# CC0 props placed by the district generator (not referenced by the scene JSON itself).
-if (Test-Path -LiteralPath (Join-Path $repo 'models/cc0')) {
-    $script:DirsToSync['models/cc0'] = $true
-}
-else {
-    $script:Problems.Add("models/cc0/ is missing. It is git-ignored CC0 content; see docs/nfs2015/assets.md for the sources.")
-}
-if (Test-Path -LiteralPath (Join-Path $repo 'images/logo.png')) {
-    $script:FilesToCopy['images/logo.png'] = $true
-}
-else {
-    $script:Problems.Add("images/logo.png is missing (window icon).")
-}
-foreach ($optional in @('imgui.ini', 'imgui_layout.json')) {
-    if (Test-Path -LiteralPath (Join-Path $repo $optional)) { $script:FilesToCopy[$optional] = $true }
-}
-
-foreach ($warning in $script:Warnings) { Write-NoxWarning $warning }
-if ($script:Problems.Count -gt 0) {
-    foreach ($problem in $script:Problems) { Write-Host "[NOX] ERROR: missing asset: $problem" }
-    Stop-Nox "Package aborted: $($script:Problems.Count) problem(s) listed above."
-}
-
-Write-NoxProgress 0.3
-Write-NoxStep "Packaging $Configuration to $outDir"
-New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-
-function Count-Copy {
-    param([bool]$Changed)
-    if ($Changed) { $script:copiedCount++ } else { $script:unchangedCount++ }
-}
-$script:copiedCount = 0
-$script:unchangedCount = 0
-
-# ---------------------------------------------------------------------------
-# Executable and runtime DLLs
-# ---------------------------------------------------------------------------
-Count-Copy (Copy-NoxFileIfChanged $exeSrc (Join-Path $outDir 'Nox_Engine.exe'))
-
-$dllByName = @{}
-foreach ($dll in Get-ChildItem -LiteralPath $repo -Filter '*.dll' -File) { $dllByName[$dll.Name] = $dll.FullName }
-foreach ($dll in Get-ChildItem -LiteralPath $buildOut -Filter '*.dll' -File -ErrorAction SilentlyContinue) {
-    $dllByName[$dll.Name] = $dll.FullName   # build output wins over the repo root copy
-}
-foreach ($name in ($dllByName.Keys | Sort-Object)) {
-    Count-Copy (Copy-NoxFileIfChanged $dllByName[$name] (Join-Path $outDir $name))
-}
-
-# MSVC runtime, only if the exe links against it (CRT redistributable from the VS install).
-$exeText = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($exeSrc))
-if ($exeText.Contains('VCRUNTIME140')) {
-    $crtDir = Get-ChildItem -Path "$env:ProgramFiles\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory -ErrorAction SilentlyContinue |
-        Sort-Object -Property FullName -Descending | Select-Object -First 1
-    if ($crtDir) {
-        foreach ($crt in Get-ChildItem -LiteralPath $crtDir.FullName -Filter '*.dll' -File |
-                Where-Object { $_.Name -match '^(vcruntime140|vcruntime140_1|msvcp140|msvcp140_1|msvcp140_2|concrt140)\.dll$' }) {
-            Count-Copy (Copy-NoxFileIfChanged $crt.FullName (Join-Path $outDir $crt.Name))
+    # Runtime icon loading needs atlases, rects and aliases, not source PNGs/exports.
+    if ($profileData.game) {
+        $icons = Read-NoxAssetJson (Join-Path $repo 'textures/ui_icons/manifest.json')
+        $overrides['textures/ui_icons/manifest.json'] = [pscustomobject]@{
+            atlases = $icons.atlases
+            assets = @($icons.assets | ForEach-Object {
+                $asset = [ordered]@{ id = $_.id; atlas_rects = $_.atlas_rects }
+                if ($_.alias_of) { $asset.alias_of = $_.alias_of }
+                [pscustomobject]$asset
+            })
         }
     }
-    else {
-        Write-NoxWarning 'The exe needs the VC runtime but the redistributable folder was not found; the package needs VC++ 2022 installed.'
+    $assets = Get-NoxPackageAssets -Root $repo -Scenes $scenes -Include $profileData.include -JsonOverrides $overrides
+    $assetBytes = ($assets.Files.Values | ForEach-Object { (Get-Item -LiteralPath $_).Length } | Measure-Object -Sum).Sum
+    Write-NoxStep ('Selected {0} runtime files ({1:N1} MiB) for {2}' -f $assets.Files.Count, ($assetBytes / 1MB), $profileData.name)
+    if ($Plan) {
+        foreach ($rel in ($assets.Files.Keys | Sort-Object)) { Write-NoxStep "$rel ($($assets.Reasons[$rel]))" }
+        exit 0
     }
-}
-Write-NoxProgress 0.5
 
-# ---------------------------------------------------------------------------
-# Content
-# ---------------------------------------------------------------------------
-foreach ($dir in ($script:DirsToSync.Keys | Sort-Object)) {
-    Sync-NoxDirectory (Join-Path $repo $dir) (Join-Path $outDir ($dir -replace '/', '\'))
-    Write-NoxStep "Synced folder: $dir/"
-}
-Write-NoxProgress 0.7
-
-foreach ($rel in ($script:FilesToCopy.Keys | Sort-Object)) {
-    $destination = Join-Path $outDir ($rel -replace '/', '\')
-    Count-Copy (Copy-NoxFileIfChanged (Join-Path $repo $rel) $destination)
-}
-
-# Licenses and attribution.
-$licenseDir = Join-Path $outDir 'licenses'
-$licenseSources = @(
-    @{ Src = 'include/IMGUI/LICENSE.txt'; Dst = 'ImGui-LICENSE.txt' },
-    @{ Src = 'src/editor/solace/THIRD_PARTY.md'; Dst = 'solace-THIRD_PARTY.md' },
-    @{ Src = 'textures/cc0/SOURCES.md'; Dst = 'textures-cc0-SOURCES.md' }
-)
-foreach ($lic in $licenseSources) {
-    $src = Join-Path $repo $lic.Src
-    if (Test-Path -LiteralPath $src) {
-        Count-Copy (Copy-NoxFileIfChanged $src (Join-Path $licenseDir $lic.Dst))
+    if (-not $SkipBuild) {
+        & (Join-Path $PSScriptRoot 'Build.ps1') -Configuration $Configuration
+        if ($LASTEXITCODE -ne 0) { throw 'Build failed; package was not created.' }
     }
-    else {
-        Write-NoxWarning "License file not found, not packaged: $($lic.Src)"
-    }
-}
-Write-NoxProgress 0.85
+    $buildOut = Join-Path $repo "build/vs2022-x64/$Configuration"
+    $exeSrc = Join-Path $buildOut 'Nox_Engine.exe'
+    if (-not (Test-Path -LiteralPath $exeSrc)) { throw "Build executable missing: $exeSrc" }
 
-# Launchers. ASCII with CRLF, no BOM, so cmd.exe reads them reliably.
-$launchers = @{
-    'Play.cmd'   = @('@echo off', 'rem NOX Racing: launches the game preset. Extra arguments are passed through.', 'start "" /D "%~dp0" "%~dp0Nox_Engine.exe" --preset game %*')
-    'Editor.cmd' = @('@echo off', 'rem NOX Engine: launches the editor preset. Extra arguments are passed through.', 'start "" /D "%~dp0" "%~dp0Nox_Engine.exe" --preset editor %*')
-}
-foreach ($name in $launchers.Keys) {
-    $text = ($launchers[$name] -join "`r`n") + "`r`n"
-    $path = Join-Path $outDir $name
-    $existing = if (Test-Path -LiteralPath $path) { [IO.File]::ReadAllText($path, [Text.Encoding]::ASCII) } else { $null }
-    if ($existing -ne $text) {
-        [IO.File]::WriteAllText($path, $text, [Text.Encoding]::ASCII)
-        $script:copiedCount++
+    $sources = @{}
+    foreach ($rel in $assets.Files.Keys) { $sources[$rel] = $assets.Files[$rel] }
+    $sources['Nox_Engine.exe'] = $exeSrc
+    foreach ($name in @('SDL2.dll', 'SDL2_image.dll', 'SDL2_mixer.dll', 'SDL2_ttf.dll', 'glew32.dll', 'assimp-vc143-mt.dll')) {
+        $dll = Join-Path $buildOut $name
+        if (-not (Test-Path -LiteralPath $dll)) { $dll = Join-Path $repo $name }
+        if (-not (Test-Path -LiteralPath $dll)) { throw "Runtime DLL missing: $name" }
+        $sources[$name] = $dll
     }
-    else {
-        $script:unchangedCount++
+    $exeText = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($exeSrc))
+    if ($exeText.Contains('VCRUNTIME140')) {
+        $crtDir = Get-ChildItem -Path "$env:ProgramFiles\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+        if ($crtDir) {
+            foreach ($crt in Get-ChildItem -LiteralPath $crtDir.FullName -Filter '*.dll' -File) { $sources[$crt.Name] = $crt.FullName }
+        }
+        else { Write-NoxWarning 'VC++ 2022 redistributable not found; it must be installed on the target machine.' }
     }
-}
+    foreach ($license in $profileData.licenses) {
+        $src = [IO.Path]::GetFullPath((Join-Path $repo $license))
+        if (-not (Test-NoxPathWithin $src $repo)) { throw "License escapes repository: $license" }
+        if (-not (Test-Path -LiteralPath $src)) { throw "License/attribution file missing: $license" }
+        $sources['licenses/' + $license.Replace('/', '_')] = $src
+    }
+    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+    $manifestPath = Join-Path $outDir 'package-manifest.json'
+    $oldManifest = if (Test-Path -LiteralPath $manifestPath) { Read-NoxAssetJson $manifestPath } else { $null }
+    if (-not $oldManifest -and @(Get-ChildItem -LiteralPath $outDir -Force).Count) {
+        # Migrate old packages conservatively: only source-identical asset copies can be owned.
+        $legacy = @()
+        foreach ($file in Get-ChildItem -LiteralPath $outDir -Recurse -File) {
+            Assert-NoxNoReparsePoint $file.FullName
+            $rel = $file.FullName.Substring($outDir.TrimEnd('\', '/').Length + 1).Replace('\', '/')
+            if ($rel.Split('/')[0] -notin $script:NoxAssetRoots -or $sources.ContainsKey($rel)) { continue }
+            $original = Join-Path $repo $rel
+            if (-not (Test-Path -LiteralPath $original -PathType Leaf)) { continue }
+            Assert-NoxNoReparsePoint $original
+            if ((Get-Item -LiteralPath $original).Length -ne $file.Length) { continue }
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+            if ($hash -eq (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash) {
+                $legacy += [pscustomobject]@{ path = $rel; sha256 = $hash }
+            }
+        }
+        $oldManifest = [pscustomobject]@{ files = $legacy }
+        Write-NoxWarning 'Migrating an older package: source-identical obsolete assets can be removed; unmatched files are preserved.'
+    }
+    Write-NoxProgress 0.3
+    foreach ($rel in ($sources.Keys | Sort-Object)) {
+        $dest = [IO.Path]::GetFullPath((Join-Path $outDir $rel))
+        if (-not (Test-NoxPathWithin $dest $outDir)) { throw "Destination escapes package: $rel" }
+        Assert-NoxNoReparsePoint $dest
+        Copy-NoxFileIfChanged $sources[$rel] $dest | Out-Null
+        if ($overrides.ContainsKey($rel)) { Write-NoxUtf8 $dest (($overrides[$rel] | ConvertTo-Json -Depth 100) + "`n") }
+    }
+    Write-NoxUtf8 (Join-Path $outDir 'config/launch_presets.json') (($launch | ConvertTo-Json -Depth 100) + "`n")
+    $sources['config/launch_presets.json'] = $null
+    $noGame = if ($profileData.game) { '' } else { ' --no-game' }
+    foreach ($entry in @(@{ Name = 'Play.cmd'; Mode = 'game' }, @{ Name = 'Editor.cmd'; Mode = 'editor' })) {
+        $text = '@echo off' + "`r`n" + 'start "" /D "%~dp0" "%~dp0Nox_Engine.exe" --preset ' + $entry.Mode + $noGame + " %*`r`n"
+        Write-NoxUtf8 (Join-Path $outDir $entry.Name) $text
+        $sources[$entry.Name] = $null
+    }
 
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
-$all = Get-ChildItem -LiteralPath $outDir -Recurse -File
-$totalBytes = ($all | Measure-Object -Property Length -Sum).Sum
-Write-NoxStep ('Package ready: {0}' -f $outDir)
-Write-NoxStep ('  files: {0} ({1:N1} MB), refreshed or added this run: {2}, unchanged: {3}' -f `
-        $all.Count, ($totalBytes / 1MB), $script:copiedCount, $script:unchangedCount)
-Write-NoxStep ('  folders synced: ' + (($script:DirsToSync.Keys | Sort-Object) -join ', '))
-Write-NoxStep ('  scenes: ' + (($packagedScenes | Where-Object { $script:FilesToCopy.ContainsKey($_) }) -join ', '))
-Write-NoxStep '  start the game with Play.cmd, the editor with Editor.cmd'
-Write-NoxProgress 1.0
-exit 0
+    # Delete only unchanged files owned by the previous package; keep edited configs/saves.
+    foreach ($entry in $oldManifest.files) {
+        if ($sources.ContainsKey($entry.path)) { continue }
+        $stale = [IO.Path]::GetFullPath((Join-Path $outDir $entry.path))
+        if (-not (Test-NoxPathWithin $stale $outDir)) { throw "Invalid previous manifest path: $($entry.path)" }
+        Assert-NoxNoReparsePoint $stale
+        if (Test-Path -LiteralPath $stale -PathType Leaf) {
+            if ((Get-FileHash -LiteralPath $stale -Algorithm SHA256).Hash -eq $entry.sha256) { Remove-Item -LiteralPath $stale -Force }
+            else { Write-NoxWarning "Preserved edited stale file: $($entry.path)" }
+        }
+    }
+    $entries = @($sources.Keys | Sort-Object | ForEach-Object {
+        $path = Join-Path $outDir $_
+        [pscustomobject]@{ path = $_; bytes = (Get-Item -LiteralPath $path).Length; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
+    })
+    $totalBytes = ($entries | Measure-Object bytes -Sum).Sum
+    $manifest = [ordered]@{ version = 1; profile = $profileData.name; configuration = $Configuration; scenes = $scenes; bytes = $totalBytes; files = $entries }
+    Write-NoxUtf8 $manifestPath (($manifest | ConvertTo-Json -Depth 10) + "`n")
+    Write-NoxStep ('Package ready: {0} ({1} managed files, {2:N1} MiB)' -f $outDir, $entries.Count, ($totalBytes / 1MB))
+    Write-NoxProgress 1.0
+}
+catch { Stop-Nox $_.Exception.Message }
