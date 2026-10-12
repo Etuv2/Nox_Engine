@@ -1,7 +1,7 @@
 {
-  "before_chunk_material_groups": 634,
-  "after_chunk_material_groups": 634,
-  "triangles": 864240,
+  "before_chunk_material_groups": 630,
+  "after_chunk_material_groups": 630,
+  "triangles": 874770,
   "multipart_ids_migrated": 8,
   "change": "Shared neutral tint for mid/far facade styles; close geometric facades keep four surface variations"
 }

@@ -27,6 +27,7 @@
   "auto_exposure_speed_up": 2.0,
   "bloom": true,
   "bloom_mode": "energy_conserving",
+  "bloom_scatter_threshold": 1.0,
   "bloom_strength": 0.06,
   "chromatic_aberration": 1.0,
   "clustered_lighting": true,

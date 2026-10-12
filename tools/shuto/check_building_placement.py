@@ -2,7 +2,8 @@
 
 For every placement in data/shuto/buildings/placements.json (landmarks use their collision ring):
   * ground: the base height (2.9 m) against the ground surface under each footprint corner and the
-    centroid. Ground is read from the exported road chunks (ground_gravel), the context chunks
+    centroid. Ground is read from the exported road chunks (ground_gravel; upward cut-and-cover lid slabs at
+    y 2.4-3.3 in concrete_cast/tunnel_tiles), the context chunks
     (sidewalk, street_asphalt) and the building site pads recorded in placements.json.
     "void" = no ground triangle under a corner ("void_skirted" when the placement carries a base
     skirt down to y -1.5 at the edge of the exported ground), "floating" = ground more than 0.3 m below the base,
@@ -88,6 +89,10 @@ def load_surfaces(folders, wanted):
                     # Only upward-facing surfaces count as ground/water/street.
                     n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
                     up = np.abs(n[:, 1]) > 0.5 * np.linalg.norm(n, axis=1)
+                    if kind == "lid":
+                        # Cut-and-cover lids: front-facing upward slabs at ground level only.
+                        ys = tris[:, :, 1]
+                        up = (n[:, 1] > 0.5 * np.linalg.norm(n, axis=1)) & (ys.min(axis=1) > 2.4) & (ys.max(axis=1) < 3.3)
                     for tri in tris[up]:
                         index[kind].add(tri)
     return index
@@ -161,7 +166,7 @@ def main():
     net = json.loads((ROOT / "data/shuto/network.json").read_text(encoding="utf-8"))
     surf = load_surfaces(["models/shuto/rep_section/render", "models/shuto/buildings/context"],
                          {"ground_gravel": "ground", "sidewalk": "ground", "street_asphalt": "street",
-                          "water": "water"})
+                          "water": "water", "concrete_cast": "lid", "tunnel_tiles": "lid"})
     pads = TriIndex()
     for pad in plan.get("site_pads", []):
         ring = pad["ring"]
@@ -174,7 +179,8 @@ def main():
     per_building = {}
 
     def ground_at(x, z):
-        values = [v for v in (surf["ground"].height(x, z), surf["street"].height(x, z), pads.height(x, z)) if v is not None]
+        values = [v for v in (surf["ground"].height(x, z), surf["street"].height(x, z), surf["lid"].height(x, z),
+                              pads.height(x, z)) if v is not None]
         return max(values) if values else None
 
     for b in buildings:

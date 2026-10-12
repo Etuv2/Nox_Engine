@@ -49,9 +49,11 @@ does not automatically switch the kit's LOD files or instance a Blender linked
 mesh on the GPU. Select a kit LOD when importing; implement distance selection
 before deploying the entire network. Chunking and shared external texture URIs
 reduce resources, while individually editable objects remain in the .blend.
-There are 233 full-detail placements within 50 m, 377 with lighter window frames,
-parallax panes and balcony slabs to 110 m, 1,453 facade-patch buildings to 350 m,
-and 3,164 background silhouettes. Upper-storey patches remain in both window tiers.
+There are 227 full-detail placements within 50 m, 802 with lighter window frames,
+parallax panes and balcony slabs to 110 m (including 437 near-road infill items),
+1,416 facade-patch buildings to 350 m and 3,107 background silhouettes. Upper-storey
+patches remain in both window tiers. Since revision 3 only walls facing a carriageway
+(within 140 m) get geometric windows; walls facing away use the shared facade patch.
 
 All GLBs use glTF Y-up, applied transforms and relative image paths to one
 shared `textures/` folder. Blender is Z-up: (NOX x, y, z) -> (x, -z, y).
@@ -185,6 +187,78 @@ metadata and the repository's previous page audit are retained as evidence.
 See [Sketchfab terms](https://sketchfab.com/licenses) for Standard restrictions.
 OpenStreetMap-derived placement data requires contributor attribution and ODbL.
 
+## Revision 3: driving-view polish (2026-10-12)
+
+Driven by the driving-view audit; NOX captures in `captures/buildings_r3/` (`before/`,
+`after/` at 1720 x 720, `after_3440/` at 3440 x 1440, `fuji_reference_compare_*.png`).
+The before set was captured with an older gbuffer shader; window lighting differences
+between the sets come from that shader change, not from the building data.
+
+- Fuji TV: the landmark model is the only Fuji geometry (the audit's "slab" was the
+  model seen edge-on from the Bayshore side). Pale aluminium cladding replaces the dark
+  metal, towers stand on a 31 m podium, the three sky bridges are two-storey (46, 73,
+  97 m) and the sphere centre is at 106 m, measured against the reference photo.
+  The placed copy keeps LOD1 (28,930 triangles) so towers, sphere, bridge grid and
+  podium survive at 1 km. A paved site block (top y 3.0, quay edge to y -1.5) now
+  carries the campus, because it stands beyond the exported ground section.
+- Daiba 2002 context: Aqua City Odaiba (2000), Decks Tokyo Beach (1996), Hotel Nikko
+  Tokyo (1996, now Hilton Tokyo Odaiba) and Tradepia Odaiba (1996) are placed as
+  mid-tier silhouettes on OSM footprints (Hotel Nikko: outer hull of the relation),
+  each on its own site block. Heights without OSM tags (30, 30, 60 m) are estimates;
+  the Tradepia date is general knowledge, not an OSM tag. Diver City (2012) and the
+  Gundam statue stay excluded. Grand Pacific Le Daiba (1998) is not placed.
+- Era: 46 more post-2002 footprints are excluded by name (`POST2002_NAMES` in
+  `prepare_buildings.py`: The Tokyo Towers, Acty Shiodome, Harumi Flag, msb Tamachi,
+  Shiodome Media Tower and others). These are reviewer-knowledge dates; verify before
+  relying on them. 47 `building=roof` canopies are excluded. Untagged Shiodome heights
+  are capped at 13 storeys because most of the redevelopment was unfinished in 2002.
+- Heights: 1,549 inferred (untagged) heights were reduced: garden pavilions, gates and
+  kiosks (5 m), temple halls (18 m), park buildings (6.6 m) and a footprint limit of
+  6 x the shorter side (2 storeys below 40 m2). Tagged heights are unchanged.
+- Variety: neighbour-aware assignment (14 m gap rule) inside district palettes picks
+  facade style, close wall material, storey pitch (3.0-3.3 m residential, 3.6-4.0 m
+  commercial, 5.0-5.5 m industrial), window layout (bay width, single or paired
+  1.6 x 2.0 m panes, sill height), balconies and parapet height. Roof plant follows
+  the cached flags (stair housing, 1-3 condensers, elevated tank).
+- Near-road infill: 307 low buildings and 130 fenced yards (block wall, posts, rails,
+  site hut) on bare exported ground beside the expressways, in up to three rows
+  (about 45 m deep), outside the 4 m clearance plus 1.5 m planning slack, off water,
+  local streets and parks, and only where no OSM building already fronts the road.
+  They are project-authored and not surveyed (`kind` and `source` in the records;
+  stable ids `infill_<carriageway>_<side>_<station m>[_r<row>]`). Commercial infill
+  carries a fascia sign. No trees or parking surfaces were added.
+- Draw calls: the three sign textures are stacked into `sign_atlas.png` for placed
+  chunks; industrial glazing shares the dark sash material; the Fuji sphere band and
+  panel bands share the campus glass/aluminium materials.
+
+Placement check (`tools/shuto/check_building_placement.py`, report
+`data/shuto/buildings/placement_check.json`; pre-revision run in
+`placement_check_before.json`):
+
+| Check | Before | After |
+| --- | --- | --- |
+| no ground under a corner (void) | 81 | 1 (+90 skirted) |
+| floating > 0.3 m / buried / in water | 0 / 0 / 0 | 0 / 0 / 0 |
+| on carriageway / inside 4 m clearance | 0 / 0 | 0 / 0 |
+| on exported local street | 17 | 0 |
+| footprint overlaps | 20 | 0 (+5 nested towers inset 0.4 m) |
+| implausible height | 136 | 0 |
+
+"Skirted" placements stand at the edge of the exported ground or over a ground hole;
+their walls continue to y -1.5. The remaining void is osm_297882427, whose corners are
+on ground but whose centre lies over a ground hole in the current road chunk -1_3
+(diagonal strip around (-440, 1624) to (-530, 1700), concrete at y 1.29, no carriageway
+in network.json; reported to the roads owner).
+
+Totals after revision 3 (measured on the exported chunks): 874,770 building triangles
+(was 1,034,820), 630 chunk material primitives (unchanged), 50 render chunks (new
+chunk 0_12 for Decks/Tradepia), 89,804 collision triangles. Remaining limits: the
+night look is dark in the current render settings, so Fuji's pale cladding reads
+mainly by silhouette and lit windows; the trench views (Ginza/Shiodome cut) still
+show retaining walls with buildings set back beyond the clearance band; the Rainbow
+deck capture shows the bridge deck missing (road data, not buildings); Daiba streets,
+trees and waterfront promenades are not reconstructed.
+
 ## Reproduce
 
 Run from the repository root. Python needs numpy and Pillow. Blender must have
@@ -209,6 +283,7 @@ python tools/shuto/compose_building_scene.py
 python tools/shuto/optimize_building_glbs.py
 python tools/shuto/validate_buildings.py
 python tools/shuto/check_scenery.py --col-dir models/shuto/buildings/collision
+python tools/shuto/check_building_placement.py
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/shuto/benchmark_buildings.ps1 -Mode capture
 $env:NOX_BENCHMARK_REPEAT = '3'
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/shuto/benchmark_buildings.ps1 -Mode timing
@@ -281,10 +356,12 @@ The final three-repeat High run at 3440 x 1440 on RTX 3080 / Ryzen 5800X measure
 These fixed-camera runs do not identify every engine bottleneck. Reaching 165 Hz
 requires further engine/rendering work and a measured full-course drive.
 
-The composed city has 1,034,820 building triangles plus 114,640 retained context
-triangles, 49 building chunks, 64 context chunks and 54 new collision files.
-The delivery includes 5,227 individually editable placements, 16 new building
+Revision 2 figures (before revision 3): the composed city had 1,034,820 building
+triangles plus 114,640 retained context triangles, 49 building chunks, 64 context
+chunks and 54 new collision files, and 5,227 placements. Revision 3 now has 874,770
+building triangles in 50 chunks and 5,552 individually editable placements, 16 new building
 prototypes, four components and 41 adapted source buildings (40 redistributable).
-There are 401 validated GLBs across all LODs, probes and context; 397 are included
-in the archive after excluding the four Standard-licensed standalone files.
+There are 403 validated GLBs across all LODs, probes and context (revision 3); the four
+Standard-licensed standalone files remain excluded, as checked by package_buildings.py, and
+the rest are included in the archive. The timing figures above predate revision 3.
 

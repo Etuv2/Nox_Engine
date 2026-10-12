@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checked_files": 71,
+  "checked_files": 77,
   "encoding": "UTF-8 without BOM",
   "punctuation": "ASCII; no legacy controls, smart quotes, Unicode dashes or hidden separators",
   "python_compilation": "PASS",

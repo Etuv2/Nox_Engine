@@ -146,6 +146,7 @@ void PostProcessPass::Execute(RenderContext& ctx,
     auto set3f = [&](const char* name, const glm::vec3& v){ rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, name); if (loc >= 0) gpu.SetUniform(loc, v); };
     set1i("uBloomMode", ctx.bloomMode);
     set1f("uBloomStrength", ctx.bloomStrength);
+    set1f("uBloomScatterThreshold", ctx.bloomMode == 1 ? ctx.bloomScatterThreshold : 0.0f);
     set1i("uHasBloom", (ctx.enableBloom && m_bloomTexture.IsValid()) ? 1 : 0);
     const glm::mat3 whiteBalance = WhiteBalanceMatrix(ctx.whiteBalanceTemperature, ctx.whiteBalanceTint);
     if (rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "uWhiteBalance"); loc >= 0) {

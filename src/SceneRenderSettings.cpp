@@ -46,6 +46,8 @@ namespace {
 		ctx.bloomStrength = d.bloomStrength;
 		ctx.bloomThreshold = d.bloomThreshold;
 		ctx.bloomKnee = d.bloomKnee;
+		ctx.bloomScatterThreshold = d.bloomScatterThreshold;
+		ctx.bloomHalfResChain = d.bloomHalfResChain;
 		ctx.whiteBalanceTemperature = d.whiteBalanceTemperature;
 		ctx.whiteBalanceTint = d.whiteBalanceTint;
 		ctx.gradeContrast = d.gradeContrast;
@@ -76,6 +78,7 @@ namespace {
 		ctx.taaDisocclusionTolerance = d.taaDisocclusionTolerance;
 		ctx.taaMotionCurrentWeight = d.taaMotionCurrentWeight;
 		ctx.postDebugView = d.postDebugView;
+		ctx.velocityFromDepth = d.velocityFromDepth;
 		ctx.enableClusteredLighting = d.enableClusteredLighting;
 		ctx.enableFrustumCulling = d.enableFrustumCulling;
 		ctx.ssrResolveSamples = d.ssrResolveSamples;
@@ -149,6 +152,8 @@ namespace SceneRenderSettings {
 		Read(s, "bloom_strength", ctx.bloomStrength);
 		Read(s, "bloom_threshold", ctx.bloomThreshold);
 		Read(s, "bloom_knee", ctx.bloomKnee);
+		Read(s, "bloom_scatter_threshold", ctx.bloomScatterThreshold);
+		Read(s, "bloom_half_res", ctx.bloomHalfResChain);
 
 		// Colour
 		Read(s, "white_balance_temperature", ctx.whiteBalanceTemperature);
@@ -190,6 +195,7 @@ namespace SceneRenderSettings {
 		Read(s, "taa_rejection_mode", ctx.taaRejectionMode);
 		Read(s, "taa_disocclusion_tolerance", ctx.taaDisocclusionTolerance);
 		Read(s, "taa_motion_weight", ctx.taaMotionCurrentWeight);
+		Read(s, "velocity_from_depth", ctx.velocityFromDepth);
 		if (s.contains("debug_view") && s["debug_view"].is_string()) {
 			static const char* kViews[] = { "none", "pre_taa", "taa", "ssr", "bloom", "velocity", "motion_blur", "taa_clean" };
 			const std::string v = s["debug_view"].get<std::string>();

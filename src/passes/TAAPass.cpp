@@ -4,6 +4,7 @@
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
 #include "../SceneGraph.h"
+#include "../RenderSystem.h"
 #include "../Camera.h"
 #include "../RenderContext.h"
 #include <glm/gtc/type_ptr.hpp>
@@ -12,10 +13,27 @@
 
 #pragma warning(disable: 4996)  // Suppress deprecated function warnings for SceneGraph legacy API
 
+namespace {
+	glm::mat4 Unjittered(const glm::mat4& proj, const glm::vec2& jitterNdc) {
+		glm::mat4 p = proj;
+		p[2][0] -= jitterNdc.x;
+		p[2][1] -= jitterNdc.y;
+		return p;
+	}
+
+	// Current unjittered clip -> previous unjittered clip with the camera translation removed
+	// (directions at infinity: sky).
+	glm::mat4 SkyReprojection(const RenderContext& ctx) {
+		return Unjittered(ctx.prevProj, ctx.prevJitterNdc) * glm::mat4(glm::mat3(ctx.prevView)) *
+			glm::inverse(glm::mat4(glm::mat3(ctx.view))) * glm::inverse(Unjittered(ctx.proj, ctx.jitterNdc));
+	}
+}
+
 TAAPass::TAAPass() {}
 
 TAAPass::~TAAPass() {
 	if (m_velocityShader && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_velocityShader);
+	if (m_velocityStaticShader && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_velocityStaticShader);
 	if (m_resolveShader && rhi::HasGpu()) rhi::Gpu().DestroyProgram(m_resolveShader);
 	DestroyHistoryValidationTextures();
 }
@@ -68,7 +86,10 @@ bool TAAPass::Initialize(RenderContext& context) {
 	m_resolveShader = CreateShaderProgram("shaders/fullscreen_vert.glsl",
 		"shaders/taa_resolve.glsl");
 
-	if (!m_velocityShader || !m_resolveShader) {
+	m_velocityStaticShader = CreateShaderProgram("shaders/fullscreen_vert.glsl",
+		"shaders/velocity_static_frag.glsl");
+
+	if (!m_velocityShader || !m_resolveShader || !m_velocityStaticShader) {
 		std::cerr << "[TAAPass] Failed to create shaders.\n";
 		return false;
 	}
@@ -234,20 +255,51 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 	rhi::Device& gpu = rhi::Gpu();
 	m_velocityFBO->Bind();
 	gpu.SetViewport({ 0, 0, ctx.width, ctx.height });
-	gpu.SetDepthTest(true);
 	// Pixels without geometry (sky) must read zero motion; the clear colour is shared GPU state.
 	gpu.SetClearColor(glm::vec4(0.0f));
-	gpu.Clear(rhi::ClearColor | rhi::ClearDepth);
-
-	gpu.UseProgram(m_velocityShader);
 
 	// Remove exactly the jitter UpdateContext applied (zero when TAA was off that frame).
-	glm::mat4 currentVelocityProj = ctx.proj;
-	currentVelocityProj[2][0] -= ctx.jitterNdc.x;
-	currentVelocityProj[2][1] -= ctx.jitterNdc.y;
-	glm::mat4 previousVelocityProj = ctx.prevProj;
-	previousVelocityProj[2][0] -= ctx.prevJitterNdc.x;
-	previousVelocityProj[2][1] -= ctx.prevJitterNdc.y;
+	const glm::mat4 currentVelocityProj = Unjittered(ctx.proj, ctx.jitterNdc);
+	const glm::mat4 previousVelocityProj = Unjittered(ctx.prevProj, ctx.prevJitterNdc);
+
+	const bool fromDepth = ctx.velocityFromDepth && ctx.gbufferFBO && ctx.screenQuad && m_velocityStaticShader;
+	RenderSystem* renderSystem = sceneGraph->GetRenderSystem();
+	if (fromDepth) {
+		// 1. Camera motion of every pixel (static geometry and sky) from the G-buffer depth.
+		gpu.SetDepthTest(false);
+		gpu.SetDepthWrite(false);
+		gpu.SetBlendEnabled(false);
+		gpu.UseProgram(m_velocityStaticShader);
+		auto set = [&](const char* name, const auto& value) {
+			const rhi::UniformLocation l = gpu.GetUniformLocation(m_velocityStaticShader, name);
+			if (l >= 0) gpu.SetUniform(l, value);
+		};
+		gpu.BindTexture(0, ctx.gbufferFBO->GetDepthTexture());
+		set("uDepth", 0);
+		set("uInvViewProjJittered", glm::inverse(ctx.proj * ctx.view));
+		set("uViewProj", currentVelocityProj * ctx.view);
+		set("uPrevViewProj", previousVelocityProj * ctx.prevView);
+		set("uSkyReprojection", SkyReprojection(ctx));
+		ctx.screenQuad->Render();
+	}
+	else {
+		gpu.SetDepthTest(true);
+		gpu.Clear(rhi::ClearColor | rhi::ClearDepth);
+	}
+
+	// 2. Rasterised motion. With the static part from depth, only moving / skinned items are drawn and
+	// their fragments test against the G-buffer depth in the shader (no velocity depth buffer).
+	gpu.UseProgram(m_velocityShader);
+	if (const rhi::UniformLocation l = gpu.GetUniformLocation(m_velocityShader, "uDepthFromGBuffer"); l >= 0) {
+		gpu.SetUniform(l, fromDepth ? 1 : 0);
+	}
+	if (fromDepth) {
+		gpu.BindTexture(1, ctx.gbufferFBO->GetDepthTexture());
+		if (const rhi::UniformLocation l = gpu.GetUniformLocation(m_velocityShader, "uGBufferDepth"); l >= 0) gpu.SetUniform(l, 1);
+		if (const rhi::UniformLocation l = gpu.GetUniformLocation(m_velocityShader, "uGBufferDepthParams"); l >= 0) {
+			gpu.SetUniform(l, glm::vec2(ctx.proj[2][2], ctx.proj[3][2]));
+		}
+	}
 
 	// Upload current and previous matrices
 	if (m_velocityUniforms.view >= 0) gpu.SetUniform(m_velocityUniforms.view, ctx.view);
@@ -258,7 +310,14 @@ void TAAPass::RenderVelocity(RenderContext& ctx,
 	if (m_velocityUniforms.prevProjection >= 0) gpu.SetUniform(m_velocityUniforms.prevProjection, previousVelocityProj);
 
 	// Render scene for motion vectors
+	if (renderSystem) renderSystem->SetVelocityMovingItemsOnly(fromDepth);
 	sceneGraph->RenderVelocity(ctx.view, currentVelocityProj, ctx.prevView, previousVelocityProj, m_velocityShader);
+	if (renderSystem) renderSystem->SetVelocityMovingItemsOnly(false);
+	if (fromDepth) {
+		gpu.BindTexture(1, rhi::TextureHandle{});
+		gpu.SetDepthTest(true);
+		gpu.SetDepthWrite(true);
+	}
 
 	gpu.BindFramebuffer(PresentTarget::Get());
 
@@ -276,14 +335,9 @@ void TAAPass::ResolveTemporalAntiAliasing(RenderContext& ctx) {
 
 	// Camera-rotation reprojection for sky pixels (no rasterised velocity there).
 	{
-		glm::mat4 projU = ctx.proj;
-		projU[2][0] -= ctx.jitterNdc.x;
-		projU[2][1] -= ctx.jitterNdc.y;
-		glm::mat4 prevProjU = ctx.prevProj;
-		prevProjU[2][0] -= ctx.prevJitterNdc.x;
-		prevProjU[2][1] -= ctx.prevJitterNdc.y;
-		const glm::mat4 skyReprojection = prevProjU * glm::mat4(glm::mat3(ctx.prevView)) *
-			glm::inverse(glm::mat4(glm::mat3(ctx.view))) * glm::inverse(projU);
+		const glm::mat4 projU = Unjittered(ctx.proj, ctx.jitterNdc);
+		const glm::mat4 prevProjU = Unjittered(ctx.prevProj, ctx.prevJitterNdc);
+		const glm::mat4 skyReprojection = SkyReprojection(ctx);
 		const rhi::UniformLocation loc = gpu.GetUniformLocation(m_resolveShader, "uSkyReprojection");
 		if (loc >= 0) gpu.SetUniform(loc, skyReprojection);
 

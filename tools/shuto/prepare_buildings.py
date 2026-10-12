@@ -686,12 +686,22 @@ def plan_placements():
             kept.remove(b)
             excluded.append({"id": b["id"], "reason": "intersects the estimated Fuji TV campus envelope"})
     kept = resolve_overlaps(kept, excluded)
+    # Exported ground surfaces (road chunks + context), used to find bases without ground below them.
+    import check_building_placement as placement_check
+    surf = placement_check.load_surfaces(["models/shuto/rep_section/render", "models/shuto/buildings/context"],
+                                         {"ground_gravel": "ground", "sidewalk": "ground", "street_asphalt": "ground",
+                                          "concrete_cast": "lid", "tunnel_tiles": "lid"})
     for b in kept:
-        if any(not (GROUND_BOX[0] <= p[0] <= GROUND_BOX[2] and GROUND_BOX[1] <= p[1] <= GROUND_BOX[3])
-               for p in b.get("collision_ring", b["ring"])):
+        ring = b.get("collision_ring", b["ring"])
+        outside = any(not (GROUND_BOX[0] <= p[0] <= GROUND_BOX[2] and GROUND_BOX[1] <= p[1] <= GROUND_BOX[3]) for p in ring)
+        if outside or any(surf["ground"].height(p[0], p[1]) is None and surf["lid"].height(p[0], p[1]) is None
+                          for p in ring):
             b["skirt"] = True     # base walls continue to y -1.5 where no exported ground exists
         b["road_edges"] = road_edges(b["ring"], samples)
     infill = plan_infill(net, bands, kept, streets, water, parks)
+    # Infill only on exported ground (no skirts for project-authored fill).
+    infill = [b for b in infill if all(surf["ground"].height(x, z) is not None
+                                       for x, z in b["ring"] + [b["obb"]["c"]])]
     kept.extend(infill)
     kept.sort(key=lambda b: b["id"])
     assign_variety(kept)

@@ -1,11 +1,12 @@
 {
- "placements": 5556,
+ "placements": 5552,
  "base_y": 2.9,
  "counts": {
   "nested_tower": 5,
-  "void_skirted": 75
+  "void": 1,
+  "void_skirted": 90
  },
- "hard_failures": 0,
+ "hard_failures": 1,
  "notes": "void = no exported ground under a corner (outside the built ground section); void_skirted = same, with a base skirt to y -1.5; under_deck = an elevated deck passes more than 2 m above the roof (informational); shoreline = some corners on water; nested_tower = tower footprint inset inside its podium; buried = ground > 1 m above base",
  "issues": {
   "nested_tower": [
@@ -28,6 +29,13 @@
    {
     "id": "osm_887447549",
     "podium": "osm_887447548"
+   }
+  ],
+  "void": [
+   {
+    "id": "osm_297882427",
+    "detail": "window_mid",
+    "h": 29.7
    }
   ],
   "void_skirted": [
@@ -75,6 +83,11 @@
     "id": "osm_1375153697",
     "detail": "far",
     "h": 23.1
+   },
+   {
+    "id": "osm_1415105509",
+    "detail": "window_mid",
+    "h": 33.0
    },
    {
     "id": "osm_1416532523",
@@ -165,6 +178,11 @@
     "id": "osm_149718546",
     "detail": "far",
     "h": 5.0
+   },
+   {
+    "id": "osm_150797755",
+    "detail": "window_mid",
+    "h": 19.8
    },
    {
     "id": "osm_150858329",
@@ -347,9 +365,49 @@
     "h": 6.6
    },
    {
+    "id": "osm_297882409",
+    "detail": "window_mid",
+    "h": 6.6
+   },
+   {
     "id": "osm_297882410",
     "detail": "mid",
     "h": 26.4
+   },
+   {
+    "id": "osm_297882414",
+    "detail": "near",
+    "h": 19.8
+   },
+   {
+    "id": "osm_297882449",
+    "detail": "near",
+    "h": 6.6
+   },
+   {
+    "id": "osm_297882456",
+    "detail": "window_mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_297882468",
+    "detail": "near",
+    "h": 39.6
+   },
+   {
+    "id": "osm_297882473",
+    "detail": "window_mid",
+    "h": 29.7
+   },
+   {
+    "id": "osm_297882480",
+    "detail": "window_mid",
+    "h": 29.7
+   },
+   {
+    "id": "osm_297882491",
+    "detail": "near",
+    "h": 36.3
    },
    {
     "id": "osm_297882498",
@@ -360,6 +418,31 @@
     "id": "osm_309519427",
     "detail": "mid",
     "h": 26.4
+   },
+   {
+    "id": "osm_309529813",
+    "detail": "window_mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_309529839",
+    "detail": "window_mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_309529844",
+    "detail": "window_mid",
+    "h": 6.6
+   },
+   {
+    "id": "osm_309529863",
+    "detail": "window_mid",
+    "h": 26.4
+   },
+   {
+    "id": "osm_309529865",
+    "detail": "window_mid",
+    "h": 33.0
    },
    {
     "id": "osm_34287874",

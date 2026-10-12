@@ -193,6 +193,11 @@ struct RenderContext {
 	float bloomKnee = 0.5f;
 	float bloomStrength = 0.8f;
 	float bloomRadius = 0.5f;
+	// Energy-conserving mode: exposed luminance below which light does not scatter (0 = whole image).
+	float bloomScatterThreshold = 0.0f;
+	// Bloom chain at 1/2, 1/4, 1/8 with a prefiltered extract and dual-filter downsample (false =
+	// legacy full-resolution extract + Kawase chain).
+	bool bloomHalfResChain = true;
 
 
 	// TAA settings
@@ -212,6 +217,11 @@ struct RenderContext {
 	int taaRejectionMode = 1;
 	float taaDisocclusionTolerance = 0.03f; // relative linear-depth error accepted as the same surface
 	float taaMotionCurrentWeight = 0.6f;    // max current-frame weight added for fast-moving pixels
+
+	// Motion vectors: static geometry and sky from G-buffer depth + camera matrices (one fullscreen
+	// pass); only items whose transform changed, or skinned items, are rasterised. false = rasterise
+	// every visible item (legacy).
+	bool velocityFromDepth = false; // off by default: moving items (the player car) were not getting their own motion vectors
 
 	//velocity texture for TAA
 	rhi::TextureHandle velocityTex;

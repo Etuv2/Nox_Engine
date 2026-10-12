@@ -745,6 +745,18 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderFloat("Bloom Threshold", &m_bloomThreshold, 0.0f, 5.0f, "%.2f")) {
 					SyncToRenderer();
 				}
+				if (m_modularRenderer) {
+					auto& bloomCtx = m_modularRenderer->GetContext();
+					ImGui::SliderFloat("Scatter Threshold (energy mode)", &bloomCtx.bloomScatterThreshold, 0.0f, 8.0f, "%.2f");
+					ImGui::Checkbox("Half-res dual-filter chain", &bloomCtx.bloomHalfResChain);
+				}
+			}
+
+			if (m_modularRenderer) {
+				auto& dbgCtx = m_modularRenderer->GetContext();
+				static const char* kDebugViews[] = { "Off", "Lit HDR before TAA", "TAA output", "SSR", "Bloom",
+					"Motion vectors", "|Post source - TAA| x8", "TAA output (no grain/dither)" };
+				ImGui::Combo("Inspect image", &dbgCtx.postDebugView, kDebugViews, IM_ARRAYSIZE(kDebugViews));
 			}
 
 			ImGui::EndTabItem();
@@ -829,6 +841,15 @@ void RenderingSettingsWindow::Render() {
 
 				if (ImGui::Checkbox("Use YCoCg Color Space", &m_taaUseYCoCg)) {
 					SyncToRenderer();
+				}
+
+				if (m_modularRenderer) {
+					auto& taaCtx = m_modularRenderer->GetContext();
+					static const char* kRejection[] = { "Legacy (depth/normal diff)", "Disocclusion (reprojected depth)" };
+					ImGui::Combo("History Rejection", &taaCtx.taaRejectionMode, kRejection, IM_ARRAYSIZE(kRejection));
+					ImGui::SliderFloat("Disocclusion Tolerance", &taaCtx.taaDisocclusionTolerance, 0.005f, 0.2f, "%.3f");
+					ImGui::SliderFloat("Motion Current Weight", &taaCtx.taaMotionCurrentWeight, 0.0f, 1.0f, "%.2f");
+					ImGui::Checkbox("Static Motion From Depth", &taaCtx.velocityFromDepth);
 				}
 
 				if (ImGui::Button("Reset TAA History")) {

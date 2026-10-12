@@ -31,13 +31,23 @@ private:
     void ExtractBrightPixels(RenderContext& ctx, rhi::TextureHandle sourceTex);
     void Downsample(RenderContext& ctx);
     void Upsample(RenderContext& ctx);
+    // Half-resolution dual-filter chain (RenderContext::bloomHalfResChain): 13-tap prefiltered extract
+    // at 1/2, dual-Kawase downsample to 1/4 and 1/8, tent upsample back to 1/2.
+    void ExecuteHalfResChain(RenderContext& ctx, rhi::TextureHandle sourceTex);
+    void EnsureHalfResTargets(int width, int height);
 
     rhi::ProgramHandle m_extractShader;
     rhi::ProgramHandle m_kawaseShader;
     rhi::ProgramHandle m_upsampleShader;
+    rhi::ProgramHandle m_dualDownShader;
 
     std::unique_ptr<FrameBuffer> m_extractFBO;
     std::unique_ptr<FrameBuffer> m_downsampleFBO[4];
     std::unique_ptr<FrameBuffer> m_upsampleFBO[4];
+    std::unique_ptr<FrameBuffer> m_halfLevel[3];   // 1/2 (extract), 1/4, 1/8
+    std::unique_ptr<FrameBuffer> m_halfUp[2];      // 1/2 (result), 1/4
+    int m_halfWidth = 0;
+    int m_halfHeight = 0;
+    bool m_useHalfRes = false;
     bool m_runtimeVerboseLogging = false;
 };

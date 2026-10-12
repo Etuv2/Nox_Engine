@@ -47,6 +47,7 @@ private:
 
     rhi::ProgramHandle m_velocityShader;
     rhi::ProgramHandle m_resolveShader;
+    rhi::ProgramHandle m_velocityStaticShader; // camera motion from G-buffer depth (static geometry, sky)
 
 
     struct VelocityUniforms {

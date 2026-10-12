@@ -39,6 +39,7 @@ RENDER_OVERRIDES = {
     'fog_distant_density': 0.00045,
     'fog_height_falloff': 0.04,
     'volumetric_far': 400.0,
+    'bloom_scatter_threshold': 1.0,  # only light above ~1 (exposed) scatters; no 6% veil over dark areas
 }
 
 

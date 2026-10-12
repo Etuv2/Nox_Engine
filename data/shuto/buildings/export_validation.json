@@ -41,7 +41,7 @@
     },
     {
       "path": "models/shuto/buildings/collision/-1_3_col.glb",
-      "triangles": 5144,
+      "triangles": 5120,
       "parallax_panes": 0,
       "bounds": [
         [
@@ -56,7 +56,7 @@
         ]
       ],
       "external_images": 0,
-      "bytes": 273552
+      "bytes": 272208
     },
     {
       "path": "models/shuto/buildings/collision/-1_4_col.glb",
@@ -307,7 +307,7 @@
     },
     {
       "path": "models/shuto/buildings/collision/-3_4_col.glb",
-      "triangles": 1672,
+      "triangles": 1648,
       "parallax_panes": 0,
       "bounds": [
         [
@@ -318,11 +318,11 @@
         [
           -993.760009765625,
           212.99000549316406,
-          2503.955078125
+          2504.281005859375
         ]
       ],
       "external_images": 0,
-      "bytes": 90108
+      "bytes": 88908
     },
     {
       "path": "models/shuto/buildings/collision/-3_5_col.glb",
@@ -341,7 +341,7 @@
         ]
       ],
       "external_images": 0,
-      "bytes": 37744
+      "bytes": 37792
     },
     {
       "path": "models/shuto/buildings/collision/-3_6_col.glb",
@@ -383,7 +383,7 @@
     },
     {
       "path": "models/shuto/buildings/collision/-3_8_col.glb",
-      "triangles": 344,
+      "triangles": 356,
       "parallax_panes": 0,
       "bounds": [
         [
@@ -398,7 +398,7 @@
         ]
       ],
       "external_images": 0,
-      "bytes": 19512
+      "bytes": 20256
     },
     {
       "path": "models/shuto/buildings/collision/-3_9_col.glb",
@@ -554,7 +554,7 @@
     },
     {
       "path": "models/shuto/buildings/collision/-4_8_col.glb",
-      "triangles": 2228,
+      "triangles": 2216,
       "parallax_panes": 0,
       "bounds": [
         [
@@ -569,7 +569,7 @@
         ]
       ],
       "external_images": 0,
-      "bytes": 120688
+      "bytes": 120040
     },
     {
       "path": "models/shuto/buildings/collision/-4_9_col.glb",
@@ -2678,7 +2678,7 @@
         ]
       ],
       "external_images": 0,
-      "bytes": 4915776
+      "bytes": 4910620
     },
     {
       "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD1.glb",
@@ -2697,7 +2697,7 @@
         ]
       ],
       "external_images": 0,
-      "bytes": 3022000
+      "bytes": 3019156
     },
     {
       "path": "models/shuto/buildings/kit/landmark_fuji_tv_LOD2.glb",
@@ -2716,7 +2716,7 @@
         ]
       ],
       "external_images": 0,
-      "bytes": 366728
+      "bytes": 364040
     },
     {
       "path": "models/shuto/buildings/kit/office_ribbon_col.glb",
@@ -3628,12 +3628,12 @@
         ]
       ],
       "external_images": 5,
-      "bytes": 3302040
+      "bytes": 3305812
     },
     {
       "path": "models/shuto/buildings/render/-1_3.glb",
-      "triangles": 74581,
-      "parallax_panes": 6416,
+      "triangles": 72899,
+      "parallax_panes": 6334,
       "bounds": [
         [
           -512.7999877929688,
@@ -3647,7 +3647,7 @@
         ]
       ],
       "external_images": 19,
-      "bytes": 8702484
+      "bytes": 8339696
     },
     {
       "path": "models/shuto/buildings/render/-1_4.glb",
@@ -3746,8 +3746,8 @@
     },
     {
       "path": "models/shuto/buildings/render/-2_3.glb",
-      "triangles": 106084,
-      "parallax_panes": 6850,
+      "triangles": 106914,
+      "parallax_panes": 6885,
       "bounds": [
         [
           -1010.6199951171875,
@@ -3761,7 +3761,7 @@
         ]
       ],
       "external_images": 19,
-      "bytes": 13128868
+      "bytes": 13224248
     },
     {
       "path": "models/shuto/buildings/render/-2_4.glb",
@@ -3779,8 +3779,8 @@
           2503.429931640625
         ]
       ],
-      "external_images": 21,
-      "bytes": 7208260
+      "external_images": 19,
+      "bytes": 7206688
     },
     {
       "path": "models/shuto/buildings/render/-2_5.glb",
@@ -3799,7 +3799,7 @@
         ]
       ],
       "external_images": 11,
-      "bytes": 30068
+      "bytes": 30040
     },
     {
       "path": "models/shuto/buildings/render/-2_6.glb",
@@ -3898,8 +3898,8 @@
     },
     {
       "path": "models/shuto/buildings/render/-3_4.glb",
-      "triangles": 9449,
-      "parallax_panes": 781,
+      "triangles": 20771,
+      "parallax_panes": 768,
       "bounds": [
         [
           -1519.969970703125,
@@ -3909,11 +3909,11 @@
         [
           -993.760009765625,
           212.99000549316406,
-          2503.955078125
+          2504.281005859375
         ]
       ],
       "external_images": 21,
-      "bytes": 1191988
+      "bytes": 2541516
     },
     {
       "path": "models/shuto/buildings/render/-3_5.glb",
@@ -3931,8 +3931,8 @@
           3006.31005859375
         ]
       ],
-      "external_images": 21,
-      "bytes": 5689724
+      "external_images": 19,
+      "bytes": 5688560
     },
     {
       "path": "models/shuto/buildings/render/-3_6.glb",
@@ -3974,8 +3974,8 @@
     },
     {
       "path": "models/shuto/buildings/render/-3_8.glb",
-      "triangles": 10030,
-      "parallax_panes": 902,
+      "triangles": 10194,
+      "parallax_panes": 910,
       "bounds": [
         [
           -1506.625,
@@ -3989,7 +3989,7 @@
         ]
       ],
       "external_images": 22,
-      "bytes": 1270612
+      "bytes": 1292348
     },
     {
       "path": "models/shuto/buildings/render/-3_9.glb",
@@ -4012,12 +4012,12 @@
     },
     {
       "path": "models/shuto/buildings/render/-4_10.glb",
-      "triangles": 33329,
+      "triangles": 33337,
       "parallax_panes": 3023,
       "bounds": [
         [
           -2014.469970703125,
-          2.9000000953674316,
+          -1.5,
           4972.18017578125
         ],
         [
@@ -4027,7 +4027,7 @@
         ]
       ],
       "external_images": 22,
-      "bytes": 4127708
+      "bytes": 4128508
     },
     {
       "path": "models/shuto/buildings/render/-4_11.glb",
@@ -4145,8 +4145,8 @@
     },
     {
       "path": "models/shuto/buildings/render/-4_8.glb",
-      "triangles": 37078,
-      "parallax_panes": 1023,
+      "triangles": 36966,
+      "parallax_panes": 1021,
       "bounds": [
         [
           -2032.0799560546875,
@@ -4160,7 +4160,7 @@
         ]
       ],
       "external_images": 22,
-      "bytes": 4401092
+      "bytes": 4392832
     },
     {
       "path": "models/shuto/buildings/render/-4_9.glb",

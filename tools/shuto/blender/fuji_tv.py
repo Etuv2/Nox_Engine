@@ -1,7 +1,7 @@
 """Reference-led Fuji TV headquarters: asymmetric towers, six bridges and mast clusters.
 
 Measured silhouette ratios use the supplied waterfront photo, not the generic facade atlas.
-Revision 3: pale cladding, 31 m podium, two-storey bridges at 46/73/97 m, sphere centre 106 m.
+Revision 3: pale cladding (panel bands share the aluminium material), 31 m podium, two-storey bridges at 46/73/97 m, sphere centre 106 m.
 Overall campus extent is an artistic estimate; 123.45 m height and 32 m sphere are documented.
 """
 import math
@@ -96,7 +96,7 @@ def build(b, lod, base, a):
                     # Thin horizontal aluminum floor bands, no painted shadow atlas.
                     for lo, hi in ((0, 0.9), (3.1, 3.35), (3.63, pitch)):
                         a.panel(bk, (key, "fuji_aluminium"), p, q, yy + lo, yy + hi, normal)
-                    a.panel(bk, (key, "fuji_panel_gray"), p, q, yy + 3.35, yy + 3.63, normal)
+                    a.panel(bk, (key, "fuji_aluminium"), p, q, yy + 3.35, yy + 3.63, normal)
         # Large expressed bay grid on front/rear; it dominates the reference silhouette.
         spacing = (x1 - x0) / major_bays
         for j in range(major_bays + 1):
@@ -113,7 +113,7 @@ def build(b, lod, base, a):
     # Lower complex is wider than the towers and steps toward the waterfront.
     wing(-147, -78, 28, 57, 0, PODIUM, 4)
     wing(50, 151, 27, 63, 0, PODIUM - 3, 6)
-    box("fuji_panel_gray", -13, 5, 130, 57, 0, PODIUM - 2)
+    box("fuji_aluminium", -13, 5, 130, 57, 0, PODIUM - 2)
     podium = [pt(-84.5, 28.5), pt(52.5, 28.5), pt(52.5, 39.5), pt(-84.5, 39.5)]
     a.g.emit_roof(bk, (key, "fuji_aluminium"), podium, base + 15, 4)
     a.bottom(bk, (key, "fuji_aluminium"), podium, base)
@@ -156,7 +156,7 @@ def build(b, lod, base, a):
                 for dz in (-0.65, 0.65):
                     box("fuji_aluminium", x + dx, z + dz, 0.5, 0.5, PODIUM, top - PODIUM)
             for yy in range(int(PODIUM) + 2, int(top), 8):
-                box("fuji_panel_gray", x, z, 2.25, 2.25, yy, 0.3)
+                box("fuji_aluminium", x, z, 2.25, 2.25, yy, 0.3)
 
     # The observatory is offset toward the left wing and supported above the middle bridge.
     sx, sz = -37, 21
@@ -193,7 +193,7 @@ def build(b, lod, base, a):
     if lod < 2:
         # Roof equipment and antenna silhouettes, within the documented overall height.
         for x, z, y in ((-113, -22, 119.7), (-73, 17, 119.7), (108, -19, 111), (85, 20, 111)):
-            box("fuji_panel_gray", x, z, 2.4, 2.4, y, 1.0)
+            box("fuji_aluminium", x, z, 2.4, 2.4, y, 1.0)
             box("fuji_aluminium", x, z, 0.16, 0.16, y + 1, min(123.3 - y - 1, 6))
         # Grand stairs and tube escalator create the diagonal circulation in front of the studios.
         for step in range(32 if lod == 0 else 16):

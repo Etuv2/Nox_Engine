@@ -33,6 +33,7 @@ uniform bool  uTm7UseJzazbz;   // switch UCS (currently unused)
 uniform int   uBloomMode;            // 0 additive (legacy), 1 energy-conserving mix
 uniform float uBloomStrength;
 uniform bool  uHasBloom;
+uniform float uBloomScatterThreshold = 0.0; // energy-conserving mode: see bloom_extract.glsl
 uniform mat3  uWhiteBalance;         // linear Rec.709 chromatic adaptation (identity = off)
 uniform float uContrast;
 uniform float uSaturation;
@@ -183,8 +184,22 @@ void main()
     // same units as `color` here.
     if (hasBloom) {
         vec3 bloom = texture(bloomBlur, vUV).rgb;
-        color = (uBloomMode == 1) ? mix(color, bloom, clamp(uBloomStrength, 0.0, 1.0))
-                                  : color + bloom * uBloomStrength;
+        if (uBloomMode == 1) {
+            // Energy-conserving scatter: the fraction s of the scattering light leaves the pixel and
+            // returns spread out (bloom). With no threshold this is mix(color, bloom, s).
+            float s = clamp(uBloomStrength, 0.0, 1.0);
+            float scatter = 1.0;
+            if (uBloomScatterThreshold > 0.0) {
+                float l = Luma(color);
+                float k = 0.5 * uBloomScatterThreshold;
+                float soft = clamp(l - uBloomScatterThreshold + k, 0.0, 2.0 * k);
+                soft = soft * soft / (4.0 * k + 1e-5);
+                scatter = max(soft, l - uBloomScatterThreshold) / max(l, 1e-5);
+            }
+            color = color + s * (bloom - color * scatter);
+        } else {
+            color = color + bloom * uBloomStrength;
+        }
     }
 
     // Natural lens falloff (approximately cos^4), aspect corrected.
