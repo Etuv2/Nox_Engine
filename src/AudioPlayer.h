@@ -2,6 +2,7 @@
 #pragma once
 #include <SDL/SDL.h>
 #include <SDL/SDL_mixer.h>
+#include "assets/AssetIOSdl.h"
 #include <glm/glm.hpp>
 #include <iostream>
 #include <string>
@@ -33,7 +34,8 @@ public:
 
     // Loads a WAV file. (Other formats supported by SDL_mixer might work.)
     Mix_Chunk* loadSound(const std::string& filename) {
-        Mix_Chunk* sound = Mix_LoadWAV(filename.c_str());
+        Mix_Chunk* sound = nullptr;
+        if (SDL_RWops* rw = AssetIO::OpenRWops(filename)) sound = Mix_LoadWAV_RW(rw, 1); // Mix copies the samples
         if (!sound) {
             std::cerr << "Failed to load sound (" << filename << "): " << Mix_GetError() << std::endl;
         }

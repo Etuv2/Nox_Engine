@@ -1,0 +1,10 @@
+{
+  "scene_name": "unrelated",
+  "nodes": [
+    {
+      "name": "X",
+      "type": "model",
+      "path": "models/unrelated.gltf"
+    }
+  ]
+}

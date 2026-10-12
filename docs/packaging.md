@@ -1,6 +1,6 @@
 # Standalone packaging
 
-## Current workflow
+## Workflow
 
 Development builds use one source asset tree. Distribution is an explicit, separate step:
 
@@ -9,78 +9,124 @@ tools\package.cmd -Plan
 tools\package.cmd
 tools\package.cmd -SkipBuild
 tools\package.cmd -Profile engine -SkipBuild
+tools\package.cmd -Layout loose -SkipBuild -Output Package/NOX_Racing_loose
 tools\package.cmd -GameScene scenes/my_game.json -Output Package/MyGame -Plan
 ```
 
 The default profile is `packaging/nox-racing.json`, outputting to `Package/NOX_Racing`.
 `packaging/engine.json` selects a small Cornell validation scene and disables the game module.
-`-Profile` also accepts a profile JSON path. `-GameScene` replaces the scene list with exactly
-one chosen scene; use a dedicated profile for a multi-scene game.
+`-Profile` also accepts a profile JSON path. `-GameScene` replaces the scene list with exactly one
+chosen scene; use a dedicated profile for a multi-scene game.
 
-A profile contains `name`, `game`, `scenes`, `include` and `licenses`. `scenes[0]` is the launch
-scene. Include only dependencies constructed at runtime that cannot be discovered from data:
-engine shaders and editor fonts, or a procedural generator's texture/prop sets. Profiles keep
-those exceptions reviewable without baking game-specific dependencies into build logic.
-For a Shuto package, create a profile from its selected scene and review its content license
-guide. The racing profile's procedural CC0 sets should not be inherited blindly by other games.
+## Layout
 
-The packager:
+The default layout is `packed` (contract C5 and C2):
 
-- Recursively follows scene/config/asset JSON references and glTF/GLB external images/buffers.
-- Preserves relative paths, including model-local paths and URI percent escapes.
-- Allows only runtime roots/types, filters source/raw directories, and excludes Blender files,
-  backup files, PDFs, prompts, compiler output and unrelated scene libraries.
-- Ships icon atlases and a reduced runtime icon manifest instead of source PNGs and all exports.
-- Changes packaged scene menus and launch presets to the selected scenes. Source configs stay intact.
-- Includes required DLLs, available VC runtime files, and profile license/attribution documents.
-- Writes `package-manifest.json` with sorted paths, SHA-256 hashes, sizes and total managed bytes.
+- `engine.pak`: engine-owned runtime content listed in `packaging/engine_owned.json`
+  (shaders, editor fonts, the logo, editor defaults).
+- `game.pak`: the profile's selected project content, its scene closure, and per-distribution config
+  overrides (`config/config.json` with the packaged first scene and scene list, launch presets, the reduced
+  icon manifest). It is always present; the engine-only profile's is small.
+- `nox_bootstrap.json`: format 1, `mode: packed`, pack list, `content_version` (sha256 of the pack
+  indexes), `user_dir`. `descriptor` is the profile's `project` (`projects/nox-racing/project.json` for the racing profile); it records
+  the packaged project; the scene's `"project"` key (or `--project`) selects the game module.
+- Loose files: `Nox_Engine.exe`, the runtime DLLs, the VC runtime when available, `licenses/`,
+  `Play.cmd`, `Editor.cmd`, and `package-manifest.json`. There are no loose asset trees.
 
-Missing required assets fail before output is modified. Absolute/out-of-tree dependencies and
-junctions/symlinks are rejected. In-repository output must be a child of `Package/`.
-OBJ/MTL sidecars are supported without MTL map options. FBX's texture references are opaque to
-this tool; explicitly include its texture directory. Runtime-created `generated/` outputs are
-regenerated on launch rather than bundled merely because they exist locally.
+`-Layout loose` keeps the earlier copy-tree output for comparisons. It is not used for distribution.
+The engine reads packed builds through AssetIO and the bootstrap ([asset I/O](asset_io.md)).
+`tools/TestPackagedRun.ps1` runs a package from a copied install outside the checkout and checks
+the mounts, that no checkout path is opened, and that the install's file hashes are unchanged.
 
-Reruns remove unchanged files owned by the previous manifest when dependencies disappear.
-Unmanaged files and edited stale files are preserved. Current selected configs are refreshed;
-back up local package configuration customizations before repackaging. A package made by the
-older tool has no manifest. Its obsolete source-identical asset copies can be removed after
-hash verification; unmatched files are preserved. Use a fresh output when an exact minimal
-package is needed without any legacy or runtime-created files.
+## Profiles and ownership
 
-## What loose packaging does and does not solve
+A profile contains `name`, `game`, `scenes`, `include`, `licenses` and optionally `project`.
+`scenes[0]` is the launch scene. `include` names only game content that the graph cannot discover.
+Profiles must not name engine-owned paths; the build fails if they do. A file reached by both
+closures has one owner: engine-owned paths go to `engine.pak`, everything else to `game.pak`.
 
-Each distribution still needs its own selected runtime models/textures/data. Source `.blend`
-projects, raw downloads, alternative models, research and captures stay out. Runtime `.glb`
-models and JSON stay loose at this stage because the existing loaders consume filesystem paths.
-The manifest makes their contribution measurable and provides a dependency list for a future cook.
-Filtering is not model conversion, mesh simplification, texture compression, or asset encryption.
+`project` points at `projects/<name>/project.json` (contract C4). `entry`, `script_roots` and `data_roots`
+are project-relative. `script_roots` add every `.lua` file below each root, and `data_roots` add their runtime
+files. `scenes` and `assets` are root-logical paths (for example `scenes/nfs_sprint.json`). The entry file must
+exist. The bootstrap's `descriptor` is the profile's `project`.
 
-## Next step: cooking and content packs
+The racing project is `projects/nox-racing`: its four racing scenes, the R33 vehicle data
+(`data/vehicles/r33.json`, extracted from DriveMode defaults and the scene's handling/camera values), and a placeholder
+Lua entry. Scenes do not declare `project` yet, so the Lua module is not loaded for them.
 
-Proceed in this order so storage gains can be measured against the current manifest:
+## Dependency graph
 
-1. **Cook selected assets once.** Cache outputs by source hash, importer settings and cook version
-   under an ignored build cache. Reuse outputs across build configurations. Convert authoring
-   models to a supported runtime representation and validate materials, animation and collision.
-2. **Optimize the largest runtime payloads.** Measure mesh/index data, embedded textures, HDRIs
-   and audio separately. Resize/compress textures according to their actual use and quality target.
-   Do not enable Draco, meshopt or KTX2/Basis formats until the runtime's corresponding decoders
-   and texture upload path are implemented and tested.
-3. **Add content packs behind an asset I/O layer.** Model import, images, shaders, fonts, JSON and
-   audio currently use separate file readers. A single pack file needs adapters for all of them,
-   plus relative dependency resolution and loose-file overrides for the editor. ZIP-extracting
-   everything on every launch would recreate the disk duplication this work removes.
-4. **Separate engine and game content.** Mount a shared engine pack and one selected game pack.
-   Deduplicate immutable payloads by content hash; keep saves, generated files, logs and editor
-   writes outside read-only packs. Use a versioned index and explicit compatibility checks.
-5. **Measure download size and installed size independently.** A compressed distribution archive
-   can reduce transfer size now, but it does not reduce the extracted runtime footprint. Already
-   compressed PNG/JPEG/audio data generally has less scope for lossless archive compression than
-   text or uncompressed buffers. Benchmark representative manifests before choosing a codec.
+Edges come from:
 
-No pack/cooking format is introduced in this pass. The reviewed profile and dependency manifest
-are the input contract for that next stage.
+- Registered schema keys in `packaging/dependency_rules.json`. `config/config.json` follows only
+  `iconPath`, `text_font`, `first_scene` and `scenes[].path`. Other keys (for example
+  `environmentPath`, which no runtime reads) are inert.
+- Scene documents (`scenes/*.json`) follow `scene_documents.reference_keys` (skybox, nodes at any depth
+  `nodes.**.path` and `nodes.**.font_path`, `game.hud`, `window_room_root`). Each procedural node's
+  `params` keys are declared per generator name (`street_kit`, `district`: texture_root, decal_root,
+  lens_flare_root, window_room_root). Generator outputs (`output`) are not inputs.
+- Path-like scene values that no registration claims are listed as warnings and are not packed.
+  Add a real input to the registration rather than relying on the scan.
+- Other JSON documents without a registration use a generic reference scan.
+- glTF/GLB buffers and images (external URIs), OBJ/MTL sidecars.
+- Shader `#include` directives, resolved relative to the including file as `src/ShaderLoader.h` does.
+- Project script roots, data roots, assets and scenes.
 
-See the [pack/VFS research](pak_vfs_research.md) for the measured archive comparison and the
-proposed runtime integration. It is research only; the current engine still needs loose assets.
+Every selected file keeps a reason, shown by `-Plan` with its pack. Excluded: other projects, tests,
+authoring/raw directories (`src/`, `raw/`, `originals/`, Blender files), research, tools and captures.
+A reference whose spelling differs from the stored name fails the build, because packs are
+case-sensitive while loose Windows folders are not.
+
+## Cook cache and pack writer
+
+`tools/NoxPackWriter.cs` (compiled through `Add-Type`) writes each pack:
+
+- Entries are sorted by ordinal name, with timestamps fixed at 1980-01-01 00:00, no extra fields,
+  no data descriptors, no ZIP64 and ASCII names.
+- Each entry is Deflate (Optimal) only when it saves at least max(64 bytes, 1%); otherwise it is stored.
+- The writer builds a temporary file, reads its central directory back, inflates every entry and
+  checks sizes, CRCs and SHA-256 against the plan, then replaces the target.
+- A pack whose planned index equals the existing central directory is not rewritten.
+
+Cache: `build/cook-cache/` (git-ignored) holds, per entry, a `.meta` file and, for Deflate, a `.bin`
+payload. The key is `SHA-256(SHA-256(source bytes) | platform | policy version | tool version)`. The
+policy version is `adaptive-deflate-optimal-v1` and the tool version is `nox-pack-writer-1`. Build
+configuration and profile are not part of the key, so Debug, Release, profiles and output folders share
+entries. Each entry depends only on its own bytes; the transitive dependency set decides which entries
+a pack contains, not how an entry is cooked. A cache entry whose payload hash or metadata does not
+match is discarded and cooked again, with a warning. Changed inputs never append to an archive: the
+pack is rebuilt from its planned entries.
+
+Only supported runtime formats are cooked this way. No mesh or texture conversion is performed, and
+Draco, meshopt, KTX2 and Basis are not enabled.
+
+## Manifest and reruns
+
+`package-manifest.json` (version 2) lists the loose files, both packs with each entry's uncompressed
+and stored sizes, method, SHA-256 and reason. Reruns remove unchanged files owned by the previous
+manifest that are no longer produced. Unmanaged files and edited stale files are preserved and
+reported. Current configs are refreshed. Launchers and the bootstrap are rewritten only when their
+text changes. A package made by an older tool has no manifest; its source-identical asset copies
+are migrated as before. Use a fresh output for an exact minimal package.
+
+## Verification
+
+```powershell
+powershell -NoProfile -File tests\PackagingTests.ps1
+```
+
+The fixture tree under `tests/fixtures/packaging/tree` covers closure and reasons, the registered config
+keys, shader includes, Lua roots, unsafe, missing and case-mismatched references, ownership, the
+byte-identical rebuild in a second output folder, the cache reuse, the no-op rerun, corrupt cache
+recovery, dependency removal, the changed-input rebuild and manifest-owned cleanup. The suite needs no
+compiled engine or downloaded assets.
+
+## Limits
+
+- Authored models, textures and HDRs are not converted, resized or compressed. Their storage is only
+  reduced by the deflate decision.
+- FBX sidecars are opaque; list the texture directory in the profile's `include`.
+- Scene keys are registered for the racing scenes and the fixture; other scene keys (for example Shuto scenes' materials and environment blocks) are reported as unclaimed until registered.
+- The C10 cooked procedural results (nox_cook, cooked generator outputs in game.pak) are not implemented yet.
+- Workflow changes (`.github/workflows/packaging.yml` path filters for `tools/NoxPackWriter.cs`) belong
+  to the lead.

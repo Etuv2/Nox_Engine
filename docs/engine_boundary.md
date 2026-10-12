@@ -5,6 +5,17 @@ content plus one game module. This page lists the extension points and what live
 Rule of thumb: an engine file must build, load and render a scene with `--no-game` and must not
 name game content (places, paths, IDs, vehicles, night-look values or a hardware profile).
 
+## Implementation status (2026-10-12)
+
+- Asset paths, packs, bootstrap and writable locations are engine services now: [asset_io.md](asset_io.md).
+  Runtime readers use logical paths; the few physical exceptions are listed in that document.
+- Project runtimes: a scene's `"project"` key or `--project` selects a descriptor, and its `runtime` picks a
+  factory registered in `main.cpp` (`lua` today). The native `GameModules::Create` factory is still used when no
+  project is selected. See [asset_io.md](asset_io.md#project-selection).
+- Procedural generators have a cooked-result path (`src/cook/`) so a scene can load without the generator code.
+- The Lua runtime and the native vehicle service exist (see [lua_scripting_research.md](lua_scripting_research.md)
+  and [lua_api.md](lua_api.md)). The statement below that Lua is not integrated predates this status.
+
 ## Extension points (engine side)
 
 | Point | Header | Used by the game for |

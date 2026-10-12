@@ -1203,6 +1203,10 @@ namespace {
 			ImGui_ImplSDL2_NewFrame();
 		}
 		void ImGuiRender(ImDrawData* drawData) override { ImGui_ImplOpenGL3_RenderDrawData(drawData); }
+		void ImGuiRebuildFonts() override {
+			ImGui_ImplOpenGL3_DestroyFontsTexture();
+			ImGui_ImplOpenGL3_CreateFontsTexture();
+		}
 		void* ImGuiTextureId(TextureHandle t) const override { return reinterpret_cast<void*>(static_cast<intptr_t>(t.id)); }
 
 	private:

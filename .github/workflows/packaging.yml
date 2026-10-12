@@ -5,6 +5,8 @@ on:
     paths:
       - "tools/*.ps1"
       - "tools/benchmark_pack_compression.py"
+      - "tools/NoxPackWriter.cs"
+      - "tests/fixtures/packaging/**"
       - "packaging/**"
       - "tests/PackagingTests.ps1"
       - "CMakeLists.txt"
@@ -13,6 +15,8 @@ on:
     paths:
       - "tools/*.ps1"
       - "tools/benchmark_pack_compression.py"
+      - "tools/NoxPackWriter.cs"
+      - "tests/fixtures/packaging/**"
       - "packaging/**"
       - "tests/PackagingTests.ps1"
       - "CMakeLists.txt"

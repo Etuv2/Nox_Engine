@@ -1,11 +1,16 @@
 #pragma once
-#include <array>
 #include <memory>
 #include <string>
 #include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include "json.hpp"
+#include "LegacyNfsPolicy.h"
+#include "scripting/LuaProject.h"
+#include "scripting/LuaRuntime.h"
+#include "scripting/LuaVehiclePolicy.h"
+#include "vehicle/VehicleService.h"
+#include "vehicle/VehiclePolicyTrace.h"
 
 class Camera;
 class SceneGraph;
@@ -14,73 +19,19 @@ class RoadNetwork;
 class CollisionWorld;
 
 /*
-* Drive mode (docs/nfs2015/game.md): arcade vehicle + chase camera for the racing prototype.
+* Drive mode (docs/nfs2015/game.md): the racing prototype's car and chase camera.
 *
-*   * Vehicle dynamics (fixed 240 Hz sub-steps): planar two-axle model with combined-slip tyres
-*     (simplified Pacejka lateral curve + friction circle), longitudinal and lateral load transfer,
-*     rear-wheel drive through a 6-speed box with traction-limited drive force (excess torque becomes
-*     wheelspin: burnouts), brakes, handbrake, drag and rolling resistance. NFS-2015-style aids:
-*     speed-sensitive steering, countersteer assist, drift mode (handbrake or brake-tap entry, held
-*     drift angle with throttle, smooth grip recovery) and yaw damping.
-*   * Suspension: 3-DOF sprung body (heave, pitch, roll) driven by load transfer and the road
-*     surface under each wheel (procedural bumps, curbs); wheels stay on the ground.
-*   * Rig: if the body model has glTF nodes Body / Wheel_FL / Wheel_FR / Wheel_RL / Wheel_RR (see
-*     models/car_r33_rig.glb), the body is sprung and the wheels spin with their rolling speed, steer
-*     with the front axle and follow the road height. Older models fall back to body roll only.
-*   * Collision: RoadNetwork street band (building lines are walls) + layout obstacles; the car is
-*     two circles, collisions are resolved per sub-step.
-*   * Surface mode (a CollisionWorld is supplied, docs/shuto): the car has a real height. Each wheel
-*     raycasts down from just above the current deck, so stacked carriageways, tunnels and ramps
-*     resolve to the deck the car is on; the body follows the road pitch/bank, slopes add gravity
-*     along the road, the car can leave the ground (ballistic, landing) and walls are the collision
-*     mesh's wall triangles (barriers, tunnel walls, piers) tested at body height. The chase camera
-*     is kept out of geometry with a ray from the car.
-*   * Chase camera: matched to the NFS 2015 reference framing (height ~1.65 m, ~5 m behind the car
-*     centre, ~3.5 deg down, 55 deg vertical FOV at rest), critically damped follow that blends the
-*     car heading with the velocity direction (drift framing) and restrained speed effects.
+* Thin facade (legacy racing library). The car itself is one VehicleService instance (src/vehicle,
+* native backend: tyres, integration, collision, suspension, rig posing, mechanical gearbox) driven by
+* a LegacyNfsPolicy (src/LegacyNfsPolicy.*: nitrous, drift, assists, gear selection). This class keeps
+* the chase camera, the scene-JSON configuration (handling, camera, spawn, layout) and the
+* NOX_VEHICLE_TELEMETRY recorder.
 *
 * Tuning lives in the scene's "game" object ("handling", "camera", "spawn").
 */
 class DriveMode {
 public:
-	struct Handling {
-		float topSpeedKmh = 250.0f;
-		float acceleration = 9.0f;      // m/s^2 drive capacity in first gear (before traction)
-		float braking = 12.5f;          // m/s^2 at full brake
-		float reverseMaxKmh = 40.0f;
-		float mass = 1380.0f;           // kg
-		float cgHeight = 0.48f;         // m
-		float tireGrip = 1.2f;          // lateral friction coefficient
-		float tireGripLong = 1.25f;     // longitudinal friction coefficient (traction / braking)
-		float steerLockLow = 28.0f;     // deg at standstill
-		float steerLockHigh = 4.5f;     // deg at top speed
-		float steerRate = 6.0f;         // 1/s
-		float driftGripScale = 0.58f;   // rear lateral grip while drifting
-		float driftAssist = 0.65f;      // 0..1 holds the drift angle chosen by the steering
-		float maxDriftAngle = 40.0f;    // deg
-		float countersteerAssist = 0.5f;// 0..1 automatic countersteer on rear slip
-		float yawDamping = 0.6f;        // stability when not steering
-		float nitroThrust = 1.45f;      // drive force multiplier
-		float nitroTopSpeed = 1.1f;     // top speed multiplier
-		float nitroDrain = 0.24f;       // tank per second
-		float nitroRecharge = 0.06f;    // tank per second
-		float nitroRechargeDelay = 1.5f;// seconds after use
-		float rpmIdle = 900.0f;
-		float rpmRedline = 7800.0f;
-		float rpmLimiter = 8200.0f;
-		float shiftTime = 0.16f;
-		// Gear ratios, first to top gear (2..8 gears). Only the relative spacing matters: the final
-		// drive is derived so the top gear reaches the limiter just above topSpeedKmh. The default
-		// spacing is arcade-close so city straights reach 4th/5th and the top gear at top speed.
-		std::vector<float> gearRatios = { 3.68f, 2.42f, 1.81f, 1.42f, 1.12f, 0.82f };
-		float reverseEngageDelay = 0.2f; // s of brake held at standstill before reverse engages (and throttle to leave it)
-		float suspensionFreq = 1.6f;    // Hz (body on springs)
-		float suspensionDamping = 0.55f;// damping ratio
-		float bumpAmplitude = 0.012f;   // m procedural road roughness
-		float roofHeight = 1.6f;        // m above the body base: overhead geometry above this is ignored by wall contacts
-		// Legacy editor fields (pre-rework handling model); unused by the dynamics.
-		float grip = 0.0f, driftGrip = 0.0f, driftYawGain = 0.0f;
-	};
+	using Handling = LegacyNfsPolicy::Handling;
 	struct CameraRig {
 		float distance = 5.0f;          // m behind the car centre
 		float height = 1.65f;           // m above the road
@@ -94,22 +45,8 @@ public:
 		float headingLag = 5.0f;
 		float velocityFollow = 0.45f;   // 0 = follow heading, 1 = follow velocity (drift framing)
 	};
-	struct Input {
-		float throttle = 0, brake = 0, steer = 0;
-		bool handbrake = false, nitrous = false;
-	};
-	// Per-wheel state for effects (smoke/spray), audio and debugging. Order: FL, FR, RL, RR.
-	struct WheelState {
-		glm::vec3 contact{ 0.0f };      // world contact point
-		glm::vec3 velocity{ 0.0f };     // world velocity of the contact patch (car motion)
-		float slip = 0.0f;              // 0..1 combined slip (lateral + longitudinal)
-		float wheelspin = 0.0f;         // 0..1 driven-wheel overspeed
-		float load = 0.0f;              // N
-		bool grounded = true;
-		float spinAngle = 0.0f;
-		float steerAngle = 0.0f;        // rad, left positive
-		float suspension = 0.0f;        // m compression relative to rest
-	};
+	using Input = VehicleInput;
+	using WheelState = VehicleWheelState;
 
 	void Configure(const nlohmann::json& game, SceneGraph& sceneGraph, const RoadNetwork* roads,
 		const std::string& layoutPath, const CollisionWorld* collision = nullptr);
@@ -124,169 +61,94 @@ public:
 	// ground at pos). Legacy mode ignores the height.
 	void Teleport(const glm::vec3& pos, float heading);
 	void RecoverToRoad();
-	void Refuel() { m_nitro = 1.0f; m_nitroCooldown = 0.0f; }
-	bool ConsumeTeleport() { const bool t = m_teleported; m_teleported = false; return t; }
-	bool ConsumeTeleportForEffects() { const bool t = m_teleportFx; m_teleportFx = false; return t; }
+	void Refuel();                      // Lua controller: its on_respawn hook (the refuel rule)
+	bool ConsumeTeleport();
+	bool ConsumeTeleportForEffects();
+	// True when the car runs the project's Lua controller (NOX_VEHICLE_POLICY=lua, transitional).
+	bool UsesLuaPolicy() const { return m_luaPolicy != nullptr; }
+	const NoxLua::LuaVehiclePolicy* LuaPolicy() const { return m_luaPolicy.get(); }
 
 	// Simulates the car (frozen: no motion, e.g. countdown/menus) and poses the camera.
 	void Update(float dt, const Input& in, bool frozen, Camera* camera, float aspect);
 
 	// State for HUD / race / audio / effects.
-	glm::vec2 Position() const { return m_pos; }
-	glm::vec3 Position3() const { return glm::vec3(m_pos.x, BaseY(), m_pos.y); }  // ground point under the car
+	glm::vec2 Position() const { return State().pos; }
+	glm::vec3 Position3() const { return glm::vec3(State().pos.x, BaseY(), State().pos.y); }  // ground point under the car
 	bool HasSurface() const { return m_collision != nullptr; }
-	bool Airborne() const { return m_airborne; }
-	glm::vec2 PreviousPosition() const { return m_prevPos; }
-	float Heading() const { return m_heading; }
-	float SpeedKmh() const { return glm::length(m_vel) * 3.6f; }
-	float SpeedMs() const { return m_vx; }                 // signed forward speed
+	bool Airborne() const { return State().airborne; }
+	glm::vec2 PreviousPosition() const { return State().prevPos; }
+	float Heading() const { return State().heading; }
+	float SpeedKmh() const { return glm::length(State().vel) * 3.6f; }
+	float SpeedMs() const { return State().vx; }                 // signed forward speed
 	float Speed01() const;
-	float Rpm() const { return m_rpm; }
-	int Gear() const { return m_gear; }                   // -1 = R, 1..GearCount()
-	int GearCount() const { return static_cast<int>(m_handling.gearRatios.size()); }
-	float Nitro() const { return m_nitro; }
-	bool NitroActive() const { return m_nitroActive; }
-	bool NitroRecharging() const { return !m_nitroActive && m_nitro < 1.0f && m_nitroCooldown <= 0.0f; }
-	float Load() const { return m_load; }
-	float Throttle() const { return m_throttle; }
-	float Slip01() const { return m_slip; }
-	bool Drifting() const { return m_drift > 0.5f; }
+	float Rpm() const { return State().rpm; }
+	int Gear() const { return State().gear; }                   // -1 = R, 1..GearCount()
+	int GearCount() const { return m_policy.GearCount(); }
+	float Nitro() const { return ActivePolicyDebug().nitro; }
+	bool NitroActive() const { return ActivePolicyDebug().nitroActive; }
+	bool NitroRecharging() const { const VehiclePolicyDebug d = ActivePolicyDebug(); return !d.nitroActive && d.nitro < 1.0f && d.nitroCooldown <= 0.0f; }
+	float Load() const { return State().load; }
+	float Throttle() const { return State().throttle; }
+	float Slip01() const { return State().slip; }
+	bool Drifting() const { return ActivePolicyDebug().drift > 0.5f; }
 	float DriftAngleDeg() const;
-	bool AtRedline() const { return m_rpm >= m_handling.rpmRedline; }
-	bool LimiterHit() const { return m_limiter; }
-	bool ConsumeShift() { const bool s = m_shifted; m_shifted = false; return s; }
-	bool HasCollided() const { return m_impact > 0.0f; }
-	const WheelState& Wheel(int i) const { return m_wheels[i]; }
-	bool HasWheelRig() const { return m_rigWheels; }
+	bool AtRedline() const { return State().rpm >= m_policy.GetHandling().rpmRedline; }
+	bool LimiterHit() const { return State().limiter; }
+	bool ConsumeShift() { return m_luaPolicy ? m_luaPolicy->ConsumeShift() : m_policy.ConsumeShift(); }
+	bool HasCollided() const { return State().impact > 0.0f; }
+	WheelState Wheel(int i) const { return State().wheels[i]; }
+	bool HasWheelRig() const { return State().wheelRig; }
 
-	Handling& MutableHandling() { return m_handling; }
+	Handling& MutableHandling() { return m_policy.MutableHandling(); }
 	CameraRig& MutableCamera() { return m_rig; }
-	glm::vec2 SpawnPosition() const { return m_spawnPos; }
-	glm::vec3 SpawnPosition3() const { return glm::vec3(m_spawnPos.x, m_spawnY, m_spawnPos.y); }
-	float SpawnHeading() const { return m_spawnHeading; }
-	void SetSpawn(const glm::vec2& p, float heading) { m_spawnPos = p; m_spawnHeading = heading; }
+	glm::vec2 SpawnPosition() const { return State().spawnPos; }
+	glm::vec3 SpawnPosition3() const { return glm::vec3(State().spawnPos.x, State().spawnY, State().spawnPos.y); }
+	float SpawnHeading() const { return State().spawnHeading; }
+	void SetSpawn(const glm::vec2& p, float heading) { m_service.SetSpawn(m_handle, p, heading); }
 	nlohmann::json SaveTuning() const; // "handling" + "camera" objects
 
-	static void ReadHandling(const nlohmann::json& j, Handling& h);
+	static void ReadHandling(const nlohmann::json& j, Handling& h) { LegacyNfsPolicy::ReadHandling(j, h); }
 	static void ReadCamera(const nlohmann::json& j, CameraRig& c);
 
 	// Road surface height (procedural bumps on asphalt, curbs/sidewalks). Legacy planar mode.
-	float GroundHeight(const glm::vec2& p) const;
+	float GroundHeight(const glm::vec2& p) const { return m_service.GroundHeight(m_handle, p); }
 	// Surface mode: ground under p searched downward from 'fromY'. Returns false over a gap.
-	bool SurfaceHeight(const glm::vec2& p, float fromY, float maxDrop, float& outY, glm::vec3* outNormal = nullptr) const;
+	bool SurfaceHeight(const glm::vec2& p, float fromY, float maxDrop, float& outY, glm::vec3* outNormal = nullptr) const {
+		return m_service.SurfaceHeight(m_handle, p, fromY, maxDrop, outY, outNormal);
+	}
 
 private:
-	struct Area { glm::vec2 min, max; };
-	struct Obstacle { bool box = false; glm::vec2 center{ 0.0f }; glm::vec2 half{ 0.0f }; float yaw = 0.0f; float radius = 0.0f; };
-	struct RigNode {
-		std::weak_ptr<SceneNode> node;
-		glm::vec3 restPos{ 0.0f };
-		glm::quat restRot{ 1.0f, 0.0f, 0.0f, 0.0f };
-		glm::vec3 restScale{ 1.0f };
-	};
-
-	void Step(float h, const Input& in);
-	void SelectDirection(float h, const Input& in);       // forward / reverse from the pedals at standstill
-	void UpdateGearbox(float h, const Input& in, float wheelRpm);
-	float GearRatio(int gear) const;                      // 1-based, clamped
-	void UpdateSuspension(float h);
-	void Collide(glm::vec2& pos, glm::vec2& vel);
-	glm::vec2 ResolveCircle(glm::vec2& c, float radius) const;
-	void SampleWheels();                                  // per-wheel contact + suspension input
-	void UpdateVertical(float h);                         // surface mode: ground following / airborne
-	float BaseY() const { return m_collision ? m_y : 0.0f; }
-	// Authored player-root height. Only a planar-mode offset: in surface mode the car is placed on the
-	// collision surface absolutely, and a saved world pose must not lift it off the road again.
-	float PlayerYOffset() const { return m_collision ? 0.0f : m_playerY; }
-	void ApplyTransforms();
+	VehicleState State() const { return m_service.State(m_handle); }
+	float BaseY() const { const VehicleState s = State(); return s.surface ? s.y : 0.0f; }
+	void SyncTuning();
+	void RecordTelemetry(const VehicleSubstepRecord& r);   // NOX_VEHICLE_TELEMETRY (per sub-step)
 	void UpdateCamera(float dt, Camera& camera, float aspect);
-	void LoadLayout(const std::string& path);
+	VehiclePolicyDebug ActivePolicyDebug() const { return m_luaPolicy ? m_luaPolicy->Debug() : m_policy.Debug(); }
+	// Creates the Lua controller (NOX_VEHICLE_POLICY=lua). A controller that fails to load is kept, faulted (the
+	// car coasts, see LuaVehiclePolicy); the reason is printed.
+	void CreateLuaPolicy(const nlohmann::json& handling);
 
 	bool m_available = false;
 	bool m_active = false;
 	std::weak_ptr<SceneNode> m_player;
-	RigNode m_model;                     // scene body node (whole car model)
-	RigNode m_bodyMesh;                  // glTF "Body" (sprung)
-	std::array<RigNode, 4> m_wheelNodes;
-	bool m_rigWheels = false;
-	float m_wheelRadius[4] = { 0.33f, 0.33f, 0.345f, 0.345f };
-	glm::vec3 m_wheelRest[4];            // hub positions in car space (x left, y up, z forward)
-	float m_playerY = 0.0f;
-	std::vector<Area> m_areas;
-	std::vector<Obstacle> m_obstacles;
-	const RoadNetwork* m_roads = nullptr;
 	const CollisionWorld* m_collision = nullptr;
-	// Surface mode vertical state: m_y = ground height under the car centre.
-	float m_y = 0.0f;
-	float m_vyUp = 0.0f;
-	bool m_airborne = false;
-	float m_airTime = 0.0f;
-	bool m_recoverRequested = false;
-	bool m_hasSafePose = false;          // surface mode: last pose with all wheels on the ground
-	glm::vec3 m_safePos{ 0.0f };
-	float m_safeHeading = 0.0f;
-	float m_safeTimer = 0.0f;
-	float m_groundPitch = 0.0f;          // rad, nose up +
-	float m_groundRoll = 0.0f;           // rad, right side down +
-	float m_spawnY = 0.0f;
-	bool m_wheelHit[4] = { true, true, true, true };
-	float m_wheelRel[4] = {};            // road height under each wheel relative to the car's ground plane
-	Handling m_handling;
-	CameraRig m_rig;
 
-	// Geometry (from the rig when present).
-	float m_a = 1.36f;                   // CG to front axle
-	float m_b = 1.36f;                   // CG to rear axle
-	float m_track = 1.63f;
+	// Handling values, the numeric tuning source and the native-only camera data. With the Lua controller
+	// selected this policy is NOT called: it only stores the handling profile that is handed to the controller.
+	LegacyNfsPolicy m_policy;
+	VehicleService m_service;
+	VehicleHandle m_handle;
 
-	// Vehicle state (metres, seconds, radians). Heading 0 = +Z, increases toward +X (the car's left).
-	glm::vec2 m_pos{ 0.0f };
-	glm::vec2 m_prevPos{ 0.0f };
-	glm::vec2 m_spawnPos{ 0.0f };
-	float m_spawnHeading = 0.0f;
-	float m_heading = 0.0f;
-	glm::vec2 m_vel{ 0.0f };             // world velocity
-	float m_vx = 0.0f, m_vy = 0.0f;      // local: forward, left
-	float m_yawRate = 0.0f;              // rad/s, positive = toward +X (left turn)
-	float m_steer = 0.0f;                // smoothed input [-1,1], right positive
-	float m_steerAngle = 0.0f;           // front wheel angle, left positive (rad)
-	float m_ax = 0.0f, m_ay = 0.0f;      // local accelerations (filtered)
-	float m_rearSpin = 0.0f;             // wheelspin 0..1
-	float m_drift = 0.0f;                // 0..1 drift state (grip blend)
-	float m_driftSign = 1.0f;
-	float m_prevBeta = 0.0f;            // +1 right-hand drift, -1 left-hand drift
-	float m_brakeTapTimer = 0.0f;
-	float m_driftExitTimer = 0.0f;
-	float m_accum = 0.0f;
-	float m_nitro = 1.0f;
-	float m_nitroCooldown = 0.0f;
-	bool m_nitroActive = false;
-	int m_gear = 1;
-	float m_shiftTimer = 0.0f;
-	float m_shiftCooldown = 0.0f;        // minimum time between automatic shifts (no gear hunting)
-	float m_directionHold = 0.0f;        // time the direction-change pedal has been held at standstill
-	bool m_shifted = false;
-	float m_rpm = 900.0f;
-	bool m_limiter = false;
-	float m_load = 0.0f;
-	float m_throttle = 0.0f;
-	float m_slip = 0.0f;
-	float m_impact = 0.0f;
-	std::array<WheelState, 4> m_wheels;
-	// Visual wheel state (render-rate smoothing of the physics wheel state).
-	float m_visHub[4] = { 0.33f, 0.33f, 0.345f, 0.345f };
-	float m_visSteer[4] = {};
-	float m_visSpin[4] = {};
-	float m_visSpinPrev[4] = {};
-	float m_visDt = 1.0f / 60.0f;
-	bool m_visInit = false;
-
-	// Sprung body: heave (m), pitch (rad, nose up +), roll (rad, right side down +) with velocities.
-	float m_heave = 0.0f, m_heaveV = 0.0f;
-	float m_pitch = 0.0f, m_pitchV = 0.0f;
-	float m_roll = 0.0f, m_rollV = 0.0f;
+	// Transitional Lua controller (NOX_VEHICLE_POLICY=lua). Declared source, runtime, policy, recorder in that
+	// order so each is destroyed before the object it refers to.
+	std::unique_ptr<NoxLua::AssetScriptSource> m_luaSource;
+	std::unique_ptr<NoxLua::Runtime> m_luaRuntime;
+	std::unique_ptr<NoxLua::LuaVehiclePolicy> m_luaPolicy;
+	std::unique_ptr<VehiclePolicyTrace::Recorder> m_recorder;   // NOX_VEHICLE_POLICY_TRACE
+	size_t m_luaFaultsReported = 0;                             // controller faults already printed
 
 	// Camera state.
+	CameraRig m_rig;
 	int m_cameraMode = 0;        // 0 chase, 1 far chase, 2 bumper, 3 free
 	glm::vec3 m_camPos{ 0.0f };
 	glm::vec3 m_camVel{ 0.0f };
@@ -294,7 +156,5 @@ private:
 	float m_camHeading = 0.0f;
 	float m_camFov = 55.0f;
 	bool m_camInitialized = false;
-	float m_time = 0.0f;
-	bool m_teleported = false;
-	bool m_teleportFx = false;
+	uint32_t m_camTeleportSerial = 0;
 };

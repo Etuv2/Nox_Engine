@@ -1,4 +1,6 @@
 #include "RuntimeStateManager.h"
+#include "assets/AssetIO.h"
+#include "assets/AssetIOUser.h"
 #include "SceneGraph.h"
 #include "SceneNode.h"
 #include "Camera.h"
@@ -85,13 +87,13 @@ bool RuntimeStateManager::SaveState(const std::shared_ptr<SceneGraph>& sceneGrap
 		stateJson["nodes"] = nodesArray;
 
 		// Ensure directory exists
-		std::filesystem::path filePath(filepath);
+		std::filesystem::path filePath(AssetIO::UserOutputPath(filepath, true)); // per-user snapshot
 		if (filePath.has_parent_path()) {
 			std::filesystem::create_directories(filePath.parent_path());
 		}
 
 		// Write to file
-		std::ofstream outFile(filepath);
+		std::ofstream outFile(filePath);
 		if (!outFile.is_open()) {
 			std::cerr << "[RuntimeStateManager] Failed to open file: " << filepath << std::endl;
 			return false;
@@ -121,7 +123,7 @@ bool RuntimeStateManager::LoadState(const std::shared_ptr<SceneGraph>& sceneGrap
 	std::cout << "[RuntimeStateManager] Loading state from: " << filepath << std::endl;
 
 	try {
-		std::ifstream inFile(filepath);
+		std::ifstream inFile(AssetIO::UserOutputPath(filepath));
 		if (!inFile.is_open()) {
 			std::cerr << "[RuntimeStateManager] Failed to open file: " << filepath << std::endl;
 			return false;
@@ -220,7 +222,7 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 
 	try {
 		// Step 1: Read and validate state file
-		std::ifstream inFile(filepath);
+		std::ifstream inFile(AssetIO::UserOutputPath(filepath));
 		if (!inFile.is_open()) {
 			std::cerr << "[RuntimeStateManager] ERROR: Failed to open state file: " << filepath << std::endl;
 			return nullptr;
@@ -258,7 +260,7 @@ std::shared_ptr<SceneGraph> RuntimeStateManager::LoadStateWithSceneValidation(
 		}
 
 		// Check if scene file exists
-		if (!std::filesystem::exists(baseSceneFile)) {
+		if (!AssetIO::Exists(baseSceneFile)) {
 			std::cerr << "[RuntimeStateManager] ERROR: Base scene file does not exist: " << baseSceneFile << std::endl;
 			std::cerr << "[RuntimeStateManager] Please ensure the scene file is in the correct location." << std::endl;
 			return nullptr;

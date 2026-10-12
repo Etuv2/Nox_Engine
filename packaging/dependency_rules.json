@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "comment": "Registered reference keys. Documents listed in 'documents' are followed only through their reference_keys (arrays transparent; '**' = any depth). Scene documents (scenes/*.json) follow 'scene_documents.reference_keys' plus each procedural generator's declared params; other path-like values are reported as unclaimed, not packed. Unlisted keys are inert: config.json environmentPath has no runtime reader.",
+  "documents": {
+    "config/config.json": {
+      "reference_keys": ["iconPath", "text_font", "first_scene", "scenes.path"]
+    }
+  },
+  "scene_documents": {
+    "reference_keys": ["skybox", "skybox.path", "skybox.fallback", "window_room_root", "game.hud", "nodes.**.path", "nodes.**.font_path"],
+    "default_generator": "street_kit",
+    "generators": {
+      "street_kit": ["texture_root", "decal_root", "lens_flare_root", "window_room_root"],
+      "district": ["texture_root", "decal_root", "lens_flare_root", "window_room_root"]
+    }
+  }
+}

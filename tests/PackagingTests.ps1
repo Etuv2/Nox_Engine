@@ -1,6 +1,8 @@
 # Standard-library fixture tests. Run: powershell -NoProfile -File tests/PackagingTests.ps1
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../tools/AssetPackaging.ps1')
+Add-Type -Path (Join-Path $PSScriptRoot '../tools/NoxPackWriter.cs') -ReferencedAssemblies 'System.IO.Compression'
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('nox-packaging-' + [Guid]::NewGuid().ToString('N'))
 $testRoot = [IO.Path]::GetFullPath($testRoot)
 New-Item -ItemType Directory -Path $testRoot | Out-Null
@@ -23,7 +25,7 @@ function Expect-AssetFailure {
     Assert-Test $failed "Expected rejection matching '$Pattern'"
 }
 function Run-FixturePackage {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $testRoot 'tools/Package.ps1') -Profile fixture -SkipBuild
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $testRoot 'tools/Package.ps1') -Profile fixture -SkipBuild -SkipCook -Layout loose
     Assert-Test ($LASTEXITCODE -eq 0) 'Fixture package failed'
 }
 
@@ -68,10 +70,11 @@ try {
     $glbAssets = Get-NoxPackageAssets -Root $testRoot -Include 'models/external.glb'
     Assert-Test ($glbAssets.Files.ContainsKey('textures/detail.png')) 'GLB external image missing'
 
-    foreach ($name in @('Common.ps1', 'AssetPackaging.ps1', 'Package.ps1', 'Clean.ps1')) {
+    foreach ($name in @('Common.ps1', 'AssetPackaging.ps1', 'Package.ps1', 'Clean.ps1', 'NoxPackWriter.cs')) {
         Put-TestFile "tools/$name" ([IO.File]::ReadAllText((Join-Path $PSScriptRoot "../tools/$name")))
     }
-    Put-TestFile 'packaging/fixture.json' '{"name":"Fixture","game":false,"scenes":["scenes/main.json"],"include":["config/config.json","shaders"],"licenses":[]}'
+    Put-TestFile 'packaging/fixture.json' '{"name":"Fixture","game":false,"scenes":["scenes/main.json"],"include":["config/config.json"],"licenses":[]}'
+    Put-TestFile 'packaging/engine_owned.json' '{"format":1,"paths":["shaders"]}'
     Put-TestFile 'config/config.json' '{"first_scene":"scenes/unrelated.json","scenes":[{"path":"scenes/unrelated.json"}]}'
     Put-TestFile 'config/launch_presets.json' '{"default":"editor","presets":{"game":{"scene":"scenes/unrelated.json","mode":"game"},"editor":{"scene":"scenes/unrelated.json","mode":"editor"}}}'
     Put-TestFile 'shaders/shader.glsl'
@@ -99,8 +102,187 @@ try {
     Put-TestFile 'scenes/main.json' '{"model":"models/car.gltf"}'
     Run-FixturePackage
     Assert-Test ([IO.File]::ReadAllText((Join-Path $out 'textures/detail.png')) -eq 'user-edited') 'Edited stale file was deleted'
-    & powershell -NoProfile -File (Join-Path $testRoot 'tools/Package.ps1') -Profile fixture -SkipBuild -Output 'models/package'
+    & powershell -NoProfile -File (Join-Path $testRoot 'tools/Package.ps1') -Profile fixture -SkipBuild -SkipCook -Output 'models/package'
     Assert-Test ($LASTEXITCODE -ne 0) 'Source-overlapping output accepted'
+
+    # ---- Packed layout: dependency graph, deterministic packs, cache, manifest ownership ----
+    $packRoot = Join-Path $testRoot 'pack-fixture'
+    New-Item -ItemType Directory -Path $packRoot | Out-Null
+    Copy-Item -Path (Join-Path $PSScriptRoot 'fixtures/packaging/tree/*') -Destination $packRoot -Recurse -Force
+    New-Item -ItemType Directory -Path (Join-Path $packRoot 'tools') -Force | Out-Null
+    foreach ($name in @('Common.ps1', 'AssetPackaging.ps1', 'Package.ps1', 'NoxPackWriter.cs')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot "../tools/$name") -Destination (Join-Path $packRoot "tools/$name") -Force
+    }
+    New-Item -ItemType Directory -Path (Join-Path $packRoot 'build/vs2022-x64/Release') -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $packRoot 'build/vs2022-x64/Release/Nox_Engine.exe'), 'fake exe')
+    foreach ($dll in @('SDL2.dll', 'SDL2_image.dll', 'SDL2_mixer.dll', 'SDL2_ttf.dll', 'glew32.dll', 'assimp-vc143-mt.dll')) {
+        [IO.File]::WriteAllText((Join-Path $packRoot "build/vs2022-x64/Release/$dll"), 'fake dll')
+    }
+    function Invoke-FixturePack {
+        param([string]$Output, [string]$Profile = 'fixture', [string[]]$Extra = @())
+        $log = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $packRoot 'tools/Package.ps1') -Profile $Profile -SkipBuild -SkipCook -Output $Output @Extra 2>&1 | Out-String
+        return [pscustomobject]@{ Code = $LASTEXITCODE; Log = $log; Dir = (Join-Path $packRoot $Output) }
+    }
+    function Get-ZipNames {
+        param([string]$Path)
+        $zip = [IO.Compression.ZipFile]::OpenRead($Path)
+        try { return [string[]]@($zip.Entries | ForEach-Object { $_.FullName }) } finally { $zip.Dispose() }
+    }
+    function Get-Sha256Hex {
+        param([string]$Path)
+        $hash = $null; $crc = [uint32]0; $length = [long]0
+        [NoxPack]::HashFile($Path, [ref]$hash, [ref]$crc, [ref]$length)
+        return $hash
+    }
+
+    # Closure: registered config keys, shader includes, Lua roots, project assets and scene references.
+    $rules = Get-NoxDependencyRules $packRoot
+    $packagedConfig = Read-NoxAssetJson (Join-Path $packRoot 'config/config.json')
+    $packagedConfig.first_scene = 'scenes/main.json'
+    $packagedConfig.scenes = @([pscustomobject]@{ path = 'scenes/main.json' })
+    $closure = Get-NoxPackageAssets -Root $packRoot -Scenes @('scenes/main.json') -Include @('config/config.json') -Project 'projects/fixture/project.json' -JsonOverrides @{ 'config/config.json' = $packagedConfig } -Rules $rules
+    foreach ($rel in @('scenes/main.json', 'models/car.gltf', 'models/car.bin', 'textures/car paint.png', 'textures/ui/icon.png',
+        'projects/fixture/project.json', 'projects/fixture/scripts/main.lua',
+        'projects/fixture/scripts/vehicle/nitrous.lua', 'projects/fixture/scripts/unused.lua', 'projects/fixture/data/tuning.json', 'images/logo.png')) {
+        Assert-Test ($closure.Files.ContainsKey($rel)) "Closure missing $rel"
+    }
+    foreach ($rel in @('hdrs/unused.hdr', 'projects/other/project.json', 'projects/other/scripts/main.lua', 'captures/run.png', 'tests/unrelated.txt', 'models/src/raw.blend', 'shaders/main.glsl', 'scenes/unrelated.json')) {
+        Assert-Test (-not $closure.Files.ContainsKey($rel)) "Closure wrongly includes $rel"
+    }
+    $shaderClosure = Get-NoxPackageAssets -Root $packRoot -Include @('shaders/main.glsl') -Rules $rules
+    Assert-Test ($shaderClosure.Files.ContainsKey('shaders/includes/common.glsl') -and $shaderClosure.Files.ContainsKey('shaders/includes/deep.glsl')) 'Shader include closure is incomplete'
+    Assert-Test ($shaderClosure.Reasons['shaders/includes/deep.glsl'] -match 'shader #include') 'Shader include reason missing'
+    Assert-Test ($closure.Reasons['models/car.bin'] -match 'models/car.gltf') 'glTF buffer reason missing'
+    Assert-Test ($closure.Reasons['projects/fixture/scripts/unused.lua'] -match 'Lua script root') 'Lua root reason missing'
+    Assert-Test ($closure.Files.ContainsKey('textures/fixture_cc0/a.png')) 'Generator input directory missing from the closure'
+    Assert-Test (@($closure.Warnings | Where-Object { $_ -match 'unclaimed path-like value .textures/loose/unknown.png.' }).Count -eq 1) 'Unclaimed scene value was not reported'
+    Assert-Test (-not $closure.Files.ContainsKey('textures/loose/unknown.png')) 'Unclaimed scene value was packed'
+
+    # Unsafe, missing and case-mismatched references fail the graph before anything is written.
+    $badDir = Join-Path $packRoot 'projects/bad'
+    New-Item -ItemType Directory -Path (Join-Path $badDir 'scripts') -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $badDir 'scripts/main.lua'), 'return 1')
+    foreach ($case in @(@('../outside.png', 'escapes repository'), @('textures/UI/icon.png', 'Case mismatch'))) {
+        $descriptor = '{"format":1,"name":"bad","runtime":"lua","api_version":1,"entry":"scripts/main.lua","script_roots":["scripts"],"data_roots":[],"assets":["ASSET"],"scenes":[],"native_extensions":[]}'
+        [IO.File]::WriteAllText((Join-Path $badDir 'project.json'), $descriptor.Replace('ASSET', $case[0]))
+        Expect-AssetFailure { Get-NoxPackageAssets -Root $packRoot -Project 'projects/bad/project.json' } $case[1]
+    }
+    [IO.File]::WriteAllText((Join-Path $packRoot 'shaders/broken.glsl'), "#include ""missing_part.glsl""`n")
+    Expect-AssetFailure { Get-NoxPackageAssets -Root $packRoot -Include 'shaders/broken.glsl' } 'Missing shader include'
+    Remove-Item -LiteralPath (Join-Path $packRoot 'shaders/broken.glsl') -Force
+    Expect-AssetFailure { [NoxPack]::ValidateName('a/../b') } 'relative segment'
+    Expect-AssetFailure { [NoxPack]::ValidateName('/abs.png') } 'Invalid pack entry name'
+    Expect-AssetFailure { [NoxPack]::ValidateName('win\path.png') } 'not portable'
+    $collide = New-Object 'System.Collections.Generic.List[NoxPackInput]'
+    foreach ($name in @('a/B.txt', 'a/b.txt')) {
+        $in = New-Object NoxPackInput; $in.Name = $name; $in.Bytes = [Text.Encoding]::ASCII.GetBytes('x'); $collide.Add($in)
+    }
+    Expect-AssetFailure { [NoxPack]::Build((Join-Path $packRoot 'collide.pak'), (Join-Path $packRoot 'build/cook-cache'), 'win-x64', $collide) } 'case-colliding'
+
+    # Ownership: a profile may not name an engine-owned path; references from game content resolve into engine.pak.
+    [IO.File]::WriteAllText((Join-Path $packRoot 'packaging/owner-clash.json'), '{"name":"Clash","game":false,"scenes":["scenes/main.json"],"include":["shaders"],"licenses":[]}')
+    $clash = Invoke-FixturePack -Output 'Package/Clash' -Profile (Join-Path $packRoot 'packaging/owner-clash.json')
+    Assert-Test ($clash.Code -ne 0 -and $clash.Log -match 'engine-owned') 'Profile naming an engine-owned path was accepted'
+    Assert-Test (-not (Test-Path -LiteralPath (Join-Path $packRoot 'Package/Clash'))) 'Ownership error modified the output'
+
+    # Packed build: structure, bootstrap, pack contents, ordering, timestamps and hashes.
+    $a = Invoke-FixturePack -Output 'Package/FixtureA'
+    Assert-Test ($a.Code -eq 0) "Packed fixture build failed: $($a.Log)"
+    foreach ($leaf in @('engine.pak', 'game.pak', 'nox_bootstrap.json', 'package-manifest.json', 'Play.cmd', 'Editor.cmd', 'Nox_Engine.exe')) {
+        Assert-Test (Test-Path -LiteralPath (Join-Path $a.Dir $leaf)) "Packed output missing $leaf"
+    }
+    foreach ($loose in @('shaders', 'scenes', 'models', 'textures', 'projects', 'hdrs', 'config')) {
+        Assert-Test (-not (Test-Path -LiteralPath (Join-Path $a.Dir $loose))) "Packed output contains loose asset root $loose"
+    }
+    $boot = Read-NoxAssetJson (Join-Path $a.Dir 'nox_bootstrap.json')
+    Assert-Test ($boot.mode -eq 'packed' -and $boot.format -eq 1 -and $boot.descriptor -eq 'projects/fixture/project.json') 'Bootstrap fields wrong'
+    $manifest = Read-NoxAssetJson (Join-Path $a.Dir 'package-manifest.json')
+    $indexText = (@($manifest.packs | ForEach-Object { $_.index_sha256 })) -join "`n"
+    Assert-Test ($boot.content_version -eq [NoxPack]::Sha256Text($indexText) -and $manifest.content_version -eq $boot.content_version) 'content_version is not the pack index hash'
+    $engineNames = Get-ZipNames (Join-Path $a.Dir 'engine.pak')
+    $gameNames = Get-ZipNames (Join-Path $a.Dir 'game.pak')
+    Assert-Test (@($engineNames | Where-Object { $gameNames -contains $_ }).Count -eq 0) 'A file is in both packs'
+    Assert-Test (($engineNames -contains 'shaders/includes/deep.glsl') -and ($engineNames -contains 'images/logo.png')) 'engine.pak missing engine-owned content'
+    Assert-Test (($gameNames -contains 'models/car.bin') -and ($gameNames -contains 'projects/fixture/scripts/unused.lua') -and ($gameNames -contains 'projects/fixture/data/tuning.json')) 'game.pak missing project content'
+    foreach ($bad in @('hdrs/unused.hdr', 'projects/other/scripts/main.lua', 'captures/run.png', 'tests/unrelated.txt', 'models/src/raw.blend')) {
+        Assert-Test (-not (($engineNames -contains $bad) -or ($gameNames -contains $bad))) "Pack contains excluded $bad"
+    }
+    foreach ($names in @($engineNames, $gameNames)) {
+        $sorted = [string[]]$names.Clone(); [Array]::Sort($sorted, [StringComparer]::Ordinal)
+        Assert-Test (($names -join '|') -eq ($sorted -join '|')) 'Pack entries are not ordinal-sorted'
+    }
+    $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $a.Dir 'game.pak'))
+    try {
+        $epoch = New-Object DateTime 1980, 1, 1, 0, 0, 0
+        foreach ($entry in $zip.Entries) {
+            Assert-Test ($entry.LastWriteTime.DateTime -eq $epoch) "Entry timestamp is not 1980-01-01: $($entry.FullName)"
+        }
+        $reader = New-Object IO.StreamReader($zip.GetEntry('config/config.json').Open())
+        try { $cfgText = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        Assert-Test (($cfgText | ConvertFrom-Json).first_scene -eq 'scenes/main.json') 'Packed config override was not applied'
+    }
+    finally { $zip.Dispose() }
+    $itemHash = @{}
+    foreach ($pack in $manifest.packs) {
+        foreach ($item in $pack.entries) { $itemHash[$item.path] = $item.sha256 }
+    }
+    Assert-Test ($itemHash['projects/fixture/data/tuning.json'] -eq (Get-Sha256Hex (Join-Path $packRoot 'projects/fixture/data/tuning.json'))) 'Manifest hash differs from source'
+    Assert-Test (@($manifest.packs | ForEach-Object { $_.entries } | Where-Object { $_.method -eq 8 }).Count -gt 0) 'No entry was deflated'
+    Assert-Test (@($manifest.packs | ForEach-Object { $_.entries } | Where-Object { $_.method -eq 0 }).Count -gt 0) 'No entry was stored'
+
+    # Reproducible: a second output folder reuses the cache and writes identical packs.
+    $b = Invoke-FixturePack -Output 'Package/FixtureB'
+    Assert-Test ($b.Code -eq 0 -and $b.Log -match 'engine\.pak: \d+ entries, [^\r\n]*0 cooked' -and $b.Log -match 'game\.pak: \d+ entries, [^\r\n]*0 cooked') 'Second output folder cooked entries that the cache holds'
+    Assert-Test ((Get-Sha256Hex (Join-Path $a.Dir 'engine.pak')) -eq (Get-Sha256Hex (Join-Path $b.Dir 'engine.pak'))) 'engine.pak is not byte-identical across runs'
+    Assert-Test ((Get-Sha256Hex (Join-Path $a.Dir 'game.pak')) -eq (Get-Sha256Hex (Join-Path $b.Dir 'game.pak'))) 'game.pak is not byte-identical across runs'
+
+    # No-op rerun: nothing cooked, packs and manifest keep their timestamps.
+    $stampFiles = @('engine.pak', 'game.pak', 'package-manifest.json', 'nox_bootstrap.json')
+    $stampBefore = @($stampFiles | ForEach-Object { (Get-Item -LiteralPath (Join-Path $a.Dir $_)).LastWriteTimeUtc })
+    Start-Sleep -Milliseconds 1200
+    $a2 = Invoke-FixturePack -Output 'Package/FixtureA'
+    Assert-Test ($a2.Code -eq 0 -and $a2.Log -match 'engine\.pak: [^\r\n]*0 cooked, unchanged' -and $a2.Log -match 'game\.pak: [^\r\n]*0 cooked, unchanged') 'No-op rerun cooked or rewrote a pack'
+    $stampAfter = @($stampFiles | ForEach-Object { (Get-Item -LiteralPath (Join-Path $a.Dir $_)).LastWriteTimeUtc })
+    for ($i = 0; $i -lt $stampBefore.Count; $i++) {
+        Assert-Test ($stampBefore[$i] -eq $stampAfter[$i]) "No-op rerun touched $($stampFiles[$i])"
+    }
+
+    # Corrupt cache entries (payload bytes, unreadable metadata) are discarded and rebuilt.
+    $cacheFiles = @(Get-ChildItem -LiteralPath (Join-Path $packRoot 'build/cook-cache') -File)
+    $payload = $cacheFiles | Where-Object { $_.Extension -eq '.bin' } | Select-Object -First 1
+    $meta = $cacheFiles | Where-Object { $_.Extension -eq '.meta' } | Select-Object -First 1
+    $bytes = [IO.File]::ReadAllBytes($payload.FullName)
+    $bytes[0] = [byte]($bytes[0] -bxor 0xFF)
+    [IO.File]::WriteAllBytes($payload.FullName, $bytes)
+    [IO.File]::WriteAllText($meta.FullName, 'not metadata')
+    $c = Invoke-FixturePack -Output 'Package/FixtureC'
+    Assert-Test ($c.Code -eq 0 -and $c.Log -match 'discarded') 'Corrupt cache entries were not reported'
+    Assert-Test ((Get-Sha256Hex (Join-Path $a.Dir 'game.pak')) -eq (Get-Sha256Hex (Join-Path $c.Dir 'game.pak'))) 'Recovered pack differs from the clean build'
+
+    # Changed inputs rewrite the pack from scratch (no appended archive); a fresh build matches it.
+    $before = (Get-Item -LiteralPath (Join-Path $a.Dir 'game.pak')).Length
+    [IO.File]::WriteAllText((Join-Path $packRoot 'models/car.gltf'), '{"buffers":[{"uri":"car.bin"}],"images":[]}')
+    $d = Invoke-FixturePack -Output 'Package/FixtureA'
+    Assert-Test ($d.Code -eq 0) 'Dependency-removal rebuild failed'
+    $after = (Get-Item -LiteralPath (Join-Path $a.Dir 'game.pak')).Length
+    Assert-Test ($after -lt $before) 'Removing a texture dependency did not shrink game.pak'
+    Assert-Test (-not ((Get-ZipNames (Join-Path $a.Dir 'game.pak')) -contains 'textures/car paint.png')) 'Removed dependency is still packed'
+    $fresh = Invoke-FixturePack -Output 'Package/FixtureE'
+    Assert-Test ((Get-Sha256Hex (Join-Path $a.Dir 'game.pak')) -eq (Get-Sha256Hex (Join-Path $fresh.Dir 'game.pak'))) 'Changed-input pack differs from a fresh build'
+
+    # Unmanaged files survive; previously managed loose files are removed only when unchanged.
+    [IO.File]::WriteAllText((Join-Path $a.Dir 'save.json'), '{"user":true}')
+    $loose = Invoke-FixturePack -Output 'Package/FixtureL' -Extra @('-Layout', 'loose')
+    Assert-Test ($loose.Code -eq 0 -and (Test-Path -LiteralPath (Join-Path $loose.Dir 'models/car.gltf'))) 'Loose layout did not write assets'
+    [IO.File]::WriteAllText((Join-Path $loose.Dir 'shaders/main.glsl'), '// user edit')
+    $back = Invoke-FixturePack -Output 'Package/FixtureL'
+    Assert-Test ($back.Code -eq 0) 'Switching a loose package to packed failed'
+    Assert-Test (-not (Test-Path -LiteralPath (Join-Path $loose.Dir 'models/car.gltf'))) 'Unchanged managed loose asset survived the switch to packed'
+    Assert-Test ((Get-Content -Raw -LiteralPath (Join-Path $loose.Dir 'shaders/main.glsl')) -match 'user edit') 'Edited managed loose file was deleted'
+    Assert-Test ($back.Log -match 'Preserved edited stale file') 'Preserved file was not reported'
+    Assert-Test (Test-Path -LiteralPath (Join-Path $a.Dir 'save.json')) 'Unmanaged file was deleted by repackaging'
+    Assert-Test (Test-Path -LiteralPath (Join-Path $loose.Dir 'engine.pak')) 'Packed switch did not write engine.pak'
+    Write-Host '[NOX] Packed-layout fixture tests passed.'
 
     Put-TestFile 'build/vs2022-x64/Release/textures/detail.png'
     Put-TestFile 'build/vs2022-x64/Release/textures/divergent.png' 'build-only'

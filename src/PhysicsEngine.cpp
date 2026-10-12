@@ -133,6 +133,7 @@ void PhysicsEngine::Update(float deltaTime) {
 
 	int substeps = 0;
 	while (m_accumulator >= m_config.fixedDeltaTime && substeps < m_config.maxSubSteps) {
+		if (m_substepCallback) m_substepCallback(m_config.fixedDeltaTime, substeps);
 		Step(m_config.fixedDeltaTime);
 		m_accumulator -= m_config.fixedDeltaTime;
 		substeps++;
@@ -147,6 +148,7 @@ void PhysicsEngine::Update(float deltaTime) {
 }
 
 void PhysicsEngine::SingleStep() {
+	if (m_substepCallback) m_substepCallback(m_config.fixedDeltaTime, 0);
 	Step(m_config.fixedDeltaTime);
 }
 

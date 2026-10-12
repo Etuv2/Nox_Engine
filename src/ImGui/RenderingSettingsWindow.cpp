@@ -4,6 +4,7 @@
 #include "../RenderContext.h"
 #include "../LightManager.h"
 #include "../passes/IndirectDiffusePass.h"
+#include "../assets/AssetIOJson.h"
 #include <IMGUI/imgui.h>
 #include <algorithm>
 #include <fstream>
@@ -59,8 +60,7 @@ namespace {
 	{
 		static const std::vector<ResolutionChoice> fileChoices = [] {
 			std::vector<ResolutionChoice> out;
-			std::ifstream in("config/render_presets.json");
-			const nlohmann::json doc = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+			const nlohmann::json doc = AssetIO::ReadJsonOrNull("config/render_presets.json");
 			if (doc.is_object() && doc.contains("resolutions") && doc["resolutions"].is_array()) {
 				for (const nlohmann::json& r : doc["resolutions"]) {
 					const int w = r.value("width", 0), h = r.value("height", 0);
@@ -1722,6 +1722,16 @@ void RenderingSettingsWindow::Render() {
 		}
 
 		// Quality Tab
+		if (ImGui::BeginTabItem("Look")) {
+			if (m_modularRenderer) {
+				DrawEngineLookSections(*m_modularRenderer);
+			}
+			else {
+				ImGui::TextDisabled("Renderer not connected");
+			}
+			ImGui::EndTabItem();
+		}
+
 		if (ImGui::BeginTabItem("Quality")) {
 			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Rendering Quality:");
 
@@ -1950,3 +1960,74 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	std::cout << "[RenderingSettings] Reset all settings to RenderContext defaults (including LPV)" << std::endl;
 }
 
+// Engine look controls (weather, wetness and rain, SSR, reflection probes, volumetric fog, grading, grain,
+// chromatic aberration, motion blur, physical camera and auto exposure, clustering). They edit the RenderContext
+// live and are not saved; scene "render_settings" give the starting values. The Rendering window's Look tab and
+// game editor panels use the same function.
+void DrawEngineLookSections(ModularRenderer& renderer)
+{
+	RenderContext& ctx = renderer.GetContext();
+		if (ImGui::CollapsingHeader("Camera / Exposure", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGui::Checkbox("Physical camera (photometric units)", &ctx.physicalCamera);
+			ImGui::Combo("Exposure mode", &ctx.exposureMode, "Manual EV100\0Auto (histogram)\0");
+			ImGui::SliderFloat("EV100 (manual / reset)", &ctx.exposureEV100, -4.0f, 16.0f, "%.2f");
+			ImGui::SliderFloat("Compensation (EV)", &ctx.exposureCompensationEV, -4.0f, 4.0f, "%.2f");
+			ImGui::DragFloatRange2("Auto EV range", &ctx.autoExposureMinEV100, &ctx.autoExposureMaxEV100, 0.1f, -6.0f, 18.0f);
+			ImGui::SliderFloat("Adapt to brighter (1/s)", &ctx.autoExposureSpeedUp, 0.1f, 10.0f);
+			ImGui::SliderFloat("Adapt to darker (1/s)", &ctx.autoExposureSpeedDown, 0.1f, 10.0f);
+		}
+		if (ImGui::CollapsingHeader("Weather")) {
+			ImGui::SliderFloat("Wetness", &ctx.weatherWetness, 0.0f, 1.0f);
+			ImGui::SliderFloat("Puddles", &ctx.weatherPuddles, 0.0f, 1.0f);
+			ImGui::SliderFloat("Rain", &ctx.weatherRain, 0.0f, 1.0f);
+			ImGui::SliderFloat("Puddle scale (m)", &ctx.weatherPuddleScale, 0.5f, 20.0f);
+			ImGui::SliderInt("Rain drops", &ctx.rainDropCount, 0, 200000);
+			ImGui::SliderFloat("Rain brightness", &ctx.rainBrightness, 0.0f, 4.0f);
+		}
+		if (ImGui::CollapsingHeader("Reflections")) {
+			ImGui::Checkbox("Screen-space reflections", &ctx.enableSSR);
+			ImGui::SliderFloat("SSR max roughness", &ctx.ssrMaxRoughness, 0.05f, 1.0f);
+			ImGui::SliderInt("SSR steps", &ctx.ssrMaxSteps, 8, 128);
+			ImGui::SliderInt("SSR resolve rays (4/9)", &ctx.ssrResolveSamples, 4, 9);
+			ImGui::SliderFloat("SSR temporal blend", &ctx.ssrTemporalBlend, 0.02f, 1.0f);
+			ImGui::Checkbox("Reflection probes", &ctx.enableReflectionProbes);
+			ImGui::SameLine();
+			if (ImGui::Button("Recapture")) {
+				renderer.RequestReflectionProbeRecapture();
+			}
+			ImGui::Text("Visible probes: %d", ctx.reflectionProbeCount);
+		}
+		if (ImGui::CollapsingHeader("Atmosphere")) {
+			ImGui::Checkbox("Volumetric fog", &ctx.enableVolumetricFog);
+			ImGui::SliderFloat("Density (1/m)", &ctx.fogDensity, 0.0f, 0.1f, "%.4f");
+			ImGui::SliderFloat("Height falloff (m)", &ctx.fogHeightFalloff, 0.5f, 100.0f);
+			ImGui::SliderFloat("Anisotropy g", &ctx.fogAnisotropy, -0.9f, 0.95f);
+			ImGui::SliderFloat("Noise", &ctx.fogNoiseStrength, 0.0f, 1.0f);
+			ImGui::ColorEdit3("Ambient (cd/m2)", &ctx.fogAmbientRadiance.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+			ImGui::SliderFloat("Distant density (1/m)", &ctx.fogDistantDensity, 0.0f, 0.05f, "%.4f");
+		}
+		if (ImGui::CollapsingHeader("Image Formation")) {
+			ImGui::Combo("Bloom mode", &ctx.bloomMode, "Additive (threshold)\0Energy conserving\0");
+			ImGui::SliderFloat("White balance (K)", &ctx.whiteBalanceTemperature, 1500.0f, 12000.0f, "%.0f");
+			ImGui::SliderFloat("Tint", &ctx.whiteBalanceTint, -1.0f, 1.0f);
+			ImGui::SliderFloat("Contrast", &ctx.gradeContrast, 0.5f, 1.8f);
+			ImGui::SliderFloat("Saturation", &ctx.gradeSaturation, 0.0f, 2.0f);
+			ImGui::DragFloat3("Shadow tint", &ctx.gradeShadowTint.x, 0.01f, -1.0f, 1.0f);
+			ImGui::DragFloat3("Highlight tint", &ctx.gradeHighlightTint.x, 0.01f, -1.0f, 1.0f);
+			ImGui::SliderFloat("Split tone", &ctx.gradeSplitToneStrength, 0.0f, 2.0f);
+			ImGui::SliderFloat("Vignette", &ctx.vignetteIntensity, 0.0f, 1.5f);
+			ImGui::SliderFloat("Film grain", &ctx.filmGrainIntensity, 0.0f, 0.15f);
+			ImGui::SliderFloat("Chromatic aberration (px)", &ctx.chromaticAberration, 0.0f, 6.0f);
+			ImGui::Checkbox("Output dither", &ctx.enableOutputDither);
+		}
+		if (ImGui::CollapsingHeader("Motion")) {
+			ImGui::Checkbox("Motion blur", &ctx.enableMotionBlur);
+			ImGui::SliderFloat("Shutter (s)", &ctx.motionBlurExposureTime, 0.0f, 0.05f, "%.4f");
+			ImGui::SliderFloat("Max blur (px @1440p)", &ctx.motionBlurMaxPixels, 4.0f, 96.0f);
+			ImGui::SliderInt("Samples", &ctx.motionBlurSamples, 4, 32);
+		}
+		if (ImGui::CollapsingHeader("Lighting / Culling")) {
+			ImGui::Checkbox("Clustered lighting", &ctx.enableClusteredLighting);
+			ImGui::Checkbox("Frustum culling", &ctx.enableFrustumCulling);
+		}
+}

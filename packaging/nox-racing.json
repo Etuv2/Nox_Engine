@@ -1,5 +1,6 @@
 {
   "name": "NOX_Racing",
+  "project": "projects/nox-racing/project.json",
   "game": true,
   "scenes": [
     "scenes/nfs_sprint.json",
@@ -8,15 +9,8 @@
     "scenes/nfs_dawn_street.json"
   ],
   "include": [
-    "shaders",
     "config/config.json",
-    "config/input_config.json",
-    "config/render_presets.json",
     "config/launch_presets.json",
-    "config/editor_settings.json",
-    "config/editor_layout.ini",
-    "fonts/solace",
-    "images/logo.png",
     "textures/cc0",
     "models/cc0/exterior_aircon_unit.glb",
     "models/cc0/fire_hydrant.glb",

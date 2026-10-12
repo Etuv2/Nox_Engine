@@ -1,4 +1,5 @@
 #include "RoadNetwork.h"
+#include "assets/AssetIOJson.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,8 +47,7 @@ bool RoadNetwork::Load(const json& j)
 	if (!j.is_object()) return false;
 	if (j.contains("file") && j["file"].is_string()) {
 		const std::string file = j["file"].get<std::string>();
-		std::ifstream in(file);
-		const json data = in ? json::parse(in, nullptr, false) : json();
+		const json data = AssetIO::ReadJsonOrNull(file);
 		if (!data.is_object() || !LoadInline(data)) {
 			std::cerr << "[RoadNetwork] Could not load " << file << std::endl;
 			Clear();

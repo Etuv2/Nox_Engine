@@ -1,6 +1,9 @@
 #include "RacingHUD.h"
 #include "RoadNetwork.h"
 #include "UiIconAtlas.h"
+#include "assets/AssetIO.h"
+#include <cstring>
+#include <optional>
 #include "ui/Pointer.h"
 
 #include <algorithm>
@@ -805,10 +808,9 @@ bool RacingHUD::LoadConfig(const std::string& path) {
 	m.cfgLoaded = true;
 	m.cfg = HudConfig();
 	m.raw = nlohmann::json::object();
-	std::ifstream in(m_configPath, std::ios::binary);
-	if (!in) return false;
-	std::stringstream ss;
-	ss << in.rdbuf();
+	const std::optional<std::string> hudText = AssetIO::ReadText(m_configPath);
+	if (!hudText) return false;
+	std::stringstream ss(*hudText);
 	try {
 		const nlohmann::json j = nlohmann::json::parse(ss.str());
 		if (!j.is_object()) return false;
@@ -914,12 +916,16 @@ bool RacingHUD::SaveConfig(const std::string& path) {
 		j["minimap"]["road_px"] = c.mapRoadPx;
 		j["minimap"]["radius_px"] = c.mapRadiusPx;
 
-		std::filesystem::path p(out);
-		if (p.has_parent_path()) {
+		// HUD panel saves are authoring writes: loose source tree only (packed builds refuse).
+		const std::optional<std::string> logicalOut = std::filesystem::path(out).is_absolute()
+			? AssetIO::LogicalFromPhysical(out) : AssetIO::Normalize(out);
+		const std::optional<std::filesystem::path> physicalOut = logicalOut ? AssetIO::SourcePath(*logicalOut) : std::nullopt;
+		if (!physicalOut) return false;
+		if (physicalOut->has_parent_path()) {
 			std::error_code ec;
-			std::filesystem::create_directories(p.parent_path(), ec);
+			std::filesystem::create_directories(physicalOut->parent_path(), ec);
 		}
-		std::ofstream f(out, std::ios::binary | std::ios::trunc);
+		std::ofstream f(*physicalOut, std::ios::binary | std::ios::trunc);
 		if (!f) return false;
 		f << j.dump(2) << "\n";
 		const bool ok = (bool)f;
@@ -938,8 +944,7 @@ void RacingHUD::LoadFonts() {
 	if (!io.Fonts) return;
 
 	auto exists = [](const std::string& p) {
-		std::error_code ec;
-		return !p.empty() && std::filesystem::exists(p, ec);
+		return !p.empty() && AssetIO::Exists(p);
 	};
 	// Fixed-size atlas fonts: bake a few sizes; draw code picks the nearest and scales from there.
 	auto addFamily = [&](const std::string& primary, const std::vector<float>& sizes,
@@ -950,7 +955,13 @@ void RacingHUD::LoadFonts() {
 		if (!exists(path)) path = m.cfg.fallbackFont;
 		if (exists(path)) {
 			for (float s : sizes) {
-				ImFont* f = io.Fonts->AddFontFromFileTTF(path.c_str(), s);
+				ImFont* f = nullptr;
+				if (AssetIO::Buffer bytes = AssetIO::ReadAll(path)) {
+					// ImGui frees this atlas-owned copy (IM_FREE); the caller's buffer does not outlive the call.
+					void* copy = IM_ALLOC(bytes->size());
+					std::memcpy(copy, bytes->data(), bytes->size());
+					f = io.Fonts->AddFontFromMemoryTTF(copy, static_cast<int>(bytes->size()), s);
+				}
 				if (f) {
 					outFonts.push_back(f);
 					outSizes.push_back(s);

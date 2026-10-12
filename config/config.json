@@ -2,6 +2,7 @@
   "windowWidth": 1920,
   "windowHeight": 1080,
   "windowTitle": "Nox Engine",
+  "gameWindowTitle": "NOX Racing - Night Sprint",
   "iconPath": "images\\logo.png",
   "environmentColor": [
     0.1,

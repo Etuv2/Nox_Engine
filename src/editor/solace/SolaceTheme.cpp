@@ -4,6 +4,8 @@
 // byte arrays and rasterizes with FreeType; NOX loads the TTFs from fonts/solace with stb_truetype.
 
 #include "editor/solace/SolaceInternal.h"
+#include "assets/AssetIO.h"
+#include <cstring>
 
 #include <string>
 
@@ -250,7 +252,13 @@ bool LoadFonts(float sizePx, float dpiScale, const char* fontDir)
     for (const FaceSpec& spec : k_faces)
     {
         const std::string path = dir.empty() ? std::string(spec.file) : dir + "/" + spec.file;
-        loaded[(int)spec.face] = io.Fonts->AddFontFromFileTTF(path.c_str(), body * spec.scale, &config);
+        loaded[(int)spec.face] = nullptr;
+        if (AssetIO::Buffer bytes = AssetIO::ReadAll(path)) {
+            // ImGui frees this atlas-owned copy (IM_FREE); the caller's buffer does not outlive the call.
+            void* copy = IM_ALLOC(bytes->size());
+            std::memcpy(copy, bytes->data(), bytes->size());
+            loaded[(int)spec.face] = io.Fonts->AddFontFromMemoryTTF(copy, static_cast<int>(bytes->size()), body * spec.scale, &config);
+        }
         if (!loaded[(int)spec.face])
             ok = false;
     }

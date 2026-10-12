@@ -3,6 +3,8 @@
 #include "ui/Pointer.h"
 #include "Core.h"
 #include "ImGuiInterface.h"
+#include "assets/AssetIO.h"
+#include "app/UserSettings.h"
 
 #include <fstream>
 #include <iostream>
@@ -84,12 +86,11 @@ MainWindow::~MainWindow() {
 
 bool MainWindow::LoadWindowConfiguration() {
     try {
-		std::ifstream configFile(".\\config\\config.json");
-        if (!configFile || !configFile.is_open()) {
-            std::cerr << "[MainWindow] Could not open config.json" << std::endl;
+        m_config = UserSettings::LoadJsonWithUserOverride("config/config.json", "settings/config.json");
+        if (!m_config.is_object()) {
+            std::cerr << "[MainWindow] Could not read config/config.json" << std::endl;
             return false;
         }
-        configFile >> m_config;
 
         m_windowWidth = m_config.value("windowWidth", 1920);
         m_windowHeight = m_config.value("windowHeight", 1080);
@@ -101,7 +102,8 @@ bool MainWindow::LoadWindowConfiguration() {
         if (!m_launch.window.empty()) m_windowMode = m_launch.window;
         if (m_launch.width > 0) m_windowWidth = m_launch.width;
         if (m_launch.height > 0) m_windowHeight = m_launch.height;
-        m_windowTitle = m_launch.mode == "game" ? "NOX Racing - Night Sprint" : "NOX Editor";
+        // The game window title is project content (config "gameWindowTitle"), not engine code.
+        m_windowTitle = m_launch.mode == "game" ? m_config.value("gameWindowTitle", m_windowTitle) : std::string("NOX Editor");
         // Overrides for scripted runs (e.g. native-resolution benchmarks).
         m_windowWidth = GetEnvInt("NOX_WINDOW_WIDTH", m_windowWidth);
         m_windowHeight = GetEnvInt("NOX_WINDOW_HEIGHT", m_windowHeight);
@@ -173,7 +175,10 @@ bool MainWindow::CreateGLContext() {
 
 void MainWindow::SetWindowIcon() {
     if (!m_iconPath.empty()) {
-        SDL_Surface* icon = IMG_Load(m_iconPath.c_str());
+        // The surface is decoded immediately, so the buffer only has to outlive IMG_Load_RW.
+        const AssetIO::Buffer bytes = AssetIO::ReadAll(m_iconPath);
+        SDL_RWops* rw = bytes ? SDL_RWFromConstMem(bytes->data(), static_cast<int>(bytes->size())) : nullptr;
+        SDL_Surface* icon = rw ? IMG_Load_RW(rw, 1) : nullptr;
         if (icon) {
             SDL_SetWindowIcon(m_window, icon);
             SDL_FreeSurface(icon);
@@ -236,6 +241,7 @@ bool MainWindow::Initialize() {
         options.mode = m_launch.mode == "game" ? Core::AppMode::Game : Core::AppMode::Editor;
         options.scene = m_launch.scene;
         options.quality = m_launch.quality;
+        options.project = m_launch.project;
         m_core->SetLaunchOptions(options);
     }
     if (!m_core->Initialize(m_window, m_windowWidth, m_windowHeight)) {

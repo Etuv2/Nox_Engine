@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "name": "fixture",
+  "runtime": "lua",
+  "api_version": 1,
+  "entry": "scripts/main.lua",
+  "script_roots": [
+    "scripts"
+  ],
+  "data_roots": [
+    "data"
+  ],
+  "assets": [
+    "textures/ui/icon.png"
+  ],
+  "scenes": [
+    "scenes/main.json"
+  ],
+  "native_extensions": []
+}

@@ -1,4 +1,5 @@
 #include "PerformanceRecorder.h"
+#include "assets/AssetIOUser.h"
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -131,18 +132,19 @@ void PerformanceRecorder::RecordFrame(float frameTime, float fps) {
 }
 
 bool PerformanceRecorder::ExportToCSV(const std::string& filepath) {
+    const std::string target = AssetIO::UserOutputPath(filepath, true); // per-user performance data
     if (m_frameCount == 0) {
         std::cerr << "[PerformanceRecorder] No data to export" << std::endl;
         return false;
     }
 
     // Ensure directory exists
-    if (!EnsureDirectoryExists(filepath)) {
+    if (!EnsureDirectoryExists(target)) {
         std::cerr << "[PerformanceRecorder] Failed to create output directory for: " << filepath << std::endl;
         return false;
     }
 
-    std::ofstream outFile(filepath);
+    std::ofstream outFile(target);
     if (!outFile.is_open()) {
         std::cerr << "[PerformanceRecorder] Failed to open file for writing: " << filepath << std::endl;
         return false;
@@ -229,12 +231,13 @@ bool PerformanceRecorder::ExportToCSV(const std::string& filepath) {
 }
 
 bool PerformanceRecorder::ExportToJSON(const std::string& filepath) {
+    const std::string target = AssetIO::UserOutputPath(filepath, true); // per-user performance data
     if (m_frameCount == 0) {
         std::cerr << "[PerformanceRecorder] No data to export" << std::endl;
         return false;
     }
 
-    if (!EnsureDirectoryExists(filepath)) {
+    if (!EnsureDirectoryExists(target)) {
         return false;
     }
 
@@ -361,7 +364,7 @@ bool PerformanceRecorder::ExportToJSON(const std::string& filepath) {
         exportData["frames"] = framesArray;
 
         // Write to file
-        std::ofstream outFile(filepath);
+        std::ofstream outFile(target);
         if (!outFile.is_open()) {
             std::cerr << "[PerformanceRecorder] Failed to open file for writing: " << filepath << std::endl;
             return false;

@@ -2,6 +2,8 @@
 
 #include "Texture.h"
 #include "json.hpp"
+#include "assets/AssetIOImage.h"
+#include "assets/AssetIOJson.h"
 #include "rhi/RHI.h"
 #include "stb_image.h"
 #include <algorithm>
@@ -27,8 +29,7 @@ bool UiIconAtlas::Load(const std::string& manifestPath, int size, const std::str
 	m_rects.clear();
 	m_aliases.clear();
 
-	std::ifstream in(manifestPath);
-	const json manifest = in ? json::parse(in, nullptr, false) : json();
+	const json manifest = AssetIO::ReadJsonOrNull(manifestPath);
 	if (!manifest.is_object()) {
 		std::cerr << "[UiIconAtlas] Missing manifest " << manifestPath << " (icons fall back to text/vector)" << std::endl;
 		return false;
@@ -44,7 +45,7 @@ bool UiIconAtlas::Load(const std::string& manifestPath, int size, const std::str
 	// Straight-alpha RGBA, top-left origin (no row flip, so the recorded UVs apply directly).
 	int w = 0, h = 0, n = 0;
 	stbi_set_flip_vertically_on_load_thread(0);
-	unsigned char* pixels = stbi_load(file.c_str(), &w, &h, &n, 4);
+	unsigned char* pixels = AssetIO::LoadImageFile(file, &w, &h, &n, 4);
 	if (!pixels) {
 		std::cerr << "[UiIconAtlas] Cannot load atlas " << file << std::endl;
 		return false;

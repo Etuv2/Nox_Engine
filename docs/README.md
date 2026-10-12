@@ -15,6 +15,7 @@ into coordinated implementation work with ownership and acceptance criteria.
 
 ## Engine contracts
 
+- [Asset I/O, bootstrap and writable data](asset_io.md): logical paths, packs, user and cache folders, project selection
 - [Engine/game boundary](engine_boundary.md)
 - [Rendering hardware interface](rhi.md)
 - [Principled shading contract](principled_shading_contract.md)

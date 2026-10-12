@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "comment": "engine.pak owns these logical paths (directories match every file below them). Profiles must not name them in scenes or include; references from game content resolve into engine.pak. Everything else reached from a profile is game.pak. config/config.json and config/launch_presets.json are per-distribution overrides and stay in game.pak. Licenses and the executable/DLLs stay loose.",
+  "paths": [
+    "shaders",
+    "fonts/solace",
+    "images/logo.png",
+    "config/input_config.json",
+    "config/render_presets.json",
+    "config/editor_settings.json",
+    "config/editor_layout.ini"
+  ]
+}

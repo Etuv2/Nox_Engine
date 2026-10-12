@@ -1,0 +1,199 @@
+{
+  "format": 1,
+  "actions": {
+    "throttle": {
+      "type": "axis",
+      "keys_positive": [
+        "W",
+        "Up"
+      ],
+      "pad_axis": "righttrigger",
+      "deadzone": 0.0
+    },
+    "brake": {
+      "type": "axis",
+      "keys_positive": [
+        "S",
+        "Down"
+      ],
+      "pad_axis": "lefttrigger",
+      "deadzone": 0.0
+    },
+    "steer": {
+      "type": "axis",
+      "keys_negative": [
+        "A",
+        "Left"
+      ],
+      "keys_positive": [
+        "D",
+        "Right"
+      ],
+      "pad_axis": "leftx",
+      "deadzone": 0.12
+    },
+    "handbrake": {
+      "type": "button",
+      "keys": [
+        "Space"
+      ],
+      "pad_buttons": [
+        "b"
+      ]
+    },
+    "nitrous": {
+      "type": "button",
+      "keys": [
+        "Left Shift",
+        "Right Shift"
+      ],
+      "pad_buttons": [
+        "a"
+      ]
+    },
+    "confirm": {
+      "type": "button",
+      "keys": [
+        "Return"
+      ],
+      "pad_buttons": [
+        "a"
+      ]
+    },
+    "start_event": {
+      "type": "button",
+      "keys": [
+        "PageDown"
+      ],
+      "pad_buttons": [
+        "x"
+      ]
+    },
+    "back": {
+      "type": "button",
+      "keys": [
+        "Backspace"
+      ],
+      "pad_buttons": [
+        "b"
+      ]
+    },
+    "pause": {
+      "type": "button",
+      "keys": [
+        "Escape",
+        "P"
+      ],
+      "pad_buttons": [
+        "start"
+      ]
+    },
+    "reset": {
+      "type": "button",
+      "keys": [
+        "R"
+      ]
+    },
+    "camera": {
+      "type": "button",
+      "keys": [
+        "C"
+      ],
+      "pad_buttons": [
+        "y"
+      ]
+    },
+    "map": {
+      "type": "button",
+      "keys": [
+        "M"
+      ],
+      "pad_buttons": [
+        "back"
+      ]
+    },
+    "recenter": {
+      "type": "button",
+      "keys": [
+        "F"
+      ],
+      "pad_buttons": [
+        "y"
+      ]
+    },
+    "menu_up": {
+      "type": "button",
+      "keys": [
+        "Up",
+        "W"
+      ],
+      "pad_buttons": [
+        "dpup"
+      ]
+    },
+    "menu_down": {
+      "type": "button",
+      "keys": [
+        "Down",
+        "S"
+      ],
+      "pad_buttons": [
+        "dpdown"
+      ]
+    },
+    "map_pan_x": {
+      "type": "axis",
+      "keys_negative": [
+        "A",
+        "Left"
+      ],
+      "keys_positive": [
+        "D",
+        "Right"
+      ],
+      "pad_axis": "leftx",
+      "deadzone": 0.12
+    },
+    "map_pan_y": {
+      "type": "axis",
+      "keys_negative": [
+        "W",
+        "Up"
+      ],
+      "keys_positive": [
+        "S",
+        "Down"
+      ],
+      "pad_axis": "lefty",
+      "deadzone": 0.12
+    },
+    "map_zoom_in": {
+      "type": "axis",
+      "pad_axis": "righttrigger",
+      "deadzone": 0.0
+    },
+    "map_zoom_out": {
+      "type": "axis",
+      "pad_axis": "lefttrigger",
+      "deadzone": 0.0
+    },
+    "map_cycle_prev": {
+      "type": "button",
+      "keys": [
+        "Q"
+      ],
+      "pad_buttons": [
+        "dpleft"
+      ]
+    },
+    "map_cycle_next": {
+      "type": "button",
+      "keys": [
+        "E"
+      ],
+      "pad_buttons": [
+        "dpright"
+      ]
+    }
+  }
+}

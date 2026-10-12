@@ -9,6 +9,8 @@
 #include <string>
 #include <set>
 #include <filesystem>
+#include <optional>
+#include "assets/AssetIO.h"
 
 // === Include Processing ===
 
@@ -57,14 +59,8 @@ inline bool ProcessIncludesRecursive(const std::string& filePath,
         return false;
     }
     
-    // Normalize the file path
-    std::string normalizedPath;
-    try {
-        normalizedPath = std::filesystem::canonical(filePath).string();
-    } catch (const std::filesystem::filesystem_error&) {
-        // File doesn't exist, try with original path
-        normalizedPath = filePath;
-    }
+    // Logical path (AssetIO normalization, no physical canonicalization) identifies the file
+    std::string normalizedPath = AssetIO::Normalize(filePath).value_or(filePath);
     
     // Check for circular includes
     if (includedFiles.count(normalizedPath) > 0) {
@@ -74,14 +70,13 @@ inline bool ProcessIncludesRecursive(const std::string& filePath,
     }
     includedFiles.insert(normalizedPath);
     
-    // Load the file
-    std::ifstream file(filePath);
-    if (!file.is_open()) {
+    // Load the file through the asset service
+    std::optional<std::string> fileText = AssetIO::ReadText(filePath);
+    if (!fileText) {
         std::cerr << "ERROR::SHADER::INCLUDE_FILE_NOT_FOUND: " << filePath << "\n";
         return false;
     }
-    
-    std::string baseDir = GetDirectoryFromPath(filePath);
+    std::istringstream file(*fileText);
     std::ostringstream result;
     std::string line;
     int lineNumber = 0;
@@ -108,7 +103,14 @@ inline bool ProcessIncludesRecursive(const std::string& filePath,
             }
             
             std::string includePath = line.substr(startQuote + 1, endQuote - startQuote - 1);
-            std::string fullIncludePath = NormalizePath(baseDir, includePath);
+            // Includes resolve relative to the including file's logical directory.
+            std::optional<std::string> resolved = AssetIO::ResolveRelative(filePath, includePath);
+            if (!resolved) {
+                std::cerr << "ERROR::SHADER::INVALID_INCLUDE: " << includePath << " at " << filePath
+                          << ":" << lineNumber << "\n";
+                return false;
+            }
+            std::string fullIncludePath = *resolved;
             
             // Add #line directive for better error messages (use forward slashes in path)
             std::string displayPath = NormalizePathForDisplay(fullIncludePath);
@@ -146,14 +148,12 @@ inline bool LoadShaderSourceWithIncludes(const std::string& filePath, std::strin
 // Helper: load entire file into a string (simple version without includes)
 inline bool LoadFileToString(const char* path, std::string& out)
 {
-    std::ifstream file(path);
-    if (!file.is_open()) {
+    std::optional<std::string> text = AssetIO::ReadText(path);
+    if (!text) {
         std::cerr << "ERROR::SHADER::FILE_NOT_FOUND: " << path << "\n";
         return false;
     }
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    out = ss.str();
+    out = std::move(*text);
     if (out.empty()) {
         std::cerr << "ERROR::SHADER::EMPTY_SHADER_CODE: " << path << "\n";
         return false;

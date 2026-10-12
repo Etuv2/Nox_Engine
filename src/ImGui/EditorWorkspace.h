@@ -60,6 +60,7 @@ public:
 	// EditorHost (panels and overlays of the registered application extensions).
 	bool IsPlaying() const override;
 	void RequestPlay() override;
+	void RequestStop() override;
 	void MarkDirty() override;
 	void PushUndo(const std::string& label, std::function<void()> undo, std::function<void()> redo) override;
 	void ApplyGameJson(const nlohmann::json& game) override;

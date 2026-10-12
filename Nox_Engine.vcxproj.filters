@@ -1,563 +1,1324 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    <Filter Include="External">
+      <UniqueIdentifier>{AAD6C15D-5F53-4689-8A03-603A779E9BF7}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files">
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
+    <Filter Include="Racing (legacy)">
+      <UniqueIdentifier>{2E03D911-B226-440B-84E0-241C2240716B}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Resource Files">
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Source Files\misc">
-      <UniqueIdentifier>{6530c34b-934e-4793-b0c2-a54448117930}</UniqueIdentifier>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
     </Filter>
-    <Filter Include="Source Files\scripts">
-      <UniqueIdentifier>{4a3b3159-c96a-4eae-bd56-85eef8f78290}</UniqueIdentifier>
+    <Filter Include="External\imgui">
+      <UniqueIdentifier>{3D374080-9EE1-4113-8651-BE61A3BEFAC4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders">
-      <UniqueIdentifier>{d4851c1f-fe8d-4680-ba28-382a2d37dbee}</UniqueIdentifier>
+    <Filter Include="External\lua">
+      <UniqueIdentifier>{DFEF4A85-847C-4587-8EC9-D7C199D2386E}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\imgui">
-      <UniqueIdentifier>{f4630520-f509-4fed-a58b-f936a77fc20c}</UniqueIdentifier>
+    <Filter Include="External\physfs">
+      <UniqueIdentifier>{DD9F9F0B-AEF2-41CA-BBC7-61A4F77229E0}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\shadow">
-      <UniqueIdentifier>{35e08240-7704-49de-a494-c43695802315}</UniqueIdentifier>
+    <Filter Include="Header Files\app">
+      <UniqueIdentifier>{ED2E2B84-A6BA-44A9-89E5-48CEDCB09A12}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\scenes">
-      <UniqueIdentifier>{b59db149-40a1-4479-9d16-dc6e0032fa43}</UniqueIdentifier>
+    <Filter Include="Header Files\assets">
+      <UniqueIdentifier>{7E36E7A2-8A53-4829-8F40-47F0F7FF2A45}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Lighting">
-      <UniqueIdentifier>{8cb78cb9-602c-4453-9a98-668e026cf5c4}</UniqueIdentifier>
+    <Filter Include="Header Files\audio">
+      <UniqueIdentifier>{F72A2EE4-1214-4AF1-9D8F-54C168213015}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Physics">
-      <UniqueIdentifier>{9d729307-f8c4-4b52-aa0c-ba329ea4ec9a}</UniqueIdentifier>
+    <Filter Include="Header Files\cook">
+      <UniqueIdentifier>{8C674DD1-18D7-411B-91D0-D63AA3A0243B}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Mesh">
-      <UniqueIdentifier>{de1f2adf-0f09-4779-9257-90d0823e5ba9}</UniqueIdentifier>
+    <Filter Include="Header Files\editor">
+      <UniqueIdentifier>{6C53619D-1C3A-4014-A709-E5A4C9F27A53}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Node">
-      <UniqueIdentifier>{3cb5cdec-9790-48db-9b40-e88c6ed33ddc}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\Engine">
-      <UniqueIdentifier>{412f94f3-987b-4212-bf3c-242e66273096}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\scripts\Lighting">
-      <UniqueIdentifier>{94c8f900-14fe-4468-83a2-50c231ff778e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\scripts\Nodes">
-      <UniqueIdentifier>{9c00d385-163d-4504-872c-bc3b60669718}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\scripts\Physics">
-      <UniqueIdentifier>{afc04c1e-f961-452d-9547-39cf0cb2361a}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\scripts\Engine">
-      <UniqueIdentifier>{20507206-7db4-42e3-ac2f-cb3b88820769}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\skybox">
-      <UniqueIdentifier>{f59872ec-440f-4d33-8dd0-f80b4eb9b541}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\main">
-      <UniqueIdentifier>{08661393-1b00-47c0-bec9-0513805ef334}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\gbuffer">
-      <UniqueIdentifier>{bf582560-2cd7-45b7-bd89-74a90604771b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\ssao">
-      <UniqueIdentifier>{f43e0448-b8ba-4fa3-883e-c213c2e6a3d4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\blur">
-      <UniqueIdentifier>{87a23106-66b3-4d3b-acb1-8937c565927b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\Physics\Colliders">
-      <UniqueIdentifier>{2ded909c-90b0-4ad5-a794-1c21ee85eeaf}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\bloom">
-      <UniqueIdentifier>{bfcae456-8edf-44cb-841a-3b94e8906864}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\gui">
-      <UniqueIdentifier>{ae766c97-f0e7-4046-a4c5-bfb86c972935}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\docs">
-      <UniqueIdentifier>{580a46a5-8c06-4144-975b-c3a25f2253e4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\Utils">
-      <UniqueIdentifier>{c6cd3fbf-0f40-4bbc-82f9-fb0f406f88b6}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\scripts\Utils">
-      <UniqueIdentifier>{25aa8bc2-8d42-4b40-9385-5173ffd4e209}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\shaders\taa">
-      <UniqueIdentifier>{18bed7ce-bcbf-43bf-b5c3-3a4184b4e6fc}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\scripts\Utils\ImGui">
-      <UniqueIdentifier>{85671cee-55a4-49ea-be78-49a9a1885f47}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\Utils\ImGui">
-      <UniqueIdentifier>{908d80d8-086c-476a-b2be-32731cfba2f6}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\misc\configs">
-      <UniqueIdentifier>{cb6af456-ea63-481a-9faf-2f09299a0697}</UniqueIdentifier>
+    <Filter Include="Header Files\ImGui">
+      <UniqueIdentifier>{1D936666-6B1E-4304-98DB-B0BF806B30B4}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\Input">
       <UniqueIdentifier>{a6031376-fe62-4146-b78b-b5b7c7840f7e}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Misc">
-      <UniqueIdentifier>{7d208a52-03cd-4d15-90f0-2193797187d9}</UniqueIdentifier>
+    <Filter Include="Header Files\passes">
+      <UniqueIdentifier>{84655455-D124-45C8-992F-80F8DA164F89}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\scripts\Input">
-      <UniqueIdentifier>{bd65bc9e-dbb1-4dc2-a526-2c89e63ad755}</UniqueIdentifier>
+    <Filter Include="Header Files\rhi">
+      <UniqueIdentifier>{2ED9F89E-BF10-4FE5-A9A5-EAE737322207}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\scripts\Engine\Renderer">
-      <UniqueIdentifier>{1282a606-3682-4112-816c-b2710b887b4b}</UniqueIdentifier>
+    <Filter Include="Header Files\scripting">
+      <UniqueIdentifier>{BE623711-4611-49F5-AB87-EE0BFCEF4262}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Engine\Renderer">
-      <UniqueIdentifier>{10ec5e2b-7598-4305-8a0f-6548ddc843da}</UniqueIdentifier>
+    <Filter Include="Header Files\surfel_gi">
+      <UniqueIdentifier>{CCEFA5D9-3AAD-4E15-9DC2-56F1F4ECB94D}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Engine\Renderer\Passes">
-      <UniqueIdentifier>{22217e50-c068-46d3-a561-ab6497c57cf4}</UniqueIdentifier>
+    <Filter Include="Header Files\ui">
+      <UniqueIdentifier>{DAAFE3FF-EBE4-4B62-8AC7-651BD88FC8FB}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\scripts\Engine\Renderer\Passes">
-      <UniqueIdentifier>{d878070f-5e0a-490e-88f9-6ae2330e70fb}</UniqueIdentifier>
+    <Filter Include="Header Files\vehicle">
+      <UniqueIdentifier>{7D94B7BA-2E38-4606-814E-EDECF71231A5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\ibl">
-      <UniqueIdentifier>{ed885bd9-4c0d-4f9c-953f-3b0387facf24}</UniqueIdentifier>
+    <Filter Include="Source Files\app">
+      <UniqueIdentifier>{86B79605-E753-4BD0-B242-A43D7C89A290}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\global_illumination">
-      <UniqueIdentifier>{226f7028-9e02-48be-bec5-75a8459cf490}</UniqueIdentifier>
+    <Filter Include="Source Files\assets">
+      <UniqueIdentifier>{6C87F0D6-99DB-460B-AB7F-BBC524099AD3}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\global_illumination\lpv">
-      <UniqueIdentifier>{80aa6f56-ad84-4364-9a26-68e23d29cbde}</UniqueIdentifier>
+    <Filter Include="Source Files\audio">
+      <UniqueIdentifier>{8F6B980E-755D-4675-9A72-513F2D039412}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\raytrace">
-      <UniqueIdentifier>{ae9325ff-bf98-4fc3-9515-e0567a5dc20e}</UniqueIdentifier>
+    <Filter Include="Source Files\cook">
+      <UniqueIdentifier>{7145932F-AD3B-42D5-9476-B0C3AE4F2A82}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\global_illumination\indirect_diffuse">
-      <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
+    <Filter Include="Source Files\editor">
+      <UniqueIdentifier>{FDAC5074-BFE5-4A22-93F1-7F4C441EDBBD}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\svgf">
-      <UniqueIdentifier>{21d375c6-8631-41c1-b1bc-5e249e71a0a5}</UniqueIdentifier>
+    <Filter Include="Source Files\ImGui">
+      <UniqueIdentifier>{A735818C-3438-4672-A5BE-583FF73C021B}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\debug">
-      <UniqueIdentifier>{63b9d3e5-0692-4105-9dc2-5a5cf52406e5}</UniqueIdentifier>
+    <Filter Include="Source Files\Input">
+      <UniqueIdentifier>{7B8DC30B-E11F-4D76-8710-6631CE2A25BE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc">
+      <UniqueIdentifier>{6530c34b-934e-4793-b0c2-a54448117930}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\passes">
+      <UniqueIdentifier>{AE10EC70-8261-4787-B53D-6046C5601AA7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\rhi">
+      <UniqueIdentifier>{B3EE0421-A0D9-4D90-9841-5539E272BBAB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scripting">
+      <UniqueIdentifier>{710BEFF6-59D3-44F8-AA47-D791219A5232}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\surfel_gi">
+      <UniqueIdentifier>{9887BF5E-5E8B-408B-863C-56A49FF5971C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ui">
+      <UniqueIdentifier>{B525C82B-E4FC-4FF3-A927-E5B0129042C8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\vehicle">
+      <UniqueIdentifier>{82900FFC-96E7-430D-A3C3-B9A0D6B80D6B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\editor\solace">
+      <UniqueIdentifier>{46B69FD2-1D32-4724-AFEA-E70005CD3227}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\rhi\gl">
+      <UniqueIdentifier>{AA4E25F8-D0E8-41FB-A8BC-1FBD8113CCDD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\editor\solace">
+      <UniqueIdentifier>{41546F13-EC42-4B77-8F26-42BE6FFAA3ED}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\configs">
+      <UniqueIdentifier>{cb6af456-ea63-481a-9faf-2f09299a0697}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\docs">
+      <UniqueIdentifier>{580a46a5-8c06-4144-975b-c3a25f2253e4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\scenes">
+      <UniqueIdentifier>{b59db149-40a1-4479-9d16-dc6e0032fa43}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\rhi\gl">
+      <UniqueIdentifier>{B9A7547D-0804-462B-908F-22084E7447A8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\bloom">
+      <UniqueIdentifier>{bfcae456-8edf-44cb-841a-3b94e8906864}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\blur">
+      <UniqueIdentifier>{87a23106-66b3-4d3b-acb1-8937c565927b}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\misc\shaders\common">
       <UniqueIdentifier>{c1aed866-4dfe-422d-9948-5859e03d909c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\ECS">
-      <UniqueIdentifier>{789fcda5-9019-426f-abcc-bff5ff2e2086}</UniqueIdentifier>
+    <Filter Include="Source Files\misc\shaders\debug">
+      <UniqueIdentifier>{63b9d3e5-0692-4105-9dc2-5a5cf52406e5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\scripts\ECS">
-      <UniqueIdentifier>{b097a689-e959-430a-887b-e292492972d4}</UniqueIdentifier>
+    <Filter Include="Source Files\misc\shaders\gbuffer">
+      <UniqueIdentifier>{bf582560-2cd7-45b7-bd89-74a90604771b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\gui">
+      <UniqueIdentifier>{ae766c97-f0e7-4046-a4c5-bfb86c972935}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\ibl">
+      <UniqueIdentifier>{ed885bd9-4c0d-4f9c-953f-3b0387facf24}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\main">
+      <UniqueIdentifier>{08661393-1b00-47c0-bec9-0513805ef334}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\raytrace">
+      <UniqueIdentifier>{ae9325ff-bf98-4fc3-9515-e0567a5dc20e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\shadow">
+      <UniqueIdentifier>{35e08240-7704-49de-a494-c43695802315}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\skybox">
+      <UniqueIdentifier>{f59872ec-440f-4d33-8dd0-f80b4eb9b541}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\ssao">
+      <UniqueIdentifier>{f43e0448-b8ba-4fa3-883e-c213c2e6a3d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\svgf">
+      <UniqueIdentifier>{21d375c6-8631-41c1-b1bc-5e249e71a0a5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\taa">
+      <UniqueIdentifier>{18bed7ce-bcbf-43bf-b5c3-3a4184b4e6fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\global_illumination\indirect_diffuse">
+      <UniqueIdentifier>{4440303e-c3ed-4d47-8202-0c5d4b44e9bc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc\shaders\global_illumination\lpv">
+      <UniqueIdentifier>{80aa6f56-ad84-4364-9a26-68e23d29cbde}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\misc\shaders\global_illumination\surfel">
       <UniqueIdentifier>{ec89664a-e4e3-4a81-8dc3-4b96b054ffd6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="external\lua-5.5.1\src\lapi.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lauxlib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lbaselib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lcode.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lcorolib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lctype.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldblib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldebug.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldo.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldump.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lfunc.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lgc.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\linit.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\liolib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\llex.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lmathlib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lmem.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\loadlib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lobject.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lopcodes.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\loslib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lparser.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lstate.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lstring.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lstrlib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ltable.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ltablib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ltm.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lundump.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lutf8lib.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lvm.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lzio.c">
+      <Filter>External\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs.c">
+      <Filter>External\physfs</Filter>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_archiver_dir.c">
+      <Filter>External\physfs</Filter>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_archiver_unpacked.c">
+      <Filter>External\physfs</Filter>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_archiver_zip.c">
+      <Filter>External\physfs</Filter>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_byteorder.c">
+      <Filter>External\physfs</Filter>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_platform_windows.c">
+      <Filter>External\physfs</Filter>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_unicode.c">
+      <Filter>External\physfs</Filter>
+    </ClCompile>
     <ClCompile Include="include\IMGUI\imgui.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\imgui_demo.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\imgui_draw.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\imgui_impl_opengl3.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\imgui_impl_sdl2.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\imgui_impl_sdlrenderer2.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\imgui_tables.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\imgui_widgets.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PointLight.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SpotLight.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ShadowMapper.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\DirectionalLight.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SceneGraph.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SceneNode.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Animation.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\FrustumCulling.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGuiInterface.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\impl.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\MainWindow.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ModelManager.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\main.cpp">
-      <Filter>Source Files\scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Scene.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\AudioNode.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
     <ClCompile Include="include\IMGUI\ImGuizmo.cpp">
-      <Filter>Source Files\misc\imgui</Filter>
+      <Filter>External\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="src\Skybox.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\EnvironmentMap.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\FrameBuffer.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Camera.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SceneLoader.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SceneRuntimeData.cpp">
-      <Filter>Source Files\scripts\ECS</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Texture.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\GuiNode.cpp">
-      <Filter>Source Files\scripts\Nodes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\BaseLight.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\LightNode.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\StudioLighting.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SimdKernels.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\BVH.cpp">
-      <Filter>Source Files\scripts\Utils</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RayCast.cpp">
-      <Filter>Source Files\scripts\Utils</Filter>
-    </ClCompile>
-    <ClCompile Include="src\GizmoRayCast.cpp">
-      <Filter>Source Files\scripts\Utils</Filter>
-    </ClCompile>
-    <ClCompile Include="src\DefaultTextures.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\LightManager.cpp">
-      <Filter>Source Files\scripts\Lighting</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\BaseWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\CameraWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\HelpWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\LightingWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\PerformanceWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\RenderingSettingsWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\StatusWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\AnimationController.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Input\InputIntegration.cpp">
-      <Filter>Source Files\scripts\Input</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Input\InputSystem.cpp">
-      <Filter>Source Files\scripts\Input</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ComputeShader.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ModularRenderer.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\BloomPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\GBufferPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\LightingPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\PostProcessPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\ShadowPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\SSAOPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\TAAPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\LightClusterPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\ExposurePass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\SSRPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\ReflectionProbePass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\VolumetricFogPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\MotionBlurPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\RainPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ProceduralStreetKit.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\NightStreetPacks.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\TextureArrayBuilder.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\GpuBuffer.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\rhi\RHI.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\rhi\gl\GLDevice.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\DecalPass.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\LensFlarePass.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\BenchmarkRunner.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SceneRenderSettings.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RoadNetwork.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\CollisionWorld.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\UiIconAtlas.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\GameSession.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\DriveAudio.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RacingHUD.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\WorldMapUI.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\EditorWorkspace.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\ConsoleLog.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\editor\ProcessRunner.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\editor\solace\SolaceControls.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\editor\solace\SolaceCore.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\editor\solace\SolaceFeedback.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\editor\solace\SolaceIcons.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\editor\solace\SolaceSvg.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\editor\solace\SolaceTheme.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\DriveMode.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\TransparentForwardPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\LPVPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\IndirectDiffusePass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\SurfelGIManager.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\SurfelGIPipeline.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\surfel_gi\SurfelGIResources.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\GUIPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\RTPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\BVHBuilder.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\AnimationSystem.cpp">
-      <Filter>Source Files\scripts\ECS</Filter>
-    </ClCompile>
-    <ClCompile Include="src\HierarchySystem.cpp">
-      <Filter>Source Files\scripts\ECS</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RenderSystem.cpp">
-      <Filter>Source Files\scripts\ECS</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\StateExportWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PerformanceRecorder.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RuntimeStateManager.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\GuiAnimation.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\CrashHandler.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Core.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\TransformSystem.cpp">
-      <Filter>Source Files\scripts\ECS</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ComponentManager.cpp">
-      <Filter>Source Files\scripts\ECS</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\DebugBBoxPass.cpp">
-      <Filter>Source Files\scripts\Engine\Renderer\Passes</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RigidBody.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RTSceneResources.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PhysicsBVH.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PhysicsCollision.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
-    </ClCompile>
-    <ClCompile Include="src\PhysicsEngine.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Contact.cpp">
-      <Filter>Source Files\scripts\Physics</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImGui\AnimationWindow.cpp">
-      <Filter>Source Files\scripts\Utils\ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\passes\TransformHistoryPass.cpp">
+    <ClCompile Include="src\Animation.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\GameModule.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
+    <ClCompile Include="src\AnimationController.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\SceneExtensions.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
+    <ClCompile Include="src\AnimationSystem.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\NoxRacingGame.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
+    <ClCompile Include="src\app\ProjectBootstrap.cpp">
+      <Filter>Source Files\app</Filter>
     </ClCompile>
-    <ClCompile Include="src\FrameProfiler.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
+    <ClCompile Include="src\app\UserSettings.cpp">
+      <Filter>Source Files\app</Filter>
     </ClCompile>
-    <ClCompile Include="src\ui\Pointer.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
+    <ClCompile Include="src\assets\AssetIO.cpp">
+      <Filter>Source Files\assets</Filter>
+    </ClCompile>
+    <ClCompile Include="src\assets\AssetIOGltf.cpp">
+      <Filter>Source Files\assets</Filter>
+    </ClCompile>
+    <ClCompile Include="src\assets\AssetIOImage.cpp">
+      <Filter>Source Files\assets</Filter>
+    </ClCompile>
+    <ClCompile Include="src\assets\AssetIOSdl.cpp">
+      <Filter>Source Files\assets</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\ProceduralVehicleAudio.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AudioNode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BaseLight.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BenchmarkRunner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BVH.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BVHBuilder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CollisionWorld.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ComponentManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ComputeShader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Contact.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\cook\CookedResults.cpp">
+      <Filter>Source Files\cook</Filter>
+    </ClCompile>
+    <ClCompile Include="src\cook\Sha256.cpp">
+      <Filter>Source Files\cook</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CrashHandler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DefaultTextures.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DirectionalLight.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DriveAudio.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DriveMode.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\ProcessRunner.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\solace\SolaceControls.cpp">
+      <Filter>Source Files\editor\solace</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\solace\SolaceCore.cpp">
+      <Filter>Source Files\editor\solace</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\solace\SolaceFeedback.cpp">
+      <Filter>Source Files\editor\solace</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\solace\SolaceIcons.cpp">
+      <Filter>Source Files\editor\solace</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\solace\SolaceSvg.cpp">
+      <Filter>Source Files\editor\solace</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\solace\SolaceTheme.cpp">
+      <Filter>Source Files\editor\solace</Filter>
     </ClCompile>
     <ClCompile Include="src\EditorExtensions.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\EnvironmentMap.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Framebuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FrameProfiler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FrustumCulling.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\GameEditorPanels.cpp">
-      <Filter>Source Files\scripts\Engine</Filter>
+      <Filter>Racing (legacy)</Filter>
     </ClCompile>
+    <ClCompile Include="src\GameModule.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GameSession.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GizmoRayCast.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GpuBuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GuiAnimation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GuiNode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\HierarchySystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\AnimationWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\BaseWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\CameraWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\ConsoleLog.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\EditorWorkspace.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\HelpWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\LightingWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\PerformanceWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\RenderingSettingsWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\StateExportWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\StatusWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGuiInterface.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\impl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Input\InputIntegration.cpp">
+      <Filter>Source Files\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Input\InputSystem.cpp">
+      <Filter>Source Files\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\InteriorAtlasManifest.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\LegacyNfsPolicy.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\LightManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\LightNode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MainWindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ModelManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ModularRenderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\NightStreetPacks.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\NoxRacingGame.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\BloomPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\DebugBBoxPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\DecalPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ExposurePass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\GBufferPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\GUIPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\IndirectDiffusePass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\LensFlarePass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\LightClusterPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\LightingPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\LPVPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\MotionBlurPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\PostProcessPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\RainPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ReflectionProbePass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\RTPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ShadowPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\SSAOPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\SSRPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\SurfelGIManager.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\SurfelGIPipeline.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\TAAPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\TransformHistoryPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\TransparentForwardPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\VehicleFXPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\VolumetricFogPass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PerformanceRecorder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsBVH.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsCollision.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PhysicsEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PlayWorldSnapshot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PointLight.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ProceduralStreetKit.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RacingHUD.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RayCast.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RenderSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\rhi\gl\GLDevice.cpp">
+      <Filter>Source Files\rhi\gl</Filter>
+    </ClCompile>
+    <ClCompile Include="src\rhi\RHI.cpp">
+      <Filter>Source Files\rhi</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RigidBody.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RoadNetwork.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RTSceneResources.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RuntimeStateManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Scene.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneExtensions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneGraph.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneNode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneRenderSettings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SceneRuntimeData.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaEditor.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaEditorPanel.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaGameModule.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaInput.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaProject.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaReload.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaRuntime.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaServices.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaUi.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaVehicleBindings.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaVehiclePolicy.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaWorld.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ShadowMapper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SimdKernels.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Skybox.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SpotLight.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\StudioLighting.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\surfel_gi\SurfelGIResources.cpp">
+      <Filter>Source Files\surfel_gi</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Texture.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TextureArrayBuilder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TransformSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\Pointer.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UiIconAtlas.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vehicle\VehiclePolicyTrace.cpp">
+      <Filter>Source Files\vehicle</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vehicle\VehicleService.cpp">
+      <Filter>Source Files\vehicle</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VehicleFX.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\WorldMapUI.cpp">
+      <Filter>Racing (legacy)</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaData.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Animation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AnimationSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app\ProjectBootstrap.h">
+      <Filter>Header Files\app</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app\UserSettings.h">
+      <Filter>Header Files\app</Filter>
+    </ClInclude>
+    <ClInclude Include="src\assets\AssetIO.h">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="src\assets\AssetIOGltf.h">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="src\assets\AssetIOImage.h">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="src\assets\AssetIOJson.h">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="src\assets\AssetIOSdl.h">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="src\assets\AssetIOUser.h">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\ProceduralVehicleAudio.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AudioNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AudioPlayer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\BaseLight.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\BenchmarkRunner.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\bend_sss_cpu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\BVH.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\BVHBuilder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Camera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Collider.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CollisionWorld.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComponentManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComponentTypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ComputeShader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Contact.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\cook\CookedResults.h">
+      <Filter>Header Files\cook</Filter>
+    </ClInclude>
+    <ClInclude Include="src\cook\Sha256.h">
+      <Filter>Header Files\cook</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CrashHandler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DefaultTextures.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DirectionalLight.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DriveAudio.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DriveMode.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\ProcessRunner.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\solace\SolaceInternal.h">
+      <Filter>Header Files\editor\solace</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\solace\SolaceUI.h">
+      <Filter>Header Files\editor\solace</Filter>
+    </ClInclude>
+    <ClInclude Include="src\EditorExtensions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\EnvironmentMap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\FrameBuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\FrameProfiler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\FrustumCulling.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GameEditorPanels.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GameModule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GameSession.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GizmoRayCast.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GpuBuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GuiAnimation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GuiEventBus.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GuiNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\HierarchySystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\AnimationWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\BaseWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\CameraWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\ConsoleLog.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\EditorWorkspace.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\HelpWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\ImGuiWindowManager.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\LightingWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\PerformanceWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\RenderingSettingsWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\SceneHierarchyWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\StateExportWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\StatusWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGuiInterface.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImguiStyle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Input\InputActions.h">
+      <Filter>Header Files\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Input\InputIntegration.h">
+      <Filter>Header Files\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Input\InputSystem.h">
+      <Filter>Header Files\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\InteriorAtlasManifest.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\json.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\LegacyNfsPolicy.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\LightManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\LightNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MainWindow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MDIBatch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MeshComponent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ModelManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ModularRenderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\NightStreetPacks.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\NoxRacingGame.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\BloomPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\DebugBBoxPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\DecalPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ExposurePass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\GBufferPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\GUIPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\IndirectDiffusePass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LensFlarePass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LightClusterPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LightingPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\LPVPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\MotionBlurPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\PassLogging.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\PostProcessPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\RainPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ReflectionProbePass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\RTPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ScreenSpaceShadowPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ShadowPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SSAOPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SSRPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SurfelGIManager.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\SurfelGIPipeline.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\TAAPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\TransformHistoryPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\TransparentForwardPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\VehicleFXPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\VolumetricFogPass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PerformanceRecorder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PhysicsBVH.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PhysicsCollision.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PhysicsEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PlayWorldSnapshot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PointLight.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\PresentTarget.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ProceduralStreetKit.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RacingHUD.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RayCast.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ReflectionProbe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RenderContext.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RenderPass.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RenderSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\rhi\gl\GLDevice.h">
+      <Filter>Header Files\rhi\gl</Filter>
+    </ClInclude>
+    <ClInclude Include="src\rhi\RHI.h">
+      <Filter>Header Files\rhi</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RigidBody.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RoadNetwork.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RTSceneResources.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RTStructures.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\RuntimeStateManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Scene.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneExtensions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneGraph.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneLoader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneRenderExtras.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneRenderSettings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SceneRuntimeData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ScreenQuad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaData.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaEditor.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaEditorPanel.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaGameModule.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaInput.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaProject.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaReload.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaRuntime.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaServices.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaUi.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaVehicleBindings.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaVehiclePolicy.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaWorld.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ShaderLoader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ShadowMapper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SimdKernels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SimulationConfig.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Skybox.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SpotLight.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\stb_image.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\stb_image_write.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\StudioLighting.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\surfel_gi\SurfelGIResources.h">
+      <Filter>Header Files\surfel_gi</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TextureArrayBuilder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TextureUnits.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\tiny_gltf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TransformGpuContract.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TransformSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\Pointer.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\UiIconAtlas.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vehicle\VehicleMath.h">
+      <Filter>Header Files\vehicle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vehicle\VehiclePolicy.h">
+      <Filter>Header Files\vehicle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vehicle\VehiclePolicyTrace.h">
+      <Filter>Header Files\vehicle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vehicle\VehicleService.h">
+      <Filter>Header Files\vehicle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vehicle\VehicleTypes.h">
+      <Filter>Header Files\vehicle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\VehicleFX.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vertex.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\WorldMapUI.h">
+      <Filter>Racing (legacy)</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\shadow_frag.glsl">
@@ -903,418 +1664,5 @@
     <None Include="shaders\surfel_gi\upscale_filter.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="src\PointLight.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SpotLight.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ShadowMapper.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\DirectionalLight.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\MeshComponent.h">
-      <Filter>Header Files\Mesh</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ModelManager.h">
-      <Filter>Header Files\Mesh</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Scene.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SceneGraph.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SceneNode.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Animation.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Camera.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\FrustumCulling.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGuiInterface.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\MainWindow.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ShaderLoader.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Vertex.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\stb_image.h">
-      <Filter>Header Files\Misc</Filter>
-    </ClInclude>
-    <ClInclude Include="src\stb_image_write.h">
-      <Filter>Header Files\Misc</Filter>
-    </ClInclude>
-    <ClInclude Include="src\json.hpp">
-      <Filter>Header Files\Misc</Filter>
-    </ClInclude>
-    <ClInclude Include="src\tiny_gltf.h">
-      <Filter>Header Files\Misc</Filter>
-    </ClInclude>
-    <ClInclude Include="src\AudioPlayer.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SceneLoader.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\AudioNode.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImguiStyle.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Skybox.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\EnvironmentMap.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\FrameBuffer.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ScreenQuad.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Collider.h">
-      <Filter>Header Files\Physics\Colliders</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Contact.h">
-      <Filter>Header Files\Physics\Colliders</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Texture.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GuiNode.h">
-      <Filter>Header Files\Node</Filter>
-    </ClInclude>
-    <ClInclude Include="src\BVH.h">
-      <Filter>Header Files\Utils</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RayCast.h">
-      <Filter>Header Files\Utils</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GizmoRayCast.h">
-      <Filter>Header Files\Utils</Filter>
-    </ClInclude>
-    <ClInclude Include="src\BaseLight.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\LightManager.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\LightNode.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\StudioLighting.h">
-      <Filter>Header Files\Lighting</Filter>
-    </ClInclude>
-    <ClInclude Include="src\MDIBatch.h">
-      <Filter>Header Files\Mesh</Filter>
-    </ClInclude>
-    <ClInclude Include="src\DefaultTextures.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\TextureUnits.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\HelpWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\ImGuiWindowManager.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\LightingWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\PerformanceWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\RenderingSettingsWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\SceneHierarchyWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\StatusWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\CameraWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\BaseWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Input\InputActions.h">
-      <Filter>Header Files\Input</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Input\InputIntegration.h">
-      <Filter>Header Files\Input</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Input\InputSystem.h">
-      <Filter>Header Files\Input</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ComputeShader.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ModularRenderer.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\PostProcessPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\ShadowPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\SSAOPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\TAAPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\LightClusterPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\ExposurePass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\SSRPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\ReflectionProbePass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\VolumetricFogPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\MotionBlurPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\RainPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ProceduralStreetKit.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\NightStreetPacks.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\TextureArrayBuilder.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GpuBuffer.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\rhi\RHI.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\rhi\gl\GLDevice.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SceneRenderExtras.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\DecalPass.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\LensFlarePass.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\BenchmarkRunner.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SceneRenderSettings.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RoadNetwork.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\CollisionWorld.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\UiIconAtlas.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GameSession.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\DriveAudio.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RacingHUD.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\WorldMapUI.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\PresentTarget.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\EditorWorkspace.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\ConsoleLog.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\editor\ProcessRunner.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\editor\solace\SolaceUI.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\editor\solace\SolaceInternal.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\DriveMode.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ReflectionProbe.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\TransparentForwardPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\BloomPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\GBufferPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\LightingPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RenderContext.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RenderPass.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\ScreenSpaceShadowPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\LPVPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\IndirectDiffusePass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\SurfelGIManager.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\surfel_gi\SurfelGIResources.h">
-      <Filter>Header Files\Engine\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\SurfelGIPipeline.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\RTPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\GUIPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\BVHBuilder.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RTStructures.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RTSceneResources.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\AnimationSystem.h">
-      <Filter>Header Files\ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="src\HierarchySystem.h">
-      <Filter>Header Files\ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RenderSystem.h">
-      <Filter>Header Files\ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="src\passes\DebugBBoxPass.h">
-      <Filter>Header Files\Engine\Renderer\Passes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\PhysicsEngine.h">
-      <Filter>Header Files\Physics</Filter>
-    </ClInclude>
-    <ClInclude Include="src\PhysicsCollision.h">
-      <Filter>Header Files\Physics</Filter>
-    </ClInclude>
-    <ClInclude Include="src\PhysicsBVH.h">
-      <Filter>Header Files\Physics</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RigidBody.h">
-      <Filter>Header Files\Physics</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SimulationConfig.h">
-      <Filter>Header Files\Physics</Filter>
-    </ClInclude>
-    <ClInclude Include="src\CrashHandler.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Core.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GuiAnimation.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GuiEventBus.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\PerformanceRecorder.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\RuntimeStateManager.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\StateExportWindow.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ImGui\AnimationWindow.h">
-      <Filter>Header Files\Utils\ImGui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\TransformSystem.h">
-      <Filter>Header Files\ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ComponentManager.h">
-      <Filter>Header Files\ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ComponentTypes.h">
-      <Filter>Header Files\ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GameModule.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\SceneExtensions.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\NoxRacingGame.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\FrameProfiler.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ui\Pointer.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\EditorExtensions.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\GameEditorPanels.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,0 +1,54 @@
+name: Engine build and native tests
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "external/**"
+      - "tests/native/**"
+      - "tests/fixtures/assetio/**"
+      - "projects/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "tools/CheckNoRawGL.ps1"
+      - ".github/workflows/engine.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "external/**"
+      - "tests/native/**"
+      - "tests/fixtures/assetio/**"
+      - "projects/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "tools/CheckNoRawGL.ps1"
+      - ".github/workflows/engine.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that rendering stays behind the RHI
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/CheckNoRawGL.ps1
+      - name: Configure
+        shell: powershell
+        run: cmake --preset vs2022-x64
+      - name: Build engine and tests
+        shell: powershell
+        run: cmake --build --preset vs2022-x64-${{ matrix.configuration == 'Debug' && 'debug' || 'release' }} --parallel
+      - name: Headless native tests (asset I/O, Lua runtime, ECS handles)
+        shell: powershell
+        run: |
+          & "build/vs2022-x64/${{ matrix.configuration }}/nox_tests.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

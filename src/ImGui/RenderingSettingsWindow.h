@@ -7,6 +7,9 @@
 // Forward declare ModularRenderer to avoid circular dependency
 class ModularRenderer;
 
+// Engine look controls shared by the Rendering window's Look tab and game editor panels (live, not saved).
+void DrawEngineLookSections(ModularRenderer& renderer);
+
 /**
  * @brief Rendering settings and pipeline controls window
  * Now integrated with ModularRenderer for real-time rendering control

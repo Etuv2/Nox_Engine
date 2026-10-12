@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "name": "nox-racing",
+  "runtime": "lua",
+  "api_version": 1,
+  "entry": "scripts/main.lua",
+  "script_roots": [
+    "scripts"
+  ],
+  "data_roots": [
+    "data"
+  ],
+  "assets": [
+    "models/car_r33_rig.glb"
+  ],
+  "scenes": [
+    "scenes/nfs_sprint.json",
+    "scenes/nfs_night_street.json",
+    "scenes/nfs_night_rain.json",
+    "scenes/nfs_dawn_street.json"
+  ],
+  "roads": [
+    "../../data/shuto/nox_road_network.json"
+  ],
+  "native_extensions": [
+    "street_kit"
+  ],
+  "fonts": [
+    {
+      "id": "label",
+      "path": "../../fonts/BarlowCondensed-SemiBold.ttf",
+      "size": 40
+    },
+    {
+      "id": "digital",
+      "path": "../../fonts/DSEG7Classic-Bold.ttf",
+      "size": 40
+    }
+  ],
+  "icons": {
+    "manifest": "../../textures/ui_icons/manifest.json",
+    "size": 128
+  },
+  "input": "input.json",
+  "presentation": {
+    "preview": false,
+    "fixtures": "scripts/ui/fixtures.lua"
+  },
+  "authoring_roots": [
+    "config/hud.json",
+    "data"
+  ]
+}

@@ -20,6 +20,8 @@
 #include <functional>
 #include <unordered_map>
 #include "stb_image.h"
+#include "assets/AssetIO.h"
+#include "assets/AssetIOGltf.h"
 
 
 // HELPER CONSTANTS & STRUCTS
@@ -41,7 +43,11 @@ static void AppendLoadDiagnosticsCsv(const std::string& modelName,
 	size_t indexCount)
 {
 	namespace fs = std::filesystem;
-	const fs::path outputDir = fs::path("performance_data");
+	// Performance data is per-user output, never part of the read-only asset tree.
+	if (AssetIO::UserDir().empty()) {
+		return;
+	}
+	const fs::path outputDir = AssetIO::UserDir() / "performance_data";
 	const fs::path outputPath = outputDir / "load_diagnostics.csv";
 
 	std::error_code ec;
@@ -946,6 +952,11 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	tinygltf::Model model;
 	std::string err, warn;
 	bool ret = false;
+	// Logical model path: external buffers/images resolve relative to it through AssetIO.
+	if (!loader.SetFsCallbacks(AssetIO::MakeGltfFsCallbacks(), &err)) {
+		std::cerr << "[GLTF Error] " << err << std::endl;
+		return false;
+	}
 	const auto parseStart = Clock::now();
 
 	// Determine extension to choose ASCII vs binary loading
@@ -1347,10 +1358,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			if (t.source >= 0 && t.source < static_cast<int>(model.images.size())) {
 				const std::string& uri = model.images[t.source].uri;
 				if (!uri.empty() && uri.rfind("data:", 0) != 0) {
-					std::error_code ec;
-					const std::filesystem::path joined = std::filesystem::path(path).parent_path() / std::filesystem::u8path(uri);
-					const std::filesystem::path resolved = std::filesystem::weakly_canonical(joined, ec);
-					sharedKey = (ec ? joined : resolved).generic_string();
+					// Logical key (no physical canonicalization): the same resolved asset path shares one texture.
+					sharedKey = AssetIO::ResolveRelative(path, uri).value_or(std::string("<invalid:") + uri + ">");
 					sharedKey += useSRGB ? "|srgb" : "|linear";
 					if (t.sampler >= 0 && t.sampler < static_cast<int>(model.samplers.size())) {
 						const tinygltf::Sampler& sm = model.samplers[t.sampler];

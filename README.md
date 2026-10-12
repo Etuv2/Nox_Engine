@@ -149,8 +149,9 @@ game's runtime dependencies, or `tools/package.cmd -Profile engine` for the bare
 When launched from Visual Studio the working directory is the repository root, so the engine reads assets
 straight from the source tree.
 
-See [building and validation](docs/building.md), [packaging profiles and future content packs](docs/packaging.md),
-and [storage maintenance](docs/repository_maintenance.md) for the complete workflows.
+See [building and validation](docs/building.md), [packaging profiles and content packs](docs/packaging.md),
+and [storage maintenance](docs/repository_maintenance.md) for the complete workflows. How assets are
+found, and where settings, saves and generated files go, is described in [asset I/O](docs/asset_io.md).
 
 
 ## Usage Guide

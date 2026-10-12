@@ -1,0 +1,1 @@
+{"format": 1, "name": "other", "runtime": "lua", "api_version": 1, "entry": "scripts/main.lua", "script_roots": ["scripts"], "data_roots": [], "assets": [], "scenes": []}

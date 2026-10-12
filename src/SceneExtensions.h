@@ -16,6 +16,9 @@
 struct ProceduralGeneratorResult {
 	bool ok = false;
 	std::string gltfPath;                                         // generated model, loaded as the node's model
+	// Other files the generator wrote beside the model (logical paths), named "<gltf stem><suffix>".
+	// Cooked results keep them; loading a cooked result restores them at the live location.
+	std::vector<std::string> auxiliaryPaths;
 	nlohmann::json childNodes = nlohmann::json::array();         // scene-schema nodes added under the node
 	nlohmann::json reflectionProbes = nlohmann::json::array();   // scene "reflection_probes" entries
 	bool hasRenderExtras = false;
@@ -27,6 +30,17 @@ struct ProceduralGeneratorInput {
 	const nlohmann::json& sceneGame;   // the scene's "game" object (opaque to the engine)
 };
 using ProceduralGenerator = std::function<ProceduralGeneratorResult(const ProceduralGeneratorInput&)>;
+
+// Declared identity of a generator, used to key its cooked results (src/cook/CookedResults.h).
+// Bump version whenever the generator's output for the same params changes.
+struct ProceduralGeneratorInfo {
+	int version = 1;
+	std::vector<std::string> sceneGameKeys;   // top-level keys of the scene "game" object the generator reads
+	std::vector<std::string> inputParams;     // param names whose string value is an input directory (hashed recursively)
+	std::vector<std::string> inputDirs;       // fixed input directories (hashed recursively)
+	std::string defaultOutput;                // output stem used when params omit "output" (logical, no extension)
+	std::vector<std::string> inputFiles;      // fixed input files (logical; absent files are simply not read)
+};
 
 struct SceneKeyInput {
 	const nlohmann::json& value;
@@ -40,7 +54,10 @@ using SceneKeyHandler = std::function<bool(SceneKeyInput&)>;
 namespace SceneExtensions {
 	// The default generator is used when a node's "procedural" block omits "generator".
 	void RegisterGenerator(const std::string& name, ProceduralGenerator generator, bool isDefault = false);
+	void RegisterGenerator(const std::string& name, ProceduralGenerator generator, bool isDefault,
+		ProceduralGeneratorInfo info);
 	const ProceduralGenerator* FindGenerator(const std::string& name);
+	const ProceduralGeneratorInfo* FindGeneratorInfo(const std::string& name);
 	const std::string& DefaultGenerator();
 
 	void RegisterSceneKey(const std::string& key, SceneKeyHandler handler);

@@ -8,6 +8,7 @@
 #include "../LightNode.h"
 #include "../AudioNode.h"
 #include "StateExportWindow.h"
+#include "../assets/AssetIOUser.h"
 #include "AnimationWindow.h"
 #include <IMGUI/imgui.h>
 #include <IMGUI/ImGuizmo.h>
@@ -344,7 +345,7 @@ void ImGuiWindowManager::SaveWindowStates(const std::string& filename) {
 			j[name] = wd;
 		}
 
-		std::ofstream outFile(filename);
+		std::ofstream outFile(AssetIO::UserOutputPath(filename, true));
 		if (outFile.is_open()) {
 			outFile << j.dump(2);
 			outFile.close();
@@ -358,7 +359,7 @@ void ImGuiWindowManager::SaveWindowStates(const std::string& filename) {
 
 void ImGuiWindowManager::LoadWindowStates(const std::string& filename) {
 	try {
-		std::ifstream inFile(filename);
+		std::ifstream inFile(AssetIO::UserOutputPath(filename));
 		if (!inFile.is_open()) {
 			std::cout << "[ImGuiWindowManager] No saved window states found at " << filename << std::endl;
 			return;

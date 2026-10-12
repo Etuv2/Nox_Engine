@@ -1,6 +1,23 @@
 #include "ComponentManager.h"
+#include <atomic>
 #include <iostream>
 #include <algorithm>
+#include <limits>
+
+namespace {
+	// Process-wide world tokens: never reused, never 0 (C6). A fresh token is taken on construction and
+	// on every Clear(), so handles from an earlier world or an earlier Clear() cannot match again.
+	uint32_t NextWorldToken() {
+		static std::atomic<uint32_t> s_next{ 1 };
+		uint32_t token = 0;
+		do {
+			token = s_next.fetch_add(1, std::memory_order_relaxed);
+		} while (token == 0);
+		return token;
+	}
+	constexpr uint32_t kFirstIncarnation = 1;
+	constexpr uint32_t kRetiredIncarnation = std::numeric_limits<uint32_t>::max();
+}
 
 #ifndef NDEBUG
 namespace {
@@ -32,6 +49,7 @@ void RunColliderCleanupRegressionCheck(ComponentManager& componentManager) {
 #endif
 
 ComponentManager::ComponentManager() {
+	m_worldToken = NextWorldToken();
 	// Pre-allocate for performance
 	m_metadata.reserve(1024);
 	m_nameToEntity.reserve(1024);
@@ -64,6 +82,9 @@ EntityID ComponentManager::CreateEntity(const std::string& name, NodeType type) 
 	metadata.componentMask = 0;
 
 	m_metadata[newID] = metadata;
+	if (newID >= m_incarnations.size()) {
+		m_incarnations.resize(newID + 1, kFirstIncarnation);
+	}
 	if (newID >= m_transformUpdateQueued.size()) {
 		m_transformUpdateQueued.resize(newID + 1, 0u);
 	}
@@ -106,14 +127,36 @@ void ComponentManager::DestroyEntity(EntityID entity) {
 	// Remove metadata
 	m_metadata.erase(it);
 
-	// Add to free list
-	m_freeEntityIDs.push_back(entity);
+	// Every handle issued for this ID is now stale. An ID whose incarnation is exhausted is retired
+	// rather than reused, so an old handle can never match a new entity.
+	uint32_t& incarnation = m_incarnations[entity];
+	if (incarnation != kRetiredIncarnation) {
+		++incarnation;
+		m_freeEntityIDs.push_back(entity);
+	}
 	++m_hierarchyRevision;
 	assert(ValidateHierarchyIntegrity());
 }
 
 bool ComponentManager::IsEntityValid(EntityID entity) const {
 	return entity != INVALID_ENTITY && m_metadata.find(entity) != m_metadata.end();
+}
+
+EntityHandle ComponentManager::MakeHandle(EntityID entity) const {
+	EntityHandle handle;
+	if (!IsEntityValid(entity) || entity >= m_incarnations.size()) return handle;
+	handle.world = m_worldToken;
+	handle.id = entity;
+	handle.incarnation = m_incarnations[entity];
+	return handle;
+}
+
+bool ComponentManager::IsHandleValid(const EntityHandle& handle) const {
+	return handle.world == m_worldToken &&
+		handle.id != INVALID_ENTITY &&
+		handle.id < m_incarnations.size() &&
+		m_incarnations[handle.id] == handle.incarnation &&
+		IsEntityValid(handle.id);
 }
 
 EntityMetadata* ComponentManager::GetMetadata(EntityID entity) {
@@ -632,6 +675,12 @@ void ComponentManager::Clear() {
 	m_pendingTransformUpdates.clear();
 	m_transformUpdateQueued.clear();
 	m_freeEntityIDs.clear();
+	// Clear() restarts ID allocation but never the identity history: the new world token invalidates
+	// every old handle, and bumping incarnations keeps same-world comparisons honest as well.
+	for (uint32_t& incarnation : m_incarnations) {
+		if (incarnation != kRetiredIncarnation) ++incarnation;
+	}
+	m_worldToken = NextWorldToken();
 	m_nextEntityID = 1;
 	m_nextTransformID = 1;
 	m_transformUpdateRevision = 1;

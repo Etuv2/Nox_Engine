@@ -1,5 +1,6 @@
 #include "TextureArrayBuilder.h"
 #include "stb_image.h"
+#include "assets/AssetIOImage.h"
 
 #include <algorithm>
 #include <array>
@@ -54,7 +55,7 @@ namespace {
 	bool Decode(const std::string& path, bool premultiply, float alphaFloor, ImageF& out) {
 		stbi_set_flip_vertically_on_load_thread(0);
 		int w = 0, h = 0, n = 0;
-		unsigned char* data = stbi_load(path.c_str(), &w, &h, &n, 4);
+		unsigned char* data = AssetIO::LoadImageFile(path, &w, &h, &n, 4);
 		if (!data) return false;
 		const auto& lut = DecodeLut();
 		const float floorA = std::clamp(alphaFloor, 0.0f, 0.5f);

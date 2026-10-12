@@ -10,6 +10,8 @@
 #include "RenderSystem.h"
 #include "TransformSystem.h"
 #include "ComponentManager.h"
+#include "assets/AssetIO.h"
+#include "app/UserSettings.h"
 
 #include <fstream>
 #include <iostream>
@@ -21,6 +23,8 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <optional>
+#include <sstream>
 #include <vector>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -189,8 +193,8 @@ std::string TrimScenePathValue(const std::string& value)
 
 bool SceneFileExists(const fs::path& path)
 {
-	std::error_code ec;
-	return fs::exists(path, ec) && fs::is_regular_file(path, ec);
+	const auto stat = AssetIO::Stat(path.generic_string());
+	return stat && !stat->isDirectory;
 }
 
 void PushUniqueSceneCandidate(std::vector<fs::path>& candidates, const fs::path& candidate)
@@ -226,7 +230,8 @@ std::string ResolveSceneFilePath(const std::string& requestedPath)
 
 	for (const fs::path& candidate : candidates) {
 		if (SceneFileExists(candidate)) {
-			return candidate.lexically_normal().string();
+			const auto logical = AssetIO::Normalize(candidate.generic_string());
+			return logical ? *logical : candidate.lexically_normal().generic_string();
 		}
 	}
 
@@ -297,12 +302,12 @@ Core::~Core() {
 
 bool Core::LoadConfiguration() {
 	try {
-		std::ifstream configFile(".\\config\\config.json");
-		if (!configFile || !configFile.is_open()) {
-			std::cerr << "[Core] Could not open config.json" << std::endl;
+		// Defaults ship as assets; per-user changes live in the writable user directory.
+		m_config = UserSettings::LoadJsonWithUserOverride("config/config.json", "settings/config.json");
+		if (!m_config.is_object()) {
+			std::cerr << "[Core] Could not read config/config.json" << std::endl;
 			return false;
 		}
-		configFile >> m_config;
 
 		m_modelPath = m_config.value("modelPath", "model.gltf");
 		m_fontPath = m_config.value("text_font", "arial.ttf");
@@ -432,7 +437,20 @@ bool Core::InitializeGraphics() {
 		if (m_launch.mode == AppMode::Editor) {
 			// Docked editor (docs/nfs2015/game.md); layout persists next to the other editor settings.
 			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-			io.IniFilename = "config/editor_layout.ini";
+			// The layout is user state: ImGui writes it to the user directory; the authored default
+			// (config/editor_layout.ini) seeds it until the user has a layout of their own.
+			static std::string iniPath;
+			if (const auto userIni = UserSettings::UserPath("editor_layout.ini")) {
+				iniPath = userIni->string();
+				std::error_code ec;
+				fs::create_directories(userIni->parent_path(), ec);
+				if (!fs::exists(*userIni, ec)) {
+					if (const auto defaults = AssetIO::ReadText("config/editor_layout.ini")) {
+						ImGui::LoadIniSettingsFromMemory(defaults->data(), defaults->size());
+					}
+				}
+			}
+			io.IniFilename = iniPath.empty() ? nullptr : iniPath.c_str();
 		}
 		else {
 			io.IniFilename = nullptr;
@@ -442,9 +460,10 @@ bool Core::InitializeGraphics() {
 	rhi::Gpu().ImGuiInit();
 	SetStyle(); // Solace theme (ImguiStyle.h)
 	solace::LoadFonts(15.0f, 1.0f);
-	// Optional game layer: created once; its fonts/atlases/audio need the device and ImGui.
-	if (!m_game) m_game = GameModules::Create();
-	if (m_game) m_game->InitializeResources();
+	// Optional game layer: the module for the startup scene's project is created before the first
+	// frame (its fonts/atlases/audio need the device and ImGui); scene swaps may switch projects.
+	m_gameResourcesReady = true;
+	SelectGameModule(ReadStartupSceneRoot());
 
 	// Compile shadow pass shader
 	m_shadowShader = CreateShaderProgram("shaders/shadow_vert.glsl", "shaders/shadow_frag.glsl");
@@ -522,12 +541,13 @@ bool Core::ApplySceneCameraOverride(const std::string& sceneFilePath) {
 		return false;
 	}
 
-	std::ifstream sceneFile(sceneFilePath);
-	if (!sceneFile.is_open()) {
+	const auto sceneText = AssetIO::ReadText(sceneFilePath);
+	if (!sceneText) {
 		std::cerr << "[Core] Scene camera override skipped; failed to open scene file: "
 			<< sceneFilePath << std::endl;
 		return false;
 	}
+	std::istringstream sceneFile(*sceneText);
 
 	json sceneJson;
 	try {
@@ -590,7 +610,7 @@ bool Core::InitializePhysics() {
 	std::cout << "[Core] Initializing physics..." << std::endl;
 
 	SimulationConfig config;
-	if (!config.loadConfig(".\\config\\config.json")) {
+	if (!config.loadConfigJson(m_config)) {
 		std::cerr << "[Core] Using default simulation config.\n";
 	}
 	m_physicsEngine = std::make_shared<PhysicsEngine>(config);
@@ -655,9 +675,10 @@ bool Core::InitializeScene() {
 			m_modularRenderer->GetContext(), m_sceneToLoad, m_sceneHasRenderSettings);
 	}
 	m_benchmark = BenchmarkRunner::CreateFromEnvironment(m_sceneToLoad);
-	if (!m_game) m_game = GameModules::Create();
 	if (m_game) {
-		m_game->SetStandalone(m_launch.mode == AppMode::Game);
+		GameModuleServices services;
+		services.physics = m_physicsEngine.get();
+		m_game->SetServices(services);
 		m_game->SetCameraTemplate(*m_camera);
 	}
 	ConfigureGameFromScene(m_sceneToLoad);
@@ -795,6 +816,13 @@ void Core::Shutdown() {
 		m_modularRenderer.reset();
 	}
 
+	// The game module may hold engine services (physics substep callback): end play and destroy it
+	// before the services it was given.
+	if (m_game) {
+		if (m_playing) m_game->EndPlay();
+		m_playing = false;
+		m_game.reset();
+	}
 	if (m_physicsEngine) {
 		m_physicsEngine.reset();
 	}
@@ -1400,7 +1428,14 @@ void Core::SaveCurrentScene() {
 		std::cerr << "[Core] Stop play mode before saving (runtime state is not authored data)" << std::endl;
 		return;
 	}
-	std::string saveFilePath = m_currentSceneFilePath.empty() ? m_sceneToLoad : m_currentSceneFilePath;
+	const std::string logicalScene = m_currentSceneFilePath.empty() ? m_sceneToLoad : m_currentSceneFilePath;
+	// Authoring saves write the loose source project explicitly; packs are read-only.
+	const auto sourceFile = AssetIO::SourcePath(logicalScene);
+	if (!sourceFile) {
+		std::cerr << "[Core] Cannot save '" << logicalScene << "': scenes are read-only in a packaged build" << std::endl;
+		return;
+	}
+	const std::string saveFilePath = sourceFile->string();
 	std::cout << "[Core] Saving scene to: " << saveFilePath << std::endl;
 
 	if (m_sceneLoader->SaveScene(m_sceneGraph, saveFilePath)) {
@@ -1914,21 +1949,21 @@ std::vector<std::string> Core::GetSceneList() const
 		std::replace(p.begin(), p.end(), '\\', '/');
 		if (std::find(scenes.begin(), scenes.end(), p) == scenes.end()) scenes.push_back(p);
 	};
-	std::error_code ec;
-	for (const auto& entry : fs::directory_iterator("scenes", ec)) {
-		if (entry.is_regular_file(ec) && entry.path().extension() == ".json") add(entry.path().generic_string());
-	}
+	AssetIO::ListOptions options;
+	options.extension = ".json";
+	for (const std::string& path : AssetIO::List("scenes", options)) add(path);
 	std::sort(scenes.begin(), scenes.end());
 	return scenes;
 }
 
 void Core::ConfigureGameFromScene(const std::string& scenePath)
 {
-	std::ifstream in(scenePath);
-	m_sceneRootJson = in ? json::parse(in, nullptr, false) : json();
+	const auto text = AssetIO::ReadText(scenePath);
+	m_sceneRootJson = text ? json::parse(*text, nullptr, false) : json();
 	if (!m_sceneRootJson.is_object()) m_sceneRootJson = json::object();
 	m_authoredGame = m_sceneRootJson.value("game", json());
 	m_playing = false;
+	SelectGameModule(m_sceneRootJson);
 	if (m_game && m_sceneGraph) {
 		m_game->Configure(m_authoredGame, m_sceneRootJson, *m_sceneGraph);
 	}
@@ -1947,6 +1982,62 @@ json Core::GetAuthoredGameJson() const
 	return m_game ? m_game->SaveGameJson() : m_authoredGame;
 }
 
+std::string Core::ProjectForScene(const json& sceneRoot) const
+{
+	if (!m_launch.project.empty()) return m_launch.project;
+	if (sceneRoot.is_object() && sceneRoot.contains("project") && sceneRoot["project"].is_string()) {
+		return sceneRoot["project"].get<std::string>();
+	}
+	// The bootstrap "descriptor" only records which project a distribution packages; scenes (or the
+	// launch options) select the module, so packaged and development builds behave the same.
+	return {};
+}
+
+json Core::ReadStartupSceneRoot() const
+{
+	std::string scene = m_launch.scene.empty() ? m_config.value("first_scene", std::string()) : m_launch.scene;
+	scene = ResolveSceneFilePath(scene);
+	const auto text = scene.empty() ? std::nullopt : AssetIO::ReadText(scene);
+	json root = text ? json::parse(*text, nullptr, false) : json();
+	return root.is_object() ? root : json::object();
+}
+
+// Project selection (docs/engine_boundary.md): a scene or launch option naming a project descriptor
+// gets that project's runtime module; otherwise the application's registered native module, if any.
+void Core::SelectGameModule(const json& sceneRoot)
+{
+	const std::string project = ProjectForScene(sceneRoot);
+	if (m_game && project == m_gameProject) return;
+	if (!m_game && project.empty() && m_gameProjectResolved) return;
+	if (m_game) {
+		if (m_playing) m_game->EndPlay();
+		m_playing = false;
+		m_game.reset();
+	}
+	m_gameProject = project;
+	m_gameProjectResolved = true;
+	if (project.empty()) {
+		m_game = GameModules::Create();
+	}
+	else {
+		std::string error;
+		m_game = GameModules::CreateForProject(project, error);
+		if (!m_game) std::cerr << "[Core] Project '" << project << "' has no runnable module: " << error << std::endl;
+	}
+	if (!m_game) return;
+	std::cout << "[Core] Game module: " << (project.empty() ? std::string("(application native)") : project) << std::endl;
+	m_game->SetStandalone(m_launch.mode == AppMode::Game);
+	GameModuleServices services;
+	services.physics = m_physicsEngine.get();
+	m_game->SetServices(services);
+	if (m_camera) m_game->SetCameraTemplate(*m_camera);
+	if (m_gameResourcesReady) {
+		m_game->InitializeResources();
+		// Fonts added by the module invalidate the atlas; re-upload it (also safe before frame one).
+		if (!ImGui::GetIO().Fonts->IsBuilt()) rhi::Gpu().ImGuiRebuildFonts();
+	}
+}
+
 void Core::RequestPlay()
 {
 	if (m_playing || !m_game || !m_game->IsAvailable() || !m_sceneGraph) return;
@@ -1961,6 +2052,7 @@ void Core::RequestPlay()
 		for (const auto& c : n->children) snap(c);
 	};
 	for (const auto& c : m_sceneGraph->GetRoot()->children) snap(c);
+	m_playWorld.Capture(*m_sceneGraph);
 	m_playing = true;
 	m_game->BeginPlay();
 	ResetTemporalHistory();
@@ -1971,6 +2063,7 @@ void Core::RequestStop()
 {
 	if (!m_playing || !m_game) return;
 	m_game->EndPlay();
+	if (m_sceneGraph) m_playWorld.Restore(*m_sceneGraph, m_physicsEngine.get());
 	for (const auto& [weak, t] : m_prePlayTransforms) {
 		if (auto n = weak.lock()) {
 			n->SetLocalTRS(glm::vec3(t[0], t[1], t[2]), glm::quat(t[3], t[4], t[5], t[6]), glm::vec3(t[7], t[8], t[9]));

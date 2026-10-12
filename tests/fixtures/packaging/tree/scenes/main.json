@@ -1,0 +1,26 @@
+{
+  "scene_name": "main",
+  "nodes": [
+    {
+      "name": "Car",
+      "type": "model",
+      "path": "models/car.gltf"
+    },
+    {
+      "name": "Street",
+      "type": "model",
+      "procedural": {
+        "generator": "street_kit",
+        "params": {
+          "texture_root": "textures/fixture_cc0",
+          "output": "generated/nfs_street"
+        }
+      }
+    },
+    {
+      "name": "Note",
+      "type": "node",
+      "comment": "textures/loose/unknown.png"
+    }
+  ]
+}

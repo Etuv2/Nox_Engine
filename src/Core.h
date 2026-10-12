@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PlayWorldSnapshot.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -234,6 +235,7 @@ public:
         AppMode mode = AppMode::Editor;
         std::string scene;     // empty = config first_scene
         std::string quality;   // empty = scene default
+        std::string project;   // logical project descriptor; empty = the scene's "project" key
     };
     void SetLaunchOptions(const LaunchOptions& options) { m_launch = options; }
     AppMode GetAppMode() const { return m_launch.mode; }
@@ -417,8 +419,15 @@ private:
     json m_authoredGame;                          // scene "game" object (authoring copy)
     json m_prePlayGame;                           // restored on Stop
     std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> m_prePlayTransforms;
+    PlayWorldSnapshot m_playWorld;                // entities, transforms and bodies as authored (restored on Stop)
     json m_sceneRootJson;                         // last loaded scene file
+    std::string m_gameProject;                    // logical project descriptor of m_game ("" = native module)
+    bool m_gameProjectResolved = false;
+    bool m_gameResourcesReady = false;            // device and ImGui exist; modules may load resources
     void ConfigureGameFromScene(const std::string& scenePath);
+    void SelectGameModule(const json& sceneRoot);
+    std::string ProjectForScene(const json& sceneRoot) const;
+    json ReadStartupSceneRoot() const;
     void RenderSceneTo(rhi::FramebufferHandle framebuffer, int width, int height, const std::shared_ptr<Camera>& camera);
     bool m_quitRequested = false;
     bool m_sceneHasRenderSettings = false; // scene file had "render_settings" (docs/nfs2015)

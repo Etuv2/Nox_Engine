@@ -1,0 +1,13 @@
+{
+  "default": "editor",
+  "presets": {
+    "game": {
+      "scene": "scenes/unrelated.json",
+      "mode": "game"
+    },
+    "editor": {
+      "scene": "scenes/unrelated.json",
+      "mode": "editor"
+    }
+  }
+}

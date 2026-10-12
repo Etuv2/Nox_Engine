@@ -1,4 +1,6 @@
 #include "GameSession.h"
+#include "app/UserSettings.h"
+#include "assets/AssetIOJson.h"
 #include "FrameProfiler.h"
 
 #include "Camera.h"
@@ -21,7 +23,7 @@ using nlohmann::json;
 
 namespace {
 	constexpr float kPi = 3.14159265f;
-	const char* kBestTimesPath = "config/speedwall.json";
+	const char* kBestTimesPath = "saves/speedwall.json"; // user-relative name (AssetIO::UserDir)
 
 	// [x, z] or [x, y, z].
 	glm::vec2 ReadXZ(const json& j, const glm::vec2& fallback) {
@@ -1662,16 +1664,16 @@ void GameSession::ClearBestTimes()
 
 void GameSession::LoadBestTimes()
 {
-	std::ifstream in(kBestTimesPath);
-	if (!in) { m_bestTimes = json::object(); return; }
-	m_bestTimes = json::parse(in, nullptr, false);
+	std::optional<nlohmann::json> saved = UserSettings::LoadUserJson(kBestTimesPath);
+	if (!saved) saved = AssetIO::ReadJsonOrNull("config/speedwall.json"); // seed from shipped defaults
+	if (!saved || !saved->is_object()) { m_bestTimes = json::object(); return; }
+	m_bestTimes = *saved;
 	if (!m_bestTimes.is_object()) m_bestTimes = json::object();
 }
 
 void GameSession::SaveBestTimes() const
 {
-	std::ofstream out(kBestTimesPath);
-	if (out) out << m_bestTimes.dump(2);
+	UserSettings::SaveUserJson(kBestTimesPath, m_bestTimes);
 }
 
 // Tyre smoke (burnouts, wheelspin, drifting, locked wheels) and wet-road spray, tied to wheel contact

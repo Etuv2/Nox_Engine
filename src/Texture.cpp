@@ -1,4 +1,5 @@
 #include "Texture.h"
+#include "assets/AssetIOImage.h"
 #include <iostream>
 #include <algorithm>
 #include <vector>
@@ -45,7 +46,7 @@ Texture::Texture(const std::string& filepath, TextureType type, bool generateMip
 	: type_(type), target_(TextureTarget::Texture2D), depth_(1), hasMipmaps_(generateMipmaps)
 {
 	int channels;
-	unsigned char* data = stbi_load(filepath.c_str(), &width_, &height_, &channels, 0);
+	unsigned char* data = AssetIO::LoadImageFile(filepath, &width_, &height_, &channels, 0);
 	if (!data) {
 		std::cerr << "[Texture] Failed to load: " << filepath << std::endl;
 		width_ = height_ = 0;

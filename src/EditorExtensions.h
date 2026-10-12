@@ -32,6 +32,7 @@ public:
 
 	virtual bool IsPlaying() const = 0;
 	virtual void RequestPlay() = 0;                          // starts play and focuses the Game view
+	virtual void RequestStop() = 0;                          // stops play (restores the pre-play state)
 	virtual void MarkDirty() = 0;
 	virtual void PushUndo(const std::string& label, std::function<void()> undo, std::function<void()> redo) = 0;
 	virtual void ApplyGameJson(const nlohmann::json& game) = 0;
@@ -57,6 +58,9 @@ struct EditorPanel {
 	std::string title;
 	std::function<void(EditorHost&)> draw;
 	bool openByDefault = true;
+	// Optional availability: when set and false, the panel is hidden (and left out of the Window menu) for now.
+	// Used so a panel belongs to one module, e.g. native racing panels show only for the native GameSession.
+	std::function<bool(EditorHost&)> available;
 };
 
 namespace EditorExtensions {
@@ -65,7 +69,12 @@ namespace EditorExtensions {
 	const std::vector<EditorPanel>& Panels();
 
 	using ViewportOverlay = std::function<void(EditorHost&, ImDrawList*)>;
+	// Several producers may draw on the scene viewport; each registers under its own id (registering
+	// an id again replaces it). Overlays draw in registration order.
+	void AddViewportOverlay(const std::string& id, ViewportOverlay overlay);
+	// Same as AddViewportOverlay("default", overlay).
 	void SetViewportOverlay(ViewportOverlay overlay);
+	// One function drawing every registered overlay (empty when none is registered).
 	const ViewportOverlay& GetViewportOverlay();
 
 	// Maps an editor role ("editor/save", "editor/play", "editor/pause") to a UiIconAtlas id.

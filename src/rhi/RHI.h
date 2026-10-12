@@ -535,6 +535,8 @@ namespace rhi {
 		virtual void ImGuiShutdown() = 0;
 		virtual void ImGuiNewFrame() = 0;
 		virtual void ImGuiRender(ImDrawData* drawData) = 0;
+		// Re-uploads the ImGui font atlas after fonts were added once frames have been rendered.
+		virtual void ImGuiRebuildFonts() = 0;
 		virtual void* ImGuiTextureId(TextureHandle texture) const = 0;   // value for ImGui::Image (ImTextureID)
 	};
 

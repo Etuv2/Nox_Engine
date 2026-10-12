@@ -1,6 +1,7 @@
 #include "Skybox.h"
 #include "ShaderLoader.h"
 #include "stb_image.h"
+#include "assets/AssetIOImage.h"
 #include "TextureUnits.h"
 #include "FrameBuffer.h"
 #include "GpuBuffer.h"
@@ -78,7 +79,7 @@ TexturePtr Skybox::loadHDRTexture(const std::string& hdrPath, const EnvironmentM
 {
 	int width, height, nComponents;
 	stbi_set_flip_vertically_on_load_thread(0); // equirect2cube expects the zenith row first
-	float* data = stbi_loadf(hdrPath.c_str(), &width, &height, &nComponents, 0);
+	float* data = AssetIO::LoadImageFileF(hdrPath, &width, &height, &nComponents, 0);
 	if (!data) {
 		std::cerr << "[Skybox] Failed to load HDR file: " << hdrPath << std::endl;
 		return nullptr;

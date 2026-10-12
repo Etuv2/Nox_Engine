@@ -4,6 +4,22 @@ Date: 2026-10-12. Scope: research and a measured implementation proposal. The us
 editor reloads that preserve declared gameplay state on success and retain working code on
 failure. This pass adds a standalone compatibility fixture, not scripting to the engine.
 
+## Implementation status (2026-10-12)
+
+The sections below are the research and the proposal. Where they say Lua is not in the engine, that predates
+this status.
+
+- Implemented: the Lua 5.5.1 runtime and sandbox, ECS handles, the project descriptor and module loader, the
+  transactional reload, play-world restoration and editor diagnostics (`src/scripting/`, `src/PlayWorldSnapshot.*`,
+  tests `tests/native/test_lua_*.cpp`, `test_ecs_handles.cpp`, `test_play_world.cpp`). The sample project is
+  `projects/sample-arena/` with `scenes/lua_sample.json`. The API is in [lua_api.md](lua_api.md).
+- Implemented for the vehicle: the native `VehicleService` with policy callbacks (`src/vehicle/`), a Lua policy
+  (`src/scripting/LuaVehiclePolicy.*`) and the baseline comparison in `tools/VehicleParity.ps1`.
+- In progress: the NFS port. `projects/nox-racing/scripts/` holds part of it, but the shipped racing scenes and
+  presets do not select that project, so the native `NoxRacingGame` is still the default. Parity results and
+  remaining steps are not recorded in this research document; see [lua_api.md](lua_api.md).
+- Asset loading and project storage: [asset_io.md](asset_io.md). Packs and the cook cache: [packaging.md](packaging.md).
+
 ## Recommendation
 
 Add a generic Lua gameplay adapter at the existing `IGameModule` boundary. Compile the Lua

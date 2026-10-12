@@ -127,6 +127,13 @@ public:
 	void DestroyEntity(EntityID entity);
 	bool IsEntityValid(EntityID entity) const;
 
+	// Checked handles (scripting C6). MakeHandle returns an invalid handle for dead IDs.
+	// IsHandleValid is false after DestroyEntity, after the ID is reused, after Clear(), and for any
+	// handle issued by another ComponentManager (world token mismatch).
+	EntityHandle MakeHandle(EntityID entity) const;
+	bool IsHandleValid(const EntityHandle& handle) const;
+	uint32_t GetWorldToken() const { return m_worldToken; }
+
 	// Entity metadata
 	EntityMetadata* GetMetadata(EntityID entity);
 	const EntityMetadata* GetMetadata(EntityID entity) const;
@@ -242,6 +249,12 @@ private:
 	EntityID m_nextEntityID = 1;  // Start at 1, 0 is INVALID_ENTITY
 	TransformID m_nextTransformID = 1;  // Stable transform identity allocator
 	std::vector<EntityID> m_freeEntityIDs;  // Recycled IDs
+
+	// Handle identity (C6). The world token is re-issued on construction and Clear(); incarnations are
+	// indexed by EntityID, bumped on destroy and on Clear(), and never reset. An ID whose incarnation
+	// reaches UINT32_MAX is retired (never reused).
+	uint32_t m_worldToken = 0;
+	std::vector<uint32_t> m_incarnations;
 
 	// Entity metadata storage
 	std::unordered_map<EntityID, EntityMetadata> m_metadata;

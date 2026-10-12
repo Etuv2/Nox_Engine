@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug|Win32">
-      <Configuration>Debug</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|Win32">
-      <Configuration>Release</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
@@ -19,8 +11,195 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="external\lua-5.5.1\src\lapi.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lauxlib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lbaselib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lcode.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lcorolib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lctype.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldblib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldebug.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldo.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ldump.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lfunc.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lgc.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\linit.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\liolib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\llex.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lmathlib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lmem.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\loadlib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lobject.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lopcodes.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\loslib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lparser.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lstate.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lstring.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lstrlib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ltable.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ltablib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\ltm.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lundump.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lutf8lib.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lvm.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\lua-5.5.1\src\lzio.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>PHYSFS_SUPPORTS_DEFAULT=0;PHYSFS_SUPPORTS_ZIP=1;PHYSFS_NO_CDROM_SUPPORT=1;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_archiver_dir.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>PHYSFS_SUPPORTS_DEFAULT=0;PHYSFS_SUPPORTS_ZIP=1;PHYSFS_NO_CDROM_SUPPORT=1;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_archiver_unpacked.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>PHYSFS_SUPPORTS_DEFAULT=0;PHYSFS_SUPPORTS_ZIP=1;PHYSFS_NO_CDROM_SUPPORT=1;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_archiver_zip.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>PHYSFS_SUPPORTS_DEFAULT=0;PHYSFS_SUPPORTS_ZIP=1;PHYSFS_NO_CDROM_SUPPORT=1;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_byteorder.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>PHYSFS_SUPPORTS_DEFAULT=0;PHYSFS_SUPPORTS_ZIP=1;PHYSFS_NO_CDROM_SUPPORT=1;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_platform_windows.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>PHYSFS_SUPPORTS_DEFAULT=0;PHYSFS_SUPPORTS_ZIP=1;PHYSFS_NO_CDROM_SUPPORT=1;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="external\physfs-3.2.0\src\physfs_unicode.c">
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>PHYSFS_SUPPORTS_DEFAULT=0;PHYSFS_SUPPORTS_ZIP=1;PHYSFS_NO_CDROM_SUPPORT=1;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="include\IMGUI\imgui.cpp" />
-    <ClCompile Include="include\IMGUI\ImGuizmo.cpp" />
     <ClCompile Include="include\IMGUI\imgui_demo.cpp" />
     <ClCompile Include="include\IMGUI\imgui_draw.cpp" />
     <ClCompile Include="include\IMGUI\imgui_impl_opengl3.cpp" />
@@ -28,31 +207,60 @@
     <ClCompile Include="include\IMGUI\imgui_impl_sdlrenderer2.cpp" />
     <ClCompile Include="include\IMGUI\imgui_tables.cpp" />
     <ClCompile Include="include\IMGUI\imgui_widgets.cpp" />
+    <ClCompile Include="include\IMGUI\ImGuizmo.cpp" />
     <ClCompile Include="src\Animation.cpp" />
     <ClCompile Include="src\AnimationController.cpp" />
     <ClCompile Include="src\AnimationSystem.cpp" />
+    <ClCompile Include="src\app\ProjectBootstrap.cpp" />
+    <ClCompile Include="src\app\UserSettings.cpp" />
+    <ClCompile Include="src\assets\AssetIO.cpp" />
+    <ClCompile Include="src\assets\AssetIOGltf.cpp" />
+    <ClCompile Include="src\assets\AssetIOImage.cpp" />
+    <ClCompile Include="src\assets\AssetIOSdl.cpp" />
+    <ClCompile Include="src\audio\ProceduralVehicleAudio.cpp" />
     <ClCompile Include="src\AudioNode.cpp" />
     <ClCompile Include="src\BaseLight.cpp" />
+    <ClCompile Include="src\BenchmarkRunner.cpp" />
     <ClCompile Include="src\BVH.cpp" />
     <ClCompile Include="src\BVHBuilder.cpp" />
     <ClCompile Include="src\Camera.cpp" />
+    <ClCompile Include="src\CollisionWorld.cpp" />
     <ClCompile Include="src\ComponentManager.cpp" />
     <ClCompile Include="src\ComputeShader.cpp" />
     <ClCompile Include="src\Contact.cpp" />
-    <ClCompile Include="src\CrashHandler.cpp" />
+    <ClCompile Include="src\cook\CookedResults.cpp" />
+    <ClCompile Include="src\cook\Sha256.cpp" />
     <ClCompile Include="src\Core.cpp" />
+    <ClCompile Include="src\CrashHandler.cpp" />
     <ClCompile Include="src\DefaultTextures.cpp" />
     <ClCompile Include="src\DirectionalLight.cpp" />
-    <ClCompile Include="src\FrameBuffer.cpp" />
+    <ClCompile Include="src\DriveAudio.cpp" />
+    <ClCompile Include="src\DriveMode.cpp" />
+    <ClCompile Include="src\editor\ProcessRunner.cpp" />
+    <ClCompile Include="src\editor\solace\SolaceControls.cpp" />
+    <ClCompile Include="src\editor\solace\SolaceCore.cpp" />
+    <ClCompile Include="src\editor\solace\SolaceFeedback.cpp" />
+    <ClCompile Include="src\editor\solace\SolaceIcons.cpp" />
+    <ClCompile Include="src\editor\solace\SolaceSvg.cpp" />
+    <ClCompile Include="src\editor\solace\SolaceTheme.cpp" />
+    <ClCompile Include="src\EditorExtensions.cpp" />
+    <ClCompile Include="src\EnvironmentMap.cpp" />
+    <ClCompile Include="src\Framebuffer.cpp" />
+    <ClCompile Include="src\FrameProfiler.cpp" />
     <ClCompile Include="src\FrustumCulling.cpp" />
+    <ClCompile Include="src\GameEditorPanels.cpp" />
+    <ClCompile Include="src\GameModule.cpp" />
+    <ClCompile Include="src\GameSession.cpp" />
     <ClCompile Include="src\GizmoRayCast.cpp" />
+    <ClCompile Include="src\GpuBuffer.cpp" />
     <ClCompile Include="src\GuiAnimation.cpp" />
     <ClCompile Include="src\GuiNode.cpp" />
     <ClCompile Include="src\HierarchySystem.cpp" />
-    <ClCompile Include="src\ImGuiInterface.cpp" />
     <ClCompile Include="src\ImGui\AnimationWindow.cpp" />
     <ClCompile Include="src\ImGui\BaseWindow.cpp" />
     <ClCompile Include="src\ImGui\CameraWindow.cpp" />
+    <ClCompile Include="src\ImGui\ConsoleLog.cpp" />
+    <ClCompile Include="src\ImGui\EditorWorkspace.cpp" />
     <ClCompile Include="src\ImGui\HelpWindow.cpp" />
     <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp" />
     <ClCompile Include="src\ImGui\LightingWindow.cpp" />
@@ -61,99 +269,277 @@
     <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp" />
     <ClCompile Include="src\ImGui\StateExportWindow.cpp" />
     <ClCompile Include="src\ImGui\StatusWindow.cpp" />
+    <ClCompile Include="src\ImGuiInterface.cpp" />
     <ClCompile Include="src\impl.cpp" />
     <ClCompile Include="src\Input\InputIntegration.cpp" />
     <ClCompile Include="src\Input\InputSystem.cpp" />
+    <ClCompile Include="src\InteriorAtlasManifest.cpp" />
+    <ClCompile Include="src\LegacyNfsPolicy.cpp" />
     <ClCompile Include="src\LightManager.cpp" />
     <ClCompile Include="src\LightNode.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\MainWindow.cpp" />
     <ClCompile Include="src\ModelManager.cpp" />
     <ClCompile Include="src\ModularRenderer.cpp" />
+    <ClCompile Include="src\NightStreetPacks.cpp" />
+    <ClCompile Include="src\NoxRacingGame.cpp" />
     <ClCompile Include="src\passes\BloomPass.cpp" />
     <ClCompile Include="src\passes\DebugBBoxPass.cpp" />
+    <ClCompile Include="src\passes\DecalPass.cpp" />
+    <ClCompile Include="src\passes\ExposurePass.cpp" />
     <ClCompile Include="src\passes\GBufferPass.cpp" />
     <ClCompile Include="src\passes\GUIPass.cpp" />
+    <ClCompile Include="src\passes\IndirectDiffusePass.cpp" />
+    <ClCompile Include="src\passes\LensFlarePass.cpp" />
+    <ClCompile Include="src\passes\LightClusterPass.cpp" />
     <ClCompile Include="src\passes\LightingPass.cpp" />
     <ClCompile Include="src\passes\LPVPass.cpp" />
+    <ClCompile Include="src\passes\MotionBlurPass.cpp" />
     <ClCompile Include="src\passes\PostProcessPass.cpp" />
+    <ClCompile Include="src\passes\RainPass.cpp" />
+    <ClCompile Include="src\passes\ReflectionProbePass.cpp" />
     <ClCompile Include="src\passes\RTPass.cpp" />
     <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp" />
     <ClCompile Include="src\passes\ShadowPass.cpp" />
     <ClCompile Include="src\passes\SSAOPass.cpp" />
-    <ClCompile Include="src\passes\IndirectDiffusePass.cpp" />
+    <ClCompile Include="src\passes\SSRPass.cpp" />
     <ClCompile Include="src\passes\SurfelGIManager.cpp" />
     <ClCompile Include="src\passes\SurfelGIPipeline.cpp" />
     <ClCompile Include="src\passes\TAAPass.cpp" />
-    <ClCompile Include="src\passes\LightClusterPass.cpp" />
-    <ClCompile Include="src\passes\ExposurePass.cpp" />
-    <ClCompile Include="src\passes\SSRPass.cpp" />
-    <ClCompile Include="src\passes\ReflectionProbePass.cpp" />
-    <ClCompile Include="src\passes\VolumetricFogPass.cpp" />
-    <ClCompile Include="src\passes\MotionBlurPass.cpp" />
-    <ClCompile Include="src\passes\RainPass.cpp" />
-    <ClCompile Include="src\passes\VehicleFXPass.cpp" />
-    <ClCompile Include="src\ProceduralStreetKit.cpp" />
-    <ClCompile Include="src\NightStreetPacks.cpp" />
-    <ClCompile Include="src\TextureArrayBuilder.cpp" />
-    <ClCompile Include="src\GpuBuffer.cpp" />
-    <ClCompile Include="src\rhi\RHI.cpp" />
-    <ClCompile Include="src\rhi\gl\GLDevice.cpp" />
-    <ClCompile Include="src\passes\DecalPass.cpp" />
-    <ClCompile Include="src\passes\LensFlarePass.cpp" />
-    <ClCompile Include="src\BenchmarkRunner.cpp" />
-    <ClCompile Include="src\SceneRenderSettings.cpp" />
-    <ClCompile Include="src\DriveMode.cpp" />
-    <ClCompile Include="src\RoadNetwork.cpp" />
-    <ClCompile Include="src\CollisionWorld.cpp" />
-    <ClCompile Include="src\UiIconAtlas.cpp" />
-    <ClCompile Include="src\GameSession.cpp" />
-    <ClCompile Include="src\DriveAudio.cpp" />
-    <ClCompile Include="src\RacingHUD.cpp" />
-    <ClCompile Include="src\WorldMapUI.cpp" />
-    <ClCompile Include="src\VehicleFX.cpp" />
-    <ClCompile Include="src\ImGui\EditorWorkspace.cpp" />
-    <ClCompile Include="src\ImGui\ConsoleLog.cpp" />
-    <ClCompile Include="src\editor\ProcessRunner.cpp" />
-    <ClCompile Include="src\editor\solace\SolaceControls.cpp" />
-    <ClCompile Include="src\editor\solace\SolaceCore.cpp" />
-    <ClCompile Include="src\editor\solace\SolaceFeedback.cpp" />
-    <ClCompile Include="src\editor\solace\SolaceIcons.cpp" />
-    <ClCompile Include="src\editor\solace\SolaceSvg.cpp" />
-    <ClCompile Include="src\editor\solace\SolaceTheme.cpp" />
     <ClCompile Include="src\passes\TransformHistoryPass.cpp" />
     <ClCompile Include="src\passes\TransparentForwardPass.cpp" />
+    <ClCompile Include="src\passes\VehicleFXPass.cpp" />
+    <ClCompile Include="src\passes\VolumetricFogPass.cpp" />
     <ClCompile Include="src\PerformanceRecorder.cpp" />
     <ClCompile Include="src\PhysicsBVH.cpp" />
     <ClCompile Include="src\PhysicsCollision.cpp" />
     <ClCompile Include="src\PhysicsEngine.cpp" />
+    <ClCompile Include="src\PlayWorldSnapshot.cpp" />
     <ClCompile Include="src\PointLight.cpp" />
+    <ClCompile Include="src\ProceduralStreetKit.cpp" />
+    <ClCompile Include="src\RacingHUD.cpp" />
     <ClCompile Include="src\RayCast.cpp" />
     <ClCompile Include="src\RenderSystem.cpp" />
+    <ClCompile Include="src\rhi\gl\GLDevice.cpp" />
+    <ClCompile Include="src\rhi\RHI.cpp" />
     <ClCompile Include="src\RigidBody.cpp" />
+    <ClCompile Include="src\RoadNetwork.cpp" />
     <ClCompile Include="src\RTSceneResources.cpp" />
     <ClCompile Include="src\RuntimeStateManager.cpp" />
     <ClCompile Include="src\Scene.cpp" />
+    <ClCompile Include="src\SceneExtensions.cpp" />
     <ClCompile Include="src\SceneGraph.cpp" />
     <ClCompile Include="src\SceneLoader.cpp" />
-    <ClCompile Include="src\SceneRuntimeData.cpp" />
     <ClCompile Include="src\SceneNode.cpp" />
+    <ClCompile Include="src\SceneRenderSettings.cpp" />
+    <ClCompile Include="src\SceneRuntimeData.cpp" />
+    <ClCompile Include="src\scripting\LuaEditor.cpp" />
+    <ClCompile Include="src\scripting\LuaEditorPanel.cpp" />
+    <ClCompile Include="src\scripting\LuaGameModule.cpp" />
+    <ClCompile Include="src\scripting\LuaInput.cpp" />
+    <ClCompile Include="src\scripting\LuaProject.cpp" />
+    <ClCompile Include="src\scripting\LuaReload.cpp" />
+    <ClCompile Include="src\scripting\LuaRuntime.cpp" />
+    <ClCompile Include="src\scripting\LuaServices.cpp" />
+    <ClCompile Include="src\scripting\LuaUi.cpp" />
+    <ClCompile Include="src\scripting\LuaVehicleBindings.cpp" />
+    <ClCompile Include="src\scripting\LuaVehiclePolicy.cpp" />
+    <ClCompile Include="src\scripting\LuaWorld.cpp" />
     <ClCompile Include="src\ShadowMapper.cpp" />
+    <ClCompile Include="src\SimdKernels.cpp" />
     <ClCompile Include="src\Skybox.cpp" />
-    <ClCompile Include="src\EnvironmentMap.cpp" />
     <ClCompile Include="src\SpotLight.cpp" />
     <ClCompile Include="src\StudioLighting.cpp" />
-    <ClCompile Include="src\Texture.cpp" />
-    <ClCompile Include="src\SimdKernels.cpp" />
     <ClCompile Include="src\surfel_gi\SurfelGIResources.cpp" />
+    <ClCompile Include="src\Texture.cpp" />
+    <ClCompile Include="src\TextureArrayBuilder.cpp" />
     <ClCompile Include="src\TransformSystem.cpp" />
-    <ClCompile Include="src\GameModule.cpp" />
-    <ClCompile Include="src\SceneExtensions.cpp" />
-    <ClCompile Include="src\NoxRacingGame.cpp" />
-    <ClCompile Include="src\FrameProfiler.cpp" />
     <ClCompile Include="src\ui\Pointer.cpp" />
-    <ClCompile Include="src\EditorExtensions.cpp" />
-    <ClCompile Include="src\GameEditorPanels.cpp" />
+    <ClCompile Include="src\UiIconAtlas.cpp" />
+    <ClCompile Include="src\vehicle\VehiclePolicyTrace.cpp" />
+    <ClCompile Include="src\vehicle\VehicleService.cpp" />
+    <ClCompile Include="src\VehicleFX.cpp" />
+    <ClCompile Include="src\WorldMapUI.cpp" />
+    <ClCompile Include="src\scripting\LuaData.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Animation.h" />
+    <ClInclude Include="src\AnimationSystem.h" />
+    <ClInclude Include="src\app\ProjectBootstrap.h" />
+    <ClInclude Include="src\app\UserSettings.h" />
+    <ClInclude Include="src\assets\AssetIO.h" />
+    <ClInclude Include="src\assets\AssetIOGltf.h" />
+    <ClInclude Include="src\assets\AssetIOImage.h" />
+    <ClInclude Include="src\assets\AssetIOJson.h" />
+    <ClInclude Include="src\assets\AssetIOSdl.h" />
+    <ClInclude Include="src\assets\AssetIOUser.h" />
+    <ClInclude Include="src\audio\ProceduralVehicleAudio.h" />
+    <ClInclude Include="src\AudioNode.h" />
+    <ClInclude Include="src\AudioPlayer.h" />
+    <ClInclude Include="src\BaseLight.h" />
+    <ClInclude Include="src\BenchmarkRunner.h" />
+    <ClInclude Include="src\bend_sss_cpu.h" />
+    <ClInclude Include="src\BVH.h" />
+    <ClInclude Include="src\BVHBuilder.h" />
+    <ClInclude Include="src\Camera.h" />
+    <ClInclude Include="src\Collider.h" />
+    <ClInclude Include="src\CollisionWorld.h" />
+    <ClInclude Include="src\ComponentManager.h" />
+    <ClInclude Include="src\ComponentTypes.h" />
+    <ClInclude Include="src\ComputeShader.h" />
+    <ClInclude Include="src\Contact.h" />
+    <ClInclude Include="src\cook\CookedResults.h" />
+    <ClInclude Include="src\cook\Sha256.h" />
+    <ClInclude Include="src\Core.h" />
+    <ClInclude Include="src\CrashHandler.h" />
+    <ClInclude Include="src\DefaultTextures.h" />
+    <ClInclude Include="src\DirectionalLight.h" />
+    <ClInclude Include="src\DriveAudio.h" />
+    <ClInclude Include="src\DriveMode.h" />
+    <ClInclude Include="src\editor\ProcessRunner.h" />
+    <ClInclude Include="src\editor\solace\SolaceInternal.h" />
+    <ClInclude Include="src\editor\solace\SolaceUI.h" />
+    <ClInclude Include="src\EditorExtensions.h" />
+    <ClInclude Include="src\EnvironmentMap.h" />
+    <ClInclude Include="src\FrameBuffer.h" />
+    <ClInclude Include="src\FrameProfiler.h" />
+    <ClInclude Include="src\FrustumCulling.h" />
+    <ClInclude Include="src\GameEditorPanels.h" />
+    <ClInclude Include="src\GameModule.h" />
+    <ClInclude Include="src\GameSession.h" />
+    <ClInclude Include="src\GizmoRayCast.h" />
+    <ClInclude Include="src\GpuBuffer.h" />
+    <ClInclude Include="src\GuiAnimation.h" />
+    <ClInclude Include="src\GuiEventBus.h" />
+    <ClInclude Include="src\GuiNode.h" />
+    <ClInclude Include="src\HierarchySystem.h" />
+    <ClInclude Include="src\ImGui\AnimationWindow.h" />
+    <ClInclude Include="src\ImGui\BaseWindow.h" />
+    <ClInclude Include="src\ImGui\CameraWindow.h" />
+    <ClInclude Include="src\ImGui\ConsoleLog.h" />
+    <ClInclude Include="src\ImGui\EditorWorkspace.h" />
+    <ClInclude Include="src\ImGui\HelpWindow.h" />
+    <ClInclude Include="src\ImGui\ImGuiWindowManager.h" />
+    <ClInclude Include="src\ImGui\LightingWindow.h" />
+    <ClInclude Include="src\ImGui\PerformanceWindow.h" />
+    <ClInclude Include="src\ImGui\RenderingSettingsWindow.h" />
+    <ClInclude Include="src\ImGui\SceneHierarchyWindow.h" />
+    <ClInclude Include="src\ImGui\StateExportWindow.h" />
+    <ClInclude Include="src\ImGui\StatusWindow.h" />
+    <ClInclude Include="src\ImGuiInterface.h" />
+    <ClInclude Include="src\ImguiStyle.h" />
+    <ClInclude Include="src\Input\InputActions.h" />
+    <ClInclude Include="src\Input\InputIntegration.h" />
+    <ClInclude Include="src\Input\InputSystem.h" />
+    <ClInclude Include="src\InteriorAtlasManifest.h" />
+    <ClInclude Include="src\json.hpp" />
+    <ClInclude Include="src\LegacyNfsPolicy.h" />
+    <ClInclude Include="src\LightManager.h" />
+    <ClInclude Include="src\LightNode.h" />
+    <ClInclude Include="src\MainWindow.h" />
+    <ClInclude Include="src\MDIBatch.h" />
+    <ClInclude Include="src\MeshComponent.h" />
+    <ClInclude Include="src\ModelManager.h" />
+    <ClInclude Include="src\ModularRenderer.h" />
+    <ClInclude Include="src\NightStreetPacks.h" />
+    <ClInclude Include="src\NoxRacingGame.h" />
+    <ClInclude Include="src\passes\BloomPass.h" />
+    <ClInclude Include="src\passes\DebugBBoxPass.h" />
+    <ClInclude Include="src\passes\DecalPass.h" />
+    <ClInclude Include="src\passes\ExposurePass.h" />
+    <ClInclude Include="src\passes\GBufferPass.h" />
+    <ClInclude Include="src\passes\GUIPass.h" />
+    <ClInclude Include="src\passes\IndirectDiffusePass.h" />
+    <ClInclude Include="src\passes\LensFlarePass.h" />
+    <ClInclude Include="src\passes\LightClusterPass.h" />
+    <ClInclude Include="src\passes\LightingPass.h" />
+    <ClInclude Include="src\passes\LPVPass.h" />
+    <ClInclude Include="src\passes\MotionBlurPass.h" />
+    <ClInclude Include="src\passes\PassLogging.h" />
+    <ClInclude Include="src\passes\PostProcessPass.h" />
+    <ClInclude Include="src\passes\RainPass.h" />
+    <ClInclude Include="src\passes\ReflectionProbePass.h" />
+    <ClInclude Include="src\passes\RTPass.h" />
+    <ClInclude Include="src\passes\ScreenSpaceShadowPass.h" />
+    <ClInclude Include="src\passes\ShadowPass.h" />
+    <ClInclude Include="src\passes\SSAOPass.h" />
+    <ClInclude Include="src\passes\SSRPass.h" />
+    <ClInclude Include="src\passes\SurfelGIManager.h" />
+    <ClInclude Include="src\passes\SurfelGIPipeline.h" />
+    <ClInclude Include="src\passes\TAAPass.h" />
+    <ClInclude Include="src\passes\TransformHistoryPass.h" />
+    <ClInclude Include="src\passes\TransparentForwardPass.h" />
+    <ClInclude Include="src\passes\VehicleFXPass.h" />
+    <ClInclude Include="src\passes\VolumetricFogPass.h" />
+    <ClInclude Include="src\PerformanceRecorder.h" />
+    <ClInclude Include="src\PhysicsBVH.h" />
+    <ClInclude Include="src\PhysicsCollision.h" />
+    <ClInclude Include="src\PhysicsEngine.h" />
+    <ClInclude Include="src\PlayWorldSnapshot.h" />
+    <ClInclude Include="src\PointLight.h" />
+    <ClInclude Include="src\PresentTarget.h" />
+    <ClInclude Include="src\ProceduralStreetKit.h" />
+    <ClInclude Include="src\RacingHUD.h" />
+    <ClInclude Include="src\RayCast.h" />
+    <ClInclude Include="src\ReflectionProbe.h" />
+    <ClInclude Include="src\RenderContext.h" />
+    <ClInclude Include="src\RenderPass.h" />
+    <ClInclude Include="src\RenderSystem.h" />
+    <ClInclude Include="src\rhi\gl\GLDevice.h" />
+    <ClInclude Include="src\rhi\RHI.h" />
+    <ClInclude Include="src\RigidBody.h" />
+    <ClInclude Include="src\RoadNetwork.h" />
+    <ClInclude Include="src\RTSceneResources.h" />
+    <ClInclude Include="src\RTStructures.h" />
+    <ClInclude Include="src\RuntimeStateManager.h" />
+    <ClInclude Include="src\Scene.h" />
+    <ClInclude Include="src\SceneExtensions.h" />
+    <ClInclude Include="src\SceneGraph.h" />
+    <ClInclude Include="src\SceneLoader.h" />
+    <ClInclude Include="src\SceneNode.h" />
+    <ClInclude Include="src\SceneRenderExtras.h" />
+    <ClInclude Include="src\SceneRenderSettings.h" />
+    <ClInclude Include="src\SceneRuntimeData.h" />
+    <ClInclude Include="src\ScreenQuad.h" />
+    <ClInclude Include="src\scripting\LuaData.h" />
+    <ClInclude Include="src\scripting\LuaEditor.h" />
+    <ClInclude Include="src\scripting\LuaEditorPanel.h" />
+    <ClInclude Include="src\scripting\LuaGameModule.h" />
+    <ClInclude Include="src\scripting\LuaInput.h" />
+    <ClInclude Include="src\scripting\LuaProject.h" />
+    <ClInclude Include="src\scripting\LuaReload.h" />
+    <ClInclude Include="src\scripting\LuaRuntime.h" />
+    <ClInclude Include="src\scripting\LuaServices.h" />
+    <ClInclude Include="src\scripting\LuaUi.h" />
+    <ClInclude Include="src\scripting\LuaVehicleBindings.h" />
+    <ClInclude Include="src\scripting\LuaVehiclePolicy.h" />
+    <ClInclude Include="src\scripting\LuaWorld.h" />
+    <ClInclude Include="src\ShaderLoader.h" />
+    <ClInclude Include="src\ShadowMapper.h" />
+    <ClInclude Include="src\SimdKernels.h" />
+    <ClInclude Include="src\SimulationConfig.h" />
+    <ClInclude Include="src\Skybox.h" />
+    <ClInclude Include="src\SpotLight.h" />
+    <ClInclude Include="src\stb_image.h" />
+    <ClInclude Include="src\stb_image_write.h" />
+    <ClInclude Include="src\StudioLighting.h" />
+    <ClInclude Include="src\surfel_gi\SurfelGIResources.h" />
+    <ClInclude Include="src\Texture.h" />
+    <ClInclude Include="src\TextureArrayBuilder.h" />
+    <ClInclude Include="src\TextureUnits.h" />
+    <ClInclude Include="src\tiny_gltf.h" />
+    <ClInclude Include="src\TransformGpuContract.h" />
+    <ClInclude Include="src\TransformSystem.h" />
+    <ClInclude Include="src\ui\Pointer.h" />
+    <ClInclude Include="src\UiIconAtlas.h" />
+    <ClInclude Include="src\vehicle\VehicleMath.h" />
+    <ClInclude Include="src\vehicle\VehiclePolicy.h" />
+    <ClInclude Include="src\vehicle\VehiclePolicyTrace.h" />
+    <ClInclude Include="src\vehicle\VehicleService.h" />
+    <ClInclude Include="src\vehicle\VehicleTypes.h" />
+    <ClInclude Include="src\VehicleFX.h" />
+    <ClInclude Include="src\Vertex.h" />
+    <ClInclude Include="src\WorldMapUI.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".gitattributes" />
@@ -272,147 +658,6 @@
     <None Include="shaders\velocity_vert.glsl" />
     <None Include="snapshots\sponza_scene_state.json" />
   </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="src\Animation.h" />
-    <ClInclude Include="src\AnimationSystem.h" />
-    <ClInclude Include="src\AudioNode.h" />
-    <ClInclude Include="src\AudioPlayer.h" />
-    <ClInclude Include="src\BaseLight.h" />
-    <ClInclude Include="src\BVH.h" />
-    <ClInclude Include="src\BVHBuilder.h" />
-    <ClInclude Include="src\Camera.h" />
-    <ClInclude Include="src\Collider.h" />
-    <ClInclude Include="src\ComponentManager.h" />
-    <ClInclude Include="src\ComponentTypes.h" />
-    <ClInclude Include="src\ComputeShader.h" />
-    <ClInclude Include="src\Contact.h" />
-    <ClInclude Include="src\CrashHandler.h" />
-    <ClInclude Include="src\Core.h" />
-    <ClInclude Include="src\DefaultTextures.h" />
-    <ClInclude Include="src\DirectionalLight.h" />
-    <ClInclude Include="src\FrameBuffer.h" />
-    <ClInclude Include="src\FrustumCulling.h" />
-    <ClInclude Include="src\GizmoRayCast.h" />
-    <ClInclude Include="src\GuiAnimation.h" />
-    <ClInclude Include="src\GuiEventBus.h" />
-    <ClInclude Include="src\GuiNode.h" />
-    <ClInclude Include="src\HierarchySystem.h" />
-    <ClInclude Include="src\ImGuiInterface.h" />
-    <ClInclude Include="src\ImguiStyle.h" />
-    <ClInclude Include="src\ImGui\AnimationWindow.h" />
-    <ClInclude Include="src\ImGui\BaseWindow.h" />
-    <ClInclude Include="src\ImGui\CameraWindow.h" />
-    <ClInclude Include="src\ImGui\HelpWindow.h" />
-    <ClInclude Include="src\ImGui\ImGuiWindowManager.h" />
-    <ClInclude Include="src\ImGui\LightingWindow.h" />
-    <ClInclude Include="src\ImGui\PerformanceWindow.h" />
-    <ClInclude Include="src\ImGui\RenderingSettingsWindow.h" />
-    <ClInclude Include="src\ImGui\SceneHierarchyWindow.h" />
-    <ClInclude Include="src\ImGui\StateExportWindow.h" />
-    <ClInclude Include="src\ImGui\StatusWindow.h" />
-    <ClInclude Include="src\Input\InputActions.h" />
-    <ClInclude Include="src\Input\InputIntegration.h" />
-    <ClInclude Include="src\Input\InputSystem.h" />
-    <ClInclude Include="src\json.hpp" />
-    <ClInclude Include="src\LightManager.h" />
-    <ClInclude Include="src\LightNode.h" />
-    <ClInclude Include="src\MainWindow.h" />
-    <ClInclude Include="src\MDIBatch.h" />
-    <ClInclude Include="src\MeshComponent.h" />
-    <ClInclude Include="src\ModelManager.h" />
-    <ClInclude Include="src\ModularRenderer.h" />
-    <ClInclude Include="src\passes\BloomPass.h" />
-    <ClInclude Include="src\passes\DebugBBoxPass.h" />
-    <ClInclude Include="src\passes\GBufferPass.h" />
-    <ClInclude Include="src\passes\GUIPass.h" />
-    <ClInclude Include="src\passes\LightingPass.h" />
-    <ClInclude Include="src\passes\LPVPass.h" />
-    <ClInclude Include="src\passes\PostProcessPass.h" />
-    <ClInclude Include="src\passes\RTPass.h" />
-    <ClInclude Include="src\passes\ScreenSpaceShadowPass.h" />
-    <ClInclude Include="src\passes\ShadowPass.h" />
-    <ClInclude Include="src\passes\SSAOPass.h" />
-    <ClInclude Include="src\passes\IndirectDiffusePass.h" />
-    <ClInclude Include="src\passes\SurfelGIManager.h" />
-    <ClInclude Include="src\passes\SurfelGIPipeline.h" />
-    <ClInclude Include="src\surfel_gi\SurfelGIResources.h" />
-    <ClInclude Include="src\passes\TAAPass.h" />
-    <ClInclude Include="src\passes\LightClusterPass.h" />
-    <ClInclude Include="src\passes\ExposurePass.h" />
-    <ClInclude Include="src\passes\SSRPass.h" />
-    <ClInclude Include="src\passes\ReflectionProbePass.h" />
-    <ClInclude Include="src\passes\VolumetricFogPass.h" />
-    <ClInclude Include="src\passes\MotionBlurPass.h" />
-    <ClInclude Include="src\passes\RainPass.h" />
-    <ClInclude Include="src\passes\VehicleFXPass.h" />
-    <ClInclude Include="src\ProceduralStreetKit.h" />
-    <ClInclude Include="src\NightStreetPacks.h" />
-    <ClInclude Include="src\TextureArrayBuilder.h" />
-    <ClInclude Include="src\GpuBuffer.h" />
-    <ClInclude Include="src\rhi\RHI.h" />
-    <ClInclude Include="src\rhi\gl\GLDevice.h" />
-    <ClInclude Include="src\SceneRenderExtras.h" />
-    <ClInclude Include="src\passes\DecalPass.h" />
-    <ClInclude Include="src\passes\LensFlarePass.h" />
-    <ClInclude Include="src\BenchmarkRunner.h" />
-    <ClInclude Include="src\SceneRenderSettings.h" />
-    <ClInclude Include="src\DriveMode.h" />
-    <ClInclude Include="src\RoadNetwork.h" />
-    <ClInclude Include="src\CollisionWorld.h" />
-    <ClInclude Include="src\UiIconAtlas.h" />
-    <ClInclude Include="src\GameSession.h" />
-    <ClInclude Include="src\DriveAudio.h" />
-    <ClInclude Include="src\RacingHUD.h" />
-    <ClInclude Include="src\WorldMapUI.h" />
-    <ClInclude Include="src\VehicleFX.h" />
-    <ClInclude Include="src\PresentTarget.h" />
-    <ClInclude Include="src\ImGui\EditorWorkspace.h" />
-    <ClInclude Include="src\ImGui\ConsoleLog.h" />
-    <ClInclude Include="src\editor\ProcessRunner.h" />
-    <ClInclude Include="src\editor\solace\SolaceUI.h" />
-    <ClInclude Include="src\editor\solace\SolaceInternal.h" />
-    <ClInclude Include="src\ReflectionProbe.h" />
-    <ClInclude Include="src\passes\TransparentForwardPass.h" />
-    <ClInclude Include="src\PerformanceRecorder.h" />
-    <ClInclude Include="src\PhysicsBVH.h" />
-    <ClInclude Include="src\PhysicsCollision.h" />
-    <ClInclude Include="src\PhysicsEngine.h" />
-    <ClInclude Include="src\PointLight.h" />
-    <ClInclude Include="src\RayCast.h" />
-    <ClInclude Include="src\RenderContext.h" />
-    <ClInclude Include="src\RenderPass.h" />
-    <ClInclude Include="src\RenderSystem.h" />
-    <ClInclude Include="src\RigidBody.h" />
-    <ClInclude Include="src\RTStructures.h" />
-    <ClInclude Include="src\RTSceneResources.h" />
-    <ClInclude Include="src\RuntimeStateManager.h" />
-    <ClInclude Include="src\Scene.h" />
-    <ClInclude Include="src\SceneGraph.h" />
-    <ClInclude Include="src\SceneLoader.h" />
-    <ClInclude Include="src\SceneNode.h" />
-    <ClInclude Include="src\ScreenQuad.h" />
-    <ClInclude Include="src\ShaderLoader.h" />
-    <ClInclude Include="src\ShadowMapper.h" />
-    <ClInclude Include="src\SimulationConfig.h" />
-    <ClInclude Include="src\Skybox.h" />
-    <ClInclude Include="src\EnvironmentMap.h" />
-    <ClInclude Include="src\SpotLight.h" />
-    <ClInclude Include="src\stb_image.h" />
-    <ClInclude Include="src\stb_image_write.h" />
-    <ClInclude Include="src\StudioLighting.h" />
-    <ClInclude Include="src\Texture.h" />
-    <ClInclude Include="src\TextureUnits.h" />
-    <ClInclude Include="src\tiny_gltf.h" />
-    <ClInclude Include="src\TransformSystem.h" />
-    <ClInclude Include="src\Vertex.h" />
-    <ClInclude Include="src\GameModule.h" />
-    <ClInclude Include="src\SceneExtensions.h" />
-    <ClInclude Include="src\NoxRacingGame.h" />
-    <ClInclude Include="src\FrameProfiler.h" />
-    <ClInclude Include="src\ui\Pointer.h" />
-    <ClInclude Include="src\EditorExtensions.h" />
-    <ClInclude Include="src\GameEditorPanels.h" />
-  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
@@ -422,19 +667,6 @@
     <ProjectName>Nox_Engine</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
@@ -445,19 +677,12 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Label="Shared">
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -469,57 +694,32 @@
   <PropertyGroup>
     <OutDir>$(ProjectDir)build\msbuild\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)build\msbuild\obj\$(Platform)\$(Configuration)\</IntDir>
+    <LocalDebuggerWorkingDirectory>$(ProjectDir)</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
-      <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>W:\Files\C++\3DGP\3DGP\SDL\include;W:\Files\C++\3DGP\3DGP\glew\include\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Link>
-      <SubSystem>Console</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>W:\Files\C++\3DGP\3DGP\SDL\lib\x64;W:\Files\C++\3DGP\3DGP\glew\lib\Release\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>W:\Files\C++\3DGP\3DGP\SDL\include;W:\Files\C++\3DGP\3DGP\glew\include\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Link>
-      <SubSystem>Console</SubSystem>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>W:\Files\C++\3DGP\3DGP\SDL\lib\x64;W:\Files\C++\3DGP\3DGP\glew\lib\Release\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glew32.lib;glew32s.lib;SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
-  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>false</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>..\Nox_Engine\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PreprocessorDefinitions>PHYSFS_STATIC;WIN32;_WINDOWS;_CONSOLE;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)src;$(ProjectDir)include;$(ProjectDir)include\GL;$(ProjectDir)include\SDL;$(ProjectDir)include\GLM;$(ProjectDir)include\JSON;$(ProjectDir)include\IMGUI;$(ProjectDir)external\physfs-3.2.0\src;$(ProjectDir)external\lua-5.5.1\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>glew32.lib;glew32s.lib;opengl32.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;SDL2_image.lib;SDL2_mixer.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\Nox_Engine\lib\SDL\x64;..\Nox_Engine\lib\GLEW\x64;..\3DGP\include\IMGUI;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib\SDL\x64;$(ProjectDir)lib\GLEW\x64;$(ProjectDir)lib\ASSIMP;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;SDL2.lib;SDL2main.lib;SDL2_image.lib;SDL2_ttf.lib;SDL2_mixer.lib;assimp-vc143-mt.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(ProjectDir)SDL2.dll" copy /Y "$(ProjectDir)SDL2.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)SDL2_image.dll" copy /Y "$(ProjectDir)SDL2_image.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)SDL2_mixer.dll" copy /Y "$(ProjectDir)SDL2_mixer.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)SDL2_ttf.dll" copy /Y "$(ProjectDir)SDL2_ttf.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)glew32.dll" copy /Y "$(ProjectDir)glew32.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)assimp-vc143-mt.dll" copy /Y "$(ProjectDir)assimp-vc143-mt.dll" "$(OutDir)" >nul</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -527,25 +727,30 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>false</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Nox_Engine\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PreprocessorDefinitions>NDEBUG;PHYSFS_STATIC;WIN32;_WINDOWS;_CONSOLE;IMGUI_DEFINE_MATH_OPERATORS;IMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)src;$(ProjectDir)include;$(ProjectDir)include\GL;$(ProjectDir)include\SDL;$(ProjectDir)include\GLM;$(ProjectDir)include\JSON;$(ProjectDir)include\IMGUI;$(ProjectDir)external\physfs-3.2.0\src;$(ProjectDir)external\lua-5.5.1\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>..\Nox_Engine\lib\SDL\x64;..\Nox_Engine\lib\GLEW\x64;..\3DGP\include\IMGUI;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glew32.lib;glew32s.lib;opengl32.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;SDL2_image.lib;SDL2_mixer.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib\SDL\x64;$(ProjectDir)lib\GLEW\x64;$(ProjectDir)lib\ASSIMP;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;SDL2.lib;SDL2main.lib;SDL2_image.lib;SDL2_ttf.lib;SDL2_mixer.lib;assimp-vc143-mt.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(ProjectDir)SDL2.dll" copy /Y "$(ProjectDir)SDL2.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)SDL2_image.dll" copy /Y "$(ProjectDir)SDL2_image.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)SDL2_mixer.dll" copy /Y "$(ProjectDir)SDL2_mixer.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)SDL2_ttf.dll" copy /Y "$(ProjectDir)SDL2_ttf.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)glew32.dll" copy /Y "$(ProjectDir)glew32.dll" "$(OutDir)" >nul
+if exist "$(ProjectDir)assimp-vc143-mt.dll" copy /Y "$(ProjectDir)assimp-vc143-mt.dll" "$(OutDir)" >nul</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
-
-
-

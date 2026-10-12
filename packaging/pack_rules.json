@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "comment": "Entries with these extensions are always stored (never deflated): streamed audio and GPU block formats are read in seeked chunks, and JPEG is already entropy-coded (measured 0.4% saving on the racing selection). Everything else uses adaptive deflate: PNG (9.0%), HDR (19.6%), glTF/GLB and BIN (28.6%) are read whole by their loaders, so compression stays. Measurements: docs/packaging.md.",
+  "stored_extensions": [".ogg", ".mp3", ".wav", ".jpg", ".jpeg", ".dds", ".ktx", ".ktx2"]
+}

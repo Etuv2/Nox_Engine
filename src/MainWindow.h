@@ -19,6 +19,7 @@ struct LaunchConfig {
     std::string window;            // windowed | borderless | fullscreen | empty
     int width = 0;
     int height = 0;
+    std::string project;           // logical projects/<name>/project.json; empty = from the scene
 };
 
 /**

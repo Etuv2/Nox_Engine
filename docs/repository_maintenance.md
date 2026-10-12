@@ -10,9 +10,16 @@
 | `packaging/` | Per-distribution dependency profiles | Explicit package input |
 | `tools/` | Build, launch, packaging and content-pipeline commands | No |
 | `scripts/` | Existing renderer/static validation utilities | No |
+| `external/` | Pinned third-party sources (Lua, PhysicsFS), see `external/README.md` | Compile input (CMake) |
+| `projects/` | Project descriptors and Lua scripts/data (`projects/<name>/project.json`) | Read in place by the runtime; packed by the profile |
 | `tests/` | Fixture/unit checks | No |
+| `tests/native/` | Headless C++ tests (`nox_tests`) | Built only into `nox_tests` |
+| `tests/fixtures/` | Fixture inputs (`assetio` pack and tree, `packaging` tree) | Read by tests only |
 | `docs/` | Current contracts, workflows and research | No |
 | `build/` | CMake/MSBuild binaries and compiler intermediates | Generated, ignored |
+| `build/user/` | Development user data: settings, layouts, saves, performance data | Generated, ignored |
+| `build/cook-cache/` | Content-addressed cook cache used by packaging | Generated, ignored |
+| `generated/` | Development runtime cache, including `generated/cooked/` results | Generated, ignored (`/generated/`) |
 | `Package/` | Standalone distributions | Generated, ignored |
 | `captures/`, `validation_output/`, `EvaluationCaptures/` | Run evidence | No |
 | `logs/`, `performance_data/`, `snapshots/`, `output/` | Local diagnostics/saves/exports | No |

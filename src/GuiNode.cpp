@@ -1,6 +1,7 @@
 #include "GuiNode.h"
 #include "GpuBuffer.h"
 #include "ShaderLoader.h"
+#include "assets/AssetIOSdl.h"
 #include <SDL/SDL_image.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -97,7 +98,8 @@ void GuiNode::CacheUniformLocations() {
 }
 
 void GuiNode::LoadFont(const std::string& path, int size) {
-    m_font = TTF_OpenFont(path.c_str(), size);
+    SDL_RWops* fontRw = AssetIO::OpenRWops(path); // TTF closes the RWops (and releases the bytes) with the font
+    m_font = fontRw ? TTF_OpenFontRW(fontRw, 1, size) : nullptr;
     if (!m_font) {
         SDL_Log("[GuiNode] Failed to load font: %s", TTF_GetError());
     }
@@ -115,7 +117,8 @@ void GuiNode::AddText(const std::string& text, float x, float y, SDL_Color color
 }
 
 void GuiNode::AddImage(const std::string& path, float x, float y, float w, float h) {
-    SDL_Surface* image = IMG_Load(path.c_str());
+    SDL_RWops* imageRw = AssetIO::OpenRWops(path);
+    SDL_Surface* image = imageRw ? IMG_Load_RW(imageRw, 1) : nullptr;
     if (!image) {
         SDL_Log("[GuiNode] Failed to load image: %s", IMG_GetError());
         return;

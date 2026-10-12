@@ -4,6 +4,8 @@
 #include <fstream>
 #include <iostream>
 #include "json.hpp"
+#include "assets/AssetIO.h"
+#include <optional>
 
 /**
  * SimulationConfig - Physics simulation configuration parameters
@@ -67,18 +69,26 @@ struct SimulationConfig {
      * @return true if loaded successfully
      */
     bool loadConfig(const std::string& filepath) {
+        const std::optional<std::string> text = AssetIO::ReadText(filepath);
+        if (!text) {
+            std::cerr << "[SimulationConfig] Could not open config file: " << filepath << std::endl;
+            return false;
+        }
+        nlohmann::json config = nlohmann::json::parse(*text, nullptr, false);
+        return loadConfigJson(config);
+    }
+
+    /**
+     * Load configuration from an already parsed config document (the "physics" object).
+     */
+    bool loadConfigJson(const nlohmann::json& config) {
         try {
-            std::ifstream file(filepath);
-            if (!file.is_open()) {
-                std::cerr << "[SimulationConfig] Could not open config file: " << filepath << std::endl;
+            if (!config.is_object()) {
+                std::cerr << "[SimulationConfig] Config is not a JSON object" << std::endl;
                 return false;
             }
-            
-            nlohmann::json config;
-            file >> config;
-            
             if (config.contains("physics")) {
-                auto& physics = config["physics"];
+                const auto& physics = config["physics"];
                 
                 // Timestep settings
                 fixedDeltaTime = physics.value("fixed_delta_time", fixedDeltaTime);

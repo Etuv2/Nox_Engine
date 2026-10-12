@@ -1,0 +1,8 @@
+-- Sample project: schemas, ordered systems and an event. Nothing here is engine-specific.
+require("schemas")
+require("systems.mover")
+require("systems.health")
+require("systems.quests")
+require("hud")
+require("camera_fx")
+require("editor")

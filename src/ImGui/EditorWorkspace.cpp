@@ -3,6 +3,10 @@
 #include "ConsoleLog.h"
 #include "../Core.h"
 #include "../Camera.h"
+#include "../assets/AssetIO.h"
+#include "../assets/AssetIOJson.h"
+#include "../assets/AssetIOUser.h"
+#include "../app/UserSettings.h"
 #include "../GameModule.h"
 #include "../ImGuiInterface.h"
 #include "../LightNode.h"
@@ -38,7 +42,7 @@ namespace fs = std::filesystem;
 using nlohmann::json;
 
 namespace {
-	const char* kSettingsPath = "config/editor_settings.json";
+	const char* kSettingsPath = "settings/editor_settings.json"; // per-user (AssetIO::UserDir)
 	const char* kPresetsPath = "config/launch_presets.json";
 
 	// Panel window names (stable IDs for the dock layout).
@@ -104,8 +108,7 @@ namespace {
 EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 	: m_core(core), m_legacy(legacyUi), m_runner(std::make_unique<ProcessRunner>())
 {
-	std::ifstream in(kSettingsPath);
-	const json s = in ? json::parse(in, nullptr, false) : json();
+	const json s = UserSettings::LoadUserJson(kSettingsPath).value_or(json());
 	if (s.is_object()) {
 		const json p = s.value("panels", json::object());
 		auto rd = [&](const char* key, bool& v) { v = p.value(key, v); };
@@ -120,11 +123,12 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		m_layoutBuilt = s.value("layout_built", false);
 		m_selectedPreset = s.value("preset", m_selectedPreset);
 	}
-	std::ifstream pin(kPresetsPath);
-	m_presets = pin ? json::parse(pin, nullptr, false) : json();
+	m_presets = AssetIO::ReadJsonOrNull(kPresetsPath);
 	if (!m_presets.is_object()) m_presets = json::object();
 	// The layout ini may have been deleted: rebuild when no dock node exists yet.
-	if (!fs::exists("config/editor_layout.ini")) m_layoutBuilt = false;
+	const std::string userLayout = AssetIO::UserOutputPath("editor_layout.ini");
+	const bool haveLayout = (!userLayout.empty() && fs::exists(userLayout)) || AssetIO::Exists("config/editor_layout.ini");
+	if (!haveLayout) m_layoutBuilt = false;
 }
 
 EditorWorkspace::~EditorWorkspace()
@@ -151,8 +155,7 @@ void EditorWorkspace::SaveSettings() const
 	s["authoring_overlay"] = m_showAuthoring;
 	s["layout_built"] = m_layoutBuilt;
 	s["preset"] = m_selectedPreset;
-	std::ofstream out(kSettingsPath);
-	if (out) out << s.dump(2);
+	UserSettings::SaveUserJson(kSettingsPath, s);
 }
 
 void EditorWorkspace::OnSceneLoaded()
@@ -257,7 +260,7 @@ void EditorWorkspace::Draw(float dt)
 	// Application panels (EditorExtensions): each is a dockable window with its own open state.
 	for (const EditorPanel& panel : EditorExtensions::Panels()) {
 		bool& open = PanelOpen(panel);
-		if (!open) continue;
+		if (!open || (panel.available && !panel.available(*this))) continue;
 		if (ImGui::Begin(panel.title.c_str(), &open) && panel.draw) panel.draw(*this);
 		ImGui::End();
 	}
@@ -374,7 +377,10 @@ void EditorWorkspace::DrawMenuBar()
 		ImGui::MenuItem(kWinConsole, nullptr, &m_showConsole);
 		ImGui::MenuItem(kWinBuild, nullptr, &m_showBuild);
 		ImGui::MenuItem("Profiler", nullptr, &m_showLegacyPerformance);
-		for (const EditorPanel& panel : EditorExtensions::Panels()) ImGui::MenuItem(panel.title.c_str(), nullptr, &PanelOpen(panel));
+		for (const EditorPanel& panel : EditorExtensions::Panels()) {
+			if (panel.available && !panel.available(*this)) continue;
+			ImGui::MenuItem(panel.title.c_str(), nullptr, &PanelOpen(panel));
+		}
 		ImGui::MenuItem("Animation", nullptr, &m_showLegacyAnimation);
 		ImGui::MenuItem("State & Export", nullptr, &m_showLegacyState);
 		ImGui::MenuItem(kWinPresets, nullptr, &m_showPresets);
@@ -744,6 +750,11 @@ void EditorWorkspace::RequestPlay()
 	FocusGame();
 }
 
+void EditorWorkspace::RequestStop()
+{
+	m_core.RequestStop();
+}
+
 bool EditorWorkspace::IsPlaying() const { return m_core.IsPlaying(); }
 void EditorWorkspace::MarkDirty() { m_core.MarkDirty(); }
 void EditorWorkspace::ApplyGameJson(const json& game) { m_core.ApplyGameJson(game); }
@@ -905,13 +916,10 @@ void EditorWorkspace::DrawAssets()
 		m_assetCacheTimer = 2.0f;
 		m_assetCache.clear();
 		std::error_code ec;
-		if (fs::exists(m_assetFolder, ec)) {
-			for (auto it = fs::recursive_directory_iterator(m_assetFolder, fs::directory_options::skip_permission_denied, ec);
-				it != fs::recursive_directory_iterator() && m_assetCache.size() < 4000; it.increment(ec)) {
-				if (ec) break;
-				if (it->is_regular_file(ec)) m_assetCache.push_back(it->path().generic_string());
-			}
-		}
+		AssetIO::ListOptions options;
+		options.recursive = true;
+		m_assetCache = AssetIO::List(m_assetFolder, options);
+		if (m_assetCache.size() > 4000) m_assetCache.resize(4000);
 		std::sort(m_assetCache.begin(), m_assetCache.end());
 	}
 	ImGui::BeginChild("##assets");
@@ -1269,8 +1277,14 @@ void EditorWorkspace::DrawLaunchPresets()
 	ImGui::SameLine();
 	if (ui::Btn("Save presets", true)) {
 		m_presets["default"] = m_presets.value("default", std::string("editor"));
-		std::ofstream out(kPresetsPath);
-		if (out) { out << m_presets.dump(2); ui::Toast("Launch presets saved", ui::ToastKind::Success); }
+		// Launch presets are authored content: written to the loose source tree only.
+		const std::optional<fs::path> presetsTarget = AssetIO::SourcePath(kPresetsPath);
+		if (!presetsTarget) {
+			ui::Toast("Launch presets are read-only in this build", ui::ToastKind::Warning);
+		} else {
+			std::ofstream out(*presetsTarget);
+			if (out) { out << m_presets.dump(2); ui::Toast("Launch presets saved", ui::ToastKind::Success); }
+		}
 	}
 	ImGui::SameLine();
 	if (ui::Btn("Run selected", false)) RunStandalone();
@@ -1471,22 +1485,27 @@ void EditorWorkspace::RunSmokeScript()
 		// Exercises the real save path, then restores the file byte-for-byte: a test must not
 		// rewrite authored scenes (runtime poses would otherwise leak into them).
 		const std::string path = m_core.GetCurrentScenePath();
-		std::ifstream in(path, std::ios::binary);
-		const std::string original((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-		in.close();
+		const std::string original = AssetIO::ReadText(path).value_or(std::string());
 		const json before = json::parse(original, nullptr, false);
 		m_core.SaveCurrentScene();
-		std::ifstream in2(path);
-		const json after = json::parse(in2, nullptr, false);
-		in2.close();
+		const json after = AssetIO::ReadJsonOrNull(path);
 		check(after.is_object() && after.contains("nodes"), "save writes a valid scene");
 		if (m_core.GetGameModule()) {
-			check(before.is_object() && after["game"]["events"].size() == before["game"]["events"].size(), "save keeps game events");
+			{
+				// Scenes without a game object (engine scenes, Lua projects) have no events: compare as empty.
+				auto eventCount = [](const json& doc) {
+					const json game = doc.is_object() ? doc.value("game", json::object()) : json::object();
+					return game.is_object() ? game.value("events", json::array()).size() : size_t(0);
+				};
+				check(before.is_object() && eventCount(after) == eventCount(before), "save keeps game events");
+			}
 		}
 		check(!m_core.IsDirty(), "clean after save");
 		if (!original.empty()) {
-			std::ofstream restore(path, std::ios::binary | std::ios::trunc);
-			restore << original;
+			if (const auto target = AssetIO::SourcePath(path)) {
+				std::ofstream restore(*target, std::ios::binary | std::ios::trunc);
+				restore << original;
+			}
 		}
 	}
 	if (frame == 360) m_quit = true;

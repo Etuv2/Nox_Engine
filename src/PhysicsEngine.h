@@ -88,6 +88,15 @@ public:
      * Used for single-step debugging
      */
     void SingleStep();
+
+    /**
+     * Called once per actual fixed step (in Update's substep loop and by SingleStep), immediately
+     * before that step integrates. Frames that accumulate less than one step make no call; a long
+     * frame makes up to maxSubSteps calls. index counts substeps within the current Update (0 for
+     * SingleStep). Used by gameplay runtimes for fixed_update; the callback must not add/remove bodies.
+     */
+    using SubstepCallback = std::function<void(float fixedDt, int index)>;
+    void SetSubstepCallback(SubstepCallback callback) { m_substepCallback = std::move(callback); }
     
     // ============== STATE CONTROL ==============
     
@@ -115,6 +124,7 @@ public:
      * Get interpolation alpha for rendering
      */
     float GetAlpha() const { return m_alpha; }
+    float GetFixedDeltaTime() const { return m_config.fixedDeltaTime; }
     
     /**
      * Interpolate all bodies for rendering
@@ -408,6 +418,7 @@ private:
     State m_state = State::RUNNING;
     float m_accumulator = 0.0f;
     float m_alpha = 0.0f;
+    SubstepCallback m_substepCallback;
     
     // Bodies
     std::vector<std::shared_ptr<RigidBody>> m_bodies;

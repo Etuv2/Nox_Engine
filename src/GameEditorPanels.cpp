@@ -11,6 +11,7 @@
 #include "ModularRenderer.h"
 #include "RenderContext.h"
 #include "RacingHUD.h"
+#include "ImGui/RenderingSettingsWindow.h"
 #include "RoadNetwork.h"
 #include "SceneGraph.h"
 #include "SceneNode.h"
@@ -414,85 +415,31 @@ namespace {
 			ImGui::TextDisabled("Renderer not connected");
 			return;
 		}
-		RenderContext& ctx = renderer->GetContext();
 		ImGui::TextWrapped("Night-street look (docs/nfs2015). Values start from the scene's render_settings "
 			"and the selected quality tier; changes here are live and not saved.");
 		ImGui::Separator();
-
-		if (ImGui::CollapsingHeader("Camera / Exposure", ImGuiTreeNodeFlags_DefaultOpen)) {
-			ImGui::Checkbox("Physical camera (photometric units)", &ctx.physicalCamera);
-			ImGui::Combo("Exposure mode", &ctx.exposureMode, "Manual EV100\0Auto (histogram)\0");
-			ImGui::SliderFloat("EV100 (manual / reset)", &ctx.exposureEV100, -4.0f, 16.0f, "%.2f");
-			ImGui::SliderFloat("Compensation (EV)", &ctx.exposureCompensationEV, -4.0f, 4.0f, "%.2f");
-			ImGui::DragFloatRange2("Auto EV range", &ctx.autoExposureMinEV100, &ctx.autoExposureMaxEV100, 0.1f, -6.0f, 18.0f);
-			ImGui::SliderFloat("Adapt to brighter (1/s)", &ctx.autoExposureSpeedUp, 0.1f, 10.0f);
-			ImGui::SliderFloat("Adapt to darker (1/s)", &ctx.autoExposureSpeedDown, 0.1f, 10.0f);
-		}
-		if (ImGui::CollapsingHeader("Weather")) {
-			ImGui::SliderFloat("Wetness", &ctx.weatherWetness, 0.0f, 1.0f);
-			ImGui::SliderFloat("Puddles", &ctx.weatherPuddles, 0.0f, 1.0f);
-			ImGui::SliderFloat("Rain", &ctx.weatherRain, 0.0f, 1.0f);
-			ImGui::SliderFloat("Puddle scale (m)", &ctx.weatherPuddleScale, 0.5f, 20.0f);
-			ImGui::SliderInt("Rain drops", &ctx.rainDropCount, 0, 200000);
-			ImGui::SliderFloat("Rain brightness", &ctx.rainBrightness, 0.0f, 4.0f);
-		}
-		if (ImGui::CollapsingHeader("Reflections")) {
-			ImGui::Checkbox("Screen-space reflections", &ctx.enableSSR);
-			ImGui::SliderFloat("SSR max roughness", &ctx.ssrMaxRoughness, 0.05f, 1.0f);
-			ImGui::SliderInt("SSR steps", &ctx.ssrMaxSteps, 8, 128);
-			ImGui::SliderInt("SSR resolve rays (4/9)", &ctx.ssrResolveSamples, 4, 9);
-			ImGui::SliderFloat("SSR temporal blend", &ctx.ssrTemporalBlend, 0.02f, 1.0f);
-			ImGui::Checkbox("Reflection probes", &ctx.enableReflectionProbes);
-			ImGui::SameLine();
-			if (ImGui::Button("Recapture")) {
-				renderer->RequestReflectionProbeRecapture();
-			}
-			ImGui::Text("Visible probes: %d", ctx.reflectionProbeCount);
-		}
-		if (ImGui::CollapsingHeader("Atmosphere")) {
-			ImGui::Checkbox("Volumetric fog", &ctx.enableVolumetricFog);
-			ImGui::SliderFloat("Density (1/m)", &ctx.fogDensity, 0.0f, 0.1f, "%.4f");
-			ImGui::SliderFloat("Height falloff (m)", &ctx.fogHeightFalloff, 0.5f, 100.0f);
-			ImGui::SliderFloat("Anisotropy g", &ctx.fogAnisotropy, -0.9f, 0.95f);
-			ImGui::SliderFloat("Noise", &ctx.fogNoiseStrength, 0.0f, 1.0f);
-			ImGui::ColorEdit3("Ambient (cd/m2)", &ctx.fogAmbientRadiance.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-			ImGui::SliderFloat("Distant density (1/m)", &ctx.fogDistantDensity, 0.0f, 0.05f, "%.4f");
-		}
-		if (ImGui::CollapsingHeader("Image Formation")) {
-			ImGui::Combo("Bloom mode", &ctx.bloomMode, "Additive (threshold)\0Energy conserving\0");
-			ImGui::SliderFloat("Bloom strength", &ctx.bloomStrength, 0.0f, 1.0f);
-			ImGui::SliderFloat("White balance (K)", &ctx.whiteBalanceTemperature, 1500.0f, 12000.0f, "%.0f");
-			ImGui::SliderFloat("Tint", &ctx.whiteBalanceTint, -1.0f, 1.0f);
-			ImGui::SliderFloat("Contrast", &ctx.gradeContrast, 0.5f, 1.8f);
-			ImGui::SliderFloat("Saturation", &ctx.gradeSaturation, 0.0f, 2.0f);
-			ImGui::DragFloat3("Shadow tint", &ctx.gradeShadowTint.x, 0.01f, -1.0f, 1.0f);
-			ImGui::DragFloat3("Highlight tint", &ctx.gradeHighlightTint.x, 0.01f, -1.0f, 1.0f);
-			ImGui::SliderFloat("Split tone", &ctx.gradeSplitToneStrength, 0.0f, 2.0f);
-			ImGui::SliderFloat("Vignette", &ctx.vignetteIntensity, 0.0f, 1.5f);
-			ImGui::SliderFloat("Film grain", &ctx.filmGrainIntensity, 0.0f, 0.15f);
-			ImGui::SliderFloat("Chromatic aberration (px)", &ctx.chromaticAberration, 0.0f, 6.0f);
-			ImGui::Checkbox("Output dither", &ctx.enableOutputDither);
-		}
-		if (ImGui::CollapsingHeader("Motion")) {
-			ImGui::Checkbox("Motion blur", &ctx.enableMotionBlur);
-			ImGui::SliderFloat("Shutter (s)", &ctx.motionBlurExposureTime, 0.0f, 0.05f, "%.4f");
-			ImGui::SliderFloat("Max blur (px @1440p)", &ctx.motionBlurMaxPixels, 4.0f, 96.0f);
-			ImGui::SliderInt("Samples", &ctx.motionBlurSamples, 4, 32);
-		}
-		if (ImGui::CollapsingHeader("Lighting / Culling")) {
-			ImGui::Checkbox("Clustered lighting", &ctx.enableClusteredLighting);
-			ImGui::Checkbox("Frustum culling", &ctx.enableFrustumCulling);
-		}
+		DrawEngineLookSections(*renderer);   // the engine's Look controls (also in the Rendering window)
+		ImGui::SliderFloat("Bloom strength", &renderer->GetContext().bloomStrength, 0.0f, 1.0f);
 	}
 
 }
 
+namespace {
+	// The native racing panels and overlay belong to the native GameSession module only (EditorPanel::available).
+	bool NativeRacingActive(EditorHost& host)
+	{
+		return dynamic_cast<GameSession*>(host.Game()) != nullptr;
+	}
+}
+
 void RegisterRacingEditorPanels()
 {
-	EditorExtensions::RegisterPanel({ "race", "Race & Routes", DrawRaceTools, true });
-	EditorExtensions::RegisterPanel({ "drive", "Drive", DrawDriveTools, true });
-	EditorExtensions::RegisterPanel({ "hud", "HUD", DrawHudTools, true });
-	EditorExtensions::RegisterPanel({ "night_street", "Night Street", DrawNightStreetPanel, true });
-	EditorExtensions::SetViewportOverlay(DrawRacingAuthoringOverlay);
+	EditorExtensions::RegisterPanel({ "race", "Race & Routes", DrawRaceTools, true, NativeRacingActive });
+	EditorExtensions::RegisterPanel({ "drive", "Drive", DrawDriveTools, true, NativeRacingActive });
+	EditorExtensions::RegisterPanel({ "hud", "HUD", DrawHudTools, true, NativeRacingActive });
+	EditorExtensions::RegisterPanel({ "night_street", "Night Street", DrawNightStreetPanel, true, NativeRacingActive });
+	EditorExtensions::SetViewportOverlay([](EditorHost& host, ImDrawList* drawList) {
+		if (NativeRacingActive(host)) DrawRacingAuthoringOverlay(host, drawList);
+	});
 	EditorExtensions::SetToolbarIconResolver([](const char* role) { return RacingHUD::Get().IconId(role); });
 }

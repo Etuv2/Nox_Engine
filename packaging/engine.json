@@ -1,16 +1,11 @@
 {
   "name": "NOX_Engine",
   "game": false,
-  "scenes": ["scenes/surfel_gi_cornell_validation.json"],
+  "scenes": [
+    "scenes/surfel_gi_cornell_validation.json"
+  ],
   "include": [
-    "shaders",
-    "config/config.json",
-    "config/input_config.json",
-    "config/render_presets.json",
-    "config/editor_settings.json",
-    "config/editor_layout.ini",
-    "fonts/solace",
-    "images/logo.png"
+    "config/config.json"
   ],
   "licenses": [
     "include/IMGUI/LICENSE.txt",

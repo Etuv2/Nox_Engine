@@ -1,12 +1,13 @@
-"""Add source files to the hand-maintained root Nox_Engine.vcxproj and .filters (the CMake build
-globs src/ by itself). Idempotent.
+"""Add source files to the legacy root Nox_Engine.vcxproj and .filters (the CMake build globs src/
+by itself). Idempotent. Run tools/CheckVcxprojSources.py afterwards.
 
-    python tools/add_to_vcxproj.py src/Foo.cpp src/Foo.h [--filter "Source Files\\scripts\\Engine"]
+    python tools/add_to_vcxproj.py src/Foo.cpp src/Foo.h [--filter "Source Files\\passes"]
 """
 import argparse
 import io
 import os
 import re
+import uuid
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -32,6 +33,31 @@ def insert(path, block_tag, entry, anchor_pattern):
     return True
 
 
+def default_filter(rel, tag):
+    # Mirrors the layout of Nox_Engine.vcxproj.filters: src/<dir> maps to a filter per directory.
+    parts = rel.split('\\')
+    if parts[0] == 'src':
+        base = 'Header Files' if tag == 'ClInclude' else 'Source Files'
+        return base + ''.join('\\' + p for p in parts[1:-1])
+    if len(parts) > 1 and parts[0] == 'include' and parts[1].upper() == 'IMGUI':
+        return 'External\\imgui'
+    return 'Source Files' if tag == 'ClCompile' else 'Header Files'
+
+
+def ensure_filter(text, name, nl):
+    # Adds a <Filter> definition (and its parents) when the filters file does not have one yet.
+    if '<Filter Include="%s">' % name in text:
+        return text
+    parent, _, _ = name.rpartition('\\')
+    if parent:
+        text = ensure_filter(text, parent, nl)
+    guid = '{%s}' % str(uuid.uuid4()).upper()
+    block = ('  <ItemGroup>%s    <Filter Include="%s">%s      <UniqueIdentifier>%s</UniqueIdentifier>%s'
+             '    </Filter>%s  </ItemGroup>%s') % (nl, name, nl, guid, nl, nl, nl)
+    first = text.index('  <ItemGroup>')
+    return text[:first] + block + text[first:]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('files', nargs='+')
@@ -42,12 +68,12 @@ def main():
     for f in a.files:
         rel = f.replace('/', '\\')
         tag = 'ClCompile' if rel.endswith(('.cpp', '.c')) else 'ClInclude'
-        default_filter = 'Source Files\\scripts\\Engine' if tag == 'ClCompile' else 'Header Files\\Engine'
-        flt = a.filter or default_filter
+        flt = a.filter or default_filter(rel, tag)
         added = insert(proj, tag, '    <%s Include="%s" />' % (tag, rel), r'    <%s Include="[^"]+" />' % tag)
         text = io.open(filt, encoding='utf-8-sig', newline='').read()
         nl = '\r\n' if '\r\n' in text else '\n'
         if ('<%s Include="%s">' % (tag, rel)) not in text:
+            text = ensure_filter(text, flt, nl)
             entry = '    <%s Include="%s">%s      <Filter>%s</Filter>%s    </%s>' % (tag, rel, nl, flt, nl, tag)
             last = text.rindex('    </%s>' % tag) + len('    </%s>' % tag)
             text = text[:last] + nl + entry + text[last:]

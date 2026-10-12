@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "sample-arena",
+  "runtime": "lua",
+  "api_version": 1,
+  "entry": "scripts/main.lua",
+  "script_roots": ["scripts"],
+  "data_roots": [],
+  "assets": [],
+  "fonts": [
+    { "id": "label", "path": "../../fonts/BarlowCondensed-SemiBold.ttf", "size": 18 },
+    { "id": "digits", "path": "../../fonts/DSEG7Classic-Bold.ttf", "size": 34 }
+  ],
+  "icons": { "manifest": "../../textures/ui_icons/manifest.json", "size": 128 },
+  "input": "input.json"
+}

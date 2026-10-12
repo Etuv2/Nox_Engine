@@ -30,10 +30,10 @@ if (-not (Test-Path -LiteralPath $vcvars)) {
 }
 if (-not (Test-Path -LiteralPath $vcvars)) { Stop-Nox "vcvars64.bat not found." }
 
-$includes = @('', 'src', 'include', 'include\GL', 'include\SDL', 'include\glm', 'include\json', 'include\imgui') |
+$includes = @('', 'src', 'include', 'include\GL', 'include\SDL', 'include\glm', 'include\json', 'include\imgui', 'external\lua-5.5.1\src', 'external\physfs-3.2.0\src') |
     ForEach-Object { '/I"' + (Join-Path $repo $_).TrimEnd('\') + '"' }
 $flags = @('/Zs', '/nologo', '/W3', '/diagnostics:column', '/EHsc', '/MD', '/std:c++20', '/permissive-', '/Zc:inline',
-    '/D_MBCS', '/DWIN32', '/D_WINDOWS', '/DNDEBUG', '/DIMGUI_DEFINE_MATH_OPERATORS', '/DIMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP', '/TP') + $includes
+    '/D_MBCS', '/DWIN32', '/D_WINDOWS', '/DNDEBUG', '/DIMGUI_DEFINE_MATH_OPERATORS', '/DIMGUIMIZMO_DISABLE_CAPTURE_MOUSE_FROM_APP', '/DPHYSFS_STATIC', '/TP') + $includes
 
 $failed = 0
 foreach ($file in $Files) {

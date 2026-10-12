@@ -2,6 +2,7 @@
 #include "RenderContext.h"
 #include "FrameBuffer.h"
 #include "ScreenQuad.h"
+#include "assets/AssetIO.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -249,8 +250,8 @@ namespace SceneRenderSettings {
 	}
 
 	bool ApplyFromSceneFile(RenderContext& ctx, const std::string& sceneFilePath, bool previousSceneHadSettings) {
-		std::ifstream in(sceneFilePath);
-		json scene = in ? json::parse(in, nullptr, false) : json();
+		const std::optional<std::string> sceneText = AssetIO::ReadText(sceneFilePath);
+		json scene = sceneText ? json::parse(*sceneText, nullptr, false) : json();
 		const bool has = scene.is_object() && scene.contains("render_settings") && scene["render_settings"].is_object();
 		g_activeTier.clear();
 		if (has || previousSceneHadSettings) {

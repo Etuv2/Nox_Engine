@@ -4,10 +4,16 @@
 * Command line (docs/nfs2015/game.md, "Launching"):
 *   Nox_Engine.exe [--preset <name>] [--game | --editor] [--scene <path>] [--quality high|ultra]
 *                  [--window windowed|borderless|fullscreen] [--width N --height N] [--no-game]
+*                  [--project <projects/x/project.json>] [--bootstrap <nox_bootstrap.json>]
 * Presets come from config/launch_presets.json ("default" is used without arguments). Assets are
-* resolved from the executable's location, not the working directory.
+* mounted by ProjectBootstrap (packs beside a shipped exe, or the source checkout above a development
+* exe); nothing depends on the working directory.
 */
 #include "MainWindow.h"
+#include "app/ProjectBootstrap.h"
+#include "assets/AssetIO.h"
+#include "GameModule.h"
+#include "scripting/LuaGameModule.h"
 #include "NoxRacingGame.h"
 #include "CrashHandler.h"
 #include "ImGui/ConsoleLog.h"
@@ -32,36 +38,10 @@ namespace fs = std::filesystem;
 
 std::string NoxExecutablePath()
 {
-	wchar_t buffer[MAX_PATH] = {};
-	const DWORD n = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-	return n ? fs::path(buffer).string() : std::string();
+	return ProjectBootstrap::ExecutablePath().string();
 }
 
 namespace {
-	// Packaged builds keep their assets next to the exe; build-tree binaries (a CMakeCache.txt one
-	// level up) use the source tree so editor saves land in the repository.
-	void SetAssetRoot()
-	{
-		std::error_code ec;
-		const fs::path exeDir = fs::path(NoxExecutablePath()).parent_path();
-		if (exeDir.empty()) return;
-		const bool inBuildTree = fs::exists(exeDir.parent_path() / "CMakeCache.txt", ec);
-		if (!inBuildTree && fs::exists(exeDir / "shaders", ec) && fs::exists(exeDir / "config", ec)) {
-			fs::current_path(exeDir, ec);
-			return;
-		}
-		fs::path dir = exeDir;
-		for (int i = 0; i < 6 && !dir.empty(); ++i) {
-			if (fs::exists(dir / "shaders", ec) && fs::exists(dir / "config", ec) && fs::exists(dir / "CMakeLists.txt", ec)) {
-				fs::current_path(dir, ec);
-				return;
-			}
-			if (dir == dir.parent_path()) break;
-			dir = dir.parent_path();
-		}
-		// Otherwise keep the working directory (legacy behaviour).
-	}
-
 	LaunchConfig ParseLaunch(int argc, char* argv[])
 	{
 		LaunchConfig cfg;
@@ -79,9 +59,11 @@ namespace {
 			else if (a == "--window") cli.window = next();
 			else if (a == "--width") cli.width = std::atoi(next().c_str());
 			else if (a == "--height") cli.height = std::atoi(next().c_str());
+			else if (a == "--project") cli.project = next();
+			else if (a == "--bootstrap") ++i;   // consumed by main() before presets are read
 		}
-		std::ifstream in("config/launch_presets.json");
-		const nlohmann::json presets = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+		const auto presetText = AssetIO::ReadText("config/launch_presets.json");
+		const nlohmann::json presets = presetText ? nlohmann::json::parse(*presetText, nullptr, false) : nlohmann::json();
 		if (presets.is_object()) {
 			if (preset.empty() && !cliMode) preset = presets.value("default", std::string());
 			const nlohmann::json all = presets.value("presets", nlohmann::json::object());
@@ -93,6 +75,7 @@ namespace {
 				cfg.window = p.value("window", cfg.window);
 				cfg.width = p.value("width", cfg.width);
 				cfg.height = p.value("height", cfg.height);
+				cfg.project = p.value("project", cfg.project);
 			}
 			else if (!preset.empty()) {
 				std::cerr << "[Launch] Unknown preset '" << preset << "'" << std::endl;
@@ -104,9 +87,10 @@ namespace {
 		if (!cli.window.empty()) cfg.window = cli.window;
 		if (cli.width > 0) cfg.width = cli.width;
 		if (cli.height > 0) cfg.height = cli.height;
+		if (!cli.project.empty()) cfg.project = cli.project;
 		std::cout << "[Launch] preset=" << (preset.empty() ? "(none)" : preset) << " mode=" << cfg.mode
 			<< " scene=" << (cfg.scene.empty() ? "(config)" : cfg.scene) << " quality=" << cfg.quality
-			<< " window=" << cfg.window << " cwd=" << fs::current_path().string() << std::endl;
+			<< " window=" << cfg.window << " project=" << (cfg.project.empty() ? "(scene)" : cfg.project) << std::endl;
 		return cfg;
 	}
 }
@@ -114,12 +98,24 @@ namespace {
 int main(int argc, char* argv[])
 {
 	CrashHandler::Install();
-	SetAssetRoot();
+	// Asset mounts come first: launch presets, configuration and scenes are all read through AssetIO.
+	fs::path bootstrapFile;
+	for (int i = 1; i + 1 < argc; ++i) if (std::string(argv[i]) == "--bootstrap") bootstrapFile = fs::u8path(argv[i + 1]);
+	std::string bootstrapError;
+	if (!ProjectBootstrap::Initialize(bootstrapFile, bootstrapError)) {
+		std::cerr << "[Bootstrap] " << bootstrapError << std::endl;
+		MessageBoxA(nullptr, bootstrapError.c_str(), "NOX", MB_OK | MB_ICONERROR);
+		return EXIT_FAILURE;
+	}
 	ConsoleLog::Get().Install();
 	const LaunchConfig launch = ParseLaunch(argc, argv);
 	// The racing game is an optional module; --no-game runs the bare engine (viewer/editor).
 	bool withGame = true;
 	for (int i = 1; i < argc; ++i) if (std::string(argv[i]) == "--no-game") withGame = false;
+	// Project runtimes: scenes naming a Lua project descriptor run it through the generic adapter.
+	GameModules::RegisterProjectRuntime("lua", [](const std::string& path, const nlohmann::json& descriptor, std::string& error) {
+		return NoxLua::CreateLuaProjectModule(path, descriptor, error);
+	});
 	if (withGame) RegisterNoxRacingGame();
 
 	// Create and initialize the main application window
@@ -130,5 +126,6 @@ int main(int argc, char* argv[])
 	mainWindow.Run();
 	mainWindow.Cleanup();
 	ConsoleLog::Get().Uninstall();
+	AssetIO::Shutdown();
 	return EXIT_SUCCESS;
 }

@@ -1,4 +1,6 @@
 #include "BenchmarkRunner.h"
+#include "assets/AssetIO.h"
+#include "assets/AssetIOUser.h"
 
 #include "Camera.h"
 #include "SceneGraph.h"
@@ -92,12 +94,12 @@ std::unique_ptr<BenchmarkRunner> BenchmarkRunner::CreateFromEnvironment(const st
 	if (filter.empty() || filter == "0") {
 		return nullptr;
 	}
-	std::ifstream in(sceneFilePath);
-	if (!in) {
+	const std::optional<std::string> sceneText = AssetIO::ReadText(sceneFilePath);
+	if (!sceneText) {
 		std::cerr << "[Benchmark] Cannot open scene file " << sceneFilePath << std::endl;
 		return nullptr;
 	}
-	json scene = json::parse(in, nullptr, false);
+	json scene = json::parse(*sceneText, nullptr, false);
 	if (!scene.is_object() || !scene.contains("benchmark")) {
 		std::cerr << "[Benchmark] Scene has no \"benchmark\" block: " << sceneFilePath << std::endl;
 		return nullptr;
@@ -106,7 +108,7 @@ std::unique_ptr<BenchmarkRunner> BenchmarkRunner::CreateFromEnvironment(const st
 	runner->m_sceneName = scene.value("scene_name", std::string("scene"));
 	runner->m_captureMode = GetEnv("NOX_BENCHMARK_MODE") == "capture";
 	const std::string out = GetEnv("NOX_BENCHMARK_OUT");
-	runner->m_outDir = out.empty() ? std::string("captures/benchmark") : out;
+	runner->m_outDir = AssetIO::UserOutputPath(out.empty() ? std::string("captures/benchmark") : out);
 	const std::string repeat = GetEnv("NOX_BENCHMARK_REPEAT");
 	runner->m_repeat = repeat.empty() ? 1 : std::max(1, std::atoi(repeat.c_str()));
 	if (!runner->Load(scene["benchmark"], filter)) {

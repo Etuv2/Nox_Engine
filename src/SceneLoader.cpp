@@ -8,7 +8,10 @@
 #include "SpotLight.h"
 #include "ModelManager.h"
 #include "SceneExtensions.h"
+#include "cook/CookedResults.h"
+#include "InteriorAtlasManifest.h"
 #include "ShaderLoader.h"
+#include "assets/AssetIO.h"
 #include "Scene.h"
 #include "HierarchySystem.h"
 #include "AnimationSystem.h"
@@ -21,6 +24,7 @@
 #include <functional>
 #include <cmath>
 #include <cctype>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <sstream>
@@ -64,47 +68,49 @@ std::string TrimPathValue(const std::string& value)
 	return trimmed;
 }
 
-bool ReadableFileExists(const fs::path& path)
+// Logical asset path for an authored reference. Absolute physical paths inside the loose root map to
+// their logical form; anything else must be a valid logical path (no root escapes).
+std::optional<std::string> ToLogicalPath(const std::string& raw)
 {
-	std::error_code ec;
-	return fs::exists(path, ec) && fs::is_regular_file(path, ec);
-}
-
-std::string NormalizePathForLog(const fs::path& path)
-{
-	std::error_code ec;
-	fs::path absolutePath = fs::absolute(path, ec);
-	if (!ec) {
-		return absolutePath.lexically_normal().string();
+	if (fs::path(raw).is_absolute()) {
+		return AssetIO::LogicalFromPhysical(fs::path(raw));
 	}
-	return path.lexically_normal().string();
+	return AssetIO::Normalize(raw);
 }
 
-void PushUniquePath(std::vector<fs::path>& paths, const fs::path& path)
+bool ReadableFileExists(const std::string& logicalPath)
 {
-	const fs::path normalized = path.lexically_normal();
-	for (const fs::path& existing : paths) {
-		if (existing.lexically_normal() == normalized) {
-			return;
-		}
+	const auto st = AssetIO::Stat(logicalPath);
+	return st.has_value() && !st->isDirectory;
+}
+
+void PushUniqueString(std::vector<std::string>& values, const std::string& value)
+{
+	if (std::find(values.begin(), values.end(), value) == values.end()) {
+		values.push_back(value);
 	}
-	paths.push_back(normalized);
 }
 
-std::vector<fs::path> BuildRelativeAssetCandidates(const std::string& rawPath, const std::string& sceneDirectory)
+std::vector<std::string> BuildRelativeAssetCandidates(const std::string& rawPath, const std::string& sceneDirectory)
 {
-	std::vector<fs::path> candidates;
+	std::vector<std::string> candidates;
 	const std::string trimmed = TrimPathValue(rawPath);
 	if (trimmed.empty()) {
 		return candidates;
 	}
 
-	const fs::path authoredPath(trimmed);
-	PushUniquePath(candidates, authoredPath);
-	if (!authoredPath.is_absolute() && !sceneDirectory.empty()) {
-		const fs::path sceneDir(sceneDirectory);
-		PushUniquePath(candidates, sceneDir / authoredPath);
-		PushUniquePath(candidates, sceneDir / ".." / authoredPath);
+	if (auto authored = ToLogicalPath(trimmed)) {
+		PushUniqueString(candidates, *authored);
+	}
+	if (!fs::path(trimmed).is_absolute() && !sceneDirectory.empty()) {
+		// Scene-relative candidates; references that escape the asset root are skipped.
+		const std::string base = sceneDirectory + "/_";
+		if (auto sceneRelative = AssetIO::ResolveRelative(base, trimmed)) {
+			PushUniqueString(candidates, *sceneRelative);
+		}
+		if (auto parentRelative = AssetIO::ResolveRelative(base, "../" + trimmed)) {
+			PushUniqueString(candidates, *parentRelative);
+		}
 	}
 	return candidates;
 }
@@ -129,20 +135,20 @@ std::string ResolveReadableAssetPath(
 	}
 
 	const auto candidates = BuildRelativeAssetCandidates(trimmed, sceneDirectory);
-	for (const fs::path& candidate : candidates) {
+	for (const std::string& candidate : candidates) {
 		if (ReadableFileExists(candidate)) {
 			if (resolved) {
 				*resolved = true;
 			}
-			return candidate.lexically_normal().string();
+			return candidate;
 		}
 	}
 
 	std::ostringstream message;
 	message << "[SceneLoader] " << (required ? "ERROR" : "Warning")
 		<< ": could not resolve " << assetKind << " path '" << trimmed << "'. Tried:";
-	for (const fs::path& candidate : candidates) {
-		message << "\n  - " << NormalizePathForLog(candidate);
+	for (const std::string& candidate : candidates) {
+		message << "\n  - " << candidate;
 	}
 
 	if (required) {
@@ -161,26 +167,63 @@ std::string ResolveSceneJsonPath(const std::string& rawPath)
 		return {};
 	}
 
-	std::vector<fs::path> candidates;
+	std::vector<std::string> candidates;
 	const fs::path authoredPath(trimmed);
-	PushUniquePath(candidates, authoredPath);
-	if (!authoredPath.has_extension()) {
-		PushUniquePath(candidates, fs::path(trimmed + ".json"));
+	if (auto authored = ToLogicalPath(trimmed)) {
+		PushUniqueString(candidates, *authored);
+		if (!authoredPath.has_extension()) {
+			PushUniqueString(candidates, *authored + ".json");
+		}
 	}
 	if (!authoredPath.is_absolute()) {
-		PushUniquePath(candidates, fs::path("scenes") / authoredPath);
-		if (!authoredPath.has_extension()) {
-			PushUniquePath(candidates, fs::path("scenes") / fs::path(trimmed + ".json"));
+		if (auto inScenes = AssetIO::Normalize("scenes/" + trimmed)) {
+			PushUniqueString(candidates, *inScenes);
+			if (!authoredPath.has_extension()) {
+				PushUniqueString(candidates, *inScenes + ".json");
+			}
 		}
 	}
 
-	for (const fs::path& candidate : candidates) {
+	for (const std::string& candidate : candidates) {
 		if (ReadableFileExists(candidate)) {
-			return candidate.lexically_normal().string();
+			return candidate;
 		}
 	}
 
 	return trimmed;
+}
+
+// Authoring writes (scene saves) go to the loose source tree only. Packed builds refuse them.
+struct AuthoringTarget {
+	std::string logical;
+	fs::path physical;
+};
+
+std::optional<AuthoringTarget> ResolveAuthoringTarget(const std::string& rawPath, std::string* error)
+{
+	const std::string trimmed = TrimPathValue(rawPath);
+	auto logical = ToLogicalPath(trimmed);
+	if (!logical) {
+		*error = "path is outside the asset root: " + trimmed;
+		return std::nullopt;
+	}
+	auto physical = AssetIO::SourcePath(*logical);
+	if (!physical) {
+		*error = "scene authoring is disabled in packed (read-only) builds: " + *logical;
+		return std::nullopt;
+	}
+	return AuthoringTarget{ *logical, *physical };
+}
+
+// Runtime state and other per-user files live in the user directory; relative names are user-relative.
+std::optional<fs::path> ResolveUserPath(const std::string& rawPath, std::string* error)
+{
+	if (AssetIO::UserDir().empty()) {
+		*error = "user directory is not configured";
+		return std::nullopt;
+	}
+	const fs::path path(rawPath);
+	return path.is_absolute() ? path : AssetIO::UserDir() / path;
 }
 
 bool IsFiniteMatrix(const glm::mat4& m)
@@ -457,6 +500,88 @@ SceneLoader::SceneLoader(std::shared_ptr<ModelManager> modelManager, std::shared
 {
 }
 
+namespace {
+
+// ---- Procedural nodes (C10): live generation or cooked results ------------------------------------
+
+enum class ProceduralSource { Live, Cooked, GeneratorFailed, MissingCooked };
+
+// Generator outputs are identified by generator name, version, params, the declared scene "game" keys and
+// the input files (CookedResults). NOX_PROCEDURAL_LIVE=1 ignores cooked results and generates live.
+ProceduralSource ResolveProceduralNode(const std::string& generator, const json& params, const json& sceneGame,
+	ProceduralGeneratorResult& out, std::string& message)
+{
+	const ProceduralGenerator* generate = SceneExtensions::FindGenerator(generator);
+	const ProceduralGeneratorInfo* info = SceneExtensions::FindGeneratorInfo(generator);
+	const char* forceLive = std::getenv("NOX_PROCEDURAL_LIVE");
+	const bool liveOnly = forceLive && std::string(forceLive) == "1";
+	const json authoredParams = params.is_object() ? params : json::object();
+
+	if (generate && info) {
+		if (!liveOnly) {
+			std::string error;
+			if (auto identity = CookedResults::Identify(generator, *info, authoredParams, sceneGame, &error)) {
+				CookedResults::Result cooked;
+				std::string loadError;
+				const CookedResults::Lookup status = CookedResults::LoadDir(identity->dir, cooked, &loadError);
+				if (status == CookedResults::Lookup::Found && cooked.key == identity->key) {
+					const std::string authoredOutput = authoredParams.value("output", cooked.defaultOutput);
+					if (!CookedResults::MaterializeSideFiles(cooked, authoredOutput, &loadError)) {
+						std::cerr << "[SceneLoader] WARNING: cannot restore side files of " << identity->dir << ": " << loadError << std::endl;
+					}
+					out = CookedResults::ToGenerated(cooked);
+					std::cout << "[SceneLoader] Procedural '" << generator << "': cooked result " << identity->dir << std::endl;
+					return ProceduralSource::Cooked;
+				}
+				if (status == CookedResults::Lookup::Invalid) {
+					std::cerr << "[SceneLoader] WARNING: ignoring invalid cooked result: " << loadError << std::endl;
+				}
+			}
+			else {
+				std::cerr << "[SceneLoader] WARNING: cannot key procedural '" << generator << "': " << error << std::endl;
+			}
+		}
+		out = (*generate)(ProceduralGeneratorInput{ authoredParams, sceneGame });
+		return out.ok ? ProceduralSource::Live : ProceduralSource::GeneratorFailed;
+	}
+
+	// The generator's code is not compiled into this executable: its cooked result is required.
+	CookedResults::Result cooked;
+	std::string error;
+	if (CookedResults::FindUnregistered(generator, authoredParams, sceneGame, cooked, &error)) {
+		const std::string authoredOutput = authoredParams.value("output", cooked.defaultOutput);
+		std::string restoreError;
+		if (!CookedResults::MaterializeSideFiles(cooked, authoredOutput, &restoreError)) {
+			std::cerr << "[SceneLoader] WARNING: cannot restore side files of " << cooked.dir << ": " << restoreError << std::endl;
+		}
+		out = CookedResults::ToGenerated(cooked);
+		std::cout << "[SceneLoader] Procedural '" << generator << "' (not compiled in): cooked result " << cooked.dir << std::endl;
+		return ProceduralSource::Cooked;
+	}
+	message = error;
+	return ProceduralSource::MissingCooked;
+}
+
+// Generic scene key "interior_atlas" (also "window_room_root"): a directory with atlas_manifest.json.
+bool LoadInteriorAtlasKey(SceneKeyInput& in)
+{
+	if (!in.value.is_string()) {
+		std::cerr << "[SceneLoader] Scene key must be a directory path string" << std::endl;
+		return false;
+	}
+	const std::string manifest = in.resolvePath(in.value.get<std::string>() + "/atlas_manifest.json");
+	if (manifest.empty()) {
+		std::cerr << "[SceneLoader] Interior atlas manifest not found under: " << in.value.get<std::string>() << std::endl;
+		return false;
+	}
+	if (!InteriorAtlasManifest::Load(AssetIO::Parent(manifest), in.renderExtras.interiorAtlas)) return false;
+	std::cout << "[SceneLoader] Interior atlas: " << in.renderExtras.interiorAtlas.RoomCount() << " rooms, "
+		<< in.renderExtras.interiorAtlas.faceLayers.size() << " faces" << std::endl;
+	return true;
+}
+
+}  // namespace
+
 SceneLoader::~SceneLoader() {
 }
 
@@ -484,8 +609,8 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	GuiEventBus::GetInstance().PublishProgress(0.0f, "Assets");
 
 	std::cout << "[SceneLoader] Loading scene: " << resolvedScenePath << std::endl;
-	std::ifstream sceneFile(resolvedScenePath);
-	if (!sceneFile.is_open()) {
+	const std::optional<std::string> sceneText = AssetIO::ReadText(resolvedScenePath);
+	if (!sceneText) {
 		std::cerr << "[SceneLoader] Failed to open scene file: " << resolvedScenePath << std::endl;
 		GuiEventBus::GetInstance().PublishError("Failed to open scene file: " + resolvedScenePath);
 		m_currentSceneGraph = nullptr;
@@ -495,7 +620,7 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 
 	json sceneJson;
 	try {
-		sceneFile >> sceneJson;
+		sceneJson = json::parse(*sceneText);
 	}
 	catch (const std::exception& e) {
 		std::cerr << "[SceneLoader] Failed to parse scene file '" << resolvedScenePath
@@ -555,7 +680,13 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 
 	// Registered top-level keys (application content such as an authored interior atlas). They run
 	// after the nodes so a procedural generator cannot overwrite what the scene states explicitly.
-	for (const auto& [key, handler] : SceneExtensions::SceneKeys()) {
+	// Built-in generic keys first; registered application keys follow.
+	std::vector<std::pair<std::string, SceneKeyHandler>> sceneKeys = {
+		{ "interior_atlas", LoadInteriorAtlasKey },
+		{ "window_room_root", LoadInteriorAtlasKey },   // compatibility spelling
+	};
+	for (const auto& entry : SceneExtensions::SceneKeys()) sceneKeys.push_back(entry);
+	for (const auto& [key, handler] : sceneKeys) {
 		if (!sceneJson.contains(key)) continue;
 		SceneKeyInput input{ sceneJson[key],
 			[this](const std::string& path) {
@@ -708,6 +839,12 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 	}
 
 	std::cout << "[SceneLoader] Saving scene to: " << sceneFilePath << std::endl;
+	std::string targetError;
+	const auto target = ResolveAuthoringTarget(sceneFilePath, &targetError);
+	if (!target) {
+		std::cerr << "[SceneLoader] Cannot save scene: " << targetError << std::endl;
+		return false;
+	}
 
 	try {
 		nlohmann::json sceneJson;
@@ -719,10 +856,10 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 		sceneJson["physics_enabled"] = sceneGraph->IsPhysicsEnabled();
 
 		// Serialize skybox if present
-		if (sceneGraph->GetSkybox()) {
-			// Note: We'll need to store the HDR path somewhere or use a default
-			// For now, use a placeholder
-			sceneJson["skybox"] = "hdrs/skybox.hdr"; // TODO: Store actual path in Skybox class
+		// The authored skybox object (rotation, intensity, fallback) is preserved below from the
+		// file being overwritten; a scene without one records the path its skybox was loaded from.
+		if (sceneGraph->GetSkybox() && !sceneGraph->GetSkybox()->GetHDRPath().empty()) {
+			sceneJson["skybox"] = sceneGraph->GetSkybox()->GetHDRPath();
 		}
 
 		// Serialize all root-level nodes and their children
@@ -743,9 +880,8 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 		// Preserve authored top-level data the runtime does not model (render_settings, benchmark,
 		// camera, reflection_probes, the real skybox path) from the file being overwritten.
 		{
-			std::ifstream existingFile(sceneFilePath);
-			if (existingFile.is_open()) {
-				const json existing = json::parse(existingFile, nullptr, false);
+			if (auto existingText = AssetIO::ReadText(target->logical)) {
+				const json existing = json::parse(*existingText, nullptr, false);
 				if (existing.is_object()) {
 					for (auto it = existing.begin(); it != existing.end(); ++it) {
 						const std::string& key = it.key();
@@ -759,10 +895,10 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 			}
 		}
 
-		// Write to file with pretty formatting
-		std::ofstream outFile(sceneFilePath);
+		// Write to the loose source tree with pretty formatting
+		std::ofstream outFile(target->physical);
 		if (!outFile.is_open()) {
-			std::cerr << "[SceneLoader] Failed to open file for writing: " << sceneFilePath << std::endl;
+			std::cerr << "[SceneLoader] Failed to open file for writing: " << target->physical.string() << std::endl;
 			return false;
 		}
 
@@ -1438,25 +1574,27 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			const json& procedural = nodeJson["procedural"];
 			authoredExtras["procedural"] = procedural;
 			const std::string generator = procedural.value("generator", SceneExtensions::DefaultGenerator());
-			if (const ProceduralGenerator* generate = SceneExtensions::FindGenerator(generator)) {
-				const json generatorParams = procedural.value("params", json::object());
-				ProceduralGeneratorResult generated = (*generate)(ProceduralGeneratorInput{ generatorParams, m_sceneGameJson });
-				if (generated.ok) {
-					modelPath = generated.gltfPath;
-					m_pendingGeneratedChildren = std::move(generated.childNodes);
-					AddReflectionProbes(generated.reflectionProbes);
-					if (m_currentSceneGraph && generated.hasRenderExtras) {
-						// Unique per load so the passes re-upload their instance buffers.
-						m_currentSceneGraph->renderExtras = std::move(generated.renderExtras);
-						m_currentSceneGraph->renderExtras.revision = NextRenderExtrasRevision();
-					}
-				}
-				else {
-					std::cerr << "[SceneLoader] ERROR: procedural generator failed for node '" << nodeDebugName << "'" << std::endl;
-				}
+			const json generatorParams = procedural.value("params", json::object());
+			ProceduralGeneratorResult generated;
+			std::string message;
+			const ProceduralSource source = ResolveProceduralNode(generator, generatorParams, m_sceneGameJson, generated, message);
+			if (source == ProceduralSource::MissingCooked) {
+				++m_missingCriticalAssetCount;
+				std::cerr << "[SceneLoader] ERROR: procedural generator '" << generator << "' is not compiled into this executable and "
+					<< "node '" << nodeDebugName << "' has no cooked result: " << message << std::endl;
 			}
-			else {
-				std::cerr << "[SceneLoader] ERROR: unknown procedural generator '" << generator << "'" << std::endl;
+			else if (source == ProceduralSource::GeneratorFailed) {
+				std::cerr << "[SceneLoader] ERROR: procedural generator failed for node '" << nodeDebugName << "'" << std::endl;
+			}
+			if (generated.ok) {
+				modelPath = generated.gltfPath;
+				m_pendingGeneratedChildren = std::move(generated.childNodes);
+				AddReflectionProbes(generated.reflectionProbes);
+				if (m_currentSceneGraph && generated.hasRenderExtras) {
+					// Unique per load so the passes re-upload their instance buffers.
+					m_currentSceneGraph->renderExtras = std::move(generated.renderExtras);
+					m_currentSceneGraph->renderExtras.revision = NextRenderExtrasRevision();
+				}
 			}
 		}
 		if (nodeJson.contains("material_overrides")) {
@@ -2273,10 +2411,16 @@ bool SceneLoader::SaveRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph
 
 		stateJson["nodes"] = nodesArray;
 
-		// Write to file with pretty formatting
-		std::ofstream outFile(filepath);
+		// Runtime state is per-user output
+		std::string pathError;
+		const auto userPath = ResolveUserPath(filepath, &pathError);
+		if (!userPath) {
+			std::cerr << "[SceneLoader] Cannot save runtime state: " << pathError << std::endl;
+			return false;
+		}
+		std::ofstream outFile(*userPath);
 		if (!outFile.is_open()) {
-			std::cerr << "[SceneLoader] Failed to open file for writing: " << filepath << std::endl;
+			std::cerr << "[SceneLoader] Failed to open file for writing: " << userPath->string() << std::endl;
 			return false;
 		}
 
@@ -2305,8 +2449,10 @@ bool SceneLoader::LoadRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph
 	std::cout << "[SceneLoader] Loading runtime state from: " << filepath << std::endl;
 
 	try {
-		std::ifstream inFile(filepath);
-		if (!inFile.is_open()) {
+		std::string pathError;
+		const auto userPath = ResolveUserPath(filepath, &pathError);
+		std::ifstream inFile(userPath ? *userPath : fs::path(filepath));
+		if (!userPath || !inFile.is_open()) {
 			std::cerr << "[SceneLoader] Failed to open runtime state file: " << filepath << std::endl;
 			return false;
 		}

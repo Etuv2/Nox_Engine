@@ -1,4 +1,6 @@
 #include "WorldMapUI.h"
+#include "assets/AssetIOImage.h"
+#include "assets/AssetIOJson.h"
 
 #include "RoadNetwork.h"
 #include "Texture.h"
@@ -140,7 +142,7 @@ void WorldMapUI::Configure(const json& cfg, const RoadNetwork& roads)
 		if (!image.empty()) {
 			int w = 0, h = 0, n = 0;
 			stbi_set_flip_vertically_on_load_thread(0);
-			unsigned char* px = stbi_load(image.c_str(), &w, &h, &n, 4);
+			unsigned char* px = AssetIO::LoadImageFile(image, &w, &h, &n, 4);
 			if (px) {
 				m_base = std::make_unique<Texture>(w, h, rhi::Format::RGBA8, rhi::PixelFormat::RGBA, rhi::PixelType::UByte, px, false);
 				stbi_image_free(px);
@@ -180,8 +182,7 @@ void WorldMapUI::BuildChains(const RoadNetwork& roads, const std::string& networ
 	std::unordered_map<std::string, Meta> meta;
 	std::unordered_map<std::string, int> routeIndex;
 	if (!networkPath.empty()) {
-		std::ifstream in(networkPath);
-		const json net = in ? json::parse(in, nullptr, false) : json();
+		const json net = AssetIO::ReadJsonOrNull(networkPath);
 		if (net.is_object() && net.contains("carriageways") && net["carriageways"].is_array()) {
 			for (const json& cw : net["carriageways"]) {
 				const std::string id = cw.value("id", std::string());
@@ -291,8 +292,7 @@ void WorldMapUI::BuildChains(const RoadNetwork& roads, const std::string& networ
 void WorldMapUI::BuildLabels(const std::string& labelsPath)
 {
 	if (labelsPath.empty()) return;
-	std::ifstream in(labelsPath);
-	const json j = in ? json::parse(in, nullptr, false) : json();
+	const json j = AssetIO::ReadJsonOrNull(labelsPath);
 	if (!j.is_object() || !j.contains("labels") || !j["labels"].is_array()) return;
 	for (const json& l : j["labels"]) {
 		if (!l.is_object() || !l.contains("pos") || !l["pos"].is_array() || l["pos"].size() < 2) continue;

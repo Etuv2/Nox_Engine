@@ -4,6 +4,20 @@ Date: 2026-10-12. Scope agreed with the user: research, measurements and an impl
 proposal. Target: read-only game packs with loose project assets for editor development.
 This document is a proposal; the engine still loads loose files.
 
+## Implementation status (2026-10-12)
+
+The recommendation below is implemented. The sentence above about loose files predates it.
+
+- AssetIO over PhysicsFS 3.2.0 (ZIP and directory archivers), with loose and packed mounts, logical paths kept
+  as they were, and a separate writable cache under `generated/`. Details: [asset_io.md](asset_io.md).
+- `nox_bootstrap.json` selects packs, user directory and cache at startup. Packs are `engine.pak` and `game.pak`
+  (`packaging/engine_owned.json`, `packaging/pack_rules.json`); the packaging workflow is in [packaging.md](packaging.md).
+- Cook cache under `build/cook-cache` and procedural results under `generated/cooked/` (`nox_cook`, `src/cook/`).
+- Not implemented: the block-indexed Zstd format (still deferred until native measurements justify it).
+  Measurements in the sections below remain the reference for the codec and seek choices.
+- Tests: `nox_tests AssetIO` (loose/packed parity, corrupt and truncated packs, streams, concurrency) and
+  `nox_tests CookedResults`. The packaged-run check (`tools/TestPackagedRun.ps1`) has not been run for this note.
+
 ## Recommendation
 
 Introduce one engine asset I/O service, backed initially by PhysicsFS and standard ZIP

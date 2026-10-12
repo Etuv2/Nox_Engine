@@ -9,7 +9,8 @@ namespace {
 		static std::vector<EditorPanel> panels;
 		return panels;
 	}
-	EditorExtensions::ViewportOverlay g_viewportOverlay;
+	std::vector<std::pair<std::string, EditorExtensions::ViewportOverlay>> g_viewportOverlays;
+	EditorExtensions::ViewportOverlay g_viewportOverlay;   // draws all of g_viewportOverlays
 	EditorExtensions::ToolbarIconResolver g_toolbarIconResolver;
 }
 
@@ -24,7 +25,20 @@ namespace EditorExtensions {
 
 	const std::vector<EditorPanel>& Panels() { return PanelList(); }
 
-	void SetViewportOverlay(ViewportOverlay overlay) { g_viewportOverlay = std::move(overlay); }
+	void AddViewportOverlay(const std::string& id, ViewportOverlay overlay)
+	{
+		bool replaced = false;
+		for (auto& entry : g_viewportOverlays) {
+			if (entry.first == id) { entry.second = std::move(overlay); replaced = true; break; }
+		}
+		if (!replaced) g_viewportOverlays.emplace_back(id, std::move(overlay));
+		g_viewportOverlay = [](EditorHost& host, ImDrawList* drawList) {
+			for (const auto& entry : g_viewportOverlays) {
+				if (entry.second) entry.second(host, drawList);
+			}
+		};
+	}
+	void SetViewportOverlay(ViewportOverlay overlay) { AddViewportOverlay("default", std::move(overlay)); }
 	const ViewportOverlay& GetViewportOverlay() { return g_viewportOverlay; }
 
 	void SetToolbarIconResolver(ToolbarIconResolver resolver) { g_toolbarIconResolver = std::move(resolver); }

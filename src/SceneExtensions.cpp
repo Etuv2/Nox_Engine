@@ -4,6 +4,7 @@
 namespace {
 	struct Registry {
 		std::map<std::string, ProceduralGenerator> generators;
+		std::map<std::string, ProceduralGeneratorInfo> generatorInfo;
 		std::string defaultGenerator;
 		std::vector<std::pair<std::string, SceneKeyHandler>> sceneKeys;
 	};
@@ -16,8 +17,21 @@ namespace {
 
 void SceneExtensions::RegisterGenerator(const std::string& name, ProceduralGenerator generator, bool isDefault)
 {
+	RegisterGenerator(name, std::move(generator), isDefault, ProceduralGeneratorInfo{});
+}
+
+void SceneExtensions::RegisterGenerator(const std::string& name, ProceduralGenerator generator, bool isDefault,
+	ProceduralGeneratorInfo info)
+{
 	Get().generators[name] = std::move(generator);
+	Get().generatorInfo[name] = std::move(info);
 	if (isDefault || Get().defaultGenerator.empty()) Get().defaultGenerator = name;
+}
+
+const ProceduralGeneratorInfo* SceneExtensions::FindGeneratorInfo(const std::string& name)
+{
+	const auto it = Get().generatorInfo.find(name);
+	return it == Get().generatorInfo.end() ? nullptr : &it->second;
 }
 
 const ProceduralGenerator* SceneExtensions::FindGenerator(const std::string& name)

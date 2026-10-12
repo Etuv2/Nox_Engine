@@ -5,7 +5,6 @@
 #include "GameModule.h"
 #include "GameEditorPanels.h"
 #include "GameSession.h"
-#include "NightStreetPacks.h"
 #include "ProceduralStreetKit.h"
 #include "RoadNetwork.h"
 #include "SceneExtensions.h"
@@ -25,18 +24,22 @@ namespace {
 		out.reflectionProbes = std::move(generated.reflectionProbes);
 		out.renderExtras = std::move(generated.renderExtras);
 		out.hasRenderExtras = true;
+		// The district's collision layout (<output>_layout.json) is a side file of the model.
+		if (!generated.layoutPath.empty()) out.auxiliaryPaths.push_back(generated.layoutPath);
 		return out;
 	}
 }
 
-void RegisterNoxRacingGame()
+// Procedural generators of the racing content. Registered by the game and by tools/cook (nox_cook), which
+// runs them headless; the engine only sees the generic registry (SceneExtensions). Bump a version when the
+// generator's output for the same params changes, so cooked results are rebuilt.
+void RegisterNoxRacingProceduralGenerators()
 {
-	GameModules::SetFactory([] { return std::make_unique<GameSession>(); });
-	RegisterRacingEditorPanels();
+	const std::vector<std::string> packInputs = { "texture_root", "decal_root", "lens_flare_root", "window_room_root" };
 
 	SceneExtensions::RegisterGenerator("street_kit", [](const ProceduralGeneratorInput& in) {
 		return ToGeneratorResult(ProceduralStreetKit::Generate(in.params));
-	}, true);
+	}, true, ProceduralGeneratorInfo{ 1, {}, packInputs, {}, "generated/nfs_street" });
 
 	SceneExtensions::RegisterGenerator("district", [](const ProceduralGeneratorInput& in) {
 		// Road graph: node params override the scene's game.road_network; default grid otherwise.
@@ -46,21 +49,17 @@ void RegisterNoxRacingGame()
 		else if (in.sceneGame.contains("road_network")) loaded = network.Load(in.sceneGame["road_network"]);
 		if (!loaded) ProceduralStreetKit::BuildDefaultDistrictNetwork(network);
 		return ToGeneratorResult(ProceduralStreetKit::GenerateDistrict(in.params, network));
-	});
+	}, false, ProceduralGeneratorInfo{ 1, { "road_network" }, packInputs, {}, "generated/nfs_district",
+		// CC0 props placed by GenerateDistrict (ProceduralStreetKit prop(...) calls); packed with the profile.
+		{ "models/cc0/exterior_aircon_unit.glb", "models/cc0/fire_hydrant.glb", "models/cc0/metal_trash_can.glb",
+		  "models/cc0/modular_street_seating.glb", "models/cc0/planter_box_01.glb", "models/cc0/potted_plant_01.glb",
+		  "models/cc0/power_box_01.glb", "models/cc0/shrub_01.glb", "models/cc0/utility_box_01.glb" } });
+}
 
-	// "window_room_root": "<dir>" - an authored room atlas (atlas_manifest.json in <dir>) for
-	// imported buildings whose glass uses interior mapping (textures/window_rooms/README.md).
-	SceneExtensions::RegisterSceneKey("window_room_root", [](SceneKeyInput& in) {
-		if (!in.value.is_string()) return false;
-		const std::string root = in.value.get<std::string>();
-		const std::string manifest = in.resolvePath((std::filesystem::path(root) / "atlas_manifest.json").string());
-		if (manifest.empty() || !NightStreetPacks::BuildInteriorAtlas(
-			std::filesystem::path(manifest).parent_path().string(), in.renderExtras.interiorAtlas)) {
-			std::cerr << "[Game] Failed to load window room atlas: " << root << std::endl;
-			return false;
-		}
-		std::cout << "[Game] Window room atlas: " << in.renderExtras.interiorAtlas.RoomCount() << " rooms, "
-			<< in.renderExtras.interiorAtlas.faceLayers.size() << " faces" << std::endl;
-		return true;
-	});
+void RegisterNoxRacingGame()
+{
+	GameModules::SetFactory([] { return std::make_unique<GameSession>(); });
+	RegisterRacingEditorPanels();
+	RegisterNoxRacingProceduralGenerators();
+	// The window room atlas scene key ("window_room_root") is generic engine data (SceneLoader).
 }

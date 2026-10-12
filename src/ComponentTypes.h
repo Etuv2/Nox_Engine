@@ -25,6 +25,25 @@ class RigidBody;
 using EntityID = uint32_t;
 constexpr EntityID INVALID_ENTITY = 0;
 
+// Checked identity of one live entity (scripting, C6). The world token is unique per ComponentManager
+// lifetime (process-wide counter, reassigned on Clear); the incarnation changes every time the ID is
+// destroyed. A handle is valid only while both still match and the ID is alive. Never issued with world 0.
+struct EntityHandle {
+	uint32_t world = 0;
+	EntityID id = INVALID_ENTITY;
+	uint32_t incarnation = 0;
+
+	bool operator==(const EntityHandle& other) const {
+		return world == other.world && id == other.id && incarnation == other.incarnation;
+	}
+	bool operator!=(const EntityHandle& other) const { return !(*this == other); }
+	bool operator<(const EntityHandle& other) const {
+		if (world != other.world) return world < other.world;
+		if (id != other.id) return id < other.id;
+		return incarnation < other.incarnation;
+	}
+};
+
 using TransformID = uint32_t;
 constexpr TransformID INVALID_TRANSFORM_ID = 0;
 

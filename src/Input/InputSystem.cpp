@@ -1,5 +1,8 @@
 #include "InputSystem.h"
 #include "../json.hpp"
+#include "../assets/AssetIO.h"
+#include "../app/UserSettings.h"
+#include <optional>
 #include <fstream>
 #include <iostream>
 #include <algorithm>
@@ -923,14 +926,12 @@ bool InputManager::LoadConfiguration(const std::string& configPath) {
     m_configPath = configPath;
     
     try {
-        std::ifstream file(configPath);
-        if (!file.is_open()) {
+        // Shipped defaults plus the user's saved changes (SaveConfiguration writes the user copy).
+        const json config = UserSettings::LoadJsonWithUserOverride(configPath, configPath);
+        if (!config.is_object()) {
             std::cerr << "[InputManager] Could not open input config file: " << configPath << std::endl;
             return false;
         }
-        
-        json config;
-        file >> config;
         
         // TODO: Parse and load input bindings from JSON
         // This would involve parsing contexts and their bindings
@@ -950,13 +951,10 @@ bool InputManager::SaveConfiguration(const std::string& configPath) const {
         // TODO: Serialize input bindings to JSON
         // This would involve saving all contexts and their bindings
         
-        std::ofstream file(configPath);
-        if (!file.is_open()) {
+        if (!UserSettings::SaveUserText(configPath, config.dump(4))) { // bindings are per-user
             std::cerr << "[InputManager] Could not create input config file: " << configPath << std::endl;
             return false;
         }
-        
-        file << config.dump(4);
         
         std::cout << "[InputManager] Saved configuration to: " << configPath << std::endl;
         return true;

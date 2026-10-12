@@ -1,6 +1,7 @@
 #include "CollisionWorld.h"
 
 #include "tiny_gltf.h"
+#include "assets/AssetIOGltf.h"
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
@@ -73,6 +74,10 @@ int CollisionWorld::LoadGLTF(const std::string& path, const glm::mat4& transform
 	tinygltf::TinyGLTF loader;
 	tinygltf::Model model;
 	std::string err, warn;
+	if (!loader.SetFsCallbacks(AssetIO::MakeGltfFsCallbacks(), &err)) {
+		std::cerr << "[CollisionWorld] " << err << std::endl;
+		return -1;
+	}
 	const bool binary = path.size() > 4 && (path.substr(path.size() - 4) == ".glb" || path.substr(path.size() - 4) == ".GLB");
 	const bool ok = binary ? loader.LoadBinaryFromFile(&model, &err, &warn, path) : loader.LoadASCIIFromFile(&model, &err, &warn, path);
 	if (!ok) {

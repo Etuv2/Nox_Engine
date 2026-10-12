@@ -1,0 +1,10 @@
+{
+  "first_scene": "scenes/unrelated.json",
+  "environmentPath": "hdrs/unused.hdr",
+  "iconPath": "images/logo.png",
+  "scenes": [
+    {
+      "path": "scenes/unrelated.json"
+    }
+  ]
+}

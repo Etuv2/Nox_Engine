@@ -15,6 +15,17 @@
 #include <map>
 #include <random>
 #include <vector>
+#include <optional>
+#include "assets/AssetIO.h"
+
+// Physical base for generator outputs ("generated/<name>" -> <cache>/<name>, folders created).
+// nullopt when the logical name is not under generated/. Outputs are written only to the cache.
+static std::optional<std::filesystem::path> GeneratedBase(const std::string& logicalBase)
+{
+	auto gltf = AssetIO::GeneratedOutputPath(logicalBase + ".gltf");
+	if (!gltf) return std::nullopt;
+	return gltf->parent_path() / gltf->stem();
+}
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -437,22 +448,28 @@ namespace {
 		json textures = json::array();
 		std::map<std::string, int> textureIndexByPath;
 		const fs::path outDir = gltfPath.parent_path();
+		// Texture sets are logical asset paths; the glTF lives in the cache mounted at "generated/".
+		// URIs are relative between the two logical locations, never between physical folders, so the
+		// output resolves the same way from a loose checkout or from packs.
+		std::error_code cacheEc;
+		const fs::path cacheSub = fs::relative(outDir, AssetIO::CacheDir(), cacheEc);
+		const fs::path logicalOutDir = (cacheEc || cacheSub.empty() || *cacheSub.begin() == "..")
+			? fs::path("generated") : (fs::path("generated") / cacheSub).lexically_normal();
 		auto textureFor = [&](const std::string& set, const char* file) -> int {
 			if (set.empty()) return -1;
 			fs::path p = textureRoot / set / file;
 			std::error_code ec;
-			if (!fs::exists(p, ec)) {
+			if (!AssetIO::Exists(p.generic_string())) {
 				// Allow png fallback for normal maps.
 				fs::path alt = p;
 				alt.replace_extension(".png");
-				if (!fs::exists(alt, ec)) return -1;
+				if (!AssetIO::Exists(alt.generic_string())) return -1;
 				p = alt;
 			}
 			const std::string key = p.generic_string();
 			auto it = textureIndexByPath.find(key);
 			if (it != textureIndexByPath.end()) return it->second;
-			fs::path rel = fs::relative(fs::absolute(p), fs::absolute(outDir), ec);
-			const std::string uri = ec ? fs::absolute(p).generic_string() : rel.generic_string();
+			const std::string uri = p.lexically_normal().lexically_relative(logicalOutDir).generic_string();
 			images.push_back({ {"uri", uri} });
 			textures.push_back({ {"source", static_cast<int>(images.size()) - 1}, {"sampler", 0} });
 			const int index = static_cast<int>(textures.size()) - 1;
@@ -691,6 +708,11 @@ namespace ProceduralStreetKit {
 		const uint32_t seed = params.value("seed", 2015u);
 		const float length = std::clamp(params.value("length", 330.0f), 120.0f, 2000.0f);
 		const std::string output = params.value("output", std::string("generated/nfs_street"));
+		const std::optional<fs::path> outputBase = GeneratedBase(output);
+		if (!outputBase) {
+			std::cerr << "[ProceduralStreetKit] output must be a logical path under generated/: " << output << std::endl;
+			return result;
+		}
 		const fs::path textureRoot = params.value("texture_root", std::string("textures/cc0"));
 		const float lampSpacing = std::clamp(params.value("streetlight_spacing", 28.0f), 8.0f, 100.0f);
 		const bool neonLights = params.value("neon_lights", true);
@@ -707,7 +729,7 @@ namespace ProceduralStreetKit {
 			// Lit windows sample a generated interior atlas; the three window materials are now
 			// brightness classes (bright / medium / dim) over the same atlas.
 			std::error_code ec;
-			const fs::path outDir = fs::path(output).parent_path();
+			const fs::path outDir = outputBase->parent_path();
 			fs::create_directories(outDir, ec);
 			const fs::path atlasPath = outDir / "window_atlas.png";
 			const fs::path shopPath = outDir / "shop_interior.png";
@@ -1079,9 +1101,9 @@ namespace ProceduralStreetKit {
 			}
 		}
 
-		const fs::path gltfPath = fs::path(output + ".gltf");
+		const fs::path gltfPath = fs::path(outputBase->string() + ".gltf");
 		result.ok = WriteGltf(gltfPath, materials, kit, textureRoot, result.triangleCount, result.primitiveCount);
-		result.gltfPath = gltfPath.generic_string();
+		result.gltfPath = output + ".gltf"; // logical (generated/...), readable through AssetIO
 		std::cout << "[ProceduralStreetKit] Generated " << result.gltfPath << " ok=" << result.ok
 			<< " primitives=" << result.primitiveCount << " triangles=" << result.triangleCount
 			<< " decals=" << DecalCount(extras) << " flares=" << extras.lensFlares.sources.size()
@@ -1257,6 +1279,11 @@ namespace ProceduralStreetKit {
 		}
 		const uint32_t seed = params.value("seed", 2015u);
 		const std::string output = params.value("output", std::string("generated/nfs_district"));
+		const std::optional<fs::path> outputBase = GeneratedBase(output);
+		if (!outputBase) {
+			std::cerr << "[ProceduralStreetKit] output must be a logical path under generated/: " << output << std::endl;
+			return result;
+		}
 		const fs::path textureRoot = params.value("texture_root", std::string("textures/cc0"));
 		const float avenueLampSpacing = std::clamp(params.value("streetlight_spacing", 30.0f), 8.0f, 100.0f);
 		const float crossLampSpacing = std::clamp(params.value("cross_streetlight_spacing", 30.0f), 8.0f, 150.0f);
@@ -1275,7 +1302,7 @@ namespace ProceduralStreetKit {
 		std::vector<MatDef> materials = BuildDistrictMaterials();
 		{
 			std::error_code ec;
-			const fs::path outDir = fs::path(output).parent_path();
+			const fs::path outDir = outputBase->parent_path();
 			fs::create_directories(outDir, ec);
 			const std::string stem = fs::path(output).filename().string();
 			const fs::path atlasPath = outDir / (stem + "_window_atlas.png");
@@ -1330,7 +1357,7 @@ namespace ProceduralStreetKit {
 		auto prop = [&](const char* model, const char* tag, const glm::vec3& base, float yaw) -> bool {
 			if (!placeProps) return false;
 			const std::string rel = std::string("models/cc0/") + model + ".glb";
-			if (!fs::exists(rel)) return false;
+			if (!AssetIO::Exists(rel)) return false;
 			json n;
 			n["type"] = "model";
 			n["name"] = std::string(tag) + "_" + std::to_string(propIndex++);
@@ -2118,16 +2145,16 @@ namespace ProceduralStreetKit {
 		}
 
 		// ---- glTF and layout output.
-		const fs::path gltfPath = fs::path(output + ".gltf");
+		const fs::path gltfPath = fs::path(outputBase->string() + ".gltf");
 		result.ok = WriteGltf(gltfPath, materials, kit, textureRoot, result.triangleCount, result.primitiveCount);
-		result.gltfPath = gltfPath.generic_string();
-		const fs::path layoutPath = fs::path(output + "_layout.json");
+		result.gltfPath = output + ".gltf"; // logical (generated/...), readable through AssetIO
+		const fs::path layoutPath = fs::path(outputBase->string() + "_layout.json");
 		{
 			json layout;
 			layout["obstacles"] = obstacles;
 			std::ofstream out(layoutPath);
 			if (out) out << layout.dump(1);
-			result.layoutPath = layoutPath.generic_string();
+			result.layoutPath = output + "_layout.json";
 		}
 		std::cout << "[ProceduralStreetKit] District " << result.gltfPath << " ok=" << result.ok
 			<< " lots=" << buildingCount << " primitives=" << result.primitiveCount

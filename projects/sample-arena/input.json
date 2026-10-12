@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "actions": {
+    "accelerate": { "type": "button", "keys": ["W", "Up"], "pad_buttons": ["a"] },
+    "brake": { "type": "button", "keys": ["S", "Down"], "pad_buttons": ["b"] },
+    "steer": { "type": "axis", "keys_negative": ["A", "Left"], "keys_positive": ["D", "Right"], "pad_axis": "leftx", "deadzone": 0.15 },
+    "fire": { "type": "button", "keys": ["Space"], "pad_buttons": ["x"] },
+    "hud_toggle": { "type": "button", "keys": ["H"] }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Fixture",
+  "game": true,
+  "project": "projects/fixture/project.json",
+  "scenes": [
+    "scenes/main.json"
+  ],
+  "include": [
+    "config/config.json",
+    "config/launch_presets.json"
+  ],
+  "licenses": []
+}
