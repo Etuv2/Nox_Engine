@@ -1,107 +1,47 @@
 {
-  "exposure": 1.0,
-  "gamma": 2.200000047683716,
+  "scene_name": "Copied City",
+  "exposure": 1,
+  "gamma": 2.2,
+  "skybox": "hdrs\\skybox_2.hdr",
   "main_shaders": {
     "normal_pass": {
-      "fragment_shader": "shaders\\fragment_shader.glsl",
-      "vertex_shader": "shaders\\vertex_shader.glsl"
+      "vertex_shader": "shaders\\vertex_shader.glsl",
+      "fragment_shader": "shaders\\fragment_shader.glsl"
     },
     "shadow_pass": {
-      "fragment_shader": "shaders\\shadow_fragment_shader.glsl",
-      "vertex_shader": "shaders\\shadow_vertex_shader.glsl"
+      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
+      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
     }
   },
   "nodes": [
     {
-      "material_overrides": [
-        {
-          "base_color": [
-            0.800000011920929,
-            0.800000011920929,
-            0.800000011920929,
-            1.0
-          ],
-          "clearcoat": 0.0,
-          "clearcoat_roughness": 0.0,
-          "emissive": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "emissive_strength": 1.0,
-          "match": "white_mat_LT_LT_LT_LT_LT_LT_LT_LT",
-          "metallic": 0.0,
-          "puddle_response": 1.0,
-          "rain_bead_response": 1.0,
-          "roughness": 0.800000011920929,
-          "wetness_response": 1.0
-        }
-      ],
-      "name": "copied_city.glb",
-      "path": "models/copied_city.glb",
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        -1.8493902683258057,
-        0.0,
-        0.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "type": "model"
+      "type": "model",
+      "path": "models\\copied_city.glb",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "rotation": [ 90.0, 0.0, 0.0 ],
+      "scale": [ 1.0, 1.0, 1.0 ]
     },
     {
-      "hearing_distance": 2000.0,
-      "is3d": false,
-      "loop": true,
-      "name": "AudioPlayer",
-      "pitch": 1.0,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        -0.0,
-        0.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
       "type": "audio",
-      "volume": 0.5
+      "sound": "sounds\\nier.wav",
+      "position": [ 0.0, 0.0, 0.0 ],
+      "volume": 0.5,
+      "hearing_distance": 2000.0,
+      "loop": true,
+      "is3d": false
     },
     {
-      "elements": [],
-      "name": "GUI",
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        -0.0,
-        0.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "type": "gui"
+      "type": "gui",
+      "position": [ 0, 0, 0 ],
+      "elements": [
+        {
+          "kind": "text",
+          "text": "The Copied City from Nier Automata",
+          "x": 960,
+          "y": 1000
+        }
+
+      ]
     }
-  ],
-  "physics_enabled": true,
-  "scene_name": "Copied City",
-  "skybox": "hdrs\\skybox_2.hdr"
+  ]
 }
