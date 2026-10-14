@@ -41,6 +41,12 @@ vec2 SelectUVSet(int uvSet, vec2 uv0, vec2 uv1) {
     return (uvSet == 1) ? uv1 : uv0;
 }
 
+// Selects the TEXCOORD set, then applies the slot's KHR_texture_transform matrix (uv' = xf * (uv, 1)).
+// xf is uvXform[MaterialDesc::TextureSlot] (identity when the material has no transform).
+vec2 SelectUVSetXform(int uvSet, vec2 uv0, vec2 uv1, mat3 xf) {
+    return (xf * vec3(SelectUVSet(uvSet, uv0, uv1), 1.0)).xy;
+}
+
 // === G-Buffer Layout Reference ===
 // RT0: RGBA8   - Oct-encoded normal (RG) + Roughness (B) + Metallic (A)
 // RT1: RGBA16F - Albedo (RGB) + Occlusion (A)

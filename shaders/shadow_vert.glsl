@@ -5,6 +5,7 @@ layout(location = 2) in vec2 aTexCoords;
 layout(location = 10) in vec2 aTexCoords1;
 layout(location = 4) in ivec4 aBoneIDs;
 layout(location = 5) in vec4 aBoneWeights;
+layout(location = 13) in vec4 aColor; // COLOR_0 (alpha used by MASK/BLEND cutouts)
 
 // Light-space matrix per-slice
 uniform mat4 lightSpaceMatrix;
@@ -29,12 +30,14 @@ uniform int uObjectIndex;
 
 out vec2 TexCoords;
 out vec2 TexCoords1;
+out vec4 VertColor;
 
 void main() {
     vec4 localPos = vec4(aPos, 1.0);
     ApplySkinning(aBoneIDs, aBoneWeights, localPos);
     TexCoords = aTexCoords;
     TexCoords1 = aTexCoords1;
+    VertColor = aColor;
 
     mat4 resolvedModel = model;
     if (!uUseModelMatrixUniform) {

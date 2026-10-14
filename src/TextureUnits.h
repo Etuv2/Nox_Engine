@@ -22,6 +22,8 @@ namespace TextureUnits {
     constexpr int MATERIAL_SPECULAR = 5;        // texture_specular (KHR_materials_specular F0 color/factor)
     constexpr int MATERIAL_SPECULAR_COLOR = 6;  // texture_specular_color (KHR_materials_specular)
     constexpr int MATERIAL_TRANSMISSION = 7;    // texture_transmission (KHR_materials_transmission)
+    // KHR_materials_clearcoat textures are parsed and stored but not sampled: units 0-36 are all allocated and
+    // units >= 32 cannot be used by fragment samplers, so there is no unit for them yet.
     
     // ======================================
     // DEFERRED LIGHTING PASS (SEPARATE FROM GEOMETRY)

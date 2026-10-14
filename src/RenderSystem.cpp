@@ -315,6 +315,11 @@ const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(rhi:
 	uniforms.specularUVSet = rhi::Gpu().GetUniformLocation(shader, "specularUVSet");
 	uniforms.specularColorUVSet = rhi::Gpu().GetUniformLocation(shader, "specularColorUVSet");
 	uniforms.transmissionUVSet = rhi::Gpu().GetUniformLocation(shader, "transmissionUVSet");
+	uniforms.unlit = rhi::Gpu().GetUniformLocation(shader, "unlit");
+	for (int slot = 0; slot < 10; ++slot) {
+		const std::string name = "uvXform[" + std::to_string(slot) + "]";
+		uniforms.uvXform[slot] = rhi::Gpu().GetUniformLocation(shader, name.c_str());
+	}
 
 	auto [insertedIt, _] = m_shaderUniformCaches.emplace(shader, uniforms);
 	return insertedIt->second;
@@ -980,8 +985,14 @@ uint32_t MaterialContentKey(const MeshComponent& mesh)
 	f(m.interiorStyle); v2(m.interiorPane); v3(m.interiorPaneUV); f(m.interiorSill); f(m.interiorFarDistance);
 	i32(m.baseColorTexCoord); i32(m.normalTexCoord); i32(m.metallicRoughnessTexCoord); i32(m.emissiveTexCoord);
 	i32(m.occlusionTexCoord); i32(m.specularTexCoord); i32(m.specularColorTexCoord); i32(m.transmissionTexCoord);
+	i32(m.clearcoatTexCoord); i32(m.clearcoatRoughnessTexCoord);
+	for (const TextureTransform& xf : m.textureTransforms) { v2(xf.offset); v2(xf.scale); f(xf.rotation); }
+	i32(m.unlit ? 1 : 0);
+	v3(m.sheenColorFactor); f(m.sheenRoughnessFactor); f(m.anisotropyStrength); f(m.anisotropyRotation);
+	f(m.iridescenceFactor); f(m.iridescenceIor); f(m.iridescenceThicknessMin); f(m.iridescenceThicknessMax); f(m.dispersion);
 	tex(mesh.diffuseTexture); tex(mesh.normalTexture); tex(mesh.roughnessTexture); tex(mesh.emissiveTexture);
 	tex(mesh.occlusionTexture); tex(mesh.specularTexture); tex(mesh.specularColorTexture); tex(mesh.transmissionTexture);
+	tex(mesh.clearcoatTexture); tex(mesh.clearcoatRoughnessTexture);
 	const uint32_t key = static_cast<uint32_t>(h ^ (h >> 32));
 	return key == std::numeric_limits<uint32_t>::max() ? 1u : key;   // max = "no cached material"
 }
@@ -1042,6 +1053,10 @@ void RenderSystem::UploadMaterialUniforms(const MeshComponent& mesh, const Shade
 	if (uniforms.specularUVSet >= 0) rhi::Gpu().SetUniform(uniforms.specularUVSet, clampUVSet(material.specularTexCoord));
 	if (uniforms.specularColorUVSet >= 0) rhi::Gpu().SetUniform(uniforms.specularColorUVSet, clampUVSet(material.specularColorTexCoord));
 	if (uniforms.transmissionUVSet >= 0) rhi::Gpu().SetUniform(uniforms.transmissionUVSet, clampUVSet(material.transmissionTexCoord));
+	if (uniforms.unlit >= 0) rhi::Gpu().SetUniform(uniforms.unlit, material.unlit ? 1 : 0);
+	for (int slot = 0; slot < 10; ++slot) {
+		if (uniforms.uvXform[slot] >= 0) rhi::Gpu().SetUniform(uniforms.uvXform[slot], material.textureTransforms[slot].ToMat3());
+	}
 
 	if (uniforms.hasBaseColorTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasBaseColorTexture, (mesh.diffuseTexture && mesh.diffuseTexture->IsValid()) ? 1 : 0);
 	if (uniforms.hasNormalTexture >= 0) rhi::Gpu().SetUniform(uniforms.hasNormalTexture, (mesh.normalTexture && mesh.normalTexture->IsValid()) ? 1 : 0);
@@ -2209,6 +2224,8 @@ void RenderSystem::RebuildBakedGBufferBatches()
 			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneIDs)) });
 		inputDesc.attributes.push_back({ 5, 0, 4, rhi::ScalarType::Float, false, false,
 			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, boneWeights)) });
+		inputDesc.attributes.push_back({ 13, 0, 4, rhi::ScalarType::Float, false, false,
+			static_cast<uint32_t>(offsetof(BakedGBufferVertex, vertex) + offsetof(Vertex, color)) });
 		inputDesc.attributes.push_back({ 11, 0, 1, rhi::ScalarType::UInt, false, true,
 			static_cast<uint32_t>(offsetof(BakedGBufferVertex, runtimeTransformIndex)) });
 		inputDesc.attributes.push_back({ 12, 0, 1, rhi::ScalarType::UInt, false, true,

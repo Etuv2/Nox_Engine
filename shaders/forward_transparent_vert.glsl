@@ -4,6 +4,7 @@ layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNormal;
 layout(location=2) in vec2 aUV;
 layout(location=10) in vec2 aUV1;
+layout(location=13) in vec4 aColor; // COLOR_0
 layout(location=3) in vec4 aTangent;
 layout(location=4) in ivec4 aBoneIDs;
 layout(location=5) in vec4 aBoneWeights;
@@ -20,6 +21,7 @@ out VS_OUT {
     vec4 TangentWS; // Tangent in world space (w = handedness)
     vec3 ObjectPos;
     vec3 ObjectNormal;
+    vec4 Color;
 } vs_out;
 
 void main() {
@@ -56,6 +58,7 @@ void main() {
     vs_out.ObjectPos = transpose(objectRotation) * (worldPos.xyz - model[3].xyz);
     vs_out.ObjectNormal = transpose(objectRotation) * N;
     vs_out.UV1 = aUV1;
+    vs_out.Color = aColor;
     
     gl_Position = projection * view * worldPos;
 }

@@ -19,6 +19,7 @@
 #include <array>
 #include <functional>
 #include <unordered_map>
+#include <set>
 #include "stb_image.h"
 #include "assets/AssetIO.h"
 #include "assets/AssetIOGltf.h"
@@ -516,6 +517,143 @@ static uint32_t ReadAccessorComponentAsUInt(const unsigned char* componentPtr, i
 }
 
 
+// glTF material JSON helpers (extension objects are tinygltf::Value trees).
+static float ReadJsonFloat(const tinygltf::Value& obj, const char* key, float fallback)
+{
+	if (obj.IsObject() && obj.Has(key) && obj.Get(key).IsNumber()) {
+		return static_cast<float>(obj.Get(key).GetNumberAsDouble());
+	}
+	return fallback;
+}
+
+static glm::vec3 ReadJsonVec3(const tinygltf::Value& obj, const char* key, const glm::vec3& fallback)
+{
+	if (obj.IsObject() && obj.Has(key) && obj.Get(key).IsArray() && obj.Get(key).ArrayLen() >= 3) {
+		return glm::vec3(
+			static_cast<float>(obj.Get(key).Get(0).GetNumberAsDouble()),
+			static_cast<float>(obj.Get(key).Get(1).GetNumberAsDouble()),
+			static_cast<float>(obj.Get(key).Get(2).GetNumberAsDouble()));
+	}
+	return fallback;
+}
+
+// KHR_texture_transform on one texture reference. `ext` is the extension object or nullptr. A texCoord
+// member, when present, replaces the set index of the reference (glTF KHR_texture_transform spec).
+static void ReadTextureTransformExt(const tinygltf::Value* ext, TextureTransform& xf, int& texCoord)
+{
+	if (!ext || !ext->IsObject()) {
+		return;
+	}
+	if (ext->Has("offset") && ext->Get("offset").IsArray() && ext->Get("offset").ArrayLen() >= 2) {
+		xf.offset = glm::vec2(static_cast<float>(ext->Get("offset").Get(0).GetNumberAsDouble()),
+			static_cast<float>(ext->Get("offset").Get(1).GetNumberAsDouble()));
+	}
+	if (ext->Has("scale") && ext->Get("scale").IsArray() && ext->Get("scale").ArrayLen() >= 2) {
+		xf.scale = glm::vec2(static_cast<float>(ext->Get("scale").Get(0).GetNumberAsDouble()),
+			static_cast<float>(ext->Get("scale").Get(1).GetNumberAsDouble()));
+	}
+	xf.rotation = ReadJsonFloat(*ext, "rotation", xf.rotation);
+	if (ext->Has("texCoord") && ext->Get("texCoord").IsNumber()) {
+		texCoord = ext->Get("texCoord").Get<int>();
+	}
+}
+
+// Texture info held in a tinygltf::TextureInfo (core glTF references).
+static void ReadTextureTransform(const tinygltf::ExtensionMap& extensions, TextureTransform& xf, int& texCoord)
+{
+	auto it = extensions.find("KHR_texture_transform");
+	if (it != extensions.end()) {
+		ReadTextureTransformExt(&it->second, xf, texCoord);
+	}
+}
+
+// Texture object held as raw JSON inside an extension (KHR_materials_specular, clearcoat, ...).
+static void ReadTextureTransformJson(const tinygltf::Value& texObj, TextureTransform& xf, int& texCoord)
+{
+	if (!texObj.IsObject() || !texObj.Has("extensions")) {
+		return;
+	}
+	const tinygltf::Value& exts = texObj.Get("extensions");
+	if (exts.IsObject() && exts.Has("KHR_texture_transform")) {
+		ReadTextureTransformExt(&exts.Get("KHR_texture_transform"), xf, texCoord);
+	}
+}
+
+// Normal map reference: TEXCOORD set (KHR_texture_transform texCoord override applied) and transform.
+static void ReadNormalMapUV(const tinygltf::Material& mat, TextureTransform& xf, int& uvSet)
+{
+	uvSet = mat.normalTexture.texCoord;
+	ReadTextureTransform(mat.normalTexture.extensions, xf, uvSet);
+}
+
+// One log line per imported model: which glTF extensions it declares and how the renderer treats them
+// (rendered, parsed and stored only, or unsupported). Keep in step with docs/rendering_components.md.
+static void LogGltfExtensionSupport(const tinygltf::Model& model, const std::string& name)
+{
+	static const std::set<std::string> kRendered = {
+		"KHR_texture_transform", "KHR_materials_emissive_strength", "KHR_materials_specular",
+		"KHR_materials_transmission", "KHR_materials_ior", "KHR_materials_volume",
+		"KHR_materials_clearcoat", "KHR_materials_unlit", "KHR_materials_pbrSpecularGlossiness",
+		"KHR_mesh_quantization" };
+	static const std::set<std::string> kParsedOnly = {
+		"KHR_materials_sheen", "KHR_materials_anisotropy", "KHR_materials_iridescence", "KHR_materials_dispersion" };
+	// Image codecs stb_image cannot decode. Textures use the core image when one exists, otherwise they are
+	// skipped and the material falls back to its factors.
+	static const std::set<std::string> kImageFallback = { "KHR_texture_basisu", "EXT_texture_webp" };
+	std::set<std::string> used(model.extensionsUsed.begin(), model.extensionsUsed.end());
+	for (const tinygltf::Material& mat : model.materials) {
+		for (const auto& ext : mat.extensions) used.insert(ext.first);
+	}
+	std::string rendered, parsed, fallback, unsupported;
+	for (const std::string& ext : used) {
+		std::string& bucket = kRendered.count(ext) ? rendered
+			: kParsedOnly.count(ext) ? parsed
+			: kImageFallback.count(ext) ? fallback
+			: unsupported;
+		bucket += (bucket.empty() ? "" : ", ") + ext;
+	}
+	if (used.empty()) return;
+	std::cout << "[Scene] " << name << " glTF extensions: rendered [" << rendered << "]";
+	if (!parsed.empty()) std::cout << " parsed-only [" << parsed << "]";
+	if (!fallback.empty()) std::cout << " image-fallback [" << fallback << "]";
+	if (!unsupported.empty()) std::cout << " UNSUPPORTED [" << unsupported << "]";
+	std::cout << std::endl;
+}
+
+// KHR_materials_pbrSpecularGlossiness -> metallic-roughness. Diffuse becomes base colour, glossiness
+// becomes 1 - roughness and the material is dielectric. The specular colour is applied by the caller
+// (CachedMaterialData::specularColorFactor = specular / 0.04). Spec-gloss textures other than the
+// diffuse texture are approximated (see docs/rendering_components.md).
+static const tinygltf::Material& ConvertSpecularGlossiness(const tinygltf::Material& source, tinygltf::Material& converted)
+{
+	auto it = source.extensions.find("KHR_materials_pbrSpecularGlossiness");
+	if (it == source.extensions.end()) {
+		return source;
+	}
+	const tinygltf::Value& sg = it->second;
+	converted = source;
+	auto& pbr = converted.pbrMetallicRoughness;
+	pbr.metallicFactor = 0.0;
+	pbr.metallicRoughnessTexture = tinygltf::TextureInfo{};
+	pbr.roughnessFactor = 1.0 - static_cast<double>(ReadJsonFloat(sg, "glossinessFactor", 1.0f));
+	if (sg.IsObject() && sg.Has("diffuseFactor") && sg.Get("diffuseFactor").IsArray() && sg.Get("diffuseFactor").ArrayLen() >= 4) {
+		pbr.baseColorFactor.clear();
+		for (int c = 0; c < 4; ++c) {
+			pbr.baseColorFactor.push_back(sg.Get("diffuseFactor").Get(c).GetNumberAsDouble());
+		}
+	}
+	pbr.baseColorTexture = tinygltf::TextureInfo{};
+	if (sg.IsObject() && sg.Has("diffuseTexture") && sg.Get("diffuseTexture").IsObject()) {
+		const tinygltf::Value& tex = sg.Get("diffuseTexture");
+		if (tex.Has("index") && tex.Get("index").IsInt()) pbr.baseColorTexture.index = tex.Get("index").Get<int>();
+		if (tex.Has("texCoord") && tex.Get("texCoord").IsInt()) pbr.baseColorTexture.texCoord = tex.Get("texCoord").Get<int>();
+		if (tex.Has("extensions") && tex.Get("extensions").Has("KHR_texture_transform")) {
+			pbr.baseColorTexture.extensions["KHR_texture_transform"] = tex.Get("extensions").Get("KHR_texture_transform");
+		}
+	}
+	return converted;
+}
+
 /**
  * Reads a float-based attribute (e.g. "POSITION", "NORMAL", "TEXCOORD_0")
  * from a glTF primitive and calls 'setVertexData(i, dataPtr)' for each element.
@@ -775,10 +913,29 @@ static MeshComponent CreateMesh(const std::vector<Vertex>& vertices,
 	inputDesc.attributes.push_back({ 4, 0, 4, rhi::ScalarType::Int, false, true, static_cast<uint32_t>(offsetof(Vertex, boneIDs)) });
 	// Bone weights
 	inputDesc.attributes.push_back({ 5, 0, 4, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, boneWeights)) });
+	// Vertex colour (COLOR_0), location 13 in the geometry and forward vertex shaders
+	inputDesc.attributes.push_back({ 13, 0, 4, rhi::ScalarType::Float, false, false, static_cast<uint32_t>(offsetof(Vertex, color)) });
 	mesh.VAO = rhi::Gpu().CreateVertexInput(inputDesc);
 	return mesh;
 }
 
+
+// tinygltf's default image loader fails the entire file on an image stb_image cannot decode (WebP,
+// KTX2). Such images are left empty instead; LoadTextureFromGLTF then returns no texture.
+static bool LoadGltfImageOrSkip(tinygltf::Image* image, const int imageIndex, std::string* err, std::string* warn,
+	int reqWidth, int reqHeight, const unsigned char* bytes, int size, void* userData)
+{
+	std::string decodeErr;
+	if (tinygltf::LoadImageData(image, imageIndex, &decodeErr, warn, reqWidth, reqHeight, bytes, size, userData)) {
+		return true;
+	}
+	image->image.clear();
+	image->width = image->height = 0;
+	if (warn) {
+		*warn += "[Scene] image[" + std::to_string(imageIndex) + "] not decodable (WebP/KTX2?); texture skipped\n";
+	}
+	return true;
+}
 
 /**
  * Loads a glTF texture at texIndex, returning a shared_ptr<Texture>.
@@ -794,6 +951,16 @@ static std::shared_ptr<Texture> LoadTextureFromGLTF(const tinygltf::Model& model
 	}
 	const tinygltf::Texture& gltfTex = model.textures[texIndex];
 	int imageIndex = gltfTex.source;
+	if (imageIndex < 0) {
+		// No core image: use the extension source when it names one (KHR_texture_basisu / EXT_texture_webp).
+		for (const char* extName : { "EXT_texture_webp", "KHR_texture_basisu" }) {
+			auto ext = gltfTex.extensions.find(extName);
+			if (ext != gltfTex.extensions.end() && ext->second.Has("source") && ext->second.Get("source").IsInt()) {
+				imageIndex = ext->second.Get("source").Get<int>();
+				break;
+			}
+		}
+	}
 	if (imageIndex < 0 || imageIndex >= (int)model.images.size()) {
 		return nullptr;
 	}
@@ -949,6 +1116,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	size_t totalIndexCount = 0;
 
 	tinygltf::TinyGLTF loader;
+	loader.SetImageLoader(&LoadGltfImageOrSkip, nullptr);
 	tinygltf::Model model;
 	std::string err, warn;
 	bool ret = false;
@@ -1033,6 +1201,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		}
 	}
 
+	LogGltfExtensionSupport(model, m_model_name);
 	size_t primitiveCount = 0;
 	size_t primitivesWithJointAttributes = 0;
 	size_t primitivesWithWeightAttributes = 0;
@@ -1105,12 +1274,30 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		int specularTexCoord = 0;
 		int specularColorTexCoord = 0;
 		int transmissionTexCoord = 0;
+		int clearcoatTextureIndex = -1;
+		int clearcoatRoughnessTextureIndex = -1;
+		int clearcoatTexCoord = 0;
+		int clearcoatRoughnessTexCoord = 0;
+		TextureTransform textureTransforms[MaterialDesc::SlotCount];
+		bool unlit = false;
+		glm::vec3 sheenColorFactor = glm::vec3(0.0f);
+		float sheenRoughnessFactor = 0.0f;
+		float anisotropyStrength = 0.0f;
+		float anisotropyRotation = 0.0f;
+		float iridescenceFactor = 0.0f;
+		float iridescenceIor = 1.3f;
+		float iridescenceThicknessMin = 100.0f;
+		float iridescenceThicknessMax = 400.0f;
+		float dispersion = 0.0f;
 	};
 	std::vector<CachedMaterialData> materialCache(model.materials.size());
 	size_t materialCacheHits = 0;
 	size_t materialCacheMisses = 0;
-	auto buildCachedMaterialData = [&model](const tinygltf::Material& mat, CachedMaterialData& cached) {
+	auto buildCachedMaterialData = [&model](const tinygltf::Material& source, CachedMaterialData& cached) {
 		cached = CachedMaterialData{};
+		tinygltf::Material convertedSpecGloss;
+		const tinygltf::Material& mat = ConvertSpecularGlossiness(source, convertedSpecGloss);
+		const bool usesSpecGloss = source.extensions.count("KHR_materials_pbrSpecularGlossiness") != 0;
 
 		if (mat.alphaMode == "BLEND") {
 			cached.hasAlpha = true;
@@ -1149,6 +1336,42 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		cached.occlusionTextureIndex = mat.occlusionTexture.index;
 		cached.occlusionTexCoord = mat.occlusionTexture.texCoord;
 
+		// KHR_texture_transform on the core references (may also override texCoord).
+		ReadTextureTransform(mat.pbrMetallicRoughness.baseColorTexture.extensions,
+			cached.textureTransforms[MaterialDesc::SlotBaseColor], cached.baseColorTexCoord);
+		ReadTextureTransform(mat.normalTexture.extensions,
+			cached.textureTransforms[MaterialDesc::SlotNormal], cached.normalTexCoord);
+		ReadTextureTransform(mat.pbrMetallicRoughness.metallicRoughnessTexture.extensions,
+			cached.textureTransforms[MaterialDesc::SlotMetallicRoughness], cached.metallicRoughnessTexCoord);
+		ReadTextureTransform(mat.emissiveTexture.extensions,
+			cached.textureTransforms[MaterialDesc::SlotEmissive], cached.emissiveTexCoord);
+		ReadTextureTransform(mat.occlusionTexture.extensions,
+			cached.textureTransforms[MaterialDesc::SlotOcclusion], cached.occlusionTexCoord);
+
+		if (mat.extensions.count("KHR_materials_unlit")) {
+			cached.unlit = true;
+		}
+		if (mat.extensions.count("KHR_materials_sheen")) {
+			const tinygltf::Value& sheenExt = mat.extensions.at("KHR_materials_sheen");
+			cached.sheenColorFactor = ReadJsonVec3(sheenExt, "sheenColorFactor", cached.sheenColorFactor);
+			cached.sheenRoughnessFactor = ReadJsonFloat(sheenExt, "sheenRoughnessFactor", cached.sheenRoughnessFactor);
+		}
+		if (mat.extensions.count("KHR_materials_anisotropy")) {
+			const tinygltf::Value& anisoExt = mat.extensions.at("KHR_materials_anisotropy");
+			cached.anisotropyStrength = ReadJsonFloat(anisoExt, "anisotropyStrength", cached.anisotropyStrength);
+			cached.anisotropyRotation = ReadJsonFloat(anisoExt, "anisotropyRotation", cached.anisotropyRotation);
+		}
+		if (mat.extensions.count("KHR_materials_iridescence")) {
+			const tinygltf::Value& irid = mat.extensions.at("KHR_materials_iridescence");
+			cached.iridescenceFactor = ReadJsonFloat(irid, "iridescenceFactor", cached.iridescenceFactor);
+			cached.iridescenceIor = ReadJsonFloat(irid, "iridescenceIor", cached.iridescenceIor);
+			cached.iridescenceThicknessMin = ReadJsonFloat(irid, "iridescenceThicknessMinimum", cached.iridescenceThicknessMin);
+			cached.iridescenceThicknessMax = ReadJsonFloat(irid, "iridescenceThicknessMaximum", cached.iridescenceThicknessMax);
+		}
+		if (mat.extensions.count("KHR_materials_dispersion")) {
+			cached.dispersion = ReadJsonFloat(mat.extensions.at("KHR_materials_dispersion"), "dispersion", cached.dispersion);
+		}
+
 		if (mat.extensions.count("KHR_materials_specular")) {
 			const auto& specExt = mat.extensions.at("KHR_materials_specular");
 			if (specExt.Has("specularTexture") && specExt.Get("specularTexture").IsObject()) {
@@ -1159,6 +1382,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				if (specTex.Has("texCoord") && specTex.Get("texCoord").IsInt()) {
 					cached.specularTexCoord = specTex.Get("texCoord").Get<int>();
 				}
+				ReadTextureTransformJson(specTex, cached.textureTransforms[MaterialDesc::SlotSpecular], cached.specularTexCoord);
 			}
 			if (specExt.Has("specularColorTexture") && specExt.Get("specularColorTexture").IsObject()) {
 				const auto& specColorTex = specExt.Get("specularColorTexture");
@@ -1168,6 +1392,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				if (specColorTex.Has("texCoord") && specColorTex.Get("texCoord").IsInt()) {
 					cached.specularColorTexCoord = specColorTex.Get("texCoord").Get<int>();
 				}
+				ReadTextureTransformJson(specColorTex, cached.textureTransforms[MaterialDesc::SlotSpecularColor], cached.specularColorTexCoord);
 			}
 			if (specExt.Has("specularFactor") && specExt.Get("specularFactor").IsNumber()) {
 				cached.specularFactor = static_cast<float>(specExt.Get("specularFactor").Get<double>());
@@ -1203,6 +1428,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				if (transTex.Has("texCoord") && transTex.Get("texCoord").IsInt()) {
 					cached.transmissionTexCoord = transTex.Get("texCoord").Get<int>();
 				}
+				ReadTextureTransformJson(transTex, cached.textureTransforms[MaterialDesc::SlotTransmission], cached.transmissionTexCoord);
 			}
 		}
 
@@ -1247,6 +1473,19 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			}
 			if (clearcoatExt.Has("clearcoatRoughnessFactor") && clearcoatExt.Get("clearcoatRoughnessFactor").IsNumber()) {
 				cached.clearcoatRoughnessFactor = static_cast<float>(clearcoatExt.Get("clearcoatRoughnessFactor").Get<double>());
+			}
+			// clearcoatTexture: intensity in R; clearcoatRoughnessTexture: roughness in G (both linear).
+			if (clearcoatExt.Has("clearcoatTexture") && clearcoatExt.Get("clearcoatTexture").IsObject()) {
+				const auto& tex = clearcoatExt.Get("clearcoatTexture");
+				if (tex.Has("index") && tex.Get("index").IsInt()) cached.clearcoatTextureIndex = tex.Get("index").Get<int>();
+				if (tex.Has("texCoord") && tex.Get("texCoord").IsInt()) cached.clearcoatTexCoord = tex.Get("texCoord").Get<int>();
+				ReadTextureTransformJson(tex, cached.textureTransforms[MaterialDesc::SlotClearcoat], cached.clearcoatTexCoord);
+			}
+			if (clearcoatExt.Has("clearcoatRoughnessTexture") && clearcoatExt.Get("clearcoatRoughnessTexture").IsObject()) {
+				const auto& tex = clearcoatExt.Get("clearcoatRoughnessTexture");
+				if (tex.Has("index") && tex.Get("index").IsInt()) cached.clearcoatRoughnessTextureIndex = tex.Get("index").Get<int>();
+				if (tex.Has("texCoord") && tex.Get("texCoord").IsInt()) cached.clearcoatRoughnessTexCoord = tex.Get("texCoord").Get<int>();
+				ReadTextureTransformJson(tex, cached.textureTransforms[MaterialDesc::SlotClearcoatRoughness], cached.clearcoatRoughnessTexCoord);
 			}
 		}
 
@@ -1331,6 +1570,14 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				static_cast<float>(mat.emissiveFactor[1]),
 				static_cast<float>(mat.emissiveFactor[2])
 			);
+		}
+
+		if (usesSpecGloss) {
+			// Spec-gloss specular is the dielectric F0 itself; the metallic-roughness path scales 0.04.
+			const tinygltf::Value& sg = source.extensions.at("KHR_materials_pbrSpecularGlossiness");
+			const glm::vec3 specular = ReadJsonVec3(sg, "specularFactor", glm::vec3(1.0f));
+			cached.specularFactor = 1.0f;
+			cached.specularColorFactor = glm::clamp(specular / 0.04f, glm::vec3(0.0f), glm::vec3(1.0f));
 		}
 
 		cached.initialized = true;
@@ -1444,6 +1691,14 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				});
 			if (hasTexCoord1) {
 				++primitivesWithTexCoord1;
+			}
+			// COLOR_0 multiplies the base colour (vec4, or vec3 with alpha 1). Absent = white.
+			if (!ReadFloatAttribute(model, primitive, "COLOR_0", 4, [&](size_t i, const float* data) {
+				vertices[i].color = glm::vec4(data[0], data[1], data[2], data[3]);
+				})) {
+				ReadFloatAttribute(model, primitive, "COLOR_0", 3, [&](size_t i, const float* data) {
+					vertices[i].color = glm::vec4(data[0], data[1], data[2], 1.0f);
+					});
 			}
 
 			// Skinning data (up to 8 weights, merged into 4)
@@ -1581,7 +1836,10 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			}
 			if (needsTangents && hasNormalMapTexture) {
 				if constexpr (kVerboseSceneImportLogging) { std::cout << "[INFO] Computing tangents for normal mapping...\n"; }
-				ComputeTangents(vertices, indices);
+				TextureTransform normalXform;
+				int normalUVSet = 0;
+				ReadNormalMapUV(model.materials[materialIndex], normalXform, normalUVSet);
+				ComputeTangents(vertices, indices, normalUVSet, normalXform);
 			}
 
 			// Create the GPU mesh (VAO, VBO, EBO) without textures yet
@@ -1673,6 +1931,8 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				setTextureIfPresent(cached.specularTextureIndex, mesh.specularTexture, false);
 				setTextureIfPresent(cached.specularColorTextureIndex, mesh.specularColorTexture, true);
 				setTextureIfPresent(cached.transmissionTextureIndex, mesh.transmissionTexture, false);
+				setTextureIfPresent(cached.clearcoatTextureIndex, mesh.clearcoatTexture, false);
+				setTextureIfPresent(cached.clearcoatRoughnessTextureIndex, mesh.clearcoatRoughnessTexture, false);
 			}
 			else {
 				// No material specified: use default glTF PBR values
@@ -1736,6 +1996,21 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 				normalizedMaterial.interiorSill = cached.interiorSill;
 				normalizedMaterial.interiorPaneUV = cached.interiorPaneUV;
 				normalizedMaterial.interiorFarDistance = cached.interiorFarDistance;
+				normalizedMaterial.clearcoatTexCoord = cached.clearcoatTexCoord;
+				normalizedMaterial.clearcoatRoughnessTexCoord = cached.clearcoatRoughnessTexCoord;
+				for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+					normalizedMaterial.textureTransforms[slot] = cached.textureTransforms[slot];
+				}
+				normalizedMaterial.unlit = cached.unlit;
+				normalizedMaterial.sheenColorFactor = cached.sheenColorFactor;
+				normalizedMaterial.sheenRoughnessFactor = cached.sheenRoughnessFactor;
+				normalizedMaterial.anisotropyStrength = cached.anisotropyStrength;
+				normalizedMaterial.anisotropyRotation = cached.anisotropyRotation;
+				normalizedMaterial.iridescenceFactor = cached.iridescenceFactor;
+				normalizedMaterial.iridescenceIor = cached.iridescenceIor;
+				normalizedMaterial.iridescenceThicknessMin = cached.iridescenceThicknessMin;
+				normalizedMaterial.iridescenceThicknessMax = cached.iridescenceThicknessMax;
+				normalizedMaterial.dispersion = cached.dispersion;
 			}
 			normalizedMaterial.Normalize();
 			mesh.SetMaterialDesc(normalizedMaterial);
@@ -2001,6 +2276,19 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		totalVertexCount,
 		totalIndexCount);
 
+	// Import-time material state, before scene material_overrides touch the shared model.
+	importedMaterials.clear();
+	importedMaterials.reserve(meshes.size());
+	for (MeshComponent& mesh : meshes) {
+		ImportedMaterial snap;
+		snap.material = mesh.GetMaterialDesc();
+		for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+			snap.textures[slot] = mesh.TextureForSlot(slot);
+			snap.texturePaths[slot] = mesh.textureSourcePaths[slot];
+		}
+		importedMaterials.push_back(std::move(snap));
+	}
+
 	return true;
 }
 
@@ -2190,7 +2478,13 @@ void Scene::Draw() {
 
 
 void Scene::ComputeTangents(std::vector<Vertex>& vertices,
-	const std::vector<unsigned int>& indices) {
+	const std::vector<unsigned int>& indices, int uvSet, const TextureTransform& uvXform) {
+	// Tangents follow the UVs the normal map is sampled with: TEXCOORD[uvSet] after KHR_texture_transform.
+	const glm::mat3 uvMatrix = uvXform.ToMat3();
+	auto uvOf = [&](const Vertex& v) {
+		const glm::vec2 raw = (uvSet == 1) ? v.texCoord1 : v.texCoord;
+		return glm::vec2(uvMatrix * glm::vec3(raw, 1.0f));
+	};
 	// Initialize containers for accumulated tangents/bitangents
 	std::vector<glm::vec3> tanSum(vertices.size(), glm::vec3(0.0f));
 	std::vector<glm::vec3> bitanSum(vertices.size(), glm::vec3(0.0f));
@@ -2203,9 +2497,9 @@ void Scene::ComputeTangents(std::vector<Vertex>& vertices,
 		const glm::vec3& p0 = vertices[i0].position;
 		const glm::vec3& p1 = vertices[i1].position;
 		const glm::vec3& p2 = vertices[i2].position;
-		const glm::vec2& uv0 = vertices[i0].texCoord;
-		const glm::vec2& uv1 = vertices[i1].texCoord;
-		const glm::vec2& uv2 = vertices[i2].texCoord;
+		const glm::vec2 uv0 = uvOf(vertices[i0]);
+		const glm::vec2 uv1 = uvOf(vertices[i1]);
+		const glm::vec2 uv2 = uvOf(vertices[i2]);
 		// Edges and UV deltas
 		glm::vec3 e1 = p1 - p0;
 		glm::vec3 e2 = p2 - p0;
@@ -2230,11 +2524,17 @@ void Scene::ComputeTangents(std::vector<Vertex>& vertices,
 
 	// Normalize and orthogonalize tangents, compute handedness (w)
 	for (size_t i = 0; i < vertices.size(); ++i) {
-		glm::vec3 N = glm::normalize(vertices[i].normal);
-		glm::vec3 T = glm::normalize(tanSum[i] - N * glm::dot(N, tanSum[i])); // orthonormalize
-		// Compute bitangent from N and T, then determine if we need to flip it
-		glm::vec3 B = glm::normalize(glm::cross(N, T));
-		float handedness = (glm::dot(B, glm::normalize(bitanSum[i])) < 0.0f) ? -1.0f : 1.0f;
+		const glm::vec3 N = glm::dot(vertices[i].normal, vertices[i].normal) > 1e-12f
+			? glm::normalize(vertices[i].normal) : glm::vec3(0.0f, 1.0f, 0.0f);
+		glm::vec3 T = tanSum[i] - N * glm::dot(N, tanSum[i]); // orthonormalize
+		if (glm::dot(T, T) < 1e-12f) {
+			// Degenerate UVs (no usable U direction): any tangent perpendicular to N.
+			T = std::abs(N.x) > 0.9f ? glm::cross(N, glm::vec3(0.0f, 1.0f, 0.0f)) : glm::cross(N, glm::vec3(1.0f, 0.0f, 0.0f));
+		}
+		T = glm::normalize(T);
+		// Bitangent = cross(N, T) * w (glTF TANGENT convention): w follows the accumulated V direction.
+		const glm::vec3 B = glm::cross(N, T);
+		const float handedness = (glm::dot(B, bitanSum[i]) < 0.0f) ? -1.0f : 1.0f;
 		vertices[i].tangent = glm::vec4(T, handedness);
 	}
 	if constexpr (kVerboseSceneImportLogging) { std::cout << "[INFO] Tangents computed for normal mapping.\n"; }

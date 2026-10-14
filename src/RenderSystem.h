@@ -254,6 +254,10 @@ private:
         rhi::UniformLocation specularUVSet = -1;
         rhi::UniformLocation specularColorUVSet = -1;
         rhi::UniformLocation transmissionUVSet = -1;
+
+        rhi::UniformLocation unlit = -1;
+        // KHR_texture_transform per TextureSlot (MaterialDesc::SlotCount == 10, see MeshComponent.h)
+        rhi::UniformLocation uvXform[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     };
 
     const ShaderUniformCache& GetShaderUniformCache(rhi::ProgramHandle shader);

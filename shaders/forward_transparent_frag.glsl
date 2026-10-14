@@ -21,6 +21,7 @@ in VS_OUT {
     vec4 TangentWS; // Tangent in world space (w = handedness)
     vec3 ObjectPos;
     vec3 ObjectNormal;
+    vec4 Color;     // COLOR_0
 } fs_in;
 
 uniform float rainBeadResponse = 0.0;
@@ -89,6 +90,12 @@ uniform int specularUVSet = 0;
 uniform int specularColorUVSet = 0;
 uniform int transmissionUVSet = 0;
 
+// KHR_texture_transform per slot (MaterialDesc::TextureSlot order), uv' = mat3 * (uv, 1)
+uniform mat3 uvXform[10];
+
+// KHR_materials_unlit: base colour is the output radiance, no lighting
+uniform bool unlit = false;
+
 // IBL textures
 uniform samplerCube irradianceMap;
 uniform samplerCube prefilteredMap;
@@ -113,7 +120,7 @@ vec3 getNormalFromMap() {
     }
     
     // Sample normal map in tangent space
-    vec3 tangentNormal = texture(texture_normal, SelectUVSet(normalUVSet, fs_in.UV, fs_in.UV1)).xyz * 2.0 - 1.0;
+    vec3 tangentNormal = texture(texture_normal, SelectUVSetXform(normalUVSet, fs_in.UV, fs_in.UV1, uvXform[1])).xyz * 2.0 - 1.0;
     
     // Apply normal scale for intensity control, then renormalize
     tangentNormal.xy *= normalScale;
@@ -150,8 +157,8 @@ vec3 getNormalFromMap() {
 
 void main() {
     // Sample base color and alpha
-    vec4 baseColorSample = hasBaseColorTexture ? texture(texture_diffuse, SelectUVSet(baseColorUVSet, fs_in.UV, fs_in.UV1)) : vec4(1.0);
-    vec4 baseColor = baseColorSample * baseColorFactor;
+    vec4 baseColorSample = hasBaseColorTexture ? texture(texture_diffuse, SelectUVSetXform(baseColorUVSet, fs_in.UV, fs_in.UV1, uvXform[0])) : vec4(1.0);
+    vec4 baseColor = baseColorSample * baseColorFactor * fs_in.Color;
     float alpha = baseColor.a;
     
     if ((alphaMode == 1 && alpha < alphaCutoff) || alpha <= 0.001) discard;
@@ -160,7 +167,7 @@ void main() {
     float metallic = metallicFactor;
     float roughness = roughnessFactor;
     if (hasMetallicRoughnessTexture) {
-        vec4 mrSample = texture(texture_metallic_roughness, SelectUVSet(metallicRoughnessUVSet, fs_in.UV, fs_in.UV1));
+        vec4 mrSample = texture(texture_metallic_roughness, SelectUVSetXform(metallicRoughnessUVSet, fs_in.UV, fs_in.UV1, uvXform[2]));
         metallic = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
         roughness = clamp(mrSample.g * roughnessFactor, 0.04, 1.0);
     }
@@ -168,18 +175,18 @@ void main() {
     // Sample transmission from material
     float transmission = transmissionFactor;
     if (hasTransmissionTexture) {
-        transmission *= texture(texture_transmission, SelectUVSet(transmissionUVSet, fs_in.UV, fs_in.UV1)).r;
+        transmission *= texture(texture_transmission, SelectUVSetXform(transmissionUVSet, fs_in.UV, fs_in.UV1, uvXform[7])).r;
     }
     // Sample emissive
     vec3 emissive = emissiveFactor;
     if (hasEmissiveTexture) {
-        emissive *= texture(texture_emissive, SelectUVSet(emissiveUVSet, fs_in.UV, fs_in.UV1)).rgb;
+        emissive *= texture(texture_emissive, SelectUVSetXform(emissiveUVSet, fs_in.UV, fs_in.UV1, uvXform[3])).rgb;
     }
     
     // Sample occlusion
     float ao = 1.0;
     if (hasOcclusionTexture) {
-        ao = mix(1.0, texture(texture_occlusion, SelectUVSet(occlusionUVSet, fs_in.UV, fs_in.UV1)).r, occlusionStrength);
+        ao = mix(1.0, texture(texture_occlusion, SelectUVSetXform(occlusionUVSet, fs_in.UV, fs_in.UV1, uvXform[4])).r, occlusionStrength);
     }
     
     // Calculate vectors
@@ -209,11 +216,11 @@ void main() {
     vec3 albedo = baseColor.rgb;
     float specFactorSample = 1.0;
     if (hasSpecularTexture) {
-        specFactorSample *= texture(texture_specular, SelectUVSet(specularUVSet, fs_in.UV, fs_in.UV1)).a;
+        specFactorSample *= texture(texture_specular, SelectUVSetXform(specularUVSet, fs_in.UV, fs_in.UV1, uvXform[5])).a;
     }
     vec3 specularColor = specularColorFactor;
     if (hasSpecularColorTexture) {
-        specularColor *= texture(texture_specular_color, SelectUVSet(specularColorUVSet, fs_in.UV, fs_in.UV1)).rgb;
+        specularColor *= texture(texture_specular_color, SelectUVSetXform(specularColorUVSet, fs_in.UV, fs_in.UV1, uvXform[6])).rgb;
     }
 
     PrincipledSurface surface = BuildPrincipledSurface(
@@ -294,6 +301,9 @@ void main() {
     // part not lost to transmission) and emission.
     // Physical camera: radiance is written pre-exposed like the deferred pass (1.0 for legacy scenes).
     vec3 surfaceColor = (pbrIBL + directLighting + emissive * emissiveStrength) * NoxPreExposure();
+    if (unlit) {
+        surfaceColor = baseColor.rgb * NoxPreExposure();
+    }
 
     // === COMPOSITE ===
     // alpha is glTF coverage: the uncovered part shows the background unchanged. The covered part

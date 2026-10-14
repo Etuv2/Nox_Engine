@@ -10,6 +10,38 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <array>
+
+/**
+ * KHR_texture_transform for one texture reference, glTF order: uv' = T * R * S * uv.
+ * The texCoord override of the extension is folded into the slot's *TexCoord field.
+ */
+struct TextureTransform {
+	glm::vec2 offset = glm::vec2(0.0f);
+	glm::vec2 scale = glm::vec2(1.0f);
+	float rotation = 0.0f;   // radians, glTF convention (counter-clockwise in UV space)
+
+	bool IsIdentity() const {
+		return offset == glm::vec2(0.0f) && scale == glm::vec2(1.0f) && rotation == 0.0f;
+	}
+	bool operator==(const TextureTransform& o) const {
+		return offset == o.offset && scale == o.scale && rotation == o.rotation;
+	}
+	bool operator!=(const TextureTransform& o) const { return !(*this == o); }
+
+	glm::mat3 ToMat3() const {
+		const float c = std::cos(rotation);
+		const float s = std::sin(rotation);
+		glm::mat3 T(1.0f);
+		T[2] = glm::vec3(offset, 1.0f);
+		// Rows of R are (c, s) and (-s, c) per the spec, so columns are (c, -s) and (s, c).
+		const glm::mat3 R(glm::vec3(c, -s, 0.0f), glm::vec3(s, c, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		glm::mat3 S(1.0f);
+		S[0][0] = scale.x;
+		S[1][1] = scale.y;
+		return T * R * S;
+	}
+};
 
 /**
  * Canonical CPU-side material contract shared by import, renderer uploads, and RT packing.
@@ -23,6 +55,45 @@ struct MaterialDesc {
 		Mask = 1,
 		Blend = 2
 	};
+
+	// Texture reference slots. Shader uniforms, JSON keys and editor rows all index by this order.
+	enum TextureSlot : int {
+		SlotBaseColor = 0,
+		SlotNormal,
+		SlotMetallicRoughness,
+		SlotEmissive,
+		SlotOcclusion,
+		SlotSpecular,
+		SlotSpecularColor,
+		SlotTransmission,
+		SlotClearcoat,
+		SlotClearcoatRoughness,
+		SlotCount
+	};
+	static_assert(SlotCount == 10, "uvXform arrays in RenderSystem and the shaders are sized for 10 texture slots");
+	static const char* TextureSlotKey(int slot) {
+		static const char* const keys[SlotCount] = {
+			"base_color", "normal", "metallic_roughness", "emissive", "occlusion",
+			"specular", "specular_color", "transmission", "clearcoat", "clearcoat_roughness" };
+		return (slot >= 0 && slot < SlotCount) ? keys[slot] : "";
+	}
+	static const char* TextureSlotLabel(int slot) {
+		static const char* const labels[SlotCount] = {
+			"Base color", "Normal", "Metallic-roughness", "Emissive", "Occlusion",
+			"Specular", "Specular color", "Transmission", "Clearcoat (stored, not sampled)", "Clearcoat roughness (stored, not sampled)" };
+		return (slot >= 0 && slot < SlotCount) ? labels[slot] : "";
+	}
+	// Slot index for a JSON key (see TextureSlotKey), or -1 when the key is unknown.
+	static int TextureSlotFromKey(const std::string& key) {
+		for (int slot = 0; slot < SlotCount; ++slot) {
+			if (key == TextureSlotKey(slot)) return slot;
+		}
+		return -1;
+	}
+	// Whether the slot holds colour data (sRGB texture format); everything else is linear.
+	static bool TextureSlotIsSRGB(int slot) {
+		return slot == SlotBaseColor || slot == SlotEmissive || slot == SlotSpecularColor;
+	}
 
 	uint32_t stableMaterialID = 1u;
 	AlphaMode alphaMode = AlphaMode::Opaque;
@@ -79,6 +150,43 @@ struct MaterialDesc {
 	int specularTexCoord = 0;
 	int specularColorTexCoord = 0;
 	int transmissionTexCoord = 0;
+	int clearcoatTexCoord = 0;
+	int clearcoatRoughnessTexCoord = 0;
+
+	// KHR_texture_transform per slot (identity unless the material uses the extension).
+	TextureTransform textureTransforms[SlotCount];
+
+	// KHR_materials_unlit: base colour is written as emission and no light is applied.
+	bool unlit = false;
+
+	// Parsed and stored, not shaded yet (see docs/rendering_components.md, "Extension status").
+	glm::vec3 sheenColorFactor = glm::vec3(0.0f);       // KHR_materials_sheen
+	float sheenRoughnessFactor = 0.0f;                  // KHR_materials_sheen
+	float anisotropyStrength = 0.0f;                    // KHR_materials_anisotropy
+	float anisotropyRotation = 0.0f;                    // KHR_materials_anisotropy (radians)
+	float iridescenceFactor = 0.0f;                     // KHR_materials_iridescence
+	float iridescenceIor = 1.3f;                        // KHR_materials_iridescence
+	float iridescenceThicknessMin = 100.0f;             // KHR_materials_iridescence (nm)
+	float iridescenceThicknessMax = 400.0f;             // KHR_materials_iridescence (nm)
+	float dispersion = 0.0f;                            // KHR_materials_dispersion
+
+	int& TexCoordOf(int slot) {
+		switch (slot) {
+		case SlotBaseColor: return baseColorTexCoord;
+		case SlotNormal: return normalTexCoord;
+		case SlotMetallicRoughness: return metallicRoughnessTexCoord;
+		case SlotEmissive: return emissiveTexCoord;
+		case SlotOcclusion: return occlusionTexCoord;
+		case SlotSpecular: return specularTexCoord;
+		case SlotSpecularColor: return specularColorTexCoord;
+		case SlotTransmission: return transmissionTexCoord;
+		case SlotClearcoat: return clearcoatTexCoord;
+		default: return clearcoatRoughnessTexCoord;
+		}
+	}
+	int TexCoordOf(int slot) const {
+		return const_cast<MaterialDesc*>(this)->TexCoordOf(slot);
+	}
 
 	void Normalize() {
 		baseColorFactor = glm::clamp(baseColorFactor, glm::vec4(0.0f), glm::vec4(1.0f));
@@ -135,6 +243,20 @@ struct MaterialDesc {
 		specularTexCoord = clampSupportedUVSet(specularTexCoord);
 		specularColorTexCoord = clampSupportedUVSet(specularColorTexCoord);
 		transmissionTexCoord = clampSupportedUVSet(transmissionTexCoord);
+		clearcoatTexCoord = clampSupportedUVSet(clearcoatTexCoord);
+		clearcoatRoughnessTexCoord = clampSupportedUVSet(clearcoatRoughnessTexCoord);
+		for (TextureTransform& xf : textureTransforms) {
+			xf.scale = glm::clamp(xf.scale, glm::vec2(-1e4f), glm::vec2(1e4f));
+			if (!std::isfinite(xf.rotation)) xf.rotation = 0.0f;
+		}
+		sheenColorFactor = glm::clamp(sheenColorFactor, glm::vec3(0.0f), glm::vec3(1.0f));
+		sheenRoughnessFactor = std::clamp(sheenRoughnessFactor, 0.0f, 1.0f);
+		anisotropyStrength = std::clamp(anisotropyStrength, 0.0f, 1.0f);
+		iridescenceFactor = std::clamp(iridescenceFactor, 0.0f, 1.0f);
+		iridescenceIor = std::max(iridescenceIor, 1.0f);
+		iridescenceThicknessMin = std::max(iridescenceThicknessMin, 0.0f);
+		iridescenceThicknessMax = std::max(iridescenceThicknessMax, iridescenceThicknessMin);
+		dispersion = std::max(dispersion, 0.0f);
 
 		hasAlpha = hasAlpha || alphaMode == AlphaMode::Blend || baseColorFactor.a < 1.0f || transmissionFactor > 0.0f;
 	}
@@ -163,6 +285,10 @@ public:
 	std::shared_ptr<Texture> specularTexture;       // Specular texture (for KHR_materials_specular extension)
 	std::shared_ptr<Texture> specularColorTexture;  // Specular color texture (KHR_materials_specular)
 	std::shared_ptr<Texture> transmissionTexture;   // Transmission texture (KHR_materials_transmission)
+	std::shared_ptr<Texture> clearcoatTexture;      // Clearcoat intensity (R channel, KHR_materials_clearcoat)
+	std::shared_ptr<Texture> clearcoatRoughnessTexture; // Clearcoat roughness (G channel, KHR_materials_clearcoat)
+	// Source file of each texture slot when the editor or a scene override assigned it ("" = imported).
+	std::array<std::string, MaterialDesc::SlotCount> textureSourcePaths;
 
 	// Canonical normalized material state used by import, raster uploads, and RT packing.
 	MaterialDesc material;
@@ -238,6 +364,7 @@ public:
 		roughnessTexture(nullptr), emissiveTexture(nullptr),
 		occlusionTexture(nullptr), specularTexture(nullptr),
 		specularColorTexture(nullptr), transmissionTexture(nullptr),
+		clearcoatTexture(nullptr), clearcoatRoughnessTexture(nullptr),
 		hasAlpha(false), doubleSided(false) {
 	}
 
@@ -255,6 +382,9 @@ public:
 		, specularTexture(std::move(other.specularTexture))
 		, specularColorTexture(std::move(other.specularColorTexture))
 		, transmissionTexture(std::move(other.transmissionTexture))
+		, clearcoatTexture(std::move(other.clearcoatTexture))
+		, clearcoatRoughnessTexture(std::move(other.clearcoatRoughnessTexture))
+		, textureSourcePaths(std::move(other.textureSourcePaths))
 		, material(other.material)
 		, materialName(std::move(other.materialName))
 		, hasAlpha(other.hasAlpha)
@@ -310,6 +440,9 @@ public:
 			specularTexture = std::move(other.specularTexture);
 			specularColorTexture = std::move(other.specularColorTexture);
 			transmissionTexture = std::move(other.transmissionTexture);
+			clearcoatTexture = std::move(other.clearcoatTexture);
+			clearcoatRoughnessTexture = std::move(other.clearcoatRoughnessTexture);
+			textureSourcePaths = std::move(other.textureSourcePaths);
 			material = other.material;
 			materialName = std::move(other.materialName);
 			hasAlpha = other.hasAlpha;
@@ -411,6 +544,22 @@ public:
 		return BuildMaterialDescFromLegacy();
 	}
 
+	// Texture object behind a MaterialDesc::TextureSlot (the per-slot member above). slot < SlotCount.
+	std::shared_ptr<Texture>& TextureForSlot(int slot) {
+		switch (slot) {
+		case MaterialDesc::SlotBaseColor: return diffuseTexture;
+		case MaterialDesc::SlotNormal: return normalTexture;
+		case MaterialDesc::SlotMetallicRoughness: return roughnessTexture;
+		case MaterialDesc::SlotEmissive: return emissiveTexture;
+		case MaterialDesc::SlotOcclusion: return occlusionTexture;
+		case MaterialDesc::SlotSpecular: return specularTexture;
+		case MaterialDesc::SlotSpecularColor: return specularColorTexture;
+		case MaterialDesc::SlotTransmission: return transmissionTexture;
+		case MaterialDesc::SlotClearcoat: return clearcoatTexture;
+		default: return clearcoatRoughnessTexture;
+		}
+	}
+
 	// Determine if this mesh needs special rendering treatment
 	bool RequiresAlphaBlending() const {
 		return alphaMode == ALPHA_BLEND;
@@ -475,6 +624,8 @@ public:
 		specularTexture.reset();
 		specularColorTexture.reset();
 		transmissionTexture.reset();
+		clearcoatTexture.reset();
+		clearcoatRoughnessTexture.reset();
 
 		// Reset VAO handle
 		VAO = {};
