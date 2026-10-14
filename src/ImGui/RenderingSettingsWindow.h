@@ -106,6 +106,9 @@ private:
 	float m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
 	float m_indirectDiffuseThicknessVS = RenderContext::IndirectDiffuseDefaults::ThicknessVS;
 	float m_indirectDiffuseTemporalAlpha = RenderContext::IndirectDiffuseDefaults::TemporalAlpha;
+	int m_indirectDiffuseHistoryLength = RenderContext::IndirectDiffuseDefaults::HistoryLength;
+	int m_indirectDiffuseDenoiseIterations = RenderContext::IndirectDiffuseDefaults::DenoiseIterations;
+	float m_indirectDiffuseResolutionScale = RenderContext::IndirectDiffuseDefaults::ResolutionScale;
 	float m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
 	float m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
 	bool m_indirectDiffuseHistoryReset = false;

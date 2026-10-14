@@ -101,6 +101,8 @@ private:
 
     TexturePtr m_indirectTemporal;
     TexturePtr m_directionalTemporal;
+    TexturePtr m_temporalLength;
+    TexturePtr m_historyLength;
     TexturePtr m_temporalDebug;
     TexturePtr m_temporalHistoryRawDebug;
     TexturePtr m_temporalHistoryClampedDebug;
@@ -114,7 +116,6 @@ private:
 
     TexturePtr m_indirectDiffuseTex;
     TexturePtr m_debugOutput;
-    TexturePtr m_upscaledIndirectDebug;
     TexturePtr m_finalIndirectDebug;
 
     TexturePtr m_historyResolvedGI;

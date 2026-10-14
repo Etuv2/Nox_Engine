@@ -68,22 +68,17 @@ void main() {
     ivec2 base = id * 4;
     ivec2 anchorSrc = clamp(base + ivec2(1, 1), ivec2(0), srcSize - ivec2(1));
     float anchorDepthVS = NOX_FP16_MAX;
-    float anchorDepth01 = 1.0;
 
-    for (int y = 0; y < 4; ++y) {
-        for (int x = 0; x < 4; ++x) {
-            ivec2 src = clamp(base + ivec2(x, y), ivec2(0), srcSize - ivec2(1));
-            float sampleDepthVS;
-            float sampleDepth01;
-            if (!TryLoadSourceDepthVS(src, srcSize, sampleDepthVS, sampleDepth01)) {
-                continue;
-            }
-
-            if (sampleDepthVS < anchorDepthVS) {
-                anchorDepthVS = sampleDepthVS;
-                anchorDepth01 = sampleDepth01;
-                anchorSrc = src;
-            }
+    // Reconstruct the 4x4 source depths once; both the anchor search and the weighting loop reuse them.
+    float srcDepthVS[16];
+    bool srcValid[16];
+    for (int i = 0; i < 16; ++i) {
+        ivec2 src = clamp(base + ivec2(i % 4, i / 4), ivec2(0), srcSize - ivec2(1));
+        float sampleDepth01;
+        srcValid[i] = TryLoadSourceDepthVS(src, srcSize, srcDepthVS[i], sampleDepth01);
+        if (srcValid[i] && srcDepthVS[i] < anchorDepthVS) {
+            anchorDepthVS = srcDepthVS[i];
+            anchorSrc = src;
         }
     }
 
@@ -98,15 +93,13 @@ void main() {
     float depthWeightAccum = 0.0;
     float normalWeightAccum = 0.0;
     float albedoWeightAccum = 0.0;
-    for (int y = 0; y < 4; ++y) {
-        for (int x = 0; x < 4; ++x) {
-            ivec2 src = clamp(base + ivec2(x, y), ivec2(0), srcSize - ivec2(1));
-            float srcDepthVS;
-            float srcDepth01;
-            if (!TryLoadSourceDepthVS(src, srcSize, srcDepthVS, srcDepth01)) {
+    for (int i = 0; i < 16; ++i) {
+        {
+            ivec2 src = clamp(base + ivec2(i % 4, i / 4), ivec2(0), srcSize - ivec2(1));
+            if (!srcValid[i]) {
                 continue;
             }
-            float depthRel = abs(srcDepthVS - currDepth) / max(max(srcDepthVS, currDepth), 1e-4);
+            float depthRel = abs(srcDepthVS[i] - currDepth) / max(max(srcDepthVS[i], currDepth), 1e-4);
             if (depthRel > max(depthReject * 3.0, 0.12)) {
                 continue;
             }

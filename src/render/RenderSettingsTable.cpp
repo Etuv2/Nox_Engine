@@ -173,6 +173,12 @@ std::vector<RenderSetting> BuildTable() {
 	t.push_back(FloatSetting("ssao_intensity", kAo, "SSAO intensity", &RenderContext::ssaoIntensity, 0.0, 2.0, 0.01));
 	t.push_back(BoolSetting("ssgi", kAo, "Indirect diffuse (SSGI)", &RenderContext::enableIndirectDiffuse));
 	t.push_back(FloatSetting("ssgi_strength", kAo, "SSGI strength", &RenderContext::indirectDiffuseStrength, 0.0, 4.0, 0.01));
+	t.push_back(FloatSetting("ssgi_resolution", kAo, "SSGI trace resolution", &RenderContext::indirectDiffuseResolutionScale, 0.25, 0.5, 0.25,
+		"Fraction of the frame the GI is traced at: 0.25 = quarter (default), 0.5 = half (about 4x the trace cost)"));
+	t.push_back(IntSetting("ssgi_history_length", kAo, "SSGI history length", &RenderContext::indirectDiffuseHistoryLength, 1.0, 64.0, 1.0,
+		"Max accumulated frames per pixel in the temporal resolve; higher = less noise, slower response"));
+	t.push_back(IntSetting("ssgi_denoise_passes", kAo, "SSGI denoise passes", &RenderContext::indirectDiffuseDenoiseIterations, 1.0, 3.0, 1.0,
+		"Edge-aware denoise passes after the temporal resolve (the first is wide, later ones are 3x3)"));
 	t.push_back(BoolSetting("contact_shadows", kAo, "Contact shadows", &RenderContext::enableScreenSpaceShadows));
 
 	const char* kTaa = "Anti-aliasing";

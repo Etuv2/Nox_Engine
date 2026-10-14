@@ -7,7 +7,6 @@ layout(local_size_x = 8, local_size_y = 8) in;
 layout(binding = 0) uniform sampler2D indirectStage1;
 layout(binding = 1) uniform sampler2D directionalStage1;
 layout(binding = 2) uniform sampler2D indirectStage2;
-layout(binding = 3) uniform sampler2D directionalStage2;
 layout(binding = 4) uniform sampler2D indirectRaw;
 layout(binding = 5) uniform sampler2D directionalRaw;
 layout(binding = 6) uniform sampler2D depthLinearQuarter;
@@ -31,7 +30,6 @@ layout(binding = 23) uniform sampler2D gClearCoat;
 
 layout(binding = 0, rgba16f) writeonly uniform image2D outFull;
 layout(binding = 1, rgba16f) writeonly uniform image2D outDebug;
-layout(binding = 2, rgba16f) writeonly uniform image2D outUpscaledDebug;
 layout(binding = 3, rgba16f) writeonly uniform image2D outFinalIndirectDebug;
 
 uniform vec2 invFullSize;
@@ -40,6 +38,7 @@ uniform float projScaleX;
 uniform float projScaleY;
 uniform float upscaleSharpness;
 uniform int debugMode;
+uniform int writeDebugOutputs; // 1 only while a debug stage is presented or exported
 uniform float indirectStrength;
 uniform mat4 view;
 uniform int normalsInWorldSpace;
@@ -85,7 +84,6 @@ vec3 ComputeDebugIndirectMaterialResponse(vec2 uv, vec3 indirectIrradiance, vec3
 
 vec4 SampleQuarterResolved(vec2 uv, vec3 fullNormal, float fullDepthVS, float fullDepth01, float normalMip) {
     vec4 indAcc = vec4(0.0);
-    vec4 shAcc = vec4(0.0);
     float weightAcc = 0.0;
 
     vec3 fullViewPos = ReconstructViewPosition(uv, fullDepth01, invProj);
@@ -109,7 +107,6 @@ vec4 SampleQuarterResolved(vec2 uv, vec3 fullNormal, float fullDepthVS, float fu
             }
 
             vec4 ind = textureLod(indirectStage2, sampleUV, 0.0);
-            vec4 sh = textureLod(directionalStage2, sampleUV, 0.0);
             vec3 sampleNormal = DecodeOctNormal01(textureLod(normalFromDepthTex, sampleUV, normalMip).rg);
             if (length(sampleNormal) < 0.5 || any(isnan(sampleNormal))) {
                 sampleNormal = centerQuarterNormal;
@@ -132,7 +129,6 @@ vec4 SampleQuarterResolved(vec2 uv, vec3 fullNormal, float fullDepthVS, float fu
             }
 
             indAcc += ind * w;
-            shAcc += sh * w;
             weightAcc += w;
         }
     }
@@ -276,11 +272,13 @@ void main() {
     }
 
     vec4 upscaledOut = SampleQuarterResolved(uv, normalize(fullNormal), fullDepthVS, fullDepth01, QuarterNormalMip(normalFromDepthTex, depthLinearQuarter));
-    vec3 debugRGB = SampleDebugMode(debugMode, uv, normalize(fullNormal), upscaledOut);
-    vec3 finalIndirectOnly = ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, normalize(fullNormal));
 
     imageStore(outFull, id, vec4(max(upscaledOut.rgb, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
-    imageStore(outDebug, id, vec4(max(debugRGB, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
-    imageStore(outUpscaledDebug, id, vec4(max(upscaledOut.rgb, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
-    imageStore(outFinalIndirectDebug, id, vec4(max(finalIndirectOnly, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
+
+    if (writeDebugOutputs == 1) {
+        vec3 debugRGB = SampleDebugMode(debugMode, uv, normalize(fullNormal), upscaledOut);
+        vec3 finalIndirectOnly = ComputeDebugIndirectMaterialResponse(uv, upscaledOut.rgb, normalize(fullNormal));
+        imageStore(outDebug, id, vec4(max(debugRGB, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
+        imageStore(outFinalIndirectDebug, id, vec4(max(finalIndirectOnly, vec3(0.0)), clamp(upscaledOut.a, 0.0, 1.0)));
+    }
 }

@@ -66,6 +66,9 @@ values outside them are clamped.
 | `ssao`, `ssgi`, `contact_shadows` | bool | |
 | `ssao_intensity` | float | 0 .. 2 |
 | `ssgi_strength` | float | 0 .. 4 |
+| `ssgi_resolution` | float | 0.25 (quarter, default), 0.5 (half, about 4x the trace cost) |
+| `ssgi_history_length` | int | 1 .. 64 (default 12) |
+| `ssgi_denoise_passes` | int | 1 .. 3 (default 2) |
 | `taa` | bool | |
 | `taa_blend` | float | 0 .. 1 |
 | `taa_rejection_mode` | int | 0 (legacy), 1 (disocclusion) |
@@ -110,6 +113,26 @@ values outside them are clamped.
 The table is `src/render/RenderSettingsTable.cpp`; the scene reader is `SceneRenderSettings::Apply`, and the
 writer is `SceneRenderSettings::ToJson` (called by the scene saver). Add a setting in the table and it is
 exposed, saved and tested together.
+
+## Screen-space GI (SSGI)
+
+`ssgi` is the visibility-bitmask indirect diffuse pass (`src/passes/IndirectDiffusePass.*`, spec in
+`docs/ssgi_v2_visibility_bitmask_spec.md`). Per frame:
+
+1. Gather at the working resolution (quarter by default). Four slices, 32 steps per direction, sky pixels
+   skipped, and a slice stops marching once all of its sectors are occluded (exact, no output change).
+   Slice rotation and sample offsets use interleaved gradient noise plus an R2 sequence over frames.
+2. Temporal resolve reprojects the raw GI with depth, normal, and motion tests. The history is clamped to the
+   current 3x3 mean +/- 1.25 sigma (intersected with the min/max box). Each pixel keeps an accumulated frame
+   count up to `ssgi_history_length`; the current-frame weight is 1 / count, floored by the "Min Current
+   Weight" slider (the old "Temporal Alpha").
+3. Edge-aware bilateral denoise: a 5x5 pass, then 3x3 passes up to `ssgi_denoise_passes`.
+4. Depth/normal/plane-aware bilateral upsample to full resolution. Full-resolution debug outputs are only
+   written while a debug stage is selected, and the GI validation export is shown only then.
+
+Cost scales with the trace resolution and the slice count (Global Illumination tab). Halving the slice count
+roughly halves the gather; the spec defaults (4 slices, 32 steps) are kept because fewer steps bias the
+irradiance low.
 
 ## Camera current
 
