@@ -1,22 +1,56 @@
 #include "LuaEditorPanel.h"
 
 #include "LuaGameModule.h"
+#include "LuaEditorSupport.h"
 #include "../EditorExtensions.h"
+#include "../assets/AssetIO.h"
+#include "../editor/ExternalEditor.h"
 
 #include <IMGUI/imgui.h>
 
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 
 namespace NoxLua {
 
 	namespace {
+		// Opens a logical project file in the external editor at a 1-based line (0 = top of file).
+		void OpenInExternalEditor(const std::string& logicalPath, int line) {
+			std::string error;
+			if (ExternalEditor::OpenLogicalFile(logicalPath, line, error)) {
+				ui::Toast("Opened " + logicalPath + (line > 0 ? ":" + std::to_string(line) : std::string()), ui::ToastKind::Info);
+			}
+			else {
+				ui::Toast(error, ui::ToastKind::Warning);
+			}
+		}
+
+		// Opens the project folder (the folder that holds project.json) as a workspace.
+		void OpenProjectFolderExternal(const std::string& descriptorPath) {
+			std::string error;
+			if (!ExternalEditor::OpenLogicalFolder(AssetIO::Parent(descriptorPath), error)) ui::Toast(error, ui::ToastKind::Warning);
+		}
+
+		// The newest error diagnostic of a faulted entry. Faults are named "system:x", "behavior:x", "event:x" and the
+		// diagnostics use the sources "system 'x'", "behavior 'x'", "event 'x'".
+		const Diagnostic* FaultDiagnostic(const std::vector<Diagnostic>& diagnostics, const std::string& fault) {
+			const size_t colon = fault.find(':');
+			if (colon == std::string::npos) return nullptr;
+			const std::string source = fault.substr(0, colon) + " '" + fault.substr(colon + 1) + "'";
+			for (auto it = diagnostics.rbegin(); it != diagnostics.rend(); ++it) {
+				if (it->severity == Diagnostic::Severity::Error && it->source == source && !it->file.empty()) return &*it;
+			}
+			return nullptr;
+		}
+
 		void DrawDiagnostic(const Diagnostic& d, int index) {
 			const char* severity = d.severity == Diagnostic::Severity::Error ? "error" : "warning";
 			std::string location;
 			if (!d.file.empty()) location = " " + d.file + ":" + std::to_string(d.line);
 			ImGui::PushID(index);
 			ImGui::TextWrapped("[%s] %s%s", severity, d.source.c_str(), location.c_str());
+			if (!d.file.empty() && ImGui::SmallButton("Open in external editor")) OpenInExternalEditor(d.file, d.line);
 			ImGui::TextWrapped("%s", d.message.c_str());
 			if (!d.traceback.empty() && ImGui::TreeNode("traceback")) {
 				ImGui::TextWrapped("%s", d.traceback.c_str());
@@ -58,11 +92,31 @@ namespace NoxLua {
 			}
 			ImGui::SameLine();
 			ImGui::TextDisabled("Reload applies at the next frame boundary.");
+			if (ImGui::Button("Open Project Folder in External Editor")) OpenProjectFolderExternal(lua->Project().descriptorPath);
+			ImGui::SameLine();
+			if (ImGui::Button("Open Entry in External Editor")) OpenInExternalEditor(lua->Project().content.entry, 0);
+			ImGui::SameLine();
+			if (ImGui::Button("Generate Editor Support")) {
+				std::string report;
+				const bool ok = GenerateLuaEditorSupport(host.Game(), report);
+				std::cout << report;
+				ui::Toast(ok ? "Lua editor support written (see the log)" : report, ok ? ui::ToastKind::Success : ui::ToastKind::Warning);
+			}
 
 			if (world) {
 				const std::vector<std::string> faults = world->FaultedNames();
+				const std::vector<Diagnostic>& diagnostics = lua->Diagnostics();
 				ImGui::Text("Faulted: %d", static_cast<int>(faults.size()));
-				for (const std::string& name : faults) ImGui::BulletText("%s", name.c_str());
+				int index = 0;
+				for (const std::string& name : faults) {
+					ImGui::BulletText("%s", name.c_str());
+					const Diagnostic* at = FaultDiagnostic(diagnostics, name);
+					if (!at) continue;
+					ImGui::SameLine();
+					ImGui::PushID(index++);
+					if (ImGui::SmallButton("Open error")) OpenInExternalEditor(at->file, at->line);
+					ImGui::PopID();
+				}
 			}
 			ImGui::Separator();
 			if (ImGui::CollapsingHeader("Diagnostics", ImGuiTreeNodeFlags_DefaultOpen)) {

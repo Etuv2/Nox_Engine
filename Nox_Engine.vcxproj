@@ -235,6 +235,7 @@
     <ClCompile Include="src\DefaultTextures.cpp" />
     <ClCompile Include="src\DirectionalLight.cpp" />
     <ClCompile Include="src\editor\ProcessRunner.cpp" />
+    <ClCompile Include="src\editor\ExternalEditor.cpp" />
     <ClCompile Include="src\editor\solace\SolaceControls.cpp" />
     <ClCompile Include="src\editor\solace\SolaceCore.cpp" />
     <ClCompile Include="src\editor\solace\SolaceFeedback.cpp" />
@@ -326,6 +327,7 @@
     <ClCompile Include="src\SceneRuntimeData.cpp" />
     <ClCompile Include="src\scripting\LuaEditor.cpp" />
     <ClCompile Include="src\scripting\LuaEditorPanel.cpp" />
+    <ClCompile Include="src\scripting\LuaEditorSupport.cpp" />
     <ClCompile Include="src\scripting\LuaGameModule.cpp" />
     <ClCompile Include="src\scripting\LuaInput.cpp" />
     <ClCompile Include="src\scripting\LuaProject.cpp" />
@@ -421,6 +423,7 @@
     <ClInclude Include="src\DriveAudio.h" />
     <ClInclude Include="src\DriveMode.h" />
     <ClInclude Include="src\editor\ProcessRunner.h" />
+    <ClInclude Include="src\editor\ExternalEditor.h" />
     <ClInclude Include="src\editor\solace\SolaceInternal.h" />
     <ClInclude Include="src\editor\solace\SolaceUI.h" />
     <ClInclude Include="src\EditorExtensions.h" />
@@ -528,6 +531,7 @@
     <ClInclude Include="src\scripting\LuaData.h" />
     <ClInclude Include="src\scripting\LuaEditor.h" />
     <ClInclude Include="src\scripting\LuaEditorPanel.h" />
+    <ClInclude Include="src\scripting\LuaEditorSupport.h" />
     <ClInclude Include="src\scripting\LuaGameModule.h" />
     <ClInclude Include="src\scripting\LuaInput.h" />
     <ClInclude Include="src\scripting\LuaProject.h" />

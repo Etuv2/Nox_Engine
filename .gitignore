@@ -137,6 +137,8 @@ cmake-build-release*/
 
 # VSCode
 .vscode/
+# Lua editor annotations generated per project (docs/editor.md); .luarc.json is project config and is not ignored
+.nox/
 .agents/skills/
 validation_output/
 captures/

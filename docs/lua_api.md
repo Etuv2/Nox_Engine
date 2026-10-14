@@ -382,6 +382,14 @@ The loose-file watcher polls the module set every 0.25 s and requests a reload o
 stable for 0.4 s. It runs only in Loose mode and only when the bootstrap enables reloads (`reloadEnabled`,
 off in packed distributions by default). Shipped packs are read-only and never reload.
 
+## Editor support (IDE annotations)
+
+The editor writes two files into the project folder when it loads the project and on **File > Generate Lua Editor
+Support**: `.nox/types/nox.lua` (LuaLS annotations, git-ignored) and `.luarc.json` (Lua 5.5 runtime and the library
+path). The API annotations are hand-written; each `nox.comp.<Name>` class and each `ctx:component` overload is
+generated from the reflection registry (`src/reflect/`). The files, the merge rules and the launch options are in
+[editor.md](editor.md#external-script-editor).
+
 ## Editor
 
 Project editor code runs in the engine editor (immediate mode ImGui). Two registrations, both in the script:

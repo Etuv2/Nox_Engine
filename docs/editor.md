@@ -82,6 +82,66 @@ the runtime does not model, and a light authored in lumens or lux is written bac
 current intensity, so the file stays in physical units. The round-trip check is described in
 [building.md](building.md).
 
+## External script editor
+
+Lua scripts open in an IDE outside the engine (VS Code by default). Every entry point runs the same launch:
+
+- **Assets** window: double-click a `.lua` file, or right-click it for **Open in External Editor**. Right-click a
+  file inside a project for **Open Project Folder in External Editor**.
+- **Lua project** panel: **Open Project Folder in External Editor** and **Open Entry in External Editor**. Each
+  diagnostic with a file, and each faulted system, behavior or handler that has an error, gets an **Open error** button
+  that opens the file at the line.
+- **Inspector**: a script reference (an asset path ending in `.lua`, for example a behavior's script) shows
+  **Open in external editor** under the field.
+- **Edit > Preferences...** chooses the editor. The choice is saved with the editor settings (the `external_editor`
+  key of `settings/editor_settings.json` in the user directory):
+  - **Auto (VS Code, else OS default)**, the default: VS Code when it is found (`code` on PATH, or `Code.exe` under
+    `%LOCALAPPDATA%\Programs`, `Program Files` or `Program Files (x86)`). A file runs `"<exe>" -g "{file}:{line}"`,
+    which opens it at the line in the open VS Code window. Without VS Code the file goes to the OS default handler
+    (ShellExecute "open").
+  - **OS default handler**: always ShellExecute "open".
+  - **Custom command**: a template with the placeholders `<exe>` (the detected `Code.exe`, or `code` when none),
+    `{file}` (absolute path), `{line}` (1-based; 1 when unknown) and `{root}` (the project folder). Example:
+    `"<exe>" --goto "{file}:{line}"`. Folders always open as a VS Code workspace when VS Code is found, else through
+    the OS handler.
+
+Launches never block the editor. Each one writes `[ExternalEditor] launched: <command line>` (or `shell open`) to
+the console. A failed launch shows a warning toast. Only the loose source tree can be opened (`AssetIO` loose mode);
+packed projects have no files on disk.
+
+The launch decisions live in `ExternalEditor::PlanFile` and `PlanFolder` (`src/editor/ExternalEditor.cpp`), and
+`tests/native/test_external_editor.cpp` checks them as text. No test starts an IDE.
+
+### IDE support for project Lua
+
+Opening a Lua project in the editor (and **File > Generate Lua Editor Support**) writes two files into the project
+folder, `projects/<name>/`:
+
+| File | Content | Tracking |
+| --- | --- | --- |
+| `.nox/types/nox.lua` | LuaLS annotations (`---@meta`): the API of `nox`, `ctx`, `ed`, `ui`, `audio`, `input` and `debug`, and one `nox.comp.<Name>` class per reflection component with a typed field per property and a function field per method. `ctx:component(h, "Name")` is typed through an overload per component. | Git-ignored (`.nox/`). Rewritten only when its text changes. |
+| `.luarc.json` | LuaLS config: `runtime.version` = `Lua 5.5`, `workspace.library` = `./.nox/types`, `workspace.checkThirdParty` = `false`, `diagnostics.globals` = `nox`, `audio`, `input`, `debug`. | Not ignored: project config, commit it if the team shares it. |
+
+- The hand-written part of the API is in `kStubParts` in `src/scripting/LuaEditorSupport.cpp`. The component classes
+  come from the reflection registry (`src/reflect/`) each time the file is written, so a new component appears after
+  the next write with no change to the scripting code.
+- `.luarc.json` is merged, not replaced: keys you set (for example another `runtime.version`, or your own
+  `library` entries) are kept, and the engine entries are added to your arrays. A file with comments, or one that is
+  not a JSON object, is left unchanged and the reason goes to the console.
+- Open the **project folder** (`projects/<name>/`) as the VS Code workspace, not the repository root, so the
+  `.luarc.json` at the project root is the one that applies. The stub is read through the library entry.
+- The annotations describe Lua 5.5. LuaLS releases differ in whether they accept the `Lua 5.5` runtime name; if the
+  language server reports an unknown runtime, use `Lua 5.4` for editing (the code is the same).
+- Install a LuaLS client extension (for example "Lua" by sumneko, `sumneko.lua`). The engine does not install it.
+
+### Hot reload from the external editor
+
+A script saved in VS Code is picked up by the running project. The loose-file watcher polls the project's script
+modules every 0.25 s and reloads once a changed set has been stable for 0.4 s (see
+[lua_api.md](lua_api.md#editor-panel-and-watcher)). It runs in development (the loose source tree). A bootstrap file turns it off unless it sets `reload` to `true`, as
+packed distributions do. A rejected reload keeps the previous code and reports the reason in the Lua
+project panel and the console.
+
 ## Smoke test
 
 `NOX_EDITOR_SMOKE=1` runs scripted checks inside the editor and prints `[Smoke] PASS` or `[Smoke] FAIL` lines
