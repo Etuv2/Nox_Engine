@@ -54,6 +54,21 @@ try {
     Expect-AssetFailure { Get-NoxPackageAssets -Root $testRoot -Scenes 'scenes/bad.json' } 'Missing'
     Put-TestFile 'scenes/bad.json' '{"model":"C:/outside.glb"}'
     Expect-AssetFailure { Get-NoxPackageAssets -Root $testRoot -Scenes 'scenes/bad.json' } 'Non-portable'
+    # Prefab references: a scene's nodes.**.prefab, and a nested prefab inside a prefab, are packed with their content.
+    Put-TestFile 'projects/fixture/prefabs/car.prefab.json' '{"type":"node","name":"Car","children":[{"type":"model","name":"Body","path":"models/car.gltf"},{"prefab":"projects/fixture/prefabs/wheel.prefab.json","name":"Wheel"}]}'
+    Put-TestFile 'projects/fixture/prefabs/wheel.prefab.json' '{"type":"model","name":"Tyre","path":"textures/wheel.png"}'
+    Put-TestFile 'textures/wheel.png'
+    Put-TestFile 'scenes/prefab_main.json' '{"nodes":[{"prefab":"projects/fixture/prefabs/car.prefab.json","name":"PlayerCar","position":[0,0,0]}]}'
+    $prefabAssets = Get-NoxPackageAssets -Root $testRoot -Scenes 'scenes/prefab_main.json'
+    foreach ($rel in @('projects/fixture/prefabs/car.prefab.json', 'projects/fixture/prefabs/wheel.prefab.json', 'textures/wheel.png', 'models/car.gltf')) {
+        Assert-Test ($prefabAssets.Files.ContainsKey($rel)) "Prefab dependency missing: $rel"
+    }
+    # A procedural node inside a prefab packs the input folders its generator declares, as a scene node does.
+    Put-TestFile 'projects/fixture/prefabs/street.prefab.json' '{"type":"model","name":"StreetKit","procedural":{"generator":"street_kit","params":{"seed":1,"output":"generated/fixture_street","texture_root":"textures/fixture_root"}}}'
+    Put-TestFile 'textures/fixture_root/tile.png'
+    Put-TestFile 'scenes/prefab_street.json' '{"nodes":[{"prefab":"projects/fixture/prefabs/street.prefab.json","name":"StreetKit","position":[0,0,0]}]}'
+    $streetAssets = Get-NoxPackageAssets -Root $testRoot -Scenes 'scenes/prefab_street.json'
+    Assert-Test ($streetAssets.Files.ContainsKey('textures/fixture_root/tile.png')) 'Procedural texture_root inside a prefab was not packed'
     Put-TestFile 'models/bad.gltf' '{"buffers":[{"uri":"../../escape.bin"}]}'
     Expect-AssetFailure { Get-NoxPackageAssets -Root $testRoot -Include 'models/bad.gltf' } 'out-of-tree'
     Expect-AssetFailure { Get-NoxPackageAssets -Root $testRoot -Include '../escape.bin' } 'escapes repository'

@@ -84,23 +84,8 @@
   },
   "nodes": [
     {
-      "type": "model",
+      "prefab": "projects/nox-racing/prefabs/street_kit.prefab.json",
       "name": "StreetKit",
-      "procedural": {
-        "generator": "street_kit",
-        "params": {
-          "seed": 2015,
-          "length": 330.0,
-          "output": "generated/nfs_street",
-          "texture_root": "textures/cc0",
-          "decal_root": "textures/road_decals",
-          "lens_flare_root": "textures/lens_flares",
-          "window_room_root": "textures/window_rooms",
-          "lens_flare_gain": 1.0,
-          "streetlight_spacing": 28.0,
-          "shadowed_streetlights": 2
-        }
-      },
       "position": [
         0.0,
         0.0,
@@ -118,7 +103,7 @@
       ]
     },
     {
-      "type": "node",
+      "prefab": "projects/nox-racing/prefabs/vehicle_player_night.prefab.json",
       "name": "PlayerCar",
       "position": [
         -1.6,
@@ -134,178 +119,6 @@
         1.0,
         1.0,
         1.0
-      ],
-      "children": [
-        {
-          "type": "model",
-          "name": "PlayerCarBody",
-          "path": "models\\car.glb",
-          "position": [
-            0.0,
-            0.68,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            100.0,
-            100.0,
-            100.0
-          ],
-          "material_overrides": [
-            {
-              "match": "*",
-              "wetness_response": 0.5
-            },
-            {
-              "match": "PaintA",
-              "metallic": 0.45,
-              "roughness": 0.38,
-              "clearcoat": 1.0,
-              "clearcoat_roughness": 0.03,
-              "flake_intensity": 0.6,
-              "rain_bead_response": 1.0
-            },
-            {
-              "match": "Coloured",
-              "metallic": 0.45,
-              "roughness": 0.38,
-              "clearcoat": 1.0,
-              "clearcoat_roughness": 0.03,
-              "flake_intensity": 0.6,
-              "rain_bead_response": 1.0
-            },
-            {
-              "match": "Grille",
-              "metallic": 0.0
-            },
-            {
-              "match": "Interior",
-              "metallic": 0.0
-            },
-            {
-              "match": "Engine",
-              "metallic": 0.0
-            },
-            {
-              "match": "Carbon",
-              "metallic": 0.0,
-              "clearcoat": 1.0,
-              "clearcoat_roughness": 0.05,
-              "rain_bead_response": 1.0
-            },
-            {
-              "match": "CalliperGloss",
-              "metallic": 0.0,
-              "clearcoat": 1.0,
-              "clearcoat_roughness": 0.05
-            },
-            {
-              "match": "WindowA",
-              "roughness": 0.02,
-              "rain_bead_response": 1.0
-            },
-            {
-              "match": "red_glass",
-              "roughness": 0.05,
-              "emissive": [
-                1.0,
-                0.04,
-                0.02
-              ],
-              "emissive_strength": 250.0
-            }
-          ],
-          "exclude_from_reflection_capture": true
-        },
-        {
-          "type": "light",
-          "name": "Headlight_L",
-          "position": [
-            0.62,
-            0.68,
-            2.25
-          ],
-          "rotation": [
-            -3.0,
-            180.0,
-            0.0
-          ],
-          "light": {
-            "type": "spot",
-            "color": [
-              0.95,
-              0.97,
-              1.0
-            ],
-            "luminous_power": 1600.0,
-            "intensity": 1.0,
-            "range": 60.0,
-            "cutOff": 14.0,
-            "outerCutOff": 30.0,
-            "source_radius": 0.05,
-            "castsShadows": false
-          }
-        },
-        {
-          "type": "light",
-          "name": "Headlight_R",
-          "position": [
-            -0.62,
-            0.68,
-            2.25
-          ],
-          "rotation": [
-            -3.0,
-            180.0,
-            0.0
-          ],
-          "light": {
-            "type": "spot",
-            "color": [
-              0.95,
-              0.97,
-              1.0
-            ],
-            "luminous_power": 1600.0,
-            "intensity": 1.0,
-            "range": 60.0,
-            "cutOff": 14.0,
-            "outerCutOff": 30.0,
-            "source_radius": 0.05,
-            "castsShadows": false
-          }
-        },
-        {
-          "type": "light",
-          "name": "TailLight",
-          "position": [
-            0.0,
-            0.8,
-            -2.35
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "light": {
-            "type": "point",
-            "color": [
-              1.0,
-              0.05,
-              0.02
-            ],
-            "luminous_power": 120.0,
-            "intensity": 1.0,
-            "range": 5.0,
-            "source_radius": 0.3,
-            "castsShadows": false
-          }
-        }
       ]
     }
   ],
