@@ -1481,7 +1481,7 @@ PhysicsWindow::Host EditorWorkspace::PhysicsHost()
 	host.undo = UndoSink();
 	if (!host.playing) host.markDirty = [this] { m_core.MarkDirty(); };
 	host.drawComponent = [this](const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc) {
-		DrawComponentSection(node, desc, m_assetCache, FlatNodeNames());
+		DrawComponentSection(node, desc, m_contentBrowser->AssetPaths(), FlatNodeNames());
 	};
 	return host;
 }
