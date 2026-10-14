@@ -82,6 +82,28 @@ the runtime does not model, and a light authored in lumens or lux is written bac
 current intensity, so the file stays in physical units. The round-trip check is described in
 [building.md](building.md).
 
+## Selection outline
+
+The selected node in the Scene viewport is outlined in orange, so it is clear which node a click or a gizmo
+drag is working on. The outline covers the selected node and all of its descendants, skinned meshes included.
+
+- The outline is drawn by `SelectionOutlinePass` (`src/passes/SelectionOutlinePass.cpp`). It runs after tone
+  mapping and TAA, on the viewport target, before the editor UI. A mask pass draws the selected meshes into an
+  RGBA8 target with their own depth buffer; a fullscreen pass then draws the outline in the pixels just outside
+  the silhouette.
+- Parts of the selection behind other geometry are drawn dashed and semi-transparent (occluded). Turn this off
+  to hide them.
+- Hovering a node in the Scene viewport draws a thinner, lighter outline on it. The hovered node is picked about
+  ten times a second and not while a gizmo or handle is in use, while the camera flies, or during Play.
+- A selected node with no mesh (a light, camera or empty node) gets a wire box and a ring at its origin instead.
+- The editor selects one node at a time, so the outline is for that node only.
+
+**Outline** in the Scene viewport toolbar opens the style popup: colour, width (1 to 4 px), dashed occluded parts,
+and hover highlight. The values are saved per user under `selection_outline` in `settings/editor_settings.json`.
+
+The outline is editor-only. Only the Scene viewport sets `RenderContext::selectionOutline`; the game viewport,
+`--game`, benchmark and packaged builds never set it, so the pass is not planned and costs nothing there.
+
 ## Smoke test
 
 `NOX_EDITOR_SMOKE=1` runs scripted checks inside the editor and prints `[Smoke] PASS` or `[Smoke] FAIL` lines
@@ -95,3 +117,8 @@ $env:NOX_EDITOR_SMOKE = "1"
 
 Unset the variable after the run. The script lives in `EditorWorkspace::RunSmokeScript` in
 `src/ImGui/EditorWorkspace.cpp`.
+
+`NOX_EDITOR_SELECT=<node name>` (with the smoke test on) selects that node at frame 40, checks that the selection
+outline covers its subtree, and skips the edit checks so the selection stays for a frame dump with
+`NOX_FINAL_DUMP_DIR` and `NOX_FINAL_DUMP_FRAMES`. Use the Scene viewport tab: the outline is drawn only when the
+Scene tab is the visible one.

@@ -43,6 +43,7 @@ GL_INFO_LOG_LENGTH = 0x8B84
 LINKED_PROGRAMS = [
     ("brdf_vert.glsl", "brdf_frag.glsl"),
     ("debug_bbox_vert.glsl", "debug_bbox_frag.glsl"),
+    ("selection_mask_vert.glsl", "selection_mask_frag.glsl"),
     ("deferred_lighting_vert.glsl", "deferred_lighting_frag.glsl"),
     ("equirect2cube_vert.glsl", "equirect2cube_frag.glsl"),
     ("skybox_vert.glsl", "skybox_frag.glsl"),
@@ -55,6 +56,7 @@ LINKED_PROGRAMS = [
     ("fullscreen_vert.glsl", "postprocess_frag.glsl"),
     ("fullscreen_vert.glsl", "ssao.glsl"),
     ("fullscreen_vert.glsl", "ssao_blur.glsl"),
+    ("fullscreen_vert.glsl", "selection_outline_frag.glsl"),
     ("fullscreen_vert.glsl", "taa_resolve.glsl"),
     ("gbuffer_vert.glsl", "gbuffer_frag.glsl"),
     ("gui_unified_vert.glsl", "gui_unified_frag.glsl"),

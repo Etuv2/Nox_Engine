@@ -125,6 +125,13 @@ public:
     // frame (or that are skinned); the caller supplies static/camera motion separately.
     void SetVelocityMovingItemsOnly(bool movingOnly) { m_velocityMovingItemsOnly = movingOnly; }
 
+    // Draws the mesh items whose entity is in sortedEntities (ascending) with `shader`, using the same
+    // transform, skinning and culling uploads as the forward/velocity paths. view/projection are uploaded
+    // for `shader`. Items outside the frustum are skipped when one is set. Returns the number of draws.
+    // Used by SelectionOutlinePass.
+    size_t RenderEntityItems(rhi::ProgramHandle shader, const std::vector<uint32_t>& sortedEntities,
+        const glm::mat4& view, const glm::mat4& projection);
+
     // Collect renderable objects for MDI batching
     void CollectRenderables(MDIBatch& batch);
 

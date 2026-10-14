@@ -278,6 +278,7 @@
     <ClCompile Include="src\ModularRenderer.cpp" />
     <ClCompile Include="src\passes\BloomPass.cpp" />
     <ClCompile Include="src\passes\DebugBBoxPass.cpp" />
+    <ClCompile Include="src\passes\SelectionOutlinePass.cpp" />
     <ClCompile Include="src\passes\DecalPass.cpp" />
     <ClCompile Include="src\passes\ExposurePass.cpp" />
     <ClCompile Include="src\passes\GBufferPass.cpp" />
@@ -469,6 +470,7 @@
     <ClInclude Include="src\NoxRacingGame.h" />
     <ClInclude Include="src\passes\BloomPass.h" />
     <ClInclude Include="src\passes\DebugBBoxPass.h" />
+    <ClInclude Include="src\passes\SelectionOutlinePass.h" />
     <ClInclude Include="src\passes\DecalPass.h" />
     <ClInclude Include="src\passes\ExposurePass.h" />
     <ClInclude Include="src\passes\GBufferPass.h" />
@@ -630,6 +632,9 @@
     <None Include="shaders\brdf_vert.glsl" />
     <None Include="shaders\debug_bbox_frag.glsl" />
     <None Include="shaders\debug_bbox_vert.glsl" />
+    <None Include="shaders\selection_mask_frag.glsl" />
+    <None Include="shaders\selection_mask_vert.glsl" />
+    <None Include="shaders\selection_outline_frag.glsl" />
     <None Include="shaders\deferred_lighting_frag.glsl" />
     <None Include="shaders\deferred_lighting_vert.glsl" />
     <None Include="shaders\equirect2cube_frag.glsl" />

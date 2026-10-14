@@ -54,6 +54,7 @@ struct SurfelGIFrameStats;
 class GUIPass;
 class RTPass;
 class DebugBBoxPass;
+class SelectionOutlinePass;
 
 /**
  * ModularRenderer coordinates all rendering passes using a shared RenderContext.
@@ -160,6 +161,7 @@ private:
 		bool enableVolumetricFog = false;
 		bool enableMotionBlur = false;
 		bool enableRain = false;
+		bool enableSelectionOutline = false;
 
 		bool operator==(const PlanCacheKey& other) const {
 			return mode == other.mode &&
@@ -173,7 +175,8 @@ private:
 				presentIndirectDiffuseDebug == other.presentIndirectDiffuseDebug &&
 				enableScreenSpaceShadows == other.enableScreenSpaceShadows &&
 				enableLPV == other.enableLPV &&
-				enableTAA == other.enableTAA;
+				enableTAA == other.enableTAA &&
+				enableSelectionOutline == other.enableSelectionOutline;
 		}
 	};
 
@@ -214,6 +217,7 @@ private:
 	std::unique_ptr<PostProcessPass> m_postProcessPass;
 	std::unique_ptr<GUIPass> m_guiPass;  // Internal GUI rendering
 	std::unique_ptr<DebugBBoxPass> m_debugBBoxPass;
+	std::unique_ptr<SelectionOutlinePass> m_selectionOutlinePass; // editor selection outline (docs/editor.md)
 	std::unique_ptr<LightClusterPass> m_lightClusterPass; // clustered light lists (docs/nfs2015 M2)
 	std::unique_ptr<ExposurePass> m_exposurePass;         // physical camera exposure (docs/nfs2015 M3)
 	std::unique_ptr<SSRPass> m_ssrPass;                   // screen-space reflections (docs/nfs2015 M5)

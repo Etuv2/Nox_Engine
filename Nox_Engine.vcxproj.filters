@@ -573,6 +573,9 @@
     <ClCompile Include="src\passes\DebugBBoxPass.cpp">
       <Filter>Source Files\passes</Filter>
     </ClCompile>
+    <ClCompile Include="src\passes\SelectionOutlinePass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
     <ClCompile Include="src\passes\DecalPass.cpp">
       <Filter>Source Files\passes</Filter>
     </ClCompile>
@@ -1232,6 +1235,9 @@
     <ClInclude Include="src\passes\DebugBBoxPass.h">
       <Filter>Header Files\passes</Filter>
     </ClInclude>
+    <ClInclude Include="src\passes\SelectionOutlinePass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
     <ClInclude Include="src\passes\DecalPass.h">
       <Filter>Header Files\passes</Filter>
     </ClInclude>
@@ -1781,6 +1787,15 @@
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
     <None Include="shaders\debug_bbox_vert.glsl">
+      <Filter>Source Files\misc\shaders\debug</Filter>
+    </None>
+    <None Include="shaders\selection_mask_frag.glsl">
+      <Filter>Source Files\misc\shaders\debug</Filter>
+    </None>
+    <None Include="shaders\selection_mask_vert.glsl">
+      <Filter>Source Files\misc\shaders\debug</Filter>
+    </None>
+    <None Include="shaders\selection_outline_frag.glsl">
       <Filter>Source Files\misc\shaders\debug</Filter>
     </None>
     <None Include="README.md" />

@@ -163,6 +163,14 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		if (!m_extSaved.is_object()) m_extSaved = json::object();
 		m_layoutBuilt = s.value("layout_built", false);
 		m_selectedPreset = s.value("preset", m_selectedPreset);
+		const json o = s.value("selection_outline", json::object());
+		if (o.is_object()) {
+			const json c = o.value("color", json::array());
+			if (c.is_array() && c.size() == 3) for (int i = 0; i < 3; ++i) m_outline.color[i] = c[i].get<float>();
+			m_outline.width = std::clamp(o.value("width", m_outline.width), 1, 4);
+			m_outline.showOccluded = o.value("show_occluded", m_outline.showOccluded);
+			m_outline.hover = o.value("hover", m_outline.hover);
+		}
 	}
 	m_presets = AssetIO::ReadJsonOrNull(kPresetsPath);
 	if (!m_presets.is_object()) m_presets = json::object();
@@ -196,6 +204,9 @@ void EditorWorkspace::SaveSettings() const
 	s["authoring_overlay"] = m_showAuthoring;
 	s["layout_built"] = m_layoutBuilt;
 	s["preset"] = m_selectedPreset;
+	s["selection_outline"] = {
+		{"color", json::array({ m_outline.color[0], m_outline.color[1], m_outline.color[2] })},
+		{"width", m_outline.width}, {"show_occluded", m_outline.showOccluded}, {"hover", m_outline.hover} };
 	UserSettings::SaveUserJson(kSettingsPath, s);
 }
 
@@ -664,6 +675,8 @@ void EditorWorkspace::DrawSceneViewport()
 	else m_handles.clear();
 	m_core.DrawDebugOverlay(dl, m_scene.pos.x, m_scene.pos.y, m_scene.size.x, m_scene.size.y);
 	DrawGizmo(m_scene);
+	UpdateHover(io);
+	DrawSelectionBounds(dl);
 
 	// Click selection (not on gizmo or authoring handles).
 	if (m_scene.hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver() &&
@@ -691,6 +704,9 @@ void EditorWorkspace::DrawSceneViewport()
 	ImGui::Checkbox("Snap", &m_snap);
 	ImGui::SameLine();
 	ImGui::Checkbox("Authoring", &m_showAuthoring);
+	ImGui::SameLine();
+	if (ImGui::Button("Outline")) ImGui::OpenPopup("##outline_style");
+	DrawOutlineStylePopup();
 	if (auto cam = m_core.GetCamera()) {
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(90);
@@ -741,6 +757,73 @@ void EditorWorkspace::DrawGizmo(const Viewport& vp)
 		m_core.MarkDirty();
 	}
 	m_wasUsingGizmo = using_;
+}
+
+void EditorWorkspace::DrawOutlineStylePopup()
+{
+	if (!ImGui::BeginPopup("##outline_style")) return;
+	bool changed = false;
+	changed |= ImGui::ColorEdit3("Outline colour", m_outline.color, ImGuiColorEditFlags_NoInputs);
+	changed |= ImGui::SliderInt("Width (px)", &m_outline.width, 1, 4);
+	changed |= ImGui::Checkbox("Show parts behind other objects (dashed)", &m_outline.showOccluded);
+	changed |= ImGui::Checkbox("Hover highlight", &m_outline.hover);
+	ImGui::EndPopup();
+	if (changed) {
+		if (!m_outline.hover) m_hoverNode.reset();
+		SaveSettings();
+	}
+}
+
+// Hover highlight: the node under the mouse in the Scene viewport, picked about ten times a second.
+// Off while dragging a gizmo or handle, flying the camera, or playing.
+void EditorWorkspace::UpdateHover(const ImGuiIO& io)
+{
+	m_hoverTimer -= io.DeltaTime;
+	bool pickable = m_outline.hover && m_scene.visible && m_scene.hovered && !m_core.IsPlaying() &&
+		!m_core.IsEditorCameraActive() && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver() && m_dragHandle < 0;
+	if (pickable) {
+		for (const ViewportHandle& h : m_handles) {
+			ImVec2 p;
+			if (ProjectToViewport(m_scene, h.world, p) && std::hypot(p.x - io.MousePos.x, p.y - io.MousePos.y) < 10.0f) {
+				pickable = false;
+				break;
+			}
+		}
+	}
+	if (!pickable) {
+		m_hoverNode.reset();
+		m_hoverTimer = 0.0f;
+		return;
+	}
+	if (m_hoverTimer > 0.0f) return;
+	m_hoverTimer = 0.1f;
+	const ImVec2 scale = io.DisplayFramebufferScale;
+	const int x = static_cast<int>((io.MousePos.x - m_scene.pos.x) * scale.x);
+	const int y = static_cast<int>((io.MousePos.y - m_scene.pos.y) * scale.y);
+	m_hoverNode = m_core.PickNode(x, y, m_scene.texWidth, m_scene.texHeight);
+}
+
+// Nodes without a mesh (lights, cameras, empty nodes) cannot be outlined: their selection is a wire box
+// around the node (the bounds the debug overlay uses) and a ring at its origin.
+void EditorWorkspace::DrawSelectionBounds(ImDrawList* dl)
+{
+	const auto node = m_legacy.GetSelectedNode();
+	if (!node || node->GetModel() || m_core.IsPlaying() || !m_scene.visible) return;
+	const glm::mat4 world = node->GetWorldPosition4x4();
+	ImVec2 corner[8];
+	bool visible[8];
+	for (int i = 0; i < 8; ++i) {
+		const glm::vec3 local((i & 1) ? 0.5f : -0.5f, (i & 2) ? 0.5f : -0.5f, (i & 4) ? 0.5f : -0.5f);
+		visible[i] = ProjectToViewport(m_scene, glm::vec3(world * glm::vec4(local, 1.0f)), corner[i]);
+	}
+	const ImU32 col = IM_COL32(static_cast<int>(m_outline.color[0] * 255.0f), static_cast<int>(m_outline.color[1] * 255.0f),
+		static_cast<int>(m_outline.color[2] * 255.0f), 255);
+	static const int edges[12][2] = { {0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7} };
+	for (const auto& e : edges) {
+		if (visible[e[0]] && visible[e[1]]) dl->AddLine(corner[e[0]], corner[e[1]], col, 2.0f);
+	}
+	ImVec2 origin;
+	if (ProjectToViewport(m_scene, glm::vec3(world[3]), origin)) dl->AddCircle(origin, 9.0f, col, 0, 2.0f);
 }
 
 void EditorWorkspace::DrawAuthoringOverlay(ImDrawList* dl)
@@ -1849,7 +1932,28 @@ void EditorWorkspace::RunSmokeScript()
 	++frame;
 	auto check = [](bool ok, const char* what) { std::cout << "[Smoke] " << (ok ? "PASS " : "FAIL ") << what << std::endl; };
 	auto graph = m_core.GetSceneGraph();
-	if (frame == 60 && graph) {
+	// NOX_EDITOR_SELECT=<node name>: selects that node at frame 40 and checks that its outline covers
+	// the subtree. The edit checks below are skipped so the selection stays for frame dumps.
+	const char* selectName = std::getenv("NOX_EDITOR_SELECT");
+	const bool selectNamed = selectName && selectName[0];
+	if (selectNamed && frame == 40 && graph) {
+		std::function<std::shared_ptr<SceneNode>(const std::shared_ptr<SceneNode>&)> byName = [&](const std::shared_ptr<SceneNode>& n) -> std::shared_ptr<SceneNode> {
+			if (!n) return nullptr;
+			if (n->GetName() == selectName) return n;
+			for (const auto& c : n->children) if (auto f = byName(c)) return f;
+			return nullptr;
+		};
+		auto named = byName(graph->GetRoot());
+		check(named != nullptr, "select named node for outline");
+		if (named) SelectNode(named);
+		ImGui::SetWindowFocus(kWinScene);   // the outline is drawn for the visible Scene tab only
+	}
+	if (selectNamed && frame == 50) {
+		const ModularRenderer* renderer = GetRenderer();
+		const size_t covered = renderer ? renderer->GetContext().selectionOutline.selectedEntities.size() : 0;
+		check(covered > 0, "selection outline covers the selected subtree");
+	}
+	if (frame == 60 && graph && !selectNamed) {
 		// First authored node below the root (every node has a transform).
 		std::function<std::shared_ptr<SceneNode>(const std::shared_ptr<SceneNode>&)> find = [&](const std::shared_ptr<SceneNode>& n) -> std::shared_ptr<SceneNode> {
 			if (!n) return nullptr;

@@ -29,6 +29,7 @@
 #include "passes/PostProcessPass.h"
 #include "passes/GUIPass.h"  // Internal GUI rendering
 #include "passes/DebugBBoxPass.h"  // Debug bounding box visualization
+#include "passes/SelectionOutlinePass.h"  // Editor selection outline
 #include "passes/LightClusterPass.h"
 #include "passes/ExposurePass.h"
 #include "passes/SSRPass.h"
@@ -406,6 +407,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_postProcessPass = std::make_unique<PostProcessPass>();
 	m_guiPass = std::make_unique<GUIPass>();
 	m_debugBBoxPass = std::make_unique<DebugBBoxPass>();  // Debug bounding box visualization
+	m_selectionOutlinePass = std::make_unique<SelectionOutlinePass>();
 	m_lightClusterPass = std::make_unique<LightClusterPass>();
 	m_exposurePass = std::make_unique<ExposurePass>();
 	m_ssrPass = std::make_unique<SSRPass>();
@@ -435,6 +437,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_postProcessPass->Initialize(m_context);
 	success &= m_guiPass->Initialize(m_context);
 	success &= m_debugBBoxPass->Initialize(m_context);  // Initialize debug bounding box pass
+	success &= m_selectionOutlinePass->Initialize(m_context);
 	success &= m_lightClusterPass->Initialize(m_context);
 	success &= m_exposurePass->Initialize(m_context);
 	success &= m_ssrPass->Initialize(m_context);
@@ -489,6 +492,7 @@ std::size_t ModularRenderer::PlanCacheKeyHash::operator()(const PlanCacheKey& ke
 	hashCombine(key.enableVolumetricFog);
 	hashCombine(key.enableMotionBlur);
 	hashCombine(key.enableRain);
+	hashCombine(key.enableSelectionOutline);
 	return seed;
 }
 
@@ -530,6 +534,7 @@ ModularRenderer::PlanCacheKey ModularRenderer::BuildPlanCacheKey() const
 	key.enableVolumetricFog = m_context.enableVolumetricFog;
 	key.enableMotionBlur = m_context.enableMotionBlur;
 	key.enableRain = m_context.weatherRain > 0.0f;
+	key.enableSelectionOutline = m_context.selectionOutline.enabled;
 	return key;
 }
 
@@ -1123,6 +1128,16 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
+		// After tone mapping and TAA, so the outline is neither jittered nor tone mapped. Scheduled only
+		// while the editor supplies a selection (never for game or standalone output).
+		"SelectionOutlinePass", { "CompositedColor", "GBuffer" }, { "SelectionOutlineColor" },
+		[this](const RenderContext& ctx) {
+			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED && ctx.selectionOutline.enabled &&
+				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
+		},
+		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_selectionOutlinePass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		});
+	addPass({
 		"IndirectDiffuseDebugPresent", { ResourceNames::IndirectDiffuseDebug }, { "Backbuffer" },
 		[](const RenderContext& ctx) { return ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0; },
 		[this]() {
@@ -1146,7 +1161,7 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"GUIPass", { "OverlayColor" }, { "Backbuffer" },
+		"GUIPass", { "OverlayColor", "SelectionOutlineColor" }, { "Backbuffer" },
 		[](const RenderContext& ctx) { return !(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0); },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_guiPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
 		});
@@ -1238,6 +1253,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_postProcessPass) m_postProcessPass->Resize(m_context, newWidth, newHeight);
 	if (m_guiPass) m_guiPass->Resize(m_context, newWidth, newHeight);
 	if (m_debugBBoxPass) m_debugBBoxPass->Resize(m_context, newWidth, newHeight);
+	if (m_selectionOutlinePass) m_selectionOutlinePass->Resize(m_context, newWidth, newHeight);
 	if (m_lightClusterPass) m_lightClusterPass->Resize(m_context, newWidth, newHeight);
 	if (m_ssrPass) m_ssrPass->Resize(m_context, newWidth, newHeight);
 	if (m_volumetricFogPass) m_volumetricFogPass->Resize(m_context, newWidth, newHeight);

@@ -141,6 +141,17 @@ bool SaveBackbufferPNG(int width, int height, const fs::path& path)
 	return stbi_write_png(path.string().c_str(), width, height, 4, flipped.data(), width * 4) != 0;
 }
 
+namespace {
+// Every ECS entity of a node subtree: the selection outline covers a model and all of its descendants.
+void AppendSubtreeEntities(const SceneNode& node, std::vector<uint32_t>& out)
+{
+	if (node.HasECSEntity()) out.push_back(node.GetEntityID());
+	for (const auto& child : node.children) {
+		if (child) AppendSubtreeEntities(*child, out);
+	}
+}
+}
+
 void MaybeDumpSceneFramebuffer(int width, int height)
 {
 	static int frameIndex = 0;
@@ -1300,6 +1311,27 @@ void Core::Render(int windowWidth, int windowHeight) {
 		const bool gameView = target == EditorWorkspace::Target::Game && m_game && m_game->IsAvailable();
 		if (target != lastTarget) {
 			ResetTemporalHistory(); // different camera: history would ghost
+		}
+		// Selection outline (SelectionOutlinePass): the editor's Scene viewport only, never while playing,
+		// so the game viewport and standalone output keep it disabled.
+		RenderContext::SelectionOutline& outline = m_modularRenderer->GetContext().selectionOutline;
+		outline.enabled = false;
+		outline.selectedEntities.clear();
+		outline.hoveredEntities.clear();
+		if (target == EditorWorkspace::Target::Scene && !m_editor->IsPlaying()) {
+			const EditorWorkspace::SelectionOutlineSettings& style = m_editor->OutlineSettings();
+			const std::shared_ptr<SceneNode> selected = m_imguiInterface ? m_imguiInterface->GetSelectedNode() : nullptr;
+			const std::shared_ptr<SceneNode> hovered = m_editor->HoveredNode();
+			if (selected) AppendSubtreeEntities(*selected, outline.selectedEntities);
+			if (hovered && hovered != selected) AppendSubtreeEntities(*hovered, outline.hoveredEntities);
+			std::sort(outline.selectedEntities.begin(), outline.selectedEntities.end());
+			outline.selectedEntities.erase(std::unique(outline.selectedEntities.begin(), outline.selectedEntities.end()), outline.selectedEntities.end());
+			std::sort(outline.hoveredEntities.begin(), outline.hoveredEntities.end());
+			outline.hoveredEntities.erase(std::unique(outline.hoveredEntities.begin(), outline.hoveredEntities.end()), outline.hoveredEntities.end());
+			outline.selectedColor = glm::vec3(style.color[0], style.color[1], style.color[2]);
+			outline.selectedWidth = static_cast<float>(style.width);
+			outline.occludedAlpha = style.showOccluded ? 0.45f : 0.0f;
+			outline.enabled = !outline.selectedEntities.empty() || !outline.hoveredEntities.empty();
 		}
 		RenderSceneTo(vp.fbo, vp.texWidth, vp.texHeight, gameView ? m_game->GetCamera() : m_camera);
 	}

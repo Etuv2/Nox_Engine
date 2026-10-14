@@ -1,5 +1,7 @@
 #pragma once
+#include <cstdint>
 #include <memory>
+#include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include "rhi/RHI.h"
@@ -324,6 +326,20 @@ struct RenderContext {
 	bool showBoundingBoxes = false;
 	bool showBBoxLegend = true;  // Show color legend when bounding boxes are enabled
 	bool showLightGizmos = false;
+
+	// Editor selection outline (SelectionOutlinePass, docs/editor.md). Only the editor's Scene viewport
+	// sets `enabled`; game, standalone and benchmark rendering keep it false. Entities are ECS entity ids
+	// of the selected node subtrees (sorted), so the engine never sees editor node pointers.
+	struct SelectionOutline {
+		bool enabled = false;
+		std::vector<uint32_t> selectedEntities;
+		std::vector<uint32_t> hoveredEntities;   // empty when hover highlight is off
+		glm::vec3 selectedColor{ 1.0f, 140.0f / 255.0f, 26.0f / 255.0f };  // #FF8C1A
+		float selectedWidth = 2.0f;              // pixels outside the silhouette
+		float occludedAlpha = 0.45f;             // 0 hides the parts behind other geometry
+		bool occludedDashed = true;
+	};
+	SelectionOutline selectionOutline;
 
 	// Rendering overrides
 	bool forceBackfaceCulling = false;  // Force backface culling on all meshes regardless of material settings

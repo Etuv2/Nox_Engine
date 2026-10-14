@@ -52,6 +52,7 @@ namespace TextureUnits {
     constexpr int REFLECTION_PROBES = 34;       // reflectionProbes (cubemap array, docs/nfs2015 M5)
     constexpr int INTERIOR_ATLAS = 35;          // uInteriorAtlas (G-buffer pass, interior mapping room faces)
     constexpr int INTERIOR_ROOM_DATA = 36;      // uInteriorRoomData (G-buffer pass, interior mapping per-room tables)
+    constexpr int SELECTION_SCENE_DEPTH = 37;   // uSceneDepth (SelectionOutlinePass mask, G-buffer depth)
     
     // ======================================
     // RESOLVED INDIRECT DIFFUSE SOURCES
