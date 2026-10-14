@@ -64,7 +64,7 @@ bool ScreenSpaceShadowPass::Initialize(RenderContext& ctx) {
         return false;
     }
 
-    m_resolveShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/ssao_blur.glsl");
+    m_resolveShader = CreateShaderProgram("shaders/fullscreen_vert.glsl", "shaders/screen_space_bilateral_resolve.glsl");
     if (!m_resolveShader) {
         std::cerr << "[SSS] Failed to create scalar resolve shader.\n";
         return false;

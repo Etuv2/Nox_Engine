@@ -169,8 +169,27 @@ std::vector<RenderSetting> BuildTable() {
 		"Exposure of the skybox background"));
 
 	const char* kAo = "Occlusion and GI";
-	t.push_back(BoolSetting("ssao", kAo, "SSAO", &RenderContext::enableSSAO));
-	t.push_back(FloatSetting("ssao_intensity", kAo, "SSAO intensity", &RenderContext::ssaoIntensity, 0.0, 2.0, 0.01));
+	t.push_back(BoolSetting("ssao", kAo, "Ambient occlusion (HBAO+)", &RenderContext::enableSSAO,
+		"Horizon-based ambient occlusion; the lighting pass reads it through ssao_intensity"));
+	t.push_back(FloatSetting("ssao_resolution_scale", kAo, "AO resolution scale", &RenderContext::ssaoResolutionScale, 0.25, 1.0, 0.05,
+		"Output size of the AO relative to the frame (quarter-res horizon search runs regardless)"));
+	t.push_back(FloatSetting("ssao_radius", kAo, "AO radius (m)", &RenderContext::ssaoRadius, 0.05, 4.0, 0.01,
+		"World-space horizon search radius"));
+	t.push_back(FloatSetting("ssao_bias", kAo, "AO angle bias (rad)", &RenderContext::ssaoBias, 0.0, 1.2, 0.01,
+		"Tangent angle below which horizons are ignored (suppresses self-occlusion)"));
+	t.push_back(FloatSetting("ssao_strength", kAo, "AO strength", &RenderContext::ssaoStrength, 0.0, 4.0, 0.01,
+		"Multiplies the accumulated occlusion before the power"));
+	t.push_back(FloatSetting("ssao_power", kAo, "AO power", &RenderContext::ssaoPower, 0.5, 4.0, 0.01,
+		"Exponent applied to the final visibility"));
+	t.push_back(FloatSetting("ssao_intensity", kAo, "SSAO intensity", &RenderContext::ssaoIntensity, 0.0, 2.0, 0.01,
+		"How strongly the AO term darkens ambient and indirect light"));
+	t.push_back(IntSetting("ssao_blur_radius", kAo, "AO blur radius (px)", &RenderContext::ssaoBlurRadius, 1.0, 8.0, 1.0));
+	t.push_back(IntSetting("ssao_directions", kAo, "AO directions", &RenderContext::ssaoDirections, 4.0, 16.0, 1.0,
+		"Horizon directions per pixel (quality; cost scales linearly)"));
+	t.push_back(IntSetting("ssao_steps", kAo, "AO steps", &RenderContext::ssaoSteps, 2.0, 8.0, 1.0,
+		"Samples per direction (quality)"));
+	t.push_back(FloatSetting("ssao_blur_sharpness", kAo, "AO blur sharpness", &RenderContext::ssaoBlurSharpness, 0.0, 200.0, 1.0,
+		"Depth-edge stop of the AO blur (higher = less bleeding across depth edges)"));
 	t.push_back(BoolSetting("ssgi", kAo, "Indirect diffuse (SSGI)", &RenderContext::enableIndirectDiffuse));
 	t.push_back(FloatSetting("ssgi_strength", kAo, "SSGI strength", &RenderContext::indirectDiffuseStrength, 0.0, 4.0, 0.01));
 	t.push_back(BoolSetting("contact_shadows", kAo, "Contact shadows", &RenderContext::enableScreenSpaceShadows));
@@ -188,7 +207,7 @@ std::vector<RenderSetting> BuildTable() {
 	t.push_back(BoolSetting("clustered_lighting", kLight, "Clustered lighting", &RenderContext::enableClusteredLighting));
 	t.push_back(BoolSetting("frustum_culling", kLight, "Frustum culling", &RenderContext::enableFrustumCulling));
 	t.push_back(EnumSetting("debug_view", kLight, "Post debug view", &RenderContext::postDebugView,
-		{ "none", "pre_taa", "taa", "ssr", "bloom", "velocity", "motion_blur", "taa_clean" }));
+		{ "none", "pre_taa", "taa", "ssr", "bloom", "velocity", "motion_blur", "taa_clean", "ao" }));
 
 	const char* kWeather = "Weather";
 	t.push_back(FloatSetting("wetness", kWeather, "Wetness", &RenderContext::weatherWetness, 0.0, 1.0, 0.01));

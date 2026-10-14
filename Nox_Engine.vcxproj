@@ -294,7 +294,7 @@
     <ClCompile Include="src\passes\RTPass.cpp" />
     <ClCompile Include="src\passes\ScreenSpaceShadowPass.cpp" />
     <ClCompile Include="src\passes\ShadowPass.cpp" />
-    <ClCompile Include="src\passes\SSAOPass.cpp" />
+    <ClCompile Include="src\passes\HBAOPass.cpp" />
     <ClCompile Include="src\passes\SSRPass.cpp" />
     <ClCompile Include="src\passes\SurfelGIManager.cpp" />
     <ClCompile Include="src\passes\SurfelGIPipeline.cpp" />
@@ -486,7 +486,7 @@
     <ClInclude Include="src\passes\RTPass.h" />
     <ClInclude Include="src\passes\ScreenSpaceShadowPass.h" />
     <ClInclude Include="src\passes\ShadowPass.h" />
-    <ClInclude Include="src\passes\SSAOPass.h" />
+    <ClInclude Include="src\passes\HBAOPass.h" />
     <ClInclude Include="src\passes\SSRPass.h" />
     <ClInclude Include="src\passes\SurfelGIManager.h" />
     <ClInclude Include="src\passes\SurfelGIPipeline.h" />
@@ -668,8 +668,11 @@
     <None Include="shaders\shadow_vert.glsl" />
     <None Include="shaders\skybox_frag.glsl" />
     <None Include="shaders\skybox_vert.glsl" />
-    <None Include="shaders\ssao_blur.glsl" />
-    <None Include="shaders\ssao.glsl" />
+    <None Include="shaders\hbao_deinterleave_comp.glsl" />
+    <None Include="shaders\hbao_compute_comp.glsl" />
+    <None Include="shaders\hbao_reinterleave_comp.glsl" />
+    <None Include="shaders\hbao_blur_comp.glsl" />
+    <None Include="shaders\screen_space_bilateral_resolve.glsl" />
     <None Include="shaders\indirect_diffuse_denoise_comp.glsl" />
     <None Include="shaders\indirect_diffuse_full_normals_comp.glsl" />
     <None Include="shaders\indirect_diffuse_depth_prepare_comp.glsl" />

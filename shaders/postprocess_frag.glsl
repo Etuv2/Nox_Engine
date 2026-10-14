@@ -175,8 +175,9 @@ void main()
         }
         hdr = texture(uDebugTex, vUV).rgb;
         if (uDebugView == 6) hdr = abs(hdr - texture(uDebugTex2, vUV).rgb) * 8.0;
-        grain = uDebugView != 7 && grain;
-        dither = uDebugView != 7 && dither;
+        if (uDebugView == 8) hdr = vec3(texture(uDebugTex, vUV).r);   // ambient occlusion (red = visibility)
+        grain = uDebugView != 7 && uDebugView != 8 && grain;
+        dither = uDebugView != 7 && uDebugView != 8 && dither;
     }
     vec3 color = hdr * exposureScale;
 

@@ -213,6 +213,7 @@ void PostProcessPass::Execute(RenderContext& ctx,
         debugTex = sourceFBO ? sourceFBO->GetColorAttachment(0) : rhi::TextureHandle{};
         debugTex2 = taaOut ? taaOut->GetColorAttachment(0) : rhi::TextureHandle{};
         break;
+    case 8: debugTex = ctx.ssaoTexture; break;
     default: break;
     }
     if (debugView != 0 && !debugTex.IsValid()) debugView = -1; // requested image not produced: black

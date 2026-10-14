@@ -29,7 +29,7 @@ public:
 		const std::shared_ptr<DirectionalLight>& dirLight,
 		const std::shared_ptr<Skybox>& skybox) override;
 
-	//Allow SSAOPass to provide its output texture
+	//Allow HBAOPass (ambient occlusion) to provide its output texture
 	void SetSSAOTexture(rhi::TextureHandle ssaoTex) { m_ssaoTexture = ssaoTex; }
 
 	//Allow ScreenSpaceShadowPass to provide its output texture

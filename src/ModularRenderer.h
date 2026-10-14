@@ -29,7 +29,7 @@ struct IndirectDiffuseProbeSample {
 class GBufferPass;
 class TransformHistoryPass;
 class ShadowPass;
-class SSAOPass;
+class HBAOPass;
 class ScreenSpaceShadowPass;
 class LightingPass;
 class BloomPass;
@@ -203,7 +203,7 @@ private:
 	std::unique_ptr<GBufferPass> m_gbufferPass;
 	std::unique_ptr<TransformHistoryPass> m_transformHistoryPass;
 	std::unique_ptr<RTPass> m_rtPass;  // Path tracing pass
-	std::unique_ptr<SSAOPass> m_ssaoPass;
+	std::unique_ptr<HBAOPass> m_hbaoPass;
 	std::unique_ptr<ScreenSpaceShadowPass> m_screenSpaceShadowPass;
 	std::unique_ptr<IndirectDiffusePass> m_indirectDiffusePass;
 	std::unique_ptr<SurfelGIManager> m_surfelGIManager;

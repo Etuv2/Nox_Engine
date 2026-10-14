@@ -17,7 +17,7 @@
 #include "passes/ShadowPass.h"
 #include "passes/LPVPass.h"
 #include "passes/RTPass.h"  // Path tracing pass
-#include "passes/SSAOPass.h"
+#include "passes/HBAOPass.h"
 #include "passes/ScreenSpaceShadowPass.h"
 #include "passes/IndirectDiffusePass.h"
 #include "passes/SurfelGIManager.h"
@@ -395,7 +395,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_gbufferPass = std::make_unique<GBufferPass>();
 	m_transformHistoryPass = std::make_unique<TransformHistoryPass>();
 	m_rtPass = std::make_unique<RTPass>();  // Create path tracing pass
-	m_ssaoPass = std::make_unique<SSAOPass>();
+	m_hbaoPass = std::make_unique<HBAOPass>();
 	m_screenSpaceShadowPass = std::make_unique<ScreenSpaceShadowPass>();
 	m_indirectDiffusePass = std::make_unique<IndirectDiffusePass>();
 	m_surfelGIManager = std::make_unique<SurfelGIManager>();
@@ -424,7 +424,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	success &= m_gbufferPass->Initialize(m_context);
 	success &= m_transformHistoryPass->Initialize(m_context);
 	success &= m_rtPass->Initialize(m_context);  // Initialize path tracing pass
-	success &= m_ssaoPass->Initialize(m_context);
+	success &= m_hbaoPass->Initialize(m_context);
 	success &= m_screenSpaceShadowPass->Initialize(m_context);
 	success &= m_indirectDiffusePass->Initialize(m_context);
 	success &= m_surfelGIManager->Init(m_context, SurfelGISettings{});
@@ -894,11 +894,11 @@ void ModularRenderer::BuildPassDescriptors(
 		}
 		});
 	addPass({
-		"SSAOPass", { "GBuffer" }, { ResourceNames::SSAO },
+		"HBAOPass", { "GBuffer" }, { ResourceNames::SSAO },
 		[](const RenderContext& ctx) { return ctx.enableSSAO; },
 		[this, &sceneGraph, &camera, &lighting, &skybox]() {
-			m_ssaoPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
-			m_namedResources[ResourceNames::SSAO] = m_ssaoPass->GetSSAOTexture();
+			m_hbaoPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_namedResources[ResourceNames::SSAO] = m_hbaoPass->GetSSAOTexture();
 		}
 		});
 	addPass({
@@ -1227,7 +1227,7 @@ void ModularRenderer::Resize(int newWidth, int newHeight)
 	if (m_gbufferPass) m_gbufferPass->Resize(m_context, newWidth, newHeight);
 	if (m_transformHistoryPass) m_transformHistoryPass->Resize(m_context, newWidth, newHeight);
 	if (m_rtPass) m_rtPass->Resize(m_context, newWidth, newHeight);  // Resize path tracing pass
-	if (m_ssaoPass) m_ssaoPass->Resize(m_context, newWidth, newHeight);
+	if (m_hbaoPass) m_hbaoPass->Resize(m_context, newWidth, newHeight);
 	if (m_screenSpaceShadowPass) m_screenSpaceShadowPass->Resize(m_context, newWidth, newHeight);
 	if (m_indirectDiffusePass) m_indirectDiffusePass->Resize(m_context, newWidth, newHeight);
 	if (m_surfelGIManager) m_surfelGIManager->Resize(m_context, static_cast<uint32_t>(newWidth), static_cast<uint32_t>(newHeight));
@@ -1397,6 +1397,7 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 	}
 
 	m_namedResources.clear();
+	m_context.ssaoTexture = rhi::TextureHandle{};
 	m_namedResources[ResourceNames::SSAO] = rhi::TextureHandle{};
 	m_namedResources[ResourceNames::ScreenSpaceShadow] = rhi::TextureHandle{};
 	m_namedResources[ResourceNames::BounceableRadiance] = rhi::TextureHandle{};

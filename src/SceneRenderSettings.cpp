@@ -72,7 +72,16 @@ namespace {
 		ctx.specularIBLScale = d.specularIBLScale;
 		ctx.skyboxExposure = d.skyboxExposure;
 		ctx.enableSSAO = d.enableSSAO;
+		ctx.ssaoResolutionScale = d.ssaoResolutionScale;
+		ctx.ssaoRadius = d.ssaoRadius;
+		ctx.ssaoBias = d.ssaoBias;
+		ctx.ssaoPower = d.ssaoPower;
+		ctx.ssaoStrength = d.ssaoStrength;
 		ctx.ssaoIntensity = d.ssaoIntensity;
+		ctx.ssaoBlurRadius = d.ssaoBlurRadius;
+		ctx.ssaoBlurSharpness = d.ssaoBlurSharpness;
+		ctx.ssaoDirections = d.ssaoDirections;
+		ctx.ssaoSteps = d.ssaoSteps;
 		ctx.enableIndirectDiffuse = d.enableIndirectDiffuse;
 		ctx.indirectDiffuseStrength = d.indirectDiffuseStrength;
 		ctx.enableScreenSpaceShadows = d.enableScreenSpaceShadows;
@@ -230,6 +239,15 @@ namespace SceneRenderSettings {
 		// Feature toggles
 		Read(s, "ssao", ctx.enableSSAO);
 		Read(s, "ssao_intensity", ctx.ssaoIntensity);
+		Read(s, "ssao_resolution_scale", ctx.ssaoResolutionScale);
+		Read(s, "ssao_radius", ctx.ssaoRadius);
+		Read(s, "ssao_bias", ctx.ssaoBias);
+		Read(s, "ssao_power", ctx.ssaoPower);
+		Read(s, "ssao_strength", ctx.ssaoStrength);
+		Read(s, "ssao_blur_radius", ctx.ssaoBlurRadius);
+		Read(s, "ssao_blur_sharpness", ctx.ssaoBlurSharpness);
+		Read(s, "ssao_directions", ctx.ssaoDirections);
+		Read(s, "ssao_steps", ctx.ssaoSteps);
 		Read(s, "ssgi", ctx.enableIndirectDiffuse);
 		Read(s, "ssgi_strength", ctx.indirectDiffuseStrength);
 		Read(s, "contact_shadows", ctx.enableScreenSpaceShadows);
@@ -240,9 +258,9 @@ namespace SceneRenderSettings {
 		Read(s, "taa_motion_weight", ctx.taaMotionCurrentWeight);
 		Read(s, "velocity_from_depth", ctx.velocityFromDepth);
 		if (s.contains("debug_view") && s["debug_view"].is_string()) {
-			static const char* kViews[] = { "none", "pre_taa", "taa", "ssr", "bloom", "velocity", "motion_blur", "taa_clean" };
+			static const char* kViews[] = { "none", "pre_taa", "taa", "ssr", "bloom", "velocity", "motion_blur", "taa_clean", "ao" };
 			const std::string v = s["debug_view"].get<std::string>();
-			for (int i = 0; i < 8; ++i) {
+			for (int i = 0; i < 9; ++i) {
 				if (v == kViews[i]) ctx.postDebugView = i;
 			}
 		}
