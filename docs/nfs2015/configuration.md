@@ -115,6 +115,11 @@ name match; overrides change the shared model asset, so all nodes using the file
 | `disable_textures` | Drop mis-authored maps: `base_color`, `normal`, `metallic_roughness`, `emissive`, `occlusion`, `specular`, `specular_color`, `transmission` |
 | `wetness_response`, `puddle_response`, `rain_bead_response` | Weather response [0,1] |
 | `flake_intensity`, `flake_density` | Reserved for metallic flakes (stored and uploaded; shading not implemented yet) |
+| `unlit`, `alpha_cutoff`, `sheen_color`, `sheen_roughness`, `anisotropy_strength`, `anisotropy_rotation`, `iridescence`, `iridescence_ior`, `iridescence_thickness_min`, `iridescence_thickness_max`, `dispersion` | Unlit (KHR_materials_unlit) and the mask cutoff; the sheen, anisotropy, iridescence and dispersion values are stored, not shaded |
+| `interior_mapping`, `interior_depth`, `interior_strength`, `interior_seed`, `interior_lighting`, `interior_blinds`, `interior_style` | Window interior mapping (see the NOX surface section of the editor) |
+| `slot` | Index of one primitive in the model (per-primitive override); `match` still applies when given |
+| `textures` | Slot name to a texture file path (or `null` to clear). Slots: `base_color`, `normal`, `metallic_roughness`, `emissive`, `occlusion`, `specular`, `specular_color`, `transmission`, `clearcoat`, `clearcoat_roughness` |
+| `texture_transforms` | Slot name to `{ offset, scale, rotation_degrees, texcoord }` (KHR_texture_transform) |
 
 `"exclude_from_reflection_capture": true` on a model node keeps dynamic objects (the player car) out
 of static probe captures.

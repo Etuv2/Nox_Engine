@@ -1573,71 +1573,452 @@ void EditorWorkspace::DrawAddComponentButton(const std::shared_ptr<SceneNode>& n
 	ImGui::EndPopup();
 }
 
+namespace {
+
+// Material state of one primitive: what the Materials window edits, and what undo steps restore.
+struct PrimitiveMaterialState {
+	MaterialDesc desc;
+	std::shared_ptr<Texture> textures[MaterialDesc::SlotCount];
+	std::array<std::string, MaterialDesc::SlotCount> paths;
+};
+
+PrimitiveMaterialState CapturePrimitiveMaterial(MeshComponent& mesh)
+{
+	PrimitiveMaterialState state;
+	state.desc = mesh.GetMaterialDesc();
+	for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+		state.textures[slot] = mesh.TextureForSlot(slot);
+		state.paths[slot] = mesh.textureSourcePaths[slot];
+	}
+	return state;
+}
+
+void ApplyPrimitiveMaterial(MeshComponent& mesh, const PrimitiveMaterialState& state)
+{
+	mesh.SetMaterialDesc(state.desc);
+	for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+		mesh.TextureForSlot(slot) = state.textures[slot];
+		mesh.textureSourcePaths[slot] = state.paths[slot];
+	}
+}
+
+PrimitiveMaterialState StateOfImported(const Scene::ImportedMaterial& imported)
+{
+	PrimitiveMaterialState state;
+	state.desc = imported.material;
+	for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+		state.textures[slot] = imported.textures[slot];
+		state.paths[slot] = imported.texturePaths[slot];
+	}
+	return state;
+}
+
+// What a texture slot shows: the assigned file, or "(imported)" / "(none)".
+std::string TextureSlotName(const PrimitiveMaterialState& state, const PrimitiveMaterialState& imported, int slot)
+{
+	if (!state.textures[slot]) return "(none)";
+	if (!state.paths[slot].empty()) return state.paths[slot];
+	return state.textures[slot] == imported.textures[slot] ? "(imported)" : "(changed)";
+}
+
+const char* AlphaModeKey(MaterialDesc::AlphaMode mode)
+{
+	switch (mode) {
+	case MaterialDesc::AlphaMode::Mask: return "mask";
+	case MaterialDesc::AlphaMode::Blend: return "blend";
+	default: return "opaque";
+	}
+}
+
+// Override entry for one primitive. Keys the editor owns are rewritten from the state; keys it does not
+// know (disable_textures, hand-written extras) are kept from the previous entry.
+json BuildOverrideEntry(const json& previous, const std::string& matName, int slot,
+	const PrimitiveMaterialState& state, const PrimitiveMaterialState& imported)
+{
+	const MaterialDesc& d = state.desc;
+	json entry = previous.is_object() ? previous : json::object();
+	entry["match"] = matName;
+	entry["slot"] = slot;
+	entry["base_color"] = { d.baseColorFactor.r, d.baseColorFactor.g, d.baseColorFactor.b, d.baseColorFactor.a };
+	entry["metallic"] = d.metallicFactor;
+	entry["roughness"] = d.roughnessFactor;
+	entry["normal_scale"] = d.normalScale;
+	entry["occlusion_strength"] = d.occlusionStrength;
+	entry["emissive"] = { d.emissiveFactor.r, d.emissiveFactor.g, d.emissiveFactor.b };
+	entry["emissive_strength"] = d.emissiveStrength;
+	entry["specular"] = d.specularFactor;
+	entry["specular_color"] = { d.specularColorFactor.r, d.specularColorFactor.g, d.specularColorFactor.b };
+	entry["ior"] = d.ior;
+	entry["clearcoat"] = d.clearcoatFactor;
+	entry["clearcoat_roughness"] = d.clearcoatRoughnessFactor;
+	entry["transmission"] = d.transmissionFactor;
+	entry["thickness"] = d.thicknessFactor;
+	entry["attenuation_color"] = { d.attenuationColor.r, d.attenuationColor.g, d.attenuationColor.b };
+	if (std::isfinite(d.attenuationDistance)) entry["attenuation_distance"] = d.attenuationDistance;
+	else entry.erase("attenuation_distance");
+	entry["alpha_mode"] = AlphaModeKey(d.alphaMode);
+	entry["alpha_cutoff"] = d.alphaCutoff;
+	entry["double_sided"] = d.doubleSided;
+	entry["unlit"] = d.unlit;
+	entry["sheen_color"] = { d.sheenColorFactor.r, d.sheenColorFactor.g, d.sheenColorFactor.b };
+	entry["sheen_roughness"] = d.sheenRoughnessFactor;
+	entry["anisotropy_strength"] = d.anisotropyStrength;
+	entry["anisotropy_rotation"] = d.anisotropyRotation;
+	entry["iridescence"] = d.iridescenceFactor;
+	entry["iridescence_ior"] = d.iridescenceIor;
+	entry["iridescence_thickness_min"] = d.iridescenceThicknessMin;
+	entry["iridescence_thickness_max"] = d.iridescenceThicknessMax;
+	entry["dispersion"] = d.dispersion;
+	entry["wetness_response"] = d.wetnessResponse;
+	entry["puddle_response"] = d.puddleResponse;
+	entry["rain_bead_response"] = d.rainBeadResponse;
+	entry["flake_intensity"] = d.flakeIntensity;
+	entry["flake_density"] = d.flakeDensity;
+	entry["interior_mapping"] = d.interiorMapping;
+	entry["interior_depth"] = d.interiorDepth;
+	entry["interior_strength"] = d.interiorStrength;
+	entry["interior_seed"] = d.interiorSeed;
+	entry["interior_lighting"] = d.interiorLighting;
+	entry["interior_blinds"] = d.interiorBlinds;
+	entry["interior_style"] = d.interiorStyle;
+
+	// Texture slots that differ from the import: a file path, or null for a cleared slot.
+	json textures = json::object();
+	for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+		if (state.textures[slot] == imported.textures[slot] && state.paths[slot] == imported.paths[slot]) continue;
+		const char* key = MaterialDesc::TextureSlotKey(slot);
+		if (!state.textures[slot]) textures[key] = nullptr;
+		else if (!state.paths[slot].empty()) textures[key] = state.paths[slot];
+	}
+	if (textures.empty()) entry.erase("textures");
+	else entry["textures"] = textures;
+
+	// UV transforms that are not identity.
+	json transforms = json::object();
+	for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+		const TextureTransform& xf = d.textureTransforms[slot];
+		const int texCoord = d.TexCoordOf(slot);
+		if (xf.IsIdentity() && texCoord == 0) continue;
+		transforms[MaterialDesc::TextureSlotKey(slot)] = {
+			{ "offset", { xf.offset.x, xf.offset.y } },
+			{ "scale", { xf.scale.x, xf.scale.y } },
+			{ "rotation_degrees", glm::degrees(xf.rotation) },
+			{ "texcoord", texCoord } };
+	}
+	if (transforms.empty()) entry.erase("texture_transforms");
+	else entry["texture_transforms"] = transforms;
+	return entry;
+}
+
+// Index of the override entry that names this primitive (match + slot), or npos.
+size_t FindPrimitiveOverride(const json& overrides, const std::string& matName, int slot)
+{
+	for (size_t i = 0; i < overrides.size(); ++i) {
+		const json& o = overrides[i];
+		if (o.is_object() && o.value("match", std::string()) == matName && o.contains("slot") &&
+			o["slot"].is_number_integer() && o["slot"].get<int64_t>() == slot) {
+			return i;
+		}
+	}
+	return std::string::npos;
+}
+
+// Texture files the Materials window offers for assignment (textures/ folder, image extensions only).
+std::vector<std::string> ListTextureAssets()
+{
+	AssetIO::ListOptions options;
+	options.recursive = true;
+	std::vector<std::string> out;
+	for (std::string& path : AssetIO::List("textures", options)) {
+		std::string ext = fs::path(path).extension().string();
+		std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp") out.push_back(std::move(path));
+	}
+	std::sort(out.begin(), out.end());
+	if (out.size() > 4000) out.resize(4000);
+	return out;
+}
+
+} // namespace
+
 void EditorWorkspace::DrawMaterials()
 {
+	// The window edits one primitive at a time. A continuous edit (drag, slider, text) becomes one undo step
+	// when the widgets release; the before-state is captured at the start of each idle frame.
+	static PrimitiveMaterialState s_before;
+	static bool s_editPending = false;
+	static nox::editor::NodeHandle s_editNode;
+	static int s_editSlot = 0;
+	static int s_slot = 0;
+	static std::vector<std::string> s_textureAssets;
+	static float s_textureAssetsTimer = 0.0f;
+	static char s_texturePickFilter[128] = "";
+
 	if (!ImGui::Begin(kWinMaterials, &m_showMaterials)) { ImGui::End(); return; }
 	auto node = m_legacy.GetSelectedNode();
 	std::shared_ptr<Scene> model = node ? node->GetModel() : nullptr;
-	// Imported mesh children share the parent's model: walk up to the node that owns the file.
-	if (!model) {
-		ImGui::TextDisabled("Select a model node to edit its materials.");
+	if (!model || model->meshes.empty()) {
+		ImGui::TextDisabled(model ? "This model has no primitives." : "Select a model node to edit its materials.");
 		ImGui::End();
 		return;
 	}
-	static int selectedMaterial = 0;
-	std::vector<std::string> names;
-	for (const MeshComponent& m : model->meshes) {
-		if (std::find(names.begin(), names.end(), m.materialName) == names.end()) names.push_back(m.materialName);
-	}
-	if (names.empty()) { ImGui::End(); return; }
-	selectedMaterial = std::clamp(selectedMaterial, 0, static_cast<int>(names.size()) - 1);
-	ImGui::SetNextItemWidth(-1);
-	if (ImGui::BeginCombo("##mat", names[selectedMaterial].empty() ? "(unnamed)" : names[selectedMaterial].c_str())) {
-		for (int i = 0; i < static_cast<int>(names.size()); ++i) {
-			if (ImGui::Selectable((names[i].empty() ? "(unnamed)##" + std::to_string(i) : names[i]).c_str(), i == selectedMaterial)) selectedMaterial = i;
+
+	// Every primitive gets a slot: the glTF material name, per primitive, so shared names stay separate.
+	const int count = static_cast<int>(model->meshes.size());
+	s_slot = std::clamp(s_slot, 0, count - 1);
+	ImGui::TextDisabled("%d primitive slot%s", count, count == 1 ? "" : "s");
+	const float listHeight = std::min(count, 6) * ImGui::GetTextLineHeightWithSpacing() + 6.0f;
+	if (ImGui::BeginListBox("##primitives", ImVec2(-1.0f, listHeight))) {
+		for (int i = 0; i < count; ++i) {
+			const std::string& name = model->meshes[i].materialName;
+			const std::string label = "[" + std::to_string(i) + "] " + (name.empty() ? std::string("(unnamed)") : name) + "##prim" + std::to_string(i);
+			if (ImGui::Selectable(label.c_str(), i == s_slot)) s_slot = i;
 		}
-		ImGui::EndCombo();
+		ImGui::EndListBox();
 	}
-	const std::string matName = names[selectedMaterial];
-	MeshComponent* first = nullptr;
-	for (MeshComponent& m : model->meshes) if (m.materialName == matName) { first = &m; break; }
-	if (!first) { ImGui::End(); return; }
-	MaterialDesc d = first->GetMaterialDesc();
+
+	MeshComponent& mesh = model->meshes[s_slot];
+	const std::string matName = mesh.materialName;
+	const bool hasImported = s_slot < static_cast<int>(model->importedMaterials.size());
+	const PrimitiveMaterialState imported = hasImported
+		? StateOfImported(model->importedMaterials[s_slot]) : CapturePrimitiveMaterial(mesh);
+	if (!s_editPending) {
+		s_before = CapturePrimitiveMaterial(mesh);
+		s_editSlot = s_slot;
+		s_editNode = m_nodeTable.HandleOf(node);
+	}
+
+	MaterialDesc d = mesh.GetMaterialDesc();
 	bool changed = false;
-	ui::Grid("##matgrid");
-	ui::Label("Base color"); changed |= ImGui::ColorEdit4("##bc", &d.baseColorFactor.x);
-	ui::Label("Metallic"); changed |= ImGui::SliderFloat("##me", &d.metallicFactor, 0.0f, 1.0f);
-	ui::Label("Roughness"); changed |= ImGui::SliderFloat("##ro", &d.roughnessFactor, 0.0f, 1.0f);
-	ui::Label("Clearcoat"); changed |= ImGui::SliderFloat("##cc", &d.clearcoatFactor, 0.0f, 1.0f);
-	ui::Label("Coat rough."); changed |= ImGui::SliderFloat("##ccr", &d.clearcoatRoughnessFactor, 0.0f, 1.0f);
-	ui::Label("Emissive"); changed |= ImGui::ColorEdit3("##em", &d.emissiveFactor.x);
-	ui::Label("Emissive cd/m2"); changed |= ImGui::DragFloat("##ems", &d.emissiveStrength, 1.0f, 0.0f, 100000.0f);
-	ui::Label("Wetness"); changed |= ImGui::SliderFloat("##wet", &d.wetnessResponse, 0.0f, 1.0f);
-	ui::Label("Puddles"); changed |= ImGui::SliderFloat("##pud", &d.puddleResponse, 0.0f, 1.0f);
-	ui::Label("Rain beads"); changed |= ImGui::SliderFloat("##rb", &d.rainBeadResponse, 0.0f, 1.0f);
-	ui::EndGrid();
-	if (changed) {
-		for (MeshComponent& m : model->meshes) if (m.materialName == matName) m.SetMaterialDesc(d);
-		m_core.MarkDirty();
+	ImGui::BeginDisabled(!hasImported);
+	const bool resetRequested = ui::Btn("Reset to imported", false);
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	const bool saveRequested = ui::Btn("Save as scene override", true);
+	if (!hasImported) ImGui::TextDisabled("Reset is unavailable for primitives without an import snapshot.");
+
+	if (ui::Section("Base", true)) {
+		ui::Grid("##mat_base");
+		ui::Label("Base color"); changed |= ImGui::ColorEdit4("##bc", &d.baseColorFactor.x);
+		ui::Label("Metallic"); changed |= ImGui::SliderFloat("##me", &d.metallicFactor, 0.0f, 1.0f);
+		ui::Label("Roughness"); changed |= ImGui::SliderFloat("##ro", &d.roughnessFactor, 0.0f, 1.0f);
+		ui::Label("Normal scale"); changed |= ImGui::DragFloat("##ns", &d.normalScale, 0.01f, 0.0f, 4.0f);
+		ui::Label("Occlusion strength"); changed |= ImGui::SliderFloat("##os", &d.occlusionStrength, 0.0f, 1.0f);
+		ui::Label("Alpha mode");
+		int alpha = static_cast<int>(d.alphaMode);
+		static const char* const alphaNames[] = { "Opaque", "Mask", "Blend" };
+		if (ImGui::Combo("##am", &alpha, alphaNames, 3)) {
+			d.alphaMode = static_cast<MaterialDesc::AlphaMode>(alpha);
+			changed = true;
+		}
+		if (d.alphaMode == MaterialDesc::AlphaMode::Mask) {
+			ui::Label("Alpha cutoff"); changed |= ImGui::SliderFloat("##ac", &d.alphaCutoff, 0.0f, 1.0f);
+		}
+		ui::Label("Double-sided"); changed |= ImGui::Checkbox("##ds", &d.doubleSided);
+		ui::Label("Unlit (KHR)"); changed |= ImGui::Checkbox("##ul", &d.unlit);
+		ui::EndGrid();
 	}
-	ImGui::Spacing();
-	if (ui::Btn("Save as scene override", true)) {
-		// Persist through the node's material_overrides (written back by SceneLoader::SaveScene).
+	if (ui::Section("Emissive", true)) {
+		ui::Grid("##mat_emissive");
+		ui::Label("Emissive"); changed |= ImGui::ColorEdit3("##em", &d.emissiveFactor.x);
+		ui::Label("Emissive strength"); changed |= ImGui::DragFloat("##ems", &d.emissiveStrength, 0.05f, 0.0f, 100000.0f);
+		ui::EndGrid();
+	}
+	if (ui::Section("Specular, IOR, clearcoat, transmission", false)) {
+		ui::Grid("##mat_spec");
+		ui::Label("Specular"); changed |= ImGui::SliderFloat("##sp", &d.specularFactor, 0.0f, 1.0f);
+		ui::Label("Specular color"); changed |= ImGui::ColorEdit3("##spc", &d.specularColorFactor.x);
+		ui::Label("IOR"); changed |= ImGui::DragFloat("##ior", &d.ior, 0.005f, 1.0f, 3.0f);
+		ui::Label("Clearcoat"); changed |= ImGui::SliderFloat("##cc", &d.clearcoatFactor, 0.0f, 1.0f);
+		ui::Label("Coat roughness"); changed |= ImGui::SliderFloat("##ccr", &d.clearcoatRoughnessFactor, 0.0f, 1.0f);
+		ui::Label("Transmission"); changed |= ImGui::SliderFloat("##tr", &d.transmissionFactor, 0.0f, 1.0f);
+		ui::Label("Thickness (m)"); changed |= ImGui::DragFloat("##th", &d.thicknessFactor, 0.01f, 0.0f, 100.0f);
+		ui::Label("Attenuation color"); changed |= ImGui::ColorEdit3("##att", &d.attenuationColor.x);
+		ui::Label("Attenuation dist."); changed |= ImGui::DragFloat("##attd", &d.attenuationDistance, 0.05f, 0.0f, 100000.0f);
+		ui::EndGrid();
+	}
+	if (ui::Section("Sheen, anisotropy, iridescence, dispersion (stored, not shaded yet)", false)) {
+		ui::Grid("##mat_ext");
+		ui::Label("Sheen color"); changed |= ImGui::ColorEdit3("##shc", &d.sheenColorFactor.x);
+		ui::Label("Sheen roughness"); changed |= ImGui::SliderFloat("##shr", &d.sheenRoughnessFactor, 0.0f, 1.0f);
+		ui::Label("Anisotropy"); changed |= ImGui::SliderFloat("##an", &d.anisotropyStrength, 0.0f, 1.0f);
+		ui::Label("Anisotropy rot."); changed |= ImGui::SliderFloat("##anr", &d.anisotropyRotation, 0.0f, 6.2831853f);
+		ui::Label("Iridescence"); changed |= ImGui::SliderFloat("##irf", &d.iridescenceFactor, 0.0f, 1.0f);
+		ui::Label("Iridescence IOR"); changed |= ImGui::DragFloat("##iri", &d.iridescenceIor, 0.01f, 1.0f, 3.0f);
+		ui::Label("Thin film min (nm)"); changed |= ImGui::DragFloat("##irtmin", &d.iridescenceThicknessMin, 1.0f, 0.0f, 2000.0f);
+		ui::Label("Thin film max (nm)"); changed |= ImGui::DragFloat("##irtmax", &d.iridescenceThicknessMax, 1.0f, 0.0f, 2000.0f);
+		ui::Label("Dispersion"); changed |= ImGui::DragFloat("##disp", &d.dispersion, 0.005f, 0.0f, 1.0f);
+		ui::EndGrid();
+	}
+	if (ui::Section("NOX surface and interior", false)) {
+		ui::Grid("##mat_nox");
+		ui::Label("Wetness"); changed |= ImGui::SliderFloat("##wet", &d.wetnessResponse, 0.0f, 1.0f);
+		ui::Label("Puddles"); changed |= ImGui::SliderFloat("##pud", &d.puddleResponse, 0.0f, 1.0f);
+		ui::Label("Rain beads"); changed |= ImGui::SliderFloat("##rb", &d.rainBeadResponse, 0.0f, 1.0f);
+		ui::Label("Flake intensity"); changed |= ImGui::SliderFloat("##fli", &d.flakeIntensity, 0.0f, 1.0f);
+		ui::Label("Flake density"); changed |= ImGui::DragFloat("##fld", &d.flakeDensity, 10.0f, 10.0f, 100000.0f);
+		ui::Label("Interior mapping"); changed |= ImGui::SliderFloat("##imap", &d.interiorMapping, 0.0f, 2.0f, "%.0f");
+		ui::Label("Interior depth (m)"); changed |= ImGui::DragFloat("##idep", &d.interiorDepth, 0.05f, 1.0f, 20.0f);
+		ui::Label("Interior strength"); changed |= ImGui::DragFloat("##istr", &d.interiorStrength, 0.01f, 0.0f, 10.0f);
+		ui::Label("Interior lighting"); changed |= ImGui::SliderFloat("##ilit", &d.interiorLighting, 0.0f, 1.0f);
+		ui::Label("Interior blinds"); changed |= ImGui::SliderFloat("##ibld", &d.interiorBlinds, 0.0f, 1.0f);
+		ui::Label("Interior style"); changed |= ImGui::DragFloat("##isty", &d.interiorStyle, 0.1f, 0.0f, 16.0f);
+		ui::Label("Interior seed"); changed |= ImGui::DragFloat("##iseed", &d.interiorSeed, 0.1f, 0.0f, 1000.0f);
+		ui::EndGrid();
+	}
+
+	// Texture slots: assignment from the textures folder, clear / revert, and the KHR_texture_transform fields.
+	if (ui::Section("Textures and UV transforms", true)) {
+		s_textureAssetsTimer -= m_dt;
+		if (s_textureAssetsTimer <= 0.0f) {
+			s_textureAssetsTimer = 5.0f;
+			s_textureAssets = ListTextureAssets();
+		}
+		const PrimitiveMaterialState current = CapturePrimitiveMaterial(mesh);
+		for (int slot = 0; slot < MaterialDesc::SlotCount; ++slot) {
+			ImGui::PushID(slot);
+			const std::string title = std::string(MaterialDesc::TextureSlotLabel(slot)) + ":  " + TextureSlotName(current, imported, slot);
+			const std::string popupId = "##texpick" + std::to_string(slot);
+			if (ImGui::TreeNodeEx(("##texslot" + std::to_string(slot)).c_str(), 0, "%s", title.c_str())) {
+				if (ui::Btn("Pick...", false)) {
+					ImGui::OpenPopup(popupId.c_str());
+				}
+				if (ImGui::BeginPopup(popupId.c_str())) {
+					ImGui::SetNextItemWidth(300.0f);
+					ImGui::InputTextWithHint("##tfilter", "Filter textures", s_texturePickFilter, sizeof(s_texturePickFilter));
+					ImGui::BeginChild("##tlist", ImVec2(300.0f, 240.0f));
+					for (const std::string& path : s_textureAssets) {
+						if (!ContainsNoCase(path, s_texturePickFilter)) continue;
+						if (ImGui::Selectable(path.c_str())) {
+							if (TexturePtr texture = TextureFactory::FromFile(path, MaterialDesc::TextureSlotIsSRGB(slot))) {
+								mesh.TextureForSlot(slot) = texture;
+								mesh.textureSourcePaths[slot] = path;
+								changed = true;
+							}
+							else {
+								ui::Toast("Could not load " + path, ui::ToastKind::Error);
+							}
+							ImGui::CloseCurrentPopup();
+						}
+					}
+					ImGui::EndChild();
+					ImGui::EndPopup();
+				}
+				ImGui::SameLine();
+				if (ui::Btn("Clear", false)) {
+					mesh.TextureForSlot(slot).reset();
+					mesh.textureSourcePaths[slot].clear();
+					changed = true;
+				}
+				if (current.textures[slot] != imported.textures[slot] || current.paths[slot] != imported.paths[slot]) {
+					ImGui::SameLine();
+					if (ui::Btn("Revert", false)) {
+						mesh.TextureForSlot(slot) = imported.textures[slot];
+						mesh.textureSourcePaths[slot] = imported.paths[slot];
+						changed = true;
+					}
+				}
+
+				// KHR_texture_transform: uv' = T * R * S * uv on this slot, plus the TEXCOORD set it samples.
+				int texCoord = d.TexCoordOf(slot);
+				ImGui::SetNextItemWidth(160.0f);
+				if (ImGui::Combo("UV set##uvset", &texCoord, "TEXCOORD_0\0TEXCOORD_1\0")) {
+					d.TexCoordOf(slot) = texCoord;
+					changed = true;
+				}
+				TextureTransform& xf = d.textureTransforms[slot];
+				float rotationDeg = glm::degrees(xf.rotation);
+				ImGui::SetNextItemWidth(200.0f);
+				changed |= ImGui::DragFloat2("Offset##uvo", &xf.offset.x, 0.01f);
+				ImGui::SetNextItemWidth(200.0f);
+				changed |= ImGui::DragFloat2("Scale##uvs", &xf.scale.x, 0.01f, -1000.0f, 1000.0f);
+				ImGui::SetNextItemWidth(200.0f);
+				if (ImGui::DragFloat("Rotation (deg)##uvr", &rotationDeg, 0.5f, -360.0f, 360.0f)) {
+					xf.rotation = glm::radians(rotationDeg);
+					changed = true;
+				}
+				ImGui::SameLine();
+				if (ui::Btn("Reset UV", false)) {
+					xf = TextureTransform();
+					d.TexCoordOf(slot) = 0;
+					changed = true;
+				}
+				ImGui::TreePop();
+			}
+			ImGui::PopID();
+		}
+	}
+
+	// Applying: the widgets already changed d / the textures; push the new state live.
+	if (resetRequested && hasImported) {
+		const PrimitiveMaterialState before = CapturePrimitiveMaterial(mesh);
+		ApplyPrimitiveMaterial(mesh, imported);
+		if (nox::editor::UndoPush push = UndoSink()) {
+			const nox::editor::NodeHandle handle = m_nodeTable.HandleOf(node);
+			const int slotIndex = s_slot;
+			auto apply = [this, handle, slotIndex](const PrimitiveMaterialState& st) {
+				auto n = m_nodeTable.Resolve(handle);
+				auto mdl = n ? n->GetModel() : nullptr;
+				if (!mdl || slotIndex >= static_cast<int>(mdl->meshes.size())) return;
+				ApplyPrimitiveMaterial(mdl->meshes[slotIndex], st);
+				m_core.MarkDirty();
+			};
+			push("Reset material to imported", [apply, before] { apply(before); }, [apply, imported] { apply(imported); });
+		}
+		// The saved override for this primitive goes too, so a reload does not bring it back.
+		json extras = node->GetAuthoredExtras().empty() ? json::object() : json::parse(node->GetAuthoredExtras(), nullptr, false);
+		if (extras.is_object() && extras.contains("material_overrides") && extras["material_overrides"].is_array()) {
+			json& overrides = extras["material_overrides"];
+			const size_t at = FindPrimitiveOverride(overrides, matName, s_slot);
+			if (at != std::string::npos) {
+				overrides.erase(overrides.begin() + static_cast<std::ptrdiff_t>(at));
+				node->SetAuthoredExtras(extras.dump());
+			}
+		}
+		s_editPending = false;
+		m_core.MarkDirty();
+		ui::Toast("Primitive reset to the imported material", ui::ToastKind::Info);
+	}
+	else {
+		if (changed) {
+			mesh.SetMaterialDesc(d);
+			m_core.MarkDirty();
+			s_editPending = true;
+		}
+		if (s_editPending && !ImGui::IsAnyItemActive()) {
+			const PrimitiveMaterialState after = CapturePrimitiveMaterial(model->meshes[s_editSlot]);
+			if (nox::editor::UndoPush push = UndoSink()) {
+				const nox::editor::NodeHandle handle = s_editNode;
+				const int slotIndex = s_editSlot;
+				auto apply = [this, handle, slotIndex](const PrimitiveMaterialState& st) {
+					auto n = m_nodeTable.Resolve(handle);
+					auto mdl = n ? n->GetModel() : nullptr;
+					if (!mdl || slotIndex >= static_cast<int>(mdl->meshes.size())) return;
+					ApplyPrimitiveMaterial(mdl->meshes[slotIndex], st);
+					m_core.MarkDirty();
+				};
+				push("Edit material", [apply, before = s_before] { apply(before); }, [apply, after] { apply(after); });
+			}
+			s_editPending = false;
+		}
+	}
+
+	if (saveRequested) {
+		// Persist as one entry per primitive: match (glTF material name) + slot (primitive index).
 		json extras = node->GetAuthoredExtras().empty() ? json::object() : json::parse(node->GetAuthoredExtras(), nullptr, false);
 		if (!extras.is_object()) extras = json::object();
 		json overrides = extras.value("material_overrides", json::array());
-		json entry = { {"match", matName}, {"base_color", { d.baseColorFactor.r, d.baseColorFactor.g, d.baseColorFactor.b, d.baseColorFactor.a }},
-			{"metallic", d.metallicFactor}, {"roughness", d.roughnessFactor}, {"clearcoat", d.clearcoatFactor},
-			{"clearcoat_roughness", d.clearcoatRoughnessFactor}, {"emissive", { d.emissiveFactor.r, d.emissiveFactor.g, d.emissiveFactor.b }},
-			{"emissive_strength", d.emissiveStrength}, {"wetness_response", d.wetnessResponse}, {"puddle_response", d.puddleResponse},
-			{"rain_bead_response", d.rainBeadResponse} };
-		bool replaced = false;
-		for (json& o : overrides) if (o.value("match", std::string()) == matName) { o.update(entry); replaced = true; }
-		if (!replaced) overrides.push_back(entry);
+		if (!overrides.is_array()) overrides = json::array();
+		const PrimitiveMaterialState current = CapturePrimitiveMaterial(mesh);
+		const size_t at = FindPrimitiveOverride(overrides, matName, s_slot);
+		const json previous = at == std::string::npos ? json::object() : overrides[at];
+		const json entry = BuildOverrideEntry(previous, matName, s_slot, current, hasImported ? imported : current);
+		if (at == std::string::npos) overrides.push_back(entry);
+		else overrides[at] = entry;
 		extras["material_overrides"] = overrides;
 		node->SetAuthoredExtras(extras.dump());
 		m_core.MarkDirty();
-		ui::Toast("Material override stored - save the scene to keep it", ui::ToastKind::Info);
+		ui::Toast("Material override stored for primitive " + std::to_string(s_slot) + " - save the scene to keep it", ui::ToastKind::Info);
 	}
 	ImGui::End();
 }

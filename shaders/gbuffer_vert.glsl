@@ -11,6 +11,7 @@ layout(location = 4) in ivec4 aBoneIDs;
 layout(location = 5) in vec4 aBoneWeights;
 layout(location = 11) in uint aTransformRecordIndex;
 layout(location = 12) in uint aStableTransformID;
+layout(location = 13) in vec4 aColor;      // COLOR_0
 
 // Outputs to the fragment shader (geometry pass)
 out vec3 WorldPos;
@@ -22,6 +23,7 @@ out vec4 RawTangent;
 flat out uint TransformID;
 out vec3 ObjectPos;
 out vec3 ObjectNormal;
+out vec4 VertColor;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -55,6 +57,7 @@ void main()
     WorldPos = worldPos.xyz;
     TexCoords = aTexCoords;
     TexCoords1 = aTexCoords1;
+    VertColor = aColor;
 
     vec3 N;
     vec3 T;

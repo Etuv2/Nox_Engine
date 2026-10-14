@@ -407,6 +407,62 @@ std::string ToLowerCopy(std::string text)
 	return text;
 }
 
+// Optional number with a fallback. Used for the newer keys so that a null or mistyped value cannot throw.
+float OverrideFloat(const json& j, const char* key, float fallback)
+{
+	return (j.is_object() && j.contains(key) && j[key].is_number()) ? j[key].get<float>() : fallback;
+}
+
+// Texture entries of a material override (see docs/editor.md, "Material overrides").
+//   "textures": { "<slot>": "textures/file.png" | null }        assign a texture, or clear the slot
+//   "texture_transforms": { "<slot>": { "offset": [u, v], "scale": [u, v], "rotation_degrees": r, "texcoord": 0|1 } }
+void ApplyTextureOverrides(const json& entry, MeshComponent& mesh, MaterialDesc& d, const std::string& nodeName)
+{
+	if (entry.contains("textures") && entry["textures"].is_object()) {
+		for (auto it = entry["textures"].begin(); it != entry["textures"].end(); ++it) {
+			const std::string key = it.key();
+			const int slot = MaterialDesc::TextureSlotFromKey(key);
+			if (slot < 0) {
+				std::cout << "[SceneLoader] material_overrides: unknown texture slot '" << key << "' on node '" << nodeName << "'" << std::endl;
+				continue;
+			}
+			const json& value = it.value();
+			if (value.is_string()) {
+				const std::string path = value.get<std::string>();
+				TexturePtr texture = TextureFactory::FromFile(path, MaterialDesc::TextureSlotIsSRGB(slot));
+				if (texture) {
+					mesh.TextureForSlot(slot) = texture;
+					mesh.textureSourcePaths[slot] = path;
+				}
+				else {
+					std::cout << "[SceneLoader] material_overrides: could not load '" << path << "' for '" << key << "' on node '" << nodeName << "'" << std::endl;
+				}
+			}
+			else if (value.is_null()) {
+				mesh.TextureForSlot(slot).reset();
+				mesh.textureSourcePaths[slot].clear();
+			}
+		}
+	}
+	if (entry.contains("texture_transforms") && entry["texture_transforms"].is_object()) {
+		for (auto it = entry["texture_transforms"].begin(); it != entry["texture_transforms"].end(); ++it) {
+			const int slot = MaterialDesc::TextureSlotFromKey(it.key());
+			const json& xj = it.value();
+			if (slot < 0 || !xj.is_object()) {
+				continue;
+			}
+			TextureTransform& xf = d.textureTransforms[slot];
+			glm::vec4 v(0.0f);
+			if (ReadOverrideVec(xj, "offset", 2, v)) xf.offset = glm::vec2(v);
+			if (ReadOverrideVec(xj, "scale", 2, v)) xf.scale = glm::vec2(v);
+			xf.rotation = glm::radians(OverrideFloat(xj, "rotation_degrees", glm::degrees(xf.rotation)));
+			if (xj.contains("texcoord") && xj["texcoord"].is_number_integer()) {
+				d.TexCoordOf(slot) = std::clamp(xj["texcoord"].get<int>(), 0, 1);
+			}
+		}
+	}
+}
+
 int ApplyMaterialOverrides(Scene& model, const json& overrides, const std::string& nodeName)
 {
 	if (!overrides.is_array()) {
@@ -418,8 +474,15 @@ int ApplyMaterialOverrides(Scene& model, const json& overrides, const std::strin
 			continue;
 		}
 		const std::string match = ToLowerCopy(entry.value("match", std::string("*")));
+		// "slot": N limits the entry to the primitive at index N of the model (per-primitive editor overrides).
+		const bool hasSlot = entry.contains("slot") && entry["slot"].is_number_integer();
+		const int64_t slot = hasSlot ? entry["slot"].get<int64_t>() : -1;
 		int hits = 0;
-		for (MeshComponent& mesh : model.meshes) {
+		for (size_t meshIndex = 0; meshIndex < model.meshes.size(); ++meshIndex) {
+			MeshComponent& mesh = model.meshes[meshIndex];
+			if (hasSlot && static_cast<int64_t>(meshIndex) != slot) {
+				continue;
+			}
 			if (match != "*" && ToLowerCopy(mesh.materialName).find(match) == std::string::npos) {
 				continue;
 			}
@@ -454,6 +517,18 @@ int ApplyMaterialOverrides(Scene& model, const json& overrides, const std::strin
 			d.interiorBlinds = entry.value("interior_blinds", d.interiorBlinds);
 			d.interiorStyle = entry.value("interior_style", d.interiorStyle);
 			d.doubleSided = entry.value("double_sided", d.doubleSided);
+			d.alphaCutoff = std::clamp(OverrideFloat(entry, "alpha_cutoff", d.alphaCutoff), 0.0f, 1.0f);
+			d.unlit = entry.value("unlit", d.unlit);
+			if (ReadOverrideVec(entry, "sheen_color", 3, v)) d.sheenColorFactor = glm::vec3(v);
+			d.sheenRoughnessFactor = OverrideFloat(entry, "sheen_roughness", d.sheenRoughnessFactor);
+			d.anisotropyStrength = OverrideFloat(entry, "anisotropy_strength", d.anisotropyStrength);
+			d.anisotropyRotation = OverrideFloat(entry, "anisotropy_rotation", d.anisotropyRotation);
+			d.iridescenceFactor = OverrideFloat(entry, "iridescence", d.iridescenceFactor);
+			d.iridescenceIor = OverrideFloat(entry, "iridescence_ior", d.iridescenceIor);
+			d.iridescenceThicknessMin = OverrideFloat(entry, "iridescence_thickness_min", d.iridescenceThicknessMin);
+			d.iridescenceThicknessMax = OverrideFloat(entry, "iridescence_thickness_max", d.iridescenceThicknessMax);
+			d.dispersion = OverrideFloat(entry, "dispersion", d.dispersion);
+			d.attenuationDistance = OverrideFloat(entry, "attenuation_distance", d.attenuationDistance);
 			if (entry.contains("alpha_mode") && entry["alpha_mode"].is_string()) {
 				const std::string mode = ToLowerCopy(entry["alpha_mode"].get<std::string>());
 				d.alphaMode = mode == "blend" ? MaterialDesc::AlphaMode::Blend
@@ -474,6 +549,7 @@ int ApplyMaterialOverrides(Scene& model, const json& overrides, const std::strin
 					else if (t == "transmission") mesh.transmissionTexture.reset();
 				}
 			}
+			ApplyTextureOverrides(entry, mesh, d, nodeName);
 			mesh.SetMaterialDesc(d);
 			++hits;
 		}

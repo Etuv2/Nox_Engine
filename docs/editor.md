@@ -13,6 +13,7 @@ registry components described in [engine_overview.md](engine_overview.md).
 | Inspector | The selected node's components, built generically from the reflection registry |
 | Assets (Content Browser) | Browse the project as folders and tiles. Place prefabs and models, open scenes, rename, delete. See [Assets](#assets) |
 | Console, Build Output | Log messages and the output of build and package actions |
+| Materials | Per-primitive material editing for the selected model: factors, textures, UV transforms, overrides |
 | Lighting, Rendering, Camera, Animation, Performance | Scene-wide settings and diagnostics |
 
 Windows are opened from the **Window** menu. Project panels (`nox.editor_panel` in Lua) appear in the same menu
@@ -82,7 +83,7 @@ so loose and packed projects show the same tree. Packed assets are read-only: fi
 - **Details** (bottom): the selected asset's preview, path, type, size and modified time. Textures also show their
   pixel size.
 - **Double-click** (or Enter): a scene is opened (with the unsaved-changes check); a prefab or model is placed in
-  the scene; a Lua script opens in VS Code when its `code` command is on PATH, else in the OS default editor;
+  the scene; a Lua script opens in the external editor (see [External script editor](#external-script-editor));
   other files open with the OS default program. A folder is entered.
 - **Drag and drop**: drag an asset onto the Scene viewport to place a prefab or model on the ground under the
   cursor, onto a hierarchy node to place it under that node, or onto an asset field in the inspector.
@@ -103,6 +104,59 @@ not decoded. Everything that touches the GPU or ImGui runs on the UI thread.
 
 The default layout docks the Assets window along the bottom-left. The layout version was raised, so existing
 editor layouts are rebuilt once to show it there.
+
+## Materials
+
+The Materials window (**Window > Materials**) edits the material of every primitive of the selected model node.
+
+- **Primitive list.** One row per primitive: `[index] glTF material name`. Rows are per primitive, so two
+  primitives that share a material name are edited separately.
+- **Fields.** Base colour, metallic, roughness, normal scale, occlusion strength, alpha mode (opaque, mask with
+  cutoff, blend), double-sided and unlit. Emissive colour and strength. Specular, IOR, clearcoat, transmission,
+  thickness and attenuation. The NOX weather, flake and interior fields. Sheen, anisotropy, iridescence and
+  dispersion are stored and written to the file but not shaded yet.
+- **Textures and UV transforms.** One entry per texture slot: base colour, normal, metallic-roughness, emissive,
+  occlusion, specular, specular colour, transmission, clearcoat and clearcoat roughness (the two clearcoat slots are
+  stored but not sampled yet, see [rendering_components.md](rendering_components.md#gltf-material-support)). **Pick...** assigns a
+  file from `textures/` (sRGB for base colour, emissive and specular colour, linear for the rest), **Clear**
+  removes the slot and **Revert** restores the imported texture. Each slot has a UV set (`TEXCOORD_0` or
+  `TEXCOORD_1`), an offset, a scale and a rotation in degrees, applied as `uv' = T * R * S * uv`
+  (KHR_texture_transform).
+- **Live preview.** Every change shows at once. A continuous edit (drag, slider, text) is one undo step labelled
+  "Edit material". Each texture pick, clear or revert and each UV change is one step when it completes.
+  **Reset to imported** is its own step.
+- **Reset to imported** restores the primitive's glTF import values, captured before any scene override, and
+  removes this primitive's override entry from the node. Name-only entries in the file are not removed.
+- **Save as scene override** writes the primitive's state into the node's `material_overrides` (authored extras),
+  replacing the entry for the same primitive. Save the scene (Ctrl+S) to keep it.
+
+### Material overrides in the scene file
+
+```json
+"material_overrides": [
+  { "match": "paint", "base_color": [0.8, 0.1, 0.1, 1], "roughness": 0.3 },
+  { "match": "glass", "slot": 4, "alpha_mode": "blend", "double_sided": true,
+    "textures": { "base_color": "textures/decal.png", "emissive": null },
+    "texture_transforms": { "base_color": { "offset": [0.5, 0], "scale": [2, 2], "rotation_degrees": 45, "texcoord": 1 } } }
+]
+```
+
+- `match` is a case-insensitive substring of the glTF material name; `*` matches every material. This is the
+  format that predates per-primitive editing and it is unchanged.
+- `slot` is an optional primitive index into the model (the number the Materials window shows). When present the
+  entry applies only to that primitive, and `match` must also match if it is given. Entries without `slot` behave
+  as before.
+- Entries apply in file order; a later entry wins for the same primitive.
+- `textures` maps a slot name to a file path, or to `null` to clear the slot. Unknown slot names are reported in
+  the console and skipped.
+- `texture_transforms` maps a slot name to `offset`, `scale`, `rotation_degrees` and `texcoord`; every field is
+  optional.
+- Slot names: `base_color`, `normal`, `metallic_roughness`, `emissive`, `occlusion`, `specular`,
+  `specular_color`, `transmission`, `clearcoat`, `clearcoat_roughness`.
+- The numeric and flag keys are listed in [nfs2015/configuration.md](nfs2015/configuration.md#materials).
+
+The imported state each primitive is reset to is captured in `Scene::importedMaterials` when the glTF loads,
+before overrides are applied (`src/Scene.cpp`, `src/SceneLoader.cpp` for the override reader).
 
 ## Undo and redo
 

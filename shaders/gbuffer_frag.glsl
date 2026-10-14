@@ -9,6 +9,7 @@ in vec2 TexCoords;
 in vec2 TexCoords1;
 in mat3 TBN;
 in vec4 RawTangent;  // Receive tangent with handedness (w component)
+in vec4 VertColor;   // COLOR_0 (white when absent)
 flat in uint TransformID;
 in vec3 ObjectPos;
 in vec3 ObjectNormal;
@@ -88,6 +89,12 @@ uniform int specularUVSet = 0;
 uniform int specularColorUVSet = 0;
 uniform int transmissionUVSet = 0;
 
+// KHR_texture_transform per slot (MaterialDesc::TextureSlot order), uv' = mat3 * (uv, 1)
+uniform mat3 uvXform[10];
+
+// KHR_materials_unlit: base colour is written as emission, no lighting terms
+uniform bool unlit = false;
+
 uniform bool uSpecularAA = true;
 
 // Window interior mapping (includes/interior_mapping.glsl). 0 = off, 1 = parallax room, 2 = flat
@@ -106,7 +113,9 @@ uniform float interiorFarDistance = -1.0;    // flat beyond this distance (m); <
 uniform mat4 view;   // camera view matrix (eye position for interior parallax)
 
 void main() {
-    vec3 N = normalize(WorldNormal);
+    // Double-sided back faces use the reversed surface normal (glTF doubleSided).
+    float faceSign = gl_FrontFacing ? 1.0 : -1.0;
+    vec3 N = normalize(WorldNormal) * faceSign;
     float normalMapVariance = 0.0; // Toksvig term from the mip-filtered normal length
     
     //  Normal mapping 
@@ -118,7 +127,7 @@ void main() {
         mat3 orthonormalTBN = mat3(T, B, N);
 
         // Sample normal map in tangent space (range [0,1])
-        vec3 tangentNormal = texture(texture_normal, SelectUVSet(normalUVSet, TexCoords, TexCoords1)).rgb;
+        vec3 tangentNormal = texture(texture_normal, SelectUVSetXform(normalUVSet, TexCoords, TexCoords1, uvXform[1])).rgb;
         
         // Convert from [0,1] to [-1,1] range
         tangentNormal = tangentNormal * 2.0 - 1.0;
@@ -142,9 +151,9 @@ void main() {
 
     // Canonical metallic-roughness workflow.
     // Legacy spec-gloss inputs are normalized into the same runtime contract.
-    vec4 baseColor = baseColorFactor;
+    vec4 baseColor = baseColorFactor * VertColor;
     if (hasBaseColorTexture) {
-        baseColor *= texture(texture_diffuse, SelectUVSet(baseColorUVSet, TexCoords, TexCoords1));
+        baseColor *= texture(texture_diffuse, SelectUVSetXform(baseColorUVSet, TexCoords, TexCoords1, uvXform[0]));
     }
     if (alphaMode == 1 && baseColor.a < alphaCutoff) {
         discard;
@@ -157,16 +166,16 @@ void main() {
     float specFactorSample = 1.0;
     if (hasSpecularTexture) {
         // KHR_materials_specular uses alpha channel for scalar strength.
-        specFactorSample = texture(texture_specular, SelectUVSet(specularUVSet, TexCoords, TexCoords1)).a;
+        specFactorSample = texture(texture_specular, SelectUVSetXform(specularUVSet, TexCoords, TexCoords1, uvXform[5])).a;
     }
 
     vec3 specularColorSample = specularColorFactor;
     if (hasSpecularColorTexture) {
-        specularColorSample *= texture(texture_specular_color, SelectUVSet(specularColorUVSet, TexCoords, TexCoords1)).rgb;
+        specularColorSample *= texture(texture_specular_color, SelectUVSetXform(specularColorUVSet, TexCoords, TexCoords1, uvXform[6])).rgb;
     }
 
     if (hasMetallicRoughnessTexture) {
-        vec4 mrSample = texture(texture_metallic_roughness, SelectUVSet(metallicRoughnessUVSet, TexCoords, TexCoords1));
+        vec4 mrSample = texture(texture_metallic_roughness, SelectUVSetXform(metallicRoughnessUVSet, TexCoords, TexCoords1, uvXform[2]));
         roughness = ClampPerceptualRoughness(mrSample.g * roughnessFactor);
         metallic  = clamp(mrSample.b * metallicFactor, 0.0, 1.0);
     }
@@ -175,18 +184,18 @@ void main() {
 
     float transmission = clamp(transmissionFactor, 0.0, 1.0);
     if (hasTransmissionTexture) {
-        transmission *= texture(texture_transmission, SelectUVSet(transmissionUVSet, TexCoords, TexCoords1)).r;
+        transmission *= texture(texture_transmission, SelectUVSetXform(transmissionUVSet, TexCoords, TexCoords1, uvXform[7])).r;
     }
 
     //  Occlusion (also the cavity term for puddle placement)
     float ao = 1.0;
     if (hasOcclusionTexture) {
-        ao = mix(1.0, texture(texture_occlusion, SelectUVSet(occlusionUVSet, TexCoords, TexCoords1)).r, occlusionStrength);
+        ao = mix(1.0, texture(texture_occlusion, SelectUVSetXform(occlusionUVSet, TexCoords, TexCoords1, uvXform[4])).r, occlusionStrength);
     }
 
     //  Weather: wet substrate, standing water, rain beads (includes/weather_common.glsl)
     float surfaceIor = ior;
-    vec3 geoNormal = normalize(WorldNormal);
+    vec3 geoNormal = normalize(WorldNormal) * faceSign;
     float cavity = hasOcclusionTexture ? (1.0 - ao) : 0.0;
     NoxWetResult wetResult = NoxApplyWetness(WorldPos, geoNormal, cavity, wetnessResponse, puddleResponse,
         metallic, albedo, roughness, N, surfaceIor);
@@ -245,10 +254,23 @@ void main() {
         emissive = emissiveFactor * room * interiorStrength;
     }
     else if (hasEmissiveTexture) {
-        vec3 emissiveTexSample = texture(texture_emissive, SelectUVSet(emissiveUVSet, TexCoords, TexCoords1)).rgb;
+        vec3 emissiveTexSample = texture(texture_emissive, SelectUVSetXform(emissiveUVSet, TexCoords, TexCoords1, uvXform[3])).rgb;
         emissive *= emissiveTexSample;
     }
 
+
+    // KHR_materials_unlit: the base colour is the emitted radiance. Zero albedo and F0 remove every
+    // lighting term (direct, IBL, reflections); emissive strength is forced to 1 for this pixel.
+    float outEmissiveStrength = emissiveStrength;
+    if (unlit) {
+        surface.specularF0 = vec3(0.0);
+        albedo = vec3(0.0);
+        ao = 1.0;
+        metallic = 0.0;
+        emissive = baseColor.rgb;
+        outEmissiveStrength = 1.0;
+        clearcoatRough = 0.0;
+    }
 
     // RT0: Oct normal (RG) + roughness (B) + metallic (A)
     gPackedNormalRM = vec4(EncodeNormalOct(N), roughness, metallic);
@@ -257,7 +279,7 @@ void main() {
     gAlbedoAO = vec4(albedo, ao);
     
     // RT2: Specular F0 (full RGB color) + emissive strength (A)
-    gSpecularF0 = vec4(surface.specularF0, emissiveStrength);
+    gSpecularF0 = vec4(surface.specularF0, outEmissiveStrength);
     
     // RT3: Material ID
     gMaterialID = uMaterialID;

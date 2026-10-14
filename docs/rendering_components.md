@@ -175,3 +175,28 @@ Behaviour and limits:
 - It replaces albedo and roughness only (the pass's existing contract). Lighting is what the surface receives,
   so a decal on an unlit surface stays dark.
 - `normal_blend` is not supported: the pass does not write normals.
+
+## GlTF material support
+
+The importer (`src/Scene.cpp`, `LoadFromGLTF`) logs one line per model listing the extensions it uses and how
+each is handled: `rendered`, `parsed-only`, `image-fallback` or `UNSUPPORTED`. The table is the status as of this
+change.
+
+| Feature | Status |
+| --- | --- |
+| Core metallic-roughness: base colour, metallic (B) and roughness (G) in one texture, occlusion (R), emissive | Rendered. Base colour and emissive are sRGB textures; normal, metallic-roughness and occlusion are linear |
+| Normal maps | Rendered with the glTF convention (+Y up in tangent space, bitangent = cross(N, T) * w, no green flip). Tangents are read from TANGENT or generated |
+| Missing tangents | Generated per vertex from the triangle UV gradients in the normal map's UV set, after its texture transform. Orthonormalised, with handedness from the UV winding. This is not full MikkTSpace |
+| `TEXCOORD_1` | Used by any texture reference that names it (`texCoord`) |
+| `KHR_texture_transform` | Rendered per texture slot: `uv' = T * R * S * uv`, with the `texCoord` override. Also read for specular and transmission references (clearcoat references are stored, see below) |
+| `COLOR_0` | Multiplies the base colour (vec4, or vec3 with alpha 1). Absent = white |
+| `alphaMode` OPAQUE / MASK / BLEND, `alphaCutoff` | Rendered. MASK discards in the G-buffer, forward and shadow passes |
+| `doubleSided` | Rendered. Back faces shade with the reversed normal |
+| `KHR_materials_unlit` | Rendered: base colour is written as emission and no lighting term applies |
+| `KHR_materials_emissive_strength`, `KHR_materials_ior`, `KHR_materials_specular` | Rendered |
+| `KHR_materials_clearcoat` | The factors are rendered with the base normal. The intensity and roughness textures are parsed and stored (editable in the Materials window) but not sampled yet: the deferred and forward passes use every texture unit below 32, and fragment samplers cannot use units 32 and up (binding one crashed the driver at shutdown). The clearcoat normal texture is not parsed |
+| `KHR_materials_transmission`, `KHR_materials_volume` | Rendered (see `transmission_completion_audit.md`) |
+| `KHR_materials_pbrSpecularGlossiness` | Converted to metallic-roughness on import (approximate for the non-diffuse textures) |
+| `KHR_materials_sheen`, `KHR_materials_anisotropy`, `KHR_materials_iridescence`, `KHR_materials_dispersion` | Parsed and stored (editable in the Materials window); not shaded |
+| `KHR_texture_basisu`, `EXT_texture_webp` | stb_image cannot decode KTX2 or WebP. A texture uses its core `source` image when it has one; otherwise it is skipped and the material keeps its factors. The file still loads |
+| `KHR_mesh_quantization` | Accepted: normalized integer accessors are read as floats |

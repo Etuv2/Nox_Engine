@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <SDL/SDL.h>
 #include <SDL/SDL_ttf.h>
@@ -31,6 +32,13 @@ class Scene {
 public:
     // Mesh data from the glTF file
     std::vector<MeshComponent> meshes;
+    // Import-time material state per mesh (before any scene material_overrides): the editor's reset-to-imported.
+    struct ImportedMaterial {
+        MaterialDesc material;
+        std::shared_ptr<Texture> textures[MaterialDesc::SlotCount];
+        std::array<std::string, MaterialDesc::SlotCount> texturePaths;
+    };
+    std::vector<ImportedMaterial> importedMaterials;
     // Dynamic objects (e.g. the player car) are left out of static reflection-probe captures.
     bool excludeFromReflectionCapture = false;
     // Name of the model (file name)
@@ -69,7 +77,10 @@ public:
     // Draw all loaded meshes, with no top-level transform
     void Draw();
 
-    void ComputeTangents(std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices);
+    // Per-vertex tangents for a normal map sampled from TEXCOORD `uvSet` with KHR_texture_transform `uvXform`.
+    // The tangent follows the transformed U axis, so rotated or mirrored normal maps shade correctly.
+    void ComputeTangents(std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices,
+        int uvSet = 0, const TextureTransform& uvXform = TextureTransform());
 
     // Returns bounding box (min/max) of all vertex data in local space
     std::pair<glm::vec3, glm::vec3> GetBoundingBox() const;
