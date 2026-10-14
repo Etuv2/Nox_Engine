@@ -44,6 +44,7 @@ uniform float specularIBLScale = 0.45;   // Specular prefiltered scale
 // Screen-space reflections (SSRPass): rgb = radiance at this frame's pre-exposure, a = confidence
 uniform sampler2D ssrReflection;
 uniform int hasSSR = 0;
+uniform int ssrDebugOnly = 0; // NOX_SSR_DEBUG_VIEW: output the SSR signal alone (no lighting)
 uniform float ssrProbeBlend = 1.0; // weight of local probes where SSR has no hit (ssr_probe_blend)
 
 // SSAO
@@ -479,6 +480,12 @@ void main() {
 	// Physical camera: everything evaluated from scene units is pre-exposed here. Screen-space GI
 	// (SSGI) is gathered from the already pre-exposed bounce buffer and is not scaled again.
 	float preExposure = NoxPreExposure();
+
+	// SSR debug view: the traced signal alone, so each SSR stage can be measured without the lit image.
+	if (ssrDebugOnly == 1) {
+		FragColor = vec4(hasSSR == 1 ? texture(ssrReflection, vTexCoord).rgb : vec3(0.0), 1.0);
+		return;
+	}
 
 	if (lightingOutputMode == 1) {
 		vec3 bounceableIBL = ComputeBounceableIBLSource(N, V, surface, diffuseAO, specularAO);

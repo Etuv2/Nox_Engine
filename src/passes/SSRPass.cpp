@@ -5,6 +5,7 @@
 #include "../RenderContext.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -29,6 +30,17 @@ namespace {
 	// Size of one mip level of a texture whose base level is `base` texels wide.
 	int LevelSize(int base, int level) {
 		return std::max(1, base >> level);
+	}
+
+	// NOX_SSR_DEBUG_VIEW: 1 = raw resolve, 2 = temporal output (the blur chain's input), 3 = composite,
+	// 4 = chosen blur level as a colour ramp, 5 = chosen level as grey (L + 2) / 8 (exact, misses = 0).
+// Non-zero values replace the lit image with the SSR signal.
+	int DebugView() {
+		static const int view = [] {
+			const char* v = std::getenv("NOX_SSR_DEBUG_VIEW");
+			return v ? std::atoi(v) : 0;
+		}();
+		return view;
 	}
 
 	void BindSampler(rhi::ProgramHandle program, const char* name, int unit, rhi::TextureHandle texture) {
@@ -129,6 +141,7 @@ void SSRPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Skybox>&)
 {
 	ctx.ssrTexture = rhi::TextureHandle{};
+	ctx.ssrDebugView = DebugView();
 	if (!ctx.enableSSR || !ctx.enableTAA || !ctx.taaFBO || !ctx.gbufferFBO || !ctx.velocityTex) {
 		m_historyValid = false;
 		return;
@@ -254,6 +267,7 @@ void SSRPass::Execute(RenderContext& ctx,
 	gpu.SetUniform(gpu.GetUniformLocation(program, "uBlurStrength"), std::clamp(ctx.ssrBlurStrength, 0.0f, 4.0f));
 	gpu.SetUniform(gpu.GetUniformLocation(program, "uMaxBlurLevel"),
 		static_cast<float>(std::clamp(ctx.ssrMaxBlurLevel, 0, kBlurLevels - 1)));
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uDebugLevel"), ctx.ssrDebugView == 4 ? 1 : ctx.ssrDebugView == 5 ? 2 : 0);
 	gpu.BindImage(0, m_compositeTex, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 	gpu.Dispatch((m_width + 7) / 8, (m_height + 7) / 8, 1);
 	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
@@ -262,5 +276,9 @@ void SSRPass::Execute(RenderContext& ctx,
 	m_historyIndex = current;
 	m_historyValid = true;
 	++m_frame;
-	ctx.ssrTexture = m_compositeTex;
+	switch (ctx.ssrDebugView) {
+	case 1: ctx.ssrTexture = m_resolveTex; break;
+	case 2: ctx.ssrTexture = m_historyTex[current]; break;
+	default: ctx.ssrTexture = m_compositeTex; break;
+	}
 }
