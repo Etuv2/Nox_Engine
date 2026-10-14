@@ -115,15 +115,19 @@ struct RenderContext {
 	float rtIBLIntensity = 1.0f;  // IBL intensity multiplier
 
 
-	// SSAO settings
-	bool enableSSAO = true;
-	bool ssaoHalfRes = true;
-	float ssaoResolutionScale = 0.5f;
-	float ssaoRadius = 0.75f;   //Keeps AO localized to corners and crevices (was 0.5)
-	float ssaoBias = 0.02f;          //Tighter bias for better contact (was 0.025)
-	float ssaoIntensity = 0.5f;  //Subtle darkening, not overpowering (was 1.0)
-	float ssaoBlurDepthThreshold = 0.015f; // INCREASED: Better edge preservation (was 0.01)
-	float ssaoTemporalAlpha = 0.12f;
+	// HBAO+ ambient occlusion (HBAOPass). Keys: render/RenderSettingsTable.cpp ("ssao*").
+	bool enableSSAO = true;                // ResourceNames::SSAO / GetSSAOTexture(); name kept for scene files
+	float ssaoResolutionScale = 1.0f;      // output AO size relative to the frame (Low tier uses 0.5)
+	float ssaoRadius = 0.75f;              // world-space horizon search radius
+	float ssaoBias = 0.1f;                 // tangent angle bias in radians (suppresses self-occlusion)
+	float ssaoPower = 2.0f;                // exponent applied to the final AO term
+	float ssaoStrength = 1.0f;             // scales the accumulated occlusion before the power
+	float ssaoIntensity = 0.5f;            // lighting blend: how much the AO term darkens ambient/indirect light
+	int ssaoBlurRadius = 4;                // cross-bilateral blur half-width in output pixels
+	float ssaoBlurSharpness = 40.0f;       // depth-edge sharpness of the blur (higher = stronger edge stop)
+	int ssaoDirections = 8;                // horizon directions per pixel (quality, 4..16)
+	int ssaoSteps = 4;                     // samples per direction (quality, 2..8)
+	rhi::TextureHandle ssaoTexture;        // this frame's AO output (set by HBAOPass; inspected by debug views)
 
 
 	// Indirect diffuse settings

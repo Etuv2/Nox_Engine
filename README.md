@@ -41,7 +41,7 @@ data); the engine itself contains no game content.
 - **HDR Rendering**: High dynamic range support with configurable tone mapping
 - **Light Propagation Volumes (LPV)**: Global illumination using reflective shadow maps
 - **Surfel-Based Global Illumination**: Real-time GI approximation using surfels
-- **Screen-Space Ambient Occlusion (SSAO)**: High-quality AO in screen space
+- **Horizon-Based Ambient Occlusion (HBAO+)**: Enabled by default; deinterleaved quarter-res horizon search with a depth-aware blur
 - **Screen-Space Global Illumination (SSGI)**: Indirect lighting approximation
 
 ### Lighting System

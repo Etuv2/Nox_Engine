@@ -91,11 +91,16 @@ private:
 	float m_taaLumaWeight = 0.2f;
 	bool m_taaUseYCoCg = false;
 	bool m_enableSSAO = false;
-	bool m_ssaoHalfRes = true;
-	float m_ssaoResolutionScale = 0.5f;
-	float m_ssaoRadius = 1.0f;
-	float m_ssaoIntensity = 1.0f;
-	float m_ssaoTemporalAlpha = 0.12f;
+	float m_ssaoResolutionScale = 1.0f;
+	float m_ssaoRadius = 0.75f;
+	float m_ssaoBias = 0.1f;
+	float m_ssaoPower = 2.0f;
+	float m_ssaoStrength = 1.0f;
+	float m_ssaoIntensity = 0.5f;
+	int m_ssaoBlurRadius = 4;
+	int m_ssaoDirections = 8;
+	int m_ssaoSteps = 4;
+	float m_ssaoBlurSharpness = 40.0f;
 
 	// Indirect diffuse settings
 	bool m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;

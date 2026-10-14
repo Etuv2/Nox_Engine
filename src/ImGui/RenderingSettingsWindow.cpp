@@ -133,11 +133,16 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 
 	// SSAO settings
 	m_enableSSAO = true;
-	m_ssaoHalfRes = true;
-	m_ssaoResolutionScale = 0.5f;
+	m_ssaoResolutionScale = 1.0f;
 	m_ssaoRadius = 0.75f;
+	m_ssaoBias = 0.1f;
+	m_ssaoPower = 2.0f;
+	m_ssaoStrength = 1.0f;
 	m_ssaoIntensity = 0.5f;
-	m_ssaoTemporalAlpha = 0.12f;
+	m_ssaoBlurRadius = 4;
+	m_ssaoBlurSharpness = 40.0f;
+	m_ssaoDirections = 8;
+	m_ssaoSteps = 4;
 
 	// Indirect diffuse settings
 	m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;
@@ -299,11 +304,16 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 
 	// SSAO settings
 	m_enableSSAO = ctx.enableSSAO;
-	m_ssaoHalfRes = ctx.ssaoHalfRes;
 	m_ssaoResolutionScale = ctx.ssaoResolutionScale;
 	m_ssaoRadius = ctx.ssaoRadius;
+	m_ssaoBias = ctx.ssaoBias;
+	m_ssaoPower = ctx.ssaoPower;
+	m_ssaoStrength = ctx.ssaoStrength;
 	m_ssaoIntensity = ctx.ssaoIntensity;
-	m_ssaoTemporalAlpha = ctx.ssaoTemporalAlpha;
+	m_ssaoBlurRadius = ctx.ssaoBlurRadius;
+	m_ssaoDirections = ctx.ssaoDirections;
+	m_ssaoSteps = ctx.ssaoSteps;
+	m_ssaoBlurSharpness = ctx.ssaoBlurSharpness;
 
 	// Indirect diffuse settings
 	m_enableIndirectDiffuse = ctx.enableIndirectDiffuse;
@@ -472,13 +482,16 @@ void RenderingSettingsWindow::SyncToRenderer() {
 
 	// SSAO settings
 	ctx.enableSSAO = m_enableSSAO;
-	ctx.ssaoHalfRes = m_ssaoHalfRes;
 	ctx.ssaoResolutionScale = m_ssaoResolutionScale;
 	ctx.ssaoRadius = m_ssaoRadius;
-	ctx.ssaoBias = 0.025f; // Keep default bias
+	ctx.ssaoBias = m_ssaoBias;
+	ctx.ssaoPower = m_ssaoPower;
+	ctx.ssaoStrength = m_ssaoStrength;
 	ctx.ssaoIntensity = m_ssaoIntensity;
-	ctx.ssaoBlurDepthThreshold = 0.01f; // Keep default
-	ctx.ssaoTemporalAlpha = m_ssaoTemporalAlpha;
+	ctx.ssaoBlurRadius = m_ssaoBlurRadius;
+	ctx.ssaoDirections = m_ssaoDirections;
+	ctx.ssaoSteps = m_ssaoSteps;
+	ctx.ssaoBlurSharpness = m_ssaoBlurSharpness;
 
 	// Indirect diffuse settings
 	ctx.enableIndirectDiffuse = m_enableIndirectDiffuse;
@@ -755,7 +768,7 @@ void RenderingSettingsWindow::Render() {
 			if (m_modularRenderer) {
 				auto& dbgCtx = m_modularRenderer->GetContext();
 				static const char* kDebugViews[] = { "Off", "Lit HDR before TAA", "TAA output", "SSR", "Bloom",
-					"Motion vectors", "|Post source - TAA| x8", "TAA output (no grain/dither)" };
+					"Motion vectors", "|Post source - TAA| x8", "TAA output (no grain/dither)", "Ambient occlusion" };
 				ImGui::Combo("Inspect image", &dbgCtx.postDebugView, kDebugViews, IM_ARRAYSIZE(kDebugViews));
 			}
 
@@ -860,30 +873,50 @@ void RenderingSettingsWindow::Render() {
 			}
 
 			ImGui::Separator();
-			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "SSAO (Screen Space Ambient Occlusion):");
+			ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "Ambient occlusion (HBAO+):");
 
-			if (ImGui::Checkbox("Enable SSAO", &m_enableSSAO)) {
+			if (ImGui::Checkbox("Enable AO", &m_enableSSAO)) {
 				SyncToRenderer(); // Apply immediately
 			}
 
 			if (m_enableSSAO) {
-				if (ImGui::Checkbox("SSAO Half Resolution", &m_ssaoHalfRes)) {
+				if (ImGui::SliderFloat("AO Resolution Scale", &m_ssaoResolutionScale, 0.25f, 1.0f, "%.2f")) {
 					SyncToRenderer();
 				}
 
-				if (ImGui::SliderFloat("SSAO Resolution Scale", &m_ssaoResolutionScale, 0.25f, 1.0f, "%.2f")) {
+				if (ImGui::SliderFloat("AO Radius (m)", &m_ssaoRadius, 0.05f, 4.0f, "%.2f")) {
+					SyncToRenderer(); // Apply immediately
+				}
+
+				if (ImGui::SliderFloat("AO Angle Bias (rad)", &m_ssaoBias, 0.0f, 1.2f, "%.2f")) {
 					SyncToRenderer();
 				}
 
-				if (ImGui::SliderFloat("SSAO Radius", &m_ssaoRadius, 0.1f, 2.0f, "%.2f")) {
+				if (ImGui::SliderFloat("AO Strength", &m_ssaoStrength, 0.0f, 4.0f, "%.2f")) {
+					SyncToRenderer();
+				}
+
+				if (ImGui::SliderFloat("AO Power", &m_ssaoPower, 0.5f, 4.0f, "%.2f")) {
+					SyncToRenderer();
+				}
+
+				if (ImGui::SliderFloat("AO Intensity (lighting)", &m_ssaoIntensity, 0.0f, 2.0f, "%.2f")) {
 					SyncToRenderer(); // Apply immediately
 				}
 
-				if (ImGui::SliderFloat("SSAO Intensity", &m_ssaoIntensity, 0.0f, 2.0f, "%.2f")) {
-					SyncToRenderer(); // Apply immediately
+				if (ImGui::SliderInt("AO Directions", &m_ssaoDirections, 4, 16)) {
+					SyncToRenderer();
 				}
 
-				if (ImGui::SliderFloat("SSAO Temporal Alpha", &m_ssaoTemporalAlpha, 0.0f, 1.0f, "%.2f")) {
+				if (ImGui::SliderInt("AO Steps", &m_ssaoSteps, 2, 8)) {
+					SyncToRenderer();
+				}
+
+				if (ImGui::SliderInt("AO Blur Radius (px)", &m_ssaoBlurRadius, 1, 8)) {
+					SyncToRenderer();
+				}
+
+				if (ImGui::SliderFloat("AO Blur Sharpness", &m_ssaoBlurSharpness, 0.0f, 200.0f, "%.1f")) {
 					SyncToRenderer();
 				}
 			}
@@ -1769,14 +1802,16 @@ void RenderingSettingsWindow::ApplyQualityPreset(int quality) {
 		m_enableShadows = false;
 		m_enableBloom = false;
 		m_enableTAA = false;
-		m_enableSSAO = false;
+		m_enableSSAO = true;
+		m_ssaoResolutionScale = 0.5f; // half-res AO on Low
 		m_textureFiltering = 1; // Linear
 		break;
 	case 1: // Medium
 		m_enableShadows = true;
 		m_enableBloom = false;
 		m_enableTAA = false;
-		m_enableSSAO = false;
+		m_enableSSAO = true;
+		m_ssaoResolutionScale = 1.0f;
 		m_textureFiltering = 2; // Trilinear
 		break;
 	case 2: // High
@@ -1784,6 +1819,7 @@ void RenderingSettingsWindow::ApplyQualityPreset(int quality) {
 		m_enableBloom = true;
 		m_enableTAA = true;
 		m_enableSSAO = true;
+		m_ssaoResolutionScale = 1.0f;
 		m_textureFiltering = 3; // Anisotropic
 		break;
 	case 3: // Ultra
@@ -1791,6 +1827,7 @@ void RenderingSettingsWindow::ApplyQualityPreset(int quality) {
 		m_enableBloom = true;
 		m_enableTAA = true;
 		m_enableSSAO = true;
+		m_ssaoResolutionScale = 1.0f;
 		m_textureFiltering = 3; // Anisotropic
 		m_shadowBias = 0.0003f; // Tighter shadows
 		break;
@@ -1842,11 +1879,16 @@ void RenderingSettingsWindow::ResetToDefaults() {
 
 	// SSAO - match RenderContext defaults
 	m_enableSSAO = true;
-	m_ssaoHalfRes = true;
-	m_ssaoResolutionScale = 0.5f;
+	m_ssaoResolutionScale = 1.0f;
 	m_ssaoRadius = 0.75f;
+	m_ssaoBias = 0.1f;
+	m_ssaoPower = 2.0f;
+	m_ssaoStrength = 1.0f;
 	m_ssaoIntensity = 0.5f;
-	m_ssaoTemporalAlpha = 0.12f;
+	m_ssaoBlurRadius = 4;
+	m_ssaoBlurSharpness = 40.0f;
+	m_ssaoDirections = 8;
+	m_ssaoSteps = 4;
 
 	// Indirect diffuse - match RenderContext defaults
 	m_enableIndirectDiffuse = RenderContext::IndirectDiffuseDefaults::Enable;

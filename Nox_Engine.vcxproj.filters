@@ -163,8 +163,8 @@
     <Filter Include="Source Files\misc\shaders\skybox">
       <UniqueIdentifier>{f59872ec-440f-4d33-8dd0-f80b4eb9b541}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\misc\shaders\ssao">
-      <UniqueIdentifier>{f43e0448-b8ba-4fa3-883e-c213c2e6a3d4}</UniqueIdentifier>
+    <Filter Include="Source Files\misc\shaders\hbao">
+      <UniqueIdentifier>{18ce0df7-cc50-4015-8d9c-cdafa8b0b858}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\misc\shaders\svgf">
       <UniqueIdentifier>{21d375c6-8631-41c1-b1bc-5e249e71a0a5}</UniqueIdentifier>
@@ -624,7 +624,7 @@
     <ClCompile Include="src\passes\ShadowPass.cpp">
       <Filter>Source Files\passes</Filter>
     </ClCompile>
-    <ClCompile Include="src\passes\SSAOPass.cpp">
+    <ClCompile Include="src\passes\HBAOPass.cpp">
       <Filter>Source Files\passes</Filter>
     </ClCompile>
     <ClCompile Include="src\passes\SSRPass.cpp">
@@ -1289,7 +1289,7 @@
     <ClInclude Include="src\passes\ShadowPass.h">
       <Filter>Header Files\passes</Filter>
     </ClInclude>
-    <ClInclude Include="src\passes\SSAOPass.h">
+    <ClInclude Include="src\passes\HBAOPass.h">
       <Filter>Header Files\passes</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\SSRPass.h">
@@ -1561,11 +1561,17 @@
     <None Include="scenes\mat_test.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
-    <None Include="shaders\ssao_blur.glsl">
-      <Filter>Source Files\misc\shaders\ssao</Filter>
+    <None Include="shaders\hbao_deinterleave_comp.glsl">
+      <Filter>Source Files\misc\shaders\hbao</Filter>
     </None>
-    <None Include="shaders\ssao.glsl">
-      <Filter>Source Files\misc\shaders\ssao</Filter>
+    <None Include="shaders\hbao_compute_comp.glsl">
+      <Filter>Source Files\misc\shaders\hbao</Filter>
+    </None>
+    <None Include="shaders\hbao_reinterleave_comp.glsl">
+      <Filter>Source Files\misc\shaders\hbao</Filter>
+    </None>
+    <None Include="shaders\hbao_blur_comp.glsl">
+      <Filter>Source Files\misc\shaders\hbao</Filter>
     </None>
     <None Include="shaders\kawase_blur.glsl">
       <Filter>Source Files\misc\shaders\blur</Filter>
@@ -1691,6 +1697,9 @@
       <Filter>Source Files\misc\shaders\ibl</Filter>
     </None>
     <None Include="shaders\screen_space_shadows_comp.glsl">
+      <Filter>Source Files\misc\shaders\shadow</Filter>
+    </None>
+    <None Include="shaders\screen_space_bilateral_resolve.glsl">
       <Filter>Source Files\misc\shaders\shadow</Filter>
     </None>
     <None Include="shaders\lpv_convert_comp.glsl">

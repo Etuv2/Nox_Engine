@@ -65,6 +65,10 @@ values outside them are clamped.
 | `skybox_exposure` | float | 0 .. 16 |
 | `ssao`, `ssgi`, `contact_shadows` | bool | |
 | `ssao_intensity` | float | 0 .. 2 |
+| `ssao_resolution_scale`, `ssao_strength`, `ssao_power` | float | 0.25 .. 1, 0 .. 4, 0.5 .. 4 |
+| `ssao_radius` (m), `ssao_bias` (rad) | float | 0.05 .. 4, 0 .. 1.2 |
+| `ssao_blur_radius`, `ssao_directions`, `ssao_steps` | int | 1 .. 8, 4 .. 16, 2 .. 8 |
+| `ssao_blur_sharpness` | float | 0 .. 200 |
 | `ssgi_strength` | float | 0 .. 4 |
 | `taa` | bool | |
 | `taa_blend` | float | 0 .. 1 |
