@@ -224,3 +224,4 @@ data/shuto/raw/
 !tests/fixtures/**/models/
 !tests/fixtures/**/hdrs/
 !tests/fixtures/**/captures/
+projects/*/.luarc.json

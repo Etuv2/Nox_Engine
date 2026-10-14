@@ -23,6 +23,7 @@
 #include "../editor/InspectorUndo.h"
 #include "../scene/Prefab.h"
 #include "InspectorWidgets.h"
+#include "ContentBrowser.h"
 
 #include "rhi/RHI.h"
 #include <SDL/SDL.h>
@@ -50,6 +51,9 @@ using nlohmann::json;
 namespace {
 	const char* kSettingsPath = "settings/editor_settings.json"; // per-user (AssetIO::UserDir)
 	const char* kPresetsPath = "config/launch_presets.json";
+	// Dock layout version: bump to rebuild the default arrangement (2: Content Browser docked along the bottom;
+	// 3: the bottom drawer is taller so the Content Browser's details strip fits).
+	const int kLayoutVersion = 3;
 
 	// Opens a logical asset in the external editor (line 0 = top); failures are toasted.
 	void OpenAssetExternally(const std::string& logicalPath, int line) {
@@ -145,6 +149,14 @@ namespace {
 		return glm::vec3(glm::inverse(parent->GetWorldPosition4x4()) * glm::vec4(world, 1.0f));
 	}
 
+	// Placement of a new asset: the given world point (converted to the parent's space) or, without one, in front of the camera.
+	glm::vec3 PlacementPosition(Core& core, const std::shared_ptr<SceneNode>& parent, const glm::vec3* at)
+	{
+		if (!at) return SpawnPosition(core, parent, 0.0f);
+		if (!parent) return *at;
+		return glm::vec3(glm::inverse(parent->GetWorldPosition4x4()) * glm::vec4(*at, 1.0f));
+	}
+
 	std::shared_ptr<SceneNode> FindParent(const std::shared_ptr<SceneNode>& root, const SceneNode* child) {
 		if (!root) return nullptr;
 		for (const auto& c : root->children) {
@@ -170,7 +182,7 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		m_showAuthoring = s.value("authoring_overlay", m_showAuthoring);
 		m_extSaved = s.value("extension_panels", json::object());
 		if (!m_extSaved.is_object()) m_extSaved = json::object();
-		m_layoutBuilt = s.value("layout_built", false);
+		m_layoutBuilt = s.value("layout_built", false) && s.value("layout_version", 0) >= kLayoutVersion;
 		m_selectedPreset = s.value("preset", m_selectedPreset);
 		const json o = s.value("selection_outline", json::object());
 		if (o.is_object()) {
@@ -184,6 +196,11 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 	}
 	m_presets = AssetIO::ReadJsonOrNull(kPresetsPath);
 	if (!m_presets.is_object()) m_presets = json::object();
+	m_contentBrowser = std::make_unique<nox::content::ContentBrowser>(nox::content::ContentBrowser::Host{
+		[this] { return m_core.IsPlaying(); },
+		[this](const std::string& scene) { RequestScene(scene); },
+		[this](const std::string& asset) { PlaceAssetInScene(asset, m_legacy.GetSelectedNode(), nullptr); },
+	});
 	// The layout ini may have been deleted: rebuild when no dock node exists yet.
 	const std::string userLayout = AssetIO::UserOutputPath("editor_layout.ini");
 	const bool haveLayout = (!userLayout.empty() && fs::exists(userLayout)) || AssetIO::Exists("config/editor_layout.ini");
@@ -213,6 +230,7 @@ void EditorWorkspace::SaveSettings() const
 	s["extension_panels"] = ext;
 	s["authoring_overlay"] = m_showAuthoring;
 	s["layout_built"] = m_layoutBuilt;
+	s["layout_version"] = kLayoutVersion;
 	s["preset"] = m_selectedPreset;
 	s["selection_outline"] = {
 		{"color", json::array({ m_outline.color[0], m_outline.color[1], m_outline.color[2] })},
@@ -356,12 +374,13 @@ void EditorWorkspace::BuildDefaultLayout(unsigned int dockspaceId)
 	ImGuiID center = dockspaceId;
 	ImGuiID left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.17f, nullptr, &center);
 	ImGuiID right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.24f, nullptr, &center);
-	ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.28f, nullptr, &center);
-	ImGuiID leftBottom = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.45f, nullptr, &left);
+	ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.36f, nullptr, &center);
+	// The Content Browser ("Assets") is a drawer along the bottom-left; Console, Build and the tools share the rest.
+	ImGuiID assets = ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Left, 0.62f, nullptr, &bottom);
 	ImGui::DockBuilderDockWindow(kWinScene, center);
 	ImGui::DockBuilderDockWindow(kWinGame, center);
 	ImGui::DockBuilderDockWindow(kWinHierarchy, left);
-	ImGui::DockBuilderDockWindow(kWinAssets, leftBottom);
+	ImGui::DockBuilderDockWindow(kWinAssets, assets);
 	ImGui::DockBuilderDockWindow(kWinInspector, right);
 	ImGui::DockBuilderDockWindow(kWinMaterials, right);
 	ImGui::DockBuilderDockWindow(kWinLighting, right);
@@ -676,6 +695,17 @@ void EditorWorkspace::DrawSceneViewport()
 	}
 	DrawViewportImage(m_scene);
 	ImGuiIO& io = ImGui::GetIO();
+
+	// Content Browser drop: a prefab or model lands on the ground point under the cursor.
+	if (!m_core.IsPlaying() && ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* asset = ImGui::AcceptDragDropPayload(nox::editor::kAssetDragType)) {
+			glm::vec3 ground;
+			if (ViewportRayToGround(m_scene, io.MousePos, ground)) {
+				PlaceAssetInScene(static_cast<const char*>(asset->Data), m_legacy.GetSelectedNode(), &ground);
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
 
 	// Right mouse held in the viewport: fly camera (WASD/QE, mouse look).
 	if (m_scene.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -1026,8 +1056,7 @@ void EditorWorkspace::DrawHierarchyNode(const std::shared_ptr<SceneNode>& node)
 			}
 		}
 		if (const ImGuiPayload* asset = ImGui::AcceptDragDropPayload(nox::editor::kAssetDragType)) {
-			const std::string path(static_cast<const char*>(asset->Data));
-			if (nox::prefab::IsPrefabPath(path)) InstantiatePrefabFromAsset(path, node);
+			PlaceAssetInScene(static_cast<const char*>(asset->Data), node, nullptr);
 		}
 		ImGui::EndDragDropTarget();
 	}
@@ -1087,8 +1116,7 @@ void EditorWorkspace::DrawHierarchy()
 				}
 			}
 			if (const ImGuiPayload* asset = ImGui::AcceptDragDropPayload(nox::editor::kAssetDragType)) {
-				const std::string path(static_cast<const char*>(asset->Data));
-				if (nox::prefab::IsPrefabPath(path)) InstantiatePrefabFromAsset(path, root);
+				PlaceAssetInScene(static_cast<const char*>(asset->Data), root, nullptr);
 			}
 			ImGui::EndDragDropTarget();
 		}
@@ -1156,16 +1184,31 @@ void EditorWorkspace::AddNodeFromTemplate(const std::string& kind)
 	}
 }
 
-void EditorWorkspace::AddModelFromAsset(const std::string& path)
+void EditorWorkspace::AddModelFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent, const glm::vec3* at)
 {
 	if (m_core.IsPlaying()) return;
-	const auto parent = m_legacy.GetSelectedNode();
-	const glm::vec3 position = SpawnPosition(m_core, parent, 0.0f);
+	const glm::vec3 position = PlacementPosition(m_core, parent, at);
 	if (auto node = m_core.AddModelNode(path, position, parent)) {
 		nox::editor::RecordCreatedNode(m_nodeTable, CoreNodeOps(), UndoSink(), "Add " + fs::path(path).stem().string(), node);
 		SelectNode(node);
 		NoteEdit();
 	}
+}
+
+// Content Browser / asset drops: prefabs and models are placed under parent (at a world point when given).
+bool EditorWorkspace::PlaceAssetInScene(const std::string& path, const std::shared_ptr<SceneNode>& parent, const glm::vec3* at)
+{
+	if (m_core.IsPlaying()) return false;
+	if (nox::prefab::IsPrefabPath(path)) {
+		InstantiatePrefabFromAsset(path, parent, at);
+		return true;
+	}
+	const std::string ext = fs::path(path).extension().string();
+	if (ext == ".glb" || ext == ".gltf" || ext == ".fbx") {
+		AddModelFromAsset(path, parent, at);
+		return true;
+	}
+	return false;
 }
 
 void EditorWorkspace::DrawAddNodeItems()
@@ -1228,10 +1271,10 @@ void EditorWorkspace::BeginSavePrefab(const std::shared_ptr<SceneNode>& node)
 	m_openSavePrefab = true;
 }
 
-void EditorWorkspace::InstantiatePrefabFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent)
+void EditorWorkspace::InstantiatePrefabFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent, const glm::vec3* at)
 {
 	if (m_core.IsPlaying()) return;
-	const glm::vec3 position = SpawnPosition(m_core, parent, 0.0f);
+	const glm::vec3 position = PlacementPosition(m_core, parent, at);
 	nlohmann::json placement = { { "position", { position.x, position.y, position.z } } };
 	std::string error;
 	auto node = m_core.InstantiatePrefabNode(path, parent, placement, &error);
@@ -1252,66 +1295,8 @@ void EditorWorkspace::UnpackPrefabWithUndo(const std::shared_ptr<SceneNode>& nod
 
 void EditorWorkspace::DrawAssets()
 {
-	if (!ImGui::Begin(kWinAssets, &m_showAssets)) { ImGui::End(); return; }
-	static const char* folders[] = { "scenes", "prefabs", "models", "textures", "hdrs", "sounds", "fonts", "config", "shaders", "generated", "projects" };
-	ImGui::SetNextItemWidth(110);
-	if (ImGui::BeginCombo("##folder", m_assetFolder.c_str())) {
-		for (const char* f : folders) if (ImGui::Selectable(f, m_assetFolder == f)) { m_assetFolder = f; m_assetCacheTimer = 0.0f; }
-		ImGui::EndCombo();
-	}
-	ImGui::SameLine();
-	solace::SearchField("##afilter", m_assetFilter, sizeof(m_assetFilter), "Search assets");
-	m_assetCacheTimer -= m_dt;
-	if (m_assetCacheTimer <= 0.0f) {
-		m_assetCacheTimer = 2.0f;
-		m_assetCache.clear();
-		std::error_code ec;
-		AssetIO::ListOptions options;
-		options.recursive = true;
-		m_assetCache = AssetIO::List(m_assetFolder, options);
-		if (m_assetCache.size() > 4000) m_assetCache.resize(4000);
-		std::sort(m_assetCache.begin(), m_assetCache.end());
-	}
-	ImGui::BeginChild("##assets");
-	for (const std::string& path : m_assetCache) {
-		if (!ContainsNoCase(path, m_assetFilter)) continue;
-		const std::string ext = fs::path(path).extension().string();
-		ImGui::PushID(path.c_str());
-		ImGui::Selectable(path.c_str());
-		if (ImGui::BeginDragDropSource()) {
-			ImGui::SetDragDropPayload(nox::editor::kAssetDragType, path.c_str(), path.size() + 1);
-			ImGui::TextUnformatted(path.c_str());
-			ImGui::EndDragDropSource();
-		}
-		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-			if (ext == ".json" && m_assetFolder == "scenes") RequestScene(path);
-			if (ext == ".lua") OpenAssetExternally(path, 0);
-		}
-		if (ImGui::BeginPopupContextItem()) {
-			if (ext == ".json" && m_assetFolder == "scenes" && ImGui::MenuItem("Open Scene")) RequestScene(path);
-			if (ext == ".lua" && ImGui::MenuItem("Open in External Editor")) OpenAssetExternally(path, 0);
-			if (!NoxLua::ProjectRootOf(path).empty() && ImGui::MenuItem("Open Project Folder in External Editor")) {
-				std::string error;
-				if (!ExternalEditor::OpenLogicalFolder(NoxLua::ProjectRootOf(path), error)) ui::Toast(error, ui::ToastKind::Warning);
-			}
-			if (nox::prefab::IsPrefabPath(path) && ImGui::MenuItem("Add to Scene", nullptr, false, !m_core.IsPlaying())) {
-				InstantiatePrefabFromAsset(path, m_legacy.GetSelectedNode());
-			}
-			if ((ext == ".glb" || ext == ".gltf" || ext == ".fbx") && ImGui::MenuItem("Add to Scene", nullptr, false, !m_core.IsPlaying())) {
-				AddModelFromAsset(path);
-			}
-			if (ImGui::MenuItem("Copy Path")) ImGui::SetClipboardText(path.c_str());
-			ImGui::EndPopup();
-		}
-		if (ImGui::IsItemHovered() && ImGui::BeginTooltip()) {
-			std::error_code ec;
-			ImGui::Text("%s\n%.1f KB", path.c_str(), static_cast<double>(fs::file_size(path, ec)) / 1024.0);
-			ImGui::EndTooltip();
-		}
-		ImGui::PopID();
-	}
-	ImGui::EndChild();
-	ImGui::End();
+	// Content Browser (ContentBrowser.h): folder tree, tiles, search, preview, file actions and drag sources.
+	m_contentBrowser->Draw(kWinAssets, &m_showAssets);
 }
 
 void EditorWorkspace::DrawInspector()
@@ -1343,7 +1328,7 @@ void EditorWorkspace::DrawInspector()
 		std::stable_partition(components.begin(), components.end(),
 			[](const nox::reflect::ComponentDesc* d) { return d->builtin; });
 		for (const nox::reflect::ComponentDesc* desc : components) {
-			DrawComponentSection(node, *desc, m_assetCache, nodeNames);
+			DrawComponentSection(node, *desc, m_contentBrowser->AssetPaths(), nodeNames);
 		}
 		DrawAddComponentButton(node);
 
@@ -1881,7 +1866,7 @@ void EditorWorkspace::DrawModals()
 		for (const std::string& path : m_modelChoices) {
 			if (!ContainsNoCase(path, m_modelFilter)) continue;
 			if (ImGui::Selectable(path.c_str())) {
-				AddModelFromAsset(path);
+				AddModelFromAsset(path, m_legacy.GetSelectedNode());
 				ImGui::CloseCurrentPopup();
 			}
 			if (++shown >= 500) break;
@@ -2058,6 +2043,14 @@ void EditorWorkspace::RunSmokeScript()
 		m_core.RequestPlay();   // Play needs a game module (Core::RequestPlay)
 		FocusGame();
 		if (m_core.GetGameModule()) check(m_core.IsPlaying(), "play");
+	}
+	// Content Browser: waits for the first scan, opens images/ (thumbnails) and checks on the next frame that it draws items.
+	if (frame == 60 && m_contentBrowser) {
+		check(m_contentBrowser->WaitForScan(std::chrono::seconds(5)), "content browser scan");
+		check(m_contentBrowser->SmokeNavigate("images"), "content browser opens images/");
+	}
+	if (frame == 61 && m_contentBrowser) {
+		check(m_contentBrowser->Folder() == "images" && m_contentBrowser->VisibleCount() > 0, "content browser draws images/ items");
 	}
 	if (frame == 120) {
 		extern SDL_Window* NoxMainWindow();

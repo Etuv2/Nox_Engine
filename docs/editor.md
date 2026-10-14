@@ -11,7 +11,7 @@ registry components described in [engine_overview.md](engine_overview.md).
 | --- | --- |
 | Hierarchy (`SceneHierarchyWindow`) | The node tree. Select, rename, drag to reparent, right-click for the node menu |
 | Inspector | The selected node's components, built generically from the reflection registry |
-| Assets | Browse project and engine assets. Drag a prefab onto the viewport or a node to instantiate it |
+| Assets (Content Browser) | Browse the project as folders and tiles. Place prefabs and models, open scenes, rename, delete. See [Assets](#assets) |
 | Console, Build Output | Log messages and the output of build and package actions |
 | Lighting, Rendering, Camera, Animation, Performance | Scene-wide settings and diagnostics |
 
@@ -46,6 +46,39 @@ asset file.
 Some components have editor buttons: a method flagged as an editor button (for example an animation's play
 button) is drawn in the inspector and invoked on the node.
 
+## Assets
+
+The Assets window is the Content Browser. It reads the project through `AssetIO` (`src/ImGui/ContentBrowser.cpp`),
+so loose and packed projects show the same tree. Packed assets are read-only: file actions are disabled for them.
+
+- **Folder tree** (left): the project root and every folder below it. Build products and third-party folders
+  (`build`, `external`, `output`, `captures`, `snapshots`, `node_modules`) and dot-folders are skipped.
+- **Items** (right): tiles with a thumbnail, or a **List** with type, size and modified time. The tile size slider
+  sets the tile width (64 to 256 px). Textures show a lazily decoded thumbnail; other types show a typed icon with a
+  badge (scene, prefab, model, script, audio, shader, font).
+- **Breadcrumb** and the Back, Forward and Up buttons (Alt+Left, Alt+Right, Backspace) navigate the folders.
+- **Search** matches logical paths under the current folder (or the whole project from the root). The **type**
+  filter narrows the results.
+- **Details** (bottom): the selected asset's preview, path, type, size and modified time. Textures also show their
+  pixel size.
+- **Double-click** (or Enter): a scene is opened (with the unsaved-changes check); a prefab or model is placed in
+  the scene; a Lua script opens in VS Code when its `code` command is on PATH, else in the OS default editor;
+  other files open with the OS default program. A folder is entered.
+- **Drag and drop**: drag an asset onto the Scene viewport to place a prefab or model on the ground under the
+  cursor, onto a hierarchy node to place it under that node, or onto an asset field in the inspector.
+- **Right-click** an item for Open, Show in Explorer, Copy Path, Duplicate, Rename, Delete and New (folder, scene,
+  Lua script). Right-click the empty area for New, Show Folder in Explorer and Refresh. Delete moves the file to
+  the Recycle Bin after a confirmation. Renaming or deleting does not rewrite references in scenes or prefabs.
+- **Refresh**: a background scan lists the tree every two seconds and rebuilds the index only when a path, size or
+  timestamp changed, so files added or edited outside the editor appear without a restart.
+
+Thumbnails are decoded on two worker threads and uploaded to the GPU at most four per frame. Only tiles on screen
+request a thumbnail. The cache keeps 256 thumbnails and evicts the least recently used one. Files above 64 MB are
+not decoded. Everything that touches the GPU or ImGui runs on the UI thread.
+
+The default layout docks the Assets window along the bottom-left. The layout version was raised, so existing
+editor layouts are rebuilt once to show it there.
+
 ## Undo and redo
 
 - Ctrl+Z undoes and Ctrl+Y redoes. the **Edit** menu has the same two items.
@@ -60,7 +93,8 @@ button) is drawn in the inspector and invoked on the node.
 
 - **Save as Prefab...** on a node writes its subtree to `prefabs/<name>.prefab.json` (the name can be changed in the
   dialog) and the node becomes an instance of it.
-- Drag a prefab from the Assets window onto a node in the hierarchy to place an instance under that node.
+- Drag a prefab from the Assets window onto a node in the hierarchy to place an instance under that node, or onto the
+  Scene viewport to place it on the ground under the cursor.
 - An instance keeps its link to the prefab. Changes to the prefab reach every instance that does not override
   them. Overrides are saved as differences only.
 
@@ -168,7 +202,7 @@ project panel and the console.
 
 `NOX_EDITOR_SMOKE=1` runs scripted checks inside the editor and prints `[Smoke] PASS` or `[Smoke] FAIL` lines
 to the console. They cover undo and redo of a transform edit, Play and Stop restoring the pre-play state,
-viewport resize and saving. Use it for unattended validation of editor changes:
+viewport resize, saving and the Content Browser (it opens `models/` and lists its contents). Use it for unattended validation of editor changes:
 
 ```powershell
 $env:NOX_EDITOR_SMOKE = "1"
