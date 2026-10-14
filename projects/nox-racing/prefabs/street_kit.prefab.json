@@ -1,0 +1,34 @@
+{
+  "type": "model",
+  "name": "StreetKit",
+  "procedural": {
+    "generator": "street_kit",
+    "params": {
+      "seed": 2015,
+      "length": 330.0,
+      "output": "generated/nfs_street",
+      "texture_root": "textures/cc0",
+      "decal_root": "textures/road_decals",
+      "lens_flare_root": "textures/lens_flares",
+      "window_room_root": "textures/window_rooms",
+      "lens_flare_gain": 1.0,
+      "streetlight_spacing": 28.0,
+      "shadowed_streetlights": 2
+    }
+  },
+  "position": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "rotation": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "scale": [
+    1.0,
+    1.0,
+    1.0
+  ]
+}

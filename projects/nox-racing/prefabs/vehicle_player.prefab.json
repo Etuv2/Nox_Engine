@@ -1,0 +1,261 @@
+{
+  "children": [
+    {
+      "exclude_from_reflection_capture": true,
+      "material_overrides": [
+        {
+          "match": "*",
+          "wetness_response": 0.5
+        },
+        {
+          "base_color": [
+            0.86,
+            0.15,
+            0.035
+          ],
+          "clearcoat": 1.0,
+          "clearcoat_roughness": 0.04,
+          "disable_textures": [
+            "base_color",
+            "metallic_roughness"
+          ],
+          "flake_intensity": 0.6,
+          "match": "PaintA",
+          "metallic": 0.12,
+          "rain_bead_response": 1.0,
+          "roughness": 0.3
+        },
+        {
+          "base_color": [
+            0.86,
+            0.15,
+            0.035
+          ],
+          "clearcoat": 1.0,
+          "clearcoat_roughness": 0.04,
+          "disable_textures": [
+            "base_color",
+            "metallic_roughness"
+          ],
+          "flake_intensity": 0.6,
+          "match": "Coloured",
+          "metallic": 0.12,
+          "rain_bead_response": 1.0,
+          "roughness": 0.3
+        },
+        {
+          "match": "Grille",
+          "metallic": 0.0
+        },
+        {
+          "match": "Interior",
+          "metallic": 0.0
+        },
+        {
+          "match": "Engine",
+          "metallic": 0.0
+        },
+        {
+          "clearcoat": 1.0,
+          "clearcoat_roughness": 0.05,
+          "match": "Carbon",
+          "metallic": 0.0,
+          "rain_bead_response": 1.0
+        },
+        {
+          "clearcoat": 1.0,
+          "clearcoat_roughness": 0.05,
+          "match": "CalliperGloss",
+          "metallic": 0.0
+        },
+        {
+          "match": "WindowA",
+          "rain_bead_response": 1.0,
+          "roughness": 0.02
+        },
+        {
+          "base_color": [
+            0.6,
+            0.0,
+            0.0,
+            0.6
+          ],
+          "emissive": [
+            1.0,
+            0.02,
+            0.01
+          ],
+          "emissive_strength": 70.0,
+          "match": "red_glass",
+          "roughness": 0.05
+        },
+        {
+          "alpha_mode": "blend",
+          "base_color": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "match": "contact_shadow",
+          "metallic": 0.0,
+          "roughness": 1.0,
+          "wetness_response": 0.0
+        }
+      ],
+      "name": "PlayerCarBody",
+      "path": "models\\car_r33_rig.glb",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
+    },
+    {
+      "light": {
+        "attenuation": [
+          9.999999747378752e-05,
+          0.0,
+          1.0
+        ],
+        "castsShadows": false,
+        "color": [
+          1.0,
+          0.05000000074505806,
+          0.019999999552965164
+        ],
+        "enabled": true,
+        "intensity": 9.549296379089355,
+        "range": 5.0,
+        "shadowResolution": 1024,
+        "source_radius": 0.30000001192092896,
+        "type": "point"
+      },
+      "name": "TailLight",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "light"
+    },
+    {
+      "light": {
+        "attenuation": [
+          9.999999747378752e-05,
+          0.0,
+          1.0
+        ],
+        "castsShadows": false,
+        "color": [
+          0.949999988079071,
+          0.9700000286102295,
+          1.0
+        ],
+        "cutOff": 14.0,
+        "enabled": false,
+        "intensity": 288.66900634765625,
+        "outerCutOff": 30.0,
+        "range": 81.30000305175781,
+        "shadowResolution": 1024,
+        "source_radius": 0.05000000074505806,
+        "type": "spot"
+      },
+      "name": "Headlight_L",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        176.00003051757812,
+        15.128421783447266,
+        150.53294372558594
+      ],
+      "scale": [
+        1.000000238418579,
+        0.9999999403953552,
+        1.000000238418579
+      ],
+      "type": "light"
+    },
+    {
+      "light": {
+        "attenuation": [
+          9.999999747378752e-05,
+          0.0,
+          1.0
+        ],
+        "castsShadows": false,
+        "color": [
+          0.949999988079071,
+          0.9700000286102295,
+          1.0
+        ],
+        "cutOff": 14.0,
+        "enabled": false,
+        "intensity": 286.4788818359375,
+        "outerCutOff": 30.0,
+        "range": 45.0,
+        "shadowResolution": 1024,
+        "source_radius": 0.05000000074505806,
+        "type": "spot"
+      },
+      "name": "Headlight_R",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        -3.9999778270721436,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "light"
+    }
+  ],
+  "name": "PlayerCar",
+  "position": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "rotation": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "scale": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "type": "node"
+}

@@ -141,3 +141,41 @@ prefab instance that was destroyed and re-created keeps its prefab link. Details
 | Editor UI | `src/ImGui/EditorWorkspace.cpp` |
 | Lua `ctx:instantiate` | `src/scripting/LuaScene.cpp` |
 | Tests | `tests/native/test_scene_roundtrip.cpp` (`Prefab.*`, `SceneRoundTrip.*`) |
+
+## Project prefabs
+
+Prefabs that ship with a game project live under the project's folder, with logical paths relative to the repository
+root (asset paths are root-relative, as in `"hud": "projects/nox-racing/config/hud.json"`).
+
+| Prefab | Root node | Used by | Notes |
+| --- | --- | --- | --- |
+| `projects/nox-racing/prefabs/vehicle_player.prefab.json` | `PlayerCar` | `scenes/nfs_sprint.json` | R33 rig: `PlayerCarBody` (`models/car_r33_rig.glb`, paint and glass material overrides), `TailLight`, `Headlight_L`, `Headlight_R`. |
+| `projects/nox-racing/prefabs/vehicle_player_night.prefab.json` | `PlayerCar` | `scenes/nfs_night_street.json`, `scenes/nfs_night_rain.json`, `scenes/nfs_dawn_street.json` | Street-night rig (`models/car.glb`, scale 100, `Headlight_L`/`Headlight_R` spots, `TailLight` point). The three scenes had identical copies of this subtree. |
+| `projects/nox-racing/prefabs/street_kit.prefab.json` | `StreetKit` | `scenes/nfs_night_street.json`, `scenes/nfs_night_rain.json`, `scenes/nfs_dawn_street.json` | Procedural `street_kit` model (streetlights, road decals and window rooms, generated when the scene loads). Identical in the three scenes. |
+
+Each scene places its prefab with a reference that carries only the placement (`prefab`, `name`, `position`,
+`rotation`, `scale`), so the content is authored once. Node names are unchanged: the racing game finds `PlayerCar`
+(`game.player_node`) and `PlayerCarBody` (`game.body_node`) by name. The vehicle definition
+(`projects/nox-racing/data/vehicles/r33.json`) and the scene's `game` block are not prefab content; they stay in the
+scene and in data.
+
+The three night scenes use the same placement and content, so they need no overrides. The sprint scene uses a different
+rig and lights, so it has its own vehicle prefab rather than overrides on the night one.
+
+Packaging follows `nodes.**.prefab` references from scenes (`packaging/dependency_rules.json`), and nested prefabs
+through their own `prefab` keys, so packed builds include every prefab and its models and textures. Procedural inputs
+declared in a prefab (for example `texture_root` of `street_kit`) are packed by the generic reference scan of prefab
+documents. `tests/PackagingTests.ps1` covers both cases.
+
+Considered and not made into prefabs:
+
+- The racing HUD. It is drawn by Lua (`projects/nox-racing/scripts/ui/hud.lua`) from `projects/nox-racing/config/hud.json`,
+  which the sprint scene names with its `game.hud` key. No racing scene has Gui nodes or widgets, so there is no node
+  subtree to turn into a prefab without adding nodes that change what the scene does.
+- The chase camera. It is the Lua module `projects/nox-racing/scripts/camera/chase.lua`, configured by the sprint scene's
+  `game.camera` block. No racing scene has a camera node for it.
+- Checkpoints and finish gates. They are data in the sprint scene's `game.events`, and only that scene has them.
+- The sprint scene's district `StreetKit` (generator `district`, its own parameters). Only one scene uses it.
+- AI or traffic cars. None exist in any scene or script.
+
+`projects/sample-arena` has no repeated subtrees either; its entities are single nodes (`Player`, `Mover`).
