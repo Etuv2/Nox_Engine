@@ -11,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <filesystem>
 #include <deque>
 #include <functional>
 #include <map>
@@ -97,6 +98,8 @@ private:
 
 	std::shared_ptr<const Index> CurrentIndex() const;
 	void ScanLoop();
+	void WalkLoose(const std::filesystem::path& root, std::vector<Entry>& out);
+	void WalkLogical(std::vector<Entry>& out);
 	void ThumbLoop();
 	void RequestRescan();
 	void DrainThumbs();
