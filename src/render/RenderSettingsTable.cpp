@@ -223,6 +223,14 @@ std::vector<RenderSetting> BuildTable() {
 	t.push_back(FloatSetting("ssr_thickness", kSsr, "Thickness (m)", &RenderContext::ssrThickness, 0.01, 2.0, 0.01));
 	t.push_back(FloatSetting("ssr_temporal_blend", kSsr, "Temporal blend", &RenderContext::ssrTemporalBlend, 0.0, 1.0, 0.01));
 	t.push_back(IntSetting("ssr_resolve_samples", kSsr, "Resolve samples", &RenderContext::ssrResolveSamples, 1.0, 16.0, 1.0));
+	t.push_back(FloatSetting("ssr_blur_strength", kSsr, "Blur strength", &RenderContext::ssrBlurStrength, 0.0, 4.0, 0.01,
+		"Scales the glossy blur: 0 keeps every reflection sharp"));
+	t.push_back(IntSetting("ssr_max_blur_level", kSsr, "Max blur level", &RenderContext::ssrMaxBlurLevel, 0.0, 4.0, 1.0,
+		"Coarsest blur mip a reflection may read (0 = sharp, 4 = widest)"));
+	t.push_back(FloatSetting("ssr_edge_fade", kSsr, "Edge fade", &RenderContext::ssrEdgeFade, 0.0, 0.3, 0.005,
+		"Screen-edge fade of traced hits (fraction of the screen)"));
+	t.push_back(FloatSetting("ssr_probe_blend", kSsr, "Probe blend", &RenderContext::ssrProbeBlend, 0.0, 1.0, 0.01,
+		"Local probes replace the environment where SSR misses (0 = environment only)"));
 	t.push_back(BoolSetting("reflection_probes", kSsr, "Reflection probes", &RenderContext::enableReflectionProbes));
 
 	const char* kFog = "Volumetric fog";

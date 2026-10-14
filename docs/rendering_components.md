@@ -175,3 +175,51 @@ Behaviour and limits:
 - It replaces albedo and roughness only (the pass's existing contract). Lighting is what the surface receives,
   so a decal on an unlit surface stays dark.
 - `normal_blend` is not supported: the pass does not write normals.
+
+## Screen-space reflections
+
+Reflections on glossy surfaces (`SSRPass`, with `ReflectionProbePass` as the fallback). The settings are
+`render_settings` keys in the "Reflections" group of the render settings table, so they show in the
+Rendering window's Look tab and load and save like the other scene keys.
+
+| Key | Default | Range | Meaning |
+| --- | --- | --- | --- |
+| `ssr` | `false` | bool | enables the pass (needs TAA) |
+| `ssr_max_roughness` | `0.6` | 0 .. 1 | roughness above which a surface skips SSR and uses probes and sky |
+| `ssr_blur_strength` | `1.0` | 0 .. 4 | scales the glossy blur footprint; `0` keeps every reflection sharp |
+| `ssr_max_blur_level` | `4` | 0 .. 4 | coarsest blur level a reflection may read (`0` = sharp only) |
+| `ssr_edge_fade` | `0.08` | 0 .. 0.3 | screen-edge fade of traced hits (fraction of the screen) |
+| `ssr_probe_blend` | `1.0` | 0 .. 1 | weight of local probes where SSR misses (`0` = environment only) |
+| `ssr_temporal_blend` | `0.12` | 0.02 .. 1 | weight of the current frame in the temporal accumulation |
+
+Pipeline (each step is one compute dispatch, driven from `src/passes/SSRPass.cpp`):
+1. Trace (half resolution, GGX-VNDF rays, `ssr_trace_comp.glsl`) and resolve (4 or 9 reused rays,
+   `ssr_resolve_comp.glsl`).
+2. Temporal (`ssr_temporal_comp.glsl`): reprojects with the velocity buffer. Mirror-like surfaces reproject
+   through the reflected point, so a reflection follows the object it shows, not the floor. Variance
+   clipping against the 3x3 neighbourhood limits how much stale history survives.
+3. Blur chain (`ssr_blur_down_comp.glsl`, `ssr_blur_up_comp.glsl`): a dual-filter Kawase chain of five levels
+   (Bjorge, SIGGRAPH 2015): 5-tap downsample, 8-tap upsample, level 0 at half resolution. The first stage
+   premultiplies the temporal output by its confidence, so misses add nothing and the blur does not pull
+   background colour into a reflection. The temporal history itself is never blurred, so blur does not
+   compound from frame to frame.
+4. Composite (`ssr_composite_comp.glsl`): each pixel picks its level from the GGX cone at that pixel
+   (the same cone as the resolve's fetch), scaled by hit distance over total path length, and the
+   roughness gate keeps mirror-smooth pixels on the sharp history. Sharp and blurred values are mixed
+   between levels. The result is un-premultiplied into `ctx.ssrTexture`.
+
+Combining with probes and sky: `ComputeIBL` in `shaders/deferred_lighting_frag.glsl` takes the SSR result
+first, then the local probe where SSR has no hit (scaled by `ssr_probe_blend`), then the prefiltered
+environment. The traced value replaces the lobe's prefiltered radiance inside the split-sum
+(`EvaluatePrincipledIBLEx`), so Fresnel and the BRDF terms are applied once. Probes use the same
+roughness-based mip as the environment. The SSR blur width follows the GGX cone and hit distance, so
+the two only match in roughness, not in blur width: the handover was checked by eye on the materials test
+scene (probes on and off), not measured on a scene with many probe misses.
+
+Limits:
+- The blur ignores depth edges. A reflection that samples a silhouette can blur across it; the premultiplied
+  confidence keeps misses and sky out of the blend, which is the main leak it prevents.
+- Temporal rejection has no previous-depth test. Ghosting is limited by the neighbourhood clamp only, and
+  was checked on static frames, not on fast camera motion.
+- The chain is half resolution at its finest, so very sharp glossy reflections come from the full-resolution
+  history at level 0 instead.

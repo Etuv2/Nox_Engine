@@ -23,6 +23,7 @@ uniform sampler2D uVelocity;     // current-frame motion vectors (uv delta curre
 uniform float uPrevColorMaxMip;
 uniform uint uFrame;
 uniform int uResolveSamples;     // 4: 2x2 nearest rays (High), 9: 3x3 neighbourhood (Ultra)
+uniform float uEdgeFade;         // screen-edge fade width of the hit point (fraction of the screen)
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -90,7 +91,7 @@ void main() {
 		float mip = clamp(log2(max(footprintPx, 1.0)), 0.0, uPrevColorMaxMip);
 		vec3 c = textureLod(uPrevColor, prevUV, mip).rgb;
 		// Screen-edge fade of the hit point.
-		vec2 edge = smoothstep(vec2(0.0), vec2(0.08), hitUV) * smoothstep(vec2(0.0), vec2(0.08), 1.0 - hitUV);
+		vec2 edge = smoothstep(vec2(0.0), vec2(uEdgeFade), hitUV) * smoothstep(vec2(0.0), vec2(uEdgeFade), 1.0 - hitUV);
 		float fade = edge.x * edge.y;
 		// Luminance-weighted average (Karis): a single very bright hit cannot dominate the pixel,
 		// which removes most firefly speckle on rough wet asphalt at a small bias.
