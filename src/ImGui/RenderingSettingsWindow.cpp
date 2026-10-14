@@ -2033,7 +2033,7 @@ void DrawEngineLookSections(ModularRenderer& renderer)
 			ImGui::SliderInt("SSR resolve rays (4/9)", &ctx.ssrResolveSamples, 4, 9);
 			ImGui::SliderFloat("SSR temporal blend", &ctx.ssrTemporalBlend, 0.02f, 1.0f);
 			ImGui::SliderFloat("SSR blur strength", &ctx.ssrBlurStrength, 0.0f, 4.0f);
-			ImGui::SliderInt("SSR max blur level", &ctx.ssrMaxBlurLevel, 0, 4);
+			ImGui::SliderInt("SSR max blur level", &ctx.ssrMaxBlurLevel, 0, 6);
 			ImGui::SliderFloat("SSR edge fade", &ctx.ssrEdgeFade, 0.0f, 0.3f);
 			ImGui::SliderFloat("SSR probe blend", &ctx.ssrProbeBlend, 0.0f, 1.0f);
 			ImGui::Checkbox("Reflection probes", &ctx.enableReflectionProbes);

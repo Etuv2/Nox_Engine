@@ -6,7 +6,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
 #include <glm/gtc/type_ptr.hpp>
 
 namespace {
@@ -32,8 +36,27 @@ namespace {
 		return std::max(1, base >> level);
 	}
 
+	// NOX_SSR_DUMP_DIR + NOX_SSR_DUMP_FRAMES (comma list of SSR frame numbers): writes the texture ctx.ssrTexture
+	// points to as raw float RGBA, without tonemapping, to <dir>/ssr_view<N>_f<frame>.f32. The file starts with a
+	// text line "width height channels"; rows follow bottom-to-top as float32.
+	void DumpSsrTexture(rhi::TextureHandle tex, int width, int height, int view, unsigned frame) {
+		static const char* dir = std::getenv("NOX_SSR_DUMP_DIR");
+		static const std::string frames = [] {
+			const char* f = std::getenv("NOX_SSR_DUMP_FRAMES");
+			return std::string(",") + (f ? f : "") + ",";
+		}();
+		if (!dir || !tex || frames.find("," + std::to_string(frame) + ",") == std::string::npos) return;
+		std::vector<float> px(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+		rhi::Gpu().PipelineBarrier(rhi::BarrierTextureUpdate | rhi::BarrierImageAccess);
+		rhi::Gpu().ReadTexture(tex, 0, rhi::PixelFormat::RGBA, rhi::PixelType::Float, px.size() * sizeof(float), px.data());
+		std::filesystem::create_directories(dir);
+		std::ofstream out(std::string(dir) + "/ssr_view" + std::to_string(view) + "_f" + std::to_string(frame) + ".f32", std::ios::binary);
+		out << width << " " << height << " 4\n";
+		out.write(reinterpret_cast<const char*>(px.data()), static_cast<std::streamsize>(px.size() * sizeof(float)));
+	}
+
 	// NOX_SSR_DEBUG_VIEW: 1 = raw resolve, 2 = temporal output (the blur chain's input), 3 = composite,
-	// 4 = chosen blur level as a colour ramp, 5 = chosen level as grey (L + 2) / 8 (exact, misses = 0).
+	// 4 = chosen blur level as a colour ramp, 5 = chosen level as raw float in R (exact, alpha = hit).
 // Non-zero values replace the lit image with the SSR signal.
 	int DebugView() {
 		static const int view = [] {
@@ -281,4 +304,5 @@ void SSRPass::Execute(RenderContext& ctx,
 	case 2: ctx.ssrTexture = m_historyTex[current]; break;
 	default: ctx.ssrTexture = m_compositeTex; break;
 	}
+	DumpSsrTexture(ctx.ssrTexture, m_width, m_height, ctx.ssrDebugView, m_frame - 1);
 }

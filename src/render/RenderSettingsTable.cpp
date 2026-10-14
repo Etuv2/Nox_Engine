@@ -225,8 +225,8 @@ std::vector<RenderSetting> BuildTable() {
 	t.push_back(IntSetting("ssr_resolve_samples", kSsr, "Resolve samples", &RenderContext::ssrResolveSamples, 1.0, 16.0, 1.0));
 	t.push_back(FloatSetting("ssr_blur_strength", kSsr, "Blur strength", &RenderContext::ssrBlurStrength, 0.0, 4.0, 0.01,
 		"Scales the glossy blur: 0 keeps every reflection sharp"));
-	t.push_back(IntSetting("ssr_max_blur_level", kSsr, "Max blur level", &RenderContext::ssrMaxBlurLevel, 0.0, 4.0, 1.0,
-		"Coarsest blur mip a reflection may read (0 = sharp, 4 = widest)"));
+	t.push_back(IntSetting("ssr_max_blur_level", kSsr, "Max blur level", &RenderContext::ssrMaxBlurLevel, 0.0, 6.0, 1.0,
+		"Coarsest blur mip a reflection may read (0 = sharp, 6 = widest)"));
 	t.push_back(FloatSetting("ssr_edge_fade", kSsr, "Edge fade", &RenderContext::ssrEdgeFade, 0.0, 0.3, 0.005,
 		"Screen-edge fade of traced hits (fraction of the screen)"));
 	t.push_back(FloatSetting("ssr_probe_blend", kSsr, "Probe blend", &RenderContext::ssrProbeBlend, 0.0, 1.0, 0.01,

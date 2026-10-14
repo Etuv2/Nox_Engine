@@ -49,7 +49,7 @@ private:
 	std::unique_ptr<ComputeShader> m_blurDownShader;
 	std::unique_ptr<ComputeShader> m_blurUpShader;
 	std::unique_ptr<ComputeShader> m_compositeShader;
-	static constexpr int kBlurLevels = 5;
+	static constexpr int kBlurLevels = 7;
 	rhi::TextureHandle m_traceTex;      // half res RGBA32F
 	rhi::TextureHandle m_resolveTex;    // full res RGBA16F
 	rhi::TextureHandle m_hitDistTex;    // full res R16F

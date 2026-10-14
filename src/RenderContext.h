@@ -412,8 +412,8 @@ struct RenderContext {
 	float ssrThickness = 0.25f;              // metres (grows with distance)
 	float ssrTemporalBlend = 0.12f;          // weight of the current frame
 	int ssrResolveSamples = 9;               // reused half-res rays per pixel (4 = High, 9 = Ultra)
-	float ssrBlurStrength = 0.25f;           // scales the cone footprint that picks the blur level (0 = sharp)
-	int ssrMaxBlurLevel = 4;                 // coarsest dual-Kawase level a reflection may read (0 = sharp only, 4 = widest)
+	float ssrBlurStrength = 1.0f;            // scales the GGX cone footprint that picks the blur level (0 = sharp)
+	int ssrMaxBlurLevel = 6;                 // coarsest dual-Kawase level a reflection may read (0 = sharp only, 6 = widest)
 	float ssrEdgeFade = 0.08f;               // screen-edge fade width of the traced hit (fraction of the screen)
 	float ssrProbeBlend = 1.0f;              // weight of local probes where SSR misses (0 = environment only)
 	int ssrDebugView = 0;                    // NOX_SSR_DEBUG_VIEW, set by SSRPass: 1 resolve, 2 temporal, 3 composite, 4 blur level

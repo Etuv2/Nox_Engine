@@ -186,8 +186,8 @@ Rendering window's Look tab and load and save like the other scene keys.
 | --- | --- | --- | --- |
 | `ssr` | `false` | bool | enables the pass (needs TAA) |
 | `ssr_max_roughness` | `0.6` | 0 .. 1 | roughness above which a surface skips SSR and uses probes and sky |
-| `ssr_blur_strength` | `0.25` | 0 .. 4 | scales the cone footprint that picks the blur level; `0` keeps every reflection sharp, higher values hide more noise and soften more |
-| `ssr_max_blur_level` | `4` | 0 .. 4 | coarsest blur level a reflection may read (`0` = sharp only) |
+| `ssr_blur_strength` | `1.0` | 0 .. 4 | scales the GGX cone footprint that picks the blur level; `0` keeps every reflection sharp, higher values hide more noise and soften more |
+| `ssr_max_blur_level` | `6` | 0 .. 6 | coarsest blur level a reflection may read (`0` = sharp only) |
 | `ssr_edge_fade` | `0.08` | 0 .. 0.3 | screen-edge fade of traced hits (fraction of the screen) |
 | `ssr_probe_blend` | `1.0` | 0 .. 1 | weight of local probes where SSR misses (`0` = environment only) |
 | `ssr_temporal_blend` | `0.12` | 0.02 .. 1 | weight of the current frame in the temporal accumulation |
@@ -198,16 +198,17 @@ Pipeline (each step is one compute dispatch, driven from `src/passes/SSRPass.cpp
 2. Temporal (`ssr_temporal_comp.glsl`): reprojects with the velocity buffer. Mirror-like surfaces reproject
    through the reflected point, so a reflection follows the object it shows, not the floor. Variance
    clipping against the 3x3 neighbourhood limits how much stale history survives.
-3. Blur chain (`ssr_blur_down_comp.glsl`, `ssr_blur_up_comp.glsl`): a dual-filter Kawase chain of five levels
+3. Blur chain (`ssr_blur_down_comp.glsl`, `ssr_blur_up_comp.glsl`): a dual-filter Kawase chain of seven levels
    (Bjorge, SIGGRAPH 2015): 5-tap downsample, 8-tap upsample, level 0 at half resolution. The first stage
    premultiplies the temporal output by its confidence, so misses add nothing and the blur does not pull
    background colour into a reflection. The temporal history itself is never blurred, so blur does not
    compound from frame to frame.
-4. Composite (`ssr_composite_comp.glsl`): each pixel picks its level from the GGX cone at that pixel
-   (the same cone as the resolve's fetch), scaled by hit distance over total path length (clamped to
-   0.25..0.5, so the distance only modulates the cone), and the roughness gate keeps mirror-smooth pixels
-   on the sharp history. Sharp and blurred values are mixed
-   between levels. The result is un-premultiplied into `ctx.ssrTexture`.
+4. Composite (`ssr_composite_comp.glsl`): each pixel's cone is the GGX lobe half-angle `atan(alpha)`, with
+   `alpha = roughness^2` (Stochastic SSR / Frostbite-style approximation), so `tan(cone) = alpha`. The blur radius
+   in full-resolution pixels is `2 * hitDist * alpha / (viewDepth * angPerPixel)`, and the level is
+   `log2(radius / 2)`, because chain level 0 has a 2-pixel texel radius. Mirror-smooth pixels (roughness below
+   0.1) stay on the sharp history. Sharp and blurred values are mixed between levels below 0, and the result is
+   un-premultiplied into `ctx.ssrTexture`.
 
 Combining with probes and sky: `ComputeIBL` in `shaders/deferred_lighting_frag.glsl` takes the SSR result
 first, then the local probe where SSR has no hit (scaled by `ssr_probe_blend`), then the prefiltered
@@ -219,8 +220,11 @@ scene (probes on and off), not measured on a scene with many probe misses.
 
 Debugging: `NOX_SSR_DEBUG_VIEW` replaces the lit image with the SSR signal alone, so each stage can be measured
 without lighting: `1` raw resolve, `2` temporal output (the blur chain's input, which is what the pass produced before
-the blur existed), `3` composite, `4` chosen blur level as a colour ramp (blue sharp, red level 4), `5` chosen level as
-grey `(L + 2) / 8`. Those values go through the post-process, so decoding `5` back to L is approximate.
+the blur existed), `3` composite, `4` chosen blur level as a colour ramp (blue sharp, red top level), `5` chosen level
+as raw float in R (exact, alpha = hit). `NOX_SSR_DUMP_DIR` with `NOX_SSR_DUMP_FRAMES` (comma list of SSR frame numbers)
+writes the texture the view selects as raw float RGBA, without tonemapping, to `ssr_view<N>_f<frame>.f32`: a text header
+line `width height channels`, then rows bottom-to-top as float32. Use it for offline measurement; the lit image goes
+through the post-process.
 
 Limits:
 - The blur ignores depth edges. A reflection that samples a silhouette can blur across it; the premultiplied
