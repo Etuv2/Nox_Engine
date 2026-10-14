@@ -1,30 +1,76 @@
 {
-  "scene_name": "surfel_gi_material_response_validation",
   "exposure": 1.0,
   "gamma": 2.2,
-  "skybox": "",
   "nodes": [
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/materials_test.glb",
+          "render_whole_model": false
+        }
+      },
       "path": "models\\materials_test.glb",
-      "position": [0.0, 0.0, 0.0],
-      "rotation": [0.0, 0.0, 0.0],
-      "scale": [1.0, 1.0, 1.0]
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
     },
     {
-      "type": "light",
-      "name": "MaterialResponseSun",
-      "position": [2.0, 4.0, 2.0],
-      "rotation": [-60.0, 30.0, 0.0],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.949999988079071,
+            0.8500000238418579
+          ],
+          "enabled": true,
+          "intensity": 4.0,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "directional",
-        "color": [1.0, 0.95, 0.85],
-        "intensity": 4.0,
-        "enabled": true,
         "castsShadows": true,
+        "color": [
+          1.0,
+          0.95,
+          0.85
+        ],
+        "enabled": true,
+        "intensity": 4.0,
         "shadowSize": 2048,
-        "splitLambda": 0.8
-      }
+        "splitLambda": 0.8,
+        "type": "directional"
+      },
+      "name": "MaterialResponseSun",
+      "position": [
+        2.0,
+        4.0,
+        2.0
+      ],
+      "rotation": [
+        -60.0,
+        30.0,
+        0.0
+      ],
+      "type": "light"
     }
-  ]
+  ],
+  "scene_name": "surfel_gi_material_response_validation",
+  "skybox": ""
 }

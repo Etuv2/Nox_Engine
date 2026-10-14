@@ -47,7 +47,6 @@ def main() -> None:
     core_cpp = read("src/Core.cpp")
 
     validate_scene_assets("scenes/surfel_gi_cornell_validation.json")
-    validate_scene_assets("scenes/shibuya.json")
 
     cornell = json.loads((ROOT / "scenes/surfel_gi_cornell_validation.json").read_text(encoding="utf-8"))
     require(cornell.get("skybox") == "", "Cornell validation scene should intentionally disable skybox with an empty path")

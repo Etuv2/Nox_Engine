@@ -1,44 +1,130 @@
 {
-  "scene_name": "surfel_gi_wall_leak_validation",
   "exposure": 1.0,
   "gamma": 2.2,
-  "skybox": "",
   "nodes": [
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/plane.glb",
+          "render_whole_model": false
+        }
+      },
       "path": "models\\plane.glb",
-      "position": [0.0, 0.0, 0.0],
-      "rotation": [0.0, 0.0, 0.0],
-      "scale": [8.0, 1.0, 8.0]
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        8.0,
+        1.0,
+        8.0
+      ],
+      "type": "model"
     },
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        }
+      },
       "path": "models\\cube.glb",
-      "position": [0.0, 1.5, 0.0],
-      "rotation": [0.0, 0.0, 0.0],
-      "scale": [0.12, 3.0, 8.0]
+      "position": [
+        0.0,
+        1.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.12,
+        3.0,
+        8.0
+      ],
+      "type": "model"
     },
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        }
+      },
       "path": "models\\cube.glb",
-      "position": [-2.5, 1.0, 0.0],
-      "rotation": [0.0, 0.0, 0.0],
-      "scale": [1.0, 1.0, 1.0]
+      "position": [
+        -2.5,
+        1.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
     },
     {
-      "type": "light",
-      "name": "BrightRoomLight",
-      "position": [-3.0, 3.0, 0.0],
-      "rotation": [-75.0, 35.0, 0.0],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.949999988079071,
+            0.8199999928474426
+          ],
+          "enabled": true,
+          "intensity": 5.0,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "directional",
-        "color": [1.0, 0.95, 0.82],
-        "intensity": 5.0,
-        "enabled": true,
         "castsShadows": true,
+        "color": [
+          1.0,
+          0.95,
+          0.82
+        ],
+        "enabled": true,
+        "intensity": 5.0,
         "shadowSize": 2048,
-        "splitLambda": 0.8
-      }
+        "splitLambda": 0.8,
+        "type": "directional"
+      },
+      "name": "BrightRoomLight",
+      "position": [
+        -3.0,
+        3.0,
+        0.0
+      ],
+      "rotation": [
+        -75.0,
+        35.0,
+        0.0
+      ],
+      "type": "light"
     }
-  ]
+  ],
+  "scene_name": "surfel_gi_wall_leak_validation",
+  "skybox": ""
 }

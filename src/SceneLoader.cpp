@@ -2021,6 +2021,12 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		break;
 	}
 
+	case NodeType::NODE:        // plain transform node (written as "node"): created by the first switch
+	case NodeType::CAMERA:      // camera node: created by the first switch, camera data is read elsewhere
+	case NodeType::LPV_VOLUME:  // LPV bounds and grid are read below from "lpv_data"
+	case NodeType::SKELETAL:    // skeletal node: created by the first switch
+		break;
+
 	default:
 		std::cerr << "Unknown node type: " << typeStr << std::endl;
 		break;
