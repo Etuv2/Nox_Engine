@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -220,6 +221,243 @@ namespace NoxLua {
 			}
 		}
 
+	}
+
+	// nox.physics: world tuning for scripts. Values are the runtime ones (SimulationConfig keys, see docs/lua_api.md).
+	// Script changes are runtime only and are never written into a saved scene.
+	namespace {
+
+		PhysicsEngine* PhysicsOrError(lua_State* L) {
+			PhysicsEngine* physics = nox::reflect::Services().physics;
+			if (!physics) luaL_error(L, "physics is not available");
+			return physics;
+		}
+
+		// Lua value to JSON. False for values that have no physics setting form (functions, userdata, mixed tables).
+		bool LuaToJson(lua_State* L, int idx, nlohmann::json& out, int depth) {
+			idx = lua_absindex(L, idx);
+			if (depth > 4) return false;
+			switch (lua_type(L, idx)) {
+			case LUA_TBOOLEAN:
+				out = lua_toboolean(L, idx) != 0;
+				return true;
+			case LUA_TNUMBER:
+				if (lua_isinteger(L, idx)) out = static_cast<int64_t>(lua_tointeger(L, idx));
+				else out = lua_tonumber(L, idx);
+				return true;
+			case LUA_TSTRING:
+				out = std::string(lua_tostring(L, idx));
+				return true;
+			case LUA_TTABLE: {
+				// {x=, y=, z=} is a vector: a three-number array, like config.json gravity.
+				lua_getfield(L, idx, "x");
+				lua_getfield(L, idx, "y");
+				lua_getfield(L, idx, "z");
+				const bool vector = lua_type(L, -3) == LUA_TNUMBER && lua_type(L, -2) == LUA_TNUMBER && lua_type(L, -1) == LUA_TNUMBER;
+				const double x = vector ? lua_tonumber(L, -3) : 0.0, y = vector ? lua_tonumber(L, -2) : 0.0, z = vector ? lua_tonumber(L, -1) : 0.0;
+				lua_pop(L, 3);
+				if (vector) {
+					out = nlohmann::json::array({ x, y, z });
+					return true;
+				}
+				if (lua_rawlen(L, idx) > 0) {
+					out = nlohmann::json::array();
+					const lua_Integer n = static_cast<lua_Integer>(lua_rawlen(L, idx));
+					for (lua_Integer i = 1; i <= n; ++i) {
+						lua_rawgeti(L, idx, i);
+						nlohmann::json item;
+						const bool ok = LuaToJson(L, -1, item, depth + 1);
+						lua_pop(L, 1);
+						if (!ok) return false;
+						out.push_back(item);
+					}
+					return true;
+				}
+				out = nlohmann::json::object();
+				lua_pushnil(L);
+				while (lua_next(L, idx) != 0) {
+					if (lua_type(L, -2) != LUA_TSTRING) {
+						lua_pop(L, 2);
+						return false;
+					}
+					nlohmann::json item;
+					const std::string key = lua_tostring(L, -2);
+					const bool ok = LuaToJson(L, -1, item, depth + 1);
+					lua_pop(L, 1);
+					if (!ok) {
+						lua_pop(L, 2);   // value and the key that lua_next needs
+						return false;
+					}
+					out[key] = item;
+				}
+				return true;
+			}
+			default:
+				return false;
+			}
+		}
+
+		// JSON to Lua (settings snapshots).
+		void PushJson(lua_State* L, const nlohmann::json& j) {
+			switch (j.type()) {
+			case nlohmann::json::value_t::boolean:
+				lua_pushboolean(L, j.get<bool>() ? 1 : 0);
+				break;
+			case nlohmann::json::value_t::number_integer:
+			case nlohmann::json::value_t::number_unsigned:
+				lua_pushinteger(L, static_cast<lua_Integer>(j.get<int64_t>()));
+				break;
+			case nlohmann::json::value_t::number_float:
+				lua_pushnumber(L, j.get<double>());
+				break;
+			case nlohmann::json::value_t::string:
+				lua_pushstring(L, j.get_ref<const std::string&>().c_str());
+				break;
+			case nlohmann::json::value_t::array: {
+				lua_createtable(L, static_cast<int>(j.size()), 0);
+				lua_Integer i = 1;
+				for (auto it = j.begin(); it != j.end(); ++it, ++i) {
+					PushJson(L, *it);
+					lua_rawseti(L, -2, i);
+				}
+				break;
+			}
+			case nlohmann::json::value_t::object:
+				lua_createtable(L, 0, static_cast<int>(j.size()));
+				for (auto it = j.begin(); it != j.end(); ++it) {
+					PushJson(L, it.value());
+					lua_setfield(L, -2, it.key().c_str());
+				}
+				break;
+			default:
+				lua_pushnil(L);
+				break;
+			}
+		}
+
+		// nox.physics.settings() -> table of every setting (runtime values).
+		int PhysicsSettings(lua_State* L) {
+			PhysicsEngine* physics = PhysicsOrError(L);
+			PushJson(L, physics->GetConfig().ToJson());
+			return 1;
+		}
+
+		// nox.physics.get(key) -> the runtime value of one setting.
+		int PhysicsGet(lua_State* L) {
+			PhysicsEngine* physics = PhysicsOrError(L);
+			const char* key = luaL_checkstring(L, 1);
+			bool found = false;
+			{
+				const nlohmann::json all = physics->GetConfig().ToJson();
+				if (all.contains(key)) {
+					PushJson(L, all[key]);
+					found = true;
+				}
+			}
+			if (!found) return luaL_error(L, "unknown physics setting '%s'", key);
+			return 1;
+		}
+
+		// Applies one runtime setting from Lua value idx. False with a message in error. The message goes to a
+		// plain buffer because luaL_error longjmps: no C++ object with a destructor may be alive when it runs.
+		bool SetRuntimeSetting(lua_State* L, int idx, PhysicsEngine* physics, const char* key, char* error, size_t errorSize) {
+			nlohmann::json value;
+			if (!LuaToJson(L, idx, value, 0)) {
+				std::snprintf(error, errorSize, "unsupported value");
+				return false;
+			}
+			if (!physics->GetConfig().ToJson().contains(key)) {
+				std::snprintf(error, errorSize, "unknown setting");
+				return false;
+			}
+			SimulationConfig config = physics->GetConfig();
+			nlohmann::json patch = nlohmann::json::object();
+			patch[key] = value;
+			try {
+				config.applyJson(patch);
+			}
+			catch (const std::exception& e) {
+				std::snprintf(error, errorSize, "%s", e.what());
+				return false;
+			}
+			physics->SetRuntimeConfig(config);
+			return true;
+		}
+
+		// nox.physics.set(key, value): changes one runtime setting; the editor's authored values are not touched.
+		int PhysicsSet(lua_State* L) {
+			PhysicsEngine* physics = PhysicsOrError(L);
+			const char* key = luaL_checkstring(L, 1);
+			luaL_checkany(L, 2);
+			char error[160] = "";
+			if (!SetRuntimeSetting(L, 2, physics, key, error, sizeof(error))) return luaL_error(L, "physics setting '%s': %s", key, error);
+			return 0;
+		}
+
+		// nox.physics.reset(): runtime values back to the editor's authored values (drops script changes).
+		int PhysicsReset(lua_State* L) {
+			PhysicsEngine* physics = PhysicsOrError(L);
+			physics->SetRuntimeConfig(physics->GetAuthoredConfig());
+			return 0;
+		}
+
+		bool LayerArg(lua_State* L, int idx, int& layer) {
+			const lua_Integer v = luaL_checkinteger(L, idx);
+			if (v < 0 || v >= SimulationConfig::kLayerCount) return false;
+			layer = static_cast<int>(v);
+			return true;
+		}
+
+		// nox.physics.set_collision(a, b, enabled): the world layer matrix entry for layers a and b (symmetric).
+		int PhysicsSetCollision(lua_State* L) {
+			PhysicsEngine* physics = PhysicsOrError(L);
+			int a = 0, b = 0;
+			if (!LayerArg(L, 1, a)) return luaL_argerror(L, 1, "layer must be 0..31");
+			if (!LayerArg(L, 2, b)) return luaL_argerror(L, 2, "layer must be 0..31");
+			luaL_checkany(L, 3);
+			const bool enabled = lua_toboolean(L, 3) != 0;
+			SimulationConfig config = physics->GetConfig();
+			for (int pair = 0; pair < 2; ++pair) {
+				const int row = pair == 0 ? a : b;
+				const int col = pair == 0 ? b : a;
+				if (enabled) config.layerMatrix[row] |= (1u << col);
+				else config.layerMatrix[row] &= ~(1u << col);
+			}
+			physics->SetRuntimeConfig(config);
+			return 0;
+		}
+
+		// nox.physics.collides(a, b) -> boolean: whether layers a and b may collide under the layer matrix.
+		int PhysicsCollides(lua_State* L) {
+			PhysicsEngine* physics = PhysicsOrError(L);
+			int a = 0, b = 0;
+			if (!LayerArg(L, 1, a)) return luaL_argerror(L, 1, "layer must be 0..31");
+			if (!LayerArg(L, 2, b)) return luaL_argerror(L, 2, "layer must be 0..31");
+			const SimulationConfig& config = physics->GetConfig();
+			const bool allowed = (config.layerMatrix[a] & (1u << b)) != 0 && (config.layerMatrix[b] & (1u << a)) != 0;
+			lua_pushboolean(L, allowed ? 1 : 0);
+			return 1;
+		}
+
+	}
+
+	void InstallPhysicsSettingsApi(lua_State* L) {
+		lua_getglobal(L, "nox");
+		lua_newtable(L);
+		lua_pushcfunction(L, PhysicsSettings);
+		lua_setfield(L, -2, "settings");
+		lua_pushcfunction(L, PhysicsGet);
+		lua_setfield(L, -2, "get");
+		lua_pushcfunction(L, PhysicsSet);
+		lua_setfield(L, -2, "set");
+		lua_pushcfunction(L, PhysicsReset);
+		lua_setfield(L, -2, "reset");
+		lua_pushcfunction(L, PhysicsSetCollision);
+		lua_setfield(L, -2, "set_collision");
+		lua_pushcfunction(L, PhysicsCollides);
+		lua_setfield(L, -2, "collides");
+		lua_setfield(L, -2, "physics");
+		lua_pop(L, 1);
 	}
 
 	void InstallPhysicsApi(lua_State* L, int ctxIdx, LuaWorld* w) {

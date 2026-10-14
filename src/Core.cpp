@@ -278,6 +278,7 @@ bool ReadSceneCameraVec3(const json& object, const char* key, glm::vec3& outValu
 #include "TimeScale.h"
 #include "audio/AudioListener.h"
 #include "diagnostics/DebugDraw.h"
+#include "physics/PhysicsDebugView.h"
 #include "reflect/ReflectServices.h"
 
 Core::Core()
@@ -914,6 +915,9 @@ bool Core::SetTimeScale(float scale) {
 
 void Core::DrawDebugOverlay(ImDrawList* drawList, float x, float y, float width, float height) {
 	if (!drawList || !m_camera) return;
+	// Physics debug toggles from the editor Physics window: queued here, for the Scene viewport only, so they are
+	// cleared with the other per-frame debug primitives at the next Update.
+	if (m_physicsEngine) QueuePhysicsDebugDraw(*m_physicsEngine, m_physicsEngine->DebugView());
 	DrawDebugPrimitives(drawList, m_camera, x, y, width, height);
 }
 
@@ -2227,6 +2231,8 @@ void Core::RequestStop()
 	}
 	m_prePlayTransforms.clear();
 	m_playing = false;
+	// Physics tuning made during play (scripts and the Physics window) is dropped: runtime = authored again.
+	if (m_physicsEngine) m_physicsEngine->SetRuntimeConfig(m_physicsEngine->GetAuthoredConfig());
 	if (m_sceneGraph) {
 		m_sceneGraph->UpdateAllTransforms();
 		m_game->Configure(m_prePlayGame, m_sceneRootJson, *m_sceneGraph);

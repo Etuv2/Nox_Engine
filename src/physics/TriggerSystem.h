@@ -45,6 +45,12 @@ public:
 	TriggerSettings* Find(const SceneNode* node);
 	const TriggerSettings* Find(const SceneNode* node) const;
 	size_t Count() const { return m_entries.size(); }
+	// Calls f(const SceneNode&, const TriggerSettings&) for every trigger whose node is still alive.
+	template <typename F> void ForEach(F&& f) const {
+		for (const auto& item : m_entries) {
+			if (auto node = item.second.node.lock()) f(static_cast<const SceneNode&>(*node), item.second.settings);
+		}
+	}
 
 	// Recomputes the overlaps of every trigger against the bodies of `physics`. Entries whose node is gone
 	// are dropped (with exit events for their overlaps).

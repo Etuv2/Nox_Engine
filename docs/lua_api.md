@@ -244,6 +244,24 @@ end)
 Components (`ctx:component(h, "CharacterController"):move(...)`, `ctx:component(h, "Trigger").radius`, and the others) go
 through the registry like every other component (see Components). Their fields and methods are listed in docs/physics.md.
 
+### Settings (`nox.physics`)
+
+`nox.physics` reads and changes the running physics world. Keys are the snake_case names of the `physics` object in
+`config/config.json` (`fixed_delta_time`, `max_substeps`, `gravity`, `velocity_iterations`, `default_friction`, ...),
+plus `layer_matrix` and `layer_names`. The Physics window in the editor edits the same values (see
+[editor.md](editor.md#physics)).
+
+| Function | Result |
+| --- | --- |
+| `nox.physics.settings()` | table of every runtime value |
+| `nox.physics.get(key)` | one runtime value; raises on an unknown key |
+| `nox.physics.set(key, value)` | changes one runtime value; raises on an unknown key or a rejected value. Numbers are clamped to the engine's ranges |
+| `nox.physics.reset()` | runtime values back to the editor's authored values |
+| `nox.physics.set_collision(a, b, enabled)` | allows or blocks layers `a` and `b` (0 to 31) in both directions |
+| `nox.physics.collides(a, b)` | boolean: whether layers `a` and `b` may collide under the layer matrix |
+
+Script changes are runtime only: they are never written into a saved scene, and Stop restores the authored values.
+
 ## Declared schemas
 
 Projects declare component schemas in Lua. No native component type or pool is involved.

@@ -738,6 +738,22 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	sceneGraph->m_gamma = sceneJson.value("gamma", 2.2f);
 	m_sceneGameJson = sceneJson.value("game", nlohmann::json::object());
 
+	// Physics settings: config.json defaults with the scene's "physics" block on top. Applied before the nodes
+	// below create their bodies. A scene without a block gets the defaults, so the previous scene's values do not carry over.
+	if (m_physicsEngine) {
+		SimulationConfig physicsConfig = m_physicsEngine->GetDefaultConfig();
+		if (sceneJson.contains("physics")) {
+			try {
+				physicsConfig.applyJson(sceneJson["physics"]);
+			}
+			catch (const std::exception& e) {
+				std::cerr << "[SceneLoader] Ignoring invalid physics block in " << resolvedScenePath << ": " << e.what() << std::endl;
+				physicsConfig = m_physicsEngine->GetDefaultConfig();
+			}
+		}
+		m_physicsEngine->SetConfig(physicsConfig);
+	}
+
 	if (sceneJson.contains("reflection_probes")) {
 		AddReflectionProbes(sceneJson["reflection_probes"]);
 	}
@@ -1024,6 +1040,12 @@ nlohmann::json SceneLoader::BuildSceneJson(const std::shared_ptr<SceneGraph>& sc
 	if (existing.contains("physics_enabled") || !physicsEnabled) {
 		sceneJson["physics_enabled"] = physicsEnabled;
 	}
+	// Physics tuning: only the authored values that differ from config.json. Nothing is written when they all match
+	// the defaults, so scenes without a block keep their bytes. Runtime changes made by scripts are not saved.
+	if (m_physicsEngine) {
+		const json physicsBlock = m_physicsEngine->GetAuthoredConfig().ToSceneJson(m_physicsEngine->GetDefaultConfig());
+		if (!physicsBlock.empty()) sceneJson["physics"] = physicsBlock;
+	}
 
 	// Serialize skybox if present
 	// The authored skybox object (rotation, intensity, fallback) is preserved below from the
@@ -1050,7 +1072,7 @@ nlohmann::json SceneLoader::BuildSceneJson(const std::shared_ptr<SceneGraph>& sc
 	for (auto it = existing.begin(); it != existing.end(); ++it) {
 		const std::string& key = it.key();
 		if (key == "nodes" || key == "scene_name" || key == "exposure" || key == "gamma" ||
-			key == "physics_enabled") {
+			key == "physics_enabled" || key == "physics") {
 			continue;
 		}
 		sceneJson[key] = it.value();
@@ -1550,7 +1572,7 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
 		bool useGravity = colliderJson.value("gravity", true);
 		float linearDamping = colliderJson.value("linear_damping", 0.1f);
 		float angularDamping = colliderJson.value("angular_damping", 0.1f);
-		float friction = colliderJson.value("friction", 0.5f);
+		float friction = colliderJson.value("friction", m_physicsEngine->GetConfig().defaultFriction);
 		bool isStatic = colliderJson.value("static", false);
 
 		auto rb = std::make_shared<RigidBody>();
@@ -1561,6 +1583,7 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
 		rb->setLinearDamping(linearDamping);
 		rb->setAngularDamping(angularDamping);
 		rb->setFriction(friction);
+		rb->setRestitution(m_physicsEngine->GetConfig().defaultRestitution);
 		rb->setBoundingRadius(radius);
 
 		// Determine if this should be static
@@ -1629,7 +1652,7 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
 		bool useGravity = colliderJson.value("gravity", true);
 		float linearDamping = colliderJson.value("linear_damping", 0.0f);
 		float angularDamping = colliderJson.value("angular_damping", 0.0f);
-		float friction = colliderJson.value("friction", 0.5f);
+		float friction = colliderJson.value("friction", m_physicsEngine->GetConfig().defaultFriction);
 		bool isStatic = colliderJson.value("static", false);
 
 		auto rb = std::make_shared<RigidBody>();
@@ -1640,6 +1663,7 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
 		rb->setLinearDamping(linearDamping);
 		rb->setAngularDamping(angularDamping);
 		rb->setFriction(friction);
+		rb->setRestitution(m_physicsEngine->GetConfig().defaultRestitution);
 		rb->setBox(size);
 
 		// Determine if this should be static

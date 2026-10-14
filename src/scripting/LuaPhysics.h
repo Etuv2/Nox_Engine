@@ -13,6 +13,9 @@ namespace NoxLua {
 	// Adds the physics query functions to the ctx table at ctxIdx.
 	void InstallPhysicsApi(lua_State* L, int ctxIdx, LuaWorld* world);
 
+	// Adds nox.physics (settings, get, set, reset, set_collision, collides): runtime world tuning. Needs the nox global.
+	void InstallPhysicsSettingsApi(lua_State* L);
+
 	// Moves the physics events collected since the last call into the world's event queue (delivered by the
 	// same Update). Called by LuaWorld::Update before its events are dispatched.
 	void PumpPhysicsEvents(LuaWorld& world);

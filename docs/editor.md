@@ -14,6 +14,8 @@ registry components described in [engine_overview.md](engine_overview.md).
 | Assets (Content Browser) | Browse the project as folders and tiles. Place prefabs and models, open scenes, rename, delete. See [Assets](#assets) |
 | Console, Build Output | Log messages and the output of build and package actions |
 | Materials | Per-primitive material editing for the selected model: factors, textures, UV transforms, overrides |
+
+| Physics (`PhysicsWindow`) | Gravity, timestep, solver, collision layers, debug overlay, live stats, and the selected node's physics components |
 | Lighting, Rendering, Camera, Animation, Performance | Scene-wide settings and diagnostics |
 
 Windows are opened from the **Window** menu. Project panels (`nox.editor_panel` in Lua) appear in the same menu
@@ -158,6 +160,27 @@ The Materials window (**Window > Materials**) edits the material of every primit
 The imported state each primitive is reset to is captured in `Scene::importedMaterials` when the glTF loads,
 before overrides are applied (`src/Scene.cpp`, `src/SceneLoader.cpp` for the override reader).
 
+## Physics
+
+The **Physics** window (Window > Physics, docked with the Inspector) tunes the physics world live. A change applies
+on the next simulation step.
+
+- **World**: gravity, fixed timestep, substeps, solver iterations, sleeping, and the defaults for new bodies. These are
+  saved in the scene's `physics` block. The block holds only the values that differ from `config/config.json`, so a
+  scene that changes none of them keeps its bytes.
+- **Collision layers**: layer names and the 32 by 32 layer matrix. Two bodies collide only when a layer of each is
+  allowed with a layer of the other. Bodies keep their own layer and mask on top of the matrix.
+- **Debug overlay**: colliders, AABBs, contacts and normals, sleeping bodies, triggers, character capsules and
+  velocities, drawn over the Scene view. The toggles are not saved.
+- **Live stats**: body, contact and manifold counts, and a step-time graph over the last 240 frames.
+- **Selected body**: the node's RigidBody (mass, friction, restitution, damping, and body type: static, dynamic or
+  kinematic), Collider, Trigger and CharacterController. They are drawn with the Inspector's widgets, so their
+  edits are undoable and saved with the scene. Wake, Sleep and impulses act on the running simulation only.
+
+A drag or a typed value is one undo step. **Reset to defaults** restores the `config/config.json` values. During Play
+the window changes runtime values only: nothing is undoable or saved, and Stop restores the authored values. Scripts
+use the same runtime values through `nox.physics` ([lua_api.md](lua_api.md#settings-noxphysics)).
+
 ## Undo and redo
 
 - Ctrl+Z undoes and Ctrl+Y redoes. the **Edit** menu has the same two items.
@@ -282,7 +305,8 @@ project panel and the console.
 
 `NOX_EDITOR_SMOKE=1` runs scripted checks inside the editor and prints `[Smoke] PASS` or `[Smoke] FAIL` lines
 to the console. They cover undo and redo of a transform edit, Play and Stop restoring the pre-play state,
-viewport resize, saving and the Content Browser (it opens `models/` and lists its contents). Use it for unattended validation of editor changes:
+viewport resize, saving, the Content Browser (it opens `models/` and lists its contents), and a Physics window
+edit with its undo. Use it for unattended validation of editor changes:
 
 ```powershell
 $env:NOX_EDITOR_SMOKE = "1"

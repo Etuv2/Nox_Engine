@@ -77,6 +77,8 @@ uint64_t MakePairSortKey(const PhysicsBVH& bvh, const PhysicsBVH::Pair& pair) {
 
 PhysicsEngine::PhysicsEngine(const SimulationConfig& config)
 	: m_config(config)
+	, m_authoredConfig(config)
+	, m_defaultConfig(config)
 	, m_gravity(config.gravityX, config.gravityY, config.gravityZ)
 {
 	m_bvh = std::make_unique<PhysicsBVH>();
@@ -86,6 +88,16 @@ PhysicsEngine::PhysicsEngine(const SimulationConfig& config)
 
 PhysicsEngine::~PhysicsEngine() {
 	Shutdown();
+}
+
+void PhysicsEngine::SetConfig(const SimulationConfig& config) {
+	m_authoredConfig = config;
+	SetRuntimeConfig(config);
+}
+
+void PhysicsEngine::SetRuntimeConfig(const SimulationConfig& config) {
+	m_config = config;
+	m_gravity = glm::vec3(config.gravityX, config.gravityY, config.gravityZ);
 }
 
 bool PhysicsEngine::Initialize() {
@@ -131,6 +143,7 @@ void PhysicsEngine::Update(float deltaTime) {
 	if (m_state == State::PAUSED) {
 		return;
 	}
+	const auto updateStart = std::chrono::high_resolution_clock::now();
 
 	// Clamp frame time to prevent spiral of death
 	deltaTime = std::min(deltaTime, m_config.maxAccumulatedTime);
@@ -159,6 +172,7 @@ void PhysicsEngine::Update(float deltaTime) {
 
 	// Calculate interpolation alpha for rendering
 	m_alpha = m_accumulator / m_config.fixedDeltaTime;
+	m_profiling.stepTimeMs = std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - updateStart).count();
 }
 
 void PhysicsEngine::SingleStep() {
@@ -926,6 +940,10 @@ void PhysicsEngine::Narrowphase() {
 		auto bodyB = proxyB->body.lock();
 
 		if (!bodyA || !bodyB) continue;
+
+		// World collision layer matrix (default allows every pair). A blocked pair makes no manifold; an old one
+		// expires after the usual lifetime.
+		if (!m_config.LayerMatrixIsDefault() && !m_config.LayersCollide(bodyA->getCollisionLayer(), bodyB->getCollisionLayer())) continue;
 
 		// Generate pair key
 		uint64_t pairKey = ContactManifold::makePairKey(bodyA->GetBodyID(), bodyB->GetBodyID());

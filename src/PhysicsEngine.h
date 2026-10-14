@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <functional>
+#include <utility>
 
 #include "SimulationConfig.h"
 #include "RigidBody.h"
@@ -12,6 +13,7 @@
 #include "PhysicsBVH.h"
 #include "ComponentTypes.h"
 #include "physics/CharacterSystem.h"
+#include "physics/PhysicsDebugView.h"
 #include "physics/TriggerSystem.h"
 
 // Forward declarations
@@ -339,16 +341,37 @@ public:
     // ============== CONFIGURATION ==============
     
     /**
-     * Get/Set configuration
+     * Configuration. Three copies:
+     * - GetConfig(): runtime values the solver uses (scripts may change them with SetRuntimeConfig).
+     * - GetAuthoredConfig(): the editor/scene values; the scene "physics" block is written from these, so runtime
+     *   script tweaks never leak into a saved scene.
+     * - GetDefaultConfig(): config/config.json values; a scene block holds only what differs from these.
+     * SetConfig changes both the authored and the runtime values (editor edits, undo, scene load).
      */
     const SimulationConfig& GetConfig() const { return m_config; }
-    void SetConfig(const SimulationConfig& config) { m_config = config; }
-    
+    const SimulationConfig& GetAuthoredConfig() const { return m_authoredConfig; }
+    const SimulationConfig& GetDefaultConfig() const { return m_defaultConfig; }
+    void SetConfig(const SimulationConfig& config);
+    void SetRuntimeConfig(const SimulationConfig& config);
+    void ResetConfigToDefaults() { SetConfig(m_defaultConfig); }
+
     /**
      * Set gravity
      */
     void SetGravity(const glm::vec3& gravity);
     glm::vec3 GetGravity() const { return m_gravity; }
+
+    /**
+     * Editor view toggles for the physics debug overlay (drawn by Core in the Scene viewport; not saved).
+     */
+    PhysicsDebugView& DebugView() { return m_debugView; }
+    const PhysicsDebugView& DebugView() const { return m_debugView; }
+
+    /**
+     * Trigger / character entries for read-only iteration (debug overlay, stats).
+     */
+    template <typename F> void ForEachTrigger(F&& f) const { m_triggers->ForEach(std::forward<F>(f)); }
+    template <typename F> void ForEachCharacter(F&& f) const { m_characters->ForEach(std::forward<F>(f)); }
     
     // ============== DEBUG/PROFILING ==============
     
@@ -367,6 +390,7 @@ public:
         int sleepingBodyCount = 0;
         float maxPenetration = 0.0f;
         float averagePenetration = 0.0f;
+        float stepTimeMs = 0.0f;   // wall time of the last Update's physics steps (sync, substeps, triggers, characters)
     };
     
     const ProfilingData& GetProfilingData() const { return m_profiling; }
@@ -474,8 +498,11 @@ private:
     std::vector<BodyID> CollectOverlaps(const std::shared_ptr<RigidBody>& probe, uint32_t mask) const;
 
 private:
-    // Configuration
+    // Configuration (see GetConfig / GetAuthoredConfig / GetDefaultConfig)
     SimulationConfig m_config;
+    SimulationConfig m_authoredConfig;
+    SimulationConfig m_defaultConfig;
+    PhysicsDebugView m_debugView;
     glm::vec3 m_gravity;
     
     // State

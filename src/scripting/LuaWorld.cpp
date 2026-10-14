@@ -942,6 +942,8 @@ namespace NoxLua {
 			InstallComponentApi(L, lua_gettop(L), w);
 			// Physics queries (ctx:physics_raycast, overlap_sphere, overlap_box) and physics events (LuaPhysics.cpp).
 			InstallPhysicsApi(L, lua_gettop(L), w);
+			// nox.physics (world tuning: settings, get, set, reset, set_collision, collides).
+			InstallPhysicsSettingsApi(L);
 			// ctx:time_scale (LuaTime.cpp): the ctx table is on top here, like for the component functions.
 			InstallTimeApi(L, lua_gettop(L));
 			// ctx:screen_to_ray (LuaRender.cpp).

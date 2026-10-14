@@ -36,6 +36,12 @@ public:
 	CharacterSettings* Find(const SceneNode* node);
 	const CharacterSettings* Find(const SceneNode* node) const;
 	size_t Count() const { return m_entries.size(); }
+	// Calls f(const SceneNode&, const CharacterSettings&) for every character whose node is still alive.
+	template <typename F> void ForEach(F&& f) const {
+		for (const auto& item : m_entries) {
+			if (auto node = item.second.node.lock()) f(static_cast<const SceneNode&>(*node), item.second.settings);
+		}
+	}
 
 	// Moves the node's character by displacement, sliding along what it touches. Returns true when the
 	// capsule touched anything during the move. Updates node position and settings.onFloor.
