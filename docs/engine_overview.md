@@ -15,7 +15,11 @@ about a particular game: a project decides what its nodes mean and how they beha
   `TransformComponent`, `RenderableComponent`, `LightComponent`, `CameraComponent`, `AnimationComponent`,
   `ColliderComponent`, `PhysicsComponent`, `AudioComponent`, `LPVVolumeComponent`).
 - A node has a type that selects its scene-file form and its subclass: `node`, `model`, `light`, `audio`,
-  `camera`, `gui`, `lpv_volume`, `skeletal`.
+  `camera`, `gui`, `lpv_volume`, `skeletal`, `folder`.
+- A `folder` node groups other nodes in the hierarchy. It has no transform (not saved, always identity when
+  loaded), no renderable, no collider and no ECS data beyond its entity, so it is never drawn and never reaches
+  physics or the ray-tracing BVH. Its children keep the transforms they were authored with, and moving a node into
+  or out of a folder keeps its world transform.
 - Nodes are created from JSON by `SceneLoader` (`src/SceneLoader.h`), which also writes them back. Keys the
   loader does not model are kept and written back unchanged, so a scene survives a load and save cycle.
   See [building.md](building.md) for the round-trip check.

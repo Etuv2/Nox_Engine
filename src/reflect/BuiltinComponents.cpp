@@ -56,7 +56,7 @@ void RegisterNode() {
 		[] {
 			PropertyDesc p = Prop("node_type", PropType::Enum,
 				[](const SceneNode& n) { return PropValue(static_cast<int64_t>(n.GetNodeType())); });
-			p.enumNames = { "node", "audio", "model", "light", "camera", "gui", "lpv_volume", "skeletal" };
+			p.enumNames = { "node", "audio", "model", "light", "camera", "gui", "lpv_volume", "skeletal", "folder" };
 			p.flags |= PropNoSave;
 			return p;
 		}(),
@@ -74,7 +74,7 @@ void RegisterTransform() {
 	c.category = "Core";
 	c.builtin = true;
 	c.order = 1;
-	c.has = [](const SceneNode&) { return true; };
+	c.has = [](const SceneNode& n) { return !n.IsFolder(); };   // folders have no transform
 	auto setTRS = [](SceneNode& n, const glm::vec3* t, const glm::quat* r, const glm::vec3* s) {
 		n.SetLocalTRS(t ? *t : n.GetPosition(), r ? *r : n.GetOrientation(), s ? *s : n.GetScale());
 		return true;

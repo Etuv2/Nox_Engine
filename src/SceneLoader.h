@@ -79,7 +79,8 @@ public:
 		CAMERA,
 		GUI,
 		LPV_VOLUME,
-		SKELETAL
+		SKELETAL,
+		FOLDER
 	};
 
 	static NodeType GetNodeType(const std::string& typeStr) {
@@ -90,6 +91,7 @@ public:
 		if (typeStr == "gui")    return NodeType::GUI;
 		if (typeStr == "lpv_volume" || typeStr == "lpvvolume") return NodeType::LPV_VOLUME;
 		if (typeStr == "skeletal") return NodeType::SKELETAL;
+		if (typeStr == "folder") return NodeType::FOLDER;
 		return NodeType::NODE;
 	}
 

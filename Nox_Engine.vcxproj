@@ -362,6 +362,7 @@
     <ClCompile Include="src\audio\AudioListener.cpp" />
     <ClCompile Include="src\audio\AudioMixer.cpp" />
     <ClCompile Include="src\diagnostics\DebugDraw.cpp" />
+    <ClCompile Include="src\editor\HierarchyModel.cpp" />
     <ClCompile Include="src\editor\InspectorUndo.cpp" />
     <ClCompile Include="src\passes\ParticlePass.cpp" />
     <ClCompile Include="src\physics\CharacterSystem.cpp" />
@@ -579,6 +580,7 @@
     <ClInclude Include="src\audio\AudioListener.h" />
     <ClInclude Include="src\audio\AudioMixer.h" />
     <ClInclude Include="src\diagnostics\DebugDraw.h" />
+    <ClInclude Include="src\editor\HierarchyModel.h" />
     <ClInclude Include="src\editor\InspectorUndo.h" />
     <ClInclude Include="src\passes\ParticlePass.h" />
     <ClInclude Include="src\physics\CharacterSystem.h" />

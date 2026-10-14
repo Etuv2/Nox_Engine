@@ -825,6 +825,9 @@
     <ClCompile Include="src\diagnostics\DebugDraw.cpp">
       <Filter>Source Files\diagnostics</Filter>
     </ClCompile>
+    <ClCompile Include="src\editor\HierarchyModel.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
     <ClCompile Include="src\editor\InspectorUndo.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
@@ -926,6 +929,9 @@
     </ClInclude>
     <ClInclude Include="src\diagnostics\DebugDraw.h">
       <Filter>Header Files\diagnostics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\HierarchyModel.h">
+      <Filter>Header Files\editor</Filter>
     </ClInclude>
     <ClInclude Include="src\editor\InspectorUndo.h">
       <Filter>Header Files\editor</Filter>

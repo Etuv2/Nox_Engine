@@ -71,7 +71,8 @@ enum class NodeType : uint8_t {
 	AUDIO,
 	GUI,
 	LPV_VOLUME,
-	SKELETAL
+	SKELETAL,
+	FOLDER
 };
 
 // Culling override modes (matches SceneNode::CullingOverride)

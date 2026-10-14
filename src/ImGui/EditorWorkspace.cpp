@@ -157,6 +157,17 @@ namespace {
 		return glm::vec3(glm::inverse(parent->GetWorldPosition4x4()) * glm::vec4(*at, 1.0f));
 	}
 
+	// Child name not used by a sibling: base, then "base 2", "base 3", ... Keeps "Folder/Child" path lookups unambiguous.
+	std::string UniqueChildName(const std::shared_ptr<SceneNode>& parent, const std::string& base) {
+		std::string name = base;
+		for (int n = 2; ; ++n) {
+			bool taken = false;
+			for (const auto& c : parent->children) taken = taken || (c && c->GetName() == name);
+			if (!taken) return name;
+			name = base + " " + std::to_string(n);
+		}
+	}
+
 	std::shared_ptr<SceneNode> FindParent(const std::shared_ptr<SceneNode>& root, const SceneNode* child) {
 		if (!root) return nullptr;
 		for (const auto& c : root->children) {
@@ -193,6 +204,9 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 			m_outline.hover = o.value("hover", m_outline.hover);
 		}
 		ExternalEditor::Current() = ExternalEditor::FromJson(s.value("external_editor", json()));
+		m_hierarchySaved = s.value("hierarchy", json::object());
+		if (!m_hierarchySaved.is_object()) m_hierarchySaved = json::object();
+		m_hierarchySort = nox::editor::ParseHierarchySort(m_hierarchySaved.value("sort", std::string("scene")));
 	}
 	m_presets = AssetIO::ReadJsonOrNull(kPresetsPath);
 	if (!m_presets.is_object()) m_presets = json::object();
@@ -217,6 +231,15 @@ EditorWorkspace::~EditorWorkspace()
 	}
 }
 
+json EditorWorkspace::HierarchySettingsJson() const
+{
+	json h = m_hierarchySaved;
+	h["sort"] = nox::editor::HierarchySortName(m_hierarchySort);
+	if (!h.contains("scenes") || !h["scenes"].is_object()) h["scenes"] = json::object();
+	if (!m_hierarchyScenePath.empty()) h["scenes"][m_hierarchyScenePath] = m_hierarchyView.Save();
+	return h;
+}
+
 void EditorWorkspace::SaveSettings() const
 {
 	json s;
@@ -236,11 +259,18 @@ void EditorWorkspace::SaveSettings() const
 		{"color", json::array({ m_outline.color[0], m_outline.color[1], m_outline.color[2] })},
 		{"width", m_outline.width}, {"show_occluded", m_outline.showOccluded}, {"hover", m_outline.hover} };
 	s["external_editor"] = ExternalEditor::ToJson(ExternalEditor::Current());
+	s["hierarchy"] = HierarchySettingsJson();
 	UserSettings::SaveUserJson(kSettingsPath, s);
 }
 
 void EditorWorkspace::OnSceneLoaded()
 {
+	// Collapse state is per scene: keep the state of the scene being left, then load the one being opened.
+	if (!m_hierarchyScenePath.empty()) m_hierarchySaved["scenes"][m_hierarchyScenePath] = m_hierarchyView.Save();
+	m_hierarchyScenePath = m_core.GetCurrentScenePath();
+	const json scenes = m_hierarchySaved.value("scenes", json::object());
+	m_hierarchyView.Load(scenes.value(m_hierarchyScenePath, json()));
+	m_hierarchyRevealed.reset();
 	m_undo.clear();
 	m_redo.clear();
 	m_handles.clear();
@@ -778,7 +808,7 @@ void EditorWorkspace::DrawGizmo(const Viewport& vp)
 {
 	auto node = m_legacy.GetSelectedNode();
 	auto cam = m_core.GetCamera();
-	if (!node || !cam || m_core.IsEditorCameraActive()) {
+	if (!node || !cam || m_core.IsEditorCameraActive() || node->IsFolder()) {
 		m_wasUsingGizmo = false;
 		return;
 	}
@@ -1009,62 +1039,64 @@ void EditorWorkspace::SelectNode(const std::shared_ptr<SceneNode>& node)
 	m_legacy.SetSelectedNode(node);
 }
 
-void EditorWorkspace::DrawHierarchyNode(const std::shared_ptr<SceneNode>& node)
+void EditorWorkspace::DrawHierarchyRow(const nox::editor::HierarchyRow& row)
 {
+	const std::shared_ptr<SceneNode> node = row.node;
 	if (!node) return;
-	if (node->IsGenerated() && m_hierarchyFilter[0] == 0) return; // generated lights are rebuilt on load
-	const std::string name = node->GetName().empty() ? std::string("(unnamed)") : node->GetName();
-	bool childMatches = false;
-	if (m_hierarchyFilter[0]) {
-		std::function<bool(const std::shared_ptr<SceneNode>&)> any = [&](const std::shared_ptr<SceneNode>& n) {
-			if (ContainsNoCase(n->GetName(), m_hierarchyFilter)) return true;
-			for (const auto& c : n->children) if (any(c)) return true;
-			return false;
-		};
-		if (!any(node)) return;
-		childMatches = true;
-	}
 	const bool playing = m_core.IsPlaying();
-	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-	if (node->children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
-	if (m_legacy.GetSelectedNode() == node) flags |= ImGuiTreeNodeFlags_Selected;
-	if (childMatches) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-	const char* tag = "";
-	ImU32 tagCol = IM_COL32(150, 150, 160, 255);
-	switch (node->GetNodeType()) {
-	case SceneNode::LIGHT: tag = "LIGHT"; tagCol = IM_COL32(255, 210, 90, 255); break;
-	case SceneNode::MODEL: tag = "MESH"; tagCol = IM_COL32(120, 180, 255, 255); break;
-	case SceneNode::AUDIO: tag = "AUDIO"; tagCol = IM_COL32(90, 230, 220, 255); break;
-	case SceneNode::CAMERA: tag = "CAM"; tagCol = IM_COL32(120, 255, 140, 255); break;
-	default: break;
+	const bool folder = node->IsFolder();
+	const std::string name = node->GetName().empty() ? std::string("(unnamed)") : node->GetName();
+	ImGui::PushID(node.get());
+	const float frame = ImGui::GetFrameHeight();
+	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + row.depth * ImGui::GetStyle().IndentSpacing);
+	if (row.hasChildren) {
+		if (ImGui::ArrowButton("##toggle", row.open ? ImGuiDir_Down : ImGuiDir_Right)) m_hierarchyView.SetCollapsed(row.path, row.open);
 	}
-	const bool open = ImGui::TreeNodeEx(node.get(), flags, "%s", name.c_str());
-	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) SelectNode(node);
+	else {
+		ImGui::Dummy(ImVec2(frame, frame));
+	}
+	ImGui::SameLine();
+	const bool selected = m_legacy.GetSelectedNode() == node;
+	const std::string label = folder ? name + "  [" + std::to_string(node->GetChildCount()) + "]" : name;
+	if (folder) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 200, 120, 255));
+	const bool clicked = ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_SpanAvailWidth);
+	if (folder) ImGui::PopStyleColor();
+	if (clicked) SelectNode(node);
 	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) BeginRename(node);
-	// Drag a node onto another to reparent it (world transform kept).
+	const ImVec2 rowMin = ImGui::GetItemRectMin();
+	const ImVec2 rowMax = ImGui::GetItemRectMax();
 	if (ImGui::BeginDragDropSource()) {
 		SceneNode* raw = node.get();
 		ImGui::SetDragDropPayload(nox::editor::kNodeDragType, &raw, sizeof(raw));
 		ImGui::TextUnformatted(name.c_str());
 		ImGui::EndDragDropSource();
 	}
+	// Drop on a row: the top and bottom quarters insert before or after it under the same parent (this is how a
+	// node leaves a folder or changes its place among siblings); the middle makes the node a child of the row.
+	// Prefab assets dropped on a row are instantiated under it.
 	if (ImGui::BeginDragDropTarget()) {
+		const float band = (rowMax.y - rowMin.y) * 0.25f;
+		const float y = ImGui::GetMousePos().y;
+		const bool before = y < rowMin.y + band;
+		const bool after = !before && y > rowMax.y - band;
+		ImDrawList* dl = ImGui::GetWindowDrawList();
+		const ImU32 markCol = IM_COL32(255, 210, 90, 255);
+		if (before) dl->AddLine(ImVec2(rowMin.x, rowMin.y), ImVec2(rowMax.x, rowMin.y), markCol, 2.0f);
+		else if (after) dl->AddLine(ImVec2(rowMin.x, rowMax.y), ImVec2(rowMax.x, rowMax.y), markCol, 2.0f);
+		else dl->AddRect(rowMin, rowMax, markCol, 0.0f, 0, 2.0f);
 		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(nox::editor::kNodeDragType)) {
 			if (payload->DataSize == sizeof(SceneNode*)) {
 				SceneNode* raw = *static_cast<SceneNode* const*>(payload->Data);
-				if (auto dragged = FindSharedNode(RootNode(), raw)) ReparentWithUndo(dragged, node);
+				if (auto dragged = FindSharedNode(RootNode(), raw)) {
+					if (before || after) MoveNodeNextTo(dragged, node, after);
+					else ReparentWithUndo(dragged, node);
+				}
 			}
 		}
 		if (const ImGuiPayload* asset = ImGui::AcceptDragDropPayload(nox::editor::kAssetDragType)) {
 			PlaceAssetInScene(static_cast<const char*>(asset->Data), node, nullptr);
 		}
 		ImGui::EndDragDropTarget();
-	}
-	if (tag[0]) {
-		ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(tag).x - 4);
-		ImGui::PushStyleColor(ImGuiCol_Text, tagCol);
-		ImGui::TextUnformatted(tag);
-		ImGui::PopStyleColor();
 	}
 	if (ImGui::BeginPopupContextItem()) {
 		SelectNode(node);
@@ -1079,10 +1111,16 @@ void EditorWorkspace::DrawHierarchyNode(const std::shared_ptr<SceneNode>& node)
 		if (ImGui::MenuItem("Rename", "F2", false, !playing)) BeginRename(node);
 		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, !playing)) DuplicateNodeWithUndo(node);
 		if (ImGui::MenuItem("Save as Prefab...", nullptr, false, !playing)) BeginSavePrefab(node);
+		ImGui::Separator();
+		if (ImGui::MenuItem("New Folder", nullptr, false, !playing)) CreateFolderUnder(node);
+		if (ImGui::MenuItem("Group into Folder", nullptr, false, !playing && !node->IsGenerated() && node->parentNode.lock() != nullptr)) {
+			GroupIntoFolderWithUndo(node);
+		}
+		ImGui::Separator();
 		if (ImGui::MenuItem("Delete", "Del", false, !playing)) {
 			DeleteNodeWithUndo(node);
 			ImGui::EndPopup();
-			if (open) ImGui::TreePop();
+			ImGui::PopID();
 			return;
 		}
 		if (ImGui::BeginMenu("Add Child", !playing)) {
@@ -1091,21 +1129,52 @@ void EditorWorkspace::DrawHierarchyNode(const std::shared_ptr<SceneNode>& node)
 		}
 		ImGui::EndPopup();
 	}
-	if (open) {
-		for (const auto& c : node->children) DrawHierarchyNode(c);
-		ImGui::TreePop();
+	const char* tag = "";
+	ImU32 tagCol = IM_COL32(150, 150, 160, 255);
+	switch (node->GetNodeType()) {
+	case SceneNode::LIGHT: tag = "LIGHT"; tagCol = IM_COL32(255, 210, 90, 255); break;
+	case SceneNode::MODEL: tag = "MESH"; tagCol = IM_COL32(120, 180, 255, 255); break;
+	case SceneNode::AUDIO: tag = "AUDIO"; tagCol = IM_COL32(90, 230, 220, 255); break;
+	case SceneNode::CAMERA: tag = "CAM"; tagCol = IM_COL32(120, 255, 140, 255); break;
+	case SceneNode::FOLDER: tag = "FOLDER"; tagCol = IM_COL32(230, 200, 120, 255); break;
+	default: break;
 	}
+	if (tag[0]) {
+		ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(tag).x - 4);
+		ImGui::PushStyleColor(ImGuiCol_Text, tagCol);
+		ImGui::TextUnformatted(tag);
+		ImGui::PopStyleColor();
+	}
+	ImGui::PopID();
 }
 
 void EditorWorkspace::DrawHierarchy()
 {
 	if (!ImGui::Begin(kWinHierarchy, &m_showHierarchy)) { ImGui::End(); return; }
-	solace::SearchField("##hfilter", m_hierarchyFilter, sizeof(m_hierarchyFilter), "Filter nodes");
+	solace::SearchField("##hfilter", m_hierarchyFilter, sizeof(m_hierarchyFilter), "Search: name or t:folder");
+	if (ImGui::SmallButton("Collapse")) m_hierarchyView.CollapseAll(RootNode());
+	ImGui::SameLine();
+	if (ImGui::SmallButton("Expand")) m_hierarchyView.ExpandAll();
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(170.0f);
+	const char* sortLabel = m_hierarchySort == nox::editor::HierarchySort::NameFoldersFirst ? "Name, folders first" : "Scene order";
+	if (ImGui::BeginCombo("##hsort", sortLabel)) {
+		if (ImGui::Selectable("Scene order", m_hierarchySort == nox::editor::HierarchySort::SceneOrder)) m_hierarchySort = nox::editor::HierarchySort::SceneOrder;
+		if (ImGui::Selectable("Name, folders first", m_hierarchySort == nox::editor::HierarchySort::NameFoldersFirst)) m_hierarchySort = nox::editor::HierarchySort::NameFoldersFirst;
+		ImGui::EndCombo();
+	}
 	ImGui::Separator();
 	ImGui::BeginChild("##tree");
 	if (auto root = RootNode()) {
-		for (const auto& c : root->children) DrawHierarchyNode(c);
-		// Empty space below the nodes: drop here to move a node to the scene root; right-click adds nodes.
+		// A selection made elsewhere (viewport, Lua, undo) expands the path to it once.
+		const auto selected = m_legacy.GetSelectedNode();
+		if (selected && selected != m_hierarchyRevealed.lock()) m_hierarchyView.Reveal(selected.get());
+		m_hierarchyRevealed = selected;
+		const nox::editor::HierarchyFilter filter = nox::editor::HierarchyFilter::Parse(m_hierarchyFilter);
+		const auto rows = m_hierarchyView.Build(root, filter, m_hierarchySort);
+		if (rows.empty()) ImGui::TextDisabled("%s", filter.Active() ? "No node matches the search." : "The scene is empty. Right-click to add a node.");
+		for (const auto& row : rows) DrawHierarchyRow(row);
+		// Empty space below the rows: drop here to move a node to the scene root; right-click adds nodes.
 		const float freeHeight = std::max(ImGui::GetContentRegionAvail().y, 12.0f);
 		ImGui::InvisibleButton("##hierarchy_root", ImVec2(-1.0f, freeHeight));
 		if (ImGui::BeginDragDropTarget()) {
@@ -1122,6 +1191,7 @@ void EditorWorkspace::DrawHierarchy()
 		}
 		if (ImGui::BeginPopupContextItem("##hierarchy_ctx", ImGuiPopupFlags_MouseButtonRight)) {
 			SelectNode(nullptr);
+			if (ImGui::MenuItem("New Folder", nullptr, false, !m_core.IsPlaying())) CreateFolderUnder(root);
 			if (ImGui::BeginMenu("Add Node", !m_core.IsPlaying())) {
 				DrawAddNodeItems();
 				ImGui::EndMenu();
@@ -1215,6 +1285,7 @@ void EditorWorkspace::DrawAddNodeItems()
 {
 	const bool playing = m_core.IsPlaying();
 	if (ImGui::MenuItem("Empty", nullptr, false, !playing)) AddNodeFromTemplate("empty");
+	if (ImGui::MenuItem("Folder", nullptr, false, !playing)) CreateFolderUnder(m_legacy.GetSelectedNode());
 	ImGui::Separator();
 	if (ImGui::MenuItem("Directional Light", nullptr, false, !playing)) AddNodeFromTemplate("directional");
 	if (ImGui::MenuItem("Point Light", nullptr, false, !playing)) AddNodeFromTemplate("point");
@@ -1244,12 +1315,51 @@ void EditorWorkspace::DeleteNodeWithUndo(const std::shared_ptr<SceneNode>& node)
 	SelectNode(nullptr);
 }
 
-void EditorWorkspace::ReparentWithUndo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& parent)
+void EditorWorkspace::ReparentWithUndo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& parent, int index)
 {
 	if (!node || !parent || node == parent || m_core.IsPlaying()) return;
-	if (node->parentNode.lock() == parent) return;
-	if (nox::editor::ReparentNodeUndoable(m_nodeTable, CoreNodeOps(), UndoSink(), node, parent, -1)) NoteEdit();
+	if (index < 0 && node->parentNode.lock() == parent) return;
+	if (nox::editor::ReparentNodeUndoable(m_nodeTable, CoreNodeOps(), UndoSink(), node, parent, index)) NoteEdit();
 	else ui::Toast("A node cannot be moved under itself", ui::ToastKind::Warning);
+}
+
+void EditorWorkspace::MoveNodeNextTo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& target, bool after)
+{
+	if (!node || !target || node == target) return;
+	const std::shared_ptr<SceneNode> parent = target->parentNode.lock();
+	if (!parent) return;
+	// Index among the parent's children without the moved node (that is how ReparentNode counts).
+	int index = 0;
+	for (const auto& c : parent->children) {
+		if (c == node) continue;
+		if (c == target) break;
+		++index;
+	}
+	ReparentWithUndo(node, parent, after ? index + 1 : index);
+}
+
+void EditorWorkspace::CreateFolderUnder(const std::shared_ptr<SceneNode>& parent)
+{
+	if (m_core.IsPlaying()) return;
+	const std::shared_ptr<SceneNode> target = parent ? parent : RootNode();
+	if (!target) return;
+	const json folderJson = { {"type", "folder"}, {"name", UniqueChildName(target, "Folder")} };
+	if (auto folder = nox::editor::CreateNodeUndoable(m_nodeTable, CoreNodeOps(), UndoSink(), "New Folder", folderJson, target)) {
+		SelectNode(folder);
+		NoteEdit();
+	}
+}
+
+void EditorWorkspace::GroupIntoFolderWithUndo(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || m_core.IsPlaying() || node->IsGenerated()) return;
+	const std::shared_ptr<SceneNode> parent = node->parentNode.lock();
+	if (!parent) return;
+	const json folderJson = { {"type", "folder"}, {"name", UniqueChildName(parent, "Folder")} };
+	if (auto folder = nox::editor::GroupIntoFolderUndoable(m_nodeTable, CoreNodeOps(), UndoSink(), node, folderJson)) {
+		SelectNode(folder);
+		NoteEdit();
+	}
 }
 
 void EditorWorkspace::BeginRename(const std::shared_ptr<SceneNode>& node)
@@ -1323,6 +1433,7 @@ void EditorWorkspace::DrawInspector()
 		};
 		if (auto root = RootNode()) collect(root);
 
+		if (node->IsFolder()) ImGui::TextDisabled("Folder: groups nodes. No transform; not rendered; children keep their own transforms.");
 		// Builtin facets (Node, Transform) first; the registry sorts the rest by their order.
 		std::vector<const nox::reflect::ComponentDesc*> components = nox::reflect::Registry::Get().ComponentsOf(*node);
 		std::stable_partition(components.begin(), components.end(),
@@ -2035,6 +2146,21 @@ void EditorWorkspace::RunSmokeScript()
 		Redo();
 		check(std::abs(subject->GetPosition().x - original.x - 0.5f) < 1e-4f, "redo reapplies transform");
 		Undo();
+	}
+	if (frame == 75 && subject && graph) {
+		// Folders: create one under the root, group the subject into a new folder, then undo both steps.
+		const auto root = graph->GetRoot();
+		const size_t rootCount = root->children.size();
+		CreateFolderUnder(root);
+		const auto folder = root->children.empty() ? nullptr : root->children.back();
+		check(folder && folder->IsFolder() && root->children.size() == rootCount + 1, "new folder under root");
+		GroupIntoFolderWithUndo(subject);
+		const auto parent = subject->parentNode.lock();
+		check(parent && parent->IsFolder(), "group moves the node into a folder");
+		Undo();
+		check(subject->parentNode.lock() == root, "undo group restores the parent");
+		Undo();
+		check(root->children.size() == rootCount, "undo new folder removes it");
 	}
 	if (frame == 90) {
 		texW0 = m_game.texWidth;

@@ -114,7 +114,7 @@ Reads (valid at any time in a callback):
 
 | Function | Returns |
 | --- | --- |
-| `ctx:find(name)` | handle of the entity whose node name is `name`, or nil |
+| `ctx:find(name)` | handle of the entity whose node name is `name`, or nil. A name with `/` is a path of node names from the scene root: `ctx:find("Props/Deep/Lamp")`. Folders count as path segments, and each segment takes the first child with that name. A bare name ignores folders: it finds the node in any folder (or at the top). A path never falls back to a bare-name lookup, so `ctx:find("Lamp/Props")` is nil |
 | `ctx:name(h)` | node name |
 | `ctx:is_valid(h)` | boolean, never raises |
 | `ctx:same(a, b)` | boolean, never raises |

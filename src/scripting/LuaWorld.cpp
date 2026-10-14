@@ -1795,6 +1795,14 @@ namespace NoxLua {
 		EntityHandle h;
 		ComponentManager* cm = Manager();
 		if (!cm || name.empty()) return h;
+		// "Folder/Child": a path of node names from the scene root (folders are path segments).
+		if (name.find('/') != std::string::npos) {
+			if (!m_scene) return h;
+			std::shared_ptr<SceneNode> node = m_scene->FindNodeByPath(name);
+			if (!node || node->GetEntityID() == INVALID_ENTITY) return h;
+			const EntityHandle candidate = cm->MakeHandle(node->GetEntityID());
+			return cm->IsHandleValid(candidate) ? candidate : h;
+		}
 		const EntityID id = cm->FindEntityByName(name);
 		if (id == INVALID_ENTITY) return h;
 		const EntityHandle candidate = cm->MakeHandle(id);
