@@ -17,6 +17,7 @@ class Core;
 class SceneNode;
 class ImGuiInterface;
 class ProcessRunner;
+namespace nox::content { class ContentBrowser; }
 
 /*
 * Docked editor workspace (docs/nfs2015/game.md, "Editor").
@@ -99,14 +100,16 @@ private:
 	void DrawPlayBanner();
 	void DrawAddNodeItems();
 	void AddNodeFromTemplate(const std::string& kind);
-	void AddModelFromAsset(const std::string& path);
+	// Models and prefabs from assets. at = world point (ground hit under the cursor) or null for in front of the camera.
+	void AddModelFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent, const glm::vec3* at = nullptr);
+	bool PlaceAssetInScene(const std::string& path, const std::shared_ptr<SceneNode>& parent, const glm::vec3* at);
 	void DuplicateNodeWithUndo(const std::shared_ptr<SceneNode>& node);
 	void DeleteNodeWithUndo(const std::shared_ptr<SceneNode>& node);
 	void ReparentWithUndo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& parent);
 	void BeginRename(const std::shared_ptr<SceneNode>& node);
 	// Prefabs: save a subtree as a *.prefab.json asset, instantiate an asset, unpack an instance (undoable).
 	void BeginSavePrefab(const std::shared_ptr<SceneNode>& node);
-	void InstantiatePrefabFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent);
+	void InstantiatePrefabFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent, const glm::vec3* at = nullptr);
 	void UnpackPrefabWithUndo(const std::shared_ptr<SceneNode>& node);
 	void InvokeEditorButton(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
 		const nox::reflect::MethodDesc& method);
@@ -163,12 +166,9 @@ private:
 	bool m_showLegacyPerformance = true, m_showLegacyAnimation = false, m_showLegacyState = false, m_showLegacyCamera = false;
 	bool m_showDemo = false;
 
-	// Hierarchy / assets.
+	// Hierarchy / assets (the Content Browser owns its folder, search and thumbnail state).
 	char m_hierarchyFilter[128] = "";
-	char m_assetFilter[128] = "";
-	std::string m_assetFolder = "scenes";
-	std::vector<std::string> m_assetCache;
-	float m_assetCacheTimer = 0.0f;
+	std::unique_ptr<nox::content::ContentBrowser> m_contentBrowser;
 
 	// Console.
 	std::vector<std::pair<std::string, int>> m_consoleLines;

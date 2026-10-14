@@ -507,6 +507,9 @@
     <ClCompile Include="src\ImGui\ConsoleLog.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ImGui\ContentBrowser.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
     <ClCompile Include="src\ImGui\EditorWorkspace.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
@@ -1146,6 +1149,9 @@
       <Filter>Header Files\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\ImGui\ConsoleLog.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\ContentBrowser.h">
       <Filter>Header Files\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\ImGui\EditorWorkspace.h">

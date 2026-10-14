@@ -256,6 +256,7 @@
     <ClCompile Include="src\ImGui\BaseWindow.cpp" />
     <ClCompile Include="src\ImGui\CameraWindow.cpp" />
     <ClCompile Include="src\ImGui\ConsoleLog.cpp" />
+    <ClCompile Include="src\ImGui\ContentBrowser.cpp" />
     <ClCompile Include="src\ImGui\EditorWorkspace.cpp" />
     <ClCompile Include="src\ImGui\HelpWindow.cpp" />
     <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp" />
@@ -441,6 +442,7 @@
     <ClInclude Include="src\ImGui\BaseWindow.h" />
     <ClInclude Include="src\ImGui\CameraWindow.h" />
     <ClInclude Include="src\ImGui\ConsoleLog.h" />
+    <ClInclude Include="src\ImGui\ContentBrowser.h" />
     <ClInclude Include="src\ImGui\EditorWorkspace.h" />
     <ClInclude Include="src\ImGui\HelpWindow.h" />
     <ClInclude Include="src\ImGui\ImGuiWindowManager.h" />
