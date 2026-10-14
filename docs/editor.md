@@ -9,7 +9,7 @@ registry components described in [engine_overview.md](engine_overview.md).
 
 | Window | Purpose |
 | --- | --- |
-| Hierarchy (`SceneHierarchyWindow`) | The node tree. Select, rename, drag to reparent, right-click for the node menu |
+| Hierarchy | The node tree with folders. Select, rename, drag to reparent or group, search, right-click for the node menu |
 | Inspector | The selected node's components, built generically from the reflection registry |
 | Assets | Browse project and engine assets. Drag a prefab onto the viewport or a node to instantiate it |
 | Console, Build Output | Log messages and the output of build and package actions |
@@ -21,10 +21,28 @@ while their project is active. See [lua_api.md](lua_api.md#editor).
 ## Hierarchy
 
 - The tree shows every node; a node's children are nested under it. Prefab instances are shown as one node
-  with its own children.
-- Click to select. Ctrl+D duplicates, Delete removes. Both are undoable.
-- Drag a node onto another node to reparent it, or onto the root row to make it a root node. The move is undoable.
-- Right-click a node for **Add Child**, **Duplicate**, **Save as Prefab...** and **Delete**.
+  with its own children. Rows are drawn flat, indented by depth; the arrow on a row collapses or expands it.
+- Click to select. Ctrl+D duplicates, Delete removes. Both are undoable. Selecting a node in the viewport expands
+  the path to it.
+- **Folders** group nodes without affecting them. A folder is a node of type `folder` (tag FOLDER): it has no
+  transform, is never drawn, and its children keep their own transforms. Create one with **Node > Add Node > Folder**,
+  **New Folder** in the row menu (created under that row) or in the empty area of the tree (created under the
+  selected node, or at the root). **Group into Folder** in a row's menu puts that node into a new folder in its
+  place. Folder creation, grouping and renaming are undoable (rename is the usual Rename, F2).
+- Drag rows to move nodes. Drop on the middle of a row to make the dragged node its child (this moves a node into a
+  folder). Drop on the top or bottom quarter of a row to place the dragged node just before or after it under the
+  same parent; that is how a node leaves a folder. Drop on the empty area below the rows to move it to the root.
+  Every move is undoable and keeps the world transform. A node cannot be dropped into its own subtree.
+- **Search** (the box at the top) filters by name: every whitespace-separated term must be part of the name,
+  case-insensitively. `t:<type>` filters by node type: `t:folder`, `t:light`, `t:mesh`, `t:audio`, `t:camera`,
+  `t:gui`, `t:lpv`, `t:skeletal`, `t:node`. A matching node shows with its ancestors, which are expanded.
+- **Collapse** and **Expand** set every row at once. **Sort** chooses scene order (default) or name order with
+  folders first. Sort is an editor setting and does not change the scene file.
+- The collapse state is kept per scene in the user editor settings (`settings/editor_settings.json`, `hierarchy`
+  key), keyed by node path (`Props/Deep`). Renaming a node or one of its ancestors resets the state of that subtree.
+- Right-click a node for **New Folder**, **Group into Folder**, **Add Child**, **Duplicate**, **Save as Prefab...**
+  and **Delete**.
+- Generated nodes (rebuilt on load, not saved) are listed only while a search is active.
 
 ## Inspector
 
@@ -50,7 +68,8 @@ button) is drawn in the inspector and invoked on the node.
 
 - Ctrl+Z undoes and Ctrl+Y redoes. the **Edit** menu has the same two items.
 - Undoable: property edits, transform changes made with the gizmo, add and remove component, add and delete
-  node, duplicate, reparent, prefab instantiation.
+  node, duplicate, reparent (including drops before or after a row), new folder, group into folder, prefab
+  instantiation.
 - Not recorded: anything in play mode.
 - Undoing a delete re-creates the node. The editor keeps a handle per node, so the undo entry still refers to the
   right node after the re-creation.

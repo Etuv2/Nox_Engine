@@ -199,3 +199,34 @@ NOX_TEST(LuaScene, StopRemovesInstancesAndRecreatesDestroyedAuthoredNodes)
 	NOX_CHECK(h.ChildNamed("probe") != nullptr);
 	NOX_CHECK(h.ChildNamed("probe")->GetPosition() == glm::vec3(0.0f, 1.0f, 0.0f));
 }
+
+// ctx:find resolves a slash path from the scene root through folders, and a bare name finds the node in any folder.
+NOX_TEST(LuaScene, FindResolvesPathsThroughFolders)
+{
+	Harness h;
+	NOX_REQUIRE(h.sandbox.ok);
+	const nlohmann::json folder = {
+		{"type", "folder"}, {"name", "Props"}, {"position", {5, 5, 5}},
+		{"children", nlohmann::json::array({ nlohmann::json{ {"type", "node"}, {"name", "Lamp"}, {"position", {0, 2, 0}} } })} };
+	NOX_REQUIRE(h.loader.InstantiateNode(h.scene, folder, h.scene.GetRoot(), "scenes/_lua_scene_test.json") != nullptr);
+	NOX_REQUIRE(h.Load(
+		"nox.system{name = 'finder', update = function(ctx, dt)\n"
+		"  if ctx:frame() ~= 1 then return end\n"
+		"  by_path = tostring(ctx:find('Props/Lamp') ~= nil)\n"
+		"  by_name = tostring(ctx:find('Lamp') ~= nil)\n"
+		"  folder_node = tostring(ctx:find('Props') ~= nil)\n"
+		"  wrong_order = tostring(ctx:find('Lamp/Props') ~= nil)\n"
+		"  missing = tostring(ctx:find('Props/Missing') ~= nil)\n"
+		"end}\n"));
+	h.Frame();
+	NOX_CHECK(h.GlobalStr("by_path") == "true");
+	NOX_CHECK(h.GlobalStr("by_name") == "true");
+	NOX_CHECK(h.GlobalStr("folder_node") == "true");
+	NOX_CHECK(h.GlobalStr("wrong_order") == "false");
+	NOX_CHECK(h.GlobalStr("missing") == "false");
+	// The folder is a scene node with an identity transform, so its child keeps the position it was given.
+	auto props = h.ChildNamed("Props");
+	NOX_REQUIRE(props != nullptr);
+	NOX_CHECK(props->IsFolder());
+	NOX_CHECK(props->GetPosition() == glm::vec3(0.0f));
+}

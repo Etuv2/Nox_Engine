@@ -1124,25 +1124,30 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 	case SceneNode::SKELETAL:
 		nodeJson["type"] = "skeletal";
 		break;
+	case SceneNode::FOLDER:
+		nodeJson["type"] = "folder";
+		break;
 	default:
 		nodeJson["type"] = "node";
 		break;
 	}
 
-	// Serialize transform
-	glm::vec3 position = node->GetPosition();
-	glm::vec3 rotation = node->GetRotation();
-	glm::vec3 scale = node->GetScale();
+	// A folder has no transform of its own (identity, not written); its children keep the transforms they have.
+	if (nodeType != SceneNode::FOLDER) {
+		glm::vec3 position = node->GetPosition();
+		glm::vec3 rotation = node->GetRotation();
+		glm::vec3 scale = node->GetScale();
 
-	// Rounded to a fixed step, so float round-off (radians/degrees conversions, matrix decomposition of edited nodes)
-	// does not change the file on every save/load cycle.
-	nodeJson["position"] = { QuantizeTransform(position.x, 1e6), QuantizeTransform(position.y, 1e6), QuantizeTransform(position.z, 1e6) };
+		// Rounded to a fixed step, so float round-off (radians/degrees conversions, matrix decomposition of edited nodes)
+		// does not change the file on every save/load cycle.
+		nodeJson["position"] = { QuantizeTransform(position.x, 1e6), QuantizeTransform(position.y, 1e6), QuantizeTransform(position.z, 1e6) };
 
-	// Convert rotation from radians to degrees for saving
-	nodeJson["rotation"] = { QuantizeTransform(glm::degrees(rotation.x), 1e4), QuantizeTransform(glm::degrees(rotation.y), 1e4),
-		QuantizeTransform(glm::degrees(rotation.z), 1e4) };
+		// Convert rotation from radians to degrees for saving
+		nodeJson["rotation"] = { QuantizeTransform(glm::degrees(rotation.x), 1e4), QuantizeTransform(glm::degrees(rotation.y), 1e4),
+			QuantizeTransform(glm::degrees(rotation.z), 1e4) };
 
-	nodeJson["scale"] = { QuantizeTransform(scale.x, 1e6), QuantizeTransform(scale.y, 1e6), QuantizeTransform(scale.z, 1e6) };
+		nodeJson["scale"] = { QuantizeTransform(scale.x, 1e6), QuantizeTransform(scale.y, 1e6), QuantizeTransform(scale.z, 1e6) };
+	}
 
 	// Serialize node name
 	std::string nodeName = node->GetName();
@@ -1622,6 +1627,12 @@ void SceneLoader::StoreAuthoredState(const std::shared_ptr<SceneNode>& node, con
 	authored.erase("children");
 	authored.erase("components");
 	authored.erase("prefab");
+	// A folder has no transform of its own: a transform the file wrote for it is dropped, not kept as authored.
+	if (node->IsFolder()) {
+		authored.erase("position");
+		authored.erase("rotation");
+		authored.erase("scale");
+	}
 	node->SetAuthoredExtras(authored.dump());
 	node->SetAuthoredBaseline(loaded.dump());
 }
@@ -1691,6 +1702,10 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			node->SetNodeType(SceneNode::CAMERA);
 			break;
+		case NodeType::FOLDER:
+			node = std::make_shared<SceneNode>(componentManager, transformSystem);
+			node->SetNodeType(SceneNode::FOLDER);
+			break;
 		case NodeType::LPV_VOLUME:  // Handle LPV volume nodes
 			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			node->SetNodeType(SceneNode::LPV_VOLUME);
@@ -1708,13 +1723,18 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			break;
 		}
 
-	// Process common transform data.
+	// Process common transform data. A folder is always at identity whatever the file says.
 	const std::string nodeDebugName = nodeJson.value("name", typeStr);
 	glm::vec3 pos = ReadSceneVec3(nodeJson, "position", glm::vec3(0.0f), nodeDebugName);
 	glm::vec3 rot = ReadSceneVec3(nodeJson, "rotation", glm::vec3(0.0f), nodeDebugName);
 	glm::vec3 scl = SanitizeSceneScale(
 		ReadSceneVec3(nodeJson, "scale", glm::vec3(1.0f), nodeDebugName),
 		nodeDebugName);
+	if (type == NodeType::FOLDER) {
+		pos = glm::vec3(0.0f);
+		rot = glm::vec3(0.0f);
+		scl = glm::vec3(1.0f);
+	}
 
 	// Apply rotation correctly using combined Euler angles -> quaternion conversion
 	// Previous code called SetRotation three times, but each call replaced the rotation instead of accumulating
@@ -2021,6 +2041,9 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		break;
 	}
 
+	case NodeType::FOLDER:   // no type-specific data: the transform was reset above
+		break;
+
 	default:
 		std::cerr << "Unknown node type: " << typeStr << std::endl;
 		break;
@@ -2103,6 +2126,7 @@ void SceneLoader::CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID pare
 	case SceneNode::GUI:        ecsType = ::NodeType::GUI; break;
 	case SceneNode::LPV_VOLUME: ecsType = ::NodeType::LPV_VOLUME; break;
 	case SceneNode::SKELETAL:   ecsType = ::NodeType::SKELETAL; break;
+	case SceneNode::FOLDER:     ecsType = ::NodeType::FOLDER; break;
 	}
 
 	// Create entity
@@ -2726,6 +2750,7 @@ void SceneLoader::RestoreNodeStates(const nlohmann::json& nodesArray,
 		case SceneNode::GUI:       actualType = "gui"; break;
 		case SceneNode::LPV_VOLUME: actualType = "lpv_volume"; break;
 		case SceneNode::SKELETAL:  actualType = "skeletal"; break;
+		case SceneNode::FOLDER:    actualType = "folder"; break;
 		default:                   actualType = "node"; break;
 		}
 

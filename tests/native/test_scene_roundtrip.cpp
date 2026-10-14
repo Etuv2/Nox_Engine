@@ -457,3 +457,59 @@ NOX_TEST(Prefab, OverridesApplyToTheExpandedTree)
 	NOX_CHECK_EQ(ref["children"][2]["components"]["Light"]["intensity"].get<int>(), 4);
 	NOX_CHECK_EQ(ref["children"][2]["light"]["type"].get<std::string>(), std::string("point"));
 }
+
+// Folders are organisation nodes: they save without a transform, load at identity, are never renderable, and their
+// children keep the transforms they were authored with. Names resolve by path (folders included) and bare names.
+NOX_TEST(SceneRoundTrip, FoldersRoundTripAndPathLookupIncludesThem)
+{
+	LooseSandbox sandbox;
+	NOX_REQUIRE(sandbox.ok);
+	const char* kFolderSceneJson = R"({
+  "scene_name": "Folders",
+  "nodes": [
+    { "type": "folder", "name": "Props", "position": [9, 9, 9], "children": [
+        { "type": "node", "name": "Crate", "position": [1, 0, 0] },
+        { "type": "folder", "name": "Deep", "children": [
+            { "type": "light", "name": "Lamp", "light": { "type": "point" }, "position": [0, 2, 0] } ] } ] },
+    { "type": "node", "name": "Loose", "position": [0, 0, 5] }
+  ]
+})";
+	sandbox.WriteText("scenes/folders.json", kFolderSceneJson);
+
+	SceneLoader loaderA(nullptr, std::make_shared<PhysicsEngine>(), 1280, 720);
+	auto graph = LoadScene(loaderA, "scenes/folders.json");
+	NOX_REQUIRE(graph != nullptr);
+	auto props = FindChild(graph->GetRoot(), "Props");
+	NOX_REQUIRE(props != nullptr);
+	NOX_CHECK(props->IsFolder());
+	NOX_CHECK(props->GetPosition() == glm::vec3(0.0f));
+	NOX_CHECK(graph->GetComponentManager()->GetRenderable(props->GetEntityID()) == nullptr);
+	auto crate = FindChild(props, "Crate");
+	NOX_REQUIRE(crate != nullptr);
+	NOX_CHECK(crate->GetWorldPosition() == glm::vec3(1.0f, 0.0f, 0.0f));
+
+	NOX_CHECK(graph->FindNodeByPath("Props/Deep/Lamp") != nullptr);
+	NOX_CHECK(graph->FindNodeByPath("Props/Crate") == crate);
+	NOX_CHECK(graph->FindNodeByPath("Props/Missing") == nullptr);
+	NOX_CHECK(graph->FindNodeByPath("Crate") == nullptr);   // a path starts at the scene root
+	NOX_CHECK(graph->GetComponentManager()->FindEntityByName("Lamp") != INVALID_ENTITY);   // bare names find any node
+
+	const std::string a = SaveCopy(loaderA, graph, "scenes/folders.json", sandbox.Physical("fa.json"));
+	sandbox.WriteText("scenes/fa.json", a);
+	SceneLoader loaderB(nullptr, std::make_shared<PhysicsEngine>(), 1280, 720);
+	auto graphB = LoadScene(loaderB, "scenes/fa.json");
+	NOX_REQUIRE(graphB != nullptr);
+	const std::string b = SaveCopy(loaderB, graphB, "scenes/fa.json", sandbox.Physical("fb.json"));
+	NOX_CHECK(a == b);
+
+	const json written = json::parse(a);
+	const json& props0 = written["nodes"][0];
+	NOX_CHECK_EQ(props0["type"].get<std::string>(), std::string("folder"));
+	NOX_CHECK(!props0.contains("position"));
+	NOX_CHECK(!props0.contains("rotation"));
+	NOX_CHECK(!props0.contains("scale"));
+	NOX_CHECK_EQ(props0["children"][0]["position"][0].get<int>(), 1);
+	NOX_CHECK_EQ(props0["children"][1]["type"].get<std::string>(), std::string("folder"));
+	NOX_CHECK_EQ(props0["children"][1]["children"][0]["name"].get<std::string>(), std::string("Lamp"));
+	NOX_CHECK(written["nodes"][1].value("type", std::string()) == "node");
+}

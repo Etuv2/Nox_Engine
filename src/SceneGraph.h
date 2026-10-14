@@ -129,6 +129,10 @@ public:
     // Scene node that owns an ECS entity (SceneNode::GetEntityID), searched from the root; null when none.
     std::shared_ptr<SceneNode> FindNodeByEntity(EntityID entity);
 
+    // Node at a slash-separated path of names from the root ("Folder/Child"). Folders are ordinary path segments.
+    // Each segment takes the first child with that name. Null when a segment does not match.
+    std::shared_ptr<SceneNode> FindNodeByPath(const std::string& path);
+
     void SetSceneName(const std::string& sceneName);
     std::string GetSceneName() const { return m_sceneName; }
     void PrintMembers();

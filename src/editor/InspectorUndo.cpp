@@ -312,6 +312,44 @@ bool ReparentNodeUndoable(NodeTable& table, const NodeOps& ops, const UndoPush& 
 	return true;
 }
 
+std::shared_ptr<SceneNode> GroupIntoFolderUndoable(NodeTable& table, const NodeOps& ops, const UndoPush& push,
+	const std::shared_ptr<SceneNode>& node, const nlohmann::json& folderJson)
+{
+	if (!node || !ops.instantiate || !ops.reparent || !ops.serialize || !ops.destroy) return nullptr;
+	const std::shared_ptr<SceneNode> parent = node->parentNode.lock();
+	if (!parent) return nullptr;
+	const int index = IndexIn(parent, node);
+	auto folder = ops.instantiate(folderJson, parent);   // appended after the siblings
+	if (!folder) return nullptr;
+	// Redo re-creates the folder from this empty snapshot and moves the node back in.
+	const nlohmann::json snapshot = ops.serialize(folder);
+	ops.reparent(folder, parent, index, true);           // take the node's slot
+	ops.reparent(node, folder, -1, true);
+	if (push) {
+		NodeTable* t = &table;
+		const NodeHandle nodeHandle = table.HandleOf(node);
+		const NodeHandle parentHandle = table.HandleOf(parent);
+		auto holder = std::make_shared<std::shared_ptr<SceneNode>>(folder);
+		push("Group into Folder",
+			[t, ops, holder, nodeHandle, parentHandle, index] {
+				auto n = t->Resolve(nodeHandle);
+				auto p = t->Resolve(parentHandle);
+				if (n && p) ops.reparent(n, p, index, true);
+				if (*holder) ops.destroy(*holder);
+			},
+			[t, ops, holder, nodeHandle, parentHandle, index, snapshot] {
+				auto p = t->Resolve(parentHandle);
+				auto n = t->Resolve(nodeHandle);
+				auto restored = p ? ops.instantiate(snapshot, p) : nullptr;
+				if (!restored) return;
+				ops.reparent(restored, p, index, true);
+				if (n) ops.reparent(n, restored, -1, true);
+				*holder = restored;
+			});
+	}
+	return folder;
+}
+
 bool UnpackPrefabUndoable(NodeTable& table, const UndoPush& push, const std::shared_ptr<SceneNode>& node)
 {
 	if (!node || node->GetPrefabPath().empty()) return false;

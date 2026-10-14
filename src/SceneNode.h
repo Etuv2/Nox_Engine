@@ -39,7 +39,8 @@ public:
         CAMERA,
         GUI,
         LPV_VOLUME,
-        SKELETAL
+        SKELETAL,
+        FOLDER      // organisation only: identity transform, never rendered; children keep their own transforms
     };
 
     // Culling mode override
@@ -143,6 +144,10 @@ public:
     // NODE TYPE
     void SetNodeType(NODE_TYPE type) { m_nodeType = type; }
     NODE_TYPE GetNodeType() const { return m_nodeType; }
+    bool IsFolder() const { return m_nodeType == FOLDER; }
+
+    // Slash-separated path of names from the scene root (the root itself is not part of the path).
+    std::string GetHierarchyPath() const;
     
     // LPV VOLUME
     void SetLPVVolumeData(const LPVVolumeData& data) { m_lpvData = data; }

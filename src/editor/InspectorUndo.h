@@ -105,6 +105,11 @@ std::shared_ptr<SceneNode> CreateNodeUndoable(NodeTable& table, const NodeOps& o
 bool ReparentNodeUndoable(NodeTable& table, const NodeOps& ops, const UndoPush& push, const std::shared_ptr<SceneNode>& node,
 	const std::shared_ptr<SceneNode>& newParent, int index);
 
+// Groups a node into a new folder: the folder takes the node's slot under the same parent and the node moves
+// inside it (world transforms are kept; folders have identity transforms). One undo step. Null on failure.
+std::shared_ptr<SceneNode> GroupIntoFolderUndoable(NodeTable& table, const NodeOps& ops, const UndoPush& push,
+	const std::shared_ptr<SceneNode>& node, const nlohmann::json& folderJson);
+
 // Unpacks a prefab instance: the node and its subtree stay as they are, but the node stops being an instance
 // (its prefab link is cleared). Undo links it again. False when the node is not an instance.
 bool UnpackPrefabUndoable(NodeTable& table, const UndoPush& push, const std::shared_ptr<SceneNode>& node);

@@ -473,6 +473,7 @@ json RuntimeStateManager::SerializeNodeRecursive(const std::shared_ptr<SceneNode
 	case SceneNode::CAMERA:    nodeJson["type"] = "camera"; break;
 	case SceneNode::GUI:       nodeJson["type"] = "gui"; break;
 	case SceneNode::LPV_VOLUME: nodeJson["type"] = "lpv_volume"; break;
+	case SceneNode::FOLDER:    nodeJson["type"] = "folder"; break;
 	default:                   nodeJson["type"] = "node"; break;
 	}
 
@@ -763,6 +764,7 @@ void RuntimeStateManager::RestoreNodesRecursive(const nlohmann::json& nodesJson,
 		case SceneNode::GUI:       actualType = "gui"; break;
 		case SceneNode::LPV_VOLUME: actualType = "lpv_volume"; break;
 		case SceneNode::SKELETAL:  actualType = "skeletal"; break;
+		case SceneNode::FOLDER:    actualType = "folder"; break;
 		default:                   actualType = "node"; break;
 		}
 

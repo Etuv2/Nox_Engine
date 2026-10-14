@@ -10,6 +10,7 @@
 #include "../reflect/Reflection.h"
 #include "rhi/RHI.h"
 #include "../editor/InspectorUndo.h"
+#include "../editor/HierarchyModel.h"
 #include "../json.hpp"
 #include "../EditorExtensions.h"
 
@@ -90,7 +91,7 @@ private:
 	void DrawGameViewport();
 	void DrawViewportImage(Viewport& vp);
 	void DrawHierarchy();
-	void DrawHierarchyNode(const std::shared_ptr<SceneNode>& node);
+	void DrawHierarchyRow(const nox::editor::HierarchyRow& row);
 	void DrawAssets();
 	void DrawInspector();
 	void DrawComponentSection(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
@@ -102,7 +103,14 @@ private:
 	void AddModelFromAsset(const std::string& path);
 	void DuplicateNodeWithUndo(const std::shared_ptr<SceneNode>& node);
 	void DeleteNodeWithUndo(const std::shared_ptr<SceneNode>& node);
-	void ReparentWithUndo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& parent);
+	// index < 0 appends to the parent; otherwise the node lands at that position among the parent's other children.
+	void ReparentWithUndo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& parent, int index = -1);
+	// Moves node next to target (before it, or after it when after is true) under target's parent.
+	void MoveNodeNextTo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& target, bool after);
+	// Folders: new empty folder under parent (null = scene root), and grouping a node into a new folder in its slot.
+	void CreateFolderUnder(const std::shared_ptr<SceneNode>& parent);
+	void GroupIntoFolderWithUndo(const std::shared_ptr<SceneNode>& node);
+	nlohmann::json HierarchySettingsJson() const;
 	void BeginRename(const std::shared_ptr<SceneNode>& node);
 	// Prefabs: save a subtree as a *.prefab.json asset, instantiate an asset, unpack an instance (undoable).
 	void BeginSavePrefab(const std::shared_ptr<SceneNode>& node);
@@ -165,6 +173,11 @@ private:
 
 	// Hierarchy / assets.
 	char m_hierarchyFilter[128] = "";
+	nox::editor::HierarchyView m_hierarchyView;                  // collapse state of the loaded scene
+	nox::editor::HierarchySort m_hierarchySort = nox::editor::HierarchySort::SceneOrder;
+	nlohmann::json m_hierarchySaved = nlohmann::json::object();  // {"sort", "scenes": {path: collapse state}} from settings
+	std::string m_hierarchyScenePath;                             // scene whose collapse state m_hierarchyView holds
+	std::weak_ptr<SceneNode> m_hierarchyRevealed;                 // selection last expanded in the tree
 	char m_assetFilter[128] = "";
 	std::string m_assetFolder = "scenes";
 	std::vector<std::string> m_assetCache;

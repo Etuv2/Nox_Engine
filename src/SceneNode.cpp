@@ -208,6 +208,22 @@ std::shared_ptr<SceneNode> SceneNode::GetChild(int index) {
 	return children[index];
 }
 
+std::string SceneNode::GetHierarchyPath() const {
+	std::vector<std::string> segments;
+	for (const SceneNode* n = this; n; ) {
+		auto parent = n->parentNode.lock();
+		if (!parent) break;   // the scene root (no parent) is not a path segment
+		segments.push_back(const_cast<SceneNode*>(n)->GetName());
+		n = parent.get();
+	}
+	std::string path;
+	for (auto it = segments.rbegin(); it != segments.rend(); ++it) {
+		if (!path.empty()) path += '/';
+		path += *it;
+	}
+	return path;
+}
+
 std::string SceneNode::GetName() {
 	if (!m_name.empty()) {
 		return m_name;
@@ -223,6 +239,7 @@ std::string SceneNode::GetName() {
 		case GUI:    return "GUI";
 		case LPV_VOLUME: return "LPVVolume";
 		case SKELETAL: return "Skeleton";
+		case FOLDER: return "Folder";
 		default:     return "Unknown";
 		}
 	}
@@ -1033,6 +1050,7 @@ EntityID SceneNode::CreateECSEntity(const std::string& name) {
 		case GUI:        type = NodeType::GUI; break;
 		case LPV_VOLUME: type = NodeType::LPV_VOLUME; break;
 		case SKELETAL:   type = NodeType::SKELETAL; break;
+		case FOLDER:     type = NodeType::FOLDER; break;
 	}
 	
 	std::string entityName = name.empty() ? GetName() : name;
@@ -1119,6 +1137,7 @@ std::shared_ptr<SceneNode> SceneNode::CreateWithECS(
 		case NodeType::GUI:        node->SetNodeType(GUI); break;
 		case NodeType::LPV_VOLUME: node->SetNodeType(LPV_VOLUME); break;
 		case NodeType::SKELETAL:   node->SetNodeType(SKELETAL); break;
+		case NodeType::FOLDER:     node->SetNodeType(FOLDER); break;
 	}
 	
 	return node;
