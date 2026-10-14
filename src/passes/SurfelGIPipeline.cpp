@@ -1411,7 +1411,14 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		buildCellAverages();
 	}
 
-	countLiveSurfels();
+	// The live count feeds only the counter readback below, which runs on the same frames as this
+	// condition (m_frameIndex is incremented after it). Sweeping every surfel every frame for it
+	// was pure overhead.
+	const bool liveCountNeeded = placementOnly || m_settings.debugView != SurfelGIDebugView::Off ||
+		m_frameIndex == 0u || ((m_frameIndex + 1u) % kSurfelStatsReadbackInterval) == 0u;
+	if (liveCountNeeded) {
+		countLiveSurfels();
+	}
 
 	gpu.UseProgram({});
 	++m_frameIndex;

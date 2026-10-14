@@ -356,7 +356,11 @@ vec3 ClampFallbackToDirectSupport(vec3 gridCandidate, vec3 directIrradiance, flo
     return max(gridCandidate, vec3(0.0));
 }
 
-uint ReceiverGatherSeed(ivec2 pixel, vec3 worldPos, uint transformID, uint materialID)
+// Seeds the per-cell stride start. The frame index is part of the seed: a per-pixel seed that
+// never changes would visit the same strided subset of every cell forever, so surfels outside
+// that subset never contributed. Varying the start per frame lets the temporal filter average
+// over the whole cell.
+uint ReceiverGatherSeed(ivec2 pixel, vec3 worldPos, uint transformID, uint materialID, uint frameIndex)
 {
     uint sx = uint(pixel.x) * 0x8da6b343u;
     uint sy = uint(pixel.y) * 0xd8163841u;
@@ -364,7 +368,7 @@ uint ReceiverGatherSeed(ivec2 pixel, vec3 worldPos, uint transformID, uint mater
     uint wy = floatBitsToUint(worldPos.y * 0.03125);
     uint wz = floatBitsToUint(worldPos.z * 0.03125);
     return SurfelHash(sx ^ sy ^ wx ^ (wy * 0x165667b1u) ^ (wz * 0x9e3779b9u) ^
-        (transformID * 0x85ebca6bu) ^ (materialID * 0xc2b2ae35u));
+        (transformID * 0x85ebca6bu) ^ (materialID * 0xc2b2ae35u) ^ (frameIndex * 0x27d4eb2du));
 }
 
 uint GatherCellSampleBudget(uint neighborIndex, uint neighborRadius, uint gatherBudget)
@@ -554,7 +558,7 @@ void main()
         : (neighborRadius == 1u ? SURFEL_APPLY_GATHER_CELLS_RADIUS_1 : SURFEL_APPLY_GATHER_CELLS_RADIUS_2);
     uint candidateCount = 0u;
     uint sampleCount = 0u;
-    uint receiverSeed = ReceiverGatherSeed(pixel, worldPos, transformID, materialID);
+    uint receiverSeed = ReceiverGatherSeed(pixel, worldPos, transformID, materialID, uFrameIndex);
 
     for (uint i = 0u; i < gatherCellCount; ++i) {
         if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || sampleCount >= gatherBudget) {
