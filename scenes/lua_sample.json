@@ -1,63 +1,132 @@
 {
-  "scene_name": "lua sample arena",
-  "project": "projects/sample-arena/project.json",
   "exposure": 1,
   "gamma": 2.2,
-  "skybox": "hdrs\\overcast_sky.hdr",
-  "main_shaders": {
-    "normal_pass": {
-      "vertex_shader": "shaders\\vertex_shader.glsl",
-      "fragment_shader": "shaders\\fragment_shader.glsl"
+  "nodes": [
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cornell_box.glb",
+          "render_whole_model": false
+        }
+      },
+      "path": "models\\cornell_box.glb",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        -90.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "type": "model"
     },
-    "shadow_pass": {
-      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
-      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [
+            1.0,
+            0.800000011920929,
+            0.5
+          ],
+          "enabled": true,
+          "intensity": 6.0,
+          "range": 40.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": false,
+        "color": [
+          1.0,
+          0.8,
+          0.5
+        ],
+        "enabled": true,
+        "intensity": 6.0,
+        "range": 40.0,
+        "type": "point"
+      },
+      "name": "Mover",
+      "position": [
+        3.0,
+        2.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "type": "light"
+    },
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "intensity": 4.0,
+          "range": 40.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": false,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "enabled": true,
+        "intensity": 4.0,
+        "range": 40.0,
+        "type": "point"
+      },
+      "name": "Player",
+      "position": [
+        0.0,
+        15.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "type": "light"
     }
-  },
+  ],
+  "project": "projects/sample-arena/project.json",
+  "scene_name": "lua sample arena",
   "scripting": {
     "entities": {
       "Player": {
-        "Health": { "current": 3, "maximum": 3 },
-        "Quest": { "state": "open" },
-        "Inventory": { "gold": 12 }
+        "Health": {
+          "current": 3,
+          "maximum": 3
+        },
+        "Inventory": {
+          "gold": 12
+        },
+        "Quest": {
+          "state": "open"
+        }
       }
     }
   },
-  "nodes": [
-    {
-      "type": "model",
-      "path": "models\\cornell_box.glb",
-      "position": [ 0.0, 0.0, 0.0 ],
-      "rotation": [ -90.0, 0.0, 0.0 ],
-      "scale": [ 10.0, 10.0, 10.0 ]
-    },
-    {
-      "type": "light",
-      "name": "Mover",
-      "position": [ 3.0, 2.0, 0.0 ],
-      "rotation": [ 0.0, 0.0, 0.0 ],
-      "light": {
-        "type": "point",
-        "color": [ 1.0, 0.8, 0.5 ],
-        "intensity": 6.0,
-        "enabled": true,
-        "range": 40.0,
-        "castsShadows": false
-      }
-    },
-    {
-      "type": "light",
-      "name": "Player",
-      "position": [ 0.0, 15.0, 0.0 ],
-      "rotation": [ 0.0, 0.0, 0.0 ],
-      "light": {
-        "type": "point",
-        "color": [ 1.0, 1.0, 1.0 ],
-        "intensity": 4.0,
-        "enabled": true,
-        "range": 40.0,
-        "castsShadows": false
-      }
-    }
-  ]
+  "skybox": "hdrs\\overcast_sky.hdr"
 }

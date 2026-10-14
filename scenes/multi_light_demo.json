@@ -1,127 +1,329 @@
 {
-  "scene_name": "Multi-Light Demo Scene",
-  "skybox": "hdrs\\overcast_sky.hdr",
   "exposure": 1.2,
   "gamma": 2.2,
-  "main_shaders": {
-    "normal_pass": {
-      "vertex_shader": "shaders\\vertex_shader.glsl",
-      "fragment_shader": "shaders\\fragment_shader.glsl"
-    },
-    "shadow_pass": {
-      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
-      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
-    }
-  },
   "nodes": [
     {
-      "type": "lpv_volume",
-      "name": "Main GI Volume",
-      "position": [ 0, 0, 0 ],
-      "rotation": [ 0, 0, 0 ],
-      "scale": [ 1, 1, 1 ],
+      "components": {
+        "LightPropagationVolume": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "extent": [
+            64.0,
+            64.0,
+            64.0
+          ],
+          "grid_resolution": 128,
+          "voxel_size": 0.5
+        }
+      },
       "lpv_config": {
+        "extent": [
+          64,
+          64,
+          64
+        ],
         "grid_resolution": 128,
-        "voxel_size": 0.5,
-        "extent": [ 64, 64, 64 ]
-      }
+        "voxel_size": 0.5
+      },
+      "name": "Main GI Volume",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "type": "lpv_volume"
     },
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/copied_city.glb",
+          "render_whole_model": false
+        }
+      },
       "path": "models\\copied_city.glb",
-      "position": [ 0.0, 0.0, 0.0 ],
-      "rotation": [ 90.0, 0.0, 0.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ]
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        90.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
     },
     {
-      "type": "audio",
-      "sound": "sounds\\nier.wav",
-      "position": [ 0.0, 0.0, 0.0 ],
-      "volume": 0.5,
+      "components": {
+        "AudioSource": {
+          "autoplay": true,
+          "bus": "sfx",
+          "hearing_distance": 2000.0,
+          "loop": true,
+          "pitch": 1.0,
+          "sound": "sounds\\nier.wav",
+          "spatial": false,
+          "volume": 0.5
+        }
+      },
       "hearing_distance": 2000.0,
+      "is3d": false,
       "loop": true,
-      "is3d": false
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "sound": "sounds\\nier.wav",
+      "type": "audio",
+      "volume": 0.5
     },
     {
-      "type": "light",
-      "name": "MainSun",
-      "position": [ 10.0, 20.0, 10.0 ],
-      "rotation": [ -45.0, 45.0, 0.0 ],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.949999988079071,
+            0.800000011920929
+          ],
+          "enabled": true,
+          "intensity": 3.0,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "directional",
-        "color": [ 1.0, 0.95, 0.8 ],
+        "castsShadows": true,
+        "color": [
+          1.0,
+          0.95,
+          0.8
+        ],
+        "enabled": true,
         "intensity": 3.0,
-        "enabled": true,
-        "castsShadows": true,
         "shadowSize": 2048,
-        "splitLambda": 0.8
-      }
+        "splitLambda": 0.8,
+        "type": "directional"
+      },
+      "name": "MainSun",
+      "position": [
+        10.0,
+        20.0,
+        10.0
+      ],
+      "rotation": [
+        -45.0,
+        45.0,
+        0.0
+      ],
+      "type": "light"
     },
     {
-      "type": "light",
-      "name": "PointLight1",
-      "position": [ 5.0, 8.0, 3.0 ],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.4000000059604645,
+            0.20000000298023224
+          ],
+          "enabled": true,
+          "intensity": 8.0,
+          "range": 15.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "point",
-        "color": [ 1.0, 0.4, 0.2 ],
+        "attenuation": [
+          1.0,
+          0.09,
+          0.032
+        ],
+        "castsShadows": true,
+        "color": [
+          1.0,
+          0.4,
+          0.2
+        ],
+        "enabled": true,
         "intensity": 8.0,
-        "enabled": true,
-        "castsShadows": true,
         "range": 15.0,
-        "attenuation": [ 1.0, 0.09, 0.032 ]
-      }
+        "type": "point"
+      },
+      "name": "PointLight1",
+      "position": [
+        5.0,
+        8.0,
+        3.0
+      ],
+      "type": "light"
     },
     {
-      "type": "light",
-      "name": "PointLight2",
-      "position": [ -3.0, 6.0, -8.0 ],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            0.20000000298023224,
+            1.0,
+            0.4000000059604645
+          ],
+          "enabled": true,
+          "intensity": 12.0,
+          "range": 20.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "point",
-        "color": [ 0.2, 1.0, 0.4 ],
+        "attenuation": [
+          1.0,
+          0.07,
+          0.017
+        ],
+        "castsShadows": true,
+        "color": [
+          0.2,
+          1.0,
+          0.4
+        ],
+        "enabled": true,
         "intensity": 12.0,
-        "enabled": true,
-        "castsShadows": true,
         "range": 20.0,
-        "attenuation": [ 1.0, 0.07, 0.017 ]
-      }
+        "type": "point"
+      },
+      "name": "PointLight2",
+      "position": [
+        -3.0,
+        6.0,
+        -8.0
+      ],
+      "type": "light"
     },
     {
-      "type": "light",
-      "name": "SpotLight1",
-      "position": [ 8.0, 12.0, 0.0 ],
-      "rotation": [ -60.0, 45.0, 0.0 ],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            1.0,
+            0.800000011920929
+          ],
+          "enabled": true,
+          "intensity": 15.0,
+          "range": 25.0,
+          "source_radius": 0.0,
+          "spot_inner_angle": 20.0,
+          "spot_outer_angle": 30.0
+        }
+      },
       "light": {
-        "type": "spot",
-        "color": [ 1.0, 1.0, 0.8 ],
-        "intensity": 15.0,
-        "enabled": true,
+        "attenuation": [
+          1.0,
+          0.05,
+          0.012
+        ],
         "castsShadows": true,
-        "range": 25.0,
+        "color": [
+          1.0,
+          1.0,
+          0.8
+        ],
         "cutOff": 20.0,
-        "outerCutOff": 30.0,
-        "attenuation": [ 1.0, 0.05, 0.012 ]
-      }
-    },
-    {
-      "type": "light",
-      "name": "SpotLight2",
-      "position": [ -6.0, 10.0, 8.0 ],
-      "rotation": [ -45.0, -60.0, 0.0 ],
-      "light": {
-        "type": "spot",
-        "color": [ 0.8, 0.4, 1.0 ],
-        "intensity": 10.0,
         "enabled": true,
-        "castsShadows": true,
-        "range": 18.0,
-        "cutOff": 15.0,
-        "outerCutOff": 25.0,
-        "attenuation": [ 1.0, 0.07, 0.025 ]
-      }
+        "intensity": 15.0,
+        "outerCutOff": 30.0,
+        "range": 25.0,
+        "type": "spot"
+      },
+      "name": "SpotLight1",
+      "position": [
+        8.0,
+        12.0,
+        0.0
+      ],
+      "rotation": [
+        -60.0,
+        45.0,
+        0.0
+      ],
+      "type": "light"
     },
     {
-      "type": "gui",
-      "position": [ 0, 0, 0 ],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            0.800000011920929,
+            0.4000000059604645,
+            1.0
+          ],
+          "enabled": true,
+          "intensity": 10.0,
+          "range": 18.0,
+          "source_radius": 0.0,
+          "spot_inner_angle": 15.0,
+          "spot_outer_angle": 25.0
+        }
+      },
+      "light": {
+        "attenuation": [
+          1.0,
+          0.07,
+          0.025
+        ],
+        "castsShadows": true,
+        "color": [
+          0.8,
+          0.4,
+          1.0
+        ],
+        "cutOff": 15.0,
+        "enabled": true,
+        "intensity": 10.0,
+        "outerCutOff": 25.0,
+        "range": 18.0,
+        "type": "spot"
+      },
+      "name": "SpotLight2",
+      "position": [
+        -6.0,
+        10.0,
+        8.0
+      ],
+      "rotation": [
+        -45.0,
+        -60.0,
+        0.0
+      ],
+      "type": "light"
+    },
+    {
+      "components": {
+        "Gui": {
+          "font_path": "fonts\\arial.ttf",
+          "font_size": 24
+        }
+      },
       "elements": [
         {
           "kind": "text",
@@ -135,7 +337,15 @@
           "x": 960,
           "y": 80
         }
-      ]
+      ],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "type": "gui"
     }
-  ]
+  ],
+  "scene_name": "Multi-Light Demo Scene",
+  "skybox": "hdrs\\overcast_sky.hdr"
 }

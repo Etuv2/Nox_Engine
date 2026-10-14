@@ -1,43 +1,81 @@
 {
-  "scene_name": "lighting test",
   "exposure": 1,
   "gamma": 2.2,
-  "skybox": "hdrs\\overcast_sky.hdr",
-  "main_shaders": {
-    "normal_pass": {
-      "vertex_shader": "shaders\\vertex_shader.glsl",
-      "fragment_shader": "shaders\\fragment_shader.glsl"
-    },
-    "shadow_pass": {
-      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
-      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
-    }
-  },
   "nodes": [
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cornell_box.glb",
+          "render_whole_model": false
+        }
+      },
       "path": "models\\cornell_box.glb",
-      "position": [ 0.0, 0.0, 0.0 ],
-      "rotation": [ -90.0, 0.0, 0.0 ],
-      "scale": [ 10.0, 10.0, 10.0 ]
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        -90.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "type": "model"
     },
     {
-      "type": "light",
-      "name": "TestPointLight",
-      "position": [ 0.0, 15.0, 0.0 ],
-      "rotation": [ 0.0, 0.0, 0.0 ],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "intensity": 6.0,
+          "range": 40.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "point",
-        "color": [ 1.0, 1.0, 1.0 ],
-        "intensity": 6.0,
+        "castsShadows": true,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
         "enabled": true,
+        "intensity": 6.0,
         "range": 40.0,
-        "castsShadows": true
-      }
+        "type": "point"
+      },
+      "name": "TestPointLight",
+      "position": [
+        0.0,
+        15.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "type": "light"
     },
     {
-      "type": "gui",
-      "position": [ 0, 0, 0 ],
+      "components": {
+        "Gui": {
+          "font_path": "fonts\\arial.ttf",
+          "font_size": 24
+        }
+      },
       "elements": [
         {
           "kind": "text",
@@ -46,15 +84,22 @@
           "y": 1000
         },
         {
+          "h": 400,
           "kind": "image",
           "path": "images\\logo_nobg.png",
-          "x": 1550,
-          "y": 800,
           "w": 400,
-          "h": 400
+          "x": 1550,
+          "y": 800
         }
-
-      ]
+      ],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "type": "gui"
     }
-  ]
+  ],
+  "scene_name": "lighting test",
+  "skybox": "hdrs\\overcast_sky.hdr"
 }

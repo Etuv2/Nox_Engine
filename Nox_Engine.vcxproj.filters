@@ -1528,12 +1528,6 @@
     <None Include="scenes\scene.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
-    <None Include="scenes\gundam.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="scenes\rainbow_road.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
     <None Include="scenes\sponza.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
@@ -1570,17 +1564,11 @@
     <None Include="shaders\bloom_extract.glsl">
       <Filter>Source Files\misc\shaders\bloom</Filter>
     </None>
-    <None Include="scenes\scene2.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
     <None Include="shaders\gui_vert.glsl">
       <Filter>Source Files\misc\shaders\gui</Filter>
     </None>
     <None Include="shaders\gui_frag.glsl">
       <Filter>Source Files\misc\shaders\gui</Filter>
-    </None>
-    <None Include="scenes\otters.json">
-      <Filter>Source Files\misc\scenes</Filter>
     </None>
     <None Include="shaders\fullscreen_vert.glsl">
       <Filter>Source Files\misc\shaders\main</Filter>
@@ -1588,19 +1576,7 @@
     <None Include="shaders\postprocess_frag.glsl">
       <Filter>Source Files\misc\shaders\main</Filter>
     </None>
-    <None Include="scenes\car.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="scenes\halo.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
     <None Include="scenes\lighting_demo.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="scenes\miku.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="scenes\graphics_test.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
     <None Include="shaders\irradiance_convolution.glsl">
@@ -1621,19 +1597,7 @@
     <None Include="shaders\velocity_vert.glsl">
       <Filter>Source Files\misc\shaders\taa</Filter>
     </None>
-    <None Include="scenes\copied_city.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="scenes\light_test.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
     <None Include="scenes\multi_light_demo.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="scenes\studio_lighting.json">
-      <Filter>Source Files\misc\scenes</Filter>
-    </None>
-    <None Include="scenes\light_test_2.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
     <None Include="scenes\gui_demo.json">

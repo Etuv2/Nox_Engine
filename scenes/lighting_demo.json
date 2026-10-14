@@ -1,81 +1,236 @@
 {
-  "scene_name": "Lighting Demo Scene",
   "exposure": 1.0,
   "gamma": 2.2,
-  "physics_enabled": true,
-  "skybox": "hdrs/skybox.hdr",
   "nodes": [
     {
-      "type": "model",
-      "path": "models/plane.glb",
-      "position": [ 0.0, 0.0, 0.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ],
       "collider": {
         "type": "plane"
-      }
+      },
+      "components": {
+        "Collider": {
+          "half_extents": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "layer": 1,
+          "mask": 4294967295,
+          "plane_distance": 0.0,
+          "plane_normal": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "shape": "plane"
+        },
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/plane.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "angular_damping": 0.05000000074505806,
+          "body_type": "static",
+          "friction": 0.5,
+          "gravity_scale": 0.0,
+          "linear_damping": 0.0,
+          "mass": 0.0,
+          "restitution": 0.30000001192092896
+        }
+      },
+      "path": "models/plane.glb",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
     },
     {
-      "type": "light",
-      "name": "KeyLight",
-      "position": [5, 3, 2],
-      "rotation": [-30, -45, 0],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.949999988079071,
+            0.800000011920929
+          ],
+          "enabled": true,
+          "intensity": 1.2000000476837158,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "directional",
-        "color": [1.0, 0.95, 0.8],
+        "castsShadows": true,
+        "color": [
+          1.0,
+          0.95,
+          0.8
+        ],
+        "enabled": true,
         "intensity": 1.2,
-        "enabled": true,
-        "castsShadows": true,
         "shadowSize": 2048,
-        "splitLambda": 0.85
-      }
+        "splitLambda": 0.85,
+        "type": "directional"
+      },
+      "name": "KeyLight",
+      "position": [
+        5,
+        3,
+        2
+      ],
+      "rotation": [
+        -30,
+        -45,
+        0
+      ],
+      "type": "light"
     },
     {
-      "type": "light",
-      "name": "FillLight",
-      "position": [-3, 2, 1],
-      "rotation": [0, 30, 0],
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [
+            0.800000011920929,
+            0.8999999761581421,
+            1.0
+          ],
+          "enabled": true,
+          "intensity": 0.800000011920929,
+          "range": 15.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "point",
-        "color": [0.8, 0.9, 1.0],
+        "attenuation": [
+          1.0,
+          0.09,
+          0.032
+        ],
+        "castsShadows": false,
+        "color": [
+          0.8,
+          0.9,
+          1.0
+        ],
+        "enabled": true,
         "intensity": 0.8,
-        "enabled": true,
-        "castsShadows": false,
         "range": 15.0,
-        "attenuation": [1.0, 0.09, 0.032],
-        "shadowResolution": 1024
-      }
+        "shadowResolution": 1024,
+        "type": "point"
+      },
+      "name": "FillLight",
+      "position": [
+        -3,
+        2,
+        1
+      ],
+      "rotation": [
+        0,
+        30,
+        0
+      ],
+      "type": "light"
     },
     {
-      "type": "light",
-      "name": "SpotAccent",
-      "position": [0, 5, -3],
-      "rotation": [45, 0, 0],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.800000011920929,
+            0.6000000238418579
+          ],
+          "enabled": true,
+          "intensity": 1.5,
+          "range": 20.0,
+          "source_radius": 0.0,
+          "spot_inner_angle": 15.0,
+          "spot_outer_angle": 25.0
+        }
+      },
       "light": {
-        "type": "spot",
-        "color": [1.0, 0.8, 0.6],
-        "intensity": 1.5,
-        "enabled": true,
+        "attenuation": [
+          1.0,
+          0.045,
+          0.0075
+        ],
         "castsShadows": true,
-        "range": 20.0,
+        "color": [
+          1.0,
+          0.8,
+          0.6
+        ],
         "cutOff": 15.0,
+        "enabled": true,
+        "intensity": 1.5,
         "outerCutOff": 25.0,
-        "attenuation": [1.0, 0.045, 0.0075],
-        "shadowResolution": 1024
-      }
+        "range": 20.0,
+        "shadowResolution": 1024,
+        "type": "spot"
+      },
+      "name": "SpotAccent",
+      "position": [
+        0,
+        5,
+        -3
+      ],
+      "rotation": [
+        45,
+        0,
+        0
+      ],
+      "type": "light"
     },
     {
-      "type": "light",
-      "name": "AmbientPoint",
-      "position": [0, 8, 0],
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [
+            0.949999988079071,
+            0.949999988079071,
+            1.0
+          ],
+          "enabled": true,
+          "intensity": 0.5,
+          "range": 25.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "point",
-        "color": [0.95, 0.95, 1.0],
-        "intensity": 0.5,
-        "enabled": true,
+        "attenuation": [
+          1.0,
+          0.022,
+          0.0019
+        ],
         "castsShadows": false,
+        "color": [
+          0.95,
+          0.95,
+          1.0
+        ],
+        "enabled": true,
+        "intensity": 0.5,
         "range": 25.0,
-        "attenuation": [1.0, 0.022, 0.0019]
-      }
+        "type": "point"
+      },
+      "name": "AmbientPoint",
+      "position": [
+        0,
+        8,
+        0
+      ],
+      "type": "light"
     }
-  ]
+  ],
+  "physics_enabled": true,
+  "scene_name": "Lighting Demo Scene",
+  "skybox": "hdrs/skybox.hdr"
 }

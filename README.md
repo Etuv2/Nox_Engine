@@ -247,7 +247,7 @@ Edit `config/config.json` to customize engine settings:
   "windowHeight": 1080,
   "windowTitle": "NOX Engine",
   "vsync": false,
-  "first_scene": "scenes/gundam.json",
+  "first_scene": "scenes/cornell_box.json",
   "camera": {
     "position": [-1.0, 1.0, -1.0],
     "fov": 120,

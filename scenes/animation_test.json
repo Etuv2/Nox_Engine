@@ -1,32 +1,76 @@
 {
-  "scene_name": "Animation Test Scene",
   "exposure": 1,
   "gamma": 2.2,
-  "skybox": "hdrs\\overcast_sky.hdr",
   "nodes": [
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/dinosaur_1.glb",
+          "render_whole_model": true
+        }
+      },
       "path": "models\\dinosaur_1.glb",
-      "position": [ 0.0, 0.0, 0.0 ],
-      "rotation": [ 0.0, 0.0, 0.0 ],
-      "scale": [ 1.0, 1.0, 1.0 ]
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
     },
     {
-      "type": "light",
-      "name": "TestPointLight",
-      "position": [ 0.0,20.0, 0.0 ],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "enabled": true,
+          "intensity": 10.0,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "point",
-        "color": [0.0, 10.0, 0.0],
-        "intensity":10.0,
+        "castsShadows": true,
+        "color": [
+          0.0,
+          10.0,
+          0.0
+        ],
         "enabled": true,
+        "intensity": 10.0,
         "range": 10.0,
-        "castsShadows": true
-      }
+        "type": "point"
+      },
+      "name": "TestPointLight",
+      "position": [
+        0.0,
+        20.0,
+        0.0
+      ],
+      "type": "light"
     },
     {
-      "type": "gui",
-      "position": [ 0, 0, 0 ],
+      "components": {
+        "Gui": {
+          "font_path": "fonts\\arial.ttf",
+          "font_size": 24
+        }
+      },
       "elements": [
         {
           "kind": "text",
@@ -34,8 +78,15 @@
           "x": 960,
           "y": 1000
         }
-
-      ]
+      ],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "type": "gui"
     }
-  ]
+  ],
+  "scene_name": "Animation Test Scene",
+  "skybox": "hdrs\\overcast_sky.hdr"
 }

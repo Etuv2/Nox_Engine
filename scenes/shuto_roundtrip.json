@@ -3,16 +3,6 @@
   "exposure": 1.0,
   "gamma": 1.6,
   "skybox": "hdrs\\skybox_2.hdr",
-  "main_shaders": {
-    "normal_pass": {
-      "vertex_shader": "shaders\\vertex_shader.glsl",
-      "fragment_shader": "shaders\\fragment_shader.glsl"
-    },
-    "shadow_pass": {
-      "vertex_shader": "shaders\\shadow_vertex_shader.glsl",
-      "fragment_shader": "shaders\\shadow_fragment_shader.glsl"
-    }
-  },
   "nodes": [
     {
       "type": "model",

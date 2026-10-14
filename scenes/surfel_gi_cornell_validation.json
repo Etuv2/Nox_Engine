@@ -1,40 +1,90 @@
 {
-  "scene_name": "surfel_gi_cornell_validation",
+  "camera": {
+    "far": 50.0,
+    "fov": 55.0,
+    "mouse_sensitivity": 0.1,
+    "movement_speed": 2.5,
+    "near": 0.05,
+    "pitch": -5.0,
+    "position": [
+      0.0,
+      1.25,
+      4.25
+    ],
+    "yaw": -90.0
+  },
   "exposure": 1.0,
   "gamma": 2.2,
-  "camera": {
-    "position": [0.0, 1.25, 4.25],
-    "yaw": -90.0,
-    "pitch": -5.0,
-    "fov": 55.0,
-    "near": 0.05,
-    "far": 50.0,
-    "movement_speed": 2.5,
-    "mouse_sensitivity": 0.1
-  },
-  "skybox": "",
   "nodes": [
     {
-      "type": "model",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cornell_box.glb",
+          "render_whole_model": false
+        }
+      },
       "path": "models\\cornell_box.glb",
-      "position": [0.0, 0.0, 0.0],
-      "rotation": [0.0, 0.0, 0.0],
-      "scale": [1.0, 1.0, 1.0]
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
     },
     {
-      "type": "light",
-      "name": "CornellSun",
-      "position": [0.0, 3.5, 2.0],
-      "rotation": [-65.0, 0.0, 0.0],
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.9200000166893005,
+            0.7799999713897705
+          ],
+          "enabled": true,
+          "intensity": 1.5,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
       "light": {
-        "type": "directional",
-        "color": [1.0, 0.92, 0.78],
-        "intensity": 1.5,
-        "enabled": true,
         "castsShadows": true,
+        "color": [
+          1.0,
+          0.92,
+          0.78
+        ],
+        "enabled": true,
+        "intensity": 1.5,
         "shadowSize": 2048,
-        "splitLambda": 0.8
-      }
+        "splitLambda": 0.8,
+        "type": "directional"
+      },
+      "name": "CornellSun",
+      "position": [
+        0.0,
+        3.5,
+        2.0
+      ],
+      "rotation": [
+        -65.0,
+        0.0,
+        0.0
+      ],
+      "type": "light"
     }
-  ]
+  ],
+  "scene_name": "surfel_gi_cornell_validation",
+  "skybox": ""
 }
