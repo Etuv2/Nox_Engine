@@ -712,6 +712,78 @@ void RenderSystem::RenderVelocity(const glm::mat4& view,
 	}
 }
 
+size_t RenderSystem::RenderEntityItems(rhi::ProgramHandle shader, const std::vector<uint32_t>& sortedEntities,
+	const glm::mat4& view, const glm::mat4& projection)
+{
+	if (!m_componentManager || !m_transformSystem || !shader || sortedEntities.empty()) return 0;
+
+	PrepareFrameTransforms();
+	PrepareCameraSubmissionCache();
+	m_cachedBoneMatrices.clear();
+	rhi::Gpu().UseProgram(shader);
+	ResetMaterialStateCache(shader);
+	EnsureTransformBuffer();
+	if (m_transformBuffer) {
+		m_transformBuffer->BindBase(kGlobalTransformBufferBinding);
+	}
+	const auto& uniforms = GetShaderUniformCache(shader);
+	if (uniforms.view != -1) rhi::Gpu().SetUniform(uniforms.view, view);
+	if (uniforms.projection != -1) rhi::Gpu().SetUniform(uniforms.projection, projection);
+
+	const bool frustumCull = HasValidFrustum();
+	size_t drawn = 0;
+	int skinningState = -1;
+	rhi::VertexInputHandle currentVAO;
+	for (size_t itemIndex = 0; itemIndex < m_renderItems.size(); ++itemIndex) {
+		const RenderItem& item = m_renderItems[itemIndex];
+		if (!item.mesh || !std::binary_search(sortedEntities.begin(), sortedEntities.end(), item.entity)) {
+			continue;
+		}
+		if (frustumCull && itemIndex < m_renderItemWorldRadius.size() &&
+			!IsSphereVisible(glm::vec3(m_renderItemWorldCenterX[itemIndex], m_renderItemWorldCenterY[itemIndex],
+				m_renderItemWorldCenterZ[itemIndex]), m_renderItemWorldRadius[itemIndex])) {
+			continue;
+		}
+
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(item.entity);
+		const glm::mat4 worldTransform = ComposeRenderItemWorldTransform(entityWorldTransform, item);
+
+		UploadTransformUniforms(item.entity, worldTransform, uniforms);
+		if (item.skinned) {
+			UploadBoneMatrices(item.entity, worldTransform, uniforms);
+			if (uniforms.uEnableSkinning != -1 && skinningState != 1) {
+				rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 1);
+				skinningState = 1;
+			}
+		}
+		else if (uniforms.uEnableSkinning != -1 && skinningState != 0) {
+			rhi::Gpu().SetUniform(uniforms.uEnableSkinning, 0);
+			skinningState = 0;
+		}
+
+		ApplyCullingState(*item.mesh, item.cullingOverride, worldTransform);
+		if (currentVAO != item.mesh->VAO) {
+			rhi::Gpu().BindVertexInput(item.mesh->VAO);
+			currentVAO = item.mesh->VAO;
+		}
+		rhi::Gpu().DrawIndexed(rhi::Topology::Triangles, static_cast<uint32_t>(item.mesh->indexCount), rhi::IndexType::UInt32, 0);
+		++drawn;
+	}
+
+	if (currentVAO.IsValid()) {
+		rhi::Gpu().BindVertexInput(rhi::VertexInputHandle{});
+	}
+	// ApplyCullingState changed front face / cull state: hand the next pass the defaults the
+	// G-buffer pass leaves behind, and drop the cached copies.
+	rhi::Gpu().SetFrontFace(rhi::FrontFace::CounterClockwise);
+	rhi::Gpu().SetCullEnabled(true);
+	rhi::Gpu().SetCullFace(rhi::CullFace::Back);
+	ResetMaterialStateCache(shader);
+	return drawn;
+}
+
 void RenderSystem::CollectRenderables(MDIBatch& batch)
 {
 	if (!m_componentManager || !m_transformSystem) return;

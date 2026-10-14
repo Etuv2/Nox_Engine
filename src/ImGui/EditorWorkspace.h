@@ -49,6 +49,14 @@ public:
 	};
 	enum class Target { None, Scene, Game };
 
+	// Selection outline style (Scene viewport "Outline" popup; persisted under "selection_outline").
+	struct SelectionOutlineSettings {
+		float color[3] = { 1.0f, 140.0f / 255.0f, 26.0f / 255.0f };   // #FF8C1A
+		int width = 2;            // pixels, 1..4
+		bool showOccluded = true; // parts behind other geometry, drawn dashed
+		bool hover = true;        // thinner highlight under the mouse
+	};
+
 	EditorWorkspace(Core& core, ImGuiInterface& legacyUi);
 	~EditorWorkspace();
 
@@ -58,6 +66,8 @@ public:
 	Viewport& GetViewport(Target t) { return t == Target::Game ? m_game : m_scene; }
 	bool GameInputFocus() const;          // keyboard/pad belong to the game
 	bool WantsQuit() const { return m_quit; }
+	const SelectionOutlineSettings& OutlineSettings() const { return m_outline; }
+	std::shared_ptr<SceneNode> HoveredNode() const { return m_hoverNode.lock(); }   // null when hover is off
 	void FocusGame();
 	void OnSceneLoaded();
 	void SaveSettings() const;
@@ -121,6 +131,9 @@ private:
 	void DrawModals();
 	void DrawAuthoringOverlay(ImDrawList* dl);   // registered viewport overlay + its handles
 	void DrawGizmo(const Viewport& vp);
+	void DrawOutlineStylePopup();
+	void UpdateHover(const ImGuiIO& io);
+	void DrawSelectionBounds(ImDrawList* dl);
 	void HandleShortcuts();
 	void EnsureTarget(Viewport& vp, int width, int height);
 	void ChooseRenderTarget();
@@ -190,6 +203,11 @@ private:
 	float m_snapValues[3] = { 0.5f, 15.0f, 0.1f };
 	bool m_wasUsingGizmo = false;
 	std::array<float, 10> m_gizmoBefore{};
+
+	// Selection outline (SelectionOutlinePass): style, and the node under the mouse (throttled pick).
+	SelectionOutlineSettings m_outline;
+	std::weak_ptr<SceneNode> m_hoverNode;
+	float m_hoverTimer = 0.0f;
 
 	// Undo.
 	std::vector<UndoAction> m_undo, m_redo;
