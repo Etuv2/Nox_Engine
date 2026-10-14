@@ -105,6 +105,10 @@ namespace {
 		ctx.ssrMaxSteps = d.ssrMaxSteps;
 		ctx.ssrThickness = d.ssrThickness;
 		ctx.ssrTemporalBlend = d.ssrTemporalBlend;
+		ctx.ssrBlurStrength = d.ssrBlurStrength;
+		ctx.ssrMaxBlurLevel = d.ssrMaxBlurLevel;
+		ctx.ssrEdgeFade = d.ssrEdgeFade;
+		ctx.ssrProbeBlend = d.ssrProbeBlend;
 		ctx.enableReflectionProbes = d.enableReflectionProbes;
 		ctx.enableMotionBlur = d.enableMotionBlur;
 		ctx.rainDropCount = d.rainDropCount;
@@ -281,6 +285,10 @@ namespace SceneRenderSettings {
 		Read(s, "ssr_max_steps", ctx.ssrMaxSteps);
 		Read(s, "ssr_thickness", ctx.ssrThickness);
 		Read(s, "ssr_temporal_blend", ctx.ssrTemporalBlend);
+		Read(s, "ssr_blur_strength", ctx.ssrBlurStrength);
+		Read(s, "ssr_max_blur_level", ctx.ssrMaxBlurLevel);
+		Read(s, "ssr_edge_fade", ctx.ssrEdgeFade);
+		Read(s, "ssr_probe_blend", ctx.ssrProbeBlend);
 		Read(s, "reflection_probes", ctx.enableReflectionProbes);
 		Read(s, "motion_blur", ctx.enableMotionBlur);
 		Read(s, "rain_drop_count", ctx.rainDropCount);

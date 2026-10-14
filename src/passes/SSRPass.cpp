@@ -5,7 +5,12 @@
 #include "../RenderContext.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
 #include <glm/gtc/type_ptr.hpp>
 
 namespace {
@@ -24,6 +29,41 @@ namespace {
 		gpu.SetTextureWrapAxis(tex, 0, rhi::Wrap::ClampToEdge);
 		gpu.SetTextureWrapAxis(tex, 1, rhi::Wrap::ClampToEdge);
 		return tex;
+	}
+
+	// Size of one mip level of a texture whose base level is `base` texels wide.
+	int LevelSize(int base, int level) {
+		return std::max(1, base >> level);
+	}
+
+	// NOX_SSR_DUMP_DIR + NOX_SSR_DUMP_FRAMES (comma list of SSR frame numbers): writes the texture ctx.ssrTexture
+	// points to as raw float RGBA, without tonemapping, to <dir>/ssr_view<N>_f<frame>.f32. The file starts with a
+	// text line "width height channels"; rows follow bottom-to-top as float32.
+	void DumpSsrTexture(rhi::TextureHandle tex, int width, int height, int view, unsigned frame) {
+		static const char* dir = std::getenv("NOX_SSR_DUMP_DIR");
+		static const std::string frames = [] {
+			const char* f = std::getenv("NOX_SSR_DUMP_FRAMES");
+			return std::string(",") + (f ? f : "") + ",";
+		}();
+		if (!dir || !tex || frames.find("," + std::to_string(frame) + ",") == std::string::npos) return;
+		std::vector<float> px(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+		rhi::Gpu().PipelineBarrier(rhi::BarrierTextureUpdate | rhi::BarrierImageAccess);
+		rhi::Gpu().ReadTexture(tex, 0, rhi::PixelFormat::RGBA, rhi::PixelType::Float, px.size() * sizeof(float), px.data());
+		std::filesystem::create_directories(dir);
+		std::ofstream out(std::string(dir) + "/ssr_view" + std::to_string(view) + "_f" + std::to_string(frame) + ".f32", std::ios::binary);
+		out << width << " " << height << " 4\n";
+		out.write(reinterpret_cast<const char*>(px.data()), static_cast<std::streamsize>(px.size() * sizeof(float)));
+	}
+
+	// NOX_SSR_DEBUG_VIEW: 1 = raw resolve, 2 = temporal output (the blur chain's input), 3 = composite,
+	// 4 = chosen blur level as a colour ramp, 5 = chosen level as raw float in R (exact, alpha = hit).
+// Non-zero values replace the lit image with the SSR signal.
+	int DebugView() {
+		static const int view = [] {
+			const char* v = std::getenv("NOX_SSR_DEBUG_VIEW");
+			return v ? std::atoi(v) : 0;
+		}();
+		return view;
 	}
 
 	void BindSampler(rhi::ProgramHandle program, const char* name, int unit, rhi::TextureHandle texture) {
@@ -46,9 +86,15 @@ bool SSRPass::Initialize(RenderContext& context)
 	m_traceShader = std::make_unique<ComputeShader>();
 	m_resolveShader = std::make_unique<ComputeShader>();
 	m_temporalShader = std::make_unique<ComputeShader>();
+	m_blurDownShader = std::make_unique<ComputeShader>();
+	m_blurUpShader = std::make_unique<ComputeShader>();
+	m_compositeShader = std::make_unique<ComputeShader>();
 	if (!m_traceShader->CreateFromFile("shaders/ssr_trace_comp.glsl") ||
 		!m_resolveShader->CreateFromFile("shaders/ssr_resolve_comp.glsl") ||
-		!m_temporalShader->CreateFromFile("shaders/ssr_temporal_comp.glsl")) {
+		!m_temporalShader->CreateFromFile("shaders/ssr_temporal_comp.glsl") ||
+		!m_blurDownShader->CreateFromFile("shaders/ssr_blur_down_comp.glsl") ||
+		!m_blurUpShader->CreateFromFile("shaders/ssr_blur_up_comp.glsl") ||
+		!m_compositeShader->CreateFromFile("shaders/ssr_composite_comp.glsl")) {
 		std::cerr << "[SSRPass] Failed to compile SSR shaders" << std::endl;
 		return false;
 	}
@@ -58,11 +104,13 @@ bool SSRPass::Initialize(RenderContext& context)
 
 void SSRPass::DestroyTextures()
 {
-	rhi::TextureHandle textures[] = { m_traceTex, m_resolveTex, m_hitDistTex, m_historyTex[0], m_historyTex[1], m_prevColorTex };
+	rhi::TextureHandle textures[] = { m_traceTex, m_resolveTex, m_hitDistTex, m_historyTex[0], m_historyTex[1], m_prevColorTex,
+		m_blurChainTex, m_compositeTex };
 	for (rhi::TextureHandle& t : textures) {
 		if (t && rhi::HasGpu()) rhi::Gpu().DestroyTexture(t);
 	}
 	m_traceTex = m_resolveTex = m_hitDistTex = m_prevColorTex = rhi::TextureHandle{};
+	m_blurChainTex = m_compositeTex = rhi::TextureHandle{};
 	m_historyTex[0] = m_historyTex[1] = rhi::TextureHandle{};
 }
 
@@ -82,6 +130,8 @@ void SSRPass::CreateTextures(int width, int height)
 	m_historyTex[0] = MakeTexture(rhi::Format::RGBA16F, m_width, m_height);
 	m_historyTex[1] = MakeTexture(rhi::Format::RGBA16F, m_width, m_height);
 	m_prevColorTex = MakeTexture(rhi::Format::RGB16F, m_width, m_height, m_prevColorMips);
+	m_blurChainTex = MakeTexture(rhi::Format::RGBA16F, (m_width + 1) / 2, (m_height + 1) / 2, kBlurLevels);
+	m_compositeTex = MakeTexture(rhi::Format::RGBA16F, m_width, m_height);
 	const float zero[4] = { 0, 0, 0, 0 };
 	gpu.ClearTexture(m_historyTex[0], 0, rhi::PixelFormat::RGBA, rhi::PixelType::Float, zero);
 	gpu.ClearTexture(m_historyTex[1], 0, rhi::PixelFormat::RGBA, rhi::PixelType::Float, zero);
@@ -114,6 +164,7 @@ void SSRPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<Skybox>&)
 {
 	ctx.ssrTexture = rhi::TextureHandle{};
+	ctx.ssrDebugView = DebugView();
 	if (!ctx.enableSSR || !ctx.enableTAA || !ctx.taaFBO || !ctx.gbufferFBO || !ctx.velocityTex) {
 		m_historyValid = false;
 		return;
@@ -168,6 +219,7 @@ void SSRPass::Execute(RenderContext& ctx,
 	BindSampler(program, "uVelocity", 5, ctx.velocityTex);
 	gpu.SetUniform(gpu.GetUniformLocation(program, "uPrevColorMaxMip"), static_cast<float>(m_prevColorMips - 1));
 	gpu.SetUniform(gpu.GetUniformLocation(program, "uResolveSamples"), ctx.ssrResolveSamples);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uEdgeFade"), std::clamp(ctx.ssrEdgeFade, 0.0001f, 0.5f));
 	gpu.SetUniform(gpu.GetUniformLocation(program, "uFrame"), m_frame);
 	gpu.BindImage(0, m_resolveTex, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 	gpu.BindImage(1, m_hitDistTex, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::R16F);
@@ -198,9 +250,59 @@ void SSRPass::Execute(RenderContext& ctx,
 	gpu.Dispatch((m_width + 7) / 8, (m_height + 7) / 8, 1);
 	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
 
+	// 5. Glossy blur chain (dual-filter Kawase). Level 0 is the half-resolution premultiplied
+	// history (rgb*a, a); each level below is a 5-tap downsample of the one above. The up pass then
+	// walks back up with 8-tap filters, one level per dispatch (barrier between dispatches).
+	const int halfWidth = (m_width + 1) / 2;
+	const int halfHeight = (m_height + 1) / 2;
+	program = m_blurDownShader->GetProgramID();
+	gpu.UseProgram(program);
+	for (int level = 0; level < kBlurLevels; ++level) {
+		const bool fromHistory = level == 0;
+		BindSampler(program, "uSource", 0, fromHistory ? m_historyTex[current] : m_blurChainTex);
+		gpu.SetUniform(gpu.GetUniformLocation(program, "uSourceLod"), static_cast<float>(fromHistory ? 0 : level - 1));
+		gpu.SetUniform(gpu.GetUniformLocation(program, "uPremultiply"), fromHistory ? 1 : 0);
+		gpu.BindImage(0, m_blurChainTex, level, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+		gpu.Dispatch((LevelSize(halfWidth, level) + 7) / 8, (LevelSize(halfHeight, level) + 7) / 8, 1);
+		gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
+	}
+	program = m_blurUpShader->GetProgramID();
+	gpu.UseProgram(program);
+	for (int level = kBlurLevels - 2; level >= 0; --level) {
+		BindSampler(program, "uChain", 0, m_blurChainTex);
+		gpu.SetUniform(gpu.GetUniformLocation(program, "uUpperLod"), static_cast<float>(level + 1));
+		gpu.SetUniform(gpu.GetUniformLocation(program, "uOwnLod"), static_cast<float>(level));
+		gpu.BindImage(0, m_blurChainTex, level, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+		gpu.Dispatch((LevelSize(halfWidth, level) + 7) / 8, (LevelSize(halfHeight, level) + 7) / 8, 1);
+		gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
+	}
+
+	// 6. Composite: pick the blur level per pixel from roughness and hit distance, un-premultiply.
+	program = m_compositeShader->GetProgramID();
+	gpu.UseProgram(program);
+	SetCommonUniforms(program, ctx);
+	BindSampler(program, "uHistory", 0, m_historyTex[current]);
+	BindSampler(program, "uChain", 1, m_blurChainTex);
+	BindSampler(program, "uHitDist", 2, m_hitDistTex);
+	BindSampler(program, "uDepth", 3, depthTex);
+	BindSampler(program, "uNormalRough", 4, normalTex);
+	BindSampler(program, "uClearCoat", 5, clearcoatTex);
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uBlurStrength"), std::clamp(ctx.ssrBlurStrength, 0.0f, 4.0f));
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uMaxBlurLevel"),
+		static_cast<float>(std::clamp(ctx.ssrMaxBlurLevel, 0, kBlurLevels - 1)));
+	gpu.SetUniform(gpu.GetUniformLocation(program, "uDebugLevel"), ctx.ssrDebugView == 4 ? 1 : ctx.ssrDebugView == 5 ? 2 : 0);
+	gpu.BindImage(0, m_compositeTex, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.Dispatch((m_width + 7) / 8, (m_height + 7) / 8, 1);
+	gpu.PipelineBarrier(rhi::BarrierTextureFetch | rhi::BarrierImageAccess);
+
 	for (uint32_t unit = 0; unit < 7; ++unit) gpu.BindTexture(unit, rhi::TextureHandle{});
 	m_historyIndex = current;
 	m_historyValid = true;
 	++m_frame;
-	ctx.ssrTexture = m_historyTex[current];
+	switch (ctx.ssrDebugView) {
+	case 1: ctx.ssrTexture = m_resolveTex; break;
+	case 2: ctx.ssrTexture = m_historyTex[current]; break;
+	default: ctx.ssrTexture = m_compositeTex; break;
+	}
+	DumpSsrTexture(ctx.ssrTexture, m_width, m_height, ctx.ssrDebugView, m_frame - 1);
 }

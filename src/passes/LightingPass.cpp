@@ -308,6 +308,12 @@ void LightingPass::Execute(RenderContext& ctx,
 	if (const rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "reflectionProbeMaxLOD"); loc >= 0) {
 		gpu.SetUniform(loc, ctx.reflectionProbeMaxLOD);
 	}
+	if (const rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "ssrProbeBlend"); loc >= 0) {
+		gpu.SetUniform(loc, std::clamp(ctx.ssrProbeBlend, 0.0f, 1.0f));
+	}
+	if (const rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "ssrDebugOnly"); loc >= 0) {
+		gpu.SetUniform(loc, (m_outputMode == OutputMode::FullLighting && ctx.ssrDebugView != 0) ? 1 : 0);
+	}
 
 	// Screen-space reflections (SSRPass, docs/nfs2015 M5); the bounce-radiance mode does not use them.
 	{
