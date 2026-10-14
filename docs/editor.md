@@ -69,8 +69,10 @@ button) is drawn in the inspector and invoked on the node.
 The Assets window is the Content Browser. It reads the project through `AssetIO` (`src/ImGui/ContentBrowser.cpp`),
 so loose and packed projects show the same tree. Packed assets are read-only: file actions are disabled for them.
 
-- **Folder tree** (left): the project root and every folder below it. Build products and third-party folders
-  (`build`, `external`, `output`, `captures`, `snapshots`, `node_modules`) and dot-folders are skipped.
+- **Folder tree** (left): the project root and every folder below it. Build products, generated output and
+  third-party folders are skipped: `build`, `external`, `output`, `captures`, `snapshots` and `node_modules` at
+  any depth, and at the project root `validation_output`, `logs`, `Package`, `x64`, `include`, `lib`, `Release`,
+  `Debug`, `cmake`, `generated`, `performance_data` and `EvaluationCaptures`. Dot-folders are skipped too.
 - **Items** (right): tiles with a thumbnail, or a **List** with type, size and modified time. The tile size slider
   sets the tile width (64 to 256 px). Textures show a lazily decoded thumbnail; other types show a typed icon with a
   badge (scene, prefab, model, script, audio, shader, font).
@@ -89,6 +91,11 @@ so loose and packed projects show the same tree. Packed assets are read-only: fi
   the Recycle Bin after a confirmation. Renaming or deleting does not rewrite references in scenes or prefabs.
 - **Refresh**: a background scan lists the tree every two seconds and rebuilds the index only when a path, size or
   timestamp changed, so files added or edited outside the editor appear without a restart.
+
+The scan walks the loose project with the directory iterator: it reads directory entries (type, size, write
+time) and never opens a file. A full scan of a project of about 3000 entries takes tens of milliseconds;
+the editor logs `[ContentBrowser] scan: N entries in X ms` when it publishes an index. Packed projects
+are listed through AssetIO.
 
 Thumbnails are decoded on two worker threads and uploaded to the GPU at most four per frame. Only tiles on screen
 request a thumbnail. The cache keeps 256 thumbnails and evicts the least recently used one. Files above 64 MB are

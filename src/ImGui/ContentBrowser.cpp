@@ -25,6 +25,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <iostream>
 #include <set>
 #include <system_error>
 
@@ -79,6 +80,13 @@ namespace {
 		return slash == std::string::npos ? path : path.substr(slash + 1);
 	}
 
+	// Logical paths are UTF-8 with '/' separators; the physical walk converts from the native path.
+	std::string Utf8(const std::filesystem::path& p)
+	{
+		const std::u8string u = p.generic_u8string();
+		return std::string(reinterpret_cast<const char*>(u.data()), u.size());
+	}
+
 	std::string Join(const std::string& dir, const std::string& name)
 	{
 		return dir.empty() ? name : dir + "/" + name;
@@ -108,12 +116,19 @@ namespace {
 		return slash == std::string::npos ? path : path.substr(0, slash);
 	}
 
-	// Folders that hold build products or third-party code, not project assets.
-	bool PrunedDirectory(const std::string& name)
+	// Folders that hold build products, generated output or third-party code, not project assets. Pruned at any
+	// depth by name; at the project root only, the names below are pruned too (a nested "include" can be an asset).
+	bool PrunedDirectory(const std::string& parent, const std::string& name)
 	{
 		if (name.empty() || name[0] == '.') return true;
 		static const std::set<std::string> kSkip = { "build", "external", "output", "captures", "snapshots", "node_modules" };
-		return kSkip.count(Lower(name)) > 0;
+		static const std::set<std::string> kRootSkip = {
+			"validation_output", "logs", "package", "x64", "include", "lib", "release", "debug", "cmake", "generated",
+			"evaluationcaptures", "performance_data", "nox_engine",
+		};
+		const std::string lower = Lower(name);
+		if (kSkip.count(lower)) return true;
+		return parent.empty() && kRootSkip.count(lower) > 0;
 	}
 
 	// Physical file behind a logical path: loose projects only. Packed assets are read-only and have no file.
@@ -365,32 +380,12 @@ void ContentBrowser::ScanLoop()
 	uint64_t lastSignature = 0;
 	bool first = true;
 	while (!m_stop.load()) {
+		const auto started = std::chrono::steady_clock::now();
 		auto idx = std::make_shared<Index>();
-		{
-			AssetIO::ListOptions options;
-			options.includeDirectories = true;
-			std::vector<std::string> pending{ std::string() };
-			while (!pending.empty() && !m_stop.load() && idx->entries.size() < kMaxIndexEntries) {
-				const std::string dir = pending.back();
-				pending.pop_back();
-				for (const std::string& child : AssetIO::List(dir, options)) {
-					const auto st = AssetIO::Stat(child);
-					if (!st) continue;
-					Entry e;
-					e.path = child;
-					e.name = Basename(child);
-					e.parent = dir;
-					e.isDir = st->isDirectory;
-					if (e.isDir && PrunedDirectory(e.name)) continue;
-					e.ext = e.isDir ? std::string() : Extension(e.name);
-					e.kind = ClassifyAsset(child, e.isDir);
-					e.size = st->size;
-					e.mtime = st->modifiedTime;
-					if (e.isDir) pending.push_back(child);
-					idx->entries.push_back(std::move(e));
-					if (idx->entries.size() >= kMaxIndexEntries) break;
-				}
-			}
+		if (AssetIO::IsInitialized()) {
+			const AssetIO::Config& config = AssetIO::GetConfig();
+			if (AssetIO::GetMode() == AssetIO::Mode::Loose && !config.looseRoot.empty()) WalkLoose(config.looseRoot, idx->entries);
+			else WalkLogical(idx->entries);
 		}
 		for (size_t i = 0; i < idx->entries.size(); ++i) {
 			const Entry& e = idx->entries[i];
@@ -414,6 +409,9 @@ void ContentBrowser::ScanLoop()
 		idx->signature = sig;
 
 		if (!m_stop.load() && (first || sig != lastSignature)) {
+			// One line per published index (the first scan and every change), not per poll.
+			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+			std::cout << "[ContentBrowser] scan: " << idx->entries.size() << " entries in " << ms << " ms" << std::endl;
 			first = false;
 			lastSignature = sig;
 			std::lock_guard<std::mutex> lock(m_indexMutex);
@@ -424,6 +422,76 @@ void ContentBrowser::ScanLoop()
 		std::unique_lock<std::mutex> lock(m_scanMutex);
 		m_scanCv.wait_for(lock, kScanInterval, [this] { return m_stop.load() || m_rescan; });
 		m_rescan = false;
+	}
+}
+
+// Loose project: walks the physical tree with the directory iterator. Each directory entry carries its type, size
+// and write time, so no file is opened and no image is decoded. Pruned folders are not descended into.
+void ContentBrowser::WalkLoose(const fs::path& root, std::vector<Entry>& out)
+{
+	std::error_code ec;
+	fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+	if (ec) return;
+	const fs::recursive_directory_iterator end;
+	while (it != end && !m_stop.load() && out.size() < kMaxIndexEntries) {
+		const fs::directory_entry& de = *it;
+		const fs::path rel = de.path().lexically_relative(root);
+		Entry e;
+		e.path = Utf8(rel);
+		e.name = Utf8(de.path().filename());
+		e.parent = Utf8(rel.parent_path());
+		e.isDir = de.is_directory(ec);
+		ec.clear();
+		if (e.isDir && PrunedDirectory(e.parent, e.name)) {
+			it.disable_recursion_pending();
+		}
+		else {
+			e.ext = e.isDir ? std::string() : Extension(e.name);
+			e.kind = ClassifyAsset(e.path, e.isDir);
+			if (!e.isDir) {
+				const std::uintmax_t size = de.file_size(ec);
+				if (!ec) e.size = size;
+				ec.clear();
+			}
+			const fs::file_time_type written = de.last_write_time(ec);
+			if (!ec) {
+				const auto sys = std::chrono::clock_cast<std::chrono::system_clock>(written);
+				e.mtime = std::chrono::duration_cast<std::chrono::seconds>(sys.time_since_epoch()).count();
+			}
+			ec.clear();
+			out.push_back(std::move(e));
+		}
+		it.increment(ec);
+		if (ec) break;
+	}
+}
+
+// Packed project: the logical tree through AssetIO.
+void ContentBrowser::WalkLogical(std::vector<Entry>& out)
+{
+	AssetIO::ListOptions options;
+	options.includeDirectories = true;
+	std::vector<std::string> pending{ std::string() };
+	while (!pending.empty() && !m_stop.load() && out.size() < kMaxIndexEntries) {
+		const std::string dir = pending.back();
+		pending.pop_back();
+		for (const std::string& child : AssetIO::List(dir, options)) {
+			const auto st = AssetIO::Stat(child);
+			if (!st) continue;
+			Entry e;
+			e.path = child;
+			e.name = Basename(child);
+			e.parent = dir;
+			e.isDir = st->isDirectory;
+			if (e.isDir && PrunedDirectory(e.parent, e.name)) continue;
+			e.ext = e.isDir ? std::string() : Extension(e.name);
+			e.kind = ClassifyAsset(child, e.isDir);
+			e.size = st->size;
+			e.mtime = st->modifiedTime;
+			if (e.isDir) pending.push_back(child);
+			out.push_back(std::move(e));
+			if (out.size() >= kMaxIndexEntries) break;
+		}
 	}
 }
 

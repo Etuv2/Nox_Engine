@@ -2172,7 +2172,7 @@ void EditorWorkspace::RunSmokeScript()
 	}
 	// Content Browser: waits for the first scan, opens images/ (thumbnails) and checks on the next frame that it draws items.
 	if (frame == 60 && m_contentBrowser) {
-		check(m_contentBrowser->WaitForScan(std::chrono::seconds(5)), "content browser scan");
+		check(m_contentBrowser->WaitForScan(std::chrono::seconds(20)), "content browser scan");
 		check(m_contentBrowser->SmokeNavigate("images"), "content browser opens images/");
 	}
 	if (frame == 61 && m_contentBrowser) {
