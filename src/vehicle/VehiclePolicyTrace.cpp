@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <set>
 #include <sstream>
 
 using nlohmann::json;
@@ -56,11 +57,14 @@ namespace VehiclePolicyTrace {
 
 		void WriteInput(Out& o, const VehicleInput& in) {
 			o.Num("thr", in.throttle); o.Num("brk", in.brake); o.Num("str", in.steer);
-			o.Bool("hb", in.handbrake); o.Bool("nos", in.nitrous);
+			o.Bool("hb", in.handbrake);
+			Out aux;
+			for (const auto& kv : in.aux) aux.Num(kv.first.c_str(), kv.second);
+			o.Raw("aux", aux.Take());
 		}
 
 		void WriteActuation(Out& o, const VehicleActuation& a) {
-			o.Int("gear", a.gear); o.Num("steerAngle", a.steerAngle); o.Num("nitroDriveScale", a.nitroDriveScale);
+			o.Int("gear", a.gear); o.Num("steerAngle", a.steerAngle); o.Num("driveScale", a.driveScale);
 			o.Bool("driveShiftCut", a.driveShiftCut); o.Num("dragScale", a.dragScale); o.Num("rearGripScale", a.rearGripScale);
 			o.Num("driveThrottle", a.driveThrottle); o.Num("reverseDrive", a.reverseDrive); o.Num("brakeCommand", a.brakeCommand);
 			o.Num("brakeFrontShare", a.brakeFrontShare); o.Num("brakeRearShare", a.brakeRearShare);
@@ -69,8 +73,10 @@ namespace VehiclePolicyTrace {
 		}
 
 		void WriteDebug(Out& o, const VehiclePolicyDebug& d) {
-			o.Num("nitro", d.nitro); o.Num("nitroCooldown", d.nitroCooldown); o.Bool("nitroActive", d.nitroActive);
-			o.Num("drift", d.drift); o.Num("driftSign", d.driftSign); o.Num("shiftTimer", d.shiftTimer);
+			o.Num("shiftTimer", d.shiftTimer);
+			Out ch;
+			for (const auto& kv : d.channels) ch.Num(kv.first.c_str(), kv.second);
+			o.Raw("channels", ch.Take());
 		}
 
 		// Replay side: JSON null is NaN.
@@ -82,6 +88,12 @@ namespace VehiclePolicyTrace {
 		bool GetBool(const json& j, const char* k) { return j.contains(k) && j.at(k).is_boolean() && j.at(k).get<bool>(); }
 		int GetInt(const json& j, const char* k) { return static_cast<int>(Get(j, k)); }
 		float GetF(const json& j, const char* k) { return static_cast<float>(Get(j, k)); }
+		// Numbers as written; booleans read as 1 / 0; null (non-finite) as NaN.
+		float Value(const json& v) {
+			if (v.is_null()) return std::numeric_limits<float>::quiet_NaN();
+			if (v.is_boolean()) return v.get<bool>() ? 1.0f : 0.0f;
+			return static_cast<float>(v.get<double>());
+		}
 
 		void ReadTelemetry(const json& j, VehicleStepTelemetry& t) {
 			t.time = GetF(j, "time"); t.h = GetF(j, "h");
@@ -102,11 +114,13 @@ namespace VehiclePolicyTrace {
 
 		void ReadInput(const json& j, VehicleInput& in) {
 			in.throttle = GetF(j, "thr"); in.brake = GetF(j, "brk"); in.steer = GetF(j, "str");
-			in.handbrake = GetBool(j, "hb"); in.nitrous = GetBool(j, "nos");
+			in.handbrake = GetBool(j, "hb");
+			in.aux.clear();
+			if (j.contains("aux")) for (const auto& kv : j.at("aux").items()) in.aux[kv.key()] = Value(kv.value());
 		}
 
 		void ReadActuation(const json& j, VehicleActuation& a) {
-			a.gear = GetInt(j, "gear"); a.steerAngle = GetF(j, "steerAngle"); a.nitroDriveScale = GetF(j, "nitroDriveScale");
+			a.gear = GetInt(j, "gear"); a.steerAngle = GetF(j, "steerAngle"); a.driveScale = GetF(j, "driveScale");
 			a.driveShiftCut = GetBool(j, "driveShiftCut"); a.dragScale = GetF(j, "dragScale"); a.rearGripScale = GetF(j, "rearGripScale");
 			a.driveThrottle = GetF(j, "driveThrottle"); a.reverseDrive = GetF(j, "reverseDrive"); a.brakeCommand = GetF(j, "brakeCommand");
 			a.brakeFrontShare = GetF(j, "brakeFrontShare"); a.brakeRearShare = GetF(j, "brakeRearShare");
@@ -115,8 +129,9 @@ namespace VehiclePolicyTrace {
 		}
 
 		void ReadDebug(const json& j, VehiclePolicyDebug& d) {
-			d.nitro = GetF(j, "nitro"); d.nitroCooldown = GetF(j, "nitroCooldown"); d.nitroActive = GetBool(j, "nitroActive");
-			d.drift = GetF(j, "drift"); d.driftSign = GetF(j, "driftSign"); d.shiftTimer = GetF(j, "shiftTimer");
+			d.shiftTimer = GetF(j, "shiftTimer");
+			d.channels.clear();
+			if (j.contains("channels")) for (const auto& kv : j.at("channels").items()) d.channels[kv.key()] = Value(kv.value());
 		}
 
 		// Comparison helpers.
@@ -164,7 +179,7 @@ namespace VehiclePolicyTrace {
 			const std::string p = std::string(call) + ".";
 			CompareExact(r, call, "gear", got.gear, GetInt(want, "gear"));
 			CompareNum(r, p + "steerAngle", got.steerAngle, Get(want, "steerAngle"));
-			CompareNum(r, p + "nitroDriveScale", got.nitroDriveScale, Get(want, "nitroDriveScale"));
+			CompareNum(r, p + "driveScale", got.driveScale, Get(want, "driveScale"));
 			CompareBool(r, call, "driveShiftCut", got.driveShiftCut, GetBool(want, "driveShiftCut"));
 			CompareNum(r, p + "dragScale", got.dragScale, Get(want, "dragScale"));
 			CompareNum(r, p + "rearGripScale", got.rearGripScale, Get(want, "rearGripScale"));
@@ -181,12 +196,19 @@ namespace VehiclePolicyTrace {
 		}
 
 		void CompareDebug(Report& r, const VehiclePolicyDebug& got, const json& want) {
-			CompareNum(r, "debug.nitro", got.nitro, Get(want, "nitro"));
-			CompareNum(r, "debug.nitroCooldown", got.nitroCooldown, Get(want, "nitroCooldown"));
-			CompareBool(r, "debug", "nitroActive", got.nitroActive, GetBool(want, "nitroActive"));
-			CompareNum(r, "debug.drift", got.drift, Get(want, "drift"));
-			CompareNum(r, "debug.driftSign", got.driftSign, Get(want, "driftSign"));
 			CompareNum(r, "debug.shiftTimer", got.shiftTimer, Get(want, "shiftTimer"));
+			// Every channel either side reports; a channel missing on one side compares as NaN.
+			std::set<std::string> names;
+			for (const auto& kv : got.channels) names.insert(kv.first);
+			const json wantCh = want.contains("channels") ? want.at("channels") : json::object();
+			for (const auto& kv : wantCh.items()) names.insert(kv.key());
+			const double nan = std::numeric_limits<double>::quiet_NaN();
+			for (const std::string& name : names) {
+				const auto it = got.channels.find(name);
+				const double g = it == got.channels.end() ? nan : static_cast<double>(it->second);
+				const double w = wantCh.contains(name) ? static_cast<double>(Value(wantCh.at(name))) : nan;
+				CompareNum(r, "debug.channels." + name, g, w);
+			}
 		}
 	}
 

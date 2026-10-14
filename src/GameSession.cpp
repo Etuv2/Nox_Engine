@@ -236,7 +236,7 @@ void GameSession::Configure(const json& game, const json& sceneRoot, SceneGraph&
 	m_drive.Configure(m_game, sceneGraph, &m_roads, LayoutPathFromScene(sceneRoot), &m_collision);
 	if (m_drive.IsAvailable()) m_drive.SetActive(true);
 
-	const std::string hudPath = m_game.value("hud", std::string("config/hud.json"));
+	const std::string hudPath = m_game.value("hud", std::string("projects/nox-racing/config/hud.json"));
 	if (hudPath != m_hudPath) {
 		RacingHUD::Get().LoadConfig(hudPath);
 		m_hudPath = hudPath;
@@ -364,7 +364,7 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 		in.brake = (k[SDL_SCANCODE_S] || k[SDL_SCANCODE_DOWN]) ? 1.0f : 0.0f;
 		in.steer = ((k[SDL_SCANCODE_D] || k[SDL_SCANCODE_RIGHT]) ? 1.0f : 0.0f) - ((k[SDL_SCANCODE_A] || k[SDL_SCANCODE_LEFT]) ? 1.0f : 0.0f);
 		in.handbrake = k[SDL_SCANCODE_SPACE] != 0;
-		in.nitrous = (k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT]) != 0;
+		in.aux["nitrous"] = ((k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT]) != 0) ? 1.0f : 0.0f;
 		now.confirm = k[SDL_SCANCODE_RETURN] || k[SDL_SCANCODE_KP_ENTER];
 		now.start = now.confirm || k[SDL_SCANCODE_PAGEDOWN];
 		now.back = k[SDL_SCANCODE_BACKSPACE] != 0;
@@ -385,7 +385,7 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 			in.brake = std::max(in.brake, lt);
 			if (std::abs(lx) > std::abs(in.steer)) in.steer = lx;
 			in.handbrake = in.handbrake || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_B);
-			in.nitrous = in.nitrous || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_A);
+			in.aux["nitrous"] = (in.Aux("nitrous") > 0.5f || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_A)) ? 1.0f : 0.0f;
 			now.confirm = now.confirm || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_A);
 			now.start = now.start || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_X);
 			now.back = now.back || SDL_GameControllerGetButton(m_pad, SDL_CONTROLLER_BUTTON_B);
@@ -572,12 +572,12 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 		if (apLog > 2.0f) { apLog = 0.0f; std::printf("[Autopilot] pos=(%.1f,%.1f) y=%.2f air=%d v=%.0f near=%d phase=%d route=%d\n", pos.x, pos.y, m_drive.Position3().y, m_drive.Airborne() ? 1 : 0, kmh, m_nearEvent, static_cast<int>(m_phase), static_cast<int>(m_route.size())); std::fflush(stdout); }
 		in.throttle = std::abs(diff) < 0.35f ? 1.0f : 0.35f;
 		if (std::abs(diff) > 0.5f && kmh > 70.0f) { in.throttle = 0.0f; in.brake = 1.0f; }
-		in.nitrous = std::abs(diff) < 0.1f && kmh > 60.0f;
+		in.aux["nitrous"] = (std::abs(diff) < 0.1f && kmh > 60.0f) ? 1.0f : 0.0f;
 		// Approach the free-roam event marker slowly enough to trigger the start prompt.
 		if (m_phase == Phase::FreeRoam && m_selectedEvent >= 0 && m_selectedEvent < static_cast<int>(m_events.size())) {
 			const float dist = glm::length(m_events[m_selectedEvent].start - pos);
 			const float limit = 12.0f + dist * 1.2f;
-			if (kmh > limit) { in.throttle = 0.0f; in.brake = 0.8f; in.nitrous = false; }
+			if (kmh > limit) { in.throttle = 0.0f; in.brake = 0.8f; in.aux["nitrous"] = 0.0f; }
 		}
 		// Brake before sharp route corners in races.
 		if (m_phase == Phase::Racing && std::abs(diff) > 0.25f && kmh > 75.0f) { in.throttle = 0.0f; in.brake = 0.7f; }
@@ -605,7 +605,7 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 					}
 				}
 			}
-			if (toCorner < 45.0f && kmh > 30.0f + toCorner * 1.1f) { in.throttle = 0.0f; in.brake = 1.0f; in.nitrous = false; }
+			if (toCorner < 45.0f && kmh > 30.0f + toCorner * 1.1f) { in.throttle = 0.0f; in.brake = 1.0f; in.aux["nitrous"] = 0.0f; }
 			// Gentle curves and diverges: limit speed by the route's total turn over the next ~80 m.
 			float turn = 0.0f, dist = 0.0f;
 			for (size_t i = 1; i + 1 < m_route.size() && dist < 80.0f; ++i) {
@@ -617,8 +617,8 @@ void GameSession::ReadInput(bool enabled, DriveMode::Input& in, Buttons& pressed
 			// NOX_AUTOPILOT_MAXKMH: speed cap for coverage runs (takes the routed branch at diverges).
 			static const float capKmh = [] { const char* v = std::getenv("NOX_AUTOPILOT_MAXKMH"); return v ? static_cast<float>(std::atof(v)) : 150.0f; }();
 			const float vmax = std::clamp(150.0f - glm::degrees(turn) * 2.2f, 45.0f, capKmh);
-			if (kmh > vmax + 5.0f) { in.throttle = 0.0f; in.brake = 0.6f; in.nitrous = false; }
-			else if (kmh > vmax) { in.throttle = 0.0f; in.nitrous = false; }
+			if (kmh > vmax + 5.0f) { in.throttle = 0.0f; in.brake = 0.6f; in.aux["nitrous"] = 0.0f; }
+			else if (kmh > vmax) { in.throttle = 0.0f; in.aux["nitrous"] = 0.0f; }
 		}
 		if (m_phase == Phase::FreeRoam && m_nearEvent >= 0 && m_autoRuns < 2) {
 			in.throttle = 0.0f; in.brake = kmh > 3.0f ? 1.0f : 0.0f; // holding the brake at rest would engage reverse
@@ -1665,7 +1665,7 @@ void GameSession::ClearBestTimes()
 void GameSession::LoadBestTimes()
 {
 	std::optional<nlohmann::json> saved = UserSettings::LoadUserJson(kBestTimesPath);
-	if (!saved) saved = AssetIO::ReadJsonOrNull("config/speedwall.json"); // seed from shipped defaults
+	if (!saved) saved = AssetIO::ReadJsonOrNull(m_game.value("speedwall_seed", std::string("projects/nox-racing/data/speedwall.json"))); // seed from shipped defaults (scene may override)
 	if (!saved || !saved->is_object()) { m_bestTimes = json::object(); return; }
 	m_bestTimes = *saved;
 	if (!m_bestTimes.is_object()) m_bestTimes = json::object();

@@ -1,11 +1,12 @@
--- Editor panel "HUD": live edit of config/hud.json (placement, colours, gauges, minimap) with Save and
+-- Editor panel "HUD": live edit of projects/nox-racing/config/hud.json (placement, colours, gauges, minimap) with Save and
 -- Reload. Port of RacingHUD::DrawEditorPanel. The edits apply to the presentation at once (the HUD and
--- map read scripts/ui/config.lua values every frame). Save writes config/hud.json through the
+-- map read scripts/ui/config.lua values every frame). Save writes that file through the
 -- authoring save path (request R2); Reload reads it back through the JSON binding (request R1).
 
 local config = require("ui.config")
 
-local status = "config/hud.json"
+local HUD = "projects/nox-racing/config/hud.json"
+local status = HUD
 
 local PLACEMENTS = { "cluster", "minimap", "event", "panel", "hint" }
 
@@ -21,8 +22,8 @@ local function save()
     status = "save unavailable: no authoring save binding (request R2)"
     return
   end
-  local ok, reason = nox.save_authoring_json("config/hud.json", config.document())
-  status = ok and "saved config/hud.json" or ("save failed: " .. tostring(reason))
+  local ok, reason = nox.save_authoring_json(HUD, config.document())
+  status = ok and ("saved " .. HUD) or ("save failed: " .. tostring(reason))
 end
 
 local function reload()
@@ -30,9 +31,9 @@ local function reload()
     status = "reload unavailable: no JSON binding (request R1)"
     return
   end
-  local doc = nox.json("config/hud.json")
+  local doc = nox.json(HUD)
   config.apply(doc)
-  status = "reloaded config/hud.json"
+  status = "reloaded " .. HUD
 end
 
 nox.editor_panel {

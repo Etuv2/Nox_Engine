@@ -26,9 +26,10 @@ namespace {
 			out.brakeRearShare = in.throttle > 0.5f ? 0.0f : 0.4f;
 			out.rearLock = in.handbrake;
 			out.holdAtRest = in.throttle == 0.0f && in.brake == 0.0f;
-			out.nitroDriveScale = in.nitrous ? 1.2f : 1.0f;
-			out.dragScale = in.nitrous ? 0.5f : 1.0f;
-			m_nitro = in.nitrous ? 0.5f : 1.0f;
+			const bool boost = in.Aux("nitrous") > 0.5f;
+			out.driveScale = boost ? 1.2f : 1.0f;
+			out.dragScale = boost ? 0.5f : 1.0f;
+			m_nitro = boost ? 0.5f : 1.0f;
 		}
 		void YawAssist(const VehicleInput&, const VehicleStepTelemetry& t, VehicleYawAssist& io) override {
 			io.yawAcc += 0.5f * std::sin(t.beta * 4.0f);
@@ -43,7 +44,7 @@ namespace {
 		}
 		VehiclePolicyDebug Debug() const override {
 			VehiclePolicyDebug d;
-			d.nitro = m_nitro;
+			d.channels["nitro"] = m_nitro;
 			d.shiftTimer = 0.25f;
 			return d;
 		}
@@ -77,7 +78,7 @@ namespace {
 			in.brake = frame % 80 < 10 ? 0.8f : 0.0f;
 			in.steer = std::sin(frame * 0.05f);
 			in.handbrake = frame >= 200 && frame < 230;
-			in.nitrous = frame >= 100 && frame < 160;
+			in.aux["nitrous"] = (frame >= 100 && frame < 160) ? 1.0f : 0.0f;
 			if (frame == 250) svc.Teleport(h, glm::vec2(10.0f, -20.0f), 0.5f);
 			svc.Advance(h, 1.0f / 60.0f, in, frame == 150);
 		}
@@ -104,7 +105,7 @@ NOX_TEST(VehiclePolicy, ReplayIsExactForSamePolicy) {
 	NOX_CHECK(report.fields.count("control.steerAngle") == 1);
 	NOX_CHECK(report.fields.count("yaw.yawAcc") == 1);
 	NOX_CHECK(report.fields.count("velocity.vx") == 1);
-	NOX_CHECK(report.fields.count("debug.nitro") == 1);
+	NOX_CHECK(report.fields.count("debug.channels.nitro") == 1);
 }
 
 // A policy with a different output is detected by the replay (the comparison is not vacuous).

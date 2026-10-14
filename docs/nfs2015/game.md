@@ -1,23 +1,25 @@
 # NOX night-sprint prototype: launch, play and author
 
-The racing prototype runs on the `scenes/nfs_sprint.json` district (procedural, generated on load). The editor and the standalone game are the same executable.
+The racing prototype is project content: the Lua game in `projects/nox-racing/` (manifest `project.json`, scripts, vehicle data and the HUD config). A scene opts in with a top-level `"project": "projects/nox-racing/project.json"` key; the racing scenes are `scenes/nfs_*.json` and `scenes/shuto_*.json`. The engine config (`config/`) holds no racing data. The editor and the standalone game are the same executable.
 
 ## Launching
 
 | What | Command (repo root) |
 | --- | --- |
 | Build Release | `tools\build.cmd` (or `cmake --build --preset vs2022-x64-release`) |
-| Editor | `tools\run.cmd -Preset editor` or `build\vs2022-x64\Release\Nox_Engine.exe` |
-| Game (borderless, native resolution) | `tools\run.cmd -Preset game` or `Nox_Engine.exe --preset game` |
-| Game, windowed 1720x720 | `Nox_Engine.exe --preset game_windowed` |
+| Editor (engine default scene) | `tools\run.cmd -Preset editor` or `build\vs2022-x64\Release\Nox_Engine.exe` |
+| Racing game (`game` mode) | `tools\run.cmd -Scene scenes/nfs_sprint.json -Mode game` |
+| Racing game, ultra, windowed | `tools\run.cmd -Scene scenes/nfs_night_rain.json -Mode game -Quality ultra -Window windowed` |
+| Any racing scene, game mode | `build\vs2022-x64\Release\Nox_Engine.exe --game --scene scenes/shuto_buildings.json` |
 | Package | `tools\package.cmd`, which writes `Package\NOX_Racing\` (run `Play.cmd` or `Editor.cmd` there) |
 
 - **Command line:** `--preset <name>`, `--game` / `--editor`, `--scene <path>`, `--quality high|ultra`, `--window windowed|borderless|fullscreen`, `--width N --height N`.
-- **Presets:** stored in `config/launch_presets.json`. Edit them in the editor under *Build > Launch Presets*.
+- **Presets:** the engine's presets are in `config/launch_presets.json` (edit in the editor under *Build > Launch Presets*). The racing presets (`game`, `game_ultra`, `game_windowed`) are in `projects/nox-racing/launch_presets.json`; the racing package ships them as its `config/launch_presets.json`. `--preset` reads only the engine file, so use `-Scene` / `-Mode` for development runs.
+- **Window title:** the game window title is `window_title` in `projects/nox-racing/project.json`, read from the launch project or the startup scene's `"project"` key.
 - **Asset root:** found from the executable's location. A build-tree exe uses the source tree, so editor saves land in the repository. A packaged exe uses its own folder.
 - **Environment variables:** no longer required. The `NOX_*` hooks still work for scripted runs; see `configuration.md`.
 - **Test scripts:**
-  - `NOX_DRIVE_AUTOPILOT=1` drives the race unattended: start, finish, retry, free roam.
+  - `NOX_DRIVE_AUTOPILOT=1` drives the race unattended: start, finish, retry, free roam. `NOX_EXIT_ON_FINISH=1` quits after the first finish (prints `[Traversal] Finished; incidents=N`). Use `NOX_FIXED_DT=0.0166666667` for repeatable runs.
   - `NOX_EDITOR_SMOKE=1` exercises the editor: undo/redo, Play/Stop, resize and save.
 
 ## Playing
@@ -38,7 +40,7 @@ The racing prototype runs on the `scenes/nfs_sprint.json` district (procedural, 
 
 - **Checkpoints:** a checkpoint counts when the car's swept path crosses its gate moving forward, so high speed cannot skip one. Crossing a later gate first shows *MISSED CHECKPOINT*, and the minimap route keeps pointing at the gate you still need.
 - **Wrong way:** a warning appears after about 2 s of driving against the route.
-- **Best times:** saved per event in `config/speedwall.json` and shown in the SPEEDWALL panel.
+- **Best times:** saved per event in the user directory (`saves/speedwall.json`) and shown in the SPEEDWALL panel. The first run is seeded from `projects/nox-racing/data/speedwall.json`; a scene can name another file with `game.speedwall_seed`.
 - **BOOST gauge:** shows engine load (throttle x rpm with spool lag). No turbo is simulated.
 
 ## Editor
@@ -77,7 +79,7 @@ Each drag is one undo step.
 **Panels:**
 - **Race & Routes:** events (id, type, name, difficulty, start, trigger radius, countdown), ordered checkpoints (add, duplicate, reorder, delete, width, heading), speedwall, test buttons and the road network.
 - **Drive:** handling, nitrous, spawn, chase camera and headlights. While playing, edits change runtime values only. *Apply to authored* keeps them.
-- **HUD:** placement, colours, fonts, gauge ranges and minimap, all live. Save writes `config/hud.json`.
+- **HUD:** placement, colours, fonts, gauge ranges and minimap, all live. Save writes `projects/nox-racing/config/hud.json` (the scene's `game.hud` path, which defaults to that file).
 - **Materials:** live material edits. *Save as scene override* stores them in the node's `material_overrides`.
 
 **Play / Stop:** Play starts from the authored scene. Stop restores node transforms and game data to the pre-play state. Saving is disabled while playing.
@@ -88,7 +90,7 @@ Each drag is one undo step.
 
 ## Scene data (`"game"` object)
 
-`player_node`, `body_node`, `spawn {position:[x,z], heading_deg}`, `handling {...}`, `camera {...}`, `road_network {road_half_width, sidewalk_width, nodes:[{id,pos}], edges:[{a,b,name}]}`, `events [{id,type,name,difficulty,start,start_heading_deg,trigger_radius,countdown,checkpoints:[{pos,width,heading_deg?}]}]`, `hud`.
+`player_node`, `body_node`, `spawn {position:[x,z], heading_deg}`, `handling {...}`, `camera {...}`, `road_network {road_half_width, sidewalk_width, nodes:[{id,pos}], edges:[{a,b,name}]}`, `events [{id,type,name,difficulty,start,start_heading_deg,trigger_radius,countdown,checkpoints:[{pos,width,heading_deg?}]}]`, `hud`. The Lua game reads these keys; the authoring reference is `projects/nox-racing/scripts/race/AUTHORING.md`.
 
 - **Shared road network:** the same network drives the generated district (`procedural.generator = "district"`), the minimap, routing and vehicle boundaries.
 - **Obstacles:** poles, palms and parked cars come from the generated `generated/<output>_layout.json`.

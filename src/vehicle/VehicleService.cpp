@@ -534,7 +534,9 @@ void VehicleInstance::RecoverToRoad()
 	if (glm::dot(dir, fwd) < 0.0f) dir = -dir;
 	// Driving-side lane: facing dir, the car's right is (-dir.y, dir.x).
 	const glm::vec2 right(-dir.y, dir.x);
-	Teleport(closest + right * (e.halfWidth * 0.3f * (m_roads->LeftHandTraffic() ? -1.0f : 1.0f)), std::atan2(dir.x, dir.y));
+	const nlohmann::json* side = m_roads->Attribute("traffic_side");
+	const bool leftSide = side && side->is_string() && side->get<std::string>() == "left";
+	Teleport(closest + right * (e.halfWidth * 0.3f * (leftSide ? -1.0f : 1.0f)), std::atan2(dir.x, dir.y));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -604,7 +606,7 @@ void VehicleInstance::Step(float h, const VehicleInput& in)
 	const float vxAbs = std::max(std::abs(m_vx), 0.5f);
 	const float beta = speed > 2.0f ? std::atan2(m_vy, vxAbs) : 0.0f; // body slip, + = velocity left of the nose
 
-	// --- Control (policy): nitrous, drift, steering, direction and gear selection.
+	// --- Control (policy): boosts, drift, steering, direction and gear selection.
 	VehicleStepTelemetry t = Telemetry(h, speed, speed01, beta, vxAbs);
 	VehicleActuation act;
 	act.gear = m_gear;
@@ -629,7 +631,7 @@ void VehicleInstance::Step(float h, const VehicleInput& in)
 	float driveForce = 0.0f;
 	if (m_gear >= 1 && act.driveThrottle > 0.0f) {
 		driveForce = act.driveThrottle * finalDriveForce * curve * GearRatio(m_gear) / ratio1;
-		driveForce *= act.nitroDriveScale;
+		driveForce *= act.driveScale;
 		if (shifting) driveForce *= 0.12f;
 		if (m_limiter) driveForce *= 0.25f;
 	}

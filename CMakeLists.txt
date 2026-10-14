@@ -61,26 +61,36 @@ file(GLOB_RECURSE NOX_ENGINE_SOURCES CONFIGURE_DEPENDS
 )
 list(REMOVE_ITEM NOX_ENGINE_SOURCES "${NOX_ENGINE_SRC_DIR}/main.cpp")
 
-# Compiled racing gameplay that is being migrated to project Lua/data (docs/engine_boundary.md).
-# It is linked only into the legacy application target and never into NoxEngineCore.
+# Three source groups sit outside NoxEngineCore (docs/engine_boundary.md):
+#   NoxProcedural    procedural street generators (ProceduralStreetKit, NightStreetPacks, the registration in
+#                    src/procedural). Linked by nox_cook (packaging-time cook) and the legacy racing executable.
+#   NoxRacingLegacy  the compiled native racing game (GameSession and its UI/audio/policy files). Linked only
+#                    into Nox_RacingLegacy.exe, never into Nox_Engine.exe.
+#   src/legacy/      entry point of Nox_RacingLegacy.exe.
+# Nox_Engine.exe and NoxEngineCore contain none of them.
+set(NOX_PROCEDURAL_SOURCES
+    "${NOX_ENGINE_SRC_DIR}/NightStreetPacks.cpp"
+    "${NOX_ENGINE_SRC_DIR}/ProceduralStreetKit.cpp"
+    "${NOX_ENGINE_SRC_DIR}/procedural/ProceduralStreetGenerators.cpp"
+)
 set(NOX_RACING_LEGACY_SOURCES
     "${NOX_ENGINE_SRC_DIR}/DriveAudio.cpp"
     "${NOX_ENGINE_SRC_DIR}/DriveMode.cpp"
     "${NOX_ENGINE_SRC_DIR}/GameEditorPanels.cpp"
     "${NOX_ENGINE_SRC_DIR}/GameSession.cpp"
     "${NOX_ENGINE_SRC_DIR}/LegacyNfsPolicy.cpp"
-    "${NOX_ENGINE_SRC_DIR}/NightStreetPacks.cpp"
     "${NOX_ENGINE_SRC_DIR}/NoxRacingGame.cpp"
-    "${NOX_ENGINE_SRC_DIR}/ProceduralStreetKit.cpp"
     "${NOX_ENGINE_SRC_DIR}/RacingHUD.cpp"
     "${NOX_ENGINE_SRC_DIR}/WorldMapUI.cpp"
 )
-foreach(racing_source IN LISTS NOX_RACING_LEGACY_SOURCES)
-    if(EXISTS "${racing_source}")
-        list(REMOVE_ITEM NOX_ENGINE_SOURCES "${racing_source}")
-        list(APPEND NOX_RACING_LEGACY_EXISTING "${racing_source}")
+set(NOX_LEGACY_MAIN_SOURCE "${NOX_ENGINE_SRC_DIR}/legacy/main_racing_legacy.cpp")
+foreach(group_source IN LISTS NOX_PROCEDURAL_SOURCES NOX_RACING_LEGACY_SOURCES)
+    if(NOT EXISTS "${group_source}")
+        message(FATAL_ERROR "Source listed for a separate target is missing: ${group_source}")
     endif()
+    list(REMOVE_ITEM NOX_ENGINE_SOURCES "${group_source}")
 endforeach()
+list(REMOVE_ITEM NOX_ENGINE_SOURCES "${NOX_LEGACY_MAIN_SOURCE}")
 
 # Shared compile settings for every NOX C++ target.
 add_library(nox_settings INTERFACE)
@@ -140,22 +150,45 @@ target_link_libraries(NoxEngineCore PUBLIC
     ${NOX_ENGINE_REQUIRED_LIBS}
 )
 
-add_library(NoxRacingLegacy STATIC ${NOX_RACING_LEGACY_EXISTING})
-target_link_libraries(NoxRacingLegacy PUBLIC NoxEngineCore)
+# Procedural street generators: packaging-time (nox_cook) and legacy racing only.
+add_library(NoxProcedural STATIC ${NOX_PROCEDURAL_SOURCES})
+target_link_libraries(NoxProcedural PUBLIC NoxEngineCore)
 
+# The generic engine executable: the engine core and nothing else. Racing content arrives as cooked results
+# (nox_cook) and project scripts (projects/<name>, Lua).
 add_executable(${NOX_ENGINE_TARGET} "${NOX_ENGINE_SRC_DIR}/main.cpp")
-target_link_libraries(${NOX_ENGINE_TARGET} PRIVATE NoxEngineCore NoxRacingLegacy)
+target_link_libraries(${NOX_ENGINE_TARGET} PRIVATE NoxEngineCore)
 if(MSVC)
     # Keep registration/translation units that are only reached through registries.
     target_link_options(${NOX_ENGINE_TARGET} PRIVATE
         "/WHOLEARCHIVE:$<TARGET_FILE:NoxEngineCore>"
-        "/WHOLEARCHIVE:$<TARGET_FILE:NoxRacingLegacy>"
     )
 endif()
 
 set_target_properties(${NOX_ENGINE_TARGET} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${NOX_ENGINE_ROOT}"
 )
+
+# Legacy native racing executable (parity comparisons with the Lua racing project). Same command line as
+# Nox_Engine.exe. OFF skips it: cmake -DNOX_BUILD_RACING_LEGACY=OFF.
+option(NOX_BUILD_RACING_LEGACY "Build Nox_RacingLegacy.exe (the compiled native racing game)" ON)
+if(NOX_BUILD_RACING_LEGACY)
+    add_library(NoxRacingLegacy STATIC ${NOX_RACING_LEGACY_SOURCES})
+    target_link_libraries(NoxRacingLegacy PUBLIC NoxProcedural)
+
+    add_executable(Nox_RacingLegacy "${NOX_LEGACY_MAIN_SOURCE}")
+    target_link_libraries(Nox_RacingLegacy PRIVATE NoxRacingLegacy NoxProcedural NoxEngineCore)
+    if(MSVC)
+        target_link_options(Nox_RacingLegacy PRIVATE
+            "/WHOLEARCHIVE:$<TARGET_FILE:NoxEngineCore>"
+            "/WHOLEARCHIVE:$<TARGET_FILE:NoxProcedural>"
+            "/WHOLEARCHIVE:$<TARGET_FILE:NoxRacingLegacy>"
+        )
+    endif()
+    set_target_properties(Nox_RacingLegacy PROPERTIES
+        VS_DEBUGGER_WORKING_DIRECTORY "${NOX_ENGINE_ROOT}"
+    )
+endif()
 
 # Headless native tests (tests/native): asset I/O, scripting, ECS handles. No GPU or window needed.
 option(NOX_BUILD_TESTS "Build the headless native test executable" ON)
@@ -181,23 +214,29 @@ set(NOX_ENGINE_RUNTIME_DLLS
     "${NOX_ENGINE_ROOT}/assimp-vc143-mt.dll"
 )
 
-foreach(runtime_dll IN LISTS NOX_ENGINE_RUNTIME_DLLS)
-    if(EXISTS "${runtime_dll}")
-        add_custom_command(TARGET ${NOX_ENGINE_TARGET} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${runtime_dll}"
-                "$<TARGET_FILE_DIR:${NOX_ENGINE_TARGET}>"
-        )
-    endif()
+set(NOX_RUNTIME_EXECUTABLES ${NOX_ENGINE_TARGET})
+if(NOX_BUILD_RACING_LEGACY)
+    list(APPEND NOX_RUNTIME_EXECUTABLES Nox_RacingLegacy)
+endif()
+foreach(runtime_exe IN LISTS NOX_RUNTIME_EXECUTABLES)
+    foreach(runtime_dll IN LISTS NOX_ENGINE_RUNTIME_DLLS)
+        if(EXISTS "${runtime_dll}")
+            add_custom_command(TARGET ${runtime_exe} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${runtime_dll}"
+                    "$<TARGET_FILE_DIR:${runtime_exe}>"
+            )
+        endif()
+    endforeach()
 endforeach()
 
 # Headless procedural cook (tools/cook/main.cpp, contract C10): runs the registered procedural generators
 # without a window or GL context and writes generated/cooked/<generator>-<key>/ results.
 add_executable(nox_cook "${NOX_ENGINE_ROOT}/tools/cook/main.cpp")
-target_link_libraries(nox_cook PRIVATE NoxEngineCore NoxRacingLegacy)
+target_link_libraries(nox_cook PRIVATE NoxProcedural)
 if(MSVC)
     target_link_options(nox_cook PRIVATE
         "/WHOLEARCHIVE:$<TARGET_FILE:NoxEngineCore>"
-        "/WHOLEARCHIVE:$<TARGET_FILE:NoxRacingLegacy>"
+        "/WHOLEARCHIVE:$<TARGET_FILE:NoxProcedural>"
     )
 endif()

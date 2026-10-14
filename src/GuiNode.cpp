@@ -50,6 +50,7 @@ GuiNode::GuiNode(int screenW, int screenH)
 }
 
 GuiNode::~GuiNode() {
+    if (m_font) TTF_CloseFont(m_font);
     // GpuBuffer cleans itself up via RAII (m_quadVBO is unique_ptr)
     if (m_quadVAO) rhi::Gpu().DestroyVertexInput(m_quadVAO);
     if (m_textureShader) rhi::Gpu().DestroyProgram(m_textureShader);
@@ -98,6 +99,12 @@ void GuiNode::CacheUniformLocations() {
 }
 
 void GuiNode::LoadFont(const std::string& path, int size) {
+    m_fontPath = path;
+    m_fontSize = size;
+    if (m_font) {
+        TTF_CloseFont(m_font);
+        m_font = nullptr;
+    }
     SDL_RWops* fontRw = AssetIO::OpenRWops(path); // TTF closes the RWops (and releases the bytes) with the font
     m_font = fontRw ? TTF_OpenFontRW(fontRw, 1, size) : nullptr;
     if (!m_font) {

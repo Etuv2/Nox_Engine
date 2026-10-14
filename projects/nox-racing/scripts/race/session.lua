@@ -116,7 +116,7 @@ function M.configure(game, saved_best)
         places = read_places(game.places),
         height_tol = (type(game.collision) == "table" and game.collision.height_tolerance) or 4.0,
         pause_on_focus_loss = game.pause_on_focus_loss ~= false,
-        hud = game.hud or "config/hud.json",
+        hud = game.hud or "projects/nox-racing/config/hud.json",
         roads = nil,
     }
     -- Road network: inline in the scene, or a logical file (game.road_network.file). An inline table goes through
@@ -142,10 +142,10 @@ function M.configure(game, saved_best)
     end
     rt = new_runtime()
     R = default_state()
-    -- Best times: the user save (passed in by main), else the seed copy of config/speedwall.json.
+    -- Best times: the user save (passed in by main), else the shipped seed (project data).
     local best = saved_best
     if type(best) ~= "table" and nox.json then
-        local ok, seed = pcall(nox.json, "config/speedwall.json")
+        local ok, seed = pcall(nox.json, "projects/nox-racing/data/speedwall.json")
         if ok and type(seed) == "table" then best = seed end
     end
     rt.best = type(best) == "table" and best or {}
@@ -546,9 +546,12 @@ end
 
 -- Draw state for the HUD (scripts/ui/README.md, "HUD state").
 function M.hud_state(tel, dt)
+    -- Boost channels of the vehicle policy (flags are 1 / 0).
+    local nitro = tel.channels.nitro or 1.0
+    local nitro_active = (tel.channels.nitro_active or 0.0) > 0.5
     local st = {
-        speed_kmh = tel.speed_kmh, rpm = tel.rpm, load = tel.load or 0.0, nitro = tel.nitro,
-        nitro_active = tel.nitro_active, nitro_recharging = (tel.nitro < 0.999) and not tel.nitro_active,
+        speed_kmh = tel.speed_kmh, rpm = tel.rpm, load = tel.load or 0.0, nitro = nitro,
+        nitro_active = nitro_active, nitro_recharging = (nitro < 0.999) and not nitro_active,
         gear = tel.gear, redline = tel.rpm >= (cfg.redline or 7800.0), limiter = tel.limiter,
         car = { x = tel.x, z = tel.z }, heading = geom.rad(tel.heading_deg),
         layered = false, roads = cfg.roads,

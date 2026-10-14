@@ -64,7 +64,7 @@ namespace NoxLua {
 		void AdoptFrom(VehicleHost& old);
 		// Live handles in id order (a reloaded world re-acquires its vehicles through this).
 		std::vector<VehicleHandle> Handles() const;
-		// ctx.vehicle.refuel: native nitrous refill is controller state; calls the optional on_refuel hook.
+		// ctx.vehicle.refuel: the controller owns its boost state; calls the optional on_refuel hook.
 		bool Refuel(VehicleHandle h);
 		// Replaces the controller (the old one is released after the swap). `params` null keeps the vehicle's current
 		// controller parameters. A controller that cannot be loaded is installed faulted and reported (the vehicle

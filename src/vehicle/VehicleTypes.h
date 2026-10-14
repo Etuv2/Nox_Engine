@@ -3,6 +3,7 @@
 // the caller (a game module or the legacy racing adapter) supplies every numeric value.
 #include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,7 +26,14 @@ struct VehicleHandle {
 // Driver input latched for a frame and held for its fixed sub-steps.
 struct VehicleInput {
 	float throttle = 0.0f, brake = 0.0f, steer = 0.0f; // 0..1, 0..1, -1..1 (right positive)
-	bool handbrake = false, nitrous = false;
+	bool handbrake = false;
+	// Named auxiliary inputs (buttons or axes). The backend never reads them; the policy interprets
+	// each name. A missing name reads as 0 (released).
+	std::map<std::string, float> aux;
+	float Aux(const std::string& name) const {
+		const auto it = aux.find(name);
+		return it == aux.end() ? 0.0f : it->second;
+	}
 };
 
 // Numeric backend parameters per instance. Defaults are neutral placeholders, not a vehicle preset.

@@ -363,7 +363,7 @@ end
 local function editor_bridge(ctx, tel)
     editor.publish_car({
         x = tel.x, z = tel.z, heading_deg = tel.heading_deg, speed_kmh = tel.speed_kmh,
-        gear = tel.gear, rpm = tel.rpm, nitro = tel.nitro,
+        gear = tel.gear, rpm = tel.rpm, nitro = tel.channels.nitro,
     })
     local st = session.state()
     editor.publish_race({ phase_name = session.phase_name(), time = st.time, next_cp = st.next_cp })
@@ -447,7 +447,7 @@ system {
         end
         ctx.vehicle.set_input(F.car, {
             throttle = drive.throttle, brake = drive.brake, steer = drive.steer,
-            handbrake = drive.handbrake, nitrous = drive.nitrous,
+            handbrake = drive.handbrake, aux = { nitrous = drive.nitrous },
         })
         -- The service clamps the frame dt itself (0.05 s); the call accepts up to 1 s.
         if session.paused() or F.map_open then

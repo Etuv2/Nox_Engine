@@ -1,6 +1,7 @@
 ﻿// Camera.cpp
 #include "Camera.h"
 #include <glm/gtc/matrix_inverse.hpp>
+#include <cmath>
 
 // 8-arg ctor
 Camera::Camera(glm::vec3 position, glm::vec3 worldUp,
@@ -62,6 +63,26 @@ void Camera::SetPose(glm::vec3 position, glm::vec3 worldUp, float yaw, float pit
     m_pitch = glm::clamp(pitch, -89.0f, 89.0f);
     SetPosition(position);
     updateCameraVectors();
+}
+
+void Camera::SetWorldTransform(const glm::mat4& world) {
+    glm::vec3 right = glm::vec3(world[0]);
+    glm::vec3 up = glm::vec3(world[1]);
+    glm::vec3 back = glm::vec3(world[2]);
+    if (glm::dot(right, right) <= 1e-12f || glm::dot(up, up) <= 1e-12f || glm::dot(back, back) <= 1e-12f) {
+        return;   // degenerate (zero-scale) node: keep the current pose
+    }
+    right = glm::normalize(right);
+    up = glm::normalize(up);
+    m_front = -glm::normalize(back);
+    m_rightVec = right;
+    m_upVec = up;
+    m_pitch = glm::degrees(std::asin(glm::clamp(m_front.y, -1.0f, 1.0f)));
+    m_yaw = glm::degrees(std::atan2(m_front.z, m_front.x));
+    SetPosition(glm::vec3(world[3]));
+    transform[0] = glm::vec4(m_rightVec, 0.0f);
+    transform[1] = glm::vec4(m_upVec, 0.0f);
+    transform[2] = glm::vec4(-m_front, 0.0f);
 }
 
 void Camera::ProcessKeyboard(const Uint8* ks, float dt) {

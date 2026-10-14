@@ -1,7 +1,18 @@
+#include "../reflect/Reflection.h"
 #include "LuaWorld.h"
+#include "LuaComponents.h"
+#include "LuaPhysics.h"
+#include "LuaAudio.h"
+#include "LuaDebug.h"
+#include "LuaInputBindings.h"
+#include "LuaTime.h"
+#include "LuaRender.h"
+#include "LuaScene.h"
 
 #include "../SceneGraph.h"
+#include "../SceneNode.h"
 #include "../TransformSystem.h"
+#include "../reflect/ReflectServices.h"
 #include "../assets/AssetIO.h"
 #include "../ui/Pointer.h"
 #include "lauxlib.h"
@@ -502,17 +513,18 @@ namespace NoxLua {
 			const EntityHandle h = LiveHandle(L, w, 2);
 			const std::string name = luaL_checkstring(L, 3);
 			ComponentManager* cm = w->Manager();
+			// Registry descriptors (src/reflect) check the scene node; native pools answer for the rest.
 			bool has = false;
-			if (name == "Transform") has = cm->HasTransform(h.id);
-			else if (name == "Renderable") has = cm->HasRenderable(h.id);
-			else if (name == "Light") has = cm->HasLight(h.id);
-			else if (name == "Camera") has = cm->HasCamera(h.id);
-			else if (name == "Animation") has = cm->HasAnimation(h.id);
-			else if (name == "Physics") has = cm->HasPhysics(h.id);
-			else if (name == "Collider") has = cm->HasCollider(h.id);
-			else if (name == "Audio") has = cm->HasAudio(h.id);
-			else if (name == "LPVVolume") has = cm->HasLPVVolume(h.id);
-			else return luaL_argerror(L, 3, "unknown native component name");
+			bool known = false;
+			if (const nox::reflect::ComponentDesc* desc = nox::reflect::Registry::Get().Find(name)) {
+				known = true;
+				if (std::shared_ptr<SceneNode> node = w->FindSceneNode(h.id)) {
+					has = desc->has && desc->has(*node);
+				}
+			}
+			bool nativeKnown = false;
+			has = NativeComponentPresent(cm, h.id, name, nativeKnown) || has;
+			if (!known && !nativeKnown) return luaL_argerror(L, 3, "unknown native component name (see nox.components())");
 			lua_pushboolean(L, has ? 1 : 0);
 			return 1;
 		}
@@ -926,6 +938,16 @@ namespace NoxLua {
 			SetFn(L, w, "over_ui", CtxOverUi);
 			SetFn(L, w, "wants_pointer", CtxWantsPointer);
 			SetFn(L, w, "set_wants_pointer", CtxSetWantsPointer);
+			// Component proxies, add/remove/list, nox.components, parent/children, raycast, load_scene (LuaComponents.cpp).
+			InstallComponentApi(L, lua_gettop(L), w);
+			// Physics queries (ctx:physics_raycast, overlap_sphere, overlap_box) and physics events (LuaPhysics.cpp).
+			InstallPhysicsApi(L, lua_gettop(L), w);
+			// ctx:time_scale (LuaTime.cpp): the ctx table is on top here, like for the component functions.
+			InstallTimeApi(L, lua_gettop(L));
+			// ctx:screen_to_ray (LuaRender.cpp).
+			InstallRenderApi(L, lua_gettop(L), w);
+			// ctx:instantiate (prefab instances, LuaScene.cpp).
+			InstallSceneApi(L, lua_gettop(L), w);
 			// camera/effects/save functions join the ctx table; nav loaders join the nox table.
 			lua_getglobal(L, "nox");
 			InstallServicesApi(L, -2, -1, &w->m_services);
@@ -939,6 +961,10 @@ namespace NoxLua {
 			// ui table (drawing, text measure, viewport, overlay pointer); passed to draw handlers as their second argument.
 			w->m_uiRef = InstallUiApi(L, &w->m_ui);
 			InstallEditorApi(L, &w->m_edBinding);
+			// Globals: audio (LuaAudio.cpp), debug draw (LuaDebug.cpp), input control (LuaInputBindings.cpp).
+			InstallAudioApi(L);
+			InstallDebugApi(L);
+			InstallInputBindingsApi(L, w);
 			return 0;
 		}
 	};
@@ -1088,6 +1114,7 @@ namespace NoxLua {
 	bool LuaWorld::Load(const ProjectContent& project, SceneGraph& scene, const nlohmann::json& authoredEntities) {
 		ResetServices(m_services, project.roads, project.collision);
 		m_scene = &scene;
+		m_nodeCache.clear();
 		{
 			std::vector<std::string> roadFiles;
 			for (const DeclaredFile& road : project.roads) roadFiles.push_back(road.path);
@@ -1278,6 +1305,7 @@ namespace NoxLua {
 		m_playTime += dt;
 		m_inputEnabled = inputEnabled;
 		RunSystems(false, dt);
+		PumpPhysicsEvents(*this);
 		DeliverEvents();
 		RunBehaviors(dt);
 		SweepDead();
@@ -1476,8 +1504,10 @@ namespace NoxLua {
 		bool* faultFlag) {
 		m_commands.clear();
 		m_inCallback = true;
+		m_worldWritable = true;
 		RunError error;
 		const bool ok = m_runtime->CallRef(ref, pushArgs, 0, &error);
+		m_worldWritable = false;
 		m_inCallback = false;
 		if (!ok) {
 			// The failing callback's native commands are discarded; Lua table changes are not rolled back.
@@ -1575,7 +1605,16 @@ namespace NoxLua {
 					break;
 				}
 				if (std::find(m_spawned.begin(), m_spawned.end(), cmd.target) == m_spawned.end()) {
-					warn("destroy: only script-spawned entities can be destroyed (authored nodes are restored by Stop)");
+					// Scene nodes (authored or instantiated during play) are removed by the host. Stop restores authored
+					// nodes; nodes created during play are removed for good.
+					std::shared_ptr<SceneNode> node = FindSceneNode(cmd.target.id);
+					const nox::reflect::EngineServices& services = nox::reflect::Services();
+					if (node && services.destroyNode && services.destroyNode(node)) {
+						m_data.erase(cmd.target);
+						m_attachments.erase(cmd.target);
+						break;
+					}
+					warn("destroy: the target is neither a script-spawned entity nor a scene node the host can remove");
 					break;
 				}
 				m_spawned.erase(std::find(m_spawned.begin(), m_spawned.end(), cmd.target));
@@ -1728,6 +1767,28 @@ namespace NoxLua {
 		const auto it = m_attachments.find(handle);
 		if (it == m_attachments.end()) return false;
 		return it->second.erase(behavior) > 0;
+	}
+
+	std::shared_ptr<SceneNode> LuaWorld::FindSceneNode(EntityID id) {
+		if (!m_scene || id == INVALID_ENTITY) return nullptr;
+		const SceneNode* root = m_scene->GetRoot().get();
+		// A node is in the scene when its parent chain reaches the root.
+		auto inScene = [root](std::shared_ptr<SceneNode> node) {
+			while (node) {
+				if (node.get() == root) return true;
+				node = node->parentNode.lock();
+			}
+			return false;
+		};
+		const auto cached = m_nodeCache.find(id);
+		if (cached != m_nodeCache.end()) {
+			std::shared_ptr<SceneNode> node = cached->second.lock();
+			if (node && node->GetEntityID() == id && inScene(node)) return node;
+			m_nodeCache.erase(cached);
+		}
+		std::shared_ptr<SceneNode> node = m_scene->FindNodeByEntity(id);
+		if (node) m_nodeCache[id] = node;
+		return node;
 	}
 
 	EntityHandle LuaWorld::FindByName(const std::string& name) const {

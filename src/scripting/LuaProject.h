@@ -18,6 +18,7 @@ namespace NoxLua {
 		std::string iconManifest;            // "icons": {"manifest", "size"}; logical path, "" = none
 		int iconSize = 128;
 		std::string inputPath;               // "input" (default "input.json" beside the descriptor), logical
+		std::vector<std::string> audioBuses; // "audio": { "buses": [...] }: extra mixer buses (AudioMixer)
 	};
 
 	// Validates format 1, runtime "lua" and api_version 1; resolves entry/script_roots/data_roots relative to

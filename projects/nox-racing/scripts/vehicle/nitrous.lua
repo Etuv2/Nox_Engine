@@ -8,7 +8,7 @@ end
 
 -- Called once per sub-step in Control (before the drift and direction decisions).
 function M.step(st, hd, h, vx, inp)
-    st.active = inp.nitrous and st.nitro > 0.0 and inp.throttle > 0.05 and vx > 1.0
+    st.active = (inp.aux.nitrous or 0.0) > 0.5 and st.nitro > 0.0 and inp.throttle > 0.05 and vx > 1.0
     if st.active then
         st.nitro = math.max(0.0, st.nitro - hd.nitro_drain * h)
         st.cooldown = hd.nitro_recharge_delay

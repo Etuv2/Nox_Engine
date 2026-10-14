@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "ImGuiInterface.h"
 #include "assets/AssetIO.h"
+#include "assets/AssetIOJson.h"
 #include "app/UserSettings.h"
 
 #include <fstream>
@@ -84,6 +85,30 @@ MainWindow::~MainWindow() {
     Cleanup();
 }
 
+namespace {
+// Window title of the game project: project.json "window_title", else config "gameWindowTitle", else fallback.
+std::string GameWindowTitle(const std::string& launchProject, const std::string& launchScene,
+                            const nlohmann::json& config, const std::string& fallback) {
+    std::string project = launchProject;
+    if (project.empty()) {
+        // Same precedence as Core: NOX_FIRST_SCENE, then the launch scene, then config first_scene.
+        std::string scene = GetEnvString("NOX_FIRST_SCENE");
+        if (scene.empty()) scene = launchScene.empty() ? config.value("first_scene", std::string()) : launchScene;
+        const nlohmann::json sceneRoot = scene.empty() ? nlohmann::json() : AssetIO::ReadJsonOrNull(scene);
+        if (sceneRoot.is_object() && sceneRoot.value("project", nlohmann::json()).is_string()) {
+            project = sceneRoot["project"].get<std::string>();
+        }
+    }
+    if (!project.empty()) {
+        const nlohmann::json descriptor = AssetIO::ReadJsonOrNull(project);
+        if (descriptor.is_object() && descriptor.value("window_title", nlohmann::json()).is_string()) {
+            return descriptor["window_title"].get<std::string>();
+        }
+    }
+    return config.value("gameWindowTitle", fallback);
+}
+} // namespace
+
 bool MainWindow::LoadWindowConfiguration() {
     try {
         m_config = UserSettings::LoadJsonWithUserOverride("config/config.json", "settings/config.json");
@@ -102,8 +127,10 @@ bool MainWindow::LoadWindowConfiguration() {
         if (!m_launch.window.empty()) m_windowMode = m_launch.window;
         if (m_launch.width > 0) m_windowWidth = m_launch.width;
         if (m_launch.height > 0) m_windowHeight = m_launch.height;
-        // The game window title is project content (config "gameWindowTitle"), not engine code.
-        m_windowTitle = m_launch.mode == "game" ? m_config.value("gameWindowTitle", m_windowTitle) : std::string("NOX Editor");
+        // The game window title is project content: "window_title" in the project.json of the game's project
+        // (the launch project, else the startup scene's "project" key). config "gameWindowTitle" is a fallback.
+        m_windowTitle = m_launch.mode == "game" ? GameWindowTitle(m_launch.project, m_launch.scene, m_config, m_windowTitle)
+                                                : std::string("NOX Editor");
         // Overrides for scripted runs (e.g. native-resolution benchmarks).
         m_windowWidth = GetEnvInt("NOX_WINDOW_WIDTH", m_windowWidth);
         m_windowHeight = GetEnvInt("NOX_WINDOW_HEIGHT", m_windowHeight);

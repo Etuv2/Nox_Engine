@@ -11,11 +11,35 @@
 #include "Contact.h"
 #include "PhysicsBVH.h"
 #include "ComponentTypes.h"
+#include "physics/CharacterSystem.h"
+#include "physics/TriggerSystem.h"
 
 // Forward declarations
 class SceneNode;
 class SceneGraph;
 class ComponentManager;
+
+/**
+ * A body-body contact that started (BEGIN) or stopped (END) touching since the previous physics step.
+ * Collected across the substeps of one Update and handed out by TakeContactEvents().
+ */
+struct PhysicsContactEvent {
+    enum class Type { BEGIN, END };
+    Type type = Type::BEGIN;
+    std::shared_ptr<RigidBody> bodyA;
+    std::shared_ptr<RigidBody> bodyB;
+};
+
+/**
+ * Closest ray hit against the physics world (PhysicsEngine::RayCastClosest).
+ */
+struct PhysicsRayHit {
+    bool hit = false;
+    std::shared_ptr<RigidBody> body;
+    float distance = 0.0f;
+    glm::vec3 point{ 0.0f };
+    glm::vec3 normal{ 0.0f, 1.0f, 0.0f };
+};
 
 /**
  * PhysicsEngine - Production-ready rigid body physics simulation
@@ -276,6 +300,41 @@ public:
      * Query bodies overlapping an AABB
      */
     std::vector<std::shared_ptr<RigidBody>> QueryAABB(const glm::vec3& min, const glm::vec3& max);
+
+    /**
+     * Closest body hit by a ray within maxDistance. Only bodies whose collision layer intersects mask are
+     * considered. Shapes are tested exactly (sphere, box, plane); the direction need not be normalized.
+     * Returns false (hit.hit == false) when nothing is hit.
+     */
+    bool RayCastClosest(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
+                        uint32_t mask, PhysicsRayHit& hit) const;
+
+    /**
+     * Bodies whose shape overlaps the given sphere / oriented box, filtered by collision layer against mask
+     * (body layer & mask != 0). Static, dynamic, kinematic and plane bodies are all reported.
+     */
+    std::vector<BodyID> OverlapSphere(const glm::vec3& center, float radius, uint32_t mask = 0xFFFFFFFFu) const;
+    std::vector<BodyID> OverlapBox(const glm::vec3& center, const glm::vec3& halfExtents, const glm::quat& rotation,
+                                   uint32_t mask = 0xFFFFFFFFu) const;
+
+    /**
+     * Body <-> entity lookup through the body's attached scene node. INVALID_ENTITY / INVALID_BODY_ID when none.
+     */
+    EntityID GetEntityForBody(BodyID bodyId) const;
+    BodyID GetBodyForEntity(EntityID entityId) const;
+
+    /**
+     * Contact begin/end events produced since the last call (in step order, sorted by pair within a step).
+     */
+    std::vector<PhysicsContactEvent> TakeContactEvents();
+
+    /**
+     * Trigger volumes and character controllers (components on scene nodes). Driven by Update().
+     */
+    TriggerSystem& Triggers() { return *m_triggers; }
+    const TriggerSystem& Triggers() const { return *m_triggers; }
+    CharacterSystem& Characters() { return *m_characters; }
+    const CharacterSystem& Characters() const { return *m_characters; }
     
     // ============== CONFIGURATION ==============
     
@@ -409,6 +468,11 @@ private:
      */
     bool SolveContactPosition(ContactManifold& manifold, ContactPoint& cp);
 
+    /**
+     * Bodies overlapping a shape-only probe body (used by OverlapSphere / OverlapBox)
+     */
+    std::vector<BodyID> CollectOverlaps(const std::shared_ptr<RigidBody>& probe, uint32_t mask) const;
+
 private:
     // Configuration
     SimulationConfig m_config;
@@ -438,6 +502,18 @@ private:
     std::unordered_map<uint64_t, ContactManifold> m_manifolds;
     std::vector<ContactManifold*> m_activeManifolds;
     
+    // Contact begin/end: touching pairs after the last step, and the events not yet taken
+    struct ContactPairState {
+        std::shared_ptr<RigidBody> bodyA;
+        std::shared_ptr<RigidBody> bodyB;
+    };
+    std::unordered_map<uint64_t, ContactPairState> m_contactPairs;
+    std::vector<PhysicsContactEvent> m_contactEvents;
+
+    // Triggers and character controllers (node-keyed component state)
+    std::unique_ptr<TriggerSystem> m_triggers;
+    std::unique_ptr<CharacterSystem> m_characters;
+
     // Profiling
     ProfilingData m_profiling;
     

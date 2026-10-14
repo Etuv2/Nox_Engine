@@ -4,6 +4,20 @@
 
 A OpenGL 4.6+ rendering engine with interesting features for real-time 3D graphics, physics simulation, and interactive scene editing.
 
+## About the engine
+
+NOX is a general-purpose engine in the style of Unity or Godot. Scenes are JSON files of nodes, and every node
+carries components from one reflection registry: the scene file, the editor inspector and Lua scripts all read and
+write the same properties. Rendering, physics, audio, input, animation, UI, scripting, assets and packaging are
+systems that nodes and scripts use. Games are projects under `projects/<name>/` (a `project.json`, Lua scripts and
+data); the engine itself contains no game content.
+
+- [Engine overview](docs/engine_overview.md): architecture, components by category, systems, and how to make a project
+- [Editor](docs/editor.md): hierarchy, inspector, undo, prefabs, play mode
+- [Lua project API](docs/lua_api.md), [prefabs](docs/prefabs.md), [physics](docs/physics.md),
+  [audio](docs/audio.md), [rendering components](docs/rendering_components.md)
+- [Documentation index](docs/README.md)
+
 ---
 ## Notes
 - Project was initially created during my second year at university in the 3D Graphics Programming Unit.

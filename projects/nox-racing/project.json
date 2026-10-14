@@ -1,6 +1,7 @@
 {
   "format": 1,
   "name": "nox-racing",
+  "window_title": "NOX Racing - Night Sprint",
   "runtime": "lua",
   "api_version": 1,
   "entry": "scripts/main.lua",
@@ -11,7 +12,8 @@
     "data"
   ],
   "assets": [
-    "models/car_r33_rig.glb"
+    "models/car_r33_rig.glb",
+    "projects/nox-racing/config/hud.json"
   ],
   "scenes": [
     "scenes/nfs_sprint.json",
@@ -20,7 +22,8 @@
     "scenes/nfs_dawn_street.json"
   ],
   "roads": [
-    "../../data/shuto/nox_road_network.json"
+    "../../data/shuto/nox_road_network.json",
+    "../../data/shuto/test_nox_road_network.json"
   ],
   "native_extensions": [
     "street_kit"
@@ -47,7 +50,7 @@
     "fixtures": "scripts/ui/fixtures.lua"
   },
   "authoring_roots": [
-    "config/hud.json",
+    "projects/nox-racing/config/hud.json",
     "data"
   ]
 }

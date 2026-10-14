@@ -7,6 +7,7 @@
 
 #include "ProceduralVehicleAudio.h"
 
+#include "AudioMixer.h"
 #include <SDL/SDL.h>
 #include <memory>
 #include <string>
@@ -303,6 +304,8 @@ struct ProceduralVehicleAudio::Impl {
     float sampleRate = 48000.0f;
     int channels = 2;
     VehicleAudioState target;                  // written by Update() under the device lock
+    std::string bus = AudioMixer::kDefaultSourceBus;  // set by SetBus() on the gameplay thread
+    float busGain = 1.0f;                      // written by Update() under the device lock
     AudioCue pending[kMaxPendingCues] = {};    // queued by Play() under the device lock
     int pendingCount = 0;
     Synth synth;
@@ -315,6 +318,11 @@ void ProceduralVehicleAudio::RenderCallback(void* userdata, unsigned char* strea
     for (int i = 0; i < impl->pendingCount; ++i) impl->synth.Trigger(impl->pending[i]);
     impl->pendingCount = 0;
     impl->synth.Render(reinterpret_cast<float*>(stream), frames, impl->channels, impl->sampleRate, impl->target);
+    if (impl->busGain != 1.0f) {
+        float* samples = reinterpret_cast<float*>(stream);
+        const size_t count = static_cast<size_t>(frames) * static_cast<size_t>(impl->channels);
+        for (size_t i = 0; i < count; ++i) samples[i] *= impl->busGain;
+    }
 }
 
 ProceduralVehicleAudio::ProceduralVehicleAudio()
@@ -380,7 +388,16 @@ void ProceduralVehicleAudio::Update(const VehicleAudioState& state) {
     if (m_impl->device == 0) return;
     SDL_LockAudioDevice(m_impl->device);
     m_impl->target = state;
+    m_impl->busGain = AudioMixer::Get().BusGain(m_impl->bus);
     SDL_UnlockAudioDevice(m_impl->device);
+}
+
+void ProceduralVehicleAudio::SetBus(const std::string& bus) {
+    m_impl->bus = bus.empty() ? std::string(AudioMixer::kDefaultSourceBus) : bus;
+}
+
+const std::string& ProceduralVehicleAudio::Bus() const {
+    return m_impl->bus;
 }
 
 void ProceduralVehicleAudio::Play(AudioCue cue) {

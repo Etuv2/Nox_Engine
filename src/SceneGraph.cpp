@@ -248,6 +248,20 @@ std::shared_ptr<SceneNode> SceneGraph::FindNodeByModelName(const std::string& mo
 	return FindNodeByModelNameRecursive(m_root, modelName);
 }
 
+std::shared_ptr<SceneNode> SceneGraph::FindNodeByEntity(EntityID entity) {
+	if (entity == INVALID_ENTITY) return nullptr;
+	std::function<std::shared_ptr<SceneNode>(const std::shared_ptr<SceneNode>&)> find =
+		[&](const std::shared_ptr<SceneNode>& node) -> std::shared_ptr<SceneNode> {
+			if (!node) return nullptr;
+			if (node->GetEntityID() == entity) return node;
+			for (const auto& child : node->children) {
+				if (auto hit = find(child)) return hit;
+			}
+			return nullptr;
+		};
+	return find(m_root);
+}
+
 void SceneGraph::SetSceneName(const std::string& sceneName)
 {
 	m_sceneName = sceneName;

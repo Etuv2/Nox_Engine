@@ -7,7 +7,9 @@
 #include <glm/glm.hpp>
 #include <IMGUI/imgui.h>
 #include <map>
+#include "../reflect/Reflection.h"
 #include "rhi/RHI.h"
+#include "../editor/InspectorUndo.h"
 #include "../json.hpp"
 #include "../EditorExtensions.h"
 
@@ -20,15 +22,18 @@ class ProcessRunner;
 * Docked editor workspace (docs/nfs2015/game.md, "Editor").
 *
 * Dear ImGui docking layout: Scene / Game viewports in the centre, Hierarchy + Assets on the left,
-* Inspector / Materials / Lighting / Rendering on the right, Console / Build Output / Profiler /
-* Race & Routes / Drive / HUD at the bottom, toolbar with scene selection, Save, Play, Pause, Stop,
+* Inspector / Materials / Lighting / Rendering on the right, Console / Build Output / Profiler and
+* application panels at the bottom, toolbar with scene selection, Save, Play, Pause, Stop,
 * Build, Run Standalone and Package. Layout persists in config/editor_layout.ini; Window > Reset
 * Layout rebuilds the default arrangement.
 *
 * The renderer draws one viewport per frame into an offscreen texture (PresentTarget): the focused
 * viewport, else Game while playing, else Scene. Viewport content bounds and framebuffer size drive
-* the camera aspect, picking, gizmos, authoring handles and the racing HUD (which is clipped to the
-* Game viewport).
+* the camera aspect, picking, gizmos, authoring handles and game overlays (clipped to the Game
+* viewport).
+*
+* The inspector is generic: every component registered in the reflection registry (reflect/Reflection.h)
+* is drawn from its property descriptors, and every edit goes through the undo helpers in editor/InspectorUndo.h.
 */
 class EditorWorkspace : public EditorHost {
 public:
@@ -88,6 +93,27 @@ private:
 	void DrawHierarchyNode(const std::shared_ptr<SceneNode>& node);
 	void DrawAssets();
 	void DrawInspector();
+	void DrawComponentSection(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
+		const std::vector<std::string>& assets, const std::vector<std::string>& nodeNames);
+	void DrawAddComponentButton(const std::shared_ptr<SceneNode>& node);
+	void DrawPlayBanner();
+	void DrawAddNodeItems();
+	void AddNodeFromTemplate(const std::string& kind);
+	void AddModelFromAsset(const std::string& path);
+	void DuplicateNodeWithUndo(const std::shared_ptr<SceneNode>& node);
+	void DeleteNodeWithUndo(const std::shared_ptr<SceneNode>& node);
+	void ReparentWithUndo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& parent);
+	void BeginRename(const std::shared_ptr<SceneNode>& node);
+	// Prefabs: save a subtree as a *.prefab.json asset, instantiate an asset, unpack an instance (undoable).
+	void BeginSavePrefab(const std::shared_ptr<SceneNode>& node);
+	void InstantiatePrefabFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent);
+	void UnpackPrefabWithUndo(const std::shared_ptr<SceneNode>& node);
+	void InvokeEditorButton(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
+		const nox::reflect::MethodDesc& method);
+	nox::editor::UndoPush UndoSink();                 // null while playing (no undo entries)
+	nox::editor::NodeOps CoreNodeOps();
+	std::shared_ptr<SceneNode> RootNode() const;
+	void NoteEdit();                                  // dirty flag + cache invalidation after an edit
 	void DrawMaterials();
 	void DrawConsole();
 	void DrawBuildOutput();
@@ -105,7 +131,6 @@ private:
 	void Undo();
 	void Redo();
 	void TrackGameEdits();               // snapshot game JSON around widget edits
-	void TrackTransformEdits();
 
 	// Build / run / package.
 	void StartTool(const std::string& title, const std::string& script, const std::string& args);
@@ -170,9 +195,19 @@ private:
 	std::vector<UndoAction> m_undo, m_redo;
 	nlohmann::json m_gameSnapshot;
 	bool m_gameEditActive = false;
-	std::weak_ptr<SceneNode> m_transformNode;
-	std::array<float, 10> m_transformSnapshot{};
-	bool m_transformEditActive = false;
+	nox::editor::NodeTable m_nodeTable;          // stable node handles for undo steps
+	nox::editor::PropertyEdit m_propEdit;        // continuous inspector edit being coalesced
+
+	// Rename (F2 / double-click in the Hierarchy) and add-model popups.
+	std::weak_ptr<SceneNode> m_renameTarget;
+	char m_renameBuf[128] = "";
+	bool m_openRename = false;
+	std::weak_ptr<SceneNode> m_prefabTarget;
+	char m_prefabPathBuf[256] = "";
+	bool m_openSavePrefab = false;
+	bool m_openAddModel = false;
+	char m_modelFilter[128] = "";
+	std::vector<std::string> m_modelChoices;
 
 	// Modals.
 	std::string m_pendingScene;

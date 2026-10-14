@@ -11,7 +11,7 @@ Drive tuning, viewport handles) are a separate worker and read this model.
 - Vehicle definition: `projects/nox-racing/data/vehicles/r33.json` (geometry, tuning, rig, default spawn,
   controller params). Scene overrides in `game` win for: `spawn`, `handling` (controller handling and the
   shared tuning keys), `camera`.
-- Save data (best times, runtime): user directory, `speedwall.json`, seeded from `config/speedwall.json`
+- Save data (best times, runtime): user directory, `speedwall.json`, seeded from `projects/nox-racing/data/speedwall.json`
   when absent. Never written into the project or the scene.
 
 ## `game` keys (read by scripts/race/session.lua)
@@ -26,7 +26,7 @@ Drive tuning, viewport handles) are a separate worker and read this model.
 | `road_network` | inline RoadNetwork JSON | none | routes and guidance (`nox.roads.from_table`) |
 | `events` | array | `[]` | race events (below) |
 | `places` | array | `[]` | parking areas (below) |
-| `hud` | string | `config/hud.json` | HUD configuration path (read by the presentation through `nox.json`) |
+| `hud` | string | `projects/nox-racing/config/hud.json` | HUD configuration path (read by the presentation through `nox.json`) |
 | `collision` | `{files, height_tolerance, ground_min_normal_y, wall_min_height, wall_min_aspect}` | none | stacked-road height gate; files are glTF paths (declared collision, see the gaps list) |
 | `pause_on_focus_loss` | bool | true | losing window focus opens the pause menu (never in autopilot or fixture runs) |
 

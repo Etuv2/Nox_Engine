@@ -1,4 +1,5 @@
 {
+  "project": "projects/nox-racing/project.json",
  "exposure": 1.0,
  "gamma": 2.200000047683716,
  "physics_enabled": false,
@@ -19283,7 +19284,7 @@
    "top_speed_kmh": 250.0,
    "yaw_damping": 0.6000000238418579
   },
-  "hud": "config/hud.json",
+  "hud": "projects/nox-racing/config/hud.json",
   "player_node": "PlayerCar",
   "road_network": {
    "file": "data/shuto/nox_road_network.json"

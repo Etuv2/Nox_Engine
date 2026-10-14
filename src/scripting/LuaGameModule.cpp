@@ -1,3 +1,4 @@
+#include "../audio/AudioMixer.h"
 #include "LuaGameModule.h"
 
 #include "LuaEditorPanel.h"
@@ -169,6 +170,13 @@ namespace NoxLua {
 		m_authoredEntities = authored.is_object() ? authored.value("entities", nlohmann::json::object()) : nlohmann::json::object();
 
 		// The action map is plain data: parse it once per module (no GPU or ImGui needed).
+		// Project audio buses join the mixer (names that are invalid or duplicates are skipped).
+		for (const std::string& bus : m_descriptor.audioBuses) {
+			if (!AudioMixer::Get().HasBus(bus) && !AudioMixer::Get().AddBus(bus)) {
+				m_resourceMessages.push_back("audio bus '" + bus + "' is invalid");
+			}
+		}
+
 		if (!m_inputsLoaded) {
 			m_inputsLoaded = true;
 			std::vector<std::string> inputErrors;

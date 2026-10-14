@@ -19,6 +19,16 @@ LightNode::LightNode(std::shared_ptr<BaseLight> light)
     }
 }
 
+float LightNode::LuminousPowerFromIntensity(BaseLight::LightType type, float intensity) {
+    const float pi = 3.14159265f;
+    return type == BaseLight::LightType::SPOT ? intensity * pi : intensity * 4.0f * pi;
+}
+
+float LightNode::IntensityFromLuminousPower(BaseLight::LightType type, float lumens) {
+    const float pi = 3.14159265f;
+    return type == BaseLight::LightType::SPOT ? lumens / pi : lumens / (4.0f * pi);
+}
+
 void LightNode::SetLight(std::shared_ptr<BaseLight> light) 
 { 
     m_light = light;

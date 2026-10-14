@@ -3,9 +3,14 @@
 #include "../rhi/RHI.h"
 #include <cstdint>
 #include <vector>
+#include <glm/glm.hpp>
+
+#include "../SceneRenderExtras.h"
 
 /*
-* Surface decals (SceneRenderExtras::decalSets). Runs right after the G-buffer pass: instanced quads,
+* Surface decals: the scene's SceneRenderExtras::decalSets (generators) followed by node decals (Decal
+* component, src/render/DecalComponent.h), which are collected from the scene graph every frame into one
+* set per texture. Runs right after the G-buffer pass: instanced quads,
 * depth tested read-only against the scene with a small polygon offset (no z-fighting; geometry in
 * front of the decal occludes it), alpha coverage blended into the G-buffer albedo (RT1.rgb) and
 * roughness (RT0.b) only, with the set's surface response (roughness, wetness). Everything downstream
@@ -33,5 +38,6 @@ private:
 	rhi::BufferHandle m_cornerVbo;
 	rhi::BufferHandle m_instanceVbo;
 	std::vector<SetRange> m_ranges;   // per decal set, into the shared instance buffer
-	uint64_t m_revision = 0;
+	std::vector<DecalSet> m_nodeSets; // Decal components of the scene, rebuilt every frame
+	std::vector<glm::vec4> m_uploaded; // instance data currently in m_instanceVbo (skip identical uploads)
 };

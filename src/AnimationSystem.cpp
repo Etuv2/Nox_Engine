@@ -91,7 +91,7 @@ void AnimationSystem::UpdateEntityAnimation(EntityID entity, AnimationComponent&
 	}
 
 	const Animation& anim = animations[animComp.currentAnimationIndex];
-	animComp.animationTime += deltaTime;
+	animComp.animationTime += deltaTime * animComp.speed;
 
 	// Handle looping
 	if (anim.isLooping) {

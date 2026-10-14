@@ -1,3 +1,4 @@
+#include "reflect/Reflection.h"
 #include "SceneLoader.h"
 #include "SceneNode.h"
 #include "AudioNode.h"
@@ -17,6 +18,11 @@
 #include "AnimationSystem.h"
 #include "RenderSystem.h"
 #include "Camera.h"
+#include "GuiElementJson.h"
+#include "scene/Prefab.h"
+#include "RenderContext.h"
+#include "SceneRenderSettings.h"
+#include "reflect/ReflectServices.h"
 #include <fstream>
 #include <iostream>
 #include <ctime>
@@ -40,6 +46,14 @@ constexpr float kImportedTransformTolerance = 1e-3f;
 constexpr float kMinimumSceneScale = 1e-5f;
 
 namespace fs = std::filesystem;
+
+namespace {
+	// Transform values in scene files: rounded to a step (degrees for rotation), and -0 written as 0.
+	// factor is 10^decimals: dividing the rounded integer by it gives the nearest double to the decimal value.
+	double QuantizeTransform(double value, double factor) {
+		return std::round(value * factor) / factor + 0.0;
+	}
+}
 
 uint64_t NextRenderExtrasRevision()
 {
@@ -662,6 +676,13 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 		}
 
 		for (auto& nodeEntry : sceneJson["nodes"]) {
+			std::string prefabError;
+			if (!nox::prefab::ExpandReferences(nodeEntry, &prefabError)) {
+				++m_missingCriticalAssetCount;
+				std::cerr << "[SceneLoader] ERROR: prefab reference in '" << resolvedScenePath << "' failed: "
+					<< prefabError << std::endl;
+				continue;
+			}
 			auto node = ProcessNodeRecursive(nodeEntry, rootEntityID);
 			if (node) {
 				sceneGraph->GetRoot()->AddChild(node);
@@ -847,51 +868,15 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 	}
 
 	try {
-		nlohmann::json sceneJson;
+		nlohmann::json sceneJson = BuildSceneJson(sceneGraph, target->logical);
 
-		// Serialize scene metadata
-		sceneJson["scene_name"] = sceneGraph->GetSceneName();
-		sceneJson["exposure"] = sceneGraph->m_exposure;
-		sceneJson["gamma"] = sceneGraph->m_gamma;
-		sceneJson["physics_enabled"] = sceneGraph->IsPhysicsEnabled();
-
-		// Serialize skybox if present
-		// The authored skybox object (rotation, intensity, fallback) is preserved below from the
-		// file being overwritten; a scene without one records the path its skybox was loaded from.
-		if (sceneGraph->GetSkybox() && !sceneGraph->GetSkybox()->GetHDRPath().empty()) {
-			sceneJson["skybox"] = sceneGraph->GetSkybox()->GetHDRPath();
-		}
-
-		// Serialize all root-level nodes and their children
-		nlohmann::json nodesArray = nlohmann::json::array();
-		auto root = sceneGraph->GetRoot();
-
-		for (const auto& child : root->children) {
-			if (child) {
-				nlohmann::json nodeJson = SerializeNodeRecursive(child);
-				if (!nodeJson.is_null()) {
-					nodesArray.push_back(nodeJson);
-				}
-			}
-		}
-
-		sceneJson["nodes"] = nodesArray;
-
-		// Preserve authored top-level data the runtime does not model (render_settings, benchmark,
-		// camera, reflection_probes, the real skybox path) from the file being overwritten.
-		{
-			if (auto existingText = AssetIO::ReadText(target->logical)) {
-				const json existing = json::parse(*existingText, nullptr, false);
-				if (existing.is_object()) {
-					for (auto it = existing.begin(); it != existing.end(); ++it) {
-						const std::string& key = it.key();
-						if (key == "nodes" || key == "scene_name" || key == "exposure" || key == "gamma" ||
-							key == "physics_enabled") {
-							continue;
-						}
-						sceneJson[key] = it.value();
-					}
-				}
+		// render_settings is written from the live renderer, not from the file copy BuildSceneJson preserves (that copy is
+		// what the scene loaded with; edits made in the editor or by scripts would be lost on save).
+		if (RenderContext* live = nox::reflect::Services().renderContext ? nox::reflect::Services().renderContext() : nullptr) {
+			const json existingSettings = sceneJson.contains("render_settings") ? sceneJson["render_settings"] : json::object();
+			json settings = SceneRenderSettings::ToJson(*live, existingSettings);
+			if (!settings.empty() || sceneJson.contains("render_settings")) {
+				sceneJson["render_settings"] = settings;
 			}
 		}
 
@@ -905,7 +890,7 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 		outFile << sceneJson.dump(2); // Indent with 2 spaces for readability
 		outFile.close();
 
-		std::cout << "[SceneLoader] Successfully saved scene with " << nodesArray.size() << " nodes" << std::endl;
+		std::cout << "[SceneLoader] Successfully saved scene with " << sceneJson["nodes"].size() << " nodes" << std::endl;
 		return true;
 
 	}
@@ -915,9 +900,94 @@ bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const
 	}
 }
 
-nlohmann::json SceneLoader::SerializeNodeRecursive(const std::shared_ptr<SceneNode>& node) {
+bool SceneLoader::SaveSceneCopy(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sourceLogicalPath,
+	const std::string& physicalOutPath) {
+	if (!sceneGraph || !sceneGraph->GetRoot()) return false;
+	try {
+		const nlohmann::json sceneJson = BuildSceneJson(sceneGraph, sourceLogicalPath);
+		std::ofstream outFile(physicalOutPath, std::ios::binary);
+		if (!outFile.is_open()) {
+			std::cerr << "[SceneLoader] Failed to open copy for writing: " << physicalOutPath << std::endl;
+			return false;
+		}
+		outFile << sceneJson.dump(2);
+		return static_cast<bool>(outFile);
+	}
+	catch (const std::exception& e) {
+		std::cerr << "[SceneLoader] Error writing scene copy: " << e.what() << std::endl;
+		return false;
+	}
+}
+
+nlohmann::json SceneLoader::BuildSceneJson(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sourceLogicalPath) {
+	nlohmann::json sceneJson;
+
+	// The file being overwritten (or the source copy): top-level keys it did not have are not added while they hold
+	// their loader defaults, and an unchanged authored value is written back as it was authored.
+	json existing = json::object();
+	if (!sourceLogicalPath.empty()) {
+		if (auto existingText = AssetIO::ReadText(sourceLogicalPath)) {
+			const json parsed = json::parse(*existingText, nullptr, false);
+			if (parsed.is_object()) existing = parsed;
+		}
+	}
+	// Serialize scene metadata
+	sceneJson["scene_name"] = sceneGraph->GetSceneName();
+	auto writeAuthoredNumber = [&](const char* key, float value, float defaultValue) {
+		if (existing.contains(key) && existing[key].is_number()) {
+			const float authored = existing[key].get<float>();
+			sceneJson[key] = std::fabs(authored - value) <= 1e-6f * std::max(1.0f, std::fabs(value)) ? existing[key] : json(value);
+		}
+		else if (value != defaultValue) {
+			sceneJson[key] = value;
+		}
+	};
+	writeAuthoredNumber("exposure", sceneGraph->m_exposure, 1.0f);
+	writeAuthoredNumber("gamma", sceneGraph->m_gamma, 2.2f);
+	const bool physicsEnabled = sceneGraph->IsPhysicsEnabled();
+	if (existing.contains("physics_enabled") || !physicsEnabled) {
+		sceneJson["physics_enabled"] = physicsEnabled;
+	}
+
+	// Serialize skybox if present
+	// The authored skybox object (rotation, intensity, fallback) is preserved below from the
+	// file being overwritten; a scene without one records the path its skybox was loaded from.
+	if (sceneGraph->GetSkybox() && !sceneGraph->GetSkybox()->GetHDRPath().empty()) {
+		sceneJson["skybox"] = sceneGraph->GetSkybox()->GetHDRPath();
+	}
+
+	// Serialize all root-level nodes and their children. Prefab instances are written as references.
+	nlohmann::json nodesArray = nlohmann::json::array();
+	auto root = sceneGraph->GetRoot();
+	for (const auto& child : root->children) {
+		if (child) {
+			nlohmann::json nodeJson = SerializeNodeTree(child, true, false);
+			if (!nodeJson.is_null()) {
+				nodesArray.push_back(nodeJson);
+			}
+		}
+	}
+	sceneJson["nodes"] = nodesArray;
+
+	// Preserve authored top-level data the runtime does not model (render_settings, benchmark,
+	// camera, reflection_probes, the real skybox path) from the file being overwritten.
+	for (auto it = existing.begin(); it != existing.end(); ++it) {
+		const std::string& key = it.key();
+		if (key == "nodes" || key == "scene_name" || key == "exposure" || key == "gamma" ||
+			key == "physics_enabled") {
+			continue;
+		}
+		sceneJson[key] = it.value();
+	}
+	return sceneJson;
+}
+
+nlohmann::json SceneLoader::SerializeNodeTree(const std::shared_ptr<SceneNode>& node, bool references, bool isRoot) {
 	if (!node) {
 		return nlohmann::json();
+	}
+	if (references && !isRoot && !node->GetPrefabPath().empty()) {
+		return SerializePrefabReference(node);
 	}
 
 	// Serialize this node
@@ -931,7 +1001,7 @@ nlohmann::json SceneLoader::SerializeNodeRecursive(const std::shared_ptr<SceneNo
 			// Generated nodes and nodes imported from the model file (glTF node index set) are
 			// rebuilt on load, so writing them would duplicate the model's hierarchy.
 			if (child && !child->IsGenerated() && child->nodeIndex < 0) {
-				nlohmann::json childJson = SerializeNodeRecursive(child);
+				nlohmann::json childJson = SerializeNodeTree(child, references, false);
 				if (!childJson.is_null()) {
 					childrenArray.push_back(childJson);
 				}
@@ -945,6 +1015,83 @@ nlohmann::json SceneLoader::SerializeNodeRecursive(const std::shared_ptr<SceneNo
 
 	return nodeJson;
 }
+
+nlohmann::json SceneLoader::SerializeNodeOwn(const std::shared_ptr<SceneNode>& node) {
+	return node ? SerializeNode(node) : nlohmann::json();
+}
+
+nlohmann::json SceneLoader::SerializePrefabReference(const std::shared_ptr<SceneNode>& node) {
+	const std::string path = node->GetPrefabPath();
+	const nlohmann::json instanceFlat = SerializeNodeTree(node, false, true);
+	const std::optional<nlohmann::json> baseline = PrefabBaseline(path);
+	if (!baseline) {
+		std::cerr << "[SceneLoader] Warning: prefab '" << path << "' cannot be read; node '" << node->GetName()
+			<< "' is saved as plain nodes" << std::endl;
+		return instanceFlat;
+	}
+	return nox::prefab::MakeReference(path, instanceFlat, *baseline);
+}
+
+std::optional<nlohmann::json> SceneLoader::PrefabBaseline(const std::string& logicalPath) {
+	std::string error;
+	std::optional<nlohmann::json> prefab = nox::prefab::ReadPrefabJson(logicalPath, &error);
+	if (!prefab) return std::nullopt;
+	nlohmann::json expanded = std::move(*prefab);
+	if (!nox::prefab::ExpandReferences(expanded, &error)) return std::nullopt;
+
+	// Instantiate in a scratch graph with a scratch physics world, so the live scene is not touched.
+	SceneGraph* savedGraph = m_currentSceneGraph;
+	const std::string savedDirectory = m_currentSceneDirectory;
+	const size_t savedMissing = m_missingCriticalAssetCount;
+	const bool savedScratch = m_scratchInstance;
+	const std::shared_ptr<PhysicsEngine> savedPhysics = m_physicsEngine;
+	auto scratch = std::make_shared<SceneGraph>();
+	m_scratchInstance = true;
+	m_physicsEngine = std::make_shared<PhysicsEngine>();
+	auto node = InstantiateExpanded(*scratch, expanded, scratch->GetRoot(), logicalPath);
+	std::optional<nlohmann::json> flat;
+	if (node) flat = SerializeNodeTree(node, false, true);
+	m_physicsEngine = savedPhysics;
+	m_scratchInstance = savedScratch;
+	m_missingCriticalAssetCount = savedMissing;
+	m_currentSceneDirectory = savedDirectory;
+	m_currentSceneGraph = savedGraph;
+	return flat;
+}
+
+namespace {
+
+// Save merge for one object of a node (SceneNode::SetAuthoredBaseline). authored: keys as the file wrote them. loaded:
+// the same keys as the loader left the node. runtime: what the saver writes now.
+json MergeAuthoredObject(const json& authored, const json& loaded, const json& runtime) {
+	json out = json::object();
+	for (auto it = runtime.begin(); it != runtime.end(); ++it) {
+		const std::string& key = it.key();
+		const json* av = (authored.is_object() && authored.contains(key)) ? &authored[key] : nullptr;
+		const json* lv = (loaded.is_object() && loaded.contains(key)) ? &loaded[key] : nullptr;
+		if (lv && *lv == it.value()) {
+			// Unchanged: the authored value (exact), or nothing when the file did not have the key.
+			if (av) out[key] = *av;
+			continue;
+		}
+		if (av && av->is_object() && lv && lv->is_object() && it.value().is_object()) {
+			out[key] = MergeAuthoredObject(*av, *lv, it.value());
+		}
+		else {
+			out[key] = it.value();
+		}
+	}
+	// Authored keys the saver never wrote are kept. Keys the loader wrote that the saver no longer writes are dropped.
+	if (authored.is_object()) {
+		for (auto it = authored.begin(); it != authored.end(); ++it) {
+			const std::string& key = it.key();
+			if (!loaded.contains(key) && !runtime.contains(key)) out[key] = it.value();
+		}
+	}
+	return out;
+}
+
+} // namespace
 
 nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node) {
 	if (!node) {
@@ -987,12 +1134,15 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 	glm::vec3 rotation = node->GetRotation();
 	glm::vec3 scale = node->GetScale();
 
-	nodeJson["position"] = { position.x, position.y, position.z };
+	// Rounded to a fixed step, so float round-off (radians/degrees conversions, matrix decomposition of edited nodes)
+	// does not change the file on every save/load cycle.
+	nodeJson["position"] = { QuantizeTransform(position.x, 1e6), QuantizeTransform(position.y, 1e6), QuantizeTransform(position.z, 1e6) };
 
 	// Convert rotation from radians to degrees for saving
-	nodeJson["rotation"] = { glm::degrees(rotation.x), glm::degrees(rotation.y), glm::degrees(rotation.z) };
+	nodeJson["rotation"] = { QuantizeTransform(glm::degrees(rotation.x), 1e4), QuantizeTransform(glm::degrees(rotation.y), 1e4),
+		QuantizeTransform(glm::degrees(rotation.z), 1e4) };
 
-	nodeJson["scale"] = { scale.x, scale.y, scale.z };
+	nodeJson["scale"] = { QuantizeTransform(scale.x, 1e6), QuantizeTransform(scale.y, 1e6), QuantizeTransform(scale.z, 1e6) };
 
 	// Serialize node name
 	std::string nodeName = node->GetName();
@@ -1015,18 +1165,6 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 					<< nodeName << "'" << std::endl;
 			}
 		}
-		if (!node->GetAuthoredExtras().empty()) {
-			const json extras = json::parse(node->GetAuthoredExtras(), nullptr, false);
-			if (extras.is_object()) {
-				for (auto it = extras.begin(); it != extras.end(); ++it) {
-					nodeJson[it.key()] = it.value();
-				}
-				// Procedural nodes are regenerated from their params; the generated path is transient.
-				if (extras.contains("procedural")) {
-					nodeJson.erase("path");
-				}
-			}
-		}
 		break;
 	}
 
@@ -1045,11 +1183,12 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 			nodeJson["pitch"] = audioNode->getPitch();
 			nodeJson["volume"] = audioNode->getVolume();
 			nodeJson["hearing_distance"] = audioNode->getHearingDistance();
-			nodeJson["loop"] = audioNode->isPlaying(); // Note: This is approximate, would need actual loop state
+			nodeJson["loop"] = audioNode->isLooping();
 			nodeJson["is3d"] = audioNode->is3D();
-
-			// TODO: Still need sound file path - AudioNode needs to expose this
-			std::cout << "[SceneLoader] Warning: Audio sound file path not saved (AudioNode doesn't expose it)" << std::endl;
+			nodeJson["autoplay"] = audioNode->getAutoplay();
+			if (!audioNode->getSoundFilePath().empty()) {
+				nodeJson["sound"] = audioNode->getSoundFilePath();
+			}
 		}
 		break;
 	}
@@ -1058,7 +1197,10 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 		auto guiNode = std::dynamic_pointer_cast<GuiNode>(node);
 		if (guiNode) {
 			nodeJson["elements"] = SerializeGuiElements(guiNode);
-			// TODO: Add font path and size serialization if exposed in GuiNode
+			if (!guiNode->GetFontPath().empty()) {
+				nodeJson["font_path"] = guiNode->GetFontPath();
+				nodeJson["font_size"] = guiNode->GetFontSize();
+			}
 		}
 		break;
 	}
@@ -1093,6 +1235,36 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 	// This allows nodes without models to still have physics colliders
 	if (node->GetRigidBody()) {
 		nodeJson["collider"] = SerializeCollider(node);
+	}
+
+	// Keys the file authored (SceneNode::SetAuthoredBaseline): an unchanged value is written back as authored, a key the
+	// file did not have stays out while unchanged, and authored keys this saver does not model are kept.
+	if (!node->GetAuthoredBaseline().empty()) {
+		const json loaded = json::parse(node->GetAuthoredBaseline(), nullptr, false);
+		json authored = node->GetAuthoredExtras().empty() ? json::object() : json::parse(node->GetAuthoredExtras(), nullptr, false);
+		if (loaded.is_object() && authored.is_object()) {
+			nodeJson = MergeAuthoredObject(authored, loaded, nodeJson);
+		}
+	}
+	else if (!node->GetAuthoredExtras().empty()) {
+		// Nodes made in the editor keep the keys a file gave them (material_overrides and the like).
+		const json extras = json::parse(node->GetAuthoredExtras(), nullptr, false);
+		if (extras.is_object()) {
+			for (auto it = extras.begin(); it != extras.end(); ++it) {
+				if (!nodeJson.contains(it.key())) nodeJson[it.key()] = it.value();
+			}
+		}
+	}
+	// Procedural nodes are regenerated from their params; the generated path is transient.
+	if (nodeType == SceneNode::MODEL && nodeJson.contains("procedural")) {
+		nodeJson.erase("path");
+	}
+
+	// Registry-described components (src/reflect). The loader applies them after the legacy keys
+	// above, so both must read the same values; they do, since both use the same getters.
+	nlohmann::json components = nox::reflect::SerializeComponents(*node);
+	if (!components.empty()) {
+		nodeJson["components"] = std::move(components);
 	}
 
 	return nodeJson;
@@ -1191,17 +1363,12 @@ nlohmann::json SceneLoader::SerializeCollider(const std::shared_ptr<SceneNode>& 
 
 nlohmann::json SceneLoader::SerializeGuiElements(const std::shared_ptr<GuiNode>& guiNode) {
 	nlohmann::json elementsArray = nlohmann::json::array();
-
 	if (!guiNode) {
 		return elementsArray;
 	}
-
-	// TODO: GuiNode needs to expose its elements for serialization
-	// This would require adding a GetElements() method or similar
-	// For now, return empty array
-
-	std::cout << "[SceneLoader] Warning: GUI element serialization requires GuiNode::GetElements() implementation" << std::endl;
-
+	for (const auto& element : guiNode->GetElements()) {
+		elementsArray.push_back(GuiElementToJson(element));
+	}
 	return elementsArray;
 }
 
@@ -1235,7 +1402,19 @@ nlohmann::json SceneLoader::SerializeLightProperties(const std::shared_ptr<Light
 	glm::vec3 color = light->GetColor();
 	lightJson["color"] = { color.r, color.g, color.b };
 
-	lightJson["intensity"] = light->GetIntensity();
+	// The authored photometric unit (LightNode::GetPhotometricUnit) is written back in place of intensity, converted
+	// from the current intensity, so an edit made in the editor keeps the file in physical units.
+	switch (lightNode->GetPhotometricUnit()) {
+	case LightNode::PhotometricUnit::Lumens:
+		lightJson["luminous_power"] = LightNode::LuminousPowerFromIntensity(lightType, light->GetIntensity());
+		break;
+	case LightNode::PhotometricUnit::Lux:
+		lightJson["illuminance"] = light->GetIntensity();
+		break;
+	default:
+		lightJson["intensity"] = light->GetIntensity();
+		break;
+	}
 	if (light->GetSourceRadius() > 0.0f) {
 		lightJson["source_radius"] = light->GetSourceRadius();
 	}
@@ -1246,28 +1425,34 @@ nlohmann::json SceneLoader::SerializeLightProperties(const std::shared_ptr<Light
 	if (lightType == BaseLight::LightType::DIRECTIONAL) {
 		auto dirLight = std::dynamic_pointer_cast<DirectionalLight>(light);
 		if (dirLight) {
-			// TODO: Add directional light specific properties
-			// shadowSize, splitLambda, etc.
-			lightJson["shadowSize"] = 2048; // Default, would need getter
-			lightJson["splitLambda"] = 0.85f; // Default, would need getter
+			lightJson["shadowSize"] = dirLight->GetShadowSize();
+			lightJson["splitLambda"] = dirLight->GetSplitLambda();
 		}
 	}
 	else if (lightType == BaseLight::LightType::POINT || lightType == BaseLight::LightType::SPOT) {
 		lightJson["range"] = light->GetRange();
 
+		// A lumen-authored light without an authored "attenuation" implies LightNode::ImplicitLumenAttenuation; the
+		// key is written only when the scene authored it or the value was changed since.
 		glm::vec3 attenuation = light->GetAttenuation();
-		lightJson["attenuation"] = { attenuation.x, attenuation.y, attenuation.z };
+		const glm::vec3 implicitFalloff = LightNode::ImplicitLumenAttenuation();
+		const bool implicit = lightNode->GetPhotometricUnit() == LightNode::PhotometricUnit::Lumens &&
+			!lightNode->IsAttenuationAuthored() && glm::all(glm::equal(attenuation, implicitFalloff));
+		if (!implicit) {
+			lightJson["attenuation"] = { attenuation.x, attenuation.y, attenuation.z };
+		}
 
 		if (lightType == BaseLight::LightType::SPOT) {
 			auto spotLight = std::dynamic_pointer_cast<SpotLight>(light);
 			if (spotLight) {
 				lightJson["cutOff"] = spotLight->GetCutOff();
 				lightJson["outerCutOff"] = spotLight->GetOuterCutOff();
-				lightJson["shadowResolution"] = 1024; // Default, would need getter
+				lightJson["shadowResolution"] = spotLight->GetShadowResolution();
 			}
 		}
 		else {
-			lightJson["shadowResolution"] = 1024; // Default for point lights
+			auto pointLight = std::dynamic_pointer_cast<PointLight>(light);
+			lightJson["shadowResolution"] = pointLight ? pointLight->GetShadowResolution() : 1024;
 		}
 	}
 
@@ -1407,59 +1592,38 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
 
 
 
-void SceneLoader::ProcessGuiElementProperties(std::shared_ptr<GuiNode> guiNode, int elementId, const nlohmann::json& elementJson) {
-	if (!guiNode || elementId < 0) return;
-
-	// Handle resizable properties
-	if (elementJson.contains("resizable")) {
-		bool resizable = elementJson["resizable"];
-		float minWidth = elementJson.value("min_width", 10.0f);
-		float minHeight = elementJson.value("min_height", 10.0f);
-		float maxWidth = elementJson.value("max_width", -1.0f);
-		float maxHeight = elementJson.value("max_height", -1.0f);
-
-		guiNode->SetElementResizable(elementId, resizable, minWidth, minHeight, maxWidth, maxHeight);
+// Applies the layout keys of a parsed GUI element (resizable, anchor, relative position/size).
+namespace {
+void ApplyGuiElementLayout(GuiNode& guiNode, int elementId, const GuiNode::GuiElement& el) {
+	if (elementId < 0) return;
+	if (el.isResizable) {
+		guiNode.SetElementResizable(elementId, true, el.minWidth, el.minHeight, el.maxWidth, el.maxHeight);
 	}
-
-	// Handle anchoring
-	if (elementJson.contains("anchor")) {
-		std::string anchorStr = elementJson["anchor"];
-		GuiNode::GuiElement::Anchor anchor = GuiNode::GuiElement::Anchor::TOP_LEFT;
-
-		if (anchorStr == "top_left") {
-			anchor = GuiNode::GuiElement::Anchor::TOP_LEFT;
-		}
-		else if (anchorStr == "top_right") {
-			anchor = GuiNode::GuiElement::Anchor::TOP_RIGHT;
-		}
-		else if (anchorStr == "bottom_left") {
-			anchor = GuiNode::GuiElement::Anchor::BOTTOM_LEFT;
-		}
-		else if (anchorStr == "bottom_right") {
-			anchor = GuiNode::GuiElement::Anchor::BOTTOM_RIGHT;
-		}
-		else if (anchorStr == "center") {
-			anchor = GuiNode::GuiElement::Anchor::CENTER;
-		}
-
-		guiNode->SetElementAnchor(elementId, anchor);
+	if (el.anchor != GuiNode::GuiElement::Anchor::TOP_LEFT) {
+		guiNode.SetElementAnchor(elementId, el.anchor);
 	}
-
-	// Handle relative positioning
-	if (elementJson.contains("relative_position") && elementJson["relative_position"].is_array() &&
-		elementJson["relative_position"].size() >= 2) {
-		float relX = elementJson["relative_position"][0];
-		float relY = elementJson["relative_position"][1];
-		guiNode->SetElementRelativePosition(elementId, relX, relY);
+	if (el.useRelativePositioning) {
+		guiNode.SetElementRelativePosition(elementId, el.relativePosition.x, el.relativePosition.y);
 	}
-
-	// Handle relative sizing
-	if (elementJson.contains("relative_size") && elementJson["relative_size"].is_array() &&
-		elementJson["relative_size"].size() >= 2) {
-		float relWidth = elementJson["relative_size"][0];
-		float relHeight = elementJson["relative_size"][1];
-		guiNode->SetElementRelativeSize(elementId, relWidth, relHeight);
+	if (el.useRelativeSize) {
+		guiNode.SetElementRelativeSize(elementId, el.relativeSize.x, el.relativeSize.y);
 	}
+}
+} // namespace
+
+void SceneLoader::StoreAuthoredState(const std::shared_ptr<SceneNode>& node, const json& nodeJson) {
+	// The loaded state is serialized with no authored keys in place (SerializeNode merges them only when set).
+	node->SetAuthoredExtras(std::string());
+	node->SetAuthoredBaseline(std::string());
+	json loaded = SerializeNode(node);
+	loaded.erase("components");
+	// Children are separate nodes and the prefab link is kept by SetPrefabPath, so neither is part of the own keys.
+	json authored = nodeJson;
+	authored.erase("children");
+	authored.erase("components");
+	authored.erase("prefab");
+	node->SetAuthoredExtras(authored.dump());
+	node->SetAuthoredBaseline(loaded.dump());
 }
 
 std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJson, EntityID parentEntityID) {
@@ -1470,6 +1634,8 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJso
 
 	// Create ECS entity for this node
 	CreateECSEntity(node, parentEntityID);
+	// Authored keys and the loaded state, after the entity exists (save compares against them).
+	StoreAuthoredState(node, nodeJson);
 
 	EntityID myEntityID = node->GetEntityID();
 	const size_t importedChildCount = node->children.size();
@@ -1528,7 +1694,6 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		case NodeType::LPV_VOLUME:  // Handle LPV volume nodes
 			node = std::make_shared<SceneNode>(componentManager, transformSystem);
 			node->SetNodeType(SceneNode::LPV_VOLUME);
-			std::cout << "[SceneLoader] Creating LPV Volume node" << std::endl;
 			break;
 		case NodeType::SKELETAL:
 			node = std::make_shared<SceneNode>(componentManager, transformSystem);
@@ -1558,6 +1723,8 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 
 	// Apply transform using SetLocalTRS which correctly combines translation, rotation, scale
 	node->SetLocalTRS(pos, rotationQuat, scl);
+	// Keep the authored angles and scale (SetLocalTRS clamps the scale the same way).
+	node->SetAuthoredRotationScale(radians, glm::clamp(scl, glm::vec3(1e-6f), glm::vec3(1000.0f)));
 
 	// Set node name if provided
 	const std::string nodeName = nodeJson.value("name", "");
@@ -1569,19 +1736,20 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 	switch (type) {
 	case NodeType::MODEL: { // ModelNode
 		std::string modelPath = nodeJson.value("path", "");
-		json authoredExtras = json::object();
+		bool proceduralSkipped = false;
 		if (nodeJson.contains("procedural") && nodeJson["procedural"].is_object()) {
 			const json& procedural = nodeJson["procedural"];
-			authoredExtras["procedural"] = procedural;
 			const std::string generator = procedural.value("generator", SceneExtensions::DefaultGenerator());
 			const json generatorParams = procedural.value("params", json::object());
 			ProceduralGeneratorResult generated;
 			std::string message;
 			const ProceduralSource source = ResolveProceduralNode(generator, generatorParams, m_sceneGameJson, generated, message);
 			if (source == ProceduralSource::MissingCooked) {
-				++m_missingCriticalAssetCount;
+				// Not a load failure: the node is left without geometry and the scene loads (dev loose runs
+				// without nox_cook output). Packaging cooks every procedural node it ships.
+				proceduralSkipped = true;
 				std::cerr << "[SceneLoader] ERROR: procedural generator '" << generator << "' is not compiled into this executable and "
-					<< "node '" << nodeDebugName << "' has no cooked result: " << message << std::endl;
+					<< "node '" << nodeDebugName << "' has no cooked result, node skipped: " << message << std::endl;
 			}
 			else if (source == ProceduralSource::GeneratorFailed) {
 				std::cerr << "[SceneLoader] ERROR: procedural generator failed for node '" << nodeDebugName << "'" << std::endl;
@@ -1596,15 +1764,6 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 					m_currentSceneGraph->renderExtras.revision = NextRenderExtrasRevision();
 				}
 			}
-		}
-		if (nodeJson.contains("material_overrides")) {
-			authoredExtras["material_overrides"] = nodeJson["material_overrides"];
-		}
-		if (nodeJson.contains("exclude_from_reflection_capture")) {
-			authoredExtras["exclude_from_reflection_capture"] = nodeJson["exclude_from_reflection_capture"];
-		}
-		if (!authoredExtras.empty()) {
-			node->SetAuthoredExtras(authoredExtras.dump());
 		}
 		bool modelResolved = false;
 		modelPath = ResolveReadableAssetPath(
@@ -1640,7 +1799,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 					<< nodeDebugName << "': " << modelPath << std::endl;
 			}
 		}
-		else {
+		else if (!proceduralSkipped) {
 			++m_missingCriticalAssetCount;
 		}
 		// Check for custom shader properties
@@ -1670,14 +1829,20 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			float hearingDistance = nodeJson.value("hearing_distance", 10.0f);
 			bool loop = nodeJson.value("loop", false);
 			bool is3d = nodeJson.value("is3d", true);
+			bool autoplay = nodeJson.value("autoplay", true);
 			audioNode->setPitch(pitch);
 			audioNode->setVolume(volume);
 			audioNode->setHearingDistance(hearingDistance);
+			audioNode->setLooping(loop);
+			audioNode->setIs3D(is3d);
+			audioNode->setAutoplay(autoplay);
 			if (!soundFile.empty()) {
 				if (!audioNode->initAudio(soundFile))
 					std::cerr << "[ERROR] Failed to load sound file: " << soundFile << std::endl;
 			}
-			audioNode->play(loop, is3d);
+			if (autoplay && !m_scratchInstance) {
+				audioNode->play(loop, is3d);
+			}
 		}
 		break;
 	}
@@ -1739,23 +1904,30 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 				if (lightJson.contains("range")) {
 					light->SetRange(lightJson["range"]);
 				}
-				if (lightJson.contains("attenuation") && lightJson["attenuation"].is_array() && lightJson["attenuation"].size() == 3) {
+				const bool attenuationAuthored = lightJson.contains("attenuation") && lightJson["attenuation"].is_array() &&
+					lightJson["attenuation"].size() == 3;
+				if (attenuationAuthored) {
 					light->SetAttenuation(lightJson["attenuation"][0], lightJson["attenuation"][1], lightJson["attenuation"][2]);
 				}
 				// Photometric units (Frostbite PBR 3.0, docs/nfs2015/configuration.md): punctual lights
 				// specify luminous power in lumens and are stored as luminous intensity in candela
-				// (point: lm / 4pi, spot: lm / pi so the cone angle does not change brightness), with
-				// inverse-square falloff (min distance 1 cm) and the existing smooth range window.
+				// (LightNode::IntensityFromLuminousPower), with inverse-square falloff (min distance 1 cm) and the
+				// existing smooth range window unless the scene also authored "attenuation".
 				// Directional lights specify illuminance in lux. Rendering is pre-exposed, see
-				// RenderContext::physicalCamera.
+				// RenderContext::physicalCamera. The unit is kept on the node so save writes the same key back.
+				lightNode->SetAttenuationAuthored(attenuationAuthored);
 				if (lightJson.contains("luminous_power") && lightJson["luminous_power"].is_number()) {
 					const float lumens = std::max(lightJson["luminous_power"].get<float>(), 0.0f);
-					const float pi = 3.14159265f;
-					light->SetIntensity(lightType == "spot" ? lumens / pi : lumens / (4.0f * pi));
-					light->SetAttenuation(1.0e-4f, 0.0f, 1.0f);
+					light->SetIntensity(LightNode::IntensityFromLuminousPower(light->GetLightType(), lumens));
+					if (!attenuationAuthored) {
+						const glm::vec3 falloff = LightNode::ImplicitLumenAttenuation();
+						light->SetAttenuation(falloff.x, falloff.y, falloff.z);
+					}
+					lightNode->SetPhotometricUnit(LightNode::PhotometricUnit::Lumens);
 				}
 				else if (lightJson.contains("illuminance") && lightJson["illuminance"].is_number()) {
 					light->SetIntensity(std::max(lightJson["illuminance"].get<float>(), 0.0f));
+					lightNode->SetPhotometricUnit(LightNode::PhotometricUnit::Lux);
 				}
 				if (lightJson.contains("source_radius") && lightJson["source_radius"].is_number()) {
 					light->SetSourceRadius(lightJson["source_radius"].get<float>());
@@ -1799,140 +1971,45 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		int fontSize = nodeJson.value("font_size", 24);
 		guiNode->LoadFont(fontPath, fontSize);
 
-		if (nodeJson.contains("elements")) { // Check for GUI elements
-			for (const auto& el : nodeJson["elements"]) { // Loop through each element
-				std::string kind = el.value("kind", "text");
-
-				if (kind == "text") {
-					SDL_Color textColor = { 255, 255, 255, 255 }; // Default white
-					if (el.contains("color") && el["color"].is_array() && el["color"].size() >= 3) {
-						textColor.r = static_cast<Uint8>(el["color"][0]);
-						textColor.g = static_cast<Uint8>(el["color"][1]);
-						textColor.b = static_cast<Uint8>(el["color"][2]);
-						textColor.a = el["color"].size() > 3 ? static_cast<Uint8>(el["color"][3]) : 255;
-					}
-					guiNode->AddText(el.value("text", ""), el.value("x", 0.0f), el.value("y", 0.0f), textColor);
-				}
-				else if (kind == "image") {
-					guiNode->AddImage(el.value("path", ""), el.value("x", 0.0f), el.value("y", 0.0f),
-						el.value("w", 128.0f), el.value("h", 64.0f));
-				}
-				else if (kind == "solid_rect") {
-					SDL_Color rectColor = { 128, 128, 128, 255 }; // Default gray
-					if (el.contains("color") && el["color"].is_array() && el["color"].size() >= 3) {
-						rectColor.r = static_cast<Uint8>(el["color"][0]);
-						rectColor.g = static_cast<Uint8>(el["color"][1]);
-						rectColor.b = static_cast<Uint8>(el["color"][2]);
-						rectColor.a = el["color"].size() > 3 ? static_cast<Uint8>(el["color"][3]) : 255;
-					}
-
-					int elementId = guiNode->AddSolidRect(
-						el.value("x", 0.0f),
-						el.value("y", 0.0f),
-						el.value("w", 100.0f),
-						el.value("h", 100.0f),
-						rectColor
-					);
-
-					// Apply dynamic properties if specified
-					ProcessGuiElementProperties(guiNode, elementId, el);
-				}
-				else if (kind == "gradient_rect") {
-					GuiNode::GradientStyle gradient;
-
-					// Set gradient type
-					std::string gradientType = el.value("gradient_type", "vertical");
-					if (gradientType == "horizontal") {
-						gradient.type = GuiNode::GradientType::LINEAR_HORIZONTAL;
-					}
-					else if (gradientType == "vertical") {
-						gradient.type = GuiNode::GradientType::LINEAR_VERTICAL;
-					}
-					else if (gradientType == "radial") {
-						gradient.type = GuiNode::GradientType::RADIAL;
-					}
-
-					// Set start color
-					gradient.startColor = { 255, 255, 255, 255 }; // Default white
-					if (el.contains("start_color") && el["start_color"].is_array() && el["start_color"].size() >= 3) {
-						gradient.startColor.r = static_cast<Uint8>(el["start_color"][0]);
-						gradient.startColor.g = static_cast<Uint8>(el["start_color"][1]);
-						gradient.startColor.b = static_cast<Uint8>(el["start_color"][2]);
-						gradient.startColor.a = el["start_color"].size() > 3 ? static_cast<Uint8>(el["start_color"][3]) : 255;
-					}
-
-					// Set end color
-					gradient.endColor = { 0, 0, 0, 255 }; // Default black
-					if (el.contains("end_color") && el["end_color"].is_array() && el["end_color"].size() >= 3) {
-						gradient.endColor.r = static_cast<Uint8>(el["end_color"][0]);
-						gradient.endColor.g = static_cast<Uint8>(el["end_color"][1]);
-						gradient.endColor.b = static_cast<Uint8>(el["end_color"][2]);
-						gradient.endColor.a = el["end_color"].size() > 3 ? static_cast<Uint8>(el["end_color"][3]) : 255;
-					}
-
-					// Set radial gradient properties
-					if (gradient.type == GuiNode::GradientType::RADIAL) {
-						if (el.contains("center") && el["center"].is_array() && el["center"].size() >= 2) {
-							gradient.center = glm::vec2(el["center"][0], el["center"][1]);
-						}
-						gradient.radius = el.value("radius", 1.0f);
-					}
-
-					int elementId = guiNode->AddGradientRect(
-						el.value("x", 0.0f),
-						el.value("y", 0.0f),
-						el.value("w", 100.0f),
-						el.value("h", 100.0f),
-						gradient
-					);
-
-					// Apply dynamic properties if specified
-					ProcessGuiElementProperties(guiNode, elementId, el);
-				}
-				else if (kind == "bevel_rect") {
-					SDL_Color baseColor = { 128, 128, 128, 255 }; // Default gray
-					if (el.contains("color") && el["color"].is_array() && el["color"].size() >= 3) {
-						baseColor.r = static_cast<Uint8>(el["color"][0]);
-						baseColor.g = static_cast<Uint8>(el["color"][1]);
-						baseColor.b = static_cast<Uint8>(el["color"][2]);
-						baseColor.a = el["color"].size() > 3 ? static_cast<Uint8>(el["color"][3]) : 255;
-					}
-
-					GuiNode::BevelStyle bevel;
-					bevel.radius = el.value("corner_radius", 0.0f);
-					bevel.bevelSize = el.value("bevel_size", 2.0f);
-
-					// Set highlight color
-					if (el.contains("highlight_color") && el["highlight_color"].is_array() && el["highlight_color"].size() >= 3) {
-						bevel.highlightColor.r = static_cast<Uint8>(el["highlight_color"][0]);
-						bevel.highlightColor.g = static_cast<Uint8>(el["highlight_color"][1]);
-						bevel.highlightColor.b = static_cast<Uint8>(el["highlight_color"][2]);
-						bevel.highlightColor.a = el["highlight_color"].size() > 3 ? static_cast<Uint8>(el["highlight_color"][3]) : 128;
-					}
-
-					// Set shadow color
-					if (el.contains("shadow_color") && el["shadow_color"].is_array() && el["shadow_color"].size() >= 3) {
-						bevel.shadowColor.r = static_cast<Uint8>(el["shadow_color"][0]);
-						bevel.shadowColor.g = static_cast<Uint8>(el["shadow_color"][1]);
-						bevel.shadowColor.b = static_cast<Uint8>(el["shadow_color"][2]);
-						bevel.shadowColor.a = el["shadow_color"].size() > 3 ? static_cast<Uint8>(el["shadow_color"][3]) : 128;
-					}
-
-					int elementId = guiNode->AddBevelRect(
-						el.value("x", 0.0f),
-						el.value("y", 0.0f),
-						el.value("w", 100.0f),
-						el.value("h", 100.0f),
-						baseColor,
-						bevel
-					);
-
-					// Apply dynamic properties if specified
-					ProcessGuiElementProperties(guiNode, elementId, el);
-				}
-				else {
+		if (nodeJson.contains("elements") && nodeJson["elements"].is_array()) {
+			for (const auto& elementJson : nodeJson["elements"]) {
+				GuiNode::GuiElement el;
+				std::string kind;
+				if (!GuiElementFromJson(elementJson, el, &kind)) {
 					std::cerr << "[SceneLoader] Unknown GUI element kind: " << kind << std::endl;
+					continue;
 				}
+				const int countBefore = guiNode->GetElementCount();
+				int elementId = -1;
+				switch (el.type) {
+				case GuiNode::GuiType::TEXT:
+					guiNode->AddText(el.content, el.x, el.y, el.color);
+					elementId = guiNode->GetElementCount() - 1;
+					break;
+				case GuiNode::GuiType::IMAGE:
+					guiNode->AddImage(el.content, el.x, el.y, el.width, el.height);
+					elementId = guiNode->GetElementCount() > countBefore ? guiNode->GetElementCount() - 1 : -1;
+					break;
+				case GuiNode::GuiType::RECT_SOLID:
+					elementId = guiNode->AddSolidRect(el.x, el.y, el.width, el.height, el.color);
+					break;
+				case GuiNode::GuiType::RECT_GRADIENT:
+					elementId = guiNode->AddGradientRect(el.x, el.y, el.width, el.height, el.gradient);
+					break;
+				case GuiNode::GuiType::RECT_BEVEL:
+					elementId = guiNode->AddBevelRect(el.x, el.y, el.width, el.height, el.color, el.bevel);
+					break;
+				case GuiNode::GuiType::PROGRESS_BAR:
+					elementId = guiNode->AddProgressBar(el.x, el.y, el.width, el.height, el.progressStyle);
+					if (elementId >= 0) {
+						guiNode->SetProgressValue(elementId, el.progressValue);
+						if (!el.progressLabel.empty()) {
+							guiNode->SetProgressLabel(elementId, el.progressLabel);
+						}
+					}
+					break;
+				}
+				ApplyGuiElementLayout(*guiNode, elementId, el);
 			}
 		}
 		node = guiNode;
@@ -1949,10 +2026,45 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 		break;
 	}
 
+	// LPV volume bounds and grid (written by SerializeNode as "lpv_data").
+	if (type == NodeType::LPV_VOLUME && nodeJson.contains("lpv_data") && nodeJson["lpv_data"].is_object()) {
+		const json& lpvJson = nodeJson["lpv_data"];
+		SceneNode::LPVVolumeData data = node->GetLPVVolumeData();
+		data.center = ReadSceneVec3(lpvJson, "center", data.center, nodeDebugName);
+		data.extent = glm::max(ReadSceneVec3(lpvJson, "extent", data.extent, nodeDebugName), glm::vec3(0.01f));
+		const float voxelSize = lpvJson.value("voxel_size", data.voxelSize);
+		if (std::isfinite(voxelSize) && voxelSize > 0.0f) {
+			data.voxelSize = voxelSize;
+		}
+		data.gridResolution = std::max(lpvJson.value("grid_resolution", data.gridResolution), 1);
+		if (lpvJson.contains("orientation") && lpvJson["orientation"].is_array() && lpvJson["orientation"].size() == 4) {
+			const glm::quat q(lpvJson["orientation"][0].get<float>(), lpvJson["orientation"][1].get<float>(),
+				lpvJson["orientation"][2].get<float>(), lpvJson["orientation"][3].get<float>());
+			if (std::isfinite(glm::length(q)) && glm::length(q) > 0.0f) {
+				data.orientation = glm::normalize(q);
+			}
+		}
+		node->SetLPVVolumeData(data);
+	}
+
 	// Process collider for any node type (not just MODEL nodes)
 	// This allows nodes without models to still have physics colliders
 	if (nodeJson.contains("collider")) {
 		ProcessCollider(nodeJson["collider"], node);
+	}
+
+	// Prefab instance root: the expanded reference keeps the source path (see src/scene/Prefab.h).
+	if (nodeJson.contains("prefab") && nodeJson["prefab"].is_string()) {
+		node->SetPrefabPath(nodeJson["prefab"].get<std::string>());
+	}
+
+	// Registry components win over the legacy keys above (see SerializeNode).
+	if (nodeJson.contains("components")) {
+		std::vector<std::string> warnings;
+		nox::reflect::DeserializeComponents(*node, nodeJson["components"], &warnings);
+		for (const std::string& warning : warnings) {
+			std::cerr << "[SceneLoader] Warning: node '" << nodeDebugName << "': " << warning << std::endl;
+		}
 	}
 
 	return node;
@@ -2400,7 +2512,7 @@ bool SceneLoader::SaveRuntimeState(const std::shared_ptr<SceneGraph>& sceneGraph
 
 		for (const auto& child : root->children) {
 			if (child) {
-				nlohmann::json nodeJson = SerializeNodeRecursive(child);
+				nlohmann::json nodeJson = SerializeNodeTree(child, false, false);
 				if (!nodeJson.is_null()) {
 					// Add runtime-specific data
 					SerializeRuntimeNodeState(child, nodeJson, sceneGraph);
@@ -2765,7 +2877,7 @@ void SceneLoader::RestoreNodeState(const nlohmann::json& nodeJson,
 // ---------------------------------------------------------------------------------------------
 nlohmann::json SceneLoader::SerializeNodeForEditor(const std::shared_ptr<SceneNode>& node)
 {
-	return node ? SerializeNodeRecursive(node) : nlohmann::json();
+	return node ? SerializeNodeTree(node, true, false) : nlohmann::json();
 }
 
 std::shared_ptr<SceneNode> SceneLoader::InstantiateNode(SceneGraph& graph, const nlohmann::json& nodeJson,
@@ -2774,10 +2886,25 @@ std::shared_ptr<SceneNode> SceneLoader::InstantiateNode(SceneGraph& graph, const
 	if (!nodeJson.is_object() || !parent) {
 		return nullptr;
 	}
+	nlohmann::json expanded = nodeJson;
+	std::string prefabError;
+	if (!nox::prefab::ExpandReferences(expanded, &prefabError)) {
+		std::cerr << "[SceneLoader] ERROR: prefab reference failed: " << prefabError << std::endl;
+		return nullptr;
+	}
+	return InstantiateExpanded(graph, expanded, parent, sceneFilePath);
+}
+
+std::shared_ptr<SceneNode> SceneLoader::InstantiateExpanded(SceneGraph& graph, const nlohmann::json& expanded,
+	const std::shared_ptr<SceneNode>& parent, const std::string& sceneFilePath)
+{
+	if (!expanded.is_object() || !parent) {
+		return nullptr;
+	}
 	m_currentSceneGraph = &graph;
 	m_currentSceneDirectory = std::filesystem::path(sceneFilePath).parent_path().string();
 	m_missingCriticalAssetCount = 0;
-	auto node = ProcessNodeRecursive(nodeJson, parent->GetEntityID());
+	auto node = ProcessNodeRecursive(expanded, parent->GetEntityID());
 	if (node) {
 		parent->AddChild(node);
 		graph.UpdateAllTransforms();

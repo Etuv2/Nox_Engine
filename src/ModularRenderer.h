@@ -46,6 +46,7 @@ class VolumetricFogPass;
 class MotionBlurPass;
 class RainPass;
 class VehicleFXPass;
+class ParticlePass;
 class DecalPass;
 class LensFlarePass;
 class SurfelGIManager;
@@ -221,6 +222,7 @@ private:
 	std::unique_ptr<MotionBlurPass> m_motionBlurPass;           // motion blur (docs/nfs2015 M7)
 	std::unique_ptr<RainPass> m_rainPass;                       // rain streaks (docs/nfs2015 M6)
 	std::unique_ptr<VehicleFXPass> m_vehicleFXPass;             // tyre smoke and wet-road spray (src/VehicleFX.h)
+	std::unique_ptr<ParticlePass> m_particlePass;               // ParticleEmitter components (src/render/ParticleSystem.h)
 	std::unique_ptr<DecalPass> m_decalPass;                     // surface decals blended into the G-buffer
 	std::unique_ptr<LensFlarePass> m_lensFlarePass;             // occlusion-tested glare sprites on bright sources
 	bool m_lastTAAEnabled = true;  // Debug bounding box visualization

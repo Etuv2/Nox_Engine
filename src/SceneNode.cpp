@@ -539,23 +539,38 @@ glm::vec3 SceneNode::GetPosition() const {
 	return glm::vec3(transform[3]);
 }
 
-glm::vec3 SceneNode::GetRotation() const {
-	glm::mat4 source = transform;
-	if (ComponentManager* currentManager = RequireComponentManager("GetRotation")) {
+glm::mat4 SceneNode::LocalMatrixSource(const char* caller) const {
+	if (ComponentManager* currentManager = RequireComponentManager(caller)) {
 		if (const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
-			source = ecsTransform->localTransform;
+			return ecsTransform->localTransform;
 		}
 	}
-	return glm::eulerAngles(glm::quat_cast(source));
+	return transform;
+}
+
+void SceneNode::SetAuthoredRotationScale(const glm::vec3& radians, const glm::vec3& scale) {
+	m_authoredKey = LocalMatrixSource("SetAuthoredRotationScale");
+	m_authoredRotation = radians;
+	m_authoredScale = scale;
+	m_hasAuthoredTRS = true;
+}
+
+glm::vec3 SceneNode::GetRotation() const {
+	const glm::mat4 source = LocalMatrixSource("GetRotation");
+	if (m_hasAuthoredTRS && source == m_authoredKey) return m_authoredRotation;
+	// quat_cast needs orthonormal basis vectors: divide out the scale first, otherwise a non-uniformly
+	// scaled node reads back a different rotation than it was authored with (scene save/load drift).
+	glm::mat3 basis(source);
+	for (int i = 0; i < 3; ++i) {
+		const float length = glm::length(basis[i]);
+		if (length > 1e-8f) basis[i] /= length;
+	}
+	return glm::eulerAngles(glm::quat_cast(basis));
 }
 
 glm::vec3 SceneNode::GetScale() const {
-	glm::mat4 source = transform;
-	if (ComponentManager* currentManager = RequireComponentManager("GetScale")) {
-		if (const TransformComponent* ecsTransform = currentManager->GetTransform(m_entityID)) {
-			source = ecsTransform->localTransform;
-		}
-	}
+	const glm::mat4 source = LocalMatrixSource("GetScale");
+	if (m_hasAuthoredTRS && source == m_authoredKey) return m_authoredScale;
 	glm::vec3 translation, scale, skew;
 	glm::vec4 perspective;
 	glm::quat rotation;
@@ -973,6 +988,30 @@ const AnimationComponent* SceneNode::GetAnimationComponent() const {
 	ComponentManager* currentManager = RequireComponentManager("GetAnimationComponent const");
 	if (!currentManager) return nullptr;
 	return currentManager->GetAnimation(m_entityID);
+}
+
+CameraComponent* SceneNode::GetCameraComponent() {
+	ComponentManager* currentManager = RequireComponentManager("GetCameraComponent");
+	if (!currentManager) return nullptr;
+	return currentManager->GetCamera(m_entityID);
+}
+
+const CameraComponent* SceneNode::GetCameraComponent() const {
+	ComponentManager* currentManager = RequireComponentManager("GetCameraComponent const");
+	if (!currentManager) return nullptr;
+	return currentManager->GetCamera(m_entityID);
+}
+
+CameraComponent* SceneNode::AddCameraComponent(const CameraComponent& camera) {
+	ComponentManager* currentManager = RequireComponentManager("AddCameraComponent");
+	if (!currentManager) return nullptr;
+	return currentManager->AddCamera(m_entityID, camera);
+}
+
+void SceneNode::RemoveCameraComponent() {
+	ComponentManager* currentManager = RequireComponentManager("RemoveCameraComponent");
+	if (!currentManager) return;
+	currentManager->RemoveCamera(m_entityID);
 }
 
 // ECS ENTITY CREATION

@@ -1,5 +1,5 @@
 #pragma once
-// Policy interface for the vehicle backend. A policy owns every decision (nitrous, drift, steering
+// Policy interface for the vehicle backend. A policy owns every decision (boosts, drift, steering
 // assists, gear selection and shift timing); the backend only evaluates tyres, integration,
 // collision, suspension, wheels, rig posing and the mechanical gearbox. Policies are called once per
 // fixed sub-step, in this order:
@@ -11,6 +11,8 @@
 //
 // A policy receives the same telemetry snapshot in every call and may keep its own state; it must
 // not reach into the backend. OnTeleport resets the policy state that a teleport clears.
+#include <map>
+#include <string>
 #include "VehicleTypes.h"
 
 // Per-phase snapshot. Derived values are computed by the backend from the state at the start of the
@@ -45,12 +47,12 @@ struct VehicleStepTelemetry {
 };
 
 // Output of Control. Initialised by the backend to the defaults below, then overwritten by the policy.
-// The policy decides every pedal mapping and every NFS-style special case (reverse pedal, burnout,
+// The policy decides every pedal mapping and every special case (reverse pedal, burnout,
 // brake split, handbrake lock, rest hold). The backend only applies the forces they request.
 struct VehicleActuation {
 	int gear = 1;                   // selected gear after direction selection (-1 = reverse)
 	float steerAngle = 0.0f;        // front wheel angle (rad, left positive)
-	float nitroDriveScale = 1.0f;   // multiplies the drive force (1 = none)
+	float driveScale = 1.0f;        // multiplies the drive force (1 = none)
 	bool driveShiftCut = false;     // torque interruption during a shift (drive force x 0.12)
 	float dragScale = 1.0f;         // multiplies the aerodynamic/drag term (top speed factor)
 	float rearGripScale = 1.0f;     // rear lateral grip multiplier (drift blend)
@@ -82,12 +84,15 @@ struct VehicleGearRequest {         // in/out
 	bool gearboxShifting = false;   // shift timer was running before this sub-step's decrement
 };
 
-// Policy state exposed to telemetry and the facade (read-only).
+// Policy state exposed to telemetry and the facade (read-only). The backend only reads shiftTimer;
+// every other value is the policy's own: named channels (snake_case, written by the policy, 1/0 for flags).
 struct VehiclePolicyDebug {
-	float nitro = 1.0f, nitroCooldown = 0.0f;
-	bool nitroActive = false;
-	float drift = 0.0f, driftSign = 1.0f;
 	float shiftTimer = 0.0f;
+	std::map<std::string, float> channels;
+	float Channel(const std::string& name, float fallback = 0.0f) const {
+		const auto it = channels.find(name);
+		return it == channels.end() ? fallback : it->second;
+	}
 };
 
 class IVehiclePolicy {

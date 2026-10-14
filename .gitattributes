@@ -61,3 +61,19 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# Text assets hashed by the cook and pack pipeline (docs/packaging.md). Keep LF line endings on every
+# checkout so the source-byte hashes match across machines. This rule does not renormalise files that
+# are already in the working tree; re-checkout or "git add --renormalize" applies it to them.
+###############################################################################
+*.json   text eol=lf
+*.lua    text eol=lf
+*.glsl   text eol=lf
+textures/**/*.md     text eol=lf
+projects/**/*.md     text eol=lf
+scenes/**/*.md       text eol=lf
+shaders/**/*.md      text eol=lf
+config/**/*.md       text eol=lf
+data/**/*.md         text eol=lf
+tests/fixtures/**/*.md text eol=lf

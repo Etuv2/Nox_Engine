@@ -304,7 +304,22 @@ namespace NoxLua {
 			in.brake = NumField(L, 2, "brake", 0.0f, 0.0f, 1.0f);
 			in.steer = NumField(L, 2, "steer", 0.0f, -1.0f, 1.0f);
 			in.handbrake = BoolField(L, 2, "handbrake");
-			in.nitrous = BoolField(L, 2, "nitrous");
+			// aux = { name = number | boolean }: named auxiliary inputs read by the policy (booleans as 1 / 0).
+			lua_getfield(L, 2, "aux");
+			if (lua_type(L, -1) == LUA_TTABLE) {
+				lua_pushnil(L);
+				while (lua_next(L, -2) != 0) {
+					const int vt = lua_type(L, -1);
+					if (lua_type(L, -2) != LUA_TSTRING || (vt != LUA_TNUMBER && vt != LUA_TBOOLEAN)) {
+						lua_settop(L, 0);
+						return luaL_argerror(L, 2, "aux entries must be name = number or boolean");
+					}
+					in.aux[lua_tostring(L, -2)] = vt == LUA_TBOOLEAN ? (lua_toboolean(L, -1) ? 1.0f : 0.0f)
+						: static_cast<float>(lua_tonumber(L, -1));
+					lua_pop(L, 1);
+				}
+			}
+			lua_settop(L, 2);
 			host->SetInput(h, in);
 			lua_pushboolean(L, 1);
 			return 1;
@@ -442,14 +457,16 @@ namespace NoxLua {
 		if (!file) return;
 		const VehicleState& s = r.state;
 		const VehiclePolicyDebug& p = r.policy;
+		// Record keys are the parity format (tools/VehicleParity.ps1 baselines): the legacy names are kept,
+		// but their values come from the generic aux input and policy channels.
 		std::fprintf(file,
 			"{\"t\":%.9g,\"h\":%.9g,\"thr\":%.9g,\"brk\":%.9g,\"steer\":%.9g,\"hb\":%d,\"nos\":%d,"
 			"\"x\":%.9g,\"y\":%.9g,\"z\":%.9g,\"head\":%.9g,\"vx\":%.9g,\"vy\":%.9g,\"yawRate\":%.9g,"
 			"\"gear\":%d,\"rpm\":%.9g,\"drift\":%.9g,\"driftSign\":%.9g,\"nitro\":%.9g,\"nitroCooldown\":%.9g,"
 			"\"slip\":%.9g,\"rearSpin\":%.9g,\"shiftTimer\":%.9g,\"airborne\":%d}\n",
-			s.time, r.h, r.in.throttle, r.in.brake, r.in.steer, r.in.handbrake ? 1 : 0, r.in.nitrous ? 1 : 0,
+			s.time, r.h, r.in.throttle, r.in.brake, r.in.steer, r.in.handbrake ? 1 : 0, r.in.Aux("nitrous") > 0.5f ? 1 : 0,
 			s.pos.x, s.surface ? s.y : 0.0f, s.pos.y, s.heading, s.vx, s.vy, s.yawRate,
-			s.gear, s.rpm, p.drift, p.driftSign, p.nitro, p.nitroCooldown,
+			s.gear, s.rpm, p.Channel("drift"), p.Channel("drift_sign", 1.0f), p.Channel("nitro", 1.0f), p.Channel("nitro_cooldown"),
 			s.slip, s.rearSpin, p.shiftTimer, s.airborne ? 1 : 0);
 	}
 
@@ -743,10 +760,9 @@ VehicleHandle VehicleHost::Create(const json& spec, const NodeResolver& resolve,
 		out["impact"] = s.impact;
 		out["heave"] = s.heave;
 		out["wheels"] = WheelsJson(s);
-		out["nitro"] = d.nitro;
-		out["nitro_active"] = d.nitroActive;
-		out["drift"] = d.drift;
-		out["drift_sign"] = d.driftSign;
+		json channels = json::object();
+		for (const auto& kv : d.channels) channels[kv.first] = kv.second;
+		out["channels"] = channels;                      // policy channels by name (flags as 1 / 0)
 		out["shift_timer"] = d.shiftTimer;
 		out["faulted"] = e->policy->Faulted();
 		return out;
@@ -770,7 +786,8 @@ VehicleHandle VehicleHost::Create(const json& spec, const NodeResolver& resolve,
 			e.policy = std::move(next);
 			e.input = prev.input;
 			e.tuning = prev.tuning;
-			e.roads = prev.roads;                // the instance keeps pointing at this network
+			e.roads = prev.roads;                // the instance keeps pointing at these (non-owning in the service)
+			e.collision = prev.collision;        // ...and at this collision world; dropping it frees both under the car
 			m_entries[kv.first] = std::move(e);
 		}
 		old.m_entries.clear();                   // releases the old controllers while their VM is still alive

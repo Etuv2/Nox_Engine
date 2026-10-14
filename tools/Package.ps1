@@ -69,7 +69,13 @@ try {
     $config.first_scene = $scenes[0]
     $config.scenes = @($scenes | ForEach-Object { [pscustomobject]@{ path = $_ } })
     $overrides['config/config.json'] = $config
-    $launch = Read-NoxAssetJson (Join-Path $repo 'config/launch_presets.json')
+    # Presets: a project ships its own launch presets (projects/<name>/launch_presets.json) when it has them.
+    $presetRel = 'config/launch_presets.json'
+    if ($project) {
+        $projectPresets = (Split-Path -Parent $project).Replace('\', '/') + '/launch_presets.json'
+        if (Test-Path -LiteralPath (Join-Path $repo $projectPresets) -PathType Leaf) { $presetRel = $projectPresets }
+    }
+    $launch = Read-NoxAssetJson (Join-Path $repo $presetRel)
     foreach ($preset in $launch.presets.PSObject.Properties) { $preset.Value.scene = $scenes[0] }
     $launch.default = if ($profileData.game) { 'game' } else { 'editor' }
     $overrides['config/launch_presets.json'] = $launch

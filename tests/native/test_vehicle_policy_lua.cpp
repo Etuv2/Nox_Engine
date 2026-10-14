@@ -93,7 +93,7 @@ namespace {
 		in.brake = (f % 500) > 430 ? 0.8f : 0.0f;
 		in.steer = std::sin(f * 0.02f) * (variant == 1 ? 1.0f : 0.6f);
 		in.handbrake = (f % 900) > 780;
-		in.nitrous = (f % 700) > 500;
+		in.aux["nitrous"] = (f % 700) > 500 ? 1.0f : 0.0f;
 		return in;
 	}
 
@@ -141,7 +141,7 @@ namespace {
 	// Common act fields that a valid control sets (a faulty body replaces a subset).
 	const char* kAllControl =
 		"  act.gear = act.gear\n"
-		"  act.steer_angle = 0.0\n  act.nitro_drive_scale = 1.0\n  act.drive_shift_cut = false\n  act.drag_scale = 1.0\n"
+		"  act.steer_angle = 0.0\n  act.drive_scale = 1.0\n  act.drive_shift_cut = false\n  act.drag_scale = 1.0\n"
 		"  act.rear_grip_scale = 1.0\n  act.drive_throttle = inp.throttle\n  act.reverse_drive = 0.0\n"
 		"  act.brake_command = inp.brake\n  act.brake_front_share = 0.68\n  act.brake_rear_share = 0.32\n"
 		"  act.brake_at_standstill = false\n  act.rear_drive_cut = false\n  act.rear_spin_floor = 0.0\n"
@@ -267,7 +267,7 @@ NOX_TEST(VehiclePolicyLua, MissingOutputFaults) {
 	VehicleActuation out;
 	policy.Control(in, t, out);
 	NOX_REQUIRE(policy.Faulted());
-	NOX_CHECK(policy.Faults()[0].message.find("nitro_drive_scale") != std::string::npos);
+	NOX_CHECK(policy.Faults()[0].message.find("drive_scale") != std::string::npos);
 }
 
 // --- Two independent cars --------------------------------------------------------------------
@@ -531,8 +531,7 @@ namespace {
 // A successful reload mid-drive: the running car (physics, handle, latched input) moves into the candidate host and
 // its controller is rebuilt in the candidate VM with the declared state. The telemetry after the swap equals the run
 // that never reloaded, record by record.
-NOX_TEST(VehiclePolicyLua, ReloadTransferKeepsTelemetryContinuous) {
-	const json r33 = LoadR33();
+static void ExpectReloadTransferContinuous(const json& r33, bool expectNitro) {
 	const int total = 600, at = 300;
 
 	std::vector<json> reference;
@@ -583,8 +582,20 @@ NOX_TEST(VehiclePolicyLua, ReloadTransferKeepsTelemetryContinuous) {
 	}
 	// The drive exercised the controller (nitrous and a gear change happen within the window).
 	bool nitroSeen = false;
-	for (const json& t : reference) nitroSeen = nitroSeen || t.value("nitro_active", false);
-	NOX_CHECK(nitroSeen);
+	for (const json& t : reference) nitroSeen = nitroSeen || (t.contains("channels") && t["channels"].value("nitro_active", 0.0) > 0.5);
+	if (expectNitro) NOX_CHECK(nitroSeen);
+}
+
+NOX_TEST(VehiclePolicyLua, ReloadTransferKeepsTelemetryContinuous) {
+	ExpectReloadTransferContinuous(LoadR33(), true);
+}
+
+// The same reload with static collision (surface mode): the candidate host takes the moved car's CollisionWorld
+// ownership, so the service's collision pointer stays valid after the old host releases its entries.
+NOX_TEST(VehiclePolicyLua, ReloadTransferKeepsStaticCollisionAlive) {
+	json r33 = LoadR33();
+	r33["world"]["collision"] = { { "files", json::array({ "models/shuto/rep_section/collision/-1_3_col.glb" }) } };
+	ExpectReloadTransferContinuous(r33, false);
 }
 
 // A failed candidate never touches the running host: the candidate's controller does not load, the staging is

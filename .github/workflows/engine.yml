@@ -12,6 +12,11 @@ on:
       - "CMakeLists.txt"
       - "CMakePresets.json"
       - "tools/CheckNoRawGL.ps1"
+      - "tools/CheckGenericExe.ps1"
+      - "tools/CheckVcxprojSources.py"
+      - "tools/cook/**"
+      - "Nox_Engine.vcxproj"
+      - "Nox_Engine.vcxproj.filters"
       - ".github/workflows/engine.yml"
   pull_request:
     paths:
@@ -24,6 +29,11 @@ on:
       - "CMakeLists.txt"
       - "CMakePresets.json"
       - "tools/CheckNoRawGL.ps1"
+      - "tools/CheckGenericExe.ps1"
+      - "tools/CheckVcxprojSources.py"
+      - "tools/cook/**"
+      - "Nox_Engine.vcxproj"
+      - "Nox_Engine.vcxproj.filters"
       - ".github/workflows/engine.yml"
 
 permissions:
@@ -41,12 +51,19 @@ jobs:
       - name: Check that rendering stays behind the RHI
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/CheckNoRawGL.ps1
+      - name: Legacy Visual Studio project matches the engine sources
+        shell: powershell
+        run: python tools/CheckVcxprojSources.py
       - name: Configure
         shell: powershell
         run: cmake --preset vs2022-x64
-      - name: Build engine and tests
+      - name: Build all targets (Nox_Engine, nox_cook, Nox_RacingLegacy, nox_tests)
         shell: powershell
         run: cmake --build --preset vs2022-x64-${{ matrix.configuration == 'Debug' && 'debug' || 'release' }} --parallel
+      - name: Generic executable has no racing code
+        if: matrix.configuration == 'Release'
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/CheckGenericExe.ps1
       - name: Headless native tests (asset I/O, Lua runtime, ECS handles)
         shell: powershell
         run: |

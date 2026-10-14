@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Launches Nox_Engine.exe from the build output or the packaged folder.
+Launches Nox_Engine.exe (or Nox_RacingLegacy.exe with -Legacy) from the build output or the packaged folder.
 
 .DESCRIPTION
 Builds the command line for the engine CLI contract:
@@ -9,6 +9,8 @@ Builds the command line for the engine CLI contract:
 Presets are read from config/launch_presets.json. Unknown preset names fail before launching.
 The exe is searched in build/vs2022-x64/<Config>/ and Package/NOX_Racing/ (see -Source). The engine
 resolves its own asset root, so the working directory is set to the exe folder anyway.
+With -Legacy the same command line goes to build/vs2022-x64/<Config>/Nox_RacingLegacy.exe, the only exe
+that runs the native racing game. Package/NOX_Racing has no legacy exe, so -Legacy searches the build only.
 
 .PARAMETER Preset
 Preset name from config/launch_presets.json (for example game, game_ultra, game_windowed, editor).
@@ -36,6 +38,11 @@ build: build output only. package: Package/NOX_Racing only.
 .PARAMETER Configuration
 Build configuration folder to use (Release or Debug). Default: whichever is newest.
 
+.PARAMETER Legacy
+Launch Nox_RacingLegacy.exe instead of Nox_Engine.exe (build output only; needs NOX_BUILD_RACING_LEGACY=ON).
+The native racing game runs only in this exe, and only on a scene without a "project" key. A scene
+with a project key runs its Lua project in either exe.
+
 .PARAMETER Wait
 Wait for the engine to exit and return its exit code.
 
@@ -46,6 +53,7 @@ Any other arguments are appended to the engine command line unchanged.
 tools\run.cmd -Preset game
 tools\run.cmd -Preset game_windowed -Source package
 tools\run.cmd -Scene scenes/nfs_night_rain.json -Mode game -Quality ultra
+tools\run.cmd -Legacy -Scene <scene copy without a project key> -Mode game
 #>
 [CmdletBinding()]
 param(
@@ -63,6 +71,7 @@ param(
     [string]$Source = 'auto',
     [ValidateSet('Release', 'Debug')]
     [string]$Configuration,
+    [switch]$Legacy,
     [switch]$Wait,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Passthrough
@@ -85,21 +94,27 @@ if ($Preset) {
     }
 }
 
+if ($Legacy -and $Source -eq 'package') {
+    Stop-Nox '-Legacy needs a build output: Package/NOX_Racing has no Nox_RacingLegacy.exe. Use -Source build or auto.'
+}
+$exeName = if ($Legacy) { 'Nox_RacingLegacy.exe' } else { 'Nox_Engine.exe' }
+
 # Candidate executables, newest first when -Source auto.
 $candidates = @()
 if ($Source -ne 'package') {
     $configs = if ($Configuration) { @($Configuration) } else { @('Release', 'Debug') }
     foreach ($config in $configs) {
-        $path = Join-Path $repo "build/vs2022-x64/$config/Nox_Engine.exe"
+        $path = Join-Path $repo "build/vs2022-x64/$config/$exeName"
         if (Test-Path -LiteralPath $path) { $candidates += Get-Item -LiteralPath $path }
     }
 }
-if ($Source -ne 'build') {
+if ($Source -ne 'build' -and -not $Legacy) {
     $packagedExe = Join-Path $repo 'Package/NOX_Racing/Nox_Engine.exe'
     if (Test-Path -LiteralPath $packagedExe) { $candidates += Get-Item -LiteralPath $packagedExe }
 }
 if ($candidates.Count -eq 0) {
-    Stop-Nox "No Nox_Engine.exe found for -Source $Source. Run tools\build.cmd or tools\package.cmd first."
+    $hint = if ($Legacy) { 'Run tools\build.cmd with NOX_BUILD_RACING_LEGACY=ON first.' } else { 'Run tools\build.cmd or tools\package.cmd first.' }
+    Stop-Nox "No $exeName found for -Source $Source. $hint"
 }
 $exeInfo = $candidates | Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1
 $exe = $exeInfo.FullName

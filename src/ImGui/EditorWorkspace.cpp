@@ -18,6 +18,9 @@
 #include "../SceneNode.h"
 #include "../editor/ProcessRunner.h"
 #include "../editor/solace/SolaceUI.h"
+#include "../editor/InspectorUndo.h"
+#include "../scene/Prefab.h"
+#include "InspectorWidgets.h"
 
 #include "rhi/RHI.h"
 #include <SDL/SDL.h>
@@ -30,6 +33,7 @@
 #include <glm/gtx/matrix_decompose.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -93,6 +97,43 @@ namespace {
 		const int m = static_cast<int>(t / 60.0f);
 		std::snprintf(buf, sizeof(buf), "%d:%05.2f", m, t - m * 60.0f);
 		return buf;
+	}
+
+	std::shared_ptr<SceneNode> FindSharedNode(const std::shared_ptr<SceneNode>& root, const SceneNode* target) {
+		if (!root) return nullptr;
+		if (root.get() == target) return root;
+		for (const auto& c : root->children) {
+			if (auto found = FindSharedNode(c, target)) return found;
+		}
+		return nullptr;
+	}
+
+	// Scene-file JSON for the Add Node menu: the same shape the loader reads, so the node is identical to
+	// one loaded from a scene.
+	json NodeTemplate(const std::string& kind) {
+		if (kind == "directional") return { {"type", "light"}, {"name", "Directional Light"},
+			{"light", { {"type", "directional"}, {"color", { 1.0f, 1.0f, 1.0f }}, {"intensity", 3.0f} }} };
+		if (kind == "point") return { {"type", "light"}, {"name", "Point Light"},
+			{"light", { {"type", "point"}, {"color", { 1.0f, 1.0f, 1.0f }}, {"intensity", 10.0f}, {"range", 10.0f} }} };
+		if (kind == "spot") return { {"type", "light"}, {"name", "Spot Light"},
+			{"light", { {"type", "spot"}, {"color", { 1.0f, 1.0f, 1.0f }}, {"intensity", 10.0f}, {"range", 15.0f},
+				{"cutOff", 20.0f}, {"outerCutOff", 30.0f} }} };
+		if (kind == "audio") return { {"type", "audio"}, {"name", "Audio Source"}, {"volume", 1.0f}, {"loop", false}, {"is3d", true} };
+		if (kind == "camera") return { {"type", "camera"}, {"name", "Camera"} };
+		if (kind == "gui") return { {"type", "gui"}, {"name", "GUI"} };
+		if (kind == "lpv_volume") return { {"type", "lpv_volume"}, {"name", "LPV Volume"} };
+		return { {"type", "node"}, {"name", "Empty"} };
+	}
+
+	// Spawn point in front of the editor camera, in the parent's local space (world space at the root).
+	glm::vec3 SpawnPosition(Core& core, const std::shared_ptr<SceneNode>& parent, float height) {
+		glm::vec3 world(0.0f, height, 0.0f);
+		if (auto cam = core.GetCamera()) {
+			world = cam->GetCameraPosition() + cam->GetCameraFrontVector() * 8.0f;
+			world.y = height;
+		}
+		if (!parent) return world;
+		return glm::vec3(glm::inverse(parent->GetWorldPosition4x4()) * glm::vec4(world, 1.0f));
 	}
 
 	std::shared_ptr<SceneNode> FindParent(const std::shared_ptr<SceneNode>& root, const SceneNode* child) {
@@ -165,7 +206,9 @@ void EditorWorkspace::OnSceneLoaded()
 	m_handles.clear();
 	m_dragHandle = -1;
 	m_gameEditActive = false;
-	m_transformEditActive = false;
+	m_propEdit = nox::editor::PropertyEdit{};
+	m_nodeTable.Clear();
+	m_renameTarget.reset();
 	m_scene.rendered = m_game.rendered = false;
 }
 
@@ -227,7 +270,7 @@ void EditorWorkspace::Draw(float dt)
 		ImGui::TextDisabled("%s%s", scene.c_str(), m_core.IsDirty() ? "  (modified)" : "");
 		ImGui::SameLine(ImGui::GetWindowWidth() * 0.45f);
 		if (m_statusTimer > 0.0f) ImGui::TextUnformatted(m_status.c_str());
-		else ImGui::TextDisabled("%s", m_core.IsPlaying() ? (m_core.IsPaused() ? "Paused" : "Playing - click the Game view to drive") : "Editing");
+		else ImGui::TextDisabled("%s", m_core.IsPlaying() ? (m_core.IsPaused() ? "Paused" : "Playing - click the Game view to control the game") : "Editing");
 		char fps[64];
 		std::snprintf(fps, sizeof(fps), "%.0f fps  %.2f ms", m_fpsSmoothed, m_fpsSmoothed > 0 ? 1000.0f / m_fpsSmoothed : 0.0f);
 		ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::CalcTextSize(fps).x - 12.0f);
@@ -247,7 +290,6 @@ void EditorWorkspace::Draw(float dt)
 	m_legacy.SetWindowVisible("Help", m_showHelp);
 
 	TrackGameEdits();
-	TrackTransformEdits();
 
 	DrawGameViewport();
 	DrawSceneViewport();
@@ -356,12 +398,14 @@ void EditorWorkspace::DrawMenuBar()
 		if (ImGui::MenuItem("Redo", "Ctrl+Y", false, !m_redo.empty())) Redo();
 		ImGui::Separator();
 		auto sel = m_legacy.GetSelectedNode();
-		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, sel != nullptr && !m_core.IsPlaying())) {
-			if (auto copy = m_core.DuplicateNode(sel)) SelectNode(copy);
-		}
-		if (ImGui::MenuItem("Delete", "Del", false, sel != nullptr && !m_core.IsPlaying())) {
-			m_core.DeleteNode(sel);
-			SelectNode(nullptr);
+		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, sel != nullptr && !m_core.IsPlaying())) DuplicateNodeWithUndo(sel);
+		if (ImGui::MenuItem("Delete", "Del", false, sel != nullptr && !m_core.IsPlaying())) DeleteNodeWithUndo(sel);
+		ImGui::EndMenu();
+	}
+	if (ImGui::BeginMenu("Node")) {
+		if (ImGui::BeginMenu("Add Node", !m_core.IsPlaying())) {
+			DrawAddNodeItems();
+			ImGui::EndMenu();
 		}
 		ImGui::EndMenu();
 	}
@@ -545,7 +589,7 @@ void EditorWorkspace::DrawGameViewport()
 			dl->PushClipRect(m_game.pos, ImVec2(m_game.pos.x + m_game.size.x, m_game.pos.y + m_game.size.y), true);
 			game->DrawOverlay(dl, glm::vec2(m_game.pos.x, m_game.pos.y), glm::vec2(m_game.size.x, m_game.size.y), m_dt);
 			if (m_core.IsPlaying() && !m_game.focused) {
-				const char* hint = "Click to drive";
+				const char* hint = "Click to control the game";
 				const ImVec2 ts = ImGui::CalcTextSize(hint);
 				const ImVec2 c(m_game.pos.x + m_game.size.x * 0.5f, m_game.pos.y + 28.0f);
 				dl->AddRectFilled(ImVec2(c.x - ts.x * 0.5f - 10, c.y - 4), ImVec2(c.x + ts.x * 0.5f + 10, c.y + ts.y + 4), IM_COL32(0, 0, 0, 150), 6.0f);
@@ -618,6 +662,7 @@ void EditorWorkspace::DrawSceneViewport()
 	dl->PushClipRect(m_scene.pos, ImVec2(m_scene.pos.x + m_scene.size.x, m_scene.pos.y + m_scene.size.y), true);
 	if (m_showAuthoring) DrawAuthoringOverlay(dl);
 	else m_handles.clear();
+	m_core.DrawDebugOverlay(dl, m_scene.pos.x, m_scene.pos.y, m_scene.size.x, m_scene.size.y);
 	DrawGizmo(m_scene);
 
 	// Click selection (not on gizmo or authoring handles).
@@ -844,7 +889,8 @@ void EditorWorkspace::DrawHierarchyNode(const std::shared_ptr<SceneNode>& node)
 		if (!any(node)) return;
 		childMatches = true;
 	}
-	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnDoubleClick;
+	const bool playing = m_core.IsPlaying();
+	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
 	if (node->children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
 	if (m_legacy.GetSelectedNode() == node) flags |= ImGuiTreeNodeFlags_Selected;
 	if (childMatches) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
@@ -859,6 +905,27 @@ void EditorWorkspace::DrawHierarchyNode(const std::shared_ptr<SceneNode>& node)
 	}
 	const bool open = ImGui::TreeNodeEx(node.get(), flags, "%s", name.c_str());
 	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) SelectNode(node);
+	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) BeginRename(node);
+	// Drag a node onto another to reparent it (world transform kept).
+	if (ImGui::BeginDragDropSource()) {
+		SceneNode* raw = node.get();
+		ImGui::SetDragDropPayload(nox::editor::kNodeDragType, &raw, sizeof(raw));
+		ImGui::TextUnformatted(name.c_str());
+		ImGui::EndDragDropSource();
+	}
+	if (ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(nox::editor::kNodeDragType)) {
+			if (payload->DataSize == sizeof(SceneNode*)) {
+				SceneNode* raw = *static_cast<SceneNode* const*>(payload->Data);
+				if (auto dragged = FindSharedNode(RootNode(), raw)) ReparentWithUndo(dragged, node);
+			}
+		}
+		if (const ImGuiPayload* asset = ImGui::AcceptDragDropPayload(nox::editor::kAssetDragType)) {
+			const std::string path(static_cast<const char*>(asset->Data));
+			if (nox::prefab::IsPrefabPath(path)) InstantiatePrefabFromAsset(path, node);
+		}
+		ImGui::EndDragDropTarget();
+	}
 	if (tag[0]) {
 		ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(tag).x - 4);
 		ImGui::PushStyleColor(ImGuiCol_Text, tagCol);
@@ -875,8 +942,19 @@ void EditorWorkspace::DrawHierarchyNode(const std::shared_ptr<SceneNode>& node)
 				cam->SetPose(eye, glm::vec3(0, 1, 0), glm::degrees(std::atan2(d.z, d.x)), glm::degrees(std::asin(d.y)));
 			}
 		}
-		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, !m_core.IsPlaying())) { if (auto c = m_core.DuplicateNode(node)) SelectNode(c); }
-		if (ImGui::MenuItem("Delete", "Del", false, !m_core.IsPlaying())) { m_core.DeleteNode(node); SelectNode(nullptr); ImGui::EndPopup(); if (open) ImGui::TreePop(); return; }
+		if (ImGui::MenuItem("Rename", "F2", false, !playing)) BeginRename(node);
+		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, !playing)) DuplicateNodeWithUndo(node);
+		if (ImGui::MenuItem("Save as Prefab...", nullptr, false, !playing)) BeginSavePrefab(node);
+		if (ImGui::MenuItem("Delete", "Del", false, !playing)) {
+			DeleteNodeWithUndo(node);
+			ImGui::EndPopup();
+			if (open) ImGui::TreePop();
+			return;
+		}
+		if (ImGui::BeginMenu("Add Child", !playing)) {
+			DrawAddNodeItems();
+			ImGui::EndMenu();
+		}
 		ImGui::EndPopup();
 	}
 	if (open) {
@@ -891,19 +969,186 @@ void EditorWorkspace::DrawHierarchy()
 	solace::SearchField("##hfilter", m_hierarchyFilter, sizeof(m_hierarchyFilter), "Filter nodes");
 	ImGui::Separator();
 	ImGui::BeginChild("##tree");
-	if (auto graph = m_core.GetSceneGraph()) {
-		if (auto root = graph->GetRoot()) {
-			for (const auto& c : root->children) DrawHierarchyNode(c);
+	if (auto root = RootNode()) {
+		for (const auto& c : root->children) DrawHierarchyNode(c);
+		// Empty space below the nodes: drop here to move a node to the scene root; right-click adds nodes.
+		const float freeHeight = std::max(ImGui::GetContentRegionAvail().y, 12.0f);
+		ImGui::InvisibleButton("##hierarchy_root", ImVec2(-1.0f, freeHeight));
+		if (ImGui::BeginDragDropTarget()) {
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(nox::editor::kNodeDragType)) {
+				if (payload->DataSize == sizeof(SceneNode*)) {
+					SceneNode* raw = *static_cast<SceneNode* const*>(payload->Data);
+					if (auto dragged = FindSharedNode(root, raw)) ReparentWithUndo(dragged, root);
+				}
+			}
+			if (const ImGuiPayload* asset = ImGui::AcceptDragDropPayload(nox::editor::kAssetDragType)) {
+				const std::string path(static_cast<const char*>(asset->Data));
+				if (nox::prefab::IsPrefabPath(path)) InstantiatePrefabFromAsset(path, root);
+			}
+			ImGui::EndDragDropTarget();
+		}
+		if (ImGui::BeginPopupContextItem("##hierarchy_ctx", ImGuiPopupFlags_MouseButtonRight)) {
+			SelectNode(nullptr);
+			if (ImGui::BeginMenu("Add Node", !m_core.IsPlaying())) {
+				DrawAddNodeItems();
+				ImGui::EndMenu();
+			}
+			ImGui::EndPopup();
 		}
 	}
 	ImGui::EndChild();
 	ImGui::End();
 }
 
+// ---------------------------------------------------------------------------------------------
+// Node operations (undoable): add, duplicate, delete, reparent, rename
+// ---------------------------------------------------------------------------------------------
+std::shared_ptr<SceneNode> EditorWorkspace::RootNode() const
+{
+	auto graph = m_core.GetSceneGraph();
+	return graph ? graph->GetRoot() : nullptr;
+}
+
+nox::editor::UndoPush EditorWorkspace::UndoSink()
+{
+	// Play-mode edits are not authored, so they never enter the undo stack.
+	if (m_core.IsPlaying()) return nullptr;
+	return [this](const std::string& label, std::function<void()> undo, std::function<void()> redo) {
+		Push(label, std::move(undo), std::move(redo));
+	};
+}
+
+nox::editor::NodeOps EditorWorkspace::CoreNodeOps()
+{
+	nox::editor::NodeOps ops;
+	ops.serialize = [this](const std::shared_ptr<SceneNode>& n) { return m_core.SerializeNodeForEditor(n); };
+	ops.instantiate = [this](const json& j, const std::shared_ptr<SceneNode>& p) { return m_core.InstantiateNodeFromJson(j, p); };
+	ops.destroy = [this](const std::shared_ptr<SceneNode>& n) { return m_core.DeleteNode(n); };
+	ops.reparent = [this](const std::shared_ptr<SceneNode>& n, const std::shared_ptr<SceneNode>& p, int index, bool keepWorld) {
+		return m_core.ReparentNode(n, p, index, keepWorld);
+	};
+	return ops;
+}
+
+void EditorWorkspace::NoteEdit()
+{
+	// Edits in play mode change the running world only; the authored scene stays clean.
+	if (!m_core.IsPlaying()) m_core.MarkDirty();
+	m_core.InvalidateSceneCaches();
+}
+
+void EditorWorkspace::AddNodeFromTemplate(const std::string& kind)
+{
+	if (m_core.IsPlaying()) return;
+	const auto parent = m_legacy.GetSelectedNode();
+	json nodeJson = NodeTemplate(kind);
+	const glm::vec3 position = SpawnPosition(m_core, parent, nodeJson.value("type", "node") == "light" ? 3.0f : 0.0f);
+	nodeJson["position"] = { position.x, position.y, position.z };
+	const std::string label = "Add " + nodeJson.value("name", std::string("Node"));
+	if (auto node = nox::editor::CreateNodeUndoable(m_nodeTable, CoreNodeOps(), UndoSink(), label, nodeJson, parent)) {
+		SelectNode(node);
+		NoteEdit();
+	}
+}
+
+void EditorWorkspace::AddModelFromAsset(const std::string& path)
+{
+	if (m_core.IsPlaying()) return;
+	const auto parent = m_legacy.GetSelectedNode();
+	const glm::vec3 position = SpawnPosition(m_core, parent, 0.0f);
+	if (auto node = m_core.AddModelNode(path, position, parent)) {
+		nox::editor::RecordCreatedNode(m_nodeTable, CoreNodeOps(), UndoSink(), "Add " + fs::path(path).stem().string(), node);
+		SelectNode(node);
+		NoteEdit();
+	}
+}
+
+void EditorWorkspace::DrawAddNodeItems()
+{
+	const bool playing = m_core.IsPlaying();
+	if (ImGui::MenuItem("Empty", nullptr, false, !playing)) AddNodeFromTemplate("empty");
+	ImGui::Separator();
+	if (ImGui::MenuItem("Directional Light", nullptr, false, !playing)) AddNodeFromTemplate("directional");
+	if (ImGui::MenuItem("Point Light", nullptr, false, !playing)) AddNodeFromTemplate("point");
+	if (ImGui::MenuItem("Spot Light", nullptr, false, !playing)) AddNodeFromTemplate("spot");
+	ImGui::Separator();
+	if (ImGui::MenuItem("Audio Source", nullptr, false, !playing)) AddNodeFromTemplate("audio");
+	if (ImGui::MenuItem("Camera", nullptr, false, !playing)) AddNodeFromTemplate("camera");
+	if (ImGui::MenuItem("GUI", nullptr, false, !playing)) AddNodeFromTemplate("gui");
+	if (ImGui::MenuItem("LPV Volume", nullptr, false, !playing)) AddNodeFromTemplate("lpv_volume");
+	ImGui::Separator();
+	if (ImGui::MenuItem("Model from asset...", nullptr, false, !playing)) m_openAddModel = true;
+}
+
+void EditorWorkspace::DuplicateNodeWithUndo(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || m_core.IsPlaying()) return;
+	if (auto copy = m_core.DuplicateNode(node)) {
+		nox::editor::RecordCreatedNode(m_nodeTable, CoreNodeOps(), UndoSink(), "Duplicate " + node->GetName(), copy);
+		SelectNode(copy);
+	}
+}
+
+void EditorWorkspace::DeleteNodeWithUndo(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || m_core.IsPlaying()) return;
+	if (nox::editor::DeleteNodeUndoable(m_nodeTable, CoreNodeOps(), UndoSink(), node)) NoteEdit();
+	SelectNode(nullptr);
+}
+
+void EditorWorkspace::ReparentWithUndo(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& parent)
+{
+	if (!node || !parent || node == parent || m_core.IsPlaying()) return;
+	if (node->parentNode.lock() == parent) return;
+	if (nox::editor::ReparentNodeUndoable(m_nodeTable, CoreNodeOps(), UndoSink(), node, parent, -1)) NoteEdit();
+	else ui::Toast("A node cannot be moved under itself", ui::ToastKind::Warning);
+}
+
+void EditorWorkspace::BeginRename(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || m_core.IsPlaying()) return;
+	m_renameTarget = node;
+	std::snprintf(m_renameBuf, sizeof(m_renameBuf), "%s", node->GetName().c_str());
+	m_openRename = true;
+}
+
+void EditorWorkspace::BeginSavePrefab(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || m_core.IsPlaying()) return;
+	m_prefabTarget = node;
+	std::string name;
+	for (char c : node->GetName()) name += (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-') ? c : '_';
+	if (name.empty()) name = "node";
+	std::snprintf(m_prefabPathBuf, sizeof(m_prefabPathBuf), "prefabs/%s%s", name.c_str(), nox::prefab::kExtension);
+	m_openSavePrefab = true;
+}
+
+void EditorWorkspace::InstantiatePrefabFromAsset(const std::string& path, const std::shared_ptr<SceneNode>& parent)
+{
+	if (m_core.IsPlaying()) return;
+	const glm::vec3 position = SpawnPosition(m_core, parent, 0.0f);
+	nlohmann::json placement = { { "position", { position.x, position.y, position.z } } };
+	std::string error;
+	auto node = m_core.InstantiatePrefabNode(path, parent, placement, &error);
+	if (!node) {
+		ui::Toast(error.empty() ? std::string("Prefab could not be instantiated") : error, ui::ToastKind::Warning);
+		return;
+	}
+	nox::editor::RecordCreatedNode(m_nodeTable, CoreNodeOps(), UndoSink(), "Add " + fs::path(path).stem().stem().string(), node);
+	SelectNode(node);
+	NoteEdit();
+}
+
+void EditorWorkspace::UnpackPrefabWithUndo(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || m_core.IsPlaying()) return;
+	if (nox::editor::UnpackPrefabUndoable(m_nodeTable, UndoSink(), node)) NoteEdit();
+}
+
 void EditorWorkspace::DrawAssets()
 {
 	if (!ImGui::Begin(kWinAssets, &m_showAssets)) { ImGui::End(); return; }
-	static const char* folders[] = { "scenes", "models", "textures", "hdrs", "sounds", "fonts", "config", "shaders", "generated" };
+	static const char* folders[] = { "scenes", "prefabs", "models", "textures", "hdrs", "sounds", "fonts", "config", "shaders", "generated" };
 	ImGui::SetNextItemWidth(110);
 	if (ImGui::BeginCombo("##folder", m_assetFolder.c_str())) {
 		for (const char* f : folders) if (ImGui::Selectable(f, m_assetFolder == f)) { m_assetFolder = f; m_assetCacheTimer = 0.0f; }
@@ -928,16 +1173,21 @@ void EditorWorkspace::DrawAssets()
 		const std::string ext = fs::path(path).extension().string();
 		ImGui::PushID(path.c_str());
 		ImGui::Selectable(path.c_str());
+		if (ImGui::BeginDragDropSource()) {
+			ImGui::SetDragDropPayload(nox::editor::kAssetDragType, path.c_str(), path.size() + 1);
+			ImGui::TextUnformatted(path.c_str());
+			ImGui::EndDragDropSource();
+		}
 		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 			if (ext == ".json" && m_assetFolder == "scenes") RequestScene(path);
 		}
 		if (ImGui::BeginPopupContextItem()) {
 			if (ext == ".json" && m_assetFolder == "scenes" && ImGui::MenuItem("Open Scene")) RequestScene(path);
+			if (nox::prefab::IsPrefabPath(path) && ImGui::MenuItem("Add to Scene", nullptr, false, !m_core.IsPlaying())) {
+				InstantiatePrefabFromAsset(path, m_legacy.GetSelectedNode());
+			}
 			if ((ext == ".glb" || ext == ".gltf" || ext == ".fbx") && ImGui::MenuItem("Add to Scene", nullptr, false, !m_core.IsPlaying())) {
-				glm::vec3 pos(0.0f);
-				if (auto cam = m_core.GetCamera()) pos = cam->GetCameraPosition() + cam->GetCameraFrontVector() * 8.0f;
-				pos.y = 0.0f;
-				if (auto n = m_core.AddModelNode(path, pos)) SelectNode(n);
+				AddModelFromAsset(path);
 			}
 			if (ImGui::MenuItem("Copy Path")) ImGui::SetClipboardText(path.c_str());
 			ImGui::EndPopup();
@@ -956,68 +1206,157 @@ void EditorWorkspace::DrawAssets()
 void EditorWorkspace::DrawInspector()
 {
 	if (!ImGui::Begin(kWinInspector, &m_showInspector)) { ImGui::End(); return; }
+	if (m_core.IsPlaying()) DrawPlayBanner();
 	auto node = m_legacy.GetSelectedNode();
 	if (!node) {
 		ImGui::TextDisabled("Select a node in the Hierarchy or the Scene view.");
-		ImGui::TextDisabled("Spawn, events and checkpoints are edited in Race & Routes / Drive.");
-		ImGui::End();
-		return;
 	}
-	char name[128];
-	std::snprintf(name, sizeof(name), "%s", node->GetName().c_str());
-	ImGui::SetNextItemWidth(-1);
-	if (ImGui::InputText("##name", name, sizeof(name), ImGuiInputTextFlags_EnterReturnsTrue)) {
-		const std::string before = node->GetName(), after = name;
-		std::weak_ptr<SceneNode> weak = node;
-		node->SetName(after);
-		Push("Rename", [weak, before] { if (auto n = weak.lock()) n->SetName(before); }, [weak, after] { if (auto n = weak.lock()) n->SetName(after); });
-		m_core.MarkDirty();
-	}
-	if (ui::Section("Transform", true)) {
-		glm::vec3 p = node->GetPosition();
-		glm::vec3 s = node->GetScale();
-		glm::vec3 e = glm::degrees(glm::eulerAngles(node->GetOrientation()));
-		bool changed = false;
-		ui::Grid("##xf");
-		ui::Label("Position"); changed |= ImGui::DragFloat3("##p", &p.x, 0.05f);
-		ui::Label("Rotation"); changed |= ImGui::DragFloat3("##r", &e.x, 0.5f);
-		ui::Label("Scale"); changed |= ImGui::DragFloat3("##s", &s.x, 0.01f);
-		ui::EndGrid();
-		if (changed) {
-			node->SetLocalTRS(p, glm::quat(glm::radians(e)), s);
-			m_core.InvalidateSceneCaches();
+	else {
+		if (!node->GetPrefabPath().empty()) {
+			ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1.0f), "Prefab: %s", node->GetPrefabPath().c_str());
+			ImGui::SameLine();
+			if (ui::Btn("Unpack", false) && !m_core.IsPlaying()) UnpackPrefabWithUndo(node);
 		}
-	}
-	if (auto lightNode = std::dynamic_pointer_cast<LightNode>(node)) {
-		if (auto light = lightNode->GetLight(); light && ui::Section("Light", true)) {
-			glm::vec3 c = light->GetColor();
-			float intensity = light->GetIntensity();
-			float range = light->GetRange();
-			bool enabled = light->IsEnabled();
-			bool shadows = light->CastsShadows();
-			ui::Grid("##light");
-			ui::Label("Enabled"); if (ImGui::Checkbox("##en", &enabled)) { light->SetEnabled(enabled); m_core.MarkDirty(); }
-			ui::Label("Color"); if (ImGui::ColorEdit3("##c", &c.x)) { light->SetColor(c); m_core.MarkDirty(); }
-			ui::Label("Intensity"); if (ImGui::DragFloat("##i", &intensity, 0.01f, 0.0f, 1000.0f)) { light->SetIntensity(intensity); m_core.MarkDirty(); }
-			ui::Label("Range"); if (ImGui::DragFloat("##rg", &range, 0.1f, 0.1f, 500.0f)) { light->SetRange(range); m_core.MarkDirty(); }
-			ui::Label("Shadows"); if (ImGui::Checkbox("##sh", &shadows)) { light->SetCastsShadows(shadows); m_core.MarkDirty(); }
-			ui::EndGrid();
+		// Node names for NodeRef pickers (flattened scene graph, root excluded).
+		std::vector<std::string> nodeNames;
+		std::function<void(const std::shared_ptr<SceneNode>&)> collect = [&](const std::shared_ptr<SceneNode>& n) {
+			for (const auto& c : n->children) {
+				nodeNames.push_back(c->GetName());
+				collect(c);
+			}
+		};
+		if (auto root = RootNode()) collect(root);
+
+		// Builtin facets (Node, Transform) first; the registry sorts the rest by their order.
+		std::vector<const nox::reflect::ComponentDesc*> components = nox::reflect::Registry::Get().ComponentsOf(*node);
+		std::stable_partition(components.begin(), components.end(),
+			[](const nox::reflect::ComponentDesc* d) { return d->builtin; });
+		for (const nox::reflect::ComponentDesc* desc : components) {
+			DrawComponentSection(node, *desc, m_assetCache, nodeNames);
 		}
-	}
-	if (auto model = node->GetModel(); model && ui::Section("Model", true)) {
-		ImGui::TextDisabled("%s", model->m_model_name.c_str());
-		ImGui::Text("%d meshes", static_cast<int>(model->meshes.size()));
-		bool exclude = model->excludeFromReflectionCapture;
-		if (ImGui::Checkbox("Exclude from reflection capture", &exclude)) model->excludeFromReflectionCapture = exclude;
-	}
-	if (ui::Section("Info", false)) {
-		ImGui::Text("Entity %u", node->GetEntityID());
-		ImGui::Text("Children %d", static_cast<int>(node->children.size()));
-		const glm::vec3 w = node->GetWorldPosition();
-		ImGui::Text("World (%.2f, %.2f, %.2f)", w.x, w.y, w.z);
-		if (node->IsGenerated()) ImGui::TextColored(ImVec4(1, 0.8f, 0.4f, 1), "Generated: rebuilt on load, not saved");
+		DrawAddComponentButton(node);
+
+		// Info footer: summaries that the registry does not own (models are the MeshRenderer component).
+		if (ui::Section("Info", false)) {
+			ImGui::Text("Entity %u", node->GetEntityID());
+			ImGui::Text("Children %d", static_cast<int>(node->children.size()));
+			const glm::vec3 w = node->GetWorldPosition();
+			ImGui::Text("World (%.2f, %.2f, %.2f)", w.x, w.y, w.z);
+			if (node->IsGenerated()) ImGui::TextColored(ImVec4(1, 0.8f, 0.4f, 1), "Generated: rebuilt on load, not saved");
+		}
 	}
 	ImGui::End();
+	// Safety net: a continuous edit whose widget is gone ends once no item is active.
+	if (m_propEdit.active && !ImGui::IsAnyItemActive()) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+}
+
+void EditorWorkspace::DrawPlayBanner()
+{
+	const ImVec4 colour = m_core.IsPaused() ? ImVec4(0.62f, 0.45f, 0.10f, 1.0f) : ImVec4(0.62f, 0.16f, 0.12f, 1.0f);
+	ImGui::PushStyleColor(ImGuiCol_ChildBg, colour);
+	ImGui::BeginChild("##playbanner", ImVec2(-1.0f, ImGui::GetFrameHeight() + 8.0f), false, ImGuiWindowFlags_NoScrollbar);
+	ImGui::SetCursorPos(ImVec2(8.0f, 4.0f));
+	ImGui::TextColored(ImVec4(1, 1, 1, 1), "Playing: changes are not saved");
+	ImGui::EndChild();
+	ImGui::PopStyleColor();
+	ImGui::Spacing();
+}
+
+void EditorWorkspace::DrawComponentSection(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
+	const std::vector<std::string>& assets, const std::vector<std::string>& nodeNames)
+{
+	using nox::reflect::MethodDesc;
+	using nox::reflect::PropertyDesc;
+	using nox::reflect::PropValue;
+	const bool open = ui::Section(desc.name.c_str(), desc.builtin);
+	const bool removable = !desc.builtin && desc.remove != nullptr;
+	bool removed = false;
+	const std::string ctxId = "##ctx_" + desc.name;
+	if (ImGui::BeginPopupContextItem(ctxId.c_str())) {
+		if (ImGui::MenuItem("Remove Component", nullptr, false, removable)) {
+			removed = nox::editor::RemoveComponentUndoable(m_nodeTable, UndoSink(), node, desc);
+			if (removed) NoteEdit();
+		}
+		ImGui::EndPopup();
+	}
+	if (removed || !open || !desc.has || !desc.has(*node)) return;
+
+	ui::Grid(("##grid_" + desc.name).c_str());
+	for (const PropertyDesc& prop : desc.properties) {
+		if (prop.flags & nox::reflect::PropHidden) continue;
+		if (!prop.AppliesTo(*node)) continue;
+		PropValue value;
+		if (!nox::reflect::GetProperty(*node, desc.name, prop.name, value)) continue;
+
+		solace::PropertyLabel(prop.label.c_str(), prop.tooltip.empty() ? nullptr : prop.tooltip.c_str());
+		const std::string widgetId = desc.name + "." + prop.name;
+		const bool ownsEdit = m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
+			&& m_nodeTable.Resolve(m_propEdit.node) == node;
+		const nox::editor::PropertyWidgetResult r = nox::editor::DrawPropertyWidget(prop, value, assets, nodeNames, widgetId.c_str());
+		if (r.changed) {
+			std::string error;
+			bool ok;
+			if (!ownsEdit && r.final) {
+				// Discrete change (checkbox, combo, Enter in a text field): one step now.
+				ok = nox::editor::SetPropertyUndoable(m_nodeTable, UndoSink(), node, desc.name, prop.name, value, &error);
+			}
+			else {
+				// Drag, slider or colour: the first write latches the old value; the step ends below.
+				ok = nox::editor::SetPropertyContinuous(m_propEdit, m_nodeTable, node, desc.name, prop.name, value, &error);
+			}
+			if (!ok) ui::Toast(error.empty() ? "Value rejected" : error, ui::ToastKind::Warning);
+			NoteEdit();
+		}
+		const bool stillOwned = m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
+			&& m_nodeTable.Resolve(m_propEdit.node) == node;
+		if (stillOwned && (r.final || !r.active)) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+	}
+	// Methods flagged editorButton and taking no arguments.
+	for (const MethodDesc& method : desc.methods) {
+		if (!method.editorButton || !method.args.empty()) continue;
+		solace::PropertyLabel(method.name.c_str(), method.tooltip.empty() ? nullptr : method.tooltip.c_str());
+		ImGui::PushID((desc.name + "." + method.name).c_str());
+		if (ImGui::Button("Run")) InvokeEditorButton(node, desc, method);
+		ImGui::PopID();
+	}
+	ui::EndGrid();
+}
+
+void EditorWorkspace::InvokeEditorButton(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
+	const nox::reflect::MethodDesc& method)
+{
+	nox::reflect::PropValue result;
+	std::string error;
+	if (!nox::reflect::InvokeMethod(*node, desc.name, method.name, {}, result, &error)) {
+		ui::Toast(error.empty() ? "Action failed" : error, ui::ToastKind::Warning);
+		return;
+	}
+	NoteEdit();
+}
+
+void EditorWorkspace::DrawAddComponentButton(const std::shared_ptr<SceneNode>& node)
+{
+	ImGui::Spacing();
+	if (ImGui::Button("Add Component", ImVec2(-1.0f, 0.0f))) ImGui::OpenPopup("##addcomponent");
+	if (!ImGui::BeginPopup("##addcomponent")) return;
+	const auto& all = nox::reflect::Registry::Get().All();
+	auto addable = [&](const nox::reflect::ComponentDesc& d) { return d.add != nullptr && !(d.has && d.has(*node)); };
+	std::set<std::string> categories;
+	for (const auto& d : all) if (addable(d)) categories.insert(d.category.empty() ? std::string("Other") : d.category);
+	for (const std::string& category : categories) {
+		ImGui::TextDisabled("%s", category.c_str());
+		for (const auto& d : all) {
+			const std::string dCategory = d.category.empty() ? std::string("Other") : d.category;
+			if (dCategory != category || !addable(d)) continue;
+			if (ImGui::MenuItem(d.name.c_str())) {
+				if (nox::editor::AddComponentUndoable(m_nodeTable, UndoSink(), node, d)) NoteEdit();
+			}
+			if (ImGui::IsItemHovered() && !d.tooltip.empty()) ImGui::SetTooltip("%s", d.tooltip.c_str());
+		}
+		ImGui::Separator();
+	}
+	if (categories.empty()) ImGui::TextDisabled("Every component is already present.");
+	ImGui::EndPopup();
 }
 
 void EditorWorkspace::DrawMaterials()
@@ -1295,6 +1634,111 @@ void EditorWorkspace::DrawLaunchPresets()
 // ---------------------------------------------------------------------------------------------
 void EditorWorkspace::DrawModals()
 {
+	if (m_openRename) {
+		ImGui::OpenPopup("Rename Node");
+		m_openRename = false;
+	}
+	if (ImGui::BeginPopupModal("Rename Node", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		auto target = m_renameTarget.lock();
+		if (!target || m_core.IsPlaying()) {
+			ImGui::CloseCurrentPopup();
+		}
+		else {
+			if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+			ImGui::SetNextItemWidth(260.0f);
+			const bool enter = ImGui::InputText("##rename", m_renameBuf, sizeof(m_renameBuf), ImGuiInputTextFlags_EnterReturnsTrue);
+			ImGui::SameLine();
+			const bool ok = ui::Btn("OK", true);
+			ImGui::SameLine();
+			const bool cancel = ui::Btn("Cancel", false);
+			if (enter || ok) {
+				const std::string name = m_renameBuf;
+				std::string error;
+				if (!name.empty() && name != target->GetName()) {
+					if (nox::editor::SetPropertyUndoable(m_nodeTable, UndoSink(), target, "Node", "name",
+						nox::reflect::PropValue(name), &error)) {
+						NoteEdit();
+					}
+					else {
+						ui::Toast(error.empty() ? std::string("Name rejected") : error, ui::ToastKind::Warning);
+					}
+				}
+				ImGui::CloseCurrentPopup();
+			}
+			else if (cancel) {
+				ImGui::CloseCurrentPopup();
+			}
+		}
+		ImGui::EndPopup();
+	}
+	if (m_openSavePrefab) {
+		ImGui::OpenPopup("Save as Prefab");
+		m_openSavePrefab = false;
+	}
+	if (ImGui::BeginPopupModal("Save as Prefab", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		auto target = m_prefabTarget.lock();
+		if (!target || m_core.IsPlaying()) {
+			ImGui::CloseCurrentPopup();
+		}
+		else {
+			ImGui::TextUnformatted("Asset path (relative to the project root):");
+			ImGui::SetNextItemWidth(360.0f);
+			if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+			const bool enter = ImGui::InputText("##prefabpath", m_prefabPathBuf, sizeof(m_prefabPathBuf), ImGuiInputTextFlags_EnterReturnsTrue);
+			ImGui::TextDisabled("Writes the node and its children; an existing file is replaced.");
+			const bool ok = ui::Btn("Save", true);
+			ImGui::SameLine();
+			const bool cancel = ui::Btn("Cancel", false);
+			if (enter || ok) {
+				std::string error;
+				const auto logical = AssetIO::Normalize(m_prefabPathBuf, &error);
+				if (!logical || !nox::prefab::IsPrefabPath(*logical)) {
+					ui::Toast(error.empty() ? std::string("A prefab path must end with .prefab.json") : error, ui::ToastKind::Warning);
+				}
+				else if (m_core.SavePrefabFromNode(target, *logical, &error)) {
+					ui::Toast("Prefab saved: " + *logical, ui::ToastKind::Success);
+				}
+				else {
+					ui::Toast(error.empty() ? std::string("Prefab could not be saved") : error, ui::ToastKind::Warning);
+				}
+				ImGui::CloseCurrentPopup();
+			}
+			else if (cancel) {
+				ImGui::CloseCurrentPopup();
+			}
+		}
+		ImGui::EndPopup();
+	}
+	if (m_openAddModel) {
+		m_modelChoices.clear();
+		AssetIO::ListOptions options;
+		options.recursive = true;
+		for (const std::string& path : AssetIO::List("models", options)) {
+			const std::string ext = fs::path(path).extension().string();
+			if (ext == ".glb" || ext == ".gltf" || ext == ".fbx") m_modelChoices.push_back(path);
+		}
+		std::sort(m_modelChoices.begin(), m_modelChoices.end());
+		m_modelFilter[0] = 0;
+		ImGui::OpenPopup("Add Model");
+		m_openAddModel = false;
+	}
+	if (ImGui::BeginPopupModal("Add Model", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		ImGui::SetNextItemWidth(360.0f);
+		ImGui::InputTextWithHint("##modelfilter", "filter models", m_modelFilter, sizeof(m_modelFilter));
+		ImGui::BeginChild("##modellist", ImVec2(360.0f, 300.0f), true);
+		int shown = 0;
+		for (const std::string& path : m_modelChoices) {
+			if (!ContainsNoCase(path, m_modelFilter)) continue;
+			if (ImGui::Selectable(path.c_str())) {
+				AddModelFromAsset(path);
+				ImGui::CloseCurrentPopup();
+			}
+			if (++shown >= 500) break;
+		}
+		ImGui::EndChild();
+		if (ui::Btn("Cancel", false)) ImGui::CloseCurrentPopup();
+		ImGui::EndPopup();
+	}
 	if (m_openUnsavedModal) {
 		ImGui::OpenPopup("Unsaved changes");
 		m_openUnsavedModal = false;
@@ -1321,14 +1765,15 @@ void EditorWorkspace::HandleShortcuts()
 		else if (!m_core.IsPlaying()) { m_core.RequestPlay(); FocusGame(); }
 	}
 	if (ImGui::IsKeyPressed(ImGuiKey_F6, false) && m_core.IsPlaying()) m_core.TogglePause();
-	if (GameInputFocus()) return; // keys belong to the car
+	if (GameInputFocus()) return; // keys belong to the game
+	if (ImGui::IsKeyPressed(ImGuiKey_F2, false) && m_legacy.GetSelectedNode() && !m_core.IsPlaying()) BeginRename(m_legacy.GetSelectedNode());
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false) && !m_core.IsPlaying()) { m_core.SaveCurrentScene(); ui::Toast("Scene saved", ui::ToastKind::Success); }
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) Undo();
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) Redo();
 	auto sel = m_legacy.GetSelectedNode();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && sel && !m_core.IsPlaying()) { if (auto c = m_core.DuplicateNode(sel)) SelectNode(c); }
+	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && sel && !m_core.IsPlaying()) DuplicateNodeWithUndo(sel);
 	if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && sel && !m_core.IsPlaying() && (m_scene.focused || ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))) {
-		if (m_scene.focused) { m_core.DeleteNode(sel); SelectNode(nullptr); }
+		if (m_scene.focused) DeleteNodeWithUndo(sel);
 	}
 	if (m_scene.focused && !ctrl) {
 		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) m_gizmoOp = ImGuizmo::TRANSLATE;
@@ -1389,28 +1834,6 @@ void EditorWorkspace::TrackGameEdits()
 	m_gameEditActive = active;
 }
 
-void EditorWorkspace::TrackTransformEdits()
-{
-	auto node = m_legacy.GetSelectedNode();
-	const bool active = ImGui::IsAnyItemActive() && !ImGuizmo::IsUsing();
-	if (m_transformEditActive && !active) {
-		if (auto n = m_transformNode.lock()) {
-			const auto before = m_transformSnapshot, after = CaptureTRS(n);
-			if (before != after) {
-				std::weak_ptr<SceneNode> weak = n;
-				Push("Transform " + n->GetName(), [weak, before] { if (auto x = weak.lock()) ApplyTRS(x, before); },
-					[weak, after] { if (auto x = weak.lock()) ApplyTRS(x, after); });
-				m_core.MarkDirty();
-			}
-		}
-	}
-	if (!active && node) {
-		m_transformNode = node;
-		m_transformSnapshot = CaptureTRS(node);
-	}
-	m_transformEditActive = active;
-}
-
 // NOX_EDITOR_SMOKE=1: scripted editor checks for unattended validation (undo/redo of a transform
 // edit, Play/Stop restoring the pre-play state, viewport resize, save). Results go to the console.
 void EditorWorkspace::RunSmokeScript()
@@ -1418,7 +1841,7 @@ void EditorWorkspace::RunSmokeScript()
 	static const bool enabled = [] { const char* v = std::getenv("NOX_EDITOR_SMOKE"); return v && v[0] == '1'; }();
 	if (!enabled) return;
 	static int frame = 0;
-	static std::shared_ptr<SceneNode> car;
+	static std::shared_ptr<SceneNode> subject;
 	static glm::vec3 original(0.0f);
 	static int texW0 = 0;
 	static bool hasPlayer = false;
@@ -1427,33 +1850,33 @@ void EditorWorkspace::RunSmokeScript()
 	auto check = [](bool ok, const char* what) { std::cout << "[Smoke] " << (ok ? "PASS " : "FAIL ") << what << std::endl; };
 	auto graph = m_core.GetSceneGraph();
 	if (frame == 60 && graph) {
-		// First named, authored node below the root (any scene content will do).
+		// First authored node below the root (every node has a transform).
 		std::function<std::shared_ptr<SceneNode>(const std::shared_ptr<SceneNode>&)> find = [&](const std::shared_ptr<SceneNode>& n) -> std::shared_ptr<SceneNode> {
 			if (!n) return nullptr;
-			if (n != graph->GetRoot() && !n->IsGenerated() && !n->GetName().empty()) return n;
+			if (n != graph->GetRoot() && !n->IsGenerated()) return n;
 			for (const auto& c : n->children) if (auto f = find(c)) return f;
 			return nullptr;
 		};
-		car = find(graph->GetRoot());
-		check(car != nullptr, "select node");
-		if (car) {
-			SelectNode(car);
-			original = car->GetPosition();
-			const auto before = CaptureTRS(car);
-			car->SetLocalTRS(original + glm::vec3(0.0f, 0.0f, 0.0f), car->GetOrientation(), car->GetScale() * 1.0f);
-			ApplyTRS(car, { original.x + 0.5f, original.y, original.z, before[3], before[4], before[5], before[6], before[7], before[8], before[9] });
-			const auto after = CaptureTRS(car);
-			std::weak_ptr<SceneNode> weak = car;
+		subject = find(graph->GetRoot());
+		check(subject != nullptr, "select node");
+		if (subject) {
+			SelectNode(subject);
+			original = subject->GetPosition();
+			const auto before = CaptureTRS(subject);
+			subject->SetLocalTRS(original + glm::vec3(0.0f, 0.0f, 0.0f), subject->GetOrientation(), subject->GetScale() * 1.0f);
+			ApplyTRS(subject, { original.x + 0.5f, original.y, original.z, before[3], before[4], before[5], before[6], before[7], before[8], before[9] });
+			const auto after = CaptureTRS(subject);
+			std::weak_ptr<SceneNode> weak = subject;
 			Push("Smoke transform", [weak, before] { if (auto n = weak.lock()) ApplyTRS(n, before); }, [weak, after] { if (auto n = weak.lock()) ApplyTRS(n, after); });
 			m_core.MarkDirty();
 			check(m_core.IsDirty(), "dirty after edit");
 		}
 	}
-	if (frame == 70 && car) {
+	if (frame == 70 && subject) {
 		Undo();
-		check(glm::length(car->GetPosition() - original) < 1e-4f, "undo restores transform");
+		check(glm::length(subject->GetPosition() - original) < 1e-4f, "undo restores transform");
 		Redo();
-		check(std::abs(car->GetPosition().x - original.x - 0.5f) < 1e-4f, "redo reapplies transform");
+		check(std::abs(subject->GetPosition().x - original.x - 0.5f) < 1e-4f, "redo reapplies transform");
 		Undo();
 	}
 	if (frame == 90) {

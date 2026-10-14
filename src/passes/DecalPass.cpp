@@ -5,7 +5,11 @@
 #include "../FrameBuffer.h"
 #include "../RenderContext.h"
 #include "../TextureArrayBuilder.h"
+#include "../SceneNode.h"
+#include "../render/DecalComponent.h"
+#include <cstring>
 #include <iostream>
+#include <map>
 #include <glm/gtc/type_ptr.hpp>
 
 namespace {
@@ -83,6 +87,44 @@ bool DecalPass::Initialize(RenderContext&)
 	return true;
 }
 
+namespace {
+// One set per texture from the scene's Decal components. The quad lies in the node's local XZ plane:
+// x across (size.x), z along (size.z), normal = cross(U, V) = node +Y. Node scale multiplies size.
+void CollectNodeDecalSets(SceneNode& node, std::map<std::string, size_t>& indexByTexture,
+	std::vector<DecalSet>& sets) {
+	if (const auto decal = node.GetDecal()) {
+		if (!decal->texture.empty()) {
+			const glm::mat4 world = node.GetWorldPosition4x4();
+			const glm::vec3 across = glm::vec3(world[0]);
+			const glm::vec3 along = glm::vec3(world[2]);
+			if (glm::length(across) > 1e-6f && glm::length(along) > 1e-6f) {
+				auto found = indexByTexture.find(decal->texture);
+				if (found == indexByTexture.end()) {
+					DecalSet set;
+					set.name = "node decal: " + decal->texture;
+					set.textureOptions.debugName = set.name;
+					TextureArrayBuilder::Layer layer;
+					layer.file = decal->texture;
+					set.layers.push_back(layer);
+					sets.push_back(set);
+					found = indexByTexture.emplace(decal->texture, sets.size() - 1).first;
+				}
+				DecalInstance d;
+				d.center = glm::vec3(world[3]);
+				d.axisU = across * (decal->size.x * 0.5f);
+				d.axisV = -along * (decal->size.z * 0.5f);
+				d.layer = 0;
+				d.tint = glm::vec4(glm::vec3(decal->color), decal->color.a * decal->opacity);
+				sets[found->second].instances.push_back(d);
+			}
+		}
+	}
+	for (const std::shared_ptr<SceneNode>& child : node.children) {
+		if (child) CollectNodeDecalSets(*child, indexByTexture, sets);
+	}
+}
+}
+
 void DecalPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<SceneGraph>& sceneGraph,
 	const std::shared_ptr<Camera>&,
@@ -91,26 +133,54 @@ void DecalPass::Execute(RenderContext& ctx,
 {
 	if (!sceneGraph || !ctx.gbufferFBO) return;
 	const SceneRenderExtras& extras = sceneGraph->renderExtras;
-	if (extras.decalSets.empty()) return;
+
+	// Node decals join the generator sets (their own list is left untouched).
+	m_nodeSets.clear();
+	if (const std::shared_ptr<SceneNode> root = sceneGraph->GetRoot()) {
+		std::map<std::string, size_t> indexByTexture;
+		CollectNodeDecalSets(*root, indexByTexture, m_nodeSets);
+	}
+	std::vector<const DecalSet*> sets;
+	for (const DecalSet& set : extras.decalSets) sets.push_back(&set);
+	for (const DecalSet& set : m_nodeSets) sets.push_back(&set);
+	if (sets.empty()) return;
 
 	rhi::Device& dev = rhi::Gpu();
-	if (extras.revision != m_revision) {
+	{
 		std::vector<GpuDecal> gpu;
 		m_ranges.clear();
-		for (const DecalSet& set : extras.decalSets) {
+		for (const DecalSet* set : sets) {
 			SetRange range;
 			range.firstInstance = static_cast<uint32_t>(gpu.size());
-			for (const DecalInstance& d : set.instances) {
+			for (const DecalInstance& d : set->instances) {
 				gpu.push_back({ glm::vec4(d.center, static_cast<float>(d.layer)), glm::vec4(d.axisU, 0.0f),
 					glm::vec4(d.axisV, 0.0f), d.uvRect, d.tint });
 			}
 			range.count = static_cast<int>(gpu.size() - range.firstInstance);
 			m_ranges.push_back(range);
 		}
-		dev.ReallocateBuffer(m_instanceVbo, gpu.size() * sizeof(GpuDecal), gpu.data(), rhi::BufferUsage::StaticDraw);
-		m_revision = extras.revision;
-		std::cout << "[DecalPass] Uploaded " << gpu.size() << " decals in " << m_ranges.size() << " set(s)" << std::endl;
+		const std::vector<glm::vec4> packed = [&gpu] {
+			std::vector<glm::vec4> out;
+			out.reserve(gpu.size() * kInstanceVec4s);
+			for (const GpuDecal& g : gpu) {
+				out.push_back(g.centerLayer);
+				out.push_back(g.axisU);
+				out.push_back(g.axisV);
+				out.push_back(g.uvRect);
+				out.push_back(g.tint);
+			}
+			return out;
+		}();
+		if (packed.size() != m_uploaded.size() || (!packed.empty() &&
+			std::memcmp(packed.data(), m_uploaded.data(), packed.size() * sizeof(glm::vec4)) != 0)) {
+			if (!gpu.empty()) {
+				dev.ReallocateBuffer(m_instanceVbo, gpu.size() * sizeof(GpuDecal), gpu.data(), rhi::BufferUsage::StaticDraw);
+			}
+			m_uploaded = packed;
+			std::cout << "[DecalPass] Uploaded " << gpu.size() << " decals in " << m_ranges.size() << " set(s)" << std::endl;
+		}
 	}
+	if (m_uploaded.empty()) return;
 
 	ctx.gbufferFBO->Bind();
 	dev.SetViewport({ 0, 0, ctx.width, ctx.height });
@@ -144,8 +214,8 @@ void DecalPass::Execute(RenderContext& ctx,
 	dev.SetUniform(dev.GetUniformLocation(m_shader, "uDecals"), 0);
 	dev.BindVertexInput(m_vao);
 
-	for (size_t s = 0; s < extras.decalSets.size() && s < m_ranges.size(); ++s) {
-		const DecalSet& set = extras.decalSets[s];
+	for (size_t s = 0; s < sets.size() && s < m_ranges.size(); ++s) {
+		const DecalSet& set = *sets[s];
 		if (m_ranges[s].count == 0) continue;
 		const rhi::TextureHandle texture = TextureArrayBuilder::GetOrBuild(set.layers, set.textureOptions);
 		if (!texture) continue;

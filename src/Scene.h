@@ -13,7 +13,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <JSON/json.h>
+#include "json.hpp"
 #include "tiny_gltf.h"
 #include "MeshComponent.h"
 #include "Vertex.h"

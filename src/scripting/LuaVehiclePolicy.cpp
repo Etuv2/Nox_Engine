@@ -38,7 +38,7 @@ namespace NoxLua {
 		};
 
 		const char* const kControlFields[] = {
-			"gear", "steer_angle", "nitro_drive_scale", "drive_shift_cut", "drag_scale", "rear_grip_scale",
+			"gear", "steer_angle", "drive_scale", "drive_shift_cut", "drag_scale", "rear_grip_scale",
 			"drive_throttle", "reverse_drive", "brake_command", "brake_front_share", "brake_rear_share",
 			"brake_at_standstill", "rear_drive_cut", "rear_spin_floor", "rear_lock", "hold_at_rest",
 		};
@@ -212,7 +212,11 @@ namespace NoxLua {
 
 		void FillInput(lua_State* L) const {
 			SetNum(L, "throttle", in->throttle); SetNum(L, "brake", in->brake); SetNum(L, "steer", in->steer);
-			SetBool(L, "handbrake", in->handbrake); SetBool(L, "nitrous", in->nitrous);
+			SetBool(L, "handbrake", in->handbrake);
+			// Named auxiliary inputs: inp.aux.<name> (number; buttons are 1 or 0). Rebuilt per call.
+			lua_newtable(L);
+			for (const auto& kv : in->aux) SetNum(L, kv.first.c_str(), kv.second);
+			lua_setfield(L, -2, "aux");
 		}
 
 		// Pushes the arguments of the current hook (self first). Runs inside the protected call.
@@ -256,7 +260,7 @@ namespace NoxLua {
 				const int idx = lua_gettop(L);
 				r.act.gear = static_cast<int>(ReqNum(L, idx, "gear"));
 				r.act.steerAngle = static_cast<float>(ReqNum(L, idx, "steer_angle"));
-				r.act.nitroDriveScale = static_cast<float>(ReqNum(L, idx, "nitro_drive_scale"));
+				r.act.driveScale = static_cast<float>(ReqNum(L, idx, "drive_scale"));
 				r.act.driveShiftCut = ReqBool(L, idx, "drive_shift_cut");
 				r.act.dragScale = static_cast<float>(ReqNum(L, idx, "drag_scale"));
 				r.act.rearGripScale = static_cast<float>(ReqNum(L, idx, "rear_grip_scale"));
@@ -299,19 +303,25 @@ namespace NoxLua {
 			}
 			default: break;
 			}
-			// Optional debug table of the controller (state for the facade and telemetry).
+			// Optional debug table of the controller (state for the facade and telemetry). Every number and
+			// boolean field becomes a named channel (booleans as 1 / 0); shift_timer and shift_event are the
+			// gearbox fields the backend and the facade read by name. Channels absent from the table keep their value.
 			lua_rawgeti(L, LUA_REGISTRYINDEX, I.self);
 			lua_getfield(L, -1, "debug");
 			if (lua_type(L, -1) == LUA_TTABLE) {
 				const int idx = lua_gettop(L);
-				double v = 0.0;
-				if (OptNum(L, idx, "nitro", v)) r.dbg.nitro = static_cast<float>(v);
-				if (OptNum(L, idx, "nitro_cooldown", v)) r.dbg.nitroCooldown = static_cast<float>(v);
-				OptBool(L, idx, "nitro_active", r.dbg.nitroActive);
-				if (OptNum(L, idx, "drift", v)) r.dbg.drift = static_cast<float>(v);
-				if (OptNum(L, idx, "drift_sign", v)) r.dbg.driftSign = static_cast<float>(v);
-				if (OptNum(L, idx, "shift_timer", v)) r.dbg.shiftTimer = static_cast<float>(v);
-				OptBool(L, idx, "shift_event", r.shiftEvent);
+				lua_pushnil(L);
+				while (lua_next(L, idx) != 0) {
+					if (lua_type(L, -2) == LUA_TSTRING) {
+						const std::string key = lua_tostring(L, -2);
+						const int vt = lua_type(L, -1);
+						if (key == "shift_timer" && vt == LUA_TNUMBER) r.dbg.shiftTimer = static_cast<float>(lua_tonumber(L, -1));
+						else if (key == "shift_event" && vt == LUA_TBOOLEAN) r.shiftEvent = lua_toboolean(L, -1) != 0;
+						else if (vt == LUA_TNUMBER) r.dbg.channels[key] = static_cast<float>(lua_tonumber(L, -1));
+						else if (vt == LUA_TBOOLEAN) r.dbg.channels[key] = lua_toboolean(L, -1) ? 1.0f : 0.0f;
+					}
+					lua_pop(L, 1);
+				}
 			}
 			lua_settop(L, 0);
 			return 0;
@@ -395,7 +405,8 @@ namespace NoxLua {
 			lua_pop(L, 1);
 			lua_rawgeti(L, LUA_REGISTRYINDEX, I.inpTable);
 			SetNum(L, "throttle", 0.0); SetNum(L, "brake", 0.0); SetNum(L, "steer", 0.0);
-			SetBool(L, "handbrake", false); SetBool(L, "nitrous", false);
+			SetBool(L, "handbrake", false);
+			lua_newtable(L); lua_setfield(L, -2, "aux");
 			lua_pop(L, 1);
 			lua_settop(L, 0);
 			return 0;
@@ -525,10 +536,10 @@ namespace NoxLua {
 
 	namespace {
 		// Actuation used while faulted: steering centred, no drive, a light brake (coast to a stop), no
-		// shift, no nitrous. The gear already in `out` (the current gear) is kept.
+		// shift, no boost. The gear already in `out` (the current gear) is kept.
 		void SafeActuation(VehicleActuation& out) {
 			out.steerAngle = 0.0f;
-			out.nitroDriveScale = 1.0f;
+			out.driveScale = 1.0f;
 			out.driveShiftCut = false;
 			out.dragScale = 1.0f;
 			out.rearGripScale = 1.0f;
@@ -548,7 +559,7 @@ namespace NoxLua {
 		std::string ValidateActuation(const VehicleActuation& a, const VehicleStepTelemetry& t) {
 			if (a.gear == 0 || a.gear < -1 || a.gear > t.gearCount) return "gear must be -1 or 1..gear_count";
 			if (!InRange(a.steerAngle, -1.6f, 1.6f)) return "steer_angle must be a finite angle within +-1.6 rad";
-			if (!InRange(a.nitroDriveScale, 0.0f, 4.0f)) return "nitro_drive_scale must be in [0, 4]";
+			if (!InRange(a.driveScale, 0.0f, 4.0f)) return "drive_scale must be in [0, 4]";
 			if (!InRange(a.dragScale, 0.0f, 4.0f)) return "drag_scale must be in [0, 4]";
 			if (!InRange(a.rearGripScale, 0.0f, 2.0f)) return "rear_grip_scale must be in [0, 2]";
 			if (!InRange(a.driveThrottle, 0.0f, 1.0f)) return "drive_throttle must be in [0, 1]";

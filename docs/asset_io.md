@@ -107,7 +107,7 @@ Without a bootstrap file, `FindSourceRoot` walks up to six folders from the exec
 | Kind | Physical place | API | Notes |
 | --- | --- | --- | --- |
 | Settings with defaults | defaults through AssetIO, overrides in `UserDir` | `UserSettings::LoadJsonWithUserOverride`; `SaveUserOverride` | RFC 7386 merge patch in `settings/<file>`. `Core.cpp` and `MainWindow.cpp` load `config/config.json` with `settings/config.json` as the patch. `SaveUserOverride` (writes only the changed keys, `DiffPatch`) has no caller yet. |
-| Whole user files | `UserDir` | `UserSettings::LoadUserJson/SaveUserJson`, `LoadUserText/SaveUserText` | Saves are atomic (temp file, then rename). Examples: `saves/speedwall.json` (`GameSession.cpp`, seeded from `config/speedwall.json` when missing), `settings/editor_settings.json` (`EditorWorkspace.cpp`), `editor_layout.ini` (`Core.cpp` sets ImGui's ini file there, seeded from `config/editor_layout.ini`). |
+| Whole user files | `UserDir` | `UserSettings::LoadUserJson/SaveUserJson`, `LoadUserText/SaveUserText` | Saves are atomic (temp file, then rename). Examples: `saves/speedwall.json` (`GameSession.cpp`, seeded when missing from the file named by the scene's `game.speedwall_seed`; no shipped scene sets it, and the racing data is `projects/nox-racing/data/speedwall.json`), `settings/editor_settings.json` (`EditorWorkspace.cpp`), `editor_layout.ini` (`Core.cpp` sets ImGui's ini file there, seeded from `config/editor_layout.ini`). |
 | Runtime outputs | `UserDir` | `AssetIO::UserOutputPath(name, createParents)` | Relative names go under `UserDir`; absolute names are used as given. Used for performance recordings (`PerformanceRecorder.cpp`), runtime state snapshots (`RuntimeStateManager.cpp`), and benchmark output (`BenchmarkRunner.cpp`, default `captures/benchmark`). `SceneLoader.cpp` resolves its runtime-state files the same way with `ResolveUserPath`. |
 | Authoring (scenes, HUD config, launch presets, Lua authoring data) | loose source tree only | `AssetIO::SourcePath(logical)` | `SourcePath` returns nothing in packed mode, so the write is refused. See the refusal points below. |
 | Generated output | `CacheDir` | `AssetIO::GeneratedOutputPath(logical "generated/...")` | Creates parent folders. Rejects paths outside `generated/`. |
@@ -249,8 +249,9 @@ Scenes and launch options choose a project, and the project chooses a runtime:
 - top-level scene key `"project": "projects/<name>/project.json"` (`Core::ProjectForScene`);
 - `--project <descriptor>` on the command line, or `project` in the chosen launch preset (`src/main.cpp`,
   `config/launch_presets.json`). A launch project overrides the scene key.
-- `Core::SelectGameModule` (`src/Core.cpp`): no project means the native factory registered by the application
-  (`RegisterNoxRacingGame`, skipped by `--no-game`). A project path goes to `GameModules::CreateForProject`,
+- `Core::SelectGameModule` (`src/Core.cpp`): no project means the native factory registered by the application.
+  Only `Nox_RacingLegacy.exe` registers one (`RegisterNoxRacingGame`, skipped by `--no-game`); `Nox_Engine.exe`
+  registers none, so a scene without a project runs no game module there. A project path goes to `GameModules::CreateForProject`,
   which reads the descriptor through AssetIO, checks `format: 1`, and calls the factory registered for its
   `runtime` (`src/GameModule.cpp`; `"lua"` is registered in `main.cpp`).
 - If the project has no runnable module, Core logs the reason and runs no game module. It does not fall back to
@@ -261,9 +262,9 @@ Descriptor parsing (`src/scripting/LuaProject.cpp`): `format` 1, `runtime` `"lua
 `input.json` beside the descriptor), `roads`, `collision` and `authoring_roots`. Project-relative paths resolve
 against the descriptor's folder.
 
-Engine-only and shipped racing: the packaged racing profile lists `projects/nox-racing/project.json`, but the
-scenes it packs and the shipped presets do not name a project, so the shipped racing still runs the native
-module. Lua racing content exists in `projects/nox-racing/scripts`, but it is not selected by default yet.
+Shipped racing: the racing scenes and the racing launch presets (`projects/nox-racing/launch_presets.json`) name
+`projects/nox-racing/project.json`, so `Nox_Engine.exe` runs the Lua project for them, packaged or not. The native
+game runs only in `Nox_RacingLegacy.exe`, and only on a scene without a project key.
 
 ## Verification
 

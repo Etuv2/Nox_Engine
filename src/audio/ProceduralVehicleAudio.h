@@ -50,6 +50,10 @@ public:
 	void Update(const VehicleAudioState& state);
 	// Queues a cue (at most 16 pending; extra cues are dropped).
 	void Play(AudioCue cue);
+	// AudioMixer bus the output is routed through (default "sfx"). The bus gain is read in Update(), on the
+	// gameplay thread, and applied in the callback; with every bus at 1 the output is unchanged.
+	void SetBus(const std::string& bus);
+	const std::string& Bus() const;
 
 private:
 	static void RenderCallback(void* userdata, unsigned char* stream, int len);

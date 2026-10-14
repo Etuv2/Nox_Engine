@@ -36,8 +36,7 @@ void RoadNetwork::Clear()
 	m_edges.clear();
 	m_grid.clear();
 	m_file.clear();
-	m_leftHand = false;
-	m_bandWalls = true;
+	m_attributes.clear();
 	m_maxHalfWidth = 0.0f;
 }
 
@@ -64,8 +63,12 @@ bool RoadNetwork::LoadInline(const json& j)
 {
 	m_roadHalfWidth = j.value("road_half_width", 7.5f);
 	m_sidewalkWidth = j.value("sidewalk_width", 4.25f);
-	m_leftHand = j.value("traffic_side", std::string("right")) == "left";
-	m_bandWalls = j.value("band_walls", true);
+	m_attributes.clear();
+	for (const auto& kv : j.items()) {
+		if (kv.key() == "road_half_width" || kv.key() == "sidewalk_width" || kv.key() == "nodes" ||
+			kv.key() == "edges" || kv.key() == "file" || kv.key() == "format") continue;
+		m_attributes[kv.key()] = kv.value();
+	}
 	std::unordered_map<std::string, int> ids;
 	if (j.contains("nodes") && j["nodes"].is_array()) {
 		m_nodes.reserve(j["nodes"].size());
@@ -119,13 +122,29 @@ bool RoadNetwork::LoadInline(const json& j)
 	return true;
 }
 
+const json* RoadNetwork::Attribute(const std::string& name) const
+{
+	const auto it = m_attributes.find(name);
+	return it == m_attributes.end() ? nullptr : &it->second;
+}
+
+void RoadNetwork::SetAttribute(const std::string& name, const json& value)
+{
+	m_attributes[name] = value;
+}
+
+bool RoadNetwork::FlagAttribute(const std::string& name, bool fallback) const
+{
+	const json* v = Attribute(name);
+	return (v && v->is_boolean()) ? v->get<bool>() : fallback;
+}
+
 json RoadNetwork::Save() const
 {
 	if (!m_file.empty()) return json{ {"file", m_file} };
 	json j;
 	j["road_half_width"] = m_roadHalfWidth;
-	if (m_leftHand) j["traffic_side"] = "left";
-	if (!m_bandWalls) j["band_walls"] = false;
+	for (const auto& kv : m_attributes) j[kv.first] = kv.second;
 	j["sidewalk_width"] = m_sidewalkWidth;
 	json nodes = json::array();
 	for (const Node& n : m_nodes) {
@@ -252,7 +271,7 @@ float RoadNetwork::ClosestOnRoads3D(const glm::vec3& p3, float maxDy, glm::vec3*
 
 float RoadNetwork::Clearance(const glm::vec2& p, glm::vec2* outNormal) const
 {
-	if (m_edges.empty() || !m_bandWalls) {
+	if (m_edges.empty() || !FlagAttribute("band_walls", true)) {
 		if (outNormal) *outNormal = glm::vec2(0.0f);
 		return 1e6f;
 	}
@@ -309,15 +328,17 @@ glm::vec3 RoadNetwork::LanePosition(int ei, float t, float heading, int lane, fl
 	if (!e.oneway && glm::dot(dir, fwd) < 0.0f) dir = -dir;
 	// Facing dir, the car's right is (-dir.y, dir.x).
 	const glm::vec2 right(-dir.y, dir.x);
+	const json* side = Attribute("traffic_side");
+	const bool leftHand = side && side->is_string() && side->get<std::string>() == "left";
 	float offset;
 	if (e.oneway && e.lanes > 0) {
 		// Carriageway centre line = centre of its lanes; lane 0 is the leftmost.
-		const int l = lane < 0 ? (m_leftHand ? 0 : e.lanes - 1) : std::min(lane, e.lanes - 1);
+		const int l = lane < 0 ? (leftHand ? 0 : e.lanes - 1) : std::min(lane, e.lanes - 1);
 		offset = (static_cast<float>(l) - 0.5f * static_cast<float>(e.lanes - 1)) * e.laneWidth;
 	}
 	else {
 		// Two-way street: the driving side's lane.
-		offset = e.halfWidth * 0.3f * (m_leftHand ? -1.0f : 1.0f);
+		offset = e.halfWidth * 0.3f * (leftHand ? -1.0f : 1.0f);
 	}
 	outHeading = std::atan2(dir.x, dir.y);
 	return c + glm::vec3(right.x, 0.0f, right.y) * offset;

@@ -9,6 +9,10 @@ failure. This pass adds a standalone compatibility fixture, not scripting to the
 The sections below are the research and the proposal. Where they say Lua is not in the engine, that predates
 this status.
 
+Status (2026-10-14): the racing scenes name `projects/nox-racing/project.json`, so `Nox_Engine.exe` runs that Lua
+project for them. The native `NoxRacingGame` remains only in `Nox_RacingLegacy.exe`, on scenes without a project key.
+The "In progress" bullet below describes the 2026-10-12 state.
+
 - Implemented: the Lua 5.5.1 runtime and sandbox, ECS handles, the project descriptor and module loader, the
   transactional reload, play-world restoration and editor diagnostics (`src/scripting/`, `src/PlayWorldSnapshot.*`,
   tests `tests/native/test_lua_*.cpp`, `test_ecs_handles.cpp`, `test_play_world.cpp`). The sample project is

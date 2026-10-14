@@ -1,65 +1,16 @@
-// Game layer: registers the racing game (GameSession) and its content producers with the engine.
-// main() calls RegisterNoxRacingGame() before the window opens; nothing in the engine refers to
-// the names or file layouts used here.
+// Legacy native racing game (Nox_RacingLegacy.exe only): registers the GameSession module, its editor
+// panels and the procedural street generators with the engine. Nothing in the engine refers to the names or
+// file layouts used here.
 #include "NoxRacingGame.h"
 #include "GameModule.h"
 #include "GameEditorPanels.h"
 #include "GameSession.h"
-#include "ProceduralStreetKit.h"
-#include "RoadNetwork.h"
-#include "SceneExtensions.h"
-#include <filesystem>
-#include <iostream>
-
-namespace {
-	ProceduralGeneratorResult ToGeneratorResult(ProceduralStreetKit::Result&& generated)
-	{
-		ProceduralGeneratorResult out;
-		out.ok = generated.ok;
-		if (!generated.ok) return out;
-		out.gltfPath = std::move(generated.gltfPath);
-		// Generated children: light nodes first, then CC0 prop model instances (district).
-		out.childNodes = std::move(generated.lightNodes);
-		for (const nlohmann::json& prop : generated.propNodes) out.childNodes.push_back(prop);
-		out.reflectionProbes = std::move(generated.reflectionProbes);
-		out.renderExtras = std::move(generated.renderExtras);
-		out.hasRenderExtras = true;
-		// The district's collision layout (<output>_layout.json) is a side file of the model.
-		if (!generated.layoutPath.empty()) out.auxiliaryPaths.push_back(generated.layoutPath);
-		return out;
-	}
-}
-
-// Procedural generators of the racing content. Registered by the game and by tools/cook (nox_cook), which
-// runs them headless; the engine only sees the generic registry (SceneExtensions). Bump a version when the
-// generator's output for the same params changes, so cooked results are rebuilt.
-void RegisterNoxRacingProceduralGenerators()
-{
-	const std::vector<std::string> packInputs = { "texture_root", "decal_root", "lens_flare_root", "window_room_root" };
-
-	SceneExtensions::RegisterGenerator("street_kit", [](const ProceduralGeneratorInput& in) {
-		return ToGeneratorResult(ProceduralStreetKit::Generate(in.params));
-	}, true, ProceduralGeneratorInfo{ 1, {}, packInputs, {}, "generated/nfs_street" });
-
-	SceneExtensions::RegisterGenerator("district", [](const ProceduralGeneratorInput& in) {
-		// Road graph: node params override the scene's game.road_network; default grid otherwise.
-		RoadNetwork network;
-		bool loaded = false;
-		if (in.params.contains("road_network")) loaded = network.Load(in.params["road_network"]);
-		else if (in.sceneGame.contains("road_network")) loaded = network.Load(in.sceneGame["road_network"]);
-		if (!loaded) ProceduralStreetKit::BuildDefaultDistrictNetwork(network);
-		return ToGeneratorResult(ProceduralStreetKit::GenerateDistrict(in.params, network));
-	}, false, ProceduralGeneratorInfo{ 1, { "road_network" }, packInputs, {}, "generated/nfs_district",
-		// CC0 props placed by GenerateDistrict (ProceduralStreetKit prop(...) calls); packed with the profile.
-		{ "models/cc0/exterior_aircon_unit.glb", "models/cc0/fire_hydrant.glb", "models/cc0/metal_trash_can.glb",
-		  "models/cc0/modular_street_seating.glb", "models/cc0/planter_box_01.glb", "models/cc0/potted_plant_01.glb",
-		  "models/cc0/power_box_01.glb", "models/cc0/shrub_01.glb", "models/cc0/utility_box_01.glb" } });
-}
+#include "procedural/ProceduralStreetGenerators.h"
 
 void RegisterNoxRacingGame()
 {
 	GameModules::SetFactory([] { return std::make_unique<GameSession>(); });
 	RegisterRacingEditorPanels();
-	RegisterNoxRacingProceduralGenerators();
+	RegisterProceduralStreetGenerators();
 	// The window room atlas scene key ("window_room_root") is generic engine data (SceneLoader).
 }

@@ -20,6 +20,10 @@ namespace SceneRenderSettings {
 	// one (NOX_QUALITY_TIER overrides the scene's choice).
 	bool ApplyFromSceneFile(RenderContext& ctx, const std::string& sceneFilePath, bool previousSceneHadSettings);
 	void Apply(RenderContext& ctx, const nlohmann::json& settings, bool resetFirst = true);
+	// The live values as a "render_settings" object (the saver writes this, not the loaded copy). Keys in
+	// `existing` (the object already in the file, e.g. quality_tier) are kept and refreshed; other settings
+	// are written only when they differ from the RenderContext defaults. Keys: render/RenderSettingsTable.h.
+	nlohmann::json ToJson(const RenderContext& ctx, const nlohmann::json& existing);
 	// Name of the tier applied by the last ApplyFromSceneFile ("" when none).
 	const std::string& ActiveTier();
 }

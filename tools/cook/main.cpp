@@ -8,7 +8,8 @@
 //
 // --manifest lists the result directories of the selected scenes (tools/AssetPackaging.ps1 packs them).
 // Output: <repo>/generated/cooked/... (the AssetIO cache mounted at "generated/"). Exit 0 on success.
-#include "NoxRacingGame.h"
+// Linked with NoxProcedural (the generator registry is compiled there); it never links the legacy racing game.
+#include "procedural/ProceduralStreetGenerators.h"
 #include "SceneExtensions.h"
 #include "assets/AssetIO.h"
 #include "cook/CookedResults.h"
@@ -202,7 +203,7 @@ int main(int argc, char** argv)
 		return 2;
 	}
 
-	RegisterNoxRacingProceduralGenerators();
+	RegisterProceduralStreetGenerators();
 
 	std::vector<Entry> entries;
 	bool ok = true;

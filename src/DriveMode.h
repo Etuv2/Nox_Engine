@@ -84,13 +84,13 @@ public:
 	float Rpm() const { return State().rpm; }
 	int Gear() const { return State().gear; }                   // -1 = R, 1..GearCount()
 	int GearCount() const { return m_policy.GearCount(); }
-	float Nitro() const { return ActivePolicyDebug().nitro; }
-	bool NitroActive() const { return ActivePolicyDebug().nitroActive; }
-	bool NitroRecharging() const { const VehiclePolicyDebug d = ActivePolicyDebug(); return !d.nitroActive && d.nitro < 1.0f && d.nitroCooldown <= 0.0f; }
+	float Nitro() const { return ActivePolicyDebug().Channel("nitro", 1.0f); }
+	bool NitroActive() const { return ActivePolicyDebug().Channel("nitro_active") > 0.5f; }
+	bool NitroRecharging() const { const VehiclePolicyDebug d = ActivePolicyDebug(); return !(d.Channel("nitro_active") > 0.5f) && d.Channel("nitro", 1.0f) < 1.0f && d.Channel("nitro_cooldown") <= 0.0f; }
 	float Load() const { return State().load; }
 	float Throttle() const { return State().throttle; }
 	float Slip01() const { return State().slip; }
-	bool Drifting() const { return ActivePolicyDebug().drift > 0.5f; }
+	bool Drifting() const { return ActivePolicyDebug().Channel("drift") > 0.5f; }
 	float DriftAngleDeg() const;
 	bool AtRedline() const { return State().rpm >= m_policy.GetHandling().rpmRedline; }
 	bool LimiterHit() const { return State().limiter; }

@@ -183,6 +183,8 @@ struct CameraComponent {
 		Orthographic
 	};
 	ProjectionType projectionType;
+	// Active view camera while playing: the render camera copies this node's transform and lens.
+	bool current = false;
 
 	CameraComponent()
 		: up(0, 1, 0)
@@ -197,6 +199,7 @@ struct CameraComponent {
 		, movementSpeed(2.5f)
 		, mouseSensitivity(0.1f)
 		, projectionType(ProjectionType::Perspective)
+		, current(false)
 	{
 	}
 };
@@ -214,11 +217,15 @@ struct AnimationComponent {
 	// Morph target weights
 	std::vector<float> morphWeights;
 
+	// Playback rate multiplier for the legacy clip path (1 = authored speed)
+	float speed;
+
 	AnimationComponent()
 		: currentAnimationIndex(-1)
 		, animationTime(0.0f)
 		, isPlaying(false)
 		, isPaused(false)
+		, speed(1.0f)
 	{
 	}
 };

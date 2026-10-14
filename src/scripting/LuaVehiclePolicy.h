@@ -46,7 +46,7 @@ namespace NoxLua {
 		static constexpr float kSafeBrake = 0.25f;
 
 		// `runtime` must outlive the policy and have its script roots set. `moduleName` is the require name
-		// ("vehicle.nfs_controller"). `params` is converted to a Lua table and passed to controller.new.
+		// ("vehicle.controller"). `params` is converted to a Lua table and passed to controller.new.
 		// Load failures leave Ok() false (Error() explains) and the policy is faulted from the start.
 		LuaVehiclePolicy(Runtime& runtime, const std::string& moduleName, const nlohmann::json& params);
 		~LuaVehiclePolicy() override;

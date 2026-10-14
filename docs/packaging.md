@@ -50,9 +50,12 @@ are project-relative. `script_roots` add every `.lua` file below each root, and 
 files. `scenes` and `assets` are root-logical paths (for example `scenes/nfs_sprint.json`). The entry file must
 exist. The bootstrap's `descriptor` is the profile's `project`.
 
-The racing project is `projects/nox-racing`: its four racing scenes, the R33 vehicle data
-(`data/vehicles/r33.json`, extracted from DriveMode defaults and the scene's handling/camera values), and a placeholder
-Lua entry. Scenes do not declare `project` yet, so the Lua module is not loaded for them.
+The racing project is `projects/nox-racing`: its scenes list (the four NFS scenes), the R33 vehicle data
+(`data/vehicles/r33.json`, extracted from DriveMode defaults and the scene's handling/camera values), the Lua entry
+`scripts/main.lua`, the HUD config, fonts, the UI icon manifest, the declared road networks, `input.json` and
+`launch_presets.json`. The racing scenes (`scenes/nfs_*.json`, `scenes/shuto_*.json`) carry the `"project"` key, so
+the packaged `Nox_Engine.exe` runs this project's Lua module for them. The `project` key is a scene reference,
+so the packager follows it into the project's content.
 
 ## Dependency graph
 
@@ -70,7 +73,9 @@ Edges come from:
 - Other JSON documents without a registration use a generic reference scan.
 - glTF/GLB buffers and images (external URIs), OBJ/MTL sidecars.
 - Shader `#include` directives, resolved relative to the including file as `src/ShaderLoader.h` does.
-- Project script roots, data roots, assets and scenes.
+- Project descriptor entries: script roots, data roots, assets, scenes, the input map (`input`, default
+  `input.json`), fonts, the icon manifest, declared `roads` and the project's `launch_presets.json`.
+- The scene `"project"` key (`projects/<name>/project.json`).
 
 Every selected file keeps a reason, shown by `-Plan` with its pack. Excluded: other projects, tests,
 authoring/raw directories (`src/`, `raw/`, `originals/`, Blender files), research, tools and captures.
@@ -127,6 +132,9 @@ compiled engine or downloaded assets.
   reduced by the deflate decision.
 - FBX sidecars are opaque; list the texture directory in the profile's `include`.
 - Scene keys are registered for the racing scenes and the fixture; other scene keys (for example Shuto scenes' materials and environment blocks) are reported as unclaimed until registered.
-- The C10 cooked procedural results (nox_cook, cooked generator outputs in game.pak) are not implemented yet.
+- Procedural streets are cooked before packing (contract C10, `src/cook/`, `nox_cook`). Each result is written to
+  `generated/cooked/<generator>-<key>/`, and the packager adds those directories to `game.pak`. `-SkipCook` skips
+  the cook step and relies on results already present. A procedural node without a cooked result is logged with
+  the `nox_cook` hint and skipped at load (see [building.md](building.md)).
 - Workflow changes (`.github/workflows/packaging.yml` path filters for `tools/NoxPackWriter.cs`) belong
   to the lead.

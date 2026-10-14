@@ -1,5 +1,4 @@
 #pragma once
-// Registers the NOX racing game module and its scene content producers with the engine.
+// Registers the legacy native racing game module and its editor panels with the engine
+// (Nox_RacingLegacy.exe only).
 void RegisterNoxRacingGame();
-// Registers only the procedural generators (headless: used by tools/cook).
-void RegisterNoxRacingProceduralGenerators();

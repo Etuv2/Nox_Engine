@@ -2,12 +2,16 @@
 #include "PhysicsCollision.h"
 #include "SceneNode.h"
 #include "SceneGraph.h"
+#include "physics/CharacterSystem.h"
+#include "physics/ShapeOverlap.h"
+#include "physics/TriggerSystem.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/matrix_decompose.hpp>
 #include <algorithm>
 #include <iostream>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <sstream>
 
 namespace {
@@ -76,6 +80,8 @@ PhysicsEngine::PhysicsEngine(const SimulationConfig& config)
 	, m_gravity(config.gravityX, config.gravityY, config.gravityZ)
 {
 	m_bvh = std::make_unique<PhysicsBVH>();
+	m_triggers = std::make_unique<TriggerSystem>();
+	m_characters = std::make_unique<CharacterSystem>();
 }
 
 PhysicsEngine::~PhysicsEngine() {
@@ -103,6 +109,8 @@ void PhysicsEngine::Shutdown() {
 	m_manifolds.clear();
 	m_activeManifolds.clear();
 	m_entityToBodyId.clear();
+	m_triggers->Clear();
+	m_characters->Clear();
 }
 
 void PhysicsEngine::OnSceneLoaded(std::shared_ptr<SceneGraph> sceneGraph) {
@@ -112,6 +120,8 @@ void PhysicsEngine::OnSceneLoaded(std::shared_ptr<SceneGraph> sceneGraph) {
 
 void PhysicsEngine::OnSceneUnloaded() {
 	RemoveAllBodies();
+	m_triggers->Clear();
+	m_characters->Clear();
 	m_sceneGraph.reset();
 }
 
@@ -142,6 +152,10 @@ void PhysicsEngine::Update(float deltaTime) {
 	// POST-STEP SYNC: Pull dynamic bodies from physics
 	// This happens after all substeps to get final state
 	PostStepSync();
+
+	// Trigger overlaps and character gravity run once per frame, after the bodies have moved.
+	m_triggers->Update(*this);
+	m_characters->Update(*this, deltaTime);
 
 	// Calculate interpolation alpha for rendering
 	m_alpha = m_accumulator / m_config.fixedDeltaTime;
@@ -355,6 +369,8 @@ void PhysicsEngine::RemoveAllBodies() {
 	m_manifolds.clear();
 	m_activeManifolds.clear();
 	m_entityToBodyId.clear();
+	m_contactPairs.clear();
+	m_contactEvents.clear();
 	m_bvh->Clear();
 
 	if (m_config.verboseLogging) {
@@ -661,6 +677,179 @@ void PhysicsEngine::RayCast(const glm::vec3& origin, const glm::vec3& direction,
 		});
 }
 
+namespace {
+
+// Exact ray test against one body. `t` is the entry distance along the normalized direction, in [0, maxT].
+bool IntersectRayBody(const RigidBody& body, const glm::vec3& origin, const glm::vec3& dir, float maxT,
+	float& t, glm::vec3& normal) {
+	switch (body.getShapeType()) {
+	case RigidBody::ShapeType::SPHERE: {
+		const glm::vec3 oc = origin - body.getPosition();
+		const float r = body.getRadius();
+		const float b = glm::dot(oc, dir);
+		const float c = glm::dot(oc, oc) - r * r;
+		const float disc = b * b - c;
+		if (disc < 0.0f) return false;
+		t = -b - std::sqrt(disc);
+		if (t < 0.0f || t > maxT) return false;   // origin inside, or beyond range
+		normal = glm::normalize(origin + dir * t - body.getPosition());
+		return true;
+	}
+	case RigidBody::ShapeType::BOX: {
+		const glm::mat3 R = glm::mat3_cast(body.getOrientation());
+		const glm::mat3 Rt = glm::transpose(R);
+		const glm::vec3 o = Rt * (origin - body.getPosition());
+		const glm::vec3 d = Rt * dir;
+		const glm::vec3 h = body.getHalfExtents();
+		float tNear = -std::numeric_limits<float>::max();
+		float tFar = std::numeric_limits<float>::max();
+		int nearAxis = 0;
+		float nearSign = 1.0f;
+		for (int i = 0; i < 3; ++i) {
+			if (std::abs(d[i]) < 1e-8f) {
+				if (o[i] < -h[i] || o[i] > h[i]) return false;
+				continue;
+			}
+			float t1 = (-h[i] - o[i]) / d[i];
+			float t2 = (h[i] - o[i]) / d[i];
+			float sign = -1.0f;   // entering through the -h face
+			if (t1 > t2) {
+				std::swap(t1, t2);
+				sign = 1.0f;
+			}
+			if (t1 > tNear) {
+				tNear = t1;
+				nearAxis = i;
+				nearSign = sign;
+			}
+			tFar = std::min(tFar, t2);
+			if (tNear > tFar) return false;
+		}
+		if (tFar < 0.0f) return false;
+		t = tNear;
+		if (t < 0.0f || t > maxT) return false;   // origin inside, or beyond range
+		glm::vec3 localN(0.0f);
+		localN[nearAxis] = nearSign;
+		normal = glm::normalize(R * localN);
+		return true;
+	}
+	case RigidBody::ShapeType::PLANE: {
+		const glm::vec3 n = glm::normalize(body.getPlaneNormal());
+		const float denom = glm::dot(n, dir);
+		if (std::abs(denom) < 1e-8f) return false;
+		t = (body.getPlaneDistance() - glm::dot(n, origin)) / denom;
+		if (t < 0.0f || t > maxT) return false;
+		normal = denom < 0.0f ? n : -n;
+		return true;
+	}
+	}
+	return false;
+}
+
+} // namespace
+
+bool PhysicsEngine::RayCastClosest(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
+	uint32_t mask, PhysicsRayHit& hit) const {
+	hit = PhysicsRayHit{};
+	const float len = glm::length(direction);
+	if (!(len > 1e-8f) || !(maxDistance > 0.0f) || !std::isfinite(maxDistance)) return false;
+	const glm::vec3 dir = direction / len;
+	float best = maxDistance;
+
+	auto consider = [&](const std::shared_ptr<RigidBody>& body) {
+		if (!body || !(body->getCollisionLayer() & mask)) return;
+		float t = 0.0f;
+		glm::vec3 normal(0.0f, 1.0f, 0.0f);
+		if (!IntersectRayBody(*body, origin, dir, best, t, normal)) return;
+		best = t;
+		hit.hit = true;
+		hit.body = body;
+		hit.distance = t;
+		hit.point = origin + dir * t;
+		hit.normal = normal;
+	};
+
+	m_bvh->RayCast(origin, dir, maxDistance, [&](PhysicsBVH::ProxyID proxyId, float) -> bool {
+		const auto* proxy = m_bvh->GetProxy(proxyId);
+		if (proxy) consider(proxy->body.lock());
+		return true;
+	});
+	// Planes have no finite bounds in the broadphase, so they are tested directly.
+	for (const auto& body : m_bodies) {
+		if (body && body->getShapeType() == RigidBody::ShapeType::PLANE) consider(body);
+	}
+	return hit.hit;
+}
+
+std::vector<PhysicsEngine::BodyID> PhysicsEngine::OverlapSphere(const glm::vec3& center, float radius, uint32_t mask) const {
+	if (!(radius > 0.0f) || !std::isfinite(radius)) return {};
+	auto probe = std::make_shared<RigidBody>();
+	probe->setSphere(radius);
+	probe->setPosition(center);
+	probe->computeAABB();
+	return CollectOverlaps(probe, mask);
+}
+
+std::vector<PhysicsEngine::BodyID> PhysicsEngine::OverlapBox(const glm::vec3& center, const glm::vec3& halfExtents,
+	const glm::quat& rotation, uint32_t mask) const {
+	if (!(halfExtents.x > 0.0f && halfExtents.y > 0.0f && halfExtents.z > 0.0f)) return {};
+	auto probe = std::make_shared<RigidBody>();
+	probe->setBox(halfExtents);
+	probe->setPosition(center);
+	probe->setOrientation(rotation);
+	probe->computeAABB();
+	return CollectOverlaps(probe, mask);
+}
+
+// Bodies whose shape truly overlaps `probe`, a shape-only body that is not part of the world.
+std::vector<PhysicsEngine::BodyID> PhysicsEngine::CollectOverlaps(const std::shared_ptr<RigidBody>& probe, uint32_t mask) const {
+	std::vector<std::shared_ptr<RigidBody>> candidates;
+	m_bvh->Query(probe->getAABBMin(), probe->getAABBMax(), [&](PhysicsBVH::ProxyID proxyId) -> bool {
+		const auto* proxy = m_bvh->GetProxy(proxyId);
+		auto body = proxy ? proxy->body.lock() : nullptr;
+		if (body && body->getShapeType() != RigidBody::ShapeType::PLANE) candidates.push_back(body);
+		return true;
+	});
+	for (const auto& body : m_bodies) {
+		if (body && body->getShapeType() == RigidBody::ShapeType::PLANE) candidates.push_back(body);
+	}
+	std::sort(candidates.begin(), candidates.end(),
+		[](const std::shared_ptr<RigidBody>& a, const std::shared_ptr<RigidBody>& b) { return a->GetBodyID() < b->GetBodyID(); });
+	candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+
+	std::vector<BodyID> result;
+	for (const auto& body : candidates) {
+		if (!(body->getCollisionLayer() & mask)) continue;
+		glm::vec3 push(0.0f);
+		float depth = 0.0f;
+		if (ShapeOverlap::Test(*probe, *body, 0.0f, push, depth)) {
+			result.push_back(body->GetBodyID());
+		}
+	}
+	return result;
+}
+
+EntityID PhysicsEngine::GetEntityForBody(BodyID bodyId) const {
+	auto body = GetBody(bodyId);
+	auto node = body ? body->getAttachedNode() : nullptr;
+	return node ? node->GetEntityID() : INVALID_ENTITY;
+}
+
+PhysicsEngine::BodyID PhysicsEngine::GetBodyForEntity(EntityID entityId) const {
+	if (entityId == INVALID_ENTITY) return RigidBody::INVALID_BODY_ID;
+	for (const auto& body : m_bodies) {
+		auto node = body ? body->getAttachedNode() : nullptr;
+		if (node && node->GetEntityID() == entityId) return body->GetBodyID();
+	}
+	return RigidBody::INVALID_BODY_ID;
+}
+
+std::vector<PhysicsContactEvent> PhysicsEngine::TakeContactEvents() {
+	std::vector<PhysicsContactEvent> events;
+	events.swap(m_contactEvents);
+	return events;
+}
+
 std::vector<std::shared_ptr<RigidBody>> PhysicsEngine::QueryAABB(const glm::vec3& min, const glm::vec3& max) {
 	std::vector<std::shared_ptr<RigidBody>> results;
 
@@ -712,6 +901,7 @@ void PhysicsEngine::Broadphase() {
 
 void PhysicsEngine::Narrowphase() {
 	m_activeManifolds.clear();
+	std::unordered_map<uint64_t, ContactPairState> touchingNow;
 	m_profiling.manifoldsCreated = 0;
 	m_profiling.manifoldsUpdated = 0;
 	m_profiling.bodiesWokenByContacts = 0;
@@ -737,11 +927,16 @@ void PhysicsEngine::Narrowphase() {
 
 		if (!bodyA || !bodyB) continue;
 
-		// Skip if both are sleeping
-		if (bodyA->isSleeping() && bodyB->isSleeping()) continue;
-
 		// Generate pair key
 		uint64_t pairKey = ContactManifold::makePairKey(bodyA->GetBodyID(), bodyB->GetBodyID());
+
+		// Skip if both are sleeping (a sleeping pair stays touching for the contact events)
+		if (bodyA->isSleeping() && bodyB->isSleeping()) {
+			if (auto previous = m_contactPairs.find(pairKey); previous != m_contactPairs.end()) {
+				touchingNow[pairKey] = previous->second;
+			}
+			continue;
+		}
 
 		// Get or create manifold
 		auto [manifoldIt, inserted] = m_manifolds.try_emplace(pairKey);
@@ -779,6 +974,8 @@ void PhysicsEngine::Narrowphase() {
 			manifold.stabilizePointOrder();
 
 			m_activeManifolds.push_back(&manifold);
+
+			touchingNow[pairKey] = ContactPairState{ bodyA, bodyB };
 
 			if (ShouldWakeSleepingBody(bodyA, bodyB, manifold, m_config)) {
 				bodyA->wakeUp();
@@ -819,6 +1016,30 @@ void PhysicsEngine::Narrowphase() {
 	}
 	m_profiling.activeManifoldCount = static_cast<int>(m_activeManifolds.size());
 	m_profiling.averagePenetration = penetrationCount > 0 ? (penetrationSum / static_cast<float>(penetrationCount)) : 0.0f;
+
+	// Contact begin/end: diff the touching pairs against the previous step. Keys are sorted so the event
+	// order does not depend on hash iteration.
+	constexpr size_t kMaxContactEvents = 8192;
+	std::vector<uint64_t> begun, ended;
+	for (const auto& entry : touchingNow) {
+		if (!m_contactPairs.count(entry.first)) begun.push_back(entry.first);
+	}
+	for (const auto& entry : m_contactPairs) {
+		if (!touchingNow.count(entry.first)) ended.push_back(entry.first);
+	}
+	std::sort(begun.begin(), begun.end());
+	std::sort(ended.begin(), ended.end());
+	for (uint64_t key : begun) {
+		if (m_contactEvents.size() >= kMaxContactEvents) break;
+		const ContactPairState& pair = touchingNow[key];
+		m_contactEvents.push_back(PhysicsContactEvent{ PhysicsContactEvent::Type::BEGIN, pair.bodyA, pair.bodyB });
+	}
+	for (uint64_t key : ended) {
+		if (m_contactEvents.size() >= kMaxContactEvents) break;
+		const ContactPairState& pair = m_contactPairs[key];
+		m_contactEvents.push_back(PhysicsContactEvent{ PhysicsContactEvent::Type::END, pair.bodyA, pair.bodyB });
+	}
+	m_contactPairs = std::move(touchingNow);
 }
 
 void PhysicsEngine::PrepareConstraints(float dt) {

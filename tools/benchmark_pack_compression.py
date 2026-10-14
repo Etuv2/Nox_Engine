@@ -20,7 +20,7 @@ import zlib
 
 
 ASSET_ROOTS = {"config", "fonts", "hdrs", "images", "scenes", "shaders", "sounds", "textures", "models", "data", "generated"}
-MUTABLE = {"config/editor_settings.json", "config/editor_layout.ini", "config/speedwall.json"}
+MUTABLE = {"config/editor_settings.json", "config/editor_layout.ini", "projects/nox-racing/data/speedwall.json"}
 BLOCK_SIZE = 256 * 1024
 
 

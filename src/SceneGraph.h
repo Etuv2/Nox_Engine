@@ -126,6 +126,9 @@ public:
     // Node searching
     std::shared_ptr<SceneNode> FindNodeByModelName(const std::string& modelName);
 
+    // Scene node that owns an ECS entity (SceneNode::GetEntityID), searched from the root; null when none.
+    std::shared_ptr<SceneNode> FindNodeByEntity(EntityID entity);
+
     void SetSceneName(const std::string& sceneName);
     std::string GetSceneName() const { return m_sceneName; }
     void PrintMembers();

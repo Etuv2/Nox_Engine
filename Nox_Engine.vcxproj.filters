@@ -181,6 +181,42 @@
     <Filter Include="Source Files\misc\shaders\global_illumination\surfel">
       <UniqueIdentifier>{ec89664a-e4e3-4a81-8dc3-4b96b054ffd6}</UniqueIdentifier>
     </Filter>
+      <Filter Include="Source Files\diagnostics">
+      <UniqueIdentifier>{D8BE288B-22F6-468F-9946-58148B0B3653}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\physics">
+      <UniqueIdentifier>{CCEEB6C6-006F-478A-8F37-BFE9FF6B12B2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\reflect">
+      <UniqueIdentifier>{7437A3BC-6B0C-4049-86E1-9686F417400C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\reflect\components">
+      <UniqueIdentifier>{C5BCC22F-4ECD-41FE-A0A4-F8DF39E2805C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\render">
+      <UniqueIdentifier>{11F7E9DD-2844-427B-B07E-27EA73430F6E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\scene">
+      <UniqueIdentifier>{C8D10DBF-487F-4DD7-85C0-927000CF76EB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\diagnostics">
+      <UniqueIdentifier>{51BF450B-26F3-418D-AAC3-2A1F83EA314F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\physics">
+      <UniqueIdentifier>{E2C42AC0-C884-496F-8FAE-BF9913273C1E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\procedural">
+      <UniqueIdentifier>{A874F5A8-6484-4756-A62A-776174588E57}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\reflect">
+      <UniqueIdentifier>{1EBE4C28-5CAE-49B9-9E1F-D8F1DB0133B6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\render">
+      <UniqueIdentifier>{4EE9A68F-FB6C-48F0-90CC-8764A2575D81}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\scene">
+      <UniqueIdentifier>{1700FAC7-65DF-4450-A615-C2D77B4C64E1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="external\lua-5.5.1\src\lapi.c">
@@ -405,12 +441,6 @@
     <ClCompile Include="src\DirectionalLight.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\DriveAudio.cpp">
-      <Filter>Racing (legacy)</Filter>
-    </ClCompile>
-    <ClCompile Include="src\DriveMode.cpp">
-      <Filter>Racing (legacy)</Filter>
-    </ClCompile>
     <ClCompile Include="src\editor\ProcessRunner.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
@@ -447,14 +477,8 @@
     <ClCompile Include="src\FrustumCulling.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\GameEditorPanels.cpp">
-      <Filter>Racing (legacy)</Filter>
-    </ClCompile>
     <ClCompile Include="src\GameModule.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\GameSession.cpp">
-      <Filter>Racing (legacy)</Filter>
     </ClCompile>
     <ClCompile Include="src\GizmoRayCast.cpp">
       <Filter>Source Files</Filter>
@@ -525,9 +549,6 @@
     <ClCompile Include="src\InteriorAtlasManifest.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\LegacyNfsPolicy.cpp">
-      <Filter>Racing (legacy)</Filter>
-    </ClCompile>
     <ClCompile Include="src\LightManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -545,12 +566,6 @@
     </ClCompile>
     <ClCompile Include="src\ModularRenderer.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\NightStreetPacks.cpp">
-      <Filter>Racing (legacy)</Filter>
-    </ClCompile>
-    <ClCompile Include="src\NoxRacingGame.cpp">
-      <Filter>Racing (legacy)</Filter>
     </ClCompile>
     <ClCompile Include="src\passes\BloomPass.cpp">
       <Filter>Source Files\passes</Filter>
@@ -650,12 +665,6 @@
     </ClCompile>
     <ClCompile Include="src\PointLight.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ProceduralStreetKit.cpp">
-      <Filter>Racing (legacy)</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RacingHUD.cpp">
-      <Filter>Racing (legacy)</Filter>
     </ClCompile>
     <ClCompile Include="src\RayCast.cpp">
       <Filter>Source Files</Filter>
@@ -780,12 +789,201 @@
     <ClCompile Include="src\VehicleFX.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WorldMapUI.cpp">
-      <Filter>Racing (legacy)</Filter>
-    </ClCompile>
     <ClCompile Include="src\scripting\LuaData.cpp">
       <Filter>Source Files\scripting</Filter>
     </ClCompile>
+      <ClCompile Include="src\GuiElementJson.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\InspectorWidgets.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TimeScale.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\app\EngineMain.cpp">
+      <Filter>Source Files\app</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioListener.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioMixer.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\diagnostics\DebugDraw.cpp">
+      <Filter>Source Files\diagnostics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\InspectorUndo.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="src\passes\ParticlePass.cpp">
+      <Filter>Source Files\passes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\physics\CharacterSystem.cpp">
+      <Filter>Source Files\physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\physics\ShapeOverlap.cpp">
+      <Filter>Source Files\physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\physics\TriggerSystem.cpp">
+      <Filter>Source Files\physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\BuiltinComponents.cpp">
+      <Filter>Source Files\reflect</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\Reflection.cpp">
+      <Filter>Source Files\reflect</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\components\AnimationComponents.cpp">
+      <Filter>Source Files\reflect\components</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\components\AudioComponents.cpp">
+      <Filter>Source Files\reflect\components</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\components\CameraComponents.cpp">
+      <Filter>Source Files\reflect\components</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\components\EnvironmentComponents.cpp">
+      <Filter>Source Files\reflect\components</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\components\GuiComponents.cpp">
+      <Filter>Source Files\reflect\components</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\components\ModelComponents.cpp">
+      <Filter>Source Files\reflect\components</Filter>
+    </ClCompile>
+    <ClCompile Include="src\reflect\components\PhysicsComponents.cpp">
+      <Filter>Source Files\reflect\components</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\ActiveCamera.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\ParticleSystem.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\RenderComponents.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\RenderSettingsTable.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scene\Prefab.cpp">
+      <Filter>Source Files\scene</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaAudio.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaComponents.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaDebug.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaInputBindings.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaPhysics.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaRender.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaScene.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scripting\LuaTime.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
+    <ClInclude Include="src\GuiElementJson.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\InspectorWidgets.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TimeScale.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app\EngineMain.h">
+      <Filter>Header Files\app</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioListener.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioMixer.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\diagnostics\DebugDraw.h">
+      <Filter>Header Files\diagnostics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\InspectorUndo.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\passes\ParticlePass.h">
+      <Filter>Header Files\passes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\physics\CharacterSystem.h">
+      <Filter>Header Files\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\physics\ShapeOverlap.h">
+      <Filter>Header Files\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\physics\TriggerSystem.h">
+      <Filter>Header Files\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\procedural\ProceduralStreetGenerators.h">
+      <Filter>Header Files\procedural</Filter>
+    </ClInclude>
+    <ClInclude Include="src\reflect\ComponentBuilders.h">
+      <Filter>Header Files\reflect</Filter>
+    </ClInclude>
+    <ClInclude Include="src\reflect\ReflectServices.h">
+      <Filter>Header Files\reflect</Filter>
+    </ClInclude>
+    <ClInclude Include="src\reflect\Reflection.h">
+      <Filter>Header Files\reflect</Filter>
+    </ClInclude>
+    <ClInclude Include="src\render\ActiveCamera.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="src\render\DecalComponent.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="src\render\ParticleSystem.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="src\render\RenderComponents.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="src\render\RenderSettingsTable.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scene\Prefab.h">
+      <Filter>Header Files\scene</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaAudio.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaComponents.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaDebug.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaInputBindings.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaPhysics.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaRender.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaScene.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaTime.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Animation.h">

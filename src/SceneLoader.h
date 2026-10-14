@@ -2,6 +2,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <optional>
 #include "SceneGraph.h"
 #include "ModelManager.h"
 #include "PhysicsEngine.h"
@@ -43,7 +44,17 @@ public:
 
 	// Editor helpers: serialize one node subtree in the scene-file schema, and instantiate such a
 	// subtree into an existing graph under 'parent' (ECS entities, models and lights included).
+	// A prefab instance is written as a reference (see src/scene/Prefab.h) unless it is the root.
 	nlohmann::json SerializeNodeForEditor(const std::shared_ptr<SceneNode>& node);
+	// Serializes a subtree. references: prefab instances below the root are written as references;
+	// isRoot: the node itself is never written as a reference (flat content, used for prefab files and diffs).
+	nlohmann::json SerializeNodeTree(const std::shared_ptr<SceneNode>& node, bool references, bool isRoot);
+	// The node's own keys only (no children), as SerializeNodeTree writes them. Play-world snapshots use it.
+	nlohmann::json SerializeNodeOwn(const std::shared_ptr<SceneNode>& node);
+	// Writes the loaded graph to a physical file. sourceLogicalPath supplies the top-level keys the runtime does
+	// not model (as SaveScene does). Used by tooling and the NOX_SAVE_ROUNDTRIP hook; never touches the source tree.
+	bool SaveSceneCopy(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sourceLogicalPath,
+	                   const std::string& physicalOutPath);
 	std::shared_ptr<SceneNode> InstantiateNode(SceneGraph& graph, const nlohmann::json& nodeJson,
 		const std::shared_ptr<SceneNode>& parent, const std::string& sceneFilePath);
 
@@ -95,6 +106,11 @@ private:
 	nlohmann::json m_pendingGeneratedChildren;
 	// Root "game" object of the scene being loaded (road_network for procedural districts).
 	nlohmann::json m_sceneGameJson = nlohmann::json::object();
+	// True while a prefab baseline is built for saving: no autoplay, no physics in the live world.
+	bool m_scratchInstance = false;
+	// Instantiates JSON whose prefab references are already expanded (ExpandReferences ran once).
+	std::shared_ptr<SceneNode> InstantiateExpanded(SceneGraph& graph, const nlohmann::json& expanded,
+		const std::shared_ptr<SceneNode>& parent, const std::string& sceneFilePath);
 	void AddReflectionProbes(const nlohmann::json& probes);
 	size_t m_loadedSkyboxCount = 0;
 	size_t m_disabledSkyboxCount = 0;
@@ -111,17 +127,21 @@ private:
 	std::shared_ptr<SceneNode> ProcessNodeRecursive(const nlohmann::json& nodeJson, EntityID parentEntityID = INVALID_ENTITY);
 	std::shared_ptr<SceneNode> ProcessNode(const nlohmann::json& nodeJson);
 	void ProcessCollider(const nlohmann::json& colliderJson, std::shared_ptr<SceneNode> node);
-	void ProcessGuiElementProperties(std::shared_ptr<GuiNode> guiNode, int elementId, const nlohmann::json& elementJson);
 	void CreateExistingChildEntitiesRecursive(const std::shared_ptr<SceneNode>& node, EntityID parentID);
 	void BuildImportedMeshNodeChildren(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<Scene>& model);
 
 	// ECS entity and component creation
 	void CreateECSEntity(std::shared_ptr<SceneNode> node, EntityID parentID = INVALID_ENTITY);
+	// Records the node's authored keys and its loaded state for save (SceneNode::SetAuthoredBaseline).
+	void StoreAuthoredState(const std::shared_ptr<SceneNode>& node, const nlohmann::json& nodeJson);
 	void CreateRenderableComponent(std::shared_ptr<SceneNode> node, const std::shared_ptr<Scene>& model);
 	void CreateAnimationComponent(std::shared_ptr<SceneNode> node, const std::shared_ptr<Scene>& model);
 
 	// Saving methods
-	nlohmann::json SerializeNodeRecursive(const std::shared_ptr<SceneNode>& node);
+	nlohmann::json BuildSceneJson(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sourceLogicalPath);
+	nlohmann::json SerializePrefabReference(const std::shared_ptr<SceneNode>& node);
+	// Flattened subtree of a prefab as it instantiates with no instance edits (nested references expanded).
+	std::optional<nlohmann::json> PrefabBaseline(const std::string& logicalPath);
 	nlohmann::json SerializeNode(const std::shared_ptr<SceneNode>& node);
 	nlohmann::json SerializeCollider(const std::shared_ptr<SceneNode>& node);
 	nlohmann::json SerializeGuiElements(const std::shared_ptr<GuiNode>& guiNode);

@@ -2,7 +2,6 @@
   "windowWidth": 1920,
   "windowHeight": 1080,
   "windowTitle": "Nox Engine",
-  "gameWindowTitle": "NOX Racing - Night Sprint",
   "iconPath": "images\\logo.png",
   "environmentColor": [
     0.1,
@@ -11,7 +10,7 @@
   ],
   "environmentIntensity": 0.5,
   "environmentPath": "hdrs\\skybox.hdr",
-  "first_scene": "scenes/nfs_sprint.json",
+  "first_scene": "scenes/cornell_box.json",
   "scene_folder": "scenes",
   "physics": {
     "gravity": [
@@ -25,12 +24,6 @@
     "restitution": 0.7
   },
   "scenes": [
-    {
-      "path": "scenes/nfs_sprint.json"
-    },
-    {
-      "path": "scenes/nfs_night_street.json"
-    },
     {
       "path": "scenes\\sponza.json"
     },

@@ -17,7 +17,7 @@ class RoadNetwork;
 * Drawn with ImGui draw lists into a target rectangle (the Game viewport in the editor, the whole
 * window in standalone game mode). It renders after scene post-processing, so its brightness is
 * independent of scene exposure. Layout, colours, fonts and gauge ranges come from
-* config/hud.json and can be edited live (DrawEditorPanel) and saved without recompiling.
+* projects/nox-racing/config/hud.json and can be edited live (DrawEditorPanel) and saved without recompiling.
 *
 * Layout is authored on a 640x360 reference canvas (the reference screenshot) and scaled by
 * target height / 360, so it stays proportional at any aspect ratio. Each element is anchored to
@@ -110,7 +110,7 @@ struct HudPlacement {
 	float scale = 1.0f;
 };
 
-// Live HUD configuration (config/hud.json). Colours are RGBA 0..1.
+// Live HUD configuration (projects/nox-racing/config/hud.json). Colours are RGBA 0..1.
 struct HudConfig {
 	HudPlacement cluster{ "BR", { 0.0f, 0.0f }, 1.0f };
 	HudPlacement minimap{ "BL", { 0.0f, 0.0f }, 1.0f };
@@ -164,7 +164,7 @@ public:
 	// Register HUD fonts in the ImGui atlas (call during ImGui init, before the first frame).
 	// Loads the config first if it has not been loaded yet.
 	void LoadFonts();
-	bool LoadConfig(const std::string& path = "config/hud.json");
+	bool LoadConfig(const std::string& path = "projects/nox-racing/config/hud.json");
 	bool SaveConfig(const std::string& path = "");
 	const std::string& ConfigPath() const { return m_configPath; }
 	const HudConfig& Config() const;
@@ -191,5 +191,5 @@ public:
 private:
 	struct Impl;
 	std::unique_ptr<Impl> m_impl;
-	std::string m_configPath = "config/hud.json";
+	std::string m_configPath = "projects/nox-racing/config/hud.json";
 };

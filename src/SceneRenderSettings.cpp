@@ -3,7 +3,10 @@
 #include "FrameBuffer.h"
 #include "ScreenQuad.h"
 #include "assets/AssetIO.h"
+#include "render/RenderSettingsTable.h"
+#include "reflect/Reflection.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -119,7 +122,46 @@ namespace {
 	}
 }
 
+namespace {
+	// Floats are written with 6 significant digits so 0.8f reads back as 0.8, not 0.800000011920929.
+	double Round6(double v) {
+		char buf[32];
+		std::snprintf(buf, sizeof buf, "%.6g", v);
+		return std::strtod(buf, nullptr);
+	}
+
+	json SettingToJson(const nox::render::RenderSetting& s, const nox::reflect::PropValue& v) {
+		using nox::reflect::PropType;
+		switch (s.type) {
+		case PropType::Bool: return std::get<bool>(v);
+		case PropType::Int: return std::get<int64_t>(v);
+		case PropType::Enum: {
+			const int64_t index = std::get<int64_t>(v);
+			return index >= 0 && index < static_cast<int64_t>(s.enumNames.size()) ? json(s.enumNames[index]) : json(index);
+		}
+		case PropType::Vec3: {
+			const glm::vec3 g = std::get<glm::vec3>(v);
+			return json::array({ Round6(g.x), Round6(g.y), Round6(g.z) });
+		}
+		default: return Round6(std::get<double>(v));
+		}
+	}
+}
+
 namespace SceneRenderSettings {
+
+	json ToJson(const RenderContext& ctx, const json& existing) {
+		json out = existing.is_object() ? existing : json::object();
+		const RenderContext defaults;
+		for (const nox::render::RenderSetting& s : nox::render::RenderSettingTable()) {
+			const nox::reflect::PropValue current = s.get(ctx);
+			if (!out.contains(s.key) && nox::reflect::ValuesEqual(current, s.get(defaults))) {
+				continue;
+			}
+			out[s.key] = SettingToJson(s, current);
+		}
+		return out;
+	}
 
 	static std::string g_activeTier;
 	const std::string& ActiveTier() { return g_activeTier; }

@@ -14,6 +14,7 @@ class Scene;
 class ComponentManager;
 class TransformSystem;
 class MDIBatch;
+namespace nox::render { struct ParticleEmitterComponent; struct DecalComponent; }
 
 /**
  * SceneNode - Lightweight scene graph node for hierarchical transforms
@@ -97,6 +98,10 @@ public:
     glm::vec3 GetPosition() const;
     glm::vec3 GetRotation() const;
     glm::vec3 GetScale() const;
+    // Scene load: the Euler angles (radians) and scale a node was authored with. GetRotation and GetScale return them
+    // while the local matrix is the one set here; any other change falls back to decomposing the matrix, so a loaded
+    // node saves the values it was authored with exactly.
+    void SetAuthoredRotationScale(const glm::vec3& radians, const glm::vec3& scale);
     glm::mat4 GetTransform() const;
     glm::quat GetOrientation() const;
     
@@ -117,14 +122,22 @@ public:
     std::string GetName();
     void SetName(const std::string& name) { m_name = name; }
 
-    // Authored scene-file keys that have no runtime representation (e.g. material_overrides,
-    // procedural generator params). Stored as serialized JSON and written back on save.
+    // Scene load: the node's own keys as the file wrote them (serialized JSON; children and components excluded).
+    // Save merges them with the current state, see SceneLoader::SerializeNode and SetAuthoredBaseline.
     void SetAuthoredExtras(const std::string& json) { m_authoredExtras = json; }
     const std::string& GetAuthoredExtras() const { return m_authoredExtras; }
+    // Scene load: the same keys serialized as the loader left the node (serialized JSON). On save a value equal to this
+    // baseline is written as authored (or omitted when the file did not have it); a changed value is written as it is.
+    void SetAuthoredBaseline(const std::string& json) { m_authoredBaseline = json; }
+    const std::string& GetAuthoredBaseline() const { return m_authoredBaseline; }
     // Nodes created by a generator (e.g. procedural street lights) are rebuilt on load and
     // therefore skipped when the scene is saved.
     void SetGenerated(bool generated) { m_generated = generated; }
     bool IsGenerated() const { return m_generated; }
+    // Prefab instance root: logical path of the *.prefab.json this subtree was instantiated from (empty when
+    // the node is not an instance root). Descendants of an instance carry no link of their own.
+    void SetPrefabPath(const std::string& path) { m_prefabPath = path; }
+    const std::string& GetPrefabPath() const { return m_prefabPath; }
     std::pair<glm::vec3, glm::vec3> GetBoundingBox();
 
     // NODE TYPE
@@ -180,6 +193,23 @@ public:
     const RenderableComponent* GetRenderableComponent() const;
     AnimationComponent* GetAnimationComponent();
     const AnimationComponent* GetAnimationComponent() const;
+    CameraComponent* GetCameraComponent();
+    const CameraComponent* GetCameraComponent() const;
+    CameraComponent* AddCameraComponent(const CameraComponent& camera = CameraComponent());
+    void RemoveCameraComponent();
+
+    // AudioListener facet (reflection descriptor "AudioListener"): present on the node, and whether it is the
+    // current listener for 3D audio (see src/audio/AudioListener.h).
+    bool HasAudioListener() const { return m_hasAudioListener; }
+    void SetHasAudioListener(bool present) { m_hasAudioListener = present; }
+    bool IsCurrentAudioListener() const { return m_hasAudioListener && m_audioListenerCurrent; }
+    void SetCurrentAudioListener(bool current) { m_audioListenerCurrent = current; }
+
+    // RENDER COMPONENTS (src/render): runtime state owned by the node; null when the node lacks the component.
+    std::shared_ptr<nox::render::ParticleEmitterComponent> GetParticleEmitter() const { return m_particleEmitter; }
+    void SetParticleEmitter(std::shared_ptr<nox::render::ParticleEmitterComponent> emitter) { m_particleEmitter = std::move(emitter); }
+    std::shared_ptr<nox::render::DecalComponent> GetDecal() const { return m_decal; }
+    void SetDecal(std::shared_ptr<nox::render::DecalComponent> decal) { m_decal = std::move(decal); }
     
     EntityID CreateECSEntity(const std::string& name = "");
     void MigrateHierarchyToECS();
@@ -205,7 +235,9 @@ private:
     std::shared_ptr<Scene> m_model;
     std::string m_name;
     std::string m_authoredExtras;
+    std::string m_authoredBaseline;
     bool m_generated = false;
+    std::string m_prefabPath;
     rhi::ProgramHandle m_shader;
     CullingOverride m_cullingOverride = CULLING_INHERIT;
     NODE_TYPE m_nodeType = NODE;
@@ -214,9 +246,15 @@ private:
     std::shared_ptr<RigidBody> m_rigidbody;
     bool m_updatingFromPhysics = false;
     bool m_transformCacheDirty = false;
+    bool m_hasAudioListener = false;
+    bool m_audioListenerCurrent = false;
     
     // LPV Volume
     LPVVolumeData m_lpvData;
+
+    // Render components (ParticleEmitter, Decal)
+    std::shared_ptr<nox::render::ParticleEmitterComponent> m_particleEmitter;
+    std::shared_ptr<nox::render::DecalComponent> m_decal;
     
     // ECS integration
     EntityID m_entityID = INVALID_ENTITY;
@@ -224,4 +262,9 @@ private:
     TransformSystem* m_transformSystem = nullptr;
     
     ComponentManager* RequireComponentManager(const char* caller) const;
+    glm::mat4 LocalMatrixSource(const char* caller) const;
+    bool m_hasAuthoredTRS = false;
+    glm::mat4 m_authoredKey{ 1.0f };        // local matrix the authored values belong to
+    glm::vec3 m_authoredRotation{ 0.0f };
+    glm::vec3 m_authoredScale{ 1.0f };
 };

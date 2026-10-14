@@ -127,6 +127,9 @@ public:
     void RemoveElement(int elementIndex);
     void ClearAllElements();
     int GetElementCount() const { return static_cast<int>(m_elements.size()); }
+    const std::vector<GuiElement>& GetElements() const { return m_elements; }
+    const std::string& GetFontPath() const { return m_fontPath; }
+    int GetFontSize() const { return m_fontSize; }
     
     // Update loop (must be called each frame)
     void Update(float deltaTime);
@@ -153,6 +156,8 @@ private:
     void CacheUniformLocations();
 
     TTF_Font* m_font;
+    std::string m_fontPath;
+    int m_fontSize = 0;
     rhi::VertexInputHandle m_quadVAO;
     GpuBufferPtr m_quadVBO;  // Using GpuBuffer instead of a raw buffer handle
     rhi::ProgramHandle m_textureShader;     // For text and images

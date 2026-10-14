@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace NoxLua {
@@ -56,6 +57,19 @@ namespace NoxLua {
 		void SampleWith(const InputDevices& devices, bool enabled);
 
 		bool Has(const std::string& name) const { return Find(name) >= 0; }
+
+		// Runtime rebinding (input.rebind). Replaces the keyboard keys of a button action with one key name. Returns
+		// false with `error` set for an unknown action, an axis action or an unknown key name.
+		bool Rebind(const std::string& action, const std::string& keyName, std::string& error);
+		// Key and pad button names currently bound to an action; false when the action is unknown.
+		bool KeyNames(const std::string& action, std::vector<std::string>& keys, std::vector<std::string>& padButtons) const;
+		// Writes the rebound keys to the user settings directory (overrides only, one file per action map). The
+		// overrides are applied again by LoadFile. False when nothing could be written.
+		bool SaveOverrides() const;
+		// Gamepad rumble on the first open controller. low/high are motor strengths in 0..1. False without a pad.
+		bool Rumble(float low, float high, int durationMs);
+		// Logical path of the last LoadFile (empty when none).
+		const std::string& LogicalPath() const { return m_logicalPath; }
 		// Unknown names return false / 0 and set *known to false.
 		bool Down(const std::string& name, bool* known = nullptr) const;
 		bool Pressed(const std::string& name, bool* known = nullptr) const;
@@ -80,11 +94,14 @@ namespace NoxLua {
 			bool released = false;
 		};
 		int Find(const std::string& name) const;
+		void ApplyOverrides(const std::string& jsonText, std::vector<std::string>& errors);
 		void ClosePad();
 		void* OpenPad();
 
 		std::vector<InputActionDecl> m_decls;
 		std::vector<Resolved> m_resolved;
+		std::string m_logicalPath;
+		std::vector<std::pair<std::string, std::vector<std::string>>> m_overrides;   // rebound keys per action
 		std::vector<State> m_state;
 		void* m_pad = nullptr;   // SDL_GameController*, opened on demand
 	};

@@ -15,6 +15,7 @@ public:
 
     // Initialize the depth map for spotlight shadow mapping.
     bool InitializeShadowMap(uint32_t shadowResolution);
+    int GetShadowResolution() const { return m_shadowResolution; }
     rhi::TextureHandle GetDepthMap() const;
     rhi::TextureHandle GetShadowMapID() const override { return GetDepthMap(); }
 

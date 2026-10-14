@@ -37,6 +37,7 @@
 #include "passes/MotionBlurPass.h"
 #include "passes/RainPass.h"
 #include "passes/VehicleFXPass.h"
+#include "passes/ParticlePass.h"
 #include "passes/DecalPass.h"
 #include "passes/LensFlarePass.h"
 #include "VehicleFX.h"
@@ -413,6 +414,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_motionBlurPass = std::make_unique<MotionBlurPass>();
 	m_rainPass = std::make_unique<RainPass>();
 	m_vehicleFXPass = std::make_unique<VehicleFXPass>();
+	m_particlePass = std::make_unique<ParticlePass>();
 	m_decalPass = std::make_unique<DecalPass>();
 	m_lensFlarePass = std::make_unique<LensFlarePass>();
 
@@ -443,6 +445,7 @@ bool ModularRenderer::Initialize(int windowWidth, int windowHeight)
 	m_rainPass->SetFogPass(m_volumetricFogPass.get());
 	success &= m_vehicleFXPass->Initialize(m_context);
 	m_vehicleFXPass->SetFogPass(m_volumetricFogPass.get());
+	success &= m_particlePass->Initialize(m_context);
 	success &= m_decalPass->Initialize(m_context);
 	success &= m_lensFlarePass->Initialize(m_context);
 
@@ -1044,7 +1047,10 @@ void ModularRenderer::BuildPassDescriptors(
 			return DetermineFrameGraphMode() == FrameGraphMode::DEFERRED &&
 				!(ctx.enableIndirectDiffuse && ctx.indirectDiffuseDebugStage > 0);
 		},
-		[this, &sceneGraph, &camera, &lighting, &skybox]() { m_vehicleFXPass->Execute(m_context, sceneGraph, camera, lighting, skybox); }
+		[this, &sceneGraph, &camera, &lighting, &skybox]() {
+			m_vehicleFXPass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+			m_particlePass->Execute(m_context, sceneGraph, camera, lighting, skybox);
+		}
 		});
 	addPass({
 		"TAAResolvePass", { "HDRColor", "HDRRain", "HDRFogged", "HDRVehicleFX", "Velocity" }, { "TAAColor" },

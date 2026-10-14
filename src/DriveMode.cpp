@@ -510,9 +510,9 @@ void DriveMode::RecordTelemetry(const VehicleSubstepRecord& r)
 		"\"x\":%.9g,\"y\":%.9g,\"z\":%.9g,\"head\":%.9g,\"vx\":%.9g,\"vy\":%.9g,\"yawRate\":%.9g,"
 		"\"gear\":%d,\"rpm\":%.9g,\"drift\":%.9g,\"driftSign\":%.9g,\"nitro\":%.9g,\"nitroCooldown\":%.9g,"
 		"\"slip\":%.9g,\"rearSpin\":%.9g,\"shiftTimer\":%.9g,\"airborne\":%d}\n",
-		s.time, r.h, r.in.throttle, r.in.brake, r.in.steer, r.in.handbrake ? 1 : 0, r.in.nitrous ? 1 : 0,
+		s.time, r.h, r.in.throttle, r.in.brake, r.in.steer, r.in.handbrake ? 1 : 0, r.in.Aux("nitrous") > 0.5f ? 1 : 0,
 		s.pos.x, s.surface ? s.y : 0.0f, s.pos.y, s.heading, s.vx, s.vy, s.yawRate,
-		s.gear, s.rpm, p.drift, p.driftSign, p.nitro, p.nitroCooldown,
+		s.gear, s.rpm, p.Channel("drift"), p.Channel("drift_sign", 1.0f), p.Channel("nitro", 1.0f), p.Channel("nitro_cooldown"),
 		s.slip, s.rearSpin, p.shiftTimer, s.airborne ? 1 : 0);
 }
 

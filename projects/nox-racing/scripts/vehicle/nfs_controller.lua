@@ -96,7 +96,7 @@ function C:control(tel, inp, act)
 
     act.gear = gear
     act.steer_angle = delta
-    act.nitro_drive_scale = nitrous.drive_scale(self.nitro_st, self.hd)
+    act.drive_scale = nitrous.drive_scale(self.nitro_st, self.hd)
     act.drive_shift_cut = self.gear_st.shift_timer > 0.0
     act.drag_scale = nitrous.drag_scale(self.nitro_st, self.hd)
     act.rear_grip_scale = util.mix(1.0, self.hd.drift_grip_scale, self.drift_st.drift)

@@ -313,6 +313,23 @@ function Get-NoxPackageAssets {
             throw "Project entry '$($desc.entry)' is not inside a declared script root ($DescriptorRel)"
         }
         foreach ($ref in @($desc.data_roots)) { Add-PackagePath (Resolve-ProjectPath $ref) "project data root $ref" }
+        # Runtime files the descriptor names relative to itself (src/scripting/LuaProject.cpp): the action map
+        # (default input.json, optional), fonts, the icon manifest, declared road networks, launch presets.
+        $inputProp = $desc.PSObject.Properties['input']
+        $inputRef = if ($inputProp -and $inputProp.Value -is [string]) { [string]$inputProp.Value } else { 'input.json' }
+        $inputFull = Resolve-ProjectPath $inputRef
+        if (Test-Path -LiteralPath $inputFull -PathType Leaf) { Add-PackagePath $inputFull "project input map $inputRef" }
+        elseif ($inputProp) { throw "Project input map missing: $inputRef ($DescriptorRel)" }
+        foreach ($font in @($desc.fonts)) {
+            if ($font -and $font.PSObject.Properties['path']) { Add-PackagePath (Resolve-ProjectPath $font.path) "project font $($font.id)" }
+        }
+        $iconsProp = $desc.PSObject.Properties['icons']
+        if ($iconsProp -and $iconsProp.Value.PSObject.Properties['manifest']) {
+            Add-PackagePath (Resolve-ProjectPath $iconsProp.Value.manifest) 'project icon manifest'
+        }
+        foreach ($ref in @($desc.roads)) { if ($ref) { Add-PackagePath (Resolve-ProjectPath $ref) "project road network $ref" } }
+        $presetsFull = Join-Path $projectDir 'launch_presets.json'
+        if (Test-Path -LiteralPath $presetsFull -PathType Leaf) { Add-PackagePath $presetsFull 'project launch presets' }
         # Contract C4 refinement: "scenes" and "assets" are root-logical paths.
         foreach ($ref in @($desc.assets)) { Add-PackagePath (Join-Path $rootPath $ref.Replace('\', '/')) "project asset $ref" }
         foreach ($ref in @($desc.scenes)) { Add-PackagePath (Join-Path $rootPath $ref.Replace('\', '/')) "project scene $ref" }
@@ -321,12 +338,21 @@ function Get-NoxPackageAssets {
     foreach ($rel in @($Scenes) + @($Include)) {
         if ($rel) { Add-PackagePath (Join-Path $rootPath $rel) 'package profile' }
     }
-    if ($Project) { Add-ProjectDescriptor $Project.Replace('\', '/') }
+    $projectsExpanded = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    if ($Project) {
+        $projectRel = $Project.Replace('\', '/')
+        [void]$projectsExpanded.Add($projectRel)
+        Add-ProjectDescriptor $projectRel
+    }
     while ($queue.Count) {
         $rel = $queue.Dequeue()
         $ext = [IO.Path]::GetExtension($rel).ToLowerInvariant()
         if ($ext -in @('.json', '.gltf', '.glb')) {
-            if ($rel -match '^projects/[^/]+/project\.json$') { continue } # handled by Add-ProjectDescriptor
+            if ($rel -match '^projects/[^/]+/project\.json$') {
+                # A scene's "project" key (or another reference) names a descriptor: expand it once.
+                if ($projectsExpanded.Add($rel)) { Add-ProjectDescriptor $rel }
+                continue
+            }
             $doc = if ($JsonOverrides.ContainsKey($rel)) { $JsonOverrides[$rel] } else { Read-NoxAssetJson $files[$rel] }
             if ($ext -in @('.gltf', '.glb')) {
                 foreach ($entry in @($doc.buffers) + @($doc.images)) {

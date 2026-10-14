@@ -83,11 +83,15 @@ function M.step(view, dt)
             -- Skip ~40 m ahead along the route so one run reports every problem spot.
             local skip_x, skip_z = px, pz
             local want = 40.0
+            -- Heading of the route segment at the skip point (the road direction, not the stuck car's heading,
+            -- which can point into a barrier and stall the car again).
+            local road_dx, road_dz = nil, nil
             for i = 2, #route do
                 local ax, az = route[i - 1].x, route[i - 1].z
                 local bx, bz = route[i].x, route[i].z
                 local seg = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
                 skip_x, skip_z = bx, bz
+                road_dx, road_dz = bx - ax, bz - az
                 if want <= seg then
                     local f = want / math.max(seg, 1e-3)
                     skip_x, skip_z = ax + (bx - ax) * f, az + (bz - az) * f
@@ -100,7 +104,9 @@ function M.step(view, dt)
                 local rx, rz = view.roads:nearest(skip_x, skip_z)
                 if rx then nx, nz = rx, rz end
             end
-            teleport = { x = nx, z = nz, heading = view.heading }
+            local heading = view.heading
+            if road_dx and (road_dx ~= 0 or road_dz ~= 0) then heading = math.atan(road_dx, road_dz) end
+            teleport = { x = nx, z = nz, heading = heading }
         end
     end
 

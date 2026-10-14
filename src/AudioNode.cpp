@@ -1,5 +1,6 @@
 // AudioNode.cpp
 #include "AudioNode.h"
+#include "audio/AudioMixer.h"
 #include "SDL/SDL_mixer.h"
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
@@ -28,6 +29,12 @@ AudioNode::~AudioNode()
 
 bool AudioNode::initAudio(const std::string& soundFile)
 {
+	m_soundFilePath = soundFile;
+	stop();
+	if (m_sound) {
+		Mix_FreeChunk(m_sound);
+		m_sound = nullptr;
+	}
 	m_sound = m_audioPlayer.loadSound(soundFile);
 	return (m_sound != nullptr);
 }
@@ -59,6 +66,7 @@ static float SanitizeAngle(float angle) {
 void AudioNode::play(bool loop, bool is3d)
 {
 	m_is3d = is3d;
+	m_isLooping = loop;
 
 	// Use the proper hierarchy system to get world position
 	// The world position will be calculated during the next UpdateAudioNodes call
@@ -77,7 +85,7 @@ void AudioNode::play(bool loop, bool is3d)
 		listenerPos,
 		listenerAngle,
 		std::clamp(m_pitch, 0.1f, 10.0f),  // Clamp pitch to reasonable range
-		std::clamp(m_volume, 0.0f, 1.0f),  // Clamp volume to [0,1]
+		outputGain(),                      // source volume * bus gain, in [0,1]
 		std::max(m_hearingDistance, 1.0f)); // Ensure positive hearing distance
 
 	if (m_channel != -1) {
@@ -94,6 +102,14 @@ void AudioNode::stop()
 		Mix_HaltChannel(m_channel);
 		m_isPlaying = false;
 		m_channel = -1;
+	}
+}
+
+void AudioNode::pause()
+{
+	if (m_channel != -1 && m_isPlaying) {
+		m_audioPlayer.pauseSound(m_channel);
+		m_isPlaying = false;
 	}
 }
 
@@ -138,7 +154,7 @@ void AudioNode::updateAudio(const glm::vec3& listenerPos, float listenerAngle)
         safeListenerPos,
         safeListenerAngle,
         std::max(m_hearingDistance, 1.0f), // Ensure positive hearing distance
-        std::clamp(m_volume, 0.0f, 1.0f)); // Ensure valid volume range
+        outputGain());                     // source volume * bus gain, in [0,1]
 }
 
 void AudioNode::UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle)
@@ -194,6 +210,15 @@ void AudioNode::setPitch(float pitch) {
 	else {
 		std::cerr << "[AudioNode] Warning: Invalid pitch value, keeping current: " << m_pitch << std::endl;
 	}
+}
+
+void AudioNode::setBus(const std::string& bus) {
+	m_bus = bus.empty() ? std::string(AudioMixer::kDefaultSourceBus) : bus;
+}
+
+float AudioNode::outputGain() const {
+	const float volume = std::isfinite(m_volume) ? std::clamp(m_volume, 0.0f, 1.0f) : 0.0f;
+	return std::clamp(volume * AudioMixer::Get().BusGain(m_bus), 0.0f, 1.0f);
 }
 
 void AudioNode::setVolume(float volume) {

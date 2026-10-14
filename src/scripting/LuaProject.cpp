@@ -145,6 +145,24 @@ namespace NoxLua {
 			out.inputPath = *resolvedInput;
 		}
 
+		// Extra audio buses beyond the engine's (master, music, sfx, ui, voice). Names are checked when declared.
+		if (descriptor.contains("audio")) {
+			const auto& audio = descriptor["audio"];
+			if (!audio.is_object() || (audio.contains("buses") && !audio["buses"].is_array())) {
+				error = descriptorPath + ": audio must be an object with an optional buses array of names";
+				return false;
+			}
+			if (audio.contains("buses")) {
+				for (const auto& entry : audio["buses"]) {
+					if (!entry.is_string()) {
+						error = descriptorPath + ": audio.buses entries must be strings";
+						return false;
+					}
+					out.audioBuses.push_back(entry.get<std::string>());
+				}
+			}
+		}
+
 		// Declared data files that scripts may name (nox.roads, nox.collision). Only these can be loaded.
 		for (const char* field : { "roads", "collision" }) {
 			if (!descriptor.contains(field)) continue;

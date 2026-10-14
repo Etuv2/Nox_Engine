@@ -1,6 +1,6 @@
 -- Presentation configuration for the racing HUD, minimap and world map.
 --
--- Defaults are the values of the native HudConfig (src/RacingHUD.h). config/hud.json overrides them
+-- Defaults are the values of the native HudConfig (src/RacingHUD.h). projects/nox-racing/config/hud.json overrides them
 -- through apply(decoded): the same keys and the same clamps as RacingHUD::LoadConfig. Reading the
 -- file needs a JSON binding (see scripts/ui/README.md, request R1); until then the defaults apply.
 -- Colours are arrays {r, g, b, a} of floats 0..1, as in hud.json.
@@ -42,7 +42,7 @@ local function defaults()
       road_px = 1.2,
       radius_px = 42.0,
     },
-    -- Mirror of config/hud.json icons.roles: used until the JSON binding (R1) supplies the file.
+    -- Mirror of the HUD config icons.roles: used until the JSON binding (R1) supplies the file.
     icon_roles = {
     ["menu/PAUSED"] = "menus/pause",
     ["menu/RESULTS"] = "events/trophy",

@@ -1,4 +1,5 @@
 {
+  "project": "projects/nox-racing/project.json",
   "scene_name": "NFS Night Street",
   "exposure": 1.0,
   "gamma": 2.2,

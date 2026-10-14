@@ -13,6 +13,16 @@ safe ECS access, state-preserving reloads, packaging, and a standalone compatibi
 The [agent implementation prompt](engine_implementation_prompt.md) consolidates the research
 into coordinated implementation work with ownership and acceptance criteria.
 
+## Engine overview and user guides
+
+- [Engine overview](engine_overview.md): scene graph and ECS, reflection registry, components, systems, projects
+- [Editor](editor.md): hierarchy, inspector, undo, prefabs, play mode, smoke test
+- [Lua project API](lua_api.md): scripts, components, physics, audio, input, UI and the editor panel API
+- [Prefabs](prefabs.md): reusable node subtrees, overrides and instances
+- [Physics](physics.md): bodies, colliders, character control, triggers and queries
+- [Audio](audio.md): mixer buses, listener and one-shots
+- [Rendering components](rendering_components.md): world environment, camera, particle emitters and decals
+
 ## Engine contracts
 
 - [Asset I/O, bootstrap and writable data](asset_io.md): logical paths, packs, user and cache folders, project selection

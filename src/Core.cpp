@@ -1,6 +1,8 @@
 #include "Core.h"
 #include "BenchmarkRunner.h"
 #include "SceneRenderSettings.h"
+#include "render/ActiveCamera.h"
+#include "render/ParticleSystem.h"
 #include "GameModule.h"
 #include "FrameProfiler.h"
 #include "PresentTarget.h"
@@ -46,6 +48,7 @@
 #include "DirectionalLight.h"
 #include "LightManager.h"
 #include "LightNode.h"
+#include "scene/Prefab.h"
 #include "ModularRenderer.h"
 #include "ImGuiInterface.h"
 #include "ImguiStyle.h"
@@ -260,6 +263,11 @@ bool ReadSceneCameraVec3(const json& object, const char* key, glm::vec3& outValu
 }
 }
 #include "RuntimeStateManager.h"
+#include "reflect/Reflection.h"
+#include "TimeScale.h"
+#include "audio/AudioListener.h"
+#include "diagnostics/DebugDraw.h"
+#include "reflect/ReflectServices.h"
 
 Core::Core()
 	: m_window(nullptr)
@@ -635,6 +643,24 @@ bool Core::InitializeScene() {
 	}
 	m_modelManager = std::make_shared<ModelManager>();
 
+	// Descriptors and services first: the first scene's "components" blocks are applied while it loads.
+	nox::reflect::RegisterBuiltinComponents();
+	{
+		nox::reflect::EngineServices& services = nox::reflect::Services();
+		services.loadModel = [this](const std::string& path) { return m_modelManager ? m_modelManager->LoadModel(path) : nullptr; };
+		services.modelPath = [this](const Scene& model) { return m_modelManager ? m_modelManager->GetModelPath(&model) : std::string(); };
+		services.physics = m_physicsEngine.get();
+		services.sceneGraph = [this] { return m_sceneGraph.get(); };
+		services.sceneChanged = [this] { MarkDirty(); InvalidateSceneCaches(); };
+		services.isPlaying = [this] { return IsPlaying(); };
+		services.requestSceneSwap = [this](const std::string& scenePath) { RequestSceneSwap(scenePath); };
+		services.renderContext = [this] { return m_modularRenderer ? &m_modularRenderer->GetContext() : nullptr; };
+		services.instantiatePrefab = [this](const std::string& path, const std::shared_ptr<SceneNode>& parent,
+			const json& placement, std::string& error) {
+			return InstantiatePrefabNode(path, parent, placement, &error);
+		};
+		services.destroyNode = [this](const std::shared_ptr<SceneNode>& node) { return DestroySceneNodeForPlay(node); };
+	}
 	// Load the Scene using SceneLoader
 	m_sceneLoader = std::make_shared<SceneLoader>(m_modelManager, m_physicsEngine, m_windowWidth, m_windowHeight);
 	m_sceneGraph = m_sceneLoader->LoadScene(m_sceneToLoad);
@@ -681,12 +707,27 @@ bool Core::InitializeScene() {
 		m_game->SetServices(services);
 		m_game->SetCameraTemplate(*m_camera);
 	}
+	SaveRoundtripCopyIfRequested();
 	ConfigureGameFromScene(m_sceneToLoad);
 	if (!m_benchmark && m_game && m_game->IsAvailable() && (m_launch.mode == AppMode::Game || m_game->WantsAutoPlay())) {
 		RequestPlay();
 	}
 
 	return true;
+}
+
+// NOX_SAVE_ROUNDTRIP=<out.json>: writes the initial scene to out.json, and the engine quits after that (editor tooling for
+// save/load round trips, docs/building.md). The copy is taken right after the scene loads and before the game module is
+// configured: a game module poses gameplay nodes (a player car at its spawn point) while it configures, so only this point
+// holds the authored state. The source scene is not modified.
+void Core::SaveRoundtripCopyIfRequested()
+{
+	static const std::string roundtripOut = GetEnvVarString("NOX_SAVE_ROUNDTRIP");
+	if (roundtripOut.empty() || m_roundtripDone) return;
+	m_roundtripDone = true;
+	const bool ok = m_sceneGraph && m_sceneLoader &&
+		m_sceneLoader->SaveSceneCopy(m_sceneGraph, m_currentSceneFilePath, roundtripOut);
+	std::cout << "[Core] NOX_SAVE_ROUNDTRIP " << (ok ? "wrote " : "FAILED ") << roundtripOut << std::endl;
 }
 
 bool Core::InitializeUI() {
@@ -827,6 +868,7 @@ void Core::Shutdown() {
 		m_physicsEngine.reset();
 	}
 
+	nox::reflect::Services() = {};
 	m_sceneGraph.reset();
 	m_sceneLoader.reset();
 	m_modelManager.reset();
@@ -839,9 +881,54 @@ void Core::Shutdown() {
 	std::cout << "[Core] Shutdown complete" << std::endl;
 }
 
+// First current AudioListener in scene order (depth-first). `path` receives the nodes from the root down to it, so
+// its world matrix is computed only for that node (the search itself is a flag check per node).
+static bool FindCurrentAudioListener(const SceneNode& node, std::vector<const SceneNode*>& path) {
+	path.push_back(&node);
+	if (node.IsCurrentAudioListener()) return true;
+	for (const auto& child : node.children) {
+		if (child && FindCurrentAudioListener(*child, path)) return true;
+	}
+	path.pop_back();
+	return false;
+}
+
+float Core::GetTimeScale() const {
+	return TimeScale::Get();
+}
+
+bool Core::SetTimeScale(float scale) {
+	return TimeScale::Set(scale);
+}
+
+void Core::DrawDebugOverlay(ImDrawList* drawList, float x, float y, float width, float height) {
+	if (!drawList || !m_camera) return;
+	DrawDebugPrimitives(drawList, m_camera, x, y, width, height);
+}
+
+void Core::DrawDebugPrimitives(ImDrawList* drawList, const std::shared_ptr<Camera>& camera, float x, float y, float width, float height) {
+	if (!drawList || !camera || DebugDraw::Count() == 0) return;
+	const glm::mat4 view = camera->GetViewMatrix();
+	const float fov = camera->GetCameraFov();
+	const ImVec2 origin(x, y);
+	const ImVec2 size(width, height);
+	DebugDraw::Draw(drawList, [&](const glm::vec3& world, ImVec2& out) {
+		return DebugDraw::ProjectView(view, fov, origin, size, world, out);
+	});
+}
+
 void Core::Update(float deltaTime) {
 	m_frameCpuStart = std::chrono::steady_clock::now();
 	PerformanceRecorder::ECSMetrics ecsMetrics{};
+	// Debug primitives live for real seconds: age them before this frame's scripts queue new ones.
+	DebugDraw::Age(deltaTime);
+
+	// NOX_SAVE_ROUNDTRIP: the copy was written during scene initialisation (SaveRoundtripCopyIfRequested); quit
+	// before any game or physics step runs.
+	if (m_roundtripDone) {
+		m_quitRequested = true;
+		return;
+	}
 
 	// Benchmark runs use a fixed simulation step so camera paths and captures are repeatable.
 	if (m_benchmark) {
@@ -852,6 +939,9 @@ void Core::Update(float deltaTime) {
 	if (fixedDt > 0.0f) {
 		deltaTime = fixedDt;
 	}
+
+	// Simulation time: game, animation and physics advance by the time scale. Input and the frame timers keep deltaTime.
+	const float simDt = TimeScale::Apply(deltaTime);
 
 	// Update input system
 	if (m_inputIntegration) {
@@ -890,12 +980,16 @@ void Core::Update(float deltaTime) {
 			const EditorWorkspace::Viewport& vp = m_editor->GetViewport(EditorWorkspace::Target::Game);
 			if (vp.size.x > 1.0f && vp.size.y > 1.0f) aspect = vp.size.x / vp.size.y;
 		}
-		if (m_game->Update(deltaTime, inputEnabled, aspect) == IGameModule::UpdateResult::ExitApplication) {
+		if (m_game->Update(simDt, inputEnabled, aspect) == IGameModule::UpdateResult::ExitApplication) {
 			m_quitRequested = true;
 		}
 	}
 
 	FrameProfiler::Mark("game");
+	// Particle emitters advance once per frame here (not per render call: the editor renders several views).
+	if (m_sceneGraph && m_sceneGraph->GetRoot()) {
+		nox::render::UpdateSceneEmitters(*m_sceneGraph->GetRoot(), m_frameTime * 0.001f);
+	}
 	// Scripted shots pose the camera and animated nodes after input so they always win.
 	bool cameraCut = false;
 	if (m_benchmark && m_camera && m_sceneGraph) {
@@ -938,7 +1032,7 @@ void Core::Update(float deltaTime) {
 		FrameProfiler::Mark("benchmark_misc");
 		// Stage 1: ECS animation/transform
 		auto animationStart = std::chrono::high_resolution_clock::now();
-		m_sceneGraph->UpdateAnimations(deltaTime);
+		m_sceneGraph->UpdateAnimations(simDt);
 		auto animationEnd = std::chrono::high_resolution_clock::now();
 		ecsMetrics.animationSystemMs += std::chrono::duration<float, std::milli>(animationEnd - animationStart).count();
 
@@ -965,7 +1059,7 @@ void Core::Update(float deltaTime) {
 			// Physics synchronization is centralized inside PhysicsEngine::Update()
 			// (PreStepSync before stepping, PostStepSync after stepping).
 			auto physicsStart = std::chrono::high_resolution_clock::now();
-			m_physicsEngine->Update(deltaTime);
+			m_physicsEngine->Update(simDt);
 			auto physicsEnd = std::chrono::high_resolution_clock::now();
 			ecsMetrics.physicsStepMs += std::chrono::duration<float, std::milli>(physicsEnd - physicsStart).count();
 
@@ -977,10 +1071,22 @@ void Core::Update(float deltaTime) {
 
 		FrameProfiler::Mark("physics");
 		// Stage 3: audio
-		if (m_sceneHasAudioNodes) {
-			glm::vec3 listenerPos = m_camera->GetCameraPosition();
-			float listenerAngle = m_camera->GetCameraFacingAngle();
-			m_sceneGraph->GetRoot()->UpdateAudioNodesWithTransform(listenerPos, listenerAngle, glm::mat4(1.0f));
+		// The 3D listener is the current AudioListener node, or the camera when there is none.
+		{
+			AudioListenerPose listener;
+			listener.position = m_camera->GetCameraPosition();
+			listener.angleDegrees = m_camera->GetCameraFacingAngle();
+			std::vector<const SceneNode*> listenerPath;
+			const std::shared_ptr<SceneNode> root = m_sceneGraph->GetRoot();
+			if (root && FindCurrentAudioListener(*root, listenerPath)) {
+				glm::mat4 listenerWorld(1.0f);
+				for (const SceneNode* n : listenerPath) listenerWorld = n->GetGlobalTransform(listenerWorld);
+				listener = AudioListenerPoseFromWorld(listenerWorld);
+			}
+			AudioListenerPublish(listener);
+			if (m_sceneHasAudioNodes) {
+				m_sceneGraph->GetRoot()->UpdateAudioNodesWithTransform(listener.position, listener.angleDegrees, glm::mat4(1.0f));
+			}
 		}
 
 		// Rebuild BVH if needed
@@ -1108,6 +1214,10 @@ void Core::Render(int windowWidth, int windowHeight) {
 		return;
 	}
 
+	// Play mode: a node with Camera.current drives the view (src/render/ActiveCamera.h); the editor camera otherwise.
+	if (IsPlaying() && m_camera && m_sceneGraph) {
+		nox::render::ApplyActiveCamera(*m_sceneGraph, *m_camera);
+	}
 	if (m_benchmark) {
 		// Benchmarks measure the game view only: the editor UI is not drawn.
 		RenderSceneTo(rhi::kBackBuffer, m_windowWidth, m_windowHeight, m_camera);
@@ -1149,6 +1259,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 			const ImVec2 size = ImGui::GetIO().DisplaySize;
 			m_game->DrawOverlay(ImGui::GetForegroundDrawList(), glm::vec2(0.0f), glm::vec2(size.x, size.y), dt);
 		}
+		DrawDebugPrimitives(ImGui::GetForegroundDrawList(), camera, 0.0f, 0.0f, static_cast<float>(m_windowWidth), static_cast<float>(m_windowHeight));
 		FrameProfiler::Mark("overlay");
 		ImGui::Render();
 		rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
@@ -2052,7 +2163,7 @@ void Core::RequestPlay()
 		for (const auto& c : n->children) snap(c);
 	};
 	for (const auto& c : m_sceneGraph->GetRoot()->children) snap(c);
-	m_playWorld.Capture(*m_sceneGraph);
+	m_playWorld.Capture(*m_sceneGraph, *m_sceneLoader);
 	m_playing = true;
 	m_game->BeginPlay();
 	ResetTemporalHistory();
@@ -2063,7 +2174,20 @@ void Core::RequestStop()
 {
 	if (!m_playing || !m_game) return;
 	m_game->EndPlay();
-	if (m_sceneGraph) m_playWorld.Restore(*m_sceneGraph, m_physicsEngine.get());
+	if (m_sceneGraph && m_sceneLoader) {
+		const PlayWorldSnapshot::Report report = m_playWorld.Restore(*m_sceneGraph, m_physicsEngine.get(), *m_sceneLoader,
+			m_currentSceneFilePath);
+		if (report.removedNodes > 0 || report.recreatedNodes > 0) {
+			if (m_sceneGraph->GetLightManager()) m_sceneGraph->UpdateLightManager();
+			m_bvhDirty = true;
+			m_boundingBoxCached = false;
+			m_dirty = true;
+		}
+		std::cout << "[Core] Play world restored: nodes removed " << report.removedNodes << ", re-created "
+			<< report.recreatedNodes << ", entities removed " << report.destroyedEntities << ", transforms "
+			<< report.restoredTransforms << ", bodies " << report.restoredBodies << ", component values "
+			<< report.restoredComponents << std::endl;
+	}
 	for (const auto& [weak, t] : m_prePlayTransforms) {
 		if (auto n = weak.lock()) {
 			n->SetLocalTRS(glm::vec3(t[0], t[1], t[2]), glm::quat(t[3], t[4], t[5], t[6]), glm::vec3(t[7], t[8], t[9]));
@@ -2144,35 +2268,112 @@ std::shared_ptr<SceneNode> Core::DuplicateNode(const std::shared_ptr<SceneNode>&
 		j["position"][0] = j["position"][0].get<float>() + 2.0f;
 	}
 	auto parent = FindParentNode(m_sceneGraph->GetRoot(), node.get());
-	if (!parent) parent = m_sceneGraph->GetRoot();
-	auto copy = m_sceneLoader->InstantiateNode(*m_sceneGraph, j, parent, m_currentSceneFilePath);
-	if (copy) {
+	return InstantiateNodeFromJson(j, parent);
+}
+
+nlohmann::json Core::SerializeNodeForEditor(const std::shared_ptr<SceneNode>& node)
+{
+	if (!m_sceneLoader || !node) return json();
+	return m_sceneLoader->SerializeNodeForEditor(node);
+}
+
+std::shared_ptr<SceneNode> Core::InstantiateNodeFromJson(const json& nodeJson, const std::shared_ptr<SceneNode>& parent)
+{
+	if (!m_sceneLoader || !m_sceneGraph || m_playing) return nullptr;
+	auto target = parent ? parent : m_sceneGraph->GetRoot();
+	auto node = m_sceneLoader->InstantiateNode(*m_sceneGraph, nodeJson, target, m_currentSceneFilePath);
+	if (node) {
 		if (auto lm = m_sceneGraph->GetLightManager()) {
 			std::function<void(const std::shared_ptr<SceneNode>&)> reg = [&](const std::shared_ptr<SceneNode>& n) {
 				if (auto ln = std::dynamic_pointer_cast<LightNode>(n)) lm->RegisterLightNode(ln);
 				for (const auto& c : n->children) reg(c);
 			};
-			reg(copy);
+			reg(node);
 		}
 		m_bvhDirty = true;
 		m_boundingBoxCached = false;
 		m_dirty = true;
 	}
-	return copy;
+	return node;
 }
 
-std::shared_ptr<SceneNode> Core::AddModelNode(const std::string& modelPath, const glm::vec3& position)
+std::shared_ptr<SceneNode> Core::InstantiatePrefabNode(const std::string& logicalPath, const std::shared_ptr<SceneNode>& parent,
+	const json& placement, std::string* error)
 {
-	if (!m_sceneLoader || !m_sceneGraph || m_playing) return nullptr;
-	json j = { {"type", "model"}, {"name", fs::path(modelPath).stem().string()}, {"path", modelPath},
-		{"position", { position.x, position.y, position.z }}, {"rotation", { 0.0f, 0.0f, 0.0f }}, {"scale", { 1.0f, 1.0f, 1.0f }} };
-	auto node = m_sceneLoader->InstantiateNode(*m_sceneGraph, j, m_sceneGraph->GetRoot(), m_currentSceneFilePath);
+	if (!m_sceneLoader || !m_sceneGraph) {
+		if (error) *error = "no scene is loaded";
+		return nullptr;
+	}
+	auto target = parent ? parent : m_sceneGraph->GetRoot();
+	auto node = nox::prefab::InstantiatePrefab(*m_sceneLoader, *m_sceneGraph, logicalPath, target, placement, error);
 	if (node) {
+		if (auto lm = m_sceneGraph->GetLightManager()) {
+			std::function<void(const std::shared_ptr<SceneNode>&)> reg = [&](const std::shared_ptr<SceneNode>& n) {
+				if (auto ln = std::dynamic_pointer_cast<LightNode>(n)) lm->RegisterLightNode(ln);
+				for (const auto& c : n->children) reg(c);
+			};
+			reg(node);
+		}
 		m_bvhDirty = true;
 		m_boundingBoxCached = false;
 		m_dirty = true;
 	}
 	return node;
+}
+
+bool Core::SavePrefabFromNode(const std::shared_ptr<SceneNode>& node, const std::string& logicalPath, std::string* error)
+{
+	if (!m_sceneLoader) {
+		if (error) *error = "no scene loader";
+		return false;
+	}
+	return nox::prefab::SavePrefab(*m_sceneLoader, node, logicalPath, error);
+}
+
+bool Core::DestroySceneNodeForPlay(const std::shared_ptr<SceneNode>& node)
+{
+	if (!node || !m_sceneGraph || node == m_sceneGraph->GetRoot()) return false;
+	if (!PlayWorldSnapshot::RemoveSubtree(*m_sceneGraph, node, m_physicsEngine.get())) return false;
+	m_bvhDirty = true;
+	m_boundingBoxCached = false;
+	m_dirty = true;
+	return true;
+}
+
+bool Core::ReparentNode(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& newParent, int index, bool keepWorld)
+{
+	if (!node || !newParent || !m_sceneGraph || m_playing || node == m_sceneGraph->GetRoot()) return false;
+	for (auto p = newParent; p; p = p->parentNode.lock()) {
+		if (p == node) return false;   // would create a cycle
+	}
+	const glm::mat4 world = node->GetWorldPosition4x4();
+	const auto oldParent = node->parentNode.lock();
+	if (oldParent == newParent) {
+		// AddChild only detaches from a different parent; drop the existing entry first.
+		auto& siblings = newParent->children;
+		siblings.erase(std::remove(siblings.begin(), siblings.end(), node), siblings.end());
+	}
+	newParent->AddChild(node);
+	if (index >= 0) {
+		auto& siblings = newParent->children;
+		siblings.erase(std::remove(siblings.begin(), siblings.end(), node), siblings.end());
+		siblings.insert(siblings.begin() + std::min(static_cast<size_t>(index), siblings.size()), node);
+	}
+	if (keepWorld) node->SetWorldTransform(world);
+	m_sceneGraph->UpdateAllTransforms();
+	m_bvhDirty = true;
+	m_boundingBoxCached = false;
+	m_dirty = true;
+	return true;
+}
+
+std::shared_ptr<SceneNode> Core::AddModelNode(const std::string& modelPath, const glm::vec3& position,
+	const std::shared_ptr<SceneNode>& parent)
+{
+	if (!m_sceneLoader || !m_sceneGraph || m_playing) return nullptr;
+	json j = { {"type", "model"}, {"name", fs::path(modelPath).stem().string()}, {"path", modelPath},
+		{"position", { position.x, position.y, position.z }}, {"rotation", { 0.0f, 0.0f, 0.0f }}, {"scale", { 1.0f, 1.0f, 1.0f }} };
+	return InstantiateNodeFromJson(j, parent);
 }
 
 bool Core::DeleteNode(const std::shared_ptr<SceneNode>& node)

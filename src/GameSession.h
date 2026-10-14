@@ -26,7 +26,7 @@ typedef struct _SDL_GameController SDL_GameController;
 * ordered checkpoints (gate crossing tests on the swept car path, so high speed cannot skip a gate;
 * crossing a later gate first only shows MISSED CHECKPOINT) -> finish -> results (Retry / Free Roam).
 * Pause menu (Esc / Start) with resume, restart, reset car and quit event. Local best times persist
-* in config/speedwall.json.
+* in the user directory (saves/speedwall.json, seeded from the scene "game".speedwall_seed).
 *
 * Authoring data lives in the scene's "game" object: player/body nodes, spawn, handling, camera,
 * road_network, events[{id, type, name, difficulty, start:[x,z] or [x,y,z], start_heading_deg,

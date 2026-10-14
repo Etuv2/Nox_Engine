@@ -16,6 +16,7 @@ public:
 
     // Shadow mapping for point lights (cubemap shadows)
     bool InitializeShadowMap(uint32_t shadowResolution);
+    int GetShadowResolution() const { return m_shadowResolution; }
     void BindShadowFBO();
     void UnbindFBO();
     rhi::TextureHandle GetDepthMap() const { return depthMap; }

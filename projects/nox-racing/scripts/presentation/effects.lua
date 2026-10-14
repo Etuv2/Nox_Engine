@@ -91,7 +91,7 @@ function M.audio(ctx, tel, throttle, paused, rpm_max)
         throttle = throttle,
         speed01 = tel.speed01,
         slip01 = tel.slip,
-        boost = tel.nitro_active and true or false,
+        boost = (tel.channels.nitro_active or 0.0) > 0.5,
         limiter = tel.limiter and true or false,
     })
 end

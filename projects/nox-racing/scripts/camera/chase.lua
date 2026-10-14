@@ -113,7 +113,7 @@ function M.update(ctx, tel, dt, rig, st, aspect, teleported, orbit_deg)
         ex = ex + math.sin(t * 31.0) * a
         ey = ey + math.sin(t * 47.0 + 1.3) * a
     end
-    local target_fov = rig.fov + speed01 * rig.fov_speed_gain + ((tel.nitro_active) and rig.fov_nitro or 0.0)
+    local target_fov = rig.fov + speed01 * rig.fov_speed_gain + (((tel.channels.nitro_active or 0.0) > 0.5) and rig.fov_nitro or 0.0)
     st.fov = approach(st.fov, target_fov, dt * 2.5)
 
     if st.mode == 3 then return nil end

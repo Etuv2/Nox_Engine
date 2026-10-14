@@ -33,6 +33,7 @@ public:
     void SetCascadeSplits(float sliceNear, float sliceFar, float overlap);
     void SetSplitLambda(float lambda) { m_splitLambda = glm::clamp(lambda, 0.0f, 1.0f); }
     void SetShadowSize(int size) { m_shadowSize = size; }
+    float GetSplitLambda() const { return m_splitLambda; }
     
     // PCSS (Percentage Closer Soft Shadows) configuration
     void SetPCSSConfig(const ShadowMapper::PCSS::PCSSConfig& config);

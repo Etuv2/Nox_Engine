@@ -23,11 +23,13 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
 struct lua_State;
 class SceneGraph;
+class SceneNode;
 class Camera;
 
 namespace NoxLua {
@@ -130,6 +132,9 @@ namespace NoxLua {
 		// playing). Runs the systems declared with fixed = true, in order, once per fixed step.
 		void FixedUpdate(float dt, int index);
 		bool ConsumeTeleport();
+		// Queues a host-raised event (physics events, LuaPhysics.cpp) with a registry ref of its payload. Ownership of
+		// payloadRef passes to the world; false when the queue is full (the caller releases the ref).
+		bool QueueNativeEvent(const std::string& name, int payloadRef) { return QueueEvent(name, payloadRef); }
 
 		// Draw handlers (nox.on_draw, docs/lua_api.md "UI"). Runs every handler with (ctx, ui, dt) into `out`
 		// (cleared first). Draw handlers may read the world; world writes they queue are discarded with a warning.
@@ -137,7 +142,9 @@ namespace NoxLua {
 		void DrawFrame(float dt, const glm::vec2& viewport, const glm::vec2& pointerOverlay, UiRecorder& out);
 		// Project resources owned by the module (not by this world): fonts for ui.text, the action map for ctx:action_*.
 		void SetUiFonts(const UiFontTable* fonts) { m_ui.fonts = fonts; }
-		void SetInputs(const InputMap* inputs) { m_inputs = inputs; }
+		// The module's action map. Non-const: input.rebind and input.rumble (LuaInputBindings.cpp) change it.
+		void SetInputs(InputMap* inputs) { m_inputs = inputs; }
+		InputMap* InputMapPtr() const { return m_inputs; }
 		// Pointer policy the module reports through IGameModule::WantsPointer (set from Lua with ctx:set_wants_pointer).
 		bool WantsPointer() const { return m_wantsPointer; }
 		void SetWantsPointer(bool wants) { m_wantsPointer = wants; }
@@ -212,6 +219,12 @@ namespace NoxLua {
 		bool Loading() const { return m_phase == Phase::Loading; }
 		bool InputEnabled() const { return m_inputEnabled; }
 		ComponentManager* Manager() const;
+		SceneGraph* Scene() const { return m_scene; }
+		// Scene node that owns an entity, or null (ECS-only entities). Cached; every hit is re-checked against the
+		// current tree, so a node removed from the scene is not returned.
+		std::shared_ptr<SceneNode> FindSceneNode(EntityID id);
+		// True inside a system, behavior or event callback: component writes (ctx proxies) are allowed only there.
+		bool WorldWritable() const { return m_worldWritable; }
 		EntityHandle FindByName(const std::string& name) const;
 
 		// Declared data (same rules as the Lua API; usable from host code and tests).
@@ -305,6 +318,8 @@ namespace NoxLua {
 		Phase m_phase = Phase::Idle;
 		bool m_loaded = false;
 		bool m_inCallback = false;
+		bool m_worldWritable = false;     // systems, behaviors and events only (see WorldWritable)
+		std::unordered_map<EntityID, std::weak_ptr<SceneNode>> m_nodeCache;
 		bool m_inputEnabled = true;
 		bool m_playing = false;
 		bool m_teleportPending = false;
@@ -359,7 +374,7 @@ namespace NoxLua {
 		bool m_editorViewportFaulted = false;
 		std::vector<DrawEntry> m_draws;
 		bool m_drawDropReported = false;
-		const InputMap* m_inputs = nullptr;
+		InputMap* m_inputs = nullptr;
 		bool m_wantsPointer = true;
 	};
 }

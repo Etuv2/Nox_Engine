@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -6,25 +7,26 @@
 #include "json.hpp"
 
 /*
-* Shared road layout for the racing prototype (docs/nfs2015/game.md, docs/shuto/network_format.md).
+* Shared road layout (generic graph; the district generator and the game feed it, see docs/shuto/network_format.md).
 *
 * One graph of nodes and straight edges drives:
-*   * world geometry: ProceduralStreetKit's "district" generator builds roads, sidewalks,
+*   * world geometry: procedural generators (registered by the game module) build roads, sidewalks,
 *     buildings and lights from it (planar networks);
 *   * the minimap: edges are drawn as road lines;
 *   * navigation: shortest routes for the event/checkpoint guidance line (one-way edges are only
 *     followed from a to b);
 *   * vehicle boundaries: the drivable band is road + sidewalk around every edge, unless the
-*     network sets "band_walls": false (worlds with authored collision meshes, e.g. stacked decks).
+*     "band_walls" attribute is false (worlds with authored collision meshes, e.g. stacked decks).
 *
 * Nodes have an optional height, so stacked carriageways (elevated decks, tunnels, interchanges)
 * stay distinct: the 3D queries only consider edges within a vertical tolerance of the query point.
 *
 * Units: metres. World position (x, z) is stored as glm::vec2(x, z); the node height is 'y'.
-* Scene JSON: game.road_network = { road_half_width, sidewalk_width, traffic_side ("right"|"left"),
-* band_walls, nodes: [{id, pos:[x,z] or [x,y,z]}], edges: [[idA, idB] or {a, b, name, half_width,
-* oneway, lanes, lane_width, carriageway}] } or { "file": "path/to/network.json" } (same schema;
-* file-backed networks are saved back as the file reference only).
+* Scene JSON: game.road_network = { road_half_width, sidewalk_width, nodes: [{id, pos:[x,z] or [x,y,z]}],
+* edges: [[idA, idB] or {a, b, name, half_width, oneway, lanes, lane_width, carriageway}] } or
+* { "file": "path/to/network.json" } (same schema; file-backed networks are saved back as the file
+* reference only). Any other top-level key (for example "traffic_side", "band_walls") is a network
+* attribute: kept as written, read by name with Attribute() / FlagAttribute().
 */
 class RoadNetwork {
 public:
@@ -63,8 +65,12 @@ public:
 	float DefaultHalfWidth() const { return m_roadHalfWidth; }
 	void SetSidewalkWidth(float w) { m_sidewalkWidth = w; }
 	void SetDefaultHalfWidth(float w) { m_roadHalfWidth = w; }
-	bool LeftHandTraffic() const { return m_leftHand; }
-	bool BandWalls() const { return m_bandWalls; }
+	// Network attributes: top-level JSON keys other than the structural ones, loaded and saved unchanged.
+	// Attribute() returns nullptr when the network has no such key.
+	const nlohmann::json* Attribute(const std::string& name) const;
+	void SetAttribute(const std::string& name, const nlohmann::json& value);
+	// The attribute as a boolean, or fallback when it is absent or not a boolean.
+	bool FlagAttribute(const std::string& name, bool fallback) const;
 
 	// Point on edge e at parameter t (3D, height interpolated).
 	glm::vec3 EdgePoint(int e, float t) const;
@@ -105,8 +111,7 @@ private:
 	std::vector<Edge> m_edges;
 	float m_roadHalfWidth = 7.5f;
 	float m_sidewalkWidth = 4.25f;
-	bool m_leftHand = false;
-	bool m_bandWalls = true;
+	std::map<std::string, nlohmann::json> m_attributes;
 	std::string m_file;
 
 	// Uniform grid over edges (large networks only; small editable networks stay brute force so

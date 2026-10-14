@@ -1,6 +1,7 @@
 #include "LuaInput.h"
 
 #include "../assets/AssetIO.h"
+#include "../app/UserSettings.h"
 
 #include "json.hpp"
 
@@ -173,6 +174,8 @@ namespace NoxLua {
 	}
 
 	bool InputMap::LoadFile(const std::string& logicalPath, std::vector<std::string>& errors) {
+		m_logicalPath = logicalPath;
+		m_overrides.clear();
 		std::string error;
 		const auto text = AssetIO::ReadText(logicalPath, &error);
 		if (!text) {
@@ -181,7 +184,93 @@ namespace NoxLua {
 			m_state.clear();
 			return true;   // no input map: no actions
 		}
-		return Parse(*text, errors);
+		const bool ok = Parse(*text, errors);
+		// Player rebinds from an earlier session (user directory) win over the authored keys.
+		static const std::string kPrefix = "input_bindings_";
+		std::string userName = kPrefix;
+		for (char c : logicalPath) {
+			const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+			userName.push_back(alnum ? c : '_');
+		}
+		userName += ".json";
+		if (const auto saved = UserSettings::LoadUserJson(userName)) {
+			ApplyOverrides(saved->dump(), errors);
+		}
+		return ok;
+	}
+
+	void InputMap::ApplyOverrides(const std::string& jsonText, std::vector<std::string>& errors) {
+		const nlohmann::json root = nlohmann::json::parse(jsonText, nullptr, false);
+		if (root.is_discarded() || !root.is_object() || !root.contains("actions") || !root["actions"].is_object()) {
+			errors.push_back("input bindings file is not a valid override document");
+			return;
+		}
+		for (const auto& item : root["actions"].items()) {
+			const nlohmann::json& keys = item.value().contains("keys") ? item.value()["keys"] : nlohmann::json();
+			if (!keys.is_array() || keys.size() != 1 || !keys[0].is_string()) continue;
+			std::string error;
+			if (!Rebind(item.key(), keys[0].get<std::string>(), error)) errors.push_back("input binding: " + error);
+		}
+	}
+
+	bool InputMap::Rebind(const std::string& action, const std::string& keyName, std::string& error) {
+		const int idx = Find(action);
+		if (idx < 0) {
+			error = "unknown input action '" + action + "'";
+			return false;
+		}
+		InputActionDecl& decl = m_decls[static_cast<size_t>(idx)];
+		if (decl.kind != InputActionDecl::Kind::Button) {
+			error = "action '" + action + "' is an axis; only button actions can be rebound";
+			return false;
+		}
+		const int code = ResolveKey(keyName);
+		if (code < 0) {
+			error = "unknown key name '" + keyName + "'";
+			return false;
+		}
+		decl.keys = { keyName };
+		m_resolved[static_cast<size_t>(idx)].keys = { code };
+		bool found = false;
+		for (auto& entry : m_overrides) {
+			if (entry.first == action) {
+				entry.second = decl.keys;
+				found = true;
+			}
+		}
+		if (!found) m_overrides.push_back({ action, decl.keys });
+		return true;
+	}
+
+	bool InputMap::KeyNames(const std::string& action, std::vector<std::string>& keys, std::vector<std::string>& padButtons) const {
+		const int idx = Find(action);
+		if (idx < 0) return false;
+		keys = m_decls[static_cast<size_t>(idx)].keys;
+		padButtons = m_decls[static_cast<size_t>(idx)].padButtons;
+		return true;
+	}
+
+	bool InputMap::SaveOverrides() const {
+		nlohmann::json actions = nlohmann::json::object();
+		for (const auto& entry : m_overrides) {
+			actions[entry.first] = nlohmann::json{ { "keys", entry.second } };
+		}
+		const nlohmann::json doc = { { "format", 1 }, { "actions", actions } };
+		std::string userName = "input_bindings_";
+		for (char c : m_logicalPath) {
+			const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+			userName.push_back(alnum ? c : '_');
+		}
+		userName += ".json";
+		return UserSettings::SaveUserJson(userName, doc);
+	}
+
+	bool InputMap::Rumble(float low, float high, int durationMs) {
+		SDL_GameController* pad = static_cast<SDL_GameController*>(OpenPad());
+		if (!pad || !std::isfinite(low) || !std::isfinite(high)) return false;
+		const auto motor = [](float v) { return static_cast<Uint16>(std::lround(std::clamp(v, 0.0f, 1.0f) * 65535.0f)); };
+		const int ms = std::clamp(durationMs, 0, 5000);
+		return SDL_GameControllerRumble(pad, motor(low), motor(high), static_cast<Uint32>(ms)) == 0;
 	}
 
 	int InputMap::Find(const std::string& name) const {

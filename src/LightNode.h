@@ -167,6 +167,22 @@ public:
     void SetSelected(bool selected) { m_isSelected = selected; }
     bool IsSelected() const { return m_isSelected; }
 
+    // Photometric authoring. The light stores candela (punctual) or lux (directional) as intensity. A scene that
+    // authored luminous_power (lumens) or illuminance (lux) keeps that unit here, so save writes the same key back
+    // with the value converted from the current intensity. None: the scene authored "intensity" directly.
+    enum class PhotometricUnit { None, Lumens, Lux };
+    PhotometricUnit GetPhotometricUnit() const { return m_photometricUnit; }
+    void SetPhotometricUnit(PhotometricUnit unit) { m_photometricUnit = unit; }
+    // True when the scene wrote "attenuation" itself. Otherwise a lumen-authored light uses the implicit
+    // inverse-square falloff (LightNode::ImplicitLumenAttenuation) and save does not write it.
+    bool IsAttenuationAuthored() const { return m_attenuationAuthored; }
+    void SetAttenuationAuthored(bool authored) { m_attenuationAuthored = authored; }
+    static glm::vec3 ImplicitLumenAttenuation() { return glm::vec3(1.0e-4f, 0.0f, 1.0f); }
+    // Point lights: lm = cd * 4 pi. Spot lights: lm = cd * pi (the cone angle does not change brightness).
+    // Directional lights use the point factor. Lux and candela-based intensity are equal numbers.
+    static float LuminousPowerFromIntensity(BaseLight::LightType type, float intensity);
+    static float IntensityFromLuminousPower(BaseLight::LightType type, float lumens);
+
 protected:
     std::shared_ptr<BaseLight> m_light;
     
@@ -179,6 +195,10 @@ protected:
     LightSelectionProxy m_selectionProxy;
     bool m_showDebugVisualization = false;
     bool m_isSelected = false;
+
+    // Photometric authoring state (see GetPhotometricUnit)
+    PhotometricUnit m_photometricUnit = PhotometricUnit::None;
+    bool m_attenuationAuthored = false;
     
     // Internal sync helpers
     void SyncLightTransform();

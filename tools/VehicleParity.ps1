@@ -17,8 +17,14 @@ Default tolerances are zero: the target is bit-identical telemetry. The verdict 
 IDENTICAL, WITHIN_TOLERANCE, DIVERGED (first differing sub-step and the largest field difference
 reported) or MISSING. Console logs are not compared (the timing lines are not deterministic).
 
+The baseline is the native racing game. The native game runs only in Nox_RacingLegacy.exe and only on a
+scene without a "project" key, so by default the scenes are run through Nox_RacingLegacy.exe as copies with
+that key removed (generated/vehicle_parity/<scene>.native.json). Use -KeepProjectKey with Nox_Engine.exe to run
+the scenes unchanged, which runs the Lua project instead.
+
 .PARAMETER Exe
-Engine executable to test. Default: build\vs2022-x64\Release\Nox_Engine_vehicle.exe (BuildLocked -Snapshot vehicle).
+Executable to test. Default: build\vs2022-x64\Release\Nox_RacingLegacy.exe (native game). For the Lua project use
+build\vs2022-x64\Release\Nox_Engine.exe with -KeepProjectKey.
 
 .PARAMETER BaselineDir
 Baseline JSONL directory. Default: build\baseline\vehicle\jsonl.
@@ -29,9 +35,13 @@ Where the candidate recordings go. Default: %TEMP%\nox_team\impl\vehicle\parity.
 .PARAMETER SkipRun
 Compare existing recordings in OutDir without running the engine.
 
+.PARAMETER KeepProjectKey
+Run the scenes as they are (with their "project" key) instead of the native copies.
+
 .EXAMPLE
 tools\VehicleParity.ps1
 tools\VehicleParity.ps1 -Scenarios maneuvers_60,gearbox_30 -AbsTolerance 1e-6
+tools\VehicleParity.ps1 -Exe build\vs2022-x64\Release\Nox_Engine.exe -KeepProjectKey
 #>
 [CmdletBinding()]
 param(
@@ -44,7 +54,8 @@ param(
     [switch]$SkipRun,
     # Also writes every policy call (NOX_VEHICLE_POLICY_TRACE) to <OutDir>\<scenario>.policy.jsonl.
     [switch]$PolicyTrace,
-    [switch]$FailOnDiff
+    [switch]$FailOnDiff,
+    [switch]$KeepProjectKey
 )
 
 # Continue: the engine writes benign loader warnings to stderr (also in the baseline logs), which
@@ -53,18 +64,36 @@ $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot 'Common.ps1')
 $repo = Get-NoxRepoRoot
 
-if (-not $Exe) { $Exe = Join-Path $repo 'build\vs2022-x64\Release\Nox_Engine_vehicle.exe' }
+if (-not $Exe) { $Exe = Join-Path $repo 'build\vs2022-x64\Release\Nox_RacingLegacy.exe' }
 if (-not $BaselineDir) { $BaselineDir = Join-Path $repo 'build\baseline\vehicle\jsonl' }
 if (-not $OutDir) { $OutDir = Join-Path $env:TEMP 'nox_team\impl\vehicle\parity' }
 $Exe = (Resolve-Path -LiteralPath $Exe).Path
 if (-not (Test-Path -LiteralPath $BaselineDir)) { Stop-Nox "Baseline directory not found: $BaselineDir" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
+# Returns the logical scene path to run: the scene itself with -KeepProjectKey, otherwise a copy without the
+# "project" key (the native game only starts on such a scene). The copy lives under generated/ (loose tree).
+function Get-ParityScene([string]$logical) {
+    if ($KeepProjectKey) { return $logical }
+    $source = Join-Path $repo ($logical -replace '/', '\')
+    $text = [IO.File]::ReadAllText($source)
+    $doc = $text | ConvertFrom-Json
+    if (-not $doc.PSObject.Properties['project']) { return $logical }
+    $stripped = [regex]::new('(?m)^[ \t]*"project"[ \t]*:[ \t]*"[^"]*"[ \t]*,?[ \t]*\r?\n').Replace($text, '', 1)
+    $check = try { $stripped | ConvertFrom-Json } catch { $null }
+    if (-not $check -or $check.PSObject.Properties['project']) { Stop-Nox "Could not remove the project key from $logical" }
+    $name = [IO.Path]::GetFileNameWithoutExtension($logical) + '.native.json'
+    $copyDir = Join-Path $repo 'generated\vehicle_parity'
+    New-Item -ItemType Directory -Force -Path $copyDir | Out-Null
+    Write-NoxUtf8 (Join-Path $copyDir $name) $stripped
+    return "generated/vehicle_parity/$name"
+}
+
 # Scenario definitions (same parameters as the baseline recordings).
 $frames = @{ '60' = 2600; '144' = 6300; '30' = 1300 }
 $dts = @{ '60' = '0.0166666667'; '144' = '0.0069444444'; '30' = '0.0333333333' }
-$common = @('--game', '--scene', 'scenes/nfs_sprint.json', '--window', 'windowed', '--width', '1280', '--height', '720')
-$shuto = @('--game', '--scene', 'scenes/shuto_buildings.json', '--window', 'windowed', '--width', '1280', '--height', '720')
+$common = @('--game', '--scene', (Get-ParityScene 'scenes/nfs_sprint.json'), '--window', 'windowed', '--width', '1280', '--height', '720')
+$shuto = @('--game', '--scene', (Get-ParityScene 'scenes/shuto_buildings.json'), '--window', 'windowed', '--width', '1280', '--height', '720')
 $driveEnv = @('NOX_DRIVE', 'NOX_DRIVE_SCRIPT', 'NOX_FIXED_DT', 'NOX_EXIT_AFTER_FRAMES', 'NOX_DRIVE_AUTOPILOT', 'NOX_EXIT_ON_FINISH', 'NOX_VEHICLE_TELEMETRY', 'NOX_VEHICLE_POLICY_TRACE')
 
 function Get-ScenarioSpec([string]$name) {

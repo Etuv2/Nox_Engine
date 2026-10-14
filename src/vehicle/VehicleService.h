@@ -5,7 +5,7 @@
 // Native (this service): tyre curves and friction ellipse, load transfer, drive/brake force
 // evaluation, integration, collision circles against walls/areas/obstacles/surface, suspension,
 // wheel sampling, rig posing and the mechanical gearbox (ratios, final drive, rpm, limiter).
-// Policy (IVehiclePolicy): direction and gear choice, shift timing, nitrous, drift, steering and
+// Policy (IVehiclePolicy): direction and gear choice, shift timing, boosts, drift, steering and
 // yaw assists, velocity correction and the drift swing. The service never chooses those itself.
 #include <cstddef>
 #include <functional>

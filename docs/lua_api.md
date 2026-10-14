@@ -31,8 +31,10 @@ A project is a directory with `project.json` (contract C4). The scene selects it
   through `AssetIO::ResolveRelative`.
 - `script_roots` are searched in order by `require`. Default: `["scripts"]`.
 - `assets` is reserved (accepted, not yet used).
+- `audio` (optional): `{ "buses": ["boss_music", ...] }` declares extra mixer buses beyond `master`, `music`,
+  `sfx`, `ui` and `voice` (see "Audio"). Invalid or duplicate names are reported when the project loads.
 - `authoring_roots` (optional) lists repo-logical files or directories that `nox.save_authoring_json` may write, e.g.
-  `["config/hud.json", "data"]`. Unlike the fields above these are not descriptor-relative, because `config/` and
+  `["projects/nox-racing/config/hud.json", "data"]`. Unlike the fields above these are not descriptor-relative, because `config/` and
   `data/` are shared roots. See "Authoring saves".
 
 Descriptors are read through AssetIO, so the same project loads from loose files and from packs.
@@ -119,7 +121,11 @@ Reads (valid at any time in a callback):
 | `ctx:key(h)` | string usable as a table key |
 | `ctx:entities()` | array of all live entities with a transform, ascending ID |
 | `ctx:query(schema)` | array of live entities that have the declared schema, ascending ID (snapshot) |
-| `ctx:has_component(h, name)` | native component presence: Transform, Renderable, Light, Camera, Animation, Physics, Collider, Audio, LPVVolume |
+| `ctx:has_component(h, name)` | presence of any registered component (see Components) or native pool: Transform, Renderable, Light, Camera, Animation, Physics, Collider, Audio, LPVVolume. Unknown names raise |
+| `ctx:component(h, name)` | component proxy (see Components), or nil when the entity has no such component |
+| `ctx:components(h)` | array of component names present on the entity |
+| `ctx:parent(h)` / `ctx:children(h)` | parent handle (nil at the top) / array of child handles, for nodes with entities |
+| `ctx:raycast(origin, dir, max_dist)` | `{ entity, name, distance, point = {x,y,z}, normal = {x,y,z} }` for the nearest scene node hit, or nil. Reads only |
 | `ctx:position(h)` | world position `x, y, z` (copies) |
 | `ctx:scale(h)` | world scale `x, y, z` (copies) |
 | `ctx:frame()`, `ctx:time()` | frame counter (from Play), play time in seconds |
@@ -144,7 +150,7 @@ Deferred native commands (applied after the callback returns successfully):
 | Function | Behaviour |
 | --- | --- |
 | `ctx:spawn(name)` | queue creation of a script entity named `name` (must be unused). Returns a token; use `ctx:resolve_spawn(token)` in a later callback |
-| `ctx:destroy(h)` | queue destruction. Only script-spawned entities can be destroyed |
+| `ctx:destroy(h)` | queue destruction. Script-spawned entities are destroyed; scene nodes (authored, or instantiated by `ctx:instantiate`) are removed from the scene at the frame boundary. Authored nodes come back at Stop, nodes created during play do not |
 | `ctx:move(h, x, y, z)` | set local position (continuous motion; does not flag a camera cut) |
 | `ctx:teleport(h, x, y, z)` | set local position and flag a discontinuous move (`ConsumeTeleport` returns true for that frame, so temporal history resets) |
 | `ctx:set_scale(h, x, y, z)` | set scale |
@@ -156,6 +162,87 @@ does not stop other commands. Spawn names that are already in use produce a warn
 
 Native transform writes preserve hierarchy, transform dirtying and the transform system's
 bookkeeping: they call the existing `TransformSystem` setters.
+
+## Components (reflection registry)
+
+Scripts reach the node components that have a registry descriptor (`src/reflect/`). The layer is generic: a
+descriptor registered by any subsystem appears here without changes to the scripting code.
+
+- `ctx:component(h, name)` returns a proxy, or nil when the entity has no such component. Names are the descriptor
+  names (`nox.components()`); the native pool names are presence-only (`ctx:has_component`).
+- Field read `proxy.intensity`, field write `proxy.intensity = 2.0`, both through the descriptor. Vectors are
+  `{x=, y=, z=, w=}`, colours `{r=, g=, b=, a=}`, and the array form `{1, 2, 3}` is accepted on input. Enums read and
+  write their names; integer indices are accepted on input. Method call `proxy:play("Run")` checks argument count and
+  types and returns the descriptor's result.
+- A proxy holds the checked entity handle, not the node: every access re-checks the handle and finds the node again.
+  A stale handle raises `stale or invalid entity handle`; a component removed from the entity raises
+  `component 'X' is not present on entity ...`.
+- Errors are Lua errors: unknown property or method, read-only property, property that does not apply to the node, wrong
+  value type, a value the descriptor rejects, and a method that fails.
+- Writes (field writes, method calls, `ctx:add_component`, `ctx:remove_component`, `ctx:load_scene`) are allowed only in
+  systems, behaviors and event handlers. They take effect immediately (not after the callback returns) and a failing
+  callback does not roll them back. Reads are allowed wherever `ctx` is.
+- `ctx:add_component(h, name)` and `ctx:remove_component(h, name)` return `true` when the component is present (add) or
+  absent (remove) afterwards. Otherwise they return `false, reason`, for example for a builtin `Node`.
+- `nox.components()` returns the registry in inspector order: each entry has `name`, `category`, `tooltip`, `builtin`,
+  `order`, `can_add`, `can_remove`, `properties` and `methods`. A property has `name`, `label`, `type`, `read_only`,
+  `hidden`, `no_save`, `angle`, `conditional`, and when set `min`, `max`, `step`, `enum`, `asset_filter`. A method has
+  `name`, `tooltip`, `args` (type names), `returns`, `editor_button`. Types: `bool`, `int`, `float`, `vec2`, `vec3`,
+  `vec4`, `color3`, `color4`, `string`, `enum`, `asset_path`, `node_ref`.
+- Entities spawned by scripts have no scene node, so they have no registry components.
+
+Scene instances:
+
+- `ctx:instantiate(path [, opts])` creates a prefab instance (`path` is a logical `*.prefab.json` asset, see
+  `docs/prefabs.md`) and returns its handle. The instance is a normal scene node: it has the node's registry
+  components, its children and its prefab link, like a node loaded from the scene file. It is created immediately, so
+  the handle can be used in the same callback, and it is removed at Stop.
+- `opts` (all optional): `parent` (handle; default the scene root), `position`, `rotation` (degrees, Euler), `scale`
+  (each `{x=, y=, z=}` or `{x, y, z}`), `name` (string). Other keys are ignored.
+- Only writable callbacks (systems, behaviors, events) may instantiate. A missing or invalid path, a file that is not a
+  prefab, or a prefab that fails to expand raises a Lua error.
+- `ctx:destroy(h)` removes an instance or any other scene node with its subtree. The removal is queued like the other
+  commands and applied at the frame boundary.
+
+Scene requests:
+
+- `ctx:load_scene("scenes/<name>.json")` switches scene at the next frame boundary. The path is logical: under `scenes/`,
+  ends in `.json`, uses letters, digits, `_ - . /` and no `..`.
+- There is no engine time scale yet, so there is no `ctx:time_scale`.
+
+## Physics
+
+The queries and events use the engine's PhysicsEngine, the world that the RigidBody, Collider, Trigger and
+CharacterController components act on (docs/physics.md). Without a physics engine the queries return nil or an empty
+array and no physics events are raised. Layers are bit masks: a body is reported when its collision layer intersects
+the mask; `mask` is optional and defaults to every layer.
+
+Queries (reads, valid in any callback):
+
+| Call | Result |
+|---|---|
+| `ctx:physics_raycast(origin, dir, max_dist, mask)` | `{ entity, distance, point = {x,y,z}, normal = {x,y,z} }` for the nearest body hit within `max_dist`, or nil. `dir` need not be normalized. `entity` is absent when the body has no scene node |
+| `ctx:overlap_sphere(center, radius, mask)` | array of entity handles (ascending ID) of the bodies the sphere overlaps, touching included; empty when none |
+| `ctx:overlap_box(center, half_extents, mask)` | the same for a world-aligned box |
+
+Events are delivered to `nox.on` handlers as `function(ctx, payload)`. They are queued during the physics step and
+delivered by the next Lua update, in the same order as the other events of that update.
+
+| Event | Payload |
+|---|---|
+| `trigger_enter`, `trigger_exit` | `{ trigger = handle, other = handle or nil }`: a body entered or left a Trigger volume. `other` is nil when the body's node has no entity |
+| `contact_begin`, `contact_end` | `{ a = handle or nil, b = handle or nil }`: two bodies started or stopped touching. A side without an entity is nil; pairs with no entity on either side are not reported |
+
+```lua
+nox.on("trigger_enter", function(ctx, ev)
+  if ev.trigger == ctx:find("pickup_zone") and ev.other == ctx:find("player") then
+    ctx:emit("picked_up", nil)
+  end
+end)
+```
+
+Components (`ctx:component(h, "CharacterController"):move(...)`, `ctx:component(h, "Trigger").radius`, and the others) go
+through the registry like every other component (see Components). Their fields and methods are listed in docs/physics.md.
 
 ## Declared schemas
 
@@ -376,21 +463,35 @@ controls (live, not saved), which is the same set the Night Street panel edits.
 
 ## Play-world restoration
 
-Play captures every live entity's local transform and each rigid body's pose and velocities. Stop
-(after the module ended play) removes entities created during play together with their bodies, restores
-the captured transforms and body states, and then the scene is configured again. Authored declared data
-and script-spawned entities are restored by the module at Stop as well.
+Play captures, for the whole authored scene, every node's own keys (including its registry `components` block) and
+prefab link, every live entity's local transform and each rigid body's pose and velocities. Stop (after the module
+ended play) restores the scene in this order, then the scene is configured again:
 
-Scene-owned entities (a `SceneNode` refers to them) are never destroyed by this restoration, even when
-they were created during play. Authored entities destroyed by native code during play are not recreated;
-API v1 scripts cannot destroy authored entities.
+1. Nodes created during play (`ctx:instantiate`, native code) leave the scene with their subtree, bodies and entities.
+2. Script-spawned entities (`ctx:spawn`) are destroyed.
+3. Authored transforms and body states go back to the captured values.
+4. Authored nodes destroyed during play (`ctx:destroy` on an authored node) are re-created from their captured JSON
+   under their captured parent and sibling index.
+5. Every authored node still in the scene gets the registry property values that differ from the capture written
+   back (only the differing properties are set).
+
+Authored declared data is restored by the module at Stop as well.
+
+### Components restored at Stop
+
+- Restored: every authored node's registry component values (`Light` intensity, colour, enabled, `Node.name`, physics
+  properties, and so on) as they were at Play, and every entity's local transform, so transform writes made through
+  proxies are undone.
+- Not restored: a component added during play is not removed at Stop. A component removed during play comes back with
+  its captured properties. Nodes inside a re-created prefab instance keep their content, but not their own prefab links.
 
 ## Known limits (API v1)
 
-- No native component access beyond presence checks, positions and scales. Native component writes
-  (renderables, physics bodies, lights) are not exposed yet.
+- Component writes go through the registry (see Components). Native subsystems without a descriptor (renderables,
+  physics bodies, colliders, audio) stay presence-only.
 - Spawned entities are ECS-only (no scene node, no renderable); they are destroyed at Stop.
-- Authored entities cannot be destroyed by scripts; Stop restores their state.
+- Scene nodes created by `ctx:instantiate` are removed at Stop and are not re-created; authored nodes that a script
+  destroyed are re-created at Stop.
 - Coroutines are allowed, but a coroutine that is suspended across callbacks keeps its state until the
   VM is replaced.
 
@@ -569,6 +670,78 @@ same sample.
 
 An unknown action name raises `unknown input action 'name'` in the calling system or handler, which faults it.
 
+## Input control (rebinding, rumble)
+
+These functions change the running project's action map (the `input.json` of the project). Rebinds are written to
+the user directory (`input_bindings_<path>.json`, never to the project) and applied again the next time the map is
+loaded, so the player's keys survive a restart.
+
+| Function | Returns |
+| --- | --- |
+| `input.rebind(action, key)` | `true`, or `nil, error`. Replaces the keyboard keys of a `button` action with one SDL key name. Axis actions, unknown actions and unknown key names fail. Pad buttons are kept |
+| `input.bindings(action)` | `{ keys = {...}, pad_buttons = {...} }` for the action, or `nil, error` |
+| `input.save_bindings()` | `true` when the rebinds were written to the user directory, otherwise `false` |
+| `input.rumble(low, high, ms)` | `true` when the first attached gamepad accepted the rumble. `low` and `high` are motor strengths in 0..1 (clamped), `ms` is 0..5000 (default 200). `false` without a gamepad |
+
+Without a loaded project these functions fail softly (`nil, error` or `false`). Rebinding changes what
+`ctx:action_down` and `ctx:axis` report from the next frame on.
+
+## Audio (buses, listener, one-shots)
+
+The mixer is an engine service (`src/audio/AudioMixer.*`). Every source plays through a bus, and the gain of a
+channel is `source volume * bus volume * master volume`. A muted bus, or a muted `master`, is silent.
+Details and a short tutorial: `docs/audio.md`.
+
+| Function | Notes |
+| --- | --- |
+| `audio.play_one_shot(path, opts)` | plays a sound once, at a world position or unspatialised. `opts` (all optional): `position = {x, y, z}` (3D, heard from the current listener), `bus` (default `"sfx"`), `volume` (0..1, default 1), `pitch` (0.1..10, default 1). Returns a handle, or `nil, error`. The gain is set when the sound starts |
+| `handle:stop()` / `handle.playing` | stops the sound if it still plays / true while it plays |
+| `audio.bus_volume(name)` / `audio.bus_volume(name, v)` | reads or sets a bus volume (0..1, clamped). Returns the volume, or `nil, error` for an unknown bus |
+| `audio.bus_mute(name)` / `audio.bus_mute(name, muted)` | reads or sets the mute flag. Returns the flag, or `nil, error` for an unknown bus |
+| `audio.buses()` | array of bus names: `master`, `music`, `sfx`, `ui`, `voice`, then the project's extras |
+
+- Paths go through AssetIO like every other sound (loose files and packs, the same sandbox as `AudioNode`).
+- Without an audio device, or for a sound that does not load, `play_one_shot` returns `nil, error`; nothing raises.
+- Bus changes reach the sounds that are already playing (`AudioNode` sources and the procedural vehicle audio) on the
+  next frame. A one-shot keeps the gain it started with.
+- The 3D listener is the current `AudioListener` node (scene component `"AudioListener": { "current": true }`), or
+  the camera when there is none. The listener is published each frame, so one-shots use the same pose as the
+  sources. The listener's forward direction is its local `-Z`.
+
+## Time scale
+
+`ctx:time_scale([v])` reads or sets the global game time scale (`src/TimeScale.*`). Without an argument it returns
+the current scale; with one it sets the scale (clamped to 0..10) and returns the new value. A non-finite value raises.
+
+- The scale applies to game time: the Lua systems and behaviours (`dt` and the fixed substeps), animation, physics
+  and the native particle pools. It does not apply to input, the editor UI, debug draw lifetimes or the frame timers.
+- Scaled time feeds the same fixed-step accumulator as before, so a scale of 0.5 runs half the physics steps per real
+  second and a scale of 0 runs none. A given scale and frame sequence give the same steps.
+- Reload polling (hot reload of scripts) uses the scaled `dt` as well, so it pauses at scale 0.
+- The engine exposes the same value as `Core::GetTimeScale()` / `Core::SetTimeScale()`.
+
+## Debug draw
+
+`debug.*` queues world-space primitives that are drawn after the scene, in the editor viewport and in play mode.
+The primitives are drawn through the ImGui draw list (the same path the editor viewport uses), so no renderer is
+involved. Source: `src/diagnostics/DebugDraw.*`.
+
+| Function | Notes |
+| --- | --- |
+| `debug.line(a, b, colour, duration)` | segment between two points |
+| `debug.box(center, half, colour, duration)` | axis-aligned box; `half` is `{x, y, z}` or one number (cube half size) |
+| `debug.sphere(center, radius, colour, duration)` | three great circles |
+| `debug.text(position, text, colour, duration)` | label at a point (skipped when behind the camera) |
+| `debug.clear()` / `debug.count()` | removes every primitive / the number queued |
+
+- Points are `{x, y, z}` or `{x = , y = , z = }`. A colour is `0xAARRGGBB` like `ed.line3`; a value up to `0xFFFFFF`
+  is opaque RGB. Default white.
+- `duration` is in real seconds, unscaled by the time scale. `0` (or omitted) draws for one frame: call it every
+  frame to keep a shape visible.
+- Primitives behind the camera are skipped per segment; the queue holds at most 4096 primitives.
+- The `debug` table is the Lua debug library name; the runtime does not open the standard debug library, so the
+  name is free for this API.
+
 ## Camera
 
 The module camera (`IGameModule::GetCamera`) is owned by the module. Scripts change its pose and projection
@@ -584,6 +757,24 @@ through `ctx`; the values are plain state (not declared data), so a reload keeps
 | `ctx:camera_project(x, y, z)` | `nx, ny, distance, visible`: the point in the game overlay, 0..1 with y down, at the overlay aspect. `visible` is false behind the camera or more than a quarter of the view outside it (then `nx, ny` are 0.5) |
 
 Camera calls fail with `no module camera is available` when the scene has no module camera.
+
+## Rendering
+
+Render settings and render effects are components (`docs/rendering_components.md` lists every property):
+`WorldEnvironment` (scene root), `ParticleEmitter`, `Decal`, and the `Camera` component's `current` flag. Read and
+write them with `ctx:component(h, name)` like any other component. Writes follow the Components rules above.
+
+- `WorldEnvironment` sits on the scene root only. The root is named `Root` (`ctx:find("Root")`), so
+  `ctx:component(ctx:find("Root"), "WorldEnvironment")` returns its proxy; a scene that names another node `Root`
+  gets that node instead. Field writes such as `env.bloom_strength = 1.2` change the live renderer, and the scene
+  saves them to `render_settings`.
+- `emitter:burst(n)`, `emitter:restart()`, `emitter:clear()` drive a `ParticleEmitter`. Live counts read through
+  `particle_count`.
+- Switching the view: set `current = true` on the camera node's `Camera` component and `current = false` on the
+  previous one (in Play mode the first node with `current` set drives the render camera; the editor camera is
+  used otherwise).
+- `ctx:screen_to_ray(nx, ny [, aspect])` returns the ray `ox, oy, oz, dx, dy, dz` through the normalised view point
+  (0..1, y down) of the current camera node, or nil when no node has `current` set. `aspect` defaults to 16:9.
 
 Scene raycasts: the engine does not expose the scene's own `CollisionWorld` to modules. Collision queries use the
 declared collision files below (`nox.collision`). A scene-wide query helper is not implemented.
@@ -691,7 +882,7 @@ Lua controller with `NOX_VEHICLE_POLICY=lua` (see "Transitional selection"). Eng
 
 The native backend (`VehicleService`) evaluates tyres, load transfer, drive and brake forces from actuation values,
 integration, collision circles, suspension, rig posing and the mechanical gearbox (ratios, rpm, limiter). The controller
-decides everything else: pedal mapping, reverse, gear selection and shifts, nitrous, drift entry and exit, steering
+decides everything else: pedal mapping, reverse, gear selection and shifts, boosts, drift entry and exit, steering
 assists, yaw assists, the velocity swing, burnout and the brake split, handbrake lock and the rest hold. A vehicle has
 exactly one controller. There is no native default policy, so no hidden policy can run underneath a Lua controller.
 
@@ -724,8 +915,8 @@ returns `nil, "... restart Play to change the geometry or rig"` for the rest.
 | `valid(h)` | Boolean, never raises. |
 | `count()` | Live vehicles. |
 | `step(dt [, frozen])` | Steps every vehicle with its latched input (the service clamps dt and runs 240 Hz sub-steps). Called by the project; nothing runs on its own clock. |
-| `set_input(h, { throttle, brake, steer, handbrake, nitrous })` | Latched until changed. Ranges are checked (raises on bad values). |
-| `telemetry(h)` | Table: `x`, `z`, `heading_deg`, `vx`, `vy`, `speed_kmh`, `yaw_rate`, `steer_deg`, `gear`, `rpm`, `limiter`, `slip`, `load`, `airborne`, `nitro`, `nitro_active`, `drift`, `drift_sign`, `shift_timer`, `faulted`. |
+| `set_input(h, { throttle, brake, steer, handbrake, aux })` | Latched until changed. `aux` is a table of named auxiliary inputs (`name = number or boolean`, booleans as 1 / 0) that the controller interprets; a name not given reads as 0. Ranges are checked (raises on bad values). |
+| `telemetry(h)` | Table: `x`, `z`, `heading_deg`, `vx`, `vy`, `speed_kmh`, `yaw_rate`, `steer_deg`, `gear`, `rpm`, `limiter`, `slip`, `load`, `airborne`, `shift_timer`, `channels` (the controller's named channels, flags as 1 / 0), `faulted`. |
 | `teleport(h, x, z [, heading_deg])` | Discontinuous move (the service flags it). |
 | `reset(h)` | Back to the spawn (controller `on_respawn`). |
 | `set_controller(h, module [, params])` | Swaps the controller; params default to the vehicle's current ones. Returns `nil, reason` when the module cannot be loaded; the vehicle then runs the faulted controller (coasts). |
@@ -742,7 +933,7 @@ A controller is a module returning a table with `new(params)`. Required function
 ```lua
 local C = {}
 C.__index = C
-function C.new(params) return setmetatable({ debug = { nitro = 1.0 } }, C) end
+function C.new(params) return setmetatable({ debug = { my_channel = 1.0 } }, C) end
 function C:control(tel, inp, act)      -- every field of act must be set
 function C:yaw_assist(tel, inp, io)    -- io.yaw_acc, io.ax in and out
 function C:velocity(tel, inp, io)      -- io.vx, io.vy in and out
@@ -752,15 +943,17 @@ return C
 
 Per sub-step the engine makes four calls (control, yaw, velocity, post step) and no others. The telemetry, input and io
 tables are reused: read them during the call only. `act` is cleared before each `control` call, so a missing field is a
-fault. `debug` (optional) is read after each call: `nitro`, `nitro_cooldown`, `nitro_active`, `drift`, `drift_sign`,
-`shift_timer`, and `shift_event` (one-shot, for `ConsumeShift`).
+fault. `debug` (optional) is read after each call. `shift_timer` and `shift_event` (one-shot, for `ConsumeShift`) are the
+gearbox fields the engine reads by name. Every other number or boolean field becomes a named channel (booleans as 1 / 0)
+that `telemetry(h).channels` reports and the facade reads; the engine assigns no meaning to channel names.
 
 Telemetry fields (snake case, floats): `time`, `h`, `pos_x`, `pos_y`, `vel_x`, `vel_y`, `heading`, `vx`, `vy`, `yaw_rate`,
 `ax`, `ay`, `steer_angle`, `speed`, `speed01`, `beta`, `vx_abs`, `wheelbase`, `track`, `top_speed`, `rear_spin`, `rpm`,
 `wheel_speed` (valid in `post_step`), `gear`, `gear_count`, `limiter`, `airborne`, `surface`, `ground_pitch`,
-`ground_roll`, `rpm_idle`, `final_drive`, `rear_wheel_radius`. Input: `throttle`, `brake`, `steer`, `handbrake`, `nitrous`.
+`ground_roll`, `rpm_idle`, `final_drive`, `rear_wheel_radius`. Input: `throttle`, `brake`, `steer`, `handbrake`, and `aux`
+(named auxiliary inputs, see `set_input`).
 
-Actuation fields set by `control`: `gear`, `steer_angle`, `nitro_drive_scale`, `drive_shift_cut`, `drag_scale`,
+Actuation fields set by `control`: `gear`, `steer_angle`, `drive_scale`, `drive_shift_cut`, `drag_scale`,
 `rear_grip_scale`, `drive_throttle`, `reverse_drive`, `brake_command`, `brake_front_share`, `brake_rear_share`,
 `brake_at_standstill`, `rear_drive_cut`, `rear_spin_floor`, `rear_lock`, `hold_at_rest`. Ranges: gear -1 or 1..gear_count,
 steer within 1.6 rad, scales within their documented bounds, pedals and shares in [0, 1].
@@ -770,7 +963,7 @@ steer within 1.6 rad, scales within their documented bounds, pedals and shares i
 Any of these faults the controller: a Lua error, the instruction budget (per call; the runtime's limit, which the
 transitional path sets from `controller.instruction_budget` in the data file), a missing or out-of-range output, or a
 non-finite value. While faulted, the vehicle receives the safe actuation: no drive,
-no nitrous, steering centred, a brake command of 0.25 (coast to a stop), the gear it had, no shift. No other policy takes
+no boost, steering centred, a brake command of 0.25 (coast to a stop), the gear it had, no shift. No other policy takes
 over. The fault is recorded in `faults(h)`. Under `NOX_VEHICLE_POLICY=lua` the car's facade prints each new fault once.
 `LuaVehiclePolicy::RetryFaulted()` (C++, not exposed to scripts) re-enables a faulted controller; replacing it with
 `set_controller` is the script-side recovery.

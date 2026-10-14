@@ -17,6 +17,7 @@
 
 // Forward declarations
 class Camera;
+struct ImDrawList;
 class SceneGraph;
 class SceneLoader;
 class ModelManager;
@@ -210,6 +211,12 @@ public:
 
     
     std::shared_ptr<Camera> GetCamera() { return m_camera; }
+
+    // Global game time scale (src/TimeScale.h): scales game, animation and physics time; not input or the UI.
+    float GetTimeScale() const;
+    bool SetTimeScale(float scale);
+    // Draws the queued debug primitives (src/diagnostics/DebugDraw.h) through the editor camera into a viewport rectangle.
+    void DrawDebugOverlay(ImDrawList* drawList, float x, float y, float width, float height);
     std::shared_ptr<SceneGraph> GetSceneGraph() { return m_sceneGraph; }
     std::shared_ptr<DirectionalLight> GetLighting() { return m_lighting; }
     LightManager* GetLightManager();
@@ -265,8 +272,26 @@ public:
     // Node picking in viewport-local pixel coordinates.
     std::shared_ptr<SceneNode> PickNode(int x, int y, int width, int height);
     std::shared_ptr<SceneNode> DuplicateNode(const std::shared_ptr<SceneNode>& node);
-    std::shared_ptr<SceneNode> AddModelNode(const std::string& modelPath, const glm::vec3& position);
+    // parent null = scene root.
+    std::shared_ptr<SceneNode> AddModelNode(const std::string& modelPath, const glm::vec3& position,
+        const std::shared_ptr<SceneNode>& parent = nullptr);
     bool DeleteNode(const std::shared_ptr<SceneNode>& node);
+    // Prefabs (src/scene/Prefab.h). Instantiate works in play mode too (Lua ctx:instantiate); the instance is
+    // removed at Stop. Save writes a *.prefab.json asset from a node subtree (loose mode only).
+    std::shared_ptr<SceneNode> InstantiatePrefabNode(const std::string& logicalPath, const std::shared_ptr<SceneNode>& parent,
+        const nlohmann::json& placement, std::string* error);
+    bool SavePrefabFromNode(const std::shared_ptr<SceneNode>& node, const std::string& logicalPath, std::string* error);
+    // Removes a scene node subtree while playing (ctx:destroy of an authored or script-created node). Stop restores
+    // authored nodes; nodes created during play are removed for good at Stop.
+    bool DestroySceneNodeForPlay(const std::shared_ptr<SceneNode>& node);
+    // Editor node operations (the editor builds its undo steps on these). Serialized nodes use the
+    // scene-file format, so an instantiated node is identical to a loaded one.
+    nlohmann::json SerializeNodeForEditor(const std::shared_ptr<SceneNode>& node);
+    // parent null = scene root. Returns null while playing or when the JSON is rejected.
+    std::shared_ptr<SceneNode> InstantiateNodeFromJson(const nlohmann::json& nodeJson, const std::shared_ptr<SceneNode>& parent);
+    // Moves node under newParent at child index (negative = last). keepWorld preserves its world
+    // transform. Refuses the root, cycles and play mode.
+    bool ReparentNode(const std::shared_ptr<SceneNode>& node, const std::shared_ptr<SceneNode>& newParent, int index, bool keepWorld);
     void InvalidateSceneCaches() { m_bvhDirty = true; m_boundingBoxCached = false; }
     void ResetTemporalHistory();
     void QuitApplication() { m_quitRequested = true; }
@@ -419,16 +444,20 @@ private:
     json m_authoredGame;                          // scene "game" object (authoring copy)
     json m_prePlayGame;                           // restored on Stop
     std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> m_prePlayTransforms;
-    PlayWorldSnapshot m_playWorld;                // entities, transforms and bodies as authored (restored on Stop)
+    PlayWorldSnapshot m_playWorld;                // scene nodes, entities, transforms and bodies as authored (restored on Stop)
+    bool m_roundtripDone = false;                 // NOX_SAVE_ROUNDTRIP copy written; the engine quits (docs/building.md)
     json m_sceneRootJson;                         // last loaded scene file
     std::string m_gameProject;                    // logical project descriptor of m_game ("" = native module)
     bool m_gameProjectResolved = false;
     bool m_gameResourcesReady = false;            // device and ImGui exist; modules may load resources
     void ConfigureGameFromScene(const std::string& scenePath);
+    void SaveRoundtripCopyIfRequested();
     void SelectGameModule(const json& sceneRoot);
     std::string ProjectForScene(const json& sceneRoot) const;
     json ReadStartupSceneRoot() const;
     void RenderSceneTo(rhi::FramebufferHandle framebuffer, int width, int height, const std::shared_ptr<Camera>& camera);
+    // Debug primitives (DebugDraw) projected through a camera into a rectangle of the given ImGui draw list.
+    void DrawDebugPrimitives(ImDrawList* drawList, const std::shared_ptr<Camera>& camera, float x, float y, float width, float height);
     bool m_quitRequested = false;
     bool m_sceneHasRenderSettings = false; // scene file had "render_settings" (docs/nfs2015)
 

@@ -55,7 +55,7 @@ Engine changes are generic. Game data feeds them and there are no Shuto-specific
   - Scenes without collision behave exactly as before. The NFS sprint finishes identically.
 - **`RoadNetwork`**:
   - 3D nodes, one-way edges, lanes and lane width, carriageway ids.
-  - `traffic_side` (Japan: left) and `band_walls: false`.
+  - Network attributes `traffic_side` (Japan: left) and `band_walls: false` are generic: kept as written in the network file and read by name (`Attribute()`, `FlagAttribute()`).
   - File-backed networks with a uniform-grid index, holding 79k nodes.
   - Height-aware closest-point queries, directed routing and lane placement.
 - **`GameSession`**:
@@ -222,13 +222,13 @@ Implemented:
   2 % parking section and rejoins at the merge. The apron (52 m long, 13.5 m wide) has 20 painted
   90-degree bays, a raised walkway, a rest building with a lit glass front, vending machines and canopy
   lights. The place (arrival message, rest, meet / photo, minimap marker) sits on the bays;
-- one point-to-point sprint (Ginza to Rainbow Bridge), generated from waypoint positions resolved on the graph, with stable 3D checkpoints, timing, results, retry, return to free roam and saved best time (`config/speedwall.json`).
+- one point-to-point sprint (Ginza to Rainbow Bridge), generated from waypoint positions resolved on the graph, with stable 3D checkpoints, timing, results, retry, return to free roam and saved best time (`projects/nox-racing/data/speedwall.json`).
 
 Traversal events are validation-only (`scenes/_shuto_traversal_rep_section.json`).
 
 UI:
 - **World map** (M or pad View; `src/WorldMapUI.*`, baked base `tools/shuto/make_worldmap.py`). It shows glowing expressways with route shields, Tokyo Bay and rivers, district labels, the player, event and parking markers, and a cyan event route preview. Controls: pan, zoom, recentre, and select an event. Enter sets a GPS waypoint, which routes on the minimap.
-- **UI icon pack** (`textures/ui_icons`, 128 px atlas via `src/UiIconAtlas.*`, configured in `config/hud.json`). Icons appear on HUD gauges and warnings, minimap and world markers, the pause and results menus, prompts, and the editor toolbar. The previous glyphs and text remain as fallbacks.
+- **UI icon pack** (`textures/ui_icons`, 128 px atlas via `src/UiIconAtlas.*`, configured in `projects/nox-racing/config/hud.json`). Icons appear on HUD gauges and warnings, minimap and world markers, the pause and results menus, prompts, and the editor toolbar. The previous glyphs and text remain as fallbacks.
 
 Not implemented yet:
 - loop time trials;

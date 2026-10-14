@@ -1,0 +1,37 @@
+{
+  "default": "game",
+  "presets": {
+    "editor": {
+      "mode": "editor",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "high",
+      "window": "windowed",
+      "width": 1920,
+      "height": 1080,
+      "project": "projects/nox-racing/project.json"
+    },
+    "game": {
+      "mode": "game",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "high",
+      "window": "borderless",
+      "project": "projects/nox-racing/project.json"
+    },
+    "game_ultra": {
+      "mode": "game",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "ultra",
+      "window": "borderless",
+      "project": "projects/nox-racing/project.json"
+    },
+    "game_windowed": {
+      "mode": "game",
+      "scene": "scenes/nfs_sprint.json",
+      "quality": "high",
+      "window": "windowed",
+      "width": 1720,
+      "height": 720,
+      "project": "projects/nox-racing/project.json"
+    }
+  }
+}

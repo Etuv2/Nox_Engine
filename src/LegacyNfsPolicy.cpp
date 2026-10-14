@@ -106,11 +106,11 @@ void LegacyNfsPolicy::OnHold()
 VehiclePolicyDebug LegacyNfsPolicy::Debug() const
 {
 	VehiclePolicyDebug d;
-	d.nitro = m_nitro;
-	d.nitroCooldown = m_nitroCooldown;
-	d.nitroActive = m_nitroActive;
-	d.drift = m_drift;
-	d.driftSign = m_driftSign;
+	d.channels["nitro"] = m_nitro;
+	d.channels["nitro_cooldown"] = m_nitroCooldown;
+	d.channels["nitro_active"] = m_nitroActive ? 1.0f : 0.0f;
+	d.channels["drift"] = m_drift;
+	d.channels["drift_sign"] = m_driftSign;
 	d.shiftTimer = m_shiftTimer;
 	return d;
 }
@@ -128,7 +128,7 @@ void LegacyNfsPolicy::Control(const VehicleInput& in, const VehicleStepTelemetry
 	const float beta = t.beta;
 
 	// --- Nitrous.
-	m_nitroActive = in.nitrous && m_nitro > 0.0f && in.throttle > 0.05f && t.vx > 1.0f;
+	m_nitroActive = in.Aux("nitrous") > 0.5f && m_nitro > 0.0f && in.throttle > 0.05f && t.vx > 1.0f;
 	if (m_nitroActive) {
 		m_nitro = std::max(0.0f, m_nitro - hd.nitroDrain * h);
 		m_nitroCooldown = hd.nitroRechargeDelay;
@@ -200,7 +200,7 @@ void LegacyNfsPolicy::Control(const VehicleInput& in, const VehicleStepTelemetry
 	out.gear = gear;
 
 	// --- Actuation for the native force evaluation.
-	out.nitroDriveScale = m_nitroActive ? hd.nitroThrust : 1.0f;
+	out.driveScale = m_nitroActive ? hd.nitroThrust : 1.0f;
 	out.driveShiftCut = m_shiftTimer > 0.0f;
 	out.dragScale = m_nitroActive ? 1.0f / (hd.nitroTopSpeed * hd.nitroTopSpeed) : 1.0f;
 	out.rearGripScale = glm::mix(1.0f, hd.driftGripScale, m_drift);

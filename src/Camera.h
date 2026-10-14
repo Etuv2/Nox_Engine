@@ -39,6 +39,9 @@ public:
     void SetOrthographic(float left, float right, float bottom, float top, float nearPlane, float farPlane);
     void SetProjectionType(ProjectionType type);
     void SetPose(glm::vec3 position, glm::vec3 worldUp, float yaw, float pitch);
+    // Copies a world transform (camera looks down its local -Z, as SceneNode does); keeps the lens.
+    void SetWorldTransform(const glm::mat4& world);
+    float GetAspect() const { return m_aspect; }
 
     // —— Input Controls ——  
     void ProcessKeyboard(const Uint8* keystate, float deltaTime);

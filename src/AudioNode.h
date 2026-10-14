@@ -22,6 +22,9 @@ public:
     // Stop the audio playback.
     void stop();
 
+    // Pause the current channel. play() starts it again from the beginning.
+    void pause();
+
     // Update the audio source position based on this node's global transform.
     // 'listenerPos' and 'listenerAngle' (in degrees) are used to compute relative positioning.
     void updateAudio(const glm::vec3& listenerPos, float listenerAngle);
@@ -35,12 +38,23 @@ public:
     float getPitch() const { return m_pitch; }
     float getVolume() const { return m_volume; }
     float getHearingDistance() const { return m_hearingDistance; }
+    // Mixer bus the source plays through (AudioMixer). Defaults to "sfx"; an empty name resets to the default.
+    const std::string& getBus() const { return m_bus; }
+    void setBus(const std::string& bus);
+    // Volume the channel is mixed at: source volume * bus gain (AudioMixer::BusGain).
+    float outputGain() const;
     bool isPlaying() const { return m_isPlaying; }
     bool is3D() const { return m_is3d; }
     
     // Get the sound file path for serialization
     std::string getSoundFilePath() const { return m_soundFilePath; }
+    bool hasSound() const { return m_sound != nullptr; }   // false when the file failed to load
     bool isLooping() const { return m_isLooping; }
+    // Settings applied by the next play(): loop, 3D positioning, and whether a scene load starts the sound.
+    void setLooping(bool loop) { m_isLooping = loop; }
+    void setIs3D(bool is3d) { m_is3d = is3d; }
+    bool getAutoplay() const { return m_autoplay; }
+    void setAutoplay(bool autoplay) { m_autoplay = autoplay; }
 
     //update audio nodes
     virtual void UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle) override;
@@ -61,15 +75,17 @@ private:
     bool m_is3d;
     bool m_isPlaying;
     bool m_isLooping = false; // Track loop state
+    bool m_autoplay = true;   // Scene loading plays the sound when true
 
     // Additional audio properties.
     float m_pitch;           // Pitch factor (1.0 = normal)
     float m_volume;          // Volume multiplier (0.0 to 1.0)
     float m_hearingDistance; // Maximum hearing distance for attenuation
+    std::string m_bus = "sfx"; // AudioMixer bus name
 
     float m_selectionRadius = 0.6f; // gizmo/picking sphere radius
     
-    // Store the sound file path for serialization
+    // Store the sound file path for serialization (the authored path, kept even when loading fails)
     std::string m_soundFilePath;
     
     // Cache world position from traversal to avoid recalculation
