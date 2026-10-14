@@ -322,7 +322,7 @@ std::string ProcessRunner::LastError() const {
     return m_lastError;
 }
 
-bool ProcessRunner::LaunchDetached(const std::string& commandLine, const std::string& workingDir) {
+bool ProcessRunner::LaunchDetached(const std::string& commandLine, const std::string& workingDir, bool hideConsole) {
     std::wstring wideCmd = Utf8ToWide(commandLine);
     std::vector<wchar_t> cmdBuffer(wideCmd.begin(), wideCmd.end());
     cmdBuffer.push_back(L'\0');
@@ -333,7 +333,7 @@ bool ProcessRunner::LaunchDetached(const std::string& commandLine, const std::st
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
     const BOOL ok = CreateProcessW(nullptr, cmdBuffer.data(), nullptr, nullptr, FALSE,
-                                   CREATE_NEW_PROCESS_GROUP | CREATE_UNICODE_ENVIRONMENT, nullptr, cwdPtr, &si, &pi);
+                                   CREATE_NEW_PROCESS_GROUP | CREATE_UNICODE_ENVIRONMENT | (hideConsole ? CREATE_NO_WINDOW : 0), nullptr, cwdPtr, &si, &pi);
     if (!ok) return false;
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);

@@ -128,6 +128,7 @@ private:
 	void DrawConsole();
 	void DrawBuildOutput();
 	void DrawLaunchPresets();
+	void DrawPreferences();
 	void DrawModals();
 	void DrawAuthoringOverlay(ImDrawList* dl);   // registered viewport overlay + its handles
 	void DrawGizmo(const Viewport& vp);
@@ -175,6 +176,7 @@ private:
 	bool m_showPresets = false, m_showHelp = false, m_showLegacyRendering = true, m_showLegacyLighting = true;
 	bool m_showLegacyPerformance = true, m_showLegacyAnimation = false, m_showLegacyState = false, m_showLegacyCamera = false;
 	bool m_showDemo = false;
+	bool m_showPreferences = false;   // Edit > Preferences (external script editor)
 
 	// Hierarchy / assets.
 	char m_hierarchyFilter[128] = "";

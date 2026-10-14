@@ -17,7 +17,9 @@
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
 #include "../editor/ProcessRunner.h"
+#include "../editor/ExternalEditor.h"
 #include "../editor/solace/SolaceUI.h"
+#include "../scripting/LuaEditorSupport.h"
 #include "../editor/InspectorUndo.h"
 #include "../scene/Prefab.h"
 #include "InspectorWidgets.h"
@@ -49,6 +51,12 @@ namespace {
 	const char* kSettingsPath = "settings/editor_settings.json"; // per-user (AssetIO::UserDir)
 	const char* kPresetsPath = "config/launch_presets.json";
 
+	// Opens a logical asset in the external editor (line 0 = top); failures are toasted.
+	void OpenAssetExternally(const std::string& logicalPath, int line) {
+		std::string error;
+		if (!ExternalEditor::OpenLogicalFile(logicalPath, line, error)) ui::Toast(error, ui::ToastKind::Warning);
+	}
+
 	// Panel window names (stable IDs for the dock layout).
 	const char* kWinScene = "Scene";
 	const char* kWinGame = "Game";
@@ -59,6 +67,7 @@ namespace {
 	const char* kWinConsole = "Console";
 	const char* kWinBuild = "Build Output";
 	const char* kWinPresets = "Launch Presets";
+	const char* kWinPreferences = "Preferences";
 	// Legacy panels (BaseWindow names).
 	const char* kWinRendering = "Rendering Settings";
 	const char* kWinLighting = "Lighting System";
@@ -171,6 +180,7 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 			m_outline.showOccluded = o.value("show_occluded", m_outline.showOccluded);
 			m_outline.hover = o.value("hover", m_outline.hover);
 		}
+		ExternalEditor::Current() = ExternalEditor::FromJson(s.value("external_editor", json()));
 	}
 	m_presets = AssetIO::ReadJsonOrNull(kPresetsPath);
 	if (!m_presets.is_object()) m_presets = json::object();
@@ -207,6 +217,7 @@ void EditorWorkspace::SaveSettings() const
 	s["selection_outline"] = {
 		{"color", json::array({ m_outline.color[0], m_outline.color[1], m_outline.color[2] })},
 		{"width", m_outline.width}, {"show_occluded", m_outline.showOccluded}, {"hover", m_outline.hover} };
+	s["external_editor"] = ExternalEditor::ToJson(ExternalEditor::Current());
 	UserSettings::SaveUserJson(kSettingsPath, s);
 }
 
@@ -318,6 +329,7 @@ void EditorWorkspace::Draw(float dt)
 		ImGui::End();
 	}
 	if (m_showPresets) DrawLaunchPresets();
+	if (m_showPreferences) DrawPreferences();
 	if (m_showDemo) ImGui::ShowDemoWindow(&m_showDemo);
 	DrawModals();
 	HandleShortcuts();
@@ -401,6 +413,14 @@ void EditorWorkspace::DrawMenuBar()
 			ui::Toast("Scene saved", ui::ToastKind::Success);
 		}
 		ImGui::Separator();
+		if (ImGui::MenuItem("Generate Lua Editor Support", nullptr, false, !m_core.IsPlaying())) {
+			// Annotations and VS Code settings of the active Lua project (also written when a project opens).
+			std::string report;
+			const bool ok = NoxLua::GenerateLuaEditorSupport(Game(), report);
+			std::cout << report;
+			ui::Toast(ok ? "Lua editor support written (see the log)" : report, ok ? ui::ToastKind::Success : ui::ToastKind::Warning);
+		}
+		ImGui::Separator();
 		if (ImGui::MenuItem("Exit")) m_quit = true;
 		ImGui::EndMenu();
 	}
@@ -411,6 +431,8 @@ void EditorWorkspace::DrawMenuBar()
 		auto sel = m_legacy.GetSelectedNode();
 		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, sel != nullptr && !m_core.IsPlaying())) DuplicateNodeWithUndo(sel);
 		if (ImGui::MenuItem("Delete", "Del", false, sel != nullptr && !m_core.IsPlaying())) DeleteNodeWithUndo(sel);
+		ImGui::Separator();
+		if (ImGui::MenuItem("Preferences...")) m_showPreferences = true;
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Node")) {
@@ -1231,7 +1253,7 @@ void EditorWorkspace::UnpackPrefabWithUndo(const std::shared_ptr<SceneNode>& nod
 void EditorWorkspace::DrawAssets()
 {
 	if (!ImGui::Begin(kWinAssets, &m_showAssets)) { ImGui::End(); return; }
-	static const char* folders[] = { "scenes", "prefabs", "models", "textures", "hdrs", "sounds", "fonts", "config", "shaders", "generated" };
+	static const char* folders[] = { "scenes", "prefabs", "models", "textures", "hdrs", "sounds", "fonts", "config", "shaders", "generated", "projects" };
 	ImGui::SetNextItemWidth(110);
 	if (ImGui::BeginCombo("##folder", m_assetFolder.c_str())) {
 		for (const char* f : folders) if (ImGui::Selectable(f, m_assetFolder == f)) { m_assetFolder = f; m_assetCacheTimer = 0.0f; }
@@ -1263,9 +1285,15 @@ void EditorWorkspace::DrawAssets()
 		}
 		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 			if (ext == ".json" && m_assetFolder == "scenes") RequestScene(path);
+			if (ext == ".lua") OpenAssetExternally(path, 0);
 		}
 		if (ImGui::BeginPopupContextItem()) {
 			if (ext == ".json" && m_assetFolder == "scenes" && ImGui::MenuItem("Open Scene")) RequestScene(path);
+			if (ext == ".lua" && ImGui::MenuItem("Open in External Editor")) OpenAssetExternally(path, 0);
+			if (!NoxLua::ProjectRootOf(path).empty() && ImGui::MenuItem("Open Project Folder in External Editor")) {
+				std::string error;
+				if (!ExternalEditor::OpenLogicalFolder(NoxLua::ProjectRootOf(path), error)) ui::Toast(error, ui::ToastKind::Warning);
+			}
 			if (nox::prefab::IsPrefabPath(path) && ImGui::MenuItem("Add to Scene", nullptr, false, !m_core.IsPlaying())) {
 				InstantiatePrefabFromAsset(path, m_legacy.GetSelectedNode());
 			}
@@ -1393,6 +1421,13 @@ void EditorWorkspace::DrawComponentSection(const std::shared_ptr<SceneNode>& nod
 		const bool stillOwned = m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
 			&& m_nodeTable.Resolve(m_propEdit.node) == node;
 		if (stillOwned && (r.final || !r.active)) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+		// A Lua script reference (asset path ending in .lua) gets a button to open it in the external editor.
+		const std::string* assetPath = prop.type == nox::reflect::PropType::AssetPath ? std::get_if<std::string>(&value) : nullptr;
+		if (assetPath && assetPath->size() > 4 && assetPath->compare(assetPath->size() - 4, 4, ".lua") == 0) {
+			ImGui::PushID(widgetId.c_str());
+			if (ImGui::SmallButton("Open in external editor")) OpenAssetExternally(*assetPath, 0);
+			ImGui::PopID();
+		}
 	}
 	// Methods flagged editorButton and taking no arguments.
 	for (const MethodDesc& method : desc.methods) {
@@ -1715,6 +1750,39 @@ void EditorWorkspace::DrawLaunchPresets()
 // ---------------------------------------------------------------------------------------------
 // Modals, shortcuts, undo
 // ---------------------------------------------------------------------------------------------
+void EditorWorkspace::DrawPreferences()
+{
+	if (!ImGui::Begin(kWinPreferences, &m_showPreferences, ImGuiWindowFlags_AlwaysAutoResize)) { ImGui::End(); return; }
+	ImGui::TextUnformatted("External script editor");
+	ImGui::TextDisabled("Opens Lua scripts from the Assets window, the inspector and the Lua project panel.");
+	ImGui::Spacing();
+	ExternalEditor::Settings& ext = ExternalEditor::Current();
+	const char* modes[] = { "Auto (VS Code, else OS default)", "OS default handler", "Custom command" };
+	int mode = static_cast<int>(ext.mode);
+	ImGui::SetNextItemWidth(320.0f);
+	if (ImGui::Combo("Editor", &mode, modes, IM_ARRAYSIZE(modes))) {
+		ext.mode = static_cast<ExternalEditor::Mode>(mode);
+		SaveSettings();
+	}
+	const std::string vscode = ExternalEditor::DetectVSCode();
+	ImGui::TextDisabled("VS Code: %s", vscode.empty() ? "not found" : vscode.c_str());
+	if (ext.mode == ExternalEditor::Mode::Custom) {
+		char buffer[512] = {};
+		std::snprintf(buffer, sizeof(buffer), "%s", ext.command.c_str());
+		ImGui::SetNextItemWidth(480.0f);
+		if (ImGui::InputText("Command", buffer, sizeof(buffer))) ext.command = buffer;
+		// Saved when the field is left, not on every keystroke.
+		if (ImGui::IsItemDeactivatedAfterEdit()) SaveSettings();
+		ImGui::TextDisabled("Placeholders: <exe> VS Code (or code), {file} path, {line} line, {root} project folder.");
+		ImGui::TextDisabled("Example: \"<exe>\" -g \"{file}:{line}\"");
+		if (ImGui::Button("Use the VS Code command")) {
+			ext.command = ExternalEditor::DefaultCommand();
+			SaveSettings();
+		}
+	}
+	ImGui::End();
+}
+
 void EditorWorkspace::DrawModals()
 {
 	if (m_openRename) {

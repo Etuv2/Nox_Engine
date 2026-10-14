@@ -2,6 +2,7 @@
 #include "LuaGameModule.h"
 
 #include "LuaEditorPanel.h"
+#include "LuaEditorSupport.h"
 #include "../Camera.h"
 #include "../EditorExtensions.h"
 #include "../PhysicsEngine.h"
@@ -15,6 +16,7 @@
 #include "../ui/Pointer.h"
 
 #include <algorithm>
+#include <iostream>
 
 namespace NoxLua {
 
@@ -353,6 +355,12 @@ namespace NoxLua {
 		ProjectDescriptor project;
 		if (!LoadProjectDescriptor(descriptorPath, descriptor, project, error)) return nullptr;
 		RegisterLuaEditorPanel();
+		// Editor support for external IDEs (annotations and VS Code settings): written when missing or stale, loose tree only.
+		if (AssetIO::IsInitialized() && AssetIO::GetMode() == AssetIO::Mode::Loose) {
+			std::string report;
+			EnsureLuaEditorSupport(project.descriptorPath, report);
+			std::cout << report;
+		}
 		return std::make_unique<LuaGameModule>(std::move(project));
 	}
 }

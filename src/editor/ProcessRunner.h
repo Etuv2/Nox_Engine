@@ -79,7 +79,8 @@ public:
 
     // Fire-and-forget launch of an unrelated program (e.g. Run Standalone). Inherits no handles and
     // is not tied to a Job Object, so it outlives the editor. Returns false if CreateProcess fails.
-    static bool LaunchDetached(const std::string& commandLine, const std::string& workingDir);
+    // hideConsole adds CREATE_NO_WINDOW (for console tools started from the editor, e.g. a custom script editor command).
+    static bool LaunchDetached(const std::string& commandLine, const std::string& workingDir, bool hideConsole = false);
 
 private:
     using Clock = std::chrono::steady_clock;
