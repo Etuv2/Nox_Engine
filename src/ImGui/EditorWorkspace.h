@@ -13,6 +13,7 @@
 #include "../editor/HierarchyModel.h"
 #include "../json.hpp"
 #include "../EditorExtensions.h"
+#include "PhysicsWindow.h"
 
 class Core;
 class SceneNode;
@@ -105,6 +106,9 @@ private:
 	void DrawHierarchyRow(const nox::editor::HierarchyRow& row);
 	void DrawAssets();
 	void DrawInspector();
+	void DrawPhysics();
+	PhysicsWindow::Host PhysicsHost();
+	std::vector<std::string> FlatNodeNames();
 	void DrawComponentSection(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
 		const std::vector<std::string>& assets, const std::vector<std::string>& nodeNames);
 	void DrawAddComponentButton(const std::shared_ptr<SceneNode>& node);
@@ -185,6 +189,9 @@ private:
 	std::map<std::string, bool> m_extOpen;
 	nlohmann::json m_extSaved = nlohmann::json::object();
 	bool m_showPresets = false, m_showHelp = false, m_showLegacyRendering = true, m_showLegacyLighting = true;
+	bool m_showPhysics = true;
+	PhysicsWindow m_physicsWindow;
+	bool m_physicsDrawn = false;   // Physics window was drawn this frame (smoke test)
 	bool m_showLegacyPerformance = true, m_showLegacyAnimation = false, m_showLegacyState = false, m_showLegacyCamera = false;
 	bool m_showDemo = false;
 	bool m_showPreferences = false;   // Edit > Preferences (external script editor)

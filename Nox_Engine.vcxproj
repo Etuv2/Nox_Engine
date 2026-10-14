@@ -263,6 +263,7 @@
     <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp" />
     <ClCompile Include="src\ImGui\LightingWindow.cpp" />
     <ClCompile Include="src\ImGui\PerformanceWindow.cpp" />
+    <ClCompile Include="src\ImGui\PhysicsWindow.cpp" />
     <ClCompile Include="src\ImGui\RenderingSettingsWindow.cpp" />
     <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp" />
     <ClCompile Include="src\ImGui\StateExportWindow.cpp" />
@@ -366,6 +367,7 @@
     <ClCompile Include="src\editor\InspectorUndo.cpp" />
     <ClCompile Include="src\passes\ParticlePass.cpp" />
     <ClCompile Include="src\physics\CharacterSystem.cpp" />
+    <ClCompile Include="src\physics\PhysicsDebugView.cpp" />
     <ClCompile Include="src\physics\ShapeOverlap.cpp" />
     <ClCompile Include="src\physics\TriggerSystem.cpp" />
     <ClCompile Include="src\reflect\BuiltinComponents.cpp" />
@@ -453,6 +455,7 @@
     <ClInclude Include="src\ImGui\ImGuiWindowManager.h" />
     <ClInclude Include="src\ImGui\LightingWindow.h" />
     <ClInclude Include="src\ImGui\PerformanceWindow.h" />
+    <ClInclude Include="src\ImGui\PhysicsWindow.h" />
     <ClInclude Include="src\ImGui\RenderingSettingsWindow.h" />
     <ClInclude Include="src\ImGui\SceneHierarchyWindow.h" />
     <ClInclude Include="src\ImGui\StateExportWindow.h" />
@@ -584,6 +587,7 @@
     <ClInclude Include="src\editor\InspectorUndo.h" />
     <ClInclude Include="src\passes\ParticlePass.h" />
     <ClInclude Include="src\physics\CharacterSystem.h" />
+    <ClInclude Include="src\physics\PhysicsDebugView.h" />
     <ClInclude Include="src\physics\ShapeOverlap.h" />
     <ClInclude Include="src\physics\TriggerSystem.h" />
     <ClInclude Include="src\procedural\ProceduralStreetGenerators.h" />

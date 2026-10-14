@@ -15,6 +15,7 @@
 #include "../UiIconAtlas.h"
 #include "../Scene.h"
 #include "../SceneGraph.h"
+#include "../PhysicsEngine.h"
 #include "../SceneNode.h"
 #include "../editor/ProcessRunner.h"
 #include "../editor/ExternalEditor.h"
@@ -79,6 +80,7 @@ namespace {
 	const char* kWinAnimation = "Animation Preview";
 	const char* kWinState = "State & Export";
 	const char* kWinCamera = "Camera Controls";
+	const char* kWinPhysics = "Physics";
 
 	// Camera pose from a position and a view direction (Camera has no yaw/pitch getters).
 	void PoseCamera(Camera& cam, const glm::vec3& eye, const glm::vec3& dir) {
@@ -190,6 +192,7 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		rd("rendering", m_showLegacyRendering);
 		rd("lighting", m_showLegacyLighting); rd("performance", m_showLegacyPerformance); rd("animation", m_showLegacyAnimation);
 		rd("state", m_showLegacyState); rd("camera", m_showLegacyCamera); rd("presets", m_showPresets);
+		rd("physics", m_showPhysics);
 		m_showAuthoring = s.value("authoring_overlay", m_showAuthoring);
 		m_extSaved = s.value("extension_panels", json::object());
 		if (!m_extSaved.is_object()) m_extSaved = json::object();
@@ -247,7 +250,8 @@ void EditorWorkspace::SaveSettings() const
 		{"hierarchy", m_showHierarchy}, {"assets", m_showAssets}, {"inspector", m_showInspector}, {"materials", m_showMaterials},
 		{"console", m_showConsole}, {"build", m_showBuild},
 		{"rendering", m_showLegacyRendering}, {"lighting", m_showLegacyLighting}, {"performance", m_showLegacyPerformance},
-		{"animation", m_showLegacyAnimation}, {"state", m_showLegacyState}, {"camera", m_showLegacyCamera}, {"presets", m_showPresets} };
+		{"animation", m_showLegacyAnimation}, {"state", m_showLegacyState}, {"camera", m_showLegacyCamera}, {"presets", m_showPresets},
+		{"physics", m_showPhysics} };
 	json ext = json::object();
 	for (const auto& [id, open] : m_extOpen) ext[id] = open;
 	s["extension_panels"] = ext;
@@ -366,6 +370,7 @@ void EditorWorkspace::Draw(float dt)
 	if (m_showHierarchy) DrawHierarchy();
 	if (m_showAssets) DrawAssets();
 	if (m_showInspector) DrawInspector();
+	if (m_showPhysics) DrawPhysics();
 	if (m_showMaterials) DrawMaterials();
 	if (m_showConsole) DrawConsole();
 	if (m_showBuild) DrawBuildOutput();
@@ -416,6 +421,7 @@ void EditorWorkspace::BuildDefaultLayout(unsigned int dockspaceId)
 	ImGui::DockBuilderDockWindow(kWinLighting, right);
 	ImGui::DockBuilderDockWindow(kWinRendering, right);
 	ImGui::DockBuilderDockWindow(kWinCamera, right);
+	ImGui::DockBuilderDockWindow(kWinPhysics, right);
 	ImGui::DockBuilderDockWindow(kWinConsole, bottom);
 	ImGui::DockBuilderDockWindow(kWinBuild, bottom);
 	ImGui::DockBuilderDockWindow(kWinPerformance, bottom);
@@ -499,6 +505,7 @@ void EditorWorkspace::DrawMenuBar()
 		ImGui::MenuItem("Lighting", nullptr, &m_showLegacyLighting);
 		ImGui::MenuItem("Rendering", nullptr, &m_showLegacyRendering);
 		ImGui::MenuItem("Editor Camera", nullptr, &m_showLegacyCamera);
+		ImGui::MenuItem(kWinPhysics, nullptr, &m_showPhysics);
 		ImGui::Separator();
 		ImGui::MenuItem(kWinConsole, nullptr, &m_showConsole);
 		ImGui::MenuItem(kWinBuild, nullptr, &m_showBuild);
@@ -517,6 +524,7 @@ void EditorWorkspace::DrawMenuBar()
 			m_showHierarchy = m_showAssets = m_showInspector = m_showMaterials = m_showConsole = m_showBuild = true;
 			for (const EditorPanel& panel : EditorExtensions::Panels()) PanelOpen(panel) = panel.openByDefault;
 			m_showLegacyRendering = m_showLegacyLighting = m_showLegacyPerformance = true;
+			m_showPhysics = true;
 		}
 		ImGui::MenuItem("ImGui Demo", nullptr, &m_showDemo);
 		ImGui::EndMenu();
@@ -1423,15 +1431,7 @@ void EditorWorkspace::DrawInspector()
 			ImGui::SameLine();
 			if (ui::Btn("Unpack", false) && !m_core.IsPlaying()) UnpackPrefabWithUndo(node);
 		}
-		// Node names for NodeRef pickers (flattened scene graph, root excluded).
-		std::vector<std::string> nodeNames;
-		std::function<void(const std::shared_ptr<SceneNode>&)> collect = [&](const std::shared_ptr<SceneNode>& n) {
-			for (const auto& c : n->children) {
-				nodeNames.push_back(c->GetName());
-				collect(c);
-			}
-		};
-		if (auto root = RootNode()) collect(root);
+		const std::vector<std::string> nodeNames = FlatNodeNames();
 
 		if (node->IsFolder()) ImGui::TextDisabled("Folder: groups nodes. No transform; not rendered; children keep their own transforms.");
 		// Builtin facets (Node, Transform) first; the registry sorts the rest by their order.
@@ -1452,6 +1452,46 @@ void EditorWorkspace::DrawInspector()
 			if (node->IsGenerated()) ImGui::TextColored(ImVec4(1, 0.8f, 0.4f, 1), "Generated: rebuilt on load, not saved");
 		}
 	}
+	ImGui::End();
+	// Safety net: a continuous edit whose widget is gone ends once no item is active.
+	if (m_propEdit.active && !ImGui::IsAnyItemActive()) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+}
+
+// Node names for NodeRef pickers (flattened scene graph, root excluded).
+std::vector<std::string> EditorWorkspace::FlatNodeNames()
+{
+	std::vector<std::string> nodeNames;
+	std::function<void(const std::shared_ptr<SceneNode>&)> collect = [&](const std::shared_ptr<SceneNode>& n) {
+		for (const auto& c : n->children) {
+			nodeNames.push_back(c->GetName());
+			collect(c);
+		}
+	};
+	if (auto root = RootNode()) collect(root);
+	return nodeNames;
+}
+
+PhysicsWindow::Host EditorWorkspace::PhysicsHost()
+{
+	PhysicsWindow::Host host;
+	host.physics = m_core.GetPhysicsEngine();
+	host.selected = m_legacy.GetSelectedNode();
+	host.playing = m_core.IsPlaying();
+	host.paused = m_core.IsPaused();
+	host.undo = UndoSink();
+	if (!host.playing) host.markDirty = [this] { m_core.MarkDirty(); };
+	host.drawComponent = [this](const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc) {
+		DrawComponentSection(node, desc, m_contentBrowser->AssetPaths(), FlatNodeNames());
+	};
+	return host;
+}
+
+void EditorWorkspace::DrawPhysics()
+{
+	m_physicsDrawn = false;
+	if (!ImGui::Begin(kWinPhysics, &m_showPhysics)) { ImGui::End(); return; }
+	m_physicsDrawn = true;
+	m_physicsWindow.Draw(PhysicsHost());
 	ImGui::End();
 	// Safety net: a continuous edit whose widget is gone ends once no item is active.
 	if (m_propEdit.active && !ImGui::IsAnyItemActive()) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
@@ -2542,6 +2582,22 @@ void EditorWorkspace::RunSmokeScript()
 		check(subject->parentNode.lock() == root, "undo group restores the parent");
 		Undo();
 		check(root->children.size() == rootCount, "undo new folder removes it");
+	}
+	if (frame == 75) {
+		// Physics window: focus its tab so it draws (it docks with the Inspector).
+		ImGui::SetWindowFocus(kWinPhysics);
+	}
+	if (frame == 80) {
+		// A live physics edit reaches the engine and undoes (before Play: play edits are not undoable).
+		check(m_physicsDrawn, "physics window drawn");
+		PhysicsWindow::Host host = PhysicsHost();
+		if (host.physics) {
+			const float gravityBefore = host.physics->GetConfig().gravityY;
+			m_physicsWindow.Edit(host, "Smoke gravity", [](SimulationConfig& c) { c.gravityY = -3.0f; });
+			check(host.physics->GetConfig().gravityY == -3.0f && host.physics->GetAuthoredConfig().gravityY == -3.0f, "physics edit applies live");
+			Undo();
+			check(host.physics->GetAuthoredConfig().gravityY == gravityBefore, "physics edit undoes");
+		}
 	}
 	if (frame == 90) {
 		texW0 = m_game.texWidth;

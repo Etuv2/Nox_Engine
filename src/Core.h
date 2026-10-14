@@ -179,6 +179,8 @@ public:
      * @brief Check if physics is enabled for the current scene.
      */
     bool IsPhysicsEnabled() const { return m_physicsEnabledForScene; }
+    // The physics engine (owned by Core; the editor Physics window reads and edits its configuration).
+    std::shared_ptr<PhysicsEngine> GetPhysicsEngine() const { return m_physicsEngine; }
 
 
     // Input State Queries

@@ -31,7 +31,8 @@ bool AddBodyToNode(SceneNode& node) {
 	rb->setOrientation(node.GetOrientation());
 	rb->setLinearDamping(0.1f);
 	rb->setAngularDamping(0.1f);
-	rb->setFriction(0.5f);
+	rb->setFriction(physics->GetConfig().defaultFriction);
+	rb->setRestitution(physics->GetConfig().defaultRestitution);
 	rb->setBoundingRadius(0.5f);
 	rb->setMass(1.0f);
 	rb->setGravityScale(1.0f);
