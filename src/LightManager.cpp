@@ -1444,9 +1444,9 @@ void LightManager::CollectLightsFromScene(std::shared_ptr<SceneGraph> sceneGraph
  * @param dt Delta time in seconds
  */
 namespace {
-// NOX_LIGHT_STEP=<frame>:<scale> (debug): on the UpdateLights call with that index, every light's
-// intensity is multiplied by scale, once. A generic step input for measuring how fast a lighting
-// change propagates (for example the surfel GI response). Nothing here depends on the renderer.
+// NOX_LIGHT_STEP=<frame>:<scale> (debug): from the UpdateLights call with that index on, every light's
+// effective intensity is multiplied by scale (g_noxLightStepGain). A generic step input for measuring how
+// fast a lighting change propagates (for example the surfel GI response). Nothing here depends on the renderer.
 struct LightStepTest {
 	bool enabled = false;
 	uint64_t frame = 0u;
@@ -1481,17 +1481,20 @@ struct LightStepTest {
 void LightManager::UpdateLights(float dt)
 {
 	static LightStepTest lightStep;
-	if (lightStep.enabled && lightStep.calls++ == lightStep.frame) {
-		for (auto& pair : m_lights) {
-			if (pair.second) {
-				pair.second->SetIntensity(pair.second->GetIntensity() * lightStep.scale);
-			}
+	bool lightStepNow = false;
+	if (lightStep.enabled && lightStep.calls++ >= lightStep.frame) {
+		// Persistent: the gain stays from the step frame on (BaseLight::GetIntensity reads it).
+		g_noxLightStepGain = lightStep.scale;
+		if (lightStep.calls - 1 == lightStep.frame) {
+			lightStepNow = true;
+			std::cerr << "[LightStep] frame=" << lightStep.frame << " scale=" << lightStep.scale
+				<< " lights=" << m_lights.size() << "\n";
 		}
-		std::cerr << "[LightStep] frame=" << lightStep.frame << " scale=" << lightStep.scale
-			<< " lights=" << m_lights.size() << "\n";
 	}
 
-	bool dirty = false;
+	// The step is applied before the dirty snapshot below, so it would never reach the GPU light buffer
+	// by itself. Mark the frame dirty so the packed light data is re-uploaded with the new intensity.
+	bool dirty = lightStepNow;
 	bool activeSetChanged = false;
 
 	for (auto& ln : m_lightNodes) {
