@@ -82,6 +82,15 @@ CONFIG_ENV = {
     "surf_term": {**SURF_ENV, "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096"},
     "surf_spawn1": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.0"},
+    # WP10 ablations at the same ray budget: guiding off, sharing off (each with its surf_term twin for noise).
+    "surf_noguide": {**SURF_ENV, "NOX_SURFEL_GI_RAY_GUIDING": "0"},
+    "surf_term_noguide": {**SURF_ENV, "NOX_SURFEL_GI_RAY_GUIDING": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_nosharing": {**SURF_ENV, "NOX_SURFEL_GI_IRRADIANCE_SHARING": "0"},
+    "surf_term_nosharing": {**SURF_ENV, "NOX_SURFEL_GI_IRRADIANCE_SHARING": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    # Budget sweep for the noise target (noise twins of surf_r4k and an 8192-ray pair).
+    "surf_term_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_r8k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "8192"},
+    "surf_term_r8k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "8192", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "ref": REF_ENV,
     "indep": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0"},
 }
@@ -89,8 +98,11 @@ LIVE_PLAN = (261, 200, 260)  # last run frame, analysis window first and last fr
 LONG_PLAN = (899, 780, 840)
 LONG_CONFIGS = ("ref", "indep")
 REF_CONFIGS = ("indep", "ref")
-GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1")
-SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "ref")
+GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1",
+              "surf_noguide", "surf_nosharing", "surf_r8k")
+SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "ref",
+                      "surf_noguide", "surf_term_noguide", "surf_nosharing", "surf_term_nosharing",
+                      "surf_term_r4k", "surf_r8k", "surf_term_r8k")
 REQUIRED_COUNTERS = ("liveSurfels", "requestedRays", "allocatedRays", "shortfall")
 OPTIONAL_COUNTERS = ("youngSurfels", "overflowGridEntries", "rayShortfall")
 SPREAD_KEYS = ["energy", "indep_ratio", "indep_rmse_rel", "indep_pearson", "noise_rel",
@@ -363,7 +375,7 @@ def pixel_pass(runs, configs, reps, warnings):
             if cfg == "off" or (cfg, rep) not in runs:
                 continue
             acc = accumulate(window_paths(cfg, runs[(cfg, rep)]))
-            if cfg == "surf_term":
+            if cfg.startswith("surf_term"):
                 pix[(cfg, rep)] = {"s_mean": acc["s_mean"], "s_std": acc["s_std"]}
             else:
                 gi_rgb = acc["lin"] - off["lin"]
@@ -402,7 +414,7 @@ def per_run_metrics(pix, runs, configs, reps):
             entry, m = pix.get((cfg, rep)), per.get((cfg, rep))
             if entry is None or m is None or cfg == "off":
                 continue
-            if cfg == "surf_term":
+            if cfg.startswith("surf_term"):
                 if off is None:
                     continue
                 mask = off["mask"]
@@ -547,6 +559,11 @@ def build_markdown(info, configs, reps, logs, agg, spread, warnings, maps):
         ["relative noise (corrected / mean)", pct(st.get("noise_rel"))],
         ["spread across repeats", pct(spread.get("surf_term", {}).get("noise_rel"))],
     ]) + [""]
+    twins = [c for c in configs if c.startswith("surf_term") and c != "surf_term"]
+    if twins:
+        lines += md_table(["Term config", "Relative noise (corrected / mean)", "Mean surfel term (lit)"], [
+            [c, pct(agg.get(c, {}).get("noise_rel")), fmt(agg.get(c, {}).get("surf_term_mean"))] for c in twins
+        ]) + [""]
 
     indep_e, ref_e = agg.get("indep", {}).get("energy"), agg.get("ref", {}).get("energy")
     lines += ["## GI on minus off", "",

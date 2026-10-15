@@ -49,7 +49,8 @@ uniform int uUseRadialDepth = 0;
 uniform float uRadialDepthMinVariance = 1e-4;
 
 const uint SURFEL_SHARING_MAX_NEIGHBOR_CELLS = 27u;
-const uint SURFEL_SHARING_MAX_NEIGHBORS = 48u;
+const uint SURFEL_SHARING_MAX_NEIGHBORS = 16u;
+const float SURFEL_SHARING_MIN_RELATIVE_VARIANCE = 0.09; // (std / mean)^2 = 0.09, i.e. a 30% relative spread
 const float SURFEL_SHARING_MAX_BLEND = 0.32;
 const float SURFEL_SHARING_MIN_NORMAL_DOT = 0.72;
 const float SURFEL_SHARING_MAX_PLANE_SEPARATION = 0.18;
@@ -254,6 +255,13 @@ void main()
     float varianceLum = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
     float debugVariance = max(surfel.debug.x, varianceLum);
     float lowConfidence = 1.0 - confidence;
+    // High-variance gate (plan WP10): blend only where the surfel's relative spread (std / mean) is large,
+    // or where its confidence is low.
+    float meanLum = SurfelLuminance(max(centerIrradiance.rgb, vec3(0.0)));
+    float relativeVariance = varianceLum / max(meanLum * meanLum, 1e-4);
+    if (relativeVariance < SURFEL_SHARING_MIN_RELATIVE_VARIANCE && confidence > 0.5) {
+        return;
+    }
     float shareAmount = clamp(max(debugVariance * 1.35, lowConfidence * 0.18), 0.0, SURFEL_SHARING_MAX_BLEND);
     if (shareAmount <= 1e-4) {
         return;

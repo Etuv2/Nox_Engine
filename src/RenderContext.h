@@ -165,7 +165,7 @@ struct RenderContext {
 	int surfelGIQualityTier = 1;
 	int surfelGIDebugView = 0;
 	int surfelGIMaxSurfels = 65536;
-	int surfelGIMaxRayBudget = 1024; // rays per frame; the renderer enforces at least 1024 and each quality tier caps it
+	int surfelGIMaxRayBudget = 0; // rays per frame; 0 = the quality tier's default (Low 1024, Medium 2048, High 4096, Ultra 8192)
 	int surfelGISpawnTileSize = 8;
 	int surfelGIMaxSurfelsPerCell = 128;
 	int surfelGIMaxGatherSurfelsPerPixel = 32;

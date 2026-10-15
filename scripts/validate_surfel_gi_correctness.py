@@ -2,7 +2,7 @@
 
 Checks the invariants that WP1 established: integrate reads only the ray slots generate_rays wrote, with an
 ownership and frame check; requestedRays has one atomic type; debug.z has one writer; slice growth comes from
-the setting; the independent reference reads no surfel state. Run: python scripts/validate_surfel_gi_correctness.py
+the setting; the independent reference reads no surfel state; WP2 allocation is three-phase largest remainder. Run: python scripts/validate_surfel_gi_correctness.py
 """
 from pathlib import Path
 import re
@@ -53,8 +53,33 @@ def check_request_counter_atomics() -> None:
     require("counters.requestedRays = uRequestReservation;" in begin,
             "begin_frame must seed requestedRays with the reservation")
     pipeline = read("src/passes/SurfelGIPipeline.cpp")
-    require('"uRequestReservation", std::max(maxSurfels / 64u, 1u)' in pipeline,
-            "the host must set uRequestReservation before begin_frame")
+    require('"uRequestReservation", 0u' in pipeline,
+            "the host must seed requestedRays with zero: it is the sum of the requests, with no reservation")
+
+
+def check_allocation_contract() -> None:
+    """WP2: demand is shared out by largest remainder in three phases, with contiguous grants."""
+    allocate = read("shaders/surfel_gi/allocate_rays.comp")
+    generate = read("shaders/surfel_gi/generate_rays.comp")
+    request = read("shaders/surfel_gi/request_rays.comp")
+    pipeline = read("src/passes/SurfelGIPipeline.cpp")
+    require("uPriorityPass" not in allocate and "uPriorityPass" not in pipeline,
+            "the priority pass was removed by WP2; no shader or host code may use uPriorityPass")
+    for phase in ("PhaseHistogram", "PhaseThreshold", "PhaseGrant"):
+        require(phase in allocate, f"allocate_rays.comp must keep phase {phase}")
+    require(len(re.findall(r"atomicAdd\(counters\.allocatedRays", allocate)) == 1,
+            "allocatedRays must be reserved in one place (the grant phase)")
+    require("uAllocPhase" in pipeline and "Dispatch(1u, 1u, 1u);" in pipeline,
+            "the host must dispatch the threshold phase as one group, between histogram and grant")
+    require("B_RAY_ALLOC_SCRATCH" in allocate and "B_RAY_ALLOC_SCRATCH 36" in read("shaders/surfel_gi/common.glsl"),
+            "the allocation scratch must be one binding, defined once in common.glsl")
+    require("SurfelGIBinding::RayAllocScratch" in pipeline,
+            "the host must bind the allocation scratch buffer")
+    require("#define SURFEL_REQUEST_MAX_RAYS_PER_SURFEL" not in request and
+            "const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 8u;" in request,
+            "requests must be capped at the generated-ray count (8)")
+    require("SURFEL_GENERATED_RAYS_PER_SURFEL" in generate and "request.firstRay + i" in generate,
+            "generate_rays must write exactly the granted contiguous range, capped at the generated count")
 
 
 def check_debug_z_single_writer() -> None:
@@ -97,6 +122,7 @@ def check_reference_independence() -> None:
 def main() -> None:
     check_stale_slots()
     check_request_counter_atomics()
+    check_allocation_contract()
     check_debug_z_single_writer()
     check_slice_growth_setting()
     check_grid_rebuilds()

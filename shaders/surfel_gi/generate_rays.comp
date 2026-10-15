@@ -202,7 +202,7 @@ void main()
         if (!guided) {
             hemiDir = SurfelCosineHemisphereSample(SurfelHash01(seed), SurfelHash01(seed ^ 0x9e3779b9u));
             float cosinePdf = max(hemiDir.z, 0.0) / SURFEL_PI;
-            bool hasGuide;
+            bool hasGuide = false;
             float guidedPdf = uUseRayGuiding != 0 ? SurfelGuidePdf(request.surfelID, hemiDir, hasGuide) : 0.0;
             pdf = hasGuide
                 ? max(mix(cosinePdf, guidedPdf, guideMixProbability), 1e-4)

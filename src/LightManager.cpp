@@ -10,9 +10,12 @@
 #include "ShadowMapper.h"
 #include "MDIBatch.h"
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <chrono>
 #include <limits>
+#include <stdexcept>
+#include <string>
 #include <cmath>
 #include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
@@ -1440,8 +1443,54 @@ void LightManager::CollectLightsFromScene(std::shared_ptr<SceneGraph> sceneGraph
  *
  * @param dt Delta time in seconds
  */
+namespace {
+// NOX_LIGHT_STEP=<frame>:<scale> (debug): on the UpdateLights call with that index, every light's
+// intensity is multiplied by scale, once. A generic step input for measuring how fast a lighting
+// change propagates (for example the surfel GI response). Nothing here depends on the renderer.
+struct LightStepTest {
+	bool enabled = false;
+	uint64_t frame = 0u;
+	float scale = 1.0f;
+	uint64_t calls = 0u;
+
+	LightStepTest() {
+		const char* spec = std::getenv("NOX_LIGHT_STEP");
+		if (!spec || !*spec) {
+			return;
+		}
+		const std::string text(spec);
+		const std::size_t colon = text.find(':');
+		try {
+			if (colon == std::string::npos) {
+				throw std::invalid_argument("missing ':'");
+			}
+			frame = std::stoull(text.substr(0, colon));
+			scale = std::stof(text.substr(colon + 1));
+			enabled = scale >= 0.0f;
+		}
+		catch (const std::exception&) {
+			enabled = false;
+		}
+		if (!enabled) {
+			std::cerr << "[LightStep] ignored NOX_LIGHT_STEP='" << text << "' (expected <frame>:<scale>)\n";
+		}
+	}
+};
+} // namespace
+
 void LightManager::UpdateLights(float dt)
 {
+	static LightStepTest lightStep;
+	if (lightStep.enabled && lightStep.calls++ == lightStep.frame) {
+		for (auto& pair : m_lights) {
+			if (pair.second) {
+				pair.second->SetIntensity(pair.second->GetIntensity() * lightStep.scale);
+			}
+		}
+		std::cerr << "[LightStep] frame=" << lightStep.frame << " scale=" << lightStep.scale
+			<< " lights=" << m_lights.size() << "\n";
+	}
+
 	bool dirty = false;
 	bool activeSetChanged = false;
 

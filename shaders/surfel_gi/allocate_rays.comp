@@ -1,13 +1,18 @@
 #version 460 core
 
+// Ray budget allocation (plan WP2). Three dispatches share one uniform, uAllocPhase:
+//   0  histogram: when demand exceeds the budget, each surfel adds its floor quota to a sum and its
+//      fractional remainder to a histogram bin.
+//   1  threshold (one group of 64 threads): find the bin T where the leftover rays run out, and how
+//      many surfels in bin T take the last rays.
+//   2  grant: every surfel gets its floor quota, plus one ray when its remainder is above T (or in T
+//      and within the tie quota). Each surfel then reserves a contiguous range from the budget.
+// Within one histogram bin the tie order is arbitrary, so the grant is largest remainder to within
+// 1/SURFEL_RAY_ALLOC_BINS of a ray. Demand at or below the budget is granted in full, with no phases 0 and 1.
+
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
-
-layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
-{
-    Surfel surfels[];
-};
 
 layout(binding = B_RAY_REQUESTS, std430) buffer SurfelRayRequestBuffer
 {
@@ -19,141 +24,171 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
     SurfelCounters counters;
 };
 
+// Scratch words. The host creates them zeroed; phase 1 zeroes the sum and the bins again after use.
+layout(binding = B_RAY_ALLOC_SCRATCH, std430) buffer SurfelRayAllocScratchBuffer
+{
+    uint scratch[];
+};
+
 uniform uint uMaxSurfels;
 uniform uint uMaxRayBudget;
-uniform uint uFrameIndex;
-uniform uint uPriorityPass = 0u;
-uniform float uLightingChangeFactor = 0.0;
+uniform uint uAllocPhase = 0u;
 
-uint FrameDelta(uint newerFrame, uint olderFrame)
+const uint SURFEL_RAY_ALLOC_BINS = 1024u;
+const uint SURFEL_RAY_ALLOC_SCRATCH_SUM = 0u;
+const uint SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD = 1u;
+const uint SURFEL_RAY_ALLOC_SCRATCH_TICKETS = 2u;
+const uint SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA = 3u;
+const uint SURFEL_RAY_ALLOC_SCRATCH_BINS = 4u;
+const uint SURFEL_RAY_ALLOC_THREADS = 64u;
+const uint SURFEL_RAY_ALLOC_BINS_PER_THREAD = SURFEL_RAY_ALLOC_BINS / SURFEL_RAY_ALLOC_THREADS;
+
+shared uint sBinSum[SURFEL_RAY_ALLOC_THREADS];
+
+// requested * budget / total and its remainder. requested <= 8 and budget <= 2^13 keep the product in 32 bits.
+uint FloorQuota(uint requested, uint budget, uint total, out uint remainder)
 {
-    return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
+    uint numerator = requested * budget;
+    remainder = numerator % total;
+    return numerator / total;
 }
 
-bool IsPriorityRaySurfel(Surfel surfel, uint requested)
+uint RemainderBin(uint remainder, uint total)
 {
-    if (requested == 0u || !SurfelIsAlive(surfel)) {
-        return false;
-    }
-
-    float confidence = SurfelSaturate(surfel.irradiance.a);
-    float lowConfidence = 1.0 - confidence;
-    uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
-    uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
-    uint framesSinceUpdate = FrameDelta(uFrameIndex, surfel.frameInfo.z);
-    bool recentlyVisible = framesSinceVisible <= 4u;
-    bool recentlyContributed = framesSinceContribution <= 3u;
-    bool unresolved = lowConfidence > 0.30 || surfel.shortMean.a < 12.0 || requested >= 4u;
-    bool visibleStarving = recentlyVisible && framesSinceContribution > 4u && confidence < 0.88;
-    bool staleVisible = recentlyVisible && framesSinceUpdate > 8u;
-    bool starving = framesSinceContribution > 12u && confidence < 0.85;
-    bool lightReactivePriority = clamp(uLightingChangeFactor, 0.0, 1.0) > 0.03 && recentlyVisible;
-
-    return SurfelIsNew(surfel) ||
-        surfel.worldNormal_age.w < 3.0 ||
-        lightReactivePriority ||
-        visibleStarving ||
-        (recentlyVisible && unresolved) ||
-        (recentlyContributed && unresolved && confidence < 0.70) ||
-        staleVisible ||
-        starving;
+    // remainder < total <= 8 * maxSurfels, so remainder * BINS stays below 2^32 for every tier.
+    return min(remainder * SURFEL_RAY_ALLOC_BINS / total, SURFEL_RAY_ALLOC_BINS - 1u);
 }
 
-uint ProportionalAllocation(uint requested, uint totalRequested, uint budget)
+void PhaseHistogram(uint surfelID, uint total, uint budget)
 {
-    if (requested == 0u || totalRequested == 0u || budget == 0u) {
-        return 0u;
+    if (surfelID >= uMaxSurfels || total <= budget) {
+        return;
     }
-    if (totalRequested <= budget) {
-        return requested;
+    uint requested = rayRequests[surfelID].requestedCount;
+    if (requested == 0u) {
+        return;
     }
-
-    float scaled = floor((float(requested) * float(budget)) / float(totalRequested));
-    uint allocated = min(requested, uint(scaled));
-    return allocated == 0u ? 1u : allocated;
+    uint remainder = 0u;
+    uint quota = FloorQuota(requested, budget, total, remainder);
+    if (quota > 0u) {
+        atomicAdd(scratch[SURFEL_RAY_ALLOC_SCRATCH_SUM], quota);
+    }
+    if (remainder > 0u) {
+        atomicAdd(scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + RemainderBin(remainder, total)], 1u);
+    }
 }
 
-uint ReserveRays(uint desired, uint budget, out uint firstRay)
+void PhaseThreshold(uint tid, uint total, uint budget)
 {
-    firstRay = 0u;
-    if (desired == 0u || budget == 0u) {
-        return 0u;
+    uint leftover = 0u;
+    bool contention = total > budget;
+    if (contention) {
+        leftover = budget - scratch[SURFEL_RAY_ALLOC_SCRATCH_SUM];
+    }
+    if (tid == 0u) {
+        scratch[SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD] = SURFEL_RAY_ALLOC_BINS;
+        scratch[SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA] = 0u;
+        scratch[SURFEL_RAY_ALLOC_SCRATCH_TICKETS] = 0u;
     }
 
-    uint start = atomicAdd(counters.allocatedRays, desired);
-    if (start >= budget) {
-        atomicMin(counters.allocatedRays, budget);
-        return 0u;
+    uint first = tid * SURFEL_RAY_ALLOC_BINS_PER_THREAD;
+    uint binSum = 0u;
+    for (uint k = 0u; k < SURFEL_RAY_ALLOC_BINS_PER_THREAD; ++k) {
+        binSum += scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + first + k];
+    }
+    sBinSum[tid] = binSum;
+    barrier();
+
+    // Inclusive suffix sums across threads: sBinSum[t] becomes the count of remainders in threads t..63.
+    for (uint offset = 1u; offset < SURFEL_RAY_ALLOC_THREADS; offset *= 2u) {
+        uint add = (tid + offset < SURFEL_RAY_ALLOC_THREADS) ? sBinSum[tid + offset] : 0u;
+        barrier();
+        sBinSum[tid] += add;
+        barrier();
     }
 
-    uint granted = min(desired, budget - start);
-    if (granted < desired) {
-        atomicMin(counters.allocatedRays, budget);
+    if (contention && leftover > 0u) {
+        uint above = (tid + 1u < SURFEL_RAY_ALLOC_THREADS) ? sBinSum[tid + 1u] : 0u;
+        uint here = sBinSum[tid];
+        if (above < leftover && here >= leftover) {
+            // The threshold bin is in this thread's range. Walk its bins from the top.
+            uint cumulative = above;
+            for (uint k = SURFEL_RAY_ALLOC_BINS_PER_THREAD; k > 0u; --k) {
+                uint bin = first + k - 1u;
+                uint count = scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + bin];
+                if (cumulative + count >= leftover) {
+                    scratch[SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD] = bin;
+                    scratch[SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA] = leftover - cumulative;
+                    break;
+                }
+                cumulative += count;
+            }
+        }
     }
-    firstRay = start;
-    return granted;
+
+    barrier();
+    for (uint k = 0u; k < SURFEL_RAY_ALLOC_BINS_PER_THREAD; ++k) {
+        scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + first + k] = 0u;
+    }
+    if (tid == 0u) {
+        scratch[SURFEL_RAY_ALLOC_SCRATCH_SUM] = 0u;
+    }
+}
+
+void PhaseGrant(uint surfelID, uint total, uint budget)
+{
+    if (surfelID >= uMaxSurfels) {
+        return;
+    }
+    uint requested = rayRequests[surfelID].requestedCount;
+    if (requested == 0u) {
+        rayRequests[surfelID].allocatedCount = 0u;
+        rayRequests[surfelID].firstRay = 0u;
+        return;
+    }
+
+    uint granted = requested;
+    if (total > budget) {
+        uint remainder = 0u;
+        granted = FloorQuota(requested, budget, total, remainder);
+        if (remainder > 0u) {
+            uint bin = RemainderBin(remainder, total);
+            uint threshold = scratch[SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD];
+            if (bin > threshold) {
+                granted += 1u;
+            } else if (bin == threshold &&
+                       atomicAdd(scratch[SURFEL_RAY_ALLOC_SCRATCH_TICKETS], 1u) < scratch[SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA]) {
+                granted += 1u;
+            }
+        }
+    }
+
+    // Contiguous range from the budget. The grants add up to the budget exactly, so the clamp is a guard only.
+    uint allocated = 0u;
+    uint firstRay = 0u;
+    if (granted > 0u) {
+        uint start = atomicAdd(counters.allocatedRays, granted);
+        if (start < budget) {
+            allocated = min(granted, budget - start);
+            firstRay = start;
+        }
+    }
+    rayRequests[surfelID].allocatedCount = allocated;
+    rayRequests[surfelID].firstRay = allocated > 0u ? firstRay : 0u;
 }
 
 void main()
 {
-    uint linearRequestID = gl_GlobalInvocationID.x;
-    if (linearRequestID >= uMaxSurfels) {
-        return;
-    }
-
-    uint rotation = uMaxSurfels == 0u ? 0u : (SurfelHash(uFrameIndex * 747796405u) % uMaxSurfels);
-    uint rotatedRequestID = (linearRequestID + rotation) % uMaxSurfels;
-    uint requestID = rotatedRequestID;
-    uint requested = rayRequests[requestID].requestedCount;
-    Surfel surfel = surfels[requestID];
-    if (!SurfelIsAlive(surfel)) {
-        rayRequests[requestID].allocatedCount = 0u;
-        rayRequests[requestID].firstRay = 0u;
-        return;
-    }
-    bool prioritySurfel = IsPriorityRaySurfel(surfel, requested);
-    if (uPriorityPass != 0u) {
-        if (!prioritySurfel) {
-            return;
-        }
-
-        uint budget = uMaxRayBudget;
-        float confidence = SurfelSaturate(surfel.irradiance.a);
-        uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
-        bool firstBootstrap = SurfelIsNew(surfel) && surfel.worldNormal_age.w < 4.0;
-        bool visibleUnresolved = framesSinceVisible <= 4u &&
-            (confidence < 0.70 || surfel.shortMean.a < 12.0 || requested >= 4u);
-        bool alternatingExtra = ((uFrameIndex + requestID) & 1u) == 0u;
-        uint priorityGrant = requested;
-        if (!firstBootstrap && visibleUnresolved && !alternatingExtra) {
-            priorityGrant = requested;
-        }
-        priorityGrant = min(priorityGrant, requested);
-        requested = priorityGrant;
-        uint firstRay = 0u;
-        uint allocated = ReserveRays(requested, budget, firstRay);
-        rayRequests[requestID].allocatedCount = allocated;
-        rayRequests[requestID].firstRay = allocated > 0u ? firstRay : 0u;
-        return;
-    }
-
-    if (prioritySurfel) {
-        return;
-    }
-
+    uint linearID = gl_GlobalInvocationID.x;
+    uint localID = gl_LocalInvocationID.x;
+    uint total = counters.requestedRays;
     uint budget = uMaxRayBudget;
-    uint totalRequested = max(counters.requestedRays, uMaxRayBudget);
-    uint allocated = counters.requestedRays == 0u
-        ? min(requested, budget)
-        : ProportionalAllocation(requested, totalRequested, budget);
-    if (allocated == 0u) {
-        rayRequests[requestID].allocatedCount = 0u;
-        rayRequests[requestID].firstRay = 0u;
-        return;
-    }
 
-    uint firstRay = 0u;
-    allocated = ReserveRays(allocated, budget, firstRay);
-    rayRequests[requestID].allocatedCount = allocated;
-    rayRequests[requestID].firstRay = allocated > 0u ? firstRay : 0u;
+    if (uAllocPhase == 0u) {
+        PhaseHistogram(linearID, total, budget);
+    } else if (uAllocPhase == 1u) {
+        PhaseThreshold(localID, total, budget);
+    } else {
+        PhaseGrant(linearID, total, budget);
+    }
 }
