@@ -378,13 +378,13 @@ void main()
     bool overCoverageEligible = !stableVisibleProtection &&
         !youngSurfel &&
         overCoverage01 > 0.0 &&
-        contributionAge > 48u &&
+        contributionAge > 96u &&
         (failedValidationCount >= SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS ||
          lowConfidenceFrameCount >= SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES ||
          sampleAge > 30u ||
          confidence < 0.22);
     bool overCoverageRemoval = overCoverageEligible &&
-        random < mix(0.02, 0.22, max(overCoverage01, pressure01 * cellOccupancy01));
+        random < mix(0.01, 0.08, max(overCoverage01, pressure01 * cellOccupancy01));
     bool overCoverageCull = overCoverageRemoval;
     bool oversizedCull = !stableVisibleProtection && radiusGrowth > 6.0 && contributionAge > 120u && random < 0.05;
     bool pressureEligible = !stableVisibleProtection &&

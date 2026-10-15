@@ -43,6 +43,7 @@ struct SurfelGIPipelineResources {
 	// Ring of two staging buffers for the asynchronous counter readback.
 	rhi::BufferHandle counterStaging[2];
 	rhi::TextureHandle rawIndirectTexture;
+	rhi::TextureHandle coverageTexture;   // gather coverage for the next frame's spawn pass
 	rhi::TextureHandle filteredIndirectTexture;
 	rhi::TextureHandle temporalIndirectTexture;
 	rhi::TextureHandle indirectTexture;

@@ -69,6 +69,10 @@ uniform uint uMaxSpawnsPerFrame;
 uint gSpawnBudget = 0u;   // spawns allowed for the current tile decision (thread 0)
 uniform float uSpawnBudgetScale = 1.0;
 uniform uint uSpawnSampleStride = 1u;   // 1 = every pixel of the tile is a candidate each frame
+// Gather coverage written by apply_indirect (one frame old), at the final-gather resolution.
+uniform sampler2D uCoverageTex;
+uniform int uUseCoverageMap = 0;
+uniform vec2 uCoverageScale = vec2(1.0);   // final-gather texels per full-resolution pixel
 uniform uvec2 uResolution;
 uniform uint uFrameIndex;
 uniform uint uMaxSurfels;
@@ -515,6 +519,15 @@ float ComputeCandidateCoverage(vec3 worldPos,
 
 bool EvaluateSpawnCandidateImpl(uvec2 pixelU, out SpawnCandidate candidate, bool withImportance);
 
+// Coverage of a full-resolution pixel from the gather pass, so spawning costs one texture read per
+// pixel instead of a grid query. The value is the gather weight sum, clamped to [0, 1].
+float SpawnCoverageMapValue(uvec2 pixelU)
+{
+    ivec2 maxTexel = textureSize(uCoverageTex, 0) - ivec2(1);
+    ivec2 texel = clamp(ivec2((vec2(pixelU) + vec2(0.5)) * uCoverageScale), ivec2(0), maxTexel);
+    return clamp(texelFetch(uCoverageTex, texel, 0).r, 0.0, 1.0);
+}
+
 bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
 {
     return EvaluateSpawnCandidateImpl(pixelU, candidate, true);
@@ -631,16 +644,23 @@ bool EvaluateSpawnCandidateImpl(uvec2 pixelU, out SpawnCandidate candidate, bool
         candidate.initialCellIrradiance = vec3(0.0);
         candidate.initialCellConfidence = 0.0;
     } else {
-        candidate.coverage = ComputeCandidateCoverage(
-            worldPos,
-            worldNormal,
-            baseAddress,
-            transformID,
-            materialID,
-            candidate.adaptiveRadius,
-            candidate.nearbySurfelCount,
-            candidate.initialCellIrradiance,
-            candidate.initialCellConfidence);
+        // Lane evaluation with the map only needs validity and the coverage value. The full evaluation
+        // keeps the grid query for the new surfel's initial irradiance and neighbour count.
+        if (withImportance || uUseCoverageMap == 0) {
+            candidate.coverage = ComputeCandidateCoverage(
+                worldPos,
+                worldNormal,
+                baseAddress,
+                transformID,
+                materialID,
+                candidate.adaptiveRadius,
+                candidate.nearbySurfelCount,
+                candidate.initialCellIrradiance,
+                candidate.initialCellConfidence);
+        }
+        if (uUseCoverageMap != 0) {
+            candidate.coverage = SpawnCoverageMapValue(pixelU);
+        }
     }
     return true;
 }

@@ -56,6 +56,8 @@ constexpr uint32_t kSurfelGIGBufferDepthUnit = 5u;
 constexpr uint32_t kSurfelGIShadowArrayUnit = static_cast<uint32_t>(TextureUnits::SHADOW_MAP_ARRAY);
 constexpr uint32_t kSurfelGISkyIrradianceUnit = static_cast<uint32_t>(TextureUnits::IRRADIANCE_MAP);
 constexpr uint32_t kSurfelGISkyEnvironmentUnit = static_cast<uint32_t>(TextureUnits::ENVIRONMENT_MAP);
+// Gather coverage read by the spawn pass (no surfel pass binds this unit otherwise).
+constexpr uint32_t kSurfelGICoverageUnit = 6u;
 constexpr float kSurfelGISkyDiffuseMaxScale = 0.25f;
 
 bool EnvFlagEnabled(const char* name, bool fallback)
@@ -1190,6 +1192,13 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uSpawnPassCount", spawnPassCount);
 		SetUniform1ui(program, "uSpawnCandidateCount", spawnCandidateCount);
 		SetUniform1ui(program, "uSpawnSampleStride", std::max(m_settings.spawnSearchStride, 1u));
+		// Coverage from last frame's gather replaces the per-pixel grid query once it exists.
+		const bool useCoverageMap = m_frameIndex > 1u && m_resources.coverageTexture.IsValid() && m_indirectWidth > 0u;
+		gpu.BindTexture(kSurfelGICoverageUnit, useCoverageMap ? m_resources.coverageTexture : rhi::TextureHandle{});
+		SetUniform1i(program, "uCoverageTex", static_cast<int>(kSurfelGICoverageUnit));
+		SetUniform1i(program, "uUseCoverageMap", useCoverageMap ? 1 : 0);
+		SetUniform2f(program, "uCoverageScale", static_cast<float>(m_indirectWidth) / static_cast<float>(std::max(m_width, 1u)),
+			static_cast<float>(m_indirectHeight) / static_cast<float>(std::max(m_height, 1u)));
 		SetUniform1f(program, "uSpawnBudgetScale", std::max(m_settings.spawnBudgetScale, 0.0f));
 		SetUniform1ui(program, "uMaxSpawnsPerFrame", m_settings.maxSpawnsPerFrame);
 		SetUniform2ui(program, "uResolution", m_width, m_height);
@@ -1540,6 +1549,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 
 	BindSurfelGIGBufferTextures(context);
 	gpu.BindImage(0, m_resources.rawIndirectTexture, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.BindImage(1, m_resources.coverageTexture, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 
 	SetSurfelGIGBufferSamplerUniforms(program);
 	SetUniform1i(program, "uUseMaterialIDReject", 1);
@@ -2014,6 +2024,7 @@ bool SurfelGIPipeline::IsReady() const
 		m_resources.irradianceSnapshotBuffer.IsValid() &&
 		m_resources.coverageTileBuffer.IsValid() &&
 		m_resources.rawIndirectTexture.IsValid() &&
+		m_resources.coverageTexture.IsValid() &&
 		m_resources.filteredIndirectTexture.IsValid() &&
 		m_resources.temporalIndirectTexture.IsValid() &&
 		m_resources.indirectTexture.IsValid() &&
@@ -2180,6 +2191,7 @@ bool SurfelGIPipeline::CreateIndirectTexture()
 	m_indirectHeight = ScaledExtent(m_height, m_settings.finalGatherResolutionScale);
 	const bool ok =
 		AllocateIndirectTexture(m_resources.rawIndirectTexture, m_indirectWidth, m_indirectHeight) &&
+		AllocateIndirectTexture(m_resources.coverageTexture, m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.filteredIndirectTexture, m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.temporalIndirectTexture, m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.indirectTexture, m_width, m_height) &&
@@ -2199,6 +2211,7 @@ bool SurfelGIPipeline::CreateIndirectTexture()
 void SurfelGIPipeline::ReleaseIndirectTexture()
 {
 	DeleteTexture(m_resources.rawIndirectTexture);
+	DeleteTexture(m_resources.coverageTexture);
 	DeleteTexture(m_resources.filteredIndirectTexture);
 	DeleteTexture(m_resources.temporalIndirectTexture);
 	DeleteTexture(m_resources.indirectTexture);

@@ -37,6 +37,9 @@ layout(binding = B_RADIAL_DEPTH, std430) readonly buffer SurfelRadialDepthBuffer
 };
 
 layout(binding = 0, rgba16f) writeonly uniform image2D uOutIndirect;
+// Gather coverage of each pixel by the surfel cache (sum of accepted gather weights, clamped to 1).
+// The spawn pass reads it one frame later in place of re-evaluating the grid per pixel.
+layout(binding = 1, rgba16f) writeonly uniform image2D uOutCoverage;
 
 layout(binding = T_SURFEL_GBUFFER_NORMAL_RM) uniform sampler2D uPackedNormalRMTex;
 layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
@@ -395,6 +398,24 @@ uint GatherCellSampleBudget(uint neighborIndex, uint neighborRadius, uint gather
     return min(gatherBudget, max(gatherBudget / 96u, 1u));
 }
 
+// Young surfels converge slowly: their irradiance is a few rays old, so at full weight they add
+// the most noise to every pixel that gathers them. Their contribution ramps in over the first
+// SURFEL_RAMP_FRAMES frames and with the sample count the MSME has accumulated (shortMean.a). The
+// ramp only changes the mix of surfels in the irradiance average. Coverage (sumWeight) is unramped,
+// so spawning and the coverage map do not depend on it.
+const float SURFEL_RAMP_FRAMES = 8.0;
+const float SURFEL_RAMP_SAMPLES = 16.0;
+const float SURFEL_RAMP_FLOOR = 0.25;
+
+float SurfelContributionRamp(Surfel surfel)
+{
+    float age = max(surfel.worldNormal_age.w, 0.0);
+    float samples = max(surfel.shortMean.a, 0.0);
+    float ageRamp = smoothstep(0.0, SURFEL_RAMP_FRAMES, age);
+    float sampleRamp = mix(0.35, 1.0, smoothstep(0.0, SURFEL_RAMP_SAMPLES, samples));
+    return mix(SURFEL_RAMP_FLOOR, 1.0, ageRamp * sampleRamp);
+}
+
 void AccumulateCell(uint cell,
                     vec3 worldPos,
                     vec3 normal,
@@ -403,6 +424,7 @@ void AccumulateCell(uint cell,
                     uint cellSampleBudget,
                     inout vec3 sumIrradiance,
                     inout float sumWeight,
+                    inout float sumRampWeight,
                     inout uint candidateCount,
                     inout uint sampleCount)
 {
@@ -458,7 +480,9 @@ void AccumulateCell(uint cell,
         }
 
         if (directBudgetAvailable && weight > 1e-5) {
-            sumIrradiance += SurfelCachedIndirectIrradiance(surfel) * weight;
+            float rampedWeight = weight * SurfelContributionRamp(surfel);
+            sumIrradiance += SurfelCachedIndirectIrradiance(surfel) * rampedWeight;
+            sumRampWeight += rampedWeight;
             sumWeight += weight;
             ++sampleCount;
         }
@@ -471,6 +495,8 @@ void main()
     if (pixel.x >= int(uResolution.x) || pixel.y >= int(uResolution.y)) {
         return;
     }
+    // Pixels that exit early (sky, invalid) are uncovered; the gather overwrites the rest below.
+    imageStore(uOutCoverage, pixel, vec4(0.0));
 
     uvec2 safeResolution = max(uResolution, uvec2(1u));
     uvec2 safeInputResolution = max(uInputResolution, uvec2(1u));
@@ -551,6 +577,7 @@ void main()
 
     vec3 sumIrradiance = vec3(0.0);
     float sumWeight = 0.0;
+    float sumRampWeight = 0.0;
     uint gatherBudget = min(max(uMaxGatherSurfelsPerPixel, 1u), SURFEL_APPLY_MAX_GATHER_CANDIDATES);
     uint neighborRadius = min(uGatherNeighborRadius, 2u);
     uint gatherCellCount = neighborRadius == 0u
@@ -588,10 +615,12 @@ void main()
                        cellSampleBudget,
                        sumIrradiance,
                        sumWeight,
+                       sumRampWeight,
                        candidateCount,
                        sampleCount);
     }
 
+    imageStore(uOutCoverage, pixel, vec4(clamp(sumWeight, 0.0, 1.0), 0.0, 0.0, 1.0));
     float fallbackStrength = clamp(uFallbackStrength, 0.0, 1.0);
     float gridConfidence = 0.0;
     vec3 gridIrradiance = vec3(0.0);
@@ -600,8 +629,8 @@ void main()
         gridConfidence *= fallbackStrength;
     }
 
-    vec3 directIrradiance = sumWeight > 1e-5
-        ? sumIrradiance / sumWeight
+    vec3 directIrradiance = sumRampWeight > 1e-5
+        ? sumIrradiance / sumRampWeight
         : vec3(0.0);
     float fallbackConfidence = clamp(gridConfidence, 0.0, 1.0);
     float directCoverage = smoothstep(0.015, 0.22, sumWeight);
