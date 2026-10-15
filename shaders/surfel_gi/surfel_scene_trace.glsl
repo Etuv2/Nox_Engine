@@ -507,6 +507,18 @@ float SampleShadowLayerWorld(int layer, vec3 worldPos, vec3 normal, vec3 surface
     return SampleShadowLayer(layer, receiverCoords, 0.0);
 }
 
+// Sun visibility outside the cascades. SampleShadowLayerWorld reads a point outside the cascade as lit, so the sun leaked
+// into enclosed geometry and into every off-screen hit (plan section 15, lever 6). With this set (the surfel trace only),
+// such a point gets a BVH shadow ray toward the sun instead. The reference keeps the cascade-only answer.
+uniform int uSunShadowBVHFallback = 0;
+const float SURFEL_SHADOW_ORIGIN_OFFSET = 0.004;
+
+bool SurfelShadowPointInLayer(int layer, vec3 worldPos)
+{
+    vec3 coords;
+    return NoxProjectToShadowMap(shadowMatrices[layer], worldPos, coords) && ShadowInBounds(coords);
+}
+
 float DirectionalShadowVisibility(int startSlice, int sliceCount, vec3 worldPos, vec3 normal, vec3 lightDirection)
 {
     int cascades = clamp(sliceCount, 1, 4);
@@ -523,7 +535,13 @@ float DirectionalShadowVisibility(int startSlice, int sliceCount, vec3 worldPos,
         }
     }
 
-    return SampleShadowLayerWorld(startSlice + cascadeIndex, worldPos, normal, -lightDirection);
+    vec3 surfaceToLight = -lightDirection;
+    if (uSunShadowBVHFallback != 0 && !SurfelShadowPointInLayer(startSlice + cascadeIndex, worldPos)) {
+        SoftwareBVHHit blocker = TraceSoftwareBVHAnyHit(worldPos + normal * SURFEL_SHADOW_ORIGIN_OFFSET, surfaceToLight,
+            1e-4, SURFEL_TRACE_BVH_FAR_DISTANCE);
+        return blocker.hit ? 0.0 : 1.0;
+    }
+    return SampleShadowLayerWorld(startSlice + cascadeIndex, worldPos, normal, surfaceToLight);
 }
 
 float PointShadowVisibility(int startSlice, vec3 worldPos, vec3 normal, vec3 lightPos)
@@ -805,6 +823,19 @@ const uint SURFEL_PATH_CACHE_DEPTH = 2u;
 const float SURFEL_PATH_RR_MAX_CONTINUE = 0.95;
 const float SURFEL_PATH_ORIGIN_OFFSET = 0.004;
 
+// How one path is run. The caller sets it; the reference keeps its own values (reference_gi.comp).
+struct SurfelPathControl
+{
+    uint maxHits;             // hard depth cap; the residual albedo^cap is dropped
+    uint rouletteStart;       // first vertex (after the hit) with Russian roulette, albedo based
+    uint neeDepth;            // vertices below this get a next-event estimate of the emitters
+    bool useCache;            // the surfel cache answers the first vertices
+    // Weight of the path past its first hit. 0 stops the path at the first hit (its own direct, NEE and cache terms
+    // still count). w > 0 continues it and multiplies the continuation by w; the caller takes the continuation with
+    // probability 1/w, so the estimate stays unbiased.
+    float continuationWeight;
+};
+
 // Radiance leaving a hit toward the path origin, by a path that continues from the hit. emissionWeight is the hit's own
 // emission, already MIS weighted by the caller against the strategy that reached it. Each vertex adds its direct light
 // and a next-event estimate of the emitters (MIS against cosine sampling), then the path continues by one cosine sample.
@@ -812,23 +843,23 @@ const float SURFEL_PATH_ORIGIN_OFFSET = 0.004;
 // vertex rouletteStart on. Dividing by the continuation probability keeps it unbiased; the depth cap only drops a
 // residual of albedo^cap. The sky enters only through these miss rays, so there is no separate sky-visibility term.
 // The cache is optional (useCache): the independent reference never uses it.
-// neeDepth limits the next-event samples to the vertices below it. Past that depth the emission of the next vertex
+// control.neeDepth limits the next-event samples to the vertices below it. Past that depth the emission of the next vertex
 // counts at full weight (no MIS), which is still unbiased, and each deeper vertex costs one trace fewer.
 vec3 SurfelPathRadiance(vec3 position, vec3 normal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed,
-                        uint rouletteStart, bool useCache, uint neeDepth)
+                        SurfelPathControl control)
 {
     vec3 radiance = vec3(0.0);
     vec3 throughput = vec3(1.0);
     vec3 emitted = emissionWeight;
     uint rng = seed;
-    for (uint depth = 0u; depth < SURFEL_PATH_MAX_HITS; ++depth) {
+    for (uint depth = 0u; depth < control.maxHits; ++depth) {
         radiance += throughput * emitted;
 
         vec3 direct = EvaluateHitDirectIrradiance(position, normal);
         vec3 cached;
         // The cache is read at the first vertices only. Deeper vertices continue the path, which is unbiased and cheaper
         // than a cache walk at every bounce.
-        if (useCache && depth < SURFEL_PATH_CACHE_DEPTH && SurfelPathCachedIrradiance(position, normal, depth == 0u ? sourceSurfelID : SURFEL_INVALID_INDEX,
+        if (control.useCache && depth < SURFEL_PATH_CACHE_DEPTH && SurfelPathCachedIrradiance(position, normal, depth == 0u ? sourceSurfelID : SURFEL_INVALID_INDEX,
                 rng ^ (depth * 0x9e3779b9u), cached)) {
             // The cache already holds the emitters' light at this point, so no next-event sample here.
             return radiance + throughput * albedo * SURFEL_INV_PI * (direct + cached);
@@ -839,15 +870,24 @@ vec3 SurfelPathRadiance(vec3 position, vec3 normal, vec3 albedo, vec3 emissionWe
         vec3 neeDirection;
         float neePdf;
         vec3 nee = vec3(0.0);
-        if (depth < neeDepth && SurfelEmitterIrradianceSample(position + normal * SURFEL_PATH_ORIGIN_OFFSET, normal, neeU,
+        if (depth < control.neeDepth && SurfelEmitterIrradianceSample(position + normal * SURFEL_PATH_ORIGIN_OFFSET, normal, neeU,
                 neeIrradiance, neeDirection, neePdf)) {
             float cosineDensity = max(dot(normal, neeDirection), 0.0) * SURFEL_INV_PI;
             nee = neeIrradiance * SurfelPowerWeight(neePdf, cosineDensity);
         }
         radiance += throughput * albedo * SURFEL_INV_PI * (direct + nee);
-        throughput *= albedo;
+        if (depth == 0u) {
+            // The first hit's own terms are counted above. The path past it runs only when it has a weight (see
+            // SurfelPathControl), and that weight multiplies everything below.
+            if (control.continuationWeight <= 0.0) {
+                return radiance;
+            }
+            throughput = albedo * control.continuationWeight;
+        } else {
+            throughput *= albedo;
+        }
 
-        if (depth >= rouletteStart) {
+        if (depth >= control.rouletteStart) {
             float q = min(SURFEL_PATH_RR_MAX_CONTINUE, max(max(albedo.r, albedo.g), albedo.b));
             if (q <= 0.0 || SurfelPathRandom(rng) >= q) {
                 return radiance;
@@ -870,7 +910,7 @@ vec3 SurfelPathRadiance(vec3 position, vec3 normal, vec3 albedo, vec3 emissionWe
         float cosineDensity = max(dot(normal, direction), 0.0) * SURFEL_INV_PI;
         float hitPdf = SurfelEmitterHitPdf(SurfelLuminance(nextEmission), next.t, next.geometricNormal, direction);
         // The next-event sample at this vertex covered the emitters only when this vertex had one.
-        float emissionMis = depth < neeDepth ? SurfelPowerWeight(cosineDensity, hitPdf) : 1.0;
+        float emissionMis = depth < control.neeDepth ? SurfelPowerWeight(cosineDensity, hitPdf) : 1.0;
         emitted = nextEmission * emissionMis;
 
         position = next.position;

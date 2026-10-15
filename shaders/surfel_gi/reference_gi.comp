@@ -69,8 +69,14 @@ vec3 ReferencePathIrradiance(vec3 origin, vec3 normal, inout uint rng)
     float hitPdf = SurfelEmitterHitPdf(SurfelLuminance(emission), hit.t, hit.geometricNormal, direction);
     vec3 firstEmission = emission * SurfelPowerWeight(cosineDensity, hitPdf);
     vec3 albedo = clamp(hit.material.albedo, vec3(0.0), vec3(1.0));
+    SurfelPathControl control;
+    control.maxHits = SURFEL_PATH_MAX_HITS;
+    control.rouletteStart = uBounces;
+    control.neeDepth = SURFEL_PATH_MAX_HITS;
+    control.useCache = false;
+    control.continuationWeight = 1.0;
     vec3 firstRadiance = SurfelPathRadiance(hit.position, hitNormal, albedo, firstEmission, SURFEL_INVALID_INDEX,
-        rng, uBounces, false, SURFEL_PATH_MAX_HITS);
+        rng, control);
     return estimate + SURFEL_PI * firstRadiance;
 }
 

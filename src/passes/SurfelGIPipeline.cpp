@@ -1435,6 +1435,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uUseSoftwareBVHTrace", (m_settings.useSoftwareBVHTrace && bvhTriangleCount > 0u && bvhNodeCount > 0u) ? 1 : 0);
 		SetUniform1i(program, "uUseSurfelFallbackTrace", m_settings.useSurfelFallbackTrace ? 1 : 0);
 		SetUniform1ui(program, "uBVHTraceStride", bvhTraceStride);
+		SetUniform1ui(program, "uContinuationPeriod", m_settings.pathContinuationPeriod);
+		SetUniform1i(program, "uSunShadowBVHFallback", m_settings.sunShadowBVHFallback ? 1 : 0);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
 		BindSoftwareTraceLighting(program, context, camera, skybox);

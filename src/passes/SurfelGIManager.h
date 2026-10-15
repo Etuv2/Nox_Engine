@@ -69,6 +69,11 @@ struct SurfelGISettings {
 	uint32_t maxSurfels = 65536u;
 	// Rays traced per frame; shared out by demand when requests exceed it (allocate_rays.comp).
 	uint32_t maxRayBudget = 2048u;
+	// Path continuation past a ray's first hit (trace_rays.comp): a warp-group of 32 rays continues in one frame of
+	// every N, with weight N, so the estimate stays unbiased (plan section 15). 1 = every path continues.
+	uint32_t pathContinuationPeriod = 1u;
+	// Sun visibility outside the shadow cascades comes from a BVH shadow ray (surfel_scene_trace.glsl), not "lit".
+	bool sunShadowBVHFallback = true;
 	uint32_t spawnTileSize = 16u;
 	// Search stride for the per-tile lowest-coverage search: 1 tests every pixel of a tile each
 	// frame; N > 1 tests a rotating 1/N^2 subset (the lowest coverage over N^2 frames).
