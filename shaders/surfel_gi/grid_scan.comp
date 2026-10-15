@@ -1,0 +1,128 @@
+#version 460 core
+
+// Grid build, pass 3 of 4: one workgroup per block of SURFEL_GRID_BLOCK_CELLS cells. The block takes the
+// sum of the blocks before it (grid_block_sums), scans its own cells, and writes firstEntry and
+// entryCount. A cell that would run past the entry capacity keeps the entries that fit; the rest is
+// counted as overflow. Also zeroes the scatter cursor, the cell average sums and the pending count for
+// the next frame.
+//
+// Cell ranges only need to be disjoint, so the scan order inside a block is lane-major: lane l owns the
+// cells base + l + 256 k (k = 0..3), which keeps the global header reads and writes coalesced.
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_BLOCK_SUMS, std430) readonly buffer SurfelGridBlockSumBuffer
+{
+    uint blockSums[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uGridCellCount;
+uniform uint uEntryCapacity;
+
+shared uint sReduce[256];
+shared uint sPending[SURFEL_GRID_BLOCK_CELLS];
+shared uint sOffset[SURFEL_GRID_BLOCK_CELLS];
+shared uint sLaneTotal[256];
+
+void main()
+{
+    uint block = gl_WorkGroupID.x;
+    uint lane = gl_LocalInvocationIndex;
+    uint base = block * SURFEL_GRID_BLOCK_CELLS;
+
+    // Offset of this block: the sum of the earlier block sums.
+    uint earlier = 0u;
+    for (uint b = lane; b < block; b += 256u) {
+        earlier += blockSums[b];
+    }
+    sReduce[lane] = earlier;
+    memoryBarrierShared();
+    barrier();
+    for (uint stride = 128u; stride > 0u; stride >>= 1u) {
+        if (lane < stride) {
+            sReduce[lane] += sReduce[lane + stride];
+        }
+        memoryBarrierShared();
+        barrier();
+    }
+    uint blockOffset = sReduce[0];
+    barrier();
+
+    // Coalesced load of the pending counts into lane-major shared storage.
+    for (uint k = 0u; k < 4u; ++k) {
+        uint cell = base + lane + k * 256u;
+        sPending[lane * 4u + k] = cell < uGridCellCount ? gridHeaders[cell].pendingCount : 0u;
+    }
+    memoryBarrierShared();
+    barrier();
+
+    uint laneTotal = sPending[lane * 4u] + sPending[lane * 4u + 1u] +
+        sPending[lane * 4u + 2u] + sPending[lane * 4u + 3u];
+    sLaneTotal[lane] = laneTotal;
+    memoryBarrierShared();
+    barrier();
+    for (uint off = 1u; off < 256u; off <<= 1u) {
+        uint add = lane >= off ? sLaneTotal[lane - off] : 0u;
+        memoryBarrierShared();
+        barrier();
+        sLaneTotal[lane] += add;
+        memoryBarrierShared();
+        barrier();
+    }
+
+    // Exclusive offsets for this lane's four cells, in lane-major order.
+    uint running = blockOffset + sLaneTotal[lane] - laneTotal;
+    for (uint k = 0u; k < 4u; ++k) {
+        sOffset[lane * 4u + k] = running;
+        running += sPending[lane * 4u + k];
+    }
+    memoryBarrierShared();
+    barrier();
+
+    uint overflow = 0u;
+    for (uint k = 0u; k < 4u; ++k) {
+        uint cell = base + lane + k * 256u;
+        if (cell >= uGridCellCount) {
+            continue;
+        }
+
+        uint count = sPending[lane * 4u + k];
+        uint offset = sOffset[lane * 4u + k];
+        if (offset >= uEntryCapacity) {
+            overflow += count;
+            count = 0u;
+        } else if (offset + count > uEntryCapacity) {
+            overflow += offset + count - uEntryCapacity;
+            count = uEntryCapacity - offset;
+        }
+
+        SurfelCellHeader header;
+        header.firstEntry = offset;
+        header.entryCount = count;
+        header.pendingCount = 0u;
+        header.fillCursor = 0u;
+        header.sumRed = 0u;
+        header.sumGreen = 0u;
+        header.sumBlue = 0u;
+        header.sumWeight = 0u;
+        header.sumConfidence = 0u;
+        header.validCount = 0u;
+        gridHeaders[cell] = header;
+    }
+
+    if (overflow > 0u) {
+        atomicAdd(counters.overflowGridEntries, overflow);
+    }
+}

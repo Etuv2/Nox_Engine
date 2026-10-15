@@ -15,12 +15,13 @@ def require(condition: bool, message: str) -> None:
 
 def main() -> None:
     apply_shader = read("shaders/surfel_gi/apply_indirect.comp")
-    cell_average_shader = read("shaders/surfel_gi/cell_average.comp")
+    cell_average_shader = read("shaders/surfel_gi/common.glsl")
     spatial_filter_shader = read("shaders/surfel_gi/spatial_filter.comp")
 
-    require("float CellAverageSupportConfidence(" in cell_average_shader,
+    require("vec3 SurfelCellAverage(" in cell_average_shader and
+            "supportConfidence = smoothstep(1.0, 8.0, validCount)" in cell_average_shader,
             "cell averages must scale fallback confidence by surfel support")
-    require("float CellAverageSignalConfidence(" in cell_average_shader,
+    require("signalConfidence = smoothstep(1e-4, 0.03, SurfelLuminance(average))" in cell_average_shader,
             "cell averages must not advertise confident fallback for black/no-signal cells")
     require("packedConfidence = temporalConfidence * supportConfidence * signalConfidence" in cell_average_shader,
             "cell-average fallback confidence must combine temporal, support, and signal confidence")

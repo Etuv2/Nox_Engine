@@ -79,10 +79,12 @@ def check_slice_growth_setting() -> None:
 
 def check_grid_rebuilds() -> None:
     pipeline = read("src/passes/SurfelGIPipeline.cpp")
-    require(pipeline.count("rebuildGridAndAverages(true)") == 0,
-            "no mid-frame grid rebuild should build cell averages; averages are built once at the end")
-    require(pipeline.count("buildCellAverages();") == 2,
-            "buildCellAverages is expected in its lambda definition and once at the end of Execute")
+    require(pipeline.count("rebuildGridAndAverages(") == 0 and pipeline.count("buildCellAverages") == 0,
+            "the grid is built once per frame; the mid-frame rebuilds and the separate cell-average pass are gone")
+    require(pipeline.count("buildGrid();") == 1,
+            "buildGrid is expected once, at the end of Execute (count, block sums, scan and scatter)")
+    for label in ("grid_count", "grid_block_sums", "grid_scan", "grid_build"):
+        require(f'timedDispatch("{label}"' in pipeline, f"grid pass {label} must be timed")
 
 
 def check_reference_independence() -> None:

@@ -294,9 +294,6 @@ bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
         }
 
         uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
         uint budget = min(min(storedCount, perCellBudget), maxCandidates - candidates);
         uint strideSeed = SurfelHash(seed ^ (cell * 747796405u));
         uint startIndex = strideSeed % storedCount;
@@ -370,9 +367,6 @@ vec3 TraceCachedAlbedoAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelID,
         }
 
         uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
         uint budget = min(min(storedCount, perCellBudget), maxCandidates - candidates);
         uint strideSeed = SurfelHash(seed ^ (cell * 2246822519u));
         uint startIndex = strideSeed % storedCount;
@@ -720,9 +714,6 @@ void TraceGatherCell(SurfelRay ray,
     uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
     uint budget = min(min(storedCount, SURFEL_TRACE_MAX_CELL_ENTRIES), SURFEL_TRACE_MAX_CANDIDATES - gather.candidatesTested);
     uint firstEntry = header.firstEntry;
-    if (firstEntry == 0u && cell != 0u) {
-        firstEntry = cell * uMaxSurfelsPerCell;
-    }
     uint strideSeed = SurfelHash(ray.ids.x ^ (cell * 747796405u) ^ (ray.ids.z * 2891336453u));
     uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
     uint sampleStride = max(storedCount / max(budget, 1u), 1u);

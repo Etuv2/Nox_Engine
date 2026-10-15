@@ -835,6 +835,7 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 
 	SurfelGridSettings gridSettings{};
 	gridSettings.maxSurfelsPerCell = m_settings.maxSurfelsPerCell;
+	gridSettings.entryCapacity = m_settings.maxSurfels * kSurfelGridMaxCellsPerSurfel;
 	gridSettings.useNonLinearGrid = m_settings.useNonLinearGrid;
 	gridSettings.centralResolution = 32u;
 	gridSettings.axisLateralResolution = 32u;
@@ -1027,56 +1028,6 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	m_lastView = context.view;
 	m_hasLastCameraState = true;
 
-	auto buildCellAverages = [&]() {
-		if (placementOnly) {
-			return;
-		}
-		if (m_cellAverageShader && m_cellAverageShader->IsValid()) {
-			const rhi::ProgramHandle program = m_cellAverageShader->GetProgramID();
-			gpu.UseProgram(program);
-			SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-			SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
-			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
-			timedDispatch("cell_averages", [&]() {
-				m_cellAverageShader->Dispatch(DivRoundUp(m_grid.GetCellCount(), 64u), 1u, 1u);
-				m_cellAverageShader->WaitForCompletion(rhi::BarrierStorage);
-			});
-		}
-	};
-
-	auto rebuildGridAndAverages = [&](bool includeCellAverages) {
-		if (m_clearGridShader && m_clearGridShader->IsValid()) {
-			const rhi::ProgramHandle program = m_clearGridShader->GetProgramID();
-			gpu.UseProgram(program);
-			SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-			SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
-			timedDispatch("grid_clear", [&]() {
-				m_clearGridShader->Dispatch(DivRoundUp(m_grid.GetCellCount(), 64u), 1u, 1u);
-				m_clearGridShader->WaitForCompletion(rhi::BarrierStorage);
-			});
-		}
-
-		if (m_buildGridShader && m_buildGridShader->IsValid()) {
-			const rhi::ProgramHandle program = m_buildGridShader->GetProgramID();
-			gpu.UseProgram(program);
-			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
-			SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-			SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
-			SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
-			SetUniform3fv(program, "uGridMin", gridMin);
-			SetUniform3fv(program, "uGridMax", gridMax);
-			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
-			timedDispatch("grid_build", [&]() {
-				m_buildGridShader->Dispatch(groupsSurfels, 1u, 1u);
-				m_buildGridShader->WaitForCompletion(rhi::BarrierStorage);
-			});
-		}
-
-		if (includeCellAverages) {
-			buildCellAverages();
-		}
-	};
-
 	auto countLiveSurfels = [&]() {
 		if (m_countLiveShader && m_countLiveShader->IsValid()) {
 			const rhi::ProgramHandle program = m_countLiveShader->GetProgramID();
@@ -1118,6 +1069,65 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		surfelArgs = m_resources.dispatchArgsBuffer;
 	}
 
+	// One grid build per frame: count the overlapped cells, sum the blocks, scan the offsets, then
+	// scatter the entries and accumulate the cell averages. The lambda runs at the end of Execute.
+	auto buildGrid = [&]() {
+		if (placementOnly || !m_gridCountShader || !m_gridCountShader->IsValid() ||
+			!m_gridBlockSumsShader || !m_gridBlockSumsShader->IsValid() ||
+			!m_gridScanShader || !m_gridScanShader->IsValid() ||
+			!m_buildGridShader || !m_buildGridShader->IsValid()) {
+			return;
+		}
+
+		const uint32_t cellCount = m_grid.GetCellCount();
+		const uint32_t blockCount = m_grid.GetBlockCount();
+		const rhi::BufferHandle blockSums = m_grid.GetBlockSumBuffer();
+
+		{
+			const rhi::ProgramHandle program = m_gridCountShader->GetProgramID();
+			gpu.UseProgram(program);
+			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
+			SetUniform1ui(program, "uGridCellCount", cellCount);
+			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
+			timedDispatch("grid_count", [&]() {
+				DispatchSurfelWide(*m_gridCountShader, surfelArgs, groupsSurfels);
+				m_gridCountShader->WaitForCompletion(rhi::BarrierStorage);
+			});
+		}
+		{
+			const rhi::ProgramHandle program = m_gridBlockSumsShader->GetProgramID();
+			gpu.UseProgram(program);
+			SetUniform1ui(program, "uGridCellCount", cellCount);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridBlockSums), blockSums);
+			timedDispatch("grid_block_sums", [&]() {
+				m_gridBlockSumsShader->Dispatch(blockCount, 1u, 1u);
+				m_gridBlockSumsShader->WaitForCompletion(rhi::BarrierStorage);
+			});
+		}
+		{
+			const rhi::ProgramHandle program = m_gridScanShader->GetProgramID();
+			gpu.UseProgram(program);
+			SetUniform1ui(program, "uGridCellCount", cellCount);
+			SetUniform1ui(program, "uEntryCapacity", m_grid.GetEntryCapacity());
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridBlockSums), blockSums);
+			timedDispatch("grid_scan", [&]() {
+				m_gridScanShader->Dispatch(blockCount, 1u, 1u);
+				m_gridScanShader->WaitForCompletion(rhi::BarrierStorage);
+			});
+		}
+		{
+			const rhi::ProgramHandle program = m_buildGridShader->GetProgramID();
+			gpu.UseProgram(program);
+			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
+			SetUniform1ui(program, "uGridCellCount", cellCount);
+			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
+			timedDispatch("grid_build", [&]() {
+				DispatchSurfelWide(*m_buildGridShader, surfelArgs, groupsSurfels);
+				m_buildGridShader->WaitForCompletion(rhi::BarrierStorage);
+			});
+		}
+	};
+
 	if (placementOnly && !m_wasPlacementValidationMode) {
 		// Placement validation resets on entry, then accumulates spawned
 		// world-space records without transform reattachment. A per-frame reset
@@ -1141,6 +1151,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uMinSurfelRadius", m_settings.minSurfelRadius);
 		SetUniform1f(program, "uMaxSurfelRadius", m_settings.maxSurfelRadius);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
+		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 		timedDispatch("transform_update", [&]() {
 			DispatchSurfelWide(*m_updateShader, surfelArgs, groupsSurfels);
 			m_updateShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1153,23 +1164,18 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform3fv(program, "uCameraPosition", cameraPosition);
-		SetUniform3fv(program, "uGridMin", gridMin);
-		SetUniform3fv(program, "uGridMax", gridMax);
-		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
 		SetUniform1ui(program, "uMaxRecycleCount", m_settings.maxRecycleCountPerFrame);
-		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
-		SetUniform1f(program, "uRecyclePressureStart", m_settings.recyclePressureStart);
 		SetUniform1f(program, "uMaxDistance", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
+		SetUniform1f(program, "uSpawnPopulationKappa", std::max(m_settings.spawnPopulationKappa, 0.0f));
+		const uint32_t spawnTileSizeForCount = std::max(m_settings.spawnTileSize, 1u);
+		SetUniform1ui(program, "uSpawnTileCount",
+			DivRoundUp(m_width, spawnTileSizeForCount) * DivRoundUp(m_height, spawnTileSizeForCount));
 		timedDispatch("recycling", [&]() {
-			m_recycleShader->Dispatch(groupsSurfels, 1u, 1u);
+			DispatchSurfelWide(*m_recycleShader, surfelArgs, groupsSurfels);
 			m_recycleShader->WaitForCompletion(rhi::BarrierStorage);
 		});
 	}
 
-	// The grid must hold this frame's recycling for spawn and trace. Cell averages are only read by the final
-	// gather, which runs after the end-of-frame buildCellAverages(), so they are not built here.
-	rebuildGridAndAverages(false);
 
 	if (!placementOnly && m_coverageShader && m_coverageShader->IsValid()) {
 		const rhi::ProgramHandle program = m_coverageShader->GetProgramID();
@@ -1240,7 +1246,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uUseCoverageMap", useCoverageMap ? 1 : 0);
 		SetUniform2f(program, "uCoverageScale", static_cast<float>(m_indirectWidth) / static_cast<float>(std::max(m_width, 1u)),
 			static_cast<float>(m_indirectHeight) / static_cast<float>(std::max(m_height, 1u)));
-		SetUniform1f(program, "uSpawnBudgetScale", std::max(m_settings.spawnBudgetScale, 0.0f));
+		SetUniform1f(program, "uSpawnPopulationKappa", std::max(m_settings.spawnPopulationKappa, 0.0f));
 		SetUniform1ui(program, "uMaxSpawnsPerFrame", m_settings.maxSpawnsPerFrame);
 		SetUniform2ui(program, "uResolution", m_width, m_height);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
@@ -1283,13 +1289,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 				m_spawnShader->Dispatch(tileCount, 1u, 1u);
 				m_spawnShader->WaitForCompletion(rhi::BarrierStorage);
 			});
-			if (spawnPass + 1u < spawnPassCount) {
-				rebuildGridAndAverages(false);
-				gpu.UseProgram(program);
-			}
 		}
 
-		rebuildGridAndAverages(false);
 
 	}
 	else if (!runCoverageSpawn) {
@@ -1459,6 +1460,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		gpu.UseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
+		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 		timedDispatch("radial_depth", [&]() {
 			DispatchSurfelWide(*m_radialDepthShader, surfelArgs, groupsSurfels);
 			m_radialDepthShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1497,9 +1499,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		});
 	}
 
-	// Once per frame, after the last irradiance update, for the final gather (cell averages feed its fallback).
+	// One grid build per frame, after the last irradiance update. The final gather reads the cell averages
+	// that the scatter pass accumulates, so this is the only grid write of the frame.
 	if (!placementOnly) {
-		buildCellAverages();
+		buildGrid();
 	}
 
 	// Runs every frame: it rebuilds the high-water index that dispatch_args turns into next frame's
@@ -2310,9 +2313,10 @@ bool SurfelGIPipeline::LoadShaders()
 		CreateCompute(m_recycleShader, "shaders/surfel_gi/recycle_surfels.comp") &&
 		CreateCompute(m_coverageShader, "shaders/surfel_gi/coverage.comp") &&
 		CreateCompute(m_spawnShader, "shaders/surfel_gi/spawn.comp") &&
-		CreateCompute(m_clearGridShader, "shaders/surfel_gi/clear_grid.comp") &&
+		CreateCompute(m_gridCountShader, "shaders/surfel_gi/grid_count.comp") &&
+		CreateCompute(m_gridBlockSumsShader, "shaders/surfel_gi/grid_block_sums.comp") &&
+		CreateCompute(m_gridScanShader, "shaders/surfel_gi/grid_scan.comp") &&
 		CreateCompute(m_buildGridShader, "shaders/surfel_gi/build_grid.comp") &&
-		CreateCompute(m_cellAverageShader, "shaders/surfel_gi/cell_average.comp") &&
 		CreateCompute(m_requestRaysShader, "shaders/surfel_gi/request_rays.comp") &&
 		CreateCompute(m_allocateRaysShader, "shaders/surfel_gi/allocate_rays.comp") &&
 		CreateCompute(m_generateRaysShader, "shaders/surfel_gi/generate_rays.comp") &&
@@ -2366,9 +2370,10 @@ void SurfelGIPipeline::ReleaseShaders()
 	m_recycleShader.reset();
 	m_coverageShader.reset();
 	m_spawnShader.reset();
-	m_clearGridShader.reset();
+	m_gridCountShader.reset();
+	m_gridBlockSumsShader.reset();
+	m_gridScanShader.reset();
 	m_buildGridShader.reset();
-	m_cellAverageShader.reset();
 	m_requestRaysShader.reset();
 	m_allocateRaysShader.reset();
 	m_generateRaysShader.reset();

@@ -67,7 +67,8 @@ uniform uint uSpawnPassIndex;
 uniform uint uSpawnCandidateCount;
 uniform uint uMaxSpawnsPerFrame;
 uint gSpawnBudget = 0u;   // spawns allowed for the current tile decision (thread 0)
-uniform float uSpawnBudgetScale = 1.0;
+// kappa: population target per visible tile (WP4). Replaces the old deficit-scaled budget.
+uniform float uSpawnPopulationKappa = 1.0;
 uniform uint uSpawnSampleStride = 1u;   // 1 = every pixel of the tile is a candidate each frame
 // Gather coverage written by apply_indirect (one frame old), at the final-gather resolution.
 uniform sampler2D uCoverageTex;
@@ -364,23 +365,6 @@ float SurfelCandidateSelectionPriority(uvec2 tile,
     return SurfelHash01(seed) * 0.012;
 }
 
-float TilePlacementProbability(float coverage,
-                               float effectiveThreshold,
-                               uint unresolvedAge,
-                               bool highPriority,
-                               float importance)
-{
-    float deficit = SurfelSaturate((effectiveThreshold - coverage) / max(effectiveThreshold, 1e-4));
-    float age = SurfelSaturate(float(unresolvedAge) / 8.0);
-    float base = mix(0.10, 0.58, deficit);
-    base += highPriority ? 0.24 : 0.0;
-    base += age * 0.18;
-    base += importance * 0.24;
-    if (uCameraMotionBoost != 0u) {
-        base += 0.12;
-    }
-    return clamp(base, 0.08, highPriority ? 0.96 : 0.82);
-}
 
 float SurfelIrradianceCoverageQualification(Surfel surfel)
 {
@@ -464,9 +448,6 @@ float ComputeCandidateCoverage(vec3 worldPos,
         uint budget = min(min(storedCount, SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES),
                           SURFEL_SPAWN_MAX_COVERAGE_TESTS - coverageTests);
         uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
 
         uint strideSeed = SurfelHash((cell * 747796405u) ^ (uint(baseAddress.coord.x) * 2891336453u) ^ (uint(baseAddress.coord.y) * 1597334677u) ^ (uint(baseAddress.coord.z) * 3812015801u));
         uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
@@ -688,6 +669,8 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     float radius = candidate.adaptiveRadius > 0.0
         ? candidate.adaptiveRadius
         : SpawnRadiusForWorldPosition(worldPos);
+    // One grid cell side at most (GIBS p.33): the grid stores a surfel in the cells its support overlaps.
+    radius = min(radius, SurfelGridCellSizeAtWorld(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent));
     if (isnan(radius) || isinf(radius) || radius <= 0.0 || radius > max(uMaxSurfelRadius * 4.0, 0.01)) {
         atomicAdd(counters.rejectedInvalidRadius, 1u);
         return false;
@@ -742,7 +725,8 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
                         0.0);
     surfels[surfelID] = surfel;
 
-    float radialDefaultDepth = max(radius * 8.0, 1.25);
+    // Default radial depth: twice the gather reach, so an unobserved hemisphere is open well past the reach (WP6).
+    float radialDefaultDepth = 2.0 * SurfelCoverageSupportRadiusAt(worldPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
     uint radialBase = surfelID * SURFEL_RADIAL_DEPTH_TEXELS;
     for (uint bin = 0u; bin < SURFEL_RADIAL_DEPTH_TEXELS; ++bin) {
         radialDepth[radialBase + bin].meanDepth = radialDefaultDepth;
@@ -968,12 +952,14 @@ void InitSpawnCandidate(out SpawnCandidate candidate, uvec2 pixelU)
 // coverage need instead of a fixed count. Capped by uMaxSpawnsPerFrame (the settings ceiling).
 uint ComputeSpawnBudget(uint tileCount)
 {
-    float deficit = counters.visiblePreviousFrame > 0u
-        ? clamp(float(counters.underCoveredPreviousFrame) / float(counters.visiblePreviousFrame), 0.0, 1.0)
-        : 1.0;
-    float budget = float(tileCount) * (0.004 + 0.06 * deficit) * uSpawnBudgetScale;
-    uint scaled = uint(clamp(budget, 16.0, max(float(tileCount) / 8.0, 16.0)));
-    return min(scaled, uMaxSpawnsPerFrame);
+    // Population target N_target = kappa * visible tiles (last frame's count; every tile until the
+    // first count exists). The budget closes the deficit to the target, so recycling this frame
+    // frees room for spawns this frame. Live = pool size minus free slots: the free list is current
+    // here because recycling has already run.
+    float visible = counters.visiblePreviousFrame > 0u ? float(counters.visiblePreviousFrame) : float(tileCount);
+    float target = uSpawnPopulationKappa * visible;
+    float live = float(uMaxSurfels) - float(counters.freeTop);
+    return uint(min(max(target - live, 0.0), float(uMaxSpawnsPerFrame)));
 }
 
 void main()
@@ -1136,39 +1122,19 @@ void main()
                     firstCoverage = bestCoverage;
                     firstThreshold = effectiveCoverageThreshold;
                 }
-                if (!coverageEnough) {
+                if (bestCandidate.valid) {
                     bool shouldSpawn;
-                    bool highPriority = CoverageTileHighPriority(
-                        bestCandidate.valid,
-                        bestCoverage,
-                        PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousTileState.state.y));
-                    float placementProbability = TilePlacementProbability(
-                        bestCoverage,
-                        effectiveCoverageThreshold,
-                        previousTileState.state.y,
-                        highPriority,
-                        bestCandidate.importance);
+                    // Threshold 0.85 +/- 0.075 from the tile's blue-noise value (spec 5.5), so tiles cross
+                    // the level on different frames instead of all at once.
                     uint salt = tileIndex + round * 7919u;
-                    float tileBlueNoise = SurfelCandidateBlueNoise(tile, uFrameIndex, passIndex, salt);
+                    float spawnThreshold = uCoverageThreshold +
+                        0.15 * (SurfelCandidateBlueNoise(tile, uFrameIndex, passIndex, salt) - 0.5);
                     if (round == 0u) {
-                        shouldSpawn = bestCandidate.valid &&
-                            (ShouldPlaceForReferenceCoverage(bestCoverage) ||
-                             (bestCoverage < effectiveCoverageThreshold &&
-                              PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousTileState.state.y) >= SURFEL_COVERAGE_PRIORITY_AGE));
-                        if (tileBlueNoise > placementProbability) {
-                            shouldSpawn = false;
-                        }
-                        if (uBypassCoverageSearch != 0u && tileWasSeeded && (uCameraMotionBoost == 0u || hadRecentSpawn)) {
-                            shouldSpawn = false;
-                        }
-                        if (hadRecentSpawn) {
-                            shouldSpawn = false;
-                        }
+                        // The tile's cooldown frame skips a spawn, so the coverage map (one frame old) does not
+                        // place the same surfel twice.
+                        shouldSpawn = bestCoverage < spawnThreshold && !hadRecentSpawn;
                     } else {
-                        // Extra rounds: only where the coverage is very low, and not in the tile's cooldown frame.
-                        shouldSpawn = bestCandidate.valid &&
-                            bestCoverage < 0.5 * effectiveCoverageThreshold &&
-                            tileBlueNoise <= placementProbability;
+                        shouldSpawn = bestCoverage < spawnThreshold;
                     }
                     if (shouldSpawn && SpawnSurfelFromCandidate(bestCandidate, bestCoverage)) {
                         sRound[0] = 1u;

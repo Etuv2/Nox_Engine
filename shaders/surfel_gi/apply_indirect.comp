@@ -102,14 +102,6 @@ bool SurfelMaterialAllowsDiffuseGI(uint materialID)
     return true;
 }
 
-vec3 DecodePackedCellAverage(uint packedAverage, out float confidence)
-{
-    vec4 averageValue = unpackUnorm4x8(packedAverage);
-    vec3 mapped = clamp(averageValue.rgb, vec3(0.0), vec3(0.999));
-    confidence = clamp(averageValue.a, 0.0, 1.0);
-    return mapped / max(vec3(1.0) - mapped, vec3(1e-4));
-}
-
 // Weight of a surfel's irradiance for a receiving pixel. Surfels store the irradiance arriving
 // at their own surface, so only surfels on the receiver's surface (similar normal, close to
 // its plane) apply. Colour bleeding needs no special path: it is already in the irradiance of
@@ -261,13 +253,7 @@ vec3 SampleCellAverage(uint cell, out float confidence)
         return vec3(0.0);
     }
 
-    SurfelCellHeader header = gridHeaders[cell];
-    if (header.averagePackedIrradiance == 0u ||
-        (header.flags & SURFEL_CELL_HAS_AVERAGE) == 0u) {
-        return vec3(0.0);
-    }
-
-    return DecodePackedCellAverage(header.averagePackedIrradiance, confidence);
+    return SurfelCellAverage(gridHeaders[cell], confidence);
 }
 
 vec3 SampleTrilinearGridIrradiance(vec3 worldPos, out float confidence)
@@ -435,9 +421,6 @@ void AccumulateCell(uint cell,
     SurfelCellHeader header = gridHeaders[cell];
     uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
     uint firstEntry = header.firstEntry;
-    if (firstEntry == 0u && cell != 0u) {
-        firstEntry = cell * uMaxSurfelsPerCell;
-    }
 
     uint budget = min(min(storedCount, uMaxSurfelsPerCell), max(cellSampleBudget, 1u));
     uint strideSeed = SurfelHash(receiverSeed ^ (cell * 747796405u) ^ 2891336453u);

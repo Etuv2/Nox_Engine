@@ -174,7 +174,7 @@ namespace {
 			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
 			// their light) and 4096 rays per frame, between Low and High: at the former 192 rays a
 			// surfel saw one ray every few frames and multi-bounce took hundreds of frames to settle.
-			return { 65536u, 4096u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 65536u, 24576u, 2048u };
+			return { 65536u, 4096u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 64u, 24576u, 256u };
 		}
 	}
 
@@ -647,7 +647,7 @@ void ModularRenderer::SyncSurfelGISettings()
 	if (const char* scaleEnv = std::getenv("NOX_SURFEL_GI_FINAL_GATHER_SCALE")) {
 		settings.finalGatherResolutionScale = std::clamp(static_cast<float>(std::atof(scaleEnv)), 0.25f, 1.0f);
 	}
-	settings.spawnBudgetScale = std::clamp(GetEnvVarFloat("NOX_SURFEL_GI_SPAWN_BUDGET_SCALE", settings.spawnBudgetScale), 0.0f, 16.0f);
+	settings.spawnPopulationKappa = std::clamp(GetEnvVarFloat("NOX_SURFEL_GI_SPAWN_BUDGET_SCALE", settings.spawnPopulationKappa), 0.0f, 16.0f);
 	settings.spawnSearchStride = static_cast<uint32_t>(
 		std::clamp(GetEnvVarInt("NOX_SURFEL_GI_SPAWN_STRIDE", static_cast<int>(settings.spawnSearchStride)), 1, 4));
 	m_context.surfelGIUseScreenTrace = settings.useScreenSpaceTrace;

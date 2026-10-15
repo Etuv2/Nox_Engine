@@ -1,5 +1,9 @@
 #version 460 core
 
+// Grid build, pass 4 of 4: scatter. Every live surfel writes its id into each cell its support sphere
+// overlaps (the same enumeration as grid_count) and adds its irradiance to that cell's average sums.
+// The cell offsets come from grid_scan, so entries and sums are written in one pass.
+
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
@@ -14,89 +18,23 @@ layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
     SurfelCellHeader gridHeaders[];
 };
 
-layout(binding = B_GRID_ENTRIES, std430) buffer SurfelGridEntryBuffer
+layout(binding = B_GRID_ENTRIES, std430) writeonly buffer SurfelGridEntryBuffer
 {
     SurfelCellEntry gridEntries[];
 };
 
-layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
-{
-    SurfelCounters counters;
-};
-
 uniform uint uMaxSurfels;
 uniform uint uGridCellCount;
-uniform uint uMaxSurfelsPerCell;
-uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
+uniform uvec3 uGridResolution;
 uniform uint uUseNonLinearGrid;
 uniform float uGridFarExtent;
-
-bool HasInsertedCell(uint cell, uint insertedCells[27], uint insertedCount)
-{
-    for (uint i = 0u; i < insertedCount; ++i) {
-        if (insertedCells[i] == cell) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Each stored entry keeps the squared distance from its surfel to the cell centre in `next`. The
-// cell list is contiguous and `next` is otherwise unused, so the key costs no extra storage. Floats
-// that are non-negative compare like their bit patterns, so the key is a plain uint compare.
-//
-// A full cell keeps the surfels nearest its centre instead of a hash-chosen subset: an arriving
-// surfel probes a few stored entries, and replaces the farthest probe when it is nearer. Probes
-// are not exhaustive, so the result is approximate, but the nearest surfels survive in practice
-// and the overflow counter still records every event.
-const uint SURFEL_OVERFLOW_PROBES = 8u;
-
-void InsertIntoCell(uint surfelID, uint cell, vec3 surfelPos, vec3 cellCenter)
-{
-    if (cell >= uGridCellCount) {
-        return;
-    }
-
-    vec3 toCenter = surfelPos - cellCenter;
-    uint key = floatBitsToUint(max(dot(toCenter, toCenter), 0.0));
-
-    uint slot = atomicAdd(gridHeaders[cell].entryCount, 1u);
-    uint firstEntry = gridHeaders[cell].firstEntry;
-    if (firstEntry == 0u && cell != 0u) {
-        firstEntry = cell * uMaxSurfelsPerCell;
-    }
-    if (slot < uMaxSurfelsPerCell) {
-        uint entryIndex = firstEntry + slot;
-        gridEntries[entryIndex].surfelID = surfelID;
-        gridEntries[entryIndex].next = key;
-    } else {
-        atomicOr(gridHeaders[cell].flags, SURFEL_CELL_OVERFLOWED);
-        atomicAdd(counters.overflowGridEntries, 1u);
-        uint worstProbe = 0u;
-        uint worstKey = 0u;
-        uint probeSeed = SurfelHash(surfelID ^ (cell * 747796405u) ^ (slot * 2891336453u));
-        for (uint p = 0u; p < SURFEL_OVERFLOW_PROBES; ++p) {
-            uint probe = SurfelHash(probeSeed + p * 0x9e3779b9u) % uMaxSurfelsPerCell;
-            uint probeKey = gridEntries[firstEntry + probe].next;
-            if (probeKey >= worstKey) {
-                worstKey = probeKey;
-                worstProbe = probe;
-            }
-        }
-        if (key < worstKey) {
-            uint replaceIndex = firstEntry + worstProbe;
-            gridEntries[replaceIndex].surfelID = surfelID;
-            gridEntries[replaceIndex].next = key;
-        }
-    }
-}
 
 void main()
 {
     uint surfelID = gl_GlobalInvocationID.x;
-    if (surfelID >= uMaxSurfels || uGridCellCount == 0u || uMaxSurfelsPerCell == 0u) {
+    if (surfelID >= uMaxSurfels) {
         return;
     }
 
@@ -105,21 +43,10 @@ void main()
         return;
     }
 
-    SurfelGridAddress baseAddress;
-    if (!SurfelWorldToGridAddress(
-            surfel.worldPos_radius.xyz,
-            uGridMin,
-            uGridMax,
-            uGridResolution,
-            uUseNonLinearGrid,
-            uGridFarExtent,
-            baseAddress)) {
-        return;
-    }
-
+    vec3 surfelPos = surfel.worldPos_radius.xyz;
     float radius = max(surfel.worldPos_radius.w, 0.001);
     float supportRadius = SurfelCoverageSupportRadiusAt(
-        surfel.worldPos_radius.xyz,
+        surfelPos,
         radius,
         uGridMin,
         uGridMax,
@@ -127,35 +54,43 @@ void main()
         uUseNonLinearGrid,
         uGridFarExtent);
 
-    uint insertedCells[27];
-    uint insertedCount = 0u;
-    insertedCells[insertedCount++] = baseAddress.cell;
-    InsertIntoCell(surfelID, baseAddress.cell, surfel.worldPos_radius.xyz, baseAddress.center);
+    // Average contribution of this surfel, shared by every cell it is stored in.
+    vec3 irradiance = max(surfel.irradiance.rgb, vec3(0.0));
+    float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
+    bool contributes = !(confidence <= 0.02 && SurfelLuminance(irradiance) <= 1e-5);
+    float weight = smoothstep(0.04, 0.45, confidence);
+    vec3 scaled = min(irradiance, vec3(SURFEL_CELL_SUM_IRRADIANCE_CLAMP)) * weight * SURFEL_CELL_SUM_SCALE;
 
-    for (uint i = 1u; i < 27u; ++i) {
-        ivec3 offset = SurfelCubeNeighborOffset(i);
-        vec3 samplePos = baseAddress.center + vec3(offset) * max(baseAddress.cellSize, 0.001);
-        SurfelGridAddress neighborAddress;
-        if (!SurfelWorldToGridAddress(
-                samplePos,
-                uGridMin,
-                uGridMax,
-                uGridResolution,
-                uUseNonLinearGrid,
-                uGridFarExtent,
-                neighborAddress)) {
+    uint cells[SURFEL_GRID_MAX_CELLS_PER_SURFEL];
+    uint cellCount = SurfelGridOverlappedCells(
+        surfelPos,
+        supportRadius,
+        uGridMin,
+        uGridMax,
+        uGridResolution,
+        uUseNonLinearGrid,
+        uGridFarExtent,
+        cells);
+    for (uint i = 0u; i < cellCount; ++i) {
+        uint cell = cells[i];
+        if (cell >= uGridCellCount) {
             continue;
         }
 
-        if (HasInsertedCell(neighborAddress.cell, insertedCells, insertedCount)) {
+        uint slot = atomicAdd(gridHeaders[cell].fillCursor, 1u);
+        uint entryCount = gridHeaders[cell].entryCount;
+        if (slot >= entryCount) {
             continue;
         }
 
-        vec3 delta = neighborAddress.center - surfel.worldPos_radius.xyz;
-        float inflatedRadius = supportRadius + neighborAddress.cellSize * 0.75;
-        if (dot(delta, delta) <= inflatedRadius * inflatedRadius) {
-            insertedCells[insertedCount++] = neighborAddress.cell;
-            InsertIntoCell(surfelID, neighborAddress.cell, surfel.worldPos_radius.xyz, neighborAddress.center);
+        gridEntries[gridHeaders[cell].firstEntry + slot].surfelID = surfelID;
+        if (contributes) {
+            atomicAdd(gridHeaders[cell].sumRed, uint(scaled.r));
+            atomicAdd(gridHeaders[cell].sumGreen, uint(scaled.g));
+            atomicAdd(gridHeaders[cell].sumBlue, uint(scaled.b));
+            atomicAdd(gridHeaders[cell].sumWeight, uint(weight * SURFEL_CELL_SUM_SCALE));
+            atomicAdd(gridHeaders[cell].sumConfidence, uint(confidence * SURFEL_CELL_SUM_SCALE));
+            atomicAdd(gridHeaders[cell].validCount, 1u);
         }
     }
 }

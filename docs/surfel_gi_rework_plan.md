@@ -626,3 +626,87 @@ Baseline from another commit: add `--cwd <its source root>` (the exe needs `shad
 ### 9.6 Not done
 
 WP2 and later: not started, as instructed. The stale-slot energy effect is not measured above noise, so the 2% energy check is inconclusive for surf. Grid overflow is measured but not fixed (WP5). The ~1 ms unlabelled Execute GPU time is unexplained. The `ref` vs `indep` per-pixel correlation (about 0.7) is unexplained. `shaders/includes/surfel_gi_resources.glsl` is dead (not included anywhere) but kept: vcxproj lists it and two validators reference it. `cell_average.comp` and `clear_grid.comp` stay until WP5. Other legacy validators (for example `validate_surfel_gi_irradiance_signal.py`, `validate_surfel_coverage_priority.py`) and `tests/test_surfel_gi_quality.py` reference removed names; they were not run or updated. Repeat-spread acceptance fails for surf energy and for noise. `nox_tests.exe` has 3 environment-related failures.
+## 10. WP4/WP5/WP6 results
+
+Branch `worktree-agent-a0b57d418614e1516` (merged with main d447ec2). Harness: `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT=0.0166666667`, manual exposure, static camera, frames 200-260. "Before" = this branch before WP4-6, 3 repeats per config. "After" = this branch with WP4-6, 3 repeats. Off and indep runs were reused from "before" (both are unaffected by these changes). Energy ratio = surf energy / indep energy over lit pixels. Surfel GPU = `SurfelGIUpdatePass` median. Grid, recycle and spawn are per-label medians from the harness tables. The baseline issued 2-3 grid rebuilds per frame, so the baseline grid rows understate its per-frame cost.
+
+### 10.1 What changed
+
+WP5 (grid):
+- One build per frame, at the end of Execute: `grid_count` (per live surfel, pending count per overlapped cell), `grid_block_sums` (1024-cell blocks), `grid_scan` (per-block offsets, `firstEntry`/`entryCount`, zeroes the next frame's counters, counts overflow), `build_grid` (scatter: entry ids and cell-average sums). `clear_grid.comp` and `cell_average.comp` are deleted.
+- `SurfelCellHeader` is 40 bytes, `SurfelCellEntry` is 4 bytes. Entry capacity is `maxSurfels * 27`, so the capacity guard is never hit at the default settings. Grid memory is about 14.3 MB at Medium (7.2 MB headers, 7.1 MB entries).
+- Insertion uses an overlap test (sphere support reach against the neighbour's cell box) over the 3x3x3 block. The reach is support + 0.75 cell, which is the reach the grid had before WP5. The tight support-only reach lost coverage (see 10.4).
+- Readers change only at the lookup: the `firstEntry` guess for zero offsets is removed (apply_indirect, irradiance_sharing, trace_rays x3, spawn), and the packed-average decode is replaced by `SurfelCellAverage()` in common.glsl. Cell averages are fixed-point sums from the scatter pass (scale 2^14, irradiance clamped at 256 per surfel).
+- Radius is capped at one cell side in `update_surfels` and `spawn`.
+
+WP4 (population, spawn, recycle):
+- `N_target = kappa * visibleTiles` with kappa = `spawnPopulationKappa` (default 1.0). It replaces `spawnBudgetScale` (0.25). The env var `NOX_SURFEL_GI_SPAWN_BUDGET_SCALE` is kept so the harness configs still work.
+- Live count = maxSurfels - freeTop (read during spawn, because `begin_frame` zeroes `liveCount`). Spawn budget = clamp(N_target - live, 0, maxSpawnsPerFrame), with maxSpawnsPerFrame = 64 at Medium.
+- Threshold per tile = 0.85 + 0.15 * (blue_noise - 0.5). The one-frame cooldown is kept. The old placement-probability gate and the coverage-enough gate are removed.
+- Recycle score per GIBS p.29: `s = 0.4*over + 0.3*stale + 0.3*far`, cull with probability 0.5*s, cap 256 per frame (Medium tier). `over` is population over target, `stale` is frames since last visible (`frameInfo.x`), `far` is distance / farScale. Invalid-transform and no-albedo surfels are always culled.
+- Recycle and grid passes are dispatched by the high-water index (`surfelArgs`).
+
+WP6 (radial depth):
+- Hits are clamped to the diameter, misses count as the diameter, hemisphere only, EMA 0.05, up to 4 GI rays per surfel. Default depth = diameter. Read side unchanged.
+- Deviation: the diameter is 2 x the gather reach (`SurfelCoverageSupportRadiusAt`), not 2r. See 10.4.
+
+Also: the Medium tier caps (ModularRenderer) are set to 64 spawns and 256 recycles per frame. The `surf_k05` and `surf_k15` harness configs were added for the kappa sweep.
+
+### 10.2 Before / after (3 repeats each)
+
+| Scene | Surfel GPU ms (before -> after) | Energy ratio vs indep (before -> after) | Live (before -> after; after target) | Under-covered tiles (before -> after) | Grid rows ms (before -> after) | Recycle + spawn ms (before -> after) | Grid overflow / frame (before -> after) |
+|---|---|---|---|---|---|---|---|
+| Cornell | 2.148 -> 1.995 | 0.438 -> 0.390 (-11%) | 1841 -> 1605 (1638) | 2.95% -> 5.80% | 0.112 -> 0.173 | 0.479 -> 0.500 | 20.0k -> 0 |
+| scene.json | 7.119 -> 3.930 | 0.473 -> 0.380 (-20%) | 1667 -> 2440 (7910) | 1.46% -> 3.04% | 0.124 -> 0.219 | 3.283 -> 1.129 | 9.1k -> 0 |
+| NFS night street | 4.587 -> 6.004 | 0.356 -> 0.254 (-29%) | 2511 -> 1598 (7892) | 6.50% -> 14.8% | 0.122 -> 0.202 | 1.787 -> 1.802 | 12.6k -> 0 |
+| Wall leak | 4.480 -> 6.995 | 0.323 -> 0.384 (+19%) | 1572 -> 1054 (5952) | 1.14% -> 1.71% | 0.120 -> 0.183 | 1.802 -> 2.477 | 5.8k -> 0 |
+
+Grid rows after are count + block sums + scan + build. Before rows are clear + build + averages.
+
+Wall-leak (dark side = reference GI below 10% of its p90; `tools` script in TEMP): surf/indep GI over the dark region 0.381 -> 0.445. Bright region 0.618 -> 0.643.
+
+Pass detail after (scene.json, surf): coverage_spawn 1.121, tracing 0.372, final_gather 1.099, irradiance_sharing 0.157, grid_count 0.046, grid_block_sums 0.015, grid_scan 0.056, grid_build 0.102, recycling 0.008.
+
+Kappa sweep, Cornell, single runs, final code (`sweep` configs):
+
+| kappa | live | under-covered | energy ratio vs indep |
+|---|---|---|---|
+| 0.25 (plan value) | 404 | 15.7% | 0.724 |
+| 1.0 (chosen) | 1605 | 6.9% | 0.402 |
+| 1.5 | 2404 | 5.4% | 0.287 |
+
+Single runs carry about 8% noise. At 1024 rays, energy falls as population rises, because the same rays are spread over more surfels.
+
+### 10.3 Checks
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass.
+- `validate_surfel_gi_static.py`, `validate_surfel_gi_correctness.py`, `validate_surfel_gibs_phase4.py`: pass. Updated for the single grid build, the new recycle score and the overlap enumeration.
+- `validate_surfel_gi_fallback_contract.py`: the cell-average checks are retargeted to `common.glsl` and pass. It still fails on `max(max(directBlend, fallbackBlend), bleedSupport` in apply_indirect. That string is absent at HEAD too, so the failure predates this work and is not fixed here.
+- `NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`: 0 FAIL lines, clean shutdown.
+- Racing (`NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s`.
+- Camera motion (`dolly:0.6,0,0:60`, Cornell, frames 200-260): largest consecutive-frame change is 1.19 x the median, with no second-difference spike. A mid-path frame was viewed and shows no popping.
+- `nox_tests.exe` not run in this pass.
+
+### 10.4 Deviations and findings
+
+- Radial diameter = 2 x gather reach, not 2r. With the plan's 2r default and clamp, every receiver beyond 2r reads as occluded, because the read side applies the Chebyshev test with the stored mean. The gather reads out to the support radius (about 0.7 cell at Cornell), so most of the gathered shell was suppressed. With the clamp at the support radius, the cliff still sits inside the weighted shell (Cornell kappa 1.0: 390 under-covered tiles of 1638). With radial visibility disabled in the gather, the same run had 133 (single run). With 2 x support, 189 (single run, before the recycle fix), and the recycle fix took it to 113.
+- Recycle stale term uses `frameInfo.x` (last visible). `frameInfo.y` is written by integrate only for surfels that were given rays. At 1024 rays most live surfels are starved and look stale, so they were culled and respawned in a loop (population stuck near 1400 with spawns and recycles balancing).
+- Insertion reach: the tight support reach gave 85% under-covered tiles at kappa 1.0 with the 2r radial (and 27% once the radial diameter was fixed). Reverting to the inflated reach with a centre test did not fix it (24%), so duplicate counting was not the cause. The overlap test with the inflated reach is what is in the code.
+- The plan value kappa 0.25 starves coverage (15.7% under-covered at Cornell). Kappa 1.0 is closer to the baseline population and energy; it is the default.
+
+### 10.5 Not met
+
+- Energy vs indep must not drop more than 5%: Cornell -11%, scene.json -20%, NFS -29%. The drop follows population at the 1024-ray budget. WP2's 2048-ray budget is needed before this can be judged.
+- Grid total (count + scan + scatter) <= 0.10 ms on scene.json: 0.22 ms (block sums add 0.015). It is also above the baseline's labelled grid rows (0.12 ms).
+- Recycle + spawn <= 0.20 ms on scene.json: 1.13 ms (from 3.28). Cornell did not improve (0.50 vs 0.48). The spawn pass still does a grid query for every tile's best candidate, even when the coverage map supplies the value; making that query lazy changes visibility bookkeeping, so it was not done.
+- Under-covered tiles <= 3% on all three scenes: Cornell 5.8%, NFS 14.8%, scene.json 3.0% (borderline). The coverage target is not reached on NFS at this budget.
+- Live within 20% of N_target at steady state: only Cornell (1605 vs 1638). On scene.json, NFS and the wall scene, the coverage-limited population is 18-31% of the visible-tile target, because the spawn threshold is satisfied before the target is reached.
+- Surfel GPU time: NFS and the wall scene are slower than before (+31% and +56%). On the wall scene irradiance_sharing rose from 0.16 to 0.78 ms and final_gather from 1.07 to 1.98 ms. Cause not established.
+- Wall-leak dark-side GI within 10% of indep: dark-side ratio 0.381 -> 0.445. Improved, not met. At this ray budget the whole GI is under-estimated, so the leak cannot be separated from starvation.
+
+### 10.6 Open items
+
+- Block sums could be folded into the count pass if the zeroing were moved; the scan's cost is mostly fixed (176 groups, about 40 barriers).
+- Lazy best-candidate grid query in spawn, keeping the visibility touches.
+- Investigate the NFS coverage regression and the wall irradiance_sharing and final_gather growth.
+- Re-measure energy and coverage at 2048 rays (WP2) before choosing kappa.

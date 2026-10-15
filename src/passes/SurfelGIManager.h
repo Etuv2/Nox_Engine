@@ -72,19 +72,18 @@ struct SurfelGISettings {
 	// Search stride for the per-tile lowest-coverage search: 1 tests every pixel of a tile each
 	// frame; N > 1 tests a rotating 1/N^2 subset (the lowest coverage over N^2 frames).
 	uint32_t spawnSearchStride = 1u;
-	// Scales the GPU spawn budget (validation/tuning knob; 1.0 = default formula).
-	float spawnBudgetScale = 0.25f;
+	// kappa (WP4): population target per visible tile. Live surfels are steered to kappa x visible tiles.
+	float spawnPopulationKappa = 1.0f;
 	uint32_t maxSurfelsPerCell = 128u;
 	uint32_t maxGatherSurfelsPerPixel = 32u;
 	uint32_t gatherNeighborRadius = 1u;
 	uint32_t rayUpdateInterval = 1u;
 	uint32_t fastFillFrameCount = 16u;
 	uint32_t stationaryFastFillFrames = 24u;
-	// Ceiling on spawns per frame. The per-frame budget itself is computed on the GPU from the
-	// tile count (resolution) and last frame's coverage deficit; this only bounds it.
-	uint32_t maxSpawnsPerFrame = 65536u;
+	// Ceiling on spawns per frame (tier caps apply). The GPU budget closes the deficit to kappa x visible tiles.
+	uint32_t maxSpawnsPerFrame = 64u;
 	uint32_t maxProjectedSurfelsPerFrame = 24576u;
-	uint32_t maxRecycleCountPerFrame = 2048u;
+	uint32_t maxRecycleCountPerFrame = 256u;
 
 	float targetSurfelScreenRadiusPx = 8.0f;
 	float minSurfelRadius = 0.03f;

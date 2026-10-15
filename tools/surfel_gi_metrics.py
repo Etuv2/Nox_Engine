@@ -82,6 +82,8 @@ CONFIG_ENV = {
     "surf_term": {**SURF_ENV, "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096"},
     "surf_spawn1": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.0"},
+    "surf_k05": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.5"},
+    "surf_k15": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.5"},
     "ref": REF_ENV,
     "indep": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0"},
 }
@@ -89,8 +91,8 @@ LIVE_PLAN = (261, 200, 260)  # last run frame, analysis window first and last fr
 LONG_PLAN = (899, 780, 840)
 LONG_CONFIGS = ("ref", "indep")
 REF_CONFIGS = ("indep", "ref")
-GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1")
-SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "ref")
+GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15")
+SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "surf_k05", "ref")
 REQUIRED_COUNTERS = ("liveSurfels", "requestedRays", "allocatedRays", "shortfall")
 OPTIONAL_COUNTERS = ("youngSurfels", "overflowGridEntries", "rayShortfall")
 SPREAD_KEYS = ["energy", "indep_ratio", "indep_rmse_rel", "indep_pearson", "noise_rel",

@@ -16,6 +16,7 @@ def require(condition: bool, message: str) -> None:
 def main() -> None:
     common = read("shaders/surfel_gi/common.glsl")
     build_grid = read("shaders/surfel_gi/build_grid.comp")
+    grid_count = read("shaders/surfel_gi/grid_count.comp")
     spawn = read("shaders/surfel_gi/spawn.comp")
     update = read("shaders/surfel_gi/update_surfels.comp")
     recycle = read("shaders/surfel_gi/recycle_surfels.comp")
@@ -31,7 +32,6 @@ def main() -> None:
 
     for source_name, source in (
         ("common.glsl", common),
-        ("build_grid.comp", build_grid),
         ("spawn.comp", spawn),
         ("apply_indirect.comp", apply),
         ("trace_rays.comp", trace),
@@ -40,6 +40,8 @@ def main() -> None:
         require("SurfelWorldToGridAddress" in source,
                 f"{source_name} must use the shared non-linear grid address path")
 
+    require("SurfelGridOverlappedCells(" in build_grid and "SurfelGridOverlappedCells(" in grid_count,
+            "grid count and scatter must share the overlap enumeration in common.glsl")
     require("SurfelNonLinearGridCellCount" in common and
             "SurfelAxisRegionIndex" in common and
             "SurfelGridCellDebugBounds" in common,
@@ -90,10 +92,11 @@ def main() -> None:
             "pressureRecycled" in resources_h and
             "underCoveredTileCount" in resources_h,
             "counters must include coverage and recycling breakdowns")
-    require("overCoverageCull" in recycle and
-            "atomicAdd(counters.overCoverageRecycled" in recycle and
-            "SurfelWorldToGridAddress" in recycle,
-            "recycling must use grid density/radius scale to remove over-covered surfels")
+    require("0.4 * overTarget01 + 0.3 * stale01 + 0.3 * distance01" in recycle and
+            "0.5 * score" in recycle and
+            "ReserveRecycleBudget()" in recycle and
+            "uSpawnPopulationKappa" in recycle,
+            "recycling must score surfels per GIBS p.29 (population, staleness, distance) with a per-frame cap")
 
     require("initialCellIrradiance" in spawn and
             "initialDirectIrradiance" in spawn and

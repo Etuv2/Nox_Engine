@@ -1,0 +1,61 @@
+#version 460 core
+
+// Grid build, pass 2 of 4: sum the pending counts of each block of SURFEL_GRID_BLOCK_CELLS cells.
+// grid_scan reads these sums to offset every block. Also resets the per-frame overflow counter.
+// Lanes read consecutive cells (lane + 256 k), so the 40-byte headers are read in coalesced runs.
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_BLOCK_SUMS, std430) writeonly buffer SurfelGridBlockSumBuffer
+{
+    uint blockSums[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uGridCellCount;
+
+shared uint sSum[256];
+
+void main()
+{
+    uint block = gl_WorkGroupID.x;
+    uint lane = gl_LocalInvocationIndex;
+    uint base = block * SURFEL_GRID_BLOCK_CELLS;
+
+    uint sum = 0u;
+    for (uint k = 0u; k < SURFEL_GRID_BLOCK_CELLS / 256u; ++k) {
+        uint cell = base + lane + k * 256u;
+        if (cell < uGridCellCount) {
+            sum += gridHeaders[cell].pendingCount;
+        }
+    }
+
+    sSum[lane] = sum;
+    memoryBarrierShared();
+    barrier();
+    for (uint stride = 128u; stride > 0u; stride >>= 1u) {
+        if (lane < stride) {
+            sSum[lane] += sSum[lane + stride];
+        }
+        memoryBarrierShared();
+        barrier();
+    }
+
+    if (lane == 0u) {
+        blockSums[block] = sSum[0];
+    }
+    if (block == 0u && lane == 0u) {
+        counters.overflowGridEntries = 0u;
+    }
+}
