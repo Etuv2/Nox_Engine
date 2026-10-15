@@ -48,7 +48,7 @@ const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
 const float SURFEL_SCREEN_SAMPLE_RELIABILITY = 0.18;
 const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
-// Per-ray clamp (firefly gate). It also clips rare emitter hits, which biases the estimate low (plan section 10.4).
+// Per-ray clamp (firefly gate). It also clips rare emitter hits, which biases the estimate low (plan section 11.4).
 const float SURFEL_MAX_SAMPLE_IRRADIANCE = 32.0;
 const float SURFEL_MAX_EMISSIVE_IRRADIANCE = 64.0;
 
