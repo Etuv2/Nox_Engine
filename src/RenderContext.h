@@ -21,14 +21,15 @@ struct RenderContext {
 		static constexpr bool Enable = true;
 		static constexpr float Strength = 1.0f;
 		static constexpr float BounceFeedback = 1.0f; // 1 = physically exact multi-bounce
-		static constexpr int SliceCount = 4;
-		static constexpr int SamplesPerSlice = 32; // per slice direction; gaps between samples bias SSGI low
+		static constexpr int SliceCount = 3;
+		static constexpr int SamplesPerSlice = 24; // per slice direction; gaps between samples bias SSGI low
 		static constexpr float RadiusVS = 3.04f;
 		static constexpr float ThicknessVS = 0.10f;
 		static constexpr float TemporalAlpha = 0.05f; // floor on the current-frame weight; history length caps accumulation
 		static constexpr int HistoryLength = 12;      // max accumulated frames per pixel
 		static constexpr int DenoiseIterations = 2;   // 1..3 edge-aware passes after temporal resolve
 		static constexpr float ResolutionScale = 0.25f; // trace resolution as a fraction of the frame (0.25 or 0.5)
+		static constexpr bool InterleavedTrace = false; // trace 4-row bands on alternating frames; off: no gain, more flicker
 		static constexpr float NormalReject = 0.22f;
 		static constexpr float DepthReject = 0.10f;
 		static constexpr float DenoiseStrength = 1.00f;
@@ -139,6 +140,7 @@ struct RenderContext {
 	int indirectDiffuseHistoryLength = IndirectDiffuseDefaults::HistoryLength;
 	int indirectDiffuseDenoiseIterations = IndirectDiffuseDefaults::DenoiseIterations;
 	float indirectDiffuseResolutionScale = IndirectDiffuseDefaults::ResolutionScale;
+	bool indirectDiffuseInterleavedTrace = IndirectDiffuseDefaults::InterleavedTrace;
 	float indirectDiffuseNormalReject = IndirectDiffuseDefaults::NormalReject;
 	float indirectDiffuseDepthReject = IndirectDiffuseDefaults::DepthReject;
 	bool indirectDiffuseHistoryReset = false;

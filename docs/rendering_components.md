@@ -69,6 +69,9 @@ values outside them are clamped.
 | `ssgi_resolution` | float | 0.25 (quarter, default), 0.5 (half, about 4x the trace cost) |
 | `ssgi_history_length` | int | 1 .. 64 (default 12) |
 | `ssgi_denoise_passes` | int | 1 .. 3 (default 2) |
+| `ssgi_slices`, `ssgi_steps` | int | 1 .. 8 (default 3), 1 .. 64 (default 24) |
+| `ssgi_interleaved` | bool | off (default); on traces half the pixels per frame |
+| `ssgi_debug_stage` | int | 0 (off); presents one GI stage instead of lighting (measurement aid) |
 | `taa` | bool | |
 | `taa_blend` | float | 0 .. 1 |
 | `taa_rejection_mode` | int | 0 (legacy), 1 (disocclusion) |
@@ -130,9 +133,15 @@ exposed, saved and tested together.
 4. Depth/normal/plane-aware bilateral upsample to full resolution. Full-resolution debug outputs are only
    written while a debug stage is selected, and the GI validation export is shown only then.
 
-Cost scales with the trace resolution and the slice count (Global Illumination tab). Halving the slice count
-roughly halves the gather; the spec defaults (4 slices, 32 steps) are kept because fewer steps bias the
-irradiance low.
+Cost: the gather is the largest stage (about 0.29 ms at 1080p with 4x32; 0.15 ms with 3x24). The other stages
+(depth/normals, radiance downsample, temporal, denoise, upsample) cost about 0.33 ms and do not scale with the
+slice or step count. The default is 3 slices x 24 steps: on the Cornell validation scene the indirect-only mean
+is 4.6% below 4x32, and temporal noise is about a third of the pre-change pipeline. This is a deviation from the
+4x32 quality defaults in `docs/ssgi_v2_visibility_bitmask_spec.md` section 7; set `ssgi_slices` 4 and
+`ssgi_steps` 32 to restore them.
+
+Interleaved trace (`ssgi_interleaved`) traces 4-row bands on alternating frames and fills the other bands from
+history. It did not reduce gather time at 1080p and roughly tripled the frame-to-frame flicker, so it is off.
 
 ## Camera current
 

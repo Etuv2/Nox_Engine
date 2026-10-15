@@ -7,6 +7,7 @@
 #include <string>
 
 class ComputeShader;
+class IndirectDiffuseStageTimer;
 struct RenderContext;
 class SceneGraph;
 class Camera;
@@ -55,7 +56,7 @@ public:
         int maxDepthMip = 6;
     };
 
-    IndirectDiffusePass() = default;
+    IndirectDiffusePass();
     ~IndirectDiffusePass() override;
 
     bool Initialize(RenderContext& context) override;
@@ -87,6 +88,7 @@ private:
     std::unique_ptr<ComputeShader> m_csTemporal;
     std::unique_ptr<ComputeShader> m_csBilateral;
     std::unique_ptr<ComputeShader> m_csFinalUpsample;
+    std::unique_ptr<IndirectDiffuseStageTimer> m_stageTimer;
 
     TexturePtr m_depthLinearQuarter;
     TexturePtr m_normalQuarter;
@@ -137,6 +139,7 @@ private:
     void runRadiance(RenderContext& ctx);
     void runHorizonGather(RenderContext& ctx, const std::shared_ptr<Camera>& camera);
     void runTemporal(RenderContext& ctx);
+    bool temporalHistoryUsable(const RenderContext& ctx) const;
     void runBilateral(RenderContext& ctx);
     void runFinalUpsample(RenderContext& ctx);
     rhi::TextureHandle getTextureForDebugStage(int stage, bool& outFullRes) const;

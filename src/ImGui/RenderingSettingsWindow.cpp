@@ -151,6 +151,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_indirectDiffuseHistoryLength = RenderContext::IndirectDiffuseDefaults::HistoryLength;
 	m_indirectDiffuseDenoiseIterations = RenderContext::IndirectDiffuseDefaults::DenoiseIterations;
 	m_indirectDiffuseResolutionScale = RenderContext::IndirectDiffuseDefaults::ResolutionScale;
+	m_indirectDiffuseInterleavedTrace = RenderContext::IndirectDiffuseDefaults::InterleavedTrace;
 	m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
 	m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
 	m_indirectDiffuseHistoryReset = false;
@@ -320,6 +321,7 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_indirectDiffuseHistoryLength = ctx.indirectDiffuseHistoryLength;
 	m_indirectDiffuseDenoiseIterations = ctx.indirectDiffuseDenoiseIterations;
 	m_indirectDiffuseResolutionScale = ctx.indirectDiffuseResolutionScale;
+	m_indirectDiffuseInterleavedTrace = ctx.indirectDiffuseInterleavedTrace;
 	m_indirectDiffuseNormalReject = ctx.indirectDiffuseNormalReject;
 	m_indirectDiffuseDepthReject = ctx.indirectDiffuseDepthReject;
 	m_indirectDiffuseHistoryReset = ctx.indirectDiffuseHistoryReset;
@@ -498,6 +500,7 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.indirectDiffuseHistoryLength = m_indirectDiffuseHistoryLength;
 	ctx.indirectDiffuseDenoiseIterations = m_indirectDiffuseDenoiseIterations;
 	ctx.indirectDiffuseResolutionScale = m_indirectDiffuseResolutionScale;
+	ctx.indirectDiffuseInterleavedTrace = m_indirectDiffuseInterleavedTrace;
 	ctx.indirectDiffuseNormalReject = m_indirectDiffuseNormalReject;
 	ctx.indirectDiffuseDepthReject = m_indirectDiffuseDepthReject;
 	ctx.indirectDiffuseHistoryReset = m_indirectDiffuseHistoryReset;
@@ -922,6 +925,7 @@ void RenderingSettingsWindow::Render() {
 						SyncToRenderer();
 					}
 				}
+				if (ImGui::Checkbox("Interleaved Trace", &m_indirectDiffuseInterleavedTrace)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_indirectDiffuseNormalReject, 0.05f, 0.50f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Depth Reject", &m_indirectDiffuseDepthReject, 0.01f, 0.30f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Denoise Strength", &m_indirectDiffuseDenoiseStrength, 0.5f, 3.0f, "%.2f")) { SyncToRenderer(); }
@@ -1881,6 +1885,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_indirectDiffuseHistoryLength = RenderContext::IndirectDiffuseDefaults::HistoryLength;
 	m_indirectDiffuseDenoiseIterations = RenderContext::IndirectDiffuseDefaults::DenoiseIterations;
 	m_indirectDiffuseResolutionScale = RenderContext::IndirectDiffuseDefaults::ResolutionScale;
+	m_indirectDiffuseInterleavedTrace = RenderContext::IndirectDiffuseDefaults::InterleavedTrace;
 	m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
 	m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
 	m_indirectDiffuseHistoryReset = false;

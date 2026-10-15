@@ -10,6 +10,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
@@ -118,6 +119,106 @@ bool IndirectDiffusePass::IsHdrColorStage(int stage) {
     }
 }
 
+// Per-stage GPU timing for the indirect diffuse pipeline, active with NOX_LOG_PASS_METRICS. Timestamps go
+// into a small ring so reads never stall on the frame being written; averages print every
+// NOX_LOG_PASS_METRICS_INTERVAL frames.
+class IndirectDiffuseStageTimer {
+public:
+    static constexpr int kRing = 3;
+    static constexpr int kMarks = 7;
+    static constexpr int kStages = kMarks - 1;
+
+    IndirectDiffuseStageTimer() {
+        const char* env = std::getenv("NOX_LOG_PASS_METRICS");
+        m_enabled = env && env[0] != '\0' && env[0] != '0';
+        if (!m_enabled) {
+            return;
+        }
+        const char* intervalEnv = std::getenv("NOX_LOG_PASS_METRICS_INTERVAL");
+        m_interval = intervalEnv ? std::max(std::atoi(intervalEnv), 1) : 120;
+        for (auto& slot : m_queries) {
+            for (auto& query : slot) {
+                query = rhi::Gpu().CreateQuery(rhi::QueryType::Timestamp);
+            }
+        }
+    }
+
+    ~IndirectDiffuseStageTimer() {
+        if (!m_enabled) {
+            return;
+        }
+        for (auto& slot : m_queries) {
+            for (auto& query : slot) {
+                rhi::Gpu().DestroyQuery(query);
+            }
+        }
+    }
+
+    void BeginFrame() {
+        if (!m_enabled) {
+            return;
+        }
+        m_slot = m_frame % kRing;
+        if (m_frame >= kRing) {
+            Collect(m_slot);
+        }
+        m_marks = 0;
+        ++m_frame;
+    }
+
+    void Mark() {
+        if (!m_enabled || m_marks >= kMarks) {
+            return;
+        }
+        rhi::Gpu().WriteTimestamp(m_queries[m_slot][m_marks]);
+        ++m_marks;
+    }
+
+private:
+    void Collect(int slot) {
+        for (int i = 0; i < kMarks; ++i) {
+            if (!rhi::Gpu().IsQueryResultAvailable(m_queries[slot][i])) {
+                return;
+            }
+        }
+        uint64_t marks[kMarks];
+        for (int i = 0; i < kMarks; ++i) {
+            marks[i] = rhi::Gpu().GetQueryResult(m_queries[slot][i]);
+        }
+        for (int s = 0; s < kStages; ++s) {
+            if (marks[s + 1] >= marks[s]) {
+                m_sumMs[s] += static_cast<double>(marks[s + 1] - marks[s]) / 1.0e6;
+            }
+        }
+        ++m_samples;
+        if (m_samples >= static_cast<uint32_t>(m_interval)) {
+            static const char* kNames[kStages] = {
+                "DepthPrepare+Pyramid+Normals", "RadianceDownsample", "Gather",
+                "Temporal", "Denoise", "Upsample+History" };
+            double total = 0.0;
+            std::cout << "[IndirectDiffuseStages] frame=" << m_frame << " samples=" << m_samples << std::endl;
+            for (int s = 0; s < kStages; ++s) {
+                const double avg = m_sumMs[s] / static_cast<double>(m_samples);
+                total += avg;
+                std::cout << "[IndirectDiffuseStages]   " << kNames[s] << " gpuMs=" << avg << std::endl;
+            }
+            std::cout << "[IndirectDiffuseStages]   total gpuMs=" << total << std::endl;
+            std::fill(std::begin(m_sumMs), std::end(m_sumMs), 0.0);
+            m_samples = 0;
+        }
+    }
+
+    bool m_enabled = false;
+    int m_interval = 120;
+    int m_slot = 0;
+    int m_marks = 0;
+    uint64_t m_frame = 0;
+    uint32_t m_samples = 0;
+    double m_sumMs[kStages] = {};
+    rhi::QueryHandle m_queries[kRing][kMarks] = {};
+};
+
+IndirectDiffusePass::IndirectDiffusePass() = default;
 IndirectDiffusePass::~IndirectDiffusePass() = default;
 
 bool IndirectDiffusePass::Initialize(RenderContext& ctx) {
@@ -131,6 +232,7 @@ bool IndirectDiffusePass::Initialize(RenderContext& ctx) {
     m_csTemporal = std::make_unique<ComputeShader>();
     m_csBilateral = std::make_unique<ComputeShader>();
     m_csFinalUpsample = std::make_unique<ComputeShader>();
+    m_stageTimer = std::make_unique<IndirectDiffuseStageTimer>();
 
     if (!m_csDepthPrefilter->CreateFromFile("shaders/indirect_diffuse_depth_prepare_comp.glsl")) {
         std::cerr << "[IndirectDiffusePass] Failed to compile indirect_diffuse_depth_prepare_comp.glsl" << std::endl;
@@ -289,16 +391,25 @@ void IndirectDiffusePass::Execute(RenderContext& ctx,
     m_config.workingScale = std::clamp(ctx.indirectDiffuseResolutionScale, 0.25f, 0.5f);
     Resize(ctx, ctx.width, ctx.height);
 
+    IndirectDiffuseStageTimer& timer = *m_stageTimer;
+    timer.BeginFrame();
+    timer.Mark();
     runDepthPrefilter(ctx);
+    timer.Mark();
     runRadiance(ctx);
+    timer.Mark();
     runHorizonGather(ctx, camera);
+    timer.Mark();
     runTemporal(ctx);
+    timer.Mark();
 
     runBilateral(ctx);
+    timer.Mark();
 
     runFinalUpsample(ctx);
 
     CopyLevel(m_indirectDiffuseTex->ID(), m_historyResolvedGI->ID(), m_w, m_h);
+    timer.Mark();
     ctx.indirectDiffuseHistoryReset = false;
 }
 
@@ -406,6 +517,9 @@ void IndirectDiffusePass::runHorizonGather(RenderContext& ctx, const std::shared
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "rayCount"), sliceCount);
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "stepCount"), stepCount);
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "frameIndex"), m_frameIndex++);
+    // Interleaving needs last frame's history to fill the untraced pixels, so a reset traces everything.
+    gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "traceInterleave"),
+        (ctx.indirectDiffuseInterleavedTrace && temporalHistoryUsable(ctx)) ? 1 : 0);
 
     const uint32_t gx = (m_qw + 7) / 8;
     const uint32_t gy = (m_qh + 7) / 8;
@@ -413,9 +527,13 @@ void IndirectDiffusePass::runHorizonGather(RenderContext& ctx, const std::shared
     gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 }
 
+bool IndirectDiffusePass::temporalHistoryUsable(const RenderContext& ctx) const {
+    return !(ctx.indirectDiffuseValidationDisableTemporal || !ctx.velocityTex.IsValid() || !m_historyNormalFull || !m_historyDepthQuarter || ctx.indirectDiffuseHistoryReset);
+}
+
 void IndirectDiffusePass::runTemporal(RenderContext& ctx) {
     rhi::Device& gpu = rhi::Gpu();
-    if (ctx.indirectDiffuseValidationDisableTemporal || !ctx.velocityTex.IsValid() || !m_historyNormalFull || !m_historyDepthQuarter || ctx.indirectDiffuseHistoryReset) {
+    if (!temporalHistoryUsable(ctx)) {
         CopyLevel(m_indirectRaw->ID(), m_indirectTemporal->ID(), m_qw, m_qh);
         CopyLevel(m_directionalRaw->ID(), m_directionalTemporal->ID(), m_qw, m_qh);
 

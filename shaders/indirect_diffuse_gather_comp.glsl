@@ -48,6 +48,7 @@ uniform float thicknessVS;   // Assumed thickness of on-screen surfaces in view-
 uniform int rayCount;        // Slice count; every slice marches both screen directions.
 uniform int stepCount;       // Samples per slice direction.
 uniform int frameIndex;
+uniform int traceInterleave; // 1: trace 4-row bands on alternating frames; 0: trace every pixel
 
 const int SECTOR_COUNT = 32;
 const float SECTOR_COUNT_F = 32.0;
@@ -122,6 +123,17 @@ void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
     ivec2 outSize = imageSize(outIndirectRaw);
     if (any(greaterThanEqual(id, outSize))) {
+        return;
+    }
+
+    // Interleaved trace: 4-row bands alternate per frame, so each pixel is traced every other frame and the
+    // temporal pass fills the rest (alpha < 0 marks an untraced pixel). A band is exactly one 32-lane warp
+    // of the 8x8 workgroup, so the skipped lanes exit together and the saving is real on the GPU.
+    if (traceInterleave == 1 && ((((id.y >> 2) + frameIndex) & 1) != 0)) {
+        imageStore(outIndirectRaw, id, vec4(0.0, 0.0, 0.0, -1.0));
+        imageStore(outDirectionalRaw, id, vec4(0.0));
+        imageStore(outHorizonDebug, id, vec4(0.0, 1.0, 0.0, 0.0));
+        imageStore(outSectorDebug, id, vec4(0.0));
         return;
     }
 
