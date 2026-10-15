@@ -1051,3 +1051,103 @@ Cost data on the quiet GPU are in §14.5. The total pass GPU figures above come 
 - NFS: 0.84 harness, 0.78 all-pixel. Irradiance sharing is the main cause (removing it gives 0.91); the remainder is not isolated.
 - Not established: the guided white-sky shortfall (1.6%).
 - Left to owners: irradiance sharing (gather), ray allocation and grid overflow (worker B), the shadow leak outside the cascades (lighting).
+
+## 15. Estimator performance
+
+Worker F (estimator performance), built on estimator round 2 (`f4c96f8`). Result in one line: the cost is the closest-hit trace at each continuation vertex, and the cheap levers (cache first, next-event at the first vertex, any-hit shadows, cosine continuation, cascade sun) are already in place. Unbiased roulette trades that cost for energy and noise, and the trade does not reach the targets. The sun leak is fixed for the surfel trace at +2.7 ms. Irradiance sharing stays: it is neutral on Cornell and scene.json, it is what holds NFS noise down, and it carries an NFS energy bias of about 8%. The cost targets are not met.
+
+### 15.1 Method
+
+- Harness: `--env NAME=VALUE` applies to every run. Reference runs were made once with the frozen baseline binary and reused through directory links. The reference is unchanged by construction. The path control struct gives it its own values, the sun fallback is off for it (uniform default 0), and the BVH traversal is unchanged (an ordering change was tried and reverted).
+- Timing: the GPU was shared with another worker for most runs. In contended runs `final_gather` reads 6 to 9 ms against 0.8 ms quiet, and those runs are not used. The quiet numbers below are medians over frames 200 to 260 of one run. Quiet repeats of one binary vary by about 10% (13.1 to 14.0 ms tracing).
+- Energy and noise: `surf_term` against `indep_term` through the harness lit mask, as in section 14.8. Noise is the corrected temporal std over the same window. Run-to-run scatter on NFS noise is large (1.5 to 2.5% across the runs below), so differences under about 1 point on NFS are not claims.
+
+### 15.2 Where the tracing time goes (scene.json, Medium, 2048 rays)
+
+| Variant | Tracing (ms) | Note |
+|---|---|---|
+| Baseline `f4c96f8`, cap 32 | 12.9 (A/B pair), 13.1 to 14.0 (repeats) | Energy 0.955, noise 0.10% |
+| Cache walk at depth 1 off | 12.7 | The depth-1 cache walk is about 4% |
+| No direct light at depth 1 and beyond | 11.6 | Direct light at bounces is about 2.5 ms. It carries multi-bounce energy, so it stays |
+| Closest-hit trace at depth 1 off (cap 2) | 1.5 (cap 2 with trace: 5.4) | The closest-hit trace from a continuation point is about 4 ms |
+| Path cap 4 | 6.05 | Biased: energy 0.75 (round 2, all-pixel), not used |
+| Path cap 2 | 5.4 | Biased, not used |
+| BVH children nearer-first | 14.4 | No gain, reverted |
+| Continuation minimum distance 0.01 | 14.05 | No gain and no energy change (no self-hits), reverted |
+
+Reading: the wall time is set by the longest path in the warps that are active. Each continuation vertex adds one incoherent closest-hit trace, which is latency bound. The GPU runs 64 warps on 68 SMs, so the ray count hardly moves tracing time (2048 to 4096 rays raise NFS tracing from 13 to 18 ms, and 1024 rays barely lower it). The cost is set by the path length, and the path length is set by albedo, so the only large saving is fewer continuation vertices, which means surfel coverage at hit points (the population worker's spawn change).
+
+### 15.3 Roulette at the first hit (`SurfelTraceControl`, `uContinuationPeriod`)
+
+The first hit's own terms always count (cache, direct light, next-event at the first hit, emission). Its continuation runs only in one warp group of 32 rays in N frames, with weight N. The selection rotates with the frame, so each group is taken once in N frames and the estimate is unbiased over the period. A per-ray roulette was tried and is slower, because it keeps every warp active (7.05 ms against 5.9 at N = 10, both quiet), so it is not kept.
+
+| Period N (p = 1/N) | Tracing (ms, scene.json) | Energy vs `indep_term` | Noise | Note |
+|---|---|---|---|---|
+| 1 (p = 1), default | 12.9 to 14.6 | 0.955 | 0.10% | Unbiased, the default |
+| 2 (p = 1/2) | not measured | | | |
+| 4 (p = 1/4) | 8.2 | 0.898 | 1.65% | Energy short of band, noise at the target |
+| 10 (p = 1/10) | 5.9 to 6.1 | 0.608 (batch gate on), 0.708 (gate off) | 3.7 to 4.1% | Energy and noise both fail |
+
+The energy loss at N > 1 is not only the batch firefly gate in `integrate.comp`, which clips the first large weighted sample (gate off recovers only 0.61 to 0.71). The rest is not isolated. It is probably the warm-up of young surfels, whose first batches are mostly unweighted. The setting is kept (`NOX_SURFEL_GI_PATH_PERIOD`, default 1) so a faster tier can choose it, but no tier uses it.
+
+### 15.4 Ray budget (Medium default 2048)
+
+| Budget | NFS energy | NFS noise | NFS tracing | Note |
+|---|---|---|---|---|
+| 1024 | 0.789 | 2.50% | | Lower energy and more noise: rejected |
+| 2048 (default) | 0.847 | 1.66% | 13 | Budget-limited on NFS (about 8.4k requested) |
+| 4096 | 0.905 | 2.38% | 17.9 | Energy in band, noise does not fall, cost up: rejected |
+
+Scene.json (2048) is 0.955 and 0.10%, and Cornell (2048) is 1.171 and 0.13%, both with headroom on noise. The budget stays at 2048. The lead's expectation that 1024 would hold the targets is not met on NFS.
+
+### 15.5 Irradiance sharing (`useIrradianceSharing`)
+
+| Scene | Sharing on: energy / noise | Sharing off: energy / noise |
+|---|---|---|
+| Cornell | 1.171 / 0.13% | 1.173 / 0.30% |
+| scene.json | 0.955 / 0.11% | 0.956 / 0.10% |
+| NFS | 0.847 / 1.66% | 0.924 / 2.53% |
+
+Sharing is neutral on Cornell and scene.json. On NFS it lowers energy by about 8% and lowers noise by about a third. The rule in the brief (remove sharing if the noise targets hold without it) fails on NFS, so sharing stays. Its bias comes from the blend writing into the stored long mean (`irradiance_sharing.comp`, `surfel.irradiance.rgb`), so each frame pulls a surfel toward its neighbours' average. A fix needs the blend to be energy-neutral (for example, applied to the variance state only), which was not done here.
+
+### 15.6 Sun leak (lever 6)
+
+`DirectionalShadowVisibility` gives a point outside its cascade a BVH any-hit toward the sun (`uSunShadowBVHFallback`, setting `sunShadowBVHFallback`, default on, `NOX_SURFEL_GI_SUN_BVH=0` turns it off). It is used by the surfel trace only, so the reference keeps the cascade-only answer.
+
+- Cost: +2.7 ms of tracing in an A/B pair (12.85 to 15.54 ms, quiet). Not reduced.
+- Energy: scene.json 0.955 to 0.955, Cornell 1.185 to 1.171, NFS 0.837 to 0.847.
+- The reference still has the leak, so on sun-lit enclosed geometry the ratio compares a fixed surfel against a leaky reference.
+
+### 15.7 Cornell 1.18 to 1.22
+
+Split of `surf_term` against `indep_term` by the off-frame luminance class (`base_cornell`, frames 200 to 260):
+
+| Class | Pixels | Reference energy share | Surfel/reference (sum) | Per-pixel median |
+|---|---|---|---|---|
+| Lit (harness mask, off lum 0.02 to 0.97) | 4.1% | 19.4% | 1.185 | 1.044 |
+| Dark (off lum at most 0.02) | 95.8% | 79.9% | 1.039 | 1.000 |
+| Saturated (off lum at least 0.97) | 0.09% | 0.7% | 1.078 | 1.077 |
+
+All-pixel sum ratio 1.068. The harness overshoot is therefore the lit mask: it keeps the directly lit walls next to the emitter, where the surfel is about 19% high in energy-weighted terms, while the median lit pixel is 4% high. The cause of that excess is not isolated. Round 2 excluded MIS (pure next-event gives the same energy), guiding, the clamp, the cache and sharing. The registered light against emitter double counting was not tested in this round.
+
+### 15.8 Before and after
+
+| Scene | Metric | Before (`f4c96f8`) | After (this worker) |
+|---|---|---|---|
+| scene.json | Tracing (quiet A/B pair, ms) | 12.85 | 15.54 |
+| scene.json | Surfel UpdatePass (ms) | 15.51 | 17.92 |
+| scene.json | Energy / noise | 0.955 / 0.10% | 0.955 / 0.11% |
+| Cornell | Energy / noise | 1.185 / 0.24% | 1.171 / 0.13% |
+| NFS | Energy / noise | 0.837 / 1.49% | 0.847 / 1.66% |
+| Furnace (no sun, analytic) | Mean surfel term (target 0.25) | 0.2454 (round 2) | 0.2417 (-3.3%) |
+| White-sky (analytic) | Mean surfel term (target 0.15) | 0.1476 (round 2) | 0.1450 (-3.3%) |
+
+Final defaults: tier budgets unchanged (Low 1024, Medium 2048, High 4096, Ultra 8192); path period 1; cap 32; cache depth 2; sharing on; sun fallback on (new). New settings: `NOX_SURFEL_GI_PATH_PERIOD` and `NOX_SURFEL_GI_SUN_BVH`. Harness: `--env`.
+
+### 15.9 Targets
+
+- Not met: scene.json tracing at most 1.0 ms (12.9 to 15.5 ms measured). NFS tracing at most 1.5 ms (about 13 ms). Scene.json total surfel at most 2.5 ms (15.5 to 17.9 ms). Cornell energy in [0.9, 1.1] (1.17). NFS energy in [0.9, 1.1] (0.85) and NFS noise at most 1.5% (1.66%).
+- Met: scene.json energy (0.955) and noise (0.11%), Cornell noise (0.13%), furnace and white-sky within 5% (-3.3% each).
+- Verification: `CheckNoRawGL`, `CheckGenericExe` and `CheckVcxprojSources` pass. `validate_surfel_gi_static` and `validate_surfel_gi_correctness` pass. The other surfel validators give the same pass and fail set as the frozen baseline (legacy contracts from earlier designs). Editor smoke: 14 PASS, 0 FAIL. Racing: `[Race] Finished in 47.4994 s`.
+
+What would meet the cost target: fewer continuation vertices (surfel coverage at hit points, so the cache answers the first hit), and a cheaper closest-hit trace for incoherent rays. Neither is in this worker's files.
