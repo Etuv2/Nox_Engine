@@ -1895,6 +1895,9 @@
     <None Include="shaders\surfel_gi\surfel_scene_trace.glsl">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
+    <None Include="shaders\surfel_gi\guide_pdf.glsl">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
     <None Include="shaders\surfel_gi\update_surfels.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>

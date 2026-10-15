@@ -937,3 +937,117 @@ Not measured. The default `MainDirectionalLight` exists on every scene, and the 
 ### 13.9 Not met
 
 Furnace and white-sky analytic checks (O1, O2, O3); guiding and clamp invariances (B6, O4); scene.json and NFS energy targets; Cornell noise (2.56% against 2%); the light step; a scale-aware clamp; the reference-mode offset (O2).
+
+## 14. Estimator round 2
+
+Worker E (Haiku 5.5), estimator round 2, built on main at 6f9cf0d. Result in one line: O2 (the reference offset) is a composite-path bug and is fixed; O1 (multi-bounce) is fixed by path continuation, but the continuation exposes a coverage gap and costs 7-18x the tracing time (not met); emitters are now next-event estimated with MIS and the fixed clamp is replaced by a relative one; scene.json passes [0.9, 1.1] (0.95), NFS does not (0.84, after the irradiance-sharing loss is recognised), Cornell does not (1.22); the Cornell residual and the NFS shortfall are not isolated to a single cause.
+
+### 14.1 Measurement and O2
+
+- O2, `ModularRenderer.cpp` `SyncSurfelGISettings`: `NOX_SURFEL_GI_COMPOSITE_DEBUG` was read only inside `if (forcedOnForValidation)` (`NOX_ENABLE_SURFEL_GI`). `indep_term` (`NOX_GI_REFERENCE=1` alone) therefore rendered the default composite (direct light, IBL on the fallback cube, far field). The constant 0.1026 on the no-sky plane was that fallback IBL, not the reference. Bisection: zeroing the reference mean, the upscale output, or the lighting debug branch changed nothing; zeroing the whole lighting output gave 0. Fixed: the override is also read in reference mode. Check after the fix: composite mode 0 gives 0.102594 and mode 4 gives 0.000000 on the same plane, and the reference term on the no-sky plane is exactly 0.
+- Shadow leak (not fixed; reported): `SampleShadowLayerWorld` treats a point outside the cascade as lit (`ShadowInBounds`). In a closed box the sun then lights interior hits (furnace reference 0.2671 with the sun, 0.2497 without). The analytic tests therefore use a zero-intensity directional light (`NoSun` node in `tools/surfel_gi_analytic_scenes.py`) and zero specular (`--specular-factor 0`, which sets the Fresnel term kD to 1).
+
+### 14.2 O1: path continuation (`surfel_scene_trace.glsl` `SurfelPathRadiance`, `trace_rays.comp` `ShadeHitRadiance`)
+
+Bug, at 6f9cf0d: `trace_rays.comp` `TraceCachedIndirectAtSurface` (about lines 261-334) returns false where no surfel is coplanar with the hit. `ShadeHitRadiance` then used the sky-visibility heuristic (zero without a sky), so the indirect light at the hit was dropped. Probes (scratch roots, not kept) found the cause: the hit points are off-screen (surfels are spawned from the screen coverage), and their 27-cell neighbourhood holds only perpendicular surfels. The sign of the surfel normals was checked (both signs give zero coplanar weight). The cell-average fallback cannot help: those cells hold no coplanar surfels either.
+
+Fix: a hit whose cache lookup fails continues its path. Each vertex takes one cosine sample; the sky enters only as the miss radiance; emitters are sampled by next-event estimation (§14.3); Russian roulette starts at the first continuation vertex with `q = min(0.95, max albedo)`; depth cap 32. The cache answers the first two vertices and deeper vertices continue (unbiased and cheaper). The sky-visibility functions are removed, so there is one sky estimator.
+
+Analytic (sun off, zero specular; surfel window frames 200-260, reference 190-200; composite debug 4, linear):
+
+| Test | Expected | Before (6f9cf0d) | After | Result |
+|---|---|---|---|---|
+| Furnace reference | 0.25 | 0.2671 (sun leaked) | 0.24971 | -0.1% |
+| White-sky reference | 0.15 | 0.1470 (sun and specular on) | 0.14996 | -0.0% |
+| Furnace surfel, guided | 0.25 | 0.1203 | 0.24537 | -1.9% |
+| Furnace surfel, unguided | 0.25 | 0.1248 | 0.24443 | -2.2% |
+| White-sky surfel, guided | 0.15 | 0.14757 | 0.14764 | -1.6% |
+| White-sky surfel, unguided | 0.15 | 0.14995 | 0.14995 | 0.0% |
+
+Both furnace variants and both white-sky variants meet the 3% target. The guided white-sky shortfall (1.6%) is not explained.
+
+### 14.3 Emitters: next-event estimation with MIS
+
+- Emitter list (`RTSceneResources.cpp` `AppendInstanceEmitters`, `UploadEmitters`): world-space emissive triangles of the instances the BVH traces, built in `UploadIncrementalScene` (rebuilt only when the instance list is rebuilt). Per emitter: three world vertices, emission, luminance, world geometric normal, area and the cumulative weight `luminance * area`. Binding 37 (`B_SURFEL_EMITTERS`); the buffer is created in `EnsureIncrementalBuffers` (a missing creation there silently left the list empty at first).
+- Density: an emitter is picked with weight `lum*A/P` and a point is taken uniformly on its triangle, so the area density is `lum/P`. In solid angle, `p = (lum/P) d^2 / |cos_L|`. The shadow test is an any-hit BVH query (`TraceSoftwareBVHAnyHit`, the BVH and TLAS traversals gained an `anyHit` flag).
+- MIS: the power heuristic between the emitter density and the BSDF density. The surfel's BSDF density is the mixture its ray was generated with (`SurfelRaySamplingDensity`, the same guide bins as `generate_rays.comp`, moved to `guide_pdf.glsl`). Cosine density is used at path vertices.
+- Where next-event estimation runs: one sample per surfel ray at its origin (`SurfelOriginEmitterIrradiance`, written into `SurfelRayHit.emitterIrradiance` and added in `integrate.comp`), and at the first continuation vertex. Deeper vertices count their emission at full weight (unbiased, noisier). The reference takes next-event samples at every vertex.
+- Checks: the furnace (every wall is an emitter) gives 0.2454 with next-event at one vertex and 0.2478 with it at every vertex. Pure next-event estimation without MIS gives the same Cornell energy as with MIS (0.1341 against 0.1333), so MIS is not the Cornell residual.
+
+### 14.4 Clamp
+
+`integrate.comp`: the fixed 32 (`SURFEL_MAX_SAMPLE_IRRADIANCE`, plan 13 B6) is replaced by `SurfelRelativeClamp`. A sample is cut only above `8 * max(long mean, short mean) + 8 * sigma + 32` (luminance), and the same bound limits the guide-learning input. `SurfelClampRadiance` is now a NaN and sign guard only.
+
+Invariance, single runs, all-pixel means over frames 200-260:
+
+| Scene | Guided, clamp | Guided, no clamp | Unguided, clamp | Unguided, no clamp | Guided vs unguided |
+|---|---|---|---|---|---|
+| Cornell | 0.13327 | 0.13476 (-1.1%) | 0.13732 | 0.13631 (+0.7%) | -3.0% (clamp on) |
+| NFS | 0.02313 | 0.02323 (+0.4%) | - | - | - |
+
+Both clamp comparisons are inside the 3% target. The Cornell guided-vs-unguided difference is -3.0% on one run and 1.6% on the two-repeat harness (§14.8), so it is within run-to-run noise.
+
+### 14.5 Cost (not met)
+
+Tracing block, `SurfelGISubpassMetrics` median over frames 200-260, GPU quiet (checked back to back against the frozen baseline binary):
+
+| Scene | Baseline (6f9cf0d) | Now | Ratio |
+|---|---|---|---|
+| Cornell | 0.395 ms | 2.81 ms | 7.1x |
+| scene.json | 0.704 ms | 12.77 ms | 18x |
+| NFS | 1.13 ms | about 9.2 ms (harness log; some of its frames overlapped test runs) | about 8x |
+
+Breakdown on scene.json: without the path continuation the tracing block is 0.40 ms; without the origin next-event sample it is 12.6 ms (the origin sample costs nothing measurable); a depth cap of 4 on the path gives 6.0 ms, but its all-pixel energy is 0.75x of the uncapped surfel, so it is not adopted. Measured on NFS: next-event at every vertex (instead of the first) changes the energy by +0.8%, so the depth of next-event samples is not a cost lever. The cost is the continuation's serial path length: a warp runs until its longest path ends, and the roulette tail makes that about ten vertices. The continuation also carries real energy: on scene.json, removing it halves the all-pixel mean (0.236 against 0.479), so the cost cannot simply be cut.
+
+The real fix is coverage, not the estimator. Spawning surfels where rays hit surfaces with no coplanar surfel (the GIBS spawn) would make the continuation rare. That belongs to the population worker, who will rebase on this result.
+
+### 14.6 Gaps: Cornell and NFS
+
+Cornell (§14.8: harness ratio 1.22, all-pixel about 1.06). The excess is concentrated in dim, indirect-dominated pixels: where the reference is 0.1-0.2 the surfel is 1.7x, where it is 1.0 or more it is 1.0x. Excluded, each by a run: MIS (pure next-event gives the same energy), guiding (-1.6% guided against unguided), relative clamp (-1.1%), cache (-0.3% with the cache off), irradiance sharing (-1.5%), the sun (sun-free and sun-lit give the same all-pixel ratio), the shadow origin offset (0.01 m gives the same), the albedo blend at hits (+1.3% without it), the gather neighbour radius (zero gives the same), the cell-average fallback (no change), and the BVH far distance. Not isolated; the next step is a per-surfel comparison against a surfel-free reference.
+
+NFS (§14.8: harness ratio 0.84, all-pixel 0.78; the reference is converged, 0.0302 at frames 200-260 and 0.0298 at 780-840). Probes on frames 200-260, all-pixel:
+
+| Variant | Mean | Change |
+|---|---|---|
+| Current | 0.02313 | - |
+| Cache lookup off | 0.02134 | -8% |
+| Next-event at every vertex | 0.02332 | +0.8% |
+| Relative clamp off | 0.02323 | +0.4% |
+| BVH far distance 1024 m | 0.02266 | -2% |
+| Irradiance sharing off | 0.02697 | +17% |
+| Reference | 0.02978 | - |
+
+Irradiance sharing is the largest factor, and it is outside this round's files (`irradiance_sharing.comp`, owned by the gather). Its darkness-lift cap and gradient weights pull dim surfels toward brighter neighbours less than they should, which removes energy in dim regions. With sharing off the NFS ratio becomes 0.91 (all-pixel), still short of 0.9-1.1 by a small margin. Coverage on NFS (per frame, harness counters): 434 of 7891 visible tiles under-covered; overflowGridEntries 11530; rayShortfall 6695 (8743 requested, 2048 allocated); no empty gather pixels. The shortfall of rays and the grid overflow are worker B's territory (recommended, not changed here).
+
+Sky and tMax: the sky enters only at misses, with the same miss radiance as the reference; the 256 m far distance gives the same result as 1024 m within 2%. Emissive signage and windows: next-event estimation covers them (§14.3); it did not close the NFS gap by itself (+0.8% at every vertex).
+
+### 14.7 Validators and checks
+
+- `validate_surfel_gi_static.py`, `validate_surfel_gi_correctness.py`: pass. The correctness check now looks for the shared path (`SurfelPathRadiance`) in the reference, since the direct light moved there.
+- `validate_surfel_sky_visibility_access.py`: rewritten for the one-sky-estimator contract (the sky-visibility functions must not come back; sky enters at a miss). `validate_surfel_gi_ray_radiance_contract.py`: the sky and emission checks are updated to the shared path. Both failed at 6f9cf0d (plan 10.7) and now pass.
+- `validate_surfel_gi_irradiance_signal.py`, `fallback_contract`, `stability_contract`, `environment_miss_radiance`: not touched; they check contracts from earlier designs, and the first three already fail at 6f9cf0d.
+- `CheckNoRawGL.ps1`, `CheckGenericExe.ps1`, `CheckVcxprojSources.py`: pass. `guide_pdf.glsl` is listed in `Nox_Engine.vcxproj` and its filters.
+- Editor smoke (`NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`): 14 PASS, 0 FAIL. The baseline binary run beside it gave 13 PASS and one FAIL (content browser draws `images/`), a UI check unrelated to surfel code, so it is treated as flaky under GPU contention. Plan 13.8 recorded 15 PASS; the count has changed in this environment.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 NOX_FIXED_DT=0.0166666667 NOX_EXIT_ON_FINISH=1 NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s (new record)`.
+
+### 14.8 Default tier (Medium, 2048 rays), two repeats, harness
+
+Reference `indep_term` (900 frames, composite debug 4); surfel `surf_term`; noise is `surf_term` corrected std over the lit mask.
+
+| Scene | Reference | Surfel | Ratio (target 0.9-1.1) | Guided vs unguided | Noise (target) | Total pass GPU |
+|---|---|---|---|---|---|---|
+| Cornell | 0.5952 | 0.7257 | 1.219 (not met) | 1.6% | 0.37% (<=2%: met) | 3.8 ms |
+| scene.json | 0.37591 | 0.35882 | 0.954 (met) | 0.4% | 0.11% (<=1.5%: met) | 15.3 ms |
+| NFS | 0.07358 | 0.06155 | 0.836 (not met) | 1.3% | 1.66% | 11.7 ms |
+
+The harness metric (lit mask from the `off` image) and the all-pixel means disagree on Cornell (1.22 against about 1.06). scene.json all-pixel is 0.97. NFS all-pixel is 0.78. Targets: Cornell surfel against the reference within 5% is not met (1.22); scene.json [0.9, 1.1] is met; NFS is not met.
+
+Cost data on the quiet GPU are in §14.5. The total pass GPU figures above come from the two-repeat harness, whose runs overlapped my other GPU tests and so are upper bounds.
+
+### 14.9 Not met
+
+- Tracing cost: 7-18x the baseline (§14.5). The fix is coverage (spawn at hit points), not a depth cap.
+- Cornell residual: 1.22 on the harness metric, not isolated (§14.6).
+- NFS: 0.84 harness, 0.78 all-pixel. Irradiance sharing is the main cause (removing it gives 0.91); the remainder is not isolated.
+- Not established: the guided white-sky shortfall (1.6%).
+- Left to owners: irradiance sharing (gather), ray allocation and grid overflow (worker B), the shadow leak outside the cascades (lighting).
