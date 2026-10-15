@@ -1,9 +1,9 @@
 #version 460 core
 
-// Recycling (WP4, GIBS p.29). Each live surfel gets a score from three factors: how far the live
-// population is over its target, how long it has been since it last contributed, and its distance
-// from the camera. A surfel is culled with probability 0.5 * score, at most uMaxRecycleCount per frame.
-// Surfels with an invalid transform, or with no albedo, are always culled.
+// Recycling (WP4, GIBS p.29). Each live surfel gets a score from three factors: how far the live population is
+// over its target, how long it has been since it was last visible, and its distance from the camera.
+// A surfel is culled with probability 0.5 * score, at most uMaxRecycleCount per frame. Surfels with an
+// invalid transform, or with no albedo, are always culled. Each cull is counted by its largest term.
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -88,14 +88,17 @@ void main()
     float live = float(uMaxSurfels) - float(counters.freeTop);
     float overTarget01 = SurfelSaturate((live - target) / target);
 
-    // Frames since the surfel was last visible (coverage touches set frameInfo.x). Integration sets frameInfo.y only for
-    // surfels that were given rays, so using it would recycle surfels that are visible but starved of rays.
-    uint contributionAge = uFrameIndex >= surfel.frameInfo.x ? (uFrameIndex - surfel.frameInfo.x) : 0u;
-    float stale01 = SurfelSaturate(float(contributionAge) / SURFEL_RECYCLE_STALE_FRAMES);
+    // Frames since the surfel was last visible (coverage touches set frameInfo.x). Integration sets frameInfo.y only
+    // for surfels that were given rays, so using it would recycle surfels that are visible but starved of rays.
+    uint visibleAge = uFrameIndex >= surfel.frameInfo.x ? (uFrameIndex - surfel.frameInfo.x) : 0u;
+    float stale01 = SurfelSaturate(float(visibleAge) / SURFEL_RECYCLE_STALE_FRAMES);
     float distance01 = SurfelSaturate(length(surfel.worldPos_radius.xyz - uCameraPosition) / max(uMaxDistance, 1.0));
 
     // GIBS p.29: score = 0.4 over-target + 0.3 stale + 0.3 far.
-    float score = 0.4 * overTarget01 + 0.3 * stale01 + 0.3 * distance01;
+    float termOver = 0.4 * overTarget01;
+    float termStale = 0.3 * stale01;
+    float termFar = 0.3 * distance01;
+    float score = termOver + termStale + termFar;
     surfel.debug.w = score;
 
     float random = SurfelHash01(surfelID ^ (uFrameIndex * 1664525u) ^ (surfel.ids.x * 1013904223u));
@@ -103,6 +106,16 @@ void main()
     if (!cull || !ReserveRecycleBudget()) {
         surfels[surfelID] = surfel;
         return;
+    }
+
+    if (forced) {
+        atomicAdd(counters.recycleForced, 1u);
+    } else if (termOver >= termStale && termOver >= termFar) {
+        atomicAdd(counters.recycleOverTarget, 1u);
+    } else if (termStale >= termFar) {
+        atomicAdd(counters.recycleStale, 1u);
+    } else {
+        atomicAdd(counters.recycleFar, 1u);
     }
 
     SurfelMarkDead(surfel);
@@ -121,9 +134,4 @@ void main()
     }
 
     PushFreeIndex(surfelID);
-    if (overTarget01 > 0.0) {
-        atomicAdd(counters.pressureRecycled, 1u);
-    } else {
-        atomicAdd(counters.staleRecycled, 1u);
-    }
 }

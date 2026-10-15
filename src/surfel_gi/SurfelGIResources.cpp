@@ -202,9 +202,11 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
     std::ptrdiff_t entryBytes = 0;
     std::ptrdiff_t counterBytes = 0;
     std::ptrdiff_t blockBytes = 0;
+    std::ptrdiff_t slotBytes = 0;
     if (!CheckedBufferSize(cellCount64, sizeof(SurfelCellHeader), headerBytes) ||
         !CheckedBufferSize(entryCount64, sizeof(SurfelCellEntry), entryBytes) ||
-        !CheckedBufferSize(blockCount64, sizeof(uint32_t), blockBytes) ||
+        !CheckedBufferSize(2u * blockCount64, sizeof(uint32_t), blockBytes) ||
+        !CheckedBufferSize(static_cast<uint64_t>(settings.maxSurfels) * kSurfelGridMaxCellsPerSurfel, sizeof(uint32_t), slotBytes) ||
         !CheckedBufferSize(1u, sizeof(SurfelGridCounters), counterBytes)) {
         std::cerr << "[SurfelGrid] Grid buffer byte size overflow.\n";
         return false;
@@ -219,6 +221,7 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
         AllocateSSBO(m_cellHeaderBuffer, headerBytes, nullptr, "SurfelGrid.Headers") &&
         AllocateSSBO(m_cellEntryBuffer, entryBytes, nullptr, "SurfelGrid.Entries") &&
         AllocateSSBO(m_blockSumBuffer, blockBytes, nullptr, "SurfelGrid.BlockSums") &&
+        AllocateSSBO(m_slotBuffer, slotBytes, nullptr, "SurfelGrid.Slots") &&
         AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelGrid.Counters");
 
     if (!ok) {
@@ -236,6 +239,7 @@ void SurfelGrid::Destroy()
     DeleteBuffer(m_cellEntryBuffer);
     DeleteBuffer(m_countersBuffer);
     DeleteBuffer(m_blockSumBuffer);
+    DeleteBuffer(m_slotBuffer);
     m_cellCount = 0;
     m_blockCount = 0;
     m_entryCapacity = 0;
@@ -251,6 +255,7 @@ void SurfelGrid::Clear()
     // Headers start at zero: the count pass needs pendingCount zero. Entries need no clear, since readers
     // only read entryCount entries of each cell, and the scatter writes all of them.
     ClearBufferUInt(m_cellHeaderBuffer, 0u);
+    ClearBufferUInt(m_blockSumBuffer, 0u);
 
     SurfelGridCounters counters{};
     counters.cellCount = m_cellCount;

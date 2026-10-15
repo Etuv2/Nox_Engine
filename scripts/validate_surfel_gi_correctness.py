@@ -83,7 +83,7 @@ def check_grid_rebuilds() -> None:
             "the grid is built once per frame; the mid-frame rebuilds and the separate cell-average pass are gone")
     require(pipeline.count("buildGrid();") == 1,
             "buildGrid is expected once, at the end of Execute (count, block sums, scan and scatter)")
-    for label in ("grid_count", "grid_block_sums", "grid_scan", "grid_build"):
+    for label in ("grid_count", "grid_scan", "grid_build"):
         require(f'timedDispatch("{label}"' in pipeline, f"grid pass {label} must be timed")
 
 

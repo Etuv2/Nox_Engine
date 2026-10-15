@@ -1,15 +1,12 @@
 #version 460 core
 
-// Grid build, pass 3 of 4: one workgroup per block of SURFEL_GRID_BLOCK_CELLS cells. The block takes the
-// sum of the blocks before it (grid_block_sums), scans its own cells, and writes firstEntry and
-// entryCount. A cell that would run past the entry capacity keeps the entries that fit; the rest is
-// counted as overflow. Also zeroes the scatter cursor, the cell average sums and the pending count for
-// the next frame.
-//
-// Cell ranges only need to be disjoint, so the scan order inside a block is lane-major: lane l owns the
-// cells base + l + 256 k (k = 0..3), which keeps the global header reads and writes coalesced.
+// Grid build, pass 2 of 3: scan. One workgroup per block of SURFEL_GRID_BLOCK_CELLS cells, one cell per lane.
+// The block offset is the sum of the earlier blocks' totals (from this frame's parity of the block sum buffer).
+// The in-block exclusive scan is a Hillis-Steele pass with one barrier per step. Each cell gets firstEntry and
+// entryCount (clamped to the entry capacity; the rest is counted as overflow). The other parity of the block
+// sums is cleared here, ready for the next frame's count pass.
 
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
 
@@ -18,7 +15,7 @@ layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
     SurfelCellHeader gridHeaders[];
 };
 
-layout(binding = B_GRID_BLOCK_SUMS, std430) readonly buffer SurfelGridBlockSumBuffer
+layout(binding = B_GRID_BLOCK_SUMS, std430) buffer SurfelGridBlockSumBuffer
 {
     uint blockSums[];
 };
@@ -29,90 +26,78 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 };
 
 uniform uint uGridCellCount;
+uniform uint uGridBlockCount;
+uniform uint uBlockParity;
 uniform uint uEntryCapacity;
 
-shared uint sReduce[256];
-shared uint sPending[SURFEL_GRID_BLOCK_CELLS];
-shared uint sOffset[SURFEL_GRID_BLOCK_CELLS];
-shared uint sLaneTotal[256];
+shared uint sEarlier;
+shared uint sScanA[SURFEL_GRID_BLOCK_CELLS];
+shared uint sScanB[SURFEL_GRID_BLOCK_CELLS];
 
 void main()
 {
     uint block = gl_WorkGroupID.x;
     uint lane = gl_LocalInvocationIndex;
-    uint base = block * SURFEL_GRID_BLOCK_CELLS;
+    uint cell = block * SURFEL_GRID_BLOCK_CELLS + lane;
+    uint pending = cell < uGridCellCount ? gridHeaders[cell].pendingCount : 0u;
 
-    // Offset of this block: the sum of the earlier block sums.
-    uint earlier = 0u;
-    for (uint b = lane; b < block; b += 256u) {
-        earlier += blockSums[b];
+    if (lane == 0u) {
+        sEarlier = 0u;
     }
-    sReduce[lane] = earlier;
+    sScanA[lane] = pending;
     memoryBarrierShared();
     barrier();
-    for (uint stride = 128u; stride > 0u; stride >>= 1u) {
-        if (lane < stride) {
-            sReduce[lane] += sReduce[lane + stride];
+
+    // Sum of the earlier block totals: lanes below this block add one each.
+    if (lane < block) {
+        atomicAdd(sEarlier, blockSums[uBlockParity * uGridBlockCount + lane]);
+    }
+    memoryBarrierShared();
+    barrier();
+    uint blockOffset = sEarlier;
+
+    // Inclusive scan of the pending counts; each step reads one array and writes the other.
+    bool fromA = true;
+    for (uint offset = 1u; offset < SURFEL_GRID_BLOCK_CELLS; offset <<= 1u) {
+        if (fromA) {
+            uint v = sScanA[lane];
+            if (lane >= offset) {
+                v += sScanA[lane - offset];
+            }
+            sScanB[lane] = v;
+        } else {
+            uint v = sScanB[lane];
+            if (lane >= offset) {
+                v += sScanB[lane - offset];
+            }
+            sScanA[lane] = v;
         }
         memoryBarrierShared();
         barrier();
+        fromA = !fromA;
     }
-    uint blockOffset = sReduce[0];
-    barrier();
+    uint inclusive = fromA ? sScanA[lane] : sScanB[lane];
 
-    // Coalesced load of the pending counts into lane-major shared storage.
-    for (uint k = 0u; k < 4u; ++k) {
-        uint cell = base + lane + k * 256u;
-        sPending[lane * 4u + k] = cell < uGridCellCount ? gridHeaders[cell].pendingCount : 0u;
-    }
-    memoryBarrierShared();
-    barrier();
-
-    uint laneTotal = sPending[lane * 4u] + sPending[lane * 4u + 1u] +
-        sPending[lane * 4u + 2u] + sPending[lane * 4u + 3u];
-    sLaneTotal[lane] = laneTotal;
-    memoryBarrierShared();
-    barrier();
-    for (uint off = 1u; off < 256u; off <<= 1u) {
-        uint add = lane >= off ? sLaneTotal[lane - off] : 0u;
-        memoryBarrierShared();
-        barrier();
-        sLaneTotal[lane] += add;
-        memoryBarrierShared();
-        barrier();
+    if (lane == 0u) {
+        blockSums[(1u - uBlockParity) * uGridBlockCount + block] = 0u;
     }
 
-    // Exclusive offsets for this lane's four cells, in lane-major order.
-    uint running = blockOffset + sLaneTotal[lane] - laneTotal;
-    for (uint k = 0u; k < 4u; ++k) {
-        sOffset[lane * 4u + k] = running;
-        running += sPending[lane * 4u + k];
-    }
-    memoryBarrierShared();
-    barrier();
-
-    uint overflow = 0u;
-    for (uint k = 0u; k < 4u; ++k) {
-        uint cell = base + lane + k * 256u;
-        if (cell >= uGridCellCount) {
-            continue;
-        }
-
-        uint count = sPending[lane * 4u + k];
-        uint offset = sOffset[lane * 4u + k];
-        if (offset >= uEntryCapacity) {
-            overflow += count;
+    if (cell < uGridCellCount) {
+        uint offsetOfCell = blockOffset + inclusive - pending;
+        uint count = pending;
+        uint overflow = 0u;
+        if (offsetOfCell >= uEntryCapacity) {
+            overflow = count;
             count = 0u;
-        } else if (offset + count > uEntryCapacity) {
-            overflow += offset + count - uEntryCapacity;
-            count = uEntryCapacity - offset;
+        } else if (offsetOfCell + count > uEntryCapacity) {
+            overflow = offsetOfCell + count - uEntryCapacity;
+            count = uEntryCapacity - offsetOfCell;
         }
 
         SurfelCellHeader header;
-        header.firstEntry = offset;
+        header.firstEntry = offsetOfCell;
         header.entryCount = count;
         header.pendingCount = 0u;
-        header.fillCursor = 0u;
         header.sumRed = 0u;
         header.sumGreen = 0u;
         header.sumBlue = 0u;
@@ -120,9 +105,9 @@ void main()
         header.sumConfidence = 0u;
         header.validCount = 0u;
         gridHeaders[cell] = header;
-    }
 
-    if (overflow > 0u) {
-        atomicAdd(counters.overflowGridEntries, overflow);
+        if (overflow > 0u) {
+            atomicAdd(counters.overflowGridEntries, overflow);
+        }
     }
 }

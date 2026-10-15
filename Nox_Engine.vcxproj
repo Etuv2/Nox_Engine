@@ -694,7 +694,6 @@
     <None Include="shaders\surfel_gi\apply_indirect.comp" />
     <None Include="shaders\surfel_gi\begin_frame.comp" />
     <None Include="shaders\surfel_gi\build_grid.comp" />
-    <None Include="shaders\surfel_gi\grid_block_sums.comp" />
     <None Include="shaders\surfel_gi\grid_count.comp" />
     <None Include="shaders\surfel_gi\grid_scan.comp" />
     <None Include="shaders\surfel_gi\common.glsl" />

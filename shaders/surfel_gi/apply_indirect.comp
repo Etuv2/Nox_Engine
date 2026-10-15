@@ -80,6 +80,7 @@ const int SURFEL_GRID_FALLBACK_KERNEL_RADIUS = 1;
 const float SURFEL_GATHER_MIN_SUPPORT_FRACTION = 1.05;
 const float SURFEL_GATHER_MIN_SUPPORT_WORLD = 0.46;
 const float SURFEL_APPLY_EARLY_WEIGHT = 64.0;
+const uint SURFEL_APPLY_GATHER_CANDIDATES = 32u;
 const float SURFEL_GRID_FALLBACK_MAX_BLEND = 0.80;
 const uint DEBUG_SURFEL_GRID_CELLS = 6u;
 const uint DEBUG_FINAL_GATHER_WEIGHT = 18u;
@@ -423,6 +424,9 @@ void AccumulateCell(uint cell,
     uint firstEntry = header.firstEntry;
 
     uint budget = min(min(storedCount, uMaxSurfelsPerCell), max(cellSampleBudget, 1u));
+    budget = min(budget, candidateCount < SURFEL_APPLY_GATHER_CANDIDATES
+        ? SURFEL_APPLY_GATHER_CANDIDATES - candidateCount
+        : 0u);
     uint strideSeed = SurfelHash(receiverSeed ^ (cell * 747796405u) ^ 2891336453u);
     uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
     uint sampleStride = max(storedCount / max(budget, 1u), 1u);
@@ -571,7 +575,8 @@ void main()
     uint receiverSeed = ReceiverGatherSeed(pixel, worldPos, transformID, materialID, uFrameIndex);
 
     for (uint i = 0u; i < gatherCellCount; ++i) {
-        if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || sampleCount >= gatherBudget) {
+        if (sumWeight >= SURFEL_APPLY_EARLY_WEIGHT || sampleCount >= gatherBudget ||
+            candidateCount >= SURFEL_APPLY_GATHER_CANDIDATES) {
             break;
         }
 
@@ -618,6 +623,11 @@ void main()
     float fallbackConfidence = clamp(gridConfidence, 0.0, 1.0);
     float directCoverage = smoothstep(0.015, 0.22, sumWeight);
     float directBlend = directCoverage;
+    // Sampled 1 in 16 pixels, so the counter atomics stay off the hot path.
+    if (((pixel.x + pixel.y * 3) & 15) == 0) {
+        atomicAdd(counters.lookupsGather, 1u);
+        atomicAdd(counters.entriesGather, candidateCount);
+    }
     float fallbackBlend = BoundedFallbackBlend(fallbackConfidence, directCoverage, sampleCount, candidateCount);
     vec3 boundedGridIrradiance = ClampFallbackToDirectSupport(gridIrradiance, directIrradiance, directCoverage, fallbackConfidence);
     if (SurfelLuminance(boundedGridIrradiance) <= 1e-5) {

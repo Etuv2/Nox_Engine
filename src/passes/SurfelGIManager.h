@@ -162,6 +162,22 @@ struct SurfelGIFrameStats {
 	uint32_t youngSurfels = 0;
 	uint32_t rayShortfall = 0;
 	uint32_t staleRaySlots = 0;
+	uint32_t lookupsSharing = 0;
+	uint32_t entriesSharing = 0;
+	uint32_t lookupsGather = 0;
+	uint32_t entriesGather = 0;
+	uint32_t lookupsTrace = 0;
+	uint32_t entriesTrace = 0;
+	uint32_t lookupsSpawn = 0;
+	uint32_t entriesSpawn = 0;
+	uint32_t recycleOverTarget = 0;
+	uint32_t recycleStale = 0;
+	uint32_t recycleFar = 0;
+	uint32_t recycleForced = 0;
+	uint32_t spawnDecisions = 0;
+	uint32_t spawnBudgetDenied = 0;
+	uint32_t radiusCapped = 0;
+	uint32_t diagPad = 0;
 	// RT scene update of the latest frame (CPU ms and upload flags from RTSceneResources).
 	float rtInstanceListMs = 0.0f;
 	float rtUploadMs = 0.0f;

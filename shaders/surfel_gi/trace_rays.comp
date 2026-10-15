@@ -70,7 +70,7 @@ const uint SURFEL_TRACE_STEPS = 8u;
 const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
 const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
 const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 8u;
-const uint SURFEL_TRACE_MAX_CANDIDATES = 64u;
+const uint SURFEL_TRACE_MAX_CANDIDATES = 16u;
 const uint SURFEL_TRACE_MAX_VISITED_CELLS = 24u;
 const uint SURFEL_SCREEN_TRACE_STEPS = 32u;
 const uint SURFEL_TRACE_CACHE_MAX_CANDIDATES = 128u;
@@ -713,6 +713,8 @@ void TraceGatherCell(SurfelRay ray,
     SurfelCellHeader header = gridHeaders[cell];
     uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
     uint budget = min(min(storedCount, SURFEL_TRACE_MAX_CELL_ENTRIES), SURFEL_TRACE_MAX_CANDIDATES - gather.candidatesTested);
+    atomicAdd(counters.lookupsTrace, 1u);
+    atomicAdd(counters.entriesTrace, budget);
     uint firstEntry = header.firstEntry;
     uint strideSeed = SurfelHash(ray.ids.x ^ (cell * 747796405u) ^ (ray.ids.z * 2891336453u));
     uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;

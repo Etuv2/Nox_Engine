@@ -1838,9 +1838,6 @@
     <None Include="shaders\surfel_gi\build_grid.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
-    <None Include="shaders\surfel_gi\grid_block_sums.comp">
-      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
-    </None>
     <None Include="shaders\surfel_gi\grid_count.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>

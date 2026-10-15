@@ -129,7 +129,6 @@ private:
 	std::unique_ptr<ComputeShader> m_coverageShader;
 	std::unique_ptr<ComputeShader> m_spawnShader;
 	std::unique_ptr<ComputeShader> m_gridCountShader;
-	std::unique_ptr<ComputeShader> m_gridBlockSumsShader;
 	std::unique_ptr<ComputeShader> m_gridScanShader;
 	std::unique_ptr<ComputeShader> m_buildGridShader;
 	std::unique_ptr<ComputeShader> m_requestRaysShader;

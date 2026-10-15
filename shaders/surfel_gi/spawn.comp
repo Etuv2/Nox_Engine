@@ -109,7 +109,7 @@ const uint SURFEL_PLACEMENT_VALIDATION_CANDIDATES = 2u;
 const uint SURFEL_PLACEMENT_VALIDATION_TILE_PHASES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELLS = 7u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES = 16u;
-const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 64u;
+const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 16u;
 const uint SURFEL_SPAWN_DUPLICATE_CELLS = 27u;
 const uint SURFEL_SPAWN_DUPLICATE_CELL_ENTRIES = 24u;
 const uint SURFEL_FAST_FILL_RESPAWN_COOLDOWN = 24u;
@@ -232,6 +232,7 @@ bool PopFreeIndex(out uint surfelID)
 bool ReserveSpawnBudget()
 {
     if (gSpawnBudget == 0u) {
+        atomicAdd(counters.spawnBudgetDenied, 1u);
         atomicAdd(counters.rejectedPoolFull, 1u);
         return false;
     }
@@ -239,6 +240,7 @@ bool ReserveSpawnBudget()
     uint slot = atomicAdd(counters.spawnedThisFrame, 1u);
     if (slot >= gSpawnBudget) {
         atomicAdd(counters.spawnedThisFrame, 0xffffffffu);
+        atomicAdd(counters.spawnBudgetDenied, 1u);
         atomicAdd(counters.rejectedPoolFull, 1u);
         return false;
     }
@@ -488,6 +490,8 @@ float ComputeCandidateCoverage(vec3 worldPos,
             if (ReferenceCoverageSatisfied(coverage)) {
                 initialCellIrradiance = irradianceWeight > 1e-5 ? irradianceSum / irradianceWeight : vec3(0.0);
                 initialCellConfidence = SurfelSaturate(irradianceWeight / max(float(max(coverageTests, 1u)), 1.0));
+                atomicAdd(counters.lookupsSpawn, 1u);
+                atomicAdd(counters.entriesSpawn, coverageTests);
                 return coverage;
             }
         }
@@ -495,6 +499,8 @@ float ComputeCandidateCoverage(vec3 worldPos,
 
     initialCellIrradiance = irradianceWeight > 1e-5 ? irradianceSum / irradianceWeight : vec3(0.0);
     initialCellConfidence = SurfelSaturate(irradianceWeight / max(float(max(coverageTests, 1u)), 1.0));
+    atomicAdd(counters.lookupsSpawn, 1u);
+    atomicAdd(counters.entriesSpawn, coverageTests);
     return coverage;
 }
 
@@ -670,7 +676,11 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
         ? candidate.adaptiveRadius
         : SpawnRadiusForWorldPosition(worldPos);
     // One grid cell side at most (GIBS p.33): the grid stores a surfel in the cells its support overlaps.
-    radius = min(radius, SurfelGridCellSizeAtWorld(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent));
+    float cellSideRadius = SurfelGridCellSizeAtWorld(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
+    if (cellSideRadius < radius) {
+        atomicAdd(counters.radiusCapped, 1u);
+    }
+    radius = min(radius, cellSideRadius);
     if (isnan(radius) || isinf(radius) || radius <= 0.0 || radius > max(uMaxSurfelRadius * 4.0, 0.01)) {
         atomicAdd(counters.rejectedInvalidRadius, 1u);
         return false;
@@ -1135,6 +1145,9 @@ void main()
                         shouldSpawn = bestCoverage < spawnThreshold && !hadRecentSpawn;
                     } else {
                         shouldSpawn = bestCoverage < spawnThreshold;
+                    }
+                    if (shouldSpawn) {
+                        atomicAdd(counters.spawnDecisions, 1u);
                     }
                     if (shouldSpawn && SpawnSurfelFromCandidate(bestCandidate, bestCoverage)) {
                         sRound[0] = 1u;

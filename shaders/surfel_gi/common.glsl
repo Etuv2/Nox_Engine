@@ -8,6 +8,7 @@
 #define B_GRID_HEADERS 13
 #define B_GRID_ENTRIES 14
 #define B_GRID_BLOCK_SUMS 36
+#define B_GRID_SLOTS 37
 #define B_RAY_REQUESTS 15
 #define B_RAYS 16
 #define B_RAYS_IN 16
@@ -47,7 +48,7 @@
 
 #define GPU_TRANSFORM_INVALID 0x80000000u
 
-// Grid build: cells are scanned in blocks of SURFEL_GRID_BLOCK_CELLS (see grid_block_sums.comp).
+// Grid build: cells are scanned in blocks of SURFEL_GRID_BLOCK_CELLS (see grid_scan.comp).
 #define SURFEL_GRID_BLOCK_CELLS 1024u
 // Cell average sums are fixed point (scale below). Irradiance is clamped per surfel before scaling.
 #define SURFEL_CELL_SUM_SCALE 16384.0
@@ -148,6 +149,22 @@ struct SurfelCounters
     uint youngSurfelCount;
     // Ray slots an integrate thread skipped because the hit belonged to another surfel (WP1 ownership check).
     uint staleRaySlotCount;
+    uint lookupsSharing;
+    uint entriesSharing;
+    uint lookupsGather;
+    uint entriesGather;
+    uint lookupsTrace;
+    uint entriesTrace;
+    uint lookupsSpawn;
+    uint entriesSpawn;
+    uint recycleOverTarget;
+    uint recycleStale;
+    uint recycleFar;
+    uint recycleForced;
+    uint spawnDecisions;
+    uint spawnBudgetDenied;
+    uint radiusCapped;
+    uint diagPad;
 };
 
 struct SurfelCoverageTile
@@ -170,14 +187,13 @@ struct GuideCell
 };
 
 // Per-cell record. Count pass: pendingCount. Block scan: firstEntry, entryCount, and zeroes the other
-// fields. Scatter pass: fillCursor, entries, and the cell average sums. Readers use firstEntry and
+// fields. Scatter pass: entries, and the average sums of each surfel's base cell. Readers use firstEntry and
 // entryCount (the entries are gridEntries[firstEntry .. firstEntry + entryCount)) and SurfelCellAverage.
 struct SurfelCellHeader
 {
     uint firstEntry;
     uint entryCount;
     uint pendingCount;
-    uint fillCursor;
     uint sumRed;
     uint sumGreen;
     uint sumBlue;

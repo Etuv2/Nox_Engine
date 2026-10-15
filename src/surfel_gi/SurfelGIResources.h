@@ -13,6 +13,8 @@ constexpr uint32_t kSurfelGridMaxCellsPerSurfel = 27u;
 struct SurfelGridSettings {
 	glm::uvec3 resolution{ 32u, 32u, 24u };
 	uint32_t maxSurfelsPerCell = 64u;
+	// Surfels the grid is sized for. Slot storage is maxSurfels x kSurfelGridMaxCellsPerSurfel.
+	uint32_t maxSurfels = 0u;
 	// Entry storage: the scatter writes at most this many surfel ids (maxSurfels x 27 covers every surfel).
 	uint32_t entryCapacity = 0u;
 	glm::vec3 worldExtent{ 24.0f };
@@ -77,7 +79,8 @@ enum class SurfelGIBinding : uint32_t {
 	RtInstances = 33u,
 	RtInstanceNodes = 34u,
 	DispatchArgs = 35u,
-	GridBlockSums = 36u
+	GridBlockSums = 36u,
+	GridSlots = 37u
 };
 
 constexpr uint32_t ToGLuint(SurfelGIBinding binding)
@@ -166,9 +169,25 @@ struct alignas(16) SurfelCounters {
 	uint32_t visiblePreviousFrame = 0u;
 	uint32_t youngSurfelCount = 0u;
 	uint32_t staleRaySlotCount = 0u;
+	uint32_t lookupsSharing = 0u;
+	uint32_t entriesSharing = 0u;
+	uint32_t lookupsGather = 0u;
+	uint32_t entriesGather = 0u;
+	uint32_t lookupsTrace = 0u;
+	uint32_t entriesTrace = 0u;
+	uint32_t lookupsSpawn = 0u;
+	uint32_t entriesSpawn = 0u;
+	uint32_t recycleOverTarget = 0u;
+	uint32_t recycleStale = 0u;
+	uint32_t recycleFar = 0u;
+	uint32_t recycleForced = 0u;
+	uint32_t spawnDecisions = 0u;
+	uint32_t spawnBudgetDenied = 0u;
+	uint32_t radiusCapped = 0u;
+	uint32_t diagPad = 0u;
 };
-// 48 uint32 fields = 192 bytes, the same as the GLSL struct.
-static_assert(sizeof(SurfelCounters) == 192, "SurfelCounters must match std430 GLSL layout.");
+// 64 uint32 fields = 256 bytes, the same as the GLSL struct.
+static_assert(sizeof(SurfelCounters) == 256, "SurfelCounters must match std430 GLSL layout.");
 
 enum SurfelCoverageTileFlags : uint32_t {
 	SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,
@@ -195,12 +214,11 @@ struct alignas(16) SurfelGISettingsGpu {
 };
 static_assert(sizeof(SurfelGISettingsGpu) == 80, "SurfelGISettingsGpu must match std430 GLSL layout.");
 
-// Per-cell record, 40 bytes: the std430 SurfelCellHeader of common.glsl (no alignment padding).
+// Per-cell record, 36 bytes: the std430 SurfelCellHeader of common.glsl (no alignment padding).
 struct SurfelCellHeader {
 	uint32_t firstEntry = 0u;
 	uint32_t entryCount = 0u;
 	uint32_t pendingCount = 0u;
-	uint32_t fillCursor = 0u;
 	uint32_t sumRed = 0u;
 	uint32_t sumGreen = 0u;
 	uint32_t sumBlue = 0u;
@@ -208,7 +226,7 @@ struct SurfelCellHeader {
 	uint32_t sumConfidence = 0u;
 	uint32_t validCount = 0u;
 };
-static_assert(sizeof(SurfelCellHeader) == 40, "SurfelCellHeader must match std430 GLSL layout.");
+static_assert(sizeof(SurfelCellHeader) == 36, "SurfelCellHeader must match std430 GLSL layout.");
 
 // One grid entry: a surfel id (std430 SurfelCellEntry).
 struct SurfelCellEntry {
@@ -291,17 +309,19 @@ public:
 	rhi::BufferHandle GetCellEntryBuffer() const { return m_cellEntryBuffer; }
 	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
 	rhi::BufferHandle GetBlockSumBuffer() const { return m_blockSumBuffer; }
+	rhi::BufferHandle GetSlotBuffer() const { return m_slotBuffer; }
 	uint32_t GetCellCount() const { return m_cellCount; }
 	uint32_t GetBlockCount() const { return m_blockCount; }
 	uint32_t GetEntryCapacity() const { return m_entryCapacity; }
 	const SurfelGridSettings& GetSettings() const { return m_settings; }
-	bool IsCreated() const { return m_cellHeaderBuffer.IsValid() && m_cellEntryBuffer.IsValid() && m_countersBuffer.IsValid() && m_blockSumBuffer.IsValid(); }
+	bool IsCreated() const { return m_cellHeaderBuffer.IsValid() && m_cellEntryBuffer.IsValid() && m_countersBuffer.IsValid() && m_blockSumBuffer.IsValid() && m_slotBuffer.IsValid(); }
 
 private:
 	rhi::BufferHandle m_cellHeaderBuffer;
 	rhi::BufferHandle m_cellEntryBuffer;
 	rhi::BufferHandle m_countersBuffer;
 	rhi::BufferHandle m_blockSumBuffer;
+	rhi::BufferHandle m_slotBuffer;
 	uint32_t m_cellCount = 0;
 	uint32_t m_blockCount = 0;
 	uint32_t m_entryCapacity = 0;

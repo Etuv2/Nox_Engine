@@ -1,8 +1,8 @@
 #version 460 core
 
-// Grid build, pass 4 of 4: scatter. Every live surfel writes its id into each cell its support sphere
-// overlaps (the same enumeration as grid_count) and adds its irradiance to that cell's average sums.
-// The cell offsets come from grid_scan, so entries and sums are written in one pass.
+// Grid build, pass 3 of 3: scatter. Each live surfel writes its id into the slot the count pass gave it, in
+// every cell its support overlaps. The cell's average sums come from the surfel's base cell only, so every
+// surfel adds once to the average (the count pass gave the base cell slot 0).
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -21,6 +21,11 @@ layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
 layout(binding = B_GRID_ENTRIES, std430) writeonly buffer SurfelGridEntryBuffer
 {
     SurfelCellEntry gridEntries[];
+};
+
+layout(binding = B_GRID_SLOTS, std430) readonly buffer SurfelGridSlotBuffer
+{
+    uint slots[];
 };
 
 uniform uint uMaxSurfels;
@@ -54,7 +59,7 @@ void main()
         uUseNonLinearGrid,
         uGridFarExtent);
 
-    // Average contribution of this surfel, shared by every cell it is stored in.
+    // Average contribution of this surfel (base cell only).
     vec3 irradiance = max(surfel.irradiance.rgb, vec3(0.0));
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
     bool contributes = !(confidence <= 0.02 && SurfelLuminance(irradiance) <= 1e-5);
@@ -62,7 +67,7 @@ void main()
     vec3 scaled = min(irradiance, vec3(SURFEL_CELL_SUM_IRRADIANCE_CLAMP)) * weight * SURFEL_CELL_SUM_SCALE;
 
     uint cells[SURFEL_GRID_MAX_CELLS_PER_SURFEL];
-    uint cellCount = SurfelGridOverlappedCells(
+    uint overlapCount = SurfelGridOverlappedCells(
         surfelPos,
         supportRadius,
         uGridMin,
@@ -71,20 +76,21 @@ void main()
         uUseNonLinearGrid,
         uGridFarExtent,
         cells);
-    for (uint i = 0u; i < cellCount; ++i) {
+    uint slotBase = surfelID * SURFEL_GRID_MAX_CELLS_PER_SURFEL;
+    for (uint i = 0u; i < overlapCount; ++i) {
         uint cell = cells[i];
         if (cell >= uGridCellCount) {
             continue;
         }
 
-        uint slot = atomicAdd(gridHeaders[cell].fillCursor, 1u);
-        uint entryCount = gridHeaders[cell].entryCount;
-        if (slot >= entryCount) {
+        uint slot = slots[slotBase + i];
+        if (slot >= gridHeaders[cell].entryCount) {
+            // Not stored: the cell was full (overflow) or the count pass did not give this entry a slot.
             continue;
         }
 
         gridEntries[gridHeaders[cell].firstEntry + slot].surfelID = surfelID;
-        if (contributes) {
+        if (i == 0u && contributes) {
             atomicAdd(gridHeaders[cell].sumRed, uint(scaled.r));
             atomicAdd(gridHeaders[cell].sumGreen, uint(scaled.g));
             atomicAdd(gridHeaders[cell].sumBlue, uint(scaled.b));

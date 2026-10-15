@@ -279,6 +279,22 @@ void StoreSurfelCounters(const SurfelCounters& counters, SurfelGIFrameStats& sta
 	stats.finalGatherEmptyPixels = counters.finalGatherEmptyPixels;
 	stats.youngSurfels = counters.youngSurfelCount;
 	stats.staleRaySlots = counters.staleRaySlotCount;
+	stats.lookupsSharing = counters.lookupsSharing;
+	stats.entriesSharing = counters.entriesSharing;
+	stats.lookupsGather = counters.lookupsGather;
+	stats.entriesGather = counters.entriesGather;
+	stats.lookupsTrace = counters.lookupsTrace;
+	stats.entriesTrace = counters.entriesTrace;
+	stats.lookupsSpawn = counters.lookupsSpawn;
+	stats.entriesSpawn = counters.entriesSpawn;
+	stats.recycleOverTarget = counters.recycleOverTarget;
+	stats.recycleStale = counters.recycleStale;
+	stats.recycleFar = counters.recycleFar;
+	stats.recycleForced = counters.recycleForced;
+	stats.spawnDecisions = counters.spawnDecisions;
+	stats.spawnBudgetDenied = counters.spawnBudgetDenied;
+	stats.radiusCapped = counters.radiusCapped;
+	stats.diagPad = counters.diagPad;
 	// Rays asked for by request_rays but not granted by allocate_rays (both counters are per frame).
 	stats.rayShortfall = counters.requestedRays > counters.allocatedRays
 		? counters.requestedRays - counters.allocatedRays
@@ -835,6 +851,7 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 
 	SurfelGridSettings gridSettings{};
 	gridSettings.maxSurfelsPerCell = m_settings.maxSurfelsPerCell;
+	gridSettings.maxSurfels = m_settings.maxSurfels;
 	gridSettings.entryCapacity = m_settings.maxSurfels * kSurfelGridMaxCellsPerSurfel;
 	gridSettings.useNonLinearGrid = m_settings.useNonLinearGrid;
 	gridSettings.centralResolution = 32u;
@@ -1069,11 +1086,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		surfelArgs = m_resources.dispatchArgsBuffer;
 	}
 
-	// One grid build per frame: count the overlapped cells, sum the blocks, scan the offsets, then
-	// scatter the entries and accumulate the cell averages. The lambda runs at the end of Execute.
+	// One grid build per frame: count the overlapped cells (each surfel keeps the slot it was given), scan the
+	// cell offsets, then scatter the entries and accumulate the cell averages. The lambda runs at the end of Execute.
 	auto buildGrid = [&]() {
 		if (placementOnly || !m_gridCountShader || !m_gridCountShader->IsValid() ||
-			!m_gridBlockSumsShader || !m_gridBlockSumsShader->IsValid() ||
 			!m_gridScanShader || !m_gridScanShader->IsValid() ||
 			!m_buildGridShader || !m_buildGridShader->IsValid()) {
 			return;
@@ -1081,33 +1097,31 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 
 		const uint32_t cellCount = m_grid.GetCellCount();
 		const uint32_t blockCount = m_grid.GetBlockCount();
+		const uint32_t parity = m_frameIndex & 1u;
 		const rhi::BufferHandle blockSums = m_grid.GetBlockSumBuffer();
+		const rhi::BufferHandle slots = m_grid.GetSlotBuffer();
 
 		{
 			const rhi::ProgramHandle program = m_gridCountShader->GetProgramID();
 			gpu.UseProgram(program);
 			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 			SetUniform1ui(program, "uGridCellCount", cellCount);
+			SetUniform1ui(program, "uGridBlockCount", blockCount);
+			SetUniform1ui(program, "uBlockParity", parity);
 			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridBlockSums), blockSums);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridSlots), slots);
 			timedDispatch("grid_count", [&]() {
 				DispatchSurfelWide(*m_gridCountShader, surfelArgs, groupsSurfels);
 				m_gridCountShader->WaitForCompletion(rhi::BarrierStorage);
 			});
 		}
 		{
-			const rhi::ProgramHandle program = m_gridBlockSumsShader->GetProgramID();
-			gpu.UseProgram(program);
-			SetUniform1ui(program, "uGridCellCount", cellCount);
-			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridBlockSums), blockSums);
-			timedDispatch("grid_block_sums", [&]() {
-				m_gridBlockSumsShader->Dispatch(blockCount, 1u, 1u);
-				m_gridBlockSumsShader->WaitForCompletion(rhi::BarrierStorage);
-			});
-		}
-		{
 			const rhi::ProgramHandle program = m_gridScanShader->GetProgramID();
 			gpu.UseProgram(program);
 			SetUniform1ui(program, "uGridCellCount", cellCount);
+			SetUniform1ui(program, "uGridBlockCount", blockCount);
+			SetUniform1ui(program, "uBlockParity", parity);
 			SetUniform1ui(program, "uEntryCapacity", m_grid.GetEntryCapacity());
 			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridBlockSums), blockSums);
 			timedDispatch("grid_scan", [&]() {
@@ -1121,6 +1135,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 			SetUniform1ui(program, "uGridCellCount", cellCount);
 			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridSlots), slots);
 			timedDispatch("grid_build", [&]() {
 				DispatchSurfelWide(*m_buildGridShader, surfelArgs, groupsSurfels);
 				m_buildGridShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1951,6 +1966,15 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			std::cout << "[SurfelGISubpassMetrics]   "
 				<< timing.label << " gpuMs=" << timing.gpuMs << '\n';
 		}
+		std::cout << "[SurfelGIDiagCounters] frame=" << m_frameIndex
+				<< " lookupsSharing=" << m_stats.lookupsSharing << " entriesSharing=" << m_stats.entriesSharing
+				<< " lookupsGather=" << m_stats.lookupsGather << " entriesGather=" << m_stats.entriesGather
+				<< " lookupsTrace=" << m_stats.lookupsTrace << " entriesTrace=" << m_stats.entriesTrace
+				<< " lookupsSpawn=" << m_stats.lookupsSpawn << " entriesSpawn=" << m_stats.entriesSpawn
+				<< " recycleOverTarget=" << m_stats.recycleOverTarget << " recycleStale=" << m_stats.recycleStale
+				<< " recycleFar=" << m_stats.recycleFar << " recycleForced=" << m_stats.recycleForced
+				<< " spawnDecisions=" << m_stats.spawnDecisions << " spawnBudgetDenied=" << m_stats.spawnBudgetDenied
+				<< " radiusCapped=" << m_stats.radiusCapped << '\n';
 		std::cout << "[SurfelGIFrameCounters] frame=" << m_frameIndex
 			<< " liveSurfels=" << m_stats.liveSurfels
 			<< " spawned=" << m_stats.spawnedThisFrame
@@ -2314,7 +2338,6 @@ bool SurfelGIPipeline::LoadShaders()
 		CreateCompute(m_coverageShader, "shaders/surfel_gi/coverage.comp") &&
 		CreateCompute(m_spawnShader, "shaders/surfel_gi/spawn.comp") &&
 		CreateCompute(m_gridCountShader, "shaders/surfel_gi/grid_count.comp") &&
-		CreateCompute(m_gridBlockSumsShader, "shaders/surfel_gi/grid_block_sums.comp") &&
 		CreateCompute(m_gridScanShader, "shaders/surfel_gi/grid_scan.comp") &&
 		CreateCompute(m_buildGridShader, "shaders/surfel_gi/build_grid.comp") &&
 		CreateCompute(m_requestRaysShader, "shaders/surfel_gi/request_rays.comp") &&
@@ -2371,7 +2394,6 @@ void SurfelGIPipeline::ReleaseShaders()
 	m_coverageShader.reset();
 	m_spawnShader.reset();
 	m_gridCountShader.reset();
-	m_gridBlockSumsShader.reset();
 	m_gridScanShader.reset();
 	m_buildGridShader.reset();
 	m_requestRaysShader.reset();

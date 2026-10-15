@@ -1,8 +1,9 @@
 #version 460 core
 
-// Grid build, pass 1 of 4: count the surfels that each cell will hold. Every live surfel adds one to
-// each cell its support sphere overlaps. grid_block_sums and grid_scan turn the counts into offsets,
-// and build_grid scatters the entries. The enumeration is shared with build_grid.
+// Grid build, pass 1 of 3: count. Every live surfel takes one slot in each cell its support overlaps. The
+// slot is the cell's pending count before the increment, so the scatter pass writes entries without atomics.
+// Block totals for grid_scan are counted into this frame's parity of the block sum buffer. Surfel 0 also resets
+// the per-frame overflow counter.
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -18,8 +19,25 @@ layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
     SurfelCellHeader gridHeaders[];
 };
 
+layout(binding = B_GRID_BLOCK_SUMS, std430) buffer SurfelGridBlockSumBuffer
+{
+    uint blockSums[];
+};
+
+layout(binding = B_GRID_SLOTS, std430) writeonly buffer SurfelGridSlotBuffer
+{
+    uint slots[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
 uniform uint uMaxSurfels;
 uniform uint uGridCellCount;
+uniform uint uGridBlockCount;
+uniform uint uBlockParity;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
 uniform uvec3 uGridResolution;
@@ -29,6 +47,9 @@ uniform float uGridFarExtent;
 void main()
 {
     uint surfelID = gl_GlobalInvocationID.x;
+    if (surfelID == 0u) {
+        counters.overflowGridEntries = 0u;
+    }
     if (surfelID >= uMaxSurfels) {
         return;
     }
@@ -50,7 +71,7 @@ void main()
         uGridFarExtent);
 
     uint cells[SURFEL_GRID_MAX_CELLS_PER_SURFEL];
-    uint cellCount = SurfelGridOverlappedCells(
+    uint overlapCount = SurfelGridOverlappedCells(
         surfelPos,
         supportRadius,
         uGridMin,
@@ -59,9 +80,15 @@ void main()
         uUseNonLinearGrid,
         uGridFarExtent,
         cells);
-    for (uint i = 0u; i < cellCount; ++i) {
-        if (cells[i] < uGridCellCount) {
-            atomicAdd(gridHeaders[cells[i]].pendingCount, 1u);
+    uint slotBase = surfelID * SURFEL_GRID_MAX_CELLS_PER_SURFEL;
+    for (uint i = 0u; i < overlapCount; ++i) {
+        uint cell = cells[i];
+        if (cell >= uGridCellCount) {
+            slots[slotBase + i] = SURFEL_INVALID_INDEX;
+            continue;
         }
+
+        slots[slotBase + i] = atomicAdd(gridHeaders[cell].pendingCount, 1u);
+        atomicAdd(blockSums[uBlockParity * uGridBlockCount + cell / SURFEL_GRID_BLOCK_CELLS], 1u);
     }
 }

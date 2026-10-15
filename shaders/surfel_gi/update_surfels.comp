@@ -14,6 +14,11 @@ layout(binding = B_TRANSFORMS, std430) readonly buffer TransformBuffer
     GpuTransformRecord transforms[];
 };
 
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
 uniform uint uMaxSurfels;
 uniform uint uTransformCount;
 uniform uint uFrameIndex;
@@ -107,7 +112,11 @@ void main()
     // disks after camera motion and weakens both coverage and gathering.
     float radius = targetRadius;
     // One grid cell side at most (GIBS p.33). The radius error below records what the cap changed.
-    radius = min(radius, SurfelGridCellSizeAtWorld(worldPos.xyz, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent));
+    float cellSideRadius = SurfelGridCellSizeAtWorld(worldPos.xyz, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
+    if (cellSideRadius < radius) {
+        atomicAdd(counters.radiusCapped, 1u);
+    }
+    radius = min(radius, cellSideRadius);
     float targetRadiusError = abs(radius - targetRadius) / max(targetRadius, 1e-4);
     float motionDistance = IsFiniteVec3(previousWorldPos) ? length(worldPos.xyz - previousWorldPos) : 0.0;
     float normalDelta = IsFiniteVec3(previousWorldNormal) ? (1.0 - max(dot(worldNormal, previousWorldNormal), 0.0)) : 0.0;
