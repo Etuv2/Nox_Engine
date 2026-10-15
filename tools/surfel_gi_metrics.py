@@ -99,6 +99,8 @@ CONFIG_ENV = {
 }
 LIVE_PLAN = (261, 200, 260)  # last run frame, analysis window first and last frame
 LONG_PLAN = (899, 780, 840)
+# Set from --env: applied to every run on top of the config's own variables (for parameter sweeps).
+EXTRA_ENV = {}
 LONG_CONFIGS = ("ref", "indep", "indep_term")
 REF_CONFIGS = ("indep", "ref")
 # Configs whose energy is the composite debug-4 term itself (surfel or reference GI alone), not composite minus off.
@@ -234,6 +236,7 @@ def launch(exe, scene_arg, run_dir, cfg, camera_path, timeout, cwd=REPO_ROOT):
     env = {k: v for k, v in os.environ.items() if not k.startswith("NOX_")}
     env.update(BASE_ENV)
     env.update(CONFIG_ENV[cfg])
+    env.update(EXTRA_ENV)
     env.update({"NOX_FINAL_DUMP_DIR": str(run_dir),
                 "NOX_FINAL_DUMP_FRAMES": ",".join(str(f) for f in window),
                 "NOX_EXIT_AFTER_FRAMES": str(last + 2)})
@@ -765,7 +768,14 @@ def main(argv=None):
     parser.add_argument("--json", help="JSON output (default OUT_DIR/surfel_gi_metrics.json)")
     parser.add_argument("--reuse", action="store_true", help="skip configs whose run.log and dumps exist")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="hard timeout per run (s)")
+    parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE",
+                        help="extra environment variable for every run, after the config's own (repeatable)")
     args = parser.parse_args(argv)
+    for item in args.env:
+        name, sep, value = item.partition("=")
+        if not sep or not name:
+            parser.error(f"--env expects NAME=VALUE: {item!r}")
+        EXTRA_ENV[name] = value
 
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
     unknown = [c for c in configs if c not in CONFIG_ENV]
