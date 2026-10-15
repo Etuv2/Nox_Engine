@@ -575,6 +575,7 @@ void ModularRenderer::SyncSurfelGISettings()
 	settings.maxRayBudget = m_context.surfelGIMaxRayBudget > 0
 		? static_cast<uint32_t>(std::max(m_context.surfelGIMaxRayBudget, 1024))
 		: GetSurfelGIBudgetCaps(settings.qualityTier).maxRayBudget;
+	settings.pathContinuationPeriod = static_cast<uint32_t>(std::clamp(m_context.surfelGIPathContinuationPeriod, 1, 64));
 	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.surfelGISpawnTileSize, 4, 16));
 	settings.maxSurfelsPerCell = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxSurfelsPerCell, 8, 256));
 	settings.maxGatherSurfelsPerPixel = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxGatherSurfelsPerPixel, 4, 2048));
@@ -623,6 +624,8 @@ void ModularRenderer::SyncSurfelGISettings()
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_PROJECTED_SURFELS", static_cast<int>(settings.maxProjectedSurfelsPerFrame)), 1024));
 		settings.maxRecycleCountPerFrame = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_RECYCLES", static_cast<int>(settings.maxRecycleCountPerFrame)), 1));
+		settings.pathContinuationPeriod = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_PATH_PERIOD", static_cast<int>(settings.pathContinuationPeriod)), 1, 64));
 		settings.indirectIntensity = std::max(GetEnvVarFloat("NOX_SURFEL_GI_INTENSITY", settings.indirectIntensity), 0.0f);
 		settings.cellAverageFallbackStrength = std::clamp(
 			GetEnvVarFloat("NOX_SURFEL_GI_FALLBACK_STRENGTH", settings.cellAverageFallbackStrength),
@@ -634,6 +637,7 @@ void ModularRenderer::SyncSurfelGISettings()
 		applyEnvToggle("NOX_SURFEL_GI_RAY_GUIDING", settings.useRayGuiding);
 		applyEnvToggle("NOX_SURFEL_GI_RADIAL_DEPTH", settings.useRadialDepth);
 		applyEnvToggle("NOX_SURFEL_GI_IRRADIANCE_SHARING", settings.useIrradianceSharing);
+		applyEnvToggle("NOX_SURFEL_GI_SUN_BVH", settings.sunShadowBVHFallback);
 	}
 	// Reference mode reads the surfel composite view too. NOX_GI_REFERENCE=1 with
 	// NOX_SURFEL_GI_COMPOSITE_DEBUG=4 then shows the reference term alone (plan section 14, O2).

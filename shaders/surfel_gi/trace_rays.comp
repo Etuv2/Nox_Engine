@@ -66,6 +66,8 @@ uniform int uUseSurfelFallbackTrace = 1;
 uniform uint uBVHTraceStride = 1u;
 uniform float uLightingChangeFactor = 0.0;
 uniform int uUseRayGuiding = 0;
+// Path continuation period N (SurfelGISettings::pathContinuationPeriod): one warp group in N continues per frame.
+uniform uint uContinuationPeriod = 1u;
 
 // Guide map of the surfel rays: the density of the origin's next-event MIS weight needs it (plan section 14).
 layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
@@ -95,6 +97,7 @@ const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_TRACE_SCREEN_RELIABILITY = 0.18;
+const uint SURFEL_TRACE_PATH_MAX_HITS = 32u;
 
 struct TraceGather
 {
@@ -394,10 +397,31 @@ bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID,
 // Radiance leaving a hit toward the ray: the path from the hit (SurfelPathRadiance). Where the cache has a coplanar
 // surfel it answers the hit; elsewhere the path continues, so the indirect light is not dropped (plan section 14, O1).
 // emissionWeight is the hit's emission, already MIS weighted by the caller.
-vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed)
+vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed,
+                      SurfelPathControl control)
 {
     return SurfelPathRadiance(hitPos, hitNormal, albedo, emissionWeight, sourceSurfelID,
-        SurfelPathSeed(seed, uFrameIndex), 1u, true, 1u);
+        SurfelPathSeed(seed, uFrameIndex), control);
+}
+
+// Path control of a surfel ray past its first hit. The continuation roulette is warp coherent: the 32 rays of a warp
+// (rayID >> 5) share one decision per frame, and each warp group continues in one frame of every uContinuationPeriod.
+// A per-ray roulette would leave nearly every warp active, so it would save no time. The continuation carries the
+// period as its weight, so the estimate is unbiased over the period.
+SurfelPathControl SurfelTraceControl(uint rayID)
+{
+    SurfelPathControl control;
+    control.maxHits = SURFEL_TRACE_PATH_MAX_HITS;
+    control.rouletteStart = 1u;
+    control.neeDepth = 1u;
+    control.useCache = true;
+    control.continuationWeight = 1.0;
+    uint period = max(uContinuationPeriod, 1u);
+    if (period > 1u) {
+        bool selected = (((rayID >> 5u) + uFrameIndex) % period) == 0u;
+        control.continuationWeight = selected ? float(period) : 0.0;
+    }
+    return control;
 }
 
 // Solid-angle density of the surfel's ray sampling (generate_rays.comp) in direction dir: the cosine lobe, mixed with the
@@ -436,6 +460,7 @@ bool ScreenSpaceHitRadiance(vec2 uv,
                             vec3 rayDirection,
                             uint sourceSurfelID,
                             uint seed,
+                            SurfelPathControl control,
                             out vec3 radiance,
                             out vec3 hitNormal)
 {
@@ -454,11 +479,11 @@ bool ScreenSpaceHitRadiance(vec2 uv,
 
     vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0));
     vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
-    radiance = ShadeHitRadiance(hitPos, hitNormal, albedo, emissive, sourceSurfelID, seed);
+    radiance = ShadeHitRadiance(hitPos, hitNormal, albedo, emissive, sourceSurfelID, seed, control);
     return true;
 }
 
-bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
+bool TraceSoftwareBVHRadiance(SurfelRay ray, SurfelPathControl control, inout TraceGather gather)
 {
     if (uUseSoftwareBVHTrace == 0) {
         return false;
@@ -506,7 +531,7 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
     // Emission is MIS weighted against this ray's sampling density; the origin's next-event sample is the other half.
     float emitterHitPdf = SurfelEmitterHitPdf(SurfelLuminance(emissive), hit.t, hit.geometricNormal, direction);
     gather.radiance = ShadeHitRadiance(hit.position, hit.normal, albedo,
-        emissive * SurfelPowerWeight(ray.throughput.a, emitterHitPdf), ray.ids.x, cacheSeed);
+        emissive * SurfelPowerWeight(ray.throughput.a, emitterHitPdf), ray.ids.x, cacheSeed, control);
     gather.normal = hit.normal;
     gather.position = hit.position;
     gather.weight = 1.0;
@@ -516,7 +541,7 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
     return true;
 }
 
-bool TraceScreenSpace(SurfelRay ray, inout TraceGather gather)
+bool TraceScreenSpace(SurfelRay ray, SurfelPathControl control, inout TraceGather gather)
 {
     if (uUseScreenSpaceTrace == 0) {
         return false;
@@ -574,6 +599,7 @@ bool TraceScreenSpace(SurfelRay ray, inout TraceGather gather)
                                     direction,
                                     ray.ids.x,
                                     ray.ids.x ^ (ray.ids.z * 0x9e3779b9u) ^ step,
+                                    control,
                                     radiance,
                                     hitNormal)) {
             continue;
@@ -803,11 +829,12 @@ TraceGather TraceSurfelGrid(SurfelRay ray, uint rayID)
     // rays fall back to screen-space and surfel-grid tracing.
     bool useBVHThisRay = uUseSoftwareBVHTrace != 0 &&
         (uBVHTraceStride <= 1u || (((rayID + uFrameIndex) % max(uBVHTraceStride, 1u)) == 0u));
+    SurfelPathControl control = SurfelTraceControl(rayID);
     if (useBVHThisRay) {
-        if (TraceSoftwareBVHRadiance(ray, gather)) {
+        if (TraceSoftwareBVHRadiance(ray, control, gather)) {
             return gather;
         }
-    } else if (TraceScreenSpace(ray, gather)) {
+    } else if (TraceScreenSpace(ray, control, gather)) {
         return gather;
     }
 
