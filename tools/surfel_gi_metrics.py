@@ -98,11 +98,16 @@ CONFIG_ENV = {
     "surf_term_r8k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "8192", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "ref": REF_ENV,
     "indep": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0"},
+    # Reference GI alone (composite debug 4), the same quantity as surf_term. Use it for ratios: "indep" energy
+    # is composite minus off, which cancels the deferred IBL that off contains on sky-lit scenes.
+    "indep_term": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
 }
 LIVE_PLAN = (261, 200, 260)  # last run frame, analysis window first and last frame
 LONG_PLAN = (899, 780, 840)
-LONG_CONFIGS = ("ref", "indep")
+LONG_CONFIGS = ("ref", "indep", "indep_term")
 REF_CONFIGS = ("indep", "ref")
+# Configs whose energy is the composite debug-4 term itself (surfel or reference GI alone), not composite minus off.
+TERM_CONFIG_PREFIXES = ("surf_term", "indep_term")
 GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15",
               "surf_noguide", "surf_nosharing", "surf_r8k")
 SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15", "ref",
@@ -180,14 +185,41 @@ def _force_manual(node):
     return False
 
 
+# The dumps are display-referred: the post-process applies the GT tone curve, bloom and grain by default, so a
+# pixel is not proportional to radiance and the sRGB-LUT "linear" energy was not linear (plan 13, bug 0). Every
+# measured run uses this profile: no tone curve, no bloom, no grain. Values above 1.0 then clip, so keep exposure in range.
+MEASUREMENT_RENDER_SETTINGS = {
+    "tonemap": "none", "bloom": False, "vignette": 0.0, "film_grain": 0.0,
+    "chromatic_aberration": 0.0, "dither": False,
+    # TAA and HBAO change the composite (history blend, diffuse AO) and are not part of the GI estimate.
+    "taa": False, "ssao": False,
+}
+
+
+def _measurement_settings(data):
+    """Set the linear-output render settings on a scene dict in place. Returns True if anything changed."""
+    settings = data.get("render_settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    changed = not isinstance(data.get("render_settings"), dict)
+    for key, value in MEASUREMENT_RENDER_SETTINGS.items():
+        if settings.get(key) != value:
+            settings[key] = value
+            changed = True
+    data["render_settings"] = settings
+    return changed
+
+
 @contextlib.contextmanager
 def scene_for_runs(scene):
-    """Yield the scene path to launch. Auto exposure becomes a manual temp copy in the same dir."""
+    """Yield the scene path to launch. Manual exposure and the linear-output profile go into a temp copy in the same dir."""
     try:
         data = json.loads(scene.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as err:
         raise HarnessError(f"cannot read scene {scene}: {err}") from err
-    if not _force_manual(data):
+    forced = _force_manual(data)
+    measured = _measurement_settings(data)
+    if not (forced or measured):
         yield scene
         return
     temp = scene.with_name(f"{scene.stem}.surfel_gi_metrics_{os.getpid()}{scene.suffix}")
@@ -285,11 +317,13 @@ def summarize(run_dir, window):
         parse_log(read_log(log)) if log.is_file() else ({}, {}, {}))
     lo, hi = window[0], window[-1]
     labels, totals, passes, counters = {}, [], {}, {}
+    label_sums = []  # per frame: sum of the labelled sub-passes of that frame (not a sum of medians)
     sub_n = pass_n = cnt_n = 0
     for frame, rec in sorted(subpass.items()):
         if lo <= frame <= hi:
             sub_n += 1
             totals.append(rec["header"].get("totalGpuMs"))
+            label_sums.append(sum(ms for ms in rec["labels"].values() if ms is not None))
             for label, ms in rec["labels"].items():
                 labels.setdefault(label, []).append(ms)
     for frame, block in passes_by_frame.items():
@@ -306,10 +340,11 @@ def summarize(run_dir, window):
                 counters.setdefault(key, []).append(value)
     label_med = {k: med(v) for k, v in labels.items()}
     pass_med = {k: med(v) for k, v in passes.items()}
-    execute = [v for k, v in {**label_med, **pass_med}.items() if "Execute" in k and v is not None]
+    # No sub-pass label is named "Execute" (plan 10.1): the old lookup never matched. The labelled total is the
+    # median of per-frame sums, which includes the ApplyIndirect labels that the pass total also contains.
     return {
         "subpass_labels": label_med, "subpass_frames": sub_n, "total_gpu_ms": med(totals),
-        "sum_labels_ms": sum(label_med.values()) if label_med else None, "execute_ms": med(execute),
+        "sum_labels_ms": med(label_sums) if label_sums else None, "execute_ms": None,
         "passes": pass_med, "pass_frames": pass_n,
         "counters": {k: med(v) for k, v in counters.items()}, "counter_frames": cnt_n,
     }
@@ -380,7 +415,7 @@ def pixel_pass(runs, configs, reps, warnings):
             if cfg == "off" or (cfg, rep) not in runs:
                 continue
             acc = accumulate(window_paths(cfg, runs[(cfg, rep)]))
-            if cfg.startswith("surf_term"):
+            if cfg.startswith(TERM_CONFIG_PREFIXES):
                 pix[(cfg, rep)] = {"s_mean": acc["s_mean"], "s_std": acc["s_std"]}
             else:
                 gi_rgb = acc["lin"] - off["lin"]
@@ -419,7 +454,7 @@ def per_run_metrics(pix, runs, configs, reps):
             entry, m = pix.get((cfg, rep)), per.get((cfg, rep))
             if entry is None or m is None or cfg == "off":
                 continue
-            if cfg.startswith("surf_term"):
+            if cfg.startswith(TERM_CONFIG_PREFIXES):
                 if off is None:
                     continue
                 mask = off["mask"]
@@ -430,6 +465,11 @@ def per_run_metrics(pix, runs, configs, reps):
                 m.update(noise_surf_std=float(surf_std.mean()), noise_off_std=float(off_std.mean()),
                          noise_corr_std=float(corr.mean()), surf_term_mean=value,
                          noise_rel=safe_div(float(corr.mean()), value))
+                # Energy of the GI term alone (composite debug 4), and its ratio to the reference term of the same rep.
+                ref_entry = pix.get(("indep_term", rep))
+                if ref_entry is not None and "s_mean" in ref_entry:
+                    ref_value = float(ref_entry["s_mean"][mask].mean())
+                    m.update(term_energy=value, term_ratio_vs_indep=safe_div(value, ref_value))
                 continue
             m["energy"] = float(entry["gi"][entry["mask"]].mean())
             for ref in REF_CONFIGS:

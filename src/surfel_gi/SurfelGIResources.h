@@ -81,7 +81,8 @@ enum class SurfelGIBinding : uint32_t {
 	DispatchArgs = 35u,
 	RayAllocScratch = 36u,
 	GridBlockSums = 38u,
-	GridSlots = 37u
+	GridSlots = 37u,
+	Emitters = 39u
 };
 
 constexpr uint32_t ToGLuint(SurfelGIBinding binding)
@@ -264,8 +265,10 @@ struct alignas(16) SurfelRayHit {
 	glm::vec4 normal_hitKind{ 0.0f };
 	glm::vec4 radiance_pdf{ 0.0f };
 	glm::uvec4 ids{ 0u };
+	// Next-event estimate of the emitters seen from the ray origin (irradiance, MIS weighted), added to the sample.
+	glm::vec4 emitterIrradiance{ 0.0f };
 };
-static_assert(sizeof(SurfelRayHit) == 64, "SurfelRayHit must match std430 GLSL layout.");
+static_assert(sizeof(SurfelRayHit) == 80, "SurfelRayHit must match std430 GLSL layout.");
 
 class SurfelPool {
 public:

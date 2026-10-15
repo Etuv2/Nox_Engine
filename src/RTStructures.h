@@ -173,6 +173,21 @@ namespace RT {
 	};
 
 	/**
+	 * @struct Emitter
+	 * @brief One emissive triangle in world space, for the surfel next-event estimator (plan section 14).
+	 *        Built with the instance list, so it matches the BVH. std430 layout, 6 x vec4.
+	 */
+	struct alignas(16) Emitter {
+		glm::vec4 v0{ 0.0f };      // xyz world vertex
+		glm::vec4 v1{ 0.0f };
+		glm::vec4 v2{ 0.0f };
+		glm::vec4 emission{ 0.0f }; // xyz emitted radiance (emissive * emissive strength), w = luminance
+		glm::vec4 normal{ 0.0f };  // xyz world geometric unit normal, w = world area
+		glm::vec4 cdf{ 0.0f };     // x = cumulative luminance * area up to and including this emitter
+	};
+static_assert(sizeof(Emitter) == 96, "Emitter must match std430 GLSL layout.");
+
+	/**
 	 * @struct Ray
 	 * @brief Ray structure for GPU ray tracing
 	 */

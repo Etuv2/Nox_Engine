@@ -5,6 +5,11 @@
 #include "rhi/RHI.h"
 #include "json.hpp"
 
+// Debug step gain (NOX_LIGHT_STEP, set by LightManager::UpdateLights). Multiplies every light's effective intensity
+// from the step frame onward. It is applied on the read path, so a stored intensity that is re-applied each frame
+// cannot undo it. 1.0 when the hook is off.
+inline float g_noxLightStepGain = 1.0f;
+
 /**
  * Base class for all light types in the scene.
  * Provides common interface and functionality for lighting calculations.
@@ -31,8 +36,8 @@ public:
     virtual void SetEnabled(bool enabled) { m_enabled = enabled; }
 
     virtual glm::vec3 GetColor() const { return m_color; }
-    virtual float GetIntensity() const { return m_intensity; }
-    virtual glm::vec3 GetEffectiveColor() const { return m_color * m_intensity; }
+    virtual float GetIntensity() const { return m_intensity * g_noxLightStepGain; }
+    virtual glm::vec3 GetEffectiveColor() const { return m_color * (m_intensity * g_noxLightStepGain); }
     virtual bool IsEnabled() const { return m_enabled; }
     virtual LightType GetLightType() const { return m_lightType; }
 

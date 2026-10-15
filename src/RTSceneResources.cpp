@@ -169,6 +169,9 @@ void RTSceneResources::EnsureIncrementalBuffers()
     if (!m_instanceNodeSSBO) {
         m_instanceNodeSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
     }
+    if (!m_emitterSSBO) {
+        m_emitterSSBO = rhi::Gpu().CreateBuffer(rhi::BufferDesc{});
+    }
 }
 
 std::size_t RTSceneResources::EstimateSceneTriangleCount(const std::shared_ptr<SceneGraph>& sceneGraph)
@@ -642,6 +645,7 @@ void RTSceneResources::UploadIncrementalScene()
     const std::size_t previousTraceableInstanceCount = m_incrementalInstanceCount;
     std::vector<RT::Instance> instances;
     instances.reserve(m_tlasInstances.size());
+    std::vector<RT::Emitter> emitters;
     for (const TLASInstance& source : m_tlasInstances) {
         if (source.blasIndex >= m_blasRecords.size()) {
             continue;
@@ -662,7 +666,9 @@ void RTSceneResources::UploadIncrementalScene()
             source.isSkinnedMesh ? 1u : 0u,
             0u);
         instances.push_back(instance);
+        AppendInstanceEmitters(record.bvh.triangles, source.worldTransform, emitters);
     }
+    UploadEmitters(emitters);
 
     const bool readyInstanceSetChanged =
         geometryUpdated ||
@@ -689,6 +695,56 @@ void RTSceneResources::UploadIncrementalScene()
 
     m_incrementalUploadDirty = false;
     m_incrementalInstanceTopologyDirty = false;
+}
+
+// Emissive triangles of one instance, in world space, for the surfel next-event estimator (plan section 14).
+// They are the triangles the instance's BLAS traces, transformed by the same world matrix as the BVH instance,
+// so the emitter list and the software BVH always describe the same geometry.
+void RTSceneResources::AppendInstanceEmitters(const std::vector<RT::Triangle>& triangles,
+                                              const glm::mat4& worldFromLocal,
+                                              std::vector<RT::Emitter>& emitters)
+{
+    for (const RT::Triangle& tri : triangles) {
+        const glm::vec3 emission = glm::max(glm::vec3(tri.material.emissive) * tri.material.emissiveStrength,
+                                            glm::vec3(0.0f));
+        // Same luminance weights as SurfelLuminance in shaders/surfel_gi/common.glsl.
+        const float luminance = glm::dot(emission, glm::vec3(0.2126f, 0.7152f, 0.0722f));
+        if (!(luminance > 0.0f)) {
+            continue;
+        }
+        const glm::vec3 w0 = glm::vec3(worldFromLocal * glm::vec4(tri.v0, 1.0f));
+        const glm::vec3 w1 = glm::vec3(worldFromLocal * glm::vec4(tri.v1, 1.0f));
+        const glm::vec3 w2 = glm::vec3(worldFromLocal * glm::vec4(tri.v2, 1.0f));
+        const glm::vec3 twiceArea = glm::cross(w1 - w0, w2 - w0);
+        const float twiceAreaLength = glm::length(twiceArea);
+        if (!(twiceAreaLength > 1e-12f)) {
+            continue;
+        }
+        RT::Emitter emitter;
+        emitter.v0 = glm::vec4(w0, 0.0f);
+        emitter.v1 = glm::vec4(w1, 0.0f);
+        emitter.v2 = glm::vec4(w2, 0.0f);
+        emitter.emission = glm::vec4(emission, luminance);
+        emitter.normal = glm::vec4(twiceArea / twiceAreaLength, 0.5f * twiceAreaLength);
+        emitters.push_back(emitter);
+    }
+}
+
+// Fills the cumulative selection weights (luminance * area) and uploads the list. The shader picks an emitter
+// with probability weight / total, then a point uniformly on its triangle (a pdf of luminance / total per area).
+void RTSceneResources::UploadEmitters(std::vector<RT::Emitter>& emitters)
+{
+    double total = 0.0;
+    for (RT::Emitter& emitter : emitters) {
+        total += static_cast<double>(emitter.emission.w) * static_cast<double>(emitter.normal.w);
+        emitter.cdf = glm::vec4(static_cast<float>(total), 0.0f, 0.0f, 0.0f);
+    }
+    m_emitterCount = emitters.size();
+    m_emitterPowerTotal = static_cast<float>(total);
+    rhi::Gpu().ReallocateBuffer(m_emitterSSBO,
+        emitters.empty() ? 0 : emitters.size() * sizeof(RT::Emitter),
+        emitters.empty() ? nullptr : emitters.data(),
+        rhi::BufferUsage::DynamicDraw);
 }
 
 bool RTSceneResources::EnsureIncrementalBLAS(
@@ -830,6 +886,11 @@ void RTSceneResources::Release()
     if (m_instanceNodeSSBO) {
         rhi::Gpu().DestroyBuffer(m_instanceNodeSSBO);
     }
+    if (m_emitterSSBO) {
+        rhi::Gpu().DestroyBuffer(m_emitterSSBO);
+    }
+    m_emitterCount = 0;
+    m_emitterPowerTotal = 0.0f;
     m_lightSSBO = rhi::BufferHandle{};
     m_triangleCount = 0;
     m_nodeCount = 0;
