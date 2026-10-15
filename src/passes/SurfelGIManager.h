@@ -67,7 +67,8 @@ struct SurfelGISettings {
 	SurfelGIDebugView debugView = SurfelGIDebugView::Off;
 
 	uint32_t maxSurfels = 65536u;
-	uint32_t maxRayBudget = 192u;
+	// Rays traced per frame; shared out by demand when requests exceed it (allocate_rays.comp).
+	uint32_t maxRayBudget = 2048u;
 	uint32_t spawnTileSize = 16u;
 	// Search stride for the per-tile lowest-coverage search: 1 tests every pixel of a tile each
 	// frame; N > 1 tests a rotating 1/N^2 subset (the lowest coverage over N^2 frames).

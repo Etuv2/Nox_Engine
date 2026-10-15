@@ -69,7 +69,8 @@ enum class SurfelGIBinding : uint32_t {
 	CoverageTiles = 32u,
 	RtInstances = 33u,
 	RtInstanceNodes = 34u,
-	DispatchArgs = 35u
+	DispatchArgs = 35u,
+	RayAllocScratch = 36u
 };
 
 constexpr uint32_t ToGLuint(SurfelGIBinding binding)
@@ -311,14 +312,17 @@ public:
 	rhi::BufferHandle GetRequestBuffer() const { return m_requestBuffer; }
 	rhi::BufferHandle GetRayBuffer() const { return m_rayBuffer; }
 	rhi::BufferHandle GetRayHitBuffer() const { return m_rayHitBuffer; }
+	// Scratch words for allocate_rays.comp: a sum, a threshold, tickets, a tie quota and the remainder histogram.
+	rhi::BufferHandle GetAllocScratchBuffer() const { return m_allocScratchBuffer; }
 	uint32_t GetMaxRays() const { return m_maxRays; }
 	uint32_t GetMaxSurfels() const { return m_maxSurfels; }
-	bool IsCreated() const { return m_requestBuffer.IsValid() && m_rayBuffer.IsValid() && m_rayHitBuffer.IsValid(); }
+	bool IsCreated() const { return m_requestBuffer.IsValid() && m_rayBuffer.IsValid() && m_rayHitBuffer.IsValid() && m_allocScratchBuffer.IsValid(); }
 
 private:
 	rhi::BufferHandle m_requestBuffer;
 	rhi::BufferHandle m_rayBuffer;
 	rhi::BufferHandle m_rayHitBuffer;
+	rhi::BufferHandle m_allocScratchBuffer;
 	uint32_t m_maxRays = 0;
 	uint32_t m_maxSurfels = 0;
 };

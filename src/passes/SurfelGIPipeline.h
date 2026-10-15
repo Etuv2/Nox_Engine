@@ -30,6 +30,7 @@ struct SurfelGIPipelineResources {
 	rhi::BufferHandle rayRequestBuffer;
 	rhi::BufferHandle rayBuffer;
 	rhi::BufferHandle rayHitBuffer;
+	rhi::BufferHandle rayAllocScratchBuffer;
 	rhi::BufferHandle radialDepthBuffer;
 	rhi::BufferHandle guideMapBuffer;
 	rhi::BufferHandle irradianceSnapshotBuffer;

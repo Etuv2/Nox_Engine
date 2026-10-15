@@ -164,17 +164,17 @@ namespace {
 	static SurfelGIBudgetCaps GetSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 24576u, 2048u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u };
+			return { 24576u, 1024u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u };
 		case SurfelGIQualityTier::High:
-			return { 131072u, 32768u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u };
+			return { 131072u, 4096u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u };
 		case SurfelGIQualityTier::Ultra:
-			return { 262144u, 65536u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 64u, 65536u, 262144u, 16384u };
+			return { 262144u, 8192u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 64u, 65536u, 262144u, 16384u };
 		case SurfelGIQualityTier::Medium:
 		default:
 			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
-			// their light) and 4096 rays per frame, between Low and High: at the former 192 rays a
-			// surfel saw one ray every few frames and multi-bounce took hundreds of frames to settle.
-			return { 65536u, 4096u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 65536u, 24576u, 2048u };
+			// their light). The ray budget is a value (the default for the tier), not a cap: the
+			// per-frame ray budget is shared out by demand (allocate_rays.comp). Medium is 2048.
+			return { 65536u, 2048u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 65536u, 24576u, 2048u };
 		}
 	}
 
@@ -182,7 +182,6 @@ namespace {
 		const SurfelGIBudgetCaps caps = GetSurfelGIBudgetCaps(settings.qualityTier);
 		if (!captureMode) {
 			settings.maxSurfels = std::min(settings.maxSurfels, caps.maxSurfels);
-			settings.maxRayBudget = std::min(settings.maxRayBudget, caps.maxRayBudget);
 			settings.spawnTileSize = std::max(settings.spawnTileSize, caps.minSpawnTileSize);
 			settings.maxSurfelsPerCell = std::min(settings.maxSurfelsPerCell, caps.maxSurfelsPerCell);
 			settings.maxGatherSurfelsPerPixel = std::min(settings.maxGatherSurfelsPerPixel, caps.maxGatherSurfelsPerPixel);
@@ -565,7 +564,10 @@ void ModularRenderer::SyncSurfelGISettings()
 	settings.debugView = static_cast<SurfelGIDebugView>(
 		std::clamp(m_context.surfelGIDebugView, 0, 38));
 	settings.maxSurfels = static_cast<uint32_t>(std::max(m_context.surfelGIMaxSurfels, 1024));
-	settings.maxRayBudget = static_cast<uint32_t>(std::max(m_context.surfelGIMaxRayBudget, 1024));
+	// 0 (the context default) means the quality tier's value. An explicit value is used as given.
+	settings.maxRayBudget = m_context.surfelGIMaxRayBudget > 0
+		? static_cast<uint32_t>(std::max(m_context.surfelGIMaxRayBudget, 1024))
+		: GetSurfelGIBudgetCaps(settings.qualityTier).maxRayBudget;
 	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.surfelGISpawnTileSize, 4, 16));
 	settings.maxSurfelsPerCell = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxSurfelsPerCell, 8, 256));
 	settings.maxGatherSurfelsPerPixel = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxGatherSurfelsPerPixel, 4, 2048));
@@ -656,7 +658,7 @@ void ModularRenderer::SyncSurfelGISettings()
 	m_context.surfelGIIntensity = settings.indirectIntensity;
 	m_context.surfelGICellAverageFallbackStrength = settings.cellAverageFallbackStrength;
 	m_context.surfelGIMaxSurfels = static_cast<int>(settings.maxSurfels);
-	m_context.surfelGIMaxRayBudget = static_cast<int>(settings.maxRayBudget);
+	// The resolved ray budget is not written back: the context keeps 0 (tier default) so a tier change takes effect.
 	m_context.surfelGISpawnTileSize = static_cast<int>(settings.spawnTileSize);
 	m_context.surfelGIMaxSurfelsPerCell = static_cast<int>(settings.maxSurfelsPerCell);
 	m_context.surfelGIMaxGatherSurfelsPerPixel = static_cast<int>(settings.maxGatherSurfelsPerPixel);
