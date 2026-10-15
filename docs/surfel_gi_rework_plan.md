@@ -1304,3 +1304,78 @@ Cost data on the quiet GPU are in §14.5. The total pass GPU figures above come 
 - NFS: 0.84 harness, 0.78 all-pixel. Irradiance sharing is the main cause (removing it gives 0.91); the remainder is not isolated.
 - Not established: the guided white-sky shortfall (1.6%).
 - Left to owners: irradiance sharing (gather), ray allocation and grid overflow (worker B), the shadow leak outside the cascades (lighting).
+
+## 16. Population and grid round 2
+
+Branch `worktree-agent-af875ff171ce0c409`. Base: `89b1cef`, the merge of the grid/population branch (`3a53435`) and estimator round 2 (`f4c96f8`). "Base" below is `89b1cef`. "Est" is `f4c96f8` built from a `git archive` copy, so the estimator is measured in the same session as the base. Harness: `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera, frames 200-260. Energy is the linear term metric (`term_energy`, composite debug 4) and ratio is `term_ratio_vs_indep` against the reference (`indep_term`, deterministic, one run per scene). Three repeats unless marked. Under-covered is the per-tile count from the counters (visible tiles whose lowest coverage is under 0.85), median over frames 200-260. GPU times were measured while other workers used the GPU, so absolute times are noisy: the NFS timing pairs are alternating base and final runs, three each, medians.
+
+### 16.1 Merge
+
+- `SurfelGIResources.h`: `GridSlots` and `Emitters` were both binding 37. Emitters moved to 39 (`B_SURFEL_EMITTERS` in `common.glsl` follows).
+- `tools/surfel_gi_metrics.py`: kept the grid branch's configs and the estimator's `TERM_CONFIG_PREFIXES` line.
+- Plan doc: kept 11.9 (estimator), 12 (grid), 13 and 14 (estimator), in that order.
+- `trace_rays.comp`, `irradiance_sharing.comp` and `SurfelGIPipeline.cpp` auto-merged. The grid-lookup calls were checked by the harness runs, not by reading the diff.
+
+### 16.2 What changed
+
+- Under-coverage. Spawn budget = `clamp(0.5 x under-covered tiles of last frame, floor, ceiling)`, limited by the population deficit to `min(kappa x visible, cap) - live`. Floor is `maxSpawnsPerFrame` (64 at Medium), ceiling is `visible tiles / 16`, bounded at 512 (per tier). Tile candidates above the highest spawn threshold skip the grid query (lazy candidate). Spawns younger than 8 frames are not culled by the score.
+- Population cap. The target is `min(kappa x visible, cap)`, cap 2048 at Medium (1024 Low, 4096 High, 8192 Ultra). At 1080p nearly every tile is visible, so the uncapped target was about 7,900 on scene and NFS, which diluted the ray budget.
+- Recycling (GIBS p.29). `score = 0.4 over + 0.3 stale + 0.3 far x over`, with staleness starting 30 frames after the last visible touch. Distance counts only while over target, so visible or recent surfels are not culled for distance.
+- Grid. Headers are offset + count (8 B). Pending counts (4 B) and average sums (24 B) are separate buffers. The count pass records each surfel's overlapped cells (`overlapCells`, INVALID for unused entries) and the scatter pass reads them, so the overlap geometry is evaluated once per frame. Overlap reach is the support sphere (`gridReachCellScale = 0`); the inflated 0.75-cell reach is available as `NOX_SURFEL_GI_GRID_REACH=0.75`.
+- Dispatch. The scan and scatter use the high-water groups. The count pass issues its slot atomics back to back.
+- Knobs for attribution: `NOX_SURFEL_GI_SPAWN_BUDGET_CEILING`, `..._TILE_DIVISOR`, `..._SPAWN_DEFICIT_LIMIT`, `..._POP_CAP`, `..._CELL_AVG_ALL`, `..._GRID_REACH`.
+
+### 16.3 Results
+
+| Scene | Config | Under-covered | Live | Energy ratio (term) | Energy | Noise (surf_term) | Grid ms (count / scan / build) | Recycle + spawn ms | Overflow |
+|---|---|---|---|---|---|---|---|---|---|
+| Cornell | base | 6.00% | 1618 | 1.104 | 0.657 | 0.24% (6 reps: 0.33%) | 0.156 (0.054 / 0.056 / 0.046) | 0.221 | 0 |
+| Cornell | est | 2.79% | 1892 | 1.203 | 0.716 | 0.24% | n/a | 0.497 (contended) | 21995 |
+| Cornell | final | 4.80% | 1638 | 1.185 | 0.705 | 0.36% (6 reps: 0.33%) | 0.092 (0.039 / 0.032 / 0.020) | 0.176 | 0 |
+| scene.json | base | 6.73% | 2546 | 0.911 | 0.342 | 1.93% | 0.192 (0.074 / 0.056 / 0.061) | 2.36 (contended) | 0 |
+| scene.json | est | 1.64% | 1756 | 0.956 | 0.359 | 0.10% | n/a | 2.93 (contended) | 9372 |
+| scene.json | final | 4.80% | 2048 | 0.956 | 0.359 | 0.17% | 0.106 (0.051 / 0.033 / 0.023) | 0.280 | 0 |
+| NFS | base | 13.30% | 1627 | 0.715 | 0.0526 | 11.1% | 0.180 (0.063 / 0.056 / 0.061) | 0.529 | 0 |
+| NFS | est | 5.58% | 2033 | 0.855 | 0.0629 | 1.58% | n/a | 6.79 (contended) | 11014 |
+| NFS | final | 6.72% | 2048 | 0.749 | 0.0551 | 1.52% | 0.106 (0.051 / 0.033 / 0.022) | 0.292 | 0 |
+
+NFS timing, alternating pairs (base / final, medians of three): recycle + spawn 0.529 / 0.293 ms, grid 0.181 / 0.106 ms, tracing 8.33 / 7.69 ms (estimator path continuation, not changed here). Dolly (`dolly:0.6,0,0:60`, Cornell, every frame dumped): no spike in the consecutive-frame difference during the motion. The largest second difference is at frame 60, where the camera stops.
+
+### 16.4 Attribution of the energy gap (Cornell, term ratio, three repeats)
+
+| Change from the default | Energy ratio | Under-covered | Note |
+|---|---|---|---|
+| Inflated grid reach (0.75 cell, merge default) | 1.139 to 1.196 when the reach is cut to the support sphere | 5.25% to 4.3% | The inflated reach fills cells with surfels the bounded lookups do not need. This is the main gap source found. |
+| Recycling off | 1.146 (default 1.139) | 5.4% | No effect once distance culls stop. |
+| Radial depth off | 1.146 | 5.1% | No effect. |
+| Cell averages from every overlapped cell | 1.142 | 5.3% | No effect. |
+| Spawn deficit limit off | 1.092 | 8.2% | Worse: the demand budget keeps spawning past the target and churns. |
+| Kappa 1.25 / 1.5 | 1.193 / 1.174 | 4.2% / 3.7% | Coverage needs about kappa 1.5 to approach 3%. |
+
+NFS kappa sweep (before the cap, one repeat, ratio against the reference term 0.0736): kappa 1.0 gives ratio 0.54 at 7,891 live surfels, kappa 0.5 gives 0.59 at 3,945, and kappa 0.25 gives 0.77 at 1,972. Under-coverage stays 6 to 7% across all three. So on NFS the population target is over-provisioned: coverage is structural and extra surfels only dilute the ray budget.
+
+### 16.5 Targets
+
+| Target | Result |
+|---|---|
+| Under-covered at most 3% on all three scenes | Not met: 4.80%, 4.80%, 6.72% (base 6.00%, 6.73%, 13.30%). |
+| Grid total at most 0.10 ms | Met on Cornell (0.092). Not met on scene.json and NFS (0.106, borderline). |
+| Recycle + spawn at most 0.25 ms on NFS | Not met: 0.29 ms (base 0.53, alternating pairs). |
+| Energy within 5% of the estimator alone | Met on Cornell (-1.5%) and scene.json (0.0%). Not met on NFS (-12%). |
+| Noise not worse | Met on Cornell over six repeats (mean 0.33% for both). Not measured with six repeats on scene and NFS. |
+| No popping in a dolly test | Met for the motion-stop check on Cornell (no spike). |
+| Overflow 0 | Met on all three (base 0). |
+
+### 16.6 Found along the way
+
+- The count pass as first written (one lane per candidate cell, shared-memory dedupe) gave systematically lower coverage (6.1% against 4.3% on Cornell). A serial-dedupe variant gave the same result. The cause is not found, so the sequential count is kept and the lane version is not in the tree.
+- The scatter read stale overlap entries beyond the recorded count. The count now writes INVALID for every unused entry.
+- `validate_surfel_gibs_phase4.py` fails on the base at the recycle check, and at the ray-scheduling check after it. Its grid and recycle checks now match this design. The other legacy validators that fail (`fallback_contract`, `irradiance_signal`, `stability_contract`, `coverage_priority`, and others) were already failing on the base and are not changed here.
+- Harness runs have two flakes. A window can be minimised, which pauses rendering and stalls a run (restored with `ShowWindow`), and a window can come out 1919 px wide (one base run was rerun).
+
+### 16.7 Open items
+
+- Under-coverage. The coverage plateau does not depend on the population, so the next lever is in the gather and cell candidates (bounded lookups take the first N in cell order). Both are outside this file set.
+- Energy on NFS (-12%). The population cap and grid reach account for most of the change. The rest is not isolated.
+- Grid on scene.json and NFS (0.106). Count is still the largest piece. The lane-parallel count is the obvious next step once its discrepancy is found.
+- The estimator's path continuation (tracing 8 ms on NFS) is the largest GPU cost and belongs to the estimator worker.

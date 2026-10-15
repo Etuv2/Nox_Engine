@@ -96,6 +96,17 @@ CONFIG_ENV = {
     "surf_term_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_r8k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "8192"},
     "surf_term_r8k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "8192", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    # Energy attribution (linear term metrics): one change from surf_term each. The names keep the surf_term prefix.
+    "surf_term_norecycle": {**SURF_ENV, "NOX_SURFEL_GI_MAX_RECYCLES": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_norad": {**SURF_ENV, "NOX_SURFEL_GI_RADIAL_DEPTH": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_avgall": {**SURF_ENV, "NOX_SURFEL_GI_CELL_AVG_ALL": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_reach0": {**SURF_ENV, "NOX_SURFEL_GI_GRID_REACH": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_nodeficit": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_DEFICIT_LIMIT": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k05": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.5", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k15": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.5", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k125": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.25", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k20": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "2.0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k025": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.25", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "ref": REF_ENV,
     "indep": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0"},
     # Reference GI alone (composite debug 4), the same quantity as surf_term. Use it for ratios: "indep" energy

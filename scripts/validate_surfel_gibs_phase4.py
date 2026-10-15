@@ -40,8 +40,8 @@ def main() -> None:
         require("SurfelWorldToGridAddress" in source,
                 f"{source_name} must use the shared non-linear grid address path")
 
-    require("SurfelGridOverlappedCells(" in build_grid and "SurfelGridOverlappedCells(" in grid_count,
-            "grid count and scatter must share the overlap enumeration in common.glsl")
+    require("SurfelGridOverlappedCells(" in grid_count and "overlapCells[" in grid_count and "overlapCells[" in build_grid,
+            "grid count must enumerate the overlap once and record it; the scatter must read the recorded cells")
     require("SurfelNonLinearGridCellCount" in common and
             "SurfelAxisRegionIndex" in common and
             "SurfelGridCellDebugBounds" in common,
@@ -92,7 +92,8 @@ def main() -> None:
             "pressureRecycled" in resources_h and
             "underCoveredTileCount" in resources_h,
             "counters must include coverage and recycling breakdowns")
-    require("0.4 * overTarget01 + 0.3 * stale01 + 0.3 * distance01" in recycle and
+    require("0.4 * overTarget01" in recycle and "0.3 * stale01" in recycle and
+            "0.3 * distance01 * overTarget01" in recycle and
             "0.5 * score" in recycle and
             "ReserveRecycleBudget()" in recycle and
             "uSpawnPopulationKappa" in recycle,
