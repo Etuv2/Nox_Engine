@@ -1,0 +1,134 @@
+#version 460 core
+
+// Independent diffuse GI reference (NOX_GI_REFERENCE=1). Brute-force cosine-sampled path tracing on the
+// software BVH, with direct light at every hit from shadow rays. It uses no surfels, no SSGI and no screen
+// tracing, so it can judge the surfel estimate without sharing its bias. The output is the diffuse
+// irradiance E (not radiance): the receiver albedo is applied later by the lighting pass, as for the
+// surfel term. Each dispatch adds one sample per quarter-resolution texel to a running mean.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "common.glsl"
+#include "surfel_scene_trace.glsl"
+
+layout(binding = T_SURFEL_GBUFFER_NORMAL_RM) uniform sampler2D uPackedNormalRMTex;
+layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
+
+// Running mean of E (rgb) for the quarter-resolution texel, and its alpha = coverage (1 on geometry).
+layout(binding = 0, rgba32f) uniform image2D uReferenceMean;
+// Number of samples accumulated into uReferenceMean.
+layout(binding = 1, r32f) uniform image2D uReferenceCount;
+
+uniform uvec2 uQuarterResolution;
+uniform uint uFrameIndex;
+uniform uint uResetAccumulation;
+uniform uint uSamplesPerFrame;
+uniform uint uBounces;
+uniform mat4 uInvProjection;
+uniform mat4 uInvView;
+
+const float REFERENCE_ORIGIN_OFFSET = 0.004;
+
+// PCG (RXS-M-XS) step on a 32-bit state; returns a uniform value in [0, 1).
+float ReferenceRandom(inout uint state)
+{
+    state = state * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    word = (word >> 22u) ^ word;
+    return float(word) / 4294967296.0;
+}
+
+vec3 ReferenceCosineDirection(vec3 normal, vec2 u)
+{
+    vec3 up = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = SurfelSafeNormalize(cross(up, normal));
+    vec3 bitangent = cross(normal, tangent);
+    float r = sqrt(u.x);
+    float phi = 2.0 * SURFEL_PI * u.y;
+    vec3 local = vec3(r * cos(phi), r * sin(phi), sqrt(max(0.0, 1.0 - u.x)));
+    return SurfelSafeNormalize(tangent * local.x + bitangent * local.y + normal * local.z);
+}
+
+// One path from a receiver. Returns the irradiance estimate E for this path. With throughput T_k (the product of
+// the albedos of the first k hits), the path adds T_{k-1} * pi * Le(x_k) for emission, T_k * Edirect(x_k) for direct
+// light at hit k, and T_k * pi * Lsky when the ray leaves the scene after hit k.
+vec3 ReferencePathIrradiance(vec3 origin, vec3 normal, inout uint rng)
+{
+    vec3 throughput = vec3(1.0);
+    vec3 estimate = vec3(0.0);
+    vec3 position = origin;
+    vec3 surfaceNormal = normal;
+
+    for (uint bounce = 0u; bounce <= uBounces; ++bounce) {
+        vec2 u = vec2(ReferenceRandom(rng), ReferenceRandom(rng));
+        vec3 direction = ReferenceCosineDirection(surfaceNormal, u);
+        SoftwareBVHHit hit = TraceSoftwareBVH(position + surfaceNormal * REFERENCE_ORIGIN_OFFSET,
+            direction, 0.0, SURFEL_TRACE_BVH_FAR_DISTANCE);
+        if (!hit.hit) {
+            estimate += throughput * SURFEL_PI * EvaluateMissEnvironmentRadiance(direction);
+            break;
+        }
+
+        vec3 hitNormal = hit.normal;
+        if (dot(hitNormal, direction) > 0.0) {
+            hitNormal = -hitNormal;
+        }
+        hitNormal = SurfelSafeNormalize(hitNormal);
+        vec3 emission = max(hit.material.emissive * hit.material.emissiveStrength, vec3(0.0));
+        estimate += throughput * SURFEL_PI * emission;
+
+        throughput *= clamp(hit.material.albedo, vec3(0.0), vec3(1.0));
+        vec3 hitPosition = hit.position + hitNormal * REFERENCE_ORIGIN_OFFSET;
+        estimate += throughput * EvaluateHitDirectIrradiance(hitPosition, hitNormal);
+
+        position = hitPosition;
+        surfaceNormal = hitNormal;
+    }
+    return estimate;
+}
+
+void main()
+{
+    uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x >= uQuarterResolution.x || pixel.y >= uQuarterResolution.y) {
+        return;
+    }
+
+    // Receiver: the full-resolution G-buffer texel at the centre of this quarter-resolution texel's 4x4 block.
+    ivec2 fullSize = textureSize(uDepthTex, 0);
+    ivec2 gbufferPixel = min(ivec2(pixel) * 4 + ivec2(2), fullSize - ivec2(1));
+    vec2 uv = (vec2(gbufferPixel) + 0.5) / vec2(fullSize);
+    float depth = texelFetch(uDepthTex, gbufferPixel, 0).r;
+
+    ivec2 outPixel = ivec2(pixel);
+    bool valid = depth < 0.99999 && depth > 0.0;
+    if (!valid) {
+        imageStore(uReferenceMean, outPixel, vec4(0.0));
+        imageStore(uReferenceCount, outPixel, vec4(0.0));
+        return;
+    }
+
+    vec3 worldPosition = SurfelReconstructWorldPosition(uv, depth, uInvProjection, uInvView);
+    vec3 worldNormal = SurfelSafeNormalize(SurfelDecodeNormalOct(texelFetch(uPackedNormalRMTex, gbufferPixel, 0).rg));
+
+    vec4 previous = imageLoad(uReferenceMean, outPixel);
+    float previousCount = imageLoad(uReferenceCount, outPixel).r;
+    if (uResetAccumulation != 0u) {
+        previous = vec4(0.0);
+        previousCount = 0.0;
+    }
+
+    uint seed = (pixel.x + pixel.y * uQuarterResolution.x) * 19349663u ^ SurfelHash(uFrameIndex + 0x9e3779b9u);
+    uint sampleCount = max(uSamplesPerFrame, 1u);
+    vec3 frameSum = vec3(0.0);
+    for (uint s = 0u; s < sampleCount; ++s) {
+        uint rng = seed ^ SurfelHash(s * 0x85ebca6bu + 0x1b873593u);
+        frameSum += ReferencePathIrradiance(worldPosition, worldNormal, rng);
+    }
+    vec3 frameMean = frameSum / float(sampleCount);
+
+    float newCount = previousCount + float(sampleCount);
+    vec3 newMean = (previous.rgb * previousCount + frameMean * float(sampleCount)) / newCount;
+    imageStore(uReferenceMean, outPixel, vec4(max(newMean, vec3(0.0)), 1.0));
+    imageStore(uReferenceCount, outPixel, vec4(newCount));
+}

@@ -223,6 +223,7 @@
     <ClCompile Include="src\BenchmarkRunner.cpp" />
     <ClCompile Include="src\BVH.cpp" />
     <ClCompile Include="src\BVHBuilder.cpp" />
+    <ClCompile Include="src\CameraPath.cpp" />
     <ClCompile Include="src\Camera.cpp" />
     <ClCompile Include="src\CollisionWorld.cpp" />
     <ClCompile Include="src\ComponentManager.cpp" />
@@ -412,6 +413,7 @@
     <ClInclude Include="src\bend_sss_cpu.h" />
     <ClInclude Include="src\BVH.h" />
     <ClInclude Include="src\BVHBuilder.h" />
+    <ClInclude Include="src\CameraPath.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\Collider.h" />
     <ClInclude Include="src\CollisionWorld.h" />
@@ -711,6 +713,8 @@
     <None Include="shaders\surfel_gi\spatial_filter.comp" />
     <None Include="shaders\surfel_gi\temporal_filter.comp" />
     <None Include="shaders\surfel_gi\trace_rays.comp" />
+    <None Include="shaders\surfel_gi\reference_gi.comp" />
+    <None Include="shaders\surfel_gi\surfel_scene_trace.glsl" />
     <None Include="shaders\surfel_gi\upscale_filter.comp" />
     <None Include="shaders\surfel_gi\update_surfels.comp" />
     <None Include="shaders\svgf_atrous_comp.glsl" />

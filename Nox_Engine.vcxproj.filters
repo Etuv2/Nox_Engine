@@ -408,6 +408,9 @@
     <ClCompile Include="src\BVHBuilder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\CameraPath.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\Camera.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1065,6 +1068,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\BVHBuilder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CameraPath.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Camera.h">
@@ -1881,6 +1887,12 @@
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
     <None Include="shaders\surfel_gi\trace_rays.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\reference_gi.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
+    <None Include="shaders\surfel_gi\surfel_scene_trace.glsl">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
     <None Include="shaders\surfel_gi\update_surfels.comp">

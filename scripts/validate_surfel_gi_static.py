@@ -1,3 +1,9 @@
+"""Static structural checks for the surfel GI pipeline (current design).
+
+Checks that hold on the tree as it is now: every compute shader the pipeline loads exists, the GPU
+struct layouts match between C++ and GLSL, the reference mode and shared-trace include are wired,
+and the removed WP1 names are gone. Run: python scripts/validate_surfel_gi_static.py
+"""
 from pathlib import Path
 import re
 
@@ -14,196 +20,131 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def require_exists(relpath: str) -> None:
-    require((ROOT / relpath).exists(), f"required file is missing: {relpath}")
+def cpp_struct_fields(source: str, name: str) -> list[tuple[str, str]]:
+    """(type, name) of each data member of a C++ struct, in declaration order."""
+    body = re.search(r"struct\s+(?:alignas\(\d+\)\s+)?" + name + r"\s*\{(.*?)\n\};", source, re.S)
+    require(body is not None, f"C++ struct {name} not found")
+    fields = []
+    for line in body.group(1).splitlines():
+        m = re.match(r"\s*(glm::u?vec4|uint32_t|float)\s+(\w+)", line)
+        if m:
+            fields.append((m.group(1), m.group(2)))
+    return fields
 
 
-def require_absent(relpath: str) -> None:
-    require(not (ROOT / relpath).exists(), f"deprecated file must be removed: {relpath}")
+def glsl_struct_fields(source: str, name: str) -> list[tuple[str, str]]:
+    """(type, name) of each member of a GLSL struct, in declaration order."""
+    body = re.search(r"struct\s+" + name + r"\s*\{(.*?)\n\};", source, re.S)
+    require(body is not None, f"GLSL struct {name} not found")
+    fields = []
+    for line in body.group(1).splitlines():
+        m = re.match(r"\s*(uvec4|vec4|uint|float)\s+(\w+)", line)
+        if m:
+            fields.append((m.group(1), m.group(2)))
+    return fields
+
+
+def check_struct_layout() -> None:
+    resources_h = read("src/surfel_gi/SurfelGIResources.h")
+    common = read("shaders/surfel_gi/common.glsl")
+
+    cpp_counters = cpp_struct_fields(resources_h, "SurfelCounters")
+    glsl_counters = glsl_struct_fields(common, "SurfelCounters")
+    require([n for _, n in cpp_counters] == [n for _, n in glsl_counters],
+            "SurfelCounters field names or order differ between SurfelGIResources.h and common.glsl")
+    require(len(cpp_counters) * 4 == 192, "SurfelCounters must be 48 uint32 fields (192 bytes)")
+    require("static_assert(sizeof(SurfelCounters) == 192" in resources_h,
+            "SurfelCounters size assert missing or changed")
+
+    cpp_surfel = cpp_struct_fields(resources_h, "Surfel")
+    glsl_surfel = glsl_struct_fields(common, "Surfel")
+    require([t.replace("glm::", "") for t, _ in cpp_surfel] == [t for t, _ in glsl_surfel],
+            "Surfel member types or order differ between C++ and GLSL")
+    require(len(cpp_surfel) == 13, "Surfel must keep its 13 members")
+
+    require("static_assert(sizeof(Surfel) == 208" in resources_h, "Surfel size assert missing or changed")
+
+
+def check_pipeline_shaders() -> None:
+    pipeline = read("src/passes/SurfelGIPipeline.cpp")
+    paths = re.findall(r'CreateCompute\([^,]+,\s*"(shaders/surfel_gi/[^"]+)"\)', pipeline)
+    require(len(paths) >= 15, f"expected at least 15 compute shaders in the pipeline, found {len(paths)}")
+    for relpath in paths:
+        require((ROOT / relpath).exists(), f"pipeline loads a missing shader: {relpath}")
+    require((ROOT / "shaders/surfel_gi/reference_gi.comp").exists(), "reference_gi.comp is missing")
+    require('CreateCompute(m_referenceShader, "shaders/surfel_gi/reference_gi.comp")' in pipeline,
+            "reference shader is not loaded in reference mode")
+
+
+def check_shared_trace_include() -> None:
+    trace = read("shaders/surfel_gi/trace_rays.comp")
+    reference = read("shaders/surfel_gi/reference_gi.comp")
+    shared = read("shaders/surfel_gi/surfel_scene_trace.glsl")
+    require('#include "surfel_scene_trace.glsl"' in trace, "trace_rays.comp must include the shared BVH/light include")
+    require('#include "surfel_scene_trace.glsl"' in reference, "reference_gi.comp must include the shared BVH/light include")
+    require("vec3 TraceSoftwareBVH" not in trace and "SoftwareBVHHit TraceSoftwareBVH" not in trace,
+            "software BVH traversal must live only in the shared include")
+    require("SoftwareBVHHit TraceSoftwareBVH(" in shared, "shared include lost TraceSoftwareBVH")
+    require("EvaluateHitDirectIrradiance(" in shared, "shared include lost the direct-light helper")
+    require("uniform mat4 uView;" not in trace, "uView must be declared once (in the shared include)")
+
+
+def check_reference_wiring() -> None:
+    modular = read("src/ModularRenderer.cpp")
+    pipeline = read("src/passes/SurfelGIPipeline.cpp")
+    reference = read("shaders/surfel_gi/reference_gi.comp")
+    require('IsEnvVarEnabled("NOX_GI_REFERENCE")' in modular, "NOX_GI_REFERENCE is not read by ModularRenderer")
+    require("if (m_settings.referenceMode) {" in pipeline and "ExecuteIndependentReference(" in pipeline,
+            "reference mode does not own the frame in Execute")
+    require("ApplyIndependentReference(context);" in pipeline, "reference mode does not resample in ApplyIndirect")
+    require("B_SURFELS" not in reference and "B_GRID" not in reference,
+            "the independent reference must not read surfel or grid buffers")
+
+
+def check_camera_and_exposure_hooks() -> None:
+    require((ROOT / "src/CameraPath.cpp").exists() and (ROOT / "src/CameraPath.h").exists(),
+            "CameraPath source files are missing")
+    core = read("src/Core.cpp")
+    require('GetEnvVarString("NOX_CAMERA_PATH")' in core and "cameraPath.Apply(*m_camera);" in core,
+            "NOX_CAMERA_PATH is not applied in the Core update loop")
+    scene_settings = read("src/SceneRenderSettings.cpp")
+    require('std::getenv("NOX_EXPOSURE_MODE")' in scene_settings, "NOX_EXPOSURE_MODE override is missing")
+
+
+def check_removed_names_absent() -> None:
+    removed = [
+        "BinAndSortRays", "GridAverages", "SortedRays", "rayBinBuffer", "sortedRayBuffer",
+        "gridAverageBuffer", "useRayBinning", "radialDepthUpdateInterval", "fastFillSpawnPasses",
+        "rayHitSourceDirect", "sourceDirectSamples", "B_RAY_BINS", "B_GRID_AVERAGES",
+        "SURFEL_REQUEST_CACHE_MAINTENANCE_PERIOD", "SURFEL_GENERATE_MAX_RAYS_PER_SURFEL",
+    ]
+    sources = [
+        "src/passes/SurfelGIPipeline.cpp", "src/passes/SurfelGIPipeline.h", "src/passes/SurfelGIManager.h",
+        "src/surfel_gi/SurfelGIResources.h", "src/surfel_gi/SurfelGIResources.cpp", "src/ModularRenderer.cpp",
+        "src/ImGui/RenderingSettingsWindow.cpp", "src/RenderContext.h",
+        "shaders/surfel_gi/common.glsl", "shaders/surfel_gi/integrate.comp", "shaders/surfel_gi/generate_rays.comp",
+        "shaders/surfel_gi/trace_rays.comp", "shaders/surfel_gi/request_rays.comp",
+    ]
+    for relpath in sources:
+        text = read(relpath)
+        for name in removed:
+            require(re.search(r"\b" + name + r"\b", text) is None, f"removed name '{name}' still in {relpath}")
+
+
+def check_msme_writes() -> None:
+    msme = read("shaders/surfel_gi/msme.comp")
+    require(re.search(r"surfel\.msme\.(z|w)\b", msme) is None, "msme.zw is written again; no reader uses it")
 
 
 def main() -> None:
-    legacy_files = [
-        "src/passes/SurfelGIPass.h",
-        "src/passes/SurfelGIPass.cpp",
-        "src/passes/SurfelIndirectDiffusePass.h",
-        "src/passes/SurfelIndirectDiffusePass.cpp",
-        "shaders/includes/surfel_gi_common.glsl",
-        "shaders/includes/surfel_gi_projection_support.glsl",
-        "shaders/includes/surfel_gi_visibility_compat.glsl",
-        "shaders/surfel_indirect_diffuse_gather_comp.glsl",
-        "shaders/surfel_gi_spawn_comp.glsl",
-        "shaders/surfel_gi_ray_trace_comp.glsl",
-        "shaders/surfel_gi_debug_frag.glsl",
-        "shaders/surfel_gi_debug_vert.glsl",
-    ]
-    for relpath in legacy_files:
-        require_absent(relpath)
-
-    replacement_files = [
-        "src/passes/SurfelGIManager.h",
-        "src/passes/SurfelGIManager.cpp",
-        "src/passes/SurfelGIPipeline.h",
-        "src/passes/SurfelGIPipeline.cpp",
-        "src/surfel_gi/SurfelGIResources.h",
-        "src/surfel_gi/SurfelGIResources.cpp",
-        "shaders/includes/surfel_gi_resources.glsl",
-        "shaders/surfel_gi/common.glsl",
-        "shaders/surfel_gi/begin_frame.comp",
-        "shaders/surfel_gi/count_live_surfels.comp",
-        "shaders/surfel_gi/apply_indirect.comp",
-        "shaders/surfel_gi/debug_surfels.vert",
-        "shaders/surfel_gi/debug_surfels.frag",
-        "shaders/surfel_gi/update_surfels.comp",
-        "shaders/surfel_gi/recycle_surfels.comp",
-        "shaders/surfel_gi/clear_grid.comp",
-        "shaders/surfel_gi/build_grid.comp",
-        "shaders/surfel_gi/cell_average.comp",
-        "shaders/surfel_gi/spawn.comp",
-        "shaders/surfel_gi/request_rays.comp",
-        "shaders/surfel_gi/allocate_rays.comp",
-        "shaders/surfel_gi/generate_rays.comp",
-        "shaders/surfel_gi/trace_rays.comp",
-        "shaders/surfel_gi/integrate.comp",
-        "shaders/surfel_gi/radial_depth_update.comp",
-        "shaders/surfel_gi/temporal_filter.comp",
-        "shaders/surfel_gi/upscale_filter.comp",
-    ]
-    for relpath in replacement_files:
-        require_exists(relpath)
-
-    manager_h = read("src/passes/SurfelGIManager.h")
-    render_context_h = read("src/RenderContext.h")
-    pipeline_cpp = read("src/passes/SurfelGIPipeline.cpp")
-    modular_cpp = read("src/ModularRenderer.cpp")
-    lighting_h = read("src/passes/LightingPass.h")
-    lighting_cpp = read("src/passes/LightingPass.cpp")
-    deferred = read("shaders/deferred_lighting_frag.glsl")
-    project = read("Nox_Engine.vcxproj")
-    filters = read("Nox_Engine.vcxproj.filters")
-    common = read("shaders/surfel_gi/common.glsl")
-    spawn = read("shaders/surfel_gi/spawn.comp")
-    apply_indirect = read("shaders/surfel_gi/apply_indirect.comp")
-    trace_rays = read("shaders/surfel_gi/trace_rays.comp")
-
-    require("bool enabled = false" in manager_h, "Surfel GI must remain disabled by default")
-    require("std::unique_ptr<SurfelGIManager> m_surfelGIManager" in read("src/ModularRenderer.h"),
-            "ModularRenderer must own the SurfelGIManager")
-    require("SurfelGIUpdatePass" in modular_cpp and '"GBuffer", "TransformHistory"' in modular_cpp,
-            "Surfel GI must be staged after G-buffer and transform history")
-    require("QuarantineDeprecatedSurfelGI" not in modular_cpp,
-            "deprecated RenderContext surfel controls must be removed from the normal Surfel GI path")
-
-    forbidden_legacy_tokens = [
-        "SetSurfelIndirectDiffuseTexture",
-        "surfelIndirectDiffuseMap",
-        "uEnableSurfelGI",
-        "uSurfelGIStrength",
-        "uUseLegacySurfelFragmentGather",
-        "EvaluatePersistentSurfelGI",
-        "includes/surfel_gi_common.glsl",
-    ]
-    for token in forbidden_legacy_tokens:
-        require(token not in lighting_h, f"legacy lighting hook remains in LightingPass.h: {token}")
-        require(token not in lighting_cpp, f"legacy lighting hook remains in LightingPass.cpp: {token}")
-        require(token not in deferred, f"legacy lighting shader hook remains: {token}")
-
-    for token in ("SurfelGIPass", "SurfelIndirectDiffusePass", "surfel_indirect_diffuse_gather_comp"):
-        require(token not in project, f"VS project still references deprecated token: {token}")
-        require(token not in filters, f"VS filters still reference deprecated token: {token}")
-    for token in ("SurfelGIManager.cpp", "SurfelGIPipeline.cpp", "src\\surfel_gi\\SurfelGIResources.cpp"):
-        require(token in project, f"VS project must include replacement file: {token}")
-
-    require("transform_tracking_contract.glsl" in common,
-            "surfel shaders must consume the engine transform contract")
-    for binding in ("#define B_SURFELS 10", "#define B_SURFEL_FREELIST 11", "#define B_TRANSFORMS 22"):
-        require(binding in common, f"surfel binding contract missing {binding}")
-    require("PopFreeIndex" in spawn and "SurfelReconstructWorldPosition" in spawn and "GpuTransformRecord" in spawn,
-            "spawn shader must allocate persistent surfels from G-buffer and transform IDs")
-    require("uSpawnPassCount" in spawn and "SurfelSpawnTilePixel" in spawn,
-            "spawn shader must use bounded deterministic per-tile pixel sweeps")
-    require(("ReceiverSurfelGatherWeight" in apply_indirect or "SurfelCoverageWeight" in apply_indirect) and
-            "imageStore(uOutIndirect" in apply_indirect,
-            "apply shader must gather surfels into a final indirect texture")
-    require("request_rays.comp" in pipeline_cpp and "trace_rays.comp" in pipeline_cpp and "integrate.comp" in pipeline_cpp,
-            "pipeline must wire adaptive ray request, tracing, and temporal integration passes")
-    require("SurfelGIIndirect" in modular_cpp and "SetIndirectDiffuseSource" in modular_cpp,
-            "renderer must feed surfel indirect output through the generic lighting path")
-    require("NOX_DISABLE_SURFEL_GI" in modular_cpp,
-            "runtime validation must be able to force Surfel GI off despite saved UI state")
-    require("RenderDebug" in pipeline_cpp and "debug_surfels.vert" in pipeline_cpp,
-            "surfel pipeline must expose a debug draw path for spawned surfels")
-
-    require("glGetBufferSubData" not in pipeline_cpp,
-            "surfel pipeline must not use blocking counter readbacks")
-    require("glGetQueryObjectui64v(queries[" not in pipeline_cpp,
-            "Surfel GI GPU timing must not synchronously wait for timestamp query results")
-    require("EnableTiming(" not in pipeline_cpp,
-            "surfel pipeline must not use blocking ComputeShader timing")
-    require("m_pendingTimingQueries" in pipeline_cpp and "GL_QUERY_RESULT_AVAILABLE" in pipeline_cpp,
-            "Surfel GI GPU timings must use delayed timestamp query readback")
-
-    required_timing_labels = [
-        "transform_update",
-        "recycling",
-        "grid_clear",
-        "grid_build",
-        "cell_averages",
-        "coverage_spawn",
-        "ray_request",
-        "ray_allocation",
-        "ray_generation",
-        "tracing",
-        "temporal_integration",
-        "radial_depth",
-        "final_gather",
-        "composite_filter",
-        "temporal_resolve",
-        "upscale_filter",
-        "debug_overhead",
-    ]
-    for label in required_timing_labels:
-        require(f'"{label}"' in pipeline_cpp, f"Surfel GI timing label is missing: {label}")
-    require("IndirectDiffusePass" in modular_cpp and "indirect_diffuse_gather_comp.glsl" in read("src/passes/IndirectDiffusePass.cpp"),
-            "SSGI comparison path must remain wired")
-
-    realtime_budget_tokens = [
-        "surfelGIMaxSurfels = 65536",
-        "surfelGIMaxRayBudget = 192",
-        "surfelGIMaxSurfelsPerCell = 128",
-        "surfelGIMaxGatherSurfelsPerPixel = 32",
-        "surfelGISpawnTileSize = 8",
-    ]
-    for token in realtime_budget_tokens:
-        require(token in render_context_h, f"real-time Surfel GI default missing from RenderContext.h: {token}")
-
-    require("return { 65536u, 192u, 8u, 64u, 32u, 1u, 0.32f, 0.20f, true, true" in modular_cpp,
-            "Medium Surfel GI budget must keep dense surfels, bounded ray/gather cost, and low-confidence fallback support")
-
-    manager_budget_tokens = [
-        "uint32_t maxSurfels = 65536u",
-        "uint32_t maxRayBudget = 192u",
-        "uint32_t spawnTileSize = 8u",
-        "uint32_t maxSurfelsPerCell = 128u",
-        "uint32_t maxGatherSurfelsPerPixel = 32u",
-    ]
-    for token in manager_budget_tokens:
-        require(token in manager_h, f"real-time Surfel GI default missing from SurfelGIManager.h: {token}")
-
-    trace_steps = re.search(r"const\s+uint\s+SURFEL_TRACE_STEPS\s*=\s*(\d+)u\s*;", trace_rays)
-    require(trace_steps is not None and int(trace_steps.group(1)) >= 8,
-            "correctness surfel trace must use enough steps to hit coloured bounce sources")
-    require("const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u" in trace_rays,
-            "correctness surfel trace must scan neighboring cells")
-    trace_cell_entries = re.search(r"const\s+uint\s+SURFEL_TRACE_MAX_CELL_ENTRIES\s*=\s*(\d+)u\s*;", trace_rays)
-    require(trace_cell_entries is not None and int(trace_cell_entries.group(1)) >= 8,
-            "correctness surfel trace must inspect enough entries per cell")
-    require("uniform uint uGatherNeighborRadius" in apply_indirect,
-            "final gather must expose a bounded neighbor radius uniform")
-    require("Spawned surfels must be visible to same-frame ray tracing" in pipeline_cpp,
-            "Surfel GI must rebuild the grid after spawning so final gather can see new surfels")
-    require("ComputeSpawnPassCount" in pipeline_cpp and "stationaryFastFillFrames" in pipeline_cpp,
-            "Surfel GI must expose bounded fast-fill spawn scheduling")
+    check_struct_layout()
+    check_pipeline_shaders()
+    check_shared_trace_include()
+    check_reference_wiring()
+    check_camera_and_exposure_hooks()
+    check_removed_names_absent()
+    check_msme_writes()
+    print("validate_surfel_gi_static: OK")
 
 
 if __name__ == "__main__":

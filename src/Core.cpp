@@ -1,5 +1,6 @@
 #include "Core.h"
 #include "BenchmarkRunner.h"
+#include "CameraPath.h"
 #include "SceneRenderSettings.h"
 #include "render/ActiveCamera.h"
 #include "render/ParticleSystem.h"
@@ -1015,6 +1016,13 @@ void Core::Update(float deltaTime) {
 				m_modularRenderer->ResetTAA();
 			}
 		}
+	}
+
+	// NOX_CAMERA_PATH: deterministic camera motion for repeatable temporal tests (CameraPath.h). It poses
+	// the camera after game and benchmark posing, so it overrides them while the path is active.
+	static CameraPath cameraPath(GetEnvVarString("NOX_CAMERA_PATH"));
+	if (cameraPath.IsEnabled() && m_camera) {
+		cameraPath.Apply(*m_camera);
 	}
 
 	// Handle deferred physics toggle

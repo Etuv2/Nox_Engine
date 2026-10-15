@@ -78,9 +78,6 @@ struct SurfelGISettings {
 	uint32_t maxGatherSurfelsPerPixel = 32u;
 	uint32_t gatherNeighborRadius = 1u;
 	uint32_t rayUpdateInterval = 1u;
-	uint32_t radialDepthUpdateInterval = 4u;
-	uint32_t spawnPasses = 1u;
-	uint32_t fastFillSpawnPasses = 4u;
 	uint32_t fastFillFrameCount = 16u;
 	uint32_t stationaryFastFillFrames = 24u;
 	// Ceiling on spawns per frame. The per-frame budget itself is computed on the GPU from the
@@ -108,12 +105,13 @@ struct SurfelGISettings {
 	bool useNonLinearGrid = true;
 	bool useRadialDepth = true;
 	bool useRayGuiding = true;
-	bool useRayBinning = true;
 	bool useIrradianceSharing = true;
 	bool useScreenSpaceTrace = true;
 	bool useSoftwareBVHTrace = true;
 	bool useSurfelFallbackTrace = true;
 	bool placementValidationMode = false;
+	// NOX_GI_REFERENCE=1: independent path-traced diffuse GI replaces the surfel irradiance (debug; off by default).
+	bool referenceMode = false;
 };
 
 struct SurfelGIFrameStats {
@@ -151,10 +149,8 @@ struct SurfelGIFrameStats {
 	uint32_t rayHitScreen = 0;
 	uint32_t rayHitBVH = 0;
 	uint32_t rayHitEnvironment = 0;
-	uint32_t rayHitSourceDirect = 0;
 	uint32_t rayHitMiss = 0;
 	uint32_t acceptedRaySamples = 0;
-	uint32_t sourceDirectSamples = 0;
 	uint32_t temporalClampEvents = 0;
 	uint32_t sharingAppliedSurfels = 0;
 	uint32_t sharingRejectedDarkLift = 0;
@@ -163,6 +159,16 @@ struct SurfelGIFrameStats {
 	uint32_t finalGatherBleedPixels = 0;
 	uint32_t finalGatherValidPixels = 0;
 	uint32_t finalGatherEmptyPixels = 0;
+	// Debug counters (per frame, read back through the async counter path).
+	uint32_t youngSurfels = 0;
+	uint32_t rayShortfall = 0;
+	uint32_t staleRaySlots = 0;
+	// RT scene update of the latest frame (CPU ms and upload flags from RTSceneResources).
+	float rtInstanceListMs = 0.0f;
+	float rtUploadMs = 0.0f;
+	uint32_t rtUploadRan = 0;
+	uint32_t rtGeometryUploaded = 0;
+	uint32_t rtInstanceBufferRewritten = 0;
 	float updateTimeMs = 0.0f;
 	float traceTimeMs = 0.0f;
 	float applyTimeMs = 0.0f;

@@ -24,11 +24,6 @@ layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
     GuideCell guideCells[];
 };
 
-layout(binding = B_RAY_BINS, std430) buffer SurfelRayBinBuffer
-{
-    uint rayBins[];
-};
-
 uniform uint uMaxSurfels;
 uniform uint uMaxRays;
 uniform uint uFrameIndex;
@@ -39,7 +34,6 @@ uniform float uLightingChangeFactor = 0.0;
 
 const uint SURFEL_GUIDE_SIDE = 6u;
 const float SURFEL_GUIDE_CELL_DENSITY = 9.0;
-const uint SURFEL_GENERATE_MAX_RAYS_PER_SURFEL = 8u;
 const float SURFEL_GUIDE_MIX_PROBABILITY = 0.65;
 
 float SurfelGuideMixProbability()
@@ -194,7 +188,7 @@ void main()
         return;
     }
 
-    uint rayCount = min(min(request.allocatedCount, SURFEL_GENERATE_MAX_RAYS_PER_SURFEL), uMaxRays - request.firstRay);
+    uint rayCount = min(min(request.allocatedCount, SURFEL_GENERATED_RAYS_PER_SURFEL), uMaxRays - request.firstRay);
     for (uint i = 0u; i < rayCount; ++i) {
         uint rayID = request.firstRay + i;
 
@@ -222,6 +216,5 @@ void main()
         rays[rayID].direction_tMax = vec4(direction, max(uRayTMax, 0.001));
         rays[rayID].ids = uvec4(request.surfelID, directionBin, i, rayCount);
         rays[rayID].throughput = vec4(1.0, 1.0, 1.0, max(pdf, 1e-4));
-        rayBins[rayID] = directionBin;
     }
 }

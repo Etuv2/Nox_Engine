@@ -154,7 +154,6 @@ private:
 	float m_surfelGICellAverageFallbackStrength = 0.20f;
 	bool m_surfelGIUseRadialDepth = true;
 	bool m_surfelGIUseRayGuiding = true;
-	bool m_surfelGIUseRayBinning = true;
 	bool m_surfelGIUseScreenTrace = true;
 	bool m_surfelGIUseSurfelFallbackTrace = true;
 	bool m_surfelGIPlacementValidation = false;

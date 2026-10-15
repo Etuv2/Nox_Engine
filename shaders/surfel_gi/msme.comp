@@ -26,10 +26,8 @@ void SurfelMSMEStore(inout Surfel surfel, SurfelMSMEData data)
     surfel.irradiance.rgb = max(data.mean, vec3(0.0));
     surfel.shortMean.rgb = max(data.shortMean, vec3(0.0));
     surfel.shortM2.rgb = max(data.variance, vec3(0.0));
-    surfel.msme = vec4(max(data.vbbr, 0.0),
-                       max(data.inconsistency, 0.0),
-                       SurfelLuminance(abs(data.mean - data.shortMean)),
-                       SurfelLuminance(max(data.variance, vec3(0.0))));
+    // msme.zw is not written: no reader uses it (the mean and variance it used to hold are in irradiance and shortM2).
+    surfel.msme.xy = vec2(max(data.vbbr, 0.0), max(data.inconsistency, 0.0));
 }
 
 void SurfelMSMEInitialize(inout Surfel surfel, vec3 initialMean, vec3 initialVariance)
@@ -38,7 +36,7 @@ void SurfelMSMEInitialize(inout Surfel surfel, vec3 initialMean, vec3 initialVar
     surfel.irradiance.rgb = safeMean;
     surfel.shortMean.rgb = safeMean;
     surfel.shortM2.rgb = max(initialVariance, vec3(0.0));
-    surfel.msme = vec4(1.0, 1.0, 0.0, SurfelLuminance(max(initialVariance, vec3(0.0))));
+    surfel.msme.xy = vec2(1.0, 1.0);
 }
 
 // Multiscale mean estimation for surfel irradiance. This is a more robust alternative to exponential moving average that maintains two means (one "short" mean with a faster response time and one "long" mean with a slower response time) and a variance estimate to determine how much the means should be blended together. The "vbbr" field is a user-configurable parameter that can be used to reduce the short mean's influence when the variance is very high, which can help prevent fireflies from polluting the estimate.

@@ -9,6 +9,9 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
     SurfelCounters counters;
 };
 
+// Cache-maintenance reservation added to requestedRays each frame (max(maxSurfels / 64, 1), set by the host).
+uniform uint uRequestReservation = 0u;
+
 void main()
 {
     // Coverage deficit of the last spawn frame feeds this frame's spawn budget. Spawning runs on
@@ -20,7 +23,7 @@ void main()
     counters.liveCount = 0u;
     counters.spawnedThisFrame = 0u;
     counters.recycledThisFrame = 0u;
-    counters.requestedRays = 0u;
+    counters.requestedRays = uRequestReservation;
     counters.allocatedRays = 0u;
     counters.overflowSurfels = 0u;
     counters.overflowGridEntries = 0u;
@@ -49,10 +52,8 @@ void main()
     counters.rayHitScreen = 0u;
     counters.rayHitBVH = 0u;
     counters.rayHitEnvironment = 0u;
-    counters.rayHitSourceDirect = 0u;
     counters.rayHitMiss = 0u;
     counters.acceptedRaySamples = 0u;
-    counters.sourceDirectSamples = 0u;
     counters.temporalClampEvents = 0u;
     counters.sharingAppliedSurfels = 0u;
     counters.sharingRejectedDarkLift = 0u;
@@ -61,4 +62,6 @@ void main()
     counters.finalGatherBleedPixels = 0u;
     counters.finalGatherValidPixels = 0u;
     counters.finalGatherEmptyPixels = 0u;
+    counters.youngSurfelCount = 0u;
+    counters.staleRaySlotCount = 0u;
 }

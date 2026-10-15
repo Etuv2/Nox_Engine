@@ -26,5 +26,8 @@ void main()
     if (SurfelIsAlive(surfels[surfelID])) {
         atomicAdd(counters.liveCount, 1u);
         atomicMax(counters.highWaterIndex, surfelID + 1u);
+        if (surfels[surfelID].worldNormal_age.w < 4.0) {
+            atomicAdd(counters.youngSurfelCount, 1u);
+        }
     }
 }

@@ -26,14 +26,10 @@ struct SurfelGIPipelineResources {
 	rhi::BufferHandle countersBuffer;
 	rhi::BufferHandle gridHeaderBuffer;
 	rhi::BufferHandle gridEntryBuffer;
-	rhi::BufferHandle gridAverageBuffer;
 	rhi::BufferHandle gridCountersBuffer;
 	rhi::BufferHandle rayRequestBuffer;
 	rhi::BufferHandle rayBuffer;
-	rhi::BufferHandle sortedRayBuffer;
 	rhi::BufferHandle rayHitBuffer;
-	rhi::BufferHandle rayBinBuffer;
-	rhi::BufferHandle rayCountersBuffer;
 	rhi::BufferHandle radialDepthBuffer;
 	rhi::BufferHandle guideMapBuffer;
 	rhi::BufferHandle irradianceSnapshotBuffer;
@@ -49,6 +45,9 @@ struct SurfelGIPipelineResources {
 	rhi::TextureHandle indirectTexture;
 	rhi::TextureHandle historyIndirectTexture[2];
 	rhi::TextureHandle historyGeometryTexture[2];
+	// Reference mode only: quarter-resolution running mean of diffuse irradiance (rgb) and its sample count.
+	rhi::TextureHandle referenceMeanTexture;
+	rhi::TextureHandle referenceCountTexture;
 };
 
 class SurfelGIPipeline final {
@@ -98,6 +97,14 @@ private:
 	void ReleaseShaders();
 	bool CreateIndirectTexture();
 	void ReleaseIndirectTexture();
+	// Light, shadow and sky uniforms and textures shared by the software BVH tracers.
+	void BindSoftwareTraceLighting(rhi::ProgramHandle program, RenderContext& context,
+		const std::shared_ptr<Camera>& camera, const std::shared_ptr<Skybox>& skybox);
+	// Reference mode (NOX_GI_REFERENCE=1): path-traced accumulation, and resampling into the indirect texture.
+	void ExecuteIndependentReference(RenderContext& context, const std::shared_ptr<SceneGraph>& sceneGraph,
+		const std::shared_ptr<Camera>& camera, const std::shared_ptr<DirectionalLight>& dirLight,
+		const std::shared_ptr<Skybox>& skybox);
+	void ApplyIndependentReference(RenderContext& context);
 	void ReleaseAuxiliaryResources();
 	bool CreateAuxiliaryResources();
 	void BindCoreResources(rhi::BufferHandle transformBuffer) const;
@@ -136,11 +143,16 @@ private:
 	std::unique_ptr<ComputeShader> m_spatialFilterShader;
 	std::unique_ptr<ComputeShader> m_temporalFilterShader;
 	std::unique_ptr<ComputeShader> m_upscaleFilterShader;
+	std::unique_ptr<ComputeShader> m_referenceShader;
 	rhi::ProgramHandle m_debugProgram;
 	rhi::ProgramHandle m_debugPresentProgram;
 	rhi::VertexInputHandle m_debugVAO;
 	glm::vec3 m_lastCameraPosition{ 0.0f };
 	glm::mat4 m_lastView{ 1.0f };
+	// Reference mode: the accumulation restarts when the view changes or the textures are reallocated.
+	glm::mat4 m_referenceView{ 1.0f };
+	bool m_hasReferenceView = false;
+	bool m_referenceResetPending = true;
 	std::vector<glm::vec4> m_lastLightingSignature;
 	float m_lightingChangeFactor = 0.0f;
 	float m_lightingChangeResponse = 0.0f;

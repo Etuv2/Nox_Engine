@@ -38,6 +38,12 @@ public:
         std::size_t trianglesBuiltThisFrame = 0;
         double buildMsThisFrame = 0.0;
         bool incrementalReady = false;
+        // Per-call CPU timing and upload flags for the most recent EnsureIncrementalBLAS call.
+        double instanceListMsThisFrame = 0.0;
+        double uploadMsThisFrame = 0.0;
+        bool uploadRanThisFrame = false;
+        bool geometryUploadedThisFrame = false;
+        bool instanceBufferRewrittenThisFrame = false;
     };
 
     RTSceneResources() = default;
