@@ -16,6 +16,7 @@ def require(condition: bool, message: str) -> None:
 def main() -> None:
     generate = read("shaders/surfel_gi/generate_rays.comp")
     trace = read("shaders/surfel_gi/trace_rays.comp")
+    shared = read("shaders/surfel_gi/surfel_scene_trace.glsl")
     integrate = read("shaders/surfel_gi/integrate.comp")
 
     require("bool SurfelSelectGuideBin(" in generate,
@@ -25,30 +26,28 @@ def main() -> None:
     require("!(selectedWeight > 0.0)" not in generate,
             "guided sampling must not reject before assigning selectedWeight")
 
-    require("EvaluateHitEnvironmentIrradiance" in trace and
-            "TraceSkyVisibilityAtSurface" in trace and
-            "SkyOcclusionVisibilityFromHitDistance" in trace and
-            "uSkyIrradianceMap" in trace and
-            "TraceSoftwareBVH(origin, skyDir" in trace and
-            "return hemisphereAccess * SkyOcclusionVisibilityFromHitDistance(skyHit.t);" in trace,
-            "ray-hit environment lighting must come from skybox irradiance with distance-weighted BVH sky visibility")
+    # Plan section 14: one sky estimator. A hit shades through the shared path; without a coplanar cache the path
+    # continues, and the sky enters only at a miss (EvaluateMissEnvironmentRadiance, weighted by the throughput).
+    require("ShadeHitRadiance(" in trace and "SurfelPathRadiance(" in trace and
+            "TraceCachedIndirectAtSurface(" in trace,
+            "hit radiance must come from the shared path, with the surfel cache answering where it has coplanar surfels")
+    require("return radiance + throughput * EvaluateMissEnvironmentRadiance(direction);" in shared,
+            "the sky must enter the path at a miss, weighted by the path throughput")
     require("uSkyRadiance * max(rayDir.y, 0.0)" not in trace,
             "ray misses must not become simple horizon-weighted ambient irradiance samples")
-    require("EvaluateMissEnvironmentRadiance" in trace and
-            "uSkyEnvironmentMap" in trace and
+    require("EvaluateMissEnvironmentRadiance" in shared and
+            "uSkyEnvironmentMap" in shared and
             "SURFEL_TRACE_HIT_KIND_ENVIRONMENT" in trace,
             "unoccluded ray misses must accumulate directional skybox environment radiance, not be discarded or filled with flat ambient")
-    require("directIrradiance + environmentIrradiance + cachedIndirectIrradiance" in trace,
-            "hit radiance must include direct diffuse, visible skybox irradiance, and cached surfel indirect at the hit")
-    require("emissiveRadiance" in trace and "emissiveSurfelHit" in trace,
-            "surfel fallback hits must preserve emissive radiance")
-    require("vec3 environmentIrradiance = EvaluateHitEnvironmentIrradiance(surfelPos, surfelNormal);" in trace and
-            "directIrradiance + environmentIrradiance + cachedIndirectIrradiance" in trace,
-            "surfel fallback hits must gather the same direct, environment, and cached indirect terms as BVH/screen hits")
+    require("albedo * SURFEL_INV_PI * (direct + cached)" in shared and
+            "albedo * SURFEL_INV_PI * (direct + nee)" in shared,
+            "hit radiance must include direct diffuse, emitter next-event light and cached surfel indirect at the hit")
+    require("emitterIrradiance" in integrate and "SurfelRelativeClamp(sampleIrradiance, sampleBoundLum)" in integrate,
+            "the next-event estimate must join the ray samples, bounded by the relative clamp")
     require("gather.radiance = vec3(0.0);" in trace,
             "invalid misses and nearest-cluster resets must still write explicit zero radiance")
 
-    require("bool validSample = hit.normal_hitKind.w > 0.5;" in integrate,
+    require("if (hit.normal_hitKind.w <= 0.5) {" in integrate,
             "temporal integration must accept real hit samples only")
     require("SurfelLuminance(max(hit.radiance_pdf.rgb, vec3(0.0))) > 1e-5" not in integrate,
             "temporal integration must not treat bright misses as valid samples")

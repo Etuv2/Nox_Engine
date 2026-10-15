@@ -65,6 +65,15 @@ uniform int uUseScreenSpaceTrace = 1;
 uniform int uUseSurfelFallbackTrace = 1;
 uniform uint uBVHTraceStride = 1u;
 uniform float uLightingChangeFactor = 0.0;
+uniform int uUseRayGuiding = 0;
+
+// Guide map of the surfel rays: the density of the origin's next-event MIS weight needs it (plan section 14).
+layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
+{
+    GuideCell guideCells[];
+};
+
+#include "guide_pdf.glsl"
 
 const uint SURFEL_TRACE_STEPS = 8u;
 const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
@@ -86,8 +95,6 @@ const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_TRACE_SCREEN_RELIABILITY = 0.18;
-const float SURFEL_TRACE_SKY_VISIBILITY_DISTANCE = 32.0;
-const float SURFEL_SKY_OPEN_MISS_VISIBILITY = 0.45;
 
 struct TraceGather
 {
@@ -140,66 +147,6 @@ bool SurfelProjectWorldToScreen(vec3 worldPos, out vec2 uv, out float depth01)
 bool SurfelScreenDepthValid(float depth01)
 {
     return depth01 > 0.0 && depth01 < 0.999999 && !isnan(depth01) && !isinf(depth01);
-}
-
-float SkyOcclusionVisibilityFromHitDistance(float hitDistance)
-{
-    if (hitDistance <= 0.0) {
-        return 0.0;
-    }
-
-    float corridorLeak = smoothstep(5.0, 22.0, hitDistance) * 0.16;
-    float farLeak = smoothstep(22.0, SURFEL_TRACE_SKY_VISIBILITY_DISTANCE, hitDistance) * 0.34;
-    return clamp(max(corridorLeak, farLeak), 0.0, 0.34);
-}
-
-float DiffuseSkyHemisphereAccess(vec3 normal, vec3 skyDir)
-{
-    return clamp(0.5 + 0.5 * dot(normal, skyDir), 0.0, 1.0);
-}
-
-float TraceSkyVisibilityDirection(vec3 worldPos, vec3 normal, vec3 skyDir)
-{
-    skyDir = SurfelSafeNormalize(skyDir);
-    float hemisphereAccess = DiffuseSkyHemisphereAccess(normal, skyDir);
-    if (hemisphereAccess <= 1e-4) {
-        return 0.0;
-    }
-
-    if (uUseSoftwareBVHTrace != 0 && uBVHNodeCount > 0u && uTriangleCount > 0u) {
-        vec3 origin = worldPos + normal * 0.035 + skyDir * 0.025;
-        SoftwareBVHHit skyHit = TraceSoftwareBVH(origin, skyDir, 0.04, SURFEL_TRACE_SKY_VISIBILITY_DISTANCE);
-        if (skyHit.hit) {
-            return hemisphereAccess * SkyOcclusionVisibilityFromHitDistance(skyHit.t);
-        }
-    }
-
-    return hemisphereAccess * SURFEL_SKY_OPEN_MISS_VISIBILITY;
-}
-
-float TraceSkyVisibilityAtSurface(vec3 worldPos, vec3 normal)
-{
-    vec3 skyUp = vec3(0.0, 1.0, 0.0);
-    vec3 bentSky = SurfelSafeNormalize(mix(skyUp, normal, 0.28));
-    return clamp(TraceSkyVisibilityDirection(worldPos, normal, bentSky), 0.0, 1.0);
-}
-
-vec3 EvaluateHitEnvironmentIrradiance(vec3 worldPos, vec3 normal)
-{
-    if (uSkyDiffuseScale <= 1e-5) {
-        return vec3(0.0);
-    }
-
-    float skyVisibility = TraceSkyVisibilityAtSurface(worldPos, normal);
-    if (skyVisibility <= 1e-4) {
-        return vec3(0.0);
-    }
-
-    // The irradiance map stores E / pi (and uSkyRadiance is a radiance), so scale by pi for E.
-    vec3 skyIrradianceOverPi = uUseSkyIrradianceMap != 0
-        ? textureLod(uSkyIrradianceMap, normal, 0.0).rgb
-        : uSkyRadiance;
-    return max(skyIrradianceOverPi, vec3(0.0)) * SURFEL_PI * uSkyDiffuseScale * skyVisibility;
 }
 
 // Weight of a cached surfel's irradiance for a point on a surface: only surfels on the same
@@ -444,16 +391,50 @@ vec3 TraceVisibleGBufferAlbedoAtSurface(vec3 worldPos, vec3 normal, out float co
     return visibleAlbedo;
 }
 
-// Radiance leaving a hit surface toward the ray: Lambertian reflection of the live direct light
-// plus the cached indirect irradiance there (sky where the cache is empty), plus emission.
-vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissive, uint sourceSurfelID, uint seed)
+// Cached indirect irradiance for the shared path (surfel_scene_trace.glsl): the same-surface cache lookup.
+bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID, uint seed, out vec3 irradiance)
 {
-    vec3 directIrradiance = EvaluateHitDirectIrradiance(hitPos, hitNormal);
-    vec3 indirectIrradiance;
-    if (!TraceCachedIndirectAtSurface(hitPos, hitNormal, sourceSurfelID, seed, indirectIrradiance)) {
-        indirectIrradiance = EvaluateHitEnvironmentIrradiance(hitPos, hitNormal);
+    return TraceCachedIndirectAtSurface(position, normal, sourceSurfelID, seed, irradiance);
+}
+
+// Radiance leaving a hit toward the ray: the path from the hit (SurfelPathRadiance). Where the cache has a coplanar
+// surfel it answers the hit; elsewhere the path continues, so the indirect light is not dropped (plan section 14, O1).
+// emissionWeight is the hit's emission, already MIS weighted by the caller.
+vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed)
+{
+    return SurfelPathRadiance(hitPos, hitNormal, albedo, emissionWeight, sourceSurfelID,
+        SurfelPathSeed(seed, uFrameIndex), 1u, true, 1u);
+}
+
+// Solid-angle density of the surfel's ray sampling (generate_rays.comp) in direction dir: the cosine lobe, mixed with the
+// guide map when guiding is on. The next-event sample at a ray origin is MIS weighted against it.
+float SurfelRaySamplingDensity(uint surfelID, vec3 normal, vec3 dir)
+{
+    vec3 hemiDir = SurfelWorldToHemiDir(dir, normal);
+    float cosine = max(hemiDir.z, 0.0) / SURFEL_PI;
+    if (uUseRayGuiding == 0) {
+        return max(cosine, 1e-4);
     }
-    return albedo * SURFEL_INV_PI * (directIrradiance + indirectIrradiance) + emissive;
+    bool hasGuide;
+    float guided = SurfelGuidePdf(surfelID, hemiDir, hasGuide);
+    if (!hasGuide) {
+        return max(cosine, 1e-4);
+    }
+    return max(mix(cosine, guided, SurfelGuideMixProbability()), 1e-4);
+}
+
+// Next-event estimate of the emitters at a surfel ray origin: one emitter sample, MIS weighted against the ray's sampling.
+vec3 SurfelOriginEmitterIrradiance(SurfelRay ray, uint rayID, vec3 normal)
+{
+    uint rng = SurfelPathSeed(ray.ids.x ^ (rayID * 2246822519u) ^ (ray.ids.z * 2891336453u), uFrameIndex);
+    vec3 u = vec3(SurfelPathRandom(rng), SurfelPathRandom(rng), SurfelPathRandom(rng));
+    vec3 irradiance;
+    vec3 dir;
+    float lightPdf;
+    if (!SurfelEmitterIrradianceSample(ray.origin_tMin.xyz, normal, u, irradiance, dir, lightPdf)) {
+        return vec3(0.0);
+    }
+    return irradiance * SurfelPowerWeight(lightPdf, SurfelRaySamplingDensity(ray.ids.x, normal, dir));
 }
 
 bool ScreenSpaceHitRadiance(vec2 uv,
@@ -528,7 +509,10 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
     }
     // Same product as the reference and the deferred pass (emissive * KHR emissive strength, default 1).
     vec3 emissive = max(hit.material.emissive * hit.material.emissiveStrength, vec3(0.0));
-    gather.radiance = ShadeHitRadiance(hit.position, hit.normal, albedo, emissive, ray.ids.x, cacheSeed);
+    // Emission is MIS weighted against this ray's sampling density; the origin's next-event sample is the other half.
+    float emitterHitPdf = SurfelEmitterHitPdf(SurfelLuminance(emissive), hit.t, hit.geometricNormal, direction);
+    gather.radiance = ShadeHitRadiance(hit.position, hit.normal, albedo,
+        emissive * SurfelPowerWeight(ray.throughput.a, emitterHitPdf), ray.ids.x, cacheSeed);
     gather.normal = hit.normal;
     gather.position = hit.position;
     gather.weight = 1.0;
@@ -912,4 +896,11 @@ void main()
     hits[rayID].radiance_pdf = vec4(gather.radiance * max(ray.throughput.rgb, vec3(0.0)), ray.throughput.a);
     // ids.w stamps the frame, so integrate.comp can reject a hit left over from an earlier frame.
     hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, uFrameIndex);
+    // Next-event estimate at the origin, for the rays that trace on the software BVH (every ray at stride 1).
+    hits[rayID].emitterIrradiance = vec4(0.0);
+    if (uUseSoftwareBVHTrace != 0 && uEmitterCount != 0u && ray.ids.x < uMaxSurfels &&
+        (uBVHTraceStride <= 1u || (((rayID + uFrameIndex) % max(uBVHTraceStride, 1u)) == 0u))) {
+        vec3 surfelNormal = SurfelSafeNormalize(surfels[ray.ids.x].worldNormal_age.xyz);
+        hits[rayID].emitterIrradiance = vec4(SurfelOriginEmitterIrradiance(ray, rayID, surfelNormal), 0.0);
+    }
 }

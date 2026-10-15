@@ -6,6 +6,7 @@
 #define B_SURFEL_COUNTERS 12
 #define B_SURFEL_DISPATCH_ARGS 35
 #define B_RAY_ALLOC_SCRATCH 36
+#define B_SURFEL_EMITTERS 37
 #define B_GRID_HEADERS 13
 #define B_GRID_ENTRIES 14
 #define B_RAY_REQUESTS 15
@@ -200,6 +201,7 @@ struct SurfelRayHit
     vec4 normal_hitKind;
     vec4 radiance_pdf;
     uvec4 ids;
+    vec4 emitterIrradiance;   // next-event estimate of the emitters at the ray origin (MIS weighted)
 };
 
 struct SurfelGridAddress

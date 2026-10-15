@@ -73,6 +73,10 @@ public:
     std::size_t GetIncrementalNodeCount() const { return m_incrementalNodeCount; }
     std::size_t GetIncrementalInstanceCount() const { return m_incrementalInstanceCount; }
     std::size_t GetIncrementalInstanceNodeCount() const { return m_incrementalInstanceNodeCount; }
+    // Emissive triangles of the traced instances (world space) and their total power sum(luminance * area).
+    rhi::BufferHandle GetEmitterSSBO() const { return m_emitterSSBO; }
+    std::size_t GetEmitterCount() const { return m_emitterCount; }
+    float GetEmitterPowerTotal() const { return m_emitterPowerTotal; }
     const Diagnostics& GetDiagnostics() const { return m_diagnostics; }
 
 private:
@@ -136,6 +140,9 @@ private:
     void BuildInstanceTLAS(const std::vector<RT::Instance>& instances, std::vector<RT::InstanceNode>& nodes) const;
     static void TransformBounds(const glm::vec3& localMin, const glm::vec3& localMax, const glm::mat4& transform, glm::vec3& worldMin, glm::vec3& worldMax);
     void RefreshIncrementalDiagnostics(double buildMsThisFrame, std::size_t trianglesBuiltThisFrame);
+    static void AppendInstanceEmitters(const std::vector<RT::Triangle>& triangles, const glm::mat4& worldFromLocal,
+                                       std::vector<RT::Emitter>& emitters);
+    void UploadEmitters(std::vector<RT::Emitter>& emitters);
 
     rhi::BufferHandle m_triangleSSBO;
     rhi::BufferHandle m_bvhSSBO;
@@ -144,6 +151,7 @@ private:
     rhi::BufferHandle m_instanceSSBO;
     rhi::BufferHandle m_instanceNodeSSBO;
     rhi::BufferHandle m_lightSSBO;
+    rhi::BufferHandle m_emitterSSBO;
     std::size_t m_triangleCount = 0;
     std::size_t m_nodeCount = 0;
     std::size_t m_lightCount = 0;
@@ -151,6 +159,8 @@ private:
     std::size_t m_incrementalNodeCount = 0;
     std::size_t m_incrementalInstanceCount = 0;
     std::size_t m_incrementalInstanceNodeCount = 0;
+    std::size_t m_emitterCount = 0;
+    float m_emitterPowerTotal = 0.0f;
     std::size_t m_lastEstimatedTriangleCount = 0;
     std::size_t m_lastSkippedTriangleCount = 0;
     std::size_t m_lastSkippedTriangleCap = 0;

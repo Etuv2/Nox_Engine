@@ -114,9 +114,11 @@ def check_reference_independence() -> None:
     reference = read("shaders/surfel_gi/reference_gi.comp")
     for forbidden in ("surfels[", "gridHeaders", "gridEntries", "B_SURFELS", "uMaxSurfels", "SurfelIsAlive"):
         require(forbidden not in reference, f"the independent reference must not use surfel state ({forbidden})")
-    require("ReferencePathIrradiance" in reference and "EvaluateHitDirectIrradiance" in reference and
+    # Direct light at each hit and the next-event estimate now live in the shared path (surfel_scene_trace.glsl,
+    # SurfelPathRadiance); the reference keeps its own path entry point and the sky miss term (plan section 14).
+    require("ReferencePathIrradiance" in reference and "SurfelPathRadiance" in reference and
             "EvaluateMissEnvironmentRadiance" in reference,
-            "the reference must use the path tracer, direct light at each hit, and the sky miss term")
+            "the reference must use the path tracer (shared path), and the sky miss term")
 
 
 def main() -> None:

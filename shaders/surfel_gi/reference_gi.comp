@@ -29,81 +29,49 @@ uniform mat4 uInvView;
 
 const float REFERENCE_ORIGIN_OFFSET = 0.004;
 
-// PCG (RXS-M-XS) step on a 32-bit state; returns a uniform value in [0, 1).
-float ReferenceRandom(inout uint state)
+// The reference has no surfel cache: every vertex is traced (the shared path, surfel_scene_trace.glsl).
+bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID, uint seed, out vec3 irradiance)
 {
-    state = state * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    word = (word >> 22u) ^ word;
-    return float(word) / 4294967296.0;
+    irradiance = vec3(0.0);
+    return false;
 }
 
-vec3 ReferenceCosineDirection(vec3 normal, vec2 u)
-{
-    vec3 up = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-    vec3 tangent = SurfelSafeNormalize(cross(up, normal));
-    vec3 bitangent = cross(normal, tangent);
-    float r = sqrt(u.x);
-    float phi = 2.0 * SURFEL_PI * u.y;
-    vec3 local = vec3(r * cos(phi), r * sin(phi), sqrt(max(0.0, 1.0 - u.x)));
-    return SurfelSafeNormalize(tangent * local.x + bitangent * local.y + normal * local.z);
-}
-
-// One path from a receiver. Returns the irradiance estimate E for this path. With throughput T_k (the product of
-// the albedos of the first k hits), the path adds T_{k-1} * pi * Le(x_k) for emission, T_k * Edirect(x_k) for direct
-// light at hit k, and T_k * pi * Lsky when the ray leaves the scene after hit k.
-//
-// Unbiased to the cap: the first uBounces hits are always followed. Later hits continue with probability
-// q = min(0.95, max albedo channel) and divide the throughput by q (Russian roulette), so the series is not cut
-// at a fixed depth. The depth cap REFERENCE_MAX_BOUNCES only drops paths that reach it, which for high albedo is a
-// residual of about albedo^cap (0.19 at albedo 0.95, cap 32).
-const uint REFERENCE_MAX_BOUNCES = 32u;
-const float REFERENCE_RR_MAX_CONTINUE = 0.95;
-
+// One path from a receiver, as an irradiance estimate: E = NEE(origin) + pi * L(first hit), where L is the path radiance
+// from the first hit (plan section 14). The origin's next-event sample and the first hit's emission are MIS weighted
+// against the one cosine sample that reaches the first hit. A miss is the sky: E gets pi * miss radiance.
 vec3 ReferencePathIrradiance(vec3 origin, vec3 normal, inout uint rng)
 {
-    vec3 throughput = vec3(1.0);
     vec3 estimate = vec3(0.0);
-    vec3 position = origin;
-    vec3 surfaceNormal = normal;
-
-    for (uint bounce = 0u; bounce < REFERENCE_MAX_BOUNCES; ++bounce) {
-        vec2 u = vec2(ReferenceRandom(rng), ReferenceRandom(rng));
-        vec3 direction = ReferenceCosineDirection(surfaceNormal, u);
-        SoftwareBVHHit hit = TraceSoftwareBVH(position + surfaceNormal * REFERENCE_ORIGIN_OFFSET,
-            direction, 0.0, SURFEL_TRACE_BVH_FAR_DISTANCE);
-        if (!hit.hit) {
-            estimate += throughput * SURFEL_PI * EvaluateMissEnvironmentRadiance(direction);
-            break;
-        }
-
-        vec3 hitNormal = hit.normal;
-        if (dot(hitNormal, direction) > 0.0) {
-            hitNormal = -hitNormal;
-        }
-        hitNormal = SurfelSafeNormalize(hitNormal);
-        vec3 emission = max(hit.material.emissive * hit.material.emissiveStrength, vec3(0.0));
-        estimate += throughput * SURFEL_PI * emission;
-
-        vec3 albedo = clamp(hit.material.albedo, vec3(0.0), vec3(1.0));
-        throughput *= albedo;
-        vec3 hitPosition = hit.position + hitNormal * REFERENCE_ORIGIN_OFFSET;
-        estimate += throughput * EvaluateHitDirectIrradiance(hitPosition, hitNormal);
-
-        // Russian roulette after the first uBounces hits. The continuation probability is at most 0.95, so the
-        // division by q keeps the estimate unbiased.
-        if (bounce >= uBounces) {
-            float q = min(REFERENCE_RR_MAX_CONTINUE, max(max(albedo.r, albedo.g), albedo.b));
-            if (q <= 0.0 || ReferenceRandom(rng) >= q) {
-                break;
-            }
-            throughput /= q;
-        }
-
-        position = hitPosition;
-        surfaceNormal = hitNormal;
+    vec3 originU = vec3(SurfelPathRandom(rng), SurfelPathRandom(rng), SurfelPathRandom(rng));
+    vec3 neeIrradiance;
+    vec3 neeDirection;
+    float neePdf;
+    if (SurfelEmitterIrradianceSample(origin + normal * REFERENCE_ORIGIN_OFFSET, normal, originU,
+            neeIrradiance, neeDirection, neePdf)) {
+        estimate += neeIrradiance * SurfelPowerWeight(neePdf, max(dot(normal, neeDirection), 0.0) * SURFEL_INV_PI);
     }
-    return estimate;
+
+    vec2 u = vec2(SurfelPathRandom(rng), SurfelPathRandom(rng));
+    vec3 direction = SurfelCosineDirection(normal, u);
+    SoftwareBVHHit hit = TraceSoftwareBVH(origin + normal * REFERENCE_ORIGIN_OFFSET, direction, 0.0,
+        SURFEL_TRACE_BVH_FAR_DISTANCE);
+    if (!hit.hit) {
+        return estimate + SURFEL_PI * EvaluateMissEnvironmentRadiance(direction);
+    }
+
+    vec3 hitNormal = hit.normal;
+    if (dot(hitNormal, direction) > 0.0) {
+        hitNormal = -hitNormal;
+    }
+    hitNormal = SurfelSafeNormalize(hitNormal);
+    vec3 emission = max(hit.material.emissive * hit.material.emissiveStrength, vec3(0.0));
+    float cosineDensity = max(dot(normal, direction), 0.0) * SURFEL_INV_PI;
+    float hitPdf = SurfelEmitterHitPdf(SurfelLuminance(emission), hit.t, hit.geometricNormal, direction);
+    vec3 firstEmission = emission * SurfelPowerWeight(cosineDensity, hitPdf);
+    vec3 albedo = clamp(hit.material.albedo, vec3(0.0), vec3(1.0));
+    vec3 firstRadiance = SurfelPathRadiance(hit.position, hitNormal, albedo, firstEmission, SURFEL_INVALID_INDEX,
+        rng, uBounces, false, SURFEL_PATH_MAX_HITS);
+    return estimate + SURFEL_PI * firstRadiance;
 }
 
 void main()

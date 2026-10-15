@@ -1436,6 +1436,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uUseSurfelFallbackTrace", m_settings.useSurfelFallbackTrace ? 1 : 0);
 		SetUniform1ui(program, "uBVHTraceStride", bvhTraceStride);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
+		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
 		BindSoftwareTraceLighting(program, context, camera, skybox);
 		timedDispatch("tracing", [&]() {
 			m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);
@@ -1575,6 +1576,15 @@ SetUniform1i(program, "uEnableShadows", (enableTraceShadows && context.enableSha
 SetUniform4fv(program, "uCascadeSplits", cascadeSplits);
 SetUniform1f(program, "uShadowBias", context.shadowBias);
 SetUniform1ui(program, "uLightCount", lightCount);
+	// Next-event estimation (plan section 14): the emissive triangles of the traced instances, built with the
+	// instance list. Without an incremental RT scene there are none.
+	const bool emittersReady = context.rtSceneResources && context.rtSceneResources->IsIncrementalReady();
+	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Emitters),
+		emittersReady ? context.rtSceneResources->GetEmitterSSBO() : rhi::BufferHandle{});
+	SetUniform1ui(program, "uEmitterCount",
+		emittersReady ? static_cast<uint32_t>(context.rtSceneResources->GetEmitterCount()) : 0u);
+	SetUniform1f(program, "uEmitterPowerTotal",
+		emittersReady ? context.rtSceneResources->GetEmitterPowerTotal() : 0.0f);
 }
 
 // Reference mode: one path per quarter-resolution texel per frame, averaged over frames until the view changes.

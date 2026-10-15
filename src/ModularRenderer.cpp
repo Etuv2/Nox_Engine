@@ -627,17 +627,16 @@ void ModularRenderer::SyncSurfelGISettings()
 		applyEnvToggle("NOX_SURFEL_GI_RAY_GUIDING", settings.useRayGuiding);
 		applyEnvToggle("NOX_SURFEL_GI_RADIAL_DEPTH", settings.useRadialDepth);
 		applyEnvToggle("NOX_SURFEL_GI_IRRADIANCE_SHARING", settings.useIrradianceSharing);
-		m_context.lightingCompositeDebugMode = std::clamp(
-			GetEnvVarInt("NOX_SURFEL_GI_COMPOSITE_DEBUG", m_context.lightingCompositeDebugMode),
-			0,
-			5);
 	}
-	else {
-		m_context.lightingCompositeDebugMode = std::clamp(
-			GetEnvVarInt("NOX_LIGHTING_COMPOSITE_DEBUG", m_context.lightingCompositeDebugMode),
-			0,
-			5);
-	}
+	// Reference mode reads the surfel composite view too. NOX_GI_REFERENCE=1 with
+	// NOX_SURFEL_GI_COMPOSITE_DEBUG=4 then shows the reference term alone (plan section 14, O2).
+	const char* compositeDebugEnv = (forcedOnForValidation || settings.referenceMode)
+		? "NOX_SURFEL_GI_COMPOSITE_DEBUG"
+		: "NOX_LIGHTING_COMPOSITE_DEBUG";
+	m_context.lightingCompositeDebugMode = std::clamp(
+		GetEnvVarInt(compositeDebugEnv, m_context.lightingCompositeDebugMode),
+		0,
+		5);
 
 	// Validation override: NOX_SSGI=0/1 switches screen-space indirect diffuse (SSGI) for A/B runs.
 	if (const char* ssgiEnv = std::getenv("NOX_SSGI")) {
