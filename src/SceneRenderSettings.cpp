@@ -346,6 +346,20 @@ namespace SceneRenderSettings {
 				std::cerr << "[SceneRenderSettings] Unknown quality tier '" << tier << "'" << std::endl;
 			}
 		}
+		// NOX_EXPOSURE_MODE=manual|auto overrides the scene's exposure mode after load. Validation runs
+		// lock exposure so that GI on/off comparisons are not confounded by auto exposure.
+		if (const char* exposureEnv = std::getenv("NOX_EXPOSURE_MODE"); exposureEnv && exposureEnv[0] != '\0') {
+			const std::string mode = exposureEnv;
+			if (mode == "manual") {
+				ctx.exposureMode = 0;
+			}
+			else if (mode == "auto") {
+				ctx.exposureMode = 1;
+			}
+			else {
+				std::cerr << "[SceneRenderSettings] Unknown NOX_EXPOSURE_MODE '" << mode << "'" << std::endl;
+			}
+		}
 		if (has) {
 			std::cout << "[SceneRenderSettings] Applied render_settings from " << sceneFilePath << std::endl;
 		}

@@ -155,8 +155,6 @@ namespace {
 		bool allowSoftwareBVHTrace = false;
 		float maxIndirectIntensity = 1.0f;
 		uint32_t minRayUpdateInterval = 2u;
-		uint32_t maxSpawnPasses = 2u;
-		uint32_t maxFastFillSpawnPasses = 4u;
 		uint32_t maxStationaryFastFillFrames = 12u;
 		uint32_t maxSpawnsPerFrame = 96u;
 		uint32_t maxProjectedSurfelsPerFrame = 16384u;
@@ -166,17 +164,17 @@ namespace {
 	static SurfelGIBudgetCaps GetSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 24576u, 2048u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 1u, 2u, 8u, 65536u, 24576u, 2048u };
+			return { 24576u, 2048u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u };
 		case SurfelGIQualityTier::High:
-			return { 131072u, 32768u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 3u, 6u, 48u, 65536u, 131072u, 8192u };
+			return { 131072u, 32768u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u };
 		case SurfelGIQualityTier::Ultra:
-			return { 262144u, 65536u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 4u, 8u, 64u, 65536u, 262144u, 16384u };
+			return { 262144u, 65536u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 64u, 65536u, 262144u, 16384u };
 		case SurfelGIQualityTier::Medium:
 		default:
 			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
 			// their light) and 4096 rays per frame, between Low and High: at the former 192 rays a
 			// surfel saw one ray every few frames and multi-bounce took hundreds of frames to settle.
-			return { 65536u, 4096u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 1u, 3u, 20u, 65536u, 24576u, 2048u };
+			return { 65536u, 4096u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 65536u, 24576u, 2048u };
 		}
 	}
 
@@ -197,8 +195,6 @@ namespace {
 			settings.indirectIntensity = std::min(settings.indirectIntensity, caps.maxIndirectIntensity);
 			settings.cellAverageFallbackStrength = caps.fallbackStrength;
 			settings.rayUpdateInterval = std::max(settings.rayUpdateInterval, caps.minRayUpdateInterval);
-			settings.spawnPasses = std::min(settings.spawnPasses, caps.maxSpawnPasses);
-			settings.fastFillSpawnPasses = std::min(settings.fastFillSpawnPasses, caps.maxFastFillSpawnPasses);
 			settings.stationaryFastFillFrames = std::min(settings.stationaryFastFillFrames, caps.maxStationaryFastFillFrames);
 			settings.maxSpawnsPerFrame = std::min(settings.maxSpawnsPerFrame, caps.maxSpawnsPerFrame);
 			settings.maxProjectedSurfelsPerFrame = std::min(settings.maxProjectedSurfelsPerFrame, caps.maxProjectedSurfelsPerFrame);
@@ -554,6 +550,13 @@ void ModularRenderer::SyncSurfelGISettings()
 	if (forcedOffForValidation) {
 		m_context.enableSurfelGI = false;
 	}
+	// NOX_GI_REFERENCE=1: independent path-traced diffuse GI replaces the surfel irradiance (reference_gi.comp).
+	// It runs inside the surfel pipeline, and is off unless this variable is set.
+	settings.referenceMode = IsEnvVarEnabled("NOX_GI_REFERENCE") && !forcedOffForValidation;
+	if (settings.referenceMode) {
+		settings.enabled = true;
+		m_context.enableSurfelGI = true;
+	}
 
 	settings.qualityTier = static_cast<SurfelGIQualityTier>(
 		std::clamp(m_context.surfelGIQualityTier, 0, 3));
@@ -583,7 +586,6 @@ void ModularRenderer::SyncSurfelGISettings()
 	settings.cellAverageFallbackStrength = std::clamp(m_context.surfelGICellAverageFallbackStrength, 0.0f, 1.0f);
 	settings.useRadialDepth = m_context.surfelGIUseRadialDepth;
 	settings.useRayGuiding = m_context.surfelGIUseRayGuiding;
-	settings.useRayBinning = m_context.surfelGIUseRayBinning;
 	settings.useScreenSpaceTrace = m_context.surfelGIUseScreenTrace;
 	settings.useSurfelFallbackTrace = m_context.surfelGIUseSurfelFallbackTrace;
 	settings.placementValidationMode = m_context.surfelGIPlacementValidation ||

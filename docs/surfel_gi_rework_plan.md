@@ -552,3 +552,77 @@ Keep: the 16x16 coverage-driven spawn, the MSME firefly gate, the Chebyshev visi
 - The previous audit's table has several labels that do not match the code: irradiance sharing is GIBS (p.116), not an extra; radial depth is marked "Fixed" in its own table but "Matches" in the summary; "8 vs 12 rays" compares stale slots.
 - The team spec's numbers (threshold 0.85 +/- 0.075, MSME blends 0.02/0.35/0.6, radial EMA 0.05, final-gather form) are not in the paper. The plan uses them as the team's choice and checks them against the reference.
 - Two validators fail on main, at their first assertion. Their checks no longer match the design. WP0 item 6 replaces them.
+
+## 9. WP0/WP1 results
+
+Branch `worktree-agent-a056a4952764d652b`, built from main at 4d24639. Before = that commit (built and run from its own source root). After = this branch. All runs: `NOX_FIXED_DT=0.0166666667`, manual exposure, static camera, 1920x1080, one GPU. Energy is over lit pixels, linear. Indirect reference = `NOX_GI_REFERENCE=1` (independent path tracer, section 9.2).
+
+### 9.1 What changed
+
+WP0: `NOX_EXPOSURE_MODE=manual|auto` (applied after scene load, `SceneRenderSettings.cpp`). `NOX_CAMERA_PATH=dolly:dx,dy,dz:frames|orbit:deg` (`src/CameraPath.{h,cpp}`, applied in `Core.cpp`). Counters: young surfels (age < 4), ray shortfall, grid overflow, stale-slot count, logged per frame. RT scene update timed under the `rt_scene_update` label, with CPU split and upload flags. Independent reference `reference_gi.comp`, sharing the BVH and direct-light code via `shaders/surfel_gi/surfel_scene_trace.glsl`. Harness `tools/surfel_gi_metrics.py`. The two failing validators are replaced.
+
+WP1: integrate reads only the slots generate_rays wrote (cap `SURFEL_GENERATED_RAYS_PER_SURFEL`), with a surfel, slot and frame ownership check (trace stamps the frame into `hits.ids.w`). `requestedRays` has one atomic type: it starts at the reservation `max(maxSurfels/64,1)` from `begin_frame`, which replaces a racy `atomicMax`. `debug.z` has one writer (radius error). Slice growth reads the setting. Removed: `rayBins`, `GridAverages`, `SortedRays` and their bindings, `BinAndSortRays`, the no-op and unused `SurfelRayQueue` methods, `RayCounters` binding, `useRayBinning` (settings, UI, env), `radialDepthUpdateInterval`, `spawnPasses`, `fastFillSpawnPasses`, the `sourceDirect*` path (folded to its constant value, exact), `msme.zw` writes, the `sourceDirectSamples`/`rayHitSourceDirect` counters, the unused `SurfelGrid::Build`/`BuildCellAverages`. Mid-frame cell averages are gone: averages are built once, at the end of Execute, which is where the final gather reads them.
+
+Not removed (deliberate): `spawnCandidateCount` is not a setting. It is a per-frame local that drives the spawn candidate count, so it stays.
+
+### 9.2 Independent reference vs the self-consistent `ref`
+
+Cornell, lit pixels (after build; `indep` is deterministic and identical across repeats):
+
+| Run | Energy | / indep |
+|---|---|---|
+| indep (path tracer, 900 frames) | 0.2773 | 1.000 |
+| ref, first after-run | 0.2717 | 0.980 |
+| ref, repeat 1 | 0.2828 | 1.020 |
+| ref, repeat 2 | 0.2805 | 1.012 |
+| ref, before build (this section's baseline) | 0.2834 | 1.022 |
+
+The 65k-ray `ref` and the independent path tracer agree to about 2% on the mean. The per-pixel correlation is weak: Pearson 0.68–0.71, RMSE 0.42 of the mean. So the mean agrees, but the spatial structure does not, and the independent reference itself has not been checked against an analytic solution. Treat the agreement as evidence that the surfel estimator is not biased low at convergence on Cornell, not as proof.
+
+Reference limits: three diffuse bounces after the first hit, with direct light at every hit; hit albedo is the BVH material (no texture lookup), as in the surfel tracer; accumulation restarts on view change only, not on light change; quarter-resolution, bilinear-upsampled. Cost (Execute GPU time, one path per quarter-resolution texel per frame): 0.58 ms on Cornell, 18.0 ms on scene.json and 8.9 ms on NFS. `ref` is 17.0 ms on Cornell.
+
+### 9.3 Before/after (single runs unless marked)
+
+| Scene | Config | Before, energy (/indep) | After, energy (/indep) |
+|---|---|---|---|
+| Cornell | surf (1024 rays) | 0.1333 (0.481) | 0.1254 (0.452); repeats 0.1159, 0.1257 (mean 0.436) |
+| Cornell | ref (65k rays) | 0.2834 (1.022) | 0.2717, 0.2828, 0.2805 (mean 0.2817, 1.016) |
+| scene.json | surf | 0.1318 (0.460) | 0.1389 (0.485) |
+| scene.json | both | 0.1252 (0.437) | 0.1344 (0.469) |
+| NFS night street (manual) | surf | 0.00906 (0.351) | 0.00894 (0.346) |
+| NFS night street (manual) | both | 0.00839 (0.325) | 0.00874 (0.339) |
+
+Repeat spread (Cornell, 2 runs): surf energy 8.1% (fails 5%), both 4.8%, ref 0.8%, indep and ssgi 0.0% (deterministic). The surf spread comes from non-deterministic atomic ordering in allocation and spawn at 1024 rays. A single surf energy number is therefore only good to about 8%.
+
+Stale-slot energy delta: not resolved at 1024 rays. Before/after differences (-9% Cornell surf, +5% scene surf, -1% NFS surf) are inside the run-to-run spread. A variant with the old integrate loop and everything else unchanged gave 0.418 (single run), also inside the spread. At 65k rays, where the estimate is well converged, the change is -0.6% (ref 0.2834 -> 0.2817), inside the 2% acceptance. The stale-slot counter reads 0 on every frame of every after-run: no unowned hit is consumed.
+
+Noise (surf_term corrected std / mean, lit pixels): Cornell 3.65% -> 4.60% (repeats 4.01%, 3.05%); scene.json 0.70% -> 0.52%; NFS 0.47% -> 0.52%. The Cornell repeat spread is 27%, so Cornell noise is not resolved to better than about 1 point.
+
+GPU time (`SurfelGIUpdatePass` median, surf): Cornell 1.452 -> 1.428 ms; scene.json 7.33 -> 6.42 ms; NFS 3.06 -> 3.10 ms. The 0.05 ms acceptance is not demonstrated on Cornell or NFS (repeat total GPU spread is 2.0%, so the Cornell change is within noise). The scene.json figures are about 2.5x the plan's 2.73 ms; the cause is not established.
+
+RT scene upload: the plan's hypothesis (re-upload every frame on a static scene) is rejected. Uploads ran on 3 of 260 frames on scene.json (scene load) and 8 of 260 on NFS (BLAS build), and on 0 of 260 on Cornell. The `rt_scene_update` GPU label costs 0.001 ms per frame; the CPU instance-list rebuild costs 0.0002 ms. The unlabelled ~1 ms of Execute GPU time is therefore not the RT upload. It is still unexplained. Untested guess: GPU idle between dispatches while the CPU waits in `WaitForCompletion`.
+
+Grid overflow (counter, last build of each frame, surf): Cornell 18,088 events per frame, scene.json 7,797, NFS 10,791. Events are inserts beyond the 64-entry cell capacity, so about a third of the 27-neighbour inserts saturate their cells on Cornell. This is the WP5 target (overflow 0 on Cornell and scene.json). Ray shortfall: 14,325 of 15,349 requested rays on Cornell (93%).
+
+### 9.4 Verification
+
+Pass: `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`, `scripts/validate_surfel_gi_static.py`, `scripts/validate_surfel_gi_correctness.py` (both replaced; they check the current design, not the old names). `NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`: 0 FAIL. Racing regression: `[Race] Finished in 47.4994 s`. Camera path: `dolly:0.5,0,0:30` moves the view (mean difference 10.3 of 255 between frames 5 and 35).
+
+Fail: `nox_tests.exe` reports 277 tests, 3 failed. All three are CHECKs in `test_asset_io.cpp` (loose tree vs packed fixture, one byte per line). Cause: the fixtures are LF in git (`i/lf`) and CRLF in this Windows working copy (`attr/text=auto`). The files are unchanged, so this is an environment issue that predates this work. Not fixed here.
+
+### 9.5 Harness commands (verbatim; the next workers use these)
+
+Cornell, with repeats, all configs:
+
+    python tools/surfel_gi_metrics.py --exe build/vs2022-x64/Release/Nox_Engine.exe --scene scenes/surfel_gi_cornell_validation.json --out-dir %TEMP%/nox_surfel_wp0/cornell --configs off,ssgi,surf,both,surf_term,indep,ref --repeat 2 --table %TEMP%/nox_surfel_wp0/cornell.md --json %TEMP%/nox_surfel_wp0/cornell.json
+
+scene.json and NFS (the temp manual-exposure copy is made and removed by the harness):
+
+    python tools/surfel_gi_metrics.py --exe build/vs2022-x64/Release/Nox_Engine.exe --scene scenes/scene.json --out-dir %TEMP%/nox_surfel_wp0/scene --configs off,ssgi,surf,both,surf_term,indep --table %TEMP%/nox_surfel_wp0/scene.md --json %TEMP%/nox_surfel_wp0/scene.json
+    python tools/surfel_gi_metrics.py --exe build/vs2022-x64/Release/Nox_Engine.exe --scene scenes/nfs_night_street.json --out-dir %TEMP%/nox_surfel_wp0/nfs --configs off,ssgi,surf,both,surf_term,indep --table %TEMP%/nox_surfel_wp0/nfs.md --json %TEMP%/nox_surfel_wp0/nfs.json
+
+Baseline from another commit: add `--cwd <its source root>` (the exe needs `shaders/`, `config/` and `CMakeLists.txt` beside it), and reuse an `indep` run with `--reuse` where its directory is copied in. Dropping `indep` and `ref` saves most of the time; `ref` is 900 frames.
+
+### 9.6 Not done
+
+WP2 and later: not started, as instructed. The stale-slot energy effect is not measured above noise, so the 2% energy check is inconclusive for surf. Grid overflow is measured but not fixed (WP5). The ~1 ms unlabelled Execute GPU time is unexplained. The `ref` vs `indep` per-pixel correlation (about 0.7) is unexplained. `shaders/includes/surfel_gi_resources.glsl` is dead (not included anywhere) but kept: vcxproj lists it and two validators reference it. `cell_average.comp` and `clear_grid.comp` stay until WP5. Other legacy validators (for example `validate_surfel_gi_irradiance_signal.py`, `validate_surfel_coverage_priority.py`) and `tests/test_surfel_gi_quality.py` reference removed names; they were not run or updated. Repeat-spread acceptance fails for surf energy and for noise. `nox_tests.exe` has 3 environment-related failures.

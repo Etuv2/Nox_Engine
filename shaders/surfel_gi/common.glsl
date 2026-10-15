@@ -10,7 +10,6 @@
 #define B_RAY_REQUESTS 15
 #define B_RAYS 16
 #define B_RAYS_IN 16
-#define B_RAYS_SORTED 17
 #define B_RAY_HITS 18
 #define B_RADIAL_DEPTH 19
 #define B_GUIDE_MAP 20
@@ -20,8 +19,6 @@
 #define B_LIGHTS 23
 #define B_BVH_NODES 24
 #define B_BVH_TRIANGLES 25
-#define B_GRID_AVERAGES 26
-#define B_RAY_BINS 27
 #define B_RAY_COUNTERS 28
 #define B_GRID_COUNTERS 29
 #define B_SURFEL_GI_SETTINGS 30
@@ -66,6 +63,8 @@
 #define SURFEL_COVERAGE_TILE_FINAL_GI_VALID (1u << 4)
 
 const uint SURFEL_RADIAL_DEPTH_TEXELS = 16u;
+// Rays generate_rays.comp writes per surfel per frame; integrate.comp reads exactly these slots.
+const uint SURFEL_GENERATED_RAYS_PER_SURFEL = 8u;
 const uint SURFEL_GUIDE_CELLS = 36u;
 const uint SURFEL_INVALID_INDEX = 0xffffffffu;
 const uint SURFEL_SPAWN_TILE_CANDIDATES = 8u;
@@ -124,10 +123,8 @@ struct SurfelCounters
     uint rayHitScreen;
     uint rayHitBVH;
     uint rayHitEnvironment;
-    uint rayHitSourceDirect;
     uint rayHitMiss;
     uint acceptedRaySamples;
-    uint sourceDirectSamples;
     uint temporalClampEvents;
     uint sharingAppliedSurfels;
     uint sharingRejectedDarkLift;
@@ -141,6 +138,10 @@ struct SurfelCounters
     // Coverage deficit of the previous spawn frame (kept across begin_frame's clear).
     uint underCoveredPreviousFrame;
     uint visiblePreviousFrame;
+    // Live surfels with age < 4 frames, counted by count_live_surfels (debug metric, per frame).
+    uint youngSurfelCount;
+    // Ray slots an integrate thread skipped because the hit belonged to another surfel (WP1 ownership check).
+    uint staleRaySlotCount;
 };
 
 struct SurfelCoverageTile
@@ -532,9 +533,12 @@ float SurfelGridBaseCellSize(vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
         float(SurfelCentralGridResolution(gridResolution));
 }
 
+// Slice growth of the non-linear grid, from SurfelGridSettings::sliceGrowth (SetSurfelGridUniforms).
+uniform float uSurfelGridSliceGrowth = 1.22;
+
 float SurfelGridSliceGrowth()
 {
-    return 1.22;
+    return uSurfelGridSliceGrowth;
 }
 
 float SurfelNonLinearSliceStart(float baseCellSize, float growth, uint slice)

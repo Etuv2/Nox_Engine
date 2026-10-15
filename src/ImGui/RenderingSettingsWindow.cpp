@@ -195,7 +195,6 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGICellAverageFallbackStrength = 0.20f;
 	m_surfelGIUseRadialDepth = true;
 	m_surfelGIUseRayGuiding = true;
-	m_surfelGIUseRayBinning = true;
 	m_surfelGIUseScreenTrace = true;
 	m_surfelGIUseSurfelFallbackTrace = true;
 	m_surfelGIPlacementValidation = false;
@@ -372,7 +371,6 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_surfelGICellAverageFallbackStrength = ctx.surfelGICellAverageFallbackStrength;
 	m_surfelGIUseRadialDepth = ctx.surfelGIUseRadialDepth;
 	m_surfelGIUseRayGuiding = ctx.surfelGIUseRayGuiding;
-	m_surfelGIUseRayBinning = ctx.surfelGIUseRayBinning;
 	m_surfelGIUseScreenTrace = ctx.surfelGIUseScreenTrace;
 	m_surfelGIUseSurfelFallbackTrace = ctx.surfelGIUseSurfelFallbackTrace;
 	m_surfelGIPlacementValidation = ctx.surfelGIPlacementValidation;
@@ -555,7 +553,6 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.surfelGICellAverageFallbackStrength = m_surfelGICellAverageFallbackStrength;
 	ctx.surfelGIUseRadialDepth = m_surfelGIUseRadialDepth;
 	ctx.surfelGIUseRayGuiding = m_surfelGIUseRayGuiding;
-	ctx.surfelGIUseRayBinning = m_surfelGIUseRayBinning;
 	ctx.surfelGIUseScreenTrace = m_surfelGIUseScreenTrace;
 	ctx.surfelGIUseSurfelFallbackTrace = m_surfelGIUseSurfelFallbackTrace;
 	ctx.surfelGIPlacementValidation = m_surfelGIPlacementValidation;
@@ -1110,7 +1107,6 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderFloat("Final Gather Normal Reject", &m_surfelGIFinalGatherNormalReject, -0.2f, 0.95f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Radial Depth Rejection", &m_surfelGIUseRadialDepth)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Ray Guiding", &m_surfelGIUseRayGuiding)) { SyncToRenderer(); }
-				if (ImGui::Checkbox("Ray Binning", &m_surfelGIUseRayBinning)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Screen Trace Path", &m_surfelGIUseScreenTrace)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Surfel Fallback Trace", &m_surfelGIUseSurfelFallbackTrace)) { SyncToRenderer(); }
 				if (const SurfelGIFrameStats* stats = m_modularRenderer ? m_modularRenderer->GetSurfelGIStats() : nullptr) {
@@ -1139,16 +1135,14 @@ void RenderingSettingsWindow::Render() {
 						stats->overCoverageRecycled,
 						stats->staleRecycled,
 						stats->pressureRecycled);
-					ImGui::Text("Ray hits grid/screen/bvh/env/src/miss: %u / %u / %u / %u / %u / %u",
+					ImGui::Text("Ray hits grid/screen/bvh/env/miss: %u / %u / %u / %u / %u",
 						stats->rayHitGrid,
 						stats->rayHitScreen,
 						stats->rayHitBVH,
 						stats->rayHitEnvironment,
-						stats->rayHitSourceDirect,
 						stats->rayHitMiss);
-					ImGui::Text("Ray accepted/source/clamped: %u / %u / %u",
+					ImGui::Text("Ray accepted/clamped: %u / %u",
 						stats->acceptedRaySamples,
-						stats->sourceDirectSamples,
 						stats->temporalClampEvents);
 					ImGui::Text("Sharing applied/dark-limited: %u / %u",
 						stats->sharingAppliedSurfels,
@@ -1966,7 +1960,6 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGICellAverageFallbackStrength = 0.20f;
 	m_surfelGIUseRadialDepth = true;
 	m_surfelGIUseRayGuiding = true;
-	m_surfelGIUseRayBinning = true;
 	m_surfelGIUseScreenTrace = true;
 	m_surfelGIUseSurfelFallbackTrace = true;
 	m_surfelGIPlacementValidation = false;

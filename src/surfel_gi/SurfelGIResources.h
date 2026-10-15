@@ -54,7 +54,6 @@ enum class SurfelGIBinding : uint32_t {
 	GridEntries = 14u,
 	RayRequests = 15u,
 	Rays = 16u,
-	SortedRays = 17u,
 	RayHits = 18u,
 	RadialDepth = 19u,
 	GuideMap = 20u,
@@ -64,9 +63,6 @@ enum class SurfelGIBinding : uint32_t {
 	Lights = 23u,
 	BvhNodes = 24u,
 	BvhTriangles = 25u,
-	GridAverages = 26u,
-	RayBins = 27u,
-	RayCounters = 28u,
 	GridCounters = 29u,
 	Settings = 30u,
 	ShadowMatrices = 31u,
@@ -147,10 +143,8 @@ struct alignas(16) SurfelCounters {
 	uint32_t rayHitScreen = 0u;
 	uint32_t rayHitBVH = 0u;
 	uint32_t rayHitEnvironment = 0u;
-	uint32_t rayHitSourceDirect = 0u;
 	uint32_t rayHitMiss = 0u;
 	uint32_t acceptedRaySamples = 0u;
-	uint32_t sourceDirectSamples = 0u;
 	uint32_t temporalClampEvents = 0u;
 	uint32_t sharingAppliedSurfels = 0u;
 	uint32_t sharingRejectedDarkLift = 0u;
@@ -162,7 +156,10 @@ struct alignas(16) SurfelCounters {
 	uint32_t highWaterIndex = 0u;
 	uint32_t underCoveredPreviousFrame = 0u;
 	uint32_t visiblePreviousFrame = 0u;
+	uint32_t youngSurfelCount = 0u;
+	uint32_t staleRaySlotCount = 0u;
 };
+// 48 uint32 fields = 192 bytes, the same as the GLSL struct.
 static_assert(sizeof(SurfelCounters) == 192, "SurfelCounters must match std430 GLSL layout.");
 
 enum SurfelCoverageTileFlags : uint32_t {
@@ -242,25 +239,6 @@ struct alignas(16) SurfelRayHit {
 };
 static_assert(sizeof(SurfelRayHit) == 64, "SurfelRayHit must match std430 GLSL layout.");
 
-struct alignas(16) SurfelRayCounters {
-	uint32_t requestedRays = 0u;
-	uint32_t allocatedRays = 0u;
-	uint32_t emittedRays = 0u;
-	uint32_t hitCount = 0u;
-	uint32_t maxRays = 0u;
-	uint32_t maxSurfels = 0u;
-	uint32_t globalBudget = 0u;
-	uint32_t overflowRays = 0u;
-};
-static_assert(sizeof(SurfelRayCounters) == 32, "SurfelRayCounters must match std430 GLSL layout.");
-
-struct TraceResources {
-	rhi::BufferHandle bvhNodeBuffer;
-	rhi::BufferHandle bvhTriangleBuffer;
-	rhi::BufferHandle lightBuffer;
-	rhi::BufferHandle transformBuffer;
-};
-
 class SurfelPool {
 public:
 	SurfelPool();
@@ -299,12 +277,9 @@ public:
 	bool ResizeReset(const SurfelGridSettings& settings);
 	void Destroy();
 	void Clear();
-	void Build(rhi::BufferHandle surfelBuffer, uint32_t maxSurfels);
-	void BuildCellAverages();
 
 	rhi::BufferHandle GetCellHeaderBuffer() const { return m_cellHeaderBuffer; }
 	rhi::BufferHandle GetCellEntryBuffer() const { return m_cellEntryBuffer; }
-	rhi::BufferHandle GetCellAverageBuffer() const { return m_cellAverageBuffer; }
 	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
 	uint32_t GetCellCount() const { return m_cellCount; }
 	uint32_t GetEntryCapacity() const { return m_entryCapacity; }
@@ -314,7 +289,6 @@ public:
 private:
 	rhi::BufferHandle m_cellHeaderBuffer;
 	rhi::BufferHandle m_cellEntryBuffer;
-	rhi::BufferHandle m_cellAverageBuffer;
 	rhi::BufferHandle m_countersBuffer;
 	uint32_t m_cellCount = 0;
 	uint32_t m_entryCapacity = 0;
@@ -333,30 +307,18 @@ public:
 	bool ResizeReset(uint32_t maxRays, uint32_t maxSurfels);
 	void Destroy();
 	void Clear();
-	void RequestRays(rhi::BufferHandle surfelBuffer);
-	void AllocateRays(rhi::BufferHandle surfelBuffer, uint32_t globalBudget);
-	void GenerateRays(rhi::BufferHandle surfelBuffer, rhi::BufferHandle gridBuffer);
-	void BinAndSortRays();
-	void TraceRays(const TraceResources& traceResources);
-	void IntegrateHits(rhi::BufferHandle surfelBuffer);
 
 	rhi::BufferHandle GetRequestBuffer() const { return m_requestBuffer; }
 	rhi::BufferHandle GetRayBuffer() const { return m_rayBuffer; }
-	rhi::BufferHandle GetSortedRayBuffer() const { return m_sortedRayBuffer; }
 	rhi::BufferHandle GetRayHitBuffer() const { return m_rayHitBuffer; }
-	rhi::BufferHandle GetRayBinBuffer() const { return m_rayBinBuffer; }
-	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
 	uint32_t GetMaxRays() const { return m_maxRays; }
 	uint32_t GetMaxSurfels() const { return m_maxSurfels; }
-	bool IsCreated() const { return m_requestBuffer.IsValid() && m_rayBuffer.IsValid() && m_rayHitBuffer.IsValid() && m_countersBuffer.IsValid(); }
+	bool IsCreated() const { return m_requestBuffer.IsValid() && m_rayBuffer.IsValid() && m_rayHitBuffer.IsValid(); }
 
 private:
 	rhi::BufferHandle m_requestBuffer;
 	rhi::BufferHandle m_rayBuffer;
-	rhi::BufferHandle m_sortedRayBuffer;
 	rhi::BufferHandle m_rayHitBuffer;
-	rhi::BufferHandle m_rayBinBuffer;
-	rhi::BufferHandle m_countersBuffer;
 	uint32_t m_maxRays = 0;
 	uint32_t m_maxSurfels = 0;
 };

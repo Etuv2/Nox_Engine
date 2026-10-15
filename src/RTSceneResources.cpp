@@ -621,6 +621,7 @@ void RTSceneResources::UploadIncrementalScene()
             geometryUpdated = true;
         }
 
+        m_diagnostics.geometryUploadedThisFrame = geometryUpdated;
         if (geometryUpdated) {
             m_incrementalTriangleCount = m_incrementalPackedTriangles.size();
             m_incrementalNodeCount = m_incrementalPackedNodes.size();
@@ -674,6 +675,7 @@ void RTSceneResources::UploadIncrementalScene()
         instances.empty() ? nullptr : instances.data(),
         rhi::BufferUsage::DynamicDraw);
 
+    m_diagnostics.instanceBufferRewrittenThisFrame = true;
     if (topologyDirty || readyInstanceSetChanged || m_incrementalInstanceNodeCount == 0) {
         std::vector<RT::InstanceNode> instanceNodes;
         BuildInstanceTLAS(instances, instanceNodes);
@@ -696,10 +698,18 @@ bool RTSceneResources::EnsureIncrementalBLAS(
     using Clock = std::chrono::steady_clock;
     const auto frameStart = Clock::now();
     std::size_t trianglesBuiltThisFrame = 0;
+    m_diagnostics.instanceListMsThisFrame = 0.0;
+    m_diagnostics.uploadMsThisFrame = 0.0;
+    m_diagnostics.uploadRanThisFrame = false;
+    m_diagnostics.geometryUploadedThisFrame = false;
+    m_diagnostics.instanceBufferRewrittenThisFrame = false;
 
     const ComponentManager* componentManager = sceneGraph ? sceneGraph->GetComponentManager() : nullptr;
     TransformSystem* transformSystem = sceneGraph ? sceneGraph->GetTransformSystem() : nullptr;
+    const auto instanceListStart = Clock::now();
     RebuildIncrementalInstanceList(sceneGraph, settings);
+    m_diagnostics.instanceListMsThisFrame =
+        std::chrono::duration<double, std::milli>(Clock::now() - instanceListStart).count();
 
     BVHBuilder::BuildParams params;
     params.maxLeafPrimitives = 2;
@@ -757,7 +767,11 @@ bool RTSceneResources::EnsureIncrementalBLAS(
     }
 
     if (m_incrementalUploadDirty || m_incrementalInstanceTopologyDirty) {
+        m_diagnostics.uploadRanThisFrame = true;
+        const auto uploadStart = Clock::now();
         UploadIncrementalScene();
+        m_diagnostics.uploadMsThisFrame =
+            std::chrono::duration<double, std::milli>(Clock::now() - uploadStart).count();
     }
 
     const double buildMs = std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();

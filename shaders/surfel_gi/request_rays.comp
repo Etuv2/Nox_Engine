@@ -35,7 +35,6 @@ const uint SURFEL_REQUEST_LIGHTING_CHANGE_RAYS = 1u;
 const float SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS = 8.0;
 const uint SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD = 8u;
 const uint SURFEL_REQUEST_DETAIL_MAINTENANCE_PERIOD = 4u;
-const uint SURFEL_REQUEST_CACHE_MAINTENANCE_PERIOD = 64u;
 
 uint FrameDelta(uint newerFrame, uint olderFrame)
 {
@@ -69,10 +68,12 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     float visibleRayDebt = recentlyVisible
         ? smoothstep(2.0, 12.0, float(framesSinceContribution))
         : 0.0;
-    bool underCoveredAtSpawn = surfel.debug.z > 0.0 && surfel.debug.z < 0.72;
+    // debug.z holds this frame's target radius error (update_surfels.comp runs before this pass). It is not a spawn
+    // coverage value: nothing stores spawn coverage, so this term tests the radius error only.
+    bool radiusErrorPending = surfel.debug.z > 0.0 && surfel.debug.z < 0.72;
     bool detailOrCreviceSurfel = surfel.worldPos_radius.w <= max(surfel.localPos_spawnRadius.w * 1.08, 0.001) ||
         variance > 0.018 ||
-        underCoveredAtSpawn;
+        radiusErrorPending;
     bool visibleMaintenancePhase = recentlyVisible &&
         (((uFrameIndex + surfelID * 17u) % SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD) == 0u);
     bool detailMaintenancePhase = recentlyVisible &&
@@ -157,9 +158,7 @@ void main()
     if (surfelID >= uMaxSurfels) {
         return;
     }
-    if (surfelID == 0u) {
-        atomicMax(counters.requestedRays, max(uMaxSurfels / SURFEL_REQUEST_CACHE_MAINTENANCE_PERIOD, 1u));
-    }
+    // requestedRays starts at the cache-maintenance reservation (begin_frame.comp), so this is the only atomic on it.
     uint requested = ComputeRayRequest(surfelID, surfels[surfelID]);
     if (requested > 0u) {
         atomicAdd(counters.requestedRays, requested);

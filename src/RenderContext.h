@@ -186,7 +186,6 @@ struct RenderContext {
 	float surfelGICellAverageFallbackStrength = 0.20f;
 	bool surfelGIUseRadialDepth = true;
 	bool surfelGIUseRayGuiding = true;
-	bool surfelGIUseRayBinning = true;
 	bool surfelGIUseScreenTrace = true;
 	bool surfelGIUseSurfelFallbackTrace = true;
 	bool surfelGIPlacementValidation = false;

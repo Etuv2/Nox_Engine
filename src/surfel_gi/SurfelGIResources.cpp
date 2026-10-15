@@ -214,11 +214,9 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
 
     std::ptrdiff_t headerBytes = 0;
     std::ptrdiff_t entryBytes = 0;
-    std::ptrdiff_t averageBytes = 0;
     std::ptrdiff_t counterBytes = 0;
     if (!CheckedBufferSize(cellCount64, sizeof(SurfelCellHeader), headerBytes) ||
         !CheckedBufferSize(entryCount64, sizeof(SurfelCellEntry), entryBytes) ||
-        !CheckedBufferSize(cellCount64, sizeof(SurfelGridCellAverage), averageBytes) ||
         !CheckedBufferSize(1u, sizeof(SurfelGridCounters), counterBytes)) {
         std::cerr << "[SurfelGrid] Grid buffer byte size overflow.\n";
         return false;
@@ -231,7 +229,6 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
     const bool ok =
         AllocateSSBO(m_cellHeaderBuffer, headerBytes, nullptr, "SurfelGrid.Headers") &&
         AllocateSSBO(m_cellEntryBuffer, entryBytes, nullptr, "SurfelGrid.Entries") &&
-        AllocateSSBO(m_cellAverageBuffer, averageBytes, nullptr, "SurfelGrid.CellAverages") &&
         AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelGrid.Counters");
 
     if (!ok) {
@@ -247,7 +244,6 @@ void SurfelGrid::Destroy()
 {
     DeleteBuffer(m_cellHeaderBuffer);
     DeleteBuffer(m_cellEntryBuffer);
-    DeleteBuffer(m_cellAverageBuffer);
     DeleteBuffer(m_countersBuffer);
     m_cellCount = 0;
     m_entryCapacity = 0;
@@ -262,22 +258,11 @@ void SurfelGrid::Clear()
 
     ClearBufferUInt(m_cellHeaderBuffer, 0u);
     ClearBufferUInt(m_cellEntryBuffer, 0xffffffffu);
-    ClearBufferUInt(m_cellAverageBuffer, 0u);
 
     SurfelGridCounters counters{};
     counters.cellCount = m_cellCount;
     counters.entryCapacity = m_entryCapacity;
     UploadStruct(m_countersBuffer, counters);
-}
-
-void SurfelGrid::Build(rhi::BufferHandle surfelBuffer, uint32_t maxSurfels)
-{
-    (void)surfelBuffer;
-    (void)maxSurfels;
-}
-
-void SurfelGrid::BuildCellAverages()
-{
 }
 
 SurfelRayQueue::SurfelRayQueue() = default;
@@ -299,13 +284,9 @@ bool SurfelRayQueue::ResizeReset(uint32_t maxRays, uint32_t maxSurfels)
     std::ptrdiff_t requestBytes = 0;
     std::ptrdiff_t rayBytes = 0;
     std::ptrdiff_t hitBytes = 0;
-    std::ptrdiff_t binBytes = 0;
-    std::ptrdiff_t counterBytes = 0;
     if (!CheckedBufferSize(maxSurfels, sizeof(SurfelRayRequest), requestBytes) ||
         !CheckedBufferSize(maxRays, sizeof(SurfelRay), rayBytes) ||
-        !CheckedBufferSize(maxRays, sizeof(SurfelRayHit), hitBytes) ||
-        !CheckedBufferSize(maxRays, sizeof(uint32_t), binBytes) ||
-        !CheckedBufferSize(1u, sizeof(SurfelRayCounters), counterBytes)) {
+        !CheckedBufferSize(maxRays, sizeof(SurfelRayHit), hitBytes)) {
         std::cerr << "[SurfelRayQueue] Invalid queue size: maxRays=" << maxRays
             << ", maxSurfels=" << maxSurfels << ".\n";
         return false;
@@ -317,10 +298,7 @@ bool SurfelRayQueue::ResizeReset(uint32_t maxRays, uint32_t maxSurfels)
     const bool ok =
         AllocateSSBO(m_requestBuffer, requestBytes, nullptr, "SurfelRayQueue.Requests") &&
         AllocateSSBO(m_rayBuffer, rayBytes, nullptr, "SurfelRayQueue.Rays") &&
-        AllocateSSBO(m_sortedRayBuffer, rayBytes, nullptr, "SurfelRayQueue.SortedRays") &&
-        AllocateSSBO(m_rayHitBuffer, hitBytes, nullptr, "SurfelRayQueue.Hits") &&
-        AllocateSSBO(m_rayBinBuffer, binBytes, nullptr, "SurfelRayQueue.Bins") &&
-        AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelRayQueue.Counters");
+        AllocateSSBO(m_rayHitBuffer, hitBytes, nullptr, "SurfelRayQueue.Hits");
 
     if (!ok) {
         Destroy();
@@ -335,10 +313,7 @@ void SurfelRayQueue::Destroy()
 {
     DeleteBuffer(m_requestBuffer);
     DeleteBuffer(m_rayBuffer);
-    DeleteBuffer(m_sortedRayBuffer);
     DeleteBuffer(m_rayHitBuffer);
-    DeleteBuffer(m_rayBinBuffer);
-    DeleteBuffer(m_countersBuffer);
     m_maxRays = 0;
     m_maxSurfels = 0;
 }
@@ -351,52 +326,5 @@ void SurfelRayQueue::Clear()
 
     ClearBufferUInt(m_requestBuffer, 0u);
     ClearBufferUInt(m_rayBuffer, 0u);
-    ClearBufferUInt(m_sortedRayBuffer, 0u);
     ClearBufferUInt(m_rayHitBuffer, 0u);
-    ClearBufferUInt(m_rayBinBuffer, 0xffffffffu);
-
-    SurfelRayCounters counters{};
-    counters.maxRays = m_maxRays;
-    counters.maxSurfels = m_maxSurfels;
-    UploadStruct(m_countersBuffer, counters);
-}
-
-void SurfelRayQueue::RequestRays(rhi::BufferHandle surfelBuffer)
-{
-    (void)surfelBuffer;
-}
-
-void SurfelRayQueue::AllocateRays(rhi::BufferHandle surfelBuffer, uint32_t globalBudget)
-{
-    (void)surfelBuffer;
-
-    if (!IsCreated()) {
-        return;
-    }
-
-    SurfelRayCounters counters{};
-    counters.maxRays = m_maxRays;
-    counters.maxSurfels = m_maxSurfels;
-    counters.globalBudget = globalBudget < m_maxRays ? globalBudget : m_maxRays;
-    UploadStruct(m_countersBuffer, counters);
-}
-
-void SurfelRayQueue::GenerateRays(rhi::BufferHandle surfelBuffer, rhi::BufferHandle gridBuffer)
-{
-    (void)surfelBuffer;
-    (void)gridBuffer;
-}
-
-void SurfelRayQueue::BinAndSortRays()
-{
-}
-
-void SurfelRayQueue::TraceRays(const TraceResources& traceResources)
-{
-    (void)traceResources;
-}
-
-void SurfelRayQueue::IntegrateHits(rhi::BufferHandle surfelBuffer)
-{
-    (void)surfelBuffer;
 }

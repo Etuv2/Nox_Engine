@@ -45,7 +45,6 @@ const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
 const float SURFEL_TRACE_HIT_KIND_SCREEN = 2.0;
 const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
-const float SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT = 5.0;
 const float SURFEL_SCREEN_SAMPLE_RELIABILITY = 0.18;
 const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
@@ -75,9 +74,6 @@ float HitKindReliability(float hitKind)
     }
     if (abs(hitKind - SURFEL_TRACE_HIT_KIND_ENVIRONMENT) < 0.25) {
         return SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY;
-    }
-    if (abs(hitKind - SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT) < 0.25) {
-        return 1.0;
     }
     if (abs(hitKind - SURFEL_TRACE_HIT_KIND_GRID) < 0.25) {
         return 0.72;
@@ -130,14 +126,15 @@ void main()
     vec3 batchSum = vec3(0.0);
     vec3 batchSumSq = vec3(0.0);
     float acceptedWeight = 0.0;
-    float sourceDirectWeight = 0.0;
     uint accepted = 0u;
     vec3 normal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
-    for (uint i = 0u; i < request.allocatedCount; ++i) {
+    // Only the slots generate_rays.comp wrote this frame are read: the same cap, clamped to the ray budget. Allocated
+    // slots beyond the cap were never generated, so their hits belong to other surfels or to earlier frames.
+    uint generatedCount = request.firstRay < uMaxRays
+        ? min(min(request.allocatedCount, SURFEL_GENERATED_RAYS_PER_SURFEL), uMaxRays - request.firstRay)
+        : 0u;
+    for (uint i = 0u; i < generatedCount; ++i) {
         uint rayID = request.firstRay + i;
-        if (rayID >= uMaxRays) {
-            break;
-        }
 
         // Every resolved ray is one sample of E = integral L cos: radiance * cos / pdf, with equal
         // weight. A ray that leaves the scene carries the sky radiance the tracer returned (zero
@@ -145,6 +142,11 @@ void main()
         // true misses, would bias the estimate. Only rays the tracer could not resolve (kind 0,
         // possible without the BVH) carry no information and are left out.
         SurfelRayHit hit = hits[rayID];
+        // Ownership: the hit must be this surfel's slot i, written by trace_rays.comp this frame.
+        if (hit.ids.x != request.surfelID || hit.ids.z != i || hit.ids.w != uFrameIndex) {
+            atomicAdd(counters.staleRaySlotCount, 1u);
+            continue;
+        }
         if (hit.normal_hitKind.w <= 0.5) {
             continue;
         }
@@ -163,7 +165,6 @@ void main()
 
     surfel.shortM2.a = float(request.requestedCount);
     surfel.debug.y = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
-    surfel.debug.z = float(request.allocatedCount);
 
     if (accepted == 0u || acceptedWeight <= 1e-5) {
         if (request.allocatedCount > 0u) {
@@ -184,10 +185,8 @@ void main()
     vec3 sampleVariance = max(sampleSecondMoment - sampleMean * sampleMean, vec3(0.0));
     float effectiveAccepted = max(acceptedWeight, float(accepted) * 0.25);
     float sparseSample01 = 1.0 - SurfelSaturate(effectiveAccepted / 4.0);
-    float sourceDirectSupport = SurfelSaturate(sourceDirectWeight / max(acceptedWeight, 1e-5));
     if (sparseSample01 > 0.0) {
         float sparseVariance = max(SurfelLuminance(sampleMean) * 0.18, 0.018) * sparseSample01;
-        sparseVariance *= mix(1.0, 0.35, sourceDirectSupport);
         sampleVariance += vec3(sparseVariance);
     }
     vec3 priorIrradiance = SurfelClampRadiance(surfel.irradiance.rgb);
@@ -229,8 +228,7 @@ void main()
     float preUpdateVarLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));
     float preUpdateStability = 1.0 - smoothstep(0.06, 0.95, preUpdateVarLum);
     float shortWindowBlend = mix(0.018, 0.075, acceptedRatio * schedulerSupport * preUpdateStability);
-    shortWindowBlend = max(shortWindowBlend, sourceDirectSupport * acceptedRatio * schedulerSupport * 0.11);
-    float lightingCatchUpBlend = lightingChange * acceptedRatio * schedulerSupport * mix(0.14, 0.42, sourceDirectSupport);
+    float lightingCatchUpBlend = lightingChange * acceptedRatio * schedulerSupport * 0.14;
     shortWindowBlend = max(shortWindowBlend, lightingCatchUpBlend);
     shortWindowBlend = resetEstimator ? max(shortWindowBlend, brandNew ? 0.42 : 0.24) : shortWindowBlend;
     // Running average over the rays integrated so far (a SURFEL_SHORT_HISTORY_RAYS window once
@@ -244,7 +242,7 @@ void main()
     float sampleStability = 1.0 - smoothstep(0.06, 0.75, varLum);
     float consistentChange = smoothstep(0.16, 1.35, diffLum) * sampleStability;
     float confidenceDecay = consistentChange * 0.035;
-    confidenceDecay = max(confidenceDecay, lightingChange * acceptedRatio * (1.0 - sourceDirectSupport * 0.35) * 0.08);
+    confidenceDecay = max(confidenceDecay, lightingChange * acceptedRatio * 0.08);
     temporalConfidence = SurfelSaturate(temporalConfidence - confidenceDecay);
     if (SurfelIsNew(surfel)) {
         SurfelSetFlags(surfel, SurfelFlags(surfel) & ~SURFEL_NEW);
@@ -255,14 +253,12 @@ void main()
     surfel.shortMean.a = min(surfel.shortMean.a + effectiveAccepted, SURFEL_SHORT_HISTORY_RAYS);
 
     float confidenceGain = mix(0.006, 0.020, sampleStability) * acceptedRatio * schedulerSupport;
-    confidenceGain += sourceDirectSupport * acceptedRatio * schedulerSupport * 0.018;
-    confidenceGain += lightingChange * acceptedRatio * schedulerSupport * mix(0.010, 0.048, sourceDirectSupport);
+    confidenceGain += lightingChange * acceptedRatio * schedulerSupport * 0.010;
     if (resetEstimator) {
-        float bootstrapBase = mix(brandNew ? 0.03 : 0.02, brandNew ? 0.11 : 0.075, sourceDirectSupport);
-        float bootstrapGain = mix(brandNew ? 0.20 : 0.11, brandNew ? 0.34 : 0.22, sourceDirectSupport);
+        float bootstrapBase = brandNew ? 0.03 : 0.02;
+        float bootstrapGain = brandNew ? 0.20 : 0.11;
         float bootstrapConfidence = bootstrapBase +
             bootstrapGain * SurfelSaturate(acceptedWeight / SURFEL_SHORT_HISTORY_RAYS) * schedulerSupport;
-        bootstrapConfidence = max(bootstrapConfidence, sourceDirectSupport * acceptedRatio * 0.42);
         surfel.irradiance.a = max(SurfelSaturate(surfel.irradiance.a), SurfelSaturate(bootstrapConfidence));
     } else {
         surfel.irradiance.a = SurfelSaturate(temporalConfidence + confidenceGain);

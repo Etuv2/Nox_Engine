@@ -190,7 +190,7 @@ vec3 RayCountColor(uint surfelID, Surfel surfel, out float ring)
     SurfelRayRequest request = rayRequests[surfelID];
     bool requestValid = request.surfelID == surfelID;
     float requested = requestValid ? float(request.requestedCount) : max(surfel.shortM2.a, 0.0);
-    float allocated = requestValid ? float(request.allocatedCount) : max(surfel.debug.z, 0.0);
+    float allocated = requestValid ? float(request.allocatedCount) : 0.0;
     float demand = Safe01(requested / 12.0);
     float allocatedSignal = Safe01(allocated / 12.0);
     float ratio = requested <= 0.0 ? 1.0 : Safe01(allocated / max(requested, 1.0));

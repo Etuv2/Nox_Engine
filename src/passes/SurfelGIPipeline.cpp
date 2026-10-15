@@ -267,10 +267,8 @@ void StoreSurfelCounters(const SurfelCounters& counters, SurfelGIFrameStats& sta
 	stats.rayHitScreen = counters.rayHitScreen;
 	stats.rayHitBVH = counters.rayHitBVH;
 	stats.rayHitEnvironment = counters.rayHitEnvironment;
-	stats.rayHitSourceDirect = counters.rayHitSourceDirect;
 	stats.rayHitMiss = counters.rayHitMiss;
 	stats.acceptedRaySamples = counters.acceptedRaySamples;
-	stats.sourceDirectSamples = counters.sourceDirectSamples;
 	stats.temporalClampEvents = counters.temporalClampEvents;
 	stats.sharingAppliedSurfels = counters.sharingAppliedSurfels;
 	stats.sharingRejectedDarkLift = counters.sharingRejectedDarkLift;
@@ -279,6 +277,41 @@ void StoreSurfelCounters(const SurfelCounters& counters, SurfelGIFrameStats& sta
 	stats.finalGatherBleedPixels = counters.finalGatherBleedPixels;
 	stats.finalGatherValidPixels = counters.finalGatherValidPixels;
 	stats.finalGatherEmptyPixels = counters.finalGatherEmptyPixels;
+	stats.youngSurfels = counters.youngSurfelCount;
+	stats.staleRaySlots = counters.staleRaySlotCount;
+	// Rays asked for by request_rays but not granted by allocate_rays (both counters are per frame).
+	stats.rayShortfall = counters.requestedRays > counters.allocatedRays
+		? counters.requestedRays - counters.allocatedRays
+		: 0u;
+}
+
+// Reference mode accumulates at quarter of the output resolution.
+uint32_t ReferenceExtent(uint32_t fullExtent)
+{
+	return std::max((fullExtent + 3u) / 4u, 1u);
+}
+
+bool AllocateReferenceTextures(rhi::TextureHandle& mean, rhi::TextureHandle& count, uint32_t width, uint32_t height)
+{
+	if (width == 0u || height == 0u) {
+		return false;
+	}
+
+	rhi::Device& gpu = rhi::Gpu();
+	rhi::TextureDesc desc{};
+	desc.width = static_cast<int>(width);
+	desc.height = static_cast<int>(height);
+	if (!mean.IsValid()) {
+		desc.format = rhi::Format::RGBA32F;
+		mean = gpu.CreateTexture(desc);
+		gpu.SetTextureMinFilter(mean, rhi::Filter::Linear);
+		gpu.SetTextureMagFilter(mean, rhi::Filter::Linear);
+	}
+	if (!count.IsValid()) {
+		desc.format = rhi::Format::R32F;
+		count = gpu.CreateTexture(desc);
+	}
+	return mean.IsValid() && count.IsValid();
 }
 
 bool AllocateIndirectTexture(rhi::TextureHandle& texture, uint32_t width, uint32_t height)
@@ -666,6 +699,7 @@ void SetSurfelGridUniforms(rhi::ProgramHandle program,
 	SetUniform3fv(program, "uGridMax", gridMax);
 	SetUniform1ui(program, "uUseNonLinearGrid", gridSettings.useNonLinearGrid ? 1u : 0u);
 	SetUniform1f(program, "uGridFarExtent", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
+	SetUniform1f(program, "uSurfelGridSliceGrowth", gridSettings.sliceGrowth);
 }
 
 void BindSurfelGIGBufferTextures(const RenderContext& context)
@@ -831,14 +865,10 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 	m_resources.countersBuffer = m_pool.GetCountersBuffer();
 	m_resources.gridHeaderBuffer = m_grid.GetCellHeaderBuffer();
 	m_resources.gridEntryBuffer = m_grid.GetCellEntryBuffer();
-	m_resources.gridAverageBuffer = m_grid.GetCellAverageBuffer();
 	m_resources.gridCountersBuffer = m_grid.GetCountersBuffer();
 	m_resources.rayRequestBuffer = m_rayQueue.GetRequestBuffer();
 	m_resources.rayBuffer = m_rayQueue.GetRayBuffer();
-	m_resources.sortedRayBuffer = m_rayQueue.GetSortedRayBuffer();
 	m_resources.rayHitBuffer = m_rayQueue.GetRayHitBuffer();
-	m_resources.rayBinBuffer = m_rayQueue.GetRayBinBuffer();
-	m_resources.rayCountersBuffer = m_rayQueue.GetCountersBuffer();
 	m_stats.ready = IsReady();
 	return true;
 }
@@ -910,6 +940,13 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	rhi::Device& gpu = rhi::Gpu();
 	if (!IsReady() || !context.gbufferFBO) {
 		m_stats.ready = false;
+		return;
+	}
+
+	// Reference mode owns the frame: no surfel pass runs, the indirect texture comes from the path tracer.
+	if (m_settings.referenceMode) {
+		ExecuteIndependentReference(context, sceneGraph, camera, dirLight, skybox);
+		m_stats.ready = IsReady();
 		return;
 	}
 
@@ -1054,6 +1091,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 
 	if (m_beginFrameShader && m_beginFrameShader->IsValid()) {
 		gpu.UseProgram(m_beginFrameShader->GetProgramID());
+		// requestedRays starts at this cache-maintenance reservation (request_rays.comp adds to it).
+		SetUniform1ui(m_beginFrameShader->GetProgramID(), "uRequestReservation", std::max(maxSurfels / 64u, 1u));
 		timedDispatch("begin_frame", [&]() {
 			m_beginFrameShader->Dispatch(1u, 1u, 1u);
 			m_beginFrameShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1128,7 +1167,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		});
 	}
 
-	rebuildGridAndAverages(true);
+	// The grid must hold this frame's recycling for spawn and trace. Cell averages are only read by the final
+	// gather, which runs after the end-of-frame buildCellAverages(), so they are not built here.
+	rebuildGridAndAverages(false);
 
 	if (!placementOnly && m_coverageShader && m_coverageShader->IsValid()) {
 		const rhi::ProgramHandle program = m_coverageShader->GetProgramID();
@@ -1248,7 +1289,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			}
 		}
 
-		rebuildGridAndAverages(true);
+		rebuildGridAndAverages(false);
 
 	}
 	else if (!runCoverageSpawn) {
@@ -1323,7 +1364,18 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			rtBuildSettings.maxBlasTrianglesPerFrame = static_cast<std::size_t>(std::max(context.surfelGIRTMaxBLASTrianglesPerFrame, 1));
 			rtBuildSettings.maxResidentBytes = static_cast<std::size_t>(std::max(context.surfelGIRTMaxResidentMB, 1)) * 1024ull * 1024ull;
 			rtBuildSettings.includeSkinnedMeshes = context.surfelGIRTIncludeSkinnedMeshes;
-			context.rtSceneResources->EnsureIncrementalBLAS(sceneGraph, rtBuildSettings);
+			// GPU time of the scene update is labelled on its own; the CPU split (instance list, upload) is in the stats.
+			timedDispatch("rt_scene_update", [&]() {
+				context.rtSceneResources->EnsureIncrementalBLAS(sceneGraph, rtBuildSettings);
+			});
+			{
+				const RTSceneResources::Diagnostics& rtDiagnostics = context.rtSceneResources->GetDiagnostics();
+				m_stats.rtInstanceListMs = static_cast<float>(rtDiagnostics.instanceListMsThisFrame);
+				m_stats.rtUploadMs = static_cast<float>(rtDiagnostics.uploadMsThisFrame);
+				m_stats.rtUploadRan = rtDiagnostics.uploadRanThisFrame ? 1u : 0u;
+				m_stats.rtGeometryUploaded = rtDiagnostics.geometryUploadedThisFrame ? 1u : 0u;
+				m_stats.rtInstanceBufferRewritten = rtDiagnostics.instanceBufferRewrittenThisFrame ? 1u : 0u;
+			}
 			if (context.rtSceneResources->IsIncrementalReady()) {
 				context.rtSceneResources->BindIncrementalForTracing(
 					ToGLuint(SurfelGIBinding::BvhTriangles),
@@ -1351,6 +1403,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RtInstanceNodes), {});
 		}
 		SetUniform1ui(program, "uActiveRayCount", rayBudget);
+		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
@@ -1379,52 +1432,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uUseSurfelFallbackTrace", m_settings.useSurfelFallbackTrace ? 1 : 0);
 		SetUniform1ui(program, "uBVHTraceStride", bvhTraceStride);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
-		const rhi::TextureHandle skyIrradianceMap = skybox && skybox->IsReady() ? skybox->GetIrradianceMap() : rhi::TextureHandle{};
-		const rhi::TextureHandle skyEnvironmentMap = skybox && skybox->IsReady() ? skybox->GetEnvironmentMap() : rhi::TextureHandle{};
-		gpu.BindTexture(kSurfelGISkyIrradianceUnit, skyIrradianceMap);
-		gpu.BindTexture(kSurfelGISkyEnvironmentUnit, skyEnvironmentMap);
-		SetUniform1i(program, "uSkyIrradianceMap", static_cast<int>(kSurfelGISkyIrradianceUnit));
-		SetUniform1i(program, "uSkyEnvironmentMap", static_cast<int>(kSurfelGISkyEnvironmentUnit));
-		SetUniform1i(program, "uUseSkyIrradianceMap", skyIrradianceMap.IsValid() ? 1 : 0);
-		SetUniform1i(program, "uUseSkyEnvironmentMap", skyEnvironmentMap.IsValid() ? 1 : 0);
-		const float skyboxBounceScale = context.iblIntensity * context.diffuseIBLScale;
-		SetUniform1f(program, "uSkyDiffuseScale", std::clamp(skyboxBounceScale, 0.0f, kSurfelGISkyDiffuseMaxScale));
-		uint32_t lightCount = 0u;
-		rhi::TextureHandle shadowArray;
-		rhi::BufferHandle shadowMatrices;
-		glm::vec4 cascadeSplits(10.0f, 30.0f, 100.0f, 500.0f);
-		if (context.lightManager && context.lightManager->GetLightDataSSBO().IsValid()) {
-			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Lights),
-				context.lightManager->GetLightDataSSBO());
-			lightCount = static_cast<uint32_t>(std::max(context.lightManager->GetActiveLightCount(), 0));
-			shadowArray = context.lightManager->GetShadowArrayTexture();
-			shadowMatrices = context.lightManager->GetShadowMatricesSSBO();
-			const auto& shadowConfig = context.lightManager->shadowConfig;
-			const float nearPlane = std::max(context.shadowNear, camera ? camera->GetCameraNearPlane() : context.shadowNear);
-			const float farPlane = std::max(nearPlane + 1.0f,
-				std::min(context.shadowFar, camera ? camera->GetCameraFarPlane() : context.shadowFar));
-			const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
-			const std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(
-				nearPlane,
-				farPlane,
-				cascadeCount,
-				shadowConfig.directionalSplitLambda);
-			for (int i = 0; i < std::min(4, static_cast<int>(splits.size())); ++i) {
-				cascadeSplits[i] = splits[i];
-			}
-		}
-		else {
-			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Lights), {});
-		}
-		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::ShadowMatrices),
-			shadowMatrices);
-		gpu.BindTexture(kSurfelGIShadowArrayUnit, shadowArray);
-		SetUniform1i(program, "uMultiLightShadowArray", static_cast<int>(kSurfelGIShadowArrayUnit));
-		const bool enableTraceShadows = EnvFlagEnabled("NOX_SURFEL_GI_TRACE_SHADOWS", true);
-		SetUniform1i(program, "uEnableShadows", (enableTraceShadows && context.enableShadows && shadowArray.IsValid() && shadowMatrices.IsValid()) ? 1 : 0);
-		SetUniform4fv(program, "uCascadeSplits", cascadeSplits);
-		SetUniform1f(program, "uShadowBias", context.shadowBias);
-		SetUniform1ui(program, "uLightCount", lightCount);
+		BindSoftwareTraceLighting(program, context, camera, skybox);
 		timedDispatch("tracing", [&]() {
 			m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);
 			m_traceRaysShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1489,7 +1497,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		});
 	}
 
-	if (!placementOnly && updateRaysThisFrame) {
+	// Once per frame, after the last irradiance update, for the final gather (cell averages feed its fallback).
+	if (!placementOnly) {
 		buildCellAverages();
 	}
 
@@ -1511,6 +1520,193 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	m_stats.ready = IsReady();
 }
 
+// Light, shadow and sky inputs shared by the software BVH tracers (trace_rays.comp and reference_gi.comp).
+void SurfelGIPipeline::BindSoftwareTraceLighting(rhi::ProgramHandle program, RenderContext& context,
+	const std::shared_ptr<Camera>& camera, const std::shared_ptr<Skybox>& skybox)
+{
+	rhi::Device& gpu = rhi::Gpu();
+const rhi::TextureHandle skyIrradianceMap = skybox && skybox->IsReady() ? skybox->GetIrradianceMap() : rhi::TextureHandle{};
+const rhi::TextureHandle skyEnvironmentMap = skybox && skybox->IsReady() ? skybox->GetEnvironmentMap() : rhi::TextureHandle{};
+gpu.BindTexture(kSurfelGISkyIrradianceUnit, skyIrradianceMap);
+gpu.BindTexture(kSurfelGISkyEnvironmentUnit, skyEnvironmentMap);
+SetUniform1i(program, "uSkyIrradianceMap", static_cast<int>(kSurfelGISkyIrradianceUnit));
+SetUniform1i(program, "uSkyEnvironmentMap", static_cast<int>(kSurfelGISkyEnvironmentUnit));
+SetUniform1i(program, "uUseSkyIrradianceMap", skyIrradianceMap.IsValid() ? 1 : 0);
+SetUniform1i(program, "uUseSkyEnvironmentMap", skyEnvironmentMap.IsValid() ? 1 : 0);
+const float skyboxBounceScale = context.iblIntensity * context.diffuseIBLScale;
+SetUniform1f(program, "uSkyDiffuseScale", std::clamp(skyboxBounceScale, 0.0f, kSurfelGISkyDiffuseMaxScale));
+uint32_t lightCount = 0u;
+rhi::TextureHandle shadowArray;
+rhi::BufferHandle shadowMatrices;
+glm::vec4 cascadeSplits(10.0f, 30.0f, 100.0f, 500.0f);
+if (context.lightManager && context.lightManager->GetLightDataSSBO().IsValid()) {
+	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Lights),
+		context.lightManager->GetLightDataSSBO());
+	lightCount = static_cast<uint32_t>(std::max(context.lightManager->GetActiveLightCount(), 0));
+	shadowArray = context.lightManager->GetShadowArrayTexture();
+	shadowMatrices = context.lightManager->GetShadowMatricesSSBO();
+	const auto& shadowConfig = context.lightManager->shadowConfig;
+	const float nearPlane = std::max(context.shadowNear, camera ? camera->GetCameraNearPlane() : context.shadowNear);
+	const float farPlane = std::max(nearPlane + 1.0f,
+		std::min(context.shadowFar, camera ? camera->GetCameraFarPlane() : context.shadowFar));
+	const int cascadeCount = std::max(1, shadowConfig.directionalCascadeCount);
+	const std::vector<float> splits = ShadowMapper::ComputeCascadeSplits(
+		nearPlane,
+		farPlane,
+		cascadeCount,
+		shadowConfig.directionalSplitLambda);
+	for (int i = 0; i < std::min(4, static_cast<int>(splits.size())); ++i) {
+		cascadeSplits[i] = splits[i];
+	}
+}
+else {
+	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Lights), {});
+}
+gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::ShadowMatrices),
+	shadowMatrices);
+gpu.BindTexture(kSurfelGIShadowArrayUnit, shadowArray);
+SetUniform1i(program, "uMultiLightShadowArray", static_cast<int>(kSurfelGIShadowArrayUnit));
+const bool enableTraceShadows = EnvFlagEnabled("NOX_SURFEL_GI_TRACE_SHADOWS", true);
+SetUniform1i(program, "uEnableShadows", (enableTraceShadows && context.enableShadows && shadowArray.IsValid() && shadowMatrices.IsValid()) ? 1 : 0);
+SetUniform4fv(program, "uCascadeSplits", cascadeSplits);
+SetUniform1f(program, "uShadowBias", context.shadowBias);
+SetUniform1ui(program, "uLightCount", lightCount);
+}
+
+// Reference mode: one path per quarter-resolution texel per frame, averaged over frames until the view changes.
+constexpr uint32_t kReferenceSamplesPerFrame = 1u;
+// Diffuse bounces after the first hit. Direct light is taken at every hit with shadow rays.
+constexpr uint32_t kReferenceBounces = 3u;
+
+void SurfelGIPipeline::ExecuteIndependentReference(RenderContext& context,
+	const std::shared_ptr<SceneGraph>& sceneGraph,
+	const std::shared_ptr<Camera>& camera,
+	const std::shared_ptr<DirectionalLight>& dirLight,
+	const std::shared_ptr<Skybox>& skybox)
+{
+	rhi::Device& gpu = rhi::Gpu();
+	if (!m_referenceShader || !m_referenceShader->IsValid() ||
+		!m_resources.referenceMeanTexture.IsValid() || !m_resources.referenceCountTexture.IsValid()) {
+		return;
+	}
+
+	const glm::vec3 fallbackDirection = glm::vec3(-0.35f, -1.0f, -0.25f);
+	const std::shared_ptr<BaseLight> primaryDirectionalLight = FindPrimaryDirectionalLight(context);
+	const glm::vec3 lightDirection = primaryDirectionalLight
+		? NormalizeOrFallback(primaryDirectionalLight->GetDirection(), fallbackDirection)
+		: (dirLight ? NormalizeOrFallback(dirLight->GetLightDirection(), fallbackDirection) : fallbackDirection);
+	const glm::vec3 lightRadiance = primaryDirectionalLight
+		? primaryDirectionalLight->GetColor() * std::max(primaryDirectionalLight->GetIntensity(), 0.0f)
+		: (dirLight ? dirLight->GetLightColor() * std::max(dirLight->GetIntensity(), 0.0f) : glm::vec3(1.0f));
+
+	// The accumulation restarts when the view changes or the textures were just reallocated.
+	const bool viewChanged = !m_hasReferenceView || MatrixMaxAbsDelta(context.view, m_referenceView) > 1.0e-6f;
+	const bool reset = viewChanged || m_referenceResetPending;
+	m_referenceView = context.view;
+	m_hasReferenceView = true;
+	m_referenceResetPending = false;
+
+	// Scene BVH from the same incremental build the surfel trace uses. Without one the reference is sky-only.
+	uint32_t bvhTriangleCount = 0u;
+	uint32_t bvhNodeCount = 0u;
+	uint32_t bvhInstanceCount = 0u;
+	uint32_t bvhInstanceNodeCount = 0u;
+	if (context.rtSceneResources && sceneGraph) {
+		RTSceneResources::IncrementalBuildSettings rtBuildSettings{};
+		rtBuildSettings.maxBuildMsPerFrame = std::max(static_cast<double>(context.surfelGIRTBuildBudgetMs), 0.05);
+		rtBuildSettings.maxBlasTrianglesPerFrame = static_cast<std::size_t>(std::max(context.surfelGIRTMaxBLASTrianglesPerFrame, 1));
+		rtBuildSettings.maxResidentBytes = static_cast<std::size_t>(std::max(context.surfelGIRTMaxResidentMB, 1)) * 1024ull * 1024ull;
+		rtBuildSettings.includeSkinnedMeshes = context.surfelGIRTIncludeSkinnedMeshes;
+		context.rtSceneResources->EnsureIncrementalBLAS(sceneGraph, rtBuildSettings);
+		if (context.rtSceneResources->IsIncrementalReady()) {
+			context.rtSceneResources->BindIncrementalForTracing(
+				ToGLuint(SurfelGIBinding::BvhTriangles),
+				ToGLuint(SurfelGIBinding::BvhNodes),
+				ToGLuint(SurfelGIBinding::RtInstances),
+				ToGLuint(SurfelGIBinding::RtInstanceNodes));
+			bvhTriangleCount = static_cast<uint32_t>(std::min<std::size_t>(
+				context.rtSceneResources->GetIncrementalTriangleCount(), std::numeric_limits<uint32_t>::max()));
+			bvhNodeCount = static_cast<uint32_t>(std::min<std::size_t>(
+				context.rtSceneResources->GetIncrementalNodeCount(), std::numeric_limits<uint32_t>::max()));
+			bvhInstanceCount = static_cast<uint32_t>(std::min<std::size_t>(
+				context.rtSceneResources->GetIncrementalInstanceCount(), std::numeric_limits<uint32_t>::max()));
+			bvhInstanceNodeCount = static_cast<uint32_t>(std::min<std::size_t>(
+				context.rtSceneResources->GetIncrementalInstanceNodeCount(), std::numeric_limits<uint32_t>::max()));
+		}
+	}
+	if (bvhTriangleCount == 0u || bvhNodeCount == 0u) {
+		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::BvhTriangles), {});
+		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::BvhNodes), {});
+		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RtInstances), {});
+		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RtInstanceNodes), {});
+	}
+
+	const uint32_t quarterWidth = ReferenceExtent(m_width);
+	const uint32_t quarterHeight = ReferenceExtent(m_height);
+	const rhi::ProgramHandle program = m_referenceShader->GetProgramID();
+	gpu.UseProgram(program);
+	BindSurfelGIGBufferTextures(context);
+	SetSurfelGIGBufferSamplerUniforms(program);
+	gpu.BindImage(0, m_resources.referenceMeanTexture, 0, false, 0, rhi::ImageAccess::ReadWrite, rhi::Format::RGBA32F);
+	gpu.BindImage(1, m_resources.referenceCountTexture, 0, false, 0, rhi::ImageAccess::ReadWrite, rhi::Format::R32F);
+	SetUniform2ui(program, "uQuarterResolution", quarterWidth, quarterHeight);
+	SetUniform1ui(program, "uFrameIndex", m_frameIndex);
+	SetUniform1ui(program, "uResetAccumulation", reset ? 1u : 0u);
+	SetUniform1ui(program, "uSamplesPerFrame", kReferenceSamplesPerFrame);
+	SetUniform1ui(program, "uBounces", kReferenceBounces);
+	SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
+	SetUniformMat4(program, "uInvView", glm::inverse(context.view));
+	SetUniform1i(program, "uUseSoftwareBVHTrace", (bvhTriangleCount > 0u && bvhNodeCount > 0u) ? 1 : 0);
+	SetUniform1ui(program, "uTriangleCount", bvhTriangleCount);
+	SetUniform1ui(program, "uBVHNodeCount", bvhNodeCount);
+	SetUniform1ui(program, "uRTInstanceCount", bvhInstanceCount);
+	SetUniform1ui(program, "uRTInstanceNodeCount", bvhInstanceNodeCount);
+	SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
+	SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
+	SetUniform3fv(program, "uSkyRadiance", SurfelSkyRadiance(context, skybox, m_settings));
+	BindSoftwareTraceLighting(program, context, camera, skybox);
+
+	rhi::QueryHandle beginQuery;
+	rhi::QueryHandle endQuery;
+	BeginGpuTiming("reference_gi", beginQuery, endQuery);
+	m_referenceShader->Dispatch(DivRoundUp(quarterWidth, 8u), DivRoundUp(quarterHeight, 8u), 1u);
+	m_referenceShader->WaitForCompletion(rhi::BarrierImageAccess | rhi::BarrierTextureFetch | rhi::BarrierStorage);
+	EndGpuTiming("reference_gi", beginQuery, endQuery);
+	gpu.BindImage(0, {}, 0, false, 0, rhi::ImageAccess::ReadWrite, rhi::Format::RGBA32F);
+	gpu.BindImage(1, {}, 0, false, 0, rhi::ImageAccess::ReadWrite, rhi::Format::R32F);
+	gpu.UseProgram({});
+	++m_frameIndex;
+}
+
+// Reference mode: the upscale resamples the quarter-resolution accumulation into the indirect texture, which is the
+// texture the lighting pass reads for the surfel term. Coverage is the reference's alpha (1 on geometry).
+void SurfelGIPipeline::ApplyIndependentReference(RenderContext& context)
+{
+	rhi::Device& gpu = rhi::Gpu();
+	if (!m_upscaleFilterShader || !m_upscaleFilterShader->IsValid() ||
+		!m_resources.referenceMeanTexture.IsValid() || !m_resources.indirectTexture.IsValid() ||
+		!context.gbufferFBO) {
+		return;
+	}
+
+	const rhi::ProgramHandle upscaleProgram = m_upscaleFilterShader->GetProgramID();
+	gpu.UseProgram(upscaleProgram);
+	gpu.BindTexture(0, m_resources.referenceMeanTexture);
+	gpu.BindTexture(1, context.gbufferFBO->GetColorAttachment(0));
+	gpu.BindTexture(2, context.gbufferFBO->GetDepthTexture());
+	gpu.BindImage(0, m_resources.indirectTexture, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	SetUniform1i(upscaleProgram, "uLowResIndirectTex", 0);
+	SetUniform1i(upscaleProgram, "uPackedNormalRMTex", 1);
+	SetUniform1i(upscaleProgram, "uDepthTex", 2);
+	SetUniform2ui(upscaleProgram, "uResolution", m_width, m_height);
+	SetUniform2ui(upscaleProgram, "uLowResolution", ReferenceExtent(m_width), ReferenceExtent(m_height));
+	SetUniform1ui(upscaleProgram, "uDebugView", 0u);
+	m_upscaleFilterShader->Dispatch(DivRoundUp(m_width, 8u), DivRoundUp(m_height, 8u), 1u);
+	m_upscaleFilterShader->WaitForCompletion(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
+	gpu.BindImage(0, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.UseProgram({});
+}
+
 void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 {
 	rhi::Device& gpu = rhi::Gpu();
@@ -1520,6 +1716,11 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 		!m_resources.indirectTexture.IsValid() || !m_resources.rawIndirectTexture.IsValid() ||
 		!m_resources.filteredIndirectTexture.IsValid() || !m_resources.temporalIndirectTexture.IsValid() ||
 		!context.gbufferFBO) {
+		m_stats.ready = IsReady();
+		return;
+	}
+	if (m_settings.referenceMode) {
+		ApplyIndependentReference(context);
 		m_stats.ready = IsReady();
 		return;
 	}
@@ -1737,6 +1938,11 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< " maxSurfels=" << m_settings.maxSurfels
 			<< " rayBudget=" << m_settings.maxRayBudget
 			<< " gatherBudget=" << m_settings.maxGatherSurfelsPerPixel
+			<< " rtInstanceListCpuMs=" << m_stats.rtInstanceListMs
+			<< " rtUploadCpuMs=" << m_stats.rtUploadMs
+			<< " rtUploadRan=" << m_stats.rtUploadRan
+			<< " rtGeometryUploaded=" << m_stats.rtGeometryUploaded
+			<< " rtInstanceBufferRewritten=" << m_stats.rtInstanceBufferRewritten
 			<< '\n';
 		for (const SubpassGpuTiming& timing : m_subpassTimings) {
 			std::cout << "[SurfelGISubpassMetrics]   "
@@ -1765,10 +1971,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< m_stats.rayHitBVH << "/"
 			<< m_stats.rayHitEnvironment << "/"
 			<< m_stats.rayHitMiss
-			<< " raySupportAcceptedSourceDirect="
-			<< m_stats.acceptedRaySamples << "/"
-			<< m_stats.sourceDirectSamples
-			<< " sourceDirectHits=" << m_stats.rayHitSourceDirect
+			<< " raySupportAccepted=" << m_stats.acceptedRaySamples
 			<< " temporalClamps=" << m_stats.temporalClampEvents
 			<< " sharingAppliedRejected="
 			<< m_stats.sharingAppliedSurfels << "/"
@@ -1779,6 +1982,10 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< m_stats.finalGatherBleedPixels << "/"
 			<< m_stats.finalGatherValidPixels << "/"
 			<< m_stats.finalGatherEmptyPixels
+			<< " overflowGridEntries=" << m_stats.overflowGridEntries
+			<< " youngSurfels=" << m_stats.youngSurfels
+			<< " rayShortfall=" << m_stats.rayShortfall
+			<< " staleRaySlots=" << m_stats.staleRaySlots
 			<< '\n';
 	}
 	m_stats.ready = IsReady();
@@ -2017,7 +2224,6 @@ bool SurfelGIPipeline::IsReady() const
 		m_resources.countersBuffer.IsValid() &&
 		m_resources.gridHeaderBuffer.IsValid() &&
 		m_resources.gridEntryBuffer.IsValid() &&
-		m_resources.gridAverageBuffer.IsValid() &&
 		m_resources.rayRequestBuffer.IsValid() &&
 		m_resources.rayBuffer.IsValid() &&
 		m_resources.rayHitBuffer.IsValid() &&
@@ -2123,6 +2329,10 @@ bool SurfelGIPipeline::LoadShaders()
 	if (!computeOk) {
 		return false;
 	}
+	// Loaded only in reference mode, so the default configuration neither compiles nor dispatches it.
+	if (m_settings.referenceMode && !CreateCompute(m_referenceShader, "shaders/surfel_gi/reference_gi.comp")) {
+		return false;
+	}
 
 	m_debugProgram = CreateShaderProgram(
 		"shaders/surfel_gi/debug_surfels.vert",
@@ -2171,6 +2381,7 @@ void SurfelGIPipeline::ReleaseShaders()
 	m_spatialFilterShader.reset();
 	m_temporalFilterShader.reset();
 	m_upscaleFilterShader.reset();
+	m_referenceShader.reset();
 	if (m_debugProgram.IsValid()) {
 		gpu.DestroyProgram(m_debugProgram);
 		m_debugProgram = {};
@@ -2199,12 +2410,17 @@ bool SurfelGIPipeline::CreateIndirectTexture()
 		AllocateIndirectTexture(m_resources.historyIndirectTexture[1], m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.historyGeometryTexture[0], m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.historyGeometryTexture[1], m_indirectWidth, m_indirectHeight);
-	if (!ok) {
+	const bool referenceOk = !m_settings.referenceMode ||
+		AllocateReferenceTextures(m_resources.referenceMeanTexture, m_resources.referenceCountTexture,
+			ReferenceExtent(m_width), ReferenceExtent(m_height));
+	if (!ok || !referenceOk) {
 		ReleaseIndirectTexture();
 		return false;
 	}
 	m_historyReadIndex = 0u;
 	m_hasTemporalHistory = false;
+	m_referenceResetPending = true;
+	m_hasReferenceView = false;
 	return true;
 }
 
@@ -2219,6 +2435,8 @@ void SurfelGIPipeline::ReleaseIndirectTexture()
 	DeleteTexture(m_resources.historyIndirectTexture[1]);
 	DeleteTexture(m_resources.historyGeometryTexture[0]);
 	DeleteTexture(m_resources.historyGeometryTexture[1]);
+	DeleteTexture(m_resources.referenceMeanTexture);
+	DeleteTexture(m_resources.referenceCountTexture);
 	m_historyReadIndex = 0u;
 	m_hasTemporalHistory = false;
 }
@@ -2231,13 +2449,9 @@ void SurfelGIPipeline::BindCoreResources(rhi::BufferHandle transformBuffer) cons
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::SurfelCounters), m_resources.countersBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridHeaders), m_resources.gridHeaderBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridEntries), m_resources.gridEntryBuffer);
-	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridAverages), m_resources.gridAverageBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayRequests), m_resources.rayRequestBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Rays), m_resources.rayBuffer);
-	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::SortedRays), m_resources.sortedRayBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayHits), m_resources.rayHitBuffer);
-	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayBins), m_resources.rayBinBuffer);
-	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayCounters), m_resources.rayCountersBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridCounters), m_resources.gridCountersBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RadialDepth), m_resources.radialDepthBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GuideMap), m_resources.guideMapBuffer);
