@@ -962,7 +962,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		: (dirLight ? NormalizeOrFallback(dirLight->GetLightDirection(), fallbackDirection) : fallbackDirection);
 	const glm::vec3 lightRadiance = primaryDirectionalLight
 		? primaryDirectionalLight->GetColor() * std::max(primaryDirectionalLight->GetIntensity(), 0.0f)
-		: (dirLight ? dirLight->GetLightColor() * std::max(dirLight->GetIntensity(), 0.0f) : glm::vec3(1.0f));
+		: glm::vec3(0.0f);  // Only a registered light feeds the GI. The default DirectionalLight object is not a light in the scene.
 	const std::vector<glm::vec4> currentLightingSignature = BuildLightingSignature(context, dirLight);
 	const float detectedLightingChange = ComputeLightingChangeFactor(currentLightingSignature, m_lastLightingSignature);
 	if (detectedLightingChange > 0.01f) {
@@ -1580,6 +1580,7 @@ SetUniform1ui(program, "uLightCount", lightCount);
 // Reference mode: one path per quarter-resolution texel per frame, averaged over frames until the view changes.
 constexpr uint32_t kReferenceSamplesPerFrame = 1u;
 // Diffuse bounces after the first hit. Direct light is taken at every hit with shadow rays.
+// Hits that are always followed. Later hits use Russian roulette (reference_gi.comp), so the reference is unbiased.
 constexpr uint32_t kReferenceBounces = 3u;
 
 void SurfelGIPipeline::ExecuteIndependentReference(RenderContext& context,
@@ -1601,7 +1602,7 @@ void SurfelGIPipeline::ExecuteIndependentReference(RenderContext& context,
 		: (dirLight ? NormalizeOrFallback(dirLight->GetLightDirection(), fallbackDirection) : fallbackDirection);
 	const glm::vec3 lightRadiance = primaryDirectionalLight
 		? primaryDirectionalLight->GetColor() * std::max(primaryDirectionalLight->GetIntensity(), 0.0f)
-		: (dirLight ? dirLight->GetLightColor() * std::max(dirLight->GetIntensity(), 0.0f) : glm::vec3(1.0f));
+		: glm::vec3(0.0f);  // Only a registered light feeds the GI. The default DirectionalLight object is not a light in the scene.
 
 	// The accumulation restarts when the view changes or the textures were just reallocated.
 	const bool viewChanged = !m_hasReferenceView || MatrixMaxAbsDelta(context.view, m_referenceView) > 1.0e-6f;

@@ -526,7 +526,8 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
         cachedAlbedoBlend *= 1.0 - visibleAlbedoConfidence * 0.65;
         albedo = mix(albedo, cachedAlbedo, cachedAlbedoBlend);
     }
-    vec3 emissive = max(hit.material.emissive * max(hit.material.emissiveStrength, 1.0), vec3(0.0));
+    // Same product as the reference and the deferred pass (emissive * KHR emissive strength, default 1).
+    vec3 emissive = max(hit.material.emissive * hit.material.emissiveStrength, vec3(0.0));
     gather.radiance = ShadeHitRadiance(hit.position, hit.normal, albedo, emissive, ray.ids.x, cacheSeed);
     gather.normal = hit.normal;
     gather.position = hit.position;
@@ -668,11 +669,10 @@ void TraceGatherSurfel(SurfelRay ray,
         return;
     }
 
-    // Emissive surfels keep their emitted radiance in the irradiance slot.
-    bool emissiveSurfelHit = (SurfelFlags(surfel) & SURFEL_EMISSIVE) != 0u;
+    // The irradiance slot is E for every surfel. Emission is not stored there, so a grid hit on an emitter returns
+    // no emission; the software BVH path reads it from the hit material (plan 13, bug 3).
     vec3 albedo = max(surfel.albedo_life.rgb, vec3(0.0));
-    vec3 emissiveRadiance = emissiveSurfelHit ? max(surfel.irradiance.rgb, vec3(0.0)) : vec3(0.0);
-    vec3 cachedIndirect = emissiveSurfelHit ? vec3(0.0) : max(surfel.irradiance.rgb, vec3(0.0));
+    vec3 cachedIndirect = max(surfel.irradiance.rgb, vec3(0.0));
     float clusterThickness = max(hitRadius * 0.40, 0.035);
     if (t < gather.closestT - clusterThickness) {
         gather.radiance = vec3(0.0);
@@ -690,7 +690,6 @@ void TraceGatherSurfel(SurfelRay ray,
     if (abs(t - gather.closestT) <= clusterThickness) {
         gather.albedoSum += albedo * weight;
         gather.indirectSum += cachedIndirect * weight;
-        gather.emissiveSum += emissiveRadiance * weight;
         gather.normal += surfelNormal * weight;
         gather.weight += weight;
         if (t <= gather.closestT) {

@@ -740,7 +740,7 @@ Branch `worktree-agent-acf4c659e250f2d39`, merged with main at d447ec2. Method a
 - WP7 estimator (`msme.comp`, `integrate.comp`): two-rate estimator. Short mean (rate 0.2) and short variance from batch means, long mean (the gather input). New surfel: long-mean rate at least 0.6. Lighting change L: rate at least 0.5 L, and the short mean snaps to the batch when L >= 0.5. The firefly gate is kept on the batch mean and skipped during a lighting change. Removed: sparse-variance injection, lighting reactive variance, catch-up blend, bootstrap confidence. **Deviation:** the long rate is fixed at 0.02 in steady state, not `mix(0.02, 0.35, reactive)` (section 10.4).
 - WP10 (`irradiance_sharing.comp`): neighbour cap 16 (was 48). Gate: blend only where `(std/mean)^2 >= 0.09`, or where confidence is at most 0.5. The gate is relative, because an absolute lum(shortM2) threshold is not scale-free. Guiding is kept on (section 10.5).
 - Light-step hook (generic): `NOX_LIGHT_STEP=<frame>:<scale>` in `LightManager::UpdateLights`. It multiplies every registered light's intensity once, at that call. Log line `[LightStep]`.
-- Bug fixed in `generate_rays.comp`: `hasGuide` was read uninitialised when guiding is off. The guiding-off collapse (10.5) happens in the baseline too, so the fix does not explain it.
+- Bug fixed in `generate_rays.comp`: `hasGuide` was read uninitialised when guiding is off. The guiding-off collapse (11.5) happens in the baseline too, so the fix does not explain it.
 - Harness (`tools/surfel_gi_metrics.py`): twins `surf_term_*` (noise) for the ablations and budgets; `surf_noguide`, `surf_nosharing`, `surf_r8k`; noise is computed for every `surf_term*` config.
 - Validator update: `scripts/validate_surfel_gi_correctness.py` checks the new contract (reservation 0, three-phase allocation, scratch binding). The static validator is unchanged and passes.
 
@@ -767,8 +767,8 @@ Cornell budget replicate (second independent set of 3 repeats, fresh runs; a jun
 | Allocated / requested >= 0.3, Cornell | Met (0.346). |
 | Noise <= 2%, Cornell | Not met: 2.58% (set A), 3.42% (set B). |
 | Noise <= 1.5%, scene | Met (1.06%). |
-| Light step: 90% in <= 12 frames | Not established (10.6). |
-| Tracing cost at 2048 | Not reliably measured (10.7). |
+| Light step: 90% in <= 12 frames | Not established (11.6). |
+| Tracing cost at 2048 | Not reliably measured (11.7). |
 | Racing `[Race] Finished in 47.4994 s` | Met. |
 | Editor smoke, 0 FAIL | Met. |
 | `CheckNoRawGL`, `CheckGenericExe`, `CheckVcxprojSources`, static validator, correctness validator | All pass. |
@@ -789,7 +789,7 @@ The energy target therefore holds on Cornell only. For scene and NFS the next le
 ### 11.5 WP10: guiding and sharing
 
 - Guiding off at equal rays (3 repeats, 2048 rays): energy 0.099 of indep on Cornell, 0.446 on scene, 0.381 on NFS, with negative correlation on Cornell. The baseline shows the same collapse (Cornell 0.17 of indep, single repeat). Cosine-sampled rays rarely hit the emitter, and the per-ray clamp removes the rare hits that do land. Guiding aims rays at the light, which avoids both. The variance criterion ("keep only if variance drops by 10%") cannot be applied: the unguided estimate is biased low by a factor of 3 to 10, and relative noise on a mean that small is not comparable. **Guiding is kept on**, justified by the energy, not by a measured variance reduction.
-- Sharing on (cap 16, relative gate) against off (3 repeats): Cornell noise 2.58% against 4.25%, and the second set gives 3.42%. Scene 1.06% against 1.09%. NFS 0.53% against 0.61%. Energy: Cornell 0.997 against 1.327, scene 0.625 against 0.635, NFS 0.401 against 0.415. **Sharing is kept**, with the cap and the gate. The benefit is on Cornell only, and it is not larger than the replicate spread once the second set is included. The sharing cost was not measured reliably (10.7).
+- Sharing on (cap 16, relative gate) against off (3 repeats): Cornell noise 2.58% against 4.25%, and the second set gives 3.42%. Scene 1.06% against 1.09%. NFS 0.53% against 0.61%. Energy: Cornell 0.997 against 1.327, scene 0.625 against 0.635, NFS 0.401 against 0.415. **Sharing is kept**, with the cap and the gate. The benefit is on Cornell only, and it is not larger than the replicate spread once the second set is included. The sharing cost was not measured reliably (11.7).
 
 ### 11.6 Light step
 
@@ -804,5 +804,136 @@ GPU timings in these runs are contaminated. Other workers were using the GPU dur
 - The light-change factor in `SurfelGIPipeline.cpp` (around line 966) is unchanged; the plan's simplification was not made.
 - `update_surfels.comp` still writes `msme.x`, `msme.y` (WP7 removed their readers). Dead writes, owned by another worker.
 - The sharing phase count (`budget <= 4096 ? 2 : 1`) is unchanged, so at 2048 sharing covers half the surfels per frame.
-- The request rule has no sample-count floor, so converging surfels can be starved (10.4).
+- The request rule has no sample-count floor, so converging surfels can be starved (11.4).
 - Not done: light-step response on a quiet GPU, the step with the raw gather (debug view 35), an independent per-ray variance measurement for the guiding decision.
+
+
+### 11.9 A follow-up (round 2)
+
+Commits on `worktree-agent-acf4c659e250f2d39`: `98118f3` (light-step hook: persistent gain and GPU re-upload), `58bd127` (guide sampling inside the unit disk), `53fc516` (cumulative average for the early long mean), and the commit that adds this subsection. Method as 11.2: 3 repeats for `surf` and `surf_term`, with `off`, `ssgi` and `indep` reused from the section 9 baseline runs. "Before" is the round-1 after (11.2). "After" is `53fc516`.
+
+| Scene | Metric | Before (11.2) | After (53fc516) | Target |
+|---|---|---|---|---|
+| Cornell | energy / indep | 0.997 | 0.935 | [0.9, 1.1]: met |
+| Cornell | surf_term noise | 2.58% | 3.52% | <= 2%: not met, worse (replicate sets gave 2.6-3.4%) |
+| Cornell | allocated / requested | 2048 / 5913 | 2048 / 5902 | |
+| scene.json | energy / indep | 0.625 | 0.668 | [0.9, 1.1]: not met |
+| scene.json | surf_term noise | 1.06% | 0.71% | <= 1.5%: met |
+| scene.json | allocated / requested | 2048 / 2263 | 2024 / 2024 | demand now fits the budget |
+| NFS | energy / indep | 0.401 | 0.363 | >= 0.85: not met, worse |
+| NFS | surf_term noise | 0.53% | 0.53% | |
+| NFS | allocated / requested | 2048 / 8381 | 2048 / 8662 | |
+
+**1. Light-step hook.** The step is now a read-path gain (`g_noxLightStepGain` in `BaseLight::GetIntensity` and `GetEffectiveColor`) from the step frame on, so a stored intensity re-applied each frame cannot undo it. The step frame is also marked dirty. Before, the step was applied before the dirty snapshot in `LightManager::UpdateLights`, so it never reached the packed GPU light buffer. I did not confirm that authored intensities are re-applied each frame; the gain makes that question moot. **The 90% measurement is not valid on these scenes.** The registered lights hardly drive the lit output: with all lights at zero, the Cornell composite moves from 0.109 to 0.114 (mean linear), scene.json from 0.392 to 0.389, and NFS (44 lights) from 0.0124 to 0.0103 (-17%). So there is no steady state to measure against. The only surf_term response measured on Cornell, with the light doubled at frame 230: 0.541 before, peak 0.647 at +5 frames, 0.578 at +29 (+7% over before). On scene.json the change is +1.4%. The 12-frame target is not established, and the peak should not be read as a pass. Lead for the lighting owner: the lit output does not follow the registered light intensities here, so something else feeds the lighting pass.
+
+**2. Scale-aware firefly clamp.** I implemented a per-sample bound of `k * max(lum long, lum short) + m * sigma` (sigma from the short variance), with a bound of 64 for surfels with fewer than 8 rays. Results at 2048 rays, one repeat each, frames 200-260:
+
+| Sample bound | Cornell energy / indep | NFS energy / indep |
+|---|---|---|
+| absolute 32 (shipped) | 0.96 (cumulative only) | 0.41 |
+| absolute 1000 | 1.87 | 0.87 |
+| k=8, m=8, cumulative | 1.89 | 0.77 |
+| k=4, m=4, cumulative | 1.47 | 0.76 |
+| k=8, m=8, batch gate off | 1.93 | 0.86 |
+| k=8, m=8, with the guide fix | 1.70 | 0.68 |
+
+No setting meets both NFS >= 0.85 and Cornell in [0.9, 1.1]. A long capture (frames 620-660, k=8, m=8) gives Cornell 1.89, the same as frames 200-260, so the overshoot is a steady-state bias, not convergence. The guide fix is a real bias fix (commit `58bd127`): the old sampler projected the square's corner samples onto the disk rim while using the full-square density, which overweighted near-horizon directions. It lowers the k=8 overshoot from 1.89 to 1.70, but the remaining overshoot is not located. I shipped the absolute 32 bound unchanged. The scale-aware bound is not in the code. The NFS target is not met (0.36). Fireflies: I read the follow-up frames at 260 for Cornell and NFS; there are no speckle or firefly artefacts.
+
+**3. scene.json convergence.** Age histogram at frame 240 (1836 live surfels): under 4 frames 32, 4-8 16, 8-16 48, 16-32 80, 32-50 96, 50-100 270, 100-200 524, 200 and over 770. Share of irradiance from surfels younger than 50 frames (a population proxy: the sum of E per age bucket, not the gather weights): 15% at frame 240, 8-9% at 250-260. On Cornell it is 9% at 240. Surfels of 200 frames and older carry 41%. Convergence lag can therefore account for at most about 15% of the scene gap (0.38 of indep); it is not the main cause. The cumulative schedule was neutral on energy at one repeat (Cornell 0.96, NFS 0.41). With the schedule and the guide fix, scene.json reaches 0.668 at 3 repeats, up from 0.625. Churn, for worker B: in frames 200-260 on scene.json there are about 1.6 spawns per frame (after the first readback, which counts every live surfel as new) and 0.2 recycles per frame (13 in 61 frames: 5 from ages 50-100, 1 from 100-200, 7 from 200 and over). Churn is small and falls on old surfels, so it is not the energy problem. Next suspect, not tested (trace is worker C's file): the surfel path adds sky irradiance through a sky-visibility term, while the reference gets sky from path-traced misses with the environment map. scene.json has a sky and Cornell does not.
+
+**4. Cornell noise.** Not met: 3.52% in this round, and 2.58% and 3.42% in earlier sets. A long rate of 0.01 (one repeat) gives noise 2.37% and energy 0.556, so the long-mean average is not the main noise source. Budgets of 4096 and 8192 did not lower it (11.4). Churn is negligible in the window (above). Not tested: the gather's candidate subsampling and the screen temporal and upscale filters, which are outside my files.
+
+**Timing.** No timing A/B pairs were run in this round.
+
+**Not met or not established:** the NFS energy target (0.36, need >= 0.85); the scene-adaptive clamp; the Cornell noise target (3.52%); the light-step 90% response (not measurable on these scenes); scene.json energy (0.67, below band); the remaining Cornell overshoot under the scale-aware bound.
+## 13. Estimator correctness
+
+Worker D (Haiku 5.5). Built on round 2 (`ed55deb`). Result in one line: the measurement chain was not linear, so every earlier energy number here is suspect; the independent reference now uses Russian roulette, and four estimator bugs (B1 to B4) are fixed; the furnace and white-sky tests, the guiding and clamp invariances, and the scene.json and NFS energy targets are not met; an offset in the reference-mode output path is not explained.
+
+### 13.1 Measurement (found first; it changes every earlier energy)
+
+- The dumps are display-referred. The post-process applies the GT tone curve by default, plus bloom, grain and dither, and TAA and HBAO are on in the composite. The harness converted the PNG with the sRGB LUT and called the result linear, which was wrong. Evidence: with the same code, Cornell indep (composite minus off) is 0.2773 under the default tone curve and 0.0743 with the linear profile below. The emission-only composite is exact under the linear profile (furnace `off`: 0.0999 for LE 0.1, 0.25016 for LE 0.25).
+- `tools/surfel_gi_metrics.py`: `MEASUREMENT_RENDER_SETTINGS` (tonemap none, bloom, vignette, grain, chromatic aberration, dither, TAA and SSAO off) is written into a temp copy of every scene. All numbers below use it.
+- `indep` and `surf` energies are composite minus `off`. On sky-lit scenes that subtracts the deferred IBL, which `off` contains, so it is not the GI term. New configs `indep_term` (reference alone, composite debug 4) and the existing `surf_term` give `term_energy` and `term_ratio_vs_indep`. Ratios in this section use those.
+- The "Execute" row never matched a label. `sum_labels_ms` is now the median of per-frame sums (the old value was a sum of medians over different frames, plan 10.1). `execute_ms` stays n/a.
+
+### 13.2 Bugs (file:line at `ed55deb`)
+
+B1. Sky miss read mip 5 of a cube with five prefiltered levels (`surfel_scene_trace.glsl`, `SURFEL_ENVIRONMENT_MISS_MIP = 5.0`; log: "Prefiltered map generation completed (128 base, 5 mips)"). Now mip 0 (exact HDR). The same function clamped sky radiance to 64 ("firefly guard"), which biased bright skies low; removed. The energy effect of B1 is not isolated.
+
+B2. The reference stopped after 3 bounces (`reference_gi.comp`, `for (bounce = 0; bounce <= uBounces; ...)`). Now Russian roulette after the third hit with q = min(0.95, max albedo), division by q, cap 32 (the cap drops a residual of albedo^32; 0.19 at albedo 0.95).
+
+B3. Emitted radiance in the irradiance slot. `integrate.comp` floored each emissive surfel at its previous mean (`max(batchMean, emissiveBaseline)`), a one-way ratchet; removed, and the slot is E only. `spawn.comp:715` still seeds emission into the slot (worker B's file, not changed; it is overwritten by the first batch on reset). On grid-path hits (tiers without the BVH) an emitter returns no emission now; the BVH path reads it from the material.
+
+B4. Emission strength. `trace_rays.comp` used `max(emissiveStrength, 1.0)`; the reference and the deferred pass use the product. Fixed to the product (emitters with strength below 1 were brightened).
+
+B5. Default light fallback. `SurfelGIPipeline.cpp` (surfel and reference update, about lines 965 and 1604) used a white unit sun when no directional light was found. The engine always registers `MainDirectionalLight`, so this rarely applies; the fallback is now zero. Low impact, not a measured fix.
+
+B6. Per-sample firefly clamp 32 (`integrate.comp`, `SURFEL_MAX_SAMPLE_IRRADIANCE`). The dominant Cornell bias. The light is emissive (cornell_box.glb, KHR strength 384.8), so an emitter sample is about 1200 and is clipped to 32. Guided Cornell, 262 frames: clamp 32 gives 0.2469, clamp 1e6 gives 0.5557 (+125%). **Not fixed.** The value stays at 32 because it agrees with the reference (0.2420, ratio 1.02). The unclamped overshoot (2.3x the reference) is not explained, so an upward bias in unclamped samples remains. A scale-aware clamp was not implemented.
+
+B7. Guided pdf rejection (`generate_rays.comp` `SurfelSampleGuideMap`, 64 tries). Corner bins (area 0.0032) fail about 15% of the time; the mixture pdf then does not match the sampling density. Small. Guided and unguided agree on the furnace (0.128 vs 0.133, 3.5%) and on white-sky (0.145 vs 0.147, 1.3%), so the pdf is consistent for smooth fields.
+
+### 13.3 Open findings (not located)
+
+O1. Surfel furnace is low. `surf(furnace) / surf(white-sky) = 0.884` against the analytic 1.667 (E = pi LE/(1-A) = 1.571 against pi L = 0.943), so the surfel furnace is 0.53x. The sky-only path is consistent. Hypothesis, not verified: multi-bounce at hits comes from `TraceCachedIndirectAtSurface` (`trace_rays.comp`, about 261-334). It returns false when the summed weight is at most 1e-4, and the sky fallback is zero in the furnace, so the indirect term is dropped at many hits.
+
+O2. Reference-mode composite offset. On the white-sky plane with no sky (`whitesky_nosky`), `indep_term` = 0.102594 (sky-independent). The value is identical (0.102594) with the reference mean forced to 0 (forcing it to 1 gives 0.2586, so the composite does read the mean), and the surfel path gives 0.0 on the same scene. Modes 2, 3 and 5 (IBL, SSGI, LPV) are 0.00003. The furnace at LE 0 gives 0.0221. The source is in the reference-mode output path, not in the reference mean; it was not traced. It enters every `indep` / `indep_term` number that the composite carries.
+
+O3. Sky slope. With the sky scale doubled, the surfel path doubles (0.145 to 0.292). The reference slope is 0.01561 per texel, the surfel slope 0.01467, so the reference is 6.4% higher. Absolute values need O2 resolved.
+
+O4. Guiding off collapses Cornell (0.0201 against 0.2469 at clamp 32; 0.0775 against 0.5557 at 1e6). Not converged in 262 frames: an unguided path rarely hits the emitter, and no light sampling exists. Not a pdf error (B7).
+
+### 13.4 Analytic tests
+
+Scenes: `tools/surfel_gi_analytic_scenes.py` (writes into `build/surfel_gi_analytic`, git-ignored; the engine only opens scene files under the project root). Furnace: closed box, albedo 0.5, emission 0.25, no sky. White-sky: one upward plane, albedo 0.5, sky texel 10 with scale 0.03 (L = 0.3, E = pi L = 0.943).
+
+| Test | Expected | Measured | Result |
+|---|---|---|---|
+| Furnace surf / white-sky surf (guided) | 1.667 | 0.884 | Not met (O1) |
+| Furnace guided / unguided | 1 | 0.966 | within 3.5% |
+| White-sky guided / unguided | 1 | 0.987 | within 1.3% |
+| Sky linearity, surf (texel 10 / 20) | 2.00 | 2.01 | met |
+| Sky linearity, reference (texel 10 / 20, offset removed) | 2.00 | 1.60 raw, slope 2.00 after the O2 offset | not met as measured (O2) |
+| Absolute surf vs analytic | needs O2 | not established | not measured |
+
+Reference convergence: the white-sky reference is converged at frame 20 (`final_00020` to `final_00899` identical to 5 digits).
+
+### 13.5 Invariants (Cornell, 262 frames, one repeat, medium budget 2048)
+
+| Invariant | Target | Result |
+|---|---|---|
+| Guiding on vs off, same mean | within 3% | Not met: 0.2469 vs 0.0201 (clamp 32); 0.5557 vs 0.0775 (clamp 1e6) (O4) |
+| Clamp 32 vs 1e6, same mean | within 5% | Not met: 0.2469 vs 0.5557 (+125%) (B6) |
+| Reference vs surfel, Cornell | within 5% | 1.02 (surf 0.2469, reference 0.2420) |
+
+### 13.6 Default tier (medium, 2048 rays, one repeat)
+
+Reference = `indep_term` (900 frames, composite debug 4). Noise = `surf_term` corrected std / mean on lit pixels.
+
+| Scene | Reference term | Surfel term | Ratio (target 0.9-1.1) | Noise (target) |
+|---|---|---|---|---|
+| Cornell | 0.2420 | 0.2469 | 1.02 met | 2.56% (<=2%: not met) |
+| scene.json | 0.3854 | 0.1038 | 0.27 not met | 0.94% (<=1.5%: met) |
+| NFS night street | 0.0767 | 0.0379 | 0.49 not met | 0.45% |
+
+The reference's own temporal noise is high on scene.json (13%) and NFS (57%) and Cornell (55%), so these ratios carry at least that much uncertainty. Like-for-like `indep` (composite minus off, linear profile, after this work): Cornell 0.0743, scene.json 0.2570, NFS 0.0271. Before (tone-mapped, not comparable): Cornell 0.2773, scene.json 0.2485, NFS 0.0258.
+
+Clamp: kept at 32 (B6). The scale-aware clamp is not implemented, so there is no re-tuned value.
+
+### 13.7 Light step
+
+Not measured. The default `MainDirectionalLight` exists on every scene, and the emitter that dominates Cornell is emissive geometry, which the light step does not scale. Extending the step to emission and sky was not done.
+
+### 13.8 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass.
+- `scripts/validate_surfel_gi_static.py`, `scripts/validate_surfel_gi_correctness.py`: pass.
+- `scripts/validate_surfel_environment_miss_radiance.py`: updated to the current contract (sky sampler in `surfel_scene_trace.glsl`, mip 0, no radiance clamp); it failed at `ed55deb` because the sampler moved, and passes now.
+- `scripts/validate_surfel_irradiance_energy.py` and `validate_surfel_gi_ray_radiance_contract.py`: fail at `ed55deb` (plan 10.7); not changed.
+- `NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`: 0 FAIL (15 PASS).
+- Racing: `[Race] Finished in 47.4994 s (new record)`.
+- Frames (surf_term = composite debug 4, frame 260): Cornell and NFS viewed. Before frames were not regenerated.
+
+### 13.9 Not met
+
+Furnace and white-sky analytic checks (O1, O2, O3); guiding and clamp invariances (B6, O4); scene.json and NFS energy targets; Cornell noise (2.56% against 2%); the light step; a scale-aware clamp; the reference-mode offset (O2).
