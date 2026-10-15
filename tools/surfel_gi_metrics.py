@@ -84,6 +84,9 @@ CONFIG_ENV = {
     "surf_spawn1": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.0"},
     "surf_k05": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.5"},
     "surf_k15": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.5"},
+    "surf_norad": {**SURF_ENV, "NOX_SURFEL_GI_RADIAL_DEPTH": "0"},
+    "surf_norecycle": {**SURF_ENV, "NOX_SURFEL_GI_MAX_RECYCLES": "1"},
+    "surf_rc16": {**SURF_ENV, "NOX_SURFEL_GI_MAX_RECYCLES": "16"},
     # WP10 ablations at the same ray budget: guiding off, sharing off (each with its surf_term twin for noise).
     "surf_noguide": {**SURF_ENV, "NOX_SURFEL_GI_RAY_GUIDING": "0"},
     "surf_term_noguide": {**SURF_ENV, "NOX_SURFEL_GI_RAY_GUIDING": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
@@ -153,10 +156,10 @@ def is_complete(cfg, run_dir):
     return (run_dir / "run.log").is_file() and all(f in have for f in plan_for(cfg)[1])
 
 
-def scene_arg_for(path):
-    """Scene argument as the engine expects it: repo-relative when inside the repo."""
+def scene_arg_for(path, root=REPO_ROOT):
+    """Scene argument as the engine expects it: relative to the engine source root when inside it."""
     try:
-        return path.relative_to(REPO_ROOT).as_posix()
+        return path.relative_to(root).as_posix()
     except ValueError:
         return str(path)
 
@@ -613,7 +616,8 @@ def collect_runs(args, exe, scene, configs, out_dir, warnings):
     """Launch (or reuse) every config and repeat. Returns {(cfg, rep): run dir}."""
     runs = {}
     with scene_for_runs(scene) as scene_path:
-        scene_arg = scene_arg_for(scene_path)
+        engine_root = Path(args.cwd).resolve() if args.cwd else REPO_ROOT
+        scene_arg = scene_arg_for(scene_path, engine_root)
         for rep in range(1, args.repeat + 1):
             for cfg in configs:
                 run_dir = run_dir_for(out_dir, cfg, rep, args.repeat)

@@ -890,3 +890,171 @@ GPU timings in these runs are contaminated. Other workers were using the GPU dur
 - The sharing phase count (`budget <= 4096 ? 2 : 1`) is unchanged, so at 2048 sharing covers half the surfels per frame.
 - The request rule has no sample-count floor, so converging surfels can be starved (10.4).
 - Not done: light-step response on a quiet GPU, the step with the raw gather (debug view 35), an independent per-ray variance measurement for the guiding decision.
+
+## 12. Follow-up results: bounds, grid cost, coverage, energy gate, population
+
+Branch `worktree-agent-a0b57d418614e1516`, HEAD is the merge of main 9fa2dc7 (6035fa0) plus the follow-up commit that adds this section. Harness `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT=0.0166666667`, manual exposure, static camera, frames 200-260 (indep and ref 780-840). Medium tier: 2048 rays, spawn cap 64, recycle cap 256. Energy is surf minus off over lit pixels; ratio is energy divided by indep energy. Three repeats per config. Where a batch has no indep runs, the indep reference is the merged-sweep mean for the same scene. Main is `mainfull4`, run from a root with the scene under its own mount (earlier main runs were invalid, see 12.6).
+
+Caveat: the estimator is being reworked by another worker (its mean depends on guiding and the firefly clamp), so absolute energy is not a reliable target right now. The same config drifted about 20% between batches (Cornell `surf` 0.139 in the kappa sweep, 0.166 in the ablation batch), so ablations are compared only within a batch.
+
+### 12.1 What changed
+
+- Bounded per-lookup candidates: sharing 16 (`SURFEL_SHARING_MAX_NEIGHBORS`), gather 32 (`SURFEL_APPLY_GATHER_CANDIDATES`), trace 16 (`SURFEL_TRACE_MAX_CANDIDATES`), spawn coverage 16 (`SURFEL_SPAWN_MAX_COVERAGE_TESTS`). Lookup and entry counters are in `SurfelCounters`.
+- Grid build is `grid_count` (per live surfel: pending count per overlapped cell, and per-block atomic sums), `grid_scan` (block offsets, per-cell offsets, header write, overflow count, zeroing for the next frame), `grid_build` (slot scatter, base-cell averages). No per-entry atomics. Overflow was 0 in every run.
+- `tools/surfel_gi_metrics.py`: `scene_arg_for` now makes the scene path relative to the `--cwd` source root. It used the branch checkout, so runs from another root got an absolute path the engine could not mount. Added configs `surf_norad`, `surf_norecycle`, `surf_rc16`.
+- No default changed. Kappa 1.0, spawn cap 64 and recycle cap 256 stay (see 12.5 and 12.6).
+
+### 12.2 Bounded candidates (counters, `surf_r1`, frames 200-260)
+
+| Lookup | Bound | NFS entries/query | Cornell entries/query |
+|---|---|---|---|
+| sharing | 16 | 15.98 | 16.00 |
+| gather (1/16 pixels) | 32 | 31.80 | 32.00 |
+| spawn coverage (per tile) | 16 | 14.73 | 12.45 |
+| trace (per cell lookup) | 16 | not exercised (0 lookups in `surf`) | not exercised |
+
+Sharing and gather bind on nearly every query. The bounds are not the under-coverage cause (12.4).
+
+### 12.3 Grid cost (target 0.10 ms: not met)
+
+NFS, `surf`, median of three alternating main/merged pairs (`ab_timing`):
+
+| Dispatch | merged ms | main ms |
+|---|---|---|
+| grid_count (incl. block sums) | 0.064 | n/a |
+| grid_scan | 0.055 | n/a |
+| grid_build (scatter) | 0.059 | 0.082 |
+| grid_clear / cell averages | n/a | 0.007 / 0.033 |
+| Total | 0.178 | 0.122 |
+
+The scan is a fixed floor: it reads 36-byte headers for about 180k cells, and measured 0.055 ms on every scene and batch that was not contended. Count and scatter scale with entries. Lateral resolution of 16 instead of 32 per axis (about 70k cells) would cut the scan by about 60%. Not implemented. The Cornell merged-sweep batch read 0.67 ms for scan in every config, while the ablation batch read 0.055 for the same config. That is contention from other GPU work, not a steady cost.
+
+### 12.4 Under-coverage (target 3% or less at kappa 1.0 on all scenes: not met)
+
+Merged, cap 64, kappa 1.0, 3 repeats (medians over frames 200-260):
+
+| Scene | live (target) | under-covered | spawned/frame | spawn budget denied/frame |
+|---|---|---|---|---|
+| Cornell | 1604 (1638) | 6.13% | 34 | 24 |
+| scene.json | 2541 (7910) | 4.93% | 64 (cap) | 115 |
+| NFS | 1646 (7892) | 13.22% | 64 (cap) | 326 |
+
+Causes:
+
+- Cornell is population-limited. Spawns (34/frame) match the deficit, and kappa moves coverage: 8.40% at 0.5, 6.13% at 1.0, 5.43% at 1.5.
+- scene.json and NFS hit the 64-per-frame spawn cap every frame, so kappa does nothing there (scene 4.96/4.93/4.88%, NFS 12.6/13.2/12.7%, the NFS spread is batch noise of about 1 point).
+- Cap 256 (`cap256` batch, same code): scene.json 3.86% at kappa 1.0 (live 7775), 3.66% at 1.5 (live 10555). NFS stays at 13.26% with live 6690, which is 85% of its target. The cap is not the NFS limit.
+- NFS at cap 256, frame 230: 970 under-covered tiles, 249 spawned, 267 coverage-invalid, 267 spawns denied per frame. Recycling removes 76 per frame, of which 66 are far-term. The net population gain is about 180 per frame against a deficit of about 1180. Far-term culling of surfels that are still needed is the main churn.
+- Radial depth on costs coverage: NFS is 12.5-13.2% on across batches and 11.81% off (`ablate`, a different batch, so the gap is about one point and close to batch noise). Ray guiding does not change coverage (13.24% off), and neither does sharing (13.13% off).
+- Main, same counter: Cornell 2.75%, scene.json 1.56%, NFS 5.52%, with live 1804/1753/2004. Main recycles 0.3/0.2/0.6 surfels per frame in those runs, against 11/18/19 here. The counter definition on main was not verified, so treat the comparison as indicative.
+
+### 12.5 Population: cap and kappa
+
+| Scene | cap | kappa | live | under-covered | ratio vs indep | grid build (count+scan+build) ms | spawn pass ms |
+|---|---|---|---|---|---|---|---|
+| Cornell | 64 | 0.5 | 804 | 8.40% | 0.704 | 0.14 | 0.21 |
+| Cornell | 64 | 1.0 | 1604 | 6.13% | 0.500 | 0.16 | 0.83 |
+| Cornell | 64 | 1.5 | 2405 | 5.43% | 0.365 | 0.17 | 0.83 |
+| scene.json | 64 | 0.5 | 2535 | 4.96% | 0.533 | 0.19 | 1.15 |
+| scene.json | 64 | 1.0 | 2541 | 4.93% | 0.529 | 0.19 | 1.15 |
+| scene.json | 64 | 1.5 | 2557 | 4.88% | 0.526 | 0.19 | 1.15 |
+| scene.json | 256 | 0.5 | 3885 | 4.13% | 0.432 | 0.21 | 1.19 |
+| scene.json | 256 | 1.0 | 7775 | 3.86% | 0.423 | 0.28 | 1.19 |
+| scene.json | 256 | 1.5 | 10555 | 3.66% | 0.424 | 0.97 | 1.22 |
+| NFS | 64 | 0.5 | 1647 | 12.62% | 0.372 | 0.18 | 1.17 |
+| NFS | 64 | 1.0 | 1646 | 13.22% | 0.355 | 0.18 | 1.17 |
+| NFS | 64 | 1.5 | 1652 | 12.71% | 0.313 | 0.18 | 1.17 |
+| NFS | 256 | 0.5 | 3830 | 12.97% | 0.380 | 0.22 | 1.19 |
+| NFS | 256 | 1.0 | 6690 | 13.26% | 0.292 | 0.46 | 1.17 |
+| NFS | 256 | 1.5 | 6700 | 13.29% | 0.312 | 0.46 | 1.17 |
+
+Cornell is identical at both caps because it never reaches 64 spawns per frame. Spawn-pass ms move with GPU contention (Cornell reads 0.21 to 0.83 ms for the same pass), so treat that column as indicative.
+
+Decision: no default change. No setting reaches 3% under-coverage on all scenes. Cap 256 buys about 1 point on scene.json and nothing on NFS, for about 20% less energy (ratio 0.53 to 0.42 on scene, 0.36 to 0.29 on NFS), and it multiplies grid build cost on scene.json (0.19 to 0.28 ms at kappa 1.0, 0.97 ms at 1.5). Kappa 1.0 stays: kappa 1.5 on Cornell gains 0.7 points for about 27% less energy and 50% more live surfels. That energy change at fixed rays is dilution, not an estimator gain. Kappa 0.5 costs 2.3 points on Cornell.
+
+### 12.6 Energy against main (gate: not more than 5% below main on any scene)
+
+Surf energy, merged default (cap 64, kappa 1.0, recycle 256) against main (`mainfull4`, 3 repeats):
+
+| Scene | main energy (ratio) | merged energy (ratio) | change |
+|---|---|---|---|
+| Cornell | 0.256 (0.92) | 0.139 (0.50) | -46% |
+| scene.json | 0.156 (0.63) | 0.132 (0.53) | -15% |
+| NFS | 0.0104 (0.40) | 0.0092 (0.35) | -12% |
+
+The gate fails on all three scenes. The earlier main runs were invalid: the harness passed an absolute scene path that the engine could not mount, and the `mainroot` copy with a real `scenes` folder fixed it. Main's exe is built from `main_src` at 16:03.
+
+Where the gap comes from. Same-batch ablations at kappa 1.0, 3 repeats:
+
+| Change from default | Cornell energy | NFS energy | Cornell / NFS under-covered |
+|---|---|---|---|
+| radial depth off | -19% | -14% | 5.49 / 11.81% |
+| ray guiding off | -85% | +18% | 5.82 / 13.24% |
+| irradiance sharing off | +16% | -1% | 6.47 / 13.13% |
+| recycle off (cap 1) | +65% | +15% (cv 13%) | 4.03 / 6.92% |
+| recycle cap 16 (other batch) | +9% | -11% | 5.84 / 10.54% |
+
+Recycle off is the largest lever I own. Its energy rises to 0.227 on Cornell (-12% vs main) and 0.0095 on NFS (-9% vs main), so most of the Cornell gap is recycling churn: the 0.3·far term culls surfels that are still needed, and each new surfel starts its temporal integration from zero. It is not a default. It was tested only with a static camera, and a moving camera needs recycling to reveal new geometry. Ray guiding is the largest single sensitivity (-85% on Cornell with guiding off), but it sits in the estimator worker's code. Radial depth raises energy by 14-19% when on, so it is not the source of the gap.
+
+The remaining gap after recycle off (about -9% to -12%) is not attributed. Untested candidates: base-cell-only cell averages (WP5), grid reach 0.75 cell, and the spawn population change (WP4). The gate is not met.
+
+### 12.7 Recycling churn by age (default, frames 200-260, per frame)
+
+| Scene | recycled | of which spawn age < 4 | share young | of which far-term |
+|---|---|---|---|---|
+| Cornell | 11.3 | 0.1 | 1% | 9.3 |
+| scene.json | 17.6 | 1.0 | 6% | 11.2 |
+| NFS | 19.0 | 2.0 | 10% | 16.9 |
+| NFS, cap 256 | 74.3 | 8.6 | 12% | 66.3 |
+
+Over-target and forced culls are zero everywhere, and stale culls are 2-7 per frame. Young churn is small except on NFS, where it rises with cap 256.
+
+### 12.8 Wall leak (dark side)
+
+Merged build (sources last changed 16:08, built 16:08), `wall` scene, 3 repeats where the harness reports them. Dark side is reference GI below 10% of its p90:
+
+| Config | dark ratio | bright ratio | all |
+|---|---|---|---|
+| default | 0.335 | 0.406 | 0.403 |
+| radial off | 0.326 | 0.491 | 0.482 |
+| old bounds (earlier) | 0.348 | n/a | n/a |
+| cell averages over all overlapped cells (earlier) | 0.335 | n/a | n/a |
+| 58cf028 (pre-merge) | 0.445 | 0.643 | 0.645 |
+
+The 4096-ray wall run failed in the wall analysis (no dumps), so it is not reported. Interpretation: at HEAD the dark side is 0.82 of the bright side (0.69 at 58cf028). The dark side is not leaking more than the bright side. The deficit is global and moved with the bright side. The drop from 0.645 to 0.403 overall came with the merge and the follow-up, and recycling churn is the lever found so far. Dark-side coverage was not isolated by counters.
+
+### 12.9 Timing: alternating main/merged pairs (NFS, `surf`, median of 3 pairs)
+
+| Pass | main ms | merged ms |
+|---|---|---|
+| recycling | 0.267 | 0.008 |
+| coverage_spawn | 1.17 | 0.52 |
+| final_gather | 0.93 | 0.78 |
+| tracing | 1.23 | 1.11 |
+| irradiance_sharing | 0.145 | 0.120 |
+| grid total | 0.122 | 0.178 |
+
+Other workers' GPU jobs ran during some pairs. Contended pairs show about 2x in tracing and final_gather (for example 2.3 ms on main_p2 and 2.1 ms on merged_p3). Differences under about 30% are not resolved.
+
+### 12.10 Targets
+
+| Target | Result |
+|---|---|
+| Bounded candidates (sharing 16, gather 32), verified by counters | met: sharing 16.0, gather 31.8, spawn 14.7 per query |
+| Grid build at or under 0.10 ms | not met: 0.178 ms merged, main 0.122 |
+| Under-coverage at or under 3% at kappa 1.0 on all scenes | not met: 6.1 / 4.9 / 13.2% |
+| Merged energy within 5% of main on all scenes | not met: -46 / -15 / -12% (about -9 to -12% on Cornell and NFS with recycling off) |
+| Recycle plus spawn at or under 0.20 ms on scene.json | not met: 0.008 + 1.15 ms |
+| Kappa default: best energy at or under 3% under-coverage | no setting reached 3%; kappa 1.0 kept |
+
+### 12.11 Open items
+
+- Moving-camera test (Cornell dolly path) with recycling off or reduced, to see whether churn can be cut without losing coverage.
+- Far-term weight in the recycle score (0.3·far), the main churn source on NFS.
+- Lateral-16 grid resolution for the scan floor (0.055 ms).
+- Ray guiding dependence of the energy (estimator worker).
+- Unexplained 20% batch-to-batch energy offset for the same config.
+
+### 12.12 Reproduction
+
+Output dirs under `%TEMP%\nox_surfel_B\ab`: `mainfull4` (main), `merged_sweep` (kappa 0.5/1.0/1.5 at cap 64), `cap256` (kappa sweep at cap 256, built from a temporary cap change that was reverted), `ablate2` and `ablate` (ablations), `norecycle` and `rc16` (recycle), `ab_timing` (alternating pairs). Production exe rebuilt from HEAD at 18:27.
