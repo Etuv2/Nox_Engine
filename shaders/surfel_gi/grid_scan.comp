@@ -15,6 +15,16 @@ layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
     SurfelCellHeader gridHeaders[];
 };
 
+layout(binding = B_GRID_PENDING, std430) buffer SurfelGridPendingBuffer
+{
+    uint pendingCounts[];
+};
+
+layout(binding = B_GRID_CELL_SUMS, std430) buffer SurfelGridCellSumBuffer
+{
+    SurfelCellSums gridCellSums[];
+};
+
 layout(binding = B_GRID_BLOCK_SUMS, std430) buffer SurfelGridBlockSumBuffer
 {
     uint blockSums[];
@@ -39,7 +49,7 @@ void main()
     uint block = gl_WorkGroupID.x;
     uint lane = gl_LocalInvocationIndex;
     uint cell = block * SURFEL_GRID_BLOCK_CELLS + lane;
-    uint pending = cell < uGridCellCount ? gridHeaders[cell].pendingCount : 0u;
+    uint pending = cell < uGridCellCount ? pendingCounts[cell] : 0u;
 
     if (lane == 0u) {
         sEarlier = 0u;
@@ -97,14 +107,9 @@ void main()
         SurfelCellHeader header;
         header.firstEntry = offsetOfCell;
         header.entryCount = count;
-        header.pendingCount = 0u;
-        header.sumRed = 0u;
-        header.sumGreen = 0u;
-        header.sumBlue = 0u;
-        header.sumWeight = 0u;
-        header.sumConfidence = 0u;
-        header.validCount = 0u;
         gridHeaders[cell] = header;
+        pendingCounts[cell] = 0u;
+        gridCellSums[cell] = SurfelCellSums(0u, 0u, 0u, 0u, 0u, 0u);
 
         if (overflow > 0u) {
             atomicAdd(counters.overflowGridEntries, overflow);

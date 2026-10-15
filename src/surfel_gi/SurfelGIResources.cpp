@@ -203,7 +203,13 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
     std::ptrdiff_t counterBytes = 0;
     std::ptrdiff_t blockBytes = 0;
     std::ptrdiff_t slotBytes = 0;
+    std::ptrdiff_t pendingBytes = 0;
+    std::ptrdiff_t averageBytes = 0;
+    std::ptrdiff_t overlapBytes = 0;
     if (!CheckedBufferSize(cellCount64, sizeof(SurfelCellHeader), headerBytes) ||
+        !CheckedBufferSize(cellCount64, sizeof(uint32_t), pendingBytes) ||
+        !CheckedBufferSize(cellCount64, sizeof(SurfelCellSums), averageBytes) ||
+        !CheckedBufferSize(static_cast<uint64_t>(settings.maxSurfels) * kSurfelGridMaxCellsPerSurfel, sizeof(uint32_t), overlapBytes) ||
         !CheckedBufferSize(entryCount64, sizeof(SurfelCellEntry), entryBytes) ||
         !CheckedBufferSize(2u * blockCount64, sizeof(uint32_t), blockBytes) ||
         !CheckedBufferSize(static_cast<uint64_t>(settings.maxSurfels) * kSurfelGridMaxCellsPerSurfel, sizeof(uint32_t), slotBytes) ||
@@ -220,6 +226,9 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
     const bool ok =
         AllocateSSBO(m_cellHeaderBuffer, headerBytes, nullptr, "SurfelGrid.Headers") &&
         AllocateSSBO(m_cellEntryBuffer, entryBytes, nullptr, "SurfelGrid.Entries") &&
+        AllocateSSBO(m_pendingBuffer, pendingBytes, nullptr, "SurfelGrid.Pending") &&
+        AllocateSSBO(m_cellSumBuffer, averageBytes, nullptr, "SurfelGrid.Averages") &&
+        AllocateSSBO(m_overlapBuffer, overlapBytes, nullptr, "SurfelGrid.Overlap") &&
         AllocateSSBO(m_blockSumBuffer, blockBytes, nullptr, "SurfelGrid.BlockSums") &&
         AllocateSSBO(m_slotBuffer, slotBytes, nullptr, "SurfelGrid.Slots") &&
         AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelGrid.Counters");
@@ -240,6 +249,9 @@ void SurfelGrid::Destroy()
     DeleteBuffer(m_countersBuffer);
     DeleteBuffer(m_blockSumBuffer);
     DeleteBuffer(m_slotBuffer);
+    DeleteBuffer(m_pendingBuffer);
+    DeleteBuffer(m_cellSumBuffer);
+    DeleteBuffer(m_overlapBuffer);
     m_cellCount = 0;
     m_blockCount = 0;
     m_entryCapacity = 0;
@@ -252,10 +264,12 @@ void SurfelGrid::Clear()
         return;
     }
 
-    // Headers start at zero: the count pass needs pendingCount zero. Entries need no clear, since readers
+    // Pending counts and average sums start at zero (the scan pass zeroes them after each frame). Entries need no clear, since readers
     // only read entryCount entries of each cell, and the scatter writes all of them.
     ClearBufferUInt(m_cellHeaderBuffer, 0u);
     ClearBufferUInt(m_blockSumBuffer, 0u);
+    ClearBufferUInt(m_pendingBuffer, 0u);
+    ClearBufferUInt(m_cellSumBuffer, 0u);
 
     SurfelGridCounters counters{};
     counters.cellCount = m_cellCount;

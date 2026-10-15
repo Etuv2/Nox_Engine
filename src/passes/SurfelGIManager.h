@@ -83,6 +83,20 @@ struct SurfelGISettings {
 	uint32_t stationaryFastFillFrames = 24u;
 	// Ceiling on spawns per frame (tier caps apply). The GPU budget closes the deficit to kappa x visible tiles.
 	uint32_t maxSpawnsPerFrame = 64u;
+	// Spawn budget ceiling: visible tiles / spawnBudgetTileDivisor, bounded by maxSpawnBudgetPerFrame. The budget
+	// follows half of last frame's under-covered tiles, between maxSpawnsPerFrame and that ceiling.
+	float spawnBudgetTileDivisor = 16.0f;
+	// true: the budget is also capped by the population deficit to kappa x visible tiles. false: only by the coverage demand.
+	bool spawnBudgetDeficitLimit = true;
+	// Cell averages from every overlapped cell (true) or from the base cell only (false, the default).
+	bool cellAverageAllCells = false;
+	// Overlap reach beyond a surfel's support, in neighbour cells. 0 = the support sphere only (a surfel is stored only in
+	// the cells it touches). 0.75 was the inflated reach of the population round: it fills cells with surfels the lookups
+	// do not need, and the bounded lookups then miss the ones they do.
+	float gridReachCellScale = 0.0f;
+	uint32_t maxSpawnBudgetPerFrame = 512u;
+	// Upper bound on the population target (live surfels): kappa x visible tiles is capped here.
+	uint32_t spawnPopulationCap = 2048u;
 	uint32_t maxProjectedSurfelsPerFrame = 24576u;
 	uint32_t maxRecycleCountPerFrame = 256u;
 

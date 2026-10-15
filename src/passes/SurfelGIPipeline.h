@@ -26,6 +26,7 @@ struct SurfelGIPipelineResources {
 	rhi::BufferHandle countersBuffer;
 	rhi::BufferHandle gridHeaderBuffer;
 	rhi::BufferHandle gridEntryBuffer;
+	rhi::BufferHandle gridCellSumBuffer;
 	rhi::BufferHandle gridCountersBuffer;
 	rhi::BufferHandle rayRequestBuffer;
 	rhi::BufferHandle rayBuffer;

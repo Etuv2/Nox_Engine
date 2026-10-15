@@ -11,6 +11,9 @@
 #define B_GRID_ENTRIES 14
 #define B_GRID_BLOCK_SUMS 38
 #define B_GRID_SLOTS 37
+#define B_GRID_PENDING 26
+#define B_GRID_CELL_SUMS 27
+#define B_GRID_OVERLAP_CELLS 17
 #define B_RAY_REQUESTS 15
 #define B_RAYS 16
 #define B_RAYS_IN 16
@@ -188,14 +191,18 @@ struct GuideCell
     uint packedRadiance;
 };
 
-// Per-cell record. Count pass: pendingCount. Block scan: firstEntry, entryCount, and zeroes the other
-// fields. Scatter pass: entries, and the average sums of each surfel's base cell. Readers use firstEntry and
-// entryCount (the entries are gridEntries[firstEntry .. firstEntry + entryCount)) and SurfelCellAverage.
+// Per-cell header, 8 bytes: the cell's entries are gridEntries[firstEntry .. firstEntry + entryCount). Written by
+// the scan pass. The count pass uses SurfelGridPendingBuffer (B_GRID_PENDING) and the scatter pass writes the average
+// sums of each surfel's base cell to SurfelCellSums (B_GRID_CELL_SUMS), which only the final gather reads.
 struct SurfelCellHeader
 {
     uint firstEntry;
     uint entryCount;
-    uint pendingCount;
+};
+
+// Per-cell average sums (24 bytes): filled by the scatter pass, zeroed by the scan pass for the next frame.
+struct SurfelCellSums
+{
     uint sumRed;
     uint sumGreen;
     uint sumBlue;
@@ -568,6 +575,9 @@ float SurfelGridBaseCellSize(vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
 
 // Slice growth of the non-linear grid, from SurfelGridSettings::sliceGrowth (SetSurfelGridUniforms).
 uniform float uSurfelGridSliceGrowth = 1.22;
+
+// Overlap reach of a surfel beyond its support, in cells of the neighbour (SurfelGridOverlappedCells).
+uniform float uSurfelGridReachScale = 0.75;
 
 float SurfelGridSliceGrowth()
 {
@@ -984,7 +994,7 @@ uint SurfelGridOverlappedCells(vec3 surfelPos,
         }
 
         // Overlap of the inflated reach (the pre-WP5 reach, GIBS p.33 style) with the neighbour's box.
-        float reach = supportRadius + neighbor.cellSize * 0.75;
+        float reach = supportRadius + neighbor.cellSize * uSurfelGridReachScale;
         vec3 outside = max(abs(surfelPos - neighbor.center) - vec3(neighbor.cellSize * 0.5), vec3(0.0));
         if (dot(outside, outside) <= reach * reach) {
             cells[count++] = neighbor.cell;
@@ -996,7 +1006,7 @@ uint SurfelGridOverlappedCells(vec3 surfelPos,
 // Cell average from the scatter sums: the weighted mean irradiance of the cell's surfels, with the
 // confidence rule of the former cell_average pass (temporal confidence * support * signal).
 // Returns zero with confidence zero when the cell has no usable surfels.
-vec3 SurfelCellAverage(SurfelCellHeader header, out float confidence)
+vec3 SurfelCellAverage(SurfelCellSums header, out float confidence)
 {
     confidence = 0.0;
     if (header.validCount == 0u || header.sumWeight == 0u) {

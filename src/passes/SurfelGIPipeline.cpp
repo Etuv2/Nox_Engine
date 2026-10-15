@@ -221,6 +221,17 @@ void ReadSurfelCounters(rhi::BufferHandle countersBuffer, SurfelGIFrameStats& st
 	StoreSurfelCounters(counters, stats);
 }
 
+// Largest spawn budget a frame can use, as spawn.comp computes it: the floor, or visible tiles / divisor bounded by
+// the ceiling. Visible tiles are at most the full tile count, so the full count gives an upper bound. The surfel-wide
+// dispatch slack is this value, so every spawn of the frame is inside the bound and gets a grid entry this frame.
+uint32_t SpawnBudgetCeiling(uint32_t tileCount, const SurfelGISettings& settings)
+{
+	const float divisor = std::max(settings.spawnBudgetTileDivisor, 1.0f);
+	const float scaled = std::min(static_cast<float>(tileCount) / divisor,
+		static_cast<float>(settings.maxSpawnBudgetPerFrame));
+	return std::max(settings.maxSpawnsPerFrame, static_cast<uint32_t>(scaled));
+}
+
 // Surfel-wide dispatch sized by the indirect args written by dispatch_args.comp; falls back to the
 // full range when the args pass is unavailable.
 void DispatchSurfelWide(ComputeShader& shader, rhi::BufferHandle argsBuffer, uint32_t fullGroups)
@@ -716,6 +727,7 @@ void SetSurfelGridUniforms(rhi::ProgramHandle program,
 	SetUniform1ui(program, "uUseNonLinearGrid", gridSettings.useNonLinearGrid ? 1u : 0u);
 	SetUniform1f(program, "uGridFarExtent", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
 	SetUniform1f(program, "uSurfelGridSliceGrowth", gridSettings.sliceGrowth);
+	SetUniform1f(program, "uSurfelGridReachScale", gridSettings.reachCellScale);
 }
 
 void BindSurfelGIGBufferTextures(const RenderContext& context)
@@ -851,6 +863,7 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 
 	SurfelGridSettings gridSettings{};
 	gridSettings.maxSurfelsPerCell = m_settings.maxSurfelsPerCell;
+	gridSettings.reachCellScale = m_settings.gridReachCellScale;
 	gridSettings.maxSurfels = m_settings.maxSurfels;
 	gridSettings.entryCapacity = m_settings.maxSurfels * kSurfelGridMaxCellsPerSurfel;
 	gridSettings.useNonLinearGrid = m_settings.useNonLinearGrid;
@@ -883,6 +896,7 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 	m_resources.countersBuffer = m_pool.GetCountersBuffer();
 	m_resources.gridHeaderBuffer = m_grid.GetCellHeaderBuffer();
 	m_resources.gridEntryBuffer = m_grid.GetCellEntryBuffer();
+	m_resources.gridCellSumBuffer = m_grid.GetCellSumBuffer();
 	m_resources.gridCountersBuffer = m_grid.GetCountersBuffer();
 	m_resources.rayRequestBuffer = m_rayQueue.GetRequestBuffer();
 	m_resources.rayBuffer = m_rayQueue.GetRayBuffer();
@@ -1075,7 +1089,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	rhi::BufferHandle surfelArgs{};
 	if (m_dispatchArgsShader && m_dispatchArgsShader->IsValid() && m_resources.dispatchArgsBuffer.IsValid()) {
 		const uint32_t tileCountForSlack = std::max(m_coverageTileCountX * m_coverageTileCountY, 1u);
-		const uint32_t spawnSlack = std::clamp(tileCountForSlack / 8u, 16u, std::max(m_settings.maxSpawnsPerFrame, 16u));
+		const uint32_t spawnSlack = std::max(SpawnBudgetCeiling(tileCountForSlack, m_settings), 16u);
 		const rhi::ProgramHandle argsProgram = m_dispatchArgsShader->GetProgramID();
 		gpu.UseProgram(argsProgram);
 		SetUniform1ui(argsProgram, "uMaxSurfels", maxSurfels);
@@ -1102,6 +1116,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		const uint32_t parity = m_frameIndex & 1u;
 		const rhi::BufferHandle blockSums = m_grid.GetBlockSumBuffer();
 		const rhi::BufferHandle slots = m_grid.GetSlotBuffer();
+		const rhi::BufferHandle pending = m_grid.GetPendingBuffer();
+		const rhi::BufferHandle overlap = m_grid.GetOverlapBuffer();
 
 		{
 			const rhi::ProgramHandle program = m_gridCountShader->GetProgramID();
@@ -1113,6 +1129,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridBlockSums), blockSums);
 			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridSlots), slots);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridPending), pending);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridOverlapCells), overlap);
 			timedDispatch("grid_count", [&]() {
 				DispatchSurfelWide(*m_gridCountShader, surfelArgs, groupsSurfels);
 				m_gridCountShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1126,6 +1144,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform1ui(program, "uBlockParity", parity);
 			SetUniform1ui(program, "uEntryCapacity", m_grid.GetEntryCapacity());
 			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridBlockSums), blockSums);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridPending), pending);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridCellSums), m_resources.gridCellSumBuffer);
 			timedDispatch("grid_scan", [&]() {
 				m_gridScanShader->Dispatch(blockCount, 1u, 1u);
 				m_gridScanShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1138,6 +1158,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform1ui(program, "uGridCellCount", cellCount);
 			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
 			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridSlots), slots);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridOverlapCells), overlap);
+			SetUniform1ui(program, "uCellAverageAllCells", m_settings.cellAverageAllCells ? 1u : 0u);
 			timedDispatch("grid_build", [&]() {
 				DispatchSurfelWide(*m_buildGridShader, surfelArgs, groupsSurfels);
 				m_buildGridShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1184,6 +1206,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxRecycleCount", m_settings.maxRecycleCountPerFrame);
 		SetUniform1f(program, "uMaxDistance", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
 		SetUniform1f(program, "uSpawnPopulationKappa", std::max(m_settings.spawnPopulationKappa, 0.0f));
+		SetUniform1f(program, "uSpawnPopulationCap", static_cast<float>(m_settings.spawnPopulationCap));
 		const uint32_t spawnTileSizeForCount = std::max(m_settings.spawnTileSize, 1u);
 		SetUniform1ui(program, "uSpawnTileCount",
 			DivRoundUp(m_width, spawnTileSizeForCount) * DivRoundUp(m_height, spawnTileSizeForCount));
@@ -1265,6 +1288,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			static_cast<float>(m_indirectHeight) / static_cast<float>(std::max(m_height, 1u)));
 		SetUniform1f(program, "uSpawnPopulationKappa", std::max(m_settings.spawnPopulationKappa, 0.0f));
 		SetUniform1ui(program, "uMaxSpawnsPerFrame", m_settings.maxSpawnsPerFrame);
+		SetUniform1f(program, "uSpawnBudgetTileDivisor", std::max(m_settings.spawnBudgetTileDivisor, 1.0f));
+		SetUniform1f(program, "uSpawnPopulationCap", static_cast<float>(m_settings.spawnPopulationCap));
+		SetUniform1ui(program, "uSpawnBudgetCeiling", m_settings.maxSpawnBudgetPerFrame);
+		SetUniform1ui(program, "uSpawnBudgetDeficitLimit", m_settings.spawnBudgetDeficitLimit ? 1u : 0u);
 		SetUniform2ui(program, "uResolution", m_width, m_height);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
@@ -2266,6 +2293,7 @@ bool SurfelGIPipeline::IsReady() const
 		m_resources.countersBuffer.IsValid() &&
 		m_resources.gridHeaderBuffer.IsValid() &&
 		m_resources.gridEntryBuffer.IsValid() &&
+		m_resources.gridCellSumBuffer.IsValid() &&
 		m_resources.rayRequestBuffer.IsValid() &&
 		m_resources.rayBuffer.IsValid() &&
 		m_resources.rayHitBuffer.IsValid() &&
@@ -2491,6 +2519,7 @@ void SurfelGIPipeline::BindCoreResources(rhi::BufferHandle transformBuffer) cons
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::SurfelCounters), m_resources.countersBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridHeaders), m_resources.gridHeaderBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridEntries), m_resources.gridEntryBuffer);
+	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridCellSums), m_resources.gridCellSumBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayRequests), m_resources.rayRequestBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Rays), m_resources.rayBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayHits), m_resources.rayHitBuffer);

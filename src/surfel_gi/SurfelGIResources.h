@@ -26,6 +26,7 @@ struct SurfelGridSettings {
 	uint32_t axisSliceCount = 24u;
 	float centralHalfExtent = 12.0f;
 	float sliceGrowth = 1.22f;
+	float reachCellScale = 0.75f;
 
 	uint64_t CellCount() const
 	{
@@ -80,6 +81,9 @@ enum class SurfelGIBinding : uint32_t {
 	RtInstanceNodes = 34u,
 	DispatchArgs = 35u,
 	RayAllocScratch = 36u,
+	GridOverlapCells = 17u,
+	GridPending = 26u,
+	GridCellSums = 27u,
 	GridBlockSums = 38u,
 	GridSlots = 37u,
 	Emitters = 39u
@@ -216,11 +220,15 @@ struct alignas(16) SurfelGISettingsGpu {
 };
 static_assert(sizeof(SurfelGISettingsGpu) == 80, "SurfelGISettingsGpu must match std430 GLSL layout.");
 
-// Per-cell record, 36 bytes: the std430 SurfelCellHeader of common.glsl (no alignment padding).
+// Per-cell header, 8 bytes: the std430 SurfelCellHeader of common.glsl (no alignment padding).
 struct SurfelCellHeader {
 	uint32_t firstEntry = 0u;
 	uint32_t entryCount = 0u;
-	uint32_t pendingCount = 0u;
+};
+static_assert(sizeof(SurfelCellHeader) == 8, "SurfelCellHeader must match std430 GLSL layout.");
+
+// Per-cell average sums, 24 bytes: the std430 SurfelCellSums of common.glsl.
+struct SurfelCellSums {
 	uint32_t sumRed = 0u;
 	uint32_t sumGreen = 0u;
 	uint32_t sumBlue = 0u;
@@ -228,7 +236,7 @@ struct SurfelCellHeader {
 	uint32_t sumConfidence = 0u;
 	uint32_t validCount = 0u;
 };
-static_assert(sizeof(SurfelCellHeader) == 36, "SurfelCellHeader must match std430 GLSL layout.");
+static_assert(sizeof(SurfelCellSums) == 24, "SurfelCellSums must match std430 GLSL layout.");
 
 // One grid entry: a surfel id (std430 SurfelCellEntry).
 struct SurfelCellEntry {
@@ -314,11 +322,14 @@ public:
 	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
 	rhi::BufferHandle GetBlockSumBuffer() const { return m_blockSumBuffer; }
 	rhi::BufferHandle GetSlotBuffer() const { return m_slotBuffer; }
+	rhi::BufferHandle GetPendingBuffer() const { return m_pendingBuffer; }
+	rhi::BufferHandle GetCellSumBuffer() const { return m_cellSumBuffer; }
+	rhi::BufferHandle GetOverlapBuffer() const { return m_overlapBuffer; }
 	uint32_t GetCellCount() const { return m_cellCount; }
 	uint32_t GetBlockCount() const { return m_blockCount; }
 	uint32_t GetEntryCapacity() const { return m_entryCapacity; }
 	const SurfelGridSettings& GetSettings() const { return m_settings; }
-	bool IsCreated() const { return m_cellHeaderBuffer.IsValid() && m_cellEntryBuffer.IsValid() && m_countersBuffer.IsValid() && m_blockSumBuffer.IsValid() && m_slotBuffer.IsValid(); }
+	bool IsCreated() const { return m_cellHeaderBuffer.IsValid() && m_cellEntryBuffer.IsValid() && m_countersBuffer.IsValid() && m_blockSumBuffer.IsValid() && m_slotBuffer.IsValid() && m_pendingBuffer.IsValid() && m_cellSumBuffer.IsValid() && m_overlapBuffer.IsValid(); }
 
 private:
 	rhi::BufferHandle m_cellHeaderBuffer;
@@ -326,6 +337,9 @@ private:
 	rhi::BufferHandle m_countersBuffer;
 	rhi::BufferHandle m_blockSumBuffer;
 	rhi::BufferHandle m_slotBuffer;
+	rhi::BufferHandle m_pendingBuffer;
+	rhi::BufferHandle m_cellSumBuffer;
+	rhi::BufferHandle m_overlapBuffer;
 	uint32_t m_cellCount = 0;
 	uint32_t m_blockCount = 0;
 	uint32_t m_entryCapacity = 0;

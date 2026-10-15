@@ -1,9 +1,9 @@
 #version 460 core
 
-// Grid build, pass 1 of 3: count. Every live surfel takes one slot in each cell its support overlaps. The
-// slot is the cell's pending count before the increment, so the scatter pass writes entries without atomics.
-// Block totals for grid_scan are counted into this frame's parity of the block sum buffer. Surfel 0 also resets
-// the per-frame overflow counter.
+// Grid build, pass 1 of 3: count. Every live surfel takes one slot in each cell its support overlaps. The slot is the
+// cell's pending count before the increment, so the scatter pass writes entries without atomics. The overlapped cells
+// are recorded for the scatter pass (base cell first, INVALID for every unused entry). Block totals for grid_scan are
+// counted into this frame's parity of the block sum buffer. Surfel 0 also resets the per-frame overflow counter.
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -14,9 +14,9 @@ layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
     Surfel surfels[];
 };
 
-layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
+layout(binding = B_GRID_PENDING, std430) buffer SurfelGridPendingBuffer
 {
-    SurfelCellHeader gridHeaders[];
+    uint pendingCounts[];
 };
 
 layout(binding = B_GRID_BLOCK_SUMS, std430) buffer SurfelGridBlockSumBuffer
@@ -27,6 +27,12 @@ layout(binding = B_GRID_BLOCK_SUMS, std430) buffer SurfelGridBlockSumBuffer
 layout(binding = B_GRID_SLOTS, std430) writeonly buffer SurfelGridSlotBuffer
 {
     uint slots[];
+};
+
+// The overlapped cells of each surfel (base cell first), INVALID for the unused entries.
+layout(binding = B_GRID_OVERLAP_CELLS, std430) writeonly buffer SurfelGridOverlapBuffer
+{
+    uint overlapCells[];
 };
 
 layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
@@ -54,8 +60,13 @@ void main()
         return;
     }
 
+    uint slotBase = surfelID * SURFEL_GRID_MAX_CELLS_PER_SURFEL;
     Surfel surfel = surfels[surfelID];
     if (!SurfelIsAlive(surfel)) {
+        for (uint i = 0u; i < SURFEL_GRID_MAX_CELLS_PER_SURFEL; ++i) {
+            overlapCells[slotBase + i] = SURFEL_INVALID_INDEX;
+            slots[slotBase + i] = SURFEL_INVALID_INDEX;
+        }
         return;
     }
 
@@ -80,15 +91,22 @@ void main()
         uUseNonLinearGrid,
         uGridFarExtent,
         cells);
-    uint slotBase = surfelID * SURFEL_GRID_MAX_CELLS_PER_SURFEL;
+
+    // The slot atomics are issued back to back and stored after the loop, so their round trips overlap.
+    uint slotLocal[SURFEL_GRID_MAX_CELLS_PER_SURFEL];
+    for (uint i = 0u; i < SURFEL_GRID_MAX_CELLS_PER_SURFEL; ++i) {
+        slotLocal[i] = SURFEL_INVALID_INDEX;
+        overlapCells[slotBase + i] = (i < overlapCount) ? cells[i] : SURFEL_INVALID_INDEX;
+    }
     for (uint i = 0u; i < overlapCount; ++i) {
         uint cell = cells[i];
         if (cell >= uGridCellCount) {
-            slots[slotBase + i] = SURFEL_INVALID_INDEX;
             continue;
         }
-
-        slots[slotBase + i] = atomicAdd(gridHeaders[cell].pendingCount, 1u);
+        slotLocal[i] = atomicAdd(pendingCounts[cell], 1u);
         atomicAdd(blockSums[uBlockParity * uGridBlockCount + cell / SURFEL_GRID_BLOCK_CELLS], 1u);
+    }
+    for (uint i = 0u; i < SURFEL_GRID_MAX_CELLS_PER_SURFEL; ++i) {
+        slots[slotBase + i] = slotLocal[i];
     }
 }

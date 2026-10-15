@@ -16,6 +16,11 @@ layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
     SurfelCellHeader gridHeaders[];
 };
 
+layout(binding = B_GRID_CELL_SUMS, std430) readonly buffer SurfelGridCellSumBuffer
+{
+    SurfelCellSums gridCellSums[];
+};
+
 layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
 {
     SurfelCellEntry gridEntries[];
@@ -254,7 +259,7 @@ vec3 SampleCellAverage(uint cell, out float confidence)
         return vec3(0.0);
     }
 
-    return SurfelCellAverage(gridHeaders[cell], confidence);
+    return SurfelCellAverage(gridCellSums[cell], confidence);
 }
 
 vec3 SampleTrilinearGridIrradiance(vec3 worldPos, out float confidence)

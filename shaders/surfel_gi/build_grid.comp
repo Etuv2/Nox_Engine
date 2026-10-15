@@ -1,8 +1,8 @@
 #version 460 core
 
 // Grid build, pass 3 of 3: scatter. Each live surfel writes its id into the slot the count pass gave it, in
-// every cell its support overlaps. The cell's average sums come from the surfel's base cell only, so every
-// surfel adds once to the average (the count pass gave the base cell slot 0).
+// every cell its support overlaps (the cells the count pass recorded in overlapCells). The cell's average sums
+// come from the surfel's base cell only, so every surfel adds once to the average (the base cell is entry 0).
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -13,9 +13,14 @@ layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
     Surfel surfels[];
 };
 
-layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
+layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
 {
     SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_CELL_SUMS, std430) buffer SurfelGridCellSumBuffer
+{
+    SurfelCellSums gridCellSums[];
 };
 
 layout(binding = B_GRID_ENTRIES, std430) writeonly buffer SurfelGridEntryBuffer
@@ -28,13 +33,14 @@ layout(binding = B_GRID_SLOTS, std430) readonly buffer SurfelGridSlotBuffer
     uint slots[];
 };
 
+layout(binding = B_GRID_OVERLAP_CELLS, std430) readonly buffer SurfelGridOverlapBuffer
+{
+    uint overlapCells[];
+};
+
 uniform uint uMaxSurfels;
 uniform uint uGridCellCount;
-uniform vec3 uGridMin;
-uniform vec3 uGridMax;
-uniform uvec3 uGridResolution;
-uniform uint uUseNonLinearGrid;
-uniform float uGridFarExtent;
+uniform uint uCellAverageAllCells = 0u;
 
 void main()
 {
@@ -48,17 +54,6 @@ void main()
         return;
     }
 
-    vec3 surfelPos = surfel.worldPos_radius.xyz;
-    float radius = max(surfel.worldPos_radius.w, 0.001);
-    float supportRadius = SurfelCoverageSupportRadiusAt(
-        surfelPos,
-        radius,
-        uGridMin,
-        uGridMax,
-        uGridResolution,
-        uUseNonLinearGrid,
-        uGridFarExtent);
-
     // Average contribution of this surfel (base cell only).
     vec3 irradiance = max(surfel.irradiance.rgb, vec3(0.0));
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
@@ -66,19 +61,12 @@ void main()
     float weight = smoothstep(0.04, 0.45, confidence);
     vec3 scaled = min(irradiance, vec3(SURFEL_CELL_SUM_IRRADIANCE_CLAMP)) * weight * SURFEL_CELL_SUM_SCALE;
 
-    uint cells[SURFEL_GRID_MAX_CELLS_PER_SURFEL];
-    uint overlapCount = SurfelGridOverlappedCells(
-        surfelPos,
-        supportRadius,
-        uGridMin,
-        uGridMax,
-        uGridResolution,
-        uUseNonLinearGrid,
-        uGridFarExtent,
-        cells);
     uint slotBase = surfelID * SURFEL_GRID_MAX_CELLS_PER_SURFEL;
-    for (uint i = 0u; i < overlapCount; ++i) {
-        uint cell = cells[i];
+    for (uint i = 0u; i < SURFEL_GRID_MAX_CELLS_PER_SURFEL; ++i) {
+        uint cell = overlapCells[slotBase + i];
+        if (cell == SURFEL_INVALID_INDEX) {
+            continue;
+        }
         if (cell >= uGridCellCount) {
             continue;
         }
@@ -90,13 +78,13 @@ void main()
         }
 
         gridEntries[gridHeaders[cell].firstEntry + slot].surfelID = surfelID;
-        if (i == 0u && contributes) {
-            atomicAdd(gridHeaders[cell].sumRed, uint(scaled.r));
-            atomicAdd(gridHeaders[cell].sumGreen, uint(scaled.g));
-            atomicAdd(gridHeaders[cell].sumBlue, uint(scaled.b));
-            atomicAdd(gridHeaders[cell].sumWeight, uint(weight * SURFEL_CELL_SUM_SCALE));
-            atomicAdd(gridHeaders[cell].sumConfidence, uint(confidence * SURFEL_CELL_SUM_SCALE));
-            atomicAdd(gridHeaders[cell].validCount, 1u);
+        if (contributes && (i == 0u || uCellAverageAllCells != 0u)) {
+            atomicAdd(gridCellSums[cell].sumRed, uint(scaled.r));
+            atomicAdd(gridCellSums[cell].sumGreen, uint(scaled.g));
+            atomicAdd(gridCellSums[cell].sumBlue, uint(scaled.b));
+            atomicAdd(gridCellSums[cell].sumWeight, uint(weight * SURFEL_CELL_SUM_SCALE));
+            atomicAdd(gridCellSums[cell].sumConfidence, uint(confidence * SURFEL_CELL_SUM_SCALE));
+            atomicAdd(gridCellSums[cell].validCount, 1u);
         }
     }
 }

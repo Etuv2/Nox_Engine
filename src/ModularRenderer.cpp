@@ -159,22 +159,26 @@ namespace {
 		uint32_t maxSpawnsPerFrame = 96u;
 		uint32_t maxProjectedSurfelsPerFrame = 16384u;
 		uint32_t maxRecycleCountPerFrame = 2048u;
+		// Spawn budget ceiling = visible tiles / spawnBudgetTileDivisor, bounded by maxSpawnBudget (spawn.comp).
+		float spawnBudgetTileDivisor = 16.0f;
+		uint32_t maxSpawnBudget = 512u;
+		uint32_t populationCap = 2048u;
 	};
 
 	static SurfelGIBudgetCaps GetSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 24576u, 1024u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u };
+			return { 24576u, 1024u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u, 64.0f, 128u, 1024u };
 		case SurfelGIQualityTier::High:
-			return { 131072u, 4096u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u };
+			return { 131072u, 4096u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u, 8.0f, 1024u, 4096u };
 		case SurfelGIQualityTier::Ultra:
-			return { 262144u, 8192u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 64u, 65536u, 262144u, 16384u };
+			return { 262144u, 8192u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 64u, 65536u, 262144u, 16384u, 8.0f, 1024u, 8192u };
 		case SurfelGIQualityTier::Medium:
 		default:
 			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
 			// their light). The ray budget is a value (the default for the tier), not a cap: the
 			// per-frame ray budget is shared out by demand (allocate_rays.comp). Medium is 2048.
-			return { 65536u, 2048u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 64u, 24576u, 256u };
+			return { 65536u, 2048u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 64u, 24576u, 256u, 16.0f, 512u, 2048u };
 		}
 	}
 
@@ -200,6 +204,9 @@ namespace {
 			settings.maxRecycleCountPerFrame = std::min(settings.maxRecycleCountPerFrame, caps.maxRecycleCountPerFrame);
 		}
 
+		settings.spawnBudgetTileDivisor = caps.spawnBudgetTileDivisor;
+		settings.maxSpawnBudgetPerFrame = caps.maxSpawnBudget;
+		settings.spawnPopulationCap = caps.populationCap;
 		settings.gatherNeighborRadius = captureMode ? std::max(caps.gatherNeighborRadius, 2u) : caps.gatherNeighborRadius;
 		settings.finalGatherResolutionScale = captureMode ? 1.0f : std::clamp(caps.finalGatherResolutionScale, 0.25f, 1.0f);
 		settings.cellAverageFallbackStrength = captureMode ? std::min(settings.cellAverageFallbackStrength, caps.fallbackStrength) : settings.cellAverageFallbackStrength;
@@ -651,6 +658,18 @@ void ModularRenderer::SyncSurfelGISettings()
 	settings.spawnPopulationKappa = std::clamp(GetEnvVarFloat("NOX_SURFEL_GI_SPAWN_BUDGET_SCALE", settings.spawnPopulationKappa), 0.0f, 16.0f);
 	settings.spawnSearchStride = static_cast<uint32_t>(
 		std::clamp(GetEnvVarInt("NOX_SURFEL_GI_SPAWN_STRIDE", static_cast<int>(settings.spawnSearchStride)), 1, 4));
+	settings.maxSpawnBudgetPerFrame = static_cast<uint32_t>(
+		std::max(GetEnvVarInt("NOX_SURFEL_GI_SPAWN_BUDGET_CEILING", static_cast<int>(settings.maxSpawnBudgetPerFrame)), 1));
+	settings.spawnBudgetTileDivisor = std::max(
+		GetEnvVarFloat("NOX_SURFEL_GI_SPAWN_BUDGET_TILE_DIVISOR", settings.spawnBudgetTileDivisor), 1.0f);
+	settings.spawnPopulationCap = static_cast<uint32_t>(
+		std::max(GetEnvVarInt("NOX_SURFEL_GI_POP_CAP", static_cast<int>(settings.spawnPopulationCap)), 1));
+	settings.spawnBudgetDeficitLimit =
+		GetEnvVarInt("NOX_SURFEL_GI_SPAWN_DEFICIT_LIMIT", settings.spawnBudgetDeficitLimit ? 1 : 0) != 0;
+	settings.cellAverageAllCells =
+		GetEnvVarInt("NOX_SURFEL_GI_CELL_AVG_ALL", settings.cellAverageAllCells ? 1 : 0) != 0;
+	settings.gridReachCellScale = std::clamp(
+		GetEnvVarFloat("NOX_SURFEL_GI_GRID_REACH", settings.gridReachCellScale), 0.0f, 4.0f);
 	m_context.surfelGIUseScreenTrace = settings.useScreenSpaceTrace;
 	m_context.surfelGIUseRadialDepth = settings.useRadialDepth;
 	m_context.surfelGIUseRayGuiding = settings.useRayGuiding;

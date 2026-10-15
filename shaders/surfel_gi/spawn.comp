@@ -66,9 +66,18 @@ uniform uint uSpawnPassCount;
 uniform uint uSpawnPassIndex;
 uniform uint uSpawnCandidateCount;
 uniform uint uMaxSpawnsPerFrame;
+// The budget ceiling grows with the visible tile count: visible tiles / uSpawnBudgetTileDivisor, bounded by
+// uSpawnBudgetCeiling (per tier, set by the host). uMaxSpawnsPerFrame is the floor.
+uniform float uSpawnBudgetTileDivisor = 16.0;
+uniform uint uSpawnBudgetCeiling = 512u;
+// 1 = the budget is also capped by the population deficit to kappa x visible tiles; 0 = only by the coverage demand.
+uniform uint uSpawnBudgetDeficitLimit = 1u;
 uint gSpawnBudget = 0u;   // spawns allowed for the current tile decision (thread 0)
 // kappa: population target per visible tile (WP4). Replaces the old deficit-scaled budget.
 uniform float uSpawnPopulationKappa = 1.0;
+// Upper bound on the population target (live surfels). kappa x visible tiles is capped here: at 1080p nearly every tile is
+// visible, and the uncapped target then dilutes the ray budget over far more surfels than coverage needs.
+uniform float uSpawnPopulationCap = 1.0e9;
 uniform uint uSpawnSampleStride = 1u;   // 1 = every pixel of the tile is a candidate each frame
 // Gather coverage written by apply_indirect (one frame old), at the final-gather resolution.
 uniform sampler2D uCoverageTex;
@@ -957,9 +966,10 @@ void InitSpawnCandidate(out SpawnCandidate candidate, uvec2 pixelU)
     candidate.initialCellConfidence = 0.0;
 }
 
-// Spawn budget for this frame. The base share of the tile count is scaled by the deficit seen
-// last frame (under-covered visible tiles / visible tiles), so the budget follows resolution and
-// coverage need instead of a fixed count. Capped by uMaxSpawnsPerFrame (the settings ceiling).
+// Spawn budget for this frame. The demand is half of last frame's under-covered visible tiles: each of
+// them wants a spawn, and half of them per frame closes the gap in a few frames. The demand is clamped to
+// the floor (uMaxSpawnsPerFrame) and to a ceiling that grows with the visible tile count, and it never
+// exceeds the population deficit to kappa x visible tiles.
 uint ComputeSpawnBudget(uint tileCount)
 {
     // Population target N_target = kappa * visible tiles (last frame's count; every tile until the
@@ -967,9 +977,14 @@ uint ComputeSpawnBudget(uint tileCount)
     // frees room for spawns this frame. Live = pool size minus free slots: the free list is current
     // here because recycling has already run.
     float visible = counters.visiblePreviousFrame > 0u ? float(counters.visiblePreviousFrame) : float(tileCount);
-    float target = uSpawnPopulationKappa * visible;
+    float target = min(uSpawnPopulationKappa * visible, uSpawnPopulationCap);
     float live = float(uMaxSurfels) - float(counters.freeTop);
-    return uint(min(max(target - live, 0.0), float(uMaxSpawnsPerFrame)));
+    float deficit = uSpawnBudgetDeficitLimit != 0u ? max(target - live, 0.0) : float(uMaxSurfels);
+    float floorBudget = float(uMaxSpawnsPerFrame);
+    float ceilingBudget = max(floorBudget,
+        min(visible / max(uSpawnBudgetTileDivisor, 1.0), float(uSpawnBudgetCeiling)));
+    float demand = 0.5 * float(counters.underCoveredPreviousFrame);
+    return uint(min(deficit, clamp(demand, floorBudget, ceilingBudget)));
 }
 
 void main()
@@ -1112,7 +1127,17 @@ void main()
                 SpawnCandidate bestCandidate;
                 InitSpawnCandidate(bestCandidate, tileOrigin);
                 if (bestLane != 0xffffffffu) {
-                    EvaluateSpawnCandidate(tileOrigin + uvec2(bestLane % tileSize, bestLane / tileSize), bestCandidate);
+                    // Lazy candidate: a tile whose lowest coverage is above the highest spawn threshold (0.85 + 0.075
+                    // jitter) cannot spawn, so the full evaluation (the grid query) is skipped and the lane's coverage
+                    // stands in for it. The spawn decision and the under-coverage count use the same coverage value.
+                    uvec2 bestPixel = tileOrigin + uvec2(bestLane % tileSize, bestLane / tileSize);
+                    if (uintBitsToFloat(sMinBits) < uCoverageThreshold + 0.08) {
+                        EvaluateSpawnCandidate(bestPixel, bestCandidate);
+                    } else {
+                        bestCandidate.valid = true;
+                        bestCandidate.pixelU = bestPixel;
+                        bestCandidate.coverage = uintBitsToFloat(sMinBits);
+                    }
                 }
                 float bestCoverage = bestCandidate.valid ? bestCandidate.coverage : 3.402823466e+38;
                 if (round == 0u) {
