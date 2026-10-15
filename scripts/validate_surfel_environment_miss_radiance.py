@@ -15,20 +15,22 @@ def require(condition: bool, message: str) -> None:
 
 def main() -> None:
     trace = read("shaders/surfel_gi/trace_rays.comp")
+    shared = read("shaders/surfel_gi/surfel_scene_trace.glsl")
     integrate = read("shaders/surfel_gi/integrate.comp")
     pipeline = read("src/passes/SurfelGIPipeline.cpp")
 
-    require("uniform samplerCube uSkyEnvironmentMap;" in trace and
-            "uniform int uUseSkyEnvironmentMap" in trace,
-            "trace shader must expose a directional sky environment map for ray misses")
-    require("EvaluateMissEnvironmentRadiance" in trace and
-            "textureLod(uSkyEnvironmentMap, rayDir, SURFEL_ENVIRONMENT_MISS_MIP).rgb" in trace,
-            "ray misses must sample directional low-frequency environment radiance")
-    require("SURFEL_ENVIRONMENT_MISS_MIP" in trace and
-            "SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE" in trace and
-            "SURFEL_ENVIRONMENT_MISS_SCALE" in trace and
-            "skyRadiance *= SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE" in trace,
-            "environment misses must be low-pass filtered and luminance-clamped before temporal integration")
+    require("uniform samplerCube uSkyEnvironmentMap;" in shared and
+            "uniform int uUseSkyEnvironmentMap" in shared,
+            "shared trace code must expose a directional sky environment map for ray misses")
+    require("EvaluateMissEnvironmentRadiance" in shared and
+            "textureLod(uSkyEnvironmentMap, rayDir, SURFEL_ENVIRONMENT_MISS_MIP).rgb" in shared and
+            "SURFEL_TRACE_BVH_FAR_DISTANCE" in shared,
+            "ray misses must sample directional environment radiance")
+    # The prefiltered cube has five levels (0-4). Mip 5 does not exist and read black, so the sky was zero (plan 13).
+    require("const float SURFEL_ENVIRONMENT_MISS_MIP = 0.0;" in shared,
+            "environment misses must read the base level of the environment cube (the prefiltered cube has 5 mips)")
+    require("SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE" not in shared,
+            "environment misses must not be clamped: a sky miss is a physical sample")
     require("SURFEL_TRACE_HIT_KIND_ENVIRONMENT" in trace and
             "gather.hitKind = SURFEL_TRACE_HIT_KIND_ENVIRONMENT;" in trace,
             "environment misses must be marked as valid environment samples")

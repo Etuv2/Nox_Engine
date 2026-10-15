@@ -52,6 +52,14 @@ vec3 ReferenceCosineDirection(vec3 normal, vec2 u)
 // One path from a receiver. Returns the irradiance estimate E for this path. With throughput T_k (the product of
 // the albedos of the first k hits), the path adds T_{k-1} * pi * Le(x_k) for emission, T_k * Edirect(x_k) for direct
 // light at hit k, and T_k * pi * Lsky when the ray leaves the scene after hit k.
+//
+// Unbiased to the cap: the first uBounces hits are always followed. Later hits continue with probability
+// q = min(0.95, max albedo channel) and divide the throughput by q (Russian roulette), so the series is not cut
+// at a fixed depth. The depth cap REFERENCE_MAX_BOUNCES only drops paths that reach it, which for high albedo is a
+// residual of about albedo^cap (0.19 at albedo 0.95, cap 32).
+const uint REFERENCE_MAX_BOUNCES = 32u;
+const float REFERENCE_RR_MAX_CONTINUE = 0.95;
+
 vec3 ReferencePathIrradiance(vec3 origin, vec3 normal, inout uint rng)
 {
     vec3 throughput = vec3(1.0);
@@ -59,7 +67,7 @@ vec3 ReferencePathIrradiance(vec3 origin, vec3 normal, inout uint rng)
     vec3 position = origin;
     vec3 surfaceNormal = normal;
 
-    for (uint bounce = 0u; bounce <= uBounces; ++bounce) {
+    for (uint bounce = 0u; bounce < REFERENCE_MAX_BOUNCES; ++bounce) {
         vec2 u = vec2(ReferenceRandom(rng), ReferenceRandom(rng));
         vec3 direction = ReferenceCosineDirection(surfaceNormal, u);
         SoftwareBVHHit hit = TraceSoftwareBVH(position + surfaceNormal * REFERENCE_ORIGIN_OFFSET,
@@ -77,9 +85,20 @@ vec3 ReferencePathIrradiance(vec3 origin, vec3 normal, inout uint rng)
         vec3 emission = max(hit.material.emissive * hit.material.emissiveStrength, vec3(0.0));
         estimate += throughput * SURFEL_PI * emission;
 
-        throughput *= clamp(hit.material.albedo, vec3(0.0), vec3(1.0));
+        vec3 albedo = clamp(hit.material.albedo, vec3(0.0), vec3(1.0));
+        throughput *= albedo;
         vec3 hitPosition = hit.position + hitNormal * REFERENCE_ORIGIN_OFFSET;
         estimate += throughput * EvaluateHitDirectIrradiance(hitPosition, hitNormal);
+
+        // Russian roulette after the first uBounces hits. The continuation probability is at most 0.95, so the
+        // division by q keeps the estimate unbiased.
+        if (bounce >= uBounces) {
+            float q = min(REFERENCE_RR_MAX_CONTINUE, max(max(albedo.r, albedo.g), albedo.b));
+            if (q <= 0.0 || ReferenceRandom(rng) >= q) {
+                break;
+            }
+            throughput /= q;
+        }
 
         position = hitPosition;
         surfaceNormal = hitNormal;

@@ -50,7 +50,6 @@ const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
 // Per-ray clamp (firefly gate). It also clips rare emitter hits, which biases the estimate low (plan section 11.4).
 const float SURFEL_MAX_SAMPLE_IRRADIANCE = 32.0;
-const float SURFEL_MAX_EMISSIVE_IRRADIANCE = 64.0;
 
 vec3 SurfelClampRadiance(vec3 radiance)
 {
@@ -58,14 +57,6 @@ vec3 SurfelClampRadiance(vec3 radiance)
         return vec3(0.0);
     }
     return clamp(radiance, vec3(0.0), vec3(SURFEL_MAX_SAMPLE_IRRADIANCE));
-}
-
-vec3 SurfelClampEmissive(vec3 emissive)
-{
-    if (any(isnan(emissive)) || any(isinf(emissive))) {
-        return vec3(0.0);
-    }
-    return clamp(emissive, vec3(0.0), vec3(SURFEL_MAX_EMISSIVE_IRRADIANCE));
 }
 
 float HitKindReliability(float hitKind)
@@ -184,15 +175,16 @@ void main()
     vec3 batchMean = batchSum / max(acceptedWeight, 1e-5);
     vec3 batchVariance = max(batchSumSq / max(acceptedWeight, 1e-5) - batchMean * batchMean, vec3(0.0));
     float effectiveAccepted = max(acceptedWeight, float(accepted) * 0.25);
+    // The irradiance slot holds E only. It used to hold the emitted radiance of emissive surfels too, and a floor
+    // at the previous value (max with the prior mean) ratcheted every emissive surfel upward (plan 13, bug 3).
+    // Emission reaches the lighting through the emitter's own material, not through this slot.
     vec3 priorIrradiance = SurfelClampRadiance(surfel.irradiance.rgb);
-    bool emissiveSurfel = (SurfelFlags(surfel) & SURFEL_EMISSIVE) != 0u;
-    vec3 emissiveBaseline = emissiveSurfel ? SurfelClampEmissive(priorIrradiance) : vec3(0.0);
     bool brandNew = SurfelIsNew(surfel) && surfel.worldNormal_age.w < 8.0;
     bool lateBootstrap = SurfelIsNew(surfel) && !brandNew && surfel.shortMean.a <= 1.0 && surfel.irradiance.a <= 0.08;
     bool resetEstimator = brandNew || lateBootstrap || surfel.shortMean.a <= 0.0 || surfel.irradiance.a <= 0.0;
     bool newSurfel = SurfelIsNew(surfel);
 
-    vec3 previousIrradiance = resetEstimator ? max(priorIrradiance, emissiveBaseline) : priorIrradiance;
+    vec3 previousIrradiance = priorIrradiance;
     float temporalConfidence = SurfelSaturate(surfel.irradiance.a);
     float acceptedRatio = SurfelSaturate(acceptedWeight / max(float(request.allocatedCount), 1.0));
     float allocationRatio = request.requestedCount == 0u ? 1.0 : SurfelSaturate(float(request.allocatedCount) / max(float(request.requestedCount), 1.0));
@@ -201,14 +193,14 @@ void main()
 
     SurfelMSMEData msmeData;
     if (resetEstimator) {
-        vec3 initialSample = SurfelClampRadiance(max(batchMean, emissiveBaseline));
+        vec3 initialSample = SurfelClampRadiance(batchMean);
         vec3 initialVariance = max(batchVariance, vec3(max(SurfelLuminance(initialSample) * 0.08, 0.012)));
         SurfelMSMEInitialize(surfel, initialSample, initialVariance);
         surfel.shortMean.a = min(effectiveAccepted, SURFEL_SHORT_HISTORY_RAYS);
         msmeData = SurfelMSMELoad(surfel);
     } else {
         msmeData = SurfelMSMELoad(surfel);
-        vec3 sampleX = SurfelClampRadiance(max(batchMean, emissiveBaseline));
+        vec3 sampleX = SurfelClampRadiance(batchMean);
         // Firefly gate. It is off during a lighting change, where a jump is a real signal, not noise.
         if (lightingChange < SURFEL_MSME_SNAP_CHANGE) {
             vec3 gated = SurfelMSMEGate(sampleX, msmeData.shortMean, msmeData.variance);
@@ -236,7 +228,7 @@ void main()
         SurfelSetFlags(surfel, SurfelFlags(surfel) & ~SURFEL_NEW);
     }
 
-    msmeData.mean = SurfelClampRadiance(max(msmeData.mean, emissiveBaseline));
+    msmeData.mean = SurfelClampRadiance(msmeData.mean);
     SurfelMSMEStore(surfel, msmeData);
     surfel.shortMean.a = min(surfel.shortMean.a + effectiveAccepted, SURFEL_SHORT_HISTORY_RAYS);
 

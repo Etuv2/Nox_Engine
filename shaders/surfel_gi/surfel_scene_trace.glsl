@@ -8,8 +8,10 @@
 
 const uint SURFEL_TRACE_MAX_LIGHTS = 32u;
 const float SURFEL_TRACE_BVH_FAR_DISTANCE = 256.0;
-const float SURFEL_ENVIRONMENT_MISS_MIP = 5.0;
-const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 64.0; // firefly guard only
+// Miss radiance is read at the base level of the environment cube. The prefiltered cube has five levels (0-4),
+// so the old mip 5 read a level that does not exist and returned black: the surfel and reference sky was zero
+// on every scene with a skybox (plan section 13, bug 1). Level 0 is the unfiltered map, so a sky miss is exact.
+const float SURFEL_ENVIRONMENT_MISS_MIP = 0.0;
 const float SURFEL_INV_PI = 0.3183098861837907;
 const int SURFEL_TRACE_BVH_STACK_SIZE = 64;
 
@@ -583,7 +585,12 @@ vec3 EvaluateMissEnvironmentRadiance(vec3 rayDir)
     vec3 skyRadiance = uUseSkyEnvironmentMap != 0
         ? textureLod(uSkyEnvironmentMap, rayDir, SURFEL_ENVIRONMENT_MISS_MIP).rgb
         : uSkyRadiance;
-    return clamp(skyRadiance, vec3(0.0), vec3(SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE)) * uSkyDiffuseScale;
+    // No upper clamp: a sky miss is a physical sample. A clamp here biased the reference low for bright skies.
+    skyRadiance = max(skyRadiance, vec3(0.0));
+    if (any(isnan(skyRadiance)) || any(isinf(skyRadiance))) {
+        return vec3(0.0);
+    }
+    return skyRadiance * uSkyDiffuseScale;
 }
 
 
