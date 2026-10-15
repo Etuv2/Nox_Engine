@@ -741,7 +741,6 @@ void RTSceneResources::UploadEmitters(std::vector<RT::Emitter>& emitters)
     }
     m_emitterCount = emitters.size();
     m_emitterPowerTotal = static_cast<float>(total);
-    std::cout << "[RTEmitters] count=" << m_emitterCount << " power=" << m_emitterPowerTotal << '\n';
     rhi::Gpu().ReallocateBuffer(m_emitterSSBO,
         emitters.empty() ? 0 : emitters.size() * sizeof(RT::Emitter),
         emitters.empty() ? nullptr : emitters.data(),
