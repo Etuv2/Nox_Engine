@@ -118,6 +118,11 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     if (visibleUnresolved > 0.0) {
         requested = max(requested, SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS);
     }
+    // Noise share: the standard error of a Monte Carlo mean falls with the square root of its ray
+    // count, so the rays a surfel needs grow with its coefficient of variation (std / mean).
+    float noiseMean = max(SurfelLuminance(surfel.shortMean.rgb), 1e-3);
+    float noiseCv = sqrt(max(SurfelLuminance(varianceRgb), 0.0)) / noiseMean;
+    requested = max(requested, uint(clamp(round(noiseCv * 2.0), 1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL))));
     if (lightingReactiveVisible) {
         requested = max(requested, SURFEL_REQUEST_LIGHTING_CHANGE_RAYS);
     }

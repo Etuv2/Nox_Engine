@@ -43,31 +43,52 @@ bool HasInsertedCell(uint cell, uint insertedCells[27], uint insertedCount)
     return false;
 }
 
-void InsertIntoCell(uint surfelID, uint cell)
+// Each stored entry keeps the squared distance from its surfel to the cell centre in `next`. The
+// cell list is contiguous and `next` is otherwise unused, so the key costs no extra storage. Floats
+// that are non-negative compare like their bit patterns, so the key is a plain uint compare.
+//
+// A full cell keeps the surfels nearest its centre instead of a hash-chosen subset: an arriving
+// surfel probes a few stored entries, and replaces the farthest probe when it is nearer. Probes
+// are not exhaustive, so the result is approximate, but the nearest surfels survive in practice
+// and the overflow counter still records every event.
+const uint SURFEL_OVERFLOW_PROBES = 8u;
+
+void InsertIntoCell(uint surfelID, uint cell, vec3 surfelPos, vec3 cellCenter)
 {
     if (cell >= uGridCellCount) {
         return;
     }
+
+    vec3 toCenter = surfelPos - cellCenter;
+    uint key = floatBitsToUint(max(dot(toCenter, toCenter), 0.0));
 
     uint slot = atomicAdd(gridHeaders[cell].entryCount, 1u);
     uint firstEntry = gridHeaders[cell].firstEntry;
     if (firstEntry == 0u && cell != 0u) {
         firstEntry = cell * uMaxSurfelsPerCell;
     }
-
     if (slot < uMaxSurfelsPerCell) {
         uint entryIndex = firstEntry + slot;
         gridEntries[entryIndex].surfelID = surfelID;
-        gridEntries[entryIndex].next = SURFEL_INVALID_INDEX;
+        gridEntries[entryIndex].next = key;
     } else {
         atomicOr(gridHeaders[cell].flags, SURFEL_CELL_OVERFLOWED);
         atomicAdd(counters.overflowGridEntries, 1u);
-        uint replaceHash = SurfelHash(surfelID ^ (cell * 747796405u) ^ (slot * 2891336453u));
-        uint seenCount = max(slot + 1u, 1u);
-        if ((replaceHash % seenCount) < uMaxSurfelsPerCell) {
-            uint replaceIndex = firstEntry + (replaceHash % uMaxSurfelsPerCell);
+        uint worstProbe = 0u;
+        uint worstKey = 0u;
+        uint probeSeed = SurfelHash(surfelID ^ (cell * 747796405u) ^ (slot * 2891336453u));
+        for (uint p = 0u; p < SURFEL_OVERFLOW_PROBES; ++p) {
+            uint probe = SurfelHash(probeSeed + p * 0x9e3779b9u) % uMaxSurfelsPerCell;
+            uint probeKey = gridEntries[firstEntry + probe].next;
+            if (probeKey >= worstKey) {
+                worstKey = probeKey;
+                worstProbe = probe;
+            }
+        }
+        if (key < worstKey) {
+            uint replaceIndex = firstEntry + worstProbe;
             gridEntries[replaceIndex].surfelID = surfelID;
-            gridEntries[replaceIndex].next = SURFEL_INVALID_INDEX;
+            gridEntries[replaceIndex].next = key;
         }
     }
 }
@@ -109,7 +130,7 @@ void main()
     uint insertedCells[27];
     uint insertedCount = 0u;
     insertedCells[insertedCount++] = baseAddress.cell;
-    InsertIntoCell(surfelID, baseAddress.cell);
+    InsertIntoCell(surfelID, baseAddress.cell, surfel.worldPos_radius.xyz, baseAddress.center);
 
     for (uint i = 1u; i < 27u; ++i) {
         ivec3 offset = SurfelCubeNeighborOffset(i);
@@ -134,7 +155,7 @@ void main()
         float inflatedRadius = supportRadius + neighborAddress.cellSize * 0.75;
         if (dot(delta, delta) <= inflatedRadius * inflatedRadius) {
             insertedCells[insertedCount++] = neighborAddress.cell;
-            InsertIntoCell(surfelID, neighborAddress.cell);
+            InsertIntoCell(surfelID, neighborAddress.cell, surfel.worldPos_radius.xyz, neighborAddress.center);
         }
     }
 }
