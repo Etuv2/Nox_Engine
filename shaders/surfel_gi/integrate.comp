@@ -217,7 +217,10 @@ void main()
             }
             sampleX = gated;
         }
-        SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel);
+        // Cumulative average over the rays integrated so far, until the long rate takes over. A batch of b
+        // rays after n rays moves the mean by b / (n + b): exactly 1 / (n + 1) for one ray per batch.
+        float cumulativeRate = acceptedWeight / max(surfel.shortMean.a + acceptedWeight, 1.0);
+        SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel, cumulativeRate);
     }
 
     float varLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));
