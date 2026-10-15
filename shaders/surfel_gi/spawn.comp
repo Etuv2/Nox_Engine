@@ -627,7 +627,11 @@ bool EvaluateSpawnCandidateImpl(uvec2 pixelU, out SpawnCandidate candidate, bool
     candidate.baseAddress = baseAddress;
     candidate.transformID = transformID;
     candidate.materialID = materialID;
-    candidate.adaptiveRadius = SpawnRadiusForCandidate(pixel, worldPos, worldNormal);
+    // The radius feeds the grid coverage query and the spawn itself. The lane path with the coverage
+    // map needs neither, so it skips the radius and the importance terms.
+    if (withImportance || uUseCoverageMap == 0) {
+        candidate.adaptiveRadius = SpawnRadiusForCandidate(pixel, worldPos, worldNormal);
+    }
     if (withImportance) {
         float cameraDistance = length(worldPos - uCameraPosition);
         float nearImportance = 1.0 - smoothstep(4.0, 60.0, cameraDistance);

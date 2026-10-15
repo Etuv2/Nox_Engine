@@ -73,7 +73,7 @@ struct SurfelGISettings {
 	// frame; N > 1 tests a rotating 1/N^2 subset (the lowest coverage over N^2 frames).
 	uint32_t spawnSearchStride = 1u;
 	// Scales the GPU spawn budget (validation/tuning knob; 1.0 = default formula).
-	float spawnBudgetScale = 1.0f;
+	float spawnBudgetScale = 0.25f;
 	uint32_t maxSurfelsPerCell = 128u;
 	uint32_t maxGatherSurfelsPerPixel = 32u;
 	uint32_t gatherNeighborRadius = 1u;
