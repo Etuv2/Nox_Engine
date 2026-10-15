@@ -225,3 +225,4 @@ data/shuto/raw/
 !tests/fixtures/**/hdrs/
 !tests/fixtures/**/captures/
 projects/*/.luarc.json
+.claude/worktrees/
