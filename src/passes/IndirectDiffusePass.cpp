@@ -10,6 +10,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
@@ -118,6 +119,106 @@ bool IndirectDiffusePass::IsHdrColorStage(int stage) {
     }
 }
 
+// Per-stage GPU timing for the indirect diffuse pipeline, active with NOX_LOG_PASS_METRICS. Timestamps go
+// into a small ring so reads never stall on the frame being written; averages print every
+// NOX_LOG_PASS_METRICS_INTERVAL frames.
+class IndirectDiffuseStageTimer {
+public:
+    static constexpr int kRing = 3;
+    static constexpr int kMarks = 7;
+    static constexpr int kStages = kMarks - 1;
+
+    IndirectDiffuseStageTimer() {
+        const char* env = std::getenv("NOX_LOG_PASS_METRICS");
+        m_enabled = env && env[0] != '\0' && env[0] != '0';
+        if (!m_enabled) {
+            return;
+        }
+        const char* intervalEnv = std::getenv("NOX_LOG_PASS_METRICS_INTERVAL");
+        m_interval = intervalEnv ? std::max(std::atoi(intervalEnv), 1) : 120;
+        for (auto& slot : m_queries) {
+            for (auto& query : slot) {
+                query = rhi::Gpu().CreateQuery(rhi::QueryType::Timestamp);
+            }
+        }
+    }
+
+    ~IndirectDiffuseStageTimer() {
+        if (!m_enabled) {
+            return;
+        }
+        for (auto& slot : m_queries) {
+            for (auto& query : slot) {
+                rhi::Gpu().DestroyQuery(query);
+            }
+        }
+    }
+
+    void BeginFrame() {
+        if (!m_enabled) {
+            return;
+        }
+        m_slot = m_frame % kRing;
+        if (m_frame >= kRing) {
+            Collect(m_slot);
+        }
+        m_marks = 0;
+        ++m_frame;
+    }
+
+    void Mark() {
+        if (!m_enabled || m_marks >= kMarks) {
+            return;
+        }
+        rhi::Gpu().WriteTimestamp(m_queries[m_slot][m_marks]);
+        ++m_marks;
+    }
+
+private:
+    void Collect(int slot) {
+        for (int i = 0; i < kMarks; ++i) {
+            if (!rhi::Gpu().IsQueryResultAvailable(m_queries[slot][i])) {
+                return;
+            }
+        }
+        uint64_t marks[kMarks];
+        for (int i = 0; i < kMarks; ++i) {
+            marks[i] = rhi::Gpu().GetQueryResult(m_queries[slot][i]);
+        }
+        for (int s = 0; s < kStages; ++s) {
+            if (marks[s + 1] >= marks[s]) {
+                m_sumMs[s] += static_cast<double>(marks[s + 1] - marks[s]) / 1.0e6;
+            }
+        }
+        ++m_samples;
+        if (m_samples >= static_cast<uint32_t>(m_interval)) {
+            static const char* kNames[kStages] = {
+                "DepthPrepare+Pyramid+Normals", "RadianceDownsample", "Gather",
+                "Temporal", "Denoise", "Upsample+History" };
+            double total = 0.0;
+            std::cout << "[IndirectDiffuseStages] frame=" << m_frame << " samples=" << m_samples << std::endl;
+            for (int s = 0; s < kStages; ++s) {
+                const double avg = m_sumMs[s] / static_cast<double>(m_samples);
+                total += avg;
+                std::cout << "[IndirectDiffuseStages]   " << kNames[s] << " gpuMs=" << avg << std::endl;
+            }
+            std::cout << "[IndirectDiffuseStages]   total gpuMs=" << total << std::endl;
+            std::fill(std::begin(m_sumMs), std::end(m_sumMs), 0.0);
+            m_samples = 0;
+        }
+    }
+
+    bool m_enabled = false;
+    int m_interval = 120;
+    int m_slot = 0;
+    int m_marks = 0;
+    uint64_t m_frame = 0;
+    uint32_t m_samples = 0;
+    double m_sumMs[kStages] = {};
+    rhi::QueryHandle m_queries[kRing][kMarks] = {};
+};
+
+IndirectDiffusePass::IndirectDiffusePass() = default;
 IndirectDiffusePass::~IndirectDiffusePass() = default;
 
 bool IndirectDiffusePass::Initialize(RenderContext& ctx) {
@@ -131,6 +232,7 @@ bool IndirectDiffusePass::Initialize(RenderContext& ctx) {
     m_csTemporal = std::make_unique<ComputeShader>();
     m_csBilateral = std::make_unique<ComputeShader>();
     m_csFinalUpsample = std::make_unique<ComputeShader>();
+    m_stageTimer = std::make_unique<IndirectDiffuseStageTimer>();
 
     if (!m_csDepthPrefilter->CreateFromFile("shaders/indirect_diffuse_depth_prepare_comp.glsl")) {
         std::cerr << "[IndirectDiffusePass] Failed to compile indirect_diffuse_depth_prepare_comp.glsl" << std::endl;
@@ -172,7 +274,7 @@ bool IndirectDiffusePass::Initialize(RenderContext& ctx) {
 
 void IndirectDiffusePass::Resize(RenderContext& ctx, int w, int h) {
     rhi::Device& gpu = rhi::Gpu();
-    const float quarterScale = std::clamp(m_config.workingScale, 0.25f, 0.25f);
+    const float quarterScale = std::clamp(m_config.workingScale, 0.25f, 0.5f);
 
     const int desiredQuarterWidth = std::max(1, static_cast<int>(std::round(w * quarterScale)));
     const int desiredQuarterHeight = std::max(1, static_cast<int>(std::round(h * quarterScale)));
@@ -221,6 +323,16 @@ void IndirectDiffusePass::Resize(RenderContext& ctx, int w, int h) {
 
     m_indirectTemporal = TextureFactory::CreateHDR(m_qw, m_qh);
     m_directionalTemporal = TextureFactory::CreateHDR(m_qw, m_qh);
+    m_temporalLength = Texture::Builder::Texture2D(m_qw, m_qh, rhi::Format::R16F)
+        .Format(rhi::PixelFormat::R).DataType(rhi::PixelType::HalfFloat)
+        .FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+        .WrapMode(rhi::Wrap::ClampToEdge)
+        .Build();
+    m_historyLength = Texture::Builder::Texture2D(m_qw, m_qh, rhi::Format::R16F)
+        .Format(rhi::PixelFormat::R).DataType(rhi::PixelType::HalfFloat)
+        .FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
+        .WrapMode(rhi::Wrap::ClampToEdge)
+        .Build();
     m_temporalDebug = TextureFactory::CreateHDR(m_qw, m_qh);
     m_temporalHistoryRawDebug = TextureFactory::CreateHDR(m_qw, m_qh);
     m_temporalHistoryClampedDebug = TextureFactory::CreateHDR(m_qw, m_qh);
@@ -234,7 +346,6 @@ void IndirectDiffusePass::Resize(RenderContext& ctx, int w, int h) {
 
     m_indirectDiffuseTex = TextureFactory::CreateHDR(m_w, m_h);
     m_debugOutput = TextureFactory::CreateHDR(m_w, m_h);
-    m_upscaledIndirectDebug = TextureFactory::CreateHDR(m_w, m_h);
     m_finalIndirectDebug = TextureFactory::CreateHDR(m_w, m_h);
 
     m_historyResolvedGI = TextureFactory::CreateHDR(m_w, m_h);
@@ -263,6 +374,8 @@ void IndirectDiffusePass::Resize(RenderContext& ctx, int w, int h) {
 
     const float normalClear[4] = { 0.5f, 0.5f, 0.0f, 0.0f };
     gpu.ClearTexture(m_historyNormalFull->ID(), 0, rhi::PixelFormat::RG, rhi::PixelType::Float, normalClear);
+    const float zeroLength = 0.0f;
+    gpu.ClearTexture(m_historyLength->ID(), 0, rhi::PixelFormat::R, rhi::PixelType::Float, &zeroLength);
     m_historyDepthQuarter->GenerateMipmaps();
 }
 
@@ -275,18 +388,28 @@ void IndirectDiffusePass::Execute(RenderContext& ctx,
         return;
     }
 
+    m_config.workingScale = std::clamp(ctx.indirectDiffuseResolutionScale, 0.25f, 0.5f);
     Resize(ctx, ctx.width, ctx.height);
 
+    IndirectDiffuseStageTimer& timer = *m_stageTimer;
+    timer.BeginFrame();
+    timer.Mark();
     runDepthPrefilter(ctx);
+    timer.Mark();
     runRadiance(ctx);
+    timer.Mark();
     runHorizonGather(ctx, camera);
+    timer.Mark();
     runTemporal(ctx);
+    timer.Mark();
 
     runBilateral(ctx);
+    timer.Mark();
 
     runFinalUpsample(ctx);
 
     CopyLevel(m_indirectDiffuseTex->ID(), m_historyResolvedGI->ID(), m_w, m_h);
+    timer.Mark();
     ctx.indirectDiffuseHistoryReset = false;
 }
 
@@ -394,6 +517,9 @@ void IndirectDiffusePass::runHorizonGather(RenderContext& ctx, const std::shared
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "rayCount"), sliceCount);
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "stepCount"), stepCount);
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "frameIndex"), m_frameIndex++);
+    // Interleaving needs last frame's history to fill the untraced pixels, so a reset traces everything.
+    gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "traceInterleave"),
+        (ctx.indirectDiffuseInterleavedTrace && temporalHistoryUsable(ctx)) ? 1 : 0);
 
     const uint32_t gx = (m_qw + 7) / 8;
     const uint32_t gy = (m_qh + 7) / 8;
@@ -401,9 +527,13 @@ void IndirectDiffusePass::runHorizonGather(RenderContext& ctx, const std::shared
     gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 }
 
+bool IndirectDiffusePass::temporalHistoryUsable(const RenderContext& ctx) const {
+    return !(ctx.indirectDiffuseValidationDisableTemporal || !ctx.velocityTex.IsValid() || !m_historyNormalFull || !m_historyDepthQuarter || ctx.indirectDiffuseHistoryReset);
+}
+
 void IndirectDiffusePass::runTemporal(RenderContext& ctx) {
     rhi::Device& gpu = rhi::Gpu();
-    if (ctx.indirectDiffuseValidationDisableTemporal || !ctx.velocityTex.IsValid() || !m_historyNormalFull || !m_historyDepthQuarter || ctx.indirectDiffuseHistoryReset) {
+    if (!temporalHistoryUsable(ctx)) {
         CopyLevel(m_indirectRaw->ID(), m_indirectTemporal->ID(), m_qw, m_qh);
         CopyLevel(m_directionalRaw->ID(), m_directionalTemporal->ID(), m_qw, m_qh);
 
@@ -419,6 +549,8 @@ void IndirectDiffusePass::runTemporal(RenderContext& ctx) {
         m_historyDepthQuarter->GenerateMipmaps();
 
         CopyLevel(m_normalQuarter->ID(), m_historyNormalFull->ID(), m_qw, m_qh);
+        const float restartLength = 1.0f;
+        gpu.ClearTexture(m_historyLength->ID(), 0, rhi::PixelFormat::R, rhi::PixelType::Float, &restartLength);
         return;
     }
 
@@ -433,19 +565,23 @@ void IndirectDiffusePass::runTemporal(RenderContext& ctx) {
     gpu.BindTexture(6, m_normalQuarter->ID());
     gpu.BindTexture(7, m_historyDepthQuarter->ID());
     gpu.BindTexture(8, m_historyNormalFull->ID());
+    gpu.BindTexture(9, m_historyLength->ID());
 
     gpu.BindImage(0, m_indirectTemporal->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
     gpu.BindImage(1, m_directionalTemporal->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
     gpu.BindImage(2, m_temporalDebug->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
     gpu.BindImage(3, m_temporalHistoryRawDebug->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
     gpu.BindImage(4, m_temporalHistoryClampedDebug->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+    gpu.BindImage(5, m_temporalLength->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::R16F);
 
+    // Temporal Alpha is the floor on the current-frame weight; History Length caps the accumulated frame count.
     gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "useHistory"), 1);
-    gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "historyBlend"), std::clamp(1.0f - ctx.indirectDiffuseTemporalAlpha, 0.0f, 0.95f));
+    gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "minCurrentWeight"), std::clamp(ctx.indirectDiffuseTemporalAlpha, 0.02f, 0.5f));
+    gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "maxHistoryLength"), float(std::clamp(ctx.indirectDiffuseHistoryLength, 1, 64)));
     gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "depthReject"), std::clamp(ctx.indirectDiffuseDepthReject, 0.01f, 0.35f));
     gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "normalRejectCos"), std::clamp(1.0f - ctx.indirectDiffuseNormalReject, 0.55f, 0.99f));
     gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "disocclusionReject"), std::clamp(ctx.indirectDiffuseDepthReject * 1.5f, 0.02f, 0.25f));
-    gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "historyClampStrength"), 0.35f);
+    gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "varianceGamma"), 1.25f);
     gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "motionRejectPixels"), 32.0f);
     gpu.SetUniform(gpu.GetUniformLocation(m_csTemporal->GetProgramID(), "minHistoryConfidence"), 0.01f);
 
@@ -458,6 +594,7 @@ void IndirectDiffusePass::runTemporal(RenderContext& ctx) {
     CopyLevel(m_directionalTemporal->ID(), m_historyDirectional->ID(), m_qw, m_qh);
     CopyLevel(m_depthLinearQuarter->ID(), m_historyDepthQuarter->ID(), m_qw, m_qh);
     m_historyDepthQuarter->GenerateMipmaps();
+    CopyLevel(m_temporalLength->ID(), m_historyLength->ID(), m_qw, m_qh);
 
     CopyLevel(m_normalQuarter->ID(), m_historyNormalFull->ID(), m_qw, m_qh);
 }
@@ -494,15 +631,35 @@ void IndirectDiffusePass::runBilateral(RenderContext& ctx) {
     gpu.Dispatch((m_qw + 7) / 8, (m_qh + 7) / 8, 1);
     gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 
-    gpu.BindTexture(0, m_indirectDenoiseStage1->ID());
-    gpu.BindTexture(1, m_directionalDenoiseStage1->ID());
-    gpu.BindImage(5, m_indirectDenoised->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-    gpu.BindImage(6, m_directionalDenoised->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-    gpu.SetUniform(gpu.GetUniformLocation(m_csBilateral->GetProgramID(), "kernelRadius"), 1);
-    gpu.SetUniform(gpu.GetUniformLocation(m_csBilateral->GetProgramID(), "confidencePower"), 1.2f);
-    gpu.SetUniform(gpu.GetUniformLocation(m_csBilateral->GetProgramID(), "lumaPhi"), 0.10f);
-    gpu.Dispatch((m_qw + 7) / 8, (m_qh + 7) / 8, 1);
-    gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
+    // Further iterations use the tight 3x3 kernel and ping-pong between the two stage buffers.
+    // The result always ends up in m_indirectDenoised / m_directionalDenoised, which the upsample reads.
+    const int iterations = std::clamp(ctx.indirectDiffuseDenoiseIterations, 1, 3);
+    bool finalInDenoised = false;
+    if (iterations == 1) {
+        CopyLevel(m_indirectDenoiseStage1->ID(), m_indirectDenoised->ID(), m_qw, m_qh);
+        CopyLevel(m_directionalDenoiseStage1->ID(), m_directionalDenoised->ID(), m_qw, m_qh);
+    }
+    for (int iter = 1; iter < iterations; ++iter) {
+        const bool toDenoised = (iter % 2) == 1;
+        TexturePtr& srcI = toDenoised ? m_indirectDenoiseStage1 : m_indirectDenoised;
+        TexturePtr& srcD = toDenoised ? m_directionalDenoiseStage1 : m_directionalDenoised;
+        TexturePtr& dstI = toDenoised ? m_indirectDenoised : m_indirectDenoiseStage1;
+        TexturePtr& dstD = toDenoised ? m_directionalDenoised : m_directionalDenoiseStage1;
+        gpu.BindTexture(0, srcI->ID());
+        gpu.BindTexture(1, srcD->ID());
+        gpu.BindImage(5, dstI->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+        gpu.BindImage(6, dstD->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+        gpu.SetUniform(gpu.GetUniformLocation(m_csBilateral->GetProgramID(), "kernelRadius"), 1);
+        gpu.SetUniform(gpu.GetUniformLocation(m_csBilateral->GetProgramID(), "confidencePower"), 1.2f);
+        gpu.SetUniform(gpu.GetUniformLocation(m_csBilateral->GetProgramID(), "lumaPhi"), 0.10f);
+        gpu.Dispatch((m_qw + 7) / 8, (m_qh + 7) / 8, 1);
+        gpu.PipelineBarrier(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
+        finalInDenoised = toDenoised;
+    }
+    if (iterations > 1 && !finalInDenoised) {
+        CopyLevel(m_indirectDenoiseStage1->ID(), m_indirectDenoised->ID(), m_qw, m_qh);
+        CopyLevel(m_directionalDenoiseStage1->ID(), m_directionalDenoised->ID(), m_qw, m_qh);
+    }
 }
 
 void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
@@ -512,7 +669,6 @@ void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
     gpu.BindTexture(0, m_indirectDenoiseStage1->ID());
     gpu.BindTexture(1, m_directionalDenoiseStage1->ID());
     gpu.BindTexture(2, m_indirectDenoised->ID());
-    gpu.BindTexture(3, m_directionalDenoised->ID());
     gpu.BindTexture(4, m_indirectRaw->ID());
     gpu.BindTexture(5, m_directionalRaw->ID());
     gpu.BindTexture(6, m_depthLinearQuarter->ID());
@@ -536,7 +692,6 @@ void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
 
     gpu.BindImage(0, m_indirectDiffuseTex->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
     gpu.BindImage(1, m_debugOutput->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-    gpu.BindImage(2, m_upscaledIndirectDebug->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
     gpu.BindImage(3, m_finalIndirectDebug->ID(), 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 
     gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "invFullSize"), glm::vec2(1.0f / float(m_w), 1.0f / float(m_h)));
@@ -545,6 +700,7 @@ void IndirectDiffusePass::runFinalUpsample(RenderContext& ctx) {
     gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "projScaleY"), ctx.proj[1][1]);
     gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "upscaleSharpness"), std::clamp(ctx.indirectDiffuseUpscaleSharpness, 0.5f, 4.0f));
     gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "debugMode"), std::clamp(ctx.indirectDiffuseDebugStage, 0, 24));
+    gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "writeDebugOutputs"), std::clamp(ctx.indirectDiffuseDebugStage, 0, 24) > 0 ? 1 : 0);
     gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "indirectStrength"), std::max(ctx.indirectDiffuseStrength, 0.0f));
     gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "view"), ctx.view);
     gpu.SetUniform(gpu.GetUniformLocation(m_csFinalUpsample->GetProgramID(), "normalsInWorldSpace"), 1);
@@ -578,8 +734,9 @@ rhi::TextureHandle IndirectDiffusePass::getTextureForDebugStage(int stage, bool&
     case Denoise1: return m_indirectDenoiseStage1 ? m_indirectDenoiseStage1->ID() : rhi::TextureHandle{};
     case Denoise2: return m_indirectDenoised ? m_indirectDenoised->ID() : rhi::TextureHandle{};
     case UpscaledIndirect:
+        // Same data as the full-resolution output, so it is not stored a second time.
         outFullRes = true;
-        return m_upscaledIndirectDebug ? m_upscaledIndirectDebug->ID() : rhi::TextureHandle{};
+        return m_indirectDiffuseTex ? m_indirectDiffuseTex->ID() : rhi::TextureHandle{};
     case FinalIndirectOnly:
         outFullRes = true;
         return m_finalIndirectDebug ? m_finalIndirectDebug->ID() : rhi::TextureHandle{};

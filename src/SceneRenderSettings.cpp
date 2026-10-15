@@ -254,6 +254,13 @@ namespace SceneRenderSettings {
 		Read(s, "ssao_steps", ctx.ssaoSteps);
 		Read(s, "ssgi", ctx.enableIndirectDiffuse);
 		Read(s, "ssgi_strength", ctx.indirectDiffuseStrength);
+		Read(s, "ssgi_resolution", ctx.indirectDiffuseResolutionScale);
+		Read(s, "ssgi_history_length", ctx.indirectDiffuseHistoryLength);
+		Read(s, "ssgi_denoise_passes", ctx.indirectDiffuseDenoiseIterations);
+		Read(s, "ssgi_interleaved", ctx.indirectDiffuseInterleavedTrace);
+		Read(s, "ssgi_slices", ctx.indirectDiffuseSliceCount);
+		Read(s, "ssgi_steps", ctx.indirectDiffuseSamplesPerSlice);
+		Read(s, "ssgi_debug_stage", ctx.indirectDiffuseDebugStage);
 		Read(s, "contact_shadows", ctx.enableScreenSpaceShadows);
 		Read(s, "taa", ctx.enableTAA);
 		Read(s, "taa_blend", ctx.taaBlendFactor);

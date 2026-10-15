@@ -48,6 +48,7 @@ uniform float thicknessVS;   // Assumed thickness of on-screen surfaces in view-
 uniform int rayCount;        // Slice count; every slice marches both screen directions.
 uniform int stepCount;       // Samples per slice direction.
 uniform int frameIndex;
+uniform int traceInterleave; // 1: trace 4-row bands on alternating frames; 0: trace every pixel
 
 const int SECTOR_COUNT = 32;
 const float SECTOR_COUNT_F = 32.0;
@@ -78,19 +79,21 @@ float SliceWeightAntiderivative(float theta, float gamma, float cosGamma, float 
 }
 
 // Sector i spans theta in [gamma - pi/2 + i*pi/32, gamma - pi/2 + (i+1)*pi/32].
-float SectorWeight(int sector, float gamma, float cosGamma, float sinGamma) {
-    float theta0 = gamma - HALF_PI + float(sector) * (PI / SECTOR_COUNT_F);
-    float theta1 = theta0 + PI / SECTOR_COUNT_F;
-    return max(SliceWeightAntiderivative(theta1, gamma, cosGamma, sinGamma)
-        - SliceWeightAntiderivative(theta0, gamma, cosGamma, sinGamma), 0.0);
+// The weights depend only on the slice, so they are built once per slice; every sample then
+// looks its sector weights up instead of re-evaluating the antiderivative for each occluded sector.
+void BuildSectorWeights(float gamma, float cosGamma, float sinGamma, out float sectorW[SECTOR_COUNT]) {
+    float prev = SliceWeightAntiderivative(gamma - HALF_PI, gamma, cosGamma, sinGamma);
+    for (int i = 0; i < SECTOR_COUNT; ++i) {
+        float cur = SliceWeightAntiderivative(gamma - HALF_PI + float(i + 1) * (PI / SECTOR_COUNT_F), gamma, cosGamma, sinGamma);
+        sectorW[i] = max(cur - prev, 0.0);
+        prev = cur;
+    }
 }
 
-float MaskWeight(uint mask, float gamma, float cosGamma, float sinGamma) {
+float MaskWeight(uint mask, in float sectorW[SECTOR_COUNT]) {
     float weight = 0.0;
-    while (mask != 0u) {
-        int sector = findLSB(mask);
-        weight += SectorWeight(sector, gamma, cosGamma, sinGamma);
-        mask &= mask - 1u;
+    for (int i = 0; i < SECTOR_COUNT; ++i) {
+        weight += (((mask >> uint(i)) & 1u) != 0u) ? sectorW[i] : 0.0;
     }
     return weight;
 }
@@ -123,6 +126,17 @@ void main() {
         return;
     }
 
+    // Interleaved trace: 4-row bands alternate per frame, so each pixel is traced every other frame and the
+    // temporal pass fills the rest (alpha < 0 marks an untraced pixel). A band is exactly one 32-lane warp
+    // of the 8x8 workgroup, so the skipped lanes exit together and the saving is real on the GPU.
+    if (traceInterleave == 1 && ((((id.y >> 2) + frameIndex) & 1) != 0)) {
+        imageStore(outIndirectRaw, id, vec4(0.0, 0.0, 0.0, -1.0));
+        imageStore(outDirectionalRaw, id, vec4(0.0));
+        imageStore(outHorizonDebug, id, vec4(0.0, 1.0, 0.0, 0.0));
+        imageStore(outSectorDebug, id, vec4(0.0));
+        return;
+    }
+
     vec2 uv = (vec2(id) + 0.5) * invQuarterSize;
     float centerDepth = texelFetch(linearDepthQuarter, id, 0).r;
     if (!IsValidLinearDepth(centerDepth)) {
@@ -152,8 +166,11 @@ void main() {
     float pixelsPerViewUnit = 0.5 * projScaleY * quarterSize.y / max(centerDepth, 1e-4);
     float maxRadiusPx = clamp(max(rayLength, 0.05) * pixelsPerViewUnit, 2.0, length(quarterSize));
 
-    float sliceNoise = InterleavedGradientNoise(vec2(id), float(frameIndex));
-    float stepNoise = InterleavedGradientNoise(vec2(id) + vec2(37.0, 17.0), float(frameIndex));
+    // Spatial IGN per pixel plus an R2 (golden-ratio) sequence per frame: the slice rotation and the
+    // sample offsets sweep the hemisphere evenly over time, so temporal resolve converges to a
+    // stable average instead of a fixed dither pattern.
+    float sliceNoise = fract(InterleavedGradientNoise(vec2(id), 0.0) + float(frameIndex) * 0.6180339887);
+    float stepNoise = fract(InterleavedGradientNoise(vec2(id) + vec2(37.0, 17.0), 0.0) + float(frameIndex) * 0.7548776662);
     float thickness = max(thicknessVS, 1e-3);
 
     vec3 irradianceAccum = vec3(0.0);
@@ -179,6 +196,8 @@ void main() {
         float gamma = sign(dot(projectedNormal, orthoDir)) * acos(cosN);
         float cosGamma = cos(gamma);
         float sinGamma = sin(gamma);
+        float sectorW[SECTOR_COUNT];
+        BuildSectorWeights(gamma, cosGamma, sinGamma, sectorW);
 
         // A view-space direction with z = 0 projects to the same pixel-space direction (the
         // projection's aspect ratio cancels against the render target's), so the slice plane
@@ -196,6 +215,11 @@ void main() {
             float previousThetaFront = 0.0;
 
             for (int sampleIndex = 0; sampleIndex < samplesPerSide; ++sampleIndex) {
+                // Once every sector is occluded, later samples cannot add a sector, so the march stops.
+                // Exact: the output only depends on sectors that are newly occluded.
+                if (occludedMask == 0xffffffffu) {
+                    break;
+                }
                 // Quadratic spacing: dense near the receiver where contact bounce dominates.
                 float t = (float(sampleIndex) + fract(stepNoise + 0.618034 * float(side))) / float(samplesPerSide);
                 float radiusPx = max(maxRadiusPx * t * t, float(sampleIndex) + 1.0);
@@ -267,13 +291,13 @@ void main() {
                     continue;
                 }
 
-                float weight = MaskWeight(newMask, gamma, cosGamma, sinGamma);
+                float weight = MaskWeight(newMask, sectorW);
                 sliceIrradiance += emittedRadiance * weight;
                 sliceSh += SHBasisL1(SafeNormalizeStrict(frontDelta, viewVec)) * (Luma(emittedRadiance) * weight);
             }
         }
 
-        float openWeight = MaskWeight(~occludedMask, gamma, cosGamma, sinGamma);
+        float openWeight = MaskWeight(~occludedMask, sectorW);
         irradianceAccum += sliceIrradiance * projectedNormalLen;
         shAccum += sliceSh * projectedNormalLen;
         visibilityAccum += openWeight * projectedNormalLen;

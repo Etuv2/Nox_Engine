@@ -192,6 +192,20 @@ std::vector<RenderSetting> BuildTable() {
 		"Depth-edge stop of the AO blur (higher = less bleeding across depth edges)"));
 	t.push_back(BoolSetting("ssgi", kAo, "Indirect diffuse (SSGI)", &RenderContext::enableIndirectDiffuse));
 	t.push_back(FloatSetting("ssgi_strength", kAo, "SSGI strength", &RenderContext::indirectDiffuseStrength, 0.0, 4.0, 0.01));
+	t.push_back(IntSetting("ssgi_debug_stage", kAo, "SSGI debug stage", &RenderContext::indirectDiffuseDebugStage, 0.0, 24.0, 1.0,
+		"Presents one GI stage instead of lighting (0 = off). Measurement aid; see IndirectDiffusePass::DebugStage"));
+	t.push_back(BoolSetting("ssgi_interleaved", kAo, "SSGI interleaved trace", &RenderContext::indirectDiffuseInterleavedTrace,
+		"Traces half the pixels per frame (alternating 4-row bands) and fills the rest from temporal history"));
+	t.push_back(IntSetting("ssgi_slices", kAo, "SSGI slices", &RenderContext::indirectDiffuseSliceCount, 1.0, 8.0, 1.0,
+		"Horizon slices per pixel; quality/cost trade (default 3; spec 4)"));
+	t.push_back(IntSetting("ssgi_steps", kAo, "SSGI steps per slice", &RenderContext::indirectDiffuseSamplesPerSlice, 1.0, 64.0, 1.0,
+		"Samples per slice direction; quality/cost trade (default 24; spec 32)"));
+	t.push_back(FloatSetting("ssgi_resolution", kAo, "SSGI trace resolution", &RenderContext::indirectDiffuseResolutionScale, 0.25, 0.5, 0.25,
+		"Fraction of the frame the GI is traced at: 0.25 = quarter (default), 0.5 = half (about 4x the trace cost)"));
+	t.push_back(IntSetting("ssgi_history_length", kAo, "SSGI history length", &RenderContext::indirectDiffuseHistoryLength, 1.0, 64.0, 1.0,
+		"Max accumulated frames per pixel in the temporal resolve; higher = less noise, slower response"));
+	t.push_back(IntSetting("ssgi_denoise_passes", kAo, "SSGI denoise passes", &RenderContext::indirectDiffuseDenoiseIterations, 1.0, 3.0, 1.0,
+		"Edge-aware denoise passes after the temporal resolve (the first is wide, later ones are 3x3)"));
 	t.push_back(BoolSetting("contact_shadows", kAo, "Contact shadows", &RenderContext::enableScreenSpaceShadows));
 
 	const char* kTaa = "Anti-aliasing";

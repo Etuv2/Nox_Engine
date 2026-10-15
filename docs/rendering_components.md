@@ -70,6 +70,12 @@ values outside them are clamped.
 | `ssao_blur_radius`, `ssao_directions`, `ssao_steps` | int | 1 .. 8, 4 .. 16, 2 .. 8 |
 | `ssao_blur_sharpness` | float | 0 .. 200 |
 | `ssgi_strength` | float | 0 .. 4 |
+| `ssgi_resolution` | float | 0.25 (quarter, default), 0.5 (half, about 4x the trace cost) |
+| `ssgi_history_length` | int | 1 .. 64 (default 12) |
+| `ssgi_denoise_passes` | int | 1 .. 3 (default 2) |
+| `ssgi_slices`, `ssgi_steps` | int | 1 .. 8 (default 3), 1 .. 64 (default 24) |
+| `ssgi_interleaved` | bool | off (default); on traces half the pixels per frame |
+| `ssgi_debug_stage` | int | 0 (off); presents one GI stage instead of lighting (measurement aid) |
 | `taa` | bool | |
 | `taa_blend` | float | 0 .. 1 |
 | `taa_rejection_mode` | int | 0 (legacy), 1 (disocclusion) |
@@ -114,6 +120,32 @@ values outside them are clamped.
 The table is `src/render/RenderSettingsTable.cpp`; the scene reader is `SceneRenderSettings::Apply`, and the
 writer is `SceneRenderSettings::ToJson` (called by the scene saver). Add a setting in the table and it is
 exposed, saved and tested together.
+
+## Screen-space GI (SSGI)
+
+`ssgi` is the visibility-bitmask indirect diffuse pass (`src/passes/IndirectDiffusePass.*`, spec in
+`docs/ssgi_v2_visibility_bitmask_spec.md`). Per frame:
+
+1. Gather at the working resolution (quarter by default). Four slices, 32 steps per direction, sky pixels
+   skipped, and a slice stops marching once all of its sectors are occluded (exact, no output change).
+   Slice rotation and sample offsets use interleaved gradient noise plus an R2 sequence over frames.
+2. Temporal resolve reprojects the raw GI with depth, normal, and motion tests. The history is clamped to the
+   current 3x3 mean +/- 1.25 sigma (intersected with the min/max box). Each pixel keeps an accumulated frame
+   count up to `ssgi_history_length`; the current-frame weight is 1 / count, floored by the "Min Current
+   Weight" slider (the old "Temporal Alpha").
+3. Edge-aware bilateral denoise: a 5x5 pass, then 3x3 passes up to `ssgi_denoise_passes`.
+4. Depth/normal/plane-aware bilateral upsample to full resolution. Full-resolution debug outputs are only
+   written while a debug stage is selected, and the GI validation export is shown only then.
+
+Cost: the gather is the largest stage (about 0.29 ms at 1080p with 4x32; 0.15 ms with 3x24). The other stages
+(depth/normals, radiance downsample, temporal, denoise, upsample) cost about 0.33 ms and do not scale with the
+slice or step count. The default is 3 slices x 24 steps: on the Cornell validation scene the indirect-only mean
+is 4.6% below 4x32, and temporal noise is about a third of the pre-change pipeline. This is a deviation from the
+4x32 quality defaults in `docs/ssgi_v2_visibility_bitmask_spec.md` section 7; set `ssgi_slices` 4 and
+`ssgi_steps` 32 to restore them.
+
+Interleaved trace (`ssgi_interleaved`) traces 4-row bands on alternating frames and fills the other bands from
+history. It did not reduce gather time at 1080p and roughly tripled the frame-to-frame flicker, so it is off.
 
 ## Camera current
 

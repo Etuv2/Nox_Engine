@@ -153,6 +153,10 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
 	m_indirectDiffuseThicknessVS = RenderContext::IndirectDiffuseDefaults::ThicknessVS;
 	m_indirectDiffuseTemporalAlpha = RenderContext::IndirectDiffuseDefaults::TemporalAlpha;
+	m_indirectDiffuseHistoryLength = RenderContext::IndirectDiffuseDefaults::HistoryLength;
+	m_indirectDiffuseDenoiseIterations = RenderContext::IndirectDiffuseDefaults::DenoiseIterations;
+	m_indirectDiffuseResolutionScale = RenderContext::IndirectDiffuseDefaults::ResolutionScale;
+	m_indirectDiffuseInterleavedTrace = RenderContext::IndirectDiffuseDefaults::InterleavedTrace;
 	m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
 	m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
 	m_indirectDiffuseHistoryReset = false;
@@ -324,6 +328,10 @@ void RenderingSettingsWindow::SyncFromRenderer() {
 	m_indirectDiffuseRadiusVS = ctx.indirectDiffuseRadiusVS;
 	m_indirectDiffuseThicknessVS = ctx.indirectDiffuseThicknessVS;
 	m_indirectDiffuseTemporalAlpha = ctx.indirectDiffuseTemporalAlpha;
+	m_indirectDiffuseHistoryLength = ctx.indirectDiffuseHistoryLength;
+	m_indirectDiffuseDenoiseIterations = ctx.indirectDiffuseDenoiseIterations;
+	m_indirectDiffuseResolutionScale = ctx.indirectDiffuseResolutionScale;
+	m_indirectDiffuseInterleavedTrace = ctx.indirectDiffuseInterleavedTrace;
 	m_indirectDiffuseNormalReject = ctx.indirectDiffuseNormalReject;
 	m_indirectDiffuseDepthReject = ctx.indirectDiffuseDepthReject;
 	m_indirectDiffuseHistoryReset = ctx.indirectDiffuseHistoryReset;
@@ -502,6 +510,10 @@ void RenderingSettingsWindow::SyncToRenderer() {
 	ctx.indirectDiffuseRadiusVS = m_indirectDiffuseRadiusVS;
 	ctx.indirectDiffuseThicknessVS = m_indirectDiffuseThicknessVS;
 	ctx.indirectDiffuseTemporalAlpha = m_indirectDiffuseTemporalAlpha;
+	ctx.indirectDiffuseHistoryLength = m_indirectDiffuseHistoryLength;
+	ctx.indirectDiffuseDenoiseIterations = m_indirectDiffuseDenoiseIterations;
+	ctx.indirectDiffuseResolutionScale = m_indirectDiffuseResolutionScale;
+	ctx.indirectDiffuseInterleavedTrace = m_indirectDiffuseInterleavedTrace;
 	ctx.indirectDiffuseNormalReject = m_indirectDiffuseNormalReject;
 	ctx.indirectDiffuseDepthReject = m_indirectDiffuseDepthReject;
 	ctx.indirectDiffuseHistoryReset = m_indirectDiffuseHistoryReset;
@@ -935,7 +947,18 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderInt("Samples Per Slice", &m_indirectDiffuseSamplesPerSlice, 1, 64)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Radius VS", &m_indirectDiffuseRadiusVS, 0.5f, 16.0f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Thickness VS", &m_indirectDiffuseThicknessVS, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
-				if (ImGui::SliderFloat("Temporal Alpha", &m_indirectDiffuseTemporalAlpha, 0.02f, 0.35f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderFloat("Min Current Weight", &m_indirectDiffuseTemporalAlpha, 0.02f, 0.35f, "%.2f")) { SyncToRenderer(); }
+				if (ImGui::SliderInt("History Length", &m_indirectDiffuseHistoryLength, 1, 64)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Denoise Passes", &m_indirectDiffuseDenoiseIterations, 1, 3)) { SyncToRenderer(); }
+				{
+					const char* resolutionItems[] = { "Quarter (1/4 res)", "Half (1/2 res)" };
+					int resolutionIndex = m_indirectDiffuseResolutionScale > 0.375f ? 1 : 0;
+					if (ImGui::Combo("Trace Resolution", &resolutionIndex, resolutionItems, 2)) {
+						m_indirectDiffuseResolutionScale = resolutionIndex == 1 ? 0.5f : 0.25f;
+						SyncToRenderer();
+					}
+				}
+				if (ImGui::Checkbox("Interleaved Trace", &m_indirectDiffuseInterleavedTrace)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Normal Reject", &m_indirectDiffuseNormalReject, 0.05f, 0.50f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Depth Reject", &m_indirectDiffuseDepthReject, 0.01f, 0.30f, "%.2f")) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Denoise Strength", &m_indirectDiffuseDenoiseStrength, 0.5f, 3.0f, "%.2f")) { SyncToRenderer(); }
@@ -982,7 +1005,9 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::Checkbox("Isolate Temporal", &m_indirectDiffuseValidationDisableTemporal)) { SyncToRenderer(); }
 				if (ImGui::Checkbox("Isolate Denoise", &m_indirectDiffuseValidationDisableDenoise)) { SyncToRenderer(); }
 
-				if (m_modularRenderer && ImGui::Button("Export GI Validation Stages", ImVec2(-1, 24))) {
+				if (m_indirectDiffuseDebugStage <= 0) {
+					ImGui::TextDisabled("Select a debug stage to enable the stage export.");
+				} else if (m_modularRenderer && ImGui::Button("Export GI Validation Stages", ImVec2(-1, 24))) {
 					const std::filesystem::path exportDir = std::filesystem::path("snapshots") / "gi_validation";
 					const bool ok = m_modularRenderer->ExportIndirectDiffuseValidationStages(exportDir.string());
 					std::cout << "[RenderingSettings] GI validation export " << (ok ? "succeeded" : "failed")
@@ -1899,6 +1924,10 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_indirectDiffuseRadiusVS = RenderContext::IndirectDiffuseDefaults::RadiusVS;
 	m_indirectDiffuseThicknessVS = RenderContext::IndirectDiffuseDefaults::ThicknessVS;
 	m_indirectDiffuseTemporalAlpha = RenderContext::IndirectDiffuseDefaults::TemporalAlpha;
+	m_indirectDiffuseHistoryLength = RenderContext::IndirectDiffuseDefaults::HistoryLength;
+	m_indirectDiffuseDenoiseIterations = RenderContext::IndirectDiffuseDefaults::DenoiseIterations;
+	m_indirectDiffuseResolutionScale = RenderContext::IndirectDiffuseDefaults::ResolutionScale;
+	m_indirectDiffuseInterleavedTrace = RenderContext::IndirectDiffuseDefaults::InterleavedTrace;
 	m_indirectDiffuseNormalReject = RenderContext::IndirectDiffuseDefaults::NormalReject;
 	m_indirectDiffuseDepthReject = RenderContext::IndirectDiffuseDefaults::DepthReject;
 	m_indirectDiffuseHistoryReset = false;
