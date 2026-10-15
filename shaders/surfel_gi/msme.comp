@@ -1,23 +1,33 @@
 #ifndef NOX_SURFEL_GI_MSME_GLSL
 #define NOX_SURFEL_GI_MSME_GLSL
 
+// Two-rate temporal estimator for surfel irradiance (plan WP7; GIBS p.74-75, team spec 5.11).
+// Each surfel keeps a long mean (the irradiance the gather reads), a short-window mean and a
+// short-window variance. The short statistics set how far the long mean moves toward each new
+// batch mean, so it settles slowly in steady state and reacts when the signal changes.
+// Ref: Multiscale Mean Estimator (Ray Tracing Gems ch. 25), reduced to these two rates.
+
 struct SurfelMSMEData
 {
-    vec3 mean;
-    vec3 shortMean;
-    float vbbr;
-    vec3 variance;
-    float inconsistency;
+    vec3 mean;      // long mean (surfel.irradiance.rgb)
+    vec3 shortMean; // short-window mean (surfel.shortMean.rgb)
+    vec3 variance;  // short-window variance (surfel.shortM2.rgb)
 };
+
+const float SURFEL_MSME_SHORT_RATE = 0.2;
+const float SURFEL_MSME_LONG_RATE = 0.02;
+const float SURFEL_MSME_NEW_RATE = 0.6;
+// A lighting change of strength L moves the long mean at least this fraction times L.
+const float SURFEL_MSME_LIGHTING_RATE = 0.5;
+// A lighting change at or above this strength snaps the short mean to the new batch mean.
+const float SURFEL_MSME_SNAP_CHANGE = 0.5;
 
 SurfelMSMEData SurfelMSMELoad(Surfel surfel)
 {
     SurfelMSMEData data;
     data.mean = max(surfel.irradiance.rgb, vec3(0.0));
     data.shortMean = max(surfel.shortMean.rgb, vec3(0.0));
-    data.vbbr = surfel.msme.x > 0.0 ? surfel.msme.x : 1.0;
     data.variance = max(surfel.shortM2.rgb, vec3(0.0));
-    data.inconsistency = surfel.msme.y > 0.0 ? surfel.msme.y : 1.0;
     return data;
 }
 
@@ -26,8 +36,6 @@ void SurfelMSMEStore(inout Surfel surfel, SurfelMSMEData data)
     surfel.irradiance.rgb = max(data.mean, vec3(0.0));
     surfel.shortMean.rgb = max(data.shortMean, vec3(0.0));
     surfel.shortM2.rgb = max(data.variance, vec3(0.0));
-    // msme.zw is not written: no reader uses it (the mean and variance it used to hold are in irradiance and shortM2).
-    surfel.msme.xy = vec2(max(data.vbbr, 0.0), max(data.inconsistency, 0.0));
 }
 
 void SurfelMSMEInitialize(inout Surfel surfel, vec3 initialMean, vec3 initialVariance)
@@ -36,62 +44,38 @@ void SurfelMSMEInitialize(inout Surfel surfel, vec3 initialMean, vec3 initialVar
     surfel.irradiance.rgb = safeMean;
     surfel.shortMean.rgb = safeMean;
     surfel.shortM2.rgb = max(initialVariance, vec3(0.0));
-    surfel.msme.xy = vec2(1.0, 1.0);
 }
 
-// Multiscale mean estimation for surfel irradiance. This is a more robust alternative to exponential moving average that maintains two means (one "short" mean with a faster response time and one "long" mean with a slower response time) and a variance estimate to determine how much the means should be blended together. The "vbbr" field is a user-configurable parameter that can be used to reduce the short mean's influence when the variance is very high, which can help prevent fireflies from polluting the estimate.
-// https://github.com/Apress/ray-tracing-gems/blob/master/Ch_25_Hybrid_Rendering_for_Real-Time_Ray_Tracing/MultiscaleMeanEstimator.hlsl
-// minMeanBlend: the long mean moves at least this much toward the sample (the caller passes the
-// running-average weight of this batch, so the long mean is never slower than a plain average
-// of the rays integrated so far).
-vec3 SurfelMSME(vec3 y, inout SurfelMSMEData data, float shortWindowBlend, float minMeanBlend)
+// Firefly gate on a batch mean: clip it to the short-window envelope (short mean + 8 deviations + 0.1).
+// Callers skip the gate on a reset or a lighting change, where the envelope is not yet valid.
+vec3 SurfelMSMEGate(vec3 batchMean, vec3 shortMean, vec3 variance)
 {
-    vec3 mean = data.mean;
-    vec3 shortMean = data.shortMean;
-    float vbbr = data.vbbr;
-    vec3 variance = data.variance;
-    float inconsistency = data.inconsistency;
-    float windowBlend = clamp(shortWindowBlend, 0.001, 1.0);
-
-    // Suppress fireflies in the short-window statistics that drive the adaptive blending. The
-    // long mean below averages the unclamped sample: clipping rare bright batches (light from a
-    // small lit patch) would bias the irradiance low. Samples are already bounded by the caller.
     vec3 dev = sqrt(max(vec3(1e-5), variance));
     vec3 highThreshold = vec3(0.1) + shortMean + dev * 8.0;
-    vec3 yStatistics = y - max(vec3(0.0), y - highThreshold);
+    return batchMean - max(vec3(0.0), batchMean - highThreshold);
+}
 
-    vec3 delta = yStatistics - shortMean;
-    shortMean = mix(shortMean, yStatistics, windowBlend);
-    vec3 delta2 = yStatistics - shortMean;
+// One step of the estimator with batch mean x. lightingChange is in [0, 1]. newSurfel gives the
+// long mean a larger first step, so a fresh surfel does not start from its first noisy batch.
+void SurfelMSMEUpdate(inout SurfelMSMEData data, vec3 x, float lightingChange, bool newSurfel)
+{
+    vec3 previousShort = data.shortMean;
+    data.shortMean = mix(previousShort, x, SURFEL_MSME_SHORT_RATE);
+    if (lightingChange >= SURFEL_MSME_SNAP_CHANGE) {
+        data.shortMean = x;
+    }
+    vec3 delta = x - previousShort;
+    data.variance = mix(data.variance, delta * delta, SURFEL_MSME_SHORT_RATE);
 
-    float varianceBlend = windowBlend * 0.5;
-    variance = mix(variance, delta * delta2, varianceBlend);
-    dev = sqrt(max(vec3(1e-5), variance));
-
-    vec3 shortDiff = mean - shortMean;
-    float relativeDiff = dot(vec3(0.299, 0.587, 0.114), abs(shortDiff) / max(vec3(1e-5), dev));
-    inconsistency = mix(inconsistency, relativeDiff, 0.08);
-
-    float varianceBasedBlendReduction = clamp(
-        dot(vec3(0.299, 0.587, 0.114), 0.5 * shortMean / max(vec3(1e-5), dev)),
-        1.0 / 32.0,
-        1.0);
-
-    float catchUpBlend = clamp(
-        smoothstep(0.0, 1.0, relativeDiff * max(0.02, inconsistency - 0.2)),
-        1.0 / 256.0,
-        1.0);
-    catchUpBlend *= vbbr;
-
-    vbbr = mix(vbbr, varianceBasedBlendReduction, 0.1);
-    mean = mix(mean, y, clamp(max(catchUpBlend, minMeanBlend), 0.0, 1.0));
-
-    data.mean = mean;
-    data.shortMean = shortMean;
-    data.vbbr = vbbr;
-    data.variance = variance;
-    data.inconsistency = inconsistency;
-    return mean;
+    // The long rate stays at its floor in steady state. The spec's reactive blend (alpha up to 0.35 when
+    // the absolute short variance is large) is not scale-free: on irradiance of order 0.3 it held alpha
+    // near 0.35 and failed the energy and noise targets. Change is handled by the lighting path below.
+    float alpha = SURFEL_MSME_LONG_RATE;
+    if (newSurfel) {
+        alpha = max(alpha, SURFEL_MSME_NEW_RATE);
+    }
+    alpha = max(alpha, lightingChange * SURFEL_MSME_LIGHTING_RATE);
+    data.mean = mix(data.mean, x, alpha);
 }
 
 #endif

@@ -5,9 +5,10 @@
 #define B_SURFEL_FREELIST 11
 #define B_SURFEL_COUNTERS 12
 #define B_SURFEL_DISPATCH_ARGS 35
+#define B_RAY_ALLOC_SCRATCH 36
 #define B_GRID_HEADERS 13
 #define B_GRID_ENTRIES 14
-#define B_GRID_BLOCK_SUMS 36
+#define B_GRID_BLOCK_SUMS 38
 #define B_GRID_SLOTS 37
 #define B_RAY_REQUESTS 15
 #define B_RAYS 16
@@ -164,7 +165,7 @@ struct SurfelCounters
     uint spawnDecisions;
     uint spawnBudgetDenied;
     uint radiusCapped;
-    uint diagPad;
+    uint recycledYoung;
 };
 
 struct SurfelCoverageTile

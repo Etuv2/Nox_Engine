@@ -23,23 +23,24 @@ uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
 uniform float uLightingChangeFactor = 0.0;
 
+// Relative-spread request (plan WP2; GIBS p.76-78). A Monte Carlo mean's relative error falls with
+// the square root of its ray count, so the rays a surfel needs grow with its coefficient of
+// variation cv = std / mean of the short-window estimate.
 const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 8u;
-const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 4u;
-// A young surfel has only a few rays behind it and is weighted low in the gather (see apply_indirect),
-// so it converges with more rays in its first frames.
-const uint SURFEL_REQUEST_YOUNG_SURFEL_RAYS = 12u;
+const float SURFEL_REQUEST_CV_SCALE = 2.0;
+const float SURFEL_REQUEST_MEAN_FLOOR = 1e-3;
+const float SURFEL_REQUEST_CV_CAP = 1e4;
+// Young surfels (age below this) get a floor of SURFEL_REQUEST_YOUNG_RAYS: they have few samples.
 const float SURFEL_REQUEST_YOUNG_FRAMES = 4.0;
-const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 4u;
-const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 4u;
-const uint SURFEL_REQUEST_LIGHTING_CHANGE_RAYS = 1u;
-const float SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS = 8.0;
-const uint SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD = 8u;
-const uint SURFEL_REQUEST_DETAIL_MAINTENANCE_PERIOD = 4u;
-
-uint FrameDelta(uint newerFrame, uint olderFrame)
-{
-    return newerFrame >= olderFrame ? (newerFrame - olderFrame) : 0u;
-}
+const uint SURFEL_REQUEST_YOUNG_RAYS = 4u;
+// Dormancy: a converged surfel (low cv, old enough) sends one ray every SURFEL_REQUEST_DORMANT_PERIOD
+// frames, staggered by its id, which is enough to notice a change.
+const float SURFEL_REQUEST_DORMANT_CV = 0.05;
+const float SURFEL_REQUEST_DORMANT_AGE = 32.0;
+const uint SURFEL_REQUEST_DORMANT_PERIOD = 8u;
+// Light change: every surfel, dormant or not, asks for at least this many rays while the factor holds.
+const float SURFEL_REQUEST_LIGHT_CHANGE_MIN = 0.03;
+const uint SURFEL_REQUEST_LIGHT_CHANGE_RAYS = 2u;
 
 uint ComputeRayRequest(uint surfelID, Surfel surfel)
 {
@@ -47,109 +48,27 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         return 0u;
     }
 
-    bool brandNew = SurfelIsNew(surfel) && surfel.worldNormal_age.w < 8.0;
-    bool needsBootstrap = surfel.worldNormal_age.w < 2.0 || surfel.shortMean.a < 1.0;
-    bool isNew = brandNew || needsBootstrap;
-    float confidence = SurfelSaturate(surfel.irradiance.a);
-    float lowConfidence = 1.0 - confidence;
-    vec3 varianceRgb = max(surfel.shortM2.rgb, vec3(0.0));
-    float variance = SurfelSaturate(max(max(varianceRgb.r, varianceRgb.g), varianceRgb.b) * 8.0);
-    float signal = SurfelSaturate(SurfelLuminance(max(surfel.irradiance.rgb, surfel.shortMean.rgb)) * 2.0);
+    float age = max(surfel.worldNormal_age.w, 0.0);
+    float variance = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
+    float mean = SurfelLuminance(max(surfel.shortMean.rgb, vec3(0.0)));
+    float cv = sqrt(max(variance, 0.0)) / max(mean, SURFEL_REQUEST_MEAN_FLOOR);
+    if (!(cv >= 0.0)) {
+        cv = SURFEL_REQUEST_CV_CAP;
+    }
+    cv = min(cv, SURFEL_REQUEST_CV_CAP);
 
-    uint framesSinceVisible = FrameDelta(uFrameIndex, surfel.frameInfo.x);
-    uint framesSinceContribution = FrameDelta(uFrameIndex, surfel.frameInfo.y);
-    float visible = exp(-0.08 * float(framesSinceVisible));
-    bool recentlyVisible = framesSinceVisible <= 4u;
-    bool lightingReactiveVisible = recentlyVisible && clamp(uLightingChangeFactor, 0.0, 1.0) > 0.03;
-    float visibleUnresolved = recentlyVisible &&
-        (confidence < 0.82 || surfel.shortMean.a < 32.0 || variance > 0.025)
-        ? 1.0
-        : 0.0;
-    float visibleRayDebt = recentlyVisible
-        ? smoothstep(2.0, 12.0, float(framesSinceContribution))
-        : 0.0;
-    // debug.z holds this frame's target radius error (update_surfels.comp runs before this pass). It is not a spawn
-    // coverage value: nothing stores spawn coverage, so this term tests the radius error only.
-    bool radiusErrorPending = surfel.debug.z > 0.0 && surfel.debug.z < 0.72;
-    bool detailOrCreviceSurfel = surfel.worldPos_radius.w <= max(surfel.localPos_spawnRadius.w * 1.08, 0.001) ||
-        variance > 0.018 ||
-        radiusErrorPending;
-    bool visibleMaintenancePhase = recentlyVisible &&
-        (((uFrameIndex + surfelID * 17u) % SURFEL_REQUEST_VISIBLE_MAINTENANCE_PERIOD) == 0u);
-    bool detailMaintenancePhase = recentlyVisible &&
-        detailOrCreviceSurfel &&
-        (((uFrameIndex + surfelID * 29u) % SURFEL_REQUEST_DETAIL_MAINTENANCE_PERIOD) == 0u);
-    bool dormantLowVariance = !recentlyVisible &&
-        !isNew &&
-        framesSinceContribution > 48u &&
-        variance < 0.03 &&
-        confidence > 0.85;
-
-    if (dormantLowVariance) {
-        return signal > 0.10 ? 1u : 0u;
+    uint requested = uint(clamp(ceil(SURFEL_REQUEST_CV_SCALE * cv), 1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL)));
+    if (age < SURFEL_REQUEST_YOUNG_FRAMES) {
+        requested = max(requested, SURFEL_REQUEST_YOUNG_RAYS);
     }
-
-    bool stableLowVariance = !recentlyVisible &&
-        !isNew &&
-        framesSinceContribution > 8u &&
-        variance < 0.025 &&
-        confidence > 0.72 &&
-        surfel.shortMean.a >= SURFEL_REQUEST_BOOTSTRAP_HISTORY_RAYS;
-    if (stableLowVariance && !lightingReactiveVisible && ((uFrameIndex + surfelID) & 3u) != 0u) {
-        return 0u;
+    if (cv < SURFEL_REQUEST_DORMANT_CV && age > SURFEL_REQUEST_DORMANT_AGE) {
+        requested = ((uFrameIndex + surfelID) % SURFEL_REQUEST_DORMANT_PERIOD) == 0u ? 1u : 0u;
     }
-
-    float ageScore = SurfelSaturate(surfel.worldNormal_age.w / 16.0);
-    float importance =
-        variance * 0.26 +
-        visible * signal * 0.24 +
-        (isNew ? 0.16 : 0.0) +
-        lowConfidence * 0.10 +
-        visibleUnresolved * 0.48 +
-        visibleRayDebt * 0.20 +
-        (lightingReactiveVisible ? clamp(uLightingChangeFactor, 0.0, 1.0) * (0.55 + signal * 0.08 + lowConfidence * 0.18) : 0.0);
-    importance *= mix(1.5, 1.0, ageScore);
-
-    uint requested = 1u;
-    requested = max(requested, uint(round(mix(1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL), SurfelSaturate(importance)))));
-    if (brandNew) {
-        requested = max(requested, SURFEL_REQUEST_NEW_SURFEL_RAYS);
-    } else if (SurfelIsNew(surfel)) {
-        requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
+    // Applied after dormancy, so a light change wakes dormant surfels.
+    if (clamp(uLightingChangeFactor, 0.0, 1.0) > SURFEL_REQUEST_LIGHT_CHANGE_MIN) {
+        requested = max(requested, SURFEL_REQUEST_LIGHT_CHANGE_RAYS);
     }
-    bool young = surfel.worldNormal_age.w < SURFEL_REQUEST_YOUNG_FRAMES;
-    if (young) {
-        requested = max(requested, SURFEL_REQUEST_YOUNG_SURFEL_RAYS);
-    }
-    if (confidence < 0.40) {
-        requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
-    }
-    if (visibleUnresolved > 0.0) {
-        requested = max(requested, SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS);
-    }
-    // Noise share: the standard error of a Monte Carlo mean falls with the square root of its ray
-    // count, so the rays a surfel needs grow with its coefficient of variation (std / mean).
-    float noiseMean = max(SurfelLuminance(surfel.shortMean.rgb), 1e-3);
-    float noiseCv = sqrt(max(SurfelLuminance(varianceRgb), 0.0)) / noiseMean;
-    requested = max(requested, uint(clamp(round(noiseCv * 2.0), 1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL))));
-    if (lightingReactiveVisible) {
-        requested = max(requested, SURFEL_REQUEST_LIGHTING_CHANGE_RAYS);
-    }
-    if (recentlyVisible && visibleRayDebt > 0.0 && confidence < 0.82) {
-        requested = max(requested, 4u);
-    }
-    if (visibleMaintenancePhase) {
-        requested = max(requested, 1u);
-    }
-    if (detailMaintenancePhase && (confidence < 0.92 || framesSinceContribution > 3u || variance > 0.018)) {
-        requested = max(requested, 1u);
-    }
-
-    if (!recentlyVisible && !isNew && confidence > 0.92 && variance < 0.01 && signal < 0.02) {
-        requested = min(requested, 1u);
-    }
-
-    return min(requested, young ? SURFEL_REQUEST_YOUNG_SURFEL_RAYS : SURFEL_REQUEST_MAX_RAYS_PER_SURFEL);
+    return requested;
 }
 
 void main()
@@ -158,7 +77,8 @@ void main()
     if (surfelID >= uMaxSurfels) {
         return;
     }
-    // requestedRays starts at the cache-maintenance reservation (begin_frame.comp), so this is the only atomic on it.
+    // requestedRays starts at zero in begin_frame, so this is the only atomic on it. Its sum is the
+    // demand that allocate_rays.comp shares out (it is not capped by the budget here).
     uint requested = ComputeRayRequest(surfelID, surfels[surfelID]);
     if (requested > 0u) {
         atomicAdd(counters.requestedRays, requested);

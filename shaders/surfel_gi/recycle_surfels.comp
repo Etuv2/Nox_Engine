@@ -118,6 +118,11 @@ void main()
         atomicAdd(counters.recycleFar, 1u);
     }
 
+    uint culledSpawnAge = uFrameIndex >= surfel.frameInfo.w ? (uFrameIndex - surfel.frameInfo.w) : 0u;
+    if (culledSpawnAge < 4u) {
+        atomicAdd(counters.recycledYoung, 1u);
+    }
+
     SurfelMarkDead(surfel);
     surfel.ids.w += 1u;
     surfel.frameInfo = uvec4(0u, 0u, uFrameIndex, uFrameIndex);

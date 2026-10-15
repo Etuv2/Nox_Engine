@@ -279,12 +279,16 @@ bool SurfelRayQueue::ResizeReset(uint32_t maxRays, uint32_t maxSurfels)
 {
     Destroy();
 
+    // Allocation scratch: 4 header words and 1024 remainder bins (SURFEL_RAY_ALLOC_BINS in allocate_rays.comp).
+    constexpr uint32_t kRayAllocScratchWords = 4u + 1024u;
     std::ptrdiff_t requestBytes = 0;
     std::ptrdiff_t rayBytes = 0;
     std::ptrdiff_t hitBytes = 0;
+    std::ptrdiff_t scratchBytes = 0;
     if (!CheckedBufferSize(maxSurfels, sizeof(SurfelRayRequest), requestBytes) ||
         !CheckedBufferSize(maxRays, sizeof(SurfelRay), rayBytes) ||
-        !CheckedBufferSize(maxRays, sizeof(SurfelRayHit), hitBytes)) {
+        !CheckedBufferSize(maxRays, sizeof(SurfelRayHit), hitBytes) ||
+        !CheckedBufferSize(kRayAllocScratchWords, sizeof(uint32_t), scratchBytes)) {
         std::cerr << "[SurfelRayQueue] Invalid queue size: maxRays=" << maxRays
             << ", maxSurfels=" << maxSurfels << ".\n";
         return false;
@@ -296,7 +300,8 @@ bool SurfelRayQueue::ResizeReset(uint32_t maxRays, uint32_t maxSurfels)
     const bool ok =
         AllocateSSBO(m_requestBuffer, requestBytes, nullptr, "SurfelRayQueue.Requests") &&
         AllocateSSBO(m_rayBuffer, rayBytes, nullptr, "SurfelRayQueue.Rays") &&
-        AllocateSSBO(m_rayHitBuffer, hitBytes, nullptr, "SurfelRayQueue.Hits");
+        AllocateSSBO(m_rayHitBuffer, hitBytes, nullptr, "SurfelRayQueue.Hits") &&
+        AllocateSSBO(m_allocScratchBuffer, scratchBytes, nullptr, "SurfelRayQueue.AllocScratch");
 
     if (!ok) {
         Destroy();
@@ -312,6 +317,7 @@ void SurfelRayQueue::Destroy()
     DeleteBuffer(m_requestBuffer);
     DeleteBuffer(m_rayBuffer);
     DeleteBuffer(m_rayHitBuffer);
+    DeleteBuffer(m_allocScratchBuffer);
     m_maxRays = 0;
     m_maxSurfels = 0;
 }
@@ -325,4 +331,5 @@ void SurfelRayQueue::Clear()
     ClearBufferUInt(m_requestBuffer, 0u);
     ClearBufferUInt(m_rayBuffer, 0u);
     ClearBufferUInt(m_rayHitBuffer, 0u);
+    ClearBufferUInt(m_allocScratchBuffer, 0u);
 }

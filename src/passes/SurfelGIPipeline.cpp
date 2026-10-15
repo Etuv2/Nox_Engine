@@ -294,7 +294,7 @@ void StoreSurfelCounters(const SurfelCounters& counters, SurfelGIFrameStats& sta
 	stats.spawnDecisions = counters.spawnDecisions;
 	stats.spawnBudgetDenied = counters.spawnBudgetDenied;
 	stats.radiusCapped = counters.radiusCapped;
-	stats.diagPad = counters.diagPad;
+	stats.recycledYoung = counters.recycledYoung;
 	// Rays asked for by request_rays but not granted by allocate_rays (both counters are per frame).
 	stats.rayShortfall = counters.requestedRays > counters.allocatedRays
 		? counters.requestedRays - counters.allocatedRays
@@ -887,6 +887,7 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 	m_resources.rayRequestBuffer = m_rayQueue.GetRequestBuffer();
 	m_resources.rayBuffer = m_rayQueue.GetRayBuffer();
 	m_resources.rayHitBuffer = m_rayQueue.GetRayHitBuffer();
+	m_resources.rayAllocScratchBuffer = m_rayQueue.GetAllocScratchBuffer();
 	m_stats.ready = IsReady();
 	return true;
 }
@@ -1059,8 +1060,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 
 	if (m_beginFrameShader && m_beginFrameShader->IsValid()) {
 		gpu.UseProgram(m_beginFrameShader->GetProgramID());
-		// requestedRays starts at this cache-maintenance reservation (request_rays.comp adds to it).
-		SetUniform1ui(m_beginFrameShader->GetProgramID(), "uRequestReservation", std::max(maxSurfels / 64u, 1u));
+		// requestedRays starts at zero: it is the sum of the surfels' requests (request_rays.comp), which
+		// allocate_rays.comp shares out. No reservation is added, so the requested count is not inflated.
+		SetUniform1ui(m_beginFrameShader->GetProgramID(), "uRequestReservation", 0u);
 		timedDispatch("begin_frame", [&]() {
 			m_beginFrameShader->Dispatch(1u, 1u, 1u);
 			m_beginFrameShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1334,13 +1336,15 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		gpu.UseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uMaxRayBudget", m_settings.maxRayBudget);
-		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
-		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
+		// Three phases (allocate_rays.comp): remainder histogram, threshold search (one group), grant.
 		timedDispatch("ray_allocation", [&]() {
-			SetUniform1ui(program, "uPriorityPass", 1u);
+			SetUniform1ui(program, "uAllocPhase", 0u);
 			m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_allocateRaysShader->WaitForCompletion(rhi::BarrierStorage);
-			SetUniform1ui(program, "uPriorityPass", 0u);
+			SetUniform1ui(program, "uAllocPhase", 1u);
+			m_allocateRaysShader->Dispatch(1u, 1u, 1u);
+			m_allocateRaysShader->WaitForCompletion(rhi::BarrierStorage);
+			SetUniform1ui(program, "uAllocPhase", 2u);
 			m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_allocateRaysShader->WaitForCompletion(rhi::BarrierStorage);
 		});
@@ -1974,7 +1978,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 				<< " recycleOverTarget=" << m_stats.recycleOverTarget << " recycleStale=" << m_stats.recycleStale
 				<< " recycleFar=" << m_stats.recycleFar << " recycleForced=" << m_stats.recycleForced
 				<< " spawnDecisions=" << m_stats.spawnDecisions << " spawnBudgetDenied=" << m_stats.spawnBudgetDenied
-				<< " radiusCapped=" << m_stats.radiusCapped << '\n';
+				<< " radiusCapped=" << m_stats.radiusCapped << " recycledYoung=" << m_stats.recycledYoung << '\n';
 		std::cout << "[SurfelGIFrameCounters] frame=" << m_frameIndex
 			<< " liveSurfels=" << m_stats.liveSurfels
 			<< " spawned=" << m_stats.spawnedThisFrame
@@ -2479,6 +2483,7 @@ void SurfelGIPipeline::BindCoreResources(rhi::BufferHandle transformBuffer) cons
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayRequests), m_resources.rayRequestBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::Rays), m_resources.rayBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayHits), m_resources.rayHitBuffer);
+	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RayAllocScratch), m_resources.rayAllocScratchBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GridCounters), m_resources.gridCountersBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::RadialDepth), m_resources.radialDepthBuffer);
 	gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::GuideMap), m_resources.guideMapBuffer);

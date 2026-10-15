@@ -190,6 +190,8 @@ Output is 1920x1080, indirect at 0.32 (615x346). Subpass GPU times are means ove
 
 The unlabelled part is inside Execute but outside every `timedDispatch`. The likeliest place is `EnsureIncrementalBLAS` and `UploadIncrementalScene` (`RTSceneResources.cpp:599, 692`), called before the tracing timer (`SurfelGIPipeline.cpp:1320-1326`). This is not isolated. It grows with scene complexity, which fits the numbers.
 
+**Correction (section 10.1):** the 1.1 ms in the table is an accounting error. The pass total includes ApplyIndirect and the labels cover it: per frame the unlabelled GPU time is 0.00-0.04 ms on scene.json, Cornell and NFS.
+
 Counters (Medium, frame 300): live surfels 1.7k (Cornell), 1.5k (scene), 2.2k (NFS). Rays requested 17.4k, 16.2k and 22.3k. Rays allocated 1024 in all three, so 4.6 to 6.3% of requests are served. Under-covered tiles 44 of 1638 visible (Cornell), 124 of 7910 (scene), 459 of 7890 (NFS).
 
 Grid: 180,224 cells (32^3 central plus 6 x 32x32x24 axis cells). Entries at 64 per cell: 11.5M x 8 B = 92 MB. `clear_grid` rewrites 2.75 MiB of headers each frame. Overflow counters are not logged, so occupancy and overflow were not measured.
@@ -710,3 +712,181 @@ Single runs carry about 8% noise. At 1024 rays, energy falls as population rises
 - Lazy best-candidate grid query in spawn, keeping the visibility touches.
 - Investigate the NFS coverage regression and the wall irradiance_sharing and final_gather growth.
 - Re-measure energy and coverage at 2048 rays (WP2) before choosing kappa.
+
+## 10. WP3 / Execute gap results
+
+Worker C. Branch `worktree-agent-a6d1045c1c551ea9e`, merged with main at d447ec2. Result in one line: the Execute gap is an accounting error, the scene.json anomaly is GPU contention, and none of the WP3 changes tried gave a measurable speedup, so the engine code is unchanged.
+
+Conditions: §9.5 flags (frames 200-260, manual exposure, static camera, 1920x1080, `NOX_FIXED_DT`). The GPU was shared with other engine processes during every run (the user's editor and other workers' harnesses). GBufferPass, which the surfel code does not touch, ranged from 0.35 ms to about 1.0 ms per frame and had spikes to 60 ms, so absolute GPU times carry 2-3x contention noise. Medians are per run; variants were compared interleaved and by minimum where stated.
+
+### 10.1 Execute gap: accounting error, nothing to remove
+
+§3.3 and §9.3 put about 1.1 ms of GPU time inside Execute outside every label. The comparison was wrong. `SurfelGIUpdatePass` is one render-graph pass that runs BeginFrame, Execute and ApplyIndirect (`src/ModularRenderer.cpp:872-886`), so its total contains the ApplyIndirect labels. The derivation removed those labels from the label sum but not from the total, and compared a median with a sum of means. Same-run, per-frame comparison (mean over frames 200-260, `SurfelGISubpassMetrics` totals against `SurfelGIUpdatePass`):
+
+| run | pass total (ms) | sum of labels per frame (ms) | gap (ms) |
+|---|---|---|---|
+| scene r1 | 14.481 | 14.452 | +0.029 |
+| scene r2 | 3.160 | 3.130 | +0.030 |
+| scene r3 | 12.317 | 12.277 | +0.041 |
+| Cornell r1 | 1.585 | 1.558 | +0.027 |
+| Cornell r2 | 3.320 | 3.283 | +0.036 |
+| Cornell r3 | 2.002 | 1.963 | +0.039 |
+| NFS r1 | 13.938 | 13.938 | 0.000 |
+| NFS r2 | 10.009 | 9.982 | +0.028 |
+| NFS r3 | 7.550 | 7.524 | +0.027 |
+
+The gap is 0.00-0.04 ms in every run, under 1% (Cornell at most 2%). Before and after are the same, because no Execute block changed. Per-block GPU time for scene r2 (the quietest scene run), mean over the 61 frames, absent labels counted as zero:
+
+| block | ms | block | ms |
+|---|---|---|---|
+| final_gather (ApplyIndirect) | 0.903 | ray_allocation | 0.040 |
+| tracing | 0.443 | cell_averages | 0.034 |
+| composite_filter (ApplyIndirect) | 0.356 | temporal_resolve (ApplyIndirect) | 0.030 |
+| coverage_spawn | 0.290 | ray_request | 0.026 |
+| recycling | 0.245 | temporal_integration | 0.021 |
+| upscale_filter (ApplyIndirect) | 0.199 | radial_depth | 0.015 |
+| irradiance_sharing | 0.159 | irradiance_snapshot | 0.013 |
+| ray_generation | 0.131 | transform_update | 0.013 |
+| grid_build | 0.092 | debug_overhead, begin_frame, grid_clear, coverage_reset, dispatch_args, rt_scene_update | 0.036 |
+| coverage_project | 0.054 | total of labels | 3.100 |
+
+CPU side: `SurfelGIUpdatePass` cpuMs mean 0.32-0.44 ms and cpuWaitMs 0. The counter and timing readbacks are delayed three frames and polled with `IsQueryResultAvailable`, so nothing waits on the CPU in the frame. The §9.3 hypothesis (GPU idle while the CPU waits) is not supported.
+
+Harness note, not changed: `tools/surfel_gi_metrics.py` looks for labels containing "Execute" (none exist, so its "Execute median" row is n/a), and its "sum of labelled passes" adds medians taken over different frames. Use per-frame totals as above.
+
+### 10.2 scene.json 6.4-7.3 ms: contention, not confirmed as a regression
+
+Same binary, same scene, same session (baseline runs, three repeats):
+
+| repeat | SurfelGIUpdatePass gpu median (ms) | tracing median (ms) | GBufferPass median (ms, not touched by surfel code) |
+|---|---|---|---|
+| 1 | 6.50 | 1.08 | 1.03 |
+| 2 | 3.09 | 0.37 | 0.35 |
+| 3 | 6.89 | 1.09 | 1.04 |
+
+The quiet repeat reproduces the plan's figures (2.73 ms pass, 0.37 ms tracing). The two contended repeats are about 2.2x slower overall and about 2.9x slower in GBufferPass, which contains no surfel work, and show spikes of 60-120 ms in unrelated passes. That pattern is GPU time-slicing with other clients. A code regression cannot be separated from contention without a quiet GPU, so quote scene.json figures with the GPU load, and do not treat 6.4-7.3 ms as a surfel cost.
+
+### 10.3 Where the tracing time goes (per 1024 rays, quiet runs)
+
+Each row turns off one part of the hit path (diagnostic only, not kept):
+
+| variant | scene r1 (ms) | NFS r1 / r2 (ms) |
+|---|---|---|
+| full | 0.409 | 0.639 / 0.664 |
+| no direct light at hits | 0.401 | 0.622 / 0.611 |
+| no cached indirect (grid walk) | 0.263 | 0.437 / 1.109 (contended) |
+| no albedo lookups (grid walk) | 0.300 | 0.504 / 0.515 |
+| no hit shading | 0.204 | 0.359 / 0.356 |
+| no BVH walk (all rays miss) | 0.010 | 0.009 / 0.009 |
+| BVH walk only (no shading, no albedo) | - | 0.212 / 0.202 / 0.221 (three runs) |
+
+On NFS the BVH walk is about 0.21 ms (35%), albedo lookups about 0.09 ms (15%), the cached-indirect grid walk about 0.16-0.20 ms (30%), direct light about 0.02 ms (3%), and the rest about 0.1 ms. The 0.22 ms per 1024 rays for scene.json in the brief was not reproduced: quiet runs give 0.37-0.41 ms.
+
+### 10.4 WP3 items tried
+
+- **Ray binning** (WP3.1): count, scan and scatter passes, 256 hash buckets x 8 direction octants, keyed by the ray origin's grid cell and the ray direction; trace in bin order. Built and run. Scene 0.385 ms against 0.378 base; NFS 0.59-0.61 against 0.58-0.60. No measurable gain, so removed (the brief says keep it only if it helps).
+- **Hit lighting** (WP3.2): directional light evaluated exactly; local lights above eight are resampled, one shadow test for the winner; exact below that. Two variants:
+  - 8 uniform candidates (RIS): NFS energy ratio to indep 0.255, against 0.36-0.37 with the exact loop (about -30%). Rejected.
+  - Weighted reservoir over all local lights, weight = unshadowed luminance: 8 runs, mean energy 0.00902 against 0.00951 for the exact loop (-5%, outside the 3% limit). Speed: no change (NFS 0.63 against 0.64 ms). Rejected. Probable cause: a visible light's sample is scaled by the total weight, so more samples reach the integrator's 32-unit clamp (`integrate.comp:51`), which removes energy. The paper's 4-8 candidates target scenes with over 1000 lights; here the 32-light cap makes the full pass cheap, but the variance still reaches the integrator.
+  - Not shipped. The shader and host code were removed, not left as an opt-in with a known bias.
+- **Software BVH tMax** (WP3.3): NFS at 64, 128 and 256 m gave 0.59, 0.60 and 0.61 ms. No gain. The plan's `min(256, 2 * farScale)` evaluates to 256 and changes nothing. A shorter tMax also turns geometry beyond it into sky (see the comment at `trace_rays.comp` `TraceSoftwareBVHRadiance`), so it is not adopted.
+- **BVH micro-optimisations** (not in the plan; found while reading the walk): vertex-only triangle test, inverse direction once per ray, TLAS instance walks capped at the closest hit so far. Built, neutral (scene 0.408 against 0.378; NFS 0.60-0.62 against 0.58-0.60). Reverted.
+- **Fallbacks** (WP3.4): the screen-space and grid traces are already not run while the software BVH is on. `uBVHTraceStride` is 1, so `useBVHThisRay` is true for every ray (`trace_rays.comp`, `TraceSurfelGrid`). Removing them saves nothing. They stay for frames before the BVH is built and for tiers without it (Low disables the BVH).
+
+### 10.5 Energy and noise
+
+No engine code is kept, so the energy and noise are those of the plan's §9.3 after-WP1 build: NFS surf energy 0.353 (ratio 0.345-0.369 over three repeats), indep 0.0258, NFS surf_term noise 0.52%. The reservoir variants above were measured against the exact loop on NFS only; scene.json and Cornell have at most three and one light, so they take the exact branch in any case.
+
+### 10.6 Not met
+
+- Tracing per 1024 rays halved on scene.json and NFS: not met, and no kept change reduces it by 10% or more. On NFS the costs are the BVH walk (about 0.21 ms) and the per-hit grid walks (about 0.3 ms: cached indirect and cached albedo, 27 cells, up to four surfels per cell). Both are latency-bound: 1024 rays fill 16 of 68 SMs, and each ray is a chain of dependent loads. Halving needs fewer dependent grid reads per hit (fewer neighbour cells, a per-cell budget, or the WP5 cell averages). That changes the multi-bounce energy and needs the grid owner, which is why it was not done here. The walk also needs a wider or ordered BVH, or several rays per thread.
+- Execute gap: explained (section 10.1). There is no unlabelled GPU time to remove.
+- scene.json anomaly: explained as contention (section 10.2). A regression is not excluded without a quiet GPU.
+
+### 10.7 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass.
+- `scripts/validate_surfel_gi_static.py`, `scripts/validate_surfel_gi_correctness.py`, `scripts/validate_surfel_gi_texture_dump.py`: pass.
+- `scripts/validate_surfel_gi_fallback_contract.py`, `_irradiance_signal.py`, `_ray_radiance_contract.py`, `_stability_contract.py`: fail on HEAD before this work. They check `apply_indirect.comp`, `cell_average.comp` and `spatial_filter.comp` text, a Medium quality-cap table, a ray-miss rule, and screen-space-before-BVH trace order, which HEAD does not have. Not changed.
+- `NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`: 0 FAIL.
+- Racing: `[Race] Finished in 47.4994 s (new record)`.
+
+## 11. WP2/WP7/WP10 results
+
+Branch `worktree-agent-acf4c659e250f2d39`, merged with main at d447ec2. Method as section 9: 1920x1080, manual exposure, static camera, frames 200-260, lit pixels, energy against the independent reference (`indep`, section 9.2). "Before" is the merged tree built unmodified and run from a frozen copy. Main tables are means of 3 repeats for `surf` and its twins. `off`, `ssgi` and `indep` are the baseline runs, reused (their code path is unchanged). Single-repeat numbers are marked. Run-to-run spread is about 8-15% on energy and 16-34% on noise, so differences smaller than that are not claims.
+
+### 11.1 What changed
+
+- WP2 requests (`request_rays.comp`): `r = clamp(ceil(2 cv), 1, 8)`, `cv = sqrt(lum shortM2) / max(lum shortMean, 1e-3)`. Young (age < 4): `max(r, 4)`, a floor per the plan, not a cap (the two differ only when r > 4). Dormancy: `cv < 0.05` and age > 32 requests 1 ray on frames where `(id + frame) % 8 == 0`, else 0. A light change (factor > 0.03) raises every surfel to at least 2 rays, after dormancy, so it wakes dormant surfels.
+- WP2 allocation (`allocate_rays.comp`, `SurfelRayQueue` scratch buffer, binding 36): when demand exceeds the budget, largest remainder in three dispatches. Phase 0 sums floor quotas and fills a 1024-bin histogram of remainders. Phase 1 (one group) finds the threshold bin. Phase 2 grants each surfel its floor plus one ray when its remainder is above the threshold, or in it within the tie quota. Ranges are contiguous (atomic reservation on `allocatedRays`). The grants sum to the budget exactly. Demand at or below the budget is granted in full. The priority pass is removed.
+- `requestedRays` no longer starts at `max(maxSurfels/64, 1)` (1024 at Medium). Before, that phantom reservation was inside `requestedRays`, so the requested counts in section 9 and the "before" rows here are 1024 too high. The before ratios below use the true demand (requested minus 1024).
+- Budgets (`ModularRenderer.cpp`, `RenderContext.h`, `SurfelGIManager.h`): Low 1024, Medium 2048, High 4096, Ultra 8192 as defaults. `surfelGIMaxRayBudget = 0` means the tier default. An explicit value is used as given, with no tier cap. The resolved budget is no longer written back to the context, so a tier change takes effect.
+- WP7 estimator (`msme.comp`, `integrate.comp`): two-rate estimator. Short mean (rate 0.2) and short variance from batch means, long mean (the gather input). New surfel: long-mean rate at least 0.6. Lighting change L: rate at least 0.5 L, and the short mean snaps to the batch when L >= 0.5. The firefly gate is kept on the batch mean and skipped during a lighting change. Removed: sparse-variance injection, lighting reactive variance, catch-up blend, bootstrap confidence. **Deviation:** the long rate is fixed at 0.02 in steady state, not `mix(0.02, 0.35, reactive)` (section 10.4).
+- WP10 (`irradiance_sharing.comp`): neighbour cap 16 (was 48). Gate: blend only where `(std/mean)^2 >= 0.09`, or where confidence is at most 0.5. The gate is relative, because an absolute lum(shortM2) threshold is not scale-free. Guiding is kept on (section 10.5).
+- Light-step hook (generic): `NOX_LIGHT_STEP=<frame>:<scale>` in `LightManager::UpdateLights`. It multiplies every registered light's intensity once, at that call. Log line `[LightStep]`.
+- Bug fixed in `generate_rays.comp`: `hasGuide` was read uninitialised when guiding is off. The guiding-off collapse (10.5) happens in the baseline too, so the fix does not explain it.
+- Harness (`tools/surfel_gi_metrics.py`): twins `surf_term_*` (noise) for the ablations and budgets; `surf_noguide`, `surf_nosharing`, `surf_r8k`; noise is computed for every `surf_term*` config.
+- Validator update: `scripts/validate_surfel_gi_correctness.py` checks the new contract (reservation 0, three-phase allocation, scratch binding). The static validator is unchanged and passes.
+
+### 11.2 Before and after (surf, 3 repeats; surf_term noise)
+
+| Scene | Config | Energy | Ratio vs indep | Noise (surf_term, rel) | Requested | Allocated | Alloc / requested |
+|---|---|---|---|---|---|---|---|
+| Cornell | before | 0.1226 | 0.442 | 3.78% | 14326 | 1024 | 0.071 |
+| Cornell | after | 0.2764 | 0.997 | 2.58% | 5913 | 2048 | 0.346 |
+| scene.json | before | 0.1152 | 0.464 | 0.49% | 13151 | 1024 | 0.078 |
+| scene.json | after | 0.1553 | 0.625 | 1.06% | 2263 | 2048 | 0.905 |
+| NFS night street | before | 0.00881 | 0.341 | 0.49% | 18961 | 1024 | 0.054 |
+| NFS night street | after | 0.01034 | 0.401 | 0.53% | 8381 | 2048 | 0.244 |
+
+Other rows (after, 3 repeats), ratio vs indep: `both` 0.577 (Cornell), 0.597 (scene), 0.371 (NFS). `surf_noguide` 0.099, 0.446, 0.381. `surf_nosharing` 1.327, 0.635, 0.415.
+
+Cornell budget replicate (second independent set of 3 repeats, fresh runs; a junction mistake meant these were not reused): `surf` 2048: energy 0.2739 (0.988), noise 3.42%. `surf` 4096: 0.2984 (1.076), noise 3.38%. `surf` 8192: 0.2574 (0.928), noise 3.82%. Demand: 5833, 5050, 4660; allocated 2048, 4096, 4660.
+
+### 11.3 Targets
+
+| Target | Result |
+|---|---|
+| Energy in [0.9, 1.1], Cornell, scene, NFS | Cornell met (0.997; replicate 0.988). Scene not met (0.625). NFS not met (0.401). |
+| Allocated / requested >= 0.3, Cornell | Met (0.346). |
+| Noise <= 2%, Cornell | Not met: 2.58% (set A), 3.42% (set B). |
+| Noise <= 1.5%, scene | Met (1.06%). |
+| Light step: 90% in <= 12 frames | Not established (10.6). |
+| Tracing cost at 2048 | Not reliably measured (10.7). |
+| Racing `[Race] Finished in 47.4994 s` | Met. |
+| Editor smoke, 0 FAIL | Met. |
+| `CheckNoRawGL`, `CheckGenericExe`, `CheckVcxprojSources`, static validator, correctness validator | All pass. |
+| `nox_tests.exe` | 277 tests, 3 failed: the known `test_asset_io` CRLF failures from section 9.4. No new failures. |
+
+### 11.4 Why the energy misses on scene and NFS (single repeats unless marked)
+
+The lead's question was whether allocation, dormancy or per-ray cost limits energy. The answers are below. Allocation efficiency is high on scene (0.91) and low on NFS (0.24), but raising the budget does not help scene at all.
+
+- Budget. Scene: 4096 gives 0.625, 8192 gives 0.622. Demand is 2.1k-2.3k, so every requested ray is already granted at 2048, and more budget cannot add rays. NFS: 4096 gives 0.545, 8192 gives 0.515. NFS is budget-limited at 2048 (demand 8.4k), but the plateau comes well below the band.
+- Dormancy. Off on scene: 0.636 (demand 2570). Off on NFS: 0.416. Not the limit.
+- Long rate. 0.05 on scene: 0.759. On NFS: 0.428. Cornell at 0.05: 1.196, with noise 4.32%. Convergence lag is part of the scene gap, but no single long rate meets all three scenes with this estimator.
+- Reactive term (the plan's formula, taken literally). Cornell: 1.158 with noise 11.36%. The absolute short variance drives the rate toward 0.35 on irradiance of order 0.3. Fixed at 0.02: 0.983, noise 3.27%.
+- Per-ray clamp (`SURFEL_MAX_SAMPLE_IRRADIANCE`, 32). Raised to 1000: NFS 0.874 (in band), scene unchanged at 0.624, Cornell overshoots to 1.87. So NFS's shortfall is clamp bias from emitters. The clamp is a firefly trade-off that also clips rare emitter hits on Cornell, where clamping currently happens to land on the reference. The clamp needs a scene-relative definition, which I did not design here.
+
+The energy target therefore holds on Cornell only. For scene and NFS the next levers are the request floor for converging surfels (the rule asks for too few rays once cv is low, even while the long mean is still moving) and a scale-aware clamp. Both change the plan's rules, so I did not change them without the lead's decision.
+
+### 11.5 WP10: guiding and sharing
+
+- Guiding off at equal rays (3 repeats, 2048 rays): energy 0.099 of indep on Cornell, 0.446 on scene, 0.381 on NFS, with negative correlation on Cornell. The baseline shows the same collapse (Cornell 0.17 of indep, single repeat). Cosine-sampled rays rarely hit the emitter, and the per-ray clamp removes the rare hits that do land. Guiding aims rays at the light, which avoids both. The variance criterion ("keep only if variance drops by 10%") cannot be applied: the unguided estimate is biased low by a factor of 3 to 10, and relative noise on a mean that small is not comparable. **Guiding is kept on**, justified by the energy, not by a measured variance reduction.
+- Sharing on (cap 16, relative gate) against off (3 repeats): Cornell noise 2.58% against 4.25%, and the second set gives 3.42%. Scene 1.06% against 1.09%. NFS 0.53% against 0.61%. Energy: Cornell 0.997 against 1.327, scene 0.625 against 0.635, NFS 0.401 against 0.415. **Sharing is kept**, with the cap and the gate. The benefit is on Cornell only, and it is not larger than the replicate spread once the second set is included. The sharing cost was not measured reliably (10.7).
+
+### 11.6 Light step
+
+The hook works: `[LightStep] frame=230 scale=2` fires once. The full composite brightens from 0.0546 (frame 230) to 0.0796 (frame 234), then falls back to about 0.066 by frames 246-249. The surfel term (`COMPOSITE_DEBUG=4`) goes from 0.205 before the step to a peak of 0.253 at +7 frames, then back to 0.200 by +55. So the step is not held in the output, and I could not find why in this pass. The 90%-response metric is therefore **not established**. Measured only: the surfel term reaches 90% of its transient excursion at +7 frames. That is not the step-change metric the plan asks for. The ratio 0.97 against the expected 2.0 confirms the step is not held.
+
+### 11.7 Timings
+
+GPU timings in these runs are contaminated. Other workers were using the GPU during both before and after runs. The same Cornell `grid_build` ranges from 0.07 to 0.99 ms across configs, and the baseline scene `tracing` is 1.44 ms against the plan's quiet-machine 0.37 ms. So the "tracing at 2048" target (<= 0.25 ms on scene) is not reported as a result. `irradiance_sharing` on scene reads 0.14-0.77 ms in the after runs, against 0.16 ms before, and the spread is the same kind of contamination. Re-measure on a quiet GPU before using any cost number from this section.
+
+### 11.8 Not done
+
+- The light-change factor in `SurfelGIPipeline.cpp` (around line 966) is unchanged; the plan's simplification was not made.
+- `update_surfels.comp` still writes `msme.x`, `msme.y` (WP7 removed their readers). Dead writes, owned by another worker.
+- The sharing phase count (`budget <= 4096 ? 2 : 1`) is unchanged, so at 2048 sharing covers half the surfels per frame.
+- The request rule has no sample-count floor, so converging surfels can be starved (10.4).
+- Not done: light-step response on a quiet GPU, the step with the raw gather (debug view 35), an independent per-ray variance measurement for the guiding decision.
