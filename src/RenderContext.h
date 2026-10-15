@@ -169,7 +169,7 @@ struct RenderContext {
 	int surfelGISpawnTileSize = 8;
 	int surfelGIMaxSurfelsPerCell = 128;
 	int surfelGIMaxGatherSurfelsPerPixel = 32;
-	int surfelGIMaxSpawnsPerFrame = 64;
+	int surfelGIMaxSpawnsPerFrame = 65536; // ceiling only; the GPU budget scales with tiles and coverage deficit
 	int surfelGIMaxProjectedSurfelsPerFrame = 24576;
 	int surfelGIMaxRecycleCountPerFrame = 2048;
 	float surfelGITargetRadiusPixels = 8.0f;

@@ -4,6 +4,7 @@
 #define B_SURFELS 10
 #define B_SURFEL_FREELIST 11
 #define B_SURFEL_COUNTERS 12
+#define B_SURFEL_DISPATCH_ARGS 35
 #define B_GRID_HEADERS 13
 #define B_GRID_ENTRIES 14
 #define B_RAY_REQUESTS 15
@@ -135,6 +136,11 @@ struct SurfelCounters
     uint finalGatherBleedPixels;
     uint finalGatherValidPixels;
     uint finalGatherEmptyPixels;
+    // Highest live surfel index + 1 from count_live_surfels; consumed by surfel_dispatch_args.
+    uint highWaterIndex;
+    // Coverage deficit of the previous spawn frame (kept across begin_frame's clear).
+    uint underCoveredPreviousFrame;
+    uint visiblePreviousFrame;
 };
 
 struct SurfelCoverageTile

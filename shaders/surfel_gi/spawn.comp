@@ -66,6 +66,9 @@ uniform uint uSpawnPassCount;
 uniform uint uSpawnPassIndex;
 uniform uint uSpawnCandidateCount;
 uniform uint uMaxSpawnsPerFrame;
+uint gSpawnBudget = 0u;   // spawns allowed for the current tile decision (thread 0)
+uniform float uSpawnBudgetScale = 1.0;
+uniform uint uSpawnSampleStride = 1u;   // 1 = every pixel of the tile is a candidate each frame
 uniform uvec2 uResolution;
 uniform uint uFrameIndex;
 uniform uint uMaxSurfels;
@@ -223,13 +226,13 @@ bool PopFreeIndex(out uint surfelID)
 
 bool ReserveSpawnBudget()
 {
-    if (uMaxSpawnsPerFrame == 0u) {
+    if (gSpawnBudget == 0u) {
         atomicAdd(counters.rejectedPoolFull, 1u);
         return false;
     }
 
     uint slot = atomicAdd(counters.spawnedThisFrame, 1u);
-    if (slot >= uMaxSpawnsPerFrame) {
+    if (slot >= gSpawnBudget) {
         atomicAdd(counters.spawnedThisFrame, 0xffffffffu);
         atomicAdd(counters.rejectedPoolFull, 1u);
         return false;
@@ -510,7 +513,20 @@ float ComputeCandidateCoverage(vec3 worldPos,
     return coverage;
 }
 
+bool EvaluateSpawnCandidateImpl(uvec2 pixelU, out SpawnCandidate candidate, bool withImportance);
+
 bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
+{
+    return EvaluateSpawnCandidateImpl(pixelU, candidate, true);
+}
+
+// Lane evaluation for the tile reduction: same validity and coverage, no importance terms.
+bool EvaluateSpawnCandidateCoverage(uvec2 pixelU, out SpawnCandidate candidate)
+{
+    return EvaluateSpawnCandidateImpl(pixelU, candidate, false);
+}
+
+bool EvaluateSpawnCandidateImpl(uvec2 pixelU, out SpawnCandidate candidate, bool withImportance)
 {
     candidate.valid = false;
     candidate.pixelU = pixelU;
@@ -599,14 +615,16 @@ bool EvaluateSpawnCandidate(uvec2 pixelU, out SpawnCandidate candidate)
     candidate.transformID = transformID;
     candidate.materialID = materialID;
     candidate.adaptiveRadius = SpawnRadiusForCandidate(pixel, worldPos, worldNormal);
-    float cameraDistance = length(worldPos - uCameraPosition);
-    float nearImportance = 1.0 - smoothstep(4.0, 60.0, cameraDistance);
-    vec3 albedo = clamp(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0), vec3(1.0));
-    vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
-    float albedoImportance = smoothstep(0.04, 0.40, max(max(albedo.r, albedo.g), albedo.b));
-    float emissiveImportance = smoothstep(0.02, 0.45, SurfelLuminance(emissive));
-    float detailImportance = smoothstep(0.05, 0.55, GeometryVarianceAtPixel(pixel, worldPos, worldNormal));
-    candidate.importance = clamp(nearImportance * 0.30 + albedoImportance * 0.14 + emissiveImportance * 0.24 + detailImportance * 0.32, 0.0, 1.0);
+    if (withImportance) {
+        float cameraDistance = length(worldPos - uCameraPosition);
+        float nearImportance = 1.0 - smoothstep(4.0, 60.0, cameraDistance);
+        vec3 albedo = clamp(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0), vec3(1.0));
+        vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
+        float albedoImportance = smoothstep(0.04, 0.40, max(max(albedo.r, albedo.g), albedo.b));
+        float emissiveImportance = smoothstep(0.02, 0.45, SurfelLuminance(emissive));
+        float detailImportance = smoothstep(0.05, 0.55, GeometryVarianceAtPixel(pixel, worldPos, worldNormal));
+        candidate.importance = clamp(nearImportance * 0.30 + albedoImportance * 0.14 + emissiveImportance * 0.24 + detailImportance * 0.32, 0.0, 1.0);
+    }
     if (uBypassCoverageSearch != 0u) {
         candidate.coverage = 0.0;
         candidate.nearbySurfelCount = 0u;
@@ -879,57 +897,101 @@ void StoreCoverageTile(uint tileIndex,
     coverageTiles[tileIndex] = tileState;
 }
 
+
+// One workgroup searches one tile: lane i tests pixel i of the tile, then a shared-memory min
+// reduction picks the lowest-coverage lane (GIBS: track the pixel with the lowest coverage).
+const uint SURFEL_SPAWN_LANES = 256u;   // pixel slots of a 16x16 tile
+const uint SURFEL_SPAWN_THREADS = 64u;  // invocations per workgroup; each covers LANES / THREADS slots
+shared float sSpawnCoverage[SURFEL_SPAWN_LANES];
+shared uint sSpawnLane[SURFEL_SPAWN_LANES];
+// Per-round result shared by the lanes: [0] = a surfel was spawned this round, [1] = its lane.
+shared uint sRound[2];
+// Round reduction: the minimum coverage as float bits (non-negative floats order like their bits)
+// and the lowest lane holding it. Shared atomics replace a log-depth tree and its barriers.
+shared uint sMinBits;
+shared uint sLaneForMin;
+// Rounds per tile per frame. Later rounds take the next-lowest pixel and only spawn where the
+// coverage is very low (GIBS: a tile may spawn again when its coverage is still lacking).
+const uint SURFEL_SPAWN_MAX_PER_TILE = 4u;
+// Lanes within this Chebyshev radius of a spawned pixel are masked out of the next round.
+const int SURFEL_SPAWN_SUPPRESS_RADIUS = 2;
+
+void InitSpawnCandidate(out SpawnCandidate candidate, uvec2 pixelU)
+{
+    candidate.valid = false;
+    candidate.pixelU = pixelU;
+    candidate.worldPos = vec3(0.0);
+    candidate.worldNormal = vec3(0.0, 1.0, 0.0);
+    candidate.baseAddress.cell = SURFEL_INVALID_INDEX;
+    candidate.baseAddress.region = SURFEL_GRID_REGION_CENTRAL;
+    candidate.baseAddress.coord = uvec3(0u);
+    candidate.baseAddress.center = vec3(0.0);
+    candidate.baseAddress.cellSize = 1.0;
+    candidate.transformID = 0u;
+    candidate.materialID = 0u;
+    candidate.rejectReason = SURFEL_SPAWN_REJECT_NONE;
+    candidate.nearbySurfelCount = 0u;
+    candidate.coverage = 3.402823466e+38;
+    candidate.projectedCoverage = 0.0;
+    candidate.adaptiveRadius = 0.0;
+    candidate.importance = 0.0;
+    candidate.initialCellIrradiance = vec3(0.0);
+    candidate.initialCellConfidence = 0.0;
+}
+
+// Spawn budget for this frame. The base share of the tile count is scaled by the deficit seen
+// last frame (under-covered visible tiles / visible tiles), so the budget follows resolution and
+// coverage need instead of a fixed count. Capped by uMaxSpawnsPerFrame (the settings ceiling).
+uint ComputeSpawnBudget(uint tileCount)
+{
+    float deficit = counters.visiblePreviousFrame > 0u
+        ? clamp(float(counters.underCoveredPreviousFrame) / float(counters.visiblePreviousFrame), 0.0, 1.0)
+        : 1.0;
+    float budget = float(tileCount) * (0.004 + 0.06 * deficit) * uSpawnBudgetScale;
+    uint scaled = uint(clamp(budget, 16.0, max(float(tileCount) / 8.0, 16.0)));
+    return min(scaled, uMaxSpawnsPerFrame);
+}
+
 void main()
 {
-    uint workItem = gl_GlobalInvocationID.x;
-    if (workItem >= uMaxSpawnCandidates) {
-        return;
-    }
-
-    if (uTileCount.x == 0u || uTileSize == 0u || any(equal(uResolution, uvec2(0u)))) {
-        return;
-    }
+    uint workItem = gl_WorkGroupID.x;
+    uint localIndex = gl_LocalInvocationIndex;
 
     uint passCount = max(uSpawnPassCount, 1u);
     uint passIndex = min(uSpawnPassIndex, passCount - 1u);
     uint totalTileCount = uTileCount.x * uTileCount.y;
-    if (workItem >= totalTileCount) {
-        return;
-    }
 
-    uint tileIndex = PermutedSpawnTileIndex(workItem, totalTileCount, uFrameIndex, passIndex);
-    uvec2 tile = uvec2(tileIndex % uTileCount.x, tileIndex / uTileCount.x);
-    if (tile.y >= uTileCount.y) {
+    // Uniform early-outs only (they depend on the workgroup id and uniforms), so every lane still
+    // reaches the barriers below.
+    if (uTileCount.x == 0u || uTileSize == 0u || uTileSize > 16u || any(equal(uResolution, uvec2(0u))) ||
+        workItem >= totalTileCount) {
         return;
     }
 
     if (uPlacementValidationMode != 0) {
-        uint placementPhase = uFrameIndex % SURFEL_PLACEMENT_VALIDATION_TILE_PHASES;
-        uint phase = TileSpawnPhase(tileIndex, SURFEL_PLACEMENT_VALIDATION_TILE_PHASES);
-        if (phase != placementPhase) {
+        // Validation keeps its sequential, phase-gated candidate sampling on lane 0.
+        if (localIndex != 0u) {
             return;
         }
-    }
-
-    if (counters.freeTop == 0u) {
-        return;
-    }
-
-    uvec2 tileExtent = min(uvec2(uTileSize), uResolution - tile * uTileSize);
-
-    if (uPlacementValidationMode != 0) {
+        uint tileIndexV = PermutedSpawnTileIndex(workItem, totalTileCount, uFrameIndex, passIndex);
+        uvec2 tileV = uvec2(tileIndexV % uTileCount.x, tileIndexV / uTileCount.x);
+        uint placementPhase = uFrameIndex % SURFEL_PLACEMENT_VALIDATION_TILE_PHASES;
+        uint phaseV = TileSpawnPhase(tileIndexV, SURFEL_PLACEMENT_VALIDATION_TILE_PHASES);
+        if (phaseV != placementPhase || counters.freeTop == 0u) {
+            return;
+        }
+        uvec2 extentV = min(uvec2(uTileSize), uResolution - tileV * uTileSize);
         uint spawnedInTile = 0u;
-        uint candidateCount = clamp(uSpawnCandidateCount, 1u, SURFEL_SPAWN_TILE_CANDIDATES);
-        for (uint candidateIndex = 0u; candidateIndex < candidateCount; ++candidateIndex) {
-            uvec2 pixelOffset = SurfelSpawnTilePixel(tile, tileExtent, uFrameIndex, passIndex, passCount, candidateIndex);
-            uvec2 pixelU = min(tile * uTileSize + pixelOffset, uResolution - uvec2(1u));
-
+        uint candidateCountV = clamp(uSpawnCandidateCount, 1u, SURFEL_SPAWN_TILE_CANDIDATES);
+        gSpawnBudget = uMaxSpawnsPerFrame;
+        for (uint candidateIndex = 0u; candidateIndex < candidateCountV; ++candidateIndex) {
+            uvec2 pixelOffset = SurfelSpawnTilePixel(tileV, extentV, uFrameIndex, passIndex, passCount, candidateIndex);
+            uvec2 pixelU = min(tileV * uTileSize + pixelOffset, uResolution - uvec2(1u));
             SpawnCandidate current;
             if (!EvaluateSpawnCandidate(pixelU, current) ||
                 !ShouldPlaceForReferenceCoverage(current.coverage)) {
                 continue;
             }
-
             if (SpawnSurfelFromCandidate(current, current.coverage)) {
                 ++spawnedInTile;
                 if (spawnedInTile >= SURFEL_PLACEMENT_VALIDATION_CANDIDATES) {
@@ -940,35 +1002,43 @@ void main()
         return;
     }
 
-    SpawnCandidate bestCandidate;
-    bestCandidate.valid = false;
-    bestCandidate.coverage = 3.402823466e+38;
-    float bestCoverage = bestCandidate.coverage;
-    float bestCandidateScore = 3.402823466e+38;
+    uint tileSize = uTileSize;
+    uint tileIndex = PermutedSpawnTileIndex(workItem, totalTileCount, uFrameIndex, passIndex);
+    uvec2 tile = uvec2(tileIndex % uTileCount.x, tileIndex / uTileCount.x);
+    uvec2 tileOrigin = tile * tileSize;
+    uvec2 tileExtent = min(uvec2(tileSize), uResolution - tileOrigin);
 
-    uint candidateCount = clamp(uSpawnCandidateCount, 1u, SURFEL_SPAWN_TILE_CANDIDATES);
-    for (uint candidateIndex = 0u; candidateIndex < candidateCount; ++candidateIndex) {
-        uvec2 pixelOffset = SurfelSpawnTilePixel(tile, tileExtent, uFrameIndex, passIndex, passCount, candidateIndex);
-        uvec2 pixelU = min(tile * uTileSize + pixelOffset, uResolution - uvec2(1u));
-
-        SpawnCandidate current;
-        if (!EvaluateSpawnCandidate(pixelU, current)) {
-            if (!bestCandidate.valid) {
-                bestCandidate = current;
+    // Level 1: every lane evaluates its pixel. The stride rotates the sampled phase per frame when
+    // a cheaper per-frame search is requested.
+    uint stride = max(uSpawnSampleStride, 1u);
+    for (uint slot = localIndex; slot < SURFEL_SPAWN_LANES; slot += SURFEL_SPAWN_THREADS) {
+        uint lx = slot % tileSize;
+        uint ly = slot / tileSize;
+        bool sampled = ((lx + uFrameIndex) % stride) == 0u && ((ly + uFrameIndex / stride) % stride) == 0u;
+        bool laneInside = slot < tileSize * tileSize && lx < tileExtent.x && ly < tileExtent.y;
+        float cov = 3.402823466e+38;
+        uint idx = 0xffffffffu;
+        if (laneInside && sampled) {
+            SpawnCandidate current;
+            if (EvaluateSpawnCandidateCoverage(tileOrigin + uvec2(lx, ly), current)) {
+                cov = (current.coverage >= 0.0 && current.coverage < 3.402823466e+38) ? current.coverage : 3.402823466e+38;
+                idx = slot;
             }
-            continue;
         }
-
-        float candidatePriority = SurfelCandidateSelectionPriority(tile, uFrameIndex, passIndex, candidateIndex);
-        float currentScore = current.coverage - current.importance * 0.12;
-        currentScore -= candidatePriority;
-        if (!bestCandidate.valid || currentScore < bestCandidateScore) {
-            bestCandidate = current;
-            bestCoverage = current.coverage;
-            bestCandidateScore = currentScore;
-        }
+        sSpawnCoverage[slot] = cov;
+        sSpawnLane[slot] = idx;
     }
+    memoryBarrierShared();
+    barrier();
 
+    if (localIndex == 0u) {
+        sRound[0] = 0u;
+        sRound[1] = 0xffffffffu;
+    }
+    memoryBarrierShared();
+    barrier();
+
+    // Tile state every round reads. Lanes read it only to keep the reduction uniform; thread 0 uses it.
     SurfelCoverageTile previousTileState = coverageTiles[tileIndex];
     uint previousUnresolvedAge = previousTileState.state.y;
     bool previousHadFinalGI = (previousTileState.state.z & SURFEL_COVERAGE_TILE_FINAL_GI_VALID) != 0u;
@@ -977,42 +1047,137 @@ void main()
     bool hadRecentSpawn = tileWasSeeded &&
         SpawnFrameDelta(uFrameIndex, previousSpawnFrame) <=
             (uBypassCoverageSearch != 0u ? SURFEL_FAST_FILL_RESPAWN_COOLDOWN : 1u);
-    float effectiveCoverageThreshold = EffectiveCoverageThresholdForCandidate(
-        bestCandidate.valid,
-        bestCoverage,
-        previousUnresolvedAge,
-        previousHadFinalGI);
-    if (!bestCandidate.valid ||
-        ReferenceCoverageSatisfied(bestCoverage) ||
-        bestCoverage >= effectiveCoverageThreshold) {
-        StoreCoverageTile(tileIndex, bestCandidate.valid, bestCandidate, effectiveCoverageThreshold, false);
-        return;
+
+    // Round 0 result, stored to the tile state once every round is done.
+    SpawnCandidate firstCandidate;
+    InitSpawnCandidate(firstCandidate, tileOrigin);
+    bool firstValid = false;
+    float firstCoverage = 3.402823466e+38;
+    float firstThreshold = 0.0;
+    bool firstSpawned = false;
+
+    for (uint round = 0u; round < SURFEL_SPAWN_MAX_PER_TILE; ++round) {
+        // Level 2: shared-memory minimum of the remaining coverage, then the lowest lane that holds it.
+        if (localIndex == 0u) {
+            sMinBits = 0xffffffffu;
+            sLaneForMin = 0xffffffffu;
+        }
+        memoryBarrierShared();
+        barrier();
+        for (uint slot = localIndex; slot < SURFEL_SPAWN_LANES; slot += SURFEL_SPAWN_THREADS) {
+            atomicMin(sMinBits, floatBitsToUint(sSpawnCoverage[slot]));
+        }
+        memoryBarrierShared();
+        barrier();
+        for (uint slot = localIndex; slot < SURFEL_SPAWN_LANES; slot += SURFEL_SPAWN_THREADS) {
+            if (floatBitsToUint(sSpawnCoverage[slot]) == sMinBits) {
+                atomicMin(sLaneForMin, slot);
+            }
+        }
+        memoryBarrierShared();
+        barrier();
+
+        // Thread 0 decides this round. Other lanes wait at the barrier below.
+        if (localIndex == 0u) {
+            sRound[0] = 0u;
+            bool anyValid = sMinBits < 0x7f7fffffu;
+            uint bestLane = anyValid ? sLaneForMin : 0xffffffffu;
+            sRound[1] = bestLane;
+            // Extra rounds are gated on the cheap lane value (lowest remaining coverage and a blue-noise
+            // test) so the full candidate evaluation below runs only when a spawn is plausible.
+            bool roundGate = round == 0u ||
+                (bestLane != 0xffffffffu && sSpawnCoverage[0] < 0.5 * firstThreshold &&
+                 SurfelCandidateBlueNoise(tile, uFrameIndex, passIndex, tileIndex + round * 7919u) <= 0.5);
+            if (counters.freeTop > 0u && roundGate) {
+                SpawnCandidate bestCandidate;
+                InitSpawnCandidate(bestCandidate, tileOrigin);
+                if (bestLane != 0xffffffffu) {
+                    EvaluateSpawnCandidate(tileOrigin + uvec2(bestLane % tileSize, bestLane / tileSize), bestCandidate);
+                }
+                float bestCoverage = bestCandidate.valid ? bestCandidate.coverage : 3.402823466e+38;
+                if (round == 0u) {
+                    gSpawnBudget = ComputeSpawnBudget(totalTileCount);
+                }
+                float effectiveCoverageThreshold = EffectiveCoverageThresholdForCandidate(
+                    bestCandidate.valid,
+                    bestCoverage,
+                    previousTileState.state.y,
+                    previousHadFinalGI);
+                bool coverageEnough = !bestCandidate.valid ||
+                    ReferenceCoverageSatisfied(bestCoverage) ||
+                    bestCoverage >= effectiveCoverageThreshold;
+                if (round == 0u) {
+                    firstCandidate = bestCandidate;
+                    firstValid = bestCandidate.valid;
+                    firstCoverage = bestCoverage;
+                    firstThreshold = effectiveCoverageThreshold;
+                }
+                if (!coverageEnough) {
+                    bool shouldSpawn;
+                    bool highPriority = CoverageTileHighPriority(
+                        bestCandidate.valid,
+                        bestCoverage,
+                        PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousTileState.state.y));
+                    float placementProbability = TilePlacementProbability(
+                        bestCoverage,
+                        effectiveCoverageThreshold,
+                        previousTileState.state.y,
+                        highPriority,
+                        bestCandidate.importance);
+                    uint salt = tileIndex + round * 7919u;
+                    float tileBlueNoise = SurfelCandidateBlueNoise(tile, uFrameIndex, passIndex, salt);
+                    if (round == 0u) {
+                        shouldSpawn = bestCandidate.valid &&
+                            (ShouldPlaceForReferenceCoverage(bestCoverage) ||
+                             (bestCoverage < effectiveCoverageThreshold &&
+                              PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousTileState.state.y) >= SURFEL_COVERAGE_PRIORITY_AGE));
+                        if (tileBlueNoise > placementProbability) {
+                            shouldSpawn = false;
+                        }
+                        if (uBypassCoverageSearch != 0u && tileWasSeeded && (uCameraMotionBoost == 0u || hadRecentSpawn)) {
+                            shouldSpawn = false;
+                        }
+                        if (hadRecentSpawn) {
+                            shouldSpawn = false;
+                        }
+                    } else {
+                        // Extra rounds: only where the coverage is very low, and not in the tile's cooldown frame.
+                        shouldSpawn = bestCandidate.valid &&
+                            bestCoverage < 0.5 * effectiveCoverageThreshold &&
+                            tileBlueNoise <= placementProbability;
+                    }
+                    if (shouldSpawn && SpawnSurfelFromCandidate(bestCandidate, bestCoverage)) {
+                        sRound[0] = 1u;
+                        if (round == 0u) {
+                            firstSpawned = true;
+                        }
+                    }
+                }
+            }
+        }
+        memoryBarrierShared();
+        barrier();
+
+        if (sRound[0] == 0u) {
+            break;
+        }
+        // Mask the neighbourhood of the spawned pixel so the next round picks a different place.
+        uint chosen = sRound[1];
+        int cx = int(chosen % tileSize);
+        int cy = int(chosen / tileSize);
+        for (uint slot = localIndex; slot < SURFEL_SPAWN_LANES; slot += SURFEL_SPAWN_THREADS) {
+            int lxs = int(slot % tileSize);
+            int lys = int(slot / tileSize);
+            bool inside = slot < tileSize * tileSize && uint(lxs) < tileExtent.x && uint(lys) < tileExtent.y;
+            if (inside && abs(lxs - cx) <= SURFEL_SPAWN_SUPPRESS_RADIUS && abs(lys - cy) <= SURFEL_SPAWN_SUPPRESS_RADIUS) {
+                sSpawnCoverage[slot] = 3.402823466e+38;
+            }
+        }
+        memoryBarrierShared();
+        barrier();
     }
 
-    bool shouldSpawn = bestCandidate.valid &&
-        (ShouldPlaceForReferenceCoverage(bestCoverage) ||
-         (bestCoverage < effectiveCoverageThreshold &&
-          PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousUnresolvedAge) >= SURFEL_COVERAGE_PRIORITY_AGE));
-    bool highPriority = CoverageTileHighPriority(
-        bestCandidate.valid,
-        bestCoverage,
-        PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousUnresolvedAge));
-    float placementProbability = TilePlacementProbability(
-        bestCoverage,
-        effectiveCoverageThreshold,
-        previousUnresolvedAge,
-        highPriority,
-        bestCandidate.importance);
-    float tileBlueNoise = SurfelCandidateBlueNoise(tile, uFrameIndex, passIndex, tileIndex);
-    if (tileBlueNoise > placementProbability) {
-        shouldSpawn = false;
+    if (localIndex == 0u) {
+        StoreCoverageTile(tileIndex, firstValid, firstCandidate, firstThreshold, firstSpawned);
     }
-    if (uBypassCoverageSearch != 0u && tileWasSeeded && (uCameraMotionBoost == 0u || hadRecentSpawn)) {
-        shouldSpawn = false;
-    }
-    if (hadRecentSpawn) {
-        shouldSpawn = false;
-    }
-    bool spawned = shouldSpawn && SpawnSurfelFromCandidate(bestCandidate, bestCoverage);
-    StoreCoverageTile(tileIndex, bestCandidate.valid, bestCandidate, effectiveCoverageThreshold, spawned);
 }

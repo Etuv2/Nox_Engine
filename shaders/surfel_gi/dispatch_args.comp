@@ -1,0 +1,33 @@
+#version 460 core
+
+// Writes the indirect dispatch arguments for the surfel-wide passes. One thread: groups = ceil(n / 64)
+// workgroups of 64 invocations, where n is the high-water index (highest live surfel index + 1,
+// from count_live_surfels) plus a spawn slack, clamped to the pool size. Surfels spawned this frame
+// above the mark are picked up by the next frame's count, so the mark only needs to cover the
+// budgeted spawns. The high-water index is cleared here so the next count rebuilds it.
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+layout(binding = B_SURFEL_DISPATCH_ARGS, std430) writeonly buffer SurfelDispatchArgsBuffer
+{
+    uint groups[3];
+};
+
+uniform uint uMaxSurfels;
+uniform uint uIndirectSpawnSlack;
+
+void main()
+{
+    uint bound = min(counters.highWaterIndex + uIndirectSpawnSlack, uMaxSurfels);
+    groups[0] = max((bound + 63u) / 64u, 1u);
+    groups[1] = 1u;
+    groups[2] = 1u;
+    counters.highWaterIndex = 0u;
+}
