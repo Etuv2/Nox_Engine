@@ -68,14 +68,18 @@ void main()
         uint rayID = request.firstRay + i;
 
         SurfelRayHit hit = hits[rayID];
-        if (hit.ids.x != surfelID || hit.position_t.w <= 0.0) {
+        // Kind 0 is a ray the tracer could not resolve; it says nothing about visibility.
+        if (hit.ids.x != surfelID || hit.normal_hitKind.w <= 0.5) {
             continue;
         }
 
+        // A miss is recorded too: the tracer puts its miss position at the ray's full length, so
+        // the direction is open at least that far. Ignoring misses left open directions at the
+        // default depth, which occluded receivers that could see the sky or far geometry.
+        bool isMiss = hit.position_t.w <= 0.0;
         vec3 surfelToHit = hit.position_t.xyz - surfel.worldPos_radius.xyz;
         float hitDepth = length(surfelToHit);
         if (hitDepth <= minReliableDepth ||
-            hitDepth > defaultDepth ||
             isnan(hitDepth) ||
             isinf(hitDepth) ||
             any(isnan(surfelToHit)) ||
@@ -88,10 +92,12 @@ void main()
             continue;
         }
 
-        vec3 hitNormal = SurfelSafeNormalize(hit.normal_hitKind.xyz);
-        vec3 toHitDir = surfelToHit / max(hitDepth, 1e-5);
-        if (dot(hitNormal, -toHitDir) <= 0.02) {
-            continue;
+        if (!isMiss) {
+            vec3 hitNormal = SurfelSafeNormalize(hit.normal_hitKind.xyz);
+            vec3 toHitDir = surfelToHit / max(hitDepth, 1e-5);
+            if (dot(hitNormal, -toHitDir) <= 0.02) {
+                continue;
+            }
         }
 
         uint index = base + SurfelRadialDepthBin(hemiDir);

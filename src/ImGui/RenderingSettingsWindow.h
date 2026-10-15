@@ -137,7 +137,7 @@ private:
 	int m_surfelGISpawnTileSize = 8;
 	int m_surfelGIMaxSurfelsPerCell = 128;
 	int m_surfelGIMaxGatherSurfelsPerPixel = 32;
-	int m_surfelGIMaxSpawnsPerFrame = 64;
+	int m_surfelGIMaxSpawnsPerFrame = 65536;
 	int m_surfelGIMaxProjectedSurfelsPerFrame = 24576;
 	int m_surfelGIMaxRecycleCountPerFrame = 2048;
 	float m_surfelGITargetRadiusPixels = 8.0f;

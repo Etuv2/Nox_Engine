@@ -25,5 +25,6 @@ void main()
 
     if (SurfelIsAlive(surfels[surfelID])) {
         atomicAdd(counters.liveCount, 1u);
+        atomicMax(counters.highWaterIndex, surfelID + 1u);
     }
 }

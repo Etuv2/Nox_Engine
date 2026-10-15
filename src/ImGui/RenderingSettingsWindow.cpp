@@ -178,7 +178,7 @@ RenderingSettingsWindow::RenderingSettingsWindow()
 	m_surfelGISpawnTileSize = 8;
 	m_surfelGIMaxSurfelsPerCell = 128;
 	m_surfelGIMaxGatherSurfelsPerPixel = 32;
-	m_surfelGIMaxSpawnsPerFrame = 64;
+	m_surfelGIMaxSpawnsPerFrame = 65536;
 	m_surfelGIMaxProjectedSurfelsPerFrame = 24576;
 	m_surfelGIMaxRecycleCountPerFrame = 2048;
 	m_surfelGITargetRadiusPixels = 8.0f;
@@ -1100,7 +1100,7 @@ void RenderingSettingsWindow::Render() {
 				if (ImGui::SliderInt("Ray Budget", &m_surfelGIMaxRayBudget, 1024, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Spawn Tile", &m_surfelGISpawnTileSize, 4, 16)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Gather Surfels", &m_surfelGIMaxGatherSurfelsPerPixel, 4, 2048)) { SyncToRenderer(); }
-				if (ImGui::SliderInt("Max Spawns/Frame", &m_surfelGIMaxSpawnsPerFrame, 1, 4096)) { SyncToRenderer(); }
+				if (ImGui::SliderInt("Max Spawns/Frame", &m_surfelGIMaxSpawnsPerFrame, 1, 65536)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Projected Surfels/Frame", &m_surfelGIMaxProjectedSurfelsPerFrame, 1024, 524288)) { SyncToRenderer(); }
 				if (ImGui::SliderInt("Recycle Budget/Frame", &m_surfelGIMaxRecycleCountPerFrame, 1, 65536)) { SyncToRenderer(); }
 				if (ImGui::SliderFloat("Coverage Threshold", &m_surfelGICoverageThreshold, 0.05f, 2.0f, "%.2f")) { SyncToRenderer(); }
@@ -1949,7 +1949,7 @@ void RenderingSettingsWindow::ResetToDefaults() {
 	m_surfelGISpawnTileSize = 8;
 	m_surfelGIMaxSurfelsPerCell = 128;
 	m_surfelGIMaxGatherSurfelsPerPixel = 32;
-	m_surfelGIMaxSpawnsPerFrame = 64;
+	m_surfelGIMaxSpawnsPerFrame = 65536;
 	m_surfelGIMaxProjectedSurfelsPerFrame = 24576;
 	m_surfelGIMaxRecycleCountPerFrame = 2048;
 	m_surfelGITargetRadiusPixels = 8.0f;

@@ -207,6 +207,7 @@ const float SURFEL_TRACE_HIT_KIND_SOURCE_DIRECT = 5.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_TRACE_SCREEN_RELIABILITY = 0.18;
 const float SURFEL_TRACE_SKY_VISIBILITY_DISTANCE = 32.0;
+const float SURFEL_TRACE_BVH_FAR_DISTANCE = 256.0;
 const float SURFEL_SKY_OPEN_MISS_VISIBILITY = 0.45;
 const float SURFEL_ENVIRONMENT_MISS_MIP = 5.0;
 const float SURFEL_ENVIRONMENT_MISS_MAX_RADIANCE = 64.0; // firefly guard only
@@ -1075,7 +1076,9 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
     vec3 origin = ray.origin_tMin.xyz;
     vec3 direction = SurfelSafeNormalize(ray.direction_tMax.xyz);
     float tMin = max(ray.origin_tMin.w, 0.0);
-    float tMax = max(ray.direction_tMax.w, tMin);
+    // The exact BVH answers at full scene range. Cutting the trace at the local bounce length made
+    // geometry beyond it read as a sky miss, which leaked sky light into interiors.
+    float tMax = max(SURFEL_TRACE_BVH_FAR_DISTANCE, tMin);
     SoftwareBVHHit hit = TraceSoftwareBVH(origin, direction, tMin, tMax);
     if (!hit.hit) {
         return false;

@@ -1844,6 +1844,9 @@
     <None Include="shaders\surfel_gi\count_live_surfels.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
+    <None Include="shaders\surfel_gi\dispatch_args.comp">
+      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
+    </None>
     <None Include="shaders\surfel_gi\coverage.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>

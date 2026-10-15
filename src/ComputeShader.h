@@ -58,6 +58,8 @@ public:
     void SetDispatchConfig(const DispatchConfig& config);
     void Dispatch();
     void Dispatch(uint32_t numGroupsX, uint32_t numGroupsY = 1, uint32_t numGroupsZ = 1);
+    // Group counts are read on the GPU from three uints at byteOffset in `args` (workgroups, not threads).
+    void DispatchIndirect(rhi::BufferHandle args, size_t byteOffset);
     void WaitForCompletion(uint32_t barriers = rhi::BarrierAll);
 
     //  Resource Binding Utilities

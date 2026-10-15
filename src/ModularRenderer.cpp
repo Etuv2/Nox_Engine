@@ -166,17 +166,17 @@ namespace {
 	static SurfelGIBudgetCaps GetSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 24576u, 2048u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 1u, 2u, 8u, 96u, 24576u, 2048u };
+			return { 24576u, 2048u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 1u, 2u, 8u, 65536u, 24576u, 2048u };
 		case SurfelGIQualityTier::High:
-			return { 131072u, 32768u, 8u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 3u, 6u, 48u, 512u, 131072u, 8192u };
+			return { 131072u, 32768u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 3u, 6u, 48u, 65536u, 131072u, 8192u };
 		case SurfelGIQualityTier::Ultra:
-			return { 262144u, 65536u, 4u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 4u, 8u, 64u, 1024u, 262144u, 16384u };
+			return { 262144u, 65536u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 4u, 8u, 64u, 65536u, 262144u, 16384u };
 		case SurfelGIQualityTier::Medium:
 		default:
 			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
 			// their light) and 4096 rays per frame, between Low and High: at the former 192 rays a
 			// surfel saw one ray every few frames and multi-bounce took hundreds of frames to settle.
-			return { 65536u, 4096u, 8u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 1u, 3u, 20u, 64u, 24576u, 2048u };
+			return { 65536u, 4096u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 1u, 3u, 20u, 65536u, 24576u, 2048u };
 		}
 	}
 
@@ -566,7 +566,7 @@ void ModularRenderer::SyncSurfelGISettings()
 	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.surfelGISpawnTileSize, 4, 16));
 	settings.maxSurfelsPerCell = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxSurfelsPerCell, 8, 256));
 	settings.maxGatherSurfelsPerPixel = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxGatherSurfelsPerPixel, 4, 2048));
-	settings.maxSpawnsPerFrame = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxSpawnsPerFrame, 1, 4096));
+	settings.maxSpawnsPerFrame = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxSpawnsPerFrame, 1, 65536));
 	settings.maxProjectedSurfelsPerFrame = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxProjectedSurfelsPerFrame, 1024, 524288));
 	settings.maxRecycleCountPerFrame = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxRecycleCountPerFrame, 1, 65536));
 	settings.targetSurfelScreenRadiusPx = std::max(m_context.surfelGITargetRadiusPixels, 1.0f);
@@ -635,8 +635,19 @@ void ModularRenderer::SyncSurfelGISettings()
 			5);
 	}
 
+	// Validation override: NOX_SSGI=0/1 switches screen-space indirect diffuse (SSGI) for A/B runs.
+	if (const char* ssgiEnv = std::getenv("NOX_SSGI")) {
+		m_context.enableIndirectDiffuse = std::atoi(ssgiEnv) != 0;
+	}
 	const bool captureMode = IsEnvVarEnabled("NOX_SURFEL_GI_CAPTURE");
 	ApplySurfelGIRealtimeBudget(settings, captureMode);
+	// Validation overrides, applied after the tier caps so they can exceed them.
+	if (const char* scaleEnv = std::getenv("NOX_SURFEL_GI_FINAL_GATHER_SCALE")) {
+		settings.finalGatherResolutionScale = std::clamp(static_cast<float>(std::atof(scaleEnv)), 0.25f, 1.0f);
+	}
+	settings.spawnBudgetScale = std::clamp(GetEnvVarFloat("NOX_SURFEL_GI_SPAWN_BUDGET_SCALE", settings.spawnBudgetScale), 0.0f, 16.0f);
+	settings.spawnSearchStride = static_cast<uint32_t>(
+		std::clamp(GetEnvVarInt("NOX_SURFEL_GI_SPAWN_STRIDE", static_cast<int>(settings.spawnSearchStride)), 1, 4));
 	m_context.surfelGIUseScreenTrace = settings.useScreenSpaceTrace;
 	m_context.surfelGIUseRadialDepth = settings.useRadialDepth;
 	m_context.surfelGIUseRayGuiding = settings.useRayGuiding;

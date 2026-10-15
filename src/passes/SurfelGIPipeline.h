@@ -38,7 +38,12 @@ struct SurfelGIPipelineResources {
 	rhi::BufferHandle guideMapBuffer;
 	rhi::BufferHandle irradianceSnapshotBuffer;
 	rhi::BufferHandle coverageTileBuffer;
+	// Indirect dispatch arguments for the surfel-wide passes (written by dispatch_args.comp).
+	rhi::BufferHandle dispatchArgsBuffer;
+	// Ring of two staging buffers for the asynchronous counter readback.
+	rhi::BufferHandle counterStaging[2];
 	rhi::TextureHandle rawIndirectTexture;
+	rhi::TextureHandle coverageTexture;   // gather coverage for the next frame's spawn pass
 	rhi::TextureHandle filteredIndirectTexture;
 	rhi::TextureHandle temporalIndirectTexture;
 	rhi::TextureHandle indirectTexture;
@@ -112,6 +117,7 @@ private:
 	std::unique_ptr<ComputeShader> m_updateShader;
 	std::unique_ptr<ComputeShader> m_beginFrameShader;
 	std::unique_ptr<ComputeShader> m_countLiveShader;
+	std::unique_ptr<ComputeShader> m_dispatchArgsShader;
 	std::unique_ptr<ComputeShader> m_recycleShader;
 	std::unique_ptr<ComputeShader> m_coverageShader;
 	std::unique_ptr<ComputeShader> m_spawnShader;
@@ -147,6 +153,12 @@ private:
 	uint32_t m_coverageTileCountY = 0;
 	uint32_t m_coverageTileCapacity = 0;
 	uint32_t m_frameIndex = 0;
+	// Async counter readback: at most one copy in flight, mapped kGpuTimingReadbackFrameDelay later.
+	void IssueCounterReadback();
+	void PumpCounterReadback();
+	bool m_counterReadbackPending = false;
+	uint32_t m_counterReadbackSlot = 0;
+	uint32_t m_counterReadbackFrame = 0;
 	uint32_t m_stationaryFrameCount = 0;
 	uint32_t m_lastTransformCount = 0;
 	uint32_t m_lastSpawnPassCount = 1;

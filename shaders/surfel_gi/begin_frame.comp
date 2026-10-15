@@ -11,6 +11,12 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 
 void main()
 {
+    // Coverage deficit of the last spawn frame feeds this frame's spawn budget. Spawning runs on
+    // some frames only (stationary cadence), so keep the previous values when this frame has none.
+    if (counters.coverageVisibleTileCount > 0u) {
+        counters.visiblePreviousFrame = counters.coverageVisibleTileCount;
+        counters.underCoveredPreviousFrame = counters.underCoveredTileCount;
+    }
     counters.liveCount = 0u;
     counters.spawnedThisFrame = 0u;
     counters.recycledThisFrame = 0u;

@@ -141,6 +141,17 @@ void ComputeShader::Dispatch(uint32_t numGroupsX, uint32_t numGroupsY, uint32_t 
 	Dispatch();
 }
 
+void ComputeShader::DispatchIndirect(rhi::BufferHandle args, size_t byteOffset) {
+	if (!IsValid()) {
+		std::cerr << "[ComputeShader] Cannot dispatch invalid compute shader" << std::endl;
+		return;
+	}
+
+	rhi::Device& gpu = rhi::Gpu();
+	gpu.UseProgram(m_programID);
+	gpu.DispatchIndirect(args, byteOffset);
+}
+
 void ComputeShader::WaitForCompletion(uint32_t barriers) {
 	rhi::Gpu().PipelineBarrier(barriers);
 }

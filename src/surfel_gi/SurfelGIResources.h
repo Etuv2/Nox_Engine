@@ -72,7 +72,8 @@ enum class SurfelGIBinding : uint32_t {
 	ShadowMatrices = 31u,
 	CoverageTiles = 32u,
 	RtInstances = 33u,
-	RtInstanceNodes = 34u
+	RtInstanceNodes = 34u,
+	DispatchArgs = 35u
 };
 
 constexpr uint32_t ToGLuint(SurfelGIBinding binding)
@@ -158,6 +159,9 @@ struct alignas(16) SurfelCounters {
 	uint32_t finalGatherBleedPixels = 0u;
 	uint32_t finalGatherValidPixels = 0u;
 	uint32_t finalGatherEmptyPixels = 0u;
+	uint32_t highWaterIndex = 0u;
+	uint32_t underCoveredPreviousFrame = 0u;
+	uint32_t visiblePreviousFrame = 0u;
 };
 static_assert(sizeof(SurfelCounters) == 192, "SurfelCounters must match std430 GLSL layout.");
 

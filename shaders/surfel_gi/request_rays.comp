@@ -25,6 +25,10 @@ uniform float uLightingChangeFactor = 0.0;
 
 const uint SURFEL_REQUEST_MAX_RAYS_PER_SURFEL = 8u;
 const uint SURFEL_REQUEST_NEW_SURFEL_RAYS = 4u;
+// A young surfel has only a few rays behind it and is weighted low in the gather (see apply_indirect),
+// so it converges with more rays in its first frames.
+const uint SURFEL_REQUEST_YOUNG_SURFEL_RAYS = 12u;
+const float SURFEL_REQUEST_YOUNG_FRAMES = 4.0;
 const uint SURFEL_REQUEST_LOW_CONFIDENCE_RAYS = 4u;
 const uint SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS = 4u;
 const uint SURFEL_REQUEST_LIGHTING_CHANGE_RAYS = 1u;
@@ -112,12 +116,21 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     } else if (SurfelIsNew(surfel)) {
         requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
     }
+    bool young = surfel.worldNormal_age.w < SURFEL_REQUEST_YOUNG_FRAMES;
+    if (young) {
+        requested = max(requested, SURFEL_REQUEST_YOUNG_SURFEL_RAYS);
+    }
     if (confidence < 0.40) {
         requested = max(requested, SURFEL_REQUEST_LOW_CONFIDENCE_RAYS);
     }
     if (visibleUnresolved > 0.0) {
         requested = max(requested, SURFEL_REQUEST_VISIBLE_UNRESOLVED_RAYS);
     }
+    // Noise share: the standard error of a Monte Carlo mean falls with the square root of its ray
+    // count, so the rays a surfel needs grow with its coefficient of variation (std / mean).
+    float noiseMean = max(SurfelLuminance(surfel.shortMean.rgb), 1e-3);
+    float noiseCv = sqrt(max(SurfelLuminance(varianceRgb), 0.0)) / noiseMean;
+    requested = max(requested, uint(clamp(round(noiseCv * 2.0), 1.0, float(SURFEL_REQUEST_MAX_RAYS_PER_SURFEL))));
     if (lightingReactiveVisible) {
         requested = max(requested, SURFEL_REQUEST_LIGHTING_CHANGE_RAYS);
     }
@@ -135,7 +148,7 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
         requested = min(requested, 1u);
     }
 
-    return min(requested, SURFEL_REQUEST_MAX_RAYS_PER_SURFEL);
+    return min(requested, young ? SURFEL_REQUEST_YOUNG_SURFEL_RAYS : SURFEL_REQUEST_MAX_RAYS_PER_SURFEL);
 }
 
 void main()
