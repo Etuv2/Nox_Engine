@@ -100,6 +100,8 @@ private:
         glm::vec3 worldBoundsMin{ 0.0f };
         glm::vec3 worldBoundsMax{ 0.0f };
         bool isSkinnedMesh = false;
+        // GPU transform record of the owning entity (0 = none). Surfel world spawns re-attach through it (plan section 17).
+        uint32_t transformID = 0u;
     };
 
     struct EntityInstanceRange {

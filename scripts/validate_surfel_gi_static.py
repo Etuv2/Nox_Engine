@@ -52,8 +52,8 @@ def check_struct_layout() -> None:
     glsl_counters = glsl_struct_fields(common, "SurfelCounters")
     require([n for _, n in cpp_counters] == [n for _, n in glsl_counters],
             "SurfelCounters field names or order differ between SurfelGIResources.h and common.glsl")
-    require(len(cpp_counters) * 4 == 256, "SurfelCounters must be 64 uint32 fields (256 bytes)")
-    require("static_assert(sizeof(SurfelCounters) == 256" in resources_h,
+    require(len(cpp_counters) * 4 == 288, "SurfelCounters must be 72 uint32 fields (288 bytes)")
+    require("static_assert(sizeof(SurfelCounters) == 288" in resources_h,
             "SurfelCounters size assert missing or changed")
 
     cpp_surfel = cpp_struct_fields(resources_h, "Surfel")

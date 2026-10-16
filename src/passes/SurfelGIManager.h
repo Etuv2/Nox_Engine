@@ -74,6 +74,26 @@ struct SurfelGISettings {
 	uint32_t pathContinuationPeriod = 1u;
 	// Sun visibility outside the shadow cascades comes from a BVH shadow ray (surfel_scene_trace.glsl), not "lit".
 	bool sunShadowBVHFallback = true;
+	// World surfels (plan section 17). A path vertex the cache cannot answer queues a request (one per grid cell per frame);
+	// spawn.comp's world mode turns up to worldSurfelSpawnsPerFrame of them into surfels per frame. Their population is
+	// capped at worldSurfelPopulationFraction of spawnPopulationCap, on top of the screen population (not from it).
+	// Off by default: with it on, scene.json energy fell to about 0.66 of the reference (plan section 17.4).
+	bool worldSurfels = false;
+	uint32_t worldSurfelSpawnsPerFrame = 16u;
+	float worldSurfelPopulationFraction = 0.25f;
+	// Path depth cap of the surfel trace. 32 is the merged-base behaviour; world mode uses 3.
+	uint32_t pathMaxHits = 32u;
+	// Path vertices below this depth take the BVH sun fallback for their direct light. 32 is the merged-base behaviour
+	// (every vertex); world mode uses 1 (the first hit only).
+	uint32_t sunShadowBVHDepth = 32u;
+	// Path vertices below this depth read the surfel cache. 2 is the merged-base behaviour; world mode uses 3.
+	uint32_t cacheDepth = 2u;
+	// Minimum confidence of the surfels that answer a path vertex (0 = any cached weight answers).
+	float cacheMinConfidence = 0.0f;
+	// Minimum total weight of the surfels that answer a path vertex (the old test was 1e-4).
+	float cacheMinWeight = 1.0e-4f;
+	// Kernel spread of the cache lookup, in support radii (the default is 3.10).
+	float cacheSupportSpread = 3.10f;
 	uint32_t spawnTileSize = 16u;
 	// Search stride for the per-tile lowest-coverage search: 1 tests every pixel of a tile each
 	// frame; N > 1 tests a rotating 1/N^2 subset (the lowest coverage over N^2 frames).
@@ -198,6 +218,17 @@ struct SurfelGIFrameStats {
 	uint32_t spawnBudgetDenied = 0;
 	uint32_t radiusCapped = 0;
 	uint32_t recycledYoung = 0;
+	// World surfels (plan section 17), per frame unless noted: requests queued, requests dropped at the queue cap,
+	// world surfels spawned, requests skipped because the coverage already held, live world surfels (persistent) and
+	// counted this frame, and path cache lookups that hit or missed.
+	uint32_t worldRequests = 0;
+	uint32_t worldRequestDropped = 0;
+	uint32_t worldSpawned = 0;
+	uint32_t worldSkippedCovered = 0;
+	uint32_t liveWorld = 0;
+	uint32_t liveWorldCounted = 0;
+	uint32_t cacheHits = 0;
+	uint32_t cacheMisses = 0;
 	// RT scene update of the latest frame (CPU ms and upload flags from RTSceneResources).
 	float rtInstanceListMs = 0.0f;
 	float rtUploadMs = 0.0f;

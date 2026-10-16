@@ -221,6 +221,13 @@ void ReadSurfelCounters(rhi::BufferHandle countersBuffer, SurfelGIFrameStats& st
 	StoreSurfelCounters(counters, stats);
 }
 
+// Population cap of the world surfels: a fixed fraction of the screen population cap (plan section 17). World surfels
+// count against it instead of the screen target, so they do not take the screen spawn budget.
+float WorldSurfelPopulationCap(const SurfelGISettings& settings)
+{
+	return std::max(settings.worldSurfelPopulationFraction, 0.0f) * static_cast<float>(settings.spawnPopulationCap);
+}
+
 // Largest spawn budget a frame can use, as spawn.comp computes it: the floor, or visible tiles / divisor bounded by
 // the ceiling. Visible tiles are at most the full tile count, so the full count gives an upper bound. The surfel-wide
 // dispatch slack is this value, so every spawn of the frame is inside the bound and gets a grid entry this frame.
@@ -306,6 +313,14 @@ void StoreSurfelCounters(const SurfelCounters& counters, SurfelGIFrameStats& sta
 	stats.spawnBudgetDenied = counters.spawnBudgetDenied;
 	stats.radiusCapped = counters.radiusCapped;
 	stats.recycledYoung = counters.recycledYoung;
+	stats.worldRequests = counters.worldRequests;
+	stats.worldRequestDropped = counters.worldRequestDropped;
+	stats.worldSpawned = counters.worldSpawned;
+	stats.worldSkippedCovered = counters.worldSkippedCovered;
+	stats.liveWorld = counters.liveWorld;
+	stats.liveWorldCounted = counters.liveWorldCounted;
+	stats.cacheHits = counters.cacheHits;
+	stats.cacheMisses = counters.cacheMisses;
 	// Rays asked for by request_rays but not granted by allocate_rays (both counters are per frame).
 	stats.rayShortfall = counters.requestedRays > counters.allocatedRays
 		? counters.requestedRays - counters.allocatedRays
@@ -902,6 +917,8 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 	m_resources.rayBuffer = m_rayQueue.GetRayBuffer();
 	m_resources.rayHitBuffer = m_rayQueue.GetRayHitBuffer();
 	m_resources.rayAllocScratchBuffer = m_rayQueue.GetAllocScratchBuffer();
+	m_resources.worldRequestBuffer = m_pool.GetWorldRequestBuffer();
+	m_resources.cellStampBuffer = m_grid.GetCellStampBuffer();
 	m_stats.ready = IsReady();
 	return true;
 }
@@ -1207,6 +1224,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uMaxDistance", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
 		SetUniform1f(program, "uSpawnPopulationKappa", std::max(m_settings.spawnPopulationKappa, 0.0f));
 		SetUniform1f(program, "uSpawnPopulationCap", static_cast<float>(m_settings.spawnPopulationCap));
+		SetUniform1f(program, "uWorldPopulationCap", WorldSurfelPopulationCap(m_settings));
 		const uint32_t spawnTileSizeForCount = std::max(m_settings.spawnTileSize, 1u);
 		SetUniform1ui(program, "uSpawnTileCount",
 			DivRoundUp(m_width, spawnTileSizeForCount) * DivRoundUp(m_height, spawnTileSizeForCount));
@@ -1482,6 +1500,17 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uSunShadowBVHFallback", m_settings.sunShadowBVHFallback ? 1 : 0);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
+		// World surfels (plan section 17): cache misses queue requests; the path depth cap and the cache depth are shared.
+		SetUniform1ui(program, "uWorldRequestsEnabled", m_settings.worldSurfels ? 1u : 0u);
+		SetUniform1ui(program, "uWorldRequestCapacity", kSurfelWorldRequestCapacity);
+		SetUniform1ui(program, "uPathMaxHits", m_settings.pathMaxHits);
+		SetUniform1ui(program, "uSunBVHDepth", m_settings.sunShadowBVHDepth);
+		SetUniform1ui(program, "uCacheDepth", m_settings.cacheDepth);
+		SetUniform1f(program, "uCacheMinConfidence", m_settings.cacheMinConfidence);
+		SetUniform1f(program, "uCacheMinWeight", m_settings.cacheMinWeight);
+		SetUniform1f(program, "uCacheSupportSpread", m_settings.cacheSupportSpread);
+		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::WorldRequests), m_resources.worldRequestBuffer);
+		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::CellStamps), m_resources.cellStampBuffer);
 		BindSoftwareTraceLighting(program, context, camera, skybox);
 		timedDispatch("tracing", [&]() {
 			m_traceRaysShader->Dispatch(DivRoundUp(rayBudget, 64u), 1u, 1u);
@@ -1546,6 +1575,52 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			m_irradianceSharingShader->Dispatch(DivRoundUp(sharingWorkItems, 64u), 1u, 1u);
 			m_irradianceSharingShader->WaitForCompletion(rhi::BarrierStorage);
 		});
+	}
+
+	// World surfels (plan section 17): spawn at the path hits that the cache could not answer (queued by trace_rays.comp).
+	// Before the grid build, so they are in next frame's grid. Each request is one invocation of spawn.comp's world mode.
+	if (!placementOnly && m_settings.worldSurfels && m_spawnShader && m_spawnShader->IsValid() &&
+		transformBuffer.IsValid() && transformCount > 0u) {
+		const uint32_t worldBudget = std::min(m_settings.worldSurfelSpawnsPerFrame, kSurfelWorldRequestCapacity);
+		if (worldBudget > 0u) {
+			const rhi::ProgramHandle program = m_spawnShader->GetProgramID();
+			gpu.UseProgram(program);
+			gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::WorldRequests), m_resources.worldRequestBuffer);
+			SetUniform1ui(program, "uMaxSurfels", maxSurfels);
+			SetUniform1ui(program, "uFrameIndex", m_frameIndex);
+			SetUniform1ui(program, "uTransformCount", transformCount);
+			SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
+			SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+			SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
+			SetUniform3fv(program, "uGridMin", gridMin);
+			SetUniform3fv(program, "uGridMax", gridMax);
+			SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
+			SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
+			SetUniformMat4(program, "uInvView", glm::inverse(context.view));
+			SetUniformMat4(program, "uView", context.view);
+			SetUniformMat4(program, "uProjection", context.proj);
+			SetUniform2f(program, "uViewportSize", static_cast<float>(m_width), static_cast<float>(m_height));
+			SetUniform2ui(program, "uResolution", m_width, m_height);
+			SetUniform1f(program, "uTargetSurfelScreenRadiusPx", m_settings.targetSurfelScreenRadiusPx);
+			SetUniform1f(program, "uMinSurfelRadius", m_settings.minSurfelRadius);
+			SetUniform1f(program, "uMaxSurfelRadius", m_settings.maxSurfelRadius);
+			SetUniform1f(program, "uCoverageThreshold", m_settings.spawnCoverageThreshold);
+			SetUniform1f(program, "uNormalRejectCos", m_settings.normalRejectCos);
+			SetUniform3fv(program, "uDirectionalLightDirection", lightDirection);
+			SetUniform3fv(program, "uDirectionalLightRadiance", lightRadiance);
+			SetUniform3fv(program, "uSkyRadiance", SurfelSkyRadiance(context, skybox, m_settings));
+			SetUniform3fv(program, "uCameraPosition", cameraPosition);
+			SetUniform1ui(program, "uUseCoverageMap", 0u);
+			SetUniform1ui(program, "uWorldMode", 1u);
+			SetUniform1ui(program, "uWorldSpawnBudget", worldBudget);
+			SetUniform1ui(program, "uWorldPopulationCap", static_cast<uint32_t>(WorldSurfelPopulationCap(m_settings)));
+			SetUniform1ui(program, "uWorldRequestCapacity", kSurfelWorldRequestCapacity);
+			timedDispatch("world_spawn", [&]() {
+				m_spawnShader->Dispatch(DivRoundUp(worldBudget, 64u), 1u, 1u);
+				m_spawnShader->WaitForCompletion(rhi::BarrierStorage);
+			});
+			SetUniform1ui(program, "uWorldMode", 0u);
+		}
 	}
 
 	// One grid build per frame, after the last irradiance update. The final gather reads the cell averages
@@ -2057,6 +2132,14 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< " youngSurfels=" << m_stats.youngSurfels
 			<< " rayShortfall=" << m_stats.rayShortfall
 			<< " staleRaySlots=" << m_stats.staleRaySlots
+			<< " worldRequests=" << m_stats.worldRequests
+			<< " worldDropped=" << m_stats.worldRequestDropped
+			<< " worldSpawned=" << m_stats.worldSpawned
+			<< " worldSkipped=" << m_stats.worldSkippedCovered
+			<< " liveWorld=" << m_stats.liveWorld
+			<< " liveWorldCounted=" << m_stats.liveWorldCounted
+			<< " cacheHits=" << m_stats.cacheHits
+			<< " cacheMisses=" << m_stats.cacheMisses
 			<< '\n';
 	}
 	m_stats.ready = IsReady();

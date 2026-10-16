@@ -1479,3 +1479,96 @@ NFS kappa sweep (before the cap, one repeat, ratio against the reference term 0.
 - Energy on NFS (-12%). The population cap and grid reach account for most of the change. The rest is not isolated.
 - Grid on scene.json and NFS (0.106). Count is still the largest piece. The lane-parallel count is the obvious next step once its discrepancy is found.
 - The estimator's path continuation (tracing 8 ms on NFS) is the largest GPU cost and belongs to the estimator worker.
+
+## 17. Hit-point cache integration
+
+Branch `worktree-agent-a2eb3a1f2420d3eca`. Base: `af875ff` (population and grid round 2) merged with `ac8b332` (estimator performance), then this change. The one conflict was in this file: sections 15 and 16 were both appended after 14. They are kept in numeric order (15, then 16). Harness `tools/surfel_gi_metrics.py`, Medium tier, 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera, frames 200-260. The reference is `indep_term` (the independent path tracer, 900 frames, composite debug 4), reused from the merged-base runs: its code path is unchanged. Energy is the term metric (`surf_term` against `indep_term`, lit mask from the off frame), with the all-pixel ratio given beside it for Cornell. Every number is a single run unless marked. The GPU was shared with other workers, so the timings are single runs, not the alternating A/B pairs the brief asked for. Run-to-run spread is 8-15% on energy and more on noise.
+
+### 17.1 What was built
+
+- Queue (`trace_rays.comp`, `SurfelPathWorldRequest`). A path vertex below `cacheDepth` whose cache lookup fails queues one request per grid cell per frame. Cell stamps (binding 41, frame + 1) do the dedupe. The queue holds 4096 requests (binding 40, 64 bytes each) with position, normal, albedo, transform ID and cell. Skinned instances and hits with no transform record are not queued. The TLAS instance now carries its entity's transform ID in `metadata.w` (`RTSceneResources.cpp`), and the BVH hit reports it.
+- Spawn (`spawn.comp`, world mode `uWorldMode = 1`, dispatched before the grid build). One invocation per request, up to `worldSurfelSpawnsPerFrame` (16 at Medium). A request is skipped when the candidate coverage already reaches `spawnCoverageThreshold` (counter `worldSkipped`). Allocation, transform attach, MSME init and the radial and guide reset all go through `SpawnSurfelFromCandidate`. The radius is the screen-footprint rule, clamped to the cell side. The flag is `SURFEL_WORLD` (0x20).
+- Population. World surfels have their own cap, `worldSurfelPopulationFraction` x `spawnPopulationCap` (0.25 x 2048 = 512 at Medium). The screen spawn budget and the recycle target use live minus world live, so world surfels do not take screen spawns. `liveWorld` is persistent: spawn adds one and recycle removes one. `liveWorldCounted` (counted by `count_live_surfels`) agrees with it every frame.
+- Coverage. `coverage_project` skips world surfels, so the screen tile coverage and under-coverage are unchanged by them. The spawn candidate's own coverage (grid query) still counts them, which is the intended dedupe.
+- Recycling. The stale term now uses the later of the visible touch (`frameInfo.x`) and the last ray reference (`lifecycle.x`). A cache lookup with weight at least 0.02 sets `lifecycle.x`, and spawn sets it too. Over-cap world surfels take the over-target term, against their own cap.
+- Cache-first continuation. A vertex below `cacheDepth` stops at the cache when it answers (`albedo/pi x (direct + cached E)`). A miss queues a request and continues. World mode: `pathMaxHits` 3, `cacheDepth` 3, sun BVH fallback at the first hit only (`sunShadowBVHDepth` 1). The defaults (world off) are 32, 2 and 32, which are the merged-base values.
+- Settings and env (`ModularRenderer.cpp`). `NOX_SURFEL_GI_WORLD` (default 0; 1 selects world mode, and sets the three depths above unless each is overridden), `NOX_SURFEL_GI_WORLD_SPAWNS`, `NOX_SURFEL_GI_WORLD_FRACTION`, `NOX_SURFEL_GI_PATH_DEPTH`, `NOX_SURFEL_GI_SUN_BVH_DEPTH`, `NOX_SURFEL_GI_CACHE_DEPTH`. Experiment knobs with inert defaults: `NOX_SURFEL_GI_CACHE_MIN_WEIGHT` (1e-4, the old test), `NOX_SURFEL_GI_CACHE_MIN_CONF` (0), `NOX_SURFEL_GI_CACHE_SPREAD` (3.10).
+- Counters (`[SurfelGIFrameCounters]`): `worldRequests`, `worldDropped`, `worldSpawned`, `worldSkipped`, `liveWorld`, `liveWorldCounted`, `cacheHits`, `cacheMisses`. The validators check the counter layout (72 fields, 288 bytes).
+- Harness: configs `surf_noworld`, `surf_term_noworld`, `surf_term_d32`, `surf_term_noworld_d32`, `surf_term_w8`, `surf_term_w32`, and the new counters in the table.
+
+### 17.2 Results (medians over frames 200-260 unless marked)
+
+Energy: lit-mask ratio against `indep_term` (all-pixel in brackets for Cornell). Tracing and total are `tracing` and `SurfelGIUpdatePass` GPU ms. Under-covered is visible tiles below 0.85 coverage.
+
+| Scene | Config | Energy ratio | Noise (surf_term) | Tracing ms | Total Execute ms | Under-covered tiles | Live / live world | Cache hits / misses per frame |
+|---|---|---|---|---|---|---|---|---|
+| Cornell | merged base | 1.201 [1.077] | 0.46% | 3.39 | 4.23 | 74 of 1638 | 1638 / - | - |
+| Cornell | this change, default | 1.193 [1.075] | 0.29% | 3.57 | 4.43 | 69 | 1638 / 0 | 1746 / 38 |
+| Cornell | world mode | 1.218 [1.080] | 0.29% | 2.63 | 3.52 | 76 | 1695 / 57 | 1746 / 0 |
+| scene.json | merged base | 0.951 | 0.25% | 17.11 | 18.94 | 303 of 7911 | 2048 / - | - |
+| scene.json | this change, default | 0.954 | 0.17% | 17.81 | 19.63 | 333 | 2048 / 0 | 767 / 2769 |
+| scene.json | world mode | 0.656 | 0.82% | 3.40 | 5.17 | 388 | 2485 / 437 | 2005 / 0 |
+| NFS | merged base | 0.715 | 1.47% | 7.60 | 9.65 | 565 of 7891 | 2048 / - | - |
+| NFS | this change, default | 0.742 | 1.83% | 7.98 | 9.95 | 592 | 2048 / 0 | 1152 / 543 |
+| NFS | world mode | 0.716 | 4.17% | 5.60 | 7.48 | 558 | 2561 / 513 | 1541 / 11 |
+
+Notes on the rows:
+- The default row matches the merged base within run-to-run spread on all three scenes. The one code change that alters the default is the ray-reference term in recycling, which is what section 17.1 asks for.
+- Cornell: the table uses the lit mask (4.1% of pixels), as the harness defines it. The lit mask keeps the walls next to the emitter, where the surfel term reads high. The all-pixel ratio (1.075 to 1.080 in every config) is inside the band; the lit-mask ratio (1.19 to 1.22) is not.
+- World live surfels reach the 512 cap on NFS and sit at about 437 on scene.json and about 57 on Cornell.
+
+### 17.3 The energy loss in world mode (scene.json, lit-mask ratio)
+
+| Variant | Ratio | Tracing ms | Note |
+|---|---|---|---|
+| merged base (no world, depth 32, sun all vertices) | 0.951 | 17.11 | reference point |
+| world off, depth 3, sun first hit only | 0.545 | 6.78 | depth cap alone costs a lot without the cache |
+| world on, depth 32, sun first hit only | 0.741 | 3.43 | cache answers without the depth cap |
+| world on, depth 3, sun all vertices | 0.637 | 3.48 | sun restriction: -3% |
+| world on, depth 3, sun first hit only (world mode) | 0.656 | 3.40 | |
+| world on, minimum cache weight 1.0 | 0.641 | 4.49 | thin neighbourhoods are not the cause |
+| world on, cache kernel spread 1.0 (from 3.10) | 0.646 | 4.18 | kernel blur is not the cause |
+| world on, world cap fraction 0.05 (about 100 surfels) | 0.714 | 5.35 | dilution of the 2048-ray budget explains part (+0.06) |
+
+What the table says. Cache-first answers about 2000 vertices per frame with almost no misses, so the path length is no longer the cost, and the energy is lost in the irradiance the cache returns at hit points. That is about 25-30% below what the continuation gives at the same points. Depth, sun, minimum weight, kernel width and world population each explain only part of it. The mechanism is not isolated. Convergence of the world surfels is one candidate that is not ruled out: world surfels are 437 of 2485 live surfels, the spawn and recycle churn is 0 to 1 per frame, and the cached irradiance was not compared against a converged value at those points. The confidence gate (`NOX_SURFEL_GI_CACHE_MIN_CONF`) was implemented but not run on scene.json.
+
+NFS does not show the drop: world mode gives 0.716 against 0.742 for the default. NFS noise rises to 4.2%, which is a real regression on that scene.
+
+### 17.4 Decision
+
+World mode is off by default (`worldSurfels = false`). With it on, scene.json energy is 0.66, so the default would be a 30% darkening there. The default now equals the merged base in energy and cost within run-to-run spread, and world mode stays available behind `NOX_SURFEL_GI_WORLD=1` for the next worker to fix the cache bias. This is a trade of the cost target for the energy target, and the energy target is the one the brief sets as a gate.
+
+### 17.5 Targets
+
+| Target | Result |
+|---|---|
+| Tracing at most 1.5 ms on scene.json and NFS at steady state | Not met. Default 17.8 and 8.0 ms. World mode 3.4 and 5.6 ms. |
+| Total surfel Execute at most 3 ms on scene.json | Not met. Default 19.6 ms, world mode 5.2 ms. |
+| Energy within [0.9, 1.1] on all three scenes | Not met. Default: scene 0.95 (met), Cornell 1.19 lit mask and 1.08 all-pixel (met on all-pixel), NFS 0.74 (not met; the merged base is 0.72, so this is pre-existing). World mode: scene 0.66 and NFS 0.72 (not met). |
+| surf_term noise at most 2% on Cornell, 1.5% on scene and NFS | Cornell met (0.29%, both modes). Scene met (0.17% default, 0.82% world). NFS not met (1.83% default, 4.17% world). |
+| Analytic furnace and white-sky within 5% | Not measured in this pass. |
+| No popping in dolly and orbit tests (frame-difference metric) | Dolly, 0.8 m over 260 frames, world mode: second-difference peak 0.12 of the median first difference. Default: 0.13. Orbit, 0.2 deg per frame, world mode: 1.12 (a one-frame jump at 248-249, see 17.6). |
+| Convergence: tracing at target within 60 frames of a static camera | Not measured. The runs logged frames 200-260 only. |
+| Scalability reported | See 17.7. |
+
+### 17.6 Moving camera
+
+Cornell, `NOX_CAMERA_PATH` (single runs, frames 200-260). Metric: mean absolute difference of consecutive dumps, and the second difference.
+- Dolly 0.8 m over 260 frames, world mode: first-difference median 0.22, second-difference peak 0.12 of the median first difference, no spike. Tracing 3.69 ms.
+- Dolly, default: first-difference median 0.22, peak ratio 0.13. Tracing about the default.
+- Orbit 0.2 deg per frame, world mode: first-difference median 0.89, max 1.78 at frames 248-249 (a one-frame jump from about 0.8). The second difference peaks at 249 (1.12 of the median first difference). The world counters show no world spawn or request in frames 246-250, and the same jump is in the default orbit (no world surfels, 1.88 at 248-249, second-difference peak 2.14 of the median first difference, against 1.12 with world mode). So the jump comes from the scene content, not from the world surfels, and world mode does not add popping.
+- Energy along a moving path is not comparable with the static reference, so it is not reported.
+
+### 17.7 Scalability
+
+- Memory, world mode at Medium: request queue 256 KiB; cell stamps 704 KiB (180,224 cells x 4 B); world surfels at most 512 x about 0.5 KB (surfel, 16 radial texels, guide map), about 0.25 MB. Total about 1.2 MB. The grid is about 14 MB (section 10.1), and it is unchanged.
+- Cost per frame: the world spawn dispatch is one 64-lane group for 16 requests. A queued request costs one atomic on the cell stamp and one on the queue count. Tracing is the remaining cost: on Cornell in world mode it is 2.6 ms of which most is the BVH walk and the cache lookups at the first hit. The grid part of the frame is independent of scene size; the tracing is not.
+- Population: the world cap is a fraction of the screen cap, so it scales with the tier. The per-tier values are not set; the tiers inherit the Medium defaults (world off).
+
+### 17.8 Not done and open
+
+- The energy loss of world mode (17.3). It is the blocker for turning world mode on.
+- NFS noise in world mode (4.2%).
+- The final gather is not a reference for recycling. The brief asked for "ray hits or the gather", and the gather lives in `apply_indirect.comp`, which is not in this change's file set. Off-screen world surfels are used by rays, so the ray reference covers them.
+- A/B timing pairs (3 each) were not run, and the furnace and white-sky checks were not re-measured. Both need a quiet GPU.
+- The world settings are not set per tier.

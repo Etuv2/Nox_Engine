@@ -172,6 +172,10 @@ struct SoftwareBVHHit
     vec3 localV0;
     vec3 localV1;
     vec3 localV2;
+    // Transform record of the hit instance (GPU transform buffer index, or 0xffffffff), and whether it is skinned.
+    // A world surfel can only be re-attached to a rigid transform, so skinned hits are not queued.
+    uint transformID;
+    bool skinned;
 };
 
 
@@ -390,6 +394,8 @@ SoftwareBVHHit TraceSoftwareTLAS(vec3 origin, vec3 direction, float tMin, float 
             bestHit.position = worldPosition;
             bestHit.normal = SurfelSafeNormalize(normalMatrix * localHit.normal);
             bestHit.material = localHit.material;
+            bestHit.transformID = instance.metadata.w;
+            bestHit.skinned = instance.metadata.z != 0u;
             // Same cross product as the emitter list (RTSceneResources::AppendInstanceEmitters): world vertices.
             vec3 worldV0 = (instance.worldFromLocal * vec4(localHit.localV0, 1.0)).xyz;
             vec3 worldV1 = (instance.worldFromLocal * vec4(localHit.localV1, 1.0)).xyz;
@@ -511,6 +517,9 @@ float SampleShadowLayerWorld(int layer, vec3 worldPos, vec3 normal, vec3 surface
 // into enclosed geometry and into every off-screen hit (plan section 15, lever 6). With this set (the surfel trace only),
 // such a point gets a BVH shadow ray toward the sun instead. The reference keeps the cascade-only answer.
 uniform int uSunShadowBVHFallback = 0;
+// Whether the BVH sun fallback applies to the direct light being evaluated now. SurfelPathRadiance sets it per vertex
+// (SurfelPathControl.sunBVHDepth), so the any-hit ray is paid only where the first hit's direct light needs it (plan 17).
+bool gSunShadowBVHHere = true;
 const float SURFEL_SHADOW_ORIGIN_OFFSET = 0.004;
 
 bool SurfelShadowPointInLayer(int layer, vec3 worldPos)
@@ -536,7 +545,7 @@ float DirectionalShadowVisibility(int startSlice, int sliceCount, vec3 worldPos,
     }
 
     vec3 surfaceToLight = -lightDirection;
-    if (uSunShadowBVHFallback != 0 && !SurfelShadowPointInLayer(startSlice + cascadeIndex, worldPos)) {
+    if (uSunShadowBVHFallback != 0 && gSunShadowBVHHere && !SurfelShadowPointInLayer(startSlice + cascadeIndex, worldPos)) {
         SoftwareBVHHit blocker = TraceSoftwareBVHAnyHit(worldPos + normal * SURFEL_SHADOW_ORIGIN_OFFSET, surfaceToLight,
             1e-4, SURFEL_TRACE_BVH_FAR_DISTANCE);
         return blocker.hit ? 0.0 : 1.0;
@@ -818,8 +827,30 @@ float SurfelPowerWeight(float pa, float pb)
 // implements it from the surfel cache; reference_gi.comp returns false (it keeps no surfels).
 bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID, uint seed, out vec3 irradiance);
 
+// Where a path vertex came from, for queuing a world surfel when the cache misses there (plan section 17).
+// eligible is false for skinned instances, for hits without a transform, and for the reference.
+struct SurfelWorldSource
+{
+    uint transformID;
+    uint materialID;
+    bool eligible;
+};
+
+SurfelWorldSource SurfelWorldSourceFromHit(SoftwareBVHHit hit)
+{
+    SurfelWorldSource source;
+    source.transformID = hit.transformID;
+    source.materialID = 0u;
+    // Transform ID 0 is INVALID_TRANSFORM_ID on the host side.
+    source.eligible = !hit.skinned && hit.transformID != 0u && hit.transformID != SURFEL_INVALID_INDEX;
+    return source;
+}
+
+// Queues a world surfel request at a path vertex the cache could not answer. trace_rays.comp implements it; the reference
+// keeps no surfels and returns at once (reference_gi.comp).
+void SurfelPathWorldRequest(vec3 position, vec3 normal, vec3 albedo, SurfelWorldSource source, uint depth);
+
 const uint SURFEL_PATH_MAX_HITS = 32u;
-const uint SURFEL_PATH_CACHE_DEPTH = 2u;
 const float SURFEL_PATH_RR_MAX_CONTINUE = 0.95;
 const float SURFEL_PATH_ORIGIN_OFFSET = 0.004;
 
@@ -834,6 +865,12 @@ struct SurfelPathControl
     // still count). w > 0 continues it and multiplies the continuation by w; the caller takes the continuation with
     // probability 1/w, so the estimate stays unbiased.
     float continuationWeight;
+    // Queue a world surfel request at each queued vertex the cache misses (trace only; the reference leaves it off).
+    bool recordWorld;
+    // Vertices below this depth use the BVH sun fallback for their direct light; deeper ones use the cascades only.
+    uint sunBVHDepth;
+    // Vertices below this depth read the cache (and queue a world surfel on a miss). Deeper vertices continue without it.
+    uint cacheDepth;
 };
 
 // Radiance leaving a hit toward the path origin, by a path that continues from the hit. emissionWeight is the hit's own
@@ -846,23 +883,29 @@ struct SurfelPathControl
 // control.neeDepth limits the next-event samples to the vertices below it. Past that depth the emission of the next vertex
 // counts at full weight (no MIS), which is still unbiased, and each deeper vertex costs one trace fewer.
 vec3 SurfelPathRadiance(vec3 position, vec3 normal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed,
-                        SurfelPathControl control)
+                        SurfelPathControl control, SurfelWorldSource source)
 {
     vec3 radiance = vec3(0.0);
     vec3 throughput = vec3(1.0);
     vec3 emitted = emissionWeight;
     uint rng = seed;
+    SurfelWorldSource vertexSource = source;
     for (uint depth = 0u; depth < control.maxHits; ++depth) {
         radiance += throughput * emitted;
 
+        gSunShadowBVHHere = depth < control.sunBVHDepth;
         vec3 direct = EvaluateHitDirectIrradiance(position, normal);
         vec3 cached;
         // The cache is read at the first vertices only. Deeper vertices continue the path, which is unbiased and cheaper
         // than a cache walk at every bounce.
-        if (control.useCache && depth < SURFEL_PATH_CACHE_DEPTH && SurfelPathCachedIrradiance(position, normal, depth == 0u ? sourceSurfelID : SURFEL_INVALID_INDEX,
+        if (control.useCache && depth < control.cacheDepth && SurfelPathCachedIrradiance(position, normal, depth == 0u ? sourceSurfelID : SURFEL_INVALID_INDEX,
                 rng ^ (depth * 0x9e3779b9u), cached)) {
             // The cache already holds the emitters' light at this point, so no next-event sample here.
             return radiance + throughput * albedo * SURFEL_INV_PI * (direct + cached);
+        }
+        if (control.useCache && control.recordWorld && depth < control.cacheDepth) {
+            // The cache could not answer this vertex: queue a world surfel here, so later rays stop at it.
+            SurfelPathWorldRequest(position, normal, albedo, vertexSource, depth);
         }
 
         vec3 neeU = vec3(SurfelPathRandom(rng), SurfelPathRandom(rng), SurfelPathRandom(rng));
@@ -916,6 +959,7 @@ vec3 SurfelPathRadiance(vec3 position, vec3 normal, vec3 albedo, vec3 emissionWe
         position = next.position;
         normal = SurfelSafeNormalize(nextNormal);
         albedo = clamp(next.material.albedo, vec3(0.0), vec3(1.0));
+        vertexSource = SurfelWorldSourceFromHit(next);
     }
     return radiance;
 }

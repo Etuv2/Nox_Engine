@@ -59,6 +59,17 @@ layout(binding = T_SURFEL_GBUFFER_EMISSIVE) uniform sampler2D uEmissiveTex;
 layout(binding = T_SURFEL_GBUFFER_TRANSFORM_ID) uniform usampler2D uTransformIDTex;
 layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
 
+// World mode (uWorldMode = 1, plan section 17): one invocation per queued path hit, not per tile.
+layout(binding = B_SURFEL_WORLD_REQUESTS, std430) readonly buffer SurfelWorldRequestBuffer
+{
+    SurfelWorldRequest worldRequests[];
+};
+
+uniform uint uWorldMode = 0u;
+uniform uint uWorldSpawnBudget = 0u;
+uniform uint uWorldPopulationCap = 0u;
+uniform uint uWorldRequestCapacity = 4096u;
+
 uniform uint uMaxSpawnCandidates;
 uniform uvec2 uTileCount;
 uniform uint uTileSize;
@@ -157,6 +168,10 @@ struct SpawnCandidate
     float importance;
     vec3 initialCellIrradiance;
     float initialCellConfidence;
+    // World mode: the albedo and emission come from the path hit, not from the G-buffer pixel.
+    bool hasOverride;
+    vec3 overrideAlbedo;
+    vec3 overrideEmissive;
 };
 
 bool MaterialAllowsSurfelGI(uint materialID)
@@ -695,19 +710,26 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
         return false;
     }
 
-    if (!ReserveSpawnBudget()) {
+    // World surfels have their own per-frame budget (the dispatch size) and population cap, so they do not take a screen spawn.
+    if (!candidate.hasOverride && !ReserveSpawnBudget()) {
         return false;
     }
 
     uint surfelID = SURFEL_INVALID_INDEX;
     if (!PopFreeIndex(surfelID)) {
-        ReleaseSpawnBudget();
+        if (!candidate.hasOverride) {
+            ReleaseSpawnBudget();
+        }
         return false;
     }
 
-    float metallic = clamp(texelFetch(uPackedNormalRMTex, pixel, 0).a, 0.0, 1.0);
-    vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0)) * (1.0 - metallic);
-    vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
+    float metallic = candidate.hasOverride ? 0.0 : clamp(texelFetch(uPackedNormalRMTex, pixel, 0).a, 0.0, 1.0);
+    vec3 albedo = candidate.hasOverride
+        ? candidate.overrideAlbedo
+        : max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0)) * (1.0 - metallic);
+    vec3 emissive = candidate.hasOverride
+        ? candidate.overrideEmissive
+        : max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
     vec3 initialCellIrradiance = max(candidate.initialCellIrradiance, vec3(0.0)) * 0.45;
     float directNdotL = max(dot(worldNormal, SurfelSafeNormalize(-uDirectionalLightDirection)), 0.0);
     float initialDirectScale = 0.04;
@@ -724,7 +746,7 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     surfel.worldPos_radius = vec4(worldPos, radius);
     surfel.worldNormal_age = vec4(worldNormal, 0.0);
     surfel.localPos_spawnRadius = vec4(localPos.xyz, radius);
-    uint flags = SURFEL_ALIVE | SURFEL_NEW;
+    uint flags = SURFEL_ALIVE | SURFEL_NEW | (candidate.hasOverride ? SURFEL_WORLD : 0u);
     if (SurfelLuminance(emissive) > 1e-5) {
         flags |= SURFEL_EMISSIVE;
     }
@@ -738,7 +760,8 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     surfel.shortMean.a = 1.0;
     surfel.shortM2.a = 0.0;
     surfel.frameInfo = uvec4(uFrameIndex, uFrameIndex, uFrameIndex, uFrameIndex);
-    surfel.lifecycle = uvec4(0u, 0u, 0u, 0u);
+    // lifecycle.x: last frame a ray referenced it (recycling). A world surfel starts referenced by the hit that spawned it.
+    surfel.lifecycle = uvec4(candidate.hasOverride ? uFrameIndex : 0u, 0u, 0u, 0u);
     surfel.debug = vec4((vec2(candidate.pixelU) + vec2(0.5)) / vec2(uResolution),
                         clamp(candidateCoverage / max(uCoverageThreshold, 1e-4), 0.0, 1.0),
                         0.0);
@@ -964,6 +987,9 @@ void InitSpawnCandidate(out SpawnCandidate candidate, uvec2 pixelU)
     candidate.importance = 0.0;
     candidate.initialCellIrradiance = vec3(0.0);
     candidate.initialCellConfidence = 0.0;
+    candidate.hasOverride = false;
+    candidate.overrideAlbedo = vec3(0.0);
+    candidate.overrideEmissive = vec3(0.0);
 }
 
 // Spawn budget for this frame. The demand is half of last frame's under-covered visible tiles: each of
@@ -978,7 +1004,8 @@ uint ComputeSpawnBudget(uint tileCount)
     // here because recycling has already run.
     float visible = counters.visiblePreviousFrame > 0u ? float(counters.visiblePreviousFrame) : float(tileCount);
     float target = min(uSpawnPopulationKappa * visible, uSpawnPopulationCap);
-    float live = float(uMaxSurfels) - float(counters.freeTop);
+    // Screen population only: world surfels have their own cap (plan section 17), so they do not take the screen budget.
+    float live = max(float(uMaxSurfels) - float(counters.freeTop) - float(counters.liveWorld), 0.0);
     float deficit = uSpawnBudgetDeficitLimit != 0u ? max(target - live, 0.0) : float(uMaxSurfels);
     float floorBudget = float(uMaxSpawnsPerFrame);
     float ceilingBudget = max(floorBudget,
@@ -987,8 +1014,74 @@ uint ComputeSpawnBudget(uint tileCount)
     return uint(min(deficit, clamp(demand, floorBudget, ceilingBudget)));
 }
 
+// World mode: one queued path hit. A hit whose coverage already holds (the cache missed on a zero-weight surfel, or a
+// neighbour covers it) is skipped; otherwise a surfel is allocated at the hit with the screen footprint radius.
+void WorldSpawnMain()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint queued = min(counters.worldRequests, min(uWorldRequestCapacity, uint(worldRequests.length())));
+    if (index >= min(queued, uWorldSpawnBudget)) {
+        return;
+    }
+    if (counters.liveWorld >= uWorldPopulationCap) {
+        return;
+    }
+
+    SurfelWorldRequest request = worldRequests[index];
+    uint transformID = request.ids.x;
+    if (transformID >= uTransformCount) {
+        atomicAdd(counters.rejectedInvalidTransform, 1u);
+        return;
+    }
+    vec3 worldPos = request.worldPos_pad.xyz;
+    vec3 worldNormal = SurfelSafeNormalize(request.normal_pad.xyz);
+    if (!IsReasonableWorldPosition(worldPos) || !IsFiniteVec3(worldNormal)) {
+        atomicAdd(counters.rejectedInvalidWorldPos, 1u);
+        return;
+    }
+
+    SpawnCandidate candidate;
+    InitSpawnCandidate(candidate, uvec2(0u));
+    candidate.valid = true;
+    candidate.worldPos = worldPos;
+    candidate.worldNormal = worldNormal;
+    candidate.transformID = transformID;
+    candidate.materialID = request.ids.y;
+    candidate.hasOverride = true;
+    candidate.overrideAlbedo = max(request.albedo_pad.rgb, vec3(0.0));
+    candidate.overrideEmissive = vec3(0.0);
+    candidate.adaptiveRadius = SpawnRadiusForWorldPosition(worldPos);
+    if (!SurfelWorldToGridAddress(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent,
+            candidate.baseAddress)) {
+        atomicAdd(counters.rejectedOutsideGrid, 1u);
+        return;
+    }
+
+    uint nearbyCount = 0u;
+    vec3 cellIrradiance = vec3(0.0);
+    float cellConfidence = 0.0;
+    float coverage = ComputeCandidateCoverage(worldPos, worldNormal, candidate.baseAddress, transformID, candidate.materialID,
+        candidate.adaptiveRadius, nearbyCount, cellIrradiance, cellConfidence);
+    if (coverage >= uCoverageThreshold) {
+        atomicAdd(counters.worldSkippedCovered, 1u);
+        return;
+    }
+    candidate.coverage = coverage;
+    candidate.nearbySurfelCount = nearbyCount;
+    candidate.initialCellIrradiance = cellIrradiance;
+    candidate.initialCellConfidence = cellConfidence;
+    if (SpawnSurfelFromCandidate(candidate, coverage)) {
+        atomicAdd(counters.worldSpawned, 1u);
+        atomicAdd(counters.liveWorld, 1u);
+    }
+}
+
 void main()
 {
+    if (uWorldMode != 0u) {
+        WorldSpawnMain();
+        return;
+    }
     uint workItem = gl_WorkGroupID.x;
     uint localIndex = gl_LocalInvocationIndex;
 

@@ -638,6 +638,26 @@ void ModularRenderer::SyncSurfelGISettings()
 		applyEnvToggle("NOX_SURFEL_GI_RADIAL_DEPTH", settings.useRadialDepth);
 		applyEnvToggle("NOX_SURFEL_GI_IRRADIANCE_SHARING", settings.useIrradianceSharing);
 		applyEnvToggle("NOX_SURFEL_GI_SUN_BVH", settings.sunShadowBVHFallback);
+		// World surfels and the path depth cap (plan section 17).
+		applyEnvToggle("NOX_SURFEL_GI_WORLD", settings.worldSurfels);
+		settings.worldSurfelSpawnsPerFrame = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_WORLD_SPAWNS", static_cast<int>(settings.worldSurfelSpawnsPerFrame)), 0, 4096));
+		settings.worldSurfelPopulationFraction = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_WORLD_FRACTION", settings.worldSurfelPopulationFraction), 0.0f, 1.0f);
+		// World mode (NOX_SURFEL_GI_WORLD=1) runs the cache-first path: depth 3, sun fallback at the first hit only, and the
+		// cache read at three vertices. Each can still be set on its own (plan section 17).
+		settings.pathMaxHits = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_PATH_DEPTH", settings.worldSurfels ? 3 : 32), 1, 32));
+		settings.sunShadowBVHDepth = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_SUN_BVH_DEPTH", settings.worldSurfels ? 1 : 32), 0, 32));
+		settings.cacheDepth = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_DEPTH", settings.worldSurfels ? 3 : 2), 1, 32));
+		settings.cacheMinConfidence = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_MIN_CONF", settings.cacheMinConfidence), 0.0f, 1.0f);
+		settings.cacheMinWeight = std::max(
+			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_MIN_WEIGHT", settings.cacheMinWeight), 0.0f);
+		settings.cacheSupportSpread = std::max(
+			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_SPREAD", settings.cacheSupportSpread), 0.1f);
 	}
 	// Reference mode reads the surfel composite view too. NOX_GI_REFERENCE=1 with
 	// NOX_SURFEL_GI_COMPOSITE_DEBUG=4 then shows the reference term alone (plan section 14, O2).

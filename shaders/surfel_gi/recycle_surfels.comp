@@ -39,6 +39,8 @@ uniform float uMaxDistance;
 uniform float uSpawnPopulationKappa = 1.0;
 uniform float uSpawnPopulationCap = 1.0e9;
 uniform uint uSpawnTileCount = 1u;
+// World surfels (plan section 17): their own population cap. Over the cap, they take the over-target term.
+uniform float uWorldPopulationCap = 0.0;
 
 // Staleness is zero for the first SURFEL_RECYCLE_STALE_GRACE frames after a visible touch, then ramps to full
 // over SURFEL_RECYCLE_STALE_RAMP frames.
@@ -95,19 +97,26 @@ void main()
         ? float(counters.visiblePreviousFrame)
         : float(uSpawnTileCount);
     float target = max(min(uSpawnPopulationKappa * visible, uSpawnPopulationCap), 1.0);
-    float live = float(uMaxSurfels) - float(counters.freeTop);
+    float live = max(float(uMaxSurfels) - float(counters.freeTop) - float(counters.liveWorld), 0.0);
     float overTarget01 = SurfelSaturate((live - target) / target);
 
-    // Frames since the surfel was last visible (coverage touches set frameInfo.x). Integration sets frameInfo.y only
-    // for surfels that were given rays, so using it would recycle surfels that are visible but starved of rays.
-    uint visibleAge = uFrameIndex >= surfel.frameInfo.x ? (uFrameIndex - surfel.frameInfo.x) : 0u;
+    // World surfels are measured against their own cap, not the screen target (plan section 17).
+    bool world = (flags & SURFEL_WORLD) != 0u;
+    float worldOver01 = SurfelSaturate((float(counters.liveWorld) - uWorldPopulationCap) / max(uWorldPopulationCap, 1.0));
+    float classOver01 = world ? worldOver01 : overTarget01;
+
+    // Frames since the surfel was last used: visible (coverage touches set frameInfo.x) or referenced by a ray hit
+    // (the cache lookup sets lifecycle.x). Integration sets frameInfo.y only for surfels that were given rays, so using
+    // it would recycle surfels that are visible but starved of rays.
+    uint lastUse = max(surfel.frameInfo.x, surfel.lifecycle.x);
+    uint visibleAge = uFrameIndex >= lastUse ? (uFrameIndex - lastUse) : 0u;
     float stale01 = SurfelSaturate((float(visibleAge) - SURFEL_RECYCLE_STALE_GRACE) / SURFEL_RECYCLE_STALE_RAMP);
     float distance01 = SurfelSaturate(length(surfel.worldPos_radius.xyz - uCameraPosition) / max(uMaxDistance, 1.0));
 
     // GIBS p.29: over-target and stale terms, plus distance scaled by how far over target the population is.
-    float termOver = 0.4 * overTarget01;
+    float termOver = 0.4 * classOver01;
     float termStale = 0.3 * stale01;
-    float termFar = 0.3 * distance01 * overTarget01;
+    float termFar = 0.3 * distance01 * classOver01;
     float score = termOver + termStale + termFar;
     surfel.debug.w = score;
 
@@ -116,6 +125,9 @@ void main()
     if (!cull || !ReserveRecycleBudget()) {
         surfels[surfelID] = surfel;
         return;
+    }
+    if (world) {
+        atomicAdd(counters.liveWorld, 0xffffffffu);
     }
 
     if (forced) {

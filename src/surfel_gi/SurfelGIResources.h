@@ -9,6 +9,10 @@
 constexpr uint32_t kSurfelGridBlockCells = 1024u;
 // A surfel is stored in at most this many cells (the 3x3x3 block around its own cell).
 constexpr uint32_t kSurfelGridMaxCellsPerSurfel = 27u;
+// World surfel request queue: capacity (requests per frame, the shader's uWorldRequestCapacity is at most this) and the
+// stride of one SurfelWorldRequest (four vec4, 64 bytes).
+constexpr uint32_t kSurfelWorldRequestCapacity = 4096u;
+constexpr std::size_t kSurfelWorldRequestBytes = 64u;
 
 struct SurfelGridSettings {
 	glm::uvec3 resolution{ 32u, 32u, 24u };
@@ -86,7 +90,10 @@ enum class SurfelGIBinding : uint32_t {
 	GridCellSums = 27u,
 	GridBlockSums = 38u,
 	GridSlots = 37u,
-	Emitters = 39u
+	Emitters = 39u,
+	// World surfels (plan section 17): queued path-hit requests (pool) and one request stamp per grid cell (grid).
+	WorldRequests = 40u,
+	CellStamps = 41u
 };
 
 constexpr uint32_t ToGLuint(SurfelGIBinding binding)
@@ -191,9 +198,18 @@ struct alignas(16) SurfelCounters {
 	uint32_t spawnBudgetDenied = 0u;
 	uint32_t radiusCapped = 0u;
 	uint32_t recycledYoung = 0u;
+	// World surfels (plan section 17), same order as the GLSL struct.
+	uint32_t worldRequests = 0u;
+	uint32_t worldRequestDropped = 0u;
+	uint32_t worldSpawned = 0u;
+	uint32_t worldSkippedCovered = 0u;
+	uint32_t liveWorldCounted = 0u;
+	uint32_t cacheHits = 0u;
+	uint32_t cacheMisses = 0u;
+	uint32_t liveWorld = 0u;
 };
-// 64 uint32 fields = 256 bytes, the same as the GLSL struct.
-static_assert(sizeof(SurfelCounters) == 256, "SurfelCounters must match std430 GLSL layout.");
+// 72 uint32 fields = 288 bytes, the same as the GLSL struct.
+static_assert(sizeof(SurfelCounters) == 288, "SurfelCounters must match std430 GLSL layout.");
 
 enum SurfelCoverageTileFlags : uint32_t {
 	SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,
@@ -294,13 +310,15 @@ public:
 	rhi::BufferHandle GetSurfelBuffer() const { return m_surfelBuffer; }
 	rhi::BufferHandle GetFreeListBuffer() const { return m_freeListBuffer; }
 	rhi::BufferHandle GetCountersBuffer() const { return m_countersBuffer; }
+	rhi::BufferHandle GetWorldRequestBuffer() const { return m_worldRequestBuffer; }
 	uint32_t GetMaxSurfels() const { return m_maxSurfels; }
-	bool IsCreated() const { return m_surfelBuffer.IsValid() && m_freeListBuffer.IsValid() && m_countersBuffer.IsValid(); }
+	bool IsCreated() const { return m_surfelBuffer.IsValid() && m_freeListBuffer.IsValid() && m_countersBuffer.IsValid() && m_worldRequestBuffer.IsValid(); }
 
 private:
 	rhi::BufferHandle m_surfelBuffer;
 	rhi::BufferHandle m_freeListBuffer;
 	rhi::BufferHandle m_countersBuffer;
+	rhi::BufferHandle m_worldRequestBuffer;
 	uint32_t m_maxSurfels = 0;
 };
 
@@ -325,6 +343,7 @@ public:
 	rhi::BufferHandle GetPendingBuffer() const { return m_pendingBuffer; }
 	rhi::BufferHandle GetCellSumBuffer() const { return m_cellSumBuffer; }
 	rhi::BufferHandle GetOverlapBuffer() const { return m_overlapBuffer; }
+	rhi::BufferHandle GetCellStampBuffer() const { return m_cellStampBuffer; }
 	uint32_t GetCellCount() const { return m_cellCount; }
 	uint32_t GetBlockCount() const { return m_blockCount; }
 	uint32_t GetEntryCapacity() const { return m_entryCapacity; }
@@ -340,6 +359,7 @@ private:
 	rhi::BufferHandle m_pendingBuffer;
 	rhi::BufferHandle m_cellSumBuffer;
 	rhi::BufferHandle m_overlapBuffer;
+	rhi::BufferHandle m_cellStampBuffer;
 	uint32_t m_cellCount = 0;
 	uint32_t m_blockCount = 0;
 	uint32_t m_entryCapacity = 0;

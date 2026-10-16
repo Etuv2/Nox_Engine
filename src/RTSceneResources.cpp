@@ -333,7 +333,8 @@ void RTSceneResources::RebuildIncrementalInstanceList(
         const MeshComponent& mesh,
         const glm::mat4& entityWorldTransform,
         std::size_t blasIndex,
-        bool isSkinnedMesh) {
+        bool isSkinnedMesh,
+        uint32_t transformID) {
         const glm::mat4 meshLocalTransform = ResolveRenderableMeshLocalTransform(renderable, mesh);
         const glm::mat4 instanceWorldTransform = entityWorldTransform * meshLocalTransform;
         instance.mesh = &mesh;
@@ -341,6 +342,7 @@ void RTSceneResources::RebuildIncrementalInstanceList(
         instance.worldTransform = instanceWorldTransform;
         instance.inverseWorldTransform = glm::inverse(instanceWorldTransform);
         instance.isSkinnedMesh = isSkinnedMesh;
+        instance.transformID = transformID;
 
         const glm::vec3 localMin = mesh.boundingVolumeValid ? mesh.boundingMin : glm::vec3(-mesh.boundingRadius);
         const glm::vec3 localMax = mesh.boundingVolumeValid ? mesh.boundingMax : glm::vec3(mesh.boundingRadius);
@@ -404,6 +406,8 @@ void RTSceneResources::RebuildIncrementalInstanceList(
             }
 
             const glm::mat4 entityWorldTransform = transformSystem->GetWorldTransform(entity);
+            const TransformComponent* entityTransform = componentManager->GetTransform(entity);
+            const uint32_t entityTransformID = entityTransform ? entityTransform->transformID : 0u;
             const std::size_t rangeBegin = m_tlasInstances.size();
             std::size_t instanceCount = 0;
 
@@ -420,7 +424,8 @@ void RTSceneResources::RebuildIncrementalInstanceList(
                 const std::size_t blasIndex = ensureBlasRecord(meshKey, mesh);
 
                 TLASInstance instance;
-                updateInstanceFromRenderable(instance, renderable, mesh, entityWorldTransform, blasIndex, isSkinnedMesh);
+                updateInstanceFromRenderable(instance, renderable, mesh, entityWorldTransform, blasIndex, isSkinnedMesh,
+                    entityTransformID);
                 m_tlasInstances.push_back(instance);
                 ++instanceCount;
             });
@@ -460,6 +465,8 @@ void RTSceneResources::RebuildIncrementalInstanceList(
             }
 
             const glm::mat4 entityWorldTransform = transformSystem->GetWorldTransform(entity);
+            const TransformComponent* entityTransform = componentManager->GetTransform(entity);
+            const uint32_t entityTransformID = entityTransform ? entityTransform->transformID : 0u;
             std::size_t instanceIndex = rangeIt->second.begin;
             std::size_t updatedCount = 0;
 
@@ -478,7 +485,8 @@ void RTSceneResources::RebuildIncrementalInstanceList(
                 }
 
                 const std::size_t blasIndex = m_tlasInstances[instanceIndex].blasIndex;
-                updateInstanceFromRenderable(m_tlasInstances[instanceIndex], *renderable, mesh, entityWorldTransform, blasIndex, isSkinnedMesh);
+                updateInstanceFromRenderable(m_tlasInstances[instanceIndex], *renderable, mesh, entityWorldTransform, blasIndex, isSkinnedMesh,
+                    entityTransformID);
                 ++instanceIndex;
                 ++updatedCount;
             });
@@ -664,7 +672,7 @@ void RTSceneResources::UploadIncrementalScene()
             static_cast<uint32_t>(record.nodeOffset),
             static_cast<uint32_t>(record.triangleOffset),
             source.isSkinnedMesh ? 1u : 0u,
-            0u);
+            source.transformID);
         instances.push_back(instance);
         AppendInstanceEmitters(record.bvh.triangles, source.worldTransform, emitters);
     }

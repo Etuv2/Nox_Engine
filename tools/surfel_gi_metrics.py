@@ -107,6 +107,14 @@ CONFIG_ENV = {
     "surf_term_k125": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.25", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_term_k20": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "2.0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_term_k025": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.25", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    # World surfels (plan section 17): off, and the path depth cap at its old value (32), each with a noise twin.
+    "surf_noworld": {**SURF_ENV, "NOX_SURFEL_GI_WORLD": "0"},
+    "surf_term_noworld": {**SURF_ENV, "NOX_SURFEL_GI_WORLD": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_d32": {**SURF_ENV, "NOX_SURFEL_GI_PATH_DEPTH": "32", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_noworld_d32": {**SURF_ENV, "NOX_SURFEL_GI_WORLD": "0", "NOX_SURFEL_GI_PATH_DEPTH": "32",
+                              "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_w8": {**SURF_ENV, "NOX_SURFEL_GI_WORLD_SPAWNS": "8", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_w32": {**SURF_ENV, "NOX_SURFEL_GI_WORLD_SPAWNS": "32", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "ref": REF_ENV,
     "indep": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0"},
     # Reference GI alone (composite debug 4), the same quantity as surf_term. Use it for ratios: "indep" energy
@@ -125,9 +133,13 @@ GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1",
               "surf_noguide", "surf_nosharing", "surf_r8k")
 SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15", "ref",
                       "surf_noguide", "surf_term_noguide", "surf_nosharing", "surf_term_nosharing",
-                      "surf_term_r4k", "surf_r8k", "surf_term_r8k")
+                      "surf_term_r4k", "surf_r8k", "surf_term_r8k",
+                      "surf_noworld", "surf_term_noworld", "surf_term_d32", "surf_term_noworld_d32",
+                      "surf_term_w8", "surf_term_w32")
 REQUIRED_COUNTERS = ("liveSurfels", "requestedRays", "allocatedRays", "shortfall")
-OPTIONAL_COUNTERS = ("youngSurfels", "overflowGridEntries", "rayShortfall")
+OPTIONAL_COUNTERS = ("youngSurfels", "overflowGridEntries", "rayShortfall",
+                     "worldRequests", "worldDropped", "worldSpawned", "worldSkipped", "liveWorld", "liveWorldCounted",
+                     "cacheHits", "cacheMisses", "underCoveredTiles", "coverageVisibleTileCount")
 SPREAD_KEYS = ["energy", "indep_ratio", "indep_rmse_rel", "indep_pearson", "noise_rel",
                "gi_both_minus_ssgi", "gi_surf_minus_off", "sum_labels_ms", "total_gpu_ms", "shortfall"]
 

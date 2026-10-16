@@ -7,6 +7,8 @@
 #define B_SURFEL_DISPATCH_ARGS 35
 #define B_RAY_ALLOC_SCRATCH 36
 #define B_SURFEL_EMITTERS 39
+#define B_SURFEL_WORLD_REQUESTS 40
+#define B_SURFEL_CELL_STAMPS 41
 #define B_GRID_HEADERS 13
 #define B_GRID_ENTRIES 14
 #define B_GRID_BLOCK_SUMS 38
@@ -49,6 +51,8 @@
 #define SURFEL_DYNAMIC 0x00000004u
 #define SURFEL_SKINNED 0x00000008u
 #define SURFEL_EMISSIVE 0x00000010u
+// World surfel: spawned at a path hit off screen (plan section 17). Excluded from screen coverage.
+#define SURFEL_WORLD 0x00000020u
 #define SURFEL_INVALID 0x80000000u
 
 #define GPU_TRANSFORM_INVALID 0x80000000u
@@ -170,6 +174,27 @@ struct SurfelCounters
     uint spawnBudgetDenied;
     uint radiusCapped;
     uint recycledYoung;
+    // World surfels (plan section 17). Per frame, cleared by begin_frame: requests queued by path hits, requests
+    // dropped at the queue cap, world surfels spawned, requests skipped as already covered, live world surfels
+    // counted by count_live_surfels, and path cache lookups that hit or missed.
+    uint worldRequests;
+    uint worldRequestDropped;
+    uint worldSpawned;
+    uint worldSkippedCovered;
+    uint liveWorldCounted;
+    uint cacheHits;
+    uint cacheMisses;
+    // Persistent (not cleared per frame): live world surfels. Spawn adds, recycle removes.
+    uint liveWorld;
+};
+
+// One path hit that the surfel cache could not answer, queued for a world surfel spawn (world_spawn in spawn.comp).
+struct SurfelWorldRequest
+{
+    vec4 worldPos_pad;
+    vec4 normal_pad;
+    vec4 albedo_pad;
+    uvec4 ids;      // x = transform ID, y = material ID, z = grid cell, w = frame
 };
 
 struct SurfelCoverageTile

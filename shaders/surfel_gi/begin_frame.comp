@@ -21,6 +21,13 @@ void main()
         counters.underCoveredPreviousFrame = counters.underCoveredTileCount;
     }
     counters.liveCount = 0u;
+    counters.worldRequests = 0u;
+    counters.worldRequestDropped = 0u;
+    counters.worldSpawned = 0u;
+    counters.worldSkippedCovered = 0u;
+    counters.liveWorldCounted = 0u;
+    counters.cacheHits = 0u;
+    counters.cacheMisses = 0u;
     counters.spawnedThisFrame = 0u;
     counters.recycledThisFrame = 0u;
     counters.requestedRays = uRequestReservation;

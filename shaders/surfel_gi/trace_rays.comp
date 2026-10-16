@@ -5,9 +5,21 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "common.glsl"
 #include "../includes/shadow_bias_common.glsl"
 
-layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+// Writable: a cache lookup that a ray uses marks the surfel as referenced (lifecycle.x), for recycling (plan section 17).
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
 {
     Surfel surfels[];
+};
+
+layout(binding = B_SURFEL_WORLD_REQUESTS, std430) buffer SurfelWorldRequestBuffer
+{
+    SurfelWorldRequest worldRequests[];
+};
+
+// One stamp per grid cell: frame + 1 of the last world request queued in it, so each cell queues at most one per frame.
+layout(binding = B_SURFEL_CELL_STAMPS, std430) buffer SurfelCellStampBuffer
+{
+    uint cellStamps[];
 };
 
 layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
@@ -68,6 +80,21 @@ uniform float uLightingChangeFactor = 0.0;
 uniform int uUseRayGuiding = 0;
 // Path continuation period N (SurfelGISettings::pathContinuationPeriod): one warp group in N continues per frame.
 uniform uint uContinuationPeriod = 1u;
+// World surfels (plan section 17): queue requests at cache misses (0 = off), the queue capacity, and the path depth cap.
+uniform uint uWorldRequestsEnabled = 0u;
+uniform uint uWorldRequestCapacity = 4096u;
+uniform uint uPathMaxHits = 3u;
+// Vertices below this depth use the BVH sun fallback for their direct light (NOX_SURFEL_GI_SUN_BVH_DEPTH).
+uniform uint uSunBVHDepth = 1u;
+// Vertices below this depth read the surfel cache (NOX_SURFEL_GI_CACHE_DEPTH; 2 is the merged-base behaviour).
+uniform uint uCacheDepth = 2u;
+// Minimum confidence-weighted mean of the surfels that answer a path vertex (0 = any weight answers). Young surfels
+// carry little irradiance and low confidence; below this the vertex continues instead (NOX_SURFEL_GI_CACHE_MIN_CONF).
+uniform float uCacheMinConfidence = 0.0;
+// Minimum total weight of the surfels that answer a path vertex (NOX_SURFEL_GI_CACHE_MIN_WEIGHT). 1e-4 was the old test.
+uniform float uCacheMinWeight = 1.0e-4;
+// Kernel spread of the cache weight, in support radii (default 3.10; NOX_SURFEL_GI_CACHE_SPREAD).
+uniform float uCacheSupportSpread = 3.10;
 
 // Guide map of the surfel rays: the density of the origin's next-event MIS weight needs it (plan section 14).
 layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
@@ -90,14 +117,12 @@ const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 2.0;
 const float SURFEL_TRACE_HIT_RADIUS_SCALE = 5.5;
 const float SURFEL_TRACE_MIN_HIT_RADIUS = 0.14;
 const float SURFEL_TRACE_MAX_HIT_RADIUS = 0.80;
-const float SURFEL_TRACE_CACHE_SUPPORT_SPREAD = 3.10;
 const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
 const float SURFEL_TRACE_HIT_KIND_SCREEN = 2.0;
 const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_TRACE_SCREEN_RELIABILITY = 0.18;
-const uint SURFEL_TRACE_PATH_MAX_HITS = 32u;
 
 struct TraceGather
 {
@@ -162,7 +187,7 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
     vec3 delta = receiverPos - surfelPos;
     float dist = length(delta);
     float supportRadius = SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent) *
-        SURFEL_TRACE_CACHE_SUPPORT_SPREAD;
+        uCacheSupportSpread;
     float normalizedDistance = dist / max(supportRadius, 1e-4);
     float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.58);
     if (distanceWeight <= 1e-5) {
@@ -220,6 +245,7 @@ bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
 
     vec3 sumIrradiance = vec3(0.0);
     float sumWeight = 0.0;
+    float sumConfidence = 0.0;
     uint candidates = 0u;
     const uint maxCandidates = SURFEL_TRACE_CACHE_MAX_CANDIDATES;
     const uint perCellBudget = SURFEL_TRACE_CACHE_PER_CELL_BUDGET;
@@ -271,10 +297,20 @@ bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
             vec3 cached = max(surfel.irradiance.rgb, vec3(0.0));
             sumIrradiance += cached * weight;
             sumWeight += weight;
+            sumConfidence += weight * clamp(surfel.irradiance.a, 0.0, 1.0);
+            if (weight >= 0.02) {
+                // Referenced by a ray hit: recycling keeps it while rays keep using it (plan section 17).
+                atomicMax(surfels[entry.surfelID].lifecycle.x, uFrameIndex);
+            }
         }
     }
 
-    if (sumWeight <= 1e-4) {
+    // Usable coverage: the total weight must reach uCacheMinWeight. A thin neighbourhood (a few distant or perpendicular
+    // surfels) would otherwise answer with its own normalised average and cut the path short.
+    if (sumWeight <= uCacheMinWeight) {
+        return false;
+    }
+    if (sumConfidence < uCacheMinConfidence * sumWeight) {
         return false;
     }
     irradiance = clamp(sumIrradiance / sumWeight, vec3(0.0), vec3(64.0));
@@ -391,17 +427,53 @@ vec3 TraceVisibleGBufferAlbedoAtSurface(vec3 worldPos, vec3 normal, out float co
 // Cached indirect irradiance for the shared path (surfel_scene_trace.glsl): the same-surface cache lookup.
 bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID, uint seed, out vec3 irradiance)
 {
-    return TraceCachedIndirectAtSurface(position, normal, sourceSurfelID, seed, irradiance);
+    bool hit = TraceCachedIndirectAtSurface(position, normal, sourceSurfelID, seed, irradiance);
+    if (hit) {
+        atomicAdd(counters.cacheHits, 1u);
+    } else {
+        atomicAdd(counters.cacheMisses, 1u);
+    }
+    return hit;
+}
+
+// Queues a world surfel request for a path vertex the cache could not answer (plan section 17). At most one request
+// per grid cell per frame: the first hit to claim the cell's stamp queues it. Spawn (spawn.comp, world mode) checks
+// the coverage again before it allocates a surfel.
+void SurfelPathWorldRequest(vec3 position, vec3 normal, vec3 albedo, SurfelWorldSource source, uint depth)
+{
+    if (uWorldRequestsEnabled == 0u || !source.eligible || uGridCellCount == 0u) {
+        return;
+    }
+    SurfelGridAddress address;
+    if (!SurfelWorldToGridAddress(position, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address) ||
+        address.cell >= uGridCellCount) {
+        return;
+    }
+    uint stamp = uFrameIndex + 1u;
+    if (atomicExchange(cellStamps[address.cell], stamp) == stamp) {
+        return;
+    }
+    uint slot = atomicAdd(counters.worldRequests, 1u);
+    if (slot >= min(uWorldRequestCapacity, uint(worldRequests.length()))) {
+        atomicAdd(counters.worldRequestDropped, 1u);
+        return;
+    }
+    SurfelWorldRequest request;
+    request.worldPos_pad = vec4(position, float(depth));
+    request.normal_pad = vec4(normal, 0.0);
+    request.albedo_pad = vec4(clamp(albedo, vec3(0.0), vec3(1.0)), 0.0);
+    request.ids = uvec4(source.transformID, source.materialID, address.cell, uFrameIndex);
+    worldRequests[slot] = request;
 }
 
 // Radiance leaving a hit toward the ray: the path from the hit (SurfelPathRadiance). Where the cache has a coplanar
 // surfel it answers the hit; elsewhere the path continues, so the indirect light is not dropped (plan section 14, O1).
 // emissionWeight is the hit's emission, already MIS weighted by the caller.
 vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed,
-                      SurfelPathControl control)
+                      SurfelPathControl control, SurfelWorldSource source)
 {
     return SurfelPathRadiance(hitPos, hitNormal, albedo, emissionWeight, sourceSurfelID,
-        SurfelPathSeed(seed, uFrameIndex), control);
+        SurfelPathSeed(seed, uFrameIndex), control, source);
 }
 
 // Path control of a surfel ray past its first hit. The continuation roulette is warp coherent: the 32 rays of a warp
@@ -411,10 +483,14 @@ vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissionWei
 SurfelPathControl SurfelTraceControl(uint rayID)
 {
     SurfelPathControl control;
-    control.maxHits = SURFEL_TRACE_PATH_MAX_HITS;
+    control.maxHits = max(uPathMaxHits, 1u);
     control.rouletteStart = 1u;
     control.neeDepth = 1u;
     control.useCache = true;
+    control.recordWorld = uWorldRequestsEnabled != 0u;
+    // The BVH sun fallback costs an any-hit ray per vertex; the first hit's direct light is the part that needs it.
+    control.sunBVHDepth = uSunBVHDepth;
+    control.cacheDepth = uCacheDepth;
     control.continuationWeight = 1.0;
     uint period = max(uContinuationPeriod, 1u);
     if (period > 1u) {
@@ -479,7 +555,9 @@ bool ScreenSpaceHitRadiance(vec2 uv,
 
     vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0));
     vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
-    radiance = ShadeHitRadiance(hitPos, hitNormal, albedo, emissive, sourceSurfelID, seed, control);
+    // Screen-space hits have no transform record, so they are never queued as world surfels.
+    radiance = ShadeHitRadiance(hitPos, hitNormal, albedo, emissive, sourceSurfelID, seed, control,
+        SurfelWorldSource(0u, 0u, false));
     return true;
 }
 
@@ -531,7 +609,8 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, SurfelPathControl control, inout Tr
     // Emission is MIS weighted against this ray's sampling density; the origin's next-event sample is the other half.
     float emitterHitPdf = SurfelEmitterHitPdf(SurfelLuminance(emissive), hit.t, hit.geometricNormal, direction);
     gather.radiance = ShadeHitRadiance(hit.position, hit.normal, albedo,
-        emissive * SurfelPowerWeight(ray.throughput.a, emitterHitPdf), ray.ids.x, cacheSeed, control);
+        emissive * SurfelPowerWeight(ray.throughput.a, emitterHitPdf), ray.ids.x, cacheSeed, control,
+        SurfelWorldSourceFromHit(hit));
     gather.normal = hit.normal;
     gather.position = hit.position;
     gather.weight = 1.0;

@@ -36,6 +36,11 @@ bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID,
     return false;
 }
 
+// The reference queues no world surfels (control.recordWorld is off, and it keeps no surfel buffers).
+void SurfelPathWorldRequest(vec3 position, vec3 normal, vec3 albedo, SurfelWorldSource source, uint depth)
+{
+}
+
 // One path from a receiver, as an irradiance estimate: E = NEE(origin) + pi * L(first hit), where L is the path radiance
 // from the first hit (plan section 14). The origin's next-event sample and the first hit's emission are MIS weighted
 // against the one cosine sample that reaches the first hit. A miss is the sky: E gets pi * miss radiance.
@@ -75,8 +80,11 @@ vec3 ReferencePathIrradiance(vec3 origin, vec3 normal, inout uint rng)
     control.neeDepth = SURFEL_PATH_MAX_HITS;
     control.useCache = false;
     control.continuationWeight = 1.0;
+    control.recordWorld = false;
+    control.sunBVHDepth = 0u;
+    control.cacheDepth = 0u;
     vec3 firstRadiance = SurfelPathRadiance(hit.position, hitNormal, albedo, firstEmission, SURFEL_INVALID_INDEX,
-        rng, control);
+        rng, control, SurfelWorldSource(0u, 0u, false));
     return estimate + SURFEL_PI * firstRadiance;
 }
 
