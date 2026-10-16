@@ -44,11 +44,9 @@ struct SurfelGIPipelineResources {
 	rhi::BufferHandle counterStaging[2];
 	rhi::TextureHandle rawIndirectTexture;
 	rhi::TextureHandle coverageTexture;   // gather coverage for the next frame's spawn pass
-	rhi::TextureHandle filteredIndirectTexture;
-	rhi::TextureHandle temporalIndirectTexture;
 	rhi::TextureHandle indirectTexture;
+	// Previous upscaled output (full resolution), ping-ponged. Read by the temporal step of upscale_filter.comp.
 	rhi::TextureHandle historyIndirectTexture[2];
-	rhi::TextureHandle historyGeometryTexture[2];
 	// Reference mode only: quarter-resolution running mean of diffuse irradiance (rgb) and its sample count.
 	rhi::TextureHandle referenceMeanTexture;
 	rhi::TextureHandle referenceCountTexture;
@@ -144,8 +142,6 @@ private:
 	std::unique_ptr<ComputeShader> m_irradianceSnapshotShader;
 	std::unique_ptr<ComputeShader> m_irradianceSharingShader;
 	std::unique_ptr<ComputeShader> m_applyIndirectShader;
-	std::unique_ptr<ComputeShader> m_spatialFilterShader;
-	std::unique_ptr<ComputeShader> m_temporalFilterShader;
 	std::unique_ptr<ComputeShader> m_upscaleFilterShader;
 	std::unique_ptr<ComputeShader> m_referenceShader;
 	rhi::ProgramHandle m_debugProgram;
@@ -179,9 +175,9 @@ private:
 	uint32_t m_lastTransformCount = 0;
 	uint32_t m_lastSpawnPassCount = 1;
 	uint32_t m_subpassMetricsInterval = 120;
-	uint32_t m_historyReadIndex = 0;
 	uint32_t m_lastTextureDumpFrame = 0;
 	bool m_hasLastCameraState = false;
+	uint32_t m_historyReadIndex = 0;
 	bool m_hasTemporalHistory = false;
 	bool m_loggedGBufferBindings = false;
 	bool m_wasPlacementValidationMode = false;

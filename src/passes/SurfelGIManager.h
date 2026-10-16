@@ -130,6 +130,8 @@ struct SurfelGISettings {
 	float spawnPopulationKappa = 1.0f;
 	uint32_t maxSurfelsPerCell = 128u;
 	uint32_t maxGatherSurfelsPerPixel = 32u;
+	// Entries examined per gather texel, accepted or not (bounded lookup). Default 2 x accepted.
+	uint32_t maxGatherCandidatesPerPixel = 64u;
 	uint32_t gatherNeighborRadius = 1u;
 	uint32_t rayUpdateInterval = 1u;
 	uint32_t fastFillFrameCount = 16u;
@@ -165,9 +167,9 @@ struct SurfelGISettings {
 	float finalGatherNormalCos = 0.15f;
 	float radialDepthSigmaScale = 1.0f;
 	float indirectIntensity = 1.0f;
-	float cellAverageFallbackStrength = 0.20f;
+	float cellAverageFallbackStrength = 1.0f;
 	float skyMissRadianceMultiplier = 1.0f;
-	float finalGatherResolutionScale = 0.32f;
+	float finalGatherResolutionScale = 0.5f;
 
 	bool useNonLinearGrid = true;
 	bool useRadialDepth = true;
