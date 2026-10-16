@@ -1884,3 +1884,183 @@ World mode stays off. The defaults are unchanged: budgets 128, 4, 32 and 2; ray 
 - Ray budget and recycling: test whether the energy loss at 1024 rays is recycling (count recycles per frame by reference age) before choosing a budget.
 - Bias: split the probe's continuation into sun, emitter and sky terms, and find which one disagrees with the reference on scene.json.
 - Light-step test: a scene where the sun dominates the GI term, and emissive scaling if the test needs it.
+
+## 20. Final integration
+
+Branch `worktree-agent-a9ab67c069990e4cc`. Worker: final integration (Haiku 5.5 lead, one worker). It merges the world-mode round (`worktree-agent-ad2cc26e5a566a6ba`, sections 15 to 17 and 19) and the final gather and composition (`worktree-agent-a74aa4b73c009b5a1`, section 18), adds the cheap wins, sets the quality tiers, and measures every tier against the pre-rework main (`6f9cf0d`) on the same harness. Every number here is from a quiet GPU (one job at a time). Timings are medians over three repeats unless marked. Energies are the term metric (`surf_term` against `indep_term`, lit mask from the off run over frames 200 to 260), with the all-pixel ratio where it was measured.
+
+Result in one line: the tiers are in place and Medium is the default. It costs 4.4 ms total on scene.json (target 4 ms, missed by 0.4 ms; the pre-rework main costs 2.9 ms there) and gives more energy than main on every scene (lit ratio 0.63 against 0.28 on scene.json, 0.76 against 0.51 on NFS, 1.21 against 0.40 on Cornell). Medium reaches the energy band on Cornell (all-pixel 1.06) but not on scene.json (steady 0.72 lit, 0.86 all-pixel) or NFS (0.68 lit, 0.56 all-pixel).
+
+### 20.1 Merge
+
+- The world-mode round was a fast-forward from `19363d0` (HEAD was an ancestor of it, and of main).
+- The final-gather line merged on top. Its only textual conflict was `docs/surfel_gi_rework_plan.md`, where both sides appended sections after 16. Resolved by keeping 17, then 18, then 19 in numeric order. The plan doc had mixed line endings in the splice and is CRLF in the working copy again, as main is.
+- Code auto-merged. No conflict markers remain. `spatial_filter.comp` and `temporal_filter.comp` are deleted from the vcxproj, filters, pipeline and validators. The only remaining mentions are the fallback validator (which asserts their absence) and this plan.
+- Existing duplicate heading `## 10.` (two sections: WP4/WP5/WP6 and WP3) is from main and was left as it was.
+- `shaders/includes/msme.comp` is an include and is not in the vcxproj (as on main).
+
+### 20.2 Cheap wins (what was measured, and what was not done)
+
+Sweeps on scene.json, Medium, one run per variant, frames 200 to 260. Reference term 0.3753 (`indep_term`).
+
+| Change | Tracing ms | Total ms | Term ratio | Decision |
+|---|---|---|---|---|
+| Cache budgets 128/4 (irradiance) and 32/2 (albedo), hybrid depth 2 | 5.11 | 6.73 | 0.505 | |
+| Budgets 32/2 and 8/1, hybrid depth 2 (old default world-mode budgets) | 4.01 | 5.55 | 0.506 | budgets cut, -1.1 ms tracing at the same energy |
+| Budgets 32/2 and 8/1, no hybrid, depth 2 | 2.99 | 4.55 | 0.557 | hybrid removed |
+| Budgets 32/2 and 8/1, no hybrid, depth 3 | 2.98 | 4.55 | 0.627 | depth 3 kept |
+| Budgets 16/1 and 4/1, no hybrid, depth 3 | 2.82 | 4.42 | 0.616 | Medium |
+| Budgets 16/1 and 4/1, hybrid, depth 3 | 3.94 | 5.50 | 0.605 | hybrid rejected |
+
+- Cache budgets. Cutting the irradiance lookup from 128/4 to 32/2 and the albedo lookup from 32/2 to 8/1 removed about 1.1 ms of tracing with no change in energy. Going further to 16/1 and 4/1 cut 0.2 ms more, inside the run-to-run spread, so the tighter set is used in Medium.
+- Hybrid continuation (`cacheMinConfidence` 0.3, continue at low-confidence cache answers). It lowered the energy at both depths and cost 1.0 to 1.2 ms more. The cause is the depth cap: a continuation cut at depth 2 or 3 under-estimates, and young surfels answer with low confidence, so many hits are continued. The knob stays in the code at 0 in every tier. An unbiased hybrid needs uncapped continuation, which is what the Ultra tier does.
+- Cache-first with depth 3 is the best measured Medium: the cache answers most vertices, so the depth cap rarely applies and the cost is the same as depth 2 (2.98 ms against 2.99 ms).
+- Hit albedo. The brief suggested a BVH base-colour factor or a coarse texture mip. The BVH material (`RTMaterial`) carries factors only, and the software BVH trace has no texture or UV access. The neutral-hit cached-albedo walk stays, with the smaller budget. A coarse-mip path needs texture access in the BVH trace; this was not built.
+- Emitter next-event distance cut. A sample past the cut is not taken, and a BSDF hit past the cut takes full weight (the power heuristic with a zero emitter pdf). Each half is unbiased for its region, so the whole estimate is unbiased in expectation; this was not verified with a far-emitter analytic scene. Measured on NFS (Medium, three repeats each):
+
+| NFS, Medium | Total ms | Tracing ms | Term mean (repeats) | Term ratio | Noise |
+|---|---|---|---|---|---|
+| no cut | 7.29 (7.50, 7.02, 7.35) | 5.73 | 0.0526 (0.0483, 0.0520, 0.0575) | 0.714 | 4.5% |
+| 40 m cut | 5.78 (5.80, 5.84, 5.71) | 3.99 | 0.0563 (0.0629, 0.0584, 0.0475) | 0.763 | 2.9% |
+
+  The cut saves about 1.5 ms per frame on NFS. Its energy effect (+7%) is inside the run-to-run spread at three repeats (about ±10%), and the noise is not higher. Scene.json and Cornell have no far emitters, so the cut changes neither their cost nor their energy beyond spread (scene.json 0.235 against 0.238, Cornell 0.671 against 0.681). A 25 m cut gave the same cost saving on one run with noisier output (7.6% on that run), and a 60 m cut gave less saving with a larger energy change, so 40 m is used. This is the setting most open to question: see 20.8.
+- Lookup cost, not budget. Each cache lookup walks up to 27 neighbour cells and computes each cell's non-linear grid address. Tightening the candidate budget does not remove that address work, which is the next lever (open item).
+- Ray budget. Medium stays at 2048. Section 19.3 measured 1024 rays losing a lot of energy on scene.json, and that is not repeated here.
+
+A bug found on the way. The Low tier's caps set `allowSoftwareBVHTrace` to false (this was already in main). Without the BVH trace the rays cannot reach geometry, and Low measured 0.06 of the reference on scene.json and 0.08 on Cornell (its budgets 16/1, 32/2 and 128/4 gave the same scene.json energy to within 0.2%, and population cap 2048 or depth 3 changed nothing either). Enabling the BVH trace for Low (one field in `GetSurfelGIBudgetCaps`) gives Low 0.49 on scene.json and 0.70 on NFS, at 2.3 and 2.7 ms.
+
+### 20.3 Tiers (as shipped)
+
+Values are the presets in `src/ModularRenderer.cpp` (`GetSurfelGIBudgetCaps` for the ray budget and gather counts, `GetSurfelGIPathPreset` for the rest). Each is the default of a `NOX_SURFEL_GI_*` variable, read in the validation block.
+
+| Setting | Low | Medium (default) | High | Ultra |
+|---|---|---|---|---|
+| Ray budget per frame | 1024 | 2048 | 4096 | 8192 |
+| World mode (cache-first, misses queue world surfels) | on | on | on | off |
+| Path depth past the first hit (`pathMaxHits`) | 1 (none) | 3 | 4 | 32 |
+| Cache read at vertices below (`cacheDepth`) | 1 | 3 | 3 | 2 |
+| Sun BVH fallback below vertex (`sunShadowBVHDepth`) | 1 | 1 | 2 | 32 |
+| Irradiance lookup budget: surfels visited / per cell | 16 / 1 | 16 / 1 | 32 / 2 | 128 / 4 |
+| Cached-albedo lookup budget: surfels / per cell | 4 / 1 | 4 / 1 | 8 / 1 | 32 / 2 |
+| Emitter next-event distance cut (m, 0 = none) | 40 | 40 | 40 | 0 |
+| Software BVH trace | on | on | on | on |
+| Gather accepted surfels per texel | 16 | 32 | 48 | 64 |
+| Hybrid continuation (`cacheMinConfidence`) | 0 (off) | 0 (off) | 0 (off) | 0 (off) |
+
+The hybrid threshold is kept as a knob but is 0 in every tier. Measured on scene.json (plan section 20.2), continuing only at low-confidence cache answers lowered the energy at both depth 2 and depth 3 and cost more tracing time.
+
+### 20.4 Tier measurements
+
+Harness: `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT`, manual exposure, measurement render settings, static camera. Reference `indep_term` (the independent path tracer, 900 frames, mean over frames 780 to 840). Total and tracing are the `SurfelGIUpdatePass` labelled subpasses, medians over frames 200 to 260 with the mean over three repeats. Steady, 90% and all-pixel columns come from the 900-frame convergence runs (dumps every 10 frames, steady window 800 to 900, 90% = first dump at or above 90% of the steady mean); those runs are one repeat, and only Medium on Cornell and NFS was run to 900 frames. "Both vs surf" is the composite (`both` against `surf`, composite minus off, lit mask), one repeat.
+
+#### Cornell (reference indep_term term mean 0.56164)
+
+| Tier | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Noise (corrected/mean) | Steady lit ratio (800-900) | Frames to 90% | All-pixel ratio (800-900) | Both vs surf (composite) |
+|---|---|---|---|---|---|---|---|---|
+| Low | 1.19 | 1.00 | 1.216 | 1.89% | n/a | n/a | n/a | 0.959 (0.5553 / 0.5791) |
+| Medium | 2.14 | 1.36 | 1.212 | 0.62% | 1.228 | 10 | 1.062 | 1.014 (0.5758 / 0.5678) |
+| High | 3.48 | 2.37 | 1.298 | 0.47% | n/a | n/a | n/a | 1.020 (0.6088 / 0.5968) |
+| Ultra | 4.71 | 3.53 | 1.279 | 0.25% | n/a | n/a | n/a | 1.017 (0.5972 / 0.5872) |
+
+#### scene.json (reference indep_term term mean 0.37527)
+
+| Tier | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Noise (corrected/mean) | Steady lit ratio (800-900) | Frames to 90% | All-pixel ratio (800-900) | Both vs surf (composite) |
+|---|---|---|---|---|---|---|---|---|
+| Low | 2.31 | 1.33 | 0.490 | 1.40% | 0.593 | 480 | 0.786 | 1.007 (0.1024 / 0.1017) |
+| Medium | 4.37 | 2.79 | 0.634 | 0.90% | 0.719 | 310 | 0.855 | 0.961 (0.1421 / 0.1478) |
+| High | 7.48 | 5.38 | 0.674 | 1.31% | 0.767 | 290 | 0.880 | 1.031 (0.1568 / 0.1521) |
+| Ultra | 70.67 | 68.25 | 0.983 | 0.31% | 1.009 | 50 | 1.006 | 1.008 (0.2548 / 0.2527) |
+
+#### NFS night street (reference indep_term term mean 0.07372)
+
+| Tier | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Noise (corrected/mean) | Steady lit ratio (800-900) | Frames to 90% | All-pixel ratio (800-900) | Both vs surf (composite) |
+|---|---|---|---|---|---|---|---|---|
+| Low | 2.72 | 1.76 | 0.698 | 3.25% | n/a | n/a | n/a | 0.930 (0.0171 / 0.0184) |
+| Medium | 5.78 | 3.99 | 0.763 | 2.86% | 0.684 | 20 | 0.558 | 0.986 (0.0259 / 0.0262) |
+| High | 10.08 | 7.77 | 0.643 | 1.92% | n/a | n/a | n/a | 1.012 (0.0193 / 0.0191) |
+| Ultra | 34.38 | 31.76 | 0.604 | 1.31% | n/a | n/a | n/a | 1.088 (0.0170 / 0.0156) |
+
+Notes on the table.
+- Low on Cornell reaches 1.22 on the lit mask, which is the Cornell lit-mask overshoot that section 15.7 described for the earlier default. Its all-pixel number was not measured.
+- Medium on scene.json reaches the energy band only slowly: its lit ratio rises from about 0.63 at frame 200 to 0.72 at 800 to 900 (time constant about 400 frames), so the steady value is still below 0.9 at frame 900 (a fit gives an asymptote near 0.75).
+- Ultra costs 70 ms on scene.json because it traces 8192 rays with full continuation. It is the reference quality tier, not a playable one. On NFS its lit ratio (0.60) is below Medium's, which is not explained here.
+- Noise on NFS is above the 1.5% target for Low, Medium and High (1.9 to 3.3%).
+
+### 20.5 Main (6f9cf0d, pre-rework) against the new Medium default
+
+Main is the commit before this rework (`6f9cf0d`, which contains the estimator correction of section 13 but not the round-2 continuation). It was built from a `git archive` copy in `%TEMP%`, with the same harness, scenes and reference. Main's own steady and 90% values are from its 900-frame runs. Main's all-pixel number was measured only on Cornell (the other scenes' dumps were removed by the cleanup, so they are not reported).
+
+#### Cornell
+
+| Build | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Steady lit ratio (800-900) | Frames to 90% | Noise |
+|---|---|---|---|---|---|---|
+| main 6f9cf0d (pre-rework) | 1.85 | 0.74 | 0.404 | 0.367 | 140 | 3.25% |
+| new Medium default | 2.14 | 1.36 | 1.212 | 1.228 | 10 | 0.62% |
+
+New Medium all-pixel steady ratio: 1.062.
+
+#### scene.json
+
+| Build | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Steady lit ratio (800-900) | Frames to 90% | Noise |
+|---|---|---|---|---|---|---|
+| main 6f9cf0d (pre-rework) | 2.90 | 0.70 | 0.276 | 0.270 | 10 | 0.98% |
+| new Medium default | 4.37 | 2.79 | 0.634 | 0.719 | 310 | 0.90% |
+
+New Medium all-pixel steady ratio: 0.855.
+
+#### NFS night street
+
+| Build | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Steady lit ratio (800-900) | Frames to 90% | Noise |
+|---|---|---|---|---|---|---|
+| main 6f9cf0d (pre-rework) | 3.39 | 1.14 | 0.513 | 0.504 | 10 | 0.50% |
+| new Medium default | 5.78 | 3.99 | 0.763 | 0.684 | 20 | 2.86% |
+
+New Medium all-pixel steady ratio: 0.558.
+
+Main's "frames to 90%" is 10 on scene.json and NFS because it converges at once to a low plateau; a fast 90% is not a benefit when the plateau is low.
+
+### 20.6 Analytic and camera checks
+
+Analytic (all-pixel mean of the term, frames 200 to 260, `tools/surfel_gi_analytic_scenes.py`, expected furnace 0.250 and white-sky 0.150):
+
+| Build | Furnace mean (expected 0.250) | White-sky mean (expected 0.150) |
+|---|---|---|
+| main 6f9cf0d, Medium | 0.1178 (-52.9%) | 0.1450 (-3.3%) |
+| Low | 0.2325 (-7.0%) | 0.1477 (-1.5%) |
+| Medium (default) | 0.2409 (-3.6%) | 0.1446 (-3.6%) |
+| High | 0.2436 (-2.5%) | 0.1443 (-3.8%) |
+| Ultra | 0.2385 (-4.6%) | 0.1421 (-5.3%) |
+
+Camera (Cornell, `dolly:0.6,0,0:60` and `orbit:90`, frames 1 to 100 every frame, Medium, new and main). Metric: mean absolute difference of consecutive dumps (0 to 255), second difference against the median first difference.
+- Dolly, frames 5 to 100: new 2.4 times the median second difference, main 2.2 times. Both have a start-up transient at frames 1 and 2 (the surfel population converging), which is larger in the new build (first difference 5.6 against 1.5 on main at frame 1). No ghosting was seen in frames I viewed.
+- Orbit: both the composite and the term runs show a four-frame capture cycle (one bright dump, three near-black), so the orbit path has a phase artifact of the capture, not of the GI. On the bright-phase frames after frame 20, the second difference is 2.7 times the median for the new build and 2.4 for main. The frames I viewed (frames 36 and 37) show a clean Cornell box with no visible ghosting.
+
+### 20.7 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass (run on the final tree).
+- `scripts/validate_surfel_gi_static.py` and `scripts/validate_surfel_gi_correctness.py`: pass.
+- All `scripts/validate_surfel_*.py` on the final tree: 9 pass, 13 fail. Main has the same count (9 pass, 13 fail). The two sets differ in two places that are deliberate contract changes: `validate_surfel_gi_fallback_contract.py` and `validate_surfel_gi_ray_radiance_contract.py` pass on this branch and fail on main (both were rewritten for the new contracts); `validate_surfel_bvh_cached_albedo.py` (it expects a literal budget of 32 that is now a tier uniform) and `validate_surfel_persistence_hysteresis.py` (it expects a helper `SurfelReferenceLife` that the ray-reference term replaced) pass on main and fail here. They were not changed, because they check source text rather than behaviour.
+- Editor smoke (`NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`): 14 PASS, 0 FAIL.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 NOX_FIXED_DT=0.0166666667 NOX_EXIT_ON_FINISH=1 NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s`.
+- `build/vs2022-x64/Release/nox_tests.exe`: 277 tests, 3 failed. All 3 are the known `test_asset_io.cpp` CRLF fixture checks (loose tree against packed fixture), which are an environment issue.
+- `tests/PackagingTests.ps1`: passes.
+
+### 20.8 Open issues
+
+- Medium misses the 4 ms target on scene.json by 0.4 ms (4.37 ms total). The remaining cost is the cache lookup's 27-cell address walk and the final gather (0.84 ms at 32 accepted surfels per texel). Both are the next levers; neither was changed here.
+- Energy: Medium is below the [0.9, 1.1] band on scene.json (steady 0.72 lit, 0.86 all-pixel) and NFS (0.68 lit, 0.56 all-pixel). It is inside the band on Cornell all-pixel (1.06) but 1.23 on the lit mask. The steady value on scene.json is still rising at frame 900.
+- Noise on NFS is 2.9% for Medium (target 1.5%) and about 3% for Low. The 40 m emitter cut lowered it relative to no cut in this run, but the number is still above target.
+- The emitter cut's energy effect is unresolved. It changes NFS by +7%, inside three-repeat spread. Its unbiasedness rests on the argument in 20.2, not on a far-emitter analytic test. A furnace-like scene with emitters beyond 40 m would test it.
+- Hybrid continuation is not usable in its current form (depth cap). A complete fix needs uncapped continuation with a cheaper closest-hit trace, which is the cost of Ultra.
+- Furnace and white-sky: Medium, High and Ultra are within about 5% of the analytic value (Ultra white-sky is -5.3%); Low's furnace is -7.0%. Main's furnace is -53%, which is the multi-bounce deficit of section 13.3 (O1) that the continuation removed.
+- Medium on NFS: the steady value was measured at 900 frames for Medium only. High, Ultra and Low did not get 900-frame convergence on NFS or Cornell.
+- The Ultra tier's NFS energy is below Medium's, and its scene.json energy is at reference. Not explained.
+- Light-step response, dolly and orbit at the other tiers, and the grid-cell overflow were not re-measured in this round.
+- Legacy validators that check source text (listed in 20.7) were not updated.
+
+### 20.9 Recommendation
+
+- Ship Medium as the default: world mode, cache-first with depth 3, 2048 rays, tight cache budgets and the 40 m emitter cut. On scene.json it costs 4.4 ms, against 5.3 ms for the section 19 world-mode default and 2.9 ms for main, and its lit energy is 0.72 steady against main's 0.27. It reaches 90% of its steady value in about 300 frames on scene.json and 20 on NFS (table above).
+- Keep Ultra as the reference-quality tier. Do not use it for play (70 ms on scene.json).
+- Before tuning further: remove the cache's 27-cell address walk (fewer neighbour cells per lookup, or a precomputed neighbour table) to reach the 4 ms target, and measure the emitter cut against a far-emitter analytic scene. Then decide whether Medium should keep the 40 m cut.
+- The energy band on scene.json and NFS needs longer convergence or a lower steady bias; neither is a tier setting. Report the scene.json and NFS energies as below the band, as they are.

@@ -131,7 +131,20 @@ CONFIG_ENV = {
     # is composite minus off, which cancels the deferred IBL that off contains on sky-lit scenes.
     "indep_term": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
 }
+# Quality tiers (plan section 20). N = 0 Low, 1 Medium (default), 2 High, 3 Ultra. surf_t<N> is composite minus off (timing,
+# energy); surf_term_t<N> is the GI term alone (energy, noise, convergence); both_t<N> turns SSGI on. The surf_term prefix
+# makes the analysis use the term metrics.
+for _tier in range(4):
+    CONFIG_ENV[f"surf_t{_tier}"] = {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": str(_tier)}
+    CONFIG_ENV[f"surf_term_t{_tier}"] = {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": str(_tier),
+                                         "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"}
+    CONFIG_ENV[f"both_t{_tier}"] = {"NOX_ENABLE_SURFEL_GI": "1", "NOX_SSGI": "1",
+                                    "NOX_SURFEL_GI_QUALITY_TIER": str(_tier)}
+# Medium without the emitter distance cut (plan section 20): the twin of surf_term_t1 for the cut's energy and cost.
+CONFIG_ENV["surf_term_t1_nocut"] = {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4",
+                                    "NOX_SURFEL_GI_EMITTER_CULL": "0"}
 LIVE_PLAN = (261, 200, 260)  # last run frame, analysis window first and last frame
+DUMP_STEP = 1                # dump every Nth frame of the live window (--dump-step)
 LONG_PLAN = (899, 780, 840)
 # Set from --env: applied to every run on top of the config's own variables (for parameter sweeps).
 EXTRA_ENV = {}
@@ -173,8 +186,11 @@ class HarnessError(Exception):
 
 def plan_for(cfg):
     """(last run frame, analysis window frame list) for a config."""
-    last, lo, hi = LONG_PLAN if cfg in LONG_CONFIGS else LIVE_PLAN
-    return last, list(range(lo, hi + 1))
+    if cfg in LONG_CONFIGS:
+        last, lo, hi = LONG_PLAN
+        return last, list(range(lo, hi + 1))
+    last, lo, hi = LIVE_PLAN
+    return last, list(range(lo, hi + 1, DUMP_STEP))
 
 
 def run_dir_for(out_dir, cfg, rep, repeat):
@@ -693,8 +709,16 @@ def jsonable(x):
 def collect_runs(args, exe, scene, configs, out_dir, warnings):
     """Launch (or reuse) every config and repeat. Returns {(cfg, rep): run dir}."""
     runs = {}
-    with scene_for_runs(scene) as scene_path:
-        engine_root = Path(args.cwd).resolve() if args.cwd else REPO_ROOT
+    engine_root = Path(args.cwd).resolve() if args.cwd else REPO_ROOT
+    # A scene under this checkout is launched from the same relative path in --cwd's tree, so the engine (and the manual
+    # exposure temp copy, which is written next to the scene) stay inside that source root.
+    scene_src = scene
+    if engine_root != REPO_ROOT:
+        try:
+            scene_src = engine_root / scene.resolve().relative_to(REPO_ROOT)
+        except ValueError:
+            scene_src = scene
+    with scene_for_runs(scene_src) as scene_path:
         scene_arg = scene_arg_for(scene_path, engine_root)
         for rep in range(1, args.repeat + 1):
             for cfg in configs:
@@ -811,12 +835,28 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="hard timeout per run (s)")
     parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE",
                         help="extra environment variable for every run, after the config's own (repeatable)")
+    parser.add_argument("--frames", metavar="LO:HI", default="",
+                        help="analysis window of the live configs (default 200:260); the run ends at HI+1. "
+                             "The reference configs keep their own window.")
+    parser.add_argument("--dump-step", type=int, default=1,
+                        help="dump every Nth frame of the live window (default 1); e.g. --frames 10:900 --dump-step 10 "
+                             "for a convergence run (plan section 20)")
     args = parser.parse_args(argv)
     for item in args.env:
         name, sep, value = item.partition("=")
         if not sep or not name:
             parser.error(f"--env expects NAME=VALUE: {item!r}")
         EXTRA_ENV[name] = value
+    global LIVE_PLAN, DUMP_STEP
+    if args.frames:
+        try:
+            lo, hi = (int(v) for v in args.frames.split(":"))
+        except ValueError:
+            parser.error(f"--frames expects LO:HI: {args.frames!r}")
+        if not (0 <= lo <= hi) or args.dump_step < 1:
+            parser.error("--frames needs 0 <= LO <= HI and --dump-step >= 1")
+        LIVE_PLAN = (hi + 1, lo, hi)
+    DUMP_STEP = max(args.dump_step, 1)
 
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
     unknown = [c for c in configs if c not in CONFIG_ENV]

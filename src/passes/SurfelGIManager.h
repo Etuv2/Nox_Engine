@@ -77,7 +77,8 @@ struct SurfelGISettings {
 	// World surfels (plan section 17). A path vertex the cache cannot answer queues a request (one per grid cell per frame);
 	// spawn.comp's world mode turns up to worldSurfelSpawnsPerFrame of them into surfels per frame. Their population is
 	// capped at worldSurfelPopulationFraction of spawnPopulationCap, on top of the screen population (not from it).
-	// Off by default: with it on, scene.json energy fell to about 0.66 of the reference (plan section 17.4).
+	// The quality tier sets this (ModularRenderer.cpp GetSurfelGIPathPreset); the default here is the Ultra path.
+	// With it on alone, scene.json energy fell to about 0.66 of the reference (plan section 17.4).
 	bool worldSurfels = false;
 	uint32_t worldSurfelSpawnsPerFrame = 16u;
 	float worldSurfelPopulationFraction = 0.25f;
@@ -112,12 +113,15 @@ struct SurfelGISettings {
 	// Debug only (NOX_SURFEL_GI_TRACE_SKIP): bit mask of trace components to skip, for the cost breakdown (plan section
 	// 19). The bits are listed at uTraceSkip in surfel_scene_trace.glsl. 0 = the full trace.
 	uint32_t traceSkipMask = 0u;
-	// Cache candidate budgets of a hit-point lookup (plan section 19): surfels visited in total, and per neighbour cell.
-	// The irradiance lookup was 128 and 4; the cached-albedo lookup was 32 and 2.
+	// Cache candidate budgets of a hit-point lookup (plan sections 19 and 20): surfels visited in total, and per neighbour
+	// cell. The irradiance lookup was 128 and 4; the cached-albedo lookup was 32 and 2. The tier presets set them.
 	uint32_t cacheCandidates = 128u;
 	uint32_t cachePerCellBudget = 4u;
 	uint32_t cacheAlbedoCandidates = 32u;
 	uint32_t cacheAlbedoPerCell = 2u;
+	// Distance cut of the emitter next-event samples, in metres (0 = no cut). Past it a sample is not taken and a BSDF hit on
+	// an emitter there takes full weight, so the estimate stays unbiased (plan section 20).
+	float emitterNEEMaxDistance = 0.0f;
 	// Bias probe (plan section 19): every Nth ray that a cache lookup answers is also estimated by a continuation of its
 	// hit point with no cache. 0 = off. The bucket sums are printed every biasProbeInterval frames.
 	uint32_t biasProbeStride = 0u;

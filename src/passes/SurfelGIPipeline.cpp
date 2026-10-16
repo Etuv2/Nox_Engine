@@ -1547,6 +1547,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uCachePerCellBudget", m_settings.cachePerCellBudget);
 		SetUniform1ui(program, "uCacheAlbedoCandidates", m_settings.cacheAlbedoCandidates);
 		SetUniform1ui(program, "uCacheAlbedoPerCell", m_settings.cacheAlbedoPerCell);
+		SetUniform1f(program, "uEmitterNEEMaxDistance",
+			m_settings.emitterNEEMaxDistance > 0.0f ? m_settings.emitterNEEMaxDistance : 1.0e30f);
 		SetUniform1ui(program, "uBiasProbeStride", m_settings.biasProbeStride);
 		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::WorldRequests), m_resources.worldRequestBuffer);
 		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::CellStamps), m_resources.cellStampBuffer);
@@ -1834,6 +1836,8 @@ void SurfelGIPipeline::ExecuteIndependentReference(RenderContext& context,
 	SetUniform1ui(program, "uResetAccumulation", reset ? 1u : 0u);
 	SetUniform1ui(program, "uSamplesPerFrame", kReferenceSamplesPerFrame);
 	SetUniform1ui(program, "uBounces", kReferenceBounces);
+	// The reference never cuts its emitter samples (plan section 20): the cut is a trace-only setting.
+	SetUniform1f(program, "uEmitterNEEMaxDistance", 1.0e30f);
 	SetUniformMat4(program, "uInvProjection", glm::inverse(context.proj));
 	SetUniformMat4(program, "uInvView", glm::inverse(context.view));
 	SetUniform1i(program, "uUseSoftwareBVHTrace", (bvhTriangleCount > 0u && bvhNodeCount > 0u) ? 1 : 0);

@@ -158,6 +158,10 @@ uniform uint uEmitterCount = 0u;
 // Total power sum(luminance * area): an emitter is picked with weight luminance * area / total, and a point on it has
 // area density luminance / total.
 uniform float uEmitterPowerTotal = 0.0;
+// Distance cut of the emitter samples (plan section 20). Past it a next-event sample is not taken, and a BSDF hit on an
+// emitter there takes full weight (SurfelEmitterHitPdf returns 0, so the power heuristic gives 1). The two halves together
+// keep the estimate unbiased. 1e30 = no cut (the reference never sets it).
+uniform float uEmitterNEEMaxDistance = 1.0e30;
 
 struct SoftwareBVHHit
 {
@@ -808,6 +812,9 @@ bool SurfelEmitterIrradianceSample(vec3 origin, vec3 normal, vec3 u, out vec3 ir
         return false;
     }
     float dist = sqrt(dist2);
+    if (dist > uEmitterNEEMaxDistance) {
+        return false;
+    }
     direction = delta / dist;
     float cosReceiver = dot(normal, direction);
     // Emitters radiate from both faces, as the BSDF-hit emission does, so the emitter cosine is the absolute value.
@@ -827,7 +834,7 @@ bool SurfelEmitterIrradianceSample(vec3 origin, vec3 normal, vec3 u, out vec3 ir
 float SurfelEmitterHitPdf(float luminance, float dist, vec3 geometricNormal, vec3 direction)
 {
     float cosEmitter = abs(dot(geometricNormal, direction));
-    if (uEmitterCount == 0u || !(uEmitterPowerTotal > 0.0) || cosEmitter < 1e-4) {
+    if (dist > uEmitterNEEMaxDistance || uEmitterCount == 0u || !(uEmitterPowerTotal > 0.0) || cosEmitter < 1e-4) {
         return 0.0;
     }
     return (luminance / uEmitterPowerTotal) * dist * dist / cosEmitter;

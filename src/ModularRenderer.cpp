@@ -168,7 +168,9 @@ namespace {
 	static SurfelGIBudgetCaps GetSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 24576u, 1024u, 16u, 48u, 16u, 1u, 0.50f, 1.0f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u, 64.0f, 128u, 1024u };
+			// The software BVH trace is on: without it the rays cannot reach the scene geometry, and Low measured about 6%
+			// of the reference (plan section 20.4). Screen trace stays off.
+			return { 24576u, 1024u, 16u, 48u, 16u, 1u, 0.50f, 1.0f, true, true, false, true, 1.0f, 2u, 8u, 65536u, 24576u, 2048u, 64.0f, 128u, 1024u };
 		case SurfelGIQualityTier::High:
 			return { 131072u, 4096u, 16u, 96u, 48u, 1u, 0.50f, 1.0f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u, 8.0f, 1024u, 4096u };
 		case SurfelGIQualityTier::Ultra:
@@ -179,6 +181,41 @@ namespace {
 			// their light). The ray budget is a value (the default for the tier), not a cap: the
 			// per-frame ray budget is shared out by demand (allocate_rays.comp). Medium is 2048.
 			return { 65536u, 2048u, 16u, 64u, 32u, 1u, 0.50f, 1.0f, true, true, true, true, 1.0f, 1u, 20u, 64u, 24576u, 256u, 16.0f, 512u, 2048u };
+		}
+	}
+
+	// Path, cache and emitter-sampling presets of each quality tier (plan section 20). The ray budget, gather and population
+	// caps are in GetSurfelGIBudgetCaps above. Each value is the default of its NOX_SURFEL_GI_* variable, which overrides it
+	// inside the validation block (SyncSurfelGISettings).
+	struct SurfelGIPathPreset {
+		bool worldSurfels;            // world mode: cache-first, misses queue world surfels (plan section 17)
+		uint32_t pathMaxHits;         // depth cap of the continuation past the first hit
+		uint32_t sunShadowBVHDepth;   // vertices below this use the BVH sun fallback
+		uint32_t cacheDepth;          // vertices below this read the cache
+		float cacheMinConfidence;     // hybrid continuation: a cache answer below this confidence is not used
+		uint32_t cacheCandidates;     // irradiance lookup budget per hit: surfels visited, and per neighbour cell
+		uint32_t cachePerCellBudget;
+		uint32_t cacheAlbedoCandidates; // cached-albedo lookup budget (neutral BVH hits only)
+		uint32_t cacheAlbedoPerCell;
+		float emitterNEEMaxDistance;  // metres, 0 = no cut (plan section 20)
+	};
+
+	static SurfelGIPathPreset GetSurfelGIPathPreset(SurfelGIQualityTier tier) {
+		switch (tier) {
+		case SurfelGIQualityTier::Low:
+			// Cache-first, no continuation: a hit is answered by the cache or by its own direct light and NEE only.
+			return { true, 1u, 1u, 1u, 0.0f, 16u, 1u, 4u, 1u, 40.0f };
+		case SurfelGIQualityTier::High:
+			// Cache-first world mode, deeper continuation on a cache miss, larger lookup budgets.
+			return { true, 4u, 2u, 3u, 0.0f, 32u, 2u, 8u, 1u, 40.0f };
+		case SurfelGIQualityTier::Ultra:
+			// Full path continuation with the cache at the first two vertices (the merged-base path, reference quality).
+			return { false, 32u, 32u, 2u, 0.0f, 128u, 4u, 32u, 2u, 0.0f };
+		case SurfelGIQualityTier::Medium:
+		default:
+			// Cache-first world mode: a cache miss continues the path to depth 3 with roulette. Measured: the hybrid
+			// (continuing only at low-confidence cache answers, cacheMinConfidence 0.3) lowered energy at both depth 2 and 3.
+			return { true, 3u, 1u, 3u, 0.0f, 16u, 1u, 4u, 1u, 40.0f };
 		}
 	}
 
@@ -568,6 +605,20 @@ void ModularRenderer::SyncSurfelGISettings()
 		std::clamp(m_context.surfelGIQualityTier, 0, 3));
 	settings.qualityTier = static_cast<SurfelGIQualityTier>(
 		std::clamp(GetEnvVarInt("NOX_SURFEL_GI_QUALITY_TIER", static_cast<int>(settings.qualityTier)), 0, 3));
+	// The tier's path, cache and emitter presets apply in every run. The validation block below can override each value.
+	{
+		const SurfelGIPathPreset pathPreset = GetSurfelGIPathPreset(settings.qualityTier);
+		settings.worldSurfels = pathPreset.worldSurfels;
+		settings.pathMaxHits = pathPreset.pathMaxHits;
+		settings.sunShadowBVHDepth = pathPreset.sunShadowBVHDepth;
+		settings.cacheDepth = pathPreset.cacheDepth;
+		settings.cacheMinConfidence = pathPreset.cacheMinConfidence;
+		settings.cacheCandidates = pathPreset.cacheCandidates;
+		settings.cachePerCellBudget = pathPreset.cachePerCellBudget;
+		settings.cacheAlbedoCandidates = pathPreset.cacheAlbedoCandidates;
+		settings.cacheAlbedoPerCell = pathPreset.cacheAlbedoPerCell;
+		settings.emitterNEEMaxDistance = pathPreset.emitterNEEMaxDistance;
+	}
 	settings.debugView = static_cast<SurfelGIDebugView>(
 		std::clamp(m_context.surfelGIDebugView, 0, 38));
 	settings.maxSurfels = static_cast<uint32_t>(std::max(m_context.surfelGIMaxSurfels, 1024));
@@ -646,14 +697,15 @@ void ModularRenderer::SyncSurfelGISettings()
 			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_WORLD_SPAWNS", static_cast<int>(settings.worldSurfelSpawnsPerFrame)), 0, 4096));
 		settings.worldSurfelPopulationFraction = std::clamp(
 			GetEnvVarFloat("NOX_SURFEL_GI_WORLD_FRACTION", settings.worldSurfelPopulationFraction), 0.0f, 1.0f);
-		// World mode (NOX_SURFEL_GI_WORLD=1) runs the cache-first path: depth 3, sun fallback at the first hit only, and the
-		// cache read at three vertices. Each can still be set on its own (plan section 17).
+		// The path depths default to the tier preset (plan sections 17 and 20). Each can be set on its own.
 		settings.pathMaxHits = static_cast<uint32_t>(
-			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_PATH_DEPTH", settings.worldSurfels ? 3 : 32), 1, 32));
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_PATH_DEPTH", static_cast<int>(settings.pathMaxHits)), 1, 32));
 		settings.sunShadowBVHDepth = static_cast<uint32_t>(
-			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_SUN_BVH_DEPTH", settings.worldSurfels ? 1 : 32), 0, 32));
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_SUN_BVH_DEPTH", static_cast<int>(settings.sunShadowBVHDepth)), 0, 32));
 		settings.cacheDepth = static_cast<uint32_t>(
-			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_DEPTH", settings.worldSurfels ? 3 : 2), 1, 32));
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_DEPTH", static_cast<int>(settings.cacheDepth)), 1, 32));
+		settings.emitterNEEMaxDistance = std::max(
+			GetEnvVarFloat("NOX_SURFEL_GI_EMITTER_CULL", settings.emitterNEEMaxDistance), 0.0f);
 		settings.cacheMinConfidence = std::clamp(
 			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_MIN_CONF", settings.cacheMinConfidence), 0.0f, 1.0f);
 		settings.cacheMinWeight = std::max(

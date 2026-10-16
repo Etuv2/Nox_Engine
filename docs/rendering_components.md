@@ -147,6 +147,98 @@ is 4.6% below 4x32, and temporal noise is about a third of the pre-change pipeli
 Interleaved trace (`ssgi_interleaved`) traces 4-row bands on alternating frames and fills the other bands from
 history. It did not reduce gather time at 1080p and roughly tripled the frame-to-frame flicker, so it is off.
 
+## Surfel GI
+
+Surfel GI is the indirect diffuse term that replaces SSGI's far field (`src/passes/SurfelGIPipeline.*`, `SurfelGIManager.*`,
+`src/surfel_gi/`, shaders in `shaders/surfel_gi/`). It is off unless `enableSurfelGI` is set. The design and the measurements
+behind it are in `docs/surfel_gi_rework_plan.md`. The implementation follows the GIBS talk: surfels on the visible surfaces,
+a screen-space population target, and ray-traced radiance integrated per surfel.
+
+### Pipeline (one frame, Execute)
+
+Labels are the GPU subpass names in the `[SurfelGISubpassMetrics]` log.
+
+1. `begin_frame`, `dispatch_args`, `transform_update`: frame state, indirect dispatch arguments, and the transform IDs of
+   the traced instances.
+2. `recycling`: surfels leave the population when they are over the target, stale (no visible touch and no ray reference for
+   30 frames), or far while over the target. Score `0.4 over + 0.3 stale + 0.3 far x over`.
+3. `coverage_reset`, `coverage_project`, `coverage_spawn`: the visible G-buffer tiles are projected into the surfel coverage.
+   Tiles below the coverage threshold spawn surfels from their candidates (grid query, deduplicated). The spawn budget
+   follows half of last frame's under-covered tiles, between `maxSpawnsPerFrame` and a ceiling, and is limited by the
+   population deficit to `kappa x visible tiles`.
+4. `grid_count`, `grid_scan`, `grid_build`: a uniform grid of surfel cells (non-linear in depth). Each surfel is written into
+   the cells its support sphere overlaps, with cell averages from its base cell.
+5. `ray_request`, `ray_allocation`, `ray_generation`: each surfel asks for rays from its radial depth and its guide map; the
+   ray budget (a tier value, section below) is shared out by demand; rays are generated with guided sampling
+   (`guide_pdf.glsl`) and a minimum of four rays for young surfels.
+6. `rt_scene_update`: the BVH and instance buffers, rebuilt only when the scene changes.
+7. `tracing` (`trace_rays.comp`, `surfel_scene_trace.glsl`): each ray traces the software BVH. The first hit's own terms are
+   its emission (MIS-weighted against the ray's density), its direct light, and its indirect light. The indirect light comes
+   from the surfel cache (a bounded lookup of the surfels near the hit) at the first `cacheDepth` vertices. Where the cache
+   answers, the path ends there; where it does not, the path continues with cosine sampling, next-event estimation of the
+   emitters, and Russian roulette, up to `pathMaxHits` vertices. A cache miss in world mode queues a world-surfel request.
+8. `temporal_integration` (`integrate.comp`, `msme.comp`): the ray samples update each surfel's irradiance (a Ray Tracing Gems
+   style multiscale mean estimator with heuristic terms), and the radial depth is updated (`radial_depth`).
+9. `irradiance_snapshot`, `irradiance_sharing`: the irradiance state is snapshotted and lightly shared between neighbours.
+   `world_spawn` (world mode only): the cache-miss requests queued by this frame's tracing become world surfels, up to
+   `worldSurfelSpawnsPerFrame`, under their own population cap (a quarter of the screen cap). They are in the grid from the
+   next frame.
+10. `final_gather` (`apply_indirect.comp`): every texel of the indirect target (half resolution) gathers the first N accepted
+    surfels of its receiver's 3x3x3 cells, weighted by distance, normal, plane and confidence, with an examined bound of 2N.
+    Where the summed weight is below one, the remainder is the receiver cell's average.
+11. `upscale_filter` (`upscale_filter.comp`): a four-tap joint bilateral upsample on depth and normal, with one minimal
+    temporal step (the previous output is reprojected with the velocity buffer, clamped to the gather neighbourhood, and
+    blended at weight 0.85, zero above 6 px of motion or during a lighting change).
+12. Composition (`deferred_lighting_frag.glsl`): the far field (surfel, LPV) is multiplied by SSAO and material AO only. SSGI
+    does not darken it. Diffuse IBL and specular occlusion keep `min(SSAO, SSGI visibility) * material AO`.
+
+### Quality tiers
+
+The tier is `SurfelGIQualityTier` (`Low`, `Medium` (default), `High`, `Ultra`), set in the Rendering settings, by
+`surfelGIQualityTier` in the render context, or by `NOX_SURFEL_GI_QUALITY_TIER` (0 to 3). Each tier sets two groups of values in
+`src/ModularRenderer.cpp`:
+
+- `GetSurfelGIBudgetCaps`: the ray budget, the population caps, the gather counts and the spawn limits.
+- `GetSurfelGIPathPreset`: world mode, the path depth, the cache depth and the cache budgets, the hybrid confidence threshold
+  and the emitter sampling cut.
+
+| Setting | Low | Medium (default) | High | Ultra |
+|---|---|---|---|---|
+| Ray budget per frame | 1024 | 2048 | 4096 | 8192 |
+| World mode (cache-first, misses queue world surfels) | on | on | on | off |
+| Path depth past the first hit (`pathMaxHits`) | 1 (none) | 3 | 4 | 32 |
+| Cache read at vertices below (`cacheDepth`) | 1 | 3 | 3 | 2 |
+| Sun BVH fallback below vertex (`sunShadowBVHDepth`) | 1 | 1 | 2 | 32 |
+| Irradiance lookup budget: surfels visited / per cell | 16 / 1 | 16 / 1 | 32 / 2 | 128 / 4 |
+| Cached-albedo lookup budget: surfels / per cell | 4 / 1 | 4 / 1 | 8 / 1 | 32 / 2 |
+| Emitter next-event distance cut (m, 0 = none) | 40 | 40 | 40 | 0 |
+| Software BVH trace | on | on | on | on |
+| Gather accepted surfels per texel | 16 | 32 | 48 | 64 |
+| Hybrid continuation (`cacheMinConfidence`) | 0 (off) | 0 (off) | 0 (off) | 0 (off) |
+
+The hybrid threshold is kept as a knob but is 0 in every tier. Measured on scene.json (plan section 20.2), continuing only at low-confidence cache answers lowered the energy at both depth 2 and depth 3 and cost more tracing time.
+
+### Settings
+
+Each preset value is the default of an environment variable, read in the validation block (`NOX_ENABLE_SURFEL_GI=1`):
+`NOX_SURFEL_GI_RAY_BUDGET`, `NOX_SURFEL_GI_WORLD` (0 or 1), `NOX_SURFEL_GI_PATH_DEPTH`, `NOX_SURFEL_GI_CACHE_DEPTH`,
+`NOX_SURFEL_GI_SUN_BVH_DEPTH`, `NOX_SURFEL_GI_CACHE_MIN_CONF`, `NOX_SURFEL_GI_CACHE_CANDIDATES`, `NOX_SURFEL_GI_CACHE_PER_CELL`,
+`NOX_SURFEL_GI_CACHE_ALBEDO_CANDIDATES`, `NOX_SURFEL_GI_CACHE_ALBEDO_PER_CELL`, `NOX_SURFEL_GI_EMITTER_CULL` (metres, 0 = off),
+and `NOX_SURFEL_GI_QUALITY_TIER`. The debug views are `NOX_SURFEL_GI_DEBUG_VIEW` and `NOX_SURFEL_GI_COMPOSITE_DEBUG` (4 = the
+surfel term alone). The independent reference (`NOX_GI_REFERENCE=1`) does not use the cache or the tier path presets. Its trace is a
+per-texel path tracer with its own depth.
+
+### Measurement
+
+Measured on the harness (plan section 20.4), frames 200 to 260 unless stated, with the independent reference as the
+denominator. Medium (default): on scene.json 4.4 ms of surfel GPU time (2.8 ms of it tracing), a lit-mask term of 0.63 at
+frames 200 to 260 that settles at 0.72 by frame 800 to 900 (0.86 all-pixel), and about 300 frames to 90% of that steady value.
+On Cornell the all-pixel term is 1.06 of the reference. On NFS the term is 0.68 (lit) and 0.56 (all-pixel), with 2.9% noise.
+The pre-rework main, on the same harness, reaches 0.27 (scene.json) and 0.50 (NFS). Ultra is the reference-quality setting and
+costs 70 ms on scene.json. Known limits: the cache lookup's neighbour-cell walk is the largest remaining cost, the emitter
+distance cut (40 m) is not checked against a far-emitter analytic scene, and the scene.json and NFS energies stay below the
+[0.9, 1.1] band at steady state.
+
 ## Camera current
 
 `Camera` (on a camera node) has a `current` flag. In Play mode the first node in the hierarchy whose camera
