@@ -168,17 +168,17 @@ namespace {
 	static SurfelGIBudgetCaps GetSurfelGIBudgetCaps(SurfelGIQualityTier tier) {
 		switch (tier) {
 		case SurfelGIQualityTier::Low:
-			return { 24576u, 1024u, 16u, 48u, 64u, 1u, 0.50f, 0.25f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u, 64.0f, 128u, 1024u };
+			return { 24576u, 1024u, 16u, 48u, 16u, 1u, 0.50f, 1.0f, true, true, false, false, 1.0f, 2u, 8u, 65536u, 24576u, 2048u, 64.0f, 128u, 1024u };
 		case SurfelGIQualityTier::High:
-			return { 131072u, 4096u, 16u, 96u, 256u, 2u, 1.0f, 0.14f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u, 8.0f, 1024u, 4096u };
+			return { 131072u, 4096u, 16u, 96u, 48u, 1u, 0.50f, 1.0f, true, true, true, true, 1.0f, 1u, 48u, 65536u, 131072u, 8192u, 8.0f, 1024u, 4096u };
 		case SurfelGIQualityTier::Ultra:
-			return { 262144u, 8192u, 16u, 128u, 512u, 2u, 1.0f, 0.10f, true, true, true, true, 1.0f, 1u, 64u, 65536u, 262144u, 16384u, 8.0f, 1024u, 8192u };
+			return { 262144u, 8192u, 16u, 128u, 64u, 1u, 0.50f, 1.0f, true, true, true, true, 1.0f, 1u, 64u, 65536u, 262144u, 16384u, 8.0f, 1024u, 8192u };
 		case SurfelGIQualityTier::Medium:
 		default:
 			// Software BVH on (without it rays the screen and surfel-grid traces cannot resolve lose
 			// their light). The ray budget is a value (the default for the tier), not a cap: the
 			// per-frame ray budget is shared out by demand (allocate_rays.comp). Medium is 2048.
-			return { 65536u, 2048u, 16u, 64u, 32u, 1u, 0.32f, 0.20f, true, true, true, true, 1.0f, 1u, 20u, 64u, 24576u, 256u, 16.0f, 512u, 2048u };
+			return { 65536u, 2048u, 16u, 64u, 32u, 1u, 0.50f, 1.0f, true, true, true, true, 1.0f, 1u, 20u, 64u, 24576u, 256u, 16.0f, 512u, 2048u };
 		}
 	}
 
@@ -577,7 +577,9 @@ void ModularRenderer::SyncSurfelGISettings()
 		: GetSurfelGIBudgetCaps(settings.qualityTier).maxRayBudget;
 	settings.spawnTileSize = static_cast<uint32_t>(std::clamp(m_context.surfelGISpawnTileSize, 4, 16));
 	settings.maxSurfelsPerCell = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxSurfelsPerCell, 8, 256));
-	settings.maxGatherSurfelsPerPixel = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxGatherSurfelsPerPixel, 4, 2048));
+	settings.maxGatherSurfelsPerPixel = m_context.surfelGIMaxGatherSurfelsPerPixel > 0
+		? static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxGatherSurfelsPerPixel, 4, 2048))
+		: GetSurfelGIBudgetCaps(settings.qualityTier).maxGatherSurfelsPerPixel;
 	settings.maxSpawnsPerFrame = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxSpawnsPerFrame, 1, 65536));
 	settings.maxProjectedSurfelsPerFrame = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxProjectedSurfelsPerFrame, 1024, 524288));
 	settings.maxRecycleCountPerFrame = static_cast<uint32_t>(std::clamp(m_context.surfelGIMaxRecycleCountPerFrame, 1, 65536));
@@ -651,9 +653,14 @@ void ModularRenderer::SyncSurfelGISettings()
 	}
 	const bool captureMode = IsEnvVarEnabled("NOX_SURFEL_GI_CAPTURE");
 	ApplySurfelGIRealtimeBudget(settings, captureMode);
+	// Examined entries per gather texel (bounded lookup): twice the accepted count, after the tier caps.
+	settings.maxGatherCandidatesPerPixel = 2u * settings.maxGatherSurfelsPerPixel;
 	// Validation overrides, applied after the tier caps so they can exceed them.
 	if (const char* scaleEnv = std::getenv("NOX_SURFEL_GI_FINAL_GATHER_SCALE")) {
 		settings.finalGatherResolutionScale = std::clamp(static_cast<float>(std::atof(scaleEnv)), 0.25f, 1.0f);
+	}
+	if (const char* candidatesEnv = std::getenv("NOX_SURFEL_GI_GATHER_CANDIDATES")) {
+		settings.maxGatherCandidatesPerPixel = static_cast<uint32_t>(std::clamp(std::atoi(candidatesEnv), 1, 1024));
 	}
 	settings.spawnPopulationKappa = std::clamp(GetEnvVarFloat("NOX_SURFEL_GI_SPAWN_BUDGET_SCALE", settings.spawnPopulationKappa), 0.0f, 16.0f);
 	settings.spawnSearchStride = static_cast<uint32_t>(
@@ -679,7 +686,6 @@ void ModularRenderer::SyncSurfelGISettings()
 	// The resolved ray budget is not written back: the context keeps 0 (tier default) so a tier change takes effect.
 	m_context.surfelGISpawnTileSize = static_cast<int>(settings.spawnTileSize);
 	m_context.surfelGIMaxSurfelsPerCell = static_cast<int>(settings.maxSurfelsPerCell);
-	m_context.surfelGIMaxGatherSurfelsPerPixel = static_cast<int>(settings.maxGatherSurfelsPerPixel);
 	m_context.surfelGIMaxSpawnsPerFrame = static_cast<int>(settings.maxSpawnsPerFrame);
 	m_context.surfelGIMaxProjectedSurfelsPerFrame = static_cast<int>(settings.maxProjectedSurfelsPerFrame);
 	m_context.surfelGIMaxRecycleCountPerFrame = static_cast<int>(settings.maxRecycleCountPerFrame);

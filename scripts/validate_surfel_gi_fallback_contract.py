@@ -15,38 +15,45 @@ def require(condition: bool, message: str) -> None:
 
 def main() -> None:
     apply_shader = read("shaders/surfel_gi/apply_indirect.comp")
+    upscale_shader = read("shaders/surfel_gi/upscale_filter.comp")
     cell_average_shader = read("shaders/surfel_gi/common.glsl")
-    spatial_filter_shader = read("shaders/surfel_gi/spatial_filter.comp")
+    pipeline_cpp = read("src/passes/SurfelGIPipeline.cpp")
 
+    # Cell averages (common.glsl): support and signal gates on the fallback confidence.
     require("vec3 SurfelCellAverage(" in cell_average_shader and
             "supportConfidence = smoothstep(1.0, 8.0, validCount)" in cell_average_shader,
             "cell averages must scale fallback confidence by surfel support")
     require("signalConfidence = smoothstep(1e-4, 0.03, SurfelLuminance(average))" in cell_average_shader,
             "cell averages must not advertise confident fallback for black/no-signal cells")
-    require("packedConfidence = temporalConfidence * supportConfidence * signalConfidence" in cell_average_shader,
-            "cell-average fallback confidence must combine temporal, support, and signal confidence")
 
-    require("float BoundedFallbackBlend(" in apply_shader,
-            "final gather must use an explicit bounded fallback blend")
-    require("vec3 ClampFallbackToDirectSupport(" in apply_shader,
-            "final gather must clamp fallback brightness with confidence and coverage bounds")
-    require("if (sumWeight <= 1e-5) {\n        imageStore(uOutIndirect, pixel, vec4(0.0));" not in apply_shader,
-            "final gather fallback must be able to fill direct surfel gather holes")
-    require("directIrradiance * directBlend + boundedGridIrradiance * fallbackBlend" in apply_shader,
-            "cell-average fallback must contribute as a weighted irradiance source, not only smooth existing direct support")
-    require("if (SurfelLuminance(boundedGridIrradiance) <= 1e-5) {\n        fallbackBlend = 0.0;" in apply_shader,
-            "a clamped-to-black fallback must not darken direct surfel irradiance")
-    require("fallbackIrradiance" not in apply_shader and "fallbackWeight" not in apply_shader,
-            "per-cell fallback accumulation must not bypass the bounded grid fallback contract")
-    require("max(max(directBlend, fallbackBlend), bleedSupport" in apply_shader,
-            "fallback and bleed support must be reflected in output confidence")
+    # Final gather (GIBS p.40, spec 5.14): unnormalised sum plus the receiver cell's average for the
+    # uncovered share of the weight, with coverage = min(sum w, 1) kept for the spawn pass.
+    require("float cellShare = clamp(uFallbackStrength, 0.0, 1.0) * max(0.0, 1.0 - sumWeight);" in apply_shader,
+            "final gather must weight the cell average by the uncovered share 1 - sum(w)")
+    require("vec3 surfelIrradiance = sumIrradiance / max(1.0, sumRampWeight);" in apply_shader and
+            "vec3 irradiance = max(surfelIrradiance + cellIrradiance * cellShare, vec3(0.0));" in apply_shader,
+            "final gather must be sum(w E) / max(1, sum(w)) + E_cell * max(0, 1 - sum(w)): unnormalised below one")
+    require("float coverage = clamp(sumWeight, 0.0, 1.0);" in apply_shader and
+            "imageStore(uOutCoverage, pixel, vec4(coverage, 0.0, 0.0, 1.0));" in apply_shader,
+            "gather coverage must stay min(sum w, 1) in the coverage texture for the spawn pass")
+    require("sumIrradiance / sumRampWeight" not in apply_shader and
+            "SampleTrilinearGridIrradiance" not in apply_shader and
+            "BoundedFallbackBlend" not in apply_shader,
+            "the normalised average and the trilinear fallback must not come back")
+    require("acceptedCount >= maxAccepted" in apply_shader and
+            "uMaxGatherSurfelsPerPixel" in apply_shader,
+            "final gather must take the first N accepted surfels (bounded by N)")
+    require("uMaxGatherCandidates" in apply_shader and "examinedCount >= maxExamined" in apply_shader,
+            "final gather must bound the entries examined per texel")
 
-    require("if (centerConfidence <= 1e-4) {\n        imageStore(uOutIndirect, pixel, vec4(0.0));" in spatial_filter_shader,
-            "spatial filter must not synthesize unsupported GI from neighboring pixels")
-    require("centerConfidence > 1e-4 && SurfelLuminance(center.rgb) > 1e-5" not in spatial_filter_shader,
-            "spatial filter must preserve valid dark center samples instead of treating them as holes")
-    require("centerConfidence > 1e-4\n        ? exp(-colorDelta * colorDelta * 0.42)\n        : 1.0" not in spatial_filter_shader,
-            "spatial filter must not disable color gating when the center has no signal")
+    # Upscale (the only screen-space pass after the gather): depth- and normal-aware, four taps.
+    require("for (int k = 0; k < 4; ++k)" in upscale_shader and
+            "SurfelUpscaleDepthWeight(centerDepth, sampleDepth)" in upscale_shader and
+            "SurfelUpscaleNormalWeight(centerNormal, sampleNormal)" in upscale_shader,
+            "upscale must be a four-tap depth and normal joint bilateral")
+    require("upscale_filter" in pipeline_cpp and "spatial_filter" not in pipeline_cpp and
+            "temporal_filter" not in pipeline_cpp,
+            "pipeline must run the upscale only, with no spatial or temporal screen filter")
 
 
 if __name__ == "__main__":

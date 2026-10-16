@@ -31,9 +31,8 @@ def main() -> None:
     require("SaveSurfelDebugTexturePNG" in pipeline_cpp,
             "Surfel GI texture dumps must write direct PNG evidence from GL textures")
     require("rawIndirectTexture" in pipeline_cpp and
-            "filteredIndirectTexture" in pipeline_cpp and
             "indirectTexture" in pipeline_cpp,
-            "texture dump must include raw, filtered, and temporal/final indirect textures")
+            "texture dump must include the raw gather and the upscaled final indirect textures")
     require("m_lastTextureDumpFrame" in pipeline_h,
             "pipeline must avoid dumping validation textures every frame")
 

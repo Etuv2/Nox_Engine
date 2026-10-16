@@ -1379,3 +1379,139 @@ NFS kappa sweep (before the cap, one repeat, ratio against the reference term 0.
 - Energy on NFS (-12%). The population cap and grid reach account for most of the change. The rest is not isolated.
 - Grid on scene.json and NFS (0.106). Count is still the largest piece. The lane-parallel count is the obvious next step once its discrepancy is found.
 - The estimator's path continuation (tracing 8 ms on NFS) is the largest GPU cost and belongs to the estimator worker.
+
+## 18. Final gather and composition
+
+Worker F (Haiku 5.5). Built on the merge of `worktree-agent-af875ff171ce0c409` (grid and population, estimator round 2) into `19363d0`; the merge commit is `c31fd08`, the HEAD before this work. Method as sections 9 and 16: 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera, frames 200-260 (reference 780-840), three repeats unless marked. Reference is `indep_term` (independent path tracer, composite debug 4). Energy is the linear term (debug 4 over lit pixels); "before" is the merged HEAD built unmodified and run from a frozen copy. Off and SSGI-only runs are reused from the before runs (their code path did not change). GPU timings were taken while other workers used the GPU, so absolute times are contended; the timing comparisons are alternating pairs.
+
+Result in one line: the gather is cheaper per frame (the chain falls from 1.27 to 1.00 ms on scene.json), the screen chain is one pass with a minimal history, and the composition is non-darkening; the surfel energy moved by -9% (Cornell) and -6% (NFS), the gather target (0.35 ms) and the NFS noise target are not met, and the SSGI double-count target is met on Cornell only.
+
+### 18.1 What changed
+
+- Final gather (`apply_indirect.comp`). Per gather texel, the first N accepted surfels of the receiver's 3x3x3 cells (cell order), where N is the tier's accepted count: Low 16, Medium 32, High 48, Ultra 64. Examined entries are bounded at 2N (`uMaxGatherCandidates`). Weights are unchanged (distance, normal, plane, confidence, radial visibility). Irradiance: `E = sum(w r E_s) / max(1, sum(w r)) + E_cell * max(0, 1 - sum(w))`, where `r` is the young-surfel ramp and `E_cell` is the receiver's base-cell average. Coverage stays `min(sum(w), 1)` for the spawn pass. The trilinear 27-cell fallback is gone.
+- Deviation, measured (section 18.2): the division by `max(1, .)` is added. The literal sum, without it, multiplies the surfel term by 1.66 (Cornell), 1.22 (scene) and 3.26 (NFS) of the reference, because covered texels have sum(w) of 1.5 to 2. The division applies only above 1, so it is continuous at 1 and sparse texels keep the GIBS sum.
+- Tiers. Gather scale 0.5 for every tier, neighbour radius 1 (High and Ultra were 1.0 and 2, i.e. 125 cells). Accepted counts as above. The count is now the tier's value when the context is 0 (new default), not a minimum over a default of 32. The earlier table took `min(32, tier)`, so High and Ultra ran 32; this was found while measuring and is fixed (`ModularRenderer.cpp` `SyncSurfelGISettings`, `RenderContext.h`, settings window: 0 = tier default).
+- Screen chain (`upscale_filter.comp`). `spatial_filter.comp` and `temporal_filter.comp` are deleted (vcxproj, filters, pipeline, two validators, quality test). The upscale is a four-tap joint bilateral on depth and normal, and it now carries one minimal temporal step: the previous output is reprojected with the velocity buffer, clamped to the range of the 3x3 gather texels, and blended at weight 0.85 (zero above 6 px of motion or during a lighting change). The history is full-resolution, ping-ponged, and invalidated on resize, release and reset.
+- Composition (`deferred_lighting_frag.glsl`, Option A). The far field (surfel, LPV) is multiplied by SSAO and material AO only. It is no longer multiplied by SSGI's visibility. Diffuse IBL and specular occlusion keep `min(SSAO, SSGI visibility) * material AO`, and the diffuse IBL keeps `diffuseIBLOcclusion = diffuseAO * (1 - coverage)` unchanged (see 18.5).
+- Harness (`tools/surfel_gi_metrics.py`): configs `surf_term_both4` and `surf_term_both3` (SSGI on, debug 4 and debug 3), `tier0`, `tier2`, `tier3`, `surf_cand32`, `surf_cand128`, `surf_cand256`.
+
+### 18.2 Results
+
+Energy and noise (surfel term, 3 repeats; reference `indep_term`):
+
+| Scene | Reference term | Before | After | Change | Noise before | Noise after | Target |
+|---|---|---|---|---|---|---|---|
+| Cornell | 0.5952 | 0.7191 (1.21) | 0.6517 (1.10) | -9.4% | 0.31% | 0.71% | <= 2% ok |
+| scene.json | 0.3759 | 0.3588 (0.95) | 0.3688 (0.98) | +2.8% | 0.18% | 0.36% | <= 1.5% ok |
+| NFS night street | 0.0736 | 0.0546 (0.74) | 0.0515 (0.70) | -5.7% | 1.60% | 1.89% | <= 1.5% not met |
+
+Energy target (surf within 5% of before): met on scene.json and NFS, not met on Cornell (-9.4%). The Cornell loss is the cell-average share on sparse texels (the GIBS fallback); the literal form would have been +66% there.
+
+Flicker, NFS, surfel term (mean absolute frame-to-frame step on linear lit pixels, 60 frames):
+
+| Variant | Step per frame (three repeats) |
+|---|---|
+| Before | 0.000115, 0.000099, 0.000096 |
+| Normalised gather, no history (three repeats, earlier run) | 0.00023, 0.00024, 0.00040 (one repeat with a spike of 0.0024) |
+| Final (with history) | 0.000124, 0.000088, 0.000095 |
+
+Without history the surfel term flickers 2 to 4 times as much per frame. The history restores the before level. Cornell and scene do not need it: without history their harness noise is 0.81% and 0.46%, inside target (the history run gives 0.71% and 0.36%).
+
+Gather chain cost (scene.json, surfel, median of three alternating before/after pairs, shared GPU):
+
+| | Final gather | Spatial + temporal | Upscale (and history) | Chain |
+|---|---|---|---|---|
+| Before | 0.662 ms | 0.40 ms | 0.206 ms | 1.270 ms |
+| After | 0.853 ms | 0 | 0.142 ms | 0.995 ms |
+
+Target (gather + upsample <= 0.35 ms on scene.json): not met (0.995 ms). The gather itself rose by 29%: it now has 2.4 times the texels (0.5 scale) and reads up to 32 accepted surfels per texel. Single-run chains from the 3-repeat runs: Cornell 0.36 to 0.28 ms, NFS 1.32 to 1.16 ms.
+
+Under-coverage (counter `underCoveredTiles / coverageVisibleTileCount`, three repeats):
+
+| Scene | Before | After | Target |
+|---|---|---|---|
+| Cornell | 4.2 to 5.3% | 5.1 to 5.8% | 3% (not met, slightly worse) |
+| scene.json | 3.8 to 4.5% | 1.4 to 1.8% | 3% ok |
+| NFS night street | 6.8 to 7.1% | 3.4 to 3.9% | 3% (not met, close) |
+
+The NFS plateau: the old lookup examined 32 entries per texel and so starved dense cells of back-facing surfels. Examined bounds on NFS (one repeat): 32 gives 4.56%, 64 (default) gives 3.65%, 128 gives 3.62%. The bound was a cause and 64 removes most of it; the remaining 3.6% is not the bound.
+
+Tiers (scene.json, surfel only, excluding tracing, one run each, shared GPU; gather counts checked in the log, 16 / 48 / 64):
+
+| Tier | Accepted N | Non-tracing surfel ms | Target | Under-coverage |
+|---|---|---|---|---|
+| Low (tier 0) | 16 | 0.97 | 0.8 (plan) not met | 6.5% |
+| Medium (default) | 32 | 1.62 (pairs median; before 1.81) | 1.5 (plan) not met | 1.4 to 1.8% |
+| High (tier 2) | 48 | 2.04 | 2.5 ok | 1.5% |
+| Ultra (tier 3) | 64 | 2.40 | 3.5 ok | 1.4% |
+
+Composition (term sums, linear, lit pixels). Far field is debug 4 with SSGI on, near field is debug 3. The three-way comparison is from one session (before history, normalised gather); Option A is re-measured with history.
+
+| Scene (reference term) | Current (far x SSGI visibility) | Option C (open fraction) | Option A (chosen) |
+|---|---|---|---|
+| Cornell (0.5952; surfel 0.6525) | far 0.393, sum 0.414 (0.63 x surfel, 0.70 x ref) | far 0.389, sum 0.410 (0.63 x) | far 0.629 (0.96 x surfel), sum 0.650 (1.00 x surfel, 1.09 x ref); final: sum 0.672 (1.03 x surfel, 1.13 x ref) |
+| scene.json (0.3759; surfel 0.3684) | far 0.365, sum 0.389 (1.06 x) | far 0.365, sum 0.389 (1.06 x) | far 0.372, sum 0.395 (1.07 x; 1.05 x ref); final: sum 0.394 |
+| NFS (0.0736; surfel 0.0555) | far 0.057, sum 0.086 (1.55 x) | far 0.050, sum 0.079 (1.42 x) | far 0.052, sum 0.081 (1.46 x; 1.10 x ref); final: sum 0.091 (1.76 x surfel, 1.23 x ref) |
+
+Near field (SSGI alone, debug 3) is 0.0211 (Cornell, 0.04 of ref), 0.0235 (scene), 0.0291 (NFS, 0.40 of ref).
+
+Targets for the chosen composition (final numbers):
+
+| Target | Cornell | scene.json | NFS |
+|---|---|---|---|
+| both >= surf | 1.03 ok | 1.07 ok | 1.76 ok |
+| both within 10% of ref | 1.13 not met | 1.05 ok | 1.23 not met |
+| both - surf <= 1.05 x SSGI alone | 0.98 ok | 1.08 not met | 1.34 not met |
+
+### 18.3 Why this composition
+
+- The current form darkens. With SSGI on, the far field is multiplied by SSGI's open fraction, which removes light that SSGI does not replace: both/surf is 0.63 on Cornell in this session (0.66 in section 3.4).
+- Option C is not a fix here. Its premise is that SSGI's hit radiance already contains surfel indirect light. It does not. The SSGI bounce source is the `BounceableRadiance` output (lighting shader, `lightingOutputMode == 1`): direct diffuse light plus bounceable IBL, with no surfel or LPV indirect, and emissive surfaces are excluded by design. Cornell's light is an emissive panel, so SSGI cannot see it; that is why SSGI alone reaches 0.04 of the reference on Cornell. Option C multiplies the far field by the same open fraction as the current form, so it inherits the darkening.
+- Option A removes the darkening: both is at or above surf on all three scenes, within 10% of the reference on scene.json, and the double count is within the SSGI-alone bound on Cornell only. Its residual problems are real and reported above: on NFS and scene.json the sum exceeds the SSGI-alone bound by 34% and 8%, and both is 13% and 23% over the reference on Cornell and NFS. Option B (gate SSGI by 1 - coverage) is the next step if the double count must be reduced; it was not measured.
+
+### 18.4 Motion (Cornell, camera path, frames 1 to 100, surfel term)
+
+Frame-to-frame mean absolute difference of the sRGB frames (0 to 255 scale):
+
+| Path | Before: mean, max, median step, p95 second diff | After: mean, max, median step, p95 second diff |
+|---|---|---|
+| Dolly 0.6 m over 60 frames | 1.00, 33.4, 0.85, 0.18 | 0.84, 6.9, 0.97, 0.30 |
+| Orbit 90 degrees | 18.4, 40.6, 1.49, 39.0 | 18.1, 37.4, 23.9, 34.6 |
+
+The large steps at frame 1 to 2 of the dolly are a start-up transient in both builds. Otherwise the dolly is comparable (median step 0.97 against 0.85; p95 second difference 0.30 against 0.18), and no spike is attributable to the history. The orbit alternates between near-identical frames (about 0.2) and jumps (about 40) in both builds, which is a property of the camera path; its medians differ only by the phase of that alternation, and the means agree. Under the orbit the motion exceeds the history's 6 px rejection, so the history is off and there is no lag. The dolly moved 0.01 m per frame, so the history was active there; a faster pan would test the rejection more strictly and was not run. I viewed frame 50 of the final dolly run (`motion_final_dolly/final_00050.png`): the bounce from the red and green walls and the soft occlusion under the block look right, with some blockiness on the red wall from the 0.5 gather. No ghosting was visible; this was not measured more finely.
+
+### 18.5 diffuseIBLOcclusion (verification)
+
+`diffuseIBLOcclusion = diffuseAO * (1 - surfelCoverage)` uses coverage = `min(sum(w), 1)`, but the surfel irradiance also carries `E_cell * (1 - sum(w))`. On a texel with sum(w) of 0.3, the diffuse IBL is kept at 70% while the surfel field supplies the cell average, which contains sky light. That is a possible sky double count on sparse texels. It is bounded by the cell share and not measured here. Option: write the effective coverage `min(1, sum(w) + cellConfidence * (1 - sum(w)))` to the indirect alpha, and measure on scene.json. Open.
+
+### 18.6 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass.
+- `scripts/validate_surfel_gi_static.py`, `scripts/validate_surfel_gi_correctness.py`: pass. `scripts/validate_surfel_gi_fallback_contract.py` rewritten for the new gather and upscale contract: pass. `scripts/validate_surfel_gi_texture_dump.py` updated for the removed texture: pass.
+- Other `scripts/validate_surfel_*.py` and `tests/test_surfel_gi_quality.py` (18 failures, 1 error): the same results as HEAD (legacy contracts, not touched). This was checked before the composition and history changes; the final tree was re-run only for the validators listed above.
+- Editor smoke (`NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`): 14 PASS, 0 FAIL.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 NOX_FIXED_DT=0.0166666667 NOX_EXIT_ON_FINISH=1 NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s (new record)`.
+
+### 18.7 Not met
+
+- Gather plus upsample <= 0.35 ms on scene.json: 0.995 ms (1.27 before). The cost is per texel: 0.5 scale and 32 accepted surfels. Bounding the examined entries at 32 instead of 64 saves about 0.2 ms on scene.json but raises NFS under-coverage to 4.6%. A cheaper surfel read (the needed fields, not the 208-byte struct per candidate) is the untested lever.
+- Surfel energy within 5% of before: Cornell -9.4%, NFS -5.7% (scene +2.8%). Cause: the cell-average share on sparse texels.
+- NFS temporal noise <= 1.5%: 1.89%.
+- Under-coverage <= 3%: NFS 3.4 to 3.9%, Cornell 5.1 to 5.8% (before 4.2 to 5.3%).
+- Composition: both within 10% of the reference on Cornell (13%) and NFS (23%); both minus surf within 1.05 x SSGI alone on scene.json and NFS.
+- Low tier 0.97 ms against the plan's 0.8 ms; Medium 1.62 ms against the plan's 1.5 ms.
+- Light-change response and the IBL double count (18.5): not measured.
+
+### 18.8 Deviations from the brief
+
+- The division by `max(1, sum(w r))` (18.1). Without it the surfel term is 1.22 to 3.26 times the reference.
+- The temporal step inside the upscale, not a separate pass. It is minimal (one history texture pair, neighbourhood clamp, no velocity-based rejection beyond motion length).
+- The examined bound 2N is a separate knob, not the accepted N. The bound is what the NFS plateau test measured.
+
+### 18.9 Open items
+
+- Option B for the SSGI double count on NFS and scene.json.
+- Effective-coverage alpha for the diffuse IBL (18.5).
+- Gather cost per texel: field-only surfel reads, a radiance-weighted lookup, or 16 accepted surfels with a second look at the Cornell fallback.
+- Cornell under-coverage rose by about 1 point with the new gather; not investigated.
+- Run-to-run spread on NFS energy is large (about 15% between three repeats); NFS composition numbers are indicative.

@@ -168,7 +168,7 @@ struct RenderContext {
 	int surfelGIMaxRayBudget = 0; // rays per frame; 0 = the quality tier's default (Low 1024, Medium 2048, High 4096, Ultra 8192)
 	int surfelGISpawnTileSize = 8;
 	int surfelGIMaxSurfelsPerCell = 128;
-	int surfelGIMaxGatherSurfelsPerPixel = 32;
+	int surfelGIMaxGatherSurfelsPerPixel = 0; // accepted surfels per gather texel; 0 = the quality tier's default (Low 16, Medium 32, High 48, Ultra 64)
 	int surfelGIMaxSpawnsPerFrame = 65536; // ceiling only; the GPU budget scales with tiles and coverage deficit
 	int surfelGIMaxProjectedSurfelsPerFrame = 24576;
 	int surfelGIMaxRecycleCountPerFrame = 2048;
@@ -183,7 +183,7 @@ struct RenderContext {
 	float surfelGIFinalGatherNormalReject = 0.15f;
 	float surfelGIRadialDepthVariance = 1.0e-4f;
 	float surfelGIIntensity = 1.0f;
-	float surfelGICellAverageFallbackStrength = 0.20f;
+	float surfelGICellAverageFallbackStrength = 1.0f;
 	bool surfelGIUseRadialDepth = true;
 	bool surfelGIUseRayGuiding = true;
 	bool surfelGIUseScreenTrace = true;

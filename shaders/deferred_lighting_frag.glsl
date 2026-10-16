@@ -435,8 +435,12 @@ void main() {
 	// AO factors. SSGI's visibility is a cosine-weighted horizon AO computed from the same
 	// geometry as SSAO; taking the minimum keeps either from darkening the other twice.
 	IndirectDiffuseInputs gi = SampleIndirectDiffuseSources();
-	float screenAO = min(mix(1.0, ssao, aoStrength), gi.nearVisibility);
-	float diffuseAO = screenAO * aoTex;
+	float ssaoFactor = mix(1.0, ssao, aoStrength);
+	// Diffuse IBL and specular occlusion keep SSGI's visibility (it is a horizon occlusion term).
+	float diffuseAO = min(ssaoFactor, gi.nearVisibility) * aoTex;
+	// Far field (surfel, LPV): SSAO and material AO only. SSGI's visibility is not applied here: the near
+	// field is added in full, and multiplying the far field by it removed light SSGI does not replace.
+	float farFieldAO = ssaoFactor * aoTex;
 	float specularAO = SpecularOcclusion(NdotV, diffuseAO, surface.perceptualRoughness);
 
 	// Evaluate direct and indirect terms separately so indirect diffuse stays local and debuggable.
@@ -500,14 +504,13 @@ void main() {
 	float diffuseIBLOcclusion = diffuseAO * (1.0 - gi.surfelCoverage);
 	vec3 iblContribution = ComputeIBL(N, V, worldPos, surface, diffuseIBLOcclusion, specularAO);
 
-	// Near field already contains its own occlusion, so only material AO applies to it; the far
-	// field has no small-scale occlusion and takes the screen-space AO (which includes SSGI's
-	// visibility, i.e. only the directions SSGI left open).
+	// Near field already contains its own occlusion, so only material AO applies to it. The far field
+	// has no small-scale occlusion, so it takes the screen-space AO and the open-fraction mode above.
 	vec3 giResponse = ComputeIndirectDiffuseResponse(N, V, surface);
 	vec3 ssgiContribution = giResponse * gi.nearIrradiance * aoTex;
-	vec3 lpvContribution = giResponse * gi.lpvIrradiance * diffuseAO * preExposure;
-	vec3 surfelContribution = giResponse * gi.surfelIrradiance * diffuseAO * preExposure;
-	vec3 farFieldContribution = giResponse * ResolveFarFieldIrradiance(gi) * diffuseAO * preExposure;
+	vec3 lpvContribution = giResponse * gi.lpvIrradiance * farFieldAO * preExposure;
+	vec3 surfelContribution = giResponse * gi.surfelIrradiance * farFieldAO * preExposure;
+	vec3 farFieldContribution = giResponse * ResolveFarFieldIrradiance(gi) * farFieldAO * preExposure;
 	directLighting *= preExposure;
 	iblContribution *= preExposure;
 

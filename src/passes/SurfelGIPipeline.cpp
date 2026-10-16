@@ -852,7 +852,6 @@ bool SurfelGIPipeline::Init(RenderContext& context, const SurfelGISettings& sett
 	m_stats.ready = false;
 	m_frameIndex = 0;
 	m_stationaryFrameCount = 0;
-	m_historyReadIndex = 0;
 	m_hasLastCameraState = false;
 	m_hasTemporalHistory = false;
 	m_initialized = true;
@@ -915,9 +914,7 @@ void SurfelGIPipeline::Resize(RenderContext&, uint32_t width, uint32_t height)
 	if (m_settings.enabled && m_initialized) {
 		ReleaseIndirectTexture();
 		CreateIndirectTexture();
-	m_historyReadIndex = 0;
 	m_lastTextureDumpFrame = 0;
-	m_hasTemporalHistory = false;
 		ReleaseAuxiliaryResources();
 		CreateAuxiliaryResources();
 	}
@@ -941,7 +938,6 @@ void SurfelGIPipeline::Shutdown()
 	m_stationaryFrameCount = 0;
 	m_lastSpawnPassCount = 1;
 	m_subpassMetricsInterval = 120;
-	m_historyReadIndex = 0;
 	m_lastTextureDumpFrame = 0;
 	m_hasLastCameraState = false;
 	m_hasTemporalHistory = false;
@@ -1761,6 +1757,7 @@ void SurfelGIPipeline::ApplyIndependentReference(RenderContext& context)
 	SetUniform2ui(upscaleProgram, "uResolution", m_width, m_height);
 	SetUniform2ui(upscaleProgram, "uLowResolution", ReferenceExtent(m_width), ReferenceExtent(m_height));
 	SetUniform1ui(upscaleProgram, "uDebugView", 0u);
+	gpu.BindImage(1, m_resources.historyIndirectTexture[0], 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 	m_upscaleFilterShader->Dispatch(DivRoundUp(m_width, 8u), DivRoundUp(m_height, 8u), 1u);
 	m_upscaleFilterShader->WaitForCompletion(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 	gpu.BindImage(0, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
@@ -1771,10 +1768,8 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 {
 	rhi::Device& gpu = rhi::Gpu();
 	if (!IsReady() || !m_applyIndirectShader || !m_applyIndirectShader->IsValid() ||
-		!m_temporalFilterShader || !m_temporalFilterShader->IsValid() ||
 		!m_upscaleFilterShader || !m_upscaleFilterShader->IsValid() ||
 		!m_resources.indirectTexture.IsValid() || !m_resources.rawIndirectTexture.IsValid() ||
-		!m_resources.filteredIndirectTexture.IsValid() || !m_resources.temporalIndirectTexture.IsValid() ||
 		!context.gbufferFBO) {
 		m_stats.ready = IsReady();
 		return;
@@ -1793,7 +1788,6 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	const uint32_t applyDebugView = IsSurfelFullscreenDebugView(m_settings.debugView)
 		? static_cast<uint32_t>(m_settings.debugView)
 		: 0u;
-	const bool fullscreenDebug = applyDebugView != 0u;
 	const bool denoiseFullscreenDebug =
 		applyDebugView == static_cast<uint32_t>(SurfelGIDebugView::RawIndirectIrradiance);
 	BindCoreResources({});
@@ -1828,6 +1822,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
 	SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
 	SetUniform1ui(program, "uMaxGatherSurfelsPerPixel", m_settings.maxGatherSurfelsPerPixel);
+	SetUniform1ui(program, "uMaxGatherCandidates", m_settings.maxGatherCandidatesPerPixel);
 	SetUniform1ui(program, "uGatherNeighborRadius", m_settings.gatherNeighborRadius);
 	SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 	SetUniform3fv(program, "uGridMin", gridMin);
@@ -1845,88 +1840,40 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	});
 	gpu.BindImage(0, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 
-	bool didSpatialFilter = false;
-	if ((!fullscreenDebug || denoiseFullscreenDebug) && m_spatialFilterShader && m_spatialFilterShader->IsValid()) {
-		const rhi::ProgramHandle filterProgram = m_spatialFilterShader->GetProgramID();
-		gpu.UseProgram(filterProgram);
-		gpu.BindTexture(0, m_resources.rawIndirectTexture);
-		gpu.BindTexture(1, context.gbufferFBO->GetColorAttachment(0));
-		gpu.BindTexture(2, context.gbufferFBO->GetDepthTexture());
-		gpu.BindImage(0, m_resources.filteredIndirectTexture, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		SetUniform1i(filterProgram, "uRawIndirectTex", 0);
-		SetUniform1i(filterProgram, "uPackedNormalRMTex", 1);
-		SetUniform1i(filterProgram, "uDepthTex", 2);
-		SetUniform2ui(filterProgram, "uResolution", m_indirectWidth, m_indirectHeight);
-		SetUniform2ui(filterProgram, "uInputResolution", m_width, m_height);
-		timedDispatch("composite_filter", [&]() {
-			m_spatialFilterShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
-			m_spatialFilterShader->WaitForCompletion(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
-		});
-		gpu.BindImage(0, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		didSpatialFilter = true;
-	}
-
-	bool didTemporalResolve = false;
-	if ((!fullscreenDebug || denoiseFullscreenDebug) && m_temporalFilterShader && m_temporalFilterShader->IsValid()) {
-		const uint32_t historyReadIndex = m_historyReadIndex & 1u;
-		const uint32_t historyWriteIndex = historyReadIndex ^ 1u;
-		const rhi::ProgramHandle temporalProgram = m_temporalFilterShader->GetProgramID();
-		gpu.UseProgram(temporalProgram);
-		gpu.BindTexture(0, m_resources.filteredIndirectTexture);
-		gpu.BindTexture(1, m_resources.historyIndirectTexture[historyReadIndex]);
-		gpu.BindTexture(2, m_resources.historyGeometryTexture[historyReadIndex]);
-		gpu.BindTexture(3, context.velocityTex);
-		gpu.BindTexture(4, context.gbufferFBO->GetColorAttachment(0));
-		gpu.BindTexture(5, context.gbufferFBO->GetDepthTexture());
-		gpu.BindImage(0, m_resources.temporalIndirectTexture, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		gpu.BindImage(1, m_resources.historyIndirectTexture[historyWriteIndex], 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		gpu.BindImage(2, m_resources.historyGeometryTexture[historyWriteIndex], 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		SetUniform1i(temporalProgram, "uCurrentIndirectTex", 0);
-		SetUniform1i(temporalProgram, "uPreviousIndirectTex", 1);
-		SetUniform1i(temporalProgram, "uPreviousGeometryTex", 2);
-		SetUniform1i(temporalProgram, "uVelocityTex", 3);
-		SetUniform1i(temporalProgram, "uPackedNormalRMTex", 4);
-		SetUniform1i(temporalProgram, "uDepthTex", 5);
-		SetUniform2ui(temporalProgram, "uResolution", m_indirectWidth, m_indirectHeight);
-		SetUniform2ui(temporalProgram, "uInputResolution", m_width, m_height);
-		SetUniform1i(temporalProgram, "uUseHistory", m_hasTemporalHistory ? 1 : 0);
-		SetUniform1i(temporalProgram, "uUseVelocity", context.velocityTex.IsValid() ? 1 : 0);
-		SetUniform1f(temporalProgram, "uDepthReject", 0.0025f);
-		SetUniform1f(temporalProgram, "uNormalRejectCos", 0.55f);
-		SetUniform1f(temporalProgram, "uMotionRejectPixels", 96.0f);
-		SetUniform1f(temporalProgram, "uLightingChangeFactor", m_lightingChangeFactor);
-		timedDispatch("temporal_resolve", [&]() {
-			m_temporalFilterShader->Dispatch(DivRoundUp(m_indirectWidth, 8u), DivRoundUp(m_indirectHeight, 8u), 1u);
-			m_temporalFilterShader->WaitForCompletion(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
-		});
-		gpu.BindImage(0, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		gpu.BindImage(1, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		gpu.BindImage(2, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
-		m_historyReadIndex = historyWriteIndex;
-		m_hasTemporalHistory = true;
-		didTemporalResolve = true;
-	}
-
-	const rhi::TextureHandle upscaleSourceTexture = didTemporalResolve
-		? m_resources.temporalIndirectTexture
-		: (didSpatialFilter ? m_resources.filteredIndirectTexture : m_resources.rawIndirectTexture);
+	// Upscale from the gather resolution, then one minimal temporal step against the previous output
+	// (reprojected with the velocity buffer and clamped to the gather neighbourhood; upscale_filter.comp).
+	const uint32_t historyReadIndex = m_historyReadIndex & 1u;
+	const uint32_t historyWriteIndex = historyReadIndex ^ 1u;
 	const rhi::ProgramHandle upscaleProgram = m_upscaleFilterShader->GetProgramID();
 	gpu.UseProgram(upscaleProgram);
-	gpu.BindTexture(0, upscaleSourceTexture);
+	gpu.BindTexture(0, m_resources.rawIndirectTexture);
 	gpu.BindTexture(1, context.gbufferFBO->GetColorAttachment(0));
 	gpu.BindTexture(2, context.gbufferFBO->GetDepthTexture());
+	gpu.BindTexture(3, m_resources.historyIndirectTexture[historyReadIndex]);
+	gpu.BindTexture(4, context.velocityTex);
 	gpu.BindImage(0, m_resources.indirectTexture, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.BindImage(1, m_resources.historyIndirectTexture[historyWriteIndex], 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 	SetUniform1i(upscaleProgram, "uLowResIndirectTex", 0);
 	SetUniform1i(upscaleProgram, "uPackedNormalRMTex", 1);
 	SetUniform1i(upscaleProgram, "uDepthTex", 2);
+	SetUniform1i(upscaleProgram, "uHistoryTex", 3);
+	SetUniform1i(upscaleProgram, "uVelocityTex", 4);
 	SetUniform2ui(upscaleProgram, "uResolution", m_width, m_height);
 	SetUniform2ui(upscaleProgram, "uLowResolution", m_indirectWidth, m_indirectHeight);
 	SetUniform1ui(upscaleProgram, "uDebugView", denoiseFullscreenDebug ? 0u : applyDebugView);
+	SetUniform1i(upscaleProgram, "uUseHistory", (m_hasTemporalHistory && applyDebugView == 0u) ? 1 : 0);
+	SetUniform1i(upscaleProgram, "uUseVelocity", context.velocityTex.IsValid() ? 1 : 0);
+	SetUniform1f(upscaleProgram, "uHistoryWeight", 0.85f);
+	SetUniform1f(upscaleProgram, "uMotionRejectPixels", 6.0f);
+	SetUniform1f(upscaleProgram, "uLightingChangeFactor", m_lightingChangeFactor);
 	timedDispatch("upscale_filter", [&]() {
 		m_upscaleFilterShader->Dispatch(DivRoundUp(m_width, 8u), DivRoundUp(m_height, 8u), 1u);
 		m_upscaleFilterShader->WaitForCompletion(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
 	});
 	gpu.BindImage(0, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	gpu.BindImage(1, {}, 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
+	m_historyReadIndex = historyWriteIndex;
+	m_hasTemporalHistory = applyDebugView == 0u;
 
 	const std::string dumpDir = EnvString("NOX_SURFEL_GI_DUMP_DIR");
 	if (!dumpDir.empty()) {
@@ -1950,27 +1897,15 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 				m_indirectWidth,
 				m_indirectHeight,
 				directory / ("surfel_raw_indirect" + frameSuffix + ".png"));
-			const bool filteredOk = SaveSurfelDebugTexturePNG(
-				m_resources.filteredIndirectTexture,
-				m_indirectWidth,
-				m_indirectHeight,
-				directory / ("surfel_filtered_indirect" + frameSuffix + ".png"));
-			const bool temporalLowOk = SaveSurfelDebugTexturePNG(
-				m_resources.temporalIndirectTexture,
-				m_indirectWidth,
-				m_indirectHeight,
-				directory / ("surfel_temporal_lowres_indirect" + frameSuffix + ".png"));
 			const bool finalOk = SaveSurfelDebugTexturePNG(
 				m_resources.indirectTexture,
 				m_width,
 				m_height,
-				directory / ("surfel_temporal_indirect" + frameSuffix + ".png"));
+				directory / ("surfel_upscaled_indirect" + frameSuffix + ".png"));
 			std::cout << "[SurfelGITextureDump] frame=" << m_frameIndex
 				<< " dir=" << directory.string()
 				<< " raw=" << rawOk
-				<< " filtered=" << filteredOk
-				<< " temporalLow=" << temporalLowOk
-				<< " temporal=" << finalOk
+				<< " final=" << finalOk
 				<< '\n';
 			m_lastTextureDumpFrame = m_frameIndex;
 		}
@@ -2162,7 +2097,6 @@ bool SurfelGIPipeline::ReloadShaders()
 		m_pool.ResetFreeList();
 		m_frameIndex = 0u;
 		m_stationaryFrameCount = 0u;
-		m_historyReadIndex = 0u;
 		m_lastTextureDumpFrame = 0u;
 		m_hasLastCameraState = false;
 		m_hasTemporalHistory = false;
@@ -2179,8 +2113,6 @@ void SurfelGIPipeline::SetSettings(const SurfelGISettings& settings)
 	m_settings = settings;
 	m_stats.configuredEnabled = settings.enabled;
 	if (oldSettings.debugView != settings.debugView) {
-		m_historyReadIndex = 0u;
-		m_hasTemporalHistory = false;
 	}
 	if (m_initialized && m_settings.enabled && m_width > 0u && m_height > 0u) {
 		m_indirectWidth = ScaledExtent(m_width, m_settings.finalGatherResolutionScale);
@@ -2189,8 +2121,6 @@ void SurfelGIPipeline::SetSettings(const SurfelGISettings& settings)
 			(m_indirectWidth != oldIndirectWidth || m_indirectHeight != oldIndirectHeight)) {
 			ReleaseIndirectTexture();
 			CreateIndirectTexture();
-			m_historyReadIndex = 0u;
-			m_hasTemporalHistory = false;
 		}
 	}
 }
@@ -2301,13 +2231,9 @@ bool SurfelGIPipeline::IsReady() const
 		m_resources.coverageTileBuffer.IsValid() &&
 		m_resources.rawIndirectTexture.IsValid() &&
 		m_resources.coverageTexture.IsValid() &&
-		m_resources.filteredIndirectTexture.IsValid() &&
-		m_resources.temporalIndirectTexture.IsValid() &&
 		m_resources.indirectTexture.IsValid() &&
 		m_resources.historyIndirectTexture[0].IsValid() &&
-		m_resources.historyIndirectTexture[1].IsValid() &&
-		m_resources.historyGeometryTexture[0].IsValid() &&
-		m_resources.historyGeometryTexture[1].IsValid();
+		m_resources.historyIndirectTexture[1].IsValid();
 }
 
 bool SurfelGIPipeline::CreateAuxiliaryResources()
@@ -2392,8 +2318,6 @@ bool SurfelGIPipeline::LoadShaders()
 		CreateCompute(m_irradianceSnapshotShader, "shaders/surfel_gi/irradiance_snapshot.comp") &&
 		CreateCompute(m_irradianceSharingShader, "shaders/surfel_gi/irradiance_sharing.comp") &&
 		CreateCompute(m_applyIndirectShader, "shaders/surfel_gi/apply_indirect.comp") &&
-		CreateCompute(m_spatialFilterShader, "shaders/surfel_gi/spatial_filter.comp") &&
-		CreateCompute(m_temporalFilterShader, "shaders/surfel_gi/temporal_filter.comp") &&
 		CreateCompute(m_upscaleFilterShader, "shaders/surfel_gi/upscale_filter.comp");
 
 	if (!computeOk) {
@@ -2448,8 +2372,6 @@ void SurfelGIPipeline::ReleaseShaders()
 	m_irradianceSnapshotShader.reset();
 	m_irradianceSharingShader.reset();
 	m_applyIndirectShader.reset();
-	m_spatialFilterShader.reset();
-	m_temporalFilterShader.reset();
 	m_upscaleFilterShader.reset();
 	m_referenceShader.reset();
 	if (m_debugProgram.IsValid()) {
@@ -2473,13 +2395,9 @@ bool SurfelGIPipeline::CreateIndirectTexture()
 	const bool ok =
 		AllocateIndirectTexture(m_resources.rawIndirectTexture, m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.coverageTexture, m_indirectWidth, m_indirectHeight) &&
-		AllocateIndirectTexture(m_resources.filteredIndirectTexture, m_indirectWidth, m_indirectHeight) &&
-		AllocateIndirectTexture(m_resources.temporalIndirectTexture, m_indirectWidth, m_indirectHeight) &&
 		AllocateIndirectTexture(m_resources.indirectTexture, m_width, m_height) &&
-		AllocateIndirectTexture(m_resources.historyIndirectTexture[0], m_indirectWidth, m_indirectHeight) &&
-		AllocateIndirectTexture(m_resources.historyIndirectTexture[1], m_indirectWidth, m_indirectHeight) &&
-		AllocateIndirectTexture(m_resources.historyGeometryTexture[0], m_indirectWidth, m_indirectHeight) &&
-		AllocateIndirectTexture(m_resources.historyGeometryTexture[1], m_indirectWidth, m_indirectHeight);
+		AllocateIndirectTexture(m_resources.historyIndirectTexture[0], m_width, m_height) &&
+		AllocateIndirectTexture(m_resources.historyIndirectTexture[1], m_width, m_height);
 	const bool referenceOk = !m_settings.referenceMode ||
 		AllocateReferenceTextures(m_resources.referenceMeanTexture, m_resources.referenceCountTexture,
 			ReferenceExtent(m_width), ReferenceExtent(m_height));
@@ -2487,8 +2405,6 @@ bool SurfelGIPipeline::CreateIndirectTexture()
 		ReleaseIndirectTexture();
 		return false;
 	}
-	m_historyReadIndex = 0u;
-	m_hasTemporalHistory = false;
 	m_referenceResetPending = true;
 	m_hasReferenceView = false;
 	return true;
@@ -2498,17 +2414,11 @@ void SurfelGIPipeline::ReleaseIndirectTexture()
 {
 	DeleteTexture(m_resources.rawIndirectTexture);
 	DeleteTexture(m_resources.coverageTexture);
-	DeleteTexture(m_resources.filteredIndirectTexture);
-	DeleteTexture(m_resources.temporalIndirectTexture);
 	DeleteTexture(m_resources.indirectTexture);
 	DeleteTexture(m_resources.historyIndirectTexture[0]);
 	DeleteTexture(m_resources.historyIndirectTexture[1]);
-	DeleteTexture(m_resources.historyGeometryTexture[0]);
-	DeleteTexture(m_resources.historyGeometryTexture[1]);
 	DeleteTexture(m_resources.referenceMeanTexture);
 	DeleteTexture(m_resources.referenceCountTexture);
-	m_historyReadIndex = 0u;
-	m_hasTemporalHistory = false;
 }
 
 void SurfelGIPipeline::BindCoreResources(rhi::BufferHandle transformBuffer) const

@@ -1877,13 +1877,7 @@
     <None Include="shaders\surfel_gi\request_rays.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
-    <None Include="shaders\surfel_gi\spatial_filter.comp">
-      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
-    </None>
     <None Include="shaders\surfel_gi\spawn.comp">
-      <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
-    </None>
-    <None Include="shaders\surfel_gi\temporal_filter.comp">
       <Filter>Source Files\misc\shaders\global_illumination\surfel</Filter>
     </None>
     <None Include="shaders\surfel_gi\trace_rays.comp">

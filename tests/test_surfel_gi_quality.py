@@ -158,7 +158,6 @@ class SurfelGIQualityContracts(unittest.TestCase):
         allocate = read("shaders/surfel_gi/allocate_rays.comp")
         generate = read("shaders/surfel_gi/generate_rays.comp")
         integrate = read("shaders/surfel_gi/integrate.comp")
-        temporal = read("shaders/surfel_gi/temporal_filter.comp")
 
         self.assertIn("m_lightingChangeFactor", pipeline_h)
         self.assertIn("m_lightingChangeResponse", pipeline_h)
@@ -167,8 +166,7 @@ class SurfelGIQualityContracts(unittest.TestCase):
         self.assertIn("BuildLightingSignature", pipeline_cpp)
         self.assertIn("ComputeLightingChangeFactor", pipeline_cpp)
         self.assertIn("m_lastLightingSignature = currentLightingSignature;", pipeline_cpp)
-        self.assertGreaterEqual(pipeline_cpp.count('SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);'), 4)
-        self.assertIn('SetUniform1f(temporalProgram, "uLightingChangeFactor", m_lightingChangeFactor);', pipeline_cpp)
+        self.assertGreaterEqual(pipeline_cpp.count('SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);'), 3)
 
         self.assertIn("uniform float uLightingChangeFactor", update)
         self.assertIn("lightingReactive", update)
@@ -192,9 +190,6 @@ class SurfelGIQualityContracts(unittest.TestCase):
         self.assertIn("msmeData.inconsistency", integrate)
         self.assertIn("lightingCatchUpBlend", integrate)
 
-        self.assertIn("uniform float uLightingChangeFactor", temporal)
-        self.assertIn("lightingHistoryCap", temporal)
-        self.assertIn("historyConfidence *= mix(1.0, 0.38, lightingChange);", temporal)
 
         trace = read("shaders/surfel_gi/trace_rays.comp")
         self.assertIn("uniform float uLightingChangeFactor", trace)

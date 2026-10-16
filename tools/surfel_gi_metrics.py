@@ -79,6 +79,16 @@ CONFIG_ENV = {
     "ssgi": {"NOX_DISABLE_SURFEL_GI": "1", "NOX_SSGI": "1"},
     "surf": dict(SURF_ENV),
     "both": {"NOX_ENABLE_SURFEL_GI": "1", "NOX_SSGI": "1"},
+    # Quality tiers (Low 0, High 2, Ultra 3; Medium is the default tier 1) and the gather candidate bound.
+    "tier0": {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "0"},
+    "tier2": {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "2"},
+    "tier3": {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "3"},
+    "surf_cand32": {**SURF_ENV, "NOX_SURFEL_GI_GATHER_CANDIDATES": "32"},
+    "surf_cand128": {**SURF_ENV, "NOX_SURFEL_GI_GATHER_CANDIDATES": "128"},
+    "surf_cand256": {**SURF_ENV, "NOX_SURFEL_GI_GATHER_CANDIDATES": "256"},
+    # SSGI-on terms (composite debug 4 = far field, debug 3 = near field). Their sum is the additive GI of "both".
+    "surf_term_both4": {**SURF_ENV, "NOX_SSGI": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_both3": {**SURF_ENV, "NOX_SSGI": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "3"},
     "surf_term": {**SURF_ENV, "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096"},
     "surf_spawn1": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.0"},
@@ -121,7 +131,8 @@ REF_CONFIGS = ("indep", "ref")
 TERM_CONFIG_PREFIXES = ("surf_term", "indep_term")
 GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15",
               "surf_noguide", "surf_nosharing", "surf_r8k")
-SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15", "ref",
+SURFEL_LOG_CONFIGS = ("surf", "both", "tier0", "tier2", "tier3", "surf_cand32", "surf_cand128", "surf_cand256",
+                      "surf_term", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15", "ref",
                       "surf_noguide", "surf_term_noguide", "surf_nosharing", "surf_term_nosharing",
                       "surf_term_r4k", "surf_r8k", "surf_term_r8k")
 REQUIRED_COUNTERS = ("liveSurfels", "requestedRays", "allocatedRays", "shortfall")
