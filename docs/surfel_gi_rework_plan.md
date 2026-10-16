@@ -1572,3 +1572,66 @@ Cornell, `NOX_CAMERA_PATH` (single runs, frames 200-260). Metric: mean absolute 
 - The final gather is not a reference for recycling. The brief asked for "ray hits or the gather", and the gather lives in `apply_indirect.comp`, which is not in this change's file set. Off-screen world surfels are used by rays, so the ray reference covers them.
 - A/B timing pairs (3 each) were not run, and the furnace and white-sky checks were not re-measured. Both need a quiet GPU.
 - The world settings are not set per tier.
+
+### 17.9 Convergence, ray share and cache bias (follow-up)
+
+Same branch, same definitions as 17.2. Energy is the lit-mask ratio against `indep_term` (all-pixel in brackets). Cold start: runs from frame 0 with the dump of the surfel term every 10 frames (every 20 for the 2000-frame run). "Plateau" is the mean of the last 200 frames of a run; "time to 90%" is the first dumped frame at or above 0.9 x plateau. Runs are single runs. The identical configuration (x0 and E0) differs by about 0.03 to 0.05 at frame 900, so differences smaller than that are not claims. Runs use the measurement render settings (the first attempt did not, and is discarded).
+
+Tools (not in the repo): `conv_run.py` runs the engine to a frame with dumps through the harness's scene measurement copy, `conv_analyze.py` gives the energy per dumped frame, the plateau, the exponential fit and the time to 90%, `share.py` reads the world-surfel counters, `tracecost.py` reads tracing and labelled total from the subpass lines.
+
+**Convergence (scene.json, world mode).** Energy climbs over the whole run. It is not converged at frames 200-260, which is the window the earlier tables used.
+
+| Config | 100 | 200 | 400 | 600 | 800 | 1000 | 1400 | 2000 | Plateau (last 200) | Time to 90% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| World mode | 0.598 | 0.638 | 0.689 | 0.733 | 0.785 | 0.815 | 0.840 | 0.858 | 0.855 (1800-2000) | 760 frames |
+| World mode, world long rate 0.1 | 0.605 | 0.665 | 0.773 | 0.812 | 0.830 | 0.845 | 0.855 | 0.864 | 0.867 (1800-2000) | 440 frames |
+| Default (world off) | 0.948 | 0.953 | 0.958 (400) | 0.959 (500) | - | - | - | - | 0.948 (0-500 mean) | 20 frames |
+
+- The world-mode increments fall by about 0.7 per 200 frames, so the time constant is roughly 550 frames. A three-parameter exponential fit over 100-900 is unstable (asymptote 0.85 to 1.5 depending on the window); the 2000-frame run settles it better, at about 0.86 with the plateau above.
+- The plateau is well below the default (0.95). So convergence speed explains part of the gap, and the rest is a steady-state bias of roughly 0.09 to 0.13. The first hypothesis (convergence only) is not sufficient.
+- Long rate: world surfels with long rate 0.1 (instead of 0.02) reach 90% of the plateau in 440 frames instead of 760, with the same tracing cost. The plateau does not move.
+
+**Cornell (world mode).** Converges within the first 10 to 100 frames. All-pixel: 1.069 at frame 10, 1.080 at 200, 1.090 at 900 (world), against 1.075 for the default; the band [0.9, 1.1] is met on all-pixel. The lit-mask ratio is about 1.19 to 1.24 in both modes and does not meet the band; it is the same bias the earlier sections describe.
+
+**NFS.** Default: plateau 0.780 (frames 700-900), 90% at 40 frames. The 0.742 in the 200-260 table is the same run's mean over that window, and the difference to the plateau comes from the window, not from the code. World mode: 0.62 at frame 20, 0.72 at 900, still rising, so world mode on NFS is slower and has not reached its plateau in 900 frames. Earlier in this section NFS was 0.72 for the merged base, and the default is 0.78 on the plateau; both are below the band (predates world mode).
+
+**Ray share and sample accounting (scene.json, world mode).**
+- Requests and grants: world surfels take about 20% of the requested rays and of the granted rays (requestedWorld / requestedRays 0.20 to 0.22; allocatedWorld / allocatedRays 0.19 to 0.24), about one ray per world surfel per frame.
+- Mean sample history (min(shortMean.a, 192)): 62 at frame 100, 149 at 200, 180 at 400, 188 at 900. The history saturates near the 192 cap by frame 200, so the 1/n cumulative schedule covers the first 150 frames of a world surfel and the 0.02 rate after that.
+- Mean age: 70, 166, 339 and 781 frames at 100, 200, 400 and 900. The world population is old; the cap of 512 is not reached in the default (about 450 live).
+- With the hit-referenced floor of 4 rays (window 8 frames), the world grant share rises to 0.43 to 0.45 and the grants per world surfel to about 1.95. Energy at frame 900 is 0.767 against 0.829 without the floor, within the spread, so the ray share is not the limit.
+- Young surfels already get the floor of 4 rays for their first 4 frames (`request_rays.comp`), and the cumulative 1/n rate for their first 192 rays (`integrate.comp`).
+
+**Cache bias checks (scene.json, world mode, lit ratio).**
+- Their own rays use the cache at their own hits: yes. The depth-0 lookup of a world surfel's ray excludes only the ray's origin surfel. Cache hits are about 2000 per frame and misses about 0 to 2 (scene), so the chain closes at every hit of every ray.
+- Confidence ramp (young surfels weigh 0.22 to 1): off gives 0.800 at 900 against 0.829; within the spread, so the ramp is not the bias.
+- Normal weight lower edge 0.55 to 0.2 (grazing hits): 0.821 at 1400 against 0.840; no gain.
+- Plane-distance sigma x3: 0.851 at 1400 (+0.01); no clear gain.
+- Cell-average fallback: the trace path does not read cell averages (no reader in `trace_rays.comp` or `surfel_scene_trace.glsl`); the cache lookup is per surfel. Not applicable.
+- Hit-referenced floor: see the ray share above; no gain.
+
+**Fallback mix (item 4).** Cache-first, but continue the path while the cached confidence is low (`NOX_SURFEL_GI_CACHE_MIN_CONF=0.3`, cache depth 3, path depth 3):
+- Energy at 1400 frames: 0.869 against 0.840 (+0.03).
+- Tracing: 4.68 ms against 3.5 ms (+1.2 ms). The continuation is the cost.
+- The cache-depth-2 with RR variant was not run as a separate configuration; the path depth and cache depth settings exist for it.
+
+**Furnace and white-sky (analytic, closed-form expected values; plan 13.4 / 14.2).**
+
+| Test | Expected | Default | World mode | Reference (`indep_term`) |
+|---|---|---|---|---|
+| Furnace surf_term | 0.250 | 0.2411 (-3.6%) | 0.2387 (-4.5%) | 0.2450 |
+| White-sky surf_term | 0.150 | 0.1444 (-3.7%) | 0.1452 (-3.2%) | 0.1470 |
+
+Both are inside the 5% band against the analytic value in both modes. The surfel estimate is 2% to 4.5% under the analytic value and 1.6% to 2.6% under the independent reference.
+
+**Targets (updated).**
+- Tracing at most 1.5 ms: not met. World mode 3.5 ms (scene), 4.7 ms with the fallback mix, 5.6 ms on NFS; default 17.8 ms (scene) and 8.0 ms (NFS).
+- Energy in [0.9, 1.1] at steady state on scene.json: not met in world mode (plateau 0.855 to 0.867); met by the default (0.948).
+- Cornell all-pixel in [0.9, 1.1]: met in both modes (1.07 to 1.09). Lit-mask ratio not met.
+- NFS: not met in either mode (0.78 default, plateau of world mode not reached and below).
+- Furnace and white-sky within 5%: met in both modes.
+- Time to 90% of steady from a cold start: default 20 frames (scene), 40 frames (NFS), about 10 frames (Cornell); world mode 760 frames (scene); with long rate 0.1, 440 frames (scene); NFS world mode not reached within 900 frames.
+
+**Decision.** World mode stays off by default: its steady energy on scene.json (0.855 to 0.867, plateau) does not meet the band, so the default is unchanged. The new knobs (`NOX_SURFEL_GI_WORLD_RAY_FLOOR`, `NOX_SURFEL_GI_WORLD_REF_WINDOW`, `NOX_SURFEL_GI_CACHE_NORMAL_LO`, `NOX_SURFEL_GI_CACHE_CONF_RAMP`, `NOX_SURFEL_GI_CACHE_PLANE_SCALE`, `NOX_SURFEL_GI_WORLD_LONG_RATE`) all default to the previous behaviour. The counters `requestedWorld`, `allocatedWorld`, `worldAgeSum` and `worldHistorySum` log the ray share, age and sample history.
+
+**Open.** The steady-state bias of world mode (about 0.09 to 0.13 at scene.json) is not isolated. Convergence speed is improved by the long rate, not the bias. The next worker should compare, at matched hit points, the cached irradiance with the continuation estimate of the same point (for example by running both at the first hit of a converged scene), which the present counters cannot give.
