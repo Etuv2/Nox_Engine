@@ -1554,9 +1554,9 @@ World mode is off by default (`worldSurfels = false`). With it on, scene.json en
 ### 17.6 Moving camera
 
 Cornell, `NOX_CAMERA_PATH` (single runs, frames 200-260). Metric: mean absolute difference of consecutive dumps, and the second difference.
-- Dolly 0.8 m over 260 frames, world mode: first-difference median 0.22, second-difference peak 0.12 of the median first difference, no spike. Tracing 3.69 ms.
-- Dolly, default: first-difference median 0.22, peak ratio 0.13. Tracing about the default.
-- Orbit 0.2 deg per frame, world mode: first-difference median 0.89, max 1.78 at frames 248-249 (a one-frame jump from about 0.8). The second difference peaks at 249 (1.12 of the median first difference). The world counters show no world spawn or request in frames 246-250, and the same jump is in the default orbit (no world surfels, 1.88 at 248-249, second-difference peak 2.14 of the median first difference, against 1.12 with world mode). So the jump comes from the scene content, not from the world surfels, and world mode does not add popping.
+- Dolly 0.8 m over 260 frames, world mode: first-difference median 0.22, second-difference peak 0.12 of the median first difference, no spike. Tracing 2.70 ms, total surfel Execute 3.69 ms.
+- Dolly, default: first-difference median 0.22, peak ratio 0.13. Tracing 3.07 ms, total 4.24 ms.
+- Orbit 0.2 deg per frame, world mode: first-difference median 0.89, max 1.78 at frames 248-249 (a one-frame jump from about 0.8). The second difference peaks at 249 (1.12 of the median first difference). Tracing 2.45 ms (total 3.40 ms). The world counters show no world spawn or request in frames 246-250, and the same jump is in the default orbit (tracing 3.40 ms, total 4.35 ms) (no world surfels, 1.88 at 248-249, second-difference peak 2.14 of the median first difference, against 1.12 with world mode). So the jump comes from the scene content, not from the world surfels, and world mode does not add popping.
 - Energy along a moving path is not comparable with the static reference, so it is not reported.
 
 ### 17.7 Scalability
