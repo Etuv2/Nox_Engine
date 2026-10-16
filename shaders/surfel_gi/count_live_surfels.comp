@@ -28,6 +28,8 @@ void main()
         atomicMax(counters.highWaterIndex, surfelID + 1u);
         if ((SurfelFlags(surfels[surfelID]) & SURFEL_WORLD) != 0u) {
             atomicAdd(counters.liveWorldCounted, 1u);
+            atomicAdd(counters.worldAgeSum, uint(max(surfels[surfelID].worldNormal_age.w, 0.0)));
+            atomicAdd(counters.worldHistorySum, uint(min(max(surfels[surfelID].shortMean.a, 0.0), 192.0)));
         }
         if (surfels[surfelID].worldNormal_age.w < 4.0) {
             atomicAdd(counters.youngSurfelCount, 1u);

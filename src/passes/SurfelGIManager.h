@@ -94,6 +94,16 @@ struct SurfelGISettings {
 	float cacheMinWeight = 1.0e-4f;
 	// Kernel spread of the cache lookup, in support radii (the default is 3.10).
 	float cacheSupportSpread = 3.10f;
+	// Hit-referenced ray floor of world surfels (0 = off) and the reference window in frames (plan section 17.9).
+	uint32_t worldRayFloor = 0u;
+	uint32_t worldRefWindow = 8u;
+	// Lower edge of the cache normal weight (the first round used 0.55) and the confidence ramp (1 = on).
+	float cacheNormalLo = 0.55f;
+	bool cacheConfidenceRamp = true;
+	// Long-mean rate of world surfels (0 = the screen floor, 0.02).
+	float worldLongRate = 0.0f;
+	// Plane-distance sigma scale of the cache weight (1 = the first round's value).
+	float cachePlaneScale = 1.0f;
 	uint32_t spawnTileSize = 16u;
 	// Search stride for the per-tile lowest-coverage search: 1 tests every pixel of a tile each
 	// frame; N > 1 tests a rotating 1/N^2 subset (the lowest coverage over N^2 frames).
@@ -229,6 +239,12 @@ struct SurfelGIFrameStats {
 	uint32_t liveWorldCounted = 0;
 	uint32_t cacheHits = 0;
 	uint32_t cacheMisses = 0;
+	// World surfel ray and sample accounting (per frame): rays requested and granted to world surfels, the sums of their
+	// ages and sample histories (divide by liveWorldCounted for the means).
+	uint32_t requestedWorld = 0;
+	uint32_t allocatedWorld = 0;
+	uint32_t worldAgeSum = 0;
+	uint32_t worldHistorySum = 0;
 	// RT scene update of the latest frame (CPU ms and upload flags from RTSceneResources).
 	float rtInstanceListMs = 0.0f;
 	float rtUploadMs = 0.0f;

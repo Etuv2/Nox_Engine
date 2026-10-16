@@ -139,7 +139,8 @@ SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "s
 REQUIRED_COUNTERS = ("liveSurfels", "requestedRays", "allocatedRays", "shortfall")
 OPTIONAL_COUNTERS = ("youngSurfels", "overflowGridEntries", "rayShortfall",
                      "worldRequests", "worldDropped", "worldSpawned", "worldSkipped", "liveWorld", "liveWorldCounted",
-                     "cacheHits", "cacheMisses", "underCoveredTiles", "coverageVisibleTileCount")
+                     "cacheHits", "cacheMisses", "underCoveredTiles", "coverageVisibleTileCount",
+                     "requestedWorld", "allocatedWorld", "worldAgeSum", "worldHistorySum")
 SPREAD_KEYS = ["energy", "indep_ratio", "indep_rmse_rel", "indep_pearson", "noise_rel",
                "gi_both_minus_ssgi", "gi_surf_minus_off", "sum_labels_ms", "total_gpu_ms", "shortfall"]
 

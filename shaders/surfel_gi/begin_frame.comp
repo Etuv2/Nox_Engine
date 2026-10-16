@@ -26,6 +26,10 @@ void main()
     counters.worldSpawned = 0u;
     counters.worldSkippedCovered = 0u;
     counters.liveWorldCounted = 0u;
+    counters.requestedWorld = 0u;
+    counters.allocatedWorld = 0u;
+    counters.worldAgeSum = 0u;
+    counters.worldHistorySum = 0u;
     counters.cacheHits = 0u;
     counters.cacheMisses = 0u;
     counters.spawnedThisFrame = 0u;

@@ -95,6 +95,12 @@ uniform float uCacheMinConfidence = 0.0;
 uniform float uCacheMinWeight = 1.0e-4;
 // Kernel spread of the cache weight, in support radii (default 3.10; NOX_SURFEL_GI_CACHE_SPREAD).
 uniform float uCacheSupportSpread = 3.10;
+// Lower edge of the normal weight of a cache lookup (smoothstep(lo, 0.95, cos)); 0.55 was the value of the first round.
+uniform float uCacheNormalLo = 0.55;
+// 1 = the confidence ramp (young surfels weigh 0.22 to 1), 0 = every surfel with weight counts fully.
+uniform uint uCacheConfidenceRamp = 1u;
+// Scale of the plane-distance sigma of the cache weight (1 = the first round's value).
+uniform float uCachePlaneScale = 1.0;
 
 // Guide map of the surfel rays: the density of the origin's next-event MIS weight needs it (plan section 14).
 layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
@@ -194,15 +200,16 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
         return 0.0;
     }
 
-    float normalWeight = smoothstep(0.55, 0.95, dot(receiverNormal, surfelNormal));
-    float planeSigma = max(max(radius * 2.65, supportRadius * 0.26), 0.060);
+    float normalWeight = smoothstep(uCacheNormalLo, 0.95, dot(receiverNormal, surfelNormal));
+    float planeSigma = max(max(radius * 2.65, supportRadius * 0.26), 0.060) * uCachePlaneScale;
     float planeWeight = exp(-(abs(dot(delta, surfelNormal)) + abs(dot(delta, receiverNormal))) / max(planeSigma, 1e-4));
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
     if (confidence < 0.08 && SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0))) <= 1e-5) {
         return 0.0;
     }
 
-    return distanceWeight * normalWeight * planeWeight * mix(0.22, 1.0, smoothstep(0.05, 0.65, confidence));
+    float confidenceWeight = uCacheConfidenceRamp != 0u ? mix(0.22, 1.0, smoothstep(0.05, 0.65, confidence)) : 1.0;
+    return distanceWeight * normalWeight * planeWeight * confidenceWeight;
 }
 
 float TraceSurfaceAttributeWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)

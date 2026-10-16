@@ -658,6 +658,17 @@ void ModularRenderer::SyncSurfelGISettings()
 			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_MIN_WEIGHT", settings.cacheMinWeight), 0.0f);
 		settings.cacheSupportSpread = std::max(
 			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_SPREAD", settings.cacheSupportSpread), 0.1f);
+		settings.worldRayFloor = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_WORLD_RAY_FLOOR", static_cast<int>(settings.worldRayFloor)), 0, 8));
+		settings.worldRefWindow = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_WORLD_REF_WINDOW", static_cast<int>(settings.worldRefWindow)), 1, 4096));
+		settings.cacheNormalLo = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_NORMAL_LO", settings.cacheNormalLo), 0.0f, 0.94f);
+		applyEnvToggle("NOX_SURFEL_GI_CACHE_CONF_RAMP", settings.cacheConfidenceRamp);
+		settings.worldLongRate = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_WORLD_LONG_RATE", settings.worldLongRate), 0.0f, 0.5f);
+		settings.cachePlaneScale = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_PLANE_SCALE", settings.cachePlaneScale), 0.1f, 20.0f);
 	}
 	// Reference mode reads the surfel composite view too. NOX_GI_REFERENCE=1 with
 	// NOX_SURFEL_GI_COMPOSITE_DEBUG=4 then shows the reference term alone (plan section 14, O2).

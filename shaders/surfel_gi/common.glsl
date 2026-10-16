@@ -186,6 +186,12 @@ struct SurfelCounters
     uint cacheMisses;
     // Persistent (not cleared per frame): live world surfels. Spawn adds, recycle removes.
     uint liveWorld;
+    // Ray and sample accounting for world surfels (plan section 17.9): rays requested and granted to them, the sum of
+    // their ages and of their sample histories (min(shortMean.a, 192)), both counted by count_live_surfels.
+    uint requestedWorld;
+    uint allocatedWorld;
+    uint worldAgeSum;
+    uint worldHistorySum;
 };
 
 // One path hit that the surfel cache could not answer, queued for a world surfel spawn (world_spawn in spawn.comp).

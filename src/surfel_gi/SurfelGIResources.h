@@ -207,9 +207,14 @@ struct alignas(16) SurfelCounters {
 	uint32_t cacheHits = 0u;
 	uint32_t cacheMisses = 0u;
 	uint32_t liveWorld = 0u;
+	// Ray and sample accounting for world surfels (same order as the GLSL struct).
+	uint32_t requestedWorld = 0u;
+	uint32_t allocatedWorld = 0u;
+	uint32_t worldAgeSum = 0u;
+	uint32_t worldHistorySum = 0u;
 };
-// 72 uint32 fields = 288 bytes, the same as the GLSL struct.
-static_assert(sizeof(SurfelCounters) == 288, "SurfelCounters must match std430 GLSL layout.");
+// 76 uint32 fields = 304 bytes, the same as the GLSL struct.
+static_assert(sizeof(SurfelCounters) == 304, "SurfelCounters must match std430 GLSL layout.");
 
 enum SurfelCoverageTileFlags : uint32_t {
 	SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,

@@ -321,6 +321,10 @@ void StoreSurfelCounters(const SurfelCounters& counters, SurfelGIFrameStats& sta
 	stats.liveWorldCounted = counters.liveWorldCounted;
 	stats.cacheHits = counters.cacheHits;
 	stats.cacheMisses = counters.cacheMisses;
+	stats.requestedWorld = counters.requestedWorld;
+	stats.allocatedWorld = counters.allocatedWorld;
+	stats.worldAgeSum = counters.worldAgeSum;
+	stats.worldHistorySum = counters.worldHistorySum;
 	// Rays asked for by request_rays but not granted by allocate_rays (both counters are per frame).
 	stats.rayShortfall = counters.requestedRays > counters.allocatedRays
 		? counters.requestedRays - counters.allocatedRays
@@ -1370,6 +1374,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
+		SetUniform1ui(program, "uWorldRayFloor", m_settings.worldRayFloor);
+		SetUniform1ui(program, "uWorldRefWindow", m_settings.worldRefWindow);
 		timedDispatch("ray_request", [&]() {
 			m_requestRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_requestRaysShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1509,6 +1515,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uCacheMinConfidence", m_settings.cacheMinConfidence);
 		SetUniform1f(program, "uCacheMinWeight", m_settings.cacheMinWeight);
 		SetUniform1f(program, "uCacheSupportSpread", m_settings.cacheSupportSpread);
+		SetUniform1f(program, "uCacheNormalLo", m_settings.cacheNormalLo);
+		SetUniform1ui(program, "uCacheConfidenceRamp", m_settings.cacheConfidenceRamp ? 1u : 0u);
+		SetUniform1f(program, "uCachePlaneScale", m_settings.cachePlaneScale);
 		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::WorldRequests), m_resources.worldRequestBuffer);
 		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::CellStamps), m_resources.cellStampBuffer);
 		BindSoftwareTraceLighting(program, context, camera, skybox);
@@ -1526,6 +1535,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
+		SetUniform1f(program, "uWorldLongRate", m_settings.worldLongRate);
 		timedDispatch("temporal_integration", [&]() {
 			DispatchSurfelWide(*m_integrateShader, surfelArgs, groupsSurfels);
 			m_integrateShader->WaitForCompletion(rhi::BarrierStorage);
@@ -2140,6 +2150,10 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 			<< " liveWorldCounted=" << m_stats.liveWorldCounted
 			<< " cacheHits=" << m_stats.cacheHits
 			<< " cacheMisses=" << m_stats.cacheMisses
+			<< " requestedWorld=" << m_stats.requestedWorld
+			<< " allocatedWorld=" << m_stats.allocatedWorld
+			<< " worldAgeSum=" << m_stats.worldAgeSum
+			<< " worldHistorySum=" << m_stats.worldHistorySum
 			<< '\n';
 	}
 	m_stats.ready = IsReady();
