@@ -694,8 +694,8 @@
     <None Include="shaders\surfel_gi\apply_indirect.comp" />
     <None Include="shaders\surfel_gi\begin_frame.comp" />
     <None Include="shaders\surfel_gi\build_grid.comp" />
-    <None Include="shaders\surfel_gi\cell_average.comp" />
-    <None Include="shaders\surfel_gi\clear_grid.comp" />
+    <None Include="shaders\surfel_gi\grid_count.comp" />
+    <None Include="shaders\surfel_gi\grid_scan.comp" />
     <None Include="shaders\surfel_gi\common.glsl" />
     <None Include="shaders\surfel_gi\count_live_surfels.comp" />
     <None Include="shaders\surfel_gi\dispatch_args.comp" />
@@ -710,11 +710,10 @@
     <None Include="shaders\surfel_gi\recycle_surfels.comp" />
     <None Include="shaders\surfel_gi\request_rays.comp" />
     <None Include="shaders\surfel_gi\spawn.comp" />
-    <None Include="shaders\surfel_gi\spatial_filter.comp" />
-    <None Include="shaders\surfel_gi\temporal_filter.comp" />
     <None Include="shaders\surfel_gi\trace_rays.comp" />
     <None Include="shaders\surfel_gi\reference_gi.comp" />
     <None Include="shaders\surfel_gi\surfel_scene_trace.glsl" />
+    <None Include="shaders\surfel_gi\guide_pdf.glsl" />
     <None Include="shaders\surfel_gi\upscale_filter.comp" />
     <None Include="shaders\surfel_gi\update_surfels.comp" />
     <None Include="shaders\svgf_atrous_comp.glsl" />

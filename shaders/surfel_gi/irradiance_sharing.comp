@@ -299,9 +299,6 @@ void main()
         }
 
         uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && address.cell != 0u) {
-            firstEntry = address.cell * uMaxSurfelsPerCell;
-        }
         uint perCellBudget = min(storedCount, max(1u, SURFEL_SHARING_MAX_NEIGHBORS / SURFEL_SHARING_MAX_NEIGHBOR_CELLS));
         uint strideSeed = SurfelHash(surfelID ^ (address.cell * 747796405u));
         uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
@@ -338,6 +335,9 @@ void main()
             sumWeight += weight;
         }
     }
+
+    atomicAdd(counters.lookupsSharing, 1u);
+    atomicAdd(counters.entriesSharing, testedNeighbors);
 
     if (sumWeight <= 1e-5) {
         return;

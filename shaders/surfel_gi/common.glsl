@@ -6,8 +6,16 @@
 #define B_SURFEL_COUNTERS 12
 #define B_SURFEL_DISPATCH_ARGS 35
 #define B_RAY_ALLOC_SCRATCH 36
+#define B_SURFEL_EMITTERS 39
+#define B_SURFEL_WORLD_REQUESTS 40
+#define B_SURFEL_CELL_STAMPS 41
 #define B_GRID_HEADERS 13
 #define B_GRID_ENTRIES 14
+#define B_GRID_BLOCK_SUMS 38
+#define B_GRID_SLOTS 37
+#define B_GRID_PENDING 26
+#define B_GRID_CELL_SUMS 27
+#define B_GRID_OVERLAP_CELLS 17
 #define B_RAY_REQUESTS 15
 #define B_RAYS 16
 #define B_RAYS_IN 16
@@ -43,12 +51,19 @@
 #define SURFEL_DYNAMIC 0x00000004u
 #define SURFEL_SKINNED 0x00000008u
 #define SURFEL_EMISSIVE 0x00000010u
+// World surfel: spawned at a path hit off screen (plan section 17). Excluded from screen coverage.
+#define SURFEL_WORLD 0x00000020u
 #define SURFEL_INVALID 0x80000000u
 
 #define GPU_TRANSFORM_INVALID 0x80000000u
 
-#define SURFEL_CELL_HAS_AVERAGE 0x00000001u
-#define SURFEL_CELL_OVERFLOWED 0x00000002u
+// Grid build: cells are scanned in blocks of SURFEL_GRID_BLOCK_CELLS (see grid_scan.comp).
+#define SURFEL_GRID_BLOCK_CELLS 1024u
+// Cell average sums are fixed point (scale below). Irradiance is clamped per surfel before scaling.
+#define SURFEL_CELL_SUM_SCALE 16384.0
+#define SURFEL_CELL_SUM_IRRADIANCE_CLAMP 256.0
+// A surfel is stored in every cell its support sphere overlaps: at most the 3x3x3 block around its cell.
+#define SURFEL_GRID_MAX_CELLS_PER_SURFEL 27u
 #define SURFEL_GRID_REGION_CENTRAL 0u
 #define SURFEL_GRID_REGION_POS_X 1u
 #define SURFEL_GRID_REGION_NEG_X 2u
@@ -143,6 +158,50 @@ struct SurfelCounters
     uint youngSurfelCount;
     // Ray slots an integrate thread skipped because the hit belonged to another surfel (WP1 ownership check).
     uint staleRaySlotCount;
+    uint lookupsSharing;
+    uint entriesSharing;
+    uint lookupsGather;
+    uint entriesGather;
+    uint lookupsTrace;
+    uint entriesTrace;
+    uint lookupsSpawn;
+    uint entriesSpawn;
+    uint recycleOverTarget;
+    uint recycleStale;
+    uint recycleFar;
+    uint recycleForced;
+    uint spawnDecisions;
+    uint spawnBudgetDenied;
+    uint radiusCapped;
+    uint recycledYoung;
+    // World surfels (plan section 17). Per frame, cleared by begin_frame: requests queued by path hits, requests
+    // dropped at the queue cap, world surfels spawned, requests skipped as already covered, live world surfels
+    // counted by count_live_surfels, and path cache lookups that hit or missed.
+    uint worldRequests;
+    uint worldRequestDropped;
+    uint worldSpawned;
+    uint worldSkippedCovered;
+    uint liveWorldCounted;
+    uint cacheHits;
+    uint cacheMisses;
+    // Persistent (not cleared per frame): live world surfels. Spawn adds, recycle removes.
+    uint liveWorld;
+    // Ray and sample accounting for world surfels (plan section 17.9): rays requested and granted to them, the sum of
+    // their ages and of their sample histories (min(shortMean.a, 192)), both counted by count_live_surfels.
+    uint requestedWorld;
+    uint allocatedWorld;
+    uint worldAgeSum;
+    uint worldHistorySum;
+    uint probeWords[216];
+};
+
+// One path hit that the surfel cache could not answer, queued for a world surfel spawn (world_spawn in spawn.comp).
+struct SurfelWorldRequest
+{
+    vec4 worldPos_pad;
+    vec4 normal_pad;
+    vec4 albedo_pad;
+    uvec4 ids;      // x = transform ID, y = material ID, z = grid cell, w = frame
 };
 
 struct SurfelCoverageTile
@@ -164,18 +223,29 @@ struct GuideCell
     uint packedRadiance;
 };
 
+// Per-cell header, 8 bytes: the cell's entries are gridEntries[firstEntry .. firstEntry + entryCount). Written by
+// the scan pass. The count pass uses SurfelGridPendingBuffer (B_GRID_PENDING) and the scatter pass writes the average
+// sums of each surfel's base cell to SurfelCellSums (B_GRID_CELL_SUMS), which only the final gather reads.
 struct SurfelCellHeader
 {
     uint firstEntry;
     uint entryCount;
-    uint averagePackedIrradiance;
-    uint flags;
+};
+
+// Per-cell average sums (24 bytes): filled by the scatter pass, zeroed by the scan pass for the next frame.
+struct SurfelCellSums
+{
+    uint sumRed;
+    uint sumGreen;
+    uint sumBlue;
+    uint sumWeight;
+    uint sumConfidence;
+    uint validCount;
 };
 
 struct SurfelCellEntry
 {
     uint surfelID;
-    uint next;
 };
 
 struct SurfelRayRequest
@@ -200,6 +270,7 @@ struct SurfelRayHit
     vec4 normal_hitKind;
     vec4 radiance_pdf;
     uvec4 ids;
+    vec4 emitterIrradiance;   // next-event estimate of the emitters at the ray origin (MIS weighted)
 };
 
 struct SurfelGridAddress
@@ -536,6 +607,9 @@ float SurfelGridBaseCellSize(vec3 gridMin, vec3 gridMax, uvec3 gridResolution)
 
 // Slice growth of the non-linear grid, from SurfelGridSettings::sliceGrowth (SetSurfelGridUniforms).
 uniform float uSurfelGridSliceGrowth = 1.22;
+
+// Overlap reach of a surfel beyond its support, in cells of the neighbour (SurfelGridOverlappedCells).
+uniform float uSurfelGridReachScale = 0.75;
 
 float SurfelGridSliceGrowth()
 {
@@ -905,6 +979,86 @@ float SurfelCoverageWeightAt(vec3 receiverPos,
     float planeSigma = max(max(radius * 2.45, supportRadius * 0.23), 0.045);
     float plane = exp(-abs(dot(delta, surfelNormal)) / max(planeSigma, 1e-4));
     return disk * normal * plane;
+}
+
+// Cells that a surfel's support sphere overlaps, for the count and scatter passes (they must agree).
+// The candidates are the 3x3x3 block around the surfel's own cell. The overlap test is exact for
+// cubic cells (sphere against box). Returns the number of distinct cells written to cells[].
+uint SurfelGridOverlappedCells(vec3 surfelPos,
+                               float supportRadius,
+                               vec3 gridMin,
+                               vec3 gridMax,
+                               uvec3 gridResolution,
+                               uint useNonLinearGrid,
+                               float gridFarExtent,
+                               out uint cells[SURFEL_GRID_MAX_CELLS_PER_SURFEL])
+{
+    SurfelGridAddress baseAddress;
+    if (!SurfelWorldToGridAddress(surfelPos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent, baseAddress)) {
+        return 0u;
+    }
+
+    uint count = 0u;
+    cells[count++] = baseAddress.cell;
+    float supportSq = supportRadius * supportRadius;
+    float step = max(baseAddress.cellSize, 0.001);
+    for (uint i = 0u; i < 27u; ++i) {
+        ivec3 offset = SurfelRawCubeNeighborOffset(i);
+        if (all(equal(offset, ivec3(0)))) {
+            continue;
+        }
+
+        SurfelGridAddress neighbor;
+        vec3 samplePos = baseAddress.center + vec3(offset) * step;
+        if (!SurfelWorldToGridAddress(samplePos, gridMin, gridMax, gridResolution, useNonLinearGrid, gridFarExtent, neighbor)) {
+            continue;
+        }
+
+        bool seen = false;
+        for (uint k = 0u; k < count; ++k) {
+            if (cells[k] == neighbor.cell) {
+                seen = true;
+                break;
+            }
+        }
+        if (seen) {
+            continue;
+        }
+
+        // Overlap of the inflated reach (the pre-WP5 reach, GIBS p.33 style) with the neighbour's box.
+        float reach = supportRadius + neighbor.cellSize * uSurfelGridReachScale;
+        vec3 outside = max(abs(surfelPos - neighbor.center) - vec3(neighbor.cellSize * 0.5), vec3(0.0));
+        if (dot(outside, outside) <= reach * reach) {
+            cells[count++] = neighbor.cell;
+        }
+    }
+    return count;
+}
+
+// Cell average from the scatter sums: the weighted mean irradiance of the cell's surfels, with the
+// confidence rule of the former cell_average pass (temporal confidence * support * signal).
+// Returns zero with confidence zero when the cell has no usable surfels.
+vec3 SurfelCellAverage(SurfelCellSums header, out float confidence)
+{
+    confidence = 0.0;
+    if (header.validCount == 0u || header.sumWeight == 0u) {
+        return vec3(0.0);
+    }
+
+    // The fixed-point scale cancels in the ratio.
+    vec3 average = vec3(float(header.sumRed), float(header.sumGreen), float(header.sumBlue)) /
+        float(header.sumWeight);
+    float validCount = float(header.validCount);
+    float temporalConfidence = clamp(float(header.sumConfidence) / (SURFEL_CELL_SUM_SCALE * validCount), 0.0, 1.0);
+    float supportConfidence = smoothstep(1.0, 8.0, validCount);
+    float signalConfidence = smoothstep(1e-4, 0.03, SurfelLuminance(average));
+    float packedConfidence = temporalConfidence * supportConfidence * signalConfidence;
+    if (packedConfidence <= 1e-4) {
+        return vec3(0.0);
+    }
+
+    confidence = packedConfidence;
+    return average;
 }
 
 #endif

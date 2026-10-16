@@ -120,13 +120,18 @@ struct SurfelGISettingsGpu {
 struct SurfelCellHeader {
     uint firstEntry;
     uint entryCount;
-    uint averagePackedIrradiance;
-    uint flags;
+    uint pendingCount;
+    uint fillCursor;
+    uint sumRed;
+    uint sumGreen;
+    uint sumBlue;
+    uint sumWeight;
+    uint sumConfidence;
+    uint validCount;
 };
 
 struct SurfelCellEntry {
     uint surfelID;
-    uint next;
 };
 
 struct SurfelGridCellAverage {

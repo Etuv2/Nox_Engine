@@ -14,6 +14,11 @@ layout(binding = B_TRANSFORMS, std430) readonly buffer TransformBuffer
     GpuTransformRecord transforms[];
 };
 
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
 uniform uint uMaxSurfels;
 uniform uint uTransformCount;
 uniform uint uFrameIndex;
@@ -24,6 +29,11 @@ uniform float uTargetSurfelScreenRadiusPx;
 uniform float uMinSurfelRadius;
 uniform float uMaxSurfelRadius;
 uniform float uLightingChangeFactor = 0.0;
+uniform vec3 uGridMin;
+uniform vec3 uGridMax;
+uniform uvec3 uGridResolution;
+uniform uint uUseNonLinearGrid;
+uniform float uGridFarExtent;
 
 float WorldUnitsPerPixel(vec3 worldPos)
 {
@@ -101,6 +111,12 @@ void main()
     // footprint. Do this directly; slow interpolation leaves stale undersized
     // disks after camera motion and weakens both coverage and gathering.
     float radius = targetRadius;
+    // One grid cell side at most (GIBS p.33). The radius error below records what the cap changed.
+    float cellSideRadius = SurfelGridCellSizeAtWorld(worldPos.xyz, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
+    if (cellSideRadius < radius) {
+        atomicAdd(counters.radiusCapped, 1u);
+    }
+    radius = min(radius, cellSideRadius);
     float targetRadiusError = abs(radius - targetRadius) / max(targetRadius, 1e-4);
     float motionDistance = IsFiniteVec3(previousWorldPos) ? length(worldPos.xyz - previousWorldPos) : 0.0;
     float normalDelta = IsFiniteVec3(previousWorldNormal) ? (1.0 - max(dot(worldNormal, previousWorldNormal), 0.0)) : 0.0;

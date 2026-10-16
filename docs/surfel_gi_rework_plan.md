@@ -628,6 +628,90 @@ Baseline from another commit: add `--cwd <its source root>` (the exe needs `shad
 ### 9.6 Not done
 
 WP2 and later: not started, as instructed. The stale-slot energy effect is not measured above noise, so the 2% energy check is inconclusive for surf. Grid overflow is measured but not fixed (WP5). The ~1 ms unlabelled Execute GPU time is unexplained. The `ref` vs `indep` per-pixel correlation (about 0.7) is unexplained. `shaders/includes/surfel_gi_resources.glsl` is dead (not included anywhere) but kept: vcxproj lists it and two validators reference it. `cell_average.comp` and `clear_grid.comp` stay until WP5. Other legacy validators (for example `validate_surfel_gi_irradiance_signal.py`, `validate_surfel_coverage_priority.py`) and `tests/test_surfel_gi_quality.py` reference removed names; they were not run or updated. Repeat-spread acceptance fails for surf energy and for noise. `nox_tests.exe` has 3 environment-related failures.
+## 10. WP4/WP5/WP6 results
+
+Branch `worktree-agent-a0b57d418614e1516` (merged with main d447ec2). Harness: `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT=0.0166666667`, manual exposure, static camera, frames 200-260. "Before" = this branch before WP4-6, 3 repeats per config. "After" = this branch with WP4-6, 3 repeats. Off and indep runs were reused from "before" (both are unaffected by these changes). Energy ratio = surf energy / indep energy over lit pixels. Surfel GPU = `SurfelGIUpdatePass` median. Grid, recycle and spawn are per-label medians from the harness tables. The baseline issued 2-3 grid rebuilds per frame, so the baseline grid rows understate its per-frame cost.
+
+### 10.1 What changed
+
+WP5 (grid):
+- One build per frame, at the end of Execute: `grid_count` (per live surfel, pending count per overlapped cell), `grid_block_sums` (1024-cell blocks), `grid_scan` (per-block offsets, `firstEntry`/`entryCount`, zeroes the next frame's counters, counts overflow), `build_grid` (scatter: entry ids and cell-average sums). `clear_grid.comp` and `cell_average.comp` are deleted.
+- `SurfelCellHeader` is 40 bytes, `SurfelCellEntry` is 4 bytes. Entry capacity is `maxSurfels * 27`, so the capacity guard is never hit at the default settings. Grid memory is about 14.3 MB at Medium (7.2 MB headers, 7.1 MB entries).
+- Insertion uses an overlap test (sphere support reach against the neighbour's cell box) over the 3x3x3 block. The reach is support + 0.75 cell, which is the reach the grid had before WP5. The tight support-only reach lost coverage (see 10.4).
+- Readers change only at the lookup: the `firstEntry` guess for zero offsets is removed (apply_indirect, irradiance_sharing, trace_rays x3, spawn), and the packed-average decode is replaced by `SurfelCellAverage()` in common.glsl. Cell averages are fixed-point sums from the scatter pass (scale 2^14, irradiance clamped at 256 per surfel).
+- Radius is capped at one cell side in `update_surfels` and `spawn`.
+
+WP4 (population, spawn, recycle):
+- `N_target = kappa * visibleTiles` with kappa = `spawnPopulationKappa` (default 1.0). It replaces `spawnBudgetScale` (0.25). The env var `NOX_SURFEL_GI_SPAWN_BUDGET_SCALE` is kept so the harness configs still work.
+- Live count = maxSurfels - freeTop (read during spawn, because `begin_frame` zeroes `liveCount`). Spawn budget = clamp(N_target - live, 0, maxSpawnsPerFrame), with maxSpawnsPerFrame = 64 at Medium.
+- Threshold per tile = 0.85 + 0.15 * (blue_noise - 0.5). The one-frame cooldown is kept. The old placement-probability gate and the coverage-enough gate are removed.
+- Recycle score per GIBS p.29: `s = 0.4*over + 0.3*stale + 0.3*far`, cull with probability 0.5*s, cap 256 per frame (Medium tier). `over` is population over target, `stale` is frames since last visible (`frameInfo.x`), `far` is distance / farScale. Invalid-transform and no-albedo surfels are always culled.
+- Recycle and grid passes are dispatched by the high-water index (`surfelArgs`).
+
+WP6 (radial depth):
+- Hits are clamped to the diameter, misses count as the diameter, hemisphere only, EMA 0.05, up to 4 GI rays per surfel. Default depth = diameter. Read side unchanged.
+- Deviation: the diameter is 2 x the gather reach (`SurfelCoverageSupportRadiusAt`), not 2r. See 10.4.
+
+Also: the Medium tier caps (ModularRenderer) are set to 64 spawns and 256 recycles per frame. The `surf_k05` and `surf_k15` harness configs were added for the kappa sweep.
+
+### 10.2 Before / after (3 repeats each)
+
+| Scene | Surfel GPU ms (before -> after) | Energy ratio vs indep (before -> after) | Live (before -> after; after target) | Under-covered tiles (before -> after) | Grid rows ms (before -> after) | Recycle + spawn ms (before -> after) | Grid overflow / frame (before -> after) |
+|---|---|---|---|---|---|---|---|
+| Cornell | 2.148 -> 1.995 | 0.438 -> 0.390 (-11%) | 1841 -> 1605 (1638) | 2.95% -> 5.80% | 0.112 -> 0.173 | 0.479 -> 0.500 | 20.0k -> 0 |
+| scene.json | 7.119 -> 3.930 | 0.473 -> 0.380 (-20%) | 1667 -> 2440 (7910) | 1.46% -> 3.04% | 0.124 -> 0.219 | 3.283 -> 1.129 | 9.1k -> 0 |
+| NFS night street | 4.587 -> 6.004 | 0.356 -> 0.254 (-29%) | 2511 -> 1598 (7892) | 6.50% -> 14.8% | 0.122 -> 0.202 | 1.787 -> 1.802 | 12.6k -> 0 |
+| Wall leak | 4.480 -> 6.995 | 0.323 -> 0.384 (+19%) | 1572 -> 1054 (5952) | 1.14% -> 1.71% | 0.120 -> 0.183 | 1.802 -> 2.477 | 5.8k -> 0 |
+
+Grid rows after are count + block sums + scan + build. Before rows are clear + build + averages.
+
+Wall-leak (dark side = reference GI below 10% of its p90; `tools` script in TEMP): surf/indep GI over the dark region 0.381 -> 0.445. Bright region 0.618 -> 0.643.
+
+Pass detail after (scene.json, surf): coverage_spawn 1.121, tracing 0.372, final_gather 1.099, irradiance_sharing 0.157, grid_count 0.046, grid_block_sums 0.015, grid_scan 0.056, grid_build 0.102, recycling 0.008.
+
+Kappa sweep, Cornell, single runs, final code (`sweep` configs):
+
+| kappa | live | under-covered | energy ratio vs indep |
+|---|---|---|---|
+| 0.25 (plan value) | 404 | 15.7% | 0.724 |
+| 1.0 (chosen) | 1605 | 6.9% | 0.402 |
+| 1.5 | 2404 | 5.4% | 0.287 |
+
+Single runs carry about 8% noise. At 1024 rays, energy falls as population rises, because the same rays are spread over more surfels.
+
+### 10.3 Checks
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass.
+- `validate_surfel_gi_static.py`, `validate_surfel_gi_correctness.py`, `validate_surfel_gibs_phase4.py`: pass. Updated for the single grid build, the new recycle score and the overlap enumeration.
+- `validate_surfel_gi_fallback_contract.py`: the cell-average checks are retargeted to `common.glsl` and pass. It still fails on `max(max(directBlend, fallbackBlend), bleedSupport` in apply_indirect. That string is absent at HEAD too, so the failure predates this work and is not fixed here.
+- `NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`: 0 FAIL lines, clean shutdown.
+- Racing (`NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s`.
+- Camera motion (`dolly:0.6,0,0:60`, Cornell, frames 200-260): largest consecutive-frame change is 1.19 x the median, with no second-difference spike. A mid-path frame was viewed and shows no popping.
+- `nox_tests.exe` not run in this pass.
+
+### 10.4 Deviations and findings
+
+- Radial diameter = 2 x gather reach, not 2r. With the plan's 2r default and clamp, every receiver beyond 2r reads as occluded, because the read side applies the Chebyshev test with the stored mean. The gather reads out to the support radius (about 0.7 cell at Cornell), so most of the gathered shell was suppressed. With the clamp at the support radius, the cliff still sits inside the weighted shell (Cornell kappa 1.0: 390 under-covered tiles of 1638). With radial visibility disabled in the gather, the same run had 133 (single run). With 2 x support, 189 (single run, before the recycle fix), and the recycle fix took it to 113.
+- Recycle stale term uses `frameInfo.x` (last visible). `frameInfo.y` is written by integrate only for surfels that were given rays. At 1024 rays most live surfels are starved and look stale, so they were culled and respawned in a loop (population stuck near 1400 with spawns and recycles balancing).
+- Insertion reach: the tight support reach gave 85% under-covered tiles at kappa 1.0 with the 2r radial (and 27% once the radial diameter was fixed). Reverting to the inflated reach with a centre test did not fix it (24%), so duplicate counting was not the cause. The overlap test with the inflated reach is what is in the code.
+- The plan value kappa 0.25 starves coverage (15.7% under-covered at Cornell). Kappa 1.0 is closer to the baseline population and energy; it is the default.
+
+### 10.5 Not met
+
+- Energy vs indep must not drop more than 5%: Cornell -11%, scene.json -20%, NFS -29%. The drop follows population at the 1024-ray budget. WP2's 2048-ray budget is needed before this can be judged.
+- Grid total (count + scan + scatter) <= 0.10 ms on scene.json: 0.22 ms (block sums add 0.015). It is also above the baseline's labelled grid rows (0.12 ms).
+- Recycle + spawn <= 0.20 ms on scene.json: 1.13 ms (from 3.28). Cornell did not improve (0.50 vs 0.48). The spawn pass still does a grid query for every tile's best candidate, even when the coverage map supplies the value; making that query lazy changes visibility bookkeeping, so it was not done.
+- Under-covered tiles <= 3% on all three scenes: Cornell 5.8%, NFS 14.8%, scene.json 3.0% (borderline). The coverage target is not reached on NFS at this budget.
+- Live within 20% of N_target at steady state: only Cornell (1605 vs 1638). On scene.json, NFS and the wall scene, the coverage-limited population is 18-31% of the visible-tile target, because the spawn threshold is satisfied before the target is reached.
+- Surfel GPU time: NFS and the wall scene are slower than before (+31% and +56%). On the wall scene irradiance_sharing rose from 0.16 to 0.78 ms and final_gather from 1.07 to 1.98 ms. Cause not established.
+- Wall-leak dark-side GI within 10% of indep: dark-side ratio 0.381 -> 0.445. Improved, not met. At this ray budget the whole GI is under-estimated, so the leak cannot be separated from starvation.
+
+### 10.6 Open items
+
+- Block sums could be folded into the count pass if the zeroing were moved; the scan's cost is mostly fixed (176 groups, about 40 barriers).
+- Lazy best-candidate grid query in spawn, keeping the visibility touches.
+- Investigate the NFS coverage regression and the wall irradiance_sharing and final_gather growth.
+- Re-measure energy and coverage at 2048 rays (WP2) before choosing kappa.
 
 ## 10. WP3 / Execute gap results
 
@@ -846,6 +930,175 @@ No setting meets both NFS >= 0.85 and Cornell in [0.9, 1.1]. A long capture (fra
 **Timing.** No timing A/B pairs were run in this round.
 
 **Not met or not established:** the NFS energy target (0.36, need >= 0.85); the scene-adaptive clamp; the Cornell noise target (3.52%); the light-step 90% response (not measurable on these scenes); scene.json energy (0.67, below band); the remaining Cornell overshoot under the scale-aware bound.
+
+## 12. Follow-up results: bounds, grid cost, coverage, energy gate, population
+
+Branch `worktree-agent-a0b57d418614e1516`, HEAD is the merge of main 9fa2dc7 (6035fa0) plus the follow-up commit that adds this section. Harness `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT=0.0166666667`, manual exposure, static camera, frames 200-260 (indep and ref 780-840). Medium tier: 2048 rays, spawn cap 64, recycle cap 256. Energy is surf minus off over lit pixels; ratio is energy divided by indep energy. Three repeats per config. Where a batch has no indep runs, the indep reference is the merged-sweep mean for the same scene. Main is `mainfull4`, run from a root with the scene under its own mount (earlier main runs were invalid, see 12.6).
+
+Caveat: the estimator is being reworked by another worker (its mean depends on guiding and the firefly clamp), so absolute energy is not a reliable target right now. The same config drifted about 20% between batches (Cornell `surf` 0.139 in the kappa sweep, 0.166 in the ablation batch), so ablations are compared only within a batch.
+
+### 12.1 What changed
+
+- Bounded per-lookup candidates: sharing 16 (`SURFEL_SHARING_MAX_NEIGHBORS`), gather 32 (`SURFEL_APPLY_GATHER_CANDIDATES`), trace 16 (`SURFEL_TRACE_MAX_CANDIDATES`), spawn coverage 16 (`SURFEL_SPAWN_MAX_COVERAGE_TESTS`). Lookup and entry counters are in `SurfelCounters`.
+- Grid build is `grid_count` (per live surfel: pending count per overlapped cell, and per-block atomic sums), `grid_scan` (block offsets, per-cell offsets, header write, overflow count, zeroing for the next frame), `grid_build` (slot scatter, base-cell averages). No per-entry atomics. Overflow was 0 in every run.
+- `tools/surfel_gi_metrics.py`: `scene_arg_for` now makes the scene path relative to the `--cwd` source root. It used the branch checkout, so runs from another root got an absolute path the engine could not mount. Added configs `surf_norad`, `surf_norecycle`, `surf_rc16`.
+- No default changed. Kappa 1.0, spawn cap 64 and recycle cap 256 stay (see 12.5 and 12.6).
+
+### 12.2 Bounded candidates (counters, `surf_r1`, frames 200-260)
+
+| Lookup | Bound | NFS entries/query | Cornell entries/query |
+|---|---|---|---|
+| sharing | 16 | 15.98 | 16.00 |
+| gather (1/16 pixels) | 32 | 31.80 | 32.00 |
+| spawn coverage (per tile) | 16 | 14.73 | 12.45 |
+| trace (per cell lookup) | 16 | not exercised (0 lookups in `surf`) | not exercised |
+
+Sharing and gather bind on nearly every query. The bounds are not the under-coverage cause (12.4).
+
+### 12.3 Grid cost (target 0.10 ms: not met)
+
+NFS, `surf`, median of three alternating main/merged pairs (`ab_timing`):
+
+| Dispatch | merged ms | main ms |
+|---|---|---|
+| grid_count (incl. block sums) | 0.064 | n/a |
+| grid_scan | 0.055 | n/a |
+| grid_build (scatter) | 0.059 | 0.082 |
+| grid_clear / cell averages | n/a | 0.007 / 0.033 |
+| Total | 0.178 | 0.122 |
+
+The scan is a fixed floor: it reads 36-byte headers for about 180k cells, and measured 0.055 ms on every scene and batch that was not contended. Count and scatter scale with entries. Lateral resolution of 16 instead of 32 per axis (about 70k cells) would cut the scan by about 60%. Not implemented. The Cornell merged-sweep batch read 0.67 ms for scan in every config, while the ablation batch read 0.055 for the same config. That is contention from other GPU work, not a steady cost.
+
+### 12.4 Under-coverage (target 3% or less at kappa 1.0 on all scenes: not met)
+
+Merged, cap 64, kappa 1.0, 3 repeats (medians over frames 200-260):
+
+| Scene | live (target) | under-covered | spawned/frame | spawn budget denied/frame |
+|---|---|---|---|---|
+| Cornell | 1604 (1638) | 6.13% | 34 | 24 |
+| scene.json | 2541 (7910) | 4.93% | 64 (cap) | 115 |
+| NFS | 1646 (7892) | 13.22% | 64 (cap) | 326 |
+
+Causes:
+
+- Cornell is population-limited. Spawns (34/frame) match the deficit, and kappa moves coverage: 8.40% at 0.5, 6.13% at 1.0, 5.43% at 1.5.
+- scene.json and NFS hit the 64-per-frame spawn cap every frame, so kappa does nothing there (scene 4.96/4.93/4.88%, NFS 12.6/13.2/12.7%, the NFS spread is batch noise of about 1 point).
+- Cap 256 (`cap256` batch, same code): scene.json 3.86% at kappa 1.0 (live 7775), 3.66% at 1.5 (live 10555). NFS stays at 13.26% with live 6690, which is 85% of its target. The cap is not the NFS limit.
+- NFS at cap 256, frame 230: 970 under-covered tiles, 249 spawned, 267 coverage-invalid, 267 spawns denied per frame. Recycling removes 76 per frame, of which 66 are far-term. The net population gain is about 180 per frame against a deficit of about 1180. Far-term culling of surfels that are still needed is the main churn.
+- Radial depth on costs coverage: NFS is 12.5-13.2% on across batches and 11.81% off (`ablate`, a different batch, so the gap is about one point and close to batch noise). Ray guiding does not change coverage (13.24% off), and neither does sharing (13.13% off).
+- Main, same counter: Cornell 2.75%, scene.json 1.56%, NFS 5.52%, with live 1804/1753/2004. Main recycles 0.3/0.2/0.6 surfels per frame in those runs, against 11/18/19 here. The counter definition on main was not verified, so treat the comparison as indicative.
+
+### 12.5 Population: cap and kappa
+
+| Scene | cap | kappa | live | under-covered | ratio vs indep | grid build (count+scan+build) ms | spawn pass ms |
+|---|---|---|---|---|---|---|---|
+| Cornell | 64 | 0.5 | 804 | 8.40% | 0.704 | 0.14 | 0.21 |
+| Cornell | 64 | 1.0 | 1604 | 6.13% | 0.500 | 0.16 | 0.83 |
+| Cornell | 64 | 1.5 | 2405 | 5.43% | 0.365 | 0.17 | 0.83 |
+| scene.json | 64 | 0.5 | 2535 | 4.96% | 0.533 | 0.19 | 1.15 |
+| scene.json | 64 | 1.0 | 2541 | 4.93% | 0.529 | 0.19 | 1.15 |
+| scene.json | 64 | 1.5 | 2557 | 4.88% | 0.526 | 0.19 | 1.15 |
+| scene.json | 256 | 0.5 | 3885 | 4.13% | 0.432 | 0.21 | 1.19 |
+| scene.json | 256 | 1.0 | 7775 | 3.86% | 0.423 | 0.28 | 1.19 |
+| scene.json | 256 | 1.5 | 10555 | 3.66% | 0.424 | 0.97 | 1.22 |
+| NFS | 64 | 0.5 | 1647 | 12.62% | 0.372 | 0.18 | 1.17 |
+| NFS | 64 | 1.0 | 1646 | 13.22% | 0.355 | 0.18 | 1.17 |
+| NFS | 64 | 1.5 | 1652 | 12.71% | 0.313 | 0.18 | 1.17 |
+| NFS | 256 | 0.5 | 3830 | 12.97% | 0.380 | 0.22 | 1.19 |
+| NFS | 256 | 1.0 | 6690 | 13.26% | 0.292 | 0.46 | 1.17 |
+| NFS | 256 | 1.5 | 6700 | 13.29% | 0.312 | 0.46 | 1.17 |
+
+Cornell is identical at both caps because it never reaches 64 spawns per frame. Spawn-pass ms move with GPU contention (Cornell reads 0.21 to 0.83 ms for the same pass), so treat that column as indicative.
+
+Decision: no default change. No setting reaches 3% under-coverage on all scenes. Cap 256 buys about 1 point on scene.json and nothing on NFS, for about 20% less energy (ratio 0.53 to 0.42 on scene, 0.36 to 0.29 on NFS), and it multiplies grid build cost on scene.json (0.19 to 0.28 ms at kappa 1.0, 0.97 ms at 1.5). Kappa 1.0 stays: kappa 1.5 on Cornell gains 0.7 points for about 27% less energy and 50% more live surfels. That energy change at fixed rays is dilution, not an estimator gain. Kappa 0.5 costs 2.3 points on Cornell.
+
+### 12.6 Energy against main (gate: not more than 5% below main on any scene)
+
+Surf energy, merged default (cap 64, kappa 1.0, recycle 256) against main (`mainfull4`, 3 repeats):
+
+| Scene | main energy (ratio) | merged energy (ratio) | change |
+|---|---|---|---|
+| Cornell | 0.256 (0.92) | 0.139 (0.50) | -46% |
+| scene.json | 0.156 (0.63) | 0.132 (0.53) | -15% |
+| NFS | 0.0104 (0.40) | 0.0092 (0.35) | -12% |
+
+The gate fails on all three scenes. The earlier main runs were invalid: the harness passed an absolute scene path that the engine could not mount, and the `mainroot` copy with a real `scenes` folder fixed it. Main's exe is built from `main_src` at 16:03.
+
+Where the gap comes from. Same-batch ablations at kappa 1.0, 3 repeats:
+
+| Change from default | Cornell energy | NFS energy | Cornell / NFS under-covered |
+|---|---|---|---|
+| radial depth off | -19% | -14% | 5.49 / 11.81% |
+| ray guiding off | -85% | +18% | 5.82 / 13.24% |
+| irradiance sharing off | +16% | -1% | 6.47 / 13.13% |
+| recycle off (cap 1) | +65% | +15% (cv 13%) | 4.03 / 6.92% |
+| recycle cap 16 (other batch) | +9% | -11% | 5.84 / 10.54% |
+
+Recycle off is the largest lever I own. Its energy rises to 0.227 on Cornell (-12% vs main) and 0.0095 on NFS (-9% vs main), so most of the Cornell gap is recycling churn: the 0.3·far term culls surfels that are still needed, and each new surfel starts its temporal integration from zero. It is not a default. It was tested only with a static camera, and a moving camera needs recycling to reveal new geometry. Ray guiding is the largest single sensitivity (-85% on Cornell with guiding off), but it sits in the estimator worker's code. Radial depth raises energy by 14-19% when on, so it is not the source of the gap.
+
+The remaining gap after recycle off (about -9% to -12%) is not attributed. Untested candidates: base-cell-only cell averages (WP5), grid reach 0.75 cell, and the spawn population change (WP4). The gate is not met.
+
+### 12.7 Recycling churn by age (default, frames 200-260, per frame)
+
+| Scene | recycled | of which spawn age < 4 | share young | of which far-term |
+|---|---|---|---|---|
+| Cornell | 11.3 | 0.1 | 1% | 9.3 |
+| scene.json | 17.6 | 1.0 | 6% | 11.2 |
+| NFS | 19.0 | 2.0 | 10% | 16.9 |
+| NFS, cap 256 | 74.3 | 8.6 | 12% | 66.3 |
+
+Over-target and forced culls are zero everywhere, and stale culls are 2-7 per frame. Young churn is small except on NFS, where it rises with cap 256.
+
+### 12.8 Wall leak (dark side)
+
+Merged build (sources last changed 16:08, built 16:08), `wall` scene, 3 repeats where the harness reports them. Dark side is reference GI below 10% of its p90:
+
+| Config | dark ratio | bright ratio | all |
+|---|---|---|---|
+| default | 0.335 | 0.406 | 0.403 |
+| radial off | 0.326 | 0.491 | 0.482 |
+| old bounds (earlier) | 0.348 | n/a | n/a |
+| cell averages over all overlapped cells (earlier) | 0.335 | n/a | n/a |
+| 58cf028 (pre-merge) | 0.445 | 0.643 | 0.645 |
+
+The 4096-ray wall run failed in the wall analysis (no dumps), so it is not reported. Interpretation: at HEAD the dark side is 0.82 of the bright side (0.69 at 58cf028). The dark side is not leaking more than the bright side. The deficit is global and moved with the bright side. The drop from 0.645 to 0.403 overall came with the merge and the follow-up, and recycling churn is the lever found so far. Dark-side coverage was not isolated by counters.
+
+### 12.9 Timing: alternating main/merged pairs (NFS, `surf`, median of 3 pairs)
+
+| Pass | main ms | merged ms |
+|---|---|---|
+| recycling | 0.267 | 0.008 |
+| coverage_spawn | 1.17 | 0.52 |
+| final_gather | 0.93 | 0.78 |
+| tracing | 1.23 | 1.11 |
+| irradiance_sharing | 0.145 | 0.120 |
+| grid total | 0.122 | 0.178 |
+
+Other workers' GPU jobs ran during some pairs. Contended pairs show about 2x in tracing and final_gather (for example 2.3 ms on main_p2 and 2.1 ms on merged_p3). Differences under about 30% are not resolved.
+
+### 12.10 Targets
+
+| Target | Result |
+|---|---|
+| Bounded candidates (sharing 16, gather 32), verified by counters | met: sharing 16.0, gather 31.8, spawn 14.7 per query |
+| Grid build at or under 0.10 ms | not met: 0.178 ms merged, main 0.122 |
+| Under-coverage at or under 3% at kappa 1.0 on all scenes | not met: 6.1 / 4.9 / 13.2% |
+| Merged energy within 5% of main on all scenes | not met: -46 / -15 / -12% (about -9 to -12% on Cornell and NFS with recycling off) |
+| Recycle plus spawn at or under 0.20 ms on scene.json | not met: 0.008 + 1.15 ms |
+| Kappa default: best energy at or under 3% under-coverage | no setting reached 3%; kappa 1.0 kept |
+
+### 12.11 Open items
+
+- Moving-camera test (Cornell dolly path) with recycling off or reduced, to see whether churn can be cut without losing coverage.
+- Far-term weight in the recycle score (0.3·far), the main churn source on NFS.
+- Lateral-16 grid resolution for the scan floor (0.055 ms).
+- Ray guiding dependence of the energy (estimator worker).
+- Unexplained 20% batch-to-batch energy offset for the same config.
+
+### 12.12 Reproduction
+
+Output dirs under `%TEMP%\nox_surfel_B\ab`: `mainfull4` (main), `merged_sweep` (kappa 0.5/1.0/1.5 at cap 64), `cap256` (kappa sweep at cap 256, built from a temporary cap change that was reverted), `ablate2` and `ablate` (ablations), `norecycle` and `rc16` (recycle), `ab_timing` (alternating pairs). Production exe rebuilt from HEAD at 18:27.
+
 ## 13. Estimator correctness
 
 Worker D (Haiku 5.5). Built on round 2 (`ed55deb`). Result in one line: the measurement chain was not linear, so every earlier energy number here is suspect; the independent reference now uses Russian roulette, and four estimator bugs (B1 to B4) are fixed; the furnace and white-sky tests, the guiding and clamp invariances, and the scene.json and NFS energy targets are not met; an offset in the reference-mode output path is not explained.
@@ -937,3 +1190,877 @@ Not measured. The default `MainDirectionalLight` exists on every scene, and the 
 ### 13.9 Not met
 
 Furnace and white-sky analytic checks (O1, O2, O3); guiding and clamp invariances (B6, O4); scene.json and NFS energy targets; Cornell noise (2.56% against 2%); the light step; a scale-aware clamp; the reference-mode offset (O2).
+
+## 14. Estimator round 2
+
+Worker E (Haiku 5.5), estimator round 2, built on main at 6f9cf0d. Result in one line: O2 (the reference offset) is a composite-path bug and is fixed; O1 (multi-bounce) is fixed by path continuation, but the continuation exposes a coverage gap and costs 7-18x the tracing time (not met); emitters are now next-event estimated with MIS and the fixed clamp is replaced by a relative one; scene.json passes [0.9, 1.1] (0.95), NFS does not (0.84, after the irradiance-sharing loss is recognised), Cornell does not (1.22); the Cornell residual and the NFS shortfall are not isolated to a single cause.
+
+### 14.1 Measurement and O2
+
+- O2, `ModularRenderer.cpp` `SyncSurfelGISettings`: `NOX_SURFEL_GI_COMPOSITE_DEBUG` was read only inside `if (forcedOnForValidation)` (`NOX_ENABLE_SURFEL_GI`). `indep_term` (`NOX_GI_REFERENCE=1` alone) therefore rendered the default composite (direct light, IBL on the fallback cube, far field). The constant 0.1026 on the no-sky plane was that fallback IBL, not the reference. Bisection: zeroing the reference mean, the upscale output, or the lighting debug branch changed nothing; zeroing the whole lighting output gave 0. Fixed: the override is also read in reference mode. Check after the fix: composite mode 0 gives 0.102594 and mode 4 gives 0.000000 on the same plane, and the reference term on the no-sky plane is exactly 0.
+- Shadow leak (not fixed; reported): `SampleShadowLayerWorld` treats a point outside the cascade as lit (`ShadowInBounds`). In a closed box the sun then lights interior hits (furnace reference 0.2671 with the sun, 0.2497 without). The analytic tests therefore use a zero-intensity directional light (`NoSun` node in `tools/surfel_gi_analytic_scenes.py`) and zero specular (`--specular-factor 0`, which sets the Fresnel term kD to 1).
+
+### 14.2 O1: path continuation (`surfel_scene_trace.glsl` `SurfelPathRadiance`, `trace_rays.comp` `ShadeHitRadiance`)
+
+Bug, at 6f9cf0d: `trace_rays.comp` `TraceCachedIndirectAtSurface` (about lines 261-334) returns false where no surfel is coplanar with the hit. `ShadeHitRadiance` then used the sky-visibility heuristic (zero without a sky), so the indirect light at the hit was dropped. Probes (scratch roots, not kept) found the cause: the hit points are off-screen (surfels are spawned from the screen coverage), and their 27-cell neighbourhood holds only perpendicular surfels. The sign of the surfel normals was checked (both signs give zero coplanar weight). The cell-average fallback cannot help: those cells hold no coplanar surfels either.
+
+Fix: a hit whose cache lookup fails continues its path. Each vertex takes one cosine sample; the sky enters only as the miss radiance; emitters are sampled by next-event estimation (§14.3); Russian roulette starts at the first continuation vertex with `q = min(0.95, max albedo)`; depth cap 32. The cache answers the first two vertices and deeper vertices continue (unbiased and cheaper). The sky-visibility functions are removed, so there is one sky estimator.
+
+Analytic (sun off, zero specular; surfel window frames 200-260, reference 190-200; composite debug 4, linear):
+
+| Test | Expected | Before (6f9cf0d) | After | Result |
+|---|---|---|---|---|
+| Furnace reference | 0.25 | 0.2671 (sun leaked) | 0.24971 | -0.1% |
+| White-sky reference | 0.15 | 0.1470 (sun and specular on) | 0.14996 | -0.0% |
+| Furnace surfel, guided | 0.25 | 0.1203 | 0.24537 | -1.9% |
+| Furnace surfel, unguided | 0.25 | 0.1248 | 0.24443 | -2.2% |
+| White-sky surfel, guided | 0.15 | 0.14757 | 0.14764 | -1.6% |
+| White-sky surfel, unguided | 0.15 | 0.14995 | 0.14995 | 0.0% |
+
+Both furnace variants and both white-sky variants meet the 3% target. The guided white-sky shortfall (1.6%) is not explained.
+
+### 14.3 Emitters: next-event estimation with MIS
+
+- Emitter list (`RTSceneResources.cpp` `AppendInstanceEmitters`, `UploadEmitters`): world-space emissive triangles of the instances the BVH traces, built in `UploadIncrementalScene` (rebuilt only when the instance list is rebuilt). Per emitter: three world vertices, emission, luminance, world geometric normal, area and the cumulative weight `luminance * area`. Binding 37 (`B_SURFEL_EMITTERS`); the buffer is created in `EnsureIncrementalBuffers` (a missing creation there silently left the list empty at first).
+- Density: an emitter is picked with weight `lum*A/P` and a point is taken uniformly on its triangle, so the area density is `lum/P`. In solid angle, `p = (lum/P) d^2 / |cos_L|`. The shadow test is an any-hit BVH query (`TraceSoftwareBVHAnyHit`, the BVH and TLAS traversals gained an `anyHit` flag).
+- MIS: the power heuristic between the emitter density and the BSDF density. The surfel's BSDF density is the mixture its ray was generated with (`SurfelRaySamplingDensity`, the same guide bins as `generate_rays.comp`, moved to `guide_pdf.glsl`). Cosine density is used at path vertices.
+- Where next-event estimation runs: one sample per surfel ray at its origin (`SurfelOriginEmitterIrradiance`, written into `SurfelRayHit.emitterIrradiance` and added in `integrate.comp`), and at the first continuation vertex. Deeper vertices count their emission at full weight (unbiased, noisier). The reference takes next-event samples at every vertex.
+- Checks: the furnace (every wall is an emitter) gives 0.2454 with next-event at one vertex and 0.2478 with it at every vertex. Pure next-event estimation without MIS gives the same Cornell energy as with MIS (0.1341 against 0.1333), so MIS is not the Cornell residual.
+
+### 14.4 Clamp
+
+`integrate.comp`: the fixed 32 (`SURFEL_MAX_SAMPLE_IRRADIANCE`, plan 13 B6) is replaced by `SurfelRelativeClamp`. A sample is cut only above `8 * max(long mean, short mean) + 8 * sigma + 32` (luminance), and the same bound limits the guide-learning input. `SurfelClampRadiance` is now a NaN and sign guard only.
+
+Invariance, single runs, all-pixel means over frames 200-260:
+
+| Scene | Guided, clamp | Guided, no clamp | Unguided, clamp | Unguided, no clamp | Guided vs unguided |
+|---|---|---|---|---|---|
+| Cornell | 0.13327 | 0.13476 (-1.1%) | 0.13732 | 0.13631 (+0.7%) | -3.0% (clamp on) |
+| NFS | 0.02313 | 0.02323 (+0.4%) | - | - | - |
+
+Both clamp comparisons are inside the 3% target. The Cornell guided-vs-unguided difference is -3.0% on one run and 1.6% on the two-repeat harness (§14.8), so it is within run-to-run noise.
+
+### 14.5 Cost (not met)
+
+Tracing block, `SurfelGISubpassMetrics` median over frames 200-260, GPU quiet (checked back to back against the frozen baseline binary):
+
+| Scene | Baseline (6f9cf0d) | Now | Ratio |
+|---|---|---|---|
+| Cornell | 0.395 ms | 2.81 ms | 7.1x |
+| scene.json | 0.704 ms | 12.77 ms | 18x |
+| NFS | 1.13 ms | about 9.2 ms (harness log; some of its frames overlapped test runs) | about 8x |
+
+Breakdown on scene.json: without the path continuation the tracing block is 0.40 ms; without the origin next-event sample it is 12.6 ms (the origin sample costs nothing measurable); a depth cap of 4 on the path gives 6.0 ms, but its all-pixel energy is 0.75x of the uncapped surfel, so it is not adopted. Measured on NFS: next-event at every vertex (instead of the first) changes the energy by +0.8%, so the depth of next-event samples is not a cost lever. The cost is the continuation's serial path length: a warp runs until its longest path ends, and the roulette tail makes that about ten vertices. The continuation also carries real energy: on scene.json, removing it halves the all-pixel mean (0.236 against 0.479), so the cost cannot simply be cut.
+
+The real fix is coverage, not the estimator. Spawning surfels where rays hit surfaces with no coplanar surfel (the GIBS spawn) would make the continuation rare. That belongs to the population worker, who will rebase on this result.
+
+### 14.6 Gaps: Cornell and NFS
+
+Cornell (§14.8: harness ratio 1.22, all-pixel about 1.06). The excess is concentrated in dim, indirect-dominated pixels: where the reference is 0.1-0.2 the surfel is 1.7x, where it is 1.0 or more it is 1.0x. Excluded, each by a run: MIS (pure next-event gives the same energy), guiding (-1.6% guided against unguided), relative clamp (-1.1%), cache (-0.3% with the cache off), irradiance sharing (-1.5%), the sun (sun-free and sun-lit give the same all-pixel ratio), the shadow origin offset (0.01 m gives the same), the albedo blend at hits (+1.3% without it), the gather neighbour radius (zero gives the same), the cell-average fallback (no change), and the BVH far distance. Not isolated; the next step is a per-surfel comparison against a surfel-free reference.
+
+NFS (§14.8: harness ratio 0.84, all-pixel 0.78; the reference is converged, 0.0302 at frames 200-260 and 0.0298 at 780-840). Probes on frames 200-260, all-pixel:
+
+| Variant | Mean | Change |
+|---|---|---|
+| Current | 0.02313 | - |
+| Cache lookup off | 0.02134 | -8% |
+| Next-event at every vertex | 0.02332 | +0.8% |
+| Relative clamp off | 0.02323 | +0.4% |
+| BVH far distance 1024 m | 0.02266 | -2% |
+| Irradiance sharing off | 0.02697 | +17% |
+| Reference | 0.02978 | - |
+
+Irradiance sharing is the largest factor, and it is outside this round's files (`irradiance_sharing.comp`, owned by the gather). Its darkness-lift cap and gradient weights pull dim surfels toward brighter neighbours less than they should, which removes energy in dim regions. With sharing off the NFS ratio becomes 0.91 (all-pixel), still short of 0.9-1.1 by a small margin. Coverage on NFS (per frame, harness counters): 434 of 7891 visible tiles under-covered; overflowGridEntries 11530; rayShortfall 6695 (8743 requested, 2048 allocated); no empty gather pixels. The shortfall of rays and the grid overflow are worker B's territory (recommended, not changed here).
+
+Sky and tMax: the sky enters only at misses, with the same miss radiance as the reference; the 256 m far distance gives the same result as 1024 m within 2%. Emissive signage and windows: next-event estimation covers them (§14.3); it did not close the NFS gap by itself (+0.8% at every vertex).
+
+### 14.7 Validators and checks
+
+- `validate_surfel_gi_static.py`, `validate_surfel_gi_correctness.py`: pass. The correctness check now looks for the shared path (`SurfelPathRadiance`) in the reference, since the direct light moved there.
+- `validate_surfel_sky_visibility_access.py`: rewritten for the one-sky-estimator contract (the sky-visibility functions must not come back; sky enters at a miss). `validate_surfel_gi_ray_radiance_contract.py`: the sky and emission checks are updated to the shared path. Both failed at 6f9cf0d (plan 10.7) and now pass.
+- `validate_surfel_gi_irradiance_signal.py`, `fallback_contract`, `stability_contract`, `environment_miss_radiance`: not touched; they check contracts from earlier designs, and the first three already fail at 6f9cf0d.
+- `CheckNoRawGL.ps1`, `CheckGenericExe.ps1`, `CheckVcxprojSources.py`: pass. `guide_pdf.glsl` is listed in `Nox_Engine.vcxproj` and its filters.
+- Editor smoke (`NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`): 14 PASS, 0 FAIL. The baseline binary run beside it gave 13 PASS and one FAIL (content browser draws `images/`), a UI check unrelated to surfel code, so it is treated as flaky under GPU contention. Plan 13.8 recorded 15 PASS; the count has changed in this environment.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 NOX_FIXED_DT=0.0166666667 NOX_EXIT_ON_FINISH=1 NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s (new record)`.
+
+### 14.8 Default tier (Medium, 2048 rays), two repeats, harness
+
+Reference `indep_term` (900 frames, composite debug 4); surfel `surf_term`; noise is `surf_term` corrected std over the lit mask.
+
+| Scene | Reference | Surfel | Ratio (target 0.9-1.1) | Guided vs unguided | Noise (target) | Total pass GPU |
+|---|---|---|---|---|---|---|
+| Cornell | 0.5952 | 0.7257 | 1.219 (not met) | 1.6% | 0.37% (<=2%: met) | 3.8 ms |
+| scene.json | 0.37591 | 0.35882 | 0.954 (met) | 0.4% | 0.11% (<=1.5%: met) | 15.3 ms |
+| NFS | 0.07358 | 0.06155 | 0.836 (not met) | 1.3% | 1.66% | 11.7 ms |
+
+The harness metric (lit mask from the `off` image) and the all-pixel means disagree on Cornell (1.22 against about 1.06). scene.json all-pixel is 0.97. NFS all-pixel is 0.78. Targets: Cornell surfel against the reference within 5% is not met (1.22); scene.json [0.9, 1.1] is met; NFS is not met.
+
+Cost data on the quiet GPU are in §14.5. The total pass GPU figures above come from the two-repeat harness, whose runs overlapped my other GPU tests and so are upper bounds.
+
+### 14.9 Not met
+
+- Tracing cost: 7-18x the baseline (§14.5). The fix is coverage (spawn at hit points), not a depth cap.
+- Cornell residual: 1.22 on the harness metric, not isolated (§14.6).
+- NFS: 0.84 harness, 0.78 all-pixel. Irradiance sharing is the main cause (removing it gives 0.91); the remainder is not isolated.
+- Not established: the guided white-sky shortfall (1.6%).
+- Left to owners: irradiance sharing (gather), ray allocation and grid overflow (worker B), the shadow leak outside the cascades (lighting).
+
+## 15. Estimator performance
+
+Worker F (estimator performance), built on estimator round 2 (`f4c96f8`). Result in one line: the cost is the closest-hit trace at each continuation vertex, and the cheap levers (cache first, next-event at the first vertex, any-hit shadows, cosine continuation, cascade sun) are already in place. Unbiased roulette trades that cost for energy and noise, and the trade does not reach the targets. The sun leak is fixed for the surfel trace at +2.7 ms. Irradiance sharing stays: it is neutral on Cornell and scene.json, it is what holds NFS noise down, and it carries an NFS energy bias of about 8%. The cost targets are not met.
+
+### 15.1 Method
+
+- Harness: `--env NAME=VALUE` applies to every run. Reference runs were made once with the frozen baseline binary and reused through directory links. The reference is unchanged by construction. The path control struct gives it its own values, the sun fallback is off for it (uniform default 0), and the BVH traversal is unchanged (an ordering change was tried and reverted).
+- Timing: the GPU was shared with another worker for most runs. In contended runs `final_gather` reads 6 to 9 ms against 0.8 ms quiet, and those runs are not used. The quiet numbers below are medians over frames 200 to 260 of one run. Quiet repeats of one binary vary by about 10% (13.1 to 14.0 ms tracing).
+- Energy and noise: `surf_term` against `indep_term` through the harness lit mask, as in section 14.8. Noise is the corrected temporal std over the same window. Run-to-run scatter on NFS noise is large (1.5 to 2.5% across the runs below), so differences under about 1 point on NFS are not claims.
+
+### 15.2 Where the tracing time goes (scene.json, Medium, 2048 rays)
+
+| Variant | Tracing (ms) | Note |
+|---|---|---|
+| Baseline `f4c96f8`, cap 32 | 12.9 (A/B pair), 13.1 to 14.0 (repeats) | Energy 0.955, noise 0.10% |
+| Cache walk at depth 1 off | 12.7 | The depth-1 cache walk is about 4% |
+| No direct light at depth 1 and beyond | 11.6 | Direct light at bounces is about 2.5 ms. It carries multi-bounce energy, so it stays |
+| Closest-hit trace at depth 1 off (cap 2) | 1.5 (cap 2 with trace: 5.4) | The closest-hit trace from a continuation point is about 4 ms |
+| Path cap 4 | 6.05 | Biased: energy 0.75 (round 2, all-pixel), not used |
+| Path cap 2 | 5.4 | Biased, not used |
+| BVH children nearer-first | 14.4 | No gain, reverted |
+| Continuation minimum distance 0.01 | 14.05 | No gain and no energy change (no self-hits), reverted |
+
+Reading: the wall time is set by the longest path in the warps that are active. Each continuation vertex adds one incoherent closest-hit trace, which is latency bound. The GPU runs 64 warps on 68 SMs, so the ray count hardly moves tracing time (2048 to 4096 rays raise NFS tracing from 13 to 18 ms, and 1024 rays barely lower it). The cost is set by the path length, and the path length is set by albedo, so the only large saving is fewer continuation vertices, which means surfel coverage at hit points (the population worker's spawn change).
+
+### 15.3 Roulette at the first hit (`SurfelTraceControl`, `uContinuationPeriod`)
+
+The first hit's own terms always count (cache, direct light, next-event at the first hit, emission). Its continuation runs only in one warp group of 32 rays in N frames, with weight N. The selection rotates with the frame, so each group is taken once in N frames and the estimate is unbiased over the period. A per-ray roulette was tried and is slower, because it keeps every warp active (7.05 ms against 5.9 at N = 10, both quiet), so it is not kept.
+
+| Period N (p = 1/N) | Tracing (ms, scene.json) | Energy vs `indep_term` | Noise | Note |
+|---|---|---|---|---|
+| 1 (p = 1), default | 12.9 to 14.6 | 0.955 | 0.10% | Unbiased, the default |
+| 2 (p = 1/2) | not measured | | | |
+| 4 (p = 1/4) | 8.2 | 0.898 | 1.65% | Energy short of band, noise at the target |
+| 10 (p = 1/10) | 5.9 to 6.1 | 0.608 (batch gate on), 0.708 (gate off) | 3.7 to 4.1% | Energy and noise both fail |
+
+The energy loss at N > 1 is not only the batch firefly gate in `integrate.comp`, which clips the first large weighted sample (gate off recovers only 0.61 to 0.71). The rest is not isolated. It is probably the warm-up of young surfels, whose first batches are mostly unweighted. The setting is kept (`NOX_SURFEL_GI_PATH_PERIOD`, default 1) so a faster tier can choose it, but no tier uses it.
+
+### 15.4 Ray budget (Medium default 2048)
+
+| Budget | NFS energy | NFS noise | NFS tracing | Note |
+|---|---|---|---|---|
+| 1024 | 0.789 | 2.50% | | Lower energy and more noise: rejected |
+| 2048 (default) | 0.847 | 1.66% | 13 | Budget-limited on NFS (about 8.4k requested) |
+| 4096 | 0.905 | 2.38% | 17.9 | Energy in band, noise does not fall, cost up: rejected |
+
+Scene.json (2048) is 0.955 and 0.10%, and Cornell (2048) is 1.171 and 0.13%, both with headroom on noise. The budget stays at 2048. The lead's expectation that 1024 would hold the targets is not met on NFS.
+
+### 15.5 Irradiance sharing (`useIrradianceSharing`)
+
+| Scene | Sharing on: energy / noise | Sharing off: energy / noise |
+|---|---|---|
+| Cornell | 1.171 / 0.13% | 1.173 / 0.30% |
+| scene.json | 0.955 / 0.11% | 0.956 / 0.10% |
+| NFS | 0.847 / 1.66% | 0.924 / 2.53% |
+
+Sharing is neutral on Cornell and scene.json. On NFS it lowers energy by about 8% and lowers noise by about a third. The rule in the brief (remove sharing if the noise targets hold without it) fails on NFS, so sharing stays. Its bias comes from the blend writing into the stored long mean (`irradiance_sharing.comp`, `surfel.irradiance.rgb`), so each frame pulls a surfel toward its neighbours' average. A fix needs the blend to be energy-neutral (for example, applied to the variance state only), which was not done here.
+
+### 15.6 Sun leak (lever 6)
+
+`DirectionalShadowVisibility` gives a point outside its cascade a BVH any-hit toward the sun (`uSunShadowBVHFallback`, setting `sunShadowBVHFallback`, default on, `NOX_SURFEL_GI_SUN_BVH=0` turns it off). It is used by the surfel trace only, so the reference keeps the cascade-only answer.
+
+- Cost: +2.7 ms of tracing in an A/B pair (12.85 to 15.54 ms, quiet). Not reduced.
+- Energy: scene.json 0.955 to 0.955, Cornell 1.185 to 1.171, NFS 0.837 to 0.847.
+- The reference still has the leak, so on sun-lit enclosed geometry the ratio compares a fixed surfel against a leaky reference.
+
+### 15.7 Cornell 1.18 to 1.22
+
+Split of `surf_term` against `indep_term` by the off-frame luminance class (`base_cornell`, frames 200 to 260):
+
+| Class | Pixels | Reference energy share | Surfel/reference (sum) | Per-pixel median |
+|---|---|---|---|---|
+| Lit (harness mask, off lum 0.02 to 0.97) | 4.1% | 19.4% | 1.185 | 1.044 |
+| Dark (off lum at most 0.02) | 95.8% | 79.9% | 1.039 | 1.000 |
+| Saturated (off lum at least 0.97) | 0.09% | 0.7% | 1.078 | 1.077 |
+
+All-pixel sum ratio 1.068. The harness overshoot is therefore the lit mask: it keeps the directly lit walls next to the emitter, where the surfel is about 19% high in energy-weighted terms, while the median lit pixel is 4% high. The cause of that excess is not isolated. Round 2 excluded MIS (pure next-event gives the same energy), guiding, the clamp, the cache and sharing. The registered light against emitter double counting was not tested in this round.
+
+### 15.8 Before and after
+
+| Scene | Metric | Before (`f4c96f8`) | After (this worker) |
+|---|---|---|---|
+| scene.json | Tracing (quiet A/B pair, ms) | 12.85 | 15.54 |
+| scene.json | Surfel UpdatePass (ms) | 15.51 | 17.92 |
+| scene.json | Energy / noise | 0.955 / 0.10% | 0.955 / 0.11% |
+| Cornell | Energy / noise | 1.185 / 0.24% | 1.171 / 0.13% |
+| NFS | Energy / noise | 0.837 / 1.49% | 0.847 / 1.66% |
+| Furnace (no sun, analytic) | Mean surfel term (target 0.25) | 0.2454 (round 2) | 0.2417 (-3.3%) |
+| White-sky (analytic) | Mean surfel term (target 0.15) | 0.1476 (round 2) | 0.1450 (-3.3%) |
+
+Final defaults: tier budgets unchanged (Low 1024, Medium 2048, High 4096, Ultra 8192); path period 1; cap 32; cache depth 2; sharing on; sun fallback on (new). New settings: `NOX_SURFEL_GI_PATH_PERIOD` and `NOX_SURFEL_GI_SUN_BVH`. Harness: `--env`.
+
+### 15.9 Targets
+
+- Not met: scene.json tracing at most 1.0 ms (12.9 to 15.5 ms measured). NFS tracing at most 1.5 ms (about 13 ms). Scene.json total surfel at most 2.5 ms (15.5 to 17.9 ms). Cornell energy in [0.9, 1.1] (1.17). NFS energy in [0.9, 1.1] (0.85) and NFS noise at most 1.5% (1.66%).
+- Met: scene.json energy (0.955) and noise (0.11%), Cornell noise (0.13%), furnace and white-sky within 5% (-3.3% each).
+- Verification: `CheckNoRawGL`, `CheckGenericExe` and `CheckVcxprojSources` pass. `validate_surfel_gi_static` and `validate_surfel_gi_correctness` pass. The other surfel validators give the same pass and fail set as the frozen baseline (legacy contracts from earlier designs). Editor smoke: 14 PASS, 0 FAIL. Racing: `[Race] Finished in 47.4994 s`.
+
+What would meet the cost target: fewer continuation vertices (surfel coverage at hit points, so the cache answers the first hit), and a cheaper closest-hit trace for incoherent rays. Neither is in this worker's files.
+
+## 16. Population and grid round 2
+
+Branch `worktree-agent-af875ff171ce0c409`. Base: `89b1cef`, the merge of the grid/population branch (`3a53435`) and estimator round 2 (`f4c96f8`). "Base" below is `89b1cef`. "Est" is `f4c96f8` built from a `git archive` copy, so the estimator is measured in the same session as the base. Harness: `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera, frames 200-260. Energy is the linear term metric (`term_energy`, composite debug 4) and ratio is `term_ratio_vs_indep` against the reference (`indep_term`, deterministic, one run per scene). Three repeats unless marked. Under-covered is the per-tile count from the counters (visible tiles whose lowest coverage is under 0.85), median over frames 200-260. GPU times were measured while other workers used the GPU, so absolute times are noisy: the NFS timing pairs are alternating base and final runs, three each, medians.
+
+### 16.1 Merge
+
+- `SurfelGIResources.h`: `GridSlots` and `Emitters` were both binding 37. Emitters moved to 39 (`B_SURFEL_EMITTERS` in `common.glsl` follows).
+- `tools/surfel_gi_metrics.py`: kept the grid branch's configs and the estimator's `TERM_CONFIG_PREFIXES` line.
+- Plan doc: kept 11.9 (estimator), 12 (grid), 13 and 14 (estimator), in that order.
+- `trace_rays.comp`, `irradiance_sharing.comp` and `SurfelGIPipeline.cpp` auto-merged. The grid-lookup calls were checked by the harness runs, not by reading the diff.
+
+### 16.2 What changed
+
+- Under-coverage. Spawn budget = `clamp(0.5 x under-covered tiles of last frame, floor, ceiling)`, limited by the population deficit to `min(kappa x visible, cap) - live`. Floor is `maxSpawnsPerFrame` (64 at Medium), ceiling is `visible tiles / 16`, bounded at 512 (per tier). Tile candidates above the highest spawn threshold skip the grid query (lazy candidate). Spawns younger than 8 frames are not culled by the score.
+- Population cap. The target is `min(kappa x visible, cap)`, cap 2048 at Medium (1024 Low, 4096 High, 8192 Ultra). At 1080p nearly every tile is visible, so the uncapped target was about 7,900 on scene and NFS, which diluted the ray budget.
+- Recycling (GIBS p.29). `score = 0.4 over + 0.3 stale + 0.3 far x over`, with staleness starting 30 frames after the last visible touch. Distance counts only while over target, so visible or recent surfels are not culled for distance.
+- Grid. Headers are offset + count (8 B). Pending counts (4 B) and average sums (24 B) are separate buffers. The count pass records each surfel's overlapped cells (`overlapCells`, INVALID for unused entries) and the scatter pass reads them, so the overlap geometry is evaluated once per frame. Overlap reach is the support sphere (`gridReachCellScale = 0`); the inflated 0.75-cell reach is available as `NOX_SURFEL_GI_GRID_REACH=0.75`.
+- Dispatch. The scan and scatter use the high-water groups. The count pass issues its slot atomics back to back.
+- Knobs for attribution: `NOX_SURFEL_GI_SPAWN_BUDGET_CEILING`, `..._TILE_DIVISOR`, `..._SPAWN_DEFICIT_LIMIT`, `..._POP_CAP`, `..._CELL_AVG_ALL`, `..._GRID_REACH`.
+
+### 16.3 Results
+
+| Scene | Config | Under-covered | Live | Energy ratio (term) | Energy | Noise (surf_term) | Grid ms (count / scan / build) | Recycle + spawn ms | Overflow |
+|---|---|---|---|---|---|---|---|---|---|
+| Cornell | base | 6.00% | 1618 | 1.104 | 0.657 | 0.24% (6 reps: 0.33%) | 0.156 (0.054 / 0.056 / 0.046) | 0.221 | 0 |
+| Cornell | est | 2.79% | 1892 | 1.203 | 0.716 | 0.24% | n/a | 0.497 (contended) | 21995 |
+| Cornell | final | 4.80% | 1638 | 1.185 | 0.705 | 0.36% (6 reps: 0.33%) | 0.092 (0.039 / 0.032 / 0.020) | 0.176 | 0 |
+| scene.json | base | 6.73% | 2546 | 0.911 | 0.342 | 1.93% | 0.192 (0.074 / 0.056 / 0.061) | 2.36 (contended) | 0 |
+| scene.json | est | 1.64% | 1756 | 0.956 | 0.359 | 0.10% | n/a | 2.93 (contended) | 9372 |
+| scene.json | final | 4.80% | 2048 | 0.956 | 0.359 | 0.17% | 0.106 (0.051 / 0.033 / 0.023) | 0.280 | 0 |
+| NFS | base | 13.30% | 1627 | 0.715 | 0.0526 | 11.1% | 0.180 (0.063 / 0.056 / 0.061) | 0.529 | 0 |
+| NFS | est | 5.58% | 2033 | 0.855 | 0.0629 | 1.58% | n/a | 6.79 (contended) | 11014 |
+| NFS | final | 6.72% | 2048 | 0.749 | 0.0551 | 1.52% | 0.106 (0.051 / 0.033 / 0.022) | 0.292 | 0 |
+
+NFS timing, alternating pairs (base / final, medians of three): recycle + spawn 0.529 / 0.293 ms, grid 0.181 / 0.106 ms, tracing 8.33 / 7.69 ms (estimator path continuation, not changed here). Dolly (`dolly:0.6,0,0:60`, Cornell, every frame dumped): no spike in the consecutive-frame difference during the motion. The largest second difference is at frame 60, where the camera stops.
+
+### 16.4 Attribution of the energy gap (Cornell, term ratio, three repeats)
+
+| Change from the default | Energy ratio | Under-covered | Note |
+|---|---|---|---|
+| Inflated grid reach (0.75 cell, merge default) | 1.139 to 1.196 when the reach is cut to the support sphere | 5.25% to 4.3% | The inflated reach fills cells with surfels the bounded lookups do not need. This is the main gap source found. |
+| Recycling off | 1.146 (default 1.139) | 5.4% | No effect once distance culls stop. |
+| Radial depth off | 1.146 | 5.1% | No effect. |
+| Cell averages from every overlapped cell | 1.142 | 5.3% | No effect. |
+| Spawn deficit limit off | 1.092 | 8.2% | Worse: the demand budget keeps spawning past the target and churns. |
+| Kappa 1.25 / 1.5 | 1.193 / 1.174 | 4.2% / 3.7% | Coverage needs about kappa 1.5 to approach 3%. |
+
+NFS kappa sweep (before the cap, one repeat, ratio against the reference term 0.0736): kappa 1.0 gives ratio 0.54 at 7,891 live surfels, kappa 0.5 gives 0.59 at 3,945, and kappa 0.25 gives 0.77 at 1,972. Under-coverage stays 6 to 7% across all three. So on NFS the population target is over-provisioned: coverage is structural and extra surfels only dilute the ray budget.
+
+### 16.5 Targets
+
+| Target | Result |
+|---|---|
+| Under-covered at most 3% on all three scenes | Not met: 4.80%, 4.80%, 6.72% (base 6.00%, 6.73%, 13.30%). |
+| Grid total at most 0.10 ms | Met on Cornell (0.092). Not met on scene.json and NFS (0.106, borderline). |
+| Recycle + spawn at most 0.25 ms on NFS | Not met: 0.29 ms (base 0.53, alternating pairs). |
+| Energy within 5% of the estimator alone | Met on Cornell (-1.5%) and scene.json (0.0%). Not met on NFS (-12%). |
+| Noise not worse | Met on Cornell over six repeats (mean 0.33% for both). Not measured with six repeats on scene and NFS. |
+| No popping in a dolly test | Met for the motion-stop check on Cornell (no spike). |
+| Overflow 0 | Met on all three (base 0). |
+
+### 16.6 Found along the way
+
+- The count pass as first written (one lane per candidate cell, shared-memory dedupe) gave systematically lower coverage (6.1% against 4.3% on Cornell). A serial-dedupe variant gave the same result. The cause is not found, so the sequential count is kept and the lane version is not in the tree.
+- The scatter read stale overlap entries beyond the recorded count. The count now writes INVALID for every unused entry.
+- `validate_surfel_gibs_phase4.py` fails on the base at the recycle check, and at the ray-scheduling check after it. Its grid and recycle checks now match this design. The other legacy validators that fail (`fallback_contract`, `irradiance_signal`, `stability_contract`, `coverage_priority`, and others) were already failing on the base and are not changed here.
+- Harness runs have two flakes. A window can be minimised, which pauses rendering and stalls a run (restored with `ShowWindow`), and a window can come out 1919 px wide (one base run was rerun).
+
+### 16.7 Open items
+
+- Under-coverage. The coverage plateau does not depend on the population, so the next lever is in the gather and cell candidates (bounded lookups take the first N in cell order). Both are outside this file set.
+- Energy on NFS (-12%). The population cap and grid reach account for most of the change. The rest is not isolated.
+- Grid on scene.json and NFS (0.106). Count is still the largest piece. The lane-parallel count is the obvious next step once its discrepancy is found.
+- The estimator's path continuation (tracing 8 ms on NFS) is the largest GPU cost and belongs to the estimator worker.
+
+## 17. Hit-point cache integration
+
+Branch `worktree-agent-a2eb3a1f2420d3eca`. Base: `af875ff` (population and grid round 2) merged with `ac8b332` (estimator performance), then this change. The one conflict was in this file: sections 15 and 16 were both appended after 14. They are kept in numeric order (15, then 16). Harness `tools/surfel_gi_metrics.py`, Medium tier, 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera, frames 200-260. The reference is `indep_term` (the independent path tracer, 900 frames, composite debug 4), reused from the merged-base runs: its code path is unchanged. Energy is the term metric (`surf_term` against `indep_term`, lit mask from the off frame), with the all-pixel ratio given beside it for Cornell. Every number is a single run unless marked. The GPU was shared with other workers, so the timings are single runs, not the alternating A/B pairs the brief asked for. Run-to-run spread is 8-15% on energy and more on noise.
+
+### 17.1 What was built
+
+- Queue (`trace_rays.comp`, `SurfelPathWorldRequest`). A path vertex below `cacheDepth` whose cache lookup fails queues one request per grid cell per frame. Cell stamps (binding 41, frame + 1) do the dedupe. The queue holds 4096 requests (binding 40, 64 bytes each) with position, normal, albedo, transform ID and cell. Skinned instances and hits with no transform record are not queued. The TLAS instance now carries its entity's transform ID in `metadata.w` (`RTSceneResources.cpp`), and the BVH hit reports it.
+- Spawn (`spawn.comp`, world mode `uWorldMode = 1`, dispatched before the grid build). One invocation per request, up to `worldSurfelSpawnsPerFrame` (16 at Medium). A request is skipped when the candidate coverage already reaches `spawnCoverageThreshold` (counter `worldSkipped`). Allocation, transform attach, MSME init and the radial and guide reset all go through `SpawnSurfelFromCandidate`. The radius is the screen-footprint rule, clamped to the cell side. The flag is `SURFEL_WORLD` (0x20).
+- Population. World surfels have their own cap, `worldSurfelPopulationFraction` x `spawnPopulationCap` (0.25 x 2048 = 512 at Medium). The screen spawn budget and the recycle target use live minus world live, so world surfels do not take screen spawns. `liveWorld` is persistent: spawn adds one and recycle removes one. `liveWorldCounted` (counted by `count_live_surfels`) agrees with it every frame.
+- Coverage. `coverage_project` skips world surfels, so the screen tile coverage and under-coverage are unchanged by them. The spawn candidate's own coverage (grid query) still counts them, which is the intended dedupe.
+- Recycling. The stale term now uses the later of the visible touch (`frameInfo.x`) and the last ray reference (`lifecycle.x`). A cache lookup with weight at least 0.02 sets `lifecycle.x`, and spawn sets it too. Over-cap world surfels take the over-target term, against their own cap.
+- Cache-first continuation. A vertex below `cacheDepth` stops at the cache when it answers (`albedo/pi x (direct + cached E)`). A miss queues a request and continues. World mode: `pathMaxHits` 3, `cacheDepth` 3, sun BVH fallback at the first hit only (`sunShadowBVHDepth` 1). The defaults (world off) are 32, 2 and 32, which are the merged-base values.
+- Settings and env (`ModularRenderer.cpp`). `NOX_SURFEL_GI_WORLD` (default 0; 1 selects world mode, and sets the three depths above unless each is overridden), `NOX_SURFEL_GI_WORLD_SPAWNS`, `NOX_SURFEL_GI_WORLD_FRACTION`, `NOX_SURFEL_GI_PATH_DEPTH`, `NOX_SURFEL_GI_SUN_BVH_DEPTH`, `NOX_SURFEL_GI_CACHE_DEPTH`. Experiment knobs with inert defaults: `NOX_SURFEL_GI_CACHE_MIN_WEIGHT` (1e-4, the old test), `NOX_SURFEL_GI_CACHE_MIN_CONF` (0), `NOX_SURFEL_GI_CACHE_SPREAD` (3.10).
+- Counters (`[SurfelGIFrameCounters]`): `worldRequests`, `worldDropped`, `worldSpawned`, `worldSkipped`, `liveWorld`, `liveWorldCounted`, `cacheHits`, `cacheMisses`. The validators check the counter layout (72 fields, 288 bytes).
+- Harness: configs `surf_noworld`, `surf_term_noworld`, `surf_term_d32`, `surf_term_noworld_d32`, `surf_term_w8`, `surf_term_w32`, and the new counters in the table.
+
+### 17.2 Results (medians over frames 200-260 unless marked)
+
+Energy: lit-mask ratio against `indep_term` (all-pixel in brackets for Cornell). Tracing and total are `tracing` and `SurfelGIUpdatePass` GPU ms. Under-covered is visible tiles below 0.85 coverage.
+
+| Scene | Config | Energy ratio | Noise (surf_term) | Tracing ms | Total Execute ms | Under-covered tiles | Live / live world | Cache hits / misses per frame |
+|---|---|---|---|---|---|---|---|---|
+| Cornell | merged base | 1.201 [1.077] | 0.46% | 3.39 | 4.23 | 74 of 1638 | 1638 / - | - |
+| Cornell | this change, default | 1.193 [1.075] | 0.29% | 3.57 | 4.43 | 69 | 1638 / 0 | 1746 / 38 |
+| Cornell | world mode | 1.218 [1.080] | 0.29% | 2.63 | 3.52 | 76 | 1695 / 57 | 1746 / 0 |
+| scene.json | merged base | 0.951 | 0.25% | 17.11 | 18.94 | 303 of 7911 | 2048 / - | - |
+| scene.json | this change, default | 0.954 | 0.17% | 17.81 | 19.63 | 333 | 2048 / 0 | 767 / 2769 |
+| scene.json | world mode | 0.656 | 0.82% | 3.40 | 5.17 | 388 | 2485 / 437 | 2005 / 0 |
+| NFS | merged base | 0.715 | 1.47% | 7.60 | 9.65 | 565 of 7891 | 2048 / - | - |
+| NFS | this change, default | 0.742 | 1.83% | 7.98 | 9.95 | 592 | 2048 / 0 | 1152 / 543 |
+| NFS | world mode | 0.716 | 4.17% | 5.60 | 7.48 | 558 | 2561 / 513 | 1541 / 11 |
+
+Notes on the rows:
+- The default row matches the merged base within run-to-run spread on all three scenes. The one code change that alters the default is the ray-reference term in recycling, which is what section 17.1 asks for.
+- Cornell: the table uses the lit mask (4.1% of pixels), as the harness defines it. The lit mask keeps the walls next to the emitter, where the surfel term reads high. The all-pixel ratio (1.075 to 1.080 in every config) is inside the band; the lit-mask ratio (1.19 to 1.22) is not.
+- World live surfels reach the 512 cap on NFS and sit at about 437 on scene.json and about 57 on Cornell.
+
+### 17.3 The energy loss in world mode (scene.json, lit-mask ratio)
+
+| Variant | Ratio | Tracing ms | Note |
+|---|---|---|---|
+| merged base (no world, depth 32, sun all vertices) | 0.951 | 17.11 | reference point |
+| world off, depth 3, sun first hit only | 0.545 | 6.78 | depth cap alone costs a lot without the cache |
+| world on, depth 32, sun first hit only | 0.741 | 3.43 | cache answers without the depth cap |
+| world on, depth 3, sun all vertices | 0.637 | 3.48 | sun restriction: -3% |
+| world on, depth 3, sun first hit only (world mode) | 0.656 | 3.40 | |
+| world on, minimum cache weight 1.0 | 0.641 | 4.49 | thin neighbourhoods are not the cause |
+| world on, cache kernel spread 1.0 (from 3.10) | 0.646 | 4.18 | kernel blur is not the cause |
+| world on, world cap fraction 0.05 (about 100 surfels) | 0.714 | 5.35 | dilution of the 2048-ray budget explains part (+0.06) |
+
+What the table says. Cache-first answers about 2000 vertices per frame with almost no misses, so the path length is no longer the cost, and the energy is lost in the irradiance the cache returns at hit points. That is about 25-30% below what the continuation gives at the same points. Depth, sun, minimum weight, kernel width and world population each explain only part of it. The mechanism is not isolated. Convergence of the world surfels is one candidate that is not ruled out: world surfels are 437 of 2485 live surfels, the spawn and recycle churn is 0 to 1 per frame, and the cached irradiance was not compared against a converged value at those points. The confidence gate (`NOX_SURFEL_GI_CACHE_MIN_CONF`) was implemented but not run on scene.json.
+
+NFS does not show the drop: world mode gives 0.716 against 0.742 for the default. NFS noise rises to 4.2%, which is a real regression on that scene.
+
+### 17.4 Decision
+
+World mode is off by default (`worldSurfels = false`). With it on, scene.json energy is 0.66, so the default would be a 30% darkening there. The default now equals the merged base in energy and cost within run-to-run spread, and world mode stays available behind `NOX_SURFEL_GI_WORLD=1` for the next worker to fix the cache bias. This is a trade of the cost target for the energy target, and the energy target is the one the brief sets as a gate.
+
+### 17.5 Targets
+
+| Target | Result |
+|---|---|
+| Tracing at most 1.5 ms on scene.json and NFS at steady state | Not met. Default 17.8 and 8.0 ms. World mode 3.4 and 5.6 ms. |
+| Total surfel Execute at most 3 ms on scene.json | Not met. Default 19.6 ms, world mode 5.2 ms. |
+| Energy within [0.9, 1.1] on all three scenes | Not met. Default: scene 0.95 (met), Cornell 1.19 lit mask and 1.08 all-pixel (met on all-pixel), NFS 0.74 (not met; the merged base is 0.72, so this is pre-existing). World mode: scene 0.66 and NFS 0.72 (not met). |
+| surf_term noise at most 2% on Cornell, 1.5% on scene and NFS | Cornell met (0.29%, both modes). Scene met (0.17% default, 0.82% world). NFS not met (1.83% default, 4.17% world). |
+| Analytic furnace and white-sky within 5% | Not measured in this pass. |
+| No popping in dolly and orbit tests (frame-difference metric) | Dolly, 0.8 m over 260 frames, world mode: second-difference peak 0.12 of the median first difference. Default: 0.13. Orbit, 0.2 deg per frame, world mode: 1.12 (a one-frame jump at 248-249, see 17.6). |
+| Convergence: tracing at target within 60 frames of a static camera | Not measured. The runs logged frames 200-260 only. |
+| Scalability reported | See 17.7. |
+
+### 17.6 Moving camera
+
+Cornell, `NOX_CAMERA_PATH` (single runs, frames 200-260). Metric: mean absolute difference of consecutive dumps, and the second difference.
+- Dolly 0.8 m over 260 frames, world mode: first-difference median 0.22, second-difference peak 0.12 of the median first difference, no spike. Tracing 2.70 ms, total surfel Execute 3.69 ms.
+- Dolly, default: first-difference median 0.22, peak ratio 0.13. Tracing 3.07 ms, total 4.24 ms.
+- Orbit 0.2 deg per frame, world mode: first-difference median 0.89, max 1.78 at frames 248-249 (a one-frame jump from about 0.8). The second difference peaks at 249 (1.12 of the median first difference). Tracing 2.45 ms (total 3.40 ms). The world counters show no world spawn or request in frames 246-250, and the same jump is in the default orbit (tracing 3.40 ms, total 4.35 ms) (no world surfels, 1.88 at 248-249, second-difference peak 2.14 of the median first difference, against 1.12 with world mode). So the jump comes from the scene content, not from the world surfels, and world mode does not add popping.
+- Energy along a moving path is not comparable with the static reference, so it is not reported.
+
+### 17.7 Scalability
+
+- Memory, world mode at Medium: request queue 256 KiB; cell stamps 704 KiB (180,224 cells x 4 B); world surfels at most 512 x about 0.5 KB (surfel, 16 radial texels, guide map), about 0.25 MB. Total about 1.2 MB. The grid is about 14 MB (section 10.1), and it is unchanged.
+- Cost per frame: the world spawn dispatch is one 64-lane group for 16 requests. A queued request costs one atomic on the cell stamp and one on the queue count. Tracing is the remaining cost: on Cornell in world mode it is 2.6 ms of which most is the BVH walk and the cache lookups at the first hit. The grid part of the frame is independent of scene size; the tracing is not.
+- Population: the world cap is a fraction of the screen cap, so it scales with the tier. The per-tier values are not set; the tiers inherit the Medium defaults (world off).
+
+### 17.8 Not done and open
+
+- The energy loss of world mode (17.3). It is the blocker for turning world mode on.
+- NFS noise in world mode (4.2%).
+- The final gather is not a reference for recycling. The brief asked for "ray hits or the gather", and the gather lives in `apply_indirect.comp`, which is not in this change's file set. Off-screen world surfels are used by rays, so the ray reference covers them.
+- A/B timing pairs (3 each) were not run, and the furnace and white-sky checks were not re-measured. Both need a quiet GPU.
+- The world settings are not set per tier.
+
+### 17.9 Convergence, ray share and cache bias (follow-up)
+
+Same branch, same definitions as 17.2. Energy is the lit-mask ratio against `indep_term` (all-pixel in brackets). Cold start: runs from frame 0 with the dump of the surfel term every 10 frames (every 20 for the 2000-frame run). "Plateau" is the mean of the last 200 frames of a run; "time to 90%" is the first dumped frame at or above 0.9 x plateau. Runs are single runs. The identical configuration (x0 and E0) differs by about 0.03 to 0.05 at frame 900, so differences smaller than that are not claims. Runs use the measurement render settings (the first attempt did not, and is discarded).
+
+Tools (not in the repo): `conv_run.py` runs the engine to a frame with dumps through the harness's scene measurement copy, `conv_analyze.py` gives the energy per dumped frame, the plateau, the exponential fit and the time to 90%, `share.py` reads the world-surfel counters, `tracecost.py` reads tracing and labelled total from the subpass lines.
+
+**Convergence (scene.json, world mode).** Energy climbs over the whole run. It is not converged at frames 200-260, which is the window the earlier tables used.
+
+| Config | 100 | 200 | 400 | 600 | 800 | 1000 | 1400 | 2000 | Plateau (last 200) | Time to 90% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| World mode | 0.598 | 0.638 | 0.689 | 0.733 | 0.785 | 0.815 | 0.840 | 0.858 | 0.855 (1800-2000) | 760 frames |
+| World mode, world long rate 0.1 | 0.605 | 0.665 | 0.773 | 0.812 | 0.830 | 0.845 | 0.855 | 0.864 | 0.867 (1800-2000) | 440 frames |
+| Default (world off) | 0.948 | 0.953 | 0.958 (400) | 0.959 (500) | - | - | - | - | 0.948 (0-500 mean) | 20 frames |
+
+- The world-mode increments fall by about 0.7 per 200 frames, so the time constant is roughly 550 frames. A three-parameter exponential fit over 100-900 is unstable (asymptote 0.85 to 1.5 depending on the window); the 2000-frame run settles it better, at about 0.86 with the plateau above.
+- The plateau is well below the default (0.95). So convergence speed explains part of the gap, and the rest is a steady-state bias of roughly 0.09 to 0.13. The first hypothesis (convergence only) is not sufficient.
+- Long rate: world surfels with long rate 0.1 (instead of 0.02) reach 90% of the plateau in 440 frames instead of 760, with the same tracing cost. The plateau does not move.
+
+**Cornell (world mode).** Converges within the first 10 to 100 frames. All-pixel: 1.069 at frame 10, 1.080 at 200, 1.090 at 900 (world), against 1.075 for the default; the band [0.9, 1.1] is met on all-pixel. The lit-mask ratio is about 1.19 to 1.24 in both modes and does not meet the band; it is the same bias the earlier sections describe.
+
+**NFS.** Default: plateau 0.780 (frames 700-900), 90% at 40 frames. The 0.742 in the 200-260 table is the same run's mean over that window, and the difference to the plateau comes from the window, not from the code. World mode: 0.62 at frame 20, 0.72 at 900, still rising, so world mode on NFS is slower and has not reached its plateau in 900 frames. Earlier in this section NFS was 0.72 for the merged base, and the default is 0.78 on the plateau; both are below the band (predates world mode).
+
+**Ray share and sample accounting (scene.json, world mode).**
+- Requests and grants: world surfels take about 20% of the requested rays and of the granted rays (requestedWorld / requestedRays 0.20 to 0.22; allocatedWorld / allocatedRays 0.19 to 0.24), about one ray per world surfel per frame.
+- Mean sample history (min(shortMean.a, 192)): 62 at frame 100, 149 at 200, 180 at 400, 188 at 900. The history saturates near the 192 cap by frame 200, so the 1/n cumulative schedule covers the first 150 frames of a world surfel and the 0.02 rate after that.
+- Mean age: 70, 166, 339 and 781 frames at 100, 200, 400 and 900. The world population is old; the cap of 512 is not reached in the default (about 450 live).
+- With the hit-referenced floor of 4 rays (window 8 frames), the world grant share rises to 0.43 to 0.45 and the grants per world surfel to about 1.95. Energy at frame 900 is 0.767 against 0.829 without the floor, within the spread, so the ray share is not the limit.
+- Young surfels already get the floor of 4 rays for their first 4 frames (`request_rays.comp`), and the cumulative 1/n rate for their first 192 rays (`integrate.comp`).
+
+**Cache bias checks (scene.json, world mode, lit ratio).**
+- Their own rays use the cache at their own hits: yes. The depth-0 lookup of a world surfel's ray excludes only the ray's origin surfel. Cache hits are about 2000 per frame and misses about 0 to 2 (scene), so the chain closes at every hit of every ray.
+- Confidence ramp (young surfels weigh 0.22 to 1): off gives 0.800 at 900 against 0.829; within the spread, so the ramp is not the bias.
+- Normal weight lower edge 0.55 to 0.2 (grazing hits): 0.821 at 1400 against 0.840; no gain.
+- Plane-distance sigma x3: 0.851 at 1400 (+0.01); no clear gain.
+- Cell-average fallback: the trace path does not read cell averages (no reader in `trace_rays.comp` or `surfel_scene_trace.glsl`); the cache lookup is per surfel. Not applicable.
+- Hit-referenced floor: see the ray share above; no gain.
+
+**Fallback mix (item 4).** Cache-first, but continue the path while the cached confidence is low (`NOX_SURFEL_GI_CACHE_MIN_CONF=0.3`, cache depth 3, path depth 3):
+- Energy at 1400 frames: 0.869 against 0.840 (+0.03).
+- Tracing: 4.68 ms against 3.5 ms (+1.2 ms). The continuation is the cost.
+- The cache-depth-2 with RR variant was not run as a separate configuration; the path depth and cache depth settings exist for it.
+
+**Furnace and white-sky (analytic, closed-form expected values; plan 13.4 / 14.2).**
+
+| Test | Expected | Default | World mode | Reference (`indep_term`) |
+|---|---|---|---|---|
+| Furnace surf_term | 0.250 | 0.2411 (-3.6%) | 0.2387 (-4.5%) | 0.2450 |
+| White-sky surf_term | 0.150 | 0.1444 (-3.7%) | 0.1452 (-3.2%) | 0.1470 |
+
+Both are inside the 5% band against the analytic value in both modes. The surfel estimate is 2% to 4.5% under the analytic value and 1.6% to 2.6% under the independent reference.
+
+**Targets (updated).**
+- Tracing at most 1.5 ms: not met. World mode 3.5 ms (scene), 4.7 ms with the fallback mix, 5.6 ms on NFS; default 17.8 ms (scene) and 8.0 ms (NFS).
+- Energy in [0.9, 1.1] at steady state on scene.json: not met in world mode (plateau 0.855 to 0.867); met by the default (0.948).
+- Cornell all-pixel in [0.9, 1.1]: met in both modes (1.07 to 1.09). Lit-mask ratio not met.
+- NFS: not met in either mode (0.78 default, plateau of world mode not reached and below).
+- Furnace and white-sky within 5%: met in both modes.
+- Time to 90% of steady from a cold start: default 20 frames (scene), 40 frames (NFS), about 10 frames (Cornell); world mode 760 frames (scene); with long rate 0.1, 440 frames (scene); NFS world mode not reached within 900 frames.
+
+**Decision.** World mode stays off by default: its steady energy on scene.json (0.855 to 0.867, plateau) does not meet the band, so the default is unchanged. The new knobs (`NOX_SURFEL_GI_WORLD_RAY_FLOOR`, `NOX_SURFEL_GI_WORLD_REF_WINDOW`, `NOX_SURFEL_GI_CACHE_NORMAL_LO`, `NOX_SURFEL_GI_CACHE_CONF_RAMP`, `NOX_SURFEL_GI_CACHE_PLANE_SCALE`, `NOX_SURFEL_GI_WORLD_LONG_RATE`) all default to the previous behaviour. The counters `requestedWorld`, `allocatedWorld`, `worldAgeSum` and `worldHistorySum` log the ray share, age and sample history.
+
+**Open.** The steady-state bias of world mode (about 0.09 to 0.13 at scene.json) is not isolated. Convergence speed is improved by the long rate, not the bias. The next worker should compare, at matched hit points, the cached irradiance with the continuation estimate of the same point (for example by running both at the first hit of a converged scene), which the present counters cannot give.
+
+## 18. Final gather and composition
+
+Worker F (Haiku 5.5). Built on the merge of `worktree-agent-af875ff171ce0c409` (grid and population, estimator round 2) into `19363d0`; the merge commit is `c31fd08`, the HEAD before this work. Method as sections 9 and 16: 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera, frames 200-260 (reference 780-840), three repeats unless marked. Reference is `indep_term` (independent path tracer, composite debug 4). Energy is the linear term (debug 4 over lit pixels); "before" is the merged HEAD built unmodified and run from a frozen copy. Off and SSGI-only runs are reused from the before runs (their code path did not change). GPU timings were taken while other workers used the GPU, so absolute times are contended; the timing comparisons are alternating pairs.
+
+Result in one line: the gather is cheaper per frame (the chain falls from 1.27 to 1.00 ms on scene.json), the screen chain is one pass with a minimal history, and the composition is non-darkening; the surfel energy moved by -9% (Cornell) and -6% (NFS), the gather target (0.35 ms) and the NFS noise target are not met, and the SSGI double-count target is met on Cornell only.
+
+### 18.1 What changed
+
+- Final gather (`apply_indirect.comp`). Per gather texel, the first N accepted surfels of the receiver's 3x3x3 cells (cell order), where N is the tier's accepted count: Low 16, Medium 32, High 48, Ultra 64. Examined entries are bounded at 2N (`uMaxGatherCandidates`). Weights are unchanged (distance, normal, plane, confidence, radial visibility). Irradiance: `E = sum(w r E_s) / max(1, sum(w r)) + E_cell * max(0, 1 - sum(w))`, where `r` is the young-surfel ramp and `E_cell` is the receiver's base-cell average. Coverage stays `min(sum(w), 1)` for the spawn pass. The trilinear 27-cell fallback is gone.
+- Deviation, measured (section 18.2): the division by `max(1, .)` is added. The literal sum, without it, multiplies the surfel term by 1.66 (Cornell), 1.22 (scene) and 3.26 (NFS) of the reference, because covered texels have sum(w) of 1.5 to 2. The division applies only above 1, so it is continuous at 1 and sparse texels keep the GIBS sum.
+- Tiers. Gather scale 0.5 for every tier, neighbour radius 1 (High and Ultra were 1.0 and 2, i.e. 125 cells). Accepted counts as above. The count is now the tier's value when the context is 0 (new default), not a minimum over a default of 32. The earlier table took `min(32, tier)`, so High and Ultra ran 32; this was found while measuring and is fixed (`ModularRenderer.cpp` `SyncSurfelGISettings`, `RenderContext.h`, settings window: 0 = tier default).
+- Screen chain (`upscale_filter.comp`). `spatial_filter.comp` and `temporal_filter.comp` are deleted (vcxproj, filters, pipeline, two validators, quality test). The upscale is a four-tap joint bilateral on depth and normal, and it now carries one minimal temporal step: the previous output is reprojected with the velocity buffer, clamped to the range of the 3x3 gather texels, and blended at weight 0.85 (zero above 6 px of motion or during a lighting change). The history is full-resolution, ping-ponged, and invalidated on resize, release and reset.
+- Composition (`deferred_lighting_frag.glsl`, Option A). The far field (surfel, LPV) is multiplied by SSAO and material AO only. It is no longer multiplied by SSGI's visibility. Diffuse IBL and specular occlusion keep `min(SSAO, SSGI visibility) * material AO`, and the diffuse IBL keeps `diffuseIBLOcclusion = diffuseAO * (1 - coverage)` unchanged (see 18.5).
+- Harness (`tools/surfel_gi_metrics.py`): configs `surf_term_both4` and `surf_term_both3` (SSGI on, debug 4 and debug 3), `tier0`, `tier2`, `tier3`, `surf_cand32`, `surf_cand128`, `surf_cand256`.
+
+### 18.2 Results
+
+Energy and noise (surfel term, 3 repeats; reference `indep_term`):
+
+| Scene | Reference term | Before | After | Change | Noise before | Noise after | Target |
+|---|---|---|---|---|---|---|---|
+| Cornell | 0.5952 | 0.7191 (1.21) | 0.6517 (1.10) | -9.4% | 0.31% | 0.71% | <= 2% ok |
+| scene.json | 0.3759 | 0.3588 (0.95) | 0.3688 (0.98) | +2.8% | 0.18% | 0.36% | <= 1.5% ok |
+| NFS night street | 0.0736 | 0.0546 (0.74) | 0.0515 (0.70) | -5.7% | 1.60% | 1.89% | <= 1.5% not met |
+
+Energy target (surf within 5% of before): met on scene.json and NFS, not met on Cornell (-9.4%). The Cornell loss is the cell-average share on sparse texels (the GIBS fallback); the literal form would have been +66% there.
+
+Flicker, NFS, surfel term (mean absolute frame-to-frame step on linear lit pixels, 60 frames):
+
+| Variant | Step per frame (three repeats) |
+|---|---|
+| Before | 0.000115, 0.000099, 0.000096 |
+| Normalised gather, no history (three repeats, earlier run) | 0.00023, 0.00024, 0.00040 (one repeat with a spike of 0.0024) |
+| Final (with history) | 0.000124, 0.000088, 0.000095 |
+
+Without history the surfel term flickers 2 to 4 times as much per frame. The history restores the before level. Cornell and scene do not need it: without history their harness noise is 0.81% and 0.46%, inside target (the history run gives 0.71% and 0.36%).
+
+Gather chain cost (scene.json, surfel, median of three alternating before/after pairs, shared GPU):
+
+| | Final gather | Spatial + temporal | Upscale (and history) | Chain |
+|---|---|---|---|---|
+| Before | 0.662 ms | 0.40 ms | 0.206 ms | 1.270 ms |
+| After | 0.853 ms | 0 | 0.142 ms | 0.995 ms |
+
+Target (gather + upsample <= 0.35 ms on scene.json): not met (0.995 ms). The gather itself rose by 29%: it now has 2.4 times the texels (0.5 scale) and reads up to 32 accepted surfels per texel. Single-run chains from the 3-repeat runs: Cornell 0.36 to 0.28 ms, NFS 1.32 to 1.16 ms.
+
+Under-coverage (counter `underCoveredTiles / coverageVisibleTileCount`, three repeats):
+
+| Scene | Before | After | Target |
+|---|---|---|---|
+| Cornell | 4.2 to 5.3% | 5.1 to 5.8% | 3% (not met, slightly worse) |
+| scene.json | 3.8 to 4.5% | 1.4 to 1.8% | 3% ok |
+| NFS night street | 6.8 to 7.1% | 3.4 to 3.9% | 3% (not met, close) |
+
+The NFS plateau: the old lookup examined 32 entries per texel and so starved dense cells of back-facing surfels. Examined bounds on NFS (one repeat): 32 gives 4.56%, 64 (default) gives 3.65%, 128 gives 3.62%. The bound was a cause and 64 removes most of it; the remaining 3.6% is not the bound.
+
+Tiers (scene.json, surfel only, excluding tracing, one run each, shared GPU; gather counts checked in the log, 16 / 48 / 64):
+
+| Tier | Accepted N | Non-tracing surfel ms | Target | Under-coverage |
+|---|---|---|---|---|
+| Low (tier 0) | 16 | 0.97 | 0.8 (plan) not met | 6.5% |
+| Medium (default) | 32 | 1.62 (pairs median; before 1.81) | 1.5 (plan) not met | 1.4 to 1.8% |
+| High (tier 2) | 48 | 2.04 | 2.5 ok | 1.5% |
+| Ultra (tier 3) | 64 | 2.40 | 3.5 ok | 1.4% |
+
+Composition (term sums, linear, lit pixels). Far field is debug 4 with SSGI on, near field is debug 3. The three-way comparison is from one session (before history, normalised gather); Option A is re-measured with history.
+
+| Scene (reference term) | Current (far x SSGI visibility) | Option C (open fraction) | Option A (chosen) |
+|---|---|---|---|
+| Cornell (0.5952; surfel 0.6525) | far 0.393, sum 0.414 (0.63 x surfel, 0.70 x ref) | far 0.389, sum 0.410 (0.63 x) | far 0.629 (0.96 x surfel), sum 0.650 (1.00 x surfel, 1.09 x ref); final: sum 0.672 (1.03 x surfel, 1.13 x ref) |
+| scene.json (0.3759; surfel 0.3684) | far 0.365, sum 0.389 (1.06 x) | far 0.365, sum 0.389 (1.06 x) | far 0.372, sum 0.395 (1.07 x; 1.05 x ref); final: sum 0.394 |
+| NFS (0.0736; surfel 0.0555) | far 0.057, sum 0.086 (1.55 x) | far 0.050, sum 0.079 (1.42 x) | far 0.052, sum 0.081 (1.46 x; 1.10 x ref); final: sum 0.091 (1.76 x surfel, 1.23 x ref) |
+
+Near field (SSGI alone, debug 3) is 0.0211 (Cornell, 0.04 of ref), 0.0235 (scene), 0.0291 (NFS, 0.40 of ref).
+
+Targets for the chosen composition (final numbers):
+
+| Target | Cornell | scene.json | NFS |
+|---|---|---|---|
+| both >= surf | 1.03 ok | 1.07 ok | 1.76 ok |
+| both within 10% of ref | 1.13 not met | 1.05 ok | 1.23 not met |
+| both - surf <= 1.05 x SSGI alone | 0.98 ok | 1.08 not met | 1.34 not met |
+
+### 18.3 Why this composition
+
+- The current form darkens. With SSGI on, the far field is multiplied by SSGI's open fraction, which removes light that SSGI does not replace: both/surf is 0.63 on Cornell in this session (0.66 in section 3.4).
+- Option C is not a fix here. Its premise is that SSGI's hit radiance already contains surfel indirect light. It does not. The SSGI bounce source is the `BounceableRadiance` output (lighting shader, `lightingOutputMode == 1`): direct diffuse light plus bounceable IBL, with no surfel or LPV indirect, and emissive surfaces are excluded by design. Cornell's light is an emissive panel, so SSGI cannot see it; that is why SSGI alone reaches 0.04 of the reference on Cornell. Option C multiplies the far field by the same open fraction as the current form, so it inherits the darkening.
+- Option A removes the darkening: both is at or above surf on all three scenes, within 10% of the reference on scene.json, and the double count is within the SSGI-alone bound on Cornell only. Its residual problems are real and reported above: on NFS and scene.json the sum exceeds the SSGI-alone bound by 34% and 8%, and both is 13% and 23% over the reference on Cornell and NFS. Option B (gate SSGI by 1 - coverage) is the next step if the double count must be reduced; it was not measured.
+
+### 18.4 Motion (Cornell, camera path, frames 1 to 100, surfel term)
+
+Frame-to-frame mean absolute difference of the sRGB frames (0 to 255 scale):
+
+| Path | Before: mean, max, median step, p95 second diff | After: mean, max, median step, p95 second diff |
+|---|---|---|
+| Dolly 0.6 m over 60 frames | 1.00, 33.4, 0.85, 0.18 | 0.84, 6.9, 0.97, 0.30 |
+| Orbit 90 degrees | 18.4, 40.6, 1.49, 39.0 | 18.1, 37.4, 23.9, 34.6 |
+
+The large steps at frame 1 to 2 of the dolly are a start-up transient in both builds. Otherwise the dolly is comparable (median step 0.97 against 0.85; p95 second difference 0.30 against 0.18), and no spike is attributable to the history. The orbit alternates between near-identical frames (about 0.2) and jumps (about 40) in both builds, which is a property of the camera path; its medians differ only by the phase of that alternation, and the means agree. Under the orbit the motion exceeds the history's 6 px rejection, so the history is off and there is no lag. The dolly moved 0.01 m per frame, so the history was active there; a faster pan would test the rejection more strictly and was not run. I viewed frame 50 of the final dolly run (`motion_final_dolly/final_00050.png`): the bounce from the red and green walls and the soft occlusion under the block look right, with some blockiness on the red wall from the 0.5 gather. No ghosting was visible; this was not measured more finely.
+
+### 18.5 diffuseIBLOcclusion (verification)
+
+`diffuseIBLOcclusion = diffuseAO * (1 - surfelCoverage)` uses coverage = `min(sum(w), 1)`, but the surfel irradiance also carries `E_cell * (1 - sum(w))`. On a texel with sum(w) of 0.3, the diffuse IBL is kept at 70% while the surfel field supplies the cell average, which contains sky light. That is a possible sky double count on sparse texels. It is bounded by the cell share and not measured here. Option: write the effective coverage `min(1, sum(w) + cellConfidence * (1 - sum(w)))` to the indirect alpha, and measure on scene.json. Open.
+
+### 18.6 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass.
+- `scripts/validate_surfel_gi_static.py`, `scripts/validate_surfel_gi_correctness.py`: pass. `scripts/validate_surfel_gi_fallback_contract.py` rewritten for the new gather and upscale contract: pass. `scripts/validate_surfel_gi_texture_dump.py` updated for the removed texture: pass.
+- Other `scripts/validate_surfel_*.py` and `tests/test_surfel_gi_quality.py` (18 failures, 1 error): the same results as HEAD (legacy contracts, not touched). This was checked before the composition and history changes; the final tree was re-run only for the validators listed above.
+- Editor smoke (`NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`): 14 PASS, 0 FAIL.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 NOX_FIXED_DT=0.0166666667 NOX_EXIT_ON_FINISH=1 NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s (new record)`.
+
+### 18.7 Not met
+
+- Gather plus upsample <= 0.35 ms on scene.json: 0.995 ms (1.27 before). The cost is per texel: 0.5 scale and 32 accepted surfels. Bounding the examined entries at 32 instead of 64 saves about 0.2 ms on scene.json but raises NFS under-coverage to 4.6%. A cheaper surfel read (the needed fields, not the 208-byte struct per candidate) is the untested lever.
+- Surfel energy within 5% of before: Cornell -9.4%, NFS -5.7% (scene +2.8%). Cause: the cell-average share on sparse texels.
+- NFS temporal noise <= 1.5%: 1.89%.
+- Under-coverage <= 3%: NFS 3.4 to 3.9%, Cornell 5.1 to 5.8% (before 4.2 to 5.3%).
+- Composition: both within 10% of the reference on Cornell (13%) and NFS (23%); both minus surf within 1.05 x SSGI alone on scene.json and NFS.
+- Low tier 0.97 ms against the plan's 0.8 ms; Medium 1.62 ms against the plan's 1.5 ms.
+- Light-change response and the IBL double count (18.5): not measured.
+
+### 18.8 Deviations from the brief
+
+- The division by `max(1, sum(w r))` (18.1). Without it the surfel term is 1.22 to 3.26 times the reference.
+- The temporal step inside the upscale, not a separate pass. It is minimal (one history texture pair, neighbourhood clamp, no velocity-based rejection beyond motion length).
+- The examined bound 2N is a separate knob, not the accepted N. The bound is what the NFS plateau test measured.
+
+### 18.9 Open items
+
+- Option B for the SSGI double count on NFS and scene.json.
+- Effective-coverage alpha for the diffuse IBL (18.5).
+- Gather cost per texel: field-only surfel reads, a radiance-weighted lookup, or 16 accepted surfels with a second look at the Cornell fallback.
+- Cornell under-coverage rose by about 1 point with the new gather; not investigated.
+- Run-to-run spread on NFS energy is large (about 15% between three repeats); NFS composition numbers are indicative.
+
+## 19. World mode cost and convergence
+
+Branch `worktree-agent-ad2cc26e5a566a6ba`, on top of `worktree-agent-a2eb3a1f2420d3eca` (sections 15 to 17.9). Medium tier, 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera. Energy is the lit-mask term ratio against `indep_term` (the reference of 17.9). Breakdown and budget tables are single runs unless marked A/B (three alternating pairs, medians). The GPU was shared with another worker, so single runs carry about 0.2 ms of noise. Scratch files are under `%TEMP%/nox_surfel_J` (461 MB). Default behaviour is unchanged by this section: world mode stays off.
+
+### 19.1 What was built
+
+- Trace component toggles, `NOX_SURFEL_GI_TRACE_SKIP` (bit mask, debug, timing ablations only, the output changes): 1 sun cascade samples read as lit; 2 guide density off; 4 emitter next-event samples (vertex and origin) off; 8 visible G-buffer albedo off; 16 cached albedo lookup off; 64 cache irradiance lookups and world requests off; 128 closest-hit shading off (BVH trace only); 256 continuation off past the first hit's own terms. Uniform `uTraceSkip` in `surfel_scene_trace.glsl`.
+- Hit-lookup candidate budgets, settings with the old constants as defaults: `NOX_SURFEL_GI_CACHE_CANDIDATES` (128), `NOX_SURFEL_GI_CACHE_PER_CELL` (4), `NOX_SURFEL_GI_CACHE_ALBEDO_CANDIDATES` (32), `NOX_SURFEL_GI_CACHE_ALBEDO_PER_CELL` (2). Uniforms in `trace_rays.comp`.
+- World-only convergence knobs, defaults off (`integrate.comp`, `msme.comp`): `NOX_SURFEL_GI_WORLD_CATCHUP` (gain, 0 = off) and `NOX_SURFEL_GI_WORLD_CATCHUP_MAX` (0.25). The MSME-style catch-up raises the long rate of a world surfel when its short-window mean differs from its long mean by more than the short-window noise. `NOX_SURFEL_GI_WORLD_HISTORY_CAP` (192 = screen) caps the history of the cumulative 1/n rate for world surfels.
+- Bias probe, `NOX_SURFEL_GI_BIAS_PROBE=N` (every Nth ray whose first hit the cache answers) and `NOX_SURFEL_GI_BIAS_PROBE_INTERVAL` (60). At such a hit it compares the cached indirect irradiance with a continuation estimate of the same point: the path from the hit with albedo 1, no cache on any vertex, next-event estimation on, 32 vertices with roulette, minus the direct light at the point, times pi. It buckets the pair by the dominant surfel's type (screen or world), age (<4, <32, <128, >=128), normal agreement (>=0.95, >=0.8, below) and distance in radii (<0.5, <1, >=1), and prints `[SurfelGIBiasProbe]` lines at each counter readback. The buckets are `SurfelCounters.probeWords[216]`. A separate storage buffer was tried first and `trace_rays.comp` then failed to link ("no buffers available for bindable storage buffer", 16 storage bindings are in use). The counters struct is now 77 fields, 1168 bytes; `validate_surfel_gi_static.py` checks that.
+- Light step: `NOX_LIGHT_STEP` already multiplies every light's intensity (`BaseLight::GetIntensity`), and the surfel pass reads the primary directional light through `GetIntensity`, so the sun is scaled. Emissive surfaces are not scaled (that needs a material-side hook; not done).
+- Not built: a GI sun shadow map. The sun terms cost 0.21 ms on scene.json and 0.03 ms on NFS (19.2), so a dedicated map cannot reach the tracing target by itself.
+
+### 19.2 Tracing breakdown (world mode, tracing GPU ms, single runs)
+
+Removal ablations from the full world-mode trace. The components are not additive (removing one changes the paths the others see), so the cost column is the difference from the full trace.
+
+| Component (toggle) | scene.json: tracing ms | cost | NFS: tracing ms | cost |
+|---|---|---|---|---|
+| Full world mode | 3.47 | - | 5.64 | - |
+| Closest-hit BVH only, no shading, no origin NEE (132) | 0.39 | 0.39 | 0.18 | 0.18 |
+| Origin emitter NEE alone (128 vs 132: BVH + origin NEE 0.70 on scene) | 0.70 | 0.31 | - | - |
+| Cached albedo lookup at neutral hits (16) | 2.58 | 0.89 | 4.76 | 0.88 |
+| Emitter NEE, vertex and origin (4) | 3.16 | 0.31 | 4.67 | 0.97 |
+| Continuation past the first hit (256) | 3.40 | 0.07 | 5.33 | 0.31 |
+| Sun BVH fallback outside cascades (`NOX_SURFEL_GI_SUN_BVH_DEPTH=0`) | 3.33 | 0.14 | 5.63 | 0.01 |
+| Sun cascade samples (1) | 3.40 | 0.07 | 5.62 | 0.02 |
+| Visible G-buffer albedo (8) | 3.40 | 0.06 | - | - |
+| Guiding density in the origin NEE (2) | 3.41 | 0.06 | - | - |
+| Cache irradiance lookups (64) | 3.78 with a longer path | not separable | - | not separable |
+| Residual: cache irradiance lookups, the other lights' direct terms, hit material fetch | - | about 1.5 | - | about 3.3 |
+
+Findings:
+- The cached albedo lookup is the largest single item on scene.json (0.89 ms). It walks up to 32 surfels at each hit whose BVH albedo is neutral.
+- Emitter NEE is the largest item on NFS (0.97 ms). It is one any-hit ray per ray for origin NEE, plus one at vertex 0 on misses.
+- The sun terms total 0.21 ms on scene.json and 0.03 ms on NFS. A GI sun shadow map is not the lever.
+- Continuation is cheap in world mode (0.07 ms scene, 0.31 ms NFS): cache misses are about 0 per frame on scene.json.
+- The largest unexplained part is the irradiance cache lookup itself, about 1.5 ms on scene and about 3.3 ms on NFS. Removing it changes the paths, so it needs a cost-only toggle to isolate. Not done.
+
+### 19.3 Hit-lookup budgets and ray budget (scene.json, world mode)
+
+Single runs, tracing ms: default world 3.42; albedo budget 8/1 3.15; albedo 4/1 3.00; irradiance budget 32/2 3.06; irradiance 16/1 3.23 (timing noise, slower than 32/2); both (albedo 8/1 and irradiance 32/2) 2.77; both with 1536 rays 2.24; both with 1024 rays 1.45.
+
+A/B, three pairs, medians (tracing ms / total Execute ms): default (world off) 17.70 / 19.51; world mode 3.53 / 5.29; world mode with both budgets and 1024 rays 1.49 / 3.54 (tracing 1.48 to 1.83 across the pairs).
+
+### 19.4 Energy and convergence (scene.json, cold start, 900 frames)
+
+Lit-mask energy ratio against `indep_term`, dumps every 10 frames, the window of 17.9. Steady is the mean over frames 800 to 900. "90%" is the first dumped frame that reaches 90% of that config's own steady value.
+
+| Config | 200 | 400 | 600 | 800 | 900 | Steady 800-900 | 90% of own steady |
+|---|---|---|---|---|---|---|---|
+| Default, world off (light-step run before the step) | - | - | - | - | - | 0.960 (all-pixel 0.980) | about 20 frames (17.9) |
+| World mode (W0, 2048 rays, budgets 128/4/32/2) | 0.599 | 0.663 | 0.695 | 0.734 | 0.762 | 0.747, still rising | 460 |
+| W3: ray budget 1024 only | 0.504 | 0.519 | 0.541 | - | 0.562 | 0.552 | 110 |
+| W4: cache budgets only (albedo 8/1, irradiance 32/2) | 0.613 | 0.680 | 0.780 | - | 0.813 | 0.804, still rising | 490 |
+| W1: both budgets and 1024 rays | 0.518 | 0.535 | 0.545 | 0.581 | 0.584 | 0.585 | 310 |
+| W2: W1 with catch-up 0.2, history cap 32 | 0.510 | 0.523 | 0.546 | 0.562 | 0.575 | 0.565 | 180 |
+
+Findings:
+- The ray budget is the energy lever. 2048 to 1024 rays takes the world steady ratio from 0.75 to 0.55. The cache budgets alone raise it to 0.80. The likely mechanism is that fewer rays mean fewer lifecycle references (recycling uses the last ray reference), so more world surfels are recycled. Not verified.
+- The combination that meets the tracing target (W1) loses energy: 0.585 against 0.747 for the default world mode.
+- The catch-up with a 32-ray history cap (W2 against W1) reaches 90% of its own steady sooner (180 against 310 frames), at a slightly lower plateau (0.565 against 0.585). It did not reach the band. Not separated from the ray budget effect.
+- World mode is still rising at frame 900 in every configuration. Its approach is slow (time constant roughly 1000 frames in the exponential fit, which is poorly constrained). Section 17.9's 0.855 plateau at 2000 frames is consistent with this. The 90% times above are against unconverged steady values and mean little on their own.
+
+### 19.5 Light step response (scene.json)
+
+`NOX_LIGHT_STEP=600:0.5`, dumps 580 to 800. Screen mode: lit energy 0.3607 before and 0.3610 after the step (change 1.00). The surfel term did not respond at all, so on this scene the GI term is either dominated by light the step does not scale (the IBL or sky) or the step does not reach it. Not resolved. World mode: energy 0.270 to 0.303 over the same frames, which is the cold-start drift of 19.4, not a response. The light step test is not usable for the 30-frame target yet.
+
+### 19.6 Bias probe (plan 17.9 item 4)
+
+- Furnace (analytic, `tools/surfel_gi_analytic_scenes.py`, world mode on, frame 256): cached 1.561 against continuation 1.568, expected pi x 0.25 / 0.5 = 1.571. The probe's continuation formula and the cache agree to 0.6% with no direct light present.
+- scene.json, world mode, frame 256: the dominant bucket (world surfel, age >= 128, normal >= 0.95, distance >= 1 radius, n = 27,503) has cached 18.4 against continuation 72.8 (ratio 0.25). Age < 128, n = 21,223: 15.2 against 72.5 (0.21).
+- scene.json, default mode, frame 256: screen surfels, age >= 128, normal >= 0.95, distance >= 1 radius, n = 7,519: cached 53.7 against continuation 71.1 (0.76).
+- Reading: the continuation is about 72 in both modes, which is about 1.4 times the default cache and far above what the default composite energy (0.96 of the reference) allows. So the probe's continuation on scene.json is not consistent with the reference, and this round cannot say where the cache under-reads. The likely cause is a scene-content term that the furnace does not contain (sun, emitters or sky in the continuation). Next step: split the continuation into those terms and compare each with the cache's sources. Not done.
+
+### 19.7 Targets, before and after
+
+| Target | Default (world off) | World mode | This round, best world config |
+|---|---|---|---|
+| Tracing at most 1.5 ms, scene.json | 17.70 (A/B) | 3.53 (A/B) | 1.49 (A/B), but steady energy 0.59 |
+| Tracing at most 1.5 ms, NFS | 8.12 | 5.64 | not run with the budgets |
+| Total surfel Execute at most 3 ms, scene.json | 19.51 (A/B) | 5.29 (A/B) | 3.54 (A/B) |
+| Steady energy in [0.9, 1.1], scene.json (lit) | 0.96 (met) | 0.75 at 900 frames, still rising (not met) | 0.59 (not met) |
+| Cornell all-pixel [0.9, 1.1] | not run this round (17.9: 1.08) | not run this round | not run |
+| 90% of steady within 120 frames, cold start | about 20 frames (17.9; not re-run) | 460 (not met) | 180 to 310, at lower plateaus (not met) |
+| Light-step response within 30 frames | inconclusive (no response to the step at all) | inconclusive | not measured |
+| Noise, scene.json at most 1.5% | 0.17% (17.2) | 0.82% (17.2) | not re-measured |
+| Analytic furnace and white sky within 5% | furnace and white sky within 5% (17.9) | furnace 0.6% off (probe run); white sky not re-run | not checked |
+| Bias: world plateau at least 0.92 | - | 0.75 at 900 frames, not converged | not met |
+| NFS at least 0.85 | 0.78 (17.9; not re-run) | 0.72 (17.9; not re-run) | not measured |
+| Dolly and orbit popping | not re-measured | not re-measured | not measured |
+
+### 19.8 Defaults and decision
+
+World mode stays off. The defaults are unchanged: budgets 128, 4, 32 and 2; ray budget 2048; catch-up gain 0; history cap 192; trace skip 0; bias probe off. No per-tier world caps were set. The brief's gate (all targets hold) is not met: the energy band fails, the world approach takes about 460 frames, bias is not fixed, and the only configuration that reaches 1.5 ms loses energy through the ray budget.
+
+### 19.9 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `tools/CheckVcxprojSources.py`: pass.
+- `scripts/validate_surfel_gi_static.py` (counter layout updated to 77 fields, 1168 bytes) and `scripts/validate_surfel_gi_correctness.py`: pass.
+- `NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`: 0 FAIL.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 ... nfs_sprint`): `[Race] Finished in 47.4994 s`.
+- `nox_tests.exe`: 277 tests, 3 failed, all in `test_asset_io.cpp` (the CRLF fixtures of 9.4).
+- Not run: dolly and orbit popping, Cornell, white-sky, noise after the budget change, NFS convergence and energy.
+
+### 19.10 Open items
+
+- Emitter NEE cull (NFS 0.97 ms): candidate culling by distance, or a cheaper occlusion test, measured against energy.
+- The irradiance cache lookup cost (about 1.5 ms scene, about 3.3 ms NFS): needs a cost-only toggle, then a cheaper lookup (fewer neighbour cells, shared per-cell reads).
+- Ray budget and recycling: test whether the energy loss at 1024 rays is recycling (count recycles per frame by reference age) before choosing a budget.
+- Bias: split the probe's continuation into sun, emitter and sky terms, and find which one disagrees with the reference on scene.json.
+- Light-step test: a scene where the sun dominates the GI term, and emissive scaling if the test needs it.
+
+## 20. Final integration
+
+Branch `worktree-agent-a9ab67c069990e4cc`. Worker: final integration (Haiku 5.5 lead, one worker). It merges the world-mode round (`worktree-agent-ad2cc26e5a566a6ba`, sections 15 to 17 and 19) and the final gather and composition (`worktree-agent-a74aa4b73c009b5a1`, section 18), adds the cheap wins, sets the quality tiers, and measures every tier against the pre-rework main (`6f9cf0d`) on the same harness. Every number here is from a quiet GPU (one job at a time). Timings are medians over three repeats unless marked. Energies are the term metric (`surf_term` against `indep_term`, lit mask from the off run over frames 200 to 260), with the all-pixel ratio where it was measured.
+
+Result in one line: the tiers are in place and Medium is the default. It costs 4.4 ms total on scene.json (target 4 ms, missed by 0.4 ms; the pre-rework main costs 2.9 ms there) and gives more energy than main on every scene (lit ratio 0.63 against 0.28 on scene.json, 0.76 against 0.51 on NFS, 1.21 against 0.40 on Cornell). Medium reaches the energy band on Cornell (all-pixel 1.06) but not on scene.json (steady 0.72 lit, 0.86 all-pixel) or NFS (0.68 lit, 0.56 all-pixel).
+
+### 20.1 Merge
+
+- The world-mode round was a fast-forward from `19363d0` (HEAD was an ancestor of it, and of main).
+- The final-gather line merged on top. Its only textual conflict was `docs/surfel_gi_rework_plan.md`, where both sides appended sections after 16. Resolved by keeping 17, then 18, then 19 in numeric order. The plan doc had mixed line endings in the splice and is CRLF in the working copy again, as main is.
+- Code auto-merged. No conflict markers remain. `spatial_filter.comp` and `temporal_filter.comp` are deleted from the vcxproj, filters, pipeline and validators. The only remaining mentions are the fallback validator (which asserts their absence) and this plan.
+- Existing duplicate heading `## 10.` (two sections: WP4/WP5/WP6 and WP3) is from main and was left as it was.
+- `shaders/includes/msme.comp` is an include and is not in the vcxproj (as on main).
+
+### 20.2 Cheap wins (what was measured, and what was not done)
+
+Sweeps on scene.json, Medium, one run per variant, frames 200 to 260. Reference term 0.3753 (`indep_term`).
+
+| Change | Tracing ms | Total ms | Term ratio | Decision |
+|---|---|---|---|---|
+| Cache budgets 128/4 (irradiance) and 32/2 (albedo), hybrid depth 2 | 5.11 | 6.73 | 0.505 | |
+| Budgets 32/2 and 8/1, hybrid depth 2 (old default world-mode budgets) | 4.01 | 5.55 | 0.506 | budgets cut, -1.1 ms tracing at the same energy |
+| Budgets 32/2 and 8/1, no hybrid, depth 2 | 2.99 | 4.55 | 0.557 | hybrid removed |
+| Budgets 32/2 and 8/1, no hybrid, depth 3 | 2.98 | 4.55 | 0.627 | depth 3 kept |
+| Budgets 16/1 and 4/1, no hybrid, depth 3 | 2.82 | 4.42 | 0.616 | Medium |
+| Budgets 16/1 and 4/1, hybrid, depth 3 | 3.94 | 5.50 | 0.605 | hybrid rejected |
+
+- Cache budgets. Cutting the irradiance lookup from 128/4 to 32/2 and the albedo lookup from 32/2 to 8/1 removed about 1.1 ms of tracing with no change in energy. Going further to 16/1 and 4/1 cut 0.2 ms more, inside the run-to-run spread, so the tighter set is used in Medium.
+- Hybrid continuation (`cacheMinConfidence` 0.3, continue at low-confidence cache answers). It lowered the energy at both depths and cost 1.0 to 1.2 ms more. The cause is the depth cap: a continuation cut at depth 2 or 3 under-estimates, and young surfels answer with low confidence, so many hits are continued. The knob stays in the code at 0 in every tier. An unbiased hybrid needs uncapped continuation, which is what the Ultra tier does.
+- Cache-first with depth 3 is the best measured Medium: the cache answers most vertices, so the depth cap rarely applies and the cost is the same as depth 2 (2.98 ms against 2.99 ms).
+- Hit albedo. The brief suggested a BVH base-colour factor or a coarse texture mip. The BVH material (`RTMaterial`) carries factors only, and the software BVH trace has no texture or UV access. The neutral-hit cached-albedo walk stays, with the smaller budget. A coarse-mip path needs texture access in the BVH trace; this was not built.
+- Emitter next-event distance cut. A sample past the cut is not taken, and a BSDF hit past the cut takes full weight (the power heuristic with a zero emitter pdf). Each half is unbiased for its region, so the whole estimate is unbiased in expectation; this was not verified with a far-emitter analytic scene. Measured on NFS (Medium, three repeats each):
+
+| NFS, Medium | Total ms | Tracing ms | Term mean (repeats) | Term ratio | Noise |
+|---|---|---|---|---|---|
+| no cut | 7.29 (7.50, 7.02, 7.35) | 5.73 | 0.0526 (0.0483, 0.0520, 0.0575) | 0.714 | 4.5% |
+| 40 m cut | 5.78 (5.80, 5.84, 5.71) | 3.99 | 0.0563 (0.0629, 0.0584, 0.0475) | 0.763 | 2.9% |
+
+  The cut saves about 1.5 ms per frame on NFS. Its energy effect (+7%) is inside the run-to-run spread at three repeats (about ±10%), and the noise is not higher. Scene.json and Cornell have no far emitters, so the cut changes neither their cost nor their energy beyond spread (scene.json 0.235 against 0.238, Cornell 0.671 against 0.681). A 25 m cut gave the same cost saving on one run with noisier output (7.6% on that run), and a 60 m cut gave less saving with a larger energy change, so 40 m is used. This is the setting most open to question: see 20.8.
+- Lookup cost, not budget. Each cache lookup walks up to 27 neighbour cells and computes each cell's non-linear grid address. Tightening the candidate budget does not remove that address work, which is the next lever (open item).
+- Ray budget. Medium stays at 2048. Section 19.3 measured 1024 rays losing a lot of energy on scene.json, and that is not repeated here.
+
+A bug found on the way. The Low tier's caps set `allowSoftwareBVHTrace` to false (this was already in main). Without the BVH trace the rays cannot reach geometry, and Low measured 0.06 of the reference on scene.json and 0.08 on Cornell (its budgets 16/1, 32/2 and 128/4 gave the same scene.json energy to within 0.2%, and population cap 2048 or depth 3 changed nothing either). Enabling the BVH trace for Low (one field in `GetSurfelGIBudgetCaps`) gives Low 0.49 on scene.json and 0.70 on NFS, at 2.3 and 2.7 ms.
+
+### 20.3 Tiers (as shipped)
+
+Values are the presets in `src/ModularRenderer.cpp` (`GetSurfelGIBudgetCaps` for the ray budget and gather counts, `GetSurfelGIPathPreset` for the rest). Each is the default of a `NOX_SURFEL_GI_*` variable, read in the validation block.
+
+| Setting | Low | Medium (default) | High | Ultra |
+|---|---|---|---|---|
+| Ray budget per frame | 1024 | 2048 | 4096 | 8192 |
+| World mode (cache-first, misses queue world surfels) | on | on | on | off |
+| Path depth past the first hit (`pathMaxHits`) | 1 (none) | 3 | 4 | 32 |
+| Cache read at vertices below (`cacheDepth`) | 1 | 3 | 3 | 2 |
+| Sun BVH fallback below vertex (`sunShadowBVHDepth`) | 1 | 1 | 2 | 32 |
+| Irradiance lookup budget: surfels visited / per cell | 16 / 1 | 16 / 1 | 32 / 2 | 128 / 4 |
+| Cached-albedo lookup budget: surfels / per cell | 4 / 1 | 4 / 1 | 8 / 1 | 32 / 2 |
+| Emitter next-event distance cut (m, 0 = none) | 40 | 40 | 40 | 0 |
+| Software BVH trace | on | on | on | on |
+| Gather accepted surfels per texel | 16 | 32 | 48 | 64 |
+| Hybrid continuation (`cacheMinConfidence`) | 0 (off) | 0 (off) | 0 (off) | 0 (off) |
+
+The hybrid threshold is kept as a knob but is 0 in every tier. Measured on scene.json (plan section 20.2), continuing only at low-confidence cache answers lowered the energy at both depth 2 and depth 3 and cost more tracing time.
+
+### 20.4 Tier measurements
+
+Harness: `tools/surfel_gi_metrics.py`, 1920x1080, `NOX_FIXED_DT`, manual exposure, measurement render settings, static camera. Reference `indep_term` (the independent path tracer, 900 frames, mean over frames 780 to 840). Total and tracing are the `SurfelGIUpdatePass` labelled subpasses, medians over frames 200 to 260 with the mean over three repeats. Steady, 90% and all-pixel columns come from the 900-frame convergence runs (dumps every 10 frames, steady window 800 to 900, 90% = first dump at or above 90% of the steady mean); those runs are one repeat, and only Medium on Cornell and NFS was run to 900 frames. "Both vs surf" is the composite (`both` against `surf`, composite minus off, lit mask), one repeat.
+
+#### Cornell (reference indep_term term mean 0.56164)
+
+| Tier | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Noise (corrected/mean) | Steady lit ratio (800-900) | Frames to 90% | All-pixel ratio (800-900) | Both vs surf (composite) |
+|---|---|---|---|---|---|---|---|---|
+| Low | 1.19 | 1.00 | 1.216 | 1.89% | n/a | n/a | n/a | 0.959 (0.5553 / 0.5791) |
+| Medium | 2.14 | 1.36 | 1.212 | 0.62% | 1.228 | 10 | 1.062 | 1.014 (0.5758 / 0.5678) |
+| High | 3.48 | 2.37 | 1.298 | 0.47% | n/a | n/a | n/a | 1.020 (0.6088 / 0.5968) |
+| Ultra | 4.71 | 3.53 | 1.279 | 0.25% | n/a | n/a | n/a | 1.017 (0.5972 / 0.5872) |
+
+#### scene.json (reference indep_term term mean 0.37527)
+
+| Tier | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Noise (corrected/mean) | Steady lit ratio (800-900) | Frames to 90% | All-pixel ratio (800-900) | Both vs surf (composite) |
+|---|---|---|---|---|---|---|---|---|
+| Low | 2.31 | 1.33 | 0.490 | 1.40% | 0.593 | 480 | 0.786 | 1.007 (0.1024 / 0.1017) |
+| Medium | 4.37 | 2.79 | 0.634 | 0.90% | 0.719 | 310 | 0.855 | 0.961 (0.1421 / 0.1478) |
+| High | 7.48 | 5.38 | 0.674 | 1.31% | 0.767 | 290 | 0.880 | 1.031 (0.1568 / 0.1521) |
+| Ultra | 70.67 | 68.25 | 0.983 | 0.31% | 1.009 | 50 | 1.006 | 1.008 (0.2548 / 0.2527) |
+
+#### NFS night street (reference indep_term term mean 0.07372)
+
+| Tier | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Noise (corrected/mean) | Steady lit ratio (800-900) | Frames to 90% | All-pixel ratio (800-900) | Both vs surf (composite) |
+|---|---|---|---|---|---|---|---|---|
+| Low | 2.72 | 1.76 | 0.698 | 3.25% | n/a | n/a | n/a | 0.930 (0.0171 / 0.0184) |
+| Medium | 5.78 | 3.99 | 0.763 | 2.86% | 0.684 | 20 | 0.558 | 0.986 (0.0259 / 0.0262) |
+| High | 10.08 | 7.77 | 0.643 | 1.92% | n/a | n/a | n/a | 1.012 (0.0193 / 0.0191) |
+| Ultra | 34.38 | 31.76 | 0.604 | 1.31% | n/a | n/a | n/a | 1.088 (0.0170 / 0.0156) |
+
+Notes on the table.
+- Low on Cornell reaches 1.22 on the lit mask, which is the Cornell lit-mask overshoot that section 15.7 described for the earlier default. Its all-pixel number was not measured.
+- Medium on scene.json reaches the energy band only slowly: its lit ratio rises from about 0.63 at frame 200 to 0.72 at 800 to 900 (time constant about 400 frames), so the steady value is still below 0.9 at frame 900 (a fit gives an asymptote near 0.75).
+- Ultra costs 70 ms on scene.json because it traces 8192 rays with full continuation. It is the reference quality tier, not a playable one. On NFS its lit ratio (0.60) is below Medium's, which is not explained here.
+- Noise on NFS is above the 1.5% target for Low, Medium and High (1.9 to 3.3%).
+
+### 20.5 Main (6f9cf0d, pre-rework) against the new Medium default
+
+Main is the commit before this rework (`6f9cf0d`, which contains the estimator correction of section 13 but not the round-2 continuation). It was built from a `git archive` copy in `%TEMP%`, with the same harness, scenes and reference. Main's own steady and 90% values are from its 900-frame runs. Main's all-pixel number was measured only on Cornell (the other scenes' dumps were removed by the cleanup, so they are not reported).
+
+#### Cornell
+
+| Build | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Steady lit ratio (800-900) | Frames to 90% | Noise |
+|---|---|---|---|---|---|---|
+| main 6f9cf0d (pre-rework) | 1.85 | 0.74 | 0.404 | 0.367 | 140 | 3.25% |
+| new Medium default | 2.14 | 1.36 | 1.212 | 1.228 | 10 | 0.62% |
+
+New Medium all-pixel steady ratio: 1.062.
+
+#### scene.json
+
+| Build | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Steady lit ratio (800-900) | Frames to 90% | Noise |
+|---|---|---|---|---|---|---|
+| main 6f9cf0d (pre-rework) | 2.90 | 0.70 | 0.276 | 0.270 | 10 | 0.98% |
+| new Medium default | 4.37 | 2.79 | 0.634 | 0.719 | 310 | 0.90% |
+
+New Medium all-pixel steady ratio: 0.855.
+
+#### NFS night street
+
+| Build | Total surfel GPU ms | Tracing ms | Term ratio, lit (200-260) | Steady lit ratio (800-900) | Frames to 90% | Noise |
+|---|---|---|---|---|---|---|
+| main 6f9cf0d (pre-rework) | 3.39 | 1.14 | 0.513 | 0.504 | 10 | 0.50% |
+| new Medium default | 5.78 | 3.99 | 0.763 | 0.684 | 20 | 2.86% |
+
+New Medium all-pixel steady ratio: 0.558.
+
+Main's "frames to 90%" is 10 on scene.json and NFS because it converges at once to a low plateau; a fast 90% is not a benefit when the plateau is low.
+
+### 20.6 Analytic and camera checks
+
+Analytic (all-pixel mean of the term, frames 200 to 260, `tools/surfel_gi_analytic_scenes.py`, expected furnace 0.250 and white-sky 0.150):
+
+| Build | Furnace mean (expected 0.250) | White-sky mean (expected 0.150) |
+|---|---|---|
+| main 6f9cf0d, Medium | 0.1178 (-52.9%) | 0.1450 (-3.3%) |
+| Low | 0.2325 (-7.0%) | 0.1477 (-1.5%) |
+| Medium (default) | 0.2409 (-3.6%) | 0.1446 (-3.6%) |
+| High | 0.2436 (-2.5%) | 0.1443 (-3.8%) |
+| Ultra | 0.2385 (-4.6%) | 0.1421 (-5.3%) |
+
+Camera (Cornell, `dolly:0.6,0,0:60` and `orbit:90`, frames 1 to 100 every frame, Medium, new and main). Metric: mean absolute difference of consecutive dumps (0 to 255), second difference against the median first difference.
+- Dolly, frames 5 to 100: new 2.4 times the median second difference, main 2.2 times. Both have a start-up transient at frames 1 and 2 (the surfel population converging), which is larger in the new build (first difference 5.6 against 1.5 on main at frame 1). No ghosting was seen in frames I viewed.
+- Orbit: both the composite and the term runs show a four-frame capture cycle (one bright dump, three near-black), so the orbit path has a phase artifact of the capture, not of the GI. On the bright-phase frames after frame 20, the second difference is 2.7 times the median for the new build and 2.4 for main. The frames I viewed (frames 36 and 37) show a clean Cornell box with no visible ghosting.
+
+### 20.7 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `python tools/CheckVcxprojSources.py`: pass (run on the final tree).
+- `scripts/validate_surfel_gi_static.py` and `scripts/validate_surfel_gi_correctness.py`: pass.
+- All `scripts/validate_surfel_*.py` on the final tree: 9 pass, 13 fail. Main has the same count (9 pass, 13 fail). The two sets differ in two places that are deliberate contract changes: `validate_surfel_gi_fallback_contract.py` and `validate_surfel_gi_ray_radiance_contract.py` pass on this branch and fail on main (both were rewritten for the new contracts); `validate_surfel_bvh_cached_albedo.py` (it expects a literal budget of 32 that is now a tier uniform) and `validate_surfel_persistence_hysteresis.py` (it expects a helper `SurfelReferenceLife` that the ray-reference term replaced) pass on main and fail here. They were not changed, because they check source text rather than behaviour.
+- Editor smoke (`NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`): 14 PASS, 0 FAIL.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 NOX_FIXED_DT=0.0166666667 NOX_EXIT_ON_FINISH=1 NOX_FIRST_SCENE=nfs_sprint --game`): `[Race] Finished in 47.4994 s`.
+- `build/vs2022-x64/Release/nox_tests.exe`: 277 tests, 3 failed. All 3 are the known `test_asset_io.cpp` CRLF fixture checks (loose tree against packed fixture), which are an environment issue.
+- `tests/PackagingTests.ps1`: passes.
+
+### 20.8 Open issues
+
+- Medium misses the 4 ms target on scene.json by 0.4 ms (4.37 ms total). The remaining cost is the cache lookup's 27-cell address walk and the final gather (0.84 ms at 32 accepted surfels per texel). Both are the next levers; neither was changed here.
+- Energy: Medium is below the [0.9, 1.1] band on scene.json (steady 0.72 lit, 0.86 all-pixel) and NFS (0.68 lit, 0.56 all-pixel). It is inside the band on Cornell all-pixel (1.06) but 1.23 on the lit mask. The steady value on scene.json is still rising at frame 900.
+- Noise on NFS is 2.9% for Medium (target 1.5%) and about 3% for Low. The 40 m emitter cut lowered it relative to no cut in this run, but the number is still above target.
+- The emitter cut's energy effect is unresolved. It changes NFS by +7%, inside three-repeat spread. Its unbiasedness rests on the argument in 20.2, not on a far-emitter analytic test. A furnace-like scene with emitters beyond 40 m would test it.
+- Hybrid continuation is not usable in its current form (depth cap). A complete fix needs uncapped continuation with a cheaper closest-hit trace, which is the cost of Ultra.
+- Furnace and white-sky: Medium, High and Ultra are within about 5% of the analytic value (Ultra white-sky is -5.3%); Low's furnace is -7.0%. Main's furnace is -53%, which is the multi-bounce deficit of section 13.3 (O1) that the continuation removed.
+- Medium on NFS: the steady value was measured at 900 frames for Medium only. High, Ultra and Low did not get 900-frame convergence on NFS or Cornell.
+- The Ultra tier's NFS energy is below Medium's, and its scene.json energy is at reference. Not explained.
+- Light-step response, dolly and orbit at the other tiers, and the grid-cell overflow were not re-measured in this round.
+- Legacy validators that check source text (listed in 20.7) were not updated.
+
+### 20.9 Recommendation
+
+- Ship Medium as the default: world mode, cache-first with depth 3, 2048 rays, tight cache budgets and the 40 m emitter cut. On scene.json it costs 4.4 ms, against 5.3 ms for the section 19 world-mode default and 2.9 ms for main, and its lit energy is 0.72 steady against main's 0.27. It reaches 90% of its steady value in about 300 frames on scene.json and 20 on NFS (table above).
+- Keep Ultra as the reference-quality tier. Do not use it for play (70 ms on scene.json).
+- Before tuning further: remove the cache's 27-cell address walk (fewer neighbour cells per lookup, or a precomputed neighbour table) to reach the 4 ms target, and measure the emitter cut against a far-emitter analytic scene. Then decide whether Medium should keep the 40 m cut.
+- The energy band on scene.json and NFS needs longer convergence or a lower steady bias; neither is a tier setting. Report the scene.json and NFS energies as below the band, as they are.

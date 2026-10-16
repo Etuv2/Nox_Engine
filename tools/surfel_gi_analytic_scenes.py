@@ -27,6 +27,9 @@ EMISSION = 0.25          # furnace wall emission LE (radiance)
 SKY_TEXEL = 10.0         # white-sky environment radiance before the sky scale
 SKY_SCALE = 0.03         # iblIntensity 0.1 * diffuseIBLScale 0.3 (engine default)
 HALF = 3.0               # furnace half size, metres
+# KHR_materials_specular factor for the analytic materials. 0 gives F0 = 0, so the Fresnel energy term kD in the
+# composite is exactly 1 and the expected values below hold exactly. None keeps the engine default material.
+SPECULAR_FACTOR = None
 
 
 def _pad(data: bytes, alignment: int, fill: bytes) -> bytes:
@@ -34,7 +37,7 @@ def _pad(data: bytes, alignment: int, fill: bytes) -> bytes:
     return data if rem == 0 else data + fill * (alignment - rem)
 
 
-def write_glb(path, positions, normals, indices, material):
+def write_glb(path, positions, normals, indices, material, extensions_used=("KHR_materials_emissive_strength",)):
     """Minimal GLB with one mesh, one primitive and one material (see the glTF 2.0 spec)."""
     pos_bytes = b"".join(struct.pack("<3f", *p) for p in positions)
     nrm_bytes = b"".join(struct.pack("<3f", *n) for n in normals)
@@ -45,7 +48,7 @@ def write_glb(path, positions, normals, indices, material):
     maxs = [max(p[i] for p in positions) for i in range(3)]
     gltf = {
         "asset": {"version": "2.0"},
-        "extensionsUsed": ["KHR_materials_emissive_strength"],
+        "extensionsUsed": list(extensions_used),
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"mesh": 0}],
@@ -161,6 +164,18 @@ def write_scene(path, name, cam, model_path, skybox, exposure=1.0):
             "rotation": [0.0, 0.0, 0.0],
             "scale": [1.0, 1.0, 1.0],
             "type": "model",
+        }, {
+            # A zero-intensity sun. An enabled light stops the engine registering its default MainDirectionalLight
+            # (Core.cpp), which otherwise lights the interior hits of the furnace through its shadow map (the shadow
+            # lookup treats points outside the cascades as lit). The analytic tests are sun-free.
+            "components": {"Light": {"cast_shadows": False, "color": [1.0, 1.0, 1.0], "enabled": True,
+                                     "intensity": 0.0, "range": 10.0, "source_radius": 0.0}},
+            "light": {"castsShadows": False, "color": [1.0, 1.0, 1.0], "enabled": True, "intensity": 0.0,
+                      "shadowSize": 2048, "splitLambda": 0.8, "type": "directional"},
+            "name": "NoSun",
+            "position": [0.0, 3.5, 2.0],
+            "rotation": [-65.0, 0.0, 0.0],
+            "type": "light",
         }],
         "scene_name": name,
         "skybox": skybox,
@@ -170,7 +185,7 @@ def write_scene(path, name, cam, model_path, skybox, exposure=1.0):
 
 
 def main(argv):
-    global ALBEDO, EMISSION, SKY_TEXEL
+    global ALBEDO, EMISSION, SKY_TEXEL, SPECULAR_FACTOR
     import argparse
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("out", nargs="?", default=None, help="output directory (default build/surfel_gi_analytic)")
@@ -178,8 +193,16 @@ def main(argv):
     parser.add_argument("--emission", type=float, default=EMISSION)
     parser.add_argument("--sky-texel", type=float, default=SKY_TEXEL)
     parser.add_argument("--plane-height", type=float, default=0.0)
+    parser.add_argument("--specular-factor", type=float, default=None,
+                        help="KHR_materials_specular factor (0 removes the Fresnel term kD)")
     args = parser.parse_args(argv[1:])
     ALBEDO, EMISSION, SKY_TEXEL = args.albedo, args.emission, args.sky_texel
+    SPECULAR_FACTOR = args.specular_factor
+    spec_used = ("KHR_materials_emissive_strength",) + (("KHR_materials_specular",) if SPECULAR_FACTOR is not None else ())
+    def with_spec(material):
+        if SPECULAR_FACTOR is not None:
+            material["extensions"]["KHR_materials_specular"] = {"specularFactor": SPECULAR_FACTOR}
+        return material
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = args.out if args.out else os.path.join(repo, "build", "surfel_gi_analytic")
     os.makedirs(out, exist_ok=True)
@@ -190,25 +213,26 @@ def main(argv):
 
     furnace_glb = ab("furnace.glb")
     pos, nrm, idx = build_furnace_mesh()
-    write_glb(furnace_glb, pos, nrm, idx, {
+    write_glb(furnace_glb, pos, nrm, idx, with_spec({
         "name": "furnace",
         "doubleSided": True,
         "emissiveFactor": [1.0, 1.0, 1.0],
         "extensions": {"KHR_materials_emissive_strength": {"emissiveStrength": EMISSION}},
         "pbrMetallicRoughness": {"baseColorFactor": [ALBEDO, ALBEDO, ALBEDO, 1.0],
                                  "metallicFactor": 0.0, "roughnessFactor": 1.0},
-    })
+    }), extensions_used=spec_used)
     write_scene(ab("furnace.json"), "surfel_gi_analytic_furnace",
                 camera([0.0, 0.0, 0.0], -90.0, 0.0), rel("furnace.glb"), "")
 
     plane_glb = ab("whitesky_plane.glb")
     pos, nrm, idx = build_plane_mesh(height=args.plane_height)
-    write_glb(plane_glb, pos, nrm, idx, {
+    write_glb(plane_glb, pos, nrm, idx, with_spec({
         "name": "plane",
         "doubleSided": True,
+        "extensions": {},
         "pbrMetallicRoughness": {"baseColorFactor": [ALBEDO, ALBEDO, ALBEDO, 1.0],
                                  "metallicFactor": 0.0, "roughnessFactor": 1.0},
-    })
+    }), extensions_used=spec_used)
     sky_hdr = ab("whitesky_sky.hdr")
     write_uniform_hdr(sky_hdr, SKY_TEXEL)
     write_scene(ab("whitesky.json"), "surfel_gi_analytic_whitesky",

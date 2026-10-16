@@ -48,15 +48,36 @@ const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
 const float SURFEL_SCREEN_SAMPLE_RELIABILITY = 0.18;
 const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
-// Per-ray clamp (firefly gate). It also clips rare emitter hits, which biases the estimate low (plan section 11.4).
-const float SURFEL_MAX_SAMPLE_IRRADIANCE = 32.0;
+// Long-mean rate of world surfels; 0 keeps the screen floor (SURFEL_MSME_LONG_RATE). NOX_SURFEL_GI_WORLD_LONG_RATE.
+uniform float uWorldLongRate = 0.0;
+// World surfels only (plan section 19): MSME-style catch-up gain and cap (gain 0 = off), and the history cap of the
+// cumulative 1/n rate (the screen cap is SURFEL_SHORT_HISTORY_RAYS).
+uniform float uWorldCatchUp = 0.0;
+uniform float uWorldCatchUpMax = 0.25;
+uniform float uWorldHistoryCap = 192.0;
+// Relative safety clamp (plan section 14). A sample is cut only above k times the surfel's own level (the larger of
+// its long and short means, luminance) plus m short standard deviations, and never below the floor. Ordinary samples,
+// emitter samples included, pass unchanged; only firefly outliers are bounded. The fixed clamp of 32 hid emitter
+// samples (plan 13, B6).
+const float SURFEL_CLAMP_K = 8.0;
+const float SURFEL_CLAMP_SIGMA = 8.0;
+const float SURFEL_CLAMP_FLOOR = 32.0;
 
+// Guards a radiance value against NaN, infinity and negative components. It does not limit the magnitude.
 vec3 SurfelClampRadiance(vec3 radiance)
 {
     if (any(isnan(radiance)) || any(isinf(radiance))) {
         return vec3(0.0);
     }
-    return clamp(radiance, vec3(0.0), vec3(SURFEL_MAX_SAMPLE_IRRADIANCE));
+    return max(radiance, vec3(0.0));
+}
+
+void SurfelRelativeClamp(inout vec3 sampleIrradiance, float boundLum)
+{
+    float lum = SurfelLuminance(sampleIrradiance);
+    if (lum > boundLum && lum > 0.0) {
+        sampleIrradiance *= boundLum / lum;
+    }
 }
 
 float HitKindReliability(float hitKind)
@@ -114,12 +135,22 @@ void main()
     if (!SurfelIsAlive(surfel)) {
         return;
     }
+    if ((SurfelFlags(surfel) & SURFEL_WORLD) != 0u) {
+        // Rays granted to world surfels this frame (plan section 17.9).
+        atomicAdd(counters.allocatedWorld, request.allocatedCount);
+    }
 
     vec3 batchSum = vec3(0.0);
     vec3 batchSumSq = vec3(0.0);
     float acceptedWeight = 0.0;
     uint accepted = 0u;
     vec3 normal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
+    // Level of this surfel before the frame's samples, for the relative clamp.
+    SurfelMSMEData levelStats = SurfelMSMELoad(surfel);
+    float levelLum = max(SurfelLuminance(max(levelStats.mean, vec3(0.0))),
+        SurfelLuminance(max(levelStats.shortMean, vec3(0.0))));
+    float sigmaLum = sqrt(max(SurfelLuminance(max(levelStats.variance, vec3(0.0))), 0.0));
+    float sampleBoundLum = SURFEL_CLAMP_K * levelLum + SURFEL_CLAMP_SIGMA * sigmaLum + SURFEL_CLAMP_FLOOR;
     // Only the slots generate_rays.comp wrote this frame are read: the same cap, clamped to the ray budget. Allocated
     // slots beyond the cap were never generated, so their hits belong to other surfels or to earlier frames.
     uint generatedCount = request.firstRay < uMaxRays
@@ -144,10 +175,16 @@ void main()
         }
         float samplePdf = max(hit.radiance_pdf.a, 1e-4);
         float sampleCos = max(dot(normal, SurfelSafeNormalize(rays[rayID].direction_tMax.xyz)), 0.0);
-        vec3 sampleIrradiance = SurfelClampRadiance(hit.radiance_pdf.rgb * (sampleCos / samplePdf));
+        // The BSDF part is the ray's radiance times cos / pdf. The next-event part is already an irradiance estimate
+        // (plan section 14), so it is added as it is.
+        vec3 sampleIrradiance = SurfelClampRadiance(hit.radiance_pdf.rgb * (sampleCos / samplePdf) +
+            max(hit.emitterIrradiance.rgb, vec3(0.0)));
+        SurfelRelativeClamp(sampleIrradiance, sampleBoundLum);
         // Ray guiding learns where light comes from, trusting exact hits more.
         float reliability = HitKindReliability(hit.normal_hitKind.w);
-        UpdateGuideCell(request.surfelID, rayID, normal, SurfelClampRadiance(hit.radiance_pdf.rgb * sampleCos * reliability));
+        vec3 guideRadiance = hit.radiance_pdf.rgb * sampleCos * reliability;
+        SurfelRelativeClamp(guideRadiance, sampleBoundLum);
+        UpdateGuideCell(request.surfelID, rayID, normal, SurfelClampRadiance(guideRadiance));
         batchSum += sampleIrradiance;
         batchSumSq += sampleIrradiance * sampleIrradiance;
         acceptedWeight += 1.0;
@@ -211,8 +248,16 @@ void main()
         }
         // Cumulative average over the rays integrated so far, until the long rate takes over. A batch of b
         // rays after n rays moves the mean by b / (n + b): exactly 1 / (n + 1) for one ray per batch.
-        float cumulativeRate = acceptedWeight / max(surfel.shortMean.a + acceptedWeight, 1.0);
-        SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel, cumulativeRate);
+        bool worldSurfel = (SurfelFlags(surfel) & SURFEL_WORLD) != 0u;
+        float historyCap = worldSurfel ? uWorldHistoryCap : SURFEL_SHORT_HISTORY_RAYS;
+        float cumulativeRate = acceptedWeight / max(min(surfel.shortMean.a, historyCap) + acceptedWeight, 1.0);
+        // World surfels may use a faster long rate (uWorldLongRate, plan section 17.9); screen surfels keep the floor.
+        float longRate = SURFEL_MSME_LONG_RATE;
+        if (uWorldLongRate > 0.0 && worldSurfel) {
+            longRate = uWorldLongRate;
+        }
+        SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel, cumulativeRate, longRate,
+            worldSurfel ? uWorldCatchUp : 0.0, uWorldCatchUpMax);
     }
 
     float varLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));

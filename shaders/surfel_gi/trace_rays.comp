@@ -5,9 +5,21 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "common.glsl"
 #include "../includes/shadow_bias_common.glsl"
 
-layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+// Writable: a cache lookup that a ray uses marks the surfel as referenced (lifecycle.x), for recycling (plan section 17).
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
 {
     Surfel surfels[];
+};
+
+layout(binding = B_SURFEL_WORLD_REQUESTS, std430) buffer SurfelWorldRequestBuffer
+{
+    SurfelWorldRequest worldRequests[];
+};
+
+// One stamp per grid cell: frame + 1 of the last world request queued in it, so each cell queues at most one per frame.
+layout(binding = B_SURFEL_CELL_STAMPS, std430) buffer SurfelCellStampBuffer
+{
+    uint cellStamps[];
 };
 
 layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
@@ -65,12 +77,54 @@ uniform int uUseScreenSpaceTrace = 1;
 uniform int uUseSurfelFallbackTrace = 1;
 uniform uint uBVHTraceStride = 1u;
 uniform float uLightingChangeFactor = 0.0;
+uniform int uUseRayGuiding = 0;
+// Path continuation period N (SurfelGISettings::pathContinuationPeriod): one warp group in N continues per frame.
+uniform uint uContinuationPeriod = 1u;
+// World surfels (plan section 17): queue requests at cache misses (0 = off), the queue capacity, and the path depth cap.
+uniform uint uWorldRequestsEnabled = 0u;
+uniform uint uWorldRequestCapacity = 4096u;
+uniform uint uPathMaxHits = 3u;
+// Vertices below this depth use the BVH sun fallback for their direct light (NOX_SURFEL_GI_SUN_BVH_DEPTH).
+uniform uint uSunBVHDepth = 1u;
+// Vertices below this depth read the surfel cache (NOX_SURFEL_GI_CACHE_DEPTH; 2 is the merged-base behaviour).
+uniform uint uCacheDepth = 2u;
+// Minimum confidence-weighted mean of the surfels that answer a path vertex (0 = any weight answers). Young surfels
+// carry little irradiance and low confidence; below this the vertex continues instead (NOX_SURFEL_GI_CACHE_MIN_CONF).
+uniform float uCacheMinConfidence = 0.0;
+// Minimum total weight of the surfels that answer a path vertex (NOX_SURFEL_GI_CACHE_MIN_WEIGHT). 1e-4 was the old test.
+uniform float uCacheMinWeight = 1.0e-4;
+// Kernel spread of the cache weight, in support radii (default 3.10; NOX_SURFEL_GI_CACHE_SPREAD).
+uniform float uCacheSupportSpread = 3.10;
+// Lower edge of the normal weight of a cache lookup (smoothstep(lo, 0.95, cos)); 0.55 was the value of the first round.
+uniform float uCacheNormalLo = 0.55;
+// 1 = the confidence ramp (young surfels weigh 0.22 to 1), 0 = every surfel with weight counts fully.
+uniform uint uCacheConfidenceRamp = 1u;
+// Scale of the plane-distance sigma of the cache weight (1 = the first round's value).
+uniform float uCachePlaneScale = 1.0;
+// Candidate budgets of the hit-point lookups (SurfelSettings.cache*; plan section 19). Defaults are the old constants.
+uniform uint uCacheCandidates = 128u;
+uniform uint uCachePerCellBudget = 4u;
+uniform uint uCacheAlbedoCandidates = 32u;
+uniform uint uCacheAlbedoPerCell = 2u;
+// Bias probe (plan section 19): stride of the sampled rays (0 = off) and the cumulative bucket sums it writes.
+uniform uint uBiasProbeStride = 0u;
+// Dominant surfel of the last cache lookup (largest weight), read by the probe.
+uint gProbeBestSurfel = 0xffffffffu;
+float gProbeBestWeight = 0.0;
+
+// Guide map of the surfel rays: the density of the origin's next-event MIS weight needs it (plan section 14).
+layout(binding = B_GUIDE_MAP, std430) readonly buffer SurfelGuideMapBuffer
+{
+    GuideCell guideCells[];
+};
+
+#include "guide_pdf.glsl"
 
 const uint SURFEL_TRACE_STEPS = 8u;
 const uint SURFEL_TRACE_NEIGHBOR_RADIUS = 1u;
 const uint SURFEL_TRACE_MAX_NEIGHBOR_CELLS = 27u;
 const uint SURFEL_TRACE_MAX_CELL_ENTRIES = 8u;
-const uint SURFEL_TRACE_MAX_CANDIDATES = 64u;
+const uint SURFEL_TRACE_MAX_CANDIDATES = 16u;
 const uint SURFEL_TRACE_MAX_VISITED_CELLS = 24u;
 const uint SURFEL_SCREEN_TRACE_STEPS = 32u;
 const uint SURFEL_TRACE_CACHE_MAX_CANDIDATES = 128u;
@@ -79,15 +133,12 @@ const float SURFEL_TRACE_EARLY_HIT_WEIGHT = 2.0;
 const float SURFEL_TRACE_HIT_RADIUS_SCALE = 5.5;
 const float SURFEL_TRACE_MIN_HIT_RADIUS = 0.14;
 const float SURFEL_TRACE_MAX_HIT_RADIUS = 0.80;
-const float SURFEL_TRACE_CACHE_SUPPORT_SPREAD = 3.10;
 const float SURFEL_TRACE_HIT_KIND_GRID = 1.0;
 const float SURFEL_TRACE_HIT_KIND_SCREEN = 2.0;
 const float SURFEL_TRACE_HIT_KIND_BVH = 3.0;
 const float SURFEL_TRACE_HIT_KIND_ENVIRONMENT = 4.0;
 const float SURFEL_TRACE_MISS_KIND = 0.0;
 const float SURFEL_TRACE_SCREEN_RELIABILITY = 0.18;
-const float SURFEL_TRACE_SKY_VISIBILITY_DISTANCE = 32.0;
-const float SURFEL_SKY_OPEN_MISS_VISIBILITY = 0.45;
 
 struct TraceGather
 {
@@ -142,66 +193,6 @@ bool SurfelScreenDepthValid(float depth01)
     return depth01 > 0.0 && depth01 < 0.999999 && !isnan(depth01) && !isinf(depth01);
 }
 
-float SkyOcclusionVisibilityFromHitDistance(float hitDistance)
-{
-    if (hitDistance <= 0.0) {
-        return 0.0;
-    }
-
-    float corridorLeak = smoothstep(5.0, 22.0, hitDistance) * 0.16;
-    float farLeak = smoothstep(22.0, SURFEL_TRACE_SKY_VISIBILITY_DISTANCE, hitDistance) * 0.34;
-    return clamp(max(corridorLeak, farLeak), 0.0, 0.34);
-}
-
-float DiffuseSkyHemisphereAccess(vec3 normal, vec3 skyDir)
-{
-    return clamp(0.5 + 0.5 * dot(normal, skyDir), 0.0, 1.0);
-}
-
-float TraceSkyVisibilityDirection(vec3 worldPos, vec3 normal, vec3 skyDir)
-{
-    skyDir = SurfelSafeNormalize(skyDir);
-    float hemisphereAccess = DiffuseSkyHemisphereAccess(normal, skyDir);
-    if (hemisphereAccess <= 1e-4) {
-        return 0.0;
-    }
-
-    if (uUseSoftwareBVHTrace != 0 && uBVHNodeCount > 0u && uTriangleCount > 0u) {
-        vec3 origin = worldPos + normal * 0.035 + skyDir * 0.025;
-        SoftwareBVHHit skyHit = TraceSoftwareBVH(origin, skyDir, 0.04, SURFEL_TRACE_SKY_VISIBILITY_DISTANCE);
-        if (skyHit.hit) {
-            return hemisphereAccess * SkyOcclusionVisibilityFromHitDistance(skyHit.t);
-        }
-    }
-
-    return hemisphereAccess * SURFEL_SKY_OPEN_MISS_VISIBILITY;
-}
-
-float TraceSkyVisibilityAtSurface(vec3 worldPos, vec3 normal)
-{
-    vec3 skyUp = vec3(0.0, 1.0, 0.0);
-    vec3 bentSky = SurfelSafeNormalize(mix(skyUp, normal, 0.28));
-    return clamp(TraceSkyVisibilityDirection(worldPos, normal, bentSky), 0.0, 1.0);
-}
-
-vec3 EvaluateHitEnvironmentIrradiance(vec3 worldPos, vec3 normal)
-{
-    if (uSkyDiffuseScale <= 1e-5) {
-        return vec3(0.0);
-    }
-
-    float skyVisibility = TraceSkyVisibilityAtSurface(worldPos, normal);
-    if (skyVisibility <= 1e-4) {
-        return vec3(0.0);
-    }
-
-    // The irradiance map stores E / pi (and uSkyRadiance is a radiance), so scale by pi for E.
-    vec3 skyIrradianceOverPi = uUseSkyIrradianceMap != 0
-        ? textureLod(uSkyIrradianceMap, normal, 0.0).rgb
-        : uSkyRadiance;
-    return max(skyIrradianceOverPi, vec3(0.0)) * SURFEL_PI * uSkyDiffuseScale * skyVisibility;
-}
-
 // Weight of a cached surfel's irradiance for a point on a surface: only surfels on the same
 // surface (similar normal, close to its plane) describe the light arriving at that point.
 float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
@@ -212,22 +203,23 @@ float TraceSurfaceCacheWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surf
     vec3 delta = receiverPos - surfelPos;
     float dist = length(delta);
     float supportRadius = SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent) *
-        SURFEL_TRACE_CACHE_SUPPORT_SPREAD;
+        uCacheSupportSpread;
     float normalizedDistance = dist / max(supportRadius, 1e-4);
     float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.58);
     if (distanceWeight <= 1e-5) {
         return 0.0;
     }
 
-    float normalWeight = smoothstep(0.55, 0.95, dot(receiverNormal, surfelNormal));
-    float planeSigma = max(max(radius * 2.65, supportRadius * 0.26), 0.060);
+    float normalWeight = smoothstep(uCacheNormalLo, 0.95, dot(receiverNormal, surfelNormal));
+    float planeSigma = max(max(radius * 2.65, supportRadius * 0.26), 0.060) * uCachePlaneScale;
     float planeWeight = exp(-(abs(dot(delta, surfelNormal)) + abs(dot(delta, receiverNormal))) / max(planeSigma, 1e-4));
     float confidence = clamp(surfel.irradiance.a, 0.0, 1.0);
     if (confidence < 0.08 && SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0))) <= 1e-5) {
         return 0.0;
     }
 
-    return distanceWeight * normalWeight * planeWeight * mix(0.22, 1.0, smoothstep(0.05, 0.65, confidence));
+    float confidenceWeight = uCacheConfidenceRamp != 0u ? mix(0.22, 1.0, smoothstep(0.05, 0.65, confidence)) : 1.0;
+    return distanceWeight * normalWeight * planeWeight * confidenceWeight;
 }
 
 float TraceSurfaceAttributeWeight(vec3 receiverPos, vec3 receiverNormal, Surfel surfel)
@@ -270,9 +262,10 @@ bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
 
     vec3 sumIrradiance = vec3(0.0);
     float sumWeight = 0.0;
+    float sumConfidence = 0.0;
     uint candidates = 0u;
-    const uint maxCandidates = SURFEL_TRACE_CACHE_MAX_CANDIDATES;
-    const uint perCellBudget = SURFEL_TRACE_CACHE_PER_CELL_BUDGET;
+    const uint maxCandidates = uCacheCandidates;
+    const uint perCellBudget = uCachePerCellBudget;
     for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
         if (candidates >= maxCandidates || sumWeight >= 32.0) {
             break;
@@ -294,9 +287,6 @@ bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
         }
 
         uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
         uint budget = min(min(storedCount, perCellBudget), maxCandidates - candidates);
         uint strideSeed = SurfelHash(seed ^ (cell * 747796405u));
         uint startIndex = strideSeed % storedCount;
@@ -321,13 +311,27 @@ bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
                 continue;
             }
 
+            if (weight > gProbeBestWeight) {
+                gProbeBestWeight = weight;
+                gProbeBestSurfel = entry.surfelID;
+            }
             vec3 cached = max(surfel.irradiance.rgb, vec3(0.0));
             sumIrradiance += cached * weight;
             sumWeight += weight;
+            sumConfidence += weight * clamp(surfel.irradiance.a, 0.0, 1.0);
+            if (weight >= 0.02) {
+                // Referenced by a ray hit: recycling keeps it while rays keep using it (plan section 17).
+                atomicMax(surfels[entry.surfelID].lifecycle.x, uFrameIndex);
+            }
         }
     }
 
-    if (sumWeight <= 1e-4) {
+    // Usable coverage: the total weight must reach uCacheMinWeight. A thin neighbourhood (a few distant or perpendicular
+    // surfels) would otherwise answer with its own normalised average and cut the path short.
+    if (sumWeight <= uCacheMinWeight) {
+        return false;
+    }
+    if (sumConfidence < uCacheMinConfidence * sumWeight) {
         return false;
     }
     irradiance = clamp(sumIrradiance / sumWeight, vec3(0.0), vec3(64.0));
@@ -347,8 +351,8 @@ vec3 TraceCachedAlbedoAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelID,
     vec3 sumAlbedo = vec3(0.0);
     float sumWeight = 0.0;
     uint candidates = 0u;
-    const uint maxCandidates = 32u;
-    const uint perCellBudget = 2u;
+    const uint maxCandidates = uCacheAlbedoCandidates;
+    const uint perCellBudget = uCacheAlbedoPerCell;
     for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
         if (candidates >= maxCandidates || sumWeight >= 6.0) {
             break;
@@ -370,9 +374,6 @@ vec3 TraceCachedAlbedoAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelID,
         }
 
         uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
         uint budget = min(min(storedCount, perCellBudget), maxCandidates - candidates);
         uint strideSeed = SurfelHash(seed ^ (cell * 2246822519u));
         uint startIndex = strideSeed % storedCount;
@@ -444,16 +445,115 @@ vec3 TraceVisibleGBufferAlbedoAtSurface(vec3 worldPos, vec3 normal, out float co
     return visibleAlbedo;
 }
 
-// Radiance leaving a hit surface toward the ray: Lambertian reflection of the live direct light
-// plus the cached indirect irradiance there (sky where the cache is empty), plus emission.
-vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissive, uint sourceSurfelID, uint seed)
+// Cached indirect irradiance for the shared path (surfel_scene_trace.glsl): the same-surface cache lookup.
+bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID, uint seed, out vec3 irradiance)
 {
-    vec3 directIrradiance = EvaluateHitDirectIrradiance(hitPos, hitNormal);
-    vec3 indirectIrradiance;
-    if (!TraceCachedIndirectAtSurface(hitPos, hitNormal, sourceSurfelID, seed, indirectIrradiance)) {
-        indirectIrradiance = EvaluateHitEnvironmentIrradiance(hitPos, hitNormal);
+    if ((uTraceSkip & 64u) != 0u) {
+        irradiance = vec3(0.0);
+        return false;
     }
-    return albedo * SURFEL_INV_PI * (directIrradiance + indirectIrradiance) + emissive;
+    bool hit = TraceCachedIndirectAtSurface(position, normal, sourceSurfelID, seed, irradiance);
+    if (hit) {
+        atomicAdd(counters.cacheHits, 1u);
+    } else {
+        atomicAdd(counters.cacheMisses, 1u);
+    }
+    return hit;
+}
+
+// Queues a world surfel request for a path vertex the cache could not answer (plan section 17). At most one request
+// per grid cell per frame: the first hit to claim the cell's stamp queues it. Spawn (spawn.comp, world mode) checks
+// the coverage again before it allocates a surfel.
+void SurfelPathWorldRequest(vec3 position, vec3 normal, vec3 albedo, SurfelWorldSource source, uint depth)
+{
+    if (uWorldRequestsEnabled == 0u || !source.eligible || uGridCellCount == 0u || (uTraceSkip & 64u) != 0u) {
+        return;
+    }
+    SurfelGridAddress address;
+    if (!SurfelWorldToGridAddress(position, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address) ||
+        address.cell >= uGridCellCount) {
+        return;
+    }
+    uint stamp = uFrameIndex + 1u;
+    if (atomicExchange(cellStamps[address.cell], stamp) == stamp) {
+        return;
+    }
+    uint slot = atomicAdd(counters.worldRequests, 1u);
+    if (slot >= min(uWorldRequestCapacity, uint(worldRequests.length()))) {
+        atomicAdd(counters.worldRequestDropped, 1u);
+        return;
+    }
+    SurfelWorldRequest request;
+    request.worldPos_pad = vec4(position, float(depth));
+    request.normal_pad = vec4(normal, 0.0);
+    request.albedo_pad = vec4(clamp(albedo, vec3(0.0), vec3(1.0)), 0.0);
+    request.ids = uvec4(source.transformID, source.materialID, address.cell, uFrameIndex);
+    worldRequests[slot] = request;
+}
+
+// Radiance leaving a hit toward the ray: the path from the hit (SurfelPathRadiance). Where the cache has a coplanar
+// surfel it answers the hit; elsewhere the path continues, so the indirect light is not dropped (plan section 14, O1).
+// emissionWeight is the hit's emission, already MIS weighted by the caller.
+vec3 ShadeHitRadiance(vec3 hitPos, vec3 hitNormal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed,
+                      SurfelPathControl control, SurfelWorldSource source)
+{
+    return SurfelPathRadiance(hitPos, hitNormal, albedo, emissionWeight, sourceSurfelID,
+        SurfelPathSeed(seed, uFrameIndex), control, source);
+}
+
+// Path control of a surfel ray past its first hit. The continuation roulette is warp coherent: the 32 rays of a warp
+// (rayID >> 5) share one decision per frame, and each warp group continues in one frame of every uContinuationPeriod.
+// A per-ray roulette would leave nearly every warp active, so it would save no time. The continuation carries the
+// period as its weight, so the estimate is unbiased over the period.
+SurfelPathControl SurfelTraceControl(uint rayID)
+{
+    SurfelPathControl control;
+    control.maxHits = max(uPathMaxHits, 1u);
+    control.rouletteStart = 1u;
+    control.neeDepth = 1u;
+    control.useCache = true;
+    control.recordWorld = uWorldRequestsEnabled != 0u;
+    // The BVH sun fallback costs an any-hit ray per vertex; the first hit's direct light is the part that needs it.
+    control.sunBVHDepth = uSunBVHDepth;
+    control.cacheDepth = uCacheDepth;
+    control.continuationWeight = 1.0;
+    uint period = max(uContinuationPeriod, 1u);
+    if (period > 1u) {
+        bool selected = (((rayID >> 5u) + uFrameIndex) % period) == 0u;
+        control.continuationWeight = selected ? float(period) : 0.0;
+    }
+    return control;
+}
+
+// Solid-angle density of the surfel's ray sampling (generate_rays.comp) in direction dir: the cosine lobe, mixed with the
+// guide map when guiding is on. The next-event sample at a ray origin is MIS weighted against it.
+float SurfelRaySamplingDensity(uint surfelID, vec3 normal, vec3 dir)
+{
+    vec3 hemiDir = SurfelWorldToHemiDir(dir, normal);
+    float cosine = max(hemiDir.z, 0.0) / SURFEL_PI;
+    if (uUseRayGuiding == 0 || (uTraceSkip & 2u) != 0u) {
+        return max(cosine, 1e-4);
+    }
+    bool hasGuide;
+    float guided = SurfelGuidePdf(surfelID, hemiDir, hasGuide);
+    if (!hasGuide) {
+        return max(cosine, 1e-4);
+    }
+    return max(mix(cosine, guided, SurfelGuideMixProbability()), 1e-4);
+}
+
+// Next-event estimate of the emitters at a surfel ray origin: one emitter sample, MIS weighted against the ray's sampling.
+vec3 SurfelOriginEmitterIrradiance(SurfelRay ray, uint rayID, vec3 normal)
+{
+    uint rng = SurfelPathSeed(ray.ids.x ^ (rayID * 2246822519u) ^ (ray.ids.z * 2891336453u), uFrameIndex);
+    vec3 u = vec3(SurfelPathRandom(rng), SurfelPathRandom(rng), SurfelPathRandom(rng));
+    vec3 irradiance;
+    vec3 dir;
+    float lightPdf;
+    if (!SurfelEmitterIrradianceSample(ray.origin_tMin.xyz, normal, u, irradiance, dir, lightPdf)) {
+        return vec3(0.0);
+    }
+    return irradiance * SurfelPowerWeight(lightPdf, SurfelRaySamplingDensity(ray.ids.x, normal, dir));
 }
 
 bool ScreenSpaceHitRadiance(vec2 uv,
@@ -461,6 +561,7 @@ bool ScreenSpaceHitRadiance(vec2 uv,
                             vec3 rayDirection,
                             uint sourceSurfelID,
                             uint seed,
+                            SurfelPathControl control,
                             out vec3 radiance,
                             out vec3 hitNormal)
 {
@@ -479,11 +580,13 @@ bool ScreenSpaceHitRadiance(vec2 uv,
 
     vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0));
     vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
-    radiance = ShadeHitRadiance(hitPos, hitNormal, albedo, emissive, sourceSurfelID, seed);
+    // Screen-space hits have no transform record, so they are never queued as world surfels.
+    radiance = ShadeHitRadiance(hitPos, hitNormal, albedo, emissive, sourceSurfelID, seed, control,
+        SurfelWorldSource(0u, 0u, false));
     return true;
 }
 
-bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
+bool TraceSoftwareBVHRadiance(SurfelRay ray, SurfelPathControl control, inout TraceGather gather)
 {
     if (uUseSoftwareBVHTrace == 0) {
         return false;
@@ -505,16 +608,26 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
     }
 
     uint cacheSeed = ray.ids.x ^ (ray.ids.z * 0x9e3779b9u);
+    if ((uTraceSkip & 128u) != 0u) {
+        gather.radiance = vec3(0.0);
+        gather.normal = hit.normal;
+        gather.position = hit.position;
+        gather.weight = 1.0;
+        gather.closestT = hit.t;
+        gather.hitKind = SURFEL_TRACE_HIT_KIND_BVH;
+        gather.hitSurfelID = SURFEL_INVALID_INDEX;
+        return true;
+    }
     vec3 albedo = max(hit.material.albedo, vec3(0.0));
     float visibleAlbedoConfidence = 0.0;
-    vec3 visibleAlbedo = TraceVisibleGBufferAlbedoAtSurface(hit.position,
+    vec3 visibleAlbedo = (uTraceSkip & 8u) != 0u ? vec3(1.0) : TraceVisibleGBufferAlbedoAtSurface(hit.position,
                                                             hit.normal,
                                                             visibleAlbedoConfidence);
     albedo = mix(albedo, visibleAlbedo, visibleAlbedoConfidence);
     float bvhAlbedoLum = SurfelLuminance(clamp(albedo, vec3(0.0), vec3(1.0)));
     float bvhColorfulness = length(clamp(albedo, vec3(0.0), vec3(1.0)) - vec3(bvhAlbedoLum));
     float neutralBVH = 1.0 - smoothstep(0.025, 0.18, bvhColorfulness);
-    if (visibleAlbedoConfidence < 0.88 && neutralBVH > 0.08) {
+    if (visibleAlbedoConfidence < 0.88 && neutralBVH > 0.08 && (uTraceSkip & 16u) == 0u) {
         float cachedAlbedoConfidence = 0.0;
         vec3 cachedAlbedo = TraceCachedAlbedoAtSurface(hit.position, hit.normal, ray.ids.x, cacheSeed, cachedAlbedoConfidence);
         float cachedAlbedoLum = SurfelLuminance(clamp(cachedAlbedo, vec3(0.0), vec3(1.0)));
@@ -528,7 +641,11 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
     }
     // Same product as the reference and the deferred pass (emissive * KHR emissive strength, default 1).
     vec3 emissive = max(hit.material.emissive * hit.material.emissiveStrength, vec3(0.0));
-    gather.radiance = ShadeHitRadiance(hit.position, hit.normal, albedo, emissive, ray.ids.x, cacheSeed);
+    // Emission is MIS weighted against this ray's sampling density; the origin's next-event sample is the other half.
+    float emitterHitPdf = SurfelEmitterHitPdf(SurfelLuminance(emissive), hit.t, hit.geometricNormal, direction);
+    gather.radiance = ShadeHitRadiance(hit.position, hit.normal, albedo,
+        emissive * SurfelPowerWeight(ray.throughput.a, emitterHitPdf), ray.ids.x, cacheSeed, control,
+        SurfelWorldSourceFromHit(hit));
     gather.normal = hit.normal;
     gather.position = hit.position;
     gather.weight = 1.0;
@@ -538,7 +655,7 @@ bool TraceSoftwareBVHRadiance(SurfelRay ray, inout TraceGather gather)
     return true;
 }
 
-bool TraceScreenSpace(SurfelRay ray, inout TraceGather gather)
+bool TraceScreenSpace(SurfelRay ray, SurfelPathControl control, inout TraceGather gather)
 {
     if (uUseScreenSpaceTrace == 0) {
         return false;
@@ -596,6 +713,7 @@ bool TraceScreenSpace(SurfelRay ray, inout TraceGather gather)
                                     direction,
                                     ray.ids.x,
                                     ray.ids.x ^ (ray.ids.z * 0x9e3779b9u) ^ step,
+                                    control,
                                     radiance,
                                     hitNormal)) {
             continue;
@@ -718,10 +836,9 @@ void TraceGatherCell(SurfelRay ray,
     SurfelCellHeader header = gridHeaders[cell];
     uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
     uint budget = min(min(storedCount, SURFEL_TRACE_MAX_CELL_ENTRIES), SURFEL_TRACE_MAX_CANDIDATES - gather.candidatesTested);
+    atomicAdd(counters.lookupsTrace, 1u);
+    atomicAdd(counters.entriesTrace, budget);
     uint firstEntry = header.firstEntry;
-    if (firstEntry == 0u && cell != 0u) {
-        firstEntry = cell * uMaxSurfelsPerCell;
-    }
     uint strideSeed = SurfelHash(ray.ids.x ^ (cell * 747796405u) ^ (ray.ids.z * 2891336453u));
     uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
     uint sampleStride = max(storedCount / max(budget, 1u), 1u);
@@ -826,11 +943,12 @@ TraceGather TraceSurfelGrid(SurfelRay ray, uint rayID)
     // rays fall back to screen-space and surfel-grid tracing.
     bool useBVHThisRay = uUseSoftwareBVHTrace != 0 &&
         (uBVHTraceStride <= 1u || (((rayID + uFrameIndex) % max(uBVHTraceStride, 1u)) == 0u));
+    SurfelPathControl control = SurfelTraceControl(rayID);
     if (useBVHThisRay) {
-        if (TraceSoftwareBVHRadiance(ray, gather)) {
+        if (TraceSoftwareBVHRadiance(ray, control, gather)) {
             return gather;
         }
-    } else if (TraceScreenSpace(ray, gather)) {
+    } else if (TraceScreenSpace(ray, control, gather)) {
         return gather;
     }
 
@@ -891,6 +1009,63 @@ TraceGather TraceSurfelGrid(SurfelRay ray, uint rayID)
     return gather;
 }
 
+// Bias probe at one hit (plan section 19). The cache answers the hit with cachedE (indirect irradiance, as the path uses
+// it). The continuation estimate of the same point has no cache on any vertex: E = pi * radiance of the path with albedo 1,
+// minus the direct light at the point. The pair goes into one of 72 buckets by the dominant surfel's type (screen, world),
+// age, normal agreement and distance (in radii) from the hit to it.
+void SurfelBiasProbeRecord(SurfelRay ray, uint rayID, TraceGather gather)
+{
+    vec3 position = gather.position;
+    vec3 normal = SurfelSafeNormalize(gather.normal);
+    uint cacheSeed = ray.ids.x ^ (ray.ids.z * 0x9e3779b9u);
+    gProbeBestSurfel = SURFEL_INVALID_INDEX;
+    gProbeBestWeight = 0.0;
+    vec3 cachedE;
+    if (!TraceCachedIndirectAtSurface(position, normal, ray.ids.x, cacheSeed, cachedE)) {
+        return;
+    }
+    if (gProbeBestSurfel >= uMaxSurfels) {
+        return;
+    }
+    Surfel dominant = surfels[gProbeBestSurfel];
+    if (!SurfelIsAlive(dominant)) {
+        return;
+    }
+    bool world = (SurfelFlags(dominant) & SURFEL_WORLD) != 0u;
+    float age = dominant.worldNormal_age.w;
+    float facing = dot(normal, SurfelSafeNormalize(dominant.worldNormal_age.xyz));
+    float radius = max(dominant.worldPos_radius.w, 0.001);
+    float radialDist = length(position - dominant.worldPos_radius.xyz) / radius;
+
+    SurfelWorldSource none;
+    none.transformID = 0u;
+    none.materialID = 0u;
+    none.eligible = false;
+    SurfelPathControl control;
+    control.maxHits = 32u;
+    control.rouletteStart = 1u;
+    control.neeDepth = 32u;
+    control.useCache = false;
+    control.continuationWeight = 1.0;
+    control.recordWorld = false;
+    control.sunBVHDepth = 32u;
+    control.cacheDepth = 0u;
+    uint seed = SurfelPathSeed(ray.ids.x ^ (rayID * 2246822519u) ^ (ray.ids.z * 2891336453u), uFrameIndex);
+    vec3 pathRadiance = SurfelPathRadiance(position, normal, vec3(1.0), vec3(0.0), SURFEL_INVALID_INDEX, seed, control, none);
+    gSunShadowBVHHere = true;
+    vec3 direct = EvaluateHitDirectIrradiance(position, normal);
+    vec3 continuationE = max(SURFEL_PI * pathRadiance - direct, vec3(0.0));
+
+    uint typeIndex = world ? 1u : 0u;
+    uint ageIndex = age < 4.0 ? 0u : (age < 32.0 ? 1u : (age < 128.0 ? 2u : 3u));
+    uint normalIndex = facing >= 0.95 ? 0u : (facing >= 0.8 ? 1u : 2u);
+    uint distanceIndex = radialDist < 0.5 ? 0u : (radialDist < 1.0 ? 1u : 2u);
+    uint bucket = ((typeIndex * 4u + ageIndex) * 3u + normalIndex) * 3u + distanceIndex;
+    atomicAdd(counters.probeWords[bucket * 3u], 1u);
+    atomicAdd(counters.probeWords[bucket * 3u + 1u], uint(min(SurfelLuminance(max(cachedE, vec3(0.0))) * 1000.0, 1.0e6)));
+    atomicAdd(counters.probeWords[bucket * 3u + 2u], uint(min(SurfelLuminance(continuationE) * 1000.0, 1.0e6)));
+}
+
 void main()
 {
     uint rayID = gl_GlobalInvocationID.x;
@@ -912,4 +1087,14 @@ void main()
     hits[rayID].radiance_pdf = vec4(gather.radiance * max(ray.throughput.rgb, vec3(0.0)), ray.throughput.a);
     // ids.w stamps the frame, so integrate.comp can reject a hit left over from an earlier frame.
     hits[rayID].ids = uvec4(ray.ids.x, hit ? gather.hitSurfelID : SURFEL_INVALID_INDEX, ray.ids.z, uFrameIndex);
+    // Next-event estimate at the origin, for the rays that trace on the software BVH (every ray at stride 1).
+    if (uBiasProbeStride > 0u && hit && gather.hitKind == SURFEL_TRACE_HIT_KIND_BVH && (rayID % uBiasProbeStride) == 0u) {
+        SurfelBiasProbeRecord(ray, rayID, gather);
+    }
+    hits[rayID].emitterIrradiance = vec4(0.0);
+    if (uUseSoftwareBVHTrace != 0 && uEmitterCount != 0u && ray.ids.x < uMaxSurfels &&
+        (uBVHTraceStride <= 1u || (((rayID + uFrameIndex) % max(uBVHTraceStride, 1u)) == 0u))) {
+        vec3 surfelNormal = SurfelSafeNormalize(surfels[ray.ids.x].worldNormal_age.xyz);
+        hits[rayID].emitterIrradiance = vec4(SurfelOriginEmitterIrradiance(ray, rayID, surfelNormal), 0.0);
+    }
 }

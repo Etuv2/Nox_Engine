@@ -137,6 +137,32 @@ uniform vec4 uCascadeSplits = vec4(10.0, 30.0, 100.0, 500.0);
 // Bias strength shared with the deferred pass (NOX_SHADOW_REFERENCE_BIAS == 1x).
 uniform float uShadowBias = 0.001;
 
+// Emissive triangles of the traced instances, world space, for next-event estimation (plan section 14). Built and
+// uploaded by RTSceneResources together with the instance list, so the emitters and the BVH always agree.
+struct SurfelEmitter
+{
+    vec4 v0;
+    vec4 v1;
+    vec4 v2;
+    vec4 emission;   // rgb emitted radiance, w = luminance
+    vec4 normal;     // xyz geometric unit normal, w = area
+    vec4 cdf;        // x = cumulative luminance * area
+};
+
+layout(std430, binding = B_SURFEL_EMITTERS) readonly buffer SurfelEmitterBuffer
+{
+    SurfelEmitter emitters[];
+};
+
+uniform uint uEmitterCount = 0u;
+// Total power sum(luminance * area): an emitter is picked with weight luminance * area / total, and a point on it has
+// area density luminance / total.
+uniform float uEmitterPowerTotal = 0.0;
+// Distance cut of the emitter samples (plan section 20). Past it a next-event sample is not taken, and a BSDF hit on an
+// emitter there takes full weight (SurfelEmitterHitPdf returns 0, so the power heuristic gives 1). The two halves together
+// keep the estimate unbiased. 1e30 = no cut (the reference never sets it).
+uniform float uEmitterNEEMaxDistance = 1.0e30;
+
 struct SoftwareBVHHit
 {
     bool hit;
@@ -144,6 +170,16 @@ struct SoftwareBVHHit
     vec3 position;
     vec3 normal;
     RTMaterial material;
+    // Geometric normal of the hit triangle in world space (emitter MIS uses its exact Jacobian), and the triangle's
+    // local vertices so the instance transform can take them to world space.
+    vec3 geometricNormal;
+    vec3 localV0;
+    vec3 localV1;
+    vec3 localV2;
+    // Transform record of the hit instance (GPU transform buffer index, or 0xffffffff), and whether it is skinned.
+    // A world surfel can only be re-attached to a rigid transform, so skinned hits are not queued.
+    uint transformID;
+    bool skinned;
 };
 
 
@@ -198,7 +234,8 @@ bool SurfelTraceAABB(vec3 origin, vec3 direction, vec3 minBounds, vec3 maxBounds
     return tNear <= tFar;
 }
 
-SoftwareBVHHit TraceSoftwareBLAS(vec3 origin, vec3 direction, float tMin, float tMax, int rootNodeOffset, int triangleOffset)
+// anyHit stops at the first triangle in range (an occlusion query); the hit is then not the closest one.
+SoftwareBVHHit TraceSoftwareBLAS(vec3 origin, vec3 direction, float tMin, float tMax, int rootNodeOffset, int triangleOffset, bool anyHit)
 {
     SoftwareBVHHit hit;
     hit.hit = false;
@@ -266,6 +303,13 @@ SoftwareBVHHit TraceSoftwareBLAS(vec3 origin, vec3 direction, float tMin, float 
                 hit.position = origin + direction * t;
                 hit.normal = normal;
                 hit.material = tri.material;
+                hit.localV0 = tri.v0;
+                hit.localV1 = tri.v1;
+                hit.localV2 = tri.v2;
+                hit.geometricNormal = SurfelSafeNormalize(cross(tri.v1 - tri.v0, tri.v2 - tri.v0));
+                if (anyHit) {
+                    return hit;
+                }
             }
         } else {
             if (node.child1 >= 0 && stackPtr < SURFEL_TRACE_BVH_STACK_SIZE) {
@@ -280,7 +324,7 @@ SoftwareBVHHit TraceSoftwareBLAS(vec3 origin, vec3 direction, float tMin, float 
     return hit;
 }
 
-SoftwareBVHHit TraceSoftwareTLAS(vec3 origin, vec3 direction, float tMin, float tMax)
+SoftwareBVHHit TraceSoftwareTLAS(vec3 origin, vec3 direction, float tMin, float tMax, bool anyHit)
 {
     SoftwareBVHHit bestHit;
     bestHit.hit = false;
@@ -336,7 +380,8 @@ SoftwareBVHHit TraceSoftwareTLAS(vec3 origin, vec3 direction, float tMin, float 
                 tMin,
                 tMax,
                 int(instance.metadata.x),
-                int(instance.metadata.y));
+                int(instance.metadata.y),
+                anyHit);
             if (!localHit.hit) {
                 continue;
             }
@@ -353,6 +398,16 @@ SoftwareBVHHit TraceSoftwareTLAS(vec3 origin, vec3 direction, float tMin, float 
             bestHit.position = worldPosition;
             bestHit.normal = SurfelSafeNormalize(normalMatrix * localHit.normal);
             bestHit.material = localHit.material;
+            bestHit.transformID = instance.metadata.w;
+            bestHit.skinned = instance.metadata.z != 0u;
+            // Same cross product as the emitter list (RTSceneResources::AppendInstanceEmitters): world vertices.
+            vec3 worldV0 = (instance.worldFromLocal * vec4(localHit.localV0, 1.0)).xyz;
+            vec3 worldV1 = (instance.worldFromLocal * vec4(localHit.localV1, 1.0)).xyz;
+            vec3 worldV2 = (instance.worldFromLocal * vec4(localHit.localV2, 1.0)).xyz;
+            bestHit.geometricNormal = SurfelSafeNormalize(cross(worldV1 - worldV0, worldV2 - worldV0));
+            if (anyHit) {
+                return bestHit;
+            }
         }
     }
 
@@ -371,10 +426,29 @@ SoftwareBVHHit TraceSoftwareBVH(vec3 origin, vec3 direction, float tMin, float t
     }
 
     if (uRTInstanceCount > 0u && uRTInstanceNodeCount > 0u) {
-        return TraceSoftwareTLAS(origin, direction, tMin, tMax);
+        return TraceSoftwareTLAS(origin, direction, tMin, tMax, false);
     }
 
-    return TraceSoftwareBLAS(origin, direction, tMin, tMax, 0, 0);
+    return TraceSoftwareBLAS(origin, direction, tMin, tMax, 0, 0, false);
+}
+
+// Occlusion query: any triangle in range blocks. Cheaper than the closest hit, which the emitter shadow rays do not need.
+SoftwareBVHHit TraceSoftwareBVHAnyHit(vec3 origin, vec3 direction, float tMin, float tMax)
+{
+    if (uUseSoftwareBVHTrace == 0 || uBVHNodeCount == 0u || uTriangleCount == 0u) {
+        SoftwareBVHHit miss;
+        miss.hit = false;
+        miss.t = tMax;
+        miss.position = origin + direction * tMax;
+        miss.normal = vec3(0.0, 1.0, 0.0);
+        return miss;
+    }
+
+    if (uRTInstanceCount > 0u && uRTInstanceNodeCount > 0u) {
+        return TraceSoftwareTLAS(origin, direction, tMin, tMax, true);
+    }
+
+    return TraceSoftwareBLAS(origin, direction, tMin, tMax, 0, 0, true);
 }
 
 
@@ -443,6 +517,32 @@ float SampleShadowLayerWorld(int layer, vec3 worldPos, vec3 normal, vec3 surface
     return SampleShadowLayer(layer, receiverCoords, 0.0);
 }
 
+// Sun visibility outside the cascades. SampleShadowLayerWorld reads a point outside the cascade as lit, so the sun leaked
+// into enclosed geometry and into every off-screen hit (plan section 15, lever 6). With this set (the surfel trace only),
+// such a point gets a BVH shadow ray toward the sun instead. The reference keeps the cascade-only answer.
+uniform int uSunShadowBVHFallback = 0;
+// Debug trace-component skip mask (NOX_SURFEL_GI_TRACE_SKIP; plan section 19). 0 = the full trace. Each bit removes one
+// component for a timing ablation (the output changes):
+//   1  sun cascade samples read as lit (the outside-cascade BVH fallback is unchanged)
+//   2  guide density off (trace_rays.comp, SurfelRaySamplingDensity)
+//   4  emitter next-event samples (vertex and origin) off
+//   8  visible G-buffer albedo off
+//   16 cached albedo lookups at hits off
+//   64 cache irradiance lookups and world requests off
+//   128 closest-hit shading off (BVH trace only)
+//   256 path continuation off past the first hit's own terms
+uniform uint uTraceSkip = 0u;
+// Whether the BVH sun fallback applies to the direct light being evaluated now. SurfelPathRadiance sets it per vertex
+// (SurfelPathControl.sunBVHDepth), so the any-hit ray is paid only where the first hit's direct light needs it (plan 17).
+bool gSunShadowBVHHere = true;
+const float SURFEL_SHADOW_ORIGIN_OFFSET = 0.004;
+
+bool SurfelShadowPointInLayer(int layer, vec3 worldPos)
+{
+    vec3 coords;
+    return NoxProjectToShadowMap(shadowMatrices[layer], worldPos, coords) && ShadowInBounds(coords);
+}
+
 float DirectionalShadowVisibility(int startSlice, int sliceCount, vec3 worldPos, vec3 normal, vec3 lightDirection)
 {
     int cascades = clamp(sliceCount, 1, 4);
@@ -459,7 +559,16 @@ float DirectionalShadowVisibility(int startSlice, int sliceCount, vec3 worldPos,
         }
     }
 
-    return SampleShadowLayerWorld(startSlice + cascadeIndex, worldPos, normal, -lightDirection);
+    vec3 surfaceToLight = -lightDirection;
+    if (uSunShadowBVHFallback != 0 && gSunShadowBVHHere && !SurfelShadowPointInLayer(startSlice + cascadeIndex, worldPos)) {
+        SoftwareBVHHit blocker = TraceSoftwareBVHAnyHit(worldPos + normal * SURFEL_SHADOW_ORIGIN_OFFSET, surfaceToLight,
+            1e-4, SURFEL_TRACE_BVH_FAR_DISTANCE);
+        return blocker.hit ? 0.0 : 1.0;
+    }
+    if ((uTraceSkip & 1u) != 0u) {
+        return 1.0;
+    }
+    return SampleShadowLayerWorld(startSlice + cascadeIndex, worldPos, normal, surfaceToLight);
 }
 
 float PointShadowVisibility(int startSlice, vec3 worldPos, vec3 normal, vec3 lightPos)
@@ -594,6 +703,32 @@ vec3 EvaluateMissEnvironmentRadiance(vec3 rayDir)
 }
 
 
+// Random numbers and cosine sampling for the path estimators (trace_rays.comp continuation, reference_gi.comp).
+// PCG (RXS-M-XS) on a 32-bit state, uniform in [0, 1).
+uint SurfelPathSeed(uint seed, uint frameIndex)
+{
+    return SurfelHash(seed ^ SurfelHash(frameIndex * 0x9e3779b9u + 0x7f4a7c15u));
+}
+
+float SurfelPathRandom(inout uint state)
+{
+    state = state * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    word = (word >> 22u) ^ word;
+    return float(word) / 4294967296.0;
+}
+
+vec3 SurfelCosineDirection(vec3 normal, vec2 u)
+{
+    vec3 up = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = SurfelSafeNormalize(cross(up, normal));
+    vec3 bitangent = cross(normal, tangent);
+    float r = sqrt(u.x);
+    float phi = 2.0 * SURFEL_PI * u.y;
+    vec3 local = vec3(r * cos(phi), r * sin(phi), sqrt(max(0.0, 1.0 - u.x)));
+    return SurfelSafeNormalize(tangent * local.x + bitangent * local.y + normal * local.z);
+}
+
 vec3 SurfelDecodeNormalOct(vec2 e)
 {
     e = e * 2.0 - 1.0;
@@ -603,6 +738,257 @@ vec3 SurfelDecodeNormalOct(vec2 e)
         v.xy = folded;
     }
     return SurfelSafeNormalize(v);
+}
+
+// ---------------------------------------------------------------- next-event estimation and MIS (plan section 14)
+//
+// Emitters are sampled by a shadow ray: pick an emitter with probability luminance * area / total, a point uniformly on
+// its triangle. The solid-angle density of that sample at distance d with emitter cosine c is
+// pdf = (luminance / total) * d^2 / c. A BSDF-sampled ray that hits an emitter gets the same density for the same
+// direction, and the power heuristic weights each strategy: w = p^2 / (p^2 + q^2). Every emitter contribution is then
+// counted once, through one of the two strategies, whatever the sampling density of the ray.
+
+// Shadow test toward a point on an emitter (the emitter's own surface is excluded by the 0.999 margin).
+bool SurfelEmitterOccluded(vec3 origin, vec3 target)
+{
+    vec3 delta = target - origin;
+    float dist = length(delta);
+    if (dist <= 1e-4) {
+        return false;
+    }
+    SoftwareBVHHit hit = TraceSoftwareBVHAnyHit(origin, delta / dist, 1e-4, dist * 0.999);
+    return hit.hit;
+}
+
+// Picks an emitter and a point on it. u.x selects, u.y and u.z place the point (uniform on the triangle).
+bool SurfelSampleEmitterPoint(vec3 u, out vec3 position, out vec3 normal, out vec3 emission, out float luminance)
+{
+    if (uEmitterCount == 0u || !(uEmitterPowerTotal > 0.0)) {
+        return false;
+    }
+    float target = clamp(u.x, 0.0, 0.999999) * uEmitterPowerTotal;
+    uint lo = 0u;
+    uint hi = uEmitterCount - 1u;
+    while (lo < hi) {
+        uint mid = (lo + hi) / 2u;
+        if (emitters[mid].cdf.x > target) {
+            hi = mid;
+        } else {
+            lo = mid + 1u;
+        }
+    }
+    SurfelEmitter e = emitters[lo];
+    float s = sqrt(clamp(u.y, 0.0, 1.0));
+    float b0 = 1.0 - s;
+    float b1 = s * (1.0 - u.z);
+    float b2 = s * u.z;
+    position = b0 * e.v0.xyz + b1 * e.v1.xyz + b2 * e.v2.xyz;
+    normal = e.normal.xyz;
+    emission = e.emission.rgb;
+    luminance = e.emission.w;
+    return true;
+}
+
+// One emitter sample for a receiver at origin (already offset from its surface) with normal. Returns the irradiance
+// estimate before MIS (emission * cos / pdf, zero when occluded), the sample direction and its solid-angle density.
+bool SurfelEmitterIrradianceSample(vec3 origin, vec3 normal, vec3 u, out vec3 irradiance, out vec3 direction, out float lightPdf)
+{
+    irradiance = vec3(0.0);
+    direction = normal;
+    lightPdf = 0.0;
+    if ((uTraceSkip & 4u) != 0u) {
+        return false;
+    }
+    vec3 position;
+    vec3 emitterNormal;
+    vec3 emission;
+    float luminance;
+    if (!SurfelSampleEmitterPoint(u, position, emitterNormal, emission, luminance) || !(luminance > 0.0)) {
+        return false;
+    }
+    vec3 delta = position - origin;
+    float dist2 = dot(delta, delta);
+    if (dist2 < 1e-8) {
+        return false;
+    }
+    float dist = sqrt(dist2);
+    if (dist > uEmitterNEEMaxDistance) {
+        return false;
+    }
+    direction = delta / dist;
+    float cosReceiver = dot(normal, direction);
+    // Emitters radiate from both faces, as the BSDF-hit emission does, so the emitter cosine is the absolute value.
+    float cosEmitter = abs(dot(emitterNormal, direction));
+    if (cosReceiver <= 0.0 || cosEmitter < 1e-4) {
+        return false;
+    }
+    lightPdf = (luminance / uEmitterPowerTotal) * dist2 / cosEmitter;
+    if (SurfelEmitterOccluded(origin, position)) {
+        return true;
+    }
+    irradiance = emission * (cosReceiver / lightPdf);
+    return true;
+}
+
+// Solid-angle density with which emitter sampling would have produced a BSDF-sampled hit on an emitter.
+float SurfelEmitterHitPdf(float luminance, float dist, vec3 geometricNormal, vec3 direction)
+{
+    float cosEmitter = abs(dot(geometricNormal, direction));
+    if (dist > uEmitterNEEMaxDistance || uEmitterCount == 0u || !(uEmitterPowerTotal > 0.0) || cosEmitter < 1e-4) {
+        return 0.0;
+    }
+    return (luminance / uEmitterPowerTotal) * dist * dist / cosEmitter;
+}
+
+// Power heuristic: the weight of a sample drawn with density pa, when the other strategy has density pb.
+float SurfelPowerWeight(float pa, float pb)
+{
+    float a = pa * pa;
+    return a / max(a + pb * pb, 1e-30);
+}
+
+// Cached indirect irradiance at a path vertex, or false where the vertex has no coplanar surfel. trace_rays.comp
+// implements it from the surfel cache; reference_gi.comp returns false (it keeps no surfels).
+bool SurfelPathCachedIrradiance(vec3 position, vec3 normal, uint sourceSurfelID, uint seed, out vec3 irradiance);
+
+// Where a path vertex came from, for queuing a world surfel when the cache misses there (plan section 17).
+// eligible is false for skinned instances, for hits without a transform, and for the reference.
+struct SurfelWorldSource
+{
+    uint transformID;
+    uint materialID;
+    bool eligible;
+};
+
+SurfelWorldSource SurfelWorldSourceFromHit(SoftwareBVHHit hit)
+{
+    SurfelWorldSource source;
+    source.transformID = hit.transformID;
+    source.materialID = 0u;
+    // Transform ID 0 is INVALID_TRANSFORM_ID on the host side.
+    source.eligible = !hit.skinned && hit.transformID != 0u && hit.transformID != SURFEL_INVALID_INDEX;
+    return source;
+}
+
+// Queues a world surfel request at a path vertex the cache could not answer. trace_rays.comp implements it; the reference
+// keeps no surfels and returns at once (reference_gi.comp).
+void SurfelPathWorldRequest(vec3 position, vec3 normal, vec3 albedo, SurfelWorldSource source, uint depth);
+
+const uint SURFEL_PATH_MAX_HITS = 32u;
+const float SURFEL_PATH_RR_MAX_CONTINUE = 0.95;
+const float SURFEL_PATH_ORIGIN_OFFSET = 0.004;
+
+// How one path is run. The caller sets it; the reference keeps its own values (reference_gi.comp).
+struct SurfelPathControl
+{
+    uint maxHits;             // hard depth cap; the residual albedo^cap is dropped
+    uint rouletteStart;       // first vertex (after the hit) with Russian roulette, albedo based
+    uint neeDepth;            // vertices below this get a next-event estimate of the emitters
+    bool useCache;            // the surfel cache answers the first vertices
+    // Weight of the path past its first hit. 0 stops the path at the first hit (its own direct, NEE and cache terms
+    // still count). w > 0 continues it and multiplies the continuation by w; the caller takes the continuation with
+    // probability 1/w, so the estimate stays unbiased.
+    float continuationWeight;
+    // Queue a world surfel request at each queued vertex the cache misses (trace only; the reference leaves it off).
+    bool recordWorld;
+    // Vertices below this depth use the BVH sun fallback for their direct light; deeper ones use the cascades only.
+    uint sunBVHDepth;
+    // Vertices below this depth read the cache (and queue a world surfel on a miss). Deeper vertices continue without it.
+    uint cacheDepth;
+};
+
+// Radiance leaving a hit toward the path origin, by a path that continues from the hit. emissionWeight is the hit's own
+// emission, already MIS weighted by the caller against the strategy that reached it. Each vertex adds its direct light
+// and a next-event estimate of the emitters (MIS against cosine sampling), then the path continues by one cosine sample.
+// It ends at a vertex with cached irradiance (added as E), at a sky miss (the miss radiance), or by Russian roulette from
+// vertex rouletteStart on. Dividing by the continuation probability keeps it unbiased; the depth cap only drops a
+// residual of albedo^cap. The sky enters only through these miss rays, so there is no separate sky-visibility term.
+// The cache is optional (useCache): the independent reference never uses it.
+// control.neeDepth limits the next-event samples to the vertices below it. Past that depth the emission of the next vertex
+// counts at full weight (no MIS), which is still unbiased, and each deeper vertex costs one trace fewer.
+vec3 SurfelPathRadiance(vec3 position, vec3 normal, vec3 albedo, vec3 emissionWeight, uint sourceSurfelID, uint seed,
+                        SurfelPathControl control, SurfelWorldSource source)
+{
+    vec3 radiance = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+    vec3 emitted = emissionWeight;
+    uint rng = seed;
+    SurfelWorldSource vertexSource = source;
+    for (uint depth = 0u; depth < control.maxHits; ++depth) {
+        radiance += throughput * emitted;
+
+        gSunShadowBVHHere = depth < control.sunBVHDepth;
+        vec3 direct = EvaluateHitDirectIrradiance(position, normal);
+        vec3 cached;
+        // The cache is read at the first vertices only. Deeper vertices continue the path, which is unbiased and cheaper
+        // than a cache walk at every bounce.
+        if (control.useCache && depth < control.cacheDepth && SurfelPathCachedIrradiance(position, normal, depth == 0u ? sourceSurfelID : SURFEL_INVALID_INDEX,
+                rng ^ (depth * 0x9e3779b9u), cached)) {
+            // The cache already holds the emitters' light at this point, so no next-event sample here.
+            return radiance + throughput * albedo * SURFEL_INV_PI * (direct + cached);
+        }
+        if (control.useCache && control.recordWorld && depth < control.cacheDepth) {
+            // The cache could not answer this vertex: queue a world surfel here, so later rays stop at it.
+            SurfelPathWorldRequest(position, normal, albedo, vertexSource, depth);
+        }
+
+        vec3 neeU = vec3(SurfelPathRandom(rng), SurfelPathRandom(rng), SurfelPathRandom(rng));
+        vec3 neeIrradiance;
+        vec3 neeDirection;
+        float neePdf;
+        vec3 nee = vec3(0.0);
+        if (depth < control.neeDepth && SurfelEmitterIrradianceSample(position + normal * SURFEL_PATH_ORIGIN_OFFSET, normal, neeU,
+                neeIrradiance, neeDirection, neePdf)) {
+            float cosineDensity = max(dot(normal, neeDirection), 0.0) * SURFEL_INV_PI;
+            nee = neeIrradiance * SurfelPowerWeight(neePdf, cosineDensity);
+        }
+        radiance += throughput * albedo * SURFEL_INV_PI * (direct + nee);
+        if ((uTraceSkip & 256u) != 0u) {
+            return radiance;
+        }
+        if (depth == 0u) {
+            // The first hit's own terms are counted above. The path past it runs only when it has a weight (see
+            // SurfelPathControl), and that weight multiplies everything below.
+            if (control.continuationWeight <= 0.0) {
+                return radiance;
+            }
+            throughput = albedo * control.continuationWeight;
+        } else {
+            throughput *= albedo;
+        }
+
+        if (depth >= control.rouletteStart) {
+            float q = min(SURFEL_PATH_RR_MAX_CONTINUE, max(max(albedo.r, albedo.g), albedo.b));
+            if (q <= 0.0 || SurfelPathRandom(rng) >= q) {
+                return radiance;
+            }
+            throughput /= q;
+        }
+
+        vec3 direction = SurfelCosineDirection(normal, vec2(SurfelPathRandom(rng), SurfelPathRandom(rng)));
+        SoftwareBVHHit next = TraceSoftwareBVH(position + normal * SURFEL_PATH_ORIGIN_OFFSET, direction, 0.0,
+            SURFEL_TRACE_BVH_FAR_DISTANCE);
+        if (!next.hit) {
+            return radiance + throughput * EvaluateMissEnvironmentRadiance(direction);
+        }
+
+        vec3 nextNormal = next.normal;
+        if (dot(nextNormal, direction) > 0.0) {
+            nextNormal = -nextNormal;
+        }
+        vec3 nextEmission = max(next.material.emissive * next.material.emissiveStrength, vec3(0.0));
+        float cosineDensity = max(dot(normal, direction), 0.0) * SURFEL_INV_PI;
+        float hitPdf = SurfelEmitterHitPdf(SurfelLuminance(nextEmission), next.t, next.geometricNormal, direction);
+        // The next-event sample at this vertex covered the emitters only when this vertex had one.
+        float emissionMis = depth < control.neeDepth ? SurfelPowerWeight(cosineDensity, hitPdf) : 1.0;
+        emitted = nextEmission * emissionMis;
+
+        position = next.position;
+        normal = SurfelSafeNormalize(nextNormal);
+        albedo = clamp(next.material.albedo, vec3(0.0), vec3(1.0));
+        vertexSource = SurfelWorldSourceFromHit(next);
+    }
+    return radiance;
 }
 
 #endif // NOX_SURFEL_SCENE_TRACE_GLSL

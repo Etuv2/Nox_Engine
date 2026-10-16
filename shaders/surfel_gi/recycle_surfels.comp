@@ -1,5 +1,12 @@
 #version 460 core
 
+// Recycling (GIBS p.29). Each live surfel gets a score from three factors: how far the live population is
+// over its target, how long it has been since it was last visible, and its distance from the camera. Distance
+// counts only while the population is over target, and staleness starts only after a grace period, so a
+// visible or recently used surfel is not culled for being far away while there is room for it.
+// A surfel is culled with probability 0.5 * score, at most uMaxRecycleCount per frame. Surfels with an
+// invalid transform, or with no albedo, are always culled. Each cull is counted by its largest term.
+
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
@@ -19,16 +26,6 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
     SurfelCounters counters;
 };
 
-layout(binding = B_GRID_HEADERS, std430) readonly buffer SurfelGridHeaderBuffer
-{
-    SurfelCellHeader gridHeaders[];
-};
-
-layout(binding = B_GRID_ENTRIES, std430) readonly buffer SurfelGridEntryBuffer
-{
-    SurfelCellEntry gridEntries[];
-};
-
 layout(binding = B_GUIDE_MAP, std430) buffer SurfelGuideMapBuffer
 {
     GuideCell guideMap[];
@@ -37,60 +34,20 @@ layout(binding = B_GUIDE_MAP, std430) buffer SurfelGuideMapBuffer
 uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
 uniform vec3 uCameraPosition;
-uniform vec3 uGridMin;
-uniform vec3 uGridMax;
-uniform uint uUseNonLinearGrid;
-uniform float uGridFarExtent;
-uniform uint uGridCellCount;
-uniform uint uMaxSurfelsPerCell;
 uniform uint uMaxRecycleCount;
-uniform uvec3 uGridResolution;
-uniform float uRecyclePressureStart;
 uniform float uMaxDistance;
+uniform float uSpawnPopulationKappa = 1.0;
+uniform float uSpawnPopulationCap = 1.0e9;
+uniform uint uSpawnTileCount = 1u;
+// World surfels (plan section 17): their own population cap. Over the cap, they take the over-target term.
+uniform float uWorldPopulationCap = 0.0;
 
-const uint SURFEL_RECYCLE_DUPLICATE_CELLS = 27u;
-const uint SURFEL_RECYCLE_DUPLICATE_CELL_ENTRIES = 32u;
-const uint SURFEL_RECYCLE_DUPLICATE_TESTS = 96u;
-const float SURFEL_RECYCLE_DUPLICATE_NORMAL_COS = 0.72;
-const float SURFEL_RECYCLE_DUPLICATE_PLANE_SCALE = 0.45;
-const float SURFEL_RECYCLE_DUPLICATE_DISTANCE_SCALE = 0.82;
-const uint SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS = 6u;
-const uint SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES = 48u;
-const uint SURFEL_RECYCLE_STABLE_VISIBLE_FRAME_WINDOW = 8u;
-const uint SURFEL_RECYCLE_VALIDATED_SUCCESS_PROTECTION = 3u;
-const uint SURFEL_RECYCLE_YOUNG_SURFEL_PROTECTION_FRAMES = 24u;
-const float SURFEL_RECYCLE_STABLE_VISIBLE_SCORE_SCALE = 0.12;
-const uint SURFEL_REFERENCE_MAX_LIFE = 240u;
-const uint SURFEL_REFERENCE_SLEEPING_MAX_LIFE = SURFEL_REFERENCE_MAX_LIFE / 4u;
-const uint SURFEL_REFERENCE_REF_COUNT_THRESHOLD = 32u;
-const uint SURFEL_REFERENCE_SLEEPING_BIT = 0x80000000u;
-const uint SURFEL_REFERENCE_REUSE_MASK = 0x0000ffffu;
-
-uint SurfelReferenceLife(Surfel surfel)
-{
-    return min(surfel.lifecycle.x, SURFEL_REFERENCE_MAX_LIFE);
-}
-
-bool SurfelReferenceSleeping(Surfel surfel)
-{
-    return (surfel.lifecycle.w & SURFEL_REFERENCE_SLEEPING_BIT) != 0u;
-}
-
-void SurfelReferenceSetLife(inout Surfel surfel, uint life)
-{
-    surfel.lifecycle.x = min(life, SURFEL_REFERENCE_MAX_LIFE);
-}
-
-void SurfelReferenceSetSleeping(inout Surfel surfel, bool sleeping)
-{
-    uint reuse = surfel.lifecycle.w & SURFEL_REFERENCE_REUSE_MASK;
-    surfel.lifecycle.w = sleeping ? (reuse | SURFEL_REFERENCE_SLEEPING_BIT) : reuse;
-}
-
-uint SurfelReferenceReuseScore(Surfel surfel)
-{
-    return surfel.lifecycle.w & SURFEL_REFERENCE_REUSE_MASK;
-}
+// Staleness is zero for the first SURFEL_RECYCLE_STALE_GRACE frames after a visible touch, then ramps to full
+// over SURFEL_RECYCLE_STALE_RAMP frames.
+const float SURFEL_RECYCLE_STALE_GRACE = 30.0;
+const float SURFEL_RECYCLE_STALE_RAMP = 150.0;
+// A surfel spawned this recently is not culled by the score, so a spawn the coverage asked for can show its contribution.
+const uint SURFEL_RECYCLE_YOUNG_FRAMES = 8u;
 
 void PushFreeIndex(uint surfelID)
 {
@@ -117,102 +74,6 @@ bool ReserveRecycleBudget()
     return true;
 }
 
-bool IsDuplicateOfMoreStableSurfel(uint surfelID,
-                                   Surfel surfel,
-                                   SurfelGridAddress baseAddress,
-                                   out uint duplicateCount)
-{
-    duplicateCount = 0u;
-    uint tested = 0u;
-    vec3 surfelPos = surfel.worldPos_radius.xyz;
-    vec3 surfelNormal = SurfelSafeNormalize(surfel.worldNormal_age.xyz);
-    float surfelRadius = max(surfel.worldPos_radius.w, 0.001);
-
-    for (uint n = 0u; n < SURFEL_RECYCLE_DUPLICATE_CELLS; ++n) {
-        if (tested >= SURFEL_RECYCLE_DUPLICATE_TESTS) {
-            break;
-        }
-
-        SurfelGridAddress neighborAddress;
-        if (n == 0u) {
-            neighborAddress = baseAddress;
-        } else {
-            ivec3 offset = SurfelCubeNeighborOffset(n);
-            vec3 samplePos = baseAddress.center + vec3(offset) * max(baseAddress.cellSize, 0.001);
-            if (!SurfelWorldToGridAddress(
-                    samplePos,
-                    uGridMin,
-                    uGridMax,
-                    uGridResolution,
-                    uUseNonLinearGrid,
-                    uGridFarExtent,
-                    neighborAddress)) {
-                continue;
-            }
-        }
-
-        uint cell = neighborAddress.cell;
-        if (cell >= uGridCellCount || uMaxSurfelsPerCell == 0u) {
-            continue;
-        }
-
-        SurfelCellHeader header = gridHeaders[cell];
-        uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
-        uint budget = min(storedCount, SURFEL_RECYCLE_DUPLICATE_CELL_ENTRIES);
-        uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
-
-        for (uint i = 0u; i < budget; ++i) {
-            SurfelCellEntry entry = gridEntries[firstEntry + i];
-            ++tested;
-            if (entry.surfelID >= uMaxSurfels || entry.surfelID == surfelID) {
-                continue;
-            }
-
-            Surfel other = surfels[entry.surfelID];
-            if (!SurfelIsAlive(other) ||
-                other.ids.x != surfel.ids.x ||
-                other.ids.z != surfel.ids.z) {
-                continue;
-            }
-
-            vec3 otherNormal = SurfelSafeNormalize(other.worldNormal_age.xyz);
-            float normalDot = dot(surfelNormal, otherNormal);
-            if (normalDot < SURFEL_RECYCLE_DUPLICATE_NORMAL_COS) {
-                continue;
-            }
-
-            vec3 delta = surfelPos - other.worldPos_radius.xyz;
-            float otherRadius = max(other.worldPos_radius.w, 0.001);
-            float minRadius = min(surfelRadius, otherRadius);
-            float planeDistance = max(abs(dot(delta, surfelNormal)), abs(dot(delta, otherNormal)));
-            float spacing = max(minRadius * SURFEL_RECYCLE_DUPLICATE_DISTANCE_SCALE, 0.020);
-            bool sameSurface = planeDistance <= max(minRadius * SURFEL_RECYCLE_DUPLICATE_PLANE_SCALE, 0.018);
-            if (!sameSurface || length(delta) >= spacing) {
-                continue;
-            }
-
-            ++duplicateCount;
-
-            uint otherContributionAge = uFrameIndex >= other.frameInfo.y ? (uFrameIndex - other.frameInfo.y) : 0u;
-            uint thisContributionAge = uFrameIndex >= surfel.frameInfo.y ? (uFrameIndex - surfel.frameInfo.y) : 0u;
-            float otherConfidence = SurfelSaturate(other.irradiance.a);
-            float thisConfidence = SurfelSaturate(surfel.irradiance.a);
-            bool otherMoreStable =
-                otherConfidence > thisConfidence + 0.08 ||
-                otherContributionAge + 12u < thisContributionAge ||
-                (abs(otherConfidence - thisConfidence) <= 0.08 && entry.surfelID < surfelID);
-            if (otherMoreStable) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
 void main()
 {
     uint surfelID = gl_GlobalInvocationID.x;
@@ -226,197 +87,62 @@ void main()
         return;
     }
 
-    bool invalidTransform = (flags & SURFEL_INVALID) != 0u;
-    uint sampleAge = uFrameIndex >= surfel.frameInfo.x ? (uFrameIndex - surfel.frameInfo.x) : 0u;
-    uint contributionAge = uFrameIndex >= surfel.frameInfo.y ? (uFrameIndex - surfel.frameInfo.y) : 0u;
-    uint updateAge = uFrameIndex >= surfel.frameInfo.z ? (uFrameIndex - surfel.frameInfo.z) : 0u;
+    bool forced = (flags & SURFEL_INVALID) != 0u || surfel.albedo_life.a <= 0.0;
     uint spawnAge = uFrameIndex >= surfel.frameInfo.w ? (uFrameIndex - surfel.frameInfo.w) : 0u;
-    float pressure = 1.0 - clamp(float(counters.freeTop) / max(float(uMaxSurfels), 1.0), 0.0, 1.0);
-    float confidence = SurfelSaturate(surfel.irradiance.a);
-    float variance = SurfelLuminance(max(surfel.shortM2.rgb, vec3(0.0)));
-    bool recentlyVisible = sampleAge <= SURFEL_RECYCLE_STABLE_VISIBLE_FRAME_WINDOW;
-    bool recentlyContributed = contributionAge <= 12u;
-    bool youngSurfel = spawnAge <= SURFEL_RECYCLE_YOUNG_SURFEL_PROTECTION_FRAMES;
-    uint life = SurfelReferenceLife(surfel);
-    uint referenceCount = min(surfel.lifecycle.y, 65535u);
-    bool lastSeen = surfel.lifecycle.z != 0u;
-    bool referenceSleeping = SurfelReferenceSleeping(surfel);
-    bool hasEnoughRefCount = referenceCount >= SURFEL_REFERENCE_REF_COUNT_THRESHOLD;
-    if (lastSeen) {
-        life = SURFEL_REFERENCE_MAX_LIFE;
-        referenceSleeping = false;
-    } else if (youngSurfel && life == 0u) {
-        life = SURFEL_REFERENCE_MAX_LIFE;
-    } else if (life > 0u) {
-        --life;
-    }
-    if (!lastSeen && referenceSleeping && life > SURFEL_REFERENCE_SLEEPING_MAX_LIFE) {
-        life = SURFEL_REFERENCE_SLEEPING_MAX_LIFE;
-    }
-    if (!lastSeen && life <= SURFEL_REFERENCE_SLEEPING_MAX_LIFE && hasEnoughRefCount && !recentlyVisible) {
-        referenceSleeping = true;
-    }
-    uint failedValidationCount = lastSeen
-        ? 0u
-        : min(SURFEL_REFERENCE_MAX_LIFE - life, 65535u);
-    uint successfulValidationCount = referenceCount;
-    uint lowConfidenceFrameCount = (confidence < 0.24 && !recentlyVisible && contributionAge > 24u)
-        ? min(SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES + failedValidationCount, 65535u)
-        : 0u;
-    if (recentlyVisible && successfulValidationCount >= SURFEL_RECYCLE_VALIDATED_SUCCESS_PROTECTION) {
-        failedValidationCount = min(failedValidationCount, SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS - 1u);
-    }
-    uint recentReuseScore = uint(float(SurfelReferenceReuseScore(surfel)) * 0.82);
-    SurfelReferenceSetLife(surfel, life);
-    surfel.lifecycle.y = successfulValidationCount;
-    surfel.lifecycle.z = 0u;
-    surfel.lifecycle.w = recentReuseScore;
-    SurfelReferenceSetSleeping(surfel, referenceSleeping);
+    bool young = spawnAge < SURFEL_RECYCLE_YOUNG_FRAMES;
 
-    float distanceToCamera = length(surfel.worldPos_radius.xyz - uCameraPosition);
-    float maxDistance = max(uMaxDistance, 1.0);
-    float distance01 = SurfelSaturate(distanceToCamera / maxDistance);
-    float stale01 = SurfelSaturate(float(contributionAge) / 180.0);
-    float sampleStale01 = SurfelSaturate(float(sampleAge) / 240.0);
-    float updateStale01 = SurfelSaturate(float(updateAge) / 32.0);
-    float failedValidation01 = SurfelSaturate(float(failedValidationCount) / float(SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS * 2u));
-    float lowConfidence01 = lowConfidenceFrameCount >= SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES
-        ? 1.0 - confidence
-        : 0.0;
-    float lowVariance01 = 1.0 - SurfelSaturate(variance * 32.0);
-    float radiusGrowth = surfel.localPos_spawnRadius.w > 0.0
-        ? surfel.worldPos_radius.w / max(surfel.localPos_spawnRadius.w, 0.001)
-        : 1.0;
-    SurfelGridAddress gridAddress;
-    bool hasGridAddress = SurfelWorldToGridAddress(
-        surfel.worldPos_radius.xyz,
-        uGridMin,
-        uGridMax,
-        uGridResolution,
-        uUseNonLinearGrid,
-        uGridFarExtent,
-        gridAddress);
-    float cellOccupancy01 = 0.0;
-    if (hasGridAddress && gridAddress.cell < uGridCellCount && uMaxSurfelsPerCell > 0u) {
-        cellOccupancy01 = SurfelSaturate(float(gridHeaders[gridAddress.cell].entryCount) / max(float(uMaxSurfelsPerCell), 1.0));
-    }
-    uint duplicateCount = 0u;
-    bool duplicateOfStableNeighbor = hasGridAddress &&
-        IsDuplicateOfMoreStableSurfel(surfelID, surfel, gridAddress, duplicateCount);
-    bool outsideGrid = !hasGridAddress;
-    float outsideGridScore = outsideGrid
-        ? SurfelSaturate((distanceToCamera - maxDistance) / max(maxDistance * 0.35, 1.0))
-        : 0.0;
-    float oversized01 = SurfelSaturate((radiusGrowth - 2.25) / 4.0);
-    float duplicate01 = duplicateOfStableNeighbor
-        ? 1.0
-        : SurfelSaturate(float(duplicateCount) / 3.0);
-    float overCoverage01 = max(
-        smoothstep(0.42, 0.88, cellOccupancy01) * smoothstep(0.12, 0.80, confidence),
-        duplicate01);
-    float configuredPressure01 = smoothstep(clamp(uRecyclePressureStart, 0.0, 0.99), 1.0, pressure);
-    float densityPressure01 = smoothstep(0.42, 0.72, pressure);
-    float pressure01 = max(configuredPressure01, densityPressure01);
-    float reuse01 = SurfelSaturate(float(recentReuseScore) / 65535.0);
-    bool stableVisibleProtection = !invalidTransform &&
-        surfel.albedo_life.a > 0.0 &&
-        (youngSurfel ||
-         (recentlyVisible &&
-          failedValidationCount < SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS &&
-          (successfulValidationCount >= SURFEL_RECYCLE_VALIDATED_SUCCESS_PROTECTION ||
-           confidence > 0.35 ||
-           reuse01 > 0.12)));
+    // Population over target. The free list is read live: culls earlier in this pass have already
+    // raised freeTop, which lowers the measured population.
+    float visible = counters.visiblePreviousFrame > 0u
+        ? float(counters.visiblePreviousFrame)
+        : float(uSpawnTileCount);
+    float target = max(min(uSpawnPopulationKappa * visible, uSpawnPopulationCap), 1.0);
+    float live = max(float(uMaxSurfels) - float(counters.freeTop) - float(counters.liveWorld), 0.0);
+    float overTarget01 = SurfelSaturate((live - target) / target);
 
-    float recycleScore =
-        invalidTransform ? 1.0 :
-        max(
-            distance01 * 0.30 +
-            stale01 * 0.28 +
-            sampleStale01 * 0.12 +
-            lowConfidence01 * 0.16 +
-            lowVariance01 * 0.08 +
-            failedValidation01 * 0.24 +
-            oversized01 * 0.22 +
-            overCoverage01 * 0.45 +
-            outsideGridScore * 0.20 +
-            pressure01 * 0.30,
-            updateStale01 * 0.65
-        );
-    recycleScore = SurfelSaturate(recycleScore);
-    if (stableVisibleProtection) {
-        recycleScore *= SURFEL_RECYCLE_STABLE_VISIBLE_SCORE_SCALE;
-    }
+    // World surfels are measured against their own cap, not the screen target (plan section 17).
+    bool world = (flags & SURFEL_WORLD) != 0u;
+    float worldOver01 = SurfelSaturate((float(counters.liveWorld) - uWorldPopulationCap) / max(uWorldPopulationCap, 1.0));
+    float classOver01 = world ? worldOver01 : overTarget01;
+
+    // Frames since the surfel was last used: visible (coverage touches set frameInfo.x) or referenced by a ray hit
+    // (the cache lookup sets lifecycle.x). Integration sets frameInfo.y only for surfels that were given rays, so using
+    // it would recycle surfels that are visible but starved of rays.
+    uint lastUse = max(surfel.frameInfo.x, surfel.lifecycle.x);
+    uint visibleAge = uFrameIndex >= lastUse ? (uFrameIndex - lastUse) : 0u;
+    float stale01 = SurfelSaturate((float(visibleAge) - SURFEL_RECYCLE_STALE_GRACE) / SURFEL_RECYCLE_STALE_RAMP);
+    float distance01 = SurfelSaturate(length(surfel.worldPos_radius.xyz - uCameraPosition) / max(uMaxDistance, 1.0));
+
+    // GIBS p.29: over-target and stale terms, plus distance scaled by how far over target the population is.
+    float termOver = 0.4 * classOver01;
+    float termStale = 0.3 * stale01;
+    float termFar = 0.3 * distance01 * classOver01;
+    float score = termOver + termStale + termFar;
+    surfel.debug.w = score;
 
     float random = SurfelHash01(surfelID ^ (uFrameIndex * 1664525u) ^ (surfel.ids.x * 1013904223u));
-    float probability = pressure01 > 0.0
-        ? mix(0.01, 0.18, recycleScore) * pressure01
-        : mix(0.0, 0.015, max(stale01, oversized01));
-
-    bool tooFar = uMaxDistance > 0.0 && distanceToCamera > uMaxDistance * 1.35 &&
-        contributionAge > 90u &&
-        sampleAge > 30u;
-    bool outsideGridCull = outsideGrid &&
-        contributionAge > 240u &&
-        sampleAge > 120u &&
-        (pressure01 > 0.0 || outsideGridScore > 0.85) &&
-        random < mix(0.005, 0.08, max(pressure01, outsideGridScore));
-    bool staleCull = contributionAge > 720u &&
-        sampleAge > 240u &&
-        confidence < 0.45 &&
-        lowConfidenceFrameCount >= SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES &&
-        random < 0.015;
-    bool staleRemoval = life == 0u && !youngSurfel && !recentlyVisible;
-    bool duplicateEligible = duplicateOfStableNeighbor &&
-        !stableVisibleProtection &&
-        contributionAge > 4u &&
-        (failedValidationCount >= 3u ||
-         confidence < 0.35 ||
-         !recentlyVisible ||
-         contributionAge > 32u);
-    bool duplicateCull = duplicateEligible &&
-        random < mix(0.35, 0.95, pressure01);
-    bool overCoverageEligible = !stableVisibleProtection &&
-        !youngSurfel &&
-        overCoverage01 > 0.0 &&
-        contributionAge > 48u &&
-        (failedValidationCount >= SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS ||
-         lowConfidenceFrameCount >= SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES ||
-         sampleAge > 30u ||
-         confidence < 0.22);
-    bool overCoverageRemoval = overCoverageEligible &&
-        random < mix(0.02, 0.22, max(overCoverage01, pressure01 * cellOccupancy01));
-    bool overCoverageCull = overCoverageRemoval;
-    bool oversizedCull = !stableVisibleProtection && radiusGrowth > 6.0 && contributionAge > 120u && random < 0.05;
-    bool pressureEligible = !stableVisibleProtection &&
-        !youngSurfel &&
-        pressure01 > 0.0 &&
-        contributionAge > 96u &&
-        (failedValidationCount >= SURFEL_RECYCLE_MIN_FAILED_VALIDATIONS ||
-         lowConfidenceFrameCount >= SURFEL_RECYCLE_LOW_CONFIDENCE_HYSTERESIS_FRAMES ||
-         sampleAge > 24u ||
-         confidence < 0.20);
-    bool pressureCull = pressureEligible &&
-        random < probability;
-    bool shouldRecycle = invalidTransform ||
-        surfel.albedo_life.a <= 0.0 ||
-        outsideGridCull ||
-        staleRemoval ||
-        staleCull ||
-        duplicateCull ||
-        overCoverageCull ||
-        oversizedCull ||
-        pressureCull ||
-        tooFar;
-    surfel.debug.w = recycleScore;
-    if (!shouldRecycle || flags == SURFEL_DEAD) {
+    bool cull = forced || (!young && random < 0.5 * score);
+    if (!cull || !ReserveRecycleBudget()) {
         surfels[surfelID] = surfel;
         return;
     }
+    if (world) {
+        atomicAdd(counters.liveWorld, 0xffffffffu);
+    }
 
-    if (!ReserveRecycleBudget()) {
-        surfel.debug.w = recycleScore;
-        surfels[surfelID] = surfel;
-        return;
+    if (forced) {
+        atomicAdd(counters.recycleForced, 1u);
+    } else if (termOver >= termStale && termOver >= termFar) {
+        atomicAdd(counters.recycleOverTarget, 1u);
+    } else if (termStale >= termFar) {
+        atomicAdd(counters.recycleStale, 1u);
+    } else {
+        atomicAdd(counters.recycleFar, 1u);
+    }
+
+    uint culledSpawnAge = uFrameIndex >= surfel.frameInfo.w ? (uFrameIndex - surfel.frameInfo.w) : 0u;
+    if (culledSpawnAge < 4u) {
+        atomicAdd(counters.recycledYoung, 1u);
     }
 
     SurfelMarkDead(surfel);
@@ -435,11 +161,4 @@ void main()
     }
 
     PushFreeIndex(surfelID);
-    if (duplicateCull || overCoverageCull || oversizedCull) {
-        atomicAdd(counters.overCoverageRecycled, 1u);
-    } else if (staleCull || outsideGridCull || tooFar) {
-        atomicAdd(counters.staleRecycled, 1u);
-    } else if (pressureCull) {
-        atomicAdd(counters.pressureRecycled, 1u);
-    }
 }

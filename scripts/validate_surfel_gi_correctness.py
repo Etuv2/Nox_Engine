@@ -104,19 +104,23 @@ def check_slice_growth_setting() -> None:
 
 def check_grid_rebuilds() -> None:
     pipeline = read("src/passes/SurfelGIPipeline.cpp")
-    require(pipeline.count("rebuildGridAndAverages(true)") == 0,
-            "no mid-frame grid rebuild should build cell averages; averages are built once at the end")
-    require(pipeline.count("buildCellAverages();") == 2,
-            "buildCellAverages is expected in its lambda definition and once at the end of Execute")
+    require(pipeline.count("rebuildGridAndAverages(") == 0 and pipeline.count("buildCellAverages") == 0,
+            "the grid is built once per frame; the mid-frame rebuilds and the separate cell-average pass are gone")
+    require(pipeline.count("buildGrid();") == 1,
+            "buildGrid is expected once, at the end of Execute (count, block sums, scan and scatter)")
+    for label in ("grid_count", "grid_scan", "grid_build"):
+        require(f'timedDispatch("{label}"' in pipeline, f"grid pass {label} must be timed")
 
 
 def check_reference_independence() -> None:
     reference = read("shaders/surfel_gi/reference_gi.comp")
     for forbidden in ("surfels[", "gridHeaders", "gridEntries", "B_SURFELS", "uMaxSurfels", "SurfelIsAlive"):
         require(forbidden not in reference, f"the independent reference must not use surfel state ({forbidden})")
-    require("ReferencePathIrradiance" in reference and "EvaluateHitDirectIrradiance" in reference and
+    # Direct light at each hit and the next-event estimate now live in the shared path (surfel_scene_trace.glsl,
+    # SurfelPathRadiance); the reference keeps its own path entry point and the sky miss term (plan section 14).
+    require("ReferencePathIrradiance" in reference and "SurfelPathRadiance" in reference and
             "EvaluateMissEnvironmentRadiance" in reference,
-            "the reference must use the path tracer, direct light at each hit, and the sky miss term")
+            "the reference must use the path tracer (shared path), and the sky miss term")
 
 
 def main() -> None:

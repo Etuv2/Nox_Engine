@@ -183,6 +183,10 @@ void ProjectSurfelCoverage(uint workItem)
     if (!SurfelIsAlive(surfel)) {
         return;
     }
+    // World surfels (plan section 17) do not count toward screen coverage, so they never suppress a screen spawn.
+    if ((SurfelFlags(surfel) & SURFEL_WORLD) != 0u) {
+        return;
+    }
 
     vec2 uv;
     float projectedDepth;

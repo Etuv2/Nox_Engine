@@ -14,19 +14,20 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> None:
+    # Plan section 14: sky light has one estimator. Hits with no cached irradiance continue their path, and the sky
+    # enters only through the miss rays (EvaluateMissEnvironmentRadiance). The old sky-visibility term at hits, which
+    # was a second estimate of the same light, is gone.
     trace = read("shaders/surfel_gi/trace_rays.comp")
+    shared = read("shaders/surfel_gi/surfel_scene_trace.glsl")
 
-    require("DiffuseSkyHemisphereAccess" in trace,
-            "sky visibility must use a diffuse hemispherical access term")
-    require("0.5 + 0.5 * dot(normal, skyDir)" in trace,
-            "vertical surfaces must retain half-hemisphere sky access instead of near-zero smoothstep access")
-    require("TraceSkyVisibilityDirection" in trace,
-            "sky visibility must trace individual sky directions")
-    require("bentSky = SurfelSafeNormalize(mix(skyUp, normal, 0.28))" in trace and
-            "return clamp(TraceSkyVisibilityDirection(worldPos, normal, bentSky), 0.0, 1.0);" in trace,
-            "real-time sky access must use one bounded bent-sky BVH probe instead of a fake ambient term or three extra traces")
-    require("SkyOcclusionVisibilityFromHitDistance" in trace,
-            "sky access must remain distance-occlusion weighted, not become an unoccluded ambient term")
+    for removed in ("TraceSkyVisibilityDirection", "TraceSkyVisibilityAtSurface", "EvaluateHitEnvironmentIrradiance",
+                    "SkyOcclusionVisibilityFromHitDistance", "DiffuseSkyHemisphereAccess"):
+        require(removed not in trace and removed not in shared,
+                f"{removed} is a second sky estimate and must not come back (plan section 14)")
+    require("SurfelPathRadiance(" in trace and "ShadeHitRadiance(" in trace,
+            "hits must shade through the shared path, which continues where the cache is empty")
+    require("return radiance + throughput * EvaluateMissEnvironmentRadiance(direction);" in shared,
+            "the sky must enter the path only at a miss, weighted by the path throughput")
 
 
 if __name__ == "__main__":

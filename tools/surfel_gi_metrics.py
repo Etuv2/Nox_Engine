@@ -79,9 +79,24 @@ CONFIG_ENV = {
     "ssgi": {"NOX_DISABLE_SURFEL_GI": "1", "NOX_SSGI": "1"},
     "surf": dict(SURF_ENV),
     "both": {"NOX_ENABLE_SURFEL_GI": "1", "NOX_SSGI": "1"},
+    # Quality tiers (Low 0, High 2, Ultra 3; Medium is the default tier 1) and the gather candidate bound.
+    "tier0": {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "0"},
+    "tier2": {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "2"},
+    "tier3": {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "3"},
+    "surf_cand32": {**SURF_ENV, "NOX_SURFEL_GI_GATHER_CANDIDATES": "32"},
+    "surf_cand128": {**SURF_ENV, "NOX_SURFEL_GI_GATHER_CANDIDATES": "128"},
+    "surf_cand256": {**SURF_ENV, "NOX_SURFEL_GI_GATHER_CANDIDATES": "256"},
+    # SSGI-on terms (composite debug 4 = far field, debug 3 = near field). Their sum is the additive GI of "both".
+    "surf_term_both4": {**SURF_ENV, "NOX_SSGI": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_both3": {**SURF_ENV, "NOX_SSGI": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "3"},
     "surf_term": {**SURF_ENV, "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096"},
     "surf_spawn1": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.0"},
+    "surf_k05": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.5"},
+    "surf_k15": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.5"},
+    "surf_norad": {**SURF_ENV, "NOX_SURFEL_GI_RADIAL_DEPTH": "0"},
+    "surf_norecycle": {**SURF_ENV, "NOX_SURFEL_GI_MAX_RECYCLES": "1"},
+    "surf_rc16": {**SURF_ENV, "NOX_SURFEL_GI_MAX_RECYCLES": "16"},
     # WP10 ablations at the same ray budget: guiding off, sharing off (each with its surf_term twin for noise).
     "surf_noguide": {**SURF_ENV, "NOX_SURFEL_GI_RAY_GUIDING": "0"},
     "surf_term_noguide": {**SURF_ENV, "NOX_SURFEL_GI_RAY_GUIDING": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
@@ -91,25 +106,65 @@ CONFIG_ENV = {
     "surf_term_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_r8k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "8192"},
     "surf_term_r8k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "8192", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    # Energy attribution (linear term metrics): one change from surf_term each. The names keep the surf_term prefix.
+    "surf_term_norecycle": {**SURF_ENV, "NOX_SURFEL_GI_MAX_RECYCLES": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_norad": {**SURF_ENV, "NOX_SURFEL_GI_RADIAL_DEPTH": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_avgall": {**SURF_ENV, "NOX_SURFEL_GI_CELL_AVG_ALL": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_reach0": {**SURF_ENV, "NOX_SURFEL_GI_GRID_REACH": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_nodeficit": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_DEFICIT_LIMIT": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k05": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.5", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k15": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.5", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k125": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.25", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k20": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "2.0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_k025": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.25", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    # World surfels (plan section 17): off, and the path depth cap at its old value (32), each with a noise twin.
+    "surf_noworld": {**SURF_ENV, "NOX_SURFEL_GI_WORLD": "0"},
+    "surf_term_noworld": {**SURF_ENV, "NOX_SURFEL_GI_WORLD": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_d32": {**SURF_ENV, "NOX_SURFEL_GI_PATH_DEPTH": "32", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_noworld_d32": {**SURF_ENV, "NOX_SURFEL_GI_WORLD": "0", "NOX_SURFEL_GI_PATH_DEPTH": "32",
+                              "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_w8": {**SURF_ENV, "NOX_SURFEL_GI_WORLD_SPAWNS": "8", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    "surf_term_w32": {**SURF_ENV, "NOX_SURFEL_GI_WORLD_SPAWNS": "32", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "ref": REF_ENV,
     "indep": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0"},
     # Reference GI alone (composite debug 4), the same quantity as surf_term. Use it for ratios: "indep" energy
     # is composite minus off, which cancels the deferred IBL that off contains on sky-lit scenes.
     "indep_term": {"NOX_GI_REFERENCE": "1", "NOX_SSGI": "0", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
 }
+# Quality tiers (plan section 20). N = 0 Low, 1 Medium (default), 2 High, 3 Ultra. surf_t<N> is composite minus off (timing,
+# energy); surf_term_t<N> is the GI term alone (energy, noise, convergence); both_t<N> turns SSGI on. The surf_term prefix
+# makes the analysis use the term metrics.
+for _tier in range(4):
+    CONFIG_ENV[f"surf_t{_tier}"] = {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": str(_tier)}
+    CONFIG_ENV[f"surf_term_t{_tier}"] = {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": str(_tier),
+                                         "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"}
+    CONFIG_ENV[f"both_t{_tier}"] = {"NOX_ENABLE_SURFEL_GI": "1", "NOX_SSGI": "1",
+                                    "NOX_SURFEL_GI_QUALITY_TIER": str(_tier)}
+# Medium without the emitter distance cut (plan section 20): the twin of surf_term_t1 for the cut's energy and cost.
+CONFIG_ENV["surf_term_t1_nocut"] = {**SURF_ENV, "NOX_SURFEL_GI_QUALITY_TIER": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4",
+                                    "NOX_SURFEL_GI_EMITTER_CULL": "0"}
 LIVE_PLAN = (261, 200, 260)  # last run frame, analysis window first and last frame
+DUMP_STEP = 1                # dump every Nth frame of the live window (--dump-step)
 LONG_PLAN = (899, 780, 840)
+# Set from --env: applied to every run on top of the config's own variables (for parameter sweeps).
+EXTRA_ENV = {}
 LONG_CONFIGS = ("ref", "indep", "indep_term")
 REF_CONFIGS = ("indep", "ref")
 # Configs whose energy is the composite debug-4 term itself (surfel or reference GI alone), not composite minus off.
 TERM_CONFIG_PREFIXES = ("surf_term", "indep_term")
-GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1",
+GI_CONFIGS = ("ssgi", "surf", "both", "ref", "indep", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15",
               "surf_noguide", "surf_nosharing", "surf_r8k")
-SURFEL_LOG_CONFIGS = ("surf", "both", "surf_term", "surf_r4k", "surf_spawn1", "ref",
+SURFEL_LOG_CONFIGS = ("surf", "both", "tier0", "tier2", "tier3", "surf_cand32", "surf_cand128", "surf_cand256",
+                      "surf_term", "surf_r4k", "surf_spawn1", "surf_k05", "surf_k15", "ref",
                       "surf_noguide", "surf_term_noguide", "surf_nosharing", "surf_term_nosharing",
-                      "surf_term_r4k", "surf_r8k", "surf_term_r8k")
+                      "surf_term_r4k", "surf_r8k", "surf_term_r8k",
+                      "surf_noworld", "surf_term_noworld", "surf_term_d32", "surf_term_noworld_d32",
+                      "surf_term_w8", "surf_term_w32")
 REQUIRED_COUNTERS = ("liveSurfels", "requestedRays", "allocatedRays", "shortfall")
-OPTIONAL_COUNTERS = ("youngSurfels", "overflowGridEntries", "rayShortfall")
+OPTIONAL_COUNTERS = ("youngSurfels", "overflowGridEntries", "rayShortfall",
+                     "worldRequests", "worldDropped", "worldSpawned", "worldSkipped", "liveWorld", "liveWorldCounted",
+                     "cacheHits", "cacheMisses", "underCoveredTiles", "coverageVisibleTileCount",
+                     "requestedWorld", "allocatedWorld", "worldAgeSum", "worldHistorySum")
 SPREAD_KEYS = ["energy", "indep_ratio", "indep_rmse_rel", "indep_pearson", "noise_rel",
                "gi_both_minus_ssgi", "gi_surf_minus_off", "sum_labels_ms", "total_gpu_ms", "shortfall"]
 
@@ -131,8 +186,11 @@ class HarnessError(Exception):
 
 def plan_for(cfg):
     """(last run frame, analysis window frame list) for a config."""
-    last, lo, hi = LONG_PLAN if cfg in LONG_CONFIGS else LIVE_PLAN
-    return last, list(range(lo, hi + 1))
+    if cfg in LONG_CONFIGS:
+        last, lo, hi = LONG_PLAN
+        return last, list(range(lo, hi + 1))
+    last, lo, hi = LIVE_PLAN
+    return last, list(range(lo, hi + 1, DUMP_STEP))
 
 
 def run_dir_for(out_dir, cfg, rep, repeat):
@@ -156,10 +214,10 @@ def is_complete(cfg, run_dir):
     return (run_dir / "run.log").is_file() and all(f in have for f in plan_for(cfg)[1])
 
 
-def scene_arg_for(path):
-    """Scene argument as the engine expects it: repo-relative when inside the repo."""
+def scene_arg_for(path, root=REPO_ROOT):
+    """Scene argument as the engine expects it: relative to the engine source root when inside it."""
     try:
-        return path.relative_to(REPO_ROOT).as_posix()
+        return path.relative_to(root).as_posix()
     except ValueError:
         return str(path)
 
@@ -234,6 +292,7 @@ def launch(exe, scene_arg, run_dir, cfg, camera_path, timeout, cwd=REPO_ROOT):
     env = {k: v for k, v in os.environ.items() if not k.startswith("NOX_")}
     env.update(BASE_ENV)
     env.update(CONFIG_ENV[cfg])
+    env.update(EXTRA_ENV)
     env.update({"NOX_FINAL_DUMP_DIR": str(run_dir),
                 "NOX_FINAL_DUMP_FRAMES": ",".join(str(f) for f in window),
                 "NOX_EXIT_AFTER_FRAMES": str(last + 2)})
@@ -650,8 +709,17 @@ def jsonable(x):
 def collect_runs(args, exe, scene, configs, out_dir, warnings):
     """Launch (or reuse) every config and repeat. Returns {(cfg, rep): run dir}."""
     runs = {}
-    with scene_for_runs(scene) as scene_path:
-        scene_arg = scene_arg_for(scene_path)
+    engine_root = Path(args.cwd).resolve() if args.cwd else REPO_ROOT
+    # A scene under this checkout is launched from the same relative path in --cwd's tree, so the engine (and the manual
+    # exposure temp copy, which is written next to the scene) stay inside that source root.
+    scene_src = scene
+    if engine_root != REPO_ROOT:
+        try:
+            scene_src = engine_root / scene.resolve().relative_to(REPO_ROOT)
+        except ValueError:
+            scene_src = scene
+    with scene_for_runs(scene_src) as scene_path:
+        scene_arg = scene_arg_for(scene_path, engine_root)
         for rep in range(1, args.repeat + 1):
             for cfg in configs:
                 run_dir = run_dir_for(out_dir, cfg, rep, args.repeat)
@@ -765,7 +833,30 @@ def main(argv=None):
     parser.add_argument("--json", help="JSON output (default OUT_DIR/surfel_gi_metrics.json)")
     parser.add_argument("--reuse", action="store_true", help="skip configs whose run.log and dumps exist")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="hard timeout per run (s)")
+    parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE",
+                        help="extra environment variable for every run, after the config's own (repeatable)")
+    parser.add_argument("--frames", metavar="LO:HI", default="",
+                        help="analysis window of the live configs (default 200:260); the run ends at HI+1. "
+                             "The reference configs keep their own window.")
+    parser.add_argument("--dump-step", type=int, default=1,
+                        help="dump every Nth frame of the live window (default 1); e.g. --frames 10:900 --dump-step 10 "
+                             "for a convergence run (plan section 20)")
     args = parser.parse_args(argv)
+    for item in args.env:
+        name, sep, value = item.partition("=")
+        if not sep or not name:
+            parser.error(f"--env expects NAME=VALUE: {item!r}")
+        EXTRA_ENV[name] = value
+    global LIVE_PLAN, DUMP_STEP
+    if args.frames:
+        try:
+            lo, hi = (int(v) for v in args.frames.split(":"))
+        except ValueError:
+            parser.error(f"--frames expects LO:HI: {args.frames!r}")
+        if not (0 <= lo <= hi) or args.dump_step < 1:
+            parser.error("--frames needs 0 <= LO <= HI and --dump-step >= 1")
+        LIVE_PLAN = (hi + 1, lo, hi)
+    DUMP_STEP = max(args.dump_step, 1)
 
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
     unknown = [c for c in configs if c not in CONFIG_ENV]

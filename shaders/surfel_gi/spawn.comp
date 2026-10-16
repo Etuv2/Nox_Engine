@@ -59,6 +59,17 @@ layout(binding = T_SURFEL_GBUFFER_EMISSIVE) uniform sampler2D uEmissiveTex;
 layout(binding = T_SURFEL_GBUFFER_TRANSFORM_ID) uniform usampler2D uTransformIDTex;
 layout(binding = T_SURFEL_GBUFFER_DEPTH) uniform sampler2D uDepthTex;
 
+// World mode (uWorldMode = 1, plan section 17): one invocation per queued path hit, not per tile.
+layout(binding = B_SURFEL_WORLD_REQUESTS, std430) readonly buffer SurfelWorldRequestBuffer
+{
+    SurfelWorldRequest worldRequests[];
+};
+
+uniform uint uWorldMode = 0u;
+uniform uint uWorldSpawnBudget = 0u;
+uniform uint uWorldPopulationCap = 0u;
+uniform uint uWorldRequestCapacity = 4096u;
+
 uniform uint uMaxSpawnCandidates;
 uniform uvec2 uTileCount;
 uniform uint uTileSize;
@@ -66,8 +77,18 @@ uniform uint uSpawnPassCount;
 uniform uint uSpawnPassIndex;
 uniform uint uSpawnCandidateCount;
 uniform uint uMaxSpawnsPerFrame;
+// The budget ceiling grows with the visible tile count: visible tiles / uSpawnBudgetTileDivisor, bounded by
+// uSpawnBudgetCeiling (per tier, set by the host). uMaxSpawnsPerFrame is the floor.
+uniform float uSpawnBudgetTileDivisor = 16.0;
+uniform uint uSpawnBudgetCeiling = 512u;
+// 1 = the budget is also capped by the population deficit to kappa x visible tiles; 0 = only by the coverage demand.
+uniform uint uSpawnBudgetDeficitLimit = 1u;
 uint gSpawnBudget = 0u;   // spawns allowed for the current tile decision (thread 0)
-uniform float uSpawnBudgetScale = 1.0;
+// kappa: population target per visible tile (WP4). Replaces the old deficit-scaled budget.
+uniform float uSpawnPopulationKappa = 1.0;
+// Upper bound on the population target (live surfels). kappa x visible tiles is capped here: at 1080p nearly every tile is
+// visible, and the uncapped target then dilutes the ray budget over far more surfels than coverage needs.
+uniform float uSpawnPopulationCap = 1.0e9;
 uniform uint uSpawnSampleStride = 1u;   // 1 = every pixel of the tile is a candidate each frame
 // Gather coverage written by apply_indirect (one frame old), at the final-gather resolution.
 uniform sampler2D uCoverageTex;
@@ -108,7 +129,7 @@ const uint SURFEL_PLACEMENT_VALIDATION_CANDIDATES = 2u;
 const uint SURFEL_PLACEMENT_VALIDATION_TILE_PHASES = 8u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELLS = 7u;
 const uint SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES = 16u;
-const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 64u;
+const uint SURFEL_SPAWN_MAX_COVERAGE_TESTS = 16u;
 const uint SURFEL_SPAWN_DUPLICATE_CELLS = 27u;
 const uint SURFEL_SPAWN_DUPLICATE_CELL_ENTRIES = 24u;
 const uint SURFEL_FAST_FILL_RESPAWN_COOLDOWN = 24u;
@@ -147,6 +168,10 @@ struct SpawnCandidate
     float importance;
     vec3 initialCellIrradiance;
     float initialCellConfidence;
+    // World mode: the albedo and emission come from the path hit, not from the G-buffer pixel.
+    bool hasOverride;
+    vec3 overrideAlbedo;
+    vec3 overrideEmissive;
 };
 
 bool MaterialAllowsSurfelGI(uint materialID)
@@ -231,6 +256,7 @@ bool PopFreeIndex(out uint surfelID)
 bool ReserveSpawnBudget()
 {
     if (gSpawnBudget == 0u) {
+        atomicAdd(counters.spawnBudgetDenied, 1u);
         atomicAdd(counters.rejectedPoolFull, 1u);
         return false;
     }
@@ -238,6 +264,7 @@ bool ReserveSpawnBudget()
     uint slot = atomicAdd(counters.spawnedThisFrame, 1u);
     if (slot >= gSpawnBudget) {
         atomicAdd(counters.spawnedThisFrame, 0xffffffffu);
+        atomicAdd(counters.spawnBudgetDenied, 1u);
         atomicAdd(counters.rejectedPoolFull, 1u);
         return false;
     }
@@ -364,23 +391,6 @@ float SurfelCandidateSelectionPriority(uvec2 tile,
     return SurfelHash01(seed) * 0.012;
 }
 
-float TilePlacementProbability(float coverage,
-                               float effectiveThreshold,
-                               uint unresolvedAge,
-                               bool highPriority,
-                               float importance)
-{
-    float deficit = SurfelSaturate((effectiveThreshold - coverage) / max(effectiveThreshold, 1e-4));
-    float age = SurfelSaturate(float(unresolvedAge) / 8.0);
-    float base = mix(0.10, 0.58, deficit);
-    base += highPriority ? 0.24 : 0.0;
-    base += age * 0.18;
-    base += importance * 0.24;
-    if (uCameraMotionBoost != 0u) {
-        base += 0.12;
-    }
-    return clamp(base, 0.08, highPriority ? 0.96 : 0.82);
-}
 
 float SurfelIrradianceCoverageQualification(Surfel surfel)
 {
@@ -464,9 +474,6 @@ float ComputeCandidateCoverage(vec3 worldPos,
         uint budget = min(min(storedCount, SURFEL_SPAWN_MAX_COVERAGE_CELL_ENTRIES),
                           SURFEL_SPAWN_MAX_COVERAGE_TESTS - coverageTests);
         uint firstEntry = header.firstEntry;
-        if (firstEntry == 0u && cell != 0u) {
-            firstEntry = cell * uMaxSurfelsPerCell;
-        }
 
         uint strideSeed = SurfelHash((cell * 747796405u) ^ (uint(baseAddress.coord.x) * 2891336453u) ^ (uint(baseAddress.coord.y) * 1597334677u) ^ (uint(baseAddress.coord.z) * 3812015801u));
         uint startIndex = storedCount > 0u ? strideSeed % storedCount : 0u;
@@ -507,6 +514,8 @@ float ComputeCandidateCoverage(vec3 worldPos,
             if (ReferenceCoverageSatisfied(coverage)) {
                 initialCellIrradiance = irradianceWeight > 1e-5 ? irradianceSum / irradianceWeight : vec3(0.0);
                 initialCellConfidence = SurfelSaturate(irradianceWeight / max(float(max(coverageTests, 1u)), 1.0));
+                atomicAdd(counters.lookupsSpawn, 1u);
+                atomicAdd(counters.entriesSpawn, coverageTests);
                 return coverage;
             }
         }
@@ -514,6 +523,8 @@ float ComputeCandidateCoverage(vec3 worldPos,
 
     initialCellIrradiance = irradianceWeight > 1e-5 ? irradianceSum / irradianceWeight : vec3(0.0);
     initialCellConfidence = SurfelSaturate(irradianceWeight / max(float(max(coverageTests, 1u)), 1.0));
+    atomicAdd(counters.lookupsSpawn, 1u);
+    atomicAdd(counters.entriesSpawn, coverageTests);
     return coverage;
 }
 
@@ -688,24 +699,37 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     float radius = candidate.adaptiveRadius > 0.0
         ? candidate.adaptiveRadius
         : SpawnRadiusForWorldPosition(worldPos);
+    // One grid cell side at most (GIBS p.33): the grid stores a surfel in the cells its support overlaps.
+    float cellSideRadius = SurfelGridCellSizeAtWorld(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
+    if (cellSideRadius < radius) {
+        atomicAdd(counters.radiusCapped, 1u);
+    }
+    radius = min(radius, cellSideRadius);
     if (isnan(radius) || isinf(radius) || radius <= 0.0 || radius > max(uMaxSurfelRadius * 4.0, 0.01)) {
         atomicAdd(counters.rejectedInvalidRadius, 1u);
         return false;
     }
 
-    if (!ReserveSpawnBudget()) {
+    // World surfels have their own per-frame budget (the dispatch size) and population cap, so they do not take a screen spawn.
+    if (!candidate.hasOverride && !ReserveSpawnBudget()) {
         return false;
     }
 
     uint surfelID = SURFEL_INVALID_INDEX;
     if (!PopFreeIndex(surfelID)) {
-        ReleaseSpawnBudget();
+        if (!candidate.hasOverride) {
+            ReleaseSpawnBudget();
+        }
         return false;
     }
 
-    float metallic = clamp(texelFetch(uPackedNormalRMTex, pixel, 0).a, 0.0, 1.0);
-    vec3 albedo = max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0)) * (1.0 - metallic);
-    vec3 emissive = max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
+    float metallic = candidate.hasOverride ? 0.0 : clamp(texelFetch(uPackedNormalRMTex, pixel, 0).a, 0.0, 1.0);
+    vec3 albedo = candidate.hasOverride
+        ? candidate.overrideAlbedo
+        : max(texelFetch(uAlbedoAOTex, pixel, 0).rgb, vec3(0.0)) * (1.0 - metallic);
+    vec3 emissive = candidate.hasOverride
+        ? candidate.overrideEmissive
+        : max(texelFetch(uEmissiveTex, pixel, 0).rgb, vec3(0.0));
     vec3 initialCellIrradiance = max(candidate.initialCellIrradiance, vec3(0.0)) * 0.45;
     float directNdotL = max(dot(worldNormal, SurfelSafeNormalize(-uDirectionalLightDirection)), 0.0);
     float initialDirectScale = 0.04;
@@ -722,7 +746,7 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     surfel.worldPos_radius = vec4(worldPos, radius);
     surfel.worldNormal_age = vec4(worldNormal, 0.0);
     surfel.localPos_spawnRadius = vec4(localPos.xyz, radius);
-    uint flags = SURFEL_ALIVE | SURFEL_NEW;
+    uint flags = SURFEL_ALIVE | SURFEL_NEW | (candidate.hasOverride ? SURFEL_WORLD : 0u);
     if (SurfelLuminance(emissive) > 1e-5) {
         flags |= SURFEL_EMISSIVE;
     }
@@ -736,13 +760,15 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     surfel.shortMean.a = 1.0;
     surfel.shortM2.a = 0.0;
     surfel.frameInfo = uvec4(uFrameIndex, uFrameIndex, uFrameIndex, uFrameIndex);
-    surfel.lifecycle = uvec4(0u, 0u, 0u, 0u);
+    // lifecycle.x: last frame a ray referenced it (recycling). A world surfel starts referenced by the hit that spawned it.
+    surfel.lifecycle = uvec4(candidate.hasOverride ? uFrameIndex : 0u, 0u, 0u, 0u);
     surfel.debug = vec4((vec2(candidate.pixelU) + vec2(0.5)) / vec2(uResolution),
                         clamp(candidateCoverage / max(uCoverageThreshold, 1e-4), 0.0, 1.0),
                         0.0);
     surfels[surfelID] = surfel;
 
-    float radialDefaultDepth = max(radius * 8.0, 1.25);
+    // Default radial depth: twice the gather reach, so an unobserved hemisphere is open well past the reach (WP6).
+    float radialDefaultDepth = 2.0 * SurfelCoverageSupportRadiusAt(worldPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
     uint radialBase = surfelID * SURFEL_RADIAL_DEPTH_TEXELS;
     for (uint bin = 0u; bin < SURFEL_RADIAL_DEPTH_TEXELS; ++bin) {
         radialDepth[radialBase + bin].meanDepth = radialDefaultDepth;
@@ -961,23 +987,101 @@ void InitSpawnCandidate(out SpawnCandidate candidate, uvec2 pixelU)
     candidate.importance = 0.0;
     candidate.initialCellIrradiance = vec3(0.0);
     candidate.initialCellConfidence = 0.0;
+    candidate.hasOverride = false;
+    candidate.overrideAlbedo = vec3(0.0);
+    candidate.overrideEmissive = vec3(0.0);
 }
 
-// Spawn budget for this frame. The base share of the tile count is scaled by the deficit seen
-// last frame (under-covered visible tiles / visible tiles), so the budget follows resolution and
-// coverage need instead of a fixed count. Capped by uMaxSpawnsPerFrame (the settings ceiling).
+// Spawn budget for this frame. The demand is half of last frame's under-covered visible tiles: each of
+// them wants a spawn, and half of them per frame closes the gap in a few frames. The demand is clamped to
+// the floor (uMaxSpawnsPerFrame) and to a ceiling that grows with the visible tile count, and it never
+// exceeds the population deficit to kappa x visible tiles.
 uint ComputeSpawnBudget(uint tileCount)
 {
-    float deficit = counters.visiblePreviousFrame > 0u
-        ? clamp(float(counters.underCoveredPreviousFrame) / float(counters.visiblePreviousFrame), 0.0, 1.0)
-        : 1.0;
-    float budget = float(tileCount) * (0.004 + 0.06 * deficit) * uSpawnBudgetScale;
-    uint scaled = uint(clamp(budget, 16.0, max(float(tileCount) / 8.0, 16.0)));
-    return min(scaled, uMaxSpawnsPerFrame);
+    // Population target N_target = kappa * visible tiles (last frame's count; every tile until the
+    // first count exists). The budget closes the deficit to the target, so recycling this frame
+    // frees room for spawns this frame. Live = pool size minus free slots: the free list is current
+    // here because recycling has already run.
+    float visible = counters.visiblePreviousFrame > 0u ? float(counters.visiblePreviousFrame) : float(tileCount);
+    float target = min(uSpawnPopulationKappa * visible, uSpawnPopulationCap);
+    // Screen population only: world surfels have their own cap (plan section 17), so they do not take the screen budget.
+    float live = max(float(uMaxSurfels) - float(counters.freeTop) - float(counters.liveWorld), 0.0);
+    float deficit = uSpawnBudgetDeficitLimit != 0u ? max(target - live, 0.0) : float(uMaxSurfels);
+    float floorBudget = float(uMaxSpawnsPerFrame);
+    float ceilingBudget = max(floorBudget,
+        min(visible / max(uSpawnBudgetTileDivisor, 1.0), float(uSpawnBudgetCeiling)));
+    float demand = 0.5 * float(counters.underCoveredPreviousFrame);
+    return uint(min(deficit, clamp(demand, floorBudget, ceilingBudget)));
+}
+
+// World mode: one queued path hit. A hit whose coverage already holds (the cache missed on a zero-weight surfel, or a
+// neighbour covers it) is skipped; otherwise a surfel is allocated at the hit with the screen footprint radius.
+void WorldSpawnMain()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint queued = min(counters.worldRequests, min(uWorldRequestCapacity, uint(worldRequests.length())));
+    if (index >= min(queued, uWorldSpawnBudget)) {
+        return;
+    }
+    if (counters.liveWorld >= uWorldPopulationCap) {
+        return;
+    }
+
+    SurfelWorldRequest request = worldRequests[index];
+    uint transformID = request.ids.x;
+    if (transformID >= uTransformCount) {
+        atomicAdd(counters.rejectedInvalidTransform, 1u);
+        return;
+    }
+    vec3 worldPos = request.worldPos_pad.xyz;
+    vec3 worldNormal = SurfelSafeNormalize(request.normal_pad.xyz);
+    if (!IsReasonableWorldPosition(worldPos) || !IsFiniteVec3(worldNormal)) {
+        atomicAdd(counters.rejectedInvalidWorldPos, 1u);
+        return;
+    }
+
+    SpawnCandidate candidate;
+    InitSpawnCandidate(candidate, uvec2(0u));
+    candidate.valid = true;
+    candidate.worldPos = worldPos;
+    candidate.worldNormal = worldNormal;
+    candidate.transformID = transformID;
+    candidate.materialID = request.ids.y;
+    candidate.hasOverride = true;
+    candidate.overrideAlbedo = max(request.albedo_pad.rgb, vec3(0.0));
+    candidate.overrideEmissive = vec3(0.0);
+    candidate.adaptiveRadius = SpawnRadiusForWorldPosition(worldPos);
+    if (!SurfelWorldToGridAddress(worldPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent,
+            candidate.baseAddress)) {
+        atomicAdd(counters.rejectedOutsideGrid, 1u);
+        return;
+    }
+
+    uint nearbyCount = 0u;
+    vec3 cellIrradiance = vec3(0.0);
+    float cellConfidence = 0.0;
+    float coverage = ComputeCandidateCoverage(worldPos, worldNormal, candidate.baseAddress, transformID, candidate.materialID,
+        candidate.adaptiveRadius, nearbyCount, cellIrradiance, cellConfidence);
+    if (coverage >= uCoverageThreshold) {
+        atomicAdd(counters.worldSkippedCovered, 1u);
+        return;
+    }
+    candidate.coverage = coverage;
+    candidate.nearbySurfelCount = nearbyCount;
+    candidate.initialCellIrradiance = cellIrradiance;
+    candidate.initialCellConfidence = cellConfidence;
+    if (SpawnSurfelFromCandidate(candidate, coverage)) {
+        atomicAdd(counters.worldSpawned, 1u);
+        atomicAdd(counters.liveWorld, 1u);
+    }
 }
 
 void main()
 {
+    if (uWorldMode != 0u) {
+        WorldSpawnMain();
+        return;
+    }
     uint workItem = gl_WorkGroupID.x;
     uint localIndex = gl_LocalInvocationIndex;
 
@@ -1116,7 +1220,17 @@ void main()
                 SpawnCandidate bestCandidate;
                 InitSpawnCandidate(bestCandidate, tileOrigin);
                 if (bestLane != 0xffffffffu) {
-                    EvaluateSpawnCandidate(tileOrigin + uvec2(bestLane % tileSize, bestLane / tileSize), bestCandidate);
+                    // Lazy candidate: a tile whose lowest coverage is above the highest spawn threshold (0.85 + 0.075
+                    // jitter) cannot spawn, so the full evaluation (the grid query) is skipped and the lane's coverage
+                    // stands in for it. The spawn decision and the under-coverage count use the same coverage value.
+                    uvec2 bestPixel = tileOrigin + uvec2(bestLane % tileSize, bestLane / tileSize);
+                    if (uintBitsToFloat(sMinBits) < uCoverageThreshold + 0.08) {
+                        EvaluateSpawnCandidate(bestPixel, bestCandidate);
+                    } else {
+                        bestCandidate.valid = true;
+                        bestCandidate.pixelU = bestPixel;
+                        bestCandidate.coverage = uintBitsToFloat(sMinBits);
+                    }
                 }
                 float bestCoverage = bestCandidate.valid ? bestCandidate.coverage : 3.402823466e+38;
                 if (round == 0u) {
@@ -1136,39 +1250,22 @@ void main()
                     firstCoverage = bestCoverage;
                     firstThreshold = effectiveCoverageThreshold;
                 }
-                if (!coverageEnough) {
+                if (bestCandidate.valid) {
                     bool shouldSpawn;
-                    bool highPriority = CoverageTileHighPriority(
-                        bestCandidate.valid,
-                        bestCoverage,
-                        PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousTileState.state.y));
-                    float placementProbability = TilePlacementProbability(
-                        bestCoverage,
-                        effectiveCoverageThreshold,
-                        previousTileState.state.y,
-                        highPriority,
-                        bestCandidate.importance);
+                    // Threshold 0.85 +/- 0.075 from the tile's blue-noise value (spec 5.5), so tiles cross
+                    // the level on different frames instead of all at once.
                     uint salt = tileIndex + round * 7919u;
-                    float tileBlueNoise = SurfelCandidateBlueNoise(tile, uFrameIndex, passIndex, salt);
+                    float spawnThreshold = uCoverageThreshold +
+                        0.15 * (SurfelCandidateBlueNoise(tile, uFrameIndex, passIndex, salt) - 0.5);
                     if (round == 0u) {
-                        shouldSpawn = bestCandidate.valid &&
-                            (ShouldPlaceForReferenceCoverage(bestCoverage) ||
-                             (bestCoverage < effectiveCoverageThreshold &&
-                              PredictedCoverageUnresolvedAge(bestCandidate.valid, bestCoverage, previousTileState.state.y) >= SURFEL_COVERAGE_PRIORITY_AGE));
-                        if (tileBlueNoise > placementProbability) {
-                            shouldSpawn = false;
-                        }
-                        if (uBypassCoverageSearch != 0u && tileWasSeeded && (uCameraMotionBoost == 0u || hadRecentSpawn)) {
-                            shouldSpawn = false;
-                        }
-                        if (hadRecentSpawn) {
-                            shouldSpawn = false;
-                        }
+                        // The tile's cooldown frame skips a spawn, so the coverage map (one frame old) does not
+                        // place the same surfel twice.
+                        shouldSpawn = bestCoverage < spawnThreshold && !hadRecentSpawn;
                     } else {
-                        // Extra rounds: only where the coverage is very low, and not in the tile's cooldown frame.
-                        shouldSpawn = bestCandidate.valid &&
-                            bestCoverage < 0.5 * effectiveCoverageThreshold &&
-                            tileBlueNoise <= placementProbability;
+                        shouldSpawn = bestCoverage < spawnThreshold;
+                    }
+                    if (shouldSpawn) {
+                        atomicAdd(counters.spawnDecisions, 1u);
                     }
                     if (shouldSpawn && SpawnSurfelFromCandidate(bestCandidate, bestCoverage)) {
                         sRound[0] = 1u;

@@ -61,7 +61,13 @@ vec3 SurfelMSMEGate(vec3 batchMean, vec3 shortMean, vec3 variance)
 // surfel's mean is a running average until that share falls below SURFEL_MSME_LONG_RATE.
 const bool SURFEL_MSME_CUMULATIVE = true;
 
-void SurfelMSMEUpdate(inout SurfelMSMEData data, vec3 x, float lightingChange, bool newSurfel, float cumulativeRate)
+// MSME-style catch-up (plan section 19). The long mean weighs every sample since the surfel's birth at 1/n, so a young
+// surfel whose early samples were biased (its cache neighbours were still filling) keeps that bias for about n frames.
+// When the short-window mean disagrees with the long mean by more than the short-window noise, the long rate rises
+// (up to catchUpMax, at catchUpGain per unit of excess), so the estimate follows the change at once. In steady state the
+// two means agree and the rate stays at its floor. catchUpGain 0 turns it off.
+void SurfelMSMEUpdate(inout SurfelMSMEData data, vec3 x, float lightingChange, bool newSurfel, float cumulativeRate,
+                      float longRate, float catchUpGain, float catchUpMax)
 {
     vec3 previousShort = data.shortMean;
     data.shortMean = mix(previousShort, x, SURFEL_MSME_SHORT_RATE);
@@ -70,11 +76,18 @@ void SurfelMSMEUpdate(inout SurfelMSMEData data, vec3 x, float lightingChange, b
     }
     vec3 delta = x - previousShort;
     data.variance = mix(data.variance, delta * delta, SURFEL_MSME_SHORT_RATE);
+    float catchUp = 0.0;
+    if (catchUpGain > 0.0) {
+        float gap = SurfelLuminance(abs(data.shortMean - data.mean));
+        float noise = sqrt(max(SurfelLuminance(max(data.variance, vec3(0.0))), 0.0)) +
+            0.05 * SurfelLuminance(max(data.mean, vec3(0.0))) + 1e-4;
+        catchUp = clamp((gap / noise - 1.0) * catchUpGain, 0.0, catchUpMax);
+    }
 
     // The long rate stays at its floor in steady state. The spec's reactive blend (alpha up to 0.35 when
     // the absolute short variance is large) is not scale-free: on irradiance of order 0.3 it held alpha
     // near 0.35 and failed the energy and noise targets. Change is handled by the lighting path below.
-    float alpha = SURFEL_MSME_LONG_RATE;
+    float alpha = longRate;
     if (SURFEL_MSME_CUMULATIVE) {
         alpha = max(alpha, cumulativeRate);
     }
@@ -82,6 +95,7 @@ void SurfelMSMEUpdate(inout SurfelMSMEData data, vec3 x, float lightingChange, b
         alpha = max(alpha, SURFEL_MSME_NEW_RATE);
     }
     alpha = max(alpha, lightingChange * SURFEL_MSME_LIGHTING_RATE);
+    alpha = max(alpha, catchUp);
     data.mean = mix(data.mean, x, alpha);
 }
 

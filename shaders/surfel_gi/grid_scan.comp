@@ -1,0 +1,118 @@
+#version 460 core
+
+// Grid build, pass 2 of 3: scan. One workgroup per block of SURFEL_GRID_BLOCK_CELLS cells, one cell per lane.
+// The block offset is the sum of the earlier blocks' totals (from this frame's parity of the block sum buffer).
+// The in-block exclusive scan is a Hillis-Steele pass with one barrier per step. Each cell gets firstEntry and
+// entryCount (clamped to the entry capacity; the rest is counted as overflow). The other parity of the block
+// sums is cleared here, ready for the next frame's count pass.
+
+layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+
+#include "common.glsl"
+
+layout(binding = B_GRID_HEADERS, std430) buffer SurfelGridHeaderBuffer
+{
+    SurfelCellHeader gridHeaders[];
+};
+
+layout(binding = B_GRID_PENDING, std430) buffer SurfelGridPendingBuffer
+{
+    uint pendingCounts[];
+};
+
+layout(binding = B_GRID_CELL_SUMS, std430) buffer SurfelGridCellSumBuffer
+{
+    SurfelCellSums gridCellSums[];
+};
+
+layout(binding = B_GRID_BLOCK_SUMS, std430) buffer SurfelGridBlockSumBuffer
+{
+    uint blockSums[];
+};
+
+layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
+{
+    SurfelCounters counters;
+};
+
+uniform uint uGridCellCount;
+uniform uint uGridBlockCount;
+uniform uint uBlockParity;
+uniform uint uEntryCapacity;
+
+shared uint sEarlier;
+shared uint sScanA[SURFEL_GRID_BLOCK_CELLS];
+shared uint sScanB[SURFEL_GRID_BLOCK_CELLS];
+
+void main()
+{
+    uint block = gl_WorkGroupID.x;
+    uint lane = gl_LocalInvocationIndex;
+    uint cell = block * SURFEL_GRID_BLOCK_CELLS + lane;
+    uint pending = cell < uGridCellCount ? pendingCounts[cell] : 0u;
+
+    if (lane == 0u) {
+        sEarlier = 0u;
+    }
+    sScanA[lane] = pending;
+    memoryBarrierShared();
+    barrier();
+
+    // Sum of the earlier block totals: lanes below this block add one each.
+    if (lane < block) {
+        atomicAdd(sEarlier, blockSums[uBlockParity * uGridBlockCount + lane]);
+    }
+    memoryBarrierShared();
+    barrier();
+    uint blockOffset = sEarlier;
+
+    // Inclusive scan of the pending counts; each step reads one array and writes the other.
+    bool fromA = true;
+    for (uint offset = 1u; offset < SURFEL_GRID_BLOCK_CELLS; offset <<= 1u) {
+        if (fromA) {
+            uint v = sScanA[lane];
+            if (lane >= offset) {
+                v += sScanA[lane - offset];
+            }
+            sScanB[lane] = v;
+        } else {
+            uint v = sScanB[lane];
+            if (lane >= offset) {
+                v += sScanB[lane - offset];
+            }
+            sScanA[lane] = v;
+        }
+        memoryBarrierShared();
+        barrier();
+        fromA = !fromA;
+    }
+    uint inclusive = fromA ? sScanA[lane] : sScanB[lane];
+
+    if (lane == 0u) {
+        blockSums[(1u - uBlockParity) * uGridBlockCount + block] = 0u;
+    }
+
+    if (cell < uGridCellCount) {
+        uint offsetOfCell = blockOffset + inclusive - pending;
+        uint count = pending;
+        uint overflow = 0u;
+        if (offsetOfCell >= uEntryCapacity) {
+            overflow = count;
+            count = 0u;
+        } else if (offsetOfCell + count > uEntryCapacity) {
+            overflow = offsetOfCell + count - uEntryCapacity;
+            count = uEntryCapacity - offsetOfCell;
+        }
+
+        SurfelCellHeader header;
+        header.firstEntry = offsetOfCell;
+        header.entryCount = count;
+        gridHeaders[cell] = header;
+        pendingCounts[cell] = 0u;
+        gridCellSums[cell] = SurfelCellSums(0u, 0u, 0u, 0u, 0u, 0u);
+
+        if (overflow > 0u) {
+            atomicAdd(counters.overflowGridEntries, overflow);
+        }
+    }
+}

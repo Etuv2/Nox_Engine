@@ -22,6 +22,10 @@ layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 uniform uint uMaxSurfels;
 uniform uint uFrameIndex;
 uniform float uLightingChangeFactor = 0.0;
+// Hit-referenced floor for world surfels (plan section 17.9): a world surfel whose cache entry a ray used within the
+// last uWorldRefWindow frames asks for at least uWorldRayFloor rays, dormancy notwithstanding. 0 = off.
+uniform uint uWorldRayFloor = 0u;
+uniform uint uWorldRefWindow = 8u;
 
 // Relative-spread request (plan WP2; GIBS p.76-78). A Monte Carlo mean's relative error falls with
 // the square root of its ray count, so the rays a surfel needs grow with its coefficient of
@@ -80,8 +84,15 @@ void main()
     // requestedRays starts at zero in begin_frame, so this is the only atomic on it. Its sum is the
     // demand that allocate_rays.comp shares out (it is not capped by the budget here).
     uint requested = ComputeRayRequest(surfelID, surfels[surfelID]);
+    bool world = SurfelIsAlive(surfels[surfelID]) && (SurfelFlags(surfels[surfelID]) & SURFEL_WORLD) != 0u;
+    if (world && uWorldRayFloor > 0u && surfels[surfelID].lifecycle.x + uWorldRefWindow >= uFrameIndex) {
+        requested = max(requested, uWorldRayFloor);
+    }
     if (requested > 0u) {
         atomicAdd(counters.requestedRays, requested);
+        if (world) {
+            atomicAdd(counters.requestedWorld, requested);
+        }
     }
 
     rayRequests[surfelID].surfelID = surfelID;

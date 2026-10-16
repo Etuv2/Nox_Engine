@@ -22,20 +22,6 @@ bool CheckedBufferSize(uint64_t elementCount, uint64_t elementSize, std::ptrdiff
     return true;
 }
 
-bool CheckedElementCount(uint64_t a, uint64_t b, uint64_t& outCount)
-{
-    if (a == 0 || b == 0) {
-        return false;
-    }
-
-    if (a > std::numeric_limits<uint64_t>::max() / b) {
-        return false;
-    }
-
-    outCount = a * b;
-    return true;
-}
-
 void LabelBuffer(rhi::BufferHandle buffer, const char* label)
 {
     if (buffer.IsValid() && label != nullptr) {
@@ -132,9 +118,11 @@ bool SurfelPool::ResizeReset(uint32_t maxSurfels)
     std::ptrdiff_t surfelBytes = 0;
     std::ptrdiff_t freeListBytes = 0;
     std::ptrdiff_t counterBytes = 0;
+    std::ptrdiff_t worldRequestBytes = 0;
     if (!CheckedBufferSize(maxSurfels, sizeof(Surfel), surfelBytes) ||
         !CheckedBufferSize(maxSurfels, sizeof(uint32_t), freeListBytes) ||
-        !CheckedBufferSize(1u, sizeof(SurfelCounters), counterBytes)) {
+        !CheckedBufferSize(1u, sizeof(SurfelCounters), counterBytes) ||
+        !CheckedBufferSize(kSurfelWorldRequestCapacity, kSurfelWorldRequestBytes, worldRequestBytes)) {
         std::cerr << "[SurfelPool] Invalid surfel pool size: " << maxSurfels << ".\n";
         return false;
     }
@@ -143,7 +131,8 @@ bool SurfelPool::ResizeReset(uint32_t maxSurfels)
     const bool ok =
         AllocateSSBO(m_surfelBuffer, surfelBytes, nullptr, "SurfelPool.Surfels") &&
         AllocateSSBO(m_freeListBuffer, freeListBytes, nullptr, "SurfelPool.FreeList") &&
-        AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelPool.Counters");
+        AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelPool.Counters") &&
+        AllocateSSBO(m_worldRequestBuffer, worldRequestBytes, nullptr, "SurfelPool.WorldRequests");
 
     if (!ok) {
         Destroy();
@@ -159,6 +148,7 @@ void SurfelPool::Destroy()
     DeleteBuffer(m_surfelBuffer);
     DeleteBuffer(m_freeListBuffer);
     DeleteBuffer(m_countersBuffer);
+    DeleteBuffer(m_worldRequestBuffer);
     m_maxSurfels = 0;
 }
 
@@ -169,6 +159,8 @@ void SurfelPool::ResetFreeList()
     }
 
     ClearBufferUInt(m_surfelBuffer, 0u);
+    // The bias probe words accumulate across frames (plan section 19), so they start at zero.
+    ClearBufferUInt(m_countersBuffer, 0u);
 
     std::vector<uint32_t> freeIndices(m_maxSurfels);
     for (uint32_t i = 0; i < m_maxSurfels; ++i) {
@@ -202,11 +194,11 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
     Destroy();
 
     const uint64_t cellCount64 = settings.CellCount();
-    uint64_t entryCount64 = 0;
+    const uint64_t entryCount64 = settings.entryCapacity;
+    const uint64_t blockCount64 = (cellCount64 + kSurfelGridBlockCells - 1u) / kSurfelGridBlockCells;
     if (cellCount64 == 0 ||
-        settings.maxSurfelsPerCell == 0 ||
+        entryCount64 == 0 ||
         cellCount64 > std::numeric_limits<uint32_t>::max() ||
-        !CheckedElementCount(cellCount64, settings.maxSurfelsPerCell, entryCount64) ||
         entryCount64 > std::numeric_limits<uint32_t>::max()) {
         std::cerr << "[SurfelGrid] Invalid grid settings.\n";
         return false;
@@ -215,8 +207,20 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
     std::ptrdiff_t headerBytes = 0;
     std::ptrdiff_t entryBytes = 0;
     std::ptrdiff_t counterBytes = 0;
-    if (!CheckedBufferSize(cellCount64, sizeof(SurfelCellHeader), headerBytes) ||
+    std::ptrdiff_t blockBytes = 0;
+    std::ptrdiff_t slotBytes = 0;
+    std::ptrdiff_t pendingBytes = 0;
+    std::ptrdiff_t averageBytes = 0;
+    std::ptrdiff_t overlapBytes = 0;
+    std::ptrdiff_t cellStampBytes = 0;
+    if (!CheckedBufferSize(cellCount64, sizeof(uint32_t), cellStampBytes) ||
+        !CheckedBufferSize(cellCount64, sizeof(SurfelCellHeader), headerBytes) ||
+        !CheckedBufferSize(cellCount64, sizeof(uint32_t), pendingBytes) ||
+        !CheckedBufferSize(cellCount64, sizeof(SurfelCellSums), averageBytes) ||
+        !CheckedBufferSize(static_cast<uint64_t>(settings.maxSurfels) * kSurfelGridMaxCellsPerSurfel, sizeof(uint32_t), overlapBytes) ||
         !CheckedBufferSize(entryCount64, sizeof(SurfelCellEntry), entryBytes) ||
+        !CheckedBufferSize(2u * blockCount64, sizeof(uint32_t), blockBytes) ||
+        !CheckedBufferSize(static_cast<uint64_t>(settings.maxSurfels) * kSurfelGridMaxCellsPerSurfel, sizeof(uint32_t), slotBytes) ||
         !CheckedBufferSize(1u, sizeof(SurfelGridCounters), counterBytes)) {
         std::cerr << "[SurfelGrid] Grid buffer byte size overflow.\n";
         return false;
@@ -224,18 +228,27 @@ bool SurfelGrid::ResizeReset(const SurfelGridSettings& settings)
 
     m_settings = settings;
     m_cellCount = static_cast<uint32_t>(cellCount64);
+    m_blockCount = static_cast<uint32_t>(blockCount64);
     m_entryCapacity = static_cast<uint32_t>(entryCount64);
 
     const bool ok =
         AllocateSSBO(m_cellHeaderBuffer, headerBytes, nullptr, "SurfelGrid.Headers") &&
         AllocateSSBO(m_cellEntryBuffer, entryBytes, nullptr, "SurfelGrid.Entries") &&
-        AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelGrid.Counters");
+        AllocateSSBO(m_pendingBuffer, pendingBytes, nullptr, "SurfelGrid.Pending") &&
+        AllocateSSBO(m_cellSumBuffer, averageBytes, nullptr, "SurfelGrid.Averages") &&
+        AllocateSSBO(m_overlapBuffer, overlapBytes, nullptr, "SurfelGrid.Overlap") &&
+        AllocateSSBO(m_blockSumBuffer, blockBytes, nullptr, "SurfelGrid.BlockSums") &&
+        AllocateSSBO(m_slotBuffer, slotBytes, nullptr, "SurfelGrid.Slots") &&
+        AllocateSSBO(m_countersBuffer, counterBytes, nullptr, "SurfelGrid.Counters") &&
+        AllocateSSBO(m_cellStampBuffer, cellStampBytes, nullptr, "SurfelGrid.CellStamps");
 
     if (!ok) {
         Destroy();
         return false;
     }
 
+    // Stamps hold frame + 1 of the last world request in each cell, so zero is "never".
+    ClearBufferUInt(m_cellStampBuffer, 0u);
     Clear();
     return IsCreated();
 }
@@ -245,7 +258,14 @@ void SurfelGrid::Destroy()
     DeleteBuffer(m_cellHeaderBuffer);
     DeleteBuffer(m_cellEntryBuffer);
     DeleteBuffer(m_countersBuffer);
+    DeleteBuffer(m_blockSumBuffer);
+    DeleteBuffer(m_slotBuffer);
+    DeleteBuffer(m_pendingBuffer);
+    DeleteBuffer(m_cellSumBuffer);
+    DeleteBuffer(m_overlapBuffer);
+    DeleteBuffer(m_cellStampBuffer);
     m_cellCount = 0;
+    m_blockCount = 0;
     m_entryCapacity = 0;
     m_settings = SurfelGridSettings{};
 }
@@ -256,8 +276,12 @@ void SurfelGrid::Clear()
         return;
     }
 
+    // Pending counts and average sums start at zero (the scan pass zeroes them after each frame). Entries need no clear, since readers
+    // only read entryCount entries of each cell, and the scatter writes all of them.
     ClearBufferUInt(m_cellHeaderBuffer, 0u);
-    ClearBufferUInt(m_cellEntryBuffer, 0xffffffffu);
+    ClearBufferUInt(m_blockSumBuffer, 0u);
+    ClearBufferUInt(m_pendingBuffer, 0u);
+    ClearBufferUInt(m_cellSumBuffer, 0u);
 
     SurfelGridCounters counters{};
     counters.cellCount = m_cellCount;
