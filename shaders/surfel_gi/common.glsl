@@ -192,6 +192,7 @@ struct SurfelCounters
     uint allocatedWorld;
     uint worldAgeSum;
     uint worldHistorySum;
+    uint probeWords[216];
 };
 
 // One path hit that the surfel cache could not answer, queued for a world surfel spawn (world_spawn in spawn.comp).

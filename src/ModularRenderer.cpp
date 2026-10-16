@@ -667,8 +667,27 @@ void ModularRenderer::SyncSurfelGISettings()
 		applyEnvToggle("NOX_SURFEL_GI_CACHE_CONF_RAMP", settings.cacheConfidenceRamp);
 		settings.worldLongRate = std::clamp(
 			GetEnvVarFloat("NOX_SURFEL_GI_WORLD_LONG_RATE", settings.worldLongRate), 0.0f, 0.5f);
+		settings.worldCatchUp = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_WORLD_CATCHUP", settings.worldCatchUp), 0.0f, 10.0f);
+		settings.worldCatchUpMax = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_WORLD_CATCHUP_MAX", settings.worldCatchUpMax), 0.0f, 1.0f);
+		settings.worldHistoryCap = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_WORLD_HISTORY_CAP", settings.worldHistoryCap), 1.0f, 192.0f);
 		settings.cachePlaneScale = std::clamp(
 			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_PLANE_SCALE", settings.cachePlaneScale), 0.1f, 20.0f);
+		// Debug: trace components to skip (bit mask; plan section 19). Timing ablations only: the output changes.
+		settings.traceSkipMask = static_cast<uint32_t>(std::max(GetEnvVarInt("NOX_SURFEL_GI_TRACE_SKIP", 0), 0));
+		settings.cacheCandidates = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_CANDIDATES", static_cast<int>(settings.cacheCandidates)), 1, 128));
+		settings.cachePerCellBudget = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_PER_CELL", static_cast<int>(settings.cachePerCellBudget)), 1, 8));
+		settings.cacheAlbedoCandidates = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_ALBEDO_CANDIDATES", static_cast<int>(settings.cacheAlbedoCandidates)), 1, 128));
+		settings.cacheAlbedoPerCell = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_ALBEDO_PER_CELL", static_cast<int>(settings.cacheAlbedoPerCell)), 1, 8));
+		settings.biasProbeStride = static_cast<uint32_t>(std::max(GetEnvVarInt("NOX_SURFEL_GI_BIAS_PROBE", 0), 0));
+		settings.biasProbeInterval = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_BIAS_PROBE_INTERVAL", static_cast<int>(settings.biasProbeInterval)), 1, 100000));
 	}
 	// Reference mode reads the surfel composite view too. NOX_GI_REFERENCE=1 with
 	// NOX_SURFEL_GI_COMPOSITE_DEBUG=4 then shows the reference term alone (plan section 14, O2).

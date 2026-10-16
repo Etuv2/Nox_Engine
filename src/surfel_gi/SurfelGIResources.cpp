@@ -159,6 +159,8 @@ void SurfelPool::ResetFreeList()
     }
 
     ClearBufferUInt(m_surfelBuffer, 0u);
+    // The bias probe words accumulate across frames (plan section 19), so they start at zero.
+    ClearBufferUInt(m_countersBuffer, 0u);
 
     std::vector<uint32_t> freeIndices(m_maxSurfels);
     for (uint32_t i = 0; i < m_maxSurfels; ++i) {

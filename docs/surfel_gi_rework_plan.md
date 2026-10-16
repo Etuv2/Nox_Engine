@@ -1635,3 +1635,116 @@ Both are inside the 5% band against the analytic value in both modes. The surfel
 **Decision.** World mode stays off by default: its steady energy on scene.json (0.855 to 0.867, plateau) does not meet the band, so the default is unchanged. The new knobs (`NOX_SURFEL_GI_WORLD_RAY_FLOOR`, `NOX_SURFEL_GI_WORLD_REF_WINDOW`, `NOX_SURFEL_GI_CACHE_NORMAL_LO`, `NOX_SURFEL_GI_CACHE_CONF_RAMP`, `NOX_SURFEL_GI_CACHE_PLANE_SCALE`, `NOX_SURFEL_GI_WORLD_LONG_RATE`) all default to the previous behaviour. The counters `requestedWorld`, `allocatedWorld`, `worldAgeSum` and `worldHistorySum` log the ray share, age and sample history.
 
 **Open.** The steady-state bias of world mode (about 0.09 to 0.13 at scene.json) is not isolated. Convergence speed is improved by the long rate, not the bias. The next worker should compare, at matched hit points, the cached irradiance with the continuation estimate of the same point (for example by running both at the first hit of a converged scene), which the present counters cannot give.
+
+## 19. World mode cost and convergence
+
+Branch `worktree-agent-ad2cc26e5a566a6ba`, on top of `worktree-agent-a2eb3a1f2420d3eca` (sections 15 to 17.9). Medium tier, 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera. Energy is the lit-mask term ratio against `indep_term` (the reference of 17.9). Breakdown and budget tables are single runs unless marked A/B (three alternating pairs, medians). The GPU was shared with another worker, so single runs carry about 0.2 ms of noise. Scratch files are under `%TEMP%/nox_surfel_J` (461 MB). Default behaviour is unchanged by this section: world mode stays off.
+
+### 19.1 What was built
+
+- Trace component toggles, `NOX_SURFEL_GI_TRACE_SKIP` (bit mask, debug, timing ablations only, the output changes): 1 sun cascade samples read as lit; 2 guide density off; 4 emitter next-event samples (vertex and origin) off; 8 visible G-buffer albedo off; 16 cached albedo lookup off; 64 cache irradiance lookups and world requests off; 128 closest-hit shading off (BVH trace only); 256 continuation off past the first hit's own terms. Uniform `uTraceSkip` in `surfel_scene_trace.glsl`.
+- Hit-lookup candidate budgets, settings with the old constants as defaults: `NOX_SURFEL_GI_CACHE_CANDIDATES` (128), `NOX_SURFEL_GI_CACHE_PER_CELL` (4), `NOX_SURFEL_GI_CACHE_ALBEDO_CANDIDATES` (32), `NOX_SURFEL_GI_CACHE_ALBEDO_PER_CELL` (2). Uniforms in `trace_rays.comp`.
+- World-only convergence knobs, defaults off (`integrate.comp`, `msme.comp`): `NOX_SURFEL_GI_WORLD_CATCHUP` (gain, 0 = off) and `NOX_SURFEL_GI_WORLD_CATCHUP_MAX` (0.25). The MSME-style catch-up raises the long rate of a world surfel when its short-window mean differs from its long mean by more than the short-window noise. `NOX_SURFEL_GI_WORLD_HISTORY_CAP` (192 = screen) caps the history of the cumulative 1/n rate for world surfels.
+- Bias probe, `NOX_SURFEL_GI_BIAS_PROBE=N` (every Nth ray whose first hit the cache answers) and `NOX_SURFEL_GI_BIAS_PROBE_INTERVAL` (60). At such a hit it compares the cached indirect irradiance with a continuation estimate of the same point: the path from the hit with albedo 1, no cache on any vertex, next-event estimation on, 32 vertices with roulette, minus the direct light at the point, times pi. It buckets the pair by the dominant surfel's type (screen or world), age (<4, <32, <128, >=128), normal agreement (>=0.95, >=0.8, below) and distance in radii (<0.5, <1, >=1), and prints `[SurfelGIBiasProbe]` lines at each counter readback. The buckets are `SurfelCounters.probeWords[216]`. A separate storage buffer was tried first and `trace_rays.comp` then failed to link ("no buffers available for bindable storage buffer", 16 storage bindings are in use). The counters struct is now 77 fields, 1168 bytes; `validate_surfel_gi_static.py` checks that.
+- Light step: `NOX_LIGHT_STEP` already multiplies every light's intensity (`BaseLight::GetIntensity`), and the surfel pass reads the primary directional light through `GetIntensity`, so the sun is scaled. Emissive surfaces are not scaled (that needs a material-side hook; not done).
+- Not built: a GI sun shadow map. The sun terms cost 0.21 ms on scene.json and 0.03 ms on NFS (19.2), so a dedicated map cannot reach the tracing target by itself.
+
+### 19.2 Tracing breakdown (world mode, tracing GPU ms, single runs)
+
+Removal ablations from the full world-mode trace. The components are not additive (removing one changes the paths the others see), so the cost column is the difference from the full trace.
+
+| Component (toggle) | scene.json: tracing ms | cost | NFS: tracing ms | cost |
+|---|---|---|---|---|
+| Full world mode | 3.47 | - | 5.64 | - |
+| Closest-hit BVH only, no shading, no origin NEE (132) | 0.39 | 0.39 | 0.18 | 0.18 |
+| Origin emitter NEE alone (128 vs 132: BVH + origin NEE 0.70 on scene) | 0.70 | 0.31 | - | - |
+| Cached albedo lookup at neutral hits (16) | 2.58 | 0.89 | 4.76 | 0.88 |
+| Emitter NEE, vertex and origin (4) | 3.16 | 0.31 | 4.67 | 0.97 |
+| Continuation past the first hit (256) | 3.40 | 0.07 | 5.33 | 0.31 |
+| Sun BVH fallback outside cascades (`NOX_SURFEL_GI_SUN_BVH_DEPTH=0`) | 3.33 | 0.14 | 5.63 | 0.01 |
+| Sun cascade samples (1) | 3.40 | 0.07 | 5.62 | 0.02 |
+| Visible G-buffer albedo (8) | 3.40 | 0.06 | - | - |
+| Guiding density in the origin NEE (2) | 3.41 | 0.06 | - | - |
+| Cache irradiance lookups (64) | 3.78 with a longer path | not separable | - | not separable |
+| Residual: cache irradiance lookups, the other lights' direct terms, hit material fetch | - | about 1.5 | - | about 3.3 |
+
+Findings:
+- The cached albedo lookup is the largest single item on scene.json (0.89 ms). It walks up to 32 surfels at each hit whose BVH albedo is neutral.
+- Emitter NEE is the largest item on NFS (0.97 ms). It is one any-hit ray per ray for origin NEE, plus one at vertex 0 on misses.
+- The sun terms total 0.21 ms on scene.json and 0.03 ms on NFS. A GI sun shadow map is not the lever.
+- Continuation is cheap in world mode (0.07 ms scene, 0.31 ms NFS): cache misses are about 0 per frame on scene.json.
+- The largest unexplained part is the irradiance cache lookup itself, about 1.5 ms on scene and about 3.3 ms on NFS. Removing it changes the paths, so it needs a cost-only toggle to isolate. Not done.
+
+### 19.3 Hit-lookup budgets and ray budget (scene.json, world mode)
+
+Single runs, tracing ms: default world 3.42; albedo budget 8/1 3.15; albedo 4/1 3.00; irradiance budget 32/2 3.06; irradiance 16/1 3.23 (timing noise, slower than 32/2); both (albedo 8/1 and irradiance 32/2) 2.77; both with 1536 rays 2.24; both with 1024 rays 1.45.
+
+A/B, three pairs, medians (tracing ms / total Execute ms): default (world off) 17.70 / 19.51; world mode 3.53 / 5.29; world mode with both budgets and 1024 rays 1.49 / 3.54 (tracing 1.48 to 1.83 across the pairs).
+
+### 19.4 Energy and convergence (scene.json, cold start, 900 frames)
+
+Lit-mask energy ratio against `indep_term`, dumps every 10 frames, the window of 17.9. Steady is the mean over frames 800 to 900. "90%" is the first dumped frame that reaches 90% of that config's own steady value.
+
+| Config | 200 | 400 | 600 | 800 | 900 | Steady 800-900 | 90% of own steady |
+|---|---|---|---|---|---|---|---|
+| Default, world off (light-step run before the step) | - | - | - | - | - | 0.960 (all-pixel 0.980) | about 20 frames (17.9) |
+| World mode (W0, 2048 rays, budgets 128/4/32/2) | 0.599 | 0.663 | 0.695 | 0.734 | 0.762 | 0.747, still rising | 460 |
+| W3: ray budget 1024 only | 0.504 | 0.519 | 0.541 | - | 0.562 | 0.552 | 110 |
+| W4: cache budgets only (albedo 8/1, irradiance 32/2) | 0.613 | 0.680 | 0.780 | - | 0.813 | 0.804, still rising | 490 |
+| W1: both budgets and 1024 rays | 0.518 | 0.535 | 0.545 | 0.581 | 0.584 | 0.585 | 310 |
+| W2: W1 with catch-up 0.2, history cap 32 | 0.510 | 0.523 | 0.546 | 0.562 | 0.575 | 0.565 | 180 |
+
+Findings:
+- The ray budget is the energy lever. 2048 to 1024 rays takes the world steady ratio from 0.75 to 0.55. The cache budgets alone raise it to 0.80. The likely mechanism is that fewer rays mean fewer lifecycle references (recycling uses the last ray reference), so more world surfels are recycled. Not verified.
+- The combination that meets the tracing target (W1) loses energy: 0.585 against 0.747 for the default world mode.
+- The catch-up with a 32-ray history cap (W2 against W1) reaches 90% of its own steady sooner (180 against 310 frames), at a slightly lower plateau (0.565 against 0.585). It did not reach the band. Not separated from the ray budget effect.
+- World mode is still rising at frame 900 in every configuration. Its approach is slow (time constant roughly 1000 frames in the exponential fit, which is poorly constrained). Section 17.9's 0.855 plateau at 2000 frames is consistent with this. The 90% times above are against unconverged steady values and mean little on their own.
+
+### 19.5 Light step response (scene.json)
+
+`NOX_LIGHT_STEP=600:0.5`, dumps 580 to 800. Screen mode: lit energy 0.3607 before and 0.3610 after the step (change 1.00). The surfel term did not respond at all, so on this scene the GI term is either dominated by light the step does not scale (the IBL or sky) or the step does not reach it. Not resolved. World mode: energy 0.270 to 0.303 over the same frames, which is the cold-start drift of 19.4, not a response. The light step test is not usable for the 30-frame target yet.
+
+### 19.6 Bias probe (plan 17.9 item 4)
+
+- Furnace (analytic, `tools/surfel_gi_analytic_scenes.py`, world mode on, frame 256): cached 1.561 against continuation 1.568, expected pi x 0.25 / 0.5 = 1.571. The probe's continuation formula and the cache agree to 0.6% with no direct light present.
+- scene.json, world mode, frame 256: the dominant bucket (world surfel, age >= 128, normal >= 0.95, distance >= 1 radius, n = 27,503) has cached 18.4 against continuation 72.8 (ratio 0.25). Age < 128, n = 21,223: 15.2 against 72.5 (0.21).
+- scene.json, default mode, frame 256: screen surfels, age >= 128, normal >= 0.95, distance >= 1 radius, n = 7,519: cached 53.7 against continuation 71.1 (0.76).
+- Reading: the continuation is about 72 in both modes, which is about 1.4 times the default cache and far above what the default composite energy (0.96 of the reference) allows. So the probe's continuation on scene.json is not consistent with the reference, and this round cannot say where the cache under-reads. The likely cause is a scene-content term that the furnace does not contain (sun, emitters or sky in the continuation). Next step: split the continuation into those terms and compare each with the cache's sources. Not done.
+
+### 19.7 Targets, before and after
+
+| Target | Default (world off) | World mode | This round, best world config |
+|---|---|---|---|
+| Tracing at most 1.5 ms, scene.json | 17.70 (A/B) | 3.53 (A/B) | 1.49 (A/B), but steady energy 0.59 |
+| Tracing at most 1.5 ms, NFS | 8.12 | 5.64 | not run with the budgets |
+| Total surfel Execute at most 3 ms, scene.json | 19.51 (A/B) | 5.29 (A/B) | 3.54 (A/B) |
+| Steady energy in [0.9, 1.1], scene.json (lit) | 0.96 (met) | 0.75 at 900 frames, still rising (not met) | 0.59 (not met) |
+| Cornell all-pixel [0.9, 1.1] | not run this round (17.9: 1.08) | not run this round | not run |
+| 90% of steady within 120 frames, cold start | about 20 frames (17.9; not re-run) | 460 (not met) | 180 to 310, at lower plateaus (not met) |
+| Light-step response within 30 frames | inconclusive (no response to the step at all) | inconclusive | not measured |
+| Noise, scene.json at most 1.5% | 0.17% (17.2) | 0.82% (17.2) | not re-measured |
+| Analytic furnace and white sky within 5% | furnace and white sky within 5% (17.9) | furnace 0.6% off (probe run); white sky not re-run | not checked |
+| Bias: world plateau at least 0.92 | - | 0.75 at 900 frames, not converged | not met |
+| NFS at least 0.85 | 0.78 (17.9; not re-run) | 0.72 (17.9; not re-run) | not measured |
+| Dolly and orbit popping | not re-measured | not re-measured | not measured |
+
+### 19.8 Defaults and decision
+
+World mode stays off. The defaults are unchanged: budgets 128, 4, 32 and 2; ray budget 2048; catch-up gain 0; history cap 192; trace skip 0; bias probe off. No per-tier world caps were set. The brief's gate (all targets hold) is not met: the energy band fails, the world approach takes about 460 frames, bias is not fixed, and the only configuration that reaches 1.5 ms loses energy through the ray budget.
+
+### 19.9 Verification
+
+- `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `tools/CheckVcxprojSources.py`: pass.
+- `scripts/validate_surfel_gi_static.py` (counter layout updated to 77 fields, 1168 bytes) and `scripts/validate_surfel_gi_correctness.py`: pass.
+- `NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150`: 0 FAIL.
+- Racing (`NOX_DRIVE_AUTOPILOT=1 ... nfs_sprint`): `[Race] Finished in 47.4994 s`.
+- `nox_tests.exe`: 277 tests, 3 failed, all in `test_asset_io.cpp` (the CRLF fixtures of 9.4).
+- Not run: dolly and orbit popping, Cornell, white-sky, noise after the budget change, NFS convergence and energy.
+
+### 19.10 Open items
+
+- Emitter NEE cull (NFS 0.97 ms): candidate culling by distance, or a cheaper occlusion test, measured against energy.
+- The irradiance cache lookup cost (about 1.5 ms scene, about 3.3 ms NFS): needs a cost-only toggle, then a cheaper lookup (fewer neighbour cells, shared per-cell reads).
+- Ray budget and recycling: test whether the energy loss at 1024 rays is recycling (count recycles per frame by reference age) before choosing a budget.
+- Bias: split the probe's continuation into sun, emitter and sky terms, and find which one disagrees with the reference on scene.json.
+- Light-step test: a scene where the sun dominates the GI term, and emissive scaling if the test needs it.

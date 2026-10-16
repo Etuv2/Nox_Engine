@@ -50,6 +50,11 @@ const float SURFEL_ENVIRONMENT_SAMPLE_RELIABILITY = 0.50;
 const float SURFEL_SHORT_HISTORY_RAYS = 192.0;
 // Long-mean rate of world surfels; 0 keeps the screen floor (SURFEL_MSME_LONG_RATE). NOX_SURFEL_GI_WORLD_LONG_RATE.
 uniform float uWorldLongRate = 0.0;
+// World surfels only (plan section 19): MSME-style catch-up gain and cap (gain 0 = off), and the history cap of the
+// cumulative 1/n rate (the screen cap is SURFEL_SHORT_HISTORY_RAYS).
+uniform float uWorldCatchUp = 0.0;
+uniform float uWorldCatchUpMax = 0.25;
+uniform float uWorldHistoryCap = 192.0;
 // Relative safety clamp (plan section 14). A sample is cut only above k times the surfel's own level (the larger of
 // its long and short means, luminance) plus m short standard deviations, and never below the floor. Ordinary samples,
 // emitter samples included, pass unchanged; only firefly outliers are bounded. The fixed clamp of 32 hid emitter
@@ -243,13 +248,16 @@ void main()
         }
         // Cumulative average over the rays integrated so far, until the long rate takes over. A batch of b
         // rays after n rays moves the mean by b / (n + b): exactly 1 / (n + 1) for one ray per batch.
-        float cumulativeRate = acceptedWeight / max(surfel.shortMean.a + acceptedWeight, 1.0);
+        bool worldSurfel = (SurfelFlags(surfel) & SURFEL_WORLD) != 0u;
+        float historyCap = worldSurfel ? uWorldHistoryCap : SURFEL_SHORT_HISTORY_RAYS;
+        float cumulativeRate = acceptedWeight / max(min(surfel.shortMean.a, historyCap) + acceptedWeight, 1.0);
         // World surfels may use a faster long rate (uWorldLongRate, plan section 17.9); screen surfels keep the floor.
         float longRate = SURFEL_MSME_LONG_RATE;
-        if (uWorldLongRate > 0.0 && (SurfelFlags(surfel) & SURFEL_WORLD) != 0u) {
+        if (uWorldLongRate > 0.0 && worldSurfel) {
             longRate = uWorldLongRate;
         }
-        SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel, cumulativeRate, longRate);
+        SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel, cumulativeRate, longRate,
+            worldSurfel ? uWorldCatchUp : 0.0, uWorldCatchUpMax);
     }
 
     float varLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));

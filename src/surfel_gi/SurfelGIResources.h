@@ -60,6 +60,9 @@ enum SurfelFlags : uint32_t {
 	SURFEL_INVALID = 1u << 31
 };
 
+// Words of the bias probe buffer: 72 buckets x (count, cached, continuation) (plan section 19).
+constexpr uint32_t kBiasProbeWords = 216u;
+
 enum class SurfelGIBinding : uint32_t {
 	Surfels = 10u,
 	SurfelFreeList = 11u,
@@ -212,9 +215,12 @@ struct alignas(16) SurfelCounters {
 	uint32_t allocatedWorld = 0u;
 	uint32_t worldAgeSum = 0u;
 	uint32_t worldHistorySum = 0u;
+	// Bias probe buckets (plan section 19): 72 x (count, cached, continuation), luminance x 1000. Zero unless
+	// NOX_SURFEL_GI_BIAS_PROBE is set; cumulative since the buffer was created.
+	uint32_t probeWords[kBiasProbeWords] = {};
 };
-// 76 uint32 fields = 304 bytes, the same as the GLSL struct.
-static_assert(sizeof(SurfelCounters) == 304, "SurfelCounters must match std430 GLSL layout.");
+// 76 uint32 fields = 304 bytes, then the 216-word bias probe: 1168 bytes, the same as the GLSL struct.
+static_assert(sizeof(SurfelCounters) == 1168, "SurfelCounters must match std430 GLSL layout.");
 
 enum SurfelCoverageTileFlags : uint32_t {
 	SURFEL_COVERAGE_TILE_VISIBLE = 1u << 0,

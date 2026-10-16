@@ -517,6 +517,17 @@ float SampleShadowLayerWorld(int layer, vec3 worldPos, vec3 normal, vec3 surface
 // into enclosed geometry and into every off-screen hit (plan section 15, lever 6). With this set (the surfel trace only),
 // such a point gets a BVH shadow ray toward the sun instead. The reference keeps the cascade-only answer.
 uniform int uSunShadowBVHFallback = 0;
+// Debug trace-component skip mask (NOX_SURFEL_GI_TRACE_SKIP; plan section 19). 0 = the full trace. Each bit removes one
+// component for a timing ablation (the output changes):
+//   1  sun cascade samples read as lit (the outside-cascade BVH fallback is unchanged)
+//   2  guide density off (trace_rays.comp, SurfelRaySamplingDensity)
+//   4  emitter next-event samples (vertex and origin) off
+//   8  visible G-buffer albedo off
+//   16 cached albedo lookups at hits off
+//   64 cache irradiance lookups and world requests off
+//   128 closest-hit shading off (BVH trace only)
+//   256 path continuation off past the first hit's own terms
+uniform uint uTraceSkip = 0u;
 // Whether the BVH sun fallback applies to the direct light being evaluated now. SurfelPathRadiance sets it per vertex
 // (SurfelPathControl.sunBVHDepth), so the any-hit ray is paid only where the first hit's direct light needs it (plan 17).
 bool gSunShadowBVHHere = true;
@@ -549,6 +560,9 @@ float DirectionalShadowVisibility(int startSlice, int sliceCount, vec3 worldPos,
         SoftwareBVHHit blocker = TraceSoftwareBVHAnyHit(worldPos + normal * SURFEL_SHADOW_ORIGIN_OFFSET, surfaceToLight,
             1e-4, SURFEL_TRACE_BVH_FAR_DISTANCE);
         return blocker.hit ? 0.0 : 1.0;
+    }
+    if ((uTraceSkip & 1u) != 0u) {
+        return 1.0;
     }
     return SampleShadowLayerWorld(startSlice + cascadeIndex, worldPos, normal, surfaceToLight);
 }
@@ -778,6 +792,9 @@ bool SurfelEmitterIrradianceSample(vec3 origin, vec3 normal, vec3 u, out vec3 ir
     irradiance = vec3(0.0);
     direction = normal;
     lightPdf = 0.0;
+    if ((uTraceSkip & 4u) != 0u) {
+        return false;
+    }
     vec3 position;
     vec3 emitterNormal;
     vec3 emission;
@@ -919,6 +936,9 @@ vec3 SurfelPathRadiance(vec3 position, vec3 normal, vec3 albedo, vec3 emissionWe
             nee = neeIrradiance * SurfelPowerWeight(neePdf, cosineDensity);
         }
         radiance += throughput * albedo * SURFEL_INV_PI * (direct + nee);
+        if ((uTraceSkip & 256u) != 0u) {
+            return radiance;
+        }
         if (depth == 0u) {
             // The first hit's own terms are counted above. The path past it runs only when it has a weight (see
             // SurfelPathControl), and that weight multiplies everything below.

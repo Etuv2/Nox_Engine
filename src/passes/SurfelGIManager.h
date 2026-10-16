@@ -102,8 +102,26 @@ struct SurfelGISettings {
 	bool cacheConfidenceRamp = true;
 	// Long-mean rate of world surfels (0 = the screen floor, 0.02).
 	float worldLongRate = 0.0f;
+	// World surfels only (plan section 19): MSME-style catch-up gain and its cap on the long rate (gain 0 = off), and the
+	// history cap of their cumulative 1/n rate (192 = the screen cap).
+	float worldCatchUp = 0.0f;
+	float worldCatchUpMax = 0.25f;
+	float worldHistoryCap = 192.0f;
 	// Plane-distance sigma scale of the cache weight (1 = the first round's value).
 	float cachePlaneScale = 1.0f;
+	// Debug only (NOX_SURFEL_GI_TRACE_SKIP): bit mask of trace components to skip, for the cost breakdown (plan section
+	// 19). The bits are listed at uTraceSkip in surfel_scene_trace.glsl. 0 = the full trace.
+	uint32_t traceSkipMask = 0u;
+	// Cache candidate budgets of a hit-point lookup (plan section 19): surfels visited in total, and per neighbour cell.
+	// The irradiance lookup was 128 and 4; the cached-albedo lookup was 32 and 2.
+	uint32_t cacheCandidates = 128u;
+	uint32_t cachePerCellBudget = 4u;
+	uint32_t cacheAlbedoCandidates = 32u;
+	uint32_t cacheAlbedoPerCell = 2u;
+	// Bias probe (plan section 19): every Nth ray that a cache lookup answers is also estimated by a continuation of its
+	// hit point with no cache. 0 = off. The bucket sums are printed every biasProbeInterval frames.
+	uint32_t biasProbeStride = 0u;
+	uint32_t biasProbeInterval = 60u;
 	uint32_t spawnTileSize = 16u;
 	// Search stride for the per-tile lowest-coverage search: 1 tests every pixel of a tile each
 	// frame; N > 1 tests a rotating 1/N^2 subset (the lowest coverage over N^2 frames).

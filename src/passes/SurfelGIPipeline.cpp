@@ -813,6 +813,31 @@ SurfelGIPipeline::~SurfelGIPipeline()
 	Shutdown();
 }
 
+// Bias probe readout (plan section 19): the cumulative bucket sums written by trace_rays.comp, as ratios. Bucket layout:
+// bucket = ((type * 4 + age) * 3 + normal) * 3 + distance, each word triple (count, cached, continuation) in luminance x 1000.
+void LogBiasProbe(const uint32_t* words, uint32_t frame)
+{
+	static const char* const kTypes[] = {"screen", "world"};
+	static const char* const kAges[] = {"age<4", "age<32", "age<128", "age>=128"};
+	static const char* const kNormals[] = {"n>=0.95", "n>=0.8", "n<0.8"};
+	static const char* const kDistances[] = {"d<0.5r", "d<1r", "d>=1r"};
+	for (uint32_t bucket = 0u; bucket < kBiasProbeWords / 3u; ++bucket) {
+		const uint32_t count = words[bucket * 3u];
+		if (count == 0u) {
+			continue;
+		}
+		const double cached = words[bucket * 3u + 1u] / 1000.0 / count;
+		const double continuation = words[bucket * 3u + 2u] / 1000.0 / count;
+		const uint32_t distance = bucket % 3u;
+		const uint32_t normal = (bucket / 3u) % 3u;
+		const uint32_t age = (bucket / 9u) % 4u;
+		const uint32_t type = bucket / 36u;
+		std::cout << "[SurfelGIBiasProbe] frame=" << frame << " bucket=" << kTypes[type] << '/' << kAges[age] << '/'
+			<< kNormals[normal] << '/' << kDistances[distance] << " n=" << count << " cached=" << cached
+			<< " cont=" << continuation << " ratio=" << (continuation > 0.0 ? cached / continuation : 0.0) << '\n';
+	}
+}
+
 // Copies the counters into a staging buffer on the GPU. Nothing waits on the CPU here; the copy is
 // mapped by PumpCounterReadback once it has had kGpuTimingReadbackFrameDelay frames to finish.
 void SurfelGIPipeline::IssueCounterReadback()
@@ -853,6 +878,9 @@ void SurfelGIPipeline::PumpCounterReadback()
 			std::memcpy(&counters, mapped, sizeof(SurfelCounters));
 			gpu.UnmapBuffer(staging);
 			StoreSurfelCounters(counters, m_stats);
+			if (m_settings.biasProbeStride > 0u) {
+				LogBiasProbe(counters.probeWords, m_counterReadbackFrame);
+			}
 		}
 	}
 	m_counterReadbackPending = false;
@@ -1518,6 +1546,12 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uCacheNormalLo", m_settings.cacheNormalLo);
 		SetUniform1ui(program, "uCacheConfidenceRamp", m_settings.cacheConfidenceRamp ? 1u : 0u);
 		SetUniform1f(program, "uCachePlaneScale", m_settings.cachePlaneScale);
+		SetUniform1ui(program, "uTraceSkip", m_settings.traceSkipMask);
+		SetUniform1ui(program, "uCacheCandidates", m_settings.cacheCandidates);
+		SetUniform1ui(program, "uCachePerCellBudget", m_settings.cachePerCellBudget);
+		SetUniform1ui(program, "uCacheAlbedoCandidates", m_settings.cacheAlbedoCandidates);
+		SetUniform1ui(program, "uCacheAlbedoPerCell", m_settings.cacheAlbedoPerCell);
+		SetUniform1ui(program, "uBiasProbeStride", m_settings.biasProbeStride);
 		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::WorldRequests), m_resources.worldRequestBuffer);
 		gpu.BindStorageBuffer(ToGLuint(SurfelGIBinding::CellStamps), m_resources.cellStampBuffer);
 		BindSoftwareTraceLighting(program, context, camera, skybox);
@@ -1536,6 +1570,9 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1i(program, "uUseRayGuiding", m_settings.useRayGuiding ? 1 : 0);
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		SetUniform1f(program, "uWorldLongRate", m_settings.worldLongRate);
+		SetUniform1f(program, "uWorldCatchUp", m_settings.worldCatchUp);
+		SetUniform1f(program, "uWorldCatchUpMax", m_settings.worldCatchUpMax);
+		SetUniform1f(program, "uWorldHistoryCap", m_settings.worldHistoryCap);
 		timedDispatch("temporal_integration", [&]() {
 			DispatchSurfelWide(*m_integrateShader, surfelArgs, groupsSurfels);
 			m_integrateShader->WaitForCompletion(rhi::BarrierStorage);
