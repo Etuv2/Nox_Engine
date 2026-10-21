@@ -1,7 +1,10 @@
 #include "SliceTask.h"
 
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <exception>
+#include <source_location>
 #include <stdexcept>
 #include <utility>
 
@@ -25,6 +28,11 @@ struct SliceCancelled {};
 // Budget of the Resume that is running on this thread.
 thread_local bool t_unlimited = true;
 thread_local Clock::time_point t_deadline{};
+
+// Gap diagnostic (NOX_SLICE_GAP_MS): time since the last yield point of this task, and where that yield was.
+thread_local bool t_gapValid = false;
+thread_local Clock::time_point t_gapStart{};
+thread_local std::source_location t_gapFrom{};
 
 }  // namespace
 
@@ -105,6 +113,7 @@ bool SliceTask::Resume(double budgetMs)
     impl->resumer = GetCurrentFiber();
     impl->previousCurrent = t_current;
     t_current = impl;
+    t_gapValid = false;  // the gap diagnostic never measures across a Resume boundary
     SwitchToFiber(impl->fiber);
     t_current = impl->previousCurrent;
 
@@ -128,14 +137,45 @@ void SliceTask::Cancel()
     m_impl->cancel = true;
 }
 
-void SliceTask::YieldIfOverBudget()
+namespace {
+double SliceGapThresholdMs()
+{
+    static const double threshold = [] {
+        const char* v = std::getenv("NOX_SLICE_GAP_MS");
+        return v ? std::atof(v) : 0.0;
+    }();
+    return threshold;
+}
+}
+
+void SliceTask::YieldIfOverBudget(std::source_location at)
 {
     Impl* impl = t_current;
     if (!impl || !impl->fiber) return;
+    const double gapThreshold = SliceGapThresholdMs();
+    if (gapThreshold > 0.0) {
+        const Clock::time_point now = Clock::now();
+        if (t_gapValid) {
+            const double gapMs = std::chrono::duration<double, std::milli>(now - t_gapStart).count();
+            if (gapMs > gapThreshold) {
+                std::fprintf(stderr, "[SliceGap] %.1f ms from %s:%u to %s:%u\n", gapMs,
+                    t_gapFrom.file_name(), static_cast<unsigned>(t_gapFrom.line()), at.file_name(), static_cast<unsigned>(at.line()));
+            }
+        }
+        t_gapValid = true;
+        t_gapStart = now;
+        t_gapFrom = at;
+    }
     if (!impl->cancel && !t_unlimited && Clock::now() < t_deadline) return;
+    t_gapValid = false;  // the stretch ends here: time spent suspended is not work
     SwitchToFiber(impl->resumer);
     // Resumed with a fresh budget (or cancelled).
     if (impl->cancel) throw SliceCancelled{};
+    if (gapThreshold > 0.0) {
+        t_gapValid = true;
+        t_gapStart = Clock::now();
+        t_gapFrom = at;
+    }
 }
 
 bool SliceTask::InTask()
@@ -181,7 +221,7 @@ void SliceTask::Cancel()
     m_impl->cancel = true;
 }
 
-void SliceTask::YieldIfOverBudget()
+void SliceTask::YieldIfOverBudget(std::source_location)
 {
 }
 

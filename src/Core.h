@@ -171,6 +171,10 @@ public:
     const std::string& GetSceneLoadError() const { return m_sceneLoadError; }
     /** @brief True while the loading screen is up for a load (running) or a failed load (waiting for Continue). */
     bool IsSceneBusy() const { return IsSceneLoading() || !m_sceneLoadError.empty(); }
+    // Load trace (NOX_LOAD_TRACE=1, MainWindow): the last Update's load service time and the step it ran.
+    bool IsLoadPhase() const { return IsSceneBusy() || m_scenePresentPending; }
+    float LastLoadServiceMs() const { return m_lastLoadServiceMs; }
+    const std::string& LastLoadStep() const { return m_lastLoadStep; }
 
     /**
      * @brief Save the current scene.
@@ -361,6 +365,8 @@ private:
     bool m_sceneLoadStartup = false;              // the load in progress is the startup scene
     std::chrono::steady_clock::time_point m_sceneLoadStartTime{};  // BeginLoad of the load in progress
     float m_sceneLoadWorstFrameMs = 0.0f;         // longest frame seen while it loaded (logged on commit)
+    float m_lastLoadServiceMs = 0.0f;             // load trace: time ServiceSceneLoad took in the last Update
+    std::string m_lastLoadStep;                   // load trace: the step that ran in the last Update
     bool ApplySceneCameraOverride(const std::string& sceneFilePath);
     void ComputeSceneBoundingBox();
     void RebuildSceneBVH();

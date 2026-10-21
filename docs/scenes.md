@@ -74,8 +74,13 @@ Where the work runs:
   `LoadModel` takes the decoded copy.
 - Main thread, inside a frame budget of 8 ms: the scene is built in slices (`SliceTask`, a Windows fiber
   that yields when its budget is spent). Yield points are placed per primitive, per texture upload, in the
-  vertex loops, per light, and per road-network node. The GPU uploads run on the main thread (GL context).
+  vertex loops, per light, per road-network node, per child node, and at the section boundaries of a glTF
+  load. The GPU uploads run on the main thread (GL context).
   A root node is built only after its models are decoded, so the build never waits on a decoder.
+- Work that cannot be prefetched (a model that a procedural generator produces without cooked output) is
+  parsed on a worker thread while the slice waits: `SliceTask::AwaitYielding(future)` yields to the frame
+  between polls. `nox.roads` (declared files and `from_table`) reads, parses and builds the road graph the
+  same way, so a city-sized network (tens of MB of JSON) no longer blocks the frame.
 - Commit, main thread, sliced as well: clearing the old scene, scene state, shadow maps, lights, render
   settings, game module configure, editor and UI, bounds, acceleration structure. Each step is timed in
   the log (`[Core] Scene commit step '...': N ms`). The old physics bodies are removed at commit.
@@ -113,6 +118,12 @@ Environment:
 - `NOX_SYNC_LOAD=1`: the startup scene loads blocking (the same steps, without frame pacing). Frame-indexed
   hooks give the same frame numbers either way, so the flag is only needed for timing experiments.
 - `NOX_FIXED_DT` runs: loading frames do not step the simulation, so results are unchanged.
+- `NOX_LOAD_TRACE=1`: one `[LoadTrace]` line per load-phase frame with the loop time (`frame_ms`), the update,
+  render and present times, the load service time and the step that ran (`step=`). Use it to find the frames
+  that hitch.
+- `NOX_SLICE_GAP_MS=<ms>`: logs (stderr, `[SliceGap]`) each stretch of work longer than that between two yield
+  points in a slice, with the file and line of both ends. A stretch is only measured while the slice runs, so
+  time spent suspended across frames is not counted.
 
 Scene frames (`src/SceneFrameClock.h`): frame-indexed test hooks count scene frames, not raw frames. A
 scene frame is a frame shown live: the scene is committed and no loading screen is drawn over it. The commit

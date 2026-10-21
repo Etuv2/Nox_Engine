@@ -1156,7 +1156,9 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 	using Clock = std::chrono::high_resolution_clock;
 	const auto loadStart = Clock::now();
 	// The CPU parse runs here unless a prefetched copy was supplied (ModelManager prefetch on a worker thread).
-	const std::shared_ptr<PreparedGltf> source = prepared ? prepared : PrepareGLTF(path);
+	// A model nobody prefetched (live generator output) parses on a worker while this slice yields to the frame.
+	const std::shared_ptr<PreparedGltf> source = prepared ? prepared
+		: SliceTask::AwaitYielding(std::async(std::launch::async, [this, path] { return PrepareGLTF(path); }));
 	if (!source) {
 		return false;
 	}
@@ -1183,6 +1185,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 	skin.bounds = SkinBounds::JointBounds();
 	m_model_name = path.substr(path.find_last_of("/\\") + 1);
 
+	SliceTask::YieldIfOverBudget();  // slice point: after the parse, before the node tree is built
 	const auto nodeBuildStart = Clock::now();
 	PopulateSceneNodesAndWorldTransforms(model, nodes, nodeWorldTransforms);
 	const auto nodeBuildEnd = Clock::now();
@@ -1234,6 +1237,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 	size_t primitivesWithTexCoord1 = 0;
 	size_t primitivesUsingUVSet1 = 0;
 
+	SliceTask::YieldIfOverBudget();  // slice point: before the mesh and primitive pass
 	// (1) Parse all meshes/primitives once, then attach them to authored nodes.
 	// The glTF node table is the source of truth for ownership and transforms.
 	std::vector<std::vector<uint32_t>> meshPrimitivesByGltfMesh(model.meshes.size());
@@ -1655,6 +1659,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 		SliceTask::YieldIfOverBudget();  // slice point: the texture is uploaded and cached
 		return loadedTexture;
 	};
+	SliceTask::YieldIfOverBudget();  // slice point: before the primitive build
 	const auto primitiveBuildStart = Clock::now();
 	for (size_t mm = 0; mm < model.meshes.size(); mm++) {
 		const tinygltf::Mesh& gltfMesh = model.meshes[mm];
@@ -2241,6 +2246,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 		}
 	}
 	const auto animationLoadEnd = Clock::now();
+	SliceTask::YieldIfOverBudget();  // slice point: after the animation load
 	animationLoadMs = std::chrono::duration<float, std::milli>(animationLoadEnd - animationLoadStart).count();
 
 	const auto loadEnd = Clock::now();
@@ -2273,6 +2279,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 		totalVertexCount,
 		totalIndexCount);
 
+	SliceTask::YieldIfOverBudget();  // slice point: before the import-time material snapshot
 	// Import-time material state, before scene material_overrides touch the shared model.
 	importedMaterials.clear();
 	importedMaterials.reserve(meshes.size());

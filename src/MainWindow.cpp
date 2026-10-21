@@ -20,6 +20,7 @@
 #include <IMGUI/imgui_impl_sdl2.h>
 #include "stb_image_write.h"
 #include "SceneFrameClock.h"
+#include <chrono>
 #include <filesystem>
 #include <vector>
 
@@ -394,8 +395,12 @@ void MainWindow::Run() {
         m_lastTime = currentTime;
 
         FrameProfiler::BeginFrame();
+        const auto traceLoopStart = std::chrono::steady_clock::now();
+        int traceEventsMs = 0;
         // Always process window events
+        const auto eventsStart = std::chrono::steady_clock::now();
         ProcessEvents();
+        traceEventsMs = static_cast<int>(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - eventsStart).count());
         FrameProfiler::Mark("events");
         
         // Skip rendering and update when window is not visible
@@ -408,9 +413,19 @@ void MainWindow::Run() {
         // Update and render through Core only when visible. Pointer frame: input latched before the
         // update, UI hit regions drawn this frame become the hit set of the next one.
         ui::Pointer::Get().BeginFrame(deltaTime);
+        bool loadTraceOn = false;
+        bool tracePhase = false;
+        std::chrono::steady_clock::time_point traceUpdateStart{}, traceRenderStart{}, traceRenderEnd{};
         if (m_core) {
+            // NOX_LOAD_TRACE=1: one line per load-phase frame. frame_ms is the full loop time (Update + Render + swap),
+            // so the rest of the frame after update_ms and render_ms is the swap / vsync wait.
+            loadTraceOn = GetEnvString("NOX_LOAD_TRACE") == "1";
+            traceUpdateStart = std::chrono::steady_clock::now();
             m_core->Update(deltaTime);
+            traceRenderStart = std::chrono::steady_clock::now();
             m_core->Render(m_windowWidth, m_windowHeight);
+            traceRenderEnd = std::chrono::steady_clock::now();
+            tracePhase = m_core->IsLoadPhase();
         }
         ui::Pointer::Get().EndFrame();
         ++renderedFrames;
@@ -457,7 +472,21 @@ void MainWindow::Run() {
         automation::EndFrame(m_windowWidth, m_windowHeight);
         FrameProfiler::Mark("capture");
         // Swap buffers (already checking visibility, so always swap here)
+        const auto presentStart = std::chrono::steady_clock::now();
         rhi::Gpu().Present();
+        if (loadTraceOn && tracePhase) {
+            // NOX_LOAD_TRACE=1: one line per load-phase frame. frame_ms is the whole loop; present_ms is the swap
+            // (vsync wait plus any GPU backlog the swap waits on). The loop's remainder is event pumping and sleeps.
+            const auto now = std::chrono::steady_clock::now();
+            const auto ms = [](auto a, auto b) { return static_cast<int>(std::chrono::duration<double, std::milli>(b - a).count()); };
+            const std::string& step = m_core->LastLoadStep();
+            // frame_ms: this iteration's own loop time (from its top to after the swap); deltaTime lags by one iteration.
+            std::cout << "[LoadTrace] frame_ms=" << ms(traceLoopStart, now)
+                << " update_ms=" << ms(traceUpdateStart, traceRenderStart) << " render_ms=" << ms(traceRenderStart, traceRenderEnd)
+                << " present_ms=" << ms(presentStart, now) << " events_ms=" << traceEventsMs
+                << " service_ms=" << static_cast<int>(m_core->LastLoadServiceMs())
+                << " step=" << (step.empty() ? std::string("present overlay") : step) << std::endl;
+        }
         FrameProfiler::Mark("present");
         FrameProfiler::EndFrame();
     }

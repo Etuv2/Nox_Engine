@@ -2209,6 +2209,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJso
 	// If the node has children, process them recursively with this node as parent
 	if (nodeJson.contains("children") && nodeJson["children"].is_array()) {
 		for (auto& childJson : nodeJson["children"]) {
+			SliceTask::YieldIfOverBudget();  // slice point: one child at a time (generated children can number in the hundreds)
 			auto childNode = ProcessNodeRecursive(childJson, myEntityID);
 			if (childNode) {
 				node->AddChild(childNode);
@@ -2217,6 +2218,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJso
 	}
 	if (generatedChildren.is_array()) {
 		for (const json& childJson : generatedChildren) {
+			SliceTask::YieldIfOverBudget();  // slice point: one child at a time (generated children can number in the hundreds)
 			auto childNode = ProcessNodeRecursive(childJson, myEntityID);
 			if (childNode) {
 				childNode->SetGenerated(true);
