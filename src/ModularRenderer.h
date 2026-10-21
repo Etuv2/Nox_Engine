@@ -99,6 +99,9 @@ public:
 
 	// TAA controls
 	void ResetTAA();
+	// Prepare phase for a committed scene (called in a load slice): passes build their first-use GPU state now,
+	// so the first live frame does not. Yields and budgets its uploads when run inside a slice.
+	void PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph);
 	void RequestReflectionProbeRecapture();
 	int GetTAAFrameIndex() const;
 

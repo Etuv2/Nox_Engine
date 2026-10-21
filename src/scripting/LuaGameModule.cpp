@@ -1,4 +1,5 @@
 #include "../audio/AudioMixer.h"
+#include "../SliceTask.h"
 #include "LuaGameModule.h"
 
 #include "LuaEditorPanel.h"
@@ -240,9 +241,11 @@ namespace NoxLua {
 		}
 
 		// A fresh configuration (scene load or Stop): the previous world is released here.
+		SliceTask::YieldIfOverBudget();  // slice point: before the scene document copies (the root is a large JSON)
 		ClearSubsteps();
 		m_docs.game = game;
 		m_docs.root = sceneRoot;
+		SliceTask::YieldIfOverBudget();  // slice point: before the world is staged
 		// A scene loaded by ctx:load_scene(path, payload) takes its payload here; any other configuration takes none.
 		std::optional<nlohmann::json> payload = TakePendingScenePayload();
 		StageOutcome outcome = StageWorld(m_limits, *m_files, m_descriptor.content, scene, m_authoredEntities, nullptr, &m_docs);

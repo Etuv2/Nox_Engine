@@ -24,6 +24,9 @@ public:
 
 	bool Initialize(RenderContext& context) override;
 	void Resize(RenderContext&, int, int) override {}
+	// Prepare phase (after the scene commit, inside a load slice): builds the decal texture arrays of the scene's sets
+	// (generator and node sets) so the first live frame finds them cached.
+	void PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph);
 	void Execute(RenderContext& ctx,
 		const std::shared_ptr<SceneGraph>& sceneGraph,
 		const std::shared_ptr<Camera>& camera,

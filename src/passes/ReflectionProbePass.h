@@ -36,6 +36,9 @@ public:
 		const std::shared_ptr<Skybox>& skybox) override;
 
 	void RequestRecapture() { m_framesUntilCapture = 2; }
+	// Prepare phase (inside a load slice): captures the scene's probes now, a few per frame, instead of over the
+	// first live frames.
+	void PrepareScene(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph);
 	// Probe capture is sliced: the probes of one scene are captured a few per frame.
 	bool IsCapturing() const { return m_captureActive; }
 	static void BindForShading(const RenderContext& ctx);

@@ -494,6 +494,12 @@ void MainWindow::Run() {
         // Swap buffers (already checking visibility, so always swap here)
         const auto presentStart = std::chrono::steady_clock::now();
         rhi::Gpu().Present();
+        if (loadTraceOn && !tracePhase && nox::SceneFrameClock::live && nox::SceneFrameClock::scene <= 5) {
+            // The first live frames of a scene (scene frame 1..5): their loop time, for the load targets.
+            const auto now = std::chrono::steady_clock::now();
+            std::cout << "[LiveTrace] scene_frame=" << nox::SceneFrameClock::scene << " frame_ms="
+                << static_cast<int>(std::chrono::duration<double, std::milli>(now - traceLoopStart).count()) << std::endl;
+        }
         if (loadTraceOn && tracePhase) {
             // NOX_LOAD_TRACE=1: one line per load-phase frame. frame_ms is the whole loop; present_ms is the swap
             // (vsync wait plus any GPU backlog the swap waits on). The loop's remainder is event pumping and sleeps.

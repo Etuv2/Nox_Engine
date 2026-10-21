@@ -29,6 +29,8 @@ public:
 
 	bool Initialize(RenderContext& context) override;
 	void Resize(RenderContext& context, int newWidth, int newHeight) override;
+	// Prepare phase (after the scene commit, inside a load slice): builds the flare sprite array of the scene.
+	void PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph);
 	void Execute(RenderContext& ctx,
 		const std::shared_ptr<SceneGraph>& sceneGraph,
 		const std::shared_ptr<Camera>& camera,

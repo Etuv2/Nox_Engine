@@ -12,6 +12,7 @@
 
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
+#include "../SliceTask.h"
 #include "../TransformSystem.h"
 #include "../reflect/ReflectServices.h"
 #include "../assets/AssetIO.h"
@@ -1331,6 +1332,7 @@ namespace NoxLua {
 		}
 		m_runtime->SetScriptRoots(project.scriptRoots);
 		std::string error;
+		SliceTask::YieldIfOverBudget();  // slice point: before the API install (a load slice may pause here)
 		if (!InstallApi(error)) {
 			Diagnostic d;
 			d.source = "load";
@@ -1338,6 +1340,7 @@ namespace NoxLua {
 			AddDiagnostic(std::move(d));
 			return false;
 		}
+		SliceTask::YieldIfOverBudget();  // slice point: after the API install, before the entry script
 		m_phase = Phase::Loading;
 		const bool entryOk = RunEntry(project, error);
 		m_phase = Phase::Running;

@@ -1549,7 +1549,11 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 
 	// Deterministic per-frame light update location
 	m_context.deltaTime = deltaTime;
-	m_context.timeSeconds += deltaTime;
+	// Scene time advances on live scene frames only: loading and overlay frames (their count depends on how the scene
+	// was loaded, async or NOX_SYNC_LOAD) must not move the animated weather, fog or rain.
+	if (nox::SceneFrameClock::live) {
+		m_context.timeSeconds += deltaTime;
+	}
 	m_context.lightManager->ResetFrameUploadStats();
 	m_context.lightManager->UpdateLights(m_context.deltaTime);
 	if (m_context.lightManager->IsLightDataDirty()) {
@@ -1739,6 +1743,15 @@ void ModularRenderer::visualizeDebugMode(RenderContext& ctx)
 	std::cout << "[ModularRenderer] Visualized debug mode: " << static_cast<int>(ctx.debugMode) << std::endl;
 }
 
+
+void ModularRenderer::PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph)
+{
+	if (!sceneGraph) return;
+	if (m_gbufferPass) m_gbufferPass->PrepareScene(sceneGraph);
+	if (m_decalPass) m_decalPass->PrepareScene(sceneGraph);
+	if (m_lensFlarePass) m_lensFlarePass->PrepareScene(sceneGraph);
+	if (m_reflectionProbePass) m_reflectionProbePass->PrepareScene(m_context, sceneGraph);
+}
 
 void ModularRenderer::ResetTAA()
 {

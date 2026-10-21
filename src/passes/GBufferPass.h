@@ -21,6 +21,9 @@ public:
 
     bool Initialize(RenderContext& context) override;
     void Resize(RenderContext& context, int newWidth, int newHeight) override;
+    // Prepare phase (after the scene commit, inside a load slice): uploads the scene's interior atlas so the first
+    // live frame finds it in place. Idempotent with Execute, which takes the same cached state.
+    void PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph);
     void Execute(RenderContext& ctx,
                  const std::shared_ptr<SceneGraph>& sceneGraph,
                  const std::shared_ptr<Camera>& camera,

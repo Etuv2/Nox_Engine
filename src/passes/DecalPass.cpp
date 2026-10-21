@@ -125,6 +125,19 @@ void CollectNodeDecalSets(SceneNode& node, std::map<std::string, size_t>& indexB
 }
 }
 
+void DecalPass::PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph)
+{
+	if (!sceneGraph) return;
+	const SceneRenderExtras& extras = sceneGraph->renderExtras;
+	m_nodeSets.clear();
+	if (const std::shared_ptr<SceneNode> root = sceneGraph->GetRoot()) {
+		std::map<std::string, size_t> indexByTexture;
+		CollectNodeDecalSets(*root, indexByTexture, m_nodeSets);
+	}
+	for (const DecalSet& set : extras.decalSets) TextureArrayBuilder::GetOrBuild(set.layers, set.textureOptions);
+	for (const DecalSet& set : m_nodeSets) TextureArrayBuilder::GetOrBuild(set.layers, set.textureOptions);
+}
+
 void DecalPass::Execute(RenderContext& ctx,
 	const std::shared_ptr<SceneGraph>& sceneGraph,
 	const std::shared_ptr<Camera>&,

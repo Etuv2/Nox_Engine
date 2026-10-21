@@ -1,5 +1,6 @@
 #include "IndirectDiffusePass.h"
 #include "../RenderContext.h"
+#include "../SceneFrameClock.h"
 #include "../FrameBuffer.h"
 #include "../SceneGraph.h"
 #include "../Camera.h"
@@ -516,7 +517,8 @@ void IndirectDiffusePass::runHorizonGather(RenderContext& ctx, const std::shared
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "thicknessVS"), std::max(0.001f, ctx.indirectDiffuseThicknessVS));
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "rayCount"), sliceCount);
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "stepCount"), stepCount);
-    gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "frameIndex"), m_frameIndex++);
+    gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "frameIndex"), m_frameIndex);
+    if (nox::SceneFrameClock::live) ++m_frameIndex;  // live scene frames only (loading frames are not in the sequence)
     // Interleaving needs last frame's history to fill the untraced pixels, so a reset traces everything.
     gpu.SetUniform(gpu.GetUniformLocation(m_csHorizonGather->GetProgramID(), "traceInterleave"),
         (ctx.indirectDiffuseInterleavedTrace && temporalHistoryUsable(ctx)) ? 1 : 0);

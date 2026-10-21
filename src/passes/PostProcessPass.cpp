@@ -1,5 +1,6 @@
 #include "PostProcessPass.h"
 #include "../PresentTarget.h"
+#include "../SceneFrameClock.h"
 #include "PassLogging.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
@@ -164,7 +165,8 @@ void PostProcessPass::Execute(RenderContext& ctx,
     set1f("uFilmGrain", ctx.filmGrainIntensity);
     set1f("uChromaticAberration", ctx.chromaticAberration);
     set1i("uDither", ctx.enableOutputDither ? 1 : 0);
-    if (rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "uFrameIndex"); loc >= 0) gpu.SetUniform(loc, m_frameIndex++);
+    if (rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "uFrameIndex"); loc >= 0) gpu.SetUniform(loc, m_frameIndex);
+    if (nox::SceneFrameClock::live) ++m_frameIndex;  // live scene frames only: loading frames do not shift the grain seed
     if (rhi::UniformLocation loc = gpu.GetUniformLocation(m_shader, "uResolution"); loc >= 0) gpu.SetUniform(loc, glm::vec2(static_cast<float>(ctx.width), static_cast<float>(ctx.height)));
 
     FrameBuffer* sourceFBO = ctx.postSourceFBO ? ctx.postSourceFBO

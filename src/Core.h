@@ -354,6 +354,8 @@ private:
     void PresentSceneOverlay();
     void FinishSceneLoadSynchronously();
     std::unique_ptr<SliceTask> m_commitTask;       // the commit of a loaded scene, sliced across frames
+    std::unique_ptr<SliceTask> m_prepareTask;      // renderer prepare for the committed scene (passes build their first-use state)
+    void BeginScenePrepare(double budgetMs);       // runs the prepare phase; the loading screen stays up until it is done
     std::shared_ptr<SceneGraph> m_commitGraph;     // the loaded scene being committed
     bool m_commitStartup = false;
     bool m_scenePresentPending = false;            // the new scene committed; its first frame draws the loading overlay

@@ -1,5 +1,6 @@
 #include "RTPass.h"
 #include "../PresentTarget.h"
+#include "../SceneFrameClock.h"
 #include "../RenderContext.h"
 #include "../FrameBuffer.h"
 #include "../ShaderLoader.h"
@@ -399,7 +400,7 @@ void RTPass::runRayTracing(RenderContext& ctx,
 
 void RTPass::accumulateFrame(RenderContext& ctx)
 {
-	m_frameIndex++;
+	if (nox::SceneFrameClock::live) m_frameIndex++;  // live scene frames only (loading frames are not in the sequence)
 
 	// Optional: Log convergence progress
 	if (m_frameIndex % 100 == 0) {
