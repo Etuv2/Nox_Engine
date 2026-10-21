@@ -1332,10 +1332,10 @@ void Core::Render(int windowWidth, int windowHeight) {
 		outline.hoveredEntities.clear();
 		if (target == EditorWorkspace::Target::Scene && !m_editor->IsPlaying()) {
 			const EditorWorkspace::SelectionOutlineSettings& style = m_editor->OutlineSettings();
-			const std::shared_ptr<SceneNode> selected = m_imguiInterface ? m_imguiInterface->GetSelectedNode() : nullptr;
 			const std::shared_ptr<SceneNode> hovered = m_editor->HoveredNode();
-			if (selected) AppendSubtreeEntities(*selected, outline.selectedEntities);
-			if (hovered && hovered != selected) AppendSubtreeEntities(*hovered, outline.hoveredEntities);
+			const std::vector<std::shared_ptr<SceneNode>> selectedNodes = m_editor->SelectedNodes();
+			for (const std::shared_ptr<SceneNode>& node : selectedNodes) AppendSubtreeEntities(*node, outline.selectedEntities);
+			if (hovered && std::find(selectedNodes.begin(), selectedNodes.end(), hovered) == selectedNodes.end()) AppendSubtreeEntities(*hovered, outline.hoveredEntities);
 			std::sort(outline.selectedEntities.begin(), outline.selectedEntities.end());
 			outline.selectedEntities.erase(std::unique(outline.selectedEntities.begin(), outline.selectedEntities.end()), outline.selectedEntities.end());
 			std::sort(outline.hoveredEntities.begin(), outline.hoveredEntities.end());

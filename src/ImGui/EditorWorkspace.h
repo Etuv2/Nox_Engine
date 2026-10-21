@@ -11,6 +11,7 @@
 #include "rhi/RHI.h"
 #include "../editor/InspectorUndo.h"
 #include "../editor/HierarchyModel.h"
+#include "../editor/Selection.h"
 #include "../json.hpp"
 #include "../EditorExtensions.h"
 #include "PhysicsWindow.h"
@@ -90,6 +91,8 @@ public:
 	ModularRenderer* GetRenderer() override;
 	bool ProjectToViewport(const glm::vec3& world, ImVec2& out) const override;   // scene viewport
 	void AddViewportHandle(const ViewportHandle& handle) override { m_handles.push_back(handle); }
+	// The selection set (primary last). Single-node callers keep using the window manager selection, which is the primary.
+	std::vector<std::shared_ptr<SceneNode>> SelectedNodes() const { return m_selection.Nodes(); }
 	void ShowPanel(const std::string& id) override;
 
 private:
@@ -147,6 +150,7 @@ private:
 	void DrawModals();
 	void DrawAuthoringOverlay(ImDrawList* dl);   // registered viewport overlay + its handles
 	void DrawGizmo(const Viewport& vp);
+	void DrawGroupGizmo(const Viewport& vp);
 	void DrawOutlineStylePopup();
 	void UpdateHover(const ImGuiIO& io);
 	void DrawSelectionBounds(ImDrawList* dl);
@@ -168,6 +172,18 @@ private:
 	bool ProjectToViewport(const Viewport& vp, const glm::vec3& world, ImVec2& out) const;   // scene viewport: see EditorHost
 	bool ViewportRayToGround(const Viewport& vp, const ImVec2& mouse, glm::vec3& out) const;
 	void SelectNode(const std::shared_ptr<SceneNode>& node);
+	// Click selection: plain replaces, additive (Ctrl) toggles, range (Shift, hierarchy only) selects visible rows between.
+	void ClickSelect(const std::shared_ptr<SceneNode>& node, bool additive, bool range);
+	// Keeps the selection set and the window manager selection (the primary) in step, and drops removed nodes.
+	void SyncSelection();
+	// Multi-node commands (Ctrl+C/X/V/D/A, Delete). Each is one undo step.
+	void CopySelection(bool cut);
+	void PasteFromClipboard();
+	void SelectAllTopLevel();
+	void DeleteSelectionWithUndo();
+	void DuplicateSelectionWithUndo();
+	bool NodeShortcutScope() const;      // hierarchy or scene viewport has keyboard focus
+	void UpdateMarquee(const ImGuiIO& io, ImDrawList* dl);
 	void RequestScene(const std::string& path);
 
 	Core& m_core;
@@ -225,6 +241,19 @@ private:
 	float m_snapValues[3] = { 0.5f, 15.0f, 0.1f };
 	bool m_wasUsingGizmo = false;
 	std::array<float, 10> m_gizmoBefore{};
+	// Group gizmo (several nodes selected): pivot matrix and the TRS of each top-level node at drag start.
+	glm::mat4 m_groupModel{ 1.0f };
+	std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> m_groupBefore;
+
+	// Selection set, rows of the hierarchy as drawn last frame (Shift range select), marquee drag in the viewport.
+	nox::editor::Selection m_selection;
+	std::vector<std::shared_ptr<SceneNode>> m_visibleRows;
+	bool m_hierarchyFocused = false;
+	bool m_marquee = false;
+	ImVec2 m_marqueeStart{ 0.0f, 0.0f };
+
+	// Clipboard: serialised subtrees of the last copy (the OS clipboard holds the same text).
+	std::vector<nlohmann::json> m_clipboardNodes;
 
 	// Selection outline (SelectionOutlinePass): style, and the node under the mouse (throttled pick).
 	SelectionOutlineSettings m_outline;

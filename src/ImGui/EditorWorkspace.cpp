@@ -217,6 +217,10 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		[this] { return m_core.IsPlaying(); },
 		[this](const std::string& scene) { RequestScene(scene); },
 		[this](const std::string& asset) { PlaceAssetInScene(asset, m_legacy.GetSelectedNode(), nullptr); },
+		[this](const std::string& label, std::function<void()> undo, std::function<void()> redo) {
+			if (!m_core.IsPlaying()) Push(label, std::move(undo), std::move(redo));
+		},
+		[this] { return m_core.GetCurrentScenePath(); },
 	});
 	// The layout ini may have been deleted: rebuild when no dock node exists yet.
 	const std::string userLayout = AssetIO::UserOutputPath("editor_layout.ini");
@@ -305,6 +309,7 @@ void EditorWorkspace::Draw(float dt)
 	m_dt = dt;
 	m_fpsSmoothed = m_fpsSmoothed <= 0.0f ? (dt > 0 ? 1.0f / dt : 0.0f) : m_fpsSmoothed + ((dt > 0 ? 1.0f / dt : 0.0f) - m_fpsSmoothed) * 0.05f;
 	m_statusTimer = std::max(0.0f, m_statusTimer - dt);
+	SyncSelection();
 
 	ImGuiViewport* mainVp = ImGui::GetMainViewport();
 	DrawMenuBar();
@@ -484,8 +489,14 @@ void EditorWorkspace::DrawMenuBar()
 		if (ImGui::MenuItem("Redo", "Ctrl+Y", false, !m_redo.empty())) Redo();
 		ImGui::Separator();
 		auto sel = m_legacy.GetSelectedNode();
-		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, sel != nullptr && !m_core.IsPlaying())) DuplicateNodeWithUndo(sel);
-		if (ImGui::MenuItem("Delete", "Del", false, sel != nullptr && !m_core.IsPlaying())) DeleteNodeWithUndo(sel);
+		const bool playing = m_core.IsPlaying();
+		if (ImGui::MenuItem("Cut", "Ctrl+X", false, sel != nullptr && !playing)) CopySelection(true);
+		if (ImGui::MenuItem("Copy", "Ctrl+C", false, sel != nullptr)) CopySelection(false);
+		if (ImGui::MenuItem("Paste", "Ctrl+V", false, !playing)) PasteFromClipboard();
+		ImGui::Separator();
+		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, sel != nullptr && !playing)) DuplicateSelectionWithUndo();
+		if (ImGui::MenuItem("Delete", "Del", false, sel != nullptr && !playing)) DeleteSelectionWithUndo();
+		if (ImGui::MenuItem("Select All", "Ctrl+A", false, !playing)) SelectAllTopLevel();
 		ImGui::Separator();
 		if (ImGui::MenuItem("Preferences...")) m_showPreferences = true;
 		ImGui::EndMenu();
@@ -768,21 +779,8 @@ void EditorWorkspace::DrawSceneViewport()
 	UpdateHover(io);
 	DrawSelectionBounds(dl);
 
-	// Click selection (not on gizmo or authoring handles).
-	if (m_scene.hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver() &&
-		m_dragHandle < 0 && ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x == 0.0f && !m_core.IsEditorCameraActive()) {
-		bool handleHit = false;
-		for (const ViewportHandle& h : m_handles) {
-			ImVec2 p;
-			if (ProjectToViewport(m_scene, h.world, p) && std::hypot(p.x - io.MousePos.x, p.y - io.MousePos.y) < 10.0f) { handleHit = true; break; }
-		}
-		if (!handleHit) {
-			const ImVec2 scale = io.DisplayFramebufferScale;
-			const int x = static_cast<int>((io.MousePos.x - m_scene.pos.x) * scale.x);
-			const int y = static_cast<int>((io.MousePos.y - m_scene.pos.y) * scale.y);
-			SelectNode(m_core.PickNode(x, y, m_scene.texWidth, m_scene.texHeight));
-		}
-	}
+	// Click, Ctrl+click and marquee selection (not on the gizmo or authoring handles).
+	UpdateMarquee(io, dl);
 
 	// In-viewport tool strip.
 	ImGui::SetCursorScreenPos(ImVec2(m_scene.pos.x + 8, m_scene.pos.y + 8));
@@ -814,6 +812,10 @@ void EditorWorkspace::DrawSceneViewport()
 
 void EditorWorkspace::DrawGizmo(const Viewport& vp)
 {
+	if (m_selection.Size() > 1) {
+		DrawGroupGizmo(vp);
+		return;
+	}
 	auto node = m_legacy.GetSelectedNode();
 	auto cam = m_core.GetCamera();
 	if (!node || !cam || m_core.IsEditorCameraActive() || node->IsFolder()) {
@@ -844,6 +846,61 @@ void EditorWorkspace::DrawGizmo(const Viewport& vp)
 		std::weak_ptr<SceneNode> weak = node;
 		Push("Transform " + node->GetName(), [weak, before] { if (auto n = weak.lock()) ApplyTRS(n, before); },
 			[weak, after] { if (auto n = weak.lock()) ApplyTRS(n, after); });
+		m_core.MarkDirty();
+	}
+	m_wasUsingGizmo = using_;
+}
+
+// Several nodes selected: one gizmo at the centre of their top-level nodes. Dragging moves, turns or scales each
+// top-level node about that pivot (its children follow it). One undo step per drag. Rotation and non-uniform scale
+// of a node that is already rotated can shear it, as with any world-space group transform.
+void EditorWorkspace::DrawGroupGizmo(const Viewport& vp)
+{
+	auto cam = m_core.GetCamera();
+	const auto top = m_selection.TopLevel();
+	if (!cam || top.empty() || m_core.IsEditorCameraActive()) {
+		m_wasUsingGizmo = false;
+		return;
+	}
+	if (!m_wasUsingGizmo) {
+		glm::vec3 centre(0.0f);
+		for (const auto& n : top) centre += n->GetWorldPosition();
+		centre /= static_cast<float>(top.size());
+		m_groupModel = glm::translate(glm::mat4(1.0f), centre);
+	}
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+	ImGuizmo::SetRect(vp.pos.x, vp.pos.y, vp.size.x, vp.size.y);
+	const glm::mat4 view = cam->GetViewMatrix();
+	const glm::mat4 proj = glm::perspective(glm::radians(cam->GetCameraFov()), vp.size.x / vp.size.y, 0.05f, 5000.0f);
+	float snap[3];
+	const int op = m_gizmoOp;
+	const float s = op == ImGuizmo::ROTATE ? m_snapValues[1] : (op == ImGuizmo::SCALE ? m_snapValues[2] : m_snapValues[0]);
+	snap[0] = snap[1] = snap[2] = s;
+	const glm::mat4 pre = m_groupModel;
+	ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), static_cast<ImGuizmo::OPERATION>(op),
+		static_cast<ImGuizmo::MODE>(m_gizmoMode), glm::value_ptr(m_groupModel), nullptr, m_snap ? snap : nullptr);
+	const bool using_ = ImGuizmo::IsUsing();
+	if (using_) {
+		if (!m_wasUsingGizmo) {
+			m_groupBefore.clear();
+			for (const auto& n : top) m_groupBefore.push_back({ n, CaptureTRS(n) });
+		}
+		const glm::mat4 delta = m_groupModel * glm::inverse(pre);
+		for (const auto& n : top) n->SetWorldTransform(delta * n->GetWorldPosition4x4());
+		m_core.InvalidateSceneCaches();
+	}
+	if (m_wasUsingGizmo && !using_) {
+		std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> before = m_groupBefore;
+		std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> after;
+		for (const auto& entry : before) {
+			if (auto n = entry.first.lock()) after.push_back({ entry.first, CaptureTRS(n) });
+		}
+		const std::string label = before.size() == 1 ? "Transform " + (before[0].first.lock() ? before[0].first.lock()->GetName() : std::string("node"))
+			: "Transform " + std::to_string(before.size()) + " nodes";
+		Push(label,
+			[before] { for (const auto& e : before) if (auto n = e.first.lock()) ApplyTRS(n, e.second); },
+			[after] { for (const auto& e : after) if (auto n = e.first.lock()) ApplyTRS(n, e.second); });
 		m_core.MarkDirty();
 	}
 	m_wasUsingGizmo = using_;
@@ -897,8 +954,9 @@ void EditorWorkspace::UpdateHover(const ImGuiIO& io)
 // around the node (the bounds the debug overlay uses) and a ring at its origin.
 void EditorWorkspace::DrawSelectionBounds(ImDrawList* dl)
 {
-	const auto node = m_legacy.GetSelectedNode();
-	if (!node || node->GetModel() || m_core.IsPlaying() || !m_scene.visible) return;
+	if (m_core.IsPlaying() || !m_scene.visible) return;
+	for (const auto& node : m_selection.Nodes()) {
+	if (!node || node->GetModel()) continue;
 	const glm::mat4 world = node->GetWorldPosition4x4();
 	ImVec2 corner[8];
 	bool visible[8];
@@ -914,6 +972,7 @@ void EditorWorkspace::DrawSelectionBounds(ImDrawList* dl)
 	}
 	ImVec2 origin;
 	if (ProjectToViewport(m_scene, glm::vec3(world[3]), origin)) dl->AddCircle(origin, 9.0f, col, 0, 2.0f);
+	}
 }
 
 void EditorWorkspace::DrawAuthoringOverlay(ImDrawList* dl)
@@ -1044,6 +1103,7 @@ void EditorWorkspace::ChooseRenderTarget()
 // ---------------------------------------------------------------------------------------------
 void EditorWorkspace::SelectNode(const std::shared_ptr<SceneNode>& node)
 {
+	m_selection.Set(node);
 	m_legacy.SetSelectedNode(node);
 }
 
@@ -1069,7 +1129,10 @@ void EditorWorkspace::DrawHierarchyRow(const nox::editor::HierarchyRow& row)
 	if (folder) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 200, 120, 255));
 	const bool clicked = ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_SpanAvailWidth);
 	if (folder) ImGui::PopStyleColor();
-	if (clicked) SelectNode(node);
+	if (clicked) {
+		const ImGuiIO& io = ImGui::GetIO();
+		ClickSelect(node, io.KeyCtrl, io.KeyShift);
+	}
 	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) BeginRename(node);
 	const ImVec2 rowMin = ImGui::GetItemRectMin();
 	const ImVec2 rowMax = ImGui::GetItemRectMax();
@@ -1107,7 +1170,7 @@ void EditorWorkspace::DrawHierarchyRow(const nox::editor::HierarchyRow& row)
 		ImGui::EndDragDropTarget();
 	}
 	if (ImGui::BeginPopupContextItem()) {
-		SelectNode(node);
+		if (!m_selection.Contains(node)) SelectNode(node);
 		if (ImGui::MenuItem("Focus")) {
 			if (auto cam = m_core.GetCamera()) {
 				const glm::vec3 p = node->GetWorldPosition();
@@ -1158,7 +1221,9 @@ void EditorWorkspace::DrawHierarchyRow(const nox::editor::HierarchyRow& row)
 
 void EditorWorkspace::DrawHierarchy()
 {
-	if (!ImGui::Begin(kWinHierarchy, &m_showHierarchy)) { ImGui::End(); return; }
+	const bool hierarchyOpen = ImGui::Begin(kWinHierarchy, &m_showHierarchy);
+	m_hierarchyFocused = hierarchyOpen && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+	if (!hierarchyOpen) { ImGui::End(); return; }
 	solace::SearchField("##hfilter", m_hierarchyFilter, sizeof(m_hierarchyFilter), "Search: name or t:folder");
 	if (ImGui::SmallButton("Collapse")) m_hierarchyView.CollapseAll(RootNode());
 	ImGui::SameLine();
@@ -1181,6 +1246,8 @@ void EditorWorkspace::DrawHierarchy()
 		const nox::editor::HierarchyFilter filter = nox::editor::HierarchyFilter::Parse(m_hierarchyFilter);
 		const auto rows = m_hierarchyView.Build(root, filter, m_hierarchySort);
 		if (rows.empty()) ImGui::TextDisabled("%s", filter.Active() ? "No node matches the search." : "The scene is empty. Right-click to add a node.");
+		m_visibleRows.clear();
+		for (const auto& row : rows) m_visibleRows.push_back(row.node);
 		for (const auto& row : rows) DrawHierarchyRow(row);
 		// Empty space below the rows: drop here to move a node to the scene root; right-click adds nodes.
 		const float freeHeight = std::max(ImGui::GetContentRegionAvail().y, 12.0f);
@@ -1426,6 +1493,9 @@ void EditorWorkspace::DrawInspector()
 		ImGui::TextDisabled("Select a node in the Hierarchy or the Scene view.");
 	}
 	else {
+		if (m_selection.Size() > 1) {
+			ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.36f, 1.0f), "%d selected. Showing %s; edits apply to this node only.", static_cast<int>(m_selection.Size()), node->GetName().c_str());
+		}
 		if (!node->GetPrefabPath().empty()) {
 			ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1.0f), "Prefab: %s", node->GetPrefabPath().c_str());
 			ImGui::SameLine();
@@ -1503,7 +1573,7 @@ void EditorWorkspace::DrawPlayBanner()
 	ImGui::PushStyleColor(ImGuiCol_ChildBg, colour);
 	ImGui::BeginChild("##playbanner", ImVec2(-1.0f, ImGui::GetFrameHeight() + 8.0f), false, ImGuiWindowFlags_NoScrollbar);
 	ImGui::SetCursorPos(ImVec2(8.0f, 4.0f));
-	ImGui::TextColored(ImVec4(1, 1, 1, 1), "Playing: changes are not saved");
+	ImGui::TextColored(ImVec4(1, 1, 1, 1), "Play mode: changes will be lost when you Stop (no undo here)");
 	ImGui::EndChild();
 	ImGui::PopStyleColor();
 	ImGui::Spacing();
@@ -2439,10 +2509,13 @@ void EditorWorkspace::HandleShortcuts()
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) Undo();
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) Redo();
 	auto sel = m_legacy.GetSelectedNode();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && sel && !m_core.IsPlaying()) DuplicateNodeWithUndo(sel);
-	if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && sel && !m_core.IsPlaying() && (m_scene.focused || ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))) {
-		if (m_scene.focused) DeleteNodeWithUndo(sel);
-	}
+	const bool scope = NodeShortcutScope();   // the Hierarchy or the Scene viewport has the keyboard
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false)) DuplicateSelectionWithUndo();
+	if (scope && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) DeleteSelectionWithUndo();
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelection(false);
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_X, false)) CopySelection(true);
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteFromClipboard();
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) SelectAllTopLevel();
 	if (m_scene.focused && !ctrl) {
 		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) m_gizmoOp = ImGuizmo::TRANSLATE;
 		if (ImGui::IsKeyPressed(ImGuiKey_E, false)) m_gizmoOp = ImGuizmo::ROTATE;
@@ -2582,6 +2655,71 @@ void EditorWorkspace::RunSmokeScript()
 		check(subject->parentNode.lock() == root, "undo group restores the parent");
 		Undo();
 		check(root->children.size() == rootCount, "undo new folder removes it");
+	}
+	if (frame == 77 && graph) {
+		// Multi-selection (Ctrl+click, copy/paste, multi-delete, select all), each undo step checked. Three empty nodes
+		// are made under the root for the test; the file is restored by the save check at frame 330.
+		const auto root = graph->GetRoot();
+		const size_t before = root->children.size();
+		std::vector<std::shared_ptr<SceneNode>> trio;
+		for (int i = 0; i < 3; ++i) {
+			json j = NodeTemplate("empty");
+			j["name"] = "SmokeSel" + std::to_string(i);
+			j["position"] = { 2.0f * static_cast<float>(i), 0.5f, 7.0f };
+			if (auto n = m_core.InstantiateNodeFromJson(j, root)) trio.push_back(n);
+		}
+		check(trio.size() == 3, "smoke: three nodes for multi-select");
+		if (trio.size() == 3) {
+			SelectNode(trio[0]);
+			ClickSelect(trio[1], true, false);
+			ClickSelect(trio[2], true, false);
+			check(m_selection.Size() == 3 && m_selection.Primary() == trio[2] && m_legacy.GetSelectedNode() == trio[2],
+				"ctrl+click builds a three-node selection, last clicked is primary");
+			const size_t rootCount = root->children.size();
+			CopySelection(false);
+			PasteFromClipboard();
+			check(root->children.size() == rootCount + 3, "paste creates three nodes");
+			bool sameTransforms = root->children.size() == rootCount + 3;
+			bool sameNames = true;
+			if (sameTransforms) {
+				for (size_t i = 0; i < 3; ++i) {
+					const auto copy = root->children[rootCount + i];
+					const auto a = CaptureTRS(trio[i]), b = CaptureTRS(copy);
+					for (size_t k = 0; k < 10; ++k) sameTransforms = sameTransforms && std::abs(a[k] - b[k]) < 1e-4f;
+					sameNames = sameNames && copy->GetName() == trio[i]->GetName() + " (1)";
+				}
+			}
+			check(sameTransforms, "pasted nodes keep the copied transforms");
+			check(sameNames, "pasted nodes get unique names (Name (1))");
+			check(m_selection.Size() == 3, "paste selects the new nodes");
+			Undo();
+			check(root->children.size() == rootCount, "one undo removes all three pasted nodes");
+			Redo();
+			check(root->children.size() == rootCount + 3, "redo restores the three pasted nodes");
+			Undo();
+
+			m_selection.SetAll(trio);
+			m_legacy.SetSelectedNode(m_selection.Primary());
+			DeleteSelectionWithUndo();
+			check(root->children.size() == rootCount - 3, "multi-select delete removes all three");
+			Undo();
+			check(root->children.size() == rootCount, "one undo restores all three deleted nodes");
+
+			size_t topLevel = 0;
+			for (const auto& c : root->children) if (c && !c->IsGenerated()) ++topLevel;
+			SelectAllTopLevel();
+			check(m_selection.Size() == topLevel && topLevel > 0, "ctrl+a selects all top-level nodes");
+			m_selection.Clear();
+			m_legacy.SetSelectedNode(nullptr);
+			// Leave the scene as it was: delete the three nodes this block made (their restore is the saved file's job).
+			std::vector<std::shared_ptr<SceneNode>> made;
+			for (const auto& c : root->children) if (c && c->GetName().rfind("SmokeSel", 0) == 0) made.push_back(c);
+			m_selection.SetAll(made);
+			DeleteSelectionWithUndo();
+			check(root->children.size() == before, "smoke nodes removed again");
+		}
+		m_selection.Clear();
+		m_legacy.SetSelectedNode(nullptr);
 	}
 	if (frame == 75) {
 		// Physics window: focus its tab so it draws (it docks with the Inspector).
