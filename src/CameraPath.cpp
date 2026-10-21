@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <iostream>
+#include <sstream>
 
 namespace {
 constexpr float kOrbitCenterDistance = 5.0f;
@@ -45,6 +46,19 @@ CameraPath::CameraPath(const std::string& spec)
             return;
         }
     }
+    else if (kind == "turn") {
+        float deg = 0.0f;
+        float frames = 0.0f;
+        std::istringstream turnArgs(args);
+        char separator = 0;
+        if ((turnArgs >> deg >> separator >> frames) && separator == ':' && frames >= 1.0f) {
+            m_kind = Kind::Turn;
+            m_turnDegrees = deg;
+            m_frames = frames;
+            std::cout << "[CameraPath] turn deg=" << deg << " frames=" << frames << std::endl;
+            return;
+        }
+    }
 
     std::cerr << "[CameraPath] Unrecognised NOX_CAMERA_PATH '" << spec
               << "' (expected dolly:dx,dy,dz:frames or orbit:degPerFrame)" << std::endl;
@@ -69,6 +83,12 @@ void CameraPath::Apply(Camera& camera)
         const float t = std::min(static_cast<float>(m_frame) / m_frames, 1.0f);
         glm::mat4 world = m_startRotation;
         world[3] = glm::vec4(m_startPosition + m_delta * t, 1.0f);
+        camera.SetWorldTransform(world);
+    }
+    else if (m_kind == Kind::Turn) {
+        const float t = std::min(static_cast<float>(m_frame) / m_frames, 1.0f);
+        const glm::mat4 yaw = glm::rotate(glm::mat4(1.0f), glm::radians(m_turnDegrees * t), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 world = glm::translate(glm::mat4(1.0f), m_startPosition) * yaw * m_startRotation;
         camera.SetWorldTransform(world);
     }
     else if (m_kind == Kind::Orbit) {

@@ -1,15 +1,18 @@
 #version 460 core
-
-// Ray budget allocation (plan WP2). Three dispatches share one uniform, uAllocPhase:
-//   0  histogram: when demand exceeds the budget, each surfel adds its floor quota to a sum and its
-//      fractional remainder to a histogram bin.
-//   1  threshold (one group of 64 threads): find the bin T where the leftover rays run out, and how
-//      many surfels in bin T take the last rays.
-//   2  grant: every surfel gets its floor quota, plus one ray when its remainder is above T (or in T
-//      and within the tie quota). Each surfel then reserves a contiguous range from the budget.
+// Ray budget allocation (plan WP2, plan section 22 for the priority class). Two classes share the budget B:
+//   priority (class 1): young surfels (age < 8) and disturbed surfels, granted first, in full, up to
+//                       uPriorityShare * B; if their demand exceeds that, proportionally within that pool;
+//   normal (class 0): the rest of the budget, shared in proportion to the requests.
+// Each class runs the same three dispatches, with uAllocPhase:
+//   0  histogram: when a class's demand exceeds its budget, each surfel adds its floor quota to a sum and its
+//      fractional remainder to a histogram bin of its class.
+//   1  threshold (one group per class, groups in y): find the bin where the class's leftover rays run out, and
+//      how many surfels in that bin take the last rays.
+//   2  grant: every surfel gets its floor quota, plus one ray when its remainder is above its class threshold (or in
+//      the threshold bin and within the tie quota). Each surfel then reserves a contiguous range from the budget.
 // Within one histogram bin the tie order is arbitrary, so the grant is largest remainder to within
-// 1/SURFEL_RAY_ALLOC_BINS of a ray. Demand at or below the budget is granted in full, with no phases 0 and 1.
-
+// 1/SURFEL_RAY_ALLOC_BINS of a ray. Demand at or below a class budget is granted in full.
+// The class of a surfel is read from its state (the same test request_rays.comp uses to count the priority total).
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
@@ -19,12 +22,18 @@ layout(binding = B_RAY_REQUESTS, std430) buffer SurfelRayRequestBuffer
     SurfelRayRequest rayRequests[];
 };
 
+layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+{
+    Surfel surfels[];
+};
+
 layout(binding = B_SURFEL_COUNTERS, std430) buffer SurfelCounterBuffer
 {
     SurfelCounters counters;
 };
 
-// Scratch words. The host creates them zeroed; phase 1 zeroes the sum and the bins again after use.
+// Scratch words. The host zeroes them every frame. Each class has a header of 4 words and 1024 remainder bins
+// (stride SURFEL_RAY_ALLOC_CLASS_STRIDE); the priority total is the last word (see common.glsl).
 layout(binding = B_RAY_ALLOC_SCRATCH, std430) buffer SurfelRayAllocScratchBuffer
 {
     uint scratch[];
@@ -33,6 +42,9 @@ layout(binding = B_RAY_ALLOC_SCRATCH, std430) buffer SurfelRayAllocScratchBuffer
 uniform uint uMaxSurfels;
 uniform uint uMaxRayBudget;
 uniform uint uAllocPhase = 0u;
+uniform uint uFrameIndex = 0u;
+uniform int uPriorityEnabled = 0;
+uniform float uPriorityShare = 0.6;
 
 const uint SURFEL_RAY_ALLOC_BINS = 1024u;
 const uint SURFEL_RAY_ALLOC_SCRATCH_SUM = 0u;
@@ -59,46 +71,87 @@ uint RemainderBin(uint remainder, uint total)
     return min(remainder * SURFEL_RAY_ALLOC_BINS / total, SURFEL_RAY_ALLOC_BINS - 1u);
 }
 
-void PhaseHistogram(uint surfelID, uint total, uint budget)
+// Demand and budget of each class this frame. Priority demand is the total written by request_rays; the priority
+// budget is at most uPriorityShare of the budget, and the normal class gets the rest.
+void ClassBudgets(out uint totalPri, out uint budgetPri, out uint totalNorm, out uint budgetNorm)
 {
-    if (surfelID >= uMaxSurfels || total <= budget) {
+    uint budget = uMaxRayBudget;
+    uint allRequested = counters.requestedRays;
+    totalPri = uPriorityEnabled != 0 ? min(scratch[SURFEL_RAY_ALLOC_PRIORITY_TOTAL], allRequested) : 0u;
+    uint cap = uint(floor(float(budget) * uPriorityShare));
+    budgetPri = min(totalPri, cap);
+    totalNorm = allRequested - totalPri;
+    budgetNorm = budget - budgetPri;
+}
+
+uint ClassOf(uint surfelID)
+{
+    Surfel surfel = surfels[surfelID];
+    return (uPriorityEnabled != 0 && SurfelPriorityClass(surfel, uFrameIndex)) ? 1u : 0u;
+}
+
+void ClassTotalsBudget(uint cls, out uint total, out uint budget)
+{
+    uint totalPri;
+    uint budgetPri;
+    uint totalNorm;
+    uint budgetNorm;
+    ClassBudgets(totalPri, budgetPri, totalNorm, budgetNorm);
+    total = cls == 1u ? totalPri : totalNorm;
+    budget = cls == 1u ? budgetPri : budgetNorm;
+}
+
+void PhaseHistogram(uint surfelID)
+{
+    if (surfelID >= uMaxSurfels) {
         return;
     }
     uint requested = rayRequests[surfelID].requestedCount;
     if (requested == 0u) {
         return;
     }
+    uint cls = ClassOf(surfelID);
+    uint total;
+    uint budget;
+    ClassTotalsBudget(cls, total, budget);
+    if (total <= budget) {
+        return;
+    }
+    uint base = cls * SURFEL_RAY_ALLOC_CLASS_STRIDE;
     uint remainder = 0u;
     uint quota = FloorQuota(requested, budget, total, remainder);
     if (quota > 0u) {
-        atomicAdd(scratch[SURFEL_RAY_ALLOC_SCRATCH_SUM], quota);
+        atomicAdd(scratch[base + SURFEL_RAY_ALLOC_SCRATCH_SUM], quota);
     }
     if (remainder > 0u) {
-        atomicAdd(scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + RemainderBin(remainder, total)], 1u);
+        atomicAdd(scratch[base + SURFEL_RAY_ALLOC_SCRATCH_BINS + RemainderBin(remainder, total)], 1u);
     }
 }
 
-void PhaseThreshold(uint tid, uint total, uint budget)
+// One group per class (gl_WorkGroupID.y). Every thread of a group takes the same branches.
+void PhaseThreshold(uint tid, uint cls)
 {
-    uint leftover = 0u;
+    uint total;
+    uint budget;
+    ClassTotalsBudget(cls, total, budget);
+    uint base = cls * SURFEL_RAY_ALLOC_CLASS_STRIDE;
     bool contention = total > budget;
+    uint leftover = 0u;
     if (contention) {
-        leftover = budget - scratch[SURFEL_RAY_ALLOC_SCRATCH_SUM];
+        leftover = budget - scratch[base + SURFEL_RAY_ALLOC_SCRATCH_SUM];
     }
     if (tid == 0u) {
-        scratch[SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD] = SURFEL_RAY_ALLOC_BINS;
-        scratch[SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA] = 0u;
-        scratch[SURFEL_RAY_ALLOC_SCRATCH_TICKETS] = 0u;
+        scratch[base + SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD] = SURFEL_RAY_ALLOC_BINS;
+        scratch[base + SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA] = 0u;
+        scratch[base + SURFEL_RAY_ALLOC_SCRATCH_TICKETS] = 0u;
     }
-
     uint first = tid * SURFEL_RAY_ALLOC_BINS_PER_THREAD;
     uint binSum = 0u;
     for (uint k = 0u; k < SURFEL_RAY_ALLOC_BINS_PER_THREAD; ++k) {
-        binSum += scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + first + k];
+        binSum += scratch[base + SURFEL_RAY_ALLOC_SCRATCH_BINS + first + k];
     }
     sBinSum[tid] = binSum;
     barrier();
-
     // Inclusive suffix sums across threads: sBinSum[t] becomes the count of remainders in threads t..63.
     for (uint offset = 1u; offset < SURFEL_RAY_ALLOC_THREADS; offset *= 2u) {
         uint add = (tid + offset < SURFEL_RAY_ALLOC_THREADS) ? sBinSum[tid + offset] : 0u;
@@ -106,7 +159,6 @@ void PhaseThreshold(uint tid, uint total, uint budget)
         sBinSum[tid] += add;
         barrier();
     }
-
     if (contention && leftover > 0u) {
         uint above = (tid + 1u < SURFEL_RAY_ALLOC_THREADS) ? sBinSum[tid + 1u] : 0u;
         uint here = sBinSum[tid];
@@ -115,27 +167,26 @@ void PhaseThreshold(uint tid, uint total, uint budget)
             uint cumulative = above;
             for (uint k = SURFEL_RAY_ALLOC_BINS_PER_THREAD; k > 0u; --k) {
                 uint bin = first + k - 1u;
-                uint count = scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + bin];
+                uint count = scratch[base + SURFEL_RAY_ALLOC_SCRATCH_BINS + bin];
                 if (cumulative + count >= leftover) {
-                    scratch[SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD] = bin;
-                    scratch[SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA] = leftover - cumulative;
+                    scratch[base + SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD] = bin;
+                    scratch[base + SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA] = leftover - cumulative;
                     break;
                 }
                 cumulative += count;
             }
         }
     }
-
     barrier();
     for (uint k = 0u; k < SURFEL_RAY_ALLOC_BINS_PER_THREAD; ++k) {
-        scratch[SURFEL_RAY_ALLOC_SCRATCH_BINS + first + k] = 0u;
+        scratch[base + SURFEL_RAY_ALLOC_SCRATCH_BINS + first + k] = 0u;
     }
     if (tid == 0u) {
-        scratch[SURFEL_RAY_ALLOC_SCRATCH_SUM] = 0u;
+        scratch[base + SURFEL_RAY_ALLOC_SCRATCH_SUM] = 0u;
     }
 }
 
-void PhaseGrant(uint surfelID, uint total, uint budget)
+void PhaseGrant(uint surfelID)
 {
     if (surfelID >= uMaxSurfels) {
         return;
@@ -146,30 +197,33 @@ void PhaseGrant(uint surfelID, uint total, uint budget)
         rayRequests[surfelID].firstRay = 0u;
         return;
     }
-
+    uint cls = ClassOf(surfelID);
+    uint total;
+    uint budget;
+    ClassTotalsBudget(cls, total, budget);
+    uint base = cls * SURFEL_RAY_ALLOC_CLASS_STRIDE;
     uint granted = requested;
     if (total > budget) {
         uint remainder = 0u;
         granted = FloorQuota(requested, budget, total, remainder);
         if (remainder > 0u) {
             uint bin = RemainderBin(remainder, total);
-            uint threshold = scratch[SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD];
+            uint threshold = scratch[base + SURFEL_RAY_ALLOC_SCRATCH_THRESHOLD];
             if (bin > threshold) {
                 granted += 1u;
             } else if (bin == threshold &&
-                       atomicAdd(scratch[SURFEL_RAY_ALLOC_SCRATCH_TICKETS], 1u) < scratch[SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA]) {
+                       atomicAdd(scratch[base + SURFEL_RAY_ALLOC_SCRATCH_TICKETS], 1u) < scratch[base + SURFEL_RAY_ALLOC_SCRATCH_TIE_QUOTA]) {
                 granted += 1u;
             }
         }
     }
-
-    // Contiguous range from the budget. The grants add up to the budget exactly, so the clamp is a guard only.
+    // Contiguous range from the budget. The grants of both classes add up to the budget at most, so the clamp is a guard.
     uint allocated = 0u;
     uint firstRay = 0u;
     if (granted > 0u) {
         uint start = atomicAdd(counters.allocatedRays, granted);
-        if (start < budget) {
-            allocated = min(granted, budget - start);
+        if (start < uMaxRayBudget) {
+            allocated = min(granted, uMaxRayBudget - start);
             firstRay = start;
         }
     }
@@ -181,14 +235,12 @@ void main()
 {
     uint linearID = gl_GlobalInvocationID.x;
     uint localID = gl_LocalInvocationID.x;
-    uint total = counters.requestedRays;
-    uint budget = uMaxRayBudget;
 
     if (uAllocPhase == 0u) {
-        PhaseHistogram(linearID, total, budget);
+        PhaseHistogram(linearID);
     } else if (uAllocPhase == 1u) {
-        PhaseThreshold(localID, total, budget);
+        PhaseThreshold(localID, gl_WorkGroupID.y);
     } else {
-        PhaseGrant(linearID, total, budget);
+        PhaseGrant(linearID);
     }
 }

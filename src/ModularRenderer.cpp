@@ -733,6 +733,15 @@ void ModularRenderer::SyncSurfelGISettings()
 			GetEnvVarFloat("NOX_SURFEL_GI_SCREEN_CATCHUP_MAX", settings.screenCatchUpMax), 0.0f, 1.0f);
 		settings.dormantGap = std::clamp(
 			GetEnvVarFloat("NOX_SURFEL_GI_DORMANT_GAP", settings.dormantGap), 0.0f, 1.0f);
+		applyEnvToggle("NOX_SURFEL_GI_DISTURB", settings.disturbance);
+		settings.disturbFrames = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DISTURB_FRAMES", static_cast<int>(settings.disturbFrames)), 1, 600));
+		applyEnvToggle("NOX_SURFEL_GI_PRIORITY", settings.priorityAlloc);
+		settings.priorityShare = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_PRIORITY_SHARE", settings.priorityShare), 0.0f, 1.0f);
+		applyEnvToggle("NOX_SURFEL_GI_PRIOR_INIT", settings.priorInit);
+		settings.staleGrace = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_STALE_GRACE", settings.staleGrace), 0.0f, 3000.0f);
 		settings.cachePlaneScale = std::clamp(
 			GetEnvVarFloat("NOX_SURFEL_GI_CACHE_PLANE_SCALE", settings.cachePlaneScale), 0.1f, 20.0f);
 		// Debug: trace components to skip (bit mask; plan section 19). Timing ablations only: the output changes.

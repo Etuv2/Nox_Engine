@@ -69,6 +69,11 @@ public:
     bool IsReady() const { return m_triangleSSBO.IsValid() && m_bvhSSBO.IsValid() && m_triangleCount > 0 && m_nodeCount > 0; }
     bool IsIncrementalReady() const { return m_incrementalTriangleSSBO.IsValid() && m_incrementalBVHSSBO.IsValid() && m_instanceSSBO.IsValid() && m_instanceNodeSSBO.IsValid() && m_incrementalTriangleCount > 0 && m_incrementalNodeCount > 0 && m_incrementalInstanceCount > 0 && m_incrementalInstanceNodeCount > 0; }
     std::size_t GetLastEstimatedTriangleCount() const { return m_lastEstimatedTriangleCount; }
+    // World-space boxes of instances whose transform changed since the last call (union of old and new bounds), and
+    // whether the instance list was rebuilt wholesale (every surfel should then treat the scene as moved). Taking
+    // clears both. Used by the surfel GI disturbance pass (plan section 22).
+    struct MovedBounds { glm::vec3 min{ 0.0f }; glm::vec3 max{ 0.0f }; };
+    void TakeMovedBounds(std::vector<MovedBounds>& out, bool& allMoved);
     std::size_t GetIncrementalTriangleCount() const { return m_incrementalTriangleCount; }
     std::size_t GetIncrementalNodeCount() const { return m_incrementalNodeCount; }
     std::size_t GetIncrementalInstanceCount() const { return m_incrementalInstanceCount; }
@@ -192,5 +197,7 @@ private:
     std::size_t m_incrementalResidentBytes = 0;
     std::size_t m_skippedSkinnedInstances = 0;
     bool m_incrementalUploadDirty = false;
+    std::vector<MovedBounds> m_movedBounds;
+    bool m_movedAll = false;
     Diagnostics m_diagnostics;
 };

@@ -90,6 +90,9 @@ CONFIG_ENV = {
     "surf_term_both4": {**SURF_ENV, "NOX_SSGI": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
     "surf_term_both3": {**SURF_ENV, "NOX_SSGI": "1", "NOX_SURFEL_GI_COMPOSITE_DEBUG": "3"},
     "surf_term": {**SURF_ENV, "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4"},
+    # Plan section 22 round 2: the same term with the round-2 knobs off (disturbance, priority, prior init, stale grace 30).
+    "surf_term_r2off": {**SURF_ENV, "NOX_SURFEL_GI_COMPOSITE_DEBUG": "4", "NOX_SURFEL_GI_DISTURB": "0",
+                        "NOX_SURFEL_GI_PRIORITY": "0", "NOX_SURFEL_GI_PRIOR_INIT": "0", "NOX_SURFEL_GI_STALE_GRACE": "30"},
     "surf_r4k": {**SURF_ENV, "NOX_SURFEL_GI_RAY_BUDGET": "4096"},
     "surf_spawn1": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "1.0"},
     "surf_k05": {**SURF_ENV, "NOX_SURFEL_GI_SPAWN_BUDGET_SCALE": "0.5"},

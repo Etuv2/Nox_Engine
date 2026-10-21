@@ -96,6 +96,7 @@ uniform int uUseCoverageMap = 0;
 uniform vec2 uCoverageScale = vec2(1.0);   // final-gather texels per full-resolution pixel
 uniform uvec2 uResolution;
 uniform uint uFrameIndex;
+uniform int uPriorInit = 1;
 uniform uint uMaxSurfels;
 uniform uint uTransformCount;
 uniform uint uGridCellCount;
@@ -746,7 +747,10 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
     surfel.worldPos_radius = vec4(worldPos, radius);
     surfel.worldNormal_age = vec4(worldNormal, 0.0);
     surfel.localPos_spawnRadius = vec4(localPos.xyz, radius);
-    uint flags = SURFEL_ALIVE | SURFEL_NEW | (candidate.hasOverride ? SURFEL_WORLD : 0u);
+    // A surfel with a cell prior (plan section 22) starts with the weight of 4 rays and without SURFEL_NEW, so its first
+    // batches mix with the prior instead of replacing it. Without a prior it starts as before (a new surfel).
+    bool hasPrior = uPriorInit != 0 && SurfelLuminance(initialCellIrradiance) > 1e-5;
+    uint flags = SURFEL_ALIVE | (hasPrior ? 0u : SURFEL_NEW) | (candidate.hasOverride ? SURFEL_WORLD : 0u);
     if (SurfelLuminance(emissive) > 1e-5) {
         flags |= SURFEL_EMISSIVE;
     }
@@ -757,8 +761,10 @@ bool SpawnSurfelFromCandidate(SpawnCandidate candidate, float candidateCoverage)
                                vec3(mix(0.035, 0.010, initialConfidence)));
     SurfelMSMEInitialize(surfel, initialIrradiance, initialVariance);
     surfel.irradiance.a = initialConfidence;
-    surfel.shortMean.a = 1.0;
+    surfel.shortMean.a = hasPrior ? 4.0 : 1.0;
     surfel.shortM2.a = 0.0;
+    // Round-2 fields start at zero: msme.w is the disturbance frame (plan section 22).
+    surfel.msme = vec4(0.0);
     surfel.frameInfo = uvec4(uFrameIndex, uFrameIndex, uFrameIndex, uFrameIndex);
     // lifecycle.x: last frame a ray referenced it (recycling). A world surfel starts referenced by the hit that spawned it.
     surfel.lifecycle = uvec4(candidate.hasOverride ? uFrameIndex : 0u, 0u, 0u, 0u);

@@ -2,6 +2,8 @@
 -- The camera is held at the scene's authored pose (the project would otherwise leave the default camera).
 local amplitude = 0.7
 local omega = 2.0 * math.pi * 0.25
+-- Round 2: the object moves for STOP_TIME seconds, then rests at its end position.
+local STOP_TIME = 3.0
 
 nox.system({
     name = "surfel_camera",
@@ -18,7 +20,7 @@ nox.system({
     update = function(ctx, dt)
         local mover = ctx:find("Mover")
         if not mover then return end
-        local t = ctx:time()
+        local t = math.min(ctx:time(), STOP_TIME)
         ctx:move(mover, amplitude * math.sin(omega * t), 0.75, -0.2)
     end,
 })

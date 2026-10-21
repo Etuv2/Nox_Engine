@@ -11,6 +11,8 @@ class Camera;
 //   dolly:<dx>,<dy>,<dz>:<frames>  moves the start position linearly by (dx,dy,dz) in world space over
 //                                  <frames> frames, then holds. The start orientation is kept.
 //   orbit:<degPerFrame>            turns about world up around a point 5 m ahead of the start pose.
+//   turn:<deg>:<frames>            yaws about world up by <deg> over <frames> frames at the start position, then holds
+//                                  (plan section 22: a turn that reveals new surfels).
 // An empty spec disables the path. An unrecognised spec is reported once and disables the path.
 class CameraPath {
 public:
@@ -23,12 +25,13 @@ public:
     void Apply(Camera& camera);
 
 private:
-    enum class Kind { None, Dolly, Orbit };
+    enum class Kind { None, Dolly, Orbit, Turn };
 
     Kind m_kind = Kind::None;
     glm::vec3 m_delta{ 0.0f };
     float m_frames = 1.0f;
     float m_degPerFrame = 0.0f;
+    float m_turnDegrees = 0.0f;
     uint64_t m_frame = 0;
     bool m_captured = false;
     glm::vec3 m_startPosition{ 0.0f };

@@ -58,6 +58,9 @@ uniform float uWorldHistoryCap = 192.0;
 // Screen surfels (plan section 22): the same catch-up gain and cap as the world surfels, off at gain 0.
 uniform float uScreenCatchUp = 0.0;
 uniform float uScreenCatchUpMax = 0.25;
+// Disturbance (plan section 22): on-switch and the frames a disturbance lasts.
+uniform int uDisturbEnabled = 0;
+uniform uint uDisturbFrames = 30u;
 // Relative safety clamp (plan section 14). A sample is cut only above k times the surfel's own level (the larger of
 // its long and short means, luminance) plus m short standard deviations, and never below the floor. Ordinary samples,
 // emitter samples included, pass unchanged; only firefly outliers are bounded. The fixed clamp of 32 hid emitter
@@ -240,6 +243,19 @@ void main()
         msmeData = SurfelMSMELoad(surfel);
     } else {
         msmeData = SurfelMSMELoad(surfel);
+        // Disturbance (plan section 22): a sample that breaks the surfel's own noise band (5 sigma + 25% of its mean)
+        // marks it disturbed, so a dormant surfel whose local light changed wakes up at once.
+        bool disturbedNow = uDisturbEnabled != 0 && SurfelIsDisturbed(surfel, uFrameIndex);
+        bool fastNow = uDisturbEnabled != 0 && SurfelIsFast(surfel, uFrameIndex);
+        if (uDisturbEnabled != 0 && !disturbedNow) {
+            float devLum = SurfelLuminance(abs(batchMean - msmeData.mean));
+            float sigmaLum = sqrt(max(SurfelLuminance(max(msmeData.variance, vec3(0.0))), 0.0));
+            float meanLum = SurfelLuminance(max(msmeData.mean, vec3(0.0)));
+            if (devLum > 5.0 * sigmaLum + 0.25 * meanLum) {
+                SurfelMarkDisturbed(surfel, uFrameIndex, uDisturbFrames);
+                disturbedNow = true;
+            }
+        }
         vec3 sampleX = SurfelClampRadiance(batchMean);
         // Firefly gate. It is off during a lighting change, where a jump is a real signal, not noise.
         if (lightingChange < SURFEL_MSME_SNAP_CHANGE) {
@@ -253,11 +269,18 @@ void main()
         // rays after n rays moves the mean by b / (n + b): exactly 1 / (n + 1) for one ray per batch.
         bool worldSurfel = (SurfelFlags(surfel) & SURFEL_WORLD) != 0u;
         float historyCap = worldSurfel ? uWorldHistoryCap : SURFEL_SHORT_HISTORY_RAYS;
+        if (fastNow) {
+            // A disturbed surfel adapts at once: its history is short (plan section 22).
+            historyCap = min(historyCap, 16.0);
+        }
         float cumulativeRate = acceptedWeight / max(min(surfel.shortMean.a, historyCap) + acceptedWeight, 1.0);
         // World surfels may use a faster long rate (uWorldLongRate, plan section 17.9); screen surfels keep the floor.
         float longRate = SURFEL_MSME_LONG_RATE;
         if (uWorldLongRate > 0.0 && worldSurfel) {
             longRate = uWorldLongRate;
+        }
+        if (fastNow) {
+            longRate = max(longRate, 0.2);
         }
         SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel, cumulativeRate, longRate,
             worldSurfel ? uWorldCatchUp : uScreenCatchUp, worldSurfel ? uWorldCatchUpMax : uScreenCatchUpMax);

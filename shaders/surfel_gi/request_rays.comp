@@ -4,9 +4,14 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "common.glsl"
 
-layout(binding = B_SURFELS, std430) readonly buffer SurfelBuffer
+layout(binding = B_SURFELS, std430) buffer SurfelBuffer
 {
     Surfel surfels[];
+};
+
+layout(binding = B_RAY_ALLOC_SCRATCH, std430) buffer SurfelRayAllocScratchBuffer
+{
+    uint scratch[];
 };
 
 layout(binding = B_RAY_REQUESTS, std430) buffer SurfelRayRequestBuffer
@@ -28,6 +33,15 @@ uniform uint uWorldRayFloor = 0u;
 uniform uint uWorldRefWindow = 8u;
 // Relative short/long gap below which a converged surfel may go dormant (0 = no gate). See ComputeRayRequest.
 uniform float uDormantGap = 0.0;
+// Disturbance (plan section 22): boxes of moved instances (already padded), an overflow flag, and the on-switch.
+uniform int uDisturbEnabled = 0;
+uniform uint uDisturbFrames = 30u;
+uniform uint uDisturbMinRays = 2u;
+uniform int uPriorityEnabled = 0;
+uniform int uMovedCount = 0;
+uniform int uMovedAll = 0;
+uniform vec4 uMovedMin[64];
+uniform vec4 uMovedMax[64];
 
 // Relative-spread request (plan WP2; GIBS p.76-78). A Monte Carlo mean's relative error falls with
 // the square root of its ray count, so the rays a surfel needs grow with its coefficient of
@@ -48,7 +62,7 @@ const uint SURFEL_REQUEST_DORMANT_PERIOD = 8u;
 const float SURFEL_REQUEST_LIGHT_CHANGE_MIN = 0.03;
 const uint SURFEL_REQUEST_LIGHT_CHANGE_RAYS = 2u;
 
-uint ComputeRayRequest(uint surfelID, Surfel surfel)
+uint ComputeRayRequest(uint surfelID, Surfel surfel, bool disturbed)
 {
     if (!SurfelIsAlive(surfel)) {
         return 0u;
@@ -72,8 +86,11 @@ uint ComputeRayRequest(uint surfelID, Surfel surfel)
     float longLum = SurfelLuminance(max(surfel.irradiance.rgb, vec3(0.0)));
     float gapRel = abs(mean - longLum) / max(longLum, SURFEL_REQUEST_MEAN_FLOOR);
     bool settled = uDormantGap <= 0.0 || gapRel < uDormantGap;
-    if (cv < SURFEL_REQUEST_DORMANT_CV && age > SURFEL_REQUEST_DORMANT_AGE && settled) {
+    if (cv < SURFEL_REQUEST_DORMANT_CV && age > SURFEL_REQUEST_DORMANT_AGE && settled && !disturbed) {
         requested = ((uFrameIndex + surfelID) % SURFEL_REQUEST_DORMANT_PERIOD) == 0u ? 1u : 0u;
+    }
+    if (disturbed) {
+        requested = max(requested, uDisturbMinRays);
     }
     // Applied after dormancy, so a light change wakes dormant surfels.
     if (clamp(uLightingChangeFactor, 0.0, 1.0) > SURFEL_REQUEST_LIGHT_CHANGE_MIN) {
@@ -90,10 +107,31 @@ void main()
     }
     // requestedRays starts at zero in begin_frame, so this is the only atomic on it. Its sum is the
     // demand that allocate_rays.comp shares out (it is not capped by the budget here).
-    uint requested = ComputeRayRequest(surfelID, surfels[surfelID]);
-    bool world = SurfelIsAlive(surfels[surfelID]) && (SurfelFlags(surfels[surfelID]) & SURFEL_WORLD) != 0u;
+    Surfel surfel = surfels[surfelID];
+    bool alive = SurfelIsAlive(surfel);
+    if (alive && uDisturbEnabled != 0) {
+        // A surfel inside a moved instance's box is disturbed (the box already covers old and new placement).
+        bool inside = uMovedAll != 0;
+        for (int i = 0; i < uMovedCount && !inside; ++i) {
+            vec3 p = surfel.worldPos_radius.xyz;
+            inside = all(greaterThanEqual(p, uMovedMin[i].xyz)) && all(lessThanEqual(p, uMovedMax[i].xyz));
+        }
+        if (inside) {
+            SurfelMarkFast(surfel, uFrameIndex, uDisturbFrames);
+            surfels[surfelID].msme.w = surfel.msme.w;
+            surfels[surfelID].msme.z = surfel.msme.z;
+        }
+    }
+    bool disturbed = alive && uDisturbEnabled != 0 && SurfelIsDisturbed(surfel, uFrameIndex);
+    uint requested = alive ? ComputeRayRequest(surfelID, surfel, disturbed) : 0u;
+    bool world = alive && (SurfelFlags(surfel) & SURFEL_WORLD) != 0u;
     if (world && uWorldRayFloor > 0u && surfels[surfelID].lifecycle.x + uWorldRefWindow >= uFrameIndex) {
         requested = max(requested, uWorldRayFloor);
+    }
+    // The priority total is the sum of final requests of priority-class surfels (allocate_rays.comp reads it).
+    bool priority = alive && uPriorityEnabled != 0 && SurfelPriorityClass(surfel, uFrameIndex);
+    if (priority && requested > 0u) {
+        atomicAdd(scratch[SURFEL_RAY_ALLOC_PRIORITY_TOTAL], requested);
     }
     if (requested > 0u) {
         atomicAdd(counters.requestedRays, requested);

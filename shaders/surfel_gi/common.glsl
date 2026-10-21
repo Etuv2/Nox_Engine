@@ -317,6 +317,43 @@ bool SurfelIsNew(Surfel surfel)
     return (SurfelFlags(surfel) & SURFEL_NEW) != 0u;
 }
 
+// Disturbance (plan section 22). msme.w holds the frame until which the surfel is disturbed (0 = not). A disturbed
+// surfel asks for rays, does not go dormant and adapts its long mean faster. Set by a moved instance box, its own
+// motion, or a dormant surfel's sample that breaks its own noise band.
+bool SurfelIsDisturbed(Surfel surfel, uint frame)
+{
+    return surfel.msme.w > float(frame);
+}
+
+void SurfelMarkDisturbed(inout Surfel surfel, uint frame, uint frames)
+{
+    surfel.msme.w = max(surfel.msme.w, float(frame + frames));
+}
+
+// Fast adaptation (plan section 22): msme.z holds the frame until which the surfel adapts its long mean at the fast
+// rate. Only moved boxes and the surfel's own motion set it; the noise-band test (B) does not, because on a static
+// scene it fires on ordinary sample noise and the fast rate would make the estimate noisy.
+bool SurfelIsFast(Surfel surfel, uint frame)
+{
+    return surfel.msme.z > float(frame);
+}
+
+void SurfelMarkFast(inout Surfel surfel, uint frame, uint frames)
+{
+    surfel.msme.z = max(surfel.msme.z, float(frame + frames));
+    SurfelMarkDisturbed(surfel, frame, frames);
+}
+
+// Priority class of a ray request (plan section 22): young surfels and disturbed surfels are granted first.
+bool SurfelPriorityClass(Surfel surfel, uint frame)
+{
+    return surfel.worldNormal_age.w < 8.0 || SurfelIsDisturbed(surfel, frame);
+}
+
+// Ray allocation scratch layout (allocate_rays.comp): one block per class (0 normal, 1 priority), then the priority total.
+const uint SURFEL_RAY_ALLOC_CLASS_STRIDE = 1028u;
+const uint SURFEL_RAY_ALLOC_PRIORITY_TOTAL = 2056u;
+
 uvec4 SurfelLifecycleCounters(uint failedValidationCount,
                               uint successfulValidationCount,
                               uint lowConfidenceFrameCount,

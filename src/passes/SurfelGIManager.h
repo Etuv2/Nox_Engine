@@ -115,6 +115,16 @@ struct SurfelGISettings {
 	// Dormancy gate (plan section 22): a converged surfel stops sending rays only while its short and long means agree
 	// to this relative level (0 = no gate, the dormancy of section 20 as before).
 	float dormantGap = 0.0f;
+	// Round 2 (plan section 22). Disturbance: moved-instance boxes, local change detection and the faster adaptation of
+	// disturbed surfels. Priority: young and disturbed surfels are granted first, up to priorityShare of the budget.
+	bool disturbance = true;
+	uint32_t disturbFrames = 30u;
+	bool priorityAlloc = true;
+	float priorityShare = 0.6f;
+	// Round 2: new surfels start from their cell prior with the weight of 4 rays (spawn.comp), and recycling waits
+	// stale grace frames before the stale term starts (recycle_surfels.comp; 30 before round 2).
+	bool priorInit = true;
+	float staleGrace = 120.0f;
 	// Plane-distance sigma scale of the cache weight (1 = the first round's value).
 	float cachePlaneScale = 1.0f;
 	// Debug only (NOX_SURFEL_GI_TRACE_SKIP): bit mask of trace components to skip, for the cost breakdown (plan section

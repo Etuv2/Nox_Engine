@@ -363,6 +363,9 @@ void RTSceneResources::RebuildIncrementalInstanceList(
     };
 
     auto rebuildAllInstances = [&]() {
+        if (!m_tlasInstances.empty()) {
+            m_movedAll = true;
+        }
         m_tlasInstances.clear();
         m_entityInstanceRanges.clear();
         m_skippedSkinnedInstances = 0;
@@ -485,8 +488,21 @@ void RTSceneResources::RebuildIncrementalInstanceList(
                 }
 
                 const std::size_t blasIndex = m_tlasInstances[instanceIndex].blasIndex;
-                updateInstanceFromRenderable(m_tlasInstances[instanceIndex], *renderable, mesh, entityWorldTransform, blasIndex, isSkinnedMesh,
+                TLASInstance& movedInstance = m_tlasInstances[instanceIndex];
+                const glm::vec3 oldMin = movedInstance.worldBoundsMin;
+                const glm::vec3 oldMax = movedInstance.worldBoundsMax;
+                updateInstanceFromRenderable(movedInstance, *renderable, mesh, entityWorldTransform, blasIndex, isSkinnedMesh,
                     entityTransformID);
+                if (movedInstance.worldBoundsMin != oldMin || movedInstance.worldBoundsMax != oldMax) {
+                    if (m_movedBounds.size() < 4096u) {
+                        MovedBounds moved;
+                        moved.min = glm::min(oldMin, movedInstance.worldBoundsMin);
+                        moved.max = glm::max(oldMax, movedInstance.worldBoundsMax);
+                        m_movedBounds.push_back(moved);
+                    } else {
+                        m_movedAll = true;
+                    }
+                }
                 ++instanceIndex;
                 ++updatedCount;
             });
@@ -517,6 +533,14 @@ void RTSceneResources::RebuildIncrementalInstanceList(
         m_cachedIncrementalSceneGraph = sceneGraph.get();
         m_cachedIncrementalRoot = nullptr;
     }
+}
+
+void RTSceneResources::TakeMovedBounds(std::vector<MovedBounds>& out, bool& allMoved)
+{
+    out = std::move(m_movedBounds);
+    m_movedBounds.clear();
+    allMoved = m_movedAll;
+    m_movedAll = false;
 }
 
 void RTSceneResources::RefreshIncrementalDiagnostics(double buildMsThisFrame, std::size_t trianglesBuiltThisFrame)
