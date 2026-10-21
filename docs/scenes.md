@@ -55,6 +55,63 @@ its textures as `../../../textures/cc0/...`, which does not resolve from `genera
 so each racing scene logs 28 "Failed to load external uri" errors. The fix belongs to the cook step
 or the racing content, not to these scene files.
 
+## Loading
+
+Scenes load in the background. Every frame the window keeps pumping events and draws a loading screen
+with the scene name, a progress bar, the current step and a spinner. The simulation does not run while a
+scene loads, and the previous scene stays live until the new one is ready.
+
+These paths load this way: the startup scene, editor scene switches (`Core::SwapScene`), Lua
+`ctx.load_scene`, and `NOX_SWAP_SCENE`. The blocking `SceneLoader::LoadScene`, runtime state restore
+(`LoadSceneState`) and the round-trip tools still load synchronously.
+
+Where the work runs:
+
+- Worker threads: reading and parsing the scene file, and decoding glTF models (`Scene::PrepareGLTF`:
+  parse and image decode). They touch no GL and no shared engine state. `ModelManager::QueuePrefetch`
+  feeds the decode queue; `LoadModel` takes the decoded copy.
+- Main thread, one step per frame inside an 8 ms budget: building the nodes, ECS entities, physics bodies
+  and procedural nodes, and uploading models to the GPU (`Scene::LoadFromGLTF`). A root node is built
+  only after its models are decoded, so the build never waits on a decoder.
+- Commit, main thread: the new scene replaces the old one (lights and shadows are set up, the game module
+  is configured), and the physics bodies of the replaced scene are removed.
+
+API (`src/SceneLoader.h`):
+
+```cpp
+bool BeginLoad(const std::string& path);              // false while another load runs
+LoadStatus StepLoad(double budgetMs);                 // budgetMs < 0 runs to completion
+LoadStatus GetLoadStatus() const;                     // Idle, Running, Ready, Failed
+std::shared_ptr<SceneGraph> TakeLoadedScene();        // Ready only; the new scene is committed by Core
+void CancelLoad();
+LoadProgress GetLoadProgress() const;                 // fraction, stage, sceneName, sceneFile
+```
+
+Custom loading screen (`src/SceneLoadingScreen.h`): call `SceneLoadingScreen::SetHook(fn)`. The hook
+receives a `SceneLoadingScreenState` every frame (progress, stage, scene name, error) and draws with ImGui
+inside the open frame. It returns `SceneLoadingScreenAction::Dismiss` when the user accepts a failed load.
+Without a hook the engine draws its default screen: full screen in game mode, and a dimmed overlay over the
+editor, whose UI is disabled while the load runs.
+
+Failure: the error stays on the loading screen until the user presses Continue (Quit when no scene is
+loaded yet). The current scene keeps running. The failed load leaves nothing behind: its physics bodies are
+removed and the physics config is restored.
+
+Environment:
+
+- `NOX_SYNC_LOAD=1`: the startup scene loads blocking, as before.
+- `NOX_EXIT_AFTER_FRAMES` counts only frames that are not loading, so a long load does not cut a scripted
+  run short. `NOX_FINAL_DUMP_FRAMES` counts every frame, loading frames included.
+- `NOX_FIXED_DT` runs: loading frames do not step the simulation, so results are unchanged.
+- The log line `[Core] Scene ready: ... (load N ms, longest frame while loading M ms)` reports the load.
+
+Known limits:
+
+- Each model is built in one main-thread step (GL buffers and textures). A large model takes 100 to 400 ms,
+  so that is the longest frame during a load of a large scene.
+- Commit is a single step. The shadow-array allocation and the game module's configure run there.
+- Procedural nodes and prefab references are not prefetched. Their models decode on the main thread.
+
 ## Removed in this cleanup
 
 Deleted because nothing references them and they were temporary, duplicate, broken, or superseded:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PlayWorldSnapshot.h"
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -155,7 +156,15 @@ public:
      * @param newSceneFile Path to the new scene file
      */
     void SwapScene(const std::string& newSceneFile);
-    
+
+    /**
+     * @brief True while a scene loads on the background loader (the loading screen is up; the simulation waits).
+     *        Scene switches and startup load asynchronously: the old scene stays live until the new one is ready.
+     */
+    bool IsSceneLoading() const;
+    /** @brief True while the loading screen is up for a load (running) or a failed load (waiting for Continue). */
+    bool IsSceneBusy() const { return IsSceneLoading() || !m_sceneLoadError.empty(); }
+
     /**
      * @brief Save the current scene.
      */
@@ -318,7 +327,18 @@ private:
     // Internal Scene Management
 
     
-    void CleanupCurrentScene();
+    // Physics bodies of the replaced scene are retired by SceneLoader::TakeLoadedScene; pass false when a load commits.
+    void CleanupCurrentScene(bool removePhysicsBodies = true);
+    // Scene load pipeline (see docs/scenes.md, "Loading")
+    void ServiceSceneLoad();
+    void CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup);
+    void RenderSceneLoadingUI(bool overlay);
+    void FinishSceneLoadSynchronously();
+    std::string m_sceneLoadTarget;                // logical path of the load in progress or failed
+    std::string m_sceneLoadError;                 // failed load waiting for Continue (empty: none)
+    bool m_sceneLoadStartup = false;              // the load in progress is the startup scene
+    std::chrono::steady_clock::time_point m_sceneLoadStartTime{};  // BeginLoad of the load in progress
+    float m_sceneLoadWorstFrameMs = 0.0f;         // longest frame seen while it loaded (logged on commit)
     bool ApplySceneCameraOverride(const std::string& sceneFilePath);
     void ComputeSceneBoundingBox();
     void RebuildSceneBVH();
