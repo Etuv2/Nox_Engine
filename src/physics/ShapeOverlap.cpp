@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace ShapeOverlap {
 
@@ -202,8 +203,20 @@ bool BoxVsBody(const RigidBody& a, const RigidBody& b, float skin, Push& out) {
 		out.depth = depth;
 		return true;
 	}
-	case ShapeType::MESH:
-		return false;
+	case ShapeType::MESH: {
+		// Box against triangles: the deepest box/triangle contact. The push is the contact normal (mesh to box), which
+		// is the direction that moves a out of b.
+		std::vector<CollisionWorld::SphereContact> contacts;
+		MeshCollider::BoxContacts(b, a.getPosition(), a.getHalfExtents(), a.getOrientation(), skin, contacts);
+		if (contacts.empty()) return false;
+		const CollisionWorld::SphereContact* deepest = &contacts[0];
+		for (const auto& c : contacts) {
+			if (c.depth > deepest->depth) deepest = &c;
+		}
+		out.direction = deepest->normal;
+		out.depth = deepest->depth;
+		return true;
+	}
 	}
 	return false;
 }
@@ -223,7 +236,7 @@ bool Test(const RigidBody& a, const RigidBody& b, float skin, glm::vec3& pushA, 
 		return true;
 	}
 	if (ta == ShapeType::MESH) {
-		if (tb == ShapeType::MESH || tb == ShapeType::PLANE || tb == ShapeType::BOX) return false;
+		if (tb == ShapeType::MESH || tb == ShapeType::PLANE) return false;
 		if (!Test(b, a, skin, pushA, depth)) return false;
 		pushA = -pushA;
 		return true;

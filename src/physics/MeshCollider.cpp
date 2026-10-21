@@ -5,6 +5,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <map>
+#include <string>
 
 namespace MeshCollider {
 
@@ -17,17 +18,20 @@ std::map<std::string, std::shared_ptr<const CollisionWorld>>& Cache() {
 
 } // namespace
 
-std::shared_ptr<const CollisionWorld> LoadShared(const std::string& path) {
+std::shared_ptr<const CollisionWorld> LoadShared(const std::string& path, const glm::vec3& scale) {
 	if (path.empty()) return nullptr;
+	const bool unit = scale == glm::vec3(1.0f);
+	const std::string key = unit ? path : path + "|" + std::to_string(scale.x) + "," + std::to_string(scale.y) + "," + std::to_string(scale.z);
 	auto& cache = Cache();
-	if (auto it = cache.find(path); it != cache.end()) return it->second;
+	if (auto it = cache.find(key); it != cache.end()) return it->second;
 	auto world = std::make_shared<CollisionWorld>();
-	if (world->LoadGLTF(path, glm::mat4(1.0f)) < 0) {
-		cache.emplace(path, nullptr);   // remember the failure so a bad path is not reloaded every frame
+	const glm::mat4 transform = unit ? glm::mat4(1.0f) : glm::scale(glm::mat4(1.0f), scale);
+	if (world->LoadGLTF(path, transform) < 0) {
+		cache.emplace(key, nullptr);   // remember the failure so a bad path is not reloaded every frame
 		return nullptr;
 	}
 	std::shared_ptr<const CollisionWorld> shared = world;
-	cache.emplace(path, shared);
+	cache.emplace(key, shared);
 	return shared;
 }
 
@@ -54,6 +58,25 @@ void SphereContacts(const RigidBody& meshBody, const glm::vec3& center, float ra
 		CollisionWorld::SphereContact& c = out[i];
 		c.point = glm::vec3(world * glm::vec4(c.point, 1.0f));
 		c.normal = glm::normalize(rotation * c.normal);
+	}
+}
+
+void BoxContacts(const RigidBody& meshBody, const glm::vec3& center, const glm::vec3& halfExtents,
+	const glm::quat& rotation, float skin, std::vector<CollisionWorld::SphereContact>& out) {
+	const CollisionWorld* mesh = meshBody.getMesh();
+	if (!mesh) return;
+	// Rigid mesh transform: its axes are the normalised columns of the world matrix.
+	const glm::mat4 world = meshBody.getTransformMatrix();
+	const glm::mat3 meshAxes(glm::normalize(glm::vec3(world[0])), glm::normalize(glm::vec3(world[1])),
+		glm::normalize(glm::vec3(world[2])));
+	const glm::vec3 localCenter(glm::inverse(world) * glm::vec4(center, 1.0f));
+	const glm::mat3 localAxes = glm::transpose(meshAxes) * glm::mat3_cast(rotation);
+	std::vector<CollisionWorld::SphereContact> local;
+	mesh->BoxContacts(localCenter, halfExtents, localAxes, skin, 7 /* Ground | Wall | Ceiling */, local);
+	for (CollisionWorld::SphereContact& c : local) {
+		c.point = glm::vec3(world * glm::vec4(c.point, 1.0f));
+		c.normal = glm::normalize(meshAxes * c.normal);
+		out.push_back(c);
 	}
 }
 

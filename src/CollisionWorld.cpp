@@ -8,6 +8,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <limits>
 
 namespace {
 	constexpr int kLeafTris = 6;
@@ -310,6 +311,92 @@ bool CollisionWorld::GroundBelow(const glm::vec3& top, float maxDrop, Hit& out) 
 	if (!Raycast(top, glm::vec3(0.0f, -1.0f, 0.0f), maxDrop, Ground, out)) return false;
 	if (out.normal.y < 0.0f) out.normal = -out.normal; // two-sided ground
 	return true;
+}
+
+namespace {
+
+// Separating-axis test of an oriented box (centre c, half extents h, axes R) against triangle (a, a+e1, a+e2).
+// False when an axis separates them by more than skin. Otherwise normal is the least-overlap axis pointing from the
+// triangle toward the box and depth that overlap.
+bool BoxTriangleSAT(const glm::vec3& c, const glm::vec3& h, const glm::mat3& R, const glm::vec3& a, const glm::vec3& e1,
+	const glm::vec3& e2, float skin, glm::vec3& normal, float& depth)
+{
+	const glm::vec3 edges[3] = { e1, e2, e2 - e1 };
+	glm::vec3 axes[13];
+	int count = 0;
+	for (int i = 0; i < 3; ++i) axes[count++] = R[i];
+	axes[count++] = glm::cross(e1, e2);
+	for (int i = 0; i < 3; ++i) {
+		for (int j = 0; j < 3; ++j) axes[count++] = glm::cross(edges[i], R[j]);
+	}
+	const glm::vec3 offset = c - a;
+	float best = std::numeric_limits<float>::max();
+	glm::vec3 bestAxis(0.0f, 1.0f, 0.0f);
+	// Penetration along the triangle's own normal (axis 3), kept apart so it can be preferred below.
+	float facePen = std::numeric_limits<float>::max();
+	glm::vec3 faceAxis(0.0f, 1.0f, 0.0f);
+	for (int k = 0; k < count; ++k) {
+		const float len = glm::length(axes[k]);
+		if (len < 1e-8f) continue;   // parallel edges or a degenerate triangle
+		const glm::vec3 L = axes[k] / len;
+		const float r = h.x * std::abs(glm::dot(L, R[0])) + h.y * std::abs(glm::dot(L, R[1])) + h.z * std::abs(glm::dot(L, R[2]));
+		const float s = glm::dot(offset, L);
+		const float p1 = glm::dot(e1, L), p2 = glm::dot(e2, L);
+		const float tmin = std::min(0.0f, std::min(p1, p2));
+		const float tmax = std::max(0.0f, std::max(p1, p2));
+		const float pen = std::min(s + r - tmin, tmax - (s - r));
+		if (pen < -skin) return false;
+		const glm::vec3 signedAxis = s >= 0.5f * (tmin + tmax) ? L : -L;
+		if (k == 3) {
+			facePen = pen;
+			faceAxis = signedAxis;
+		}
+		if (pen < best) {
+			best = pen;
+			bestAxis = signedAxis;
+		}
+	}
+	if (best == std::numeric_limits<float>::max()) return false;
+	// A box across a triangle split (or any edge) would otherwise pick a diagonal edge axis that is barely shallower than
+	// the face, tilting the contact and bouncing the box. The face wins when it is within a centimetre of the best axis.
+	constexpr float kFaceBias = 0.01f;
+	if (facePen != std::numeric_limits<float>::max() && facePen <= best + kFaceBias) {
+		bestAxis = faceAxis;
+		best = facePen;
+	}
+	normal = bestAxis;
+	depth = best;
+	return true;
+}
+
+} // namespace
+
+void CollisionWorld::BoxContacts(const glm::vec3& center, const glm::vec3& halfExtents, const glm::mat3& axes, float skin,
+	uint8_t classMask, std::vector<SphereContact>& out) const
+{
+	glm::vec3 ext(0.0f);
+	for (int i = 0; i < 3; ++i) ext += glm::abs(axes[i]) * halfExtents[i];
+	const glm::vec3 mn = center - ext - glm::vec3(skin), mx = center + ext + glm::vec3(skin);
+	for (const Mesh& m : m_meshes) {
+		if (!m.enabled) continue;
+		Visit(m, mn, mx, [&](const Tri& t) {
+			if (!(t.cls & classMask)) return;
+			glm::vec3 normal(0.0f);
+			float depth = 0.0f;
+			if (!BoxTriangleSAT(center, halfExtents, axes, t.a, t.e1, t.e2, skin, normal, depth)) return;
+			// The box corner deepest along -normal, moved half the depth toward the surface.
+			glm::vec3 corner = center;
+			for (int i = 0; i < 3; ++i) {
+				const float side = glm::dot(-normal, axes[i]) >= 0.0f ? 1.0f : -1.0f;
+				corner += axes[i] * (side * halfExtents[i]);
+			}
+			SphereContact c;
+			c.point = corner + normal * (0.5f * depth);
+			c.normal = normal;
+			c.depth = depth;
+			out.push_back(c);
+		});
+	}
 }
 
 void CollisionWorld::SphereContacts(const glm::vec3& center, float radius, float skin, uint8_t classMask,
