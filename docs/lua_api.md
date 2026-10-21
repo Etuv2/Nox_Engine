@@ -234,7 +234,8 @@ delivered by the next Lua update, in the same order as the other events of that 
 
 | Event | Payload |
 |---|---|
-| `trigger_enter`, `trigger_exit` | `{ trigger = handle, other = handle or nil }`: a body entered or left a Trigger volume. `other` is nil when the body's node has no entity |
+| `trigger_enter`, `trigger_exit` | `{ trigger = handle, other = handle or nil }`: a body or a CharacterController entered or left a Trigger volume. `other` is nil when the body's node has no entity |
+| `controller_hit` | `{ controller = handle, other = handle or nil, normal = vec3, point = vec3 }`: a CharacterController's `move()` touched a body (`other` is its node) or level geometry (`other` nil). `normal` pushes the controller out of the hit. Reported once per body per `move()` call |
 | `contact_begin`, `contact_end` | `{ a = handle or nil, b = handle or nil }`: two bodies started or stopped touching. A side without an entity is nil; pairs with no entity on either side are not reported |
 
 ```lua

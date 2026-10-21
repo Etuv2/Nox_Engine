@@ -76,6 +76,12 @@ public:
 	// radius + skin of center. Does not move the sphere; used by the physics engine's mesh colliders.
 	void SphereContacts(const glm::vec3& center, float radius, float skin, uint8_t classMask,
 		std::vector<SphereContact>& out) const;
+	// Appends a contact for every triangle (of the given classes, in enabled meshes) that overlaps the oriented box
+	// (centre, half extents, axes = box axis columns in this world's space) within skin. Separating-axis test over
+	// the 13 candidate axes. The normal points from the triangle toward the box, depth is the least SAT overlap, and
+	// the point is the box corner deepest into the triangle. Does not move the box.
+	void BoxContacts(const glm::vec3& center, const glm::vec3& halfExtents, const glm::mat3& axes, float skin,
+		uint8_t classMask, std::vector<SphereContact>& out) const;
 	// Bounds of all enabled triangles (local space of this world). Returns false when there is no geometry.
 	bool Bounds(glm::vec3& mn, glm::vec3& mx) const;
 private:

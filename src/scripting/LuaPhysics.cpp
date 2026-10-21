@@ -310,6 +310,31 @@ namespace NoxLua {
 			}
 		}
 
+		// controller_hit: { controller = handle, other = handle or nil, normal = vec3, point = vec3 }. other is the node of
+		// the body the character touched (nil for level geometry or a node without an entity).
+		void QueueControllerHits(LuaWorld& w, PhysicsEngine& physics) {
+			for (const ControllerHit& hit : physics.Characters().TakeHits()) {
+				EntityHandle controller;
+				if (!HandleFor(&w, hit.controller, controller)) continue;
+				const std::shared_ptr<SceneNode> node = hit.body ? hit.body->getAttachedNode() : nullptr;
+				EntityHandle other;
+				const bool hasOther = node && HandleFor(&w, node->GetEntityID(), other);
+				lua_State* L = w.GetRuntime().State();
+				lua_createtable(L, 0, 4);
+				PushHandle(L, controller);
+				lua_setfield(L, -2, "controller");
+				if (hasOther) PushHandle(L, other);
+				else lua_pushnil(L);
+				lua_setfield(L, -2, "other");
+				PushVec3(L, hit.normal);
+				lua_setfield(L, -2, "normal");
+				PushVec3(L, hit.point);
+				lua_setfield(L, -2, "point");
+				const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+				if (!w.QueueNativeEvent("controller_hit", ref)) w.GetRuntime().Unref(ref);
+			}
+		}
+
 		void QueueContactEvents(LuaWorld& w, PhysicsEngine& physics) {
 			for (const PhysicsContactEvent& event : physics.TakeContactEvents()) {
 				const std::shared_ptr<SceneNode> nodeA = event.bodyA ? event.bodyA->getAttachedNode() : nullptr;
@@ -577,5 +602,6 @@ namespace NoxLua {
 		if (!physics) return;
 		QueueTriggerEvents(world, *physics);
 		QueueContactEvents(world, *physics);
+		QueueControllerHits(world, *physics);
 	}
 }

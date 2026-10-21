@@ -1,7 +1,8 @@
 #pragma once
 // Exact overlap tests between two rigid body shapes (sphere, box, plane) for queries and the character
 // controller. Unlike PhysicsCollision::TestCollision these never go through the GJK prepass, so touching
-// and near-touching shapes are answered exactly. Plane against plane never overlaps.
+// and near-touching shapes are answered exactly. Plane against plane never overlaps. Box against mesh is the
+// deepest box/triangle separating-axis contact.
 
 #include <glm/glm.hpp>
 

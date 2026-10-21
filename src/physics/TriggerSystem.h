@@ -1,7 +1,8 @@
 #pragma once
 // Trigger volumes: a sphere or box attached to a scene node that never collides. Once per physics frame
-// PhysicsEngine::Update asks the system which bodies overlap each enabled trigger and reports enter and exit
-// events. Lua receives them as trigger_enter / trigger_exit (src/scripting/LuaPhysics.cpp).
+// PhysicsEngine::Update asks the system which bodies and character controllers overlap each enabled trigger and
+// reports enter and exit events. A character is tested as its capsule (three sample spheres). Lua receives them as
+// trigger_enter / trigger_exit (src/scripting/LuaPhysics.cpp).
 //
 // Components: the "Trigger" descriptor (src/reflect/components/PhysicsComponents.cpp) adds and removes entries
 // here; the state lives in this system, keyed by node, so it is owned by the PhysicsEngine.
@@ -36,6 +37,8 @@ struct TriggerEvent {
 
 class TriggerSystem {
 public:
+	static constexpr uint64_t kCharacterKeyBit = 1ull << 63;
+
 	// Adds a trigger to the node with default settings; false when node is null. Adding twice keeps the
 	// existing settings.
 	bool Add(const std::shared_ptr<SceneNode>& node);
@@ -66,7 +69,9 @@ private:
 	struct Entry {
 		std::weak_ptr<SceneNode> node;
 		TriggerSettings settings;
-		std::map<uint32_t, EntityID> overlaps;   // body id -> entity of that body's node, while inside
+		// Overlapping bodies (key: body id) and characters (key: kCharacterKeyBit | node address), each with the entity
+		// of its node while inside.
+		std::map<uint64_t, EntityID> overlaps;
 	};
 
 	void ExitAll(Entry& entry, EntityID triggerEntity);

@@ -500,7 +500,7 @@ bool UpdateSimplex(std::vector<SupportVertex>& simplex, glm::vec3& direction) {
 // A capsule is the union of sample spheres along its axis, and a mesh is a set of triangles. Pairs with either are
 // built from the existing sphere builders: each capsule sample becomes a temporary sphere (same material), and the
 // results are merged into one manifold on the real bodies. Mesh pairs use the per-triangle sphere contacts.
-// Box against mesh is not supported (no contacts).
+// Box against mesh uses the box/triangle separating-axis contacts (MeshCollider::BoxContacts).
 
 // Temporary sphere standing in for one sample of a capsule body.
 std::shared_ptr<RigidBody> MakeSampleSphere(const RigidBody& capsule, const glm::vec3& center) {
@@ -547,9 +547,13 @@ void CollectSlotContacts(const std::shared_ptr<RigidBody>& slotA, const std::sha
     if (typeA == RigidBody::ShapeType::MESH || typeB == RigidBody::ShapeType::MESH) {
         const bool meshIsA = typeA == RigidBody::ShapeType::MESH;
         const auto& mesh = meshIsA ? slotA : slotB;
-        const auto& sphere = meshIsA ? slotB : slotA;
+        const auto& other = meshIsA ? slotB : slotA;
         std::vector<CollisionWorld::SphereContact> contacts;
-        MeshCollider::SphereContacts(*mesh, sphere->getPosition(), sphere->getRadius(), 0.005f, contacts);
+        if (other->getShapeType() == RigidBody::ShapeType::BOX) {
+            MeshCollider::BoxContacts(*mesh, other->getPosition(), other->getHalfExtents(), other->getOrientation(), 0.005f, contacts);
+        } else {
+            MeshCollider::SphereContacts(*mesh, other->getPosition(), other->getRadius(), 0.005f, contacts);
+        }
         // The contact normal points from the mesh to the sphere. A to B is that direction when the mesh is A.
         const float sign = meshIsA ? 1.0f : -1.0f;
         for (const auto& c : contacts) {
@@ -583,8 +587,7 @@ bool TestCompound(const std::shared_ptr<RigidBody>& bodyA, const std::shared_ptr
     const bool meshA = typeA == RigidBody::ShapeType::MESH;
     const bool meshB = typeB == RigidBody::ShapeType::MESH;
     if (meshA && meshB) return false;
-    if ((meshA && (typeB == RigidBody::ShapeType::PLANE || typeB == RigidBody::ShapeType::BOX)) ||
-        (meshB && (typeA == RigidBody::ShapeType::PLANE || typeA == RigidBody::ShapeType::BOX))) {
+    if ((meshA && typeB == RigidBody::ShapeType::PLANE) || (meshB && typeA == RigidBody::ShapeType::PLANE)) {
         return false;
     }
 

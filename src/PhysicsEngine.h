@@ -15,6 +15,7 @@
 #include "physics/CharacterSystem.h"
 #include "physics/PhysicsDebugView.h"
 #include "physics/TriggerSystem.h"
+#include "physics/StaticCollision.h"
 
 // Forward declarations
 class SceneNode;
@@ -337,6 +338,12 @@ public:
     const TriggerSystem& Triggers() const { return *m_triggers; }
     CharacterSystem& Characters() { return *m_characters; }
     const CharacterSystem& Characters() const { return *m_characters; }
+    StaticCollisionSystem& StaticCollisions() { return *m_staticCollisions; }
+    const StaticCollisionSystem& StaticCollisions() const { return *m_staticCollisions; }
+    /**
+     * Asset path of a model's file, for StaticCollision components (set by the engine owner; empty paths are skipped).
+     */
+    void SetModelPathResolver(StaticCollisionSystem::ModelPathFn fn) { m_modelPathOf = std::move(fn); }
 
     /**
      * Static level geometry that characters collide with, in addition to the bodies (not owned here). Pass nullptr to
@@ -485,6 +492,8 @@ private:
      * Update BVH proxies
      */
     void UpdateBVHProxies();
+    // Moves the mesh bodies of moved nodes (static colliders follow their node) and records their platform velocity.
+    void SyncMovingMeshes(float dt);
     
     /**
      * Update sleep states
@@ -554,6 +563,8 @@ private:
     // Triggers and character controllers (node-keyed component state)
     std::unique_ptr<TriggerSystem> m_triggers;
     std::unique_ptr<CharacterSystem> m_characters;
+    std::unique_ptr<StaticCollisionSystem> m_staticCollisions;
+    StaticCollisionSystem::ModelPathFn m_modelPathOf;
     const CollisionWorld* m_worldCollision = nullptr;   // non-owning
 
     // Profiling
