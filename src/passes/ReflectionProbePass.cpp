@@ -170,6 +170,10 @@ void ReflectionProbePass::Execute(RenderContext& ctx,
 {
 	if (!sceneGraph) return;
 	if (sceneGraph.get() != m_lastScene) {
+		if (m_captureActive) {
+			// A capture of the previous scene is still running: finish it so its GL state is restored.
+			CaptureAll(ctx, m_captureScene, m_captureSkybox, -1.0);
+		}
 		m_lastScene = sceneGraph.get();
 		m_probeCount = 0;
 		m_framesUntilCapture = sceneGraph->reflectionProbes.empty() ? -1 : 2;
@@ -177,14 +181,17 @@ void ReflectionProbePass::Execute(RenderContext& ctx,
 	if (m_framesUntilCapture > 0) {
 		--m_framesUntilCapture;
 	}
-	else if (m_framesUntilCapture == 0) {
-		CaptureAll(ctx, sceneGraph, skybox);
-		m_framesUntilCapture = -1;
+	else if (m_framesUntilCapture == 0 || m_captureActive) {
+		CaptureAll(ctx, sceneGraph, skybox, kCaptureBudgetMs);
+		if (!m_captureActive) m_framesUntilCapture = -1;
 	}
-	ctx.reflectionProbeArray = (m_probeCount > 0 && ctx.enableReflectionProbes) ? m_probeArray : rhi::TextureHandle();
+	// Probes that are not captured yet are not shown: a half-captured array would reflect garbage.
+	ctx.reflectionCaptureInProgress = m_captureActive || m_framesUntilCapture >= 0;
+	const bool probesReady = m_probeCount > 0 && ctx.enableReflectionProbes && !m_captureActive;
+	ctx.reflectionProbeArray = probesReady ? m_probeArray : rhi::TextureHandle();
 	ctx.reflectionProbeSSBO = m_probeSSBO;
 	int visibleProbes = 0;
-	if (m_probeCount > 0 && ctx.enableReflectionProbes) {
+	if (probesReady) {
 		const glm::mat4 viewProj = ctx.proj * ctx.view;
 		visibleProbes = UploadProbeData(sceneGraph->reflectionProbes, &viewProj);
 	}
@@ -192,54 +199,72 @@ void ReflectionProbePass::Execute(RenderContext& ctx,
 	ctx.reflectionProbeMaxLOD = static_cast<float>(kMipLevels - 1);
 }
 
-void ReflectionProbePass::CaptureAll(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph, const std::shared_ptr<Skybox>& skybox)
+void ReflectionProbePass::CaptureAll(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph, const std::shared_ptr<Skybox>& skybox, double budgetMs)
 {
 	const auto start = std::chrono::steady_clock::now();
-	const std::vector<ReflectionProbeDesc>& probes = sceneGraph->reflectionProbes;
-	m_probeCount = std::min(static_cast<int>(probes.size()), kMaxProbes);
-	if (m_probeCount <= 0) return;
-
 	rhi::Device& gpu = rhi::Gpu();
-	if (m_capacity < m_probeCount) {
-		if (m_probeArray) gpu.DestroyTexture(m_probeArray);
-		rhi::TextureDesc arrayDesc;
-		arrayDesc.type = rhi::TextureType::CubeArray;
-		arrayDesc.format = rhi::Format::RGBA16F;
-		arrayDesc.width = kFaceSize;
-		arrayDesc.height = kFaceSize;
-		arrayDesc.depth = 6 * m_probeCount;
-		arrayDesc.mipLevels = kMipLevels;
-		arrayDesc.immutable = true;
-		m_probeArray = gpu.CreateTexture(arrayDesc);
-		gpu.SetTextureFilter(m_probeArray, rhi::Filter::LinearMipLinear, rhi::Filter::Linear);
-		gpu.SetTextureWrapAxis(m_probeArray, 0, rhi::Wrap::ClampToEdge);
-		gpu.SetTextureWrapAxis(m_probeArray, 1, rhi::Wrap::ClampToEdge);
-		m_capacity = m_probeCount;
+	if (!m_captureActive) {
+		const std::vector<ReflectionProbeDesc>& probes = sceneGraph->reflectionProbes;
+		m_probeCount = std::min(static_cast<int>(probes.size()), kMaxProbes);
+		if (m_probeCount <= 0) return;
+
+		if (m_capacity < m_probeCount) {
+			if (m_probeArray) gpu.DestroyTexture(m_probeArray);
+			rhi::TextureDesc arrayDesc;
+			arrayDesc.type = rhi::TextureType::CubeArray;
+			arrayDesc.format = rhi::Format::RGBA16F;
+			arrayDesc.width = kFaceSize;
+			arrayDesc.height = kFaceSize;
+			arrayDesc.depth = 6 * m_probeCount;
+			arrayDesc.mipLevels = kMipLevels;
+			arrayDesc.immutable = true;
+			m_probeArray = gpu.CreateTexture(arrayDesc);
+			gpu.SetTextureFilter(m_probeArray, rhi::Filter::LinearMipLinear, rhi::Filter::Linear);
+			gpu.SetTextureWrapAxis(m_probeArray, 0, rhi::Wrap::ClampToEdge);
+			gpu.SetTextureWrapAxis(m_probeArray, 1, rhi::Wrap::ClampToEdge);
+			m_capacity = m_probeCount;
+		}
+
+		m_prevFBO = gpu.CurrentDrawFramebuffer();
+		m_prevViewport = gpu.GetViewport();
+		// Probe faces need every static item, not the main camera's visible set.
+		if (auto* renderSystem = sceneGraph->GetRenderSystem()) {
+			renderSystem->SetReflectionCaptureActive(true);
+			renderSystem->ClearFrustum();
+		}
+		m_captureScene = sceneGraph;
+		m_captureSkybox = skybox;
+		m_nextProbe = 0;
+		m_captureActive = true;
 	}
 
-	const rhi::FramebufferHandle prevFBO = gpu.CurrentDrawFramebuffer();
-	const rhi::Rect prevViewport = gpu.GetViewport();
+	// Probes are captured a few per frame; the array is shown only once all of them are captured.
+	const bool unlimited = budgetMs < 0.0;
+	const std::vector<ReflectionProbeDesc>& probes = m_captureScene->reflectionProbes;
+	while (m_nextProbe < m_probeCount) {
+		CaptureProbe(ctx, m_captureScene, m_captureSkybox, probes[static_cast<size_t>(m_nextProbe)], m_nextProbe);
+		PrefilterInto(m_nextProbe);
+		++m_nextProbe;
+		if (!unlimited && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() >= budgetMs) {
+			break;
+		}
+	}
+	if (m_nextProbe < m_probeCount) {
+		return;  // continues next frame
+	}
 
-	// Probe faces need every static item, not the main camera's visible set.
-	if (auto* renderSystem = sceneGraph->GetRenderSystem()) {
-		renderSystem->SetReflectionCaptureActive(true);
-		renderSystem->ClearFrustum();
-	}
-	for (int i = 0; i < m_probeCount; ++i) {
-		CaptureProbe(ctx, sceneGraph, skybox, probes[static_cast<size_t>(i)], i);
-		PrefilterInto(i);
-	}
-	if (auto* renderSystem = sceneGraph->GetRenderSystem()) {
+	m_captureActive = false;
+	if (auto* renderSystem = m_captureScene->GetRenderSystem()) {
 		renderSystem->SetReflectionCaptureActive(false);
 		if (ctx.enableFrustumCulling) {
 			renderSystem->SetFrustumPlanes(ctx.proj * ctx.view);
 		}
 	}
-	UploadProbeData(probes, nullptr);
+	UploadProbeData(m_captureScene->reflectionProbes, nullptr);
 
 	// Restore shared state for the rest of the frame.
-	gpu.BindFramebuffer(prevFBO);
-	gpu.SetViewport(prevViewport);
+	gpu.BindFramebuffer(m_prevFBO);
+	gpu.SetViewport(m_prevViewport);
 	LightClusterPass::BindForShading(ctx);
 	ExposurePass::Bind(ctx);
 	gpu.SetDepthTest(true);
@@ -252,6 +277,8 @@ void ReflectionProbePass::CaptureAll(RenderContext& ctx, const std::shared_ptr<S
 	const float ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start).count();
 	std::cout << "[ReflectionProbePass] Captured " << m_probeCount << " probes (" << kFaceSize << "^2) in "
 		<< ms << " ms (CPU submit)" << std::endl;
+	m_captureScene.reset();
+	m_captureSkybox.reset();
 }
 
 void ReflectionProbePass::CaptureProbe(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph,

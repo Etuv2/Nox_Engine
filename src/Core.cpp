@@ -921,6 +921,11 @@ void Core::Update(float deltaTime) {
 	// loads or a failed load waits for Continue. The frame that commits a scene simulates as usual.
 	if (IsSceneLoading()) {
 		m_sceneLoadWorstFrameMs = std::max(m_sceneLoadWorstFrameMs, deltaTime * 1000.0f);
+		if (deltaTime > 0.05f) {
+			// A frame over 50 ms during a load: report it with the step it was working on.
+			std::cout << "[Core] Long frame during scene load: " << static_cast<int>(deltaTime * 1000.0f) << " ms ("
+				<< (m_commitTask ? m_commitStage : std::string("load")) << ")" << std::endl;
+		}
 		// The commit runs inside this call: its time is a frame of the load as well.
 		const auto serviceStart = std::chrono::steady_clock::now();
 		ServiceSceneLoad();
@@ -1288,6 +1293,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 			m_game->DrawOverlay(ImGui::GetForegroundDrawList(), glm::vec2(0.0f), glm::vec2(size.x, size.y), dt);
 		}
 		DrawDebugPrimitives(ImGui::GetForegroundDrawList(), camera, 0.0f, 0.0f, static_cast<float>(m_windowWidth), static_cast<float>(m_windowHeight));
+		PresentSceneOverlay();
 		FrameProfiler::Mark("overlay");
 		ImGui::Render();
 		rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
@@ -1364,6 +1370,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 	rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
 	rhi::Gpu().SetClearColor(glm::vec4(0.05f, 0.05f, 0.06f, 1.0f));
 	rhi::Gpu().Clear(rhi::ClearColor | rhi::ClearDepth);
+	PresentSceneOverlay();
 	ImGui::Render();
 	rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
 }
@@ -1503,7 +1510,7 @@ void Core::OnWindowResize(int newWidth, int newHeight) {
 }
 
 bool Core::IsSceneLoading() const {
-	return m_sceneLoader && m_sceneLoader->GetLoadStatus() == SceneLoader::LoadStatus::Running;
+	return (m_sceneLoader && m_sceneLoader->GetLoadStatus() == SceneLoader::LoadStatus::Running) || m_commitTask != nullptr;
 }
 
 void Core::SwapScene(const std::string& newSceneFile) {
@@ -1537,22 +1544,41 @@ void Core::SwapScene(const std::string& newSceneFile) {
 void Core::FinishSceneLoadSynchronously() {
 	if (!m_sceneLoader) return;
 	m_sceneLoader->StepLoad(-1.0);
-	ServiceSceneLoad();
+	ServiceSceneLoad(-1.0);
+	while (m_commitTask) {
+		ServiceSceneLoad(-1.0);
+	}
 }
 
-void Core::ServiceSceneLoad() {
+void Core::ServiceSceneLoad(double budgetMs) {
 	if (!m_sceneLoader) return;
-	// A budgeted step per frame keeps the window responsive: the decode and the file read run on workers.
-	static constexpr double kSceneLoadBudgetMs = 8.0;
+	if (budgetMs < 0.0) {
+		budgetMs = -1.0;
+	}
+	// Commit in progress: run its next slice of work.
+	if (m_commitTask) {
+		if (m_commitTask->Resume(budgetMs)) {
+			m_commitTask.reset();
+			m_scenePresentPending = true;  // the loading screen stays up until the first frame of the new scene
+		}
+		return;
+	}
 	SceneLoader::LoadStatus status = m_sceneLoader->GetLoadStatus();
 	if (status == SceneLoader::LoadStatus::Running) {
-		status = m_sceneLoader->StepLoad(kSceneLoadBudgetMs);
+		status = m_sceneLoader->StepLoad(budgetMs);
 	}
 	if (status == SceneLoader::LoadStatus::Ready) {
-		const bool startup = m_sceneLoadStartup;
+		m_commitGraph = m_sceneLoader->TakeLoadedScene();
+		m_commitStartup = m_sceneLoadStartup;
 		m_sceneLoadStartup = false;
-		std::shared_ptr<SceneGraph> graph = m_sceneLoader->TakeLoadedScene();
-		CommitLoadedScene(graph, m_sceneLoadTarget, startup);
+		m_commitStepStart = {};
+		m_commitTask = std::make_unique<SliceTask>([this] {
+			CommitLoadedScene(m_commitGraph, m_sceneLoadTarget, m_commitStartup);
+		});
+		if (m_commitTask->Resume(budgetMs)) {
+			m_commitTask.reset();
+			m_scenePresentPending = true;
+		}
 	}
 	else if (status == SceneLoader::LoadStatus::Failed) {
 		m_sceneLoadError = m_sceneLoader->GetLoadError();
@@ -1564,15 +1590,32 @@ void Core::ServiceSceneLoad() {
 	}
 }
 
+// Commit runs as a slice task: each step is timed and gives the frame back when the budget is spent.
+void Core::CommitMark(const char* name)
+{
+	const auto now = std::chrono::steady_clock::now();
+	if (m_commitStepStart != std::chrono::steady_clock::time_point{}) {
+		const double ms = std::chrono::duration<double, std::milli>(now - m_commitStepStart).count();
+		std::cout << "[Core] Scene commit step '" << m_commitStage << "': " << static_cast<int>(ms * 10.0) / 10.0 << " ms" << std::endl;
+	}
+	m_commitStage = name;
+	m_commitStepStart = now;
+	++m_commitStepIndex;
+	SliceTask::YieldIfOverBudget();
+}
+
 void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup) {
+	m_commitStepIndex = 0;
 	if (!newGraph || !newGraph->GetRoot()) {
 		m_sceneLoadError = "Failed to load scene: " + resolvedSceneFile;
 		return;
 	}
+	CommitMark("Clearing the previous scene");
 	if (!startup) {
 		// The replaced scene's physics bodies were retired by SceneLoader::TakeLoadedScene.
 		CleanupCurrentScene(false);
 	}
+	CommitMark("Assigning scene state");
 	m_sceneGraph = newGraph;
 	m_currentSceneFilePath = resolvedSceneFile;
 
@@ -1594,8 +1637,10 @@ void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const 
 
 	auto lightManager = m_sceneGraph->GetLightManager();
 	if (lightManager) {
+		CommitMark("Shadow maps");
 		lightManager->GetShadowConfig().directionalSplitLambda = m_splitLambda;
 		lightManager->InitializeShadowSystem(8, m_shadowSize);
+		CommitMark("Lights");
 		lightManager->CollectLightsFromScene(m_sceneGraph);
 		if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
 			lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
@@ -1603,6 +1648,7 @@ void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const 
 		lightManager->PrintLightInfo();
 	}
 
+	CommitMark("Render settings");
 	if (m_modularRenderer) {
 		m_sceneHasRenderSettings = SceneRenderSettings::ApplyFromSceneFile(
 			m_modularRenderer->GetContext(), resolvedSceneFile, m_sceneHasRenderSettings);
@@ -1616,8 +1662,10 @@ void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const 
 			m_game->SetCameraTemplate(*m_camera);
 		}
 	}
+	CommitMark("Game module");
 	ConfigureGameFromScene(resolvedSceneFile);
 	m_dirty = false;
+	CommitMark("Editor and UI");
 	if (m_editor) {
 		m_editor->OnSceneLoaded();
 	}
@@ -1633,23 +1681,41 @@ void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const 
 		m_inputIntegration->SetLightManager(GetLightManager());
 	}
 
+	CommitMark("Bounds");
 	ComputeSceneBoundingBox();
 	m_bvhDirty = true;
 	m_boundingBoxCached = false;
+	CommitMark("Acceleration structure");
+	RebuildSceneBVH();
 
 	if (m_modularRenderer) {
 		m_modularRenderer->ResetTAA();
 	}
 
 	if (startup) {
+		CommitMark("Startup");
 		SaveRoundtripCopyIfRequested();
 		if (!m_benchmark && m_game && m_game->IsAvailable() && (m_launch.mode == AppMode::Game || m_game->WantsAutoPlay())) {
 			RequestPlay();
 		}
 	}
+	CommitMark("Finishing");
 	const double wallMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_sceneLoadStartTime).count();
 	std::cout << "[Core] Scene ready: " << resolvedSceneFile << " (load " << static_cast<int>(wallMs) << " ms, longest frame while loading "
 		<< static_cast<int>(m_sceneLoadWorstFrameMs) << " ms)" << std::endl;
+}
+
+// The first frame after a commit draws the loading screen over the new scene; the screen then goes away.
+void Core::PresentSceneOverlay() {
+	if (!m_scenePresentPending) return;
+	RenderSceneLoadingUI(true);
+	// The screen stays up while the new scene's reflection probes are captured (a few per frame).
+	const bool probesCapturing = m_modularRenderer && m_modularRenderer->GetContext().reflectionCaptureInProgress;
+	if (!probesCapturing) {
+		m_scenePresentPending = false;
+		const double firstFrameMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_sceneLoadStartTime).count();
+		std::cout << "[Core] Scene first frame presented: " << static_cast<int>(firstFrameMs) << " ms after the load started" << std::endl;
+	}
 }
 
 void Core::RenderSceneLoadingUI(bool overlay) {
@@ -1661,8 +1727,22 @@ void Core::RenderSceneLoadingUI(bool overlay) {
 		const size_t slash = m_sceneLoadTarget.find_last_of("/\\");
 		state.sceneName = slash == std::string::npos ? m_sceneLoadTarget : m_sceneLoadTarget.substr(slash + 1);
 	}
-	state.progress = IsSceneLoading() ? progress.fraction : 1.0f;
-	state.stage = IsSceneLoading() ? progress.stage : std::string();
+	if (m_commitTask) {
+		// The commit covers the last 10% of the bar, one step at a time.
+		state.progress = 0.9f + 0.1f * std::min(1.0f, static_cast<float>(m_commitStepIndex) / 10.0f);
+		state.stage = m_commitStage;
+	}
+	else if (IsSceneLoading()) {
+		state.progress = progress.fraction * 0.9f;
+		state.stage = progress.stage;
+	}
+	else if (m_scenePresentPending) {
+		state.progress = 1.0f;
+		state.stage = "Starting";
+	}
+	else {
+		state.progress = 1.0f;
+	}
 	state.error = m_sceneLoadError;
 	state.startupFailure = m_sceneGraph == nullptr;
 	state.overlay = overlay;

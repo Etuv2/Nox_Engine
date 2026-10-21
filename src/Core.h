@@ -2,6 +2,7 @@
 
 #include "PlayWorldSnapshot.h"
 #include <chrono>
+#include "SliceTask.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -331,10 +332,19 @@ private:
     // Physics bodies of the replaced scene are retired by SceneLoader::TakeLoadedScene; pass false when a load commits.
     void CleanupCurrentScene(bool removePhysicsBodies = true);
     // Scene load pipeline (see docs/scenes.md, "Loading")
-    void ServiceSceneLoad();
+    void ServiceSceneLoad(double budgetMs = 8.0);
+    void CommitMark(const char* name);
     void CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup);
     void RenderSceneLoadingUI(bool overlay);
+    void PresentSceneOverlay();
     void FinishSceneLoadSynchronously();
+    std::unique_ptr<SliceTask> m_commitTask;       // the commit of a loaded scene, sliced across frames
+    std::shared_ptr<SceneGraph> m_commitGraph;     // the loaded scene being committed
+    bool m_commitStartup = false;
+    bool m_scenePresentPending = false;            // the new scene committed; its first frame draws the loading overlay
+    std::string m_commitStage;                     // current commit step (loading screen text)
+    int m_commitStepIndex = 0;
+    std::chrono::steady_clock::time_point m_commitStepStart{};
     std::string m_sceneLoadTarget;                // logical path of the load in progress or failed
     std::string m_sceneLoadError;                 // failed load waiting for Continue (empty: none)
     bool m_sceneLoadStartup = false;              // the load in progress is the startup scene
