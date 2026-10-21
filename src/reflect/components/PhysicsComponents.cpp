@@ -1,6 +1,7 @@
 // Physics descriptors: "RigidBody" (dynamics of a node's body), "Collider" (its shape and layers), "Trigger"
-// (overlap volume) and "CharacterController" (capsule moved by move()). A node has at most one body; the two
-// body descriptors act on it. Trigger and CharacterController state lives in the PhysicsEngine.
+// (overlap volume), "CharacterController" (capsule moved by move()) and "StaticCollision" (static mesh colliders for
+// the nodes under it). A node has at most one body; the two body descriptors act on it. Trigger, CharacterController
+// and StaticCollision state lives in the PhysicsEngine.
 #include "../ComponentBuilders.h"
 #include "../ReflectServices.h"
 #include "../../PhysicsEngine.h"
@@ -8,6 +9,7 @@
 #include "../../SceneNode.h"
 #include "../../physics/CharacterSystem.h"
 #include "../../physics/MeshCollider.h"
+#include "../../physics/StaticCollision.h"
 #include "../../physics/TriggerSystem.h"
 
 #include <algorithm>
@@ -498,7 +500,7 @@ void RegisterTrigger() {
 				t->mask = static_cast<uint32_t>(std::get<int64_t>(v));
 				NotifySceneChanged();
 				return true;
-			}), 0.0, 2147483647.0, 1.0),
+			}), 0.0, 4294967295.0, 1.0),
 		Prop("enabled", PropType::Bool,
 			[](const SceneNode& n) { const TriggerSettings* t = TriggerOf(n); return PropValue(t != nullptr && t->enabled); },
 			[](SceneNode& n, const PropValue& v) {
@@ -536,6 +538,24 @@ void RegisterCharacterController() {
 	};
 
 	c.properties = {
+		Ranged(Prop("layer", PropType::Int,
+			[](const SceneNode& n) { const CharacterSettings* s = CharacterOf(n); return PropValue(static_cast<int64_t>(s ? s->layer : 0u)); },
+			[](SceneNode& n, const PropValue& v) {
+				CharacterSettings* s = CharacterOf(n);
+				if (!s) return false;
+				s->layer = static_cast<uint32_t>(std::get<int64_t>(v));
+				NotifySceneChanged();
+				return true;
+			}), 0.0, 2147483647.0, 1.0),
+		Ranged(Prop("mask", PropType::Int,
+			[](const SceneNode& n) { const CharacterSettings* s = CharacterOf(n); return PropValue(static_cast<int64_t>(s ? s->mask : 0u)); },
+			[](SceneNode& n, const PropValue& v) {
+				CharacterSettings* s = CharacterOf(n);
+				if (!s) return false;
+				s->mask = static_cast<uint32_t>(std::get<int64_t>(v));
+				NotifySceneChanged();
+				return true;
+			}), 0.0, 4294967295.0, 1.0),
 		Ranged(Prop("height", PropType::Float,
 			[](const SceneNode& n) { const CharacterSettings* s = CharacterOf(n); return PropValue(static_cast<double>(s ? s->height : 0.0f)); },
 			[](SceneNode& n, const PropValue& v) {
@@ -610,6 +630,65 @@ void RegisterCharacterController() {
 	Registry::Get().Register(std::move(c));
 }
 
+// StaticCollision: makes the nodes under this one collidable (see physics/StaticCollision.h). Its state lives in the
+// engine; each edit asks for a resynchronisation.
+StaticCollisionSettings* StaticCollisionOf(const SceneNode& n) {
+	PhysicsEngine* physics = Services().physics;
+	return physics ? physics->StaticCollisions().Find(&n) : nullptr;
+}
+
+void RegisterStaticCollision() {
+	ComponentDesc c;
+	c.name = "StaticCollision";
+	c.category = "Physics";
+	c.tooltip = "Static mesh colliders for this node's model and, optionally, every model below it";
+	c.order = 34;
+	c.has = [](const SceneNode& n) { return StaticCollisionOf(n) != nullptr; };
+	c.add = [](SceneNode& n) {
+		PhysicsEngine* physics = Services().physics;
+		if (!physics || n.weak_from_this().expired() || !physics->StaticCollisions().Add(n.shared_from_this())) return false;
+		NotifySceneChanged();
+		return true;
+	};
+	c.remove = [](SceneNode& n) {
+		PhysicsEngine* physics = Services().physics;
+		if (!physics || !StaticCollisionOf(n)) return false;
+		physics->StaticCollisions().Remove(*physics, &n);
+		NotifySceneChanged();
+		return true;
+	};
+
+	auto edited = [](SceneNode& n, auto&& apply) {
+		StaticCollisionSettings* s = StaticCollisionOf(n);
+		PhysicsEngine* physics = Services().physics;
+		if (!s || !physics) return false;
+		apply(*s);
+		physics->StaticCollisions().MarkDirty();
+		NotifySceneChanged();
+		return true;
+	};
+
+	c.properties = {
+		Prop("include_children", PropType::Bool,
+			[](const SceneNode& n) { const StaticCollisionSettings* s = StaticCollisionOf(n); return PropValue(s != nullptr && s->includeChildren); },
+			[edited](SceneNode& n, const PropValue& v) {
+				return edited(n, [&](StaticCollisionSettings& s) { s.includeChildren = std::get<bool>(v); });
+			}),
+		Ranged(Prop("layer", PropType::Int,
+			[](const SceneNode& n) { const StaticCollisionSettings* s = StaticCollisionOf(n); return PropValue(static_cast<int64_t>(s ? s->layer : 0u)); },
+			[edited](SceneNode& n, const PropValue& v) {
+				return edited(n, [&](StaticCollisionSettings& s) { s.layer = static_cast<uint32_t>(std::get<int64_t>(v)); });
+			}), 0.0, 2147483647.0, 1.0),
+		Ranged(Prop("mask", PropType::Int,
+			[](const SceneNode& n) { const StaticCollisionSettings* s = StaticCollisionOf(n); return PropValue(static_cast<int64_t>(s ? s->mask : 0u)); },
+			[edited](SceneNode& n, const PropValue& v) {
+				return edited(n, [&](StaticCollisionSettings& s) { s.mask = static_cast<uint32_t>(std::get<int64_t>(v)); });
+			}), 0.0, 4294967295.0, 1.0),
+	};
+
+	Registry::Get().Register(std::move(c));
+}
+
 } // namespace
 
 void RegisterPhysicsComponents() {
@@ -617,6 +696,7 @@ void RegisterPhysicsComponents() {
 	RegisterCollider();
 	RegisterTrigger();
 	RegisterCharacterController();
+	RegisterStaticCollision();
 }
 
 } // namespace nox::reflect

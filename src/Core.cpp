@@ -636,6 +636,10 @@ bool Core::InitializePhysics() {
 		std::cerr << "[Core] Using default simulation config.\n";
 	}
 	m_physicsEngine = std::make_shared<PhysicsEngine>(config);
+	// StaticCollision components name the model file of each node (the engine owns no model paths).
+	m_physicsEngine->SetModelPathResolver([this](const Scene& model) {
+		return m_modelManager ? m_modelManager->GetModelPath(&model) : std::string();
+	});
 
 	return true;
 }

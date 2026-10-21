@@ -159,6 +159,11 @@ public:
     
     void setVelocity(const glm::vec3& vel) { m_linearVelocity = vel; }
     glm::vec3 getVelocity() const { return m_linearVelocity; }
+
+    // Velocity a moving static mesh had over the last frame (its node moved, see PhysicsEngine::PreStepSync). Read by
+    // characters standing on it so they are carried along. Zero for bodies that do not move. Not used by the solver.
+    void setPlatformVelocity(const glm::vec3& vel) { m_platformVelocity = vel; }
+    glm::vec3 getPlatformVelocity() const { return m_platformVelocity; }
     
     void setAngularVelocity(const glm::vec3& angVel) { m_angularVelocity = angVel; }
     glm::vec3 getAngularVelocity() const { return m_angularVelocity; }
@@ -348,6 +353,7 @@ private:
     
     // Velocity
     glm::vec3 m_linearVelocity = glm::vec3(0.0f);
+    glm::vec3 m_platformVelocity = glm::vec3(0.0f);
     glm::vec3 m_angularVelocity = glm::vec3(0.0f);
     glm::vec3 m_acceleration = glm::vec3(0.0f);
     

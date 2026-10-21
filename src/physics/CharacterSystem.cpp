@@ -37,10 +37,12 @@ void SamplePoints(const glm::vec3& feet, const CharacterSettings& s, glm::vec3 o
 // One capsule sweep against the physics world. Holds the probe sphere and the static planes for the move.
 class Mover {
 public:
-	Mover(PhysicsEngine& physics, const std::shared_ptr<SceneNode>& self, const CharacterSettings& settings)
+	Mover(PhysicsEngine& physics, const std::shared_ptr<SceneNode>& self, const CharacterSettings& settings,
+		std::vector<ControllerHit>& hits)
 		: m_physics(physics)
 		, m_self(self)
 		, m_settings(settings)
+		, m_hits(hits)
 		, m_probe(std::make_shared<RigidBody>()) {
 		m_probe->setSphere(settings.radius);
 		const float slope = std::clamp(settings.slopeLimitDegrees, 0.0f, 89.0f);
@@ -54,6 +56,7 @@ public:
 		glm::vec3 feet{ 0.0f };
 		bool collided = false;   // any contact during the sweep
 		bool onFloor = false;    // floor contact during the last substep
+		std::shared_ptr<RigidBody> floorBody;   // body that gave that floor contact (null for level geometry)
 	};
 
 	// Moves the capsule from `feet` by `displacement` in substeps no longer than half the radius.
@@ -66,8 +69,10 @@ public:
 		for (int i = 0; i < steps; ++i) {
 			position += sub;
 			bool floor = false;
-			if (Depenetrate(position, floor)) result.collided = true;
+			std::shared_ptr<RigidBody> floorBody;
+			if (Depenetrate(position, floor, floorBody)) result.collided = true;
 			result.onFloor = floor;
+			result.floorBody = floor ? floorBody : nullptr;
 		}
 		result.feet = position;
 		return result;
@@ -88,10 +93,25 @@ private:
 	// Pushes the feet out of every body and world triangle the capsule overlaps, up to kDepenetrationPasses passes.
 	// Returns true when anything was touched; floorContact is set when a touched surface is walkable.
 	// A surface steeper than the slope limit is a wall: it pushes horizontally only, so the capsule cannot climb it.
-	bool Depenetrate(glm::vec3& feet, bool& floorContact) {
+	bool Depenetrate(glm::vec3& feet, bool& floorContact, std::shared_ptr<RigidBody>& floorBody) {
 		bool touched = false;
-		auto apply = [&](const glm::vec3& push, float penetration) -> bool {
-			if (push.y >= m_floorCos) floorContact = true;
+		// Records the contact for the controller's hit list once per body (or level geometry) per move.
+		auto report = [&](const std::shared_ptr<RigidBody>& body, const glm::vec3& normal, const glm::vec3& point) {
+			for (const ControllerHit& h : m_hits) {
+				if (h.body == body && (body || glm::distance(h.point, point) < 1e-3f)) return;
+			}
+			ControllerHit hit;
+			hit.controller = m_self->GetEntityID();
+			hit.body = body;
+			hit.normal = normal;
+			hit.point = point;
+			m_hits.push_back(hit);
+		};
+		auto apply = [&](const glm::vec3& push, float penetration, const std::shared_ptr<RigidBody>& who) -> bool {
+			if (push.y >= m_floorCos) {
+				floorContact = true;
+				floorBody = who;   // the last floor contact decides which body the character stands on
+			}
 			if (penetration <= kMinPenetration) return false;
 			glm::vec3 move = push * penetration;
 			if (push.y > -m_floorCos && push.y < m_floorCos) {
@@ -117,7 +137,8 @@ private:
 					float penetration = 0.0f;
 					if (!ShapeOverlap::Test(*m_probe, *body, kContactSkin, push, penetration)) continue;
 					touched = true;
-					if (apply(push, penetration)) corrected = true;
+					report(body, push, samples[k] - push * m_settings.radius);
+					if (apply(push, penetration, body)) corrected = true;
 				}
 				// Static world geometry (CollisionWorld): the deepest triangle contact of this sample.
 				if (const CollisionWorld* world = m_physics.WorldCollision()) {
@@ -130,7 +151,8 @@ private:
 							if (c.depth > deepest->depth) deepest = &c;
 						}
 						touched = true;
-						if (apply(deepest->normal, deepest->depth)) corrected = true;
+						report(nullptr, deepest->normal, deepest->point);
+						if (apply(deepest->normal, deepest->depth, nullptr)) corrected = true;
 					}
 				}
 			}
@@ -142,6 +164,7 @@ private:
 	PhysicsEngine& m_physics;
 	const std::shared_ptr<SceneNode>& m_self;
 	const CharacterSettings& m_settings;
+	std::vector<ControllerHit>& m_hits;
 	std::shared_ptr<RigidBody> m_probe;
 	std::vector<std::shared_ptr<RigidBody>> m_planes;
 	float m_floorCos = 0.0f;
@@ -193,11 +216,12 @@ bool CharacterSystem::Move(PhysicsEngine& physics, SceneNode& node, const glm::v
 	}
 	const glm::vec3 start(self->GetWorldPosition4x4()[3]);
 
-	Mover mover(physics, self, s);
+	Mover mover(physics, self, s, m_hits);
 	Mover::Result sweep = mover.Run(start, displacement);
 	glm::vec3 finalFeet = sweep.feet;
 	bool collided = sweep.collided;
 	bool onFloor = sweep.onFloor;
+	std::shared_ptr<RigidBody> floorBody = sweep.floorBody;
 
 	// Step-up: a walk from the floor that is blocked (it gains less than half of what was asked) retries one step
 	// higher, moves forward at least one radius (the rounded foot must clear the edge before it can drop), and drops
@@ -215,6 +239,7 @@ bool CharacterSystem::Move(PhysicsEngine& physics, SceneNode& node, const glm::v
 		if (landed.onFloor && LengthXZ(landed.feet - start) > directGain + 1e-4f) {
 			finalFeet = landed.feet;
 			onFloor = true;
+			floorBody = landed.floorBody;
 		}
 	}
 
@@ -225,13 +250,21 @@ bool CharacterSystem::Move(PhysicsEngine& physics, SceneNode& node, const glm::v
 		if (down.onFloor) {
 			finalFeet = down.feet;
 			onFloor = true;
+			floorBody = down.floorBody;
 		}
 	}
 
 	const glm::vec3 local = glm::vec3(glm::inverse(parentWorld) * glm::vec4(finalFeet, 1.0f));
 	self->SetPosition(local);
 	s.onFloor = onFloor;
+	s.floorBody = onFloor ? floorBody : std::weak_ptr<RigidBody>();
 	return collided;
+}
+
+std::vector<ControllerHit> CharacterSystem::TakeHits() {
+	std::vector<ControllerHit> hits;
+	hits.swap(m_hits);
+	return hits;
 }
 
 void CharacterSystem::Update(PhysicsEngine& physics, float dt) {
@@ -243,6 +276,13 @@ void CharacterSystem::Update(PhysicsEngine& physics, float dt) {
 			continue;
 		}
 		CharacterSettings& s = it->second.settings;
+		// Carried by the platform under the feet: its motion over the last frame, applied before gravity.
+		if (s.onFloor) {
+			if (const std::shared_ptr<RigidBody> platform = s.floorBody.lock()) {
+				const glm::vec3 carry = platform->getPlatformVelocity() * dt;
+				if (glm::dot(carry, carry) > 0.0f) Move(physics, *node, carry);
+			}
+		}
 		if (s.gravity) {
 			if (s.onFloor && s.velocity.y <= 0.0f) {
 				s.velocity.y = 0.0f;

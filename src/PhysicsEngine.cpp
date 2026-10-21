@@ -85,6 +85,7 @@ PhysicsEngine::PhysicsEngine(const SimulationConfig& config)
 	m_bvh = std::make_unique<PhysicsBVH>();
 	m_triggers = std::make_unique<TriggerSystem>();
 	m_characters = std::make_unique<CharacterSystem>();
+	m_staticCollisions = std::make_unique<StaticCollisionSystem>();
 }
 
 PhysicsEngine::~PhysicsEngine() {
@@ -124,17 +125,20 @@ void PhysicsEngine::Shutdown() {
 	m_entityToBodyId.clear();
 	m_triggers->Clear();
 	m_characters->Clear();
+	m_staticCollisions->Clear(*this);
 }
 
 void PhysicsEngine::OnSceneLoaded(std::shared_ptr<SceneGraph> sceneGraph) {
 	m_sceneGraph = sceneGraph;
 	// Bodies are added via AddBody as nodes are created
+	m_staticCollisions->MarkDirty();
 }
 
 void PhysicsEngine::OnSceneUnloaded() {
 	RemoveAllBodies();
 	m_triggers->Clear();
 	m_characters->Clear();
+	m_staticCollisions->Clear(*this);
 	m_sceneGraph.reset();
 }
 
@@ -142,6 +146,10 @@ void PhysicsEngine::OnSceneUnloaded() {
 
 void PhysicsEngine::Update(float deltaTime) {
 	if (m_state == State::PAUSED) {
+		// Nothing is simulated, but mesh colliders still follow their nodes (the editor moves them while paused). No time
+		// passed, so no platform velocity.
+		m_staticCollisions->Update(*this, m_modelPathOf, deltaTime);
+		SyncMovingMeshes(0.0f);
 		return;
 	}
 	const auto updateStart = std::chrono::high_resolution_clock::now();
@@ -150,6 +158,10 @@ void PhysicsEngine::Update(float deltaTime) {
 	deltaTime = std::min(deltaTime, m_config.maxAccumulatedTime);
 
 	m_accumulator += deltaTime;
+
+	// Generated static mesh bodies (StaticCollision components) follow the scene graph; then the frame's sync
+	m_staticCollisions->Update(*this, m_modelPathOf, deltaTime);
+	SyncMovingMeshes(deltaTime);
 
 	// PRE-STEP SYNC: Push kinematic and edited bodies to physics
 	// This must happen once per frame before any stepping
@@ -431,6 +443,40 @@ void PhysicsEngine::PreStepSync() {
 				body->computeAABB();
 			}
 		}
+	}
+}
+
+namespace {
+
+// Rotation of a world matrix with its scale removed.
+glm::quat WorldRotation(const glm::mat4& world) {
+	const glm::mat3 axes(glm::normalize(glm::vec3(world[0])), glm::normalize(glm::vec3(world[1])),
+		glm::normalize(glm::vec3(world[2])));
+	return glm::quat_cast(axes);
+}
+
+} // namespace
+
+void PhysicsEngine::SyncMovingMeshes(float dt) {
+	for (auto& body : m_bodies) {
+		if (!body || body->getShapeType() != RigidBody::ShapeType::MESH) continue;
+		if (body->isGizmoGrabbed()) continue;
+		const std::shared_ptr<SceneNode> node = body->getAttachedNode();
+		if (!node) continue;
+		const glm::mat4 world = node->GetWorldPosition4x4();
+		const glm::vec3 position(world[3]);
+		const glm::quat orientation = WorldRotation(world);
+		const bool moved = glm::distance(position, body->getPosition()) > 1e-6f ||
+			std::abs(glm::dot(orientation, body->getOrientation())) < 0.999999f;
+		if (!moved) {
+			if (glm::dot(body->getPlatformVelocity(), body->getPlatformVelocity()) > 0.0f) body->setPlatformVelocity(glm::vec3(0.0f));
+			continue;
+		}
+		body->setPlatformVelocity(dt > 0.0f ? (position - body->getPosition()) / dt : glm::vec3(0.0f));
+		body->setPosition(position);
+		body->setOrientation(orientation);
+		body->computeAABB();
+		RefreshBodyBounds(*body);
 	}
 }
 
