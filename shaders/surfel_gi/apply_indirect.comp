@@ -77,6 +77,14 @@ uniform int uUseRadialDepth = 1;
 uniform float uRadialDepthMinVariance = 1e-4;
 // Strength of the cell-average term (GIBS p.40 uses 1).
 uniform float uFallbackStrength = 1.0;
+// Gather kernel cutoff in base-cell sizes (0 = off), and the interpolated cell-average fallback (plan section 21).
+uniform float uGatherCutoffCells = 0.0;
+uniform int uGatherSmoothFallback = 0;
+// Stochastic per-cell sampling (plan section 21, round 2): each cell in the window contributes uGatherPerCellSamples
+// consecutive entries from a hashed start (per pixel, frame and cell), scaled by count / samples. Cells beyond the
+// cutoff are skipped. Removes the cell-order truncation of the first-N walk.
+uniform int uGatherStochastic = 0;
+uniform uint uGatherPerCellSamples = 2u;
 uniform uint uFrameIndex = 0u;
 uniform uint uDebugView = 0u;
 uniform uint uSpawnTileSize = 8u;
@@ -101,6 +109,9 @@ const uint DEBUG_RAW_INDIRECT_IRRADIANCE = 35u;
 const uint DEBUG_FINAL_GATHER_FALLBACK = 36u;
 const uint DEBUG_FINAL_GATHER_BLEED = 37u;
 const uint DEBUG_FINAL_GATHER_COMPOSITE = 38u;
+
+// Cutoff radius of the gather kernel for this receiver (set in main from its base cell size). 0 = no cutoff.
+float gGatherCutoffRadius = 0.0;
 
 bool SurfelMaterialAllowsDiffuseGI(uint materialID)
 {
@@ -131,6 +142,15 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
                               max(maxCellSize * SURFEL_GATHER_MIN_SUPPORT_FRACTION, SURFEL_GATHER_MIN_SUPPORT_WORLD));
     float normalizedDistance = dist / max(supportRadius, 1e-4);
     float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.85);
+    if (gGatherCutoffRadius > 0.0) {
+        // Compact kernel: zero at the cutoff, C1 at it. Surfels beyond it leave the window smoothly.
+        float cutX = dist / gGatherCutoffRadius;
+        if (cutX >= 1.0) {
+            return 0.0;
+        }
+        float taper = 1.0 - cutX * cutX;
+        distanceWeight *= taper * taper;
+    }
     if (distanceWeight <= 1e-5) {
         return 0.0;
     }
@@ -263,6 +283,41 @@ vec3 SampleCellAverage(uint cell, out float confidence)
     return SurfelCellAverage(gridCellSums[cell], confidence);
 }
 
+// Cell average interpolated over the 8 cells whose centres bracket the receiver (trilinear in the base cell). A
+// cell with no valid average contributes zero. The base cell's constant is a step at every cell border; this is
+// continuous across them (plan section 21).
+vec3 SmoothCellAverage(vec3 worldPos, SurfelGridAddress base, out float confidence)
+{
+    confidence = 0.0;
+    float cs = max(base.cellSize, 1e-4);
+    vec3 u = (worldPos - base.center) / cs;
+    vec3 au = clamp(abs(u), vec3(0.0), vec3(0.5));
+    vec3 dir = vec3(u.x >= 0.0 ? 1.0 : -1.0, u.y >= 0.0 ? 1.0 : -1.0, u.z >= 0.0 ? 1.0 : -1.0);
+    vec3 sum = vec3(0.0);
+    float totalWeight = 0.0;
+    float confSum = 0.0;
+    for (int k = 0; k < 8; ++k) {
+        vec3 sel = vec3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1));
+        vec3 axisWeight = mix(vec3(1.0) - au, au, sel);
+        float w = axisWeight.x * axisWeight.y * axisWeight.z;
+        totalWeight += w;
+        SurfelGridAddress corner;
+        if (!SurfelWorldToGridAddress(base.center + sel * dir * cs, uGridMin, uGridMax, uGridResolution,
+                                      uUseNonLinearGrid, uGridFarExtent, corner)) {
+            continue;
+        }
+        float cornerConfidence;
+        vec3 average = SampleCellAverage(corner.cell, cornerConfidence);
+        sum += average * w;
+        confSum += cornerConfidence * w;
+    }
+    if (totalWeight <= 1e-6) {
+        return vec3(0.0);
+    }
+    confidence = confSum / totalWeight;
+    return sum / totalWeight;
+}
+
 // Young surfels converge slowly: their irradiance is a few rays old, so at full weight they add
 // the most noise to every pixel that gathers them. Their contribution ramps in over the first
 // SURFEL_RAMP_FRAMES frames and with the sample count the MSME has accumulated (shortMean.a). The
@@ -279,6 +334,36 @@ float SurfelContributionRamp(Surfel surfel)
     float ageRamp = smoothstep(0.0, SURFEL_RAMP_FRAMES, age);
     float sampleRamp = mix(0.35, 1.0, smoothstep(0.0, SURFEL_RAMP_SAMPLES, samples));
     return mix(SURFEL_RAMP_FLOOR, 1.0, ageRamp * sampleRamp);
+}
+
+// Weight, ramped weight and irradiance of one stored surfel for this receiver. False when it contributes nothing.
+bool SurfelGatherContribution(uint surfelID, vec3 worldPos, vec3 normal, out vec3 irradiance, out float weight, out float rampedWeight)
+{
+    irradiance = vec3(0.0);
+    weight = 0.0;
+    rampedWeight = 0.0;
+    Surfel surfel = surfels[surfelID];
+    if (!SurfelIsAlive(surfel)) {
+        return false;
+    }
+
+    weight = ReceiverSurfelGatherWeight(worldPos, normal, surfel);
+    if (weight <= 1e-5) {
+        return false;
+    }
+
+    if (uUseRadialDepth != 0) {
+        vec3 surfelToReceiver = worldPos - surfel.worldPos_radius.xyz;
+        uint radialIndex = SurfelRadialDepthIndex(surfelID, surfelToReceiver, surfel.worldNormal_age.xyz);
+        weight *= SurfelRadialDepthVisibility(radialDepth[radialIndex], length(surfelToReceiver), uRadialDepthMinVariance);
+        if (weight <= 1e-5) {
+            return false;
+        }
+    }
+
+    rampedWeight = weight * SurfelContributionRamp(surfel);
+    irradiance = SurfelCachedIndirectIrradiance(surfel);
+    return true;
 }
 
 // Walks one grid cell in stored order and accumulates accepted surfels until either bound is hit.
@@ -312,29 +397,62 @@ void AccumulateCell(uint cell,
             continue;
         }
 
-        Surfel surfel = surfels[entry.surfelID];
-        if (!SurfelIsAlive(surfel)) {
+        vec3 irradiance;
+        float weight;
+        float rampedWeight;
+        if (!SurfelGatherContribution(entry.surfelID, worldPos, normal, irradiance, weight, rampedWeight)) {
             continue;
         }
 
-        float weight = ReceiverSurfelGatherWeight(worldPos, normal, surfel);
-        if (weight <= 1e-5) {
-            continue;
-        }
-
-        if (uUseRadialDepth != 0) {
-            vec3 surfelToReceiver = worldPos - surfel.worldPos_radius.xyz;
-            uint radialIndex = SurfelRadialDepthIndex(entry.surfelID, surfelToReceiver, surfel.worldNormal_age.xyz);
-            weight *= SurfelRadialDepthVisibility(radialDepth[radialIndex], length(surfelToReceiver), uRadialDepthMinVariance);
-            if (weight <= 1e-5) {
-                continue;
-            }
-        }
-
-        float rampedWeight = weight * SurfelContributionRamp(surfel);
-        sumIrradiance += SurfelCachedIndirectIrradiance(surfel) * rampedWeight;
+        sumIrradiance += irradiance * rampedWeight;
         sumRampWeight += rampedWeight;
         sumWeight += weight;
+        ++acceptedCount;
+    }
+}
+
+// Sampled walk of one cell (stochastic mode): `samples` consecutive entries from a hashed start, each scaled by
+// count / samples so the sums are unbiased over the start. Visits the same cell's entries in a different window per pixel
+// and frame, so the subset averages over time and space instead of following the cell order.
+void AccumulateCellSampled(uint cell,
+                           uint seed,
+                           vec3 worldPos,
+                           vec3 normal,
+                           uint samples,
+                           inout vec3 sumIrradiance,
+                           inout float sumWeight,
+                           inout float sumRampWeight,
+                           inout uint acceptedCount,
+                           inout uint examinedCount)
+{
+    if (cell >= uGridCellCount || uMaxSurfelsPerCell == 0u) {
+        return;
+    }
+
+    SurfelCellHeader header = gridHeaders[cell];
+    uint storedCount = min(header.entryCount, uMaxSurfelsPerCell);
+    if (storedCount == 0u) {
+        return;
+    }
+    uint k = min(samples, storedCount);
+    float scale = float(storedCount) / float(k);
+    uint start = SurfelHash(seed) % storedCount;
+    for (uint j = 0u; j < k; ++j) {
+        uint i = (start + j) % storedCount;
+        ++examinedCount;
+        SurfelCellEntry entry = gridEntries[header.firstEntry + i];
+        if (entry.surfelID >= uMaxSurfels) {
+            continue;
+        }
+        vec3 irradiance;
+        float weight;
+        float rampedWeight;
+        if (!SurfelGatherContribution(entry.surfelID, worldPos, normal, irradiance, weight, rampedWeight)) {
+            continue;
+        }
+        sumIrradiance += irradiance * (rampedWeight * scale);
+        sumRampWeight += rampedWeight * scale;
+        sumWeight += weight * scale;
         ++acceptedCount;
     }
 }
@@ -438,8 +556,26 @@ void main()
         : (neighborRadius == 1u ? SURFEL_APPLY_GATHER_CELLS_RADIUS_1 : SURFEL_APPLY_GATHER_CELLS_RADIUS_2);
     uint acceptedCount = 0u;
     uint examinedCount = 0u;
+    gGatherCutoffRadius = uGatherCutoffCells > 0.0 ? uGatherCutoffCells * baseAddress.cellSize : 0.0;
 
-    for (uint i = 0u; i < gatherCellCount; ++i) {
+    if (uGatherStochastic != 0) {
+        for (uint i = 0u; i < gatherCellCount; ++i) {
+            SurfelGridAddress address;
+            if (!SurfelWorldNeighborAddress(worldPos, i, neighborRadius, uGridMin, uGridMax, uGridResolution,
+                                            uUseNonLinearGrid, uGridFarExtent, address)) {
+                continue;
+            }
+            // Early-out: a cell whose centre is beyond the cutoff plus half a cell holds no weight.
+            if (gGatherCutoffRadius > 0.0 && length(worldPos - address.center) > gGatherCutoffRadius + 0.5 * address.cellSize) {
+                continue;
+            }
+            uint seed = uint(pixel.x) * 73856093u ^ uint(pixel.y) * 19349663u ^ uFrameIndex * 83492791u ^ address.cell * 2654435761u;
+            AccumulateCellSampled(address.cell, seed, worldPos, normal, max(uGatherPerCellSamples, 1u),
+                                  sumIrradiance, sumWeight, sumRampWeight, acceptedCount, examinedCount);
+        }
+    }
+
+    for (uint i = 0u; uGatherStochastic == 0 && i < gatherCellCount; ++i) {
         if (acceptedCount >= maxAccepted || examinedCount >= maxExamined) {
             break;
         }
@@ -475,7 +611,9 @@ void main()
     imageStore(uOutCoverage, pixel, vec4(coverage, 0.0, 0.0, 1.0));
 
     float cellConfidence;
-    vec3 cellIrradiance = SampleCellAverage(baseAddress.cell, cellConfidence);
+    vec3 cellIrradiance = uGatherSmoothFallback != 0
+        ? SmoothCellAverage(worldPos, baseAddress, cellConfidence)
+        : SampleCellAverage(baseAddress.cell, cellConfidence);
     float cellShare = clamp(uFallbackStrength, 0.0, 1.0) * max(0.0, 1.0 - sumWeight);
     // Where the weights sum to less than 1 this is the GIBS sum. Above 1 the sum is divided by the total
     // (ramped) weight, so dense texels take an average and do not over-brighten (the literal sum gave
