@@ -2,6 +2,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
+#include <string>
 #include <glm/gtc/quaternion.hpp>
 #include <memory>
 #include <cstdint>
@@ -10,6 +11,7 @@
 class SceneNode;
 class Collider;
 struct Contact;
+class CollisionWorld;
 
 /**
  * RigidBody - Production-ready rigid body for physics simulation
@@ -36,7 +38,9 @@ public:
     enum class ShapeType {
         SPHERE,     // Spherical collider
         BOX,        // Oriented bounding box
-        PLANE       // Infinite plane (static only)
+        PLANE,      // Infinite plane (static only)
+        CAPSULE,    // Capsule along a local axis: segment of half length halfSegment, radius
+        MESH        // Static triangle mesh (CollisionWorld geometry in the body's local space)
     };
     
     // Transform ownership - who is authoritative for this body's transform
@@ -82,6 +86,27 @@ public:
     // Box shape
     void setBox(const glm::vec3& halfExtents);
     glm::vec3 getHalfExtents() const { return m_halfExtents; }
+
+    // Capsule shape: a segment of half length halfSegment along local axis (0 = x, 1 = y, 2 = z) with a radius.
+    // Total height is 2 * (halfSegment + radius). Shares m_radius with the sphere.
+    void setCapsule(float radius, float halfSegment, int axis);
+    float getHalfSegment() const { return m_halfSegment; }
+    int getCapsuleAxis() const { return m_capsuleAxis; }
+    // World-space unit direction of the capsule's axis, and the two segment end centres.
+    glm::vec3 getCapsuleAxisWorld() const;
+    void getCapsuleEnds(glm::vec3& a, glm::vec3& b) const;
+
+    // Mesh shape: static triangle geometry (local space of the body). The mesh is shared (cached per asset).
+    // Local bounds are computed from the mesh; the body's position/orientation place it in the world.
+    // Mesh bodies are always static; setMesh converts a dynamic body to static.
+    // path is the asset the mesh was loaded from (informational, saved with the scene); may be empty.
+    void setMesh(std::shared_ptr<const CollisionWorld> mesh, const glm::vec3& localMin, const glm::vec3& localMax,
+                 const std::string& path = std::string());
+    const CollisionWorld* getMesh() const { return m_mesh.get(); }
+    const std::string& getMeshPath() const { return m_meshPath; }
+    std::shared_ptr<const CollisionWorld> getMeshShared() const { return m_mesh; }
+    glm::vec3 getMeshLocalMin() const { return m_meshLocalMin; }
+    glm::vec3 getMeshLocalMax() const { return m_meshLocalMax; }
     
     // Plane shape (static only)
     void setPlane(const glm::vec3& normal, float distance);
@@ -308,6 +333,12 @@ private:
     glm::vec3 m_halfExtents = glm::vec3(0.5f);          // Box half-extents
     glm::vec3 m_planeNormal = glm::vec3(0.0f, 1.0f, 0.0f);  // Plane normal
     float m_planeDistance = 0.0f;                       // Plane distance from origin
+    float m_halfSegment = 0.0f;                         // Capsule segment half length (excluding the caps)
+    int m_capsuleAxis = 1;                              // Capsule axis (0 = x, 1 = y, 2 = z), local
+    std::shared_ptr<const CollisionWorld> m_mesh;       // Mesh shape geometry (shared, read-only)
+    std::string m_meshPath;                             // Asset path of the mesh geometry
+    glm::vec3 m_meshLocalMin{ 0.0f };                   // Mesh local bounds
+    glm::vec3 m_meshLocalMax{ 0.0f };
     
     // Transform
     glm::vec3 m_position = glm::vec3(0.0f);

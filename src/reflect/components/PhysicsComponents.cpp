@@ -7,8 +7,10 @@
 #include "../../RigidBody.h"
 #include "../../SceneNode.h"
 #include "../../physics/CharacterSystem.h"
+#include "../../physics/MeshCollider.h"
 #include "../../physics/TriggerSystem.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace nox::reflect {
@@ -58,9 +60,20 @@ bool RemoveBodyFromNode(SceneNode& node) {
 	return true;
 }
 
-// Shape type as the enum index used by the "shape" property (SPHERE, BOX, PLANE).
+// Shape type as the enum index used by the "shape" property (sphere, box, plane, capsule, mesh).
 int64_t ShapeIndex(const RigidBody& rb) {
 	return static_cast<int64_t>(rb.getShapeType());
+}
+
+// Gives a mesh body its geometry from an asset path (loaded once and shared). An empty or unreadable path leaves the
+// body without triangles, so it has no contacts until a valid path is set.
+void SetMeshFromPath(RigidBody& rb, const std::string& path) {
+	auto mesh = MeshCollider::LoadShared(path);
+	glm::vec3 mn(0.0f), mx(0.0f);
+	if (mesh) MeshCollider::LocalBounds(*mesh, mn, mx);
+	rb.setMesh(mesh, mn, mx, path);
+	rb.computeInertiaTensor();
+	rb.computeAABB();
 }
 
 bool FiniteAndPositive(const glm::vec3& v) {
@@ -230,13 +243,25 @@ void RegisterCollider() {
 			case 0: rb->setSphere(rb->getBoundingRadius()); break;
 			case 1: rb->setBox(rb->getHalfExtents()); break;
 			case 2: rb->setPlane(rb->getPlaneNormal(), rb->getPlaneDistance()); break;
+			case 3: {
+				// Keep the radius and segment the body had (a sphere's radius, or a default capsule of height 2).
+				const float radius = rb->getBoundingRadius() > 0.0f ? rb->getBoundingRadius() : 0.5f;
+				const float halfSegment = rb->getHalfSegment() > 0.0f ? rb->getHalfSegment() : 0.5f;
+				rb->setCapsule(radius, halfSegment, rb->getCapsuleAxis());
+				break;
+			}
+			case 4: {
+				const std::string path = rb->getMeshPath();
+				SetMeshFromPath(*rb, path);
+				break;
+			}
 			default: return false;
 			}
 			rb->computeAABB();
 			NotifySceneChanged();
 			return true;
 		});
-	shape.enumNames = { "sphere", "box", "plane" };
+	shape.enumNames = { "sphere", "box", "plane", "capsule", "mesh" };
 
 	c.properties = {
 		shape,
@@ -254,7 +279,10 @@ void RegisterCollider() {
 				NotifySceneChanged();
 				return true;
 			}), 0.01, 10000.0, 0.01);
-			p.applies = [](const SceneNode& n) { auto rb = BodyOf(n); return rb && rb->getShapeType() == RigidBody::ShapeType::SPHERE; };
+			p.applies = [](const SceneNode& n) {
+				auto rb = BodyOf(n);
+				return rb && (rb->getShapeType() == RigidBody::ShapeType::SPHERE || rb->getShapeType() == RigidBody::ShapeType::CAPSULE);
+			};
 			return p;
 		}(),
 		Prop("half_extents", PropType::Vec3,
@@ -295,6 +323,57 @@ void RegisterCollider() {
 				NotifySceneChanged();
 				return true;
 			}), -100000.0, 100000.0, 0.1),
+		// Capsule: the total height (feet to head caps) and the axis it runs along. The radius is the sphere radius above.
+		[] {
+			PropertyDesc p = Ranged(Prop("height", PropType::Float,
+				[](const SceneNode& n) {
+					auto rb = BodyOf(n);
+					return PropValue(static_cast<double>(rb ? 2.0f * (rb->getHalfSegment() + rb->getBoundingRadius()) : 0.0f));
+				},
+				[](SceneNode& n, const PropValue& v) {
+					auto rb = BodyOf(n);
+					if (!rb) return false;
+					const float height = static_cast<float>(std::get<double>(v));
+					const float radius = rb->getBoundingRadius();
+					rb->setCapsule(radius, std::max(0.0f, 0.5f * height - radius), rb->getCapsuleAxis());
+					rb->computeInertiaTensor();
+					rb->computeAABB();
+					NotifySceneChanged();
+					return true;
+				}), 0.01, 10000.0, 0.01);
+			p.applies = [](const SceneNode& n) { auto rb = BodyOf(n); return rb && rb->getShapeType() == RigidBody::ShapeType::CAPSULE; };
+			return p;
+		}(),
+		[] {
+			PropertyDesc p = Prop("capsule_axis", PropType::Enum,
+				[](const SceneNode& n) { auto rb = BodyOf(n); return PropValue(static_cast<int64_t>(rb ? rb->getCapsuleAxis() : 1)); },
+				[](SceneNode& n, const PropValue& v) {
+					auto rb = BodyOf(n);
+					if (!rb) return false;
+					rb->setCapsule(rb->getBoundingRadius(), rb->getHalfSegment(), static_cast<int>(std::get<int64_t>(v)));
+					rb->computeAABB();
+					NotifySceneChanged();
+					return true;
+				});
+			p.enumNames = { "x", "y", "z" };
+			p.applies = [](const SceneNode& n) { auto rb = BodyOf(n); return rb && rb->getShapeType() == RigidBody::ShapeType::CAPSULE; };
+			return p;
+		}(),
+		// Mesh: the glTF/GLB file whose geometry collides (the node's transform places it).
+		[] {
+			PropertyDesc p = Prop("mesh_path", PropType::AssetPath,
+				[](const SceneNode& n) { auto rb = BodyOf(n); return PropValue(rb ? rb->getMeshPath() : std::string()); },
+				[](SceneNode& n, const PropValue& v) {
+					auto rb = BodyOf(n);
+					if (!rb) return false;
+					SetMeshFromPath(*rb, std::get<std::string>(v));
+					NotifySceneChanged();
+					return true;
+				});
+			p.assetFilter = { ".glb", ".gltf" };
+			p.applies = [](const SceneNode& n) { auto rb = BodyOf(n); return rb && rb->getShapeType() == RigidBody::ShapeType::MESH; };
+			return p;
+		}(),
 		Ranged(Prop("layer", PropType::Int,
 			[](const SceneNode& n) { auto rb = BodyOf(n); return PropValue(static_cast<int64_t>(rb ? rb->getCollisionLayer() : 0u)); },
 			[](SceneNode& n, const PropValue& v) {

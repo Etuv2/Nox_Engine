@@ -29,6 +29,8 @@ const char* ShapeName(RigidBody::ShapeType shape) {
 	case RigidBody::ShapeType::SPHERE: return "Sphere";
 	case RigidBody::ShapeType::BOX: return "Box";
 	case RigidBody::ShapeType::PLANE: return "Plane";
+	case RigidBody::ShapeType::CAPSULE: return "Capsule";
+	case RigidBody::ShapeType::MESH: return "Mesh";
 	}
 	return "?";
 }

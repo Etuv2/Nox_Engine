@@ -64,6 +64,20 @@ public:
 	// a sphere is wider than tall bodies, so overhead geometry would otherwise catch it).
 	glm::vec3 ResolveSphere(glm::vec3& center, float radius, uint8_t classMask, glm::vec3* outNormal = nullptr, int iterations = 2,
 		float contactMaxY = 1e30f) const;
+
+	// One sphere/triangle contact: point on the surface, unit normal pointing from the surface toward the sphere
+	// centre (the push direction for the sphere), and penetration depth (radius minus centre distance).
+	struct SphereContact {
+		glm::vec3 point{ 0.0f };
+		glm::vec3 normal{ 0.0f, 1.0f, 0.0f };
+		float depth = 0.0f;
+	};
+	// Appends a contact for every triangle (of the given classes, in enabled meshes) whose closest point is within
+	// radius + skin of center. Does not move the sphere; used by the physics engine's mesh colliders.
+	void SphereContacts(const glm::vec3& center, float radius, float skin, uint8_t classMask,
+		std::vector<SphereContact>& out) const;
+	// Bounds of all enabled triangles (local space of this world). Returns false when there is no geometry.
+	bool Bounds(glm::vec3& mn, glm::vec3& mx) const;
 private:
 	struct Tri { glm::vec3 a, e1, e2, n; uint8_t cls; };
 	struct Node { glm::vec3 mn, mx; int left = -1, right = -1; int first = 0, count = 0; };

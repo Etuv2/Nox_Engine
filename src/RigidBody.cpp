@@ -1,9 +1,11 @@
 #include "RigidBody.h"
 #include "SceneNode.h"
+#include "CollisionWorld.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 RigidBody::RigidBody() {
     // Initialize with default values
@@ -65,6 +67,39 @@ void RigidBody::setPlane(const glm::vec3& normal, float distance) {
     m_inverseInertiaLocal = glm::mat3(0.0f);
 }
 
+void RigidBody::setCapsule(float radius, float halfSegment, int axis) {
+    m_shapeType = ShapeType::CAPSULE;
+    m_radius = radius;
+    m_halfSegment = std::max(0.0f, halfSegment);
+    m_capsuleAxis = std::clamp(axis, 0, 2);
+    computeInertiaTensor();
+    computeAABB();
+}
+
+glm::vec3 RigidBody::getCapsuleAxisWorld() const {
+    glm::vec3 local(0.0f);
+    local[m_capsuleAxis] = 1.0f;
+    return m_orientation * local;
+}
+
+void RigidBody::getCapsuleEnds(glm::vec3& a, glm::vec3& b) const {
+    const glm::vec3 half = getCapsuleAxisWorld() * m_halfSegment;
+    a = m_position - half;
+    b = m_position + half;
+}
+
+void RigidBody::setMesh(std::shared_ptr<const CollisionWorld> mesh, const glm::vec3& localMin, const glm::vec3& localMax,
+                        const std::string& path) {
+    m_shapeType = ShapeType::MESH;
+    m_mesh = std::move(mesh);
+    m_meshPath = path;
+    m_meshLocalMin = localMin;
+    m_meshLocalMax = localMax;
+    if (m_bodyType != BodyType::STATIC) SetBodyType(BodyType::STATIC);
+    computeInertiaTensor();
+    computeAABB();
+}
+
 // ============== MASS PROPERTIES ==============
 
 void RigidBody::setMass(float mass) {
@@ -111,8 +146,23 @@ void RigidBody::computeInertiaTensor() {
             break;
         }
         
+        case ShapeType::CAPSULE: {
+            // Approximated by the box that bounds it (radius on every side); the caps are not modelled exactly.
+            const float r = m_radius;
+            const float ex = (m_capsuleAxis == 0 ? m_halfSegment : 0.0f) + r;
+            const float ey = (m_capsuleAxis == 1 ? m_halfSegment : 0.0f) + r;
+            const float ez = (m_capsuleAxis == 2 ? m_halfSegment : 0.0f) + r;
+            const float x = ex * 2.0f, y = ey * 2.0f, z = ez * 2.0f;
+            const float factor = m_mass / 12.0f;
+            inertia[0][0] = factor * (y * y + z * z);
+            inertia[1][1] = factor * (x * x + z * z);
+            inertia[2][2] = factor * (x * x + y * y);
+            break;
+        }
+
+        case ShapeType::MESH:
         case ShapeType::PLANE: {
-            // Planes have infinite inertia (zero inverse)
+            // Planes and meshes are static: infinite inertia (zero inverse)
             m_inertiaLocal = glm::mat3(0.0f);
             m_inverseInertiaLocal = glm::mat3(0.0f);
             return;
@@ -328,6 +378,31 @@ void RigidBody::computeAABB() {
             break;
         }
         
+        case ShapeType::CAPSULE: {
+            glm::vec3 a, b;
+            getCapsuleEnds(a, b);
+            m_aabbMin = glm::min(a, b) - glm::vec3(m_radius);
+            m_aabbMax = glm::max(a, b) + glm::vec3(m_radius);
+            break;
+        }
+
+        case ShapeType::MESH: {
+            // Transform the eight corners of the local bounds (exact for rotations and translations).
+            const glm::mat4 M = getTransformMatrix();
+            glm::vec3 mn(std::numeric_limits<float>::max()), mx(-std::numeric_limits<float>::max());
+            for (int i = 0; i < 8; ++i) {
+                const glm::vec3 corner((i & 1) ? m_meshLocalMax.x : m_meshLocalMin.x,
+                                       (i & 2) ? m_meshLocalMax.y : m_meshLocalMin.y,
+                                       (i & 4) ? m_meshLocalMax.z : m_meshLocalMin.z);
+                const glm::vec3 w = glm::vec3(M * glm::vec4(corner, 1.0f));
+                mn = glm::min(mn, w);
+                mx = glm::max(mx, w);
+            }
+            m_aabbMin = mn;
+            m_aabbMax = mx;
+            break;
+        }
+
         case ShapeType::PLANE: {
             // Planes are infinite - use very large bounds
             constexpr float LARGE = 1e10f;

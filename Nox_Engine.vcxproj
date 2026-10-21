@@ -370,6 +370,8 @@
     <ClCompile Include="src\physics\CharacterSystem.cpp" />
     <ClCompile Include="src\physics\PhysicsDebugView.cpp" />
     <ClCompile Include="src\physics\ShapeOverlap.cpp" />
+<ClCompile Include="src\physics\MeshCollider.cpp" />
+<ClCompile Include="src\physics\ShapeSweep.cpp" />
     <ClCompile Include="src\physics\TriggerSystem.cpp" />
     <ClCompile Include="src\reflect\BuiltinComponents.cpp" />
     <ClCompile Include="src\reflect\Reflection.cpp" />
@@ -591,6 +593,8 @@
     <ClInclude Include="src\physics\CharacterSystem.h" />
     <ClInclude Include="src\physics\PhysicsDebugView.h" />
     <ClInclude Include="src\physics\ShapeOverlap.h" />
+<ClInclude Include="src\physics\MeshCollider.h" />
+<ClInclude Include="src\physics\ShapeSweep.h" />
     <ClInclude Include="src\physics\TriggerSystem.h" />
     <ClInclude Include="src\procedural\ProceduralStreetGenerators.h" />
     <ClInclude Include="src\reflect\ComponentBuilders.h" />

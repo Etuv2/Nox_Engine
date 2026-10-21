@@ -849,6 +849,12 @@
     <ClCompile Include="src\physics\ShapeOverlap.cpp">
       <Filter>Source Files\physics</Filter>
     </ClCompile>
+    <ClCompile Include="src\physics\MeshCollider.cpp">
+      <Filter>Source Files\physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\physics\ShapeSweep.cpp">
+      <Filter>Source Files\physics</Filter>
+    </ClCompile>
     <ClCompile Include="src\physics\TriggerSystem.cpp">
       <Filter>Source Files\physics</Filter>
     </ClCompile>
@@ -955,6 +961,12 @@
       <Filter>Header Files\physics</Filter>
     </ClInclude>
     <ClInclude Include="src\physics\ShapeOverlap.h">
+      <Filter>Header Files\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\physics\MeshCollider.h">
+      <Filter>Header Files\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\physics\ShapeSweep.h">
       <Filter>Header Files\physics</Filter>
     </ClInclude>
     <ClInclude Include="src\physics\TriggerSystem.h">
