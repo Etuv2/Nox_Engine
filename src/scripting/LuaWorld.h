@@ -162,6 +162,10 @@ namespace NoxLua {
 		void SetUiFonts(const UiFontTable* fonts) { m_ui.fonts = fonts; }
 		// The module's action map. Non-const: input.rebind and input.rumble (LuaInputBindings.cpp) change it.
 		void SetInputs(InputMap* inputs) { m_inputs = inputs; }
+		// Gamepad connect/disconnect events from the action map. Each one is queued for nox.on("input.device", fn) (while
+		// playing) and kept in a short log for input.device_events(). Called once per frame by LuaGameModule.
+		void PushInputDeviceEvents(const std::vector<InputMap::DeviceEvent>& events);
+		std::vector<InputMap::DeviceEvent> TakeInputDeviceLog();
 		InputMap* InputMapPtr() const { return m_inputs; }
 		// Pointer policy the module reports through IGameModule::WantsPointer (set from Lua with ctx:set_wants_pointer).
 		bool WantsPointer() const { return m_wantsPointer; }
@@ -406,6 +410,7 @@ namespace NoxLua {
 		std::vector<BehaviorEntry> m_behaviors;
 		std::map<std::string, std::vector<HandlerEntry>> m_handlers;
 		std::vector<PendingEvent> m_events;
+		std::vector<InputMap::DeviceEvent> m_deviceLog;   // newest last, capped (input.device_events)
 		size_t m_sequence = 0;
 		std::vector<Task> m_tasks;                                   // timers and coroutines, in creation order
 		uint64_t m_nextTaskId = 1;

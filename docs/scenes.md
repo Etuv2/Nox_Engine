@@ -110,10 +110,35 @@ removed and the physics config is restored.
 
 Environment:
 
-- `NOX_SYNC_LOAD=1`: the startup scene loads blocking (the same steps, without frame pacing).
-- `NOX_EXIT_AFTER_FRAMES` counts only frames that are not loading, so a long load does not cut a scripted
-  run short. `NOX_FINAL_DUMP_FRAMES` counts every frame, loading frames included.
+- `NOX_SYNC_LOAD=1`: the startup scene loads blocking (the same steps, without frame pacing). Frame-indexed
+  hooks give the same frame numbers either way, so the flag is only needed for timing experiments.
 - `NOX_FIXED_DT` runs: loading frames do not step the simulation, so results are unchanged.
+
+Scene frames (`src/SceneFrameClock.h`): frame-indexed test hooks count scene frames, not raw frames. A
+scene frame is a frame shown live: the scene is committed and no loading screen is drawn over it. The commit
+frame and the frame(s) that draw the loading overlay (`PresentSceneOverlay`, reflection probe capture) are
+not counted. The first live frame is 1. Every scene commit resets the count, so a scene swap numbers its
+frames from its own first live frame. `nox::SceneFrameClock::total` is the raw count of updated frames, loading
+frames included. `engine.info` reports `scene_frame` next to the raw `frame`.
+
+Hooks indexed by scene frame (all skip loading frames; a dump never shows a loading screen):
+
+| Hook | Scene frame meaning |
+|------|---------------------|
+| `NOX_FRAMEBUFFER_DUMP_FRAMES`, `NOX_FRAMEBUFFER_DUMP_FRAME` | scene frame of the scene framebuffer dump |
+| `NOX_FINAL_DUMP_FRAMES`, `NOX_FINAL_DUMP_EVERY`, `NOX_FINAL_DUMP_START` | scene frame of the backbuffer dump (file `final_NNNNN.png`) |
+| `NOX_EXIT_AFTER_FRAMES` | quit at this scene frame (of the scene live at that time) |
+| `NOX_CAMERA_PATH` | path frame 0 is the first live frame of the scene |
+| `NOX_SWAP_SCENE=frame:scene.json` | the swap is requested at this scene frame of the scene that is live then; fires once |
+| `NOX_LIGHT_STEP=frame:scale` | the step starts at this scene frame |
+| `NOX_LOG_PASS_METRICS` (`_INTERVAL`) | the log cadence counts live frames |
+| `NOX_SSR_DUMP_FRAMES`, `NOX_SURFEL_GI_DUMP_FRAME*` | scene frame of the SSR / surfel GI texture dumps |
+| Benchmark shots (`NOX_BENCHMARK`) | warmup and shot timelines advance by live frames only |
+| Editor smoke (`NOX_EDITOR_SMOKE`) | the check schedule starts at the first live frame of the editor's startup scene |
+
+`NOX_EXIT_AFTER_FRAMES` has a wall-clock safety net: `NOX_EXIT_AFTER_SECONDS` (default 600) quits the run
+when that much wall time has passed, with a warning that names the frame reached. A stuck load then cannot
+hang a scripted run.
 - Log lines: `[Core] Scene ready: ... (load N ms, longest frame while loading M ms)`,
   `[Core] Scene first frame presented: N ms after the load started`, `[Core] Long frame during scene load:
   N ms (step)` for any loading frame over 50 ms.

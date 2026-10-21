@@ -1,5 +1,6 @@
 #include "ModularRenderer.h"
 #include "FrameProfiler.h"
+#include "SceneFrameClock.h"
 #include "PresentTarget.h"
 #include "FrameBuffer.h"
 #include "ScreenQuad.h"
@@ -1618,12 +1619,15 @@ void ModularRenderer::Render(const std::shared_ptr<SceneGraph>& sceneGraph,
 		CheckGLError("SurfelGIDebugPass");
 	}
 
-	if (IsEnvVarEnabled("NOX_LOG_PASS_METRICS")) {
-		static uint32_t metricsLogFrame = 0;
+	// Cadence counts live scene frames (SceneFrameClock), so the overlay frame after a commit is not in the sequence.
+	if (IsEnvVarEnabled("NOX_LOG_PASS_METRICS") && nox::SceneFrameClock::live) {
+		static uint64_t metricsLastTotal = ~uint64_t{ 0 };
+		const uint64_t sceneFrame = nox::SceneFrameClock::scene;
 		const uint32_t interval = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_LOG_PASS_METRICS_INTERVAL", 120), 1));
-		if ((metricsLogFrame++ % interval) == 0u) {
-			std::cout << "[FramePassMetrics] begin frame=" << metricsLogFrame
+		if (metricsLastTotal != nox::SceneFrameClock::total && ((sceneFrame - 1) % interval) == 0u) {
+			metricsLastTotal = nox::SceneFrameClock::total;
+			std::cout << "[FramePassMetrics] begin frame=" << sceneFrame
 				<< " passCount=" << m_lastPassMetrics.size() << std::endl;
 			for (const auto& metric : m_lastPassMetrics) {
 				std::cout << "[FramePassMetrics] pass=" << metric.name

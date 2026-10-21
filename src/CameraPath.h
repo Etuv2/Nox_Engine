@@ -21,7 +21,9 @@ public:
 
     bool IsEnabled() const { return m_kind != Kind::None; }
 
-    // Poses the camera for the next frame. Call once per frame, after input and game posing.
+    // Poses the camera for the current live scene frame (nox::SceneFrameClock): frame 0 is the first live frame of
+    // the scene, so loading and loading-overlay frames never advance the path. Does nothing on other frames.
+    // Call once per update, after input and game posing.
     void Apply(Camera& camera);
 
 private:
@@ -32,7 +34,6 @@ private:
     float m_frames = 1.0f;
     float m_degPerFrame = 0.0f;
     float m_turnDegrees = 0.0f;
-    uint64_t m_frame = 0;
     bool m_captured = false;
     glm::vec3 m_startPosition{ 0.0f };
     glm::mat4 m_startRotation{ 1.0f };

@@ -3,6 +3,7 @@
 #include "../ComputeShader.h"
 #include "../FrameBuffer.h"
 #include "../RenderContext.h"
+#include "../SceneFrameClock.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -304,5 +305,8 @@ void SSRPass::Execute(RenderContext& ctx,
 	case 2: ctx.ssrTexture = m_historyTex[current]; break;
 	default: ctx.ssrTexture = m_compositeTex; break;
 	}
-	DumpSsrTexture(ctx.ssrTexture, m_width, m_height, ctx.ssrDebugView, m_frame - 1);
+	// Dumps are numbered by live scene frame (SceneFrameClock), never during loading.
+	if (nox::SceneFrameClock::live) {
+		DumpSsrTexture(ctx.ssrTexture, m_width, m_height, ctx.ssrDebugView, static_cast<unsigned>(nox::SceneFrameClock::scene));
+	}
 }

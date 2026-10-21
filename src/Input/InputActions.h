@@ -11,16 +11,6 @@
 namespace Input {
 namespace Actions {
 
-// Camera Controls
-constexpr const char* CAMERA_MOVE_FORWARD = "camera_move_forward";
-constexpr const char* CAMERA_MOVE_BACKWARD = "camera_move_backward";
-constexpr const char* CAMERA_MOVE_LEFT = "camera_move_left";
-constexpr const char* CAMERA_MOVE_RIGHT = "camera_move_right";
-constexpr const char* CAMERA_MOVE_UP = "camera_move_up";
-constexpr const char* CAMERA_MOVE_DOWN = "camera_move_down";
-constexpr const char* CAMERA_LOOK = "camera_look";
-constexpr const char* CAMERA_ZOOM = "camera_zoom";
-
 // Application Controls
 constexpr const char* APP_EXIT = "app_exit";
 constexpr const char* APP_FULLSCREEN = "app_fullscreen";
@@ -71,7 +61,6 @@ constexpr const char* UI_CANCEL = "ui_cancel";
 namespace Contexts {
 
 constexpr const char* GLOBAL = "global";           // Always active
-constexpr const char* CAMERA = "camera";           // Camera movement controls
 constexpr const char* EDITOR = "editor";           // Editor/gizmo controls
 constexpr const char* MENU = "menu";              // UI menu navigation
 constexpr const char* GAME = "game";              // Game-specific controls

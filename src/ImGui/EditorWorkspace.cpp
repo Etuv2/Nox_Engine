@@ -2,6 +2,8 @@
 
 #include "ConsoleLog.h"
 #include "../Core.h"
+#include "../Input/InputIntegration.h"
+#include "../SceneFrameClock.h"
 #include "../Camera.h"
 #include "../assets/AssetIO.h"
 #include "../assets/AssetIOJson.h"
@@ -85,6 +87,7 @@ namespace {
 	const char* kWinState = "State & Export";
 	const char* kWinCamera = "Camera Controls";
 	const char* kWinPhysics = "Physics";
+	const char* kWinInputActions = "Input Actions";
 
 	// Camera pose from a position and a view direction (Camera has no yaw/pitch getters).
 	void PoseCamera(Camera& cam, const glm::vec3& eye, const glm::vec3& dir) {
@@ -197,6 +200,8 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		rd("lighting", m_showLegacyLighting); rd("performance", m_showLegacyPerformance); rd("animation", m_showLegacyAnimation);
 		rd("state", m_showLegacyState); rd("camera", m_showLegacyCamera); rd("presets", m_showPresets);
 		rd("physics", m_showPhysics);
+		rd("input_actions", m_showInputActions);
+		m_focusInputActions = m_showInputActions;
 		m_showAuthoring = s.value("authoring_overlay", m_showAuthoring);
 		m_extSaved = s.value("extension_panels", json::object());
 		if (!m_extSaved.is_object()) m_extSaved = json::object();
@@ -259,7 +264,7 @@ void EditorWorkspace::SaveSettings() const
 		{"console", m_showConsole}, {"build", m_showBuild},
 		{"rendering", m_showLegacyRendering}, {"lighting", m_showLegacyLighting}, {"performance", m_showLegacyPerformance},
 		{"animation", m_showLegacyAnimation}, {"state", m_showLegacyState}, {"camera", m_showLegacyCamera}, {"presets", m_showPresets},
-		{"physics", m_showPhysics} };
+		{"physics", m_showPhysics}, {"input_actions", m_showInputActions} };
 	json ext = json::object();
 	for (const auto& [id, open] : m_extOpen) ext[id] = open;
 	s["extension_panels"] = ext;
@@ -382,6 +387,7 @@ void EditorWorkspace::Draw(float dt)
 	if (m_showAssets) DrawAssets();
 	if (m_showInspector) DrawInspector();
 	if (m_showPhysics) DrawPhysics();
+	if (m_showInputActions) DrawInputActions();
 	if (m_showMaterials) DrawMaterials();
 	if (m_showConsole) DrawConsole();
 	if (m_showBuild) DrawBuildOutput();
@@ -433,6 +439,7 @@ void EditorWorkspace::BuildDefaultLayout(unsigned int dockspaceId)
 	ImGui::DockBuilderDockWindow(kWinRendering, right);
 	ImGui::DockBuilderDockWindow(kWinCamera, right);
 	ImGui::DockBuilderDockWindow(kWinPhysics, right);
+	ImGui::DockBuilderDockWindow(kWinInputActions, bottom);
 	ImGui::DockBuilderDockWindow(kWinConsole, bottom);
 	ImGui::DockBuilderDockWindow(kWinBuild, bottom);
 	ImGui::DockBuilderDockWindow(kWinPerformance, bottom);
@@ -531,6 +538,7 @@ void EditorWorkspace::DrawMenuBar()
 		ImGui::MenuItem("Rendering", nullptr, &m_showLegacyRendering);
 		ImGui::MenuItem("Editor Camera", nullptr, &m_showLegacyCamera);
 		ImGui::MenuItem(kWinPhysics, nullptr, &m_showPhysics);
+		if (ImGui::MenuItem(kWinInputActions, nullptr, &m_showInputActions) && m_showInputActions) m_focusInputActions = true;
 		ImGui::Separator();
 		ImGui::MenuItem(kWinConsole, nullptr, &m_showConsole);
 		ImGui::MenuItem(kWinBuild, nullptr, &m_showBuild);
@@ -1607,6 +1615,24 @@ PhysicsWindow::Host EditorWorkspace::PhysicsHost()
 		DrawComponentSection(node, desc, m_contentBrowser->AssetPaths(), FlatNodeNames());
 	};
 	return host;
+}
+
+void EditorWorkspace::DrawInputActions()
+{
+	// Focus by name before Begin: a docked window whose tab is not selected does not Begin at all.
+	if (m_focusInputActions) {
+		ImGui::SetWindowFocus(kWinInputActions);
+		m_focusInputActions = false;
+	}
+	if (!ImGui::Begin(kWinInputActions, &m_showInputActions)) { ImGui::End(); return; }
+	InputActionsWindow::Host host;
+	host.projectDescriptor = m_core.GetGameProject();
+	host.undo = UndoSink();
+	host.reloadEditorInput = [this] {
+		if (InputIntegration* input = m_core.GetInputIntegration()) input->ReloadEditorActions();
+	};
+	m_inputActionsWindow.Draw(host);
+	ImGui::End();
 }
 
 void EditorWorkspace::DrawPhysics()
@@ -2785,6 +2811,9 @@ void EditorWorkspace::RunSmokeScript()
 {
 	static const bool enabled = [] { const char* v = std::getenv("NOX_EDITOR_SMOKE"); return v && v[0] == '1'; }();
 	if (!enabled) return;
+	// The schedule starts at the first live scene frame of the editor's startup scene (SceneFrameClock): frames
+	// that draw the loading screen do not count.
+	if (!nox::SceneFrameClock::live) return;
 	static int frame = 0;
 	static std::shared_ptr<SceneNode> subject;
 	static glm::vec3 original(0.0f);

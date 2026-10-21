@@ -59,7 +59,22 @@ namespace NoxLua {
 
 	// The SDL keyboard, mouse and gamepad slots as device readers (enabled = false reads nothing).
 	// Used by the action map and by the menu navigation (LuaUiFocus.h); both sample once per frame.
+	// Injected input (below) is OR-ed into the readers, so an injected press reads like a held key.
 	InputDevices SdlInputDevices(bool enabled);
+
+	// Injected input (automation input.inject). SDL's keyboard state does not follow pushed events, so the automation
+	// server also records the state here; the readers above see it. Process wide, cleared with ClearInjectedInput.
+	// Keys are SDL_Scancode, mouse buttons SDL_BUTTON_* (1..5), pad buttons SDL_GameControllerButton, pad axes
+	// SDL_GameControllerAxis (value -1..1). Pad slots are 0..kMaxPads-1 and apply whether or not a pad is attached.
+	void SetInjectedKey(int scancode, bool down);
+	void SetInjectedMouse(int button, bool down);
+	void SetInjectedPadButton(int pad, int button, bool down);
+	void SetInjectedPadAxis(int pad, int axis, float value);
+	void ClearInjectedInput();
+	// Readers over the injected state only (no SDL devices), and whether any input is injected. Used when device input
+	// is not live (no game focus): automation input still reaches the action maps.
+	InputDevices InjectedDevices();
+	bool AnyInjectedInput();
 
 	// Gamepad slots (process wide). The first kMaxPads controllers SDL reports fill slots 0..3 in order; a slot keeps
 	// its controller while it stays attached. RefreshGamepadSlots opens new controllers and closes detached ones.
@@ -102,6 +117,9 @@ namespace NoxLua {
 
 		// Samples the devices. When `enabled` is false (no input focus) every action reads as released.
 		void Sample(bool enabled);
+		// Samples only injected input (automation). Real devices are not read, so this is the sample for an unfocused
+		// window; with nothing injected every action reads as released. Hot-plug events are still collected.
+		void SampleInjected();
 		// Same rules with explicit device readers (tests, and any other input backend).
 		void SampleWith(const InputDevices& devices, bool enabled);
 
@@ -162,6 +180,7 @@ namespace NoxLua {
 		void ApplyOverrides(const std::string& jsonText, std::vector<std::string>& errors);
 		void MarkOverridden(const std::string& action);
 		void SampleListen(const InputDevices& devices);
+		void PollDeviceEvents();
 
 		std::vector<InputActionDecl> m_decls;
 		std::vector<Resolved> m_resolved;

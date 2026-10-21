@@ -714,30 +714,113 @@ namespace NoxLua {
 		}
 	}
 
+	namespace {
+		// Injected state (see LuaInput.h). Only the automation thread writes it, between frames.
+		struct InjectedState {
+			std::array<bool, SDL_NUM_SCANCODES> keys{};
+			std::array<bool, kMouseSlots> mouse{};
+			std::array<std::array<bool, kButtonSlots>, kMaxPads> padButtons{};
+			std::array<std::array<float, kAxisSlots>, kMaxPads> padAxes{};
+		};
+		InjectedState& Injected() {
+			static InjectedState state;
+			return state;
+		}
+	}
+
+	void SetInjectedKey(int scancode, bool down) {
+		if (scancode >= 0 && scancode < SDL_NUM_SCANCODES) Injected().keys[static_cast<size_t>(scancode)] = down;
+	}
+	void SetInjectedMouse(int button, bool down) {
+		if (button >= 1 && button < kMouseSlots) Injected().mouse[static_cast<size_t>(button)] = down;
+	}
+	void SetInjectedPadButton(int pad, int button, bool down) {
+		if (pad >= 0 && pad < kMaxPads && button >= 0 && button < kButtonSlots) {
+			Injected().padButtons[static_cast<size_t>(pad)][static_cast<size_t>(button)] = down;
+		}
+	}
+	void SetInjectedPadAxis(int pad, int axis, float value) {
+		if (pad >= 0 && pad < kMaxPads && axis >= 0 && axis < kAxisSlots) {
+			Injected().padAxes[static_cast<size_t>(pad)][static_cast<size_t>(axis)] = std::clamp(value, -1.0f, 1.0f);
+		}
+	}
+	void ClearInjectedInput() {
+		Injected() = InjectedState{};
+	}
+
+	InputDevices InjectedDevices() {
+		InputDevices devices;
+		devices.key = [](int scancode) {
+			return scancode >= 0 && scancode < SDL_NUM_SCANCODES && Injected().keys[static_cast<size_t>(scancode)];
+		};
+		devices.mouse = [](int button) {
+			return button >= 1 && button < kMouseSlots && Injected().mouse[static_cast<size_t>(button)];
+		};
+		devices.padButton = [](int pad, int button) {
+			return pad >= 0 && pad < kMaxPads && button >= 0 && button < kButtonSlots
+				&& Injected().padButtons[static_cast<size_t>(pad)][static_cast<size_t>(button)];
+		};
+		devices.padAxis = [](int pad, int axis) {
+			if (pad < 0 || pad >= kMaxPads || axis < 0 || axis >= kAxisSlots) return 0.0f;
+			return Injected().padAxes[static_cast<size_t>(pad)][static_cast<size_t>(axis)];
+		};
+		return devices;
+	}
+
+	bool AnyInjectedInput() {
+		const InjectedState& s = Injected();
+		for (bool k : s.keys) if (k) return true;
+		for (bool m : s.mouse) if (m) return true;
+		for (const auto& pad : s.padButtons) for (bool b : pad) if (b) return true;
+		for (const auto& pad : s.padAxes) for (float a : pad) if (a != 0.0f) return true;
+		return false;
+	}
+
 	InputDevices SdlInputDevices(bool enabled) {
 		RefreshGamepadSlots();
 		const Uint8* keys = enabled ? SDL_GetKeyboardState(nullptr) : nullptr;
 		const Uint32 mouse = enabled ? SDL_GetMouseState(nullptr, nullptr) : 0u;
 		InputDevices devices;
-		devices.key = [keys](int scancode) {
-			return keys && scancode >= 0 && scancode < SDL_NUM_SCANCODES && keys[scancode] != 0;
+		devices.key = [keys, enabled](int scancode) {
+			if (!enabled || scancode < 0 || scancode >= SDL_NUM_SCANCODES) return false;
+			return (keys && keys[scancode] != 0) || Injected().keys[static_cast<size_t>(scancode)];
 		};
 		devices.mouse = [mouse, enabled](int button) {
-			return enabled && button >= 1 && button <= 5 && (mouse & SDL_BUTTON(button)) != 0;
+			if (!enabled || button < 1 || button > 5) return false;
+			return (mouse & SDL_BUTTON(button)) != 0 || (button < kMouseSlots && Injected().mouse[static_cast<size_t>(button)]);
 		};
 		devices.padButton = [enabled](int pad, int button) {
-			SDL_GameController* c = enabled ? PadAt(pad) : nullptr;
-			return c && button >= 0 && SDL_GameControllerGetButton(c, static_cast<SDL_GameControllerButton>(button)) != 0;
+			if (!enabled || button < 0) return false;
+			if (button < kButtonSlots && pad >= 0 && pad < kMaxPads && Injected().padButtons[static_cast<size_t>(pad)][static_cast<size_t>(button)]) {
+				return true;
+			}
+			SDL_GameController* c = PadAt(pad);
+			return c && SDL_GameControllerGetButton(c, static_cast<SDL_GameControllerButton>(button)) != 0;
 		};
 		devices.padAxis = [enabled](int pad, int axis) {
-			SDL_GameController* c = enabled ? PadAt(pad) : nullptr;
-			if (!c || axis < 0) return 0.0f;
+			if (!enabled || axis < 0) return 0.0f;
+			if (axis < kAxisSlots && pad >= 0 && pad < kMaxPads) {
+				const float injected = Injected().padAxes[static_cast<size_t>(pad)][static_cast<size_t>(axis)];
+				if (injected != 0.0f) return injected;
+			}
+			SDL_GameController* c = PadAt(pad);
+			if (!c) return 0.0f;
 			return static_cast<float>(SDL_GameControllerGetAxis(c, static_cast<SDL_GameControllerAxis>(axis))) / 32767.0f;
 		};
 		return devices;
 	}
 
 	void InputMap::Sample(bool enabled) {
+		PollDeviceEvents();
+		SampleWith(SdlInputDevices(enabled), enabled);
+	}
+
+	void InputMap::SampleInjected() {
+		PollDeviceEvents();
+		SampleWith(InjectedDevices(), AnyInjectedInput());
+	}
+
+	void InputMap::PollDeviceEvents() {
 		// Hot-plug: compare the gamepad slots with what this map saw last frame.
 		RefreshGamepadSlots();
 		for (int p = 0; p < kMaxPads; ++p) {
@@ -750,7 +833,6 @@ namespace NoxLua {
 			event.name = now ? GamepadName(p) : std::string();
 			m_deviceEvents.push_back(std::move(event));
 		}
-		SampleWith(SdlInputDevices(enabled), enabled);
 	}
 
 	bool InputMap::Down(const std::string& name, bool* known, int player) const {

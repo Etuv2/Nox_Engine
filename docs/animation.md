@@ -14,6 +14,14 @@ state machine, marker events and their Lua API. Lua reference: `docs/lua_api.md`
 - Skinning: `RenderSystem::UploadBoneMatrices` builds the joint matrices once per skinned entity per render pass.
   When an entity has an animator with a pose, the node transforms come from that pose; otherwise the legacy clip
   path is used unchanged.
+- Skinned culling: at load, each joint keeps the bind-space box of the vertices it influences
+  (`Scene::Skin::bounds`). Each frame those boxes are moved by the joint matrices and their union gives the
+  item's bounds (`SkinBounds.h`), so skinned items are frustum culled like static ones.
+- Skin weights: influences are merged to the four largest and normalised at load (`SkinBounds::MergeInfluences`).
+  Known asset issue: `realistic_shark.glb` has inverse-bind matrices that do not match its node hierarchy (the
+  joint bind products are about 1.8x identity, so the bind pose does not reproduce the mesh). In the circling clip
+  the tail-tip joints swing several units away, and the stretched triangles seen in animated poses appear to come
+  from that. Not fixed in the engine; the asset likely needs re-exporting.
 
 ## Crossfades
 

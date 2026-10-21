@@ -19,6 +19,7 @@
 #include <IMGUI/imgui.h>
 #include <IMGUI/imgui_impl_sdl2.h>
 #include "stb_image_write.h"
+#include "SceneFrameClock.h"
 #include <filesystem>
 #include <vector>
 
@@ -376,9 +377,13 @@ void MainWindow::HandleWindowEvent(const SDL_WindowEvent& windowEvent) {
 
 void MainWindow::Run() {
     std::cout << "[MainWindow] Starting main loop..." << std::endl;
+    // NOX_EXIT_AFTER_FRAMES=N: quit after the Nth live scene frame (SceneFrameClock; loading frames do not count).
+    // Safety net: NOX_EXIT_AFTER_SECONDS (default 600) of wall time quits the run anyway, so a hung load cannot
+    // stall a scripted run forever. A warning is printed when it fires.
     const int exitAfterFrames = std::max(GetEnvInt("NOX_EXIT_AFTER_FRAMES", 0), 0);
+    const int exitAfterSeconds = std::max(GetEnvInt("NOX_EXIT_AFTER_SECONDS", 600), 1);
+    const Uint32 exitDeadline = SDL_GetTicks() + static_cast<Uint32>(exitAfterSeconds) * 1000u;
     int renderedFrames = 0;
-    int simulatedFrames = 0;
     // The first frame must not carry the time spent in initialization (it would count as a long frame).
     m_lastTime = SDL_GetTicks();
 
@@ -409,11 +414,15 @@ void MainWindow::Run() {
         }
         ui::Pointer::Get().EndFrame();
         ++renderedFrames;
-        // Frames spent on a background scene load do not count toward NOX_EXIT_AFTER_FRAMES: the simulation has not started.
-        if (!(m_core && m_core->IsSceneLoading())) {
-            ++simulatedFrames;
+        // Scene frame of this frame (0 when it is not a live scene frame: loading or the loading overlay).
+        const bool liveFrame = nox::SceneFrameClock::live;
+        const int sceneFrame = liveFrame ? static_cast<int>(nox::SceneFrameClock::scene) : 0;
+        if (exitAfterFrames > 0 && liveFrame && sceneFrame >= exitAfterFrames) {
+            m_running = false;
         }
-        if (exitAfterFrames > 0 && simulatedFrames >= exitAfterFrames) {
+        if (exitAfterFrames > 0 && SDL_GetTicks() > exitDeadline && m_running) {
+            std::cerr << "[MainWindow] NOX_EXIT_AFTER_FRAMES: " << exitAfterSeconds << " s of wall time passed with "
+                << sceneFrame << "/" << exitAfterFrames << " scene frames; quitting (a load may be stuck)" << std::endl;
             m_running = false;
         }
         if (m_core && m_core->IsQuitRequested()) {
@@ -421,22 +430,22 @@ void MainWindow::Run() {
         }
 
         // NOX_FINAL_DUMP_DIR + NOX_FINAL_DUMP_FRAMES (comma list): save the final backbuffer,
-        // including UI/HUD, for validation captures.
+        // including UI/HUD, for validation captures. Frames are scene frames: never a loading screen.
         static const std::string finalDumpDir = GetEnvString("NOX_FINAL_DUMP_DIR");
-        if (!finalDumpDir.empty()) {
+        if (!finalDumpDir.empty() && liveFrame) {
             static const std::string frames = "," + GetEnvString("NOX_FINAL_DUMP_FRAMES") + ",";
             // NOX_FINAL_DUMP_EVERY=N (+ optional NOX_FINAL_DUMP_START): sequence dumps for recordings.
             static const int every = GetEnvInt("NOX_FINAL_DUMP_EVERY", 0);
             static const int start = GetEnvInt("NOX_FINAL_DUMP_START", 1);
-            const bool sequence = every > 0 && renderedFrames >= start && (renderedFrames - start) % every == 0;
-            if (sequence || frames.find("," + std::to_string(renderedFrames) + ",") != std::string::npos) {
+            const bool sequence = every > 0 && sceneFrame >= start && (sceneFrame - start) % every == 0;
+            if (sequence || frames.find("," + std::to_string(sceneFrame) + ",") != std::string::npos) {
                 std::vector<unsigned char> pixels(static_cast<size_t>(m_windowWidth) * m_windowHeight * 3);
                 rhi::Gpu().BindReadFramebuffer(rhi::kBackBuffer);
                 rhi::Gpu().ReadPixels(rhi::kBackBuffer, 0, { 0, 0, m_windowWidth, m_windowHeight }, rhi::PixelFormat::RGB, rhi::PixelType::UByte, pixels.data(), 1);
                 std::error_code ec;
                 std::filesystem::create_directories(finalDumpDir, ec);
                 char name[32];
-                std::snprintf(name, sizeof(name), "/final_%05d.png", renderedFrames);
+                std::snprintf(name, sizeof(name), "/final_%05d.png", sceneFrame);
                 const std::string path = finalDumpDir + name;
                 stbi_flip_vertically_on_write(1);
                 stbi_write_png(path.c_str(), m_windowWidth, m_windowHeight, 3, pixels.data(), m_windowWidth * 3);
