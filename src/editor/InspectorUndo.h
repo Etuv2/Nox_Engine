@@ -114,4 +114,20 @@ std::shared_ptr<SceneNode> GroupIntoFolderUndoable(NodeTable& table, const NodeO
 // (its prefab link is cleared). Undo links it again. False when the node is not an instance.
 bool UnpackPrefabUndoable(NodeTable& table, const UndoPush& push, const std::shared_ptr<SceneNode>& node);
 
+// ---- Batches ---------------------------------------------------------------------------------------
+
+// Collects the steps several operations push (Sink) and commits them as one undo entry: undo runs the
+// collected undos last-to-first, redo runs the redos first-to-last. Nothing is pushed when no step was collected.
+class UndoBatch {
+public:
+	UndoPush Sink();
+	bool Empty() const { return m_steps->empty(); }
+	size_t Size() const { return m_steps->size(); }
+	void Commit(const std::string& label, const UndoPush& push) const;
+
+private:
+	struct Step { std::string label; std::function<void()> undo, redo; };
+	std::shared_ptr<std::vector<Step>> m_steps = std::make_shared<std::vector<Step>>();
+};
+
 } // namespace nox::editor

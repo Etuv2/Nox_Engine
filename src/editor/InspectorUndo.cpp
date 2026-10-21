@@ -365,4 +365,23 @@ bool UnpackPrefabUndoable(NodeTable& table, const UndoPush& push, const std::sha
 	return true;
 }
 
+// ---- Batches ---------------------------------------------------------------------------------------
+
+UndoPush UndoBatch::Sink()
+{
+	auto steps = m_steps;
+	return [steps](const std::string& label, std::function<void()> undo, std::function<void()> redo) {
+		steps->push_back({ label, std::move(undo), std::move(redo) });
+	};
+}
+
+void UndoBatch::Commit(const std::string& label, const UndoPush& push) const
+{
+	if (!push || m_steps->empty()) return;
+	auto steps = m_steps;
+	push(label,
+		[steps] { for (auto it = steps->rbegin(); it != steps->rend(); ++it) if (it->undo) it->undo(); },
+		[steps] { for (const Step& s : *steps) if (s.redo) s.redo(); });
+}
+
 } // namespace nox::editor
