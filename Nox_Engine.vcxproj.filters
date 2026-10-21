@@ -1514,6 +1514,9 @@
     <ClInclude Include="src\SceneLoadingScreen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\SceneFrameClock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\SliceTask.h">
       <Filter>Header Files</Filter>
     </ClInclude>
