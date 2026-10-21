@@ -30,6 +30,8 @@ namespace rpc {
 	// The command was understood but could not be carried out in the engine's current state
 	// (not in editor mode, no scene loaded, node deleted, timeout waiting for the main thread ...).
 	constexpr int kEngineError = -32000;
+	// A scene-dependent command ran while a scene load is in progress. The data member carries the load state.
+	constexpr int kSceneLoading = -32001;
 }
 
 // Thrown by command handlers; becomes the "error" member of the response.

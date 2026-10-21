@@ -163,6 +163,11 @@ public:
      *        Scene switches and startup load asynchronously: the old scene stays live until the new one is ready.
      */
     bool IsSceneLoading() const;
+    // Progress of the load (startup, editor or script switch): 0..1 over the whole load, the current step text, and
+    // the last load error (empty when none). Used by the automation layer.
+    float GetSceneLoadProgress() const;
+    std::string GetSceneLoadStep() const;
+    const std::string& GetSceneLoadError() const { return m_sceneLoadError; }
     /** @brief True while the loading screen is up for a load (running) or a failed load (waiting for Continue). */
     bool IsSceneBusy() const { return IsSceneLoading() || !m_sceneLoadError.empty(); }
 

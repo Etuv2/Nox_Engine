@@ -135,8 +135,13 @@ def tool_engine_launch(args):
     return {"pid": proc.pid, "port": port, "log": str(log_path), "command": command}
 
 
+def scene_ready(info):
+    """True when no scene load is running and a scene is loaded (engine.info loading/scene/load_error)."""
+    return not info.get("loading") and bool(info.get("scene")) and not info.get("load_error")
+
+
 def tool_engine_wait_ready(args):
-    timeout = float(args.get("timeout_s", 120))
+    timeout = float(args.get("timeout_s", 180))
     deadline = time.monotonic() + timeout
     last_error = None
     while time.monotonic() < deadline:
@@ -145,7 +150,9 @@ def tool_engine_wait_ready(args):
                             f"Log tail:\n{log_tail(ENGINE['log'])}")
         try:
             info = call_engine("engine.info")
-            if not info.get("loading"):
+            if info.get("load_error"):
+                raise ToolError(f"scene load failed: {info['load_error']}")
+            if scene_ready(info):
                 return info
         except (OSError, NoxError) as exc:
             last_error = exc

@@ -1718,6 +1718,22 @@ void Core::PresentSceneOverlay() {
 	}
 }
 
+float Core::GetSceneLoadProgress() const
+{
+	if (m_commitTask) return 0.9f + 0.1f * std::min(1.0f, static_cast<float>(m_commitStepIndex) / 10.0f);
+	if (IsSceneLoading()) return m_sceneLoader ? m_sceneLoader->GetLoadProgress().fraction * 0.9f : 0.0f;
+	if (IsSceneSwapPending()) return 0.0f;
+	return 1.0f;
+}
+
+std::string Core::GetSceneLoadStep() const
+{
+	if (m_commitTask) return m_commitStage;
+	if (IsSceneLoading()) return m_sceneLoader ? m_sceneLoader->GetLoadProgress().stage : std::string();
+	if (IsSceneSwapPending()) return "Waiting to switch scene";
+	return std::string();
+}
+
 void Core::RenderSceneLoadingUI(bool overlay) {
 	SceneLoadingScreenState state;
 	const SceneLoader::LoadProgress progress = m_sceneLoader ? m_sceneLoader->GetLoadProgress() : SceneLoader::LoadProgress{};
