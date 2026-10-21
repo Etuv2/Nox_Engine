@@ -332,7 +332,7 @@ private:
     // Physics bodies of the replaced scene are retired by SceneLoader::TakeLoadedScene; pass false when a load commits.
     void CleanupCurrentScene(bool removePhysicsBodies = true);
     // Scene load pipeline (see docs/scenes.md, "Loading")
-    void ServiceSceneLoad(double budgetMs = 8.0);
+    void ServiceSceneLoad(double budgetMs = 14.0);
     void CommitMark(const char* name);
     void CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup);
     void RenderSceneLoadingUI(bool overlay);
