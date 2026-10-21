@@ -4,6 +4,8 @@
 #include "../VehicleFX.h"
 #include "../app/UserSettings.h"
 #include "../assets/AssetIO.h"
+#include "../RoadNetwork.h"
+#include "../SliceTask.h"
 #include "lauxlib.h"
 #include "lua.h"
 
@@ -11,6 +13,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <system_error>
 
 namespace NoxLua {
@@ -490,13 +493,41 @@ namespace NoxLua {
 			else {
 				if (LiveRoads(*s) >= services_limits::kMaxRoads) return luaL_error(L, "too many road networks (max %d)", static_cast<int>(services_limits::kMaxRoads));
 				if (s->roads.size() >= services_limits::kMaxRoadSlots) return luaL_error(L, "too many road network slots (max %d per world)", static_cast<int>(services_limits::kMaxRoadSlots));
-				std::string error;
-				const auto text = AssetIO::ReadText(decl->path, &error);
-				if (!text) return luaL_error(L, "road network '%s': %s", name.c_str(), error.c_str());
-				const nlohmann::json json = nlohmann::json::parse(*text, nullptr, false);
-				if (json.is_discarded()) return luaL_error(L, "road network '%s' is not valid JSON", name.c_str());
-				auto network = std::make_unique<RoadNetwork>();
-				if (!network->Load(json)) return luaL_error(L, "road network '%s' has no usable nodes and edges", name.c_str());
+				// The read, parse and graph build run on a worker (a city network is tens of MB of JSON). Inside a scene
+				// slice the wait yields to the frame, so a load keeps animating while it runs.
+				struct RoadLoad {
+					std::string error;
+					std::unique_ptr<RoadNetwork> network;
+				};
+				const std::string roadPath = decl->path;
+				RoadLoad loaded = SliceTask::AwaitYielding(std::async(std::launch::async, [roadPath]() -> RoadLoad {
+					RoadLoad out;
+					std::string readError;
+					const auto text = AssetIO::ReadText(roadPath, &readError);
+					if (!text) {
+						out.error = readError;
+						return out;
+					}
+					const nlohmann::json json = nlohmann::json::parse(*text, nullptr, false);
+					if (json.is_discarded()) {
+						out.error = "is not valid JSON";
+						return out;
+					}
+					auto network = std::make_unique<RoadNetwork>();
+					if (!network->Load(json)) {
+						out.error = "has no usable nodes and edges";
+						return out;
+					}
+					out.network = std::move(network);
+					return out;
+				}));
+				if (!loaded.network) {
+					if (loaded.error == "is not valid JSON" || loaded.error == "has no usable nodes and edges") {
+						return luaL_error(L, "road network '%s' %s", name.c_str(), loaded.error.c_str());
+					}
+					return luaL_error(L, "road network '%s': %s", name.c_str(), loaded.error.c_str());
+				}
+				auto network = std::move(loaded.network);
 				index = s->roads.size();
 				s->roads.push_back(std::move(network));
 				s->roadIndex[name] = index;
@@ -652,8 +683,14 @@ namespace NoxLua {
 			if (s->roads.size() >= services_limits::kMaxRoadSlots) {
 				return luaL_error(L, "too many road network slots (max %d per world)", static_cast<int>(services_limits::kMaxRoadSlots));
 			}
-			auto network = std::make_unique<RoadNetwork>();
-			if (!network->Load(json)) return luaL_error(L, "nox.roads.from_table: the network has no usable nodes and edges");
+			// The graph build runs on a worker; inside a scene slice the wait yields to the frame.
+			std::unique_ptr<RoadNetwork> network = SliceTask::AwaitYielding(std::async(std::launch::async,
+				[json]() -> std::unique_ptr<RoadNetwork> {
+					auto built = std::make_unique<RoadNetwork>();
+					if (!built->Load(json)) return nullptr;
+					return built;
+				}));
+			if (!network) return luaL_error(L, "nox.roads.from_table: the network has no usable nodes and edges");
 			const size_t index = s->roads.size();
 			s->roads.push_back(std::move(network));
 			s->inlineRoadIndex[key] = index;

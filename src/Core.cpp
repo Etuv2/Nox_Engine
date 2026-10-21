@@ -936,6 +936,8 @@ void Core::DrawDebugPrimitives(ImDrawList* drawList, const std::shared_ptr<Camer
 void Core::Update(float deltaTime) {
 	nox::SceneFrameClock::total += 1;
 	nox::SceneFrameClock::live = false;
+	m_lastLoadServiceMs = 0.0f;
+	m_lastLoadStep.clear();
 	// Automation server (src/automation): queued commands run here; a paused engine skips this update.
 	if (!automation::BeginFrame(*this, deltaTime)) return;
 	m_frameCpuStart = std::chrono::steady_clock::now();
@@ -962,8 +964,10 @@ void Core::Update(float deltaTime) {
 		// The commit runs inside this call: its time is a frame of the load as well.
 		const auto serviceStart = std::chrono::steady_clock::now();
 		ServiceSceneLoad();
-		m_sceneLoadWorstFrameMs = std::max(m_sceneLoadWorstFrameMs,
-			std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - serviceStart).count());
+		const float serviceMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - serviceStart).count();
+		m_sceneLoadWorstFrameMs = std::max(m_sceneLoadWorstFrameMs, serviceMs);
+		m_lastLoadServiceMs = serviceMs;
+		m_lastLoadStep = m_commitTask ? ("commit: " + m_commitStage) : m_sceneLoader->GetLoadProgress().stage;
 	}
 	else {
 		ServiceSceneLoad();
