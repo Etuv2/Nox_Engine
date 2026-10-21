@@ -44,10 +44,6 @@ struct EPAResult {
     glm::vec3 witnessB{0.0f};
 };
 
-bool HasConvexSupport(RigidBody::ShapeType shapeType) {
-    return shapeType == RigidBody::ShapeType::BOX || shapeType == RigidBody::ShapeType::SPHERE;
-}
-
 glm::vec3 SupportPointForBody(const std::shared_ptr<RigidBody>& body, const glm::vec3& direction) {
     if (!body) {
         return glm::vec3(0.0f);
@@ -499,19 +495,6 @@ bool UpdateSimplex(std::vector<SupportVertex>& simplex, glm::vec3& direction) {
     return false;
 }
 
-bool ConvexOverlapGJK(const std::shared_ptr<RigidBody>& bodyA,
-                      const std::shared_ptr<RigidBody>& bodyB) {
-    return RunGJK(bodyA, bodyB).intersecting;
-}
-
-bool RequiresConvexPrepass(RigidBody::ShapeType typeA, RigidBody::ShapeType typeB) {
-    if (!HasConvexSupport(typeA) || !HasConvexSupport(typeB)) {
-        return false;
-    }
-
-    return typeA == RigidBody::ShapeType::BOX || typeB == RigidBody::ShapeType::BOX;
-}
-
 } // namespace
 
 bool TestCollision(const std::shared_ptr<RigidBody>& bodyA,
@@ -522,12 +505,9 @@ bool TestCollision(const std::shared_ptr<RigidBody>& bodyA,
     auto typeA = bodyA->getShapeType();
     auto typeB = bodyB->getShapeType();
 
-    // Transitional convex path: use GJK for convex overlap testing before
-    // dispatching to the existing manifold builders. EPA/manifold generation
-    // still needs follow-up work, but this gives us a shared convex seam now.
-    if (RequiresConvexPrepass(typeA, typeB) && !ConvexOverlapGJK(bodyA, bodyB)) {
-        return false;
-    }
+    // No GJK overlap prepass here. It answered "no overlap" for resting contacts (touching within the
+    // detection threshold), so a box floor produced no contact and no contact events. The shape builders
+    // below are exact with their own thresholds and run EPA only when GJK actually intersects.
     
     // Dispatch based on shape types
     if (typeA == RigidBody::ShapeType::SPHERE) {
