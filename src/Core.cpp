@@ -57,6 +57,8 @@
 #include "ImguiStyle.h"
 #include "SimulationConfig.h"
 #include "PhysicsEngine.h"
+#include "audio/AudioPlayback.h"
+#include "audio/AudioSpatial.h"
 #include "RayCast.h"
 #include "BVH.h"
 #include "GizmoRayCast.h"
@@ -287,6 +289,22 @@ bool ReadSceneCameraVec3(const json& object, const char* key, glm::vec3& outValu
 #include "diagnostics/DebugDraw.h"
 #include "physics/PhysicsDebugView.h"
 #include "reflect/ReflectServices.h"
+
+namespace {
+// Occlusion ray: hits closer than the clearance to either end are ignored (the listener's own body, the source's).
+constexpr float kOcclusionClearance = 0.5f;
+
+// True when physics geometry lies between the listener (from) and the source (to).
+bool AudioSegmentBlockedByPhysics(const PhysicsEngine* physics, const glm::vec3& from, const glm::vec3& to) {
+    if (!physics) return false;
+    const glm::vec3 delta = to - from;
+    const float length = glm::length(delta);
+    if (!(length > 2.0f * kOcclusionClearance)) return false;
+    PhysicsRayHit hit;
+    if (!physics->RayCastClosest(from, delta, length, 0xFFFFFFFFu, hit)) return false;
+    return hit.distance > kOcclusionClearance && hit.distance < length - kOcclusionClearance;
+}
+} // namespace
 
 Core::Core()
 	: m_window(nullptr)
@@ -641,6 +659,10 @@ bool Core::InitializePhysics() {
 		std::cerr << "[Core] Using default simulation config.\n";
 	}
 	m_physicsEngine = std::make_shared<PhysicsEngine>(config);
+	// Audio occlusion: a 3D source is occluded when physics geometry blocks the line to the listener.
+	AudioSetRayTest([this](const glm::vec3& from, const glm::vec3& to) {
+		return AudioSegmentBlockedByPhysics(m_physicsEngine.get(), from, to);
+	});
 	// StaticCollision components name the model file of each node (the engine owns no model paths).
 	m_physicsEngine->SetModelPathResolver([this](const Scene& model) {
 		return m_modelManager ? m_modelManager->GetModelPath(&model) : std::string();
@@ -851,6 +873,7 @@ void Core::Shutdown() {
 		m_playing = false;
 		m_game.reset();
 	}
+	AudioSetRayTest(nullptr);
 	if (m_physicsEngine) {
 		m_physicsEngine.reset();
 	}
@@ -973,6 +996,9 @@ void Core::Update(float deltaTime) {
 		m_inputIntegration->Update(deltaTime);
 	}
 	FrameProfiler::Mark("input");
+
+	// Audio playback (music, one-shot fades, bus ramps) advances on unscaled frame time, so fades finish while paused.
+	AudioPlaybackTick(deltaTime);
 
 	// NOX_SWAP_SCENE=<frame>:<scene.json>: request a scene switch at that scene frame of the startup scene, like the
 	// editor does (test hook for scene-change regressions such as IBL/skybox regeneration). Fires once.

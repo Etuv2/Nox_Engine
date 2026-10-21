@@ -397,6 +397,10 @@ namespace rhi {
 		// Returns an invalid handle (and logs the compiler/linker output) on failure.
 		virtual ProgramHandle CreateProgram(const ProgramDesc& desc) = 0;
 		virtual void DestroyProgram(ProgramHandle& program) = 0;
+		// Recompiles the program from desc and swaps it in under the same handle. False (and the old program stays in
+		// use) when a stage fails to compile or the link fails, or when the handle is unknown or was made from another
+		// name. Backends without in-place reload keep the default and report false.
+		virtual bool ReloadProgram(ProgramHandle program, const ProgramDesc& desc) { (void)program; (void)desc; return false; }
 		virtual bool IsProgram(ProgramHandle program) const = 0;
 		virtual void UseProgram(ProgramHandle program) = 0;
 		virtual UniformLocation GetUniformLocation(ProgramHandle program, const char* name) const = 0;

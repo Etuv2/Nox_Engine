@@ -374,6 +374,11 @@
     <ClCompile Include="src\automation\AutomationCommands.cpp" />
     <ClCompile Include="src\audio\AudioListener.cpp" />
     <ClCompile Include="src\audio\AudioMixer.cpp" />
+    <ClCompile Include="src\audio\AudioRamp.cpp" />
+    <ClCompile Include="src\audio\AudioSpatial.cpp" />
+    <ClCompile Include="src\audio\AudioMusic.cpp" />
+    <ClCompile Include="src\audio\AudioVoices.cpp" />
+    <ClCompile Include="src\audio\AudioPlayback.cpp" />
     <ClCompile Include="src\diagnostics\DebugDraw.cpp" />
     <ClCompile Include="src\editor\HierarchyModel.cpp" />
     <ClCompile Include="src\editor\InspectorUndo.cpp" />
@@ -613,6 +618,11 @@
     <ClInclude Include="src\automation\AutomationProtocol.h" />
     <ClInclude Include="src\automation\AutomationServer.h" />
     <ClInclude Include="src\audio\AudioMixer.h" />
+    <ClInclude Include="src\audio\AudioRamp.h" />
+    <ClInclude Include="src\audio\AudioSpatial.h" />
+    <ClInclude Include="src\audio\AudioMusic.h" />
+    <ClInclude Include="src\audio\AudioVoices.h" />
+    <ClInclude Include="src\audio\AudioPlayback.h" />
     <ClInclude Include="src\diagnostics\DebugDraw.h" />
     <ClInclude Include="src\editor\HierarchyModel.h" />
     <ClInclude Include="src\editor\InspectorUndo.h" />

@@ -861,6 +861,21 @@
     <ClCompile Include="src\audio\AudioMixer.cpp">
       <Filter>Source Files\audio</Filter>
     </ClCompile>
+    <ClCompile Include="src\audio\AudioRamp.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioSpatial.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioMusic.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioVoices.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioPlayback.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
     <ClCompile Include="src\diagnostics\DebugDraw.cpp">
       <Filter>Source Files\diagnostics</Filter>
     </ClCompile>
@@ -994,6 +1009,21 @@
       <Filter>Header Files\automation</Filter>
     </ClInclude>
     <ClInclude Include="src\audio\AudioMixer.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioRamp.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioSpatial.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioMusic.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioVoices.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioPlayback.h">
       <Filter>Header Files\audio</Filter>
     </ClInclude>
     <ClInclude Include="src\diagnostics\DebugDraw.h">

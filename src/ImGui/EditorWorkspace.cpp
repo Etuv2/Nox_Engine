@@ -29,6 +29,8 @@
 #include "../app/ProjectBootstrap.h"
 #include "InspectorWidgets.h"
 #include "ContentBrowser.h"
+#include "../ShaderLoader.h"
+#include "../Texture.h"
 
 #include "rhi/RHI.h"
 #include <SDL/SDL.h>
@@ -316,6 +318,8 @@ void EditorWorkspace::Draw(float dt)
 	m_dt = dt;
 	m_fpsSmoothed = m_fpsSmoothed <= 0.0f ? (dt > 0 ? 1.0f / dt : 0.0f) : m_fpsSmoothed + ((dt > 0 ? 1.0f / dt : 0.0f) - m_fpsSmoothed) * 0.05f;
 	m_statusTimer = std::max(0.0f, m_statusTimer - dt);
+	// Hot reload: textures whose files changed on disk are decoded again in place (checked twice a second).
+	ReloadChangedTextureFiles();
 	SyncSelection();
 
 	ImGuiViewport* mainVp = ImGui::GetMainViewport();
@@ -2727,6 +2731,13 @@ void EditorWorkspace::HandleShortcuts()
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false) && !m_core.IsPlaying()) { m_core.SaveCurrentScene(); ui::Toast("Scene saved", ui::ToastKind::Success); }
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) Undo();
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) Redo();
+	// Ctrl+Shift+R: "Reload shaders". Every program made by the shader helpers is rebuilt from disk; a failure keeps the
+	// previous program and the errors go to the console.
+	if (ctrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+		const ShaderReloadReport report = ReloadAllShaderPrograms(std::cout);
+		if (report.kept == 0) ui::Toast("Shaders reloaded (" + std::to_string(report.reloaded) + ")", ui::ToastKind::Success);
+		else ui::Toast("Shader reload: " + std::to_string(report.kept) + " kept on error, see console", ui::ToastKind::Warning);
+	}
 	auto sel = m_legacy.GetSelectedNode();
 	const bool scope = NodeShortcutScope();   // the Hierarchy or the Scene viewport has the keyboard
 	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false)) DuplicateSelectionWithUndo();

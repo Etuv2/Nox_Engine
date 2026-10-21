@@ -740,24 +740,7 @@ namespace {
 		// --- Programs ---------------------------------------------------------------------------------
 		ProgramHandle CreateProgram(const ProgramDesc& d) override {
 			std::vector<GLuint> shaders;
-			bool ok = true;
-			for (const ShaderSource& s : d.stages) {
-				const GLuint sh = glCreateShader(ToGL(s.stage));
-				const char* src = s.source.c_str();
-				glShaderSource(sh, 1, &src, nullptr);
-				glCompileShader(sh);
-				GLint status = GL_FALSE;
-				glGetShaderiv(sh, GL_COMPILE_STATUS, &status);
-				if (status != GL_TRUE) {
-					GLint len = 0;
-					glGetShaderiv(sh, GL_INFO_LOG_LENGTH, &len);
-					std::string log(static_cast<size_t>(std::max(len, 1)), '\0');
-					glGetShaderInfoLog(sh, len, nullptr, log.data());
-					std::cerr << "[RHI/GL] Shader compile failed: " << s.debugPath << "\n" << log << std::endl;
-					ok = false;
-				}
-				shaders.push_back(sh);
-			}
+			bool ok = CompileStages(d, shaders);
 			GLuint program = 0;
 			if (ok) {
 				program = glCreateProgram();
@@ -774,16 +757,62 @@ namespace {
 					glDeleteProgram(program);
 					program = 0;
 				}
-				else {
-					for (GLuint sh : shaders) glDetachShader(program, sh);
-				}
 			}
-			for (GLuint sh : shaders) glDeleteShader(sh);
-			if (program && !d.debugName.empty()) SetDebugName(ProgramHandle(program), d.debugName.c_str());
+			if (!program) {
+				for (GLuint sh : shaders) glDeleteShader(sh);
+				return ProgramHandle(0);
+			}
+			// The shader objects stay attached: ReloadProgram replaces them and keeps the program name.
+			m_programs[program] = ProgramRecord{ std::move(shaders), d.debugName };
+			if (!d.debugName.empty()) SetDebugName(ProgramHandle(program), d.debugName.c_str());
 			return ProgramHandle(program);
 		}
+		// Recompiles and relinks an existing program in place (same name, so holders keep their handle). Compile or link
+		// errors leave the old program linked and in use; uniform values survive a successful reload.
+		bool ReloadProgram(ProgramHandle p, const ProgramDesc& d) override {
+			const auto it = m_programs.find(p.id);
+			if (!p.id || it == m_programs.end()) return false;
+			if (!d.debugName.empty() && it->second.debugName != d.debugName) return false;   // the name was reused
+			std::vector<GLuint> fresh;
+			if (!CompileStages(d, fresh)) {
+				for (GLuint sh : fresh) glDeleteShader(sh);
+				return false;
+			}
+			const std::vector<UniformValue> uniforms = CaptureUniforms(p.id);
+			const std::vector<GLuint> old = it->second.shaders;
+			for (GLuint sh : old) glDetachShader(p.id, sh);
+			for (GLuint sh : fresh) glAttachShader(p.id, sh);
+			glLinkProgram(p.id);
+			GLint status = GL_FALSE;
+			glGetProgramiv(p.id, GL_LINK_STATUS, &status);
+			if (status != GL_TRUE) {
+				GLint len = 0;
+				glGetProgramiv(p.id, GL_INFO_LOG_LENGTH, &len);
+				std::string log(static_cast<size_t>(std::max(len, 1)), '\0');
+				glGetProgramInfoLog(p.id, len, nullptr, log.data());
+				std::cerr << "[RHI/GL] Reload link failed, keeping the previous program: " << d.debugName << "\n" << log << std::endl;
+				// Put the previous shaders back; they linked before, so this relink succeeds.
+				for (GLuint sh : fresh) glDetachShader(p.id, sh);
+				for (GLuint sh : old) glAttachShader(p.id, sh);
+				glLinkProgram(p.id);
+				RestoreUniforms(p.id, uniforms);
+				for (GLuint sh : fresh) glDeleteShader(sh);
+				return false;
+			}
+			for (GLuint sh : old) glDeleteShader(sh);
+			it->second.shaders = std::move(fresh);
+			RestoreUniforms(p.id, uniforms);
+			return true;
+		}
 		void DestroyProgram(ProgramHandle& p) override {
-			if (p.id) glDeleteProgram(p.id);
+			if (p.id) {
+				const auto it = m_programs.find(p.id);
+				if (it != m_programs.end()) {
+					for (GLuint sh : it->second.shaders) glDeleteShader(sh);   // freed once detached with the program
+					m_programs.erase(it);
+				}
+				glDeleteProgram(p.id);
+			}
 			p = {};
 		}
 		bool IsProgram(ProgramHandle p) const override { return p.id && glIsProgram(p.id) == GL_TRUE; }
@@ -1221,6 +1250,135 @@ namespace {
 		std::unordered_map<GLuint, size_t> m_bufferSizes;
 		std::unordered_map<GLuint, VertexInputRecord> m_vertexInputs;
 		std::unordered_map<GLuint, QueryType> m_queries;
+		// Programs created here, with the shader objects still attached (ReloadProgram swaps them in place).
+		struct ProgramRecord { std::vector<GLuint> shaders; std::string debugName; };
+		std::unordered_map<GLuint, ProgramRecord> m_programs;
+
+		// Compiles every stage of a descriptor. On failure nothing is left to clean up but the returned shaders
+		// the caller must delete (out holds the ones compiled so far).
+		static bool CompileStages(const ProgramDesc& d, std::vector<GLuint>& out) {
+			bool ok = true;
+			for (const ShaderSource& s : d.stages) {
+				const GLuint sh = glCreateShader(ToGL(s.stage));
+				const char* src = s.source.c_str();
+				glShaderSource(sh, 1, &src, nullptr);
+				glCompileShader(sh);
+				GLint status = GL_FALSE;
+				glGetShaderiv(sh, GL_COMPILE_STATUS, &status);
+				if (status != GL_TRUE) {
+					GLint len = 0;
+					glGetShaderiv(sh, GL_INFO_LOG_LENGTH, &len);
+					std::string log(static_cast<size_t>(std::max(len, 1)), '\0');
+					glGetShaderInfoLog(sh, len, nullptr, log.data());
+					std::cerr << "[RHI/GL] Shader compile failed: " << s.debugPath << "\n" << log << std::endl;
+					ok = false;
+				}
+				out.push_back(sh);
+			}
+			return ok;
+		}
+
+		// Uniform values of a linked program. Linking resets them, so a reload restores them by name.
+		struct UniformValue {
+			std::string name;      // element name for arrays ("name[3]")
+			GLenum type = 0;
+			int components = 1;
+			std::vector<GLfloat> f;
+			std::vector<GLint> i;
+			std::vector<GLuint> u;
+		};
+
+		static int ComponentCount(GLenum type) {
+			switch (type) {
+			case GL_FLOAT: case GL_INT: case GL_UNSIGNED_INT: case GL_BOOL: return 1;
+			case GL_FLOAT_VEC2: case GL_INT_VEC2: case GL_UNSIGNED_INT_VEC2: case GL_BOOL_VEC2: return 2;
+			case GL_FLOAT_VEC3: case GL_INT_VEC3: case GL_UNSIGNED_INT_VEC3: case GL_BOOL_VEC3: return 3;
+			case GL_FLOAT_VEC4: case GL_INT_VEC4: case GL_UNSIGNED_INT_VEC4: case GL_BOOL_VEC4: return 4;
+			case GL_FLOAT_MAT2: return 4;
+			case GL_FLOAT_MAT3: return 9;
+			case GL_FLOAT_MAT4: return 16;
+			default: return 1;   // samplers and images are integer uniforms
+			}
+		}
+
+		static bool IsFloatType(GLenum t) {
+			return t == GL_FLOAT || (t >= GL_FLOAT_VEC2 && t <= GL_FLOAT_VEC4) || (t >= GL_FLOAT_MAT2 && t <= GL_FLOAT_MAT4);
+		}
+		static bool IsUnsignedType(GLenum t) {
+			return t == GL_UNSIGNED_INT || (t >= GL_UNSIGNED_INT_VEC2 && t <= GL_UNSIGNED_INT_VEC4);
+		}
+
+		static std::vector<UniformValue> CaptureUniforms(GLuint program) {
+			std::vector<UniformValue> values;
+			GLint count = 0;
+			glGetProgramiv(program, GL_ACTIVE_UNIFORMS, &count);
+			for (GLint idx = 0; idx < count; ++idx) {
+				GLchar name[256] = {};
+				GLsizei length = 0;
+				GLint size = 0;
+				GLenum type = 0;
+				glGetActiveUniform(program, static_cast<GLuint>(idx), sizeof(name), &length, &size, &type, name);
+				std::string base(name, static_cast<size_t>(std::max(length, 0)));
+				if (base.rfind("gl_", 0) == 0) continue;
+				const size_t bracket = base.find('[');
+				if (bracket != std::string::npos) base = base.substr(0, bracket);
+				const int comps = ComponentCount(type);
+				for (GLint e = 0; e < size; ++e) {
+					UniformValue v;
+					v.name = size > 1 ? base + "[" + std::to_string(e) + "]" : base;
+					v.type = type;
+					v.components = comps;
+					const GLint loc = glGetUniformLocation(program, v.name.c_str());
+					if (loc < 0) continue;
+					if (IsFloatType(type)) {
+						v.f.resize(static_cast<size_t>(comps));
+						glGetUniformfv(program, loc, v.f.data());
+					}
+					else if (IsUnsignedType(type)) {
+						v.u.resize(static_cast<size_t>(comps));
+						glGetUniformuiv(program, loc, v.u.data());
+					}
+					else {
+						v.i.resize(static_cast<size_t>(comps));
+						glGetUniformiv(program, loc, v.i.data());
+					}
+					values.push_back(std::move(v));
+				}
+			}
+			return values;
+		}
+
+		static void RestoreUniforms(GLuint program, const std::vector<UniformValue>& values) {
+			for (const UniformValue& v : values) {
+				const GLint loc = glGetUniformLocation(program, v.name.c_str());
+				if (loc < 0) continue;
+				switch (v.type) {
+				case GL_FLOAT_MAT2: glUniformMatrix2fv(loc, 1, GL_FALSE, v.f.data()); break;
+				case GL_FLOAT_MAT3: glUniformMatrix3fv(loc, 1, GL_FALSE, v.f.data()); break;
+				case GL_FLOAT_MAT4: glUniformMatrix4fv(loc, 1, GL_FALSE, v.f.data()); break;
+				default:
+					if (!v.f.empty()) {
+						if (v.components == 1) glUniform1fv(loc, 1, v.f.data());
+						else if (v.components == 2) glUniform2fv(loc, 1, v.f.data());
+						else if (v.components == 3) glUniform3fv(loc, 1, v.f.data());
+						else glUniform4fv(loc, 1, v.f.data());
+					}
+					else if (!v.u.empty()) {
+						if (v.components == 1) glUniform1uiv(loc, 1, v.u.data());
+						else if (v.components == 2) glUniform2uiv(loc, 1, v.u.data());
+						else if (v.components == 3) glUniform3uiv(loc, 1, v.u.data());
+						else glUniform4uiv(loc, 1, v.u.data());
+					}
+					else if (!v.i.empty()) {
+						if (v.components == 1) glUniform1iv(loc, 1, v.i.data());
+						else if (v.components == 2) glUniform2iv(loc, 1, v.i.data());
+						else if (v.components == 3) glUniform3iv(loc, 1, v.i.data());
+						else glUniform4iv(loc, 1, v.i.data());
+					}
+					break;
+				}
+			}
+		}
 	};
 
 } // namespace

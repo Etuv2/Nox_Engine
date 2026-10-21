@@ -108,7 +108,22 @@ public:
         }
         Uint8 vol = static_cast<Uint8>(128 * volume * (1.0f - distance / hearingDistance));
         Mix_Volume(channel, vol);
+        setChannelPanning(channel, diff, listenerAngle);
+    }
 
+    // Sets a channel's gain (0..1, already attenuated by the caller) and stereo balance for a 3D source. Used when the
+    // attenuation curve is not the legacy linear one (see AudioSpatial.h).
+    void setChannel3DGain(int channel, const glm::vec3& sourcePos, const glm::vec3& listenerPos, float listenerAngle,
+        float gain01)
+    {
+        if (channel == -1 || Mix_GetChunk(channel) == nullptr) return;
+        const float clamped = gain01 < 0.0f ? 0.0f : (gain01 > 1.0f ? 1.0f : gain01);
+        Mix_Volume(channel, static_cast<Uint8>(128 * clamped));
+        setChannelPanning(channel, sourcePos - listenerPos, listenerAngle);
+    }
+
+    // Stereo balance from the source direction relative to the listener facing (same formula as always).
+    void setChannelPanning(int channel, const glm::vec3& diff, float listenerAngle) {
         // Compute the angle (in degrees) from listener to source.
         float angle = std::atan2f(diff.y, diff.x) * 180.0f / static_cast<float>(M_PI);
         float relativeAngle = angle - listenerAngle;
@@ -135,13 +150,19 @@ public:
             return;
         DopplerData* data = new DopplerData();
         data->pitchFactor = pitchFactor;
-        if (Mix_RegisterEffect(channel, AudioPlayer::DopplerEffectCallback, nullptr, data) == 0) {
+        // The done callback frees the data when the effect is unregistered or the channel finishes.
+        if (Mix_RegisterEffect(channel, AudioPlayer::DopplerEffectCallback, AudioPlayer::DopplerEffectDone, data) == 0) {
             std::cerr << "Failed to register doppler effect: " << Mix_GetError() << std::endl;
             delete data;
         }
     }
 
 private:
+    static void DopplerEffectDone(int channel, void* udata) {
+        (void)channel;
+        delete static_cast<DopplerData*>(udata);
+    }
+
     // Custom effect callback that applies a rudimentary pitch shift (doppler effect)
     // by resampling the audio chunk using linear interpolation.
     static void DopplerEffectCallback(int channel, void* stream, int len, void* udata) {

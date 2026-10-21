@@ -1659,6 +1659,14 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 			nodeJson["loop"] = audioNode->isLooping();
 			nodeJson["is3d"] = audioNode->is3D();
 			nodeJson["autoplay"] = audioNode->getAutoplay();
+			// Distance curve and occlusion are written only when they differ from the defaults, so existing scenes
+			// round-trip unchanged.
+			if (audioNode->getAttenuation() != AudioAttenuation::Linear) {
+				nodeJson["attenuation"] = AudioAttenuationName(audioNode->getAttenuation());
+			}
+			if (audioNode->getMinDistance() > 0.0f) nodeJson["min_distance"] = audioNode->getMinDistance();
+			if (audioNode->getRolloff() != 1.0f) nodeJson["rolloff"] = audioNode->getRolloff();
+			if (audioNode->getOcclusion()) nodeJson["occlusion"] = true;
 			if (!audioNode->getSoundFilePath().empty()) {
 				nodeJson["sound"] = audioNode->getSoundFilePath();
 			}
@@ -2398,6 +2406,15 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			audioNode->setLooping(loop);
 			audioNode->setIs3D(is3d);
 			audioNode->setAutoplay(autoplay);
+			AudioAttenuation curve = AudioAttenuation::Linear;
+			const std::string curveName = nodeJson.value("attenuation", std::string("linear"));
+			if (!ParseAudioAttenuation(curveName, curve)) {
+				std::cerr << "[SceneLoader] unknown attenuation '" << curveName << "', using linear\n";
+			}
+			audioNode->setAttenuation(curve);
+			audioNode->setMinDistance(nodeJson.value("min_distance", 0.0f));
+			audioNode->setRolloff(nodeJson.value("rolloff", 1.0f));
+			audioNode->setOcclusion(nodeJson.value("occlusion", false));
 			if (!soundFile.empty()) {
 				if (!audioNode->initAudio(soundFile))
 					std::cerr << "[ERROR] Failed to load sound file: " << soundFile << std::endl;

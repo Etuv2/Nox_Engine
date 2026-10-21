@@ -385,6 +385,28 @@ modules every 0.25 s and reloads once a changed set has been stable for 0.4 s (s
 packed distributions do. A rejected reload keeps the previous code and reports the reason in the Lua
 project panel and the console.
 
+### Texture and shader hot reload
+
+- **Textures** are reloaded by the editor itself, with no command. Every texture decoded from a file is checked twice
+  a second against the file's size and modification time. A changed file is decoded again into the same GPU texture,
+  so every material that uses it shows the new pixels, and the texture's handle does not change. A different size is
+  resized in place. A different channel count (for example RGB to RGBA) is refused with a console message, because
+  the GPU format would change: restart the editor to pick it up. The Content Browser thumbnail refreshes from the
+  same modification time. Each reload is logged as `[HotReload] reloaded texture <path>`.
+- **Shaders** are reloaded with **Ctrl+Shift+R** ("Reload shaders"). Every program created through the shader helpers
+  (`CreateShaderProgram`, the variant with defines, the geometry and compute helpers, and `ComputeShader::CreateFromFile`
+  with its defines) is rebuilt from its files on disk and swapped in under the same program handle. Each program is
+  logged as `[Shaders] reloaded ...`. A program whose source fails to compile or link keeps its previous version, and
+  the compiler or linker error is in the console. The uniform values the program had are set again after the reload,
+  so passes that set them once still work. Programs made from source text (`ComputeShader::CreateFromSource`, direct
+  `rhi::Gpu().CreateProgram` calls) are not reloadable and are left as they are.
+- Known limits: uniform block and shader storage bindings made with `glUniformBlockBinding` are not restored by a reload
+  (the engine's shaders use explicit `layout(binding=...)`, so they are not affected today). The surfel GI pipeline has
+  its own reload path, which is unchanged.
+- **Models** (glTF) are not hot-reloaded yet. Their `Scene` holds the GPU meshes and every node that uses the model
+  refers to it, so an in-place swap needs a full reset of the scene's state first. Reload the scene after editing a
+  model.
+
 ## Smoke test
 
 `NOX_EDITOR_SMOKE=1` runs scripted checks inside the editor and prints `[Smoke] PASS` or `[Smoke] FAIL` lines

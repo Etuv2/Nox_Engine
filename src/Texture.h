@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include "stb_image.h"
 #include "rhi/RHI.h"
@@ -107,6 +108,15 @@ public:
 	rhi::PixelFormat Format() const { return format_; }
 	rhi::PixelType DataType() const { return dataType_; }
 	bool HasMipmaps() const { return hasMipmaps_; }
+	// File the texture was decoded from (empty for procedural textures).
+	const std::string& SourcePath() const { return sourcePath_; }
+	// True when the file identity (size, modification time) still matches the decoded pixels.
+	bool SourceMatches(uint64_t size, int64_t mtime) const { return sourceSize_ == size && sourceMtime_ == mtime; }
+
+	// Hot reload: decodes the source file again into this texture's GPU storage (the handle stays valid, so every
+	// holder sees the new pixels). A new size resizes in place; a different channel count is refused because the
+	// format would change. False (texture unchanged) when the file cannot be decoded.
+	bool ReloadFromFile();
 
 	// Utility
 	bool IsValid() const;
@@ -125,13 +135,25 @@ private:
 	rhi::PixelType dataType_ = rhi::PixelType::UByte;
 	bool hasMipmaps_ = false;
 	rhi::Wrap wrapR_ = rhi::Wrap::Repeat;   // last R wrap (only 3D and cube textures set it)
+	// File-backed textures: where the pixels came from, whether they are sRGB, and the file identity they were decoded
+	// from (size and modification time) so an edit on disk can be noticed.
+	std::string sourcePath_;
+	bool srgb_ = false;
+	uint64_t sourceSize_ = 0;
+	int64_t sourceMtime_ = -1;
 
 	void Allocate();
+	void RegisterFileTexture();
+	void UnregisterFileTexture();
 	// Helper to set default parameters based on type
 	void SetParametersForType(bool generateMipmaps);
 
 	friend class Builder;
 };
+
+// Editor hot reload: re-decodes every file-backed texture whose source file changed on disk since it was decoded.
+// Checks at most once per minIntervalSeconds. Returns how many textures were reloaded. GL thread only.
+int ReloadChangedTextureFiles(double minIntervalSeconds = 0.5);
 
 /**
  * @brief Builder class for flexible texture creation
