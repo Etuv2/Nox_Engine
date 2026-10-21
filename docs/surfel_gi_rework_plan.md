@@ -2375,3 +2375,70 @@ Stability: two of the three first attempts at the round-2 light-step run died si
 - Recycling (E): changed to 120 frames grace. Not measured separately from the rest of the round.
 - Repeats: the Cornell numbers are one repeat. The lead's brief asks for three, which I did not run for the energy and noise.
 - scene.json energy and noise: not run in round 2.
+
+## 23. Cost round
+
+Worker S3 (Haiku 5.5), on the S2 merge (`e480d8a`). Goal: cut the surfel GI cost at Medium (targets: scene.json at most 2.5 ms, NFS at most 3.5 ms, Low at most 1.5 ms; energy within -3%, noise within +20%). Outcome in one line: the refactors and an own-cell knob are in, the cost targets are not met, and the own-cell knob is not a win, so it stays off.
+
+### 23.1 Method and limits
+
+- Harness: `tools/surfel_gi_metrics.py`, `surf_term` against the reused reference (`off` and `indep_term` from 15 Oct, pre-rework and pre-async-load, same reference path; not re-made). Medium tier, 1920x1080, `NOX_FIXED_DT`, manual exposure, static camera.
+- The GPU was shared with other workers during every run, and a second `Nox_Engine.exe` was running for part of the session. Scene.json timings are medians of three alternating pairs unless marked single run. NFS and Cornell breakdowns are single runs. The sync-load redo was contended (tracing spikes to 10 to 195 ms in some runs) and is not used for timing.
+- Baseline timings are not bit-reproducible (two runs of the same binary differ per frame), so output identity could not be checked by hash.
+
+### 23.2 Baseline breakdown (Medium, single runs, GPU ms, medians over frames 200 to 260)
+
+| Pass | scene.json | NFS (sync redo) | Cornell |
+|---|---|---|---|
+| tracing | 2.70 | 10.51 (contended) / 6.83 (earlier run) | 1.02 |
+| coverage_spawn (every 3rd frame) | 0.265 | 0.30 | 0.17 |
+| irradiance_sharing | 0.146 | 0.14 | 0.11 |
+| ray_generation | 0.118 | 0.04 | 0.06 |
+| grid_count / grid_scan / grid_build | 0.052 / 0.032 / 0.022 | 0.049 (count) | 0.040 (count) |
+| coverage_project | 0.053 | | |
+| ray_request / allocation | 0.025 / 0.018 | | |
+| temporal, radial, snapshot, transform, recycling, begin, dispatch args, world spawn, debug, rt update | about 0.01 each (0.006 to 0.02) | | |
+| Surfel passes, sum (excludes final_gather and upscale) | 3.60 | 11.7 incl. gather | 2.38 incl. gather |
+| final_gather / upscale (S4) | 0.98 / 0.14 | 5.37 (contended) | 0.25 |
+
+### 23.3 What changed
+
+1. Exact refactor, `trace_rays.comp`: `TraceCachedNeighborAddress` takes the hit's base cell address once per lookup, instead of recomputing it for each of the 27 neighbours (54 address walks became 27). Both the irradiance and albedo walks use it.
+2. Exact refactor, `common.glsl`: `SurfelOrderedCubeOffset` and `SurfelOrderedCubeRadius2Offset` are closed forms (same order), replacing a 27 and a 125 iteration loop per call.
+3. Own-cell knob, default off: `uCacheOwnCellOnly` (trace_rays.comp; `SurfelGIManager.h` `cacheOwnCellOnly`; `SurfelGIPipeline.cpp`; env `NOX_SURFEL_GI_CACHE_OWN_CELL=0|1`). With it on, both walks stop after neighbour index 0, the hit's own cell.
+
+### 23.4 Before and after
+
+| Change | scene.json tracing, A/B medians (ms) | Energy (term ratio vs reference) | Noise (rel) |
+|---|---|---|---|
+| Baseline (HEAD shaders) | 2.07 (2.08, 1.99, 2.07) | 0.617 (run 1), 0.623 (run 2, own-cell pair) | 1.17%, 1.28% |
+| Exact refactors (1, 2) | 2.01 (2.01, 1.99, 2.02) | not separately measured; mathematically identical | |
+| Own-cell only (3), two pairs | 2.01 (run 1); run 2 contended (16.7 ms) | 0.634 (run 1), 0.620 (run 2) | 1.63%, 1.02% |
+
+- Refactors: saving about 0.05 ms, inside the run spread. Not a measurable win.
+- Own-cell: energy within about 1% of the default, noise within the +20% band on average, but tracing is no faster (2.01 against 2.08 on run 1 and no clean second pair). The cache walk is therefore not the tracing bottleneck at Medium, or its cost is hidden behind the BVH and memory traffic. The knob stays off.
+
+### 23.5 Targets
+
+- Not met. Scene.json surfel passes (excluding gather) are about 3.6 ms against 2.5 ms; tracing is about 2.0 to 2.7 ms against the sub-target. NFS tracing is 6.8 ms (earlier run) against the 3.5 ms total target. Low was not re-measured.
+- Energy and noise: within the band on scene.json by the metric above; NFS not re-checked in this round.
+
+### 23.6 Why the lever is not the cache walk
+
+- Measured: removing 26 of 27 cells changes energy by about 1% and tracing by about 0.07 ms, so the walk itself is a small part of tracing.
+- Likely: the BVH trace. `RTTriangle` carries a full `RTMaterial` (about 150 bytes) per triangle, and the alpha test in `SurfelTraceBLAS` reads the material on every triangle test. A compact triangle record (vertices plus alpha flag, or a material index) and per-triangle alpha only is the next experiment. Not built.
+- A compact kernel with support equal to the insertion radius needs the cache's `cacheSupportSpread` (default 3.10) revisited first. At spread 3.10 the Gaussian reaches well past the insertion radius, so one cell is not enough. Not tested.
+
+### 23.7 Verification (final tree of this round)
+
+- `CheckNoRawGL.ps1`, `CheckGenericExe.ps1`, `CheckVcxprojSources.py`: pass.
+- `validate_surfel_gi_static.py`, `validate_surfel_gi_correctness.py`: OK.
+- `nox_tests.exe`: 338 tests, 3 failed (the known CRLF fixture checks in `test_asset_io.cpp`).
+- Editor smoke and race: see the commit message.
+
+### 23.8 Open items
+
+- Compact triangle record for the BVH (see 23.6).
+- Cache support spread versus insertion radius; then a compact kernel and own-cell lookup as one experiment, with energy and noise per scene.
+- `coverage_spawn` (0.27 ms, every third frame) and `irradiance_sharing` (0.15 ms): candidates for merging or cheaper sampling.
+- Final quiet-GPU timings for each tier were not taken in this round.

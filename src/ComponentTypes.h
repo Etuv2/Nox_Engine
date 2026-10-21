@@ -11,6 +11,7 @@
 class Scene;
 class BaseLight;
 class AnimationController;
+class AnimatorRuntime;
 class RigidBody;
 
 /**
@@ -210,6 +211,8 @@ struct CameraComponent {
  */
 struct AnimationComponent {
 	std::shared_ptr<AnimationController> controller;
+	// Parameter state machine and crossfade runtime (AnimatorRuntime). Null for plain clip playback.
+	std::shared_ptr<AnimatorRuntime> animator;
 	int currentAnimationIndex;
 	float animationTime;
 	bool isPlaying;

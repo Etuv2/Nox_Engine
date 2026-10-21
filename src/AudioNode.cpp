@@ -1,6 +1,7 @@
 // AudioNode.cpp
 #include "AudioNode.h"
 #include "audio/AudioMixer.h"
+#include "audio/AudioPlayback.h"
 #include "SDL/SDL_mixer.h"
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
@@ -148,13 +149,42 @@ void AudioNode::updateAudio(const glm::vec3& listenerPos, float listenerAngle)
         return;
     }
 
-    m_audioPlayer.setChannel3DPosition(
-        m_channel,
-        worldPos,
-        safeListenerPos,
-        safeListenerAngle,
-        std::max(m_hearingDistance, 1.0f), // Ensure positive hearing distance
-        outputGain());                     // source volume * bus gain, in [0,1]
+    // Default curve: the original linear falloff over the hearing distance, unchanged.
+    if (m_attenuation == AudioAttenuation::Linear && m_minDistance <= 0.0f && !m_occlusion) {
+        m_audioPlayer.setChannel3DPosition(
+            m_channel,
+            worldPos,
+            safeListenerPos,
+            safeListenerAngle,
+            std::max(m_hearingDistance, 1.0f), // Ensure positive hearing distance
+            outputGain());                     // source volume * bus gain, in [0,1]
+        return;
+    }
+
+    // Other curves and occlusion: gain = source * bus * curve * occlusion, panned as before.
+    const float distance = glm::length(worldPos - safeListenerPos);
+    const float attenuation = AudioAttenuationGain(distance, spatialParams());
+    const float occlusion = AudioUpdateOcclusion(m_occlusionState, m_occlusion, safeListenerPos, worldPos,
+        AudioGetRayTest(), AudioPlaybackFrameDt());
+    m_audioPlayer.setChannel3DGain(m_channel, worldPos, safeListenerPos, safeListenerAngle,
+        outputGain() * attenuation * occlusion);
+}
+
+void AudioNode::setMinDistance(float d) {
+    m_minDistance = std::isfinite(d) ? std::max(d, 0.0f) : 0.0f;
+}
+
+void AudioNode::setRolloff(float r) {
+    m_rolloff = std::isfinite(r) ? std::clamp(r, 0.01f, 16.0f) : 1.0f;
+}
+
+AudioSpatialParams AudioNode::spatialParams() const {
+    AudioSpatialParams p;
+    p.curve = m_attenuation;
+    p.minDistance = m_minDistance;
+    p.maxDistance = std::max(m_hearingDistance, 1.0f);
+    p.rolloff = m_rolloff;
+    return p;
 }
 
 void AudioNode::UpdateAudioNodes(const glm::vec3& listenerPos, float listenerAngle)

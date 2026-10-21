@@ -579,3 +579,50 @@ NOX_TEST(PhysicsComponents, LuaRaycastOverlapAndTriggerEventsAreDelivered)
 	NOX_CHECK(h.GlobalBool("enter_ok"));
 	NOX_CHECK(h.world.Diagnostics().empty());
 }
+
+NOX_TEST(PhysicsComponents, LuaCharacterTriggersAndControllerHitsAreDelivered)
+{
+	PhysicsLuaHarness h;
+	h.physics.SetGravity(glm::vec3(0.0f));
+	auto zone = h.scene.Make("zone", glm::vec3(0.0f));
+	NOX_REQUIRE(h.physics.Triggers().Add(zone));
+	auto wall = h.scene.Make("wall", glm::vec3(3.0f, 1.0f, 0.0f));
+	Attach(wall, MakeBoxBody(h.physics, glm::vec3(3.0f, 1.0f, 0.0f), glm::vec3(0.5f, 1.0f, 5.0f), RigidBody::BodyType::STATIC));
+	auto hero = h.scene.Make("hero", glm::vec3(-5.0f, 0.0f, 0.0f));
+	NOX_REQUIRE(h.physics.Characters().Add(hero));
+	h.physics.Characters().Find(hero.get())->gravity = false;
+	NOX_REQUIRE(h.Load(
+		"enters = 0\n"
+		"exits = 0\n"
+		"hits = 0\n"
+		"hit_ok = false\n"
+		"hit_normal_x = 0\n"
+		"nox.on('trigger_enter', function(ctx, ev)\n"
+		"  if ev.other == ctx:find('hero') and ev.trigger == ctx:find('zone') then enters = enters + 1 end\n"
+		"end)\n"
+		"nox.on('trigger_exit', function(ctx, ev)\n"
+		"  if ev.other == ctx:find('hero') then exits = exits + 1 end\n"
+		"end)\n"
+		"nox.on('controller_hit', function(ctx, ev)\n"
+		"  hits = hits + 1\n"
+		"  hit_ok = ev.controller == ctx:find('hero') and ev.other == ctx:find('wall')\n"
+		"  hit_normal_x = ev.normal.x\n"
+		"end)\n"
+		"nox.system{name = 'walker', update = function(ctx, dt)\n"
+		"  local cc = ctx:component(ctx:find('hero'), 'CharacterController')\n"
+		"  cc:move({x = 0.1, y = 0.0, z = 0.0})\n"
+		"end}\n"));
+	h.world.BeginPlay();
+
+	// Walks from x = -5 through the zone (radius 1) and into the wall at x = 2.5 (the capsule stops at 2.15).
+	for (int frame = 0; frame < 120; ++frame) h.Frame();
+
+	NOX_CHECK(h.GlobalInt("enters") == 1);
+	NOX_CHECK(h.GlobalInt("exits") == 1);
+	NOX_CHECK(h.GlobalInt("hits") >= 1);
+	NOX_CHECK(h.GlobalBool("hit_ok"));
+	NOX_CHECK(h.GlobalNumber("hit_normal_x") < -0.99);
+	// Stops at the wall face (2.5) less the radius (0.35), within a few centimetres.
+	NOX_CHECK(hero->GetWorldPosition().x > 2.0f && hero->GetWorldPosition().x < 2.2f);
+	NOX_CHECK(h.world.Diagnostics().empty());
+}

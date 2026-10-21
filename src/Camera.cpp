@@ -96,6 +96,17 @@ void Camera::ProcessKeyboard(const Uint8* ks, float dt) {
     updateCameraVectors();
 }
 
+void Camera::ProcessAxes(float forward, float strafe, float vertical, float dt) {
+    if (forward == 0.0f && strafe == 0.0f && vertical == 0.0f) return;
+    const float v = m_movementSpeed * dt;
+    glm::vec3 pos = glm::vec3(transform[3]);
+    pos += m_front * (forward * v);
+    pos += m_rightVec * (strafe * v);
+    pos += m_worldUp * (vertical * v);
+    SetPosition(pos);
+    updateCameraVectors();
+}
+
 void Camera::ProcessMouseMovement(float xoff, float yoff, bool constrainPitch) {
     xoff *= m_mouseSensitivity;
     yoff *= m_mouseSensitivity;

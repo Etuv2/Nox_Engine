@@ -45,6 +45,8 @@ public:
 
     // —— Input Controls ——  
     void ProcessKeyboard(const Uint8* keystate, float deltaTime);
+    // Analog fly move (editor action map): -1..1 per axis. forward/strafe follow the view, vertical follows world up.
+    void ProcessAxes(float forward, float strafe, float vertical, float deltaTime);
     void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
     // keep your old two‐arg scroll call
     void ProcessMouseScroll(float yoffset, float maxFov);

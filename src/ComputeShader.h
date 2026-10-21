@@ -125,7 +125,8 @@ private:
 
     // Helper methods
     rhi::UniformLocation GetUniformLocation(const std::string& name);
-    bool CompileShader(const std::string& source, const std::vector<std::string>& defines);
+    bool CompileShader(const std::string& source, const std::vector<std::string>& defines,
+        const std::string& debugName = "compute");
     void SetupTiming();
     void CleanupTiming();
     std::string InjectDefines(const std::string& source, const std::vector<std::string>& defines);

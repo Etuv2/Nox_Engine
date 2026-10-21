@@ -1,6 +1,7 @@
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "SceneNode.h"
+#include "AnimatorRuntime.h"
 #include "MeshComponent.h"
 #include "DefaultTextures.h"
 #include "TextureUnits.h"
@@ -89,6 +90,11 @@ namespace {
 
 	glm::mat4 ResolveRenderableMeshLocalTransform(const RenderableComponent& renderable, const MeshComponent& mesh)
 	{
+		// glTF: the node transform of a skinned mesh is ignored. Its vertices are placed by the joints (see
+		// UploadBoneMatrices), so the item draws at the entity transform.
+		if (renderable.isSkinned) {
+			return glm::mat4(1.0f);
+		}
 		if (!renderable.renderWholeModel || mesh.sourceNodeIndex < 0 || !renderable.model) {
 			return glm::mat4(1.0f);
 		}
@@ -123,6 +129,11 @@ namespace {
 
 	glm::mat4 ResolveAnimatedNodeLocalTransform(const Scene& model, int nodeIndex, const AnimationComponent* animation)
 	{
+		// The Animator state machine's pose (AnimatorRuntime) wins while it has one.
+		if (animation && animation->animator && animation->animator->HasPose()) {
+			return animation->animator->LocalMatrix(nodeIndex);
+		}
+
 		if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
 			return glm::mat4(1.0f);
 		}
@@ -228,6 +239,7 @@ void RenderSystem::PrepareFrameTransforms()
 
 	RebuildRenderItemsIfNeeded();
 	UpdateChangedRenderItemBounds();
+	UpdateSkinnedRenderItemBounds();
 }
 
 const RenderSystem::ShaderUniformCache& RenderSystem::GetShaderUniformCache(rhi::ProgramHandle shader)
@@ -1350,12 +1362,23 @@ void RenderSystem::ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOver
 
 void RenderSystem::UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms)
 {
+	const std::vector<glm::mat4>* matrices = EnsureBoneMatrices(entity, meshWorldTransform);
+	rhi::UniformLocation locBones = uniforms.uBoneMatrices != -1 ? uniforms.uBoneMatrices : uniforms.bones;
+	if (locBones != -1 && matrices && !matrices->empty()) {
+		rhi::Gpu().SetUniformArray(locBones,
+			matrices->data(),
+			static_cast<int>(matrices->size()));
+	}
+}
+
+const std::vector<glm::mat4>* RenderSystem::EnsureBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform)
+{
 	auto* renderable = m_componentManager->GetRenderable(entity);
-	if (!renderable || !renderable->isSkinned || !renderable->model) return;
+	if (!renderable || !renderable->isSkinned || !renderable->model) return nullptr;
 
 	constexpr size_t kMaxShaderBones = 128;
 	const size_t numBones = renderable->boneInverseBindMatrices.size();
-	if (numBones == 0) return;
+	if (numBones == 0) return nullptr;
 
 	auto cacheIt = m_cachedBoneMatrices.find(entity);
 	if (cacheIt == m_cachedBoneMatrices.end()) {
@@ -1407,8 +1430,9 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorl
 			std::unordered_map<int, glm::mat4> nodeWorldCache;
 
 			int meshNodeIndex = ResolveRenderableNodeIndex(*renderable);
+			// Skinned vertices are in the joints' space: the mesh node transform is not part of the skin.
 			glm::mat4 meshModelTransform = glm::mat4(1.0f);
-			if (meshNodeIndex >= 0) {
+			if (meshNodeIndex >= 0 && !renderable->isSkinned) {
 				meshModelTransform = ComputeAnimatedNodeWorldTransform(model, meshNodeIndex, animation, nodeWorldCache);
 			}
 
@@ -1454,11 +1478,59 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorl
 		cacheIt = m_cachedBoneMatrices.find(entity);
 	}
 
-	rhi::UniformLocation locBones = uniforms.uBoneMatrices != -1 ? uniforms.uBoneMatrices : uniforms.bones;
-	if (locBones != -1 && cacheIt != m_cachedBoneMatrices.end() && !cacheIt->second.empty()) {
-		rhi::Gpu().SetUniformArray(locBones,
-			cacheIt->second.data(),
-			static_cast<int>(cacheIt->second.size()));
+	return &cacheIt->second;
+}
+
+void RenderSystem::UpdateSkinnedRenderItemBounds()
+{
+	if (!m_transformSystem) return;
+
+	// Skinned items are bounded by their animated joints every frame, so the caches built from these
+	// bounds cannot be reused across frames.
+	bool anySkinned = false;
+	for (size_t itemIndex = 0; itemIndex < m_renderItems.size() && itemIndex < m_renderItemWorldRadius.size(); ++itemIndex) {
+		const RenderItem& item = m_renderItems[itemIndex];
+		if (!item.skinned || !item.mesh || !item.model) continue;
+		anySkinned = true;
+
+		const glm::mat4& entityWorldTransform = (m_runtimeScene && item.runtimeNodeIndex != INVALID_RUNTIME_NODE_INDEX)
+			? m_runtimeScene->GetWorldTransformByIndex(item.runtimeNodeIndex)
+			: m_transformSystem->GetWorldTransform(item.entity);
+		const glm::mat4 worldTransform = ComposeRenderItemWorldTransform(entityWorldTransform, item);
+
+		glm::vec3 localMin;
+		glm::vec3 localMax;
+		const std::vector<glm::mat4>* matrices = EnsureBoneMatrices(item.entity, worldTransform);
+		if (!matrices || matrices->empty() ||
+			!SkinBounds::SkinnedLocalBounds(item.model->skin.bounds, *matrices, localMin, localMax)) {
+			// No usable skin data: keep the item drawn rather than guess its extent.
+			m_renderItemWorldRadius[itemIndex] = 1.0e30f;
+			continue;
+		}
+
+		glm::vec3 worldMin(std::numeric_limits<float>::infinity());
+		glm::vec3 worldMax(-std::numeric_limits<float>::infinity());
+		for (int corner = 0; corner < 8; ++corner) {
+			const glm::vec3 p(
+				(corner & 1) ? localMax.x : localMin.x,
+				(corner & 2) ? localMax.y : localMin.y,
+				(corner & 4) ? localMax.z : localMin.z);
+			const glm::vec3 w = glm::vec3(worldTransform * glm::vec4(p, 1.0f));
+			worldMin = glm::min(worldMin, w);
+			worldMax = glm::max(worldMax, w);
+		}
+		glm::vec3 center;
+		float radius = 0.0f;
+		SkinBounds::AabbToSphere(worldMin, worldMax, center, radius);
+		m_renderItemWorldCenterX[itemIndex] = center.x;
+		m_renderItemWorldCenterY[itemIndex] = center.y;
+		m_renderItemWorldCenterZ[itemIndex] = center.z;
+		m_renderItemWorldRadius[itemIndex] = radius;
+	}
+
+	if (anySkinned) {
+		m_lastCameraCachePublication = 0;
+		m_lastShadowCachePublication = 0;
 	}
 }
 
@@ -1889,11 +1961,10 @@ void RenderSystem::PrepareCameraSubmissionCache()
 	}
 
 	for (uint32_t itemIndex = 0; itemIndex < m_renderItems.size(); ++itemIndex) {
+		const RenderItem& item = m_renderItems[itemIndex];
 		if (m_frustumValid && m_renderItemVisibleMask[itemIndex] == 0u) {
 			continue;
 		}
-
-		const RenderItem& item = m_renderItems[itemIndex];
 		m_submissionCache.visibleAllItems.items.push_back(itemIndex);
 		m_submissionCache.velocityItems.items.push_back(itemIndex);
 		if (item.transparent) {

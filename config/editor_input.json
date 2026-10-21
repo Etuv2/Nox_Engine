@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "comment": "Engine-owned editor action map (packaged with the editor). The fly camera reads these actions; rebind them in Window > Input Actions > Editor.",
+  "actions": {
+    "editor_move_forward": { "type": "axis", "keys_positive": ["W"], "keys_negative": ["S"], "pad_axis": "lefty", "invert": true, "deadzone": 0.1 },
+    "editor_move_strafe": { "type": "axis", "keys_positive": ["D"], "keys_negative": ["A"], "pad_axis": "leftx", "deadzone": 0.1 },
+    "editor_move_vertical": { "type": "axis", "keys_positive": ["E"], "keys_negative": ["Q"] },
+    "editor_look_x": { "type": "axis", "pad_axis": "rightx", "deadzone": 0.1 },
+    "editor_look_y": { "type": "axis", "pad_axis": "righty", "deadzone": 0.1 }
+  }
+}

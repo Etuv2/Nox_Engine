@@ -1,0 +1,15 @@
+{
+  "type": "audio",
+  "name": "Speaker",
+  "sound": "sounds/miku.wav",
+  "volume": 0.8,
+  "pitch": 1.0,
+  "hearing_distance": 40.0,
+  "loop": true,
+  "is3d": true,
+  "autoplay": false,
+  "attenuation": "inverse",
+  "min_distance": 4.0,
+  "rolloff": 1.0,
+  "occlusion": true
+}

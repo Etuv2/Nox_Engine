@@ -16,6 +16,7 @@
 #include "../app/ProjectTemplates.h"
 #include "../EditorExtensions.h"
 #include "PhysicsWindow.h"
+#include "InputActionsWindow.h"
 
 class Core;
 class SceneNode;
@@ -111,6 +112,7 @@ private:
 	void DrawAssets();
 	void DrawInspector();
 	void DrawPhysics();
+	void DrawInputActions();
 	PhysicsWindow::Host PhysicsHost();
 	std::vector<std::string> FlatNodeNames();
 	void DrawComponentSection(const std::shared_ptr<SceneNode>& node, const nox::reflect::ComponentDesc& desc,
@@ -196,6 +198,7 @@ private:
 	void PasteFromClipboard();
 	void SelectAllTopLevel();
 	void DeleteSelectionWithUndo();
+	void AddStaticCollisionToSelection();   // Node menu: StaticCollision on each selected node (one undo step)
 	void DuplicateSelectionWithUndo();
 	bool NodeShortcutScope() const;      // hierarchy or scene viewport has keyboard focus
 	void UpdateMarquee(const ImGuiIO& io, ImDrawList* dl);
@@ -226,6 +229,9 @@ private:
 	nlohmann::json m_extSaved = nlohmann::json::object();
 	bool m_showPresets = false, m_showHelp = false, m_showLegacyRendering = true, m_showLegacyLighting = true;
 	bool m_showPhysics = true;
+	bool m_showInputActions = false;   // Window > Input Actions (action maps of the project and the editor)
+	bool m_focusInputActions = false;  // bring the window to the front when it is opened
+	InputActionsWindow m_inputActionsWindow;
 	PhysicsWindow m_physicsWindow;
 	bool m_physicsDrawn = false;   // Physics window was drawn this frame (smoke test)
 	bool m_showLegacyPerformance = true, m_showLegacyAnimation = false, m_showLegacyState = false, m_showLegacyCamera = false;

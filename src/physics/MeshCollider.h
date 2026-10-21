@@ -5,6 +5,7 @@
 // manifolds from them and the character controller and sweeps use them directly.
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <memory>
 #include <string>
@@ -17,7 +18,8 @@ class RigidBody;
 namespace MeshCollider {
 
 	// Loads (or returns the cached) mesh for a glTF/GLB path. Nodes named NOCOLLIDE are skipped. Null on failure.
-	std::shared_ptr<const CollisionWorld> LoadShared(const std::string& path);
+	// A scale other than one is baked into the triangles (body transforms are rigid), cached per path and scale.
+	std::shared_ptr<const CollisionWorld> LoadShared(const std::string& path, const glm::vec3& scale = glm::vec3(1.0f));
 	// Forgets the cache (tests, scene unload). Bodies keep the meshes they hold.
 	void ClearCache();
 
@@ -32,5 +34,10 @@ namespace MeshCollider {
 	// The deepest of those contacts. False when none is within skin.
 	bool DeepestSphereContact(const RigidBody& meshBody, const glm::vec3& center, float radius, float skin,
 		CollisionWorld::SphereContact& out);
+
+	// Box/triangle contacts between an oriented box (world centre, half extents, world rotation) and a mesh body.
+	// Same conventions as SphereContacts: world-space points, normals from the mesh toward the box.
+	void BoxContacts(const RigidBody& meshBody, const glm::vec3& center, const glm::vec3& halfExtents,
+		const glm::quat& rotation, float skin, std::vector<CollisionWorld::SphereContact>& out);
 
 }

@@ -1,5 +1,6 @@
 #include "SliceTask.h"
 #include "LightManager.h"
+#include "SceneFrameClock.h"
 #include "LightNode.h"
 #include "SceneGraph.h"
 #include "SceneNode.h"
@@ -1451,9 +1452,9 @@ namespace {
 // fast a lighting change propagates (for example the surfel GI response). Nothing here depends on the renderer.
 struct LightStepTest {
 	bool enabled = false;
-	uint64_t frame = 0u;
+	uint64_t frame = 0u;   // live scene frame (SceneFrameClock::scene, 1-based) where the step starts
 	float scale = 1.0f;
-	uint64_t calls = 0u;
+	bool announced = false;
 
 	LightStepTest() {
 		const char* spec = std::getenv("NOX_LIGHT_STEP");
@@ -1484,11 +1485,15 @@ void LightManager::UpdateLights(float dt)
 {
 	static LightStepTest lightStep;
 	bool lightStepNow = false;
-	if (lightStep.enabled && lightStep.calls++ >= lightStep.frame) {
+	// Counted in live scene frames: loading and loading-overlay frames never start the step.
+	if (lightStep.enabled && nox::SceneFrameClock::live && nox::SceneFrameClock::scene >= lightStep.frame) {
 		// Persistent: the gain stays from the step frame on (BaseLight::GetIntensity reads it).
 		g_noxLightStepGain = lightStep.scale;
-		if (lightStep.calls - 1 == lightStep.frame) {
+		if (nox::SceneFrameClock::scene == lightStep.frame) {
 			lightStepNow = true;
+		}
+		if (lightStepNow && !lightStep.announced) {
+			lightStep.announced = true;
 			std::cerr << "[LightStep] frame=" << lightStep.frame << " scale=" << lightStep.scale
 				<< " lights=" << m_lights.size() << "\n";
 		}

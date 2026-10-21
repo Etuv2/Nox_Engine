@@ -2,6 +2,7 @@
 #include "LuaWorld.h"
 #include "LuaComponents.h"
 #include "LuaPhysics.h"
+#include "LuaAnimation.h"
 #include "LuaAudio.h"
 #include "LuaDebug.h"
 #include "LuaInputBindings.h"
@@ -1515,6 +1516,7 @@ namespace NoxLua {
 		RunCoroutines();
 		RunSystems(false, dt);
 		PumpPhysicsEvents(*this);
+		PumpAnimationEvents(*this);
 		DeliverEvents();
 		RunBehaviors(dt);
 		SweepDead();
@@ -1776,6 +1778,31 @@ namespace NoxLua {
 
 	void LuaWorld::QueueCommand(Command command) {
 		m_commands.push_back(std::move(command));
+	}
+
+	void LuaWorld::PushInputDeviceEvents(const std::vector<InputMap::DeviceEvent>& events) {
+		constexpr size_t kMaxDeviceLog = 32;
+		for (const InputMap::DeviceEvent& e : events) {
+			m_deviceLog.push_back(e);
+			if (m_deviceLog.size() > kMaxDeviceLog) m_deviceLog.erase(m_deviceLog.begin());
+			if (!m_loaded || !m_playing || !m_runtime || !m_runtime->Ok()) continue;
+			lua_State* L = m_runtime->State();
+			lua_createtable(L, 0, 3);
+			lua_pushboolean(L, e.connected ? 1 : 0);
+			lua_setfield(L, -2, "connected");
+			lua_pushinteger(L, e.player);
+			lua_setfield(L, -2, "player");
+			lua_pushstring(L, e.name.c_str());
+			lua_setfield(L, -2, "name");
+			const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+			if (!QueueEvent("input.device", ref)) m_runtime->Unref(ref);
+		}
+	}
+
+	std::vector<InputMap::DeviceEvent> LuaWorld::TakeInputDeviceLog() {
+		std::vector<InputMap::DeviceEvent> out;
+		out.swap(m_deviceLog);
+		return out;
 	}
 
 	bool LuaWorld::QueueEvent(const std::string& name, int payloadRef) {

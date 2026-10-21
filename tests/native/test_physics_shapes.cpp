@@ -244,8 +244,9 @@ NOX_TEST(PhysicsShapes, SweepsReturnTheDistanceToEachSurfaceKind)
 		box.kind = ShapeSweep::Kind::BOX;
 		box.center = glm::vec3(0.0f, 5.0f, 0.0f);
 		box.halfExtents = glm::vec3(0.5f);
-		// Box against mesh is not supported: the sweep reports nothing (documented limit).
-		NOX_CHECK(!ShapeSweep::Sweep(physics, box, down, 10.0f, 0xFFFFFFFFu, hit));
+		// Box against mesh: the box lands on the floor after 4.5 m (box bottom at y = 4.5, floor at y = 0).
+		NOX_REQUIRE(ShapeSweep::Sweep(physics, box, down, 10.0f, 0xFFFFFFFFu, hit));
+		NOX_CHECK(std::fabs(hit.distance - 4.5f) < 0.01f);
 	}
 }
 

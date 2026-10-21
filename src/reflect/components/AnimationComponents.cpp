@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include "../../Animation.h"
+#include "../../AnimatorRuntime.h"
 #include "../../AnimationSystem.h"
 #include "../../ComponentManager.h"
 #include "../../Scene.h"
@@ -145,10 +146,41 @@ void RegisterAnimator() {
 		});
 	loop.tooltip = "Loop the selected clip (shared by every node using this model)";
 
+	// The state machine graph (JSON text, docs/animation.md). Empty = plain clip playback.
+	PropertyDesc graph = Prop("graph", PropType::String,
+		[](const SceneNode& n) {
+			const AnimationComponent* anim = n.GetAnimationComponent();
+			return PropValue(anim && anim->animator ? anim->animator->GraphJson() : std::string());
+		},
+		[](SceneNode& n, const PropValue& v) {
+			AnimationComponent* anim = n.GetAnimationComponent();
+			if (!anim) return false;
+			const std::string& text = std::get<std::string>(v);
+			if (!anim->animator) {
+				if (text.empty()) return true;
+				anim->animator = std::make_shared<AnimatorRuntime>();
+			}
+			// The graph binds to the model on the first update, so loading order does not matter.
+			anim->animator->SetGraphJson(text);
+			anim->isPlaying = !text.empty();
+			anim->isPaused = false;
+			return true;
+		});
+	graph.tooltip = "State machine as JSON: params, states (clip or 1D blend), transitions. Empty = plain clip playback.";
+
+	PropertyDesc state = Prop("state", PropType::String,
+		[](const SceneNode& n) {
+			const AnimationComponent* anim = n.GetAnimationComponent();
+			return PropValue(anim && anim->animator ? anim->animator->CurrentStateName() : std::string());
+		}, nullptr, PropNoSave);
+	state.tooltip = "Current state of the state machine";
+
 	c.properties = {
 		clip,
 		speed,
 		loop,
+		graph,
+		state,
 		Prop("playing", PropType::Bool,
 			[](const SceneNode& n) {
 				const AnimationComponent* anim = n.GetAnimationComponent();
@@ -206,6 +238,32 @@ void RegisterAnimator() {
 				system->ResumeAnimation(n.GetEntityID());
 				return true;
 			}, true),
+		Method("set_float", { PropType::String, PropType::Float },
+			[](SceneNode& n, const std::vector<PropValue>& args, PropValue&) {
+				AnimationSystem* system = ActiveAnimationSystem();
+				if (!system || !n.HasECSEntity()) return false;
+				return system->SetAnimatorFloat(n.GetEntityID(), std::get<std::string>(args[0]),
+					static_cast<float>(std::get<double>(args[1])));
+			}),
+		Method("set_bool", { PropType::String, PropType::Bool },
+			[](SceneNode& n, const std::vector<PropValue>& args, PropValue&) {
+				AnimationSystem* system = ActiveAnimationSystem();
+				if (!system || !n.HasECSEntity()) return false;
+				return system->SetAnimatorBool(n.GetEntityID(), std::get<std::string>(args[0]), std::get<bool>(args[1]));
+			}),
+		Method("set_trigger", { PropType::String },
+			[](SceneNode& n, const std::vector<PropValue>& args, PropValue&) {
+				AnimationSystem* system = ActiveAnimationSystem();
+				if (!system || !n.HasECSEntity()) return false;
+				return system->SetAnimatorTrigger(n.GetEntityID(), std::get<std::string>(args[0]));
+			}),
+		Method("current_state", {},
+			[](SceneNode& n, const std::vector<PropValue>&, PropValue& out) {
+				AnimationSystem* system = ActiveAnimationSystem();
+				if (!system || !n.HasECSEntity()) return false;
+				out = PropValue(system->AnimatorState(n.GetEntityID()));
+				return true;
+			}),
 		Method("set_morph_weight", { PropType::Int, PropType::Float },
 			[](SceneNode& n, const std::vector<PropValue>& args, PropValue&) {
 				const std::shared_ptr<Scene> model = ModelOf(n);
@@ -221,6 +279,10 @@ void RegisterAnimator() {
 				return true;
 			}),
 	};
+	// current_state() returns the state name; without this flag Lua sees no value.
+	for (MethodDesc& method : c.methods) {
+		if (method.name == "current_state") method.returnsValue = true;
+	}
 	Registry::Get().Register(std::move(c));
 }
 

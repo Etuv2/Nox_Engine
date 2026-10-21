@@ -234,7 +234,8 @@ delivered by the next Lua update, in the same order as the other events of that 
 
 | Event | Payload |
 |---|---|
-| `trigger_enter`, `trigger_exit` | `{ trigger = handle, other = handle or nil }`: a body entered or left a Trigger volume. `other` is nil when the body's node has no entity |
+| `trigger_enter`, `trigger_exit` | `{ trigger = handle, other = handle or nil }`: a body or a CharacterController entered or left a Trigger volume. `other` is nil when the body's node has no entity |
+| `controller_hit` | `{ controller = handle, other = handle or nil, normal = vec3, point = vec3 }`: a CharacterController's `move()` touched a body (`other` is its node) or level geometry (`other` nil). `normal` pushes the controller out of the hit. Reported once per body per `move()` call |
 | `contact_begin`, `contact_end` | `{ a = handle or nil, b = handle or nil }`: two bodies started or stopped touching. A side without an entity is nil; pairs with no entity on either side are not reported |
 
 ```lua
@@ -299,6 +300,49 @@ references, so they must be unique among scene nodes (the first match is used).
 
 Unknown nodes, unknown schemas, unknown fields and wrong types are reported as diagnostics; the
 rest of the data still loads. Stop restores the authored values.
+
+## Animator (skeletal animation)
+
+The `Animator` component plays the clips of a skinned model and runs its state machine (docs/animation.md). Reach it
+with `ctx:component(h, "Animator")`. Its fields and methods:
+
+| Name | Kind | Meaning |
+|---|---|---|
+| `clip` | string | selected clip name; with a graph it follows the primary clip of the current state |
+| `speed` | float | playback rate multiplier, 0 to 10 |
+| `loop` | bool | loop flag of the selected clip; shared by every node that uses the model |
+| `graph` | string | the state machine as JSON text (params, states, transitions); empty for plain clip playback |
+| `state` | string, read-only | name of the current state of the graph, or empty |
+| `playing`, `time`, `clip_count` | read-only | playback flag, clip time, clips in the model |
+| `play(name)`, `play_index(i)` | methods | start a clip as a single-clip state (a cut); with a graph this replaces the current state |
+| `stop()`, `pause()`, `resume()` | methods | playback control; `stop` clears the pose |
+| `set_morph_weight(i, w)` | method | morph target weight |
+| `set_float(name, v)`, `set_bool(name, b)` | methods | write a graph parameter of that type |
+| `set_trigger(name)` | method | set a graph trigger; the transition that uses it consumes it |
+| `current_state()` | method | name of the current state |
+
+A method that fails raises a Lua error (`Animator:set_float failed`). Setting a graph parameter on a node without a
+graph, or with a name that is not declared with that type, fails.
+
+```lua
+local anim = ctx:component(ctx:find("Shark_00"), "Animator")
+if anim.graph ~= "" then
+  anim:set_float("speed", 0.7)
+  anim:set_bool("circling", true)
+end
+```
+
+Marker events arrive as `anim.event` (once per loop, when the playhead crosses the marker's time):
+
+| Event | Payload |
+|---|---|
+| `anim.event` | `{ entity = handle, name = marker name, clip = clip name, phase = marker time in [0, 1) }` |
+
+```lua
+nox.on("anim.event", function(ctx, e)
+  if e.name == "splash" then ctx:log("splash on", ctx:name(e.entity), "in", e.clip) end
+end)
+```
 
 ## Events
 
@@ -818,13 +862,33 @@ A binding is a plain string (a key name) or a table with exactly one of these fi
 | `input.listen_result()` | the captured binding (the table shape of `binding`, plus `pad` = gamepad slot and `sign` = +1 or -1 for axes) once something was pressed, otherwise `nil`. Taking the result ends the capture |
 | `input.listen_cancel()` | ends a capture without a result |
 | `input.pads()` | the four gamepad slots: `{ slot, connected, name }` |
-| `input.device_events()` | the gamepad connections and disconnections since the last call: `{ connected, player, name }` |
+| `input.device_events()` | the gamepad connections and disconnections since the last call: `{ connected, player, name }` (the same changes `nox.on("input.device")` receives) |
+| `input.down(action [, player])` | the latched state of a button action, as `ctx:action_down` reads it (`false` when no project is loaded). Meant for tools and tests; gameplay code uses `ctx` |
+| `input.axis(action [, player])` | the latched value of an axis action, as `ctx:axis` reads it (`0` when no project is loaded) |
 | `input.save_bindings()` | `true` when the overrides were written to the user directory, otherwise `false` |
 | `input.rumble(low, high, ms [, pad])` | `true` when the gamepad in slot `pad` (default 0) accepted the rumble. `low` and `high` are motor strengths in 0..1 (clamped), `ms` is 0..5000 (default 200). `false` without a gamepad in that slot |
 
 Listening is polled: start it, then read `input.listen_result()` once per frame (the sample-arena Controls page does
-this from its menu system). Device events are polled the same way with `input.device_events()`; they are not pushed
-to a handler.
+this from its menu system).
+
+#### Input: device events
+
+Gamepad connections and disconnections are pushed to handlers as the `input.device` event, in the same frame the
+engine sees them. The payload is `{ connected = true|false, player = 0..3, name = "..." }`, where `player` is the gamepad
+slot (and so the player the pad feeds). Handlers receive the changes made while the project plays.
+
+```lua
+nox.on("input.device", function(ctx, e)
+  if e.connected then
+    ctx:log("pad " .. e.player .. " connected: " .. e.name)
+  else
+    ctx:log("pad " .. e.player .. " disconnected")
+  end
+end)
+```
+
+Changes made while stopped are not delivered to handlers; they are kept for `input.device_events()` (the last 32
+changes), which still works for code that polls.
 
 Without a loaded project these functions fail softly (`nil, error` or `false`). Rebinding changes what
 `ctx:action_down` and `ctx:axis` report from the next frame on.
@@ -837,16 +901,24 @@ Details and a short tutorial: `docs/audio.md`.
 
 | Function | Notes |
 | --- | --- |
-| `audio.play_one_shot(path, opts)` | plays a sound once, at a world position or unspatialised. `opts` (all optional): `position = {x, y, z}` (3D, heard from the current listener), `bus` (default `"sfx"`), `volume` (0..1, default 1), `pitch` (0.1..10, default 1). Returns a handle, or `nil, error`. The gain is set when the sound starts |
-| `handle:stop()` / `handle.playing` | stops the sound if it still plays / true while it plays |
-| `audio.bus_volume(name)` / `audio.bus_volume(name, v)` | reads or sets a bus volume (0..1, clamped). Returns the volume, or `nil, error` for an unknown bus |
+| `audio.play_one_shot(path, opts)` | plays a sound once, at a world position or unspatialised. `opts` (all optional): `position = {x, y, z}` (3D, heard from the current listener), `bus` (default `"sfx"`), `volume` (0..1, default 1), `pitch` (0.1..10, default 1), `attenuation` (`"linear"`, `"inverse"` or `"power"`), `min_distance`, `max_distance`, `rolloff`, `occlusion` (boolean). Returns a handle, or `nil, error`. See `docs/audio.md` for the curves and occlusion |
+| `handle:stop([fade])` / `handle.playing` / `handle:is_playing()` | stops the sound (fading out over `fade` seconds first) / true while it plays or fades |
+| `handle:set_volume(v [, seconds])` / `handle:set_pitch(p [, seconds])` | sets the sound's volume (0..1) or pitch factor (0.1..10), ramped over `seconds` when given. False once the sound has ended |
+| `audio.bus_volume(name)` / `audio.bus_volume(name, v [, seconds])` | reads or sets a bus volume (0..1, clamped), ramped over `seconds` when given. Returns the volume, or `nil, error` for an unknown bus |
 | `audio.bus_mute(name)` / `audio.bus_mute(name, muted)` | reads or sets the mute flag. Returns the flag, or `nil, error` for an unknown bus |
+| `audio.duck(bus, level [, fade])` / `audio.unduck(bus [, fade])` | lowers a bus to `level` and restores the volume it had before; `unduck` on a bus that is not ducked returns `nil, error` |
 | `audio.buses()` | array of bus names: `master`, `music`, `sfx`, `ui`, `voice`, then the project's extras |
+| `audio.play_music(path, opts)` | streams a track on the `music` bus. `opts`: `loop` (default false), `volume` (0..1, default 1), `fade_in` (seconds), `bus` (default `"music"`). Replaces the current track at once. Returns true, or `nil, error` |
+| `audio.stop_music([opts])` | stops the track; `opts.fade_out` (seconds) fades it out first. A number is accepted as the fade. Returns true |
+| `audio.crossfade_music(path, seconds [, opts])` | dip crossfade: the current track fades out over half of `seconds`, then the new one fades in over the other half. Returns true, or `nil, error` |
+| `audio.set_music_volume(v [, seconds])` | ramps the track's level. Returns true |
+| `audio.music_playing()` / `audio.music_path()` | true while a track plays, fades or waits for a crossfade / the track's path, or nil |
+| `audio.music_position()` / `audio.music_seek(seconds)` | position in seconds (nil without a track or when the format cannot report it) / seeks, returns true when the format allows it |
 
 - Paths go through AssetIO like every other sound (loose files and packs, the same sandbox as `AudioNode`).
 - Without an audio device, or for a sound that does not load, `play_one_shot` returns `nil, error`; nothing raises.
-- Bus changes reach the sounds that are already playing (`AudioNode` sources and the procedural vehicle audio) on the
-  next frame. A one-shot keeps the gain it started with.
+- Bus changes reach the sounds that are already playing (`AudioNode` sources, one-shots and the procedural vehicle
+  audio) on the next frame. Fades, ducks and music run on the unscaled frame clock, so they finish while paused.
 - The 3D listener is the current `AudioListener` node (scene component `"AudioListener": { "current": true }`), or
   the camera when there is none. The listener is published each frame, so one-shots use the same pose as the
   sources. The listener's forward direction is its local `-Z`.

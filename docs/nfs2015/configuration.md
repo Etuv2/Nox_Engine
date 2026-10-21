@@ -32,7 +32,8 @@ notes in `benchmarks.md`). Reference scenes: `scenes/nfs_night_street.json` (def
 | `NOX_FINAL_DUMP_DIR`, `NOX_FINAL_DUMP_FRAMES` | Save the final backbuffer (including HUD/UI) at listed frames |
 
 Existing hooks (`NOX_FIRST_SCENE`, `NOX_EXIT_AFTER_FRAMES`, `NOX_LOG_PASS_METRICS`,
-`NOX_FRAMEBUFFER_DUMP_*`) are unchanged.
+`NOX_FRAMEBUFFER_DUMP_*`) are unchanged. Frame-indexed hooks count scene frames (frames shown live, loading
+frames excluded); see `docs/scenes.md` "Loading".
 
 ## Scene file keys
 

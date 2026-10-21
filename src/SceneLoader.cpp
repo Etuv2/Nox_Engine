@@ -1659,6 +1659,14 @@ nlohmann::json SceneLoader::SerializeNode(const std::shared_ptr<SceneNode>& node
 			nodeJson["loop"] = audioNode->isLooping();
 			nodeJson["is3d"] = audioNode->is3D();
 			nodeJson["autoplay"] = audioNode->getAutoplay();
+			// Distance curve and occlusion are written only when they differ from the defaults, so existing scenes
+			// round-trip unchanged.
+			if (audioNode->getAttenuation() != AudioAttenuation::Linear) {
+				nodeJson["attenuation"] = AudioAttenuationName(audioNode->getAttenuation());
+			}
+			if (audioNode->getMinDistance() > 0.0f) nodeJson["min_distance"] = audioNode->getMinDistance();
+			if (audioNode->getRolloff() != 1.0f) nodeJson["rolloff"] = audioNode->getRolloff();
+			if (audioNode->getOcclusion()) nodeJson["occlusion"] = true;
 			if (!audioNode->getSoundFilePath().empty()) {
 				nodeJson["sound"] = audioNode->getSoundFilePath();
 			}
@@ -2168,13 +2176,25 @@ void SceneLoader::StoreAuthoredState(const std::shared_ptr<SceneNode>& node, con
 }
 
 std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJson, EntityID parentEntityID) {
+	m_pendingComponentNames.clear();
 	auto node = ProcessNode(nodeJson);
+	std::vector<std::string> deferredComponents = std::move(m_pendingComponentNames);
+	m_pendingComponentNames.clear();
 	json generatedChildren = std::move(m_pendingGeneratedChildren);
 	m_pendingGeneratedChildren = json();
 	if (!node) return nullptr;
 
 	// Create ECS entity for this node
 	CreateECSEntity(node, parentEntityID);
+
+	// Components that needed the entity (Animator) are applied now, with the same warnings as the first pass.
+	if (!deferredComponents.empty()) {
+		std::vector<std::string> warnings;
+		nox::reflect::DeserializeComponentsNamed(*node, nodeJson["components"], deferredComponents, &warnings);
+		for (const std::string& warning : warnings) {
+			std::cerr << "[SceneLoader] Warning: node '" << node->GetName() << "': " << warning << std::endl;
+		}
+	}
 	// Authored keys and the loaded state, after the entity exists (save compares against them).
 	StoreAuthoredState(node, nodeJson);
 
@@ -2386,6 +2406,15 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 			audioNode->setLooping(loop);
 			audioNode->setIs3D(is3d);
 			audioNode->setAutoplay(autoplay);
+			AudioAttenuation curve = AudioAttenuation::Linear;
+			const std::string curveName = nodeJson.value("attenuation", std::string("linear"));
+			if (!ParseAudioAttenuation(curveName, curve)) {
+				std::cerr << "[SceneLoader] unknown attenuation '" << curveName << "', using linear\n";
+			}
+			audioNode->setAttenuation(curve);
+			audioNode->setMinDistance(nodeJson.value("min_distance", 0.0f));
+			audioNode->setRolloff(nodeJson.value("rolloff", 1.0f));
+			audioNode->setOcclusion(nodeJson.value("occlusion", false));
 			if (!soundFile.empty()) {
 				if (!audioNode->initAudio(soundFile))
 					std::cerr << "[ERROR] Failed to load sound file: " << soundFile << std::endl;
@@ -2618,7 +2647,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 	// Registry components win over the legacy keys above (see SerializeNode).
 	if (nodeJson.contains("components")) {
 		std::vector<std::string> warnings;
-		nox::reflect::DeserializeComponents(*node, nodeJson["components"], &warnings);
+		nox::reflect::DeserializeComponents(*node, nodeJson["components"], &warnings, &m_pendingComponentNames);
 		for (const std::string& warning : warnings) {
 			std::cerr << "[SceneLoader] Warning: node '" << nodeDebugName << "': " << warning << std::endl;
 		}

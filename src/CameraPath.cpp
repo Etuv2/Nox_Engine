@@ -1,6 +1,7 @@
 #include "CameraPath.h"
 
 #include "Camera.h"
+#include "SceneFrameClock.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -66,9 +67,10 @@ CameraPath::CameraPath(const std::string& spec)
 
 void CameraPath::Apply(Camera& camera)
 {
-    if (!IsEnabled()) {
+    if (!IsEnabled() || !nox::SceneFrameClock::live || nox::SceneFrameClock::scene == 0) {
         return;
     }
+    const uint64_t frame = nox::SceneFrameClock::scene - 1;  // 0 on the first live scene frame
 
     if (!m_captured) {
         const glm::mat4 world = glm::inverse(camera.GetViewMatrix());
@@ -80,19 +82,19 @@ void CameraPath::Apply(Camera& camera)
     }
 
     if (m_kind == Kind::Dolly) {
-        const float t = std::min(static_cast<float>(m_frame) / m_frames, 1.0f);
+        const float t = std::min(static_cast<float>(frame) / m_frames, 1.0f);
         glm::mat4 world = m_startRotation;
         world[3] = glm::vec4(m_startPosition + m_delta * t, 1.0f);
         camera.SetWorldTransform(world);
     }
     else if (m_kind == Kind::Turn) {
-        const float t = std::min(static_cast<float>(m_frame) / m_frames, 1.0f);
+        const float t = std::min(static_cast<float>(frame) / m_frames, 1.0f);
         const glm::mat4 yaw = glm::rotate(glm::mat4(1.0f), glm::radians(m_turnDegrees * t), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 world = glm::translate(glm::mat4(1.0f), m_startPosition) * yaw * m_startRotation;
         camera.SetWorldTransform(world);
     }
     else if (m_kind == Kind::Orbit) {
-        const float angle = glm::radians(m_degPerFrame * static_cast<float>(m_frame));
+        const float angle = glm::radians(m_degPerFrame * static_cast<float>(frame));
         const glm::vec3 offset = m_startPosition - m_orbitCenter;
         const glm::vec3 rotated = glm::vec3(glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 1.0f, 0.0f)) *
             glm::vec4(offset, 0.0f));
@@ -101,5 +103,4 @@ void CameraPath::Apply(Camera& camera)
         camera.SetWorldTransform(glm::inverse(view));
     }
 
-    ++m_frame;
 }

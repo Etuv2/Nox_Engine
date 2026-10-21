@@ -57,6 +57,8 @@
 #include "ImguiStyle.h"
 #include "SimulationConfig.h"
 #include "PhysicsEngine.h"
+#include "audio/AudioPlayback.h"
+#include "audio/AudioSpatial.h"
 #include "RayCast.h"
 #include "BVH.h"
 #include "GizmoRayCast.h"
@@ -65,6 +67,7 @@
 #include "ui/Pointer.h"
 #include "PerformanceRecorder.h"
 #include "stb_image_write.h"
+#include "SceneFrameClock.h"
 
 namespace {
 namespace fs = std::filesystem;
@@ -157,21 +160,24 @@ void AppendSubtreeEntities(const SceneNode& node, std::vector<uint32_t>& out)
 
 void MaybeDumpSceneFramebuffer(int width, int height)
 {
-	static int frameIndex = 0;
-	static int lastDumpedFrame = -1;
-	++frameIndex;
-
 	const std::string dumpDir = GetEnvVarString("NOX_FRAMEBUFFER_DUMP_DIR");
 	if (dumpDir.empty()) {
 		return;
 	}
+	// Scene-frame indexed (docs/scenes.md "Loading"): only live frames count, never a loading screen, and a
+	// frame is dumped once even when several views render in it.
+	static uint64_t lastDumpedTotal = ~uint64_t{ 0 };
+	if (!nox::SceneFrameClock::live || lastDumpedTotal == nox::SceneFrameClock::total) {
+		return;
+	}
+	const int frameIndex = static_cast<int>(nox::SceneFrameClock::scene);
 
 	const std::string explicitFrames = GetEnvVarString("NOX_FRAMEBUFFER_DUMP_FRAMES");
 	const int dumpFrame = std::max(GetEnvVarInt("NOX_FRAMEBUFFER_DUMP_FRAME", 120), 1);
 	const bool shouldDump = !explicitFrames.empty()
 		? EnvFrameListContains(explicitFrames, frameIndex)
 		: frameIndex == dumpFrame;
-	if (!shouldDump || lastDumpedFrame == frameIndex) {
+	if (!shouldDump) {
 		return;
 	}
 
@@ -184,7 +190,7 @@ void MaybeDumpSceneFramebuffer(int width, int height)
 		<< " path=" << path.string()
 		<< " ok=" << ok
 		<< '\n';
-	lastDumpedFrame = frameIndex;
+	lastDumpedTotal = nox::SceneFrameClock::total;
 }
 
 std::string TrimScenePathValue(const std::string& value)
@@ -283,6 +289,22 @@ bool ReadSceneCameraVec3(const json& object, const char* key, glm::vec3& outValu
 #include "diagnostics/DebugDraw.h"
 #include "physics/PhysicsDebugView.h"
 #include "reflect/ReflectServices.h"
+
+namespace {
+// Occlusion ray: hits closer than the clearance to either end are ignored (the listener's own body, the source's).
+constexpr float kOcclusionClearance = 0.5f;
+
+// True when physics geometry lies between the listener (from) and the source (to).
+bool AudioSegmentBlockedByPhysics(const PhysicsEngine* physics, const glm::vec3& from, const glm::vec3& to) {
+    if (!physics) return false;
+    const glm::vec3 delta = to - from;
+    const float length = glm::length(delta);
+    if (!(length > 2.0f * kOcclusionClearance)) return false;
+    PhysicsRayHit hit;
+    if (!physics->RayCastClosest(from, delta, length, 0xFFFFFFFFu, hit)) return false;
+    return hit.distance > kOcclusionClearance && hit.distance < length - kOcclusionClearance;
+}
+} // namespace
 
 Core::Core()
 	: m_window(nullptr)
@@ -637,6 +659,14 @@ bool Core::InitializePhysics() {
 		std::cerr << "[Core] Using default simulation config.\n";
 	}
 	m_physicsEngine = std::make_shared<PhysicsEngine>(config);
+	// Audio occlusion: a 3D source is occluded when physics geometry blocks the line to the listener.
+	AudioSetRayTest([this](const glm::vec3& from, const glm::vec3& to) {
+		return AudioSegmentBlockedByPhysics(m_physicsEngine.get(), from, to);
+	});
+	// StaticCollision components name the model file of each node (the engine owns no model paths).
+	m_physicsEngine->SetModelPathResolver([this](const Scene& model) {
+		return m_modelManager ? m_modelManager->GetModelPath(&model) : std::string();
+	});
 
 	return true;
 }
@@ -843,6 +873,7 @@ void Core::Shutdown() {
 		m_playing = false;
 		m_game.reset();
 	}
+	AudioSetRayTest(nullptr);
 	if (m_physicsEngine) {
 		m_physicsEngine.reset();
 	}
@@ -903,6 +934,8 @@ void Core::DrawDebugPrimitives(ImDrawList* drawList, const std::shared_ptr<Camer
 }
 
 void Core::Update(float deltaTime) {
+	nox::SceneFrameClock::total += 1;
+	nox::SceneFrameClock::live = false;
 	// Automation server (src/automation): queued commands run here; a paused engine skips this update.
 	if (!automation::BeginFrame(*this, deltaTime)) return;
 	m_frameCpuStart = std::chrono::steady_clock::now();
@@ -938,6 +971,12 @@ void Core::Update(float deltaTime) {
 	if (IsSceneBusy()) {
 		return;
 	}
+	// Scene frame clock: a live frame has a committed scene and no loading screen over it. The commit frame and
+	// the frames that draw the loading overlay (PresentSceneOverlay, reflection probe capture) are not counted.
+	if (!m_scenePresentPending) {
+		nox::SceneFrameClock::live = true;
+		nox::SceneFrameClock::scene += 1;
+	}
 
 	// Benchmark runs use a fixed simulation step so camera paths and captures are repeatable.
 	if (m_benchmark) {
@@ -958,17 +997,22 @@ void Core::Update(float deltaTime) {
 	}
 	FrameProfiler::Mark("input");
 
-	// NOX_SWAP_SCENE=<frame>:<scene.json>: request a scene switch at that frame, like the editor does
-	// (test hook for scene-change regressions such as IBL/skybox regeneration).
+	// Audio playback (music, one-shot fades, bus ramps) advances on unscaled frame time, so fades finish while paused.
+	AudioPlaybackTick(deltaTime);
+
+	// NOX_SWAP_SCENE=<frame>:<scene.json>: request a scene switch at that scene frame of the startup scene, like the
+	// editor does (test hook for scene-change regressions such as IBL/skybox regeneration). Fires once.
 	{
 		static const std::string swapSpec = GetEnvVarString("NOX_SWAP_SCENE");
 		static int swapFrame = -1;
-		static int frame = 0;
+		static bool swapRequested = false;
 		if (swapFrame < 0 && !swapSpec.empty()) {
 			const size_t colon = swapSpec.find(':');
 			swapFrame = colon == std::string::npos ? 0 : std::atoi(swapSpec.substr(0, colon).c_str());
 		}
-		if (!swapSpec.empty() && ++frame == swapFrame) {
+		if (!swapSpec.empty() && !swapRequested && nox::SceneFrameClock::live &&
+			static_cast<int>(nox::SceneFrameClock::scene) == swapFrame) {
+			swapRequested = true;
 			RequestSceneSwap(swapSpec.substr(swapSpec.find(':') + 1));
 		}
 	}
@@ -1001,7 +1045,8 @@ void Core::Update(float deltaTime) {
 	}
 	// Scripted shots pose the camera and animated nodes after input so they always win.
 	bool cameraCut = false;
-	if (m_benchmark && m_camera && m_sceneGraph) {
+	// Benchmark timelines advance by live scene frames only (the commit and overlay frames are not measured).
+	if (m_benchmark && m_camera && m_sceneGraph && nox::SceneFrameClock::live) {
 		m_benchmark->Update(*m_camera, *m_sceneGraph);
 		if (m_benchmark->ConsumeCameraCut()) {
 			cameraCut = true;
@@ -1014,7 +1059,8 @@ void Core::Update(float deltaTime) {
 	// NOX_CAMERA_PATH: deterministic camera motion for repeatable temporal tests (CameraPath.h). It poses
 	// the camera after game and benchmark posing, so it overrides them while the path is active.
 	static CameraPath cameraPath(GetEnvVarString("NOX_CAMERA_PATH"));
-	if (cameraPath.IsEnabled() && m_camera) {
+	// The path runs on live scene frames: frame 0 is the first live frame, so it never starts during loading.
+	if (cameraPath.IsEnabled() && m_camera && nox::SceneFrameClock::live) {
 		cameraPath.Apply(*m_camera);
 	}
 
@@ -1253,6 +1299,8 @@ void Core::Render(int windowWidth, int windowHeight) {
 	}
 	if (m_benchmark) {
 		// Benchmarks measure the game view only: the editor UI is not drawn.
+		// Benchmarks draw no loading overlay: the scene's first frame is presented here, so clear the pending flag.
+		m_scenePresentPending = false;
 		RenderSceneTo(rhi::kBackBuffer, m_windowWidth, m_windowHeight, m_camera);
 		std::vector<BenchmarkRunner::PassSample> passes;
 		for (const auto& metric : m_modularRenderer->GetLastPassMetrics()) {
@@ -1260,7 +1308,9 @@ void Core::Render(int windowWidth, int windowHeight) {
 		}
 		FrameProfiler::Mark("render");
 		const float cpuMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - m_frameCpuStart).count();
-		m_benchmark->OnFrameRendered(m_windowWidth, m_windowHeight, passes, cpuMs);
+		if (nox::SceneFrameClock::live) {
+			m_benchmark->OnFrameRendered(m_windowWidth, m_windowHeight, passes, cpuMs);
+		}
 		m_quitRequested = m_benchmark->IsFinished();
 		return;
 	}
@@ -1606,6 +1656,8 @@ void Core::CommitMark(const char* name)
 
 void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup) {
 	m_commitStepIndex = 0;
+	// The new scene numbers its frames from its first live frame (SceneFrameClock).
+	nox::SceneFrameClock::scene = 0;
 	if (!newGraph || !newGraph->GetRoot()) {
 		m_sceneLoadError = "Failed to load scene: " + resolvedSceneFile;
 		return;

@@ -43,6 +43,7 @@ bool InputIntegration::Initialize(Core* core) {
     
     // Set up input contexts and callbacks
     SetupInputContexts();
+    ReloadEditorActions();
     
     m_initialized = true;
     
@@ -71,13 +72,51 @@ void InputIntegration::Update(float deltaTime) {
     
     m_inputManager->Update(deltaTime);
     UpdateMouseLockState();
+    // Editor actions are sampled once per frame; the fly camera only moves while it is active.
+    const bool flying = IsFlying();
+    if (flying) {
+        m_editorActions.Sample(true);
+    }
+    else {
+        m_editorActions.SampleInjected();   // automation input still reaches the map
+    }
+    if (flying) {
+        ApplyEditorFly(deltaTime);
+    }
+}
+
+void InputIntegration::ReloadEditorActions() {
+    std::vector<std::string> errors;
+    m_editorActions.LoadFile("config/editor_input.json", errors);
+    for (const std::string& error : errors) {
+        std::cerr << "[InputIntegration] editor_input.json: " << error << std::endl;
+    }
+}
+
+bool InputIntegration::IsFlying() const {
+    return m_initialized && m_core && m_camera && m_mouseLocked && m_core->IsEditorCameraActive();
+}
+
+void InputIntegration::ApplyEditorFly(float deltaTime) {
+    if (m_camera) {
+        m_camera->ProcessAxes(m_editorActions.Axis("editor_move_forward"), m_editorActions.Axis("editor_move_strafe"),
+            m_editorActions.Axis("editor_move_vertical"), deltaTime);
+    }
+    const float lookX = m_editorActions.Axis("editor_look_x");
+    const float lookY = m_editorActions.Axis("editor_look_y");
+    if (lookX != 0.0f || lookY != 0.0f) {
+        OnCameraLook(lookX * m_gamepadLookSensitivity, -lookY * m_gamepadLookSensitivity);
+    }
 }
 
 bool InputIntegration::ProcessEvent(const SDL_Event& event) {
     if (!m_initialized || !m_inputManager) {
         return false;
     }
-    
+    // Mouse look is relative motion, not a button or axis of the action map, so it is read straight from the event.
+    if (event.type == SDL_MOUSEMOTION && IsFlying()) {
+        OnCameraLook(static_cast<float>(event.motion.xrel), static_cast<float>(event.motion.yrel));
+    }
     return m_inputManager->ProcessEvent(event);
 }
 
@@ -116,7 +155,6 @@ void InputIntegration::OnFocusLost() {
 
 void InputIntegration::SetupInputContexts() {
     SetupGlobalContext();
-    SetupCameraContext();
     SetupEditorContext();
     SetupLightingContext();
     SetupAnimationContext();
@@ -126,7 +164,6 @@ void InputIntegration::SetupInputContexts() {
     
     // Activate default contexts
     m_inputManager->PushContext(Input::Contexts::GLOBAL);
-    m_inputManager->PushContext(Input::Contexts::CAMERA);
     m_inputManager->PushContext("editor");
     m_inputManager->PushContext("lighting");
     m_inputManager->PushContext("animation");
@@ -171,40 +208,6 @@ void InputIntegration::SetupGlobalContext() {
     context->BindKeyAction(Input::Actions::DEBUG_LIGHT_VALIDATION, SDLK_F9);
     context->RegisterActionCallback(Input::Actions::DEBUG_LIGHT_VALIDATION, 
         [this](float) { OnApplicationAction("debug_light_validation"); });
-}
-
-void InputIntegration::SetupCameraContext() {
-    auto context = m_inputManager->CreateContext(Input::Contexts::CAMERA);
-    
-    // Movement controls (HOLD type for continuous movement)
-    context->BindKeyAction(Input::Actions::CAMERA_MOVE_FORWARD, SDLK_w, Input::ActionType::HOLD);
-    context->RegisterActionCallback(Input::Actions::CAMERA_MOVE_FORWARD, 
-        [this](float deltaTime) { OnCameraMovement("forward", deltaTime); });
-    
-    context->BindKeyAction(Input::Actions::CAMERA_MOVE_BACKWARD, SDLK_s, Input::ActionType::HOLD);
-    context->RegisterActionCallback(Input::Actions::CAMERA_MOVE_BACKWARD, 
-        [this](float deltaTime) { OnCameraMovement("backward", deltaTime); });
-    
-    context->BindKeyAction(Input::Actions::CAMERA_MOVE_LEFT, SDLK_a, Input::ActionType::HOLD);
-    context->RegisterActionCallback(Input::Actions::CAMERA_MOVE_LEFT, 
-        [this](float deltaTime) { OnCameraMovement("left", deltaTime); });
-    
-    context->BindKeyAction(Input::Actions::CAMERA_MOVE_RIGHT, SDLK_d, Input::ActionType::HOLD);
-    context->RegisterActionCallback(Input::Actions::CAMERA_MOVE_RIGHT, 
-        [this](float deltaTime) { OnCameraMovement("right", deltaTime); });
-    
-    context->BindKeyAction(Input::Actions::CAMERA_MOVE_UP, SDLK_e, Input::ActionType::HOLD);
-    context->RegisterActionCallback(Input::Actions::CAMERA_MOVE_UP, 
-        [this](float deltaTime) { OnCameraMovement("up", deltaTime); });
-    
-    context->BindKeyAction(Input::Actions::CAMERA_MOVE_DOWN, SDLK_q, Input::ActionType::HOLD);
-    context->RegisterActionCallback(Input::Actions::CAMERA_MOVE_DOWN, 
-        [this](float deltaTime) { OnCameraMovement("down", deltaTime); });
-    
-    // Mouse look
-    context->BindMouseAxisAction(Input::Actions::CAMERA_LOOK);
-    context->RegisterAxisCallback(Input::Actions::CAMERA_LOOK, 
-        [this](float deltaX, float deltaY) { OnCameraLook(deltaX, deltaY); });
 }
 
 void InputIntegration::SetupEditorContext() {
@@ -332,42 +335,6 @@ void InputIntegration::SetupGamepadContext() {
     
     std::cout << "[InputIntegration] Setting up gamepad context..." << std::endl;
     
-    // Gamepad camera movement
-    context->BindAxisAction("gamepad_move_x", Input::GamepadAxis::LEFT_X);
-    context->RegisterAxisCallback("gamepad_move_x", 
-        [this](float value, float) { 
-            if (std::abs(value) > 0.1f) { // Apply deadzone
-                OnCameraMovement(value > 0 ? "right" : "left", std::abs(value) * 0.016f); // ~16ms frame time
-            }
-        });
-    
-    context->BindAxisAction("gamepad_move_y", Input::GamepadAxis::LEFT_Y);
-    context->RegisterAxisCallback("gamepad_move_y", 
-        [this](float value, float) { 
-            if (std::abs(value) > 0.1f) { // Apply deadzone
-                OnCameraMovement(value > 0 ? "backward" : "forward", std::abs(value) * 0.016f);
-            }
-        });
-    
-    // Gamepad camera look - Uses configurable sensitivity
-    context->BindAxisAction("gamepad_look_x", Input::GamepadAxis::RIGHT_X);
-    context->RegisterAxisCallback("gamepad_look_x", 
-        [this](float value, float) { 
-            if (std::abs(value) > 0.1f) {
-                // Use configurable sensitivity for horizontal look
-                OnCameraLook(value * m_gamepadLookSensitivity, 0.0f); 
-            }
-        });
-    
-    context->BindAxisAction("gamepad_look_y", Input::GamepadAxis::RIGHT_Y);
-    context->RegisterAxisCallback("gamepad_look_y", 
-        [this](float value, float) { 
-            if (std::abs(value) > 0.1f) {
-                // Use configurable sensitivity for vertical look (inverted Y)
-                OnCameraLook(0.0f, -value * m_gamepadLookSensitivity);
-            }
-        });
-    
     // Gamepad buttons
     context->BindGamepadAction("gamepad_select", Input::GamepadButton::A);
     context->RegisterActionCallback("gamepad_select", 
@@ -385,36 +352,6 @@ void InputIntegration::SetupGamepadContext() {
     
     std::cout << "[InputIntegration] Gamepad context setup complete (look sensitivity: " 
               << m_gamepadLookSensitivity << ")" << std::endl;
-}
-
-void InputIntegration::OnCameraMovement(const std::string& direction, float value) {
-    if (!m_camera || !m_mouseLocked) {
-        return;
-    }
-    
-    // Simulate the old keyboard state processing
-    const Uint8* keystate = SDL_GetKeyboardState(NULL);
-    
-    // Create a mock keystate for the camera processing
-    Uint8 mockKeystate[SDL_NUM_SCANCODES] = {0};
-    
-    // Map direction to SDL scancodes
-    if (direction == "forward") {
-        mockKeystate[SDL_SCANCODE_W] = 1;
-    } else if (direction == "backward") {
-        mockKeystate[SDL_SCANCODE_S] = 1;
-    } else if (direction == "left") {
-        mockKeystate[SDL_SCANCODE_A] = 1;
-    } else if (direction == "right") {
-        mockKeystate[SDL_SCANCODE_D] = 1;
-    } else if (direction == "up") {
-        mockKeystate[SDL_SCANCODE_E] = 1;
-    } else if (direction == "down") {
-        mockKeystate[SDL_SCANCODE_Q] = 1;
-    }
-    
-    // Use the camera's existing ProcessKeyboard method
-    m_camera->ProcessKeyboard(mockKeystate, value);
 }
 
 void InputIntegration::OnCameraLook(float deltaX, float deltaY) {
@@ -543,11 +480,9 @@ void InputIntegration::UpdateMouseLockState() {
     // This could be used to handle automatic context switching based on mouse lock state
     if (m_mouseLocked) {
         // When mouse is locked, prioritize camera controls
-        m_inputManager->SetContextEnabled(Input::Contexts::CAMERA, true);
         m_inputManager->SetContextEnabled("editor", false);
     } else {
         // When mouse is unlocked, enable editor controls
-        m_inputManager->SetContextEnabled(Input::Contexts::CAMERA, false);
         m_inputManager->SetContextEnabled("editor", true);
     }
 }

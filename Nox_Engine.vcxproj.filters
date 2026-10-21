@@ -366,6 +366,12 @@
     <ClCompile Include="src\Animation.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\AnimationPose.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AnimatorRuntime.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\AnimationController.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -535,6 +541,9 @@
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
     <ClCompile Include="src\ImGui\PerformanceWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImGui\InputActionsWindow.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
     <ClCompile Include="src\ImGui\PhysicsWindow.cpp">
@@ -852,6 +861,21 @@
     <ClCompile Include="src\audio\AudioMixer.cpp">
       <Filter>Source Files\audio</Filter>
     </ClCompile>
+    <ClCompile Include="src\audio\AudioRamp.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioSpatial.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioMusic.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioVoices.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\audio\AudioPlayback.cpp">
+      <Filter>Source Files\audio</Filter>
+    </ClCompile>
     <ClCompile Include="src\diagnostics\DebugDraw.cpp">
       <Filter>Source Files\diagnostics</Filter>
     </ClCompile>
@@ -859,6 +883,9 @@
       <Filter>Source Files\editor</Filter>
     </ClCompile>
     <ClCompile Include="src\editor\InspectorUndo.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\InputActionsModel.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
     <ClCompile Include="src\editor\Selection.cpp">
@@ -883,6 +910,9 @@
       <Filter>Source Files\physics</Filter>
     </ClCompile>
     <ClCompile Include="src\physics\ShapeSweep.cpp">
+      <Filter>Source Files\physics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\physics\StaticCollision.cpp">
       <Filter>Source Files\physics</Filter>
     </ClCompile>
     <ClCompile Include="src\physics\TriggerSystem.cpp">
@@ -945,6 +975,9 @@
     <ClCompile Include="src\scripting\LuaPhysics.cpp">
       <Filter>Source Files\scripting</Filter>
     </ClCompile>
+    <ClCompile Include="src\scripting\LuaAnimation.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
     <ClCompile Include="src\scripting\LuaRender.cpp">
       <Filter>Source Files\scripting</Filter>
     </ClCompile>
@@ -978,6 +1011,21 @@
     <ClInclude Include="src\audio\AudioMixer.h">
       <Filter>Header Files\audio</Filter>
     </ClInclude>
+    <ClInclude Include="src\audio\AudioRamp.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioSpatial.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioMusic.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioVoices.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\audio\AudioPlayback.h">
+      <Filter>Header Files\audio</Filter>
+    </ClInclude>
     <ClInclude Include="src\diagnostics\DebugDraw.h">
       <Filter>Header Files\diagnostics</Filter>
     </ClInclude>
@@ -985,6 +1033,9 @@
       <Filter>Header Files\editor</Filter>
     </ClInclude>
     <ClInclude Include="src\editor\InspectorUndo.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\InputActionsModel.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
     <ClInclude Include="src\editor\Selection.h">
@@ -1010,6 +1061,9 @@
     </ClInclude>
     <ClInclude Include="src\physics\ShapeSweep.h">
       <Filter>Header Files\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\physics\StaticCollision.h">
+      <Filter>Source Files\physics</Filter>
     </ClInclude>
     <ClInclude Include="src\physics\TriggerSystem.h">
       <Filter>Header Files\physics</Filter>
@@ -1059,6 +1113,9 @@
     <ClInclude Include="src\scripting\LuaPhysics.h">
       <Filter>Header Files\scripting</Filter>
     </ClInclude>
+    <ClInclude Include="src\scripting\LuaAnimation.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
     <ClInclude Include="src\scripting\LuaRender.h">
       <Filter>Header Files\scripting</Filter>
     </ClInclude>
@@ -1074,6 +1131,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\AnimationSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AnimationPose.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AnimatorRuntime.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\app\ProjectBootstrap.h">
@@ -1257,6 +1320,9 @@
       <Filter>Header Files\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\ImGui\PerformanceWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\InputActionsWindow.h">
       <Filter>Header Files\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\ImGui\PhysicsWindow.h">
@@ -1490,6 +1556,9 @@
     <ClInclude Include="src\SceneLoadingScreen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\SceneFrameClock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\SliceTask.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1625,6 +1694,9 @@
     <ClInclude Include="src\VehicleFX.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\SkinBounds.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\Vertex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1738,7 +1810,7 @@
     <None Include="scenes\animation_test.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
-    <None Include="config\input_config.json">
+    <None Include="config\editor_input.json">
       <Filter>Source Files\misc\configs</Filter>
     </None>
     <None Include=".gitattributes">

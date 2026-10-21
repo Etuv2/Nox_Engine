@@ -11,10 +11,15 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <vector>
+
+#include "../ComponentTypes.h"
 
 class PhysicsEngine;
+class RigidBody;
 class SceneNode;
 
 struct CharacterSettings {
@@ -23,8 +28,20 @@ struct CharacterSettings {
 	float stepOffset = 0.3f;           // highest ledge the character climbs while walking
 	float slopeLimitDegrees = 45.0f;   // steepest floor (angle from up) that counts as floor
 	bool gravity = true;               // engine applies gravity to velocity.y once per frame
+	uint32_t layer = 1;                // triggers whose mask includes this layer report the character
+	uint32_t mask = 0xFFFFFFFFu;       // the character reports triggers whose layer is in this mask
 	glm::vec3 velocity{ 0.0f };        // runtime: vertical velocity is integrated while gravity is on
 	bool onFloor = false;              // runtime: the last move ended touching a floor
+	std::weak_ptr<RigidBody> floorBody;   // runtime: the body under the feet (empty for level geometry or in the air)
+};
+
+// A contact the controller reported during a move(): the body it touched (null for CollisionWorld geometry) and the
+// direction that pushes the controller out of it. Delivered to Lua as controller_hit.
+struct ControllerHit {
+	EntityID controller = INVALID_ENTITY;
+	std::shared_ptr<RigidBody> body;
+	glm::vec3 normal{ 0.0f, 1.0f, 0.0f };
+	glm::vec3 point{ 0.0f };
 };
 
 class CharacterSystem {
@@ -47,11 +64,18 @@ public:
 	// capsule touched anything during the move. Updates node position and settings.onFloor.
 	bool Move(PhysicsEngine& physics, SceneNode& node, const glm::vec3& displacement);
 
-	// Once per frame: integrates gravity into velocity.y and moves vertically by it, for characters with
-	// gravity on. Horizontal motion is always driven explicitly with Move().
+	// Once per frame: a character standing on a moving body is carried by that body's platform velocity, then gravity
+	// is integrated into velocity.y and the character moves vertically by it (for characters with gravity on).
+	// Horizontal motion is otherwise driven explicitly with Move().
 	void Update(PhysicsEngine& physics, float dt);
 
-	void Clear() { m_entries.clear(); }
+	// Contacts reported by move() since the last call (one per touched body or level geometry per move call).
+	std::vector<ControllerHit> TakeHits();
+
+	void Clear() {
+		m_entries.clear();
+		m_hits.clear();
+	}
 
 private:
 	struct Entry {
@@ -59,4 +83,5 @@ private:
 		CharacterSettings settings;
 	};
 	std::map<const SceneNode*, Entry> m_entries;
+	std::vector<ControllerHit> m_hits;
 };

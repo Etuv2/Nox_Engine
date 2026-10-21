@@ -231,6 +231,37 @@ A drag or a typed value is one undo step. **Reset to defaults** restores the `co
 the window changes runtime values only: nothing is undoable or saved, and Stop restores the authored values. Scripts
 use the same runtime values through `nox.physics` ([lua_api.md](lua_api.md#settings-noxphysics)).
 
+## Input Actions
+
+Window > **Input Actions** edits the action maps the input system reads. It has two tabs.
+
+- **Project** edits the active project's `input.json` (the file its `project.json` names, `input` defaults to
+  `input.json`). Scripts read these actions with `ctx:action_down`, `ctx:action_pressed` and `ctx:axis`
+  ([lua_api.md](lua_api.md#input)).
+- **Editor** edits `config/editor_input.json`, the engine-owned map of the editor fly camera: `editor_move_forward`
+  (W/S, left stick Y), `editor_move_strafe` (D/A, left stick X), `editor_move_vertical` (E/Q), and the right stick
+  look. Saving this tab reloads the fly camera at once. The file ships with the editor.
+
+Each tab lists the actions (axes are marked). The right side shows the selected action:
+
+- **Add**: the name field and "+ Button" or "+ Axis" create an action. Names are identifiers.
+- **Rename**: type a new name and press Enter. **Remove action** deletes it.
+- **Bindings**: keys, pad buttons and mouse buttons for a button; negative and positive keys, and one pad axis, for an
+  axis. Type a name and press Add (or Enter), or press **Listen**, then press the input you want. The next key, mouse
+  button, pad button or pad axis is bound (a press that does not fit the action is refused with a message). **Cancel**
+  ends a listen. Use the x beside an entry to remove it.
+- **Deadzone** and **Invert pad axis** apply to axes. The deadzone commits when the slider is released.
+
+Every edit is one undo step on the editor's stack (Ctrl+Z, Ctrl+Y). **Save** writes the file in a stable layout: one
+action per line, arrays inline, actions in file order. Saving twice without edits writes the same bytes.
+
+The issue list at the bottom shows errors (unknown key or pad names, duplicate action names, bad deadzones) and
+warnings. A warning means two actions use the same input; both fire. A file that does not parse is shown read-only:
+Save refuses to overwrite it, so fix it in a text editor and press Revert.
+
+The **Live test** section shows what the game sees (player 0) while the window is open: a button shows `pressed`, an axis
+a bar with its value. It samples the same way the game does, so a binding can be checked without Play.
+
 ## Undo and redo
 
 - Ctrl+Z undoes and Ctrl+Y redoes. the **Edit** menu has the same two items.
@@ -353,6 +384,28 @@ modules every 0.25 s and reloads once a changed set has been stable for 0.4 s (s
 [lua_api.md](lua_api.md#editor-panel-and-watcher)). It runs in development (the loose source tree). A bootstrap file turns it off unless it sets `reload` to `true`, as
 packed distributions do. A rejected reload keeps the previous code and reports the reason in the Lua
 project panel and the console.
+
+### Texture and shader hot reload
+
+- **Textures** are reloaded by the editor itself, with no command. Every texture decoded from a file is checked twice
+  a second against the file's size and modification time. A changed file is decoded again into the same GPU texture,
+  so every material that uses it shows the new pixels, and the texture's handle does not change. A different size is
+  resized in place. A different channel count (for example RGB to RGBA) is refused with a console message, because
+  the GPU format would change: restart the editor to pick it up. The Content Browser thumbnail refreshes from the
+  same modification time. Each reload is logged as `[HotReload] reloaded texture <path>`.
+- **Shaders** are reloaded with **Ctrl+Shift+R** ("Reload shaders"). Every program created through the shader helpers
+  (`CreateShaderProgram`, the variant with defines, the geometry and compute helpers, and `ComputeShader::CreateFromFile`
+  with its defines) is rebuilt from its files on disk and swapped in under the same program handle. Each program is
+  logged as `[Shaders] reloaded ...`. A program whose source fails to compile or link keeps its previous version, and
+  the compiler or linker error is in the console. The uniform values the program had are set again after the reload,
+  so passes that set them once still work. Programs made from source text (`ComputeShader::CreateFromSource`, direct
+  `rhi::Gpu().CreateProgram` calls) are not reloadable and are left as they are.
+- Known limits: uniform block and shader storage bindings made with `glUniformBlockBinding` are not restored by a reload
+  (the engine's shaders use explicit `layout(binding=...)`, so they are not affected today). The surfel GI pipeline has
+  its own reload path, which is unchanged.
+- **Models** (glTF) are not hot-reloaded yet. Their `Scene` holds the GPU meshes and every node that uses the model
+  refers to it, so an in-place swap needs a full reset of the scene's state first. Reload the scene after editing a
+  model.
 
 ## Smoke test
 

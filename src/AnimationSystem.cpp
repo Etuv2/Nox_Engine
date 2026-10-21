@@ -2,6 +2,8 @@
 #include "Animation.h"
 #include "Scene.h"
 #include "SceneNode.h"
+#include "AnimationPose.h"
+#include "AnimatorRuntime.h"
 #include <iostream>
 #include <algorithm>
 #include <queue>
@@ -67,6 +69,12 @@ void AnimationSystem::Update(float deltaTime)
 
 void AnimationSystem::UpdateEntityAnimation(EntityID entity, AnimationComponent& animComp, float deltaTime)
 {
+	// Animator state machine (parameters, transitions, crossfades)
+	if (animComp.animator) {
+		UpdateAnimatorEntity(entity, animComp, deltaTime);
+		return;
+	}
+
 	// Use animation controller if available
 	if (animComp.controller) {
 		animComp.controller->Update(deltaTime);
@@ -265,6 +273,14 @@ void AnimationSystem::PlayAnimation(EntityID entity, int animationIndex, bool lo
 	animComp->animationTime = 0.0f;
 	animComp->isPlaying = true;
 	animComp->isPaused = false;
+
+	// An Animator plays the clip as a single-clip state (a cut; BlendToAnimation crossfades).
+	if (animComp->animator) {
+		auto* renderable = m_componentManager->GetRenderable(entity);
+		if (renderable && renderable->model && EnsureAnimatorBound(entity)) {
+			animComp->animator->PlayClip(*renderable->model, animationIndex, loop, 0.0f);
+		}
+	}
 }
 
 void AnimationSystem::PlayAnimationByName(EntityID entity, const std::string& name, bool loop)
@@ -295,6 +311,7 @@ void AnimationSystem::StopAnimation(EntityID entity)
 {
 	auto* animComp = m_componentManager->GetAnimation(entity);
 	if (animComp) {
+		if (animComp->animator) animComp->animator->Reset();
 		animComp->isPlaying = false;
 		animComp->isPaused = false;
 		animComp->animationTime = 0.0f;
@@ -333,6 +350,7 @@ void AnimationSystem::StopAllAnimations()
 		auto& animComp = entry.component;
 
 		// Stop the animation
+		if (animComp.animator) animComp.animator->Reset();
 		animComp.isPlaying = false;
 		animComp.isPaused = false;
 		animComp.animationTime = 0.0f;
@@ -378,8 +396,29 @@ void AnimationSystem::BlendToAnimation(EntityID entity, int animationIndex, floa
 		return;
 	}
 
-	// Simple blend - for now just switch (TODO: implement proper blending)
-	PlayAnimation(entity, animationIndex, loop);
+	// Crossfade through the animator: it blends from the pose on screen now (or from the legacy clip's current pose).
+	auto* renderable = m_componentManager->GetRenderable(entity);
+	if (!renderable || !renderable->model || animationIndex < 0 ||
+		animationIndex >= static_cast<int>(renderable->model->animations.size())) {
+		return;
+	}
+	const Scene& model = *renderable->model;
+	if (!animComp->animator) animComp->animator = std::make_shared<AnimatorRuntime>();
+	AnimatorRuntime& animator = *animComp->animator;
+	animator.Bind(model);
+	const bool legacyPlaying = animComp->isPlaying && !animator.IsRunning() &&
+		animComp->currentAnimationIndex >= 0 &&
+		animComp->currentAnimationIndex < static_cast<int>(model.animations.size());
+	std::vector<NodePose> legacyFrom;
+	if (legacyPlaying) {
+		legacyFrom = MakeBindPose(model);
+		SampleClipPose(model.animations[static_cast<size_t>(animComp->currentAnimationIndex)], animComp->animationTime, legacyFrom);
+	}
+	animator.PlayClip(model, animationIndex, loop, blendTime, legacyPlaying ? &legacyFrom : nullptr);
+	animComp->currentAnimationIndex = animationIndex;
+	animComp->animationTime = animator.PrimaryClipTime();
+	animComp->isPlaying = true;
+	animComp->isPaused = false;
 }
 
 void AnimationSystem::BlendToAnimationByName(EntityID entity, const std::string& name, float blendTime, bool loop)
@@ -394,6 +433,87 @@ void AnimationSystem::BlendToAnimationByName(EntityID entity, const std::string&
 			return;
 		}
 	}
+}
+
+void AnimationSystem::SetAnimatorGraph(EntityID entity, const std::string& json)
+{
+	auto* animComp = m_componentManager->GetAnimation(entity);
+	if (!animComp) return;
+	if (!animComp->animator) animComp->animator = std::make_shared<AnimatorRuntime>();
+	animComp->animator->SetGraphJson(json);
+	animComp->isPlaying = !json.empty();
+	animComp->isPaused = false;
+}
+
+AnimatorRuntime* AnimationSystem::EnsureAnimatorBound(EntityID entity)
+{
+	auto* animComp = m_componentManager->GetAnimation(entity);
+	auto* renderable = m_componentManager->GetRenderable(entity);
+	if (!animComp || !animComp->animator || !renderable || !renderable->model) return nullptr;
+	AnimatorRuntime& animator = *animComp->animator;
+	animator.Bind(*renderable->model);
+	if (!animator.IsRunning() && animator.GraphValid() && animComp->isPlaying) animator.StartGraph();
+	return &animator;
+}
+
+void AnimationSystem::UpdateAnimatorEntity(EntityID entity, AnimationComponent& animComp, float deltaTime)
+{
+	AnimatorRuntime* animator = EnsureAnimatorBound(entity);
+	if (!animator || !animator->IsRunning()) return;
+	auto* renderable = m_componentManager->GetRenderable(entity);
+	const Scene& model = *renderable->model;
+
+	animator->Update(deltaTime * animComp.speed, model);
+	for (const AnimatorRuntime::FiredEvent& fired : animator->TakeEvents()) {
+		// Bounded so a scene without a Lua world (editor) cannot grow the queue without limit.
+		if (m_animationEvents.size() >= 4096) m_animationEvents.clear();
+		m_animationEvents.push_back(AnimationEvent{ entity, fired.name, fired.clip, fired.phase });
+	}
+
+	// The legacy fields follow the primary clip, so the editor's clip and time readouts stay meaningful.
+	animComp.currentAnimationIndex = animator->PrimaryClip();
+	animComp.animationTime = animator->PrimaryClipTime();
+
+	if (renderable->isSkinned) {
+		for (auto& boneNode : renderable->boneNodes) {
+			if (!boneNode || boneNode->nodeIndex < 0) continue;
+			boneNode->SetAnimatedTransform(animator->LocalMatrix(boneNode->nodeIndex));
+		}
+	}
+	else if (animComp.currentAnimationIndex >= 0 && animComp.currentAnimationIndex < static_cast<int>(model.animations.size())) {
+		ApplyAnimationToTransform(entity, model.animations[static_cast<size_t>(animComp.currentAnimationIndex)], animComp.animationTime);
+	}
+}
+
+bool AnimationSystem::SetAnimatorFloat(EntityID entity, const std::string& name, float value)
+{
+	AnimatorRuntime* animator = EnsureAnimatorBound(entity);
+	return animator && animator->SetFloat(name, value);
+}
+
+bool AnimationSystem::SetAnimatorBool(EntityID entity, const std::string& name, bool value)
+{
+	AnimatorRuntime* animator = EnsureAnimatorBound(entity);
+	return animator && animator->SetBool(name, value);
+}
+
+bool AnimationSystem::SetAnimatorTrigger(EntityID entity, const std::string& name)
+{
+	AnimatorRuntime* animator = EnsureAnimatorBound(entity);
+	return animator && animator->SetTrigger(name);
+}
+
+std::string AnimationSystem::AnimatorState(EntityID entity) const
+{
+	const auto* animComp = m_componentManager->GetAnimation(entity);
+	return (animComp && animComp->animator) ? animComp->animator->CurrentStateName() : std::string();
+}
+
+std::vector<AnimationEvent> AnimationSystem::TakeAnimationEvents()
+{
+	std::vector<AnimationEvent> out;
+	out.swap(m_animationEvents);
+	return out;
 }
 
 void AnimationSystem::SetMorphWeights(EntityID entity, const std::vector<float>& weights)

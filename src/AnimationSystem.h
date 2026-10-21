@@ -1,6 +1,7 @@
 #pragma once
 #include "ComponentManager.h"
 #include "TransformSystem.h"
+#include <string>
 #include <glm/glm.hpp>
 #include <vector>
 #include <memory>
@@ -8,7 +9,16 @@
 
 class Animation;
 class AnimationController;
+class AnimatorRuntime;
 class Scene;
+
+// A marker of an Animator clip fired this step (AnimatorRuntime). Lua receives it as the "anim.event" event.
+struct AnimationEvent {
+    EntityID entity = INVALID_ENTITY;
+    std::string name;     // marker name from the graph
+    std::string clip;     // clip the marker sits in
+    float phase = 0.0f;   // normalised time of the marker in the clip
+};
 
 /**
  * Animation System - Handles all animation updates using ECS components
@@ -46,6 +56,16 @@ public:
     void BlendToAnimation(EntityID entity, int animationIndex, float blendTime, bool loop = true);
     void BlendToAnimationByName(EntityID entity, const std::string& name, float blendTime, bool loop = true);
 
+    // Animator state machine (AnimatorRuntime). The graph is JSON text; parameters and triggers drive transitions.
+    // Setters return false when the entity has no Animator or the name does not match a declared parameter.
+    void SetAnimatorGraph(EntityID entity, const std::string& json);
+    bool SetAnimatorFloat(EntityID entity, const std::string& name, float value);
+    bool SetAnimatorBool(EntityID entity, const std::string& name, bool value);
+    bool SetAnimatorTrigger(EntityID entity, const std::string& name);
+    std::string AnimatorState(EntityID entity) const;
+    // Marker events fired since the last call; the Lua world drains them once per update.
+    std::vector<AnimationEvent> TakeAnimationEvents();
+
     // Morph targets
     void SetMorphWeights(EntityID entity, const std::vector<float>& weights);
     const std::vector<float>& GetMorphWeights(EntityID entity) const;
@@ -61,12 +81,16 @@ private:
     TransformSystem* m_transformSystem;
 
     size_t m_activeAnimations = 0;
+    std::vector<AnimationEvent> m_animationEvents;
 
     // Empty morph weights for returning when entity has none
     static const std::vector<float> s_emptyMorphWeights;
 
     // Internal helpers
     void UpdateEntityAnimation(EntityID entity, AnimationComponent& animComp, float deltaTime);
+    void UpdateAnimatorEntity(EntityID entity, AnimationComponent& animComp, float deltaTime);
+    // Binds the entity's animator to its model and starts the graph when it is not running. Null without a model.
+    AnimatorRuntime* EnsureAnimatorBound(EntityID entity);
     void ApplyAnimationToTransform(EntityID entity, const Animation& anim, float time);
     void ComputeBoneMatrices(EntityID entity, const RenderableComponent& renderable,
                              std::vector<glm::mat4>& outMatrices) const;

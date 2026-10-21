@@ -280,6 +280,10 @@ private:
     void ApplyCullingState(const MeshComponent& mesh, CullingOverride override, const glm::mat4& modelTransform);
     void ApplyBakedBatchCulling(const MeshComponent& mesh, CullingOverride override, rhi::FrontFace frontFace);
     void UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform, const ShaderUniformCache& uniforms);
+    // Joint matrices for a skinned entity, built once per frame (cached). Null when the entity has no skin.
+    const std::vector<glm::mat4>* EnsureBoneMatrices(EntityID entity, const glm::mat4& meshWorldTransform);
+    // Per-frame world bounds of skinned render items, from the animated joint matrices (SkinBounds.h).
+    void UpdateSkinnedRenderItemBounds();
     void UpdateGpuTransformBuffer(bool forceFullTransformUpload = false);
     void EnsureTransformBuffer();
     void PrepareFrameTransforms();

@@ -46,7 +46,13 @@ bool ComputeShader::CreateFromFile(const std::string& computeShaderPath,
 
 	std::cout << "[ComputeShader] Loading compute shader: " << computeShaderPath << std::endl;
 
-	return CompileShader(source, defines);
+	// Remembered for the editor's Reload shaders command: the file is read again with the same defines.
+	if (!CompileShader(source, defines, computeShaderPath)) return false;
+	ShaderRecipe recipe;
+	recipe.name = computeShaderPath;
+	recipe.stages.push_back({ rhi::ShaderStage::Compute, computeShaderPath, !defines.empty(), defines, true });
+	RememberShaderRecipe(m_programID, std::move(recipe));
+	return true;
 }
 
 bool ComputeShader::CreateFromSource(const std::string& source,
@@ -397,7 +403,8 @@ rhi::UniformLocation ComputeShader::GetUniformLocation(const std::string& name) 
 	return location;
 }
 
-bool ComputeShader::CompileShader(const std::string& source, const std::vector<std::string>& defines) {
+bool ComputeShader::CompileShader(const std::string& source, const std::vector<std::string>& defines,
+	const std::string& debugName) {
 	// Clean up any existing shader
 	Cleanup();
 
@@ -407,7 +414,7 @@ bool ComputeShader::CompileShader(const std::string& source, const std::vector<s
 	// Compile and link through the device (logs the compiler output on failure).
 	rhi::ProgramDesc desc;
 	desc.stages.push_back({ rhi::ShaderStage::Compute, finalSource, "compute" });
-	desc.debugName = "compute";
+	desc.debugName = debugName;
 	m_programID = rhi::Gpu().CreateProgram(desc);
 	if (!m_programID) {
 		std::cerr << "[ComputeShader] Compute shader compilation/link failed" << std::endl;

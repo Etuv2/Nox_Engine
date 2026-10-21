@@ -106,6 +106,8 @@ uniform uint uCacheCandidates = 128u;
 uniform uint uCachePerCellBudget = 4u;
 uniform uint uCacheAlbedoCandidates = 32u;
 uniform uint uCacheAlbedoPerCell = 2u;
+// 1 = the hit-point lookups read only the hit's own grid cell (neighbour index 0), not the 27-cell walk. Off by default.
+uniform uint uCacheOwnCellOnly = 0u;
 // Bias probe (plan section 19): stride of the sampled rays (0 = off) and the cumulative bucket sums it writes.
 uniform uint uBiasProbeStride = 0u;
 // Dominant surfel of the last cache lookup (largest weight), read by the probe.
@@ -248,6 +250,15 @@ float TraceSurfaceAttributeWeight(vec3 receiverPos, vec3 receiverNormal, Surfel 
     return distanceWeight * normalWeight * planeWeight;
 }
 
+// Address of the i-th cube neighbour of a hit's base cell. The base address is computed once by the caller (it is the
+// same value SurfelWorldNeighborAddress would recompute for every neighbour), so each neighbour costs one address walk.
+bool TraceCachedNeighborAddress(SurfelGridAddress baseAddress, uint neighborIndex, out SurfelGridAddress address)
+{
+    ivec3 offset = SurfelCubeNeighborOffset(neighborIndex);
+    vec3 samplePos = baseAddress.center + vec3(offset) * max(baseAddress.cellSize, 0.001);
+    return SurfelWorldToGridAddress(samplePos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address);
+}
+
 // Indirect irradiance at a hit point from the surfel cache (same-surface surfels). Returns
 // false where the cache has nothing, so the caller can fall back to the sky term.
 bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelID, uint seed, out vec3 irradiance)
@@ -267,12 +278,12 @@ bool TraceCachedIndirectAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelI
     const uint maxCandidates = uCacheCandidates;
     const uint perCellBudget = uCachePerCellBudget;
     for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
-        if (candidates >= maxCandidates || sumWeight >= 32.0) {
+        if (candidates >= maxCandidates || sumWeight >= 32.0 || (uCacheOwnCellOnly != 0u && i > 0u)) {
             break;
         }
 
         SurfelGridAddress address;
-        if (!SurfelWorldNeighborAddress(worldPos, i, 1u, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address)) {
+        if (!TraceCachedNeighborAddress(baseAddress, i, address)) {
             continue;
         }
         uint cell = address.cell;
@@ -354,12 +365,12 @@ vec3 TraceCachedAlbedoAtSurface(vec3 worldPos, vec3 normal, uint sourceSurfelID,
     const uint maxCandidates = uCacheAlbedoCandidates;
     const uint perCellBudget = uCacheAlbedoPerCell;
     for (uint i = 0u; i < SURFEL_TRACE_MAX_NEIGHBOR_CELLS; ++i) {
-        if (candidates >= maxCandidates || sumWeight >= 6.0) {
+        if (candidates >= maxCandidates || sumWeight >= 6.0 || (uCacheOwnCellOnly != 0u && i > 0u)) {
             break;
         }
 
         SurfelGridAddress address;
-        if (!SurfelWorldNeighborAddress(worldPos, i, 1u, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent, address)) {
+        if (!TraceCachedNeighborAddress(baseAddress, i, address)) {
             continue;
         }
         uint cell = address.cell;

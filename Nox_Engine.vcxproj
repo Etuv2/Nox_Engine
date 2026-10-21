@@ -209,6 +209,8 @@
     <ClCompile Include="include\IMGUI\imgui_widgets.cpp" />
     <ClCompile Include="include\IMGUI\ImGuizmo.cpp" />
     <ClCompile Include="src\Animation.cpp" />
+    <ClCompile Include="src\AnimationPose.cpp" />
+    <ClCompile Include="src\AnimatorRuntime.cpp" />
     <ClCompile Include="src\AnimationController.cpp" />
     <ClCompile Include="src\AnimationSystem.cpp" />
     <ClCompile Include="src\app\ProjectBootstrap.cpp" />
@@ -267,6 +269,7 @@
     <ClCompile Include="src\ImGui\LightingWindow.cpp" />
     <ClCompile Include="src\ImGui\PerformanceWindow.cpp" />
     <ClCompile Include="src\ImGui\PhysicsWindow.cpp" />
+    <ClCompile Include="src\ImGui\InputActionsWindow.cpp" />
     <ClCompile Include="src\ImGui\RenderingSettingsWindow.cpp" />
     <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp" />
     <ClCompile Include="src\ImGui\StateExportWindow.cpp" />
@@ -371,9 +374,15 @@
     <ClCompile Include="src\automation\AutomationCommands.cpp" />
     <ClCompile Include="src\audio\AudioListener.cpp" />
     <ClCompile Include="src\audio\AudioMixer.cpp" />
+    <ClCompile Include="src\audio\AudioRamp.cpp" />
+    <ClCompile Include="src\audio\AudioSpatial.cpp" />
+    <ClCompile Include="src\audio\AudioMusic.cpp" />
+    <ClCompile Include="src\audio\AudioVoices.cpp" />
+    <ClCompile Include="src\audio\AudioPlayback.cpp" />
     <ClCompile Include="src\diagnostics\DebugDraw.cpp" />
     <ClCompile Include="src\editor\HierarchyModel.cpp" />
     <ClCompile Include="src\editor\InspectorUndo.cpp" />
+    <ClCompile Include="src\editor\InputActionsModel.cpp" />
     <ClCompile Include="src\editor\Selection.cpp" />
     <ClCompile Include="src\editor\Clipboard.cpp" />
     <ClCompile Include="src\passes\ParticlePass.cpp" />
@@ -382,6 +391,7 @@
     <ClCompile Include="src\physics\ShapeOverlap.cpp" />
 <ClCompile Include="src\physics\MeshCollider.cpp" />
 <ClCompile Include="src\physics\ShapeSweep.cpp" />
+    <ClCompile Include="src\physics\StaticCollision.cpp" />
     <ClCompile Include="src\physics\TriggerSystem.cpp" />
     <ClCompile Include="src\reflect\BuiltinComponents.cpp" />
     <ClCompile Include="src\reflect\Reflection.cpp" />
@@ -402,6 +412,7 @@
     <ClCompile Include="src\scripting\LuaDebug.cpp" />
     <ClCompile Include="src\scripting\LuaInputBindings.cpp" />
     <ClCompile Include="src\scripting\LuaPhysics.cpp" />
+    <ClCompile Include="src\scripting\LuaAnimation.cpp" />
     <ClCompile Include="src\scripting\LuaRender.cpp" />
     <ClCompile Include="src\scripting\LuaScene.cpp" />
     <ClCompile Include="src\scripting\LuaTime.cpp" />
@@ -409,6 +420,8 @@
   <ItemGroup>
     <ClInclude Include="src\Animation.h" />
     <ClInclude Include="src\AnimationSystem.h" />
+    <ClInclude Include="src\AnimationPose.h" />
+    <ClInclude Include="src\AnimatorRuntime.h" />
     <ClInclude Include="src\app\ProjectBootstrap.h" />
     <ClInclude Include="src\app\ProjectTemplates.h" />
     <ClInclude Include="src\app\UserSettings.h" />
@@ -471,6 +484,7 @@
     <ClInclude Include="src\ImGui\LightingWindow.h" />
     <ClInclude Include="src\ImGui\PerformanceWindow.h" />
     <ClInclude Include="src\ImGui\PhysicsWindow.h" />
+    <ClInclude Include="src\ImGui\InputActionsWindow.h" />
     <ClInclude Include="src\ImGui\RenderingSettingsWindow.h" />
     <ClInclude Include="src\ImGui\SceneHierarchyWindow.h" />
     <ClInclude Include="src\ImGui\StateExportWindow.h" />
@@ -547,6 +561,8 @@
     <ClInclude Include="src\SceneGraph.h" />
     <ClInclude Include="src\SceneLoader.h" />
     <ClInclude Include="src\SceneLoadingScreen.h" />
+    <ClInclude Include="src\SkinBounds.h" />
+    <ClInclude Include="src\SceneFrameClock.h" />
     <ClInclude Include="src\SliceTask.h" />
     <ClInclude Include="src\SceneNode.h" />
     <ClInclude Include="src\SceneRenderExtras.h" />
@@ -602,9 +618,15 @@
     <ClInclude Include="src\automation\AutomationProtocol.h" />
     <ClInclude Include="src\automation\AutomationServer.h" />
     <ClInclude Include="src\audio\AudioMixer.h" />
+    <ClInclude Include="src\audio\AudioRamp.h" />
+    <ClInclude Include="src\audio\AudioSpatial.h" />
+    <ClInclude Include="src\audio\AudioMusic.h" />
+    <ClInclude Include="src\audio\AudioVoices.h" />
+    <ClInclude Include="src\audio\AudioPlayback.h" />
     <ClInclude Include="src\diagnostics\DebugDraw.h" />
     <ClInclude Include="src\editor\HierarchyModel.h" />
     <ClInclude Include="src\editor\InspectorUndo.h" />
+    <ClInclude Include="src\editor\InputActionsModel.h" />
     <ClInclude Include="src\editor\Selection.h" />
     <ClInclude Include="src\editor\Clipboard.h" />
     <ClInclude Include="src\passes\ParticlePass.h" />
@@ -613,6 +635,7 @@
     <ClInclude Include="src\physics\ShapeOverlap.h" />
 <ClInclude Include="src\physics\MeshCollider.h" />
 <ClInclude Include="src\physics\ShapeSweep.h" />
+    <ClInclude Include="src\physics\StaticCollision.h" />
     <ClInclude Include="src\physics\TriggerSystem.h" />
     <ClInclude Include="src\procedural\ProceduralStreetGenerators.h" />
     <ClInclude Include="src\reflect\ComponentBuilders.h" />
@@ -629,6 +652,7 @@
     <ClInclude Include="src\scripting\LuaDebug.h" />
     <ClInclude Include="src\scripting\LuaInputBindings.h" />
     <ClInclude Include="src\scripting\LuaPhysics.h" />
+    <ClInclude Include="src\scripting\LuaAnimation.h" />
     <ClInclude Include="src\scripting\LuaRender.h" />
     <ClInclude Include="src\scripting\LuaScene.h" />
     <ClInclude Include="src\scripting\LuaTime.h" />
@@ -640,7 +664,7 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Diffuse irradiance.pdf" />
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="config\config.json" />
-    <None Include="config\input_config.json" />
+    <None Include="config\editor_input.json" />
     <None Include="README.md" />
     <None Include="scenes\animation_test.json" />
     <None Include="scenes\cornell_box.json" />
