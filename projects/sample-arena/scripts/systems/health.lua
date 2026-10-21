@@ -1,9 +1,12 @@
 -- Every two seconds of play (120 frames at 60 Hz) the player loses one health point.
 -- Reaching zero emits "defeated" once; the event is delivered after all systems ran.
+local Menu = require("menu")
+
 nox.system({
     name = "health",
     order = 20,
     update = function(ctx, dt)
+        if Menu.blocking() then return end
         if ctx:frame() % 120 ~= 0 then return end
         local player = ctx:find("Player")
         if not player then return end

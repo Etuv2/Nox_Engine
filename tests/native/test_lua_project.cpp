@@ -6,6 +6,7 @@
 #include "GameModule.h"
 #include "SceneGraph.h"
 #include "assets/AssetIO.h"
+#include "ui/Pointer.h"
 #include "scripting/LuaGameModule.h"
 #include "scripting/LuaWorld.h"
 
@@ -63,8 +64,8 @@ NOX_TEST(LuaProject, SampleArenaRunsThroughGameModule)
 	auto* lua = dynamic_cast<NoxLua::LuaGameModule*>(module.get());
 	NOX_REQUIRE(lua != nullptr);
 	NOX_CHECK(lua->Diagnostics().empty());
-	// mover, health (quests is an event handler), hud_input, orbit_camera, exhaust (HUD, camera and effects demo)
-	NOX_CHECK_EQ(lua->World()->SystemNames().size(), size_t(5));
+	// mover, health (quests is an event handler), hud_input, orbit_camera, exhaust (HUD, camera and effects demo), menu
+	NOX_CHECK_EQ(lua->World()->SystemNames().size(), size_t(6));
 
 	// Nothing runs before Play, even though the host calls Update every frame.
 	module->Update(1.0f / 60.0f, true, 1.0f);
@@ -72,26 +73,52 @@ NOX_TEST(LuaProject, SampleArenaRunsThroughGameModule)
 
 	module->BeginPlay();
 	const float dt = 1.0f / 60.0f;
-	for (int i = 0; i < 130; ++i) module->Update(dt, true, 1.0f);
-	NOX_CHECK_EQ(lua->World()->Frame(), uint64_t(130));
-	NOX_CHECK(sceneGraph.GetTransformSystem()->GetWorldPosition(mover).x != 0.0f);
+	const glm::vec2 viewport(1280.0f, 720.0f);
+	ui::Pointer& pointer = ui::Pointer::Get();
+	pointer.SetInjectionOnly(true);   // the host's mouse cannot disturb the test
+	// One frame as the host runs it: pointer, update, overlay (headless: the overlay records commands and hit-tests).
+	const auto frame = [&]() {
+		pointer.BeginFrame(dt);
+		module->Update(dt, true, 1.0f);
+		module->DrawOverlay(nullptr, glm::vec2(0.0f), viewport, dt);   // no draw list: records and hit-tests only
+		pointer.EndFrame();
+	};
 
-	// Health ticks once at frame 120: 3 -> 2.
+	// The title screen holds the game: mover and health return early while the menu is open.
 	const EntityHandle playerHandle = lua->World()->FindByName("Player");
 	NOX_REQUIRE(playerHandle.id == player);
 	NoxLua::Value health;
+	for (int i = 0; i < 5; ++i) frame();
+	NOX_CHECK_EQ(lua->World()->Frame(), uint64_t(5));
+	NOX_CHECK(sceneGraph.GetTransformSystem()->GetWorldPosition(mover).x == 0.0f);
+	NOX_REQUIRE(lua->World()->GetDeclaredField(playerHandle, "Health", "current", health));
+	NOX_CHECK_EQ(std::get<int64_t>(health), int64_t(3));
+
+	// Start is the first button of the title screen: centred at (640, 307) in the 1280 x 720 overlay. Hover, press, release.
+	pointer.InjectMove(glm::vec2(640.0f, 307.0f));
+	frame();
+	pointer.InjectButton(ui::PointerButton::Left, true);
+	frame();
+	pointer.InjectButton(ui::PointerButton::Left, false);
+	frame();
+	frame();
+	NOX_CHECK(sceneGraph.GetTransformSystem()->GetWorldPosition(mover).x != 0.0f);
+
+	// Health ticks once at frame 120: 3 -> 2.
+	while (lua->World()->Frame() < 120) frame();
+	NOX_CHECK_EQ(lua->World()->Frame(), uint64_t(120));
 	NOX_REQUIRE(lua->World()->GetDeclaredField(playerHandle, "Health", "current", health));
 	NOX_CHECK_EQ(std::get<int64_t>(health), int64_t(2));
 
 	// Pause freezes the frame counter and the health ticks.
 	module->SetPaused(true);
 	NOX_CHECK(module->IsPaused());
-	for (int i = 0; i < 120; ++i) module->Update(dt, true, 1.0f);
-	NOX_CHECK_EQ(lua->World()->Frame(), uint64_t(130));
+	for (int i = 0; i < 120; ++i) frame();
+	NOX_CHECK_EQ(lua->World()->Frame(), uint64_t(120));
 	module->SetPaused(false);
 
 	// Run to defeat: ticks at frames 240 and 360 bring health to zero; the event then fails the quest.
-	for (int i = 0; i < 240; ++i) module->Update(dt, true, 1.0f);
+	while (lua->World()->Frame() < 360) frame();
 	NOX_CHECK(lua->World()->FaultedNames().empty());
 	NOX_CHECK(lua->Diagnostics().empty());
 	NOX_REQUIRE(lua->World()->GetDeclaredField(playerHandle, "Health", "current", health));
@@ -99,7 +126,6 @@ NOX_TEST(LuaProject, SampleArenaRunsThroughGameModule)
 	NoxLua::Value quest;
 	NOX_REQUIRE(lua->World()->GetDeclaredField(playerHandle, "Quest", "state", quest));
 	NOX_CHECK_EQ(std::get<std::string>(quest), std::string("failed"));
-	NOX_CHECK_EQ(std::get<int64_t>(health), int64_t(0));
 
 	// Stop restores authored state and the mover's pre-play transform.
 	module->EndPlay();
