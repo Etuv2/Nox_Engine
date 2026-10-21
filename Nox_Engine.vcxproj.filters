@@ -822,6 +822,15 @@
     <ClCompile Include="src\app\EngineMain.cpp">
       <Filter>Source Files\app</Filter>
     </ClCompile>
+    <ClCompile Include="src\automation\AutomationProtocol.cpp">
+      <Filter>Source Files\automation</Filter>
+    </ClCompile>
+    <ClCompile Include="src\automation\AutomationServer.cpp">
+      <Filter>Source Files\automation</Filter>
+    </ClCompile>
+    <ClCompile Include="src\automation\AutomationCommands.cpp">
+      <Filter>Source Files\automation</Filter>
+    </ClCompile>
     <ClCompile Include="src\audio\AudioListener.cpp">
       <Filter>Source Files\audio</Filter>
     </ClCompile>
@@ -932,6 +941,12 @@
     </ClInclude>
     <ClInclude Include="src\audio\AudioListener.h">
       <Filter>Header Files\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\automation\AutomationProtocol.h">
+      <Filter>Header Files\automation</Filter>
+    </ClInclude>
+    <ClInclude Include="src\automation\AutomationServer.h">
+      <Filter>Header Files\automation</Filter>
     </ClInclude>
     <ClInclude Include="src\audio\AudioMixer.h">
       <Filter>Header Files\audio</Filter>

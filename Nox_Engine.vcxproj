@@ -361,6 +361,9 @@
     <ClCompile Include="src\ImGui\InspectorWidgets.cpp" />
     <ClCompile Include="src\TimeScale.cpp" />
     <ClCompile Include="src\app\EngineMain.cpp" />
+    <ClCompile Include="src\automation\AutomationProtocol.cpp" />
+    <ClCompile Include="src\automation\AutomationServer.cpp" />
+    <ClCompile Include="src\automation\AutomationCommands.cpp" />
     <ClCompile Include="src\audio\AudioListener.cpp" />
     <ClCompile Include="src\audio\AudioMixer.cpp" />
     <ClCompile Include="src\diagnostics\DebugDraw.cpp" />
@@ -583,6 +586,8 @@
     <ClInclude Include="src\TimeScale.h" />
     <ClInclude Include="src\app\EngineMain.h" />
     <ClInclude Include="src\audio\AudioListener.h" />
+    <ClInclude Include="src\automation\AutomationProtocol.h" />
+    <ClInclude Include="src\automation\AutomationServer.h" />
     <ClInclude Include="src\audio\AudioMixer.h" />
     <ClInclude Include="src\diagnostics\DebugDraw.h" />
     <ClInclude Include="src\editor\HierarchyModel.h" />
