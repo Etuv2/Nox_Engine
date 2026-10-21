@@ -280,6 +280,32 @@ int InputListenCancel(lua_State* L) {
 	return 0;
 }
 
+// input.down(action [, player]) -> bool and input.axis(action [, player]) -> number: the latched state of an action, as
+// ctx:action_down and ctx:axis read it (tools and tests; gameplay code uses ctx).
+int InputDownState(lua_State* L) {
+	InputMap* map = MapOf(L);
+	const char* name = luaL_checkstring(L, 1);
+	const int player = static_cast<int>(luaL_optinteger(L, 2, 0));
+	if (player < 0 || player >= kMaxPads) return luaL_error(L, "player must be 0..%d", kMaxPads - 1);
+	bool known = false;
+	const bool down = map && map->Down(name, &known, player);
+	if (map && !known) return luaL_error(L, "unknown input action '%s'", name);
+	lua_pushboolean(L, down ? 1 : 0);
+	return 1;
+}
+
+int InputAxisState(lua_State* L) {
+	InputMap* map = MapOf(L);
+	const char* name = luaL_checkstring(L, 1);
+	const int player = static_cast<int>(luaL_optinteger(L, 2, 0));
+	if (player < 0 || player >= kMaxPads) return luaL_error(L, "player must be 0..%d", kMaxPads - 1);
+	bool known = false;
+	const float value = map ? map->Axis(name, &known, player) : 0.0f;
+	if (map && !known) return luaL_error(L, "unknown input action '%s'", name);
+	lua_pushnumber(L, static_cast<lua_Number>(value));
+	return 1;
+}
+
 // input.pads() -> { { slot = 0, connected = true, name = "Xbox..." }, ... } for the kMaxPads slots
 int InputPads(lua_State* L) {
 	lua_createtable(L, kMaxPads, 0);
@@ -296,10 +322,11 @@ int InputPads(lua_State* L) {
 	return 1;
 }
 
-// input.device_events() -> { { connected = true, player = 0, name = "..." }, ... } since the last call
+// input.device_events() -> { { connected = true, player = 0, name = "..." }, ... } since the last call (the same
+// changes nox.on("input.device") receives, kept for scripts that poll)
 int InputDeviceEvents(lua_State* L) {
-	InputMap* map = MapOf(L);
-	const std::vector<InputMap::DeviceEvent> events = map ? map->TakeDeviceEvents() : std::vector<InputMap::DeviceEvent>{};
+	LuaWorld* world = static_cast<LuaWorld*>(lua_touserdata(L, lua_upvalueindex(1)));
+	const std::vector<InputMap::DeviceEvent> events = world ? world->TakeInputDeviceLog() : std::vector<InputMap::DeviceEvent>{};
 	lua_createtable(L, static_cast<int>(events.size()), 0);
 	for (size_t i = 0; i < events.size(); ++i) {
 		lua_createtable(L, 0, 3);
@@ -334,7 +361,7 @@ void InstallInputBindingsApi(lua_State* L, LuaWorld* world) {
 		{ "conflicts", InputConflicts }, { "binding_name", InputBindingName }, { "save_bindings", InputSaveBindings },
 		{ "listen_next", InputListenNext }, { "listen_result", InputListenResult },
 		{ "listen_cancel", InputListenCancel }, { "pads", InputPads }, { "device_events", InputDeviceEvents },
-		{ "rumble", InputRumble },
+		{ "rumble", InputRumble }, { "down", InputDownState }, { "axis", InputAxisState },
 	};
 	for (const auto& f : fns) {
 		lua_pushlightuserdata(L, world);

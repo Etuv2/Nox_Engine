@@ -388,7 +388,10 @@ namespace NoxLua {
 		if (m_reloadRequested) ApplyReload();
 		// Input is sampled once per frame (latched for every system and fixed substep of this frame).
 		const bool inputLive = inputEnabled && ui::Pointer::Get().HasFocus();
-		m_inputs.Sample(inputLive);
+		// Without focus the real devices are not read, but injected input (automation) still is.
+		if (inputLive) m_inputs.Sample(true);
+		else m_inputs.SampleInjected();
+		if (m_world) m_world->PushInputDeviceEvents(m_inputs.TakeDeviceEvents());
 		// Menu navigation and UI consumption are decided before gameplay runs, so a paused menu still answers the keys.
 		if (m_world && m_available) m_world->BeginUiInput(SdlInputDevices(inputLive), inputLive);
 		if (!m_world || !m_available) return UpdateResult::Continue;

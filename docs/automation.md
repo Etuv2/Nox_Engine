@@ -318,17 +318,24 @@ project's scripts.
 
 ### input.inject
 
-Injects one key or mouse-button event. It goes through SDL's event queue, so it takes the same path as real input and
-applies on the next frame.
+Injects one key, mouse-button or gamepad input. It applies on the next frame, and it reaches the action maps the same
+way a device does: a key bound to an action (`input.json`, `config/editor_input.json`) reads as held, and the project
+can read it with `input.down(action)` or `input.axis(action)` through `lua.exec`. Keys and mouse buttons are also pushed
+as SDL events, so the legacy input contexts see them too. Pad input is recorded only in the injected state (no SDL
+event), on a virtual slot that works with or without a real controller.
 
 ```
 -> {"jsonrpc":"2.0","id":17,"method":"input.inject","params":{"key":"W","state":"down"}}
 <- {"jsonrpc":"2.0","id":17,"result":{"applies_at":"next frame","key":"W","state":"down"}}
 -> {"jsonrpc":"2.0","id":18,"method":"input.inject","params":{"mouse":"left","state":"down","x":10,"y":10}}
+-> {"jsonrpc":"2.0","id":19,"method":"input.inject","params":{"pad":0,"button":"x","state":"down"}}
+-> {"jsonrpc":"2.0","id":20,"method":"input.inject","params":{"pad":0,"axis":"leftx","value":0.8,"state":"down"}}
 ```
 
-`key` takes an SDL key name (`W`, `Space`, `Left`, ...). `mouse` is `left`, `right` or `middle`. Hold a key by
-sending `down`, then `up` later. Actions (`action`) are not supported yet and return -32602.
+`key` takes an SDL key name (`W`, `Space`, `Left`, ...). `mouse` is `left`, `right`, `middle`, `x1` or `x2`. `pad` is a
+gamepad slot (0..3) and takes `button` (an SDL controller button name) or `axis` (an SDL controller axis name, with
+`value` in -1..1, default 1); `up` releases it (an axis returns to 0). Hold an input by sending `down`, then `up` later.
+Give exactly one of `key`, `mouse` or `pad`. Actions (`action`) are not supported and return -32602.
 
 ### editor.select
 
