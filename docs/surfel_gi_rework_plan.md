@@ -2064,3 +2064,85 @@ Camera (Cornell, `dolly:0.6,0,0:60` and `orbit:90`, frames 1 to 100 every frame,
 - Keep Ultra as the reference-quality tier. Do not use it for play (70 ms on scene.json).
 - Before tuning further: remove the cache's 27-cell address walk (fewer neighbour cells per lookup, or a precomputed neighbour table) to reach the 4 ms target, and measure the emitter cut against a far-emitter analytic scene. Then decide whether Medium should keep the 40 m cut.
 - The energy band on scene.json and NFS needs longer convergence or a lower steady bias; neither is a tier setting. Report the scene.json and NFS energies as below the band, as they are.
+
+## 22. Motion handling
+
+Status: investigated, partly instrumented, not fixed. The brief's targets (lighting response well under 1 s, revealed areas converging in well under 1 s, no lag on moving objects) are not met. Every change in this round is behind a knob that defaults to off, so the Medium output and cost are unchanged by default.
+
+### 22.1 Setup
+
+- Moving-object scene `scenes/test_moving_objects.json`: the surfel Cornell validation scene plus a sphere node named `Mover`. Project `projects/surfel-motion` moves `Mover` on x = 0.7 sin(pi/2 t) at (y 0.75, z -0.2) with a Lua system. The project also pins the camera to the scene's authored pose. Without that, the Game module's default camera rendered the scene black (checked: the same scene without the `project` key renders). A project scene cannot use `NOX_CAMERA_PATH`.
+- Dim variants for readable lighting and motion tests: `scenes/test_s2_cornell_dim.json` and `scenes/test_s2_moving_dim.json` (exposure 0.25). At exposure 1 the Cornell box saturates, so region means cannot show a change.
+- Runs: Release, `NOX_FIXED_DT`, 1920x1080, manual exposure, the surfel term (composite debug 4) for motion, the full composite (debug 0) for the light step. Single runs unless marked. The GPU was shared with other workers, so timings are not reported.
+
+### 22.2 What the code does (findings)
+
+- Moving objects are traced at their current pose. The surfel trace uses the incremental TLAS (`RTSceneResources::RebuildIncrementalInstanceList`): changed entities rewrite their instance transforms each transform publication, and the instance list is re-uploaded when topology is dirty. Surfels on moving geometry follow their transform record (`update_surfels.comp`). So the stale-geometry failure of brief item 3 is not in this path. What is not handled is static surfels near a moved object: they are not invalidated, only re-estimated by their own rays, which is slow (see below).
+- The ray budget is oversubscribed. On Cornell, `requestedRays` is 4.3k to 6.7k per frame against a budget of 2048, with about 2150 live surfels. `allocate_rays.comp` shares the budget in proportion to the requests, so every surfel gets about 45% of its request and young surfels get no priority. `scripts/validate_surfel_ray_allocation_priority.py` (already failing on main) checks for the same gap.
+- Dormancy (`request_rays.comp`): a surfel with cv < 0.05 and age > 32 requests one ray every 8 frames, whatever its short and long means say. The long mean (rate floor 0.02) can then move at most once per 8 frames.
+- Lighting change (`update_surfels.comp`, `integrate.comp`, `msme.comp`): visible surfels lose 54% of their confidence, are flagged SURFEL_NEW (long rate 0.6 for that frame), and get a long-rate floor of 0.5 times the lighting change. Screen surfels have no catch-up term; only world surfels do (plan 19).
+- Recycling (`recycle_surfels.comp`, code reading only, not measured): the stale term starts after 30 unseen frames and reaches full weight at 180, and the cull chance is 0.5 times the score. A surfel unseen for about 3 s is culled within a few frames of reaching full staleness unless the population is under its target.
+- Orbit four-frame cycle (plan 20.6): not a capture bug. The orbit argument of `NOX_CAMERA_PATH` is degrees per frame (`src/CameraPath.cpp`, angle = degPerFrame times frame), so `orbit:90` returns to the same pose every four frames. The one-bright, three-dark pattern follows the poses. Not re-captured, no tool change.
+
+### 22.3 Measurements (baseline, before any change)
+
+| Case | Metric | Value |
+|---|---|---|
+| Dolly 0.6 m over 60 frames, Cornell, surfel term | frame-to-frame mean abs diff (0 to 255), frames 5 to 100: mean / median / p95; second difference mean | 0.70 / 0.89 / 1.22; 0.99 |
+| Orbit 2 deg per frame, Cornell, surfel term | same, frames 5 to 100 | 1.36 / 1.04 / 3.85; 2.07 (dominated by geometry motion, not a GI-only number) |
+| Moving sphere, dim scene, static camera, interior crop, frames 40 to 200 | mean abs diff | 0.62 (static control, same crop: 0.26) |
+
+Light step (dim scene, sun scaled by 0.25 at frame 121, interior luminance mean, full composite):
+
+| Run | Level before step | Peak after step | Level at frame 251 |
+|---|---|---|---|
+| baseline, repeat 1 | 119.4 | 125.1 at frame 146 (+5.7) | 120.5 |
+| baseline, repeat 2 | 123.5 | 127.2 at frame 131 (+3.7) | 118.0 |
+
+- The step does not produce an immediate drop. The region rises by 2 to 6 units for 30 to 60 frames, then decays. The steady level after the step is lower than before, as expected.
+- A settle metric (frames until the distance to the run's last frame falls below 10% of its value at the step) gave 134 to 139 frames in every variant below. That is more than twice the 60-frame target.
+- Run-to-run spread of the pre-step level for an identical scene is 4 to 5 units (119.4, 123.5, 124.2). The cold-start state is not reproducible to better than about 3%, which limits what single-run comparisons can show.
+- Coverage correlates with the bump: `underCoveredTiles` rose from 73 at frame 121 to 135 at 127 and 203 at 153, then fell to 77 by 181. `spawned` is 0 in this window: spawns are blocked by the population target (about 2150 live), so the coverage dip is not refilled by spawning.
+
+### 22.4 Variants tried (dim light step, single runs; settle metric and peak above the pre-step level)
+
+| Variant | Knob or edit | Peak above pre-step | Settle (frames) |
+|---|---|---|---|
+| baseline | none | +3.3 | 139 |
+| screen catch-up gain 0.15 | `NOX_SURFEL_GI_SCREEN_CATCHUP=0.15` | +5.6 | 137 |
+| dormancy gate 0.05 | `NOX_SURFEL_GI_DORMANT_GAP=0.05` | not recorded | 138 |
+| lighting-change NEW flag off | edit in `update_surfels.comp` (reverted) | +5.9 | 138 |
+| lighting-change confidence drop off | edit in `update_surfels.comp` (reverted) | +4.3 | 139 |
+| lighting-change long-rate floor off | edit in `msme.comp` (reverted), repeats 1 and 2 | +4.6 and +2.1 | 134 (first run) |
+| ray budget 8192 (Cornell validation scene, exposure 1) | `NOX_SURFEL_GI_RAY_BUDGET=8192` | smoother rise, no clean step | not computed |
+
+None of these changes the response time to the 60-frame target, and none is clearly better than the baseline. The lighting-change long-rate floor (removed in one edit) may be part of the bump, but two repeats disagree (+4.5 and +2.1 against +3.7 and +5.7 for the baseline), so this is not established. The catch-up variant made the bump larger in its one run, so it stays off.
+
+### 22.5 Changes in this round (all default off)
+
+- `NOX_SURFEL_GI_SCREEN_CATCHUP` and `NOX_SURFEL_GI_SCREEN_CATCHUP_MAX`: the world-surfel MSME catch-up (plan 19) for screen surfels. `integrate.comp` (uniforms `uScreenCatchUp`, `uScreenCatchUpMax`), `SurfelGIManager.h`, `ModularRenderer.cpp`, `SurfelGIPipeline.cpp`. Default 0, which is the old code path exactly.
+- `NOX_SURFEL_GI_DORMANT_GAP`: a converged surfel stays awake while its short and long means differ by more than this relative level (`request_rays.comp`, uniform `uDormantGap`). Default 0 (no gate).
+- Test assets: `scenes/test_moving_objects.json`, `scenes/test_s2_cornell_dim.json`, `scenes/test_s2_moving_dim.json`, `projects/surfel-motion/` (project.json and scripts/main.lua).
+- Evidence images: `captures/surfel_motion/moving_sphere_contact_sheet.png` (frames 40 to 180, interior crop, moving sphere; no visible trailing shadow or ghost in the sequence), `captures/surfel_motion/light_step_dim_frame140.png` (dim Cornell, frame 140, after the step).
+
+### 22.6 Verification
+
+- Default path unchanged by construction (knobs at 0). Not timed. The dormancy gate adds a few ALU operations per surfel in `request_rays`.
+- `tools/CheckNoRawGL.ps1`: "No raw OpenGL outside src/rhi/gl."
+- `tools/CheckGenericExe.ps1`: prints the executable path (no racing markers).
+- `python tools/CheckVcxprojSources.py`: "vcxproj source check OK: 233 ClCompile, 215 ClInclude entries match CMakeLists.txt."
+- `scripts/validate_surfel_gi_static.py`: OK. `scripts/validate_surfel_gi_correctness.py`: OK.
+- All `scripts/validate_surfel_*.py`: 9 pass, 13 fail (same count as plan 20.7 for main). The failures are source-text contracts for older designs; they were not changed.
+- `build/vs2022-x64/Release/nox_tests.exe`: 277 tests, 3 failed (the known `test_asset_io.cpp` CRLF fixture checks).
+- Editor smoke (`NOX_EDITOR_SMOKE=1 NOX_EXIT_AFTER_FRAMES=150 Nox_Engine.exe --preset editor`): 14 PASS, 0 FAIL.
+- Race (`NOX_DRIVE_AUTOPILOT=1 NOX_FIXED_DT=0.0166666667 NOX_EXIT_ON_FINISH=1 NOX_FIRST_SCENE=scenes/nfs_sprint.json Nox_Engine.exe --game`): `[Race] Finished in 47.4994 s (new record)`.
+
+### 22.7 Not done and open
+
+- Lighting response: about 135 frames to settle in every variant, against 60. The bump of 2 to 6 units is not explained. The likely places are the lighting long-rate floor and the emitter next-event path (the light panel in the Cornell scene is not scaled by the step), but neither was isolated.
+- Young surfels: no ray priority. The fix belongs in `allocate_rays.comp` (a young class granted in full before the proportional share). Not built.
+- Revealed areas after a camera turn: not measured. The cold-start spread (about 3%) makes a single run unreliable for that comparison, so the planned orbit-then-return test needs repeats.
+- Moving objects: no quantitative metric. The contact sheet is qualitative. A GI-only metric needs a paired run with GI off to remove geometry motion.
+- Static surfels near a moved object are not invalidated (only re-estimated by their own rays).
+- Recycling: the stale grace and the cull chance were read, not changed or measured.
+- Cost: the brief's +0.3 ms budget was not measured in this round because the default path is unchanged.
