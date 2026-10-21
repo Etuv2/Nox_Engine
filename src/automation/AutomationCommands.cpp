@@ -16,7 +16,9 @@
 #include "assets/AssetIO.h"
 #include "reflect/Reflection.h"
 #include "render/RenderSettingsTable.h"
+#include "scripting/LuaGameModule.h"
 #include "scripting/LuaRuntime.h"
+#include "scripting/LuaWorld.h"
 
 #include <SDL/SDL.h>
 #include <lua.h>
@@ -375,6 +377,43 @@ NoxLua::Runtime& AutomationVm()
 	// command does not reach; see docs/automation.md.
 	static NoxLua::Runtime vm(NoxLua::RuntimeLimits{}, nullptr);
 	return vm;
+}
+
+// The VM of the loaded Lua project world, or null with the reason in `reason`.
+NoxLua::Runtime* ProjectVm(Core& core, std::string& reason)
+{
+	auto* lua = dynamic_cast<NoxLua::LuaGameModule*>(core.GetGameModule());
+	if (!lua) {
+		reason = "no Lua project is loaded for this scene (pass \"isolated\": true to use the separate automation VM)";
+		return nullptr;
+	}
+	NoxLua::LuaWorld* world = lua->MutableWorld();
+	if (!world || !lua->IsAvailable()) {
+		reason = "the Lua project did not load (see log.tail and the editor diagnostics)";
+		return nullptr;
+	}
+	if (world->Loading()) {
+		reason = "the Lua project is still loading; retry after engine.info reports loading=false";
+		return nullptr;
+	}
+	return &world->GetRuntime();
+}
+
+// The first line of a Lua error message; the rest (the traceback) goes to the error's data.
+std::string FirstLine(const std::string& message)
+{
+	const size_t nl = message.find('\n');
+	return nl == std::string::npos ? message : message.substr(0, nl);
+}
+
+json TracebackData(const NoxLua::RunError& error)
+{
+	json data = json::object();
+	const size_t nl = error.message.find('\n');
+	if (nl != std::string::npos) data["traceback"] = error.message.substr(nl + 1);
+	if (error.budgetExceeded) data["budget_exceeded"] = true;
+	if (error.memoryExceeded) data["memory_exceeded"] = true;
+	return data.empty() ? json() : data;
 }
 
 json LuaValueToJson(lua_State* L, int index)
@@ -759,22 +798,37 @@ void RegisterTools(Dispatcher& d)
 		return r;
 	});
 
+	// Runs a chunk in the project world's VM (the VM the game scripts run in, with the nox API), or with
+	// "isolated": true in the separate automation VM. Errors carry the first line as message and the traceback
+	// in data.traceback.
 	d.Register("lua.exec", [](Invocation& inv) -> json {
+		Core& core = RequireCore(inv);
 		const std::string code = RequireString(inv.params, "code");
 		const std::string chunk = OptString(inv.params, "chunk", "=automation");
-		NoxLua::Runtime& vm = AutomationVm();
-		if (!vm.Ok()) EngineError("Lua VM did not start: " + vm.InitError());
+		const bool isolated = OptBool(inv.params, "isolated", false);
+
+		NoxLua::Runtime* vm = nullptr;
+		if (isolated) {
+			vm = &AutomationVm();
+			if (!vm->Ok()) EngineError("isolated Lua VM did not start: " + vm->InitError());
+		}
+		else {
+			std::string reason;
+			vm = ProjectVm(core, reason);
+			if (!vm) EngineError(reason);
+		}
+
 		int ref = 0;
 		std::string error;
-		if (!vm.Compile(code, chunk, ref, error)) throw RpcError{ rpc::kEngineError, error, nullptr };
-		lua_State* L = vm.State();
-		const int base = vm.StackTop();
+		if (!vm->Compile(code, chunk, ref, error)) throw RpcError{ rpc::kEngineError, error, nullptr };
+		lua_State* L = vm->State();
+		const int base = vm->StackTop();
 		NoxLua::RunError runError;
-		const bool ok = vm.CallRef(ref, [](lua_State*) { return 0; }, 1, &runError);
-		vm.Unref(ref);
+		const bool ok = vm->CallRef(ref, [](lua_State*) { return 0; }, 1, &runError);
+		vm->Unref(ref);
 		if (!ok) {
 			lua_settop(L, base);
-			throw RpcError{ rpc::kEngineError, runError.message, nullptr };
+			throw RpcError{ rpc::kEngineError, FirstLine(runError.message), TracebackData(runError) };
 		}
 		json result = LuaValueToJson(L, -1);
 		lua_settop(L, base);

@@ -1,5 +1,32 @@
 # Automation server and MCP tools
 
+## Quick start for AI agents
+
+Use the MCP tools when Claude Code lists them (`mcp__nox__*`). The same calls from a shell are
+`python tools/nox_mcp/nox_client.py <method> '<params json>'`.
+
+The five most useful calls, in order:
+
+1. `engine_launch` with `{"preset": "editor", "scene": "scenes/automation_e2e.json"}` (or `"mode": "game"`).
+   Starts the engine with `--automation`; its log goes to `captures/automation/engine_<port>.log`.
+2. `engine_wait_ready` with `{"timeout_s": 180}`. Returns `engine.info` once the scene has loaded.
+   Shell: `engine.info`.
+3. `scene_tree` with `{"depth": 2}`. Lists node ids, names, types and components. Use those ids for
+   `node_get`, `node_set`, `node_find` and the rest.
+4. `render_screenshot` with `{"path": "captures/automation/look.png"}`. Returns the frame, with the UI, as an image.
+   Shell: `render.screenshot`.
+5. `log_tail` with `{"lines": 50}`. Shows errors and warnings after each change. Shell: `log.tail`.
+
+Finish with `engine_stop`.
+
+**Headless-ish captures.** There is no offscreen renderer. Frames are produced only while the engine's window is
+visible. Keep it open and not minimized, and capture at a small size with
+`engine_launch` `extra_args: ["--width", "1280", "--height", "720"]`. A minimized or hidden window stops the main loop,
+so `engine.step`, `render.screenshot` and every other command wait and then fail after 120 s with -32000. Making those
+work while minimized is not done. `engine.pause` does not stop screenshots: rendering continues while paused.
+
+The engine has no authentication and listens on 127.0.0.1 only. See Safety below.
+
 The engine can be driven and inspected from outside while it runs. An in-engine JSON-RPC server
 answers commands about the scene, nodes, render settings, log, camera and input. A small MCP server
 (`tools/nox_mcp/server.py`) exposes the same commands to Claude Code, and `tools/nox_mcp/nox_client.py`
@@ -249,16 +276,34 @@ The last `lines` engine log lines (stdout and stderr, default 200), with level `
 Runs a Lua chunk and returns its first return value (strings, numbers, booleans and null; other values come back as
 `"<table>"` style type names).
 
+By default the chunk runs in the **project world's VM**: the same VM the game scripts run in, with the `nox` API and
+the globals the scripts set. Values persist between calls. It runs at the main-thread safe point, like every command.
+Parameters:
+
+- `code` (required), `chunk` (name used in error messages, default `=automation`).
+- `isolated` (default false). `true` runs the chunk in the separate automation VM instead. That VM has no project
+  scripts, no `nox` API and none of the project's globals.
+
 ```
 -> {"jsonrpc":"2.0","id":14,"method":"lua.exec","params":{"code":"return 1 + 2"}}
 <- {"jsonrpc":"2.0","id":14,"result":3}
--> {"jsonrpc":"2.0","id":15,"method":"lua.exec","params":{"code":"error('boom')"}}
-<- {"jsonrpc":"2.0","id":15,"error":{"code":-32000,"message":"=automation:1: boom\nstack traceback: ..."}}
+-> {"jsonrpc":"2.0","id":15,"method":"lua.exec","params":{"code":"local function f() error('boom') end\nf()"}}
+<- {"jsonrpc":"2.0","id":15,"error":{"code":-32000,"message":"=automation:1: boom",
+    "data":{"traceback":"stack traceback:\n\t[C]: in function 'error'\n\t=automation:1: in local 'f' ..."}}}
 ```
 
-The chunk runs in its own VM with the engine's usual memory and instruction limits. It opens the base, string, table,
-math, utf8 and coroutine libraries (no `io` or `os`) and has no project scripts. Project worlds keep their own VM;
-this command does not reach it yet.
+The first line of a Lua error is the `message`; the rest (the traceback) is `data.traceback`. `data.budget_exceeded`
+and `data.memory_exceeded` are set when the VM's limits stopped the chunk.
+
+If the scene has no Lua project, the default form fails with -32000 and says so; use `"isolated": true` there. A
+project that is still loading gets the same error until `engine.info` reports `loading: false`.
+
+Both VMs use the project sandbox (`OpenSandbox` in `src/scripting/LuaRuntime.cpp`): the base, string, table, math,
+utf8 and coroutine libraries only. `io` and `os` are absent, `dofile` and `loadfile` are removed, `load` accepts text
+chunks only, and `string.dump` is removed.
+
+`lua.exec` can change what the running game does, so treat it as a development tool with the same trust as the
+project's scripts.
 
 ### camera.get / camera.set
 
@@ -337,7 +382,7 @@ It launches the engine on `scenes/automation_e2e.json` and checks each command g
   programs, and do not run it with an untrusted scene.
 - `scene.save` with a path and `render.screenshot` with a path write where asked, relative to the working directory.
   Keep them inside the repository's `captures/` or a scratch directory.
-- `lua.exec` runs arbitrary Lua in its own VM. That VM has no `io` or `os`, but the base library still has
-  `loadfile` and `dofile`, which can read any file the engine's user can read. It does not change the project's
-  scripts or the scene's Lua, and it cannot write files.
+- `lua.exec` runs Lua in the project world (default) or in the isolated VM. Both use the project sandbox: no `io`,
+  `os`, `dofile` or `loadfile`, so Lua cannot read or write files. The default form can change the running game, so
+  use it only on scenes you control.
 - The server is off unless the flag or variable is set. Nothing changes when it is off: the hook returns at once.

@@ -98,11 +98,41 @@ def main():
                 print("engine still running at the end: killing it", flush=True)
                 proc.kill()
                 proc.wait(timeout=20)
+    check_without_project()
     failed = [name for name, ok in results if not ok]
     print(f"\n{len(results) - len(failed)} passed, {len(failed)} failed", flush=True)
     if failed:
         print("failed: " + ", ".join(failed))
     return 0 if not failed else 1
+
+
+def check_without_project():
+    """A scene with no Lua project: lua.exec must say so, and still work with isolated=true."""
+    port = PORT + 1
+    env = dict(os.environ)
+    env["NOX_FIRST_SCENE"] = "scenes/cornell_box.json"
+    command = [str(EXE), f"--automation={port}", "--preset", "editor"]
+    log_path = LOG_DIR / f"e2e_noproject_{port}.log"
+    with open(log_path, "w", encoding="utf-8", errors="replace") as log_file:
+        proc = subprocess.Popen(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
+                                stdout=log_file, stderr=subprocess.STDOUT)
+        try:
+            with NoxClient(port=port, timeout=150) as nox:
+                wait_ready(nox, proc)
+                try:
+                    nox.call("lua.exec", {"code": "return 1"})
+                    check("lua.exec without a project world reports it", False, "no error returned")
+                except NoxError as exc:
+                    check("lua.exec without a project world reports it",
+                          exc.code == -32000 and "no Lua project" in exc.message, f"message={exc.message!r}")
+                check("lua.exec isolated works without a project world",
+                      nox.call("lua.exec", {"code": "return 1 + 2", "isolated": True}) == 3)
+                nox.call("engine.quit")
+            proc.wait(timeout=60)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=20)
 
 
 def run_checks(proc):
@@ -165,13 +195,29 @@ def run_checks(proc):
         logs = nox.call("log.tail", {"lines": 50})
         check("log.tail returns engine log lines", len(logs.get("lines", [])) > 0, f"total={logs.get('total')}")
 
-        check("lua.exec evaluates Lua", nox.call("lua.exec", {"code": "return 1 + 2"}) == 3)
+        # Lua: the project world (the VM the sample project's scripts run in) and the isolated VM
+        check("lua.exec evaluates Lua in the project world", nox.call("lua.exec", {"code": "return 1 + 2"}) == 3)
+        check("project world has the nox API", nox.call("lua.exec", {"code": "return type(nox)"}) == "table")
+        nox.call("lua.exec", {"code": "__e2e_value = 'set by an earlier call'"})
+        readback = nox.call("lua.exec", {"code": "return __e2e_value"})
+        check("a value set in one lua.exec is read back by the next (same project VM)",
+              readback == "set by an earlier call", f"read {readback!r}")
+        check("isolated VM does not see the project world's globals",
+              nox.call("lua.exec", {"code": "return __e2e_value", "isolated": True}) is None)
+        check("isolated VM evaluates Lua", nox.call("lua.exec", {"code": "return 1 + 2", "isolated": True}) == 3)
+        check("isolated VM has no nox API", nox.call("lua.exec", {"code": "return type(nox)", "isolated": True}) == "nil")
+        check("sandbox: dofile and loadfile are absent in the project VM",
+              nox.call("lua.exec", {"code": "return tostring(dofile) .. ' ' .. tostring(loadfile)"}) == "nil nil")
+        check("sandbox: dofile and loadfile are absent in the isolated VM",
+              nox.call("lua.exec", {"code": "return tostring(dofile) .. ' ' .. tostring(loadfile)", "isolated": True}) == "nil nil")
         try:
-            nox.call("lua.exec", {"code": "error('e2e')"})
+            nox.call("lua.exec", {"code": "local function inner() error('e2e-traceback') end\ninner()"})
             check("lua.exec reports Lua errors as JSON-RPC errors", False, "no error returned")
         except NoxError as exc:
-            check("lua.exec reports Lua errors as JSON-RPC errors", exc.code == -32000 and "e2e" in exc.message,
-                  f"code={exc.code}")
+            traceback = (exc.data or {}).get("traceback", "")
+            check("lua.exec error carries the message and a traceback",
+                  exc.code == -32000 and "e2e-traceback" in exc.message and "stack traceback" in traceback,
+                  f"code={exc.code} message={exc.message!r} traceback_lines={len(traceback.splitlines())}")
 
         # Frame control: exactly N simulation frames per step
         nox.call("engine.pause")

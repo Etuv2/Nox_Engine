@@ -1,6 +1,7 @@
 {
   "exposure": 1,
   "gamma": 2.2,
+  "project": "projects/sample-arena/project.json",
   "nodes": [
     {
       "name": "E2E_Box",
