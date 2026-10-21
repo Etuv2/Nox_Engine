@@ -44,9 +44,6 @@ bool InputIntegration::Initialize(Core* core) {
     // Set up input contexts and callbacks
     SetupInputContexts();
     
-    // Load configuration if available
-    LoadConfiguration();
-    
     m_initialized = true;
     
     std::cout << "[InputIntegration] Initialized successfully" << std::endl;
@@ -115,29 +112,6 @@ void InputIntegration::OnFocusLost() {
     if (m_mouseLocked) {
         SetMouseLocked(false);
     }
-}
-
-bool InputIntegration::LoadConfiguration(const std::string& configPath) {
-    m_configPath = configPath;
-    
-    if (m_inputManager) {
-        bool result = m_inputManager->LoadConfiguration(configPath);
-        if (result) {
-            std::cout << "[InputIntegration] Loaded input configuration" << std::endl;
-        } else {
-            std::cout << "[InputIntegration] Using default input configuration" << std::endl;
-        }
-        return result;
-    }
-    
-    return false;
-}
-
-bool InputIntegration::SaveConfiguration(const std::string& configPath) {
-    if (m_inputManager) {
-        return m_inputManager->SaveConfiguration(configPath);
-    }
-    return false;
 }
 
 void InputIntegration::SetupInputContexts() {

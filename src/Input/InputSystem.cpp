@@ -921,49 +921,6 @@ void InputManager::InitializeGamepads() {
     std::cout << "[InputManager] Total controllers connected: " << m_gamepadStates.size() << std::endl;
 }
 
-// Configuration Loading/Saving (TODO: Implement JSON serialization)
-bool InputManager::LoadConfiguration(const std::string& configPath) {
-    m_configPath = configPath;
-    
-    try {
-        // Shipped defaults plus the user's saved changes (SaveConfiguration writes the user copy).
-        const json config = UserSettings::LoadJsonWithUserOverride(configPath, configPath);
-        if (!config.is_object()) {
-            std::cerr << "[InputManager] Could not open input config file: " << configPath << std::endl;
-            return false;
-        }
-        
-        // TODO: Parse and load input bindings from JSON
-        // This would involve parsing contexts and their bindings
-        
-        std::cout << "[InputManager] Loaded configuration from: " << configPath << std::endl;
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "[InputManager] Error loading configuration: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-bool InputManager::SaveConfiguration(const std::string& configPath) const {
-    try {
-        json config;
-        
-        // TODO: Serialize input bindings to JSON
-        // This would involve saving all contexts and their bindings
-        
-        if (!UserSettings::SaveUserText(configPath, config.dump(4))) { // bindings are per-user
-            std::cerr << "[InputManager] Could not create input config file: " << configPath << std::endl;
-            return false;
-        }
-        
-        std::cout << "[InputManager] Saved configuration to: " << configPath << std::endl;
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "[InputManager] Error saving configuration: " << e.what() << std::endl;
-        return false;
-    }
-}
-
 void InputManager::CleanupGamepads() {
     for (auto& gamepad : m_gamepadStates) {
         if (gamepad.controller) {

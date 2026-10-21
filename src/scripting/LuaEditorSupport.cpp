@@ -335,17 +335,21 @@ function Ctx:overlap_box(center, half_extents, mask) end
 )LUA",
 R"LUA(-- Input (actions and pointer)
 ---@param action string
+---@param player integer?  0..3, default 0 (keyboard and mouse belong to player 0)
 ---@return boolean
-function Ctx:action_down(action) end
+function Ctx:action_down(action, player) end
 ---@param action string
+---@param player integer?
 ---@return boolean
-function Ctx:action_pressed(action) end
+function Ctx:action_pressed(action, player) end
 ---@param action string
+---@param player integer?
 ---@return boolean
-function Ctx:action_released(action) end
+function Ctx:action_released(action, player) end
 ---@param action string
+---@param player integer?
 ---@return number
-function Ctx:axis(action) end
+function Ctx:axis(action, player) end
 ---@return boolean
 function Ctx:pointer_down() end
 ---@return boolean
@@ -606,10 +610,19 @@ nox = {}
 audio = {}
 
 ---@class nox.Input
----@field bindings fun(action: string): table
----@field rebind fun(action: string, key: any)
----@field rumble fun(low: number, high: number, ms: number)
----@field save_bindings fun()
+---@field rebind fun(action: string, binding: string|table): boolean?, string[]?
+---@field actions fun(): string[]
+---@field reset_bindings fun(action: string?): boolean?
+---@field bindings fun(action: string): table?
+---@field conflicts fun(action: string): string[]?
+---@field binding_name fun(binding: string|table): string
+---@field listen_next fun(): boolean
+---@field listen_result fun(): table?
+---@field listen_cancel fun()
+---@field pads fun(): table[]
+---@field device_events fun(): table[]
+---@field rumble fun(low: number, high: number, ms: number?, pad: integer?): boolean
+---@field save_bindings fun(): boolean
 ---@type nox.Input
 input = {}
 

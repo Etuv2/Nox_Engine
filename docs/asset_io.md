@@ -177,7 +177,7 @@ Readers that use `AssetIO` (grep for `AssetIO::` under `src/`):
 | Fonts and audio | `GuiNode.cpp`, `AudioPlayer.h`, `editor/solace/SolaceTheme.cpp` | `OpenRWops` (memory-backed SDL RWops) |
 | Scenes and render settings | `SceneLoader.cpp`, `SceneRenderSettings.cpp`, `InteriorAtlasManifest.cpp` | `ReadText`, `ReadJsonOrNull`, `Exists` |
 | Racing data | `RoadNetwork.cpp`, `WorldMapUI.cpp`, `NightStreetPacks.cpp`, `RacingHUD.cpp`, `ProceduralStreetKit.cpp` | `ReadJsonOrNull`, `ReadText`, `LoadImageFile`, `Exists`; `SourcePath` for the HUD config save; `GeneratedOutputPath` and `CacheDir` for generated geometry |
-| Input | `Input/InputSystem.cpp` | `ReadText` (default `config/input_config.json`) |
+| Input | `scripting/LuaInput.cpp` (project action maps), `scripting/LuaInputBindings.cpp` (player rebinds) | `ReadText` for `input.json`; `UserSettings::LoadUserJson` / `SaveUserJson` for `input_bindings_<path>.json` in the user directory |
 | Lua projects | `src/scripting/*`: descriptor, `require` through `ReadText`, `nox.json` (limited to config, data, scenes, script roots and declared road files; 1 MiB), UI fonts and icons, input | `ReadText`, `ReadAll`, `Stat`, `Normalize`, `ResolveRelative` |
 | Procedural results | `cook/CookedResults.cpp`, `SceneLoader.cpp` | `Exists`, `ReadText`, `List`, `GeneratedOutputPath` |
 | Runtime state and captures | `RuntimeStateManager.cpp`, `PerformanceRecorder.cpp`, `BenchmarkRunner.cpp`, `ImGui/ImGuiWindowManager.cpp` | `UserOutputPath` |
