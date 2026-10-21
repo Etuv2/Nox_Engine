@@ -85,6 +85,9 @@ uniform int uGatherSmoothFallback = 0;
 // cutoff are skipped. Removes the cell-order truncation of the first-N walk.
 uniform int uGatherStochastic = 0;
 uniform uint uGatherPerCellSamples = 2u;
+// Compact kernel with the insertion support (plan section 24). With it the gather reads the receiver's own cell only,
+// and a cell longer than the examine bound is sampled from a hashed start (unbiased, noise not steps).
+uniform int uGatherCompactKernel = 0;
 uniform uint uFrameIndex = 0u;
 uniform uint uDebugView = 0u;
 uniform uint uSpawnTileSize = 8u;
@@ -140,16 +143,31 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
     float maxCellSize = SurfelGridCellSizeAtWorld(surfelPos, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent);
     float supportRadius = max(SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution, uUseNonLinearGrid, uGridFarExtent),
                               max(maxCellSize * SURFEL_GATHER_MIN_SUPPORT_FRACTION, SURFEL_GATHER_MIN_SUPPORT_WORLD));
-    float normalizedDistance = dist / max(supportRadius, 1e-4);
-    float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.85);
-    if (gGatherCutoffRadius > 0.0) {
-        // Compact kernel: zero at the cutoff, C1 at it. Surfels beyond it leave the window smoothly.
-        float cutX = dist / gGatherCutoffRadius;
-        if (cutX >= 1.0) {
+    float distanceWeight;
+    if (uGatherCompactKernel != 0) {
+        // Compact kernel with the support of the surfel's own insertion (plan section 24): the grid build inserts a
+        // surfel into every cell its support sphere reaches, so any receiver with a nonzero weight here has the surfel
+        // in its own cell list. The Gaussian of the branch below is nonzero beyond the insertion radius.
+        float insertionRadius = SurfelCoverageSupportRadiusAt(surfelPos, radius, uGridMin, uGridMax, uGridResolution,
+                                                              uUseNonLinearGrid, uGridFarExtent);
+        float x = dist / max(insertionRadius, 1e-4);
+        if (x >= 1.0) {
             return 0.0;
         }
-        float taper = 1.0 - cutX * cutX;
-        distanceWeight *= taper * taper;
+        float taper = 1.0 - x * x;
+        distanceWeight = taper * taper;
+    } else {
+        float normalizedDistance = dist / max(supportRadius, 1e-4);
+        distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.85);
+        if (gGatherCutoffRadius > 0.0) {
+            // Compact kernel: zero at the cutoff, C1 at it. Surfels beyond it leave the window smoothly.
+            float cutX = dist / gGatherCutoffRadius;
+            if (cutX >= 1.0) {
+                return 0.0;
+            }
+            float taper = 1.0 - cutX * cutX;
+            distanceWeight *= taper * taper;
+        }
     }
     if (distanceWeight <= 1e-5) {
         return 0.0;
@@ -550,13 +568,14 @@ void main()
     float sumRampWeight = 0.0;
     uint maxAccepted = clamp(uMaxGatherSurfelsPerPixel, 1u, SURFEL_APPLY_MAX_GATHER_SURFELS);
     uint maxExamined = max(uMaxGatherCandidates, maxAccepted);
-    uint neighborRadius = min(uGatherNeighborRadius, 2u);
+    // Compact kernel: every surfel that weighs on this pixel is in its own cell list, so no neighbour walk.
+    uint neighborRadius = uGatherCompactKernel != 0 ? 0u : min(uGatherNeighborRadius, 2u);
     uint gatherCellCount = neighborRadius == 0u
         ? 1u
         : (neighborRadius == 1u ? SURFEL_APPLY_GATHER_CELLS_RADIUS_1 : SURFEL_APPLY_GATHER_CELLS_RADIUS_2);
     uint acceptedCount = 0u;
     uint examinedCount = 0u;
-    gGatherCutoffRadius = uGatherCutoffCells > 0.0 ? uGatherCutoffCells * baseAddress.cellSize : 0.0;
+    gGatherCutoffRadius = (uGatherCutoffCells > 0.0 && uGatherCompactKernel == 0) ? uGatherCutoffCells * baseAddress.cellSize : 0.0;
 
     if (uGatherStochastic != 0) {
         for (uint i = 0u; i < gatherCellCount; ++i) {
@@ -594,16 +613,23 @@ void main()
             continue;
         }
 
-        AccumulateCell(address.cell,
-                       worldPos,
-                       normal,
-                       maxAccepted,
-                       maxExamined,
-                       sumIrradiance,
-                       sumWeight,
-                       sumRampWeight,
-                       acceptedCount,
-                       examinedCount);
+        if (uGatherCompactKernel != 0) {
+            // Own cell, examined from a hashed start per pixel and frame when longer than the bound (scaled, unbiased).
+            uint seed = uint(pixel.x) * 73856093u ^ uint(pixel.y) * 19349663u ^ uFrameIndex * 83492791u ^ address.cell * 2654435761u;
+            AccumulateCellSampled(address.cell, seed, worldPos, normal, maxExamined,
+                                  sumIrradiance, sumWeight, sumRampWeight, acceptedCount, examinedCount);
+        } else {
+            AccumulateCell(address.cell,
+                           worldPos,
+                           normal,
+                           maxAccepted,
+                           maxExamined,
+                           sumIrradiance,
+                           sumWeight,
+                           sumRampWeight,
+                           acceptedCount,
+                           examinedCount);
+        }
     }
 
     // Coverage keeps its old meaning for the spawn pass: the accepted weight, clamped to 1.

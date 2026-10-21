@@ -2030,6 +2030,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1f(program, "uGatherCutoffCells", m_settings.gatherCutoffCells);
 	SetUniform1i(program, "uGatherSmoothFallback", m_settings.gatherSmoothFallback ? 1 : 0);
 	SetUniform1i(program, "uGatherStochastic", m_settings.gatherStochastic ? 1 : 0);
+	SetUniform1i(program, "uGatherCompactKernel", m_settings.gatherCompactKernel ? 1 : 0);
 	SetUniform1ui(program, "uGatherPerCellSamples", std::max(m_settings.gatherPerCellSamples, 1u));
 	SetUniform1ui(program, "uDebugView", applyDebugView);
 

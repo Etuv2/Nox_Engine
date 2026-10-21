@@ -202,6 +202,9 @@ struct SurfelGISettings {
 	bool gatherEdgeAwareUpsample = true;
 	// Temporal history rejection at disocclusions (reset) and depth edges (half history), plan section 24.
 	bool gatherTemporalRejection = true;
+	// Compact gather kernel with the surfel's insertion support: own cell only, hashed start for long cells (plan
+	// section 24). false = the section 18 to 21 gather (Gaussian kernel, 3x3x3 neighbour walk, first N in cell order).
+	bool gatherCompactKernel = true;
 	// Stochastic per-cell gather (plan section 21, round 2): samples per cell in the window, hashed start per pixel and frame.
 	bool gatherStochastic = false;
 	uint32_t gatherPerCellSamples = 2u;
