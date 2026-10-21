@@ -2232,6 +2232,9 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context)
 		if (const rhi::UniformLocation textureLoc = gpu.GetUniformLocation(m_debugPresentProgram, "uTexture"); textureLoc >= 0) {
 			gpu.SetUniform(textureLoc, 0);
 		}
+		if (const rhi::UniformLocation exposureLoc = gpu.GetUniformLocation(m_debugPresentProgram, "uExposure"); exposureLoc >= 0) {
+			gpu.SetUniform(exposureLoc, std::max(m_settings.debugExposure, 0.0f));
+		}
 		if (const rhi::UniformLocation toneMapLoc = gpu.GetUniformLocation(m_debugPresentProgram, "uToneMap"); toneMapLoc >= 0) {
 			const bool toneMapDebug =
 				m_settings.debugView == SurfelGIDebugView::RawIndirectIrradiance ||

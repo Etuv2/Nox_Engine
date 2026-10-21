@@ -120,16 +120,6 @@ namespace {
 #endif
 	}
 
-	static int GetEnvVarInt(const char* name, int fallback) {
-		const std::string value = GetEnvVarString(name);
-		if (value.empty()) {
-			return fallback;
-		}
-		char* end = nullptr;
-		const long parsed = std::strtol(value.c_str(), &end, 10);
-		return end != value.c_str() ? static_cast<int>(parsed) : fallback;
-	}
-
 	static float GetEnvVarFloat(const char* name, float fallback) {
 		const std::string value = GetEnvVarString(name);
 		if (value.empty()) {
@@ -138,6 +128,15 @@ namespace {
 		char* end = nullptr;
 		const float parsed = std::strtof(value.c_str(), &end);
 		return end != value.c_str() ? parsed : fallback;
+	}
+	static int GetEnvVarInt(const char* name, int fallback) {
+		const std::string value = GetEnvVarString(name);
+		if (value.empty()) {
+			return fallback;
+		}
+		char* end = nullptr;
+		const long parsed = std::strtol(value.c_str(), &end, 10);
+		return end != value.c_str() ? static_cast<int>(parsed) : fallback;
 	}
 
 	struct SurfelGIBudgetCaps {
@@ -667,6 +666,7 @@ void ModularRenderer::SyncSurfelGISettings()
 
 		settings.debugView = static_cast<SurfelGIDebugView>(
 			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_DEBUG_VIEW", static_cast<int>(settings.debugView)), 0, 38));
+		settings.debugExposure = GetEnvVarFloat("NOX_SURFEL_GI_DEBUG_EXPOSURE", settings.debugExposure);
 		settings.maxSurfels = static_cast<uint32_t>(
 			std::max(GetEnvVarInt("NOX_SURFEL_GI_MAX_SURFELS", static_cast<int>(settings.maxSurfels)), 1024));
 		settings.maxRayBudget = static_cast<uint32_t>(
@@ -774,6 +774,7 @@ void ModularRenderer::SyncSurfelGISettings()
 		GetEnvVarInt(compositeDebugEnv, m_context.lightingCompositeDebugMode),
 		0,
 		5);
+	m_context.lightingGIDebugExposure = GetEnvVarFloat("NOX_SURFEL_GI_DEBUG_EXPOSURE", m_context.lightingGIDebugExposure);
 
 	// Validation override: NOX_SSGI=0/1 switches screen-space indirect diffuse (SSGI) for A/B runs.
 	if (const char* ssgiEnv = std::getenv("NOX_SSGI")) {

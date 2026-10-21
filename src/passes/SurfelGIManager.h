@@ -65,6 +65,8 @@ struct SurfelGISettings {
 	bool enabled = false;
 	SurfelGIQualityTier qualityTier = SurfelGIQualityTier::Medium;
 	SurfelGIDebugView debugView = SurfelGIDebugView::Off;
+	// Scale of the fullscreen GI debug views before tone mapping. Capture only (NOX_SURFEL_GI_DEBUG_EXPOSURE).
+	float debugExposure = 1.0f;
 
 	uint32_t maxSurfels = 65536u;
 	// Rays traced per frame; shared out by demand when requests exceed it (allocate_rays.comp).

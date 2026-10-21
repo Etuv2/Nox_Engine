@@ -62,6 +62,8 @@ uniform int indirectDiffuseSourceCount = 0;
 uniform int indirectDiffuseCompositeMode = 0; // 0 additive, 1 modulative
 uniform int lightingOutputMode = 0; // 0 full lighting, 1 bounceable radiance
 uniform int uLightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
+// Scale of the GI-only debug outputs (modes 3 to 5) before tone mapping. Capture only (NOX_SURFEL_GI_DEBUG_EXPOSURE).
+uniform float uLightingGIDebugExposure = 1.0;
 
 // Debug visualization
 uniform int shadowDebugVisualization = 0; // 0=off, 1=cascade index, 2=raw depth, 3=bias, 4=texel density, 5=shadow mask
@@ -520,11 +522,11 @@ void main() {
 	} else if (uLightingCompositeDebugMode == 2) {
 		color += iblContribution;
 	} else if (uLightingCompositeDebugMode == 3) {
-		color += ssgiContribution;
+		color += ssgiContribution * uLightingGIDebugExposure;
 	} else if (uLightingCompositeDebugMode == 4) {
-		color += surfelContribution;
+		color += surfelContribution * uLightingGIDebugExposure;
 	} else if (uLightingCompositeDebugMode == 5) {
-		color += lpvContribution;
+		color += lpvContribution * uLightingGIDebugExposure;
 	} else {
 		color += directLighting;
 		color += iblContribution;
