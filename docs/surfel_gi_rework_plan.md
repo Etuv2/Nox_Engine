@@ -2173,3 +2173,29 @@ Images (absolute paths):
 
 Verification after the default revert (final tree): `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `tools/CheckVcxprojSources.py`, `validate_surfel_gi_static.py`, `validate_surfel_gi_correctness.py`, `validate_surfel_gi_fallback_contract.py`: all exit 0. `nox_tests.exe`: 277 tests, 3 failed (the known CRLF checks). Editor smoke: 14 PASS, 0 FAIL. Race: `[Race] Finished in 47.4994 s`.
 
+### 21.8 Final decision (lead)
+
+Decision: the compact kernel (`NOX_SURFEL_GI_GATHER_CUTOFF`, default 1.0 base cell) and the trilinear cell-average fallback (`NOX_SURFEL_GI_GATHER_SMOOTH_FALLBACK`, default on) are ON in all tiers. Stochastic per-cell sampling stays OFF (`NOX_SURFEL_GI_GATHER_STOCHASTIC`, default 0) and remains available.
+
+Why:
+- The cut removes hard, cell-aligned blocks. The NFS before frame has a hard-edged rectangular neon block on a building, which is the grid-like artifact; with the cut and smooth fallback it spreads softly (`r2_nfs_surf.png`, right half).
+- The NFS energy shift is -3.9% on the mean and +2.9% on the median over five repeats, with a run spread of about 12%. The lead judged this inside noise and accepted it. This is an explicit exception to the -3% budget, not a demonstrated pass.
+- Stochastic was rejected for now: it adds per-pixel grain that does not average out, and its final gather cost (1.69 ms against 1.10 ms, NFS) is over budget.
+- Cost of the default: +0.14 ms (scene.json) and +0.19 ms (NFS) in round 1, single runs on a shared GPU. Not re-measured after the merge (the GPU was shared during the merge checks).
+
+Merge: `main` (0a87c4b) merged into the branch with no conflicts. Main's additions (automation, editor, Lua, UI, physics, templates, async loading) are included. The post-merge build is clean.
+
+Verification after the merge:
+- Default capture sanity: Cornell `surf_term` frame 240 differs from the earlier `cut1_smooth` frame by a mean absolute 0.6 (of 255). The original gather differs from it by 1.27. This is consistent with the defaults being active, but the comparison is at noise level and does not prove it alone.
+- `nox_tests.exe`: 331 tests, 3 failed. All three are the known CRLF checks in `test_asset_io.cpp` (loose tree 17 bytes against packed 16, one per CRLF line). Converting the tree to LF in the working copy did not clear them, and it also changed binary blobs, so the working copy was restored from the index. The fixture issue is environmental and pre-dates this work.
+- Editor smoke: 29 PASS, 0 FAIL (main added cases).
+- Race: `[Race] Finished in 47.4994 s`.
+- `validate_surfel_gi_static.py`: OK. `validate_surfel_gi_correctness.py`: OK.
+- `CheckNoRawGL.ps1`, `CheckGenericExe.ps1`, `CheckVcxprojSources.py` (245 ClCompile, 225 ClInclude): all exit 0.
+
+Open after this round:
+- Cost is not re-measured with clean timings (alternating pairs when the GPU is idle).
+- Blotches (surfel-sized) are not resolved; the young-surfel hypothesis was not tested.
+- The magenta neon block analysis above relies on the frame comparison, not a sparse-surfel trace.
+- The fixture CRLF failures remain until someone decides how to store the fixtures on Windows.
+
