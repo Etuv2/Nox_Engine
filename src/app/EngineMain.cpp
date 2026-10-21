@@ -5,6 +5,7 @@
 #include "app/EngineMain.h"
 #include "MainWindow.h"
 #include "app/ProjectBootstrap.h"
+#include "app/ProjectTemplates.h"
 #include "assets/AssetIO.h"
 #include "GameModule.h"
 #include "scripting/LuaGameModule.h"
@@ -79,6 +80,41 @@ namespace {
 	}
 }
 
+namespace {
+	// --new-project <name> [--template <id>] [--path projects/<folder>] [--force]: creates a project from a
+	// template without opening a window (docs/engine_overview.md "Making a new project"). Exit code 0 on success.
+	int RunNewProjectCommand(int argc, char* argv[], const std::string& name)
+	{
+		ProjectTemplates::CreateRequest request;
+		request.name = name;
+		request.root = ProjectBootstrap::Info().sourceRoot;
+		std::string templateId = "empty_3d";
+		for (int i = 1; i < argc; ++i) {
+			const std::string a = argv[i];
+			auto next = [&]() -> std::string { return i + 1 < argc ? std::string(argv[++i]) : std::string(); };
+			if (a == "--template") templateId = next();
+			else if (a == "--path") request.projectDir = fs::path(next());
+			else if (a == "--force") request.overwrite = true;
+		}
+		request.templateId = templateId;
+		if (request.root.empty()) {
+			std::cerr << "[NewProject] needs a source checkout (no templates beside a packaged build)" << std::endl;
+			return EXIT_FAILURE;
+		}
+		ProjectTemplates::CreateResult result;
+		std::string error;
+		if (!ProjectTemplates::Create(request, result, error)) {
+			std::cerr << "[NewProject] " << error << std::endl;
+			return EXIT_FAILURE;
+		}
+		std::cout << "[NewProject] created " << result.projectDescriptor << " from template " << templateId << std::endl;
+		std::cout << "[NewProject] main scene " << result.mainScene << std::endl;
+		std::cout << "[NewProject] packaging profile " << result.profilePath << " (tools\\package.cmd -Profile "
+			<< result.profileName << " -SkipBuild)" << std::endl;
+		return EXIT_SUCCESS;
+	}
+}
+
 int RunNoxEngine(int argc, char* argv[])
 {
 	CrashHandler::Install();
@@ -90,6 +126,9 @@ int RunNoxEngine(int argc, char* argv[])
 		std::cerr << "[Bootstrap] " << bootstrapError << std::endl;
 		MessageBoxA(nullptr, bootstrapError.c_str(), "NOX", MB_OK | MB_ICONERROR);
 		return EXIT_FAILURE;
+	}
+	for (int i = 1; i + 1 < argc; ++i) {
+		if (std::string(argv[i]) == "--new-project") return RunNewProjectCommand(argc, argv, argv[i + 1]);
 	}
 	ConsoleLog::Get().Install();
 	// Opt-in automation server (--automation[=port] or NOX_AUTOMATION_PORT; docs/automation.md). Stopped on every exit path.

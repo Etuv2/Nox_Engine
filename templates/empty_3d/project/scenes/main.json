@@ -1,0 +1,61 @@
+{
+  "camera": {
+    "far": 500.0,
+    "fov": 60.0,
+    "mouse_sensitivity": 0.1,
+    "movement_speed": 6.0,
+    "near": 0.1,
+    "pitch": -12.0,
+    "position": [0.0, 3.0, 8.0],
+    "yaw": -90.0
+  },
+  "exposure": 1,
+  "gamma": 2.2,
+  "project": "{{PROJECT_DIR}}/project.json",
+  "scene_name": "{{NAME}}",
+  "skybox": "hdrs/morning_sky.hdr",
+  "nodes": [
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [1.0, 0.95, 0.8],
+          "enabled": true,
+          "intensity": 5.0,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": true,
+        "color": [1.0, 0.95, 0.8],
+        "enabled": true,
+        "intensity": 5.0,
+        "shadowSize": 2048,
+        "splitLambda": 0.8,
+        "type": "directional"
+      },
+      "name": "Sun",
+      "position": [10.0, 20.0, 10.0],
+      "rotation": [-45.0, 45.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "type": "light"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/plane.glb",
+          "render_whole_model": false
+        }
+      },
+      "name": "Floor",
+      "path": "models/plane.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [0.02, 1.0, 0.02],
+      "type": "model"
+    }
+  ]
+}
