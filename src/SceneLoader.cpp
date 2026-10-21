@@ -23,8 +23,13 @@
 #include "RenderContext.h"
 #include "SceneRenderSettings.h"
 #include "reflect/ReflectServices.h"
+#include <chrono>
 #include <fstream>
+#include <future>
 #include <iostream>
+#include <optional>
+#include <thread>
+#include <unordered_set>
 #include <ctime>
 #include <unordered_map>
 #include <functional>
@@ -675,20 +680,115 @@ bool LoadInteriorAtlasKey(SceneKeyInput& in)
 SceneLoader::~SceneLoader() {
 }
 
-std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFilePath) {
-	const std::string resolvedScenePath = ResolveSceneJsonPath(sceneFilePath);
-	if (resolvedScenePath.empty()) {
-		std::cerr << "[SceneLoader] Failed to load scene: empty scene path." << std::endl;
-		GuiEventBus::GetInstance().PublishError("Failed to load scene: empty scene path");
-		return nullptr;
+// ---- Scene load job ----------------------------------------------------------------------------------
+// A load is a sequence of small steps (Read, Setup, Nodes per root node, SceneKeys, Skybox, Finish). Each step
+// runs on the thread that calls StepLoad. Heavy CPU work is moved off that thread: the scene file is read and
+// parsed on a worker, and model files are decoded on the ModelManager prefetch worker. A root node is built only
+// after its models are decoded, so the build step never waits on a decoder.
+
+namespace {
+
+using LoadClock = std::chrono::steady_clock;
+
+struct ScenePayload {
+	bool readOk = false;
+	bool parsedOk = false;
+	std::optional<std::string> text;
+	json parsed;
+	std::string parseError;
+};
+
+// Worker: file read and JSON parse. AssetIO is safe to call from any thread.
+ScenePayload ReadAndParseScene(const std::string& resolvedScenePath)
+{
+	ScenePayload payload;
+	payload.text = AssetIO::ReadText(resolvedScenePath);
+	if (!payload.text) return payload;
+	payload.readOk = true;
+	try {
+		payload.parsed = json::parse(*payload.text);
+		payload.parsedOk = true;
+	}
+	catch (const std::exception& e) {
+		payload.parseError = e.what();
+	}
+	payload.text.reset();
+	return payload;
+}
+
+// Model files a node will load, in load order, resolved the way ProcessNode resolves them. Only plain model
+// nodes (no procedural generator) are listed: their decoded copy is the one LoadModel takes. Other models
+// (procedural, prefab references) decode on the main thread when they are built.
+void CollectPrefetchModels(const json& node, const std::string& sceneDirectory, std::vector<std::string>& out)
+{
+	if (!node.is_object()) return;
+	const std::string typeStr = node.value("type", "model");
+	const bool procedural = node.contains("procedural") && node["procedural"].is_object();
+	if (SceneLoader::GetNodeType(typeStr) == SceneLoader::NodeType::MODEL && !procedural
+		&& node.contains("path") && node["path"].is_string()) {
+		for (const std::string& candidate : BuildRelativeAssetCandidates(node["path"].get<std::string>(), sceneDirectory)) {
+			if (ReadableFileExists(candidate)) {
+				out.push_back(candidate);
+				break;
+			}
+		}
+	}
+	if (node.contains("children") && node["children"].is_array()) {
+		for (const json& child : node["children"]) {
+			CollectPrefetchModels(child, sceneDirectory, out);
+		}
+	}
+}
+
+}  // namespace
+
+struct SceneLoader::LoadJob {
+	enum class Phase { Read, Setup, Nodes, SceneKeys, Skybox, Finish, Done };
+	Phase phase = Phase::Read;
+	std::string requestedPath;
+	std::string resolvedScenePath;
+	std::string sceneName;
+	std::string stage = "Reading scene file";
+	float fraction = 0.0f;
+	std::future<ScenePayload> payload;
+	json sceneJson;
+	std::shared_ptr<SceneGraph> sceneGraph;
+	EntityID rootEntityID = INVALID_ENTITY;
+	std::vector<std::vector<std::string>> rootModelPaths;   // per root node: models to have decoded first
+	size_t nodeIndex = 0;
+	size_t nodeCount = 0;
+	std::vector<std::pair<std::string, SceneKeyHandler>> sceneKeys;
+	size_t keyIndex = 0;
+	// Physics config before the load: the old scene keeps it when the load fails.
+	SimulationConfig physicsConfigBeforeLoad;
+	LoadClock::time_point started = LoadClock::now();
+};
+
+bool SceneLoader::BeginLoad(const std::string& sceneFilePath)
+{
+	if (m_loadStatus == LoadStatus::Running) {
+		std::cerr << "[SceneLoader] A scene load is already running: " << sceneFilePath << std::endl;
+		return false;
+	}
+	if (m_loadStatus == LoadStatus::Ready) {
+		CancelLoad();  // an untaken result is dropped
+	}
+	m_loadError.clear();
+	m_job = std::make_unique<LoadJob>();
+	// Captured first: a failed load restores the physics config and removes the bodies it added.
+	if (m_physicsEngine) {
+		m_job->physicsConfigBeforeLoad = m_physicsEngine->GetConfig();
+		m_bodiesBeforeLoad = m_physicsEngine->GetBodies();
+	}
+	m_job->requestedPath = sceneFilePath;
+	m_job->resolvedScenePath = ResolveSceneJsonPath(sceneFilePath);
+	if (m_job->resolvedScenePath.empty()) {
+		FailLoad("Failed to load scene: empty scene path");
+		return true;  // the failure is reported by GetLoadStatus / GetLoadError
 	}
 
-	auto sceneGraph = std::make_shared<SceneGraph>();
-
-	// Set the current scene graph BEFORE processing nodes
-	// This is required for CreateECSEntity to work properly
-	m_currentSceneGraph = sceneGraph.get();
-	m_currentSceneDirectory = fs::path(resolvedScenePath).parent_path().string();
+	m_currentSceneGraph = nullptr;
+	m_currentSceneDirectory = fs::path(m_job->resolvedScenePath).parent_path().string();
 	m_loadedModelCount = 0;
 	m_missingCriticalAssetCount = 0;
 	m_loadedSkyboxCount = 0;
@@ -697,138 +797,293 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	// Report loading started
 	GuiEventBus::GetInstance().PublishLoadingStarted();
 	GuiEventBus::GetInstance().PublishProgress(0.0f, "Assets");
+	std::cout << "[SceneLoader] Loading scene: " << m_job->resolvedScenePath << std::endl;
 
-	std::cout << "[SceneLoader] Loading scene: " << resolvedScenePath << std::endl;
-	const std::optional<std::string> sceneText = AssetIO::ReadText(resolvedScenePath);
-	if (!sceneText) {
-		std::cerr << "[SceneLoader] Failed to open scene file: " << resolvedScenePath << std::endl;
-		GuiEventBus::GetInstance().PublishError("Failed to open scene file: " + resolvedScenePath);
-		m_currentSceneGraph = nullptr;
-		m_currentSceneDirectory.clear();
-		return nullptr;
+	m_job->payload = std::async(std::launch::async, ReadAndParseScene, m_job->resolvedScenePath);
+	m_loadStatus = LoadStatus::Running;
+	return true;
+}
+
+SceneLoader::LoadStatus SceneLoader::StepLoad(double budgetMs)
+{
+	if (m_loadStatus != LoadStatus::Running || !m_job) return m_loadStatus;
+	const bool unlimited = budgetMs < 0.0;
+	const auto deadline = LoadClock::now() + std::chrono::duration_cast<LoadClock::duration>(
+		std::chrono::duration<double, std::milli>(unlimited ? 0.0 : budgetMs));
+	while (m_loadStatus == LoadStatus::Running) {
+		const bool progressed = StepLoadOnce(*m_job);
+		if (!progressed) {
+			// Waiting on a worker. A budgeted caller goes back to its frame; a blocking caller sleeps briefly.
+			if (!unlimited) break;
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		if (!unlimited && LoadClock::now() >= deadline) break;
+	}
+	return m_loadStatus;
+}
+
+SceneLoader::LoadStatus SceneLoader::GetLoadStatus() const
+{
+	return m_loadStatus;
+}
+
+SceneLoader::LoadProgress SceneLoader::GetLoadProgress() const
+{
+	LoadProgress progress;
+	if (!m_job) return progress;
+	progress.fraction = m_job->fraction;
+	progress.stage = m_job->stage;
+	progress.sceneName = m_job->sceneName;
+	progress.sceneFile = m_job->requestedPath;
+	return progress;
+}
+
+void SceneLoader::FailLoad(const std::string& message)
+{
+	m_loadError = message;
+	std::cerr << "[SceneLoader] " << message << std::endl;
+	GuiEventBus::GetInstance().PublishError(message);
+	m_currentSceneGraph = nullptr;
+	m_currentSceneDirectory.clear();
+	if (m_job) {
+		m_job->sceneGraph.reset();
+		m_job->phase = LoadJob::Phase::Done;
+		if (m_physicsEngine) m_physicsEngine->SetConfig(m_job->physicsConfigBeforeLoad);
+	}
+	RetirePhysicsBodies(false);
+	if (m_modelManager) m_modelManager->CancelPrefetch();
+	m_loadStatus = LoadStatus::Failed;
+}
+
+void SceneLoader::CancelLoad()
+{
+	if (m_loadStatus != LoadStatus::Running && m_loadStatus != LoadStatus::Ready) return;
+	if (m_job) {
+		if (m_job->payload.valid()) m_job->payload.wait();
+		m_job->sceneGraph.reset();
+		if (m_physicsEngine) m_physicsEngine->SetConfig(m_job->physicsConfigBeforeLoad);
+	}
+	m_currentSceneGraph = nullptr;
+	m_currentSceneDirectory.clear();
+	RetirePhysicsBodies(false);
+	if (m_modelManager) m_modelManager->CancelPrefetch();
+	m_job.reset();
+	m_loadStatus = LoadStatus::Idle;
+}
+
+std::shared_ptr<SceneGraph> SceneLoader::TakeLoadedScene()
+{
+	if (m_loadStatus != LoadStatus::Ready || !m_job) return nullptr;
+	std::shared_ptr<SceneGraph> graph = std::move(m_job->sceneGraph);
+	// The scene being replaced is gone once its successor is taken: remove its physics bodies.
+	RetirePhysicsBodies(true);
+	m_job.reset();
+	m_loadStatus = LoadStatus::Idle;
+	return graph;
+}
+
+// Removes physics bodies from the engine: the replaced scene's (removeReplaced) or the bodies the load added.
+void SceneLoader::RetirePhysicsBodies(bool removeReplaced)
+{
+	if (!m_physicsEngine) {
+		m_bodiesBeforeLoad.clear();
+		return;
+	}
+	std::unordered_set<const RigidBody*> before;
+	for (const auto& body : m_bodiesBeforeLoad) before.insert(body.get());
+	std::vector<std::shared_ptr<RigidBody>> toRemove;
+	for (const auto& body : m_physicsEngine->GetBodies()) {
+		const bool wasBefore = before.count(body.get()) != 0;
+		if (wasBefore == removeReplaced) toRemove.push_back(body);
+	}
+	for (const auto& body : toRemove) {
+		m_physicsEngine->RemoveBody(body);
+	}
+	m_bodiesBeforeLoad.clear();
+}
+
+std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFilePath) {
+	if (!BeginLoad(sceneFilePath)) return nullptr;
+	StepLoad(-1.0);
+	return TakeLoadedScene();
+}
+
+bool SceneLoader::StepLoadOnce(LoadJob& job)
+{
+	switch (job.phase) {
+	case LoadJob::Phase::Read: {
+		if (job.payload.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+			return false;
+		}
+		ScenePayload payload = job.payload.get();
+		if (!payload.readOk) {
+			std::cerr << "[SceneLoader] Failed to open scene file: " << job.resolvedScenePath << std::endl;
+			FailLoad("Failed to open scene file: " + job.resolvedScenePath);
+			return true;
+		}
+		if (!payload.parsedOk) {
+			std::cerr << "[SceneLoader] Failed to parse scene file '" << job.resolvedScenePath
+				<< "': " << payload.parseError << std::endl;
+			FailLoad("Failed to parse scene file: " + job.resolvedScenePath);
+			return true;
+		}
+		if (!payload.parsed.is_object()) {
+			FailLoad("Invalid scene file: root JSON value must be an object: " + job.resolvedScenePath);
+			return true;
+		}
+		job.sceneJson = std::move(payload.parsed);
+		job.phase = LoadJob::Phase::Setup;
+		job.fraction = 0.05f;
+		return true;
 	}
 
-	json sceneJson;
-	try {
-		sceneJson = json::parse(*sceneText);
-	}
-	catch (const std::exception& e) {
-		std::cerr << "[SceneLoader] Failed to parse scene file '" << resolvedScenePath
-			<< "': " << e.what() << std::endl;
-		GuiEventBus::GetInstance().PublishError("Failed to parse scene file: " + resolvedScenePath);
-		m_currentSceneGraph = nullptr;
-		m_currentSceneDirectory.clear();
-		return nullptr;
-	}
+	case LoadJob::Phase::Setup: {
+		json& sceneJson = job.sceneJson;
+		// Set the scene name if provided.
+		job.sceneName = sceneJson.value("scene_name", "Unnamed Scene");
+		job.sceneGraph = std::make_shared<SceneGraph>();
+		job.sceneGraph->SetSceneName(job.sceneName);
+		// Set the current scene graph BEFORE processing nodes
+		// This is required for CreateECSEntity to work properly
+		m_currentSceneGraph = job.sceneGraph.get();
 
-	if (!sceneJson.is_object()) {
-		std::cerr << "[SceneLoader] Invalid scene file: root JSON value must be an object: "
-			<< resolvedScenePath << std::endl;
-		m_currentSceneGraph = nullptr;
-		m_currentSceneDirectory.clear();
-		return nullptr;
-	}
+		// Set the scenes exposure and gamma values if provided.
+		job.sceneGraph->m_exposure = sceneJson.value("exposure", 1.0f);
+		job.sceneGraph->m_gamma = sceneJson.value("gamma", 2.2f);
+		m_sceneGameJson = sceneJson.value("game", nlohmann::json::object());
 
-	// Set the scene name if provided.
-	std::string sceneName = sceneJson.value("scene_name", "Unnamed Scene");
-	sceneGraph->SetSceneName(sceneName);
-
-	// Set the scenes exposure and gamma values if provided.
-	sceneGraph->m_exposure = sceneJson.value("exposure", 1.0f);
-	sceneGraph->m_gamma = sceneJson.value("gamma", 2.2f);
-	m_sceneGameJson = sceneJson.value("game", nlohmann::json::object());
-
-	// Physics settings: config.json defaults with the scene's "physics" block on top. Applied before the nodes
-	// below create their bodies. A scene without a block gets the defaults, so the previous scene's values do not carry over.
-	if (m_physicsEngine) {
-		SimulationConfig physicsConfig = m_physicsEngine->GetDefaultConfig();
-		if (sceneJson.contains("physics")) {
-			try {
-				physicsConfig.applyJson(sceneJson["physics"]);
+		// Physics settings: config.json defaults with the scene's "physics" block on top. Applied before the nodes
+		// below create their bodies. A scene without a block gets the defaults, so the previous scene's values do not carry over.
+		if (m_physicsEngine) {
+			SimulationConfig physicsConfig = m_physicsEngine->GetDefaultConfig();
+			if (sceneJson.contains("physics")) {
+				try {
+					physicsConfig.applyJson(sceneJson["physics"]);
+				}
+				catch (const std::exception& e) {
+					std::cerr << "[SceneLoader] Ignoring invalid physics block in " << job.resolvedScenePath << ": " << e.what() << std::endl;
+					physicsConfig = m_physicsEngine->GetDefaultConfig();
+				}
 			}
-			catch (const std::exception& e) {
-				std::cerr << "[SceneLoader] Ignoring invalid physics block in " << resolvedScenePath << ": " << e.what() << std::endl;
-				physicsConfig = m_physicsEngine->GetDefaultConfig();
+			m_physicsEngine->SetConfig(physicsConfig);
+		}
+
+		if (sceneJson.contains("reflection_probes")) {
+			AddReflectionProbes(sceneJson["reflection_probes"]);
+		}
+
+		// Look for a hierarchical "nodes" array.
+		if (!(sceneJson.contains("nodes") && sceneJson["nodes"].is_array())) {
+			FailLoad("Invalid scene file format. 'nodes' array is missing: " + job.resolvedScenePath);
+			return true;
+		}
+		const json& nodes = sceneJson["nodes"];
+		job.nodeCount = nodes.size();
+		job.rootModelPaths.assign(job.nodeCount, {});
+		std::vector<std::string> allModels;
+		for (size_t i = 0; i < job.nodeCount; ++i) {
+			CollectPrefetchModels(nodes[i], m_currentSceneDirectory, job.rootModelPaths[i]);
+			allModels.insert(allModels.end(), job.rootModelPaths[i].begin(), job.rootModelPaths[i].end());
+		}
+		if (m_modelManager) {
+			m_modelManager->QueuePrefetch(allModels);
+		}
+		// Root entity ID for the hierarchy
+		auto root = job.sceneGraph->GetRoot();
+		job.rootEntityID = root ? root->GetEntityID() : INVALID_ENTITY;
+		job.phase = LoadJob::Phase::Nodes;
+		job.stage = "Building scene nodes";
+		job.fraction = 0.05f;
+		return true;
+	}
+
+	case LoadJob::Phase::Nodes: {
+		if (job.nodeIndex >= job.nodeCount) {
+			std::cout << "[SceneLoader] Loaded " << job.nodeCount << " root nodes with ECS entities" << std::endl;
+			// Registered top-level keys (application content such as an authored interior atlas). They run
+			// after the nodes so a procedural generator cannot overwrite what the scene states explicitly.
+			// Built-in generic keys first; registered application keys follow.
+			job.sceneKeys = {
+				{ "interior_atlas", LoadInteriorAtlasKey },
+				{ "window_room_root", LoadInteriorAtlasKey },   // compatibility spelling
+			};
+			for (const auto& entry : SceneExtensions::SceneKeys()) job.sceneKeys.push_back(entry);
+			job.phase = LoadJob::Phase::SceneKeys;
+			return true;
+		}
+		// The models of this root node must be decoded before it is built.
+		const auto decoder = m_modelManager ? m_modelManager->GetPrefetchProgress() : ModelManager::PrefetchProgress{};
+		for (const std::string& path : job.rootModelPaths[job.nodeIndex]) {
+			if (m_modelManager && m_modelManager->IsPrefetchAwaiting(path)) {
+				job.stage = "Decoding models (" + std::to_string(decoder.decoded) + "/" + std::to_string(decoder.queued) + ")";
+				job.fraction = 0.05f + 0.8f * 0.5f * (decoder.queued > 0 ? static_cast<float>(decoder.decoded) / decoder.queued : 1.0f);
+				return false;
 			}
 		}
-		m_physicsEngine->SetConfig(physicsConfig);
-	}
-
-	if (sceneJson.contains("reflection_probes")) {
-		AddReflectionProbes(sceneJson["reflection_probes"]);
-	}
-
-	// Look for a hierarchical "nodes" array.
-	if (sceneJson.contains("nodes") && sceneJson["nodes"].is_array()) {
-		// Get root entity ID for hierarchy
-		EntityID rootEntityID = INVALID_ENTITY;
-		auto root = sceneGraph->GetRoot();
-		if (root) {
-			rootEntityID = root->GetEntityID();
-		}
-
-		for (auto& nodeEntry : sceneJson["nodes"]) {
-			std::string prefabError;
-			if (!nox::prefab::ExpandReferences(nodeEntry, &prefabError)) {
-				++m_missingCriticalAssetCount;
-				std::cerr << "[SceneLoader] ERROR: prefab reference in '" << resolvedScenePath << "' failed: "
-					<< prefabError << std::endl;
-				continue;
-			}
-			auto node = ProcessNodeRecursive(nodeEntry, rootEntityID);
-			if (node) {
-				sceneGraph->GetRoot()->AddChild(node);
-			}
-		}
-
-		std::cout << "[SceneLoader] Loaded " << sceneJson["nodes"].size() << " root nodes with ECS entities" << std::endl;
-	}
-	else {
-		std::cerr << "[SceneLoader] Invalid scene file format. 'nodes' array is missing: "
-			<< resolvedScenePath << std::endl;
-		m_currentSceneGraph = nullptr;
-		m_currentSceneDirectory.clear();
-		return nullptr;
-	}
-
-	// Registered top-level keys (application content such as an authored interior atlas). They run
-	// after the nodes so a procedural generator cannot overwrite what the scene states explicitly.
-	// Built-in generic keys first; registered application keys follow.
-	std::vector<std::pair<std::string, SceneKeyHandler>> sceneKeys = {
-		{ "interior_atlas", LoadInteriorAtlasKey },
-		{ "window_room_root", LoadInteriorAtlasKey },   // compatibility spelling
-	};
-	for (const auto& entry : SceneExtensions::SceneKeys()) sceneKeys.push_back(entry);
-	for (const auto& [key, handler] : sceneKeys) {
-		if (!sceneJson.contains(key)) continue;
-		SceneKeyInput input{ sceneJson[key],
-			[this](const std::string& path) {
-				bool resolved = false;
-				const std::string full = ResolveReadableAssetPath(TrimPathValue(path), m_currentSceneDirectory,
-					"scene extension asset", false, &resolved);
-				return resolved ? full : std::string();
-			},
-			sceneGraph->renderExtras };
-		if (handler(input)) {
-			sceneGraph->renderExtras.revision = NextRenderExtrasRevision();
+		json& nodeEntry = job.sceneJson["nodes"][job.nodeIndex];
+		std::string prefabError;
+		if (!nox::prefab::ExpandReferences(nodeEntry, &prefabError)) {
+			++m_missingCriticalAssetCount;
+			std::cerr << "[SceneLoader] ERROR: prefab reference in '" << job.resolvedScenePath << "' failed: "
+				<< prefabError << std::endl;
 		}
 		else {
-			++m_missingCriticalAssetCount;
-			std::cerr << "[SceneLoader] Scene key '" << key << "' failed to load its content" << std::endl;
+			auto node = ProcessNodeRecursive(nodeEntry, job.rootEntityID);
+			if (node) {
+				job.sceneGraph->GetRoot()->AddChild(node);
+			}
 		}
+		++job.nodeIndex;
+		job.stage = "Building scene nodes (" + std::to_string(job.nodeIndex) + "/" + std::to_string(job.nodeCount) + ")";
+		const float nodeFraction = job.nodeCount > 0 ? static_cast<float>(job.nodeIndex) / job.nodeCount : 1.0f;
+		const float decodeFraction = decoder.queued > 0 ? static_cast<float>(decoder.decoded) / decoder.queued : 1.0f;
+		job.fraction = 0.05f + 0.8f * (0.5f * decodeFraction + 0.5f * nodeFraction);
+		return true;
 	}
 
-	if (m_missingCriticalAssetCount > 0) {
-		std::cerr << "[SceneLoader] Aborting scene load for '" << resolvedScenePath
-			<< "' due to " << m_missingCriticalAssetCount
-			<< " missing required asset(s)." << std::endl;
-		m_currentSceneGraph = nullptr;
-		m_currentSceneDirectory.clear();
-		return nullptr;
+	case LoadJob::Phase::SceneKeys: {
+		if (job.keyIndex < job.sceneKeys.size()) {
+			const auto& [key, handler] = job.sceneKeys[job.keyIndex++];
+			job.stage = "Loading scene content (" + key + ")";
+			job.fraction = 0.85f;
+			if (!job.sceneJson.contains(key)) return true;
+			SceneKeyInput input{ job.sceneJson[key],
+				[this](const std::string& path) {
+					bool resolved = false;
+					const std::string full = ResolveReadableAssetPath(TrimPathValue(path), m_currentSceneDirectory,
+						"scene extension asset", false, &resolved);
+					return resolved ? full : std::string();
+				},
+				job.sceneGraph->renderExtras };
+			if (handler(input)) {
+				job.sceneGraph->renderExtras.revision = NextRenderExtrasRevision();
+			}
+			else {
+				++m_missingCriticalAssetCount;
+				std::cerr << "[SceneLoader] Scene key '" << key << "' failed to load its content" << std::endl;
+			}
+			return true;
+		}
+		if (m_missingCriticalAssetCount > 0) {
+			std::cerr << "[SceneLoader] Aborting scene load for '" << job.resolvedScenePath
+				<< "' due to " << m_missingCriticalAssetCount
+				<< " missing required asset(s)." << std::endl;
+			FailLoad("Scene '" + job.resolvedScenePath + "' has " + std::to_string(m_missingCriticalAssetCount)
+				+ " missing required asset(s)");
+			return true;
+		}
+		job.phase = LoadJob::Phase::Skybox;
+		return true;
 	}
 
-	// Initialize the skybox if provided. Either a path string, or an object:
-	// { "path", "fallback", "rotation_deg", "intensity", "max_radiance", "ground": { "color", "blend_start_deg", "blend_end_deg" } }
+	case LoadJob::Phase::Skybox: {
+		json& sceneJson = job.sceneJson;
+		const std::string& sceneName = job.sceneName;
+		std::shared_ptr<SceneGraph>& sceneGraph = job.sceneGraph;
+		job.stage = "Loading environment";
+		job.fraction = 0.9f;
+		// Initialize the skybox if provided. Either a path string, or an object:
+		// { "path", "fallback", "rotation_deg", "intensity", "max_radiance", "ground": { "color", "blend_start_deg", "blend_end_deg" } }
 	if (sceneJson.contains("skybox")) {
 		const bool skyboxIsObject = sceneJson["skybox"].is_object();
 		const nlohmann::json skyboxNode = skyboxIsObject ? sceneJson["skybox"] : nlohmann::json::object();
@@ -915,34 +1170,54 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 			}
 		}
 	}
+		job.phase = LoadJob::Phase::Finish;
+		return true;
+	}
 
-	// Per-scene physics flag (default true)
-	bool physicsEnabled = sceneJson.value("physics_enabled", true);
-	sceneGraph->SetPhysicsEnabled(physicsEnabled);
+	case LoadJob::Phase::Finish: {
+		json& sceneJson = job.sceneJson;
+		const std::string& sceneName = job.sceneName;
+		std::shared_ptr<SceneGraph>& sceneGraph = job.sceneGraph;
+		// Per-scene physics flag (default true)
+		bool physicsEnabled = sceneJson.value("physics_enabled", true);
+		sceneGraph->SetPhysicsEnabled(physicsEnabled);
 
-	// Publish authored scene transforms before the scene is handed back to callers.
-	sceneGraph->UpdateAllTransforms();
-	// Clear the scene graph reference
-	m_currentSceneGraph = nullptr;
-	m_currentSceneDirectory.clear();
+		// Publish authored scene transforms before the scene is handed back to callers.
+		sceneGraph->UpdateAllTransforms();
+		// Clear the scene graph reference
+		m_currentSceneGraph = nullptr;
+		m_currentSceneDirectory.clear();
 
-	// Log ECS statistics
-	auto* componentManager = sceneGraph->GetComponentManager();
-	std::cout << "[SceneLoader] Scene load summary: scene='" << sceneName
-		<< "', path='" << resolvedScenePath
-		<< "', authoredRootNodes=" << sceneJson["nodes"].size()
-		<< ", models=" << m_loadedModelCount
-		<< ", transforms=" << componentManager->GetTransformPool().Size()
-		<< ", maxTransformID=" << componentManager->GetMaxAllocatedTransformID()
-		<< ", renderables=" << componentManager->GetRenderablePool().Size()
-		<< ", lights=" << componentManager->GetLightPool().Size()
-		<< ", cameras=" << componentManager->GetCameraPool().Size()
-		<< ", skyboxesLoaded=" << m_loadedSkyboxCount
-		<< ", skyboxesDisabled=" << m_disabledSkyboxCount
-		<< std::endl;
+		// Log ECS statistics
+		auto* componentManager = sceneGraph->GetComponentManager();
+		std::cout << "[SceneLoader] Scene load summary: scene='" << sceneName
+			<< "', path='" << job.resolvedScenePath
+			<< "', authoredRootNodes=" << sceneJson["nodes"].size()
+			<< ", models=" << m_loadedModelCount
+			<< ", transforms=" << componentManager->GetTransformPool().Size()
+			<< ", maxTransformID=" << componentManager->GetMaxAllocatedTransformID()
+			<< ", renderables=" << componentManager->GetRenderablePool().Size()
+			<< ", lights=" << componentManager->GetLightPool().Size()
+			<< ", cameras=" << componentManager->GetCameraPool().Size()
+			<< ", skyboxesLoaded=" << m_loadedSkyboxCount
+			<< ", skyboxesDisabled=" << m_disabledSkyboxCount
+			<< ", loadMs=" << std::chrono::duration<double, std::milli>(LoadClock::now() - job.started).count()
+			<< std::endl;
 
-	return sceneGraph;
+		if (m_modelManager) m_modelManager->CancelPrefetch();
+		job.fraction = 1.0f;
+		job.stage = "Done";
+		job.phase = LoadJob::Phase::Done;
+		m_loadStatus = LoadStatus::Ready;
+		return true;
+	}
+
+	case LoadJob::Phase::Done:
+		return false;
+	}
+	return false;
 }
+
 
 // Save scene state back to JSON file
 bool SceneLoader::SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sceneFilePath) {
