@@ -136,6 +136,8 @@ struct SurfelGISettings {
 	uint32_t cachePerCellBudget = 4u;
 	uint32_t cacheAlbedoCandidates = 32u;
 	uint32_t cacheAlbedoPerCell = 2u;
+	// 1 = hit-point cache lookups read only the hit's own grid cell (no 27-cell walk). Default off.
+	uint32_t cacheOwnCellOnly = 0u;
 	// Distance cut of the emitter next-event samples, in metres (0 = no cut). Past it a sample is not taken and a BSDF hit on
 	// an emitter there takes full weight, so the estimate stays unbiased (plan section 20).
 	float emitterNEEMaxDistance = 0.0f;

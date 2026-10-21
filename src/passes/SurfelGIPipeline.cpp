@@ -1607,6 +1607,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uCachePerCellBudget", m_settings.cachePerCellBudget);
 		SetUniform1ui(program, "uCacheAlbedoCandidates", m_settings.cacheAlbedoCandidates);
 		SetUniform1ui(program, "uCacheAlbedoPerCell", m_settings.cacheAlbedoPerCell);
+		SetUniform1ui(program, "uCacheOwnCellOnly", m_settings.cacheOwnCellOnly);
 		SetUniform1f(program, "uEmitterNEEMaxDistance",
 			m_settings.emitterNEEMaxDistance > 0.0f ? m_settings.emitterNEEMaxDistance : 1.0e30f);
 		SetUniform1ui(program, "uBiasProbeStride", m_settings.biasProbeStride);
