@@ -15,7 +15,9 @@ class Skybox
 {
 public:
 	Skybox() = default;
-	~Skybox() = default; 
+	// Releases its GPU objects (programs, cubemaps, IBL maps, VAO). Scenes replace their skybox on every load, so this is
+	// what keeps scene swaps from leaking. Skipped when the device is already gone (static teardown).
+	~Skybox() { if (rhi::HasGpu()) Cleanup(); }
 
 	// Initialize from HDR and build full IBL pipeline (strict). Returns false on failure.
 	bool Init(const std::string& hdrPath,

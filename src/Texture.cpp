@@ -55,12 +55,14 @@ namespace {
 
 	// File-backed textures alive now, for hot reload. Textures are created and destroyed on the GL thread; the lock
 	// only guards the set against the poll reading it.
+	// Deliberately never destroyed: a Texture can be released by another function-local static (the scene's shared
+	// image cache) during exit, and its destructor unregisters here. Destroying these first crashed the exit path.
 	std::mutex& FileTexturesMutex() {
-		static std::mutex m;
+		static std::mutex& m = *new std::mutex();
 		return m;
 	}
 	std::set<Texture*>& FileTextures() {
-		static std::set<Texture*> s;
+		static std::set<Texture*>& s = *new std::set<Texture*>();
 		return s;
 	}
 }
