@@ -337,6 +337,14 @@ public:
     const TriggerSystem& Triggers() const { return *m_triggers; }
     CharacterSystem& Characters() { return *m_characters; }
     const CharacterSystem& Characters() const { return *m_characters; }
+
+    /**
+     * Static level geometry that characters collide with, in addition to the bodies (not owned here). Pass nullptr to
+     * clear. The collision world must stay alive while it is set. Used by the character controller and by queries
+     * that ask for world triangles.
+     */
+    void SetWorldCollision(const CollisionWorld* world) { m_worldCollision = world; }
+    const CollisionWorld* WorldCollision() const { return m_worldCollision; }
     
     // ============== CONFIGURATION ==============
     
@@ -354,6 +362,12 @@ public:
     void SetConfig(const SimulationConfig& config);
     void SetRuntimeConfig(const SimulationConfig& config);
     void ResetConfigToDefaults() { SetConfig(m_defaultConfig); }
+
+    /**
+     * Recomputes a body's bounds and moves its broadphase proxy. Call after changing a body's shape, mesh or
+     * position outside the simulation: static bodies are not re-tested each step (see UpdateBVHProxies).
+     */
+    void RefreshBodyBounds(RigidBody& body);
 
     /**
      * Set gravity
@@ -540,6 +554,7 @@ private:
     // Triggers and character controllers (node-keyed component state)
     std::unique_ptr<TriggerSystem> m_triggers;
     std::unique_ptr<CharacterSystem> m_characters;
+    const CollisionWorld* m_worldCollision = nullptr;   // non-owning
 
     // Profiling
     ProfilingData m_profiling;

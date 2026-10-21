@@ -253,6 +253,54 @@ NOX_TEST(PhysicsComponents, TriggerReportsEnterAndExitForMovingBody)
 	NOX_CHECK(!physics.Triggers().Has(zone.get()));
 }
 
+// A box dropped onto a box floor and then resting there reports one begin and no end/begin flicker.
+NOX_TEST(PhysicsComponents, BoxOnBoxFloorContactBeginsOnceAndRests)
+{
+	PhysicsEngine physics;
+	MakeBoxBody(physics, glm::vec3(0.0f, -0.5f, 0.0f), glm::vec3(10.0f, 0.5f, 10.0f));
+	auto crate = MakeBoxBody(physics, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.5f), RigidBody::BodyType::DYNAMIC);
+
+	std::vector<PhysicsContactEvent> events;
+	for (int frame = 0; frame < 150; ++frame) {
+		physics.Update(kDt);
+		for (const PhysicsContactEvent& event : physics.TakeContactEvents()) events.push_back(event);
+	}
+	NOX_REQUIRE(!events.empty());
+	NOX_CHECK(events[0].type == PhysicsContactEvent::Type::BEGIN);
+	NOX_CHECK(std::fabs(crate->getPosition().y - 0.5f) < 0.05f);
+
+	// Resting for 120 more frames: no events at all.
+	events.clear();
+	for (int frame = 0; frame < 120; ++frame) {
+		physics.Update(kDt);
+		for (const PhysicsContactEvent& event : physics.TakeContactEvents()) events.push_back(event);
+	}
+	NOX_CHECK(events.empty());
+}
+
+// A sphere dropped onto a box floor (no bounce): one begin over the landing, then nothing while it rests.
+NOX_TEST(PhysicsComponents, SphereOnBoxFloorContactBeginsOnce)
+{
+	PhysicsEngine physics;
+	physics.SetGravity(glm::vec3(0.0f, -9.81f, 0.0f));
+	auto floor = MakeBoxBody(physics, glm::vec3(0.0f, -0.5f, 0.0f), glm::vec3(10.0f, 0.5f, 10.0f));
+	auto ball = MakeSphereBody(physics, glm::vec3(0.0f, 2.0f, 0.0f), 0.5f, RigidBody::BodyType::DYNAMIC);
+	floor->setRestitution(0.0f);
+	ball->setRestitution(0.0f);
+
+	std::vector<PhysicsContactEvent> events;
+	for (int frame = 0; frame < 150; ++frame) {
+		physics.Update(kDt);
+		for (const PhysicsContactEvent& event : physics.TakeContactEvents()) events.push_back(event);
+	}
+	NOX_REQUIRE(events.size() == 1);
+	NOX_CHECK(events[0].type == PhysicsContactEvent::Type::BEGIN);
+	for (int frame = 0; frame < 120; ++frame) {
+		physics.Update(kDt);
+		NOX_CHECK(physics.TakeContactEvents().empty());
+	}
+}
+
 NOX_TEST(PhysicsComponents, ContactEventsBeginAndEnd)
 {
 	PhysicsEngine physics;

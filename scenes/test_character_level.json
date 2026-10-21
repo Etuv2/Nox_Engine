@@ -1,0 +1,92 @@
+{
+  "scene_name": "character level",
+  "exposure": 1.0,
+  "exposure_mode": "manual",
+  "exposure_ev100": 8.0,
+  "gamma": 2.2,
+  "project": "projects/character-demo/project.json",
+  "camera": {
+    "position": [0.0, 3.0, 8.0],
+    "look_at": [0.0, 1.0, 0.0],
+    "fov": 55.0,
+    "near": 0.05,
+    "far": 500.0,
+    "movement_speed": 6.0
+  },
+  "nodes": [
+    {
+      "components": {
+        "Collider": {
+          "layer": 1,
+          "mask": 4294967295,
+          "mesh_path": "projects/character-demo/models/level.glb",
+          "shape": "mesh"
+        },
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "projects/character-demo/models/level.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "body_type": "static",
+          "friction": 0.6,
+          "restitution": 0.0
+        }
+      },
+      "path": "projects/character-demo/models/level.glb",
+      "name": "Level",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "type": "model"
+    },
+    {
+      "components": {
+        "CharacterController": {
+          "gravity": true,
+          "height": 1.8,
+          "radius": 0.4,
+          "slope_limit": 45.0,
+          "step_offset": 0.3
+        },
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "projects/character-demo/models/player.glb",
+          "render_whole_model": false
+        }
+      },
+      "path": "projects/character-demo/models/player.glb",
+      "name": "Player",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "type": "model"
+    },
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [1.0, 1.0, 1.0],
+          "enabled": true,
+          "intensity": 60.0,
+          "range": 120.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": false,
+        "color": [1.0, 1.0, 1.0],
+        "enabled": true,
+        "intensity": 60.0,
+        "range": 120.0,
+        "type": "point"
+      },
+      "name": "Sun",
+      "position": [0.0, 10.0, 6.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "type": "light"
+    }
+  ]
+}

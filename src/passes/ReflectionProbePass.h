@@ -36,10 +36,14 @@ public:
 		const std::shared_ptr<Skybox>& skybox) override;
 
 	void RequestRecapture() { m_framesUntilCapture = 2; }
+	// Probe capture is sliced: the probes of one scene are captured a few per frame.
+	bool IsCapturing() const { return m_captureActive; }
 	static void BindForShading(const RenderContext& ctx);
 
 private:
-	void CaptureAll(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph, const std::shared_ptr<Skybox>& skybox);
+	// One slice of the capture: probes are captured until budgetMs is spent (budgetMs < 0: all of them).
+	void CaptureAll(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph, const std::shared_ptr<Skybox>& skybox, double budgetMs);
+	static constexpr double kCaptureBudgetMs = 6.0;
 	void CaptureProbe(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph,
 		const std::shared_ptr<Skybox>& skybox, const ReflectionProbeDesc& probe, int index);
 	void PrefilterInto(int index);
@@ -62,4 +66,10 @@ private:
 	const void* m_lastScene = nullptr;
 	int m_framesUntilCapture = -1;
 	int m_probeCount = 0;
+	bool m_captureActive = false;   // a capture of m_probeCount probes is in progress
+	int m_nextProbe = 0;            // next probe to capture while m_captureActive
+	std::shared_ptr<SceneGraph> m_captureScene;   // scene and skybox of the capture in progress
+	std::shared_ptr<Skybox> m_captureSkybox;
+	rhi::FramebufferHandle m_prevFBO;             // state to restore when the capture finishes
+	rhi::Rect m_prevViewport{};
 };

@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "actions": {
+    "move_x": { "type": "axis", "keys_negative": ["A", "Left"], "keys_positive": ["D", "Right"], "pad_axis": "leftx", "deadzone": 0.15 },
+    "move_z": { "type": "axis", "keys_negative": ["S", "Down"], "keys_positive": ["W", "Up"], "pad_axis": "lefty", "deadzone": 0.15 },
+    "jump": { "type": "button", "keys": ["Space"], "pad_buttons": ["a"] }
+  }
+}

@@ -1,6 +1,8 @@
 #include "LuaPhysics.h"
 
 #include "../PhysicsEngine.h"
+#include "../physics/ShapeSweep.h"
+#include <glm/gtx/quaternion.hpp>
 #include "../RigidBody.h"
 #include "../SceneNode.h"
 #include "../reflect/ReflectServices.h"
@@ -118,6 +120,106 @@ namespace NoxLua {
 			PushVec3(L, hit.normal);
 			lua_setfield(L, -2, "normal");
 			return 1;
+		}
+
+		// Shape casts: the first body a sphere, capsule or box touches when moved along dir. Returns
+		// { entity = handle|nil, distance, point, normal } or nil. Read only, valid in any callback.
+		void PushSweepHit(lua_State* L, LuaWorld* w, const ShapeSweep::Hit& hit) {
+			lua_createtable(L, 0, 4);
+			EntityHandle entity;
+			const std::shared_ptr<SceneNode> node = hit.body ? hit.body->getAttachedNode() : nullptr;
+			if (node && HandleFor(w, node->GetEntityID(), entity)) {
+				PushHandle(L, entity);
+				lua_setfield(L, -2, "entity");
+			}
+			lua_pushnumber(L, hit.distance);
+			lua_setfield(L, -2, "distance");
+			PushVec3(L, hit.point);
+			lua_setfield(L, -2, "point");
+			PushVec3(L, hit.normal);
+			lua_setfield(L, -2, "normal");
+		}
+
+		// Common arguments of the sweeps: direction (any length, not zero), max distance and layer mask.
+		bool ReadSweepArgs(lua_State* L, int dirIdx, int distIdx, int maskIdx, glm::vec3& dir, double& maxDist, uint32_t& mask) {
+			if (!ReadVec3(L, dirIdx, dir)) return false;
+			maxDist = luaL_checknumber(L, distIdx);
+			if (!(maxDist > 0.0) || maxDist > kMaxRayDistance) luaL_argerror(L, distIdx, "max_dist must be in (0, 100000]");
+			if (!(glm::length(dir) > 1e-6f)) luaL_argerror(L, dirIdx, "direction must not be zero");
+			mask = MaskArg(L, maskIdx);
+			return true;
+		}
+
+		int RunSweep(lua_State* L, const ShapeSweep::Probe& probe, const glm::vec3& dir, double maxDist, uint32_t mask) {
+			LuaWorld* w = WorldOf(L);
+			PhysicsEngine* physics = nox::reflect::Services().physics;
+			ShapeSweep::Hit hit;
+			if (!physics || !ShapeSweep::Sweep(*physics, probe, dir, static_cast<float>(maxDist), mask, hit)) {
+				lua_pushnil(L);
+				return 1;
+			}
+			PushSweepHit(L, w, hit);
+			return 1;
+		}
+
+		// ctx:physics_sweep_sphere(center, radius, dir, max_dist, mask)
+		int CtxPhysicsSweepSphere(lua_State* L) {
+			glm::vec3 center(0.0f), dir(0.0f);
+			if (!ReadVec3(L, 2, center)) return luaL_argerror(L, 2, "expected a vector {x, y, z}");
+			const double radius = luaL_checknumber(L, 3);
+			if (!(radius > 0.0) || radius > 10000.0) return luaL_argerror(L, 3, "radius must be in (0, 10000]");
+			double maxDist = 0.0;
+			uint32_t mask = 0;
+			if (!ReadSweepArgs(L, 4, 5, 6, dir, maxDist, mask)) return luaL_argerror(L, 4, "expected a vector {x, y, z}");
+			ShapeSweep::Probe probe;
+			probe.kind = ShapeSweep::Kind::SPHERE;
+			probe.center = center;
+			probe.radius = static_cast<float>(radius);
+			return RunSweep(L, probe, dir, maxDist, mask);
+		}
+
+		// ctx:physics_sweep_capsule(a, b, radius, dir, max_dist, mask): a and b are the segment ends (the caps extend by
+		// radius beyond them). Equal ends make a sphere.
+		int CtxPhysicsSweepCapsule(lua_State* L) {
+			glm::vec3 a(0.0f), b(0.0f), dir(0.0f);
+			if (!ReadVec3(L, 2, a)) return luaL_argerror(L, 2, "expected a vector {x, y, z}");
+			if (!ReadVec3(L, 3, b)) return luaL_argerror(L, 3, "expected a vector {x, y, z}");
+			const double radius = luaL_checknumber(L, 4);
+			if (!(radius > 0.0) || radius > 10000.0) return luaL_argerror(L, 4, "radius must be in (0, 10000]");
+			double maxDist = 0.0;
+			uint32_t mask = 0;
+			if (!ReadSweepArgs(L, 5, 6, 7, dir, maxDist, mask)) return luaL_argerror(L, 5, "expected a vector {x, y, z}");
+			ShapeSweep::Probe probe;
+			probe.radius = static_cast<float>(radius);
+			probe.center = 0.5f * (a + b);
+			const glm::vec3 axis = b - a;
+			const float length = glm::length(axis);
+			if (length < 1e-6f) {
+				probe.kind = ShapeSweep::Kind::SPHERE;
+			}
+			else {
+				probe.kind = ShapeSweep::Kind::CAPSULE;
+				probe.halfSegment = 0.5f * length;
+				probe.rotation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), axis / length);
+			}
+			return RunSweep(L, probe, dir, maxDist, mask);
+		}
+
+		// ctx:physics_sweep_box(center, half_extents, dir, max_dist, mask): an axis-aligned box.
+		int CtxPhysicsSweepBox(lua_State* L) {
+			glm::vec3 center(0.0f), half(0.0f), dir(0.0f);
+			if (!ReadVec3(L, 2, center)) return luaL_argerror(L, 2, "expected a vector {x, y, z}");
+			if (!ReadVec3(L, 3, half) || !(half.x > 0.0f && half.y > 0.0f && half.z > 0.0f)) {
+				return luaL_argerror(L, 3, "half_extents must be a positive vector {x, y, z}");
+			}
+			double maxDist = 0.0;
+			uint32_t mask = 0;
+			if (!ReadSweepArgs(L, 4, 5, 6, dir, maxDist, mask)) return luaL_argerror(L, 4, "expected a vector {x, y, z}");
+			ShapeSweep::Probe probe;
+			probe.kind = ShapeSweep::Kind::BOX;
+			probe.center = center;
+			probe.halfExtents = half;
+			return RunSweep(L, probe, dir, maxDist, mask);
 		}
 
 		// Array of the entity handles of the bodies in `ids` that have a live entity, sorted by entity.
@@ -465,6 +567,9 @@ namespace NoxLua {
 		SetFn(L, w, ctxIdx, "physics_raycast", CtxPhysicsRaycast);
 		SetFn(L, w, ctxIdx, "overlap_sphere", CtxOverlapSphere);
 		SetFn(L, w, ctxIdx, "overlap_box", CtxOverlapBox);
+		SetFn(L, w, ctxIdx, "physics_sweep_sphere", CtxPhysicsSweepSphere);
+		SetFn(L, w, ctxIdx, "physics_sweep_capsule", CtxPhysicsSweepCapsule);
+		SetFn(L, w, ctxIdx, "physics_sweep_box", CtxPhysicsSweepBox);
 	}
 
 	void PumpPhysicsEvents(LuaWorld& world) {

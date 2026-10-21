@@ -1,0 +1,49 @@
+{
+  "exposure": 1,
+  "gamma": 2.2,
+  "project": "projects/lua-gameplay-demo/project.json",
+  "scene_name": "lua gameplay demo",
+  "nodes": [
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [1.0, 0.85, 0.7],
+          "enabled": true,
+          "intensity": 6.0,
+          "range": 30.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": false,
+        "color": [1.0, 0.85, 0.7],
+        "enabled": true,
+        "intensity": 6.0,
+        "range": 30.0,
+        "type": "point"
+      },
+      "name": "Key",
+      "position": [0.0, 5.0, 2.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "type": "light"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/plane.glb",
+          "render_whole_model": false
+        }
+      },
+      "name": "Floor",
+      "path": "models/plane.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [4.0, 1.0, 4.0],
+      "type": "model"
+    }
+  ]
+}

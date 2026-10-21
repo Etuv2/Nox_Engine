@@ -25,7 +25,8 @@ while their project is active. See [lua_api.md](lua_api.md#editor).
 
 - The tree shows every node; a node's children are nested under it. Prefab instances are shown as one node
   with its own children. Rows are drawn flat, indented by depth; the arrow on a row collapses or expands it.
-- Click to select. Ctrl+D duplicates, Delete removes. Both are undoable. Selecting a node in the viewport expands
+- Click to select, Ctrl+click to add or remove, Shift+click to select the visible rows between the primary node and
+  the clicked one. See [Selection and shortcuts](#selection-and-shortcuts). Selecting a node in the viewport expands
   the path to it.
 - **Folders** group nodes without affecting them. A folder is a node of type `folder` (tag FOLDER): it has no
   transform, is never drawn, and its children keep their own transforms. Create one with **Node > Add Node > Folder**,
@@ -46,6 +47,51 @@ while their project is active. See [lua_api.md](lua_api.md#editor).
 - Right-click a node for **New Folder**, **Group into Folder**, **Add Child**, **Duplicate**, **Save as Prefab...**
   and **Delete**.
 - Generated nodes (rebuilt on load, not saved) are listed only while a search is active.
+
+## Selection and shortcuts
+
+The selection is a set of nodes with one primary node, the last one selected. The Inspector, the gizmo pivot
+and Rename work on the primary. Selection is an editor state: it is not saved in the scene.
+
+| Action | Hierarchy | Scene viewport |
+| --- | --- | --- |
+| Select one node | Click | Click (the node under the mouse) |
+| Add or remove a node | Ctrl+click | Ctrl+click |
+| Select the visible rows between the primary and a row | Shift+click | not used |
+| Box select | not used | Drag on empty space. A node with a model is selected when its world bounding box, projected to the viewport, overlaps the rectangle; other nodes when their origin is inside it. Ctrl adds them |
+| Select all top-level nodes | Ctrl+A | Ctrl+A |
+| Copy, cut, paste | Ctrl+C, Ctrl+X, Ctrl+V | the same keys |
+| Duplicate | Ctrl+D | Ctrl+D |
+| Delete | Delete | Delete |
+
+The keys work while the Hierarchy or the Scene viewport has keyboard focus, and not while a text field takes typing.
+The **Edit** menu has the same commands.
+
+- **Copy** serialises each top-level selected subtree, with prefab instances kept as references, into the editor's
+  clipboard and onto the OS clipboard as JSON (`"format": "nox.scene_nodes"`), so the copy pastes into another
+  editor session too. **Paste** reads the OS clipboard when it holds an editor document, and otherwise pastes the
+  copy made in this session. Cut is copy plus delete.
+- **Paste** puts the copies under the parent of the primary node (the scene root when nothing is selected). Names
+  are made unique among the siblings (`Crate (1)`). The copies keep their local transforms, so the layout of a
+  copied set is kept. New nodes get new scene nodes, not the old ones.
+- Copy, cut, paste, duplicate, delete and select-all each record one undo step, also when several nodes are involved.
+- **Group gizmo.** With several nodes selected the gizmo sits at the pivot: the centre of the bounds of the selection
+  when a node has a model (the bounds include the origin of nodes without one), else the centroid of their world
+  positions. A drag moves, turns or scales each top-level node about the pivot, and children follow their parent.
+  One undo step per drag. Each node's world transform is composed from the drag's delta (`pivotT * R * S * pivotT^-1`):
+  the position goes through the whole delta, the rotation is composed in world space, and the node is written back as
+  translation, rotation and scale (decomposed from the composed matrix, not sheared). Uniform scale multiplies the
+  node's scale exactly. **Non-uniform scale** of a node that is already rotated cannot be a world-space scale without
+  shearing, so it is applied along each node's own local axes instead: the result is a rotated, stretched node, not
+  the exact world-axis stretch the gizmo shows.
+- **Multi-edit in the Inspector.** When several selected nodes have a property (the same component and name), an edit
+  on the primary applies to all of them. Vector components are merged: only the components the edit changed are
+  written, so the other components keep each node's own value. Numbers, toggles, vectors, colours, text and enums
+  all work this way. A property whose values differ between the nodes is labelled "(mixed)" and shows the primary's
+  value. One discrete edit is one undo step, and a drag is one step when it ends.
+- Editing a property on several nodes at once is limited to the properties the Inspector draws from the registry.
+  Anything that is not a property (editor buttons, the Materials window, the Physics window) still acts on the
+  primary only.
 
 ## Inspector
 
@@ -91,7 +137,11 @@ so loose and packed projects show the same tree. Packed assets are read-only: fi
   cursor, onto a hierarchy node to place it under that node, or onto an asset field in the inspector.
 - **Right-click** an item for Open, Show in Explorer, Copy Path, Duplicate, Rename, Delete and New (folder, scene,
   Lua script). Right-click the empty area for New, Show Folder in Explorer and Refresh. Delete moves the file to
-  the Recycle Bin after a confirmation. Renaming or deleting does not rewrite references in scenes or prefabs.
+  the Recycle Bin after a confirmation.
+- **Rename** and **Duplicate** are undoable. **Delete** and **Rename** first list the scene and project files that
+  mention the asset (a plain text search of `scenes/` and `projects/` JSON files). Delete does not change them.
+  Rename can replace the old path in those files as part of the same undo step, when you tick the box. The open
+  scene is never changed by a rename: its text would be overwritten at the next save, so edit it by hand.
 - **Refresh**: a background scan lists the tree every two seconds and rebuilds the index only when a path, size or
   timestamp changed, so files added or edited outside the editor appear without a restart.
 
@@ -187,6 +237,8 @@ use the same runtime values through `nox.physics` ([lua_api.md](lua_api.md#setti
 - Undoable: property edits, transform changes made with the gizmo, add and remove component, add and delete
   node, duplicate, reparent (including drops before or after a row), new folder, group into folder, prefab
   instantiation.
+- Also undoable: paste, cut, delete and duplicate of several nodes (one entry each), a group transform (one entry
+  per drag), and the Content Browser's rename and duplicate (see [Assets](#assets)).
 - Not recorded: anything in play mode.
 - Undoing a delete re-creates the node. The editor keeps a handle per node, so the undo entry still refers to the
   right node after the re-creation.
@@ -210,7 +262,7 @@ The file format, overrides and API are in [prefabs.md](prefabs.md).
   destroyed are re-created, transforms and bodies return to their recorded state, and registry values that changed
   are written back. The limits are listed in [prefabs.md](prefabs.md#play-and-stop) and `src/PlayWorldSnapshot.h`.
 - While playing, the editing menus and Save are disabled, and undo is not recorded. Edits made in play are
-  discarded at Stop.
+  discarded at Stop. The Inspector shows a banner, "Play mode: changes will be lost when you Stop (no undo here)".
 
 ## Saving
 
@@ -233,7 +285,8 @@ drag is working on. The outline covers the selected node and all of its descenda
 - Hovering a node in the Scene viewport draws a thinner, lighter outline on it. The hovered node is picked about
   ten times a second and not while a gizmo or handle is in use, while the camera flies, or during Play.
 - A selected node with no mesh (a light, camera or empty node) gets a wire box and a ring at its origin instead.
-- The editor selects one node at a time, so the outline is for that node only.
+- Every selected node is outlined (see [Selection and shortcuts](#selection-and-shortcuts)). Nodes without a mesh each
+  get their own wire box.
 
 **Outline** in the Scene viewport toolbar opens the style popup: colour, width (1 to 4 px), dashed occluded parts,
 and hover highlight. The values are saved per user under `selection_outline` in `settings/editor_settings.json`.
@@ -305,8 +358,10 @@ project panel and the console.
 
 `NOX_EDITOR_SMOKE=1` runs scripted checks inside the editor and prints `[Smoke] PASS` or `[Smoke] FAIL` lines
 to the console. They cover undo and redo of a transform edit, Play and Stop restoring the pre-play state,
-viewport resize, saving, the Content Browser (it opens `models/` and lists its contents), and a Physics window
-edit with its undo. Use it for unattended validation of editor changes:
+viewport resize, saving, the Content Browser (it opens `models/` and lists its contents), a Physics window
+edit with its undo, and multi-selection (Ctrl+click, copy and paste with unique names and kept transforms, one undo
+per command, multi-node delete, select all, a multi-edit of a name on three nodes reverted by one undo). The mouse parts of selection (marquee, Shift+click) are not in the
+smoke test. Use it for unattended validation of editor changes:
 
 ```powershell
 $env:NOX_EDITOR_SMOKE = "1"

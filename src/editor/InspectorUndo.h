@@ -78,6 +78,12 @@ bool SetPropertyContinuous(PropertyEdit& edit, NodeTable& table, const std::shar
 // Returns true when a step was pushed.
 bool EndPropertyEdit(PropertyEdit& edit, NodeTable& table, const UndoPush& push);
 
+// Multi-edit: the value a target node gets from an edit the primary node made (before -> after). Vector components
+// the edit changed take the new component value and the others keep the target's own; a scalar that changed takes
+// the new value. A target of another type gets the new value.
+nox::reflect::PropValue MergeEditedValue(const nox::reflect::PropValue& target, const nox::reflect::PropValue& before,
+	const nox::reflect::PropValue& after);
+
 // ---- Components ------------------------------------------------------------------------------------
 
 // Adds a component (desc.add) and pushes a step whose undo removes it again.
@@ -113,5 +119,21 @@ std::shared_ptr<SceneNode> GroupIntoFolderUndoable(NodeTable& table, const NodeO
 // Unpacks a prefab instance: the node and its subtree stay as they are, but the node stops being an instance
 // (its prefab link is cleared). Undo links it again. False when the node is not an instance.
 bool UnpackPrefabUndoable(NodeTable& table, const UndoPush& push, const std::shared_ptr<SceneNode>& node);
+
+// ---- Batches ---------------------------------------------------------------------------------------
+
+// Collects the steps several operations push (Sink) and commits them as one undo entry: undo runs the
+// collected undos last-to-first, redo runs the redos first-to-last. Nothing is pushed when no step was collected.
+class UndoBatch {
+public:
+	UndoPush Sink();
+	bool Empty() const { return m_steps->empty(); }
+	size_t Size() const { return m_steps->size(); }
+	void Commit(const std::string& label, const UndoPush& push) const;
+
+private:
+	struct Step { std::string label; std::function<void()> undo, redo; };
+	std::shared_ptr<std::vector<Step>> m_steps = std::make_shared<std::vector<Step>>();
+};
 
 } // namespace nox::editor

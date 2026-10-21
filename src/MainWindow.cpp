@@ -2,6 +2,7 @@
 #include "MainWindow.h"
 #include "ui/Pointer.h"
 #include "Core.h"
+#include "automation/AutomationServer.h"
 #include "ImGuiInterface.h"
 #include "assets/AssetIO.h"
 #include "assets/AssetIOJson.h"
@@ -377,7 +378,10 @@ void MainWindow::Run() {
     std::cout << "[MainWindow] Starting main loop..." << std::endl;
     const int exitAfterFrames = std::max(GetEnvInt("NOX_EXIT_AFTER_FRAMES", 0), 0);
     int renderedFrames = 0;
-    
+    int simulatedFrames = 0;
+    // The first frame must not carry the time spent in initialization (it would count as a long frame).
+    m_lastTime = SDL_GetTicks();
+
     while (m_running) {
         // Calculate delta time
         Uint32 currentTime = SDL_GetTicks();
@@ -405,7 +409,11 @@ void MainWindow::Run() {
         }
         ui::Pointer::Get().EndFrame();
         ++renderedFrames;
-        if (exitAfterFrames > 0 && renderedFrames >= exitAfterFrames) {
+        // Frames spent on a background scene load do not count toward NOX_EXIT_AFTER_FRAMES: the simulation has not started.
+        if (!(m_core && m_core->IsSceneLoading())) {
+            ++simulatedFrames;
+        }
+        if (exitAfterFrames > 0 && simulatedFrames >= exitAfterFrames) {
             m_running = false;
         }
         if (m_core && m_core->IsQuitRequested()) {
@@ -436,6 +444,8 @@ void MainWindow::Run() {
             }
         }
 
+        // Automation server (src/automation): screenshot requests and engine.step replies, after Render.
+        automation::EndFrame(m_windowWidth, m_windowHeight);
         FrameProfiler::Mark("capture");
         // Swap buffers (already checking visibility, so always swap here)
         rhi::Gpu().Present();

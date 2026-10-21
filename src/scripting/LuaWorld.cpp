@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <iterator>
 #include <cstring>
 #include <sstream>
@@ -335,16 +336,34 @@ namespace NoxLua {
 			return 0;
 		}
 
+		// Optional function field of a behaviour table; returns its registry reference (0 when absent).
+		static int OptionalHook(lua_State* L, int tableIdx, const char* key, const std::string& name) {
+			lua_getfield(L, tableIdx, key);
+			if (lua_isnil(L, -1)) {
+				lua_pop(L, 1);
+				return 0;
+			}
+			if (lua_type(L, -1) != LUA_TFUNCTION) return luaL_error(L, "behavior '%s': %s must be a function", name.c_str(), key);
+			return luaL_ref(L, LUA_REGISTRYINDEX);
+		}
+
+		// nox.behavior{ name, update = fn(ctx, entity, dt), fixed_update = fn(ctx, entity, dt),
+		//               on_start = fn(ctx, entity), on_destroy = fn(ctx, entity) }. At least one function is required.
 		static int NoxBehavior(lua_State* L) {
 			LuaWorld* w = WorldOf(L);
 			RequireLoading(L, w, "behavior");
 			luaL_checktype(L, 1, LUA_TTABLE);
 			const std::string name = TableString(L, 1, "name", true);
 			if (name.empty()) return luaL_error(L, "behavior needs a non-empty name");
-			lua_getfield(L, 1, "update");
-			if (lua_type(L, -1) != LUA_TFUNCTION) return luaL_error(L, "behavior '%s' needs an update function", name.c_str());
-			const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-			w->AddBehavior(name, ref);
+			LuaWorld::BehaviorRefs refs;
+			refs.update = OptionalHook(L, 1, "update", name);
+			refs.fixed = OptionalHook(L, 1, "fixed_update", name);
+			refs.start = OptionalHook(L, 1, "on_start", name);
+			refs.destroy = OptionalHook(L, 1, "on_destroy", name);
+			if (!refs.update && !refs.fixed && !refs.start && !refs.destroy) {
+				return luaL_error(L, "behavior '%s' needs update, fixed_update, on_start or on_destroy", name.c_str());
+			}
+			w->AddBehavior(name, refs);
 			return 0;
 		}
 
@@ -732,6 +751,128 @@ namespace NoxLua {
 		static int CtxTeleport(lua_State* L) { return QueueMove(L, LuaWorld::Command::Kind::Teleport, "teleport"); }
 		static int CtxSetScale(lua_State* L) { return QueueMove(L, LuaWorld::Command::Kind::SetScale, "set_scale"); }
 
+		// ---- Timers and coroutines (docs/lua_api.md, "Lifecycle, timers and coroutines") -------------------
+		static constexpr const char* kTaskMeta = "nox.task";
+
+		static void PushTask(lua_State* L, uint64_t id) {
+			uint64_t* slot = static_cast<uint64_t*>(lua_newuserdatauv(L, sizeof(uint64_t), 0));
+			*slot = id;
+			luaL_setmetatable(L, kTaskMeta);
+		}
+
+		// Optional entity argument (nil or absent: global scope). Validated before any registry reference is made.
+		static bool OptionalEntity(lua_State* L, LuaWorld* w, int idx, EntityHandle& out) {
+			if (lua_isnoneornil(L, idx)) return false;
+			out = LiveHandle(L, w, idx);
+			return true;
+		}
+
+		static void RequireTaskScope(lua_State* L, LuaWorld* w, const char* fn) {
+			RequireCallback(L, w, fn);
+			if (!w->Playing()) luaL_error(L, "ctx:%s is only available while the game is playing", fn);
+			if (w->TasksFull()) luaL_error(L, "too many timers and coroutines (limit %d)", static_cast<int>(LuaWorld::kMaxTasks));
+		}
+
+		static double CheckSeconds(lua_State* L, int idx) {
+			const double seconds = luaL_checknumber(L, idx);
+			if (!std::isfinite(seconds) || seconds < 0.0) luaL_argerror(L, idx, "seconds must be a finite number >= 0");
+			return seconds;
+		}
+
+		// ctx:after(seconds, fn [, entity]) and ctx:every(seconds, fn [, entity]): fn(ctx, entity) runs on the play clock.
+		static int AddTimer(lua_State* L, bool repeat) {
+			LuaWorld* w = WorldOf(L);
+			const char* fn = repeat ? "every" : "after";
+			RequireTaskScope(L, w, fn);
+			const double seconds = CheckSeconds(L, 2);
+			if (repeat && seconds <= 0.0) return luaL_argerror(L, 2, "every needs an interval > 0");
+			luaL_checktype(L, 3, LUA_TFUNCTION);
+			LuaWorld::Task task;
+			task.kind = LuaWorld::Task::Kind::Timer;
+			task.label = fn;
+			task.hasEntity = OptionalEntity(L, w, 4, task.entity);
+			task.due = w->PlayTime() + seconds;
+			task.interval = repeat ? seconds : 0.0;
+			lua_pushvalue(L, 3);
+			task.ref = luaL_ref(L, LUA_REGISTRYINDEX);
+			PushTask(L, w->AddTask(std::move(task)));
+			return 1;
+		}
+		static int CtxAfter(lua_State* L) { return AddTimer(L, false); }
+		static int CtxEvery(lua_State* L) { return AddTimer(L, true); }
+
+		// ctx:start_coroutine(fn [, entity]): fn(ctx, entity) runs in a Lua coroutine, resumed by the host each frame.
+		static int CtxStartCoroutine(lua_State* L) {
+			LuaWorld* w = WorldOf(L);
+			RequireTaskScope(L, w, "start_coroutine");
+			luaL_checktype(L, 2, LUA_TFUNCTION);
+			LuaWorld::Task task;
+			task.kind = LuaWorld::Task::Kind::Coroutine;
+			task.label = "coroutine";
+			task.hasEntity = OptionalEntity(L, w, 3, task.entity);
+			task.thread = lua_newthread(L);
+			task.ref = luaL_ref(L, LUA_REGISTRYINDEX);   // anchors the thread (luaL_ref pops it)
+			lua_pushvalue(L, 2);
+			lua_xmove(L, task.thread, 1);
+			PushTask(L, w->AddTask(std::move(task)));
+			return 1;
+		}
+
+		// Wait calls yield (kind, value) to the host. Valid only inside a coroutine that the host is resuming.
+		static void RequireCoroutine(lua_State* L, LuaWorld* w, const char* fn) {
+			const bool isMain = lua_pushthread(L) == 1;
+			lua_pop(L, 1);
+			if (isMain || !w->InCoroutineSegment()) {
+				luaL_error(L, "ctx:%s is only available inside a coroutine started with ctx:start_coroutine", fn);
+			}
+		}
+		static int CtxWait(lua_State* L) {
+			RequireCoroutine(L, WorldOf(L), "wait");
+			const double seconds = CheckSeconds(L, 2);
+			lua_pushliteral(L, "time");
+			lua_pushnumber(L, seconds);
+			return lua_yield(L, 2);
+		}
+		static int CtxWaitFrames(lua_State* L) {
+			RequireCoroutine(L, WorldOf(L), "wait_frames");
+			const lua_Integer frames = luaL_checkinteger(L, 2);
+			if (frames < 0) return luaL_argerror(L, 2, "frames must be >= 0");
+			lua_pushliteral(L, "frames");
+			lua_pushinteger(L, frames);
+			return lua_yield(L, 2);
+		}
+		static int CtxWaitUntil(lua_State* L) {
+			RequireCoroutine(L, WorldOf(L), "wait_until");
+			luaL_checktype(L, 2, LUA_TFUNCTION);
+			lua_pushliteral(L, "until");
+			lua_pushvalue(L, 2);
+			return lua_yield(L, 2);
+		}
+
+		// ctx:scene_payload(): a fresh copy of the payload this scene was loaded with, or nil.
+		static int CtxScenePayload(lua_State* L) {
+			const nlohmann::json* payload = WorldOf(L)->ScenePayloadPtr();
+			if (!payload) lua_pushnil(L);
+			else PushJsonValue(L, *payload);
+			return 1;
+		}
+
+		// Handle methods (nox.task): task:cancel(), task:active().
+		static LuaWorld::Task* TaskOf(lua_State* L, LuaWorld* w) {
+			const uint64_t* id = static_cast<const uint64_t*>(luaL_testudata(L, 1, kTaskMeta));
+			if (!id) luaL_argerror(L, 1, "timer or coroutine handle expected (use task:cancel())");
+			return w->FindTask(*id);
+		}
+		static int TaskCancel(lua_State* L) {
+			if (LuaWorld::Task* task = TaskOf(L, WorldOf(L))) task->cancelled = true;
+			return 0;
+		}
+		static int TaskActive(lua_State* L) {
+			const LuaWorld::Task* task = TaskOf(L, WorldOf(L));
+			lua_pushboolean(L, (task && !task->cancelled) ? 1 : 0);
+			return 1;
+		}
+
 		// ---- Input (project action map, sampled by the module once per frame) ----------------------------
 		static const InputMap& Inputs(LuaWorld* w) {
 			static const InputMap kNone;
@@ -813,6 +954,16 @@ namespace NoxLua {
 			luaL_checktype(L, 2, LUA_TBOOLEAN);
 			WorldOf(L)->m_wantsPointer = lua_toboolean(L, 2) != 0;
 			return 0;
+		}
+
+		static int CtxUiConsumed(lua_State* L) {
+			lua_pushboolean(L, WorldOf(L)->m_nav.Consumed() ? 1 : 0);
+			return 1;
+		}
+
+		static int CtxUiBackPressed(lua_State* L) {
+			lua_pushboolean(L, WorldOf(L)->m_nav.Back() ? 1 : 0);
+			return 1;
 		}
 
 		static int CtxEmit(lua_State* L) {
@@ -921,6 +1072,13 @@ namespace NoxLua {
 			SetFn(L, w, "teleport", CtxTeleport);
 			SetFn(L, w, "set_scale", CtxSetScale);
 			SetFn(L, w, "emit", CtxEmit);
+			SetFn(L, w, "after", CtxAfter);
+			SetFn(L, w, "every", CtxEvery);
+			SetFn(L, w, "start_coroutine", CtxStartCoroutine);
+			SetFn(L, w, "wait", CtxWait);
+			SetFn(L, w, "wait_frames", CtxWaitFrames);
+			SetFn(L, w, "wait_until", CtxWaitUntil);
+			SetFn(L, w, "scene_payload", CtxScenePayload);
 			SetFn(L, w, "input_enabled", CtxInputEnabled);
 			SetFn(L, w, "time", CtxTime);
 			SetFn(L, w, "frame", CtxFrame);
@@ -936,8 +1094,17 @@ namespace NoxLua {
 			SetFn(L, w, "pointer_released", CtxPointerReleased);
 			SetFn(L, w, "pointer_wheel", CtxPointerWheel);
 			SetFn(L, w, "over_ui", CtxOverUi);
+			SetFn(L, w, "ui_consumed", CtxUiConsumed);
+			SetFn(L, w, "ui_back_pressed", CtxUiBackPressed);
 			SetFn(L, w, "wants_pointer", CtxWantsPointer);
 			SetFn(L, w, "set_wants_pointer", CtxSetWantsPointer);
+			// nox.task metatable: timer and coroutine handles (cancel, active). Its methods capture the world.
+			luaL_newmetatable(L, kTaskMeta);
+			lua_newtable(L);
+			SetFn(L, w, "cancel", TaskCancel);
+			SetFn(L, w, "active", TaskActive);
+			lua_setfield(L, -2, "__index");
+			lua_pop(L, 1);
 			// Component proxies, add/remove/list, nox.components, parent/children, raycast, load_scene (LuaComponents.cpp).
 			InstallComponentApi(L, lua_gettop(L), w);
 			// Physics queries (ctx:physics_raycast, overlap_sphere, overlap_box) and physics events (LuaPhysics.cpp).
@@ -980,6 +1147,7 @@ namespace NoxLua {
 		, m_runtime(std::make_unique<Runtime>(limits, m_ownedSource ? m_ownedSource.get() : source))
 		, m_vehicles(std::make_unique<VehicleHost>(*m_runtime, m_ownedSource ? m_ownedSource.get() : source)) {
 		m_ui.data = &m_dataApi;
+		m_ui.nav = &m_nav;
 		m_edBinding.undo = std::make_shared<EditorUndoRegistry>();
 		m_edBinding.undo->world = this;
 	}
@@ -1003,7 +1171,10 @@ namespace NoxLua {
 			if (m_configureRef) m_runtime->Unref(m_configureRef);
 			if (m_saveGameRef) m_runtime->Unref(m_saveGameRef);
 			for (SystemEntry& s : m_systems) m_runtime->Unref(s.ref);
-			for (BehaviorEntry& b : m_behaviors) m_runtime->Unref(b.ref);
+			for (BehaviorEntry& b : m_behaviors) {
+				for (int ref : { b.ref, b.fixedRef, b.startRef, b.destroyRef }) if (ref) m_runtime->Unref(ref);
+			}
+			for (Task& t : m_tasks) ReleaseTask(t);
 			for (auto& [name, list] : m_handlers) {
 				(void)name;
 				for (HandlerEntry& h : list) m_runtime->Unref(h.ref);
@@ -1026,6 +1197,12 @@ namespace NoxLua {
 	}
 
 	void LuaWorld::AddDiagnostic(Diagnostic diagnostic) {
+		// Errors also go to the log: a standalone or packaged run has no editor panel that shows them.
+		if (diagnostic.severity == Diagnostic::Severity::Error) {
+			std::cerr << "[Lua] error in " << diagnostic.source << " (frame " << diagnostic.frame << "): "
+				<< (diagnostic.file.empty() ? std::string() : diagnostic.file + ":" + std::to_string(diagnostic.line) + ": ")
+				<< diagnostic.message << std::endl;
+		}
 		if (m_diagnostics.size() >= kMaxDiagnostics) {
 			m_diagnostics.erase(m_diagnostics.begin());
 		}
@@ -1258,13 +1435,32 @@ namespace NoxLua {
 		m_frame = 0;
 		m_playTime = 0.0;
 		m_teleportPending = false;
-		DispatchEvents({ PendingEvent{ "begin_play", LUA_REFNIL } });
+		// begin_play(ctx, payload): the scene payload (plain data) or nil. The table is fresh for every play.
+		int payloadRef = LUA_REFNIL;
+		if (m_scenePayload) {
+			lua_State* L = m_runtime->State();
+			PushJsonValue(L, *m_scenePayload);
+			payloadRef = luaL_ref(L, LUA_REGISTRYINDEX);
+		}
+		DispatchEvents({ PendingEvent{ "begin_play", payloadRef } });
 	}
 
 	void LuaWorld::EndPlay() {
 		if (!m_playing) return;
 		DispatchEvents({ PendingEvent{ "end_play", LUA_REFNIL } });
+		// on_destroy for every entity whose behaviours started, while the entities still exist. Stop restores the scene.
+		std::vector<EntityHandle> started;
+		for (const auto& [handle, names] : m_started) {
+			(void)names;
+			started.push_back(handle);
+		}
+		for (const EntityHandle& handle : started) {
+			if (Live(handle)) EntityGoing(handle);
+		}
 		m_playing = false;
+		for (Task& t : m_tasks) t.cancelled = true;
+		SweepTasks();
+		m_started.clear();
 		for (PendingEvent& e : m_events) m_runtime->Unref(e.payloadRef);
 		m_events.clear();
 		m_commands.clear();
@@ -1296,6 +1492,7 @@ namespace NoxLua {
 		m_substepIndex = index;
 		++m_fixedSteps;
 		RunSystems(true, dt);
+		RunBehaviorPhase(true, dt);
 		m_substepIndex = 0;
 		SweepDead();
 	}
@@ -1306,11 +1503,14 @@ namespace NoxLua {
 		++m_frame;
 		m_playTime += dt;
 		m_inputEnabled = inputEnabled;
+		RunTimers();
+		RunCoroutines();
 		RunSystems(false, dt);
 		PumpPhysicsEvents(*this);
 		DeliverEvents();
 		RunBehaviors(dt);
 		SweepDead();
+		SweepTasks();
 	}
 
 	bool LuaWorld::ConsumeTeleport() {
@@ -1451,9 +1651,52 @@ namespace NoxLua {
 		m_draws.push_back(entry);
 	}
 
+	void LuaWorld::BeginUiInput(const InputDevices& devices, bool enabled) {
+		m_nav.Sample(devices, enabled);
+		ui::Pointer& pointer = ui::Pointer::Get();
+		const bool pressed = pointer.Pressed(ui::PointerButton::Left) || pointer.Pressed(ui::PointerButton::Right) ||
+			pointer.Pressed(ui::PointerButton::Middle);
+		m_nav.Resolve(pointer.Position(), enabled && pointer.InWindow(), pointer.Moved(), enabled && pressed);
+		// Escape / pad B reaches the handlers of "ui.back" on the next update (and ctx:ui_back_pressed() at once).
+		if (m_nav.Back() && m_playing) QueueEvent("ui.back", LUA_REFNIL);
+	}
+
+	void LuaWorld::AddNavigationWidget(uint32_t id, const glm::vec2& min, const glm::vec2& max) {
+		UiNavigator::Widget w;
+		w.id = id;
+		w.min = min;
+		w.max = max;
+		m_nav.AppendWidget(w);
+	}
+
+	bool LuaWorld::QueueUiEvent(const std::string& name, const std::string& id, const std::string& action, int entered) {
+		if (!m_runtime || !m_runtime->Ok()) return false;
+		if (m_events.size() >= kMaxEventsPerFrame) return false;
+		lua_State* L = m_runtime->State();
+		lua_newtable(L);
+		lua_pushlstring(L, id.data(), id.size());
+		lua_setfield(L, -2, "id");
+		if (entered >= 0) {
+			lua_pushboolean(L, entered != 0);
+			lua_setfield(L, -2, "entered");
+		}
+		else {
+			lua_pushlstring(L, action.data(), action.size());
+			lua_setfield(L, -2, "action");
+		}
+		const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+		return QueueEvent(name, ref);
+	}
+
 	void LuaWorld::DrawFrame(float dt, const glm::vec2& viewport, const glm::vec2& pointerOverlay, UiRecorder& out) {
 		out.Begin();
-		if (!m_loaded || m_draws.empty()) return;
+		// The widget layout of this draw becomes the navigation layout of the next frame (empty when nothing is drawn).
+		m_nav.BeginLayout();
+		m_ui.origin = m_services.overlayOrigin;
+		if (!m_loaded || m_draws.empty()) {
+			m_nav.EndLayout();
+			return;
+		}
 		m_ui.recorder = &out;
 		m_ui.viewport = viewport;
 		m_ui.pointerOverlay = pointerOverlay;
@@ -1489,6 +1732,7 @@ namespace NoxLua {
 			}
 		}
 		m_ui.recorder = nullptr;
+		m_nav.EndLayout();
 		if (out.Dropped() > 0) {
 			if (!m_drawDropReported) {
 				AddDiagnosticNote(Diagnostic::Severity::Warning, "draw",
@@ -1608,18 +1852,28 @@ namespace NoxLua {
 				}
 				if (std::find(m_spawned.begin(), m_spawned.end(), cmd.target) == m_spawned.end()) {
 					// Scene nodes (authored or instantiated during play) are removed by the host. Stop restores authored
-					// nodes; nodes created during play are removed for good.
-					std::shared_ptr<SceneNode> node = FindSceneNode(cmd.target.id);
+					// nodes; nodes created during play are removed for good. on_destroy runs while the subtree still exists.
 					const nox::reflect::EngineServices& services = nox::reflect::Services();
-					if (node && services.destroyNode && services.destroyNode(node)) {
-						m_data.erase(cmd.target);
-						m_attachments.erase(cmd.target);
-						break;
+					std::shared_ptr<SceneNode> node = FindSceneNode(cmd.target.id);
+					if (node && services.destroyNode) {
+						std::vector<EntityHandle> subtree;
+						CollectSubtree(node, subtree);
+						for (const EntityHandle& h : subtree) EntityGoing(h);
+						if (!cm->IsHandleValid(cmd.target)) break;   // a hook destroyed it already
+						node = FindSceneNode(cmd.target.id);
+						if (node && services.destroyNode(node)) {
+							m_data.erase(cmd.target);
+							m_attachments.erase(cmd.target);
+							break;
+						}
 					}
 					warn("destroy: the target is neither a script-spawned entity nor a scene node the host can remove");
 					break;
 				}
-				m_spawned.erase(std::find(m_spawned.begin(), m_spawned.end(), cmd.target));
+				EntityGoing(cmd.target);
+				if (!cm->IsHandleValid(cmd.target)) break;
+				const auto spawned = std::find(m_spawned.begin(), m_spawned.end(), cmd.target);
+				if (spawned != m_spawned.end()) m_spawned.erase(spawned);
 				m_data.erase(cmd.target);
 				m_attachments.erase(cmd.target);
 				cm->DestroyEntity(cmd.target.id);
@@ -1676,16 +1930,26 @@ namespace NoxLua {
 	}
 
 	void LuaWorld::RunBehaviors(float dt) {
+		RunBehaviorPhase(false, dt);
+	}
+
+	// update (frame) or fixed_update (substep) of every attached behaviour. on_start runs first, once per entity.
+	void LuaWorld::RunBehaviorPhase(bool fixed, float dt) {
 		for (size_t b = 0; b < m_behaviors.size(); ++b) {
 			if (m_behaviors[b].faulted) continue;
+			const std::string name = m_behaviors[b].name;
+			const int ref = fixed ? m_behaviors[b].fixedRef : m_behaviors[b].ref;
 			std::vector<EntityHandle> targets;
 			for (const auto& [handle, names] : m_attachments) {
-				if (names.count(m_behaviors[b].name) && Manager()->IsHandleValid(handle)) targets.push_back(handle);
+				if (names.count(name) && Live(handle)) targets.push_back(handle);
 			}
 			for (const EntityHandle& target : targets) {
 				if (m_behaviors[b].faulted) break;
-				if (!Manager()->IsHandleValid(target)) continue;
-				RunCallback(m_behaviors[b].ref, "behavior '" + m_behaviors[b].name + "'",
+				if (!Live(target)) continue;
+				if (!EnsureStarted(b, target)) continue;
+				if (m_behaviors[b].faulted) break;
+				if (ref == 0) continue;
+				RunCallback(ref, "behavior '" + name + "'",
 					[this, target, dt](lua_State* L) {
 						lua_rawgeti(L, LUA_REGISTRYINDEX, m_contextRef);
 						LuaApiBinder::PushHandle(L, target);
@@ -1697,6 +1961,270 @@ namespace NoxLua {
 		}
 	}
 
+	// Runs on_start once for (behaviour, entity). The entity is marked before the call, so it never runs twice.
+	bool LuaWorld::EnsureStarted(size_t b, const EntityHandle& target) {
+		const std::string name = m_behaviors[b].name;
+		std::set<std::string>& started = m_started[target];
+		if (started.count(name)) return true;
+		started.insert(name);
+		if (m_behaviors[b].startRef == 0) return true;
+		RunCallback(m_behaviors[b].startRef, "behavior '" + name + "' on_start",
+			[this, target](lua_State* L) {
+				lua_rawgeti(L, LUA_REGISTRYINDEX, m_contextRef);
+				LuaApiBinder::PushHandle(L, target);
+				return 2;
+			},
+			&m_behaviors[b].faulted);
+		return !m_behaviors[b].faulted;
+	}
+
+	// on_destroy for the behaviours that started on a live entity, then its timers and coroutines are cancelled.
+	void LuaWorld::EntityGoing(const EntityHandle& handle) {
+		CancelTasksOf(handle);
+		const auto started = m_started.find(handle);
+		if (started == m_started.end()) return;
+		const std::vector<std::string> names(started->second.begin(), started->second.end());
+		m_started.erase(started);   // first: a hook that destroys the entity again runs nothing twice
+		for (const std::string& name : names) {
+			if (!Live(handle)) return;
+			const int index = FindBehavior(name);
+			if (index < 0 || m_behaviors[index].destroyRef == 0 || m_behaviors[index].faulted) continue;
+			RunCallback(m_behaviors[index].destroyRef, "behavior '" + name + "' on_destroy",
+				[this, handle](lua_State* L) {
+					lua_rawgeti(L, LUA_REGISTRYINDEX, m_contextRef);
+					LuaApiBinder::PushHandle(L, handle);
+					return 2;
+				},
+				&m_behaviors[index].faulted);
+		}
+	}
+
+	void LuaWorld::CollectSubtree(const std::shared_ptr<SceneNode>& node, std::vector<EntityHandle>& out) const {
+		if (!node) return;
+		if (node->GetEntityID() != INVALID_ENTITY && Manager()) {
+			const EntityHandle h = Manager()->MakeHandle(node->GetEntityID());
+			if (Manager()->IsHandleValid(h)) out.push_back(h);
+		}
+		for (const auto& child : node->children) CollectSubtree(child, out);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Timers and coroutines. The clock is the play clock (m_playTime): it advances in Update only, so pause freezes it
+	// and NOX_FIXED_DT makes it deterministic. Order inside Update: timers, coroutines, systems, events, behaviors.
+	// ---------------------------------------------------------------------------------------------
+
+	namespace {
+		constexpr double kClockEpsilon = 1e-9;   // dt is a float: a due time reached within this margin fires
+	}
+
+	bool LuaWorld::Live(const EntityHandle& handle) const {
+		return Manager() && Manager()->IsHandleValid(handle);
+	}
+
+	int LuaWorld::FindBehavior(const std::string& name) const {
+		for (size_t i = 0; i < m_behaviors.size(); ++i) {
+			if (m_behaviors[i].name == name) return static_cast<int>(i);
+		}
+		return -1;
+	}
+
+	uint64_t LuaWorld::AddTask(Task task) {
+		task.id = m_nextTaskId++;
+		m_tasks.push_back(std::move(task));
+		return m_tasks.back().id;
+	}
+
+	LuaWorld::Task* LuaWorld::FindTask(uint64_t id) {
+		for (Task& t : m_tasks) {
+			if (t.id == id) return &t;
+		}
+		return nullptr;
+	}
+
+	void LuaWorld::CancelTasksOf(const EntityHandle& handle) {
+		for (Task& t : m_tasks) {
+			if (t.hasEntity && t.entity == handle) t.cancelled = true;
+		}
+	}
+
+	void LuaWorld::ReleaseTask(Task& task) {
+		if (m_runtime && m_runtime->Ok()) {
+			if (task.ref) m_runtime->Unref(task.ref);
+			if (task.predicateRef) m_runtime->Unref(task.predicateRef);
+		}
+		task.ref = 0;
+		task.predicateRef = 0;
+		task.thread = nullptr;
+	}
+
+	// Removes cancelled tasks and those whose entity is gone. Only called between callbacks.
+	void LuaWorld::SweepTasks() {
+		for (Task& t : m_tasks) {
+			if (t.hasEntity && !Live(t.entity)) t.cancelled = true;
+		}
+		for (Task& t : m_tasks) {
+			if (t.cancelled) ReleaseTask(t);
+		}
+		m_tasks.erase(std::remove_if(m_tasks.begin(), m_tasks.end(), [](const Task& t) { return t.cancelled; }), m_tasks.end());
+	}
+
+	// Timers created by these callbacks first fire in the next frame (the loop is bounded by the count at entry).
+	void LuaWorld::RunTimers() {
+		const size_t count = m_tasks.size();
+		for (size_t i = 0; i < count && i < m_tasks.size(); ++i) {
+			if (m_tasks[i].kind != Task::Kind::Timer || m_tasks[i].cancelled) continue;
+			if (m_tasks[i].hasEntity && !Live(m_tasks[i].entity)) {
+				m_tasks[i].cancelled = true;
+				continue;
+			}
+			if (m_playTime + kClockEpsilon < m_tasks[i].due) continue;
+			const int ref = m_tasks[i].ref;
+			const bool scoped = m_tasks[i].hasEntity;
+			const EntityHandle entity = m_tasks[i].entity;
+			if (m_tasks[i].interval > 0.0) {
+				m_tasks[i].due += m_tasks[i].interval;
+				if (m_tasks[i].due <= m_playTime) m_tasks[i].due = m_playTime + m_tasks[i].interval;
+			}
+			else {
+				m_tasks[i].cancelled = true;   // a one-shot timer is spent before its callback runs
+			}
+			bool faulted = false;
+			RunCallback(ref, "timer",
+				[this, scoped, entity](lua_State* L) {
+					lua_rawgeti(L, LUA_REGISTRYINDEX, m_contextRef);
+					if (scoped) LuaApiBinder::PushHandle(L, entity);
+					else lua_pushnil(L);
+					return 2;
+				},
+				&faulted);
+			if (faulted) m_tasks[i].cancelled = true;   // a failing timer stops; the diagnostic says why
+		}
+	}
+
+	// wait_until predicates run as callbacks (fn(ctx, entity) -> boolean). A failure cancels the coroutine.
+	void LuaWorld::RunCoroutines() {
+		const size_t count = m_tasks.size();
+		for (size_t i = 0; i < count && i < m_tasks.size(); ++i) {
+			if (m_tasks[i].kind != Task::Kind::Coroutine || m_tasks[i].cancelled) continue;
+			if (m_tasks[i].hasEntity && !Live(m_tasks[i].entity)) {
+				m_tasks[i].cancelled = true;
+				continue;
+			}
+			if (m_tasks[i].started) {
+				bool ready = false;
+				switch (m_tasks[i].wait) {
+				case Task::Wait::None:
+					ready = true;
+					break;
+				case Task::Wait::Time:
+					ready = m_playTime + kClockEpsilon >= m_tasks[i].until;
+					break;
+				case Task::Wait::Frames:
+					ready = --m_tasks[i].framesLeft <= 0;
+					break;
+				case Task::Wait::Until: {
+					const int predicate = m_tasks[i].predicateRef;
+					const bool scoped = m_tasks[i].hasEntity;
+					const EntityHandle entity = m_tasks[i].entity;
+					lua_State* L = m_runtime->State();
+					m_commands.clear();
+					m_inCallback = true;
+					m_worldWritable = true;
+					RunError error;
+					const bool ok = m_runtime->CallRef(predicate,
+						[this, scoped, entity](lua_State* state) {
+							lua_rawgeti(state, LUA_REGISTRYINDEX, m_contextRef);
+							if (scoped) LuaApiBinder::PushHandle(state, entity);
+							else lua_pushnil(state);
+							return 2;
+						},
+						1, &error);
+					m_worldWritable = false;
+					m_inCallback = false;
+					if (!ok) {
+						m_commands.clear();
+						m_tasks[i].cancelled = true;
+						DiagnoseRunError("coroutine wait_until", error, Diagnostic::Severity::Error);
+						continue;
+					}
+					ready = lua_toboolean(L, -1) != 0;
+					lua_pop(L, 1);
+					ApplyCommands();
+					break;
+				}
+				}
+				if (!ready) continue;
+			}
+			ResumeCoroutine(i);
+		}
+	}
+
+	// Runs one segment of a coroutine: up to its next wait, or to its end.
+	void LuaWorld::ResumeCoroutine(size_t index) {
+		lua_State* co = m_tasks[index].thread;
+		if (!co) {
+			m_tasks[index].cancelled = true;
+			return;
+		}
+		int nargs = 0;
+		if (!m_tasks[index].started) {
+			m_tasks[index].started = true;
+			lua_rawgeti(co, LUA_REGISTRYINDEX, m_contextRef);
+			if (m_tasks[index].hasEntity) LuaApiBinder::PushHandle(co, m_tasks[index].entity);
+			else lua_pushnil(co);
+			nargs = 2;
+		}
+		m_commands.clear();
+		m_inCallback = true;
+		m_worldWritable = true;
+		++m_resumeDepth;
+		int nres = 0;
+		RunError error;
+		const bool ok = m_runtime->Resume(co, nargs, nres, &error);
+		--m_resumeDepth;
+		m_worldWritable = false;
+		m_inCallback = false;
+		if (!ok) {
+			m_commands.clear();
+			m_tasks[index].cancelled = true;
+			DiagnoseRunError("coroutine", error, Diagnostic::Severity::Error);
+			return;
+		}
+		if (lua_status(co) == LUA_YIELD) {
+			const bool wellFormed = nres >= 2 && lua_type(co, -nres) == LUA_TSTRING;
+			const std::string kind = wellFormed ? lua_tostring(co, -nres) : std::string();
+			Task& t = m_tasks[index];
+			if (kind == "time") {
+				t.wait = Task::Wait::Time;
+				t.until = m_playTime + lua_tonumber(co, -nres + 1);
+			}
+			else if (kind == "frames") {
+				t.wait = Task::Wait::Frames;
+				t.framesLeft = static_cast<int64_t>(lua_tointeger(co, -nres + 1));
+			}
+			else if (kind == "until") {
+				t.wait = Task::Wait::Until;
+				if (t.predicateRef) m_runtime->Unref(t.predicateRef);
+				lua_pushvalue(co, -nres + 1);
+				t.predicateRef = luaL_ref(co, LUA_REGISTRYINDEX);
+			}
+			else {
+				Diagnostic d;
+				d.severity = Diagnostic::Severity::Error;
+				d.source = "coroutine";
+				d.message = "coroutine yielded without ctx:wait, ctx:wait_frames or ctx:wait_until";
+				d.frame = m_frame;
+				AddDiagnostic(std::move(d));
+				t.cancelled = true;
+			}
+			lua_pop(co, nres);
+		}
+		else {
+			m_tasks[index].cancelled = true;   // finished
+		}
+		ApplyCommands();
+	}
+
 	void LuaWorld::SweepDead() {
 		ComponentManager* cm = Manager();
 		if (!cm) return;
@@ -1705,6 +2233,9 @@ namespace NoxLua {
 		}
 		for (auto it = m_attachments.begin(); it != m_attachments.end();) {
 			it = cm->IsHandleValid(it->first) ? std::next(it) : m_attachments.erase(it);
+		}
+		for (auto it = m_started.begin(); it != m_started.end();) {
+			it = cm->IsHandleValid(it->first) ? std::next(it) : m_started.erase(it);
 		}
 		m_spawned.erase(std::remove_if(m_spawned.begin(), m_spawned.end(),
 			[cm](const EntityHandle& h) { return !cm->IsHandleValid(h); }), m_spawned.end());
@@ -1724,10 +2255,13 @@ namespace NoxLua {
 		m_systems.push_back(entry);
 	}
 
-	void LuaWorld::AddBehavior(const std::string& name, int ref) {
+	void LuaWorld::AddBehavior(const std::string& name, const BehaviorRefs& refs) {
 		BehaviorEntry entry;
 		entry.name = name;
-		entry.ref = ref;
+		entry.ref = refs.update;
+		entry.fixedRef = refs.fixed;
+		entry.startRef = refs.start;
+		entry.destroyRef = refs.destroy;
 		m_behaviors.push_back(entry);
 	}
 
@@ -2078,6 +2612,9 @@ namespace NoxLua {
 		};
 		keepAttachments(snap.attachments, m_attachments);
 		keepAttachments(snap.authoredAttachments, m_authoredAttachments);
+		// Reload does not run on_start again: the imported attachments count as started.
+		m_started.clear();
+		for (const auto& [handle, names] : m_attachments) m_started[handle] = names;
 
 		m_spawned.clear();
 		for (const EntityHandle& h : snap.spawned) {

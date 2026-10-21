@@ -12,6 +12,7 @@
 #include "../LightNode.h"
 #include "../BaseLight.h"
 #include "../ModularRenderer.h"
+#include "../GizmoRayCast.h"
 #include "../UiIconAtlas.h"
 #include "../Scene.h"
 #include "../SceneGraph.h"
@@ -23,6 +24,7 @@
 #include "../scripting/LuaEditorSupport.h"
 #include "../editor/InspectorUndo.h"
 #include "../scene/Prefab.h"
+#include "../app/ProjectBootstrap.h"
 #include "InspectorWidgets.h"
 #include "ContentBrowser.h"
 
@@ -217,6 +219,10 @@ EditorWorkspace::EditorWorkspace(Core& core, ImGuiInterface& legacyUi)
 		[this] { return m_core.IsPlaying(); },
 		[this](const std::string& scene) { RequestScene(scene); },
 		[this](const std::string& asset) { PlaceAssetInScene(asset, m_legacy.GetSelectedNode(), nullptr); },
+		[this](const std::string& label, std::function<void()> undo, std::function<void()> redo) {
+			if (!m_core.IsPlaying()) Push(label, std::move(undo), std::move(redo));
+		},
+		[this] { return m_core.GetCurrentScenePath(); },
 	});
 	// The layout ini may have been deleted: rebuild when no dock node exists yet.
 	const std::string userLayout = AssetIO::UserOutputPath("editor_layout.ini");
@@ -305,6 +311,7 @@ void EditorWorkspace::Draw(float dt)
 	m_dt = dt;
 	m_fpsSmoothed = m_fpsSmoothed <= 0.0f ? (dt > 0 ? 1.0f / dt : 0.0f) : m_fpsSmoothed + ((dt > 0 ? 1.0f / dt : 0.0f) - m_fpsSmoothed) * 0.05f;
 	m_statusTimer = std::max(0.0f, m_statusTimer - dt);
+	SyncSelection();
 
 	ImGuiViewport* mainVp = ImGui::GetMainViewport();
 	DrawMenuBar();
@@ -463,6 +470,11 @@ void EditorWorkspace::DrawMenuBar()
 			}
 			ImGui::EndMenu();
 		}
+		// Projects need the source checkout (templates/ and projects/ are read from it), not a packaged build.
+		const bool haveCheckout = !ProjectBootstrap::Info().sourceRoot.empty();
+		if (ImGui::MenuItem("New Project...", nullptr, false, haveCheckout && !m_core.IsPlaying())) m_openNewProject = true;
+		if (ImGui::MenuItem("Open Project...", nullptr, false, haveCheckout && !m_core.IsPlaying())) m_openOpenProject = true;
+		ImGui::Separator();
 		if (ImGui::MenuItem("Save Scene", "Ctrl+S", false, !m_core.IsPlaying())) {
 			m_core.SaveCurrentScene();
 			ui::Toast("Scene saved", ui::ToastKind::Success);
@@ -484,8 +496,14 @@ void EditorWorkspace::DrawMenuBar()
 		if (ImGui::MenuItem("Redo", "Ctrl+Y", false, !m_redo.empty())) Redo();
 		ImGui::Separator();
 		auto sel = m_legacy.GetSelectedNode();
-		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, sel != nullptr && !m_core.IsPlaying())) DuplicateNodeWithUndo(sel);
-		if (ImGui::MenuItem("Delete", "Del", false, sel != nullptr && !m_core.IsPlaying())) DeleteNodeWithUndo(sel);
+		const bool playing = m_core.IsPlaying();
+		if (ImGui::MenuItem("Cut", "Ctrl+X", false, sel != nullptr && !playing)) CopySelection(true);
+		if (ImGui::MenuItem("Copy", "Ctrl+C", false, sel != nullptr)) CopySelection(false);
+		if (ImGui::MenuItem("Paste", "Ctrl+V", false, !playing)) PasteFromClipboard();
+		ImGui::Separator();
+		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, sel != nullptr && !playing)) DuplicateSelectionWithUndo();
+		if (ImGui::MenuItem("Delete", "Del", false, sel != nullptr && !playing)) DeleteSelectionWithUndo();
+		if (ImGui::MenuItem("Select All", "Ctrl+A", false, !playing)) SelectAllTopLevel();
 		ImGui::Separator();
 		if (ImGui::MenuItem("Preferences...")) m_showPreferences = true;
 		ImGui::EndMenu();
@@ -533,7 +551,7 @@ void EditorWorkspace::DrawMenuBar()
 		const bool busy = m_runner->IsRunning();
 		if (ImGui::MenuItem("Build Release", nullptr, false, !busy)) StartTool("Build", "tools/Build.ps1", "-Configuration Release");
 		if (ImGui::MenuItem("Run Standalone", nullptr, false, true)) RunStandalone();
-		if (ImGui::MenuItem("Package", nullptr, false, !busy)) StartTool("Package", "tools/Package.ps1", "-Configuration Release");
+		if (ImGui::MenuItem("Package", nullptr, false, !busy)) StartPackage();
 		if (ImGui::MenuItem("Cancel", nullptr, false, busy)) m_runner->Cancel();
 		ImGui::Separator();
 		ImGui::MenuItem(kWinPresets, nullptr, &m_showPresets);
@@ -608,7 +626,7 @@ void EditorWorkspace::DrawToolbar()
 	ImGui::SameLine();
 	if (ui::Tool("##run", solace::Icon::Run, "Run", false, true, "Run Standalone with the selected launch preset")) RunStandalone();
 	ImGui::SameLine();
-	if (ui::Tool("##package", solace::Icon::Package, "Package", false, !busy, "Package a self-contained build (tools/Package.ps1)")) StartTool("Package", "tools/Package.ps1", "-Configuration Release");
+	if (ui::Tool("##package", solace::Icon::Package, "Package", false, !busy, "Package a self-contained build (tools/Package.ps1)")) StartPackage();
 	ImGui::End();
 }
 
@@ -768,21 +786,8 @@ void EditorWorkspace::DrawSceneViewport()
 	UpdateHover(io);
 	DrawSelectionBounds(dl);
 
-	// Click selection (not on gizmo or authoring handles).
-	if (m_scene.hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver() &&
-		m_dragHandle < 0 && ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x == 0.0f && !m_core.IsEditorCameraActive()) {
-		bool handleHit = false;
-		for (const ViewportHandle& h : m_handles) {
-			ImVec2 p;
-			if (ProjectToViewport(m_scene, h.world, p) && std::hypot(p.x - io.MousePos.x, p.y - io.MousePos.y) < 10.0f) { handleHit = true; break; }
-		}
-		if (!handleHit) {
-			const ImVec2 scale = io.DisplayFramebufferScale;
-			const int x = static_cast<int>((io.MousePos.x - m_scene.pos.x) * scale.x);
-			const int y = static_cast<int>((io.MousePos.y - m_scene.pos.y) * scale.y);
-			SelectNode(m_core.PickNode(x, y, m_scene.texWidth, m_scene.texHeight));
-		}
-	}
+	// Click, Ctrl+click and marquee selection (not on the gizmo or authoring handles).
+	UpdateMarquee(io, dl);
 
 	// In-viewport tool strip.
 	ImGui::SetCursorScreenPos(ImVec2(m_scene.pos.x + 8, m_scene.pos.y + 8));
@@ -814,6 +819,10 @@ void EditorWorkspace::DrawSceneViewport()
 
 void EditorWorkspace::DrawGizmo(const Viewport& vp)
 {
+	if (m_selection.Size() > 1) {
+		DrawGroupGizmo(vp);
+		return;
+	}
 	auto node = m_legacy.GetSelectedNode();
 	auto cam = m_core.GetCamera();
 	if (!node || !cam || m_core.IsEditorCameraActive() || node->IsFolder()) {
@@ -844,6 +853,99 @@ void EditorWorkspace::DrawGizmo(const Viewport& vp)
 		std::weak_ptr<SceneNode> weak = node;
 		Push("Transform " + node->GetName(), [weak, before] { if (auto n = weak.lock()) ApplyTRS(n, before); },
 			[weak, after] { if (auto n = weak.lock()) ApplyTRS(n, after); });
+		m_core.MarkDirty();
+	}
+	m_wasUsingGizmo = using_;
+}
+
+namespace {
+
+// Pivot of a group gizmo: the centre of the nodes' bounds when any of them has a model, else the centroid of their
+// world positions.
+glm::vec3 GroupPivot(const std::vector<std::shared_ptr<SceneNode>>& nodes)
+{
+	bool anyModel = false;
+	for (const auto& n : nodes) anyModel = anyModel || n->GetModel() != nullptr;
+	if (anyModel) {
+		const auto [lo, hi] = GizmoRayCast::CalculateMultiSelectionBounds(nodes);
+		return (lo + hi) * 0.5f;
+	}
+	glm::vec3 centre(0.0f);
+	for (const auto& n : nodes) centre += n->GetWorldPosition();
+	return nodes.empty() ? centre : centre / static_cast<float>(nodes.size());
+}
+
+// Applies a world-space group delta to one top-level node. The position goes through the whole delta; the orientation
+// takes the delta's rotation (composed in world space, so no shear from the rotation); the scale takes the delta's
+// scale: uniform scale multiplies the world scale exactly, non-uniform scale multiplies each axis of the node's own
+// frame (documented in docs/editor.md, since a rotated node cannot take a non-uniform world scale without shearing).
+void ApplyGroupDelta(const std::shared_ptr<SceneNode>& node, const glm::mat4& delta)
+{
+	glm::vec3 dScale, dTrans, dSkew;
+	glm::quat dRot;
+	glm::vec4 dPersp;
+	glm::decompose(delta, dScale, dRot, dTrans, dSkew, dPersp);
+
+	glm::vec3 scale, trans, skew;
+	glm::quat rot;
+	glm::vec4 persp;
+	glm::decompose(node->GetWorldPosition4x4(), scale, rot, trans, skew, persp);
+
+	const glm::vec3 newTrans = glm::vec3(delta * glm::vec4(trans, 1.0f));
+	const glm::quat newRot = glm::normalize(dRot * rot);
+	const bool uniform = std::abs(dScale.x - dScale.y) < 1e-4f && std::abs(dScale.y - dScale.z) < 1e-4f;
+	const glm::vec3 newScale = uniform ? scale * dScale.x : scale * dScale;
+	const glm::mat4 world = glm::translate(glm::mat4(1.0f), newTrans) * glm::mat4_cast(newRot) * glm::scale(glm::mat4(1.0f), newScale);
+	node->SetWorldTransform(world);
+}
+
+} // namespace
+
+// Several nodes selected: one gizmo at the centre of their top-level nodes. Dragging moves, turns or scales each
+// top-level node about that pivot (its children follow it). One undo step per drag. Rotation and non-uniform scale
+// of a node that is already rotated can shear it, as with any world-space group transform.
+void EditorWorkspace::DrawGroupGizmo(const Viewport& vp)
+{
+	auto cam = m_core.GetCamera();
+	const auto top = m_selection.TopLevel();
+	if (!cam || top.empty() || m_core.IsEditorCameraActive()) {
+		m_wasUsingGizmo = false;
+		return;
+	}
+	if (!m_wasUsingGizmo) m_groupModel = glm::translate(glm::mat4(1.0f), GroupPivot(top));
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+	ImGuizmo::SetRect(vp.pos.x, vp.pos.y, vp.size.x, vp.size.y);
+	const glm::mat4 view = cam->GetViewMatrix();
+	const glm::mat4 proj = glm::perspective(glm::radians(cam->GetCameraFov()), vp.size.x / vp.size.y, 0.05f, 5000.0f);
+	float snap[3];
+	const int op = m_gizmoOp;
+	const float s = op == ImGuizmo::ROTATE ? m_snapValues[1] : (op == ImGuizmo::SCALE ? m_snapValues[2] : m_snapValues[0]);
+	snap[0] = snap[1] = snap[2] = s;
+	const glm::mat4 pre = m_groupModel;
+	ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), static_cast<ImGuizmo::OPERATION>(op),
+		static_cast<ImGuizmo::MODE>(m_gizmoMode), glm::value_ptr(m_groupModel), nullptr, m_snap ? snap : nullptr);
+	const bool using_ = ImGuizmo::IsUsing();
+	if (using_) {
+		if (!m_wasUsingGizmo) {
+			m_groupBefore.clear();
+			for (const auto& n : top) m_groupBefore.push_back({ n, CaptureTRS(n) });
+		}
+		const glm::mat4 delta = m_groupModel * glm::inverse(pre);   // pivotT * (this frame's R, S) * pivotT^-1, with the move
+		for (const auto& n : top) ApplyGroupDelta(n, delta);
+		m_core.InvalidateSceneCaches();
+	}
+	if (m_wasUsingGizmo && !using_) {
+		std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> before = m_groupBefore;
+		std::vector<std::pair<std::weak_ptr<SceneNode>, std::array<float, 10>>> after;
+		for (const auto& entry : before) {
+			if (auto n = entry.first.lock()) after.push_back({ entry.first, CaptureTRS(n) });
+		}
+		const std::string label = before.size() == 1 ? "Transform " + (before[0].first.lock() ? before[0].first.lock()->GetName() : std::string("node"))
+			: "Transform " + std::to_string(before.size()) + " nodes";
+		Push(label,
+			[before] { for (const auto& e : before) if (auto n = e.first.lock()) ApplyTRS(n, e.second); },
+			[after] { for (const auto& e : after) if (auto n = e.first.lock()) ApplyTRS(n, e.second); });
 		m_core.MarkDirty();
 	}
 	m_wasUsingGizmo = using_;
@@ -897,8 +999,9 @@ void EditorWorkspace::UpdateHover(const ImGuiIO& io)
 // around the node (the bounds the debug overlay uses) and a ring at its origin.
 void EditorWorkspace::DrawSelectionBounds(ImDrawList* dl)
 {
-	const auto node = m_legacy.GetSelectedNode();
-	if (!node || node->GetModel() || m_core.IsPlaying() || !m_scene.visible) return;
+	if (m_core.IsPlaying() || !m_scene.visible) return;
+	for (const auto& node : m_selection.Nodes()) {
+	if (!node || node->GetModel()) continue;
 	const glm::mat4 world = node->GetWorldPosition4x4();
 	ImVec2 corner[8];
 	bool visible[8];
@@ -914,6 +1017,7 @@ void EditorWorkspace::DrawSelectionBounds(ImDrawList* dl)
 	}
 	ImVec2 origin;
 	if (ProjectToViewport(m_scene, glm::vec3(world[3]), origin)) dl->AddCircle(origin, 9.0f, col, 0, 2.0f);
+	}
 }
 
 void EditorWorkspace::DrawAuthoringOverlay(ImDrawList* dl)
@@ -1044,6 +1148,7 @@ void EditorWorkspace::ChooseRenderTarget()
 // ---------------------------------------------------------------------------------------------
 void EditorWorkspace::SelectNode(const std::shared_ptr<SceneNode>& node)
 {
+	m_selection.Set(node);
 	m_legacy.SetSelectedNode(node);
 }
 
@@ -1069,7 +1174,10 @@ void EditorWorkspace::DrawHierarchyRow(const nox::editor::HierarchyRow& row)
 	if (folder) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 200, 120, 255));
 	const bool clicked = ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_SpanAvailWidth);
 	if (folder) ImGui::PopStyleColor();
-	if (clicked) SelectNode(node);
+	if (clicked) {
+		const ImGuiIO& io = ImGui::GetIO();
+		ClickSelect(node, io.KeyCtrl, io.KeyShift);
+	}
 	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) BeginRename(node);
 	const ImVec2 rowMin = ImGui::GetItemRectMin();
 	const ImVec2 rowMax = ImGui::GetItemRectMax();
@@ -1107,7 +1215,7 @@ void EditorWorkspace::DrawHierarchyRow(const nox::editor::HierarchyRow& row)
 		ImGui::EndDragDropTarget();
 	}
 	if (ImGui::BeginPopupContextItem()) {
-		SelectNode(node);
+		if (!m_selection.Contains(node)) SelectNode(node);
 		if (ImGui::MenuItem("Focus")) {
 			if (auto cam = m_core.GetCamera()) {
 				const glm::vec3 p = node->GetWorldPosition();
@@ -1158,7 +1266,9 @@ void EditorWorkspace::DrawHierarchyRow(const nox::editor::HierarchyRow& row)
 
 void EditorWorkspace::DrawHierarchy()
 {
-	if (!ImGui::Begin(kWinHierarchy, &m_showHierarchy)) { ImGui::End(); return; }
+	const bool hierarchyOpen = ImGui::Begin(kWinHierarchy, &m_showHierarchy);
+	m_hierarchyFocused = hierarchyOpen && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+	if (!hierarchyOpen) { ImGui::End(); return; }
 	solace::SearchField("##hfilter", m_hierarchyFilter, sizeof(m_hierarchyFilter), "Search: name or t:folder");
 	if (ImGui::SmallButton("Collapse")) m_hierarchyView.CollapseAll(RootNode());
 	ImGui::SameLine();
@@ -1181,6 +1291,8 @@ void EditorWorkspace::DrawHierarchy()
 		const nox::editor::HierarchyFilter filter = nox::editor::HierarchyFilter::Parse(m_hierarchyFilter);
 		const auto rows = m_hierarchyView.Build(root, filter, m_hierarchySort);
 		if (rows.empty()) ImGui::TextDisabled("%s", filter.Active() ? "No node matches the search." : "The scene is empty. Right-click to add a node.");
+		m_visibleRows.clear();
+		for (const auto& row : rows) m_visibleRows.push_back(row.node);
 		for (const auto& row : rows) DrawHierarchyRow(row);
 		// Empty space below the rows: drop here to move a node to the scene root; right-click adds nodes.
 		const float freeHeight = std::max(ImGui::GetContentRegionAvail().y, 12.0f);
@@ -1426,6 +1538,9 @@ void EditorWorkspace::DrawInspector()
 		ImGui::TextDisabled("Select a node in the Hierarchy or the Scene view.");
 	}
 	else {
+		if (m_selection.Size() > 1) {
+			ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.36f, 1.0f), "%d selected. Showing %s; edits apply to this node only.", static_cast<int>(m_selection.Size()), node->GetName().c_str());
+		}
 		if (!node->GetPrefabPath().empty()) {
 			ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1.0f), "Prefab: %s", node->GetPrefabPath().c_str());
 			ImGui::SameLine();
@@ -1455,6 +1570,7 @@ void EditorWorkspace::DrawInspector()
 	ImGui::End();
 	// Safety net: a continuous edit whose widget is gone ends once no item is active.
 	if (m_propEdit.active && !ImGui::IsAnyItemActive()) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+	if (m_multiActive && !ImGui::IsAnyItemActive()) EndMultiEdit();
 }
 
 // Node names for NodeRef pickers (flattened scene graph, root excluded).
@@ -1495,6 +1611,7 @@ void EditorWorkspace::DrawPhysics()
 	ImGui::End();
 	// Safety net: a continuous edit whose widget is gone ends once no item is active.
 	if (m_propEdit.active && !ImGui::IsAnyItemActive()) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+	if (m_multiActive && !ImGui::IsAnyItemActive()) EndMultiEdit();
 }
 
 void EditorWorkspace::DrawPlayBanner()
@@ -1503,7 +1620,7 @@ void EditorWorkspace::DrawPlayBanner()
 	ImGui::PushStyleColor(ImGuiCol_ChildBg, colour);
 	ImGui::BeginChild("##playbanner", ImVec2(-1.0f, ImGui::GetFrameHeight() + 8.0f), false, ImGuiWindowFlags_NoScrollbar);
 	ImGui::SetCursorPos(ImVec2(8.0f, 4.0f));
-	ImGui::TextColored(ImVec4(1, 1, 1, 1), "Playing: changes are not saved");
+	ImGui::TextColored(ImVec4(1, 1, 1, 1), "Play mode: changes will be lost when you Stop (no undo here)");
 	ImGui::EndChild();
 	ImGui::PopStyleColor();
 	ImGui::Spacing();
@@ -1534,13 +1651,32 @@ void EditorWorkspace::DrawComponentSection(const std::shared_ptr<SceneNode>& nod
 		if (!prop.AppliesTo(*node)) continue;
 		PropValue value;
 		if (!nox::reflect::GetProperty(*node, desc.name, prop.name, value)) continue;
+		// Multi-edit: the other selected nodes that have this property take the same edit.
+		std::vector<std::shared_ptr<SceneNode>> targets{ node };
+		for (const auto& other : m_selection.Nodes()) {
+			PropValue ignored;
+			if (other && other != node && nox::reflect::GetProperty(*other, desc.name, prop.name, ignored) && prop.AppliesTo(*other)) targets.push_back(other);
+		}
+		const bool multi = targets.size() > 1;
+		bool mixed = false;
+		for (size_t i = 1; i < targets.size(); ++i) {
+			PropValue other;
+			if (nox::reflect::GetProperty(*targets[i], desc.name, prop.name, other) && !(other == value)) mixed = true;
+		}
 
-		solace::PropertyLabel(prop.label.c_str(), prop.tooltip.empty() ? nullptr : prop.tooltip.c_str());
+		const std::string label = mixed ? std::string(prop.label) + "  (mixed)" : prop.label;
+		solace::PropertyLabel(label.c_str(), prop.tooltip.empty() ? nullptr : prop.tooltip.c_str());
 		const std::string widgetId = desc.name + "." + prop.name;
-		const bool ownsEdit = m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
+		const bool multiOwned = m_multiActive && m_multiComponent == desc.name && m_multiProperty == prop.name;
+		const bool ownsEdit = !multi && m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
 			&& m_nodeTable.Resolve(m_propEdit.node) == node;
+		const PropValue before = value;   // the primary's value before this frame's widget edit
 		const nox::editor::PropertyWidgetResult r = nox::editor::DrawPropertyWidget(prop, value, assets, nodeNames, widgetId.c_str());
-		if (r.changed) {
+		if (r.changed && multi) {
+			ApplyMultiEdit(targets, desc.name, prop.name, before, value, !multiOwned && r.final);
+			NoteEdit();
+		}
+		else if (r.changed) {
 			std::string error;
 			bool ok;
 			if (!ownsEdit && r.final) {
@@ -1557,6 +1693,7 @@ void EditorWorkspace::DrawComponentSection(const std::shared_ptr<SceneNode>& nod
 		const bool stillOwned = m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
 			&& m_nodeTable.Resolve(m_propEdit.node) == node;
 		if (stillOwned && (r.final || !r.active)) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+		if (multiOwned && (r.final || !r.active)) EndMultiEdit();
 		// A Lua script reference (asset path ending in .lua) gets a button to open it in the external editor.
 		const std::string* assetPath = prop.type == nox::reflect::PropType::AssetPath ? std::get_if<std::string>(&value) : nullptr;
 		if (assetPath && assetPath->size() > 4 && assetPath->compare(assetPath->size() - 4, 4, ".lua") == 0) {
@@ -2127,10 +2264,131 @@ void EditorWorkspace::RunStandalone()
 #endif
 	if (exe.empty()) exe = "Nox_Engine.exe";
 	if (m_core.IsDirty()) ui::Toast("Standalone uses the saved scene - save to include edits", ui::ToastKind::Warning);
-	const std::string cmd = "\"" + exe + "\" --preset " + m_selectedPreset + " --game";
+	std::string cmd = "\"" + exe + "\" --preset " + m_selectedPreset + " --game";
+	// A scene under projects/ belongs to that project, so run that scene (the preset's scene is an engine scene).
+	const std::string scene = m_core.GetCurrentScenePath();
+	if (scene.rfind("projects/", 0) == 0) cmd += " --scene \"" + scene + "\"";
 	if (ProcessRunner::LaunchDetached(cmd, fs::current_path().string())) ui::Toast("Launched standalone (" + m_selectedPreset + ")", ui::ToastKind::Success);
 	else ui::Toast("Could not launch " + exe, ui::ToastKind::Error);
 	(void)exePath;
+}
+
+void EditorWorkspace::StartPackage()
+{
+	// A project packages with its own profile (packaging/<name>.json, written by File > New Project). With no
+	// project active the default profile (nox-racing) stays, as before.
+	std::string args = "-Configuration Release";
+	const std::string project = m_core.GetGameProject();
+	if (!project.empty()) {
+		const fs::path root = ProjectBootstrap::Info().sourceRoot.empty() ? fs::current_path() : ProjectBootstrap::Info().sourceRoot;
+		const std::string profile = ProjectTemplates::FindProfileForProject(root, project);
+		if (profile.empty()) {
+			ui::Toast("The active project has no packaging profile (packaging/<name>.json)", ui::ToastKind::Warning);
+			return;
+		}
+		args += " -Profile " + ProjectTemplates::ProfileNameFor(profile);
+	}
+	StartTool("Package", "tools/Package.ps1", args);
+}
+
+void EditorWorkspace::DrawNewProjectModal()
+{
+	const fs::path root = ProjectBootstrap::Info().sourceRoot;
+	if (m_openNewProject) {
+		m_newProjectTemplates = ProjectTemplates::List(root);
+		m_newProjectTemplate = 0;
+		m_newProjectOverwrite = false;
+		m_newProjectError.clear();
+		m_newProjectLocation[0] = '\0';
+		ImGui::OpenPopup("New Project");
+		m_openNewProject = false;
+	}
+	if (!ImGui::BeginPopupModal("New Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+
+	ImGui::TextUnformatted("Name");
+	ImGui::SetNextItemWidth(320.0f);
+	if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+	ImGui::InputText("##newprojectname", m_newProjectName, sizeof(m_newProjectName));
+	const std::string defaultLocation = std::string("projects/") + m_newProjectName;
+	ImGui::TextUnformatted("Location");
+	ImGui::SetNextItemWidth(320.0f);
+	ImGui::InputTextWithHint("##newprojectlocation", defaultLocation.c_str(), m_newProjectLocation, sizeof(m_newProjectLocation));
+	ImGui::TextDisabled("A folder directly under projects/ of this checkout. Empty uses %s.", defaultLocation.c_str());
+
+	ImGui::TextUnformatted("Template");
+	const bool haveTemplates = !m_newProjectTemplates.empty();
+	const char* current = haveTemplates ? m_newProjectTemplates[m_newProjectTemplate].name.c_str() : "(none found)";
+	ImGui::SetNextItemWidth(320.0f);
+	if (ImGui::BeginCombo("##newprojecttemplate", current)) {
+		for (int i = 0; i < static_cast<int>(m_newProjectTemplates.size()); ++i) {
+			if (ImGui::Selectable(m_newProjectTemplates[i].name.c_str(), i == m_newProjectTemplate)) m_newProjectTemplate = i;
+		}
+		ImGui::EndCombo();
+	}
+	if (haveTemplates) ImGui::TextWrapped("%s", m_newProjectTemplates[m_newProjectTemplate].description.c_str());
+	ImGui::Spacing();
+	ImGui::Checkbox("Replace files that already exist", &m_newProjectOverwrite);
+	if (!m_newProjectError.empty()) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", m_newProjectError.c_str());
+	ImGui::Spacing();
+
+	if (ui::Btn("Create", true) && haveTemplates) {
+		ProjectTemplates::CreateRequest request;
+		request.name = m_newProjectName;
+		request.templateId = m_newProjectTemplates[m_newProjectTemplate].id;
+		request.root = root;
+		request.projectDir = m_newProjectLocation;
+		request.overwrite = m_newProjectOverwrite;
+		ProjectTemplates::CreateResult result;
+		std::string error;
+		if (ProjectTemplates::Create(request, result, error)) {
+			ui::Toast("Created " + result.projectDescriptor, ui::ToastKind::Success);
+			ImGui::CloseCurrentPopup();
+			// Opening the main scene activates the project, as for any project scene.
+			RequestScene(result.mainScene);
+		}
+		else {
+			m_newProjectError = error;
+		}
+	}
+	ImGui::SameLine();
+	if (ui::Btn("Cancel", false)) ImGui::CloseCurrentPopup();
+	ImGui::EndPopup();
+}
+
+void EditorWorkspace::DrawOpenProjectModal()
+{
+	if (m_openOpenProject) {
+		m_projectFolders.clear();
+		std::error_code ec;
+		for (const fs::directory_entry& entry : fs::directory_iterator(ProjectBootstrap::Info().sourceRoot / "projects", ec)) {
+			if (entry.is_directory(ec) && fs::is_regular_file(entry.path() / "project.json", ec)) {
+				m_projectFolders.push_back(entry.path().filename().string());
+			}
+		}
+		std::sort(m_projectFolders.begin(), m_projectFolders.end());
+		ImGui::OpenPopup("Open Project");
+		m_openOpenProject = false;
+	}
+	if (!ImGui::BeginPopupModal("Open Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+	if (m_projectFolders.empty()) ImGui::TextDisabled("No projects under projects/. File > New Project creates one.");
+	ImGui::BeginChild("##openprojectlist", ImVec2(360.0f, 240.0f), true);
+	for (const std::string& folder : m_projectFolders) {
+		if (!ImGui::Selectable(("projects/" + folder).c_str())) continue;
+		// The project's main scene: scenes/main.json when present, else its first scene in the list.
+		const std::string prefix = "projects/" + folder + "/scenes/";
+		std::string target;
+		for (const std::string& scene : m_core.GetSceneList()) {
+			if (scene.rfind(prefix, 0) != 0) continue;
+			if (scene == prefix + "main.json") { target = scene; break; }
+			if (target.empty()) target = scene;
+		}
+		ImGui::CloseCurrentPopup();
+		if (target.empty()) ui::Toast("projects/" + folder + " has no scenes", ui::ToastKind::Warning);
+		else RequestScene(target);
+	}
+	ImGui::EndChild();
+	if (ui::Btn("Cancel", false)) ImGui::CloseCurrentPopup();
+	ImGui::EndPopup();
 }
 
 void EditorWorkspace::DrawBuildOutput()
@@ -2302,6 +2560,8 @@ void EditorWorkspace::DrawPreferences()
 
 void EditorWorkspace::DrawModals()
 {
+	DrawNewProjectModal();
+	DrawOpenProjectModal();
 	if (m_openRename) {
 		ImGui::OpenPopup("Rename Node");
 		m_openRename = false;
@@ -2439,10 +2699,13 @@ void EditorWorkspace::HandleShortcuts()
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) Undo();
 	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) Redo();
 	auto sel = m_legacy.GetSelectedNode();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false) && sel && !m_core.IsPlaying()) DuplicateNodeWithUndo(sel);
-	if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && sel && !m_core.IsPlaying() && (m_scene.focused || ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))) {
-		if (m_scene.focused) DeleteNodeWithUndo(sel);
-	}
+	const bool scope = NodeShortcutScope();   // the Hierarchy or the Scene viewport has the keyboard
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false)) DuplicateSelectionWithUndo();
+	if (scope && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) DeleteSelectionWithUndo();
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) CopySelection(false);
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_X, false)) CopySelection(true);
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) PasteFromClipboard();
+	if (scope && ctrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) SelectAllTopLevel();
 	if (m_scene.focused && !ctrl) {
 		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) m_gizmoOp = ImGuizmo::TRANSLATE;
 		if (ImGui::IsKeyPressed(ImGuiKey_E, false)) m_gizmoOp = ImGuizmo::ROTATE;
@@ -2582,6 +2845,89 @@ void EditorWorkspace::RunSmokeScript()
 		check(subject->parentNode.lock() == root, "undo group restores the parent");
 		Undo();
 		check(root->children.size() == rootCount, "undo new folder removes it");
+	}
+	if (frame == 77 && graph) {
+		// Multi-selection (Ctrl+click, copy/paste, multi-delete, select all), each undo step checked. Three empty nodes
+		// are made under the root for the test; the file is restored by the save check at frame 330.
+		const auto root = graph->GetRoot();
+		const size_t before = root->children.size();
+		std::vector<std::shared_ptr<SceneNode>> trio;
+		for (int i = 0; i < 3; ++i) {
+			json j = NodeTemplate("empty");
+			j["name"] = "SmokeSel" + std::to_string(i);
+			j["position"] = { 2.0f * static_cast<float>(i), 0.5f, 7.0f };
+			if (auto n = m_core.InstantiateNodeFromJson(j, root)) trio.push_back(n);
+		}
+		check(trio.size() == 3, "smoke: three nodes for multi-select");
+		if (trio.size() == 3) {
+			SelectNode(trio[0]);
+			ClickSelect(trio[1], true, false);
+			ClickSelect(trio[2], true, false);
+			check(m_selection.Size() == 3 && m_selection.Primary() == trio[2] && m_legacy.GetSelectedNode() == trio[2],
+				"ctrl+click builds a three-node selection, last clicked is primary");
+			const size_t rootCount = root->children.size();
+			CopySelection(false);
+			PasteFromClipboard();
+			check(root->children.size() == rootCount + 3, "paste creates three nodes");
+			bool sameTransforms = root->children.size() == rootCount + 3;
+			bool sameNames = true;
+			if (sameTransforms) {
+				for (size_t i = 0; i < 3; ++i) {
+					const auto copy = root->children[rootCount + i];
+					const auto a = CaptureTRS(trio[i]), b = CaptureTRS(copy);
+					for (size_t k = 0; k < 10; ++k) sameTransforms = sameTransforms && std::abs(a[k] - b[k]) < 1e-4f;
+					sameNames = sameNames && copy->GetName() == trio[i]->GetName() + " (1)";
+				}
+			}
+			check(sameTransforms, "pasted nodes keep the copied transforms");
+			check(sameNames, "pasted nodes get unique names (Name (1))");
+			check(m_selection.Size() == 3, "paste selects the new nodes");
+			Undo();
+			check(root->children.size() == rootCount, "one undo removes all three pasted nodes");
+			Redo();
+			check(root->children.size() == rootCount + 3, "redo restores the three pasted nodes");
+			Undo();
+
+			m_selection.SetAll(trio);
+			m_legacy.SetSelectedNode(m_selection.Primary());
+			DeleteSelectionWithUndo();
+			check(root->children.size() == rootCount - 3, "multi-select delete removes all three");
+			Undo();
+			check(root->children.size() == rootCount, "one undo restores all three deleted nodes");
+
+			size_t topLevel = 0;
+			for (const auto& c : root->children) if (c && !c->IsGenerated()) ++topLevel;
+			SelectAllTopLevel();
+			check(m_selection.Size() == topLevel && topLevel > 0, "ctrl+a selects all top-level nodes");
+			m_selection.Clear();
+			m_legacy.SetSelectedNode(nullptr);
+			// Multi-edit: a name set on the primary goes to all three selected nodes, and one undo reverts all three.
+			{
+				// The undo of the delete above re-created the three nodes: look them up again by name.
+				std::vector<std::shared_ptr<SceneNode>> live;
+				for (const auto& c : root->children) if (c && c->GetName().rfind("SmokeSel", 0) == 0) live.push_back(c);
+				check(live.size() == 3, "smoke: three nodes restored by undo");
+				if (live.size() == 3) {
+					m_selection.SetAll(live);
+					m_legacy.SetSelectedNode(m_selection.Primary());
+					const std::string primaryName = live[2]->GetName();
+					ApplyMultiEdit(live, "Node", "name", nox::reflect::PropValue(primaryName), nox::reflect::PropValue(std::string("SmokeMulti")), true);
+					check(live[0]->GetName() == "SmokeMulti" && live[1]->GetName() == "SmokeMulti" && live[2]->GetName() == "SmokeMulti",
+						"multi-edit sets the property on all three selected nodes");
+					Undo();
+					check(live[0]->GetName() == "SmokeSel0" && live[1]->GetName() == "SmokeSel1" && live[2]->GetName() == "SmokeSel2",
+						"one undo reverts the multi-edit on all three nodes");
+				}
+			}
+			// Leave the scene as it was: delete the three nodes this block made (their restore is the saved file's job).
+			std::vector<std::shared_ptr<SceneNode>> made;
+			for (const auto& c : root->children) if (c && c->GetName().rfind("SmokeSel", 0) == 0) made.push_back(c);
+			m_selection.SetAll(made);
+			DeleteSelectionWithUndo();
+			check(root->children.size() == before, "smoke nodes removed again");
+		}
+		m_selection.Clear();
+		m_legacy.SetSelectedNode(nullptr);
 	}
 	if (frame == 75) {
 		// Physics window: focus its tab so it draws (it docks with the Inspector).

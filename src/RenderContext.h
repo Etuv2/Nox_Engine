@@ -429,6 +429,8 @@ struct RenderContext {
 
 	// Local reflection probes (ReflectionProbePass), captured once per scene load.
 	bool enableReflectionProbes = true;
+	// Set by ReflectionProbePass while its probe capture spans frames (the loading overlay waits for it).
+	bool reflectionCaptureInProgress = false;
 	rhi::TextureHandle reflectionProbeArray;
 	rhi::BufferHandle reflectionProbeSSBO;
 	int reflectionProbeCount = 0;

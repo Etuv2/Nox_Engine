@@ -1,6 +1,8 @@
 #pragma once
 
 #include "PlayWorldSnapshot.h"
+#include <chrono>
+#include "SliceTask.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -155,7 +157,15 @@ public:
      * @param newSceneFile Path to the new scene file
      */
     void SwapScene(const std::string& newSceneFile);
-    
+
+    /**
+     * @brief True while a scene loads on the background loader (the loading screen is up; the simulation waits).
+     *        Scene switches and startup load asynchronously: the old scene stays live until the new one is ready.
+     */
+    bool IsSceneLoading() const;
+    /** @brief True while the loading screen is up for a load (running) or a failed load (waiting for Continue). */
+    bool IsSceneBusy() const { return IsSceneLoading() || !m_sceneLoadError.empty(); }
+
     /**
      * @brief Save the current scene.
      */
@@ -252,7 +262,9 @@ public:
     std::shared_ptr<ModularRenderer> GetRenderer() { return m_modularRenderer; }
     SceneLoader* GetSceneLoader() { return m_sceneLoader.get(); }
     const std::string& GetCurrentScenePath() const { return m_currentSceneFilePath; }
-    std::vector<std::string> GetSceneList() const;
+    std::vector<std::string> GetSceneList() const;   // scenes/*.json and projects/<name>/scenes/*.json
+    // Logical descriptor of the project that runs the current scene ("projects/<name>/project.json"), "" for none.
+    const std::string& GetGameProject() const { return m_gameProject; }
 
     // Play mode: Play starts from the authored scene, Stop restores the pre-play state.
     void RequestPlay();
@@ -271,6 +283,7 @@ public:
     json GetAuthoredGameJson() const;
     // Deferred scene switch (performed at the start of the next update).
     void RequestSceneSwap(const std::string& scenePath) { m_pendingSceneSwap = scenePath; }
+    bool IsSceneSwapPending() const { return !m_pendingSceneSwap.empty(); }
     // Node picking in viewport-local pixel coordinates.
     std::shared_ptr<SceneNode> PickNode(int x, int y, int width, int height);
     std::shared_ptr<SceneNode> DuplicateNode(const std::shared_ptr<SceneNode>& node);
@@ -318,7 +331,27 @@ private:
     // Internal Scene Management
 
     
-    void CleanupCurrentScene();
+    // Physics bodies of the replaced scene are retired by SceneLoader::TakeLoadedScene; pass false when a load commits.
+    void CleanupCurrentScene(bool removePhysicsBodies = true);
+    // Scene load pipeline (see docs/scenes.md, "Loading")
+    void ServiceSceneLoad(double budgetMs = 14.0);
+    void CommitMark(const char* name);
+    void CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup);
+    void RenderSceneLoadingUI(bool overlay);
+    void PresentSceneOverlay();
+    void FinishSceneLoadSynchronously();
+    std::unique_ptr<SliceTask> m_commitTask;       // the commit of a loaded scene, sliced across frames
+    std::shared_ptr<SceneGraph> m_commitGraph;     // the loaded scene being committed
+    bool m_commitStartup = false;
+    bool m_scenePresentPending = false;            // the new scene committed; its first frame draws the loading overlay
+    std::string m_commitStage;                     // current commit step (loading screen text)
+    int m_commitStepIndex = 0;
+    std::chrono::steady_clock::time_point m_commitStepStart{};
+    std::string m_sceneLoadTarget;                // logical path of the load in progress or failed
+    std::string m_sceneLoadError;                 // failed load waiting for Continue (empty: none)
+    bool m_sceneLoadStartup = false;              // the load in progress is the startup scene
+    std::chrono::steady_clock::time_point m_sceneLoadStartTime{};  // BeginLoad of the load in progress
+    float m_sceneLoadWorstFrameMs = 0.0f;         // longest frame seen while it loaded (logged on commit)
     bool ApplySceneCameraOverride(const std::string& sceneFilePath);
     void ComputeSceneBoundingBox();
     void RebuildSceneBVH();

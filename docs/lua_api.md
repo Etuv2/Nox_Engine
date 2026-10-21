@@ -61,9 +61,9 @@ project loads. Calling them later is an error.
 | Load | top-level code of the entry and its `require`d modules | Each scene configuration (Configure) |
 | Frame system | `nox.system{ name, order, update = function(ctx, dt) end }` | Each frame while playing and not paused, in `order` then declaration order |
 | Fixed system | `nox.system{ ..., fixed = true, update = ... }` | Each physics substep (see below) |
-| Behavior | `nox.behavior{ name, update = function(ctx, entity, dt) end }` | After the systems, for each entity with `ctx:attach` |
+| Behavior | `nox.behavior{ name, update = fn(ctx, entity, dt), fixed_update = fn(ctx, entity, dt), on_start = fn(ctx, entity), on_destroy = fn(ctx, entity) }` (any one is enough) | `on_start` once per entity before its first update; `update` after the systems; `fixed_update` per substep; `on_destroy` once when the entity goes away (see "Lifecycle, timers and coroutines") |
 | Event handler | `nox.on(name, function(ctx, payload) end)` | After systems, in emission order then handler registration order |
-| `begin_play` / `end_play` | `nox.on("begin_play", ...)` | At Play and at Stop |
+| `begin_play` / `end_play` | `nox.on("begin_play", function(ctx, payload) ... end)` | At Play and at Stop. `payload` is the scene payload from `ctx:load_scene` (nil when there is none) |
 
 `Update` runs systems in this order: frame systems, events emitted during the frame, behaviors.
 Events emitted by an event handler are delivered in the next frame. Systems read a snapshot of the
@@ -149,7 +149,7 @@ Deferred native commands (applied after the callback returns successfully):
 
 | Function | Behaviour |
 | --- | --- |
-| `ctx:spawn(name)` | queue creation of a script entity named `name` (must be unused). Returns a token; use `ctx:resolve_spawn(token)` in a later callback |
+| `ctx:spawn(name)` | queue creation of a script-only entity named `name` (must be unused): logic state with no scene node, so nothing is drawn and no physics body is made. For anything visible or colliding use `ctx:instantiate`. Returns a token; use `ctx:resolve_spawn(token)` in a later callback |
 | `ctx:destroy(h)` | queue destruction. Script-spawned entities are destroyed; scene nodes (authored, or instantiated by `ctx:instantiate`) are removed from the scene at the frame boundary. Authored nodes come back at Stop, nodes created during play do not |
 | `ctx:move(h, x, y, z)` | set local position (continuous motion; does not flag a camera cut) |
 | `ctx:teleport(h, x, y, z)` | set local position and flag a discontinuous move (`ConsumeTeleport` returns true for that frame, so temporal history resets) |
@@ -206,8 +206,9 @@ Scene instances:
 
 Scene requests:
 
-- `ctx:load_scene("scenes/<name>.json")` switches scene at the next frame boundary. The path is logical: under `scenes/`,
-  ends in `.json`, uses letters, digits, `_ - . /` and no `..`.
+- `ctx:load_scene("scenes/<name>.json" [, payload])` switches scene at the next frame boundary. The path is logical: under `scenes/`,
+  ends in `.json`, uses letters, digits, `_ - . /` and no `..`. The optional payload is plain data handed to the next scene
+  (see "Scenes and saves").
 - There is no engine time scale yet, so there is no `ctx:time_scale`.
 
 ## Physics
@@ -224,6 +225,9 @@ Queries (reads, valid in any callback):
 | `ctx:physics_raycast(origin, dir, max_dist, mask)` | `{ entity, distance, point = {x,y,z}, normal = {x,y,z} }` for the nearest body hit within `max_dist`, or nil. `dir` need not be normalized. `entity` is absent when the body has no scene node |
 | `ctx:overlap_sphere(center, radius, mask)` | array of entity handles (ascending ID) of the bodies the sphere overlaps, touching included; empty when none |
 | `ctx:overlap_box(center, half_extents, mask)` | the same for a world-aligned box |
+| `ctx:physics_sweep_sphere(center, radius, dir, max_dist, mask)` | `{ entity, distance, point, normal }` for the first body a sphere touches when moved along `dir` (not normalized), or nil. Mesh colliders are hit |
+| `ctx:physics_sweep_capsule(a, b, radius, dir, max_dist, mask)` | the same for a capsule whose segment ends are `a` and `b` (equal ends make a sphere) |
+| `ctx:physics_sweep_box(center, half_extents, dir, max_dist, mask)` | the same for an axis-aligned box; box probes do not hit meshes |
 
 Events are delivered to `nox.on` handlers as `function(ctx, payload)`. They are queued during the physics step and
 delivered by the next Lua update, in the same order as the other events of that update.
@@ -658,6 +662,90 @@ names the function, which faults the handler.
 - `ui.icon_exists(id)` is true when the project's icon atlas has the id. Use it to choose a vector fallback.
 - `ui.clip_circle` is not provided: ImGui clips to rectangles only, and a circular clip needs stencil support in the RHI.
 
+## UI widgets and menus
+
+Widgets are calls inside `nox.on_draw` handlers, next to the drawing functions above. Each returns its result for the
+frame it is drawn in. A widget registers a pointer hit region and a keyboard/pad navigation entry, so one call serves
+the mouse, the keyboard and the pad. Nothing is hand-tested.
+
+```lua
+nox.on_draw(function(ctx, ui, dt)
+  ui.menu()                                          -- this draw is a menu: arrows, Enter and pad navigate it
+  local col = ui.column(x, y, 300, 12)               -- vertical stack; col:next(h) -> {x, y, w, h} and advances
+  if ui.button("start", col:next(54), "Start") then startGame() end
+  volume = ui.slider("volume", col:next(54), volume, 0, 100, { step = 5 })
+  hudOn = ui.toggle("hud", col:next(54), "Show HUD", hudOn)
+end)
+```
+
+| Function | Returns | Notes |
+| --- | --- | --- |
+| `ui.menu()` | | marks this draw as a menu; keyboard and pad navigation acts only while the last draw called it |
+| `ui.button(id, rect, label [, style])` | `clicked` | clicked by a press and release on it, or by Enter / Space / pad A while focused. `style.enabled = false` dims it and removes it from navigation |
+| `ui.toggle(id, rect, label, value [, style])` | `value, changed` | a box and a label; click, accept, or left/right sets it |
+| `ui.slider(id, rect, value, min, max [, opts])` | `value, changed` | drag with the mouse; left/right step it. `opts`: `step` (default range / 20), `decimals` (0), `show_value` (true), `enabled`, and style keys |
+| `ui.label(rect, text [, opts])` | | `opts`: `font`, `size`, `color`, `align` (`left`/`center`/`right`), `valign` (`top`/`middle`/`bottom`, default middle) |
+| `ui.panel(rect [, style])` | | rounded background: `bg`, `border`, `rounding` |
+| `ui.measure_text(text, font, size)` | `width, height` | `font` = project font id or `""` |
+| `ui.column(x, y, w, spacing)` | a layout object | `col:next(h)` returns the next rectangle of height `h` |
+| `ui.consumed()` | bool | see Focus and consumption |
+| `ui.back_pressed()` | bool | Escape or pad B this frame |
+
+A rectangle is `{x = , y = , w = , h = }` or `{x, y, w, h}`, overlay-relative like the drawing functions. Widget ids are
+strings (1..128 bytes) and must stay the same across frames: focus follows the id. The style table takes colours in
+`0xAARRGGBB` (`bg`, `hover`, `active`, `text`, `text_disabled`, `focus`, `accent`, `track`, `knob`, `disabled`,
+`border`), `rounding` and `size` in pixels, and `font` (a project font id). Unknown keys are ignored. Up to 256
+navigable widgets are kept per frame; the rest are drawn but cannot take focus.
+
+Every frame the engine reads the keys and the pad before gameplay runs, so a menu answers while gameplay is stopped
+(the draw handlers run in every state). A paused game is paused by its scripts: a system that must stop checks its own
+state.
+
+### Focus and navigation
+
+- A menu starts with its first enabled widget focused. One widget has focus at a time.
+- Arrow keys, the d-pad and the left stick move focus to the nearest widget in that direction. A focused slider or
+  toggle takes left and right to change its value instead.
+- Enter, Space and pad A activate the focused widget (`ui.button` returns true, a toggle flips).
+- Escape and pad B are "back": `ctx:ui_back_pressed()` is true that frame and the `ui.back` event is queued for the next
+  update.
+- Mouse hover moves focus while the mouse moves; a press focuses the widget it landed on.
+- Keys are not repeated: one press is one step.
+
+### Focus and consumption
+
+`ctx:ui_consumed()` (also `ui.consumed()`) is true for the frame when the menu used a navigation or accept key, or a
+press landed on a widget (HUD buttons included). Gameplay input handlers should skip their action then. Consumption
+does not change the action map: `ctx:action_pressed` still reports the key. `ctx:over_ui()` stays the pointer-only test.
+
+### Events
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `ui.back` | nil | Escape or pad B pressed while the module runs its update |
+| `ui.click` | `{ id = , action = }` | a GUI node element with `interactive` was clicked or activated (see below) |
+| `ui.hover` | `{ id = , entered = }` | the pointer entered (`true`) or left (`false`) an interactive GUI element |
+
+Events are queued during the frame and delivered by the next update. While the module is paused by the host
+(`IGameModule::SetPaused`) no update runs, so `ui.back` waits; `ctx:ui_back_pressed()` answers at once.
+
+### GUI node interaction
+
+A `GuiNode` element (scene JSON, `elements` array) takes these optional keys, read and written by the scene file:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `interactive` | `false` | takes the pointer and keyboard focus, and reports `ui.hover` / `ui.click` |
+| `id` | `gui<node>.<element>` | name in the events and in the hit test; keep it unique in the scene |
+| `on_click` | `""` | action carried by `ui.click` as `action` (for example `"quit"`) |
+| `visible` | `true` | a hidden element is neither drawn nor hit |
+
+Interactive elements are hit-tested in window coordinates above the engine's other pointer regions and below the Lua
+widgets. A focused element gets an outline. The element's text, colour and rectangle are not editable in the inspector;
+edit them in the scene file.
+
+Known limits: no text input, no scrolling lists, no key repeat, no focus wrap (the edge of a menu stops the focus).
+
 ## Input (action maps)
 
 `projects/<name>/input.json` maps names to devices. The engine samples the keyboard and the first attached gamepad
@@ -862,6 +950,140 @@ Collision methods (`col:name(...)`):
 `mask` is the class mask: `1` ground, `2` wall, `4` ceiling, `7` any (the default).
 
 A handle kept across a reload refers to the old world's data and raises `this ... handle is no longer valid`.
+
+## Lifecycle, timers and coroutines
+
+Gameplay code runs in callbacks (systems, behaviours, event handlers, `begin_play`) and in the timers and coroutines
+those callbacks start. Everything below runs on the play clock and stops with the game.
+
+### Behaviour hooks
+
+```lua
+nox.behavior{
+  name = "coin",
+  on_start = function(ctx, entity) end,                  -- once per entity, before its first update
+  update = function(ctx, entity, dt) end,                -- every frame
+  fixed_update = function(ctx, entity, dt) end,          -- every physics substep
+  on_destroy = function(ctx, entity) end,                -- once, when the entity goes away
+}
+```
+
+- A behaviour needs at least one of the four functions. Attach with `ctx:attach(h, "coin")` from a callback.
+- `on_start` runs once for each (entity, behaviour) pair, in the first behaviour phase after the attach. It runs
+  before `update` and `fixed_update` of that pair. An entity attached in `begin_play` starts in the first frame.
+  Detaching and attaching again does not run it again: the started state lasts for the life of the entity.
+- `fixed_update` runs once per physics substep, after the fixed systems. `update` runs after the frame systems and
+  events, as before.
+- `on_destroy` runs for every behaviour whose `on_start` ran for the entity, when the entity is destroyed by
+  `ctx:destroy` (for a scene node, its subtree too), and at Stop (`end_play`) for entities that are still alive. It
+  runs before the entity is removed, so `entity` is valid inside it. A scene node that the host removes without
+  `ctx:destroy` gets no `on_destroy`.
+- A failing hook is a diagnostic and disables that behaviour until reload or retry, like `update`.
+
+### Timers
+
+```lua
+local t = ctx:after(seconds, function(ctx, entity) end [, entity])   -- once
+local h = ctx:every(seconds, function(ctx, entity) end [, entity])   -- repeats, interval > 0
+t:cancel()
+t:active()          -- false after cancel, after a one-shot fired, or after its entity went away
+```
+
+- The clock is the play clock. It advances by `dt` in each `Update` while the game plays and is not paused. Pause
+  freezes it; with `NOX_FIXED_DT` it is deterministic. A timer due at play time `t` fires in the first frame whose
+  play time reaches `t` (a tolerance of 1e-9 absorbs float `dt`). At 60 Hz, `ctx:after(0.5)` created in `begin_play`
+  fires in frame 30, where `ctx:frame()` is 30.
+- A timer created in a callback first fires in the next frame. Timers run before the systems of a frame.
+- `every` fires once per due time. If a frame was late it fires once and is rescheduled from the current time.
+- A one-shot timer is spent before its callback runs. A timer whose callback fails stops, and the diagnostic says why.
+- The optional `entity` scopes the timer: it is cancelled when that entity is destroyed (`ctx:destroy`, or as part of
+  a destroyed subtree), and it is cancelled when the entity is found missing.
+- Timers exist only while playing. Stop (and a scene swap, which replaces the world) cancels all of them. Only callbacks
+  and `begin_play` may create them. At most 4096 timers and coroutines are live at once.
+
+### Coroutines
+
+```lua
+local co = ctx:start_coroutine(function(ctx, entity)
+  ctx:wait(0.25)                                    -- seconds
+  ctx:wait_frames(3)                                -- frames
+  ctx:wait_until(function(ctx, entity) return ready end)   -- checked each frame until it returns true
+end [, entity])
+```
+
+- The first segment runs at the start of the next frame's `Update`, before the systems. Each wait suspends the
+  coroutine until its condition holds. A coroutine resumes at the start of a frame, before the systems of that frame.
+- `ctx:wait(s)` started in frame F resumes in the first frame whose play time has reached the end of the wait. At
+  60 Hz, `wait(0.25)` started in frame F resumes in frame F+15. `ctx:wait_frames(n)` resumes in frame F+n.
+- `ctx:wait_until(fn)` calls `fn(ctx, entity)` at the start of each frame. A value that a system sets in frame F is
+  seen by the predicate in frame F+1.
+- The wait functions exist only inside a coroutine that the host resumes. Calling them from a system raises an error.
+  A bare `coroutine.yield` is reported as a diagnostic.
+- An error in a coroutine is a diagnostic with source `coroutine` and a traceback. The coroutine stops; nothing else
+  is affected. A coroutine that finishes or whose entity is destroyed is removed. Stop cancels all coroutines.
+- Coroutines do not advance while the game is paused or stopped.
+- Handles are `nox.task` userdata with `cancel()` and `active()`, the same as timers.
+- There is no tween helper in API v1. Write the interpolation as a loop of `ctx:wait_frames(1)` in a coroutine.
+
+### Hot reload and timers
+
+A reload (see "Reload") does not run `begin_play` or any `on_start` again:
+
+- Timers and coroutines are not migrated. They hold functions of the old code, so the reload drops them. Create them
+  again from declared data if they must continue (for example, a system that starts a coroutine when a declared field
+  says so).
+- Behaviour attachments that existed before the reload stay started: their `on_start` does not run again, and their
+  `on_destroy` is the new code's function.
+
+## Scenes and saves
+
+### Runtime instances: `ctx:spawn` and `ctx:instantiate`
+
+The two calls create different things:
+
+| Call | Creates | Use it for |
+| --- | --- | --- |
+| `ctx:spawn(name)` | a script-only entity. It has no scene node, so nothing is drawn, no physics body is made, and it has no registry components. It exists as long as the play lasts. | logic state: declared schemas, behaviours, timers, coroutines |
+| `ctx:instantiate(path [, opts])` | a scene node built from a prefab (`*.prefab.json`), with the prefab's renderer, physics and other registry components and its children | anything visible or colliding |
+
+- An instance is created at once, so its handle works in the same callback. It gets `on_start` like an authored node
+  once it is attached. `ctx:destroy(h)` removes it, and Stop removes every instance created during play.
+- `ctx:spawn` is deferred: its handle is available from `ctx:resolve_spawn(token)` in a later callback.
+- Prefab paths are logical (for example `projects/<name>/prefabs/coin.prefab.json` in this repository layout).
+
+### Scene payload
+
+```lua
+ctx:load_scene("scenes/arena_2.json", { level = 2, origin = "intro", tags = { "a", "b" } })
+```
+
+- The payload is optional. It must be plain data: tables (an array, or an object with string keys), strings,
+  numbers, booleans. Functions, userdata, threads, mixed tables and non-finite numbers are refused with an argument
+  error, and no swap is requested.
+- The payload is copied to JSON when `load_scene` is called. The swap still happens at the next frame boundary.
+  The world of the next scene receives the payload when that scene is configured.
+- `begin_play(ctx, payload)` receives a fresh copy of the payload, or nil. `ctx:scene_payload()` returns a fresh copy
+  at any time in that world.
+- A later configuration takes the payload for one scene only. Stop rebuilds the world, so after Stop the payload is
+  nil. A hot reload keeps the payload of the running scene.
+- After a scene swap the game is not playing. `begin_play` (and so the payload) runs at the next Play.
+
+### Save slots
+
+```lua
+ctx:save_slot("slot_1", { gold = 5, level = 2 })    -- true, or false and a reason
+local data, why = ctx:load_slot("slot_1")           -- value, or nil and a reason
+ctx:save_exists("slot_1")                            -- boolean
+ctx:delete_save("slot_1")                            -- true, or false and a reason
+ctx:list_saves()                                     -- sorted array of slot names
+```
+
+- A slot name is 1 to 48 characters of `A-Z a-z 0-9 _ -`. Anything else, including `/`, `.` and `..`, is refused, so
+  no name can leave the saves folder. An invalid name makes `save_exists` return false.
+- Slots are stored as `saves/<name>.json` in the user data directory (see [asset_io.md](asset_io.md)). Writes use the
+  same atomic writer as `save_user_json`. The value is plain data, limited to 1 MiB of JSON.
+- `save_user_json` and `load_user_json` remain for whole-file data (settings, one save file). Slots are for named
+  saves.
 
 ## Save data
 

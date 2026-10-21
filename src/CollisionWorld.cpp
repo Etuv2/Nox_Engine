@@ -312,6 +312,41 @@ bool CollisionWorld::GroundBelow(const glm::vec3& top, float maxDrop, Hit& out) 
 	return true;
 }
 
+void CollisionWorld::SphereContacts(const glm::vec3& center, float radius, float skin, uint8_t classMask,
+	std::vector<SphereContact>& out) const
+{
+	const float reach = radius + skin;
+	const glm::vec3 mn = center - glm::vec3(reach), mx = center + glm::vec3(reach);
+	for (const Mesh& m : m_meshes) {
+		if (!m.enabled) continue;
+		Visit(m, mn, mx, [&](const Tri& t) {
+			if (!(t.cls & classMask)) return;
+			const glm::vec3 q = ClosestOnTriangle(center, t.a, t.a + t.e1, t.a + t.e2);
+			const glm::vec3 d = center - q;
+			const float dist2 = glm::dot(d, d);
+			if (dist2 >= reach * reach) return;
+			const float dist = std::sqrt(dist2);
+			SphereContact c;
+			c.point = q;
+			c.normal = dist > 1e-6f ? d / dist : t.n;
+			c.depth = radius - dist;
+			out.push_back(c);
+		});
+	}
+}
+
+bool CollisionWorld::Bounds(glm::vec3& mn, glm::vec3& mx) const
+{
+	bool any = false;
+	for (const Mesh& m : m_meshes) {
+		if (!m.enabled || m.nodes.empty()) continue;
+		if (!any) { mn = m.nodes[0].mn; mx = m.nodes[0].mx; any = true; }
+		mn = glm::min(mn, m.nodes[0].mn);
+		mx = glm::max(mx, m.nodes[0].mx);
+	}
+	return any;
+}
+
 glm::vec3 CollisionWorld::ResolveSphere(glm::vec3& center, float radius, uint8_t classMask, glm::vec3* outNormal, int iterations,
 	float contactMaxY) const
 {

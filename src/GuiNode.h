@@ -79,6 +79,13 @@ public:
         glm::vec2 relativeSize = glm::vec2(0.0f); // Size as ratio of screen size (0-1)
         bool useRelativePositioning = false;
         bool useRelativeSize = false;
+
+        // Visibility and interaction (menus): hidden elements are not drawn or hit; interactive elements take the
+        // pointer and keyboard focus and report hover and click to Lua as "ui.hover" / "ui.click" (LuaGameModule).
+        bool visible = true;
+        bool interactive = false;
+        std::string id;         // names the element in events and hit tests; unique within the scene
+        std::string onClick;    // action string carried by "ui.click" (for example "resume" or "quit")
     };
 
     GuiNode(int screenWidth, int screenHeight);

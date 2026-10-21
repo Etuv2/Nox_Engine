@@ -5,6 +5,8 @@
 *   Nox_Engine.exe [--preset <name>] [--game | --editor] [--scene <path>] [--quality high|ultra]
 *                  [--window windowed|borderless|fullscreen] [--width N --height N] [--no-game]
 *                  [--project <projects/x/project.json>] [--bootstrap <nox_bootstrap.json>]
+*   Nox_Engine.exe --new-project <name> [--template <id>] [--path projects/<folder>] [--force]
+*                  (creates a project from templates/ without a window; docs/engine_overview.md)
 * Presets come from config/launch_presets.json ("default" is used without arguments). Assets are
 * mounted by ProjectBootstrap (packs beside a shipped exe, or the source checkout above a development
 * exe); nothing depends on the working directory. Game code arrives through project runtimes (Lua) and

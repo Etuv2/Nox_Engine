@@ -3,6 +3,7 @@
 #include "ShapeOverlap.h"
 #include "../PhysicsEngine.h"
 #include "../RigidBody.h"
+#include "../CollisionWorld.h"
 #include "../SceneNode.h"
 
 #include <algorithm>
@@ -84,10 +85,24 @@ private:
 		return out;
 	}
 
-	// Pushes the feet out of every body the capsule overlaps, up to kDepenetrationPasses passes. Returns true when
-	// anything was touched; floorContact is set when a touched surface is walkable.
+	// Pushes the feet out of every body and world triangle the capsule overlaps, up to kDepenetrationPasses passes.
+	// Returns true when anything was touched; floorContact is set when a touched surface is walkable.
+	// A surface steeper than the slope limit is a wall: it pushes horizontally only, so the capsule cannot climb it.
 	bool Depenetrate(glm::vec3& feet, bool& floorContact) {
 		bool touched = false;
+		auto apply = [&](const glm::vec3& push, float penetration) -> bool {
+			if (push.y >= m_floorCos) floorContact = true;
+			if (penetration <= kMinPenetration) return false;
+			glm::vec3 move = push * penetration;
+			if (push.y > -m_floorCos && push.y < m_floorCos) {
+				const glm::vec3 horizontal(push.x, 0.0f, push.z);
+				const float length = glm::length(horizontal);
+				if (length < 1e-5f) return false;
+				move = horizontal / length * (penetration / length);
+			}
+			feet += move;
+			return true;
+		};
 		for (int pass = 0; pass < kDepenetrationPasses; ++pass) {
 			bool corrected = false;
 			for (int k = 0; k < 3; ++k) {
@@ -102,10 +117,20 @@ private:
 					float penetration = 0.0f;
 					if (!ShapeOverlap::Test(*m_probe, *body, kContactSkin, push, penetration)) continue;
 					touched = true;
-					if (push.y >= m_floorCos) floorContact = true;
-					if (penetration > kMinPenetration) {
-						feet += push * penetration;
-						corrected = true;
+					if (apply(push, penetration)) corrected = true;
+				}
+				// Static world geometry (CollisionWorld): the deepest triangle contact of this sample.
+				if (const CollisionWorld* world = m_physics.WorldCollision()) {
+					SamplePoints(feet, m_settings, samples);
+					std::vector<CollisionWorld::SphereContact> contacts;
+					world->SphereContacts(samples[k], m_settings.radius, kContactSkin, CollisionWorld::Any, contacts);
+					if (!contacts.empty()) {
+						const CollisionWorld::SphereContact* deepest = &contacts[0];
+						for (const auto& c : contacts) {
+							if (c.depth > deepest->depth) deepest = &c;
+						}
+						touched = true;
+						if (apply(deepest->normal, deepest->depth)) corrected = true;
 					}
 				}
 			}
@@ -174,16 +199,31 @@ bool CharacterSystem::Move(PhysicsEngine& physics, SceneNode& node, const glm::v
 	bool collided = sweep.collided;
 	bool onFloor = sweep.onFloor;
 
-	// Step-up: a blocked walk from the floor retries one step higher and drops back down onto a ledge.
+	// Step-up: a walk from the floor that is blocked (it gains less than half of what was asked) retries one step
+	// higher, moves forward at least one radius (the rounded foot must clear the edge before it can drop), and drops
+	// back down onto a ledge. A walk up a slope is not blocked, so it never takes this path.
 	const glm::vec3 horizontal(displacement.x, 0.0f, displacement.z);
-	if (sweep.collided && s.onFloor && s.stepOffset > 0.0f && LengthXZ(horizontal) > 1e-5f) {
+	const float horizontalLength = LengthXZ(horizontal);
+	const float directGain = LengthXZ(finalFeet - start);
+	if (sweep.collided && s.onFloor && s.stepOffset > 0.0f && horizontalLength > 1e-5f &&
+		directGain < 0.5f * horizontalLength) {
 		const glm::vec3 up(0.0f, s.stepOffset, 0.0f);
+		const glm::vec3 reach = horizontal / horizontalLength * std::max(horizontalLength, s.radius);
 		const Mover::Result raised = mover.Run(start, up);
-		const Mover::Result forward = mover.Run(raised.feet, horizontal);
+		const Mover::Result forward = mover.Run(raised.feet, reach);
 		const Mover::Result landed = mover.Run(forward.feet, -up);
-		const float directGain = LengthXZ(finalFeet - start);
 		if (landed.onFloor && LengthXZ(landed.feet - start) > directGain + 1e-4f) {
 			finalFeet = landed.feet;
+			onFloor = true;
+		}
+	}
+
+	// Snap to ground: a move that left the floor (a step down, or a slope falling away) drops back onto a floor that
+	// lies within step_offset below. A character that is jumping (velocity up) is not snapped.
+	if (!onFloor && s.onFloor && s.velocity.y <= 0.0f && s.stepOffset > 0.0f) {
+		const Mover::Result down = mover.Run(finalFeet, glm::vec3(0.0f, -s.stepOffset, 0.0f));
+		if (down.onFloor) {
+			finalFeet = down.feet;
 			onFloor = true;
 		}
 	}

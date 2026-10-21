@@ -1,0 +1,211 @@
+{
+  "exposure": 1,
+  "gamma": 2.2,
+  "project": "{{PROJECT_DIR}}/project.json",
+  "scene_name": "{{NAME}}",
+  "skybox": "hdrs/morning_sky.hdr",
+  "nodes": [
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [1.0, 0.95, 0.8],
+          "enabled": true,
+          "intensity": 5.0,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": true,
+        "color": [1.0, 0.95, 0.8],
+        "enabled": true,
+        "intensity": 5.0,
+        "shadowSize": 2048,
+        "splitLambda": 0.8,
+        "type": "directional"
+      },
+      "name": "Sun",
+      "position": [10.0, 20.0, 10.0],
+      "rotation": [-45.0, 45.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "type": "light"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/plane.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "body_type": "static"
+        },
+        "Collider": {
+          "shape": "plane",
+          "plane_normal": [0.0, 1.0, 0.0],
+          "plane_distance": 0.0
+        }
+      },
+      "name": "Ground",
+      "path": "models/plane.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [0.02, 1.0, 0.02],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "body_type": "static"
+        },
+        "Collider": {
+          "shape": "box",
+          "half_extents": [2.0, 0.5, 2.0]
+        }
+      },
+      "name": "Start Platform",
+      "path": "models/cube.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [2.0, 0.5, 2.0],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "body_type": "static"
+        },
+        "Collider": {
+          "shape": "box",
+          "half_extents": [2.0, 0.5, 2.0]
+        }
+      },
+      "name": "Ledge A",
+      "path": "models/cube.glb",
+      "position": [-5.0, 1.0, -4.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [2.0, 0.5, 2.0],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "body_type": "static"
+        },
+        "Collider": {
+          "shape": "box",
+          "half_extents": [2.0, 0.5, 2.0]
+        }
+      },
+      "name": "Ledge B",
+      "path": "models/cube.glb",
+      "position": [5.0, 1.5, -1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [2.0, 0.5, 2.0],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "body_type": "static"
+        },
+        "Collider": {
+          "shape": "box",
+          "half_extents": [2.5, 0.5, 2.5]
+        }
+      },
+      "name": "Ledge C",
+      "path": "models/cube.glb",
+      "position": [0.0, 2.5, -8.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [2.5, 0.5, 2.5],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        },
+        "RigidBody": {
+          "body_type": "static"
+        },
+        "Collider": {
+          "shape": "box",
+          "half_extents": [2.0, 0.5, 2.0]
+        }
+      },
+      "name": "Ledge D",
+      "path": "models/cube.glb",
+      "position": [-6.0, 3.5, -10.5],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [2.0, 0.5, 2.0],
+      "type": "model"
+    },
+    {
+      "components": {
+        "CharacterController": {
+          "height": 1.8,
+          "radius": 0.35,
+          "step_offset": 0.45,
+          "slope_limit": 50.0,
+          "gravity": true
+        }
+      },
+      "children": [
+        {
+          "components": {
+            "MeshRenderer": {
+              "culling": "inherit",
+              "exclude_from_reflection_capture": false,
+              "model": "{{PROJECT_DIR}}/models/player_box.glb",
+              "render_whole_model": false
+            }
+          },
+          "material_overrides": [
+            { "match": "*", "base_color": [0.15, 0.55, 1.0, 1.0] }
+          ],
+          "name": "Body",
+          "path": "{{PROJECT_DIR}}/models/player_box.glb",
+          "position": [0.0, 0.9, 0.0],
+          "rotation": [0.0, 0.0, 0.0],
+          "scale": [0.35, 0.9, 0.35],
+          "type": "model"
+        }
+      ],
+      "name": "Player",
+      "position": [0.0, 0.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "type": "node"
+    }
+  ]
+}

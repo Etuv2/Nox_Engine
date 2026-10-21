@@ -410,6 +410,7 @@ void GuiNode::RenderHUD() const {
     // First render all rectangles and progress bars with unified shader
     rhi::Gpu().UseProgram(m_unifiedRectShader);
     for (const auto& e : m_elements) {
+        if (!e.visible) continue;
         if (e.type == GuiType::RECT_SOLID || e.type == GuiType::RECT_GRADIENT || e.type == GuiType::RECT_BEVEL) {
             // Apply animation effects
             glm::vec4 finalColor = glm::vec4(
@@ -427,6 +428,7 @@ void GuiNode::RenderHUD() const {
     // Then render text and images with texture shader
     rhi::Gpu().UseProgram(m_textureShader);
     for (const auto& e : m_elements) {
+        if (!e.visible) continue;
         if (e.type == GuiType::TEXT) {
             RenderText(e);
         } else if (e.type == GuiType::IMAGE) {

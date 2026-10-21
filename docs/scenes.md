@@ -55,6 +55,79 @@ its textures as `../../../textures/cc0/...`, which does not resolve from `genera
 so each racing scene logs 28 "Failed to load external uri" errors. The fix belongs to the cook step
 or the racing content, not to these scene files.
 
+## Loading
+
+Scenes load in the background. Every frame the window keeps pumping events and draws a loading screen
+with the scene name, a progress bar, the current step and a spinner. The simulation does not run while a
+scene loads, and the previous scene stays live until the new one is ready.
+
+These paths load this way: the startup scene, editor scene switches (`Core::SwapScene`), Lua
+`ctx.load_scene`, and `NOX_SWAP_SCENE`. The blocking `SceneLoader::LoadScene`, runtime state restore
+(`LoadSceneState`) and the round-trip tools still load synchronously.
+
+Where the work runs:
+
+- Worker threads: reading and parsing the scene file, expanding prefab references, reading ahead the JSON
+  files named in the scene's `game` block (`AssetIO::PrefetchJson`), and decoding glTF models
+  (`Scene::PrepareGLTF`: parse and image decode). They touch no GL and no shared engine state.
+  `ModelManager::QueuePrefetch` feeds the decode queue for plain, prefab and cooked procedural models;
+  `LoadModel` takes the decoded copy.
+- Main thread, inside a frame budget of 8 ms: the scene is built in slices (`SliceTask`, a Windows fiber
+  that yields when its budget is spent). Yield points are placed per primitive, per texture upload, in the
+  vertex loops, per light, and per road-network node. The GPU uploads run on the main thread (GL context).
+  A root node is built only after its models are decoded, so the build never waits on a decoder.
+- Commit, main thread, sliced as well: clearing the old scene, scene state, shadow maps, lights, render
+  settings, game module configure, editor and UI, bounds, acceleration structure. Each step is timed in
+  the log (`[Core] Scene commit step '...': N ms`). The old physics bodies are removed at commit.
+- After the commit, the loading overlay stays up over the new scene until its reflection probes are
+  captured (sliced, a few probes per frame) and the first frame has been drawn.
+
+API (`src/SceneLoader.h`):
+
+```cpp
+bool BeginLoad(const std::string& path);              // false while another load runs
+LoadStatus StepLoad(double budgetMs);                 // budgetMs < 0 runs to completion
+LoadStatus GetLoadStatus() const;                     // Idle, Running, Ready, Failed
+std::shared_ptr<SceneGraph> TakeLoadedScene();        // Ready only; the new scene is committed by Core
+void CancelLoad();
+LoadProgress GetLoadProgress() const;                 // fraction, stage, sceneName, sceneFile
+```
+
+Slicing a long build (`src/SliceTask.h`): `SliceTask task([&] { ... });` runs the body on its own stack.
+`task.Resume(budgetMs)` runs it until it finishes or spends the budget. Inside the body,
+`SliceTask::YieldIfOverBudget()` is a free call that does nothing outside a task, so code shared with
+synchronous callers is unchanged. Only the Windows build has fibers; elsewhere a task runs to completion.
+
+Custom loading screen (`src/SceneLoadingScreen.h`): call `SceneLoadingScreen::SetHook(fn)`. The hook
+receives a `SceneLoadingScreenState` every frame (progress, stage, scene name, error) and draws with ImGui
+inside the open frame. It returns `SceneLoadingScreenAction::Dismiss` when the user accepts a failed load.
+Without a hook the engine draws its default screen: full screen in game mode, and a dimmed overlay over the
+editor, whose UI is disabled while the load runs.
+
+Failure: the error stays on the loading screen until the user presses Continue (Quit when no scene is
+loaded yet). The current scene keeps running. The failed load leaves nothing behind: its physics bodies are
+removed and the physics config is restored.
+
+Environment:
+
+- `NOX_SYNC_LOAD=1`: the startup scene loads blocking (the same steps, without frame pacing).
+- `NOX_EXIT_AFTER_FRAMES` counts only frames that are not loading, so a long load does not cut a scripted
+  run short. `NOX_FINAL_DUMP_FRAMES` counts every frame, loading frames included.
+- `NOX_FIXED_DT` runs: loading frames do not step the simulation, so results are unchanged.
+- Log lines: `[Core] Scene ready: ... (load N ms, longest frame while loading M ms)`,
+  `[Core] Scene first frame presented: N ms after the load started`, `[Core] Long frame during scene load:
+  N ms (step)` for any loading frame over 50 ms.
+
+Known limits:
+
+- A single primitive's GPU upload (`CreateMesh`) is one call. A very large primitive is one frame's work.
+- The game module's configure is one call from the engine's side. The racing module's road network setup
+  is the largest commit step on shuto_rep_section; its JSON is read ahead, but the rest of its configure
+  runs in one step.
+- Texture-array builds that the renderer creates on its first frame are not sliced. They run in the first
+  frame of the new scene, under the loading overlay.
+- Live procedural generators (not cooked) run on the main thread, and their models decode there.
+
 ## Removed in this cleanup
 
 Deleted because nothing references them and they were temporary, duplicate, broken, or superseded:

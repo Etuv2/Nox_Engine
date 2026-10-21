@@ -1,0 +1,4 @@
+{
+  "name": "Empty 3D",
+  "description": "A camera, a sun light, a floor and a sky. main.lua logs begin_play. The smallest starting point for a 3D game."
+}

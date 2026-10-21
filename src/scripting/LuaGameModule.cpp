@@ -3,6 +3,7 @@
 
 #include "LuaEditorPanel.h"
 #include "LuaEditorSupport.h"
+#include "LuaScene.h"
 #include "../Camera.h"
 #include "../EditorExtensions.h"
 #include "../PhysicsEngine.h"
@@ -14,6 +15,10 @@
 #include "LuaEditorPanel.h"
 #include "../VehicleFX.h"
 #include "../ui/Pointer.h"
+#include "../GuiNode.h"
+#include "LuaUiFocus.h"
+
+#include <IMGUI/imgui.h>
 
 #include <algorithm>
 #include <iostream>
@@ -21,6 +26,18 @@
 namespace NoxLua {
 
 	namespace {
+		constexpr int kGuiPointerZ = 50;   // under the Lua widgets (100), above other engine regions
+
+		// Every GUI node of the scene (the GUI pass collects the same set when it renders).
+		void CollectGuiNodes(SceneNode& node, std::vector<GuiNode*>& out) {
+			if (node.GetNodeType() == SceneNode::GUI) {
+				if (GuiNode* gui = dynamic_cast<GuiNode*>(&node)) out.push_back(gui);
+			}
+			for (const std::shared_ptr<SceneNode>& child : node.children) {
+				if (child) CollectGuiNodes(*child, out);
+			}
+		}
+
 		const std::vector<Diagnostic>& NoDiagnostics() {
 			static const std::vector<Diagnostic> empty;
 			return empty;
@@ -148,6 +165,42 @@ namespace NoxLua {
 		m_world->SetOverlayRect(origin, size);
 		m_world->DrawFrame(dt, size, pointer, m_recorder);
 		PlaybackUi(m_recorder, &m_fonts, drawList, origin, &m_textures);
+		InteractGui(drawList);
+	}
+
+	void LuaGameModule::InteractGui(ImDrawList* drawList) {
+		if (!m_scene || !m_world) return;
+		std::vector<GuiNode*> nodes;
+		if (std::shared_ptr<SceneNode> root = m_scene->GetRoot()) CollectGuiNodes(*root, nodes);
+		ui::Pointer& pointer = ui::Pointer::Get();
+		const UiNavigator& nav = m_world->Navigator();
+		std::map<uint32_t, std::string> hoveredNow;
+		for (size_t n = 0; n < nodes.size(); ++n) {
+			const std::vector<GuiNode::GuiElement>& elements = nodes[n]->GetElements();
+			for (size_t i = 0; i < elements.size(); ++i) {
+				const GuiNode::GuiElement& e = elements[i];
+				if (!e.interactive || !e.visible) continue;
+				// Elements without an id are named by node and index: stable while the scene is not edited.
+				const std::string name = e.id.empty() ? "gui" + std::to_string(n) + "." + std::to_string(i) : e.id;
+				const uint32_t id = ui::HashId(name.c_str());
+				const glm::vec2 min(e.x, e.y), max(e.x + e.width, e.y + e.height);
+				pointer.AddRect(id, min, max, kGuiPointerZ, ui::RegionAll);
+				m_world->AddNavigationWidget(id, min, max);
+				if (pointer.IsHovered(id)) hoveredNow[id] = name;
+				if (pointer.IsClicked(id) || nav.Accept(id)) m_world->QueueUiEvent("ui.click", name, e.onClick, -1);
+				if (drawList && nav.IsFocused(id)) {
+					drawList->AddRect(ImVec2(min.x - 3.0f, min.y - 3.0f), ImVec2(max.x + 3.0f, max.y + 3.0f),
+						IM_COL32(79, 195, 247, 255), 0.0f, 0, 2.0f);
+				}
+			}
+		}
+		for (const auto& [id, name] : hoveredNow) {
+			if (!m_guiHover.count(id)) m_world->QueueUiEvent("ui.hover", name, std::string(), 1);
+		}
+		for (const auto& [id, name] : m_guiHover) {
+			if (!hoveredNow.count(id)) m_world->QueueUiEvent("ui.hover", name, std::string(), 0);
+		}
+		m_guiHover.swap(hoveredNow);
 	}
 
 	void LuaGameModule::SetCameraTemplate(const Camera& camera) {
@@ -190,8 +243,11 @@ namespace NoxLua {
 		ClearSubsteps();
 		m_docs.game = game;
 		m_docs.root = sceneRoot;
+		// A scene loaded by ctx:load_scene(path, payload) takes its payload here; any other configuration takes none.
+		std::optional<nlohmann::json> payload = TakePendingScenePayload();
 		StageOutcome outcome = StageWorld(m_limits, *m_files, m_descriptor.content, scene, m_authoredEntities, nullptr, &m_docs);
 		m_world = std::move(outcome.world);
+		if (m_world) m_world->SetScenePayload(std::move(payload));
 		m_available = outcome.ok;
 		m_stamps = outcome.ok ? outcome.stamps : std::vector<ModuleStamp>();
 		AttachResources(m_world.get());
@@ -269,9 +325,12 @@ namespace NoxLua {
 		// Swap. The old world releases its registry references in its destructor, then its VM closes.
 		// No initializer or begin_play runs: the candidate continues from the imported declared state.
 		const bool wantsPointer = m_world ? m_world->WantsPointer() : true;
+		std::optional<nlohmann::json> payload;   // the scene payload belongs to the scene, not to its code: it carries over
+		if (m_world && m_world->ScenePayloadPtr()) payload = *m_world->ScenePayloadPtr();
 		std::unique_ptr<LuaWorld> previous = std::move(m_world);
 		m_world = std::move(outcome.world);
 		m_world->SetWantsPointer(wantsPointer);
+		m_world->SetScenePayload(std::move(payload));
 		// (the candidate's nox.on_configure already ran during staging)
 		AttachResources(m_world.get());
 		// Running vehicles move into the candidate (controllers rebound to its VM, declared state restored) before the
@@ -328,7 +387,10 @@ namespace NoxLua {
 		PollWatcher(dt);
 		if (m_reloadRequested) ApplyReload();
 		// Input is sampled once per frame (latched for every system and fixed substep of this frame).
-		m_inputs.Sample(inputEnabled && ui::Pointer::Get().HasFocus());
+		const bool inputLive = inputEnabled && ui::Pointer::Get().HasFocus();
+		m_inputs.Sample(inputLive);
+		// Menu navigation and UI consumption are decided before gameplay runs, so a paused menu still answers the keys.
+		if (m_world && m_available) m_world->BeginUiInput(SdlInputDevices(inputLive), inputLive);
 		if (!m_world || !m_available) return UpdateResult::Continue;
 		m_world->SetAspect(aspect);
 		if (!m_paused) {

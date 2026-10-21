@@ -108,6 +108,24 @@ A scene selects its project with a top-level key. The entry script runs when tha
 
 ## Making a new project
 
+The quick way is a template. In the editor, **File > New Project...** takes a name, a location (a folder directly
+under `projects/`, default `projects/<name>`) and a template, then opens the project's main scene. From a shell
+(for tests and scripts) the same thing is:
+
+```powershell
+build\vs2022-x64\Release\Nox_Engine.exe --new-project my_game --template third_person_3d [--path projects/my_game] [--force]
+```
+
+It runs without a window, prints the files it made, and refuses an existing folder unless `--force` is given
+(`--force` overwrites files; it never deletes). The templates live in `templates/` (`empty_3d`: a sun, a floor, a sky
+and the camera pose; `third_person_3d`: a walking character, a follow camera, coins and a HUD). Each template has `project/` (the project
+tree), `packaging.json` (the packaging profile template) and `template.json` (the name shown in the picker).
+Creating a project also writes `packaging/<name>.json`, so the project can be packaged at once
+([packaging.md](packaging.md#creating-a-new-game)). Templates need a source checkout; a packaged build cannot
+create projects.
+
+By hand, a project is the same tree as a template:
+
 1. Create `projects/<name>/project.json` with the fields above. Copy `projects/sample-arena/project.json`
    and change `name`.
 2. Write `scripts/main.lua`. It runs once when the project loads and can `require` other files from

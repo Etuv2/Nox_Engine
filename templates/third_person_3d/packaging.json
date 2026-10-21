@@ -1,0 +1,18 @@
+{
+  "name": "{{NAME}}",
+  "game": true,
+  "project": "{{PROJECT_DIR}}/project.json",
+  "scenes": [
+    "{{MAIN_SCENE}}"
+  ],
+  "include": [
+    "config/config.json",
+    "config/launch_presets.json",
+    "{{PROJECT_DIR}}/prefabs/coin.prefab.json"
+  ],
+  "licenses": [
+    "include/IMGUI/LICENSE.txt",
+    "src/editor/solace/THIRD_PARTY.md",
+    "fonts/solace/OFL-Geist.txt"
+  ]
+}
