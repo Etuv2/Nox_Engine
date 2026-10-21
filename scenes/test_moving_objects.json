@@ -1,0 +1,119 @@
+{
+  "camera": {
+    "far": 50.0,
+    "fov": 55.0,
+    "mouse_sensitivity": 0.1,
+    "movement_speed": 2.5,
+    "near": 0.05,
+    "pitch": -5.0,
+    "position": [
+      0.0,
+      1.25,
+      4.25
+    ],
+    "yaw": -90.0
+  },
+  "exposure": 1.0,
+  "gamma": 2.2,
+  "nodes": [
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cornell_box.glb",
+          "render_whole_model": false
+        }
+      },
+      "path": "models\\cornell_box.glb",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [
+            1.0,
+            0.9200000166893005,
+            0.7799999713897705
+          ],
+          "enabled": true,
+          "intensity": 1.5,
+          "range": 10.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": true,
+        "color": [
+          1.0,
+          0.92,
+          0.78
+        ],
+        "enabled": true,
+        "intensity": 1.5,
+        "shadowSize": 2048,
+        "splitLambda": 0.8,
+        "type": "directional"
+      },
+      "name": "CornellSun",
+      "position": [
+        0.0,
+        3.5,
+        2.0
+      ],
+      "rotation": [
+        -65.0,
+        0.0,
+        0.0
+      ],
+      "type": "light"
+    },
+    {
+      "name": "Mover",
+      "type": "model",
+      "path": "models\\sphere.glb",
+      "position": [
+        0.0,
+        0.75,
+        -0.2
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.35,
+        0.35,
+        0.35
+      ],
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/sphere.glb",
+          "render_whole_model": true
+        }
+      }
+    }
+  ],
+  "scene_name": "surfel_motion_test",
+  "skybox": "",
+  "project": "projects/surfel-motion/project.json"
+}

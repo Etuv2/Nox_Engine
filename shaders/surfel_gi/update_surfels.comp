@@ -34,6 +34,9 @@ uniform vec3 uGridMax;
 uniform uvec3 uGridResolution;
 uniform uint uUseNonLinearGrid;
 uniform float uGridFarExtent;
+// Disturbance (plan section 22): a surfel that moved this frame is disturbed (see SurfelMarkDisturbed).
+uniform int uDisturbEnabled = 0;
+uniform uint uDisturbFrames = 30u;
 
 float WorldUnitsPerPixel(vec3 worldPos)
 {
@@ -125,6 +128,9 @@ void main()
     if (motionReactive > 0.03) {
         surfel.irradiance.a = SurfelSaturate(surfel.irradiance.a * mix(1.0, 0.55, motionReactive));
         surfel.shortM2.rgb += vec3(motionReactive * 0.08);
+    }
+    if (uDisturbEnabled != 0 && motionReactive > 0.03) {
+        SurfelMarkFast(surfel, uFrameIndex, uDisturbFrames);
     }
     if (motionReset) {
         SurfelSetFlags(surfel, SurfelFlags(surfel) | SURFEL_NEW);

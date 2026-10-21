@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "name": "surfel-motion",
+  "runtime": "lua",
+  "api_version": 1,
+  "entry": "scripts/main.lua",
+  "script_roots": ["scripts"],
+  "data_roots": [],
+  "assets": [],
+  "fonts": [
+    { "id": "label", "path": "../../fonts/BarlowCondensed-SemiBold.ttf", "size": 18 }
+  ],
+  "icons": { "manifest": "../../textures/ui_icons/manifest.json", "size": 128 }
+}

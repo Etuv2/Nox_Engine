@@ -997,6 +997,28 @@ void SurfelGIPipeline::Shutdown()
 	m_subpassTimings.clear();
 }
 
+// Adds one moved-instance box (plan section 22). The box is padded by max(1 m, half the largest extent of the union)
+// so that a surfel next to the object is disturbed too. Past the cap the last slot takes the rest (merged).
+namespace {
+constexpr std::size_t kMaxMovedBoxes = 64u;
+
+void AddPendingMovedBox(std::vector<glm::vec4>& mins, std::vector<glm::vec4>& maxs,
+	const RTSceneResources::MovedBounds& moved)
+{
+	const glm::vec3 extent = moved.max - moved.min;
+	const float pad = std::max(1.0f, 0.5f * std::max(extent.x, std::max(extent.y, extent.z)));
+	const glm::vec3 lo = moved.min - glm::vec3(pad);
+	const glm::vec3 hi = moved.max + glm::vec3(pad);
+	if (mins.size() < kMaxMovedBoxes) {
+		mins.emplace_back(lo, 0.0f);
+		maxs.emplace_back(hi, 0.0f);
+		return;
+	}
+	mins.back() = glm::vec4(glm::min(glm::vec3(mins.back()), lo), 0.0f);
+	maxs.back() = glm::vec4(glm::max(glm::vec3(maxs.back()), hi), 0.0f);
+}
+} // namespace
+
 void SurfelGIPipeline::BeginFrame(RenderContext&,
 	const std::shared_ptr<SceneGraph>&,
 	const std::shared_ptr<Camera>&)
@@ -1222,9 +1244,24 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 	}
 	m_wasPlacementValidationMode = placementOnly;
 
+	// Moved instances since the last take (plan section 22). Taken every frame, so the boxes of a frame whose
+	// rays are not requested wait in m_pending* for the next request.
+	if (context.rtSceneResources) {
+		std::vector<RTSceneResources::MovedBounds> moved;
+		bool movedAll = false;
+		context.rtSceneResources->TakeMovedBounds(moved, movedAll);
+		if (m_settings.disturbance) {
+			for (const RTSceneResources::MovedBounds& box : moved) {
+				AddPendingMovedBox(m_pendingMovedMin, m_pendingMovedMax, box);
+			}
+			m_pendingMovedAll = m_pendingMovedAll || movedAll;
+		}
+	}
 	if (!placementOnly && m_updateShader && m_updateShader->IsValid() && transformBuffer.IsValid() && transformCount > 0u) {
 		const rhi::ProgramHandle program = m_updateShader->GetProgramID();
 		gpu.UseProgram(program);
+		SetUniform1i(program, "uDisturbEnabled", m_settings.disturbance ? 1 : 0);
+		SetUniform1ui(program, "uDisturbFrames", m_settings.disturbFrames);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uTransformCount", transformCount);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
@@ -1248,6 +1285,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform3fv(program, "uCameraPosition", cameraPosition);
+		SetUniform1f(program, "uStaleGrace", m_settings.staleGrace);
 		SetUniform1ui(program, "uMaxRecycleCount", m_settings.maxRecycleCountPerFrame);
 		SetUniform1f(program, "uMaxDistance", gridSettings.useNonLinearGrid ? gridSettings.farScale : glm::length(gridSettings.worldExtent));
 		SetUniform1f(program, "uSpawnPopulationKappa", std::max(m_settings.spawnPopulationKappa, 0.0f));
@@ -1316,6 +1354,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		const uint32_t tileCount = tilesX * tilesY;
 		const rhi::ProgramHandle program = m_spawnShader->GetProgramID();
 		gpu.UseProgram(program);
+		SetUniform1i(program, "uPriorInit", m_settings.priorInit ? 1 : 0);
 
 		BindSurfelGIGBufferTextures(context);
 		SetSurfelGIGBufferSamplerUniforms(program);
@@ -1400,10 +1439,28 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		SetUniform1ui(program, "uWorldRayFloor", m_settings.worldRayFloor);
 		SetUniform1ui(program, "uWorldRefWindow", m_settings.worldRefWindow);
+		SetUniform1f(program, "uDormantGap", m_settings.dormantGap);
+		SetUniform1i(program, "uDisturbEnabled", m_settings.disturbance ? 1 : 0);
+		SetUniform1ui(program, "uDisturbFrames", m_settings.disturbFrames);
+		SetUniform1ui(program, "uDisturbMinRays", 2u);
+		SetUniform1i(program, "uPriorityEnabled", m_settings.priorityAlloc ? 1 : 0);
+		const int movedCount = static_cast<int>(std::min(m_pendingMovedMin.size(), kMaxMovedBoxes));
+		SetUniform1i(program, "uMovedCount", movedCount);
+		SetUniform1i(program, "uMovedAll", m_pendingMovedAll ? 1 : 0);
+		for (int i = 0; i < movedCount; ++i) {
+			const std::string index = "[" + std::to_string(i) + "]";
+			SetUniform4fv(program, ("uMovedMin" + index).c_str(), m_pendingMovedMin[static_cast<std::size_t>(i)]);
+			SetUniform4fv(program, ("uMovedMax" + index).c_str(), m_pendingMovedMax[static_cast<std::size_t>(i)]);
+		}
+		// The allocation scratch holds this frame's priority total and remainder histograms: start from zero.
+		ClearBufferUInt(m_resources.rayAllocScratchBuffer, 0u);
 		timedDispatch("ray_request", [&]() {
 			m_requestRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_requestRaysShader->WaitForCompletion(rhi::BarrierStorage);
 		});
+		m_pendingMovedMin.clear();
+		m_pendingMovedMax.clear();
+		m_pendingMovedAll = false;
 	}
 
 	if (!placementOnly && updateRaysThisFrame && m_allocateRaysShader && m_allocateRaysShader->IsValid()) {
@@ -1411,13 +1468,16 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		gpu.UseProgram(program);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uMaxRayBudget", m_settings.maxRayBudget);
-		// Three phases (allocate_rays.comp): remainder histogram, threshold search (one group), grant.
+		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
+		SetUniform1i(program, "uPriorityEnabled", m_settings.priorityAlloc ? 1 : 0);
+		SetUniform1f(program, "uPriorityShare", m_settings.priorityShare);
+		// Three phases (allocate_rays.comp): remainder histogram, threshold search (one group per class), grant.
 		timedDispatch("ray_allocation", [&]() {
 			SetUniform1ui(program, "uAllocPhase", 0u);
 			m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_allocateRaysShader->WaitForCompletion(rhi::BarrierStorage);
 			SetUniform1ui(program, "uAllocPhase", 1u);
-			m_allocateRaysShader->Dispatch(1u, 1u, 1u);
+			m_allocateRaysShader->Dispatch(1u, 2u, 1u);
 			m_allocateRaysShader->WaitForCompletion(rhi::BarrierStorage);
 			SetUniform1ui(program, "uAllocPhase", 2u);
 			m_allocateRaysShader->Dispatch(groupsSurfels, 1u, 1u);
@@ -1571,6 +1631,10 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uWorldCatchUp", m_settings.worldCatchUp);
 		SetUniform1f(program, "uWorldCatchUpMax", m_settings.worldCatchUpMax);
 		SetUniform1f(program, "uWorldHistoryCap", m_settings.worldHistoryCap);
+		SetUniform1f(program, "uScreenCatchUp", m_settings.screenCatchUp);
+		SetUniform1f(program, "uScreenCatchUpMax", m_settings.screenCatchUpMax);
+		SetUniform1i(program, "uDisturbEnabled", m_settings.disturbance ? 1 : 0);
+		SetUniform1ui(program, "uDisturbFrames", m_settings.disturbFrames);
 		timedDispatch("temporal_integration", [&]() {
 			DispatchSurfelWide(*m_integrateShader, surfelArgs, groupsSurfels);
 			m_integrateShader->WaitForCompletion(rhi::BarrierStorage);

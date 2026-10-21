@@ -44,8 +44,9 @@ uniform float uWorldPopulationCap = 0.0;
 
 // Staleness is zero for the first SURFEL_RECYCLE_STALE_GRACE frames after a visible touch, then ramps to full
 // over SURFEL_RECYCLE_STALE_RAMP frames.
-const float SURFEL_RECYCLE_STALE_GRACE = 30.0;
-const float SURFEL_RECYCLE_STALE_RAMP = 150.0;
+// Plan section 22: 120 frames (2 s at 60 Hz) of grace, so a surfel that turns out of view is kept for a turn back.
+uniform float uStaleGrace = 120.0;
+const float SURFEL_RECYCLE_STALE_RAMP = 240.0;
 // A surfel spawned this recently is not culled by the score, so a spawn the coverage asked for can show its contribution.
 const uint SURFEL_RECYCLE_YOUNG_FRAMES = 8u;
 
@@ -110,7 +111,7 @@ void main()
     // it would recycle surfels that are visible but starved of rays.
     uint lastUse = max(surfel.frameInfo.x, surfel.lifecycle.x);
     uint visibleAge = uFrameIndex >= lastUse ? (uFrameIndex - lastUse) : 0u;
-    float stale01 = SurfelSaturate((float(visibleAge) - SURFEL_RECYCLE_STALE_GRACE) / SURFEL_RECYCLE_STALE_RAMP);
+    float stale01 = SurfelSaturate((float(visibleAge) - uStaleGrace) / SURFEL_RECYCLE_STALE_RAMP);
     float distance01 = SurfelSaturate(length(surfel.worldPos_radius.xyz - uCameraPosition) / max(uMaxDistance, 1.0));
 
     // GIBS p.29: over-target and stale terms, plus distance scaled by how far over target the population is.

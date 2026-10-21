@@ -155,6 +155,10 @@ private:
 	bool m_referenceResetPending = true;
 	std::vector<glm::vec4> m_lastLightingSignature;
 	float m_lightingChangeFactor = 0.0f;
+	// Moved-instance boxes (world space, padded) waiting for the next ray request (plan section 22).
+	std::vector<glm::vec4> m_pendingMovedMin;
+	std::vector<glm::vec4> m_pendingMovedMax;
+	bool m_pendingMovedAll = false;
 	float m_lightingChangeResponse = 0.0f;
 	uint32_t m_lightingChangeHoldFrames = 0;
 	uint32_t m_width = 0;

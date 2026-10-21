@@ -305,8 +305,9 @@ bool SurfelRayQueue::ResizeReset(uint32_t maxRays, uint32_t maxSurfels)
 {
     Destroy();
 
-    // Allocation scratch: 4 header words and 1024 remainder bins (SURFEL_RAY_ALLOC_BINS in allocate_rays.comp).
-    constexpr uint32_t kRayAllocScratchWords = 4u + 1024u;
+    // Allocation scratch: two classes (priority and normal), each 4 header words and 1024 remainder bins, then the
+    // priority total (SURFEL_RAY_ALLOC_CLASS_STRIDE and SURFEL_RAY_ALLOC_PRIORITY_TOTAL in common.glsl).
+    constexpr uint32_t kRayAllocScratchWords = 2u * (4u + 1024u) + 1u;
     std::ptrdiff_t requestBytes = 0;
     std::ptrdiff_t rayBytes = 0;
     std::ptrdiff_t hitBytes = 0;
