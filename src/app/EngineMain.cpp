@@ -9,6 +9,7 @@
 #include "GameModule.h"
 #include "scripting/LuaGameModule.h"
 #include "CrashHandler.h"
+#include "automation/AutomationServer.h"
 #include "ImGui/ConsoleLog.h"
 #include "json.hpp"
 #include <cstdio>
@@ -91,6 +92,26 @@ int RunNoxEngine(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 	ConsoleLog::Get().Install();
+	// Opt-in automation server (--automation[=port] or NOX_AUTOMATION_PORT; docs/automation.md). Stopped on every exit path.
+	std::string automationPortEnv;
+	{
+		char* value = nullptr;
+		size_t length = 0;
+		if (_dupenv_s(&value, &length, "NOX_AUTOMATION_PORT") == 0 && value) {
+			automationPortEnv = value;
+			std::free(value);
+		}
+	}
+	const automation::Options automationOptions = automation::ParseOptions(argc, argv,
+		automationPortEnv.empty() ? nullptr : automationPortEnv.c_str());
+	struct AutomationScope {
+		~AutomationScope() { automation::Stop(); }
+	} automationScope;
+	if (!automationOptions.error.empty()) std::cerr << "[Automation] " << automationOptions.error << std::endl;
+	if (automationOptions.enabled) {
+		std::string automationError;
+		if (!automation::Start(automationOptions.port, &automationError)) std::cerr << "[Automation] " << automationError << std::endl;
+	}
 	const LaunchConfig launch = ParseLaunch(argc, argv);
 	// Project runtimes: scenes naming a Lua project descriptor run it through the generic adapter.
 	GameModules::RegisterProjectRuntime("lua", [](const std::string& path, const nlohmann::json& descriptor, std::string& error) {

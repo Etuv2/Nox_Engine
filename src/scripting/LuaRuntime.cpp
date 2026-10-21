@@ -395,6 +395,34 @@ namespace NoxLua {
 		return false;
 	}
 
+	bool Runtime::Resume(lua_State* thread, int nargs, int& nresults, RunError* error) {
+		if (!m_state || !thread) {
+			if (error) error->message = m_initError.empty() ? "no Lua state" : m_initError;
+			return false;
+		}
+		m_budgetLeft = static_cast<int64_t>(m_limits.instructionBudget);
+		m_budgetTripped = false;
+		m_instructionsThisCall = 0;
+		m_budgetArmed = true;
+		const int status = lua_resume(thread, m_state, nargs, &nresults);
+		m_budgetArmed = false;
+		m_lastCallInstructions = m_instructionsThisCall;
+		if (status == LUA_OK || status == LUA_YIELD) return true;
+		if (error) {
+			// The dead thread keeps its stack: the traceback of the failing frames is still available.
+			const char* msg = lua_tostring(thread, -1);
+			std::string text = msg ? msg : "(error)";
+			luaL_traceback(thread, thread, nullptr, 0);
+			const char* trace = lua_tostring(thread, -1);
+			if (trace && *trace) text += std::string("\n") + trace;
+			error->message = text;
+			error->budgetExceeded = m_budgetTripped;
+			error->memoryExceeded = (status == LUA_ERRMEM);
+			error->nonStringError = !msg;
+		}
+		return false;
+	}
+
 	bool Runtime::ProtectedCall(int (*fn)(lua_State*), void* arg, RunError* error) {
 		if (!m_state) {
 			if (error) error->message = m_initError;

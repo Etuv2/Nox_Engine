@@ -243,6 +243,154 @@ namespace NoxLua {
 			return 1;
 		}
 
+		// ---- Save slots: named saves in saves/ under the user directory (ctx:save_slot and friends) -------
+
+		constexpr size_t kMaxSlotNameLength = 48;
+
+		// Slot names: 1..48 characters of [A-Za-z0-9_-]. No separators and no dots, so no name can leave saves/.
+		bool ValidateSlotName(const std::string& name, std::string& error) {
+			if (name.empty() || name.size() > kMaxSlotNameLength) {
+				error = "save slot name must be 1..48 characters";
+				return false;
+			}
+			for (char c : name) {
+				const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+				if (!ok) {
+					error = "save slot names use letters, digits, '_' and '-' only";
+					return false;
+				}
+			}
+			return true;
+		}
+
+		std::string SlotFile(const std::string& name) {
+			return "saves/" + name + ".json";
+		}
+
+		// ctx:save_slot(name, value) -> true | false, reason
+		int CtxSaveSlot(lua_State* L) {
+			const std::string name = luaL_checkstring(L, 2);
+			luaL_checkany(L, 3);
+			std::string error;
+			nlohmann::json value;
+			if (!ValidateSlotName(name, error) || !LuaValueToJson(L, 3, value, error)) {
+				lua_pushboolean(L, 0);
+				lua_pushstring(L, error.c_str());
+				return 2;
+			}
+			if (value.dump().size() > services_limits::kMaxUserFileBytes) {
+				lua_pushboolean(L, 0);
+				lua_pushstring(L, "save is larger than the user file limit");
+				return 2;
+			}
+			if (!UserSettings::SaveUserJson(SlotFile(name), value)) {
+				lua_pushboolean(L, 0);
+				lua_pushstring(L, "could not write the save slot");
+				return 2;
+			}
+			lua_pushboolean(L, 1);
+			return 1;
+		}
+
+		// ctx:load_slot(name) -> value | nil, reason
+		int CtxLoadSlot(lua_State* L) {
+			const std::string name = luaL_checkstring(L, 2);
+			std::string error;
+			if (!ValidateSlotName(name, error)) {
+				lua_pushnil(L);
+				lua_pushstring(L, error.c_str());
+				return 2;
+			}
+			const auto path = UserSettings::UserPath(SlotFile(name));
+			std::error_code ec;
+			if (!path || !std::filesystem::is_regular_file(*path, ec)) {
+				lua_pushnil(L);
+				lua_pushstring(L, "no such save slot");
+				return 2;
+			}
+			const auto size = std::filesystem::file_size(*path, ec);
+			if (!ec && size > services_limits::kMaxUserFileBytes) {
+				lua_pushnil(L);
+				lua_pushstring(L, "save is larger than the user file limit");
+				return 2;
+			}
+			const auto value = UserSettings::LoadUserJson(SlotFile(name));
+			if (!value) {
+				lua_pushnil(L);
+				lua_pushstring(L, "save slot is not valid JSON");
+				return 2;
+			}
+			PushJsonValue(L, *value);
+			return 1;
+		}
+
+		// ctx:save_exists(name) -> boolean (false for an invalid name)
+		int CtxSaveExists(lua_State* L) {
+			const std::string name = luaL_checkstring(L, 2);
+			std::string error;
+			bool exists = false;
+			if (ValidateSlotName(name, error)) {
+				if (const auto path = UserSettings::UserPath(SlotFile(name))) {
+					std::error_code ec;
+					exists = std::filesystem::is_regular_file(*path, ec);
+				}
+			}
+			lua_pushboolean(L, exists ? 1 : 0);
+			return 1;
+		}
+
+		// ctx:delete_save(name) -> true | false, reason
+		int CtxDeleteSave(lua_State* L) {
+			const std::string name = luaL_checkstring(L, 2);
+			std::string error;
+			if (!ValidateSlotName(name, error)) {
+				lua_pushboolean(L, 0);
+				lua_pushstring(L, error.c_str());
+				return 2;
+			}
+			const auto path = UserSettings::UserPath(SlotFile(name));
+			std::error_code ec;
+			if (!path || !std::filesystem::is_regular_file(*path, ec)) {
+				lua_pushboolean(L, 0);
+				lua_pushstring(L, "no such save slot");
+				return 2;
+			}
+			const bool removed = std::filesystem::remove(*path, ec);
+			if (!removed || ec) {
+				lua_pushboolean(L, 0);
+				lua_pushstring(L, "could not delete the save slot");
+				return 2;
+			}
+			lua_pushboolean(L, 1);
+			return 1;
+		}
+
+		// ctx:list_saves() -> array of slot names, sorted. Empty when there are no saves.
+		int CtxListSaves(lua_State* L) {
+			std::vector<std::string> names;
+			if (const auto dir = UserSettings::UserPath("saves")) {
+				std::error_code ec;
+				std::filesystem::directory_iterator it(*dir, ec), end;
+				for (; !ec && it != end; it.increment(ec)) {
+					std::error_code entryEc;
+					if (!it->is_regular_file(entryEc) || entryEc) continue;
+					const std::string file = it->path().filename().string();
+					if (file.size() <= 5 || file.compare(file.size() - 5, 5, ".json") != 0) continue;
+					const std::string name = file.substr(0, file.size() - 5);
+					std::string error;
+					if (ValidateSlotName(name, error)) names.push_back(name);
+				}
+			}
+			std::sort(names.begin(), names.end());
+			lua_createtable(L, static_cast<int>(names.size()), 0);
+			MarkJsonArray(L, -1);
+			for (size_t i = 0; i < names.size(); ++i) {
+				lua_pushlstring(L, names[i].data(), names[i].size());
+				lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+			}
+			return 1;
+		}
+
 		// ---- Audio (procedural vehicle synth parameters and cues; the module publishes them on the gameplay thread) ----
 
 		// ctx:audio_set({ rpm, rpm_max, throttle, speed01, slip01, boost, limiter, master_volume, active, paused })
@@ -774,6 +922,11 @@ namespace NoxLua {
 		SetField(L, ctxIdx, "fx_clear", CtxFxClear);
 		SetField(L, ctxIdx, "load_user_json", CtxLoadUserJson);
 		SetField(L, ctxIdx, "save_user_json", CtxSaveUserJson);
+		SetField(L, ctxIdx, "save_slot", CtxSaveSlot);
+		SetField(L, ctxIdx, "load_slot", CtxLoadSlot);
+		SetField(L, ctxIdx, "save_exists", CtxSaveExists);
+		SetField(L, ctxIdx, "delete_save", CtxDeleteSave);
+		SetField(L, ctxIdx, "list_saves", CtxListSaves);
 		SetField(L, ctxIdx, "audio_set", CtxAudioSet);
 		SetField(L, ctxIdx, "audio_cue", CtxAudioCue);
 		SetField(L, ctxIdx, "fx_count", CtxFxCount);

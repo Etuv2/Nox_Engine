@@ -271,6 +271,7 @@ public:
     json GetAuthoredGameJson() const;
     // Deferred scene switch (performed at the start of the next update).
     void RequestSceneSwap(const std::string& scenePath) { m_pendingSceneSwap = scenePath; }
+    bool IsSceneSwapPending() const { return !m_pendingSceneSwap.empty(); }
     // Node picking in viewport-local pixel coordinates.
     std::shared_ptr<SceneNode> PickNode(int x, int y, int width, int height);
     std::shared_ptr<SceneNode> DuplicateNode(const std::shared_ptr<SceneNode>& node);
