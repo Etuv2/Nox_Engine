@@ -90,6 +90,11 @@ namespace {
 
 	glm::mat4 ResolveRenderableMeshLocalTransform(const RenderableComponent& renderable, const MeshComponent& mesh)
 	{
+		// glTF: the node transform of a skinned mesh is ignored. Its vertices are placed by the joints (see
+		// UploadBoneMatrices), so the item draws at the entity transform.
+		if (renderable.isSkinned) {
+			return glm::mat4(1.0f);
+		}
 		if (!renderable.renderWholeModel || mesh.sourceNodeIndex < 0 || !renderable.model) {
 			return glm::mat4(1.0f);
 		}
@@ -750,7 +755,7 @@ size_t RenderSystem::RenderEntityItems(rhi::ProgramHandle shader, const std::vec
 		if (!item.mesh || !std::binary_search(sortedEntities.begin(), sortedEntities.end(), item.entity)) {
 			continue;
 		}
-		if (frustumCull && itemIndex < m_renderItemWorldRadius.size() &&
+		if (frustumCull && !item.skinned && itemIndex < m_renderItemWorldRadius.size() &&
 			!IsSphereVisible(glm::vec3(m_renderItemWorldCenterX[itemIndex], m_renderItemWorldCenterY[itemIndex],
 				m_renderItemWorldCenterZ[itemIndex]), m_renderItemWorldRadius[itemIndex])) {
 			continue;
@@ -1413,8 +1418,9 @@ void RenderSystem::UploadBoneMatrices(EntityID entity, const glm::mat4& meshWorl
 			std::unordered_map<int, glm::mat4> nodeWorldCache;
 
 			int meshNodeIndex = ResolveRenderableNodeIndex(*renderable);
+			// Skinned vertices are in the joints' space: the mesh node transform is not part of the skin.
 			glm::mat4 meshModelTransform = glm::mat4(1.0f);
-			if (meshNodeIndex >= 0) {
+			if (meshNodeIndex >= 0 && !renderable->isSkinned) {
 				meshModelTransform = ComputeAnimatedNodeWorldTransform(model, meshNodeIndex, animation, nodeWorldCache);
 			}
 
@@ -1895,11 +1901,11 @@ void RenderSystem::PrepareCameraSubmissionCache()
 	}
 
 	for (uint32_t itemIndex = 0; itemIndex < m_renderItems.size(); ++itemIndex) {
-		if (m_frustumValid && m_renderItemVisibleMask[itemIndex] == 0u) {
+		// Skinned items are never culled on their bind-pose bounds: the animated pose can leave them.
+		const RenderItem& item = m_renderItems[itemIndex];
+		if (m_frustumValid && m_renderItemVisibleMask[itemIndex] == 0u && !item.skinned) {
 			continue;
 		}
-
-		const RenderItem& item = m_renderItems[itemIndex];
 		m_submissionCache.visibleAllItems.items.push_back(itemIndex);
 		m_submissionCache.velocityItems.items.push_back(itemIndex);
 		if (item.transparent) {
