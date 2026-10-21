@@ -878,13 +878,20 @@ namespace NoxLua {
 			static const InputMap kNone;
 			return w->m_inputs ? *w->m_inputs : kNone;
 		}
+		// Optional player index (0..kMaxPads-1, default 0): ctx:action_down(name, player).
+		static int PlayerArg(lua_State* L) {
+			const lua_Integer player = luaL_optinteger(L, 3, 0);
+			if (player < 0 || player >= kMaxPads) luaL_error(L, "input player must be 0..%d", kMaxPads - 1);
+			return static_cast<int>(player);
+		}
 		// which: 0 = down, 1 = pressed, 2 = released
 		static int ActionQuery(lua_State* L, int which) {
 			LuaWorld* w = WorldOf(L);
 			const char* name = luaL_checkstring(L, 2);
+			const int player = PlayerArg(L);
 			bool known = false;
 			const InputMap& map = Inputs(w);
-			const bool value = which == 0 ? map.Down(name, &known) : which == 1 ? map.Pressed(name, &known) : map.Released(name, &known);
+			const bool value = which == 0 ? map.Down(name, &known, player) : which == 1 ? map.Pressed(name, &known, player) : map.Released(name, &known, player);
 			if (!known) return luaL_error(L, "unknown input action '%s' (declare it in input.json)", name);
 			lua_pushboolean(L, value ? 1 : 0);
 			return 1;
@@ -895,8 +902,9 @@ namespace NoxLua {
 		static int CtxAxis(lua_State* L) {
 			LuaWorld* w = WorldOf(L);
 			const char* name = luaL_checkstring(L, 2);
+			const int player = PlayerArg(L);
 			bool known = false;
-			const float value = Inputs(w).Axis(name, &known);
+			const float value = Inputs(w).Axis(name, &known, player);
 			if (!known) return luaL_error(L, "unknown input action '%s' (declare it in input.json)", name);
 			lua_pushnumber(L, value);
 			return 1;

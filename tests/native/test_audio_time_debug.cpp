@@ -427,15 +427,21 @@ NOX_TEST(AudioTimeDebug, InputRebindChangesKeysOfButtonActionsOnly) {
 	NOX_REQUIRE(map.Parse(json, errors));
 
 	std::string error;
-	NOX_CHECK(map.Rebind("jump", "W", error));
-	std::vector<std::string> keys, pads;
-	NOX_REQUIRE(map.KeyNames("jump", keys, pads));
-	NOX_REQUIRE(keys.size() == 1);
-	NOX_CHECK_EQ(keys[0], std::string("W"));
-	NOX_CHECK_EQ(pads.size(), size_t(1));           // pad buttons untouched
+	std::vector<std::string> conflicts;
+	NoxLua::InputBinding key;
+	key.type = NoxLua::InputBinding::Type::Key;
+	key.name = "W";
+	NOX_CHECK(map.Rebind("jump", key, conflicts, error));
+	NoxLua::InputActionDecl decl;
+	NOX_REQUIRE(map.Bindings("jump", decl));
+	NOX_REQUIRE(decl.keys.size() == 1);
+	NOX_CHECK_EQ(decl.keys[0], std::string("W"));
+	NOX_CHECK_EQ(decl.padButtons.size(), size_t(1));   // pad buttons untouched
 
-	NOX_CHECK(!map.Rebind("jump", "NotAKey", error));
-	NOX_CHECK(!map.Rebind("steer", "Q", error));    // axis actions are not rebound here
-	NOX_CHECK(!map.Rebind("missing", "Q", error));
-	NOX_CHECK(!map.KeyNames("missing", keys, pads));
+	key.name = "NotAKey";
+	NOX_CHECK(!map.Rebind("jump", key, conflicts, error));
+	key.name = "Q";
+	NOX_CHECK(!map.Rebind("steer", key, conflicts, error));   // a key without a side does not fit an axis
+	NOX_CHECK(!map.Rebind("missing", key, conflicts, error));
+	NOX_CHECK(!map.Bindings("missing", decl));
 }

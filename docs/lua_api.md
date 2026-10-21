@@ -748,54 +748,83 @@ Known limits: no text input, no scrolling lists, no key repeat, no focus wrap (t
 
 ## Input (action maps)
 
-`projects/<name>/input.json` maps names to devices. The engine samples the keyboard and the first attached gamepad
-once per frame, on the gameplay thread, before the systems. Every system and fixed substep of the frame sees the
-same sample.
+`projects/<name>/input.json` maps names to devices. The engine samples the keyboard, the mouse and up to four
+gamepads once per frame, on the gameplay thread, before the systems. Every system and fixed substep of the frame sees
+the same sample.
 
 ```json
 {
   "format": 1,
   "actions": {
-    "accelerate": { "type": "button", "keys": ["W", "Up"], "pad_buttons": ["a"] },
+    "accelerate": { "type": "button", "keys": ["W", "Up"], "pad_buttons": ["a"], "mouse_buttons": ["left"] },
     "steer": { "type": "axis", "keys_negative": ["A", "Left"], "keys_positive": ["D", "Right"],
-               "pad_axis": "leftx", "deadzone": 0.15 }
+               "pad_axis": "leftx", "invert": false, "deadzone": 0.15 }
   }
 }
 ```
 
 - Key names are SDL key names (`W`, `Space`, `Left Shift`); pad buttons and axes are SDL controller names
-  (`a`, `leftx`). Unknown names, unknown types and malformed entries are reported and the entry is skipped.
-- `button` actions take `keys` and `pad_buttons`. `axis` actions take `keys_negative`, `keys_positive` (each
-  contributes -1 or +1) and/or `pad_axis` (-1..1 with the deadzone removed and rescaled to the full range).
-  `deadzone` is in [0, 0.9), default 0.15. Axis values are clamped to -1..1.
+  (`a`, `leftx`, `lefttrigger`); mouse buttons are `left`, `middle`, `right`, `x1`, `x2`. Unknown names, unknown types
+  and malformed entries are reported and the entry is skipped.
+- `button` actions take `keys`, `pad_buttons` and `mouse_buttons`. `axis` actions take `keys_negative`,
+  `keys_positive` (each contributes -1 or +1) and/or `pad_axis` (-1..1 with the deadzone removed and rescaled to the
+  full range; `invert: true` negates the stick or trigger). `deadzone` is in [0, 0.9), default 0.15. Axis values are
+  clamped to -1..1.
+- Players: the keyboard and the mouse belong to player 0. Gamepad slot `i` (0..3, in the order SDL reports the
+  controllers, kept while they stay attached) belongs to player `i`. So player 0 is "keyboard plus the first pad". The
+  queries take an optional player index (default 0); the same action reads separately for each player.
 - Without window focus, or when the host reports input as disabled, every action reads as released.
 
 | Function | Returns |
 | --- | --- |
-| `ctx:action_down(name)` | true while the action is held this frame |
-| `ctx:action_pressed(name)` | true on the frame the action went down |
-| `ctx:action_released(name)` | true on the frame the action went up |
-| `ctx:axis(name)` | the axis value (buttons give 0 or 1) |
+| `ctx:action_down(name [, player])` | true while the action is held this frame |
+| `ctx:action_pressed(name [, player])` | true on the frame the action went down |
+| `ctx:action_released(name [, player])` | true on the frame the action went up |
+| `ctx:axis(name [, player])` | the axis value (buttons give 0 or 1) |
 | `ctx:pointer_position()` | window coordinates `x, y` (`ui.pointer()` is relative to the overlay) |
 | `ctx:pointer_down(b)` / `ctx:pointer_pressed(b)` / `ctx:pointer_released(b)` | `b` is `"left"`, `"right"` or `"middle"` |
 | `ctx:pointer_wheel()` | wheel notches this frame |
 | `ctx:over_ui()` | true when the pointer is over an engine UI region |
 | `ctx:wants_pointer()` / `ctx:set_wants_pointer(bool)` | the module's pointer policy (absolute, visible pointer for menus). Kept across reloads |
 
-An unknown action name raises `unknown input action 'name'` in the calling system or handler, which faults it.
+An unknown action name raises `unknown input action 'name'` in the calling system or handler, which faults it. An
+out-of-range player index raises `input player must be 0..3`.
 
-## Input control (rebinding, rumble)
+## Input control (rebinding, listening, gamepads)
 
 These functions change the running project's action map (the `input.json` of the project). Rebinds are written to
 the user directory (`input_bindings_<path>.json`, never to the project) and applied again the next time the map is
-loaded, so the player's keys survive a restart.
+loaded, so the player's bindings survive a restart. The file holds the complete binding fields of each changed action;
+`input.reset_bindings` removes them again.
+
+A binding is a plain string (a key name) or a table with exactly one of these fields:
+
+| Binding | Meaning |
+| --- | --- |
+| `"Space"` or `{ key = "Space" }` | a keyboard key. On an axis action it needs `role = "negative"` or `role = "positive"` |
+| `{ mouse = "left" }` | a mouse button (button actions) |
+| `{ pad_button = "b" }` | a gamepad button (button actions) |
+| `{ pad_axis = "leftx", invert = true, deadzone = 0.2 }` | a gamepad axis (axis actions); `deadzone` is optional |
 
 | Function | Returns |
 | --- | --- |
-| `input.rebind(action, key)` | `true`, or `nil, error`. Replaces the keyboard keys of a `button` action with one SDL key name. Axis actions, unknown actions and unknown key names fail. Pad buttons are kept |
-| `input.bindings(action)` | `{ keys = {...}, pad_buttons = {...} }` for the action, or `nil, error` |
-| `input.save_bindings()` | `true` when the rebinds were written to the user directory, otherwise `false` |
-| `input.rumble(low, high, ms)` | `true` when the first attached gamepad accepted the rumble. `low` and `high` are motor strengths in 0..1 (clamped), `ms` is 0..5000 (default 200). `false` without a gamepad |
+| `input.actions()` | the action names of the map, in name order |
+| `input.rebind(action, binding)` | `true, conflicts` (a table of the other actions that already use the same input; empty when none), or `nil, error`. Replaces the bindings of that kind on the action: the key list, mouse list, pad button list, the pad axis, or one composite key side. The other kinds are kept. Kinds that do not fit the action fail |
+| `input.reset_bindings([action])` | `true`, or `nil, error`. Restores the authored bindings of one action, or of every action without a name, and drops the saved overrides for them |
+| `input.bindings(action)` | `{ keys, mouse_buttons, pad_buttons, keys_negative, keys_positive, pad_axis, invert, deadzone, labels }` for the action (`labels` are display names), or `nil, error` |
+| `input.conflicts(action)` | the other actions that share an input with `action`, or `nil, error` |
+| `input.binding_name(binding)` | a display name, e.g. `Space`, `Mouse Left`, `Pad A`, `Pad Left Stick X (inverted)` |
+| `input.listen_next()` | starts a capture: the next press of a key, mouse button, pad button or pad axis that was not already held. Returns `true` |
+| `input.listen_result()` | the captured binding (the table shape of `binding`, plus `pad` = gamepad slot and `sign` = +1 or -1 for axes) once something was pressed, otherwise `nil`. Taking the result ends the capture |
+| `input.listen_cancel()` | ends a capture without a result |
+| `input.pads()` | the four gamepad slots: `{ slot, connected, name }` |
+| `input.device_events()` | the gamepad connections and disconnections since the last call: `{ connected, player, name }` |
+| `input.save_bindings()` | `true` when the overrides were written to the user directory, otherwise `false` |
+| `input.rumble(low, high, ms [, pad])` | `true` when the gamepad in slot `pad` (default 0) accepted the rumble. `low` and `high` are motor strengths in 0..1 (clamped), `ms` is 0..5000 (default 200). `false` without a gamepad in that slot |
+
+Listening is polled: start it, then read `input.listen_result()` once per frame (the sample-arena Controls page does
+this from its menu system). Device events are polled the same way with `input.device_events()`; they are not pushed
+to a handler.
 
 Without a loaded project these functions fail softly (`nil, error` or `false`). Rebinding changes what
 `ctx:action_down` and `ctx:axis` report from the next frame on.

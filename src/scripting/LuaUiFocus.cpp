@@ -23,9 +23,22 @@ namespace NoxLua {
 	void UiNavigator::Sample(const InputDevices& devices, bool enabled) {
 		bool down[ActionCount] = {};
 		if (enabled) {
+			// Menus answer the keyboard and every connected pad (any player).
 			const auto key = [&devices](int scancode) { return devices.key && devices.key(scancode); };
-			const auto pad = [&devices](int button) { return devices.padButton && devices.padButton(button); };
-			const auto stick = [&devices](int axis) { return devices.padAxis ? devices.padAxis(axis) : 0.0f; };
+			const auto pad = [&devices](int button) {
+				for (int p = 0; p < kMaxPads; ++p) {
+					if (devices.padButton && devices.padButton(p, button)) return true;
+				}
+				return false;
+			};
+			const auto stick = [&devices](int axis) {
+				float best = 0.0f;
+				for (int p = 0; devices.padAxis && p < kMaxPads; ++p) {
+					const float v = devices.padAxis(p, axis);
+					if (std::fabs(v) > std::fabs(best)) best = v;
+				}
+				return best;
+			};
 			down[ActUp] = key(SDL_SCANCODE_UP) || pad(SDL_CONTROLLER_BUTTON_DPAD_UP) || stick(SDL_CONTROLLER_AXIS_LEFTY) < -kStickThreshold;
 			down[ActDown] = key(SDL_SCANCODE_DOWN) || pad(SDL_CONTROLLER_BUTTON_DPAD_DOWN) || stick(SDL_CONTROLLER_AXIS_LEFTY) > kStickThreshold;
 			down[ActLeft] = key(SDL_SCANCODE_LEFT) || pad(SDL_CONTROLLER_BUTTON_DPAD_LEFT) || stick(SDL_CONTROLLER_AXIS_LEFTX) < -kStickThreshold;
