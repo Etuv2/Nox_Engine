@@ -525,6 +525,7 @@ bool Core::InitializeGraphics() {
 	}
 	std::cout << "[Core] ModularRenderer initialized successfully!" << std::endl;
 
+
 	return true;
 }
 
@@ -1645,6 +1646,42 @@ void Core::ServiceSceneLoad(double budgetMs) {
 	}
 }
 
+// Estimated cost of each commit step, in arbitrary units, measured on the scene test set (see docs/scenes.md, Loading).
+// The loading bar's commit part moves by these weights, not by step count: the game module's configure dominates.
+namespace {
+double CommitStepWeight(const std::string& step)
+{
+	static const std::pair<const char*, double> kWeights[] = {
+		{ "Clearing the previous scene", 0.5 }, { "Assigning scene state", 0.5 }, { "Shadow maps", 25.0 },
+		{ "Lights", 1.5 }, { "Render settings", 1.0 }, { "Game module", 100.0 }, { "Editor and UI", 1.0 },
+		{ "Bounds", 1.0 }, { "Acceleration structure", 3.0 }, { "Startup", 3.0 }, { "Finishing", 2.0 },
+	};
+	for (const auto& entry : kWeights) {
+		if (step == entry.first) return entry.second;
+	}
+	return 1.0;
+}
+
+double CommitTotalWeight()
+{
+	static const double total = [] {
+		double sum = 0.0;
+		for (const char* step : { "Clearing the previous scene", "Assigning scene state", "Shadow maps", "Lights",
+			"Render settings", "Game module", "Editor and UI", "Bounds", "Acceleration structure", "Startup", "Finishing" }) {
+			sum += CommitStepWeight(step);
+		}
+		return sum;
+	}();
+	return total;
+}
+}
+
+float Core::CommitProgress() const
+{
+	const double share = std::min(1.0, m_commitDoneWeight / CommitTotalWeight());
+	return 0.9f + 0.1f * static_cast<float>(share);
+}
+
 // Commit runs as a slice task: each step is timed and gives the frame back when the budget is spent.
 void Core::CommitMark(const char* name)
 {
@@ -1652,15 +1689,15 @@ void Core::CommitMark(const char* name)
 	if (m_commitStepStart != std::chrono::steady_clock::time_point{}) {
 		const double ms = std::chrono::duration<double, std::milli>(now - m_commitStepStart).count();
 		std::cout << "[Core] Scene commit step '" << m_commitStage << "': " << static_cast<int>(ms * 10.0) / 10.0 << " ms" << std::endl;
+		m_commitDoneWeight += CommitStepWeight(m_commitStage);
 	}
 	m_commitStage = name;
 	m_commitStepStart = now;
-	++m_commitStepIndex;
 	SliceTask::YieldIfOverBudget();
 }
 
 void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup) {
-	m_commitStepIndex = 0;
+	m_commitDoneWeight = 0.0;
 	// The new scene numbers its frames from its first live frame (SceneFrameClock).
 	nox::SceneFrameClock::scene = 0;
 	if (!newGraph || !newGraph->GetRoot()) {
@@ -1777,7 +1814,7 @@ void Core::PresentSceneOverlay() {
 
 float Core::GetSceneLoadProgress() const
 {
-	if (m_commitTask) return 0.9f + 0.1f * std::min(1.0f, static_cast<float>(m_commitStepIndex) / 10.0f);
+	if (m_commitTask) return CommitProgress();
 	if (IsSceneLoading()) return m_sceneLoader ? m_sceneLoader->GetLoadProgress().fraction * 0.9f : 0.0f;
 	if (IsSceneSwapPending()) return 0.0f;
 	return 1.0f;
@@ -1802,7 +1839,7 @@ void Core::RenderSceneLoadingUI(bool overlay) {
 	}
 	if (m_commitTask) {
 		// The commit covers the last 10% of the bar, one step at a time.
-		state.progress = 0.9f + 0.1f * std::min(1.0f, static_cast<float>(m_commitStepIndex) / 10.0f);
+		state.progress = CommitProgress();
 		state.stage = m_commitStage;
 	}
 	else if (IsSceneLoading()) {

@@ -471,6 +471,26 @@ void MainWindow::Run() {
         // Automation server (src/automation): screenshot requests and engine.step replies, after Render.
         automation::EndFrame(m_windowWidth, m_windowHeight);
         FrameProfiler::Mark("capture");
+        // NOX_LOAD_DUMP_DIR=<dir> (NOX_LOAD_DUMP_EVERY=N, default 10): PNG of every Nth loading frame, taken before the
+        // swap (the back buffer is undefined after it). Counts load-phase frames only.
+        static const std::string loadDumpDir = GetEnvString("NOX_LOAD_DUMP_DIR");
+        static const int loadDumpEvery = std::max(GetEnvInt("NOX_LOAD_DUMP_EVERY", 10), 1);
+        static int loadFrameCount = 0;
+        if (!loadDumpDir.empty() && m_core && m_core->IsLoadPhase()) {
+            if (loadFrameCount % loadDumpEvery == 0) {
+                std::vector<unsigned char> pixels(static_cast<size_t>(m_windowWidth) * static_cast<size_t>(m_windowHeight) * 3u);
+                rhi::Gpu().BindReadFramebuffer(rhi::kBackBuffer);
+                rhi::Gpu().ReadPixels(rhi::kBackBuffer, 0, { 0, 0, m_windowWidth, m_windowHeight }, rhi::PixelFormat::RGB, rhi::PixelType::UByte, pixels.data(), 1);
+                std::error_code ec;
+                std::filesystem::create_directories(loadDumpDir, ec);
+                char name[32];
+                std::snprintf(name, sizeof(name), "/load_%05d.png", loadFrameCount);
+                stbi_flip_vertically_on_write(1);
+                stbi_write_png((loadDumpDir + name).c_str(), m_windowWidth, m_windowHeight, 3, pixels.data(), m_windowWidth * 3);
+                stbi_flip_vertically_on_write(0);
+            }
+            ++loadFrameCount;
+        }
         // Swap buffers (already checking visibility, so always swap here)
         const auto presentStart = std::chrono::steady_clock::now();
         rhi::Gpu().Present();

@@ -835,6 +835,7 @@ struct SceneLoader::LoadJob {
 	std::vector<std::vector<std::string>> rootModelPaths;   // per root node: models to have decoded first
 	std::vector<std::string> prefabErrors;                  // per root node: prefab expansion error (see ScenePayload)
 	std::unique_ptr<SliceTask> rootTask;                    // the root node being built, sliced across frames
+	std::unique_ptr<SliceTask> skyboxTask;                  // the environment (skybox and IBL), sliced across frames
 	size_t nodeIndex = 0;
 	size_t nodeCount = 0;
 	std::vector<std::pair<std::string, SceneKeyHandler>> sceneKeys;
@@ -1174,11 +1175,14 @@ bool SceneLoader::StepLoadOnce(LoadJob& job, double budgetMs)
 	}
 
 	case LoadJob::Phase::Skybox: {
+		// The environment (HDR decode, cube conversion, IBL passes) runs as a slice so it spreads over frames.
+		if (!job.skyboxTask) {
+			job.stage = "Loading environment";
+			job.fraction = 0.9f;
+			job.skyboxTask = std::make_unique<SliceTask>([this, &job]() {
 		json& sceneJson = job.sceneJson;
 		const std::string& sceneName = job.sceneName;
 		std::shared_ptr<SceneGraph>& sceneGraph = job.sceneGraph;
-		job.stage = "Loading environment";
-		job.fraction = 0.9f;
 		// Initialize the skybox if provided. Either a path string, or an object:
 		// { "path", "fallback", "rotation_deg", "intensity", "max_radiance", "ground": { "color", "blend_start_deg", "blend_end_deg" } }
 	if (sceneJson.contains("skybox")) {
@@ -1267,6 +1271,12 @@ bool SceneLoader::StepLoadOnce(LoadJob& job, double budgetMs)
 			}
 		}
 	}
+			});
+		}
+		if (!job.skyboxTask->Resume(budgetMs)) {
+			return true;
+		}
+		job.skyboxTask.reset();
 		job.phase = LoadJob::Phase::Finish;
 		return true;
 	}

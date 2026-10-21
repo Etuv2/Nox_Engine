@@ -28,6 +28,10 @@ public:
     // NOX_SLICE_GAP_MS=<ms> (diagnostic): logs each stretch of work longer than that between two yield points, with
     // the file:line of both ends. The stretch is measured only while the task runs (not across suspended frames).
     static void YieldIfOverBudget(std::source_location at = std::source_location::current());
+    // GPU upload budget (NOX_UPLOAD_BUDGET_MB, default 8): uploads made by the running task count against the
+    // current frame. Once the frame's budget is spent the task yields to the frame even if its time budget is left,
+    // so one frame never submits a large backlog. Outside a task this does nothing.
+    static void ChargeUpload(size_t bytes);
     static bool InTask();
 
     // Waits for a result computed on a worker thread. Inside a task the wait yields to the frame between polls, so
