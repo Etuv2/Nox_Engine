@@ -88,6 +88,10 @@ uniform uint uGatherPerCellSamples = 2u;
 // Compact kernel with the insertion support (plan section 24). With it the gather reads the receiver's own cell only,
 // and a cell longer than the examine bound is sampled from a hashed start (unbiased, noise not steps).
 uniform int uGatherCompactKernel = 0;
+// Normalised blend of the surfel mean and the cell average (plan section 24). 0 = the section 18 sum.
+uniform int uGatherNormalisedBlend = 0;
+// Validation: when > 0 every surfel's stored irradiance is this constant (the gather must then be flat).
+uniform float uConstantIrradianceTest = 0.0;
 uniform uint uFrameIndex = 0u;
 uniform uint uDebugView = 0u;
 uniform uint uSpawnTileSize = 8u;
@@ -298,6 +302,10 @@ vec3 SampleCellAverage(uint cell, out float confidence)
         return vec3(0.0);
     }
 
+    if (uConstantIrradianceTest > 0.0) {
+        confidence = 1.0;
+        return vec3(uConstantIrradianceTest);
+    }
     return SurfelCellAverage(gridCellSums[cell], confidence);
 }
 
@@ -380,7 +388,7 @@ bool SurfelGatherContribution(uint surfelID, vec3 worldPos, vec3 normal, out vec
     }
 
     rampedWeight = weight * SurfelContributionRamp(surfel);
-    irradiance = SurfelCachedIndirectIrradiance(surfel);
+    irradiance = uConstantIrradianceTest > 0.0 ? vec3(uConstantIrradianceTest) : SurfelCachedIndirectIrradiance(surfel);
     return true;
 }
 
@@ -454,9 +462,12 @@ void AccumulateCellSampled(uint cell,
     }
     uint k = min(samples, storedCount);
     float scale = float(storedCount) / float(k);
-    uint start = SurfelHash(seed) % storedCount;
+    // Stratified: sample j is drawn from the j-th of k equal strata of the list, so the subset covers the whole cell
+    // (a contiguous window covers one part of it). The jitter inside a stratum is hashed from the seed, which is per
+    // pixel and not per frame, so static content gives the same subset every frame and the upscale history averages it.
+    float jitter = float(SurfelHash(seed) & 0xFFFFu) / 65536.0;
     for (uint j = 0u; j < k; ++j) {
-        uint i = (start + j) % storedCount;
+        uint i = min(uint(floor((float(j) + jitter) * float(storedCount) / float(k))), storedCount - 1u);
         ++examinedCount;
         SurfelCellEntry entry = gridEntries[header.firstEntry + i];
         if (entry.surfelID >= uMaxSurfels) {
@@ -615,7 +626,7 @@ void main()
 
         if (uGatherCompactKernel != 0) {
             // Own cell, examined from a hashed start per pixel and frame when longer than the bound (scaled, unbiased).
-            uint seed = uint(pixel.x) * 73856093u ^ uint(pixel.y) * 19349663u ^ uFrameIndex * 83492791u ^ address.cell * 2654435761u;
+            uint seed = uint(pixel.x) * 73856093u ^ uint(pixel.y) * 19349663u ^ address.cell * 2654435761u;
             AccumulateCellSampled(address.cell, seed, worldPos, normal, maxExamined,
                                   sumIrradiance, sumWeight, sumRampWeight, acceptedCount, examinedCount);
         } else {
@@ -644,8 +655,16 @@ void main()
     // Where the weights sum to less than 1 this is the GIBS sum. Above 1 the sum is divided by the total
     // (ramped) weight, so dense texels take an average and do not over-brighten (the literal sum gave
     // 1.3 to 3.3 times the reference). Continuous at 1.
-    vec3 surfelIrradiance = sumIrradiance / max(1.0, sumRampWeight);
-    vec3 irradiance = max(surfelIrradiance + cellIrradiance * cellShare, vec3(0.0));
+    vec3 irradiance;
+    if (uGatherNormalisedBlend != 0) {
+        // Normalised: the surfel mean (sum of w E over sum of ramped w) carries the covered part (sum of w, clamped to 1),
+        // the cell average fills the rest. A constant field then comes out exactly constant in holes too.
+        vec3 surfelMean = sumIrradiance / max(sumRampWeight, 1e-4);
+        irradiance = max(surfelMean * min(sumWeight, 1.0) + cellIrradiance * cellShare, vec3(0.0));
+    } else {
+        vec3 surfelIrradiance = sumIrradiance / max(1.0, sumRampWeight);
+        irradiance = max(surfelIrradiance + cellIrradiance * cellShare, vec3(0.0));
+    }
 
     // Sample counters, 1 in 16 pixels, so the atomics stay off the hot path.
     if (((pixel.x + pixel.y * 3) & 15) == 0) {

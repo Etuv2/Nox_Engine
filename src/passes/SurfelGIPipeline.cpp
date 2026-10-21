@@ -1383,7 +1383,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uTransformCount", transformCount);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+		SetUniform1ui(program, "uMaxSurfelsPerCell", (m_settings.gatherFullCellLists ? 0xFFFFFFu : m_grid.GetSettings().maxSurfelsPerCell));
 		SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 		SetUniform3fv(program, "uGridMin", gridMin);
 		SetUniform3fv(program, "uGridMax", gridMax);
@@ -1563,7 +1563,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxRays", m_settings.maxRayBudget);
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+		SetUniform1ui(program, "uMaxSurfelsPerCell", (m_settings.gatherFullCellLists ? 0xFFFFFFu : m_grid.GetSettings().maxSurfelsPerCell));
 		SetUniform1ui(program, "uTriangleCount", bvhTriangleCount);
 		SetUniform1ui(program, "uBVHNodeCount", bvhNodeCount);
 		SetUniform1ui(program, "uRTInstanceCount", bvhInstanceCount);
@@ -1675,7 +1675,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1ui(program, "uMaxSurfels", maxSurfels);
 		SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 		SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-		SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+		SetUniform1ui(program, "uMaxSurfelsPerCell", (m_settings.gatherFullCellLists ? 0xFFFFFFu : m_grid.GetSettings().maxSurfelsPerCell));
 		SetUniform1ui(program, "uSharingPhaseCount", sharingPhaseCount);
 		SetUniform1ui(program, "uSharingPhaseIndex", sharingPhaseCount > 1u ? (m_frameIndex % sharingPhaseCount) : 0u);
 		SetSurfelGridUniforms(program, gridSettings, gridMin, gridMax);
@@ -1701,7 +1701,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 			SetUniform1ui(program, "uFrameIndex", m_frameIndex);
 			SetUniform1ui(program, "uTransformCount", transformCount);
 			SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-			SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+			SetUniform1ui(program, "uMaxSurfelsPerCell", (m_settings.gatherFullCellLists ? 0xFFFFFFu : m_grid.GetSettings().maxSurfelsPerCell));
 			SetUniform3ui(program, "uGridResolution", gridSettings.resolution.x, gridSettings.resolution.y, gridSettings.resolution.z);
 			SetUniform3fv(program, "uGridMin", gridMin);
 			SetUniform3fv(program, "uGridMax", gridMax);
@@ -2017,7 +2017,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1ui(program, "uSpawnDebugFrameIndex", m_frameIndex > 0u ? m_frameIndex - 1u : 0u);
 	SetUniform2ui(program, "uCoverageTileCount", m_coverageTileCountX, m_coverageTileCountY);
 	SetUniform1ui(program, "uGridCellCount", m_grid.GetCellCount());
-	SetUniform1ui(program, "uMaxSurfelsPerCell", m_grid.GetSettings().maxSurfelsPerCell);
+	SetUniform1ui(program, "uMaxSurfelsPerCell", (m_settings.gatherFullCellLists ? 0xFFFFFFu : m_grid.GetSettings().maxSurfelsPerCell));
 	SetUniform1ui(program, "uMaxGatherSurfelsPerPixel", m_settings.maxGatherSurfelsPerPixel);
 	SetUniform1ui(program, "uMaxGatherCandidates", m_settings.maxGatherCandidatesPerPixel);
 	SetUniform1ui(program, "uGatherNeighborRadius", m_settings.gatherNeighborRadius);
@@ -2033,6 +2033,8 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1i(program, "uGatherSmoothFallback", m_settings.gatherSmoothFallback ? 1 : 0);
 	SetUniform1i(program, "uGatherStochastic", m_settings.gatherStochastic ? 1 : 0);
 	SetUniform1i(program, "uGatherCompactKernel", m_settings.gatherCompactKernel ? 1 : 0);
+	SetUniform1i(program, "uGatherNormalisedBlend", m_settings.gatherNormalisedBlend ? 1 : 0);
+	SetUniform1f(program, "uConstantIrradianceTest", std::max(m_settings.constantIrradianceTest, 0.0f));
 	SetUniform1ui(program, "uGatherPerCellSamples", std::max(m_settings.gatherPerCellSamples, 1u));
 	SetUniform1ui(program, "uDebugView", applyDebugView);
 

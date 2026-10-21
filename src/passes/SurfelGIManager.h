@@ -207,6 +207,13 @@ struct SurfelGISettings {
 	// Compact gather kernel with the surfel's insertion support: own cell only, hashed start for long cells (plan
 	// section 24). false = the section 18 to 21 gather (Gaussian kernel, 3x3x3 neighbour walk, first N in cell order).
 	bool gatherCompactKernel = true;
+	// Readers walk the real cell list (not the first maxSurfelsPerCell entries, which is an arbitrary subset per cell
+	// and produced the cell tiles, plan section 24). false = the old cap, for A/B.
+	bool gatherFullCellLists = true;
+	// Normalised gather blend: sum(wE)/sum(w) for the covered part, cell average for the rest (plan section 24).
+	bool gatherNormalisedBlend = true;
+	// Validation only: > 0 replaces every stored and cell irradiance with this constant (the gather must be flat).
+	float constantIrradianceTest = 0.0f;
 	// Stochastic per-cell gather (plan section 21, round 2): samples per cell in the window, hashed start per pixel and frame.
 	bool gatherStochastic = false;
 	uint32_t gatherPerCellSamples = 2u;
