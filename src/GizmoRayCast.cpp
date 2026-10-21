@@ -425,14 +425,29 @@ std::pair<glm::vec3, glm::vec3> GizmoRayCast::CalculateMultiSelectionBounds(
 	glm::vec3 minBounds(std::numeric_limits<float>::max());
 	glm::vec3 maxBounds(std::numeric_limits<float>::lowest());
 
+	bool any = false;
 	for (auto& node : nodes) {
-		if (!node || !node->GetModel()) continue;
-
-		auto [nodeMin, nodeMax] = node->GetBoundingBox();
-		minBounds = glm::min(minBounds, nodeMin);
-		maxBounds = glm::max(maxBounds, nodeMax);
+		if (!node) continue;
+		any = true;
+		if (!node->GetModel()) {
+			// No model, so no box: the node's origin stands in for it.
+			const glm::vec3 p = node->GetWorldPosition();
+			minBounds = glm::min(minBounds, p);
+			maxBounds = glm::max(maxBounds, p);
+			continue;
+		}
+		// The node's local box, moved to world space by its transform (all eight corners).
+		const auto [nodeMin, nodeMax] = node->GetBoundingBox();
+		const glm::mat4 world = node->GetWorldPosition4x4();
+		for (int i = 0; i < 8; ++i) {
+			const glm::vec3 corner((i & 1) ? nodeMax.x : nodeMin.x, (i & 2) ? nodeMax.y : nodeMin.y, (i & 4) ? nodeMax.z : nodeMin.z);
+			const glm::vec3 w = glm::vec3(world * glm::vec4(corner, 1.0f));
+			minBounds = glm::min(minBounds, w);
+			maxBounds = glm::max(maxBounds, w);
+		}
 	}
 
+	if (!any) return { glm::vec3(0.0f), glm::vec3(0.0f) };
 	return { minBounds, maxBounds };
 }
 

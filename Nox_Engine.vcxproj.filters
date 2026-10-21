@@ -519,6 +519,9 @@
     <ClCompile Include="src\ImGui\EditorWorkspace.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ImGui\EditorWorkspaceSelection.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
     <ClCompile Include="src\ImGui\HelpWindow.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
@@ -846,6 +849,12 @@
     <ClCompile Include="src\editor\InspectorUndo.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
+    <ClCompile Include="src\editor\Selection.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="src\editor\Clipboard.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
     <ClCompile Include="src\passes\ParticlePass.cpp">
       <Filter>Source Files\passes</Filter>
     </ClCompile>
@@ -958,6 +967,12 @@
       <Filter>Header Files\editor</Filter>
     </ClInclude>
     <ClInclude Include="src\editor\InspectorUndo.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\Selection.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\Clipboard.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
     <ClInclude Include="src\passes\ParticlePass.h">
