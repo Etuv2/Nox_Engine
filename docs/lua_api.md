@@ -61,9 +61,9 @@ project loads. Calling them later is an error.
 | Load | top-level code of the entry and its `require`d modules | Each scene configuration (Configure) |
 | Frame system | `nox.system{ name, order, update = function(ctx, dt) end }` | Each frame while playing and not paused, in `order` then declaration order |
 | Fixed system | `nox.system{ ..., fixed = true, update = ... }` | Each physics substep (see below) |
-| Behavior | `nox.behavior{ name, update = function(ctx, entity, dt) end }` | After the systems, for each entity with `ctx:attach` |
+| Behavior | `nox.behavior{ name, update = fn(ctx, entity, dt), fixed_update = fn(ctx, entity, dt), on_start = fn(ctx, entity), on_destroy = fn(ctx, entity) }` (any one is enough) | `on_start` once per entity before its first update; `update` after the systems; `fixed_update` per substep; `on_destroy` once when the entity goes away (see "Lifecycle, timers and coroutines") |
 | Event handler | `nox.on(name, function(ctx, payload) end)` | After systems, in emission order then handler registration order |
-| `begin_play` / `end_play` | `nox.on("begin_play", ...)` | At Play and at Stop |
+| `begin_play` / `end_play` | `nox.on("begin_play", function(ctx, payload) ... end)` | At Play and at Stop. `payload` is the scene payload from `ctx:load_scene` (nil when there is none) |
 
 `Update` runs systems in this order: frame systems, events emitted during the frame, behaviors.
 Events emitted by an event handler are delivered in the next frame. Systems read a snapshot of the
@@ -149,7 +149,7 @@ Deferred native commands (applied after the callback returns successfully):
 
 | Function | Behaviour |
 | --- | --- |
-| `ctx:spawn(name)` | queue creation of a script entity named `name` (must be unused). Returns a token; use `ctx:resolve_spawn(token)` in a later callback |
+| `ctx:spawn(name)` | queue creation of a script-only entity named `name` (must be unused): logic state with no scene node, so nothing is drawn and no physics body is made. For anything visible or colliding use `ctx:instantiate`. Returns a token; use `ctx:resolve_spawn(token)` in a later callback |
 | `ctx:destroy(h)` | queue destruction. Script-spawned entities are destroyed; scene nodes (authored, or instantiated by `ctx:instantiate`) are removed from the scene at the frame boundary. Authored nodes come back at Stop, nodes created during play do not |
 | `ctx:move(h, x, y, z)` | set local position (continuous motion; does not flag a camera cut) |
 | `ctx:teleport(h, x, y, z)` | set local position and flag a discontinuous move (`ConsumeTeleport` returns true for that frame, so temporal history resets) |
@@ -206,8 +206,9 @@ Scene instances:
 
 Scene requests:
 
-- `ctx:load_scene("scenes/<name>.json")` switches scene at the next frame boundary. The path is logical: under `scenes/`,
-  ends in `.json`, uses letters, digits, `_ - . /` and no `..`.
+- `ctx:load_scene("scenes/<name>.json" [, payload])` switches scene at the next frame boundary. The path is logical: under `scenes/`,
+  ends in `.json`, uses letters, digits, `_ - . /` and no `..`. The optional payload is plain data handed to the next scene
+  (see "Scenes and saves").
 - There is no engine time scale yet, so there is no `ctx:time_scale`.
 
 ## Physics
@@ -862,6 +863,140 @@ Collision methods (`col:name(...)`):
 `mask` is the class mask: `1` ground, `2` wall, `4` ceiling, `7` any (the default).
 
 A handle kept across a reload refers to the old world's data and raises `this ... handle is no longer valid`.
+
+## Lifecycle, timers and coroutines
+
+Gameplay code runs in callbacks (systems, behaviours, event handlers, `begin_play`) and in the timers and coroutines
+those callbacks start. Everything below runs on the play clock and stops with the game.
+
+### Behaviour hooks
+
+```lua
+nox.behavior{
+  name = "coin",
+  on_start = function(ctx, entity) end,                  -- once per entity, before its first update
+  update = function(ctx, entity, dt) end,                -- every frame
+  fixed_update = function(ctx, entity, dt) end,          -- every physics substep
+  on_destroy = function(ctx, entity) end,                -- once, when the entity goes away
+}
+```
+
+- A behaviour needs at least one of the four functions. Attach with `ctx:attach(h, "coin")` from a callback.
+- `on_start` runs once for each (entity, behaviour) pair, in the first behaviour phase after the attach. It runs
+  before `update` and `fixed_update` of that pair. An entity attached in `begin_play` starts in the first frame.
+  Detaching and attaching again does not run it again: the started state lasts for the life of the entity.
+- `fixed_update` runs once per physics substep, after the fixed systems. `update` runs after the frame systems and
+  events, as before.
+- `on_destroy` runs for every behaviour whose `on_start` ran for the entity, when the entity is destroyed by
+  `ctx:destroy` (for a scene node, its subtree too), and at Stop (`end_play`) for entities that are still alive. It
+  runs before the entity is removed, so `entity` is valid inside it. A scene node that the host removes without
+  `ctx:destroy` gets no `on_destroy`.
+- A failing hook is a diagnostic and disables that behaviour until reload or retry, like `update`.
+
+### Timers
+
+```lua
+local t = ctx:after(seconds, function(ctx, entity) end [, entity])   -- once
+local h = ctx:every(seconds, function(ctx, entity) end [, entity])   -- repeats, interval > 0
+t:cancel()
+t:active()          -- false after cancel, after a one-shot fired, or after its entity went away
+```
+
+- The clock is the play clock. It advances by `dt` in each `Update` while the game plays and is not paused. Pause
+  freezes it; with `NOX_FIXED_DT` it is deterministic. A timer due at play time `t` fires in the first frame whose
+  play time reaches `t` (a tolerance of 1e-9 absorbs float `dt`). At 60 Hz, `ctx:after(0.5)` created in `begin_play`
+  fires in frame 30, where `ctx:frame()` is 30.
+- A timer created in a callback first fires in the next frame. Timers run before the systems of a frame.
+- `every` fires once per due time. If a frame was late it fires once and is rescheduled from the current time.
+- A one-shot timer is spent before its callback runs. A timer whose callback fails stops, and the diagnostic says why.
+- The optional `entity` scopes the timer: it is cancelled when that entity is destroyed (`ctx:destroy`, or as part of
+  a destroyed subtree), and it is cancelled when the entity is found missing.
+- Timers exist only while playing. Stop (and a scene swap, which replaces the world) cancels all of them. Only callbacks
+  and `begin_play` may create them. At most 4096 timers and coroutines are live at once.
+
+### Coroutines
+
+```lua
+local co = ctx:start_coroutine(function(ctx, entity)
+  ctx:wait(0.25)                                    -- seconds
+  ctx:wait_frames(3)                                -- frames
+  ctx:wait_until(function(ctx, entity) return ready end)   -- checked each frame until it returns true
+end [, entity])
+```
+
+- The first segment runs at the start of the next frame's `Update`, before the systems. Each wait suspends the
+  coroutine until its condition holds. A coroutine resumes at the start of a frame, before the systems of that frame.
+- `ctx:wait(s)` started in frame F resumes in the first frame whose play time has reached the end of the wait. At
+  60 Hz, `wait(0.25)` started in frame F resumes in frame F+15. `ctx:wait_frames(n)` resumes in frame F+n.
+- `ctx:wait_until(fn)` calls `fn(ctx, entity)` at the start of each frame. A value that a system sets in frame F is
+  seen by the predicate in frame F+1.
+- The wait functions exist only inside a coroutine that the host resumes. Calling them from a system raises an error.
+  A bare `coroutine.yield` is reported as a diagnostic.
+- An error in a coroutine is a diagnostic with source `coroutine` and a traceback. The coroutine stops; nothing else
+  is affected. A coroutine that finishes or whose entity is destroyed is removed. Stop cancels all coroutines.
+- Coroutines do not advance while the game is paused or stopped.
+- Handles are `nox.task` userdata with `cancel()` and `active()`, the same as timers.
+- There is no tween helper in API v1. Write the interpolation as a loop of `ctx:wait_frames(1)` in a coroutine.
+
+### Hot reload and timers
+
+A reload (see "Reload") does not run `begin_play` or any `on_start` again:
+
+- Timers and coroutines are not migrated. They hold functions of the old code, so the reload drops them. Create them
+  again from declared data if they must continue (for example, a system that starts a coroutine when a declared field
+  says so).
+- Behaviour attachments that existed before the reload stay started: their `on_start` does not run again, and their
+  `on_destroy` is the new code's function.
+
+## Scenes and saves
+
+### Runtime instances: `ctx:spawn` and `ctx:instantiate`
+
+The two calls create different things:
+
+| Call | Creates | Use it for |
+| --- | --- | --- |
+| `ctx:spawn(name)` | a script-only entity. It has no scene node, so nothing is drawn, no physics body is made, and it has no registry components. It exists as long as the play lasts. | logic state: declared schemas, behaviours, timers, coroutines |
+| `ctx:instantiate(path [, opts])` | a scene node built from a prefab (`*.prefab.json`), with the prefab's renderer, physics and other registry components and its children | anything visible or colliding |
+
+- An instance is created at once, so its handle works in the same callback. It gets `on_start` like an authored node
+  once it is attached. `ctx:destroy(h)` removes it, and Stop removes every instance created during play.
+- `ctx:spawn` is deferred: its handle is available from `ctx:resolve_spawn(token)` in a later callback.
+- Prefab paths are logical (for example `projects/<name>/prefabs/coin.prefab.json` in this repository layout).
+
+### Scene payload
+
+```lua
+ctx:load_scene("scenes/arena_2.json", { level = 2, origin = "intro", tags = { "a", "b" } })
+```
+
+- The payload is optional. It must be plain data: tables (an array, or an object with string keys), strings,
+  numbers, booleans. Functions, userdata, threads, mixed tables and non-finite numbers are refused with an argument
+  error, and no swap is requested.
+- The payload is copied to JSON when `load_scene` is called. The swap still happens at the next frame boundary.
+  The world of the next scene receives the payload when that scene is configured.
+- `begin_play(ctx, payload)` receives a fresh copy of the payload, or nil. `ctx:scene_payload()` returns a fresh copy
+  at any time in that world.
+- A later configuration takes the payload for one scene only. Stop rebuilds the world, so after Stop the payload is
+  nil. A hot reload keeps the payload of the running scene.
+- After a scene swap the game is not playing. `begin_play` (and so the payload) runs at the next Play.
+
+### Save slots
+
+```lua
+ctx:save_slot("slot_1", { gold = 5, level = 2 })    -- true, or false and a reason
+local data, why = ctx:load_slot("slot_1")           -- value, or nil and a reason
+ctx:save_exists("slot_1")                            -- boolean
+ctx:delete_save("slot_1")                            -- true, or false and a reason
+ctx:list_saves()                                     -- sorted array of slot names
+```
+
+- A slot name is 1 to 48 characters of `A-Z a-z 0-9 _ -`. Anything else, including `/`, `.` and `..`, is refused, so
+  no name can leave the saves folder. An invalid name makes `save_exists` return false.
+- Slots are stored as `saves/<name>.json` in the user data directory (see [asset_io.md](asset_io.md)). Writes use the
+  same atomic writer as `save_user_json`. The value is plain data, limited to 1 MiB of JSON.
+- `save_user_json` and `load_user_json` remain for whole-file data (settings, one save file). Slots are for named
+  saves.
 
 ## Save data
 
