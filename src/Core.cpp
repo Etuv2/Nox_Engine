@@ -2110,6 +2110,13 @@ std::vector<std::string> Core::GetSceneList() const
 	AssetIO::ListOptions options;
 	options.extension = ".json";
 	for (const std::string& path : AssetIO::List("scenes", options)) add(path);
+	// Project scenes (projects/<name>/scenes/*.json, e.g. from File > New Project) open from the same list.
+	AssetIO::ListOptions projectOptions;
+	projectOptions.recursive = true;
+	projectOptions.extension = ".json";
+	for (const std::string& path : AssetIO::List("projects", projectOptions)) {
+		if (path.find("/scenes/") != std::string::npos) add(path);
+	}
 	std::sort(scenes.begin(), scenes.end());
 	return scenes;
 }

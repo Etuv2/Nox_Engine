@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <iterator>
 #include <cstring>
 #include <sstream>
@@ -1183,6 +1184,12 @@ namespace NoxLua {
 	}
 
 	void LuaWorld::AddDiagnostic(Diagnostic diagnostic) {
+		// Errors also go to the log: a standalone or packaged run has no editor panel that shows them.
+		if (diagnostic.severity == Diagnostic::Severity::Error) {
+			std::cerr << "[Lua] error in " << diagnostic.source << " (frame " << diagnostic.frame << "): "
+				<< (diagnostic.file.empty() ? std::string() : diagnostic.file + ":" + std::to_string(diagnostic.line) + ": ")
+				<< diagnostic.message << std::endl;
+		}
 		if (m_diagnostics.size() >= kMaxDiagnostics) {
 			m_diagnostics.erase(m_diagnostics.begin());
 		}

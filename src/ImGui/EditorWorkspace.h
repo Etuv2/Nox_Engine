@@ -13,6 +13,7 @@
 #include "../editor/HierarchyModel.h"
 #include "../editor/Selection.h"
 #include "../json.hpp"
+#include "../app/ProjectTemplates.h"
 #include "../EditorExtensions.h"
 #include "PhysicsWindow.h"
 
@@ -168,6 +169,20 @@ private:
 	// Build / run / package.
 	void StartTool(const std::string& title, const std::string& script, const std::string& args);
 	void RunStandalone();
+	void StartPackage();                 // Package menu and toolbar: the active project's profile when it has one
+
+	// New project / open project (File menu; templates in templates/, docs/engine_overview.md).
+	void DrawNewProjectModal();
+	void DrawOpenProjectModal();
+	bool m_openNewProject = false;
+	bool m_openOpenProject = false;
+	char m_newProjectName[64] = "MyGame";
+	char m_newProjectLocation[256] = "";
+	int m_newProjectTemplate = 0;
+	bool m_newProjectOverwrite = false;
+	std::string m_newProjectError;
+	std::vector<ProjectTemplates::TemplateInfo> m_newProjectTemplates;
+	std::vector<std::string> m_projectFolders;
 
 	bool ProjectToViewport(const Viewport& vp, const glm::vec3& world, ImVec2& out) const;   // scene viewport: see EditorHost
 	bool ViewportRayToGround(const Viewport& vp, const ImVec2& mouse, glm::vec3& out) const;

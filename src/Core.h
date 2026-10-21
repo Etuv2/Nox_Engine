@@ -252,7 +252,9 @@ public:
     std::shared_ptr<ModularRenderer> GetRenderer() { return m_modularRenderer; }
     SceneLoader* GetSceneLoader() { return m_sceneLoader.get(); }
     const std::string& GetCurrentScenePath() const { return m_currentSceneFilePath; }
-    std::vector<std::string> GetSceneList() const;
+    std::vector<std::string> GetSceneList() const;   // scenes/*.json and projects/<name>/scenes/*.json
+    // Logical descriptor of the project that runs the current scene ("projects/<name>/project.json"), "" for none.
+    const std::string& GetGameProject() const { return m_gameProject; }
 
     // Play mode: Play starts from the authored scene, Stop restores the pre-play state.
     void RequestPlay();
