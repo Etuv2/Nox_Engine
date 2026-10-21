@@ -2065,6 +2065,7 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1f(upscaleProgram, "uHistoryWeight", 0.85f);
 	SetUniform1f(upscaleProgram, "uMotionRejectPixels", 6.0f);
 	SetUniform1i(upscaleProgram, "uEdgeAwareUpsample", m_settings.gatherEdgeAwareUpsample ? 1 : 0);
+	SetUniform1i(upscaleProgram, "uHistoryEdgeReject", (m_settings.gatherEdgeAwareUpsample && m_settings.gatherTemporalRejection) ? 1 : 0);
 	SetUniformMat4(upscaleProgram, "uInvProjection", glm::inverse(context.proj));
 	SetUniformMat4(upscaleProgram, "uInvView", glm::inverse(context.view));
 	SetUniform1f(upscaleProgram, "uLightingChangeFactor", m_lightingChangeFactor);

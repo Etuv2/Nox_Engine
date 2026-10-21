@@ -37,6 +37,8 @@ uniform float uMotionRejectPixels = 6.0;
 uniform int uEdgeAwareUpsample = 0;
 uniform mat4 uInvProjection;
 uniform mat4 uInvView;
+// Temporal rejection at disocclusions and depth edges (needs uEdgeAwareUpsample for the world-space tests).
+uniform int uHistoryEdgeReject = 0;
 
 float SurfelUpscaleDepthWeight(float centerDepth, float sampleDepth)
 {
@@ -50,6 +52,19 @@ float SurfelUpscaleDepthWeight(float centerDepth, float sampleDepth)
 float SurfelUpscaleNormalWeight(vec3 centerNormal, vec3 sampleNormal)
 {
     return smoothstep(0.32, 0.93, max(dot(centerNormal, sampleNormal), 0.0));
+}
+
+vec3 RGBToYCoCg(vec3 c)
+{
+    return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
+                0.5 * c.r - 0.5 * c.b,
+                -0.25 * c.r + 0.5 * c.g - 0.25 * c.b);
+}
+
+vec3 YCoCgToRGB(vec3 y)
+{
+    float t = y.x - y.z;
+    return vec3(t + y.y, y.x + y.z, t - y.y);
 }
 
 // A gather texel carries data when it has coverage or irradiance. The gather writes exactly zero for texels with
@@ -201,26 +216,63 @@ void main()
         vec2 prevUV = fullUV - velocity;
         vec2 margin = 0.5 / vec2(safeResolution);
         if (all(greaterThanEqual(prevUV, margin)) && all(lessThanEqual(prevUV, vec2(1.0) - margin))) {
-            // Variance-style clamp: the range of the 3x3 gather texels around this pixel.
+            // Variance-style clamp: the range of the 3x3 gather texels around this pixel, in YCoCg.
             ivec2 centre = ivec2(floor(lowCoord + vec2(0.5)));
             vec3 minColor = vec3(1e20);
             vec3 maxColor = vec3(-1e20);
             for (int y = -1; y <= 1; ++y) {
                 for (int x = -1; x <= 1; ++x) {
                     ivec2 t = clamp(centre + ivec2(x, y), ivec2(0), safeLow - ivec2(1));
-                    vec3 c = max(texelFetch(uLowResIndirectTex, t, 0).rgb, vec3(0.0));
+                    vec3 c = RGBToYCoCg(max(texelFetch(uLowResIndirectTex, t, 0).rgb, vec3(0.0)));
                     minColor = min(minColor, c);
                     maxColor = max(maxColor, c);
                 }
             }
             vec3 extent = (maxColor - minColor) * 0.25 + vec3(0.01);
             vec4 history = texture(uHistoryTex, prevUV);
-            history.rgb = clamp(history.rgb, max(minColor - extent, vec3(0.0)), maxColor + extent);
+            vec3 historyYCoCg = clamp(RGBToYCoCg(max(history.rgb, vec3(0.0))), minColor - extent, maxColor + extent);
+            history.rgb = max(YCoCgToRGB(historyYCoCg), vec3(0.0));
             history.a = clamp(history.a, 0.0, 1.0);
 
             float motionPixels = length(velocity * vec2(safeResolution));
             float motionWeight = 1.0 - smoothstep(1.0, uMotionRejectPixels, motionPixels);
             float historyWeight = uHistoryWeight * motionWeight * (1.0 - clamp(uLightingChangeFactor, 0.0, 1.0));
+
+            if (uHistoryEdgeReject != 0) {
+                // Disocclusion and edge test from the current frame (no previous depth is kept). Neighbouring pixels
+                // on the same surface share a velocity and lie in the receiver's plane; a depth edge breaks one or
+                // both. A velocity break means parallax across an occluder edge: reject and reset to the current value.
+                // A plane break (or a sky neighbour) shortens the history.
+                vec3 centerPos = SurfelReconstructWorldPosition(fullUV, centerDepth, uInvProjection, uInvView);
+                float cameraDistance = length(centerPos - (uInvView * vec4(0.0, 0.0, 0.0, 1.0)).xyz);
+                float planeTolerance = 0.02 * cameraDistance + 0.005;
+                vec2 velocityPixels = velocity * vec2(safeResolution);
+                bool disoccluded = false;
+                bool edge = false;
+                ivec2 offsets[4] = ivec2[4](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
+                for (int k = 0; k < 4; ++k) {
+                    ivec2 np = clamp(pixel + offsets[k], ivec2(0), ivec2(safeResolution) - ivec2(1));
+                    float nd = texelFetch(uDepthTex, np, 0).r;
+                    if (nd <= 0.0 || nd >= 0.999999) {
+                        edge = true;
+                        continue;
+                    }
+                    vec2 nUV = (vec2(np) + vec2(0.5)) / vec2(safeResolution);
+                    vec3 nPos = SurfelReconstructWorldPosition(nUV, nd, uInvProjection, uInvView);
+                    if (abs(dot(nPos - centerPos, centerNormal)) > 2.0 * planeTolerance) {
+                        edge = true;
+                    }
+                    vec2 nVelocityPixels = textureLod(uVelocityTex, nUV, 0.0).rg * vec2(safeResolution);
+                    if (length(nVelocityPixels - velocityPixels) > max(1.0, 0.25 * length(velocityPixels))) {
+                        disoccluded = true;
+                    }
+                }
+                if (disoccluded) {
+                    historyWeight = 0.0;
+                } else if (edge) {
+                    historyWeight *= 0.5;
+                }
+            }
             resolved = mix(resolved, history, historyWeight);
         }
     }

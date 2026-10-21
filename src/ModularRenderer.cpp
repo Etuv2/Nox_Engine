@@ -689,6 +689,7 @@ void ModularRenderer::SyncSurfelGISettings()
 			GetEnvVarFloat("NOX_SURFEL_GI_GATHER_CUTOFF", settings.gatherCutoffCells), 0.0f, 4.0f);
 		applyEnvToggle("NOX_SURFEL_GI_GATHER_SMOOTH_FALLBACK", settings.gatherSmoothFallback);
 		applyEnvToggle("NOX_SURFEL_GI_UPSCALE_EDGE", settings.gatherEdgeAwareUpsample);
+		applyEnvToggle("NOX_SURFEL_GI_HISTORY_REJECT", settings.gatherTemporalRejection);
 		applyEnvToggle("NOX_SURFEL_GI_GATHER_STOCHASTIC", settings.gatherStochastic);
 		settings.gatherPerCellSamples = static_cast<uint32_t>(
 			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_GATHER_PER_CELL", static_cast<int>(settings.gatherPerCellSamples)), 1, 16));

@@ -200,6 +200,8 @@ struct SurfelGISettings {
 	// Edge-aware resolve of the half-resolution gather (plan section 24): plane-distance and normal weights,
 	// empty gather texels excluded, neighbourhood estimate when all 2x2 taps are empty. false = section 18 resolve.
 	bool gatherEdgeAwareUpsample = true;
+	// Temporal history rejection at disocclusions (reset) and depth edges (half history), plan section 24.
+	bool gatherTemporalRejection = true;
 	// Stochastic per-cell gather (plan section 21, round 2): samples per cell in the window, hashed start per pixel and frame.
 	bool gatherStochastic = false;
 	uint32_t gatherPerCellSamples = 2u;
