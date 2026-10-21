@@ -72,6 +72,9 @@ text. It is parsed on the first update after the model is loaded, and clip names
   advances at the blend's weighted duration. Feet keep their cycle across the blend.
 - Marker events fire when the playhead crosses `t` (normalised 0 to 1 of the clip). A looping state fires each marker
   once per cycle. A marker at `t` = 0 fires at the wrap, not when the state is entered.
+- Entering a state restarts its playhead at 0, so a state that is left and re-entered replays from the start. A
+  marker late in the clip may never fire if the state is always left before reaching it. The demo puts its splash
+  marker at 0.05 for this reason.
 
 ## Events for Lua
 
