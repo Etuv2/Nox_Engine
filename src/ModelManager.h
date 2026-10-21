@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ModelHotReload.h"
+
 class Scene;
 class ModelManager {
 public:
@@ -17,6 +19,18 @@ public:
 
     // Get the original path for a loaded model
     std::string GetModelPath(const Scene* model) const;
+
+    // Hot reload (ModelHotReload.h). DecodeModel parses and builds a new Scene without touching the cache; stampBefore
+    // receives the model's files as they were before the decode, so a write during the decode is seen by the next poll.
+    // Null when the file does not load.
+    std::shared_ptr<Scene> DecodeModel(const std::string& path, ModelFileStamp* stampBefore);
+    // Makes model the cached one for path and returns the model it replaces (null when there was none).
+    std::shared_ptr<Scene> InstallModel(const std::string& path, const std::shared_ptr<Scene>& model, const ModelFileStamp& decodedFrom);
+    // The cached model of path without loading it (null when not cached).
+    std::shared_ptr<Scene> CachedModel(const std::string& path) const;
+    // The files the cached model of path was decoded from; null when the path is not cached.
+    const ModelFileStamp* DecodedStamp(const std::string& path) const;
+    std::vector<std::string> CachedModelPaths() const;
 
     // Scene-load prefetch: decodes the CPU half of these glTF files (parse, image decode) on a worker thread.
     // A later LoadModel of the same path takes the decoded copy, so only the GPU build runs on the caller's thread.
@@ -39,6 +53,9 @@ private:
 
     // Reverse lookup from model to path
     std::unordered_map<const Scene*, std::string> m_modelToPathMap;
+
+    // Files each cached model was decoded from (hot reload compares them with the disk).
+    std::unordered_map<std::string, ModelFileStamp> m_decodedStamps;
 
     struct Prefetcher;
     std::unique_ptr<Prefetcher> m_prefetch;

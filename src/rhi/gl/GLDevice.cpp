@@ -434,6 +434,9 @@ namespace {
 
 		// --- Device / window -------------------------------------------------------------------------
 		const DeviceInfo& Info() const override { return m_info; }
+		LiveObjectCounts LiveObjects() const override {
+			return { m_bufferSizes.size(), m_textures.size(), m_vertexInputs.size(), m_programs.size() };
+		}
 		const DeviceLimits& Limits() const override { return m_limits; }
 		void Present() override { SDL_GL_SwapWindow(m_window); }
 		void SetVSync(bool enabled) override { SDL_GL_SetSwapInterval(enabled ? 1 : 0); }

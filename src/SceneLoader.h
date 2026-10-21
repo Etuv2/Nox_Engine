@@ -31,6 +31,10 @@ class Camera;
  * - Supports multi-stage loading (Assets, ECS, Physics, etc.)
  * - Non-blocking design allows GUI animations during load
  */
+class Scene;
+class SceneNode;
+class ComponentManager;
+
 class SceneLoader {
 public:
 	SceneLoader(std::shared_ptr<ModelManager> modelManager, std::shared_ptr<PhysicsEngine> physicsEngine, int screenW, int screenH);
@@ -120,6 +124,14 @@ public:
 		if (typeStr == "folder") return NodeType::FOLDER;
 		return NodeType::NODE;
 	}
+
+	// Hot reload (src/ModelHotReload.h): points the nodes that use `previous` at `model`, a re-decoded copy of the same
+	// file with the same node list. Rebuilds the mesh lists and bounds, the skeleton (when the joints changed), the
+	// renderable and the mesh collider, re-applies the file's material overrides, and keeps the animation clip and time
+	// when the clip's joints still exist (a state-machine graph restarts at its default state). Returns the number of
+	// nodes retargeted, or -1 when the node counts differ (nothing is changed then).
+	static int RetargetModelNodes(ComponentManager* components, const std::vector<std::shared_ptr<SceneNode>>& nodes,
+		const Scene& previous, const std::shared_ptr<Scene>& model, const std::string& path);
 
 private:
 	std::shared_ptr<ModelManager> m_modelManager;

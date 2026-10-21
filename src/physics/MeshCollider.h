@@ -22,6 +22,8 @@ namespace MeshCollider {
 	std::shared_ptr<const CollisionWorld> LoadShared(const std::string& path, const glm::vec3& scale = glm::vec3(1.0f));
 	// Forgets the cache (tests, scene unload). Bodies keep the meshes they hold.
 	void ClearCache();
+	// Forgets the cached meshes of one path (every scale), so the next LoadShared reads the file again (hot reload).
+	void Invalidate(const std::string& path);
 
 	// Local bounds of a loaded mesh (false when empty).
 	bool LocalBounds(const CollisionWorld& mesh, glm::vec3& mn, glm::vec3& mx);

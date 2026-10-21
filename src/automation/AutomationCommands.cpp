@@ -15,6 +15,7 @@
 #include "Camera.h"
 #include "ImGui/ConsoleLog.h"
 #include "ShaderLoader.h"
+#include "ModelHotReload.h"
 #include <IMGUI/imgui.h>
 #include "assets/AssetIO.h"
 #include "reflect/Reflection.h"
@@ -473,6 +474,10 @@ json EngineInfo(Invocation& inv)
 	info["tier"] = CurrentQualityTier();
 	info["paused"] = Control().paused;
 	info["playing"] = core.IsPlaying();
+	// Live GPU objects (buffers, textures, vertex inputs, programs): leak checks compare them before and after work.
+	const rhi::Device::LiveObjectCounts live = rhi::Gpu().LiveObjects();
+	info["gpu_objects"] = { { "buffers", live.buffers }, { "textures", live.textures },
+		{ "vertex_inputs", live.vertexInputs }, { "programs", live.programs } };
 	return info;
 }
 
@@ -712,6 +717,32 @@ void RegisterRender(Dispatcher& d)
 		r["kept"] = kept;
 		r["stale"] = report.stale;
 		r["errors"] = errors;
+		return r;
+	});
+
+	// assets.reload {path?}: decodes a model again from disk and retargets its nodes (the editor does this by itself when
+	// the file changes). With a path: that model, changed or not. Without: every loaded model whose files changed.
+	// Returns {reloaded: [{path, nodes}], failed: [{path, message}]}; a failed decode keeps the previous model.
+	d.Register("assets.reload", [](Invocation& inv) {
+		Core& core = RequireCore(inv);
+		std::shared_ptr<SceneGraph> graph = RequireGraph(core);
+		if (!core.GetModelManager()) EngineError("no model manager");
+		const std::string path = OptString(inv.params, "path", "");
+		const std::vector<ModelHotReloader::Outcome> outcomes =
+			core.GetModelReloader().Reload(*core.GetModelManager(), graph.get(), path);
+		json reloaded = json::array();
+		json failed = json::array();
+		for (const ModelHotReloader::Outcome& outcome : outcomes) {
+			if (outcome.reloaded) {
+				reloaded.push_back({ { "path", outcome.path }, { "nodes", outcome.nodes } });
+			}
+			else {
+				failed.push_back({ { "path", outcome.path }, { "message", outcome.message } });
+			}
+		}
+		json r = json::object();
+		r["reloaded"] = reloaded;
+		r["failed"] = failed;
 		return r;
 	});
 

@@ -884,6 +884,7 @@ void Core::Shutdown() {
 		m_sceneLoader->CancelLoad();  // stops the decode worker before the model manager goes
 	}
 	m_sceneLoader.reset();
+	m_modelReloader.FreeRetired();
 	m_modelManager.reset();
 	m_lighting.reset();
 	m_camera.reset();

@@ -162,6 +162,7 @@ std::shared_ptr<Scene> ModelManager::LoadModel(const std::string& path)
         return nullptr;
     }
 
+    const ModelFileStamp stamp = StatModelFiles(ModelDependencyPaths(path));
     std::shared_ptr<Scene> model = std::make_shared<Scene>();
     if (!model->LoadFromGLTF(path, prepared)) {
         std::cerr << "Failed to load model: " << path << std::endl;
@@ -169,11 +170,54 @@ std::shared_ptr<Scene> ModelManager::LoadModel(const std::string& path)
     }
 
     m_modelCache[path] = model;
+    m_decodedStamps[path] = stamp;
 
     // Track the path for this model
     m_modelToPathMap[model.get()] = path;
 
     return model;
+}
+
+std::shared_ptr<Scene> ModelManager::DecodeModel(const std::string& path, ModelFileStamp* stampBefore)
+{
+    if (stampBefore) *stampBefore = StatModelFiles(ModelDependencyPaths(path));
+    auto model = std::make_shared<Scene>();
+    if (!model->LoadFromGLTF(path, nullptr)) return nullptr;
+    return model;
+}
+
+std::shared_ptr<Scene> ModelManager::InstallModel(const std::string& path, const std::shared_ptr<Scene>& model, const ModelFileStamp& decodedFrom)
+{
+    std::shared_ptr<Scene> previous;
+    auto it = m_modelCache.find(path);
+    if (it != m_modelCache.end()) {
+        previous = it->second;
+        m_modelToPathMap.erase(previous.get());
+    }
+    m_modelCache[path] = model;
+    m_modelToPathMap[model.get()] = path;
+    m_decodedStamps[path] = decodedFrom;
+    return previous;
+}
+
+std::shared_ptr<Scene> ModelManager::CachedModel(const std::string& path) const
+{
+    auto it = m_modelCache.find(path);
+    return it != m_modelCache.end() ? it->second : nullptr;
+}
+
+const ModelFileStamp* ModelManager::DecodedStamp(const std::string& path) const
+{
+    auto it = m_decodedStamps.find(path);
+    return it != m_decodedStamps.end() ? &it->second : nullptr;
+}
+
+std::vector<std::string> ModelManager::CachedModelPaths() const
+{
+    std::vector<std::string> paths;
+    paths.reserve(m_modelCache.size());
+    for (const auto& entry : m_modelCache) paths.push_back(entry.first);
+    return paths;
 }
 
 void ModelManager::UnloadModel(const std::string& path)
@@ -184,6 +228,7 @@ void ModelManager::UnloadModel(const std::string& path)
         m_modelToPathMap.erase(it->second.get());
         m_modelCache.erase(it);
     }
+    m_decodedStamps.erase(path);
 }
 
 // Get the original path for a loaded model

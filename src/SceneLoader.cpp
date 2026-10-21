@@ -19,6 +19,7 @@
 #include "Scene.h"
 #include "HierarchySystem.h"
 #include "AnimationSystem.h"
+#include "AnimatorRuntime.h"
 #include "RenderSystem.h"
 #include "Camera.h"
 #include "GuiElementJson.h"
@@ -32,6 +33,7 @@
 #include <iostream>
 #include <optional>
 #include <thread>
+#include <set>
 #include <unordered_set>
 #include <ctime>
 #include <unordered_map>
@@ -3499,4 +3501,181 @@ std::shared_ptr<SceneNode> SceneLoader::InstantiateExpanded(SceneGraph& graph, c
 	}
 	m_currentSceneGraph = nullptr;
 	return node;
+}
+
+// ===== Model hot reload (see SceneLoader::RetargetModelNodes) =====
+
+namespace {
+
+// Mesh indices no node claims: the list a model root draws when the model is imported as child nodes.
+std::vector<uint32_t> UnclaimedMeshIndices(const Scene& model) {
+	std::vector<bool> claimed(model.meshes.size(), false);
+	for (const Scene::NodeInfo& info : model.nodes) {
+		for (uint32_t meshIndex : info.meshIndices) {
+			if (meshIndex < claimed.size()) claimed[meshIndex] = true;
+		}
+	}
+	std::vector<uint32_t> unclaimed;
+	for (uint32_t meshIndex = 0; meshIndex < claimed.size(); ++meshIndex) {
+		if (!claimed[meshIndex]) unclaimed.push_back(meshIndex);
+	}
+	return unclaimed;
+}
+
+// Sorted names of the nodes a clip animates: the joints it needs from the model.
+std::vector<std::string> ClipJointNames(const Scene& model, int clip) {
+	std::set<std::string> names;
+	if (clip < 0 || clip >= static_cast<int>(model.animations.size())) return {};
+	for (const Animation::Channel& channel : model.animations[clip].channels) {
+		if (channel.targetNode >= 0 && channel.targetNode < static_cast<int>(model.nodes.size())) {
+			names.insert(model.nodes[channel.targetNode].name);
+		}
+	}
+	return std::vector<std::string>(names.begin(), names.end());
+}
+
+// The clip of `model` that replaces clip `clip` of `previous`: the same index when its joints still match, else a clip
+// with the same name and joints. -1 when none matches.
+int MatchingClip(const Scene& previous, const Scene& model, int clip) {
+	if (clip < 0 || clip >= static_cast<int>(previous.animations.size())) return -1;
+	const std::vector<std::string> joints = ClipJointNames(previous, clip);
+	if (clip < static_cast<int>(model.animations.size()) && ClipJointNames(model, clip) == joints) return clip;
+	for (int index = 0; index < static_cast<int>(model.animations.size()); ++index) {
+		if (model.animations[index].name == previous.animations[clip].name && ClipJointNames(model, index) == joints) {
+			return index;
+		}
+	}
+	return -1;
+}
+
+void RetargetAnimation(AnimationComponent& anim, const Scene& previous, const Scene& model) {
+	const bool fromAnimator = anim.animator && anim.animator->IsBound();
+	const int oldClip = fromAnimator ? anim.animator->PrimaryClip() : anim.currentAnimationIndex;
+	const float oldTime = fromAnimator ? anim.animator->PrimaryClipTime() : anim.animationTime;
+	const bool wasPlaying = fromAnimator ? anim.animator->IsRunning() : anim.isPlaying;
+	const int clip = MatchingClip(previous, model, oldClip);
+
+	if (anim.animator) {
+		// The scene changed, so the animator builds its bind pose and graph again (Bind resets its state).
+		anim.animator->Bind(model);
+		if (clip >= 0 && wasPlaying) {
+			if (anim.animator->GraphValid()) {
+				anim.animator->StartGraph();
+			}
+			else {
+				anim.animator->PlayClip(model, clip, model.animations[clip].isLooping, 0.0f);
+				anim.animator->Update(oldTime, model);   // seek to the kept time; the events it fires are dropped
+				anim.animator->TakeEvents();
+			}
+		}
+		else if (clip < 0) {
+			anim.animator->Reset();
+		}
+	}
+	anim.currentAnimationIndex = clip;
+	anim.animationTime = clip >= 0 ? std::min(oldTime, model.animations[clip].duration) : 0.0f;
+	anim.isPlaying = clip >= 0 && wasPlaying;
+}
+
+} // namespace
+
+int SceneLoader::RetargetModelNodes(ComponentManager* components, const std::vector<std::shared_ptr<SceneNode>>& nodes,
+	const Scene& previous, const std::shared_ptr<Scene>& model, const std::string& path)
+{
+	if (!model || model->nodes.size() != previous.nodes.size()) return -1;
+
+	const bool sameJoints = model->hasSkin == previous.hasSkin && model->skin.joints == previous.skin.joints;
+	const std::vector<uint32_t> rootMeshIndices = UnclaimedMeshIndices(*model);
+	// The mesh collider is read again once; each node below asks the cache for it.
+	MeshCollider::Invalidate(path);
+
+	int retargeted = 0;
+	for (const std::shared_ptr<SceneNode>& node : nodes) {
+		if (!node || node->GetModel().get() != &previous) continue;
+		node->SetModel(model);
+
+		// Skeleton. Joint nodes are children of the skinned node: same joints keep them, new joints replace them.
+		if (!sameJoints) {
+			const std::vector<std::shared_ptr<SceneNode>> oldBones = node->boneNodes;
+			node->children.erase(std::remove_if(node->children.begin(), node->children.end(),
+				[&oldBones](const std::shared_ptr<SceneNode>& child) {
+					return std::find(oldBones.begin(), oldBones.end(), child) != oldBones.end();
+				}), node->children.end());
+			node->boneNodes.clear();
+			node->boneInverseBindMatrices.clear();
+			node->isSkinned = false;
+			node->BuildSkeleton(*model);
+		}
+		else if (node->isSkinned) {
+			node->boneInverseBindMatrices = model->skin.inverseBindMatrices;
+		}
+
+		// Meshes drawn by this node and its bounds, as the loader sets them.
+		if (node->renderWholeModel) {
+			std::vector<uint32_t> all(model->meshes.size());
+			for (uint32_t meshIndex = 0; meshIndex < all.size(); ++meshIndex) all[meshIndex] = meshIndex;
+			node->boundingRadius = ComputeRenderableBoundingRadius(*model, all, -1);
+		}
+		else {
+			const bool imported = node->nodeIndex >= 0 && node->nodeIndex < static_cast<int>(model->nodes.size());
+			node->renderMeshIndices = imported ? model->nodes[node->nodeIndex].meshIndices : rootMeshIndices;
+			node->boundingRadius = ComputeRenderableBoundingRadius(*model, node->renderMeshIndices,
+				imported ? node->nodeIndex : -1);
+			// A child node named after the glTF node keeps following it when the file renames it.
+			if (imported && !model->nodes[node->nodeIndex].name.empty()
+				&& node->GetName() == previous.nodes[node->nodeIndex].name) {
+				node->SetName(model->nodes[node->nodeIndex].name);
+			}
+		}
+
+		// Material overrides from the scene file, applied to the new copy as the loader applied them.
+		if (!node->GetAuthoredExtras().empty()) {
+			const json extras = json::parse(node->GetAuthoredExtras(), nullptr, false);
+			if (extras.is_object() && extras.contains("material_overrides")) {
+				ApplyMaterialOverrides(*model, extras["material_overrides"], node->GetName());
+			}
+		}
+
+		// Mesh collider: the body keeps its transform and state; its mesh is read from the file again.
+		if (auto body = node->GetRigidBody(); body && body->getMeshPath() == path) {
+			if (auto mesh = MeshCollider::LoadShared(path)) {
+				glm::vec3 mn(0.0f), mx(0.0f);
+				MeshCollider::LocalBounds(*mesh, mn, mx);
+				body->setMesh(mesh, mn, mx, path);
+				body->computeInertiaTensor();
+				body->computeAABB();
+			}
+		}
+
+		// Renderable: removed and added again, which bumps the renderable revision the renderer caches by.
+		if (components && node->HasECSEntity()) {
+			const EntityID entity = node->GetEntityID();
+			if (components->HasRenderable(entity)) components->RemoveRenderable(entity);
+			if (node->renderWholeModel || !node->renderMeshIndices.empty()) {
+				RenderableComponent renderable;
+				renderable.model = model;
+				renderable.shaderID = node->GetShader();
+				renderable.boundingRadius = node->boundingRadius;
+				renderable.isSkinned = node->isSkinned;
+				renderable.renderWholeModel = node->renderWholeModel;
+				renderable.cullingOverride = static_cast<::CullingOverride>(static_cast<uint8_t>(node->GetCullingOverride()));
+				renderable.meshIndices = node->renderMeshIndices;
+				renderable.boneNodes = node->boneNodes;
+				renderable.boneInverseBindMatrices = node->boneInverseBindMatrices;
+				renderable.nodeIndex = node->nodeIndex;
+				for (size_t meshIndex = 0; meshIndex < model->meshes.size(); ++meshIndex) {
+					const bool drawn = node->renderWholeModel || std::find(node->renderMeshIndices.begin(),
+						node->renderMeshIndices.end(), static_cast<uint32_t>(meshIndex)) != node->renderMeshIndices.end();
+					if (drawn && model->meshes[meshIndex].RequiresAlphaBlending()) renderable.hasAlpha = true;
+				}
+				components->AddRenderable(entity, renderable);
+			}
+		}
+
+		if (AnimationComponent* anim = node->GetAnimationComponent()) {
+			RetargetAnimation(*anim, previous, *model);
+		}
+		++retargeted;
+	}
+	return retargeted;
 }

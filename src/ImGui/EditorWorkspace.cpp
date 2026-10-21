@@ -1,4 +1,5 @@
 #include "EditorWorkspace.h"
+#include <chrono>
 
 #include "ConsoleLog.h"
 #include "../Core.h"
@@ -320,6 +321,15 @@ void EditorWorkspace::Draw(float dt)
 	m_statusTimer = std::max(0.0f, m_statusTimer - dt);
 	// Hot reload: textures whose files changed on disk are decoded again in place (checked twice a second).
 	ReloadChangedTextureFiles();
+	// Model hot reload: models retired by last frame are freed, then changed model files are decoded and their
+	// nodes retargeted here, before this frame draws (src/ModelHotReload.h). Not while a scene is loading.
+	if (m_core.GetModelManager()) {
+		m_core.GetModelReloader().FreeRetired();
+		if (!m_core.IsSceneLoading() && !m_core.IsSceneSwapPending()) {
+			const double nowSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+			m_core.GetModelReloader().Poll(*m_core.GetModelManager(), GetSceneGraph(), nowSeconds);
+		}
+	}
 	SyncSelection();
 
 	ImGuiViewport* mainVp = ImGui::GetMainViewport();
