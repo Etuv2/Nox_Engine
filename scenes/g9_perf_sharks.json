@@ -1,0 +1,710 @@
+{
+  "camera": {
+    "far": 600.0,
+    "fov": 40.0,
+    "mouse_sensitivity": 0.1,
+    "movement_speed": 10.0,
+    "near": 0.1,
+    "pitch": -6.0,
+    "position": [
+      0.0,
+      1.2,
+      4.5
+    ],
+    "yaw": -90.0
+  },
+  "exposure": 1,
+  "gamma": 2.2,
+  "project": "projects/animation-demo/project.json",
+  "scene_name": "animation blend demo",
+  "nodes": [
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [
+            1.0,
+            0.97,
+            0.9
+          ],
+          "enabled": true,
+          "intensity": 40.0,
+          "kind": "point",
+          "range": 60.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": false,
+        "color": [
+          1.0,
+          0.97,
+          0.9
+        ],
+        "enabled": true,
+        "intensity": 40.0,
+        "range": 60.0,
+        "type": "point"
+      },
+      "name": "Key",
+      "position": [
+        0.0,
+        6.0,
+        5.0
+      ],
+      "type": "light"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Shark_00",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        400.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_00",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -1.8,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_01",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -1.4,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_02",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -1.0,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_03",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -0.5999999999999999,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_04",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -0.19999999999999996,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_05",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        0.19999999999999996,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_06",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        0.6000000000000003,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_07",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        1.0000000000000002,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_08",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        1.4000000000000001,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_09",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        1.8,
+        0.0,
+        -1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_10",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        300.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_11",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        305.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_12",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        310.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_13",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        315.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_14",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        320.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_15",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        325.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_16",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        330.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_17",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        335.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_18",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        340.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        },
+        "Animator": {
+          "graph": "{\n \"params\": {\n  \"speed\": \"float\",\n  \"circling\": \"bool\"\n },\n \"default\": \"swim\",\n \"states\": [\n  {\n   \"name\": \"swim\",\n   \"blend\": {\n    \"param\": \"speed\",\n    \"points\": [\n     {\n      \"clip\": \"Shark Rig|circling_skeletal.3\",\n      \"at\": 0.0\n     },\n     {\n      \"clip\": \"Shark Rig|swimming_skeletal.3\",\n      \"at\": 1.0\n     }\n    ]\n   },\n   \"speed\": 1.0,\n   \"loop\": true,\n   \"events\": [\n    {\n     \"name\": \"splash\",\n     \"t\": 0.05\n    }\n   ]\n  },\n  {\n   \"name\": \"circle\",\n   \"clip\": \"Shark Rig|circling_skeletal.3\",\n   \"speed\": 1.0,\n   \"loop\": true\n  }\n ],\n \"transitions\": [\n  {\n   \"from\": \"swim\",\n   \"to\": \"circle\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": true\n    }\n   ]\n  },\n  {\n   \"from\": \"circle\",\n   \"to\": \"swim\",\n   \"duration\": 0.6,\n   \"ease\": \"smoothstep\",\n   \"when\": [\n    {\n     \"param\": \"circling\",\n     \"value\": false\n    }\n   ]\n  }\n ]\n}"
+        }
+      },
+      "name": "Perf_19",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        345.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "type": "model"
+    }
+  ],
+  "skybox": "hdrs\\overcast_sky.hdr"
+}

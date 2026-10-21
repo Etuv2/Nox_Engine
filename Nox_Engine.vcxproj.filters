@@ -1661,6 +1661,9 @@
     <ClInclude Include="src\VehicleFX.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\SkinBounds.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\Vertex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
