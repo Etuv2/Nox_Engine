@@ -9,6 +9,8 @@ the analysis window first, which removes the per-frame ray noise and leaves the 
 
 Metrics (all on the time-averaged linear term, luminance Y, lit pixels from the off run):
   hp_rel        mean |Y - blur(Y, sigma 2)| / mean Y. High-pass energy relative to the signal.
+  fine_rel      mean |Y - blur(Y, 1.5)| / mean Y: surfel-scale detail (blotches).
+  mid_rel       mean |blur(Y, 1.5) - blur(Y, 6)| / mean Y: cell-scale structure (steps and seams).
   grad_rel      mean |dY| between horizontal and vertical neighbours / mean Y.
   boundary_p99 / interior_p99   99th percentile of the same gradients on boundary / interior pairs. Steps show up
                 here even when the mean is dominated by smooth shading.
@@ -90,6 +92,10 @@ def main(argv=None):
 
     hp = np.abs(y - gaussian_blur(y, 2.0))
     hp_rel = float(hp[lit].mean() / mean_y)
+    # Band split: surfel-scale (sigma 1.5 detail) and cell-scale (between sigma 1.5 and 6) energy.
+    b15 = gaussian_blur(y, 1.5)
+    fine_rel = float(np.abs(y - b15)[lit].mean() / mean_y)
+    mid_rel = float(np.abs(b15 - gaussian_blur(y, 6.0))[lit].mean() / mean_y)
 
     gx = np.abs(y[:, 1:] - y[:, :-1])
     gy = np.abs(y[1:, :] - y[:-1, :])
@@ -101,7 +107,7 @@ def main(argv=None):
 
     result = {"term_dir": args.term_dir, "window": [lo, hi], "lit_pixels": int(lit.sum()),
               "pairs_kept_x": int(lit_x.sum()), "pairs_kept_y": int(lit_y.sum()),
-              "mean_term_luma_lit": mean_y, "hp_rel": hp_rel, "grad_rel": grad_rel}
+              "mean_term_luma_lit": mean_y, "hp_rel": hp_rel, "fine_rel": fine_rel, "mid_rel": mid_rel, "grad_rel": grad_rel}
 
     if args.cellmap_dir:
         cell_colors = np.median(np.stack([np.asarray(Image.open(p).convert("RGB")).astype(np.float32) / 255.0

@@ -2133,3 +2133,43 @@ Verification (final tree):
 - Race: `[Race] Finished in 47.4994 s (new record)`.
 - The `getenv` C4996 warnings in `ModularRenderer.cpp` are existing lines shifted by the edits; the new hook uses `GetEnvVarString`, so it adds none.
 
+### 21.7 Round 2 (lead review)
+
+Status: the round-2 candidates are behind settings and are OFF by default. Defaults are back to the original gather (`NOX_SURFEL_GI_GATHER_CUTOFF=0`, `NOX_SURFEL_GI_GATHER_SMOOTH_FALLBACK=0`, stochastic off). This corrects 21.2 and 21.3: the cutoff and smooth-fallback pair was made default on from two runs and then failed the five-run energy check below.
+
+What was added (all in `apply_indirect.comp`, behind `NOX_SURFEL_GI_GATHER_STOCHASTIC=1` with `NOX_SURFEL_GI_GATHER_PER_CELL=K`):
+- Stochastic per-cell sampling: each cell in the 3x3x3 window contributes K consecutive entries from a start hashed from pixel, frame and cell; sums are scaled by count/K, so the estimate is unbiased over the start. Cells whose centre is beyond the cutoff plus half a cell are skipped (the early-out).
+- Deviation from the lead's brief: no weight-ordered early-out and no accepted-count quota split across cells. The per-cell K is the quota; cells are not ranked by distance.
+- The per-surfel weight is factored into `SurfelGatherContribution` (shared by both paths; the default path is unchanged).
+- Temporal: unchanged. The upscale pass already reprojects its output with the velocity buffer, clamps to the 3x3 gather neighbourhood and blends 0.85. It has no depth or normal rejection; a gather-resolution history with depth/normal rejection was not built.
+
+Results (Cornell validation, frame 240, time-averaged 200 to 260; NFS five repeats):
+
+| Config | Boundary p99 | Interior p99 | Fine (sigma 1.5) | Term energy |
+|---|---|---|---|---|
+| cutoff + smooth (round 1) | 0.068 | 0.0035 | 0.0183 | Cornell 0.679 |
+| stochastic K=2 + cutoff + smooth | 0.013 | 0.0155 | 0.0182 | Cornell 0.693 |
+| stochastic K=3 + cutoff + smooth | 0.012 | 0.0097 | 0.0179 | Cornell 0.692 |
+| spawn budget x2 (density test) | 0.066 | 0.0046 | 0.0196 | Cornell 0.656 |
+
+- Stochastic sampling removes the cell-aligned steps (boundary p99 down about 5x) but adds per-pixel grain. The grain does not average out over 61 frames: each sampled surfel carries a scale of up to about 20, so the estimator variance is high. A stratified stride or more samples per cell would reduce it; not tested because the cost was already over budget. The grain is visible in `viz_r2_a.png` (right pair).
+- NFS, five repeats each (term energy, lit pixels; repeat ranges shown):
+  - Original gather: mean 0.05193 (0.04705 to 0.06247), median 0.04850.
+  - Stochastic K=3 + cutoff + smooth: mean 0.0502 (0.04841 to 0.05153), -3.3%.
+  - Cutoff + smooth, no stochastic: mean 0.04991 (0.04733 to 0.05099), -3.9%; median 0.04991, +2.9%.
+  - The difference is inside the run spread (about 12% before, 3% after), but the point estimate on the mean is outside the -3% budget. The before batch has one high outlier (0.0625), so the median reads better.
+- Cost: the stochastic K=3 final gather rose from 1.10 to 1.69 ms (NFS, one batch median), far over +0.2 ms. The cutoff and smooth pair measured +0.14 ms (scene.json) and +0.19 ms (NFS) in round 1. The round-2 timing batches ran while other workers used the GPU (final gather median 2.2 ms for the cutoff and smooth candidate), so they are not usable; no clean alternating-pair cost measurement was done this round.
+- Blotches: not resolved. Fine-scale energy did not change between variants (0.018 to 0.020), and doubling the spawn density (scene x2) did not reduce it, so the blotches are not explained by spacing alone. The young-surfel weighting hypothesis was not tested.
+- Tall box (Cornell): `tallBox` in `models/cornell_box.glb` has `roughnessFactor 0` and no `metallicFactor`, so glTF's default of 1.0 applies: a mirror-like metal. Metal has no diffuse term, so the black surf_term box is correct, not a missing-GI bug. The `off` image also shows it dark (`c2_off/off/final_00240.png`). Its reflections are not visible in this scene (the environment around it is dark), so the mirror path is not verified here.
+- scene.json and NFS before/after (frame 240, original gather vs cutoff and smooth): no grid or tile pattern visible in either. Scene composite is nearly unchanged. NFS surf term loses a bright magenta strip on the right-hand building in the after frame (`r2_nfs_surf_term.png`, right half). This is probably a sparse-surfel contribution removed by the one-cell cutoff, but this was not verified, and it is one of the energy losses that the NFS mean shows.
+- Temporal accumulation: already present (the upscale history); not extended, to keep the merge with S2 clean.
+
+Images (absolute paths):
+- `C:\Users\desti\AppData\Local\Temp\s1\r2_scene_surf.png` (scene.json composite, left original, right cutoff and smooth)
+- `C:\Users\desti\AppData\Local\Temp\s1\r2_scene_surf_term.png`
+- `C:\Users\desti\AppData\Local\Temp\s1\r2_nfs_surf.png`
+- `C:\Users\desti\AppData\Local\Temp\s1\r2_nfs_surf_term.png`
+- `C:\Users\desti\AppData\Local\Temp\s1\viz_r2_a.png` (Cornell high-pass, cutoff and smooth vs stochastic K=3)
+
+Verification after the default revert (final tree): `tools/CheckNoRawGL.ps1`, `tools/CheckGenericExe.ps1`, `tools/CheckVcxprojSources.py`, `validate_surfel_gi_static.py`, `validate_surfel_gi_correctness.py`, `validate_surfel_gi_fallback_contract.py`: all exit 0. `nox_tests.exe`: 277 tests, 3 failed (the known CRLF checks). Editor smoke: 14 PASS, 0 FAIL. Race: `[Race] Finished in 47.4994 s`.
+
