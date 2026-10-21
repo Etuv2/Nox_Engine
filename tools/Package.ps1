@@ -41,7 +41,8 @@ try {
     $profileData = Read-NoxAssetJson $profilePath
     $scenes = @($profileData.scenes)
     if ($GameScene) { $scenes = @($GameScene.Replace('\', '/')) }
-    if (-not $scenes.Count -or $scenes[0] -notmatch '^scenes/.+\.json$') { throw 'Profile needs a main scene under scenes/.' }
+    # A project's own scenes (projects/<name>/scenes/*.json, created from a template) may be the main scene too.
+    if (-not $scenes.Count -or $scenes[0] -notmatch '^(projects/[^/]+/)?scenes/.+\.json$') { throw 'Profile needs a main scene under scenes/ or projects/<name>/scenes/.' }
     $project = if ($profileData.PSObject.Properties['project']) { [string]$profileData.project } else { '' }
     $include = @($profileData.include | Where-Object { $_ })
     if ($project -and $project -notmatch '^projects/[^/]+/project\.json$') { throw "Profile project must be projects/<name>/project.json: $project" }

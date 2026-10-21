@@ -331,8 +331,8 @@ function Get-NoxPackageAssets {
         $presetsFull = Join-Path $projectDir 'launch_presets.json'
         if (Test-Path -LiteralPath $presetsFull -PathType Leaf) { Add-PackagePath $presetsFull 'project launch presets' }
         # Contract C4 refinement: "scenes" and "assets" are root-logical paths.
-        foreach ($ref in @($desc.assets)) { Add-PackagePath (Join-Path $rootPath $ref.Replace('\', '/')) "project asset $ref" }
-        foreach ($ref in @($desc.scenes)) { Add-PackagePath (Join-Path $rootPath $ref.Replace('\', '/')) "project scene $ref" }
+        foreach ($ref in @($desc.assets)) { if ($ref) { Add-PackagePath (Join-Path $rootPath $ref.Replace('\', '/')) "project asset $ref" } }
+        foreach ($ref in @($desc.scenes)) { if ($ref) { Add-PackagePath (Join-Path $rootPath $ref.Replace('\', '/')) "project scene $ref" } }
     }
 
     foreach ($rel in @($Scenes) + @($Include)) {

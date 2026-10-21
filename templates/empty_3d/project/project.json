@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "name": "{{NAME}}",
+  "runtime": "lua",
+  "api_version": 1,
+  "entry": "scripts/main.lua",
+  "script_roots": ["scripts"],
+  "data_roots": [],
+  "assets": [],
+  "input": "input.json"
+}

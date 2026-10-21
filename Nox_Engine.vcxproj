@@ -212,6 +212,7 @@
     <ClCompile Include="src\AnimationController.cpp" />
     <ClCompile Include="src\AnimationSystem.cpp" />
     <ClCompile Include="src\app\ProjectBootstrap.cpp" />
+    <ClCompile Include="src\app\ProjectTemplates.cpp" />
     <ClCompile Include="src\app\UserSettings.cpp" />
     <ClCompile Include="src\assets\AssetIO.cpp" />
     <ClCompile Include="src\assets\AssetIOGltf.cpp" />
@@ -407,6 +408,7 @@
     <ClInclude Include="src\Animation.h" />
     <ClInclude Include="src\AnimationSystem.h" />
     <ClInclude Include="src\app\ProjectBootstrap.h" />
+    <ClInclude Include="src\app\ProjectTemplates.h" />
     <ClInclude Include="src\app\UserSettings.h" />
     <ClInclude Include="src\assets\AssetIO.h" />
     <ClInclude Include="src\assets\AssetIOGltf.h" />

@@ -177,6 +177,9 @@ sounds/
 x64/
 hdrs/
 docs/superpowers/
+# Template-owned model copies (templates/*/project/models) are versioned; the top-level models/ is not.
+!templates/**/models/
+!templates/**/models/*.glb
 
 
 # Ignore exported binaries / packaged builds

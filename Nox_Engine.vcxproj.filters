@@ -375,6 +375,9 @@
     <ClCompile Include="src\app\ProjectBootstrap.cpp">
       <Filter>Source Files\app</Filter>
     </ClCompile>
+    <ClCompile Include="src\app\ProjectTemplates.cpp">
+      <Filter>Source Files\app</Filter>
+    </ClCompile>
     <ClCompile Include="src\app\UserSettings.cpp">
       <Filter>Source Files\app</Filter>
     </ClCompile>
@@ -1068,6 +1071,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\app\ProjectBootstrap.h">
+      <Filter>Header Files\app</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app\ProjectTemplates.h">
       <Filter>Header Files\app</Filter>
     </ClInclude>
     <ClInclude Include="src\app\UserSettings.h">

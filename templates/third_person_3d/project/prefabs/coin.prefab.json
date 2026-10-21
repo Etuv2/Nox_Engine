@@ -1,0 +1,14 @@
+{
+  "type": "model",
+  "name": "Coin",
+  "path": "models/sphere.glb",
+  "scale": [0.3, 0.3, 0.3],
+  "components": {
+    "MeshRenderer": {
+      "culling": "inherit",
+      "exclude_from_reflection_capture": false,
+      "model": "models/sphere.glb",
+      "render_whole_model": false
+    }
+  }
+}
