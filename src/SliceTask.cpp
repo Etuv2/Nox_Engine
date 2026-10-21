@@ -34,6 +34,19 @@ thread_local bool t_gapValid = false;
 thread_local Clock::time_point t_gapStart{};
 thread_local std::source_location t_gapFrom{};
 
+// Upload budget (NOX_UPLOAD_BUDGET_MB): bytes charged since the current Resume started.
+thread_local size_t t_uploadBytes = 0;
+
+size_t UploadBudgetBytes()
+{
+    static const size_t budget = [] {
+        const char* v = std::getenv("NOX_UPLOAD_BUDGET_MB");
+        const double mb = v ? std::atof(v) : 2.0;
+        return static_cast<size_t>((mb > 0.0 ? mb : 2.0) * 1024.0 * 1024.0);
+    }();
+    return budget;
+}
+
 }  // namespace
 
 struct SliceTask::Impl {
@@ -114,6 +127,7 @@ bool SliceTask::Resume(double budgetMs)
     impl->previousCurrent = t_current;
     t_current = impl;
     t_gapValid = false;  // the gap diagnostic never measures across a Resume boundary
+    t_uploadBytes = 0;   // a new frame starts with a fresh upload budget
     SwitchToFiber(impl->fiber);
     t_current = impl->previousCurrent;
 
@@ -178,6 +192,19 @@ void SliceTask::YieldIfOverBudget(std::source_location at)
     }
 }
 
+void SliceTask::ChargeUpload(size_t bytes)
+{
+    Impl* impl = t_current;
+    if (!impl || !impl->fiber) return;
+    t_uploadBytes += bytes;
+    if (t_uploadBytes < UploadBudgetBytes()) return;
+    // Over the frame's upload budget: give the frame back now (the time budget may still have room).
+    t_uploadBytes = 0;
+    t_gapValid = false;
+    SwitchToFiber(impl->resumer);
+    if (impl->cancel) throw SliceCancelled{};
+}
+
 bool SliceTask::InTask()
 {
     return t_current != nullptr && t_current->fiber != nullptr;
@@ -222,6 +249,10 @@ void SliceTask::Cancel()
 }
 
 void SliceTask::YieldIfOverBudget(std::source_location)
+{
+}
+
+void SliceTask::ChargeUpload(size_t)
 {
 }
 

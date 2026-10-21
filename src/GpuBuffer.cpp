@@ -1,4 +1,5 @@
 #include "GpuBuffer.h"
+#include "SliceTask.h"
 #include <iostream>
 
 namespace {
@@ -78,6 +79,7 @@ void GpuBuffer::Release() {
 }
 
 bool GpuBuffer::Allocate(size_t sizeBytes, const void* data) {
+	if (data) SliceTask::ChargeUpload(sizeBytes);  // upload budget: a frame's uploads are bounded (SliceTask.h)
 	if (m_isImmutable) {
 		std::cerr << "[GpuBuffer] Cannot reallocate immutable buffer (create a new one)\n";
 		return false;

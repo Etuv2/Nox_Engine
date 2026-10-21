@@ -5,7 +5,13 @@
 #include "TextureUnits.h"
 #include "FrameBuffer.h"
 #include "GpuBuffer.h"
+#include "SliceTask.h"
+#include "EnvironmentMap.h"
+#include <glm/gtc/packing.hpp>
+#include <cstdlib>
+#include <future>
 #include <iostream>
+#include <memory>
 #include <vector>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -75,23 +81,57 @@ void Skybox::ResizeCaptureRBO(int width, int height)
 	rhi::Gpu().ResizeTexture(m_captureRBO, width, height, 1, 1);
 }
 
+namespace {
+	// A decoded equirect with its radiance processing applied (CPU only: safe on a worker thread).
+	// The processed radiance as half floats, ready for a HalfFloat upload (the driver then copies instead of converting).
+	struct DecodedHdr {
+		std::vector<uint16_t> halves;
+		int width = 0;
+		int height = 0;
+		int components = 0;
+		EnvironmentProcessStats stats;
+	};
+
+	DecodedHdr DecodeHdr(const std::string& hdrPath, const EnvironmentMapOptions& envOptions)
+	{
+		DecodedHdr out;
+		stbi_set_flip_vertically_on_load_thread(0); // equirect2cube expects the zenith row first
+		int width = 0, height = 0, nComponents = 0;
+		float* raw = AssetIO::LoadImageFileF(hdrPath, &width, &height, &nComponents, 0);
+		if (!raw) return out;
+		std::unique_ptr<float, void (*)(void*)> data(raw, stbi_image_free);
+		// Linear float data: rotation / intensity / clamp / ground blend are applied here, before upload,
+		// so the cubemap, irradiance and prefilter all derive from the processed radiance.
+		out.stats = ProcessEquirectRadiance(data.get(), width, height, nComponents, envOptions);
+		const size_t count = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(nComponents);
+		out.halves.resize(count);
+		for (size_t i = 0; i < count; ++i) {
+			out.halves[i] = glm::packHalf1x16(data.get()[i]);
+		}
+		out.width = width;
+		out.height = height;
+		out.components = nComponents;
+		return out;
+	}
+}
+
 TexturePtr Skybox::loadHDRTexture(const std::string& hdrPath, const EnvironmentMapOptions& envOptions)
 {
-	int width, height, nComponents;
-	stbi_set_flip_vertically_on_load_thread(0); // equirect2cube expects the zenith row first
-	float* data = AssetIO::LoadImageFileF(hdrPath, &width, &height, &nComponents, 0);
-	if (!data) {
+	// The decode and radiance pass run on a worker; inside a scene slice the wait yields to the frame.
+	DecodedHdr decoded = SliceTask::AwaitYielding(std::async(std::launch::async, [hdrPath, envOptions] {
+		return DecodeHdr(hdrPath, envOptions);
+	}));
+	if (decoded.halves.empty()) {
 		std::cerr << "[Skybox] Failed to load HDR file: " << hdrPath << std::endl;
 		return nullptr;
 	}
-
-	// Linear float data: rotation / intensity / clamp / ground blend are applied here, before upload,
-	// so the cubemap, irradiance and prefilter all derive from the processed radiance.
-	const EnvironmentProcessStats envStats = ProcessEquirectRadiance(data, width, height, nComponents, envOptions);
+	const int width = decoded.width;
+	const int height = decoded.height;
+	const int nComponents = decoded.components;
 	std::cout << "[Skybox] path=" << hdrPath << " size=" << width << "x" << height
 		<< " rotation=" << envOptions.rotationDeg << "deg"
 		<< " intensity=" << envOptions.intensity
-		<< " max_radiance=" << envOptions.maxRadiance << " clamped=" << envStats.clampedTexels
+		<< " max_radiance=" << envOptions.maxRadiance << " clamped=" << decoded.stats.clampedTexels
 		<< " ground=" << (envOptions.groundEnabled ? "on" : "off") << std::endl;
 
 	// Use the new Texture builder for HDR loading
@@ -99,15 +139,14 @@ TexturePtr Skybox::loadHDRTexture(const std::string& hdrPath, const EnvironmentM
 
 	auto hdrTexture = Texture::Builder::Texture2D(width, height, rhi::Format::RGB16F)
 		.Format(format)
-		.DataType(rhi::PixelType::Float)
-		.Data(data)
+		.DataType(rhi::PixelType::HalfFloat)
+		.Data(decoded.halves.data())
 		.FilterMode(rhi::Filter::Linear, rhi::Filter::Linear)
 		.WrapMode(rhi::Wrap::ClampToEdge)
 		.TextureType(TextureType::HDR)
 		.Build();
 
-	stbi_image_free(data);
-
+	SliceTask::YieldIfOverBudget();  // slice point: after the HDR texture upload
 	std::cout << "[Skybox] Loaded HDR texture: " << width << "x" << height
 		<< " (" << nComponents << " channels)" << std::endl;
 
@@ -160,6 +199,28 @@ void Skybox::renderCube()
 	gpu.BindVertexInput(rhi::VertexInputHandle{});
 }
 
+// Slice point between IBL stages. The stages leave their GL bindings set, and other frames run while the task is
+// suspended, so the state is captured before the yield and restored after it. Outside a slice this does nothing.
+static void YieldKeepingGlState()
+{
+	if (!SliceTask::InTask()) return;
+	rhi::Device& gpu = rhi::Gpu();
+	const rhi::StateSnapshot snapshot = gpu.CaptureState();
+	SliceTask::YieldIfOverBudget();
+	gpu.RestoreState(snapshot);
+}
+
+// The IBL validation readbacks (NaN and sign checks on one texel per pass) stall until the GPU has finished the pass
+// they read: about 70 ms on the test scenes, inside one loading frame. They run only with NOX_IBL_VALIDATE=1.
+static bool IblValidationEnabled()
+{
+	static const bool enabled = [] {
+		const char* value = std::getenv("NOX_IBL_VALIDATE");
+		return value != nullptr && std::string(value) == "1";
+	}();
+	return enabled;
+}
+
 bool Skybox::Init(const std::string& hdrPath,
 	const std::string& equirectVertShader,
 	const std::string& equirectFragShader,
@@ -203,7 +264,7 @@ bool Skybox::Init(const std::string& hdrPath,
 	const int envMapSize = 1024;
 
 	// Create environment cubemap using new Texture builder
-	m_envCubemap = Texture::Builder::TextureCube(envMapSize, rhi::Format::RGB16F)
+	m_envCubemap = Texture::Builder::TextureCube(envMapSize, rhi::Format::RGBA16F)
 		.FilterMode(rhi::Filter::LinearMipLinear, rhi::Filter::Linear)
 		.TextureType(TextureType::Cubemap)
 		.GenerateMipmaps(false)  // We'll generate after conversion
@@ -239,6 +300,7 @@ bool Skybox::Init(const std::string& hdrPath,
 		   glm::lookAt(glm::vec3(0,0,0), glm::vec3(0,0,-1), glm::vec3(0,-1,0))
 	};
 
+	YieldKeepingGlState();  // slice point: after the environment cube is allocated
 	gpu.SetViewport({ 0, 0, envMapSize, envMapSize });
 	gpu.BindFramebuffer(m_captureFBO);
 
@@ -255,6 +317,7 @@ bool Skybox::Init(const std::string& hdrPath,
 		renderCube();
 	}
 
+	YieldKeepingGlState();  // slice point: after the six faces, before mip generation
 	// Generate mipmaps for environment map
 	m_envCubemap->GenerateMipmaps();
 
@@ -392,6 +455,7 @@ bool Skybox::GenerateIBLResources()
 	std::cout << "[Skybox] Generating IBL resources..." << std::endl;
 
 	// Verify shader files exist and load properly
+	YieldKeepingGlState();
 	std::cout << "[Skybox] Loading irradiance convolution shader..." << std::endl;
 	m_irradianceShader = CreateShaderProgram("shaders/irradiance_convolution_vert.glsl", "shaders/irradiance_convolution_frag.glsl");
 	if (!m_irradianceShader) {
@@ -423,11 +487,13 @@ bool Skybox::GenerateIBLResources()
 		return false;
 	}
 
+	YieldKeepingGlState();
 	if (!GeneratePrefilteredMap()) {
 		std::cerr << "[Skybox] Prefiltered map generation failed!" << std::endl;
 		return false;
 	}
 
+	YieldKeepingGlState();
 	if (!GenerateBRDFLUT()) {
 		std::cerr << "[Skybox] BRDF LUT generation failed!" << std::endl;
 		return false;
@@ -501,8 +567,10 @@ bool Skybox::GenerateIrradianceMap()
 	gpu.SetAttachment(debugFBO, rhi::AttachmentPoint::Color0, rhi::Attachment{ m_irradianceMap->ID(), 0, 0 });
 
 	if (gpu.IsFramebufferComplete(debugFBO)) {
-		gpu.ReadPixels(debugFBO, 0, { 16, 16, 1, 1 }, rhi::PixelFormat::RGB, rhi::PixelType::Float, pixel);
-		std::cout << "[Skybox] Irradiance debug sample = (" << pixel[0] << ", " << pixel[1] << ", " << pixel[2] << ")" << std::endl;
+		if (IblValidationEnabled()) {
+			gpu.ReadPixels(debugFBO, 0, { 16, 16, 1, 1 }, rhi::PixelFormat::RGB, rhi::PixelType::Float, pixel);
+			std::cout << "[Skybox] Irradiance debug sample = (" << pixel[0] << ", " << pixel[1] << ", " << pixel[2] << ")" << std::endl;
+		}
 
 		if (pixel[0] < 0.0f || pixel[1] < 0.0f || pixel[2] < 0.0f) {
 			std::cerr << "[Skybox] WARNING: Irradiance contains negative values! This indicates a shader error." << std::endl;
@@ -613,8 +681,10 @@ bool Skybox::GeneratePrefilteredMap()
 	gpu.SetAttachment(dbgFBO, rhi::AttachmentPoint::Color0, rhi::Attachment{ m_prefilteredMap->ID(), 0, 0 });
 
 	if (gpu.IsFramebufferComplete(dbgFBO)) {
-		gpu.ReadPixels(dbgFBO, 0, { 64, 64, 1, 1 }, rhi::PixelFormat::RGB, rhi::PixelType::Float, pix);
-		std::cout << "[Skybox] Prefilter debug sample = (" << pix[0] << ", " << pix[1] << ", " << pix[2] << ")" << std::endl;
+		if (IblValidationEnabled()) {
+			gpu.ReadPixels(dbgFBO, 0, { 64, 64, 1, 1 }, rhi::PixelFormat::RGB, rhi::PixelType::Float, pix);
+			std::cout << "[Skybox] Prefilter debug sample = (" << pix[0] << ", " << pix[1] << ", " << pix[2] << ")" << std::endl;
+		}
 
 		if (pix[0] < 0.0f || pix[1] < 0.0f || pix[2] < 0.0f) {
 			std::cerr << "[Skybox] WARNING: Prefiltered map contains negative values!" << std::endl;
@@ -717,8 +787,10 @@ bool Skybox::GenerateBRDFLUT()
 	gpu.SetAttachment(debugFBO, rhi::AttachmentPoint::Color0, rhi::Attachment{ m_brdfLUT->ID(), 0, rhi::kAllLayers });
 
 	if (gpu.IsFramebufferComplete(debugFBO)) {
-		gpu.ReadPixels(debugFBO, 0, { 256, 256, 1, 1 }, rhi::PixelFormat::RG, rhi::PixelType::Float, debugPixel);
-		std::cout << "[Skybox] BRDF LUT debug sample = (" << debugPixel[0] << ", " << debugPixel[1] << ")" << std::endl;
+		if (IblValidationEnabled()) {
+			gpu.ReadPixels(debugFBO, 0, { 256, 256, 1, 1 }, rhi::PixelFormat::RG, rhi::PixelType::Float, debugPixel);
+			std::cout << "[Skybox] BRDF LUT debug sample = (" << debugPixel[0] << ", " << debugPixel[1] << ")" << std::endl;
+		}
 	}
 
 	gpu.BindFramebuffer(m_captureFBO);

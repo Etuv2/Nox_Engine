@@ -77,13 +77,18 @@ Where the work runs:
   vertex loops, per light, per road-network node, per child node, and at the section boundaries of a glTF
   load. The GPU uploads run on the main thread (GL context).
   A root node is built only after its models are decoded, so the build never waits on a decoder.
+- The environment (HDR decode and radiance pass on a worker, cube conversion, mips, IBL passes) runs as its own
+  slice, with yields between stages. The GL state is saved across each yield, so frames drawn meanwhile see
+  their own state. The IBL passes use a half-float upload and an RGBA16F environment cube (the RGB16F cube's
+  mip generation took about 55 ms per call on the test driver).
 - Work that cannot be prefetched (a model that a procedural generator produces without cooked output) is
   parsed on a worker thread while the slice waits: `SliceTask::AwaitYielding(future)` yields to the frame
   between polls. `nox.roads` (declared files and `from_table`) reads, parses and builds the road graph the
   same way, so a city-sized network (tens of MB of JSON) no longer blocks the frame.
 - Commit, main thread, sliced as well: clearing the old scene, scene state, shadow maps, lights, render
   settings, game module configure, editor and UI, bounds, acceleration structure. Each step is timed in
-  the log (`[Core] Scene commit step '...': N ms`). The old physics bodies are removed at commit.
+  the log (`[Core] Scene commit step '...': N ms`). The old physics bodies are removed at commit. The commit's share of the loading bar moves by the estimated cost
+of each step (`CommitStepWeight` in `src/Core.cpp`), not by step count.
 - After the commit, the loading overlay stays up over the new scene until its reflection probes are
   captured (sliced, a few probes per frame) and the first frame has been drawn.
 
@@ -118,6 +123,13 @@ Environment:
 - `NOX_SYNC_LOAD=1`: the startup scene loads blocking (the same steps, without frame pacing). Frame-indexed
   hooks give the same frame numbers either way, so the flag is only needed for timing experiments.
 - `NOX_FIXED_DT` runs: loading frames do not step the simulation, so results are unchanged.
+- `NOX_UPLOAD_BUDGET_MB=<mb>` (default 2): GPU upload budget per frame. Buffers and textures created with data
+  count their bytes against the frame (`SliceTask::ChargeUpload`); once the frame's budget is spent the task yields
+  to the frame, so one frame never submits a large backlog.
+- `NOX_LOAD_DUMP_DIR=<dir>` with `NOX_LOAD_DUMP_EVERY=<n>` (default 10): a PNG of every Nth load-phase frame
+  (`load_NNNNN.png`), taken before the swap. Counts load frames only.
+- `NOX_IBL_VALIDATE=1`: runs the IBL validation readbacks (one texel per pass; NaN and sign checks). They are off by
+  default because each stalls for the GPU work it reads (about 70 ms on the test scenes).
 - `NOX_LOAD_TRACE=1`: one `[LoadTrace]` line per load-phase frame with the loop time (`frame_ms`), the update,
   render and present times, the load service time and the step that ran (`step=`). Use it to find the frames
   that hitch.

@@ -1,4 +1,5 @@
 #include "LuaRuntime.h"
+#include "../SliceTask.h"
 
 #include "lauxlib.h"
 #include "lua.h"
@@ -465,6 +466,7 @@ namespace NoxLua {
 			return false;
 		}
 		if (!m_source->ReadText(logicalPath, text, error)) return false;
+		SliceTask::YieldIfOverBudget();  // slice point: a project's scripts load one file at a time while a scene loads
 		bool known = false;
 		for (const ModuleRecord& m : m_modules) known = known || m.path == logicalPath;
 		if (!known) {

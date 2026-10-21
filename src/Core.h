@@ -358,7 +358,8 @@ private:
     bool m_commitStartup = false;
     bool m_scenePresentPending = false;            // the new scene committed; its first frame draws the loading overlay
     std::string m_commitStage;                     // current commit step (loading screen text)
-    int m_commitStepIndex = 0;
+    double m_commitDoneWeight = 0.0;              // commit progress: estimated cost of the commit steps finished so far
+    float CommitProgress() const;                 // the commit's share of the loading bar (0.9 .. 1.0)
     std::chrono::steady_clock::time_point m_commitStepStart{};
     std::string m_sceneLoadTarget;                // logical path of the load in progress or failed
     std::string m_sceneLoadError;                 // failed load waiting for Continue (empty: none)

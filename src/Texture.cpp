@@ -1,6 +1,7 @@
 #include "Texture.h"
 #include "assets/AssetIO.h"
 #include "assets/AssetIOImage.h"
+#include "SliceTask.h"
 #include <chrono>
 #include <iostream>
 #include <algorithm>
@@ -538,6 +539,11 @@ std::shared_ptr<Texture> Texture::Builder::Build() {
 	// Initial data (cube maps are created empty).
 	if (data_ && target_ != TextureTarget::TextureCubeMap && !IsMultisample(target_)) {
 		gpu.UpdateTexture(texture->id_, {}, format_, dataType_, data_);
+			// Upload budget (SliceTask::ChargeUpload): four channels at the largest element size is a safe upper bound.
+			const size_t elementBytes = (dataType_ == rhi::PixelType::Float || dataType_ == rhi::PixelType::UInt || dataType_ == rhi::PixelType::Int) ? 4
+				: ((dataType_ == rhi::PixelType::HalfFloat || dataType_ == rhi::PixelType::UShort || dataType_ == rhi::PixelType::Short) ? 2 : 1);
+			SliceTask::ChargeUpload(static_cast<size_t>(std::max(width_, 1)) * static_cast<size_t>(std::max(height_, 1)) *
+				static_cast<size_t>(std::max(depth_, 1)) * 4 * elementBytes);
 	}
 
 	// Set texture parameters (skip for multisample)
