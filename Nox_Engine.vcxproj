@@ -339,6 +339,7 @@
     <ClCompile Include="src\scripting\LuaRuntime.cpp" />
     <ClCompile Include="src\scripting\LuaServices.cpp" />
     <ClCompile Include="src\scripting\LuaUi.cpp" />
+    <ClCompile Include="src\scripting\LuaUiFocus.cpp" />
     <ClCompile Include="src\scripting\LuaVehicleBindings.cpp" />
     <ClCompile Include="src\scripting\LuaVehiclePolicy.cpp" />
     <ClCompile Include="src\scripting\LuaWorld.cpp" />
@@ -549,6 +550,7 @@
     <ClInclude Include="src\scripting\LuaRuntime.h" />
     <ClInclude Include="src\scripting\LuaServices.h" />
     <ClInclude Include="src\scripting\LuaUi.h" />
+    <ClInclude Include="src\scripting\LuaUiFocus.h" />
     <ClInclude Include="src\scripting\LuaVehicleBindings.h" />
     <ClInclude Include="src\scripting\LuaVehiclePolicy.h" />
     <ClInclude Include="src\scripting\LuaWorld.h" />

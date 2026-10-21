@@ -658,6 +658,90 @@ names the function, which faults the handler.
 - `ui.icon_exists(id)` is true when the project's icon atlas has the id. Use it to choose a vector fallback.
 - `ui.clip_circle` is not provided: ImGui clips to rectangles only, and a circular clip needs stencil support in the RHI.
 
+## UI widgets and menus
+
+Widgets are calls inside `nox.on_draw` handlers, next to the drawing functions above. Each returns its result for the
+frame it is drawn in. A widget registers a pointer hit region and a keyboard/pad navigation entry, so one call serves
+the mouse, the keyboard and the pad. Nothing is hand-tested.
+
+```lua
+nox.on_draw(function(ctx, ui, dt)
+  ui.menu()                                          -- this draw is a menu: arrows, Enter and pad navigate it
+  local col = ui.column(x, y, 300, 12)               -- vertical stack; col:next(h) -> {x, y, w, h} and advances
+  if ui.button("start", col:next(54), "Start") then startGame() end
+  volume = ui.slider("volume", col:next(54), volume, 0, 100, { step = 5 })
+  hudOn = ui.toggle("hud", col:next(54), "Show HUD", hudOn)
+end)
+```
+
+| Function | Returns | Notes |
+| --- | --- | --- |
+| `ui.menu()` | | marks this draw as a menu; keyboard and pad navigation acts only while the last draw called it |
+| `ui.button(id, rect, label [, style])` | `clicked` | clicked by a press and release on it, or by Enter / Space / pad A while focused. `style.enabled = false` dims it and removes it from navigation |
+| `ui.toggle(id, rect, label, value [, style])` | `value, changed` | a box and a label; click, accept, or left/right sets it |
+| `ui.slider(id, rect, value, min, max [, opts])` | `value, changed` | drag with the mouse; left/right step it. `opts`: `step` (default range / 20), `decimals` (0), `show_value` (true), `enabled`, and style keys |
+| `ui.label(rect, text [, opts])` | | `opts`: `font`, `size`, `color`, `align` (`left`/`center`/`right`), `valign` (`top`/`middle`/`bottom`, default middle) |
+| `ui.panel(rect [, style])` | | rounded background: `bg`, `border`, `rounding` |
+| `ui.measure_text(text, font, size)` | `width, height` | `font` = project font id or `""` |
+| `ui.column(x, y, w, spacing)` | a layout object | `col:next(h)` returns the next rectangle of height `h` |
+| `ui.consumed()` | bool | see Focus and consumption |
+| `ui.back_pressed()` | bool | Escape or pad B this frame |
+
+A rectangle is `{x = , y = , w = , h = }` or `{x, y, w, h}`, overlay-relative like the drawing functions. Widget ids are
+strings (1..128 bytes) and must stay the same across frames: focus follows the id. The style table takes colours in
+`0xAARRGGBB` (`bg`, `hover`, `active`, `text`, `text_disabled`, `focus`, `accent`, `track`, `knob`, `disabled`,
+`border`), `rounding` and `size` in pixels, and `font` (a project font id). Unknown keys are ignored. Up to 256
+navigable widgets are kept per frame; the rest are drawn but cannot take focus.
+
+Every frame the engine reads the keys and the pad before gameplay runs, so a menu answers while gameplay is stopped
+(the draw handlers run in every state). A paused game is paused by its scripts: a system that must stop checks its own
+state.
+
+### Focus and navigation
+
+- A menu starts with its first enabled widget focused. One widget has focus at a time.
+- Arrow keys, the d-pad and the left stick move focus to the nearest widget in that direction. A focused slider or
+  toggle takes left and right to change its value instead.
+- Enter, Space and pad A activate the focused widget (`ui.button` returns true, a toggle flips).
+- Escape and pad B are "back": `ctx:ui_back_pressed()` is true that frame and the `ui.back` event is queued for the next
+  update.
+- Mouse hover moves focus while the mouse moves; a press focuses the widget it landed on.
+- Keys are not repeated: one press is one step.
+
+### Focus and consumption
+
+`ctx:ui_consumed()` (also `ui.consumed()`) is true for the frame when the menu used a navigation or accept key, or a
+press landed on a widget (HUD buttons included). Gameplay input handlers should skip their action then. Consumption
+does not change the action map: `ctx:action_pressed` still reports the key. `ctx:over_ui()` stays the pointer-only test.
+
+### Events
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `ui.back` | nil | Escape or pad B pressed while the module runs its update |
+| `ui.click` | `{ id = , action = }` | a GUI node element with `interactive` was clicked or activated (see below) |
+| `ui.hover` | `{ id = , entered = }` | the pointer entered (`true`) or left (`false`) an interactive GUI element |
+
+Events are queued during the frame and delivered by the next update. While the module is paused by the host
+(`IGameModule::SetPaused`) no update runs, so `ui.back` waits; `ctx:ui_back_pressed()` answers at once.
+
+### GUI node interaction
+
+A `GuiNode` element (scene JSON, `elements` array) takes these optional keys, read and written by the scene file:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `interactive` | `false` | takes the pointer and keyboard focus, and reports `ui.hover` / `ui.click` |
+| `id` | `gui<node>.<element>` | name in the events and in the hit test; keep it unique in the scene |
+| `on_click` | `""` | action carried by `ui.click` as `action` (for example `"quit"`) |
+| `visible` | `true` | a hidden element is neither drawn nor hit |
+
+Interactive elements are hit-tested in window coordinates above the engine's other pointer regions and below the Lua
+widgets. A focused element gets an outline. The element's text, colour and rectangle are not editable in the inspector;
+edit them in the scene file.
+
+Known limits: no text input, no scrolling lists, no key repeat, no focus wrap (the edge of a menu stops the focus).
+
 ## Input (action maps)
 
 `projects/<name>/input.json` maps names to devices. The engine samples the keyboard and the first attached gamepad

@@ -12,6 +12,7 @@
 #include "LuaRuntime.h"
 #include "LuaServices.h"
 #include "LuaUi.h"
+#include "LuaUiFocus.h"
 #include "LuaVehicleBindings.h"
 #include "../ComponentManager.h"
 #include "json.hpp"
@@ -140,6 +141,15 @@ namespace NoxLua {
 		// (cleared first). Draw handlers may read the world; world writes they queue are discarded with a warning.
 		// `pointerOverlay` is the pointer relative to the overlay origin. Faulted handlers are skipped until reload.
 		void DrawFrame(float dt, const glm::vec2& viewport, const glm::vec2& pointerOverlay, UiRecorder& out);
+		// Menu focus and navigation (LuaUiFocus.h). Call once per frame before Update, with the devices sampled for
+		// the frame (enabled = the game has input focus). Widgets are laid out by the draw that follows.
+		void BeginUiInput(const InputDevices& devices, bool enabled);
+		const UiNavigator& Navigator() const { return m_nav; }
+		// Engine-drawn focusable elements (GUI nodes) for the current frame; see UiNavigator::AppendWidget.
+		void AddNavigationWidget(uint32_t id, const glm::vec2& min, const glm::vec2& max);
+		// Queues a host event to the Lua handlers of `name` with a payload table { id = id, action = action } (click)
+		// or { id = id, entered = bool } (hover, when entered >= 0). Delivered by the next Update.
+		bool QueueUiEvent(const std::string& name, const std::string& id, const std::string& action, int entered);
 		// Project resources owned by the module (not by this world): fonts for ui.text, the action map for ctx:action_*.
 		void SetUiFonts(const UiFontTable* fonts) { m_ui.fonts = fonts; }
 		// The module's action map. Non-const: input.rebind and input.rumble (LuaInputBindings.cpp) change it.
@@ -375,6 +385,7 @@ namespace NoxLua {
 		std::vector<DrawEntry> m_draws;
 		bool m_drawDropReported = false;
 		InputMap* m_inputs = nullptr;
+		UiNavigator m_nav;                 // focus of the ui widgets (LuaUiFocus.h); reset with the world
 		bool m_wantsPointer = true;
 	};
 }

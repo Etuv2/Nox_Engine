@@ -1,10 +1,12 @@
 #include "LuaUi.h"
 
 #include "LuaData.h"
+#include "LuaUiFocus.h"
 #include "../Texture.h"
 #include "../assets/AssetIO.h"
 #include "../UiIconAtlas.h"
 #include "../rhi/RHI.h"
+#include "../ui/Pointer.h"
 #include "lauxlib.h"
 #include "lua.h"
 
@@ -13,6 +15,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 namespace NoxLua {
@@ -474,6 +477,432 @@ namespace NoxLua {
 			return 1;
 		}
 
+		// ---- Widgets (ui.button, ui.toggle, ui.slider, ui.label, ui.panel) ----------------------------------------
+		// Every draw a widget registers a window-space hit region (ui::Pointer) and a navigation entry (UiNavigator).
+		// Its state (hover, press, focus, click) comes from those two, so one code path serves mouse, keyboard and pad.
+
+		// Style colour defaults are written as 0xAARRGGBB (like Lua colours) and stored in the packed IM_COL32 order.
+		constexpr uint32_t Argb(uint32_t c) {
+			return IM_COL32((c >> 16) & 0xFFu, (c >> 8) & 0xFFu, c & 0xFFu, (c >> 24) & 0xFFu);
+		}
+
+		constexpr int kWidgetZ = 100;   // above GUI nodes and other pointer regions
+		constexpr float kFocusRingWidth = 2.0f;
+
+		struct WidgetStyle {
+			uint32_t bg = Argb(0xE61E2A38u);
+			uint32_t hover = Argb(0xF0304256u);
+			uint32_t active = Argb(0xF0162330u);
+			uint32_t text = Argb(0xFFEEF3F8u);
+			uint32_t textDisabled = Argb(0xFF6E7B8Au);
+			uint32_t focus = Argb(0xFF4FC3F7u);
+			uint32_t accent = Argb(0xFF4FC3F7u);
+			uint32_t track = Argb(0xFF3A4756u);
+			uint32_t knob = Argb(0xFFFFFFFFu);
+			uint32_t disabled = Argb(0xB0202830u);
+			uint32_t border = Argb(0x00000000u);
+			float rounding = 6.0f;
+			float size = 22.0f;
+			std::string font;
+		};
+
+		struct PanelStyle {
+			uint32_t bg = Argb(0xD0141C26u);
+			uint32_t border = Argb(0xFF2E3A48u);
+			float rounding = 8.0f;
+		};
+
+		// Optional fields of the table at absolute index t.
+		bool OptNumberField(lua_State* L, int t, const char* name, float& out) {
+			lua_getfield(L, t, name);
+			const bool present = !lua_isnil(L, -1);
+			if (present) {
+				if (!lua_isnumber(L, -1)) luaL_error(L, "'%s' must be a number", name);
+				out = static_cast<float>(lua_tonumber(L, -1));
+			}
+			lua_pop(L, 1);
+			return present;
+		}
+
+		bool OptColorField(lua_State* L, int t, const char* name, uint32_t& out) {
+			lua_getfield(L, t, name);
+			const bool present = !lua_isnil(L, -1);
+			if (present) out = CheckColor(L, lua_gettop(L));
+			lua_pop(L, 1);
+			return present;
+		}
+
+		bool OptStringField(lua_State* L, int t, const char* name, std::string& out) {
+			lua_getfield(L, t, name);
+			const bool present = !lua_isnil(L, -1);
+			if (present) out = luaL_checkstring(L, -1);
+			lua_pop(L, 1);
+			return present;
+		}
+
+		bool OptBoolField(lua_State* L, int t, const char* name, bool& out) {
+			lua_getfield(L, t, name);
+			const bool present = !lua_isnil(L, -1);
+			if (present) {
+				if (!lua_isboolean(L, -1)) luaL_error(L, "'%s' must be a boolean", name);
+				out = lua_toboolean(L, -1) != 0;
+			}
+			lua_pop(L, 1);
+			return present;
+		}
+
+		// Style table (optional): colours, rounding, size, font. Unknown keys are ignored.
+		WidgetStyle ReadWidgetStyle(lua_State* L, int idx) {
+			WidgetStyle s;
+			if (lua_isnoneornil(L, idx)) return s;
+			luaL_checktype(L, idx, LUA_TTABLE);
+			const int t = lua_absindex(L, idx);
+			OptColorField(L, t, "bg", s.bg);
+			OptColorField(L, t, "hover", s.hover);
+			OptColorField(L, t, "active", s.active);
+			OptColorField(L, t, "text", s.text);
+			OptColorField(L, t, "text_disabled", s.textDisabled);
+			OptColorField(L, t, "focus", s.focus);
+			OptColorField(L, t, "accent", s.accent);
+			OptColorField(L, t, "track", s.track);
+			OptColorField(L, t, "knob", s.knob);
+			OptColorField(L, t, "disabled", s.disabled);
+			OptColorField(L, t, "border", s.border);
+			OptNumberField(L, t, "rounding", s.rounding);
+			OptNumberField(L, t, "size", s.size);
+			OptStringField(L, t, "font", s.font);
+			if (!(s.size > 0.0f)) luaL_error(L, "style size must be positive");
+			return s;
+		}
+
+		PanelStyle ReadPanelStyle(lua_State* L, int idx) {
+			PanelStyle s;
+			if (lua_isnoneornil(L, idx)) return s;
+			luaL_checktype(L, idx, LUA_TTABLE);
+			const int t = lua_absindex(L, idx);
+			OptColorField(L, t, "bg", s.bg);
+			OptColorField(L, t, "border", s.border);
+			OptNumberField(L, t, "rounding", s.rounding);
+			return s;
+		}
+
+		// Rectangle argument: {x=, y=, w=, h=} or {x, y, w, h}.
+		glm::vec4 RectArg(lua_State* L, int idx) {
+			luaL_checktype(L, idx, LUA_TTABLE);
+			const int t = lua_absindex(L, idx);
+			const char* names[4] = { "x", "y", "w", "h" };
+			float v[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+			for (int i = 0; i < 4; ++i) {
+				lua_getfield(L, t, names[i]);
+				if (lua_isnil(L, -1)) {
+					lua_pop(L, 1);
+					lua_rawgeti(L, t, i + 1);
+				}
+				if (!lua_isnumber(L, -1)) luaL_error(L, "rect needs numeric x, y, w and h");
+				v[i] = static_cast<float>(lua_tonumber(L, -1));
+				lua_pop(L, 1);
+			}
+			return glm::vec4(v[0], v[1], v[2], v[3]);
+		}
+
+		uint32_t IdArg(lua_State* L, int idx) {
+			size_t len = 0;
+			const char* s = luaL_checklstring(L, idx, &len);
+			if (len == 0 || len > 128) luaL_error(L, "widget id must be 1..128 characters");
+			return ui::HashId(s);
+		}
+
+		UiNavigator& NavOf(lua_State* L) {
+			UiState* state = StateOf(L);
+			if (!state || !state->nav) luaL_error(L, "ui widgets are only available inside nox.on_draw handlers");
+			return *state->nav;
+		}
+
+		void AddRectCmd(UiRecorder& rec, UiOp op, const glm::vec2& min, const glm::vec2& max, uint32_t color,
+			float rounding, float thickness) {
+			UiCommand c;
+			c.op = op;
+			c.a = min;
+			c.b = max;
+			c.color = color;
+			c.rounding = rounding;
+			c.thickness = thickness;
+			rec.Add(std::move(c));
+		}
+
+		void AddTextCmd(UiRecorder& rec, const std::string& font, const std::string& text, const glm::vec2& pos,
+			float size, uint32_t color, UiAlign halign, UiValign valign) {
+			UiCommand c;
+			c.op = UiOp::Text;
+			c.font = font;
+			c.text = text;
+			c.a = pos;
+			c.size = size;
+			c.color = color;
+			c.halign = halign;
+			c.valign = valign;
+			rec.Add(std::move(c));
+		}
+
+		// State of one widget this frame. min/max are overlay coordinates (drawing).
+		struct WidgetFrame {
+			glm::vec2 min{ 0.0f }, max{ 0.0f };
+			bool enabled = true;
+			bool hovered = false, pressed = false, focused = false, clicked = false;
+			int step = 0;   // left/right this frame, focused value widgets only
+		};
+
+		WidgetFrame BeginWidget(lua_State* L, uint32_t id, const glm::vec4& r, bool enabled, bool value) {
+			UiState* state = StateOf(L);
+			UiNavigator& nav = NavOf(L);
+			WidgetFrame f;
+			f.enabled = enabled;
+			f.min = glm::vec2(r.x, r.y);
+			f.max = glm::max(f.min + glm::vec2(r.z, r.w), f.min);
+			const glm::vec2 windowMin = f.min + state->origin;
+			const glm::vec2 windowMax = f.max + state->origin;
+			ui::Pointer& pointer = ui::Pointer::Get();
+			pointer.AddRect(id, windowMin, windowMax, kWidgetZ, ui::RegionAll);
+			UiNavigator::Widget w;
+			w.id = id;
+			w.min = windowMin;
+			w.max = windowMax;
+			w.navigable = enabled;
+			w.value = value;
+			nav.AddWidget(w);
+			f.hovered = enabled && pointer.IsHovered(id);
+			f.pressed = enabled && pointer.IsActive(id) && pointer.Down(ui::PointerButton::Left);
+			f.focused = enabled && nav.IsFocused(id);
+			f.clicked = enabled && (pointer.IsClicked(id) || nav.Accept(id));
+			f.step = enabled ? nav.ValueStep(id) : 0;
+			return f;
+		}
+
+		void DrawFocusRing(UiRecorder& rec, const WidgetFrame& f, const WidgetStyle& s) {
+			if (!f.focused) return;
+			const glm::vec2 pad(kFocusRingWidth + 1.0f);
+			AddRectCmd(rec, UiOp::Rect, f.min - pad, f.max + pad, s.focus, s.rounding + kFocusRingWidth, kFocusRingWidth);
+		}
+
+		// button(id, rect, label, style?) -> clicked. Clicked by a mouse press and release on it, or by Enter, Space or
+		// pad A while it has keyboard focus. style.enabled = false dims it and takes it out of navigation.
+		int UiButton(lua_State* L) {
+			UiRecorder& rec = Recorder(L);
+			const uint32_t id = IdArg(L, 1);
+			const glm::vec4 r = RectArg(L, 2);
+			const std::string label = lua_isnoneornil(L, 3) ? std::string() : std::string(luaL_checkstring(L, 3));
+			const WidgetStyle s = ReadWidgetStyle(L, 4);
+			bool enabled = true;
+			if (!lua_isnoneornil(L, 4)) OptBoolField(L, lua_absindex(L, 4), "enabled", enabled);
+			const WidgetFrame f = BeginWidget(L, id, r, enabled, false);
+			const uint32_t bg = !f.enabled ? s.disabled : f.pressed ? s.active : (f.hovered || f.focused) ? s.hover : s.bg;
+			AddRectCmd(rec, UiOp::RectFilled, f.min, f.max, bg, s.rounding, 1.0f);
+			if ((s.border >> 24) != 0) AddRectCmd(rec, UiOp::Rect, f.min, f.max, s.border, s.rounding, 1.0f);
+			DrawFocusRing(rec, f, s);
+			if (!label.empty()) {
+				AddTextCmd(rec, s.font, label, (f.min + f.max) * 0.5f, s.size, f.enabled ? s.text : s.textDisabled,
+					UiAlign::Center, UiValign::Middle);
+			}
+			lua_pushboolean(L, f.clicked ? 1 : 0);
+			return 1;
+		}
+
+		// toggle(id, rect, label, value, style?) -> value, changed. A box and a label; click, Enter, or left/right flips it.
+		int UiToggle(lua_State* L) {
+			UiRecorder& rec = Recorder(L);
+			const uint32_t id = IdArg(L, 1);
+			const glm::vec4 r = RectArg(L, 2);
+			const std::string label = lua_isnoneornil(L, 3) ? std::string() : std::string(luaL_checkstring(L, 3));
+			const bool value = lua_toboolean(L, 4) != 0;
+			const WidgetStyle s = ReadWidgetStyle(L, 5);
+			bool enabled = true;
+			if (!lua_isnoneornil(L, 5)) OptBoolField(L, lua_absindex(L, 5), "enabled", enabled);
+			const WidgetFrame f = BeginWidget(L, id, r, enabled, true);
+			bool next = value;
+			if (f.clicked) next = !value;
+			else if (f.step != 0) next = f.step > 0;
+			const float height = f.max.y - f.min.y;
+			const float side = std::max(0.0f, std::min(height, 28.0f) - 6.0f);
+			const float boxY = f.min.y + (height - side) * 0.5f;
+			const glm::vec2 boxMin(f.min.x + 6.0f, boxY), boxMax(boxMin.x + side, boxY + side);
+			AddRectCmd(rec, UiOp::RectFilled, f.min, f.max, f.hovered || f.focused ? s.hover : s.bg, s.rounding, 1.0f);
+			AddRectCmd(rec, UiOp::RectFilled, boxMin, boxMax, next ? s.accent : s.track, 3.0f, 1.0f);
+			if (next) {
+				const glm::vec2 inset(side * 0.28f);
+				AddRectCmd(rec, UiOp::RectFilled, boxMin + inset, boxMax - inset, s.text, 1.0f, 1.0f);
+			}
+			DrawFocusRing(rec, f, s);
+			if (!label.empty()) {
+				AddTextCmd(rec, s.font, label, glm::vec2(boxMax.x + 10.0f, (f.min.y + f.max.y) * 0.5f), s.size,
+					f.enabled ? s.text : s.textDisabled, UiAlign::Left, UiValign::Middle);
+			}
+			lua_pushboolean(L, next ? 1 : 0);
+			lua_pushboolean(L, next != value ? 1 : 0);
+			return 2;
+		}
+
+		// slider(id, rect, value, min, max, opts?) -> value, changed. opts: step, decimals, show_value (default true),
+		// enabled, and the colour keys of a style. The mouse drags it; left and right move it by step (default range / 20).
+		int UiSlider(lua_State* L) {
+			UiRecorder& rec = Recorder(L);
+			UiState* state = StateOf(L);
+			const uint32_t id = IdArg(L, 1);
+			const glm::vec4 r = RectArg(L, 2);
+			const float value = static_cast<float>(luaL_checknumber(L, 3));
+			const float lo = static_cast<float>(luaL_checknumber(L, 4));
+			const float hi = static_cast<float>(luaL_checknumber(L, 5));
+			if (!(hi > lo)) luaL_error(L, "slider max must be greater than min");
+			float step = 0.0f;
+			int decimals = 0;
+			bool showValue = true;
+			bool enabled = true;
+			WidgetStyle s;
+			if (!lua_isnoneornil(L, 6)) {
+				luaL_checktype(L, 6, LUA_TTABLE);
+				const int t = lua_absindex(L, 6);
+				OptNumberField(L, t, "step", step);
+				float dec = 0.0f;
+				if (OptNumberField(L, t, "decimals", dec)) decimals = static_cast<int>(std::clamp(dec, 0.0f, 6.0f));
+				OptBoolField(L, t, "show_value", showValue);
+				OptBoolField(L, t, "enabled", enabled);
+				s = ReadWidgetStyle(L, 6);
+			}
+			if (step < 0.0f) luaL_error(L, "slider step must not be negative");
+			if (step == 0.0f) step = (hi - lo) / 20.0f;
+			const WidgetFrame f = BeginWidget(L, id, r, enabled, true);
+
+			const float height = f.max.y - f.min.y;
+			std::string text;
+			float textWidth = 0.0f;
+			if (showValue) {
+				char buf[64];
+				std::snprintf(buf, sizeof(buf), "%.*f", decimals, static_cast<double>(value));
+				text = buf;
+				textWidth = MeasureUiText(state->fonts, s.font, s.size, text).x + 12.0f;
+			}
+			const float trackLeft = f.min.x + 6.0f;
+			const float trackRight = std::max(trackLeft + 1.0f, f.max.x - textWidth - 6.0f);
+			const float trackWidth = trackRight - trackLeft;
+			float v = std::clamp(value, lo, hi);
+			if (f.pressed) {
+				const float px = ui::Pointer::Get().Position().x - state->origin.x;
+				v = lo + std::clamp((px - trackLeft) / trackWidth, 0.0f, 1.0f) * (hi - lo);
+			}
+			else if (f.step != 0) {
+				v += static_cast<float>(f.step) * step;
+			}
+			if (f.pressed || f.step != 0) v = lo + std::round((v - lo) / step) * step;
+			v = std::clamp(v, lo, hi);
+			const bool changed = v != value;
+
+			const float frac = (v - lo) / (hi - lo);
+			const float trackH = std::max(4.0f, height * 0.18f);
+			const float cy = (f.min.y + f.max.y) * 0.5f;
+			const float knobX = trackLeft + frac * trackWidth;
+			AddRectCmd(rec, UiOp::RectFilled, f.min, f.max, f.hovered || f.focused ? s.hover : s.bg, s.rounding, 1.0f);
+			AddRectCmd(rec, UiOp::RectFilled, glm::vec2(trackLeft, cy - trackH * 0.5f), glm::vec2(trackRight, cy + trackH * 0.5f),
+				s.track, trackH * 0.5f, 1.0f);
+			AddRectCmd(rec, UiOp::RectFilled, glm::vec2(trackLeft, cy - trackH * 0.5f), glm::vec2(knobX, cy + trackH * 0.5f),
+				f.enabled ? s.accent : s.textDisabled, trackH * 0.5f, 1.0f);
+			UiCommand knob;
+			knob.op = UiOp::CircleFilled;
+			knob.a = glm::vec2(knobX, cy);
+			knob.b = glm::vec2(std::max(4.0f, height * 0.3f), 0.0f);
+			knob.color = !f.enabled ? s.textDisabled : (f.pressed ? s.accent : s.knob);
+			rec.Add(std::move(knob));
+			DrawFocusRing(rec, f, s);
+			if (showValue) {
+				AddTextCmd(rec, s.font, text, glm::vec2(f.max.x - 6.0f, cy), s.size, f.enabled ? s.text : s.textDisabled,
+					UiAlign::Right, UiValign::Middle);
+			}
+			lua_pushnumber(L, v);
+			lua_pushboolean(L, changed ? 1 : 0);
+			return 2;
+		}
+
+		// label(rect, text, opts?): text inside a rectangle. opts: font, size, color, align (left|center|right),
+		// valign (top|middle|bottom, default middle).
+		int UiLabel(lua_State* L) {
+			UiRecorder& rec = Recorder(L);
+			const glm::vec4 r = RectArg(L, 1);
+			size_t len = 0;
+			const char* text = luaL_checklstring(L, 2, &len);
+			if (len > ui_limits::kMaxTextBytes) luaL_error(L, "text is longer than %d bytes", static_cast<int>(ui_limits::kMaxTextBytes));
+			std::string font;
+			float size = 22.0f;
+			uint32_t color = Argb(0xFFEEF3F8u);
+			UiAlign halign = UiAlign::Left;
+			UiValign valign = UiValign::Middle;
+			if (!lua_isnoneornil(L, 3)) {
+				luaL_checktype(L, 3, LUA_TTABLE);
+				const int t = lua_absindex(L, 3);
+				OptStringField(L, t, "font", font);
+				OptNumberField(L, t, "size", size);
+				OptColorField(L, t, "color", color);
+				std::string align, vert;
+				if (OptStringField(L, t, "align", align)) {
+					if (align == "center") halign = UiAlign::Center;
+					else if (align == "right") halign = UiAlign::Right;
+					else if (align != "left") luaL_error(L, "label align must be left, center or right");
+				}
+				if (OptStringField(L, t, "valign", vert)) {
+					if (vert == "top") valign = UiValign::Top;
+					else if (vert == "bottom") valign = UiValign::Bottom;
+					else if (vert != "middle") luaL_error(L, "label valign must be top, middle or bottom");
+				}
+			}
+			if (!(size > 0.0f)) luaL_error(L, "label size must be positive");
+			const glm::vec2 min(r.x, r.y), max = min + glm::vec2(r.z, r.w);
+			const glm::vec2 pos(halign == UiAlign::Center ? (min.x + max.x) * 0.5f : halign == UiAlign::Right ? max.x : min.x,
+				valign == UiValign::Middle ? (min.y + max.y) * 0.5f : valign == UiValign::Bottom ? max.y : min.y);
+			AddTextCmd(rec, font, std::string(text, len), pos, size, color, halign, valign);
+			return 0;
+		}
+
+		// panel(rect, style?): rounded background (bg, border, rounding).
+		int UiPanel(lua_State* L) {
+			UiRecorder& rec = Recorder(L);
+			const glm::vec4 r = RectArg(L, 1);
+			const PanelStyle s = ReadPanelStyle(L, 2);
+			const glm::vec2 min(r.x, r.y), max = min + glm::vec2(r.z, r.w);
+			AddRectCmd(rec, UiOp::RectFilled, min, max, s.bg, s.rounding, 1.0f);
+			if ((s.border >> 24) != 0) AddRectCmd(rec, UiOp::Rect, min, max, s.border, s.rounding, 1.0f);
+			return 0;
+		}
+
+		// measure_text(text, font, size) -> width, height.
+		int UiMeasureText(lua_State* L) {
+			UiState* state = StateOf(L);
+			size_t len = 0;
+			const char* text = luaL_checklstring(L, 1, &len);
+			if (len > ui_limits::kMaxTextBytes) luaL_error(L, "text is longer than %d bytes", static_cast<int>(ui_limits::kMaxTextBytes));
+			const std::string font = lua_isnoneornil(L, 2) ? std::string() : std::string(luaL_checkstring(L, 2));
+			const float size = static_cast<float>(luaL_checknumber(L, 3));
+			const glm::vec2 s = MeasureUiText(state ? state->fonts : nullptr, font, size, std::string(text, len));
+			lua_pushnumber(L, s.x);
+			lua_pushnumber(L, s.y);
+			return 2;
+		}
+
+		// consumed() -> bool: the menu used this frame's arrow, accept or back keys, or a press landed on a widget.
+		int UiConsumed(lua_State* L) {
+			lua_pushboolean(L, NavOf(L).Consumed() ? 1 : 0);
+			return 1;
+		}
+
+		// back_pressed() -> bool: Escape or pad B this frame.
+		int UiBackPressed(lua_State* L) {
+			lua_pushboolean(L, NavOf(L).Back() ? 1 : 0);
+			return 1;
+		}
+
+		// menu(): marks this draw as a menu. Keyboard and pad navigation acts only while a menu is drawn.
+		int UiMenu(lua_State* L) {
+			Recorder(L);
+			NavOf(L).MarkMenu();
+			return 0;
+		}
+
 		float UvComponent(lua_State* L, int tableIdx, lua_Integer i) {
 			lua_geti(L, tableIdx, i);
 			const float v = static_cast<float>(luaL_checknumber(L, -1));
@@ -531,10 +960,32 @@ namespace NoxLua {
 			{ "clip_push", UiClipPush }, { "clip_pop", UiClipPop },
 			{ "viewport", UiViewport }, { "pointer", UiPointer },
 			{ "texture", UiTexture }, { "icon_exists", UiIconExists },
+			{ "button", UiButton }, { "toggle", UiToggle }, { "slider", UiSlider }, { "label", UiLabel },
+			{ "panel", UiPanel }, { "measure_text", UiMeasureText }, { "menu", UiMenu },
+			{ "consumed", UiConsumed }, { "back_pressed", UiBackPressed },
 		};
 		for (const Entry& e : entries) {
 			lua_pushcfunction(L, e.fn);
 			lua_setfield(L, -2, e.name);
+		}
+		// Layout helpers written in Lua (no state of their own): ui.column(x, y, w, spacing) -> col; col:next(h) -> rect.
+		static const char* const kPrelude =
+			"local ui = ...\n"
+			"function ui.column(x, y, w, spacing)\n"
+			"  local col = { _x = x, _y = y, _w = w, _s = spacing or 0 }\n"
+			"  function col.next(self, h)\n"
+			"    local r = { x = self._x, y = self._y, w = self._w, h = h }\n"
+			"    self._y = self._y + h + self._s\n"
+			"    return r\n"
+			"  end\n"
+			"  return col\n"
+			"end\n";
+		if (luaL_loadstring(L, kPrelude) == LUA_OK) {
+			lua_pushvalue(L, -2);
+			if (lua_pcall(L, 1, 0, 0) != LUA_OK) lua_pop(L, 1);
+		}
+		else {
+			lua_pop(L, 1);
 		}
 		return luaL_ref(L, LUA_REGISTRYINDEX);
 	}

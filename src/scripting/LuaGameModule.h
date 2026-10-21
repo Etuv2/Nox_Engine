@@ -8,6 +8,8 @@
 #include "LuaReload.h"
 #include "LuaWorld.h"
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,6 +91,8 @@ namespace NoxLua {
 		void PollWatcher(float dt);
 		void AttachResources(LuaWorld* world);
 		void PublishAudio();
+		// GUI node elements marked interactive: hit regions, keyboard focus entries and "ui.hover" / "ui.click" events.
+		void InteractGui(ImDrawList* drawList);
 
 		ProjectDescriptor m_descriptor;
 		PhysicsEngine* m_physics = nullptr;   // engine service; valid until the next SetServices
@@ -114,6 +118,7 @@ namespace NoxLua {
 		SceneGraph* m_scene = nullptr;
 		std::shared_ptr<Camera> m_camera;
 		std::vector<ModuleStamp> m_stamps;     // module set of the running world (watcher baseline)
+		std::map<uint32_t, std::string> m_guiHover;   // interactive GUI elements under the pointer last frame (id -> name)
 		bool m_available = false;
 		bool m_paused = false;
 		bool m_standalone = false;

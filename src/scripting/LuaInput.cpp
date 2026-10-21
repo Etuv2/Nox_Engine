@@ -333,6 +333,35 @@ namespace NoxLua {
 		m_pad = nullptr;
 	}
 
+	InputDevices SdlInputDevices(bool enabled) {
+		// One controller handle for the process: SDL reference-counts opens of the same device.
+		static SDL_GameController* pad = nullptr;
+		if (enabled) {
+			if (pad && !SDL_GameControllerGetAttached(pad)) {
+				SDL_GameControllerClose(pad);
+				pad = nullptr;
+			}
+			const int count = SDL_NumJoysticks();
+			for (int i = 0; i < count && !pad && enabled; ++i) {
+				if (SDL_IsGameController(i)) pad = SDL_GameControllerOpen(i);
+			}
+		}
+		const Uint8* keys = enabled ? SDL_GetKeyboardState(nullptr) : nullptr;
+		SDL_GameController* active = enabled ? pad : nullptr;
+		InputDevices devices;
+		devices.key = [keys](int scancode) {
+			return keys && scancode >= 0 && scancode < SDL_NUM_SCANCODES && keys[scancode] != 0;
+		};
+		devices.padButton = [active](int button) {
+			return active && button >= 0 && SDL_GameControllerGetButton(active, static_cast<SDL_GameControllerButton>(button)) != 0;
+		};
+		devices.padAxis = [active](int axis) {
+			if (!active || axis < 0) return 0.0f;
+			return static_cast<float>(SDL_GameControllerGetAxis(active, static_cast<SDL_GameControllerAxis>(axis))) / 32767.0f;
+		};
+		return devices;
+	}
+
 	void InputMap::Sample(bool enabled) {
 		if (m_decls.empty()) return;
 		SDL_GameController* pad = static_cast<SDL_GameController*>(enabled ? OpenPad() : nullptr);

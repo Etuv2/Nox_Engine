@@ -815,6 +815,16 @@ namespace NoxLua {
 			return 0;
 		}
 
+		static int CtxUiConsumed(lua_State* L) {
+			lua_pushboolean(L, WorldOf(L)->m_nav.Consumed() ? 1 : 0);
+			return 1;
+		}
+
+		static int CtxUiBackPressed(lua_State* L) {
+			lua_pushboolean(L, WorldOf(L)->m_nav.Back() ? 1 : 0);
+			return 1;
+		}
+
 		static int CtxEmit(lua_State* L) {
 			LuaWorld* w = WorldOf(L);
 			RequireCallback(L, w, "emit");
@@ -936,6 +946,8 @@ namespace NoxLua {
 			SetFn(L, w, "pointer_released", CtxPointerReleased);
 			SetFn(L, w, "pointer_wheel", CtxPointerWheel);
 			SetFn(L, w, "over_ui", CtxOverUi);
+			SetFn(L, w, "ui_consumed", CtxUiConsumed);
+			SetFn(L, w, "ui_back_pressed", CtxUiBackPressed);
 			SetFn(L, w, "wants_pointer", CtxWantsPointer);
 			SetFn(L, w, "set_wants_pointer", CtxSetWantsPointer);
 			// Component proxies, add/remove/list, nox.components, parent/children, raycast, load_scene (LuaComponents.cpp).
@@ -980,6 +992,7 @@ namespace NoxLua {
 		, m_runtime(std::make_unique<Runtime>(limits, m_ownedSource ? m_ownedSource.get() : source))
 		, m_vehicles(std::make_unique<VehicleHost>(*m_runtime, m_ownedSource ? m_ownedSource.get() : source)) {
 		m_ui.data = &m_dataApi;
+		m_ui.nav = &m_nav;
 		m_edBinding.undo = std::make_shared<EditorUndoRegistry>();
 		m_edBinding.undo->world = this;
 	}
@@ -1451,9 +1464,52 @@ namespace NoxLua {
 		m_draws.push_back(entry);
 	}
 
+	void LuaWorld::BeginUiInput(const InputDevices& devices, bool enabled) {
+		m_nav.Sample(devices, enabled);
+		ui::Pointer& pointer = ui::Pointer::Get();
+		const bool pressed = pointer.Pressed(ui::PointerButton::Left) || pointer.Pressed(ui::PointerButton::Right) ||
+			pointer.Pressed(ui::PointerButton::Middle);
+		m_nav.Resolve(pointer.Position(), enabled && pointer.InWindow(), pointer.Moved(), enabled && pressed);
+		// Escape / pad B reaches the handlers of "ui.back" on the next update (and ctx:ui_back_pressed() at once).
+		if (m_nav.Back() && m_playing) QueueEvent("ui.back", LUA_REFNIL);
+	}
+
+	void LuaWorld::AddNavigationWidget(uint32_t id, const glm::vec2& min, const glm::vec2& max) {
+		UiNavigator::Widget w;
+		w.id = id;
+		w.min = min;
+		w.max = max;
+		m_nav.AppendWidget(w);
+	}
+
+	bool LuaWorld::QueueUiEvent(const std::string& name, const std::string& id, const std::string& action, int entered) {
+		if (!m_runtime || !m_runtime->Ok()) return false;
+		if (m_events.size() >= kMaxEventsPerFrame) return false;
+		lua_State* L = m_runtime->State();
+		lua_newtable(L);
+		lua_pushlstring(L, id.data(), id.size());
+		lua_setfield(L, -2, "id");
+		if (entered >= 0) {
+			lua_pushboolean(L, entered != 0);
+			lua_setfield(L, -2, "entered");
+		}
+		else {
+			lua_pushlstring(L, action.data(), action.size());
+			lua_setfield(L, -2, "action");
+		}
+		const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+		return QueueEvent(name, ref);
+	}
+
 	void LuaWorld::DrawFrame(float dt, const glm::vec2& viewport, const glm::vec2& pointerOverlay, UiRecorder& out) {
 		out.Begin();
-		if (!m_loaded || m_draws.empty()) return;
+		// The widget layout of this draw becomes the navigation layout of the next frame (empty when nothing is drawn).
+		m_nav.BeginLayout();
+		m_ui.origin = m_services.overlayOrigin;
+		if (!m_loaded || m_draws.empty()) {
+			m_nav.EndLayout();
+			return;
+		}
 		m_ui.recorder = &out;
 		m_ui.viewport = viewport;
 		m_ui.pointerOverlay = pointerOverlay;
@@ -1489,6 +1545,7 @@ namespace NoxLua {
 			}
 		}
 		m_ui.recorder = nullptr;
+		m_nav.EndLayout();
 		if (out.Dropped() > 0) {
 			if (!m_drawDropReported) {
 				AddDiagnosticNote(Diagnostic::Severity::Warning, "draw",

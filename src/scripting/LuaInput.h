@@ -37,6 +37,10 @@ namespace NoxLua {
 		std::function<float(int axis)> padAxis;   // -1..1 (raw, before deadzone)
 	};
 
+	// The SDL keyboard and the first open game controller as device readers (enabled = false reads nothing).
+	// Used by the action map and by the menu navigation (LuaUiFocus.h); both sample once per frame.
+	InputDevices SdlInputDevices(bool enabled);
+
 	class InputMap {
 	public:
 		InputMap() = default;
