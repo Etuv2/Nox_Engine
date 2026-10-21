@@ -55,6 +55,9 @@ uniform float uWorldLongRate = 0.0;
 uniform float uWorldCatchUp = 0.0;
 uniform float uWorldCatchUpMax = 0.25;
 uniform float uWorldHistoryCap = 192.0;
+// Screen surfels (plan section 22): the same catch-up gain and cap as the world surfels, off at gain 0.
+uniform float uScreenCatchUp = 0.0;
+uniform float uScreenCatchUpMax = 0.25;
 // Relative safety clamp (plan section 14). A sample is cut only above k times the surfel's own level (the larger of
 // its long and short means, luminance) plus m short standard deviations, and never below the floor. Ordinary samples,
 // emitter samples included, pass unchanged; only firefly outliers are bounded. The fixed clamp of 32 hid emitter
@@ -257,7 +260,7 @@ void main()
             longRate = uWorldLongRate;
         }
         SurfelMSMEUpdate(msmeData, sampleX, lightingChange, newSurfel, cumulativeRate, longRate,
-            worldSurfel ? uWorldCatchUp : 0.0, uWorldCatchUpMax);
+            worldSurfel ? uWorldCatchUp : uScreenCatchUp, worldSurfel ? uWorldCatchUpMax : uScreenCatchUpMax);
     }
 
     float varLum = SurfelLuminance(max(msmeData.variance, vec3(0.0)));

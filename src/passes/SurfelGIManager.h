@@ -108,6 +108,13 @@ struct SurfelGISettings {
 	float worldCatchUp = 0.0f;
 	float worldCatchUpMax = 0.25f;
 	float worldHistoryCap = 192.0f;
+	// Screen surfels (plan section 22): the same MSME catch-up, so a surfel whose short-window mean has moved away from
+	// its long mean (a lighting change, or a moving object's new surroundings) follows at once. Gain 0 = off.
+	float screenCatchUp = 0.0f;
+	float screenCatchUpMax = 0.25f;
+	// Dormancy gate (plan section 22): a converged surfel stops sending rays only while its short and long means agree
+	// to this relative level (0 = no gate, the dormancy of section 20 as before).
+	float dormantGap = 0.0f;
 	// Plane-distance sigma scale of the cache weight (1 = the first round's value).
 	float cachePlaneScale = 1.0f;
 	// Debug only (NOX_SURFEL_GI_TRACE_SKIP): bit mask of trace components to skip, for the cost breakdown (plan section

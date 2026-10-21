@@ -1400,6 +1400,7 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uLightingChangeFactor", m_lightingChangeFactor);
 		SetUniform1ui(program, "uWorldRayFloor", m_settings.worldRayFloor);
 		SetUniform1ui(program, "uWorldRefWindow", m_settings.worldRefWindow);
+		SetUniform1f(program, "uDormantGap", m_settings.dormantGap);
 		timedDispatch("ray_request", [&]() {
 			m_requestRaysShader->Dispatch(groupsSurfels, 1u, 1u);
 			m_requestRaysShader->WaitForCompletion(rhi::BarrierStorage);
@@ -1571,6 +1572,8 @@ void SurfelGIPipeline::Execute(RenderContext& context,
 		SetUniform1f(program, "uWorldCatchUp", m_settings.worldCatchUp);
 		SetUniform1f(program, "uWorldCatchUpMax", m_settings.worldCatchUpMax);
 		SetUniform1f(program, "uWorldHistoryCap", m_settings.worldHistoryCap);
+		SetUniform1f(program, "uScreenCatchUp", m_settings.screenCatchUp);
+		SetUniform1f(program, "uScreenCatchUpMax", m_settings.screenCatchUpMax);
 		timedDispatch("temporal_integration", [&]() {
 			DispatchSurfelWide(*m_integrateShader, surfelArgs, groupsSurfels);
 			m_integrateShader->WaitForCompletion(rhi::BarrierStorage);
